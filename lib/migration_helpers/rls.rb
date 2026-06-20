@@ -3,13 +3,13 @@
 # da tabela ignora RLS).
 module MigrationHelpers
   module Rls
-    def enable_rls_on(table_name, column: :municipality_id)
+    def enable_rls_on(table_name, column: :municipality_id, column_type: :uuid)
       execute("ALTER TABLE #{table_name} ENABLE ROW LEVEL SECURITY;")
       execute("ALTER TABLE #{table_name} FORCE ROW LEVEL SECURITY;")
       execute(<<~SQL.squish)
         CREATE POLICY tenant_isolation ON #{table_name}
-          USING      (#{column} = current_setting('app.municipality_id')::bigint)
-          WITH CHECK (#{column} = current_setting('app.municipality_id')::bigint);
+          USING      (#{column} = current_setting('app.municipality_id')::#{column_type})
+          WITH CHECK (#{column} = current_setting('app.municipality_id')::#{column_type});
       SQL
     end
 

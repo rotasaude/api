@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_000020) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -34,6 +34,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
     t.datetime "created_at", null: false
     t.text "evidence"
     t.datetime "given_at", null: false
+    t.uuid "municipality_id", null: false
     t.string "policy_text_sha", null: false
     t.datetime "revoked_at"
     t.datetime "updated_at", null: false
@@ -41,6 +42,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
     t.index ["conversation_id", "revoked_at"], name: "idx_consents_one_active_per_conversation", unique: true, where: "(revoked_at IS NULL)"
     t.index ["conversation_id"], name: "index_consents_on_conversation_id"
     t.index ["given_at"], name: "index_consents_on_given_at"
+    t.index ["municipality_id"], name: "index_consents_on_municipality_id"
   end
 
   create_table "conversations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -71,12 +73,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
     t.string "aggregate_id", null: false
     t.string "aggregate_type", null: false
     t.datetime "created_at", null: false
+    t.uuid "municipality_id", null: false
     t.string "name", null: false
     t.datetime "occurred_at", null: false
     t.jsonb "payload", default: {}, null: false
     t.datetime "published_at"
     t.datetime "updated_at", null: false
     t.index ["aggregate_type", "aggregate_id"], name: "index_domain_events_on_aggregate_type_and_aggregate_id"
+    t.index ["municipality_id"], name: "index_domain_events_on_municipality_id"
     t.index ["name"], name: "index_domain_events_on_name"
     t.index ["occurred_at"], name: "idx_domain_events_pending", where: "(published_at IS NULL)"
     t.index ["occurred_at"], name: "index_domain_events_on_occurred_at"
@@ -87,11 +91,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
     t.string "from", null: false
     t.string "kind", null: false
     t.string "message_id", null: false
+    t.uuid "municipality_id", null: false
     t.text "raw", null: false
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_inbound_messages_on_created_at"
     t.index ["from"], name: "index_inbound_messages_on_from"
     t.index ["message_id"], name: "index_inbound_messages_on_message_id", unique: true
+    t.index ["municipality_id"], name: "index_inbound_messages_on_municipality_id"
   end
 
   create_table "municipalities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -110,12 +116,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
     t.jsonb "context", default: {}, null: false
     t.datetime "created_at", null: false
     t.string "idempotency_key", null: false
+    t.uuid "municipality_id", null: false
     t.text "response"
     t.integer "status", null: false
     t.jsonb "template", null: false
     t.string "to", null: false
     t.datetime "updated_at", null: false
     t.index ["idempotency_key"], name: "index_outbound_messages_on_idempotency_key", unique: true
+    t.index ["municipality_id"], name: "index_outbound_messages_on_municipality_id"
     t.index ["status", "created_at"], name: "index_outbound_messages_on_status_and_created_at"
     t.index ["to"], name: "index_outbound_messages_on_to"
   end
@@ -149,6 +157,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
   create_table "report_snapshots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "expires_at"
+    t.uuid "municipality_id", null: false
     t.jsonb "outcome", null: false
     t.jsonb "payload", null: false
     t.uuid "protocol_definition_id", null: false
@@ -157,6 +166,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
     t.uuid "triagem_id", null: false
     t.datetime "updated_at", null: false
     t.index ["expires_at"], name: "index_report_snapshots_on_expires_at"
+    t.index ["municipality_id"], name: "index_report_snapshots_on_municipality_id"
     t.index ["protocol_definition_id"], name: "index_report_snapshots_on_protocol_definition_id"
     t.index ["token"], name: "index_report_snapshots_on_token", unique: true
     t.index ["triagem_id"], name: "idx_report_snapshots_one_per_triagem", unique: true
@@ -310,6 +320,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
     t.uuid "conversation_id", null: false
     t.datetime "created_at", null: false
     t.string "current_step"
+    t.uuid "municipality_id", null: false
     t.jsonb "outcome"
     t.integer "priority"
     t.uuid "protocol_definition_id", null: false
@@ -321,6 +332,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
     t.index ["conversation_id", "status"], name: "index_triagens_on_conversation_id_and_status"
     t.index ["conversation_id"], name: "idx_triagens_one_in_progress_per_conversation", unique: true, where: "((status)::text = 'in_progress'::text)"
     t.index ["conversation_id"], name: "index_triagens_on_conversation_id"
+    t.index ["municipality_id"], name: "index_triagens_on_municipality_id"
     t.index ["protocol_definition_id"], name: "index_triagens_on_protocol_definition_id"
     t.index ["status"], name: "index_triagens_on_status"
     t.index ["tier"], name: "index_triagens_on_tier"
@@ -339,9 +351,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
 
   add_foreign_key "authors", "municipalities"
   add_foreign_key "consents", "conversations"
+  add_foreign_key "consents", "municipalities"
   add_foreign_key "conversations", "municipalities"
   add_foreign_key "dashboard_metrics", "municipalities"
+  add_foreign_key "domain_events", "municipalities"
+  add_foreign_key "inbound_messages", "municipalities"
+  add_foreign_key "outbound_messages", "municipalities"
   add_foreign_key "protocol_definitions", "municipalities"
+  add_foreign_key "report_snapshots", "municipalities"
   add_foreign_key "report_snapshots", "protocol_definitions"
   add_foreign_key "report_snapshots", "triagens"
   add_foreign_key "sessions", "users"
@@ -352,6 +369,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000001) do
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "triagens", "conversations"
+  add_foreign_key "triagens", "municipalities"
   add_foreign_key "triagens", "protocol_definitions"
   add_foreign_key "users", "municipalities"
 end
