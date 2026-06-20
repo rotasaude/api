@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000100) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_000110) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -51,8 +51,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000100) do
     t.string "phone", null: false
     t.string "state", default: "greeting", null: false
     t.datetime "updated_at", null: false
+    t.index ["municipality_id", "phone"], name: "idx_conversations_active_per_tenant_phone", unique: true, where: "((state)::text = ANY ((ARRAY['awaiting_consent'::character varying, 'consented'::character varying, 'greeting'::character varying])::text[]))"
     t.index ["municipality_id"], name: "index_conversations_on_municipality_id"
-    t.index ["phone"], name: "index_conversations_on_phone", unique: true
     t.index ["state"], name: "index_conversations_on_state"
   end
 

@@ -10,7 +10,12 @@ module Authentication
   extend ActiveSupport::Concern
 
   included do
-    before_action :require_authentication
+    # prepend para correr ANTES do around_action :within_tenant herdado de
+    # ApplicationController (TenantScopedRequest). Sem isso, within_tenant
+    # tenta resolver current_municipality com Current.session ainda nil
+    # e levanta TenantMissing (500) em vez de devolver 401 — ou pior, falha
+    # também para requests autenticados, porque resume_session ainda não rodou.
+    prepend_before_action :require_authentication
   end
 
   class_methods do
