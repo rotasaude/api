@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000020) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_000030) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -70,8 +70,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000020) do
   end
 
   create_table "domain_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.string "aggregate_id", null: false
-    t.string "aggregate_type", null: false
     t.datetime "created_at", null: false
     t.uuid "municipality_id", null: false
     t.string "name", null: false
@@ -79,7 +77,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000020) do
     t.jsonb "payload", default: {}, null: false
     t.datetime "published_at"
     t.datetime "updated_at", null: false
-    t.index ["aggregate_type", "aggregate_id"], name: "index_domain_events_on_aggregate_type_and_aggregate_id"
     t.index ["municipality_id"], name: "index_domain_events_on_municipality_id"
     t.index ["name"], name: "index_domain_events_on_name"
     t.index ["occurred_at"], name: "idx_domain_events_pending", where: "(published_at IS NULL)"
@@ -132,9 +129,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000020) do
     t.string "consumer", null: false
     t.datetime "created_at", null: false
     t.string "event_id", null: false
+    t.uuid "municipality_id", null: false
     t.datetime "processed_at", null: false
     t.datetime "updated_at", null: false
     t.index ["consumer", "event_id"], name: "index_processed_events_on_consumer_and_event_id", unique: true
+    t.index ["municipality_id"], name: "index_processed_events_on_municipality_id"
     t.index ["processed_at"], name: "index_processed_events_on_processed_at"
   end
 
@@ -357,6 +356,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000020) do
   add_foreign_key "domain_events", "municipalities"
   add_foreign_key "inbound_messages", "municipalities"
   add_foreign_key "outbound_messages", "municipalities"
+  add_foreign_key "processed_events", "municipalities"
   add_foreign_key "protocol_definitions", "municipalities"
   add_foreign_key "report_snapshots", "municipalities"
   add_foreign_key "report_snapshots", "protocol_definitions"
