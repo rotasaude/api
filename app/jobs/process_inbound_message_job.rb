@@ -1,26 +1,15 @@
-# Consome inbound_message.received. Trabalho transacional do lado do domínio.
-# HTTP de resposta vai por SendWhatsappJob — ver ADR-0014.
+# Consumo de mensagem WhatsApp inbound. Trabalho transacional do lado do domínio.
+# ADR-0020: scoped por município (resolvido na ingestão WhatsApp — Phase 5).
+# Já não é consumer de DomainEvents — invocado direto pelo Whatsapp::Ingest.call.
 class ProcessInboundMessageJob < ApplicationJob
-  include IdempotentConsumer
+  include TenantScopedJob
   queue_as :realtime
 
-  def consume(event)
-    inbound = InboundMessage.find(event.aggregate_id)
-    conversation = Conversation.for_phone(inbound.from)
-    parsed = Whatsapp::Ingest.normalize(JSON.parse(inbound.raw)) rescue nil
-
-    return unless parsed && conversation.active?
-
-    answer = parsed[:body]
-    triagem = conversation.current_triagem || conversation.start_triagem!
-
-    outcome = triagem.record_answer!(answer)
-
-    # NÃO chamamos a Cloud API daqui — só enfileiramos o envio (ADR-0014).
-    SendWhatsappJob.perform_later(
-      to: inbound.from,
-      template: triagem.next_prompt_template(outcome),
-      context: { triagem_id: triagem.id }
-    )
+  def perform(inbound_message_id, municipality_id:)
+    with_tenant(municipality_id) do
+      # Stub. Corpo final no Phase 5 (avança conversa, gera triagem).
+      inbound = InboundMessage.find(inbound_message_id)
+      Rails.logger.info("[ProcessInboundMessageJob] received #{inbound.id} for #{municipality_id}")
+    end
   end
 end
