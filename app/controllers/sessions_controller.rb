@@ -1,6 +1,8 @@
 # Sessões — JSON-only (API). Ver ADR-0022.
 #
-#   POST   /session   { email_address, password }  → 201 + set-cookie
+#   POST   /session   { email_address, password }  → 201 + set-cookie (não-operador)
+#                                                  → 200 + mfa_required (operador)
+#   POST   /session/challenge { session_id, code } → 200 + carimbas mfa_verified_at
 #   DELETE /session                                 → 204 + clear-cookie
 class SessionsController < ApplicationController
   # TODO: reativar quando Phase 4 setar current_municipality
@@ -8,18 +10,40 @@ class SessionsController < ApplicationController
 
   include Authentication
 
-  allow_unauthenticated_access only: %i[create]
+  allow_unauthenticated_access only: %i[create challenge_totp]
 
-  rate_limit to: 10, within: 3.minutes, only: :create,
+  rate_limit to: 10, within: 3.minutes, only: %i[create challenge_totp],
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
   def create
-    user = User.authenticate_by(email_address: params[:email_address], password: params[:password])
-    if user
-      start_new_session_for(user)
-      render json: serialize(user), status: :created
+    user = Authenticator.password(email: params[:email_address], password: params[:password])
+    return render(json: { error: "invalid_credentials" }, status: :unauthorized) unless user
+
+    if user.operator? && !user.mfa_enrolled?
+      return render(json: { error: "mfa_enrollment_required" }, status: :forbidden)
+    end
+
+    session = start_new_session_for(user)
+
+    if user.operator?
+      # Operador exige TOTP toda vez (login, não step-up — ADR-0022).
+      return render(json: { mfa_required: true, session_id: session.id }, status: :ok)
+    end
+
+    render json: serialize(user), status: :created
+  end
+
+  def challenge_totp
+    session = Session.find_by(id: params[:session_id])
+    return render(json: { error: "invalid_session" }, status: :unauthorized) unless session
+
+    user = session.user
+    if Mfa::Verify.call(user, code: params[:code])
+      session.update!(mfa_verified_at: Time.current)
+      cookies.signed.permanent[:session_id] = { value: session.id, httponly: true, same_site: :lax, secure: Rails.env.production? }
+      render json: serialize(user), status: :ok
     else
-      render json: { error: "invalid_credentials" }, status: :unauthorized
+      render json: { error: "invalid_code" }, status: :unauthorized
     end
   end
 
@@ -37,14 +61,6 @@ class SessionsController < ApplicationController
   private
 
   def serialize(user)
-    {
-      id: user.id,
-      email_address: user.email_address,
-      municipality: user.municipality && {
-        id: user.municipality.id,
-        name: user.municipality.name,
-        uf: user.municipality.uf
-      }
-    }
+    { id: user.id, email_address: user.email_address }
   end
 end

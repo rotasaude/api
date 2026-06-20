@@ -26,4 +26,9 @@ class User < ApplicationRecord
       sessions.destroy_all
     end
   end
+
+  # Stub. Sobrescrito no Phase 4 com memberships.platform_operator (ADR-0023).
+  def operator?
+    false
+  end
 end
