@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000060) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_000070) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -105,6 +105,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000060) do
     t.index ["from"], name: "index_inbound_messages_on_from"
     t.index ["message_id"], name: "index_inbound_messages_on_message_id", unique: true
     t.index ["municipality_id"], name: "index_inbound_messages_on_municipality_id"
+  end
+
+  create_table "memberships", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "granted_at", null: false
+    t.uuid "granted_by_id"
+    t.uuid "municipality_id"
+    t.datetime "revoked_at"
+    t.string "role", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "user_id", null: false
+    t.index "user_id, COALESCE(municipality_id, '00000000-0000-0000-0000-000000000000'::uuid), role", name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
+    t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
+    t.index ["municipality_id"], name: "index_memberships_on_municipality_id"
+    t.index ["user_id"], name: "index_memberships_on_user_id"
+    t.check_constraint "role::text <> 'platform_operator'::text OR municipality_id IS NULL", name: "ck_memberships_operator_global"
+    t.check_constraint "role::text = ANY (ARRAY['platform_operator'::character varying, 'municipal_admin'::character varying, 'protocol_author'::character varying, 'protocol_publisher'::character varying, 'viewer'::character varying]::text[])", name: "ck_memberships_role"
   end
 
   create_table "municipalities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -369,6 +386,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000060) do
   add_foreign_key "domain_events", "municipalities"
   add_foreign_key "identities", "users"
   add_foreign_key "inbound_messages", "municipalities"
+  add_foreign_key "memberships", "municipalities"
+  add_foreign_key "memberships", "users"
+  add_foreign_key "memberships", "users", column: "granted_by_id"
   add_foreign_key "outbound_messages", "municipalities"
   add_foreign_key "processed_events", "municipalities"
   add_foreign_key "protocol_definitions", "municipalities"

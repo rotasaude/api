@@ -27,8 +27,11 @@ class User < ApplicationRecord
     end
   end
 
-  # Stub. Sobrescrito no Phase 4 com memberships.platform_operator (ADR-0023).
   def operator?
-    false
+    memberships.active.exists?(role: "platform_operator", municipality_id: nil)
+  end
+
+  def role_in?(municipality_id, role:)
+    memberships.active.exists?(municipality_id: municipality_id, role: role)
   end
 end
