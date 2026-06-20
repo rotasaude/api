@@ -8,6 +8,10 @@ Rails.application.routes.draw do
   # Sessão de admin (ADR-0022). Reset de senha fica para ADR de mailer.
   resource :session, only: %i[create show destroy]
 
+  # MFA — ADR-0022
+  post "/mfa/enroll",  to: "mfa#enroll"
+  post "/mfa/confirm", to: "mfa#confirm"
+
   # Healthcheck — usado pelo Kamal (ADR-0002).
   get "up", to: ->(_env) { [200, {}, ["ok"]] }
 
