@@ -10,9 +10,22 @@ RSpec.describe SendWhatsappJob do
   end
 
   it "escopa MunicipalityChannel por município (escopo manual)" do
-    outbound = instance_double(Whatsapp::Outbound, deliver_text: true)
+    deliver_result = Whatsapp::Outbound::Result.new(status: 200, body: '{"ok":true}')
+    outbound = instance_double(Whatsapp::Outbound, deliver_text: deliver_result)
     expect(Whatsapp::Outbound).to receive(:new).with(having_attributes(municipality_id: muni.id)).and_return(outbound)
     described_class.new.perform(to: "+5511988", body: "ola", municipality_id: muni.id)
+    om = OutboundMessage.last
+    expect(om.to).to eq("+5511988")
+    expect(om.status).to eq(200)
+  end
+
+  it "dedup contra crash-retry: 2ª chamada idêntica não bate HTTP" do
+    deliver_result = Whatsapp::Outbound::Result.new(status: 200, body: "ok")
+    outbound = instance_double(Whatsapp::Outbound, deliver_text: deliver_result)
+    expect(Whatsapp::Outbound).to receive(:new).once.and_return(outbound)
+    described_class.new.perform(to: "+551188", body: "ola", municipality_id: muni.id)
+    described_class.new.perform(to: "+551188", body: "ola", municipality_id: muni.id)
+    expect(OutboundMessage.where(to: "+551188").count).to eq(1)
   end
 
   it "levanta TenantMissing sem municipality_id" do
