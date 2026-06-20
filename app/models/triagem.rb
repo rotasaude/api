@@ -6,6 +6,8 @@ class Triagem < ApplicationRecord
 
   enum :status, { in_progress: "in_progress", completed: "completed" }, prefix: true
 
+  before_validation :inherit_municipality_id, on: :create
+
   validates :protocol_name, presence: true
   validates :answers, presence: true
 
@@ -43,6 +45,12 @@ class Triagem < ApplicationRecord
   end
 
   private
+
+  # Phase 1.4 adicionou municipality_id NOT NULL; deriva de conversation
+  # para callers que criam Triagem sem passar muni explícito.
+  def inherit_municipality_id
+    self.municipality_id ||= conversation&.municipality_id
+  end
 
   def template(kind, **vars)
     {
