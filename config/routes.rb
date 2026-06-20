@@ -10,7 +10,8 @@ Rails.application.routes.draw do
 
   # MFA — ADR-0022
   post "/mfa/enroll",  to: "mfa#enroll"
-  post "/mfa/confirm", to: "mfa#confirm"
+  post "/mfa/confirm",   to: "mfa#confirm"
+  post "/mfa/step_up",  to: "mfa#step_up"
 
   # Healthcheck — usado pelo Kamal (ADR-0002).
   get "up", to: ->(_env) { [200, {}, ["ok"]] }

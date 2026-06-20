@@ -18,4 +18,13 @@ class MfaController < ApplicationController
       render json: { error: "invalid_code" }, status: :unprocessable_entity
     end
   end
+
+  def step_up
+    if Mfa::Verify.call(Current.user, code: params[:code])
+      Current.session.update!(mfa_verified_at: Time.current)
+      render json: { ok: true }
+    else
+      render json: { error: "invalid_code" }, status: :unprocessable_entity
+    end
+  end
 end
