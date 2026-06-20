@@ -5,15 +5,15 @@ class GenerateReportJob < ApplicationJob
 
   EXPIRATION = 30.days
 
-  def consume(event)
-    triagem = Triagem.find(event.aggregate_id)
+  def handle(triagem_id:, **outcome)
+    triagem = Triagem.find(triagem_id)
     return if triagem.report_snapshot   # belongs_to inverso: defesa em profundidade
 
     token = ReportSnapshot.mint_token
     ReportSnapshot.create!(
       triagem: triagem,
       protocol_definition: triagem.protocol_definition,
-      outcome: event.payload,
+      outcome: outcome,
       payload: build_payload(triagem),
       token: token,
       signature: ReportSnapshot.sign(token),

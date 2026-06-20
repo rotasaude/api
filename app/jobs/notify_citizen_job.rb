@@ -4,8 +4,8 @@ class NotifyCitizenJob < ApplicationJob
   include IdempotentConsumer
   queue_as :default
 
-  def consume(event)
-    triagem = Triagem.find(event.aggregate_id)
+  def handle(triagem_id:, **)
+    triagem = Triagem.find(triagem_id)
     snapshot = triagem.report_snapshot or return   # GenerateReportJob ainda não rodou; vai tentar de novo via replay
     phone = triagem.conversation.phone
 
