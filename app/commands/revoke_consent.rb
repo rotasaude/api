@@ -17,7 +17,7 @@ class RevokeConsent
     ApplicationRecord.transaction do
       active.revoke!
       @conversation.update!(state: :revoked)
-      @conversation.current_triagem&.update!(
+      @conversation.triagens.where(status: :in_progress).order(created_at: :desc).first&.update!(
         status: :aborted_by_revocation,
         completed_at: Time.current
       )
