@@ -10,9 +10,9 @@ class SessionsController < ApplicationController
 
   include Authentication
 
-  allow_unauthenticated_access only: %i[create challenge_totp]
+  allow_unauthenticated_access only: %i[create challenge_totp govbr_callback]
 
-  rate_limit to: 10, within: 3.minutes, only: %i[create challenge_totp],
+  rate_limit to: 10, within: 3.minutes, only: %i[create challenge_totp govbr_callback],
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
   def create
@@ -45,6 +45,30 @@ class SessionsController < ApplicationController
     else
       render json: { error: "invalid_code" }, status: :unauthorized
     end
+  end
+
+  # GET /auth/govbr/callback?code=…&state=…  (ADR-0022 gov.br seam)
+  #
+  # state opcional aqui — backend não armazena state em sessão (API JSON).
+  # Frontend SPA é quem gera/verifica state via storage local + envia ao
+  # gov.br. Este endpoint só completa o exchange e cria a sessão.
+  def govbr_callback
+    user = Authenticator.govbr(code: params[:code])
+    return render(json: { error: "govbr_unauthenticated" }, status: :unauthorized) unless user
+
+    if user.operator? && !user.mfa_enrolled?
+      return render(json: { error: "mfa_enrollment_required" }, status: :forbidden)
+    end
+
+    session = start_new_session_for(user)
+    if user.operator?
+      return render(json: { mfa_required: true, session_id: session.id }, status: :ok)
+    end
+
+    render json: serialize(user), status: :created
+  rescue Authenticator::GovBr::IntegrationError => e
+    Rails.logger.error("[govbr_callback] #{e.class}: #{e.message}")
+    render json: { error: "govbr_integration_error" }, status: :bad_gateway
   end
 
   def destroy

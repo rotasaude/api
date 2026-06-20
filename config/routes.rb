@@ -14,6 +14,10 @@ Rails.application.routes.draw do
   post "/mfa/confirm",   to: "mfa#confirm"
   post "/mfa/step_up",  to: "mfa#step_up"
 
+  # gov.br OIDC callback (ADR-0022). Frontend redireciona para gov.br;
+  # gov.br retorna com ?code=... → trocamos e iniciamos sessão.
+  get  "/auth/govbr/callback", to: "sessions#govbr_callback"
+
   # Healthcheck — usado pelo Kamal (ADR-0002).
   get "up", to: ->(_env) { [200, {}, ["ok"]] }
 

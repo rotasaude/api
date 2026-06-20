@@ -35,3 +35,4 @@ end
 
 gem "bcrypt", "~> 3.1"
 gem "rotp", "~> 6.3"   # TOTP RFC 6238 — ADR-0022
+gem "jwt", "~> 2.8"    # OIDC id_token verification — ADR-0022 (gov.br seam)

@@ -1,8 +1,8 @@
 require "rails_helper"
 
-# Specs do RASCUNHO gov.br — exchange_code_for_claims é stub e levanta
-# IntegrationError em produção. Aqui mockamos o stub para cobrir o seam:
-# Identity é criada/encontrada, User existente reusa via email.
+# Cobre o seam de gov.br: lookup/criação de User+Identity, audit, assurance.
+# fetch_token e decode_id_token reais usam HTTP e JWT — testáveis via webmock
+# + chave RSA fake em outro spec; aqui mockamos exchange_code_for_claims.
 RSpec.describe Authenticator::GovBr do
   self.use_transactional_tests = false
 
@@ -23,10 +23,6 @@ RSpec.describe Authenticator::GovBr do
   end
 
   describe ".authenticate" do
-    it "exchange falhando levanta IntegrationError" do
-      expect { described_class.authenticate(code: "abc") }.to raise_error(Authenticator::GovBr::IntegrationError)
-    end
-
     it "code vazio levanta IntegrationError" do
       expect { described_class.authenticate(code: "") }.to raise_error(Authenticator::GovBr::IntegrationError, /vazio/)
     end
@@ -34,7 +30,7 @@ RSpec.describe Authenticator::GovBr do
     context "com exchange mockado" do
       let(:claims) do
         {
-          "sub"   => "12345678900",                # CPF
+          "sub"   => "12345678900",
           "email" => "fulano@gov.br",
           "name"  => "Fulano de Tal",
           "amr"   => ["ouro"]
@@ -82,12 +78,38 @@ RSpec.describe Authenticator::GovBr do
       end
 
       it "user desativado retorna nil" do
-        described_class.authenticate(code: "valid")  # cria
+        described_class.authenticate(code: "valid")
         ApplicationRecord.connected_to(role: :admin) do
           User.find_by(email_address: "fulano@gov.br").update!(deactivated_at: Time.current)
         end
         expect(described_class.authenticate(code: "valid")).to be_nil
       end
+    end
+  end
+
+  describe ".assurance_meets?" do
+    it "bronze cobre só viewer" do
+      expect(described_class.assurance_meets?(assurance: "bronze", role: "viewer")).to be true
+      expect(described_class.assurance_meets?(assurance: "bronze", role: "municipal_admin")).to be false
+      expect(described_class.assurance_meets?(assurance: "bronze", role: "platform_operator")).to be false
+    end
+
+    it "prata cobre viewer e municipal_admin (mas não publisher/operator)" do
+      expect(described_class.assurance_meets?(assurance: "prata", role: "viewer")).to be true
+      expect(described_class.assurance_meets?(assurance: "prata", role: "municipal_admin")).to be true
+      expect(described_class.assurance_meets?(assurance: "prata", role: "protocol_publisher")).to be false
+    end
+
+    it "ouro cobre todos" do
+      expect(described_class.assurance_meets?(assurance: "ouro", role: "viewer")).to be true
+      expect(described_class.assurance_meets?(assurance: "ouro", role: "protocol_publisher")).to be true
+      expect(described_class.assurance_meets?(assurance: "ouro", role: "platform_operator")).to be true
+    end
+
+    it "assurance ou role nil/inválido devolve false" do
+      expect(described_class.assurance_meets?(assurance: nil, role: "viewer")).to be false
+      expect(described_class.assurance_meets?(assurance: "diamante", role: "viewer")).to be false
+      expect(described_class.assurance_meets?(assurance: "ouro", role: nil)).to be false
     end
   end
 end
