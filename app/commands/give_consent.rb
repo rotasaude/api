@@ -27,11 +27,7 @@ class GiveConsent
       )
       @conversation.update!(state: :consented)
 
-      Events.publish(
-        "consent.given",
-        aggregate: @conversation,
-        payload: { consent_id: consent.id, version: @version }
-      )
+      DomainEvents.publish("consent.given", conversation_id: @conversation.id, consent_id: consent.id, version: @version)
     end
 
     Result.ok(consent: consent)

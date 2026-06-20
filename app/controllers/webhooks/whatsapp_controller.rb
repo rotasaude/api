@@ -41,11 +41,7 @@ module Webhooks
             raw: payload    # criptografado em repouso — ADR-0011
           )
 
-          Events.publish(
-            "inbound_message.received",
-            aggregate: inbound,
-            payload: { message_id: message[:message_id], from: message[:from] }
-          )
+          DomainEvents.publish("inbound_message.received", inbound_message_id: inbound.id, message_id: message[:message_id], from: message[:from])
         end
       rescue ActiveRecord::RecordNotUnique
         Rails.logger.info("[whatsapp] dup message_id=#{message[:message_id]}")

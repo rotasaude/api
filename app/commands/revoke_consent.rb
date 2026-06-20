@@ -22,11 +22,7 @@ class RevokeConsent
         completed_at: Time.current
       )
 
-      Events.publish(
-        "consent.revoked",
-        aggregate: @conversation,
-        payload: { consent_id: active.id, reason: @reason }
-      )
+      DomainEvents.publish("consent.revoked", conversation_id: @conversation.id, consent_id: active.id, reason: @reason)
     end
 
     Result.ok(conversation: @conversation)

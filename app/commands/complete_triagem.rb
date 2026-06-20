@@ -24,8 +24,8 @@ class CompleteTriagem
 
         if outcome.terminal?
           @triagem.complete!(outcome)
-          Events.publish("triagem.completed", aggregate: @triagem, payload: outcome.to_h)
-          Events.publish("triagem.urgent",    aggregate: @triagem, payload: outcome.to_h) if outcome.tier == "alta"
+          DomainEvents.publish("triagem.completed", triagem_id: @triagem.id, **outcome.to_h)
+          DomainEvents.publish("triagem.urgent",    triagem_id: @triagem.id, **outcome.to_h) if outcome.tier == "alta"
         end
       end
     end
