@@ -14,6 +14,9 @@ RSpec.describe "RLS tenant isolation", type: :model do
   # Cria fixtures via SQL direto pela conexão admin (BYPASSRLS),
   # contornando o RLS que estaria ativo na conexão primary.
   before do
+    # Garantir que Current está limpo (pode ter sido deixado por outros testes)
+    Current.reset
+
     # Limpar e inserir via conexão admin (BYPASSRLS)
     admin_conn = ApplicationRecord.connected_to(role: :admin) do
       ApplicationRecord.connection

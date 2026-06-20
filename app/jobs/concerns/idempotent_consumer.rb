@@ -1,29 +1,27 @@
-# Garante exactly-once por consumidor. Ver ADR-0005.
-#
-# Subclasses implementam #consume(event); o concern cuida do gate.
-# IMPORTANTE: efeitos colaterais externos (HTTP, fila de e-mail) NÃO podem
-# ficar dentro de #consume — eles vão como job separado, ver ADR-0014.
+# Exactly-once per consumer + tenant scoping (ADR-0005 + emenda ADR-0020).
+# Subclasses implementam #handle(**kwargs). Efeitos HTTP NÃO entram aqui
+# (ver ADR-0014); fora-de-banda fica para job dedicado.
 module IdempotentConsumer
   extend ActiveSupport::Concern
+  include TenantScopedJob
 
   class AlreadyProcessed < StandardError; end
 
-  def perform(event_id)
-    event = DomainEvent.find(event_id)
-    consumer = self.class.name
-
-    ApplicationRecord.transaction do
-      ProcessedEvent.create!(consumer: consumer, event_id: event.id, processed_at: Time.current)
-      consume(event)
+  def perform(event_id:, event_name:, municipality_id:, payload:)
+    with_tenant(municipality_id) do
+      ProcessedEvent.create!(
+        event_id: event_id,
+        consumer: self.class.name,
+        municipality_id: municipality_id,
+        processed_at: Time.current
+      )
+      handle(**payload.symbolize_keys)
     end
-
-    event.mark_published! if event.published_at.nil?
   rescue ActiveRecord::RecordNotUnique
-    # Já processado por outra execução — silenciar é o comportamento correto.
-    Rails.logger.info("[#{self.class.name}] skip duplicate event=#{event_id}")
+    Rails.logger.info("[#{self.class.name}] duplicate event=#{event_id}")
   end
 
-  def consume(_event)
-    raise NotImplementedError, "#{self.class.name} must implement #consume(event)"
+  def handle(**)
+    raise NotImplementedError, "#{self.class.name} must implement #handle(**payload)"
   end
 end

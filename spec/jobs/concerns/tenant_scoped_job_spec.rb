@@ -21,4 +21,8 @@ RSpec.describe TenantScopedJob do
   it "sem municipality_id levanta TenantMissing" do
     expect { test_job_class.new.perform(nil) }.to raise_error(TenantScopedJob::TenantMissing)
   end
+
+  after do
+    Current.reset
+  end
 end
