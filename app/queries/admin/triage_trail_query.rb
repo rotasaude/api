@@ -18,8 +18,10 @@ class Admin::TriageTrailQuery
     triagem = Admin::Scoped.triages(@muni).find_by(id: @triage_id)
     return nil unless triagem
 
+    # Phase 2.1 dropou domain_events.aggregate_type/aggregate_id;
+    # IDs viajam no payload JSON (ADR-0020).
     events = DomainEvent
-               .where(aggregate_type: "Triagem", aggregate_id: triagem.id.to_s)
+               .where("payload ->> 'triagem_id' = ?", triagem.id.to_s)
                .where(name: TRAIL_EVENTS)
                .order(:occurred_at)
 

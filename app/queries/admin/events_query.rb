@@ -3,8 +3,8 @@
 # Payload é APENAS referência (ADR 0003/0009). Allowlist explícita:
 # nada de campos livres do payload — só name/actor/ref/aggregate.
 #
-# GAP: domain_events não tem `municipality_id` (RECONCILE.md). Cross-tenant
-# até existir coluna/projeção com escopo.
+# Phase 1.4 adicionou domain_events.municipality_id + RLS (Phase 1.5):
+# sob SET LOCAL do request, RLS escopa automaticamente por município.
 class Admin::EventsQuery
   RETENTION_MONTHS = 12
 
@@ -60,15 +60,17 @@ class Admin::EventsQuery
     }
   end
 
-  # ALLOWLIST: name + actor + ref + at + aggregate. NUNCA payload livre.
+  # ALLOWLIST: name + actor + ref + at + muni. NUNCA payload livre.
+  # ref derivada do primeiro key `*_id` no payload (Phase 2.1 dropou aggregate_*).
   def stream(scope)
     scope.map do |ev|
+      ref_key, ref_value = (ev.payload || {}).detect { |k, _| k.to_s.end_with?("_id") }
       {
         at: ev.occurred_at.iso8601,
         name: ev.name,
         actor: ev.payload&.dig("actor") || "sistema",
-        ref: "#{ev.aggregate_type.underscore}_id=#{ev.aggregate_id}",
-        muni: nil
+        ref: ref_key ? "#{ref_key}=#{ref_value}" : nil,
+        muni: ev.municipality_id
       }
     end
   end

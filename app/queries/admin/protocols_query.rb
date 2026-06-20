@@ -75,8 +75,9 @@ class Admin::ProtocolsQuery
   end
 
   # Aproximação: lê os 2 eventos relevantes do agregado. Sem dado clínico.
+  # Phase 2.1 dropou aggregate_*; IDs viajam no payload (ADR-0020).
   def self.fetch_audit(d)
-    events = DomainEvent.where(aggregate_type: "ProtocolDefinition", aggregate_id: d.id.to_s)
+    events = DomainEvent.where("payload ->> 'protocol_definition_id' = ?", d.id.to_s)
     {
       created_by: events.find_by(name: "protocol.created")&.payload&.dig("actor"),
       published_by: events.find_by(name: "protocol.published")&.payload&.dig("actor")
@@ -84,8 +85,8 @@ class Admin::ProtocolsQuery
   end
 
   def self.protocol_events(name)
-    DomainEvent.where(aggregate_type: "ProtocolDefinition")
-      .where("payload ->> 'name' = ?", name)
+    DomainEvent.where("payload ->> 'name' = ?", name)
+      .where(name: %w[protocol.created protocol.published protocol.retired])
       .order(occurred_at: :desc)
       .limit(20)
       .map do |ev|
