@@ -6,40 +6,87 @@ default: &default
   variables:
     statement_timeout: 15s
 
+# Múltiplas conexões: primary (rota_app, sujeito a RLS) + admin (rota_admin, BYPASSRLS).
+# Ver ADR-0019.
 development:
   primary:
     <<: *default
-    url: <%= ENV.fetch("DATABASE_URL", "postgres://rota_saude:postgres@127.0.0.1:5432/rota_saude_development") %>
+    database: rota_saude_development
+    username: rota_app
+    password: <%= ENV.fetch("ROTA_APP_PASSWORD", "rota_app") %>
+    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+  admin:
+    <<: *default
+    database: rota_saude_development
+    username: rota_admin
+    password: <%= ENV.fetch("ROTA_ADMIN_PASSWORD", "rota_admin") %>
+    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+    migrations_paths: db/migrate
   queue:
     <<: *default
-    url: <%= ENV.fetch("DATABASE_URL", "postgres://rota_saude:postgres@127.0.0.1:5432/rota_saude_development") %>
+    database: rota_saude_development
+    username: rota_admin
+    password: <%= ENV.fetch("ROTA_ADMIN_PASSWORD", "rota_admin") %>
+    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
     migrations_paths: db/queue_migrate
     schema_dump: queue_schema.rb
   cache:
     <<: *default
-    url: <%= ENV.fetch("DATABASE_URL", "postgres://rota_saude:postgres@127.0.0.1:5432/rota_saude_development") %>
+    database: rota_saude_development
+    username: rota_admin
+    password: <%= ENV.fetch("ROTA_ADMIN_PASSWORD", "rota_admin") %>
+    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
     migrations_paths: db/cache_migrate
     schema_dump: cache_schema.rb
 
 test:
   primary:
     <<: *default
-    url: <%= ENV.fetch("DATABASE_URL", "postgres://rota_saude:postgres@127.0.0.1:5432/rota_saude_test") %>
+    database: rota_saude_test
+    username: rota_app
+    password: <%= ENV.fetch("ROTA_APP_PASSWORD", "rota_app") %>
+    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+  admin:
+    <<: *default
+    database: rota_saude_test
+    username: rota_admin
+    password: <%= ENV.fetch("ROTA_ADMIN_PASSWORD", "rota_admin") %>
+    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+    migrations_paths: db/migrate
 
 production:
   primary:
     <<: *default
-    url: <%= ENV.fetch("DATABASE_URL", "postgres:///rota_saude_production") %>
+    url: <%= ENV.fetch("DATABASE_URL") { "" } %>
+    username: rota_app
+    password: <%= ENV.fetch("ROTA_APP_PASSWORD") %>
     pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
+  admin:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL") { "" } %>
+    username: rota_admin
+    password: <%= ENV.fetch("ROTA_ADMIN_PASSWORD") %>
+    pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
+    migrations_paths: db/migrate
   queue:
     <<: *default
-    url: <%= ENV.fetch("DATABASE_URL", "postgres:///rota_saude_production") %>
+    url: <%= ENV.fetch("DATABASE_URL") { "" } %>
+    username: rota_admin
+    password: <%= ENV.fetch("ROTA_ADMIN_PASSWORD") %>
     migrations_paths: db/queue_migrate
     schema_dump: queue_schema.rb
     pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
   cache:
     <<: *default
-    url: <%= ENV.fetch("DATABASE_URL", "postgres:///rota_saude_production") %>
+    url: <%= ENV.fetch("DATABASE_URL") { "" } %>
+    username: rota_admin
+    password: <%= ENV.fetch("ROTA_ADMIN_PASSWORD") %>
     migrations_paths: db/cache_migrate
     schema_dump: cache_schema.rb
     pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>

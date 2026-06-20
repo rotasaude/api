@@ -3,8 +3,10 @@
 # para evitar corrida quando há mais de uma réplica de worker.
 
 if [ "${1}" = "./bin/rails" ] && [ "${2}" = "server" ]; then
-  echo "[entrypoint] role=web — running db:prepare"
-  ./bin/rails db:prepare
+  echo "[entrypoint] role=web — running db:prepare as admin"
+  # db:prepare must run as admin to have permissions for schema modifications (RLS)
+  ./bin/rails runner 'ApplicationRecord.connected_to(role: :admin) { system "bin/rails db:create" }'
+  ./bin/rails runner 'ApplicationRecord.connected_to(role: :admin) { system "bin/rails db:schema:load" }'
 fi
 
 exec "${@}"
