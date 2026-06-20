@@ -1,6 +1,7 @@
 # Purga linhas antigas de processed_events. Ver ADR-0005.
 # Janela default = 60d: maior que qualquer replay esperado, ver ADR-0009.
 class PurgeProcessedEventsJob < ApplicationJob
+  include AdminRoleJob
   queue_as :housekeeping
 
   def perform(older_than_days: 60)

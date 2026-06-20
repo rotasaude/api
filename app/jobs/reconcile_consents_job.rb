@@ -2,6 +2,7 @@
 # Não muda estado — apenas reporta. Mudança de estado acontece no próximo
 # inbound (ADR-0012).
 class ReconcileConsentsJob < ApplicationJob
+  include AdminRoleJob
   queue_as :housekeeping
 
   def perform
