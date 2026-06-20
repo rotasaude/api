@@ -85,6 +85,26 @@ class SessionsController < ApplicationController
   private
 
   def serialize(user)
-    { id: user.id, email_address: user.email_address }
+    {
+      id: user.id,
+      email_address: user.email_address,
+      mfa_enrolled: user.mfa_enrolled?,
+      operator: user.operator?,
+      mfa_verified_at: Current.session&.mfa_verified_at&.iso8601,
+      memberships: serialize_memberships(user)
+    }
+  end
+
+  def serialize_memberships(user)
+    ApplicationRecord.connected_to(role: :admin) do
+      user.memberships.active.where.not(municipality_id: nil).includes(:municipality).map do |m|
+        {
+          municipality_id: m.municipality_id,
+          municipality_name: m.municipality.name,
+          municipality_uf: m.municipality.uf,
+          role: m.role
+        }
+      end
+    end
   end
 end

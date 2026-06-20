@@ -18,6 +18,17 @@ Rails.application.routes.draw do
   # gov.br retorna com ?code=... → trocamos e iniciamos sessão.
   get  "/auth/govbr/callback", to: "sessions#govbr_callback"
 
+  # Setup multi-tenant — write endpoints (ADR-0023/0024). Não confundir com
+  # /admin/api/* que é read-only por critério §10 do brief.
+  scope "/setup" do
+    post "/municipalities",              to: "setup#provision_municipality"
+    post "/invitations",                 to: "setup#invite_member"
+    post "/accept_invitation",           to: "setup#accept_invitation"
+    get  "/memberships",                 to: "setup#list_memberships"
+    post "/memberships/:id/revoke",      to: "setup#revoke_membership"
+    post "/users/:id/deactivate",        to: "setup#deactivate_user"
+  end
+
   # Healthcheck — usado pelo Kamal (ADR-0002).
   get "up", to: ->(_env) { [200, {}, ["ok"]] }
 
