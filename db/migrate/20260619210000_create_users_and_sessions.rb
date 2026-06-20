@@ -1,5 +1,5 @@
 # Autenticação nativa do Rails 8: User + Session via cookie de sessão
-# assinado. Ver ADR-0019.
+# assinado. Ver ADR-0022.
 class CreateUsersAndSessions < ActiveRecord::Migration[8.1]
   def change
     create_table :users, id: :uuid do |t|

@@ -1,6 +1,6 @@
 # Base de todos os controllers do namespace Admin:: (read-only).
 # Ver 00_PROMPT_CLAUDE_CODE.md §2 — restrições não-negociáveis.
-# Auth real via cookie de sessão (ADR-0019).
+# Auth real via cookie de sessão (ADR-0022).
 #
 # Responsabilidades:
 #  - fronteira de auth (Authentication concern → require_authentication)
@@ -32,7 +32,7 @@ class Admin::Api::BaseController < ApplicationController
   end
 
   # Default: o município do usuário autenticado. "all" só vale para
-  # superadmin (flag cross-tenant ainda não implementada — ADR-0019 §4).
+  # superadmin (flag cross-tenant ainda não implementada — ADR-0022 §4).
   def resolve_municipality
     requested = params[:municipality_id].to_s
     if requested == "all" && cross_tenant?

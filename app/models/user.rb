@@ -1,4 +1,4 @@
-# Usuário do Admin Console (operação/SRE/auditoria). Ver ADR-0019.
+# Usuário do Admin Console (operação/SRE/auditoria). Ver ADR-0022.
 #
 # Audiência DIFERENTE de Author (autoria clínica, ADR-0016). Não unifique
 # sem ADR — RBAC e fluxos divergem.

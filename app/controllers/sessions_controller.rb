@@ -1,4 +1,4 @@
-# Sessões — JSON-only (API). Ver ADR-0019.
+# Sessões — JSON-only (API). Ver ADR-0022.
 #
 #   POST   /session   { email_address, password }  → 201 + set-cookie
 #   DELETE /session                                 → 204 + clear-cookie

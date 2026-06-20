@@ -5,7 +5,7 @@
 #   - request_authentication NÃO redireciona — devolve 401 JSON.
 #   - resume_session NÃO depende de session[:return_to_after_authenticating].
 #
-# Ver ADR-0019.
+# Ver ADR-0022.
 module Authentication
   extend ActiveSupport::Concern
 

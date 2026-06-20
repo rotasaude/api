@@ -16,7 +16,7 @@ module RotaSaude
 
     config.api_only = true
 
-    # ADR-0019: auth via cookie de sessão. API mode não habilita cookies
+    # ADR-0022: auth via cookie de sessão. API mode não habilita cookies
     # nem o session_store por default — re-adicionamos só esses dois.
     config.middleware.use ActionDispatch::Cookies
     config.middleware.use ActionDispatch::Session::CookieStore,

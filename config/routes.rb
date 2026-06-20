@@ -5,7 +5,7 @@ Rails.application.routes.default_url_options = {
 }
 
 Rails.application.routes.draw do
-  # Sessão de admin (ADR-0019). Reset de senha fica para ADR de mailer.
+  # Sessão de admin (ADR-0022). Reset de senha fica para ADR de mailer.
   resource :session, only: %i[create show destroy]
 
   # Healthcheck — usado pelo Kamal (ADR-0002).

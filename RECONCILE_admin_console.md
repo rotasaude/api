@@ -10,7 +10,7 @@
 - **Allowlist LGPD** verificada por teste com sentinelas em `inbound_messages.raw`,
   `triagens.answers` e `consents.evidence` (validado por teste — `lgpd_allowlist_test.rb`,
   66 assertivas em 11 endpoints).
-- **Auth real** via cookie de sessão HttpOnly (ADR-0019). User + Session
+- **Auth real** via cookie de sessão HttpOnly (ADR-0022). User + Session
   models, `SessionsController` JSON-only. Stub `Author.token` extinto neste
   namespace.
 - Suite: `4 runs, 114 assertions, 0 failures, 0 errors`.
@@ -38,7 +38,7 @@ docker compose exec -e RAILS_ENV=test \
 | §4.7 | nomes Solid Queue da versão | confirmados via `db/schema.rb` (`ready_executions`/`scheduled_executions`/`failed_executions`/`recurring_tasks`/`recurring_executions`) | usados via `SolidQueue::` AR models | — |
 | §4.8 | `domain_events.municipality_id` | **não existe** (só `aggregate_type+aggregate_id`) | **CROSS-TENANT** até ter coluna/projeção. Documentado em `Admin::Scoped#domain_events` | coluna `municipality_id` em `domain_events` ou projeção `events_by_muni` |
 | §4.1 | `inbound_messages.municipality_id` | **não existe** | **CROSS-TENANT** até ter sinal. Documentado em `Admin::Scoped#inbound_messages` | coluna ou projeção |
-| §2.4 | RBAC, sessão real | ~~apenas `Author.token` (stub)~~ → **resolvido em ADR-0019** | Rails 8 native auth: `User` + `Session`, cookie HttpOnly. `Admin::Api::BaseController` inclui `Authentication` concern; `require_authentication` é before_action. | RBAC (roles) quando entrar mutação na Fase 2 |
+| §2.4 | RBAC, sessão real | ~~apenas `Author.token` (stub)~~ → **resolvido em ADR-0022** | Rails 8 native auth: `User` + `Session`, cookie HttpOnly. `Admin::Api::BaseController` inclui `Authentication` concern; `require_authentication` é before_action. | RBAC (roles) quando entrar mutação na Fase 2 |
 | §2 | `current_user`, `current_municipality` | agora vivo | `current_user` via `Current.session.user`; `current_municipality` resolvido por `User#municipality` | — |
 | §2 | cross-tenant superadmin (`?municipality_id=all`) | sem flag em User | `cross_tenant?` retorna `false` por enquanto → `municipality_id=all` ignorado silenciosamente | coluna/flag em User (ADR-0020 quando precisar) |
 
@@ -96,7 +96,7 @@ visível) — não duplicada no backend.
 ## Dependências e riscos (carregar para frente, §9 do brief)
 
 1. ~~ADR de auth pendente — bloqueio para produção.~~ **Resolvido em
-   [ADR-0019](../../docs/adr/0019.md)**: Rails 8 native auth (User + Session,
+   [ADR-0022](../../docs/adr/0022.md)**: Rails 8 native auth (User + Session,
    cookie HttpOnly). Ver `app/controllers/sessions_controller.rb` e
    `app/controllers/concerns/authentication.rb`. **Próximos**: MFA, rate
    limiting (rack-attack), reset de senha (depende de ADR de mailer).
