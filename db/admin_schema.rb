@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000030) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -81,6 +81,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000030) do
     t.index ["name"], name: "index_domain_events_on_name"
     t.index ["occurred_at"], name: "idx_domain_events_pending", where: "(published_at IS NULL)"
     t.index ["occurred_at"], name: "index_domain_events_on_occurred_at"
+  end
+
+  create_table "identities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "provider", null: false
+    t.string "provider_uid", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "user_id", null: false
+    t.index ["provider", "provider_uid"], name: "index_identities_on_provider_and_provider_uid", unique: true
+    t.index ["user_id"], name: "index_identities_on_user_id"
   end
 
   create_table "inbound_messages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -340,12 +350,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000030) do
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.datetime "deactivated_at"
     t.string "email_address", null: false
-    t.uuid "municipality_id"
+    t.boolean "otp_enabled", default: false, null: false
+    t.jsonb "otp_recovery_codes", default: [], null: false
+    t.string "otp_secret"
     t.string "password_digest", null: false
     t.datetime "updated_at", null: false
     t.index "lower((email_address)::text)", name: "index_users_on_lower_email", unique: true
-    t.index ["municipality_id"], name: "index_users_on_municipality_id"
   end
 
   add_foreign_key "authors", "municipalities"
@@ -354,6 +366,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000030) do
   add_foreign_key "conversations", "municipalities"
   add_foreign_key "dashboard_metrics", "municipalities"
   add_foreign_key "domain_events", "municipalities"
+  add_foreign_key "identities", "users"
   add_foreign_key "inbound_messages", "municipalities"
   add_foreign_key "outbound_messages", "municipalities"
   add_foreign_key "processed_events", "municipalities"
@@ -371,5 +384,4 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000030) do
   add_foreign_key "triagens", "conversations"
   add_foreign_key "triagens", "municipalities"
   add_foreign_key "triagens", "protocol_definitions"
-  add_foreign_key "users", "municipalities"
 end
