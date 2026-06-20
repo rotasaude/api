@@ -31,9 +31,23 @@ module TenantScopedRequest
     end
   end
 
-  # Subclasses (controllers de domínio) implementam current_municipality.
-  # Resolução real vem do Authorization concern no Phase 4 (membership).
+  # Resolve o município atual a partir do header X-Municipality-Id (operators)
+  # ou do único membership ativo do usuário (single-tenant users).
   def current_municipality
-    raise NotImplementedError, "#{self.class} must implement #current_municipality"
+    return @current_municipality if defined?(@current_municipality)
+
+    user = Current.user
+    return @current_municipality = nil if user.nil?
+
+    selected_id = request.headers["X-Municipality-Id"]
+
+    if user.operator? && selected_id.present?
+      @current_municipality = ApplicationRecord.connected_to(role: :admin) { Municipality.find(selected_id) }
+      return @current_municipality
+    end
+
+    active = user.memberships.active.where.not(role: "platform_operator").where.not(municipality_id: nil)
+    membership = selected_id.present? ? active.find_by(municipality_id: selected_id) : active.first
+    @current_municipality = membership && ApplicationRecord.connected_to(role: :admin) { Municipality.find(membership.municipality_id) }
   end
 end
