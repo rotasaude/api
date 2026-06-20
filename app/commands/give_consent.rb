@@ -13,7 +13,7 @@ class GiveConsent
 
   def call
     return Result.fail(:wrong_state)      unless @conversation.state_awaiting_consent?
-    return Result.fail(:version_mismatch) unless @version == Consents.current_version
+    return Result.fail(:version_mismatch) unless @version == Consents.current_version(@conversation.municipality_id)
 
     consent = nil
     ApplicationRecord.transaction do

@@ -6,8 +6,10 @@ class ReconcileConsentsJob < ApplicationJob
   queue_as :housekeeping
 
   def perform
-    current = Consents.current_version
-    stale = Consent.active.where.not(version: current).count
-    Rails.logger.info("[reconcile_consents] current_version=#{current} stale_active=#{stale}")
+    Municipality.find_each do |muni|
+      current = Consents.current_version(muni.id)
+      stale = Consent.where(municipality_id: muni.id, revoked_at: nil).where.not(version: current).count
+      Rails.logger.info("[reconcile_consents] muni=#{muni.id} current=#{current} stale_active=#{stale}")
+    end
   end
 end

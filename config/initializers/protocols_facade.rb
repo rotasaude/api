@@ -9,13 +9,13 @@ Rails.application.config.to_prepare do
     class NotFound < StandardError; end
 
     class << self
-      # Versão ativa para um par (name, municipality). Override por município ganha.
-      def current(name:, municipality: nil)
-        cache_key = ["protocols.current", name, municipality&.id].join("/")
+      # Versão ativa para um par (municipality_id, name). Override por município ganha.
+      def current(municipality_id, name: "triagem-respiratoria")
+        cache_key = ["protocols.current", name, municipality_id].join("/")
         Rails.cache.fetch(cache_key) do
           record = ProtocolDefinition
             .where(name: name, status: "active")
-            .where(municipality_id: [municipality&.id, nil])
+            .where(municipality_id: [municipality_id, nil])
             .order(Arel.sql("municipality_id NULLS LAST"))
             .first
           raise NotFound, "no active definition for #{name}" unless record

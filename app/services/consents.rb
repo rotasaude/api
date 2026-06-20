@@ -18,8 +18,11 @@ module Consents
     :unknown
   end
 
-  def self.current_version
-    Rails.application.credentials.dig(:policy, :version) || 1
+  def self.current_version(municipality_id)
+    raise ArgumentError, "municipality_id obrigatório" if municipality_id.nil?
+    # ConsentTerm vem no Phase 6; até lá, fallback ao schema atual (1).
+    return Rails.application.credentials.dig(:policy, :version) || 1 unless defined?(ConsentTerm)
+    ConsentTerm.where(municipality_id: municipality_id).maximum(:version) || 1
   end
 
   def self.policy_text_sha(version)

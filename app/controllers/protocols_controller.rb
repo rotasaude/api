@@ -8,7 +8,7 @@ class ProtocolsController < ApplicationController
 
   # GET /protocols/:name — definição ativa
   def show
-    protocol = Protocols.current(name: params[:name], municipality: current_author.municipality)
+    protocol = Protocols.current(current_author.municipality_id, name: params[:name])
     render json: protocol.to_h
   rescue Protocols::NotFound
     head :not_found
@@ -16,7 +16,7 @@ class ProtocolsController < ApplicationController
 
   # POST /protocols/:name/preview — workflow: simula resposta + retorna outcome
   def preview
-    protocol = Protocols.current(name: params[:name], municipality: current_author.municipality)
+    protocol = Protocols.current(current_author.municipality_id, name: params[:name])
     answers = params.require(:answers).to_unsafe_h
     outcome = protocol.evaluate(answers)
     render json: outcome.to_h
