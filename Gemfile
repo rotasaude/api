@@ -34,3 +34,4 @@ group :test do
 end
 
 gem "bcrypt", "~> 3.1"
+gem "rotp", "~> 6.3"   # TOTP RFC 6238 — ADR-0022
