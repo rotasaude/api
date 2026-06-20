@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000081) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_000090) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -149,6 +149,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000081) do
     t.datetime "updated_at", null: false
     t.index ["ibge_code"], name: "index_municipalities_on_ibge_code", unique: true, where: "(ibge_code IS NOT NULL)"
     t.index ["slug"], name: "index_municipalities_on_slug", unique: true
+  end
+
+  create_table "municipality_channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "access_token", null: false
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.string "display_phone_number", null: false
+    t.uuid "municipality_id", null: false
+    t.string "phone_number_id", null: false
+    t.datetime "updated_at", null: false
+    t.string "waba_id", null: false
+    t.index ["municipality_id", "active"], name: "index_municipality_channels_on_municipality_id_and_active"
+    t.index ["municipality_id"], name: "index_municipality_channels_on_municipality_id"
+    t.index ["phone_number_id"], name: "index_municipality_channels_on_phone_number_id", unique: true
   end
 
   create_table "outbound_messages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -406,6 +420,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000081) do
   add_foreign_key "memberships", "municipalities"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"
+  add_foreign_key "municipality_channels", "municipalities"
   add_foreign_key "outbound_messages", "municipalities"
   add_foreign_key "processed_events", "municipalities"
   add_foreign_key "protocol_definitions", "municipalities"
