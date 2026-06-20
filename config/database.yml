@@ -1,0 +1,45 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS", 5) %>
+  prepared_statements: true
+  variables:
+    statement_timeout: 15s
+
+development:
+  primary:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL", "postgres://rota_saude:postgres@127.0.0.1:5432/rota_saude_development") %>
+  queue:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL", "postgres://rota_saude:postgres@127.0.0.1:5432/rota_saude_development") %>
+    migrations_paths: db/queue_migrate
+    schema_dump: queue_schema.rb
+  cache:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL", "postgres://rota_saude:postgres@127.0.0.1:5432/rota_saude_development") %>
+    migrations_paths: db/cache_migrate
+    schema_dump: cache_schema.rb
+
+test:
+  primary:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL", "postgres://rota_saude:postgres@127.0.0.1:5432/rota_saude_test") %>
+
+production:
+  primary:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL", "postgres:///rota_saude_production") %>
+    pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
+  queue:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL", "postgres:///rota_saude_production") %>
+    migrations_paths: db/queue_migrate
+    schema_dump: queue_schema.rb
+    pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
+  cache:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL", "postgres:///rota_saude_production") %>
+    migrations_paths: db/cache_migrate
+    schema_dump: cache_schema.rb
+    pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>

@@ -1,0 +1,11 @@
+default: &default
+  store_options:
+    max_age: <%= 60.days.to_i %>
+    namespace: <%= "rota-saude-#{Rails.env}" %>
+
+development:
+  <<: *default
+test:
+  <<: *default
+production:
+  <<: *default

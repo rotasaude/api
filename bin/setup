@@ -1,0 +1,40 @@
+#!/usr/bin/env ruby
+require "fileutils"
+
+APP_ROOT = File.expand_path("..", __dir__)
+
+def system!(*args)
+  system(*args, exception: true)
+end
+
+FileUtils.chdir APP_ROOT do
+  puts "[setup] bundle install"
+  system!("bundle check") || system!("bundle install")
+
+  # Solid Queue/Cache geram db/queue_schema.rb e db/cache_schema.rb na primeira
+  # vez. Re-rodar é idempotente (escreve por cima); db:prepare cuida do resto.
+  unless File.exist?("db/queue_schema.rb")
+    puts "[setup] solid_queue:install"
+    system!("bin/rails solid_queue:install")
+  end
+  unless File.exist?("db/cache_schema.rb")
+    puts "[setup] solid_cache:install"
+    system!("bin/rails solid_cache:install")
+  end
+
+  puts "[setup] db prepare"
+  system!("bin/rails db:prepare")
+
+  # Cache compartilha URL com primary em dev — db:prepare pula por dedup.
+  # Forçamos load explícito quando a tabela ainda não existe.
+  cache_check = `bin/rails runner "puts ActiveRecord::Base.connection.table_exists?('solid_cache_entries')" 2>/dev/null`.strip
+  if cache_check == "false"
+    puts "[setup] forcing db:schema:load:cache"
+    system!("bin/rails db:schema:load:cache")
+  end
+
+  puts "[setup] restarting app"
+  system!("bin/rails restart") rescue nil
+
+  puts "[setup] done"
+end

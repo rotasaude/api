@@ -1,0 +1,10 @@
+#!/bin/bash -e
+# Entrypoint da imagem única (ADR-0002). Migrations rodam apenas no papel web,
+# para evitar corrida quando há mais de uma réplica de worker.
+
+if [ "${1}" = "./bin/rails" ] && [ "${2}" = "server" ]; then
+  echo "[entrypoint] role=web — running db:prepare"
+  ./bin/rails db:prepare
+fi
+
+exec "${@}"

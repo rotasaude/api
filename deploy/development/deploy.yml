@@ -1,0 +1,66 @@
+# Kamal 2 — ambiente development
+# Ver ADR-0002 (imagem única, papéis web e worker).
+# Carrega secrets via `apps/api/deploy/development/secrets` (ver ADR-0011).
+
+service: rota-saude-api
+image: rota-saude/api
+
+servers:
+  web:
+    hosts:
+      - dev.rota-saude.example
+    options:
+      memory: 512m
+  worker:
+    hosts:
+      - dev.rota-saude.example
+    cmd: ./bin/jobs
+    options:
+      memory: 384m
+
+proxy:
+  ssl: false
+  host: dev.rota-saude.example
+  app_port: 3000
+  healthcheck:
+    path: /up
+    interval: 5
+
+registry:
+  server: ghcr.io
+  username: rota-saude-bot
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
+  context: ../..   # raiz é apps/api/
+
+env:
+  clear:
+    RAILS_ENV: development
+    RAILS_LOG_TO_STDOUT: "true"
+    RAILS_SERVE_STATIC_FILES: "true"
+  secret:
+    - RAILS_MASTER_KEY
+    - DATABASE_URL
+    - WHATSAPP_VERIFY_TOKEN
+    - WHATSAPP_APP_SECRET
+    - WHATSAPP_ACCESS_TOKEN
+
+accessories:
+  postgres:
+    image: postgres:16
+    host: dev.rota-saude.example
+    port: "127.0.0.1:5432:5432"
+    env:
+      secret:
+        - POSTGRES_PASSWORD
+      clear:
+        POSTGRES_USER: rota_saude
+        POSTGRES_DB: rota_saude_development
+    directories:
+      - data:/var/lib/postgresql/data
+
+ssh:
+  user: deploy
