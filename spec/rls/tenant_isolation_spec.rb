@@ -48,9 +48,13 @@ RSpec.describe "RLS tenant isolation", type: :model do
   end
 
   it "sem tenant setado, query de domínio levanta" do
+    # Dois cenários possíveis dependendo do estado da conexão PostgreSQL:
+    #   1. GUC nunca setado na sessão → "unrecognized configuration parameter"
+    #   2. GUC já registrado na sessão (ex: após SET LOCAL + ROLLBACK) → UUID cast vazio falha
+    # Em ambos os casos, o invariante de falha fechada vale: a query nunca retorna dados.
     expect {
       Conversation.count
-    }.to raise_error(ActiveRecord::StatementInvalid, /app\.municipality_id/)
+    }.to raise_error(ActiveRecord::StatementInvalid, /app\.municipality_id|invalid input syntax for type uuid/)
   end
 
   it "com tenant A setado, só vê linha de A" do

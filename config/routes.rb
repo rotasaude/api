@@ -33,6 +33,9 @@ Rails.application.routes.draw do
     post "gate",          to: "protocols#gate",    as: :protocol_gate
   end
 
+  # Publicação de protocolo — exige step-up MFA (ADR-0022 + ADR-0016)
+  post "/protocols/:version/publish", to: "publications#create"
+
   # Admin Console — namespace read-only (ADR-0018, brief §6).
   # NENHUMA rota de escrita pode ser adicionada aqui (critério §10).
   namespace :admin do
