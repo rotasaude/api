@@ -12,9 +12,14 @@ class Admin::Api::BaseController < ApplicationController
   # Admin tem resolução de escopo própria (suporta "all" cross-tenant para
   # operador, agregações por município, descritor de escopo no envelope).
   # Por isso pula o around_action :within_tenant herdado de
-  # TenantScopedRequest (ADR-0019) — usa Admin::Scoped em vez de RLS via
-  # SET LOCAL. Queries são read-only por critério §10.
+  # TenantScopedRequest (ADR-0019). Queries de dado de domínio rodam sob
+  # rota_admin (BYPASSRLS) porque o WHERE muni_id de Admin::Scoped não
+  # desativa a RLS policy — sem SET LOCAL elas levantam UndefinedObject
+  # em qualquer tabela RLS-enforced. Como o namespace é read-only por
+  # critério §10 e o escopo por município é aplicado por código, o BYPASS
+  # é seguro aqui.
   skip_tenant_scope
+  around_action :with_admin_connection
 
   include Authentication
 
@@ -27,6 +32,10 @@ class Admin::Api::BaseController < ApplicationController
   rescue_from Admin::Api::InvalidScope, with: :render_invalid_scope
 
   private
+
+  def with_admin_connection
+    ApplicationRecord.connected_to(role: :admin) { yield }
+  end
 
   def resolve_scope
     @current_municipality = resolve_municipality
