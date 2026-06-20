@@ -9,7 +9,9 @@ class Triagem < ApplicationRecord
   before_validation :inherit_municipality_id, on: :create
 
   validates :protocol_name, presence: true
-  validates :answers, presence: true
+  # answers é jsonb e começa vazio ({}) ao iniciar a triagem. presence: true
+  # falha em hash vazio (Rails considera blank). Disallow só nil.
+  validates :answers, exclusion: { in: [nil] }
 
   def append_answer!(answer)
     self.answers = answers.merge(current_step.to_s => answer)

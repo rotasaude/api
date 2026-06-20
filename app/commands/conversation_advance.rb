@@ -9,21 +9,12 @@
 # Estados do conversation (ADR-0021 emenda 0012):
 #   greeting → awaiting_consent → consented → revoked (terminal)
 #
-# Textos de UI hardcoded em pt-BR como PLACEHOLDERS. Mover para
-# config/locales ou por município é decisão de produto separada (TODO).
+# Textos em config/locales/conversation_advance.pt-BR.yml.
+# Próxima pergunta usa o `prompt` do step real do motor de protocolos (ADR-0013).
 class ConversationAdvance
   Result = Struct.new(:reply, keyword_init: true)
 
   DEFAULT_PROTOCOL_NAME = "triagem-respiratoria"
-
-  # TODO: textos viram produto/localização separados.
-  GREETING_TEXT = "Olá! Para começar uma triagem, preciso do seu consentimento para usar suas respostas. Você concorda? (sim/não)"
-  CONSENT_PROMPT_TEXT = "Não entendi. Você concorda com o uso dos seus dados para uma triagem? (sim/não)"
-  CONSENT_REVOKED_TEXT = "Consentimento revogado. Para retomar, envie \"olá\" a qualquer momento."
-  CONSENT_FAILED_TEXT = "Não consegui registrar seu consentimento agora. Tente novamente."
-  NO_PROTOCOL_TEXT = "No momento não temos um protocolo de triagem ativo nesta cidade."
-  TRIAGEM_INVALID_ANSWER_TEXT = "Resposta inválida. Tente responder à pergunta anterior novamente."
-  TRIAGEM_GENERIC_ERROR = "Não consegui processar agora."
 
   def self.call(conversation:, inbound:)
     new(conversation, inbound).call
@@ -46,6 +37,10 @@ class ConversationAdvance
 
   private
 
+  def t(key, **vars)
+    I18n.t("conversation_advance.#{key}", **vars)
+  end
+
   def text
     @text ||= extract_body
   end
@@ -59,7 +54,7 @@ class ConversationAdvance
 
   def handle_greeting
     @conversation.update!(state: :awaiting_consent)
-    Result.new(reply: GREETING_TEXT)
+    Result.new(reply: t(:greeting))
   end
 
   def handle_awaiting_consent
@@ -70,19 +65,19 @@ class ConversationAdvance
         version: Consents.current_version(@conversation.municipality_id),
         evidence: { text: text, message_id: @inbound.message_id, channel: "whatsapp" }
       )
-      return Result.new(reply: CONSENT_FAILED_TEXT) if result.failure?
+      return Result.new(reply: t(:consent_failed)) if result.failure?
       begin_triagem_and_ask
     when :revoke
       RevokeConsent.call(conversation: @conversation, reason: text)
-      Result.new(reply: CONSENT_REVOKED_TEXT)
+      Result.new(reply: t(:consent_revoked))
     else
-      Result.new(reply: CONSENT_PROMPT_TEXT)
+      Result.new(reply: t(:consent_prompt))
     end
   end
 
   def handle_consented
     triagem = active_triagem || begin_triagem_or_nil
-    return Result.new(reply: NO_PROTOCOL_TEXT) unless triagem
+    return Result.new(reply: t(:no_protocol)) unless triagem
 
     result = CompleteTriagem.call(triagem: triagem, answer: text)
     return Result.new(reply: reason_text(result.reason)) if result.failure?
@@ -90,9 +85,8 @@ class ConversationAdvance
     outcome = result.payload[:outcome]
     return Result.new(reply: nil) if outcome.terminal?
 
-    # Próxima pergunta — placeholder. Conteúdo real vem do step.prompt
-    # quando o motor de protocolos expor isso (ADR-0013 amplia).
-    Result.new(reply: "Pergunta #{outcome.awaiting}: (responda)")
+    triagem.reload
+    Result.new(reply: t(:triagem_next, prompt: step_prompt(triagem, outcome.awaiting)))
   end
 
   def active_triagem
@@ -101,8 +95,8 @@ class ConversationAdvance
 
   def begin_triagem_and_ask
     triagem = begin_triagem_or_nil
-    return Result.new(reply: NO_PROTOCOL_TEXT) unless triagem
-    Result.new(reply: "Vamos começar. Pergunta #{triagem.current_step}: (responda)")
+    return Result.new(reply: t(:no_protocol)) unless triagem
+    Result.new(reply: t(:triagem_start, prompt: step_prompt(triagem, triagem.current_step)))
   end
 
   def begin_triagem_or_nil
@@ -125,11 +119,17 @@ class ConversationAdvance
     nil
   end
 
+  def step_prompt(triagem, step_id)
+    step = triagem.protocol.steps[step_id.to_sym]
+    return t(:triagem_generic_error) unless step
+    step.prompt
+  end
+
   def reason_text(reason)
     case reason
-    when :invalid_answer then TRIAGEM_INVALID_ANSWER_TEXT
-    when :no_consent     then CONSENT_PROMPT_TEXT
-    else                      TRIAGEM_GENERIC_ERROR
+    when :invalid_answer then t(:triagem_invalid_answer)
+    when :no_consent     then t(:consent_prompt)
+    else                      t(:triagem_generic_error)
     end
   end
 end
