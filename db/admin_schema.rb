@@ -10,11 +10,24 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000110) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_000120) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
+
+  create_table "alert_recipients", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "channel", null: false
+    t.datetime "created_at", null: false
+    t.string "destination", null: false
+    t.integer "escalation_order", default: 0, null: false
+    t.uuid "municipality_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["municipality_id", "escalation_order"], name: "index_alert_recipients_on_municipality_id_and_escalation_order"
+    t.index ["municipality_id"], name: "index_alert_recipients_on_municipality_id"
+    t.check_constraint "channel::text = ANY (ARRAY['whatsapp'::character varying, 'email'::character varying]::text[])", name: "ck_alert_recipients_channel"
+  end
 
   create_table "authors", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
@@ -26,6 +39,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000110) do
     t.index ["email"], name: "index_authors_on_email", unique: true
     t.index ["municipality_id"], name: "index_authors_on_municipality_id"
     t.index ["token"], name: "index_authors_on_token", unique: true
+  end
+
+  create_table "consent_terms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "body", null: false
+    t.datetime "created_at", null: false
+    t.uuid "municipality_id", null: false
+    t.datetime "published_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "version", null: false
+    t.index ["municipality_id", "version"], name: "index_consent_terms_on_municipality_id_and_version", unique: true
+    t.index ["municipality_id"], name: "index_consent_terms_on_municipality_id"
   end
 
   create_table "consents", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -145,10 +169,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000110) do
     t.string "name", null: false
     t.jsonb "settings", default: {}, null: false
     t.string "slug", null: false
+    t.string "status", default: "active", null: false
     t.string "uf", limit: 2
     t.datetime "updated_at", null: false
     t.index ["ibge_code"], name: "index_municipalities_on_ibge_code", unique: true, where: "(ibge_code IS NOT NULL)"
     t.index ["slug"], name: "index_municipalities_on_slug", unique: true
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'suspended'::character varying]::text[])", name: "ck_municipality_status"
   end
 
   create_table "municipality_channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -418,7 +444,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000110) do
     t.index "lower((email_address)::text)", name: "index_users_on_lower_email", unique: true
   end
 
+  add_foreign_key "alert_recipients", "municipalities"
   add_foreign_key "authors", "municipalities"
+  add_foreign_key "consent_terms", "municipalities"
   add_foreign_key "consents", "conversations"
   add_foreign_key "consents", "municipalities"
   add_foreign_key "conversations", "municipalities"
