@@ -1,15 +1,17 @@
-# Consumo de mensagem WhatsApp inbound. Trabalho transacional do lado do domínio.
-# ADR-0020: scoped por município (resolvido na ingestão WhatsApp — Phase 5).
-# Já não é consumer de DomainEvents — invocado direto pelo Whatsapp::Ingest.call.
+# Avança a conversa quando uma mensagem nova chega (ADR-0010/0014/0020/0021).
 class ProcessInboundMessageJob < ApplicationJob
   include TenantScopedJob
-  queue_as :realtime
 
   def perform(inbound_message_id, municipality_id:)
     with_tenant(municipality_id) do
-      # Stub. Corpo final no Phase 5 (avança conversa, gera triagem).
       inbound = InboundMessage.find(inbound_message_id)
-      Rails.logger.info("[ProcessInboundMessageJob] received #{inbound.id} for #{municipality_id}")
+      conversation = Conversation.for(inbound.from, municipality_id: municipality_id)
+      conversation.with_lock do
+        # Política e maquina de estado da conversa vivem no domínio (ADR-0012).
+        # Aqui só garantimos o tenant scoping e o lock.
+        result = ConversationAdvance.call(conversation: conversation, inbound: inbound) if defined?(ConversationAdvance)
+        SendWhatsappJob.perform_later(to: inbound.from, body: result.reply, municipality_id: municipality_id) if result&.reply.present?
+      end
     end
   end
 end

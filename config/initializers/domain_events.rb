@@ -3,8 +3,6 @@
 Rails.application.config.to_prepare do
   DomainEvents.registry.clear
 
-  DomainEvents.bind "inbound_message.received", to: ProcessInboundMessageJob
-
   DomainEvents.bind "triagem.completed", to: [GenerateReportJob, UpdateDashboardJob, NotifyCitizenJob]
 
   DomainEvents.bind "triagem.urgent", to: AlertMunicipalityJob

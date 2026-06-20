@@ -11,17 +11,8 @@ class NotifyCitizenJob < ApplicationJob
 
     SendWhatsappJob.perform_later(
       to: phone,
-      template: {
-        name: "rota_saude_resultado",
-        language: { code: "pt_BR" },
-        components: [
-          { type: "body", parameters: [
-            { type: "text", text: triagem.tier.to_s },
-            { type: "text", text: snapshot.url }
-          ]}
-        ]
-      },
-      context: { triagem_id: triagem.id, snapshot_id: snapshot.id }
+      body: "Sua triagem (#{triagem.tier}): #{snapshot.url}",
+      municipality_id: triagem.municipality_id
     )
   end
 end
