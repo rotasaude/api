@@ -1,11 +1,16 @@
 # GET /r/:token — endpoint público do relatório congelado. Ver ADR-0007.
 # Verifica HMAC antes de qualquer query indexada — barra varredura.
+#
+# Endpoint INHERENTEMENTE cross-tenant: o token assinado é a credencial e
+# vale para qualquer município. Sem usuário autenticado, não há
+# membership/tenant a resolver. Lookup via BYPASSRLS (rota_admin).
 class ReportsController < ApplicationController
-  # TODO: reativar quando Phase 4 setar current_municipality
   skip_tenant_scope
 
   def show
-    snapshot = ReportSnapshot.find_by_signed_token(params[:token])
+    snapshot = ApplicationRecord.connected_to(role: :admin) do
+      ReportSnapshot.find_by_signed_token(params[:token])
+    end
     return head :not_found unless snapshot
 
     render json: {
