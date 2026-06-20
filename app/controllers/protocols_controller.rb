@@ -1,6 +1,9 @@
 # Endpoints de autoria/preview de protocolos. Ver ADR-0016 e ADR-0017.
 # A UI de autoria (apps/web/src/protocols) consome estes endpoints.
 class ProtocolsController < ApplicationController
+  # TODO: reativar quando Phase 4 setar current_municipality
+  skip_tenant_scope
+
   before_action :authenticate_author!
 
   # GET /protocols/:name — definição ativa

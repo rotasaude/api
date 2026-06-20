@@ -2,6 +2,9 @@
 # Caminho crítico: HMAC -> dedup -> persist -> publish -> 200 OK em ~50ms.
 module Webhooks
   class WhatsappController < ApplicationController
+    # TODO: reativar quando Phase 4 setar current_municipality
+    skip_tenant_scope
+
     skip_before_action :verify_authenticity_token, raise: false
     before_action :verify_signature!, only: :create
 

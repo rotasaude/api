@@ -3,6 +3,9 @@
 #   POST   /session   { email_address, password }  → 201 + set-cookie
 #   DELETE /session                                 → 204 + clear-cookie
 class SessionsController < ApplicationController
+  # TODO: reativar quando Phase 4 setar current_municipality
+  skip_tenant_scope
+
   include Authentication
 
   allow_unauthenticated_access only: %i[create]

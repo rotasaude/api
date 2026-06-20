@@ -9,6 +9,11 @@
 #
 # Nenhuma rota de escrita é permitida neste namespace (critério de aceite §10).
 class Admin::Api::BaseController < ApplicationController
+  # TODO: reativar quando Phase 4 setar current_municipality via membership.
+  # Nota: resolve_municipality já existe aqui mas corre em before_action, após
+  # o around_action — Phase 4 precisará reordenar ou mover para o concern.
+  skip_tenant_scope
+
   include Authentication
 
   TZ = ActiveSupport::TimeZone["America/Sao_Paulo"]
