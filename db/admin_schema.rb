@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000090) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_000100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -393,6 +393,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000090) do
     t.index ["status"], name: "index_triagens_on_status"
     t.index ["tier"], name: "index_triagens_on_tier"
     t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying::text, 'completed'::character varying::text, 'aborted_by_revocation'::character varying::text])", name: "ck_triagens_status"
+  end
+
+  create_table "unknown_channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "first_seen_at", null: false
+    t.integer "hits", default: 1, null: false
+    t.datetime "last_seen_at", null: false
+    t.string "phone_number_id", null: false
+    t.jsonb "sample_change", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.index ["phone_number_id"], name: "index_unknown_channels_on_phone_number_id", unique: true
   end
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
