@@ -21,10 +21,29 @@ class SetupController < ApplicationController
   def provision_municipality
     return head(:forbidden) unless current_user.operator?
 
-    result = ProvisionMunicipality.call(**provision_params, invited_by: current_user)
+    params_h = provision_params
+    result = ProvisionMunicipality.call(**params_h, invited_by: current_user)
     if result.ok?
       muni = result.payload[:municipality]
-      render json: { id: muni.id, name: muni.name, slug: muni.slug }, status: :created
+      # ProvisionMunicipality cria 1 invitation pro admin_email; busca pra
+      # devolver pro operador (precisa do token pra mandar pro convidado).
+      invitation = ApplicationRecord.connected_to(role: :admin) do
+        Invitation.where(municipality_id: muni.id, email: params_h[:admin_email].to_s.downcase)
+                  .order(created_at: :desc)
+                  .first
+      end
+      render json: {
+        id: muni.id,
+        name: muni.name,
+        slug: muni.slug,
+        invitation: invitation && {
+          id: invitation.id,
+          email: invitation.email,
+          token: invitation.token,
+          expires_at: invitation.expires_at.iso8601,
+          accept_url: setup_accept_url(invitation.token)
+        }
+      }, status: :created
     else
       render json: { error: result.reason.to_s, message: result.message }, status: :unprocessable_entity
     end
@@ -116,6 +135,14 @@ class SetupController < ApplicationController
   end
 
   private
+
+  # URL para o frontend abrir AcceptInvitation. Em prod ficaria em
+  # routes.default_url_options + ENV PUBLIC_DASHBOARD_URL. Stub usa o
+  # caminho do dashboard padrão.
+  def setup_accept_url(token)
+    base = ENV["PUBLIC_DASHBOARD_URL"] || "http://localhost:5174/dashboard/"
+    "#{base}?invite=#{token}"
+  end
 
   def can_manage_members?(municipality_id)
     return true if current_user.operator?
