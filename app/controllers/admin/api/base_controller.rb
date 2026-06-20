@@ -9,9 +9,11 @@
 #
 # Nenhuma rota de escrita é permitida neste namespace (critério de aceite §10).
 class Admin::Api::BaseController < ApplicationController
-  # TODO: reativar quando Phase 4 setar current_municipality via membership.
-  # Nota: resolve_municipality já existe aqui mas corre em before_action, após
-  # o around_action — Phase 4 precisará reordenar ou mover para o concern.
+  # Admin tem resolução de escopo própria (suporta "all" cross-tenant para
+  # operador, agregações por município, descritor de escopo no envelope).
+  # Por isso pula o around_action :within_tenant herdado de
+  # TenantScopedRequest (ADR-0019) — usa Admin::Scoped em vez de RLS via
+  # SET LOCAL. Queries são read-only por critério §10.
   skip_tenant_scope
 
   include Authentication
@@ -36,23 +38,34 @@ class Admin::Api::BaseController < ApplicationController
     )
   end
 
-  # Default: o município do usuário autenticado. "all" só vale para
-  # superadmin (flag cross-tenant ainda não implementada — ADR-0022 §4).
+  # Resolução por membership (Phase 4.2/4.5):
+  # - operador + "all"                  → :all (cross-tenant)
+  # - operador + ?municipality_id=<id>  → essa cidade
+  # - municipal_admin (ou similar)      → única cidade do membership ativo
   def resolve_municipality
     requested = params[:municipality_id].to_s
     if requested == "all" && cross_tenant?
       :all
     elsif requested.present? && cross_tenant?
-      Municipality.find_by(id: requested) || current_user.municipality
+      Municipality.find_by(id: requested) || first_member_municipality
     else
-      current_user.municipality
+      first_member_municipality
     end
   end
 
-  # TODO(superadmin): cross-tenant precisa de coluna/flag em User.
-  # Por ora: nunca cross-tenant. Mantém §2.2 (multi-tenancy) sem regressão.
+  # Operador (platform_operator membership) pode atravessar tenants.
   def cross_tenant?
-    false
+    Current.user&.operator? || false
+  end
+
+  def first_member_municipality
+    membership = Current.user&.memberships
+                       &.active
+                       &.where&.not(role: "platform_operator")
+                       &.where&.not(municipality_id: nil)
+                       &.first
+    return nil unless membership&.municipality_id
+    Municipality.find_by(id: membership.municipality_id)
   end
 
   def render_envelope(data, as_of: Time.current)
