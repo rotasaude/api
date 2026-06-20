@@ -26,7 +26,10 @@ RSpec.describe PublicationsController, type: :request do
 
   it "com step-up recente publica" do
     @session.update!(mfa_verified_at: Time.current)
-    expect(Protocols::Publish).to receive(:call).with(version: "v1", by: user)
+    fake_pd = instance_double(ProtocolDefinition, id: SecureRandom.uuid)
+    expect(Protocols::Publish).to receive(:call)
+      .with(version: "v1", by: user)
+      .and_return(Result.ok(protocol_definition: fake_pd))
     post "/protocols/v1/publish"
     expect(response).to have_http_status(:ok)
   end
