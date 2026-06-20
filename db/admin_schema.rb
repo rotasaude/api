@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000070) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_000081) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -105,6 +105,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000070) do
     t.index ["from"], name: "index_inbound_messages_on_from"
     t.index ["message_id"], name: "index_inbound_messages_on_message_id", unique: true
     t.index ["municipality_id"], name: "index_inbound_messages_on_municipality_id"
+  end
+
+  create_table "invitations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "accepted_at"
+    t.datetime "created_at", null: false
+    t.string "email", null: false
+    t.datetime "expires_at", null: false
+    t.uuid "invited_by_id", null: false
+    t.uuid "municipality_id"
+    t.string "role", null: false
+    t.string "token", null: false
+    t.datetime "updated_at", null: false
+    t.index ["invited_by_id"], name: "index_invitations_on_invited_by_id"
+    t.index ["municipality_id"], name: "index_invitations_on_municipality_id"
+    t.index ["token"], name: "index_invitations_on_token", unique: true
   end
 
   create_table "memberships", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -386,6 +401,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000070) do
   add_foreign_key "domain_events", "municipalities"
   add_foreign_key "identities", "users"
   add_foreign_key "inbound_messages", "municipalities"
+  add_foreign_key "invitations", "municipalities"
+  add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "memberships", "municipalities"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"
