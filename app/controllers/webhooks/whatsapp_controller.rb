@@ -22,31 +22,7 @@ module Webhooks
 
     # POST — entrega de evento (mensagem, status, leitura).
     def create
-      messages = Whatsapp::Ingest.parse(payload)
-
-      messages.each do |message|
-        ApplicationRecord.transaction do
-          # Dedup na borda (ADR-0005): se a mesma message_id chegar de novo,
-          # cai na constraint única e a transação aborta — pulamos pra próxima.
-          ProcessedEvent.create!(
-            consumer: "whatsapp_webhook",
-            event_id: message[:message_id],
-            processed_at: Time.current
-          )
-
-          inbound = InboundMessage.create!(
-            message_id: message[:message_id],
-            from: message[:from],
-            kind: message[:kind],
-            raw: payload    # criptografado em repouso — ADR-0011
-          )
-
-          DomainEvents.publish("inbound_message.received", inbound_message_id: inbound.id, message_id: message[:message_id], from: message[:from])
-        end
-      rescue ActiveRecord::RecordNotUnique
-        Rails.logger.info("[whatsapp] dup message_id=#{message[:message_id]}")
-      end
-
+      Whatsapp::Ingest.call(payload)
       head :ok
     end
 
