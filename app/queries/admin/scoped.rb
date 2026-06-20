@@ -5,8 +5,8 @@
 #
 #   triages, consents → joinam via conversations.municipality_id
 #   conversations, protocol_definitions, dashboard_metrics → coluna direta
-#   inbound_messages, domain_events → SEM coluna de muni (gap conhecido,
-#     ver RECONCILE.md). Por ora retornam cross-tenant — documentar no PR.
+#   inbound_messages, domain_events → muni direto (Phase 1.4/2.1). RLS sob
+#     SET LOCAL faz o escopo automaticamente quando chamado de within_tenant.
 module Admin::Scoped
   def self.triages(municipality)
     return Triagem.all if municipality == :all || municipality.nil?
@@ -33,13 +33,17 @@ module Admin::Scoped
     DashboardMetric.where(municipality_id: municipality.id)
   end
 
-  # GAP: sem municipality_id. Cross-tenant até resolver via projeção/coluna.
-  def self.inbound_messages(_municipality)
-    InboundMessage.all
+  # Phase 1.4 adicionou municipality_id + RLS — sob SET LOCAL do request
+  # já vem escopado. Filtro explícito mantido para clareza e chamada admin
+  # sem tenant (returns :all).
+  def self.inbound_messages(municipality)
+    return InboundMessage.all if municipality == :all || municipality.nil?
+    InboundMessage.where(municipality_id: municipality.id)
   end
 
-  # GAP: sem municipality_id. Cross-tenant até resolver.
-  def self.domain_events(_municipality)
-    DomainEvent.all
+  # Phase 1.4 + 4.1: muni_id existe (nullable para platform-scope).
+  def self.domain_events(municipality)
+    return DomainEvent.all if municipality == :all || municipality.nil?
+    DomainEvent.where(municipality_id: municipality.id)
   end
 end
