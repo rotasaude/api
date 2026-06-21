@@ -159,7 +159,13 @@ class SetupController < ApplicationController
       channel:     params.require(:channel).permit(:phone_number_id, :waba_id, :display_phone_number, :access_token).to_h.symbolize_keys,
       admin_email: params.require(:admin_email),
       terms:       params.require(:terms).permit(:version, :body).to_h.symbolize_keys,
-      alert:       Array(params[:alert]).map { |a| ActionController::Parameters.new(a).permit(:channel, :destination, :escalation_order).to_h.symbolize_keys },
+      alert:       Array(params[:alert]).map { |a|
+        # `a` chega como ActionController::Parameters quando o body é JSON nested.
+        # Usa diretamente .permit em vez de envelopar de novo (que quebra com
+        # 'undefined method with_indifferent_access' no constructor).
+        wrapped = a.respond_to?(:permit) ? a : ActionController::Parameters.new(a)
+        wrapped.permit(:channel, :destination, :escalation_order).to_h.symbolize_keys
+      },
       template:    params[:template].present? ? params.require(:template).permit(:name, definition: {}).to_h.symbolize_keys : nil
     }
   end
