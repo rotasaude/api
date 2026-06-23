@@ -1,19 +1,22 @@
-# Publica uma versão de protocolo no município atual (ADR-0016 + ADR-0023).
+# Publica uma versão de protocolo: move `draft`/`in_review` → `published`.
+# Ver ADR-0009 (lifecycle de dois eixos: publish ≠ activate).
 #
 # Pré-requisitos:
-# - Current.municipality_id setado (within_tenant do request — ADR-0019).
-# - Step-up MFA conferido pelo controller (ADR-0022).
+# - Current.municipality_id setado (within_tenant do request — ADR-0003).
+# - Step-up MFA conferido pelo controller (ADR-0011).
 #
 # Comportamento:
 # - Encontra ProtocolDefinition por (current_municipality, version).
-# - Autoriza via ProtocolPolicy (Phase 4.4).
-# - Aposenta a versão active anterior do mesmo nome (1 active por nome/cidade).
-# - Marca a versão alvo como active + activated_at.
+# - Autoriza via ProtocolPolicy (protocol_publisher).
+# - Move a versão alvo para `published` (NÃO `active` — vigência é ato à parte,
+#   ver Protocols::Activate). `published` ≠ `active`.
 # - Audita via DomainEvents.publish("protocol.published", ...).
 #
-# Result.ok(protocol_definition:) | Result.fail(:not_found|:ambiguous|:forbidden|:invalid)
+# Result.ok(protocol_definition:) | Result.fail(:not_found|:ambiguous|:forbidden|:invalid_state|:invalid)
 module Protocols
   module Publish
+    PUBLISHABLE_FROM = %w[draft in_review].freeze
+
     def self.call(version:, by:)
       return Result.fail(:tenant_missing) if Current.municipality_id.nil?
 
@@ -26,19 +29,17 @@ module Protocols
 
       protocol = candidates.first
       return Result.fail(:forbidden) unless ProtocolPolicy.new(by, protocol).publish?
+      unless PUBLISHABLE_FROM.include?(protocol.status)
+        return Result.fail(:invalid_state, message: "só draft/in_review pode ser publicado (está #{protocol.status})")
+      end
 
       ApplicationRecord.transaction do
-        ProtocolDefinition
-          .where(municipality_id: Current.municipality_id, name: protocol.name, status: "active")
-          .where.not(id: protocol.id)
-          .update_all(status: "retired", retired_at: Time.current)
-
-        protocol.update!(status: "active", activated_at: Time.current)
+        protocol.update!(status: "published")
 
         DomainEvents.publish(
           "protocol.published",
           protocol_definition_id: protocol.id,
-          name: protocol.name,
+          protocol_key: protocol.name,
           version: protocol.version,
           actor: by.id
         )

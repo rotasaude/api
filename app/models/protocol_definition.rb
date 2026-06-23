@@ -1,15 +1,18 @@
-# Storage de definições de protocolo. Ver ADR-0016.
-# Toda a lógica do motor vive em Protocols::Protocol (puro, ADR-0013) — este
-# model é apenas armazenamento + lifecycle (draft/active/retired).
+# Storage de definições de protocolo. Ver ADR-0009 (Protocol engine).
+# Toda a lógica do motor vive em Protocols::Protocol (puro) — este model é
+# apenas armazenamento + lifecycle per-cidade. Dois eixos no campo `status`:
+# autoria (draft → in_review → published) e vigência (published → active),
+# com `retired` ao fim. `published` ≠ `active`.
 class ProtocolDefinition < ApplicationRecord
   belongs_to :municipality, optional: true
   has_many   :triagens, dependent: :restrict_with_error
 
   validates :name, :version, :definition, :status, presence: true
   validates :version, uniqueness: { scope: [:name, :municipality_id] }
-  validates :status, inclusion: { in: %w[draft active retired] }
+  validates :status, inclusion: { in: %w[draft in_review published active retired] }
 
   scope :active, -> { where(status: "active") }
+  scope :published, -> { where(status: "published") }
 
   before_save :validate_definition_shape
 
