@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000120) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_23_000020) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -232,7 +232,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000120) do
     t.index ["municipality_id"], name: "index_protocol_definitions_on_municipality_id"
     t.index ["name", "municipality_id"], name: "idx_protocol_definitions_one_active_per_name_muni", unique: true, where: "((status)::text = 'active'::text)"
     t.index ["name", "version", "municipality_id"], name: "idx_protocol_definitions_name_version_muni", unique: true
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'active'::character varying::text, 'retired'::character varying::text])", name: "ck_protocol_definitions_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'in_review'::character varying, 'published'::character varying, 'active'::character varying, 'retired'::character varying]::text[])", name: "ck_protocol_definitions_status"
   end
 
   create_table "report_snapshots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -244,14 +244,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000120) do
     t.uuid "protocol_definition_id", null: false
     t.string "signature", null: false
     t.string "token", null: false
-    t.uuid "triagem_id", null: false
+    t.uuid "triage_id", null: false
     t.datetime "updated_at", null: false
     t.index ["expires_at"], name: "index_report_snapshots_on_expires_at"
     t.index ["municipality_id"], name: "index_report_snapshots_on_municipality_id"
     t.index ["protocol_definition_id"], name: "index_report_snapshots_on_protocol_definition_id"
     t.index ["token"], name: "index_report_snapshots_on_token", unique: true
-    t.index ["triagem_id"], name: "idx_report_snapshots_one_per_triagem", unique: true
-    t.index ["triagem_id"], name: "index_report_snapshots_on_triagem_id"
+    t.index ["triage_id"], name: "idx_report_snapshots_one_per_triagem", unique: true
+    t.index ["triage_id"], name: "index_report_snapshots_on_triage_id"
   end
 
   create_table "sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -396,7 +396,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000120) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
-  create_table "triagens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+  create_table "triages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.jsonb "answers", default: {}, null: false
     t.datetime "completed_at"
     t.uuid "conversation_id", null: false
@@ -410,14 +410,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000120) do
     t.string "status", default: "in_progress", null: false
     t.string "tier"
     t.datetime "updated_at", null: false
-    t.index ["conversation_id", "created_at"], name: "index_triagens_on_conversation_id_and_created_at"
-    t.index ["conversation_id", "status"], name: "index_triagens_on_conversation_id_and_status"
+    t.index ["conversation_id", "created_at"], name: "index_triages_on_conversation_id_and_created_at"
+    t.index ["conversation_id", "status"], name: "index_triages_on_conversation_id_and_status"
     t.index ["conversation_id"], name: "idx_triagens_one_in_progress_per_conversation", unique: true, where: "((status)::text = 'in_progress'::text)"
-    t.index ["conversation_id"], name: "index_triagens_on_conversation_id"
-    t.index ["municipality_id"], name: "index_triagens_on_municipality_id"
-    t.index ["protocol_definition_id"], name: "index_triagens_on_protocol_definition_id"
-    t.index ["status"], name: "index_triagens_on_status"
-    t.index ["tier"], name: "index_triagens_on_tier"
+    t.index ["conversation_id"], name: "index_triages_on_conversation_id"
+    t.index ["municipality_id"], name: "index_triages_on_municipality_id"
+    t.index ["protocol_definition_id"], name: "index_triages_on_protocol_definition_id"
+    t.index ["status"], name: "index_triages_on_status"
+    t.index ["tier"], name: "index_triages_on_tier"
     t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying::text, 'completed'::character varying::text, 'aborted_by_revocation'::character varying::text])", name: "ck_triagens_status"
   end
 
@@ -465,7 +465,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000120) do
   add_foreign_key "protocol_definitions", "municipalities"
   add_foreign_key "report_snapshots", "municipalities"
   add_foreign_key "report_snapshots", "protocol_definitions"
-  add_foreign_key "report_snapshots", "triagens"
+  add_foreign_key "report_snapshots", "triages"
   add_foreign_key "sessions", "users"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
@@ -473,7 +473,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000120) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
-  add_foreign_key "triagens", "conversations"
-  add_foreign_key "triagens", "municipalities"
-  add_foreign_key "triagens", "protocol_definitions"
+  add_foreign_key "triages", "conversations"
+  add_foreign_key "triages", "municipalities"
+  add_foreign_key "triages", "protocol_definitions"
 end
