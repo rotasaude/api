@@ -1,4 +1,4 @@
-# Revoga consentimento e aborta triagem em curso. Ver ADR-0006 e ADR-0012.
+# Revoga consentimento e aborta triage em curso. Ver ADR-0006 e ADR-0012.
 # Reasons: :no_active_consent.
 class RevokeConsent
   def self.call(conversation:, reason: nil)
@@ -17,7 +17,7 @@ class RevokeConsent
     ApplicationRecord.transaction do
       active.revoke!
       @conversation.update!(state: :revoked)
-      @conversation.triagens.where(status: :in_progress).order(created_at: :desc).first&.update!(
+      @conversation.triages.where(status: :in_progress).order(created_at: :desc).first&.update!(
         status: :aborted_by_revocation,
         completed_at: Time.current
       )

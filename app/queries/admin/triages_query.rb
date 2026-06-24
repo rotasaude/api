@@ -1,4 +1,4 @@
-# GET /admin/api/triages — visão de triagens (§4.4).
+# GET /admin/api/triages — visão de triages (§4.4).
 #
 # Reduzimos a referências e contagens. NUNCA expomos `answers` (LGPD).
 # Versão do protocolo vem de protocol_definitions.

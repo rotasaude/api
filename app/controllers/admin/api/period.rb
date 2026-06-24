@@ -60,7 +60,7 @@ class Admin::Api::Period
   # a ser agrupada. Retorna `Array<Integer>` no tamanho do período.
   #
   # Qualifica a coluna com o nome real da tabela do model para evitar
-  # ambiguidade em queries com join (ex.: triagens.created_at vs
+  # ambiguidade em queries com join (ex.: triages.created_at vs
   # conversations.created_at).
   def series(relation, time_column)
     qualified = "#{relation.klass.table_name}.#{time_column}"

@@ -1,23 +1,23 @@
-# Atualiza dashboard_metrics incremental por triagem.completed (ADR-0007 + 0020).
+# Atualiza dashboard_metrics incremental por triage.completed (ADR-0007 + 0020).
 # Reconstrução completa em scripts/rebuild_dashboard_metrics.rb (recurring).
 class UpdateDashboardJob < ApplicationJob
   include IdempotentConsumer
   queue_as :reports
 
-  def handle(triagem_id:, **)
-    triagem = Triagem.find(triagem_id)  # já sob with_tenant: vê só do município
-    date = (triagem.completed_at || Time.current).to_date.iso8601
+  def handle(triage_id:, **)
+    triage = Triage.find(triage_id)  # já sob with_tenant: vê só do município
+    date = (triage.completed_at || Time.current).to_date.iso8601
 
     DashboardMetric.bump!(
-      municipality_id: triagem.municipality_id,
-      dimension: "triagens_by_tier",
+      municipality_id: triage.municipality_id,
+      dimension: "triages_by_tier",
       period: date,
-      key: triagem.tier.to_s
+      key: triage.tier.to_s
     )
 
     DashboardMetric.bump!(
-      municipality_id: triagem.municipality_id,
-      dimension: "triagens_total",
+      municipality_id: triage.municipality_id,
+      dimension: "triages_total",
       period: date,
       key: "total"
     )

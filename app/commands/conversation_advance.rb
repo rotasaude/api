@@ -3,7 +3,7 @@
 #
 # Recebe conversation (já lockada pelo PIMJ) + inbound (InboundMessage).
 # Retorna Result#reply: String com o texto a enviar de volta, ou nil quando
-# o fluxo segue por evento (ex.: triagem.completed → NotifyCitizenJob entrega
+# o fluxo segue por evento (ex.: triage.completed → NotifyCitizenJob entrega
 # o link do snapshot por outro caminho).
 #
 # Estados do conversation (ADR-0021 emenda 0012):
@@ -14,7 +14,7 @@
 class ConversationAdvance
   Result = Struct.new(:reply, keyword_init: true)
 
-  DEFAULT_PROTOCOL_NAME = "triagem-respiratoria"
+  DEFAULT_PROTOCOL_NAME = "triage-respiratoria"
 
   def self.call(conversation:, inbound:)
     new(conversation, inbound).call
@@ -66,7 +66,7 @@ class ConversationAdvance
         evidence: { text: text, message_id: @inbound.message_id, channel: "whatsapp" }
       )
       return Result.new(reply: t(:consent_failed)) if result.failure?
-      begin_triagem_and_ask
+      begin_triage_and_ask
     when :revoke
       RevokeConsent.call(conversation: @conversation, reason: text)
       Result.new(reply: t(:consent_revoked))
@@ -76,30 +76,30 @@ class ConversationAdvance
   end
 
   def handle_consented
-    triagem = active_triagem || begin_triagem_or_nil
-    return Result.new(reply: t(:no_protocol)) unless triagem
+    triage = active_triage || begin_triage_or_nil
+    return Result.new(reply: t(:no_protocol)) unless triage
 
-    result = CompleteTriagem.call(triagem: triagem, answer: text)
+    result = CompleteTriage.call(triage: triage, answer: text)
     return Result.new(reply: reason_text(result.reason)) if result.failure?
 
     outcome = result.payload[:outcome]
     return Result.new(reply: nil) if outcome.terminal?
 
-    triagem.reload
-    Result.new(reply: t(:triagem_next, prompt: step_prompt(triagem, outcome.awaiting)))
+    triage.reload
+    Result.new(reply: t(:triage_next, prompt: step_prompt(triage, outcome.awaiting)))
   end
 
-  def active_triagem
-    @conversation.triagens.where(status: :in_progress).order(created_at: :desc).first
+  def active_triage
+    @conversation.triages.where(status: :in_progress).order(created_at: :desc).first
   end
 
-  def begin_triagem_and_ask
-    triagem = begin_triagem_or_nil
-    return Result.new(reply: t(:no_protocol)) unless triagem
-    Result.new(reply: t(:triagem_start, prompt: step_prompt(triagem, triagem.current_step)))
+  def begin_triage_and_ask
+    triage = begin_triage_or_nil
+    return Result.new(reply: t(:no_protocol)) unless triage
+    Result.new(reply: t(:triage_start, prompt: step_prompt(triage, triage.current_step)))
   end
 
-  def begin_triagem_or_nil
+  def begin_triage_or_nil
     record = ProtocolDefinition.where(
       municipality_id: @conversation.municipality_id,
       name: DEFAULT_PROTOCOL_NAME,
@@ -108,7 +108,7 @@ class ConversationAdvance
     return nil unless record
 
     engine = Protocols.current(@conversation.municipality_id, name: DEFAULT_PROTOCOL_NAME)
-    @conversation.triagens.create!(
+    @conversation.triages.create!(
       protocol_definition: record,
       protocol_name: record.name,
       answers: {},
@@ -119,17 +119,17 @@ class ConversationAdvance
     nil
   end
 
-  def step_prompt(triagem, step_id)
-    step = triagem.protocol.steps[step_id.to_sym]
-    return t(:triagem_generic_error) unless step
+  def step_prompt(triage, step_id)
+    step = triage.protocol.steps[step_id.to_sym]
+    return t(:triage_generic_error) unless step
     step.prompt
   end
 
   def reason_text(reason)
     case reason
-    when :invalid_answer then t(:triagem_invalid_answer)
+    when :invalid_answer then t(:triage_invalid_answer)
     when :no_consent     then t(:consent_prompt)
-    else                      t(:triagem_generic_error)
+    else                      t(:triage_generic_error)
     end
   end
 end

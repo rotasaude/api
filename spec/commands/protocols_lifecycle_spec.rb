@@ -73,11 +73,11 @@ RSpec.describe "Protocols lifecycle" do
     end
   end
 
-  describe "INV-protocol-3: triagem termina na versão em que começou" do
-    it "ativar nova versão não altera a versão de uma triagem em voo" do
+  describe "INV-protocol-3: triage termina na versão em que começou" do
+    it "ativar nova versão não altera a versão de uma triage em voo" do
       v1 = make_pd(version: 1, status: "active")
       conv = Conversation.create!(municipality_id: muni.id, phone: "+5511999999999", state: "consented")
-      triagem = Triagem.create!(
+      triage = Triage.create!(
         municipality_id: muni.id, conversation_id: conv.id,
         protocol_definition_id: v1.id, protocol_name: "dengue", status: "in_progress"
       )
@@ -85,7 +85,7 @@ RSpec.describe "Protocols lifecycle" do
       make_pd(version: 2, status: "published")
       Protocols::Activate.call(version: 2, by: publisher)
 
-      expect(triagem.reload.protocol_definition_id).to eq(v1.id)
+      expect(triage.reload.protocol_definition_id).to eq(v1.id)
     end
   end
 

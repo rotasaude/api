@@ -1,6 +1,6 @@
-# Relatório congelado de uma triagem. Imutável após criação. Ver ADR-0007.
+# Relatório congelado de uma triage. Imutável após criação. Ver ADR-0007.
 class ReportSnapshot < ApplicationRecord
-  belongs_to :triagem
+  belongs_to :triage
   belongs_to :protocol_definition
 
   validates :token, :signature, :payload, :outcome, presence: true

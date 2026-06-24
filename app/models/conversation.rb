@@ -1,7 +1,7 @@
 # Conversa por (municipality_id, phone). Ver ADR-0012 + emenda ADR-0021.
 class Conversation < ApplicationRecord
   belongs_to :municipality
-  has_many :triagens, dependent: :restrict_with_error
+  has_many :triages, dependent: :restrict_with_error
   has_many :consents, dependent: :restrict_with_error
 
   encrypts :phone, deterministic: true

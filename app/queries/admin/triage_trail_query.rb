@@ -15,20 +15,20 @@ class Admin::TriageTrailQuery
   end
 
   def call
-    triagem = Admin::Scoped.triages(@muni).find_by(id: @triage_id)
-    return nil unless triagem
+    triage = Admin::Scoped.triages(@muni).find_by(id: @triage_id)
+    return nil unless triage
 
     # Phase 2.1 dropou domain_events.aggregate_type/aggregate_id;
     # IDs viajam no payload JSON (ADR-0020).
     events = DomainEvent
-               .where("payload ->> 'triagem_id' = ?", triagem.id.to_s)
+               .where("payload ->> 'triage_id' = ?", triage.id.to_s)
                .where(name: TRAIL_EVENTS)
                .order(:occurred_at)
 
     {
-      triageId: triagem.id,
-      protocol: "#{triagem.protocol_name} · #{triagem.protocol_definition.version}",
-      mode: triagem.outcome&.dig("scoring", "mode"),
+      triageId: triage.id,
+      protocol: "#{triage.protocol_name} · #{triage.protocol_definition.version}",
+      mode: triage.outcome&.dig("scoring", "mode"),
       steps: events.map { |ev| step(ev) }
     }
   end

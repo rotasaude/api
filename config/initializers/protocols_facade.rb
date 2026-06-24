@@ -10,7 +10,7 @@ Rails.application.config.to_prepare do
 
     class << self
       # Versão ativa para um par (municipality_id, name). Override por município ganha.
-      def current(municipality_id, name: "triagem-respiratoria")
+      def current(municipality_id, name: "triage-respiratoria")
         cache_key = ["protocols.current", name, municipality_id].join("/")
         Rails.cache.fetch(cache_key) do
           record = ProtocolDefinition

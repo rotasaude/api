@@ -6,20 +6,20 @@ class RebuildDashboardMetricsJob < ApplicationJob
 
   def perform(since: nil)
     buffer = Hash.new(0)
-    scope = Triagem.where(status: :completed)
+    scope = Triage.where(status: :completed)
     scope = scope.where("completed_at >= ?", Time.parse(since)) if since
 
     ApplicationRecord.transaction do
       DashboardMetric.delete_all
 
-      scope.find_each(batch_size: 1000) do |triagem|
-        municipality_id = triagem.conversation.municipality_id
+      scope.find_each(batch_size: 1000) do |triage|
+        municipality_id = triage.conversation.municipality_id
         next unless municipality_id
-        date = triagem.completed_at.to_date.iso8601
+        date = triage.completed_at.to_date.iso8601
 
-        buffer[[municipality_id, "triagens_by_tier",        date, triagem.tier.to_s]] += 1
-        buffer[[municipality_id, "triagens_total",          date, "total"]] += 1
-        buffer[[municipality_id, "priority_distribution",   date, triagem.priority.to_s]] += 1
+        buffer[[municipality_id, "triages_by_tier",        date, triage.tier.to_s]] += 1
+        buffer[[municipality_id, "triages_total",          date, "total"]] += 1
+        buffer[[municipality_id, "priority_distribution",   date, triage.priority.to_s]] += 1
       end
 
       rows = buffer.map do |(municipality_id, dimension, period, key), value|

@@ -3,9 +3,9 @@
 Rails.application.config.to_prepare do
   DomainEvents.registry.clear
 
-  DomainEvents.bind "triagem.completed", to: [GenerateReportJob, UpdateDashboardJob, NotifyCitizenJob]
+  DomainEvents.bind "triage.completed", to: [GenerateReportJob, UpdateDashboardJob, NotifyCitizenJob]
 
-  DomainEvents.bind "triagem.urgent", to: AlertMunicipalityJob
+  DomainEvents.bind "triage.urgent", to: AlertMunicipalityJob
 
   # Eventos só de auditoria — sem consumidores. A linha existe para tornar
   # explícito que ninguém escuta, e não por esquecimento.

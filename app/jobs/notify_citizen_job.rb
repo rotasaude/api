@@ -4,15 +4,15 @@ class NotifyCitizenJob < ApplicationJob
   include IdempotentConsumer
   queue_as :default
 
-  def handle(triagem_id:, **)
-    triagem = Triagem.find(triagem_id)
-    snapshot = triagem.report_snapshot or return   # GenerateReportJob ainda não rodou; vai tentar de novo via replay
-    phone = triagem.conversation.phone
+  def handle(triage_id:, **)
+    triage = Triage.find(triage_id)
+    snapshot = triage.report_snapshot or return   # GenerateReportJob ainda não rodou; vai tentar de novo via replay
+    phone = triage.conversation.phone
 
     SendWhatsappJob.perform_later(
       to: phone,
-      body: "Sua triagem (#{triagem.tier}): #{snapshot.url}",
-      municipality_id: triagem.municipality_id
+      body: "Sua triage (#{triage.tier}): #{snapshot.url}",
+      municipality_id: triage.municipality_id
     )
   end
 end

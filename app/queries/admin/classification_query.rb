@@ -1,6 +1,6 @@
 # GET /admin/api/classification — distribuição de tier/priority/mode (§4.5).
 #
-# Lê do snapshot congelado (outcome jsonb em Triagem). Sem recompute (ADR 0007).
+# Lê do snapshot congelado (outcome jsonb em Triage). Sem recompute (ADR 0007).
 # `byMode` extrai outcome->scoring->mode quando presente; vazio em caso contrário.
 class Admin::ClassificationQuery
   TIERS = %w[low medium high].freeze

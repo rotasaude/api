@@ -9,8 +9,8 @@
 #     SET LOCAL faz o escopo automaticamente quando chamado de within_tenant.
 module Admin::Scoped
   def self.triages(municipality)
-    return Triagem.all if municipality == :all || municipality.nil?
-    Triagem.joins(:conversation).where(conversations: { municipality_id: municipality.id })
+    return Triage.all if municipality == :all || municipality.nil?
+    Triage.joins(:conversation).where(conversations: { municipality_id: municipality.id })
   end
 
   def self.conversations(municipality)

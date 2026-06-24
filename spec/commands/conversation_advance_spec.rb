@@ -98,14 +98,14 @@ RSpec.describe ConversationAdvance do
         )
       end
 
-      it "registra consent, inicia triagem e responde com prompt do primeiro step" do
+      it "registra consent, inicia triage e responde com prompt do primeiro step" do
         result = described_class.call(conversation: conversation, inbound: inbound)
         expect(result.reply).to eq(
-          I18n.t("conversation_advance.triagem_start", prompt: "Você está com tosse?")
+          I18n.t("conversation_advance.triage_start", prompt: "Você está com tosse?")
         )
         expect(conversation.reload.state).to eq("consented")
-        expect(conversation.triagens.status_in_progress.count).to eq(1)
-        expect(conversation.triagens.first.current_step).to eq("tosse")
+        expect(conversation.triages.status_in_progress.count).to eq(1)
+        expect(conversation.triages.first.current_step).to eq("tosse")
       end
     end
 
@@ -165,17 +165,17 @@ RSpec.describe ConversationAdvance do
 
       it "avança para próximo step e responde com prompt do próximo" do
         result = described_class.call(conversation: conversation, inbound: inbound)
-        expect(result.reply).to eq(I18n.t("conversation_advance.triagem_next", prompt: "Está com febre alta?"))
-        triagem = conversation.triagens.status_in_progress.first
-        expect(triagem.current_step).to eq("febre")
-        expect(triagem.answers).to eq("tosse" => "true")
+        expect(result.reply).to eq(I18n.t("conversation_advance.triage_next", prompt: "Está com febre alta?"))
+        triage = conversation.triages.status_in_progress.first
+        expect(triage.current_step).to eq("febre")
+        expect(triage.answers).to eq("tosse" => "true")
       end
     end
 
     context "resposta terminal" do
       let(:raw_body) { "true" }
 
-      it "completa a triagem e responde nil (event-driven dali)" do
+      it "completa a triage e responde nil (event-driven dali)" do
         # avança "tosse" → "febre"
         described_class.call(conversation: conversation, inbound: inbound)
 
@@ -190,9 +190,9 @@ RSpec.describe ConversationAdvance do
 
         result = described_class.call(conversation: conversation, inbound: next_inbound)
         expect(result.reply).to be_nil
-        triagem = conversation.triagens.first
-        expect(triagem.status).to eq("completed")
-        expect(triagem.tier).to eq("baixa")
+        triage = conversation.triages.first
+        expect(triage.status).to eq("completed")
+        expect(triage.tier).to eq("baixa")
       end
     end
   end

@@ -5,7 +5,7 @@
 # com `retired` ao fim. `published` ≠ `active`.
 class ProtocolDefinition < ApplicationRecord
   belongs_to :municipality, optional: true
-  has_many   :triagens, dependent: :restrict_with_error
+  has_many   :triages, dependent: :restrict_with_error
 
   validates :name, :version, :definition, :status, presence: true
   validates :version, uniqueness: { scope: [:name, :municipality_id] }

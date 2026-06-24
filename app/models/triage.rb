@@ -1,6 +1,6 @@
-# Estado da triagem em curso de um cidadão. Manipulado APENAS via commands.
+# Estado da triage em curso de um cidadão. Manipulado APENAS via commands.
 # Ver ADR-0006 (commands) e ADR-0013 (motor de protocolos).
-class Triagem < ApplicationRecord
+class Triage < ApplicationRecord
   belongs_to :conversation
   belongs_to :protocol_definition
 
@@ -9,7 +9,7 @@ class Triagem < ApplicationRecord
   before_validation :inherit_municipality_id, on: :create
 
   validates :protocol_name, presence: true
-  # answers é jsonb e começa vazio ({}) ao iniciar a triagem. presence: true
+  # answers é jsonb e começa vazio ({}) ao iniciar a triage. presence: true
   # falha em hash vazio (Rails considera blank). Disallow só nil.
   validates :answers, exclusion: { in: [nil] }
 
@@ -49,7 +49,7 @@ class Triagem < ApplicationRecord
   private
 
   # Phase 1.4 adicionou municipality_id NOT NULL; deriva de conversation
-  # para callers que criam Triagem sem passar muni explícito.
+  # para callers que criam Triage sem passar muni explícito.
   def inherit_municipality_id
     self.municipality_id ||= conversation&.municipality_id
   end
