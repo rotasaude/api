@@ -1,0 +1,45 @@
+# Tarefas recorrentes Solid Queue. Ver ADR-0007, ADR-0011, ADR-0009.
+
+default: &default
+  rebuild_dashboard_metrics:
+    class: RebuildDashboardMetricsJob
+    queue: housekeeping
+    schedule: "every day at 3am America/Sao_Paulo"
+
+  purge_expired_reports:
+    class: PurgeExpiredReportsJob
+    queue: housekeeping
+    schedule: "every day at 4am America/Sao_Paulo"
+    args: { older_than_days: 30 }
+
+  purge_processed_events:
+    class: PurgeProcessedEventsJob
+    queue: housekeeping
+    schedule: "every day at 4:30am America/Sao_Paulo"
+    args: { older_than_days: 60 }
+
+  reconcile_consents:
+    class: ReconcileConsentsJob
+    queue: housekeeping
+    schedule: "every day at 5am America/Sao_Paulo"
+
+  purge_inbound_raw:
+    class: PurgeInboundRawJob
+    queue: housekeeping
+    schedule: "every day at 5:30am America/Sao_Paulo"
+    args: { older_than_days: 90 }
+
+  resend_pending_alerts:
+    class: ResendPendingAlertsJob
+    queue: urgent
+    schedule: "every 5 minutes"
+
+  clear_solid_queue_finished:
+    command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
+    schedule: every hour at minute 12
+
+development:
+  <<: *default
+
+production:
+  <<: *default

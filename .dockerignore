@@ -1,0 +1,14 @@
+.git
+.gitignore
+log/*
+tmp/*
+storage/*
+node_modules
+.env*
+config/master.key
+config/credentials/*.key
+deploy/
+test/
+spec/
+.rspec
+README.md

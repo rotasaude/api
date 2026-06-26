@@ -1,0 +1,13 @@
+# Textos das respostas de WhatsApp em ConversationAdvance (ADR-0012/0021).
+# Por município (override) é decisão de produto futura; hoje texto único pt-BR.
+pt-BR:
+  conversation_advance:
+    greeting: "Olá! Para começar uma triagem, preciso do seu consentimento para usar suas respostas. Você concorda? (sim/não)"
+    consent_prompt: "Não entendi. Você concorda com o uso dos seus dados para uma triagem? (sim/não)"
+    consent_revoked: "Consentimento revogado. Para retomar, envie \"olá\" a qualquer momento."
+    consent_failed: "Não consegui registrar seu consentimento agora. Tente novamente."
+    no_protocol: "No momento não temos um protocolo de triagem ativo nesta cidade."
+    triage_invalid_answer: "Resposta inválida. Tente responder à pergunta anterior novamente."
+    triage_generic_error: "Não consegui processar agora."
+    triage_start: "Vamos começar. %{prompt}"
+    triage_next: "%{prompt}"

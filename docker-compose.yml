@@ -1,0 +1,59 @@
+# Stack de desenvolvimento standalone do rota-saude/api (ADR-0001: web + worker
+# da mesma imagem). Postgres é EXTERNO (host) — ver README. Em produção quem
+# orquestra é Kamal 2 (deploy/).
+name: rota-saude-api
+
+x-api-env: &api-env
+  RAILS_ENV: ${RAILS_ENV:-development}
+  DATABASE_HOST: ${DATABASE_HOST:-host.docker.internal}
+  DATABASE_PORT: ${DATABASE_PORT:-5432}
+  ROTA_APP_PASSWORD: ${ROTA_APP_PASSWORD:-rota_app}
+  ROTA_ADMIN_PASSWORD: ${ROTA_ADMIN_PASSWORD:-rota_admin}
+  WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-devtoken}
+  WHATSAPP_APP_SECRET:   ${WHATSAPP_APP_SECRET:-devsecret}
+  WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-devaccess}
+  WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-devphone}
+  PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+  PUBLIC_PORT: ${PUBLIC_PORT:-3030}
+  PUBLIC_PROTOCOL: ${PUBLIC_PROTOCOL:-http}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5174,http://localhost:5175,http://localhost:5176}
+
+# Em Linux host.docker.internal não resolve nativo; em Mac/Windows o Docker Desktop trata.
+x-host-postgres: &host-postgres
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  api:
+    build:
+      context: .
+      target: development
+    image: rota-saude/api:dev
+    command: ./bin/rails server -b 0.0.0.0
+    environment:
+      <<: *api-env
+    volumes:
+      - .:/rails
+      - rails-tmp:/rails/tmp
+    ports:
+      - "${API_PORT:-3030}:3000"
+    <<: *host-postgres
+    restart: unless-stopped
+
+  worker:
+    image: rota-saude/api:dev
+    command: ./bin/jobs start
+    environment:
+      <<: *api-env
+      RAILS_MAX_THREADS: ${WORKER_MAX_THREADS:-20}
+    volumes:
+      - .:/rails
+      - rails-tmp:/rails/tmp
+    depends_on:
+      api:
+        condition: service_started
+    <<: *host-postgres
+    restart: unless-stopped
+
+volumes:
+  rails-tmp:

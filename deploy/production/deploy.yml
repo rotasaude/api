@@ -1,0 +1,74 @@
+# Kamal 2 — ambiente production
+# Ver ADR-0002 (imagem única, papéis web e worker).
+# Secrets vêm de `apps/api/deploy/production/secrets` (ver ADR-0011).
+# Web em ≥2 hosts para tolerar queda de um nó; worker dedicado.
+
+service: rota-saude-api
+image: rota-saude/api
+
+servers:
+  web:
+    hosts:
+      - web1.rota-saude.example
+      - web2.rota-saude.example
+    options:
+      memory: 1g
+  worker:
+    hosts:
+      - worker1.rota-saude.example
+    cmd: ./bin/jobs
+    options:
+      memory: 1g
+
+proxy:
+  ssl: true
+  host: api.rota-saude.example
+  app_port: 3000
+  healthcheck:
+    path: /up
+    interval: 5
+
+registry:
+  server: ghcr.io
+  username: rota-saude-bot
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
+  context: ../..
+
+env:
+  clear:
+    RAILS_ENV: production
+    RAILS_LOG_TO_STDOUT: "true"
+    RAILS_SERVE_STATIC_FILES: "true"
+    WEB_CONCURRENCY: "2"
+    RAILS_MAX_THREADS: "5"
+  secret:
+    - ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
+    - ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
+    - ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY
+    - DATABASE_URL
+    - RAILS_MASTER_KEY
+    - ROTA_ADMIN_PASSWORD
+    - ROTA_APP_PASSWORD
+    - WHATSAPP_APP_SECRET
+    - WHATSAPP_VERIFY_TOKEN
+
+accessories:
+  postgres:
+    image: postgres:16
+    host: db.rota-saude.example
+    port: "127.0.0.1:5432:5432"
+    env:
+      secret:
+        - POSTGRES_PASSWORD
+      clear:
+        POSTGRES_USER: rota_saude
+        POSTGRES_DB: rota_saude_production
+    directories:
+      - data:/var/lib/postgresql/data
+
+ssh:
+  user: deploy
