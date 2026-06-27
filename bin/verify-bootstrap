@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Valida o bootstrap-from-zero (db:bootstrap) num banco-rascunho descartável,
+# SEM tocar o banco de dev. Rode dentro do container api.
+# Ver docs/superpowers/specs/2026-06-26-db-bootstrap-from-zero-design.md
+set -euo pipefail
+
+SCRATCH="${1:-rs_bootstrap_check}"
+H="${DATABASE_HOST:-127.0.0.1}"
+export PGPASSWORD="${POSTGRES_PASSWORD:-postgres}"
+su() { psql -h "$H" -U rota_saude "$@"; }
+
+cleanup() { su -d postgres -qc "DROP DATABASE IF EXISTS $SCRATCH;" >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+
+echo "[verify] (re)criando $SCRATCH vazio"
+su -d postgres -qc "DROP DATABASE IF EXISTS $SCRATCH;" >/dev/null
+su -d postgres -qc "CREATE DATABASE $SCRATCH OWNER rota_saude;" >/dev/null
+
+echo "[verify] db:bootstrap -> $SCRATCH"
+BOOTSTRAP_DATABASE="$SCRATCH" ./bin/rails db:bootstrap
+
+echo "[verify] asserindo invariantes"
+fail=0
+q() { su -d "$SCRATCH" -tAc "$1" | tr -d '[:space:]'; }
+check() { if [ "$2" = "$3" ]; then echo "  ok: $1 ($3)"; else echo "  FAIL: $1 — esperado '$2', obtido '$3'"; fail=1; fi; }
+
+check "policies tenant_isolation" 9          "$(q "SELECT count(*) FROM pg_policy WHERE polname='tenant_isolation';")"
+check "owner conversations"       rota_admin "$(q "SELECT tableowner FROM pg_tables WHERE tablename='conversations';")"
+check "owner consents"            rota_admin "$(q "SELECT tableowner FROM pg_tables WHERE tablename='consents';")"
+check "owner municipalities"      rota_app   "$(q "SELECT tableowner FROM pg_tables WHERE tablename='municipalities';")"
+check "rota_app CREATE on public" f          "$(q "SELECT has_schema_privilege('rota_app','public','CREATE');")"
+check "rota_app USAGE on public"  t          "$(q "SELECT has_schema_privilege('rota_app','public','USAGE');")"
+check "ext citext"                1          "$(q "SELECT count(*) FROM pg_extension WHERE extname='citext';")"
+check "ext pgcrypto"              1          "$(q "SELECT count(*) FROM pg_extension WHERE extname='pgcrypto';")"
+
+if [ "$fail" = 0 ]; then echo "[verify] OK — bootstrap-from-zero íntegro"; else echo "[verify] FALHOU"; exit 1; fi
