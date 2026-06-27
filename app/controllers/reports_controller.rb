@@ -16,6 +16,7 @@ class ReportsController < ApplicationController
     render json: {
       tier: snapshot.payload["tier"],
       priority: snapshot.payload["priority"],
+      recommendation: snapshot.payload["recommendation"],
       summary: snapshot.payload["summary"],
       completed_at: snapshot.payload["completed_at"],
       expires_at: snapshot.expires_at&.iso8601

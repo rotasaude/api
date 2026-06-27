@@ -10,8 +10,8 @@
 module AdminRls
   # Ordem FK-safe (filhos antes de pais). DELETE é no-op em tabela vazia.
   CLEAN_TABLES = %w[
-    triages consents inbound_messages outbound_messages domain_events
-    processed_events report_snapshots dashboard_metrics
+    report_snapshots triages consents inbound_messages outbound_messages domain_events
+    processed_events dashboard_metrics
     alert_recipients consent_terms conversations protocol_definitions
     municipality_channels authors invitations memberships sessions
     identities municipalities users
