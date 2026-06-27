@@ -1,9 +1,13 @@
 # This file is copied to spec/ when you run 'rails generate rspec:install'
 require 'spec_helper'
-ENV['RAILS_ENV'] ||= 'test'
+# FORÇADO (não ||=): o container roda com RAILS_ENV=development; sem isto o rspec
+# conectaria no banco de DEV e specs não-transacionais (limpeza via DELETE)
+# apagariam dados reais. Specs sempre rodam em test.
+ENV['RAILS_ENV'] = 'test'
 require_relative '../config/environment'
 # Prevent database truncation if the environment is production
 abort("The Rails environment is running in production mode!") if Rails.env.production?
+abort("Specs must run in the test environment, got #{Rails.env}") unless Rails.env.test?
 # Uncomment the line below in case you have `--require rails_helper` in the `.rspec` file
 # that will avoid rails generators crashing because migrations haven't been run yet
 # return unless Rails.env.test?
