@@ -51,7 +51,7 @@ RSpec.describe GenerateReportJob do
 
   it "freezes the tier's recommendation into the payload" do
     triage = build_triage(tier: "alta", with_recs: true)
-    GenerateReportJob.new.handle(triage_id: triage.id)
+    GenerateReportJob.new.handle(triage_id: triage.id, **triage.outcome.symbolize_keys)
     snap = ReportSnapshot.find_by!(triage_id: triage.id)
     expect(snap.payload["recommendation"]).to eq(
       "title" => "Procure atendimento hoje", "body" => "Seus sintomas indicam prioridade alta."
@@ -60,7 +60,7 @@ RSpec.describe GenerateReportJob do
 
   it "freezes nil when the protocol has no recommendations" do
     triage = build_triage(tier: "alta", with_recs: false)
-    GenerateReportJob.new.handle(triage_id: triage.id)
+    GenerateReportJob.new.handle(triage_id: triage.id, **triage.outcome.symbolize_keys)
     snap = ReportSnapshot.find_by!(triage_id: triage.id)
     expect(snap.payload).to have_key("recommendation")
     expect(snap.payload["recommendation"]).to be_nil

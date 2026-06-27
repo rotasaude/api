@@ -3,8 +3,7 @@ class ReportSnapshot < ApplicationRecord
   belongs_to :triage
   belongs_to :protocol_definition
 
-  validates :token, :signature, :payload, presence: true
-  validates :outcome, exclusion: { in: [nil] }
+  validates :token, :signature, :payload, :outcome, presence: true
   validates :token, uniqueness: true
 
   scope :live, -> { where("expires_at > ?", Time.current) }
