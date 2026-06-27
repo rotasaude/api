@@ -26,7 +26,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_000020) do
     t.datetime "updated_at", null: false
     t.index ["municipality_id", "escalation_order"], name: "index_alert_recipients_on_municipality_id_and_escalation_order"
     t.index ["municipality_id"], name: "index_alert_recipients_on_municipality_id"
-    t.check_constraint "channel::text = ANY (ARRAY['whatsapp'::character varying, 'email'::character varying]::text[])", name: "ck_alert_recipients_channel"
+    t.check_constraint "channel::text = ANY (ARRAY['whatsapp'::character varying::text, 'email'::character varying::text])", name: "ck_alert_recipients_channel"
   end
 
   create_table "authors", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -75,7 +75,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_000020) do
     t.string "phone", null: false
     t.string "state", default: "greeting", null: false
     t.datetime "updated_at", null: false
-    t.index ["municipality_id", "phone"], name: "idx_conversations_active_per_tenant_phone", unique: true, where: "((state)::text = ANY ((ARRAY['awaiting_consent'::character varying, 'consented'::character varying, 'greeting'::character varying])::text[]))"
+    t.index ["municipality_id", "phone"], name: "idx_conversations_active_per_tenant_phone", unique: true, where: "((state)::text = ANY (ARRAY[('awaiting_consent'::character varying)::text, ('consented'::character varying)::text, ('greeting'::character varying)::text]))"
     t.index ["municipality_id"], name: "index_conversations_on_municipality_id"
     t.index ["state"], name: "index_conversations_on_state"
   end
@@ -160,7 +160,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_000020) do
     t.index ["municipality_id"], name: "index_memberships_on_municipality_id"
     t.index ["user_id"], name: "index_memberships_on_user_id"
     t.check_constraint "role::text <> 'platform_operator'::text OR municipality_id IS NULL", name: "ck_memberships_operator_global"
-    t.check_constraint "role::text = ANY (ARRAY['platform_operator'::character varying, 'municipal_admin'::character varying, 'protocol_author'::character varying, 'protocol_publisher'::character varying, 'viewer'::character varying]::text[])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['platform_operator'::character varying::text, 'municipal_admin'::character varying::text, 'protocol_author'::character varying::text, 'protocol_publisher'::character varying::text, 'viewer'::character varying::text])", name: "ck_memberships_role"
   end
 
   create_table "municipalities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -174,7 +174,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_000020) do
     t.datetime "updated_at", null: false
     t.index ["ibge_code"], name: "index_municipalities_on_ibge_code", unique: true, where: "(ibge_code IS NOT NULL)"
     t.index ["slug"], name: "index_municipalities_on_slug", unique: true
-    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'suspended'::character varying]::text[])", name: "ck_municipality_status"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying::text, 'suspended'::character varying::text])", name: "ck_municipality_status"
   end
 
   create_table "municipality_channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -232,7 +232,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_23_000020) do
     t.index ["municipality_id"], name: "index_protocol_definitions_on_municipality_id"
     t.index ["name", "municipality_id"], name: "idx_protocol_definitions_one_active_per_name_muni", unique: true, where: "((status)::text = 'active'::text)"
     t.index ["name", "version", "municipality_id"], name: "idx_protocol_definitions_name_version_muni", unique: true
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'in_review'::character varying, 'published'::character varying, 'active'::character varying, 'retired'::character varying]::text[])", name: "ck_protocol_definitions_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'in_review'::character varying::text, 'published'::character varying::text, 'active'::character varying::text, 'retired'::character varying::text])", name: "ck_protocol_definitions_status"
   end
 
   create_table "report_snapshots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

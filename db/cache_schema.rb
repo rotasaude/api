@@ -10,11 +10,24 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_23_000020) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
+
+  create_table "alert_recipients", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "channel", null: false
+    t.datetime "created_at", null: false
+    t.string "destination", null: false
+    t.integer "escalation_order", default: 0, null: false
+    t.uuid "municipality_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["municipality_id", "escalation_order"], name: "index_alert_recipients_on_municipality_id_and_escalation_order"
+    t.index ["municipality_id"], name: "index_alert_recipients_on_municipality_id"
+    t.check_constraint "channel::text = ANY (ARRAY['whatsapp'::character varying::text, 'email'::character varying::text])", name: "ck_alert_recipients_channel"
+  end
 
   create_table "authors", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
@@ -26,6 +39,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
     t.index ["email"], name: "index_authors_on_email", unique: true
     t.index ["municipality_id"], name: "index_authors_on_municipality_id"
     t.index ["token"], name: "index_authors_on_token", unique: true
+  end
+
+  create_table "consent_terms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "body", null: false
+    t.datetime "created_at", null: false
+    t.uuid "municipality_id", null: false
+    t.datetime "published_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "version", null: false
+    t.index ["municipality_id", "version"], name: "index_consent_terms_on_municipality_id_and_version", unique: true
+    t.index ["municipality_id"], name: "index_consent_terms_on_municipality_id"
   end
 
   create_table "consents", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -51,8 +75,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
     t.string "phone", null: false
     t.string "state", default: "greeting", null: false
     t.datetime "updated_at", null: false
+    t.index ["municipality_id", "phone"], name: "idx_conversations_active_per_tenant_phone", unique: true, where: "((state)::text = ANY (ARRAY[('awaiting_consent'::character varying)::text, ('consented'::character varying)::text, ('greeting'::character varying)::text]))"
     t.index ["municipality_id"], name: "index_conversations_on_municipality_id"
-    t.index ["phone"], name: "index_conversations_on_phone", unique: true
     t.index ["state"], name: "index_conversations_on_state"
   end
 
@@ -71,7 +95,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
 
   create_table "domain_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.uuid "municipality_id", null: false
+    t.uuid "municipality_id"
     t.string "name", null: false
     t.datetime "occurred_at", null: false
     t.jsonb "payload", default: {}, null: false
@@ -107,16 +131,64 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
     t.index ["municipality_id"], name: "index_inbound_messages_on_municipality_id"
   end
 
+  create_table "invitations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "accepted_at"
+    t.datetime "created_at", null: false
+    t.string "email", null: false
+    t.datetime "expires_at", null: false
+    t.uuid "invited_by_id", null: false
+    t.uuid "municipality_id"
+    t.string "role", null: false
+    t.string "token", null: false
+    t.datetime "updated_at", null: false
+    t.index ["invited_by_id"], name: "index_invitations_on_invited_by_id"
+    t.index ["municipality_id"], name: "index_invitations_on_municipality_id"
+    t.index ["token"], name: "index_invitations_on_token", unique: true
+  end
+
+  create_table "memberships", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "granted_at", null: false
+    t.uuid "granted_by_id"
+    t.uuid "municipality_id"
+    t.datetime "revoked_at"
+    t.string "role", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "user_id", null: false
+    t.index "user_id, COALESCE(municipality_id, '00000000-0000-0000-0000-000000000000'::uuid), role", name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
+    t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
+    t.index ["municipality_id"], name: "index_memberships_on_municipality_id"
+    t.index ["user_id"], name: "index_memberships_on_user_id"
+    t.check_constraint "role::text <> 'platform_operator'::text OR municipality_id IS NULL", name: "ck_memberships_operator_global"
+    t.check_constraint "role::text = ANY (ARRAY['platform_operator'::character varying::text, 'municipal_admin'::character varying::text, 'protocol_author'::character varying::text, 'protocol_publisher'::character varying::text, 'viewer'::character varying::text])", name: "ck_memberships_role"
+  end
+
   create_table "municipalities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "ibge_code"
     t.string "name", null: false
     t.jsonb "settings", default: {}, null: false
     t.string "slug", null: false
+    t.string "status", default: "active", null: false
     t.string "uf", limit: 2
     t.datetime "updated_at", null: false
     t.index ["ibge_code"], name: "index_municipalities_on_ibge_code", unique: true, where: "(ibge_code IS NOT NULL)"
     t.index ["slug"], name: "index_municipalities_on_slug", unique: true
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying::text, 'suspended'::character varying::text])", name: "ck_municipality_status"
+  end
+
+  create_table "municipality_channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "access_token", null: false
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.string "display_phone_number", null: false
+    t.uuid "municipality_id", null: false
+    t.string "phone_number_id", null: false
+    t.datetime "updated_at", null: false
+    t.string "waba_id", null: false
+    t.index ["municipality_id", "active"], name: "index_municipality_channels_on_municipality_id_and_active"
+    t.index ["municipality_id"], name: "index_municipality_channels_on_municipality_id"
+    t.index ["phone_number_id"], name: "index_municipality_channels_on_phone_number_id", unique: true
   end
 
   create_table "outbound_messages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -160,7 +232,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
     t.index ["municipality_id"], name: "index_protocol_definitions_on_municipality_id"
     t.index ["name", "municipality_id"], name: "idx_protocol_definitions_one_active_per_name_muni", unique: true, where: "((status)::text = 'active'::text)"
     t.index ["name", "version", "municipality_id"], name: "idx_protocol_definitions_name_version_muni", unique: true
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'active'::character varying::text, 'retired'::character varying::text])", name: "ck_protocol_definitions_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'in_review'::character varying::text, 'published'::character varying::text, 'active'::character varying::text, 'retired'::character varying::text])", name: "ck_protocol_definitions_status"
   end
 
   create_table "report_snapshots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -172,19 +244,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
     t.uuid "protocol_definition_id", null: false
     t.string "signature", null: false
     t.string "token", null: false
-    t.uuid "triagem_id", null: false
+    t.uuid "triage_id", null: false
     t.datetime "updated_at", null: false
     t.index ["expires_at"], name: "index_report_snapshots_on_expires_at"
     t.index ["municipality_id"], name: "index_report_snapshots_on_municipality_id"
     t.index ["protocol_definition_id"], name: "index_report_snapshots_on_protocol_definition_id"
     t.index ["token"], name: "index_report_snapshots_on_token", unique: true
-    t.index ["triagem_id"], name: "idx_report_snapshots_one_per_triagem", unique: true
-    t.index ["triagem_id"], name: "index_report_snapshots_on_triagem_id"
+    t.index ["triage_id"], name: "idx_report_snapshots_one_per_triagem", unique: true
+    t.index ["triage_id"], name: "index_report_snapshots_on_triage_id"
   end
 
   create_table "sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "ip_address"
+    t.datetime "mfa_verified_at"
     t.datetime "updated_at", null: false
     t.string "user_agent"
     t.uuid "user_id", null: false
@@ -323,7 +396,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
-  create_table "triagens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+  create_table "triages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.jsonb "answers", default: {}, null: false
     t.datetime "completed_at"
     t.uuid "conversation_id", null: false
@@ -337,15 +410,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
     t.string "status", default: "in_progress", null: false
     t.string "tier"
     t.datetime "updated_at", null: false
-    t.index ["conversation_id", "created_at"], name: "index_triagens_on_conversation_id_and_created_at"
-    t.index ["conversation_id", "status"], name: "index_triagens_on_conversation_id_and_status"
+    t.index ["conversation_id", "created_at"], name: "index_triages_on_conversation_id_and_created_at"
+    t.index ["conversation_id", "status"], name: "index_triages_on_conversation_id_and_status"
     t.index ["conversation_id"], name: "idx_triagens_one_in_progress_per_conversation", unique: true, where: "((status)::text = 'in_progress'::text)"
-    t.index ["conversation_id"], name: "index_triagens_on_conversation_id"
-    t.index ["municipality_id"], name: "index_triagens_on_municipality_id"
-    t.index ["protocol_definition_id"], name: "index_triagens_on_protocol_definition_id"
-    t.index ["status"], name: "index_triagens_on_status"
-    t.index ["tier"], name: "index_triagens_on_tier"
+    t.index ["conversation_id"], name: "index_triages_on_conversation_id"
+    t.index ["municipality_id"], name: "index_triages_on_municipality_id"
+    t.index ["protocol_definition_id"], name: "index_triages_on_protocol_definition_id"
+    t.index ["status"], name: "index_triages_on_status"
+    t.index ["tier"], name: "index_triages_on_tier"
     t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying::text, 'completed'::character varying::text, 'aborted_by_revocation'::character varying::text])", name: "ck_triagens_status"
+  end
+
+  create_table "unknown_channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "first_seen_at", null: false
+    t.integer "hits", default: 1, null: false
+    t.datetime "last_seen_at", null: false
+    t.string "phone_number_id", null: false
+    t.jsonb "sample_change", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.index ["phone_number_id"], name: "index_unknown_channels_on_phone_number_id", unique: true
   end
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -360,7 +444,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
     t.index "lower((email_address)::text)", name: "index_users_on_lower_email", unique: true
   end
 
+  add_foreign_key "alert_recipients", "municipalities"
   add_foreign_key "authors", "municipalities"
+  add_foreign_key "consent_terms", "municipalities"
   add_foreign_key "consents", "conversations"
   add_foreign_key "consents", "municipalities"
   add_foreign_key "conversations", "municipalities"
@@ -368,12 +454,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
   add_foreign_key "domain_events", "municipalities"
   add_foreign_key "identities", "users"
   add_foreign_key "inbound_messages", "municipalities"
+  add_foreign_key "invitations", "municipalities"
+  add_foreign_key "invitations", "users", column: "invited_by_id"
+  add_foreign_key "memberships", "municipalities"
+  add_foreign_key "memberships", "users"
+  add_foreign_key "memberships", "users", column: "granted_by_id"
+  add_foreign_key "municipality_channels", "municipalities"
   add_foreign_key "outbound_messages", "municipalities"
   add_foreign_key "processed_events", "municipalities"
   add_foreign_key "protocol_definitions", "municipalities"
   add_foreign_key "report_snapshots", "municipalities"
   add_foreign_key "report_snapshots", "protocol_definitions"
-  add_foreign_key "report_snapshots", "triagens"
+  add_foreign_key "report_snapshots", "triages"
   add_foreign_key "sessions", "users"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
@@ -381,7 +473,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000040) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
-  add_foreign_key "triagens", "conversations"
-  add_foreign_key "triagens", "municipalities"
-  add_foreign_key "triagens", "protocol_definitions"
+  add_foreign_key "triages", "conversations"
+  add_foreign_key "triages", "municipalities"
+  add_foreign_key "triages", "protocol_definitions"
 end
