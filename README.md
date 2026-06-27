@@ -10,6 +10,9 @@ cru. Por isso o rebuild from-zero usa `db/structure.sql` (gerado por `pg_dump`):
   `RAILS_ENV`). É o que `start.sh --reset` usa.
 - `rails db:bootstrap:dump` — regenera `db/structure.sql`. **Rode e commite sempre
   que uma migration mexer em estrutura/RLS** (depois de aplicar a migration no dev).
+  Mantenha `db/migrate/*.rb` e `db/structure.sql` sincronizados: o bootstrap stamps
+  `schema_migrations` pelos nomes dos arquivos em `db/migrate/`, então não delete
+  migrations sem re-gerar `structure.sql`.
 - `bin/verify-bootstrap` — valida o bootstrap from-zero num banco-rascunho.
 
 Migrations incrementais no dev seguem via `db:migrate` (entrypoint), normalmente.

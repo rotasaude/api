@@ -54,6 +54,9 @@ namespace :db do
                   .map { |f| File.basename(f).split("_").first }
                   .sort
     if versions.any?
+      unless versions.all? { |v| v.match?(/\A\d+\z/) }
+        abort "[db:bootstrap] versões de migration não-numéricas: #{versions.reject { |v| v.match?(/\A\d+\z/) }.inspect}"
+      end
       values = versions.map { |v| "('#{v}')" }.join(", ")
       stamp_sql = "INSERT INTO schema_migrations (version) VALUES #{values} ON CONFLICT DO NOTHING;"
       out, st = Open3.capture2e(env, *base, "-d", p[:db], "-c", stamp_sql)

@@ -32,5 +32,6 @@ check "rota_app CREATE on public" f          "$(q "SELECT has_schema_privilege('
 check "rota_app USAGE on public"  t          "$(q "SELECT has_schema_privilege('rota_app','public','USAGE');")"
 check "ext citext"                1          "$(q "SELECT count(*) FROM pg_extension WHERE extname='citext';")"
 check "ext pgcrypto"              1          "$(q "SELECT count(*) FROM pg_extension WHERE extname='pgcrypto';")"
+check "schema_migrations populated" true     "$(q "SELECT (count(*) > 0)::text FROM schema_migrations;")"
 
 if [ "$fail" = 0 ]; then echo "[verify] OK — bootstrap-from-zero íntegro"; else echo "[verify] FALHOU"; exit 1; fi
