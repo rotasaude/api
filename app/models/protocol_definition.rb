@@ -28,6 +28,6 @@ class ProtocolDefinition < ApplicationRecord
   end
 
   def invalidate_cache
-    Rails.cache.delete_matched("protocols.current/#{name}/*")
+    Protocols.invalidate(name)
   end
 end

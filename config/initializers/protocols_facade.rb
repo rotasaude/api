@@ -11,8 +11,7 @@ Rails.application.config.to_prepare do
     class << self
       # Versão ativa para um par (municipality_id, name). Override por município ganha.
       def current(municipality_id, name: "triage-respiratoria")
-        cache_key = ["protocols.current", name, municipality_id].join("/")
-        Rails.cache.fetch(cache_key) do
+        Rails.cache.fetch(current_cache_key(name, municipality_id)) do
           record = ProtocolDefinition
             .where(name: name, status: "active")
             .where(municipality_id: [municipality_id, nil])
@@ -32,6 +31,26 @@ Rails.application.config.to_prepare do
         )
         raise NotFound, "definition #{name}@#{version} not found" unless record
         Definitions.build(record.definition)
+      end
+
+      # Invalidate every cached resolution for `name` across municipalities.
+      # SolidCache (dev/prod) has no #delete_matched, so instead of pattern-
+      # deleting keys we bump a per-name generation woven into the cache key,
+      # making the old entries unreachable. Same scope as the former wildcard.
+      def invalidate(name)
+        key = generation_key(name)
+        Rails.cache.write(key, Rails.cache.read(key).to_i + 1)
+      end
+
+      private
+
+      def current_cache_key(name, municipality_id)
+        generation = Rails.cache.read(generation_key(name)).to_i
+        ["protocols.current", generation, name, municipality_id].join("/")
+      end
+
+      def generation_key(name)
+        ["protocols.generation", name].join("/")
       end
     end
   end
