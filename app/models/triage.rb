@@ -3,6 +3,7 @@
 class Triage < ApplicationRecord
   belongs_to :conversation
   belongs_to :protocol_definition
+  has_one :report_snapshot
 
   enum :status, { in_progress: "in_progress", completed: "completed" }, prefix: true
 
