@@ -26,6 +26,7 @@ class ReportSnapshot < ApplicationRecord
   end
 
   def url
-    Rails.application.routes.url_helpers.report_url(token: token)
+    base = ENV.fetch("WPDA_PUBLIC_BASE", "http://localhost:5176/wpda")
+    "#{base.chomp('/')}/?token=#{token}"
   end
 end
