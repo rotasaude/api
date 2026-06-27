@@ -90,20 +90,25 @@ class Admin::Api::Period
     raise Admin::Api::InvalidScope, "datas inválidas"
   end
 
+  # Formato do bucket, alinhado entre Postgres (to_char) e Ruby (strftime):
+  # dia → "YYYY-MM-DD"; hora → "YYYY-MM-DD HH24"/"%Y-%m-%d %H".
+  PG_FMT  = { hour: "YYYY-MM-DD HH24", day: "YYYY-MM-DD" }.freeze
+  RB_FMT  = { hour: "%Y-%m-%d %H",     day: "%Y-%m-%d" }.freeze
+
   def group_expr(col)
-    # date_trunc respeita timezone se a coluna for timestamptz; o app já roda
-    # em UTC e Postgres converte ao truncar. Para granularidade de hora usamos
-    # 'hour'; caso contrário 'day'.
-    Arel.sql("date_trunc('#{@bucket}', #{col} AT TIME ZONE '#{@tz.name}')")
+    # As colunas datetime são `timestamp without time zone` armazenadas em UTC
+    # (convenção do Rails). Precisamos converter UTC->local ANTES de truncar:
+    # `(col AT TIME ZONE 'UTC')` rotula o valor como UTC (vira timestamptz) e o
+    # `AT TIME ZONE '<tz>'` seguinte traz o relógio de parede local. Aplicar um
+    # único AT TIME ZONE trataria o valor como se já fosse local, deslocando-o.
+    local = "(#{col} AT TIME ZONE 'UTC') AT TIME ZONE '#{@tz.name}'"
+    # Emitimos a chave já formatada (texto), evitando a ambiguidade de round-trip
+    # entre timestamp/timestamptz ao comparar em fill_buckets.
+    Arel.sql("to_char(date_trunc('#{@bucket}', #{local}), '#{PG_FMT.fetch(@bucket)}')")
   end
 
   def fill_buckets(grouped)
-    buckets.map do |b|
-      key = b.in_time_zone(@tz)
-      key = (@bucket == :hour ? key.beginning_of_hour : key.beginning_of_day)
-      # date_trunc devolve TimestampTZ; comparamos por valor convertido.
-      pair = grouped.find { |k, _| k && k.in_time_zone(@tz) == key }
-      (pair && pair[1]) || 0
-    end
+    fmt = RB_FMT.fetch(@bucket)
+    buckets.map { |b| grouped[b.in_time_zone(@tz).strftime(fmt)] || 0 }
   end
 end
