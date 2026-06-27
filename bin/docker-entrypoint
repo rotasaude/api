@@ -3,10 +3,29 @@
 # para evitar corrida quando há mais de uma réplica de worker.
 
 if [ "${1}" = "./bin/rails" ] && [ "${2}" = "server" ]; then
-  echo "[entrypoint] role=web — running db:prepare as admin"
-  # db:prepare must run as admin to have permissions for schema modifications (RLS)
-  ./bin/rails runner 'ApplicationRecord.connected_to(role: :admin) { system "bin/rails db:create" }'
-  ./bin/rails runner 'ApplicationRecord.connected_to(role: :admin) { system "bin/rails db:schema:load" }'
+  echo "[entrypoint] role=web — applying pending migrations"
+  # Aplica migrations INCREMENTAIS sobre um banco já provisionado. O bootstrap do
+  # zero (database, roles, extensions, ownership/RLS) é responsabilidade do start.sh
+  # no dev e da infra no prod — NÃO deste entrypoint. Aqui db:migrate roda sob a
+  # conexão primary (rota_app, least privilege — ADR-0019); migrations que precisam
+  # de privilégio de dono/BYPASSRLS abrem sua própria PG.connect(user: rota_admin)
+  # (ex.: 20260620000020_enable_rls_on_data_plane). Por isso rota_app sozinho NÃO
+  # consegue subir um banco vazio (faltam CREATE EXTENSION/ROLE) — e tudo bem.
+  #
+  # Usamos db:migrate e NÃO db:schema:load porque schema:load:
+  #   - roda com force: :cascade e falha ao dropar as tabelas do data plane
+  #     (dono rota_admin) como rota_app -> "must be owner of table ...";
+  #   - não reproduz as políticas RLS (SQL cru nas migrations, não representável
+  #     no schema.rb ruby), o que quebraria o ADR-0019.
+  # db:migrate é idempotente: no-op quando já migrado, aplica o pendente caso contrário.
+  #
+  # db:create é best-effort: o banco é provisionado fora do container e rota_app não
+  # tem CREATEDB, então db:create sempre falha aqui ("permission denied to create
+  # database"). Mantemos como tentativa não-fatal; db:migrate falha alto se o banco
+  # realmente não existir. (O antigo runner+system engolia esse exit code, mascarando
+  # o erro sob o set -e.)
+  ./bin/rails db:create 2>/dev/null || true
+  ./bin/rails db:migrate
 fi
 
 exec "${@}"

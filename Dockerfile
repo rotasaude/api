@@ -47,6 +47,35 @@ RUN bundle exec bootsnap precompile app/ lib/
 # papel web, não em build time (ADR-0002).
 
 
+# --- Stage de desenvolvimento/test (usado APENAS pelo docker-compose local) -----
+# Inclui os grupos development/test + build tools (herdados do stage `build`) para
+# rodar a suíte RSpec dentro do container, de forma durável (sobrevive a recreate).
+# Produção NÃO usa este stage — é buildada via Kamal a partir do stage final slim
+# (ADR-0002). O docker-compose aponta `target: development`.
+FROM build AS development
+
+ENV BUNDLE_DEPLOYMENT="0" \
+    BUNDLE_WITHOUT="" \
+    RAILS_ENV="development"
+
+# O stage `build` instalou só os grupos de produção (BUNDLE_WITHOUT=development:test).
+# Reinstala incluindo development/test. Single-job evita o crash do instalador
+# paralelo do bundler observado neste ambiente; retry cobre falhas transitórias.
+RUN bundle config set --local jobs 1 && bundle install --retry 5
+
+RUN groupadd --system --gid 1000 rails && \
+    useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash && \
+    chown -R rails:rails db log storage tmp
+USER 1000:1000
+
+ENV LD_PRELOAD="libjemalloc.so.2" \
+    MALLOC_CONF="dirty_decay_ms:1000,narenas:2,background_thread:true"
+
+ENTRYPOINT ["/rails/bin/docker-entrypoint"]
+EXPOSE 3000
+CMD ["./bin/rails", "server"]
+
+
 FROM base
 
 COPY --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
