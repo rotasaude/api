@@ -19,7 +19,12 @@ namespace :db do
     }
   end
 
-  desc "Provisiona roles e carrega db/structure.sql (RLS) como superuser. Idempotente."
+  # PRECONDIÇÃO: a DB-alvo deve estar VAZIA. O load do structure.sql usa CREATE TABLE
+  # sem IF NOT EXISTS — re-rodar contra uma DB já populada falha. Os callers garantem
+  # banco vazio: start.sh --reset faz createdb fresco; bin/verify-bootstrap dropa+recria
+  # o scratch. (Os passos de roles e de carimbo de schema_migrations são idempotentes;
+  # o load do schema NÃO é.)
+  desc "Cria roles e carrega db/structure.sql (RLS) como superuser numa DB VAZIA."
   task bootstrap: :environment do
     p = bootstrap_conn_params
     abort "[db:bootstrap] #{STRUCTURE_SQL} não existe — rode `rails db:bootstrap:dump`." unless File.exist?(STRUCTURE_SQL)
