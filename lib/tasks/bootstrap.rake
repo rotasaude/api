@@ -44,6 +44,22 @@ namespace :db do
     out, st = Open3.capture2e(env, *base, "-d", p[:db], "-f", STRUCTURE_SQL)
     abort "[db:bootstrap] falha no load do structure.sql:\n#{out}" unless st.success?
 
+    # (3/3) Carimba schema_migrations para que db:migrate do entrypoint seja no-op.
+    # structure.sql é --schema-only; schema_migrations fica vazia após o load.
+    # Sem esse passo, db:migrate tentaria re-rodar todas as migrations como rota_app,
+    # que não tem CREATE no schema public (least-priv ADR-0019) e falharia.
+    puts "[db:bootstrap] (3/3) carimbando schema_migrations em #{p[:db]}"
+    migration_dir = File.expand_path("../../db/migrate", __dir__)
+    versions = Dir.glob("#{migration_dir}/[0-9]*.rb")
+                  .map { |f| File.basename(f).split("_").first }
+                  .sort
+    if versions.any?
+      values = versions.map { |v| "('#{v}')" }.join(", ")
+      stamp_sql = "INSERT INTO schema_migrations (version) VALUES #{values} ON CONFLICT DO NOTHING;"
+      out, st = Open3.capture2e(env, *base, "-d", p[:db], "-c", stamp_sql)
+      abort "[db:bootstrap] falha ao carimbar schema_migrations:\n#{out}" unless st.success?
+    end
+
     puts "[db:bootstrap] OK — #{p[:db]} provisionado do zero (com RLS)."
   end
 
