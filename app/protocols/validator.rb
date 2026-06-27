@@ -52,7 +52,30 @@ module Protocols
       end
 
       errors << "graph has a cycle" if cycle?(definition["steps"])
+      errors.concat(recommendation_errors)
       errors
+    end
+
+    def recommendation_errors
+      recs = definition["recommendations"]
+      return [] unless recs.is_a?(Hash)
+      tiers = declared_tiers
+      recs.keys.reject { |k| tiers.include?(k) }.map { |k| "recommendation for unknown tier #{k}" }
+    end
+
+    def declared_tiers
+      scoring = definition["scoring"]
+      return Set.new unless scoring.is_a?(Hash)
+      case scoring["type"]
+      when "weighted"
+        (scoring["thresholds"] || {}).keys.to_set
+      when "decision_table"
+        tiers = Array(scoring["rules"]).map { |r| r["tier"] }
+        tiers << scoring.dig("fallback", "tier")
+        tiers.compact.to_set
+      else
+        Set.new
+      end
     end
 
     def cycle?(steps)
