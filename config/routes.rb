@@ -48,6 +48,12 @@ Rails.application.routes.draw do
     post ":name/gate",    to: "protocols#gate",    as: :protocol_gate
   end
 
+  # Autoria de protocolo (editor do dashboard) — sessão municipal + RLS + author.
+  # Escrita NÃO entra em /admin/api (read-only §10). Ver F-03.12.
+  scope "/authoring/protocols" do
+    post "gate", to: "authoring/protocols#gate"
+  end
+
   # Publicação de protocolo — exige step-up MFA (ADR-0022 + ADR-0016)
   post "/protocols/:version/publish", to: "publications#create"
 
