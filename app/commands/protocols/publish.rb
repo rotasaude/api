@@ -33,6 +33,9 @@ module Protocols
         return Result.fail(:invalid_state, message: "só draft/in_review pode ser publicado (está #{protocol.status})")
       end
 
+      gate = Protocols::Gate.call(protocol.definition)
+      return Result.fail(:invalid, message: gate.errors.join("; ")) unless gate.valid?
+
       ApplicationRecord.transaction do
         protocol.update!(status: "published")
 
