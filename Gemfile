@@ -33,6 +33,9 @@ group :test do
   gem "vcr"
 end
 
+# JSON Schema (draft 2020-12) validation for the protocol definition gate (F-03.9).
+gem "json_schemer"
+
 gem "bcrypt", "~> 3.1"
 gem "rotp", "~> 6.3"   # TOTP RFC 6238 — ADR-0022
 gem "jwt", "~> 2.8"    # OIDC id_token verification — ADR-0022 (gov.br seam)
