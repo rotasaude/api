@@ -17,6 +17,21 @@ module Authoring
       render json: { outcome: outcome.to_h }
     end
 
+    def draft
+      result = Protocols::SaveDraft.call(definition: definition_param, by: Current.user)
+      case result.reason
+      when nil
+        pd = result.payload[:protocol_definition]
+        render json: { id: pd.id, name: pd.name, version: pd.version, status: pd.status }
+      when :forbidden
+        head :forbidden
+      when :version_not_editable
+        render json: { error: "version_not_editable", message: result.message }, status: :unprocessable_entity
+      else
+        render json: { error: "invalid_definition", message: result.message }, status: :unprocessable_entity
+      end
+    end
+
     private
 
     def definition_param
