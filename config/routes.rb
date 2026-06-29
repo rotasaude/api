@@ -45,7 +45,7 @@ Rails.application.routes.draw do
   scope "/protocols" do
     get  ":name",         to: "protocols#show",    as: :protocol
     post ":name/preview", to: "protocols#preview", as: :protocol_preview
-    post "gate",          to: "protocols#gate",    as: :protocol_gate
+    post ":name/gate",    to: "protocols#gate",    as: :protocol_gate
   end
 
   # Publicação de protocolo — exige step-up MFA (ADR-0022 + ADR-0016)

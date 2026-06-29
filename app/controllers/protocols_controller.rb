@@ -25,10 +25,10 @@ class ProtocolsController < ApplicationController
     head :not_found
   end
 
-  # POST /protocols/:name/gate — valida uma definição candidata (linter + schema)
+  # POST /protocols/:name/gate — valida uma definição candidata (gate completo)
   def gate
     definition = params.require(:definition).to_unsafe_h
-    result = Protocols::Validator.call(definition)
+    result = Protocols::Gate.call(definition)
 
     if result.valid?
       render json: { valid: true }
