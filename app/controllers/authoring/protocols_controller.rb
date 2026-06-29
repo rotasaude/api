@@ -10,10 +10,21 @@ module Authoring
       render_gate(Protocols::Gate.call(definition_param))
     end
 
+    def preview
+      result = Protocols::Gate.call(definition_param)
+      return render_gate(result) unless result.valid?
+      outcome = Protocols::Definitions.build(definition_param).evaluate(answers_param)
+      render json: { outcome: outcome.to_h }
+    end
+
     private
 
     def definition_param
       params.require(:definition).to_unsafe_h
+    end
+
+    def answers_param
+      params.fetch(:answers, {}).to_unsafe_h
     end
 
     def render_gate(result)

@@ -35,7 +35,7 @@ module Protocols
       while (current = steps[cursor])
         answer = answers[current.id.to_s] || answers[current.id]
         return Outcome.pending(trail: trail, awaiting: current.id) if answer.nil?
-        trail << { step: current.id, answer: answer }
+        trail << { step: current.id, answer: answer, weight: current.weight_for(answer) }
         next_id = current.next_step_id(answer)
         break if next_id.nil?
         cursor = next_id.to_sym
