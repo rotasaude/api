@@ -10,6 +10,12 @@ Bundler.require(*Rails.groups)
 module Protocols
 end
 
+# Pré-declara Messaging para Zeitwerk usar como namespace de app/messaging/
+# em vez de torná-la um root top-level. Sem isso, app/messaging/reply.rb
+# carregaria como `Reply`, não `Messaging::Reply`. Ver F-03.3.
+module Messaging
+end
+
 require_relative "../lib/migration_helpers/rls"
 
 module RotaSaude
@@ -34,14 +40,18 @@ module RotaSaude
     # ADR-0001: Solid Queue é o adapter padrão.
     config.active_job.queue_adapter = :solid_queue
 
-    # Remove app/protocols/ dos roots default e re-registra com namespace.
-    # Rails 8 adiciona automaticamente todos os app/<subdir> como roots.
+    # Remove app/protocols/ e app/messaging/ dos roots default e re-registra
+    # com namespace. Rails 8 adiciona automaticamente todos os app/<subdir>
+    # como roots — sem essa remoção, os arquivos dentro seriam constantes
+    # top-level (e.g. Reply em vez de Messaging::Reply).
     protocols_root = Rails.root.join("app/protocols").to_s
-    config.autoload_paths   = config.autoload_paths.reject   { |p| p.to_s == protocols_root }
-    config.eager_load_paths = config.eager_load_paths.reject { |p| p.to_s == protocols_root }
+    messaging_root = Rails.root.join("app/messaging").to_s
+    config.autoload_paths   = config.autoload_paths.reject   { |p| [protocols_root, messaging_root].include?(p.to_s) }
+    config.eager_load_paths = config.eager_load_paths.reject { |p| [protocols_root, messaging_root].include?(p.to_s) }
 
     initializer "rota_saude.protocols_namespace", after: :set_autoload_paths do
       Rails.autoloaders.main.push_dir(Rails.root.join("app/protocols").to_s, namespace: Protocols)
+      Rails.autoloaders.main.push_dir(Rails.root.join("app/messaging").to_s, namespace: Messaging)
     end
 
     config.time_zone = "America/Sao_Paulo"
