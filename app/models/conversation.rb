@@ -10,7 +10,8 @@ class Conversation < ApplicationRecord
     greeting:         "greeting",
     awaiting_consent: "awaiting_consent",
     consented:        "consented",
-    revoked:          "revoked"
+    revoked:          "revoked",
+    abandoned:        "abandoned"
   }, prefix: true
 
   def self.for(phone, municipality_id:)

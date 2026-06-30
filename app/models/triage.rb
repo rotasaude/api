@@ -5,7 +5,12 @@ class Triage < ApplicationRecord
   belongs_to :protocol_definition
   has_one :report_snapshot
 
-  enum :status, { in_progress: "in_progress", completed: "completed" }, prefix: true
+  enum :status, {
+    in_progress: "in_progress",
+    completed: "completed",
+    aborted_by_revocation: "aborted_by_revocation",
+    aborted_by_timeout: "aborted_by_timeout"
+  }, prefix: true
 
   before_validation :inherit_municipality_id, on: :create
 
