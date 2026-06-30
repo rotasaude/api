@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_30_194633) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_30_215915) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -418,7 +418,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_30_194633) do
     t.index ["protocol_definition_id"], name: "index_triages_on_protocol_definition_id"
     t.index ["status"], name: "index_triages_on_status"
     t.index ["tier"], name: "index_triages_on_tier"
-    t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying, 'completed'::character varying, 'aborted_by_revocation'::character varying, 'aborted_by_timeout'::character varying]::text[])", name: "ck_triagens_status"
+    t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying, 'completed'::character varying, 'aborted_by_revocation'::character varying, 'aborted_by_timeout'::character varying, 'aborted_by_cancellation'::character varying]::text[])", name: "ck_triagens_status"
   end
 
   create_table "unknown_channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

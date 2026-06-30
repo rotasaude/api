@@ -9,7 +9,8 @@ class Triage < ApplicationRecord
     in_progress: "in_progress",
     completed: "completed",
     aborted_by_revocation: "aborted_by_revocation",
-    aborted_by_timeout: "aborted_by_timeout"
+    aborted_by_timeout: "aborted_by_timeout",
+    aborted_by_cancellation: "aborted_by_cancellation"
   }, prefix: true
 
   before_validation :inherit_municipality_id, on: :create
