@@ -78,14 +78,16 @@ class ConversationAdvance
       return Result.new(reply: Messaging::Reply.text(t(:consent_failed))) if result.failure?
       begin_triage_and_ask
     when :revoke
-      RevokeConsent.call(conversation: @conversation, reason: text)
-      Result.new(reply: Messaging::Reply.text(t(:consent_revoked)))
+      @conversation.update!(state: :declined)
+      Result.new(reply: Messaging::Reply.text(t(:consent_declined)))
     else
       Result.new(reply: consent_reply(t(:consent_prompt)))
     end
   end
 
   def handle_consented
+    return cancel_and_finish if Consents.cancel?(text)
+
     triage = active_triage || begin_triage_or_nil
     return Result.new(reply: Messaging::Reply.text(t(:no_protocol))) unless triage
 
@@ -93,7 +95,7 @@ class ConversationAdvance
     return Result.new(reply: Messaging::Reply.text(reason_text(result.reason))) if result.failure?
 
     outcome = result.payload[:outcome]
-    return Result.new(reply: nil) if outcome.terminal?
+    return complete_and_finish if outcome.terminal?
 
     triage.reload
     Result.new(reply: step_reply(triage, outcome.awaiting, :triage_next))
@@ -101,6 +103,20 @@ class ConversationAdvance
 
   def active_triage
     @conversation.triages.where(status: :in_progress).order(created_at: :desc).first
+  end
+
+  def complete_and_finish
+    @conversation.update!(state: :completed)
+    Result.new(reply: nil)
+  end
+
+  def cancel_and_finish
+    @conversation.triages.where(status: :in_progress)
+                 .order(created_at: :desc).first&.update!(
+                   status: :aborted_by_cancellation, completed_at: Time.current
+                 )
+    @conversation.update!(state: :cancelled)
+    Result.new(reply: Messaging::Reply.text(t(:triage_cancelled)))
   end
 
   def begin_triage_and_ask

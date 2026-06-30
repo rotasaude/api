@@ -5,6 +5,8 @@ pt-BR:
     greeting: "Olá! Para começar uma triagem, preciso do seu consentimento para usar suas respostas. Você concorda? (sim/não)"
     consent_prompt: "Não entendi. Você concorda com o uso dos seus dados para uma triagem? (sim/não)"
     consent_revoked: "Consentimento revogado. Para retomar, envie \"olá\" a qualquer momento."
+    consent_declined: "Tudo bem, não vamos seguir. Envie \"olá\" se mudar de ideia."
+    triage_cancelled: "Triagem cancelada. Envie \"olá\" para recomeçar."
     consent_failed: "Não consegui registrar seu consentimento agora. Tente novamente."
     no_protocol: "No momento não temos um protocolo de triagem ativo nesta cidade."
     triage_invalid_answer: "Resposta inválida. Tente responder à pergunta anterior novamente."

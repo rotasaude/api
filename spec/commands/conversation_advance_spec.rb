@@ -111,20 +111,13 @@ RSpec.describe ConversationAdvance do
       end
     end
 
-    context "com não" do
+    context "com não (recusa o consentimento)" do
       let(:raw_body) { "não" }
 
-      it "responde com texto de revogação e move conversation para revoked" do
-        conversation.consents.create!(
-          version: Consents.current_version(muni.id),
-          policy_text_sha: Consents.policy_text_sha(Consents.current_version(muni.id)),
-          given_at: 1.minute.ago,
-          channel: "whatsapp",
-          evidence: { text: "sim" }
-        )
+      it "responde com texto de recusa e move conversation para declined" do
         result = described_class.call(conversation: conversation, inbound: inbound)
-        expect(result.reply.body).to eq(I18n.t("conversation_advance.consent_revoked"))
-        expect(conversation.reload.state).to eq("revoked")
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.consent_declined"))
+        expect(conversation.reload.state).to eq("declined")
       end
     end
 
@@ -153,17 +146,10 @@ RSpec.describe ConversationAdvance do
     context "quando toca o botão Não (id consent_revoke)" do
       let(:raw_body) { "consent_revoke" }
 
-      it "revoga e move para revoked" do
-        conversation.consents.create!(
-          version: Consents.current_version(muni.id),
-          policy_text_sha: Consents.policy_text_sha(Consents.current_version(muni.id)),
-          given_at: 1.minute.ago,
-          channel: "whatsapp",
-          evidence: { text: "sim" }
-        )
+      it "recusa e move para declined" do
         result = described_class.call(conversation: conversation, inbound: inbound)
-        expect(result.reply.body).to eq(I18n.t("conversation_advance.consent_revoked"))
-        expect(conversation.reload.state).to eq("revoked")
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.consent_declined"))
+        expect(conversation.reload.state).to eq("declined")
       end
     end
   end
@@ -225,6 +211,37 @@ RSpec.describe ConversationAdvance do
         triage = conversation.triages.first
         expect(triage.status).to eq("completed")
         expect(triage.tier).to eq("baixa")
+        expect(conversation.reload.state).to eq("completed")
+      end
+    end
+
+    context "quando o cidadão cancela no meio da triagem (cancelar)" do
+      let(:raw_body) { "true" } # 1ª chamada inicia a triage e avança para 'febre'
+
+      it "move a conversa para cancelled, aborta a triage e responde" do
+        described_class.call(conversation: conversation, inbound: inbound) # inicia triagem
+
+        cancel_inbound = InboundMessage.create!(
+          message_id: "wamid.#{SecureRandom.hex(6)}",
+          from: "+5511988888888",
+          kind: "text",
+          raw: { "type" => "text", "text" => { "body" => "cancelar" } }.to_json,
+          municipality_id: muni.id
+        )
+
+        result = described_class.call(conversation: conversation, inbound: cancel_inbound)
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.triage_cancelled"))
+        expect(conversation.reload.state).to eq("cancelled")
+        expect(conversation.triages.where(status: "aborted_by_cancellation").count).to eq(1)
+      end
+    end
+
+    context "quando responde 'não' no meio da triagem (resposta válida, não cancela)" do
+      let(:raw_body) { "não" }
+
+      it "não cancela; a conversa segue consented" do
+        described_class.call(conversation: conversation, inbound: inbound)
+        expect(conversation.reload.state).not_to eq("cancelled")
       end
     end
   end
