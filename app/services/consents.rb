@@ -11,6 +11,12 @@ module Consents
     /\bparar\b/i
   ].freeze
 
+  # Palavras-parada explícitas no MEIO da triagem (F-02.2). NÃO inclui "não",
+  # que é uma resposta booleana válida.
+  CANCEL_PATTERNS = [
+    /\A\s*(sair|parar|cancelar|encerrar)\s*\z/i
+  ].freeze
+
   # IDs de payload dos botões interativos de consentimento (F-02.4).
   GIVE_ID   = "consent_give".freeze
   REVOKE_ID = "consent_revoke".freeze
@@ -22,6 +28,11 @@ module Consents
     return :revoke  if REVOKE_PATTERNS.any? { |re| text.match?(re) }
     return :give    if GIVE_PATTERNS.any?  { |re| text.match?(re) }
     :unknown
+  end
+
+  def self.cancel?(text)
+    return false if text.nil?
+    CANCEL_PATTERNS.any? { |re| text.match?(re) }
   end
 
   def self.current_version(municipality_id)

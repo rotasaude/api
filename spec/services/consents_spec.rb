@@ -27,4 +27,23 @@ RSpec.describe Consents do
       expect(described_class.interpret(nil)).to eq(:unknown)
     end
   end
+
+  describe ".cancel?" do
+    %w[sair parar cancelar encerrar].each do |word|
+      it "is true for #{word}" do
+        expect(described_class.cancel?(word)).to be(true)
+      end
+    end
+
+    it "is false for 'não' (a valid boolean answer)" do
+      expect(described_class.cancel?("não")).to be(false)
+    end
+
+    it "is false for an ordinary answer / blank / nil" do
+      expect(described_class.cancel?("sim")).to be(false)
+      expect(described_class.cancel?("qualquer coisa")).to be(false)
+      expect(described_class.cancel?("")).to be(false)
+      expect(described_class.cancel?(nil)).to be(false)
+    end
+  end
 end
