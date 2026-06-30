@@ -1,0 +1,6 @@
+# Labels dos elementos interativos do WhatsApp (F-03.3).
+pt-BR:
+  whatsapp:
+    btn_yes: "Sim"
+    btn_no: "Não"
+    list_button: "Escolher"
