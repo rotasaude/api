@@ -11,10 +11,16 @@ module Consents
     /\bparar\b/i
   ].freeze
 
+  # IDs de payload dos botões interativos de consentimento (F-02.4).
+  GIVE_ID   = "consent_give".freeze
+  REVOKE_ID = "consent_revoke".freeze
+
   def self.interpret(text)
     return :unknown if text.nil? || text.strip.empty?
+    return :give    if text == GIVE_ID
+    return :revoke  if text == REVOKE_ID
     return :revoke  if REVOKE_PATTERNS.any? { |re| text.match?(re) }
-    return :give    if GIVE_PATTERNS.any? { |re| text.match?(re) }
+    return :give    if GIVE_PATTERNS.any?  { |re| text.match?(re) }
     :unknown
   end
 
