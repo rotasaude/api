@@ -64,9 +64,11 @@ RSpec.describe ConversationAdvance do
   describe "estado :greeting" do
     let(:raw_body) { "oi" }
 
-    it "responde com greeting e move para awaiting_consent" do
+    it "responde com greeting em botões e move para awaiting_consent" do
       result = described_class.call(conversation: conversation, inbound: inbound)
       expect(result.reply.body).to eq(I18n.t("conversation_advance.greeting"))
+      expect(result.reply.kind).to eq(:buttons)
+      expect(result.reply.options.map { |o| o[:id] }).to eq(%w[consent_give consent_revoke])
       expect(conversation.reload.state).to eq("awaiting_consent")
     end
   end
@@ -129,10 +131,39 @@ RSpec.describe ConversationAdvance do
     context "com texto unknown" do
       let(:raw_body) { "talvez" }
 
-      it "responde com prompt re-perguntando consent" do
+      it "responde com prompt re-perguntando consent em botões" do
         result = described_class.call(conversation: conversation, inbound: inbound)
         expect(result.reply.body).to eq(I18n.t("conversation_advance.consent_prompt"))
+        expect(result.reply.kind).to eq(:buttons)
+        expect(result.reply.options.map { |o| o[:id] }).to eq(%w[consent_give consent_revoke])
         expect(conversation.reload.state).to eq("awaiting_consent")
+      end
+    end
+
+    context "quando toca o botão Sim (id consent_give)" do
+      let(:raw_body) { "consent_give" }
+
+      it "registra consent e move para consented" do
+        result = described_class.call(conversation: conversation, inbound: inbound)
+        expect(conversation.reload.state).to eq("consented")
+        expect(conversation.consents.count).to eq(1)
+      end
+    end
+
+    context "quando toca o botão Não (id consent_revoke)" do
+      let(:raw_body) { "consent_revoke" }
+
+      it "revoga e move para revoked" do
+        conversation.consents.create!(
+          version: Consents.current_version(muni.id),
+          policy_text_sha: Consents.policy_text_sha(Consents.current_version(muni.id)),
+          given_at: 1.minute.ago,
+          channel: "whatsapp",
+          evidence: { text: "sim" }
+        )
+        result = described_class.call(conversation: conversation, inbound: inbound)
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.consent_revoked"))
+        expect(conversation.reload.state).to eq("revoked")
       end
     end
   end

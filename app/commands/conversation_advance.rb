@@ -41,6 +41,16 @@ class ConversationAdvance
     I18n.t("conversation_advance.#{key}", **vars)
   end
 
+  def consent_reply(body)
+    Messaging::Reply.buttons(
+      body: body,
+      options: [
+        { id: Consents::GIVE_ID,   title: I18n.t("whatsapp.btn_yes") },
+        { id: Consents::REVOKE_ID, title: I18n.t("whatsapp.btn_no") }
+      ]
+    )
+  end
+
   def text
     @text ||= extract_body
   end
@@ -54,7 +64,7 @@ class ConversationAdvance
 
   def handle_greeting
     @conversation.update!(state: :awaiting_consent)
-    Result.new(reply: Messaging::Reply.text(t(:greeting)))
+    Result.new(reply: consent_reply(t(:greeting)))
   end
 
   def handle_awaiting_consent
@@ -71,7 +81,7 @@ class ConversationAdvance
       RevokeConsent.call(conversation: @conversation, reason: text)
       Result.new(reply: Messaging::Reply.text(t(:consent_revoked)))
     else
-      Result.new(reply: Messaging::Reply.text(t(:consent_prompt)))
+      Result.new(reply: consent_reply(t(:consent_prompt)))
     end
   end
 
