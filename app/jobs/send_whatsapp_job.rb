@@ -10,6 +10,8 @@
 class SendWhatsappJob < ApplicationJob
   include TenantScopedJob
 
+  RESUME_TEMPLATE = Messaging::Reply.template(name: "rota_saude_resume").freeze
+
   def perform(to:, message:, municipality_id:, dedup_key: nil)
     with_tenant(municipality_id) do
       reply = Messaging::Reply.from_h(message)
@@ -43,9 +45,22 @@ class SendWhatsappJob < ApplicationJob
       end
 
       client = Whatsapp::Outbound.new(channel)
-      result = reply.text? ? client.deliver_text(to: to, body: reply.body)
-                           : client.deliver_interactive(to: to, reply: reply)
-      outbound.update!(status: result.status, response: result.body)
+
+      sent =
+        if reply.kind != :template && !Whatsapp::SessionWindow.open?(phone: to, municipality_id: municipality_id)
+          RESUME_TEMPLATE
+        else
+          reply
+        end
+
+      result =
+        case sent.kind
+        when :template then client.deliver_template(to: to, reply: sent)
+        when :text     then client.deliver_text(to: to, body: sent.body)
+        else                client.deliver_interactive(to: to, reply: sent)
+        end
+
+      outbound.update!(status: result.status, response: result.body, template: sent.to_h)
     end
   end
 
