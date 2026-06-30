@@ -239,9 +239,14 @@ RSpec.describe ConversationAdvance do
     context "quando responde 'não' no meio da triagem (resposta válida, não cancela)" do
       let(:raw_body) { "não" }
 
-      it "não cancela; a conversa segue consented" do
+      it "roteia ao motor como resposta (registra) e NÃO cancela" do
         described_class.call(conversation: conversation, inbound: inbound)
+        triage = conversation.triages.order(created_at: :desc).first
+        # Propriedade de segurança central: "não" é tratada como resposta da
+        # triagem (chega ao motor e é registrada), não como palavra de cancelamento.
+        expect(triage.answers.values).to include("não")
         expect(conversation.reload.state).not_to eq("cancelled")
+        expect(triage.status).not_to eq("aborted_by_cancellation")
       end
     end
   end
