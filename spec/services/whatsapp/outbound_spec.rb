@@ -25,4 +25,23 @@ RSpec.describe Whatsapp::Outbound do
     expect(rows.map { |r| r[:id] }).to eq(%w[a b])
     expect(payload[:interactive][:action][:button]).to eq(I18n.t("whatsapp.list_button"))
   end
+
+  describe "#template_payload" do
+    let(:reply) { Messaging::Reply.template(name: "rota_saude_resume", params: ["Curitiba"]) }
+
+    it "builds a type:template payload with name, language and body params" do
+      payload = described_class.new(channel).template_payload(to: "5511999", reply: reply)
+      expect(payload[:type]).to eq("template")
+      expect(payload[:template][:name]).to eq("rota_saude_resume")
+      expect(payload[:template][:language]).to eq({ code: "pt_BR" })
+      params = payload[:template][:components].first[:parameters]
+      expect(params).to eq([{ type: "text", text: "Curitiba" }])
+    end
+
+    it "emits empty components when there are no params" do
+      reply = Messaging::Reply.template(name: "rota_saude_resume")
+      payload = described_class.new(channel).template_payload(to: "5511999", reply: reply)
+      expect(payload[:template][:components]).to eq([])
+    end
+  end
 end

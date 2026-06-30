@@ -34,6 +34,20 @@ module Whatsapp
       { messaging_product: "whatsapp", to: to, type: "interactive", interactive: interactive }
     end
 
+    def deliver_template(to:, reply:)
+      post(template_payload(to: to, reply: reply))
+    end
+
+    # Corpo da requisição Graph para um template aprovado (F-01.7).
+    def template_payload(to:, reply:)
+      components = reply.params.empty? ? [] :
+        [{ type: "body", parameters: reply.params.map { |p| { type: "text", text: p } } }]
+      {
+        messaging_product: "whatsapp", to: to, type: "template",
+        template: { name: reply.name, language: { code: "pt_BR" }, components: components }
+      }
+    end
+
     private
 
     def post(payload)
