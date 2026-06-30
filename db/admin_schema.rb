@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_30_215915) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_30_225410) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -123,8 +123,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_30_215915) do
     t.string "kind", null: false
     t.string "message_id", null: false
     t.uuid "municipality_id", null: false
+    t.timestamptz "processed_at"
     t.text "raw", null: false
     t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "idx_inbound_messages_unprocessed", where: "(processed_at IS NULL)"
     t.index ["created_at"], name: "index_inbound_messages_on_created_at"
     t.index ["from"], name: "index_inbound_messages_on_from"
     t.index ["message_id"], name: "index_inbound_messages_on_message_id", unique: true
