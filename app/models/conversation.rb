@@ -20,11 +20,9 @@ class Conversation < ApplicationRecord
   def self.for(phone, municipality_id:)
     raise ArgumentError, "municipality_id obrigatório" if municipality_id.nil?
     where(municipality_id: municipality_id, phone: phone, state: %w[greeting awaiting_consent consented]).first ||
-      where(municipality_id: municipality_id, phone: phone).order(created_at: :desc).first ||
       create!(municipality_id: municipality_id, phone: phone, state: :greeting)
   rescue ActiveRecord::RecordNotUnique
-    where(municipality_id: municipality_id, phone: phone, state: %w[greeting awaiting_consent consented]).first ||
-      where(municipality_id: municipality_id, phone: phone).order(created_at: :desc).first!
+    where(municipality_id: municipality_id, phone: phone, state: %w[greeting awaiting_consent consented]).first!
   end
 
   # Mantém o método antigo como atalho deprecado durante a migração.

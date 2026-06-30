@@ -62,8 +62,25 @@ RSpec.describe ProcessInboundMessageJob, type: :job do
     expect(as_admin { Conversation.find(convo_id).state }).to eq("greeting")
   end
 
-  it "marks processed and enqueues nothing when there is no reply" do
-    muni_id, convo_id, inbound_id = seed(state: "revoked", body: "oi", message_id: "wamid.n1")
+  it "re-onboards when the phone's only conversation is terminal: fresh greeting + reply + processed" do
+    muni_id, old_convo_id, inbound_id = seed(state: "revoked", body: "oi", message_id: "wamid.reonb1")
+
+    expect {
+      described_class.new.perform(inbound_id, municipality_id: muni_id)
+    }.to have_enqueued_job(SendWhatsappJob).exactly(:once)
+
+    expect(as_admin { InboundMessage.find(inbound_id).processed_at }).to be_present
+    active = as_admin do
+      Conversation.where(municipality_id: muni_id, phone: "+5511990001", state: "awaiting_consent").first
+    end
+    expect(active).to be_present
+    expect(active.id).not_to eq(old_convo_id)
+    expect(as_admin { Conversation.find(old_convo_id).state }).to eq("revoked")
+  end
+
+  it "marks processed and enqueues nothing when ConversationAdvance yields no reply" do
+    muni_id, _convo_id, inbound_id = seed(state: "consented", body: "oi", message_id: "wamid.nr1")
+    allow(ConversationAdvance).to receive(:call).and_return(ConversationAdvance::Result.new(reply: nil))
 
     expect {
       described_class.new.perform(inbound_id, municipality_id: muni_id)
