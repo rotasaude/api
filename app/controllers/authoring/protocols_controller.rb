@@ -32,6 +32,14 @@ module Authoring
       end
     end
 
+    def definition
+      record = ProtocolDefinition.find_by(
+        name: params[:name], version: params[:version], municipality_id: Current.municipality_id
+      )
+      return head :not_found unless record
+      render json: { definition: record.definition }
+    end
+
     private
 
     def definition_param

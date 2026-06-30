@@ -51,6 +51,7 @@ Rails.application.routes.draw do
   # Autoria de protocolo (editor do dashboard) — sessão municipal + RLS + author.
   # Escrita NÃO entra em /admin/api (read-only §10). Ver F-03.12.
   scope "/authoring/protocols" do
+    get  "definition", to: "authoring/protocols#definition"
     post "gate",    to: "authoring/protocols#gate"
     post "preview", to: "authoring/protocols#preview"
     post "draft",   to: "authoring/protocols#draft"
