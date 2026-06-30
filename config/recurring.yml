@@ -18,6 +18,12 @@ default: &default
     schedule: "every day at 4:30am America/Sao_Paulo"
     args: { older_than_days: 60 }
 
+  sweep_abandoned:
+    class: SweepAbandonedConversationsJob
+    queue: housekeeping
+    schedule: "every day at 2am America/Sao_Paulo"
+    args: { idle_hours: 24 }
+
   reconcile_consents:
     class: ReconcileConsentsJob
     queue: housekeeping
