@@ -66,7 +66,7 @@ RSpec.describe ConversationAdvance do
 
     it "responde com greeting e move para awaiting_consent" do
       result = described_class.call(conversation: conversation, inbound: inbound)
-      expect(result.reply).to eq(I18n.t("conversation_advance.greeting"))
+      expect(result.reply.body).to eq(I18n.t("conversation_advance.greeting"))
       expect(conversation.reload.state).to eq("awaiting_consent")
     end
   end
@@ -79,7 +79,7 @@ RSpec.describe ConversationAdvance do
 
       it "reply NO_PROTOCOL_TEXT (consent foi registrado)" do
         result = described_class.call(conversation: conversation, inbound: inbound)
-        expect(result.reply).to eq(I18n.t("conversation_advance.no_protocol"))
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.no_protocol"))
         expect(conversation.reload.state).to eq("consented")
         expect(conversation.consents.count).to eq(1)
       end
@@ -100,9 +100,9 @@ RSpec.describe ConversationAdvance do
 
       it "registra consent, inicia triage e responde com prompt do primeiro step" do
         result = described_class.call(conversation: conversation, inbound: inbound)
-        expect(result.reply).to eq(
-          I18n.t("conversation_advance.triage_start", prompt: "Você está com tosse?")
-        )
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.triage_start", prompt: "Você está com tosse?"))
+        expect(result.reply.kind).to eq(:buttons)
+        expect(result.reply.options.map { |o| o[:id] }).to eq(%w[true false])
         expect(conversation.reload.state).to eq("consented")
         expect(conversation.triages.status_in_progress.count).to eq(1)
         expect(conversation.triages.first.current_step).to eq("tosse")
@@ -121,7 +121,7 @@ RSpec.describe ConversationAdvance do
           evidence: { text: "sim" }
         )
         result = described_class.call(conversation: conversation, inbound: inbound)
-        expect(result.reply).to eq(I18n.t("conversation_advance.consent_revoked"))
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.consent_revoked"))
         expect(conversation.reload.state).to eq("revoked")
       end
     end
@@ -131,7 +131,7 @@ RSpec.describe ConversationAdvance do
 
       it "responde com prompt re-perguntando consent" do
         result = described_class.call(conversation: conversation, inbound: inbound)
-        expect(result.reply).to eq(I18n.t("conversation_advance.consent_prompt"))
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.consent_prompt"))
         expect(conversation.reload.state).to eq("awaiting_consent")
       end
     end
@@ -165,7 +165,8 @@ RSpec.describe ConversationAdvance do
 
       it "avança para próximo step e responde com prompt do próximo" do
         result = described_class.call(conversation: conversation, inbound: inbound)
-        expect(result.reply).to eq(I18n.t("conversation_advance.triage_next", prompt: "Está com febre alta?"))
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.triage_next", prompt: "Está com febre alta?"))
+        expect(result.reply.kind).to eq(:buttons)
         triage = conversation.triages.status_in_progress.first
         expect(triage.current_step).to eq("febre")
         expect(triage.answers).to eq("tosse" => "true")
@@ -212,7 +213,7 @@ RSpec.describe ConversationAdvance do
     it "lida com raw inválido sem levantar" do
       inbound.update_column(:raw, "lixo não-JSON")
       result = described_class.call(conversation: conversation, inbound: inbound)
-      expect(result.reply).to eq(I18n.t("conversation_advance.greeting"))
+      expect(result.reply.body).to eq(I18n.t("conversation_advance.greeting"))
     end
   end
 end

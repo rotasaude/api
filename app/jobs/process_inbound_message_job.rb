@@ -10,7 +10,7 @@ class ProcessInboundMessageJob < ApplicationJob
         # Política e maquina de estado da conversa vivem no domínio (ADR-0012).
         # Aqui só garantimos o tenant scoping e o lock.
         result = ConversationAdvance.call(conversation: conversation, inbound: inbound) if defined?(ConversationAdvance)
-        SendWhatsappJob.perform_later(to: inbound.from, body: result.reply, municipality_id: municipality_id) if result&.reply.present?
+        SendWhatsappJob.perform_later(to: inbound.from, message: result.reply.to_h, municipality_id: municipality_id) if result&.reply
       end
     end
   end

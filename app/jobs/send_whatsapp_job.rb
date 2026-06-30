@@ -1,23 +1,25 @@
 # Envia mensagem fora-de-banda (ADR-0014/0021). Escopo manual sobre
 # municipality_channels (RLS-exempt).
 #
+# message: é o hash serializado de Messaging::Reply (via #to_h).
 # Dedup contra crash-retry do worker: INSERT em outbound_messages com
 # idempotency_key UNIQUE ANTES do HTTP. RecordNotUnique → skip HTTP
 # (já foi entregue numa execução anterior; idempotency_key estável para
-# mesmo (to, body, muni, dedup_key)). Caller pode passar dedup_key
+# mesmo (to, message, muni, dedup_key)). Caller pode passar dedup_key
 # explícito para distinguir reenvios deliberados.
 class SendWhatsappJob < ApplicationJob
   include TenantScopedJob
 
-  def perform(to:, body:, municipality_id:, dedup_key: nil)
+  def perform(to:, message:, municipality_id:, dedup_key: nil)
     with_tenant(municipality_id) do
-      key = idempotency_key(to: to, body: body, municipality_id: municipality_id, dedup_key: dedup_key)
+      reply = Messaging::Reply.from_h(message)
+      key = idempotency_key(to: to, message: message, municipality_id: municipality_id, dedup_key: dedup_key)
 
       outbound = nil
       begin
         outbound = OutboundMessage.create!(
           to: to,
-          template: { body: body },
+          template: message,
           idempotency_key: key,
           municipality_id: municipality_id,
           status: 0,                                # pendente (pré-HTTP)
@@ -40,15 +42,17 @@ class SendWhatsappJob < ApplicationJob
         MunicipalityChannel.find_by!(municipality_id: municipality_id, active: true)
       end
 
-      result = Whatsapp::Outbound.new(channel).deliver_text(to: to, body: body)
+      client = Whatsapp::Outbound.new(channel)
+      result = reply.text? ? client.deliver_text(to: to, body: reply.body)
+                           : client.deliver_interactive(to: to, reply: reply)
       outbound.update!(status: result.status, response: result.body)
     end
   end
 
   private
 
-  def idempotency_key(to:, body:, municipality_id:, dedup_key:)
-    digest_input = dedup_key.presence || [to, body, municipality_id].join("|")
+  def idempotency_key(to:, message:, municipality_id:, dedup_key:)
+    digest_input = dedup_key.presence || [to, message.to_json, municipality_id].join("|")
     Digest::SHA256.hexdigest(digest_input)
   end
 end

@@ -2,9 +2,9 @@
 # Ver ADR-0012 (consent), ADR-0013 (motor de protocolos), ADR-0010 (ingestão).
 #
 # Recebe conversation (já lockada pelo PIMJ) + inbound (InboundMessage).
-# Retorna Result#reply: String com o texto a enviar de volta, ou nil quando
-# o fluxo segue por evento (ex.: triage.completed → NotifyCitizenJob entrega
-# o link do snapshot por outro caminho).
+# Retorna Result#reply: Messaging::Reply (ou nil) com a resposta a enviar de volta,
+# ou nil quando o fluxo segue por evento (ex.: triage.completed → NotifyCitizenJob
+# entrega o link do snapshot por outro caminho).
 #
 # Estados do conversation (ADR-0021 emenda 0012):
 #   greeting → awaiting_consent → consented → revoked (terminal)
@@ -54,7 +54,7 @@ class ConversationAdvance
 
   def handle_greeting
     @conversation.update!(state: :awaiting_consent)
-    Result.new(reply: t(:greeting))
+    Result.new(reply: Messaging::Reply.text(t(:greeting)))
   end
 
   def handle_awaiting_consent
@@ -65,28 +65,28 @@ class ConversationAdvance
         version: Consents.current_version(@conversation.municipality_id),
         evidence: { text: text, message_id: @inbound.message_id, channel: "whatsapp" }
       )
-      return Result.new(reply: t(:consent_failed)) if result.failure?
+      return Result.new(reply: Messaging::Reply.text(t(:consent_failed))) if result.failure?
       begin_triage_and_ask
     when :revoke
       RevokeConsent.call(conversation: @conversation, reason: text)
-      Result.new(reply: t(:consent_revoked))
+      Result.new(reply: Messaging::Reply.text(t(:consent_revoked)))
     else
-      Result.new(reply: t(:consent_prompt))
+      Result.new(reply: Messaging::Reply.text(t(:consent_prompt)))
     end
   end
 
   def handle_consented
     triage = active_triage || begin_triage_or_nil
-    return Result.new(reply: t(:no_protocol)) unless triage
+    return Result.new(reply: Messaging::Reply.text(t(:no_protocol))) unless triage
 
     result = CompleteTriage.call(triage: triage, answer: text)
-    return Result.new(reply: reason_text(result.reason)) if result.failure?
+    return Result.new(reply: Messaging::Reply.text(reason_text(result.reason))) if result.failure?
 
     outcome = result.payload[:outcome]
     return Result.new(reply: nil) if outcome.terminal?
 
     triage.reload
-    Result.new(reply: t(:triage_next, prompt: step_prompt(triage, outcome.awaiting)))
+    Result.new(reply: step_reply(triage, outcome.awaiting, :triage_next))
   end
 
   def active_triage
@@ -95,8 +95,8 @@ class ConversationAdvance
 
   def begin_triage_and_ask
     triage = begin_triage_or_nil
-    return Result.new(reply: t(:no_protocol)) unless triage
-    Result.new(reply: t(:triage_start, prompt: step_prompt(triage, triage.current_step)))
+    return Result.new(reply: Messaging::Reply.text(t(:no_protocol))) unless triage
+    Result.new(reply: step_reply(triage, triage.current_step, :triage_start))
   end
 
   def begin_triage_or_nil
@@ -119,10 +119,11 @@ class ConversationAdvance
     nil
   end
 
-  def step_prompt(triage, step_id)
+  def step_reply(triage, step_id, template_key)
     step = triage.protocol.steps[step_id.to_sym]
-    return t(:triage_generic_error) unless step
-    step.prompt
+    return Messaging::Reply.text(t(:triage_generic_error)) unless step
+    body = t(template_key, prompt: step.prompt)
+    Whatsapp::QuestionElement.for(step, body: body)
   end
 
   def reason_text(reason)
