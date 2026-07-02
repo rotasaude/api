@@ -38,6 +38,23 @@
           "body":  { "type": "string" }
         }
       }
+    },
+    "priority_when": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["when", "priority"],
+        "additionalProperties": false,
+        "properties": {
+          "when": {
+            "oneOf": [
+              { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } },
+              { "$ref": "#/$defs/condition" }
+            ]
+          },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 9 }
+        }
+      }
     }
   },
   "$defs": {
