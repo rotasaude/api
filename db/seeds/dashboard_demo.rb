@@ -146,13 +146,77 @@ module DashboardDemo
     end
   end
 
+  TIER_CYCLE = %w[low medium high medium low high medium high].freeze
+  MODE_CYCLE = %w[weighted weighted decision_table].freeze
+  # Mostly completed, with a few in_progress and aborted for status variety.
+  TRIAGE_STATUS_CYCLE = %w[completed completed completed completed in_progress completed aborted_by_timeout completed].freeze
+
+  def build_triages_and_reports(city, muni, citizens, protocols)
+    protos = protocols.values
+    built = []
+    citizens.each_with_index do |c, i|
+      convo = c[:convo]
+      days  = c[:days]
+      proto = protos[i % protos.size]
+      status = c[:state] == "completed" ? "completed" : TRIAGE_STATUS_CYCLE[i % TRIAGE_STATUS_CYCLE.size]
+      completed = status == "completed"
+      tier = TIER_CYCLE[i % TIER_CYCLE.size]
+      mode = MODE_CYCLE[i % MODE_CYCLE.size]
+      priority = tier == "high" ? 1 : 0
+      started_at = at_days_ago(days, hour: 9)
+      completed_at = completed ? started_at + (3 + (i % 8)).minutes : nil
+
+      triage = Triage.where(conversation_id: convo.id, protocol_definition_id: proto.id).first
+      triage ||= Triage.create!(
+        conversation: convo, protocol_definition: proto, protocol_name: proto.name,
+        municipality_id: muni.id, status: status,
+        tier: (completed ? tier : nil), priority: (completed ? priority : nil),
+        current_step: "febre",
+        answers: { "tosse" => "true", "febre" => (tier == "high" ? "true" : "false") },
+        created_at: started_at, completed_at: completed_at,
+        outcome: (completed ? {
+          "status" => "terminal", "tier" => tier, "priority" => priority,
+          "scoring" => { "mode" => mode, "score" => (tier == "high" ? 8 : tier == "medium" ? 4 : 1) },
+          "trail" => [ { "step" => "tosse", "answer" => "true" },
+                       { "step" => "febre", "answer" => (tier == "high" ? "true" : "false") } ]
+        } : {})
+      )
+
+      built << { triage: triage, tier: tier, mode: mode, priority: priority, days: days, completed: completed }
+
+      if completed
+        expired = (i % 4).zero?
+        upsert_report(muni, triage, tier,
+                      created_at: completed_at,
+                      expires_at: (expired ? at_days_ago(days + 2, hour: 9) : Time.current + 20.days))
+      end
+    end
+    built
+  end
+
+  # Build the report snapshot directly (not via GenerateReportJob) so created_at
+  # and expires_at can be backdated for a live/expired mix. token/signature per
+  # the model contract.
+  def upsert_report(muni, triage, tier, created_at:, expires_at:)
+    return if ReportSnapshot.where(triage_id: triage.id).exists?
+    token = "RPT-#{muni.slug[0, 3].upcase}-#{triage.id.to_s[0, 8]}"
+    ReportSnapshot.create!(
+      triage: triage, protocol_definition: triage.protocol_definition, municipality_id: muni.id,
+      outcome: { "tier" => tier, "priority" => triage.priority, "status" => "terminal" },
+      payload: { "tier" => tier, "priority" => triage.priority, "completed_at" => triage.completed_at&.iso8601 },
+      token: token, signature: ReportSnapshot.sign(token),
+      created_at: created_at, expires_at: expires_at
+    )
+  end
+
   def run!
     ApplicationRecord.connected_to(role: :admin) do
       CITIES.each do |city|
         muni = upsert_municipality(city)
-        build_protocols(city, muni)
-        build_conversations_and_consents(city, muni)
+        protocols = build_protocols(city, muni)
+        citizens = build_conversations_and_consents(city, muni)
         build_ingestion(city, muni)
+        build_triages_and_reports(city, muni, citizens, protocols)
       end
     end
     report_counts
