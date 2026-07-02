@@ -92,7 +92,10 @@ module DashboardDemo
       scaled(base, city).times do
         seq += 1
         phone = format("+55%s9%08d", city[:ddd], seq)
-        days  = spread_days(seq, 30)
+        # Coprime scatter over [0,29]: interleaves states across the whole 30d
+        # window (and the 7d sub-window) instead of clustering each state on one
+        # day. 13 is coprime with 30 so 34 conversations spread evenly.
+        days  = (seq * 13) % 30
         convo = Conversation.find_or_create_by!(municipality_id: muni.id, phone: phone) do |c|
           c.state = state
           c.created_at = at_days_ago(days, hour: 9)
