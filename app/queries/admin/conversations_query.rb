@@ -46,7 +46,7 @@ class Admin::ConversationsQuery
     return nil if completed.count.zero?
     seconds = completed
                 .where.not(completed_at: nil)
-                .pluck(Arel.sql("EXTRACT(EPOCH FROM (completed_at - created_at))"))
+                .pluck(Arel.sql("EXTRACT(EPOCH FROM (triages.completed_at - triages.created_at))"))
                 .compact
     return nil if seconds.empty?
     (seconds.sum / seconds.size / 60.0).round(1)
