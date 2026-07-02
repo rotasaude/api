@@ -90,11 +90,17 @@ else
       p.definition = protocol_defn
     end
 
-    convo  = Conversation.find_or_create_by!(municipality_id: curitiba.id, phone: "+5541999990001") { |c| c.state = "completed" }
+    # state "consented": a pessoa consentiu e concluiu a triagem — é o estado que
+    # os painéis live/funil de Conversas contam (o enum tem "completed", mas o
+    # funil só conta greeting/awaiting_consent/consented; com "completed" a demo
+    # apareceria zerada). created_at ~5 min antes de completed_at para o KPI
+    # avgToCompleteMin exibir uma duração realista, não ~0.
+    convo  = Conversation.find_or_create_by!(municipality_id: curitiba.id, phone: "+5541999990001") { |c| c.state = "consented" }
     triage = Triage.where(conversation_id: convo.id, protocol_definition_id: protocol.id).first
     triage ||= Triage.create!(
       conversation: convo, protocol_definition: protocol, protocol_name: "triage-respiratoria",
-      municipality_id: curitiba.id, status: "completed", tier: "alta", priority: 1, completed_at: Time.current,
+      municipality_id: curitiba.id, status: "completed", tier: "alta", priority: 1,
+      created_at: 5.minutes.ago, completed_at: Time.current,
       answers: { "tosse" => "true", "febre" => "true" },
       outcome: { "status" => "terminal", "tier" => "alta", "priority" => 1,
                  "trail" => [ { "step" => "tosse", "answer" => "true" }, { "step" => "febre", "answer" => "true" } ] }
