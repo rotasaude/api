@@ -249,6 +249,40 @@ RSpec.describe ConversationAdvance do
         expect(triage.status).not_to eq("aborted_by_cancellation")
       end
     end
+
+    context "quando o cidadão revoga o consentimento (revogar)" do
+      let(:raw_body) { "true" } # 1ª chamada inicia a triagem
+
+      it "revoga: conversa revoked, triage aborted_by_revocation, publica evento e responde" do
+        described_class.call(conversation: conversation, inbound: inbound) # inicia a triagem
+
+        revoke_inbound = InboundMessage.create!(
+          message_id: "wamid.#{SecureRandom.hex(6)}",
+          from: "+5511988888888",
+          kind: "text",
+          raw: { "type" => "text", "text" => { "body" => "revogar" } }.to_json,
+          municipality_id: muni.id
+        )
+        result = described_class.call(conversation: conversation, inbound: revoke_inbound)
+
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.consent_revoked"))
+        expect(conversation.reload.state).to eq("revoked")
+        expect(conversation.triages.where(status: "aborted_by_revocation")).to be_present
+        expect(DomainEvent.where(name: "consent.revoked", municipality_id: muni.id)).to be_present
+      end
+
+      it "não trata 'revogar' como cancelamento" do
+        described_class.call(conversation: conversation, inbound: inbound)
+        revoke_inbound = InboundMessage.create!(
+          message_id: "wamid.#{SecureRandom.hex(6)}",
+          from: "+5511988888888", kind: "text",
+          raw: { "type" => "text", "text" => { "body" => "revogar" } }.to_json,
+          municipality_id: muni.id
+        )
+        described_class.call(conversation: conversation, inbound: revoke_inbound)
+        expect(conversation.reload.state).not_to eq("cancelled")
+      end
+    end
   end
 
   describe "estado :revoked" do

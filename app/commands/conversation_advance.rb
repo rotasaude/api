@@ -86,6 +86,7 @@ class ConversationAdvance
   end
 
   def handle_consented
+    return revoke_and_finish if Consents.revoke_intent?(text)
     return cancel_and_finish if Consents.cancel?(text)
 
     triage = active_triage || begin_triage_or_nil
@@ -108,6 +109,11 @@ class ConversationAdvance
   def complete_and_finish
     @conversation.update!(state: :completed)
     Result.new(reply: nil)
+  end
+
+  def revoke_and_finish
+    RevokeConsent.call(conversation: @conversation, reason: text)
+    Result.new(reply: Messaging::Reply.text(t(:consent_revoked)))
   end
 
   def cancel_and_finish
