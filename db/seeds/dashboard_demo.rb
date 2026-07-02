@@ -40,10 +40,49 @@ module DashboardDemo
     end
   end
 
+  # A valid protocol definition (passes Protocols::Validator, same shape as the
+  # baseline seed). Recommendations keyed in pt-BR for the public report.
+  def demo_definition(name, version)
+    {
+      "name" => name, "version" => version, "start_step_id" => "tosse",
+      "steps" => [
+        { "id" => "tosse", "prompt" => "Você está com tosse?", "answer_type" => "boolean",
+          "branches" => { "true" => "febre", "false" => nil }, "weights" => { "true" => 3, "false" => 0 } },
+        { "id" => "febre", "prompt" => "Está com febre alta?", "answer_type" => "boolean",
+          "branches" => { "true" => nil, "false" => nil }, "weights" => { "true" => 5, "false" => 0 } }
+      ],
+      "scoring" => { "type" => "weighted", "thresholds" => { "baixa" => 0, "alta" => 5 },
+                     "priority_map" => { "baixa" => 9, "alta" => 1 } },
+      "recommendations" => {
+        "alta"  => { "title" => "Procure atendimento hoje", "body" => "Prioridade alta. Procure a unidade mais próxima." },
+        "baixa" => { "title" => "Cuidados em casa", "body" => "Repouso e hidratação; se piorar, procure sua unidade." }
+      }
+    }
+  end
+
+  def upsert_protocol(muni, name, version, status)
+    ProtocolDefinition.find_or_create_by!(name: name, version: version, municipality_id: muni.id) do |p|
+      p.status = status
+      p.definition = demo_definition(name, version)
+    end
+  end
+
+  # Multiple versions/statuses so Protocolos (list, published count, versions
+  # detail) is rich. v1 active reuses the baseline row for Curitiba.
+  def build_protocols(city, muni)
+    resp1 = upsert_protocol(muni, "triage-respiratoria", 1, "active")
+    upsert_protocol(muni, "triage-respiratoria", 2, "published")
+    upsert_protocol(muni, "triage-respiratoria", 3, "draft")
+    dengue1 = upsert_protocol(muni, "triagem-dengue", 1, "active")
+    upsert_protocol(muni, "triagem-dengue", 2, "retired")
+    { "triage-respiratoria" => resp1, "triagem-dengue" => dengue1 }
+  end
+
   def run!
     ApplicationRecord.connected_to(role: :admin) do
       CITIES.each do |city|
-        upsert_municipality(city)
+        muni = upsert_municipality(city)
+        build_protocols(city, muni)
       end
     end
     report_counts
