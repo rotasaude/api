@@ -117,12 +117,42 @@ module DashboardDemo
     triage_convos
   end
 
+  # Inbound archive + outbound ack log. Inbound spread over 30d (day 0 → <24h
+  # pending; days ≥ 2 → >24h backlog/overTtl). Outbound status is a literal
+  # 0–5 int: {0,1,2}=ok, {3}=warn, {4,5}=err (ingestion_query.rb:37-42).
+  ACK_STATUS_CYCLE = [0, 1, 2, 0, 1, 2, 3, 4, 5, 2, 0, 3, 4].freeze
+
+  def build_ingestion(city, muni)
+    n_in = scaled(40, city)
+    n_in.times do |i|
+      InboundMessage.find_or_create_by!(message_id: "IN-#{city[:code]}-#{format('%04d', i + 1)}") do |m|
+        m.from = format("+55%s9%08d", city[:ddd], i + 1)
+        m.kind = "text"
+        m.municipality_id = muni.id
+        m.raw = "demo inbound message #{i + 1}"
+        m.created_at = at_days_ago(spread_days(i, n_in), hour: (i % 12) + 8)
+      end
+    end
+
+    n_out = scaled(30, city)
+    n_out.times do |i|
+      OutboundMessage.find_or_create_by!(idempotency_key: "OUT-#{city[:code]}-#{format('%04d', i + 1)}") do |m|
+        m.to = format("+55%s9%08d", city[:ddd], i + 1)
+        m.status = ACK_STATUS_CYCLE[i % ACK_STATUS_CYCLE.length]
+        m.template = { "name" => "rota_saude_ask", "language" => { "code" => "pt_BR" } }
+        m.municipality_id = muni.id
+        m.created_at = at_days_ago(spread_days(i, n_out), hour: (i % 12) + 8)
+      end
+    end
+  end
+
   def run!
     ApplicationRecord.connected_to(role: :admin) do
       CITIES.each do |city|
         muni = upsert_municipality(city)
         build_protocols(city, muni)
         build_conversations_and_consents(city, muni)
+        build_ingestion(city, muni)
       end
     end
     report_counts
