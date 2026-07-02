@@ -2,14 +2,15 @@
 # Recebe answers (Hash step_id -> answer) e retorna o próximo passo ou um Outcome.
 module Protocols
   class Protocol
-    attr_reader :name, :version, :steps, :start_step_id, :scoring
+    attr_reader :name, :version, :steps, :start_step_id, :scoring, :priority_rules
 
-    def initialize(name:, version:, steps:, start_step_id:, scoring: nil)
+    def initialize(name:, version:, steps:, start_step_id:, scoring: nil, priority_rules: nil)
       @name = name
       @version = version
       @steps = steps.each_with_object({}) { |s, acc| acc[s.id] = s }
       @start_step_id = start_step_id.to_sym
       @scoring = scoring
+      @priority_rules = priority_rules
       freeze
     end
 
@@ -41,7 +42,8 @@ module Protocols
         cursor = next_id.to_sym
       end
 
-      scoring ? scoring.call(trail) : Outcome.terminal(trail: trail)
+      outcome = scoring ? scoring.call(trail) : Outcome.terminal(trail: trail)
+      apply_priority_when(outcome, trail)
     end
 
     def to_h
@@ -50,8 +52,22 @@ module Protocols
         version: version,
         start_step_id: start_step_id.to_s,
         steps: steps.values.map(&:to_h),
-        scoring: scoring&.to_h
+        scoring: scoring&.to_h,
+        priority_when: priority_rules
       }.compact
+    end
+
+    private
+
+    # Escala-só (F-03.6): priority_when só aumenta a urgência (min). Só terminal.
+    def apply_priority_when(outcome, trail)
+      return outcome unless outcome.terminal?
+      answers = trail.to_h { |entry| [entry[:step].to_s, entry[:answer].to_s] }
+      escalated = PriorityRules.override_for(priority_rules, answers)
+      return outcome unless escalated
+      final = [outcome.priority, escalated].compact.min
+      return outcome if final == outcome.priority
+      Outcome.terminal(trail: outcome.trail, tier: outcome.tier, priority: final, score: outcome.score)
     end
   end
 end

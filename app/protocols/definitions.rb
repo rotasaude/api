@@ -25,7 +25,8 @@ module Protocols
         version: hash["version"],
         steps: steps,
         start_step_id: hash["start_step_id"],
-        scoring: Scoring.build(hash["scoring"])
+        scoring: Scoring.build(hash["scoring"]),
+        priority_rules: hash["priority_when"]
       )
     end
   end
