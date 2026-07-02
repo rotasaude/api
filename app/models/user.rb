@@ -2,6 +2,15 @@
 # desativação por end-dating (deactivated_at), nunca DELETE (ADR-0023).
 class User < ApplicationRecord
   has_secure_password
+
+  # F-06.2: signed, 15-min, single-use (password_salt changes on password
+  # update, which invalidates any outstanding token). Explicit here even
+  # though has_secure_password(reset_token: true) already registers this
+  # purpose by default in Rails 8.1 — keeps the contract visible/pinned.
+  generates_token_for :password_reset, expires_in: 15.minutes do
+    password_salt&.last(10)
+  end
+
   has_many :sessions,    dependent: :destroy
   has_many :identities,  dependent: :destroy
   has_many :memberships, dependent: :restrict_with_error  # Phase 4
