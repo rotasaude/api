@@ -113,3 +113,9 @@ else
     puts "  relatório ... #{report&.url}"
   end
 end
+
+# Optional heavy demo dataset for the dashboard. Off by default; base seed stays
+# lean. Enable with SEED_DASHBOARD_DEMO=1 bin/rails db:seed  (or bin/rails db:seed:demo).
+if ENV["SEED_DASHBOARD_DEMO"] == "1" && !Rails.env.production?
+  load Rails.root.join("db/seeds/dashboard_demo.rb")
+end
