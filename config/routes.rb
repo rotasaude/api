@@ -5,9 +5,12 @@ Rails.application.routes.default_url_options = {
 }
 
 Rails.application.routes.draw do
-  # Sessão de admin (ADR-0022). Reset de senha fica para ADR de mailer.
+  # Sessão de admin (ADR-0022).
   resource :session, only: %i[create show destroy]
   post "/session/challenge", to: "sessions#challenge_totp"
+
+  # Reset de senha (F-06.2, ADR-0022). JSON-only, sem autenticação.
+  resources :passwords, only: %i[create update], param: :token
 
   # MFA — ADR-0022
   post "/mfa/enroll",  to: "mfa#enroll"
