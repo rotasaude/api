@@ -78,11 +78,48 @@ module DashboardDemo
     { "triage-respiratoria" => resp1, "triagem-dengue" => dengue1 }
   end
 
+  # FSM state distribution (Curitiba base; scaled per city). Covers every funnel
+  # bucket (greeting/awaiting_consent/consented), live (awaiting_consent+
+  # consented), and exits (revoked). "completed" is a terminal state kept out of
+  # the funnel by design.
+  STATE_DIST = { "greeting" => 4, "awaiting_consent" => 4, "consented" => 12,
+                 "completed" => 8, "revoked" => 3, "abandoned" => 3 }.freeze
+
+  def build_conversations_and_consents(city, muni)
+    triage_convos = []
+    seq = 0
+    STATE_DIST.each do |state, base|
+      scaled(base, city).times do
+        seq += 1
+        phone = format("+55%s9%08d", city[:ddd], seq)
+        days  = spread_days(seq, 30)
+        convo = Conversation.find_or_create_by!(municipality_id: muni.id, phone: phone) do |c|
+          c.state = state
+          c.created_at = at_days_ago(days, hour: 9)
+        end
+
+        if %w[consented completed revoked].include?(state)
+          version = seq.even? ? 2 : 1
+          Consent.where(conversation_id: convo.id).first || Consent.create!(
+            conversation: convo, municipality_id: muni.id, version: version,
+            channel: "whatsapp", policy_text_sha: "demo-policy-sha-v#{version}",
+            given_at: at_days_ago(days, hour: 11),
+            revoked_at: (state == "revoked" ? at_days_ago([days - 1, 0].max, hour: 12) : nil)
+          )
+        end
+
+        triage_convos << { convo: convo, state: state, days: days, seq: seq } if %w[consented completed].include?(state)
+      end
+    end
+    triage_convos
+  end
+
   def run!
     ApplicationRecord.connected_to(role: :admin) do
       CITIES.each do |city|
         muni = upsert_municipality(city)
         build_protocols(city, muni)
+        build_conversations_and_consents(city, muni)
       end
     end
     report_counts
