@@ -18,6 +18,12 @@ default: &default
     schedule: "every day at 4:30am America/Sao_Paulo"
     args: { older_than_days: 60 }
 
+  purge_domain_events:
+    class: PurgeDomainEventsJob
+    queue: housekeeping
+    schedule: "every day at 4:45am America/Sao_Paulo"
+    args: { older_than_months: 12 }
+
   sweep_abandoned:
     class: SweepAbandonedConversationsJob
     queue: housekeeping
