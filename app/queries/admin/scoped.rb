@@ -13,6 +13,11 @@ module Admin::Scoped
     Triage.joins(:conversation).where(conversations: { municipality_id: municipality.id })
   end
 
+  def self.report_snapshots(municipality)
+    return ReportSnapshot.all if municipality == :all || municipality.nil?
+    ReportSnapshot.where(municipality_id: municipality.id)
+  end
+
   def self.conversations(municipality)
     return Conversation.all if municipality == :all || municipality.nil?
     Conversation.where(municipality_id: municipality.id)

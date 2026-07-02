@@ -73,6 +73,7 @@ Rails.application.routes.draw do
       get "consent",         to: "consent#show"
       get "triages",         to: "triages#show"
       get "triages/:id/trail", to: "triages#trail"
+      get "reports",         to: "reports#show"
       get "classification",  to: "classification#show"
       get "protocols",       to: "protocols#index"
       get "protocols/:id",   to: "protocols#show"
