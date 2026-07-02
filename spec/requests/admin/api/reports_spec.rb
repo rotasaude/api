@@ -20,7 +20,13 @@ RSpec.describe "Admin::Api::Reports", type: :request do
                            expires_at: 10.days.from_now)
   end
 
-  it "lists the city's reports as metadata, without token or payload" do
+  def municipal_admin_for(muni, email:)
+    user = User.create!(email_address: email, password: "secret123")
+    Membership.create!(user: user, role: "municipal_admin", municipality_id: muni.id, granted_at: Time.current)
+    user
+  end
+
+  it "an operator sees a city's reports as metadata, without token or payload" do
     muni = nil
     as_admin do
       muni = Municipality.create!(name: "RepCity", slug: "rep-city", uf: "SP", status: "active")
@@ -45,10 +51,27 @@ RSpec.describe "Admin::Api::Reports", type: :request do
     expect(response.body).not_to include("NEVER-EXPOSE")
   end
 
-  it "denies a non-authorized user" do
-    user = User.create!(email_address: "muni-#{SecureRandom.hex(3)}@x.com", password: "secret123")
-    sign_in_as(user)
+  it "a municipal_admin sees only their own city's reports (per-city, not operator-only)" do
+    mine = other = admin = nil
+    as_admin do
+      mine  = Municipality.create!(name: "Mine", slug: "mine-#{SecureRandom.hex(3)}", uf: "SP", status: "active")
+      other = Municipality.create!(name: "Other", slug: "other-#{SecureRandom.hex(3)}", uf: "RJ", status: "active")
+      seed_report(mine,  tier: "alta")
+      seed_report(other, tier: "baixa")
+      admin = municipal_admin_for(mine, email: "adm-#{SecureRandom.hex(3)}@x.com")
+    end
+    sign_in_as(admin)
+
     get "/admin/api/reports", params: { period: "30d" }
-    expect(response).to have_http_status(:forbidden)
+
+    expect(response).to have_http_status(:ok)
+    reports = JSON.parse(response.body).dig("data", "reports")
+    expect(reports.size).to eq(1)           # só a cidade dele
+    expect(reports.first["tier"]).to eq("alta")
+  end
+
+  it "requires authentication (401 when unauthenticated)" do
+    get "/admin/api/reports", params: { period: "30d" }
+    expect(response).to have_http_status(:unauthorized)
   end
 end
