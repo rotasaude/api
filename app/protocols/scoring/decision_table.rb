@@ -42,7 +42,7 @@ module Protocols
       private
 
       def matches?(conditions, answers)
-        conditions.all? { |step_id, expected| answers[step_id.to_s] == expected.to_s }
+        Protocols::Condition.eval(conditions, answers)
       end
     end
   end
