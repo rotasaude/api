@@ -10,5 +10,6 @@ Rails.application.config.to_prepare do
   # Eventos só de auditoria — sem consumidores. A linha existe para tornar
   # explícito que ninguém escuta, e não por esquecimento.
   DomainEvents.bind "consent.given",   to: []
-  DomainEvents.bind "consent.revoked", to: []
+
+  DomainEvents.bind "consent.revoked", to: [AnonymizeRevokedTriageJob, RecordConsentRevocationJob]
 end
