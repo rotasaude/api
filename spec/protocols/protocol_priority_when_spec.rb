@@ -42,4 +42,11 @@ RSpec.describe "Protocol priority_when (F-03.6)" do
     rules = [{ "when" => { "eq" => ["grave", "false"] }, "priority" => 1 }]
     expect(build(priority_when: rules).to_h[:priority_when]).to eq(rules)
   end
+
+  it "does not crash or escalate to 0 on a malformed priority_when rule" do
+    protocol = build(priority_when: [{ "when" => { "eq" => ["grave", "false"] } }]) # rule sem priority
+    outcome = nil
+    expect { outcome = protocol.evaluate("grave" => "false") }.not_to raise_error
+    expect(outcome.priority).to eq(5) # base mantida; regra inválida ignorada
+  end
 end
