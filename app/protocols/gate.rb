@@ -15,6 +15,8 @@ module Protocols
       errors.concat(Validator.call(definition).errors)   # refs, cycles, recommendation↔tier
       errors.concat(Validation::Graph.call(definition))
       errors.concat(Validation::Scoring.call(definition))
+      errors.concat(Validation::PriorityWhen.call(definition))
+      errors.concat(Validation::Condition.step_id_collision_errors(definition["steps"] || []))
       Validator::Result.new(errors: errors)
     end
   end

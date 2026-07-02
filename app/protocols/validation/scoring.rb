@@ -23,16 +23,7 @@ module Protocols
 
       def self.decision_table_errors(scoring, steps)
         by_id = steps.to_h { |s| [s["id"], s] }
-        Array(scoring["rules"]).flat_map do |rule|
-          (rule["when"] || {}).flat_map do |step_id, answer|
-            step = by_id[step_id]
-            next ["decision_table rule references unknown step #{step_id}"] if step.nil?
-
-            allowed = Answers.for(step)
-            next [] if allowed.nil?
-            allowed.include?(answer.to_s) ? [] : ["decision_table invalid answer '#{answer}' for step #{step_id}"]
-          end
-        end
+        Array(scoring["rules"]).flat_map { |rule| Condition.errors(rule["when"] || {}, by_id) }
       end
     end
   end
