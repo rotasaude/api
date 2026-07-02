@@ -51,4 +51,18 @@ RSpec.describe Protocols::Condition do
     expect(ev("x")).to be(false)
     expect(ev({ "zzz" => ["febre", "true"] })).to be(false)
   end
+
+  it "malformed operand => false, never raises (totality)" do
+    [{ "eq" => nil }, { "gt" => nil }, { "lt" => nil }, { "in" => nil },
+     { "all" => nil }, { "any" => nil }, { "not" => nil },
+     { "eq" => 5 }, { "eq" => "x" }, { "gt" => ["idade"] }].each do |bad|
+      expect { described_class.eval(bad, answers) }.not_to raise_error
+      expect(described_class.eval(bad, answers)).to be(false)
+    end
+  end
+
+  it "documents the operator/legacy collision: a legacy step named like an operator is read as the operator (known quirk; publish-validation deferred)" do
+    # {"eq" => "true"} é lido como operador eq com operando "true" (String, não [key,val]) => false
+    expect(described_class.eval({ "eq" => "true" }, answers)).to be(false)
+  end
 end

@@ -2,6 +2,8 @@
 # eq/in/gt/lt/all/any/not; um `when` que não seja nó-operador de chave única é
 # tratado como mapa legado {step_id => value} (AND de eq). Runtime total:
 # nunca levanta — operando ausente/não-numérico ou nó inválido => false.
+# Cada branch de operador é type-guarded (operand precisa ser Array/Hash conforme
+# o operador); operando malformado (nil, String, Integer, array curto) => false.
 module Protocols
   module Condition
     OPERATORS = %w[eq in gt lt all any not].freeze
@@ -14,17 +16,21 @@ module Protocols
 
       op, operand = node.first
       case op.to_s
-      when "eq"  then answers[operand[0].to_s] == operand[1].to_s
-      when "in"  then Array(operand[1]).map(&:to_s).include?(answers[operand[0].to_s])
-      when "gt"  then numeric(answers[operand[0].to_s]) { |v| v > Float(operand[1]) }
-      when "lt"  then numeric(answers[operand[0].to_s]) { |v| v < Float(operand[1]) }
-      when "all" then Array(operand).all? { |n| eval(n, answers) }
-      when "any" then Array(operand).any? { |n| eval(n, answers) }
-      when "not" then !eval(operand, answers)
+      when "eq"  then operand.is_a?(Array) && answers[operand[0].to_s] == operand[1].to_s
+      when "in"  then operand.is_a?(Array) && Array(operand[1]).map(&:to_s).include?(answers[operand[0].to_s])
+      when "gt"  then operand.is_a?(Array) && numeric(answers[operand[0].to_s]) { |v| v > Float(operand[1]) }
+      when "lt"  then operand.is_a?(Array) && numeric(answers[operand[0].to_s]) { |v| v < Float(operand[1]) }
+      when "all" then operand.is_a?(Array) && operand.all? { |n| eval(n, answers) }
+      when "any" then operand.is_a?(Array) && operand.any? { |n| eval(n, answers) }
+      when "not" then operand.is_a?(Hash) && !eval(operand, answers)
       else false
       end
     end
 
+    # NOTE: colisão conhecida — um `when` legado de chave única para um step com
+    # nome de operador (ex.: {"eq" => "true"}) é lido como o OPERADOR eq, não como
+    # mapa legado. Remédio = proibir step id == nome de operador na validação de
+    # publish (deferido, F-03.2 out-of-scope). Runtime é total de qualquer forma.
     def operator_node?(node)
       node.size == 1 && OPERATORS.include?(node.keys.first.to_s)
     end
