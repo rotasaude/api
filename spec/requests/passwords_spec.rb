@@ -69,5 +69,18 @@ RSpec.describe "Passwords (F-06.2)", type: :request do
       put "/passwords/#{token}", params: { password: "again-password-3", password_confirmation: "again-password-3" }
       expect(response).to have_http_status(:unprocessable_entity)
     end
+
+    it "rejects a reset for a deactivated user (indistinguishable from an invalid token)" do
+      user = make_user
+      token = user.generate_token_for(:password_reset)
+      user.update!(deactivated_at: Time.current)
+
+      put "/passwords/#{token}", params: { password: "new-password-2", password_confirmation: "new-password-2" }
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(JSON.parse(response.body)["error"]).to eq("invalid_token")
+      # a senha NÃO mudou:
+      expect(Authenticator.password(email: user.email_address, password: "old-password-1")).to be_nil # (desativado nem loga)
+      expect(user.reload.authenticate("old-password-1")).to be_truthy
+    end
   end
 end

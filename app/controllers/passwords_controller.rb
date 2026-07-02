@@ -19,7 +19,7 @@ class PasswordsController < ApplicationController
 
   def update
     user = User.find_by_token_for(:password_reset, params[:token])
-    return render(json: { error: "invalid_token" }, status: :unprocessable_entity) unless user
+    return render(json: { error: "invalid_token" }, status: :unprocessable_entity) unless user&.active?
 
     if user.update(password: params[:password], password_confirmation: params[:password_confirmation])
       user.sessions.destroy_all
