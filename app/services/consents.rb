@@ -17,6 +17,12 @@ module Consents
     /\A\s*(sair|parar|cancelar|encerrar)\s*\z/i
   ].freeze
 
+  # Intenção explícita de REVOGAR consentimento no meio da triagem (LGPD).
+  # Distinta de cancel? (sair/parar/cancelar/encerrar) e de "não" (resposta válida).
+  REVOKE_INTENT_PATTERNS = [
+    /\A\s*(revogar|revogar consentimento|revogar meu consentimento|apagar meus dados)\s*\z/i
+  ].freeze
+
   # IDs de payload dos botões interativos de consentimento (F-02.4).
   GIVE_ID   = "consent_give".freeze
   REVOKE_ID = "consent_revoke".freeze
@@ -33,6 +39,11 @@ module Consents
   def self.cancel?(text)
     return false if text.nil?
     CANCEL_PATTERNS.any? { |re| text.match?(re) }
+  end
+
+  def self.revoke_intent?(text)
+    return false if text.nil?
+    REVOKE_INTENT_PATTERNS.any? { |re| text.match?(re) }
   end
 
   def self.current_version(municipality_id)

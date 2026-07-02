@@ -46,4 +46,26 @@ RSpec.describe Consents do
       expect(described_class.cancel?(nil)).to be(false)
     end
   end
+
+  describe ".revoke_intent?" do
+    ["revogar", "revogar consentimento", "revogar meu consentimento", "apagar meus dados"].each do |phrase|
+      it "is true for #{phrase.inspect}" do
+        expect(described_class.revoke_intent?(phrase)).to be(true)
+      end
+    end
+
+    it "is false for cancel words (those are cancel?, not revoke)" do
+      %w[cancelar sair parar encerrar].each do |w|
+        expect(described_class.revoke_intent?(w)).to be(false)
+      end
+    end
+
+    it "is false for 'não'/'sim'/ordinary/blank/nil" do
+      expect(described_class.revoke_intent?("não")).to be(false)
+      expect(described_class.revoke_intent?("sim")).to be(false)
+      expect(described_class.revoke_intent?("qualquer coisa")).to be(false)
+      expect(described_class.revoke_intent?("")).to be(false)
+      expect(described_class.revoke_intent?(nil)).to be(false)
+    end
+  end
 end
