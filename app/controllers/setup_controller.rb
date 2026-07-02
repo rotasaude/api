@@ -16,6 +16,11 @@ class SetupController < ApplicationController
 
   allow_unauthenticated_access only: %i[accept_invitation]
 
+  # Fluxo público token-as-credential — mesmo teto de sessions/passwords, para
+  # não deixar superfície de brute-force sem limite. Só na ação pública.
+  rate_limit to: 10, within: 3.minutes, only: %i[accept_invitation],
+             with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
+
   # POST /setup/municipalities
   # body: { name, slug, ibge_code, uf, channel: { phone_number_id, ... }, admin_email, terms: { body, version }, alert: [...], template: {...} }
   def provision_municipality
