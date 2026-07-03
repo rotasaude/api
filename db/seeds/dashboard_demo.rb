@@ -148,8 +148,11 @@ module DashboardDemo
 
   TIER_CYCLE = %w[low medium high medium low high medium high].freeze
   MODE_CYCLE = %w[weighted weighted decision_table].freeze
-  # Mostly completed, with a few in_progress and aborted for status variety.
-  TRIAGE_STATUS_CYCLE = %w[completed completed completed completed in_progress completed aborted_by_timeout completed].freeze
+  # Consented conversations are active/successful, so their triages are only
+  # completed or in_progress (never aborted — an abort belongs to a conversation
+  # that did not consent/complete, which does not feed triages here). The
+  # in_progress entries keep the completion rate below 100% for the panel.
+  TRIAGE_STATUS_CYCLE = %w[completed completed completed completed in_progress completed in_progress completed].freeze
 
   def build_triages_and_reports(city, muni, citizens, protocols)
     protos = protocols.values
