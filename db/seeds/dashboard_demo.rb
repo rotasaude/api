@@ -209,6 +209,68 @@ module DashboardDemo
     )
   end
 
+  # Idempotent by a synthetic payload.demo_id (domain_events has no natural key).
+  def upsert_event(demo_id, name:, occurred_at:, municipality_id:, payload:)
+    existing = DomainEvent.where("payload ->> 'demo_id' = ?", demo_id).first
+    return existing if existing
+    DomainEvent.create!(
+      name: name, occurred_at: occurred_at, municipality_id: municipality_id,
+      published_at: occurred_at, created_at: occurred_at,
+      payload: payload.merge("demo_id" => demo_id)
+    )
+  end
+
+  def build_events(city, muni, protocols, citizens, triages)
+    code = city[:code]
+
+    # --- Protocol audit events (Protocolos four-eyes + protocol_events) ---
+    # protocols_query matches payload.protocol_definition_id (four_eyes) and
+    # payload.name (protocol_events); reads actor + version.
+    respv2 = ProtocolDefinition.find_by(name: "triage-respiratoria", version: 2, municipality_id: muni.id)
+    dengue1 = protocols["triagem-dengue"]
+    dengue2 = ProtocolDefinition.find_by(name: "triagem-dengue", version: 2, municipality_id: muni.id)
+
+    # respiratoria v2: created by A, published by B → fourEyes = true (ok)
+    upsert_event("#{code}-P-RESP2-C", name: "protocol.created", occurred_at: at_days_ago(20), municipality_id: muni.id,
+                 payload: { "protocol_definition_id" => respv2.id, "name" => "triage-respiratoria", "version" => 2, "actor" => ACTOR_A })
+    upsert_event("#{code}-P-RESP2-P", name: "protocol.published", occurred_at: at_days_ago(18), municipality_id: muni.id,
+                 payload: { "protocol_definition_id" => respv2.id, "name" => "triage-respiratoria", "version" => 2, "actor" => ACTOR_B })
+    # dengue v1: created + published by the SAME actor → fourEyes = false (collapsed)
+    upsert_event("#{code}-P-DENG1-C", name: "protocol.created", occurred_at: at_days_ago(25), municipality_id: muni.id,
+                 payload: { "protocol_definition_id" => dengue1.id, "name" => "triagem-dengue", "version" => 1, "actor" => ACTOR_A })
+    upsert_event("#{code}-P-DENG1-P", name: "protocol.published", occurred_at: at_days_ago(24), municipality_id: muni.id,
+                 payload: { "protocol_definition_id" => dengue1.id, "name" => "triagem-dengue", "version" => 1, "actor" => ACTOR_A })
+    # dengue v2 retired
+    upsert_event("#{code}-P-DENG2-R", name: "protocol.retired", occurred_at: at_days_ago(10), municipality_id: muni.id,
+                 payload: { "protocol_definition_id" => dengue2.id, "name" => "triagem-dengue", "version" => 2, "actor" => ACTOR_B })
+
+    # --- conversation.* and consent.* (Events filter prefixes) ---
+    citizens.each_with_index do |c, i|
+      convo = c[:convo]; days = c[:days]
+      upsert_event("#{code}-CV-#{i}", name: "conversation.consented", occurred_at: at_days_ago(days, hour: 10),
+                   municipality_id: muni.id, payload: { "conversation_id" => convo.id, "actor" => "sistema" })
+      upsert_event("#{code}-CO-#{i}", name: "consent.given", occurred_at: at_days_ago(days, hour: 11),
+                   municipality_id: muni.id, payload: { "conversation_id" => convo.id, "actor" => "cidadão" })
+    end
+
+    # --- Trail events (BARE names, per completed triage) + prefixed triage/priority ---
+    triages.each_with_index do |t, i|
+      next unless t[:completed]
+      tri = t[:triage]; base = at_days_ago(t[:days], hour: 9)
+      upsert_event("#{code}-T-SC-#{i}", name: "scored", occurred_at: base + 1.minute, municipality_id: muni.id,
+                   payload: { "triage_id" => tri.id, "rule" => "weighted", "ref" => "mode:#{t[:mode]}", "out" => t[:tier], "actor" => "sistema" })
+      upsert_event("#{code}-T-TA-#{i}", name: "tier_assigned", occurred_at: base + 2.minutes, municipality_id: muni.id,
+                   payload: { "triage_id" => tri.id, "rule" => "threshold", "ref" => "tier", "out" => t[:tier], "actor" => "sistema" })
+      upsert_event("#{code}-T-DONE-#{i}", name: "triage.completed", occurred_at: base + 3.minutes, municipality_id: muni.id,
+                   payload: { "triage_id" => tri.id, "actor" => "sistema" })
+      next unless t[:priority] == 1
+      upsert_event("#{code}-T-PR-#{i}", name: "priority_rule", occurred_at: base + 2.minutes, municipality_id: muni.id,
+                   payload: { "triage_id" => tri.id, "rule" => "escalate", "ref" => "priority", "out" => "1", "actor" => "sistema" })
+      upsert_event("#{code}-PRI-#{i}", name: "priority.escalated", occurred_at: base + 3.minutes, municipality_id: muni.id,
+                   payload: { "triage_id" => tri.id, "actor" => "sistema" })
+    end
+  end
+
   def run!
     ApplicationRecord.connected_to(role: :admin) do
       CITIES.each do |city|
@@ -216,7 +278,8 @@ module DashboardDemo
         protocols = build_protocols(city, muni)
         citizens = build_conversations_and_consents(city, muni)
         build_ingestion(city, muni)
-        build_triages_and_reports(city, muni, citizens, protocols)
+        triages = build_triages_and_reports(city, muni, citizens, protocols)
+        build_events(city, muni, protocols, citizens, triages)
       end
     end
     report_counts
