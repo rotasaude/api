@@ -1,9 +1,9 @@
-# Registro imutável de consentimento. Ver ADR-0012.
+# Registro imutável de consentimento. Ver ADR-0008.
 # Revogação preenche revoked_at; nunca DELETE.
 class Consent < ApplicationRecord
   belongs_to :conversation
 
-  encrypts :evidence    # PII em jsonb — ADR-0011
+  encrypts :evidence    # PII em jsonb — ADR-0013
 
   before_validation :inherit_municipality_id, on: :create
 

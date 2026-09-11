@@ -1,5 +1,5 @@
 # Mensagem recebida via webhook. Persistida ANTES de qualquer parse de domínio.
-# Ver ADR-0010 (webhook) e ADR-0011 (encryption).
+# Ver ADR-0007 (webhook) e ADR-0013 (encryption).
 class InboundMessage < ApplicationRecord
   encrypts :raw
 

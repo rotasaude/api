@@ -75,7 +75,7 @@ class Admin::ProtocolsQuery
   end
 
   # Aproximação: lê os 2 eventos relevantes do agregado. Sem dado clínico.
-  # Phase 2.1 dropou aggregate_*; IDs viajam no payload (ADR-0020).
+  # Phase 2.1 dropou aggregate_*; IDs viajam no payload (ADR-0004).
   def self.fetch_audit(d)
     events = DomainEvent.where("payload ->> 'protocol_definition_id' = ?", d.id.to_s)
     {

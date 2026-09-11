@@ -1,4 +1,4 @@
-# Registro de envios via WhatsApp Cloud API. Ver ADR-0014.
+# Registro de envios via WhatsApp Cloud API. Ver ADR-0005.
 class OutboundMessage < ApplicationRecord
   validates :to, :template, :idempotency_key, :status, presence: true
   validates :idempotency_key, uniqueness: true

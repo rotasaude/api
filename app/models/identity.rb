@@ -1,4 +1,4 @@
-# Seam para múltiplos provedores de auth (ADR-0022). Hoje só 'password';
+# Seam para múltiplos provedores de auth (ADR-0011). Hoje só 'password';
 # 'govbr' entra como linha nova na mesma tabela.
 class Identity < ApplicationRecord
   belongs_to :user

@@ -1,5 +1,5 @@
 # apps/api/app/models/membership.rb
-# Memberships (ADR-0023). Append-only: revogar = end-date (revoked_at).
+# Memberships (ADR-0012). Append-only: revogar = end-date (revoked_at).
 class Membership < ApplicationRecord
   ROLES = %w[platform_operator municipal_admin protocol_author protocol_publisher viewer].freeze
 

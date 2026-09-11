@@ -1,4 +1,4 @@
-# Relatório congelado de uma triage. Imutável após criação. Ver ADR-0007.
+# Relatório congelado de uma triage. Imutável após criação. Ver ADR-0010.
 class ReportSnapshot < ApplicationRecord
   belongs_to :triage
   belongs_to :protocol_definition
