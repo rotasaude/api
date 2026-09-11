@@ -1,5 +1,5 @@
 # Helper para ativar Row-Level Security com a política tenant_isolation
-# padrão (ver ADR-0019). Garante `FORCE ROW LEVEL SECURITY` (sem ele o dono
+# padrão (ver ADR-0003). Garante `FORCE ROW LEVEL SECURITY` (sem ele o dono
 # da tabela ignora RLS).
 module MigrationHelpers
   module Rls

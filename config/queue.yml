@@ -1,4 +1,4 @@
-# Solid Queue — pools por fila/SLA. Ver ADR-0008.
+# Solid Queue — pools por fila/SLA. Ver ADR-0006.
 # Carregado por bin/jobs (supervisor) em todos os ambientes.
 
 default: &default

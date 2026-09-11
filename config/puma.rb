@@ -1,4 +1,4 @@
-# Configuração do Puma para o papel "web" (ADR-0002).
+# Configuração do Puma para o papel "web" (ADR-0001).
 threads ENV.fetch("RAILS_MIN_THREADS", 1), ENV.fetch("RAILS_MAX_THREADS", 5)
 
 workers ENV.fetch("WEB_CONCURRENCY", 0)

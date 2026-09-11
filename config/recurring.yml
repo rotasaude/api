@@ -1,4 +1,4 @@
-# Tarefas recorrentes Solid Queue. Ver ADR-0007, ADR-0011, ADR-0009.
+# Tarefas recorrentes Solid Queue. Ver ADR-0010 e ADR-0014.
 
 default: &default
   rebuild_dashboard_metrics:

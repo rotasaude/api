@@ -1,6 +1,6 @@
 # Kamal 2 — ambiente development
-# Ver ADR-0002 (imagem única, papéis web e worker).
-# Carrega secrets via `apps/api/deploy/development/secrets` (ver ADR-0011).
+# Ver ADR-0001 (imagem única, papéis web e worker).
+# Carrega secrets via `apps/api/deploy/development/secrets` (ver ADR-0013).
 
 service: rota-saude-api
 image: rota-saude/api

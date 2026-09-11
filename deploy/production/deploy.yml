@@ -1,6 +1,6 @@
 # Kamal 2 — ambiente production
-# Ver ADR-0002 (imagem única, papéis web e worker).
-# Secrets vêm de `apps/api/deploy/production/secrets` (ver ADR-0011).
+# Ver ADR-0001 (imagem única, papéis web e worker).
+# Secrets vêm de `apps/api/deploy/production/secrets` (ver ADR-0013).
 # Web em ≥2 hosts para tolerar queda de um nó; worker dedicado.
 
 service: rota-saude-api

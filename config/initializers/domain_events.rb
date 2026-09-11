@@ -1,4 +1,4 @@
-# Bindings evento → consumer. Ver ADR-0003 + ADR-0020.
+# Bindings evento → consumer. Ver ADR-0004.
 # Adicionar consumidor = uma linha aqui + queue_as no job.
 Rails.application.config.to_prepare do
   DomainEvents.registry.clear

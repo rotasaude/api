@@ -7,7 +7,7 @@ default: &default
     statement_timeout: 15s
 
 # Múltiplas conexões: primary (rota_app, sujeito a RLS) + admin (rota_admin, BYPASSRLS).
-# Ver ADR-0019.
+# Ver ADR-0003.
 development:
   primary:
     <<: *default

@@ -1,4 +1,4 @@
-# Secrets custody (ADR-0024)
+# Secrets custody (ADR-0013)
 
 Chaves protegidas em `deploy/<env>/secrets`, nunca em git. Injetadas no boot pelo Kamal.
 

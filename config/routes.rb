@@ -5,23 +5,23 @@ Rails.application.routes.default_url_options = {
 }
 
 Rails.application.routes.draw do
-  # Sessão de admin (ADR-0022).
+  # Sessão de admin (ADR-0011).
   resource :session, only: %i[create show destroy]
   post "/session/challenge", to: "sessions#challenge_totp"
 
-  # Reset de senha (F-06.2, ADR-0022). JSON-only, sem autenticação.
+  # Reset de senha (F-06.2, ADR-0011). JSON-only, sem autenticação.
   resources :passwords, only: %i[create update], param: :token
 
-  # MFA — ADR-0022
+  # MFA — ADR-0011
   post "/mfa/enroll",  to: "mfa#enroll"
   post "/mfa/confirm",   to: "mfa#confirm"
   post "/mfa/step_up",  to: "mfa#step_up"
 
-  # gov.br OIDC callback (ADR-0022). Frontend redireciona para gov.br;
+  # gov.br OIDC callback (ADR-0011). Frontend redireciona para gov.br;
   # gov.br retorna com ?code=... → trocamos e iniciamos sessão.
   get  "/auth/govbr/callback", to: "sessions#govbr_callback"
 
-  # Setup multi-tenant — write endpoints (ADR-0023/0024). Não confundir com
+  # Setup multi-tenant — write endpoints (ADR-0012/0013). Não confundir com
   # /admin/api/* que é read-only por critério §10 do brief.
   scope "/setup" do
     post "/municipalities",              to: "setup#provision_municipality"
@@ -32,19 +32,19 @@ Rails.application.routes.draw do
     post "/users/:id/deactivate",        to: "setup#deactivate_user"
   end
 
-  # Healthcheck — usado pelo Kamal (ADR-0002).
+  # Healthcheck — usado pelo Kamal (ADR-0001).
   get "up", to: ->(_env) { [200, {}, ["ok"]] }
 
-  # Webhook do WhatsApp (ADR-0010)
+  # Webhook do WhatsApp (ADR-0007)
   scope "/webhooks" do
     get  "whatsapp", to: "webhooks/whatsapp#verify"
     post "whatsapp", to: "webhooks/whatsapp#create"
   end
 
-  # Relatório público (ADR-0007)
+  # Relatório público (ADR-0010)
   get "/r/:token", to: "reports#show", as: :report
 
-  # Autoria/preview de protocolos (ADR-0016)
+  # Autoria/preview de protocolos (ADR-0009)
   scope "/protocols" do
     get  ":name",         to: "protocols#show",    as: :protocol
     post ":name/preview", to: "protocols#preview", as: :protocol_preview
@@ -60,10 +60,10 @@ Rails.application.routes.draw do
     post "draft",   to: "authoring/protocols#draft"
   end
 
-  # Publicação de protocolo — exige step-up MFA (ADR-0022 + ADR-0016)
+  # Publicação de protocolo — exige step-up MFA (ADR-0011 + ADR-0009)
   post "/protocols/:version/publish", to: "publications#create"
 
-  # Admin Console — namespace read-only (ADR-0018, brief §6).
+  # Admin Console — namespace read-only (ADR-0002, brief §6).
   # NENHUMA rota de escrita pode ser adicionada aqui (critério §10).
   namespace :admin do
     namespace :api do
