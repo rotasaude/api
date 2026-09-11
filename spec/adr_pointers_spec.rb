@@ -11,6 +11,9 @@ RSpec.describe "ADR pointers" do
   ROOTS = %w[app config db lib spec deploy].freeze
   VALID_RANGE = (1..15).freeze
   SELF_PATH = "spec/adr_pointers_spec.rb"
+  # Casa a forma compacta também: "ADR-0012/0013" carrega DOIS ponteiros, e um
+  # regex que só lê o primeiro deixaria o segundo passar sem conferência.
+  REF = %r{ADR[-\s]?\d{4}(?:/\d{4})*}
 
   def out_of_range
     Dir.chdir(Rails.root) do
@@ -19,7 +22,7 @@ RSpec.describe "ADR pointers" do
 
       paths.flat_map do |path|
         File.readlines(path, encoding: "UTF-8").each_with_index.flat_map do |line, i|
-          line.scan(/ADR[-\s]?(\d{4})/).flatten.uniq
+          line.scan(REF).flat_map { |ref| ref.scan(/\d{4}/) }.uniq
               .reject { |num| VALID_RANGE.cover?(num.to_i) }
               .map { |num| "#{path}:#{i + 1} → ADR-#{num}" }
         end

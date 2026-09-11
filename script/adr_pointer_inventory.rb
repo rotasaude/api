@@ -15,7 +15,7 @@ paths = (ROOTS.flat_map { |r| Dir.glob("#{r}/**/*.{rb,yml,yaml,erb,rake,md}") } 
 puts %w[file line ref in_range context].join("\t")
 paths.each do |path|
   File.readlines(path, encoding: "UTF-8").each_with_index do |line, i|
-    line.scan(/ADR[-\s]?(\d{4})/).flatten.uniq.each do |num|
+    line.scan(%r{ADR[-\s]?\d{4}(?:/\d{4})*}).flat_map { |ref| ref.scan(/\d{4}/) }.uniq.each do |num|
       puts [path, i + 1, "ADR-#{num}", VALID.cover?(num.to_i), line.strip].join("\t")
     end
   end
