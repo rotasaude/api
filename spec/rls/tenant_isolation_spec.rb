@@ -1,7 +1,7 @@
 # spec/rls/tenant_isolation_spec.rb
 require "rails_helper"
 
-# Invariantes do ADR-0019:
+# Invariantes do ADR-0003:
 #  1. Sem tenant → query levanta (falha fechada).
 #  2. Setar tenant A não vê linha de B (USING).
 #  3. Setar tenant A não consegue inserir linha de B (WITH CHECK).

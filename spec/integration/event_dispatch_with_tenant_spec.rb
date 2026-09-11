@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe "Evento → consumer com tenant (ADR-0020)", type: :job do
+RSpec.describe "Evento → consumer com tenant (ADR-0004 e ADR-0003)", type: :job do
   include ActiveJob::TestHelper
 
   self.use_transactional_tests = false

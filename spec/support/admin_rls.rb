@@ -1,4 +1,4 @@
-# Helpers para specs que tocam tabelas com RLS (ADR-0019) de forma cross-tenant.
+# Helpers para specs que tocam tabelas com RLS (ADR-0003) de forma cross-tenant.
 #
 # Em test, `use_transactional_tests = true` (default) coage as conexões multi-DB
 # a compartilharem a conexão primary (rota_app) dentro da transação do exemplo,
