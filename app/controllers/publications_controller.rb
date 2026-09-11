@@ -1,4 +1,4 @@
-# Publicação de protocolo exige step-up de MFA (ADR-0022 + ADR-0016).
+# Publicação de protocolo exige step-up de MFA (ADR-0011 + ADR-0009).
 class PublicationsController < ApplicationController
   include Authentication
   include MfaStepUp

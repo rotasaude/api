@@ -1,4 +1,4 @@
-# Endpoints de autoria/preview de protocolos. Ver ADR-0016 e ADR-0017.
+# Endpoints de autoria/preview de protocolos. Ver ADR-0009.
 # A UI de autoria (apps/web/src/protocols) consome estes endpoints.
 class ProtocolsController < ApplicationController
   # show/preview leem ProtocolDefinition sob RLS → precisam de within_tenant.

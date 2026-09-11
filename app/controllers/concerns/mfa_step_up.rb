@@ -1,5 +1,5 @@
 # Step-up de MFA: ações de alto risco exigem reverificação TOTP recente
-# mesmo que a sessão esteja autenticada (ADR-0022, ADR-0016 publicação).
+# mesmo que a sessão esteja autenticada (ADR-0011, ADR-0009 publicação).
 module MfaStepUp
   extend ActiveSupport::Concern
 

@@ -1,6 +1,6 @@
 # Base de todos os controllers do namespace Admin:: (read-only).
 # Ver 00_PROMPT_CLAUDE_CODE.md §2 — restrições não-negociáveis.
-# Auth real via cookie de sessão (ADR-0022).
+# Auth real via cookie de sessão (ADR-0011).
 #
 # Responsabilidades:
 #  - fronteira de auth (Authentication concern → require_authentication)
@@ -12,7 +12,7 @@ class Admin::Api::BaseController < ApplicationController
   # Admin tem resolução de escopo própria (suporta "all" cross-tenant para
   # operador, agregações por município, descritor de escopo no envelope).
   # Por isso pula o around_action :within_tenant herdado de
-  # TenantScopedRequest (ADR-0019). Queries de dado de domínio rodam sob
+  # TenantScopedRequest (ADR-0003). Queries de dado de domínio rodam sob
   # rota_admin (BYPASSRLS) porque o WHERE muni_id de Admin::Scoped não
   # desativa a RLS policy — sem SET LOCAL elas levantam UndefinedObject
   # em qualquer tabela RLS-enforced. Como o namespace é read-only por

@@ -1,4 +1,4 @@
-# Reset de senha por e-mail (F-06.2, ADR-0022). JSON-only, sem autenticação.
+# Reset de senha por e-mail (F-06.2, ADR-0011). JSON-only, sem autenticação.
 # create: sempre 204 (sem enumeração de usuários). update: consome o token de
 # uso único e destrói as sessões do usuário.
 class PasswordsController < ApplicationController
