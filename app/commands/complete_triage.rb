@@ -25,7 +25,7 @@ class CompleteTriage
         if outcome.terminal?
           @triage.complete!(outcome)
           DomainEvents.publish("triage.completed", triage_id: @triage.id, **outcome.to_h)
-          DomainEvents.publish("triage.urgent",    triage_id: @triage.id, **outcome.to_h) if outcome.tier == "alta"
+          DomainEvents.publish("triage.urgent",    triage_id: @triage.id, **outcome.to_h) if Protocols::Urgency.urgent?(outcome)
         end
       end
     end
