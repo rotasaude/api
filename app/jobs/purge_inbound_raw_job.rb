@@ -1,5 +1,5 @@
 # Zera o campo raw das InboundMessage antigas, preservando metadados para
-# auditoria mas removendo PII. Ver ADR-0011 (retenção) e nota operacional.
+# auditoria mas removendo PII. Ver ADR-0014 (retenção) e nota operacional.
 class PurgeInboundRawJob < ApplicationJob
   prepend AdminRoleJob
   queue_as :housekeeping

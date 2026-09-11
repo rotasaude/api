@@ -1,11 +1,11 @@
 # Re-encripta colunas Active Record Encryption com a chave primária atual.
-# Ver SECRETS.md (ADR-0024) — rotina pós-rotação de chave.
+# Ver SECRETS.md (ADR-0013) — rotina pós-rotação de chave.
 #
 # Fluxo: ler o atributo (decifra via chave primária ou prior_keys) +
 # reatribuir (marca dirty) + save!(validate: false) (re-cifra com primária).
 # Operação idempotente — re-rodar com a mesma chave é no-op funcional.
 #
-# Cross-tenant (lê todas as cidades) — roda sob rota_admin (BYPASSRLS, ADR-0019).
+# Cross-tenant (lê todas as cidades) — roda sob rota_admin (BYPASSRLS, ADR-0003).
 # NÃO chamar enquanto outra operação está rotacionando — pode interleave com
 # chaves diferentes (sem perda, mas reescreve duas vezes).
 class ReencryptionJob < ApplicationJob

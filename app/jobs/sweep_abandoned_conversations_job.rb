@@ -1,4 +1,4 @@
-# Varredura recorrente (ADR-0019): marca conversas ociosas não-terminais como
+# Varredura recorrente (ADR-0003): marca conversas ociosas não-terminais como
 # `abandoned` e aborta a triage in_progress (`aborted_by_timeout`). Cross-tenant
 # sob a conexão admin (BYPASSRLS) — ver AdminRoleJob. Silenciosa (sem outbound).
 class SweepAbandonedConversationsJob < ApplicationJob

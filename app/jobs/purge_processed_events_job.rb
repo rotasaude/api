@@ -1,5 +1,5 @@
 # Purga linhas antigas de processed_events. Ver ADR-0005.
-# Janela default = 60d: maior que qualquer replay esperado, ver ADR-0009.
+# Janela default = 60d: maior que qualquer replay esperado, ver ADR-0014.
 class PurgeProcessedEventsJob < ApplicationJob
   prepend AdminRoleJob
   queue_as :housekeeping

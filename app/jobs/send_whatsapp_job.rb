@@ -1,4 +1,4 @@
-# Envia mensagem fora-de-banda (ADR-0014/0021). Escopo manual sobre
+# Envia mensagem fora-de-banda (ADR-0005/0007). Escopo manual sobre
 # municipality_channels (RLS-exempt).
 #
 # message: é o hash serializado de Messaging::Reply (via #to_h).

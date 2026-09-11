@@ -1,5 +1,5 @@
 # Consumidor de consent.revoked: apaga o conteúdo clínico da triage abortada
-# por revogação (LGPD), mantendo a casca de auditoria. Ver ADR-0005/0020. (F-07.15)
+# por revogação (LGPD), mantendo a casca de auditoria. Ver ADR-0005/0003. (F-07.15)
 class AnonymizeRevokedTriageJob < ApplicationJob
   include IdempotentConsumer
   queue_as :housekeeping

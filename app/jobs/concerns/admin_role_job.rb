@@ -1,6 +1,6 @@
-# Para recurring tasks cross-tenant (ADR-0019). Roda o corpo do perform
+# Para recurring tasks cross-tenant (ADR-0003). Roda o corpo do perform
 # sob a conexão admin (rota_admin, BYPASSRLS). NÃO usar em jobs que
-# operam em um único tenant — esses incluem TenantScopedJob (ADR-0020).
+# operam em um único tenant — esses incluem TenantScopedJob (ADR-0003).
 #
 # Usar SEMPRE via `prepend AdminRoleJob` (NÃO include). Com include, o
 # perform do subclass aparece antes na cadeia de ancestrais e o wrap

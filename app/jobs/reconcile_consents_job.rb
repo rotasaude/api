@@ -1,6 +1,6 @@
 # Detecta conversations com Consent ativo em versão anterior à atual.
 # Não muda estado — apenas reporta. Mudança de estado acontece no próximo
-# inbound (ADR-0012).
+# inbound (ADR-0008).
 class ReconcileConsentsJob < ApplicationJob
   prepend AdminRoleJob
   queue_as :housekeeping
