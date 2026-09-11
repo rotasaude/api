@@ -1,4 +1,4 @@
-# Ver ADR-0016.
+# Ver ADR-0009.
 class CreateProtocolDefinitions < ActiveRecord::Migration[8.0]
   def change
     create_table :protocol_definitions, id: :uuid do |t|

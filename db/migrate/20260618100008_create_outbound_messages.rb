@@ -1,4 +1,4 @@
-# Ver ADR-0014.
+# Ver ADR-0005.
 class CreateOutboundMessages < ActiveRecord::Migration[8.0]
   def change
     create_table :outbound_messages, id: :uuid do |t|

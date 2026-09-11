@@ -1,4 +1,4 @@
-# Ver ADR-0012.
+# Ver ADR-0008.
 class CreateConsents < ActiveRecord::Migration[8.0]
   def change
     create_table :consents, id: :uuid do |t|

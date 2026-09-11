@@ -9,7 +9,7 @@
 # eventos históricos PT → EN. Esta é a única exceção; deve ser registrada no ADR.
 #
 # triagens, report_snapshots e domain_events pertencem a rota_admin e têm FORCE
-# ROW LEVEL SECURITY (ADR-0019, ver 20260620000020_enable_rls_on_data_plane):
+# ROW LEVEL SECURITY (ADR-0003, ver 20260620000020_enable_rls_on_data_plane):
 #   - RENAME TABLE/COLUMN exige ownership → precisa de rota_admin.
 #   - o UPDATE em domain_events precisa de rota_admin (BYPASSRLS), senão a política
 #     tenant_isolation filtraria as linhas para 0 (não há app.municipality_id na migration).

@@ -1,6 +1,6 @@
 # apps/api/db/migrate/20260620000010_add_municipality_id_to_data_plane.rb
 # Adiciona municipality_id às tabelas de data plane que ainda não têm
-# (ADR-0019). Backfill de dados existentes via conversation.municipality_id
+# (ADR-0003). Backfill de dados existentes via conversation.municipality_id
 # quando aplicável. NOT NULL após backfill.
 class AddMunicipalityIdToDataPlane < ActiveRecord::Migration[8.1]
   def up

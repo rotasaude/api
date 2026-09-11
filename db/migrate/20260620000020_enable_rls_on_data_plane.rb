@@ -1,5 +1,5 @@
-# Ativa RLS com política tenant_isolation em todo data plane (ADR-0019).
-# `protocol_definitions` já era escopada por aplicação (ADR-0016); agora
+# Ativa RLS com política tenant_isolation em todo data plane (ADR-0003).
+# `protocol_definitions` já era escopada por aplicação (ADR-0009); agora
 # por banco também.
 class EnableRlsOnDataPlane < ActiveRecord::Migration[8.1]
   TABLES = %i[

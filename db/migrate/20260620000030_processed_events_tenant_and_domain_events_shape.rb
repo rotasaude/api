@@ -1,7 +1,7 @@
 # apps/api/db/migrate/20260620000030_processed_events_tenant_and_domain_events_shape.rb
-# - processed_events ganha municipality_id e RLS (ADR-0020).
+# - processed_events ganha municipality_id e RLS (ADR-0003).
 #   Índice único permanece (event_id, consumer) — event_id é UUID global.
-# - domain_events drop aggregate_type/aggregate_id (ADR-0020 não os carrega).
+# - domain_events drop aggregate_type/aggregate_id (ADR-0004 não os carrega).
 class ProcessedEventsTenantAndDomainEventsShape < ActiveRecord::Migration[8.1]
   def up
     add_reference :processed_events, :municipality, type: :uuid, foreign_key: true, index: true

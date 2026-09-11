@@ -1,4 +1,4 @@
-# Ver ADR-0010 e ADR-0011.
+# Ver ADR-0007 e ADR-0013.
 class CreateInboundMessages < ActiveRecord::Migration[8.0]
   def change
     create_table :inbound_messages, id: :uuid do |t|

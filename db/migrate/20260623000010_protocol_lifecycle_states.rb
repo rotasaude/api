@@ -3,7 +3,7 @@
 # de vigência per-cidade, garantido pela unique parcial WHERE status='active'
 # (já existente — idx_protocol_definitions_one_active_per_name_muni).
 #
-# protocol_definitions pertence a rota_admin (ADR-0019, ver
+# protocol_definitions pertence a rota_admin (ADR-0003, ver
 # 20260620000020_enable_rls_on_data_plane). Operações que exigem ownership
 # (ADD/DROP CONSTRAINT) precisam rodar via conexão rota_admin, não rota_app.
 class ProtocolLifecycleStates < ActiveRecord::Migration[8.0]

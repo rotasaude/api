@@ -1,4 +1,4 @@
-# Ver ADR-0003 e ADR-0009.
+# Ver ADR-0004 e ADR-0014.
 class CreateDomainEvents < ActiveRecord::Migration[8.0]
   def change
     create_table :domain_events, id: :uuid, default: -> { "gen_random_uuid()" } do |t|

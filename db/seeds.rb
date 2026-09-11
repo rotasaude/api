@@ -12,7 +12,7 @@
 #       ATIVO (triage-respiratoria) + triagem completa + relatório (painel
 #       Relatórios do dashboard + link público WPDA)
 #
-# Operador exige MFA/TOTP a cada login (ADR-0022). Em dev usamos um `otp_secret`
+# Operador exige MFA/TOTP a cada login (ADR-0011). Em dev usamos um `otp_secret`
 # FIXO (override por env) para que a entrada no seu autenticador continue válida
 # após cada reset — caso contrário você teria que re-enrolar toda vez.
 #

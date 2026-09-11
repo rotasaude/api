@@ -1,4 +1,4 @@
-# Roteamento phone_number_id → municipality_id (ADR-0021).
+# Roteamento phone_number_id → municipality_id (ADR-0007).
 # Control plane: RLS-exempt. access_token via Active Record Encryption.
 class CreateMunicipalityChannels < ActiveRecord::Migration[8.1]
   def up

@@ -1,4 +1,4 @@
-# Ver ADR-0006 e ADR-0013.
+# Ver ADR-0004 e ADR-0009.
 class CreateTriagens < ActiveRecord::Migration[8.0]
   def change
     create_table :triagens, id: :uuid do |t|

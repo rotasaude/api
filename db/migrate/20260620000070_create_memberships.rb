@@ -1,5 +1,5 @@
 # apps/api/db/migrate/20260620000070_create_memberships.rb
-# Memberships (ADR-0023). RLS-exempt: control plane.
+# Memberships (ADR-0012). RLS-exempt: control plane.
 # (user_id, municipality_id, role) único parcial WHERE revoked_at IS NULL.
 # municipality_id NULL + role 'platform_operator' = tier de plataforma.
 class CreateMemberships < ActiveRecord::Migration[8.1]

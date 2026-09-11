@@ -1,4 +1,4 @@
-# Status para suspensão futura (ADR-0024). consent_terms e alert_recipients
+# Status para suspensão futura (ADR-0013). consent_terms e alert_recipients
 # como data plane (RLS).
 class MunicipalityStatusAndConsentTerms < ActiveRecord::Migration[8.1]
   def up

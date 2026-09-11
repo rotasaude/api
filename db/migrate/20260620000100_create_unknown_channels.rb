@@ -1,4 +1,4 @@
-# Parking para webhooks com phone_number_id desconhecido (ADR-0021).
+# Parking para webhooks com phone_number_id desconhecido (ADR-0007).
 # Operador é alertado via Platform.audit.
 class CreateUnknownChannels < ActiveRecord::Migration[8.1]
   def change

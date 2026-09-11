@@ -1,4 +1,4 @@
-# Ver ADR-0007.
+# Ver ADR-0010.
 class CreateReportSnapshots < ActiveRecord::Migration[8.0]
   def change
     create_table :report_snapshots, id: :uuid do |t|

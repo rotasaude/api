@@ -1,4 +1,4 @@
-# Ver ADR-0007.
+# Ver ADR-0010.
 class CreateDashboardMetrics < ActiveRecord::Migration[8.0]
   def change
     create_table :dashboard_metrics, id: :uuid do |t|

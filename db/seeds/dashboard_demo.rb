@@ -194,7 +194,7 @@ module DashboardDemo
       # Converge triagens semeadas ANTES do mapa SEED_PRIORITY, que gravavam
       # priority 0 (ilegal pelo contrato, cujo mínimo é 1). O upsert acima é
       # find-or-create, então sem isto um reseed não corrige o que já existe.
-      # ReportSnapshot fica como está de propósito: é prova imutável (ADR-0007).
+      # ReportSnapshot fica como está de propósito: é prova imutável (ADR-0010).
       if completed && triage.priority != priority
         triage.update!(priority: priority,
                        outcome: triage.outcome.merge("priority" => priority))
