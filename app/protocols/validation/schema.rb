@@ -1,5 +1,5 @@
 # Full JSON Schema (draft 2020-12) validation against the vendored contract.
-# The schema file mirrors packages/protocols/schema.json (ADR-0016).
+# The schema file mirrors packages/protocols/schema.json (ADR-0009).
 module Protocols
   module Validation
     module Schema

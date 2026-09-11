@@ -1,4 +1,4 @@
-# Passo individual de um Protocol. Módulo puro — ver ADR-0013.
+# Passo individual de um Protocol. Módulo puro — ver ADR-0009.
 module Protocols
   class Step
     attr_reader :id, :prompt, :answer_type, :options, :branches, :weights

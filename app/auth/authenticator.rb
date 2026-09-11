@@ -1,4 +1,4 @@
-# Ponto único de autenticação (ADR-0022). Strategies isoladas; seam para
+# Ponto único de autenticação (ADR-0011). Strategies isoladas; seam para
 # gov.br entrar sem reescrever sessão.
 #
 # Estratégias disponíveis:

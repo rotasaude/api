@@ -1,4 +1,4 @@
-# Publisher de eventos de domínio (ADR-0003 + emenda ADR-0020).
+# Publisher de eventos de domínio (ADR-0004).
 #   DomainEvents.publish("triage.completed", triage_id: t.id, tier: :alta)
 # Não chame fora de uma transação aberta (ADR-0004 garante COMMIT antes do enqueue).
 module DomainEvents

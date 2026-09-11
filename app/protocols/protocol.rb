@@ -1,4 +1,4 @@
-# Agregado raiz do motor. Módulo puro — ver ADR-0013.
+# Agregado raiz do motor. Módulo puro — ver ADR-0009.
 # Recebe answers (Hash step_id -> answer) e retorna o próximo passo ou um Outcome.
 module Protocols
   class Protocol
@@ -28,8 +28,8 @@ module Protocols
       nil
     end
 
-    # Caminha o fluxo até o fim e devolve um Outcome (ADR-0015).
-    # Scoring (ADR-0017) decide tier/priority a partir do trail.
+    # Caminha o fluxo até o fim e devolve um Outcome (ADR-0009).
+    # Scoring (ADR-0009) decide tier/priority a partir do trail.
     def evaluate(answers)
       trail = []
       cursor = start_step_id

@@ -1,5 +1,5 @@
 # Valida priority_when no PUBLISH (F-03.6): cada regra tem um `when` válido
-# (via Validation::Condition) e priority inteiro em 1..9. Ver ADR-0017.
+# (via Validation::Condition) e priority inteiro em 1..9. Ver ADR-0009.
 module Protocols
   module Validation
     module PriorityWhen

@@ -1,5 +1,5 @@
-# Fábrica Hash -> Protocol. Módulo puro — ver ADR-0013.
-# A leitura do storage (banco / arquivo) acontece em Protocols.fetch (ADR-0016),
+# Fábrica Hash -> Protocol. Módulo puro — ver ADR-0009.
+# A leitura do storage (banco / arquivo) acontece em Protocols.fetch (ADR-0009),
 # que vive em protocols.rb e NÃO faz parte do motor puro.
 module Protocols
   module Definitions

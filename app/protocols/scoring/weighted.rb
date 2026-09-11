@@ -1,4 +1,4 @@
-# Scoring por soma de pesos com thresholds. Módulo puro — ver ADR-0017.
+# Scoring por soma de pesos com thresholds. Módulo puro — ver ADR-0009.
 module Protocols
   module Scoring
     class Weighted

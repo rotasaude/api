@@ -1,4 +1,4 @@
-# Scoring por tabela de decisão: primeira regra que casa ganha. Ver ADR-0017.
+# Scoring por tabela de decisão: primeira regra que casa ganha. Ver ADR-0009.
 module Protocols
   module Scoring
     class DecisionTable

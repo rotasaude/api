@@ -1,4 +1,4 @@
-# Fábrica de scoring. Ver ADR-0017.
+# Fábrica de scoring. Ver ADR-0009.
 module Protocols
   module Scoring
     UnknownStrategy = Class.new(StandardError)

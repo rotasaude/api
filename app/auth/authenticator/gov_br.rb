@@ -1,4 +1,4 @@
-# Integração gov.br OIDC (ADR-0022).
+# Integração gov.br OIDC (ADR-0011).
 #
 # Estado: estrutura completa. HTTP exchange + JWT verify implementados.
 # Para ir a produção real:
@@ -23,7 +23,7 @@ module Authenticator
     TOKEN_ENDPOINT_PATH = "/authorize/token".freeze
     JWKS_ENDPOINT_PATH  = "/jwk".freeze
 
-    # ADR-0022: assurance → role mínima permitida (a maior).
+    # ADR-0011: assurance → role mínima permitida (a maior).
     ASSURANCE_MIN_ROLE = {
       "bronze" => "viewer",
       "prata"  => "municipal_admin",

@@ -1,4 +1,4 @@
-# Avaliador de condições do motor de protocolos. Módulo puro — ver ADR-0013.
+# Avaliador de condições do motor de protocolos. Módulo puro — ver ADR-0009.
 # eq/in/gt/lt/all/any/not; um `when` que não seja nó-operador de chave única é
 # tratado como mapa legado {step_id => value} (AND de eq). Runtime total:
 # nunca levanta — operando ausente/não-numérico ou nó inválido => false.
