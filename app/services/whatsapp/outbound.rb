@@ -1,4 +1,4 @@
-# Cliente WhatsApp Cloud por canal (ADR-0021/0024).
+# Cliente WhatsApp Cloud por canal (ADR-0007/0013).
 require "net/http"
 
 module Whatsapp

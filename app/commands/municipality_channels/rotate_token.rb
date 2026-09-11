@@ -1,7 +1,7 @@
 # Rotaciona o access_token do canal WhatsApp de um município (F-01.9).
 # Custody: platform_operator (qualquer cidade) ou municipal_admin da cidade.
 # Zero-downtime: Outbound lê o token fresco a cada envio. Auditoria via
-# Platform.audit — SEM o valor do token (ADR-0011/0023).
+# Platform.audit — SEM o valor do token (ADR-0012/0013).
 module MunicipalityChannels
   module RotateToken
     def self.call(municipality_id:, new_token:, by:)

@@ -1,5 +1,5 @@
 # Único command que atravessa control plane (bypass) e data plane (with_tenant).
-# Ver ADR-0024.
+# Ver ADR-0013.
 class ProvisionMunicipality
   def self.call(name:, ibge_code:, slug:, uf: nil,
                 channel:, admin_email:, invited_by:,
@@ -23,7 +23,7 @@ class ProvisionMunicipality
     end
 
     # 1b. Convite do 1º admin — InviteMember.call dispara DomainEvents.publish
-    #     que exige Current.municipality_id + SET LOCAL (ADR-0020).
+    #     que exige Current.municipality_id + SET LOCAL (ADR-0003).
     with_tenant(municipality.id) do
       InviteMember.call(
         email: admin_email,

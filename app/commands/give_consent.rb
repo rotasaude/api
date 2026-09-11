@@ -1,4 +1,4 @@
-# Concede consentimento à conversa. Ver ADR-0006 e ADR-0012.
+# Concede consentimento à conversa. Ver ADR-0004 e ADR-0008.
 # Reasons: :wrong_state, :version_mismatch.
 class GiveConsent
   def self.call(conversation:, version:, evidence:)

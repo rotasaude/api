@@ -1,4 +1,4 @@
-# Avança uma triage com uma nova resposta. Ver ADR-0006 e ADR-0017.
+# Avança uma triage com uma nova resposta. Ver ADR-0004 e ADR-0009.
 # Reasons possíveis: :no_consent, :already_completed, :invalid_answer.
 class CompleteTriage
   def self.call(triage:, answer:)

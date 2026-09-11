@@ -1,5 +1,5 @@
 # Tradução de respostas livres em intenção de consentimento + versão atual.
-# Ver ADR-0012. Viés de cautela: dúvida em "sair" é menos pior que dúvida em "aceito".
+# Ver ADR-0008. Viés de cautela: dúvida em "sair" é menos pior que dúvida em "aceito".
 module Consents
   GIVE_PATTERNS = [
     /\A\s*(sim|aceito|concordo|ok|de acordo)\s*\z/i
