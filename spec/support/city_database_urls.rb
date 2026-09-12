@@ -6,6 +6,8 @@
 # 127.0.0.1 masks itself as correct on a laptop and breaks the moment the
 # suite runs from a container that only sees the DB as some other host.
 module CityDatabaseUrls
+  extend self
+
   def city_database_url(database, user: "rota_saude", password: ENV.fetch("POSTGRES_PASSWORD", "postgres"))
     host = ENV.fetch("DATABASE_HOST", "127.0.0.1")
     port = ENV.fetch("DATABASE_PORT", "5432")
