@@ -1,5 +1,5 @@
 # Copia um template de protocolo para dentro de uma cidade como rascunho
-# (ADR-0024). Author/publisher da cidade revisa e publica depois.
+# (ADR-0013). Author/publisher da cidade revisa e publica depois.
 class SeedProtocol
   def self.call(municipality:, template:)
     raise ArgumentError, "template requerido" if template.nil?

@@ -1,6 +1,6 @@
 # Abre transação no request, seta Current.municipality_id e SET LOCAL.
 # Esquema de falha fechada: ausência de municipality_id derruba o request
-# antes de qualquer SQL (ver ADR-0019).
+# antes de qualquer SQL (ver ADR-0003).
 module TenantScopedRequest
   extend ActiveSupport::Concern
 

@@ -1,5 +1,5 @@
 # Superfície de autoria de protocolo (editor do dashboard, F-03.12).
-# Sessão municipal (ADR-0022) + tenant-scoped (RLS, ADR-0019) + ProtocolPolicy.author?.
+# Sessão municipal (ADR-0011) + tenant-scoped (RLS, ADR-0003) + ProtocolPolicy.author?.
 # NÃO é /admin/api (read-only §10): aqui há escrita (draft), sob RLS.
 module Authoring
   class ProtocolsController < ApplicationController

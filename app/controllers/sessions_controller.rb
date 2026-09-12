@@ -1,4 +1,4 @@
-# Sessões — JSON-only (API). Ver ADR-0022.
+# Sessões — JSON-only (API). Ver ADR-0011.
 #
 #   POST   /session   { email_address, password }  → 201 + set-cookie (não-operador)
 #                                                  → 200 + mfa_required (operador)
@@ -26,7 +26,7 @@ class SessionsController < ApplicationController
     session = start_new_session_for(user)
 
     if user.operator?
-      # Operador exige TOTP toda vez (login, não step-up — ADR-0022).
+      # Operador exige TOTP toda vez (login, não step-up — ADR-0011).
       return render(json: { mfa_required: true, session_id: session.id }, status: :ok)
     end
 
@@ -47,7 +47,7 @@ class SessionsController < ApplicationController
     end
   end
 
-  # GET /auth/govbr/callback?code=…&state=…  (ADR-0022 gov.br seam)
+  # GET /auth/govbr/callback?code=…&state=…  (ADR-0011 gov.br seam)
   #
   # state opcional aqui — backend não armazena state em sessão (API JSON).
   # Frontend SPA é quem gera/verifica state via storage local + envia ao

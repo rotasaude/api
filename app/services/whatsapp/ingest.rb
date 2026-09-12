@@ -1,6 +1,6 @@
-# Entrada de ingestão multi-tenant (ADR-0021).
+# Entrada de ingestão multi-tenant (ADR-0007).
 #   Whatsapp::Ingest.call(payload)  # roteia, persiste, enfileira
-# HMAC já foi validado pelo controller antes (ADR-0010).
+# HMAC já foi validado pelo controller antes (ADR-0007).
 module Whatsapp
   module Ingest
     def self.call(payload)

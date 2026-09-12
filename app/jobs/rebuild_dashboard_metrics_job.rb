@@ -1,4 +1,4 @@
-# Reconstrução completa do dashboard a partir das fontes. Ver ADR-0007.
+# Reconstrução completa do dashboard a partir das fontes. Ver ADR-0010.
 # Wrapper do script para uso via Solid Queue recurring.yml.
 class RebuildDashboardMetricsJob < ApplicationJob
   prepend AdminRoleJob

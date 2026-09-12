@@ -1,4 +1,4 @@
-# GET /r/:token — endpoint público do relatório congelado. Ver ADR-0007.
+# GET /r/:token — endpoint público do relatório congelado. Ver ADR-0010.
 # Verifica HMAC antes de qualquer query indexada — barra varredura.
 #
 # Endpoint INHERENTEMENTE cross-tenant: o token assinado é a credencial e

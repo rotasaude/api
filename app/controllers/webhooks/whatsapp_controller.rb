@@ -1,4 +1,4 @@
-# Webhook do WhatsApp Cloud API. Ver ADR-0010.
+# Webhook do WhatsApp Cloud API. Ver ADR-0007.
 # Caminho crítico: HMAC -> dedup -> persist -> publish -> 200 OK em ~50ms.
 module Webhooks
   class WhatsappController < ApplicationController

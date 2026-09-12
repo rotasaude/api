@@ -1,5 +1,5 @@
-# Identidade global (ADR-0022). PII de staff sob base de operação do serviço;
-# desativação por end-dating (deactivated_at), nunca DELETE (ADR-0023).
+# Identidade global (ADR-0011). PII de staff sob base de operação do serviço;
+# desativação por end-dating (deactivated_at), nunca DELETE (ADR-0012).
 class User < ApplicationRecord
   has_secure_password
 

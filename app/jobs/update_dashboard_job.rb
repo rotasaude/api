@@ -1,4 +1,4 @@
-# Atualiza dashboard_metrics incremental por triage.completed (ADR-0007 + 0020).
+# Atualiza dashboard_metrics incremental por triage.completed (ADR-0010 e ADR-0003).
 # Reconstrução completa em scripts/rebuild_dashboard_metrics.rb (recurring).
 class UpdateDashboardJob < ApplicationJob
   include IdempotentConsumer

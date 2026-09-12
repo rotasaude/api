@@ -1,5 +1,5 @@
 # Estado da triage em curso de um cidadão. Manipulado APENAS via commands.
-# Ver ADR-0006 (commands) e ADR-0013 (motor de protocolos).
+# Ver ADR-0004 (commands) e ADR-0009 (motor de protocolos).
 class Triage < ApplicationRecord
   belongs_to :conversation
   belongs_to :protocol_definition

@@ -5,7 +5,7 @@
 #     explicitamente (SessionsController, Admin::Api::BaseController).
 #   - ActionController::Cookies é necessário para que `cookies.signed`
 #     funcione em API mode (config.api_only = true).
-#   - TenantScopedRequest adiciona around_action :within_tenant (ADR-0019).
+#   - TenantScopedRequest adiciona around_action :within_tenant (ADR-0003).
 #     Controllers sem resolução de município aplicam skip_tenant_scope.
 class ApplicationController < ActionController::API
   include ActionController::Cookies

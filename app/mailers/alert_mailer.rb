@@ -1,4 +1,4 @@
-# Alerta de triage urgente à secretaria municipal. Ver ADR-0007.
+# Alerta de triage urgente à secretaria municipal. Ver ADR-0010.
 class AlertMailer < ApplicationMailer
   def urgent(to:, triage_id:, tier:, priority:, occurred_at:)
     @triage_id = triage_id

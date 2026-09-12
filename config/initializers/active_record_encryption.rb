@@ -1,4 +1,4 @@
-# Chaves do AR Encryption. Ver ADR-0011.
+# Chaves do AR Encryption. Ver ADR-0013.
 # Em produção, vêm de credentials criptografados (master.key + credentials.yml.enc).
 # Em dev/test, aceitamos ENV — gere com:
 #   bin/rails db:encryption:init

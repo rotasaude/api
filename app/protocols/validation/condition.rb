@@ -1,7 +1,7 @@
 # Valida um nó de condição (when) no PUBLISH (Gate). Semântico, além do JSON
 # Schema: operador conhecido, gt/lt só em step integer, eq/in no conjunto
 # permitido, step referenciado existe. Mapa legado {step=>val} = validação
-# por-par. Ver ADR-0013/0017. (chore de validação — F-03.2/F-03.6)
+# por-par. Ver ADR-0009. (chore de validação — F-03.2/F-03.6)
 module Protocols
   module Validation
     module Condition

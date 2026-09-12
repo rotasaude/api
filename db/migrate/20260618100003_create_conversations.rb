@@ -1,4 +1,4 @@
-# Ver ADR-0012.
+# Ver ADR-0008.
 class CreateConversations < ActiveRecord::Migration[8.0]
   def change
     create_table :conversations, id: :uuid do |t|

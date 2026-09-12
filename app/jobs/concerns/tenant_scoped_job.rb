@@ -1,5 +1,5 @@
 # apps/api/app/jobs/concerns/tenant_scoped_job.rb
-# Wrapper de tenant para jobs (ADR-0020). Use em todo job que toca dado
+# Wrapper de tenant para jobs (ADR-0003). Use em todo job que toca dado
 # de domínio (consumer ou job operacional). Falha fechada: sem tenant,
 # levanta — não vaza.
 module TenantScopedJob

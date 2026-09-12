@@ -1,4 +1,4 @@
-# Textos das respostas de WhatsApp em ConversationAdvance (ADR-0012/0021).
+# Textos das respostas de WhatsApp em ConversationAdvance (ADR-0008/0007).
 # Por município (override) é decisão de produto futura; hoje texto único pt-BR.
 pt-BR:
   conversation_advance:

@@ -1,6 +1,6 @@
 # GET /admin/api/events — auditoria via domain_events (§4.8).
 #
-# Payload é APENAS referência (ADR 0003/0009). Allowlist explícita:
+# Payload é APENAS referência (ADR 0004/0014). Allowlist explícita:
 # nada de campos livres do payload — só name/actor/ref/aggregate.
 #
 # Phase 1.4 adicionou domain_events.municipality_id + RLS (Phase 1.5):

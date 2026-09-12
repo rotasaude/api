@@ -1,6 +1,6 @@
 # GET /admin/api/triages/:id/trail — trilha de classificação (§4.5b).
 #
-# CRÍTICO LGPD (§2.1 do brief / ADR 0015): apenas regras e referências,
+# CRÍTICO LGPD (§2.1 do brief / ADR 0009): apenas regras e referências,
 # NUNCA texto clínico livre. Lemos de domain_events para esse aggregate.
 class Admin::TriageTrailQuery
   TRAIL_EVENTS = %w[scored rule_matched priority_rule tier_assigned].freeze
@@ -19,7 +19,7 @@ class Admin::TriageTrailQuery
     return nil unless triage
 
     # Phase 2.1 dropou domain_events.aggregate_type/aggregate_id;
-    # IDs viajam no payload JSON (ADR-0020).
+    # IDs viajam no payload JSON (ADR-0004).
     events = DomainEvent
                .where("payload ->> 'triage_id' = ?", triage.id.to_s)
                .where(name: TRAIL_EVENTS)

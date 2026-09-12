@@ -1,4 +1,4 @@
-# Avança uma triage com uma nova resposta. Ver ADR-0006 e ADR-0017.
+# Avança uma triage com uma nova resposta. Ver ADR-0004 e ADR-0009.
 # Reasons possíveis: :no_consent, :already_completed, :invalid_answer.
 class CompleteTriage
   def self.call(triage:, answer:)
@@ -25,7 +25,7 @@ class CompleteTriage
         if outcome.terminal?
           @triage.complete!(outcome)
           DomainEvents.publish("triage.completed", triage_id: @triage.id, **outcome.to_h)
-          DomainEvents.publish("triage.urgent",    triage_id: @triage.id, **outcome.to_h) if outcome.tier == "alta"
+          DomainEvents.publish("triage.urgent",    triage_id: @triage.id, **outcome.to_h) if Protocols::Urgency.urgent?(outcome)
         end
       end
     end

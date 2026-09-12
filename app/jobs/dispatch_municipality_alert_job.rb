@@ -1,4 +1,4 @@
-# Envio efetivo do alerta para a secretaria. HTTP/SMTP fora do lock — ADR-0014.
+# Envio efetivo do alerta para a secretaria. HTTP/SMTP fora do lock — ADR-0005.
 # Hoje suporta apenas e-mail; canal por município vem de Municipality#settings.
 #
 # Dedup contra crash-retry do worker: registra ProcessedEvent

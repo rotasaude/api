@@ -2,7 +2,7 @@
 
 ## Bootstrap do banco (do zero)
 
-`schema.rb` (Ruby) não representa RLS/ownership do ADR-0019 — eles vivem como SQL
+`schema.rb` (Ruby) não representa RLS/ownership do ADR-0003 — eles vivem como SQL
 cru. Por isso o rebuild from-zero usa `db/structure.sql` (gerado por `pg_dump`):
 
 - `rails db:bootstrap` — cria roles e carrega `db/structure.sql` como superuser

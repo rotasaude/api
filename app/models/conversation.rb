@@ -1,4 +1,4 @@
-# Conversa por (municipality_id, phone). Ver ADR-0012 + emenda ADR-0021.
+# Conversa por (municipality_id, phone). Ver ADR-0008 e ADR-0007.
 class Conversation < ApplicationRecord
   belongs_to :municipality
   has_many :triages, dependent: :restrict_with_error
@@ -27,7 +27,7 @@ class Conversation < ApplicationRecord
 
   # Mantém o método antigo como atalho deprecado durante a migração.
   def self.for_phone(phone)
-    raise "Use Conversation.for(phone, municipality_id:) (ADR-0021)"
+    raise "Use Conversation.for(phone, municipality_id:) (ADR-0007)"
   end
 
   def consented?

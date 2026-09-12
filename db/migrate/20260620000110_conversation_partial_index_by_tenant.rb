@@ -1,5 +1,5 @@
 # Índice de conversa ativa passa de phone para (municipality_id, phone)
-# nos estados awaiting_consent/consented (ADR-0021 emenda 0012).
+# nos estados awaiting_consent/consented (ADR-0008).
 class ConversationPartialIndexByTenant < ActiveRecord::Migration[8.1]
   def up
     remove_index :conversations, name: "index_conversations_on_phone"

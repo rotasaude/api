@@ -1,4 +1,4 @@
-# Valor de retorno único de todo Command. Imutável. Ver ADR-0006.
+# Valor de retorno único de todo Command. Imutável. Ver ADR-0004.
 class Result
   attr_reader :reason, :message, :details, :payload
 

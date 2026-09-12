@@ -1,5 +1,5 @@
-# Identidade global (ADR-0022):
-# - drop users.municipality_id (substituído por memberships, ADR-0023)
+# Identidade global (ADR-0011):
+# - drop users.municipality_id (substituído por memberships, ADR-0012)
 # - users.otp_secret (encrypts), otp_enabled, otp_recovery_codes (jsonb), deactivated_at
 # - identities (seam gov.br): provider + provider_uid
 # Tabelas users/sessions/identities permanecem RLS-exempt.

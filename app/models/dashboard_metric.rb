@@ -1,4 +1,4 @@
-# Agregados pré-computados para painéis municipais. Ver ADR-0007.
+# Agregados pré-computados para painéis municipais. Ver ADR-0010.
 # Atualização incremental por UpdateDashboardJob; reconstrução total por script.
 class DashboardMetric < ApplicationRecord
   validates :dimension, :period, :key, presence: true

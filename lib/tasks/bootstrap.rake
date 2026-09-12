@@ -1,4 +1,4 @@
-# Bootstrap-from-zero do banco sob ADR-0019. db:migrate num banco novo carrega o
+# Bootstrap-from-zero do banco sob ADR-0003. db:migrate num banco novo carrega o
 # schema.rb (Ruby), que NÃO representa RLS/ownership (SQL cru). Aqui carregamos um
 # db/structure.sql (pg_dump --schema-only) como superuser rota_saude, reproduzindo
 # RLS + ownership + least-priv fielmente.
@@ -52,7 +52,7 @@ namespace :db do
     # (3/3) Carimba schema_migrations para que db:migrate do entrypoint seja no-op.
     # structure.sql é --schema-only; schema_migrations fica vazia após o load.
     # Sem esse passo, db:migrate tentaria re-rodar todas as migrations como rota_app,
-    # que não tem CREATE no schema public (least-priv ADR-0019) e falharia.
+    # que não tem CREATE no schema public (least-priv ADR-0003) e falharia.
     puts "[db:bootstrap] (3/3) carimbando schema_migrations em #{p[:db]}"
     migration_dir = File.expand_path("../../db/migrate", __dir__)
     versions = Dir.glob("#{migration_dir}/[0-9]*.rb")

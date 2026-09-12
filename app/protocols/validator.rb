@@ -1,4 +1,4 @@
-# Valida uma definição de protocolo. Módulo puro — ver ADR-0013 e ADR-0016.
+# Valida uma definição de protocolo. Módulo puro — ver ADR-0009.
 # Combina JSON Schema (forma) com linter (semântica: referências, ciclos, ramos órfãos).
 module Protocols
   class Validator
@@ -28,7 +28,7 @@ module Protocols
     attr_reader :definition
 
     def schema_errors
-      # JSON Schema real fica em packages/protocols/schema.json (ADR-0016).
+      # JSON Schema real fica em packages/protocols/schema.json (ADR-0009).
       # Aqui validamos as obrigações mínimas para evitar acoplamento ao JSON
       # Schema runtime durante o boot — o lint completo roda no script offline.
       errors = []

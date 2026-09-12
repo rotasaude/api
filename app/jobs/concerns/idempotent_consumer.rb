@@ -1,6 +1,6 @@
-# Exactly-once per consumer + tenant scoping (ADR-0005 + emenda ADR-0020).
+# Exactly-once per consumer + tenant scoping (ADR-0005).
 # Subclasses implementam #handle(**kwargs). Efeitos HTTP NÃO entram aqui
-# (ver ADR-0014); fora-de-banda fica para job dedicado.
+# (ver ADR-0005); fora-de-banda fica para job dedicado.
 module IdempotentConsumer
   extend ActiveSupport::Concern
   include TenantScopedJob

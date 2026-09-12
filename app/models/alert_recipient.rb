@@ -1,4 +1,4 @@
-# Destinatário de alerta urgente por município (ADR-0024).
+# Destinatário de alerta urgente por município (ADR-0013).
 # Esta tabela é APENAS configuração. SLA, escalonamento real, monitoramento
 # são fora de escopo (ver §1.2 do brief).
 class AlertRecipient < ApplicationRecord

@@ -1,4 +1,4 @@
-# Cria os dois papéis exigidos pelo ADR-0019.
+# Cria os dois papéis exigidos pelo ADR-0003.
 #   rota_app  : sujeito a RLS (FORCE)
 #   rota_admin: BYPASSRLS, usado por recurring tasks e migrations
 class CreateDatabaseRoles < ActiveRecord::Migration[8.1]

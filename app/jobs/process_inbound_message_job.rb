@@ -1,4 +1,4 @@
-# Avança a conversa quando uma mensagem nova chega (ADR-0010/0014/0020/0021).
+# Avança a conversa quando uma mensagem nova chega (ADR-0007/0005/0003).
 class ProcessInboundMessageJob < ApplicationJob
   include TenantScopedJob
 

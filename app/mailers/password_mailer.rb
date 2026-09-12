@@ -1,4 +1,4 @@
-# E-mail de redefinição de senha (F-06.2, ADR-0022). Link aponta para o
+# E-mail de redefinição de senha (F-06.2, ADR-0011). Link aponta para o
 # frontend (PUBLIC_DASHBOARD_URL); o token expira em 15 min e é de uso único.
 class PasswordMailer < ApplicationMailer
   def reset(user)

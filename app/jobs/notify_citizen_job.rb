@@ -1,4 +1,4 @@
-# Notifica o cidadão com o link do snapshot. Ver ADR-0007 e ADR-0014.
+# Notifica o cidadão com o link do snapshot. Ver ADR-0010 e ADR-0005.
 # Idempotência via concern; HTTP delegado para SendWhatsappJob.
 class NotifyCitizenJob < ApplicationJob
   include IdempotentConsumer

@@ -1,16 +1,16 @@
 # Avança a máquina de estados da conversa quando uma mensagem nova chega.
-# Ver ADR-0012 (consent), ADR-0013 (motor de protocolos), ADR-0010 (ingestão).
+# Ver ADR-0008 (consent), ADR-0009 (motor de protocolos), ADR-0007 (ingestão).
 #
 # Recebe conversation (já lockada pelo PIMJ) + inbound (InboundMessage).
 # Retorna Result#reply: Messaging::Reply (ou nil) com a resposta a enviar de volta,
 # ou nil quando o fluxo segue por evento (ex.: triage.completed → NotifyCitizenJob
 # entrega o link do snapshot por outro caminho).
 #
-# Estados do conversation (ADR-0021 emenda 0012):
+# Estados do conversation (ADR-0008):
 #   greeting → awaiting_consent → consented → revoked (terminal)
 #
 # Textos em config/locales/conversation_advance.pt-BR.yml.
-# Próxima pergunta usa o `prompt` do step real do motor de protocolos (ADR-0013).
+# Próxima pergunta usa o `prompt` do step real do motor de protocolos (ADR-0009).
 class ConversationAdvance
   Result = Struct.new(:reply, keyword_init: true)
 

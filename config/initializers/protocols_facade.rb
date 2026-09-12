@@ -1,4 +1,4 @@
-# Façade. ÚNICO lugar que liga o motor puro (ADR-0013) ao storage (ADR-0016).
+# Façade. ÚNICO lugar que liga o motor puro ao storage (ADR-0009).
 # O motor não importa AR; quem precisa de um Protocol carregado vem aqui.
 #
 # Mora num initializer (e não em app/protocols/protocols.rb) porque
@@ -22,7 +22,7 @@ Rails.application.config.to_prepare do
         end
       end
 
-      # Versão exata. Usado por relatórios históricos (ADR-0007 / ADR-0016).
+      # Versão exata. Usado por relatórios históricos (ADR-0010 / ADR-0009).
       def fetch(name:, version:, municipality_id: nil)
         record = ProtocolDefinition.find_by(
           name: name,

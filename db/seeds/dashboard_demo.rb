@@ -147,6 +147,12 @@ module DashboardDemo
   end
 
   TIER_CYCLE = %w[low medium high medium low high medium high].freeze
+
+  # Prioridade por tier, na faixa que o contrato exige (1..9, menor = mais
+  # urgente). Antes disto o seed usava 0 para tudo que não fosse "high" — valor
+  # ilegal pelo schema e que faria o gate de urgência (priority <= 1) tratar
+  # toda triagem não-urgente como urgente.
+  SEED_PRIORITY = { "high" => 1, "medium" => 5, "low" => 9 }.freeze
   MODE_CYCLE = %w[weighted weighted decision_table].freeze
   # Consented conversations are active/successful, so their triages are only
   # completed or in_progress (never aborted — an abort belongs to a conversation
@@ -165,7 +171,7 @@ module DashboardDemo
       completed = status == "completed"
       tier = TIER_CYCLE[i % TIER_CYCLE.size]
       mode = MODE_CYCLE[i % MODE_CYCLE.size]
-      priority = tier == "high" ? 1 : 0
+      priority = SEED_PRIORITY.fetch(tier)
       started_at = at_days_ago(days, hour: 9)
       completed_at = completed ? started_at + (3 + (i % 8)).minutes : nil
 
@@ -184,6 +190,15 @@ module DashboardDemo
                        { "step" => "febre", "answer" => (tier == "high" ? "true" : "false") } ]
         } : {})
       )
+
+      # Converge triagens semeadas ANTES do mapa SEED_PRIORITY, que gravavam
+      # priority 0 (ilegal pelo contrato, cujo mínimo é 1). O upsert acima é
+      # find-or-create, então sem isto um reseed não corrige o que já existe.
+      # ReportSnapshot fica como está de propósito: é prova imutável (ADR-0010).
+      if completed && triage.priority != priority
+        triage.update!(priority: priority,
+                       outcome: triage.outcome.merge("priority" => priority))
+      end
 
       built << { triage: triage, tier: tier, mode: mode, priority: priority, days: days, completed: completed }
 

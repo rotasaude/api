@@ -1,4 +1,4 @@
-# Value Object de saída do motor. Imutável. Ver ADR-0015.
+# Value Object de saída do motor. Imutável. Ver ADR-0009.
 module Protocols
   class Outcome
     attr_reader :status, :tier, :priority, :trail, :awaiting, :score

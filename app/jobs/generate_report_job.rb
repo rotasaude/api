@@ -1,4 +1,4 @@
-# Cria ReportSnapshot imutável a partir de triage.completed. Ver ADR-0007.
+# Cria ReportSnapshot imutável a partir de triage.completed. Ver ADR-0010.
 class GenerateReportJob < ApplicationJob
   include IdempotentConsumer
   queue_as :reports

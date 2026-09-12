@@ -1,5 +1,5 @@
 # Endpoints HTTP do "setup" multi-tenant — invocam commands do Phase 4/6.
-# Ver ADR-0023 (memberships/authz) e ADR-0024 (provisionamento).
+# Ver ADR-0012 (memberships/authz) e ADR-0013 (provisionamento).
 #
 # Authn: cookie de sessão (Authentication concern).
 # Authz: por endpoint, ver each_action (operator para provision/deactivate;

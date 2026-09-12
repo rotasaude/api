@@ -1,4 +1,4 @@
-# Parser puro: payload bruto → lista de mensagens normalizadas (ADR-0010).
+# Parser puro: payload bruto → lista de mensagens normalizadas (ADR-0007).
 module Whatsapp
   module Ingest
     module Parser

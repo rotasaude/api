@@ -1,4 +1,4 @@
-# Camada de prioridade independente do modo de scoring (ADR-0017). Escala-só:
+# Camada de prioridade independente do modo de scoring (ADR-0009). Escala-só:
 # devolve a MENOR priority entre as regras cujo `when` casa, ou nil. Módulo puro
 # e TOTAL — nunca levanta: `rules` não-Array ou elemento não-Hash é ignorado;
 # uma regra sem priority inteira >= 1 é descartada (nunca escala para 0). (F-03.6)

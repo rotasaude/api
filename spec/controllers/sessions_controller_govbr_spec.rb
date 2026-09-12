@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe SessionsController, "gov.br callback (ADR-0022 seam)", type: :request do
+RSpec.describe SessionsController, "gov.br callback (ADR-0011 seam)", type: :request do
   before do
     allow(Platform).to receive(:audit)
   end

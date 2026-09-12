@@ -1,5 +1,5 @@
-# Auditoria imutável (ADR-0009, ADR-0020). municipality_id pode ser NULL em
-# eventos platform-scope (ADR-0023; emenda aplicada no Phase 4).
+# Auditoria imutável (ADR-0014, ADR-0004). municipality_id pode ser NULL em
+# eventos platform-scope (ADR-0012; emenda aplicada no Phase 4).
 class DomainEvent < ApplicationRecord
   self.primary_key = :id
 

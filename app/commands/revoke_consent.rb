@@ -1,4 +1,4 @@
-# Revoga consentimento e aborta triage em curso. Ver ADR-0006 e ADR-0012.
+# Revoga consentimento e aborta triage em curso. Ver ADR-0004 e ADR-0008.
 # Reasons: :no_active_consent.
 class RevokeConsent
   def self.call(conversation:, reason: nil)
