@@ -18,6 +18,22 @@ class CityConnection
       CityRecord.connected_to(shard: city.shard, role: :writing, &block)
     end
 
+    # Verificado em 2026-09-12 contra o Rails 8.1.3, os pontos em que registrar
+    # uma cidade pode falhar:
+    #   URL malformada        -> DatabaseConfigurations::InvalidConfigurationError
+    #                            (build_db_config_from_string, URI.parse)
+    #   URL sem database      -> UrlConfig com database nulo (guard abaixo)
+    #   scheme de adapter que não existe (ex.: "postgress://")
+    #                         -> AdapterNotFound / AdapterNotSpecified, levantado
+    #                            por establish_connection em si (validate!),
+    #                            não por db_config_for — por isso o rescue cobre
+    #                            o método inteiro, não só a resolução da config.
+    #   password com caractere que quebra URI.parse (ex.: "[", espaço)
+    #                         -> URI::InvalidURIError
+    # Todos viram InvalidCityDatabase, para o chamador ter um erro só. A
+    # mensagem NUNCA interpola e.message: a exception original do Rails
+    # embute a database_url inteira (com credenciais) no texto — deixar isso
+    # vazar para logs/error tracker anularia o encrypts :database_url do City.
     def ensure_pool(city)
       return if registered?(city.shard)
 
@@ -31,6 +47,11 @@ class CityConnection
           shard: city.shard
         )
       end
+    rescue ActiveRecord::DatabaseConfigurations::InvalidConfigurationError,
+           ActiveRecord::AdapterNotFound,
+           ActiveRecord::AdapterNotSpecified,
+           URI::InvalidURIError
+      raise InvalidCityDatabase, "cidade #{city.slug}: database_url inválida"
     end
 
     def registered?(shard)
@@ -41,10 +62,6 @@ class CityConnection
 
     private
 
-    # Verificado em 2026-09-12 contra o Rails 8.1.3:
-    #   URL malformada  -> InvalidConfigurationError
-    #   URL sem database -> UrlConfig com database nulo
-    # Os dois viram InvalidCityDatabase, para o chamador ter um erro só.
     def db_config_for(city)
       url = city.database_url.to_s
       url += (url.include?("?") ? "&" : "?") + "pool=#{pool_size}"
@@ -55,8 +72,6 @@ class CityConnection
       end
 
       resolved
-    rescue ActiveRecord::DatabaseConfigurations::InvalidConfigurationError => e
-      raise InvalidCityDatabase, "cidade #{city.slug}: #{e.message}"
     end
 
     def pool_size

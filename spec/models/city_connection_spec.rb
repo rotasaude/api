@@ -37,4 +37,27 @@ RSpec.describe CityConnection do
     expect { described_class.with(broken) { 1 } }
       .to raise_error(CityConnection::InvalidCityDatabase, /quebrada/)
   end
+
+  it "raises for a city whose database_url has an adapter scheme that does not exist" do
+    # AdapterNotFound is raised by establish_connection itself (validate!),
+    # not by config resolution — this only reaches the registry's rescue
+    # because it now wraps the whole registration, not just db_config_for.
+    secret = "hunter2-#{SecureRandom.hex(3)}"
+    broken = build_city(slug: "adptr#{SecureRandom.hex(4)}",
+      database_url: "postgress://rota_saude:#{secret}@host.docker.internal:5432/rota_saude_test_city_a")
+
+    expect { described_class.with(broken) { 1 } }
+      .to raise_error(CityConnection::InvalidCityDatabase) { |error|
+        expect(error.message).to include(broken.slug)
+        expect(error.message).not_to include(secret)
+      }
+  end
+
+  it "raises for a city whose database_url cannot be parsed as a URI" do
+    broken = build_city(slug: "uriparse#{SecureRandom.hex(4)}",
+      database_url: "postgres://rota_saude:pa[sswd@host.docker.internal:5432/rota_saude_test_city_a")
+
+    expect { described_class.with(broken) { 1 } }
+      .to raise_error(CityConnection::InvalidCityDatabase, /#{broken.slug}/)
+  end
 end
