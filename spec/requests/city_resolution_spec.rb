@@ -19,13 +19,7 @@ RSpec.describe "City resolution", type: :request do
     Rails.application.reload_routes!
   end
 
-  let(:city_a_url) do
-    host = ENV.fetch("DATABASE_HOST", "127.0.0.1")
-    port = ENV.fetch("DATABASE_PORT", "5432")
-    pwd  = ENV.fetch("POSTGRES_PASSWORD", "postgres")
-    ENV.fetch("TEST_CITY_A_URL",
-      "postgres://rota_saude:#{pwd}@#{host}:#{port}/rota_saude_test_city_a")
-  end
+  let(:city_a_url) { ENV.fetch("TEST_CITY_A_URL", city_database_url("rota_saude_test_city_a")) }
 
   it "serves an active city and exposes it on Current" do
     create(:city, slug: "cidadeviva", status: "active", database_url: city_a_url)
@@ -54,6 +48,17 @@ RSpec.describe "City resolution", type: :request do
     create(:city, slug: "nascendo", status: "provisioning", database_url: city_a_url)
     get "/_probe", headers: { "HOST" => "nascendo.rotasaude.app" }
     expect(response).to have_http_status(:not_found)
+    # "provisioning" and "does not exist" must be indistinguishable to the
+    # client — leaking that a city is being set up is a security property,
+    # not an oversight, so the body must match the unknown-host sibling exactly.
+    expect(JSON.parse(response.body)["error"]).to eq("unknown_city")
+  end
+
+  it "returns 404 for an archived city" do
+    create(:city, slug: "desligada", status: "archived", database_url: city_a_url)
+    get "/_probe", headers: { "HOST" => "desligada.rotasaude.app" }
+    expect(response).to have_http_status(:not_found)
+    expect(JSON.parse(response.body)["error"]).to eq("unknown_city")
   end
 
   it "returns 404 for a reserved subdomain" do

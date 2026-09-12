@@ -4,7 +4,7 @@ FactoryBot.define do
     name { "Cidade Exemplo" }
     uf { "SP" }
     status { "active" }
-    database_url { "postgres://rota_city:rota_city@127.0.0.1:5432/rota_saude_test_city_a" }
+    database_url { "postgres://rota_city:rota_city@#{ENV.fetch('DATABASE_HOST', '127.0.0.1')}:5432/rota_saude_test_city_a" }
     encryption_key { SecureRandom.hex(32) }
   end
 end
