@@ -9,15 +9,9 @@ RSpec.describe CityConnection do
     ENV.fetch("DATABASE_HOST", "127.0.0.1")
   end
 
-  def url_for(db)
-    port = ENV.fetch("DATABASE_PORT", "5432")
-    pwd  = ENV.fetch("POSTGRES_PASSWORD", "postgres")
-    "postgres://rota_saude:#{pwd}@#{db_host}:#{port}/#{db}"
-  end
-
   def build_city(slug: "conn#{SecureRandom.hex(4)}", **attrs)
     build(:city, slug: slug,
-          database_url: ENV.fetch("TEST_CITY_A_URL", url_for("rota_saude_test_city_a")),
+          database_url: ENV.fetch("TEST_CITY_A_URL", city_database_url("rota_saude_test_city_a")),
           **attrs)
   end
 
@@ -60,6 +54,16 @@ RSpec.describe CityConnection do
         expect(error.message).to include(broken.slug)
         expect(error.message).not_to include(secret)
       }
+  end
+
+  it "forgets a registered pool" do
+    city = build_city
+    described_class.ensure_pool(city)
+    expect(described_class.registered?(city.shard)).to be(true)
+
+    described_class.forget(city.shard)
+
+    expect(described_class.registered?(city.shard)).to be(false)
   end
 
   it "raises for a city whose database_url cannot be parsed as a URI" do

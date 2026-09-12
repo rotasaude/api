@@ -60,6 +60,13 @@ class CityConnection
         .nil?
     end
 
+    # Rotação, suspensão e desligamento de cidade precisam derrubar o pool.
+    # No-op se a cidade nunca foi registrada neste processo.
+    def forget(shard)
+      ActiveRecord::Base.connection_handler
+        .remove_connection_pool(CityRecord.name, role: :writing, shard: shard)
+    end
+
     private
 
     def db_config_for(city)
