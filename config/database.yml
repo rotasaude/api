@@ -42,6 +42,17 @@ development:
     port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
     migrations_paths: db/cache_migrate
     schema_dump: cache_schema.rb
+  # Banco de plataforma — catálogo de cidades, roteamento e contas de operador.
+  # NUNCA guarda dado de cidadão. Ver spec 2026-09-12-banco-por-cidade-design.
+  platform:
+    <<: *default
+    database: rota_saude_platform_development
+    username: rota_platform
+    password: <%= ENV.fetch("ROTA_PLATFORM_PASSWORD", "rota_platform") %>
+    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+    migrations_paths: db/platform_migrate
+    schema_dump: platform_schema.rb
 
 test:
   primary:
@@ -59,6 +70,15 @@ test:
     host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
     port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
     migrations_paths: db/migrate
+  platform:
+    <<: *default
+    database: rota_saude_platform_test
+    username: rota_platform
+    password: <%= ENV.fetch("ROTA_PLATFORM_PASSWORD", "rota_platform") %>
+    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+    migrations_paths: db/platform_migrate
+    schema_dump: platform_schema.rb
 
 production:
   primary:
