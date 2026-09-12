@@ -5,19 +5,21 @@
 if [ "${1}" = "./bin/rails" ] && [ "${2}" = "server" ]; then
   echo "[entrypoint] role=web — applying pending migrations"
   # Aplica migrations INCREMENTAIS sobre um banco já provisionado. O bootstrap do
-  # zero (database, roles, extensions, ownership/RLS) é responsabilidade do start.sh
-  # no dev e da infra no prod — NÃO deste entrypoint. Aqui db:migrate roda sob a
-  # conexão primary (rota_app, least privilege — ADR-0019); migrations que precisam
-  # de privilégio de dono/BYPASSRLS abrem sua própria PG.connect(user: rota_admin)
-  # (ex.: 20260620000020_enable_rls_on_data_plane). Por isso rota_app sozinho NÃO
-  # consegue subir um banco vazio (faltam CREATE EXTENSION/ROLE) — e tudo bem.
+  # zero (database, roles, extensions, schema de fila/cache) é responsabilidade
+  # do start.sh no dev e da infra no prod — NÃO deste entrypoint.
   #
-  # Usamos db:migrate e NÃO db:schema:load porque schema:load:
-  #   - roda com force: :cascade e falha ao dropar as tabelas do data plane
-  #     (dono rota_admin) como rota_app -> "must be owner of table ...";
-  #   - não reproduz as políticas RLS (SQL cru nas migrations, não representável
-  #     no schema.rb ruby), o que quebraria o ADR-0019.
-  # db:migrate é idempotente: no-op quando já migrado, aplica o pendente caso contrário.
+  # db:migrate (sem sufixo) roda para primary/admin/queue/cache/platform do
+  # ambiente atual. Desde o Plano 2 ("banco por cidade", Task 4) o domínio saiu
+  # do banco compartilhado — db/migrate fica vazio de propósito (o schema de
+  # cidade mora em db/city_migrate, aplicado só via `city:load_schema`, nunca
+  # por este entrypoint) — então para primary/admin isto é hoje um no-op
+  # permanente; para queue/cache/platform aplica o que estiver pendente.
+  #
+  # Usamos db:migrate e NÃO db:schema:load porque schema:load roda com
+  # force: :cascade — droparia e recriaria qualquer tabela que o schema.rb/
+  # admin_schema.rb da config declarasse, e admin_schema.rb ainda é o dump
+  # antigo (com domínio) até o Plano 5 remover o papel admin. db:migrate é
+  # idempotente: no-op quando já migrado, aplica o pendente caso contrário.
   #
   # db:create é best-effort: o banco é provisionado fora do container e rota_app não
   # tem CREATEDB, então db:create sempre falha aqui ("permission denied to create

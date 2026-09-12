@@ -2,25 +2,33 @@
 
 ## Bootstrap do banco (do zero)
 
-`schema.rb` (Ruby) não representa RLS/ownership do ADR-0003 — eles vivem como SQL
-cru. Por isso o rebuild from-zero usa `db/structure.sql` (gerado por `pg_dump`):
+Desde o Plano 2 ("banco por cidade", Task 4) o domínio (conversas, triagens,
+protocolos, usuários municipais etc.) não mora mais no banco compartilhado —
+cada cidade tem seu próprio banco Postgres, sem RLS e sem split de ownership.
+`db:bootstrap`, `db:bootstrap:dump`, `bin/verify-bootstrap` e `db/structure.sql`
+não existem mais; o RLS que eles reproduziam saiu junto com o domínio.
 
-- `rails db:bootstrap` — cria roles e carrega `db/structure.sql` como superuser
-  (`rota_saude`/`POSTGRES_PASSWORD`) na DB-alvo (`BOOTSTRAP_DATABASE` ou a do
-  `RAILS_ENV`). É o que `start.sh --reset` usa.
-- `rails db:bootstrap:dump` — regenera `db/structure.sql`. **Rode e commite sempre
-  que uma migration mexer em estrutura/RLS** (depois de aplicar a migration no dev).
-  Mantenha `db/migrate/*.rb` e `db/structure.sql` sincronizados: o bootstrap stamps
-  `schema_migrations` pelos nomes dos arquivos em `db/migrate/`, então não delete
-  migrations sem re-gerar `structure.sql`.
-- `bin/verify-bootstrap` — valida o bootstrap from-zero num banco-rascunho.
+- **Banco de cidade** — schema em `db/city_migrate/` (uma migration só,
+  `create_city_schema`), dump em `db/city_schema.rb`. Carregue num banco de
+  cidade com `rails city:load_schema[nome_ou_url]` (`lib/tasks/city.rake`) —
+  a task se recusa a rodar fora de development/test e a atingir o banco de
+  `primary`/`admin`/`queue`/`cache`/`platform`/`city_unset`, em qualquer
+  ambiente. `rails city:test_databases` provisiona os dois bancos de cidade
+  usados pelos specs de isolamento.
+- **Banco compartilhado** — só guarda Solid Queue e Solid Cache até o Plano 5
+  (`db/queue_schema.rb`, `db/cache_schema.rb`; `db/schema.rb`, de `primary`,
+  fica vazio de propósito). `start.sh` garante os roles `rota_app`/`rota_admin`
+  e carrega esses dois schemas por nome (`db:schema:load:primary`,
+  `:queue`, `:cache`) — nunca `db:prepare`/`db:schema:load` "puros", que
+  varreriam também `admin` (cujo dump, `db/admin_schema.rb`, ainda é o
+  schema antigo completo até o Plano 5 remover o papel `admin`).
+- `config.active_record.dump_schema_after_migration` é `false` em
+  development (igual a test/production): como primary/admin/queue/cache
+  compartilham o mesmo banco físico, um dump automático depois de
+  `db:migrate`/`db:prepare` reintroduziria todo tabela de domínio nesses
+  quatro arquivos de schema. Rode `db:schema:dump:<config>` explicitamente
+  quando precisar regenerar um deles.
 
-> **Precondição:** `db:bootstrap` exige a DB-alvo **vazia** (o load usa `CREATE TABLE`
-> sem `IF NOT EXISTS`). `start.sh --reset` e `verify-bootstrap` já garantem isso.
->
-> **Versão do psql:** `db/structure.sql` é gerado pelo `pg_dump` do container e usa
-> meta-comandos `\restrict`/`\unrestrict` (pg_dump recente). Carregue-o sempre com um
-> `psql` de versão **≥** a que gerou o dump (dentro do container é garantido; cuidado
-> ao carregar de um cliente antigo no host ou em prod).
-
-Migrations incrementais no dev seguem via `db:migrate` (entrypoint), normalmente.
+Migrations incrementais no dev seguem via `db:migrate` (entrypoint), normalmente
+— `db/migrate/` fica vazio de propósito (só domínio de cidade mudava esse
+diretório, e esse domínio saiu).

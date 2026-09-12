@@ -1,7 +1,7 @@
 # Seeds de desenvolvimento. Idempotente: `bin/rails db:seed` pode rodar N vezes.
 #
-# Recria a BASELINE mínima de dev que o `start.sh --reset` apaga (o bootstrap
-# carrega `db/structure.sql`, que é schema-only — zero dados):
+# Recria a BASELINE mínima de dev que o `start.sh --reset` apaga (o schema
+# carregado por start.sh é schema-only — zero dados):
 #
 #   - Município "Curitiba Demo" .................... tenant de dev
 #   - admin@curitiba.demo / dev-password .......... municipal_admin em Curitiba
