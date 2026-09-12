@@ -25,9 +25,15 @@ não existem mais; o RLS que eles reproduziam saiu junto com o domínio.
 - `config.active_record.dump_schema_after_migration` é `false` em
   development (igual a test/production): como primary/admin/queue/cache
   compartilham o mesmo banco físico, um dump automático depois de
-  `db:migrate`/`db:prepare` reintroduziria todo tabela de domínio nesses
+  `db:migrate`/`db:prepare` reintroduziria toda tabela de domínio nesses
   quatro arquivos de schema. Rode `db:schema:dump:<config>` explicitamente
-  quando precisar regenerar um deles.
+  quando precisar regenerar um deles (`primary`, `admin`, `queue` ou `cache`).
+  **`platform` é afetado pelo mesmo flag, mas por um motivo diferente:** o
+  banco de plataforma é próprio, nunca foi contaminado por domínio — só
+  parou de se auto-regenerar. Depois de qualquer migration em
+  `db/platform_migrate/`, rode `bin/rails db:schema:dump:platform` e
+  commite `db/platform_schema.rb` manualmente (era automático via
+  `db:migrate:platform` antes desta mudança — Task 3 contava com isso).
 
 Migrations incrementais no dev seguem via `db:migrate` (entrypoint), normalmente
 — `db/migrate/` fica vazio de propósito (só domínio de cidade mudava esse

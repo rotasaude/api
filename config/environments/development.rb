@@ -22,7 +22,15 @@ Rails.application.configure do
   # tabelas ali (domínio incluso, enquanto o Plano 5 não reparenta) em
   # db/schema.rb, db/queue_schema.rb, db/cache_schema.rb e db/admin_schema.rb —
   # sujando de volta os dumps limpos da Task 4 (banco por cidade). Dump
-  # continua disponível sob demanda via `bin/rails db:schema:dump[:<config>]`.
+  # continua disponível sob demanda via `bin/rails db:schema:dump:<config>`.
+  #
+  # Efeito colateral (Minor do code review): este flag é global, não por
+  # config — `platform` também para de se auto-regenerar, embora o banco de
+  # plataforma nunca tenha sido contaminado por domínio (é um banco à parte).
+  # Task 3 contava com `db:migrate:platform` regenerando
+  # db/platform_schema.rb sozinho; agora, depois de uma migration em
+  # db/platform_migrate/, rode `bin/rails db:schema:dump:platform` e
+  # commite o resultado manualmente. Ver README.md.
   config.active_record.dump_schema_after_migration = false
 
   # Liberar hostnames internos do docker-compose para o Host Authorization.
