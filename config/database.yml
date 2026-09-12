@@ -53,6 +53,23 @@ development:
     port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
     migrations_paths: db/platform_migrate
     schema_dump: platform_schema.rb
+  # Destino do shard `bootstrap` do CityRecord. Aponta DE PROPÓSITO para um
+  # banco que EXISTE (criado vazio por city:test_databases) mas não tem
+  # NENHUMA tabela: qualquer query de domínio fora de CityConnection.with
+  # levanta ActiveRecord::StatementInvalid (PG::UndefinedTable) em vez de
+  # cair no banco compartilhado. Um banco realmente inexistente também fecha
+  # esse shard, mas derruba a suíte inteira: RSpec's
+  # setup_transactional_fixtures pina/verifica todo pool registrado antes de
+  # cada exemplo, inclusive este, e não é preguiçoso como o boot do Rails é
+  # (verificado em 2026-09-12).
+  city_unset:
+    <<: *default
+    database: rota_saude_no_city_selected
+    username: rota_app
+    password: <%= ENV.fetch("ROTA_APP_PASSWORD", "rota_app") %>
+    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+    database_tasks: false
 
 test:
   primary:
@@ -79,6 +96,23 @@ test:
     port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
     migrations_paths: db/platform_migrate
     schema_dump: platform_schema.rb
+  # Destino do shard `bootstrap` do CityRecord. Aponta DE PROPÓSITO para um
+  # banco que EXISTE (criado vazio por city:test_databases) mas não tem
+  # NENHUMA tabela: qualquer query de domínio fora de CityConnection.with
+  # levanta ActiveRecord::StatementInvalid (PG::UndefinedTable) em vez de
+  # cair no banco compartilhado. Um banco realmente inexistente também fecha
+  # esse shard, mas derruba a suíte inteira: RSpec's
+  # setup_transactional_fixtures pina/verifica todo pool registrado antes de
+  # cada exemplo, inclusive este, e não é preguiçoso como o boot do Rails é
+  # (verificado em 2026-09-12).
+  city_unset:
+    <<: *default
+    database: rota_saude_no_city_selected
+    username: rota_app
+    password: <%= ENV.fetch("ROTA_APP_PASSWORD", "rota_app") %>
+    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
+    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+    database_tasks: false
 
 production:
   primary:
@@ -118,3 +152,29 @@ production:
     migrations_paths: db/platform_migrate
     schema_dump: platform_schema.rb
     pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
+  # Destino do shard `bootstrap` do CityRecord. Aponta DE PROPÓSITO para
+  # `rota_saude_no_city_selected`. Em test, city:test_databases cria esse
+  # banco vazio (sem nenhuma tabela) — ver lib/tasks/city.rake — para que
+  # RSpec's setup_transactional_fixtures (que pina todo pool registrado antes
+  # de cada exemplo, sem a preguiça do boot do Rails) não derrube a suíte
+  # inteira; uma query de domínio ainda levanta ActiveRecord::StatementInvalid
+  # (PG::UndefinedTable). Em produção nenhuma task provisiona esse banco: se
+  # ninguém o criar, a mesma query levanta ActiveRecord::NoDatabaseError. Nos
+  # dois casos o shard bootstrap fecha em vez de servir o banco compartilhado.
+  #
+  # NÃO reaproveita DATABASE_URL: quando essa var aponta para o banco real de
+  # produção, o `database` embutido na URL vence o `database:` explícito abaixo
+  # (UrlConfig#build_url_hash é mesclado por cima do hash da config — ver
+  # ActiveRecord::DatabaseConfigurations::UrlConfig#initialize), e o shard
+  # bootstrap voltaria a servir o banco compartilhado em produção — exatamente
+  # o defeito que esta mudança existe para fechar. CITY_UNSET_DATABASE_URL é
+  # uma env var dedicada que nenhuma infra configura de propósito; com ela
+  # ausente, url resolve a nil e o HashConfig usa os campos explícitos abaixo.
+  city_unset:
+    <<: *default
+    url: <%= ENV.fetch("CITY_UNSET_DATABASE_URL") { "" } %>
+    database: rota_saude_no_city_selected
+    username: rota_app
+    password: <%= ENV.fetch("ROTA_APP_PASSWORD") %>
+    pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
+    database_tasks: false
