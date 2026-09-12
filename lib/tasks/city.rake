@@ -51,15 +51,24 @@ namespace :city do
       .uniq
   end
 
-  # Resolve um nome de banco OU uma postgres:// URL para o nome nu do banco,
-  # para comparar contra protected_database_names — sem abrir conexão.
+  # Resolve um nome de banco OU uma postgres:// URL para o nome REAL do banco
+  # a que a conexão de fato vai apontar, para comparar contra
+  # protected_database_names — sem abrir conexão (resolve só faz parsing).
+  #
+  # Bug corrigido (Minor do code review): comparar a string crua de um nome
+  # "bare" contra protected_database_names, em vez de resolvê-la pela MESMA
+  # URL que load_city_schema realmente monta e conecta, deixava passar
+  # qualquer nome que o parser de URL normalizasse para um banco protegido —
+  # ex.: "rota_saude_test?sslmode=disable" (tudo depois de "?" vira query
+  # string, não faz parte do nome), "rota%5Fsaude_test" (%5F é "_" decodado)
+  # ou "rota_saude_test#x" (tudo depois de "#" é descartado como fragment).
+  # As três resolvem para o banco real "rota_saude_test". Por isso SEMPRE
+  # montamos a URL primeiro (igual load_city_schema faz) e resolvemos ela,
+  # nunca a string de entrada crua.
   resolve_database_name = lambda do |database_name_or_url|
     raw = database_name_or_url.to_s
-    if raw.include?("://")
-      ActiveRecord::Base.configurations.resolve(raw).database.to_s
-    else
-      raw
-    end
+    url = raw.include?("://") ? raw : city_database_url.call(raw)
+    ActiveRecord::Base.configurations.resolve(url).database.to_s
   end
 
   # Carrega db/city_schema.rb (o dump do schema limpo de cidade — Task 4) num

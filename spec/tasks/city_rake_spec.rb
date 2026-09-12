@@ -85,6 +85,20 @@ RSpec.describe "city:load_schema rake task" do
     expect { invoke_silently(url) }.to raise_error(SystemExit)
   end
 
+  # Regression (code review, round 2): the guard used to compare a bare-name
+  # target's RAW STRING against the protected list, instead of resolving it
+  # through the same postgres:// URL load_city_schema actually connects
+  # with. A URL parser treats "?" as the start of a query string, "%XX" as
+  # percent-encoding, and "#" as the start of a fragment — none of which
+  # survive into the database name — so each of these bare-name inputs was
+  # accepted by the old guard while still connecting to rota_saude_test.
+  it "refuses a bare name that a URL parser would normalize down to a protected database" do
+    ["rota_saude_test?sslmode=disable", "rota%5Fsaude_test", "rota_saude_test#x"].each do |bypass_attempt|
+      Rake::Task["city:load_schema"].reenable
+      expect { invoke_silently(bypass_attempt) }.to raise_error(SystemExit), "expected #{bypass_attempt.inspect} to be refused"
+    end
+  end
+
   it "accepts a legitimate city test database" do
     # city_b, not city_a: the suite's global around-hook
     # (spec/support/city_test_databases.rb) keeps a CityConnection pool open
