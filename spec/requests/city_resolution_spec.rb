@@ -20,8 +20,11 @@ RSpec.describe "City resolution", type: :request do
   end
 
   let(:city_a_url) do
+    host = ENV.fetch("DATABASE_HOST", "127.0.0.1")
+    port = ENV.fetch("DATABASE_PORT", "5432")
+    pwd  = ENV.fetch("POSTGRES_PASSWORD", "postgres")
     ENV.fetch("TEST_CITY_A_URL",
-      "postgres://rota_saude:postgres@127.0.0.1:5432/rota_saude_test_city_a")
+      "postgres://rota_saude:#{pwd}@#{host}:#{port}/rota_saude_test_city_a")
   end
 
   it "serves an active city and exposes it on Current" do

@@ -5,10 +5,19 @@ RSpec.describe CityConnection do
   # é global ao processo e pools registrados por um exemplo sobrevivem
   # (não são desfeitos pela transação), então dois exemplos não podem
   # compartilhar shard sob config.order = :random (spec_helper.rb).
+  def db_host
+    ENV.fetch("DATABASE_HOST", "127.0.0.1")
+  end
+
+  def url_for(db)
+    port = ENV.fetch("DATABASE_PORT", "5432")
+    pwd  = ENV.fetch("POSTGRES_PASSWORD", "postgres")
+    "postgres://rota_saude:#{pwd}@#{db_host}:#{port}/#{db}"
+  end
+
   def build_city(slug: "conn#{SecureRandom.hex(4)}", **attrs)
     build(:city, slug: slug,
-          database_url: ENV.fetch("TEST_CITY_A_URL",
-            "postgres://rota_saude:postgres@127.0.0.1:5432/rota_saude_test_city_a"),
+          database_url: ENV.fetch("TEST_CITY_A_URL", url_for("rota_saude_test_city_a")),
           **attrs)
   end
 
@@ -44,7 +53,7 @@ RSpec.describe CityConnection do
     # because it now wraps the whole registration, not just db_config_for.
     secret = "hunter2-#{SecureRandom.hex(3)}"
     broken = build_city(slug: "adptr#{SecureRandom.hex(4)}",
-      database_url: "postgress://rota_saude:#{secret}@host.docker.internal:5432/rota_saude_test_city_a")
+      database_url: "postgress://rota_saude:#{secret}@#{db_host}:5432/rota_saude_test_city_a")
 
     expect { described_class.with(broken) { 1 } }
       .to raise_error(CityConnection::InvalidCityDatabase) { |error|
@@ -55,7 +64,7 @@ RSpec.describe CityConnection do
 
   it "raises for a city whose database_url cannot be parsed as a URI" do
     broken = build_city(slug: "uriparse#{SecureRandom.hex(4)}",
-      database_url: "postgres://rota_saude:pa[sswd@host.docker.internal:5432/rota_saude_test_city_a")
+      database_url: "postgres://rota_saude:pa[sswd@#{db_host}:5432/rota_saude_test_city_a")
 
     expect { described_class.with(broken) { 1 } }
       .to raise_error(CityConnection::InvalidCityDatabase, /#{broken.slug}/)
