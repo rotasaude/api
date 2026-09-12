@@ -4,9 +4,9 @@
 class CityProvisioner
   def self.call(slug:, name:, uf: nil)
     existing = City.find_by(slug: slug)
-    return existing if existing
+    return Result.ok(city: existing) if existing
 
-    City.create!(
+    city = City.create!(
       slug: slug,
       name: name,
       uf: uf,
@@ -14,6 +14,10 @@ class CityProvisioner
       database_url: database_url_for(slug),
       encryption_key: SecureRandom.hex(32)
     )
+
+    Result.ok(city: city)
+  rescue ActiveRecord::RecordInvalid => e
+    Result.fail(:invalid, message: e.record.errors.full_messages.join(", "))
   end
 
   def self.database_url_for(slug)
