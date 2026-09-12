@@ -16,8 +16,6 @@ end
 module Messaging
 end
 
-require_relative "../lib/migration_helpers/rls"
-
 module RotaSaude
   class Application < Rails::Application
     config.load_defaults 8.0
