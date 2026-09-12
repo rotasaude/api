@@ -18,13 +18,19 @@ class CityProvisioner
     Result.ok(city: city)
   rescue ActiveRecord::RecordInvalid => e
     Result.fail(:invalid, message: e.record.errors.full_messages.join(", "))
+  rescue ActiveRecord::RecordNotUnique
+    # TOCTOU: a concurrent call created the same slug between our find_by and
+    # our create!. ADR-0004 says a Command returns a Result, never raises,
+    # for an expected failure — and a duplicate slug racing itself is
+    # expected, not exceptional.
+    Result.ok(city: City.find_by(slug: slug))
   end
 
   def self.database_url_for(slug)
     host = ENV.fetch("DATABASE_HOST", "127.0.0.1")
     port = ENV.fetch("DATABASE_PORT", "5432")
     user = ENV.fetch("BOOTSTRAP_SUPERUSER", "rota_saude")
-    pwd  = ENV.fetch("POSTGRES_PASSWORD", "postgres")
+    pwd  = ENV.fetch("POSTGRES_PASSWORD") { abort "[city_provisioner] POSTGRES_PASSWORD ausente." }
     "postgres://#{user}:#{pwd}@#{host}:#{port}/rota_saude_city_#{slug}"
   end
 end
