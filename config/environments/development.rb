@@ -15,7 +15,15 @@ Rails.application.configure do
   config.action_mailer.delivery_method = :test
 
   config.active_support.deprecation = :log
-  config.active_record.dump_schema_after_migration = true
+
+  # false (não o default do Rails para dev): primary/admin/queue/cache
+  # compartilham o MESMO banco físico (rota_saude_development). Um dump
+  # automático depois de qualquer db:migrate/db:prepare capturaria TODAS as
+  # tabelas ali (domínio incluso, enquanto o Plano 5 não reparenta) em
+  # db/schema.rb, db/queue_schema.rb, db/cache_schema.rb e db/admin_schema.rb —
+  # sujando de volta os dumps limpos da Task 4 (banco por cidade). Dump
+  # continua disponível sob demanda via `bin/rails db:schema:dump[:<config>]`.
+  config.active_record.dump_schema_after_migration = false
 
   # Liberar hostnames internos do docker-compose para o Host Authorization.
   # O dashboard (Vite) proxa para "http://api:3000" — sem isso o Rails

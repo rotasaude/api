@@ -108,8 +108,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_13_000010) do
     t.string "from", null: false
     t.string "kind", null: false
     t.string "message_id", null: false
+    t.timestamptz "processed_at"
     t.text "raw", null: false
     t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "idx_inbound_messages_unprocessed", where: "(processed_at IS NULL)"
     t.index ["created_at"], name: "index_inbound_messages_on_created_at"
     t.index ["from"], name: "index_inbound_messages_on_from"
     t.index ["message_id"], name: "index_inbound_messages_on_message_id", unique: true
@@ -227,7 +229,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_13_000010) do
     t.index ["protocol_definition_id"], name: "index_triages_on_protocol_definition_id"
     t.index ["status"], name: "index_triages_on_status"
     t.index ["tier"], name: "index_triages_on_tier"
-    t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying::text, 'completed'::character varying::text, 'aborted_by_revocation'::character varying::text])", name: "ck_triagens_status"
+    t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying::text, 'completed'::character varying::text, 'aborted_by_revocation'::character varying::text, 'aborted_by_timeout'::character varying::text, 'aborted_by_cancellation'::character varying::text])", name: "ck_triagens_status"
   end
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

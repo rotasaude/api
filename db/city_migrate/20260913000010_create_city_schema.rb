@@ -123,10 +123,12 @@ class CreateCitySchema < ActiveRecord::Migration[8.1]
       t.string :from, null: false
       t.string :kind, null: false
       t.string :message_id, null: false
+      t.timestamptz :processed_at
       t.text :raw, null: false
       t.timestamps
     end
     add_index :inbound_messages, :created_at, name: "index_inbound_messages_on_created_at"
+    add_index :inbound_messages, :created_at, where: "processed_at IS NULL", name: "idx_inbound_messages_unprocessed"
     add_index :inbound_messages, :from, name: "index_inbound_messages_on_from"
     add_index :inbound_messages, :message_id, unique: true, name: "index_inbound_messages_on_message_id"
 
@@ -240,7 +242,7 @@ class CreateCitySchema < ActiveRecord::Migration[8.1]
       t.string :tier
       t.timestamps
 
-      t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying::text, 'completed'::character varying::text, 'aborted_by_revocation'::character varying::text])",
+      t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying, 'completed'::character varying, 'aborted_by_revocation'::character varying, 'aborted_by_timeout'::character varying, 'aborted_by_cancellation'::character varying]::text[])",
                           name: "ck_triagens_status"
     end
     add_index :triages, :conversation_id, name: "index_triages_on_conversation_id"
