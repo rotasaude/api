@@ -30,4 +30,11 @@ namespace :city do
       abort "[city:test_databases] falha ao criar probes em #{db}:\n#{out}" unless st.success?
     end
   end
+
+  desc "Registra uma cidade no catálogo (dev). Uso: city:create[slug,nome,uf]"
+  task :create, %i[slug name uf] => :environment do |_t, args|
+    abort "uso: rails 'city:create[slug,nome,uf]'" if args[:slug].blank? || args[:name].blank?
+    city = CityProvisioner.call(slug: args[:slug], name: args[:name], uf: args[:uf])
+    puts "[city:create] #{city.slug} → #{city.status} (#{city.database_url.sub(/:[^:@]+@/, ':***@')})"
+  end
 end
