@@ -110,3 +110,11 @@ production:
     migrations_paths: db/cache_migrate
     schema_dump: cache_schema.rb
     pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
+  platform:
+    <<: *default
+    url: <%= ENV.fetch("PLATFORM_DATABASE_URL") { "" } %>
+    username: rota_platform
+    password: <%= ENV.fetch("ROTA_PLATFORM_PASSWORD") %>
+    migrations_paths: db/platform_migrate
+    schema_dump: platform_schema.rb
+    pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
