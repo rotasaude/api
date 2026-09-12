@@ -5,12 +5,23 @@ require "rails_helper"
 # O invariante do connects_to não é estilo: medido no spike 1, re-chamar
 # connects_to sob tráfego causou 171.620 interrupções em cidades já ativas.
 RSpec.describe "Connection invariants" do
-  SOURCE_ROOTS = %w[app lib config].freeze
-  SELF_PATH = "spec/architecture/connection_invariants_spec.rb"
+  # Methods, not top-level constants: `SELF_PATH = ...` inside a `describe`
+  # block still assigns at the top level (Ruby resolves constant assignment
+  # by lexical scope, and a block is not a class/module body) — it collided
+  # with the same name in spec/adr_pointers_spec.rb, and RSpec loads every
+  # spec file before running any example, so whichever loaded last silently
+  # won for both specs.
+  def source_roots
+    %w[app lib config].freeze
+  end
+
+  def self_path
+    "spec/architecture/connection_invariants_spec.rb"
+  end
 
   def source_files
     Dir.chdir(Rails.root) do
-      SOURCE_ROOTS.flat_map { |r| Dir.glob("#{r}/**/*.rb") }.sort - [SELF_PATH]
+      source_roots.flat_map { |r| Dir.glob("#{r}/**/*.rb") }.sort - [self_path]
     end
   end
 
@@ -29,7 +40,7 @@ RSpec.describe "Connection invariants" do
         lines = File.readlines(path, encoding: "UTF-8")
         real_connects_to = code_lines(lines).select { |l, _| l.include?("connects_to") }
         next [] if real_connects_to.empty?
-        next [] if lines.any? { |l| l.match?(/self\.abstract_class\s*=\s*true/) }
+        next [] if code_lines(lines).any? { |l, _| l.match?(/self\.abstract_class\s*=\s*true/) }
 
         real_connects_to.map { |_, i| "#{path}:#{i + 1}" }
       end

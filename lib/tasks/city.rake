@@ -1,7 +1,11 @@
 require "open3"
 
 namespace :city do
-  TEST_CITY_DATABASES = %w[rota_saude_test_city_a rota_saude_test_city_b].freeze
+  # Local variable, not a constant: a `namespace` block does not scope
+  # constants either — `TEST_CITY_DATABASES = ...` here would assign at the
+  # top level, same class of collision as SELF_PATH in the architecture spec.
+  # A local var is captured by the task blocks' closures without leaking.
+  test_city_databases = %w[rota_saude_test_city_a rota_saude_test_city_b].freeze
 
   desc "Cria os bancos de cidade usados pelos specs de isolamento (idempotente)."
   task test_databases: :environment do
@@ -12,7 +16,7 @@ namespace :city do
     env  = { "PGPASSWORD" => pwd }
     base = ["psql", "-h", host, "-p", port, "-U", su, "-v", "ON_ERROR_STOP=1"]
 
-    TEST_CITY_DATABASES.each do |db|
+    test_city_databases.each do |db|
       exists, = Open3.capture2e(env, *base, "-tA", "-d", "postgres",
                                 "-c", "SELECT 1 FROM pg_database WHERE datname='#{db}'")
       if exists.strip == "1"
@@ -24,7 +28,7 @@ namespace :city do
       puts "[city:test_databases] #{db} criado"
     end
 
-    TEST_CITY_DATABASES.each do |db|
+    test_city_databases.each do |db|
       out, st = Open3.capture2e(env, *base, "-d", db, "-c",
         "CREATE TABLE IF NOT EXISTS probes (id serial PRIMARY KEY, label text NOT NULL)")
       abort "[city:test_databases] falha ao criar probes em #{db}:\n#{out}" unless st.success?
@@ -33,6 +37,11 @@ namespace :city do
 
   desc "Registra uma cidade no catálogo (dev). Uso: city:create[slug,nome,uf]"
   task :create, %i[slug name uf] => :environment do |_t, args|
+    # Provisionamento real (papel rota_provisioner, least-privilege — ADR-0003)
+    # é o Plano 4. Até lá, database_url_for mina URLs com credencial de
+    # superusuário de bootstrap: rodar isso fora de development daria a
+    # qualquer pool de cidade acesso de leitura a todas as outras.
+    abort "[city:create] só roda em development; provisionamento real é um plano futuro." unless Rails.env.development?
     abort "uso: rails 'city:create[slug,nome,uf]'" if args[:slug].blank? || args[:name].blank?
     result = CityProvisioner.call(slug: args[:slug], name: args[:name], uf: args[:uf])
     abort "[city:create] falhou: #{result.message}" if result.failure?
