@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe CityCatalog do
+  include ActiveSupport::Testing::TimeHelpers
+
   before do
     City.delete_all
     described_class.reset_cache!
@@ -52,5 +54,30 @@ RSpec.describe CityCatalog do
     expect(raw["database_url"]).not_to eq(city.database_url)
     expect(raw["encryption_key"]).not_to eq(city.encryption_key)
     expect(City.find(city.id).database_url).to eq(city.database_url)
+  end
+
+  it "never memoizes a miss, so a city created after a miss is found on the next lookup" do
+    expect(described_class.find_by_host("recemnascida.rotasaude.app")).to be_nil
+
+    create(:city, slug: "recemnascida", status: "active")
+
+    expect(described_class.find_by_host("recemnascida.rotasaude.app")).not_to be_nil
+  end
+
+  it "expires a cached hit after the TTL, so a status change converges without a restart" do
+    described_class.find_by_host("saopaulo.rotasaude.app")
+    city.update_column(:status, "suspended")
+
+    travel_to(Time.current + CityCatalog::CACHE_TTL + 1) do
+      expect(described_class.find_by_host("saopaulo.rotasaude.app").status).to eq("suspended")
+    end
+  end
+
+  it "bounds the number of cached entries" do
+    (CityCatalog::MAX_CACHE_ENTRIES + 10).times do |n|
+      described_class.send(:store, "label#{n}", city)
+    end
+
+    expect(described_class.send(:cache).size).to eq(CityCatalog::MAX_CACHE_ENTRIES)
   end
 end
