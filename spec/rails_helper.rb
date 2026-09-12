@@ -40,6 +40,17 @@ require_relative "support/city_test_databases"
 RSpec.configure do |config|
   config.include FactoryBot::Syntax::Methods
 
+  # rspec-rails só limpa CurrentAttributes em example groups tipados
+  # (RailsExampleGroup). Specs sem `type:` herdariam Current.municipality_id do
+  # exemplo anterior, mascarando dependência de ordem. `around` (e não `before`)
+  # porque config arounds envolvem os `around` dos arquivos, que setam Current.
+  config.around(:each) do |example|
+    ActiveSupport::CurrentAttributes.clear_all
+    example.run
+  ensure
+    ActiveSupport::CurrentAttributes.clear_all
+  end
+
   # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
   config.fixture_paths = [
     Rails.root.join('spec/fixtures')
