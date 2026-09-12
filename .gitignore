@@ -26,3 +26,6 @@
 
 # Local Claude Code analytics — do not publish
 /.claude/
+
+# Workspace do subagent-driven-development (scratch, nao versionado)
+.superpowers/
