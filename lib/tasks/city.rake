@@ -30,6 +30,38 @@ namespace :city do
     "postgres://#{user}:#{pwd}@#{host}:#{port}/#{name}"
   end
 
+  # Nomes de config (config/database.yml) cujo banco NUNCA pode receber o
+  # schema de cidade: primary/admin/queue/cache são o banco compartilhado
+  # (fila/cache até o Plano 5; domínio ainda não reparentado), platform é o
+  # catálogo/roteamento entre cidades, e city_unset é o banco
+  # deliberadamente-vazio que faz o shard `bootstrap` falhar fechado (ver
+  # comentário de no_city_selected_database acima) — carregar QUALQUER coisa
+  # nele destruiria essa garantia.
+  protected_role_names = %w[primary admin queue cache platform city_unset].freeze
+
+  # Bancos protegidos em TODO ambiente declarado em database.yml (development,
+  # test, production, ...) — não só o Rails.env corrente. `configurations`
+  # devolve um DatabaseConfig por (ambiente, nome); filtramos pelo nome do
+  # role e pegamos o `database` resolvido, ignorando entradas sem banco
+  # resolvível (ex.: production sem DATABASE_URL setada neste container).
+  protected_database_names = lambda do
+    ActiveRecord::Base.configurations.configurations
+      .select { |cfg| protected_role_names.include?(cfg.name) }
+      .filter_map { |cfg| cfg.respond_to?(:database) ? cfg.database.presence : nil }
+      .uniq
+  end
+
+  # Resolve um nome de banco OU uma postgres:// URL para o nome nu do banco,
+  # para comparar contra protected_database_names — sem abrir conexão.
+  resolve_database_name = lambda do |database_name_or_url|
+    raw = database_name_or_url.to_s
+    if raw.include?("://")
+      ActiveRecord::Base.configurations.resolve(raw).database.to_s
+    else
+      raw
+    end
+  end
+
   # Carrega db/city_schema.rb (o dump do schema limpo de cidade — Task 4) num
   # banco de destino, identificado por nome (resolvido com as credenciais de
   # bootstrap) ou por uma postgres:// URL completa.
@@ -43,7 +75,22 @@ namespace :city do
   # troca a conexão de ActiveRecord::Base só durante o load e restaura a
   # original (o banco compartilhado) no `ensure`, então esta task nunca toca
   # primary/admin/queue/cache.
+  #
+  # GUARDA (I6 do code review): a dump usa force: :cascade — um alvo errado
+  # dropa e recria tabelas de domínio de verdade. Por isso, antes de tocar
+  # em qualquer conexão: só development/test, e nunca um alvo que resolva
+  # para o banco de primary/admin/queue/cache/platform/city_unset.
   load_city_schema = lambda do |database_name_or_url|
+    unless Rails.env.development? || Rails.env.test?
+      abort "[city] city:load_schema só roda em development/test (env atual: #{Rails.env})."
+    end
+
+    target_database = resolve_database_name.call(database_name_or_url)
+    if protected_database_names.call.include?(target_database)
+      abort "[city] recusado: #{target_database.inspect} é o banco de primary/admin/queue/cache/platform/city_unset — " \
+            "city:load_schema nunca escreve lá (a dump usa force: :cascade)."
+    end
+
     schema_file = Rails.root.join("db/city_schema.rb").to_s
     abort "[city] #{schema_file} não existe." unless File.exist?(schema_file)
 
