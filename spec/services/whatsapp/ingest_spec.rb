@@ -7,11 +7,14 @@ RSpec.describe Whatsapp::Ingest do
     ApplicationRecord.connected_to(role: :admin) do
       ApplicationRecord.connection.execute("DELETE FROM processed_events")
       ApplicationRecord.connection.execute("DELETE FROM inbound_messages")
-      ApplicationRecord.connection.execute("DELETE FROM unknown_channels")
       ApplicationRecord.connection.execute("DELETE FROM municipality_channels")
       ApplicationRecord.connection.execute("DELETE FROM conversations")
       ApplicationRecord.connection.execute("DELETE FROM municipalities")
     end
+    # unknown_channels now lives in the platform database (PlatformRecord) —
+    # a separate physical connection from ApplicationRecord's admin role, so
+    # it needs its own cleanup rather than the raw DELETE above.
+    UnknownChannel.delete_all
     Current.reset
     @muni = ApplicationRecord.connected_to(role: :admin) do
       Municipality.create!(name: "Test City", slug: "test-#{SecureRandom.hex(4)}")
@@ -28,11 +31,11 @@ RSpec.describe Whatsapp::Ingest do
     ApplicationRecord.connected_to(role: :admin) do
       ApplicationRecord.connection.execute("DELETE FROM processed_events")
       ApplicationRecord.connection.execute("DELETE FROM inbound_messages")
-      ApplicationRecord.connection.execute("DELETE FROM unknown_channels")
       ApplicationRecord.connection.execute("DELETE FROM municipality_channels")
       ApplicationRecord.connection.execute("DELETE FROM conversations")
       ApplicationRecord.connection.execute("DELETE FROM municipalities")
     end
+    UnknownChannel.delete_all
     Current.reset
   end
 
