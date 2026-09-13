@@ -3,7 +3,8 @@
 #
 # Recebe SÓ valores simples (R42): deliver_later roda no worker sem conexão de
 # cidade, onde um User (GlobalID) não desserializa. O PasswordsController monta
-# o endereço e o link (no host da cidade) dentro da requisição.
+# o endereço e o link (frontend do dashboard, PUBLIC_DASHBOARD_URL) dentro da
+# requisição da cidade.
 class PasswordMailer < ApplicationMailer
   def reset(email_address:, reset_url:)
     @reset_url = reset_url

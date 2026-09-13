@@ -35,11 +35,9 @@ class PasswordsController < ApplicationController
 
   private
 
-  # The link lives on the CITY host of this request: the dashboard's reset form
-  # calls PUT /passwords/:token on that host, and CityResolution picks the city
-  # (and so the database holding the user) from its subdomain. /dashboard/ is
-  # the dashboard's base path (apps/dashboard/vite.config.ts).
+  # Link to the dashboard frontend (separate Vite/static app, not the API host). Per-city destination is Plan 6.
   def password_reset_link(token)
-    "#{request.base_url}/dashboard/?#{{ reset: token }.to_query}"
+    base = ENV["PUBLIC_DASHBOARD_URL"] || "http://localhost:5175/dashboard/"
+    "#{base}?#{{ reset: token }.to_query}"
   end
 end
