@@ -48,6 +48,13 @@ RSpec.describe Whatsapp::Ingest do
 
     expect(CityConnection.with(city_a) { InboundMessage.count }).to eq(0)
     expect(CityConnection.with(city_b) { InboundMessage.count }).to eq(0)
+    # Fix round 1 (I2): city_a/city_b are random-slug Cities — their own
+    # sessions cannot see a write on a DIFFERENT connection (5c-3 fix round 1
+    # harness note in city_test_databases.rb). The harness's own default
+    # connection (TEST_CITY_A, opened by the outer around) is a third,
+    # separate session that neither check above reads — assert it too, or a
+    # stray write there would go unnoticed.
+    expect(InboundMessage.count).to eq(0)
   end
 
   it "reentrega do mesmo wamid não duplica na cidade" do
