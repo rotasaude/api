@@ -8,7 +8,7 @@
 # mesmo (to, message, muni, dedup_key)). Caller pode passar dedup_key
 # explícito para distinguir reenvios deliberados.
 class SendWhatsappJob < ApplicationJob
-  include TenantScopedJob
+  include CityScopedJob
 
   # Enfileira DENTRO da transação aberta pelo caller (o with_lock do
   # ProcessInboundMessageJob), em vez de adiar para after_commit (config global
@@ -20,7 +20,7 @@ class SendWhatsappJob < ApplicationJob
   RESUME_TEMPLATE = Messaging::Reply.template(name: "rota_saude_resume").freeze
 
   def perform(to:, message:, municipality_id:, dedup_key: nil)
-    with_tenant(municipality_id) do
+    with_city(municipality_id) do
       reply = Messaging::Reply.from_h(message)
       key = idempotency_key(to: to, message: message, municipality_id: municipality_id, dedup_key: dedup_key)
 

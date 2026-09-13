@@ -5,16 +5,16 @@
 # (consumer="dispatch_alert", event_id="alert:<triage_id>") ANTES da
 # entrega externa. RecordNotUnique → skip (já entregue). Pattern espelha
 # IdempotentConsumer mas sem o tenant-loop do consumer (este job já é
-# TenantScopedJob).
+# CityScopedJob).
 class DispatchMunicipalityAlertJob < ApplicationJob
-  include TenantScopedJob
+  include CityScopedJob
   queue_as :urgent
   retry_on Net::SMTPServerBusy, attempts: 5, wait: :polynomially_longer
 
   CONSUMER = "dispatch_alert".freeze
 
   def perform(municipality_id:, triage_id:, tier:, priority:, occurred_at:)
-    with_tenant(municipality_id) do
+    with_city(municipality_id) do
       begin
         ProcessedEvent.create!(
           consumer: CONSUMER,

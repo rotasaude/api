@@ -1,9 +1,9 @@
 # Avança a conversa quando uma mensagem nova chega (ADR-0007/0005/0003).
 class ProcessInboundMessageJob < ApplicationJob
-  include TenantScopedJob
+  include CityScopedJob
 
   def perform(inbound_message_id, municipality_id:)
-    with_tenant(municipality_id) do
+    with_city(municipality_id) do
       inbound = InboundMessage.find(inbound_message_id)
       conversation = Conversation.for(inbound.from, municipality_id: municipality_id)
       conversation.with_lock do

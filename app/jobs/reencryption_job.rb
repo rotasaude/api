@@ -9,7 +9,7 @@
 # NÃO chamar enquanto outra operação está rotacionando — pode interleave com
 # chaves diferentes (sem perda, mas reescreve duas vezes).
 class ReencryptionJob < ApplicationJob
-  prepend AdminRoleJob
+  prepend EachCityJob
   queue_as :housekeeping
 
   # Registry (Model, atributo) — manter espelhado com `encrypts` nos models.

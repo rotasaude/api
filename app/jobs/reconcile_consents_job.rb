@@ -2,7 +2,7 @@
 # Não muda estado — apenas reporta. Mudança de estado acontece no próximo
 # inbound (ADR-0008).
 class ReconcileConsentsJob < ApplicationJob
-  prepend AdminRoleJob
+  prepend EachCityJob
   queue_as :housekeeping
 
   def perform
