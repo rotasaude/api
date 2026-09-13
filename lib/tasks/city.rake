@@ -31,12 +31,13 @@ namespace :city do
   end
 
   # Nomes de config (config/database.yml) cujo banco NUNCA pode receber o
-  # schema de cidade: primary/admin/queue/cache são o banco compartilhado
-  # (fila/cache até o Plano 5; domínio ainda não reparentado), platform é o
-  # catálogo/roteamento entre cidades, e city_unset é o banco
-  # deliberadamente-vazio que faz o shard `bootstrap` falhar fechado (ver
-  # comentário de no_city_selected_database acima) — carregar QUALQUER coisa
-  # nele destruiria essa garantia.
+  # schema de cidade: primary/queue/cache são o banco compartilhado (só
+  # fila/cache, até o Plano 5), platform é o catálogo/roteamento entre
+  # cidades, e city_unset é o banco deliberadamente-vazio que faz o shard
+  # `bootstrap` falhar fechado (ver comentário de no_city_selected_database
+  # acima) — carregar QUALQUER coisa nele destruiria essa garantia. O config
+  # `admin` saiu de database.yml no corte do Plano 2 (Task 5); o nome segue na
+  # lista só como defesa, caso uma config com esse nome reapareça.
   protected_role_names = %w[primary admin queue cache platform city_unset].freeze
 
   # Bancos protegidos em TODO ambiente declarado em database.yml (development,

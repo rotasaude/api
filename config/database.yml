@@ -6,10 +6,10 @@ default: &default
   variables:
     statement_timeout: 15s
 
-# A role rota_admin (BYPASSRLS) continua existindo no Postgres e é usada por
-# queue/cache abaixo; o config `admin:` de ApplicationRecord saiu no corte do
-# Plano 2 (Task 5) — o domínio não roda mais sob RLS/BYPASSRLS, e sim por
-# conexão de cidade (ver CityRecord).
+# queue/cache abaixo conectam como rota_admin até o Plano 5 (fila/cache por
+# cidade). O config `admin:` de ApplicationRecord saiu no corte do Plano 2
+# (Task 5): o domínio não usa RLS — cada cidade tem o próprio banco, acessado
+# por conexão de cidade (ver CityRecord/CityConnection).
 development:
   primary:
     <<: *default

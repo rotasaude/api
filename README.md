@@ -20,14 +20,16 @@ não existem mais; o RLS que eles reproduziam saiu junto com o domínio.
   fica vazio de propósito). `start.sh` garante os roles `rota_app`/`rota_admin`
   e carrega esses dois schemas por nome (`db:schema:load:primary`,
   `:queue`, `:cache`) — nunca `db:prepare`/`db:schema:load` "puros", que
-  varreriam também `admin` (cujo dump, `db/admin_schema.rb`, ainda é o
-  schema antigo completo até o Plano 5 remover o papel `admin`).
+  varreriam todos os configs do ambiente de uma vez. O config `admin` e o
+  `db/admin_schema.rb` saíram no corte do Plano 2 (Task 5): o domínio roda por
+  conexão de cidade (`CityRecord`), sem RLS.
 - `config.active_record.dump_schema_after_migration` é `false` em
-  development (igual a test/production): como primary/admin/queue/cache
-  compartilham o mesmo banco físico, um dump automático depois de
-  `db:migrate`/`db:prepare` reintroduziria toda tabela de domínio nesses
-  quatro arquivos de schema. Rode `db:schema:dump:<config>` explicitamente
-  quando precisar regenerar um deles (`primary`, `admin`, `queue` ou `cache`).
+  development (igual a test/production): como primary/queue/cache
+  compartilham o mesmo banco físico, um dump automático de qualquer um deles
+  gravaria também as tabelas dos outros (e qualquer tabela antiga de domínio
+  que um banco de dev anterior ao corte ainda tenha) no seu arquivo de schema.
+  Rode `db:schema:dump:<config>` explicitamente quando precisar regenerar um
+  deles (`primary`, `queue` ou `cache`).
   **`platform` é afetado pelo mesmo flag, mas por um motivo diferente:** o
   banco de plataforma é próprio, nunca foi contaminado por domínio — só
   parou de se auto-regenerar. Depois de qualquer migration em

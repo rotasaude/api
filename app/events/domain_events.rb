@@ -1,6 +1,9 @@
 # Publisher de eventos de domínio (ADR-0004).
 #   DomainEvents.publish("triage.completed", triage_id: t.id, tier: :alta)
-# Não chame fora de uma transação aberta (ADR-0004 garante COMMIT antes do enqueue).
+# Publique dentro da transação da cidade (ADR-0004): o DomainEvent comita junto
+# com a escrita de domínio, e os subscribers (ApplicationJob, com
+# enqueue_after_transaction_commit — R40) só entram na fila após esse COMMIT;
+# em ROLLBACK, nenhum é enfileirado. Fora de transação, enfileiram na hora.
 module DomainEvents
   class CityMissing < StandardError; end
   class UnknownBindingError < StandardError; end
