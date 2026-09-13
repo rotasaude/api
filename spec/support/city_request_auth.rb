@@ -41,4 +41,5 @@ end
 RSpec.configure do |config|
   config.include CityRequestAuth, type: :request
   config.before(type: :request) { use_test_city_host! }
+  config.after(type: :request) { CityCatalog.reset_cache! }
 end
