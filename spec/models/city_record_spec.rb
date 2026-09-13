@@ -1,6 +1,10 @@
 require "rails_helper"
 
 RSpec.describe CityRecord do
+  it "defaults to the bootstrap shard, with no city selected" do
+    expect(CityRecord.default_shard).to eq(:bootstrap)
+  end
+
   it "fails closed outside a city connection" do
     CityRecord.connected_to(shard: :bootstrap, role: :writing) do
       expect(CityRecord.connection_db_config.database).to eq("rota_saude_no_city_selected")
