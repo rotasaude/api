@@ -1,41 +1,36 @@
 require "rails_helper"
 
-RSpec.describe "Evento → consumer com tenant (ADR-0004 e ADR-0003)", type: :job do
+RSpec.describe "Evento → consumer com cidade (ADR-0004 e ADR-0003)", type: :job do
   include ActiveJob::TestHelper
 
-  before do
-    Current.reset
-  end
-
   after do
-    Current.reset
     DomainEvents.registry["smoke.test"]&.clear
   end
 
-  it "publish dentro de tenant → consumer roda dentro do mesmo tenant" do
+  it "publish dentro de uma cidade → consumer roda dentro da MESMA cidade" do
+    city = create(:city, slug: TEST_CITY_A.slug, status: "active",
+                         database_url: city_database_url("rota_saude_test_city_a"))
+
     klass = Class.new(ApplicationJob) do
       include IdempotentConsumer
       class << self; attr_accessor :seen_tenant; end
       def handle(**)
-        self.class.seen_tenant = ApplicationRecord.connection.select_value("SELECT current_setting('app.municipality_id')")
+        self.class.seen_tenant = Current.city&.slug
       end
     end
     stub_const("SeenTenantJob", klass)
     DomainEvents.bind("smoke.test", to: SeenTenantJob)
 
+    Current.city = city
+
     perform_enqueued_jobs do
-      ApplicationRecord.transaction do
-        Current.municipality_id = @muni_id
-        ApplicationRecord.connection.execute(
-          ApplicationRecord.sanitize_sql(["SET LOCAL app.municipality_id = ?", @muni_id])
-        )
-        DomainEvents.publish("smoke.test")
-      end
+      DomainEvents.publish("smoke.test")
     end
 
-    # Not ported yet (5c-3): @muni_id is no longer assigned, so the old
-    # `eq(@muni_id)` would pass vacuously as eq(nil). The consumer must see the
-    # city it was published in; this fails until the spec is ported to city_slug.
+    # Ported (5c-3): the consumer's IdempotentConsumer#with_city looks the city
+    # up by slug (City.find_by(slug:)) and sets Current.city to it — proving
+    # the consumer actually ran scoped to the city the event was published in,
+    # not merely that some value happened to match.
     expect(SeenTenantJob.seen_tenant).to eq(TEST_CITY_A.slug)
   end
 end
