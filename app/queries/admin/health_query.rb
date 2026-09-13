@@ -9,12 +9,8 @@ class Admin::HealthQuery
     "report_snapshots"  => 60
   }.freeze
 
-  def self.call(municipality:)
-    new(municipality).call
-  end
-
-  def initialize(municipality)
-    @muni = municipality
+  def self.call
+    new.call
   end
 
   def call

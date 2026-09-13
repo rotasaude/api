@@ -5,12 +5,11 @@
 # O funil do brief é remapeado para esses estados; "exits" sai vazio até
 # existir um sinal real (revoked é o único proxy).
 class Admin::ConversationsQuery
-  def self.call(municipality:, period:)
-    new(municipality, period).call
+  def self.call(period:)
+    new(period).call
   end
 
-  def initialize(municipality, period)
-    @muni = municipality
+  def initialize(period)
     @period = period
   end
 

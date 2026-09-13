@@ -1,6 +1,6 @@
 class Admin::Api::ClassificationController < Admin::Api::BaseController
   def show
-    data = Admin::ClassificationQuery.call(municipality: current_municipality, period: period)
+    data = Admin::ClassificationQuery.call(period: period)
     render_envelope(data)
   end
 end

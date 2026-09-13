@@ -1,7 +1,7 @@
 # GET /admin/api/ingestion — webhook WhatsApp (§4.1).
 #
 # Limitações honestas (ver RECONCILE.md):
-#  - inbound_messages NÃO tem coluna `municipality_id` → cross-tenant.
+#  - inbound_messages mora no banco da cidade do host: sem filtro, lê só aquela cidade.
 #  - inbound_messages NÃO tem `status`/`processed`/`raw_purged_at` →
 #    ack[] vem vazio (ou aproximado pelos outbound_messages.status);
 #    purge.pending é derivado pela IDADE da linha vs TTL configurado.
@@ -9,12 +9,11 @@
 class Admin::IngestionQuery
   TTL_HOURS = 24
 
-  def self.call(municipality:, period:)
-    new(municipality, period).call
+  def self.call(period:)
+    new(period).call
   end
 
-  def initialize(municipality, period)
-    @muni = municipality
+  def initialize(period)
     @period = period
   end
 

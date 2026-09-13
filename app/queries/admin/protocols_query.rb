@@ -5,15 +5,14 @@
 # vêm de domain_events (protocol.created / protocol.published). Aproximamos
 # pelos eventos quando existirem; null quando não houver dado.
 class Admin::ProtocolsQuery
-  def self.index(municipality:)
+  def self.index
     rows = ProtocolDefinition.all
              .order(:name, version: :desc)
-             .includes(:municipality)
              .map { |d| serialize_row(d, fetch_audit(d)) }
     { list: rows }
   end
 
-  def self.show(municipality:, id:)
+  def self.show(id:)
     # id pode ser tanto o `name` quanto um UUID. Tentamos os dois.
     base = ProtocolDefinition.all
     versions = base.where(name: id).order(version: :desc)

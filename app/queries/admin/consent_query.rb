@@ -4,12 +4,11 @@
 # NÃO existe coluna `status` nem sinal de "declined" — "declined" sai
 # null até existir consent.declined em domain_events ou flag explícita.
 class Admin::ConsentQuery
-  def self.call(municipality:, period:)
-    new(municipality, period).call
+  def self.call(period:)
+    new(period).call
   end
 
-  def initialize(municipality, period)
-    @muni = municipality
+  def initialize(period)
     @period = period
   end
 

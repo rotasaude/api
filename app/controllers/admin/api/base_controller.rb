@@ -3,64 +3,37 @@
 # Auth real via cookie de sessão (ADR-0011).
 #
 # Responsabilidades:
-#  - fronteira de auth (Authentication concern → require_authentication)
-#  - resolução de escopo (current_municipality, período, timezone)
-#  - envelope universal { data:, as_of: }
+#  - fronteira de auth (Authentication concern → require_authentication), que
+#    roda DENTRO da conexão da cidade do host (CityResolution);
+#  - período e timezone do escopo;
+#  - envelope universal { data:, as_of: }, com o descritor da cidade.
+#
+# Escopo = o banco da cidade do host. Não há município a resolver nem visão
+# cross-tenant (spec banco-por-cidade §5): as queries deste namespace leem o
+# banco inteiro da cidade, sem filtro. O parâmetro de município que os
+# frontends ainda enviam é ignorado.
 #
 # Nenhuma rota de escrita é permitida neste namespace (critério de aceite §10).
 class Admin::Api::BaseController < ApplicationController
-  # Admin tem resolução de escopo própria (suporta "all" cross-tenant para
-  # operador, agregações por município, descritor de escopo no envelope).
   include Authentication
 
   TZ = ActiveSupport::TimeZone["America/Sao_Paulo"]
 
   before_action :resolve_scope
 
-  attr_reader :current_municipality, :period
+  attr_reader :period
 
   rescue_from Admin::Api::InvalidScope, with: :render_invalid_scope
 
   private
 
   def resolve_scope
-    @current_municipality = resolve_municipality
     @period = Admin::Api::Period.parse(
       key:  params[:period],
       from: params[:from],
       to:   params[:to],
       tz:   TZ
     )
-  end
-
-  # Resolução por membership (Phase 4.2/4.5):
-  # - operador + "all"                  → :all (cross-tenant)
-  # - operador + ?municipality_id=<id>  → essa cidade
-  # - municipal_admin (ou similar)      → única cidade do membership ativo
-  def resolve_municipality
-    requested = params[:municipality_id].to_s
-    if requested == "all" && cross_tenant?
-      :all
-    elsif requested.present? && cross_tenant?
-      Municipality.find_by(id: requested) || first_member_municipality
-    else
-      first_member_municipality
-    end
-  end
-
-  # Operador (platform_operator membership) pode atravessar tenants.
-  def cross_tenant?
-    Current.user&.operator? || false
-  end
-
-  def first_member_municipality
-    membership = Current.user&.memberships
-                       &.active
-                       &.where&.not(role: "platform_operator")
-                       &.where&.not(municipality_id: nil)
-                       &.first
-    return nil unless membership&.municipality_id
-    Municipality.find_by(id: membership.municipality_id)
   end
 
   def render_envelope(data, as_of: Time.current)
@@ -73,23 +46,25 @@ class Admin::Api::BaseController < ApplicationController
   def scope_block
     {
       scope: {
-        municipality: municipality_descriptor,
+        municipality: city_descriptor,
         period: @period.descriptor,
         tz: TZ.name
       }
     }
   end
 
-  def municipality_descriptor
-    if @current_municipality == :all
-      { id: "all", name: "Todos os municípios", cross_tenant: true }
-    else
-      {
-        id: @current_municipality&.id,
-        name: [ @current_municipality&.name, @current_municipality&.uf ].compact.join(" · "),
-        cross_tenant: false
-      }
-    end
+  # Descritor da cidade do host. A chave do envelope segue `municipality`, e
+  # `id`/`name` seguem no formato que dashboard e admin já leem
+  # (apps/*/src/lib/api.ts) — `id` agora é o slug. Renomear o contrato é dos
+  # frontends (Plano 3).
+  def city_descriptor
+    city = Current.city
+    {
+      id: city.slug,
+      slug: city.slug,
+      name: [ city.name, city.uf ].compact.join(" · "),
+      uf: city.uf
+    }
   end
 
   def render_invalid_scope(err)
@@ -99,13 +74,7 @@ class Admin::Api::BaseController < ApplicationController
   # Helper: as_of derivado do max(updated_at) das proj. relevantes.
   def latest_metric_at(*dimensions)
     DashboardMetric
-      .where(municipality_filter)
       .where(dimension: dimensions.flatten)
       .maximum(:updated_at) || Time.current
-  end
-
-  def municipality_filter
-    return {} if @current_municipality == :all
-    { municipality_id: @current_municipality&.id }
   end
 end

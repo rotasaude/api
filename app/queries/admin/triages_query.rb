@@ -3,12 +3,11 @@
 # Reduzimos a referências e contagens. NUNCA expomos `answers` (LGPD).
 # Versão do protocolo vem de protocol_definitions.
 class Admin::TriagesQuery
-  def self.call(municipality:, period:)
-    new(municipality, period).call
+  def self.call(period:)
+    new(period).call
   end
 
-  def initialize(municipality, period)
-    @muni = municipality
+  def initialize(period)
     @period = period
   end
 

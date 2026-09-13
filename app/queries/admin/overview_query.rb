@@ -4,12 +4,11 @@
 # cai para agregação ao vivo (source: live) quando não há projeção
 # correspondente. Cada KPI carrega seu source no contrato (§7).
 class Admin::OverviewQuery
-  def self.call(municipality:, period:)
-    new(municipality, period).call
+  def self.call(period:)
+    new(period).call
   end
 
-  def initialize(municipality, period)
-    @muni = municipality
+  def initialize(period)
     @period = period
   end
 
@@ -93,7 +92,8 @@ class Admin::OverviewQuery
     }
   end
 
-  # Infraestrutura — cross-tenant por natureza (Solid Queue não conhece muni).
+  # Infraestrutura — lê a fila compartilhada: o Solid Queue só vai para o banco
+  # da cidade no Plano 5, então este número ainda soma todas as cidades.
   def kpi_failed_jobs
     failed = SolidQueue::FailedExecution.count
     {
