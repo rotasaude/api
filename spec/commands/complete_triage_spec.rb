@@ -43,16 +43,11 @@ RSpec.describe CompleteTriage do
 
   def urgent_events = DomainEvent.where(name: "triage.urgent")
 
-  around do |ex|
-    ApplicationRecord.transaction do
-      Current.municipality_id = muni.id
-      ApplicationRecord.connection.execute(
-        ApplicationRecord.sanitize_sql(["SET LOCAL app.municipality_id = ?", muni.id])
-      )
-      ex.run
-      raise ActiveRecord::Rollback
-    end
-  end
+  # Was an `around` opening a transaction with SET LOCAL app.municipality_id (RLS).
+  # Removed in 5c-1: raising before `ex.run` (e.g. `muni`) skipped rspec-rails'
+  # fixture teardown and leaked the pinned transaction into the rest of the suite.
+  # The example already runs inside TEST_CITY_A's connection and its fixture transaction.
+  before { Current.city = TEST_CITY_A }
 
   after { Current.reset }
 
