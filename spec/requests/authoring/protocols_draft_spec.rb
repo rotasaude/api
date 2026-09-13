@@ -1,24 +1,20 @@
 require "rails_helper"
 
+# City is the request's host city (TEST_CITY_A, the harness default — see
+# spec/support/city_request_auth.rb). `sign_in_as` (city_request_auth.rb)
+# creates a real Session and plants the signed cookie — no controller
+# stubbing needed.
 RSpec.describe "Authoring::Protocols draft", type: :request do
-  let!(:muni) { create(:municipality) }
-
   let(:author) do
     u = User.create!(email_address: "author@example.org", password: "secret123")
-    Membership.create!(user: u, municipality: muni, role: "protocol_author", granted_at: Time.current)
+    Membership.create!(user: u, role: "protocol_author", granted_at: Time.current)
     u
   end
 
   let(:viewer) do
     u = User.create!(email_address: "viewer@example.org", password: "secret123")
-    Membership.create!(user: u, municipality: muni, role: "viewer", granted_at: Time.current)
+    Membership.create!(user: u, role: "viewer", granted_at: Time.current)
     u
-  end
-
-  def sign_in(user)
-    session = user.sessions.create!(user_agent: "rspec", ip_address: "127.0.0.1")
-    allow_any_instance_of(Authoring::ProtocolsController).to receive(:resume_session) { Current.session = session }
-    allow_any_instance_of(Authoring::ProtocolsController).to receive(:current_municipality).and_return(muni)
   end
 
   def valid_def(version: 1)
@@ -33,13 +29,11 @@ RSpec.describe "Authoring::Protocols draft", type: :request do
   end
 
   def find_pd(version:)
-    ApplicationRecord.connected_to(role: :admin) do
-      ProtocolDefinition.find_by(name: "respiratoria", version: version, municipality_id: muni.id)
-    end
+    ProtocolDefinition.find_by(name: "respiratoria", version: version)
   end
 
   it "creates a draft for a new (name, version)" do
-    sign_in(author)
+    sign_in_as(author)
     post "/authoring/protocols/draft", params: { definition: valid_def }, as: :json
     expect(response).to have_http_status(:ok)
     body = JSON.parse(response.body)
@@ -48,7 +42,7 @@ RSpec.describe "Authoring::Protocols draft", type: :request do
   end
 
   it "updates the definition of an existing draft" do
-    sign_in(author)
+    sign_in_as(author)
     post "/authoring/protocols/draft", params: { definition: valid_def }, as: :json
     changed = valid_def
     changed["steps"][0]["prompt"] = "Está tossindo?"
@@ -58,19 +52,15 @@ RSpec.describe "Authoring::Protocols draft", type: :request do
   end
 
   it "422 version_not_editable when the version is already published" do
-    ApplicationRecord.connection.execute(
-      ApplicationRecord.sanitize_sql(["SET LOCAL app.municipality_id = ?", muni.id])
-    )
-    ProtocolDefinition.create!(name: "respiratoria", version: 1, status: "published",
-                               municipality_id: muni.id, definition: valid_def)
-    sign_in(author)
+    ProtocolDefinition.create!(name: "respiratoria", version: 1, status: "published", definition: valid_def)
+    sign_in_as(author)
     post "/authoring/protocols/draft", params: { definition: valid_def }, as: :json
     expect(response).to have_http_status(:unprocessable_entity)
     expect(JSON.parse(response.body)["error"]).to eq("version_not_editable")
   end
 
   it "403 for a non-author session" do
-    sign_in(viewer)
+    sign_in_as(viewer)
     post "/authoring/protocols/draft", params: { definition: valid_def }, as: :json
     expect(response).to have_http_status(:forbidden)
   end

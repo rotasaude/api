@@ -1,18 +1,14 @@
 require "rails_helper"
 
+# City is the request's host city (TEST_CITY_A, the harness default — see
+# spec/support/city_request_auth.rb). `sign_in_as` (city_request_auth.rb)
+# creates a real Session and plants the signed cookie — no controller
+# stubbing needed.
 RSpec.describe "Authoring::Protocols preview", type: :request do
-  let!(:muni) { create(:municipality) }
-
   let(:author) do
     u = User.create!(email_address: "author@example.org", password: "secret123")
-    Membership.create!(user: u, municipality: muni, role: "protocol_author", granted_at: Time.current)
+    Membership.create!(user: u, role: "protocol_author", granted_at: Time.current)
     u
-  end
-
-  def sign_in(user)
-    session = user.sessions.create!(user_agent: "rspec", ip_address: "127.0.0.1")
-    allow_any_instance_of(Authoring::ProtocolsController).to receive(:resume_session) { Current.session = session }
-    allow_any_instance_of(Authoring::ProtocolsController).to receive(:current_municipality).and_return(muni)
   end
 
   def valid_def
@@ -27,7 +23,7 @@ RSpec.describe "Authoring::Protocols preview", type: :request do
     }
   end
 
-  before { sign_in(author) }
+  before { sign_in_as(author) }
 
   it "returns the terminal outcome for a complete set of answers" do
     post "/authoring/protocols/preview",
