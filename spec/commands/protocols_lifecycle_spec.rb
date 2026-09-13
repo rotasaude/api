@@ -106,4 +106,19 @@ RSpec.describe "Protocols lifecycle" do
       expect(ProtocolDefinition.where(status: "active").count).to eq(0)
     end
   end
+
+  describe "Current.city ausente: os comandos de protocolo falham fechado com :city_missing" do
+    it "Protocols::Activate falha com :city_missing sem consultar o banco" do
+      make_pd(version: 1, status: "published")
+      actor = publisher # cria User+Membership ANTES de zerar Current.city — a
+                         # conexão real não depende do CurrentAttribute.
+      Current.city = nil
+
+      expect(ProtocolDefinition).not_to receive(:where)
+      result = Protocols::Activate.call(version: 1, by: actor)
+
+      expect(result.failure?).to be true
+      expect(result.reason).to eq(:city_missing)
+    end
+  end
 end
