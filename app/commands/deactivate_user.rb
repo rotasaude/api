@@ -1,10 +1,12 @@
+# Desativa um usuário da cidade da conexão corrente. user.deactivated vai para o
+# domain_events da cidade (Ruling R18), nunca para a plataforma.
 class DeactivateUser
   def self.call(user_id:, by:)
-    ApplicationRecord.connected_to(role: :admin) do
-      user = User.find(user_id)
+    user = User.find(user_id)
+    ApplicationRecord.transaction do
       user.deactivate!
-      Platform.audit("user.deactivated", user_id: user.id, by: by.id)
-      Result.ok(user: user)
+      DomainEvents.publish("user.deactivated", user_id: user.id, by: by.id)
     end
+    Result.ok(user: user)
   end
 end

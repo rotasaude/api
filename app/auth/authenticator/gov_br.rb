@@ -106,24 +106,30 @@ module Authenticator
       raise IntegrationError, "fetch_jwks: #{e.message}"
     end
 
+    # Roda na conexão da cidade do host: SessionsController#govbr_callback resolve
+    # a cidade como qualquer outra ação (Ruling R13). Provisório — o callback
+    # único em auth.* com grant assinado é do Esboço A / Plano 3.
     def self.find_or_provision_user(uid:, email:, name: nil)
-      ApplicationRecord.connected_to(role: :admin) do
-        identity = Identity.find_by(provider: "govbr", provider_uid: uid)
-        return identity.user if identity
+      identity = Identity.find_by(provider: "govbr", provider_uid: uid)
+      return identity.user if identity
 
-        user = email.present? ? User.find_by(email_address: email.downcase) : nil
-        user ||= User.create!(
-          email_address: email&.downcase || "govbr-#{uid}@placeholder.invalid",
-          password: SecureRandom.base58(32)
-        )
-        Identity.create!(user: user, provider: "govbr", provider_uid: uid)
-        user
-      end
+      user = email.present? ? User.find_by(email_address: email.downcase) : nil
+      user ||= User.create!(
+        email_address: email&.downcase || "govbr-#{uid}@placeholder.invalid",
+        password: SecureRandom.base58(32)
+      )
+      Identity.create!(user: user, provider: "govbr", provider_uid: uid)
+      user
     end
 
+    # Evento de domínio DA CIDADE (Ruling R18): no gov.br o provider_uid costuma
+    # ser o CPF e não pode ir para o banco de plataforma. Mesmo na cidade, levá-lo
+    # no payload é dívida de minimização registrada na R18, não resolvida aqui.
     def self.annotate_identity_assurance(user, uid, assurance)
       Rails.logger.info("[govbr] user=#{user.id} uid=#{uid} assurance=#{assurance}")
-      Platform.audit("identity.govbr_login", user_id: user.id, provider_uid: uid, assurance: assurance)
+      ApplicationRecord.transaction do
+        DomainEvents.publish("identity.govbr_login", user_id: user.id, provider_uid: uid, assurance: assurance)
+      end
     end
 
     # — Configuration —————————————————————————————————————
