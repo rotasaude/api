@@ -5,7 +5,10 @@
 # reatribuir (marca dirty) + save!(validate: false) (re-cifra com primária).
 # Operação idempotente — re-rodar com a mesma chave é no-op funcional.
 #
-# Cross-tenant (lê todas as cidades) — roda sob rota_admin (BYPASSRLS, ADR-0003).
+# Roda uma vez por cidade (EachCityJob), sobre as tabelas do banco da cidade.
+# O access_token do canal (CityChannel) mora na PLATAFORMA e não entra aqui:
+# rodado por cidade seria recifrado N vezes. A rotação de chave por cidade e a
+# de plataforma são do Plano 4 (spec banco-por-cidade §6).
 # NÃO chamar enquanto outra operação está rotacionando — pode interleave com
 # chaves diferentes (sem perda, mas reescreve duas vezes).
 class ReencryptionJob < ApplicationJob
@@ -18,8 +21,7 @@ class ReencryptionJob < ApplicationJob
     [Conversation,       :phone],
     [InboundMessage,     :raw],
     [Consent,            :evidence],
-    [Author,             :token],
-    [MunicipalityChannel, :access_token]
+    [Author,             :token]
   ].freeze
 
   BATCH_SIZE = 200
