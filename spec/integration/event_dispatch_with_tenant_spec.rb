@@ -33,6 +33,9 @@ RSpec.describe "Evento → consumer com tenant (ADR-0004 e ADR-0003)", type: :jo
       end
     end
 
-    expect(SeenTenantJob.seen_tenant).to eq(@muni_id)
+    # Not ported yet (5c-3): @muni_id is no longer assigned, so the old
+    # `eq(@muni_id)` would pass vacuously as eq(nil). The consumer must see the
+    # city it was published in; this fails until the spec is ported to city_slug.
+    expect(SeenTenantJob.seen_tenant).to eq(TEST_CITY_A.slug)
   end
 end
