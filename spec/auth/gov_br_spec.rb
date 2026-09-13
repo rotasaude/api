@@ -57,8 +57,9 @@ RSpec.describe Authenticator::GovBr do
         expect(Identity.where(provider: "govbr", provider_uid: "12345678900").count).to eq(1)
       end
 
-      it "grava um DomainEvent identity.govbr_login com assurance level, na cidade (Ruling R18)" do
-        user = described_class.authenticate(code: "valid")
+      it "grava um DomainEvent identity.govbr_login com assurance level, na cidade (Ruling R18), nunca na plataforma" do
+        user = nil
+        expect { user = described_class.authenticate(code: "valid") }.not_to change(PlatformEvent, :count)
         event = DomainEvent.find_by!(name: "identity.govbr_login")
         expect(event.payload).to include("user_id" => user.id, "provider_uid" => "12345678900", "assurance" => "ouro")
       end
