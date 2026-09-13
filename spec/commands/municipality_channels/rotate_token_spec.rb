@@ -51,8 +51,14 @@ RSpec.describe MunicipalityChannels::RotateToken, type: :model do
       Membership.create!(user: u, role: "municipal_admin", granted_at: Time.current)
       u
     end
+    # Prove the setup is real (the outsider genuinely holds municipal_admin in
+    # their OWN city), so "forbidden" below is provably about the wrong city,
+    # not an accident of a membership that never existed at all.
+    expect(CityConnection.with(other_city) { outsider.has_role?("municipal_admin") }).to be(true)
 
-    result = described_class.call(city: city, new_token: "NEW", by: outsider)
+    result = nil
+    expect { result = described_class.call(city: city, new_token: "NEW", by: outsider) }
+      .not_to change(PlatformEvent, :count)
     expect(result.failure?).to be(true)
     expect(result.reason).to eq(:forbidden)
     expect(token_of(channel.id)).to eq("OLD")
@@ -60,7 +66,11 @@ RSpec.describe MunicipalityChannels::RotateToken, type: :model do
 
   it "forbids a user with no qualifying membership" do
     plain = User.create!(email_address: "plain-#{SecureRandom.hex(3)}@x.com", password: "dev-password-123")
-    expect(described_class.call(city: city, new_token: "NEW", by: plain).reason).to eq(:forbidden)
+
+    result = nil
+    expect { result = described_class.call(city: city, new_token: "NEW", by: plain) }
+      .not_to change(PlatformEvent, :count)
+    expect(result.reason).to eq(:forbidden)
   end
 
   it "returns not_found when the city has no active channel" do
@@ -68,14 +78,20 @@ RSpec.describe MunicipalityChannels::RotateToken, type: :model do
     Membership.create!(user: admin, role: "municipal_admin", granted_at: Time.current)
     channel.update!(active: false)
 
-    expect(described_class.call(city: city, new_token: "NEW", by: admin).reason).to eq(:not_found)
+    result = nil
+    expect { result = described_class.call(city: city, new_token: "NEW", by: admin) }
+      .not_to change(PlatformEvent, :count)
+    expect(result.reason).to eq(:not_found)
   end
 
   it "returns invalid for a blank token and leaves the token unchanged" do
     admin = User.create!(email_address: "admin3-#{SecureRandom.hex(3)}@x.com", password: "dev-password-123")
     Membership.create!(user: admin, role: "municipal_admin", granted_at: Time.current)
 
-    expect(described_class.call(city: city, new_token: "", by: admin).reason).to eq(:invalid)
+    result = nil
+    expect { result = described_class.call(city: city, new_token: "", by: admin) }
+      .not_to change(PlatformEvent, :count)
+    expect(result.reason).to eq(:invalid)
     expect(token_of(channel.id)).to eq("OLD")
   end
 end
