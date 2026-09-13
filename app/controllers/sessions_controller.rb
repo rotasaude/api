@@ -5,9 +5,6 @@
 #   POST   /session/challenge { session_id, code } → 200 + carimbas mfa_verified_at
 #   DELETE /session                                 → 204 + clear-cookie
 class SessionsController < ApplicationController
-  # TODO: reativar quando Phase 4 setar current_municipality
-  skip_tenant_scope
-
   include Authentication
 
   allow_unauthenticated_access only: %i[create challenge_totp govbr_callback]

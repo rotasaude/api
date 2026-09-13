@@ -2,8 +2,6 @@
 # create: sempre 204 (sem enumeração de usuários). update: consome o token de
 # uso único e destrói as sessões do usuário.
 class PasswordsController < ApplicationController
-  skip_tenant_scope
-
   include Authentication
 
   allow_unauthenticated_access only: %i[create update]

@@ -1,5 +1,4 @@
 class MfaController < ApplicationController
-  skip_tenant_scope
   include Authentication
 
   def enroll

@@ -8,9 +8,9 @@
 class SetupController < ApplicationController
   # Setup é cross-tenant em ações de operador (provision/deactivate). Para
   # invite/revoke usa current_municipality via membership do user, mas a
-  # resolução é feita aqui (não via TenantScopedRequest, que falharia para
-  # operador sem header). Pular o around_action.
-  skip_tenant_scope
+  # resolução é feita aqui, fora da conexão de uma cidade — pular
+  # within_city (CityResolution).
+  skip_city_resolution
 
   include Authentication
 

@@ -1,7 +1,6 @@
 # GET /admin/api/cities[/:id] — visão de plataforma (operador) das cidades
 # provisionadas + resumo de atividade. Read-only (§10). Herda do BaseController:
-# auth (cookie), with_admin_connection (rota_admin/BYPASSRLS → leitura
-# cross-tenant) e resolve_scope (parse do period).
+# auth (cookie) e resolve_scope (parse do period).
 class Admin::Api::CitiesController < Admin::Api::BaseController
   before_action :require_operator!
 

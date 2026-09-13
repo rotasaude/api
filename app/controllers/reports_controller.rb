@@ -5,8 +5,6 @@
 # vale para qualquer município. Sem usuário autenticado, não há
 # membership/tenant a resolver. Lookup via BYPASSRLS (rota_admin).
 class ReportsController < ApplicationController
-  skip_tenant_scope
-
   def show
     snapshot = ApplicationRecord.connected_to(role: :admin) do
       ReportSnapshot.find_by_signed_token(params[:token])

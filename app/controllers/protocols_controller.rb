@@ -1,10 +1,6 @@
 # Endpoints de autoria/preview de protocolos. Ver ADR-0009.
 # A UI de autoria (apps/web/src/protocols) consome estes endpoints.
 class ProtocolsController < ApplicationController
-  # show/preview leem ProtocolDefinition sob RLS → precisam de within_tenant.
-  # gate só valida estrutura, sem hit no DB → pula.
-  skip_tenant_scope only: :gate
-
   before_action :authenticate_author!
 
   # GET /protocols/:name — definição ativa
@@ -48,8 +44,9 @@ class ProtocolsController < ApplicationController
     @current_author ||= Author.find_by(token: request.headers["Authorization"].to_s.split.last)
   end
 
-  # Override do TenantScopedRequest: tenant deste request é a cidade do author.
-  # Sem author/sem muni: within_tenant levanta TenantMissing (falha fechada).
+  # Leftover do esquema de tenant pré-Task 5: nada mais chama isto (a cidade
+  # do request agora vem de CityResolution, não do author). Revisão semântica
+  # de ProtocolsController é do lote 5b.
   def current_municipality
     current_author&.municipality
   end
