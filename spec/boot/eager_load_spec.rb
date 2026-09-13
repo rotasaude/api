@@ -15,35 +15,49 @@ RSpec.describe "Boot guard" do
     expect { Rails.application.eager_load! }.not_to raise_error
   end
 
-  # Every connection declared for test must also be declared for production.
-  # The list is derived from the test configurations, not hardcoded, so a new
-  # connection added only to the test stanza fails here.
-  it "declares, for every test connection, a production connection with an adapter and a database" do
+  describe "production stanzas of config/database.yml" do
     # database.yml's production ERB uses ENV.fetch without defaults for the
-    # passwords; provide them (and the URLs) only inside this example.
-    stub_const("ENV", ENV.to_h.merge(
-      "DATABASE_URL" => "postgres://db.internal:5432/rota_saude_production",
-      "PLATFORM_DATABASE_URL" => "postgres://db.internal:5432/rota_saude_platform_production",
-      "ROTA_APP_PASSWORD" => "app-secret",
-      "ROTA_ADMIN_PASSWORD" => "admin-secret",
-      "ROTA_PLATFORM_PASSWORD" => "platform-secret"
-    ).except("CITY_UNSET_DATABASE_URL"))
+    # passwords; provide them (and the URLs) only inside these examples.
+    before do
+      stub_const("ENV", ENV.to_h.merge(
+        "DATABASE_URL" => "postgres://db.internal:5432/rota_saude_production",
+        "PLATFORM_DATABASE_URL" => "postgres://db.internal:5432/rota_saude_platform_production",
+        "ROTA_APP_PASSWORD" => "app-secret",
+        "ROTA_ADMIN_PASSWORD" => "admin-secret",
+        "ROTA_PLATFORM_PASSWORD" => "platform-secret"
+      ).except("CITY_UNSET_DATABASE_URL"))
+    end
 
-    raw = ActiveSupport::ConfigurationFile.parse(Rails.root.join("config/database.yml"))
-    production = ActiveRecord::DatabaseConfigurations.new(raw)
-      .configs_for(env_name: "production", include_hidden: true)
-      .index_by(&:name)
+    # Resolved without connecting.
+    def production_configs
+      raw = ActiveSupport::ConfigurationFile.parse(Rails.root.join("config/database.yml"))
+      ActiveRecord::DatabaseConfigurations.new(raw).configs_for(env_name: "production", include_hidden: true)
+    end
 
-    test_names = ActiveRecord::Base.configurations
-      .configs_for(env_name: "test", include_hidden: true)
-      .map(&:name)
-    expect(test_names).not_to be_empty
+    # Catches a new connects_to target declared for test with no production stanza.
+    # Derived from the test configurations, not hardcoded.
+    it "declares a production connection for every test connection" do
+      test_names = ActiveRecord::Base.configurations
+        .configs_for(env_name: "test", include_hidden: true)
+        .map(&:name)
+      expect(test_names).not_to be_empty
 
-    test_names.each do |name|
-      config = production[name]
-      expect(config).not_to be_nil, "production has no `#{name}` stanza"
-      expect(config.adapter).to be_present, "production `#{name}` has no adapter"
-      expect(config.database).to be_present, "production `#{name}` has no database"
+      production_names = production_configs.map(&:name)
+      test_names.each do |name|
+        expect(production_names).to include(name), "production has no `#{name}` stanza"
+      end
+    end
+
+    # Covers every production connection, including those with no test stanza
+    # (queue and cache: test uses the :test queue adapter and :null_store).
+    it "resolves an adapter and a database for every production connection" do
+      configs = production_configs
+      expect(configs).not_to be_empty
+
+      configs.each do |config|
+        expect(config.adapter).to be_present, "production `#{config.name}` has no adapter"
+        expect(config.database).to be_present, "production `#{config.name}` has no database"
+      end
     end
   end
 end
