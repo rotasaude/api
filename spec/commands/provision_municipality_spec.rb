@@ -47,5 +47,30 @@ RSpec.describe ProvisionMunicipality do
 
     event = PlatformEvent.find_by!(name: "municipality.provisioned")
     expect(event.payload).to include("city_id" => city.id, "ibge_code" => "3550308", "by" => invited_by.id)
+    # Tight, not just "includes": the payload carries exactly these 3 keys —
+    # no email/name/other personal data ever rides along (Ruling R18).
+    expect(event.payload.keys).to contain_exactly("city_id", "ibge_code", "by")
+  end
+
+  it "refuses a non-servable city and writes nothing, on the platform or in the city" do
+    # ProvisionMunicipality.call checks `city.servable?` (status == "active")
+    # before touching anything — no CityChannel, no CityConnection.with, no
+    # transaction. A "provisioning" city (City::STATUSES) is the realistic case:
+    # the database exists but Plan 4's two-phase provisioning hasn't flipped it
+    # active yet.
+    non_servable = create(:city, slug: "provisioning-#{SecureRandom.hex(3)}", status: "provisioning",
+                                  database_url: city_database_url("rota_saude_test_city_b"))
+
+    result = nil
+    expect { result = described_class.call(**args.merge(city: non_servable)) }
+      .not_to change(PlatformEvent, :count)
+
+    expect(result.failure?).to be(true)
+    expect(result.reason).to eq(:city_not_servable)
+    expect(CityChannel.where(city: non_servable).count).to eq(0)
+    CityConnection.with(non_servable) do
+      expect(Invitation.where(email: "admin@cidade.gov.br").count).to eq(0)
+      expect(ConsentTerm.where(version: "v1").count).to eq(0)
+    end
   end
 end
