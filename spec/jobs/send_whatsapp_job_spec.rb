@@ -1,12 +1,16 @@
 require "rails_helper"
 
 RSpec.describe SendWhatsappJob do
-  let!(:muni) { create(:municipality) }
+  # Same slug/database_url as TEST_CITY_A so the job's with_city(city_slug)
+  # re-enters the shard the harness already has open — OutboundMessage is then
+  # readable via the default connection below without a second
+  # CityConnection.with.
+  let!(:city) do
+    create(:city, slug: TEST_CITY_A.slug, status: "active", database_url: city_database_url("rota_saude_test_city_a"))
+  end
   let!(:channel) do
-    ApplicationRecord.connected_to(role: :admin) do
-      MunicipalityChannel.create!(municipality: muni, phone_number_id: "PNID", waba_id: "WABA",
-                                  display_phone_number: "+551199", access_token: "tok", active: true)
-    end
+    CityChannel.create!(city: city, phone_number_id: "PNID", waba_id: "WABA",
+                        display_phone_number: "+551199", access_token: "tok", active: true)
   end
 
   def text_msg(body) = Messaging::Reply.text(body).to_h
@@ -15,11 +19,11 @@ RSpec.describe SendWhatsappJob do
     allow(Whatsapp::SessionWindow).to receive(:open?).and_return(true)
   end
 
-  it "escopa MunicipalityChannel por município (escopo manual)" do
+  it "usa o CityChannel da cidade corrente (a conexão escopa, não uma FK manual)" do
     deliver_result = Whatsapp::Outbound::Result.new(status: 200, body: '{"ok":true}')
     outbound = instance_double(Whatsapp::Outbound, deliver_text: deliver_result)
-    expect(Whatsapp::Outbound).to receive(:new).with(having_attributes(municipality_id: muni.id)).and_return(outbound)
-    described_class.new.perform(to: "+5511988", message: text_msg("ola"), municipality_id: muni.id)
+    expect(Whatsapp::Outbound).to receive(:new).with(channel).and_return(outbound)
+    described_class.new.perform(to: "+5511988", message: text_msg("ola"), city_slug: city.slug)
     om = OutboundMessage.last
     expect(om.to).to eq("+5511988")
     expect(om.status).to eq(200)
@@ -29,8 +33,8 @@ RSpec.describe SendWhatsappJob do
     deliver_result = Whatsapp::Outbound::Result.new(status: 200, body: "ok")
     outbound = instance_double(Whatsapp::Outbound, deliver_text: deliver_result)
     expect(Whatsapp::Outbound).to receive(:new).once.and_return(outbound)
-    described_class.new.perform(to: "+551188", message: text_msg("ola"), municipality_id: muni.id)
-    described_class.new.perform(to: "+551188", message: text_msg("ola"), municipality_id: muni.id)
+    described_class.new.perform(to: "+551188", message: text_msg("ola"), city_slug: city.slug)
+    described_class.new.perform(to: "+551188", message: text_msg("ola"), city_slug: city.slug)
     expect(OutboundMessage.where(to: "+551188").count).to eq(1)
   end
 
@@ -40,14 +44,14 @@ RSpec.describe SendWhatsappJob do
     expect(outbound).to receive(:deliver_interactive).and_return(deliver_result)
     expect(Whatsapp::Outbound).to receive(:new).and_return(outbound)
     msg = Messaging::Reply.buttons(body: "Tosse?", options: [{ id: "true", title: "Sim" }, { id: "false", title: "Não" }]).to_h
-    described_class.new.perform(to: "+551177", message: msg, municipality_id: muni.id)
+    described_class.new.perform(to: "+551177", message: msg, city_slug: city.slug)
     expect(OutboundMessage.where(to: "+551177").count).to eq(1)
   end
 
-  it "levanta TenantMissing sem municipality_id" do
+  it "levanta CityMissing sem city_slug" do
     expect {
-      described_class.new.perform(to: "+5511988", message: text_msg("ola"), municipality_id: nil)
-    }.to raise_error(TenantScopedJob::TenantMissing)
+      described_class.new.perform(to: "+5511988", message: text_msg("ola"), city_slug: nil)
+    }.to raise_error(CityScopedJob::CityMissing)
   end
 
   describe "24h window guard" do
@@ -63,21 +67,21 @@ RSpec.describe SendWhatsappJob do
     it "sends a template message via deliver_template (any window state)" do
       allow(Whatsapp::SessionWindow).to receive(:open?).and_return(false)
       msg = Messaging::Reply.template(name: "rota_saude_ask").to_h
-      described_class.new.perform(to: "5511999", message: msg, municipality_id: muni.id)
+      described_class.new.perform(to: "5511999", message: msg, city_slug: city.slug)
       expect(client).to have_received(:deliver_template)
     end
 
     it "sends free-form text within the window" do
       allow(Whatsapp::SessionWindow).to receive(:open?).and_return(true)
       msg = Messaging::Reply.text("Olá").to_h
-      described_class.new.perform(to: "5511999", message: msg, municipality_id: muni.id)
+      described_class.new.perform(to: "5511999", message: msg, city_slug: city.slug)
       expect(client).to have_received(:deliver_text)
     end
 
     it "substitutes the resume template for free-form outside the window" do
       allow(Whatsapp::SessionWindow).to receive(:open?).and_return(false)
       msg = Messaging::Reply.text("Olá").to_h
-      described_class.new.perform(to: "5511999", message: msg, municipality_id: muni.id)
+      described_class.new.perform(to: "5511999", message: msg, city_slug: city.slug)
       expect(client).to have_received(:deliver_template) do |to:, reply:|
         expect(reply.name).to eq("rota_saude_resume")
       end
