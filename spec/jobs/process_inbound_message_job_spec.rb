@@ -86,7 +86,10 @@ RSpec.describe ProcessInboundMessageJob, type: :job do
     expect(InboundMessage.find(inbound_id).processed_at).to be_present
   end
 
-  it "SendWhatsappJob enqueues within the transaction (no after-commit deferral)" do
-    expect(SendWhatsappJob.enqueue_after_transaction_commit).to be(false)
+  # R44: the queue no longer shares the city's database, so an in-transaction
+  # enqueue is not atomic with the state advance — SendWhatsappJob inherits
+  # ApplicationJob's after-commit deferral (R40); idempotency_key covers retries.
+  it "SendWhatsappJob defers its enqueue to the city commit (inherits ApplicationJob, R44)" do
+    expect(SendWhatsappJob.enqueue_after_transaction_commit).to be(true)
   end
 end

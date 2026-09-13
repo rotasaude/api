@@ -11,13 +11,6 @@
 class SendWhatsappJob < ApplicationJob
   include CityScopedJob
 
-  # Enfileira DENTRO da transação aberta pelo caller (o with_lock do
-  # ProcessInboundMessageJob), em vez de adiar para after_commit (config global
-  # :always). Seguro: os args são primitivos (sem registro AR não-commitado) e o
-  # Solid Queue é o mesmo Postgres, então a linha do job comita atomicamente com
-  # o avanço de estado. Já é idempotente via idempotency_key. (F-02.8)
-  self.enqueue_after_transaction_commit = false
-
   RESUME_TEMPLATE = Messaging::Reply.template(name: "rota_saude_resume").freeze
 
   def perform(to:, message:, city_slug:, dedup_key: nil)
