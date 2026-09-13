@@ -15,8 +15,8 @@ class PublicationsController < ApplicationController
       head :not_found
     when :forbidden
       render json: { error: "forbidden" }, status: :forbidden
-    when :tenant_missing
-      render json: { error: "tenant_missing" }, status: :unprocessable_entity
+    when :city_missing
+      render json: { error: "city_missing" }, status: :unprocessable_entity
     else
       render json: { error: result.reason.to_s, message: result.message }, status: :unprocessable_entity
     end

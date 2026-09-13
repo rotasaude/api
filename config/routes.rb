@@ -51,7 +51,7 @@ Rails.application.routes.draw do
     post ":name/gate",    to: "protocols#gate",    as: :protocol_gate
   end
 
-  # Autoria de protocolo (editor do dashboard) — sessão municipal + RLS + author.
+  # Autoria de protocolo (editor do dashboard) — sessão municipal + banco da cidade + author.
   # Escrita NÃO entra em /admin/api (read-only §10). Ver F-03.12.
   scope "/authoring/protocols" do
     get  "definition", to: "authoring/protocols#definition"

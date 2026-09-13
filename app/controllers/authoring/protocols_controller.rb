@@ -1,6 +1,6 @@
 # Superfície de autoria de protocolo (editor do dashboard, F-03.12).
-# Sessão municipal (ADR-0011) + tenant-scoped (RLS, ADR-0003) + ProtocolPolicy.author?.
-# NÃO é /admin/api (read-only §10): aqui há escrita (draft), sob RLS.
+# Sessão municipal (ADR-0011) + banco da cidade do host (CityResolution) + ProtocolPolicy.author?.
+# NÃO é /admin/api (read-only §10): aqui há escrita (draft).
 module Authoring
   class ProtocolsController < ApplicationController
     include Authentication
@@ -33,9 +33,7 @@ module Authoring
     end
 
     def definition
-      record = ProtocolDefinition.find_by(
-        name: params[:name], version: params[:version], municipality_id: Current.municipality_id
-      )
+      record = ProtocolDefinition.find_by(name: params[:name], version: params[:version])
       return head :not_found unless record
       render json: { definition: record.definition }
     end
@@ -59,8 +57,7 @@ module Authoring
     end
 
     def require_author!
-      record = ProtocolDefinition.new(municipality_id: Current.municipality_id)
-      head :forbidden unless ProtocolPolicy.new(Current.user, record).author?
+      head :forbidden unless ProtocolPolicy.new(Current.user, ProtocolDefinition.new).author?
     end
   end
 end

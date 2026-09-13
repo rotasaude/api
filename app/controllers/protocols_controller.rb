@@ -5,7 +5,7 @@ class ProtocolsController < ApplicationController
 
   # GET /protocols/:name — definição ativa
   def show
-    protocol = Protocols.current(current_author.municipality_id, name: params[:name])
+    protocol = Protocols.current(name: params[:name])
     render json: protocol.to_h
   rescue Protocols::NotFound
     head :not_found
@@ -13,7 +13,7 @@ class ProtocolsController < ApplicationController
 
   # POST /protocols/:name/preview — workflow: simula resposta + retorna outcome
   def preview
-    protocol = Protocols.current(current_author.municipality_id, name: params[:name])
+    protocol = Protocols.current(name: params[:name])
     answers = params.require(:answers).to_unsafe_h
     outcome = protocol.evaluate(answers)
     render json: outcome.to_h
@@ -42,12 +42,5 @@ class ProtocolsController < ApplicationController
 
   def current_author
     @current_author ||= Author.find_by(token: request.headers["Authorization"].to_s.split.last)
-  end
-
-  # Leftover do esquema de tenant pré-Task 5: nada mais chama isto (a cidade
-  # do request agora vem de CityResolution, não do author). Revisão semântica
-  # de ProtocolsController é do lote 5b.
-  def current_municipality
-    current_author&.municipality
   end
 end

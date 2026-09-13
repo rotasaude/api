@@ -10,9 +10,9 @@
 module Protocols
   module Retire
     def self.call(version:, by:, name: nil)
-      return Result.fail(:tenant_missing) if Current.municipality_id.nil?
+      return Result.fail(:city_missing) if Current.city.nil?
 
-      scope = ProtocolDefinition.where(municipality_id: Current.municipality_id, version: version)
+      scope = ProtocolDefinition.where(version: version)
       scope = scope.where(name: name) if name
       return Result.fail(:not_found) if scope.empty?
       return Result.fail(:ambiguous, message: "multiple protocols match version #{version}") if scope.count > 1

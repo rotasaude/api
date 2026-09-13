@@ -3,7 +3,7 @@
 #
 # Invariantes:
 # - R1 / INV-protocol-1: só uma versão `published` pode virar `active`.
-# - INV-protocol-2: uma `active` por (municipality_id, name) — a versão `active`
+# - INV-protocol-2: uma `active` por name (o banco é da cidade) — a versão `active`
 #   anterior do mesmo protocolo é demovida de volta a `published` no mesmo átomo,
 #   e a unique parcial WHERE status='active' garante a unicidade.
 #
@@ -11,9 +11,9 @@
 module Protocols
   module Activate
     def self.call(version:, by:, name: nil)
-      return Result.fail(:tenant_missing) if Current.municipality_id.nil?
+      return Result.fail(:city_missing) if Current.city.nil?
 
-      scope = ProtocolDefinition.where(municipality_id: Current.municipality_id, version: version)
+      scope = ProtocolDefinition.where(version: version)
       scope = scope.where(name: name) if name
       return Result.fail(:not_found) if scope.empty?
       return Result.fail(:ambiguous, message: "multiple protocols match version #{version}") if scope.count > 1
@@ -28,7 +28,7 @@ module Protocols
         # demove a active anterior do mesmo protocolo ANTES de ativar a nova,
         # para a unique parcial WHERE status='active' nunca ver duas active.
         ProtocolDefinition
-          .where(municipality_id: Current.municipality_id, name: protocol.name, status: "active")
+          .where(name: protocol.name, status: "active")
           .where.not(id: protocol.id)
           .update_all(status: "published")
 
@@ -36,7 +36,6 @@ module Protocols
 
         DomainEvents.publish(
           "protocol.activated",
-          municipality_id: Current.municipality_id,
           protocol_key: protocol.name,
           protocol_definition_id: protocol.id,
           version: protocol.version,
