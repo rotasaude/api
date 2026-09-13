@@ -4,23 +4,30 @@ require "rails_helper"
 RSpec.describe Membership do
   let!(:user) { User.create!(email_address: "m@example.org", password: "secret123") }
 
-  # Plano 3: grant de operador — Membership não carrega mais papel/coluna de
-  # operador de plataforma. `ck_memberships_role` (db/city_schema.rb) só
-  # aceita os 4 papéis locais (Membership::ROLES); não existe `municipality`
-  # nem `platform_operator` para construir este cenário. O invariante que
-  # essas duas asserções protegiam ("operador não é amarrado a uma cidade")
-  # agora vive em User#operator? (app/models/user.rb:44), hardcoded `false` —
-  # nenhum usuário de cidade pode virar operador de plataforma; o operador
-  # real é `Operator`, na plataforma (Plano 3).
-  it "operator membership tem municipality_id nulo" do
-    skip "Plano 3: grant de operador — Membership não tem mais papel/coluna de operador " \
-         "(ck_memberships_role só aceita os 4 papéis locais); o invariante vive agora em " \
-         "User#operator? (hardcoded false)"
+  # Fix round 1 (I1): the old "operator" examples were skipped because
+  # Membership no longer carries a platform-operator concept — but that gap
+  # is exactly today's fail-closed behaviour, and it's provable without
+  # constructing anything: platform_operator fails Ruby-level validation,
+  # fails the DB CHECK constraint if validation is bypassed, and even a real
+  # active membership can never make User#operator? true (D3). The invariant
+  # ("no city user can become a platform operator") now lives across these
+  # three layers instead of a single Membership attribute.
+  it "platform_operator é inválido no nível de Ruby (Membership::ROLES)" do
+    m = Membership.new(user: user, role: "platform_operator", granted_at: Time.current)
+    expect(m).to be_invalid
+    expect(m.errors[:role]).to be_present
   end
 
-  it "operator com municipality_id setado é inválido" do
-    skip "Plano 3: grant de operador — Membership não tem mais coluna municipality nem papel " \
-         "platform_operator (ck_memberships_role); não há mais como construir este cenário"
+  it "platform_operator viola ck_memberships_role no banco da cidade, mesmo pulando a validação" do
+    m = Membership.new(user: user, role: "platform_operator", granted_at: Time.current)
+    expect {
+      m.save!(validate: false)
+    }.to raise_error(ActiveRecord::StatementInvalid, /ck_memberships_role/)
+  end
+
+  it "user.operator? é false mesmo com uma membership municipal_admin ativa" do
+    Membership.create!(user: user, role: "municipal_admin", granted_at: Time.current)
+    expect(user.reload.operator?).to be(false)
   end
 
   it "índice único parcial bloqueia membership duplicado ativo" do
