@@ -4,6 +4,28 @@
 # de duas cidades (isolamento) usam `within_city`.
 #
 # Pré-requisito: rails city:test_databases
+#
+# SESSÃO POR SLUG (5c-3 fix round 1, achado I2/decisão do Fluxo M1): cada City
+# tem seu PRÓPRIO shard/pool/pinned fixture transaction, chaveado por
+# `city.slug.to_sym` (CityConnection#ensure_pool) — mesmo quando duas Cities
+# apontam para o MESMO `database_url` físico, cada uma é uma sessão Postgres
+# separada, com sua própria transação de fixture pinada (a suíte roda com
+# `use_transactional_fixtures = true`; cada pool novo é pinado preguiçosamente
+# quando é aberto pela primeira vez no exemplo, não só os pools já registrados
+# antes do `before_setup`). Duas consequências práticas para quem escreve specs
+# aqui:
+#   1. Uma City criada com o MESMO slug de TEST_CITY_A/TEST_CITY_B reentra o
+#      shard que o `around` abaixo (ou uma spec) já abriu — linhas escritas na
+#      conexão padrão (implícita, sem `CityConnection.with`) e as escritas pelo
+#      próprio `with_city`/`CityScopedJob` de um job compartilham a MESMA sessão
+#      e são mutuamente visíveis.
+#   2. Uma City com slug aleatório (o padrão da factory `:city`) é uma sessão
+#      DISTINTA, mesmo apontando para o mesmo banco físico — só enxerga (e só é
+#      enxergada por) leituras/escritas feitas através do seu próprio
+#      `CityConnection.with(essa_city) { ... }`. Ler essa cidade pela conexão
+#      padrão, ou ler a conexão padrão a partir de dentro do bloco dessa
+#      cidade, não vê o que a outra sessão escreveu — cada uma tem sua própria
+#      transação de fixture, não-commitada até o rollback do exemplo.
 module CityTestDatabases
   def self.city(slug, db)
     City.new(slug: slug, name: slug.capitalize, status: "active",
