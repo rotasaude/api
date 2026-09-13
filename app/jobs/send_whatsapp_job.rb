@@ -1,11 +1,12 @@
-# Envia mensagem fora-de-banda (ADR-0005/0007). Escopo manual sobre
-# municipality_channels (RLS-exempt).
+# Envia mensagem fora-de-banda (ADR-0005/0007), pela cidade do job. O canal
+# (CityChannel) é lido do catálogo de PLATAFORMA; a mensagem e o dedup ficam
+# no banco da cidade.
 #
 # message: é o hash serializado de Messaging::Reply (via #to_h).
 # Dedup contra crash-retry do worker: INSERT em outbound_messages com
 # idempotency_key UNIQUE ANTES do HTTP. RecordNotUnique → skip HTTP
 # (já foi entregue numa execução anterior; idempotency_key estável para
-# mesmo (to, message, muni, dedup_key)). Caller pode passar dedup_key
+# mesmo (to, message, dedup_key) dentro da cidade). Caller pode passar dedup_key
 # explícito para distinguir reenvios deliberados.
 class SendWhatsappJob < ApplicationJob
   include CityScopedJob
@@ -19,10 +20,10 @@ class SendWhatsappJob < ApplicationJob
 
   RESUME_TEMPLATE = Messaging::Reply.template(name: "rota_saude_resume").freeze
 
-  def perform(to:, message:, municipality_id:, dedup_key: nil)
-    with_city(municipality_id) do
+  def perform(to:, message:, city_slug:, dedup_key: nil)
+    with_city(city_slug) do
       reply = Messaging::Reply.from_h(message)
-      key = idempotency_key(to: to, message: message, municipality_id: municipality_id, dedup_key: dedup_key)
+      key = idempotency_key(to: to, message: message, dedup_key: dedup_key)
 
       outbound = nil
       begin
@@ -30,7 +31,6 @@ class SendWhatsappJob < ApplicationJob
           to: to,
           template: message,
           idempotency_key: key,
-          municipality_id: municipality_id,
           status: 0,                                # pendente (pré-HTTP)
           context: { dedup_key: dedup_key }.compact
         )
@@ -47,14 +47,12 @@ class SendWhatsappJob < ApplicationJob
         raise
       end
 
-      channel = ApplicationRecord.connected_to(role: :admin) do
-        MunicipalityChannel.find_by!(municipality_id: municipality_id, active: true)
-      end
+      channel = CityChannel.active.find_by!(city: Current.city)
 
       client = Whatsapp::Outbound.new(channel)
 
       sent =
-        if reply.kind != :template && !Whatsapp::SessionWindow.open?(phone: to, municipality_id: municipality_id)
+        if reply.kind != :template && !Whatsapp::SessionWindow.open?(phone: to)
           RESUME_TEMPLATE
         else
           reply
@@ -73,8 +71,9 @@ class SendWhatsappJob < ApplicationJob
 
   private
 
-  def idempotency_key(to:, message:, municipality_id:, dedup_key:)
-    digest_input = dedup_key.presence || [to, message.to_json, municipality_id].join("|")
+  # outbound_messages é do banco da cidade: a unicidade da chave já é por cidade.
+  def idempotency_key(to:, message:, dedup_key:)
+    digest_input = dedup_key.presence || [to, message.to_json].join("|")
     Digest::SHA256.hexdigest(digest_input)
   end
 end

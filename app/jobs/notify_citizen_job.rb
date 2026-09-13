@@ -12,7 +12,7 @@ class NotifyCitizenJob < ApplicationJob
     SendWhatsappJob.perform_later(
       to: phone,
       message: Messaging::Reply.text("Sua triage (#{triage.tier}): #{snapshot.url}").to_h,
-      municipality_id: triage.municipality_id
+      city_slug: Current.city.slug
     )
   end
 end

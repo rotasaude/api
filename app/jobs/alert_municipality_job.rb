@@ -8,9 +8,10 @@ class AlertMunicipalityJob < ApplicationJob
     triage = Triage.find(triage_id)
 
     # HTTP/E-mail para a secretaria fica em job próprio (ADR-0005).
-    # Aqui só registramos a intenção e enfileiramos o envio.
+    # Aqui só registramos a intenção e enfileiramos o envio, para a MESMA cidade
+    # do evento (Current.city, setado pelo with_city do IdempotentConsumer).
     DispatchMunicipalityAlertJob.perform_later(
-      municipality_id: triage.municipality_id,
+      city_slug: Current.city.slug,
       triage_id: triage.id,
       tier: triage.tier,
       priority: triage.priority,
