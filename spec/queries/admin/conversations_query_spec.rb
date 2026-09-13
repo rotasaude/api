@@ -19,26 +19,22 @@ RSpec.describe Admin::ConversationsQuery do
   # PG::AmbiguousColumn e o painel Conversas 500a assim que há ≥1 triagem
   # completa no período. Este teste exercita esse caminho.
   it "computes avgToCompleteMin over a completed triage without an ambiguous-column error" do
-    out = begin
-      m = Municipality.create!(name: "Alpha", slug: "alpha", uf: "SP", status: "active")
-      prot = ProtocolDefinition.create!(municipality_id: m.id, name: "resp", version: 1, status: "active", definition: definition)
-      conv = Conversation.create!(municipality_id: m.id, phone: "+5511999", state: "consented")
-      Triage.create!(municipality_id: m.id, conversation_id: conv.id, protocol_definition_id: prot.id,
-                     protocol_name: "resp", status: "completed",
-                     created_at: 20.minutes.ago, completed_at: 10.minutes.ago)
-      Admin::ConversationsQuery.call(municipality: m, period: period)
-    end
+    prot = ProtocolDefinition.create!(name: "resp", version: 1, status: "active", definition: definition)
+    conv = Conversation.create!(phone: "+5511999", state: "consented")
+    Triage.create!(conversation_id: conv.id, protocol_definition_id: prot.id,
+                   protocol_name: "resp", status: "completed",
+                   created_at: 20.minutes.ago, completed_at: 10.minutes.ago)
+
+    out = Admin::ConversationsQuery.call(period: period)
 
     expect(out[:avgToCompleteMin]).to be_a(Numeric)
     expect(out[:avgToCompleteMin]).to be_within(0.5).of(10.0)
   end
 
   it "returns nil avgToCompleteMin when there are no completed triages" do
-    out = begin
-      m = Municipality.create!(name: "Beta", slug: "beta", uf: "SP", status: "active")
-      Conversation.create!(municipality_id: m.id, phone: "+5511888", state: "greeting")
-      Admin::ConversationsQuery.call(municipality: m, period: period)
-    end
+    Conversation.create!(phone: "+5511888", state: "greeting")
+
+    out = Admin::ConversationsQuery.call(period: period)
 
     expect(out[:avgToCompleteMin]).to be_nil
     expect(out[:funnel].find { |f| f[:key] == "greeting" }[:count]).to eq(1)

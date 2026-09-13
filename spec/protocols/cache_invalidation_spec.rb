@@ -32,38 +32,19 @@ RSpec.describe "Protocol definition cache invalidation", type: :model do
     }
   end
 
-  let(:muni) do
-    Municipality.create!(name: "Cache City", slug: "cache-city", ibge_code: "3500009")
-  end
-
   it "does not raise on a status change when the cache store lacks delete_matched" do
     expect {
-      begin
-        ProtocolDefinition.create!(
-          municipality_id: muni.id, name: "dengue", version: 1, status: "active",
-          definition: definition(version: 1, weight: 1)
-        )
-      end
+      ProtocolDefinition.create!(name: "dengue", version: 1, status: "active", definition: definition(version: 1, weight: 1))
     }.not_to raise_error
   end
 
   it "serves the newly activated definition after a republish (cache invalidated)" do
-    begin
-      ProtocolDefinition.create!(
-        municipality_id: muni.id, name: "dengue", version: 1, status: "active",
-        definition: definition(version: 1, weight: 1)
-      )
-    end
-    expect(Protocols.current(muni.id, name: "dengue").version).to eq(1)
+    ProtocolDefinition.create!(name: "dengue", version: 1, status: "active", definition: definition(version: 1, weight: 1))
+    expect(Protocols.current(name: "dengue").version).to eq(1)
 
-    begin
-      ProtocolDefinition.find_by!(name: "dengue", version: 1, municipality_id: muni.id).update!(status: "retired")
-      ProtocolDefinition.create!(
-        municipality_id: muni.id, name: "dengue", version: 2, status: "active",
-        definition: definition(version: 2, weight: 5)
-      )
-    end
+    ProtocolDefinition.find_by!(name: "dengue", version: 1).update!(status: "retired")
+    ProtocolDefinition.create!(name: "dengue", version: 2, status: "active", definition: definition(version: 2, weight: 5))
 
-    expect(Protocols.current(muni.id, name: "dengue").version).to eq(2)
+    expect(Protocols.current(name: "dengue").version).to eq(2)
   end
 end

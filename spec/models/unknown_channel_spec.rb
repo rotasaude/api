@@ -54,17 +54,18 @@ RSpec.describe UnknownChannel do
   end
 
   it "publishes a platform audit event with only phone_number_id and hits, while hits <= 3" do
+    # Trap (5c-1 review): the event moved to PlatformEvent on the PLATFORM
+    # (Ruling R18) — counting DomainEvent on whatever city happens to be
+    # connected would never see it (ApplicationRecord.connected_to(role:
+    # :admin) is a silent no-op, 5c-1), so this must read PlatformEvent
+    # directly.
     expect {
       described_class.record!(phone_number_id: phone_number_id, change: {})
-    }.to change {
-      ApplicationRecord.connected_to(role: :admin) { DomainEvent.where(name: "channel.unknown_seen").count }
-    }.by(1)
+    }.to change(PlatformEvent, :count).by(1)
 
-    ApplicationRecord.connected_to(role: :admin) do
-      event = DomainEvent.where(name: "channel.unknown_seen").order(occurred_at: :desc).first
-      expect(event.payload.keys).to contain_exactly("phone_number_id", "hits")
-      expect(event.payload["phone_number_id"]).to eq(phone_number_id)
-    end
+    event = PlatformEvent.where(name: "channel.unknown_seen").order(occurred_at: :desc).first
+    expect(event.payload.keys).to contain_exactly("phone_number_id", "hits")
+    expect(event.payload["phone_number_id"]).to eq(phone_number_id)
   end
 
   # F-plataforma-sem-dado-de-cidadão: um phone_number_id desconhecido chega
