@@ -9,9 +9,15 @@ class PasswordsController < ApplicationController
   rate_limit to: 10, within: 3.minutes, only: %i[create update],
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
+  # R42: the mail job (ActionMailer::MailDeliveryJob) runs on a worker with no
+  # city connection, so it must not carry the User (GlobalID) — everything the
+  # e-mail needs is built HERE, inside the city of the request, as plain strings.
   def create
     user = User.where("lower(email_address) = ?", params[:email_address].to_s.downcase).first
-    PasswordMailer.reset(user).deliver_later if user&.active?
+    if user&.active?
+      token = user.generate_token_for(:password_reset)
+      PasswordMailer.reset(email_address: user.email_address, reset_url: password_reset_link(token)).deliver_later
+    end
     head :no_content
   end
 
@@ -25,5 +31,15 @@ class PasswordsController < ApplicationController
     else
       render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
     end
+  end
+
+  private
+
+  # The link lives on the CITY host of this request: the dashboard's reset form
+  # calls PUT /passwords/:token on that host, and CityResolution picks the city
+  # (and so the database holding the user) from its subdomain. /dashboard/ is
+  # the dashboard's base path (apps/dashboard/vite.config.ts).
+  def password_reset_link(token)
+    "#{request.base_url}/dashboard/?#{{ reset: token }.to_query}"
   end
 end
