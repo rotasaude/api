@@ -1,9 +1,6 @@
 require "rails_helper"
-require Rails.root.join("spec/support/admin_rls")
 
 RSpec.describe Admin::ConversationsQuery do
-  self.use_transactional_tests = false
-
   def period = Admin::Api::Period.parse(key: "7d", from: nil, to: nil, tz: ActiveSupport::TimeZone["America/Sao_Paulo"])
 
   def definition
@@ -17,15 +14,12 @@ RSpec.describe Admin::ConversationsQuery do
     }
   end
 
-  before { clean_admin_tables }
-  after { clean_admin_tables }
-
   # Regressão: avg_complete_minutes faz pluck sobre triages ⋈ conversations, e
   # ambas têm created_at. Sem qualificar a coluna, o Postgres levanta
   # PG::AmbiguousColumn e o painel Conversas 500a assim que há ≥1 triagem
   # completa no período. Este teste exercita esse caminho.
   it "computes avgToCompleteMin over a completed triage without an ambiguous-column error" do
-    out = as_admin do
+    out = begin
       m = Municipality.create!(name: "Alpha", slug: "alpha", uf: "SP", status: "active")
       prot = ProtocolDefinition.create!(municipality_id: m.id, name: "resp", version: 1, status: "active", definition: definition)
       conv = Conversation.create!(municipality_id: m.id, phone: "+5511999", state: "consented")
@@ -40,7 +34,7 @@ RSpec.describe Admin::ConversationsQuery do
   end
 
   it "returns nil avgToCompleteMin when there are no completed triages" do
-    out = as_admin do
+    out = begin
       m = Municipality.create!(name: "Beta", slug: "beta", uf: "SP", status: "active")
       Conversation.create!(municipality_id: m.id, phone: "+5511888", state: "greeting")
       Admin::ConversationsQuery.call(municipality: m, period: period)

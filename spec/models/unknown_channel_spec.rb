@@ -3,34 +3,12 @@ require "rails_helper"
 # Roteamento de phone_number_id desconhecido (Whatsapp::Ingest.route), agora
 # na plataforma — lido antes de saber a cidade (ADR do banco-por-cidade).
 #
-# use_transactional_tests = false: record! chama Platform.audit, que grava em
-# domain_events (banco compartilhado) via connected_to(role: :admin) para
-# bypassar RLS. Sob transactional fixtures o Rails funde writing/admin numa
-# única conexão física para o rollback funcionar, anulando o bypass — mesmo
-# motivo documentado em spec/events/platform_spec.rb e
-# spec/services/whatsapp/ingest_spec.rb.
-#
-# Cada exemplo usa seu próprio phone_number_id aleatório e limpa só o que ele
-# mesmo criou — nada de delete_all na tabela inteira, que mascararia bugs de
-# limpeza em outras specs (ex.: spec/services/whatsapp/ingest_spec.rb).
+# Transactional since 5c-1 (R15): the non-transactional mode and its manual
+# cleanup existed only for the RLS bypass of Platform.audit.
 RSpec.describe UnknownChannel do
   include ActiveSupport::Testing::TimeHelpers
 
-  self.use_transactional_tests = false
-
   let(:phone_number_id) { "pn-#{SecureRandom.hex(6)}" }
-
-  after do
-    described_class.where(phone_number_id: phone_number_id).delete_all
-    ApplicationRecord.connected_to(role: :admin) do
-      ApplicationRecord.connection.execute(
-        ApplicationRecord.sanitize_sql([
-          "DELETE FROM domain_events WHERE name = 'channel.unknown_seen' AND payload ->> 'phone_number_id' = ?",
-          phone_number_id
-        ])
-      )
-    end
-  end
 
   it "lives in the platform database" do
     expect(described_class.connection_db_config.database).to match(/platform/)

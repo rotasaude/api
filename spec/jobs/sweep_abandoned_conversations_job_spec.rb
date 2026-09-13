@@ -1,12 +1,6 @@
 require "rails_helper"
-require Rails.root.join("spec/support/admin_rls")
 
 RSpec.describe SweepAbandonedConversationsJob, type: :job do
-  self.use_transactional_tests = false
-
-  before { clean_admin_tables }
-  after  { clean_admin_tables }
-
   def definition_hash
     {
       "name" => "sweep-demo", "version" => 1, "start_step_id" => "s1",
@@ -19,7 +13,7 @@ RSpec.describe SweepAbandonedConversationsJob, type: :job do
   # Builds scenario fixtures via the real admin (BYPASSRLS) connection.
   # Renamed from setup_fixtures to avoid conflict with ActiveRecord::TestFixtures#setup_fixtures.
   def build_scenario(&block)
-    as_admin do
+    begin
       muni = Municipality.create!(name: "Sweep City", slug: "sweep-city", ibge_code: "3500010")
       pd = ProtocolDefinition.create!(name: "sweep-demo", version: 1, status: "active",
                                       municipality_id: muni.id, definition: definition_hash)
@@ -44,7 +38,7 @@ RSpec.describe SweepAbandonedConversationsJob, type: :job do
     convo = nil
     build_scenario { |muni, _pd| convo = make_convo(muni, phone: "+551100", state: "awaiting_consent", updated_at: 30.hours.ago) }
     described_class.new.perform(idle_hours: 24)
-    expect(as_admin { Conversation.find(convo.id).state }).to eq("abandoned")
+    expect(Conversation.find(convo.id).state).to eq("abandoned")
   end
 
   it "abandons a consented conversation and aborts its stale in-progress triage" do
@@ -54,15 +48,15 @@ RSpec.describe SweepAbandonedConversationsJob, type: :job do
       triage = make_triage(muni, pd, convo, status: "in_progress", updated_at: 30.hours.ago)
     end
     described_class.new.perform(idle_hours: 24)
-    expect(as_admin { Conversation.find(convo.id).state }).to eq("abandoned")
-    expect(as_admin { Triage.find(triage.id).status }).to eq("aborted_by_timeout")
+    expect(Conversation.find(convo.id).state).to eq("abandoned")
+    expect(Triage.find(triage.id).status).to eq("aborted_by_timeout")
   end
 
   it "leaves a recent conversation untouched" do
     convo = nil
     build_scenario { |muni, _pd| convo = make_convo(muni, phone: "+551102", state: "awaiting_consent", updated_at: 1.hour.ago) }
     described_class.new.perform(idle_hours: 24)
-    expect(as_admin { Conversation.find(convo.id).state }).to eq("awaiting_consent")
+    expect(Conversation.find(convo.id).state).to eq("awaiting_consent")
   end
 
   it "leaves a conversation that completed a triage untouched" do
@@ -72,7 +66,7 @@ RSpec.describe SweepAbandonedConversationsJob, type: :job do
       make_triage(muni, pd, convo, status: "completed", updated_at: 30.hours.ago)
     end
     described_class.new.perform(idle_hours: 24)
-    expect(as_admin { Conversation.find(convo.id).state }).to eq("consented")
+    expect(Conversation.find(convo.id).state).to eq("consented")
   end
 
   it "leaves a conversation with a fresh in-progress triage untouched" do
@@ -82,6 +76,6 @@ RSpec.describe SweepAbandonedConversationsJob, type: :job do
       make_triage(muni, pd, convo, status: "in_progress", updated_at: 1.hour.ago)
     end
     described_class.new.perform(idle_hours: 24)
-    expect(as_admin { Conversation.find(convo.id).state }).to eq("consented")
+    expect(Conversation.find(convo.id).state).to eq("consented")
   end
 end

@@ -1,11 +1,6 @@
 require "rails_helper"
-require Rails.root.join("spec/support/admin_rls")
 
 RSpec.describe AnonymizeRevokedTriageJob, type: :job do
-  self.use_transactional_tests = false
-  before { clean_admin_tables }
-  after  { clean_admin_tables }
-
   def definition_hash
     {
       "name" => "rev-demo", "version" => 1, "start_step_id" => "s1",
@@ -22,7 +17,7 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
 
   it "scrubs clinical fields of the aborted_by_revocation triage, keeps the audit shell" do
     ctx = nil
-    as_admin do
+    begin
       muni = Municipality.create!(name: "Rev City", slug: "rev-city", ibge_code: "3500050")
       pd = ProtocolDefinition.create!(name: "rev-demo", version: 1, status: "active",
                                       municipality_id: muni.id, definition: definition_hash)
@@ -36,7 +31,7 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
 
     described_class.new.perform(**event_args(ctx[:convo], ctx[:muni]))
 
-    as_admin do
+    begin
       t = Triage.find(ctx[:triage])
       expect(t.answers).to eq({})
       expect(t.outcome).to be_nil
@@ -51,7 +46,7 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
 
   it "is idempotent across distinct deliveries (scrub of already-empty is a no-op)" do
     ctx = nil
-    as_admin do
+    begin
       muni = Municipality.create!(name: "Rev City 2", slug: "rev-city-2", ibge_code: "3500051")
       pd = ProtocolDefinition.create!(name: "rev-demo", version: 1, status: "active",
                                       municipality_id: muni.id, definition: definition_hash)
@@ -65,12 +60,12 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
     expect {
       described_class.new.perform(**event_args(ctx[:convo], ctx[:muni])) # distinct event_id
     }.not_to raise_error
-    as_admin { expect(Triage.where(conversation_id: ctx[:convo]).first.answers).to eq({}) }
+    expect(Triage.where(conversation_id: ctx[:convo]).first.answers).to eq({})
   end
 
   it "does not touch a completed triage or another conversation's triage" do
     ctx = nil
-    as_admin do
+    begin
       muni = Municipality.create!(name: "Rev City 3", slug: "rev-city-3", ibge_code: "3500052")
       pd = ProtocolDefinition.create!(name: "rev-demo", version: 1, status: "active",
                                       municipality_id: muni.id, definition: definition_hash)
@@ -83,6 +78,6 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
       ctx = { muni: muni.id, convo: target.id, done: done.id }
     end
     described_class.new.perform(**event_args(ctx[:convo], ctx[:muni]))
-    as_admin { expect(Triage.find(ctx[:done]).answers).to eq({ "s1" => "true" }) } # completed untouched
+    expect(Triage.find(ctx[:done]).answers).to eq({ "s1" => "true" }) # completed untouched
   end
 end

@@ -4,21 +4,11 @@ require "rails_helper"
 # fetch_token e decode_id_token reais usam HTTP e JWT — testáveis via webmock
 # + chave RSA fake em outro spec; aqui mockamos exchange_code_for_claims.
 RSpec.describe Authenticator::GovBr do
-  self.use_transactional_tests = false
-
   before do
-    ApplicationRecord.connected_to(role: :admin) do
-      ApplicationRecord.connection.execute("DELETE FROM identities")
-      ApplicationRecord.connection.execute("DELETE FROM users")
-    end
     Current.reset
   end
 
   after do
-    ApplicationRecord.connected_to(role: :admin) do
-      ApplicationRecord.connection.execute("DELETE FROM identities")
-      ApplicationRecord.connection.execute("DELETE FROM users")
-    end
     Current.reset
   end
 

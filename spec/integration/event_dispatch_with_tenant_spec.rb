@@ -3,36 +3,13 @@ require "rails_helper"
 RSpec.describe "Evento → consumer com tenant (ADR-0004 e ADR-0003)", type: :job do
   include ActiveJob::TestHelper
 
-  self.use_transactional_tests = false
-
   before do
     Current.reset
-    # Create municipality via admin connection (bypass RLS)
-    ApplicationRecord.connected_to(role: :admin) do
-      conn = ApplicationRecord.connection
-      conn.execute("DELETE FROM processed_events")
-      conn.execute("DELETE FROM domain_events")
-      conn.execute("DELETE FROM municipalities")
-      conn.execute(<<~SQL.squish)
-        INSERT INTO municipalities (id, name, slug, created_at, updated_at)
-        VALUES (gen_random_uuid(), 'Test Municipality', 'test-muni', now(), now())
-      SQL
-      @muni_id = conn.select_value("SELECT id FROM municipalities WHERE slug='test-muni'")
-    end
   end
 
   after do
     Current.reset
     DomainEvents.registry["smoke.test"]&.clear
-    # Clean up test data bypassing RLS (delete in cascade order)
-    if @muni_id.present?
-      ApplicationRecord.connected_to(role: :admin) do
-        conn = ApplicationRecord.connection
-        conn.execute("DELETE FROM processed_events WHERE municipality_id = '#{@muni_id}'")
-        conn.execute("DELETE FROM domain_events WHERE municipality_id = '#{@muni_id}'")
-        conn.execute("DELETE FROM municipalities WHERE id = '#{@muni_id}'")
-      end
-    end
   end
 
   it "publish dentro de tenant → consumer roda dentro do mesmo tenant" do

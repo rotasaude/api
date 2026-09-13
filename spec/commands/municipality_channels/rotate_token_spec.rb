@@ -1,16 +1,11 @@
 require "rails_helper"
 require "ostruct"
-require Rails.root.join("spec/support/admin_rls")
 
 RSpec.describe MunicipalityChannels::RotateToken, type: :model do
-  self.use_transactional_tests = false
-  before { clean_admin_tables }
-  after  { clean_admin_tables }
-
   # Builds a municipality + active channel + a user with the given membership.
   # role/for_muni control the membership; returns a struct of ids/objects.
   def scenario(role:, for_muni: :same)
-    as_admin do
+    begin
       muni  = Municipality.create!(name: "Tok City", slug: "tok-city-#{SecureRandom.hex(3)}", ibge_code: "3500#{rand(100..999)}")
       other = Municipality.create!(name: "Other City", slug: "other-#{SecureRandom.hex(3)}", ibge_code: "3501#{rand(100..999)}")
       channel = MunicipalityChannel.create!(municipality: muni, phone_number_id: "PN#{SecureRandom.hex(3)}",
@@ -25,7 +20,7 @@ RSpec.describe MunicipalityChannels::RotateToken, type: :model do
   end
 
   def token_of(channel_id)
-    as_admin { MunicipalityChannel.find(channel_id).access_token }
+    MunicipalityChannel.find(channel_id).access_token
   end
 
   it "rotates for a platform_operator and audits without the token value" do
@@ -33,7 +28,7 @@ RSpec.describe MunicipalityChannels::RotateToken, type: :model do
     result = described_class.call(municipality_id: s.muni.id, new_token: "NEW-TOKEN", by: s.user)
     expect(result.ok?).to be(true)
     expect(token_of(s.channel.id)).to eq("NEW-TOKEN")
-    event = as_admin { DomainEvent.where(name: "channel.token_rotated").order(:occurred_at).last }
+    event = DomainEvent.where(name: "channel.token_rotated").order(:occurred_at).last
     expect(event).to be_present
     expect(event.payload.to_json).not_to include("NEW-TOKEN")
     expect(event.payload["phone_number_id"]).to eq(s.channel.phone_number_id)
@@ -60,7 +55,7 @@ RSpec.describe MunicipalityChannels::RotateToken, type: :model do
 
   it "returns not_found when the municipality has no active channel" do
     s = scenario(role: "platform_operator")
-    as_admin { s.channel.update!(active: false) }
+    s.channel.update!(active: false)
     expect(described_class.call(municipality_id: s.muni.id, new_token: "NEW", by: s.user).reason).to eq(:not_found)
   end
 

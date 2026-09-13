@@ -1,16 +1,8 @@
 require "rails_helper"
-require Rails.root.join("spec/support/admin_rls")
 
 RSpec.describe "Reports", type: :request do
-  # ReportsController reads via connected_to(role: :admin); needs the real admin
-  # connection — see spec/support/admin_rls.
-  self.use_transactional_tests = false
-
-  before { clean_admin_tables }
-  after  { clean_admin_tables }
-
   def create_snapshot(payload:)
-    as_admin do
+    begin
       muni = Municipality.create!(name: "Rec City", slug: "rec-city", ibge_code: "3500001")
       pd = ProtocolDefinition.create!(
         name: "triagem-rec", version: 1, status: "active", municipality_id: muni.id,

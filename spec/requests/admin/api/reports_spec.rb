@@ -1,12 +1,6 @@
 require "rails_helper"
-require Rails.root.join("spec/support/admin_rls")
-require Rails.root.join("spec/support/admin_auth")
 
 RSpec.describe "Admin::Api::Reports", type: :request do
-  self.use_transactional_tests = false
-  before { clean_admin_tables }
-  after  { clean_admin_tables }
-
   def seed_report(muni, tier: "alta", token: "tok-#{SecureRandom.hex(4)}")
     pd = ProtocolDefinition.create!(municipality_id: muni.id, name: "resp", version: 3, status: "active",
                                     definition: { "name" => "resp", "version" => 3, "start_step_id" => "s1",
@@ -28,7 +22,7 @@ RSpec.describe "Admin::Api::Reports", type: :request do
 
   it "an operator sees a city's reports as metadata, without token or payload" do
     muni = nil
-    as_admin do
+    begin
       muni = Municipality.create!(name: "RepCity", slug: "rep-city", uf: "SP", status: "active")
       seed_report(muni, tier: "alta", token: "TOK-SECRET-123")
     end
@@ -53,7 +47,7 @@ RSpec.describe "Admin::Api::Reports", type: :request do
 
   it "a municipal_admin sees only their own city's reports (per-city, not operator-only)" do
     mine = other = admin = nil
-    as_admin do
+    begin
       mine  = Municipality.create!(name: "Mine", slug: "mine-#{SecureRandom.hex(3)}", uf: "SP", status: "active")
       other = Municipality.create!(name: "Other", slug: "other-#{SecureRandom.hex(3)}", uf: "RJ", status: "active")
       seed_report(mine,  tier: "alta")

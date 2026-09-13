@@ -1,30 +1,11 @@
 require "rails_helper"
 
-# use_transactional_tests = false: Platform.audit usa connected_to(role: :admin)
-# para escrever via BYPASSRLS. Sob transactional fixtures, Rails força todas as
-# escritas no mesmo physical connection (rota_app) para o rollback funcionar,
-# anulando o connected_to. Sem transactional fixtures, o connected_to retorna a
-# conexão admin de verdade e o INSERT bypassa RLS.
 RSpec.describe Platform do
-  self.use_transactional_tests = false
-
   before do
-    ApplicationRecord.connected_to(role: :admin) do
-      ApplicationRecord.connection.execute("DELETE FROM domain_events")
-      ApplicationRecord.connection.execute("DELETE FROM conversations")
-      ApplicationRecord.connection.execute("DELETE FROM users")
-      ApplicationRecord.connection.execute("DELETE FROM municipalities")
-    end
     Current.reset
   end
 
   after do
-    ApplicationRecord.connected_to(role: :admin) do
-      ApplicationRecord.connection.execute("DELETE FROM domain_events")
-      ApplicationRecord.connection.execute("DELETE FROM conversations")
-      ApplicationRecord.connection.execute("DELETE FROM users")
-      ApplicationRecord.connection.execute("DELETE FROM municipalities")
-    end
     Current.reset
   end
 

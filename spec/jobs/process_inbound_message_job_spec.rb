@@ -1,18 +1,15 @@
 require "rails_helper"
-require Rails.root.join("spec/support/admin_rls")
 
 RSpec.describe ProcessInboundMessageJob, type: :job do
   include ActiveJob::TestHelper
-  self.use_transactional_tests = false
 
-  before { clean_admin_tables; clear_enqueued_jobs }
-  after  { clean_admin_tables }
+  before { clear_enqueued_jobs }
 
   # Cria muni + conversa (estado dado) + inbound (corpo dado) via conexão admin.
   # Retorna [muni_id, conversation_id, inbound_id].
   def seed(state:, body:, message_id:)
     ids = nil
-    as_admin do
+    begin
       muni = Municipality.create!(name: "PIMJ City", slug: "pimj-#{message_id}", ibge_code: "3500030")
       convo = Conversation.create!(municipality_id: muni.id, phone: "+5511990001", state: state)
       inbound = InboundMessage.create!(
@@ -32,8 +29,8 @@ RSpec.describe ProcessInboundMessageJob, type: :job do
       described_class.new.perform(inbound_id, municipality_id: muni_id)
     }.to have_enqueued_job(SendWhatsappJob).exactly(:once)
 
-    expect(as_admin { Conversation.find(convo_id).state }).to eq("awaiting_consent")
-    expect(as_admin { InboundMessage.find(inbound_id).processed_at }).to be_present
+    expect(Conversation.find(convo_id).state).to eq("awaiting_consent")
+    expect(InboundMessage.find(inbound_id).processed_at).to be_present
   end
 
   it "is idempotent: a second run does not re-advance or re-enqueue" do
@@ -46,7 +43,7 @@ RSpec.describe ProcessInboundMessageJob, type: :job do
       described_class.new.perform(inbound_id, municipality_id: muni_id)
     }.not_to have_enqueued_job(SendWhatsappJob)
 
-    expect(as_admin { Conversation.find(convo_id).state }).to eq("awaiting_consent")
+    expect(Conversation.find(convo_id).state).to eq("awaiting_consent")
   end
 
   it "does not enqueue or mark processed when ConversationAdvance raises (rollback)" do
@@ -58,8 +55,8 @@ RSpec.describe ProcessInboundMessageJob, type: :job do
     }.to raise_error(RuntimeError)
 
     expect(SendWhatsappJob).not_to have_been_enqueued
-    expect(as_admin { InboundMessage.find(inbound_id).processed_at }).to be_nil
-    expect(as_admin { Conversation.find(convo_id).state }).to eq("greeting")
+    expect(InboundMessage.find(inbound_id).processed_at).to be_nil
+    expect(Conversation.find(convo_id).state).to eq("greeting")
   end
 
   it "re-onboards when the phone's only conversation is terminal: fresh greeting + reply + processed" do
@@ -69,13 +66,13 @@ RSpec.describe ProcessInboundMessageJob, type: :job do
       described_class.new.perform(inbound_id, municipality_id: muni_id)
     }.to have_enqueued_job(SendWhatsappJob).exactly(:once)
 
-    expect(as_admin { InboundMessage.find(inbound_id).processed_at }).to be_present
-    active = as_admin do
+    expect(InboundMessage.find(inbound_id).processed_at).to be_present
+    active = begin
       Conversation.where(municipality_id: muni_id, phone: "+5511990001", state: "awaiting_consent").first
     end
     expect(active).to be_present
     expect(active.id).not_to eq(old_convo_id)
-    expect(as_admin { Conversation.find(old_convo_id).state }).to eq("revoked")
+    expect(Conversation.find(old_convo_id).state).to eq("revoked")
   end
 
   it "marks processed and enqueues nothing when ConversationAdvance yields no reply" do
@@ -86,7 +83,7 @@ RSpec.describe ProcessInboundMessageJob, type: :job do
       described_class.new.perform(inbound_id, municipality_id: muni_id)
     }.not_to have_enqueued_job(SendWhatsappJob)
 
-    expect(as_admin { InboundMessage.find(inbound_id).processed_at }).to be_present
+    expect(InboundMessage.find(inbound_id).processed_at).to be_present
   end
 
   it "SendWhatsappJob enqueues within the transaction (no after-commit deferral)" do

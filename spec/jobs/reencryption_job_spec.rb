@@ -5,31 +5,13 @@ require "rails_helper"
 # Não testa "rotação real" entre chaves — isso exigiria injetar prior_keys
 # mid-suite, fora deste escopo.
 RSpec.describe ReencryptionJob do
-  self.use_transactional_tests = false
-
   let(:muni_slug) { "reencrypt-test-#{SecureRandom.hex(4)}" }
 
   before do
-    ApplicationRecord.connected_to(role: :admin) do
-      ApplicationRecord.connection.execute("DELETE FROM consents")
-      ApplicationRecord.connection.execute("DELETE FROM inbound_messages")
-      ApplicationRecord.connection.execute("DELETE FROM municipality_channels")
-      ApplicationRecord.connection.execute("DELETE FROM conversations")
-      ApplicationRecord.connection.execute("DELETE FROM users")
-      ApplicationRecord.connection.execute("DELETE FROM municipalities WHERE slug LIKE 'reencrypt-test-%'")
-    end
     Current.reset
   end
 
   after do
-    ApplicationRecord.connected_to(role: :admin) do
-      ApplicationRecord.connection.execute("DELETE FROM consents")
-      ApplicationRecord.connection.execute("DELETE FROM inbound_messages")
-      ApplicationRecord.connection.execute("DELETE FROM municipality_channels")
-      ApplicationRecord.connection.execute("DELETE FROM conversations")
-      ApplicationRecord.connection.execute("DELETE FROM users")
-      ApplicationRecord.connection.execute("DELETE FROM municipalities WHERE slug LIKE 'reencrypt-test-%'")
-    end
     Current.reset
   end
 
