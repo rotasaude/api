@@ -5,7 +5,13 @@ RSpec.describe DomainEvents do
     expect { DomainEvents.publish("foo.bar", x: 1) }.to raise_error(DomainEvents::CityMissing)
   end
 
-  it "grava o evento no banco da cidade corrente, e só nele" do
+  # Fix round 1 (M2): the old title implied publish SELECTS the city from
+  # Current.city — it doesn't. publish writes DomainEvent on whatever
+  # connection happens to be current (Current.city only supplies the
+  # city_slug used for the CityMissing guard and the enqueued payload below).
+  # The example proves the write lands on the current connection and not on
+  # another city's, not that Current.city drives which connection is used.
+  it "grava o evento na conexão corrente (a cidade aberta pelo harness), não em outra" do
     Current.city = TEST_CITY_A
 
     event_id = DomainEvents.publish("foo.bar", x: 1)
