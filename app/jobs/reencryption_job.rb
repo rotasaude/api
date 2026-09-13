@@ -1,9 +1,13 @@
 # Re-encripta colunas Active Record Encryption com a chave primária atual.
 # Ver SECRETS.md (ADR-0013) — rotina pós-rotação de chave.
 #
-# Fluxo: ler o atributo (decifra via chave primária ou prior_keys) +
-# reatribuir (marca dirty) + save!(validate: false) (re-cifra com primária).
-# Operação idempotente — re-rodar com a mesma chave é no-op funcional.
+# Fluxo (R41): record.encrypt lê cada atributo encriptado do registro (decifra
+# via chave primária ou prior_keys) e o regrava com update_columns, cifrado com
+# a chave PRIMÁRIA atual — sem validações, callbacks nem updated_at.
+# Reatribuir o mesmo valor (`record[attr] = record[attr]`) NÃO serve: não suja
+# o atributo e o save! não emite UPDATE, então a rotação ficava sem efeito.
+# Idempotente no conteúdo — re-rodar com a mesma chave regrava o mesmo texto
+# claro (o ciphertext muda por causa do IV aleatório, salvo `deterministic`).
 #
 # Roda uma vez por cidade (EachCityJob), sobre as tabelas do banco da cidade.
 # O access_token do canal (CityChannel) mora na PLATAFORMA e não entra aqui:
@@ -45,8 +49,7 @@ class ReencryptionJob < ApplicationJob
     count = 0
     model.unscoped.find_each(batch_size: BATCH_SIZE) do |record|
       next if record[attr].nil?
-      record[attr] = record[attr]
-      record.save!(validate: false)
+      record.encrypt
       count += 1
     end
     count

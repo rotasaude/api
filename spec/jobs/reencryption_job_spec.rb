@@ -1,6 +1,6 @@
-# Smoke do ReencryptionJob: cobre o caminho do EachCityJob (uma passada por
-# cidade ATIVA) e conta quantas linhas cada target ITERA. Não prova
-# re-encriptação de fato — ver a rotação real abaixo (pending, R41).
+# ReencryptionJob: conta as linhas ITERADAS por target, prova a re-encriptação
+# real sob rotação de chave (R41) e, pelo EachCityJob, que o ciphertext muda no
+# banco de CADA cidade ativa — e não no de uma cidade não ativa.
 require "rails_helper"
 
 RSpec.describe ReencryptionJob do
@@ -33,18 +33,10 @@ RSpec.describe ReencryptionJob do
     expect(stats["User"]).to be >= 1
   end
 
-  # C1 (fix round 1 review): reencryption_job.rb:48 does `record[attr] =
-  # record[attr]` to mark the attribute dirty before save! — but reassigning
-  # the SAME decrypted plaintext does NOT dirty an encrypted attribute
-  # (confirmed empirically: record.changed? is false), so save! issues no
-  # UPDATE. After a real key rotation ([old, new] -> new becomes primary),
-  # NOTHING gets re-encrypted: the row stays under the OLD key forever and
-  # becomes unreadable once the old key is retired. Fixed by `record.encrypt`
-  # (app fix goes in the final fix wave, R41) — this example must fail today
-  # and turn green once that lands.
+  # R41: `record[attr] = record[attr]` never dirtied an encrypted attribute, so
+  # save! issued no UPDATE and a rotation re-encrypted nothing. The job now calls
+  # record.encrypt, which rewrites the ciphertext under the current primary key.
   it "re-encrypts under the new primary key after a rotation" do
-    pending "bug de app: reencryption_job.rb:48 não suja o registro; rotação sem efeito (R41)"
-
     old_only  = ActiveRecord::Encryption::DerivedSecretKeyProvider.new(["r41-old-key"])
     old_and_new = ActiveRecord::Encryption::DerivedSecretKeyProvider.new(["r41-old-key", "r41-new-key"])
     new_only  = ActiveRecord::Encryption::DerivedSecretKeyProvider.new(["r41-new-key"])
@@ -74,46 +66,65 @@ RSpec.describe ReencryptionJob do
     expect(decrypted).to eq("S3CR3T-BEFORE")
   end
 
-  # "Idempotente — re-rodar com a mesma chave é no-op funcional" (comment atop
-  # reencryption_job.rb): reassigning the SAME plaintext leaves the record
-  # unchanged (record.changed? is false), so save! issues no UPDATE and
-  # updated_at does not move — confirmed empirically against a real city
-  # database. Side effects on the row are therefore NOT a valid signal of
-  # "this city was visited" here; instead we observe EachCityJob's own
-  # per-city dispatch (CityConnection.with(city) { super(...) }) directly.
-  # Once R41 is fixed, these two examples should additionally assert the
-  # ciphertext changed in EACH city's own database (the same shape as the
-  # rotation example above, per city), since `record.encrypt` will then make
-  # every visited row observably re-encrypted.
-  it "roda uma vez por cidade ATIVA (EachCityJob): visita AMBAS as cidades" do
-    city_b = create(:city, database_url: city_database_url("rota_saude_test_city_b"), status: "active")
-    CityConnection.with(city_a) { User.create!(email_address: "a@example.org", password: "secret123", otp_secret: "S3CR3T") }
-    CityConnection.with(city_b) { User.create!(email_address: "b@example.org", password: "secret123", otp_secret: "S3CR3T") }
+  # Per-city effect (R41 follow-up): EachCityJob must re-encrypt in EACH active
+  # city's own database. city_a/city_b are random-slug Cities — separate
+  # sessions (see spec/support/city_test_databases.rb) — so every read goes
+  # through that city's own CityConnection.with.
+  describe "per city (EachCityJob)" do
+    let(:old_only)    { ActiveRecord::Encryption::DerivedSecretKeyProvider.new(["r41-old-key"]) }
+    let(:old_and_new) { ActiveRecord::Encryption::DerivedSecretKeyProvider.new(["r41-old-key", "r41-new-key"]) }
+    let(:new_only)    { ActiveRecord::Encryption::DerivedSecretKeyProvider.new(["r41-new-key"]) }
 
-    visited = []
-    allow(CityConnection).to receive(:with).and_wrap_original do |original, city, &block|
-      visited << city.slug
-      original.call(city, &block)
+    def create_user_under_old_key(city, email)
+      CityConnection.with(city) do
+        ActiveRecord::Encryption.with_encryption_context(key_provider: old_only) do
+          User.create!(email_address: email, password: "secret123", otp_secret: "S3CR3T-#{email}")
+        end
+      end
     end
 
-    described_class.new.perform(only: [:user])
-
-    expect(visited).to include(city_a.slug, city_b.slug)
-  end
-
-  it "não visita uma cidade que não está active" do
-    active_slug = city_a.slug
-    suspended = create(:city, database_url: city_database_url("rota_saude_test_city_b"), status: "suspended")
-
-    visited = []
-    allow(CityConnection).to receive(:with).and_wrap_original do |original, city, &block|
-      visited << city.slug
-      original.call(city, &block)
+    def raw_otp_secret(city, user)
+      CityConnection.with(city) do
+        User.connection.select_value(User.sanitize_sql(["SELECT otp_secret FROM users WHERE id = ?", user.id]))
+      end
     end
 
-    described_class.new.perform(only: [:user])
+    def decrypted_under_new_key(city, user)
+      CityConnection.with(city) do
+        ActiveRecord::Encryption.with_encryption_context(key_provider: new_only) { User.find(user.id).otp_secret }
+      end
+    end
 
-    expect(visited).to include(active_slug)
-    expect(visited).not_to include(suspended.slug)
+    it "re-encrypts in the database of EVERY active city" do
+      city_b = create(:city, database_url: city_database_url("rota_saude_test_city_b"), status: "active")
+      user_a = create_user_under_old_key(city_a, "a@example.org")
+      user_b = create_user_under_old_key(city_b, "b@example.org")
+      raw_a_before = raw_otp_secret(city_a, user_a)
+      raw_b_before = raw_otp_secret(city_b, user_b)
+
+      ActiveRecord::Encryption.with_encryption_context(key_provider: old_and_new) do
+        described_class.new.perform(only: [:user])
+      end
+
+      expect(raw_otp_secret(city_a, user_a)).not_to eq(raw_a_before)
+      expect(raw_otp_secret(city_b, user_b)).not_to eq(raw_b_before)
+      expect(decrypted_under_new_key(city_a, user_a)).to eq("S3CR3T-a@example.org")
+      expect(decrypted_under_new_key(city_b, user_b)).to eq("S3CR3T-b@example.org")
+    end
+
+    it "does not touch the database of a city that is not active" do
+      suspended = create(:city, database_url: city_database_url("rota_saude_test_city_b"), status: "suspended")
+      user_a = create_user_under_old_key(city_a, "a@example.org")
+      user_s = create_user_under_old_key(suspended, "s@example.org")
+      raw_a_before = raw_otp_secret(city_a, user_a)
+      raw_s_before = raw_otp_secret(suspended, user_s)
+
+      ActiveRecord::Encryption.with_encryption_context(key_provider: old_and_new) do
+        described_class.new.perform(only: [:user])
+      end
+
+      expect(raw_otp_secret(city_a, user_a)).not_to eq(raw_a_before)
+      expect(raw_otp_secret(suspended, user_s)).to eq(raw_s_before)
+    end
   end
 end
