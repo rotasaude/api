@@ -1,3 +1,9 @@
+# PENDENTE (Plano 3 / Esboço B): este dataset ainda é do schema compartilhado
+# pré-corte — Municipality, municipality_id em toda linha, conexão admin. No
+# mundo por cidade ele precisa semear cada cidade dentro de CityConnection.with.
+# Falha alto em vez de rodar pela metade.
+raise "db/seeds/dashboard_demo.rb ainda usa o schema pré-corte (Municipality); reescrita pendente — Plano 3 / Esboço B"
+
 # Opt-in demo seed: populates every dashboard view (Aquisição/Triagem/Governança)
 # for two municipalities, idempotently, spread over the last 30 days.
 # Run: bin/rails db:seed:demo   (verify: bin/rails db:seed:demo:verify)
