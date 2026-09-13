@@ -12,10 +12,16 @@ RSpec.describe ProtocolPolicy do
     expect(described_class.new(user, protocol).publish?).to be true
   end
 
-  it "operador pode publicar cross-tenant" do
-    skip "Plano 3: grant de operador — platform_operator não é mais um role de Membership " \
-         "(ck_memberships_role só aceita os 4 papéis locais da cidade); ProtocolPolicy só enxerga " \
-         "o papel do usuário na cidade da conexão corrente, sem noção de cross-tenant"
+  # Plan 3 will bring back a platform-operator grant, but ProtocolPolicy#publish?
+  # is `role?(:protocol_publisher)` and never consults `operator?` — a user with
+  # no membership at all must stay refused even if `operator?` were somehow
+  # true. This pins that fail-closed behaviour so a future `|| operator?` added
+  # to #publish? (the natural way someone would "restore" the operator grant)
+  # gets caught immediately.
+  it "operador (operator? true) sem membership não pode publicar — publish? nunca consulta operator?" do
+    user = User.create!(email_address: "op@example.org", password: "secret123")
+    allow(user).to receive(:operator?).and_return(true)
+    expect(described_class.new(user, protocol).publish?).to be false
   end
 
   it "viewer não pode publicar" do
