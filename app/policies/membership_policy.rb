@@ -1,7 +1,7 @@
 class MembershipPolicy < ApplicationPolicy
-  # @record = { target_user:, municipality_id: }
+  # @record = { target_user: }
   def manage?
-    role?(:municipal_admin, @record[:municipality_id])
+    role?(:municipal_admin)
   end
 
   def list?

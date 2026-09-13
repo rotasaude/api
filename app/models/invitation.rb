@@ -1,5 +1,4 @@
 class Invitation < ApplicationRecord
-  belongs_to :municipality, optional: true
   belongs_to :invited_by, class_name: "User"
 
   validates :email, :role, :token, :expires_at, presence: true
