@@ -47,4 +47,21 @@ RSpec.describe "Protocol definition cache invalidation", type: :model do
 
     expect(Protocols.current(name: "dengue").version).to eq(2)
   end
+
+  # Fix round 1 (M4): the cache key includes CityRecord.current_shard (D4,
+  # config/initializers/protocols_facade.rb:44-45) precisely because the
+  # store is shared across cities until Plan 5. Both connections below use
+  # the SAME `store` instance (stubbed once, above) — if the key did not
+  # include the shard, the second read would hit city A's cached entry and
+  # wrongly return version 1.
+  it "scopes the cache key by city: a protocol cached in TEST_CITY_A is not served in TEST_CITY_B" do
+    ProtocolDefinition.create!(name: "dengue", version: 1, status: "active", definition: definition(version: 1, weight: 1))
+    expect(Protocols.current(name: "dengue").version).to eq(1) # caches under TEST_CITY_A's shard key
+
+    city_b = create(:city, database_url: city_database_url("rota_saude_test_city_b"))
+    CityConnection.with(city_b) do
+      ProtocolDefinition.create!(name: "dengue", version: 7, status: "active", definition: definition(version: 7, weight: 9))
+      expect(Protocols.current(name: "dengue").version).to eq(7)
+    end
+  end
 end
