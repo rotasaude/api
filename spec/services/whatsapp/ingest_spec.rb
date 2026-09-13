@@ -1,21 +1,17 @@
 require "rails_helper"
 
 RSpec.describe Whatsapp::Ingest do
-  before do
-    Current.reset
-    @muni = ApplicationRecord.connected_to(role: :admin) do
-      Municipality.create!(name: "Test City", slug: "test-#{SecureRandom.hex(4)}")
-    end
-    @channel = ApplicationRecord.connected_to(role: :admin) do
-      MunicipalityChannel.create!(
-        municipality: @muni, phone_number_id: "PNID123", waba_id: "WABA1",
-        display_phone_number: "+5511999999999", access_token: "tok", active: true
-      )
-    end
-  end
-
-  after do
-    Current.reset
+  # Two real, distinct cities (own physical databases) so "landed in the
+  # right city" and "the other city got nothing" are two independently
+  # provable claims, not a single connected_to(role: :admin) read that today
+  # is a silent no-op returning whichever city is currently connected
+  # (5c-1: ApplicationRecord IS the primary class, so connected_to(role:
+  # :admin) never raises and never routes anywhere else).
+  let(:city_a) { create(:city, database_url: city_database_url("rota_saude_test_city_a")) }
+  let(:city_b) { create(:city, database_url: city_database_url("rota_saude_test_city_b")) }
+  let!(:channel) do
+    CityChannel.create!(city: city_a, phone_number_id: "PNID123", waba_id: "WABA1",
+                        display_phone_number: "+5511999999999", access_token: "tok", active: true)
   end
 
   let(:payload) do
@@ -31,30 +27,33 @@ RSpec.describe Whatsapp::Ingest do
     }
   end
 
-  it "persiste inbound carimbado com tenant" do
-    expect { described_class.call(payload) }.to change {
-      ApplicationRecord.connected_to(role: :admin) { InboundMessage.count }
-    }.by(1)
+  it "persists the inbound in the channel's own city, and only there" do
+    city_b # force creation so "the other city stayed at zero" is meaningful
 
-    ApplicationRecord.connected_to(role: :admin) do
-      inbound = InboundMessage.last
-      expect(inbound.municipality_id).to eq(@muni.id)
-      expect(inbound.message_id).to eq("wamid.1")
-    end
+    expect {
+      described_class.call(payload)
+    }.to change { CityConnection.with(city_a) { InboundMessage.count } }.by(1)
+
+    expect(CityConnection.with(city_b) { InboundMessage.count }).to eq(0)
+    expect(UnknownChannel.count).to eq(0)
+
+    inbound = CityConnection.with(city_a) { InboundMessage.last }
+    expect(inbound.message_id).to eq("wamid.1")
   end
 
-  it "phone_number_id desconhecido vai para unknown_channels" do
+  it "phone_number_id desconhecido vai para unknown_channels (plataforma), sem tocar nenhuma cidade" do
     payload["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"] = "PNID_UNKNOWN"
-    expect { described_class.call(payload) }.to change {
-      ApplicationRecord.connected_to(role: :admin) { UnknownChannel.count }
-    }.by(1)
-    expect(ApplicationRecord.connected_to(role: :admin) { InboundMessage.count }).to eq(0)
+
+    expect { described_class.call(payload) }.to change(UnknownChannel, :count).by(1)
+
+    expect(CityConnection.with(city_a) { InboundMessage.count }).to eq(0)
+    expect(CityConnection.with(city_b) { InboundMessage.count }).to eq(0)
   end
 
-  it "reentrega do mesmo wamid não duplica" do
+  it "reentrega do mesmo wamid não duplica na cidade" do
     described_class.call(payload)
-    expect { described_class.call(payload) }.not_to change {
-      ApplicationRecord.connected_to(role: :admin) { InboundMessage.count }
-    }
+    expect {
+      described_class.call(payload)
+    }.not_to change { CityConnection.with(city_a) { InboundMessage.count } }
   end
 end
