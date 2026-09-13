@@ -79,17 +79,18 @@ namespace :city do
   # Usa o mesmo mecanismo que `db:schema:load` do Rails usa por baixo
   # (ActiveRecord::Tasks::DatabaseTasks.with_temporary_connection +
   # .load_schema), só que com um db_config resolvido ad-hoc — NUNCA registrado
-  # em config/database.yml. Isso é deliberado: primary/admin apontam para o
-  # banco compartilhado, e um role `city` ali correria o risco de qualquer
-  # `db:migrate`/`db:prepare` genérico tentar alcançá-lo. with_temporary_connection
-  # troca a conexão de ActiveRecord::Base só durante o load e restaura a
-  # original (o banco compartilhado) no `ensure`, então esta task nunca toca
-  # primary/admin/queue/cache.
+  # em config/database.yml. Isso é deliberado: primary/queue/cache apontam
+  # para o banco compartilhado, e um role `city` ali correria o risco de
+  # qualquer `db:migrate`/`db:prepare` genérico tentar alcançá-lo.
+  # with_temporary_connection troca a conexão de ActiveRecord::Base só durante
+  # o load e restaura a original (o banco compartilhado) no `ensure`, então
+  # esta task nunca toca primary/queue/cache.
   #
   # GUARDA (I6 do code review): a dump usa force: :cascade — um alvo errado
   # dropa e recria tabelas de domínio de verdade. Por isso, antes de tocar
   # em qualquer conexão: só development/test, e nunca um alvo que resolva
-  # para o banco de primary/admin/queue/cache/platform/city_unset.
+  # para o banco de primary/queue/cache/platform/city_unset (ou de uma config
+  # `admin`, se reaparecer — ver protected_role_names).
   load_city_schema = lambda do |database_name_or_url|
     unless Rails.env.development? || Rails.env.test?
       abort "[city] city:load_schema só roda em development/test (env atual: #{Rails.env})."
@@ -97,7 +98,7 @@ namespace :city do
 
     target_database = resolve_database_name.call(database_name_or_url)
     if protected_database_names.call.include?(target_database)
-      abort "[city] recusado: #{target_database.inspect} é o banco de primary/admin/queue/cache/platform/city_unset — " \
+      abort "[city] recusado: #{target_database.inspect} é o banco de primary/queue/cache/platform/city_unset — " \
             "city:load_schema nunca escreve lá (a dump usa force: :cascade)."
     end
 
