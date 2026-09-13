@@ -5,9 +5,11 @@ RSpec.describe IdempotentConsumer do
   let(:consumer_class) do
     Class.new(ApplicationJob) do
       include IdempotentConsumer
-      class << self; attr_accessor :handled; end
+      class << self; attr_accessor :handled, :handle_calls; end
+      self.handle_calls = 0
       def handle(**kwargs)
         self.class.handled = kwargs
+        self.class.handle_calls += 1
       end
     end
   end
@@ -34,6 +36,12 @@ RSpec.describe IdempotentConsumer do
     expect {
       consumer_class.new.perform(event_id: event_id, event_name: "foo.bar", city_slug: city.slug, payload: {})
     }.not_to raise_error
+
+    # Fix round 1 (M3): "no-op" must mean handle runs exactly once and the
+    # dedup row is not duplicated — not merely "does not raise".
+    expect(consumer_class.handle_calls).to eq(1)
+    rows = CityConnection.with(city) { ProcessedEvent.where(event_id: event_id, consumer: "TestIdempotentConsumer").count }
+    expect(rows).to eq(1)
   end
 
   it "sem city_slug levanta CityMissing antes do create" do

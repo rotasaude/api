@@ -63,13 +63,20 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
   it "does not touch a completed triage or another conversation's triage" do
     pd = ProtocolDefinition.create!(name: "rev-demo", version: 1, status: "active", definition: definition_hash)
     target = Conversation.create!(phone: "+551135", state: "revoked")
-    Triage.create!(conversation: target, protocol_definition: pd, protocol_name: "rev-demo",
-                   status: "aborted_by_revocation", answers: { "s1" => "true" })
+    target_triage = Triage.create!(conversation: target, protocol_definition: pd, protocol_name: "rev-demo",
+                                   status: "aborted_by_revocation", answers: { "s1" => "true" })
     completed_convo = Conversation.create!(phone: "+551136", state: "completed")
     done = Triage.create!(conversation: completed_convo, protocol_definition: pd, protocol_name: "rev-demo",
                           status: "completed", answers: { "s1" => "true" }, tier: "baixa")
 
     described_class.new.perform(**event_args(target.id))
+
+    # Fix round 1 (M3) — positive control: prove the job actually ran and did
+    # its job on the TARGET row first. Without this, a misaligned city_slug
+    # (CityMissing/CityNotServable swallowed, or a silent no-op) would leave
+    # every row — including `done` — untouched, and the assertion below would
+    # pass vacuously for the wrong reason.
+    expect(Triage.find(target_triage.id).answers).to eq({})
     expect(Triage.find(done.id).answers).to eq({ "s1" => "true" }) # completed untouched
   end
 end
