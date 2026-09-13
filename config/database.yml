@@ -6,8 +6,10 @@ default: &default
   variables:
     statement_timeout: 15s
 
-# Múltiplas conexões: primary (rota_app, sujeito a RLS) + admin (rota_admin, BYPASSRLS).
-# Ver ADR-0003.
+# A role rota_admin (BYPASSRLS) continua existindo no Postgres e é usada por
+# queue/cache abaixo; o config `admin:` de ApplicationRecord saiu no corte do
+# Plano 2 (Task 5) — o domínio não roda mais sob RLS/BYPASSRLS, e sim por
+# conexão de cidade (ver CityRecord).
 development:
   primary:
     <<: *default
@@ -16,14 +18,6 @@ development:
     password: <%= ENV.fetch("ROTA_APP_PASSWORD", "rota_app") %>
     host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
     port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
-  admin:
-    <<: *default
-    database: rota_saude_development
-    username: rota_admin
-    password: <%= ENV.fetch("ROTA_ADMIN_PASSWORD", "rota_admin") %>
-    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
-    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
-    migrations_paths: db/migrate
   queue:
     <<: *default
     database: rota_saude_development
@@ -79,14 +73,6 @@ test:
     password: <%= ENV.fetch("ROTA_APP_PASSWORD", "rota_app") %>
     host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
     port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
-  admin:
-    <<: *default
-    database: rota_saude_test
-    username: rota_admin
-    password: <%= ENV.fetch("ROTA_ADMIN_PASSWORD", "rota_admin") %>
-    host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
-    port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
-    migrations_paths: db/migrate
   platform:
     <<: *default
     database: rota_saude_platform_test
@@ -121,13 +107,6 @@ production:
     username: rota_app
     password: <%= ENV.fetch("ROTA_APP_PASSWORD") %>
     pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
-  admin:
-    <<: *default
-    url: <%= ENV.fetch("DATABASE_URL") { "" } %>
-    username: rota_admin
-    password: <%= ENV.fetch("ROTA_ADMIN_PASSWORD") %>
-    pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
-    migrations_paths: db/migrate
   queue:
     <<: *default
     url: <%= ENV.fetch("DATABASE_URL") { "" } %>
