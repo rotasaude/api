@@ -1,5 +1,8 @@
 # Reconstrução completa do dashboard a partir das fontes. Ver ADR-0010.
 # Wrapper do script para uso via Solid Queue recurring.yml.
+#
+# Roda uma vez por cidade (EachCityJob), na conexão dela: o banco inteiro é da
+# cidade, então as linhas são chaveadas só por (dimension, period, key).
 class RebuildDashboardMetricsJob < ApplicationJob
   prepend EachCityJob
   queue_as :housekeeping
@@ -13,18 +16,15 @@ class RebuildDashboardMetricsJob < ApplicationJob
       DashboardMetric.delete_all
 
       scope.find_each(batch_size: 1000) do |triage|
-        municipality_id = triage.conversation.municipality_id
-        next unless municipality_id
         date = triage.completed_at.to_date.iso8601
 
-        buffer[[municipality_id, "triages_by_tier",        date, triage.tier.to_s]] += 1
-        buffer[[municipality_id, "triages_total",          date, "total"]] += 1
-        buffer[[municipality_id, "priority_distribution",   date, triage.priority.to_s]] += 1
+        buffer[["triages_by_tier",       date, triage.tier.to_s]] += 1
+        buffer[["triages_total",         date, "total"]] += 1
+        buffer[["priority_distribution", date, triage.priority.to_s]] += 1
       end
 
-      rows = buffer.map do |(municipality_id, dimension, period, key), value|
-        { municipality_id: municipality_id, dimension: dimension,
-          period: period, key: key, value: value,
+      rows = buffer.map do |(dimension, period, key), value|
+        { dimension: dimension, period: period, key: key, value: value,
           created_at: Time.current, updated_at: Time.current }
       end
       DashboardMetric.insert_all(rows) if rows.any?

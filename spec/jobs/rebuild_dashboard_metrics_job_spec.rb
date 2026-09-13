@@ -1,33 +1,11 @@
 require "rails_helper"
 
-# Caracterização (Ruling R12/R31): prende o contrato de agregação do job ANTES
-# de remover a dimensão de município. As asserções (linhas de dashboard_metrics
-# por dimension/period/key/value) NÃO mudam quando o corpo do job muda — só o
-# harness e a montagem dos dados mudam junto com o schema.
-#
-# Harness desta versão: o corpo ATUAL do job ainda lê conversations.municipality_id
-# e grava dashboard_metrics.municipality_id, colunas que o schema de cidade não
-# tem. Para caracterizá-lo verde, o exemplo roda contra o schema PRÉ-CORTE que
-# ainda existe no banco de teste compartilhado (rota_saude_test, tabelas vazias),
-# dentro da transação das fixtures (rollback ao final — nada persiste).
+# Caracterização (Ruling R12/R31): prende o contrato de agregação do job. As
+# asserções (linhas de dashboard_metrics por dimension/period/key/value) são as
+# MESMAS escritas e verdes contra o corpo anterior, com dimensão de município,
+# no schema pré-corte (commit b1ad5ab). Com a dimensão removida, só o harness e
+# a montagem dos dados mudaram: roda na conexão de TEST_CITY_A (harness global).
 RSpec.describe RebuildDashboardMetricsJob, type: :job do
-  LEGACY_SHARED_SCHEMA = CityTestDatabases.city("legacyshared", "rota_saude_test").freeze
-
-  REBUILD_CHAR_MODELS = [Municipality, Conversation, Triage, ProtocolDefinition, DashboardMetric].freeze
-
-  # Registra o pool ANTES do exemplo, para o setup de fixtures transacionais
-  # piná-lo e fazer rollback do que o exemplo gravar.
-  before(:context) { CityConnection.ensure_pool(LEGACY_SHARED_SCHEMA) }
-
-  around do |example|
-    within_city(LEGACY_SHARED_SCHEMA) do
-      REBUILD_CHAR_MODELS.each(&:reset_column_information)
-      example.run
-    ensure
-      REBUILD_CHAR_MODELS.each(&:reset_column_information)
-    end
-  end
-
   REBUILD_CHAR_DEFINITION = {
     "name" => "triage-respiratoria", "version" => 1, "start_step_id" => "tosse",
     "steps" => [
@@ -45,19 +23,15 @@ RSpec.describe RebuildDashboardMetricsJob, type: :job do
 
   # — montagem (muda com o schema; as asserções abaixo não) —
 
-  def municipality
-    @municipality ||= Municipality.create!(name: "Char City", slug: "char-city")
-  end
-
   def protocol
     @protocol ||= ProtocolDefinition.create!(
-      municipality: municipality, name: "triage-respiratoria", version: 1,
+      name: "triage-respiratoria", version: 1,
       status: "active", definition: REBUILD_CHAR_DEFINITION
     )
   end
 
   def conversation(phone)
-    Conversation.create!(municipality: municipality, phone: phone, state: "consented")
+    Conversation.create!(phone: phone, state: "consented")
   end
 
   def completed_triage(phone, tier:, priority:, day:)
@@ -77,8 +51,7 @@ RSpec.describe RebuildDashboardMetricsJob, type: :job do
   end
 
   def stale_metric!
-    DashboardMetric.create!(municipality_id: municipality.id, dimension: "triages_total",
-                            period: "2020-01-01", key: "total", value: 99)
+    DashboardMetric.create!(dimension: "triages_total", period: "2020-01-01", key: "total", value: 99)
   end
 
   # O job é `prepend EachCityJob`: `perform` itera o catálogo. Aqui interessa o

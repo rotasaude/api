@@ -1,43 +1,19 @@
 require "rails_helper"
 
-# Caracterização (Ruling R12/R31): prende o contrato do job ANTES de remover a
-# dimensão de município. As asserções (linha de log com current/stale_active,
-# nenhuma mutação de consentimento) NÃO mudam quando o corpo muda — só o harness
-# e a montagem dos dados mudam junto com o schema.
-#
-# Harness desta versão: o corpo ATUAL itera Municipality e filtra
-# consents.municipality_id, que o schema de cidade não tem. Para caracterizá-lo
-# verde, o exemplo roda contra o schema PRÉ-CORTE que ainda existe no banco de
-# teste compartilhado (rota_saude_test, tabelas vazias), dentro da transação das
-# fixtures (rollback ao final — nada persiste).
+# Caracterização (Ruling R12/R31): prende o contrato do job. As asserções (linha
+# de log com current/stale_active, nenhuma mutação de consentimento) são as
+# MESMAS escritas e verdes contra o corpo anterior, que iterava municípios, no
+# schema pré-corte (commit b1ad5ab). Com a passada única por cidade, só o harness
+# e a montagem dos dados mudaram: roda na conexão de TEST_CITY_A (harness global).
 RSpec.describe ReconcileConsentsJob, type: :job do
-  LEGACY_CONSENTS_SCHEMA = CityTestDatabases.city("legacyconsents", "rota_saude_test").freeze
-
-  CONSENT_MODELS = [Municipality, Conversation, Consent, ConsentTerm].freeze
-
-  before(:context) { CityConnection.ensure_pool(LEGACY_CONSENTS_SCHEMA) }
-
-  around do |example|
-    within_city(LEGACY_CONSENTS_SCHEMA) do
-      CONSENT_MODELS.each(&:reset_column_information)
-      example.run
-    ensure
-      CONSENT_MODELS.each(&:reset_column_information)
-    end
-  end
-
   # — montagem (muda com o schema; as asserções abaixo não) —
 
-  def municipality
-    @municipality ||= Municipality.create!(name: "Char Consent City", slug: "char-consent-city")
-  end
-
   def consent_term!(version)
-    ConsentTerm.create!(municipality: municipality, version: version, body: "termo", published_at: Time.current)
+    ConsentTerm.create!(version: version, body: "termo", published_at: Time.current)
   end
 
   def consent!(phone, version:, revoked: false)
-    conversation = Conversation.create!(municipality: municipality, phone: phone, state: "consented")
+    conversation = Conversation.create!(phone: phone, state: "consented")
     Consent.create!(
       conversation: conversation, version: version, policy_text_sha: "sha", channel: "whatsapp",
       given_at: 2.days.ago, revoked_at: (revoked ? 1.day.ago : nil)
