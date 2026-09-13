@@ -15,7 +15,7 @@ class Admin::TriageTrailQuery
   end
 
   def call
-    triage = Admin::Scoped.triages(@muni).find_by(id: @triage_id)
+    triage = Triage.all.find_by(id: @triage_id)
     return nil unless triage
 
     # Phase 2.1 dropou domain_events.aggregate_type/aggregate_id;

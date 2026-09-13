@@ -1,7 +1,6 @@
 # GET /admin/api/cities — catálogo de cidades provisionadas + resumo de atividade.
 # Volumes respeitam o período; estado (canal, última atividade, conversas/protocolos
-# ativos) é point-in-time. Agregação live cross-tenant — roda sob rota_admin
-# (BYPASSRLS) via with_admin_connection do controller. Sem N+1: uma query
+# ativos) é point-in-time. Agregação live cross-tenant. Sem N+1: uma query
 # agrupada por métrica, costurada por municipality_id.
 class Admin::CitiesQuery
   ACTIVE_CONVERSATION_STATES = %w[greeting awaiting_consent consented].freeze

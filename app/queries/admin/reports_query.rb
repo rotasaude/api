@@ -11,7 +11,7 @@ class Admin::ReportsQuery
   end
 
   def call
-    rows = Admin::Scoped.report_snapshots(@muni)
+    rows = ReportSnapshot.all
              .where(created_at: @period.from..@period.to)
              .includes(:protocol_definition)
              .order(created_at: :desc)

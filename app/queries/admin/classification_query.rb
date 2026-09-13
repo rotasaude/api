@@ -16,14 +16,14 @@ class Admin::ClassificationQuery
   end
 
   def call
-    base = Admin::Scoped.triages(@muni)
+    base = Triage.all
              .where(status: "completed", completed_at: @period.from..@period.to)
 
     {
       tiers: tier_counts(base),
       byProtocol: by_protocol(base),
       priorityTrue: base.where(priority: true).count,
-      priorityTrend: @period.series(Admin::Scoped.triages(@muni).where(priority: true), :completed_at),
+      priorityTrend: @period.series(Triage.all.where(priority: true), :completed_at),
       byMode: by_mode(base),
       sampleTriages: sample(base.limit(8))
     }

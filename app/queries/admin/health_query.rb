@@ -31,7 +31,7 @@ class Admin::HealthQuery
     [
       project_status(
         name: "dashboard_metrics",
-        updated_at: Admin::Scoped.dashboard_metrics(@muni).maximum(:updated_at)
+        updated_at: DashboardMetric.all.maximum(:updated_at)
       ),
       project_status(
         name: "report_snapshots",

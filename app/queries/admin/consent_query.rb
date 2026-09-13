@@ -14,7 +14,7 @@ class Admin::ConsentQuery
   end
 
   def call
-    base = Admin::Scoped.consents(@muni)
+    base = Consent.all
     in_period = base.where(given_at: @period.from..@period.to)
     given_count = in_period.where(revoked_at: nil).count
     revoked_count = base.where(revoked_at: @period.from..@period.to).count

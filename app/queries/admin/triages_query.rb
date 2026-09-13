@@ -13,12 +13,12 @@ class Admin::TriagesQuery
   end
 
   def call
-    base = Admin::Scoped.triages(@muni).where(created_at: @period.from..@period.to)
+    base = Triage.all.where(created_at: @period.from..@period.to)
     started = base.count
     completed = base.where(status: "completed").count
 
     {
-      series: @period.series(Admin::Scoped.triages(@muni), :created_at),
+      series: @period.series(Triage.all, :created_at),
       started: started,
       completed: completed,
       completionRate: started.zero? ? 0.0 : (completed.to_f / started * 100).round(1),

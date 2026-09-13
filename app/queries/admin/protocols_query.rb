@@ -6,7 +6,7 @@
 # pelos eventos quando existirem; null quando não houver dado.
 class Admin::ProtocolsQuery
   def self.index(municipality:)
-    rows = Admin::Scoped.protocol_definitions(municipality)
+    rows = ProtocolDefinition.all
              .order(:name, version: :desc)
              .includes(:municipality)
              .map { |d| serialize_row(d, fetch_audit(d)) }
@@ -15,7 +15,7 @@ class Admin::ProtocolsQuery
 
   def self.show(municipality:, id:)
     # id pode ser tanto o `name` quanto um UUID. Tentamos os dois.
-    base = Admin::Scoped.protocol_definitions(municipality)
+    base = ProtocolDefinition.all
     versions = base.where(name: id).order(version: :desc)
     versions = base.where(id: id) if versions.empty?
     return nil if versions.empty?

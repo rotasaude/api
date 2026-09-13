@@ -15,7 +15,7 @@ class Admin::ConversationsQuery
   end
 
   def call
-    base = Admin::Scoped.conversations(@muni)
+    base = Conversation.all
     in_period = base.where(created_at: @period.from..@period.to)
 
     state_counts = in_period.group(:state).count
@@ -41,7 +41,7 @@ class Admin::ConversationsQuery
   private
 
   def avg_complete_minutes
-    completed = Admin::Scoped.triages(@muni)
+    completed = Triage.all
                   .where(status: "completed", completed_at: @period.from..@period.to)
     return nil if completed.count.zero?
     seconds = completed
