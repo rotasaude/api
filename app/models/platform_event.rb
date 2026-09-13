@@ -7,19 +7,42 @@
 # em qualquer profundidade do payload, as chaves que a R18 fixou como sinal de
 # dado pessoal — é a guarda de runtime; spec/events/platform_event_payload_guard_spec.rb
 # é a guarda de regressão.
+#
+# Como casa (M2 do review 5b), sem diferenciar maiúsculas:
+#   - FORBIDDEN_KEY_FRAGMENTS por SUBSTRING: user_email, admin_email,
+#     phone_number, display_phone_number, citizen_cpf... são recusadas, não só
+#     a chave exata.
+#   - FORBIDDEN_EXACT_KEYS por nome EXATO: `from` e `name` são curtos demais
+#     para substring (casariam `city_name`, `from_state`, `name_space`...).
+#   - ALLOWED_PAYLOAD_KEYS vence os dois. `phone_number_id` é o id do número
+#     do canal WhatsApp na Meta (CityChannel/UnknownChannel), identificador de
+#     CANAL de plataforma, não de pessoa — decisão registrada aqui porque
+#     channel.token_rotated e channel.unknown_seen o auditam. `city_name` é o
+#     nome da cidade, objeto de plataforma. Qualquer chave nova que case um
+#     fragmento só entra por esta allow-list, com justificativa.
 class PlatformEvent < PlatformRecord
-  FORBIDDEN_PAYLOAD_KEYS = %w[email cpf provider_uid phone from wa_id name body].freeze
+  FORBIDDEN_KEY_FRAGMENTS = %w[email cpf phone wa_id provider_uid body].freeze
+  FORBIDDEN_EXACT_KEYS = %w[from name].freeze
+  FORBIDDEN_PAYLOAD_KEYS = (FORBIDDEN_KEY_FRAGMENTS + FORBIDDEN_EXACT_KEYS).freeze
+  ALLOWED_PAYLOAD_KEYS = %w[phone_number_id city_name].freeze
 
   validates :name, :occurred_at, presence: true
   validate :payload_without_personal_data
 
   scope :pending, -> { where(published_at: nil) }
 
+  def self.forbidden_payload_key?(key)
+    key = key.to_s.downcase
+    return false if ALLOWED_PAYLOAD_KEYS.include?(key)
+
+    FORBIDDEN_EXACT_KEYS.include?(key) || FORBIDDEN_KEY_FRAGMENTS.any? { |fragment| key.include?(fragment) }
+  end
+
   def self.forbidden_payload_keys_in(value)
     case value
     when Hash
       value.flat_map do |key, nested|
-        hit = FORBIDDEN_PAYLOAD_KEYS.include?(key.to_s.downcase) ? [key.to_s] : []
+        hit = forbidden_payload_key?(key) ? [key.to_s] : []
         hit + forbidden_payload_keys_in(nested)
       end
     when Array

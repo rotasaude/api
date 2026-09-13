@@ -2,16 +2,59 @@ require "rails_helper"
 require "prism"
 
 # Guarda do invariante da Ruling R18: nenhum PlatformEvent (banco de PLATAFORMA)
-# carrega dado pessoal. Falha se um payload tiver chave email, cpf, provider_uid,
-# phone, from, wa_id, name ou body — em qualquer profundidade —, e se um call site
-# de Platform.audit voltar a auditar evento que não é de plataforma ou a passar
-# uma dessas chaves.
+# carrega dado pessoal. Falha se um payload tiver chave que CONTENHA email, cpf,
+# provider_uid, phone, wa_id ou body, ou que SEJA from ou name — em qualquer
+# profundidade, salvo a allow-list (phone_number_id, city_name) —, e se um call
+# site de Platform.audit voltar a auditar evento que não é de plataforma ou a
+# passar uma dessas chaves.
 RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
   R18_FORBIDDEN_PAYLOAD_KEYS = %w[email cpf provider_uid phone from wa_id name body].freeze
+  R18_FORBIDDEN_KEY_FRAGMENTS = %w[email cpf provider_uid phone wa_id body].freeze
+  R18_FORBIDDEN_EXACT_KEYS = %w[from name].freeze
+  R18_ALLOWED_PAYLOAD_KEYS = %w[phone_number_id city_name].freeze
   R18_PLATFORM_EVENT_NAMES = %w[municipality.provisioned channel.token_rotated channel.unknown_seen].freeze
+
+  # Independent restatement of the rule (not PlatformEvent's own method), so the
+  # static call-site check below cannot drift together with the model.
+  R18_FORBIDDEN_KEY = lambda do |key|
+    key = key.to_s.downcase
+    !R18_ALLOWED_PAYLOAD_KEYS.include?(key) &&
+      (R18_FORBIDDEN_EXACT_KEYS.include?(key) || R18_FORBIDDEN_KEY_FRAGMENTS.any? { |f| key.include?(f) })
+  end
 
   it "forbids exactly the keys the ruling names" do
     expect(PlatformEvent::FORBIDDEN_PAYLOAD_KEYS).to match_array(R18_FORBIDDEN_PAYLOAD_KEYS)
+    expect(PlatformEvent::FORBIDDEN_KEY_FRAGMENTS).to match_array(R18_FORBIDDEN_KEY_FRAGMENTS)
+    expect(PlatformEvent::FORBIDDEN_EXACT_KEYS).to match_array(R18_FORBIDDEN_EXACT_KEYS)
+    expect(PlatformEvent::ALLOWED_PAYLOAD_KEYS).to match_array(R18_ALLOWED_PAYLOAD_KEYS)
+  end
+
+  # M2 (review 5b): the exact-name match let these through.
+  %w[user_email admin_email phone_number display_phone_number].each do |key|
+    it "refuses #{key} (contains a forbidden fragment), top-level and nested" do
+      expect {
+        expect { Platform.audit("channel.token_rotated", key.to_sym => "x") }
+          .to raise_error(ActiveRecord::RecordInvalid) { |e| expect(e.record.errors[:payload].join).to include(key) }
+      }.not_to change(PlatformEvent, :count)
+
+      expect { Platform.audit("channel.unknown_seen", sample: [ { "meta" => { key => "x" } } ]) }
+        .to raise_error(ActiveRecord::RecordInvalid) { |e| expect(e.record.errors[:payload].join).to include(key) }
+    end
+  end
+
+  %w[phone_number_id city_name city_id].each do |key|
+    it "accepts #{key}, top-level and nested" do
+      expect {
+        Platform.audit("channel.token_rotated", key.to_sym => "x")
+        Platform.audit("channel.unknown_seen", sample: [ { "meta" => { key => "x" } } ])
+      }.to change(PlatformEvent, :count).by(2)
+    end
+  end
+
+  it "keeps from and name as exact matches (from_state, name_space pass)" do
+    expect {
+      Platform.audit("channel.unknown_seen", from_state: "x", name_space: "y")
+    }.to change(PlatformEvent, :count).by(1)
   end
 
   R18_FORBIDDEN_PAYLOAD_KEYS.each do |key|
@@ -74,7 +117,7 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
         keys = args.grep(Prism::KeywordHashNode).flat_map(&:elements).grep(Prism::AssocNode).map do |assoc|
           assoc.key.respond_to?(:unescaped) ? assoc.key.unescaped : assoc.key.slice
         end
-        expect(keys.map(&:downcase) & R18_FORBIDDEN_PAYLOAD_KEYS).to be_empty,
+        expect(keys.select { |k| R18_FORBIDDEN_KEY.call(k) }).to be_empty,
           "#{where}: forbidden payload key(s) #{keys}"
       end
     end
