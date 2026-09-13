@@ -1,8 +1,6 @@
 require "rails_helper"
 
 RSpec.describe CompleteTriage do
-  let(:muni) { create(:municipality) }
-
   # Vocabulário de tier em INGLÊS de propósito: é o que db/seeds/dashboard_demo.rb
   # já usa (TIER_CYCLE = %w[low medium high]) e o que o gate antigo silenciava.
   def definition_hash
@@ -24,20 +22,17 @@ RSpec.describe CompleteTriage do
   def build_triage(definition = definition_hash)
     pd = ProtocolDefinition.create!(
       name: definition["name"], version: 1, status: "active",
-      definition: definition, municipality_id: muni.id
+      definition: definition
     )
-    convo = Conversation.create!(
-      municipality_id: muni.id, phone: "+5511977770000", state: :consented
-    )
+    convo = Conversation.create!(phone: "+5511977770000", state: :consented)
     convo.consents.create!(
-      version: Consents.current_version(muni.id),
-      policy_text_sha: Consents.policy_text_sha(Consents.current_version(muni.id)),
+      version: Consents.current_version,
+      policy_text_sha: Consents.policy_text_sha(Consents.current_version),
       given_at: 1.minute.ago, channel: "whatsapp", evidence: { text: "sim" }
     )
     Triage.create!(
       conversation: convo, protocol_definition: pd, protocol_name: definition["name"],
-      municipality_id: muni.id, status: :in_progress,
-      current_step: "febre", answers: {}
+      status: :in_progress, current_step: "febre", answers: {}
     )
   end
 

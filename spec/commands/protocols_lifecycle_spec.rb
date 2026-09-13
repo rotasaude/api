@@ -3,11 +3,9 @@ require "rails_helper"
 # Lifecycle de protocolo per-cidade (ADR-0009): publish ≠ active.
 # Cobre as quatro invariantes INV-protocol-1..4.
 RSpec.describe "Protocols lifecycle" do
-  let(:muni) { create(:municipality) }
-
   let(:publisher) do
     u = User.create!(email_address: "pub@example.org", password: "secret123")
-    Membership.create!(user: u, municipality: muni, role: "protocol_publisher", granted_at: Time.current)
+    Membership.create!(user: u, role: "protocol_publisher", granted_at: Time.current)
     u
   end
 
@@ -24,7 +22,7 @@ RSpec.describe "Protocols lifecycle" do
 
   def make_pd(version:, status:)
     ProtocolDefinition.create!(
-      municipality_id: muni.id, name: "dengue", version: version,
+      name: "dengue", version: version,
       status: status, definition: definition_hash.merge("version" => version)
     )
   end
@@ -53,7 +51,7 @@ RSpec.describe "Protocols lifecycle" do
     end
   end
 
-  describe "INV-protocol-2: uma active por (municipality_id, name)" do
+  describe "INV-protocol-2: uma active por name (o banco é da cidade)" do
     it "ativar v2 demove a v1 active para published (resta exatamente uma active)" do
       v1 = make_pd(version: 1, status: "active")
       v2 = make_pd(version: 2, status: "published")
@@ -62,18 +60,16 @@ RSpec.describe "Protocols lifecycle" do
 
       expect(v1.reload.status).to eq("published")
       expect(v2.reload.status).to eq("active")
-      expect(
-        ProtocolDefinition.where(municipality_id: muni.id, name: "dengue", status: "active").count
-      ).to eq(1)
+      expect(ProtocolDefinition.where(name: "dengue", status: "active").count).to eq(1)
     end
   end
 
   describe "INV-protocol-3: triage termina na versão em que começou" do
     it "ativar nova versão não altera a versão de uma triage em voo" do
       v1 = make_pd(version: 1, status: "active")
-      conv = Conversation.create!(municipality_id: muni.id, phone: "+5511999999999", state: "consented")
+      conv = Conversation.create!(phone: "+5511999999999", state: "consented")
       triage = Triage.create!(
-        municipality_id: muni.id, conversation_id: conv.id,
+        conversation_id: conv.id,
         protocol_definition_id: v1.id, protocol_name: "dengue", status: "in_progress"
       )
 

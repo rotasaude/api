@@ -1,11 +1,9 @@
 require "rails_helper"
 
 RSpec.describe "Protocols::Publish gate (F-03.9)" do
-  let(:muni) { create(:municipality) }
-
   let(:publisher) do
     u = User.create!(email_address: "pub@example.org", password: "secret123")
-    Membership.create!(user: u, municipality: muni, role: "protocol_publisher", granted_at: Time.current)
+    Membership.create!(user: u, role: "protocol_publisher", granted_at: Time.current)
     u
   end
 
@@ -30,7 +28,7 @@ RSpec.describe "Protocols::Publish gate (F-03.9)" do
 
   def make_pd(definition)
     ProtocolDefinition.create!(
-      municipality_id: muni.id, name: "respiratoria", version: 1,
+      name: "respiratoria", version: 1,
       status: "in_review", definition: definition
     )
   end
