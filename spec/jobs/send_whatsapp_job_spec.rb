@@ -12,6 +12,15 @@ RSpec.describe SendWhatsappJob do
     CityChannel.create!(city: city, phone_number_id: "PNID", waba_id: "WABA",
                         display_phone_number: "+551199", access_token: "tok", active: true)
   end
+  # Fix round 1 (M1): a second, active CityChannel belonging to a DIFFERENT
+  # city — so a job that resolved its channel without actually scoping by
+  # the current city (e.g. "any active channel") would pick the wrong one
+  # instead of vacuously passing because only one channel existed.
+  let!(:other_channel) do
+    other_city = create(:city, database_url: city_database_url("rota_saude_test_city_b"))
+    CityChannel.create!(city: other_city, phone_number_id: "PNID-OTHER", waba_id: "WABA-OTHER",
+                        display_phone_number: "+551188", access_token: "tok2", active: true)
+  end
 
   def text_msg(body) = Messaging::Reply.text(body).to_h
 
