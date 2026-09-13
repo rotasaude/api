@@ -19,6 +19,30 @@ RSpec.describe CityScopedJob do
 
   before { job_class.ran = false }
 
+  # Ported from the retired spec/jobs/concerns/tenant_scoped_job_spec.rb
+  # ("seta SET LOCAL dentro do bloco"): the positive half of the wrapper — the
+  # block runs scoped to the job's city. Under per-city databases, "scoped" is
+  # the city's own connection plus Current.city, not a GUC.
+  it "runs the block on the city's database, with Current.city set" do
+    city = create(:city, slug: TEST_CITY_B.slug, status: "active",
+                         database_url: city_database_url("rota_saude_test_city_b"))
+    seen = {}
+    probe = Class.new(ApplicationJob) do
+      include CityScopedJob
+
+      define_method(:perform) do |slug|
+        with_city(slug) do
+          seen[:database] = CityRecord.connection_db_config.database
+          seen[:city] = Current.city&.slug
+        end
+      end
+    end
+
+    probe.new.perform(city.slug)
+
+    expect(seen).to eq(database: "rota_saude_test_city_b", city: TEST_CITY_B.slug)
+  end
+
   it "raises CityMissing for a blank slug, without running the block" do
     expect { job_class.new.perform(nil) }.to raise_error(CityScopedJob::CityMissing)
     expect(job_class.ran).to be false
