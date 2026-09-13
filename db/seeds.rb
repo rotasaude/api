@@ -8,7 +8,8 @@
 #     WhatsApp da cidade de dev (CityChannel). O operador ainda NÃO loga: o
 #     fluxo de operador na plataforma é o Plano 3.
 #   - CIDADE (dentro de CityConnection.with): admin@curitiba.demo / dev-password
-#     como municipal_admin (→ Dashboard), protocolo ATIVO (triage-respiratoria),
+#     como municipal_admin (→ Dashboard), um AlertRecipient de e-mail ativo
+#     (destino de triage urgente), protocolo ATIVO (triage-respiratoria),
 #     triagem completa e relatório (painel Relatórios + link público WPDA).
 #
 # Pré-requisito: a cidade de dev (SEED_CITY_SLUG, default "curitiba") existir no
@@ -64,6 +65,17 @@ else
           m.granted_at = Time.current
         end
 
+        # ── Destinatário de alerta urgente (R37) ──────────────────────────────
+        # DispatchMunicipalityAlertJob entrega ao primeiro AlertRecipient de
+        # e-mail ativo da cidade e levanta NoAlertRecipient sem nenhum — sem
+        # esta linha, todo triage.urgent de dev falharia. Um por cidade, no
+        # banco dela; o city_profile (Plano 4) substitui.
+        alert_recipient = AlertRecipient.find_or_initialize_by(
+          channel: "email", destination: ENV.fetch("DEV_ALERT_EMAIL", "alertas@#{city.slug}.demo")
+        )
+        alert_recipient.active = true
+        alert_recipient.save!
+
         # ── Demo ponta-a-ponta ────────────────────────────────────────────────
         protocol_defn = {
           "name" => "triage-respiratoria", "version" => 1, "start_step_id" => "tosse",
@@ -105,6 +117,7 @@ else
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  municipal ... #{muni_admin.email_address} / #{password}  → dashboard"
+        puts "  alerta ...... #{alert_recipient.destination} (email, active)"
         puts "  canal ....... #{channel.phone_number_id} (active)"
         puts "  protocolo ... #{protocol.name} v#{protocol.version} (#{protocol.status})"
         puts "  relatório ... #{report&.url}"
