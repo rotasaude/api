@@ -10,10 +10,10 @@
 #
 # Como casa (M2 do review 5b), sem diferenciar maiúsculas:
 #   - FORBIDDEN_KEY_FRAGMENTS por SUBSTRING: user_email, admin_email,
-#     phone_number, display_phone_number, citizen_cpf... são recusadas, não só
-#     a chave exata.
-#   - FORBIDDEN_EXACT_KEYS por nome EXATO: `from` e `name` são curtos demais
-#     para substring (casariam `city_name`, `from_state`, `name_space`...).
+#     phone_number, display_phone_number, citizen_cpf, full_name,
+#     display_name, username... são recusadas, não só a chave exata.
+#   - FORBIDDEN_EXACT_KEYS por nome EXATO: `from` é curto demais para
+#     substring (casaria `from_state`, `from_city`...).
 #   - ALLOWED_PAYLOAD_KEYS vence os dois. `phone_number_id` é o id do número
 #     do canal WhatsApp na Meta (CityChannel/UnknownChannel), identificador de
 #     CANAL de plataforma, não de pessoa — decisão registrada aqui porque
@@ -21,8 +21,8 @@
 #     nome da cidade, objeto de plataforma. Qualquer chave nova que case um
 #     fragmento só entra por esta allow-list, com justificativa.
 class PlatformEvent < PlatformRecord
-  FORBIDDEN_KEY_FRAGMENTS = %w[email cpf phone wa_id provider_uid body].freeze
-  FORBIDDEN_EXACT_KEYS = %w[from name].freeze
+  FORBIDDEN_KEY_FRAGMENTS = %w[email cpf phone wa_id provider_uid body name].freeze
+  FORBIDDEN_EXACT_KEYS = %w[from].freeze
   FORBIDDEN_PAYLOAD_KEYS = (FORBIDDEN_KEY_FRAGMENTS + FORBIDDEN_EXACT_KEYS).freeze
   ALLOWED_PAYLOAD_KEYS = %w[phone_number_id city_name].freeze
 

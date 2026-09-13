@@ -3,14 +3,14 @@ require "prism"
 
 # Guarda do invariante da Ruling R18: nenhum PlatformEvent (banco de PLATAFORMA)
 # carrega dado pessoal. Falha se um payload tiver chave que CONTENHA email, cpf,
-# provider_uid, phone, wa_id ou body, ou que SEJA from ou name — em qualquer
+# provider_uid, phone, wa_id, body ou name, ou que SEJA from — em qualquer
 # profundidade, salvo a allow-list (phone_number_id, city_name) —, e se um call
 # site de Platform.audit voltar a auditar evento que não é de plataforma ou a
 # passar uma dessas chaves.
 RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
   R18_FORBIDDEN_PAYLOAD_KEYS = %w[email cpf provider_uid phone from wa_id name body].freeze
-  R18_FORBIDDEN_KEY_FRAGMENTS = %w[email cpf provider_uid phone wa_id body].freeze
-  R18_FORBIDDEN_EXACT_KEYS = %w[from name].freeze
+  R18_FORBIDDEN_KEY_FRAGMENTS = %w[email cpf provider_uid phone wa_id body name].freeze
+  R18_FORBIDDEN_EXACT_KEYS = %w[from].freeze
   R18_ALLOWED_PAYLOAD_KEYS = %w[phone_number_id city_name].freeze
   R18_PLATFORM_EVENT_NAMES = %w[municipality.provisioned channel.token_rotated channel.unknown_seen].freeze
 
@@ -29,8 +29,8 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
     expect(PlatformEvent::ALLOWED_PAYLOAD_KEYS).to match_array(R18_ALLOWED_PAYLOAD_KEYS)
   end
 
-  # M2 (review 5b): the exact-name match let these through.
-  %w[user_email admin_email phone_number display_phone_number].each do |key|
+  # M2 (review 5b) and re-review: the exact-name match let these through.
+  %w[user_email admin_email phone_number display_phone_number full_name display_name username].each do |key|
     it "refuses #{key} (contains a forbidden fragment), top-level and nested" do
       expect {
         expect { Platform.audit("channel.token_rotated", key.to_sym => "x") }
@@ -51,9 +51,9 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
     end
   end
 
-  it "keeps from and name as exact matches (from_state, name_space pass)" do
+  it "keeps from as an exact match (from_state passes)" do
     expect {
-      Platform.audit("channel.unknown_seen", from_state: "x", name_space: "y")
+      Platform.audit("channel.unknown_seen", from_state: "x")
     }.to change(PlatformEvent, :count).by(1)
   end
 
