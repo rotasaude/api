@@ -37,11 +37,28 @@ module CityTestDatabases
   # exception. A leak with no exception fails the example with
   # LeakedFixtureTransaction.
   #
+  # It depends on ActiveRecord::TestFixtures internals (@fixture_connection_pools,
+  # #teardown_fixtures). If an upgrade removes them, it raises GuardInert instead
+  # of silently doing nothing.
+  #
   # Returns the released pool names, or nil when nothing leaked.
+  class GuardInert < StandardError; end
+
   def self.release_leaked_fixture_transaction(example)
     instance = example.example.example_group_instance
-    pools = instance&.instance_variable_get(:@fixture_connection_pools)
-    return if pools.blank?
+    klass = instance.class
+    unless klass.respond_to?(:use_transactional_tests)
+      raise GuardInert, "#{klass} does not respond to use_transactional_tests; the leaked-fixture guard cannot run"
+    end
+    return unless klass.use_transactional_tests
+
+    unless instance.instance_variable_defined?(:@fixture_connection_pools) && instance.respond_to?(:teardown_fixtures, true)
+      raise GuardInert, "ActiveRecord::TestFixtures internals changed (@fixture_connection_pools / #teardown_fixtures); " \
+                        "the leaked-fixture guard in spec/support/city_test_databases.rb must be updated"
+    end
+
+    pools = instance.instance_variable_get(:@fixture_connection_pools)
+    return if pools.empty?
 
     names = pools.map { |pool| "#{pool.connection_descriptor.name}/#{pool.shard}" }
     instance.send(:teardown_fixtures)
@@ -60,11 +77,23 @@ RSpec.configure do |config|
   config.include CityTestDatabases
 
   config.around(:each) do |example|
+    original = nil
     leaked = nil
     begin
       CityConnection.with(TEST_CITY_A) { example.run }
+    rescue Exception => e # rubocop:disable Lint/RescueException -- re-raised unchanged
+      original = e
+      raise
     ensure
-      leaked = CityTestDatabases.release_leaked_fixture_transaction(example)
+      begin
+        leaked = CityTestDatabases.release_leaked_fixture_transaction(example)
+      rescue StandardError => guard_error
+        # Never replace the example's own exception with the guard's.
+        raise guard_error unless original
+
+        warn "[city harness] #{example.full_description}: leaked-fixture guard failed while " \
+             "#{original.class} propagated — #{guard_error.class}: #{guard_error.message}"
+      end
     end
     if leaked
       raise CityTestDatabases::LeakedFixtureTransaction,
