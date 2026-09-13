@@ -4,8 +4,13 @@ require "rails_helper"
 # fetch_token e decode_id_token reais usam HTTP e JWT — testáveis via webmock
 # + chave RSA fake em outro spec; aqui mockamos exchange_code_for_claims.
 RSpec.describe Authenticator::GovBr do
+  # identity.govbr_login is a CITY event (Ruling R18: user/identity events live in
+  # the city's own domain_events, never on the platform), so DomainEvents.publish
+  # needs Current.city set — the harness only opens the connection, it does not
+  # set the Current attribute (spec/support/city_test_databases.rb).
   before do
     Current.reset
+    Current.city = TEST_CITY_A
   end
 
   after do
@@ -29,49 +34,38 @@ RSpec.describe Authenticator::GovBr do
 
       before do
         allow(described_class).to receive(:exchange_code_for_claims).and_return(claims)
-        allow(Platform).to receive(:audit)
       end
 
       it "cria User + Identity quando nenhum existe" do
         user = described_class.authenticate(code: "valid")
         expect(user).to be_a(User)
         expect(user.email_address).to eq("fulano@gov.br")
-        ApplicationRecord.connected_to(role: :admin) do
-          expect(Identity.where(provider: "govbr", provider_uid: "12345678900").count).to eq(1)
-        end
+        expect(Identity.where(provider: "govbr", provider_uid: "12345678900").count).to eq(1)
       end
 
       it "reusa User existente quando o email bate (seam: 2 identidades para mesmo user)" do
-        existing = ApplicationRecord.connected_to(role: :admin) do
-          User.create!(email_address: "fulano@gov.br", password: "secret123")
-        end
+        existing = User.create!(email_address: "fulano@gov.br", password: "secret123")
         user = described_class.authenticate(code: "valid")
         expect(user.id).to eq(existing.id)
-        ApplicationRecord.connected_to(role: :admin) do
-          expect(Identity.where(user: existing, provider: "govbr").count).to eq(1)
-        end
+        expect(Identity.where(user: existing, provider: "govbr").count).to eq(1)
       end
 
       it "reusa User+Identity quando provider_uid já existe (segundo login)" do
         first  = described_class.authenticate(code: "valid")
         second = described_class.authenticate(code: "valid")
         expect(first.id).to eq(second.id)
-        ApplicationRecord.connected_to(role: :admin) do
-          expect(Identity.where(provider: "govbr", provider_uid: "12345678900").count).to eq(1)
-        end
+        expect(Identity.where(provider: "govbr", provider_uid: "12345678900").count).to eq(1)
       end
 
-      it "registra Platform.audit com assurance level" do
-        expect(Platform).to receive(:audit).with("identity.govbr_login",
-          hash_including(provider_uid: "12345678900", assurance: "ouro"))
-        described_class.authenticate(code: "valid")
+      it "grava um DomainEvent identity.govbr_login com assurance level, na cidade (Ruling R18)" do
+        user = described_class.authenticate(code: "valid")
+        event = DomainEvent.find_by!(name: "identity.govbr_login")
+        expect(event.payload).to include("user_id" => user.id, "provider_uid" => "12345678900", "assurance" => "ouro")
       end
 
       it "user desativado retorna nil" do
         described_class.authenticate(code: "valid")
-        ApplicationRecord.connected_to(role: :admin) do
-          User.find_by(email_address: "fulano@gov.br").update!(deactivated_at: Time.current)
-        end
+        User.find_by(email_address: "fulano@gov.br").update!(deactivated_at: Time.current)
         expect(described_class.authenticate(code: "valid")).to be_nil
       end
     end
