@@ -35,23 +35,8 @@ else
   operator.save!
   puts "[seeds] operador .... #{operator.email_address} / #{password} + MFA (otp_secret fixo) → console admin.*"
 
-  protocol_defn = {
-    "name" => "triage-respiratoria", "version" => 1, "start_step_id" => "tosse",
-    "steps" => [
-      { "id" => "tosse", "prompt" => "Você está com tosse?", "answer_type" => "boolean",
-        "branches" => { "true" => "febre", "false" => nil }, "weights" => { "true" => 3, "false" => 0 } },
-      { "id" => "febre", "prompt" => "Está com febre alta?", "answer_type" => "boolean",
-        "branches" => { "true" => nil, "false" => nil }, "weights" => { "true" => 5, "false" => 0 } }
-    ],
-    "scoring" => { "type" => "weighted", "thresholds" => { "baixa" => 0, "alta" => 5 },
-                   "priority_map" => { "baixa" => 9, "alta" => 1 } },
-    "recommendations" => {
-      "alta"  => { "title" => "Procure atendimento hoje",
-                   "body" => "Prioridade alta. Vá à UPA/unidade mais próxima ainda hoje. Falta de ar, dor no peito ou lábios roxos → 192." },
-      "baixa" => { "title" => "Cuidados em casa",
-                   "body" => "Repouso e hidratação. Se piorar ou persistir por mais de 3 dias, procure sua unidade de saúde." }
-    }
-  }
+  # Mesmo protocolo que o provisionamento semeia em rascunho (Plano 4); aqui ativo.
+  protocol_defn = CityTemplates.protocol.fetch(:definition)
 
   { "curitiba" => %w[41 4106902], "maringa" => %w[44 4115200] }.each do |slug, (ddd, ibge_code)|
     city = City.find_by(slug: slug)

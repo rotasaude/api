@@ -1,3 +1,5 @@
+require "open3"
+
 # Aplica o schema de cidade nas cidades do catálogo e registra a versão em
 # cities.schema_version, que a guarda de runtime compara com a versão esperada
 # pelo código (spec banco-por-cidade §4, Plano 4).
@@ -39,5 +41,26 @@ module CityMigrations
     end
 
     raise Failed, failures if failures.any?
+  end
+
+  # Migra a cidade num processo à parte (bin/rails city:migrate[slug]) e devolve a
+  # City recarregada, com o schema_version gravado pela task. É o migrador do
+  # ProvisionCityJob: dentro do worker, CitySchema.migrate! trocaria a conexão de
+  # ActiveRecord::Base, que as threads do Solid Queue usam.
+  module Subprocess
+    class Failed < StandardError; end
+
+    module_function
+
+    def call(city)
+      out, status = Open3.capture2e({ "RAILS_ENV" => Rails.env }, Rails.root.join("bin/rails").to_s,
+                                    "city:migrate[#{city.slug}]", chdir: Rails.root.to_s)
+      unless status.success?
+        raise Failed, "city:migrate[#{city.slug}] saiu com #{status.exitstatus}: " \
+                      "#{CitySchema.redact(out.lines.last(5).join).strip}"
+      end
+
+      city.reload
+    end
   end
 end
