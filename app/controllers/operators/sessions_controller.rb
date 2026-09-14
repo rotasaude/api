@@ -35,10 +35,15 @@ module Operators
       # nenhum. O update_all condicional (mfa_verified_at: nil) é o guarda
       # contra a corrida com register_failed_totp: se um 5º erro concorrente já
       # apagou esta sessão, stamped vem 0 e não verificamos nem auditamos uma
-      # sessão que não existe mais.
+      # sessão que não existe mais. Sem reload depois: um wrong-code atrasado
+      # para a MESMA sessão pode apagar a linha entre o commit e um reload, e
+      # reload levantaria RecordNotFound depois do login já auditado; como
+      # stamped == 1 já prova que o carimbo aplicou, ajustamos o atributo em
+      # memória em vez de reconsultar.
+      now = Time.current
       verified = PlatformRecord.transaction do
         stamped = OperatorSession.where(id: session.id, mfa_verified_at: nil)
-                                 .update_all(mfa_verified_at: Time.current, updated_at: Time.current)
+                                 .update_all(mfa_verified_at: now, updated_at: now)
         next false unless stamped == 1
 
         Platform.audit("operator.login", operator_id: session.operator_id, operator_session_id: session.id)
@@ -46,7 +51,7 @@ module Operators
       end
       return render(json: { error: "invalid_session" }, status: :unauthorized) unless verified
 
-      session.reload
+      session.assign_attributes(mfa_verified_at: now)
       write_operator_cookie(session)
       Current.operator_session = session
       render json: serialize(session), status: :ok
@@ -90,13 +95,21 @@ module Operators
     # O rate limit é por IP; trocando de IP dá para insistir no código. Por sessão
     # pendente, no MAX_TOTP_ATTEMPTS-ésimo erro a sessão é apagada e o operador
     # volta ao passo da senha. O incremento é atômico no banco, para duas
-    # requisições simultâneas não contarem uma só.
+    # requisições simultâneas não contarem uma só. Tanto o incremento quanto o
+    # delete final são condicionados a mfa_verified_at: nil: um wrong-code
+    # atrasado (carregou a sessão ainda pendente, mas o challenge certo já
+    # verificou antes deste request chegar ao banco) não pode contar contra
+    # nem apagar uma sessão que acabou de ser verificada.
     def register_failed_totp(session)
-      OperatorSession.where(id: session.id).update_all("mfa_failed_attempts = mfa_failed_attempts + 1")
-      return render(json: { error: "invalid_code" }, status: :unauthorized) if
-        session.reload.mfa_failed_attempts < OperatorAuthentication::MAX_TOTP_ATTEMPTS
+      counted = OperatorSession.where(id: session.id, mfa_verified_at: nil)
+                               .update_all("mfa_failed_attempts = mfa_failed_attempts + 1")
+      return render(json: { error: "invalid_session" }, status: :unauthorized) unless counted == 1
 
-      session.destroy
+      attempts = OperatorSession.where(id: session.id).pick(:mfa_failed_attempts)
+      return render(json: { error: "invalid_code" }, status: :unauthorized) if
+        attempts && attempts < OperatorAuthentication::MAX_TOTP_ATTEMPTS
+
+      OperatorSession.where(id: session.id, mfa_verified_at: nil).delete_all
       cookies.delete(OperatorAuthentication::COOKIE)
       render json: { error: "too_many_attempts" }, status: :unauthorized
     end
