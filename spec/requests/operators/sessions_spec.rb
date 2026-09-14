@@ -226,6 +226,55 @@ RSpec.describe "Operator session on the platform console", type: :request do
     expect(Operators::BaseController.ancestors).not_to include(Authentication)
   end
 
+  describe "TOTP attempt limit (Plano 3B)" do
+    def wrong_challenge(session_id)
+      post "/session/challenge", params: { session_id: session_id, code: "nao-e-um-codigo" }
+    end
+
+    it "counts wrong codes on the pending session and still accepts the right one before the limit" do
+      login!
+      session_id = json["session_id"]
+
+      4.times do
+        wrong_challenge(session_id)
+        expect(response).to have_http_status(:unauthorized)
+        expect(json).to eq("error" => "invalid_code")
+      end
+      expect(OperatorSession.find(session_id).mfa_failed_attempts).to eq(4)
+
+      post "/session/challenge", params: { session_id: session_id, code: totp }
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "destroys the pending session on the fifth wrong code, so the right code no longer works" do
+      login!
+      session_id = json["session_id"]
+
+      4.times { wrong_challenge(session_id) }
+      wrong_challenge(session_id)
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "too_many_attempts")
+      expect(OperatorSession.exists?(session_id)).to be(false)
+
+      post "/session/challenge", params: { session_id: session_id, code: totp }
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "invalid_session")
+    end
+
+    it "a new password step starts a fresh count" do
+      login!
+      first_session_id = json["session_id"]
+      5.times { wrong_challenge(first_session_id) }
+      expect(OperatorSession.exists?(first_session_id)).to be(false)
+
+      login!
+      expect(OperatorSession.find(json["session_id"]).mfa_failed_attempts).to eq(0)
+      post "/session/challenge", params: { session_id: json["session_id"], code: totp }
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
   describe "host isolation" do
     def verified_cookie
       verified_login!

@@ -27,9 +27,7 @@ module Operators
       session = pending_session
       return render(json: { error: "invalid_session" }, status: :unauthorized) unless session
 
-      unless Mfa::Verify.call(session.operator, code: params[:code])
-        return render(json: { error: "invalid_code" }, status: :unauthorized)
-      end
+      return register_failed_totp(session) unless Mfa::Verify.call(session.operator, code: params[:code])
 
       # Atomic: se Platform.audit falhar depois de carimbar mfa_verified_at, o
       # cookie já plantado no passo da senha autenticaria sem nenhum
@@ -77,6 +75,20 @@ module Operators
       return nil unless session.operator.active?
 
       session
+    end
+
+    # O rate limit é por IP; trocando de IP dá para insistir no código. Por sessão
+    # pendente, no MAX_TOTP_ATTEMPTS-ésimo erro a sessão é apagada e o operador
+    # volta ao passo da senha. O incremento é atômico no banco, para duas
+    # requisições simultâneas não contarem uma só.
+    def register_failed_totp(session)
+      OperatorSession.where(id: session.id).update_all("mfa_failed_attempts = mfa_failed_attempts + 1")
+      return render(json: { error: "invalid_code" }, status: :unauthorized) if
+        session.reload.mfa_failed_attempts < OperatorAuthentication::MAX_TOTP_ATTEMPTS
+
+      session.destroy
+      cookies.delete(OperatorAuthentication::COOKIE)
+      render json: { error: "too_many_attempts" }, status: :unauthorized
     end
 
     # Mesmo formato do SessionUser que o frontend do admin já lê.
