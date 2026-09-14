@@ -47,6 +47,7 @@ env:
     RAILS_MAX_THREADS: "5"
     CITY_DASHBOARD_URL_TEMPLATE: "https://%{slug}.rota-saude.example/dashboard/"
     GOVBR_REDIRECT_URI: "https://auth.rota-saude.example/auth/govbr/callback"
+    GOVBR_ISSUER_URL: "https://sso.acesso.gov.br"
   secret:
     - ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
     - ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
