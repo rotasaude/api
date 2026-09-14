@@ -1,7 +1,7 @@
 # Auditoria platform-scope (ADR-0012, ADR-0014), na PLATAFORMA — só eventos sobre
-# objetos de plataforma: cidades, canais, canais desconhecidos e, no Plano 3,
-# operadores. Eventos de usuário/membership/convite são DomainEvent da cidade
-# (Ruling R18).
+# objetos de plataforma: cidades, canais, canais desconhecidos e operadores
+# (operator.login). Eventos de usuário/membership/convite são DomainEvent da
+# cidade (Ruling R18).
 #
 # INVARIANTE (PlatformRecord): nenhum dado pessoal. A validação abaixo recusa,
 # em qualquer profundidade do payload, as chaves que a R18 fixou como sinal de

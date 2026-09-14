@@ -40,7 +40,7 @@ RSpec.describe MunicipalityChannels::RotateToken, type: :model do
   end
 
   it "the platform operator grant (cross-city custody) is Plan 3" do
-    skip "Plano 3: grant de operador — não há mais papel de plataforma em Membership " \
+    skip "Plano 3B: grant de operador — não há mais papel de plataforma em Membership " \
          "(ck_memberships_role só aceita os 4 papéis locais); custódia cross-tenant " \
          "volta com Operator + grant de entrada na cidade"
   end

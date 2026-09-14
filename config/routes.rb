@@ -16,9 +16,8 @@ Rails.application.routes.draw do
     end
   end
 
-  # Sessão de admin (ADR-0011).
+  # Sessão de usuário da cidade (ADR-0011). Operador: bloco do console, acima.
   resource :session, only: %i[create show destroy]
-  post "/session/challenge", to: "sessions#challenge_totp"
 
   # Reset de senha (F-06.2, ADR-0011). JSON-only, sem autenticação.
   resources :passwords, only: %i[create update], param: :token

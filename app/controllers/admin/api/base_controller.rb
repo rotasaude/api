@@ -67,7 +67,7 @@ class Admin::Api::BaseController < ApplicationController
   # Descritor da cidade do host. A chave do envelope segue `municipality`, e
   # `id`/`name` seguem no formato que dashboard e admin já leem
   # (apps/*/src/lib/api.ts) — `id` agora é o slug. Renomear o contrato é dos
-  # frontends (Plano 3).
+  # frontends (Plano 6).
   def city_descriptor
     city = Current.city
     {

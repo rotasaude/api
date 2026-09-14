@@ -7,11 +7,12 @@
 #     memberships moram no banco dela —, então resolvem a cidade pelo host como
 #     qualquer controller, e a sessão é a da cidade;
 #   - deactivate_user segue exigindo operador; nenhum usuário de cidade é
-#     operador (User#operator?), então responde 403 até o grant do Plano 3;
+#     operador (User#operator?), então responde 403 até o grant de operador
+#     do Plano 3B;
 #   - provision_municipality é ação de operador sobre o catálogo, servida no
-#     host de plataforma: pula a resolução de cidade. Sem autenticação de
-#     operador na plataforma (Plano 3) nem provisionamento de banco (Plano 4),
-#     responde 501 sem tocar dado nenhum.
+#     host de plataforma: pula a resolução de cidade. Sem o grant de operador
+#     (Plano 3B) nem provisionamento de banco (Plano 4), responde 501 sem
+#     tocar dado nenhum.
 #
 # Aceite de convite (POST /setup/accept_invitation) é PÚBLICO (token é cred).
 class SetupController < ApplicationController
@@ -20,7 +21,8 @@ class SetupController < ApplicationController
   include Authentication
 
   # provision_municipality não autentica porque não faz nada além de responder
-  # 501: não há sessão de operador resolvível fora de uma cidade até o Plano 3.
+  # 501: falta o grant de operador (Plano 3B) para autorizar a ação fora de
+  # uma cidade.
   allow_unauthenticated_access only: %i[accept_invitation provision_municipality]
 
   # Fluxo público token-as-credential — mesmo teto de sessions/passwords, para
@@ -28,10 +30,10 @@ class SetupController < ApplicationController
   rate_limit to: 10, within: 3.minutes, only: %i[accept_invitation],
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
-  # POST /setup/municipalities — desligado até o Plano 3 (autenticação de
-  # operador na plataforma) e o Plano 4 (POST /setup/cities, provisionamento em
-  # duas fases). O command ProvisionMunicipality segue utilizável para uma cidade
-  # já registrada e servível, fora do HTTP.
+  # POST /setup/municipalities — desligado até o Plano 3B (grant de operador
+  # para agir sobre o catálogo) e o Plano 4 (POST /setup/cities, provisionamento
+  # em duas fases). O command ProvisionMunicipality segue utilizável para uma
+  # cidade já registrada e servível, fora do HTTP.
   def provision_municipality
     render json: {
       error: "provisioning_unavailable",

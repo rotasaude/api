@@ -108,7 +108,7 @@ module Authenticator
 
     # Roda na conexão da cidade do host: SessionsController#govbr_callback resolve
     # a cidade como qualquer outra ação (Ruling R13). Provisório — o callback
-    # único em auth.* com grant assinado é do Esboço A / Plano 3.
+    # único em auth.* com grant assinado é do Plano 3B.
     def self.find_or_provision_user(uid:, email:, name: nil)
       identity = Identity.find_by(provider: "govbr", provider_uid: uid)
       return identity.user if identity

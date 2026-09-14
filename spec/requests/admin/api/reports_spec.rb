@@ -25,7 +25,7 @@ RSpec.describe "Admin::Api::Reports", type: :request do
   end
 
   it "an operator sees a city's reports as metadata, without token or payload" do
-    skip "Plano 3: grant de operador — não há mais papel de plataforma em Membership " \
+    skip "Plano 3B: grant de operador — não há mais papel de plataforma em Membership " \
          "(ck_memberships_role só aceita os 4 papéis locais) nem painel cross-tenant em " \
          "Admin::Api (D6: /admin/api/cities e as queries cross-tenant foram removidas); " \
          "o painel de relatórios agora é POR CIDADE, como Triages — sem gate de operador " \
