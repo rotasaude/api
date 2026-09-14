@@ -64,6 +64,22 @@ RSpec.describe "Operator session on the platform console", type: :request do
     expect(json["id"]).to eq(operator.id)
   end
 
+  it "keeps the session pending if auditing the login fails, so an unaudited login never authenticates" do
+    login!
+    session_id = json["session_id"]
+
+    allow(Platform).to receive(:audit).and_raise(ActiveRecord::StatementInvalid, "boom")
+
+    expect {
+      post "/session/challenge", params: { session_id: session_id, code: totp }
+    }.to raise_error(ActiveRecord::StatementInvalid)
+
+    expect(OperatorSession.find(session_id).mfa_verified_at).to be_nil
+
+    get "/session"
+    expect(response).to have_http_status(:unauthorized)
+  end
+
   it "refuses a wrong TOTP and keeps the session unauthenticated" do
     login!
 
@@ -143,6 +159,26 @@ RSpec.describe "Operator session on the platform console", type: :request do
     expect(set_cookie_header).not_to match(/domain=/i)
   end
 
+  it "still authenticates a verified session within the 12h server TTL (positive control)" do
+    verified_login!
+
+    travel 11.hours do
+      get "/session"
+    end
+
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "expires a verified session on the server after 12 hours, even though the cookie itself never expired" do
+    verified_login!
+
+    travel 12.hours + 1.minute do
+      get "/session"
+    end
+
+    expect(response).to have_http_status(:unauthorized)
+  end
+
   it "operator controllers never resolve a city" do
     expect(Operators::BaseController.ancestors).not_to include(CityResolution)
     expect(Operators::BaseController.ancestors).not_to include(Authentication)
@@ -176,6 +212,63 @@ RSpec.describe "Operator session on the platform console", type: :request do
       get "/admin/api/overview", headers: { "Cookie" => cookie }
 
       expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "deactivation and replay" do
+    it "refuses a verified session once the operator is deactivated" do
+      verified_login!
+
+      operator.update!(deactivated_at: Time.current)
+
+      get "/session"
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "refuses the challenge if the operator was deactivated after the password step" do
+      login!
+      session_id = json["session_id"]
+
+      operator.update!(deactivated_at: Time.current)
+
+      post "/session/challenge", params: { session_id: session_id, code: totp }
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "invalid_session")
+      expect(OperatorSession.find(session_id).mfa_verified_at).to be_nil
+    end
+
+    it "refuses to re-challenge an already verified session, and does not audit a second login" do
+      login!
+      session_id = json["session_id"]
+      post "/session/challenge", params: { session_id: session_id, code: totp }
+      expect(response).to have_http_status(:ok)
+
+      expect {
+        post "/session/challenge", params: { session_id: session_id, code: totp }
+      }.not_to change { PlatformEvent.where(name: "operator.login").count }
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "invalid_session")
+    end
+
+    it "refuses a challenge for a pending session id when this client has no operator cookie at all" do
+      session = operator.operator_sessions.create!(user_agent: "sem cookie")
+
+      post "/session/challenge", params: { session_id: session.id, code: totp }
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "invalid_session")
+      expect(session.reload.mfa_verified_at).to be_nil
+    end
+
+    it "refuses a challenge with a blank session_id even with the pending cookie present" do
+      login!
+
+      post "/session/challenge", params: { session_id: "", code: totp }
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "invalid_session")
     end
   end
 

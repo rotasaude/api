@@ -31,10 +31,16 @@ module Operators
         return render(json: { error: "invalid_code" }, status: :unauthorized)
       end
 
-      session.update!(mfa_verified_at: Time.current)
+      # Atomic: se Platform.audit falhar depois de carimbar mfa_verified_at, o
+      # cookie já plantado no passo da senha autenticaria sem nenhum
+      # PlatformEvent registrado. Um só transaction faz os dois comitarem ou
+      # nenhum.
+      PlatformRecord.transaction do
+        session.update!(mfa_verified_at: Time.current)
+        Platform.audit("operator.login", operator_id: session.operator_id, operator_session_id: session.id)
+      end
       write_operator_cookie(session)
       Current.operator_session = session
-      Platform.audit("operator.login", operator_id: session.operator_id, operator_session_id: session.id)
       render json: serialize(session), status: :ok
     end
 

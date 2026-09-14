@@ -6,12 +6,17 @@
 #     sessão com mfa_verified_at autentica;
 #   - cookie com nome próprio (operator_session_id) e de sessão do navegador
 #     (sem `permanent`): conta privilegiada não fica logada indefinidamente;
-#   - host-only, como todo cookie de sessão: NUNCA `domain:` (spec §5).
+#   - host-only, como todo cookie de sessão: NUNCA `domain:` (spec §5);
+#   - o SERVIDOR também impõe um limite: uma sessão verificada só autentica até
+#     OPERATOR_SESSION_TTL depois de mfa_verified_at, mesmo que o cookie
+#     (sessão do navegador) ainda exista — o cookie de sessão é um limite
+#     ADICIONAL, não o único.
 module OperatorAuthentication
   extend ActiveSupport::Concern
 
   COOKIE = :operator_session_id
   PENDING_MFA_WINDOW = 10.minutes
+  OPERATOR_SESSION_TTL = 12.hours
 
   included do
     before_action :require_operator_authentication
@@ -43,6 +48,7 @@ module OperatorAuthentication
 
     session = OperatorSession.find_by(id: id)
     return nil unless session&.mfa_verified_at && session.operator.active?
+    return nil if session.mfa_verified_at <= OPERATOR_SESSION_TTL.ago
 
     session
   end
