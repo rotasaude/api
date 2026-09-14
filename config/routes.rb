@@ -5,6 +5,17 @@ Rails.application.routes.default_url_options = {
 }
 
 Rails.application.routes.draw do
+  # Console de plataforma (admin.*): operador autentica contra Operator, no banco
+  # de plataforma (Operators::SessionsController). Mesmos caminhos da sessão da
+  # cidade, para o frontend do admin não mudar de rota. PRECISA vir antes das
+  # rotas de cidade: a primeira rota que casa vence.
+  constraints(PlatformConsoleHost) do
+    scope module: :operators, as: :operator do
+      resource :session, only: %i[create show destroy]
+      post "/session/challenge", to: "sessions#challenge_totp"
+    end
+  end
+
   # Sessão de admin (ADR-0011).
   resource :session, only: %i[create show destroy]
   post "/session/challenge", to: "sessions#challenge_totp"
