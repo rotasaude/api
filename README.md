@@ -35,6 +35,10 @@ Bancos que precisam existir no Postgres do host:
 No navegador os frontends ainda não resolvem cidade — o proxy do Vite troca o Host por `api:3000` até o Plano 6;
 para exercitar hoje, use `curl -H "Host: curitiba.localhost" http://localhost:3030/...`.
 
+Ao puxar código que adiciona um novo diretório sob `app/` (por exemplo
+`app/constraints`), reinicie o `api` (`docker compose restart api`): um
+servidor já rodando só reconhece novas raízes de autoload no boot.
+
 Em produção os mesmos nomes vêm do Kamal — ver `deploy/SECRETS.md`.
 
 ## Bootstrap do banco (do zero)
