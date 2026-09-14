@@ -6,14 +6,16 @@
 #   3. no banco da cidade, numa transação: city_profile, destinatário de alerta,
 #      protocolo template em rascunho e convite do primeiro municipal_admin
 #      (convidado pela plataforma: invited_by nulo);
-#   4. e-mail do convite, SÓ quando o convite nasceu nesta execução;
+#   4. e-mail do convite, em TODA execução enquanto a cidade segue provisioning
+#      e o convite não foi aceito — entrega pelo menos uma vez (fix round 1):
+#      um retry antes da ativação reenvia o MESMO link (mesmo token); um e-mail
+#      duplicado carrega um convite igualmente válido. Depois que a cidade vira
+#      active, o guard do início do método corta o envio;
 #   5. cidade → active e municipality.provisioned, numa transação de plataforma.
 #
-# Cada passo é idempotente: um retry (ou um novo POST /cities com o mesmo slug)
-# retoma de onde parou sem duplicar nada. O e-mail vem antes da ativação: se a
-# ativação falhar, o retry encontra o convite e não o reenvia. Cidade fora de
-# provisioning é ignorada — ativa, suspensa ou arquivada não volta a ser
-# provisionada.
+# Banco/role e migrations são idempotentes: um retry (ou um novo POST /cities
+# com o mesmo slug) os retoma sem duplicar nada. Cidade fora de provisioning é
+# ignorada — ativa, suspensa ou arquivada não volta a ser provisionada.
 #
 # NÃO semeia consent_terms (Plano 4, decisão 8): Consents.current_version lê
 # ConsentTerm.maximum(:version) e o texto do termo vem das credentials.
@@ -49,9 +51,12 @@ class ProvisionCityJob < ApplicationJob
 
   private
 
-  # Devolve o token do convite quando ele foi criado AGORA; nil se já existia.
+  # Devolve o token do convite do primeiro municipal_admin enquanto ele ainda
+  # não foi aceito (accepted_at nulo) — criado agora ou em execução anterior,
+  # tanto faz: é assim que o e-mail é reenviado num retry (fix round 1). nil
+  # quando o convite já foi aceito.
   def seed(city, ibge_code:, admin_email:, alert_email:)
-    token = nil
+    invitation = nil
 
     Current.set(city: city) do
       CityConnection.with(city) do
@@ -65,16 +70,17 @@ class ProvisionCityJob < ApplicationJob
           template = CityTemplates.protocol
           SeedProtocol.call(template: template) unless ProtocolDefinition.exists?(name: template.fetch(:name))
 
-          unless Invitation.exists?(email: admin_email.downcase, role: "municipal_admin")
+          invitation = Invitation.find_by(email: admin_email.downcase, role: "municipal_admin")
+          if invitation.nil?
             invited = InviteMember.call(email: admin_email, role: "municipal_admin", invited_by: nil)
             raise SeedFailed, "convite do primeiro municipal_admin: #{invited.message}" if invited.failure?
 
-            token = invited.payload[:invitation].token
+            invitation = invited.payload[:invitation]
           end
         end
       end
     end
 
-    token
+    invitation.accepted_at.nil? ? invitation.token : nil
   end
 end

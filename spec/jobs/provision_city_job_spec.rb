@@ -82,7 +82,7 @@ RSpec.describe ProvisionCityJob, type: :job do
     expect(InvitationMailer).to have_received(:invite).once
   end
 
-  it "does not e-mail the invitation twice when activation fails after seeding" do
+  it "re-sends the same invitation link when activation fails after seeding, and stops once the city is active" do
     allow(Platform).to receive(:audit).and_raise(ActiveRecord::StatementInvalid, "plataforma caiu")
     described_class.perform_now(city_id: city.id, **args)
 
@@ -90,11 +90,36 @@ RSpec.describe ProvisionCityJob, type: :job do
     expect(InvitationMailer).to have_received(:invite).once
 
     allow(Platform).to receive(:audit).and_call_original
+    2.times { described_class.perform_now(city_id: city.id, **args) }
+
+    expect(city.reload.status).to eq("active")
+    token = CityConnection.with(city) { Invitation.sole.token }
+    expect(InvitationMailer).to have_received(:invite)
+      .with(email_address: "Prefeita@Cidade.gov.br", accept_url: CityDashboardUrl.invitation(city, token: token))
+      .twice
+    CityConnection.with(city) { expect(Invitation.count).to eq(1) }
+  end
+
+  it "does not lose the invitation when enqueuing the e-mail fails" do
+    call_count = 0
+    allow(InvitationMailer).to receive(:invite).and_wrap_original do |original, **kwargs|
+      call_count += 1
+      raise ActiveRecord::StatementInvalid, "fila caiu" if call_count == 1
+
+      original.call(**kwargs)
+    end
+
+    described_class.perform_now(city_id: city.id, **args)
+    expect(city.reload.status).to eq("provisioning")
+
     described_class.perform_now(city_id: city.id, **args)
 
     expect(city.reload.status).to eq("active")
-    expect(InvitationMailer).to have_received(:invite).once
+    token = CityConnection.with(city) { Invitation.sole.token }
     CityConnection.with(city) { expect(Invitation.count).to eq(1) }
+    expect(InvitationMailer).to have_received(:invite)
+      .with(email_address: "Prefeita@Cidade.gov.br", accept_url: CityDashboardUrl.invitation(city, token: token))
+      .at_least(:once)
   end
 
   it "ignores a city that is not provisioning, and an unknown id" do
