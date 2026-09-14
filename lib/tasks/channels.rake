@@ -1,4 +1,4 @@
-# Território do Plano 3 / Esboço B: o ator deveria ser um Operator de plataforma
+# Território do Plano 3B: o ator deveria ser um Operator de plataforma
 # entrando na cidade por grant. Até lá, o ator é um municipal_admin da própria
 # cidade (ACTOR_EMAIL, lido no banco dela) — adaptação mínima do lote 5b.
 namespace :channels do

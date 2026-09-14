@@ -173,4 +173,67 @@ namespace :city do
     city = result.payload[:city]
     puts "[city:create] #{city.slug} → #{city.status} (#{city.database_url.sub(/:[^:@]+@/, ':***@')})"
   end
+
+  # Cidades de desenvolvimento: duas, para o isolamento ser exercitável fora da
+  # suíte (decisão do Plano 2). [slug, nome, uf].
+  dev_cities = [ %w[curitiba Curitiba PR], [ "maringa", "Maringá", "PR" ] ].freeze
+
+  desc "Dev: registra, cria o banco, carrega o schema e ativa uma cidade (idempotente). Uso: city:dev_up[slug,nome,uf]"
+  task :dev_up, %i[slug name uf] => :environment do |_t, args|
+    # Mesma razão de city:create: a database_url usa credencial de superusuário de
+    # bootstrap. Provisionamento real (rota_provisioner) é o Plano 4.
+    abort "[city:dev_up] só roda em development." unless Rails.env.development?
+    abort "uso: rails 'city:dev_up[slug,nome,uf]'" if args[:slug].blank? || args[:name].blank?
+
+    result = CityProvisioner.call(slug: args[:slug], name: args[:name], uf: args[:uf])
+    abort "[city:dev_up] falhou: #{result.message}" if result.failure?
+    city = result.payload[:city]
+
+    database = ActiveRecord::Base.configurations.resolve(city.database_url).database.to_s
+    abort "[city:dev_up] #{city.slug}: database_url sem database" if database.empty?
+
+    su   = ENV.fetch("BOOTSTRAP_SUPERUSER", "rota_saude")
+    pwd  = ENV.fetch("POSTGRES_PASSWORD") { abort "[city:dev_up] POSTGRES_PASSWORD ausente." }
+    host = ENV.fetch("DATABASE_HOST", "127.0.0.1")
+    port = ENV.fetch("DATABASE_PORT", "5432").to_s
+    env  = { "PGPASSWORD" => pwd }
+    base = [ "psql", "-h", host, "-p", port, "-U", su, "-v", "ON_ERROR_STOP=1", "-tA" ]
+
+    exists, st = Open3.capture2e(env, *base, "-d", "postgres",
+                                 "-c", "SELECT 1 FROM pg_database WHERE datname='#{database}'")
+    abort "[city:dev_up] não consegui consultar pg_database:\n#{exists}" unless st.success?
+    if exists.strip == "1"
+      puts "[city:dev_up] #{database} já existe"
+    else
+      # Identificador entre aspas: slug pode ter hífen (rótulo DNS).
+      out, st = Open3.capture2e(env, *base, "-d", "postgres", "-c", %(CREATE DATABASE "#{database}" OWNER #{su}))
+      abort "[city:dev_up] falha ao criar #{database}:\n#{out}" unless st.success?
+      puts "[city:dev_up] #{database} criado"
+    end
+
+    # O dump de cidade usa force: :cascade — só carrega num banco SEM o schema.
+    # Se a checagem falhar, aborta: carregar às cegas apagaria dados.
+    empty, st = Open3.capture2e(env, *base, "-d", database, "-c", "SELECT to_regclass('public.users') IS NULL")
+    abort "[city:dev_up] não consegui checar o schema de #{database}:\n#{empty}" unless st.success?
+    if empty.strip == "t"
+      load_city_schema.call(database)
+      puts "[city:dev_up] schema de cidade carregado em #{database}"
+    else
+      puts "[city:dev_up] #{database} já tem o schema de cidade — nada carregado"
+    end
+
+    city.update!(status: "active") unless city.status == "active"
+    CityCatalog.reset_cache!
+    puts "[city:dev_up] #{city.slug} → #{city.status} (#{database})"
+  end
+
+  desc "Dev: sobe as cidades de desenvolvimento (curitiba, maringa). Idempotente."
+  task dev_baseline: :environment do
+    abort "[city:dev_baseline] só roda em development." unless Rails.env.development?
+
+    dev_cities.each do |slug, name, uf|
+      Rake::Task["city:dev_up"].reenable
+      Rake::Task["city:dev_up"].invoke(slug, name, uf)
+    end
+  end
 end

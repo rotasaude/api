@@ -1,7 +1,7 @@
 # Rotaciona o access_token do canal WhatsApp de uma cidade (F-01.9).
 # O canal (CityChannel) mora na PLATAFORMA; o papel de quem rotaciona é lido no
 # banco DA cidade. Custódia: municipal_admin da cidade. O operador de plataforma
-# volta pelo Plano 3 (Operator + grant de entrada na cidade) — até lá não há
+# volta pelo Plano 3B (Operator + grant de entrada na cidade) — até lá não há
 # operador entre os usuários de uma cidade.
 # Zero-downtime: Outbound lê o token fresco a cada envio. Auditoria via
 # Platform.audit com city_id — SEM o valor do token (ADR-0012/0013).

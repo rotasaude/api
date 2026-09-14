@@ -80,4 +80,16 @@ RSpec.describe CityCatalog do
 
     expect(described_class.send(:cache).size).to eq(CityCatalog::MAX_CACHE_ENTRIES)
   end
+
+  describe ".console_host?" do
+    it "is true only when the first label is admin" do
+      expect(described_class.console_host?("admin.rotasaude.app")).to be(true)
+      expect(described_class.console_host?("ADMIN.rotasaude.app")).to be(true)
+      expect(described_class.console_host?("admin.localhost:5174")).to be(true)
+      expect(described_class.console_host?("curitiba.rotasaude.app")).to be(false)
+      expect(described_class.console_host?("api.rotasaude.app")).to be(false)
+      expect(described_class.console_host?("")).to be(false)
+      expect(described_class.console_host?(nil)).to be(false)
+    end
+  end
 end

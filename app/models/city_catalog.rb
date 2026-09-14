@@ -31,6 +31,11 @@ class CityCatalog
       RESERVED.include?(label_for(host))
     end
 
+    # Host do console de plataforma (admin.*). Reservado: nunca resolve cidade.
+    def console_host?(host)
+      label_for(host) == "admin"
+    end
+
     def reset_cache!
       @cache = {}
     end

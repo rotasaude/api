@@ -1,10 +1,11 @@
 # Base de todos os controllers do namespace Admin:: (read-only).
-# Ver 00_PROMPT_CLAUDE_CODE.md §2 — restrições não-negociáveis.
 # Auth real via cookie de sessão (ADR-0011).
 #
 # Responsabilidades:
 #  - fronteira de auth (Authentication concern → require_authentication), que
 #    roda DENTRO da conexão da cidade do host (CityResolution);
+#  - gate de vínculo: sessão não basta, o usuário precisa de ao menos um
+#    membership ATIVO nesta cidade (revisão 5b M3);
 #  - período e timezone do escopo;
 #  - envelope universal { data:, as_of: }, com o descritor da cidade.
 #
@@ -19,6 +20,10 @@ class Admin::Api::BaseController < ApplicationController
 
   TZ = ActiveSupport::TimeZone["America/Sao_Paulo"]
 
+  # Depois de require_authentication (incluído acima) e antes de qualquer
+  # leitura. Papel específico por painel não é deste plano: hoje qualquer papel
+  # local lê os painéis da própria cidade.
+  before_action :require_city_membership
   before_action :resolve_scope
 
   attr_reader :period
@@ -26,6 +31,12 @@ class Admin::Api::BaseController < ApplicationController
   rescue_from Admin::Api::InvalidScope, with: :render_invalid_scope
 
   private
+
+  def require_city_membership
+    return if current_user.memberships.active.exists?
+
+    render json: { error: "no_city_membership" }, status: :forbidden
+  end
 
   def resolve_scope
     @period = Admin::Api::Period.parse(
@@ -56,7 +67,7 @@ class Admin::Api::BaseController < ApplicationController
   # Descritor da cidade do host. A chave do envelope segue `municipality`, e
   # `id`/`name` seguem no formato que dashboard e admin já leem
   # (apps/*/src/lib/api.ts) — `id` agora é o slug. Renomear o contrato é dos
-  # frontends (Plano 3).
+  # frontends (Plano 6).
   def city_descriptor
     city = Current.city
     {

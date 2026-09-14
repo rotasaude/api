@@ -27,10 +27,17 @@ Bancos que precisam existir no Postgres do host:
 | `rota_saude_platform_development`, `rota_saude_platform_test` | `rota_platform` | `rails platform:bootstrap` (com `RAILS_ENV=test` para o de test) |
 | `rota_saude_no_city_selected` (vazio de propósito) | `rota_saude` | `rails city:test_databases` |
 | `rota_saude_test_city_a`, `rota_saude_test_city_b` | `rota_saude` | `rails city:test_databases` |
+| `rota_saude_city_curitiba`, `rota_saude_city_maringa` | `rota_saude` | `rails city:dev_baseline` |
 
-`start.sh` chama as três tasks antes do `db:seed`. Estado conhecido ao fim do
-Plano 2: nenhuma cidade fica servível em dev (`city:create` só registra a cidade
-como `provisioning`); o baseline de duas cidades é do Plano 3.
+`start.sh` chama essas tasks e `city:dev_baseline` antes do `db:seed`. Contas de dev:
+`admin@curitiba.demo` e `admin@maringa.demo` (senha `dev-password`) em cada cidade, e o operador `dev@local`
+(mesma senha + TOTP) no console. Hosts: `curitiba.localhost`, `maringa.localhost`, `admin.localhost`.
+No navegador os frontends ainda não resolvem cidade — o proxy do Vite troca o Host por `api:3000` até o Plano 6;
+para exercitar hoje, use `curl -H "Host: curitiba.localhost" http://localhost:3030/...`.
+
+Ao puxar código que adiciona um novo diretório sob `app/` (por exemplo
+`app/constraints`), reinicie o `api` (`docker compose restart api`): um
+servidor já rodando só reconhece novas raízes de autoload no boot.
 
 Em produção os mesmos nomes vêm do Kamal — ver `deploy/SECRETS.md`.
 

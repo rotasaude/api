@@ -6,7 +6,7 @@ RSpec.describe MunicipalityChannels::RotateToken, type: :model do
   # connection); `other_city` is a second, distinct city (TEST_CITY_B) used to
   # prove custody is per-city. Roles now live in the CITY's own memberships
   # table (D12: only municipal_admin of the channel's city — the platform
-  # operator grant is Plan 3, there is no cross-tenant role any more).
+  # operator grant is Plan 3B, there is no cross-tenant role any more).
   let!(:city) do
     create(:city, slug: TEST_CITY_A.slug, status: "active",
                   database_url: TEST_CITY_A.database_url, encryption_key: TEST_CITY_A.encryption_key)
@@ -39,8 +39,8 @@ RSpec.describe MunicipalityChannels::RotateToken, type: :model do
     expect(event.payload).to include("city_id" => city.id, "phone_number_id" => channel.phone_number_id, "by" => admin.id)
   end
 
-  it "the platform operator grant (cross-city custody) is Plan 3" do
-    skip "Plano 3: grant de operador — não há mais papel de plataforma em Membership " \
+  it "the platform operator grant (cross-city custody) is Plan 3B" do
+    skip "Plano 3B: grant de operador — não há mais papel de plataforma em Membership " \
          "(ck_memberships_role só aceita os 4 papéis locais); custódia cross-tenant " \
          "volta com Operator + grant de entrada na cidade"
   end

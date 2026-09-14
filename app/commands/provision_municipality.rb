@@ -12,7 +12,7 @@
 #
 # `invited_by` precisa ser um User DESTA cidade: invitations.invited_by_id é FK
 # para users do banco da cidade. Operador de plataforma convidando é o grant do
-# Plano 3.
+# Plano 3B.
 class ProvisionMunicipality
   def self.call(city:, ibge_code:, channel:, admin_email:, invited_by:,
                 terms:, alert:, template: nil)

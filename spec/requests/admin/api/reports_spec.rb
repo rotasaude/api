@@ -25,7 +25,7 @@ RSpec.describe "Admin::Api::Reports", type: :request do
   end
 
   it "an operator sees a city's reports as metadata, without token or payload" do
-    skip "Plano 3: grant de operador — não há mais papel de plataforma em Membership " \
+    skip "Plano 3B: grant de operador — não há mais papel de plataforma em Membership " \
          "(ck_memberships_role só aceita os 4 papéis locais) nem painel cross-tenant em " \
          "Admin::Api (D6: /admin/api/cities e as queries cross-tenant foram removidas); " \
          "o painel de relatórios agora é POR CIDADE, como Triages — sem gate de operador " \
@@ -64,11 +64,6 @@ RSpec.describe "Admin::Api::Reports", type: :request do
   end
 
   it "a city user with no active membership must not see the city's reports" do
-    pending "Plano 3: gate de membership — hoje Admin::Api::BaseController só exige " \
-            "sessão autenticada (require_authentication), sem checar Membership nenhum " \
-            "(revisão 5b M3); um usuário da cidade sem qualquer membership ainda lê o " \
-            "painel da própria cidade. Este exemplo assere o comportamento DESEJADO (403) " \
-            "para virar falha visível quando o Plano 3 acrescentar o gate de membership."
     seed_report(tier: "alta")
     homeless = User.create!(email_address: "no-membership-#{SecureRandom.hex(3)}@x.com", password: "secret123")
     sign_in_as(homeless)
@@ -76,5 +71,6 @@ RSpec.describe "Admin::Api::Reports", type: :request do
     get "/admin/api/reports", params: { period: "30d" }
 
     expect(response).to have_http_status(:forbidden)
+    expect(JSON.parse(response.body)).to eq("error" => "no_city_membership")
   end
 end

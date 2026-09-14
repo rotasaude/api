@@ -1,55 +1,34 @@
-# Sessões — JSON-only (API). Ver ADR-0011.
+# Sessões de usuário DA CIDADE — JSON-only (API). Ver ADR-0011.
 #
-#   POST   /session   { email_address, password }  → 201 + set-cookie (não-operador)
-#                                                  → 200 + mfa_required (operador)
-#   POST   /session/challenge { session_id, code } → 200 + carimbas mfa_verified_at
+# Roda dentro da conexão da cidade do host (CityResolution): usuário e sessão são
+# procurados no banco dessa cidade, então o cookie de uma cidade não autentica
+# na vizinha. Operador de plataforma NÃO loga aqui — ver
+# Operators::SessionsController, no host admin.*.
+#
+#   POST   /session   { email_address, password }  → 201 + set-cookie
+#   GET    /session                                 → 200 | 401
 #   DELETE /session                                 → 204 + clear-cookie
 class SessionsController < ApplicationController
   include Authentication
 
-  allow_unauthenticated_access only: %i[create challenge_totp govbr_callback]
+  allow_unauthenticated_access only: %i[create govbr_callback]
 
-  rate_limit to: 10, within: 3.minutes, only: %i[create challenge_totp govbr_callback],
+  rate_limit to: 10, within: 3.minutes, only: %i[create govbr_callback],
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
   def create
     user = Authenticator.password(email: params[:email_address], password: params[:password])
     return render(json: { error: "invalid_credentials" }, status: :unauthorized) unless user
 
-    if user.operator? && !user.mfa_enrolled?
-      return render(json: { error: "mfa_enrollment_required" }, status: :forbidden)
-    end
-
-    session = start_new_session_for(user)
-
-    if user.operator?
-      # Operador exige TOTP toda vez (login, não step-up — ADR-0011).
-      return render(json: { mfa_required: true, session_id: session.id }, status: :ok)
-    end
-
+    start_new_session_for(user)
     render json: serialize(user), status: :created
-  end
-
-  def challenge_totp
-    session = Session.find_by(id: params[:session_id])
-    return render(json: { error: "invalid_session" }, status: :unauthorized) unless session
-
-    user = session.user
-    if Mfa::Verify.call(user, code: params[:code])
-      session.update!(mfa_verified_at: Time.current)
-      cookies.signed.permanent[:session_id] = { value: session.id, httponly: true, same_site: :lax, secure: Rails.env.production? }
-      render json: serialize(user), status: :ok
-    else
-      render json: { error: "invalid_code" }, status: :unauthorized
-    end
   end
 
   # GET /auth/govbr/callback?code=…&state=…  (ADR-0011 gov.br seam)
   #
-  # Provisório (Ruling R13): roda na cidade do host, como as demais ações — a
-  # identidade gov.br e a sessão são gravadas no banco dessa cidade. O callback
-  # único em auth.* resolvendo a cidade pelo `state`, com grant assinado, é do
-  # Esboço A / Plano 3.
+  # Provisório: roda na cidade do host, como as demais ações — a identidade gov.br
+  # e a sessão são gravadas no banco dessa cidade. O callback único em auth.*,
+  # resolvendo a cidade pelo `state` com grant assinado, é do Plano 3B.
   #
   # state opcional aqui — backend não armazena state em sessão (API JSON).
   # Frontend SPA é quem gera/verifica state via storage local + envia ao
@@ -58,15 +37,7 @@ class SessionsController < ApplicationController
     user = Authenticator.govbr(code: params[:code])
     return render(json: { error: "govbr_unauthenticated" }, status: :unauthorized) unless user
 
-    if user.operator? && !user.mfa_enrolled?
-      return render(json: { error: "mfa_enrollment_required" }, status: :forbidden)
-    end
-
-    session = start_new_session_for(user)
-    if user.operator?
-      return render(json: { mfa_required: true, session_id: session.id }, status: :ok)
-    end
-
+    start_new_session_for(user)
     render json: serialize(user), status: :created
   rescue Authenticator::GovBr::IntegrationError => e
     Rails.logger.error("[govbr_callback] #{e.class}: #{e.message}")
@@ -91,7 +62,9 @@ class SessionsController < ApplicationController
       id: user.id,
       email_address: user.email_address,
       mfa_enrolled: user.mfa_enrolled?,
-      operator: user.operator?,
+      # Chave do contrato que dashboard e admin já leem. Usuário de cidade nunca
+      # é operador; operador loga no console (Operators::SessionsController).
+      operator: false,
       mfa_verified_at: Current.session&.mfa_verified_at&.iso8601,
       memberships: serialize_memberships(user)
     }
@@ -100,7 +73,7 @@ class SessionsController < ApplicationController
   # Memberships ativos na cidade do host. As chaves municipality_* seguem o
   # contrato que dashboard e admin já leem (apps/*/src/lib/api.ts), mas os
   # valores vêm da cidade resolvida — a chave de id carrega o slug. Renomear o
-  # contrato é dos frontends (Plano 3).
+  # contrato é dos frontends (Plano 6).
   def serialize_memberships(user)
     city = Current.city
     user.memberships.active.map do |m|
