@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_13_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_14_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -41,6 +41,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_13_000001) do
     t.index ["city_id", "active"], name: "index_city_channels_on_city_id_and_active"
     t.index ["city_id"], name: "index_city_channels_on_city_id"
     t.index ["phone_number_id"], name: "index_city_channels_on_phone_number_id", unique: true
+  end
+
+  create_table "city_grants", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_id", null: false
+    t.datetime "consumed_at"
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.string "kind", null: false
+    t.uuid "subject_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["city_id"], name: "index_city_grants_on_city_id"
+    t.check_constraint "kind::text = ANY (ARRAY['operator'::character varying, 'user'::character varying]::text[])", name: "ck_city_grants_kind"
   end
 
   create_table "operator_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -89,5 +101,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_13_000001) do
   end
 
   add_foreign_key "city_channels", "cities"
+  add_foreign_key "city_grants", "cities"
   add_foreign_key "operator_sessions", "operators"
 end
