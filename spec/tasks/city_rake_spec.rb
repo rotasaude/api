@@ -109,3 +109,36 @@ RSpec.describe "city:load_schema rake task" do
     expect { invoke_silently("rota_saude_test_city_b") }.not_to raise_error
   end
 end
+
+# city:dev_up cria banco e carrega schema com credencial de superusuário de
+# bootstrap (CityProvisioner#database_url_for) — mesma razão de city:create para
+# nunca rodar fora de development. Em test ela precisa abortar ANTES de tocar o
+# catálogo.
+RSpec.describe "city:dev_up and city:dev_baseline rake tasks" do
+  before(:all) do
+    Rails.application.load_tasks unless Rake::Task.task_defined?("city:dev_up")
+  end
+
+  before do
+    %w[city:dev_up city:dev_baseline].each { |name| Rake::Task[name].reenable }
+  end
+
+  def invoke_silently(name, *args)
+    original_stderr, $stderr = $stderr, StringIO.new
+    Rake::Task[name].invoke(*args)
+  ensure
+    $stderr = original_stderr
+  end
+
+  it "city:dev_up aborts outside development, before touching the catalog" do
+    slug = "naosobe#{SecureRandom.hex(3)}"
+
+    expect { invoke_silently("city:dev_up", slug, "Nao Sobe", "SP") }.to raise_error(SystemExit)
+    expect(City.where(slug: slug)).to be_empty
+  end
+
+  it "city:dev_baseline aborts outside development, before touching the catalog" do
+    expect { invoke_silently("city:dev_baseline") }.to raise_error(SystemExit)
+    expect(City.where(slug: %w[curitiba maringa])).to be_empty
+  end
+end
