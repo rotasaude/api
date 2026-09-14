@@ -13,4 +13,15 @@ namespace :channels do
     abort("[channels:rotate_token] failed: #{result.reason} #{result.message}") if result.failure?
     puts "[channels:rotate_token] rotated channel for #{slug} (phone_number_id=#{result.payload[:channel].phone_number_id})"
   end
+
+  desc "Register a city's WhatsApp channel. ENV: CITY_SLUG, PHONE_NUMBER_ID, WABA_ID, DISPLAY_PHONE_NUMBER, ACCESS_TOKEN"
+  task register: :environment do
+    city = City.find_by!(slug: ENV.fetch("CITY_SLUG"))
+    result = MunicipalityChannels::Register.call(
+      city: city, phone_number_id: ENV.fetch("PHONE_NUMBER_ID"), waba_id: ENV.fetch("WABA_ID"),
+      display_phone_number: ENV.fetch("DISPLAY_PHONE_NUMBER"), access_token: ENV.fetch("ACCESS_TOKEN")
+    )
+    abort("[channels:register] failed: #{result.reason} #{result.message}") if result.failure?
+    puts "[channels:register] #{city.slug} → phone_number_id=#{result.payload[:channel].phone_number_id}"
+  end
 end

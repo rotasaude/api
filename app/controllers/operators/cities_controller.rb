@@ -1,0 +1,29 @@
+# Provisionamento de cidade pelo console (spec banco-por-cidade §4, Plano 4):
+#
+#   POST /cities { slug, name, uf, ibge_code, admin_email, alert_email } → 202 { id }
+#   GET  /cities/:id                                                     → 200 { id, slug, status, schema_version }
+#
+# O POST só registra e enfileira (ProvisionCity): quem cria o banco é o worker. A
+# resposta é só o id — o token do convite nunca volta para o console, vai por
+# e-mail para o primeiro municipal_admin.
+module Operators
+  class CitiesController < BaseController
+    def create
+      result = ProvisionCity.call(
+        slug: params[:slug], name: params[:name], uf: params[:uf], ibge_code: params[:ibge_code],
+        admin_email: params[:admin_email], alert_email: params[:alert_email], by: current_operator
+      )
+      return render(json: { id: result.payload[:city].id }, status: :accepted) if result.ok?
+
+      status = result.reason == :city_exists ? :conflict : :unprocessable_entity
+      render json: { error: result.reason.to_s, message: result.message }, status: status
+    end
+
+    def show
+      city = City.find_by(id: params[:id].to_s)
+      return head(:not_found) unless city
+
+      render json: { id: city.id, slug: city.slug, status: city.status, schema_version: city.schema_version }
+    end
+  end
+end

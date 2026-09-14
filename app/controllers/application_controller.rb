@@ -8,8 +8,7 @@
 #   - CityResolution adiciona around_action :within_city: resolve a cidade
 #     pelo host antes de qualquer query, e executa a ação dentro da conexão
 #     daquela cidade. Controllers que não são servidos por subdomínio de
-#     cidade aplicam skip_city_resolution (Webhooks::WhatsappController,
-#     SetupController).
+#     cidade aplicam skip_city_resolution (Webhooks::WhatsappController).
 class ApplicationController < ActionController::API
   include ActionController::Cookies
   include CityResolution
