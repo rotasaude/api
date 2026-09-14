@@ -273,6 +273,26 @@ RSpec.describe "Operator session on the platform console", type: :request do
       post "/session/challenge", params: { session_id: json["session_id"], code: totp }
       expect(response).to have_http_status(:ok)
     end
+
+    it "refuses to verify a session that a concurrent fifth wrong code destroyed mid-request" do
+      login!
+      session_id = json["session_id"]
+
+      allow(Mfa::Verify).to receive(:call).and_wrap_original do |m, *args, **kw|
+        OperatorSession.find(session_id).destroy
+        m.call(*args, **kw)
+      end
+
+      expect {
+        post "/session/challenge", params: { session_id: session_id, code: totp }
+      }.not_to change { PlatformEvent.where(name: "operator.login").count }
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "invalid_session")
+
+      get "/session"
+      expect(response).to have_http_status(:unauthorized)
+    end
   end
 
   describe "host isolation" do

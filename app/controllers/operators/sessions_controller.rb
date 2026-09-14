@@ -32,11 +32,21 @@ module Operators
       # Atomic: se Platform.audit falhar depois de carimbar mfa_verified_at, o
       # cookie já plantado no passo da senha autenticaria sem nenhum
       # PlatformEvent registrado. Um só transaction faz os dois comitarem ou
-      # nenhum.
-      PlatformRecord.transaction do
-        session.update!(mfa_verified_at: Time.current)
+      # nenhum. O update_all condicional (mfa_verified_at: nil) é o guarda
+      # contra a corrida com register_failed_totp: se um 5º erro concorrente já
+      # apagou esta sessão, stamped vem 0 e não verificamos nem auditamos uma
+      # sessão que não existe mais.
+      verified = PlatformRecord.transaction do
+        stamped = OperatorSession.where(id: session.id, mfa_verified_at: nil)
+                                 .update_all(mfa_verified_at: Time.current, updated_at: Time.current)
+        next false unless stamped == 1
+
         Platform.audit("operator.login", operator_id: session.operator_id, operator_session_id: session.id)
+        true
       end
+      return render(json: { error: "invalid_session" }, status: :unauthorized) unless verified
+
+      session.reload
       write_operator_cookie(session)
       Current.operator_session = session
       render json: serialize(session), status: :ok
