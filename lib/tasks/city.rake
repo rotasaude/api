@@ -106,7 +106,10 @@ namespace :city do
     abort "[city] #{schema_file} não existe." unless File.exist?(schema_file)
 
     url = database_name_or_url.to_s.include?("://") ? database_name_or_url : city_database_url.call(database_name_or_url)
-    db_config = ActiveRecord::Base.configurations.resolve(url)
+    # Com migrations_paths de cidade: o `define(version:)` do dump registra em
+    # schema_migrations TODAS as versões de db/city_migrate até a do dump, não só
+    # a última (sem isso, city:migrate tentaria recriar o schema).
+    db_config = CitySchema.db_config_for(url)
     ActiveRecord::Tasks::DatabaseTasks.with_temporary_connection(db_config) do
       ActiveRecord::Tasks::DatabaseTasks.load_schema(db_config, :ruby, schema_file)
     end
@@ -219,12 +222,16 @@ namespace :city do
       load_city_schema.call(database)
       puts "[city:dev_up] schema de cidade carregado em #{database}"
     else
-      puts "[city:dev_up] #{database} já tem o schema de cidade — nada carregado"
+      # Banco carregado antes de load_schema registrar todas as versões: completa
+      # as anteriores à maior registrada (só INSERT) antes de migrar.
+      CitySchema.backfill_versions!(city.database_url)
+      puts "[city:dev_up] #{database} já tem o schema de cidade — versões anteriores registradas"
     end
 
-    city.update!(status: "active") unless city.status == "active"
+    version = CitySchema.migrate!(city.database_url)
+    city.update!(status: "active", schema_version: version.to_s)
     CityCatalog.reset_cache!
-    puts "[city:dev_up] #{city.slug} → #{city.status} (#{database})"
+    puts "[city:dev_up] #{city.slug} → #{city.status} (#{database}, schema #{version})"
   end
 
   desc "Dev: sobe as cidades de desenvolvimento (curitiba, maringa). Idempotente."
@@ -234,6 +241,30 @@ namespace :city do
     dev_cities.each do |slug, name, uf|
       Rake::Task["city:dev_up"].reenable
       Rake::Task["city:dev_up"].invoke(slug, name, uf)
+    end
+  end
+
+  desc "Aplica as migrations de cidade numa cidade do catálogo e registra a versão. Uso: city:migrate[slug]"
+  task :migrate, %i[slug] => :environment do |_t, args|
+    abort "uso: rails 'city:migrate[slug]'" if args[:slug].blank?
+    city = City.find_by(slug: args[:slug])
+    abort "[city:migrate] cidade #{args[:slug]} não existe" unless city
+    abort "[city:migrate] cidade #{city.slug} está archived — não tem banco" if city.status == "archived"
+
+    begin
+      version = CityMigrations.run(city)
+    rescue StandardError => e
+      abort "[city:migrate] #{city.slug} falhou — #{e.class}: #{CitySchema.redact(e.message)}"
+    end
+    puts "[city:migrate] #{city.slug} → #{version}"
+  end
+
+  namespace :migrate do
+    desc "Aplica as migrations de cidade em toda cidade active/suspended; sai com erro listando as que ficarem para trás."
+    task all: :environment do
+      CityMigrations.run_all
+    rescue CityMigrations::Failed => e
+      abort "[city:migrate:all] #{e.message}"
     end
   end
 end

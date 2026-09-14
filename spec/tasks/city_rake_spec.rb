@@ -142,3 +142,55 @@ RSpec.describe "city:dev_up and city:dev_baseline rake tasks" do
     expect(City.where(slug: %w[curitiba maringa])).to be_empty
   end
 end
+
+# city:migrate e city:migrate:all (Plano 4). A migração de verdade é provada em
+# spec/services/city_migrations_spec.rb; aqui só o contrato da task.
+RSpec.describe "city:migrate and city:migrate:all rake tasks" do
+  before(:all) do
+    Rails.application.load_tasks unless Rake::Task.task_defined?("city:migrate:all")
+  end
+
+  before do
+    %w[city:migrate city:migrate:all].each { |name| Rake::Task[name].reenable }
+  end
+
+  def invoke_silently(name, *args)
+    original_stdout, $stdout = $stdout, StringIO.new
+    original_stderr, $stderr = $stderr, StringIO.new
+    Rake::Task[name].invoke(*args)
+  ensure
+    $stdout = original_stdout
+    $stderr = original_stderr
+  end
+
+  it "city:migrate aborts for an unknown slug" do
+    expect { invoke_silently("city:migrate", "naoexiste#{SecureRandom.hex(3)}") }.to raise_error(SystemExit)
+  end
+
+  it "city:migrate refuses an archived city without touching any database" do
+    city = create(:city, status: "archived")
+    expect(CityMigrations).not_to receive(:run)
+
+    expect { invoke_silently("city:migrate", city.slug) }.to raise_error(SystemExit)
+  end
+
+  it "city:migrate migrates the city through CityMigrations" do
+    city = create(:city, status: "provisioning")
+    expect(CityMigrations).to receive(:run).with(city).and_return(CitySchema.expected_version)
+
+    expect { invoke_silently("city:migrate", city.slug) }.not_to raise_error
+  end
+
+  it "city:migrate exits non-zero when the migration raises" do
+    city = create(:city, status: "active")
+    allow(CityMigrations).to receive(:run).and_raise(ActiveRecord::NoDatabaseError)
+
+    expect { invoke_silently("city:migrate", city.slug) }.to raise_error(SystemExit) { |e| expect(e.status).not_to eq(0) }
+  end
+
+  it "city:migrate:all exits non-zero when a city is left behind" do
+    allow(CityMigrations).to receive(:run_all).and_raise(CityMigrations::Failed.new("quebrada" => "PG::Error: boom"))
+
+    expect { invoke_silently("city:migrate:all") }.to raise_error(SystemExit) { |e| expect(e.status).not_to eq(0) }
+  end
+end
