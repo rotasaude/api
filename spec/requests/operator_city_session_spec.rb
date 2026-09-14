@@ -18,16 +18,16 @@ RSpec.describe "Operator session inside a city", type: :request do
 
     # /admin/api/overview would also belong on this list, but it (and
     # /admin/api/queues) call SolidQueue::FailedExecution/ClaimedExecution
-    # directly. That AR model has no per-shard connects_to, so inside
-    # CityConnection.with it resolves through whatever pool the current
-    # thread-local shard falls back to — and the test cluster's `queue` role
-    # isn't configured at all (config/database.yml has no test: queue:), so
-    # solid_queue_* tables exist in no test database. This reproduces for ANY
-    # signed-in actor (probed with a plain municipal_admin session, not just
-    # an operator grant), so it predates this task and is out of scope for it
-    # (Task 1 touches only the files listed in its brief) — /admin/api/reports
-    # and /admin/api/triages already cover the read-without-membership
-    # invariant this example exists for.
+    # directly. SolidQueue::Record has no connects_to in this app, so it uses
+    # whatever connection ApplicationRecord/primary resolves to — the PRIMARY
+    # test database (rota_saude_test), not the city shard. rota_saude_test has
+    # no solid_queue_* tables (those only exist in the `queue` role, which
+    # config/database.yml doesn't even define for test), so the query 500s.
+    # This reproduces for ANY signed-in actor (probed with a plain
+    # municipal_admin session, not just an operator grant), so it predates
+    # this task and is out of scope for it (Task 1 touches only the files
+    # listed in its brief) — /admin/api/reports and /admin/api/triages already
+    # cover the read-without-membership invariant this example exists for.
     %w[/admin/api/reports /admin/api/triages].each do |path|
       get path, params: { period: "30d" }
       expect(response).to have_http_status(:ok), "#{path} respondeu #{response.status}"

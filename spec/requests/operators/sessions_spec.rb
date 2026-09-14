@@ -262,6 +262,19 @@ RSpec.describe "Operator session on the platform console", type: :request do
       expect(json).to eq("error" => "invalid_session")
     end
 
+    it "clears the operator_session_id cookie on the fifth wrong code" do
+      login!
+      session_id = json["session_id"]
+
+      4.times { wrong_challenge(session_id) }
+      wrong_challenge(session_id)
+
+      expect(response).to have_http_status(:unauthorized)
+      cookie = set_cookie_header[/operator_session_id=[^\n]*/]
+      expect(cookie).to be_present
+      expect(cookie).to match(/max-age=0/i).or match(/expires=[^;]*(1970|1969)/i)
+    end
+
     it "a new password step starts a fresh count" do
       login!
       first_session_id = json["session_id"]

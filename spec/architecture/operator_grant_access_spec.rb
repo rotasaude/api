@@ -16,4 +16,15 @@ RSpec.describe "Operator grant access allowlist" do
     expect(allowed.keys - [ "SessionsController" ]).to all(start_with("Admin::Api::"))
     expect(allowed.except("SessionsController").values.uniq).to eq([ :all ])
   end
+
+  it "every Admin::Api route is GET-only (operator grant is read-only, Plano 3B)" do
+    Rails.application.eager_load!
+
+    admin_api_routes = Rails.application.routes.routes.select do |route|
+      route.defaults[:controller].to_s.start_with?("admin/api/")
+    end
+
+    expect(admin_api_routes.count).to be > 0
+    expect(admin_api_routes.map(&:verb).uniq).to eq([ "GET" ])
+  end
 end
