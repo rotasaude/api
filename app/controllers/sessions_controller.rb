@@ -18,7 +18,11 @@ class SessionsController < ApplicationController
   # Operador dentro da cidade (grant, Plano 3B) vê e encerra a própria sessão; nada mais.
   allow_operator_grant_access only: %i[show destroy]
 
-  rate_limit to: 10, within: 3.minutes, only: %i[create govbr_start grant],
+  rate_limit to: 10, within: 3.minutes, only: :create, name: "login",
+             with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
+  rate_limit to: 10, within: 3.minutes, only: :grant, name: "grant",
+             with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
+  rate_limit to: 10, within: 3.minutes, only: :govbr_start, name: "govbr_start",
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
   def create
@@ -74,6 +78,7 @@ class SessionsController < ApplicationController
     operator = Operator.find_by(id: grant.subject_id)
     return render_invalid_grant unless operator&.active?
 
+    destroy_previous_session
     Platform.audit("operator.city_access", city_id: Current.city.id, operator_id: operator.id)
     session = ApplicationRecord.transaction do
       Session.create!(operator_id: operator.id, user_agent: request.user_agent, ip_address: request.remote_ip).tap do |s|
@@ -89,8 +94,18 @@ class SessionsController < ApplicationController
     user = User.find_by(id: grant.subject_id)
     return render_invalid_grant unless user&.active?
 
+    destroy_previous_session
     start_new_session_for(user)
     render json: serialize(user), status: :created
+  end
+
+  # Um grant redimido abre uma sessão NOVA (Plano 3B fix wave): se este cliente
+  # já tinha uma sessão da cidade (usuário comum ou operador de um grant
+  # anterior), ela fica órfã no cookie antigo e continua válida até expirar
+  # sozinha. Apagar a sessão anterior por baixo do novo cookie fecha essa
+  # janela sem mexer no fluxo normal de create/destroy.
+  def destroy_previous_session
+    Session.find_by(id: cookies.signed[:session_id])&.destroy
   end
 
   # Sessão de operador aberta por grant (Plano 3B): mesmo formato do SessionUser;

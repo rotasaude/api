@@ -130,6 +130,21 @@ RSpec.describe "POST /session/grant", type: :request do
     expect(json).to eq("error" => "invalid_grant")
   end
 
+  it "destroys the previous session when a grant is redeemed, replacing it with the new one" do
+    user = User.create!(email_address: "u-#{SecureRandom.hex(3)}@x.com", password: "secret123")
+    old_session = sign_in_as(user)
+    token = operator_grant
+
+    post "/session/grant", params: { token: token }
+
+    expect(response).to have_http_status(:created)
+    expect(Session.exists?(old_session.id)).to be(false)
+
+    get "/session"
+    expect(response).to have_http_status(:ok)
+    expect(json).to include("id" => operator.id, "operator" => true)
+  end
+
   it "refuses a malformed or non-string token" do
     [ "lixo", [ "lixo" ], nil ].each do |token|
       post "/session/grant", params: { token: token }
