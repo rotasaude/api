@@ -6,7 +6,6 @@ RSpec.describe PublicationsController, type: :request do
     Mfa::Enroll.call(u); u.update!(otp_enabled: true)
     u
   end
-  let!(:muni) { create(:municipality) }
 
   before do
     session = user.sessions.create!(user_agent: "rspec", ip_address: "127.0.0.1")
@@ -14,7 +13,6 @@ RSpec.describe PublicationsController, type: :request do
     # Rack::Test::CookieJar não expõe .signed — bypassamos o cookie path
     # e injectamos a sessão direto no Current (padrão de MfaController spec).
     allow_any_instance_of(PublicationsController).to receive(:resume_session) { Current.session = session }
-    allow_any_instance_of(PublicationsController).to receive(:current_municipality).and_return(muni)
   end
 
   it "sem step-up recente devolve 401 mfa_required" do

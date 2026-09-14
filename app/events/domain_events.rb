@@ -1,8 +1,11 @@
 # Publisher de eventos de domínio (ADR-0004).
 #   DomainEvents.publish("triage.completed", triage_id: t.id, tier: :alta)
-# Não chame fora de uma transação aberta (ADR-0004 garante COMMIT antes do enqueue).
+# Publique dentro da transação da cidade (ADR-0004): o DomainEvent comita junto
+# com a escrita de domínio, e os subscribers (ApplicationJob, com
+# enqueue_after_transaction_commit — R40) só entram na fila após esse COMMIT;
+# em ROLLBACK, nenhum é enfileirado. Fora de transação, enfileiram na hora.
 module DomainEvents
-  class TenantMissing < StandardError; end
+  class CityMissing < StandardError; end
   class UnknownBindingError < StandardError; end
 
   Subscriber = Struct.new(:job, :queue, keyword_init: true)
@@ -19,15 +22,14 @@ module DomainEvents
     end
 
     def publish(event_name, **payload)
-      event_id        = SecureRandom.uuid
-      municipality_id = Current.municipality_id
-      raise TenantMissing, "publish #{event_name} sem tenant setado" if municipality_id.nil?
+      event_id  = SecureRandom.uuid
+      city_slug = Current.city&.slug
+      raise CityMissing, "publish #{event_name} sem cidade setada" if city_slug.nil?
 
       DomainEvent.create!(
         id: event_id,
         name: event_name.to_s,
         payload: payload,
-        municipality_id: municipality_id,
         occurred_at: Time.current
       )
 
@@ -37,7 +39,7 @@ module DomainEvents
         target.perform_later(
           event_id: event_id,
           event_name: event_name.to_s,
-          municipality_id: municipality_id,
+          city_slug: city_slug,
           payload: payload.deep_stringify_keys
         )
       end

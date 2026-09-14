@@ -5,8 +5,10 @@ class ApplicationPolicy
 
   private
 
-  def role?(role, municipality_id)
+  # Papel do usuário na cidade da conexão corrente — o banco é da cidade, então
+  # não há município a comparar.
+  def role?(role)
     return false if @user.nil?
-    @user.operator? || @user.role_in?(municipality_id, role: role.to_s)
+    @user.has_role?(role)
   end
 end

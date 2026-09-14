@@ -4,12 +4,11 @@
 # cai para agregação ao vivo (source: live) quando não há projeção
 # correspondente. Cada KPI carrega seu source no contrato (§7).
 class Admin::OverviewQuery
-  def self.call(municipality:, period:)
-    new(municipality, period).call
+  def self.call(period:)
+    new(period).call
   end
 
-  def initialize(municipality, period)
-    @muni = municipality
+  def initialize(period)
     @period = period
   end
 
@@ -28,7 +27,7 @@ class Admin::OverviewQuery
   private
 
   def kpi_done
-    completed = Admin::Scoped.triages(@muni)
+    completed = Triage.all
                   .where(status: "completed", completed_at: @period.from..@period.to)
                   .count
     {
@@ -38,13 +37,13 @@ class Admin::OverviewQuery
       unit: "",
       delta: nil,
       tone: completed.positive? ? "ok" : "neutral",
-      spark: @period.series(Admin::Scoped.triages(@muni).where(status: "completed"), :completed_at),
+      spark: @period.series(Triage.all.where(status: "completed"), :completed_at),
       source: "live"
     }
   end
 
   def kpi_active
-    active = Admin::Scoped.conversations(@muni)
+    active = Conversation.all
                .where(state: %w[awaiting_consent consented])
                .where(updated_at: 1.hour.ago..)
                .count
@@ -55,13 +54,13 @@ class Admin::OverviewQuery
       unit: "",
       delta: nil,
       tone: "info",
-      spark: @period.series(Admin::Scoped.conversations(@muni), :updated_at),
+      spark: @period.series(Conversation.all, :updated_at),
       source: "live"
     }
   end
 
   def kpi_priority
-    priority = Admin::Scoped.triages(@muni)
+    priority = Triage.all
                  .where(priority: true, created_at: @period.from..@period.to)
                  .count
     {
@@ -71,13 +70,13 @@ class Admin::OverviewQuery
       unit: "",
       delta: nil,
       tone: priority.positive? ? "warn" : "ok",
-      spark: @period.series(Admin::Scoped.triages(@muni).where(priority: true), :created_at),
+      spark: @period.series(Triage.all.where(priority: true), :created_at),
       source: "live"
     }
   end
 
   def kpi_completion
-    base = Admin::Scoped.triages(@muni).where(created_at: @period.from..@period.to)
+    base = Triage.all.where(created_at: @period.from..@period.to)
     started = base.count
     completed = base.where(status: "completed").count
     rate = started.zero? ? 0.0 : (completed.to_f / started * 100).round(1)
@@ -93,7 +92,8 @@ class Admin::OverviewQuery
     }
   end
 
-  # Infraestrutura — cross-tenant por natureza (Solid Queue não conhece muni).
+  # Infraestrutura — lê a fila compartilhada: o Solid Queue só vai para o banco
+  # da cidade no Plano 5, então este número ainda soma todas as cidades.
   def kpi_failed_jobs
     failed = SolidQueue::FailedExecution.count
     {

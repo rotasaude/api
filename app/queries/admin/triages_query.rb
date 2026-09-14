@@ -3,22 +3,21 @@
 # Reduzimos a referências e contagens. NUNCA expomos `answers` (LGPD).
 # Versão do protocolo vem de protocol_definitions.
 class Admin::TriagesQuery
-  def self.call(municipality:, period:)
-    new(municipality, period).call
+  def self.call(period:)
+    new(period).call
   end
 
-  def initialize(municipality, period)
-    @muni = municipality
+  def initialize(period)
     @period = period
   end
 
   def call
-    base = Admin::Scoped.triages(@muni).where(created_at: @period.from..@period.to)
+    base = Triage.all.where(created_at: @period.from..@period.to)
     started = base.count
     completed = base.where(status: "completed").count
 
     {
-      series: @period.series(Admin::Scoped.triages(@muni), :created_at),
+      series: @period.series(Triage.all, :created_at),
       started: started,
       completed: completed,
       completionRate: started.zero? ? 0.0 : (completed.to_f / started * 100).round(1),

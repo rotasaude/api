@@ -2,7 +2,7 @@
 # triage.urgent com published_at IS NULL. Roda a cada 5min (recurring.yml).
 # Idempotência por consumidor (ADR-0005) garante que duplicatas sumam.
 class ResendPendingAlertsJob < ApplicationJob
-  prepend AdminRoleJob
+  prepend EachCityJob
   queue_as :urgent
 
   def perform

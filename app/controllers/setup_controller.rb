@@ -1,70 +1,52 @@
-# Endpoints HTTP do "setup" multi-tenant — invocam commands do Phase 4/6.
+# Endpoints HTTP do "setup" — invocam commands do Phase 4/6.
 # Ver ADR-0012 (memberships/authz) e ADR-0013 (provisionamento).
 #
-# Authn: cookie de sessão (Authentication concern).
-# Authz: por endpoint, ver each_action (operator para provision/deactivate;
-#        municipal_admin para invite/revoke).
+# Disposição no mundo por cidade (lote 5b; destino final nos Planos 3/4):
+#   - accept_invitation, invite_member, list_memberships, revoke_membership e
+#     deactivate_user agem SOBRE dados da cidade — convites, usuários e
+#     memberships moram no banco dela —, então resolvem a cidade pelo host como
+#     qualquer controller, e a sessão é a da cidade;
+#   - deactivate_user segue exigindo operador; nenhum usuário de cidade é
+#     operador (User#operator?), então responde 403 até o grant do Plano 3;
+#   - provision_municipality é ação de operador sobre o catálogo, servida no
+#     host de plataforma: pula a resolução de cidade. Sem autenticação de
+#     operador na plataforma (Plano 3) nem provisionamento de banco (Plano 4),
+#     responde 501 sem tocar dado nenhum.
+#
 # Aceite de convite (POST /setup/accept_invitation) é PÚBLICO (token é cred).
 class SetupController < ApplicationController
-  # Setup é cross-tenant em ações de operador (provision/deactivate). Para
-  # invite/revoke usa current_municipality via membership do user, mas a
-  # resolução é feita aqui (não via TenantScopedRequest, que falharia para
-  # operador sem header). Pular o around_action.
-  skip_tenant_scope
+  skip_city_resolution only: %i[provision_municipality]
 
   include Authentication
 
-  allow_unauthenticated_access only: %i[accept_invitation]
+  # provision_municipality não autentica porque não faz nada além de responder
+  # 501: não há sessão de operador resolvível fora de uma cidade até o Plano 3.
+  allow_unauthenticated_access only: %i[accept_invitation provision_municipality]
 
   # Fluxo público token-as-credential — mesmo teto de sessions/passwords, para
   # não deixar superfície de brute-force sem limite. Só na ação pública.
   rate_limit to: 10, within: 3.minutes, only: %i[accept_invitation],
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
-  # POST /setup/municipalities
-  # body: { name, slug, ibge_code, uf, channel: { phone_number_id, ... }, admin_email, terms: { body, version }, alert: [...], template: {...} }
+  # POST /setup/municipalities — desligado até o Plano 3 (autenticação de
+  # operador na plataforma) e o Plano 4 (POST /setup/cities, provisionamento em
+  # duas fases). O command ProvisionMunicipality segue utilizável para uma cidade
+  # já registrada e servível, fora do HTTP.
   def provision_municipality
-    return head(:forbidden) unless current_user.operator?
-
-    params_h = provision_params
-    result = ProvisionMunicipality.call(**params_h, invited_by: current_user)
-    if result.ok?
-      muni = result.payload[:municipality]
-      # ProvisionMunicipality cria 1 invitation pro admin_email; busca pra
-      # devolver pro operador (precisa do token pra mandar pro convidado).
-      invitation = ApplicationRecord.connected_to(role: :admin) do
-        Invitation.where(municipality_id: muni.id, email: params_h[:admin_email].to_s.downcase)
-                  .order(created_at: :desc)
-                  .first
-      end
-      render json: {
-        id: muni.id,
-        name: muni.name,
-        slug: muni.slug,
-        invitation: invitation && {
-          id: invitation.id,
-          email: invitation.email,
-          token: invitation.token,
-          expires_at: invitation.expires_at.iso8601,
-          accept_url: setup_accept_url(invitation.token)
-        }
-      }, status: :created
-    else
-      render json: { error: result.reason.to_s, message: result.message }, status: :unprocessable_entity
-    end
+    render json: {
+      error: "provisioning_unavailable",
+      message: "provisionamento de cidade passa para a plataforma (Planos 3 e 4)"
+    }, status: :not_implemented
   end
 
   # POST /setup/invitations
-  # body: { email, role, municipality_id }
+  # body: { email, role }
   def invite_member
-    muni_id = params[:municipality_id]
-    return render(json: { error: "municipality_id_required" }, status: :unprocessable_entity) if muni_id.blank? && !current_user.operator?
-    return head(:forbidden) unless can_manage_members?(muni_id)
+    return head(:forbidden) unless can_manage_members?
 
     result = InviteMember.call(
       email: params.require(:email),
       role:  params.require(:role),
-      municipality_id: muni_id,
       invited_by: current_user
     )
     if result.ok?
@@ -94,9 +76,9 @@ class SetupController < ApplicationController
 
   # POST /setup/memberships/:id/revoke
   def revoke_membership
-    membership = ApplicationRecord.connected_to(role: :admin) { Membership.find_by(id: params[:id]) }
+    membership = Membership.find_by(id: params[:id])
     return head(:not_found) unless membership
-    return head(:forbidden) unless can_manage_members?(membership.municipality_id)
+    return head(:forbidden) unless can_manage_members?
 
     result = RevokeMembership.call(membership_id: membership.id, by: current_user)
     if result.ok?
@@ -118,60 +100,25 @@ class SetupController < ApplicationController
     end
   end
 
-  # GET /setup/memberships?municipality_id=…
+  # GET /setup/memberships
   def list_memberships
-    muni_id = params[:municipality_id]
-    return head(:forbidden) unless can_manage_members?(muni_id)
+    return head(:forbidden) unless can_manage_members?
 
-    rows = ApplicationRecord.connected_to(role: :admin) do
-      scope = Membership.active.includes(:user)
-      scope = scope.where(municipality_id: muni_id) if muni_id.present?
-      scope.map do |m|
-        {
-          id: m.id,
-          user: { id: m.user.id, email_address: m.user.email_address },
-          municipality_id: m.municipality_id,
-          role: m.role,
-          granted_at: m.granted_at.iso8601
-        }
-      end
+    rows = Membership.active.includes(:user).map do |m|
+      {
+        id: m.id,
+        user: { id: m.user.id, email_address: m.user.email_address },
+        role: m.role,
+        granted_at: m.granted_at.iso8601
+      }
     end
     render json: { data: rows }
   end
 
   private
 
-  # URL para o frontend abrir AcceptInvitation. Em prod ficaria em
-  # routes.default_url_options + ENV PUBLIC_DASHBOARD_URL. Stub usa o
-  # caminho do dashboard padrão.
-  def setup_accept_url(token)
-    base = ENV["PUBLIC_DASHBOARD_URL"] || "http://localhost:5174/dashboard/"
-    "#{base}?invite=#{token}"
-  end
-
-  def can_manage_members?(municipality_id)
-    return true if current_user.operator?
-    return false if municipality_id.blank?
-    current_user.role_in?(municipality_id, role: "municipal_admin")
-  end
-
-  def provision_params
-    {
-      name:        params.require(:name),
-      slug:        params.require(:slug),
-      ibge_code:   params.require(:ibge_code),
-      uf:          params[:uf],
-      channel:     params.require(:channel).permit(:phone_number_id, :waba_id, :display_phone_number, :access_token).to_h.symbolize_keys,
-      admin_email: params.require(:admin_email),
-      terms:       params.require(:terms).permit(:version, :body).to_h.symbolize_keys,
-      alert:       Array(params[:alert]).map { |a|
-        # `a` chega como ActionController::Parameters quando o body é JSON nested.
-        # Usa diretamente .permit em vez de envelopar de novo (que quebra com
-        # 'undefined method with_indifferent_access' no constructor).
-        wrapped = a.respond_to?(:permit) ? a : ActionController::Parameters.new(a)
-        wrapped.permit(:channel, :destination, :escalation_order).to_h.symbolize_keys
-      },
-      template:    params[:template].present? ? params.require(:template).permit(:name, definition: {}).to_h.symbolize_keys : nil
-    }
+  # municipal_admin DESTA cidade (o banco é o da cidade do host).
+  def can_manage_members?
+    current_user.has_role?("municipal_admin")
   end
 end

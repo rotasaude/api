@@ -1,11 +1,9 @@
 require "rails_helper"
 
 RSpec.describe "Protocols::Publish gate (F-03.9)" do
-  let(:muni) { create(:municipality) }
-
   let(:publisher) do
     u = User.create!(email_address: "pub@example.org", password: "secret123")
-    Membership.create!(user: u, municipality: muni, role: "protocol_publisher", granted_at: Time.current)
+    Membership.create!(user: u, role: "protocol_publisher", granted_at: Time.current)
     u
   end
 
@@ -30,21 +28,16 @@ RSpec.describe "Protocols::Publish gate (F-03.9)" do
 
   def make_pd(definition)
     ProtocolDefinition.create!(
-      municipality_id: muni.id, name: "respiratoria", version: 1,
+      name: "respiratoria", version: 1,
       status: "in_review", definition: definition
     )
   end
 
-  around do |ex|
-    ApplicationRecord.transaction do
-      Current.municipality_id = muni.id
-      ApplicationRecord.connection.execute(
-        ApplicationRecord.sanitize_sql(["SET LOCAL app.municipality_id = ?", muni.id])
-      )
-      ex.run
-      raise ActiveRecord::Rollback
-    end
-  end
+  # Was an `around` opening a transaction with SET LOCAL app.municipality_id (RLS).
+  # Removed in 5c-1: raising before `ex.run` (e.g. `muni`) skipped rspec-rails'
+  # fixture teardown and leaked the pinned transaction into the rest of the suite.
+  # The example already runs inside TEST_CITY_A's connection and its fixture transaction.
+  before { Current.city = TEST_CITY_A }
 
   after { Current.reset; Rails.cache.clear }
 

@@ -1,14 +1,15 @@
 require "rails_helper"
 
 RSpec.describe PasswordMailer, type: :mailer do
-  let(:user) { User.create!(email_address: "mailer-#{SecureRandom.hex(3)}@x.com", password: "secret123") }
+  let(:reset_url) { "http://testcitya.rotasaude.app/dashboard/?reset=tok-123" }
 
-  it "addresses the user and includes a ?reset= link, not the raw password" do
-    mail = described_class.reset(user)
-    expect(mail.to).to eq([user.email_address])
+  # R42: the mailer takes plain values only — it never loads a record, so it can
+  # run on a worker with no city connection.
+  it "addresses the given e-mail and carries the given reset link" do
+    mail = described_class.reset(email_address: "mailer@x.com", reset_url: reset_url)
+    expect(mail.to).to eq(["mailer@x.com"])
     expect(mail.subject).to be_present
-    body = mail.body.encoded
-    expect(body).to include("?reset=")
-    expect(body).not_to include("secret123")
+    expect(mail.text_part.body.decoded).to include(reset_url)
+    expect(mail.html_part.body.decoded).to include(reset_url)
   end
 end

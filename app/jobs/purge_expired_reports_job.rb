@@ -1,6 +1,6 @@
 # Apaga ReportSnapshot expirado há mais de N dias. Ver ADR-0010.
 class PurgeExpiredReportsJob < ApplicationJob
-  prepend AdminRoleJob
+  prepend EachCityJob
   queue_as :housekeeping
 
   def perform(older_than_days: 30)

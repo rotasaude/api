@@ -1,10 +1,8 @@
 require "rails_helper"
 
 RSpec.describe ConversationAdvance do
-  let(:muni) { create(:municipality) }
-
   let(:conversation) do
-    Conversation.create!(municipality_id: muni.id, phone: "+5511988888888", state: :greeting)
+    Conversation.create!(phone: "+5511988888888", state: :greeting)
   end
 
   let(:inbound) do
@@ -12,8 +10,7 @@ RSpec.describe ConversationAdvance do
       message_id: "wamid.#{SecureRandom.hex(6)}",
       from: "+5511988888888",
       kind: "text",
-      raw: { "type" => "text", "text" => { "body" => raw_body } }.to_json,
-      municipality_id: muni.id
+      raw: { "type" => "text", "text" => { "body" => raw_body } }.to_json
     )
   end
 
@@ -48,16 +45,11 @@ RSpec.describe ConversationAdvance do
     }
   end
 
-  around do |ex|
-    ApplicationRecord.transaction do
-      Current.municipality_id = muni.id
-      ApplicationRecord.connection.execute(
-        ApplicationRecord.sanitize_sql(["SET LOCAL app.municipality_id = ?", muni.id])
-      )
-      ex.run
-      raise ActiveRecord::Rollback
-    end
-  end
+  # Was an `around` opening a transaction with SET LOCAL app.municipality_id (RLS).
+  # Removed in 5c-1: raising before `ex.run` (e.g. `muni`) skipped rspec-rails'
+  # fixture teardown and leaked the pinned transaction into the rest of the suite.
+  # The example already runs inside TEST_CITY_A's connection and its fixture transaction.
+  before { Current.city = TEST_CITY_A }
 
   after { Current.reset; Rails.cache.clear }
 
@@ -92,7 +84,6 @@ RSpec.describe ConversationAdvance do
 
       let!(:protocol_definition) do
         ProtocolDefinition.create!(
-          municipality_id: muni.id,
           name: ConversationAdvance::DEFAULT_PROTOCOL_NAME,
           version: 1,
           status: "active",
@@ -157,7 +148,6 @@ RSpec.describe ConversationAdvance do
   describe "estado :consented (fluxo com motor real)" do
     let!(:protocol_definition) do
       ProtocolDefinition.create!(
-        municipality_id: muni.id,
         name: ConversationAdvance::DEFAULT_PROTOCOL_NAME,
         version: 1,
         status: "active",
@@ -167,8 +157,8 @@ RSpec.describe ConversationAdvance do
 
     let!(:consent) do
       conversation.consents.create!(
-        version: Consents.current_version(muni.id),
-        policy_text_sha: Consents.policy_text_sha(Consents.current_version(muni.id)),
+        version: Consents.current_version,
+        policy_text_sha: Consents.policy_text_sha(Consents.current_version),
         given_at: 1.minute.ago,
         channel: "whatsapp",
         evidence: { text: "sim" }
@@ -202,8 +192,7 @@ RSpec.describe ConversationAdvance do
           message_id: "wamid.#{SecureRandom.hex(6)}",
           from: "+5511988888888",
           kind: "text",
-          raw: { "type" => "text", "text" => { "body" => "true" } }.to_json,
-          municipality_id: muni.id
+          raw: { "type" => "text", "text" => { "body" => "true" } }.to_json
         )
 
         result = described_class.call(conversation: conversation, inbound: next_inbound)
@@ -225,8 +214,7 @@ RSpec.describe ConversationAdvance do
           message_id: "wamid.#{SecureRandom.hex(6)}",
           from: "+5511988888888",
           kind: "text",
-          raw: { "type" => "text", "text" => { "body" => "cancelar" } }.to_json,
-          municipality_id: muni.id
+          raw: { "type" => "text", "text" => { "body" => "cancelar" } }.to_json
         )
 
         result = described_class.call(conversation: conversation, inbound: cancel_inbound)
@@ -260,15 +248,14 @@ RSpec.describe ConversationAdvance do
           message_id: "wamid.#{SecureRandom.hex(6)}",
           from: "+5511988888888",
           kind: "text",
-          raw: { "type" => "text", "text" => { "body" => "revogar" } }.to_json,
-          municipality_id: muni.id
+          raw: { "type" => "text", "text" => { "body" => "revogar" } }.to_json
         )
         result = described_class.call(conversation: conversation, inbound: revoke_inbound)
 
         expect(result.reply.body).to eq(I18n.t("conversation_advance.consent_revoked"))
         expect(conversation.reload.state).to eq("revoked")
         expect(conversation.triages.where(status: "aborted_by_revocation")).to be_present
-        expect(DomainEvent.where(name: "consent.revoked", municipality_id: muni.id)).to be_present
+        expect(DomainEvent.where(name: "consent.revoked")).to be_present
       end
 
       it "não trata 'revogar' como cancelamento" do
@@ -276,8 +263,7 @@ RSpec.describe ConversationAdvance do
         revoke_inbound = InboundMessage.create!(
           message_id: "wamid.#{SecureRandom.hex(6)}",
           from: "+5511988888888", kind: "text",
-          raw: { "type" => "text", "text" => { "body" => "revogar" } }.to_json,
-          municipality_id: muni.id
+          raw: { "type" => "text", "text" => { "body" => "revogar" } }.to_json
         )
         described_class.call(conversation: conversation, inbound: revoke_inbound)
         expect(conversation.reload.state).not_to eq("cancelled")

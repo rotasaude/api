@@ -1,4 +1,4 @@
-# Identidade global (ADR-0011). PII de staff sob base de operação do serviço;
+# Identidade de staff da cidade (ADR-0011), no banco da cidade. PII de staff sob base de operação do serviço;
 # desativação por end-dating (deactivated_at), nunca DELETE (ADR-0012).
 class User < ApplicationRecord
   has_secure_password
@@ -36,11 +36,17 @@ class User < ApplicationRecord
     end
   end
 
+  # Nenhum usuário de cidade é operador de plataforma: operadores são Operator,
+  # no banco de plataforma (spec banco-por-cidade §5), e memberships não aceita
+  # platform_operator (ck_memberships_role). Fica `false` para que os call sites
+  # que ainda ramificam por operador (SessionsController, SetupController)
+  # falhem fechados até o Plano 3 levar o fluxo de operador para a plataforma.
   def operator?
-    memberships.active.exists?(role: "platform_operator", municipality_id: nil)
+    false
   end
 
-  def role_in?(municipality_id, role:)
-    memberships.active.exists?(municipality_id: municipality_id, role: role)
+  # Papel ativo NESTA cidade — o banco é da cidade da conexão corrente.
+  def has_role?(role)
+    memberships.active.exists?(role: role.to_s)
   end
 end

@@ -3,8 +3,7 @@
 # Payload é APENAS referência (ADR 0004/0014). Allowlist explícita:
 # nada de campos livres do payload — só name/actor/ref/aggregate.
 #
-# Phase 1.4 adicionou domain_events.municipality_id + RLS (Phase 1.5):
-# sob SET LOCAL do request, RLS escopa automaticamente por município.
+# domain_events mora no banco da cidade do host: sem filtro, lê só aquela cidade.
 class Admin::EventsQuery
   RETENTION_MONTHS = 12
 
@@ -60,7 +59,7 @@ class Admin::EventsQuery
     }
   end
 
-  # ALLOWLIST: name + actor + ref + at + muni. NUNCA payload livre.
+  # ALLOWLIST: name + actor + ref + at. NUNCA payload livre.
   # ref derivada do primeiro key `*_id` no payload (Phase 2.1 dropou aggregate_*).
   def stream(scope)
     scope.map do |ev|
@@ -69,8 +68,7 @@ class Admin::EventsQuery
         at: ev.occurred_at.iso8601,
         name: ev.name,
         actor: ev.payload&.dig("actor") || "sistema",
-        ref: ref_key ? "#{ref_key}=#{ref_value}" : nil,
-        muni: ev.municipality_id
+        ref: ref_key ? "#{ref_key}=#{ref_value}" : nil
       }
     end
   end

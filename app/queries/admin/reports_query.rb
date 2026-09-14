@@ -1,17 +1,16 @@
 # GET /admin/api/reports — lista de relatórios (F-04.6). Metadados APENAS.
 # NUNCA expõe token/url/payload/signature (LGPD, como o painel de triages).
 class Admin::ReportsQuery
-  def self.call(municipality:, period:)
-    new(municipality, period).call
+  def self.call(period:)
+    new(period).call
   end
 
-  def initialize(municipality, period)
-    @muni = municipality
+  def initialize(period)
     @period = period
   end
 
   def call
-    rows = Admin::Scoped.report_snapshots(@muni)
+    rows = ReportSnapshot.all
              .where(created_at: @period.from..@period.to)
              .includes(:protocol_definition)
              .order(created_at: :desc)

@@ -10,12 +10,19 @@ module Authentication
   extend ActiveSupport::Concern
 
   included do
-    # prepend para correr ANTES do around_action :within_tenant herdado de
-    # ApplicationController (TenantScopedRequest). Sem isso, within_tenant
-    # tenta resolver current_municipality com Current.session ainda nil
-    # e levanta TenantMissing (500) em vez de devolver 401 — ou pior, falha
-    # também para requests autenticados, porque resume_session ainda não rodou.
-    prepend_before_action :require_authentication
+    # before_action simples (NÃO prepend): precisa rodar DENTRO do
+    # around_action :within_city herdado de ApplicationController
+    # (CityResolution), nunca antes dele. A sessão mora no banco da cidade —
+    # ler `sessions` fora da conexão da cidade (ex.: contra o shard bootstrap,
+    # que não tem tabela nenhuma) levanta StatementInvalid em vez de devolver
+    # 401. Um around_action envolve os before_actions definidos DEPOIS dele na
+    # cadeia de callbacks; como CityResolution é incluído em ApplicationController
+    # e cada controller que usa Authentication a inclui na sua própria classe
+    # (depois, portanto, de herdar within_city), a ordem `within_city` →
+    # `require_authentication` já vale com um before_action comum — prepend
+    # colocaria require_authentication ANTES do around_action inteiro,
+    # exatamente o defeito que esta nota documentava ao contrário.
+    before_action :require_authentication
   end
 
   class_methods do

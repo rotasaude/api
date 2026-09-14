@@ -46,11 +46,11 @@ module Consents
     REVOKE_INTENT_PATTERNS.any? { |re| text.match?(re) }
   end
 
-  def self.current_version(municipality_id)
-    raise ArgumentError, "municipality_id obrigatório" if municipality_id.nil?
+  # Versão vigente do termo na cidade da conexão corrente (o banco é da cidade).
+  def self.current_version
     # ConsentTerm vem no Phase 6; até lá, fallback ao schema atual (1).
     return Rails.application.credentials.dig(:policy, :version) || 1 unless defined?(ConsentTerm)
-    ConsentTerm.where(municipality_id: municipality_id).maximum(:version) || 1
+    ConsentTerm.maximum(:version) || 1
   end
 
   def self.policy_text_sha(version)

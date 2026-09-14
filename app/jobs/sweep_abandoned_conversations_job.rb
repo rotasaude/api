@@ -1,8 +1,8 @@
 # Varredura recorrente (ADR-0003): marca conversas ociosas não-terminais como
-# `abandoned` e aborta a triage in_progress (`aborted_by_timeout`). Cross-tenant
-# sob a conexão admin (BYPASSRLS) — ver AdminRoleJob. Silenciosa (sem outbound).
+# `abandoned` e aborta a triage in_progress (`aborted_by_timeout`). Roda por
+# cidade — ver EachCityJob. Silenciosa (sem outbound).
 class SweepAbandonedConversationsJob < ApplicationJob
-  prepend AdminRoleJob
+  prepend EachCityJob
   queue_as :housekeeping
 
   NON_TERMINAL = %w[greeting awaiting_consent consented].freeze

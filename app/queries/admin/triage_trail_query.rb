@@ -5,17 +5,16 @@
 class Admin::TriageTrailQuery
   TRAIL_EVENTS = %w[scored rule_matched priority_rule tier_assigned].freeze
 
-  def self.call(municipality:, triage_id:)
-    new(municipality, triage_id).call
+  def self.call(triage_id:)
+    new(triage_id).call
   end
 
-  def initialize(municipality, triage_id)
-    @muni = municipality
+  def initialize(triage_id)
     @triage_id = triage_id
   end
 
   def call
-    triage = Admin::Scoped.triages(@muni).find_by(id: @triage_id)
+    triage = Triage.all.find_by(id: @triage_id)
     return nil unless triage
 
     # Phase 2.1 dropou domain_events.aggregate_type/aggregate_id;

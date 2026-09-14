@@ -5,9 +5,6 @@
 #   POST   /session/challenge { session_id, code } → 200 + carimbas mfa_verified_at
 #   DELETE /session                                 → 204 + clear-cookie
 class SessionsController < ApplicationController
-  # TODO: reativar quando Phase 4 setar current_municipality
-  skip_tenant_scope
-
   include Authentication
 
   allow_unauthenticated_access only: %i[create challenge_totp govbr_callback]
@@ -48,6 +45,11 @@ class SessionsController < ApplicationController
   end
 
   # GET /auth/govbr/callback?code=…&state=…  (ADR-0011 gov.br seam)
+  #
+  # Provisório (Ruling R13): roda na cidade do host, como as demais ações — a
+  # identidade gov.br e a sessão são gravadas no banco dessa cidade. O callback
+  # único em auth.* resolvendo a cidade pelo `state`, com grant assinado, é do
+  # Esboço A / Plano 3.
   #
   # state opcional aqui — backend não armazena state em sessão (API JSON).
   # Frontend SPA é quem gera/verifica state via storage local + envia ao
@@ -95,16 +97,19 @@ class SessionsController < ApplicationController
     }
   end
 
+  # Memberships ativos na cidade do host. As chaves municipality_* seguem o
+  # contrato que dashboard e admin já leem (apps/*/src/lib/api.ts), mas os
+  # valores vêm da cidade resolvida — a chave de id carrega o slug. Renomear o
+  # contrato é dos frontends (Plano 3).
   def serialize_memberships(user)
-    ApplicationRecord.connected_to(role: :admin) do
-      user.memberships.active.where.not(municipality_id: nil).includes(:municipality).map do |m|
-        {
-          municipality_id: m.municipality_id,
-          municipality_name: m.municipality.name,
-          municipality_uf: m.municipality.uf,
-          role: m.role
-        }
-      end
+    city = Current.city
+    user.memberships.active.map do |m|
+      {
+        municipality_id: city.slug,
+        municipality_name: city.name,
+        municipality_uf: city.uf,
+        role: m.role
+      }
     end
   end
 end

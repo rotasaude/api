@@ -16,8 +16,6 @@ end
 module Messaging
 end
 
-require_relative "../lib/migration_helpers/rls"
-
 module RotaSaude
   class Application < Rails::Application
     config.load_defaults 8.0
@@ -33,9 +31,8 @@ module RotaSaude
                           same_site: :lax,
                           secure: Rails.env.production?
 
-    # ADR-0004: jobs disparados dentro de uma transação só são enfileirados
-    # após o COMMIT. Em ROLLBACK, o job nunca chega ao worker.
-    config.active_job.enqueue_after_transaction_commit = :always
+    # ADR-0004 (enqueue só após o COMMIT) é configurado em ApplicationJob:
+    # o activejob 8.1 descarta `config.active_job.enqueue_after_transaction_commit`.
 
     # ADR-0001: Solid Queue é o adapter padrão.
     config.active_job.queue_adapter = :solid_queue

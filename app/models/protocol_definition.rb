@@ -4,11 +4,10 @@
 # autoria (draft → in_review → published) e vigência (published → active),
 # com `retired` ao fim. `published` ≠ `active`.
 class ProtocolDefinition < ApplicationRecord
-  belongs_to :municipality, optional: true
   has_many   :triages, dependent: :restrict_with_error
 
   validates :name, :version, :definition, :status, presence: true
-  validates :version, uniqueness: { scope: [:name, :municipality_id] }
+  validates :version, uniqueness: { scope: :name }
   validates :status, inclusion: { in: %w[draft in_review published active retired] }
 
   scope :active, -> { where(status: "active") }

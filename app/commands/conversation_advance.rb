@@ -72,7 +72,7 @@ class ConversationAdvance
     when :give
       result = GiveConsent.call(
         conversation: @conversation,
-        version: Consents.current_version(@conversation.municipality_id),
+        version: Consents.current_version,
         evidence: { text: text, message_id: @inbound.message_id, channel: "whatsapp" }
       )
       return Result.new(reply: Messaging::Reply.text(t(:consent_failed))) if result.failure?
@@ -133,13 +133,12 @@ class ConversationAdvance
 
   def begin_triage_or_nil
     record = ProtocolDefinition.where(
-      municipality_id: @conversation.municipality_id,
       name: DEFAULT_PROTOCOL_NAME,
       status: "active"
     ).first
     return nil unless record
 
-    engine = Protocols.current(@conversation.municipality_id, name: DEFAULT_PROTOCOL_NAME)
+    engine = Protocols.current(name: DEFAULT_PROTOCOL_NAME)
     @conversation.triages.create!(
       protocol_definition: record,
       protocol_name: record.name,

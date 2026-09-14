@@ -1,12 +1,12 @@
-# Agregados pré-computados para painéis municipais. Ver ADR-0010.
-# Atualização incremental por UpdateDashboardJob; reconstrução total por script.
+# Agregados pré-computados para o painel da cidade. Ver ADR-0010.
+# Atualização incremental por UpdateDashboardJob; reconstrução total por
+# RebuildDashboardMetricsJob. O banco é da cidade: a chave é (dimension, period, key).
 class DashboardMetric < ApplicationRecord
   validates :dimension, :period, :key, presence: true
 
-  def self.bump!(municipality_id:, dimension:, period:, key:, by: 1)
+  def self.bump!(dimension:, period:, key:, by: 1)
     upsert(
       {
-        municipality_id: municipality_id,
         dimension: dimension,
         period: period,
         key: key,
@@ -14,7 +14,7 @@ class DashboardMetric < ApplicationRecord
         updated_at: Time.current
       },
       on_duplicate: Arel.sql("value = dashboard_metrics.value + EXCLUDED.value, updated_at = EXCLUDED.updated_at"),
-      unique_by: %i[municipality_id dimension period key]
+      unique_by: %i[dimension period key]
     )
   end
 end

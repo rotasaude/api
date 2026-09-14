@@ -13,8 +13,6 @@ class Triage < ApplicationRecord
     aborted_by_cancellation: "aborted_by_cancellation"
   }, prefix: true
 
-  before_validation :inherit_municipality_id, on: :create
-
   validates :protocol_name, presence: true
   # answers é jsonb e começa vazio ({}) ao iniciar a triage. presence: true
   # falha em hash vazio (Rails considera blank). Disallow só nil.
@@ -39,8 +37,7 @@ class Triage < ApplicationRecord
   def protocol
     Protocols.fetch(
       name: protocol_name,
-      version: protocol_definition.version,
-      municipality_id: conversation.municipality_id
+      version: protocol_definition.version
     )
   end
 
@@ -54,12 +51,6 @@ class Triage < ApplicationRecord
   end
 
   private
-
-  # Phase 1.4 adicionou municipality_id NOT NULL; deriva de conversation
-  # para callers que criam Triage sem passar muni explícito.
-  def inherit_municipality_id
-    self.municipality_id ||= conversation&.municipality_id
-  end
 
   def template(kind, **vars)
     {

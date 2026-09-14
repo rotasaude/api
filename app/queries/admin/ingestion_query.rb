@@ -1,7 +1,7 @@
 # GET /admin/api/ingestion — webhook WhatsApp (§4.1).
 #
 # Limitações honestas (ver RECONCILE.md):
-#  - inbound_messages NÃO tem coluna `municipality_id` → cross-tenant.
+#  - inbound_messages mora no banco da cidade do host: sem filtro, lê só aquela cidade.
 #  - inbound_messages NÃO tem `status`/`processed`/`raw_purged_at` →
 #    ack[] vem vazio (ou aproximado pelos outbound_messages.status);
 #    purge.pending é derivado pela IDADE da linha vs TTL configurado.
@@ -9,19 +9,18 @@
 class Admin::IngestionQuery
   TTL_HOURS = 24
 
-  def self.call(municipality:, period:)
-    new(municipality, period).call
+  def self.call(period:)
+    new(period).call
   end
 
-  def initialize(municipality, period)
-    @muni = municipality
+  def initialize(period)
     @period = period
   end
 
   def call
-    base = Admin::Scoped.inbound_messages(@muni).where(created_at: @period.from..@period.to)
+    base = InboundMessage.all.where(created_at: @period.from..@period.to)
     {
-      inboundSeries: @period.series(Admin::Scoped.inbound_messages(@muni), :created_at),
+      inboundSeries: @period.series(InboundMessage.all, :created_at),
       inboundTotal: base.count,
       ack: ack_breakdown,
       dedup: nil,
@@ -48,8 +47,8 @@ class Admin::IngestionQuery
   # esta lógica vira leitura da projeção.
   def purge_status
     cutoff = TTL_HOURS.hours.ago
-    over_ttl = Admin::Scoped.inbound_messages(@muni).where(created_at: ..cutoff)
-    oldest = Admin::Scoped.inbound_messages(@muni).minimum(:created_at)
+    over_ttl = InboundMessage.all.where(created_at: ..cutoff)
+    oldest = InboundMessage.all.minimum(:created_at)
     oldest_h = oldest ? ((Time.current - oldest) / 1.hour).round : 0
     {
       pending: over_ttl.count,

@@ -1,16 +1,8 @@
 require "rails_helper"
 
 RSpec.describe SessionsController, "gov.br callback (ADR-0011 seam)", type: :request do
-  before do
-    allow(Platform).to receive(:audit)
-  end
-
   context "auth bem-sucedida (User normal, não operador)" do
-    let!(:user) do
-      ApplicationRecord.connected_to(role: :admin) do
-        User.create!(email_address: "fulano@gov.br", password: SecureRandom.base58(16))
-      end
-    end
+    let!(:user) { User.create!(email_address: "fulano@gov.br", password: SecureRandom.base58(16)) }
 
     before do
       allow(Authenticator).to receive(:govbr).with(code: "valid").and_return(user)
@@ -46,18 +38,19 @@ RSpec.describe SessionsController, "gov.br callback (ADR-0011 seam)", type: :req
     end
   end
 
-  context "operador sem MFA enrolled" do
-    let!(:user) do
-      ApplicationRecord.connected_to(role: :admin) do
-        u = User.create!(email_address: "op@gov.br", password: SecureRandom.base58(16))
-        Membership.create!(user: u, role: "platform_operator", granted_at: Time.current)
-        u
-      end
-    end
+  # No city user can be a platform operator any more (ck_memberships_role has
+  # no such role; User#operator? is hardcoded to false — D3, Plan 3 moves the
+  # operator grant to the platform). The controller branch on `user.operator?`
+  # still exists and still needs to fail closed if it were ever true, so these
+  # two scenarios stub `operator?` directly on a real user rather than
+  # constructing an invalid Membership — the behaviour under test (what the
+  # endpoint does when `operator?` is true) survives unweakened.
+  context "operador (operator? stubado) sem MFA enrolled" do
+    let!(:user) { User.create!(email_address: "op@gov.br", password: SecureRandom.base58(16)) }
 
     before do
       allow(Authenticator).to receive(:govbr).and_return(user)
-      allow_any_instance_of(User).to receive(:mfa_enrolled?).and_return(false)
+      allow(user).to receive_messages(operator?: true, mfa_enrolled?: false)
     end
 
     it "retorna 403 mfa_enrollment_required" do
@@ -67,18 +60,12 @@ RSpec.describe SessionsController, "gov.br callback (ADR-0011 seam)", type: :req
     end
   end
 
-  context "operador com MFA enrolled — devolve mfa_required" do
-    let!(:user) do
-      ApplicationRecord.connected_to(role: :admin) do
-        u = User.create!(email_address: "op2@gov.br", password: SecureRandom.base58(16))
-        Membership.create!(user: u, role: "platform_operator", granted_at: Time.current)
-        u
-      end
-    end
+  context "operador (operator? stubado) com MFA enrolled — devolve mfa_required" do
+    let!(:user) { User.create!(email_address: "op2@gov.br", password: SecureRandom.base58(16)) }
 
     before do
       allow(Authenticator).to receive(:govbr).and_return(user)
-      allow_any_instance_of(User).to receive(:mfa_enrolled?).and_return(true)
+      allow(user).to receive_messages(operator?: true, mfa_enrolled?: true)
     end
 
     it "retorna 200 com mfa_required + session_id" do

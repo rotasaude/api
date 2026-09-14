@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "Passwords (F-06.2)", type: :request do
+  include ActiveJob::TestHelper
+
   def make_user(active: true, password: "old-password-1")
     u = User.create!(email_address: "u-#{SecureRandom.hex(3)}@x.com", password: password)
     u.update!(deactivated_at: Time.current) unless active
@@ -14,6 +16,54 @@ RSpec.describe "Passwords (F-06.2)", type: :request do
         post "/passwords", params: { email_address: user.email_address }
       }.to have_enqueued_mail(PasswordMailer, :reset)
       expect(response).to have_http_status(:no_content)
+    end
+
+    # R42: ActionMailer::MailDeliveryJob is not a CityScopedJob — a worker runs
+    # it with no city connection (CityRecord's :bootstrap shard, no tables), so
+    # a GlobalID of a User cannot be deserialized there. The controller must
+    # hand the mailer plain values built inside the city request.
+    # R46: the link points at the dashboard frontend (PUBLIC_DASHBOARD_URL, a
+    # separate Vite/static app), not at the API host of the request.
+    def reset_link_delivered_from_bootstrap(user)
+      post "/passwords", params: { email_address: user.email_address }
+      expect(response).to have_http_status(:no_content)
+
+      Current.reset
+      expect {
+        CityRecord.connected_to(shard: :bootstrap) { perform_enqueued_jobs }
+      }.to change { ActionMailer::Base.deliveries.size }.by(1)
+
+      mail = ActionMailer::Base.deliveries.last
+      expect(mail.to).to eq([user.email_address])
+      mail.text_part.body.decoded[%r{https?://[^\s"<]+}]
+    end
+
+    def token_from(link)
+      Rack::Utils.parse_query(URI.parse(link).query)["reset"]
+    end
+
+    it "delivers the enqueued mail from a worker with no city connection, linking to PUBLIC_DASHBOARD_URL" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("PUBLIC_DASHBOARD_URL").and_return("https://painel.example/dashboard/")
+      user = make_user
+
+      link = reset_link_delivered_from_bootstrap(user)
+
+      expect(link).to start_with("https://painel.example/dashboard/?reset=")
+      token = token_from(link)
+      expect(token).to be_present
+      expect(CityConnection.with(TEST_CITY_A) { User.find_by_token_for(:password_reset, token) }).to eq(user)
+    end
+
+    it "falls back to the local dashboard (localhost:5175/dashboard/) when PUBLIC_DASHBOARD_URL is unset" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("PUBLIC_DASHBOARD_URL").and_return(nil)
+      user = make_user
+
+      link = reset_link_delivered_from_bootstrap(user)
+
+      expect(link).to start_with("http://localhost:5175/dashboard/?reset=")
+      expect(CityConnection.with(TEST_CITY_A) { User.find_by_token_for(:password_reset, token_from(link)) }).to eq(user)
     end
 
     it "does not enumerate: unknown email returns 204 with no mail" do

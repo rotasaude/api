@@ -1,16 +1,14 @@
 # GET /r/:token — endpoint público do relatório congelado. Ver ADR-0010.
 # Verifica HMAC antes de qualquer query indexada — barra varredura.
 #
-# Endpoint INHERENTEMENTE cross-tenant: o token assinado é a credencial e
-# vale para qualquer município. Sem usuário autenticado, não há
-# membership/tenant a resolver. Lookup via BYPASSRLS (rota_admin).
+# Sem usuário autenticado: o token assinado é a credencial. O snapshot mora no
+# banco da cidade do host (CityResolution), então um token só vale no host da
+# própria cidade — o de outra cidade não existe ali. O link enviado ao cidadão
+# ainda sai de WPDA_PUBLIC_BASE (ReportSnapshot#url); derivá-lo do slug é da
+# spec §5 (frontends), fora deste lote.
 class ReportsController < ApplicationController
-  skip_tenant_scope
-
   def show
-    snapshot = ApplicationRecord.connected_to(role: :admin) do
-      ReportSnapshot.find_by_signed_token(params[:token])
-    end
+    snapshot = ReportSnapshot.find_by_signed_token(params[:token])
     return head :not_found unless snapshot
 
     render json: {

@@ -1,9 +1,9 @@
 # Resolve a cidade pelo host ANTES de qualquer query, e executa a ação dentro
 # da conexão daquela cidade.
 #
-# A ordem importa e é o inverso da que TenantScopedRequest usava: primeiro
-# resolve a cidade, depois autentica. É isso que torna um cookie de uma cidade
-# inútil na vizinha — a sessão é procurada no banco da cidade do host.
+# A ordem importa: primeiro resolve a cidade, depois autentica. É isso que
+# torna um cookie de uma cidade inútil na vizinha — a sessão é procurada no
+# banco da cidade do host.
 module CityResolution
   extend ActiveSupport::Concern
 

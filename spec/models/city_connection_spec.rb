@@ -4,7 +4,9 @@ RSpec.describe CityConnection do
   # Cada exemplo usa sua própria cidade, com slug único: o connection handler
   # é global ao processo e pools registrados por um exemplo sobrevivem
   # (não são desfeitos pela transação), então dois exemplos não podem
-  # compartilhar shard sob config.order = :random (spec_helper.rb).
+  # compartilhar shard — um exemplo que reusasse o shard de outro encontraria
+  # o pool já registrado por ele, invalidando asserções como "ainda não
+  # registrado" independentemente da ordem em que os exemplos rodam.
   def db_host
     ENV.fetch("DATABASE_HOST", "127.0.0.1")
   end

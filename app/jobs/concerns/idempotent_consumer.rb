@@ -1,18 +1,17 @@
-# Exactly-once per consumer + tenant scoping (ADR-0005).
+# Exactly-once per consumer, scoped to a city (ADR-0005).
 # Subclasses implementam #handle(**kwargs). Efeitos HTTP NÃO entram aqui
 # (ver ADR-0005); fora-de-banda fica para job dedicado.
 module IdempotentConsumer
   extend ActiveSupport::Concern
-  include TenantScopedJob
+  include CityScopedJob
 
   class AlreadyProcessed < StandardError; end
 
-  def perform(event_id:, event_name:, municipality_id:, payload:)
-    with_tenant(municipality_id) do
+  def perform(event_id:, event_name:, city_slug:, payload:)
+    with_city(city_slug) do
       ProcessedEvent.create!(
         event_id: event_id,
         consumer: self.class.name,
-        municipality_id: municipality_id,
         processed_at: Time.current
       )
       handle(**payload.symbolize_keys)

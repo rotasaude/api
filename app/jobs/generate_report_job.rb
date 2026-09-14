@@ -12,7 +12,6 @@ class GenerateReportJob < ApplicationJob
     token = ReportSnapshot.mint_token
     ReportSnapshot.create!(
       triage: triage,
-      municipality_id: triage.municipality_id,
       protocol_definition: triage.protocol_definition,
       outcome: outcome,
       payload: build_payload(triage),

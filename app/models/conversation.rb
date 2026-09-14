@@ -1,6 +1,6 @@
-# Conversa por (municipality_id, phone). Ver ADR-0008 e ADR-0007.
+# Conversa por telefone, no banco da cidade. Ver ADR-0008 e ADR-0007.
+# A cidade é a conexão (CityConnection), não uma coluna.
 class Conversation < ApplicationRecord
-  belongs_to :municipality
   has_many :triages, dependent: :restrict_with_error
   has_many :consents, dependent: :restrict_with_error
 
@@ -17,22 +17,21 @@ class Conversation < ApplicationRecord
     cancelled:        "cancelled"
   }, prefix: true
 
-  def self.for(phone, municipality_id:)
-    raise ArgumentError, "municipality_id obrigatório" if municipality_id.nil?
-    where(municipality_id: municipality_id, phone: phone, state: %w[greeting awaiting_consent consented]).first ||
-      create!(municipality_id: municipality_id, phone: phone, state: :greeting)
+  def self.for(phone)
+    where(phone: phone, state: %w[greeting awaiting_consent consented]).first ||
+      create!(phone: phone, state: :greeting)
   rescue ActiveRecord::RecordNotUnique
-    where(municipality_id: municipality_id, phone: phone, state: %w[greeting awaiting_consent consented]).first!
+    where(phone: phone, state: %w[greeting awaiting_consent consented]).first!
   end
 
   # Mantém o método antigo como atalho deprecado durante a migração.
   def self.for_phone(phone)
-    raise "Use Conversation.for(phone, municipality_id:) (ADR-0007)"
+    raise "Use Conversation.for(phone) (ADR-0007)"
   end
 
   def consented?
     return false unless state_consented?
-    active_consent&.version == Consents.current_version(municipality_id)
+    active_consent&.version == Consents.current_version
   end
 
   def active_consent

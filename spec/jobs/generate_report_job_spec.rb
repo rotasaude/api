@@ -1,8 +1,6 @@
 require "rails_helper"
 
 RSpec.describe GenerateReportJob do
-  let(:muni) { create(:municipality) }
-
   def definition_hash(with_recs:)
     base = {
       "name" => "triagem-rec",
@@ -25,27 +23,22 @@ RSpec.describe GenerateReportJob do
   def build_triage(tier:, with_recs:)
     pd = ProtocolDefinition.create!(
       name: "triagem-rec", version: 1, status: "active",
-      definition: definition_hash(with_recs: with_recs), municipality_id: muni.id
+      definition: definition_hash(with_recs: with_recs)
     )
-    convo = Conversation.create!(municipality_id: muni.id, phone: "+5511999990000", state: "greeting")
+    convo = Conversation.create!(phone: "+5511999990000", state: "greeting")
     Triage.create!(
       conversation: convo, protocol_definition: pd, protocol_name: "triagem-rec",
-      municipality_id: muni.id, status: "completed", tier: tier, priority: 1,
+      status: "completed", tier: tier, priority: 1,
       completed_at: Time.current,
       outcome: { "trail" => [{ "step" => "tosse", "answer" => "true" }] }
     )
   end
 
-  around do |ex|
-    ApplicationRecord.transaction do
-      Current.municipality_id = muni.id
-      ApplicationRecord.connection.execute(
-        ApplicationRecord.sanitize_sql(["SET LOCAL app.municipality_id = ?", muni.id])
-      )
-      ex.run
-      raise ActiveRecord::Rollback
-    end
-  end
+  # Was an `around` opening a transaction with SET LOCAL app.municipality_id (RLS).
+  # Removed in 5c-1: raising before `ex.run` (e.g. `muni`) skipped rspec-rails'
+  # fixture teardown and leaked the pinned transaction into the rest of the suite.
+  # The example already runs inside TEST_CITY_A's connection and its fixture transaction.
+  before { Current.city = TEST_CITY_A }
 
   after { Current.reset }
 

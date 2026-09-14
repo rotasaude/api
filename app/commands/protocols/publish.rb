@@ -2,11 +2,11 @@
 # Ver ADR-0009 (lifecycle de dois eixos: publish ≠ activate).
 #
 # Pré-requisitos:
-# - Current.municipality_id setado (within_tenant do request — ADR-0003).
+# - Conexão da cidade aberta e Current.city setado (CityResolution do request).
 # - Step-up MFA conferido pelo controller (ADR-0011).
 #
 # Comportamento:
-# - Encontra ProtocolDefinition por (current_municipality, version).
+# - Encontra ProtocolDefinition por version, no banco da cidade.
 # - Autoriza via ProtocolPolicy (protocol_publisher).
 # - Move a versão alvo para `published` (NÃO `active` — vigência é ato à parte,
 #   ver Protocols::Activate). `published` ≠ `active`.
@@ -18,12 +18,9 @@ module Protocols
     PUBLISHABLE_FROM = %w[draft in_review].freeze
 
     def self.call(version:, by:)
-      return Result.fail(:tenant_missing) if Current.municipality_id.nil?
+      return Result.fail(:city_missing) if Current.city.nil?
 
-      candidates = ProtocolDefinition.where(
-        municipality_id: Current.municipality_id,
-        version: version
-      )
+      candidates = ProtocolDefinition.where(version: version)
       return Result.fail(:not_found) if candidates.empty?
       return Result.fail(:ambiguous, message: "multiple protocols match version #{version}") if candidates.count > 1
 

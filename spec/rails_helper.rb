@@ -15,6 +15,8 @@ require 'rspec/rails'
 require 'factory_bot_rails'
 require_relative "support/city_probe_controller"
 require_relative "support/city_database_urls"
+require_relative "support/city_test_databases"
+require_relative "support/city_request_auth"
 # Add additional requires below this line. Rails is not loaded until this point!
 
 # Requires supporting ruby files with custom matchers and macros, etc, in
@@ -38,6 +40,17 @@ require_relative "support/city_database_urls"
 # gerenciadas manualmente via rota_admin. Suprimimos o check aqui.
 RSpec.configure do |config|
   config.include FactoryBot::Syntax::Methods
+
+  # rspec-rails só limpa CurrentAttributes em example groups tipados
+  # (RailsExampleGroup). Specs sem `type:` herdariam Current.city do
+  # exemplo anterior, mascarando dependência de ordem. `around` (e não `before`)
+  # porque config arounds envolvem os `around` dos arquivos, que setam Current.
+  config.around(:each) do |example|
+    ActiveSupport::CurrentAttributes.clear_all
+    example.run
+  ensure
+    ActiveSupport::CurrentAttributes.clear_all
+  end
 
   # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
   config.fixture_paths = [

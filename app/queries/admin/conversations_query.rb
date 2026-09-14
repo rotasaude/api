@@ -5,17 +5,16 @@
 # O funil do brief é remapeado para esses estados; "exits" sai vazio até
 # existir um sinal real (revoked é o único proxy).
 class Admin::ConversationsQuery
-  def self.call(municipality:, period:)
-    new(municipality, period).call
+  def self.call(period:)
+    new(period).call
   end
 
-  def initialize(municipality, period)
-    @muni = municipality
+  def initialize(period)
     @period = period
   end
 
   def call
-    base = Admin::Scoped.conversations(@muni)
+    base = Conversation.all
     in_period = base.where(created_at: @period.from..@period.to)
 
     state_counts = in_period.group(:state).count
@@ -41,7 +40,7 @@ class Admin::ConversationsQuery
   private
 
   def avg_complete_minutes
-    completed = Admin::Scoped.triages(@muni)
+    completed = Triage.all
                   .where(status: "completed", completed_at: @period.from..@period.to)
     return nil if completed.count.zero?
     seconds = completed

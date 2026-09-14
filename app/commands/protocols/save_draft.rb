@@ -6,12 +6,11 @@ module Protocols
     EDITABLE = "draft".freeze
 
     def self.call(definition:, by:)
-      return Result.fail(:tenant_missing) if Current.municipality_id.nil?
+      return Result.fail(:city_missing) if Current.city.nil?
 
       record = ProtocolDefinition.find_or_initialize_by(
         name: definition["name"],
-        version: definition["version"],
-        municipality_id: Current.municipality_id
+        version: definition["version"]
       )
       return Result.fail(:forbidden) unless ProtocolPolicy.new(by, record).author?
 
