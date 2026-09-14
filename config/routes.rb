@@ -13,11 +13,16 @@ Rails.application.routes.draw do
     scope module: :operators, as: :operator do
       resource :session, only: %i[create show destroy]
       post "/session/challenge", to: "sessions#challenge_totp"
+      resources :city_grants, only: :create
     end
   end
 
   # Sessão de usuário da cidade (ADR-0011). Operador: bloco do console, acima.
   resource :session, only: %i[create show destroy]
+
+  # Entrada na cidade por grant assinado (Plano 3B): operador vindo do console ou
+  # usuário vindo do callback do gov.br.
+  post "/session/grant", to: "sessions#grant"
 
   # Reset de senha (F-06.2, ADR-0011). JSON-only, sem autenticação.
   resources :passwords, only: %i[create update], param: :token

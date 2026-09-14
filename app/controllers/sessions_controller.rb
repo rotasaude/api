@@ -8,15 +8,16 @@
 #   POST   /session   { email_address, password }  → 201 + set-cookie
 #   GET    /session                                 → 200 | 401
 #   DELETE /session                                 → 204 + clear-cookie
+#   POST   /session/grant   { token }                    → 201 (entrada por grant assinado, Plano 3B)
 class SessionsController < ApplicationController
   include Authentication
 
-  allow_unauthenticated_access only: %i[create govbr_callback]
+  allow_unauthenticated_access only: %i[create govbr_callback grant]
 
   # Operador dentro da cidade (grant, Plano 3B) vê e encerra a própria sessão; nada mais.
   allow_operator_grant_access only: %i[show destroy]
 
-  rate_limit to: 10, within: 3.minutes, only: %i[create govbr_callback],
+  rate_limit to: 10, within: 3.minutes, only: %i[create govbr_callback grant],
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
   def create
@@ -25,6 +26,15 @@ class SessionsController < ApplicationController
 
     start_new_session_for(user)
     render json: serialize(user), status: :created
+  end
+
+  # POST /session/grant { token } — entrada por grant assinado (spec §5, Plano 3B).
+  # O grant de uma cidade não vale em outra, vale uma vez e por 60 s (CityGrants).
+  def grant
+    grant = CityGrants.redeem(token: params[:token], city: Current.city)
+    return render_invalid_grant unless grant
+
+    grant.kind == "operator" ? open_operator_grant_session(grant) : open_user_grant_session(grant)
   end
 
   # GET /auth/govbr/callback?code=…&state=…  (ADR-0011 gov.br seam)
@@ -61,6 +71,36 @@ class SessionsController < ApplicationController
   end
 
   private
+
+  def render_invalid_grant
+    render json: { error: "invalid_grant" }, status: :unauthorized
+  end
+
+  # Auditoria primeiro na PLATAFORMA, depois Session + evento na CIDADE (transação
+  # da cidade). Sem transação comum aos dois bancos, a falha que sobra é o registro
+  # de uma tentativa sem sessão — nunca uma sessão sem auditoria.
+  def open_operator_grant_session(grant)
+    operator = Operator.find_by(id: grant.subject_id)
+    return render_invalid_grant unless operator&.active?
+
+    Platform.audit("operator.city_access", city_id: Current.city.id, operator_id: operator.id)
+    session = ApplicationRecord.transaction do
+      Session.create!(operator_id: operator.id, user_agent: request.user_agent, ip_address: request.remote_ip).tap do |s|
+        DomainEvents.publish("operator.city_access", operator_id: operator.id, session_id: s.id)
+      end
+    end
+    Current.session = session
+    write_session_cookie(session)
+    render json: serialize_operator_grant(session), status: :created
+  end
+
+  def open_user_grant_session(grant)
+    user = User.find_by(id: grant.subject_id)
+    return render_invalid_grant unless user&.active?
+
+    start_new_session_for(user)
+    render json: serialize(user), status: :created
+  end
 
   # Sessão de operador aberta por grant (Plano 3B): mesmo formato do SessionUser;
   # operador não tem membership na cidade.

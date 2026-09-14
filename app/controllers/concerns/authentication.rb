@@ -83,13 +83,20 @@ module Authentication
       ip_address: request.remote_ip
     ).tap do |session|
       Current.session = session
-      cookies.signed.permanent[:session_id] = {
-        value: session.id,
-        httponly: true,
-        same_site: :lax,
-        secure: Rails.env.production?
-      }
+      write_session_cookie(session)
     end
+  end
+
+  # Host-only: NUNCA `domain:` (spec §5). Sessão de operador (grant) é de sessão
+  # do navegador; a de usuário é permanent, como sempre foi.
+  def write_session_cookie(session)
+    jar = session.operator_grant? ? cookies.signed : cookies.signed.permanent
+    jar[:session_id] = {
+      value: session.id,
+      httponly: true,
+      same_site: :lax,
+      secure: Rails.env.production?
+    }
   end
 
   def terminate_session
