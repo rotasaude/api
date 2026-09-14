@@ -5,10 +5,10 @@
 #   1. Adicionar credentials.govbr.{client_id, client_secret, issuer_url, redirect_uri}.
 #      Default issuer_url para teste: https://sso.staging.acesso.gov.br
 #      Produção: https://sso.acesso.gov.br
-#   2. Garantir callback /auth/govbr/callback é a redirect_uri registrada no gov.br.
-#   3. Frontend deve enviar `state` + `nonce` (PKCE opcional) ao iniciar; backend
-#      valida. Esta camada SÓ trata o exchange + verify do id_token; CSRF do
-#      callback é responsabilidade do controller.
+#   2. A redirect_uri registrada no gov.br é o callback ÚNICO em auth.*
+#      (GET /auth/govbr/callback, Govbr::CallbacksController — Plano 3B).
+#   3. O login começa no host da cidade (POST /auth/govbr/start): o `state` é
+#      assinado com a cidade e um nonce; o callback exige o mesmo nonce no id_token.
 #   4. Mapping de assurance (bronze/prata/ouro) → role mínima nas policies.
 #      Constants disponíveis em ASSURANCE_MIN_ROLE.
 require "net/http"
@@ -22,6 +22,9 @@ module Authenticator
 
     TOKEN_ENDPOINT_PATH = "/authorize/token".freeze
     JWKS_ENDPOINT_PATH  = "/jwk".freeze
+    AUTHORIZE_ENDPOINT_PATH = "/authorize".freeze
+    STATE_PURPOSE = :govbr_state
+    STATE_TTL = 10.minutes
 
     # ADR-0011: assurance → role mínima permitida (a maior).
     ASSURANCE_MIN_ROLE = {
@@ -32,19 +35,41 @@ module Authenticator
 
     ROLE_RANK = %w[viewer protocol_author municipal_admin protocol_publisher platform_operator].freeze
 
-    def self.authenticate(code:)
-      raise IntegrationError, "code vazio" if code.blank?
+    # URL de autorização do gov.br para a cidade `city`. O state (assinado, 10 min)
+    # carrega a cidade e o nonce; o mesmo nonce vai para o gov.br e volta no id_token.
+    def self.start(city:)
+      nonce = SecureRandom.hex(16)
+      state = state_verifier.generate({ "city" => city.slug, "nonce" => nonce },
+                                      purpose: STATE_PURPOSE, expires_in: STATE_TTL)
+      uri = URI.join(issuer_url, AUTHORIZE_ENDPOINT_PATH)
+      uri.query = {
+        response_type: "code", client_id: client_id, scope: "openid email profile",
+        redirect_uri: redirect_uri, state: state, nonce: nonce
+      }.to_query
+      uri.to_s
+    end
 
-      claims = exchange_code_for_claims(code)
-      uid    = claims.fetch("sub")
-      email  = claims["email"]
-      name   = claims["name"]
+    def self.verify_state(state)
+      return nil unless state.is_a?(String) && state.present?
+
+      payload = state_verifier.verified(state, purpose: STATE_PURPOSE)
+      return nil unless payload.is_a?(Hash) && payload["city"].is_a?(String) && payload["nonce"].is_a?(String)
+
+      payload
+    end
+
+    # Roda NA conexão da cidade corrente (Govbr::CallbacksController abre
+    # CityConnection.with e Current.set(city:)). Devolve nil para usuário desativado.
+    def self.provision_from_claims(claims)
+      uid = claims["sub"]
+      raise IntegrationError, "id_token sem sub" unless uid.is_a?(String) && uid.present?
+
       assurance = claims["amr"]&.first || claims["nivel_confianca"]
 
-      user = find_or_provision_user(uid: uid, email: email, name: name)
+      user = find_or_provision_user(uid: uid, claims: claims)
       return nil unless user&.active?
 
-      annotate_identity_assurance(user, uid, assurance) if assurance.present?
+      annotate_identity_assurance(user, uid, assurance)
       user
     end
 
@@ -62,6 +87,8 @@ module Authenticator
     # — Internals —————————————————————————————————————————
 
     def self.exchange_code_for_claims(code)
+      raise IntegrationError, "code vazio" if code.blank?
+
       token_response = fetch_token(code)
       id_token       = token_response.fetch("id_token") { raise IntegrationError, "no id_token" }
       decode_id_token(id_token)
@@ -77,9 +104,10 @@ module Authenticator
         redirect_uri: redirect_uri
       )
       res = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") { |h| h.request(req) }
-      raise IntegrationError, "token endpoint http=#{res.code} body=#{res.body[0..200]}" unless res.code.to_i == 200
+      raise IntegrationError, "token endpoint http=#{res.code}" unless res.code.to_i == 200
       JSON.parse(res.body)
-    rescue JSON::ParserError, SocketError, Net::ReadTimeout, Net::OpenTimeout => e
+    rescue JSON::ParserError, SocketError, Net::ReadTimeout, Net::OpenTimeout,
+           SystemCallError, IOError, OpenSSL::SSL::SSLError, Timeout::Error => e
       raise IntegrationError, "fetch_token: #{e.class}: #{e.message}"
     end
 
@@ -102,20 +130,27 @@ module Authenticator
       res = Net::HTTP.get_response(uri)
       raise IntegrationError, "jwks endpoint http=#{res.code}" unless res.code.to_i == 200
       JSON.parse(res.body).deep_symbolize_keys
-    rescue JSON::ParserError => e
+    rescue JSON::ParserError, SystemCallError, IOError, OpenSSL::SSL::SSLError, Timeout::Error => e
       raise IntegrationError, "fetch_jwks: #{e.message}"
     end
 
-    # Roda na conexão da cidade do host: SessionsController#govbr_callback resolve
-    # a cidade como qualquer outra ação (Ruling R13). Provisório — o callback
-    # único em auth.* com grant assinado é do Plano 3B.
-    def self.find_or_provision_user(uid:, email:, name: nil)
+    # Roda na conexão da cidade corrente (ver provision_from_claims). Só liga a
+    # uma conta existente por email quando o gov.br confirma email_verified —
+    # caso contrário quem apenas alega um email não deveria assumir a conta de
+    # outra pessoa. Se o email não verificado bate com um usuário existente,
+    # devolve nil (sem criar: o email único levantaria) em vez de linkar.
+    def self.find_or_provision_user(uid:, claims:)
       identity = Identity.find_by(provider: "govbr", provider_uid: uid)
       return identity.user if identity
 
-      user = email.present? ? User.find_by(email_address: email.downcase) : nil
-      user ||= User.create!(
-        email_address: email&.downcase || "govbr-#{uid}@placeholder.invalid",
+      email    = claims["email"]
+      verified = claims["email_verified"] == true && email.is_a?(String) && email.present?
+
+      existing = email.is_a?(String) && email.present? ? User.find_by(email_address: email.downcase) : nil
+      return nil if existing && !verified
+
+      user = existing || User.create!(
+        email_address: verified ? email.downcase : "govbr-#{uid}@placeholder.invalid",
         password: SecureRandom.base58(32)
       )
       Identity.create!(user: user, provider: "govbr", provider_uid: uid)
@@ -126,7 +161,7 @@ module Authenticator
     # ser o CPF e não pode ir para o banco de plataforma. Mesmo na cidade, levá-lo
     # no payload é dívida de minimização registrada na R18, não resolvida aqui.
     def self.annotate_identity_assurance(user, uid, assurance)
-      Rails.logger.info("[govbr] user=#{user.id} uid=#{uid} assurance=#{assurance}")
+      Rails.logger.info("[govbr] user=#{user.id} assurance=#{assurance}")
       ApplicationRecord.transaction do
         DomainEvents.publish("identity.govbr_login", user_id: user.id, provider_uid: uid, assurance: assurance)
       end
@@ -134,24 +169,28 @@ module Authenticator
 
     # — Configuration —————————————————————————————————————
 
+    def self.state_verifier
+      Rails.application.message_verifier(STATE_PURPOSE)
+    end
+
     def self.config
       Rails.application.credentials.dig(:govbr) || {}
     end
 
     def self.issuer_url
-      config[:issuer_url] || ENV["GOVBR_ISSUER_URL"] || "https://sso.staging.acesso.gov.br"
+      config[:issuer_url].presence || ENV["GOVBR_ISSUER_URL"].presence || "https://sso.staging.acesso.gov.br"
     end
 
     def self.client_id
-      config[:client_id] || ENV["GOVBR_CLIENT_ID"] || raise(IntegrationError, "missing GOVBR_CLIENT_ID")
+      config[:client_id].presence || ENV["GOVBR_CLIENT_ID"].presence || raise(IntegrationError, "missing GOVBR_CLIENT_ID")
     end
 
     def self.client_secret
-      config[:client_secret] || ENV["GOVBR_CLIENT_SECRET"] || raise(IntegrationError, "missing GOVBR_CLIENT_SECRET")
+      config[:client_secret].presence || ENV["GOVBR_CLIENT_SECRET"].presence || raise(IntegrationError, "missing GOVBR_CLIENT_SECRET")
     end
 
     def self.redirect_uri
-      config[:redirect_uri] || ENV["GOVBR_REDIRECT_URI"] || raise(IntegrationError, "missing GOVBR_REDIRECT_URI")
+      config[:redirect_uri].presence || ENV["GOVBR_REDIRECT_URI"].presence || raise(IntegrationError, "missing GOVBR_REDIRECT_URI")
     end
   end
 end

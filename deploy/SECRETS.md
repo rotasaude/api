@@ -13,11 +13,13 @@ Chaves protegidas em `deploy/<env>/secrets`, nunca em git. Injetadas no boot pel
 - `DATABASE_URL` — banco compartilhado (fila e cache).
 - `PLATFORM_DATABASE_URL` — banco de plataforma (catálogo de cidades, operadores, `platform_events`).
 - `CITY_UNSET_DATABASE_URL` — banco VAZIO que precisa existir; destino do shard `bootstrap` do `CityRecord`, faz query fora de cidade falhar fechado. Nunca apontar para o banco compartilhado.
+- `GOVBR_CLIENT_ID` / `GOVBR_CLIENT_SECRET` — cliente OIDC do gov.br; a redirect_uri registrada é a ÚNICA de auth.* (`GOVBR_REDIRECT_URI`).
 
 Em produção os valores vêm do 1Password (`deploy/production/secrets`). Itens que o
 cofre `rota-saude-prod` precisa ter: `postgres-roles` (campos `rota_app`,
-`rota_admin`, `rota_platform`) e `active-record-encryption` (campos `primary_key`,
-`deterministic_key`, `key_derivation_salt`), além dos já existentes.
+`rota_admin`, `rota_platform`), `active-record-encryption` (campos `primary_key`,
+`deterministic_key`, `key_derivation_salt`) e `govbr` (campos `client_id`,
+`client_secret`), além dos já existentes.
 
 ## Rotação
 AR Encryption suporta lista de chaves. Para rotacionar:

@@ -92,4 +92,14 @@ RSpec.describe CityCatalog do
       expect(described_class.console_host?(nil)).to be(false)
     end
   end
+
+  describe ".auth_host?" do
+    it "is true only when the first label is auth" do
+      expect(described_class.auth_host?("auth.rotasaude.app")).to be(true)
+      expect(described_class.auth_host?("AUTH.localhost:3030")).to be(true)
+      expect(described_class.auth_host?("admin.rotasaude.app")).to be(false)
+      expect(described_class.auth_host?("curitiba.rotasaude.app")).to be(false)
+      expect(described_class.auth_host?(nil)).to be(false)
+    end
+  end
 end

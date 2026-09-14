@@ -226,6 +226,129 @@ RSpec.describe "Operator session on the platform console", type: :request do
     expect(Operators::BaseController.ancestors).not_to include(Authentication)
   end
 
+  describe "TOTP attempt limit (Plano 3B)" do
+    def wrong_challenge(session_id)
+      post "/session/challenge", params: { session_id: session_id, code: "nao-e-um-codigo" }
+    end
+
+    it "counts wrong codes on the pending session and still accepts the right one before the limit" do
+      login!
+      session_id = json["session_id"]
+
+      4.times do
+        wrong_challenge(session_id)
+        expect(response).to have_http_status(:unauthorized)
+        expect(json).to eq("error" => "invalid_code")
+      end
+      expect(OperatorSession.find(session_id).mfa_failed_attempts).to eq(4)
+
+      post "/session/challenge", params: { session_id: session_id, code: totp }
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "destroys the pending session on the fifth wrong code, so the right code no longer works" do
+      login!
+      session_id = json["session_id"]
+
+      4.times { wrong_challenge(session_id) }
+      wrong_challenge(session_id)
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "too_many_attempts")
+      expect(OperatorSession.exists?(session_id)).to be(false)
+
+      post "/session/challenge", params: { session_id: session_id, code: totp }
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "invalid_session")
+    end
+
+    it "clears the operator_session_id cookie on the fifth wrong code" do
+      login!
+      session_id = json["session_id"]
+
+      4.times { wrong_challenge(session_id) }
+      wrong_challenge(session_id)
+
+      expect(response).to have_http_status(:unauthorized)
+      cookie = set_cookie_header[/operator_session_id=[^\n]*/]
+      expect(cookie).to be_present
+      expect(cookie).to match(/max-age=0/i).or match(/expires=[^;]*(1970|1969)/i)
+    end
+
+    it "a new password step starts a fresh count" do
+      login!
+      first_session_id = json["session_id"]
+      5.times { wrong_challenge(first_session_id) }
+      expect(OperatorSession.exists?(first_session_id)).to be(false)
+
+      login!
+      expect(OperatorSession.find(json["session_id"]).mfa_failed_attempts).to eq(0)
+      post "/session/challenge", params: { session_id: json["session_id"], code: totp }
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "refuses to verify a session that a concurrent fifth wrong code destroyed mid-request" do
+      login!
+      session_id = json["session_id"]
+
+      allow(Mfa::Verify).to receive(:call).and_wrap_original do |m, *args, **kw|
+        OperatorSession.find(session_id).destroy
+        m.call(*args, **kw)
+      end
+
+      expect {
+        post "/session/challenge", params: { session_id: session_id, code: totp }
+      }.not_to change { PlatformEvent.where(name: "operator.login").count }
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "invalid_session")
+
+      get "/session"
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "does not raise when the session row is deleted right after the stamp and audit commit" do
+      login!
+      session_id = json["session_id"]
+
+      allow(Platform).to receive(:audit).and_wrap_original do |m, *args, **kw|
+        result = m.call(*args, **kw)
+        OperatorSession.where(id: session_id).delete_all
+        result
+      end
+
+      post "/session/challenge", params: { session_id: session_id, code: totp }
+
+      expect(response).to have_http_status(:ok)
+      expect(json).to include("id" => operator.id, "operator" => true)
+      expect(json["mfa_verified_at"]).to be_present
+      expect(OperatorSession.exists?(session_id)).to be(false)
+    end
+
+    it "a stale wrong code does not count against or destroy a session the same request race already verified" do
+      login!
+      session_id = json["session_id"]
+      stale_session = OperatorSession.find(session_id)
+
+      post "/session/challenge", params: { session_id: session_id, code: totp }
+      expect(response).to have_http_status(:ok)
+
+      allow_any_instance_of(Operators::SessionsController).to receive(:pending_session).and_return(stale_session)
+      allow(Mfa::Verify).to receive(:call).and_return(false)
+
+      post "/session/challenge", params: { session_id: session_id, code: "nao-e-um-codigo" }
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "invalid_session")
+      reloaded = OperatorSession.find(session_id)
+      expect(reloaded.mfa_verified_at).to be_present
+      expect(reloaded.mfa_failed_attempts).to eq(0)
+
+      get "/session"
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
   describe "host isolation" do
     def verified_cookie
       verified_login!

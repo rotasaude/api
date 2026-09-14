@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_13_000010) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_14_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -203,10 +203,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_13_000010) do
     t.datetime "created_at", null: false
     t.string "ip_address"
     t.datetime "mfa_verified_at"
+    t.uuid "operator_id"
     t.datetime "updated_at", null: false
     t.string "user_agent"
-    t.uuid "user_id", null: false
+    t.uuid "user_id"
+    t.index ["operator_id"], name: "index_sessions_on_operator_id"
     t.index ["user_id"], name: "index_sessions_on_user_id"
+    t.check_constraint "(user_id IS NULL) <> (operator_id IS NULL)", name: "ck_sessions_exactly_one_actor"
   end
 
   create_table "triages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

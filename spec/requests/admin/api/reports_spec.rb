@@ -24,13 +24,18 @@ RSpec.describe "Admin::Api::Reports", type: :request do
     user
   end
 
-  it "an operator sees a city's reports as metadata, without token or payload" do
-    skip "Plano 3B: grant de operador — não há mais papel de plataforma em Membership " \
-         "(ck_memberships_role só aceita os 4 papéis locais) nem painel cross-tenant em " \
-         "Admin::Api (D6: /admin/api/cities e as queries cross-tenant foram removidas); " \
-         "o painel de relatórios agora é POR CIDADE, como Triages — sem gate de operador " \
-         "para reconstruir aqui. A cobertura de metadados/LGPD (sem token/payload na " \
-         "resposta) sobrevive no exemplo abaixo, do lado do municipal_admin."
+  it "an operator who entered the city by grant sees its reports as metadata, without token or payload" do
+    seed_report(tier: "alta", token: "TOK-OPERATOR-456")
+    operator = Operator.create!(email_address: "op-#{SecureRandom.hex(3)}@rotasaude.app", password: "s3nha-forte-1",
+                                otp_secret: ROTP::Base32.random, otp_enabled: true)
+    sign_in_operator_grant(operator)
+
+    get "/admin/api/reports", params: { period: "30d" }
+
+    expect(response).to have_http_status(:ok)
+    expect(JSON.parse(response.body).dig("data", "reports").size).to eq(1)
+    expect(response.body).not_to include("TOK-OPERATOR-456")
+    expect(response.body).not_to include("NEVER-EXPOSE")
   end
 
   it "a municipal_admin sees only their own city's reports (per-city, not operator-only)" do

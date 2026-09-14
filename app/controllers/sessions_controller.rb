@@ -8,12 +8,21 @@
 #   POST   /session   { email_address, password }  → 201 + set-cookie
 #   GET    /session                                 → 200 | 401
 #   DELETE /session                                 → 204 + clear-cookie
+#   POST   /session/grant   { token }                    → 201 (entrada por grant assinado, Plano 3B)
+#   POST   /auth/govbr/start                           → 200 { authorize_url }
 class SessionsController < ApplicationController
   include Authentication
 
-  allow_unauthenticated_access only: %i[create govbr_callback]
+  allow_unauthenticated_access only: %i[create govbr_start grant]
 
-  rate_limit to: 10, within: 3.minutes, only: %i[create govbr_callback],
+  # Operador dentro da cidade (grant, Plano 3B) vê e encerra a própria sessão; nada mais.
+  allow_operator_grant_access only: %i[show destroy]
+
+  rate_limit to: 10, within: 3.minutes, only: :create, name: "login",
+             with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
+  rate_limit to: 10, within: 3.minutes, only: :grant, name: "grant",
+             with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
+  rate_limit to: 10, within: 3.minutes, only: :govbr_start, name: "govbr_start",
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
   def create
@@ -24,23 +33,22 @@ class SessionsController < ApplicationController
     render json: serialize(user), status: :created
   end
 
-  # GET /auth/govbr/callback?code=…&state=…  (ADR-0011 gov.br seam)
-  #
-  # Provisório: roda na cidade do host, como as demais ações — a identidade gov.br
-  # e a sessão são gravadas no banco dessa cidade. O callback único em auth.*,
-  # resolvendo a cidade pelo `state` com grant assinado, é do Plano 3B.
-  #
-  # state opcional aqui — backend não armazena state em sessão (API JSON).
-  # Frontend SPA é quem gera/verifica state via storage local + envia ao
-  # gov.br. Este endpoint só completa o exchange e cria a sessão.
-  def govbr_callback
-    user = Authenticator.govbr(code: params[:code])
-    return render(json: { error: "govbr_unauthenticated" }, status: :unauthorized) unless user
+  # POST /session/grant { token } — entrada por grant assinado (spec §5, Plano 3B).
+  # O grant de uma cidade não vale em outra, vale uma vez e por 60 s (CityGrants).
+  def grant
+    grant = CityGrants.redeem(token: params[:token], city: Current.city)
+    return render_invalid_grant unless grant
 
-    start_new_session_for(user)
-    render json: serialize(user), status: :created
+    grant.kind == "operator" ? open_operator_grant_session(grant) : open_user_grant_session(grant)
+  end
+
+  # POST /auth/govbr/start — começa o login gov.br DESTA cidade (Plano 3B). O
+  # callback é único, em auth.* (Govbr::CallbacksController), e volta para cá com
+  # um grant de usuário.
+  def govbr_start
+    render json: { authorize_url: Authenticator::GovBr.start(city: Current.city) }
   rescue Authenticator::GovBr::IntegrationError => e
-    Rails.logger.error("[govbr_callback] #{e.class}: #{e.message}")
+    Rails.logger.error("[govbr_start] #{e.class}: #{e.message}")
     render json: { error: "govbr_integration_error" }, status: :bad_gateway
   end
 
@@ -51,11 +59,68 @@ class SessionsController < ApplicationController
 
   # GET /session — quem está autenticado agora (útil para a UI inicializar).
   def show
+    return render(json: serialize_operator_grant(Current.session)) if Current.session.operator_grant?
     return head :unauthorized unless current_user
+
     render json: serialize(current_user)
   end
 
   private
+
+  def render_invalid_grant
+    render json: { error: "invalid_grant" }, status: :unauthorized
+  end
+
+  # Auditoria primeiro na PLATAFORMA, depois Session + evento na CIDADE (transação
+  # da cidade). Sem transação comum aos dois bancos, a falha que sobra é o registro
+  # de uma tentativa sem sessão — nunca uma sessão sem auditoria.
+  def open_operator_grant_session(grant)
+    operator = Operator.find_by(id: grant.subject_id)
+    return render_invalid_grant unless operator&.active?
+
+    destroy_previous_session
+    Platform.audit("operator.city_access", city_id: Current.city.id, operator_id: operator.id)
+    session = ApplicationRecord.transaction do
+      Session.create!(operator_id: operator.id, user_agent: request.user_agent, ip_address: request.remote_ip).tap do |s|
+        DomainEvents.publish("operator.city_access", operator_id: operator.id, session_id: s.id)
+      end
+    end
+    Current.session = session
+    write_session_cookie(session)
+    render json: serialize_operator_grant(session), status: :created
+  end
+
+  def open_user_grant_session(grant)
+    user = User.find_by(id: grant.subject_id)
+    return render_invalid_grant unless user&.active?
+
+    destroy_previous_session
+    start_new_session_for(user)
+    render json: serialize(user), status: :created
+  end
+
+  # Um grant redimido abre uma sessão NOVA (Plano 3B fix wave): se este cliente
+  # já tinha uma sessão da cidade (usuário comum ou operador de um grant
+  # anterior), ela fica órfã no cookie antigo e continua válida até expirar
+  # sozinha. Apagar a sessão anterior por baixo do novo cookie fecha essa
+  # janela sem mexer no fluxo normal de create/destroy.
+  def destroy_previous_session
+    Session.find_by(id: cookies.signed[:session_id])&.destroy
+  end
+
+  # Sessão de operador aberta por grant (Plano 3B): mesmo formato do SessionUser;
+  # operador não tem membership na cidade.
+  def serialize_operator_grant(session)
+    operator = session.operator
+    {
+      id: operator.id,
+      email_address: operator.email_address,
+      mfa_enrolled: operator.mfa_enrolled?,
+      operator: true,
+      mfa_verified_at: nil,
+      memberships: []
+    }
+  end
 
   def serialize(user)
     {

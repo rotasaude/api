@@ -13,11 +13,22 @@ Rails.application.routes.draw do
     scope module: :operators, as: :operator do
       resource :session, only: %i[create show destroy]
       post "/session/challenge", to: "sessions#challenge_totp"
+      resources :city_grants, only: :create
     end
+  end
+
+  # Callback único do gov.br (auth.*, Plano 3B). A cidade vem do state assinado,
+  # não do host. Antes das rotas de cidade: a primeira rota que casa vence.
+  constraints(PlatformAuthHost) do
+    get "/auth/govbr/callback", to: "govbr/callbacks#show"
   end
 
   # Sessão de usuário da cidade (ADR-0011). Operador: bloco do console, acima.
   resource :session, only: %i[create show destroy]
+
+  # Entrada na cidade por grant assinado (Plano 3B): operador vindo do console ou
+  # usuário vindo do callback do gov.br.
+  post "/session/grant", to: "sessions#grant"
 
   # Reset de senha (F-06.2, ADR-0011). JSON-only, sem autenticação.
   resources :passwords, only: %i[create update], param: :token
@@ -27,9 +38,8 @@ Rails.application.routes.draw do
   post "/mfa/confirm",   to: "mfa#confirm"
   post "/mfa/step_up",  to: "mfa#step_up"
 
-  # gov.br OIDC callback (ADR-0011). Frontend redireciona para gov.br;
-  # gov.br retorna com ?code=... → trocamos e iniciamos sessão.
-  get  "/auth/govbr/callback", to: "sessions#govbr_callback"
+  # gov.br (ADR-0011): o login começa na cidade; o callback é o de auth.*, acima.
+  post "/auth/govbr/start", to: "sessions#govbr_start"
 
   # Setup multi-tenant — write endpoints (ADR-0012/0013). Não confundir com
   # /admin/api/* que é read-only por critério §10 do brief.

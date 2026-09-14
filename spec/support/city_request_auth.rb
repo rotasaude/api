@@ -36,6 +36,16 @@ module CityRequestAuth
     cookies[:session_id] = jar[:session_id]
     session
   end
+
+  # Sessão de operador aberta por grant (Plano 3B): a linha vive no banco da
+  # cidade corrente, sem usuário, e o cookie é o mesmo `session_id` da cidade.
+  def sign_in_operator_grant(operator)
+    session = Session.create!(operator_id: operator.id, user_agent: "rspec", ip_address: "127.0.0.1")
+    jar = ActionDispatch::TestRequest.create.cookie_jar
+    jar.signed[:session_id] = session.id
+    cookies[:session_id] = jar[:session_id]
+    session
+  end
 end
 
 RSpec.configure do |config|

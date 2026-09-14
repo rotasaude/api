@@ -41,6 +41,18 @@ servidor já rodando só reconhece novas raízes de autoload no boot.
 
 Em produção os mesmos nomes vêm do Kamal — ver `deploy/SECRETS.md`.
 
+**Operador entrando numa cidade (Plano 3B).** No console (`admin.localhost`), depois do login com TOTP,
+`POST /city_grants {city_slug}` devolve a URL da cidade com um grant de 60 s e uso único; a cidade o consome em
+`POST /session/grant {token}`. A sessão de operador na cidade é SÓ LEITURA (painéis `/admin/api/*` e a própria sessão),
+vale 1 hora e é auditada no banco de plataforma e no da cidade. Cinco códigos TOTP errados apagam a sessão pendente.
+
+**gov.br (Plano 3B).** O login começa na cidade (`POST /auth/govbr/start`) e o callback é ÚNICO, em
+`auth.<domínio>/auth/govbr/callback`, que volta para a cidade com um grant. Variáveis: `GOVBR_CLIENT_ID`,
+`GOVBR_CLIENT_SECRET`, `GOVBR_REDIRECT_URI`, `GOVBR_ISSUER_URL` (default staging: `https://sso.staging.acesso.gov.br`
+no deploy `development`, produção usa `https://sso.acesso.gov.br` — ver `deploy/*/deploy.yml`). Sem elas (ou vazias),
+`start` responde 502.
+O destino de volta usa `CITY_DASHBOARD_URL_TEMPLATE` (default `http://%{slug}.localhost:5175/dashboard/`).
+
 ## Bootstrap do banco (do zero)
 
 Desde o Plano 2 ("banco por cidade", Task 4) o domínio (conversas, triagens,

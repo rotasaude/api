@@ -41,12 +41,17 @@ env:
     RAILS_ENV: development
     RAILS_LOG_TO_STDOUT: "true"
     RAILS_SERVE_STATIC_FILES: "true"
+    CITY_DASHBOARD_URL_TEMPLATE: "https://%{slug}.dev.rota-saude.example/dashboard/"
+    GOVBR_REDIRECT_URI: "https://auth.dev.rota-saude.example/auth/govbr/callback"
+    GOVBR_ISSUER_URL: "https://sso.staging.acesso.gov.br"
   secret:
     - ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
     - ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
     - ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY
     - CITY_UNSET_DATABASE_URL
     - DATABASE_URL
+    - GOVBR_CLIENT_ID
+    - GOVBR_CLIENT_SECRET
     - PLATFORM_DATABASE_URL
     - RAILS_MASTER_KEY
     - ROTA_ADMIN_PASSWORD

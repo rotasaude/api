@@ -18,6 +18,10 @@ module OperatorAuthentication
   PENDING_MFA_WINDOW = 10.minutes
   OPERATOR_SESSION_TTL = 12.hours
 
+  # Tentativas de TOTP por sessão pendente; no limite a sessão é apagada e o
+  # operador recomeça pela senha (Plano 3B).
+  MAX_TOTP_ATTEMPTS = 5
+
   included do
     before_action :require_operator_authentication
   end

@@ -18,6 +18,10 @@
 class Admin::Api::BaseController < ApplicationController
   include Authentication
 
+  # Operador que entrou na cidade por grant (Plano 3B) lê todos os painéis: este
+  # namespace não tem escrita (critério §10).
+  allow_operator_grant_access
+
   TZ = ActiveSupport::TimeZone["America/Sao_Paulo"]
 
   # Depois de require_authentication (incluído acima) e antes de qualquer
@@ -33,6 +37,7 @@ class Admin::Api::BaseController < ApplicationController
   private
 
   def require_city_membership
+    return if Current.session.operator_grant?
     return if current_user.memberships.active.exists?
 
     render json: { error: "no_city_membership" }, status: :forbidden

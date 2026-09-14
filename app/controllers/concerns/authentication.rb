@@ -4,6 +4,7 @@
 #   - Não registra helper_method (API mode não tem view helpers).
 #   - request_authentication NÃO redireciona — devolve 401 JSON.
 #   - resume_session NÃO depende de session[:return_to_after_authenticating].
+#   - sessão de operador (grant, Plano 3B) é negada por padrão: ver allow_operator_grant_access.
 #
 # Ver ADR-0011.
 module Authentication
@@ -23,11 +24,19 @@ module Authentication
     # colocaria require_authentication ANTES do around_action inteiro,
     # exatamente o defeito que esta nota documentava ao contrário.
     before_action :require_authentication
+
+    # Sessão de operador aberta por grant (Plano 3B) é negada por padrão. Cada
+    # controller libera por nome as ações de LEITURA que aceitam operador.
+    class_attribute :operator_grant_actions, default: [], instance_writer: false
   end
 
   class_methods do
     def allow_unauthenticated_access(**options)
       skip_before_action :require_authentication, **options
+    end
+
+    def allow_operator_grant_access(only: :all)
+      self.operator_grant_actions = only == :all ? :all : Array(only).map(&:to_sym)
     end
   end
 
@@ -42,7 +51,15 @@ module Authentication
   end
 
   def require_authentication
-    resume_session || request_authentication
+    return request_authentication unless resume_session
+    return if !Current.session.operator_grant? || operator_grant_access_allowed?
+
+    render json: { error: "operator_read_only" }, status: :forbidden
+  end
+
+  def operator_grant_access_allowed?
+    actions = self.class.operator_grant_actions
+    actions == :all || actions.include?(action_name.to_sym)
   end
 
   def resume_session
@@ -51,7 +68,9 @@ module Authentication
 
   def find_session_by_cookie
     return nil unless cookies.signed[:session_id]
-    Session.find_by(id: cookies.signed[:session_id])
+
+    session = Session.find_by(id: cookies.signed[:session_id])
+    session if session&.usable?
   end
 
   def request_authentication
@@ -64,13 +83,20 @@ module Authentication
       ip_address: request.remote_ip
     ).tap do |session|
       Current.session = session
-      cookies.signed.permanent[:session_id] = {
-        value: session.id,
-        httponly: true,
-        same_site: :lax,
-        secure: Rails.env.production?
-      }
+      write_session_cookie(session)
     end
+  end
+
+  # Host-only: NUNCA `domain:` (spec §5). Sessão de operador (grant) é de sessão
+  # do navegador; a de usuário é permanent, como sempre foi.
+  def write_session_cookie(session)
+    jar = session.operator_grant? ? cookies.signed : cookies.signed.permanent
+    jar[:session_id] = {
+      value: session.id,
+      httponly: true,
+      same_site: :lax,
+      secure: Rails.env.production?
+    }
   end
 
   def terminate_session
