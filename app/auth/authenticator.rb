@@ -3,7 +3,7 @@
 #
 # Estratégias disponíveis:
 #   - password(email:, password:) — Rails has_secure_password
-#   - govbr(code:) — OIDC gov.br (RASCUNHO; ver Authenticator::GovBr)
+# gov.br: Authenticator::GovBr, chamado pelo callback único em auth.* (Plano 3B).
 module Authenticator
   def self.password(email:, password:)
     return nil if email.blank? || password.blank?
@@ -11,11 +11,5 @@ module Authenticator
     return nil unless user&.active?
     return nil unless user.authenticate(password)
     user
-  end
-
-  # Delegate para o módulo GovBr. Retorna User ou nil; levanta
-  # IntegrationError em falha de rede/token inválido.
-  def self.govbr(code:)
-    GovBr.authenticate(code: code)
   end
 end

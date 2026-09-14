@@ -9,15 +9,16 @@
 #   GET    /session                                 → 200 | 401
 #   DELETE /session                                 → 204 + clear-cookie
 #   POST   /session/grant   { token }                    → 201 (entrada por grant assinado, Plano 3B)
+#   POST   /auth/govbr/start                           → 200 { authorize_url }
 class SessionsController < ApplicationController
   include Authentication
 
-  allow_unauthenticated_access only: %i[create govbr_callback grant]
+  allow_unauthenticated_access only: %i[create govbr_start grant]
 
   # Operador dentro da cidade (grant, Plano 3B) vê e encerra a própria sessão; nada mais.
   allow_operator_grant_access only: %i[show destroy]
 
-  rate_limit to: 10, within: 3.minutes, only: %i[create govbr_callback grant],
+  rate_limit to: 10, within: 3.minutes, only: %i[create govbr_start grant],
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
   def create
@@ -37,23 +38,13 @@ class SessionsController < ApplicationController
     grant.kind == "operator" ? open_operator_grant_session(grant) : open_user_grant_session(grant)
   end
 
-  # GET /auth/govbr/callback?code=…&state=…  (ADR-0011 gov.br seam)
-  #
-  # Provisório: roda na cidade do host, como as demais ações — a identidade gov.br
-  # e a sessão são gravadas no banco dessa cidade. O callback único em auth.*,
-  # resolvendo a cidade pelo `state` com grant assinado, é do Plano 3B.
-  #
-  # state opcional aqui — backend não armazena state em sessão (API JSON).
-  # Frontend SPA é quem gera/verifica state via storage local + envia ao
-  # gov.br. Este endpoint só completa o exchange e cria a sessão.
-  def govbr_callback
-    user = Authenticator.govbr(code: params[:code])
-    return render(json: { error: "govbr_unauthenticated" }, status: :unauthorized) unless user
-
-    start_new_session_for(user)
-    render json: serialize(user), status: :created
+  # POST /auth/govbr/start — começa o login gov.br DESTA cidade (Plano 3B). O
+  # callback é único, em auth.* (Govbr::CallbacksController), e volta para cá com
+  # um grant de usuário.
+  def govbr_start
+    render json: { authorize_url: Authenticator::GovBr.start(city: Current.city) }
   rescue Authenticator::GovBr::IntegrationError => e
-    Rails.logger.error("[govbr_callback] #{e.class}: #{e.message}")
+    Rails.logger.error("[govbr_start] #{e.class}: #{e.message}")
     render json: { error: "govbr_integration_error" }, status: :bad_gateway
   end
 

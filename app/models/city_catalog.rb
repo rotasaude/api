@@ -36,6 +36,11 @@ class CityCatalog
       label_for(host) == "admin"
     end
 
+    # Host do callback único do gov.br (auth.*). Reservado: nunca resolve cidade.
+    def auth_host?(host)
+      label_for(host) == "auth"
+    end
+
     def reset_cache!
       @cache = {}
     end
