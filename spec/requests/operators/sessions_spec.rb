@@ -130,6 +130,29 @@ RSpec.describe "Operator session on the platform console", type: :request do
     expect(OperatorSession.where(operator: operator)).to be_empty
   end
 
+  it "refuses an array of email addresses instead of enumerating operator accounts" do
+    post "/session", params: { email_address: [ "ninguem@x.app", operator.email_address ], password: password }
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(json).to eq("error" => "invalid_credentials")
+    expect(OperatorSession.where(operator: operator)).to be_empty
+  end
+
+  it "refuses an array of passwords instead of enumerating operator accounts" do
+    post "/session", params: { email_address: operator.email_address, password: [ "errada", password ] }
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(json).to eq("error" => "invalid_credentials")
+    expect(OperatorSession.where(operator: operator)).to be_empty
+  end
+
+  it "still logs in with a mixed-case email (normalization kept)" do
+    post "/session", params: { email_address: operator.email_address.upcase, password: password }
+
+    expect(response).to have_http_status(:ok)
+    expect(json).to include("mfa_required" => true)
+  end
+
   it "refuses an operator without MFA before creating any session" do
     operator.update!(otp_enabled: false)
 
@@ -150,6 +173,25 @@ RSpec.describe "Operator session on the platform console", type: :request do
     expect(OperatorSession.exists?(session_id)).to be(false)
     get "/session"
     expect(response).to have_http_status(:unauthorized)
+  end
+
+  it "clears a pending (not yet MFA-verified) operator session on logout" do
+    login!
+    session_id = json["session_id"]
+
+    delete "/session"
+
+    expect(response).to have_http_status(:no_content)
+    expect(OperatorSession.exists?(session_id)).to be(false)
+
+    get "/session"
+    expect(response).to have_http_status(:unauthorized)
+  end
+
+  it "logs out without raising when there is no operator cookie at all" do
+    delete "/session"
+
+    expect(response).to have_http_status(:no_content)
   end
 
   it "sets a host-only operator cookie (never a Domain attribute)" do

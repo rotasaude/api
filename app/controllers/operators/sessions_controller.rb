@@ -9,7 +9,7 @@
 #   DELETE /session                                        → 204
 module Operators
   class SessionsController < BaseController
-    allow_unauthenticated_operator_access only: %i[create challenge_totp]
+    allow_unauthenticated_operator_access only: %i[create challenge_totp destroy]
 
     rate_limit to: 10, within: 3.minutes, only: %i[create challenge_totp],
                with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
@@ -56,12 +56,11 @@ module Operators
     private
 
     def authenticate_operator(email, password)
+      return nil unless email.is_a?(String) && password.is_a?(String)
       return nil if email.blank? || password.blank?
 
-      operator = Operator.find_by(email_address: email)
-      return nil unless operator&.active?
-
-      operator.authenticate(password) || nil
+      operator = Operator.authenticate_by(email_address: email, password: password)
+      operator if operator&.active?
     end
 
     # A sessão do challenge tem de ser a MESMA cujo cookie este cliente recebeu no
