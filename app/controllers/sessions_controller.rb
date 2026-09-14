@@ -13,6 +13,9 @@ class SessionsController < ApplicationController
 
   allow_unauthenticated_access only: %i[create govbr_callback]
 
+  # Operador dentro da cidade (grant, Plano 3B) vê e encerra a própria sessão; nada mais.
+  allow_operator_grant_access only: %i[show destroy]
+
   rate_limit to: 10, within: 3.minutes, only: %i[create govbr_callback],
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
@@ -51,11 +54,27 @@ class SessionsController < ApplicationController
 
   # GET /session — quem está autenticado agora (útil para a UI inicializar).
   def show
+    return render(json: serialize_operator_grant(Current.session)) if Current.session.operator_grant?
     return head :unauthorized unless current_user
+
     render json: serialize(current_user)
   end
 
   private
+
+  # Sessão de operador aberta por grant (Plano 3B): mesmo formato do SessionUser;
+  # operador não tem membership na cidade.
+  def serialize_operator_grant(session)
+    operator = session.operator
+    {
+      id: operator.id,
+      email_address: operator.email_address,
+      mfa_enrolled: operator.mfa_enrolled?,
+      operator: true,
+      mfa_verified_at: nil,
+      memberships: []
+    }
+  end
 
   def serialize(user)
     {
