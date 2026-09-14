@@ -4,9 +4,9 @@
 # Destino: o primeiro AlertRecipient ativo de canal "email" da cidade (ordem de
 # escalation_order), no banco da cidade. Antes vinha de Municipality#settings
 # (alert_email/alert_webhook); a tabela municipalities não existe no mundo por
-# cidade e o city_profile da spec §3 ainda não existe no schema de cidade — o
-# provisionamento (Plano 4) é quem o cria. Sem destinatário, levanta: o alerta
-# falha visível em vez de sumir.
+# cidade, e o city_profile (spec §3, Plano 4) guarda a identidade da cidade, não
+# o destino do alerta. Sem destinatário, levanta: o alerta falha visível em vez
+# de sumir.
 #
 # Dedup contra crash-retry do worker: registra ProcessedEvent
 # (consumer="dispatch_alert", event_id="alert:<triage_id>") ANTES da

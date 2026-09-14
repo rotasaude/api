@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_14_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_15_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -35,6 +35,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_000001) do
     t.datetime "updated_at", null: false
     t.index ["email"], name: "index_authors_on_email", unique: true
     t.index ["token"], name: "index_authors_on_token", unique: true
+  end
+
+  create_table "city_profile", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "ibge_code", limit: 7
+    t.string "name", null: false
+    t.jsonb "settings", default: {}, null: false
+    t.boolean "singleton", default: true, null: false
+    t.string "uf", limit: 2
+    t.datetime "updated_at", null: false
+    t.index ["singleton"], name: "index_city_profile_singleton", unique: true
+    t.check_constraint "singleton", name: "ck_city_profile_singleton"
   end
 
   create_table "consent_terms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -122,7 +134,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_14_000001) do
     t.datetime "created_at", null: false
     t.string "email", null: false
     t.datetime "expires_at", null: false
-    t.uuid "invited_by_id", null: false
+    t.uuid "invited_by_id"
     t.string "role", null: false
     t.string "token", null: false
     t.datetime "updated_at", null: false

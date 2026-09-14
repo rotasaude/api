@@ -1,5 +1,7 @@
 class Invitation < ApplicationRecord
-  belongs_to :invited_by, class_name: "User"
+  # Nulo quando o convite vem da plataforma: o primeiro municipal_admin de uma
+  # cidade recém-provisionada (Plano 4).
+  belongs_to :invited_by, class_name: "User", optional: true
 
   validates :email, :role, :token, :expires_at, presence: true
   validates :role, inclusion: { in: Membership::ROLES }
