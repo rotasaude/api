@@ -61,13 +61,15 @@ module Authenticator
     # Roda NA conexão da cidade corrente (Govbr::CallbacksController abre
     # CityConnection.with e Current.set(city:)). Devolve nil para usuário desativado.
     def self.provision_from_claims(claims)
-      uid       = claims.fetch("sub")
+      uid = claims["sub"]
+      raise IntegrationError, "id_token sem sub" unless uid.is_a?(String) && uid.present?
+
       assurance = claims["amr"]&.first || claims["nivel_confianca"]
 
-      user = find_or_provision_user(uid: uid, email: claims["email"], name: claims["name"])
+      user = find_or_provision_user(uid: uid, claims: claims)
       return nil unless user&.active?
 
-      annotate_identity_assurance(user, uid, assurance) if assurance.present?
+      annotate_identity_assurance(user, uid, assurance)
       user
     end
 
@@ -102,9 +104,10 @@ module Authenticator
         redirect_uri: redirect_uri
       )
       res = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") { |h| h.request(req) }
-      raise IntegrationError, "token endpoint http=#{res.code} body=#{res.body[0..200]}" unless res.code.to_i == 200
+      raise IntegrationError, "token endpoint http=#{res.code}" unless res.code.to_i == 200
       JSON.parse(res.body)
-    rescue JSON::ParserError, SocketError, Net::ReadTimeout, Net::OpenTimeout => e
+    rescue JSON::ParserError, SocketError, Net::ReadTimeout, Net::OpenTimeout,
+           SystemCallError, IOError, OpenSSL::SSL::SSLError, Timeout::Error => e
       raise IntegrationError, "fetch_token: #{e.class}: #{e.message}"
     end
 
@@ -127,18 +130,27 @@ module Authenticator
       res = Net::HTTP.get_response(uri)
       raise IntegrationError, "jwks endpoint http=#{res.code}" unless res.code.to_i == 200
       JSON.parse(res.body).deep_symbolize_keys
-    rescue JSON::ParserError => e
+    rescue JSON::ParserError, SystemCallError, IOError, OpenSSL::SSL::SSLError, Timeout::Error => e
       raise IntegrationError, "fetch_jwks: #{e.message}"
     end
 
-    # Roda na conexão da cidade corrente (ver provision_from_claims).
-    def self.find_or_provision_user(uid:, email:, name: nil)
+    # Roda na conexão da cidade corrente (ver provision_from_claims). Só liga a
+    # uma conta existente por email quando o gov.br confirma email_verified —
+    # caso contrário quem apenas alega um email não deveria assumir a conta de
+    # outra pessoa. Se o email não verificado bate com um usuário existente,
+    # devolve nil (sem criar: o email único levantaria) em vez de linkar.
+    def self.find_or_provision_user(uid:, claims:)
       identity = Identity.find_by(provider: "govbr", provider_uid: uid)
       return identity.user if identity
 
-      user = email.present? ? User.find_by(email_address: email.downcase) : nil
-      user ||= User.create!(
-        email_address: email&.downcase || "govbr-#{uid}@placeholder.invalid",
+      email    = claims["email"]
+      verified = claims["email_verified"] == true && email.is_a?(String) && email.present?
+
+      existing = email.is_a?(String) && email.present? ? User.find_by(email_address: email.downcase) : nil
+      return nil if existing && !verified
+
+      user = existing || User.create!(
+        email_address: verified ? email.downcase : "govbr-#{uid}@placeholder.invalid",
         password: SecureRandom.base58(32)
       )
       Identity.create!(user: user, provider: "govbr", provider_uid: uid)
@@ -149,7 +161,7 @@ module Authenticator
     # ser o CPF e não pode ir para o banco de plataforma. Mesmo na cidade, levá-lo
     # no payload é dívida de minimização registrada na R18, não resolvida aqui.
     def self.annotate_identity_assurance(user, uid, assurance)
-      Rails.logger.info("[govbr] user=#{user.id} uid=#{uid} assurance=#{assurance}")
+      Rails.logger.info("[govbr] user=#{user.id} assurance=#{assurance}")
       ApplicationRecord.transaction do
         DomainEvents.publish("identity.govbr_login", user_id: user.id, provider_uid: uid, assurance: assurance)
       end
@@ -166,19 +178,19 @@ module Authenticator
     end
 
     def self.issuer_url
-      config[:issuer_url] || ENV["GOVBR_ISSUER_URL"] || "https://sso.staging.acesso.gov.br"
+      config[:issuer_url].presence || ENV["GOVBR_ISSUER_URL"].presence || "https://sso.staging.acesso.gov.br"
     end
 
     def self.client_id
-      config[:client_id] || ENV["GOVBR_CLIENT_ID"] || raise(IntegrationError, "missing GOVBR_CLIENT_ID")
+      config[:client_id].presence || ENV["GOVBR_CLIENT_ID"].presence || raise(IntegrationError, "missing GOVBR_CLIENT_ID")
     end
 
     def self.client_secret
-      config[:client_secret] || ENV["GOVBR_CLIENT_SECRET"] || raise(IntegrationError, "missing GOVBR_CLIENT_SECRET")
+      config[:client_secret].presence || ENV["GOVBR_CLIENT_SECRET"].presence || raise(IntegrationError, "missing GOVBR_CLIENT_SECRET")
     end
 
     def self.redirect_uri
-      config[:redirect_uri] || ENV["GOVBR_REDIRECT_URI"] || raise(IntegrationError, "missing GOVBR_REDIRECT_URI")
+      config[:redirect_uri].presence || ENV["GOVBR_REDIRECT_URI"].presence || raise(IntegrationError, "missing GOVBR_REDIRECT_URI")
     end
   end
 end

@@ -8,7 +8,7 @@ RSpec.describe "gov.br login through the single auth callback", type: :request d
   include ActiveSupport::Testing::TimeHelpers
 
   let(:city_a) { City.find_by!(slug: TEST_CITY_A.slug) }
-  let(:claims_base) { { "sub" => "12345678900", "email" => "fulano@gov.br", "amr" => [ "prata" ] } }
+  let(:claims_base) { { "sub" => "12345678900", "email" => "fulano@gov.br", "amr" => [ "prata" ], "email_verified" => true } }
 
   def json = JSON.parse(response.body)
   def query_of(url) = Rack::Utils.parse_query(URI.parse(url).query)
@@ -101,6 +101,18 @@ RSpec.describe "gov.br login through the single auth callback", type: :request d
 
     expect(response).to have_http_status(:not_found)
     expect(json).to eq("error" => "unknown_city")
+  end
+
+  it "refuses to link an existing city user when the callback email is not verified, issuing nothing" do
+    User.create!(email_address: "fulano@gov.br", password: "secret123")
+    state, nonce = start_on(test_city_host)
+    allow(Authenticator::GovBr).to receive(:exchange_code_for_claims)
+      .with("valid-code").and_return(claims_base.merge("nonce" => nonce, "email_verified" => false))
+
+    expect { callback(state: state) }.not_to change(CityGrant, :count)
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(json).to eq("error" => "govbr_unauthenticated")
   end
 
   it "refuses a deactivated user without issuing a grant" do

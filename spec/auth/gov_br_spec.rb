@@ -59,8 +59,21 @@ RSpec.describe Authenticator::GovBr do
     end
   end
 
+  describe "configuração ausente/vazia" do
+    it "GOVBR_CLIENT_ID vazio conta como ausente (start levanta IntegrationError)" do
+      allow(described_class).to receive(:client_id).and_call_original
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("GOVBR_CLIENT_ID").and_return("")
+
+      expect { described_class.start(city: city) }.to raise_error(Authenticator::GovBr::IntegrationError, /GOVBR_CLIENT_ID/)
+    end
+  end
+
   describe ".provision_from_claims" do
-    let(:claims) { { "sub" => "12345678900", "email" => "fulano@gov.br", "name" => "Fulano de Tal", "amr" => [ "ouro" ] } }
+    let(:claims) do
+      { "sub" => "12345678900", "email" => "fulano@gov.br", "name" => "Fulano de Tal", "amr" => [ "ouro" ],
+       "email_verified" => true }
+    end
 
     it "cria User + Identity quando nenhum existe" do
       user = described_class.provision_from_claims(claims)
@@ -72,11 +85,31 @@ RSpec.describe Authenticator::GovBr do
 
     it "reusa User existente quando o email bate (seam: 2 identidades para mesmo user)" do
       existing = User.create!(email_address: "fulano@gov.br", password: "secret123")
+      claims["email_verified"] = true
 
       user = described_class.provision_from_claims(claims)
 
       expect(user.id).to eq(existing.id)
       expect(Identity.where(user: existing, provider: "govbr").count).to eq(1)
+    end
+
+    it "não liga a conta existente quando o email não é verificado" do
+      existing = User.create!(email_address: "fulano@gov.br", password: "secret123")
+      claims["email_verified"] = false
+
+      expect(described_class.provision_from_claims(claims)).to be_nil
+      expect(Identity.where(user: existing, provider: "govbr")).to be_empty
+    end
+
+    it "cria usuário com email placeholder quando o email não é verificado e ninguém o usa" do
+      claims["email_verified"] = false
+
+      user = described_class.provision_from_claims(claims)
+
+      expect(user).to be_a(User)
+      expect(user.email_address).to eq("govbr-12345678900@placeholder.invalid")
+      expect(User.where(email_address: "fulano@gov.br")).to be_empty
+      expect(Identity.where(provider: "govbr", provider_uid: "12345678900").count).to eq(1)
     end
 
     it "reusa User+Identity quando provider_uid já existe (segundo login)" do
@@ -95,11 +128,27 @@ RSpec.describe Authenticator::GovBr do
       expect(event.payload).to include("user_id" => user.id, "provider_uid" => "12345678900", "assurance" => "ouro")
     end
 
+    it "grava o DomainEvent com assurance nil quando os claims não trazem amr nem nivel_confianca" do
+      claims.delete("amr")
+
+      user = described_class.provision_from_claims(claims)
+
+      event = DomainEvent.find_by!(name: "identity.govbr_login")
+      expect(event.payload).to include("user_id" => user.id, "assurance" => nil)
+    end
+
     it "user desativado retorna nil" do
       described_class.provision_from_claims(claims)
       User.find_by(email_address: "fulano@gov.br").update!(deactivated_at: Time.current)
 
       expect(described_class.provision_from_claims(claims)).to be_nil
+    end
+
+    it "id_token sem sub levanta IntegrationError" do
+      claims.delete("sub")
+
+      expect { described_class.provision_from_claims(claims) }
+        .to raise_error(Authenticator::GovBr::IntegrationError, /sub/)
     end
   end
 
