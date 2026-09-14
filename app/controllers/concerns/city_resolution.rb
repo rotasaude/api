@@ -25,6 +25,9 @@ module CityResolution
     return render(json: { error: "unknown_city" }, status: :not_found) if city.nil?
     return render(json: { error: "city_suspended" }, status: :forbidden) if city.status == "suspended"
     return render(json: { error: "unknown_city" }, status: :not_found) unless city.servable?
+    # Deploy não é atômico (spec §4): código novo pode encontrar uma cidade que
+    # city:migrate:all ainda não alcançou. Só ESSA cidade fica fora do ar.
+    return render(json: { error: "city_schema_behind" }, status: :service_unavailable) if CitySchema.behind?(city)
 
     Current.city = city
     CityConnection.with(city, &block)

@@ -72,6 +72,16 @@ RSpec.describe CitySchema do
     expect(described_class.redact(text)).to eq("falhou em postgres://***@db:5432/rota_saude_city_x e postgresql://***@h/d")
   end
 
+  describe ".behind?" do
+    it "is true when the catalog records a lower version, or none, and false when it is current" do
+      expected = described_class.expected_version
+
+      expect(described_class.behind?(City.new(schema_version: (expected - 1).to_s))).to be(true)
+      expect(described_class.behind?(City.new(schema_version: nil))).to be(true)
+      expect(described_class.behind?(City.new(schema_version: expected.to_s))).to be(false)
+    end
+  end
+
   def schema_fingerprint(database)
     ignored = "('probes', 'schema_migrations', 'ar_internal_metadata')"
     ScratchDatabases.superuser(database) do |conn|

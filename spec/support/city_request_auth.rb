@@ -20,7 +20,8 @@ module CityRequestAuth
   def use_test_city_host!
     unless City.exists?(slug: TEST_CITY_A.slug)
       City.create!(slug: TEST_CITY_A.slug, name: TEST_CITY_A.name, status: "active",
-                   database_url: TEST_CITY_A.database_url, encryption_key: TEST_CITY_A.encryption_key)
+                   database_url: TEST_CITY_A.database_url, encryption_key: TEST_CITY_A.encryption_key,
+                   schema_version: CitySchema.expected_version.to_s)
     end
     CityCatalog.reset_cache!
     host! test_city_host

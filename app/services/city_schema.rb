@@ -23,6 +23,13 @@ module CitySchema
       @expected_version ||= Dir[File.join(migrations_paths.first, "*.rb")].map { |f| File.basename(f).to_i }.max.to_i
     end
 
+    # Cidade cujo schema registrado no catálogo é menor que o esperado por este
+    # código. Versão nula (nunca migrada pelas tasks) conta como atrasada. Não abre
+    # conexão: compara só o catálogo.
+    def behind?(city)
+      city.schema_version.to_i < expected_version
+    end
+
     # Config ad-hoc de um banco de cidade com as migrations de cidade. Nunca é
     # registrada em database.yml.
     def db_config_for(url)

@@ -65,4 +65,31 @@ RSpec.describe "City resolution", type: :request do
     get "/_probe", headers: { "HOST" => "admin.rotasaude.app" }
     expect(response).to have_http_status(:not_found)
   end
+
+  it "returns 503 only for the city whose schema is behind" do
+    create(:city, slug: "atrasada", status: "active", database_url: city_a_url,
+                  schema_version: (CitySchema.expected_version - 1).to_s)
+    create(:city, slug: "emdia", status: "active", database_url: city_a_url)
+
+    get "/_probe", headers: { "HOST" => "atrasada.rotasaude.app" }
+    expect(response).to have_http_status(:service_unavailable)
+    expect(JSON.parse(response.body)["error"]).to eq("city_schema_behind")
+
+    get "/_probe", headers: { "HOST" => "emdia.rotasaude.app" }
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "treats an active city with no recorded schema version as behind" do
+    create(:city, slug: "semversao", status: "active", database_url: city_a_url, schema_version: nil)
+
+    get "/_probe", headers: { "HOST" => "semversao.rotasaude.app" }
+    expect(response).to have_http_status(:service_unavailable)
+  end
+
+  it "still answers 403 for a suspended city that is also behind" do
+    create(:city, slug: "suspatrasada", status: "suspended", database_url: city_a_url, schema_version: nil)
+
+    get "/_probe", headers: { "HOST" => "suspatrasada.rotasaude.app" }
+    expect(response).to have_http_status(:forbidden)
+  end
 end

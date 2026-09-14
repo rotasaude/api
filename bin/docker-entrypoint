@@ -1,32 +1,10 @@
 #!/bin/bash -e
-# Entrypoint da imagem única (ADR-0002). Migrations rodam apenas no papel web,
-# para evitar corrida quando há mais de uma réplica de worker.
-
-if [ "${1}" = "./bin/rails" ] && [ "${2}" = "server" ]; then
-  echo "[entrypoint] role=web — applying pending migrations"
-  # Aplica migrations INCREMENTAIS sobre um banco já provisionado. O bootstrap do
-  # zero (database, roles, extensions, schema de fila/cache) é responsabilidade
-  # do start.sh no dev e da infra no prod — NÃO deste entrypoint.
-  #
-  # db:migrate (sem sufixo) roda para primary/queue/cache/platform do
-  # ambiente atual. Desde o Plano 2 ("banco por cidade", Task 4) o domínio saiu
-  # do banco compartilhado — db/migrate fica vazio de propósito (o schema de
-  # cidade mora em db/city_migrate, aplicado só via `city:load_schema`, nunca
-  # por este entrypoint) — então para primary isto é hoje um no-op
-  # permanente; para queue/cache/platform aplica o que estiver pendente.
-  #
-  # Usamos db:migrate e NÃO db:schema:load porque schema:load roda com
-  # force: :cascade — droparia e recriaria qualquer tabela que o schema.rb
-  # da config declarasse. db:migrate é idempotente: no-op quando já migrado,
-  # aplica o pendente caso contrário.
-  #
-  # db:create é best-effort: o banco é provisionado fora do container e rota_app não
-  # tem CREATEDB, então db:create sempre falha aqui ("permission denied to create
-  # database"). Mantemos como tentativa não-fatal; db:migrate falha alto se o banco
-  # realmente não existir. (O antigo runner+system engolia esse exit code, mascarando
-  # o erro sob o set -e.)
-  ./bin/rails db:create 2>/dev/null || true
-  ./bin/rails db:migrate
-fi
+# Entrypoint da imagem única (ADR-0002). NÃO migra (spec banco-por-cidade §4):
+# com um banco por cidade, réplicas web migrariam em corrida entre si e o boot
+# cresceria com o número de cidades. Migração é passo explícito de deploy, com a
+# imagem nova e ANTES de trocar o código em execução: bin/migrate.
+#
+# O bootstrap do zero (databases, roles, extensions, schema de fila/cache) é do
+# start.sh no dev e da infra no prod.
 
 exec "${@}"
