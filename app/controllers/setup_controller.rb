@@ -1,7 +1,7 @@
 # Endpoints HTTP do "setup" — invocam commands do Phase 4/6.
 # Ver ADR-0012 (memberships/authz) e ADR-0013 (provisionamento).
 #
-# Disposição no mundo por cidade (lote 5b; destino final nos Planos 3/4):
+# Disposição no mundo por cidade (lote 5b; destino final nos Planos 3B/4):
 #   - accept_invitation, invite_member, list_memberships, revoke_membership e
 #     deactivate_user agem SOBRE dados da cidade — convites, usuários e
 #     memberships moram no banco dela —, então resolvem a cidade pelo host como
@@ -37,7 +37,7 @@ class SetupController < ApplicationController
   def provision_municipality
     render json: {
       error: "provisioning_unavailable",
-      message: "provisionamento de cidade passa para a plataforma (Planos 3 e 4)"
+      message: "provisionamento de cidade passa para a plataforma (Planos 3B e 4)"
     }, status: :not_implemented
   end
 

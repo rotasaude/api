@@ -238,6 +238,7 @@ RSpec.describe "Operator session on the platform console", type: :request do
       get "/session", headers: { "HOST" => test_city_host, "Cookie" => cookie }
 
       expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "unauthenticated")
     end
 
     it "operator credentials are not city credentials" do
@@ -254,6 +255,7 @@ RSpec.describe "Operator session on the platform console", type: :request do
       get "/admin/api/overview", headers: { "Cookie" => cookie }
 
       expect(response).to have_http_status(:not_found)
+      expect(json).to eq("error" => "unknown_city")
     end
   end
 

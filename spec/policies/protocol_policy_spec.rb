@@ -12,7 +12,7 @@ RSpec.describe ProtocolPolicy do
     expect(described_class.new(user, protocol).publish?).to be true
   end
 
-  # Plan 3 will bring back a platform-operator grant, but ProtocolPolicy#publish?
+  # Plan 3B will bring back a platform-operator grant, but ProtocolPolicy#publish?
   # is `role?(:protocol_publisher)` and never consults `operator?` — a user with
   # no membership at all must stay refused even if `operator?` were somehow
   # true. This pins that fail-closed behaviour so a future `|| operator?` added
