@@ -33,6 +33,23 @@ namespace :platform do
     out, st = Open3.capture2e(env, *base, "-d", "postgres", "-c", role_sql)
     abort "[platform:bootstrap] falha no role:\n#{out}" unless st.success?
 
+    # Papel que cria e apaga banco e role de cada cidade (Plano 4): CREATEDB e
+    # CREATEROLE, sem superusuário. Existe uma vez no cluster; o provisionamento
+    # conecta com ele por PROVISIONER_DATABASE_URL (em dev/test, CityDatabase monta
+    # a URL a partir de ROTA_PROVISIONER_PASSWORD).
+    provisioner_pwd = ENV.fetch("ROTA_PROVISIONER_PASSWORD", "rota_provisioner")
+    provisioner_sql = <<~SQL
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='rota_provisioner') THEN
+          CREATE ROLE rota_provisioner LOGIN CREATEDB CREATEROLE PASSWORD '#{provisioner_pwd}';
+        ELSE
+          ALTER ROLE rota_provisioner LOGIN CREATEDB CREATEROLE NOSUPERUSER;
+        END IF;
+      END $$;
+    SQL
+    out, st = Open3.capture2e(env, *base, "-d", "postgres", "-c", provisioner_sql)
+    abort "[platform:bootstrap] falha no role rota_provisioner:\n#{out}" unless st.success?
+
     exists, = Open3.capture2e(env, *base, "-tA", "-d", "postgres",
                               "-c", "SELECT 1 FROM pg_database WHERE datname='#{p[:db]}'")
     if exists.strip == "1"
