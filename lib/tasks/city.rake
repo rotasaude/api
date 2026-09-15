@@ -267,4 +267,48 @@ namespace :city do
       abort "[city:migrate:all] #{e.message}"
     end
   end
+
+  # Ciclo de vida depois de ativa (Plano 4). Sem endpoint: o console só ganha tela
+  # no Plano 6. Em produção rodam no papel worker (kamal app exec --roles=worker),
+  # que tem PROVISIONER_DATABASE_URL e o volume de CITY_BACKUP_DIR.
+  lifecycle_city = lambda do |task_name, slug|
+    abort "uso: rails '#{task_name}[slug]'" if slug.blank?
+    City.find_by(slug: slug) || abort("[#{task_name}] cidade #{slug} não existe")
+  end
+  city_backup_dir = -> { ENV.fetch("CITY_BACKUP_DIR") { Rails.root.join("tmp/city_backups").to_s } }
+
+  desc "Suspende uma cidade (o host dela responde 403). Uso: city:suspend[slug]"
+  task :suspend, %i[slug] => :environment do |_t, args|
+    city = lifecycle_city.call("city:suspend", args[:slug])
+    result = CityLifecycle::Suspend.call(city: city)
+    abort "[city:suspend] #{result.reason}: #{result.message}" if result.failure?
+    puts "[city:suspend] #{city.slug} → suspended"
+  end
+
+  desc "Retoma uma cidade suspensa. Uso: city:resume[slug]"
+  task :resume, %i[slug] => :environment do |_t, args|
+    city = lifecycle_city.call("city:resume", args[:slug])
+    result = CityLifecycle::Resume.call(city: city)
+    abort "[city:resume] #{result.reason}: #{result.message}" if result.failure?
+    puts "[city:resume] #{city.slug} → active"
+  end
+
+  desc "Dump de uma cidade em CITY_BACKUP_DIR (default tmp/city_backups). Uso: city:backup[slug]"
+  task :backup, %i[slug] => :environment do |_t, args|
+    city = lifecycle_city.call("city:backup", args[:slug])
+    result = CityLifecycle::Backup.call(city: city, dir: city_backup_dir.call)
+    abort "[city:backup] #{result.reason}: #{result.message}" if result.failure?
+    puts "[city:backup] #{city.slug} → #{result.payload[:path]}"
+  end
+
+  desc "IRREVERSÍVEL: dump final, archived, DROP DATABASE e DROP ROLE de uma cidade suspensa. Uso: CONFIRM=<slug> city:offboard[slug]"
+  task :offboard, %i[slug] => :environment do |_t, args|
+    city = lifecycle_city.call("city:offboard", args[:slug])
+    abort "[city:offboard] irreversível: confirme com CONFIRM=#{city.slug}" unless ENV["CONFIRM"] == city.slug
+
+    result = CityLifecycle::Offboard.call(city: city, backup_dir: city_backup_dir.call)
+    abort "[city:offboard] #{result.reason}: #{result.message}" if result.failure?
+    puts "[city:offboard] #{city.slug} → archived; banco e role apagados; dump final: " \
+         "#{result.payload[:backup_path] || 'feito na execução anterior'}"
+  end
 end
