@@ -23,6 +23,13 @@
 class ProvisionCityJob < ApplicationJob
   queue_as :default
 
+  # I1 (hardening review): ActiveJob::LogSubscriber logs "with arguments: ..."
+  # at info level for every job with log_arguments? true (the default),
+  # without going through filter_parameters. This job's arguments carry
+  # admin_email and alert_email in the clear. Turned off so this job never
+  # prints those to log/STDOUT (worker console).
+  self.log_arguments = false
+
   retry_on StandardError, attempts: 3, wait: :polynomially_longer
 
   class_attribute :migrator, default: CityMigrations::Subprocess
@@ -37,9 +44,8 @@ class ProvisionCityJob < ApplicationJob
     migrator.call(city)
     city.reload
 
-    token = seed(city, ibge_code: ibge_code, admin_email: admin_email, alert_email: alert_email)
-    InvitationMailer.invite(email_address: admin_email,
-                            accept_url: CityDashboardUrl.invitation(city, token: token)).deliver_later
+    mail_args = seed(city, ibge_code: ibge_code, admin_email: admin_email, alert_email: alert_email)
+    InvitationMailer.invite(**mail_args).deliver_later
 
     PlatformRecord.transaction do
       city.update!(status: "active")
@@ -50,12 +56,23 @@ class ProvisionCityJob < ApplicationJob
 
   private
 
-  # Devolve o token do convite PENDENTE (não aceito e não vencido) do primeiro
-  # municipal_admin — criado agora ou em execução anterior, tanto faz: é assim
-  # que o e-mail é reenviado num retry (fix round 1). Sem convite pendente (nenhum,
-  # ou só vencidos/aceitos), cria um novo: um link vencido nunca vai por e-mail.
+  # Devolve os argumentos do e-mail do convite PENDENTE (não aceito e não
+  # vencido) do primeiro municipal_admin — criado agora ou em execução
+  # anterior, tanto faz: é assim que o e-mail é reenviado num retry (fix round
+  # 1). A lógica de reaproveitar-ou-criar mora em CityLifecycle::InviteAdmin
+  # (compartilhada com a rake city:invite_admin — rodada de hardening,
+  # pre-Plano 6); chamada AQUI DENTRO da mesma transação do resto do seed, para
+  # falhar junto com ela (SeedFailed desfaz tudo, igual antes da extração).
+  #
+  # M3 (rodada de hardening, review): Current.city envolve o passo INTEIRO de
+  # novo (era assim antes da extração de InviteAdmin) — não só a chamada a
+  # InviteAdmin, que seta o seu próprio Current.city internamente mas só
+  # durante a própria execução. CityProfile/AlertRecipient/SeedProtocol não
+  # leem Current.city hoje, mas o seed inteiro roda na cidade da conexão, e
+  # deixar Current.city refletir isso durante todo o passo é o comportamento
+  # de antes — não uma correção de um bug observável hoje.
   def seed(city, ibge_code:, admin_email:, alert_email:)
-    invitation = nil
+    mail_args = nil
 
     Current.set(city: city) do
       CityConnection.with(city) do
@@ -69,17 +86,14 @@ class ProvisionCityJob < ApplicationJob
           template = CityTemplates.protocol
           SeedProtocol.call(template: template) unless ProtocolDefinition.exists?(name: template.fetch(:name))
 
-          invitation = Invitation.pending.find_by(email: admin_email.downcase, role: "municipal_admin")
-          if invitation.nil?
-            invited = InviteMember.call(email: admin_email, role: "municipal_admin", invited_by: nil)
-            raise SeedFailed, "convite do primeiro municipal_admin: #{invited.message}" if invited.failure?
+          invited = CityLifecycle::InviteAdmin.call(city: city, email: admin_email)
+          raise SeedFailed, "convite do primeiro municipal_admin: #{invited.message}" if invited.failure?
 
-            invitation = invited.payload[:invitation]
-          end
+          mail_args = invited.payload[:mail_args]
         end
       end
     end
 
-    invitation.token
+    mail_args
   end
 end

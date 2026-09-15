@@ -23,8 +23,18 @@ module Webhooks
 
     # POST — entrega de evento (mensagem, status, leitura).
     def create
-      Whatsapp::Ingest.call(payload)
-      head :ok
+      result = Whatsapp::Ingest.call(payload)
+
+      if result.schema_behind?
+        # Ao menos uma mudança do lote foi recusada por schema atrasado
+        # (Whatsapp::Ingest.route). Responde 503 ao lote inteiro, como
+        # CityResolution: a Meta reentrega tudo, e as cidades saudáveis do
+        # mesmo lote já gravaram — a reentrega delas é no-op pela unicidade
+        # do wamid.
+        render json: { error: "city_schema_behind" }, status: :service_unavailable
+      else
+        head :ok
+      end
     end
 
     private

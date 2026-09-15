@@ -259,3 +259,121 @@ RSpec.describe "city lifecycle rake tasks" do
     end
   end
 end
+
+# city:invite_admin (rodada de hardening, pre-Plano 6): reenvio do convite do
+# primeiro municipal_admin para uma cidade JÁ active. As três recusas abaixo
+# não tocam o banco da própria cidade (só o catálogo de plataforma), então
+# cidades leves da factory bastam — nenhuma precisa ser provisionada de
+# verdade.
+RSpec.describe "city:invite_admin rake task validation" do
+  before(:all) do
+    Rails.application.load_tasks unless Rake::Task.task_defined?("city:invite_admin")
+  end
+
+  before { Rake::Task["city:invite_admin"].reenable }
+
+  def invoke_silently(*args)
+    original_stdout, $stdout = $stdout, StringIO.new
+    original_stderr, $stderr = $stderr, StringIO.new
+    Rake::Task["city:invite_admin"].invoke(*args)
+  ensure
+    $stdout = original_stdout
+    $stderr = original_stderr
+  end
+
+  it "aborts for an unknown slug" do
+    expect { invoke_silently("naoexiste#{SecureRandom.hex(3)}", "prefeita@cidade.gov.br") }.to raise_error(SystemExit)
+  end
+
+  it "aborts for a city that is not active, without calling the command" do
+    city = create(:city, status: "provisioning")
+    expect(CityLifecycle::InviteAdmin).not_to receive(:call)
+
+    expect { invoke_silently(city.slug, "prefeita@cidade.gov.br") }.to raise_error(SystemExit)
+  end
+
+  it "aborts for an invalid e-mail, without calling the command" do
+    city = create(:city, status: "active")
+    expect(CityLifecycle::InviteAdmin).not_to receive(:call)
+
+    expect { invoke_silently(city.slug, "nao-e-email") }.to raise_error(SystemExit)
+  end
+end
+
+# Caminho feliz: cidade active DE VERDADE, mas reaproveitando o banco de
+# TEST_CITY_A que o harness já deixa aberto (spec/support/city_test_databases.rb)
+# em vez de provision_city! — que provisiona banco/role NOVOS via a conexão de
+# superusuário de bootstrap (CityDatabase.ensure!). A suíte inteira já faz
+# muitos provisionamentos reais; mais um aqui, perto do fim de uma rodada
+# completa, foi o bastante para estourar max_connections (100) do Postgres
+# compartilhado — mesmo padrão de spec/support/city_request_auth.rb
+# (use_test_city_host!): registra TEST_CITY_A no catálogo, sem abrir conexão
+# nova nenhuma (CityConnection.ensure_pool é no-op pro shard já registrado).
+# on_platform_queue simula o processo de plataforma: sem isso, o harness
+# deixaria SolidQueue::Record na fila de TEST_CITY_A, e o mailer de convite
+# (PlatformQueue::MAILERS) levantaria Misplaced.
+RSpec.describe "city:invite_admin rake task on an active city" do
+  before(:all) do
+    Rails.application.load_tasks unless Rake::Task.task_defined?("city:invite_admin")
+  end
+
+  before do
+    Rake::Task["city:invite_admin"].reenable
+    allow(InvitationMailer).to receive(:invite).and_call_original
+  end
+
+  let!(:city) do
+    City.find_by(slug: TEST_CITY_A.slug) || City.create!(
+      slug: TEST_CITY_A.slug, name: TEST_CITY_A.name, status: "active",
+      database_url: TEST_CITY_A.database_url, encryption_key: TEST_CITY_A.encryption_key,
+      schema_version: CitySchema.expected_version.to_s
+    )
+  end
+  let(:email) { "prefeita@cidade.gov.br" }
+
+  # M4 (hardening review): returns the captured stdout, so the happy-path
+  # spec can assert the confirmation line never echoes the token.
+  def invoke_silently(*args)
+    original_stdout, $stdout = $stdout, StringIO.new
+    original_stderr, $stderr = $stderr, StringIO.new
+    Rake::Task["city:invite_admin"].invoke(*args)
+    $stdout.string
+  ensure
+    $stdout = original_stdout
+    $stderr = original_stderr
+  end
+
+  it "enqueues InvitationMailer on the platform queue and audits city.admin_reinvited" do
+    invitation = nil
+    output = nil
+    expect {
+      on_platform_queue do
+        output = invoke_silently(city.slug, email)
+      end
+    }.to have_enqueued_mail(InvitationMailer, :invite)
+
+    invitation = Invitation.pending.sole
+    expect(InvitationMailer).to have_received(:invite)
+      .with(email_address: email, accept_url: CityDashboardUrl.invitation(city, token: invitation.token)).once
+
+    event = PlatformEvent.where(name: "city.admin_reinvited").where("payload->>'city_id' = ?", city.id).sole
+    expect(event.payload).to eq({ "city_id" => city.id, "invitation_id" => invitation.id })
+
+    # M4/I1 (hardening review): the confirmation line must never echo the
+    # token, and M6 requires the e-mail to appear masked, not in full.
+    expect(output).not_to include(invitation.token)
+    expect(output).not_to include(email)
+    expect(output).to include("p***@cidade.gov.br")
+  end
+
+  # M2 (hardening review): city:invite_admin only re-invites a STALLED FIRST
+  # admin. A city that already has one active municipal_admin is refused.
+  it "aborts and creates no invitation when the city already has an active municipal_admin" do
+    admin = CityConnection.with(city) { User.create!(email_address: "prefeita-atual@cidade.gov.br", password: "secret123") }
+    CityConnection.with(city) { Membership.create!(user: admin, role: "municipal_admin", granted_at: Time.current) }
+
+    expect { invoke_silently(city.slug, email) }.to raise_error(SystemExit)
+
+    expect(CityConnection.with(city) { Invitation.count }).to eq(0)
+  end
+end

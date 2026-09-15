@@ -33,18 +33,41 @@ module DomainEvents
         occurred_at: Time.current
       )
 
-      registry[event_name.to_s].each do |sub|
+      dispatch(event_name.to_s, event_id: event_id, city_slug: city_slug, payload: payload.deep_stringify_keys)
+
+      event_id
+    end
+
+    # Rede de segurança (ResendPendingAlertsJob): re-enfileira os subscribers
+    # de um DomainEvent já gravado, com o MESMO formato de kwargs que publish
+    # usa. Não cria um novo DomainEvent nem um novo event_id — os subscribers
+    # (via IdempotentConsumer) veem o mesmo event_id de sempre e a dedup por
+    # (consumer, event_id) segue valendo.
+    #
+    # Precisa rodar na conexão da PRÓPRIA cidade do event (usa Current.city,
+    # igual publish): quem chama (ex.: ResendPendingAlertsJob, via EachCityJob)
+    # tem que já estar dentro do CityConnection.with dessa cidade — redispatch
+    # não recebe nem deriva a cidade a partir do `event` em si.
+    def redispatch(event)
+      city_slug = Current.city&.slug
+      raise CityMissing, "redispatch #{event.name} sem cidade setada" if city_slug.nil?
+
+      dispatch(event.name, event_id: event.id, city_slug: city_slug, payload: event.payload)
+    end
+
+    private
+
+    def dispatch(event_name, event_id:, city_slug:, payload:)
+      registry[event_name].each do |sub|
         klass = sub.job.constantize
         target = sub.queue ? klass.set(queue: sub.queue) : klass
         target.perform_later(
           event_id: event_id,
-          event_name: event_name.to_s,
+          event_name: event_name,
           city_slug: city_slug,
-          payload: payload.deep_stringify_keys
+          payload: payload
         )
       end
-
-      event_id
     end
   end
 end

@@ -284,6 +284,16 @@ namespace :city do
   end
   city_backup_dir = -> { ENV.fetch("CITY_BACKUP_DIR") { Rails.root.join("tmp/city_backups").to_s } }
 
+  # M6 (rodada de hardening, review): a linha de confirmação de
+  # city:invite_admin precisa dar contexto (para quem foi) sem ecoar o e-mail
+  # inteiro em log/terminal — só o primeiro caractere + "***" + domínio, ex.:
+  # "p***@cidade.gov.br". Só usada aqui; não vira utilitário global porque
+  # nenhum outro chamador precisa disso hoje.
+  mask_email = lambda do |address|
+    local, _, domain = address.to_s.partition("@")
+    "#{local[0]}***@#{domain}"
+  end
+
   desc "Suspende uma cidade (o host dela responde 403). Uso: city:suspend[slug]"
   task :suspend, %i[slug] => :environment do |_t, args|
     city = lifecycle_city.call("city:suspend", args[:slug])
@@ -306,6 +316,32 @@ namespace :city do
     result = CityLifecycle::Backup.call(city: city, dir: city_backup_dir.call)
     abort "[city:backup] #{result.reason}: #{result.message}" if result.failure?
     puts "[city:backup] #{city.slug} → #{result.payload[:path]}"
+  end
+
+  # Reenvia o convite do primeiro municipal_admin de uma cidade JÁ active
+  # (rodada de hardening, pre-Plano 6): cobre quem perdeu a janela de 7 dias do
+  # convite original — depois que a cidade vira active, o guard no início de
+  # ProvisionCityJob#perform corta o reenvio automático de lá. Uma cidade em
+  # provisioning é tratada pelo próprio job (retry reenvia o mesmo token); esta
+  # task recusa esse caso para não duplicar a lógica.
+  desc "Reenvia o convite do primeiro municipal_admin de uma cidade active. Uso: city:invite_admin[slug,email]"
+  task :invite_admin, %i[slug email] => :environment do |_t, args|
+    city = lifecycle_city.call("city:invite_admin", args[:slug])
+    unless city.status == "active"
+      abort "[city:invite_admin] cidade #{city.slug} não está active (status=#{city.status}) — uma cidade em " \
+            "provisioning é reenviada pelo próprio ProvisionCityJob, não por esta task"
+    end
+
+    email = args[:email].to_s
+    abort "uso: rails 'city:invite_admin[slug,email]'" if email.blank?
+    abort "[city:invite_admin] e-mail inválido" unless email.match?(URI::MailTo::EMAIL_REGEXP)
+
+    result = CityLifecycle::InviteAdmin.call(city: city, email: email)
+    abort "[city:invite_admin] #{result.reason}: #{result.message}" if result.failure?
+
+    InvitationMailer.invite(**result.payload[:mail_args]).deliver_later
+    Platform.audit("city.admin_reinvited", city_id: city.id, invitation_id: result.payload[:invitation_id])
+    puts "[city:invite_admin] #{city.slug} → convite reenviado (#{mask_email.call(email)})"
   end
 
   desc "IRREVERSÍVEL: dump final, archived, DROP DATABASE e DROP ROLE de uma cidade suspensa. Uso: CONFIRM=<slug> city:offboard[slug]"

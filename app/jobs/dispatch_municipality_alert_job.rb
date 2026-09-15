@@ -17,7 +17,29 @@
 class DispatchMunicipalityAlertJob < ApplicationJob
   include CityScopedJob
   queue_as :urgent
-  retry_on Net::SMTPServerBusy, attempts: 5, wait: :polynomially_longer
+
+  # Erros de rede/SMTP TRANSITÓRIOS: servidor ocupado, timeout, conexão
+  # recusada/derrubada, host inalcançável, handshake TLS instável. Vale a
+  # pena tentar de novo — a próxima tentativa reabre a conexão/SMTP do zero.
+  # O dedup row (ProcessedEvent) desfaz com a transação (ver comentário acima
+  # de #perform), então o retry reentrega em vez de pular.
+  #
+  # Net::SMTPUnknownError (opcional, incluído): a lib Net::SMTP levanta isto
+  # quando a resposta do servidor não bate com nenhum código conhecido — não
+  # é claramente permanente (má config) nem claramente transitório (glitch de
+  # protocolo/servidor). Dado o risco clínico de perder um alerta urgente por
+  # um retry que não tentamos, e o custo baixo de tentar mais algumas vezes
+  # (5 tentativas, backoff), preferimos tratar como transitório aqui: se for
+  # de fato permanente, ainda falha visível depois de esgotar as tentativas.
+  #
+  # Deliberadamente NÃO incluídos (falham visíveis, sem retry):
+  # Net::SMTPFatalError, Net::SMTPSyntaxError (má config/rejeição permanente
+  # do servidor), NoAlertRecipient (dado de cidade faltando — retry não
+  # resolve), ActionView::MissingTemplate (bug de código — retry não resolve).
+  retry_on Net::SMTPServerBusy, Net::SMTPUnknownError, Net::OpenTimeout, Net::ReadTimeout,
+           Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH, Timeout::Error,
+           EOFError, IOError, OpenSSL::SSL::SSLError,
+           attempts: 5, wait: :polynomially_longer
 
   CONSUMER = "dispatch_alert".freeze
 
@@ -25,12 +47,20 @@ class DispatchMunicipalityAlertJob < ApplicationJob
 
   def perform(city_slug:, triage_id:, tier:, priority:, occurred_at:)
     with_city(city_slug) do
+      # requires_new (SAVEPOINT): sem ele, a violação de unicidade deixa a
+      # conexão em "current transaction is aborted" e o `return` abaixo, ao
+      # tentar terminar a transação externa do with_city, batia em
+      # PG::InFailedSqlTransaction em vez de simplesmente pular (achado do
+      # fix round 1 ao testar o caminho de duplicata — mesma classe de bug
+      # que M2 corrigiu em IdempotentConsumer).
       begin
-        ProcessedEvent.create!(
-          consumer: CONSUMER,
-          event_id: "alert:#{triage_id}",
-          processed_at: Time.current
-        )
+        ApplicationRecord.transaction(requires_new: true) do
+          ProcessedEvent.create!(
+            consumer: CONSUMER,
+            event_id: "alert:#{triage_id}",
+            processed_at: Time.current
+          )
+        end
       rescue ActiveRecord::RecordNotUnique
         Rails.logger.info("[DispatchMunicipalityAlertJob] skip duplicate triage=#{triage_id}")
         return

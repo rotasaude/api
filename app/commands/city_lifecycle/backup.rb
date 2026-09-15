@@ -24,18 +24,37 @@ module CityLifecycle
       FileUtils.mkdir_p(dir, mode: 0o700)
       path = File.join(dir.to_s, "#{city.slug}-#{Time.current.utc.strftime('%Y%m%dT%H%M%SZ')}.dump")
 
-      out, status = Open3.capture2e(
-        env,
-        "pg_dump", "--format=custom", "--no-owner", "--no-acl",
-        "--host", url.host.to_s, "--port", (url.port || 5432).to_s,
-        "--username", URI::DEFAULT_PARSER.unescape(url.user.to_s), "--dbname", url.path.delete_prefix("/"),
-        "--file", path
-      )
+      # umask é do PROCESSO inteiro, não da thread (POSIX) — trocar aqui e
+      # restaurar no ensure é seguro porque city:backup roda como rake task
+      # isolada no worker/CLI (kamal app exec --roles=worker), nunca dentro do
+      # servidor web multi-thread: não há requisição concorrente para vazar
+      # umask entre threads.
+      #
+      # Sem isso, pg_dump cria o arquivo com o umask herdado do processo
+      # (tipicamente 022): group/world-readable durante TODA a escrita do
+      # dump, não só até o chmod 0600 abaixo — uma janela real, já que o dump
+      # de uma cidade pode levar segundos. 0600 aqui é só para não sermos mais
+      # permissivos que o final; nada nasce group/other-writable de qualquer
+      # forma.
+      previous_umask = File.umask(0o077)
+      begin
+        out, status = Open3.capture2e(
+          env,
+          "pg_dump", "--format=custom", "--no-owner", "--no-acl",
+          "--host", url.host.to_s, "--port", (url.port || 5432).to_s,
+          "--username", URI::DEFAULT_PARSER.unescape(url.user.to_s), "--dbname", url.path.delete_prefix("/"),
+          "--file", path
+        )
+      ensure
+        File.umask(previous_umask)
+      end
       unless status.success?
+        # Falha deixa um dump parcial: mesma limpeza de antes (rm_f), só que
+        # agora o parcial também nasceu 0600 (umask acima) enquanto existiu.
         FileUtils.rm_f(path)
         return Result.fail(:backup_failed, message: CitySchema.redact(out.lines.last(3).join).strip)
       end
-      File.chmod(0o600, path)
+      File.chmod(0o600, path) # cinto e suspensório: o umask acima já garante isto.
 
       Platform.audit("city.backed_up", city_id: city.id, file: File.basename(path))
       Result.ok(path: path)

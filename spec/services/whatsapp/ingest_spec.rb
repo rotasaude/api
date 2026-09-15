@@ -1,6 +1,7 @@
 require "rails_helper"
 
 RSpec.describe Whatsapp::Ingest do
+  include ActiveJob::TestHelper
   # Two real, distinct cities (own physical databases) so "landed in the
   # right city" and "the other city got nothing" are two independently
   # provable claims, not a single connected_to(role: :admin) read that today
@@ -62,6 +63,70 @@ RSpec.describe Whatsapp::Ingest do
     expect {
       described_class.call(payload)
     }.not_to change { CityConnection.with(city_a) { InboundMessage.count } }
+  end
+
+  it "cidade com schema atrasado não grava nada e o resultado sinaliza schema_behind" do
+    city_a.update!(schema_version: (CitySchema.expected_version - 1).to_s)
+
+    result = nil
+
+    # M2 (hardening review): the repo's convention for "nothing enqueued" is
+    # have_enqueued_job, not a before/after delta on the :test adapter's
+    # process-global enqueued_jobs array (fragile if another example in the
+    # same process enqueues something first).
+    expect {
+      result = described_class.call(payload)
+    }.not_to have_enqueued_job(ProcessInboundMessageJob)
+
+    expect(result.schema_behind?).to be(true)
+    expect(CityConnection.with(city_a) { InboundMessage.count }).to eq(0)
+  end
+
+  it "num payload com duas mudanças, a cidade atrasada não recebe nada e a saudável segue normal" do
+    city_b # força criação
+    CityChannel.create!(city: city_b, phone_number_id: "PNID456", waba_id: "WABA2",
+                        display_phone_number: "+5511888888888", access_token: "tok2", active: true)
+    city_b.update!(schema_version: (CitySchema.expected_version - 1).to_s)
+
+    # M1 (hardening review): the behind change comes FIRST and the healthy
+    # one SECOND on purpose — a `next` → `break`/`return` regression in
+    # Whatsapp::Ingest.call's loop would stop processing right after the
+    # first (behind) change and silently drop the healthy one that follows.
+    # With the healthy change first (the old order), that same regression
+    # would go unnoticed: the healthy write already happened before the loop
+    # ever reached the behind change.
+    multi_payload = {
+      "entry" => [{
+        "changes" => [
+          {
+            "value" => {
+              "metadata" => { "phone_number_id" => "PNID456" },
+              "messages" => [{ "id" => "wamid.behind", "from" => "+551199", "type" => "text", "text" => { "body" => "oi" } }]
+            }
+          },
+          {
+            "value" => {
+              "metadata" => { "phone_number_id" => "PNID123" },
+              "messages" => [{ "id" => "wamid.healthy", "from" => "+551188", "type" => "text", "text" => { "body" => "oi" } }]
+            }
+          }
+        ]
+      }]
+    }
+
+    adapter_was = ActiveJob::Base.queue_adapter
+    ActiveJob::Base.queue_adapter = :solid_queue
+    begin
+      result = on_platform_queue { described_class.call(multi_payload) }
+
+      expect(result.schema_behind?).to be(true)
+      expect(CityConnection.with(city_a) { InboundMessage.count }).to eq(1)
+      expect(CityConnection.with(city_b) { InboundMessage.count }).to eq(0)
+      expect(CityConnection.with(city_a) { SolidQueue::Job.where(class_name: "ProcessInboundMessageJob").count }).to eq(1)
+      expect(CityConnection.with(city_b) { SolidQueue::Job.where(class_name: "ProcessInboundMessageJob").count }).to eq(0)
+    ensure
+      ActiveJob::Base.queue_adapter = adapter_was
+    end
   end
 
   # T2-c: coverage gap. Every example in this file runs inside the harness's

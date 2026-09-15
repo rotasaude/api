@@ -57,6 +57,32 @@ RSpec.describe SendWhatsappJob do
     expect(OutboundMessage.where(to: "+551177").count).to eq(1)
   end
 
+  # I1 (hardening review): same LogSubscriber gap fixed for CityMailDeliveryJob
+  # (71c2f09) and ProvisionCityJob — ActiveJob logs "with arguments: ..." at
+  # info level for any job whose log_arguments? is true (the default),
+  # bypassing filter_parameters. SendWhatsappJob's arguments carry the
+  # citizen's phone number (`to:`) and the message body (`message:`) straight
+  # from NotifyCitizenJob.
+  it "does not log the citizen's phone number or message text when enqueuing" do
+    log_output = StringIO.new
+    original_logger = ActiveJob::Base.logger
+    ActiveJob::Base.logger = ActiveSupport::Logger.new(log_output)
+
+    begin
+      described_class.perform_later(
+        to: "+5511999998888",
+        message: text_msg("Sua triage (leve): https://example/s3cr3t-report"),
+        city_slug: city.slug
+      )
+    ensure
+      ActiveJob::Base.logger = original_logger
+    end
+
+    logged = log_output.string
+    expect(logged).not_to include("+5511999998888")
+    expect(logged).not_to include("s3cr3t-report")
+  end
+
   it "levanta CityMissing sem city_slug" do
     expect {
       described_class.new.perform(to: "+5511988", message: text_msg("ola"), city_slug: nil)
