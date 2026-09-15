@@ -1,4 +1,7 @@
-# Tarefas recorrentes Solid Queue. Ver ADR-0010 e ADR-0014.
+# Tarefas recorrentes de CIDADE (Solid Queue). Ver ADR-0010 e ADR-0014.
+# Plano 5: o scheduler de cada cidade agenda estas tarefas na fila do banco dela,
+# e cada job roda só naquela cidade (EachCityJob no worker de cidade). Tarefas de
+# plataforma ficam em config/recurring_platform.yml.
 
 default: &default
   rebuild_dashboard_metrics:
@@ -40,11 +43,6 @@ default: &default
     queue: housekeeping
     schedule: "every day at 5:30am America/Sao_Paulo"
     args: { older_than_days: 90 }
-
-  purge_platform_access:
-    class: PurgePlatformAccessJob
-    queue: housekeeping
-    schedule: "every day at 3:30am America/Sao_Paulo"
 
   purge_operator_city_sessions:
     class: PurgeOperatorCitySessionsJob

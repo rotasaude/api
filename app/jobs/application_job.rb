@@ -17,5 +17,7 @@ class ApplicationJob < ActiveJob::Base
   before_enqueue { |job| PlatformQueue.check!(job) }
 
   retry_on ActiveRecord::Deadlocked, attempts: 3, wait: :polynomially_longer
+  # Plano 5: cidade com schema atrasado — espera o city:migrate:all (até 1 hora).
+  retry_on CityScopedJob::CitySchemaBehind, wait: 5.minutes, attempts: 12
   discard_on ActiveJob::DeserializationError
 end

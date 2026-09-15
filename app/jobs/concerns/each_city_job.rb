@@ -1,17 +1,18 @@
-# Para recurring tasks que precisam rodar em toda cidade (sucessor do antigo
-# wrapper cross-tenant que rodava sob a conexão administrativa BYPASSRLS).
-# Roda o corpo do perform uma vez por cidade ATIVA, sob a conexão daquela
-# cidade.
+# Para jobs que rodam em cada cidade (tarefas recorrentes de housekeeping).
 #
-# Isolamento de falha por cidade: uma cidade que levanta não impede as demais
-# de rodar. Ao final, se alguma cidade falhou, levanta um erro agregado com
-# os slugs e mensagens — não silencioso, mas também não derruba a passada
-# inteira na primeira falha.
+# Plano 5 (spec banco-por-cidade §4): as tarefas recorrentes moram na fila de
+# cada cidade e são agendadas pelo scheduler dela. Por isso:
+#   - no worker de uma cidade (CityWorkers::Context), o corpo roda só nessa cidade;
+#   - fora de worker de cidade (console, specs), roda em toda cidade ativa;
+#   - nos dois casos, cidade com schema atrasado fica de fora — código novo não
+#     roda sobre schema velho.
 #
-# Usar SEMPRE via `prepend EachCityJob` (NÃO include) — mesmo motivo do
-# wrapper antigo: com include, o perform do subclass aparece antes na cadeia
-# de ancestrais e o wrap do módulo nunca dispara. Com prepend, o perform do
-# módulo executa primeiro e chama super (o perform do job) para cada cidade.
+# Isolamento de falha por cidade: uma cidade que levanta não impede as demais de
+# rodar. Ao final, se alguma cidade falhou, levanta um erro agregado com os slugs
+# e mensagens.
+#
+# Usar SEMPRE via `prepend EachCityJob` (NÃO include): com include, o perform do
+# subclass aparece antes na cadeia de ancestrais e o wrap do módulo nunca dispara.
 module EachCityJob
   class AggregatedFailure < StandardError
     def initialize(failures)
@@ -25,7 +26,7 @@ module EachCityJob
   def perform(*args, **kwargs)
     failures = {}
 
-    City.where(status: "active").find_each do |city|
+    each_city_cities.each do |city|
       begin
         Current.city = city
         CityConnection.with(city) { super(*args, **kwargs) }
@@ -36,5 +37,19 @@ module EachCityJob
     end
 
     raise AggregatedFailure, failures if failures.any?
+  end
+
+  private
+
+  def each_city_cities
+    scope = City.where(status: "active").order(:slug)
+    scope = scope.where(slug: CityWorkers::Context.city_slug) if CityWorkers::Context.city_slug
+
+    scope.to_a.reject do |city|
+      next false unless CitySchema.behind?(city)
+
+      Rails.logger.warn("[#{self.class.name}] city=#{city.slug} com schema atrasado: pulada")
+      true
+    end
   end
 end

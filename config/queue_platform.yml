@@ -1,0 +1,22 @@
+# Solid Queue da PLATAFORMA (Plano 5): jobs de ciclo de vida — provisionamento,
+# e-mail do convite (fila default), purga de acesso (housekeeping). Um worker
+# basta.
+
+default: &default
+  dispatchers:
+    - polling_interval: 1
+      batch_size: 100
+  workers:
+    - queues: [ default, housekeeping ]
+      threads: 2
+      processes: 1
+      polling_interval: 1
+
+development:
+  <<: *default
+
+test:
+  <<: *default
+
+production:
+  <<: *default

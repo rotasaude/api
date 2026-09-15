@@ -6,6 +6,8 @@ require "rails_helper"
 # checa. Uma cidade suspensa (primeiro passo de um offboarding) não pode
 # continuar rodando jobs contra o próprio banco.
 RSpec.describe CityScopedJob do
+  include ActiveJob::TestHelper
+
   let(:job_class) do
     Class.new(ApplicationJob) do
       include CityScopedJob
@@ -66,5 +68,42 @@ RSpec.describe CityScopedJob do
 
     expect { job_class.new.perform(provisioning.slug) }.to raise_error(CityScopedJob::CityNotServable)
     expect(job_class.ran).to be false
+  end
+
+  describe "schema atrasado e cidade do worker (Plano 5)" do
+    after { CityWorkers::Context.city_slug = nil }
+
+    it "raises CitySchemaBehind for a city whose schema is behind, without running the block" do
+      city = create(:city, slug: "atrasadajob", status: "active", schema_version: nil,
+                           database_url: city_database_url("rota_saude_test_city_b"))
+
+      expect { job_class.new.perform(city.slug) }.to raise_error(CityScopedJob::CitySchemaBehind)
+      expect(job_class.ran).to be false
+    end
+
+    it "reschedules the job instead of failing it when the city's schema is behind" do
+      city = create(:city, slug: "atrasadaretry", status: "active", schema_version: nil,
+                           database_url: city_database_url("rota_saude_test_city_b"))
+
+      expect { job_class.perform_now(city.slug) }.to have_enqueued_job(job_class).with(city.slug)
+      expect(job_class.ran).to be false
+    end
+
+    it "raises CityMismatch for a job of another city than this worker's, without running the block" do
+      city = create(:city, slug: "outracidade", status: "active", database_url: city_database_url("rota_saude_test_city_b"))
+      CityWorkers::Context.city_slug = "curitiba"
+
+      expect { job_class.new.perform(city.slug) }.to raise_error(CityScopedJob::CityMismatch)
+      expect(job_class.ran).to be false
+    end
+
+    it "runs a job of the worker's own city" do
+      city = create(:city, slug: "propriacidade", status: "active", database_url: city_database_url("rota_saude_test_city_b"))
+      CityWorkers::Context.city_slug = city.slug
+
+      job_class.new.perform(city.slug)
+
+      expect(job_class.ran).to be true
+    end
   end
 end
