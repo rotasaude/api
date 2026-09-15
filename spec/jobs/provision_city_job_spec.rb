@@ -56,6 +56,27 @@ RSpec.describe ProvisionCityJob, type: :job do
     expect(provisioned_events.first.payload).to include("ibge_code" => "4113700", "by" => operator_id)
   end
 
+  # I1 (hardening review): same LogSubscriber gap fixed for CityMailDeliveryJob
+  # (71c2f09) and SendWhatsappJob — ActiveJob logs "with arguments: ..." at
+  # info level for any job whose log_arguments? is true (the default),
+  # bypassing filter_parameters. ProvisionCityJob's arguments carry
+  # admin_email and alert_email in the clear.
+  it "does not log admin_email or alert_email when enqueuing" do
+    log_output = StringIO.new
+    original_logger = ActiveJob::Base.logger
+    ActiveJob::Base.logger = ActiveSupport::Logger.new(log_output)
+
+    begin
+      on_platform_queue { described_class.perform_later(city_id: city.id, **args) }
+    ensure
+      ActiveJob::Base.logger = original_logger
+    end
+
+    logged = log_output.string
+    expect(logged).not_to include(args[:admin_email])
+    expect(logged).not_to include(args[:alert_email])
+  end
+
   it "e-mails the invitation link to the first admin" do
     on_platform_queue { described_class.perform_now(city_id: city.id, **args) }
 

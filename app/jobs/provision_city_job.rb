@@ -23,6 +23,13 @@
 class ProvisionCityJob < ApplicationJob
   queue_as :default
 
+  # I1 (hardening review): ActiveJob::LogSubscriber logs "with arguments: ..."
+  # at info level for every job with log_arguments? true (the default),
+  # without going through filter_parameters. This job's arguments carry
+  # admin_email and alert_email in the clear. Turned off so this job never
+  # prints those to log/STDOUT (worker console).
+  self.log_arguments = false
+
   retry_on StandardError, attempts: 3, wait: :polynomially_longer
 
   class_attribute :migrator, default: CityMigrations::Subprocess

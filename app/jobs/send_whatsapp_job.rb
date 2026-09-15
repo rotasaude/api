@@ -11,6 +11,14 @@
 class SendWhatsappJob < ApplicationJob
   include CityScopedJob
 
+  # I1 (hardening review): ActiveJob::LogSubscriber logs "with arguments: ..."
+  # at info level for every job with log_arguments? true (the default),
+  # without going through filter_parameters. This job's arguments are the
+  # citizen's phone number (`to:`) and the message body (`message:`). Turned
+  # off so this job never prints phone/message text to log/STDOUT (worker
+  # console).
+  self.log_arguments = false
+
   RESUME_TEMPLATE = Messaging::Reply.template(name: "rota_saude_resume").freeze
 
   def perform(to:, message:, city_slug:, dedup_key: nil)
