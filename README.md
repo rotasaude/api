@@ -95,6 +95,30 @@ então `kamal deploy`.
 **Purga.** Diariamente, `PurgePlatformAccessJob` apaga grants vencidos há mais de 1 dia e sessões de operador que não
 autenticam mais. `PurgeOperatorCitySessionsJob` apaga, em cada cidade, as sessões de operador por grant além de 1 hora.
 
+## Worker por cidade (Plano 5)
+
+`bin/city_workers` (container `worker` no dev, papel `worker` no Kamal) roda **um supervisor Solid Queue por cidade
+ativa, mais o da plataforma**:
+
+- **Fila da cidade** — no banco dela: webhook, envio de WhatsApp, alertas, relatórios, e-mails de redefinição de senha,
+  tarefas recorrentes de `config/recurring.yml` (agendadas por cidade). Workers em `config/queue.yml`: `urgent`
+  isolado, `realtime,default`, `reports,housekeeping`.
+- **Fila de plataforma** — no banco de plataforma: `ProvisionCityJob`, e-mail do convite, `PurgePlatformAccessJob` e
+  `config/recurring_platform.yml`. Só entram jobs de `PlatformQueue::JOBS`/`MAILERS`: um job de cidade enfileirado
+  fora de uma cidade levanta `PlatformQueue::Misplaced`. Job novo de plataforma precisa entrar nessa lista.
+- **Catálogo** — o gerente lê as cidades `active` com schema em dia a cada `CITY_WORKERS_POLL_SECONDS` (30 s): cidade
+  nova começa a processar em até 30 s; cidade suspensa, arquivada ou com schema atrasado para em até 30 s (os jobs dela
+  esperam: `CitySchemaBehind` reagenda por até 1 hora).
+- **Falha** — supervisor que morre é reiniciado com espera de 1 s, 2 s, 4 s… até 5 min; volta a 1 s depois de 10 min
+  de pé. Log: `docker compose logs -f worker | grep city_workers`.
+- **Parada** — TERM/INT repassa TERM aos supervisores, espera `SolidQueue.shutdown_timeout` + 5 s e mata o grupo de
+  processo de quem sobrar.
+- **Dimensionamento** — ~6 processos por cidade. `RAILS_MAX_THREADS` do worker precisa ser ≥ maior `threads` de
+  `config/queue.yml` + 2 (Kamal: 12). Um host de worker roda todas as cidades; mais de um host duplica supervisores por
+  cidade (seguro, mas dobra processos).
+- **Painéis** — `/admin/api/queues` e `/admin/api/overview` leem a fila da cidade do host.
+- `SOLID_QUEUE_IN_PUMA` não existe mais: o worker é sempre `bin/city_workers`.
+
 ## Bootstrap do banco (do zero)
 
 Desde o Plano 2 ("banco por cidade", Task 4) o domínio (conversas, triagens,
