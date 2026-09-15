@@ -120,12 +120,25 @@ RSpec.describe CityDatabase do
       original.call(sql)
     end
 
-    described_class.drop!(slug: slug_a)
+    begin
+      described_class.drop!(slug: slug_a)
 
-    expect(drop_statements.size).to eq(1) # no retry loop: exactly one DROP DATABASE statement
-    expect(described_class.exists?(slug: slug_a)).to be(false)
-    expect { held.exec("SELECT 1") }.to raise_error(PG::Error)
-    held.close
+      expect(drop_statements.size).to eq(1) # no retry loop: exactly one DROP DATABASE statement
+      expect(described_class.exists?(slug: slug_a)).to be(false)
+      expect { held.exec("SELECT 1") }.to raise_error(PG::Error)
+
+      # M3 (hardening review, Task 3): not just "the DB is gone" — assert no
+      # client backend for it survives either, via a fresh superuser session
+      # (the city's own database no longer exists, so query pg_stat_activity
+      # from the platform/bootstrap connection instead).
+      remaining = superuser_value(
+        "SELECT count(*) FROM pg_stat_activity WHERE datname = $1 AND backend_type = 'client backend'",
+        described_class.database_name(slug_a)
+      )
+      expect(remaining).to eq("0")
+    ensure
+      held.close
+    end
   end
 
   it "never issues FORCE when dropping" do
@@ -139,7 +152,48 @@ RSpec.describe CityDatabase do
 
     described_class.drop!(slug: slug_a)
 
+    # M2 (hardening review, Task 3): a spy on an empty list of statements
+    # would also pass the FORCE assertion below — assert the spy actually
+    # captured the drop sequence's real statements first.
+    expect(statements).to include(a_string_matching(/\AALTER DATABASE/))
+    expect(statements).to include(a_string_matching(/\ADROP DATABASE/))
     expect(statements.grep(/FORCE/i)).to be_empty
+  end
+
+  # I1 (hardening review, Task 3): the DropBlocked path — a session
+  # rota_provisioner cannot terminate (here, a real Postgres superuser
+  # session held on the city database) — must fail with a count-only
+  # message (no pid, no username), and a second drop! must still succeed
+  # once that session is gone, on a database left with ALLOW_CONNECTIONS
+  # false by the first (blocked) attempt.
+  it "raises DropBlocked with a count-only message when a session it cannot terminate is open, then succeeds on retry" do
+    described_class.ensure!(slug: slug_a, password: pwd_a)
+    database = described_class.database_name(slug_a)
+    held = PG.connect(CityDatabaseUrls.city_database_url(database)) # rota_saude: real Postgres superuser
+    held.exec("SELECT 1")
+
+    begin
+      expect { described_class.drop!(slug: slug_a) }.to raise_error(CityDatabase::DropBlocked) do |error|
+        # Count-only shape: "N sessão(ões) bloqueando o drop de <database>" —
+        # no pid, no usename column value anywhere in the message (the
+        # database name legitimately contains "rota_saude" as a substring,
+        # so this checks for the connected user's pid, not a loose substring
+        # match against the role name).
+        expect(error.message).to match(/\A1 sessão\(ões\) bloqueando o drop de #{Regexp.escape(database)}\z/)
+        expect(error.message).not_to match(/\bpid\b/i)
+        expect(error.message).not_to include(held.exec("SELECT pg_backend_pid()").getvalue(0, 0))
+      end
+
+      expect(described_class.exists?(slug: slug_a)).to be(true)
+      expect(superuser_value("SELECT datallowconn FROM pg_database WHERE datname = $1", database)).to eq("f")
+    ensure
+      held.close
+    end
+
+    described_class.drop!(slug: slug_a)
+
+    expect(described_class.exists?(slug: slug_a)).to be(false)
+    expect(superuser_value("SELECT count(*) FROM pg_roles WHERE rolname = $1", described_class.role_name(slug_a))).to eq("0")
   end
 
   it "requires PROVISIONER_DATABASE_URL in production" do

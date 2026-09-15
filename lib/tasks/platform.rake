@@ -45,10 +45,16 @@ namespace :platform do
       conn.set_notice_receiver { |_| }
       secret = conn.escape_literal(conn.encrypt_password(provisioner_pwd, "rota_provisioner", "scram-sha-256"))
       role_exists = conn.exec_params("SELECT 1 FROM pg_roles WHERE rolname = $1", [ "rota_provisioner" ]).ntuples == 1
+      # M4 (hardening review, Task 3): INHERIT explicit, not just the Postgres
+      # default — a pre-existing NOINHERIT rota_provisioner (e.g. hand-edited,
+      # or created by a future script that doesn't default to INHERIT) would
+      # silently break CityDatabase.drop!'s ALTER/DROP DATABASE steps, which
+      # rely on rota_provisioner having the privileges of the city role it is
+      # GRANTed into (ensure!) without an explicit SET ROLE.
       if role_exists
-        conn.exec("ALTER ROLE rota_provisioner LOGIN CREATEDB CREATEROLE NOSUPERUSER PASSWORD #{secret}")
+        conn.exec("ALTER ROLE rota_provisioner LOGIN CREATEDB CREATEROLE NOSUPERUSER INHERIT PASSWORD #{secret}")
       else
-        conn.exec("CREATE ROLE rota_provisioner LOGIN CREATEDB CREATEROLE PASSWORD #{secret}")
+        conn.exec("CREATE ROLE rota_provisioner LOGIN CREATEDB CREATEROLE INHERIT PASSWORD #{secret}")
       end
     rescue PG::Error => e
       abort "[platform:bootstrap] falha no role rota_provisioner: #{e.class}"

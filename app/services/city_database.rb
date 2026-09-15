@@ -89,7 +89,10 @@ class CityDatabase
     #      autovacuum worker e outros processos internos de propósito: terminar o
     #      backend de outro role exige ser membro dele ou pg_signal_backend, e
     #      rota_provisioner só é membro do role da própria cidade — sessão de
-    #      cliente da cidade é sempre esse role).
+    #      cliente da cidade É NORMALMENTE esse role, mas não SEMPRE: uma sessão
+    #      de superusuário/DBA conectada ao banco da cidade também é "client
+    #      backend" e rota_provisioner não pode terminá-la — vira DropBlocked
+    #      no passo 3, não um erro silencioso).
     #   3. DROP DATABASE IF EXISTS, sem FORCE — o próprio Postgres sinaliza
     #      autovacuum e outros processos internos e espera uns segundos
     #      (CountOtherDBBackends) antes de decidir que o banco ainda está em uso;
@@ -166,20 +169,37 @@ class CityDatabase
       end
     end
 
-    # Só sessões "client backend" (as da própria cidade, via role da cidade):
-    # autovacuum worker e outros processos internos ficam de fora de propósito
-    # (ver comentário de drop!) e são resolvidos pelo próprio DROP DATABASE.
+    # Só sessões "client backend" (normalmente as da própria cidade, via role
+    # da cidade — mas uma sessão de superusuário/DBA também conta como
+    # "client backend" e não é derrubável por rota_provisioner, ver comentário
+    # de drop! acima): autovacuum worker e outros processos internos ficam de
+    # fora de propósito e são resolvidos pelo próprio DROP DATABASE.
+    #
+    # Filtro por usename IS NOT NULL, não por backend_type = 'client backend'
+    # (achado ao escrever o teste do caminho DropBlocked, I1 do review):
+    # pg_stat_activity NULA backend_type (e outras colunas) para uma sessão de
+    # role que rota_provisioner não enxerga plenamente (sem SUPERUSER nem
+    # pg_read_all_stats) — mesmo quando essa sessão É uma "client backend" de
+    # verdade. Com o filtro antigo, essa sessão simplesmente desaparecia do
+    # SELECT (nenhuma linha, nenhum erro), pg_terminate_backend nunca era
+    # sequer chamado nela, e o DROP DATABASE seguinte falhava com
+    # PG::ObjectInUse — uma mensagem que embute o texto cru do Postgres, não o
+    # "N sessão(ões)" só-contagem que DropBlocked promete. usename SEMPRE
+    # aparece (não é uma coluna restrita), e só processos internos
+    # (autovacuum, checkpointer, bgwriter, walwriter, ...) têm usename nulo —
+    # então o filtro continua excluindo exatamente os mesmos processos
+    # internos de antes, e passa a incluir sessões de role alheia também.
     def terminate_client_backends!(conn, database)
       conn.exec_params(<<~SQL, [ database ])
         SELECT pg_terminate_backend(pid)
         FROM pg_stat_activity
-        WHERE datname = $1 AND pid <> pg_backend_pid() AND backend_type = 'client backend'
+        WHERE datname = $1 AND pid <> pg_backend_pid() AND usename IS NOT NULL
       SQL
     rescue PG::InsufficientPrivilege
       blocking = conn.exec_params(<<~SQL, [ database ]).getvalue(0, 0)
         SELECT count(*)
         FROM pg_stat_activity
-        WHERE datname = $1 AND pid <> pg_backend_pid() AND backend_type = 'client backend'
+        WHERE datname = $1 AND pid <> pg_backend_pid() AND usename IS NOT NULL
       SQL
       raise DropBlocked, "#{blocking} sessão(ões) bloqueando o drop de #{database}"
     end
