@@ -71,6 +71,14 @@ RSpec.describe "city:load_schema rake task" do
     expect { invoke_silently("rota_saude_development") }.to raise_error(SystemExit)
   end
 
+  it "refuses a target that resolves to the retired shared production database" do
+    # rota_saude_production was the shared database's name in production until
+    # Plan 5. It is no longer in config/database.yml (production never ran this
+    # container's Postgres), but the guard still refuses it by name — same
+    # reasoning as rota_saude_development above.
+    expect { invoke_silently("rota_saude_production") }.to raise_error(SystemExit)
+  end
+
   it "refuses a target that resolves to the platform or city_unset database" do
     expect { invoke_silently("rota_saude_platform_test") }.to raise_error(SystemExit)
 

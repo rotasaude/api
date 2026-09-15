@@ -46,6 +46,7 @@ development:
     password: <%= ENV.fetch("ROTA_PLATFORM_PASSWORD", "rota_platform") %>
     host: <%= ENV.fetch("DATABASE_HOST", "127.0.0.1") %>
     port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+    connect_timeout: 5
     database_tasks: false
   # Destino do shard `bootstrap` do CityRecord: banco que EXISTE (criado vazio por
   # city:test_databases) sem NENHUMA tabela — query de domínio fora de
@@ -110,6 +111,7 @@ production:
     url: <%= ENV.fetch("PLATFORM_DATABASE_URL") { "" } %>
     username: rota_platform
     password: <%= ENV.fetch("ROTA_PLATFORM_PASSWORD") %>
+    connect_timeout: 5
     pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
     database_tasks: false
   # NÃO reaproveita PLATFORM_DATABASE_URL nem nenhuma URL de banco real: com a URL

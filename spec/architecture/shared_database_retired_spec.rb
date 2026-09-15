@@ -32,4 +32,23 @@ RSpec.describe "Shared database retired" do
       expect(Rails.root.join(path)).not_to exist
     end
   end
+
+  # Fix round 1, Important: cache and platform share the same physical database
+  # (config/cache.yml's `database: cache` config), but a blackholed platform DB
+  # must not block Rails.cache (rate_limit, Protocols.current) for the ~2 min TCP
+  # default — connect_timeout: 5 has to be on BOTH configs, not just platform.
+  it "puts cache on the same database as platform, in both environments, with a short connect_timeout on each" do
+    cache_yml = ActiveSupport::ConfigurationFile.parse(Rails.root.join("config/cache.yml"))
+
+    %w[development production].each do |env|
+      expect(cache_yml[env]).to include("database" => "cache"), "config/cache.yml: no database: cache under #{env}"
+
+      cache_config = ActiveRecord::Base.configurations.configs_for(env_name: env, name: "cache", include_hidden: true)
+      platform_config = ActiveRecord::Base.configurations.configs_for(env_name: env, name: "platform", include_hidden: true)
+
+      expect(cache_config.database).to eq(platform_config.database)
+      expect(cache_config.configuration_hash[:connect_timeout]).to eq(5), "config/database.yml: cache under #{env} has no connect_timeout"
+      expect(platform_config.configuration_hash[:connect_timeout]).to eq(5), "config/database.yml: platform under #{env} has no connect_timeout"
+    end
+  end
 end

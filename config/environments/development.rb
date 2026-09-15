@@ -16,20 +16,14 @@ Rails.application.configure do
 
   config.active_support.deprecation = :log
 
-  # false (não o default do Rails para dev): primary/queue/cache compartilham
-  # o MESMO banco físico (rota_saude_development). Um dump automático depois
-  # de qualquer db:migrate/db:prepare capturaria TODAS as tabelas ali em
-  # db/schema.rb, db/queue_schema.rb e db/cache_schema.rb — sujando de volta
-  # os dumps limpos da Task 4 (banco por cidade). Dump continua disponível
-  # sob demanda via `bin/rails db:schema:dump:<config>`.
-  #
-  # Efeito colateral (Minor do code review): este flag é global, não por
-  # config — `platform` também para de se auto-regenerar, embora o banco de
-  # plataforma nunca tenha sido contaminado por domínio (é um banco à parte).
-  # Task 3 contava com `db:migrate:platform` regenerando
-  # db/platform_schema.rb sozinho; agora, depois de uma migration em
-  # db/platform_migrate/, rode `bin/rails db:schema:dump:platform` e
-  # commite o resultado manualmente. Ver README.md.
+  # false (não o default do Rails para dev): Plano 5 aposentou o banco
+  # compartilhado — `primary` aponta para o banco vazio
+  # rota_saude_no_city_selected e `platform` é o único config que ainda migra
+  # neste processo (fila de cada cidade migra por CityConnection, fora de
+  # db:migrate). Sem o flag, `platform` se auto-regeneraria a cada
+  # db:migrate/db:prepare; com ele, depois de uma migration em
+  # db/platform_migrate/, rode `bin/rails db:schema:dump:platform` e commite
+  # o resultado manualmente. Ver README.md.
   config.active_record.dump_schema_after_migration = false
 
   # Liberar hostnames internos do docker-compose para o Host Authorization.

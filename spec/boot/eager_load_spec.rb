@@ -20,10 +20,8 @@ RSpec.describe "Boot guard" do
     # passwords; provide them (and the URLs) only inside these examples.
     before do
       stub_const("ENV", ENV.to_h.merge(
-        "DATABASE_URL" => "postgres://db.internal:5432/rota_saude_production",
         "PLATFORM_DATABASE_URL" => "postgres://db.internal:5432/rota_saude_platform_production",
         "ROTA_APP_PASSWORD" => "app-secret",
-        "ROTA_ADMIN_PASSWORD" => "admin-secret",
         "ROTA_PLATFORM_PASSWORD" => "platform-secret"
       ).except("CITY_UNSET_DATABASE_URL"))
     end
@@ -49,7 +47,7 @@ RSpec.describe "Boot guard" do
     end
 
     # Covers every production connection, including those with no test stanza
-    # (queue and cache: test uses the :test queue adapter and :null_store).
+    # (cache: test uses :null_store, no `cache` config in database.yml).
     it "resolves an adapter and a database for every production connection" do
       configs = production_configs
       expect(configs).not_to be_empty
