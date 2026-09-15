@@ -37,6 +37,14 @@ module RotaSaude
     # ADR-0001: Solid Queue é o adapter padrão.
     config.active_job.queue_adapter = :solid_queue
 
+    # Plano 5 (spec banco-por-cidade §1/§4): a fila padrão do Solid Queue é a de
+    # PLATAFORMA (jobs de ciclo de vida). A fila de cada cidade mora no banco dela e
+    # entra em runtime por CityConnection (establish_connection, nunca outro
+    # connects_to); o worker de uma cidade troca o padrão para o banco dela
+    # (CityWorkers::Child). O banco de plataforma nunca recebe job de cidade:
+    # PlatformQueue recusa.
+    config.solid_queue.connects_to = { shards: { default: { writing: :platform } } }
+
     # Remove app/protocols/ e app/messaging/ dos roots default e re-registra
     # com namespace. Rails 8 adiciona automaticamente todos os app/<subdir>
     # como roots — sem essa remoção, os arquivos dentro seriam constantes

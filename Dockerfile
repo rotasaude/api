@@ -103,6 +103,6 @@ ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 # Default = papel web. O papel worker sobrescreve via CMD em deploy.yml:
 #   roles:
 #     worker:
-#       cmd: ./bin/jobs
+#       cmd: ./bin/city_workers
 EXPOSE 3000
 CMD ["./bin/rails", "server"]

@@ -1,3 +1,5 @@
+# Solid Cache no banco de PLATAFORMA (Plano 5): config `cache` de config/database.yml.
+# Em test o store é :null_store (config/environments/test.rb) e nada é gravado.
 default: &default
   store_options:
     max_age: <%= 60.days.to_i %>
@@ -5,7 +7,9 @@ default: &default
 
 development:
   <<: *default
+  database: cache
 test:
   <<: *default
 production:
   <<: *default
+  database: cache

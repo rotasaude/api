@@ -16,7 +16,7 @@ RSpec.describe ProvisionCity do
 
   it "registers the city as provisioning, with its own role and database, and enqueues phase two" do
     result = nil
-    expect { result = described_class.call(**args) }.to have_enqueued_job(ProvisionCityJob).with(
+    expect { result = on_platform_queue { described_class.call(**args) } }.to have_enqueued_job(ProvisionCityJob).with(
       city_id: kind_of(String), ibge_code: "4113700", admin_email: "prefeita@novacidade.gov.br",
       alert_email: "alertas@novacidade.gov.br", operator_id: operator.id
     )
@@ -31,10 +31,10 @@ RSpec.describe ProvisionCity do
   end
 
   it "re-enqueues phase two for a city still provisioning, without a second catalog row or a new password" do
-    first = described_class.call(**args).payload[:city]
+    first = on_platform_queue { described_class.call(**args) }.payload[:city]
     original_url = first.database_url
 
-    expect { described_class.call(**args) }
+    expect { on_platform_queue { described_class.call(**args) } }
       .to have_enqueued_job(ProvisionCityJob).with(hash_including(city_id: first.id))
     expect(City.where(slug: "novacidade").pluck(:id)).to eq([ first.id ])
     expect(first.reload.database_url).to eq(original_url)
@@ -46,7 +46,7 @@ RSpec.describe ProvisionCity do
     allow(ENV).to receive(:[]).with("CITY_DATABASE_HOST").and_return(nil)
 
     result = nil
-    expect { result = described_class.call(**args) }.not_to have_enqueued_job
+    expect { result = on_platform_queue { described_class.call(**args) } }.not_to have_enqueued_job
     expect(result.reason).to eq(:misconfigured)
     expect(result.message).to eq("CITY_DATABASE_HOST ausente")
     expect(City.where(slug: "novacidade")).to be_empty
@@ -56,7 +56,7 @@ RSpec.describe ProvisionCity do
     create(:city, slug: "novacidade", status: "active")
 
     result = nil
-    expect { result = described_class.call(**args) }.not_to have_enqueued_job(ProvisionCityJob)
+    expect { result = on_platform_queue { described_class.call(**args) } }.not_to have_enqueued_job(ProvisionCityJob)
     expect(result.reason).to eq(:city_exists)
   end
 
@@ -71,7 +71,7 @@ RSpec.describe ProvisionCity do
     bad_values.each do |bad|
       it "refuses #{field}=#{bad.inspect.truncate(20)} without touching the catalog or the queue" do
         result = nil
-        expect { result = described_class.call(**args.merge(field => bad)) }.not_to have_enqueued_job
+        expect { result = on_platform_queue { described_class.call(**args.merge(field => bad)) } }.not_to have_enqueued_job
         expect(result.reason).to eq(:invalid)
         expect(City.count).to eq(City.where(slug: TEST_CITY_A.slug).count)
       end

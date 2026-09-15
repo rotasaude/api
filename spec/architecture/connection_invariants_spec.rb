@@ -34,11 +34,14 @@ RSpec.describe "Connection invariants" do
     lines.each_with_index.reject { |line, _| line.strip.start_with?("#") }
   end
 
-  it "only calls connects_to from an abstract class body" do
+  it "only calls connects_to from an abstract class body, or configures Solid Queue's once" do
     offenders = Dir.chdir(Rails.root) do
       source_files.flat_map do |path|
         lines = File.readlines(path, encoding: "UTF-8")
         real_connects_to = code_lines(lines).select { |l, _| l.include?("connects_to") }
+        if path == "config/application.rb"
+          real_connects_to = real_connects_to.reject { |l, _| l.match?(/\bconfig\.solid_queue\.connects_to\s*=/) }
+        end
         next [] if real_connects_to.empty?
         next [] if code_lines(lines).any? { |l, _| l.match?(/self\.abstract_class\s*=\s*true/) }
 
@@ -48,6 +51,20 @@ RSpec.describe "Connection invariants" do
 
     expect(offenders).to eq([]),
       "connects_to fora de classe abstrata (use CityConnection.ensure_pool):\n#{offenders.join("\n")}"
+  end
+
+  # Plano 5: a fila de plataforma é o shard padrão do SolidQueue::Record; cada
+  # cidade entra por CityConnection.ensure_pool (establish_connection), nunca por
+  # outro connects_to.
+  it "points Solid Queue at the platform database by default, configured only in config/application.rb" do
+    expect(SolidQueue.connects_to).to eq(shards: { default: { writing: :platform } })
+
+    elsewhere = Dir.chdir(Rails.root) do
+      (source_files - [ "config/application.rb" ]).select do |path|
+        code_lines(File.readlines(path, encoding: "UTF-8")).any? { |l, _| l.include?("solid_queue.connects_to") }
+      end
+    end
+    expect(elsewhere).to eq([])
   end
 
   it "never calls connects_to on CityRecord from outside its own class body" do

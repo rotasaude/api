@@ -17,6 +17,7 @@ require_relative "support/city_probe_controller"
 require_relative "support/city_database_urls"
 require_relative "support/scratch_databases"
 require_relative "support/provisioned_cities"
+require_relative "support/platform_queue"
 require_relative "support/city_test_databases"
 require_relative "support/city_request_auth"
 # Add additional requires below this line. Rails is not loaded until this point!
@@ -36,10 +37,13 @@ require_relative "support/city_request_auth"
 #
 # Rails.root.glob('spec/support/**/*.rb').sort_by(&:to_s).each { |f| require f }
 
-# Nota: o banco de teste usa roles PostgreSQL customizados (rota_app / rota_admin)
-# com BYPASSRLS. O rota_app não tem permissão de dono do database, por isso
-# maintain_test_schema! falha ao tentar db:test:purge. As migrations são
-# gerenciadas manualmente via rota_admin. Suprimimos o check aqui.
+# Nota: `primary`/`city_unset` em test apontam para o banco vazio
+# rota_saude_no_city_selected (Plano 5), dono do database é o superusuário
+# rota_saude — rota_app (role do app) não tem permissão de dono, por isso
+# maintain_test_schema! falha ao tentar db:test:purge nele. Não há domínio nem
+# migrations em db/migrate/ (banco por cidade, Plano 2): plataforma migra via
+# `platform` (db:migrate:platform) e cada cidade via city:migrate:all, fora
+# desse fluxo. Suprimimos o check aqui.
 RSpec.configure do |config|
   config.include FactoryBot::Syntax::Methods
 

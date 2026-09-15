@@ -1,0 +1,17 @@
+#!/usr/bin/env ruby
+# Worker do Rota Saúde (Plano 5, spec banco-por-cidade §4): um supervisor Solid
+# Queue por cidade ativa, mais o da plataforma, geridos por CityWorkers::Manager.
+# Substitui bin/jobs. TERM/INT: repassa TERM aos supervisores, espera
+# SolidQueue.shutdown_timeout + 5 s e mata os grupos de quem sobrar.
+require_relative "../config/environment"
+
+stop = false
+%w[TERM INT].each { |signal| Signal.trap(signal) { stop = true } }
+
+manager = CityWorkers::Manager.new(
+  spawner: CityWorkers::Spawner.new,
+  clock: CityWorkers::Clock.new,
+  catalog: CityWorkers::Manager.method(:active_city_slugs),
+  poll_interval: Float(ENV.fetch("CITY_WORKERS_POLL_SECONDS", "30"))
+)
+manager.run(stop_signal: -> { stop })

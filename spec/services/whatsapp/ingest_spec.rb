@@ -63,4 +63,28 @@ RSpec.describe Whatsapp::Ingest do
       described_class.call(payload)
     }.not_to change { CityConnection.with(city_a) { InboundMessage.count } }
   end
+
+  # T2-c: coverage gap. Every example in this file runs inside the harness's
+  # default city context (CityConnection.with(TEST_CITY_A), spec/support/
+  # city_test_databases.rb), which masks whether Ingest resolves and enters
+  # the channel's own city itself. The real webhook path is NOT inside any
+  # city — the controller has no city yet, that is the whole point of
+  # phone_number_id routing — so this proves the enqueue lands in city_a's own
+  # queue (not the platform queue, and not raising PlatformQueue::Misplaced)
+  # even when called from outside any city.
+  it "routes the deferred enqueue into the channel's own city queue even when called from outside any city" do
+    adapter_was = ActiveJob::Base.queue_adapter
+    ActiveJob::Base.queue_adapter = :solid_queue
+    begin
+      expect {
+        on_platform_queue { described_class.call(payload) }
+      }.not_to raise_error
+
+      expect(CityConnection.with(city_a) { SolidQueue::Job.where(class_name: "ProcessInboundMessageJob").count })
+        .to eq(1)
+      expect(on_platform_queue { SolidQueue::Job.where(class_name: "ProcessInboundMessageJob").count }).to eq(0)
+    ensure
+      ActiveJob::Base.queue_adapter = adapter_was
+    end
+  end
 end

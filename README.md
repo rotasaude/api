@@ -14,9 +14,8 @@ faltar uma delas quebra até rodando os specs:
 |---|---|---|
 | `DATABASE_HOST` / `DATABASE_PORT` | `host.docker.internal` / `5432` | todas as conexões |
 | `POSTGRES_PASSWORD` | `postgres` | tasks de bootstrap (superuser `rota_saude`) |
-| `ROTA_APP_PASSWORD` | `rota_app` | `primary`, `city_unset` e bancos de cidade |
-| `ROTA_ADMIN_PASSWORD` | `rota_admin` | `queue`, `cache` (até o Plano 5) |
-| `ROTA_PLATFORM_PASSWORD` | `rota_platform` | `platform` |
+| `ROTA_APP_PASSWORD` | `rota_app` | `primary` e `city_unset` (banco vazio) |
+| `ROTA_PLATFORM_PASSWORD` | `rota_platform` | `platform`, `cache` e a fila de plataforma |
 | `ROTA_PROVISIONER_PASSWORD` | `rota_provisioner` | `platform:bootstrap` (cria o papel) e `CityDatabase` em dev/test |
 | `PROVISIONER_DATABASE_URL` | montada a partir da anterior | papel worker: cria e apaga banco/role de cidade (obrigatória em produção) |
 | `CITY_DATABASE_HOST` / `CITY_DATABASE_PORT` | `DATABASE_HOST` / `DATABASE_PORT` (em produção: host obrigatório, porta `5432`) | servidor na URL de cada cidade provisionada (`CityDatabase.url_for`); o web precisa no `POST /cities` |
@@ -28,7 +27,6 @@ Bancos que precisam existir no Postgres do host:
 
 | Banco | Dono | Quem cria |
 |---|---|---|
-| `rota_saude_development`, `rota_saude_test` | `rota_saude` | `start.sh` |
 | `rota_saude_platform_development`, `rota_saude_platform_test` | `rota_platform` | `rails platform:bootstrap` (com `RAILS_ENV=test` para o de test) |
 | `rota_saude_no_city_selected` (vazio de propósito) | `rota_saude` | `rails city:test_databases` |
 | `rota_saude_test_city_a`, `rota_saude_test_city_b` | `rota_saude` | `rails city:test_databases` |
@@ -83,6 +81,28 @@ então `kamal deploy`.
 - Migração de cidade mora em `db/city_migrate/`, e `db/city_schema.rb` precisa acompanhar. O spec de paridade em
   `spec/services/city_schema_spec.rb` compara os dois.
 
+**Primeiro corte do Plano 5 (runbook único).** Este é o corte que troca o worker compartilhado por `bin/city_workers`
+e aposenta o banco compartilhado. Ordem obrigatória:
+
+1. Rode `bin/migrate` ANTES do `kamal deploy` e exija saída `0`. Se alguma cidade falhar a migração, suspenda essa
+   cidade (`rails 'city:suspend[slug]'`) antes de seguir com o deploy.
+   - Por quê: nesta release o webhook do WhatsApp (`Whatsapp::Ingest`) ainda não tem guarda de schema atrasado. Numa
+     cidade sem `solid_queue_jobs` (schema velho), o `InboundMessage` é gravado e commita, o enqueue adiado do
+     `ProcessInboundMessageJob` falha depois do commit, e a reentrega da Meta vira no-op pela unicidade do `wamid` —
+     a mensagem fica presa, sem tentar de novo.
+2. Drene a fila compartilhada aposentada antes da virada:
+   - pare de mandar tráfego novo para o worker antigo, ou deixe-o ocioso;
+   - espere o banco compartilhado antigo zerar as três tabelas de execução pendente (leitura, no banco
+     `rota_saude_<env>` antigo):
+     ```sql
+     select count(*) from solid_queue_ready_executions;
+     select count(*) from solid_queue_scheduled_executions;
+     select count(*) from solid_queue_claimed_executions;
+     ```
+   - só com as três em `0`, substitua o worker antigo por `bin/city_workers`.
+3. Rollback: uma imagem anterior ao Plano 5 só sobe se os secrets `DATABASE_URL` e `ROTA_ADMIN_PASSWORD` forem
+   restaurados (nomes das variáveis — nunca os valores aqui).
+
 **Suspender, backup, desligar** (rake; em produção no papel worker):
 
 - `rails 'city:suspend[slug]'` → o host responde 403 em até 30 s. `rails 'city:resume[slug]'` desfaz.
@@ -96,6 +116,53 @@ então `kamal deploy`.
 
 **Purga.** Diariamente, `PurgePlatformAccessJob` apaga grants vencidos há mais de 1 dia e sessões de operador que não
 autenticam mais. `PurgeOperatorCitySessionsJob` apaga, em cada cidade, as sessões de operador por grant além de 1 hora.
+
+## Worker por cidade (Plano 5)
+
+`bin/city_workers` (container `worker` no dev, papel `worker` no Kamal) roda **um supervisor Solid Queue por cidade
+ativa, mais o da plataforma**:
+
+- **Fila da cidade** — no banco dela: webhook, envio de WhatsApp, alertas, relatórios, e-mails de redefinição de senha,
+  tarefas recorrentes de `config/recurring.yml` (agendadas por cidade). Workers em `config/queue.yml`: `urgent`
+  isolado, `realtime,default`, `reports,housekeeping`.
+- **Fila de plataforma** — no banco de plataforma: `ProvisionCityJob`, e-mail do convite, `PurgePlatformAccessJob` e
+  `config/recurring_platform.yml`. Só entram jobs de `PlatformQueue::JOBS`/`MAILERS`: um job de cidade enfileirado
+  fora de uma cidade levanta `PlatformQueue::Misplaced`. Job novo de plataforma precisa entrar nessa lista.
+- **Catálogo** — o gerente lê as cidades `active` com schema em dia a cada `CITY_WORKERS_POLL_SECONDS` (30 s): cidade
+  nova começa a processar em até 30 s; cidade suspensa, arquivada ou com schema atrasado para em até 30 s. Uma cidade
+  com schema atrasado não tem supervisor: os jobs dela simplesmente esperam no banco DELA até o próximo poll depois da
+  migração terminar — não é o retry de `CitySchemaBehind` (5 min × 12 tentativas = até 1 hora) que os faz esperar; esse
+  retry só importa na corrida em que um job já começou a rodar entre a migração terminar e o próximo poll do gerente.
+- **Falha** — supervisor que morre é reiniciado com espera de 1 s, 2 s, 4 s… até 5 min; volta a 1 s depois de 10 min
+  de pé. Log em dev: `docker compose exec worker tail -f log/development.log | grep city_workers`. Em produção o log
+  vai para STDOUT: `kamal app logs -r worker -f | grep city_workers`. Um filho que não sobe (banco fora do ar, cidade
+  indisponível) escreve uma linha só no stderr, sem stack trace — visível em `docker compose logs worker` (dev) ou
+  `kamal app logs` (produção).
+- **Parada** — TERM/INT repassa TERM aos supervisores, espera `SolidQueue.shutdown_timeout` + 5 s e mata o grupo de
+  processo de quem sobrar.
+- **Dimensionamento** — ~6 processos por cidade (supervisor, dispatcher, scheduler e os 3 workers de
+  `config/queue.yml`). `RAILS_MAX_THREADS` do worker precisa ser ≥ maior `threads` de `config/queue.yml` + 2 (Kamal:
+  12). Um host de worker roda todas as cidades; mais de um host duplica supervisores por cidade (seguro, mas dobra
+  processos).
+  - **Orçamento de conexões por cidade** (aproximado, derivado de `config/queue.yml`, `config/puma.rb` e
+    `deploy/production/deploy.yml` — não confunda com os `deploy/*/deploy.yml` em si, que este runbook não altera):
+    - **Web** — cada host roda `WEB_CONCURRENCY` processos Puma (Kamal: `2`), cada um com `RAILS_MAX_THREADS` threads
+      (Kamal: `5`) e pools para plataforma + cache + 2 por cidade servida (domínio e fila, via
+      `CityConnection.with`): `hosts × WEB_CONCURRENCY × RAILS_MAX_THREADS × (2 + 2 × cidades)`. Com 2 hosts e as 2
+      cidades ativas de hoje: `2 × 2 × 5 × (2 + 4) ≈ 120` conexões, pico.
+    - **Worker por cidade** — cada um dos ~6 processos do supervisor segura, no pico, 4 pools: o padrão do
+      `SolidQueue::Record` e o pool do shard do Solid Queue (os dois no banco DA CIDADE, um trocado pelo
+      `CityWorkers::Child`, o outro registrado por `CityConnection.ensure_pool`), o pool do `CityRecord` (banco da
+      cidade) e o pool do `PlatformRecord` (catálogo/canais). Somando as threads de produção de `config/queue.yml`
+      (`urgent` 5 + `realtime,default` 10 + `reports,housekeeping` 3, mais dispatcher e scheduler) dá ~20 threads por
+      cidade: `4 pools × ~20 ≈ 80` conexões por cidade ativa, pico.
+    - Com as 2 cidades ativas de hoje isso já soma **~280 conexões** (web + worker) contra o `max_connections`
+      DEFAULT do Postgres, que é **100**.
+    - **Gate de go-live:** antes de ir para produção, dimensione o `max_connections` do acessório Postgres (e/ou um
+      `CONNECTION LIMIT` por role — `rota_platform`, `rota_app`, cada `rota_city_<slug>`) para o número de cidades
+      planejado. Isso exige reboot do acessório.
+- **Painéis** — `/admin/api/queues` e `/admin/api/overview` leem a fila da cidade do host.
+- `SOLID_QUEUE_IN_PUMA` não existe mais: o worker é sempre `bin/city_workers`.
 
 ## Bootstrap do banco (do zero)
 
@@ -112,28 +179,15 @@ não existem mais; o RLS que eles reproduziam saiu junto com o domínio.
   `primary`/`queue`/`cache`/`platform`/`city_unset`, em qualquer
   ambiente. `rails city:test_databases` provisiona os dois bancos de cidade
   usados pelos specs de isolamento.
-- **Banco compartilhado** — só guarda Solid Queue e Solid Cache até o Plano 5
-  (`db/queue_schema.rb`, `db/cache_schema.rb`; `db/schema.rb`, de `primary`,
-  fica vazio de propósito). `start.sh` garante os roles `rota_app`/`rota_admin`
-  e carrega esses dois schemas por nome (`db:schema:load:primary`,
-  `:queue`, `:cache`) — nunca `db:prepare`/`db:schema:load` "puros", que
-  varreriam todos os configs do ambiente de uma vez. O config `admin` e o
-  `db/admin_schema.rb` saíram no corte do Plano 2 (Task 5): o domínio roda por
-  conexão de cidade (`CityRecord`), sem RLS.
-- `config.active_record.dump_schema_after_migration` é `false` em
-  development (igual a test/production): como primary/queue/cache
-  compartilham o mesmo banco físico, um dump automático de qualquer um deles
-  gravaria também as tabelas dos outros (e qualquer tabela antiga de domínio
-  que um banco de dev anterior ao corte ainda tenha) no seu arquivo de schema.
-  Rode `db:schema:dump:<config>` explicitamente quando precisar regenerar um
-  deles (`primary`, `queue` ou `cache`).
-  **`platform` é afetado pelo mesmo flag, mas por um motivo diferente:** o
-  banco de plataforma é próprio, nunca foi contaminado por domínio — só
-  parou de se auto-regenerar. Depois de qualquer migration em
-  `db/platform_migrate/`, rode `bin/rails db:schema:dump:platform` e
-  commite `db/platform_schema.rb` manualmente (era automático via
-  `db:migrate:platform` antes desta mudança — Task 3 contava com isso).
+- **Banco compartilhado** — aposentado no Plano 5. `rota_saude_development` e `rota_saude_test` continuam existindo
+  no Postgres de dev com dados antigos, mas nada os usa: a fila de cada cidade mora no banco dela, a fila de
+  plataforma e o Solid Cache no banco de plataforma (`db/platform_migrate`), e `primary` aponta para o banco vazio
+  `rota_saude_no_city_selected`. `city:load_schema` segue recusando esses nomes.
+- `config.active_record.dump_schema_after_migration` é `false` em development. Depois de qualquer migration em
+  `db/platform_migrate/`, rode `bin/rails db:schema:dump:platform` e commite `db/platform_schema.rb`. Depois de uma
+  migration em `db/city_migrate/`, atualize `db/city_schema.rb` à mão: o spec de paridade compara os dois.
+- Upgrade do Solid Queue que mude tabelas exige migration nova em `db/city_migrate/` **e** em `db/platform_migrate/`
+  (as duas usam `db/solid_queue_tables.rb`).
 
-Migrations incrementais no dev seguem via `db:migrate` (entrypoint), normalmente
-— `db/migrate/` fica vazio de propósito (só domínio de cidade mudava esse
-diretório, e esse domínio saiu).
+Migrations no dev: `bin/rails db:migrate` (plataforma) e `bin/rails city:migrate:all` (cidades) — ou `bin/migrate`,
+que roda os dois. `db/migrate/` fica vazio de propósito.

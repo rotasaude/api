@@ -1,0 +1,19 @@
+# Tarefas recorrentes da PLATAFORMA (Plano 5): agendadas pelo supervisor de
+# plataforma na fila do banco de plataforma. Só jobs de PlatformQueue::JOBS.
+
+default: &default
+  purge_platform_access:
+    class: PurgePlatformAccessJob
+    queue: housekeeping
+    schedule: "every day at 3:30am America/Sao_Paulo"
+
+  clear_solid_queue_finished:
+    command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
+    queue: housekeeping
+    schedule: every hour at minute 12
+
+development:
+  <<: *default
+
+production:
+  <<: *default

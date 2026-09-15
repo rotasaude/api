@@ -31,24 +31,31 @@ namespace :city do
   end
 
   # Nomes de config (config/database.yml) cujo banco NUNCA pode receber o
-  # schema de cidade: primary/queue/cache são o banco compartilhado (só
-  # fila/cache, até o Plano 5), platform é o catálogo/roteamento entre
-  # cidades, e city_unset é o banco deliberadamente-vazio que faz o shard
-  # `bootstrap` falhar fechado (ver comentário de no_city_selected_database
-  # acima) — carregar QUALQUER coisa nele destruiria essa garantia. O config
-  # `admin` saiu de database.yml no corte do Plano 2 (Task 5); o nome segue na
-  # lista só como defesa, caso uma config com esse nome reapareça.
+  # schema de cidade: primary é o banco vazio rota_saude_no_city_selected,
+  # cache é o banco de plataforma (Solid Cache, Plano 5), platform é o
+  # catálogo/roteamento entre cidades, e city_unset é o banco
+  # deliberadamente-vazio que faz o shard `bootstrap` falhar fechado (ver
+  # comentário de no_city_selected_database acima) — carregar QUALQUER coisa
+  # nele destruiria essa garantia. Os configs `admin` e `queue` saíram de
+  # database.yml (Plano 2 Task 5 e Plano 5, respectivamente); os nomes seguem
+  # na lista só como defesa, caso uma config com esse nome reapareça.
   protected_role_names = %w[primary admin queue cache platform city_unset].freeze
 
   # Bancos protegidos em TODO ambiente declarado em database.yml (development,
   # test, production, ...) — não só o Rails.env corrente. `configurations`
   # devolve um DatabaseConfig por (ambiente, nome); filtramos pelo nome do
   # role e pegamos o `database` resolvido, ignorando entradas sem banco
-  # resolvível (ex.: production sem DATABASE_URL setada neste container).
+  # resolvível (ex.: production sem PLATFORM_DATABASE_URL setada neste
+  # container).
+  # Bancos compartilhados aposentados no Plano 5: primary/queue/cache apontavam para
+  # eles. Não estão mais em database.yml, mas continuam existindo em dev e test com
+  # dados antigos, então city:load_schema segue recusando-os.
+  retired_database_names = %w[rota_saude_development rota_saude_test rota_saude_production].freeze
+
   protected_database_names = lambda do
-    ActiveRecord::Base.configurations.configurations
+    (ActiveRecord::Base.configurations.configurations
       .select { |cfg| protected_role_names.include?(cfg.name) }
-      .filter_map { |cfg| cfg.respond_to?(:database) ? cfg.database.presence : nil }
+      .filter_map { |cfg| cfg.respond_to?(:database) ? cfg.database.presence : nil } + retired_database_names)
       .uniq
   end
 

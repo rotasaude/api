@@ -37,10 +37,10 @@ Rails.application.config.to_prepare do
 
       private
 
-      # O cache ainda vive fora do banco da cidade (Solid Cache compartilhado
-      # até o Plano 5): a chave PRECISA carregar a cidade, senão o protocolo
-      # ativo de uma cidade seria servido a outra. Usa o shard da conexão —
-      # a mesma fonte de onde a query lê —, não Current.city.
+      # O cache vive fora do banco da cidade (Solid Cache no banco de
+      # plataforma, Plano 5): a chave PRECISA carregar a cidade, senão o
+      # protocolo ativo de uma cidade seria servido a outra. Usa o shard da
+      # conexão — a mesma fonte de onde a query lê —, não Current.city.
       def city_cache_scope
         CityRecord.current_shard
       end

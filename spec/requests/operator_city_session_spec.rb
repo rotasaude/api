@@ -16,19 +16,11 @@ RSpec.describe "Operator session inside a city", type: :request do
   it "reads the city panels without any city membership" do
     sign_in_operator_grant(operator)
 
-    # /admin/api/overview would also belong on this list, but it (and
-    # /admin/api/queues) call SolidQueue::FailedExecution/ClaimedExecution
-    # directly. SolidQueue::Record has no connects_to in this app, so it uses
-    # whatever connection ApplicationRecord/primary resolves to — the PRIMARY
-    # test database (rota_saude_test), not the city shard. rota_saude_test has
-    # no solid_queue_* tables (those only exist in the `queue` role, which
-    # config/database.yml doesn't even define for test), so the query 500s.
-    # This reproduces for ANY signed-in actor (probed with a plain
-    # municipal_admin session, not just an operator grant), so it predates
-    # this task and is out of scope for it (Task 1 touches only the files
-    # listed in its brief) — /admin/api/reports and /admin/api/triages already
-    # cover the read-without-membership invariant this example exists for.
-    %w[/admin/api/reports /admin/api/triages].each do |path|
+    # /admin/api/overview and /admin/api/queues read SolidQueue::* tables. Since
+    # Plan 5 the city's queue lives in the city's database and CityConnection.with
+    # routes SolidQueue::Record there too, so these panels read the city's own
+    # queue.
+    %w[/admin/api/overview /admin/api/queues /admin/api/reports /admin/api/triages].each do |path|
       get path, params: { period: "30d" }
       expect(response).to have_http_status(:ok), "#{path} respondeu #{response.status}"
     end
