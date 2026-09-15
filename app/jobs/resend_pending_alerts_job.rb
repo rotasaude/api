@@ -30,5 +30,24 @@ class ResendPendingAlertsJob < ApplicationJob
                .find_each do |event|
       DomainEvents.redispatch(event)
     end
+
+    warn_stale_pending_alerts
+  end
+
+  private
+
+  # M1 (hardening review): um triage.urgent pending mais velho que
+  # RESEND_MAX_AGE sai da janela acima sem redespachar E sem deixar rastro —
+  # a rede de segurança falharia em silêncio. Uma contagem só (cheap: um
+  # count, sem find_each) evita perder isso de vista, sem reintroduzir o
+  # problema que o teto de 24h evita (redespachar tudo de novo). Só slug e
+  # contagem no log: nunca id de triage, nunca payload.
+  def warn_stale_pending_alerts
+    stale_count = DomainEvent.pending.where(name: "triage.urgent")
+                             .where("occurred_at <= ?", RESEND_MAX_AGE.ago)
+                             .count
+    return unless stale_count.positive?
+
+    Rails.logger.warn("city=#{Current.city.slug}: #{stale_count} triage.urgent pendente(s) há mais de 24h, fora da janela de reenvio")
   end
 end

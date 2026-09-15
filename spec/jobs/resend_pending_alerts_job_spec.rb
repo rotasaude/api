@@ -87,6 +87,28 @@ RSpec.describe ResendPendingAlertsJob, type: :job do
     expect { call_body }.not_to have_enqueued_job(AlertMunicipalityJob)
   end
 
+  # M1 (hardening review): um triage.urgent pending com mais de 24h sai da
+  # janela de reenvio e nenhum log avisa disso -- a rede de segurança falha em
+  # silêncio. Warn com o slug e a CONTAGEM só (nenhum id de triage, nenhum
+  # payload).
+  it "avisa (warn) quando existe um triage.urgent pending com mais de 24h" do
+    make_event(occurred_at: 25.hours.ago)
+
+    expect(Rails.logger).to receive(:warn).with(
+      a_string_matching(/\Acity=#{Regexp.escape(TEST_CITY_A.slug)}: 1\b/)
+    )
+
+    call_body
+  end
+
+  it "não avisa quando não há triage.urgent pending com mais de 24h" do
+    make_event(occurred_at: 10.minutes.ago) # redespachado normalmente, dentro da janela
+
+    expect(Rails.logger).not_to receive(:warn)
+
+    call_body
+  end
+
   it "redespacha vários eventos pendentes e antigos, um a um (find_each)" do
     old_a = make_event(occurred_at: 10.minutes.ago)
     old_b = make_event(occurred_at: 20.minutes.ago)
