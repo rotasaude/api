@@ -12,6 +12,7 @@ RSpec.describe CityLifecycle::Backup do
 
   after do
     cleanup_provisioned_city!(city)
+  ensure
     ScratchDatabases.drop!(scratch)
     FileUtils.rm_rf(dir)
   end

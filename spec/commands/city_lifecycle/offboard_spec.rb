@@ -11,8 +11,18 @@ RSpec.describe CityLifecycle::Offboard do
   let(:dir) { Dir.mktmpdir("city-backups") }
 
   after do
-    [ city_a, city_b ].each { |city| cleanup_provisioned_city!(city) }
+    # cleanup_provisioned_city! already guarantees ITS OWN city's platform rows
+    # are gone even if the drop itself fails (fix round 1); this still attempts
+    # BOTH cities' cleanup before re-raising, so a failure on A never skips B's
+    # cleanup the way a plain `.each` would.
+    errors = [ city_a, city_b ].filter_map do |city|
+      cleanup_provisioned_city!(city)
+      nil
+    rescue StandardError => e
+      e
+    end
     FileUtils.rm_rf(dir)
+    raise errors.first if errors.any?
   end
 
   def role_can_connect?(city)

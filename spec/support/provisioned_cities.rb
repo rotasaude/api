@@ -18,9 +18,17 @@ module ProvisionedCities
     city
   end
 
+  # CityDatabase.drop! já tenta de novo sozinho contra um autovacuum worker
+  # transitório (fix round 1); se mesmo assim levantar — banco/role realmente
+  # não apagáveis por rota_provisioner, ex.: cidade de dev do bootstrap
+  # superusuário —, o `ensure` abaixo ainda apaga as linhas de PLATAFORMA desta
+  # cidade antes de propagar, para uma falha numa cidade não deixar as linhas
+  # de outra (ex.: `[a, b].each { cleanup_provisioned_city!(...) }`) sujando o
+  # catálogo pro resto da suíte.
   def cleanup_provisioned_city!(city)
     CityConnection.forget(city.shard)
     CityDatabase.drop!(slug: city.slug)
+  ensure
     CityChannel.where(city_id: city.id).delete_all
     CityGrant.where(city_id: city.id).delete_all
     PlatformEvent.where("payload->>'city_id' = ?", city.id).delete_all
