@@ -5,6 +5,8 @@ require "rails_helper"
 # testado a fundo em spec/services/whatsapp/ingest_spec.rb — aqui só provamos
 # que o controller lê o resultado e responde certo.
 RSpec.describe "Webhooks::Whatsapp", type: :request do
+  include ActiveJob::TestHelper
+
   let(:city) { create(:city, database_url: city_database_url("rota_saude_test_city_a")) }
   let!(:channel) do
     CityChannel.create!(city: city, phone_number_id: "PNIDREQ", waba_id: "WABAREQ",
@@ -79,8 +81,10 @@ RSpec.describe "Webhooks::Whatsapp", type: :request do
       city.update!(schema_version: (CitySchema.expected_version - 1).to_s)
 
       expect {
-        post_whatsapp(payload)
-      }.not_to change { CityConnection.with(city) { InboundMessage.count } }
+        expect {
+          post_whatsapp(payload)
+        }.not_to change { CityConnection.with(city) { InboundMessage.count } }
+      }.not_to have_enqueued_job(ProcessInboundMessageJob) # M3 (hardening review)
 
       expect(response).to have_http_status(:service_unavailable)
       expect(JSON.parse(response.body)).to eq("error" => "city_schema_behind")

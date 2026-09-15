@@ -1,6 +1,7 @@
 require "rails_helper"
 
 RSpec.describe Whatsapp::Ingest do
+  include ActiveJob::TestHelper
   # Two real, distinct cities (own physical databases) so "landed in the
   # right city" and "the other city got nothing" are two independently
   # provable claims, not a single connected_to(role: :admin) read that today
@@ -67,15 +68,18 @@ RSpec.describe Whatsapp::Ingest do
   it "cidade com schema atrasado não grava nada e o resultado sinaliza schema_behind" do
     city_a.update!(schema_version: (CitySchema.expected_version - 1).to_s)
 
-    before_count = ActiveJob::Base.queue_adapter.enqueued_jobs.size
     result = nil
 
+    # M2 (hardening review): the repo's convention for "nothing enqueued" is
+    # have_enqueued_job, not a before/after delta on the :test adapter's
+    # process-global enqueued_jobs array (fragile if another example in the
+    # same process enqueues something first).
     expect {
       result = described_class.call(payload)
-    }.not_to change { CityConnection.with(city_a) { InboundMessage.count } }
+    }.not_to have_enqueued_job(ProcessInboundMessageJob)
 
     expect(result.schema_behind?).to be(true)
-    expect(ActiveJob::Base.queue_adapter.enqueued_jobs.size).to eq(before_count)
+    expect(CityConnection.with(city_a) { InboundMessage.count }).to eq(0)
   end
 
   it "num payload com duas mudanças, a cidade atrasada não recebe nada e a saudável segue normal" do
@@ -84,19 +88,26 @@ RSpec.describe Whatsapp::Ingest do
                         display_phone_number: "+5511888888888", access_token: "tok2", active: true)
     city_b.update!(schema_version: (CitySchema.expected_version - 1).to_s)
 
+    # M1 (hardening review): the behind change comes FIRST and the healthy
+    # one SECOND on purpose — a `next` → `break`/`return` regression in
+    # Whatsapp::Ingest.call's loop would stop processing right after the
+    # first (behind) change and silently drop the healthy one that follows.
+    # With the healthy change first (the old order), that same regression
+    # would go unnoticed: the healthy write already happened before the loop
+    # ever reached the behind change.
     multi_payload = {
       "entry" => [{
         "changes" => [
           {
             "value" => {
-              "metadata" => { "phone_number_id" => "PNID123" },
-              "messages" => [{ "id" => "wamid.healthy", "from" => "+551188", "type" => "text", "text" => { "body" => "oi" } }]
+              "metadata" => { "phone_number_id" => "PNID456" },
+              "messages" => [{ "id" => "wamid.behind", "from" => "+551199", "type" => "text", "text" => { "body" => "oi" } }]
             }
           },
           {
             "value" => {
-              "metadata" => { "phone_number_id" => "PNID456" },
-              "messages" => [{ "id" => "wamid.behind", "from" => "+551199", "type" => "text", "text" => { "body" => "oi" } }]
+              "metadata" => { "phone_number_id" => "PNID123" },
+              "messages" => [{ "id" => "wamid.healthy", "from" => "+551188", "type" => "text", "text" => { "body" => "oi" } }]
             }
           }
         ]
