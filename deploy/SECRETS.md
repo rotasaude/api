@@ -10,6 +10,10 @@ Chaves protegidas em `deploy/<env>/secrets`, nunca em git. Injetadas no boot pel
 - `WHATSAPP_APP_SECRET` — HMAC de webhook.
 - `ROTA_APP_PASSWORD` / `ROTA_ADMIN_PASSWORD` — senhas dos papéis Postgres (`rota_admin` só para fila/cache até o Plano 5).
 - `ROTA_PLATFORM_PASSWORD` — senha do papel `rota_platform` (banco de plataforma).
+- `PROVISIONER_DATABASE_URL` — `postgres://rota_provisioner:<senha>@<host>:5432/postgres`. Só o papel **worker** recebe:
+  cria e apaga banco e role de cada cidade (Plano 4). Cada cidade provisionada ganha o role `rota_city_<slug>`, dono do
+  banco `rota_saude_city_<slug>`, com senha gerada no provisionamento e guardada cifrada em `cities.database_url` —
+  nenhuma senha de cidade entra no cofre.
 - `DATABASE_URL` — banco compartilhado (fila e cache).
 - `PLATFORM_DATABASE_URL` — banco de plataforma (catálogo de cidades, operadores, `platform_events`).
 - `CITY_UNSET_DATABASE_URL` — banco VAZIO que precisa existir; destino do shard `bootstrap` do `CityRecord`, faz query fora de cidade falhar fechado. Nunca apontar para o banco compartilhado.
@@ -17,9 +21,23 @@ Chaves protegidas em `deploy/<env>/secrets`, nunca em git. Injetadas no boot pel
 
 Em produção os valores vêm do 1Password (`deploy/production/secrets`). Itens que o
 cofre `rota-saude-prod` precisa ter: `postgres-roles` (campos `rota_app`,
-`rota_admin`, `rota_platform`), `active-record-encryption` (campos `primary_key`,
+`rota_admin`, `rota_platform`, `provisioner_url`), `active-record-encryption` (campos `primary_key`,
 `deterministic_key`, `key_derivation_salt`) e `govbr` (campos `client_id`,
 `client_secret`), além dos já existentes.
+
+## Papel `rota_provisioner` (uma vez por cluster)
+
+Criado pela infra, com o superusuário do Postgres, antes do primeiro provisionamento:
+
+    CREATE ROLE rota_provisioner LOGIN CREATEDB CREATEROLE PASSWORD '<senha do cofre>';
+
+Nunca `SUPERUSER`. Em dev e test, `rails platform:bootstrap` cria o mesmo papel com `ROTA_PROVISIONER_PASSWORD`
+(default `rota_provisioner`).
+
+## Backup e offboarding
+
+`CITY_BACKUP_DIR` (volume do worker) recebe os dumps de `city:backup` e o dump final de `city:offboard`. O dump contém
+dados cifrados com as chaves de AR Encryption acima: guardar o dump sem as chaves não permite restaurar.
 
 ## Rotação
 AR Encryption suporta lista de chaves. Para rotacionar:

@@ -13,12 +13,21 @@ ENV BUNDLE_DEPLOYMENT="1" \
     BUNDLE_WITHOUT="development:test" \
     RAILS_ENV="production"
 
+# postgresql-client-16 do repositório PGDG (Plano 4): o pg_dump precisa ser da
+# mesma versão major do servidor ou mais nova, o Postgres de produção é o 16 e o
+# postgresql-client do Debian é o 15.
 RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y ca-certificates curl && \
+    install -d /usr/share/postgresql-common/pgdg && \
+    curl -fsSLo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc && \
+    . /etc/os-release && \
+    echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list && \
+    apt-get update -qq && \
     apt-get install --no-install-recommends -y \
-      curl \
       libjemalloc2 \
       libvips \
-      postgresql-client \
+      postgresql-client-16 \
       tzdata && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 

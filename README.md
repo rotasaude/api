@@ -17,6 +17,9 @@ faltar uma delas quebra até rodando os specs:
 | `ROTA_APP_PASSWORD` | `rota_app` | `primary`, `city_unset` e bancos de cidade |
 | `ROTA_ADMIN_PASSWORD` | `rota_admin` | `queue`, `cache` (até o Plano 5) |
 | `ROTA_PLATFORM_PASSWORD` | `rota_platform` | `platform` |
+| `ROTA_PROVISIONER_PASSWORD` | `rota_provisioner` | `platform:bootstrap` (cria o papel) e `CityDatabase` em dev/test |
+| `PROVISIONER_DATABASE_URL` | montada a partir da anterior | papel worker: cria e apaga banco/role de cidade (obrigatória em produção) |
+| `CITY_BACKUP_DIR` | `tmp/city_backups` | `city:backup`, `city:offboard` |
 | `PUBLIC_DASHBOARD_URL` | `http://localhost:5175/dashboard/` | link do e-mail de redefinição de senha |
 
 Bancos que precisam existir no Postgres do host:
@@ -28,6 +31,7 @@ Bancos que precisam existir no Postgres do host:
 | `rota_saude_no_city_selected` (vazio de propósito) | `rota_saude` | `rails city:test_databases` |
 | `rota_saude_test_city_a`, `rota_saude_test_city_b` | `rota_saude` | `rails city:test_databases` |
 | `rota_saude_city_curitiba`, `rota_saude_city_maringa` | `rota_saude` | `rails city:dev_baseline` |
+| `rota_saude_city_<slug>` (cidades provisionadas) | `rota_city_<slug>` | `ProvisionCityJob` (worker), a partir de `POST /cities` |
 
 `start.sh` chama essas tasks e `city:dev_baseline` antes do `db:seed`. Contas de dev:
 `admin@curitiba.demo` e `admin@maringa.demo` (senha `dev-password`) em cada cidade, e o operador `dev@local`
@@ -52,6 +56,42 @@ vale 1 hora e é auditada no banco de plataforma e no da cidade. Cinco códigos 
 no deploy `development`, produção usa `https://sso.acesso.gov.br` — ver `deploy/*/deploy.yml`). Sem elas (ou vazias),
 `start` responde 502.
 O destino de volta usa `CITY_DASHBOARD_URL_TEMPLATE` (default `http://%{slug}.localhost:5175/dashboard/`).
+
+## Ciclo de vida da cidade (Plano 4)
+
+**Provisionar.** No console (`admin.*`, operador com TOTP):
+
+- `POST /cities {slug, name, uf, ibge_code, admin_email, alert_email}` grava a cidade como `provisioning` e responde
+  `202 {id}`.
+- O worker (`ProvisionCityJob`) cria o role `rota_city_<slug>` e o banco dele, com `CONNECT` revogado de `PUBLIC`.
+  Depois migra (subprocesso `city:migrate[slug]`), grava `city_profile`, o destinatário de alerta, o protocolo template
+  em rascunho e o convite do primeiro `municipal_admin`, e marca a cidade `active`.
+- O convite vai por e-mail (`?invite=<token>` no dashboard; a tela é do Plano 6).
+- `GET /cities/:id` mostra o status. Repetir o POST com o mesmo slug retoma um provisionamento que falhou.
+- O canal WhatsApp é outro passo: `CITY_SLUG=... PHONE_NUMBER_ID=... WABA_ID=... DISPLAY_PHONE_NUMBER=... ACCESS_TOKEN=... rails channels:register`.
+- O provisionamento não semeia termo de consentimento.
+
+**Migrar (deploy).** O boot NÃO migra. Com a imagem nova, antes de trocar o código em execução, rode `bin/migrate`
+(`db:migrate` + `city:migrate:all`). Por exemplo: `kamal app exec --roles=worker --version=<nova> bin/migrate` e só
+então `kamal deploy`.
+- `city:migrate:all` migra toda cidade `active`/`suspended`, com lock por cidade, e sai com erro listando as que
+  ficaram para trás.
+- A cidade atrasada responde `503 city_schema_behind`; as outras seguem no ar.
+- Toda migração destrutiva é expand/contract: o código antigo roda sobre o schema novo durante o deploy.
+- Migração de cidade mora em `db/city_migrate/`, e `db/city_schema.rb` precisa acompanhar. O spec de paridade em
+  `spec/services/city_schema_spec.rb` compara os dois.
+
+**Suspender, backup, desligar** (rake; em produção no papel worker):
+
+- `rails 'city:suspend[slug]'` → o host responde 403 em até 30 s. `rails 'city:resume[slug]'` desfaz.
+- `rails 'city:backup[slug]'` → `pg_dump` da cidade em `CITY_BACKUP_DIR`, restaurável sozinho com
+  `pg_restore --no-owner`.
+- `CONFIRM=<slug> rails 'city:offboard[slug]'` (IRREVERSÍVEL, só cidade suspensa) → dump final, canais inativos,
+  `archived`, `DROP DATABASE` e `DROP ROLE`.
+- `curitiba` e `maringa` (criadas por `city:dev_up`, banco do superusuário) não são apagáveis pelo `rota_provisioner`.
+
+**Purga.** Diariamente, `PurgePlatformAccessJob` apaga grants vencidos há mais de 1 dia e sessões de operador que não
+autenticam mais. `PurgeOperatorCitySessionsJob` apaga, em cada cidade, as sessões de operador por grant além de 1 hora.
 
 ## Bootstrap do banco (do zero)
 

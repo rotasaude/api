@@ -17,8 +17,15 @@ servers:
     hosts:
       - worker1.rota-saude.example
     cmd: ./bin/jobs
+    # Só o worker cria e apaga banco de cidade (Plano 4): o web nunca recebe a
+    # credencial de rota_provisioner. Backup e offboarding rodam aqui
+    # (kamal app exec --roles=worker) e gravam em CITY_BACKUP_DIR.
+    env:
+      secret:
+        - PROVISIONER_DATABASE_URL
     options:
       memory: 1g
+      volume: /var/lib/rota-saude/city_backups:/rails/storage/city_backups
 
 proxy:
   ssl: true
@@ -48,6 +55,7 @@ env:
     CITY_DASHBOARD_URL_TEMPLATE: "https://%{slug}.rota-saude.example/dashboard/"
     GOVBR_REDIRECT_URI: "https://auth.rota-saude.example/auth/govbr/callback"
     GOVBR_ISSUER_URL: "https://sso.acesso.gov.br"
+    CITY_BACKUP_DIR: "/rails/storage/city_backups"
   secret:
     - ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
     - ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
