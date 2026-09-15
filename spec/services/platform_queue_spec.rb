@@ -32,6 +32,16 @@ RSpec.describe PlatformQueue do
       .to have_enqueued_job(CityMailDeliveryJob)
   end
 
+  # T2-c: coverage gap. The example above only exercises InvitationMailer from
+  # on_platform_queue (allowed). Nothing proved the other direction — called
+  # from INSIDE a city (the harness's own default context, spec/support/
+  # city_test_databases.rb), it must raise instead of landing a platform
+  # mailer in the city's queue.
+  it "refuses the invitation mailer delivered from inside a city" do
+    expect { InvitationMailer.invite(email_address: "a@cidade.gov.br", accept_url: accept_url).deliver_later }
+      .to raise_error(PlatformQueue::Misplaced, /InvitationMailer/)
+  end
+
   it "treats the default shard as the city's queue inside a city worker process" do
     CityWorkers::Context.city_slug = "curitiba"
 

@@ -47,9 +47,16 @@ RSpec.describe "CityConnection queue routing" do
     handler = ActiveRecord::Base.connection_handler
 
     CityConnection.ensure_pool(city)
-    expect(handler.retrieve_connection_pool("SolidQueue::Record", role: :writing, shard: city.shard)).to be_present
+    # T2-c: forget lived after this expectation, unguarded — a failure here
+    # would raise past it and leak the pool this example just registered into
+    # every later example in the process. Guard the risky assertion so forget
+    # always runs, pass or fail.
+    begin
+      expect(handler.retrieve_connection_pool("SolidQueue::Record", role: :writing, shard: city.shard)).to be_present
+    ensure
+      CityConnection.forget(city.shard)
+    end
 
-    CityConnection.forget(city.shard)
     expect(handler.retrieve_connection_pool("CityRecord", role: :writing, shard: city.shard)).to be_nil
     expect(handler.retrieve_connection_pool("SolidQueue::Record", role: :writing, shard: city.shard)).to be_nil
   end
