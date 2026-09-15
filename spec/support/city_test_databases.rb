@@ -64,6 +64,27 @@ module CityTestDatabases
   # of silently doing nothing.
   #
   # Returns the released pool names, or nil when nothing leaked.
+  # Every City with its own slug (the `:city` factory default) registers two
+  # pools through CityConnection.ensure_pool — CityRecord and SolidQueue::Record
+  # — and each keeps a connection open for the rest of the process. Nothing
+  # removed them, so the full suite piled up ~95 pools and exhausted Postgres
+  # max_connections (100): the last spec files failed with "remaining connection
+  # slots are reserved". After each example (fixtures already torn down) the
+  # harness forgets every city shard except the two test cities; a later example
+  # that needs one registers it again lazily through CityConnection.with.
+  def self.transient_city_shards
+    kept = [TEST_CITY_A.shard, TEST_CITY_B.shard, :bootstrap, ActiveRecord::Base.default_shard]
+    ActiveRecord::Base.connection_handler.connection_pool_list(:all)
+                      .select { |pool| pool.connection_descriptor.name == CityRecord.name }
+                      .map(&:shard)
+                      .uniq
+                      .reject { |shard| kept.include?(shard) }
+  end
+
+  def self.forget_transient_city_shards!
+    transient_city_shards.each { |shard| CityConnection.forget(shard) }
+  end
+
   class GuardInert < StandardError; end
 
   def self.release_leaked_fixture_transaction(example)
@@ -115,6 +136,14 @@ RSpec.configure do |config|
 
         warn "[city harness] #{example.full_description}: leaked-fixture guard failed while " \
              "#{original.class} propagated — #{guard_error.class}: #{guard_error.message}"
+      end
+      begin
+        CityTestDatabases.forget_transient_city_shards!
+      rescue StandardError => forget_error
+        raise forget_error unless original
+
+        warn "[city harness] #{example.full_description}: forgetting transient city shards failed while " \
+             "#{original.class} propagated — #{forget_error.class}: #{forget_error.message}"
       end
     end
     if leaked
