@@ -13,9 +13,11 @@ class CityConnection
   MUTEX = Mutex.new
 
   class << self
+    # Domínio E fila da cidade (Plano 5): um job enfileirado aqui dentro cai na fila
+    # do banco da cidade, não na de plataforma.
     def with(city, &block)
       ensure_pool(city)
-      CityRecord.connected_to(shard: city.shard, role: :writing, &block)
+      ActiveRecord::Base.connected_to_many([ CityRecord, SolidQueue::Record ], role: :writing, shard: city.shard, &block)
     end
 
     # Verificado em 2026-09-12 contra o Rails 8.1.3, os pontos em que registrar
@@ -26,7 +28,7 @@ class CityConnection
     #   scheme de adapter que não existe (ex.: "postgress://")
     #                         -> AdapterNotFound / AdapterNotSpecified, levantado
     #                            por establish_connection em si (validate!),
-    #                            não por db_config_for — por isso o rescue cobre
+    #                            não por database_config — por isso o rescue cobre
     #                            o método inteiro, não só a resolução da config.
     #   password com caractere que quebra URI.parse (ex.: "[", espaço)
     #                         -> URI::InvalidURIError
@@ -40,11 +42,15 @@ class CityConnection
       MUTEX.synchronize do
         next if registered?(city.shard)
 
+        config = database_config(city)
+        # A fila da cidade mora no banco dela (Plano 5). O pool de fila é registrado
+        # antes do de domínio: registered? olha o de domínio, então um existe só se
+        # o outro já existe.
         ActiveRecord::Base.connection_handler.establish_connection(
-          db_config_for(city),
-          owner_name: CityRecord,
-          role: :writing,
-          shard: city.shard
+          config, owner_name: SolidQueue::Record, role: :writing, shard: city.shard
+        )
+        ActiveRecord::Base.connection_handler.establish_connection(
+          config, owner_name: CityRecord, role: :writing, shard: city.shard
         )
       end
     rescue ActiveRecord::DatabaseConfigurations::InvalidConfigurationError,
@@ -63,13 +69,14 @@ class CityConnection
     # Rotação, suspensão e desligamento de cidade precisam derrubar o pool.
     # No-op se a cidade nunca foi registrada neste processo.
     def forget(shard)
-      ActiveRecord::Base.connection_handler
-        .remove_connection_pool(CityRecord.name, role: :writing, shard: shard)
+      handler = ActiveRecord::Base.connection_handler
+      handler.remove_connection_pool(CityRecord.name, role: :writing, shard: shard)
+      handler.remove_connection_pool(SolidQueue::Record.name, role: :writing, shard: shard)
     end
 
-    private
-
-    def db_config_for(city)
+    # Config resolvida do banco da cidade. Pública para o worker da cidade
+    # (CityWorkers::Child), que liga o Solid Queue do processo inteiro a ela.
+    def database_config(city)
       url = city.database_url.to_s
       url += (url.include?("?") ? "&" : "?") + "pool=#{pool_size}"
 
@@ -80,6 +87,8 @@ class CityConnection
 
       resolved
     end
+
+    private
 
     def pool_size
       ENV.fetch("RAILS_MAX_THREADS", 5).to_i

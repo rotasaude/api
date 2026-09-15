@@ -25,7 +25,7 @@ RSpec.describe "City provisioning on the platform console", type: :request do
   it "registers the city as provisioning, enqueues phase two and answers only the id" do
     verified_login!
 
-    expect { post "/cities", params: params }
+    expect { on_platform_queue { post "/cities", params: params } }
       .to change(City, :count).by(1).and have_enqueued_job(ProvisionCityJob)
 
     expect(response).to have_http_status(:accepted)
@@ -36,7 +36,7 @@ RSpec.describe "City provisioning on the platform console", type: :request do
 
   it "does not serve the city while it is provisioning" do
     verified_login!
-    post "/cities", params: params
+    on_platform_queue { post "/cities", params: params }
     CityCatalog.reset_cache!
 
     host! "novacidade.rotasaude.app"
@@ -47,7 +47,7 @@ RSpec.describe "City provisioning on the platform console", type: :request do
 
   it "reports the provisioning status by id, and 404 for an unknown id" do
     verified_login!
-    post "/cities", params: params
+    on_platform_queue { post "/cities", params: params }
     id = json["id"]
 
     get "/cities/#{id}"
@@ -63,11 +63,11 @@ RSpec.describe "City provisioning on the platform console", type: :request do
   it "answers 409 for a slug of an active city and 422 for invalid input, enqueuing nothing" do
     verified_login!
 
-    expect { post "/cities", params: params.merge(slug: TEST_CITY_A.slug) }.not_to have_enqueued_job
+    expect { on_platform_queue { post "/cities", params: params.merge(slug: TEST_CITY_A.slug) } }.not_to have_enqueued_job
     expect(response).to have_http_status(:conflict)
     expect(json["error"]).to eq("city_exists")
 
-    expect { post "/cities", params: params.merge(uf: "pr") }.not_to have_enqueued_job
+    expect { on_platform_queue { post "/cities", params: params.merge(uf: "pr") } }.not_to have_enqueued_job
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json["error"]).to eq("invalid")
   end
@@ -76,14 +76,14 @@ RSpec.describe "City provisioning on the platform console", type: :request do
     verified_login!
     allow(ProvisionCity).to receive(:call).and_return(Result.fail(:misconfigured, message: "CITY_DATABASE_HOST ausente"))
 
-    post "/cities", params: params
+    on_platform_queue { post "/cities", params: params }
 
     expect(response).to have_http_status(:service_unavailable)
     expect(json).to eq("error" => "misconfigured")
   end
 
   it "requires a verified operator session" do
-    expect { post "/cities", params: params }.not_to change(City, :count)
+    expect { on_platform_queue { post "/cities", params: params } }.not_to change(City, :count)
     expect(response).to have_http_status(:unauthorized)
 
     get "/cities/#{City.find_by!(slug: TEST_CITY_A.slug).id}"
@@ -93,7 +93,7 @@ RSpec.describe "City provisioning on the platform console", type: :request do
   it "is not reachable on a city host, and POST /setup/municipalities is gone" do
     host! test_city_host
 
-    post "/cities", params: params
+    on_platform_queue { post "/cities", params: params }
     expect(response).to have_http_status(:not_found)
 
     post "/setup/municipalities", params: params

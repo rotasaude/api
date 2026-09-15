@@ -17,6 +17,7 @@ require_relative "support/city_probe_controller"
 require_relative "support/city_database_urls"
 require_relative "support/scratch_databases"
 require_relative "support/provisioned_cities"
+require_relative "support/platform_queue"
 require_relative "support/city_test_databases"
 require_relative "support/city_request_auth"
 # Add additional requires below this line. Rails is not loaded until this point!

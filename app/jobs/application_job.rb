@@ -12,6 +12,10 @@ class ApplicationJob < ActiveJob::Base
   # `false` — mail jobs must carry plain values, never uncommitted records (R42).
   self.enqueue_after_transaction_commit = true
 
+  # Plano 5: job de cidade só na fila da cidade; job de plataforma só na fila de
+  # plataforma (PlatformQueue).
+  before_enqueue { |job| PlatformQueue.check!(job) }
+
   retry_on ActiveRecord::Deadlocked, attempts: 3, wait: :polynomially_longer
   discard_on ActiveJob::DeserializationError
 end

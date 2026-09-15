@@ -36,7 +36,7 @@ RSpec.describe ProvisionCityJob, type: :job do
   end
 
   it "creates database and role, migrates, seeds the city, activates it and audits once" do
-    described_class.perform_now(city_id: city.id, **args)
+    on_platform_queue { described_class.perform_now(city_id: city.id, **args) }
 
     city.reload
     expect(city.status).to eq("active")
@@ -57,7 +57,7 @@ RSpec.describe ProvisionCityJob, type: :job do
   end
 
   it "e-mails the invitation link to the first admin" do
-    described_class.perform_now(city_id: city.id, **args)
+    on_platform_queue { described_class.perform_now(city_id: city.id, **args) }
 
     token = CityConnection.with(city) { Invitation.sole.token }
     expect(InvitationMailer).to have_received(:invite)
@@ -66,13 +66,13 @@ RSpec.describe ProvisionCityJob, type: :job do
 
   it "stays provisioning after a failure and resumes without duplicating anything" do
     described_class.migrator = ->(_c) { raise "migração caiu" }
-    described_class.perform_now(city_id: city.id, **args) # retry_on engole e reagenda
+    on_platform_queue { described_class.perform_now(city_id: city.id, **args) } # retry_on engole e reagenda
 
     expect(city.reload.status).to eq("provisioning")
     expect(CityDatabase.exists?(slug: slug)).to be(true)
 
     described_class.migrator = ->(c) { CityMigrations.run(c) }
-    2.times { described_class.perform_now(city_id: city.id, **args) }
+    2.times { on_platform_queue { described_class.perform_now(city_id: city.id, **args) } }
 
     expect(city.reload.status).to eq("active")
     CityConnection.with(city) do
@@ -84,13 +84,13 @@ RSpec.describe ProvisionCityJob, type: :job do
 
   it "re-sends the same invitation link when activation fails after seeding, and stops once the city is active" do
     allow(Platform).to receive(:audit).and_raise(ActiveRecord::StatementInvalid, "plataforma caiu")
-    described_class.perform_now(city_id: city.id, **args)
+    on_platform_queue { described_class.perform_now(city_id: city.id, **args) }
 
     expect(city.reload.status).to eq("provisioning")
     expect(InvitationMailer).to have_received(:invite).once
 
     allow(Platform).to receive(:audit).and_call_original
-    2.times { described_class.perform_now(city_id: city.id, **args) }
+    2.times { on_platform_queue { described_class.perform_now(city_id: city.id, **args) } }
 
     expect(city.reload.status).to eq("active")
     token = CityConnection.with(city) { Invitation.sole.token }
@@ -109,10 +109,10 @@ RSpec.describe ProvisionCityJob, type: :job do
       original.call(**kwargs)
     end
 
-    described_class.perform_now(city_id: city.id, **args)
+    on_platform_queue { described_class.perform_now(city_id: city.id, **args) }
     expect(city.reload.status).to eq("provisioning")
 
-    described_class.perform_now(city_id: city.id, **args)
+    on_platform_queue { described_class.perform_now(city_id: city.id, **args) }
 
     expect(city.reload.status).to eq("active")
     token = CityConnection.with(city) { Invitation.sole.token }
@@ -123,13 +123,13 @@ RSpec.describe ProvisionCityJob, type: :job do
   end
 
   it "invites the first admin again when the earlier invitation expired, e-mailing the new token" do
-    described_class.perform_now(city_id: city.id, **args)
+    on_platform_queue { described_class.perform_now(city_id: city.id, **args) }
     first_token = CityConnection.with(city) do
       Invitation.sole.tap { |inv| inv.update_columns(expires_at: 1.minute.ago) }.token
     end
     city.update_columns(status: "provisioning")
 
-    described_class.perform_now(city_id: city.id, **args)
+    on_platform_queue { described_class.perform_now(city_id: city.id, **args) }
 
     new_token = CityConnection.with(city) do
       expect(Invitation.count).to eq(2)
@@ -145,8 +145,8 @@ RSpec.describe ProvisionCityJob, type: :job do
     city.update!(status: "suspended")
     expect(CityDatabase).not_to receive(:ensure!)
 
-    described_class.perform_now(city_id: city.id, **args)
-    described_class.perform_now(city_id: SecureRandom.uuid, **args)
+    on_platform_queue { described_class.perform_now(city_id: city.id, **args) }
+    on_platform_queue { described_class.perform_now(city_id: SecureRandom.uuid, **args) }
 
     expect(city.reload.status).to eq("suspended")
   end
