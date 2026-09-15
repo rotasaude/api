@@ -41,6 +41,16 @@ default: &default
     schedule: "every day at 5:30am America/Sao_Paulo"
     args: { older_than_days: 90 }
 
+  purge_platform_access:
+    class: PurgePlatformAccessJob
+    queue: housekeeping
+    schedule: "every day at 3:30am America/Sao_Paulo"
+
+  purge_operator_city_sessions:
+    class: PurgeOperatorCitySessionsJob
+    queue: housekeeping
+    schedule: "every day at 3:45am America/Sao_Paulo"
+
   resend_pending_alerts:
     class: ResendPendingAlertsJob
     queue: urgent

@@ -4,7 +4,7 @@
 #     fixo) — loga no console, host admin.* (Operators::SessionsController); e um
 #     canal WhatsApp por cidade (CityChannel).
 #   - CADA CIDADE (curitiba, maringa), dentro da conexão dela: admin@<slug>.demo /
-#     dev-password como municipal_admin, um AlertRecipient de e-mail ativo,
+#     dev-password como municipal_admin, o city_profile, um AlertRecipient de e-mail ativo,
 #     protocolo ATIVO (triage-respiratoria), uma triagem completa e o relatório.
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
@@ -35,25 +35,10 @@ else
   operator.save!
   puts "[seeds] operador .... #{operator.email_address} / #{password} + MFA (otp_secret fixo) → console admin.*"
 
-  protocol_defn = {
-    "name" => "triage-respiratoria", "version" => 1, "start_step_id" => "tosse",
-    "steps" => [
-      { "id" => "tosse", "prompt" => "Você está com tosse?", "answer_type" => "boolean",
-        "branches" => { "true" => "febre", "false" => nil }, "weights" => { "true" => 3, "false" => 0 } },
-      { "id" => "febre", "prompt" => "Está com febre alta?", "answer_type" => "boolean",
-        "branches" => { "true" => nil, "false" => nil }, "weights" => { "true" => 5, "false" => 0 } }
-    ],
-    "scoring" => { "type" => "weighted", "thresholds" => { "baixa" => 0, "alta" => 5 },
-                   "priority_map" => { "baixa" => 9, "alta" => 1 } },
-    "recommendations" => {
-      "alta"  => { "title" => "Procure atendimento hoje",
-                   "body" => "Prioridade alta. Vá à UPA/unidade mais próxima ainda hoje. Falta de ar, dor no peito ou lábios roxos → 192." },
-      "baixa" => { "title" => "Cuidados em casa",
-                   "body" => "Repouso e hidratação. Se piorar ou persistir por mais de 3 dias, procure sua unidade de saúde." }
-    }
-  }
+  # Mesmo protocolo que o provisionamento semeia em rascunho (Plano 4); aqui ativo.
+  protocol_defn = CityTemplates.protocol.fetch(:definition)
 
-  { "curitiba" => "41", "maringa" => "44" }.each do |slug, ddd|
+  { "curitiba" => %w[41 4106902], "maringa" => %w[44 4115200] }.each do |slug, (ddd, ibge_code)|
     city = City.find_by(slug: slug)
     if city.nil? || !city.servable?
       warn "[seeds] cidade '#{slug}' ausente ou não ativa no catálogo — pulada (rode bin/rails city:dev_baseline)"
@@ -80,10 +65,14 @@ else
           m.granted_at = Time.current
         end
 
+        # ── Identidade da cidade no banco dela (city_profile, Plano 4) ────────
+        profile = CityProfile.current || CityProfile.new
+        profile.update!(name: city.name, uf: city.uf, ibge_code: ibge_code)
+
         # ── Destinatário de alerta urgente (R37) ──────────────────────────────
         # DispatchMunicipalityAlertJob entrega ao primeiro AlertRecipient de email
         # ativo da cidade e levanta NoAlertRecipient sem nenhum. Um por cidade, no
-        # banco dela; o city_profile (Plano 4) substitui.
+        # banco dela. city_profile não carrega destino de alerta (Plano 4).
         alert_recipient = AlertRecipient.find_or_initialize_by(
           channel: "email", destination: ENV.fetch("DEV_ALERT_EMAIL", "alertas@#{slug}.demo")
         )
@@ -113,6 +102,7 @@ else
         report = ReportSnapshot.find_by(triage_id: triage.id)
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
+        puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
         puts "  municipal ... #{muni_admin.email_address} / #{password}  → dashboard"
         puts "  alerta ...... #{alert_recipient.destination} (email, active)"
         puts "  canal ....... #{channel.phone_number_id} (active)"

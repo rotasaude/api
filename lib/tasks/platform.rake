@@ -1,6 +1,7 @@
 # Bootstrap do banco de PLATAFORMA. Roda como superuser porque criar database
 # e role exige privilégio que rota_app não tem — e não deve ter.
 require "open3"
+require "pg"
 
 namespace :platform do
   def platform_conn_params
@@ -32,6 +33,28 @@ namespace :platform do
     SQL
     out, st = Open3.capture2e(env, *base, "-d", "postgres", "-c", role_sql)
     abort "[platform:bootstrap] falha no role:\n#{out}" unless st.success?
+
+    # Papel que cria e apaga banco e role de cada cidade (Plano 4): CREATEDB e
+    # CREATEROLE, sem superusuário. Existe uma vez no cluster; o provisionamento
+    # conecta com ele por PROVISIONER_DATABASE_URL (em dev/test, CityDatabase monta
+    # a URL a partir de ROTA_PROVISIONER_PASSWORD). A senha vai cifrada (SCRAM) via
+    # PG#encrypt_password, nunca em texto no SQL nem no argv de um subprocesso.
+    provisioner_pwd = ENV.fetch("ROTA_PROVISIONER_PASSWORD", "rota_provisioner")
+    begin
+      conn = PG.connect(host: p[:host], port: p[:port], dbname: "postgres", user: p[:su_user], password: p[:su_pwd])
+      conn.set_notice_receiver { |_| }
+      secret = conn.escape_literal(conn.encrypt_password(provisioner_pwd, "rota_provisioner", "scram-sha-256"))
+      role_exists = conn.exec_params("SELECT 1 FROM pg_roles WHERE rolname = $1", [ "rota_provisioner" ]).ntuples == 1
+      if role_exists
+        conn.exec("ALTER ROLE rota_provisioner LOGIN CREATEDB CREATEROLE NOSUPERUSER PASSWORD #{secret}")
+      else
+        conn.exec("CREATE ROLE rota_provisioner LOGIN CREATEDB CREATEROLE PASSWORD #{secret}")
+      end
+    rescue PG::Error => e
+      abort "[platform:bootstrap] falha no role rota_provisioner: #{e.class}"
+    ensure
+      conn&.close
+    end
 
     exists, = Open3.capture2e(env, *base, "-tA", "-d", "postgres",
                               "-c", "SELECT 1 FROM pg_database WHERE datname='#{p[:db]}'")

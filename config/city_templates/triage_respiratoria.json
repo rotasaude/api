@@ -1,0 +1,36 @@
+{
+  "name": "triage-respiratoria",
+  "version": 1,
+  "start_step_id": "tosse",
+  "steps": [
+    {
+      "id": "tosse",
+      "prompt": "Você está com tosse?",
+      "answer_type": "boolean",
+      "branches": { "true": "febre", "false": null },
+      "weights": { "true": 3, "false": 0 }
+    },
+    {
+      "id": "febre",
+      "prompt": "Está com febre alta?",
+      "answer_type": "boolean",
+      "branches": { "true": null, "false": null },
+      "weights": { "true": 5, "false": 0 }
+    }
+  ],
+  "scoring": {
+    "type": "weighted",
+    "thresholds": { "baixa": 0, "alta": 5 },
+    "priority_map": { "baixa": 9, "alta": 1 }
+  },
+  "recommendations": {
+    "alta": {
+      "title": "Procure atendimento hoje",
+      "body": "Prioridade alta. Vá à UPA/unidade mais próxima ainda hoje. Falta de ar, dor no peito ou lábios roxos → 192."
+    },
+    "baixa": {
+      "title": "Cuidados em casa",
+      "body": "Repouso e hidratação. Se piorar ou persistir por mais de 3 dias, procure sua unidade de saúde."
+    }
+  }
+}

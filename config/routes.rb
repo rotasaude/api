@@ -14,6 +14,8 @@ Rails.application.routes.draw do
       resource :session, only: %i[create show destroy]
       post "/session/challenge", to: "sessions#challenge_totp"
       resources :city_grants, only: :create
+      # Provisionamento em duas fases (Plano 4).
+      resources :cities, only: %i[create show]
     end
   end
 
@@ -44,7 +46,6 @@ Rails.application.routes.draw do
   # Setup multi-tenant — write endpoints (ADR-0012/0013). Não confundir com
   # /admin/api/* que é read-only por critério §10 do brief.
   scope "/setup" do
-    post "/municipalities",              to: "setup#provision_municipality"
     post "/invitations",                 to: "setup#invite_member"
     post "/accept_invitation",           to: "setup#accept_invitation"
     get  "/memberships",                 to: "setup#list_memberships"

@@ -1,0 +1,10 @@
+#!/bin/bash -e
+# Passo de deploy (spec banco-por-cidade §4), rodado com a imagem NOVA antes de
+# trocar o código em execução:
+#   1. db:migrate — primary/queue/cache/platform;
+#   2. city:migrate:all — toda cidade active/suspended, com lock por cidade; sai
+#      com status != 0 listando as cidades que ficaram para trás.
+# O código antigo segue no ar enquanto isto roda: migração destrutiva exige
+# expand/contract. Cidade que falhar responde 503 até ser migrada.
+./bin/rails db:migrate
+./bin/rails city:migrate:all

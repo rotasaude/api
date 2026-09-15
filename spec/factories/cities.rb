@@ -6,5 +6,6 @@ FactoryBot.define do
     status { "active" }
     database_url { "postgres://rota_city:rota_city@#{ENV.fetch('DATABASE_HOST', '127.0.0.1')}:5432/rota_saude_test_city_a" }
     encryption_key { SecureRandom.hex(32) }
+    schema_version { CitySchema.expected_version.to_s }
   end
 end

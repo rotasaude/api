@@ -28,4 +28,16 @@ RSpec.describe AcceptInvitation do
     res = described_class.call(token: "nope", password: "x")
     expect(res.failure?).to be true
   end
+
+  # Provisionamento (Plano 4): o convite do primeiro municipal_admin vem da
+  # plataforma — ainda não existe usuário na cidade para ser invited_by.
+  it "aceita convite da plataforma (sem invited_by) e grava a membership sem granted_by" do
+    Invitation.create!(email: "primeira@example.org", role: "municipal_admin", token: "plataforma-1",
+                       invited_by: nil, expires_at: 1.day.from_now)
+
+    res = described_class.call(token: "plataforma-1", password: "secretpw")
+
+    expect(res.ok?).to be true
+    expect(Membership.find_by!(user: res.payload[:user], role: "municipal_admin").granted_by_id).to be_nil
+  end
 end

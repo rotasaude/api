@@ -106,7 +106,10 @@ namespace :city do
     abort "[city] #{schema_file} não existe." unless File.exist?(schema_file)
 
     url = database_name_or_url.to_s.include?("://") ? database_name_or_url : city_database_url.call(database_name_or_url)
-    db_config = ActiveRecord::Base.configurations.resolve(url)
+    # Com migrations_paths de cidade: o `define(version:)` do dump registra em
+    # schema_migrations TODAS as versões de db/city_migrate até a do dump, não só
+    # a última (sem isso, city:migrate tentaria recriar o schema).
+    db_config = CitySchema.db_config_for(url)
     ActiveRecord::Tasks::DatabaseTasks.with_temporary_connection(db_config) do
       ActiveRecord::Tasks::DatabaseTasks.load_schema(db_config, :ruby, schema_file)
     end
@@ -219,12 +222,16 @@ namespace :city do
       load_city_schema.call(database)
       puts "[city:dev_up] schema de cidade carregado em #{database}"
     else
-      puts "[city:dev_up] #{database} já tem o schema de cidade — nada carregado"
+      # Banco carregado antes de load_schema registrar todas as versões: completa
+      # as anteriores à maior registrada (só INSERT) antes de migrar.
+      CitySchema.backfill_versions!(city.database_url)
+      puts "[city:dev_up] #{database} já tem o schema de cidade — versões anteriores registradas"
     end
 
-    city.update!(status: "active") unless city.status == "active"
+    version = CitySchema.migrate!(city.database_url)
+    city.update!(status: "active", schema_version: version.to_s)
     CityCatalog.reset_cache!
-    puts "[city:dev_up] #{city.slug} → #{city.status} (#{database})"
+    puts "[city:dev_up] #{city.slug} → #{city.status} (#{database}, schema #{version})"
   end
 
   desc "Dev: sobe as cidades de desenvolvimento (curitiba, maringa). Idempotente."
@@ -235,5 +242,73 @@ namespace :city do
       Rake::Task["city:dev_up"].reenable
       Rake::Task["city:dev_up"].invoke(slug, name, uf)
     end
+  end
+
+  desc "Aplica as migrations de cidade numa cidade do catálogo e registra a versão. Uso: city:migrate[slug]"
+  task :migrate, %i[slug] => :environment do |_t, args|
+    abort "uso: rails 'city:migrate[slug]'" if args[:slug].blank?
+    city = City.find_by(slug: args[:slug])
+    abort "[city:migrate] cidade #{args[:slug]} não existe" unless city
+    abort "[city:migrate] cidade #{city.slug} está archived — não tem banco" if city.status == "archived"
+
+    begin
+      version = CityMigrations.run(city)
+    rescue StandardError => e
+      abort "[city:migrate] #{city.slug} falhou — #{e.class}: #{CitySchema.redact(e.message)}"
+    end
+    puts "[city:migrate] #{city.slug} → #{version}"
+  end
+
+  namespace :migrate do
+    desc "Aplica as migrations de cidade em toda cidade active/suspended; sai com erro listando as que ficarem para trás."
+    task all: :environment do
+      CityMigrations.run_all
+    rescue CityMigrations::Failed => e
+      abort "[city:migrate:all] #{e.message}"
+    end
+  end
+
+  # Ciclo de vida depois de ativa (Plano 4). Sem endpoint: o console só ganha tela
+  # no Plano 6. Em produção rodam no papel worker (kamal app exec --roles=worker),
+  # que tem PROVISIONER_DATABASE_URL e o volume de CITY_BACKUP_DIR.
+  lifecycle_city = lambda do |task_name, slug|
+    abort "uso: rails '#{task_name}[slug]'" if slug.blank?
+    City.find_by(slug: slug) || abort("[#{task_name}] cidade #{slug} não existe")
+  end
+  city_backup_dir = -> { ENV.fetch("CITY_BACKUP_DIR") { Rails.root.join("tmp/city_backups").to_s } }
+
+  desc "Suspende uma cidade (o host dela responde 403). Uso: city:suspend[slug]"
+  task :suspend, %i[slug] => :environment do |_t, args|
+    city = lifecycle_city.call("city:suspend", args[:slug])
+    result = CityLifecycle::Suspend.call(city: city)
+    abort "[city:suspend] #{result.reason}: #{result.message}" if result.failure?
+    puts "[city:suspend] #{city.slug} → suspended"
+  end
+
+  desc "Retoma uma cidade suspensa. Uso: city:resume[slug]"
+  task :resume, %i[slug] => :environment do |_t, args|
+    city = lifecycle_city.call("city:resume", args[:slug])
+    result = CityLifecycle::Resume.call(city: city)
+    abort "[city:resume] #{result.reason}: #{result.message}" if result.failure?
+    puts "[city:resume] #{city.slug} → active"
+  end
+
+  desc "Dump de uma cidade em CITY_BACKUP_DIR (default tmp/city_backups). Uso: city:backup[slug]"
+  task :backup, %i[slug] => :environment do |_t, args|
+    city = lifecycle_city.call("city:backup", args[:slug])
+    result = CityLifecycle::Backup.call(city: city, dir: city_backup_dir.call)
+    abort "[city:backup] #{result.reason}: #{result.message}" if result.failure?
+    puts "[city:backup] #{city.slug} → #{result.payload[:path]}"
+  end
+
+  desc "IRREVERSÍVEL: dump final, archived, DROP DATABASE e DROP ROLE de uma cidade suspensa. Uso: CONFIRM=<slug> city:offboard[slug]"
+  task :offboard, %i[slug] => :environment do |_t, args|
+    city = lifecycle_city.call("city:offboard", args[:slug])
+    abort "[city:offboard] irreversível: confirme com CONFIRM=#{city.slug}" unless ENV["CONFIRM"] == city.slug
+
+    result = CityLifecycle::Offboard.call(city: city, backup_dir: city_backup_dir.call)
+    abort "[city:offboard] #{result.reason}: #{result.message}" if result.failure?
+    puts "[city:offboard] #{city.slug} → archived; banco e role apagados; dump final: " \
+         "#{result.payload[:backup_path] || 'feito na execução anterior'}"
   end
 end

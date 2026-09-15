@@ -9,37 +9,19 @@
 #   - deactivate_user segue exigindo operador; nenhum usuário de cidade é
 #     operador (User#operator?), então responde 403 até o grant de operador
 #     do Plano 3B;
-#   - provision_municipality é ação de operador sobre o catálogo, servida no
-#     host de plataforma: pula a resolução de cidade. Sem o grant de operador
-#     (Plano 3B) nem provisionamento de banco (Plano 4), responde 501 sem
-#     tocar dado nenhum.
+#   - provisionar cidade não é mais daqui: é POST /cities no console de
+#     plataforma (Operators::CitiesController, Plano 4).
 #
 # Aceite de convite (POST /setup/accept_invitation) é PÚBLICO (token é cred).
 class SetupController < ApplicationController
-  skip_city_resolution only: %i[provision_municipality]
-
   include Authentication
 
-  # provision_municipality não autentica porque não faz nada além de responder
-  # 501: falta o grant de operador (Plano 3B) para autorizar a ação fora de
-  # uma cidade.
-  allow_unauthenticated_access only: %i[accept_invitation provision_municipality]
+  allow_unauthenticated_access only: %i[accept_invitation]
 
   # Fluxo público token-as-credential — mesmo teto de sessions/passwords, para
   # não deixar superfície de brute-force sem limite. Só na ação pública.
   rate_limit to: 10, within: 3.minutes, only: %i[accept_invitation],
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
-
-  # POST /setup/municipalities — desligado até o Plano 3B (grant de operador
-  # para agir sobre o catálogo) e o Plano 4 (POST /setup/cities, provisionamento
-  # em duas fases). O command ProvisionMunicipality segue utilizável para uma
-  # cidade já registrada e servível, fora do HTTP.
-  def provision_municipality
-    render json: {
-      error: "provisioning_unavailable",
-      message: "provisionamento de cidade passa para a plataforma (Planos 3B e 4)"
-    }, status: :not_implemented
-  end
 
   # POST /setup/invitations
   # body: { email, role }

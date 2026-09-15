@@ -142,3 +142,112 @@ RSpec.describe "city:dev_up and city:dev_baseline rake tasks" do
     expect(City.where(slug: %w[curitiba maringa])).to be_empty
   end
 end
+
+# city:migrate e city:migrate:all (Plano 4). A migração de verdade é provada em
+# spec/services/city_migrations_spec.rb; aqui só o contrato da task.
+RSpec.describe "city:migrate and city:migrate:all rake tasks" do
+  before(:all) do
+    Rails.application.load_tasks unless Rake::Task.task_defined?("city:migrate:all")
+  end
+
+  before do
+    %w[city:migrate city:migrate:all].each { |name| Rake::Task[name].reenable }
+  end
+
+  def invoke_silently(name, *args)
+    original_stdout, $stdout = $stdout, StringIO.new
+    original_stderr, $stderr = $stderr, StringIO.new
+    Rake::Task[name].invoke(*args)
+  ensure
+    $stdout = original_stdout
+    $stderr = original_stderr
+  end
+
+  it "city:migrate aborts for an unknown slug" do
+    expect { invoke_silently("city:migrate", "naoexiste#{SecureRandom.hex(3)}") }.to raise_error(SystemExit)
+  end
+
+  it "city:migrate refuses an archived city without touching any database" do
+    city = create(:city, status: "archived")
+    expect(CityMigrations).not_to receive(:run)
+
+    expect { invoke_silently("city:migrate", city.slug) }.to raise_error(SystemExit)
+  end
+
+  it "city:migrate migrates the city through CityMigrations" do
+    city = create(:city, status: "provisioning")
+    expect(CityMigrations).to receive(:run).with(city).and_return(CitySchema.expected_version)
+
+    expect { invoke_silently("city:migrate", city.slug) }.not_to raise_error
+  end
+
+  it "city:migrate exits non-zero when the migration raises" do
+    city = create(:city, status: "active")
+    allow(CityMigrations).to receive(:run).and_raise(ActiveRecord::NoDatabaseError)
+
+    expect { invoke_silently("city:migrate", city.slug) }.to raise_error(SystemExit) { |e| expect(e.status).not_to eq(0) }
+  end
+
+  it "city:migrate:all exits non-zero when a city is left behind" do
+    allow(CityMigrations).to receive(:run_all).and_raise(CityMigrations::Failed.new("quebrada" => "PG::Error: boom"))
+
+    expect { invoke_silently("city:migrate:all") }.to raise_error(SystemExit) { |e| expect(e.status).not_to eq(0) }
+  end
+end
+
+# Tasks de ciclo de vida (Plano 4). O comportamento está nos specs de
+# CityLifecycle; aqui só o contrato — em especial a confirmação do offboarding.
+RSpec.describe "city lifecycle rake tasks" do
+  before(:all) do
+    Rails.application.load_tasks unless Rake::Task.task_defined?("city:offboard")
+  end
+
+  before do
+    %w[city:suspend city:resume city:backup city:offboard].each { |name| Rake::Task[name].reenable }
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:fetch).and_call_original
+  end
+
+  def invoke_silently(name, *args)
+    original_stdout, $stdout = $stdout, StringIO.new
+    original_stderr, $stderr = $stderr, StringIO.new
+    Rake::Task[name].invoke(*args)
+  ensure
+    $stdout = original_stdout
+    $stderr = original_stderr
+  end
+
+  it "city:offboard refuses to run without CONFIRM equal to the slug, calling nothing" do
+    city = create(:city, status: "suspended")
+    expect(CityLifecycle::Offboard).not_to receive(:call)
+
+    [ nil, "outra-cidade" ].each do |confirm|
+      Rake::Task["city:offboard"].reenable
+      allow(ENV).to receive(:[]).with("CONFIRM").and_return(confirm)
+      expect { invoke_silently("city:offboard", city.slug) }.to raise_error(SystemExit)
+    end
+  end
+
+  it "city:offboard with CONFIRM=<slug> offboards into CITY_BACKUP_DIR" do
+    city = create(:city, status: "suspended")
+    allow(ENV).to receive(:[]).with("CONFIRM").and_return(city.slug)
+    allow(ENV).to receive(:fetch).with("CITY_BACKUP_DIR").and_return("/tmp/city-backups-spec")
+    expect(CityLifecycle::Offboard).to receive(:call).with(city: city, backup_dir: "/tmp/city-backups-spec")
+      .and_return(Result.ok(city: city, backup_path: "/tmp/city-backups-spec/x.dump"))
+
+    expect { invoke_silently("city:offboard", city.slug) }.not_to raise_error
+  end
+
+  it "city:suspend exits non-zero with the command's reason when it fails" do
+    city = create(:city, status: "provisioning")
+
+    expect { invoke_silently("city:suspend", city.slug) }.to raise_error(SystemExit) { |e| expect(e.status).not_to eq(0) }
+    expect(city.reload.status).to eq("provisioning")
+  end
+
+  it "every lifecycle task aborts for an unknown slug" do
+    %w[city:suspend city:resume city:backup city:offboard].each do |name|
+      expect { invoke_silently(name, "naoexiste#{SecureRandom.hex(3)}") }.to raise_error(SystemExit)
+    end
+  end
+end
