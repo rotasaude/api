@@ -43,4 +43,17 @@ RSpec.describe EachCityJob do
 
     expect(job_class.visited).to eq([ [ city_a.slug, "rota_saude_test_city_a" ] ])
   end
+
+  # Fix round 1, Minor: a city worker whose own slug matches no active city
+  # (unknown slug, or the city is not active) must not silently fall back to
+  # running every city — it should warn, naming the slug, and run nothing.
+  it "warns and runs nothing when the worker's own city is not active" do
+    CityWorkers::Context.city_slug = "cidade-nao-cadastrada"
+    allow(Rails.logger).to receive(:warn)
+
+    job_class.new.perform
+
+    expect(job_class.visited).to eq([])
+    expect(Rails.logger).to have_received(:warn).with(a_string_matching(/cidade-nao-cadastrada/))
+  end
 end

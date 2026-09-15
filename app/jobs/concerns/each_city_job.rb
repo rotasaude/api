@@ -42,10 +42,18 @@ module EachCityJob
   private
 
   def each_city_cities
+    worker_slug = CityWorkers::Context.city_slug
     scope = City.where(status: "active").order(:slug)
-    scope = scope.where(slug: CityWorkers::Context.city_slug) if CityWorkers::Context.city_slug
+    scope = scope.where(slug: worker_slug) if worker_slug
 
-    scope.to_a.reject do |city|
+    cities = scope.to_a
+
+    if worker_slug && cities.empty?
+      Rails.logger.warn("[#{self.class.name}] worker da cidade #{worker_slug} sem cidade ativa correspondente: nada a rodar")
+      return cities
+    end
+
+    cities.reject do |city|
       next false unless CitySchema.behind?(city)
 
       Rails.logger.warn("[#{self.class.name}] city=#{city.slug} com schema atrasado: pulada")

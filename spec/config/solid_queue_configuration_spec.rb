@@ -32,9 +32,28 @@ RSpec.describe "Solid Queue configuration per city and platform" do
         expect(task_classes("config/recurring.yml", env).map(&:safe_constantize)).to all(be_present)
       end
 
-      it "clears finished jobs in every queue database" do
-        expect(config("config/recurring.yml", env)).to have_key("clear_solid_queue_finished")
-        expect(config("config/recurring_platform.yml", env)).to have_key("clear_solid_queue_finished")
+      it "serves the queue of every recurring task from a worker in the paired queue file" do
+        # Fix round 1, Important: a recurring task with no queue served by any
+        # worker in its own queue file piles up unclaimed forever (this is how
+        # clear_solid_queue_finished, a command: task with no queue:, went
+        # unnoticed — it defaults to SolidQueue::RecurringJob's queue_as
+        # (solid_queue_recurring), which no worker below serves).
+        [
+          [ "config/queue.yml", "config/recurring.yml" ],
+          [ "config/queue_platform.yml", "config/recurring_platform.yml" ]
+        ].each do |queue_path, recurring_path|
+          served = config(queue_path, env).fetch("workers").flat_map { |worker| Array(worker["queues"]) }
+
+          config(recurring_path, env).each do |key, task|
+            queue = task["queue"] || (task["class"] ? task["class"].constantize.queue_name : SolidQueue::RecurringJob.queue_name)
+
+            expect(served).to(
+              include(queue).or(include("*")),
+              "#{recurring_path} task #{key.inspect} needs queue #{queue.inspect}; " \
+                "#{queue_path} only serves #{served.inspect}"
+            )
+          end
+        end
       end
     end
   end
