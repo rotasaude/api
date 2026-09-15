@@ -8,16 +8,42 @@
 # UnknownChannel guarda só metadado de roteamento (Ruling R17).
 module Whatsapp
   module Ingest
+    # Resultado de #call: `schema_behind?` é true quando QUALQUER mudança do
+    # POST foi recusada por schema atrasado (CitySchema.behind?). O controller
+    # usa isso para responder 503 ao lote inteiro — a Meta reentrega tudo, e as
+    # cidades saudáveis do mesmo lote já gravaram normalmente (idempotente via
+    # unicidade do wamid).
+    Result = Struct.new(:schema_behind) do
+      def schema_behind?
+        !!schema_behind
+      end
+    end
+
+    # Sentinela interno de #route: distingue "cidade com schema atrasado" (nada
+    # é gravado, resultado sinaliza) de "descartar e seguir" (canal
+    # desconhecido, cidade não servível) — os dois retornam nil hoje.
+    SCHEMA_BEHIND = :schema_behind
+    private_constant :SCHEMA_BEHIND
+
     def self.call(payload)
+      result = Result.new(false)
+
       changes_in(payload).each do |change|
         pnid = change.dig("value", "metadata", "phone_number_id")
         city = route(pnid, change)
+
+        if city == SCHEMA_BEHIND
+          result.schema_behind = true
+          next
+        end
         next unless city
 
         messages_in(change).each do |msg|
           ingest_message(msg, city: city)
         end
       end
+
+      result
     end
 
     def self.changes_in(payload)
@@ -39,17 +65,29 @@ module Whatsapp
       end
 
       city = channel.city
-      return city if city.servable?
+      unless city.servable?
+        # Canal conhecido de cidade não servível (provisioning/suspended/archived):
+        # falha fechada, como CityScopedJob#with_city — nada é gravado no banco de
+        # uma cidade fora do ar. Não é canal desconhecido, então não vai para
+        # UnknownChannel.
+        Rails.logger.warn(
+          "[whatsapp.ingest] phone_number_id=#{phone_number_id} city=#{city.slug} " \
+          "status=#{city.status}: cidade não servível, mensagens descartadas"
+        )
+        return nil
+      end
 
-      # Canal conhecido de cidade não servível (provisioning/suspended/archived):
-      # falha fechada, como CityScopedJob#with_city — nada é gravado no banco de
-      # uma cidade fora do ar. Não é canal desconhecido, então não vai para
-      # UnknownChannel.
-      Rails.logger.warn(
-        "[whatsapp.ingest] phone_number_id=#{phone_number_id} city=#{city.slug} " \
-        "status=#{city.status}: cidade não servível, mensagens descartadas"
-      )
-      nil
+      if CitySchema.behind?(city)
+        # Migrations de cidade não alcançaram esta cidade ainda (deploy não é
+        # atômico). Escrever agora arrisca commitar contra o schema velho e
+        # perder o enqueue depois do commit (ver README, Primeiro corte do
+        # Plano 5) — falha fechada, igual à CityResolution. Só o slug vai pro
+        # log: nunca conteúdo de mensagem, nunca telefone.
+        Rails.logger.warn("[whatsapp.ingest] city=#{city.slug}: schema atrasado, mensagens descartadas")
+        return SCHEMA_BEHIND
+      end
+
+      city
     end
 
     def self.ingest_message(msg, city:)

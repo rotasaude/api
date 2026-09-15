@@ -86,10 +86,13 @@ e aposenta o banco compartilhado. Ordem obrigatória:
 
 1. Rode `bin/migrate` ANTES do `kamal deploy` e exija saída `0`. Se alguma cidade falhar a migração, suspenda essa
    cidade (`rails 'city:suspend[slug]'`) antes de seguir com o deploy.
-   - Por quê: nesta release o webhook do WhatsApp (`Whatsapp::Ingest`) ainda não tem guarda de schema atrasado. Numa
-     cidade sem `solid_queue_jobs` (schema velho), o `InboundMessage` é gravado e commita, o enqueue adiado do
-     `ProcessInboundMessageJob` falha depois do commit, e a reentrega da Meta vira no-op pela unicidade do `wamid` —
-     a mensagem fica presa, sem tentar de novo.
+   - Por quê: o webhook do WhatsApp (`Whatsapp::Ingest`) já tem guarda de schema atrasado — uma cidade cujo
+     `CitySchema.behind?` for verdadeiro não grava nada (nem `InboundMessage`, nem enqueue), e o POST inteiro responde
+     `503 city_schema_behind`, levando a Meta a reentregar o lote todo. O gate de `bin/migrate` continua obrigatório
+     mesmo assim: sem ele, uma cidade atrasada fica gerando reentregas 503 indefinidamente em vez de simplesmente
+     estar em dia.
+   - Uma cidade `suspended` já é descartada silenciosamente pelo mesmo `Whatsapp::Ingest.route` (200, sem gravar) —
+     comportamento existente, não deste corte.
 2. Drene a fila compartilhada aposentada antes da virada:
    - pare de mandar tráfego novo para o worker antigo, ou deixe-o ocioso;
    - espere o banco compartilhado antigo zerar as três tabelas de execução pendente (leitura, no banco
