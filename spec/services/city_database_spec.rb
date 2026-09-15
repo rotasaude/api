@@ -103,6 +103,45 @@ RSpec.describe CityDatabase do
     expect(superuser_value("SELECT count(*) FROM pg_roles WHERE rolname = $1", described_class.role_name(slug_a))).to eq("0")
   end
 
+  it "drops a database and role that never existed without error (idempotent on a nonexistent DB)" do
+    expect { described_class.drop!(slug: slug_a) }.not_to raise_error
+
+    expect(described_class.exists?(slug: slug_a)).to be(false)
+  end
+
+  it "terminates an open client session on the city database so drop! succeeds on the first attempt, with no retry" do
+    described_class.ensure!(slug: slug_a, password: pwd_a)
+    held = PG.connect(described_class.url_for(slug: slug_a, password: pwd_a))
+    held.exec("SELECT 1")
+
+    drop_statements = []
+    allow_any_instance_of(PG::Connection).to receive(:exec).and_wrap_original do |original, sql|
+      drop_statements << sql if sql.include?("DROP DATABASE")
+      original.call(sql)
+    end
+
+    described_class.drop!(slug: slug_a)
+
+    expect(drop_statements.size).to eq(1) # no retry loop: exactly one DROP DATABASE statement
+    expect(described_class.exists?(slug: slug_a)).to be(false)
+    expect { held.exec("SELECT 1") }.to raise_error(PG::Error)
+    held.close
+  end
+
+  it "never issues FORCE when dropping" do
+    described_class.ensure!(slug: slug_a, password: pwd_a)
+
+    statements = []
+    allow_any_instance_of(PG::Connection).to receive(:exec).and_wrap_original do |original, sql|
+      statements << sql
+      original.call(sql)
+    end
+
+    described_class.drop!(slug: slug_a)
+
+    expect(statements.grep(/FORCE/i)).to be_empty
+  end
+
   it "requires PROVISIONER_DATABASE_URL in production" do
     allow(Rails.env).to receive(:production?).and_return(true)
     allow(ENV).to receive(:[]).and_call_original

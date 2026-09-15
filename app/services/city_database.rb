@@ -19,6 +19,11 @@ class CityDatabase
   class InvalidSlug < ArgumentError; end
   class ProvisionerMissing < StandardError; end
   class ConfigMissing < StandardError; end
+  # PG::Error (não StandardError) de propósito: CityLifecycle::Offboard já
+  # resgata qualquer PG::Error do drop e devolve :drop_failed com a mensagem
+  # redigida (CitySchema.redact) — reaproveita esse caminho em vez de um tipo
+  # novo que passaria batido pelo rescue existente.
+  class DropBlocked < PG::Error; end
 
   MAX_SLUG_LENGTH = 40
   SLUG = /\A[a-z0-9]([a-z0-9-]*[a-z0-9])?\z/
@@ -67,24 +72,32 @@ class CityDatabase
       end
     end
 
-    # Apaga banco e role (offboarding; limpeza de specs). Idempotente. FORCE derruba
-    # as conexões ainda abertas no banco.
+    # Apaga banco e role (offboarding; limpeza de specs). Idempotente, sem FORCE
+    # e sem retry — determinístico (fix round 2 do hardening pré-Plano 6).
     #
-    # DROP DATABASE ... WITH (FORCE) falha inteiro (PG::InsufficientPrivilege) se
-    # QUALQUER sessão conectada não puder ser terminada por rota_provisioner —
-    # inclusive um autovacuum worker: ele não pertence a role de login nenhum
-    # (pg_stat_activity mostra usename nulo, backend_type "autovacuum worker"), e
-    # pg_terminate_backend só deixa terminar quem tem privilégio do role DONO do
-    # backend, ou superusuário/pg_signal_backend — nenhum dos dois é
-    # rota_provisioner, de propósito (least-privilege, spec banco-por-cidade §4).
-    # Um banco de cidade recém-criado/migrado é candidato natural a um ANALYZE
-    # automático logo em seguida; a corrida foi reproduzida (achado do fix round
-    # 1): o worker é transitório e libera a conexão sozinho em instantes, então
-    # tentar de novo com um backoff curto resolve sem dar a rota_provisioner
-    # nenhum privilégio além do que o plano já autoriza.
-    DROP_ATTEMPTS = 5
-    DROP_BACKOFF = 0.1 # segundos; dobra a cada tentativa (0.1, 0.2, 0.4, 0.8)
-
+    # FORCE falhava inteiro (PG::InsufficientPrivilege) se QUALQUER sessão
+    # conectada não pudesse ser terminada por rota_provisioner — inclusive um
+    # autovacuum worker, que não pertence a role de login nenhum (pg_stat_activity
+    # mostra usename nulo, backend_type "autovacuum worker"); só um backoff com
+    # retry escondia essa corrida transitória. A sequência abaixo evita o
+    # problema em vez de tentar de novo:
+    #
+    #   1. ALTER DATABASE ... ALLOW_CONNECTIONS false — fecha a porta pra sessão
+    #      nova durante os passos seguintes. Exige ser dono do banco (ou membro do
+    #      role dono); rota_provisioner é membro via o GRANT de ensure!.
+    #   2. pg_terminate_backend nas sessões "client backend" do banco (exclui
+    #      autovacuum worker e outros processos internos de propósito: terminar o
+    #      backend de outro role exige ser membro dele ou pg_signal_backend, e
+    #      rota_provisioner só é membro do role da própria cidade — sessão de
+    #      cliente da cidade é sempre esse role).
+    #   3. DROP DATABASE IF EXISTS, sem FORCE — o próprio Postgres sinaliza
+    #      autovacuum e outros processos internos e espera uns segundos
+    #      (CountOtherDBBackends) antes de decidir que o banco ainda está em uso;
+    #      não precisamos mais fazer isso na mão. Se uma sessão cliente reaparecer
+    #      nessa janela, o passo 1 já impede.
+    #
+    # Nenhum passo dá a rota_provisioner privilégio além do que o plano já
+    # autoriza (least-privilege, spec banco-por-cidade §4).
     def drop!(slug:)
       with_provisioner do |conn|
         drop_database!(conn, database_name(slug))
@@ -135,13 +148,40 @@ class CityDatabase
       conn&.close
     end
 
-    def drop_database!(conn, database, attempt: 1)
-      conn.exec("DROP DATABASE IF EXISTS #{quote(database)} WITH (FORCE)")
-    rescue PG::InsufficientPrivilege
-      raise if attempt >= DROP_ATTEMPTS
+    def drop_database!(conn, database)
+      return unless database_exists?(conn, database)
 
-      sleep(DROP_BACKOFF * (2**(attempt - 1)))
-      drop_database!(conn, database, attempt: attempt + 1)
+      begin
+        conn.exec("ALTER DATABASE #{quote(database)} WITH ALLOW_CONNECTIONS false")
+      rescue PG::InvalidCatalogName
+        return # apagado entre o check acima e o ALTER: já não há nada a fazer
+      end
+
+      terminate_client_backends!(conn, database)
+
+      begin
+        conn.exec("DROP DATABASE IF EXISTS #{quote(database)}")
+      rescue PG::ObjectInUse => e
+        raise DropBlocked, "banco #{database} ainda em uso após terminar as sessões: #{e.message}"
+      end
+    end
+
+    # Só sessões "client backend" (as da própria cidade, via role da cidade):
+    # autovacuum worker e outros processos internos ficam de fora de propósito
+    # (ver comentário de drop!) e são resolvidos pelo próprio DROP DATABASE.
+    def terminate_client_backends!(conn, database)
+      conn.exec_params(<<~SQL, [ database ])
+        SELECT pg_terminate_backend(pid)
+        FROM pg_stat_activity
+        WHERE datname = $1 AND pid <> pg_backend_pid() AND backend_type = 'client backend'
+      SQL
+    rescue PG::InsufficientPrivilege
+      blocking = conn.exec_params(<<~SQL, [ database ]).getvalue(0, 0)
+        SELECT count(*)
+        FROM pg_stat_activity
+        WHERE datname = $1 AND pid <> pg_backend_pid() AND backend_type = 'client backend'
+      SQL
+      raise DropBlocked, "#{blocking} sessão(ões) bloqueando o drop de #{database}"
     end
 
     def role_exists?(conn, role)

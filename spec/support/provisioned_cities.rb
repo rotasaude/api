@@ -18,9 +18,11 @@ module ProvisionedCities
     city
   end
 
-  # CityDatabase.drop! já tenta de novo sozinho contra um autovacuum worker
-  # transitório (fix round 1); se mesmo assim levantar — banco/role realmente
-  # não apagáveis por rota_provisioner, ex.: cidade de dev do bootstrap
+  # CityDatabase.drop! não precisa mais tentar de novo contra um autovacuum
+  # worker transitório: a sequência ALLOW_CONNECTIONS false + terminate de
+  # sessões cliente + DROP DATABASE sem FORCE (fix round 2) evita a corrida em
+  # vez de dar retry nela. Se AINDA assim levantar — banco/role realmente não
+  # apagáveis por rota_provisioner, ex.: cidade de dev do bootstrap
   # superusuário —, o `ensure` abaixo ainda apaga as linhas de PLATAFORMA desta
   # cidade antes de propagar, para uma falha numa cidade não deixar as linhas
   # de outra (ex.: `[a, b].each { cleanup_provisioned_city!(...) }`) sujando o
