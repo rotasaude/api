@@ -37,9 +37,8 @@ class ProvisionCityJob < ApplicationJob
     migrator.call(city)
     city.reload
 
-    token = seed(city, ibge_code: ibge_code, admin_email: admin_email, alert_email: alert_email)
-    InvitationMailer.invite(email_address: admin_email,
-                            accept_url: CityDashboardUrl.invitation(city, token: token)).deliver_later
+    mail_args = seed(city, ibge_code: ibge_code, admin_email: admin_email, alert_email: alert_email)
+    InvitationMailer.invite(**mail_args).deliver_later
 
     PlatformRecord.transaction do
       city.update!(status: "active")
@@ -50,36 +49,34 @@ class ProvisionCityJob < ApplicationJob
 
   private
 
-  # Devolve o token do convite PENDENTE (não aceito e não vencido) do primeiro
-  # municipal_admin — criado agora ou em execução anterior, tanto faz: é assim
-  # que o e-mail é reenviado num retry (fix round 1). Sem convite pendente (nenhum,
-  # ou só vencidos/aceitos), cria um novo: um link vencido nunca vai por e-mail.
+  # Devolve os argumentos do e-mail do convite PENDENTE (não aceito e não
+  # vencido) do primeiro municipal_admin — criado agora ou em execução
+  # anterior, tanto faz: é assim que o e-mail é reenviado num retry (fix round
+  # 1). A lógica de reaproveitar-ou-criar mora em CityLifecycle::InviteAdmin
+  # (compartilhada com a rake city:invite_admin — rodada de hardening,
+  # pre-Plano 6); chamada AQUI DENTRO da mesma transação do resto do seed, para
+  # falhar junto com ela (SeedFailed desfaz tudo, igual antes da extração).
   def seed(city, ibge_code:, admin_email:, alert_email:)
-    invitation = nil
+    mail_args = nil
 
-    Current.set(city: city) do
-      CityConnection.with(city) do
-        ApplicationRecord.transaction do
-          CityProfile.create!(name: city.name, uf: city.uf, ibge_code: ibge_code) unless CityProfile.exists?
+    CityConnection.with(city) do
+      ApplicationRecord.transaction do
+        CityProfile.create!(name: city.name, uf: city.uf, ibge_code: ibge_code) unless CityProfile.exists?
 
-          unless AlertRecipient.exists?
-            AlertRecipient.create!(channel: "email", destination: alert_email, escalation_order: 0, active: true)
-          end
-
-          template = CityTemplates.protocol
-          SeedProtocol.call(template: template) unless ProtocolDefinition.exists?(name: template.fetch(:name))
-
-          invitation = Invitation.pending.find_by(email: admin_email.downcase, role: "municipal_admin")
-          if invitation.nil?
-            invited = InviteMember.call(email: admin_email, role: "municipal_admin", invited_by: nil)
-            raise SeedFailed, "convite do primeiro municipal_admin: #{invited.message}" if invited.failure?
-
-            invitation = invited.payload[:invitation]
-          end
+        unless AlertRecipient.exists?
+          AlertRecipient.create!(channel: "email", destination: alert_email, escalation_order: 0, active: true)
         end
+
+        template = CityTemplates.protocol
+        SeedProtocol.call(template: template) unless ProtocolDefinition.exists?(name: template.fetch(:name))
+
+        invited = CityLifecycle::InviteAdmin.call(city: city, email: admin_email)
+        raise SeedFailed, "convite do primeiro municipal_admin: #{invited.message}" if invited.failure?
+
+        mail_args = invited.payload[:mail_args]
       end
     end
 
-    invitation.token
+    mail_args
   end
 end

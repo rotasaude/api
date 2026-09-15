@@ -308,6 +308,32 @@ namespace :city do
     puts "[city:backup] #{city.slug} → #{result.payload[:path]}"
   end
 
+  # Reenvia o convite do primeiro municipal_admin de uma cidade JÁ active
+  # (rodada de hardening, pre-Plano 6): cobre quem perdeu a janela de 7 dias do
+  # convite original — depois que a cidade vira active, o guard no início de
+  # ProvisionCityJob#perform corta o reenvio automático de lá. Uma cidade em
+  # provisioning é tratada pelo próprio job (retry reenvia o mesmo token); esta
+  # task recusa esse caso para não duplicar a lógica.
+  desc "Reenvia o convite do primeiro municipal_admin de uma cidade active. Uso: city:invite_admin[slug,email]"
+  task :invite_admin, %i[slug email] => :environment do |_t, args|
+    city = lifecycle_city.call("city:invite_admin", args[:slug])
+    unless city.status == "active"
+      abort "[city:invite_admin] cidade #{city.slug} não está active (status=#{city.status}) — uma cidade em " \
+            "provisioning é reenviada pelo próprio ProvisionCityJob, não por esta task"
+    end
+
+    email = args[:email].to_s
+    abort "uso: rails 'city:invite_admin[slug,email]'" if email.blank?
+    abort "[city:invite_admin] e-mail inválido" unless email.match?(URI::MailTo::EMAIL_REGEXP)
+
+    result = CityLifecycle::InviteAdmin.call(city: city, email: email)
+    abort "[city:invite_admin] #{result.reason}: #{result.message}" if result.failure?
+
+    InvitationMailer.invite(**result.payload[:mail_args]).deliver_later
+    Platform.audit("city.admin_reinvited", city_id: city.id)
+    puts "[city:invite_admin] #{city.slug} → convite reenviado"
+  end
+
   desc "IRREVERSÍVEL: dump final, archived, DROP DATABASE e DROP ROLE de uma cidade suspensa. Uso: CONFIRM=<slug> city:offboard[slug]"
   task :offboard, %i[slug] => :environment do |_t, args|
     city = lifecycle_city.call("city:offboard", args[:slug])
