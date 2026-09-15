@@ -141,6 +141,23 @@ RSpec.describe ProvisionCityJob, type: :job do
     expect(InvitationMailer).to have_received(:invite).twice
   end
 
+  it "keeps Current.city set for the whole seed step, not just inside InviteAdmin (M3, hardening review)" do
+    observed = []
+    allow(CityProfile).to receive(:exists?).and_wrap_original do |original, *a|
+      observed << Current.city
+      original.call(*a)
+    end
+    allow(AlertRecipient).to receive(:exists?).and_wrap_original do |original, *a|
+      observed << Current.city
+      original.call(*a)
+    end
+
+    on_platform_queue { described_class.perform_now(city_id: city.id, **args) }
+
+    expect(observed).not_to be_empty
+    expect(observed).to all(eq(city))
+  end
+
   it "ignores a city that is not provisioning, and an unknown id" do
     city.update!(status: "suspended")
     expect(CityDatabase).not_to receive(:ensure!)

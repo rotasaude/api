@@ -42,7 +42,16 @@ RSpec.describe CityLifecycle::Backup do
       .to eq([ { "city_id" => city.id, "file" => File.basename(path) } ])
   end
 
+  # M5 (hardening review): this example never touches a real database — the
+  # fake `pg_dump` below only writes a file at --file and never connects to
+  # Postgres — so it doesn't need the outer `let!(:city)`'s real
+  # `provision_city!`. A lightweight, unprovisioned City row (same "ghost"
+  # pattern as the "fails without leaving a file..." example below) is
+  # enough and avoids an unnecessary real provision.
   it "keeps the dump file 0600 while pg_dump is still writing it, not just after the final chmod, and restores the process umask" do
+    ghost_slug = "provumask#{SecureRandom.hex(3)}"
+    ghost = City.new(slug: ghost_slug, status: "active",
+                     database_url: CityDatabase.url_for(slug: ghost_slug, password: "s3gr3d0s3gr3d0"))
     fake_bin = Dir.mktmpdir("fake-pg_dump")
     mode_file = File.join(fake_bin, "captured_mode")
     script = File.join(fake_bin, "pg_dump")
@@ -70,12 +79,52 @@ RSpec.describe CityLifecycle::Backup do
     original_path = ENV.fetch("PATH")
     ENV["PATH"] = "#{fake_bin}:#{original_path}"
 
-    result = described_class.call(city: city, dir: dir)
+    result = described_class.call(city: ghost, dir: dir)
 
     expect(result.ok?).to be(true)
     recorded_mode = File.read(mode_file).strip.to_i(8)
     expect(recorded_mode).to eq(0o600), "expected the file to be 0600 DURING the dump, got #{recorded_mode.to_s(8)}"
     expect(File.umask).to eq(original_umask)
+  ensure
+    ENV["PATH"] = original_path if original_path
+    FileUtils.rm_rf(fake_bin) if fake_bin
+  end
+
+  # M5 (hardening review): the umask restore (`ensure`) must run even when
+  # pg_dump itself fails, and the partial file must still be removed.
+  it "restores the process umask and removes the partial file when pg_dump fails" do
+    ghost_slug = "provumaskfail#{SecureRandom.hex(3)}"
+    ghost = City.new(slug: ghost_slug, status: "active",
+                     database_url: CityDatabase.url_for(slug: ghost_slug, password: "s3gr3d0s3gr3d0"))
+    fake_bin = Dir.mktmpdir("fake-pg_dump-fail")
+    script = File.join(fake_bin, "pg_dump")
+    File.write(script, <<~SH)
+      #!/bin/sh
+      # Fake pg_dump: writes a partial file at --file, then exits 1 -- proves
+      # the umask is restored and the partial file removed on failure too.
+      file=""
+      prev=""
+      for arg in "$@"; do
+        if [ "$prev" = "--file" ]; then
+          file="$arg"
+        fi
+        prev="$arg"
+      done
+      : > "$file"
+      echo "pg_dump: erro simulado" >&2
+      exit 1
+    SH
+    FileUtils.chmod(0o755, script)
+
+    original_umask = File.umask
+    original_path = ENV.fetch("PATH")
+    ENV["PATH"] = "#{fake_bin}:#{original_path}"
+
+    result = described_class.call(city: ghost, dir: dir)
+
+    expect(result.reason).to eq(:backup_failed)
+    expect(File.umask).to eq(original_umask)
+    expect(Dir.children(dir)).to be_empty
   ensure
     ENV["PATH"] = original_path if original_path
     FileUtils.rm_rf(fake_bin) if fake_bin

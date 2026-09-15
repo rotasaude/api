@@ -331,23 +331,49 @@ RSpec.describe "city:invite_admin rake task on an active city" do
   end
   let(:email) { "prefeita@cidade.gov.br" }
 
+  # M4 (hardening review): returns the captured stdout, so the happy-path
+  # spec can assert the confirmation line never echoes the token.
   def invoke_silently(*args)
     original_stdout, $stdout = $stdout, StringIO.new
     original_stderr, $stderr = $stderr, StringIO.new
     Rake::Task["city:invite_admin"].invoke(*args)
+    $stdout.string
   ensure
     $stdout = original_stdout
     $stderr = original_stderr
   end
 
   it "enqueues InvitationMailer on the platform queue and audits city.admin_reinvited" do
-    on_platform_queue { invoke_silently(city.slug, email) }
+    invitation = nil
+    output = nil
+    expect {
+      on_platform_queue do
+        output = invoke_silently(city.slug, email)
+      end
+    }.to have_enqueued_mail(InvitationMailer, :invite)
 
-    token = Invitation.pending.sole.token
+    invitation = Invitation.pending.sole
     expect(InvitationMailer).to have_received(:invite)
-      .with(email_address: email, accept_url: CityDashboardUrl.invitation(city, token: token)).once
+      .with(email_address: email, accept_url: CityDashboardUrl.invitation(city, token: invitation.token)).once
 
     event = PlatformEvent.where(name: "city.admin_reinvited").where("payload->>'city_id' = ?", city.id).sole
-    expect(event.payload).to eq({ "city_id" => city.id })
+    expect(event.payload).to eq({ "city_id" => city.id, "invitation_id" => invitation.id })
+
+    # M4/I1 (hardening review): the confirmation line must never echo the
+    # token, and M6 requires the e-mail to appear masked, not in full.
+    expect(output).not_to include(invitation.token)
+    expect(output).not_to include(email)
+    expect(output).to include("p***@cidade.gov.br")
+  end
+
+  # M2 (hardening review): city:invite_admin only re-invites a STALLED FIRST
+  # admin. A city that already has one active municipal_admin is refused.
+  it "aborts and creates no invitation when the city already has an active municipal_admin" do
+    admin = CityConnection.with(city) { User.create!(email_address: "prefeita-atual@cidade.gov.br", password: "secret123") }
+    CityConnection.with(city) { Membership.create!(user: admin, role: "municipal_admin", granted_at: Time.current) }
+
+    expect { invoke_silently(city.slug, email) }.to raise_error(SystemExit)
+
+    expect(CityConnection.with(city) { Invitation.count }).to eq(0)
   end
 end

@@ -11,12 +11,27 @@
 # Convite vencido ou aceito não é reaproveitado: nasce um novo (mesma regra que
 # valia dentro do job antes desta extração).
 #
+# M2 (rodada de hardening, review): city:invite_admin só existe para reenviar
+# o convite do PRIMEIRO admin travado — uma cidade que já tem um
+# municipal_admin ativo já passou do onboarding; reenviar aqui criaria um
+# segundo convite de admin, não-relacionado, em vez de retomar um travado.
+# Recusa e não escreve nada.
+#
+# M1 (rodada de hardening, review): duas execuções concorrentes (duas rakes, ou
+# uma rake correndo junto de um retry do ProvisionCityJob) não podem criar dois
+# convites PENDENTES pro mesmo email/role — antes disso, find-then-create sem
+# trava deixava as duas passarem pela checagem "existe pendente?" antes de
+# qualquer uma criar. A trava é pg_advisory_xact_lock, escopada à transação
+# (liberada sozinha no commit OU rollback, sem unlock explícito), chaveada por
+# hashtext(email:role) — a menor mecânica que resolve, sem precisar de uma
+# constraint de unicidade nova no schema de cidade.
+#
 # Devolve só os argumentos PLANOS do e-mail (R42: mailers recebem string, nunca
-# AR object) dentro de Result — nunca a Invitation nem o token soltos, para
-# nenhum chamador logar o token por engano. Quem chama enfileira
-# InvitationMailer FORA de CityConnection.with e fora de qualquer transação —
-# a fila de destino é decidida no commit mais de fora (ver
-# app/services/platform_queue.rb).
+# AR object) e o id do convite (uuid não-PII, só para auditoria) dentro de
+# Result — nunca a Invitation nem o token soltos, para nenhum chamador logar o
+# token por engano. Quem chama enfileira InvitationMailer FORA de
+# CityConnection.with e fora de qualquer transação — a fila de destino é
+# decidida no commit mais de fora (ver app/services/platform_queue.rb).
 module CityLifecycle
   module InviteAdmin
     def self.call(city:, email:)
@@ -25,21 +40,38 @@ module CityLifecycle
 
       Current.set(city: city) do
         CityConnection.with(city) do
-          invitation = Invitation.pending.find_by(email: email.downcase, role: "municipal_admin")
-          next if invitation
+          ApplicationRecord.transaction do
+            if Membership.active.exists?(role: "municipal_admin")
+              failure = Result.fail(:admin_exists,
+                message: "cidade #{city.slug} já tem um municipal_admin ativo — invite_admin só reenvia " \
+                         "o convite do primeiro admin")
+              raise ActiveRecord::Rollback
+            end
 
-          invited = InviteMember.call(email: email, role: "municipal_admin", invited_by: nil)
-          if invited.failure?
-            failure = invited
-          else
-            invitation = invited.payload[:invitation]
+            lock_key = "#{email.downcase}:municipal_admin"
+            ApplicationRecord.connection.select_value(
+              "SELECT pg_advisory_xact_lock(hashtext(#{ApplicationRecord.connection.quote(lock_key)}))"
+            )
+
+            invitation = Invitation.pending.find_by(email: email.downcase, role: "municipal_admin")
+            next if invitation
+
+            invited = InviteMember.call(email: email, role: "municipal_admin", invited_by: nil)
+            if invited.failure?
+              failure = invited
+            else
+              invitation = invited.payload[:invitation]
+            end
           end
         end
       end
 
       return Result.fail(failure.reason, message: failure.message) if failure
 
-      Result.ok(mail_args: { email_address: email, accept_url: CityDashboardUrl.invitation(city, token: invitation.token) })
+      Result.ok(
+        mail_args: { email_address: email, accept_url: CityDashboardUrl.invitation(city, token: invitation.token) },
+        invitation_id: invitation.id
+      )
     end
   end
 end

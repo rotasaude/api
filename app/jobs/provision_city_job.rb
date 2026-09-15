@@ -56,24 +56,34 @@ class ProvisionCityJob < ApplicationJob
   # (compartilhada com a rake city:invite_admin — rodada de hardening,
   # pre-Plano 6); chamada AQUI DENTRO da mesma transação do resto do seed, para
   # falhar junto com ela (SeedFailed desfaz tudo, igual antes da extração).
+  #
+  # M3 (rodada de hardening, review): Current.city envolve o passo INTEIRO de
+  # novo (era assim antes da extração de InviteAdmin) — não só a chamada a
+  # InviteAdmin, que seta o seu próprio Current.city internamente mas só
+  # durante a própria execução. CityProfile/AlertRecipient/SeedProtocol não
+  # leem Current.city hoje, mas o seed inteiro roda na cidade da conexão, e
+  # deixar Current.city refletir isso durante todo o passo é o comportamento
+  # de antes — não uma correção de um bug observável hoje.
   def seed(city, ibge_code:, admin_email:, alert_email:)
     mail_args = nil
 
-    CityConnection.with(city) do
-      ApplicationRecord.transaction do
-        CityProfile.create!(name: city.name, uf: city.uf, ibge_code: ibge_code) unless CityProfile.exists?
+    Current.set(city: city) do
+      CityConnection.with(city) do
+        ApplicationRecord.transaction do
+          CityProfile.create!(name: city.name, uf: city.uf, ibge_code: ibge_code) unless CityProfile.exists?
 
-        unless AlertRecipient.exists?
-          AlertRecipient.create!(channel: "email", destination: alert_email, escalation_order: 0, active: true)
+          unless AlertRecipient.exists?
+            AlertRecipient.create!(channel: "email", destination: alert_email, escalation_order: 0, active: true)
+          end
+
+          template = CityTemplates.protocol
+          SeedProtocol.call(template: template) unless ProtocolDefinition.exists?(name: template.fetch(:name))
+
+          invited = CityLifecycle::InviteAdmin.call(city: city, email: admin_email)
+          raise SeedFailed, "convite do primeiro municipal_admin: #{invited.message}" if invited.failure?
+
+          mail_args = invited.payload[:mail_args]
         end
-
-        template = CityTemplates.protocol
-        SeedProtocol.call(template: template) unless ProtocolDefinition.exists?(name: template.fetch(:name))
-
-        invited = CityLifecycle::InviteAdmin.call(city: city, email: admin_email)
-        raise SeedFailed, "convite do primeiro municipal_admin: #{invited.message}" if invited.failure?
-
-        mail_args = invited.payload[:mail_args]
       end
     end
 

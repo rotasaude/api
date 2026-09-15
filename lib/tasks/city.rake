@@ -284,6 +284,16 @@ namespace :city do
   end
   city_backup_dir = -> { ENV.fetch("CITY_BACKUP_DIR") { Rails.root.join("tmp/city_backups").to_s } }
 
+  # M6 (rodada de hardening, review): a linha de confirmação de
+  # city:invite_admin precisa dar contexto (para quem foi) sem ecoar o e-mail
+  # inteiro em log/terminal — só o primeiro caractere + "***" + domínio, ex.:
+  # "p***@cidade.gov.br". Só usada aqui; não vira utilitário global porque
+  # nenhum outro chamador precisa disso hoje.
+  mask_email = lambda do |address|
+    local, _, domain = address.to_s.partition("@")
+    "#{local[0]}***@#{domain}"
+  end
+
   desc "Suspende uma cidade (o host dela responde 403). Uso: city:suspend[slug]"
   task :suspend, %i[slug] => :environment do |_t, args|
     city = lifecycle_city.call("city:suspend", args[:slug])
@@ -330,8 +340,8 @@ namespace :city do
     abort "[city:invite_admin] #{result.reason}: #{result.message}" if result.failure?
 
     InvitationMailer.invite(**result.payload[:mail_args]).deliver_later
-    Platform.audit("city.admin_reinvited", city_id: city.id)
-    puts "[city:invite_admin] #{city.slug} → convite reenviado"
+    Platform.audit("city.admin_reinvited", city_id: city.id, invitation_id: result.payload[:invitation_id])
+    puts "[city:invite_admin] #{city.slug} → convite reenviado (#{mask_email.call(email)})"
   end
 
   desc "IRREVERSÍVEL: dump final, archived, DROP DATABASE e DROP ROLE de uma cidade suspensa. Uso: CONFIRM=<slug> city:offboard[slug]"
