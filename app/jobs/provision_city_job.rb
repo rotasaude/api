@@ -6,11 +6,12 @@
 #   3. no banco da cidade, numa transação: city_profile, destinatário de alerta,
 #      protocolo template em rascunho e convite do primeiro municipal_admin
 #      (convidado pela plataforma: invited_by nulo);
-#   4. e-mail do convite, em TODA execução enquanto a cidade segue provisioning
-#      e o convite não foi aceito — entrega pelo menos uma vez (fix round 1):
-#      um retry antes da ativação reenvia o MESMO link (mesmo token); um e-mail
-#      duplicado carrega um convite igualmente válido. Depois que a cidade vira
-#      active, o guard do início do método corta o envio;
+#   4. e-mail do convite, em TODA execução enquanto a cidade segue provisioning —
+#      entrega pelo menos uma vez (fix round 1): um retry antes da ativação
+#      reenvia o link do convite PENDENTE (mesmo token); um e-mail duplicado
+#      carrega um convite igualmente válido. Convite vencido ou aceito não é
+#      reaproveitado: nasce um novo. Depois que a cidade vira active, o guard do
+#      início do método corta o envio;
 #   5. cidade → active e municipality.provisioned, numa transação de plataforma.
 #
 # Banco/role e migrations são idempotentes: um retry (ou um novo POST /cities
@@ -37,10 +38,8 @@ class ProvisionCityJob < ApplicationJob
     city.reload
 
     token = seed(city, ibge_code: ibge_code, admin_email: admin_email, alert_email: alert_email)
-    if token
-      InvitationMailer.invite(email_address: admin_email,
-                              accept_url: CityDashboardUrl.invitation(city, token: token)).deliver_later
-    end
+    InvitationMailer.invite(email_address: admin_email,
+                            accept_url: CityDashboardUrl.invitation(city, token: token)).deliver_later
 
     PlatformRecord.transaction do
       city.update!(status: "active")
@@ -51,10 +50,10 @@ class ProvisionCityJob < ApplicationJob
 
   private
 
-  # Devolve o token do convite do primeiro municipal_admin enquanto ele ainda
-  # não foi aceito (accepted_at nulo) — criado agora ou em execução anterior,
-  # tanto faz: é assim que o e-mail é reenviado num retry (fix round 1). nil
-  # quando o convite já foi aceito.
+  # Devolve o token do convite PENDENTE (não aceito e não vencido) do primeiro
+  # municipal_admin — criado agora ou em execução anterior, tanto faz: é assim
+  # que o e-mail é reenviado num retry (fix round 1). Sem convite pendente (nenhum,
+  # ou só vencidos/aceitos), cria um novo: um link vencido nunca vai por e-mail.
   def seed(city, ibge_code:, admin_email:, alert_email:)
     invitation = nil
 
@@ -70,7 +69,7 @@ class ProvisionCityJob < ApplicationJob
           template = CityTemplates.protocol
           SeedProtocol.call(template: template) unless ProtocolDefinition.exists?(name: template.fetch(:name))
 
-          invitation = Invitation.find_by(email: admin_email.downcase, role: "municipal_admin")
+          invitation = Invitation.pending.find_by(email: admin_email.downcase, role: "municipal_admin")
           if invitation.nil?
             invited = InviteMember.call(email: admin_email, role: "municipal_admin", invited_by: nil)
             raise SeedFailed, "convite do primeiro municipal_admin: #{invited.message}" if invited.failure?
@@ -81,6 +80,6 @@ class ProvisionCityJob < ApplicationJob
       end
     end
 
-    invitation.accepted_at.nil? ? invitation.token : nil
+    invitation.token
   end
 end

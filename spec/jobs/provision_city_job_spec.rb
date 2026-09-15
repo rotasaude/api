@@ -122,6 +122,25 @@ RSpec.describe ProvisionCityJob, type: :job do
       .at_least(:once)
   end
 
+  it "invites the first admin again when the earlier invitation expired, e-mailing the new token" do
+    described_class.perform_now(city_id: city.id, **args)
+    first_token = CityConnection.with(city) do
+      Invitation.sole.tap { |inv| inv.update_columns(expires_at: 1.minute.ago) }.token
+    end
+    city.update_columns(status: "provisioning")
+
+    described_class.perform_now(city_id: city.id, **args)
+
+    new_token = CityConnection.with(city) do
+      expect(Invitation.count).to eq(2)
+      Invitation.pending.sole.token
+    end
+    expect(new_token).not_to eq(first_token)
+    expect(InvitationMailer).to have_received(:invite)
+      .with(email_address: "Prefeita@Cidade.gov.br", accept_url: CityDashboardUrl.invitation(city, token: new_token)).once
+    expect(InvitationMailer).to have_received(:invite).twice
+  end
+
   it "ignores a city that is not provisioning, and an unknown id" do
     city.update!(status: "suspended")
     expect(CityDatabase).not_to receive(:ensure!)
