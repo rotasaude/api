@@ -36,4 +36,26 @@ RSpec.describe "CityLifecycle::Suspend and CityLifecycle::Resume" do
 
     expect(CityLifecycle::Resume.call(city: city).reason).to eq(:invalid_status)
   end
+
+  it "refuses to suspend when the row stopped being active after the city was loaded, writing nothing" do
+    city
+    City.where(id: city.id).update_all(status: "suspended")
+
+    result = nil
+    expect { result = CityLifecycle::Suspend.call(city: city) }.not_to change(PlatformEvent, :count)
+    expect(result.reason).to eq(:invalid_status)
+    expect(result.message).to eq("cidade #{city.slug} mudou de status durante a operação")
+    expect(city.reload.status).to eq("suspended")
+  end
+
+  it "refuses to resume when the row stopped being suspended after the city was loaded, writing nothing" do
+    city.update!(status: "suspended")
+    City.where(id: city.id).update_all(status: "archived")
+
+    result = nil
+    expect { result = CityLifecycle::Resume.call(city: city) }.not_to change(PlatformEvent, :count)
+    expect(result.reason).to eq(:invalid_status)
+    expect(result.message).to eq("cidade #{city.slug} mudou de status durante a operação")
+    expect(city.reload.status).to eq("archived")
+  end
 end

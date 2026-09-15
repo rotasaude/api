@@ -89,7 +89,9 @@ então `kamal deploy`.
 - `rails 'city:backup[slug]'` → `pg_dump` da cidade em `CITY_BACKUP_DIR`, restaurável sozinho com
   `pg_restore --no-owner`.
 - `CONFIRM=<slug> rails 'city:offboard[slug]'` (IRREVERSÍVEL, só cidade suspensa) → dump final, canais inativos,
-  `archived`, `DROP DATABASE` e `DROP ROLE`.
+  `archived`, `DROP DATABASE` e `DROP ROLE`. Recusa (`suspension_too_recent`) até 60 s depois do `city:suspend` — duas
+  vezes o TTL de 30 s do cache do catálogo, para os outros processos pararem de servir a cidade antes do dump. Se a
+  cidade for retomada durante o dump, nada é apagado (`invalid_status`) e o dump fica.
 - `curitiba` e `maringa` (criadas por `city:dev_up`, banco do superusuário) não são apagáveis pelo `rota_provisioner`.
 
 **Purga.** Diariamente, `PurgePlatformAccessJob` apaga grants vencidos há mais de 1 dia e sessões de operador que não

@@ -11,10 +11,19 @@ module CityLifecycle
         return Result.fail(:invalid_status, message: "cidade #{city.slug} não está active (status=#{city.status})")
       end
 
+      # Transição guardada: só muda a linha que AINDA está active (outro processo
+      # pode ter mudado o status depois que esta cidade foi carregada).
+      changed = false
       PlatformRecord.transaction do
-        city.update!(status: "suspended")
+        guard = City.where(id: city.id, status: "active").update_all(status: "suspended", updated_at: Time.current)
+        raise ActiveRecord::Rollback if guard.zero?
+
         Platform.audit("city.suspended", city_id: city.id)
+        changed = true
       end
+      return Result.fail(:invalid_status, message: "cidade #{city.slug} mudou de status durante a operação") unless changed
+
+      city.reload
       CityConnection.forget(city.shard)
       CityCatalog.reset_cache!
       Result.ok(city: city)
