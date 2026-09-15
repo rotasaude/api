@@ -42,6 +42,45 @@ RSpec.describe CityLifecycle::Backup do
       .to eq([ { "city_id" => city.id, "file" => File.basename(path) } ])
   end
 
+  it "keeps the dump file 0600 while pg_dump is still writing it, not just after the final chmod, and restores the process umask" do
+    fake_bin = Dir.mktmpdir("fake-pg_dump")
+    mode_file = File.join(fake_bin, "captured_mode")
+    script = File.join(fake_bin, "pg_dump")
+    File.write(script, <<~SH)
+      #!/bin/sh
+      # Fake pg_dump: finds the --file argument, creates it, and records its OWN
+      # mode via `File.stat` into a side file BEFORE exiting -- proves the file
+      # was already 0600 while pg_dump itself was running (umask), not only
+      # after CityLifecycle::Backup's final File.chmod once the subprocess is
+      # done and control has returned to Ruby.
+      file=""
+      prev=""
+      for arg in "$@"; do
+        if [ "$prev" = "--file" ]; then
+          file="$arg"
+        fi
+        prev="$arg"
+      done
+      : > "$file"
+      ruby -e 'printf("%o", File.stat(ARGV[0]).mode & 0o777)' "$file" > "#{mode_file}"
+    SH
+    FileUtils.chmod(0o755, script)
+
+    original_umask = File.umask
+    original_path = ENV.fetch("PATH")
+    ENV["PATH"] = "#{fake_bin}:#{original_path}"
+
+    result = described_class.call(city: city, dir: dir)
+
+    expect(result.ok?).to be(true)
+    recorded_mode = File.read(mode_file).strip.to_i(8)
+    expect(recorded_mode).to eq(0o600), "expected the file to be 0600 DURING the dump, got #{recorded_mode.to_s(8)}"
+    expect(File.umask).to eq(original_umask)
+  ensure
+    ENV["PATH"] = original_path if original_path
+    FileUtils.rm_rf(fake_bin) if fake_bin
+  end
+
   it "fails without leaving a file or echoing the password when the database is unreachable" do
     ghost_slug = "provghost#{SecureRandom.hex(3)}"
     ghost = City.new(slug: ghost_slug, status: "active",
