@@ -38,12 +38,23 @@ RSpec.describe CityDatabase do
     expect(described_class.valid_slug?("x" * 40)).to be(true)
   end
 
-  it "builds the city URL with the city's own role, on the provisioner's host" do
-    url = URI.parse(described_class.url_for(slug: "curitiba", password: "abc123"))
-    provisioner = URI.parse(described_class.provisioner_url)
+  it "builds the city URL with the city's own role on DATABASE_HOST/DATABASE_PORT outside production, sslmode only when set" do
+    allow(described_class).to receive(:provisioner_url).and_call_original
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("CITY_DATABASE_HOST").and_return(nil)
+    allow(ENV).to receive(:[]).with("CITY_DATABASE_PORT").and_return(nil)
+    allow(ENV).to receive(:[]).with("CITY_DATABASE_SSLMODE").and_return(nil)
 
-    expect([ url.scheme, url.user, url.password, url.host, url.port, url.path ])
-      .to eq([ "postgres", "rota_test_city_curitiba", "abc123", provisioner.host, provisioner.port, "/rota_saude_test_city_curitiba" ])
+    url = URI.parse(described_class.url_for(slug: "curitiba", password: "abc123"))
+
+    expect([ url.scheme, url.user, url.password, url.host, url.port, url.path, url.query ])
+      .to eq([ "postgres", "rota_test_city_curitiba", "abc123", ENV.fetch("DATABASE_HOST", "127.0.0.1"),
+               ENV.fetch("DATABASE_PORT", "5432").to_i, "/rota_saude_test_city_curitiba", nil ])
+
+    allow(ENV).to receive(:[]).with("CITY_DATABASE_SSLMODE").and_return("verify-full")
+    expect(URI.parse(described_class.url_for(slug: "curitiba", password: "abc123")).query).to eq("sslmode=verify-full")
+    # Checked here, not as a message expectation: the `after` drop hook does use it.
+    expect(described_class).not_to have_received(:provisioner_url)
   end
 
   it "creates a role that owns its database, with CONNECT revoked from PUBLIC, idempotently" do
@@ -98,5 +109,33 @@ RSpec.describe CityDatabase do
     allow(ENV).to receive(:[]).with("PROVISIONER_DATABASE_URL").and_return(nil)
 
     expect { described_class.provisioner_url }.to raise_error(CityDatabase::ProvisionerMissing)
+  end
+end
+
+# The web process builds the city URL in production without the worker-only
+# provisioner secret. Its own describe, with no drop hook: the Rails.env stubs
+# are still active in `after` hooks.
+RSpec.describe CityDatabase, ".url_for in production" do
+  before do
+    allow(Rails.env).to receive(:production?).and_return(true)
+    allow(Rails.env).to receive(:test?).and_return(false)
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("PROVISIONER_DATABASE_URL").and_return(nil)
+    allow(ENV).to receive(:[]).with("CITY_DATABASE_PORT").and_return(nil)
+    allow(ENV).to receive(:[]).with("CITY_DATABASE_SSLMODE").and_return(nil)
+  end
+
+  it "uses CITY_DATABASE_HOST, port 5432 and sslmode=require, never the provisioner URL" do
+    allow(ENV).to receive(:[]).with("CITY_DATABASE_HOST").and_return("db.example")
+
+    expect(described_class.url_for(slug: "curitiba", password: "abc123"))
+      .to eq("postgres://rota_city_curitiba:abc123@db.example:5432/rota_saude_city_curitiba?sslmode=require")
+  end
+
+  it "requires CITY_DATABASE_HOST" do
+    allow(ENV).to receive(:[]).with("CITY_DATABASE_HOST").and_return("")
+
+    expect { described_class.url_for(slug: "curitiba", password: "abc123") }
+      .to raise_error(CityDatabase::ConfigMissing, "CITY_DATABASE_HOST ausente")
   end
 end

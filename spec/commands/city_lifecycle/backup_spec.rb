@@ -25,6 +25,7 @@ RSpec.describe CityLifecycle::Backup do
     expect(result.ok?).to be(true)
     path = result.payload[:path]
     expect(File.basename(path)).to match(/\A#{city.slug}-\d{8}T\d{6}Z\.dump\z/)
+    expect(File.stat(path).mode & 0o777).to eq(0o600)
 
     ScratchDatabases.create!(scratch)
     out, status = Open3.capture2e(
@@ -51,6 +52,20 @@ RSpec.describe CityLifecycle::Backup do
     expect(result.reason).to eq(:backup_failed)
     expect(result.message).not_to include("s3gr3d0s3gr3d0")
     expect(Dir.children(dir)).to be_empty
+  end
+
+  it "passes the URL's sslmode to pg_dump as PGSSLMODE, with the password only in the environment" do
+    remote = City.new(slug: "provtls", status: "active",
+                      database_url: "postgres://rota_city_provtls:s3gr3d0s3gr3d0@db.example:5432/rota_saude_city_provtls?sslmode=require")
+    allow(Open3).to receive(:capture2e).and_return([ "pg_dump: erro", instance_double(Process::Status, success?: false) ])
+
+    described_class.call(city: remote, dir: dir)
+
+    expect(Open3).to have_received(:capture2e) do |env, *argv|
+      expect(env).to include("PGSSLMODE" => "require", "PGPASSWORD" => "s3gr3d0s3gr3d0")
+      expect(argv.join(" ")).not_to include("s3gr3d0s3gr3d0")
+      expect(argv).to include("--host", "db.example", "--dbname", "rota_saude_city_provtls")
+    end
   end
 
   it "refuses a city that is provisioning or archived" do

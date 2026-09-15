@@ -25,6 +25,14 @@ cofre `rota-saude-prod` precisa ter: `postgres-roles` (campos `rota_app`,
 `deterministic_key`, `key_derivation_salt`) e `govbr` (campos `client_id`,
 `client_secret`), além dos já existentes.
 
+## Não secretos: servidor das cidades
+
+`CITY_DATABASE_HOST`, `CITY_DATABASE_PORT` e `CITY_DATABASE_SSLMODE` ficam em `env.clear` do `deploy.yml` (não no
+cofre). A URL de cada cidade provisionada (`cities.database_url`) é montada com eles — host, porta e
+`?sslmode=` — e o processo **web** precisa deles no `POST /cities`, que não recebe `PROVISIONER_DATABASE_URL`. Em
+produção `CITY_DATABASE_HOST` é obrigatório (sem ele, `POST /cities` responde 503 `misconfigured`) e `sslmode` cai em
+`require`.
+
 ## Papel `rota_provisioner` (uma vez por cluster)
 
 Criado pela infra, com o superusuário do Postgres, antes do primeiro provisionamento:

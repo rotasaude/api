@@ -51,6 +51,11 @@ env:
     GOVBR_REDIRECT_URI: "https://auth.dev.rota-saude.example/auth/govbr/callback"
     GOVBR_ISSUER_URL: "https://sso.staging.acesso.gov.br"
     CITY_BACKUP_DIR: "/rails/storage/city_backups"
+    # Servidor das cidades provisionadas (cities.database_url). Não é secreto; o
+    # web precisa dele no POST /cities, sem a credencial do provisioner.
+    CITY_DATABASE_HOST: dev.rota-saude.example
+    CITY_DATABASE_PORT: "5432"
+    CITY_DATABASE_SSLMODE: "prefer"
   secret:
     - ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
     - ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT

@@ -72,6 +72,16 @@ RSpec.describe "City provisioning on the platform console", type: :request do
     expect(json["error"]).to eq("invalid")
   end
 
+  it "answers 503 misconfigured when the city database settings are missing" do
+    verified_login!
+    allow(ProvisionCity).to receive(:call).and_return(Result.fail(:misconfigured, message: "CITY_DATABASE_HOST ausente"))
+
+    post "/cities", params: params
+
+    expect(response).to have_http_status(:service_unavailable)
+    expect(json).to eq("error" => "misconfigured")
+  end
+
   it "requires a verified operator session" do
     expect { post "/cities", params: params }.not_to change(City, :count)
     expect(response).to have_http_status(:unauthorized)

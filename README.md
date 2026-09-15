@@ -19,6 +19,8 @@ faltar uma delas quebra até rodando os specs:
 | `ROTA_PLATFORM_PASSWORD` | `rota_platform` | `platform` |
 | `ROTA_PROVISIONER_PASSWORD` | `rota_provisioner` | `platform:bootstrap` (cria o papel) e `CityDatabase` em dev/test |
 | `PROVISIONER_DATABASE_URL` | montada a partir da anterior | papel worker: cria e apaga banco/role de cidade (obrigatória em produção) |
+| `CITY_DATABASE_HOST` / `CITY_DATABASE_PORT` | `DATABASE_HOST` / `DATABASE_PORT` (em produção: host obrigatório, porta `5432`) | servidor na URL de cada cidade provisionada (`CityDatabase.url_for`); o web precisa no `POST /cities` |
+| `CITY_DATABASE_SSLMODE` | vazio (sem `sslmode`; em produção `require`) | `?sslmode=` da URL da cidade e `PGSSLMODE` do `pg_dump` |
 | `CITY_BACKUP_DIR` | `tmp/city_backups` | `city:backup`, `city:offboard` |
 | `PUBLIC_DASHBOARD_URL` | `http://localhost:5175/dashboard/` | link do e-mail de redefinição de senha |
 

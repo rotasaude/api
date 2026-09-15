@@ -40,6 +40,18 @@ RSpec.describe ProvisionCity do
     expect(first.reload.database_url).to eq(original_url)
   end
 
+  it "answers :misconfigured without the city database host, enqueuing nothing and writing no catalog row" do
+    allow(Rails.env).to receive(:production?).and_return(true)
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("CITY_DATABASE_HOST").and_return(nil)
+
+    result = nil
+    expect { result = described_class.call(**args) }.not_to have_enqueued_job
+    expect(result.reason).to eq(:misconfigured)
+    expect(result.message).to eq("CITY_DATABASE_HOST ausente")
+    expect(City.where(slug: "novacidade")).to be_empty
+  end
+
   it "refuses a slug that belongs to a city past provisioning, enqueuing nothing" do
     create(:city, slug: "novacidade", status: "active")
 

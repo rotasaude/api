@@ -18,6 +18,11 @@ RSpec.describe CitySchema do
     ScratchDatabases.superuser(database) { |c| c.exec("SELECT version FROM schema_migrations ORDER BY 1").column_values(0).map(&:to_i) }
   end
 
+  it "keeps sslmode from the city URL query in the ad-hoc config" do
+    expect(described_class.db_config_for("postgres://u:p@h:5432/d?sslmode=require").configuration_hash[:sslmode])
+      .to eq("require")
+  end
+
   it "expects the highest version in db/city_migrate" do
     expect(described_class.expected_version).to eq(versions_on_disk.max)
   end

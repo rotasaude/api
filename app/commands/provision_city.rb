@@ -39,6 +39,10 @@ class ProvisionCity
     ProvisionCityJob.perform_later(city_id: city.id, ibge_code: @ibge_code, admin_email: @admin_email,
                                    alert_email: @alert_email, operator_id: @by.id)
     Result.ok(city: city)
+  rescue CityDatabase::ConfigMissing => e
+    # Configuração do servidor ausente (CITY_DATABASE_HOST): a mensagem só nomeia
+    # a variável, nunca carrega URL ou senha.
+    Result.fail(:misconfigured, message: e.message)
   rescue ActiveRecord::RecordInvalid => e
     Result.fail(:invalid, message: e.record.errors.full_messages.join(", "))
   rescue ActiveRecord::RecordNotUnique

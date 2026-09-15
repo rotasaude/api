@@ -1,8 +1,10 @@
 # Banco e role de uma cidade no Postgres (spec banco-por-cidade §4, Plano 4).
 #
-# Tudo aqui conecta como rota_provisioner — CREATEDB e CREATEROLE, sem
-# superusuário — por PROVISIONER_DATABASE_URL. Em produção só o worker recebe essa
-# URL: o processo web não cria nem apaga banco.
+# Tudo o que conecta aqui conecta como rota_provisioner — CREATEDB e CREATEROLE,
+# sem superusuário — por PROVISIONER_DATABASE_URL. Em produção só o worker recebe
+# essa URL: o processo web não cria nem apaga banco. url_for não conecta nem lê
+# essa URL (o web a chama no POST /cities): monta a URL da cidade com
+# CITY_DATABASE_HOST/PORT/SSLMODE, que não são secretos.
 #
 # Cada cidade tem um role próprio, DONO do seu banco, usado em runtime e nas
 # migrations. O CONNECT de PUBLIC é revogado: o role de uma cidade (e rota_app)
@@ -16,6 +18,7 @@
 class CityDatabase
   class InvalidSlug < ArgumentError; end
   class ProvisionerMissing < StandardError; end
+  class ConfigMissing < StandardError; end
 
   MAX_SLUG_LENGTH = 40
   SLUG = /\A[a-z0-9]([a-z0-9-]*[a-z0-9])?\z/
@@ -36,12 +39,16 @@ class CityDatabase
       Rails.env.test? ? "rota_test_city_#{slug}" : "rota_city_#{slug}"
     end
 
-    # URL que vai para cities.database_url: role e banco da cidade, no mesmo
-    # servidor do provisioner.
+    # URL que vai para cities.database_url: role e banco da cidade. Servidor e TLS
+    # vêm de CITY_DATABASE_HOST (obrigatória em produção), CITY_DATABASE_PORT e
+    # CITY_DATABASE_SSLMODE (default require em produção) — nunca da credencial do
+    # provisioner, que o processo web não recebe. Fora de produção, cai em
+    # DATABASE_HOST/DATABASE_PORT e sem sslmode.
     def url_for(slug:, password:)
-      server = URI.parse(provisioner_url)
+      sslmode = ENV["CITY_DATABASE_SSLMODE"].presence || (Rails.env.production? ? "require" : nil)
       URI::Generic.build(scheme: "postgres", userinfo: "#{role_name(slug)}:#{password}",
-                         host: server.host, port: server.port, path: "/#{database_name(slug)}").to_s
+                         host: city_database_host, port: city_database_port.to_i, path: "/#{database_name(slug)}",
+                         query: sslmode && "sslmode=#{sslmode}").to_s
     end
 
     # Idempotente: cria o que falta e realinha a senha do role com a do catálogo
@@ -97,6 +104,18 @@ class CityDatabase
 
     def check!(slug)
       raise InvalidSlug, "slug inválido para banco de cidade: #{slug.inspect}" unless valid_slug?(slug)
+    end
+
+    def city_database_host
+      host = ENV["CITY_DATABASE_HOST"].presence
+      return host if host
+      raise ConfigMissing, "CITY_DATABASE_HOST ausente" if Rails.env.production?
+
+      ENV.fetch("DATABASE_HOST", "127.0.0.1")
+    end
+
+    def city_database_port
+      ENV["CITY_DATABASE_PORT"].presence || (Rails.env.production? ? "5432" : ENV.fetch("DATABASE_PORT", "5432"))
     end
 
     def local_provisioner_url

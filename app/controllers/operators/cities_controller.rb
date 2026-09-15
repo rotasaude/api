@@ -5,7 +5,8 @@
 #
 # O POST só registra e enfileira (ProvisionCity): quem cria o banco é o worker. A
 # resposta é só o id — o token do convite nunca volta para o console, vai por
-# e-mail para o primeiro municipal_admin.
+# e-mail para o primeiro municipal_admin. Sem CITY_DATABASE_HOST (produção) → 503
+# { error: "misconfigured" }.
 module Operators
   class CitiesController < BaseController
     def create
@@ -14,6 +15,7 @@ module Operators
         admin_email: params[:admin_email], alert_email: params[:alert_email], by: current_operator
       )
       return render(json: { id: result.payload[:city].id }, status: :accepted) if result.ok?
+      return render(json: { error: "misconfigured" }, status: :service_unavailable) if result.reason == :misconfigured
 
       status = result.reason == :city_exists ? :conflict : :unprocessable_entity
       render json: { error: result.reason.to_s, message: result.message }, status: status
