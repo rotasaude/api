@@ -34,7 +34,8 @@ RSpec.describe CityWorkers::Manager do
   let(:slugs) { %w[curitiba maringa] }
   let(:catalog) { -> { slugs } }
   let(:manager) do
-    described_class.new(spawner: spawner, clock: clock, catalog: catalog, poll_interval: 30.0, logger: Logger.new(nil))
+    described_class.new(spawner: spawner, clock: clock, catalog: catalog, poll_interval: 30.0, stop_timeout: 10.0,
+                         logger: Logger.new(nil))
   end
 
   it "starts the platform supervisor and one per catalog city on the first tick" do
@@ -101,6 +102,29 @@ RSpec.describe CityWorkers::Manager do
     manager.tick
     expect(spawner.spawn_count("city:curitiba")).to eq(1)
     expect(manager.running.keys).to eq(%w[platform city:maringa])
+  end
+
+  # Important 1 (fix round 1, riscos abertos 1): um TERM chegado durante o boot
+  # do filho não faz nada até o Solid Queue instalar os próprios traps — sem
+  # escalar para KILL, um supervisor suspenso ficaria de pé para sempre e
+  # bloquearia o DROP do offboarding.
+  it "kills a stopped city that never exits, once the stop timeout passes" do
+    manager.tick
+    curitiba = spawner.pid_of("city:curitiba")
+    slugs.replace(%w[maringa])
+
+    clock.advance(30.0)
+    manager.tick
+    expect(spawner.terminated).to eq([ curitiba ])
+    expect(spawner.killed).to be_empty
+
+    clock.advance(9.9)
+    manager.tick
+    expect(spawner.killed).to be_empty
+
+    clock.advance(0.2)
+    manager.tick
+    expect(spawner.killed).to eq([ curitiba ])
   end
 
   it "starts a new catalog city at the next poll without restarting the others" do

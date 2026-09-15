@@ -10,23 +10,32 @@ module CityWorkers
   class Manager
     Running = Struct.new(:unit, :pid, :started_at, keyword_init: true)
 
+    # Reap final do shutdown (Minor 2, fix round 1): depois do KILL, o SO ainda
+    # leva um instante para marcar o processo como zumbi. Sem esta janela, o
+    # último `reap` corria cedo demais e o `bin/city_workers` saía sem drenar os
+    # filhos que o KILL tinha, sim, matado.
+    FINAL_REAP_TIMEOUT = 2.0
+
     attr_reader :running
 
     def self.active_city_slugs
       City.where(status: "active").order(:slug).reject { |city| CitySchema.behind?(city) }.map(&:slug)
     end
 
-    def initialize(spawner:, clock:, catalog:, backoff: Backoff.new, poll_interval: 30.0, logger: Rails.logger)
+    def initialize(spawner:, clock:, catalog:, backoff: Backoff.new, poll_interval: 30.0,
+                   stop_timeout: SolidQueue.shutdown_timeout.to_f + 5.0, logger: Rails.logger)
       @spawner = spawner
       @clock = clock
       @catalog = catalog
       @backoff = backoff
       @poll_interval = poll_interval
+      @stop_timeout = stop_timeout
       @logger = logger
       @running = {}
       @failures = Hash.new(0)
       @next_start_at = {}
       @stopping = {}
+      @stop_deadline = {}
       @desired = nil
       @last_poll_at = nil
     end
@@ -36,13 +45,14 @@ module CityWorkers
         tick
         @clock.sleep(1.0)
       end
-      shutdown(timeout: SolidQueue.shutdown_timeout.to_f + 5.0)
+      shutdown(timeout: @stop_timeout)
     end
 
     def tick
       refresh_desired if poll_due?
       reap
       stop_undesired
+      escalate_stalled_stops
       start_missing
     end
 
@@ -61,6 +71,12 @@ module CityWorkers
       running.each_value do |entry|
         @logger.warn("[city_workers] #{entry.unit.key} não parou em #{timeout}s: KILL (pid #{entry.pid})")
         @spawner.kill(entry.pid)
+      end
+
+      final_deadline = @clock.now + FINAL_REAP_TIMEOUT
+      until running.empty? || @clock.now >= final_deadline
+        reap
+        @clock.sleep(0.1) unless running.empty?
       end
       reap
     end
@@ -91,6 +107,7 @@ module CityWorkers
         if @stopping.delete(pid)
           @failures.delete(key)
           @next_start_at.delete(key)
+          @stop_deadline.delete(pid)
           @logger.info("[city_workers] #{key} parou (pid #{pid})")
         else
           @failures[key] = @backoff.failures_after_exit(@failures[key], ran_for: @clock.now - entry.started_at)
@@ -108,7 +125,25 @@ module CityWorkers
 
         @logger.info("[city_workers] #{entry.unit.key} saiu do catálogo: TERM (pid #{entry.pid})")
         @stopping[entry.pid] = true
+        @stop_deadline[entry.pid] = @clock.now + @stop_timeout
         @spawner.terminate(entry.pid)
+      end
+    end
+
+    # Um TERM enviado enquanto o filho ainda inicializa (antes do Solid Queue
+    # instalar os próprios traps) não faz nada: só o KILL do Spawner (grupo
+    # inteiro) resolve (Important 1, fix round 1). O relógio injetado é o mesmo
+    # que o resto do laço usa, então o spec não precisa de sleep de verdade.
+    def escalate_stalled_stops
+      @stop_deadline.keys.each do |pid|
+        next if @clock.now < @stop_deadline[pid]
+
+        entry = running.values.find { |candidate| candidate.pid == pid }
+        if entry
+          @logger.warn("[city_workers] #{entry.unit.key} não respondeu ao TERM: KILL (pid #{pid})")
+          @spawner.kill(pid)
+        end
+        @stop_deadline.delete(pid)
       end
     end
 
