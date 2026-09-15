@@ -37,4 +37,32 @@ RSpec.describe DomainEvents do
   ensure
     DomainEvents.registry["foo.bar"].clear
   end
+
+  describe ".redispatch" do
+    it "exige cidade para redespachar" do
+      event = DomainEvent.new(id: SecureRandom.uuid, name: "foo.bar", payload: {})
+      expect { DomainEvents.redispatch(event) }.to raise_error(DomainEvents::CityMissing)
+    end
+
+    it "reenfileira os subscribers ligados a event.name com os mesmos kwargs que publish usaria" do
+      Current.city = TEST_CITY_A
+      subscriber = Class.new(ApplicationJob) { def perform(**); end }
+      stub_const("FakeSub", subscriber)
+      DomainEvents.bind("foo.bar", to: FakeSub)
+
+      event = DomainEvent.create!(id: SecureRandom.uuid, name: "foo.bar", payload: { "x" => 1 },
+                                   occurred_at: 10.minutes.ago)
+
+      expect {
+        DomainEvents.redispatch(event)
+      }.to have_enqueued_job(FakeSub).with(hash_including(
+        event_id: event.id,
+        event_name: "foo.bar",
+        city_slug: TEST_CITY_A.slug,
+        payload: { "x" => 1 }
+      ))
+    ensure
+      DomainEvents.registry["foo.bar"].clear
+    end
+  end
 end
