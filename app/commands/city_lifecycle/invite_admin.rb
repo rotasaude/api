@@ -26,6 +26,17 @@
 # hashtext(email:role) — a menor mecânica que resolve, sem precisar de uma
 # constraint de unicidade nova no schema de cidade.
 #
+# M3 (rodada de hardening final): pg_advisory_xact_lock devolve void, e
+# select_value tentava tipar esse retorno — logava "unknown OID 2278" em toda
+# chamada. Trocado por connection.execute (mesmo bind/quote da key), que só
+# roda a instrução sem tentar ler um valor de volta.
+#
+# M4 (rodada de hardening final): a checagem "já existe municipal_admin
+# ativo?" (M2) agora roda DEPOIS de tomar a trava, não antes — checar fora da
+# seção travada lia esse estado sem nenhuma garantia de que ele seguiria
+# valendo até a criação do convite, alguns passos depois. Dentro da seção
+# travada, a leitura fica próxima o bastante do efeito que ela guarda.
+#
 # Devolve só os argumentos PLANOS do e-mail (R42: mailers recebem string, nunca
 # AR object) e o id do convite (uuid não-PII, só para auditoria) dentro de
 # Result — nunca a Invitation nem o token soltos, para nenhum chamador logar o
@@ -41,17 +52,17 @@ module CityLifecycle
       Current.set(city: city) do
         CityConnection.with(city) do
           ApplicationRecord.transaction do
+            lock_key = "#{email.downcase}:municipal_admin"
+            ApplicationRecord.connection.execute(
+              "SELECT pg_advisory_xact_lock(hashtext(#{ApplicationRecord.connection.quote(lock_key)}))"
+            )
+
             if Membership.active.exists?(role: "municipal_admin")
               failure = Result.fail(:admin_exists,
                 message: "cidade #{city.slug} já tem um municipal_admin ativo — invite_admin só reenvia " \
                          "o convite do primeiro admin")
               raise ActiveRecord::Rollback
             end
-
-            lock_key = "#{email.downcase}:municipal_admin"
-            ApplicationRecord.connection.select_value(
-              "SELECT pg_advisory_xact_lock(hashtext(#{ApplicationRecord.connection.quote(lock_key)}))"
-            )
 
             invitation = Invitation.pending.find_by(email: email.downcase, role: "municipal_admin")
             next if invitation

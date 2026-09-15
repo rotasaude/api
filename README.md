@@ -88,9 +88,9 @@ e aposenta o banco compartilhado. Ordem obrigatória:
    cidade (`rails 'city:suspend[slug]'`) antes de seguir com o deploy.
    - Por quê: o webhook do WhatsApp (`Whatsapp::Ingest`) já tem guarda de schema atrasado — uma cidade cujo
      `CitySchema.behind?` for verdadeiro não grava nada (nem `InboundMessage`, nem enqueue), e o POST inteiro responde
-     `503 city_schema_behind`, levando a Meta a reentregar o lote todo. O gate de `bin/migrate` continua obrigatório
-     mesmo assim: sem ele, uma cidade atrasada fica gerando reentregas 503 indefinidamente em vez de simplesmente
-     estar em dia.
+     `503 city_schema_behind`, levando a Meta a reentregar o lote dentro da janela limitada de reentrega da Meta. O
+     gate de `bin/migrate` continua obrigatório mesmo assim: uma cidade que fica atrasada além dessa janela perde as
+     mensagens em vez de simplesmente estar em dia.
    - Uma cidade `suspended` já é descartada silenciosamente pelo mesmo `Whatsapp::Ingest.route` (200, sem gravar) —
      comportamento existente, não deste corte.
 2. Drene a fila compartilhada aposentada antes da virada:

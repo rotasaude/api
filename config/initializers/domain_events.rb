@@ -5,6 +5,12 @@ Rails.application.config.to_prepare do
 
   DomainEvents.bind "triage.completed", to: [GenerateReportJob, UpdateDashboardJob, NotifyCitizenJob]
 
+  # published_at só é marcado quando o PRIMEIRO (e único) consumer termina com
+  # sucesso (ver IdempotentConsumer) — não quando o evento é apenas
+  # enfileirado. ResendPendingAlertsJob confia nisso: ele redespacha todo
+  # triage.urgent com published_at IS NULL. Ligar um segundo consumer aqui
+  # divide essa garantia entre dois "primeiros terminam", enfraquecendo a rede
+  # de segurança do resend sem levantar erro nenhum.
   DomainEvents.bind "triage.urgent", to: AlertMunicipalityJob
 
   # Eventos só de auditoria — sem consumidores. A linha existe para tornar
