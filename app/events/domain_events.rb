@@ -43,6 +43,11 @@ module DomainEvents
     # usa. Não cria um novo DomainEvent nem um novo event_id — os subscribers
     # (via IdempotentConsumer) veem o mesmo event_id de sempre e a dedup por
     # (consumer, event_id) segue valendo.
+    #
+    # Precisa rodar na conexão da PRÓPRIA cidade do event (usa Current.city,
+    # igual publish): quem chama (ex.: ResendPendingAlertsJob, via EachCityJob)
+    # tem que já estar dentro do CityConnection.with dessa cidade — redispatch
+    # não recebe nem deriva a cidade a partir do `event` em si.
     def redispatch(event)
       city_slug = Current.city&.slug
       raise CityMissing, "redispatch #{event.name} sem cidade setada" if city_slug.nil?

@@ -116,5 +116,31 @@ RSpec.describe IdempotentConsumer do
         consumer_class.new.perform(event_id: SecureRandom.uuid, event_name: "foo.bar", city_slug: city.slug, payload: {})
       }.not_to raise_error
     end
+
+    # M2 (fix round 1): o rescue de RecordNotUnique tem que envolver SÓ o
+    # ProcessedEvent.create! do dedup, não o handle. Uma RecordNotUnique que
+    # #handle levante por conta própria (ex.: uma constraint de domínio não
+    # relacionada ao dedup) não é "já processado" — tem que propagar (e não
+    # marcar published), não ser engolida como se fosse uma duplicata normal.
+    it "propaga RecordNotUnique levantado dentro de handle — não é a duplicata do ProcessedEvent" do
+      raising_class = Class.new(ApplicationJob) do
+        include IdempotentConsumer
+        def handle(**)
+          raise ActiveRecord::RecordNotUnique, "violação de unicidade de domínio, não relacionada ao dedup"
+        end
+      end
+      stub_const("HandleRaisesUniqueViolation", raising_class)
+      event = domain_event_in(city)
+
+      expect {
+        raising_class.new.perform(event_id: event.id, event_name: "foo.bar", city_slug: city.slug, payload: {})
+      }.to raise_error(ActiveRecord::RecordNotUnique, /violação de unicidade de domínio/)
+
+      expect(reload_domain_event(city, event.id).published_at).to be_nil
+      # A transação inteira do with_city desfaz — inclusive o próprio dedup
+      # row que tinha sido criado com sucesso antes de handle levantar.
+      rows = CityConnection.with(city) { ProcessedEvent.where(event_id: event.id).count }
+      expect(rows).to eq(0)
+    end
   end
 end

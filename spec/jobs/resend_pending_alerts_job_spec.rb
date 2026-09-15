@@ -17,6 +17,30 @@ RSpec.describe ResendPendingAlertsJob, type: :job do
     DomainEvent.create!(name: name, payload: payload, occurred_at: occurred_at, published_at: published_at)
   end
 
+  # Cria uma triage real + um destinatário ativo, para que -- se o dedup do
+  # AlertMunicipalityJob/DispatchMunicipalityAlertJob for contornado por um
+  # bug -- a cadeia completa consiga mesmo assim rodar até tentar entregar um
+  # segundo e-mail (I1 fix round: sem isto, um bypass de dedup só estouraria
+  # em Triage.find, e o teste ficaria vermelho por um motivo incidental, não
+  # pela asserção que importa).
+  def create_triage_and_recipient!(completed_at: Time.current)
+    CityConnection.with(city) do
+      pd = ProtocolDefinition.create!(name: "resend-demo", version: 1, status: "active", definition: {
+        "name" => "resend-demo", "version" => 1, "start_step_id" => "s1",
+        "steps" => [ { "id" => "s1", "prompt" => "?", "answer_type" => "boolean",
+                      "branches" => { "true" => nil, "false" => nil } } ],
+        "scoring" => { "type" => "weighted", "thresholds" => { "baixa" => 0 } }
+      })
+      convo = Conversation.create!(phone: "+551199", state: "completed")
+      triage = Triage.create!(conversation: convo, protocol_definition: pd, protocol_name: "resend-demo",
+                              status: "completed", answers: {}, tier: "alta", priority: 1,
+                              current_step: "s1", completed_at: completed_at)
+      AlertRecipient.create!(channel: "email", destination: "secretaria@cidade.gov.br",
+                             active: true, escalation_order: 1)
+      triage
+    end
+  end
+
   # ResendPendingAlertsJob prepend EachCityJob (roda por cidade ativa via
   # City.where(status: "active")); chamamos o corpo direto, como
   # purge_domain_events_job_spec.rb já faz, para exercitar o resend isolado na
@@ -37,6 +61,16 @@ RSpec.describe ResendPendingAlertsJob, type: :job do
 
   it "não redespacha um evento pending recente (< 5 minutos)" do
     make_event(occurred_at: 2.minutes.ago)
+
+    expect { call_body }.not_to have_enqueued_job(AlertMunicipalityJob)
+  end
+
+  it "não redespacha um evento pending com mais de 24 horas" do
+    # I2 (fix round 1): DomainEvent sobrevive 12 meses e ProcessedEvent (o
+    # dedup) só 60 dias -- sem teto, o primeiro run depois do deploy
+    # redespacharia tudo que ficou pending nesse intervalo inteiro, de uma
+    # vez. 24h fica bem dentro da janela de dedup.
+    make_event(occurred_at: 25.hours.ago)
 
     expect { call_body }.not_to have_enqueued_job(AlertMunicipalityJob)
   end
@@ -64,60 +98,59 @@ RSpec.describe ResendPendingAlertsJob, type: :job do
   end
 
   describe "end-to-end (test adapter)" do
-    it "redespachar um evento já processado não gera um segundo alerta, e marca published_at" do
-      old = make_event(occurred_at: 10.minutes.ago)
+    it "redespachar um evento já processado não gera um segundo alerta, não cria dedup row novo, e marca published_at" do
+      triage = create_triage_and_recipient!
+      old = make_event(occurred_at: 10.minutes.ago, payload: { "triage_id" => triage.id })
       # Simula que AlertMunicipalityJob já tratou este evento (ProcessedEvent
-      # já existe) mas o DomainEvent nunca foi marcado — o estado que o bug
+      # já existe) mas o DomainEvent nunca foi marcado -- o estado que o bug
       # original deixava, e que fazia o resend job tentar de novo pra sempre.
       CityConnection.with(city) do
         ProcessedEvent.create!(event_id: old.id, consumer: "AlertMunicipalityJob", processed_at: Time.current)
       end
 
+      deliveries_before = ActionMailer::Base.deliveries.count
+
+      # I1 (fix round 1): `not_to have_been_enqueued` dentro de
+      # perform_enqueued_jobs nunca falharia -- um job performado nunca entra
+      # em enqueued_jobs (fica só em performed_jobs), então a asserção
+      # original passava mesmo se o dedup fosse contornado. `have_been_performed`
+      # olha performed_jobs de fato, e as duas asserções de efeito (nenhum
+      # dedup row novo de dispatch_alert, nenhum e-mail novo) confirmam que
+      # nada rodou de verdade.
       perform_enqueued_jobs { call_body }
 
-      expect(DispatchMunicipalityAlertJob).not_to have_been_enqueued
+      expect(DispatchMunicipalityAlertJob).not_to have_been_performed
+      dispatch_alert_rows = CityConnection.with(city) { ProcessedEvent.where(consumer: "dispatch_alert").count }
+      expect(dispatch_alert_rows).to eq(0)
+      expect(ActionMailer::Base.deliveries.count).to eq(deliveries_before)
       reloaded = CityConnection.with(city) { DomainEvent.find(old.id) }
       expect(reloaded.published_at).to be_present
     end
 
-    it "redespachar um evento nunca processado entrega o alerta e marca published_at" do
-      # AlertMailer não tem template de view (achado à parte, reportado
-      # separadamente) — stub aqui para exercitar só a cadeia
-      # redispatch -> AlertMunicipalityJob -> DispatchMunicipalityAlertJob ->
-      # dedup/published_at, sem depender de renderizar o e-mail de verdade.
-      delivery = instance_double(ActionMailer::MessageDelivery, deliver_now: true)
-      allow(AlertMailer).to receive(:urgent).and_return(delivery)
+    it "redespachar um evento nunca processado entrega o alerta de verdade (template real) e marca published_at" do
+      # completed_at bem no passado: se AlertMunicipalityJob usasse
+      # Time.current (bug do item "Check") em vez do completed_at real da
+      # triage, o e-mail mostraria a data de hoje, não a de dois dias atrás.
+      triage = create_triage_and_recipient!(completed_at: 2.days.ago)
+      old = make_event(occurred_at: 10.minutes.ago, payload: { "triage_id" => triage.id })
 
-      recipient_id = nil
-      triage_id = nil
-      CityConnection.with(city) do
-        pd = ProtocolDefinition.create!(name: "resend-demo", version: 1, status: "active", definition: {
-          "name" => "resend-demo", "version" => 1, "start_step_id" => "s1",
-          "steps" => [ { "id" => "s1", "prompt" => "?", "answer_type" => "boolean",
-                        "branches" => { "true" => nil, "false" => nil } } ],
-          "scoring" => { "type" => "weighted", "thresholds" => { "baixa" => 0 } }
-        })
-        convo = Conversation.create!(phone: "+551199", state: "completed")
-        triage = Triage.create!(conversation: convo, protocol_definition: pd, protocol_name: "resend-demo",
-                                status: "completed", answers: {}, tier: "alta", priority: 1,
-                                current_step: "s1", completed_at: Time.current)
-        triage_id = triage.id
-        recipient_id = AlertRecipient.create!(channel: "email", destination: "secretaria@cidade.gov.br",
-                                              active: true, escalation_order: 1).id
-      end
-
-      old = make_event(occurred_at: 10.minutes.ago, payload: { "triage_id" => triage_id })
+      deliveries_before = ActionMailer::Base.deliveries.count
 
       perform_enqueued_jobs { call_body }
 
+      expect(DispatchMunicipalityAlertJob).to have_been_performed
       reloaded = CityConnection.with(city) { DomainEvent.find(old.id) }
       expect(reloaded.published_at).to be_present
       dispatched = CityConnection.with(city) do
-        ProcessedEvent.exists?(event_id: "alert:#{triage_id}", consumer: "dispatch_alert")
+        ProcessedEvent.exists?(event_id: "alert:#{triage.id}", consumer: "dispatch_alert")
       end
       expect(dispatched).to be(true)
-      expect(recipient_id).to be_present
-      expect(AlertMailer).to have_received(:urgent).with(hash_including(triage_id: triage_id)).once
+      expect(ActionMailer::Base.deliveries.count).to eq(deliveries_before + 1)
+
+      mail = ActionMailer::Base.deliveries.last
+      expect(mail.to).to eq([ "secretaria@cidade.gov.br" ])
+      expected_date = triage.completed_at.in_time_zone("America/Sao_Paulo").strftime("%d/%m/%Y")
+      expect(mail.text_part.body.decoded).to include(expected_date)
     end
   end
 end

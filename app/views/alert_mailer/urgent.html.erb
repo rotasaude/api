@@ -1,0 +1,9 @@
+<p>Olá,</p>
+<p>Uma triagem urgente foi registrada no Rota Saúde.</p>
+<p>
+  Tier: <%= @tier %><br>
+  Prioridade: <%= @priority %><br>
+  Data/hora: <%= @occurred_at.strftime("%d/%m/%Y %H:%M") %> (horário de Brasília)<br>
+  ID da triagem: <%= @triage_id %>
+</p>
+<p>Consulte os detalhes desta triagem no painel da cidade.</p>

@@ -15,22 +15,17 @@ module IdempotentConsumer
 
   def perform(event_id:, event_name:, city_slug:, payload:)
     with_city(city_slug) do
-      ProcessedEvent.create!(
-        event_id: event_id,
-        consumer: self.class.name,
-        processed_at: Time.current
-      )
-      handle(**payload.symbolize_keys)
-      mark_domain_event_published(event_id)
+      if record_processed_event_duplicate?(event_id)
+        # Já processado antes (dedup). Se aquele processamento, por qualquer
+        # motivo, não deixou o DomainEvent marcado (ex.: entrega anterior a
+        # este fix), marcamos agora — um redispatch de um evento já tratado
+        # não deve continuar pending para sempre.
+        mark_domain_event_published(event_id)
+      else
+        handle(**payload.symbolize_keys)
+        mark_domain_event_published(event_id)
+      end
     end
-  rescue ActiveRecord::RecordNotUnique
-    Rails.logger.info("[#{self.class.name}] duplicate event=#{event_id}")
-    # Já processado antes (dedup). Se aquele processamento, por qualquer
-    # motivo, não deixou o DomainEvent marcado (ex.: entrega anterior a este
-    # fix), marcamos agora — um redispatch de um evento já tratado não deve
-    # continuar pending para sempre. mark_domain_event_published já é
-    # idempotente (não sobrescreve published_at existente).
-    with_city(city_slug) { mark_domain_event_published(event_id) }
   end
 
   def handle(**)
@@ -39,11 +34,37 @@ module IdempotentConsumer
 
   private
 
-  # Best-effort: se o DomainEvent já foi purgado (PurgeDomainEventsJob), não
-  # há nada para marcar — o consumer já fez seu trabalho, o registro de
-  # auditoria é que não existe mais.
+  # Só a inserção do dedup row pode ser "já processado" — não #handle. Por
+  # isso o rescue mora AQUI, num savepoint próprio (transaction requires_new),
+  # não em volta do #handle no perform: uma RecordNotUnique que #handle
+  # levante por conta própria (ex.: uma constraint de domínio) não é essa
+  # duplicata e precisa propagar (rollback da transação inteira do
+  # with_city, sem marcar published) em vez de ser engolida aqui.
+  #
+  # requires_new (SAVEPOINT) importa: sem ele, a violação de unicidade deixa
+  # a conexão Postgres em "current transaction is aborted" e qualquer query
+  # seguinte na MESMA transação (inclusive o mark_domain_event_published do
+  # caminho de duplicata) levantaria PG::InFailedSqlTransaction.
+  def record_processed_event_duplicate?(event_id)
+    ApplicationRecord.transaction(requires_new: true) do
+      ProcessedEvent.create!(
+        event_id: event_id,
+        consumer: self.class.name,
+        processed_at: Time.current
+      )
+    end
+    false
+  rescue ActiveRecord::RecordNotUnique
+    Rails.logger.info("[#{self.class.name}] duplicate event=#{event_id}")
+    true
+  end
+
+  # Atômico (M1 fix round): where(published_at: nil).update_all evita a
+  # janela de corrida do antigo find_by + mark_published! (leitura e escrita
+  # separadas). Best-effort: se o DomainEvent já foi purgado
+  # (PurgeDomainEventsJob), o update_all roda contra zero linhas — no-op, não
+  # levanta.
   def mark_domain_event_published(event_id)
-    event = DomainEvent.find_by(id: event_id)
-    event.mark_published! if event && event.published_at.nil?
+    DomainEvent.where(id: event_id, published_at: nil).update_all(published_at: Time.current)
   end
 end
