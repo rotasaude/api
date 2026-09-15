@@ -60,14 +60,14 @@ RSpec.describe "city:load_schema rake task" do
     expect { invoke_silently("whatever-the-target-does-not-matter") }.to raise_error(SystemExit)
   end
 
-  it "refuses a target that resolves to the shared database behind primary/admin (this environment)" do
+  it "refuses a target that resolves to the retired shared test database" do
     expect { invoke_silently("rota_saude_test") }.to raise_error(SystemExit)
   end
 
   it "refuses a target that resolves to a protected database from a DIFFERENT environment" do
-    # rota_saude_development is primary/admin/queue/cache's database in
-    # development, not in the test env this spec runs under — the guard must
-    # still catch it, since it checks every environment's protected configs.
+    # rota_saude_development was the shared database until Plan 5. It is no longer
+    # in config/database.yml but still exists in dev with old data, so the guard
+    # keeps refusing it by name.
     expect { invoke_silently("rota_saude_development") }.to raise_error(SystemExit)
   end
 

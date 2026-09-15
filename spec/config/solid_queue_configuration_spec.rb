@@ -57,4 +57,17 @@ RSpec.describe "Solid Queue configuration per city and platform" do
       end
     end
   end
+
+  # Solid Queue valida pool ≥ maior número de threads de um worker + 2 contra o
+  # pool do banco do processo (RAILS_MAX_THREADS do worker).
+  it "gives the Kamal worker a database pool that fits the largest worker" do
+    %w[development production].each do |env|
+      deploy = YAML.safe_load(Rails.root.join("deploy/#{env}/deploy.yml").read)
+      pool = Integer(deploy.dig("servers", "worker", "env", "clear", "RAILS_MAX_THREADS"))
+      threads = config("config/queue.yml", env).fetch("workers").map { |worker| worker["threads"] }.max
+
+      expect(pool).to be >= threads + 2, "deploy/#{env}/deploy.yml: RAILS_MAX_THREADS #{pool} < #{threads} + 2"
+      expect(deploy.dig("servers", "worker", "cmd")).to eq("./bin/city_workers")
+    end
+  end
 end

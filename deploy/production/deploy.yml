@@ -16,15 +16,19 @@ servers:
   worker:
     hosts:
       - worker1.rota-saude.example
-    cmd: ./bin/jobs
-    # Só o worker cria e apaga banco de cidade (Plano 4): o web nunca recebe a
-    # credencial de rota_provisioner. Backup e offboarding rodam aqui
-    # (kamal app exec --roles=worker) e gravam em CITY_BACKUP_DIR.
+    # Plano 5: um supervisor Solid Queue por cidade ativa, mais o da plataforma
+    # (~6 processos por cidade). Só o worker cria e apaga banco de cidade (Plano 4):
+    # o web nunca recebe a credencial de rota_provisioner. Backup e offboarding
+    # rodam aqui (kamal app exec --roles=worker) e gravam em CITY_BACKUP_DIR.
+    cmd: ./bin/city_workers
     env:
+      clear:
+        # Pool do banco ≥ maior número de threads de um worker em config/queue.yml + 2.
+        RAILS_MAX_THREADS: "12"
       secret:
         - PROVISIONER_DATABASE_URL
     options:
-      memory: 1g
+      memory: 4g
       volume: /var/lib/rota-saude/city_backups:/rails/storage/city_backups
 
 proxy:
@@ -66,12 +70,10 @@ env:
     - ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
     - ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY
     - CITY_UNSET_DATABASE_URL
-    - DATABASE_URL
     - GOVBR_CLIENT_ID
     - GOVBR_CLIENT_SECRET
     - PLATFORM_DATABASE_URL
     - RAILS_MASTER_KEY
-    - ROTA_ADMIN_PASSWORD
     - ROTA_APP_PASSWORD
     - ROTA_PLATFORM_PASSWORD
     - WHATSAPP_APP_SECRET

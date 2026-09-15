@@ -45,10 +45,15 @@ namespace :city do
   # devolve um DatabaseConfig por (ambiente, nome); filtramos pelo nome do
   # role e pegamos o `database` resolvido, ignorando entradas sem banco
   # resolvível (ex.: production sem DATABASE_URL setada neste container).
+  # Bancos compartilhados aposentados no Plano 5: primary/queue/cache apontavam para
+  # eles. Não estão mais em database.yml, mas continuam existindo em dev e test com
+  # dados antigos, então city:load_schema segue recusando-os.
+  retired_database_names = %w[rota_saude_development rota_saude_test rota_saude_production].freeze
+
   protected_database_names = lambda do
-    ActiveRecord::Base.configurations.configurations
+    (ActiveRecord::Base.configurations.configurations
       .select { |cfg| protected_role_names.include?(cfg.name) }
-      .filter_map { |cfg| cfg.respond_to?(:database) ? cfg.database.presence : nil }
+      .filter_map { |cfg| cfg.respond_to?(:database) ? cfg.database.presence : nil } + retired_database_names)
       .uniq
   end
 

@@ -4,7 +4,8 @@
 # cresceria com o número de cidades. Migração é passo explícito de deploy, com a
 # imagem nova e ANTES de trocar o código em execução: bin/migrate.
 #
-# O bootstrap do zero (databases, roles, extensions, schema de fila/cache) é do
-# start.sh no dev e da infra no prod.
+# O bootstrap do zero (databases, roles, extensions) é do start.sh no dev e da
+# infra no prod. Fila e cache vêm por migration (plataforma e cidade), não por
+# carga de schema.
 
 exec "${@}"

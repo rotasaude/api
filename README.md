@@ -14,9 +14,8 @@ faltar uma delas quebra até rodando os specs:
 |---|---|---|
 | `DATABASE_HOST` / `DATABASE_PORT` | `host.docker.internal` / `5432` | todas as conexões |
 | `POSTGRES_PASSWORD` | `postgres` | tasks de bootstrap (superuser `rota_saude`) |
-| `ROTA_APP_PASSWORD` | `rota_app` | `primary`, `city_unset` e bancos de cidade |
-| `ROTA_ADMIN_PASSWORD` | `rota_admin` | `queue`, `cache` (até o Plano 5) |
-| `ROTA_PLATFORM_PASSWORD` | `rota_platform` | `platform` |
+| `ROTA_APP_PASSWORD` | `rota_app` | `primary` e `city_unset` (banco vazio) |
+| `ROTA_PLATFORM_PASSWORD` | `rota_platform` | `platform`, `cache` e a fila de plataforma |
 | `ROTA_PROVISIONER_PASSWORD` | `rota_provisioner` | `platform:bootstrap` (cria o papel) e `CityDatabase` em dev/test |
 | `PROVISIONER_DATABASE_URL` | montada a partir da anterior | papel worker: cria e apaga banco/role de cidade (obrigatória em produção) |
 | `CITY_DATABASE_HOST` / `CITY_DATABASE_PORT` | `DATABASE_HOST` / `DATABASE_PORT` (em produção: host obrigatório, porta `5432`) | servidor na URL de cada cidade provisionada (`CityDatabase.url_for`); o web precisa no `POST /cities` |
@@ -28,7 +27,6 @@ Bancos que precisam existir no Postgres do host:
 
 | Banco | Dono | Quem cria |
 |---|---|---|
-| `rota_saude_development`, `rota_saude_test` | `rota_saude` | `start.sh` |
 | `rota_saude_platform_development`, `rota_saude_platform_test` | `rota_platform` | `rails platform:bootstrap` (com `RAILS_ENV=test` para o de test) |
 | `rota_saude_no_city_selected` (vazio de propósito) | `rota_saude` | `rails city:test_databases` |
 | `rota_saude_test_city_a`, `rota_saude_test_city_b` | `rota_saude` | `rails city:test_databases` |
@@ -112,28 +110,15 @@ não existem mais; o RLS que eles reproduziam saiu junto com o domínio.
   `primary`/`queue`/`cache`/`platform`/`city_unset`, em qualquer
   ambiente. `rails city:test_databases` provisiona os dois bancos de cidade
   usados pelos specs de isolamento.
-- **Banco compartilhado** — só guarda Solid Queue e Solid Cache até o Plano 5
-  (`db/queue_schema.rb`, `db/cache_schema.rb`; `db/schema.rb`, de `primary`,
-  fica vazio de propósito). `start.sh` garante os roles `rota_app`/`rota_admin`
-  e carrega esses dois schemas por nome (`db:schema:load:primary`,
-  `:queue`, `:cache`) — nunca `db:prepare`/`db:schema:load` "puros", que
-  varreriam todos os configs do ambiente de uma vez. O config `admin` e o
-  `db/admin_schema.rb` saíram no corte do Plano 2 (Task 5): o domínio roda por
-  conexão de cidade (`CityRecord`), sem RLS.
-- `config.active_record.dump_schema_after_migration` é `false` em
-  development (igual a test/production): como primary/queue/cache
-  compartilham o mesmo banco físico, um dump automático de qualquer um deles
-  gravaria também as tabelas dos outros (e qualquer tabela antiga de domínio
-  que um banco de dev anterior ao corte ainda tenha) no seu arquivo de schema.
-  Rode `db:schema:dump:<config>` explicitamente quando precisar regenerar um
-  deles (`primary`, `queue` ou `cache`).
-  **`platform` é afetado pelo mesmo flag, mas por um motivo diferente:** o
-  banco de plataforma é próprio, nunca foi contaminado por domínio — só
-  parou de se auto-regenerar. Depois de qualquer migration em
-  `db/platform_migrate/`, rode `bin/rails db:schema:dump:platform` e
-  commite `db/platform_schema.rb` manualmente (era automático via
-  `db:migrate:platform` antes desta mudança — Task 3 contava com isso).
+- **Banco compartilhado** — aposentado no Plano 5. `rota_saude_development` e `rota_saude_test` continuam existindo
+  no Postgres de dev com dados antigos, mas nada os usa: a fila de cada cidade mora no banco dela, a fila de
+  plataforma e o Solid Cache no banco de plataforma (`db/platform_migrate`), e `primary` aponta para o banco vazio
+  `rota_saude_no_city_selected`. `city:load_schema` segue recusando esses nomes.
+- `config.active_record.dump_schema_after_migration` é `false` em development. Depois de qualquer migration em
+  `db/platform_migrate/`, rode `bin/rails db:schema:dump:platform` e commite `db/platform_schema.rb`. Depois de uma
+  migration em `db/city_migrate/`, atualize `db/city_schema.rb` à mão: o spec de paridade compara os dois.
+- Upgrade do Solid Queue que mude tabelas exige migration nova em `db/city_migrate/` **e** em `db/platform_migrate/`
+  (as duas usam `db/solid_queue_tables.rb`).
 
-Migrations incrementais no dev seguem via `db:migrate` (entrypoint), normalmente
-— `db/migrate/` fica vazio de propósito (só domínio de cidade mudava esse
-diretório, e esse domínio saiu).
+Migrations no dev: `bin/rails db:migrate` (plataforma) e `bin/rails city:migrate:all` (cidades) — ou `bin/migrate`,
+que roda os dois. `db/migrate/` fica vazio de propósito.
