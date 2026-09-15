@@ -81,6 +81,28 @@ então `kamal deploy`.
 - Migração de cidade mora em `db/city_migrate/`, e `db/city_schema.rb` precisa acompanhar. O spec de paridade em
   `spec/services/city_schema_spec.rb` compara os dois.
 
+**Primeiro corte do Plano 5 (runbook único).** Este é o corte que troca o worker compartilhado por `bin/city_workers`
+e aposenta o banco compartilhado. Ordem obrigatória:
+
+1. Rode `bin/migrate` ANTES do `kamal deploy` e exija saída `0`. Se alguma cidade falhar a migração, suspenda essa
+   cidade (`rails 'city:suspend[slug]'`) antes de seguir com o deploy.
+   - Por quê: nesta release o webhook do WhatsApp (`Whatsapp::Ingest`) ainda não tem guarda de schema atrasado. Numa
+     cidade sem `solid_queue_jobs` (schema velho), o `InboundMessage` é gravado e commita, o enqueue adiado do
+     `ProcessInboundMessageJob` falha depois do commit, e a reentrega da Meta vira no-op pela unicidade do `wamid` —
+     a mensagem fica presa, sem tentar de novo.
+2. Drene a fila compartilhada aposentada antes da virada:
+   - pare de mandar tráfego novo para o worker antigo, ou deixe-o ocioso;
+   - espere o banco compartilhado antigo zerar as três tabelas de execução pendente (leitura, no banco
+     `rota_saude_<env>` antigo):
+     ```sql
+     select count(*) from solid_queue_ready_executions;
+     select count(*) from solid_queue_scheduled_executions;
+     select count(*) from solid_queue_claimed_executions;
+     ```
+   - só com as três em `0`, substitua o worker antigo por `bin/city_workers`.
+3. Rollback: uma imagem anterior ao Plano 5 só sobe se os secrets `DATABASE_URL` e `ROTA_ADMIN_PASSWORD` forem
+   restaurados (nomes das variáveis — nunca os valores aqui).
+
 **Suspender, backup, desligar** (rake; em produção no papel worker):
 
 - `rails 'city:suspend[slug]'` → o host responde 403 em até 30 s. `rails 'city:resume[slug]'` desfaz.
@@ -107,15 +129,38 @@ ativa, mais o da plataforma**:
   `config/recurring_platform.yml`. Só entram jobs de `PlatformQueue::JOBS`/`MAILERS`: um job de cidade enfileirado
   fora de uma cidade levanta `PlatformQueue::Misplaced`. Job novo de plataforma precisa entrar nessa lista.
 - **Catálogo** — o gerente lê as cidades `active` com schema em dia a cada `CITY_WORKERS_POLL_SECONDS` (30 s): cidade
-  nova começa a processar em até 30 s; cidade suspensa, arquivada ou com schema atrasado para em até 30 s (os jobs dela
-  esperam: `CitySchemaBehind` reagenda por até 1 hora).
+  nova começa a processar em até 30 s; cidade suspensa, arquivada ou com schema atrasado para em até 30 s. Uma cidade
+  com schema atrasado não tem supervisor: os jobs dela simplesmente esperam no banco DELA até o próximo poll depois da
+  migração terminar — não é o retry de `CitySchemaBehind` (5 min × 12 tentativas = até 1 hora) que os faz esperar; esse
+  retry só importa na corrida em que um job já começou a rodar entre a migração terminar e o próximo poll do gerente.
 - **Falha** — supervisor que morre é reiniciado com espera de 1 s, 2 s, 4 s… até 5 min; volta a 1 s depois de 10 min
-  de pé. Log: `docker compose logs -f worker | grep city_workers`.
+  de pé. Log em dev: `docker compose exec worker tail -f log/development.log | grep city_workers`. Em produção o log
+  vai para STDOUT: `kamal app logs -r worker -f | grep city_workers`. Um filho que não sobe (banco fora do ar, cidade
+  indisponível) escreve uma linha só no stderr, sem stack trace — visível em `docker compose logs worker` (dev) ou
+  `kamal app logs` (produção).
 - **Parada** — TERM/INT repassa TERM aos supervisores, espera `SolidQueue.shutdown_timeout` + 5 s e mata o grupo de
   processo de quem sobrar.
-- **Dimensionamento** — ~6 processos por cidade. `RAILS_MAX_THREADS` do worker precisa ser ≥ maior `threads` de
-  `config/queue.yml` + 2 (Kamal: 12). Um host de worker roda todas as cidades; mais de um host duplica supervisores por
-  cidade (seguro, mas dobra processos).
+- **Dimensionamento** — ~6 processos por cidade (supervisor, dispatcher, scheduler e os 3 workers de
+  `config/queue.yml`). `RAILS_MAX_THREADS` do worker precisa ser ≥ maior `threads` de `config/queue.yml` + 2 (Kamal:
+  12). Um host de worker roda todas as cidades; mais de um host duplica supervisores por cidade (seguro, mas dobra
+  processos).
+  - **Orçamento de conexões por cidade** (aproximado, derivado de `config/queue.yml`, `config/puma.rb` e
+    `deploy/production/deploy.yml` — não confunda com os `deploy/*/deploy.yml` em si, que este runbook não altera):
+    - **Web** — cada host roda `WEB_CONCURRENCY` processos Puma (Kamal: `2`), cada um com `RAILS_MAX_THREADS` threads
+      (Kamal: `5`) e pools para plataforma + cache + 2 por cidade servida (domínio e fila, via
+      `CityConnection.with`): `hosts × WEB_CONCURRENCY × RAILS_MAX_THREADS × (2 + 2 × cidades)`. Com 2 hosts e as 2
+      cidades ativas de hoje: `2 × 2 × 5 × (2 + 4) ≈ 120` conexões, pico.
+    - **Worker por cidade** — cada um dos ~6 processos do supervisor segura, no pico, 4 pools: o padrão do
+      `SolidQueue::Record` e o pool do shard do Solid Queue (os dois no banco DA CIDADE, um trocado pelo
+      `CityWorkers::Child`, o outro registrado por `CityConnection.ensure_pool`), o pool do `CityRecord` (banco da
+      cidade) e o pool do `PlatformRecord` (catálogo/canais). Somando as threads de produção de `config/queue.yml`
+      (`urgent` 5 + `realtime,default` 10 + `reports,housekeeping` 3, mais dispatcher e scheduler) dá ~20 threads por
+      cidade: `4 pools × ~20 ≈ 80` conexões por cidade ativa, pico.
+    - Com as 2 cidades ativas de hoje isso já soma **~280 conexões** (web + worker) contra o `max_connections`
+      DEFAULT do Postgres, que é **100**.
+    - **Gate de go-live:** antes de ir para produção, dimensione o `max_connections` do acessório Postgres (e/ou um
+      `CONNECTION LIMIT` por role — `rota_platform`, `rota_app`, cada `rota_city_<slug>`) para o número de cidades
+      planejado. Isso exige reboot do acessório.
 - **Painéis** — `/admin/api/queues` e `/admin/api/overview` leem a fila da cidade do host.
 - `SOLID_QUEUE_IN_PUMA` não existe mais: o worker é sempre `bin/city_workers`.
 

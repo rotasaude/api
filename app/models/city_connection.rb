@@ -14,7 +14,10 @@ class CityConnection
 
   class << self
     # Domínio E fila da cidade (Plano 5): um job enfileirado aqui dentro cai na fila
-    # do banco da cidade, não na de plataforma.
+    # do banco da cidade, não na de plataforma. Vale só se este bloco for (ou
+    # estiver dentro d)a transação mais de fora da thread: com
+    # enqueue_after_transaction_commit, PlatformQueue decide a fila no commit
+    # mais de fora, não em quem chamou perform_later (ver app/services/platform_queue.rb).
     def with(city, &block)
       ensure_pool(city)
       ActiveRecord::Base.connected_to_many([ CityRecord, SolidQueue::Record ], role: :writing, shard: city.shard, &block)
@@ -68,10 +71,17 @@ class CityConnection
 
     # Rotação, suspensão e desligamento de cidade precisam derrubar o pool.
     # No-op se a cidade nunca foi registrada neste processo.
+    #
+    # Sob o mesmo MUTEX de ensure_pool (T2-a): sem isto, um forget concorrente
+    # podia remover um dos dois pools entre os dois establish_connection de
+    # ensure_pool, deixando o registro pela metade. MUTEX não é reentrante —
+    # ensure_pool nunca chama forget, então não há risco de deadlock aqui.
     def forget(shard)
-      handler = ActiveRecord::Base.connection_handler
-      handler.remove_connection_pool(CityRecord.name, role: :writing, shard: shard)
-      handler.remove_connection_pool(SolidQueue::Record.name, role: :writing, shard: shard)
+      MUTEX.synchronize do
+        handler = ActiveRecord::Base.connection_handler
+        handler.remove_connection_pool(CityRecord.name, role: :writing, shard: shard)
+        handler.remove_connection_pool(SolidQueue::Record.name, role: :writing, shard: shard)
+      end
     end
 
     # Config resolvida do banco da cidade. Pública para o worker da cidade

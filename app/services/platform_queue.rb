@@ -6,6 +6,21 @@
 # dado de cidadão. Um job de cidade enfileirado fora da conexão de uma cidade
 # cairia na fila de plataforma: aqui ele levanta em vez de cair. E um job de
 # plataforma não entra na fila de uma cidade.
+#
+# Semântica do commit MAIS DE FORA (ApplicationJob#enqueue_after_transaction_commit):
+# a guarda deste before_enqueue e o INSERT em si só rodam depois que TODAS as
+# transações encadeáveis da thread commitam, em TODOS os pools — não só o pool
+# em que o enqueue foi chamado. A fila de destino é decidida pelo contexto de
+# conexão ativo NAQUELE commit mais de fora, não pelo contexto ativo quando
+# perform_later/deliver_later foi chamado. Duas consequências:
+#   1. Um job de cidade enfileirado dentro de um `PlatformRecord.transaction`
+#      mais externo levantaria Misplaced só depois do commit — e o job já teria
+#      se perdido (a exceção não desfaz o commit, que já aconteceu).
+#   2. `CityConnection.with(A) { transaction { CityConnection.with(B) { transaction { job.perform_later } } } }`
+#      cairia na fila de A (o commit mais de fora é o de A), não na de B.
+# Nenhum caminho assim existe hoje no app. Regra: só enfileire job de cidade
+# dentro de um contexto de cidade cuja transação mais de fora seja a dessa
+# mesma cidade (é o que CityScopedJob/EachCityJob e Whatsapp::Ingest garantem).
 module PlatformQueue
   # Jobs e mailers de ciclo de vida. Job novo de plataforma entra aqui.
   JOBS = %w[ProvisionCityJob PurgePlatformAccessJob].freeze
