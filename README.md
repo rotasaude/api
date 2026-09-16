@@ -262,9 +262,14 @@ ativa, mais o da plataforma**:
       cidade: `4 pools × ~20 ≈ 80` conexões por cidade ativa, pico.
     - Com as 2 cidades ativas de hoje isso já soma **~280 conexões** (web + worker) contra o `max_connections`
       DEFAULT do Postgres, que é **100**.
-    - **Gate de go-live:** antes de ir para produção, dimensione o `max_connections` do acessório Postgres (e/ou um
-      `CONNECTION LIMIT` por role — `rota_platform`, `rota_app`, cada `rota_city_<slug>`) para o número de cidades
-      planejado. Isso exige reboot do acessório.
+    - **Teto por role de cidade (aplicado):** `CityDatabase.ensure!` aplica `CONNECTION LIMIT` a cada
+      `rota_city_<slug>` — `CityDatabase::ROLE_CONNECTION_LIMIT`, configurável por `CITY_ROLE_CONNECTION_LIMIT`
+      (default `100`) — na criação e realinhado em toda chamada idempotente, para que uma cidade não esgote o
+      servidor e derrube as vizinhas. Isso não protege sozinho: com `max_connections` no default de 100, o teto por
+      role ainda permite que UMA cidade consuma o servidor inteiro sozinha.
+    - **Gate de go-live (o que resta):** antes de ir para produção, dimensione o `max_connections` do acessório
+      Postgres para o número de cidades planejado (com folga sobre a soma dos tetos por role acima). Isso exige
+      reboot do acessório.
 - **Painéis** — `/admin/api/queues` e `/admin/api/overview` leem a fila da cidade do host.
 - `SOLID_QUEUE_IN_PUMA` não existe mais: o worker é sempre `bin/city_workers`.
 

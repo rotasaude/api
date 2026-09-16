@@ -94,6 +94,29 @@ RSpec.describe CityDatabase do
     PG.connect(described_class.url_for(slug: slug_a, password: pwd_a)).close
   end
 
+  it "caps how many connections a city's role can open" do
+    described_class.ensure!(slug: slug_a, password: pwd_a)
+
+    limit = superuser_value("SELECT rolconnlimit FROM pg_roles WHERE rolname = $1", described_class.role_name(slug_a))
+
+    expect(limit.to_i).to eq(described_class::ROLE_CONNECTION_LIMIT)
+  end
+
+  # ensure! é idempotente e realinha a senha; o teto tem de seguir a mesma
+  # regra, senão um role criado antes deste plano ficaria sem limite para
+  # sempre.
+  it "re-applies the cap when the role already exists without one" do
+    described_class.ensure!(slug: slug_a, password: pwd_a)
+    ScratchDatabases.superuser do |conn|
+      conn.exec("ALTER ROLE #{PG::Connection.quote_ident(described_class.role_name(slug_a))} CONNECTION LIMIT -1")
+    end
+
+    described_class.ensure!(slug: slug_a, password: pwd_a)
+
+    limit = superuser_value("SELECT rolconnlimit FROM pg_roles WHERE rolname = $1", described_class.role_name(slug_a))
+    expect(limit.to_i).to eq(described_class::ROLE_CONNECTION_LIMIT)
+  end
+
   it "drops database and role, and dropping again is a no-op" do
     described_class.ensure!(slug: slug_a, password: pwd_a)
 
