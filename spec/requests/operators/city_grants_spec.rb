@@ -36,10 +36,10 @@ RSpec.describe "Operator city grants on the platform console", type: :request do
     expect(CityGrants.redeem(token: token, city: city)).to be_present
   end
 
-  it "honours CITY_DASHBOARD_URL_TEMPLATE" do
+  it "honours CITY_PUBLIC_BASE_TEMPLATE" do
     verified_login!
     allow(ENV).to receive(:fetch).and_call_original
-    allow(ENV).to receive(:fetch).with("CITY_DASHBOARD_URL_TEMPLATE", anything).and_return("https://%{slug}.rotasaude.app/dashboard/")
+    allow(ENV).to receive(:fetch).with("CITY_PUBLIC_BASE_TEMPLATE", anything).and_return("https://%{slug}.rotasaude.app")
 
     post "/city_grants", params: { city_slug: city.slug }
 

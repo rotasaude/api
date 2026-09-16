@@ -33,7 +33,15 @@ servers:
 
 proxy:
   ssl: true
-  host: api.rota-saude.example
+  # Plano 6: um host por papel do domínio. O curinga atende qualquer cidade
+  # provisionada sem novo deploy — a aplicação resolve o slug pelo Host
+  # (CityCatalog). `admin.` é o console e `auth.` é o callback único do gov.br.
+  # O certificado curinga de *.rota-saude.example e o DNS são gate de go-live.
+  hosts:
+    - api.rota-saude.example
+    - admin.rota-saude.example
+    - auth.rota-saude.example
+    - "*.rota-saude.example"
   app_port: 3000
   healthcheck:
     path: /up
@@ -56,10 +64,11 @@ env:
     RAILS_SERVE_STATIC_FILES: "true"
     WEB_CONCURRENCY: "2"
     RAILS_MAX_THREADS: "5"
-    CITY_DASHBOARD_URL_TEMPLATE: "https://%{slug}.rota-saude.example/dashboard/"
+    CITY_PUBLIC_BASE_TEMPLATE: "https://%{slug}.rota-saude.example"
     GOVBR_REDIRECT_URI: "https://auth.rota-saude.example/auth/govbr/callback"
     GOVBR_ISSUER_URL: "https://sso.acesso.gov.br"
     CITY_BACKUP_DIR: "/rails/storage/city_backups"
+    ALLOWED_ORIGINS: "https://admin.rota-saude.example,https://auth.rota-saude.example"
     # Servidor das cidades provisionadas (cities.database_url). Não é secreto; o
     # web precisa dele no POST /cities, sem a credencial do provisioner.
     CITY_DATABASE_HOST: db.rota-saude.example

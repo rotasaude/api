@@ -100,4 +100,22 @@ RSpec.describe "City provisioning on the platform console", type: :request do
     expect(response).to have_http_status(:not_found)
     expect(City.where(slug: "novacidade")).to be_empty
   end
+
+  it "lists the catalog for the console, newest first, without secrets" do
+    verified_login!
+    on_platform_queue { post "/cities", params: params }
+
+    get "/cities"
+
+    expect(response).to have_http_status(:ok)
+    rows = json["data"]
+    expect(rows.first["slug"]).to eq("novacidade")
+    expect(rows.first.keys).to match_array(%w[id slug name uf status schema_version created_at])
+    expect(response.body).not_to include("postgres://")
+  end
+
+  it "does not list the catalog without a verified operator session" do
+    get "/cities"
+    expect(response).to have_http_status(:unauthorized)
+  end
 end

@@ -21,7 +21,7 @@ faltar uma delas quebra até rodando os specs:
 | `CITY_DATABASE_HOST` / `CITY_DATABASE_PORT` | `DATABASE_HOST` / `DATABASE_PORT` (em produção: host obrigatório, porta `5432`) | servidor na URL de cada cidade provisionada (`CityDatabase.url_for`); o web precisa no `POST /cities` |
 | `CITY_DATABASE_SSLMODE` | vazio (sem `sslmode`; em produção `require`) | `?sslmode=` da URL da cidade e `PGSSLMODE` do `pg_dump` |
 | `CITY_BACKUP_DIR` | `tmp/city_backups` | `city:backup`, `city:offboard` |
-| `PUBLIC_DASHBOARD_URL` | `http://localhost:5175/dashboard/` | link do e-mail de redefinição de senha |
+| `CITY_PUBLIC_BASE_TEMPLATE` | `http://%{slug}.localhost:5175` | host público de cada cidade: dashboard, wpda e link de reset de senha |
 
 Bancos que precisam existir no Postgres do host:
 
@@ -35,9 +35,14 @@ Bancos que precisam existir no Postgres do host:
 
 `start.sh` chama essas tasks e `city:dev_baseline` antes do `db:seed`. Contas de dev:
 `admin@curitiba.demo` e `admin@maringa.demo` (senha `dev-password`) em cada cidade, e o operador `dev@local`
-(mesma senha + TOTP) no console. Hosts: `curitiba.localhost`, `maringa.localhost`, `admin.localhost`.
-No navegador os frontends ainda não resolvem cidade — o proxy do Vite troca o Host por `api:3000` até o Plano 6;
-para exercitar hoje, use `curl -H "Host: curitiba.localhost" http://localhost:3030/...`.
+(mesma senha + TOTP) no console. Hosts de dev: `curitiba.localhost:5175`, `maringa.localhost:5175` (dashboard), `admin.localhost:5174` (console),
+`curitiba.localhost:5176` (wpda). O proxy do Vite repassa o Host (Plano 6), então o Rails resolve a cidade pelo
+subdomínio como em produção. `*.localhost` resolve para 127.0.0.1 no Chrome e no Firefox sem `/etc/hosts`; no Safari,
+acrescente uma linha por cidade.
+
+Em desenvolvimento o dev server do Vite responde CORS por conta própria pra qualquer origem `.localhost` — um teste de
+CORS pelo browser nas portas 5174/5175/5176 não prova nada sobre a política do Rails. Para testar a política de
+verdade, chame a API direto: `curl -H "Host: <slug>.localhost:5175" -H "Origin: http://<slug>.localhost:5175" http://localhost:3030/session`. Sem equivalente em produção (um host só serve API e proxy).
 
 Ao puxar código que adiciona um novo diretório sob `app/` (por exemplo
 `app/constraints`), reinicie o `api` (`docker compose restart api`): um
@@ -55,7 +60,32 @@ vale 1 hora e é auditada no banco de plataforma e no da cidade. Cinco códigos 
 `GOVBR_CLIENT_SECRET`, `GOVBR_REDIRECT_URI`, `GOVBR_ISSUER_URL` (default staging: `https://sso.staging.acesso.gov.br`
 no deploy `development`, produção usa `https://sso.acesso.gov.br` — ver `deploy/*/deploy.yml`). Sem elas (ou vazias),
 `start` responde 502.
-O destino de volta usa `CITY_DASHBOARD_URL_TEMPLATE` (default `http://%{slug}.localhost:5175/dashboard/`).
+O destino de volta usa `CITY_PUBLIC_BASE_TEMPLATE` (default `http://%{slug}.localhost:5175`), com `/dashboard/`.
+
+## Hosts publicados (Plano 6)
+
+O proxy do Kamal publica quatro hosts: o da API (`api.*`), o console (`admin.*`), o callback do gov.br (`auth.*`) e o
+curinga das cidades (`*.<domínio>`). Uma cidade provisionada passa a atender sem deploy novo — quem decide é o
+`CityCatalog`, pelo Host da requisição.
+
+**Gate de go-live (o deploy FALHA até isso ser resolvido).** Com `ssl: true` e a entrada `*.<domínio>` em
+`proxy.hosts`, o kamal-proxy tenta emitir certificado Let's Encrypt para o nome literal do curinga via HTTP-01 a cada
+deploy — e o Let's Encrypt só emite curinga por DNS-01. O deploy não degrada em silêncio: ele quebra com erro de ACME.
+Duas saídas, escolha antes do primeiro deploy de produção:
+
+1. **Sem curinga:** tire a linha `"*.<domínio>"` e liste cada host de cidade explicitamente em `proxy.hosts`. Cada
+   cidade nova exige editar o arquivo e rodar `kamal proxy reboot` — simples, mas o provisionamento deixa de ser
+   self-service.
+2. **Com curinga:** emita o certificado curinga por fora (DNS-01, no provedor de DNS), monte-o no kamal-proxy e
+   desligue o ACME para esses hosts. O provisionamento segue sem deploy, ao custo de renovação própria do certificado.
+
+O registro DNS `*.<domínio>` apontando para os hosts web é necessário nos dois casos.
+
+**O que esses hosts servem hoje.** O proxy do Kamal publica esses hosts para a aplicação Rails, que serve só a API —
+não há pipeline de build nem servidor para as três SPAs (`apps/admin`, `apps/dashboard`, `apps/wpda`). Em produção,
+`admin.<domínio>/admin/` e `<slug>.<domínio>/dashboard/` (e `/wpda/`) não têm nada atrás deles ainda. O Plano 6 faz a
+jornada funcionar em desenvolvimento (Vite serve os três, o proxy do Vite repassa o Host); servir os frontends em
+produção continua em aberto.
 
 ## Ciclo de vida da cidade (Plano 4)
 

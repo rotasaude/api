@@ -1,14 +1,38 @@
-# API-only. CORS aberto apenas para os hosts conhecidos do frontend.
-# Webhook do WhatsApp NÃO precisa de CORS (request vem do servidor da Meta).
+# API-only. CORS aberto para os hosts que a plataforma publica:
+#   - cidade: a Origin precisa ser IDÊNTICA a CITY_PUBLIC_BASE_TEMPLATE com o
+#     slug interpolado, e a cidade precisa estar servível no catálogo;
+#   - console (admin.*), callback (auth.*) e ferramentas internas: lista
+#     explícita em ALLOWED_ORIGINS — o console usa outro host/porta, que o
+#     template de cidade não descreve.
 #
-# Em dev/prod o Admin Console é servido via reverse-proxy / Vite proxy
-# (same-origin do ponto de vista do browser → cookies fluem sem CORS).
-# As regras abaixo cobrem chamadas cross-origin explícitas (testes,
-# ferramentas internas). credentials: true é obrigatório para que o
-# browser envie/aceite o cookie de sessão (ADR-0011).
+# A comparação exata vem ANTES da consulta ao catálogo: origem de domínio alheio
+# é recusada sem tocar o banco. Uma origem com a NOSSA forma e slug inexistente
+# ainda consulta o catálogo por requisição — `find_by_host` não memoiza miss, de
+# propósito (cidade em provisionamento não pode ficar presa em 404). É a mesma
+# consulta que CityResolution já faz para um Host inventado: sem superfície nova.
+# Webhook do WhatsApp não precisa de CORS (request vem do servidor da Meta).
+# credentials: true é obrigatório para o cookie de sessão (ADR-0011).
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins ENV.fetch("ALLOWED_ORIGINS", "http://localhost:5174,http://localhost:5173").split(",")
+    origins do |source, _env|
+      next true if ENV.fetch("ALLOWED_ORIGINS", "").split(",").map(&:strip).include?(source)
+
+      host = begin
+        URI.parse(source).host
+      rescue URI::InvalidURIError
+        nil
+      end
+      next false if host.blank?
+
+      slug = host.split(".").first.to_s.downcase
+      next false if slug.blank? || CityCatalog::RESERVED.include?(slug)
+      # Igualdade exata com o host que NÓS publicamos para esse slug: um domínio
+      # de terceiro que só imita o primeiro rótulo (slug.attacker.example) não
+      # passa, e uma origem inventada é recusada ANTES de consultar o catálogo.
+      next false unless source == CityPublicUrl.base_for_slug(slug)
+
+      CityCatalog.find_by_host(host)&.servable? || false
+    end
     resource "/protocols/*",
              headers: :any,
              methods: %i[get post options],

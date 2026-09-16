@@ -22,8 +22,8 @@ RSpec.describe "Passwords (F-06.2)", type: :request do
     # it with no city connection (CityRecord's :bootstrap shard, no tables), so
     # a GlobalID of a User cannot be deserialized there. The controller must
     # hand the mailer plain values built inside the city request.
-    # R46: the link points at the dashboard frontend (PUBLIC_DASHBOARD_URL, a
-    # separate Vite/static app), not at the API host of the request.
+    # R46: the link points at the dashboard frontend (host of the city that
+    # asked for the reset, via CityPublicUrl — Plano 6), not at the API host.
     def reset_link_delivered_from_bootstrap(user)
       post "/passwords", params: { email_address: user.email_address }
       expect(response).to have_http_status(:no_content)
@@ -42,27 +42,27 @@ RSpec.describe "Passwords (F-06.2)", type: :request do
       Rack::Utils.parse_query(URI.parse(link).query)["reset"]
     end
 
-    it "delivers the enqueued mail from a worker with no city connection, linking to PUBLIC_DASHBOARD_URL" do
-      allow(ENV).to receive(:[]).and_call_original
-      allow(ENV).to receive(:[]).with("PUBLIC_DASHBOARD_URL").and_return("https://painel.example/dashboard/")
+    it "honours CITY_PUBLIC_BASE_TEMPLATE, linking to the city's slug" do
+      allow(ENV).to receive(:fetch).and_call_original
+      allow(ENV).to receive(:fetch)
+        .with("CITY_PUBLIC_BASE_TEMPLATE", CityPublicUrl::DEFAULT_TEMPLATE)
+        .and_return("https://%{slug}.painel.example")
       user = make_user
 
       link = reset_link_delivered_from_bootstrap(user)
 
-      expect(link).to start_with("https://painel.example/dashboard/?reset=")
+      expect(link).to start_with("https://#{TEST_CITY_A.slug}.painel.example/dashboard/?reset=")
       token = token_from(link)
       expect(token).to be_present
       expect(CityConnection.with(TEST_CITY_A) { User.find_by_token_for(:password_reset, token) }).to eq(user)
     end
 
-    it "falls back to the local dashboard (localhost:5175/dashboard/) when PUBLIC_DASHBOARD_URL is unset" do
-      allow(ENV).to receive(:[]).and_call_original
-      allow(ENV).to receive(:[]).with("PUBLIC_DASHBOARD_URL").and_return(nil)
+    it "sends a reset link on the host of the city that asked for it" do
       user = make_user
 
       link = reset_link_delivered_from_bootstrap(user)
 
-      expect(link).to start_with("http://localhost:5175/dashboard/?reset=")
+      expect(link).to start_with("http://#{TEST_CITY_A.slug}.localhost:5175/dashboard/?reset=")
       expect(CityConnection.with(TEST_CITY_A) { User.find_by_token_for(:password_reset, token_from(link)) }).to eq(user)
     end
 
