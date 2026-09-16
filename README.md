@@ -64,10 +64,18 @@ O proxy do Kamal publica quatro hosts: o da API (`api.*`), o console (`admin.*`)
 curinga das cidades (`*.<domínio>`). Uma cidade provisionada passa a atender sem deploy novo — quem decide é o
 `CityCatalog`, pelo Host da requisição.
 
-**Gate de go-live:** o curinga exige (a) registro DNS `*.<domínio>` apontando para os hosts web e (b) certificado
-curinga. O Let's Encrypt do kamal-proxy emite por host via HTTP-01, o que NÃO cobre curinga: para `*.<domínio>` é
-preciso DNS-01 com certificado provisionado fora do Kamal, montado no proxy. Sem isso, cada cidade nova precisa de um
-host explícito na lista e de um `kamal proxy reboot`.
+**Gate de go-live (o deploy FALHA até isso ser resolvido).** Com `ssl: true` e a entrada `*.<domínio>` em
+`proxy.hosts`, o kamal-proxy tenta emitir certificado Let's Encrypt para o nome literal do curinga via HTTP-01 a cada
+deploy — e o Let's Encrypt só emite curinga por DNS-01. O deploy não degrada em silêncio: ele quebra com erro de ACME.
+Duas saídas, escolha antes do primeiro deploy de produção:
+
+1. **Sem curinga:** tire a linha `"*.<domínio>"` e liste cada host de cidade explicitamente em `proxy.hosts`. Cada
+   cidade nova exige editar o arquivo e rodar `kamal proxy reboot` — simples, mas o provisionamento deixa de ser
+   self-service.
+2. **Com curinga:** emita o certificado curinga por fora (DNS-01, no provedor de DNS), monte-o no kamal-proxy e
+   desligue o ACME para esses hosts. O provisionamento segue sem deploy, ao custo de renovação própria do certificado.
+
+O registro DNS `*.<domínio>` apontando para os hosts web é necessário nos dois casos.
 
 ## Ciclo de vida da cidade (Plano 4)
 
