@@ -26,4 +26,9 @@ Rails.application.configure do
 
   config.i18n.fallbacks = true
   config.active_support.report_deprecations = false
+
+  # Plano 8: sem isto a lista fica vazia e o Rails PULA o HostAuthorization.
+  # `.dominio` cobre api./admin./auth. e o curinga das cidades.
+  config.hosts += PlatformHosts.for("production")
+  config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 end
