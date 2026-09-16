@@ -51,7 +51,8 @@ RSpec.describe CityLifecycle::Backup do
   it "keeps the dump file 0600 while pg_dump is still writing it, not just after the final chmod, and restores the process umask" do
     ghost_slug = "provumask#{SecureRandom.hex(3)}"
     ghost = City.new(slug: ghost_slug, status: "active",
-                     database_url: CityDatabase.url_for(slug: ghost_slug, password: "s3gr3d0s3gr3d0"))
+                     database_url: CityDatabase.url_for(slug: ghost_slug, password: "s3gr3d0s3gr3d0"),
+                     encryption_key: SecureRandom.hex(32))
     fake_bin = Dir.mktmpdir("fake-pg_dump")
     mode_file = File.join(fake_bin, "captured_mode")
     script = File.join(fake_bin, "pg_dump")

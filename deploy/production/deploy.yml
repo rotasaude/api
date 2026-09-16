@@ -37,6 +37,23 @@ proxy:
   # provisionada sem novo deploy — a aplicação resolve o slug pelo Host
   # (CityCatalog). `admin.` é o console e `auth.` é o callback único do gov.br.
   # O certificado curinga de *.rota-saude.example e o DNS são gate de go-live.
+  #
+  # Plano 8 (Task 10) — decidido: manter o curinga (opção 2 do README, "Hosts
+  # publicados"), não trocar por lista de hosts explícita. Motivo: é o que
+  # sustenta o self-service de provisionamento. Com `ssl: true` e o curinga
+  # abaixo, o kamal-proxy tenta HTTP-01 para "*.rota-saude.example" a cada
+  # deploy e o Let's Encrypt só emite curinga por DNS-01 — o deploy FALHA com
+  # erro de ACME até isso ser resolvido. BLOQUEADO (dono: usuário), nesta
+  # ordem, nenhum passo feito:
+  #   1. emitir o certificado curinga por DNS-01 (fora do kamal-proxy) no
+  #      provedor de DNS real;
+  #   2. instalar esse certificado no kamal-proxy e desligar o ACME para
+  #      estes hosts — a chave/flag exata não foi confirmada aqui: o Kamal não
+  #      está instalado nesta máquina (ausente do Gemfile/Gemfile.lock, sem
+  #      .kamal/, sem binário no PATH), então não há como consultar a versão
+  #      em uso. Confirme contra a versão real antes de editar isto.
+  # Ver README.md § "Hosts publicados (Plano 6)" para os dois caminhos e o
+  # trade-off de cada um.
   hosts:
     - api.rota-saude.example
     - admin.rota-saude.example
@@ -73,7 +90,16 @@ env:
     # web precisa dele no POST /cities, sem a credencial do provisioner.
     CITY_DATABASE_HOST: db.rota-saude.example
     CITY_DATABASE_PORT: "5432"
-    CITY_DATABASE_SSLMODE: "require"
+    # Plano 8 (Task 10). `require` cifra mas NÃO verifica a identidade do
+    # servidor. Para `verify-full`, nesta ordem:
+    #   1. emitir certificado para o host do Postgres (db.rota-saude.example) por
+    #      uma CA que a imagem conheça (as do ca-certificates servem);
+    #   2. configurar ssl_cert_file/ssl_key_file no acessório postgres;
+    #   3. só então trocar a linha abaixo e fazer deploy.
+    # Trocar ANTES do passo 2 derruba TODA conexão de cidade: a aplicação para.
+    # BLOQUEADO (dono: usuário) nos passos 1 e 2: exigem acesso ao servidor e à
+    # CA. NÃO trocar o valor abaixo até os dois estarem confirmados feitos.
+    CITY_DATABASE_SSLMODE: "require"   # → "verify-full" depois dos passos acima
   secret:
     - ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
     - ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
@@ -91,6 +117,20 @@ env:
 accessories:
   postgres:
     image: postgres:16
+    # Plano 8 (Task 10). Orçamento do README ("Worker por cidade" § conexões):
+    # ~120 conexões de web (2 hosts × 2 Puma × 5 threads × pools) + ~80 por
+    # cidade ativa de worker. O default do Postgres é 100, que não fecha nem
+    # com duas cidades. 500 cobre ~4 cidades com folga; recalcule pelo README
+    # antes de passar disso, e lembre que cada role de cidade já tem
+    # CITY_ROLE_CONNECTION_LIMIT (default 100) como teto próprio — isso é o
+    # teto do SERVIDOR, não substitui o teto por role.
+    # BLOQUEADO (dono: usuário): a chave abaixo é `cmd:`, pelo único
+    # precedente do próprio repositório (papel `worker`, deploy/*/deploy.yml —
+    # ver o role `worker` acima), mas papel e acessório usam esquemas
+    # diferentes no Kamal e o binário não está instalado nesta máquina para
+    # confirmar. Confirme contra a versão de Kamal que roda o deploy antes de
+    # aplicar — e aplicar exige reboot do acessório de qualquer forma.
+    cmd: postgres -c max_connections=500
     host: db.rota-saude.example
     port: "127.0.0.1:5432:5432"
     env:

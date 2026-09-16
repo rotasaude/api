@@ -16,6 +16,12 @@ Rails.application.routes.draw do
       resources :city_grants, only: :create
       # Provisionamento em duas fases (Plano 4).
       resources :cities, only: %i[index create show]
+      # Canal do WhatsApp da cidade (Plano 8). O canal mora na PLATAFORMA e é
+      # passo à parte do provisionamento (Plano 4): entra quando a Meta libera o
+      # número. Sem ele, Whatsapp::Ingest não acha a cidade pelo phone_number_id.
+      resources :cities, only: [] do
+        resource :channel, only: :create, controller: "city_channels"
+      end
     end
   end
 

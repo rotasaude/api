@@ -23,6 +23,11 @@ faltar uma delas quebra até rodando os specs:
 | `CITY_BACKUP_DIR` | `tmp/city_backups` | `city:backup`, `city:offboard` |
 | `CITY_PUBLIC_BASE_TEMPLATE` | `http://%{slug}.localhost:5175` | host público de cada cidade: dashboard, wpda e link de reset de senha |
 
+> `CITY_DATABASE_SSLMODE` em `require` cifra mas não verifica a identidade do servidor Postgres. Apertar para
+> `verify-full` tem uma ordem estrita (certificado no servidor primeiro, só depois a variável) — invertê-la tira
+> toda cidade do ar de uma vez. Procedimento completo e único em `deploy/production/deploy.yml` (comentário junto
+> de `CITY_DATABASE_SSLMODE`), não copiado aqui.
+
 Bancos que precisam existir no Postgres do host:
 
 | Banco | Dono | Quem cria |
@@ -81,11 +86,56 @@ Duas saídas, escolha antes do primeiro deploy de produção:
 
 O registro DNS `*.<domínio>` apontando para os hosts web é necessário nos dois casos.
 
-**O que esses hosts servem hoje.** O proxy do Kamal publica esses hosts para a aplicação Rails, que serve só a API —
-não há pipeline de build nem servidor para as três SPAs (`apps/admin`, `apps/dashboard`, `apps/wpda`). Em produção,
-`admin.<domínio>/admin/` e `<slug>.<domínio>/dashboard/` (e `/wpda/`) não têm nada atrás deles ainda. O Plano 6 faz a
-jornada funcionar em desenvolvimento (Vite serve os três, o proxy do Vite repassa o Host); servir os frontends em
-produção continua em aberto.
+**Decidido (Plano 8 — Task 10): opção 2, com curinga.** O self-service de provisionamento (cidade nova atende sem
+deploy — o motivo de existir o curinga) pesa mais que o custo de renovação manual do certificado. `deploy/production/deploy.yml`
+mantém `"*.rota-saude.example"` em `proxy.hosts` (nada mudou aí) com um comentário no lugar apontando para este
+procedimento. **BLOQUEADO (dono: usuário) — os dois passos abaixo exigem acesso ao provedor de DNS e ao servidor, e
+nenhum foi feito:**
+1. Emitir o certificado curinga por DNS-01 num provedor de ACME (ex.: `certbot` com o plugin DNS do provedor, ou
+   equivalente) — fora do kamal-proxy, que só sabe fazer HTTP-01.
+2. Instalar esse certificado no kamal-proxy e desligar a emissão automática (ACME) para os hosts afetados. **Não sei
+   qual chave/flag do kamal-proxy faz isso** — o Kamal não está instalado nesta máquina (ausente do `Gemfile`/
+   `Gemfile.lock`, sem `.kamal/`, sem binário no PATH) e o padrão documentado (proxy por host) pode ter mudado entre
+   versões; confirme contra a versão em uso antes de tentar.
+Enquanto esses dois passos não rodarem, `ssl: true` com o curinga em `proxy.hosts` continua tentando HTTP-01 e o
+deploy de produção continua falhando com erro de ACME — isso não é regressão desta task, é o estado que já existia.
+
+**O que esses hosts servem hoje (Plano 8 — Task 9).** Cada SPA (`apps/admin`, `apps/dashboard`, `apps/wpda`) agora tem
+`Dockerfile` + `nginx.conf` próprios: build multi-stage (`node:22-alpine` → `npm ci && npm run build`) e um `nginx:alpine`
+que serve o `dist` sob o mesmo `base` do Vite (`/admin/`, `/dashboard/`, `/wpda/`), com cache imutável para
+`*/assets/`, `no-cache` para o `index.html`, fallback de SPA (`try_files ... /*/index.html`) e `/up` para healthcheck.
+As três imagens buildam localmente (`docker build`) e cada SPA continua passando em `npm run build` no container de
+dev. Isso resolve o "não há pipeline de build" — falta publicar e rotear.
+
+**BLOQUEADO (dono: usuário) — como rotear as SPAs pelo proxy.** Não sei se o kamal-proxy desta implantação roteia só
+por **host** ou também aceita caminho dentro de um mesmo host — **o Kamal não está instalado nesta máquina** (ausente
+do `Gemfile`/`Gemfile.lock`, sem `.kamal/`, sem binário no PATH), então não há como consultar a versão em uso nem
+testar o que ela suporta. O padrão historicamente documentado do kamal-proxy é rotear só por host; se for esse ainda
+o comportamento da versão instalada em produção, os caminhos `/dashboard/` e `/wpda/` de um host de cidade e o
+`/admin/` de `admin.*` não têm como chegar a um backend diferente do Rails sem trocar de host ou acrescentar um proxy.
+Não escrevi uma seção `accessories` em `deploy/production/deploy.yml` que eu não pudesse verificar. As opções, com os
+trade-offs:
+
+1. **Host por app** (ex.: `console.<domínio>` para o admin, em vez de `admin.<domínio>/admin/`). Simples, suportado
+   pelo roteamento por host que o kamal-proxy já faz hoje (mesmo padrão de `api.*`/`admin.*`/`auth.*`/`*.` em
+   `proxy.hosts`). Custo: muda as URLs publicadas (`admin.<domínio>/admin/` deixa de existir; `<slug>.<domínio>/dashboard/`
+   e `/wpda/` também precisariam de host próprio, ou seja, um host adicional por cidade — o que colide com o curinga
+   `*.<domínio>` de hoje).
+2. **Nginx de borda por host**, na frente do host que hoje aponta para o Rails: ele decide por caminho — `/dashboard/`
+   e `/wpda/` vão para o container da SPA, o resto (`/session`, `/r/:token`, `/admin/api/*`, webhook do WhatsApp) segue
+   para o Rails. Mantém as URLs de hoje. Custo: mais um componente para operar (imagem, deploy, healthcheck,
+   observabilidade) por host de cidade e para `admin.*`.
+3. **Roteamento por caminho no próprio kamal-proxy**, *se* a versão em uso suportar. É a opção mais barata (nenhum
+   componente novo) e a única que eu não posso confirmar a partir desta máquina.
+
+Para decidir, eu precisaria saber: qual versão do Kamal/kamal-proxy está em uso no ambiente de deploy real, se essa
+versão suporta roteamento por caminho dentro de um host (`kamal-proxy` ganhou isso em versões mais recentes, mas não
+posso afirmar que a instalação em produção já a tem), e se a resposta for não, se a preferência é mudar URLs (opção 1)
+ou manter e operar um proxy extra (opção 2).
+
+**BLOQUEADO (dono: usuário) — credencial de registro.** Publicar as três imagens em `ghcr.io` (o `registry` do
+`deploy.yml`) exige uma credencial (`KAMAL_REGISTRY_PASSWORD` ou equivalente para as três) que não existe nesta
+máquina. As imagens buildam localmente; falta só a credencial para publicá-las.
 
 ## Ciclo de vida da cidade (Plano 4)
 
@@ -139,6 +189,9 @@ e aposenta o banco compartilhado. Ordem obrigatória:
 **Suspender, backup, desligar** (rake; em produção no papel worker):
 
 - `rails 'city:suspend[slug]'` → o host responde 403 em até 30 s. `rails 'city:resume[slug]'` desfaz.
+- `rails 'city:resign_reports[slug]'` → reescreve, com o `encryption_key` atual da cidade, toda `report_snapshots.signature`
+  que não bate mais com ele (ver "Chave de cifra por cidade" abaixo). `city:rotate_key` já roda isto automaticamente;
+  use avulso para reprocessar ou depois de um abort do passo automático.
 - `rails 'city:backup[slug]'` → `pg_dump` da cidade em `CITY_BACKUP_DIR`. **Não** é restaurável sozinho com
   `pg_restore --no-owner` desde a chave de cifra por cidade (Plano 7) — o dump carrega ciphertext derivado do
   `encryption_key` da cidade no momento do dump; ver o aviso "Restaurar um dump" na seção do Plano 7 abaixo antes de
@@ -191,6 +244,16 @@ rails 'city:rotate_key[slug]'
 rails 'city:resume[slug]'
 ```
 
+`report_snapshots.signature` deriva do `encryption_key` da cidade (`CityEncryption.report_signing_key`) mas não é um
+`encrypts` — `CityRekey::TARGETS` não o cobre. Por isso `city:rotate_key` roda `CityReports::Resign` automaticamente
+depois que a rotação dos dados termina (com o material NOVO já valendo) e imprime a contagem de assinaturas
+reescritas junto com as dos alvos rekeyed (`report_signatures=<n>`). Se o re-sign falhar, a task **aborta** em vez de
+seguir — os dados já foram reescritos com sucesso (não há nada para desfazer), mas o operador não deve rodar
+`city:resume` até corrigir isso, porque todo link de relatório assinado com o material anterior vai responder 404 até
+então. `rails 'city:resign_reports[slug]'` (`CityReports::Resign`) é o comando avulso para rodar esse passo de novo à
+mão, fora do fluxo de `city:rotate_key` — por exemplo depois de um abort desses, ou para reprocessar uma cidade sem
+rotacionar chave nenhuma.
+
 Ambas as tasks recusam cidade que não esteja `suspended` (`status=<status atual>` na mensagem). A cidade precisa estar
 suspensa porque, entre ler uma linha com o material antigo e gravá-la com o novo, uma busca determinística de outro
 processo (webhook, job) usaria a chave errada e não acharia a linha.
@@ -215,11 +278,33 @@ segue em frente**: aborta com uma mensagem dizendo que os dados estão intactos 
 catálogo aponta para o material novo — corrija o `encryption_key` da cidade manualmente antes de rodar `city:rekey` ou
 `city:rotate_key` nela outra vez.
 
-> **Restaurar um dump.** Não existe `city:restore` ainda. Um dump só é restaurável **na cidade de origem, com a
-> `encryption_key` dela intacta** — o dump carrega ciphertext. Restaurar numa cidade cujo catálogo tem outro material
-> (rotacionado depois do dump, ou de outra cidade) **devolve dado ilegível sem erro** — nada no `pg_restore` nem no
-> boot avisa. Antes de restaurar, confirme que a linha do catálogo é a mesma de quando o dump foi tirado; guarde essa
-> informação junto do arquivo.
+> **Restaurar um dump.** `city:restore[slug,caminho]` (`CityLifecycle::Restore`) é o inverso de `city:backup` — **não**
+> de todo dump que o sistema produz (ver escopo abaixo). Exige a mesma quarentena de `city:rekey`/`city:rotate_key`:
+> cidade `suspended` e fora do `CityLifecycle::SuspensionGuard::QUIET_PERIOD` — nessa ordem, e ambas antes de olhar
+> para o arquivo. Um dump só é restaurável **na cidade de origem, com a `encryption_key` dela intacta** — o dump
+> carrega ciphertext. Restaurar numa cidade cujo catálogo tem outro material (rotacionado depois do dump, ou de outra
+> cidade) **devolve dado ilegível sem erro** — nada no `pg_restore` nem no boot avisa.
+>
+> Desde este plano, `city:backup` grava um arquivo irmão `<dump>.key-digest` com o SHA-256 do `encryption_key` da
+> cidade no momento do dump. `city:restore` compara esse digest com o material atual da cidade **antes de qualquer
+> DDL** (antes de montar a chamada a `pg_restore`) e recusa com `:key_mismatch` se divergirem — sem tocar no banco.
+> **Mas essa checagem só existe quando o arquivo irmão existe.** Um dump tirado antes deste plano não tem
+> `.key-digest`: para esses, `city:restore` não recusa nem confirma nada sobre a chave — a conferência de que o
+> material é o mesmo de quando o dump foi tirado é **humana**. Guarde essa informação junto do arquivo.
+>
+> `pg_restore --clean --if-exists` dropa objetos antes de recriá-los: uma falha no meio do caminho deixa o banco num
+> estado quebrado, e `city:restore` não tenta de novo nem finge sucesso — reporta `:restore_failed` com as últimas
+> linhas (redigidas) da saída do `pg_restore`.
+>
+> **Escopo — o que `city:restore` cobre e o que não cobre (F3 do fix pass, 2026-09-16).** `city:restore` exige
+> `status == "suspended"` (`CityLifecycle::Restore`, guarda acima) e restaura DENTRO do banco existente da cidade via
+> `pg_restore --clean --if-exists`. Isso cobre todo dump de `city:backup[slug]` tirado enquanto a cidade ainda existe
+> (`active` → suspenda → restaure → resuma). **Não cobre o dump final de `city:offboard`** — aquele que é, por
+> definição, o artefato de disaster-recovery tirado no ponto de não retorno: `city:offboard` deixa a cidade `archived`
+> e em seguida executa `DROP DATABASE` e `DROP ROLE` (`CityLifecycle::Offboard`). Depois disso não existe banco algum
+> para `pg_restore --clean` apontar, e `city:restore` recusaria de qualquer forma (`status == "archived"`, não
+> `"suspended"`). **Restaurar uma cidade offboarded não é um caminho suportado hoje** — recriar o role e o banco (por
+> fora desta task) antes de um `pg_restore` manual é a única saída, e nem essa foi exercitada por este plano.
 
 ## Worker por cidade (Plano 5)
 
@@ -262,9 +347,16 @@ ativa, mais o da plataforma**:
       cidade: `4 pools × ~20 ≈ 80` conexões por cidade ativa, pico.
     - Com as 2 cidades ativas de hoje isso já soma **~280 conexões** (web + worker) contra o `max_connections`
       DEFAULT do Postgres, que é **100**.
-    - **Gate de go-live:** antes de ir para produção, dimensione o `max_connections` do acessório Postgres (e/ou um
-      `CONNECTION LIMIT` por role — `rota_platform`, `rota_app`, cada `rota_city_<slug>`) para o número de cidades
-      planejado. Isso exige reboot do acessório.
+    - **Teto por role de cidade (aplicado):** `CityDatabase.ensure!` aplica `CONNECTION LIMIT` a cada
+      `rota_city_<slug>` — `CityDatabase.role_connection_limit`, configurável por `CITY_ROLE_CONNECTION_LIMIT`
+      (default `100`, validado a cada chamada como inteiro positivo — um valor vazio ou inválido levanta
+      `CityDatabase::ConfigMissing` em vez de silenciosamente virar `0`, que no Postgres significa "nenhuma
+      conexão", não "sem limite") — na criação e realinhado em toda chamada idempotente, para que uma cidade não
+      esgote o servidor e derrube as vizinhas. Isso não protege sozinho: com `max_connections` no default de 100,
+      o teto por role ainda permite que UMA cidade consuma o servidor inteiro sozinha.
+    - **Gate de go-live (o que resta):** antes de ir para produção, dimensione o `max_connections` do acessório
+      Postgres para o número de cidades planejado (com folga sobre a soma dos tetos por role acima). Isso exige
+      reboot do acessório.
 - **Painéis** — `/admin/api/queues` e `/admin/api/overview` leem a fila da cidade do host.
 - `SOLID_QUEUE_IN_PUMA` não existe mais: o worker é sempre `bin/city_workers`.
 
@@ -295,3 +387,35 @@ não existem mais; o RLS que eles reproduziam saiu junto com o domínio.
 
 Migrations no dev: `bin/rails db:migrate` (plataforma) e `bin/rails city:migrate:all` (cidades) — ou `bin/migrate`,
 que roda os dois. `db/migrate/` fica vazio de propósito.
+
+## O que o Plano 8 não fez
+
+Deliberado, não esquecido — cada item tem um motivo e nenhum é bloqueador do que este plano entregou:
+
+- **Rotação da chave de plataforma não tem procedimento válido.** `deploy/SECRETS.md` hoje só avisa que o
+  procedimento antigo (prepender uma chave e reencriptar aos poucos) trancaria toda cidade de uma vez: desde o
+  Plano 7, `CityEncryption` deriva de uma única chave de plataforma e nunca consulta `config.previous`. Um
+  procedimento novo (rekey por cidade, `CityRekey`/`city:rotate_key` ou equivalente) é desenho próprio, de um plano
+  futuro.
+- **O rekey (`city:rekey`, `city:rotate_key`) não tem progresso nem retomada.** `CityRekey::BATCH_SIZE` só pagina o
+  scan de ids; a reescrita inteira roda numa transação só, de propósito — tudo-ou-nada, sem meio-termo "já migrado"
+  que pudesse esconder corrupção real.
+- **A guarda de quarentena da suspensão vive na camada das rake tasks** (`lib/tasks/city.rake` checa
+  `CityLifecycle::SuspensionGuard.suspended_recently?` antes de chamar `city:rekey`/`city:rotate_key`), não dentro de
+  `CityRekey.call`. Um futuro chamador não-rake do comando não herda essa checagem.
+- **O fallback legado de assinatura de relatório continua no lugar.** `ReportSnapshot.signature_matches?` ainda
+  aceita a assinatura antiga (só a chave global, sem derivar por `cities.encryption_key`) — é o que mantém válidos os
+  links que cidadãos já receberam. Está documentado para saída (`report_snapshot.rb`, `deploy/SECRETS.md`) quando
+  todo `report_snapshot` vivo tiver sido re-assinado com a chave por cidade.
+- **`apps/admin` não tem remote no GitHub.** Tudo que este plano construiu no console existe só nesta máquina.
+- **A correção da Task 11 na spec (`docs/superpowers/specs/2026-09-12-banco-por-cidade-design.md`, §4: backup deixou
+  de ser "restaurável sozinho" desde o Plano 7) não está versionada.** `docs/` na raiz do monorepo não é um repositório
+  git — não dá `git log`, `git diff` nem `git push` ali. A correção existe só nesta máquina, no mesmo sentido em que
+  `apps/admin` acima existe só nesta máquina: sem clone fresco de `docs/` como repositório próprio, ela não viaja com
+  o resto deste plano.
+- **A CI da API (`apps/api/.github/workflows/ci.yml`) não passa sem o secret de repositório `RAILS_MASTER_KEY`.** Todo
+  boot do Rails (mesmo `RAILS_ENV=test`) lê `Rails.application.credentials` antes de qualquer fallback de ENV
+  (`config/initializers/active_record_encryption.rb`) — sem esse secret configurado em Settings → Secrets → Actions,
+  com o conteúdo de `apps/api/config/master.key`, o primeiro passo do workflow (`bin/rails platform:bootstrap`) já
+  levanta `ActiveSupport::EncryptedFile::MissingKeyError`. Isso vale também para o job `production-boot` que este fix
+  pass adicionou (F1) — mesmo secret, mesma exigência.

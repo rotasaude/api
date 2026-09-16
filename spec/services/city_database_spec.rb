@@ -94,6 +94,65 @@ RSpec.describe CityDatabase do
     PG.connect(described_class.url_for(slug: slug_a, password: pwd_a)).close
   end
 
+  it "caps how many connections a city's role can open" do
+    described_class.ensure!(slug: slug_a, password: pwd_a)
+
+    limit = superuser_value("SELECT rolconnlimit FROM pg_roles WHERE rolname = $1", described_class.role_name(slug_a))
+
+    expect(limit.to_i).to eq(described_class.role_connection_limit)
+  end
+
+  # ensure! é idempotente e realinha a senha; o teto tem de seguir a mesma
+  # regra, senão um role criado antes deste plano ficaria sem limite para
+  # sempre.
+  it "re-applies the cap when the role already exists without one" do
+    described_class.ensure!(slug: slug_a, password: pwd_a)
+    ScratchDatabases.superuser do |conn|
+      conn.exec("ALTER ROLE #{PG::Connection.quote_ident(described_class.role_name(slug_a))} CONNECTION LIMIT -1")
+    end
+
+    described_class.ensure!(slug: slug_a, password: pwd_a)
+
+    limit = superuser_value("SELECT rolconnlimit FROM pg_roles WHERE rolname = $1", described_class.role_name(slug_a))
+    expect(limit.to_i).to eq(described_class.role_connection_limit)
+  end
+
+  it "defaults the role connection limit to 100 when CITY_ROLE_CONNECTION_LIMIT is absent" do
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("CITY_ROLE_CONNECTION_LIMIT").and_return(nil)
+
+    expect(described_class.role_connection_limit).to eq(100)
+  end
+
+  # Fix round 1 (review): confirma que um override válido chega de fato à
+  # role no Postgres, não só ao método que lê o ENV.
+  it "applies a valid CITY_ROLE_CONNECTION_LIMIT override to the role's CONNECTION LIMIT" do
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("CITY_ROLE_CONNECTION_LIMIT").and_return("42")
+
+    expect(described_class.role_connection_limit).to eq(42)
+
+    described_class.ensure!(slug: slug_a, password: pwd_a)
+
+    limit = superuser_value("SELECT rolconnlimit FROM pg_roles WHERE rolname = $1", described_class.role_name(slug_a))
+    expect(limit.to_i).to eq(42)
+  end
+
+  # Fix round 1 (review): um `.to_i` ingênuo transformava "" em 0, e
+  # CONNECTION LIMIT 0 no Postgres não é "sem limite" — é "nenhuma conexão",
+  # trancando a própria cidade fora do banco dela no próximo ensure!. "" está
+  # aqui explicitamente porque foi essa forma que produziu o lock-out real.
+  it "rejects a CITY_ROLE_CONNECTION_LIMIT that is not a positive integer, naming the variable but not echoing the value" do
+    [ "", "  ", "abc", "0", "-5", "1e2", "3.5" ].each do |bad|
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("CITY_ROLE_CONNECTION_LIMIT").and_return(bad)
+
+      expect { described_class.role_connection_limit }.to raise_error(CityDatabase::ConfigMissing) do |error|
+        expect(error.message).to include("CITY_ROLE_CONNECTION_LIMIT")
+      end
+    end
+  end
+
   it "drops database and role, and dropping again is a no-op" do
     described_class.ensure!(slug: slug_a, password: pwd_a)
 

@@ -161,4 +161,49 @@ RSpec.describe "city:rekey and city:rotate_key rake tasks" do
 
     expect(Digest::SHA256.hexdigest(city.reload.encryption_key)).not_to eq(before_digest)
   end
+
+  # Fix F2 (rodada final de revisão): report_snapshots.signature deriva do
+  # encryption_key da cidade, mas CityRekey::TARGETS não o cobre (não é um
+  # `encrypts`). Sem city:rotate_key rodar CityReports::Resign por baixo dos
+  # panos, todo link de relatório assinado ANTES da rotação vira 404 —
+  # nem a chave nova bate (mudou), nem a legada global (nunca foi essa).
+  # Prova por id/booleano, nunca token ou signature (ver comentário de
+  # "does not echo key material" acima, mesma razão).
+  describe "report link survival across city:rotate_key" do
+    def snapshot_signed_with_current_key
+      CityConnection.with(city) do
+        pd = ProtocolDefinition.create!(
+          name: "triagem-rotate", version: 1, status: "active",
+          definition: { "name" => "triagem-rotate", "version" => 1, "start_step_id" => "s1",
+                        "steps" => [ { "id" => "s1", "prompt" => "?", "answer_type" => "boolean",
+                                       "branches" => { "true" => nil, "false" => nil } } ] }
+        )
+        convo = Conversation.create!(phone: "+5541988886666", state: "greeting")
+        triage = Triage.create!(conversation: convo, protocol_definition: pd, protocol_name: "triagem-rotate",
+                                status: "completed", tier: "alta", priority: 1,
+                                completed_at: Time.current, outcome: { "trail" => [] })
+        token = ReportSnapshot.mint_token
+        ReportSnapshot.create!(triage: triage, protocol_definition: pd, outcome: { "tier" => "alta" },
+                               payload: { "tier" => "alta" }, token: token,
+                               signature: ReportSnapshot.sign(token), expires_at: 30.days.from_now)
+      end
+    end
+
+    it "still resolves a token minted before the rotation" do
+      snapshot = snapshot_signed_with_current_key
+
+      invoke_silently("city:rotate_key", city.slug)
+
+      found = CityConnection.with(city.reload) { ReportSnapshot.find_by_signed_token(snapshot.token) }
+      expect(found&.id).to eq(snapshot.id)
+    end
+
+    it "reports the resign count alongside the rekey counts" do
+      snapshot_signed_with_current_key
+
+      out = capture_stdout { invoke_silently("city:rotate_key", city.slug) }
+
+      expect(out).to match(/report_signatures=1/)
+    end
+  end
 end

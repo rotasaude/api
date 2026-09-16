@@ -64,6 +64,12 @@ env:
     # web precisa dele no POST /cities, sem a credencial do provisioner.
     CITY_DATABASE_HOST: dev.rota-saude.example
     CITY_DATABASE_PORT: "5432"
+    # Plano 8 (Task 10). Este ambiente já está em `prefer` (cifra se o servidor
+    # oferecer, não exige, não verifica identidade) — mais fraco que `require`
+    # de produção. Não há necessidade de negócio para apertar isto agora — não é
+    # uma pendência ativa deste ambiente. Se algum dia for: a ordem para chegar a
+    # `verify-full` tem fonte ÚNICA em deploy/production/deploy.yml (comentário
+    # junto de CITY_DATABASE_SSLMODE) — não copie a ordem para outro lugar.
     CITY_DATABASE_SSLMODE: "prefer"
   secret:
     - ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY

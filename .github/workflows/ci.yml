@@ -1,0 +1,103 @@
+name: CI
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  rspec:
+    runs-on: ubuntu-latest
+    # postgres:16 de propósito: é a versão de PRODUÇÃO (deploy/production/deploy.yml).
+    # A suíte local roda no Postgres do host (15), então o caminho sensível a
+    # versão — CREATEROLE sem herança implícita, resolvido pelo GRANT explícito
+    # em CityDatabase#ensure! — nunca é exercitado fora daqui.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # POSTGRES_USER cria esse role como superusuário de bootstrap do
+          # cluster (o initdb do próprio postgres:16) — é o "rota_saude" que
+          # start.sh também cria via `createuser -s` no host. Não precisa de
+          # passo extra para ele.
+          POSTGRES_USER: rota_saude
+          POSTGRES_PASSWORD: postgres
+        ports: [ "5432:5432" ]
+        options: >-
+          --health-cmd "pg_isready -U rota_saude"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      RAILS_ENV: test
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: "5432"
+      POSTGRES_PASSWORD: postgres
+      # config/initializers/active_record_encryption.rb lê
+      # Rails.application.credentials ANTES de cair no fallback de ENV — e
+      # config/credentials.yml.enc está no git (config/master.key não está).
+      # Sem essa secret, o boot do Rails (já no primeiro `bin/rails
+      # platform:bootstrap`) levanta ActiveSupport::EncryptedFile::MissingKeyError
+      # antes de qualquer role ou banco ser criado. Precisa existir como secret
+      # do repositório (Settings → Secrets → Actions → RAILS_MASTER_KEY, valor =
+      # conteúdo de apps/api/config/master.key) — não é algo que este workflow
+      # possa prover por conta própria.
+      RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - name: Role rota_app (dev/test só sai do start.sh, que a CI não roda)
+        # primary e city_unset (config/database.yml) conectam como rota_app.
+        # Nem platform:bootstrap nem city:test_databases criam esse role —
+        # só rota_platform e rota_provisioner (ver lib/tasks/platform.rake).
+        # Em dev isso vem do bloco DO $$ ... $$ do start.sh; replicamos aqui.
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U rota_saude -d postgres -v ON_ERROR_STOP=1 -c "
+          DO \$\$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='rota_app') THEN
+              CREATE ROLE rota_app LOGIN PASSWORD 'rota_app';
+            END IF;
+          END \$\$;
+          "
+      - name: Bancos e roles de plataforma e de cidade
+        run: |
+          bin/rails platform:bootstrap
+          bin/rails db:migrate:platform
+          bin/rails city:test_databases
+      - run: bundle exec rspec
+
+  production-boot:
+    runs-on: ubuntu-latest
+    # F1 do fix pass (2026-09-16): nada em spec/ ou no job `rspec` acima carrega
+    # RAILS_ENV=production — a suíte inteira passava com
+    # `config.hosts += PlatformHosts.for("production")` levantando
+    # "uninitialized constant PlatformHosts" no primeiro boot real (Zeitwerk só
+    # está pronto no Finisher; config/environments/*.rb é lido antes disso).
+    # Este job fecha esse ponto cego: aciona um boot de verdade do ambiente de
+    # produção, sem tocar banco real (URLs inertes, porta 1 em localhost —
+    # database_tasks: false em primary/city_unset/platform e nada no boot
+    # consulta o banco). Falha se o boot lançar OU se config.hosts vier vazio
+    # (a mesma falha do Critical, disfarçada de sucesso).
+    env:
+      RAILS_ENV: production
+      RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+      ROTA_APP_PASSWORD: inert
+      ROTA_PLATFORM_PASSWORD: inert
+      CITY_PUBLIC_BASE_TEMPLATE: "https://%{slug}.ci.rota-saude.example"
+      CITY_UNSET_DATABASE_URL: "postgres://inert:inert@127.0.0.1:1/inert"
+      PLATFORM_DATABASE_URL: "postgres://inert:inert@127.0.0.1:1/inert"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - name: Boot RAILS_ENV=production for real (no database connection)
+        run: |
+          bin/rails runner '
+            raise "config.hosts is empty in production" if Rails.application.config.hosts.empty?
+            unless Rails.application.middleware.map(&:klass).include?(ActionDispatch::HostAuthorization)
+              raise "ActionDispatch::HostAuthorization is not installed in production"
+            end
+            puts "PRODUCTION_BOOT_OK hosts=#{Rails.application.config.hosts.inspect}"
+          '
