@@ -35,9 +35,10 @@ Bancos que precisam existir no Postgres do host:
 
 `start.sh` chama essas tasks e `city:dev_baseline` antes do `db:seed`. Contas de dev:
 `admin@curitiba.demo` e `admin@maringa.demo` (senha `dev-password`) em cada cidade, e o operador `dev@local`
-(mesma senha + TOTP) no console. Hosts: `curitiba.localhost`, `maringa.localhost`, `admin.localhost`.
-No navegador os frontends ainda não resolvem cidade — o proxy do Vite troca o Host por `api:3000` até o Plano 6;
-para exercitar hoje, use `curl -H "Host: curitiba.localhost" http://localhost:3030/...`.
+(mesma senha + TOTP) no console. Hosts de dev: `curitiba.localhost:5175`, `maringa.localhost:5175` (dashboard), `admin.localhost:5174` (console),
+`curitiba.localhost:5176` (wpda). O proxy do Vite repassa o Host (Plano 6), então o Rails resolve a cidade pelo
+subdomínio como em produção. `*.localhost` resolve para 127.0.0.1 no Chrome e no Firefox sem `/etc/hosts`; no Safari,
+acrescente uma linha por cidade.
 
 Ao puxar código que adiciona um novo diretório sob `app/` (por exemplo
 `app/constraints`), reinicie o `api` (`docker compose restart api`): um
