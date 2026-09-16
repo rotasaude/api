@@ -5,9 +5,13 @@
 #     explícita em ALLOWED_ORIGINS — o console usa outro host/porta, que o
 #     template de cidade não descreve.
 #
-# A comparação exata vem ANTES da consulta ao catálogo: origem inventada não
-# vira query. Webhook do WhatsApp não precisa de CORS (request vem do servidor
-# da Meta). credentials: true é obrigatório para o cookie de sessão (ADR-0011).
+# A comparação exata vem ANTES da consulta ao catálogo: origem de domínio alheio
+# é recusada sem tocar o banco. Uma origem com a NOSSA forma e slug inexistente
+# ainda consulta o catálogo por requisição — `find_by_host` não memoiza miss, de
+# propósito (cidade em provisionamento não pode ficar presa em 404). É a mesma
+# consulta que CityResolution já faz para um Host inventado: sem superfície nova.
+# Webhook do WhatsApp não precisa de CORS (request vem do servidor da Meta).
+# credentials: true é obrigatório para o cookie de sessão (ADR-0011).
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
     origins do |source, _env|
