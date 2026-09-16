@@ -318,6 +318,58 @@ namespace :city do
     puts "[city:backup] #{city.slug} → #{result.payload[:path]}"
   end
 
+  # Plano 7: migração e rotação de chave de cifra de uma cidade.
+  #
+  # A cidade precisa estar SUSPENSA: entre ler uma linha com o material antigo e
+  # gravá-la com o novo, uma busca determinística de outro processo (webhook,
+  # job) usaria a chave errada e não acharia a linha.
+  # Runbook: city:backup → city:suspend → city:rekey → city:resume
+  desc "Migra uma cidade suspensa da chave da plataforma (pré-Plano-7) para a chave dela. Uso: city:rekey[slug]"
+  task :rekey, %i[slug] => :environment do |_t, args|
+    city = lifecycle_city.call("city:rekey", args[:slug])
+    unless city.status == "suspended"
+      abort "[city:rekey] cidade #{city.slug} precisa estar suspensa (status=#{city.status}) — rode city:backup e city:suspend antes"
+    end
+
+    # source: :platform — os dados de uma cidade ainda não migrada estão em
+    # ciphertext da chave GLOBAL (o que já existia antes deste plano), não da
+    # própria cidade. Por isso NÃO passamos from_key: aqui — com
+    # source: :platform o serviço recusa a combinação com ArgumentError, porque
+    # a origem já é a chave global, não um material arbitrário.
+    result = CityRekey.call(city: city, source: :platform)
+    abort "[city:rekey] #{result.reason}: #{result.message}" if result.failure?
+    puts "[city:rekey] #{city.slug} → #{result.payload[:counts].map { |m, n| "#{m}=#{n}" }.join(' ')}"
+  end
+
+  desc "Gera material NOVO para uma cidade suspensa e reescreve os dados. Uso: city:rotate_key[slug]"
+  task :rotate_key, %i[slug] => :environment do |_t, args|
+    city = lifecycle_city.call("city:rotate_key", args[:slug])
+    abort "[city:rotate_key] cidade #{city.slug} precisa estar suspensa (status=#{city.status})" unless city.status == "suspended"
+
+    previous = city.encryption_key
+    city.update!(encryption_key: SecureRandom.hex(32))
+
+    # `from_key: previous` (origem :city, o padrão): a rotação lê pelo material
+    # ANTERIOR da própria cidade, não pela chave global — diferente de
+    # city:rekey acima. O catálogo já foi atualizado para o material NOVO antes
+    # desta chamada (linha acima), então uma falha aqui deixa o catálogo
+    # apontando para uma chave que os dados ainda não usam.
+    #
+    # O `update!` de restauração abaixo NÃO desfaz nenhuma linha reescrita —
+    # quem garante tudo-ou-nada é a transação única dentro de CityRekey (zero
+    # linhas mudam numa falha). O papel dele é mais estreito: devolver o
+    # catálogo ao material que os dados de fato usam, já que a rotação grava o
+    # material novo no catálogo ANTES de reescrever qualquer linha.
+    result = CityRekey.call(city: city.reload, from_key: previous)
+    if result.failure?
+      city.update!(encryption_key: previous)
+      abort "[city:rotate_key] #{result.reason}: #{result.message} — material anterior restaurado no catálogo"
+    end
+
+    Platform.audit("city.key_rotated", city_id: city.id)
+    puts "[city:rotate_key] #{city.slug} → #{result.payload[:counts].map { |m, n| "#{m}=#{n}" }.join(' ')}"
+  end
+
   # Reenvia o convite do primeiro municipal_admin de uma cidade JÁ active
   # (rodada de hardening, pre-Plano 6): cobre quem perdeu a janela de 7 dias do
   # convite original — depois que a cidade vira active, o guard no início de

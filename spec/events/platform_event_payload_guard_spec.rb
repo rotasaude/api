@@ -13,7 +13,7 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
   R18_FORBIDDEN_EXACT_KEYS = %w[from].freeze
   R18_ALLOWED_PAYLOAD_KEYS = %w[phone_number_id city_name].freeze
   R18_PLATFORM_EVENT_NAMES = %w[municipality.provisioned city.suspended city.resumed city.backed_up city.archived
-                                city.admin_reinvited
+                                city.admin_reinvited city.key_rotated
                                 channel.registered channel.token_rotated channel.unknown_seen
                                 operator.login operator.city_access].freeze
 
