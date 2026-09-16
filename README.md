@@ -364,3 +364,24 @@ não existem mais; o RLS que eles reproduziam saiu junto com o domínio.
 
 Migrations no dev: `bin/rails db:migrate` (plataforma) e `bin/rails city:migrate:all` (cidades) — ou `bin/migrate`,
 que roda os dois. `db/migrate/` fica vazio de propósito.
+
+## O que o Plano 8 não fez
+
+Deliberado, não esquecido — cada item tem um motivo e nenhum é bloqueador do que este plano entregou:
+
+- **Rotação da chave de plataforma não tem procedimento válido.** `deploy/SECRETS.md` hoje só avisa que o
+  procedimento antigo (prepender uma chave e reencriptar aos poucos) trancaria toda cidade de uma vez: desde o
+  Plano 7, `CityEncryption` deriva de uma única chave de plataforma e nunca consulta `config.previous`. Um
+  procedimento novo (rekey por cidade, `CityRekey`/`city:rotate_key` ou equivalente) é desenho próprio, de um plano
+  futuro.
+- **O rekey (`city:rekey`, `city:rotate_key`) não tem progresso nem retomada.** `CityRekey::BATCH_SIZE` só pagina o
+  scan de ids; a reescrita inteira roda numa transação só, de propósito — tudo-ou-nada, sem meio-termo "já migrado"
+  que pudesse esconder corrupção real.
+- **A guarda de quarentena da suspensão vive na camada das rake tasks** (`lib/tasks/city.rake` checa
+  `CityLifecycle::SuspensionGuard.suspended_recently?` antes de chamar `city:rekey`/`city:rotate_key`), não dentro de
+  `CityRekey.call`. Um futuro chamador não-rake do comando não herda essa checagem.
+- **O fallback legado de assinatura de relatório continua no lugar.** `ReportSnapshot.signature_matches?` ainda
+  aceita a assinatura antiga (só a chave global, sem derivar por `cities.encryption_key`) — é o que mantém válidos os
+  links que cidadãos já receberam. Está documentado para saída (`report_snapshot.rb`, `deploy/SECRETS.md`) quando
+  todo `report_snapshot` vivo tiver sido re-assinado com a chave por cidade.
+- **`apps/admin` não tem remote no GitHub.** Tudo que este plano construiu no console existe só nesta máquina.
