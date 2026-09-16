@@ -1,6 +1,6 @@
 # Autor de protocolos (equipe clínica). Stub mínimo — auth real vira ADR próprio.
 class Author < ApplicationRecord
-  encrypts :token, deterministic: true
+  encrypts :token, deterministic: true, key_provider: CityDeterministicKeyProvider.new
 
   validates :email, presence: true, uniqueness: true
   validates :token, presence: true, uniqueness: true

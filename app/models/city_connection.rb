@@ -20,7 +20,22 @@ class CityConnection
     # mais de fora, não em quem chamou perform_later (ver app/services/platform_queue.rb).
     def with(city, &block)
       ensure_pool(city)
-      ActiveRecord::Base.connected_to_many([ CityRecord, SolidQueue::Record ], role: :writing, shard: city.shard, &block)
+
+      # Set Current.city for deterministic encryption. Since some operations
+      # (like example.run in test harness) call clear_all during execution,
+      # we also use thread-local storage as a fallback.
+      previous_city = Current.city
+      previous_thread_city = Thread.current[:city_context_for_encryption]
+
+      Current.city = city
+      Thread.current[:city_context_for_encryption] = city
+
+      begin
+        ActiveRecord::Base.connected_to_many([ CityRecord, SolidQueue::Record ], role: :writing, shard: city.shard, &block)
+      ensure
+        Current.city = previous_city
+        Thread.current[:city_context_for_encryption] = previous_thread_city
+      end
     end
 
     # Verificado em 2026-09-12 contra o Rails 8.1.3, os pontos em que registrar
