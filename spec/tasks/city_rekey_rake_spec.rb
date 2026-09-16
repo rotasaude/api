@@ -58,4 +58,37 @@ RSpec.describe "city:rekey and city:rotate_key rake tasks" do
 
     expect(Digest::SHA256.hexdigest(city.reload.encryption_key)).not_to eq(before_digest)
   end
+
+  # Fix round 1: city:rotate_key era coberto só pelo happy-path sobre uma
+  # cidade de factory vazia. Os três exemplos abaixo cobrem os ramos que nunca
+  # tinham executado — em especial o de restauração, que só existe na task
+  # (CityRekey não sabe nada sobre "restaurar o catálogo").
+
+  it "city:rotate_key refuses an unknown slug" do
+    expect { invoke_silently("city:rotate_key", "naoexiste") }.to raise_error(SystemExit)
+  end
+
+  # Prova algo que o exemplo equivalente de city:rekey não prova: uma rotação
+  # recusada não pode ter gravado material novo no catálogo.
+  it "city:rotate_key refuses a city that is not suspended, leaving the stored material untouched" do
+    before_digest = Digest::SHA256.hexdigest(city.reload.encryption_key)
+    city.update!(status: "active")
+
+    expect { invoke_silently("city:rotate_key", city.slug) }.to raise_error(SystemExit)
+    expect(Digest::SHA256.hexdigest(city.reload.encryption_key)).to eq(before_digest)
+  end
+
+  # O double é legítimo aqui: o objeto sob teste é o wrapper da rake task (a
+  # restauração do catálogo em caso de falha), não CityRekey — que já tem seu
+  # próprio spec (spec/commands/city_rekey_spec.rb) para o caminho :unreadable.
+  # Assert SystemExit por si só provaria só que a task saiu; a asserção do
+  # digest é o que prova que a restauração de fato devolveu `previous` ao
+  # catálogo.
+  it "city:rotate_key restores the previous material in the catalog when the rewrite fails" do
+    before_digest = Digest::SHA256.hexdigest(city.reload.encryption_key)
+    allow(CityRekey).to receive(:call).and_return(Result.fail(:unreadable, message: "linha ilegível"))
+
+    expect { invoke_silently("city:rotate_key", city.slug) }.to raise_error(SystemExit)
+    expect(Digest::SHA256.hexdigest(city.reload.encryption_key)).to eq(before_digest)
+  end
 end

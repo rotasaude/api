@@ -362,7 +362,26 @@ namespace :city do
     # material novo no catálogo ANTES de reescrever qualquer linha.
     result = CityRekey.call(city: city.reload, from_key: previous)
     if result.failure?
-      city.update!(encryption_key: previous)
+      # A restauração abaixo pode, ela mesma, falhar (ex.: validação, conexão).
+      # Sem capturar isso, o operador veria só o abort da linha de baixo e
+      # acreditaria que o catálogo voltou para `previous` quando na verdade
+      # ainda aponta para o material novo — o catálogo dizendo uma chave que os
+      # dados não usam, exatamente o estado que este parágrafo inteiro existe
+      # para evitar, e sem mais nenhuma tentativa de correção automática depois
+      # disso. Por isso: nem retry, nem rescue-and-continue — só uma mensagem
+      # legível com o que de fato aconteceu e o slug afetado, para o operador
+      # corrigir o catálogo à mão. Nunca o material em si, nem `e.message`
+      # (que pode citar o valor do atributo em erros de validação) — só a
+      # classe da exceção e o slug.
+      begin
+        city.update!(encryption_key: previous)
+      rescue StandardError => e
+        abort "[city:rotate_key] #{city.slug}: rewrite falhou (#{result.reason}) E a restauração do catálogo " \
+              "também falhou (#{e.class}) — os DADOS NÃO foram reescritos (a transação de CityRekey desfez tudo; " \
+              "as linhas continuam sob o material ANTIGO), mas o CATÁLOGO agora guarda o material NOVO, que os " \
+              "dados não usam. Corrija o encryption_key de #{city.slug} manualmente antes de rodar city:rekey ou " \
+              "city:rotate_key nesta cidade de novo."
+      end
       abort "[city:rotate_key] #{result.reason}: #{result.message} — material anterior restaurado no catálogo"
     end
 
