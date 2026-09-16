@@ -60,6 +60,7 @@ env:
     GOVBR_REDIRECT_URI: "https://auth.rota-saude.example/auth/govbr/callback"
     GOVBR_ISSUER_URL: "https://sso.acesso.gov.br"
     CITY_BACKUP_DIR: "/rails/storage/city_backups"
+    ALLOWED_ORIGINS: "https://admin.rota-saude.example,https://auth.rota-saude.example"
     # Servidor das cidades provisionadas (cities.database_url). Não é secreto; o
     # web precisa dele no POST /cities, sem a credencial do provisioner.
     CITY_DATABASE_HOST: db.rota-saude.example

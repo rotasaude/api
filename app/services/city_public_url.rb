@@ -15,7 +15,13 @@ module CityPublicUrl
   def base(city)
     raise CityMissing, "CityPublicUrl sem cidade no contexto" if city.nil?
 
-    format(ENV.fetch("CITY_PUBLIC_BASE_TEMPLATE", DEFAULT_TEMPLATE), slug: city.slug).chomp("/")
+    base_for_slug(city.slug)
+  end
+
+  # Host público de um slug, sem precisar da linha do catálogo: o CORS compara a
+  # Origin recebida com ESTA string antes de consultar o catálogo.
+  def base_for_slug(slug)
+    format(ENV.fetch("CITY_PUBLIC_BASE_TEMPLATE", DEFAULT_TEMPLATE), slug: slug).chomp("/")
   end
 
   def dashboard(city)
