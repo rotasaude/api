@@ -189,6 +189,9 @@ e aposenta o banco compartilhado. Ordem obrigatória:
 **Suspender, backup, desligar** (rake; em produção no papel worker):
 
 - `rails 'city:suspend[slug]'` → o host responde 403 em até 30 s. `rails 'city:resume[slug]'` desfaz.
+- `rails 'city:resign_reports[slug]'` → reescreve, com o `encryption_key` atual da cidade, toda `report_snapshots.signature`
+  que não bate mais com ele (ver "Chave de cifra por cidade" abaixo). `city:rotate_key` já roda isto automaticamente;
+  use avulso para reprocessar ou depois de um abort do passo automático.
 - `rails 'city:backup[slug]'` → `pg_dump` da cidade em `CITY_BACKUP_DIR`. **Não** é restaurável sozinho com
   `pg_restore --no-owner` desde a chave de cifra por cidade (Plano 7) — o dump carrega ciphertext derivado do
   `encryption_key` da cidade no momento do dump; ver o aviso "Restaurar um dump" na seção do Plano 7 abaixo antes de
@@ -240,6 +243,16 @@ rails 'city:suspend[slug]'
 rails 'city:rotate_key[slug]'
 rails 'city:resume[slug]'
 ```
+
+`report_snapshots.signature` deriva do `encryption_key` da cidade (`CityEncryption.report_signing_key`) mas não é um
+`encrypts` — `CityRekey::TARGETS` não o cobre. Por isso `city:rotate_key` roda `CityReports::Resign` automaticamente
+depois que a rotação dos dados termina (com o material NOVO já valendo) e imprime a contagem de assinaturas
+reescritas junto com as dos alvos rekeyed (`report_signatures=<n>`). Se o re-sign falhar, a task **aborta** em vez de
+seguir — os dados já foram reescritos com sucesso (não há nada para desfazer), mas o operador não deve rodar
+`city:resume` até corrigir isso, porque todo link de relatório assinado com o material anterior vai responder 404 até
+então. `rails 'city:resign_reports[slug]'` (`CityReports::Resign`) é o comando avulso para rodar esse passo de novo à
+mão, fora do fluxo de `city:rotate_key` — por exemplo depois de um abort desses, ou para reprocessar uma cidade sem
+rotacionar chave nenhuma.
 
 Ambas as tasks recusam cidade que não esteja `suspended` (`status=<status atual>` na mensagem). A cidade precisa estar
 suspensa porque, entre ler uma linha com o material antigo e gravá-la com o novo, uma busca determinística de outro

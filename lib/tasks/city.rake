@@ -426,8 +426,35 @@ namespace :city do
       abort "[city:rotate_key] #{result.reason}: #{result.message} — material anterior restaurado no catálogo"
     end
 
+    # Fix F2 (rodada final de revisão): report_snapshots.signature deriva do
+    # encryption_key da cidade (CityEncryption.report_signing_key), mas não é
+    # um `encrypts` — CityRekey::TARGETS não o cobre. Sem este passo, todo
+    # snapshot assinado com o material ANTERIOR fica órfão: nem a chave nova
+    # (mudou) nem a legada global (nunca foi essa) batem, e
+    # ReportSnapshot.find_by_signed_token devolve nil — /r/:token 404 para
+    # todo link de cidadão dos últimos 30 dias, sem nada no log dizendo
+    # por quê. A rotação dos DADOS já terminou (result.success? acima); o que
+    # falta é só a assinatura dos relatórios já emitidos, então isto roda
+    # depois, com a chave NOVA já valendo (CityConnection.with usa
+    # city.encryption_key atual).
+    resign_result = CityConnection.with(city) { CityReports::Resign.call }
+    if resign_result.failure?
+      # Fail loudly, sem tentativa de correção automática: os DADOS já foram
+      # reescritos com sucesso sob o material novo (não há o que desfazer
+      # aqui, ao contrário do bloco de falha do CityRekey acima) — mas o
+      # operador precisa saber que a rotação NÃO terminou de verdade antes de
+      # liberar a cidade (city:resume), porque links de relatório vão 404 até
+      # que city:resign_reports rode com sucesso.
+      abort "[city:rotate_key] #{city.slug}: chave rotacionada com sucesso " \
+            "(#{result.payload[:counts].map { |m, n| "#{m}=#{n}" }.join(' ')}), MAS o re-sign dos relatórios " \
+            "FALHOU (#{resign_result.reason}: #{resign_result.message}) — links de relatório assinados com o " \
+            "material anterior vão responder 404 até você rodar 'rails city:resign_reports[#{city.slug}]' com " \
+            "sucesso. NÃO libere a cidade (city:resume) antes disso."
+    end
+
     Platform.audit("city.key_rotated", city_id: city.id)
-    puts "[city:rotate_key] #{city.slug} → #{result.payload[:counts].map { |m, n| "#{m}=#{n}" }.join(' ')}"
+    puts "[city:rotate_key] #{city.slug} → #{result.payload[:counts].map { |m, n| "#{m}=#{n}" }.join(' ')} " \
+         "report_signatures=#{resign_result.payload[:count]}"
   end
 
   # Reenvia o convite do primeiro municipal_admin de uma cidade JÁ active
