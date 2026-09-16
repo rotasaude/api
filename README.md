@@ -139,8 +139,10 @@ e aposenta o banco compartilhado. Ordem obrigatória:
 **Suspender, backup, desligar** (rake; em produção no papel worker):
 
 - `rails 'city:suspend[slug]'` → o host responde 403 em até 30 s. `rails 'city:resume[slug]'` desfaz.
-- `rails 'city:backup[slug]'` → `pg_dump` da cidade em `CITY_BACKUP_DIR`, restaurável sozinho com
-  `pg_restore --no-owner`.
+- `rails 'city:backup[slug]'` → `pg_dump` da cidade em `CITY_BACKUP_DIR`. **Não** é restaurável sozinho com
+  `pg_restore --no-owner` desde a chave de cifra por cidade (Plano 7) — o dump carrega ciphertext derivado do
+  `encryption_key` da cidade no momento do dump; ver o aviso "Restaurar um dump" na seção do Plano 7 abaixo antes de
+  restaurar qualquer coisa.
 - `CONFIRM=<slug> rails 'city:offboard[slug]'` (IRREVERSÍVEL, só cidade suspensa) → dump final, canais inativos,
   `archived`, `DROP DATABASE` e `DROP ROLE`. Recusa (`suspension_too_recent`) até 60 s depois do `city:suspend` — duas
   vezes o TTL de 30 s do cache do catálogo, para os outros processos pararem de servir a cidade antes do dump. Se a
@@ -192,6 +194,14 @@ rails 'city:resume[slug]'
 Ambas as tasks recusam cidade que não esteja `suspended` (`status=<status atual>` na mensagem). A cidade precisa estar
 suspensa porque, entre ler uma linha com o material antigo e gravá-la com o novo, uma busca determinística de outro
 processo (webhook, job) usaria a chave errada e não acharia a linha.
+
+Suspensão sozinha **não basta**: `CityCatalog.reset_cache!` só limpa o cache deste processo, e os outros processos web
+continuam servindo a cidade como ativa — com o objeto `City` de ANTES do rekey/rotação — por até
+`CityCatalog::CACHE_TTL`. Por isso ambas as tasks também recusam (`aguarde <n> s depois do city:suspend`) enquanto a
+suspensão for mais nova que `CityLifecycle::SuspensionGuard::QUIET_PERIOD` (o TTL duas vezes). Sem essa espera, uma
+escrita determinística feita por um processo que ainda acha a cidade ativa, sob o material antigo, cria uma segunda
+linha em vez de colidir com o índice único — e não levanta erro nenhum. É suspensão **mais** este período de espera
+que exclui os outros processos, não a suspensão isolada.
 
 Se a leitura da origem falhar — chave errada, cidade já migrada, dado corrompido — `CityRekey` devolve `:unreadable`
 ("linha ilegível com o material de origem") e a task aborta.

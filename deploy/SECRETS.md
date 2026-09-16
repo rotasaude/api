@@ -44,14 +44,31 @@ Nunca `SUPERUSER`. Em dev e test, `rails platform:bootstrap` cria o mesmo papel 
 ## Backup e offboarding
 
 `CITY_BACKUP_DIR` (volume do worker) recebe os dumps de `city:backup` e o dump final de `city:offboard`. O dump contém
-dados cifrados com as chaves de AR Encryption acima: guardar o dump sem as chaves não permite restaurar.
+dados cifrados com as chaves de AR Encryption acima **e** com o `cities.encryption_key` daquela cidade (chave por
+cidade, Plano 7 — ver README.md): as duas coisas são necessárias para restaurar, não só as chaves de AR Encryption.
+Guardar o dump sem as chaves de AR Encryption OU sem o `encryption_key` da cidade não permite restaurar — e, se o
+`encryption_key` da cidade já tiver mudado (rekey/rotação depois do dump), restaurar devolve dado ilegível **sem
+erro nenhum** (ver "Restaurar um dump" em README.md).
 
 ## Rotação
-AR Encryption suporta lista de chaves. Para rotacionar:
-1. Gerar nova chave: `bin/rails db:encryption:init`.
-2. Prepend da nova nos secrets (lista YAML/JSON).
-3. Re-cifrar ao longo do tempo (job de re-encryption — fora de escopo).
-4. Aposentar a antiga após confirmação.
+
+**O procedimento abaixo NÃO se aplica mais e não deve ser tentado a partir deste documento.** Ele descrevia rotação
+de chave de plataforma por lista (`config.previous`/prior_keys) — válido antes da chave por cidade (Plano 7). Desde
+Plano 7, `CityEncryption` monta o provider de cada cidade a partir de **uma única** chave de plataforma
+(`config.active_record.encryption.primary_key`/`deterministic_key`, sem lista) derivada com o `cities.encryption_key`
+daquela cidade; o código nunca consulta `config.previous`. Prepender uma chave nova nos secrets, como o passo 2 abaixo
+descrevia, mudaria a derivação de TODAS as cidades ao mesmo tempo e tornaria toda linha cifrada existente ilegível
+imediatamente — e `ReencryptionJob` (re-cifra sob a chave atual, não entre duas chaves) não conseguiria ler o
+ciphertext antigo para migrar nada. Rotação da chave de plataforma agora exige uma passagem de rekey por cidade
+(`CityRekey`, `city:rotate_key`/uma variante equivalente por cidade) — desenhar esse procedimento é um plano futuro,
+não este documento.
+
+Passos históricos (pré-Plano-7, nenhum vale mais — mantidos só como referência do que este documento chegou a dizer):
+1. ~~Gerar nova chave: `bin/rails db:encryption:init`.~~
+2. ~~Prepend da nova nos secrets (lista YAML/JSON).~~
+3. ~~Re-cifrar ao longo do tempo (job de re-encryption — fora de escopo).~~
+4. ~~Aposentar a antiga após confirmação.~~
 
 ## Blast radius (aceito no piloto)
-Uma chave protege secrets de TODAS as cidades. Chave por cidade está decidida (spec banco por cidade) e é do Plano 6.
+Uma chave protege secrets de TODAS as cidades. Chave por cidade está decidida (spec banco por cidade) e foi
+implementada no Plano 7 (`cities.encryption_key` por cidade, derivação em `CityEncryption` — ver README.md).
