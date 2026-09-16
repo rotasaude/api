@@ -56,7 +56,7 @@ env:
     RAILS_SERVE_STATIC_FILES: "true"
     WEB_CONCURRENCY: "2"
     RAILS_MAX_THREADS: "5"
-    CITY_DASHBOARD_URL_TEMPLATE: "https://%{slug}.rota-saude.example/dashboard/"
+    CITY_PUBLIC_BASE_TEMPLATE: "https://%{slug}.rota-saude.example"
     GOVBR_REDIRECT_URI: "https://auth.rota-saude.example/auth/govbr/callback"
     GOVBR_ISSUER_URL: "https://sso.acesso.gov.br"
     CITY_BACKUP_DIR: "/rails/storage/city_backups"

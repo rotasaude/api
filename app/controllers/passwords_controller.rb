@@ -35,9 +35,9 @@ class PasswordsController < ApplicationController
 
   private
 
-  # Link to the dashboard frontend (separate Vite/static app, not the API host). Per-city destination is Plan 6.
+  # Link para o dashboard DA CIDADE da requisição (Plano 6): o reset é sempre
+  # dentro de uma cidade (CityResolution roda antes), então Current.city existe.
   def password_reset_link(token)
-    base = ENV["PUBLIC_DASHBOARD_URL"] || "http://localhost:5175/dashboard/"
-    "#{base}?#{{ reset: token }.to_query}"
+    "#{CityPublicUrl.dashboard(Current.city)}?#{{ reset: token }.to_query}"
   end
 end

@@ -21,7 +21,7 @@ faltar uma delas quebra até rodando os specs:
 | `CITY_DATABASE_HOST` / `CITY_DATABASE_PORT` | `DATABASE_HOST` / `DATABASE_PORT` (em produção: host obrigatório, porta `5432`) | servidor na URL de cada cidade provisionada (`CityDatabase.url_for`); o web precisa no `POST /cities` |
 | `CITY_DATABASE_SSLMODE` | vazio (sem `sslmode`; em produção `require`) | `?sslmode=` da URL da cidade e `PGSSLMODE` do `pg_dump` |
 | `CITY_BACKUP_DIR` | `tmp/city_backups` | `city:backup`, `city:offboard` |
-| `PUBLIC_DASHBOARD_URL` | `http://localhost:5175/dashboard/` | link do e-mail de redefinição de senha |
+| `CITY_PUBLIC_BASE_TEMPLATE` | `http://%{slug}.localhost:5175` | host público de cada cidade: dashboard, wpda e link de reset de senha |
 
 Bancos que precisam existir no Postgres do host:
 
@@ -55,7 +55,7 @@ vale 1 hora e é auditada no banco de plataforma e no da cidade. Cinco códigos 
 `GOVBR_CLIENT_SECRET`, `GOVBR_REDIRECT_URI`, `GOVBR_ISSUER_URL` (default staging: `https://sso.staging.acesso.gov.br`
 no deploy `development`, produção usa `https://sso.acesso.gov.br` — ver `deploy/*/deploy.yml`). Sem elas (ou vazias),
 `start` responde 502.
-O destino de volta usa `CITY_DASHBOARD_URL_TEMPLATE` (default `http://%{slug}.localhost:5175/dashboard/`).
+O destino de volta usa `CITY_PUBLIC_BASE_TEMPLATE` (default `http://%{slug}.localhost:5175`), com `/dashboard/`.
 
 ## Ciclo de vida da cidade (Plano 4)
 

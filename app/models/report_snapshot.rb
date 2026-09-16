@@ -25,8 +25,11 @@ class ReportSnapshot < ApplicationRecord
     SecureRandom.urlsafe_base64(32)
   end
 
+  # Link do cidadão: host da cidade do snapshot (Plano 6). O único chamador é
+  # NotifyCitizenJob, que roda dentro de CityScopedJob#with_city — Current.city
+  # está setado. Sem cidade, CityPublicUrl levanta em vez de mandar um link
+  # para o host errado.
   def url
-    base = ENV.fetch("WPDA_PUBLIC_BASE", "http://localhost:5176/wpda")
-    "#{base.chomp('/')}/?token=#{token}"
+    "#{CityPublicUrl.wpda(Current.city)}?token=#{token}"
   end
 end
