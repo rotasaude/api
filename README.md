@@ -278,12 +278,12 @@ segue em frente**: aborta com uma mensagem dizendo que os dados estão intactos 
 catálogo aponta para o material novo — corrija o `encryption_key` da cidade manualmente antes de rodar `city:rekey` ou
 `city:rotate_key` nela outra vez.
 
-> **Restaurar um dump.** `city:restore[slug,caminho]` (`CityLifecycle::Restore`) é o inverso de `city:backup`. Exige a
-> mesma quarentena de `city:rekey`/`city:rotate_key`: cidade `suspended` e fora do
-> `CityLifecycle::SuspensionGuard::QUIET_PERIOD` — nessa ordem, e ambas antes de olhar para o arquivo. Um dump só é
-> restaurável **na cidade de origem, com a `encryption_key` dela intacta** — o dump carrega ciphertext. Restaurar numa
-> cidade cujo catálogo tem outro material (rotacionado depois do dump, ou de outra cidade) **devolve dado ilegível sem
-> erro** — nada no `pg_restore` nem no boot avisa.
+> **Restaurar um dump.** `city:restore[slug,caminho]` (`CityLifecycle::Restore`) é o inverso de `city:backup` — **não**
+> de todo dump que o sistema produz (ver escopo abaixo). Exige a mesma quarentena de `city:rekey`/`city:rotate_key`:
+> cidade `suspended` e fora do `CityLifecycle::SuspensionGuard::QUIET_PERIOD` — nessa ordem, e ambas antes de olhar
+> para o arquivo. Um dump só é restaurável **na cidade de origem, com a `encryption_key` dela intacta** — o dump
+> carrega ciphertext. Restaurar numa cidade cujo catálogo tem outro material (rotacionado depois do dump, ou de outra
+> cidade) **devolve dado ilegível sem erro** — nada no `pg_restore` nem no boot avisa.
 >
 > Desde este plano, `city:backup` grava um arquivo irmão `<dump>.key-digest` com o SHA-256 do `encryption_key` da
 > cidade no momento do dump. `city:restore` compara esse digest com o material atual da cidade **antes de qualquer
@@ -295,6 +295,16 @@ catálogo aponta para o material novo — corrija o `encryption_key` da cidade m
 > `pg_restore --clean --if-exists` dropa objetos antes de recriá-los: uma falha no meio do caminho deixa o banco num
 > estado quebrado, e `city:restore` não tenta de novo nem finge sucesso — reporta `:restore_failed` com as últimas
 > linhas (redigidas) da saída do `pg_restore`.
+>
+> **Escopo — o que `city:restore` cobre e o que não cobre (F3 do fix pass, 2026-09-16).** `city:restore` exige
+> `status == "suspended"` (`CityLifecycle::Restore`, guarda acima) e restaura DENTRO do banco existente da cidade via
+> `pg_restore --clean --if-exists`. Isso cobre todo dump de `city:backup[slug]` tirado enquanto a cidade ainda existe
+> (`active` → suspenda → restaure → resuma). **Não cobre o dump final de `city:offboard`** — aquele que é, por
+> definição, o artefato de disaster-recovery tirado no ponto de não retorno: `city:offboard` deixa a cidade `archived`
+> e em seguida executa `DROP DATABASE` e `DROP ROLE` (`CityLifecycle::Offboard`). Depois disso não existe banco algum
+> para `pg_restore --clean` apontar, e `city:restore` recusaria de qualquer forma (`status == "archived"`, não
+> `"suspended"`). **Restaurar uma cidade offboarded não é um caminho suportado hoje** — recriar o role e o banco (por
+> fora desta task) antes de um `pg_restore` manual é a única saída, e nem essa foi exercitada por este plano.
 
 ## Worker por cidade (Plano 5)
 
@@ -398,3 +408,14 @@ Deliberado, não esquecido — cada item tem um motivo e nenhum é bloqueador do
   links que cidadãos já receberam. Está documentado para saída (`report_snapshot.rb`, `deploy/SECRETS.md`) quando
   todo `report_snapshot` vivo tiver sido re-assinado com a chave por cidade.
 - **`apps/admin` não tem remote no GitHub.** Tudo que este plano construiu no console existe só nesta máquina.
+- **A correção da Task 11 na spec (`docs/superpowers/specs/2026-09-12-banco-por-cidade-design.md`, §4: backup deixou
+  de ser "restaurável sozinho" desde o Plano 7) não está versionada.** `docs/` na raiz do monorepo não é um repositório
+  git — não dá `git log`, `git diff` nem `git push` ali. A correção existe só nesta máquina, no mesmo sentido em que
+  `apps/admin` acima existe só nesta máquina: sem clone fresco de `docs/` como repositório próprio, ela não viaja com
+  o resto deste plano.
+- **A CI da API (`apps/api/.github/workflows/ci.yml`) não passa sem o secret de repositório `RAILS_MASTER_KEY`.** Todo
+  boot do Rails (mesmo `RAILS_ENV=test`) lê `Rails.application.credentials` antes de qualquer fallback de ENV
+  (`config/initializers/active_record_encryption.rb`) — sem esse secret configurado em Settings → Secrets → Actions,
+  com o conteúdo de `apps/api/config/master.key`, o primeiro passo do workflow (`bin/rails platform:bootstrap`) já
+  levanta `ActiveSupport::EncryptedFile::MissingKeyError`. Isso vale também para o job `production-boot` que este fix
+  pass adicionou (F1) — mesmo secret, mesma exigência.
