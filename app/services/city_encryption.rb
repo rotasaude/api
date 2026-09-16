@@ -59,6 +59,18 @@ module CityEncryption
     ActiveRecord::Encryption::DeterministicKeyProvider.new(platform_deterministic_key)
   end
 
+  # Chave HMAC do token de relatório, por cidade (Plano 8, spec §6). Derivada da
+  # chave global de assinatura + material da cidade: a custódia é a mesma da
+  # chave de cifra, e um dump de A não permite forjar token de B.
+  def report_signing_key(city)
+    material = city.respond_to?(:encryption_key) ? city.encryption_key.to_s : ""
+    raise MissingKey, "cidade sem encryption_key: não há chave a derivar" if material.blank?
+
+    OpenSSL::HMAC.digest("sha256", legacy_report_signing_key, "report-signing:#{material}")
+  end
+
+  def legacy_report_signing_key = Rails.application.credentials.fetch(:report_signing_key)
+
   def secret_for(city, platform_secret)
     material = city.respond_to?(:encryption_key) ? city.encryption_key.to_s : ""
     raise MissingKey, "cidade sem encryption_key: não há chave a derivar" if material.blank?

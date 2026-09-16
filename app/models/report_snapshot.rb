@@ -11,15 +11,26 @@ class ReportSnapshot < ApplicationRecord
   def self.find_by_signed_token(token)
     record = find_by(token: token)
     return nil unless record
-    return nil unless ActiveSupport::SecurityUtils.secure_compare(record.signature, sign(token))
+    return nil unless signature_matches?(record, token)
     return nil if record.expires_at && record.expires_at < Time.current
     record
   end
 
   def self.sign(token)
-    key = Rails.application.credentials.fetch(:report_signing_key)
-    OpenSSL::HMAC.hexdigest("sha256", key, token)
+    OpenSSL::HMAC.hexdigest("sha256", CityEncryption.report_signing_key(Current.city), token)
   end
+
+  # Transição do Plano 8: assinaturas gravadas antes da chave por cidade usam a
+  # chave global. A rake city:resign_reports[slug] reescreve as existentes; este
+  # fallback pode sair depois de 30 dias (GenerateReportJob::EXPIRATION), quando
+  # todo snapshot vivo já tiver nascido com a chave da cidade.
+  def self.signature_matches?(record, token)
+    return true if ActiveSupport::SecurityUtils.secure_compare(record.signature, sign(token))
+
+    legacy = OpenSSL::HMAC.hexdigest("sha256", CityEncryption.legacy_report_signing_key, token)
+    ActiveSupport::SecurityUtils.secure_compare(record.signature, legacy)
+  end
+  private_class_method :signature_matches?
 
   def self.mint_token
     SecureRandom.urlsafe_base64(32)

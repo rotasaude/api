@@ -318,6 +318,14 @@ namespace :city do
     puts "[city:backup] #{city.slug} → #{result.payload[:path]}"
   end
 
+  desc "Reescreve as assinaturas de relatório de uma cidade com a chave dela. Uso: city:resign_reports[slug]"
+  task :resign_reports, %i[slug] => :environment do |_t, args|
+    city = lifecycle_city.call("city:resign_reports", args[:slug])
+    result = CityConnection.with(city) { CityReports::Resign.call }
+    abort "[city:resign_reports] #{result.reason}: #{result.message}" if result.failure?
+    puts "[city:resign_reports] #{city.slug} → #{result.payload[:count]} assinatura(s)"
+  end
+
   # Plano 7: migração e rotação de chave de cifra de uma cidade.
   #
   # A cidade precisa estar SUSPENSA: entre ler uma linha com o material antigo e
