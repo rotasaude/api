@@ -2,6 +2,8 @@ require "rails_helper"
 require "rake"
 
 RSpec.describe "city:rekey and city:rotate_key rake tasks" do
+  include ActiveSupport::Testing::TimeHelpers
+
   before(:all) { Rails.application.load_tasks unless Rake::Task.task_defined?("city:rekey") }
   before { %w[city:rekey city:rotate_key].each { |t| Rake::Task[t].reenable } }
 
@@ -24,6 +26,25 @@ RSpec.describe "city:rekey and city:rotate_key rake tasks" do
     $stdout.string
   ensure
     $stdout = original_stdout
+  end
+
+  # Mesmo estilo de capture_stdout acima, para o lado do abort (Kernel#abort
+  # escreve a mensagem em $stderr antes de levantar SystemExit).
+  def capture_stderr
+    original_stderr, $stderr = $stderr, StringIO.new
+    yield
+    $stderr.string
+  ensure
+    $stderr = original_stderr
+  end
+
+  # `city` (acima) é criada JÁ suspended pela factory, sem PlatformEvent
+  # "city.suspended" — por isso os exemplos de cima passam pela guarda do
+  # período de quietude sem notar que ela existe. Estes simulam a suspensão
+  # "de verdade" (via Platform.audit, o mesmo canal que
+  # CityLifecycle::Suspend usa) para exercitar F1.
+  def suspend_recently!
+    Platform.audit("city.suspended", city_id: city.id)
   end
 
   it "refuses an unknown slug" do
@@ -90,5 +111,54 @@ RSpec.describe "city:rekey and city:rotate_key rake tasks" do
 
     expect { invoke_silently("city:rotate_key", city.slug) }.to raise_error(SystemExit)
     expect(Digest::SHA256.hexdigest(city.reload.encryption_key)).to eq(before_digest)
+  end
+
+  # Fix F1 (o Critical desta rodada): suspensão sozinha não basta — outros
+  # processos web ainda servem a cidade como ativa, com o material antigo, por
+  # até CityLifecycle::SuspensionGuard::QUIET_PERIOD depois do city.suspended
+  # real. Os quatro exemplos abaixo provam a recusa enquanto isso é recente E
+  # que a tarefa roda normalmente depois — sem o segundo exemplo, um bloqueio
+  # PERMANENTE (nunca deixar rodar) também faria o primeiro passar, e a
+  # suíte não notaria a diferença.
+
+  it "city:rekey refuses a city suspended less than the quiet period ago" do
+    suspend_recently!
+
+    # Sem invoke_silently aqui de propósito: ele redireciona $stderr para uma
+    # StringIO DESCARTADA (existe só para não poluir a saída dos exemplos de
+    # happy-path acima) — usá-lo aqui devolveria "" sempre, prova nenhuma.
+    out = capture_stderr { expect { Rake::Task["city:rekey"].invoke(city.slug) }.to raise_error(SystemExit) }
+
+    expect(out).to match(/aguarde #{CityLifecycle::SuspensionGuard::QUIET_PERIOD.to_i} s/)
+  end
+
+  it "city:rekey runs once the quiet period since the real suspension has elapsed" do
+    suspend_recently!
+
+    travel(CityLifecycle::SuspensionGuard::QUIET_PERIOD + 1.second) do
+      expect { invoke_silently("city:rekey", city.slug) }
+        .to output(/\[city:rekey\] #{city.slug}/).to_stdout
+    end
+  end
+
+  it "city:rotate_key refuses a city suspended less than the quiet period ago, leaving the stored material untouched" do
+    before_digest = Digest::SHA256.hexdigest(city.reload.encryption_key)
+    suspend_recently!
+
+    out = capture_stderr { expect { Rake::Task["city:rotate_key"].invoke(city.slug) }.to raise_error(SystemExit) }
+
+    expect(out).to match(/aguarde #{CityLifecycle::SuspensionGuard::QUIET_PERIOD.to_i} s/)
+    expect(Digest::SHA256.hexdigest(city.reload.encryption_key)).to eq(before_digest)
+  end
+
+  it "city:rotate_key runs once the quiet period since the real suspension has elapsed" do
+    before_digest = Digest::SHA256.hexdigest(city.reload.encryption_key)
+    suspend_recently!
+
+    travel(CityLifecycle::SuspensionGuard::QUIET_PERIOD + 1.second) do
+      invoke_silently("city:rotate_key", city.slug)
+    end
+
+    expect(Digest::SHA256.hexdigest(city.reload.encryption_key)).not_to eq(before_digest)
   end
 end

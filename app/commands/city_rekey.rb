@@ -4,10 +4,17 @@
 # `record.encrypt` (ReencryptionJob) porque ele lê e escreve no mesmo contexto, e
 # o provedor determinístico aceita uma chave só — não existe janela de duas.
 #
-# A cidade deve estar SUSPENSA: entre ler e gravar, uma busca determinística de
-# outro processo usaria a chave errada e não acharia a linha. Suspensão também é
-# o que torna seguro fazer TUDO numa transação só (abaixo): sem escritores
-# concorrentes, o custo do lock não compete com tráfego real.
+# A cidade deve estar SUSPENSA — mas suspensão sozinha NÃO basta (fix F1 da
+# rodada final de revisão): CityCatalog.reset_cache! só limpa o cache DESTE
+# processo, e outros processos web continuam servindo a cidade como ativa,
+# com o objeto City de ANTES da suspensão, por até
+# CityLifecycle::SuspensionGuard::QUIET_PERIOD. É suspensão MAIS esse período
+# de espera que exclui os outros processos — só então fica seguro fazer TUDO
+# numa transação só (abaixo): sem escritores concorrentes de verdade, o custo
+# do lock não compete com tráfego real. As rake tasks (lib/tasks/city.rake)
+# checam SuspensionGuard.suspended_recently? antes de chamar este comando;
+# CityRekey em si não repete a checagem — recebe a cidade já suspensa há
+# tempo suficiente.
 #
 # Tudo-ou-nada (fix round 1): a reescrita inteira roda dentro de UMA transação
 # `ApplicationRecord.transaction` (não `ActiveRecord::Base.transaction` — essa
@@ -27,31 +34,39 @@
 # (confirmado ao vivo, só leitura, contra curitiba/maringa: Conversation#phone
 # e InboundMessage#raw levantam Errors::Decryption sob o contexto de cidade
 # hoje, e decifram sob a chave global). Nesse modo `from_key:` não se aplica —
-# a origem já é a chave global, não um material arbitrário — e o lado da
-# ESCRITA não muda: `to_key:` continua significando "material atual da
-# cidade" quando nil. Ver `in_platform_source` para os dois mecanismos que a
-# leitura em modo plataforma precisa (contexto para atributo não-determinístico,
-# flag em Current para o determinístico).
+# a origem já é a chave global, não um material arbitrário. O lado da ESCRITA
+# nunca teve um parâmetro equivalente: sempre foi o material ATUAL da própria
+# cidade (`@city`) — um `to_key:` chegou a existir aqui, mas não tinha
+# chamador (nem rake task, nem spec) e foi removido (fix F6, rodada final de
+# revisão). Ver `in_platform_source` para os dois mecanismos que a leitura em
+# modo plataforma precisa (contexto para atributo não-determinístico, flag em
+# Current para o determinístico).
 class CityRekey
+  # in_batches (abaixo) só pagina o SCAN de ids — não bounda a transação, o
+  # lock footprint nem o WAL: desde que a reescrita inteira passou a rodar
+  # dentro de UMA `ApplicationRecord.transaction` (fix round 1, ver header),
+  # todas as linhas de todas as TARGETS ficam presas na mesma transação até o
+  # fim, batch ou não. BATCH_SIZE existe só para não materializar todos os ids
+  # de uma tabela em memória de uma vez.
   BATCH_SIZE = 200
 
-  # Só o que mora no banco DA CIDADE.
-  TARGETS = [
-    [ User,           :otp_secret ],
-    [ Conversation,   :phone ],
-    [ InboundMessage, :raw ],
-    [ Consent,        :evidence ],
-    [ Author,         :token ]
-  ].freeze
+  # Só o que mora no banco DA CIDADE, com material derivado por cidade — não
+  # os de plataforma (City#database_url, City#encryption_key,
+  # CityChannel#access_token, Operator#otp_secret), que ficam fixos em
+  # PlatformKeyProvider e nunca precisam de rekey por cidade. Única fonte
+  # desta lista: CityEncryption::CITY_KEYED_TARGETS — ReencryptionJob::TARGETS
+  # aponta para o mesmo array (fix F6), para que um `encrypts` novo não possa
+  # entrar num registro e ficar esquecido no outro.
+  TARGETS = CityEncryption::CITY_KEYED_TARGETS
 
   SOURCES = %i[city platform].freeze
 
   # Assinatura final (fix round 2): source: :city (padrão, comportamento das
   # rounds anteriores) ou source: :platform (migração pré-Plano-7 -> cidade).
-  def self.call(city:, from_key: nil, to_key: nil, source: :city) =
-    new(city: city, from_key: from_key, to_key: to_key, source: source).call
+  def self.call(city:, from_key: nil, source: :city) =
+    new(city: city, from_key: from_key, source: source).call
 
-  def initialize(city:, from_key: nil, to_key: nil, source: :city)
+  def initialize(city:, from_key: nil, source: :city)
     raise ArgumentError, "source: deve ser #{SOURCES.inspect}, recebeu #{source.inspect}" unless SOURCES.include?(source)
     if source == :platform && from_key
       raise ArgumentError, "from_key: não se combina com source: :platform — a origem já é a chave global"
@@ -59,8 +74,11 @@ class CityRekey
 
     @city = city
     @source = source
-    @from_city = shadow_city(from_key)
-    @to_city = shadow_city(to_key)
+    # `@from_city` só é usado por `read_source` quando source: :city (abaixo)
+    # — em source: :platform a leitura passa por `in_platform_source`, que
+    # ignora `@from_city` inteiramente, então computá-lo ali seria morto (fix
+    # F6). `from_key` já é obrigatoriamente nil nesse modo (guarda acima).
+    @from_city = source == :city ? shadow_city(from_key) : nil
   end
 
   def call
@@ -83,8 +101,10 @@ class CityRekey
 
   private
 
-  # `from_key`/`to_key` nil = material atual da cidade. A cópia em memória existe
-  # só para montar o provedor: nada dela é salvo.
+  # `from_key` nil = material atual da cidade (@city, sem cópia). A ESCRITA
+  # sempre usa @city diretamente — não existe (nem nunca precisou existir)
+  # material de destino diferente do atual. A cópia em memória do `from_key`
+  # existe só para montar o provedor de leitura: nada dela é salvo.
   def shadow_city(material)
     return @city if material.blank?
 
@@ -100,7 +120,7 @@ class CityRekey
         plaintext = read_source(model, id, attribute)
         next if plaintext.nil?
 
-        in_city(@to_city) do
+        in_city(@city) do
           # `select(:id)` on purpose: the encrypted column stays unloaded, so
           # there is no original raw value in `@attributes` to compare the new
           # plaintext against. Without it, `save!` (via partial writes: AR

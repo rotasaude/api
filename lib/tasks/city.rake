@@ -331,6 +331,19 @@ namespace :city do
       abort "[city:rekey] cidade #{city.slug} precisa estar suspensa (status=#{city.status}) — rode city:backup e city:suspend antes"
     end
 
+    # Fix F1: suspensão sozinha não basta — outro processo web pode ainda
+    # servir a cidade como ativa por até CityLifecycle::SuspensionGuard::QUIET_PERIOD
+    # (ver esse módulo). city:rekey não move o material do catálogo, mas
+    # continua vulnerável ao lado determinístico: uma escrita concorrente sob a
+    # chave global cria uma segunda linha que o índice único não pega, porque
+    # os ciphertexts divergem. Recusar aqui é mais barato do que confiar
+    # "cidade suspensa é suficiente" e deixar duas tasks vizinhas com regras
+    # diferentes para a mesma corrida.
+    if CityLifecycle::SuspensionGuard.suspended_recently?(city)
+      abort "[city:rekey] cidade #{city.slug} suspensa recentemente — aguarde " \
+            "#{CityLifecycle::SuspensionGuard::QUIET_PERIOD.to_i} s depois do city:suspend antes de rodar city:rekey"
+    end
+
     # source: :platform — os dados de uma cidade ainda não migrada estão em
     # ciphertext da chave GLOBAL (o que já existia antes deste plano), não da
     # própria cidade. Por isso NÃO passamos from_key: aqui — com
@@ -345,6 +358,16 @@ namespace :city do
   task :rotate_key, %i[slug] => :environment do |_t, args|
     city = lifecycle_city.call("city:rotate_key", args[:slug])
     abort "[city:rotate_key] cidade #{city.slug} precisa estar suspensa (status=#{city.status})" unless city.status == "suspended"
+
+    # Fix F1 (o Critical desta rodada): a mesma checagem de city:rekey acima,
+    # ANTES de gerar/gravar material novo. Aqui a corrida é mais grave: um
+    # outro processo que ainda serve a cidade como ativa escreveria sob o
+    # material ANTIGO enquanto este processo já reescreveu tudo sob o NOVO —
+    # ver CityLifecycle::SuspensionGuard para o porquê do TTL duas vezes.
+    if CityLifecycle::SuspensionGuard.suspended_recently?(city)
+      abort "[city:rotate_key] cidade #{city.slug} suspensa recentemente — aguarde " \
+            "#{CityLifecycle::SuspensionGuard::QUIET_PERIOD.to_i} s depois do city:suspend antes de rodar city:rotate_key"
+    end
 
     previous = city.encryption_key
     city.update!(encryption_key: SecureRandom.hex(32))
