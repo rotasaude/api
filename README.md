@@ -88,11 +88,14 @@ que serve o `dist` sob o mesmo `base` do Vite (`/admin/`, `/dashboard/`, `/wpda/
 As três imagens buildam localmente (`docker build`) e cada SPA continua passando em `npm run build` no container de
 dev. Isso resolve o "não há pipeline de build" — falta publicar e rotear.
 
-**BLOQUEADO (dono: usuário) — como rotear as SPAs pelo proxy.** O kamal-proxy roteia por **host**, não por caminho.
-Isso não é uma limitação genérica do Kamal — é uma pergunta concreta sobre este ambiente: **o Kamal não está instalado
-nesta máquina** (ausente do `Gemfile`/`Gemfile.lock`, sem `.kamal/`, sem binário no PATH), então não há como consultar
-a versão em uso nem testar se ela suporta roteamento por caminho dentro do mesmo host. Não escrevi uma seção
-`accessories` em `deploy/production/deploy.yml` que eu não pudesse verificar. As opções, com os trade-offs:
+**BLOQUEADO (dono: usuário) — como rotear as SPAs pelo proxy.** Não sei se o kamal-proxy desta implantação roteia só
+por **host** ou também aceita caminho dentro de um mesmo host — **o Kamal não está instalado nesta máquina** (ausente
+do `Gemfile`/`Gemfile.lock`, sem `.kamal/`, sem binário no PATH), então não há como consultar a versão em uso nem
+testar o que ela suporta. O padrão historicamente documentado do kamal-proxy é rotear só por host; se for esse ainda
+o comportamento da versão instalada em produção, os caminhos `/dashboard/` e `/wpda/` de um host de cidade e o
+`/admin/` de `admin.*` não têm como chegar a um backend diferente do Rails sem trocar de host ou acrescentar um proxy.
+Não escrevi uma seção `accessories` em `deploy/production/deploy.yml` que eu não pudesse verificar. As opções, com os
+trade-offs:
 
 1. **Host por app** (ex.: `console.<domínio>` para o admin, em vez de `admin.<domínio>/admin/`). Simples, suportado
    pelo roteamento por host que o kamal-proxy já faz hoje (mesmo padrão de `api.*`/`admin.*`/`auth.*`/`*.` em
