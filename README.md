@@ -81,11 +81,39 @@ Duas saídas, escolha antes do primeiro deploy de produção:
 
 O registro DNS `*.<domínio>` apontando para os hosts web é necessário nos dois casos.
 
-**O que esses hosts servem hoje.** O proxy do Kamal publica esses hosts para a aplicação Rails, que serve só a API —
-não há pipeline de build nem servidor para as três SPAs (`apps/admin`, `apps/dashboard`, `apps/wpda`). Em produção,
-`admin.<domínio>/admin/` e `<slug>.<domínio>/dashboard/` (e `/wpda/`) não têm nada atrás deles ainda. O Plano 6 faz a
-jornada funcionar em desenvolvimento (Vite serve os três, o proxy do Vite repassa o Host); servir os frontends em
-produção continua em aberto.
+**O que esses hosts servem hoje (Plano 8 — Task 9).** Cada SPA (`apps/admin`, `apps/dashboard`, `apps/wpda`) agora tem
+`Dockerfile` + `nginx.conf` próprios: build multi-stage (`node:22-alpine` → `npm ci && npm run build`) e um `nginx:alpine`
+que serve o `dist` sob o mesmo `base` do Vite (`/admin/`, `/dashboard/`, `/wpda/`), com cache imutável para
+`*/assets/`, `no-cache` para o `index.html`, fallback de SPA (`try_files ... /*/index.html`) e `/up` para healthcheck.
+As três imagens buildam localmente (`docker build`) e cada SPA continua passando em `npm run build` no container de
+dev. Isso resolve o "não há pipeline de build" — falta publicar e rotear.
+
+**BLOQUEADO (dono: usuário) — como rotear as SPAs pelo proxy.** O kamal-proxy roteia por **host**, não por caminho.
+Isso não é uma limitação genérica do Kamal — é uma pergunta concreta sobre este ambiente: **o Kamal não está instalado
+nesta máquina** (ausente do `Gemfile`/`Gemfile.lock`, sem `.kamal/`, sem binário no PATH), então não há como consultar
+a versão em uso nem testar se ela suporta roteamento por caminho dentro do mesmo host. Não escrevi uma seção
+`accessories` em `deploy/production/deploy.yml` que eu não pudesse verificar. As opções, com os trade-offs:
+
+1. **Host por app** (ex.: `console.<domínio>` para o admin, em vez de `admin.<domínio>/admin/`). Simples, suportado
+   pelo roteamento por host que o kamal-proxy já faz hoje (mesmo padrão de `api.*`/`admin.*`/`auth.*`/`*.` em
+   `proxy.hosts`). Custo: muda as URLs publicadas (`admin.<domínio>/admin/` deixa de existir; `<slug>.<domínio>/dashboard/`
+   e `/wpda/` também precisariam de host próprio, ou seja, um host adicional por cidade — o que colide com o curinga
+   `*.<domínio>` de hoje).
+2. **Nginx de borda por host**, na frente do host que hoje aponta para o Rails: ele decide por caminho — `/dashboard/`
+   e `/wpda/` vão para o container da SPA, o resto (`/session`, `/r/:token`, `/admin/api/*`, webhook do WhatsApp) segue
+   para o Rails. Mantém as URLs de hoje. Custo: mais um componente para operar (imagem, deploy, healthcheck,
+   observabilidade) por host de cidade e para `admin.*`.
+3. **Roteamento por caminho no próprio kamal-proxy**, *se* a versão em uso suportar. É a opção mais barata (nenhum
+   componente novo) e a única que eu não posso confirmar a partir desta máquina.
+
+Para decidir, eu precisaria saber: qual versão do Kamal/kamal-proxy está em uso no ambiente de deploy real, se essa
+versão suporta roteamento por caminho dentro de um host (`kamal-proxy` ganhou isso em versões mais recentes, mas não
+posso afirmar que a instalação em produção já a tem), e se a resposta for não, se a preferência é mudar URLs (opção 1)
+ou manter e operar um proxy extra (opção 2).
+
+**BLOQUEADO (dono: usuário) — credencial de registro.** Publicar as três imagens em `ghcr.io` (o `registry` do
+`deploy.yml`) exige uma credencial (`KAMAL_REGISTRY_PASSWORD` ou equivalente para as três) que não existe nesta
+máquina. As imagens buildam localmente; falta só a credencial para publicá-las.
 
 ## Ciclo de vida da cidade (Plano 4)
 
