@@ -315,7 +315,7 @@ namespace :city do
     city = lifecycle_city.call("city:backup", args[:slug])
     result = CityLifecycle::Backup.call(city: city, dir: city_backup_dir.call)
     abort "[city:backup] #{result.reason}: #{result.message}" if result.failure?
-    puts "[city:backup] #{city.slug} → #{result.payload[:path]}"
+    puts "[city:backup] #{city.slug} → #{result.payload[:path]} (digest: #{result.payload[:key_digest_path]})"
   end
 
   desc "Restaura um dump numa cidade suspensa. Uso: city:restore[slug,caminho]"
