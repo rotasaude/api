@@ -15,7 +15,7 @@ Rails.application.routes.draw do
       post "/session/challenge", to: "sessions#challenge_totp"
       resources :city_grants, only: :create
       # Provisionamento em duas fases (Plano 4).
-      resources :cities, only: %i[create show]
+      resources :cities, only: %i[index create show]
     end
   end
 
