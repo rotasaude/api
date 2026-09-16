@@ -30,7 +30,11 @@ servers:
 
 proxy:
   ssl: false
-  host: dev.rota-saude.example
+  hosts:
+    - dev.rota-saude.example
+    - admin.dev.rota-saude.example
+    - auth.dev.rota-saude.example
+    - "*.dev.rota-saude.example"
   app_port: 3000
   healthcheck:
     path: /up

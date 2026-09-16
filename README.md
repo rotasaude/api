@@ -58,6 +58,17 @@ no deploy `development`, produção usa `https://sso.acesso.gov.br` — ver `dep
 `start` responde 502.
 O destino de volta usa `CITY_PUBLIC_BASE_TEMPLATE` (default `http://%{slug}.localhost:5175`), com `/dashboard/`.
 
+## Hosts publicados (Plano 6)
+
+O proxy do Kamal publica quatro hosts: o da API (`api.*`), o console (`admin.*`), o callback do gov.br (`auth.*`) e o
+curinga das cidades (`*.<domínio>`). Uma cidade provisionada passa a atender sem deploy novo — quem decide é o
+`CityCatalog`, pelo Host da requisição.
+
+**Gate de go-live:** o curinga exige (a) registro DNS `*.<domínio>` apontando para os hosts web e (b) certificado
+curinga. O Let's Encrypt do kamal-proxy emite por host via HTTP-01, o que NÃO cobre curinga: para `*.<domínio>` é
+preciso DNS-01 com certificado provisionado fora do Kamal, montado no proxy. Sem isso, cada cidade nova precisa de um
+host explícito na lista e de um `kamal proxy reboot`.
+
 ## Ciclo de vida da cidade (Plano 4)
 
 **Provisionar.** No console (`admin.*`, operador com TOTP):

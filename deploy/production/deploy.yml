@@ -33,7 +33,15 @@ servers:
 
 proxy:
   ssl: true
-  host: api.rota-saude.example
+  # Plano 6: um host por papel do domínio. O curinga atende qualquer cidade
+  # provisionada sem novo deploy — a aplicação resolve o slug pelo Host
+  # (CityCatalog). `admin.` é o console e `auth.` é o callback único do gov.br.
+  # O certificado curinga de *.rota-saude.example e o DNS são gate de go-live.
+  hosts:
+    - api.rota-saude.example
+    - admin.rota-saude.example
+    - auth.rota-saude.example
+    - "*.rota-saude.example"
   app_port: 3000
   healthcheck:
     path: /up
