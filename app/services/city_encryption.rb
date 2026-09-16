@@ -13,6 +13,27 @@
 module CityEncryption
   class MissingKey < StandardError; end
 
+  # Os cinco atributos cifrados que moram no banco DA CIDADE e usam material
+  # DERIVADO por cidade (via key_provider: CityDeterministicKeyProvider.new ou
+  # a ausência de key_provider:, que cai no contexto de CityConnection.with) —
+  # não os de plataforma, que ficam fixos em PlatformKeyProvider
+  # (City#database_url, City#encryption_key, CityChannel#access_token,
+  # Operator#otp_secret) e por isso nunca entram aqui.
+  #
+  # Fonte única (fix F6, rodada final de revisão): CityRekey::TARGETS
+  # (migração/rotação, app/commands/city_rekey.rb) e ReencryptionJob::TARGETS
+  # (re-cifra sob a chave atual, app/jobs/reencryption_job.rb) apontavam para
+  # duas cópias literais desta mesma lista, mantidas em sincronia à mão. Os
+  # dois agora apontam para ISTO, para que um `encrypts` novo não possa entrar
+  # num registro e ficar esquecido no outro.
+  CITY_KEYED_TARGETS = [
+    [ User,           :otp_secret ],
+    [ Conversation,   :phone ],
+    [ InboundMessage, :raw ],
+    [ Consent,        :evidence ],
+    [ Author,         :token ]
+  ].freeze
+
   module_function
 
   def context_properties(city)

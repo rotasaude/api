@@ -27,7 +27,10 @@ class PlatformKeyProvider
     provider.encryption_key
   end
 
-  def decryption_keys(message = nil)
+  # Sem default para `message` (mesma correção de CityDeterministicKeyProvider,
+  # rodada final de revisão) — a base do Rails não tem um, e `= nil` só troca
+  # um ArgumentError imediato por um NoMethodError mais fundo dentro do gem.
+  def decryption_keys(message)
     provider.decryption_keys(message)
   end
 

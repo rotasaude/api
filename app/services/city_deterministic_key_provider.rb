@@ -23,7 +23,12 @@ class CityDeterministicKeyProvider
     provider.encryption_key
   end
 
-  def decryption_keys(message = nil)
+  # Sem default para `message` (fix da rodada final de revisão): a base
+  # `ActiveRecord::Encryption::KeyProvider#decryption_keys` do Rails não tem
+  # um — inventar `= nil` aqui só trocaria um `ArgumentError` imediato (chamador
+  # esqueceu o argumento) por um `NoMethodError` bem mais fundo, em
+  # `nil.headers` dentro do gem, na hora de decifrar.
+  def decryption_keys(message)
     provider.decryption_keys(message)
   end
 
