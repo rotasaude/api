@@ -5,7 +5,21 @@
 # o provedor determinístico aceita uma chave só — não existe janela de duas.
 #
 # A cidade deve estar SUSPENSA: entre ler e gravar, uma busca determinística de
-# outro processo usaria a chave errada e não acharia a linha.
+# outro processo usaria a chave errada e não acharia a linha. Suspensão também é
+# o que torna seguro fazer TUDO numa transação só (abaixo): sem escritores
+# concorrentes, o custo do lock não compete com tráfego real.
+#
+# Tudo-ou-nada (fix round 1): a reescrita inteira roda dentro de UMA transação
+# `ApplicationRecord.transaction` (não `ActiveRecord::Base.transaction` — essa
+# abriria na conexão `primary`, que neste app é o banco vazio
+# `rota_saude_no_city_selected`, não o da cidade; verificado comparando
+# `ApplicationRecord.connection.current_database` dentro e fora do bloco).
+# Uma falha no meio do caminho dá rollback: zero linhas mudam, e o
+# `encryption_key` da cidade nunca precisa se mover para o valor novo antes de
+# a reescrita ter, de fato, terminado. Isso também é por que um modo "resumível"
+# (tentar a chave nova, cair para a antiga) foi rejeitado: colapsaria "já
+# migrado" e "corrompido" no mesmo caminho, escondendo corrupção real como um
+# resume qualquer.
 class CityRekey
   BATCH_SIZE = 200
 
@@ -29,8 +43,14 @@ class CityRekey
   def call
     counts = Hash.new(0)
 
+    # O rescue fica FORA da transação, de propósito: um raise dentro do bloco
+    # desfaz o `ApplicationRecord.transaction` (rollback) antes de propagar até
+    # aqui, então o Result.fail só é construído depois que o banco já voltou ao
+    # estado anterior — nunca antes, nunca com a transação ainda aberta.
     CityConnection.with(@city) do
-      TARGETS.each { |model, attribute| counts[model.name] += rewrite(model, attribute) }
+      ApplicationRecord.transaction do
+        TARGETS.each { |model, attribute| counts[model.name] += rewrite(model, attribute) }
+      end
     end
 
     Result.ok(counts: counts)
@@ -59,11 +79,31 @@ class CityRekey
 
         in_city(@to_city) do
           # `select(:id)` on purpose: the encrypted column stays unloaded, so
-          # AR's dirty-tracking never calls `changed_in_place?`, which would
-          # otherwise decrypt the OLD (source-material) raw value to compare
-          # it against the new plaintext — under THIS (destination) context,
-          # which is exactly the wrong key for that ciphertext.
+          # there is no original raw value in `@attributes` to compare the new
+          # plaintext against. Without it, `save!` (via partial writes: AR
+          # decides which columns changed through
+          # `attribute_names_for_partial_updates` -> `changed_attribute_names_to_save`
+          # -> `AttributeMutationTracker#changed?` -> `Attribute#changed_from_assignment?`
+          # -> `#original_value` -> `FromDatabase#type_cast` ->
+          # `EncryptedAttributeType#deserialize`) decrypts the OLD
+          # (source-material) ciphertext under THIS (destination) context,
+          # which is exactly the wrong key for it, and raises
+          # `Errors::Decryption` on a row that is perfectly readable — a false
+          # "unreadable", not a bug in the source data.
+          #
+          # `record_timestamps = false` (fix round 1) stops `save!` from
+          # bumping `updated_at` — a full-city rekey must not make every row
+          # look freshly touched (sweep/overview queries key off it). It does
+          # NOT make `select(:id)` redundant: before this line existed, the
+          # same decrypt-under-the-wrong-key crash came from a DIFFERENT call
+          # site, `ActiveRecord::Timestamp#should_record_timestamps?` ->
+          # `has_changes_to_save?` (same `changed_from_assignment?` chain).
+          # Turning timestamps off closes that path but not the
+          # partial-writes one above — verified experimentally: dropping
+          # `select(:id)` while keeping `record_timestamps = false` still
+          # raises `Errors::Decryption`, now via `attribute_names_for_partial_updates`.
           record = model.unscoped.select(:id).find(id)
+          record.record_timestamps = false
           record.public_send("#{attribute}=", plaintext)
           record.save!(validate: false)
         end

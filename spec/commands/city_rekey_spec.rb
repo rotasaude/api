@@ -10,6 +10,8 @@ require "rails_helper"
 # determinístico, que a busca pelo valor em claro ainda acha a linha (e que a
 # busca com a material antiga NÃO acha mais, provando que o índice também virou).
 RSpec.describe CityRekey do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city) { create(:city, database_url: city_database_url("rota_saude_test_city_a")) }
 
   def with_material(material, &block)
@@ -64,5 +66,58 @@ RSpec.describe CityRekey do
 
     expect(result).to be_failure
     expect(result.reason).to eq(:unreadable)
+  end
+
+  # Fix round 1: sem uma transação por cima da reescrita inteira, uma falha na
+  # metade deixava linhas já reescritas na chave nova e o resto na antiga —
+  # e um retry contra a mesma cidade abortava de novo no primeiro registro já
+  # migrado. Este exemplo prova tudo-ou-nada: a Conversation processada ANTES
+  # da linha ilegível (TARGETS lista Conversation antes de InboundMessage) tem
+  # que continuar exatamente como estava, não só "resultado é failure".
+  it "rolls back everything when a later row fails, so nothing moves" do
+    old_material = "0" * 64
+    convo = with_material(old_material) { Conversation.create!(phone: "+5541988880010", state: :greeting) }
+
+    # Escrita com a material REAL da cidade (não old_material) de propósito:
+    # quando o rekey pedir from_key: old_material, essa linha é a que não lê.
+    poison = CityConnection.with(city) do
+      InboundMessage.create!(message_id: "wamid-#{SecureRandom.hex(4)}", from: "+5541988880011",
+                             kind: "text", raw: '{"t":"poison"}')
+    end
+
+    result = CityRekey.call(city: city, from_key: old_material)
+
+    expect(result).to be_failure
+    expect(result.reason).to eq(:unreadable)
+
+    # A Conversation, reescrita em memória ANTES de bater na linha ilegível,
+    # não migrou de fato: ainda legível sob a material antiga...
+    expect(with_material(old_material) { Conversation.find(convo.id).phone }).to eq("+5541988880010")
+    # ...e ainda ILEGÍVEL sob a material nova — se tivesse migrado (mesmo
+    # parcialmente), isto teria decifrado sem erro.
+    expect {
+      CityConnection.with(city) { Conversation.find(convo.id).phone }
+    }.to raise_error(ActiveRecord::Encryption::Errors::Decryption)
+
+    # A própria linha ilegível continua intacta, na material real da cidade.
+    expect(CityConnection.with(city) { InboundMessage.find(poison.id).raw }).to eq('{"t":"poison"}')
+  end
+
+  # Fix round 1: `save!` bate updated_at por padrão. Numa rekey de cidade
+  # inteira isso faria toda conversa "abandonada" parecer tocada agora
+  # (SweepAbandonedConversationsJob e Admin::OverviewQuery filtram por
+  # updated_at) — um efeito colateral puramente da reescrita de chave, não de
+  # uma mudança de domínio real.
+  it "does not bump updated_at" do
+    old_material = "0" * 64
+    convo = with_material(old_material) { Conversation.create!(phone: "+5541988880012", state: :greeting) }
+    original_updated_at = with_material(old_material) { Conversation.find(convo.id).updated_at }
+
+    travel 1.hour do
+      result = CityRekey.call(city: city, from_key: old_material)
+      expect(result).to be_ok
+    end
+
+    expect(CityConnection.with(city) { Conversation.find(convo.id).updated_at }).to eq(original_updated_at)
   end
 end
