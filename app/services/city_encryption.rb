@@ -37,4 +37,6 @@ module CityEncryption
 
   def platform_primary_key = Rails.application.config.active_record.encryption.primary_key
   def platform_deterministic_key = Rails.application.config.active_record.encryption.deterministic_key
+
+  private_class_method :secret_for, :platform_primary_key, :platform_deterministic_key
 end
