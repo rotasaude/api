@@ -20,6 +20,18 @@
 # (tentar a chave nova, cair para a antiga) foi rejeitado: colapsaria "já
 # migrado" e "corrompido" no mesmo caminho, escondendo corrupção real como um
 # resume qualquer.
+#
+# Fix round 2: a migração real de uma cidade em dev/produção NÃO é "chave de
+# cidade A -> chave de cidade B" — é "chave da PLATAFORMA (o que já existia
+# ANTES deste plano) -> chave da cidade". `source: :platform` cobre esse caso
+# (confirmado ao vivo, só leitura, contra curitiba/maringa: Conversation#phone
+# e InboundMessage#raw levantam Errors::Decryption sob o contexto de cidade
+# hoje, e decifram sob a chave global). Nesse modo `from_key:` não se aplica —
+# a origem já é a chave global, não um material arbitrário — e o lado da
+# ESCRITA não muda: `to_key:` continua significando "material atual da
+# cidade" quando nil. Ver `in_platform_source` para os dois mecanismos que a
+# leitura em modo plataforma precisa (contexto para atributo não-determinístico,
+# flag em Current para o determinístico).
 class CityRekey
   BATCH_SIZE = 200
 
@@ -32,10 +44,21 @@ class CityRekey
     [ Author,         :token ]
   ].freeze
 
-  def self.call(city:, from_key: nil, to_key: nil) = new(city: city, from_key: from_key, to_key: to_key).call
+  SOURCES = %i[city platform].freeze
 
-  def initialize(city:, from_key: nil, to_key: nil)
+  # Assinatura final (fix round 2): source: :city (padrão, comportamento das
+  # rounds anteriores) ou source: :platform (migração pré-Plano-7 -> cidade).
+  def self.call(city:, from_key: nil, to_key: nil, source: :city) =
+    new(city: city, from_key: from_key, to_key: to_key, source: source).call
+
+  def initialize(city:, from_key: nil, to_key: nil, source: :city)
+    raise ArgumentError, "source: deve ser #{SOURCES.inspect}, recebeu #{source.inspect}" unless SOURCES.include?(source)
+    if source == :platform && from_key
+      raise ArgumentError, "from_key: não se combina com source: :platform — a origem já é a chave global"
+    end
+
     @city = city
+    @source = source
     @from_city = shadow_city(from_key)
     @to_city = shadow_city(to_key)
   end
@@ -74,7 +97,7 @@ class CityRekey
 
     model.unscoped.in_batches(of: BATCH_SIZE) do |batch|
       batch.pluck(:id).each do |id|
-        plaintext = in_city(@from_city) { model.unscoped.find(id).public_send(attribute) }
+        plaintext = read_source(model, id, attribute)
         next if plaintext.nil?
 
         in_city(@to_city) do
@@ -114,10 +137,42 @@ class CityRekey
     count
   end
 
+  def read_source(model, id, attribute)
+    if @source == :platform
+      in_platform_source { model.unscoped.find(id).public_send(attribute) }
+    else
+      in_city(@from_city) { model.unscoped.find(id).public_send(attribute) }
+    end
+  end
+
   # Current.city governa o provedor determinístico; o contexto governa o resto.
   def in_city(city, &block)
     Current.set(city: city) do
       ActiveRecord::Encryption.with_encryption_context(**CityEncryption.context_properties(city), &block)
+    end
+  end
+
+  # source: :platform — lê com a chave GLOBAL (a que dado pré-migração já usa),
+  # não uma derivada de cidade nenhuma. Dois mecanismos, porque o Rails trata
+  # atributo determinístico e não-determinístico de formas diferentes (ver
+  # header de CityEncryption):
+  #   1. Contexto de cifra (governa os NÃO-determinísticos, ex.:
+  #      InboundMessage#raw, User#otp_secret, Consent#evidence):
+  #      `PlatformKeyProvider.new` reusa exatamente o que
+  #      app/services/platform_key_provider.rb já resolve
+  #      (`ActiveRecord::Encryption.default_context.key_provider`) — a mesma
+  #      chave que qualquer `encrypts` sem `key_provider:` usaria.
+  #   2. Flag em `Current` (governa os DOIS determinísticos,
+  #      Conversation#phone e Author#token): `key_provider:` no `encrypts`
+  #      vence o contexto sempre, então não existe combinação de
+  #      with_encryption_context que alcance esses atributos — só a flag que
+  #      CityDeterministicKeyProvider consulta. `Current.set` desfaz a flag no
+  #      `ensure`, mesmo se o bloco levantar, então ela nunca escapa deste
+  #      bloco de leitura — nem para a escrita (in_city) a seguir, nem para
+  #      fora de CityRekey inteiramente.
+  def in_platform_source(&block)
+    Current.set(deterministic_key_source: :platform) do
+      ActiveRecord::Encryption.with_encryption_context(key_provider: PlatformKeyProvider.new, &block)
     end
   end
 end

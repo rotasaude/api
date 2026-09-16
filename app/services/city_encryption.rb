@@ -27,6 +27,17 @@ module CityEncryption
     ActiveRecord::Encryption::DeterministicKeyProvider.new(secret_for(city, platform_deterministic_key))
   end
 
+  # A chave determinística GLOBAL, sem derivar com material de cidade nenhuma
+  # — a mesma que `Scheme#deterministic_key_provider` monta por baixo dos panos
+  # quando um `encrypts ..., deterministic: true` não tem `key_provider:` (ver
+  # Conversation#phone/Author#token ANTES deste plano). Existe para o rekey de
+  # migração (CityRekey, source: :platform, Plano 7 fix round 2): dado
+  # pré-migração foi cifrado com ISTO, não com nenhuma chave derivada por
+  # cidade.
+  def platform_deterministic_key_provider
+    ActiveRecord::Encryption::DeterministicKeyProvider.new(platform_deterministic_key)
+  end
+
   def secret_for(city, platform_secret)
     material = city.respond_to?(:encryption_key) ? city.encryption_key.to_s : ""
     raise MissingKey, "cidade sem encryption_key: não há chave a derivar" if material.blank?
