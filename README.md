@@ -23,6 +23,11 @@ faltar uma delas quebra até rodando os specs:
 | `CITY_BACKUP_DIR` | `tmp/city_backups` | `city:backup`, `city:offboard` |
 | `CITY_PUBLIC_BASE_TEMPLATE` | `http://%{slug}.localhost:5175` | host público de cada cidade: dashboard, wpda e link de reset de senha |
 
+> `CITY_DATABASE_SSLMODE` em `require` cifra mas não verifica a identidade do servidor Postgres. Apertar para
+> `verify-full` tem uma ordem estrita (certificado no servidor primeiro, só depois a variável) — invertê-la tira
+> toda cidade do ar de uma vez. Procedimento completo e único em `deploy/production/deploy.yml` (comentário junto
+> de `CITY_DATABASE_SSLMODE`), não copiado aqui.
+
 Bancos que precisam existir no Postgres do host:
 
 | Banco | Dono | Quem cria |

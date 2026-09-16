@@ -20,8 +20,9 @@ ENV BUNDLE_DEPLOYMENT="1" \
 # ca-certificates (abaixo) já cobre o lado do CLIENTE para CITY_DATABASE_SSLMODE
 # passar de "require" para "verify-full" (Plano 8, Task 10) — falta só o lado do
 # SERVIDOR (certificado no acessório postgres). Procedimento e ordem completos
-# em deploy/production/deploy.yml (comentário junto de CITY_DATABASE_SSLMODE) e
-# README.md. Não mude nada aqui por causa disso: esta linha já está pronta.
+# em deploy/production/deploy.yml (comentário junto de CITY_DATABASE_SSLMODE) —
+# única fonte, não copie a ordem para outro lugar. Não mude nada aqui por causa
+# disso: esta linha já está pronta.
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y ca-certificates curl && \
     install -d /usr/share/postgresql-common/pgdg && \

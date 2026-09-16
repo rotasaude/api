@@ -25,7 +25,14 @@ Chaves protegidas em `deploy/<env>/secrets`, nunca em git. Injetadas no boot pel
   as assinaturas dos `report_snapshots` do dump não conferem contra a derivação atual. Diferente de dado cifrado
   (ciphertext errado decifra em lixo, sem erro), uma assinatura HMAC com chave errada simplesmente NÃO confere —
   falha fechada, visível — mas ainda assim invalida o link de relatório do cidadão até alguém rodar
-  `city:resign_reports` (ou equivalente) com o material certo.
+  `city:resign_reports` (ou equivalente) com o material certo. **Ressalva temporária:** enquanto durar a transição
+  aberta pela migração desta chave, `ReportSnapshot.signature_matches?` ainda aceita a assinatura LEGADA — só o
+  valor global, sem derivar com `cities.encryption_key` (`app/models/report_snapshot.rb:30`,
+  `CityEncryption.legacy_report_signing_key`). Então um snapshot antigo de um dump pode conferir com só o valor
+  global, mesmo sem o `encryption_key` certo da cidade — mas só enquanto esse fallback existir. Ele está documentado
+  para sair de cena (ver `report_snapshot.rb`) depois que todo snapshot vivo tiver sido re-assinado com a chave por
+  cidade; a partir daí, os dois materiais (global + `encryption_key` da época) voltam a ser estritamente
+  necessários, sem essa via alternativa.
 
 Em produção os valores vêm do 1Password (`deploy/production/secrets`). Itens que o
 cofre `rota-saude-prod` precisa ter: `postgres-roles` (campos `rota_app`,
