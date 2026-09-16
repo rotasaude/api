@@ -13,14 +13,26 @@ class CityConnection
   MUTEX = Mutex.new
 
   class << self
-    # Domínio E fila da cidade (Plano 5): um job enfileirado aqui dentro cai na fila
-    # do banco da cidade, não na de plataforma. Vale só se este bloco for (ou
-    # estiver dentro d)a transação mais de fora da thread: com
-    # enqueue_after_transaction_commit, PlatformQueue decide a fila no commit
-    # mais de fora, não em quem chamou perform_later (ver app/services/platform_queue.rb).
+    # Domínio, fila E CIFRA da cidade (Planos 5 e 7).
+    #
+    # Current.city é setado aqui porque o provedor determinístico
+    # (CityDeterministicKeyProvider) resolve a chave a partir dele a cada
+    # operação — sem isso, ler `phone` ou `token` levanta MissingKey. Os
+    # chamadores que já setavam (CityResolution, CityScopedJob) continuam
+    # funcionando: Current.set é reentrante.
+    #
+    # A ordem importa: o provedor não-determinístico é montado ANTES de entrar
+    # no contexto, porque `city.encryption_key` vive no banco de plataforma e é
+    # decifrado com a chave global.
     def with(city, &block)
       ensure_pool(city)
-      ActiveRecord::Base.connected_to_many([ CityRecord, SolidQueue::Record ], role: :writing, shard: city.shard, &block)
+      properties = CityEncryption.context_properties(city)
+
+      Current.set(city: city) do
+        ActiveRecord::Encryption.with_encryption_context(**properties) do
+          ActiveRecord::Base.connected_to_many([ CityRecord, SolidQueue::Record ], role: :writing, shard: city.shard, &block)
+        end
+      end
     end
 
     # Verificado em 2026-09-12 contra o Rails 8.1.3, os pontos em que registrar

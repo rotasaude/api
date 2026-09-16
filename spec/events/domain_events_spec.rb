@@ -2,7 +2,9 @@ require "rails_helper"
 
 RSpec.describe DomainEvents do
   it "exige cidade para publicar" do
-    expect { DomainEvents.publish("foo.bar", x: 1) }.to raise_error(DomainEvents::CityMissing)
+    Current.set(city: nil) do
+      expect { DomainEvents.publish("foo.bar", x: 1) }.to raise_error(DomainEvents::CityMissing)
+    end
   end
 
   # Fix round 1 (M2): the old title implied publish SELECTS the city from
@@ -41,7 +43,9 @@ RSpec.describe DomainEvents do
   describe ".redispatch" do
     it "exige cidade para redespachar" do
       event = DomainEvent.new(id: SecureRandom.uuid, name: "foo.bar", payload: {})
-      expect { DomainEvents.redispatch(event) }.to raise_error(DomainEvents::CityMissing)
+      Current.set(city: nil) do
+        expect { DomainEvents.redispatch(event) }.to raise_error(DomainEvents::CityMissing)
+      end
     end
 
     it "reenfileira os subscribers ligados a event.name com os mesmos kwargs que publish usaria" do

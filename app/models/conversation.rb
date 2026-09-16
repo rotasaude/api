@@ -4,7 +4,7 @@ class Conversation < ApplicationRecord
   has_many :triages, dependent: :restrict_with_error
   has_many :consents, dependent: :restrict_with_error
 
-  encrypts :phone, deterministic: true
+  encrypts :phone, deterministic: true, key_provider: CityDeterministicKeyProvider.new
 
   enum :state, {
     greeting:         "greeting",

@@ -32,6 +32,18 @@ module CityTestDatabases
              database_url: CityDatabaseUrls.city_database_url(db), encryption_key: SecureRandom.hex(32))
   end
 
+  # Uma City criada com o slug de TEST_CITY_A/B reentra a MESMA sessão (ver
+  # nota no topo). Com atributo determinístico por cidade (Plano 7), reentrar a
+  # sessão não basta: o material precisa ser o mesmo, senão o ciphertext escrito
+  # pelo harness não é o lido pelo código sob teste.
+  def self.encryption_key_for(slug)
+    case slug.to_s
+    when TEST_CITY_A.slug then TEST_CITY_A.encryption_key
+    when TEST_CITY_B.slug then TEST_CITY_B.encryption_key
+    else SecureRandom.hex(32)
+    end
+  end
+
   def within_city(city, &block)
     CityConnection.with(city, &block)
   end
@@ -151,4 +163,10 @@ RSpec.configure do |config|
             "fixture transaction was not torn down; released pools: #{leaked.join(', ')}"
     end
   end
+
+  # O `around` acima abre a conexão de TEST_CITY_A, mas em example group tipado
+  # o `before_setup` do rspec-rails limpa CurrentAttributes depois dele. Repor a
+  # cidade aqui mantém leitura e escrita de atributo determinístico coerentes
+  # com a conexão que o exemplo já está usando.
+  config.before(:each) { Current.city = TEST_CITY_A }
 end

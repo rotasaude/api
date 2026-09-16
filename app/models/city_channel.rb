@@ -3,7 +3,11 @@
 # não em cada banco de cidade.
 class CityChannel < PlatformRecord
   belongs_to :city
-  encrypts :access_token
+  # key_provider: fixo na chave da plataforma (PlatformKeyProvider) — este
+  # atributo é lido de dentro de CityConnection.with (SendWhatsappJob), e o
+  # contexto de cifra da cidade é global por thread. Ver
+  # app/services/platform_key_provider.rb.
+  encrypts :access_token, key_provider: PlatformKeyProvider.new
 
   scope :active, -> { where(active: true) }
 

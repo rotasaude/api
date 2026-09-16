@@ -10,7 +10,11 @@
 #   - Período de espera: os outros processos web ainda servem a cidade suspensa
 #     por até CityCatalog::CACHE_TTL. Enquanto o último city.suspended for mais
 #     novo que QUIET_PERIOD (o TTL duas vezes), recusa antes de fazer o dump.
-#     Cidade suspensa fora do CityLifecycle::Suspend (sem evento) passa.
+#     Cidade suspensa fora do CityLifecycle::Suspend (sem evento) passa. A
+#     checagem em si mora em CityLifecycle::SuspensionGuard — city:rekey e
+#     city:rotate_key (lib/tasks/city.rake) precisam da MESMA regra (fix F1),
+#     então este módulo só reusa QUIET_PERIOD/suspended_recently? de lá em vez
+#     de manter uma cópia.
 #   - Transição guardada: um city:resume durante o dump não é sobrescrito. A
 #     linha só vira archived se AINDA estiver suspended, na mesma transação dos
 #     canais, grants e auditoria; senão nada muda, nada é apagado e o dump já
@@ -21,7 +25,7 @@
 # archived e o banco intacto.
 module CityLifecycle
   module Offboard
-    QUIET_PERIOD = CityCatalog::CACHE_TTL.seconds * 2
+    QUIET_PERIOD = SuspensionGuard::QUIET_PERIOD
 
     def self.call(city:, backup_dir:)
       return drop(city, backup_path: nil) if city.status == "archived"
@@ -30,7 +34,7 @@ module CityLifecycle
         return Result.fail(:invalid_status, message: "cidade #{city.slug} precisa estar suspended (status=#{city.status})")
       end
 
-      if suspended_recently?(city)
+      if SuspensionGuard.suspended_recently?(city)
         return Result.fail(:suspension_too_recent, message: "aguarde #{QUIET_PERIOD.to_i} s depois da suspensão")
       end
 
@@ -58,13 +62,6 @@ module CityLifecycle
 
       drop(city, backup_path: backup_path)
     end
-
-    def self.suspended_recently?(city)
-      suspended_at = PlatformEvent.where(name: "city.suspended").where("payload->>'city_id' = ?", city.id)
-                                  .maximum(:occurred_at)
-      suspended_at.present? && suspended_at > QUIET_PERIOD.ago
-    end
-    private_class_method :suspended_recently?
 
     def self.drop(city, backup_path:)
       CityConnection.forget(city.shard)

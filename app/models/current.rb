@@ -7,6 +7,15 @@ class Current < ActiveSupport::CurrentAttributes
   # Sessão de operador JÁ verificada por TOTP, no console de plataforma (admin.*).
   # Nunca coexiste com uma cidade resolvida: o console não resolve cidade.
   attribute :operator_session
+  # Flag curta (Plano 7, fix round 2 do CityRekey): quando :platform,
+  # CityDeterministicKeyProvider serve o DeterministicKeyProvider GLOBAL em vez
+  # do derivado por cidade. Existe porque dado pré-migração (antes deste plano)
+  # foi cifrado com a chave determinística global, e `key_provider:` no
+  # `encrypts` vence o contexto de cifra sempre — não há outro jeito de
+  # alcançar essa leitura. Só CityRekey liga isto, e só ao redor do bloco de
+  # LEITURA de uma migração `source: :platform`; nil (o padrão) preserva o
+  # comportamento de sempre.
+  attribute :deterministic_key_source
 
   delegate :user, to: :session, allow_nil: true
 end
