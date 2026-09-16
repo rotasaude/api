@@ -24,4 +24,15 @@ RSpec.describe CityPublicUrl do
   it "raises instead of building a link without a city" do
     expect { described_class.base(nil) }.to raise_error(CityPublicUrl::CityMissing)
   end
+
+  it "uses CITY_WPDA_BASE_TEMPLATE for the wpda link when present, leaving base/dashboard on the public template" do
+    allow(ENV).to receive(:fetch).and_call_original
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("CITY_WPDA_BASE_TEMPLATE")
+      .and_return("http://%{slug}.localhost:5176")
+
+    expect(described_class.wpda(city)).to eq("http://curitiba.localhost:5176/wpda/")
+    expect(described_class.base(city)).to eq("http://curitiba.localhost:5175")
+    expect(described_class.dashboard(city)).to eq("http://curitiba.localhost:5175/dashboard/")
+  end
 end

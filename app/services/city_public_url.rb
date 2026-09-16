@@ -28,7 +28,19 @@ module CityPublicUrl
     "#{base(city)}/dashboard/"
   end
 
+  # Em dev o wpda serve na porta 5176, não 5175 (um host só resolve os dois
+  # caminhos em produção; em dev cada app Vite tem a sua porta). Plano 6
+  # fix wave (Important #2): CITY_WPDA_BASE_TEMPLATE substitui o template
+  # público só para este link quando presente; sem ela, comportamento
+  # inalterado (mesmo template de base/dashboard).
   def wpda(city)
-    "#{base(city)}/wpda/"
+    raise CityMissing, "CityPublicUrl sem cidade no contexto" if city.nil?
+
+    "#{wpda_base_for_slug(city.slug)}/wpda/"
+  end
+
+  def wpda_base_for_slug(slug)
+    template = ENV["CITY_WPDA_BASE_TEMPLATE"].presence || ENV.fetch("CITY_PUBLIC_BASE_TEMPLATE", DEFAULT_TEMPLATE)
+    format(template, slug: slug).chomp("/")
   end
 end

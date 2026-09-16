@@ -42,4 +42,17 @@ RSpec.describe "CORS", type: :request do
     CityCatalog.reset_cache!
     expect(cors_header_for("http://#{TEST_CITY_A.slug}.localhost:5175")).to be_nil
   end
+
+  it "is scheme- and port-exact against the production shape of CITY_PUBLIC_BASE_TEMPLATE" do
+    # A suíte só exercitava a forma de dev (http, porta 5175). A regra é
+    # exata em scheme e porta — este exemplo cobre a forma de produção (https,
+    # sem porta), pra um https ↔ http trocado não passar batido.
+    allow(ENV).to receive(:fetch).and_call_original
+    allow(ENV).to receive(:fetch).with("CITY_PUBLIC_BASE_TEMPLATE", anything)
+      .and_return("https://%{slug}.rota-saude.example")
+
+    expect(cors_header_for("https://#{TEST_CITY_A.slug}.rota-saude.example"))
+      .to eq("https://#{TEST_CITY_A.slug}.rota-saude.example")
+    expect(cors_header_for("http://#{TEST_CITY_A.slug}.rota-saude.example")).to be_nil
+  end
 end

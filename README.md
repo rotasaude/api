@@ -40,6 +40,10 @@ Bancos que precisam existir no Postgres do host:
 subdomínio como em produção. `*.localhost` resolve para 127.0.0.1 no Chrome e no Firefox sem `/etc/hosts`; no Safari,
 acrescente uma linha por cidade.
 
+Em desenvolvimento o dev server do Vite responde CORS por conta própria pra qualquer origem `.localhost` — um teste de
+CORS pelo browser nas portas 5174/5175/5176 não prova nada sobre a política do Rails. Para testar a política de
+verdade, chame a API direto: `curl -H "Host: <slug>.localhost:5175" -H "Origin: http://<slug>.localhost:5175" http://localhost:3030/session`. Sem equivalente em produção (um host só serve API e proxy).
+
 Ao puxar código que adiciona um novo diretório sob `app/` (por exemplo
 `app/constraints`), reinicie o `api` (`docker compose restart api`): um
 servidor já rodando só reconhece novas raízes de autoload no boot.
@@ -76,6 +80,12 @@ Duas saídas, escolha antes do primeiro deploy de produção:
    desligue o ACME para esses hosts. O provisionamento segue sem deploy, ao custo de renovação própria do certificado.
 
 O registro DNS `*.<domínio>` apontando para os hosts web é necessário nos dois casos.
+
+**O que esses hosts servem hoje.** O proxy do Kamal publica esses hosts para a aplicação Rails, que serve só a API —
+não há pipeline de build nem servidor para as três SPAs (`apps/admin`, `apps/dashboard`, `apps/wpda`). Em produção,
+`admin.<domínio>/admin/` e `<slug>.<domínio>/dashboard/` (e `/wpda/`) não têm nada atrás deles ainda. O Plano 6 faz a
+jornada funcionar em desenvolvimento (Vite serve os três, o proxy do Vite repassa o Host); servir os frontends em
+produção continua em aberto.
 
 ## Ciclo de vida da cidade (Plano 4)
 
