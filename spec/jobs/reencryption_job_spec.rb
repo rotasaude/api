@@ -70,16 +70,30 @@ RSpec.describe ReencryptionJob do
   # city's own database. city_a/city_b are random-slug Cities — separate
   # sessions (see spec/support/city_test_databases.rb) — so every read goes
   # through that city's own CityConnection.with.
+  #
+  # Plano 7 (Task 3) retired the "old key / new key via with_encryption_context"
+  # setup this block used to simulate a rotation in progress:
+  # CityConnection.with now derives key_provider from the city's OWN material,
+  # and that context is pushed by EachCityJob's own `CityConnection.with(city)`
+  # call INSIDE `perform` — more nested than anything the example wraps around
+  # `described_class.new.perform`, so an outer `with_encryption_context`
+  # override no longer reaches User#otp_secret; the job's own city context
+  # always wins. There is also no way left to hand the job two simultaneous
+  # keys for a city (CityEncryption derives exactly one key from the city's
+  # current material — simulating an in-progress per-city rotation is
+  # CityRekey's job, Task 4, which re-encrypts by switching context between
+  # two full passes, not by holding two keys live at once).
+  #
+  # What these two examples actually assert — EACH active city gets
+  # re-encrypted, an inactive one does not — never needed a real key change:
+  # `record.encrypt` (ADR/R41) always writes a fresh ciphertext because the
+  # cipher's IV is random on every call, even under the SAME key (see the
+  # file-level comment above). So a plain create, under the city's real
+  # current context, already gives a before/after ciphertext diff to assert on.
   describe "per city (EachCityJob)" do
-    let(:old_only)    { ActiveRecord::Encryption::DerivedSecretKeyProvider.new(["r41-old-key"]) }
-    let(:old_and_new) { ActiveRecord::Encryption::DerivedSecretKeyProvider.new(["r41-old-key", "r41-new-key"]) }
-    let(:new_only)    { ActiveRecord::Encryption::DerivedSecretKeyProvider.new(["r41-new-key"]) }
-
-    def create_user_under_old_key(city, email)
+    def create_user(city, email)
       CityConnection.with(city) do
-        ActiveRecord::Encryption.with_encryption_context(key_provider: old_only) do
-          User.create!(email_address: email, password: "secret123", otp_secret: "S3CR3T-#{email}")
-        end
+        User.create!(email_address: email, password: "secret123", otp_secret: "S3CR3T-#{email}")
       end
     end
 
@@ -89,39 +103,33 @@ RSpec.describe ReencryptionJob do
       end
     end
 
-    def decrypted_under_new_key(city, user)
-      CityConnection.with(city) do
-        ActiveRecord::Encryption.with_encryption_context(key_provider: new_only) { User.find(user.id).otp_secret }
-      end
+    def decrypted_otp_secret(city, user)
+      CityConnection.with(city) { User.find(user.id).otp_secret }
     end
 
     it "re-encrypts in the database of EVERY active city" do
       city_b = create(:city, database_url: city_database_url("rota_saude_test_city_b"), status: "active")
-      user_a = create_user_under_old_key(city_a, "a@example.org")
-      user_b = create_user_under_old_key(city_b, "b@example.org")
+      user_a = create_user(city_a, "a@example.org")
+      user_b = create_user(city_b, "b@example.org")
       raw_a_before = raw_otp_secret(city_a, user_a)
       raw_b_before = raw_otp_secret(city_b, user_b)
 
-      ActiveRecord::Encryption.with_encryption_context(key_provider: old_and_new) do
-        described_class.new.perform(only: [:user])
-      end
+      described_class.new.perform(only: [:user])
 
       expect(raw_otp_secret(city_a, user_a)).not_to eq(raw_a_before)
       expect(raw_otp_secret(city_b, user_b)).not_to eq(raw_b_before)
-      expect(decrypted_under_new_key(city_a, user_a)).to eq("S3CR3T-a@example.org")
-      expect(decrypted_under_new_key(city_b, user_b)).to eq("S3CR3T-b@example.org")
+      expect(decrypted_otp_secret(city_a, user_a)).to eq("S3CR3T-a@example.org")
+      expect(decrypted_otp_secret(city_b, user_b)).to eq("S3CR3T-b@example.org")
     end
 
     it "does not touch the database of a city that is not active" do
       suspended = create(:city, database_url: city_database_url("rota_saude_test_city_b"), status: "suspended")
-      user_a = create_user_under_old_key(city_a, "a@example.org")
-      user_s = create_user_under_old_key(suspended, "s@example.org")
+      user_a = create_user(city_a, "a@example.org")
+      user_s = create_user(suspended, "s@example.org")
       raw_a_before = raw_otp_secret(city_a, user_a)
       raw_s_before = raw_otp_secret(suspended, user_s)
 
-      ActiveRecord::Encryption.with_encryption_context(key_provider: old_and_new) do
-        described_class.new.perform(only: [:user])
-      end
+      described_class.new.perform(only: [:user])
 
       expect(raw_otp_secret(city_a, user_a)).not_to eq(raw_a_before)
       expect(raw_otp_secret(suspended, user_s)).to eq(raw_s_before)

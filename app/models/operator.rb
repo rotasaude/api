@@ -11,7 +11,11 @@ class Operator < PlatformRecord
 
   has_many :operator_sessions, dependent: :destroy
 
-  encrypts :otp_secret
+  # key_provider: fixo na chave da plataforma (PlatformKeyProvider) — este
+  # atributo pode ser lido/escrito de dentro de CityConnection.with, e o
+  # contexto de cifra da cidade é global por thread. Ver
+  # app/services/platform_key_provider.rb.
+  encrypts :otp_secret, key_provider: PlatformKeyProvider.new
 
   normalizes :email_address, with: ->(e) { e.strip.downcase }
 
