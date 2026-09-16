@@ -9,6 +9,12 @@ RSpec.describe CityLifecycle::Restore do
 
   let!(:city) { provision_city!(status: "active") }
   let(:dir) { Dir.mktmpdir("city-restore") }
+  # otp_secret is `encrypts`-ed (see CityEncryption::CITY_KEYED_TARGETS); email_address is not. A
+  # dump carries ciphertext, so only an encrypted column proves a restore actually decrypts under
+  # the right key rather than merely moving plaintext rows around. Memoized so the value used to
+  # create the row and the value used to build the expected digest are identical without ever
+  # holding the secret in a variable we could accidentally print.
+  let(:otp_secret) { ROTP::Base32.random }
 
   after do
     cleanup_provisioned_city!(city)
@@ -27,9 +33,13 @@ RSpec.describe CityLifecycle::Restore do
   end
 
   # Dump de uma cidade com uma linha conhecida, já suspensa e FORA da
-  # quarentena (o Restore exige as duas coisas).
+  # quarentena (o Restore exige as duas coisas). otp_secret vai cifrado no
+  # dump (coluna `encrypts`-ed) — email_address não.
   def dump_with_one_user!
-    CityConnection.with(city) { User.create!(email_address: "servidora@cidade.gov.br", password: "secret123") }
+    CityConnection.with(city) do
+      User.create!(email_address: "servidora@cidade.gov.br", password: "secret123",
+                   otp_secret: otp_secret, otp_enabled: true)
+    end
     path = CityLifecycle::Backup.call(city: city, dir: dir).payload[:path]
     suspend_at!((CityLifecycle::SuspensionGuard::QUIET_PERIOD + 60.seconds).ago)
     path
@@ -42,8 +52,15 @@ RSpec.describe CityLifecycle::Restore do
     result = described_class.call(city: city, path: path)
 
     expect(result.ok?).to be(true)
-    emails = CityConnection.with(city) { User.pluck(:email_address) }
-    expect(emails).to eq([ "servidora@cidade.gov.br" ])
+    CityConnection.with(city) do
+      user = User.find_by!(email_address: "servidora@cidade.gov.br")
+      # email_address só prova que a linha voltou; otp_secret prova que o
+      # ciphertext do dump decifra sob a chave certa do outro lado — a
+      # comparação é por digest, nunca pelo valor, para um diff de falha
+      # nunca imprimir o segredo.
+      expect(Digest::SHA256.hexdigest(user.otp_secret)).to eq(Digest::SHA256.hexdigest(otp_secret))
+      expect(user.mfa_enrolled?).to be(true)
+    end
   end
 
   it "refuses a city that is not suspended" do
