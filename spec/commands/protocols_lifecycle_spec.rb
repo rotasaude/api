@@ -120,5 +120,41 @@ RSpec.describe "Protocols lifecycle" do
       expect(result.failure?).to be true
       expect(result.reason).to eq(:city_missing)
     end
+
+    it "Protocols::Publish falha com :city_missing sem consultar o banco" do
+      make_pd(version: 1, status: "draft")
+      actor = publisher
+      Current.city = nil
+
+      expect(ProtocolDefinition).not_to receive(:where)
+      result = Protocols::Publish.call(version: 1, by: actor)
+
+      expect(result.failure?).to be true
+      expect(result.reason).to eq(:city_missing)
+    end
+
+    it "Protocols::Retire falha com :city_missing sem consultar o banco" do
+      make_pd(version: 1, status: "published")
+      actor = publisher
+      Current.city = nil
+
+      expect(ProtocolDefinition).not_to receive(:where)
+      result = Protocols::Retire.call(version: 1, by: actor)
+
+      expect(result.failure?).to be true
+      expect(result.reason).to eq(:city_missing)
+    end
+
+    it "Protocols::SaveDraft falha com :city_missing sem consultar o banco" do
+      make_pd(version: 1, status: "draft")
+      actor = publisher
+      Current.city = nil
+
+      expect(ProtocolDefinition).not_to receive(:find_or_initialize_by)
+      result = Protocols::SaveDraft.call(definition: definition_hash, by: actor)
+
+      expect(result.failure?).to be true
+      expect(result.reason).to eq(:city_missing)
+    end
   end
 end
