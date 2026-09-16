@@ -150,6 +150,67 @@ e aposenta o banco compartilhado. Ordem obrigatória:
 **Purga.** Diariamente, `PurgePlatformAccessJob` apaga grants vencidos há mais de 1 dia e sessões de operador que não
 autenticam mais. `PurgeOperatorCitySessionsJob` apaga, em cada cidade, as sessões de operador por grant além de 1 hora.
 
+## Chave de cifra por cidade (Plano 7)
+
+Cada cidade cifra os próprios dados com uma chave **derivada** de `chave da plataforma + cities.encryption_key`.
+
+- **Dá:** ciphertext de uma cidade não é legível nem comparável com o de outra; um dump roubado sozinho não abre nada;
+  o mesmo telefone em duas cidades tem ciphertext diferente em cada uma.
+- **Não dá:** isolamento contra quem tem a chave da plataforma — ela deriva todas. `ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY`
+  e `..._DETERMINISTIC_KEY` são os segredos de maior valor do sistema: custódia separada, rotação própria, acesso restrito.
+
+Atributos determinísticos (`Conversation#phone`, `Author#token`) usam `CityDeterministicKeyProvider`, que resolve a chave
+pela cidade em `Current.city` a cada operação — o contexto de cifra do Rails não alcança esse caso. Ler ou escrever esses
+atributos fora de `CityConnection.with` levanta `CityEncryption::MissingKey`, de propósito. Colunas de plataforma
+(`City#database_url`, `City#encryption_key`, `CityChannel#access_token`, `Operator#otp_secret`) ficam fixas na chave
+global (`key_provider: PlatformKeyProvider.new`) e o contexto de uma cidade não as alcança.
+
+São dois procedimentos diferentes, com ORIGENS diferentes — não confunda:
+
+**Migrar** (uma vez por cidade, para sair da chave global): origem é a **plataforma**. Dado escrito antes deste plano está
+cifrado com a chave global e, depois que o código passou a derivar por cidade, não é legível pelos modelos até a migração
+rodar (provado ao vivo em `curitiba` e `maringa`: antes do `city:rekey`, `Conversation#phone` e `InboundMessage#raw`
+levantavam `Errors::Decryption` sob o contexto de cidade e decifravam sob a chave global).
+
+```bash
+rails 'city:backup[slug]'
+rails 'city:suspend[slug]'
+rails 'city:rekey[slug]'
+rails 'city:resume[slug]'
+```
+
+**Rotacionar** (vazamento suspeito ou política): origem é o **material anterior da própria cidade**, e o comando gera
+material novo — grava no catálogo — antes de reescrever.
+
+```bash
+rails 'city:backup[slug]'
+rails 'city:suspend[slug]'
+rails 'city:rotate_key[slug]'
+rails 'city:resume[slug]'
+```
+
+Ambas as tasks recusam cidade que não esteja `suspended` (`status=<status atual>` na mensagem). A cidade precisa estar
+suspensa porque, entre ler uma linha com o material antigo e gravá-la com o novo, uma busca determinística de outro
+processo (webhook, job) usaria a chave errada e não acharia a linha.
+
+Se a leitura da origem falhar — chave errada, cidade já migrada, dado corrompido — `CityRekey` devolve `:unreadable`
+("linha ilegível com o material de origem") e a task aborta.
+
+Se a reescrita falhar, ela falha **inteira**: `CityRekey` roda numa transação única (`ApplicationRecord.transaction`,
+na conexão da própria cidade), então ou todas as linhas mudam ou nenhuma muda. É isso que torna a falha segura — e não o
+fato de `city:rotate_key` devolver o material anterior ao catálogo, que é só a limpeza do ponteiro (a rotação grava o
+material novo no catálogo ANTES de reescrever qualquer linha, e sem essa devolução o catálogo ficaria apontando para uma
+chave que os dados não usam). Se essa devolução automática também falhar, `city:rotate_key` **não tenta de novo nem
+segue em frente**: aborta com uma mensagem dizendo que os dados estão intactos (a transação já desfez tudo) mas o
+catálogo aponta para o material novo — corrija o `encryption_key` da cidade manualmente antes de rodar `city:rekey` ou
+`city:rotate_key` nela outra vez.
+
+> **Restaurar um dump.** Não existe `city:restore` ainda. Um dump só é restaurável **na cidade de origem, com a
+> `encryption_key` dela intacta** — o dump carrega ciphertext. Restaurar numa cidade cujo catálogo tem outro material
+> (rotacionado depois do dump, ou de outra cidade) **devolve dado ilegível sem erro** — nada no `pg_restore` nem no
+> boot avisa. Antes de restaurar, confirme que a linha do catálogo é a mesma de quando o dump foi tirado; guarde essa
+> informação junto do arquivo.
+
 ## Worker por cidade (Plano 5)
 
 `bin/city_workers` (container `worker` no dev, papel `worker` no Kamal) roda **um supervisor Solid Queue por cidade
