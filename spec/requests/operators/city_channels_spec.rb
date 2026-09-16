@@ -62,6 +62,24 @@ RSpec.describe "Operators::CityChannels", type: :request do
     expect(response).to have_http_status(:unprocessable_content)
   end
 
+  # phone_number_id é único na PLATAFORMA (índice único, app/models/city_channel.rb) —
+  # não por cidade. O comando mapeia a violação para :invalid
+  # (MunicipalityChannels::Register); este exemplo prova que o controller
+  # devolve isso como 422 com error utilizável, não um 500.
+  it "refuses a duplicate phone_number_id" do
+    register(phone_number_id: "PNID-DUP", waba_id: "WABA-5",
+             display_phone_number: "+551133334448", access_token: "EAAtoken")
+    expect(response).to have_http_status(:created)
+
+    other_city = create(:city, status: "active")
+    post "/cities/#{other_city.id}/channel",
+         params: { phone_number_id: "PNID-DUP", waba_id: "WABA-6",
+                    display_phone_number: "+551133334449", access_token: "EAAtoken" }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(JSON.parse(response.body)["error"]).to eq("invalid")
+  end
+
   it "404s for an unknown city" do
     post "/cities/00000000-0000-0000-0000-000000000000/channel",
          params: { phone_number_id: "x", waba_id: "y", display_phone_number: "+55", access_token: "z" }
