@@ -56,8 +56,14 @@ module CityLifecycle
       end
       File.chmod(0o600, path) # cinto e suspensório: o umask acima já garante isto.
 
+      # Plano 8: o digest do material da cidade no momento do dump. É o que
+      # permite ao city:restore RECUSAR um dump de outra época — sem ele, a
+      # restauração devolve dado ilegível sem erro nenhum.
+      digest_path = "#{path}.key-digest"
+      File.write(digest_path, Digest::SHA256.hexdigest(city.encryption_key), perm: 0o600)
+
       Platform.audit("city.backed_up", city_id: city.id, file: File.basename(path))
-      Result.ok(path: path)
+      Result.ok(path: path, key_digest_path: digest_path)
     end
   end
 end

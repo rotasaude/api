@@ -215,11 +215,23 @@ segue em frente**: aborta com uma mensagem dizendo que os dados estão intactos 
 catálogo aponta para o material novo — corrija o `encryption_key` da cidade manualmente antes de rodar `city:rekey` ou
 `city:rotate_key` nela outra vez.
 
-> **Restaurar um dump.** Não existe `city:restore` ainda. Um dump só é restaurável **na cidade de origem, com a
-> `encryption_key` dela intacta** — o dump carrega ciphertext. Restaurar numa cidade cujo catálogo tem outro material
-> (rotacionado depois do dump, ou de outra cidade) **devolve dado ilegível sem erro** — nada no `pg_restore` nem no
-> boot avisa. Antes de restaurar, confirme que a linha do catálogo é a mesma de quando o dump foi tirado; guarde essa
-> informação junto do arquivo.
+> **Restaurar um dump.** `city:restore[slug,caminho]` (`CityLifecycle::Restore`) é o inverso de `city:backup`. Exige a
+> mesma quarentena de `city:rekey`/`city:rotate_key`: cidade `suspended` e fora do
+> `CityLifecycle::SuspensionGuard::QUIET_PERIOD` — nessa ordem, e ambas antes de olhar para o arquivo. Um dump só é
+> restaurável **na cidade de origem, com a `encryption_key` dela intacta** — o dump carrega ciphertext. Restaurar numa
+> cidade cujo catálogo tem outro material (rotacionado depois do dump, ou de outra cidade) **devolve dado ilegível sem
+> erro** — nada no `pg_restore` nem no boot avisa.
+>
+> Desde este plano, `city:backup` grava um arquivo irmão `<dump>.key-digest` com o SHA-256 do `encryption_key` da
+> cidade no momento do dump. `city:restore` compara esse digest com o material atual da cidade **antes de qualquer
+> DDL** (antes de montar a chamada a `pg_restore`) e recusa com `:key_mismatch` se divergirem — sem tocar no banco.
+> **Mas essa checagem só existe quando o arquivo irmão existe.** Um dump tirado antes deste plano não tem
+> `.key-digest`: para esses, `city:restore` não recusa nem confirma nada sobre a chave — a conferência de que o
+> material é o mesmo de quando o dump foi tirado é **humana**. Guarde essa informação junto do arquivo.
+>
+> `pg_restore --clean --if-exists` dropa objetos antes de recriá-los: uma falha no meio do caminho deixa o banco num
+> estado quebrado, e `city:restore` não tenta de novo nem finge sucesso — reporta `:restore_failed` com as últimas
+> linhas (redigidas) da saída do `pg_restore`.
 
 ## Worker por cidade (Plano 5)
 

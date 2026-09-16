@@ -318,6 +318,16 @@ namespace :city do
     puts "[city:backup] #{city.slug} → #{result.payload[:path]}"
   end
 
+  desc "Restaura um dump numa cidade suspensa. Uso: city:restore[slug,caminho]"
+  task :restore, %i[slug path] => :environment do |_t, args|
+    city = lifecycle_city.call("city:restore", args[:slug])
+    abort "uso: rails 'city:restore[slug,/caminho/do.dump]'" if args[:path].blank?
+
+    result = CityLifecycle::Restore.call(city: city, path: args[:path])
+    abort "[city:restore] #{result.reason}: #{result.message}" if result.failure?
+    puts "[city:restore] #{city.slug} ← #{File.basename(args[:path])}"
+  end
+
   desc "Reescreve as assinaturas de relatório de uma cidade com a chave dela. Uso: city:resign_reports[slug]"
   task :resign_reports, %i[slug] => :environment do |_t, args|
     city = lifecycle_city.call("city:resign_reports", args[:slug])
