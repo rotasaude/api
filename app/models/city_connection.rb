@@ -21,20 +21,14 @@ class CityConnection
     def with(city, &block)
       ensure_pool(city)
 
-      # Set Current.city for deterministic encryption. Since some operations
-      # (like example.run in test harness) call clear_all during execution,
-      # we also use thread-local storage as a fallback.
+      # Set Current.city for deterministic encryption (Plano 7).
       previous_city = Current.city
-      previous_thread_city = Thread.current[:city_context_for_encryption]
-
       Current.city = city
-      Thread.current[:city_context_for_encryption] = city
 
       begin
         ActiveRecord::Base.connected_to_many([ CityRecord, SolidQueue::Record ], role: :writing, shard: city.shard, &block)
       ensure
         Current.city = previous_city
-        Thread.current[:city_context_for_encryption] = previous_thread_city
       end
     end
 

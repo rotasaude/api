@@ -21,18 +21,13 @@ class CityDeterministicKeyProvider
 
   private
 
-  # Um DeterministicKeyProvider por cidade, memoizado por id: derivar a cada
-  # linha lida sairia caro numa consulta de muitas linhas.
+  # Um DeterministicKeyProvider por cidade, memoizado por material: derivar a cada
+  # linha lida sairia caro numa consulta de muitas linhas. A chave de cache inclui
+  # o material da cidade (encryption_key), não apenas o id, para que uma rotação de
+  # chave não reutilize um provedor velho (isso seria lido silenciosamente com a
+  # chave nova dados criptografados com a chave antiga).
   def provider
-    # Check if Current.city is explicitly set (even if nil) via Current.set
-    # Use Current.instance to get the per-thread instance
-    current_has_city = Current.instance.instance_variable_get(:@attributes)&.key?(:city)
-    city = if current_has_city
-      Current.city
-    else
-      Current.city || Thread.current[:city_context_for_encryption]
-    end
-
+    city = Current.city
     raise CityEncryption::MissingKey, "atributo determinístico acessado fora de uma cidade" if city.nil?
 
     cache[cache_key(city)] ||= CityEncryption.deterministic_key_provider(city)
