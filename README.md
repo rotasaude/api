@@ -263,10 +263,12 @@ ativa, mais o da plataforma**:
     - Com as 2 cidades ativas de hoje isso já soma **~280 conexões** (web + worker) contra o `max_connections`
       DEFAULT do Postgres, que é **100**.
     - **Teto por role de cidade (aplicado):** `CityDatabase.ensure!` aplica `CONNECTION LIMIT` a cada
-      `rota_city_<slug>` — `CityDatabase::ROLE_CONNECTION_LIMIT`, configurável por `CITY_ROLE_CONNECTION_LIMIT`
-      (default `100`) — na criação e realinhado em toda chamada idempotente, para que uma cidade não esgote o
-      servidor e derrube as vizinhas. Isso não protege sozinho: com `max_connections` no default de 100, o teto por
-      role ainda permite que UMA cidade consuma o servidor inteiro sozinha.
+      `rota_city_<slug>` — `CityDatabase.role_connection_limit`, configurável por `CITY_ROLE_CONNECTION_LIMIT`
+      (default `100`, validado a cada chamada como inteiro positivo — um valor vazio ou inválido levanta
+      `CityDatabase::ConfigMissing` em vez de silenciosamente virar `0`, que no Postgres significa "nenhuma
+      conexão", não "sem limite") — na criação e realinhado em toda chamada idempotente, para que uma cidade não
+      esgote o servidor e derrube as vizinhas. Isso não protege sozinho: com `max_connections` no default de 100,
+      o teto por role ainda permite que UMA cidade consuma o servidor inteiro sozinha.
     - **Gate de go-live (o que resta):** antes de ir para produção, dimensione o `max_connections` do acessório
       Postgres para o número de cidades planejado (com folga sobre a soma dos tetos por role acima). Isso exige
       reboot do acessório.

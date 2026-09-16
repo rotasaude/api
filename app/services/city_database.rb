@@ -28,12 +28,6 @@ class CityDatabase
   MAX_SLUG_LENGTH = 40
   SLUG = /\A[a-z0-9]([a-z0-9-]*[a-z0-9])?\z/
 
-  # Teto de conexões por role de cidade (Plano 8). O orçamento do README dá ~80
-  # conexões de worker + a fatia de web por cidade; 100 deixa folga para uma
-  # rake de manutenção sem permitir que UMA cidade esgote o servidor e derrube
-  # as vizinhas. Configurável para quem rodar com max_connections maior.
-  ROLE_CONNECTION_LIMIT = ENV.fetch("CITY_ROLE_CONNECTION_LIMIT", "100").to_i
-
   class << self
     def valid_slug?(slug)
       slug.is_a?(String) && slug.length.between?(2, MAX_SLUG_LENGTH) && slug.match?(SLUG) &&
@@ -71,7 +65,7 @@ class CityDatabase
       with_provisioner do |conn|
         secret = conn.escape_literal(conn.encrypt_password(password, role, "scram-sha-256"))
         verb = role_exists?(conn, role) ? "ALTER" : "CREATE"
-        conn.exec("#{verb} ROLE #{quote(role)} WITH LOGIN PASSWORD #{secret} CONNECTION LIMIT #{ROLE_CONNECTION_LIMIT}")
+        conn.exec("#{verb} ROLE #{quote(role)} WITH LOGIN PASSWORD #{secret} CONNECTION LIMIT #{role_connection_limit}")
         conn.exec("GRANT #{quote(role)} TO #{quote(conn.user)}")
         conn.exec("CREATE DATABASE #{quote(database)} OWNER #{quote(role)}") unless database_exists?(conn, database)
         conn.exec("REVOKE ALL ON DATABASE #{quote(database)} FROM PUBLIC")
@@ -120,6 +114,29 @@ class CityDatabase
 
     def provisioner_url
       ENV["PROVISIONER_DATABASE_URL"].presence || local_provisioner_url
+    end
+
+    # Teto de conexões por role de cidade (Plano 8). Lido e validado a cada
+    # chamada — não memoizado em constante na carga da classe — porque ensure!
+    # roda no worker: um valor inválido só derruba quem provisiona/realinha
+    # aquela cidade, não também o processo web, para o mesmo typo.
+    #
+    # `to_i` sozinho aceitaria "" (fix round 1, achado do reviewer): vira 0, e
+    # CONNECTION LIMIT 0 no Postgres não é "sem limite" — é "nenhuma conexão",
+    # trancando a própria cidade fora do banco dela no próximo ensure! (onboard
+    # ou realinhamento de senha). Por isso a validação exige um inteiro
+    # positivo por regex antes de converter, em vez de confiar em `to_i`.
+    #
+    # O orçamento do README dá ~80 conexões de worker + a fatia de web por
+    # cidade; 100 deixa folga para uma rake de manutenção sem permitir que UMA
+    # cidade esgote o servidor e derrube as vizinhas.
+    def role_connection_limit
+      raw = ENV["CITY_ROLE_CONNECTION_LIMIT"]
+      return 100 if raw.nil?
+
+      raise ConfigMissing, "CITY_ROLE_CONNECTION_LIMIT não é inteiro positivo" unless raw.match?(/\A[1-9]\d*\z/)
+
+      raw.to_i
     end
 
     private
