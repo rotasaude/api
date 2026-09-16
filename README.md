@@ -81,6 +81,20 @@ Duas saídas, escolha antes do primeiro deploy de produção:
 
 O registro DNS `*.<domínio>` apontando para os hosts web é necessário nos dois casos.
 
+**Decidido (Plano 8 — Task 10): opção 2, com curinga.** O self-service de provisionamento (cidade nova atende sem
+deploy — o motivo de existir o curinga) pesa mais que o custo de renovação manual do certificado. `deploy/production/deploy.yml`
+mantém `"*.rota-saude.example"` em `proxy.hosts` (nada mudou aí) com um comentário no lugar apontando para este
+procedimento. **BLOQUEADO (dono: usuário) — os dois passos abaixo exigem acesso ao provedor de DNS e ao servidor, e
+nenhum foi feito:**
+1. Emitir o certificado curinga por DNS-01 num provedor de ACME (ex.: `certbot` com o plugin DNS do provedor, ou
+   equivalente) — fora do kamal-proxy, que só sabe fazer HTTP-01.
+2. Instalar esse certificado no kamal-proxy e desligar a emissão automática (ACME) para os hosts afetados. **Não sei
+   qual chave/flag do kamal-proxy faz isso** — o Kamal não está instalado nesta máquina (ausente do `Gemfile`/
+   `Gemfile.lock`, sem `.kamal/`, sem binário no PATH) e o padrão documentado (proxy por host) pode ter mudado entre
+   versões; confirme contra a versão em uso antes de tentar.
+Enquanto esses dois passos não rodarem, `ssl: true` com o curinga em `proxy.hosts` continua tentando HTTP-01 e o
+deploy de produção continua falhando com erro de ACME — isso não é regressão desta task, é o estado que já existia.
+
 **O que esses hosts servem hoje (Plano 8 — Task 9).** Cada SPA (`apps/admin`, `apps/dashboard`, `apps/wpda`) agora tem
 `Dockerfile` + `nginx.conf` próprios: build multi-stage (`node:22-alpine` → `npm ci && npm run build`) e um `nginx:alpine`
 que serve o `dist` sob o mesmo `base` do Vite (`/admin/`, `/dashboard/`, `/wpda/`), com cache imutável para

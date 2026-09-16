@@ -64,6 +64,18 @@ env:
     # web precisa dele no POST /cities, sem a credencial do provisioner.
     CITY_DATABASE_HOST: dev.rota-saude.example
     CITY_DATABASE_PORT: "5432"
+    # Plano 8 (Task 10). Este ambiente já está em `prefer` (cifra se o servidor
+    # oferecer, não exige, não verifica identidade) — mais fraco que `require`
+    # de produção. Se algum dia isto for apertado, a mesma ordem do ambiente
+    # de produção vale (ver deploy/production/deploy.yml), até `verify-full`:
+    #   1. emitir certificado para o host do Postgres (dev.rota-saude.example)
+    #      por uma CA que a imagem conheça (as do ca-certificates servem);
+    #   2. configurar ssl_cert_file/ssl_key_file no acessório postgres;
+    #   3. só então trocar o valor abaixo e fazer deploy.
+    # Trocar para `verify-full` ANTES do passo 2 derruba TODA conexão de
+    # cidade: a aplicação para. BLOQUEADO (dono: usuário) nos passos 1 e 2.
+    # Não há necessidade de negócio para apertar isto agora — deixado
+    # documentado, não é uma pendência ativa deste ambiente.
     CITY_DATABASE_SSLMODE: "prefer"
   secret:
     - ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY

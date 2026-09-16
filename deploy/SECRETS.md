@@ -17,6 +17,15 @@ Chaves protegidas em `deploy/<env>/secrets`, nunca em git. Injetadas no boot pel
 - `PLATFORM_DATABASE_URL` — banco de plataforma (catálogo de cidades, operadores, `platform_events`), fila de plataforma e Solid Cache.
 - `CITY_UNSET_DATABASE_URL` — banco VAZIO que precisa existir; destino do shard `bootstrap` do `CityRecord`, faz query fora de cidade falhar fechado. Nunca apontar para o banco compartilhado.
 - `GOVBR_CLIENT_ID` / `GOVBR_CLIENT_SECRET` — cliente OIDC do gov.br; a redirect_uri registrada é a ÚNICA de auth.* (`GOVBR_REDIRECT_URI`).
+- `report_signing_key` — NÃO fica em `deploy/<env>/secrets`: mora em `config/credentials.yml.enc`, protegido pelo
+  `RAILS_MASTER_KEY` acima. Desde a Task 6 (Plano 8), a chave HMAC efetiva do token de relatório (`ReportSnapshot.sign`)
+  é DERIVADA deste valor global com o `cities.encryption_key` da cidade (`CityEncryption.report_signing_key`) — a
+  mesma composição usada para cifra (ver README.md § Material de cifra). Quem restaura um dump de cidade precisa dos
+  dois: este valor global **e** o `cities.encryption_key` daquela cidade **da época do dump** — sem os dois juntos,
+  as assinaturas dos `report_snapshots` do dump não conferem contra a derivação atual. Diferente de dado cifrado
+  (ciphertext errado decifra em lixo, sem erro), uma assinatura HMAC com chave errada simplesmente NÃO confere —
+  falha fechada, visível — mas ainda assim invalida o link de relatório do cidadão até alguém rodar
+  `city:resign_reports` (ou equivalente) com o material certo.
 
 Em produção os valores vêm do 1Password (`deploy/production/secrets`). Itens que o
 cofre `rota-saude-prod` precisa ter: `postgres-roles` (campos `rota_app`,
@@ -46,7 +55,10 @@ Nunca `SUPERUSER`. Em dev e test, `rails platform:bootstrap` cria o mesmo papel 
 `CITY_BACKUP_DIR` (volume do worker) recebe os dumps de `city:backup` e o dump final de `city:offboard`. O dump contém
 dados cifrados com as chaves de AR Encryption acima **e** com o `cities.encryption_key` daquela cidade (chave por
 cidade, Plano 7 — ver README.md): as duas coisas são necessárias para restaurar, não só as chaves de AR Encryption.
-Guardar o dump sem as chaves de AR Encryption OU sem o `encryption_key` da cidade não permite restaurar — e, se o
+Desde a Task 6 (Plano 8), o mesmo par vale para as assinaturas de `report_snapshots` do dump: `report_signing_key`
+(item acima, em `config/credentials.yml.enc`) **e** o `cities.encryption_key` da cidade daquela época são os dois
+necessários para que os links de relatório do dump voltem a conferir depois de uma restauração. Guardar o dump sem as
+chaves de AR Encryption OU sem o `encryption_key` da cidade não permite restaurar — e, se o
 `encryption_key` da cidade já tiver mudado (rekey/rotação depois do dump), restaurar devolve dado ilegível **sem
 erro nenhum** (ver "Restaurar um dump" em README.md).
 
