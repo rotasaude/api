@@ -1,14 +1,27 @@
-# API-only. CORS aberto apenas para os hosts conhecidos do frontend.
-# Webhook do WhatsApp NÃO precisa de CORS (request vem do servidor da Meta).
+# API-only. CORS aberto para os hosts conhecidos: qualquer cidade servível do
+# catálogo (Plano 6 — a lista estática não enumera N cidades), os hosts
+# reservados da plataforma (admin/api/auth/www) e o que estiver em
+# ALLOWED_ORIGINS (ferramentas internas, testes).
 #
-# Em dev/prod o Admin Console é servido via reverse-proxy / Vite proxy
-# (same-origin do ponto de vista do browser → cookies fluem sem CORS).
-# As regras abaixo cobrem chamadas cross-origin explícitas (testes,
-# ferramentas internas). credentials: true é obrigatório para que o
-# browser envie/aceite o cookie de sessão (ADR-0011).
+# Webhook do WhatsApp NÃO precisa de CORS (request vem do servidor da Meta).
+# credentials: true é obrigatório para o browser enviar/aceitar o cookie de
+# sessão (ADR-0011). A resolução usa o cache do CityCatalog (TTL 30 s, teto de
+# 500 entradas), então uma origem inventada não vira query por requisição.
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins ENV.fetch("ALLOWED_ORIGINS", "http://localhost:5174,http://localhost:5173").split(",")
+    origins do |source, _env|
+      next true if ENV.fetch("ALLOWED_ORIGINS", "").split(",").map(&:strip).include?(source)
+
+      host = begin
+        URI.parse(source).host
+      rescue URI::InvalidURIError
+        nil
+      end
+      next false if host.blank?
+      next true if CityCatalog.reserved_host?(host)
+
+      CityCatalog.find_by_host(host)&.servable? || false
+    end
     resource "/protocols/*",
              headers: :any,
              methods: %i[get post options],
