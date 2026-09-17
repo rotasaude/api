@@ -59,6 +59,34 @@ RSpec.describe "Maintenance GraphQL", type: :request do
     expect(response).to have_http_status(:payload_too_large)
   end
 
+  it "refuses a request above the body size limit, even with a small query" do
+    login!
+    query!("{ me { id } }", padding: "x" * Maintenance::GraphqlController::MAX_BODY_BYTES)
+
+    expect(response).to have_http_status(:payload_too_large)
+    expect(response.body).to be_blank
+  end
+
+  it "refuses a query above the complexity limit" do
+    login!
+    aliases = 220.times.map { |i| "a#{i}: id" }.join(" ")
+    query!("{ me { #{aliases} } }")
+
+    expect(response).to have_http_status(:ok)
+    expect(json["errors"]).to be_present
+    expect(json["errors"].first["message"]).to match(/complexity/i)
+    expect(json["data"]).to be_nil
+  end
+
+  # A profundidade real alcançável hoje é 2 (Query.me -> campo escalar): todo
+  # campo de MaintainerType é folha (ID/String/DateTime), e GraphQL proíbe
+  # selecionar sub-campo de escalar — não existe query válida que chegue a
+  # depth 11 com o schema de hoje. A prova comportamental chega no Plano 4,
+  # com o primeiro tipo aninhado (cidades). Por ora, prova-se a configuração.
+  it "configures the depth limit, proven behaviorally once a nested type exists (Plan 4)" do
+    expect(Maintenance::Schema.max_depth).to eq(10)
+  end
+
   it "answers an error, not a crash, for an unknown field" do
     login!
     query!("{ cidades { slug } }")

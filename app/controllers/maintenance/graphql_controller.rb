@@ -2,10 +2,19 @@
 # requisição, sem lote. GET não existe — query em URL vai parar em log e cache.
 module Maintenance
   class GraphqlController < BaseController
+    # Dois limites, propósitos diferentes: o de QUERY bounds o que o parser vê
+    # (profundidade, complexidade); o de BODY bounds o que o processo lê do
+    # socket, ponto — o que inclui `variables`, que o cap de query sozinho não
+    # alcança (uma query minúscula com um `variables` de megabytes passaria
+    # ilesa pelo primeiro limite). O de body é checado primeiro e é mais largo
+    # de propósito: ele é o teto absoluto da requisição inteira.
     MAX_QUERY_BYTES = 10_000
+    MAX_BODY_BYTES = 64_000
     INTROSPECTION = /\b__(schema|type)\b/
 
     def execute
+      return head(:payload_too_large) if request.raw_post.bytesize > MAX_BODY_BYTES
+
       query = params[:query].to_s
       return head(:payload_too_large) if query.bytesize > MAX_QUERY_BYTES
 
