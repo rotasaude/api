@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+# script/relatorio-semanal.sh (repo apps/api)
+#
+# Gera o relatório semanal de drift em docs/relatorios/<today>.md.
+# Disparado por cron toda segunda às 07:00 (ver entry no fim do arquivo).
+#
+# Exit codes:
+#   0  sucesso
+#   1  falha do agente CLI
+#   2  sem baseline em docs/relatorios/
+#   3  baseline com idade > MAX_BASELINE_AGE_DAYS
+#   4  repo sujo em fontes críticas (docs/, apps/api/db/)
+#  10  arquivo do dia já existe (idempotência)
+#
+# Não comita. Não roda testes. Não envia notificação por padrão.
+
+set -euo pipefail
+
+# --- Configuração ----------------------------------------------------------
+
+# O corpus vive em OUTRO repositório (rotasaude/docs), clonado em <monorepo>/docs.
+# Aponte MONOREPO_ROOT para a raiz do working set, ou REPORTS_DIR direto.
+MONOREPO_ROOT="${MONOREPO_ROOT:-$(cd "${BASH_SOURCE%/*}/../../.." && pwd)}"
+REPO_ROOT="$MONOREPO_ROOT"
+REPORTS_DIR="${REPORTS_DIR:-$REPO_ROOT/docs/relatorios}"
+PROMPT_FILE="${PROMPT_FILE:-$REPO_ROOT/docs/adr/prompts/prompt-relatorio-semanal.md}"
+LOG_DIR="${LOG_DIR:-$REPO_ROOT/.relatorios-logs}"
+MAX_BASELINE_AGE_DAYS="${MAX_BASELINE_AGE_DAYS:-35}"
+
+TODAY="$(date +%Y-%m-%d)"
+OUT_FILE="$REPORTS_DIR/$TODAY.md"
+LOG_FILE="$LOG_DIR/$TODAY.log"
+
+mkdir -p "$REPORTS_DIR" "$LOG_DIR"
+
+log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG_FILE" >&2; }
+
+# --- Helpers de data portáveis (BSD date no macOS, GNU date no Linux) ------
+
+date_to_epoch() {
+  local d="$1"
+  if date -j -f "%Y-%m-%d" "$d" +%s 2>/dev/null; then return; fi  # macOS
+  date -d "$d" +%s                                                # Linux
+}
+
+# --- Idempotência ----------------------------------------------------------
+
+if [[ -f "$OUT_FILE" ]]; then
+  log "Relatório do dia já existe em $OUT_FILE — pulando."
+  exit 10
+fi
+
+# --- Sanidade do repo ------------------------------------------------------
+
+DIRTY="$(git -C "$REPO_ROOT" status --porcelain -- docs/ apps/api/db/ 2>/dev/null || true)"
+if [[ -n "$DIRTY" ]]; then
+  log "Repo sujo em docs/ ou apps/api/db/. Trate antes de gerar relatório:"
+  echo "$DIRTY" | tee -a "$LOG_FILE" >&2
+  exit 4
+fi
+
+# --- Localiza baseline -----------------------------------------------------
+
+BASELINE_NAME="$(
+  find "$REPORTS_DIR" -maxdepth 1 -type f -name '????-??-??.md' \
+    -not -name "$TODAY.md" -printf '%f\n' 2>/dev/null \
+  | sort | tail -n 1 || true
+)"
+
+# fallback para sistemas sem -printf (macOS find)
+if [[ -z "$BASELINE_NAME" ]]; then
+  BASELINE_NAME="$(
+    ls -1 "$REPORTS_DIR" 2>/dev/null \
+    | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.md$' \
+    | grep -v "^$TODAY.md$" \
+    | sort | tail -n 1 || true
+  )"
+fi
+
+if [[ -z "$BASELINE_NAME" ]]; then
+  log "Sem baseline em $REPORTS_DIR. Rode prompt-relatorio-implementacao.md primeiro."
+  exit 2
+fi
+
+BASELINE_DATE="${BASELINE_NAME%.md}"
+BASELINE_PATH="$REPORTS_DIR/$BASELINE_NAME"
+
+TODAY_EPOCH="$(date_to_epoch "$TODAY")"
+BASELINE_EPOCH="$(date_to_epoch "$BASELINE_DATE")"
+BASELINE_AGE=$(( (TODAY_EPOCH - BASELINE_EPOCH) / 86400 ))
+
+if (( BASELINE_AGE > MAX_BASELINE_AGE_DAYS )); then
+  log "Baseline $BASELINE_DATE com $BASELINE_AGE dias (>$MAX_BASELINE_AGE_DAYS). Rode re-baseline."
+  exit 3
+fi
+
+log "Baseline: $BASELINE_DATE ($BASELINE_AGE dias atrás)."
+
+# --- Coleta de contexto ----------------------------------------------------
+
+CONTEXT_DIR="$(mktemp -d -t rota-relatorio.XXXXXX)"
+trap 'rm -rf "$CONTEXT_DIR"' EXIT
+
+# Árvore do repo (até 5000 entradas para não explodir contexto)
+git -C "$REPO_ROOT" ls-tree -r --name-only HEAD | head -n 5000 \
+  > "$CONTEXT_DIR/tree.txt"
+
+# Schema + migrations + drift
+SCHEMA_FILE="$REPO_ROOT/apps/api/db/schema.rb"
+MIGRATE_DIR="$REPO_ROOT/apps/api/db/migrate"
+SCHEMA_DRIFT=0
+
+if [[ -f "$SCHEMA_FILE" ]]; then
+  cp "$SCHEMA_FILE" "$CONTEXT_DIR/schema.rb"
+  SCHEMA_TS="$(grep -oE '[0-9]{14}' "$SCHEMA_FILE" | head -n 1 || echo "0")"
+else
+  SCHEMA_TS=0
+  log "schema.rb não encontrado em $SCHEMA_FILE."
+fi
+
+if [[ -d "$MIGRATE_DIR" ]]; then
+  ( cd "$MIGRATE_DIR" && ls -1 *.rb 2>/dev/null ) > "$CONTEXT_DIR/migrations.txt" || true
+  SCHEMA_DRIFT="$(
+    awk -F_ -v ts="$SCHEMA_TS" '$1 > ts { c++ } END { print c+0 }' \
+      "$CONTEXT_DIR/migrations.txt"
+  )"
+fi
+
+printf '%s\n' "$SCHEMA_DRIFT" > "$CONTEXT_DIR/schema_drift.txt"
+log "Schema drift: $SCHEMA_DRIFT migrations adiante do schema.rb."
+
+# ADRs completos (repo deste projeto usa docs/adr/, não docs/decisoes/)
+if [[ -d "$REPO_ROOT/docs/adr" ]]; then
+  cp -R "$REPO_ROOT/docs/adr" "$CONTEXT_DIR/adrs"
+fi
+
+# Baseline anterior
+cp "$BASELINE_PATH" "$CONTEXT_DIR/baseline.md"
+
+# Diff git desde a baseline
+LAST_COMMIT_BEFORE="$(
+  git -C "$REPO_ROOT" rev-list -n 1 --before="$BASELINE_DATE 23:59:59" HEAD 2>/dev/null || true
+)"
+
+if [[ -n "$LAST_COMMIT_BEFORE" ]]; then
+  git -C "$REPO_ROOT" log --oneline "$LAST_COMMIT_BEFORE..HEAD" \
+    > "$CONTEXT_DIR/commits.txt" || true
+  git -C "$REPO_ROOT" diff --name-status "$LAST_COMMIT_BEFORE..HEAD" \
+    > "$CONTEXT_DIR/changed.txt" || true
+  log "Commits desde baseline: $(wc -l < "$CONTEXT_DIR/commits.txt" | tr -d ' ')."
+else
+  log "Não consegui localizar commit anterior à baseline ($BASELINE_DATE)."
+fi
+
+HEAD_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
+HEAD_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
+
+# --- Chamada ao agente CLI -------------------------------------------------
+#
+# A invocação abaixo é GENÉRICA. Substitua pela CLI do agente que sua máquina
+# tem instalada. O contrato esperado é:
+#   - lê PROMPT_FILE como prompt
+#   - tem acesso aos arquivos em CONTEXT_DIR
+#   - escreve a resposta em OUT_FILE
+#
+# Exemplo com `claude` (Claude Code CLI). Adapte os flags conforme sua versão.
+
+log "Chamando agente CLI..."
+
+# Variante 1 — Claude Code (ajuste flags conforme a versão instalada):
+# claude \
+#   --prompt-file "$PROMPT_FILE" \
+#   --context-dir "$CONTEXT_DIR" \
+#   --metadata "today=$TODAY,baseline=$BASELINE_DATE,head=$HEAD_SHA,branch=$HEAD_BRANCH,schema_drift=$SCHEMA_DRIFT" \
+#   --output "$OUT_FILE" 2>&1 | tee -a "$LOG_FILE"
+
+# Variante 2 — wrapper local que monta a mensagem e chama qualquer LLM:
+#   ./scripts/_run-agent.sh "$PROMPT_FILE" "$CONTEXT_DIR" "$OUT_FILE" \
+#     --meta today="$TODAY" baseline="$BASELINE_DATE" head="$HEAD_SHA" schema_drift="$SCHEMA_DRIFT"
+
+# Placeholder — falhar explicitamente se não foi configurado:
+if ! command -v claude >/dev/null 2>&1; then
+  log "CLI do agente não encontrada. Edite a invocação no script (procure 'Variante')."
+  exit 1
+fi
+
+claude \
+  --prompt-file "$PROMPT_FILE" \
+  --context-dir "$CONTEXT_DIR" \
+  --metadata "today=$TODAY,baseline=$BASELINE_DATE,head=$HEAD_SHA,branch=$HEAD_BRANCH,schema_drift=$SCHEMA_DRIFT" \
+  --output "$OUT_FILE" 2>&1 | tee -a "$LOG_FILE" || {
+  log "Falha do agente CLI. Ver $LOG_FILE."
+  exit 1
+}
+
+if [[ ! -s "$OUT_FILE" ]]; then
+  log "Agente terminou sem gerar arquivo legível em $OUT_FILE."
+  exit 1
+fi
+
+# --- Pós-processo: separar alarmes -----------------------------------------
+
+if grep -q '^## 0\. Alarmes' "$OUT_FILE"; then
+  ALARM_FILE="$LOG_DIR/$TODAY-alarmes.txt"
+  awk '
+    /^## 0\. Alarmes/ { capturing=1 }
+    capturing && /^## Métricas/ { exit }
+    capturing { print }
+  ' "$OUT_FILE" > "$ALARM_FILE"
+  log "ALARMES detectados — ver $ALARM_FILE"
+  # Hook opcional. Crie script/notify-alarmes.sh no repo api para ativar.
+  if [[ -x "$MONOREPO_ROOT/script/notify-alarmes.sh" ]]; then
+    "$MONOREPO_ROOT/script/notify-alarmes.sh" "$ALARM_FILE" || \
+      log "notify-alarmes.sh retornou erro (não-fatal)."
+  fi
+fi
+
+log "Relatório gerado: $OUT_FILE"
+log "Revise e commite manualmente (não é commitado automaticamente)."
+exit 0
+
+# --- Entry sugerida no cron ------------------------------------------------
+#
+# Como root, em /etc/cron.d/rota-saude-relatorio:
+#   0 7 * * 1 deploy cd /opt/rota-saude && ./scripts/relatorio-semanal.sh
+#
+# Como usuário, via crontab -e:
+#   0 7 * * 1 cd ~/rota-saude && ./scripts/relatorio-semanal.sh
+#
+# macOS: prefira launchd com StartCalendarInterval Weekday=2 Hour=7.
