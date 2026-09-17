@@ -30,10 +30,13 @@ namespace :maintainer do
     PlatformRecord.transaction do
       maintainer.save!
       # Reconvite zera senha e TOTP: quem perdeu o dispositivo recomeça o
-      # cadastro inteiro, e um convite pendente antigo deixa de valer.
+      # cadastro inteiro.
       maintainer.update!(password: nil, otp_secret: nil, otp_enabled_at: nil, otp_recovery_codes: [],
                          failed_attempts: 0, locked_until: nil)
       maintainer.maintainer_sessions.destroy_all
+      # Convite é EXCLUSIVO (fix round 1): um convite pendente antigo deixa de
+      # valer assim que este novo é emitido — "usado" aqui inclui "superado".
+      MaintainerInvitation.invalidate_pending_for!(maintainer)
       invitation, token = MaintainerInvitation.issue!(maintainer: maintainer)
       MaintenanceAudit.record("maintenance.maintainer.invited", outcome: "ok", module_name: "maintainer",
                               maintainer_id: maintainer.id, credential: { "kind" => "rake" },
@@ -42,6 +45,9 @@ namespace :maintainer do
 
     origin = ENV.fetch("MAINTENANCE_FRONTEND_ORIGIN", "https://maintenance.#{Rails.env}.rotasaude.com.br")
     puts "[maintainer:invite] #{mask_email.call(email)} → convite válido por #{MaintainerInvitation::TTL.inspect}"
-    puts "[maintainer:invite] #{origin}/invitations/#{token}"
+    # Fragmento (#), não path: o navegador NUNCA envia o fragmento ao servidor,
+    # então o token não aparece em nenhum log de acesso quando o link é aberto
+    # (fix round 1 — o mesmo motivo pelo qual a API lê o token do corpo).
+    puts "[maintainer:invite] #{origin}/invitations##{token}"
   end
 end

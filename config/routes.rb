@@ -42,8 +42,8 @@ Rails.application.routes.draw do
       scope module: :maintenance, as: :maintenance do
         resource :session, only: %i[create show destroy]
         post "/session/challenge", to: "sessions#challenge_totp"
-        get  "/invitations/:token",        to: "invitations#show", as: :invitation
-        post "/invitations/:token/accept", to: "invitations#accept"
+        post "/invitations/enroll", to: "invitations#enroll"
+        post "/invitations/accept", to: "invitations#accept"
       end
     end
   end

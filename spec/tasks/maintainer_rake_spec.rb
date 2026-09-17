@@ -33,11 +33,13 @@ RSpec.describe "maintainer rake tasks" do
     expect(maintainer.maintainer_invitations.count).to eq(1)
     expect(output).to include("p***@rotasaude.app")
     expect(output).not_to include("primeiro@rotasaude.app")
-    expect(output).to match(%r{/invitations/[A-Za-z0-9_-]{20,}})
+    # Fragmento (#), não path (fix round 1): o navegador nunca envia o
+    # fragmento ao servidor, então o token não aparece em log de acesso.
+    expect(output).to match(%r{/invitations#[A-Za-z0-9_-]{20,}})
     expect(PlatformEvent.where(name: "maintenance.maintainer.invited").count).to eq(1)
   end
 
-  it "re-invites an existing maintainer with a brand new token" do
+  it "re-invites an existing maintainer with a brand new token, invalidating the old one" do
     invoke("segundo@rotasaude.app")
     first_digest = Maintainer.find_by(email_address: "segundo@rotasaude.app").maintainer_invitations.last.token_digest
 
@@ -46,7 +48,11 @@ RSpec.describe "maintainer rake tasks" do
 
     expect(invitations.count).to eq(2)
     expect(invitations.last.token_digest).not_to eq(first_digest)
-    expect(invitations.first.reload.used_at).to be_nil
+    # Convite é EXCLUSIVO (fix round 1): o convite antigo é SUPERADO pelo novo,
+    # não deixado pendente — a mesma reconvida que corrigiu "dois links vivos"
+    # também corrige aqui.
+    expect(invitations.first.reload.used_at).to be_present
+    expect(invitations.first.usable?).to be(false)
   end
 
   it "refuses an invalid e-mail and a deactivated maintainer" do

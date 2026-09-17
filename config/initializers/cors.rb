@@ -60,9 +60,13 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
              headers: :any,
              methods: %i[post options],
              credentials: true
-    resource "/invitations/*",
+    resource "/invitations/enroll",
              headers: :any,
-             methods: %i[get post options],
+             methods: %i[post options],
+             credentials: true
+    resource "/invitations/accept",
+             headers: :any,
+             methods: %i[post options],
              credentials: true
   end
 end

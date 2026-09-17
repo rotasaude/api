@@ -14,4 +14,13 @@ class MaintainerInvitation < PlatformRecord
   end
 
   def usable? = used_at.nil? && expires_at > Time.current
+
+  # Convite é EXCLUSIVO (fix round 1): emitir um novo, ou aceitar um, invalida
+  # qualquer outro ainda pendente do mesmo mantenedor — "usado" aqui inclui
+  # "superado", não só "aceito". Sem isto, dois links viviam ao mesmo tempo, e
+  # um convite antigo ainda podia matricular TOTP ou trocar a senha de uma
+  # conta já ativa.
+  def self.invalidate_pending_for!(maintainer)
+    maintainer.maintainer_invitations.where(used_at: nil).update_all(used_at: Time.current)
+  end
 end
