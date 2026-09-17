@@ -5,8 +5,8 @@ require 'spec_helper'
 # apagariam dados reais. Specs sempre rodam em test.
 ENV['RAILS_ENV'] = 'test'
 require_relative '../config/environment'
-# Prevent database truncation if the environment is production
-abort("The Rails environment is running in production mode!") if Rails.env.production?
+# Prevent database truncation if the environment is deployed (production or staging)
+abort("The Rails environment is running in a deployed mode (#{Rails.env})!") if Rota.deployed?
 abort("Specs must run in the test environment, got #{Rails.env}") unless Rails.env.test?
 # Uncomment the line below in case you have `--require rails_helper` in the `.rspec` file
 # that will avoid rails generators crashing because migrations haven't been run yet

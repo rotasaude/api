@@ -60,6 +60,7 @@ RSpec.describe "Solid Queue configuration per city and platform" do
 
   # Solid Queue valida pool ≥ maior número de threads de um worker + 2 contra o
   # pool do banco do processo (RAILS_MAX_THREADS do worker).
+  # TODO(staging infra): incluir staging quando deploy/staging/deploy.yml existir
   it "gives the Kamal worker a database pool that fits the largest worker" do
     %w[development production].each do |env|
       deploy = YAML.safe_load(Rails.root.join("deploy/#{env}/deploy.yml").read)

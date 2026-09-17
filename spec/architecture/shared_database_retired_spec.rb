@@ -9,14 +9,14 @@ RSpec.describe "Shared database retired" do
   end
 
   it "declares no queue database and keeps primary on the empty database, outside database tasks" do
-    %w[development test production].each do |env|
+    %w[development test production staging].each do |env|
       expect(database_yml[env]).not_to have_key("queue"), "config/database.yml: queue under #{env}"
       expect(database_yml[env]["primary"]).to include("database" => "rota_saude_no_city_selected", "database_tasks" => false)
     end
   end
 
   it "puts Solid Cache on the platform database, outside database tasks" do
-    %w[development production].each do |env|
+    %w[development production staging].each do |env|
       expect(database_yml[env]["cache"]).to include("username" => "rota_platform", "database_tasks" => false)
     end
     expect(database_yml["development"]["cache"]["database"]).to eq(database_yml["development"]["platform"]["database"])
@@ -40,7 +40,7 @@ RSpec.describe "Shared database retired" do
   it "puts cache on the same database as platform, in both environments, with a short connect_timeout on each" do
     cache_yml = ActiveSupport::ConfigurationFile.parse(Rails.root.join("config/cache.yml"))
 
-    %w[development production].each do |env|
+    %w[development production staging].each do |env|
       expect(cache_yml[env]).to include("database" => "cache"), "config/cache.yml: no database: cache under #{env}"
 
       cache_config = ActiveRecord::Base.configurations.configs_for(env_name: env, name: "cache", include_hidden: true)
