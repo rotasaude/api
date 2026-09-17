@@ -36,11 +36,22 @@ class Maintainer < PlatformRecord
 
   # Incremento atômico: duas tentativas simultâneas contam duas. O bloqueio é da
   # CONTA (o rate_limit do controller é por IP, e trocar de IP é barato).
+  #
+  # I1: bloqueio VENCIDO recomeça a contagem em 1. Sem isto, `failed_attempts`
+  # ficava no teto para sempre depois do primeiro bloqueio: passados os 15
+  # minutos, o próximo erro isolado já era o "quinto" e re-bloqueava a conta —
+  # e nesta fatia não existe caminho de desbloqueio. A spec §6 fala em CINCO
+  # FALHAS SEGUIDAS; um erro depois de um bloqueio expirado é a primeira.
   def register_failure!
+    expired = "locked_until IS NOT NULL AND locked_until <= now()"
+    attempts = "CASE WHEN #{expired} THEN 1 ELSE failed_attempts + 1 END"
+
     self.class.where(id: id).update_all(<<~SQL.squish)
-      failed_attempts = failed_attempts + 1,
-      locked_until = CASE WHEN failed_attempts + 1 >= #{LOCKOUT_ATTEMPTS}
-                          THEN now() + interval '#{LOCKOUT_WINDOW.to_i} seconds' ELSE locked_until END,
+      failed_attempts = #{attempts},
+      locked_until = CASE WHEN (#{attempts}) >= #{LOCKOUT_ATTEMPTS}
+                            THEN now() + interval '#{LOCKOUT_WINDOW.to_i} seconds'
+                          WHEN #{expired} THEN NULL
+                          ELSE locked_until END,
       updated_at = now()
     SQL
   end

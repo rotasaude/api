@@ -31,8 +31,26 @@ RSpec.describe MaintenanceApi do
 
     it "lets every other combination boot" do
       [ %w[production false], %w[staging true], %w[development true], %w[test false] ].each do |env, flag|
-        expect { described_class.check_boot!(env: env, flag: flag) }.not_to raise_error
+        expect { described_class.check_boot!(env: env, flag: flag, origin: "https://maintenance.example") }
+          .not_to raise_error
       end
+    end
+
+    # I3 (fix round 2): a trava de CSRF é a igualdade com MAINTENANCE_FRONTEND_ORIGIN.
+    # Vazia, ela falha fechada — a API sobe recusando tudo com 403, e o sintoma
+    # não aponta para a variável que falta. Em ambiente publicado isso é erro de
+    # deploy, e erro de deploy aparece no deploy.
+    it "refuses to boot a deployed environment with the API on and no frontend origin" do
+      [ nil, "", "   " ].each do |origin|
+        expect { described_class.check_boot!(env: "staging", flag: "true", origin: origin) }
+          .to raise_error(MaintenanceApi::MissingFrontendOrigin, /MAINTENANCE_FRONTEND_ORIGIN/)
+      end
+    end
+
+    it "does not ask for the origin where the API is off, or outside a deployed environment" do
+      expect { described_class.check_boot!(env: "staging", flag: nil, origin: nil) }.not_to raise_error
+      expect { described_class.check_boot!(env: "development", flag: "true", origin: nil) }.not_to raise_error
+      expect { described_class.check_boot!(env: "test", flag: nil, origin: nil) }.not_to raise_error
     end
   end
 end

@@ -19,8 +19,13 @@ module MaintenanceApi
   BLOCKED_ENVS = (Rota::DEPLOYED_ENVS - ALLOWED_ENVS).freeze
 
   FLAG = "MAINTENANCE_API_ENABLED"
+  # Origem exata do frontend. É a trava de CSRF da API inteira
+  # (MaintainerAuthentication#require_maintenance_origin): sem ela configurada,
+  # nenhuma requisição passa.
+  ORIGIN = "MAINTENANCE_FRONTEND_ORIGIN"
 
   class EnabledInProduction < StandardError; end
+  class MissingFrontendOrigin < StandardError; end
 
   module_function
 
@@ -35,11 +40,24 @@ module MaintenanceApi
 
   # Falha fechada no boot: chave ligada num processo do ambiente bloqueado
   # (produção) é erro de deploy, e erro de deploy tem que aparecer no deploy.
-  def check_boot!(env: Rails.env, flag: ENV[FLAG])
-    return unless BLOCKED_ENVS.include?(env.to_s) && flag.to_s == "true"
+  #
+  # I3 (fix round 2): e a API LIGADA num ambiente publicado sem
+  # MAINTENANCE_FRONTEND_ORIGIN também derruba o boot. A trava de CSRF falha
+  # fechada sem ela — a API subiria recusando 403 em tudo, e o modo de falha
+  # ("o frontend parou") não aponta para a variável que falta. Em development a
+  # ausência não derruba nada: lá o valor vem do compose e a recusa é local.
+  def check_boot!(env: Rails.env, flag: ENV[FLAG], origin: ENV[ORIGIN])
+    if BLOCKED_ENVS.include?(env.to_s) && flag.to_s == "true"
+      raise EnabledInProduction,
+            "#{FLAG}=true em produção — a API de manutenção não existe em produção (spec §5). " \
+            "Remova a variável do deploy."
+    end
 
-    raise EnabledInProduction,
-          "#{FLAG}=true em produção — a API de manutenção não existe em produção (spec §5). " \
-          "Remova a variável do deploy."
+    return unless enabled?(env: env, flag: flag) && Rota.deployed?(env)
+    return if origin.to_s.strip.present?
+
+    raise MissingFrontendOrigin,
+          "#{ORIGIN} vazia com a API de manutenção ligada em #{env} — é a trava de CSRF da API " \
+          "(sem ela toda requisição é 403). Declare a origem exata do frontend no deploy."
   end
 end

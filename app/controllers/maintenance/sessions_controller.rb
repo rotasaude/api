@@ -24,7 +24,19 @@ module Maintenance
         return render(json: { error: "invalid_credentials" }, status: :unauthorized)
       end
 
-      return render(json: { error: "locked" }, status: :unauthorized) if maintainer.locked?
+      # I2: conta bloqueada responde IGUAL a credencial inválida — "locked"
+      # confirmava, para qualquer um, que aquele e-mail é de um mantenedor. E
+      # paga o mesmo bcrypt (I2/5592ad2): sem o dummy, este retorno antecipado
+      # era o caminho mais rápido da controller e denunciava a conta pelo tempo.
+      # I5: a tentativa contra conta bloqueada era o único caminho sem
+      # auditoria nenhuma — justamente o de quem está insistindo. Não incrementa
+      # o contador: renovar o bloqueio a cada tentativa o tornaria eterno.
+      if maintainer.locked?
+        dummy_authenticate
+        MaintenanceAudit.record("maintenance.session.failed", outcome: "rejected", module_name: "session",
+                                maintainer_id: maintainer.id, credential: { "kind" => "password" })
+        return render(json: { error: "invalid_credentials" }, status: :unauthorized)
+      end
 
       # Mantenedor conhecido, mas ainda sem convite aceito: não há digest para
       # comparar de verdade (authenticate nem chegaria a rodar bcrypt aqui), e o
@@ -39,7 +51,11 @@ module Maintenance
 
       return register_failed_password(maintainer) unless maintainer.authenticate(params[:password].to_s)
 
-      maintainer.clear_failures!
+      # C2: a contagem NÃO zera aqui. Zerar no passo da senha devolvia ao
+      # atacante que já tem a senha um contador limpo a cada nova sessão
+      # pendente — quatro palpites de TOTP por sessão, para sempre, sem nunca
+      # bloquear. A contagem zera quando a autenticação se COMPLETA (o TOTP
+      # certo, em challenge_totp).
       session = start_pending_session_for(maintainer)
       render json: { mfa_required: true, session_id: session.id }, status: :ok
     end
@@ -47,7 +63,10 @@ module Maintenance
     def challenge_totp
       session = pending_session
       return render(json: { error: "invalid_session" }, status: :unauthorized) unless session
-      return register_failed_totp(session) unless Mfa::Verify.call(session.maintainer, code: params[:code])
+      # C1: TOTP e nada mais. `Mfa::Verify.call` aceitaria um recovery code no
+      # lugar do código — um segundo fator estático para a conta de maior poder
+      # do sistema.
+      return register_failed_totp(session) unless Mfa::Verify.totp_valid?(session.maintainer, params[:code])
 
       # Atômico, pelo mesmo motivo de Operators::SessionsController: o cookie já
       # foi plantado no passo da senha, então um carimbo sem evento de auditoria
@@ -66,6 +85,8 @@ module Maintenance
       end
       return render(json: { error: "invalid_session" }, status: :unauthorized) unless verified
 
+      # Autenticação completa: só agora a sequência de falhas foi quebrada.
+      session.maintainer.clear_failures!
       session.assign_attributes(mfa_verified_at: now, last_seen_at: now)
       write_maintenance_cookie(session)
       Current.maintainer_session = session
@@ -105,7 +126,9 @@ module Maintenance
                               outcome: "rejected", module_name: "session", maintainer_id: maintainer.id,
                               credential: { "kind" => "password" })
 
-      render json: { error: locked ? "locked" : "invalid_credentials" }, status: :unauthorized
+      # I2: a resposta é a mesma bloqueado ou não. O bloqueio continua valendo
+      # (o retorno antecipado lá em cima), só não é anunciado.
+      render json: { error: "invalid_credentials" }, status: :unauthorized
     end
 
     # A sessão do challenge tem de ser a MESMA cujo cookie este cliente recebeu,
@@ -119,23 +142,46 @@ module Maintenance
       return nil if session.created_at <= MaintainerAuthentication::PENDING_MFA_WINDOW.ago
       return nil unless session.maintainer.active?
 
+      # C2/I5: um bloqueio que cai ENTRE o passo da senha e o challenge tem de
+      # valer aqui — senão a sessão pendente vira uma janela em que a conta
+      # bloqueada ainda pode ser aberta. E a tentativa é auditada: ela é a
+      # única prova de que alguém continuou tentando com a conta travada.
+      if session.maintainer.locked?
+        MaintenanceAudit.record("maintenance.session.failed", outcome: "rejected", module_name: "session",
+                                maintainer_id: session.maintainer_id, credential: { "kind" => "totp" })
+        return nil
+      end
+
       session
     end
 
+    # C2: o contador da SESSÃO sozinho não protege nada — quem tem a senha abre
+    # uma sessão pendente nova a cada cinco palpites e recomeça, para sempre. O
+    # TOTP errado agora conta para o bloqueio da CONTA, como a senha errada
+    # (spec §6: "cinco falhas seguidas na conta — senha ou TOTP").
+    # I5: e cada falha é auditada, não só a quinta.
     def register_failed_totp(session)
       counted = MaintainerSession.where(id: session.id, mfa_verified_at: nil)
                                  .update_all("totp_attempts = totp_attempts + 1")
       return render(json: { error: "invalid_session" }, status: :unauthorized) unless counted == 1
 
-      attempts = MaintainerSession.where(id: session.id).pick(:totp_attempts)
-      return render(json: { error: "invalid_code" }, status: :unauthorized) if
-        attempts && attempts < MaintainerAuthentication::MAX_TOTP_ATTEMPTS
+      maintainer = session.maintainer
+      maintainer.register_failure!
+      locked = maintainer.reload.locked?
 
+      MaintenanceAudit.record(locked ? "maintenance.session.locked" : "maintenance.session.failed",
+                              outcome: "rejected", module_name: "session",
+                              maintainer_id: session.maintainer_id, credential: { "kind" => "totp" })
+
+      attempts = MaintainerSession.where(id: session.id).pick(:totp_attempts)
+      over_cap = attempts.nil? || attempts >= MaintainerAuthentication::MAX_TOTP_ATTEMPTS
+      return render(json: { error: "invalid_code" }, status: :unauthorized) unless locked || over_cap
+
+      # Sessão pendente de conta bloqueada não sobrevive: sem isto o bloqueio
+      # deixaria de pé exatamente a sessão que estava sendo atacada.
       MaintainerSession.where(id: session.id, mfa_verified_at: nil).delete_all
       cookies.delete(MaintainerAuthentication::COOKIE)
-      MaintenanceAudit.record("maintenance.session.failed", outcome: "rejected", module_name: "session",
-                              maintainer_id: session.maintainer_id, credential: { "kind" => "totp" })
-      render json: { error: "too_many_attempts" }, status: :unauthorized
+      render json: { error: over_cap ? "too_many_attempts" : "invalid_code" }, status: :unauthorized
     end
 
     def serialize(session)

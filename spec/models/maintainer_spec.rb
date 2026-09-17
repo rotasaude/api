@@ -46,6 +46,24 @@ RSpec.describe Maintainer do
     end
   end
 
+  # I1 (fix round 2): sem isto, `failed_attempts` ficava no teto para sempre
+  # depois do primeiro bloqueio — vencidos os 15 minutos, UM erro isolado já
+  # re-bloqueava a conta, indefinidamente, e esta fatia não tem desbloqueio.
+  # `now()` é hora do BANCO: travel_to não a move, então o bloqueio vencido é
+  # escrito direto na linha.
+  it "restarts the count at one when the previous lock has expired" do
+    maintainer = build_maintainer
+    described_class::LOCKOUT_ATTEMPTS.times { maintainer.register_failure! }
+    expect(maintainer.reload.locked?).to be(true)
+
+    maintainer.update_columns(locked_until: 1.second.ago)
+    maintainer.register_failure!
+
+    expect(maintainer.reload.failed_attempts).to eq(1)
+    expect(maintainer.locked_until).to be_nil
+    expect(maintainer.locked?).to be(false)
+  end
+
   it "clears the failure count on a good login" do
     maintainer = build_maintainer
     2.times { maintainer.register_failure! }

@@ -38,8 +38,17 @@ module MaintainerAuthentication
 
   # Origem exata + header próprio. Sem os dois, um formulário de outro site
   # dispararia mutation com o cookie do mantenedor.
+  #
+  # I3 (fix round 2): FALHA FECHADA quando a variável não está configurada. A
+  # comparação direta degradava para `nil == nil` — sem MAINTENANCE_FRONTEND_ORIGIN
+  # no ambiente, toda requisição SEM Origin (as que não vêm de navegador, entre
+  # elas as de um script) passava pela trava de CSRF. Config ausente vira 403,
+  # nunca permissão. MaintenanceApi.check_boot! torna a ausência barulhenta em
+  # ambiente publicado; aqui ela é só fechada.
   def require_maintenance_origin
-    return head(:forbidden) unless request.headers["Origin"] == ENV["MAINTENANCE_FRONTEND_ORIGIN"]
+    expected = ENV[MaintenanceApi::ORIGIN].to_s
+    return head(:forbidden) if expected.blank?
+    return head(:forbidden) unless request.headers["Origin"] == expected
 
     head(:forbidden) unless request.headers[HEADER] == "1"
   end

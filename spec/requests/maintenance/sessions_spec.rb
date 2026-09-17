@@ -98,15 +98,108 @@ RSpec.describe "Maintainer session", type: :request do
     end
   end
 
-  it "locks the account after five bad passwords, then refuses the right one" do
+  # I2 (fix round 2): a conta bloqueada não se ANUNCIA. "locked" dizia a
+  # qualquer um que aquele e-mail é de um mantenedor — e ainda respondia sem
+  # passar pelo bcrypt de custo constante, o que denunciava a conta pelo tempo
+  # mesmo sem ler o corpo. O bloqueio continua valendo; só não é contado.
+  it "locks the account after five bad passwords and then answers the right one indistinguishably" do
     Maintainer::LOCKOUT_ATTEMPTS.times { login!("errada") }
 
     expect(maintainer.reload.locked?).to be(true)
     expect(PlatformEvent.where(name: "maintenance.session.locked").count).to eq(1)
 
+    allow(BCrypt::Password).to receive(:new).and_call_original
+    expect(BCrypt::Password).to receive(:new).with(Maintenance::SessionsController::DUMMY_DIGEST).and_call_original
+
     login!
+
     expect(response).to have_http_status(:unauthorized)
-    expect(json).to include("error" => "locked")
+    expect(json).to eq({ "error" => "invalid_credentials" })
+    expect(maintainer.reload.locked?).to be(true)
+    # I5: a tentativa contra conta bloqueada também é auditada — quatro falhas
+    # de senha antes do bloqueio, mais esta.
+    expect(PlatformEvent.where(name: "maintenance.session.failed").count).to eq(Maintainer::LOCKOUT_ATTEMPTS)
+  end
+
+  # C2 (fix round 2): antes, TOTP errado só incrementava o contador da SESSÃO —
+  # quem tivesse a senha abria uma sessão pendente nova e recomeçava a contar,
+  # para sempre. Agora a conta soma as falhas de senha E de TOTP, e o passo da
+  # senha não zera mais nada (só o TOTP certo zera).
+  it "counts a wrong TOTP toward the account lockout, across pending sessions" do
+    login!
+    first = json["session_id"]
+    (Maintainer::LOCKOUT_ATTEMPTS - 1).times do
+      post "/session/challenge", params: { session_id: first, code: "000000" }, headers: headers
+    end
+    expect(maintainer.reload.locked?).to be(false)
+
+    login!
+    second = json["session_id"]
+    post "/session/challenge", params: { session_id: second, code: "000000" }, headers: headers
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(maintainer.reload.locked?).to be(true)
+    expect(PlatformEvent.where(name: "maintenance.session.locked").count).to eq(1)
+    expect(MaintainerSession.where(id: second)).to be_empty
+  end
+
+  # I5 (fix round 2): quatro de cada cinco falhas de TOTP eram invisíveis — só a
+  # que apagava a sessão virava evento.
+  it "audits every failed TOTP, not only the last one" do
+    login!
+    session_id = json["session_id"]
+    3.times { post "/session/challenge", params: { session_id: session_id, code: "000000" }, headers: headers }
+
+    events = PlatformEvent.where(name: "maintenance.session.failed").order(:created_at)
+    expect(events.count).to eq(3)
+    expect(events.last.payload).to include("outcome" => "rejected", "maintainer_id" => maintainer.id,
+                                           "credential" => { "kind" => "totp" })
+  end
+
+  # C2/I5 (fix round 2): o bloqueio que cai ENTRE a senha e o challenge vale no
+  # challenge — com o código CERTO na mão, a sessão pendente não abre.
+  it "refuses and audits a challenge whose account got locked after the password step" do
+    login!
+    session_id = json["session_id"]
+    maintainer.update_columns(failed_attempts: Maintainer::LOCKOUT_ATTEMPTS,
+                              locked_until: Maintainer::LOCKOUT_WINDOW.from_now)
+
+    post "/session/challenge", params: { session_id: session_id, code: totp }, headers: headers
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(json).to include("error" => "invalid_session")
+    expect(PlatformEvent.where(name: "maintenance.session.failed").last.payload)
+      .to include("credential" => { "kind" => "totp" }, "maintainer_id" => maintainer.id)
+
+    get "/session", headers: headers
+    expect(response).to have_http_status(:unauthorized)
+  end
+
+  # C1 (fix round 2): spec §6 — "Não há recovery codes". Mesmo que uma linha
+  # antiga ainda carregue um código, ele não autentica: o challenge valida TOTP
+  # e mais nada.
+  it "never accepts a recovery code in place of the TOTP" do
+    code = "recuperacao1"
+    maintainer.update!(otp_recovery_codes: [ BCrypt::Password.create(code).to_s ])
+
+    login!
+    post "/session/challenge", params: { session_id: json["session_id"], code: code }, headers: headers
+    expect(response).to have_http_status(:unauthorized)
+
+    get "/session", headers: headers
+    expect(response).to have_http_status(:unauthorized)
+    expect(maintainer.reload.otp_recovery_codes.size).to eq(1)
+  end
+
+  # I3 (fix round 2): sem MAINTENANCE_FRONTEND_ORIGIN configurada, a checagem
+  # virava `nil == nil` e uma requisição SEM Origin nenhuma passava. Falha
+  # fechada: sem origem configurada, ninguém entra.
+  it "refuses every request when no frontend origin is configured" do
+    allow(ENV).to receive(:[]).with("MAINTENANCE_FRONTEND_ORIGIN").and_return(nil)
+
+    get "/session", headers: { "X-Rota-Maintenance" => "1" }
+
+    expect(response).to have_http_status(:forbidden)
   end
 
   it "pays the same bcrypt cost for an unknown e-mail as for a known one, to not enumerate accounts" do
