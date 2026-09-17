@@ -15,11 +15,14 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me],
+    "Query" => %w[me maintenanceTokens],
     "Maintainer" => %w[id emailAddress createdAt],
-    "Mutation" => %w[inviteMaintainer deactivateMaintainer],
+    "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken],
     "InviteMaintainerPayload" => %w[ok errors],
     "DeactivateMaintainerPayload" => %w[ok errors],
+    "MaintenanceToken" => %w[id name access citySlugs expiresAt revokedAt lastUsedAt],
+    "CreateMaintenanceTokenPayload" => %w[ok errors secretOnce],
+    "RevokeMaintenanceTokenPayload" => %w[ok errors],
     "UserError" => %w[path message]
   }.freeze
 
@@ -28,6 +31,14 @@ RSpec.describe "Maintenance GraphQL schema" do
   # literal `/.../i` embute `(?-mix:...)`, e o `-i` de dentro VENCE o `i` de
   # fora — `accessToken` escapava. Foi o auto-teste lá embaixo que pegou isso.
   FORBIDDEN_NAME = Regexp.union(FORBIDDEN_FRAGMENTS.map { |f| Regexp.new(f, Regexp::IGNORECASE) })
+
+  # Nomes que CONTÊM fragmento proibido e mesmo assim são publicados, cada um
+  # revisado: esta fatia administra tokens, e chamá-los de outra coisa esconderia
+  # o que são. A lista é NOMINAL e exata — nunca por fragmento.
+  ALLOWED_NAMES = %w[
+    MaintenanceToken maintenanceTokens createMaintenanceToken revokeMaintenanceToken
+    CreateMaintenanceTokenPayload RevokeMaintenanceTokenPayload secretOnce
+  ].freeze
 
   def declared_types
     Maintenance::Schema.types
@@ -49,7 +60,8 @@ RSpec.describe "Maintenance GraphQL schema" do
 
   it "publishes no type or field whose name is of a forbidden family" do
     offenders = declared_types.flat_map do |type_name, type|
-      [ type_name, *type.fields.keys ].select { |name| name.match?(FORBIDDEN_NAME) }
+      [ type_name, *type.fields.keys ].reject { |name| ALLOWED_NAMES.include?(name) }
+                                       .select { |name| name.match?(FORBIDDEN_NAME) }
     end
 
     expect(offenders).to be_empty
