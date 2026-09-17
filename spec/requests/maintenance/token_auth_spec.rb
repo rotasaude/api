@@ -61,6 +61,7 @@ RSpec.describe "Maintenance token authentication", type: :request do
   end
 
   it "refuses a token whose owner was deactivated" do
+    Maintainer.create!(email_address: "second-#{SecureRandom.hex(3)}@rotasaude.app") # último ativo não desativa (Plano 3)
     maintainer.deactivate!
 
     query!(bearer)

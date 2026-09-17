@@ -12,6 +12,9 @@ class Maintainer < PlatformRecord
 
   has_many :maintainer_sessions, dependent: :destroy
   has_many :maintainer_invitations, dependent: :destroy
+  has_many :maintenance_tokens, dependent: :destroy
+
+  class LastActive < StandardError; end
 
   # Mesma custódia de Operator#otp_secret: chave da PLATAFORMA, fixa, porque
   # este atributo pode ser lido de dentro de CityConnection.with.
@@ -64,10 +67,16 @@ class Maintainer < PlatformRecord
     update!(failed_attempts: 0, locked_until: nil)
   end
 
+  # A trava vive AQUI, não na mutation: `last_active?` sozinho era consultivo, e
+  # qualquer chamador novo (rake, console, mutation futura) trancaria todo mundo
+  # para fora sem perceber.
   def deactivate!
     transaction do
+      raise LastActive, "último mantenedor ativo" if last_active?
+
       update!(deactivated_at: Time.current)
       maintainer_sessions.destroy_all
+      maintenance_tokens.update_all(revoked_at: Time.current, updated_at: Time.current)
     end
   end
 

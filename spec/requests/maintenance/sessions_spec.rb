@@ -255,6 +255,7 @@ RSpec.describe "Maintainer session", type: :request do
     expect(response).to have_http_status(:no_content)
     expect(PlatformEvent.where(name: "maintenance.session.ended").count).to eq(1)
 
+    Maintainer.create!(email_address: "second-#{SecureRandom.hex(3)}@rotasaude.app") # último ativo não desativa (Plano 3)
     maintainer.deactivate!
     login!
     expect(response).to have_http_status(:unauthorized)

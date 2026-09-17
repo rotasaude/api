@@ -87,6 +87,7 @@ RSpec.describe "Maintainer invitation", type: :request do
   # inutilizáveis — não distingue "convite bom, conta desativada" de "convite
   # inexistente".
   it "refuses an invitation whose maintainer was deactivated" do
+    Maintainer.create!(email_address: "second-#{SecureRandom.hex(3)}@rotasaude.app") # último ativo não desativa (Plano 3)
     maintainer.deactivate!
 
     enroll

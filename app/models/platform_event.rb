@@ -21,6 +21,13 @@
 #     nome da cidade, objeto de plataforma. Qualquer chave nova que case um
 #     fragmento só entra por esta allow-list, com justificativa.
 class PlatformEvent < PlatformRecord
+  # `id` é UUID aleatório (Platform.audit grava `SecureRandom.uuid`), sem
+  # relação nenhuma com a ordem de inserção — `.last`/`.first` sem isto ordenam
+  # por um valor arbitrário, não por tempo. Um par tentativa/resultado (Plano 3)
+  # é o primeiro caso na suíte com DOIS eventos do mesmo nome no mesmo exemplo,
+  # e foi isto que expôs o problema: `.last` falhava de forma intermitente.
+  self.implicit_order_column = "created_at"
+
   FORBIDDEN_KEY_FRAGMENTS = %w[email cpf phone wa_id provider_uid body name].freeze
   FORBIDDEN_EXACT_KEYS = %w[from].freeze
   FORBIDDEN_PAYLOAD_KEYS = (FORBIDDEN_KEY_FRAGMENTS + FORBIDDEN_EXACT_KEYS).freeze

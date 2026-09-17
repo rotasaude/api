@@ -16,7 +16,11 @@ RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
     "Query" => %w[me],
-    "Maintainer" => %w[id emailAddress createdAt]
+    "Maintainer" => %w[id emailAddress createdAt],
+    "Mutation" => %w[inviteMaintainer deactivateMaintainer],
+    "InviteMaintainerPayload" => %w[ok errors],
+    "DeactivateMaintainerPayload" => %w[ok errors],
+    "UserError" => %w[path message]
   }.freeze
 
   FORBIDDEN_FRAGMENTS = %w[phone body raw evidence response context digest secret token key url].freeze

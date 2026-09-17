@@ -59,6 +59,7 @@ RSpec.describe "maintainer rake tasks" do
     expect { invoke("nao-e-email") }.to raise_error(SystemExit)
 
     invoke("terceiro@rotasaude.app")
+    Maintainer.create!(email_address: "second-#{SecureRandom.hex(3)}@rotasaude.app") # último ativo não desativa (Plano 3)
     Maintainer.find_by(email_address: "terceiro@rotasaude.app").deactivate!
     expect { invoke("terceiro@rotasaude.app") }.to raise_error(SystemExit)
   end

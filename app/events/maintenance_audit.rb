@@ -20,6 +20,7 @@ module MaintenanceAudit
     maintenance.maintainer.invited
     maintenance.maintainer.enrolled
     maintenance.maintainer.accepted
+    maintenance.maintainer.deactivated
     maintenance.token.refused
   ].freeze
 
@@ -54,6 +55,7 @@ module MaintenanceAudit
     when "maintenance.maintainer.invited"  then Platform.audit("maintenance.maintainer.invited", **payload)
     when "maintenance.maintainer.enrolled" then Platform.audit("maintenance.maintainer.enrolled", **payload)
     when "maintenance.maintainer.accepted" then Platform.audit("maintenance.maintainer.accepted", **payload)
+    when "maintenance.maintainer.deactivated" then Platform.audit("maintenance.maintainer.deactivated", **payload)
     when "maintenance.token.refused"       then Platform.audit("maintenance.token.refused", **payload)
     else
       # Sem isto, um nome novo em NAMES sem branch correspondente passaria na

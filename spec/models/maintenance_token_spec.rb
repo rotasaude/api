@@ -40,6 +40,7 @@ RSpec.describe MaintenanceToken do
     travel_to(2.hours.from_now) { expect(described_class.authenticate(expired_secret)).to be_nil }
 
     _live, live_secret = issue
+    Maintainer.create!(email_address: "second-#{SecureRandom.hex(3)}@rotasaude.app") # último ativo não desativa (Plano 3)
     maintainer.deactivate!
     expect(described_class.authenticate(live_secret)).to be_nil
   end

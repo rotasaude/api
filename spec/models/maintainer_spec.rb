@@ -76,6 +76,7 @@ RSpec.describe Maintainer do
 
   it "deactivates, killing every session at once" do
     maintainer = build_maintainer
+    build_maintainer # segundo mantenedor ativo: `deactivate!` recusa o último ativo (Plano 3)
     maintainer.maintainer_sessions.create!(mfa_verified_at: Time.current, last_seen_at: Time.current)
 
     maintainer.deactivate!
