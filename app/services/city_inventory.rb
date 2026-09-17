@@ -94,7 +94,21 @@ module CityInventory
   # CityPublicUrl tem uma env var separada para o wpda. Esse é justamente o
   # detalhe que ninguém lembra de cabeça — é o principal motivo destas URLs
   # estarem na tela.
+  # nil para cidade que o host não serve mais. Não é economia de tela: para
+  # `archived`, CityResolution checa servable? e devolve 404, então a URL
+  # prometeria uma página que o próprio servidor recusa — e o link de
+  # impersonate prometeria entrar numa cidade cujo banco foi dropado.
+  #
+  # SUSPENDED fica de fora desta guarda de propósito, e por isso a lista é
+  # separada de SKIPPED_STATUSES mesmo tendo hoje o mesmo conteúdo: são duas
+  # perguntas diferentes que por ora coincidem. Cidade suspensa ainda tem banco,
+  # volta com city:resume e responde 403 temporário — esconder a URL dela
+  # esconderia informação que volta a valer.
+  NO_LONGER_SERVED = %w[archived].freeze
+
   def urls_for(city)
+    return nil if NO_LONGER_SERVED.include?(city.status)
+
     {
       dashboard: "#{CityPublicUrl.base_for_slug(city.slug)}/dashboard/",
       wpda: "#{CityPublicUrl.wpda_base_for_slug(city.slug)}/wpda/",

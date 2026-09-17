@@ -285,5 +285,28 @@ RSpec.describe CityInventory do
       expect(entry[:reachable]).to be(false)
       expect(entry[:skipped]).to be(true)
     end
+
+    # Para cidade arquivada a URL não é só inútil, é ERRADA: CityResolution
+    # checa servable? (status == "active") e devolve 404 para archived, então o
+    # link prometeria uma página que o próprio servidor recusa. Não produzir é
+    # mais honesto que produzir e esconder na view.
+    it "offers no URLs at all, because the host no longer serves this city" do
+      expect(entry_for("arquivada")[:urls]).to be_nil
+    end
+  end
+
+  # Suspensa é diferente de arquivada, e a distinção é deliberada: o banco ainda
+  # existe, city:resume a traz de volta, e o host responde 403 temporário em vez
+  # de 404. Esconder a URL dela esconderia informação que volta a valer.
+  describe "a suspended city" do
+    let!(:suspended) do
+      create(:city, slug: "suspensa", name: "Cidade Suspensa",
+                    database_url: city_database_url("rota_saude_test_city_a"),
+                    status: "suspended")
+    end
+
+    it "keeps its URLs" do
+      expect(entry_for("suspensa")[:urls]).to include(:dashboard, :wpda)
+    end
   end
 end

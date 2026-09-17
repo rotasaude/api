@@ -117,6 +117,10 @@
         <dd><%= city[:created_at]&.strftime("%d/%m/%Y %H:%M") %></dd>
       </dl>
 
+      <%# Sem URLs = host não serve mais esta cidade (archived). O bloco some
+          inteiro em vez de mostrar campos vazios: o bloco "Dentro do banco da
+          cidade", logo abaixo, já explica o porquê. %>
+      <% if city[:urls] %>
       <div class="group">
         <h2>Como acessar</h2>
         <dl>
@@ -150,6 +154,7 @@
           </dd>
         </dl>
       </div>
+      <% end %>
 
       <div class="group">
         <h2>Canal WhatsApp</h2>
