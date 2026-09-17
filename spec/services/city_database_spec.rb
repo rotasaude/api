@@ -11,11 +11,11 @@ RSpec.describe CityDatabase do
   let(:pwd_a) { SecureRandom.hex(24) }
   let(:pwd_b) { SecureRandom.hex(24) }
 
-  # The last example below stubs Rails.env.production? for its own assertion;
-  # RSpec mocks teardown runs after every after-hook, so the stub is still
-  # active here for that example. Nothing was ever provisioned under it (that
-  # example never calls ensure!), so ProvisionerMissing there means "nothing to
-  # clean up," not a real cleanup failure.
+  # The provisioner example below stubs Rails.env for its own assertion; RSpec
+  # mocks teardown runs after every after-hook, so the stub is still active here
+  # for that example. Nothing was ever provisioned under it (that example never
+  # calls ensure!), so ProvisionerMissing there means "nothing to clean up," not a
+  # real cleanup failure.
   after do
     [ slug_a, slug_b ].each do |slug|
       described_class.drop!(slug: slug)
@@ -255,39 +255,42 @@ RSpec.describe CityDatabase do
     expect(superuser_value("SELECT count(*) FROM pg_roles WHERE rolname = $1", described_class.role_name(slug_a))).to eq("0")
   end
 
-  it "requires PROVISIONER_DATABASE_URL in production" do
-    allow(Rails.env).to receive(:production?).and_return(true)
-    allow(ENV).to receive(:[]).and_call_original
-    allow(ENV).to receive(:[]).with("PROVISIONER_DATABASE_URL").and_return(nil)
+  %w[production staging].each do |env|
+    it "requires PROVISIONER_DATABASE_URL in #{env}" do
+      allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new(env))
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("PROVISIONER_DATABASE_URL").and_return(nil)
 
-    expect { described_class.provisioner_url }.to raise_error(CityDatabase::ProvisionerMissing)
+      expect { described_class.provisioner_url }.to raise_error(CityDatabase::ProvisionerMissing)
+    end
   end
 end
 
-# The web process builds the city URL in production without the worker-only
-# provisioner secret. Its own describe, with no drop hook: the Rails.env stubs
-# are still active in `after` hooks.
-RSpec.describe CityDatabase, ".url_for in production" do
-  before do
-    allow(Rails.env).to receive(:production?).and_return(true)
-    allow(Rails.env).to receive(:test?).and_return(false)
-    allow(ENV).to receive(:[]).and_call_original
-    allow(ENV).to receive(:[]).with("PROVISIONER_DATABASE_URL").and_return(nil)
-    allow(ENV).to receive(:[]).with("CITY_DATABASE_PORT").and_return(nil)
-    allow(ENV).to receive(:[]).with("CITY_DATABASE_SSLMODE").and_return(nil)
-  end
+# The web process builds the city URL in every deployed environment without the
+# worker-only provisioner secret. Its own describe, with no drop hook: the
+# Rails.env stub is still active in `after` hooks.
+%w[production staging].each do |env|
+  RSpec.describe CityDatabase, ".url_for in #{env}" do
+    before do
+      allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new(env))
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("PROVISIONER_DATABASE_URL").and_return(nil)
+      allow(ENV).to receive(:[]).with("CITY_DATABASE_PORT").and_return(nil)
+      allow(ENV).to receive(:[]).with("CITY_DATABASE_SSLMODE").and_return(nil)
+    end
 
-  it "uses CITY_DATABASE_HOST, port 5432 and sslmode=require, never the provisioner URL" do
-    allow(ENV).to receive(:[]).with("CITY_DATABASE_HOST").and_return("db.example")
+    it "uses CITY_DATABASE_HOST, port 5432 and sslmode=require, never the provisioner URL" do
+      allow(ENV).to receive(:[]).with("CITY_DATABASE_HOST").and_return("db.example")
 
-    expect(described_class.url_for(slug: "curitiba", password: "abc123"))
-      .to eq("postgres://rota_city_curitiba:abc123@db.example:5432/rota_saude_city_curitiba?sslmode=require")
-  end
+      expect(described_class.url_for(slug: "curitiba", password: "abc123"))
+        .to eq("postgres://rota_city_curitiba:abc123@db.example:5432/rota_saude_city_curitiba?sslmode=require")
+    end
 
-  it "requires CITY_DATABASE_HOST" do
-    allow(ENV).to receive(:[]).with("CITY_DATABASE_HOST").and_return("")
+    it "requires CITY_DATABASE_HOST" do
+      allow(ENV).to receive(:[]).with("CITY_DATABASE_HOST").and_return("")
 
-    expect { described_class.url_for(slug: "curitiba", password: "abc123") }
-      .to raise_error(CityDatabase::ConfigMissing, "CITY_DATABASE_HOST ausente")
+      expect { described_class.url_for(slug: "curitiba", password: "abc123") }
+        .to raise_error(CityDatabase::ConfigMissing, "CITY_DATABASE_HOST ausente")
+    end
   end
 end

@@ -10,6 +10,7 @@ require "rails_helper"
 # agora aceita as duas opções do README: curinga OU pelo menos um host de
 # cidade além de api/console/auth.
 RSpec.describe "Kamal proxy hosts" do
+  # TODO(staging infra): incluir staging quando deploy/staging/deploy.yml existir
   %w[development production].each do |env|
     it "publishes console and auth hosts on the right domain, plus a wildcard or an explicit city host, in #{env}" do
       config = YAML.load_file(Rails.root.join("deploy/#{env}/deploy.yml"))

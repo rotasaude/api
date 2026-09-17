@@ -40,6 +40,31 @@ cofre `rota-saude-prod` precisa ter: `postgres-roles` (campos `rota_app`,
 `deterministic_key`, `key_derivation_salt`) e `govbr` (campos `client_id`,
 `client_secret`), além dos já existentes.
 
+### Staging
+
+`RAILS_ENV=staging` é ensaio de produção e **não compartilha nenhum segredo** com os outros ambientes (spec da API de
+manutenção §4). As credentials ficam em `config/credentials/staging.yml.enc`, versionado, com chaves próprias
+(`secret_key_base`, `active_record_encryption.*`, `report_signing_key`). A chave que o decifra,
+`config/credentials/staging.key`, **nunca** entra no git:
+
+- no servidor de staging, vai como `RAILS_MASTER_KEY`;
+- na CI, é o secret `RAILS_STAGING_MASTER_KEY` do repositório (job `staging-boot`);
+- no cofre, fica no item `rails-master-key` do cofre `rota-saude-staging`.
+
+Staging sem `staging.yml.enc` **não sobe** (`config/initializers/00_credentials_isolation.rb`): cair em
+`config/credentials.yml.enc` seria usar as chaves de outro ambiente. Staging nunca recebe dump de produção.
+
+`config/credentials/staging.key` é montado (bind mount) dentro do container `api` a partir de `apps/api` no host —
+assim que a cópia no cofre existir (item `rails-master-key`, cofre `rota-saude-staging`), apague o arquivo local;
+ele é só uma conveniência de desenvolvimento, nunca a fonte de verdade.
+
+**Gate de go-live do staging:** `CityDatabase.database_name`/`.role_name` só dão um namespace diferente para
+`Rails.env.test?` — qualquer outro ambiente, incluindo staging, calcula o MESMO nome de banco e de role que
+produção (`rota_saude_city_<slug>`, `rota_city_<slug>`) para a mesma cidade. Antes de qualquer host de staging
+existir, uma das duas precisa estar resolvida: (a) esses nomes ganham um namespace próprio de staging, ou (b)
+`CITY_DATABASE_HOST` e `PROVISIONER_DATABASE_URL` de staging são comprovadamente um cluster que NÃO é o de
+produção. Sem isso, um provisionamento em staging escreve por cima do banco da cidade em produção.
+
 ## Não secretos: servidor das cidades
 
 `CITY_DATABASE_HOST`, `CITY_DATABASE_PORT` e `CITY_DATABASE_SSLMODE` ficam em `env.clear` do `deploy.yml` (não no

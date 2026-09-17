@@ -18,5 +18,9 @@ development:
 test:
   <<: *default
 
-production:
+production: &production
   <<: *default
+
+# staging é ensaio de produção: mesma configuração, por construção (spec da API
+# de manutenção §4; spec/architecture/staging_environment_parity_spec.rb).
+staging: *production

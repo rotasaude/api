@@ -11,9 +11,10 @@
 # direto em vez de chamar CityPublicUrl.base_for_slug — mesma env var, mesmo
 # formato, sem depender do autoloader. Ver spec/architecture/host_authorization_spec.rb.
 #
-# Lista VAZIA desliga o middleware: é por isso que produção precisa declarar, e
-# por isso um domínio vazio levanta em vez de devolver [] silenciosamente — seria
-# a mesma falha que este módulo existe para evitar, só que disfarçada de sucesso.
+# Lista VAZIA desliga o middleware: é por isso que todo ambiente publicado
+# (Rota.deployed?) precisa declarar, e por isso um domínio vazio levanta em vez
+# de devolver [] silenciosamente — seria a mesma falha que este módulo existe
+# para evitar, só que disfarçada de sucesso.
 module PlatformHosts
   DEFAULT_TEMPLATE = "http://%{slug}.localhost:5175"
 
@@ -34,7 +35,7 @@ module PlatformHosts
   module_function
 
   def for(env)
-    return [] unless env.to_s == "production"
+    return [] unless Rota.deployed?(env)
 
     template = ENV.fetch("CITY_PUBLIC_BASE_TEMPLATE", DEFAULT_TEMPLATE)
     host = URI.parse(format(template, slug: SENTINEL_SLUG)).host.to_s

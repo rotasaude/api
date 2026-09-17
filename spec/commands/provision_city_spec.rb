@@ -41,7 +41,7 @@ RSpec.describe ProvisionCity do
   end
 
   it "answers :misconfigured without the city database host, enqueuing nothing and writing no catalog row" do
-    allow(Rails.env).to receive(:production?).and_return(true)
+    allow(Rota).to receive(:deployed?).and_return(true)
     allow(ENV).to receive(:[]).and_call_original
     allow(ENV).to receive(:[]).with("CITY_DATABASE_HOST").and_return(nil)
 
