@@ -44,6 +44,7 @@ Rails.application.routes.draw do
         post "/session/challenge", to: "sessions#challenge_totp"
         post "/invitations/enroll", to: "invitations#enroll"
         post "/invitations/accept", to: "invitations#accept"
+        post "/graphql", to: "graphql#execute"
       end
     end
   end
