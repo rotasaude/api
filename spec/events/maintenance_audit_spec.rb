@@ -98,6 +98,21 @@ RSpec.describe MaintenanceAudit do
       }.not_to raise_error
     end
 
+    # Minor (fix round 2): a condição não olhava a CHAVE. Reapontar o `id` é
+    # reescrever a trilha de um jeito pior do que editar o payload: o evento
+    # continua lá, com o conteúdo intacto, e a correlação passa a mentir.
+    it "refuses moving the row to another id" do
+      expect {
+        PlatformRecord.transaction(requires_new: true) do
+          PlatformRecord.connection.execute(
+            "UPDATE platform_events SET id = gen_random_uuid() WHERE id = '#{event.id}'"
+          )
+        end
+      }.to raise_error(ActiveRecord::StatementInvalid, /immutable/i)
+
+      expect(PlatformEvent.find_by(id: event.id)).to be_present
+    end
+
     it "leaves the other platform events alone" do
       Platform.audit("operator.login", operator_id: SecureRandom.uuid)
       other = PlatformEvent.order(:created_at).last

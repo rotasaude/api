@@ -29,7 +29,7 @@ module Maintenance
 
       result = Schema.execute(
         query,
-        variables: params[:variables] || {},
+        variables: query_variables,
         operation_name: params[:operationName],
         context: {
           maintainer: current_maintainer,
@@ -39,6 +39,28 @@ module Maintenance
       )
 
       render json: result
+    end
+
+    private
+
+    # Minor (fix round 2): `params[:variables]` cru não serve ao executor.
+    # Cliente que manda `variables` como STRING JSON (é o que graphiql e vários
+    # clientes fazem) levantava ArgumentError — 500 numa query legítima. E um
+    # objeto aninhado chega como ActionController::Parameters, que só por sorte
+    # se comporta como Hash na leitura: `to_unsafe_h` devolve o Hash de verdade,
+    # em qualquer profundidade. Sem filtro de parâmetro, de propósito — quem
+    # decide o que é aceitável aqui é o schema, campo a campo.
+    def query_variables
+      raw = params[:variables]
+
+      case raw
+      when ActionController::Parameters then raw.to_unsafe_h
+      when String then raw.strip.empty? ? {} : JSON.parse(raw)
+      when Hash then raw
+      else {}
+      end
+    rescue JSON::ParserError
+      {}
     end
   end
 end

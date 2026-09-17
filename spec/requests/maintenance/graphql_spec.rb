@@ -96,6 +96,48 @@ RSpec.describe "Maintenance GraphQL", type: :request do
     expect(json["data"]).to be_nil
   end
 
+  # Minor (fix round 2): uma query REAL com variável declarada. O executor não
+  # aceita `variables` como string JSON — que é como graphiql e vários clientes
+  # mandam —, e levantava ArgumentError: 500 numa requisição legítima.
+  it "runs a query whose variables come as a JSON string" do
+    login!
+    post "/graphql",
+         params: { query: "query M($hide: Boolean!) { me { id emailAddress @skip(if: $hide) } }",
+                   variables: { hide: true }.to_json },
+         headers: headers
+
+    expect(response).to have_http_status(:ok)
+    expect(json["errors"]).to be_nil
+    expect(json.dig("data", "me")).to eq({ "id" => maintainer.id })
+  end
+
+  it "runs a query whose variables come as a nested object" do
+    login!
+    post "/graphql", params: { query: "query M($hide: Boolean!) { me { id emailAddress @skip(if: $hide) } }",
+                               variables: { hide: false } },
+         headers: headers, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(json.dig("data", "me")).to include("emailAddress" => maintainer.email_address)
+  end
+
+  # Minor (fix round 2): spec §8 lista um limite de 10 s que não existia.
+  # Profundidade e complexidade limitam a FORMA da query, não o TEMPO. O valor
+  # é conferido na configuração; a interrupção é provada com o limite em zero,
+  # porque um exemplo de dez segundos não cabe numa suíte.
+  it "interrupts a query that runs past the time limit" do
+    login!
+    timeout = Maintenance::Schema.trace_options_for(:default).fetch(:timeout)
+    expect(timeout.max_seconds(nil)).to eq(10)
+
+    allow(timeout).to receive(:max_seconds).and_return(0)
+    allow_any_instance_of(Maintenance::Types::QueryType).to receive(:me) { sleep 0.01 }
+    query!("{ me { id emailAddress } }")
+
+    expect(response).to have_http_status(:ok)
+    expect(json["errors"].first["message"]).to match(/timeout/i)
+  end
+
   it "keeps introspection out of the deployed environments" do
     login!
     allow(Rota).to receive(:deployed?).and_return(true)
