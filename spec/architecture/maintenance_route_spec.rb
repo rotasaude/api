@@ -1,6 +1,6 @@
 require "rails_helper"
 
-# A tela de manutenção (GET /manutencao) existe SÓ em development, e a garantia
+# A tela de manutenção (GET /maintenance) existe SÓ em development, e a garantia
 # é o roteador, não um before_action: o bloco em config/routes.rb está dentro de
 # um `if Rails.env.development?`, então fora de dev a rota não é desenhada e o
 # Rails responde 404 na camada de roteamento.
@@ -25,7 +25,7 @@ RSpec.describe "the maintenance screen is development-only" do
   it "does not exist outside development" do
     expect(Rails.env.development?).to be(false)
 
-    expect { Rails.application.routes.recognize_path("/manutencao") }
+    expect { Rails.application.routes.recognize_path("/maintenance") }
       .to raise_error(ActionController::RoutingError)
   end
 end

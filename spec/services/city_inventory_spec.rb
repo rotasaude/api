@@ -1,7 +1,7 @@
 require "rails_helper"
 
 # Levantamento de configuração de TODAS as cidades, para a tela de manutenção
-# de development (GET /manutencao). A tela é dev-only e a rota nem existe em
+# de development (GET /maintenance). A tela é dev-only e a rota nem existe em
 # test — por isso a inteligência mora aqui, numa classe pura que a suíte
 # alcança, e o controller fica com três linhas.
 #

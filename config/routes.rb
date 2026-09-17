@@ -102,7 +102,7 @@ Rails.application.routes.draw do
   #
   # spec/architecture/maintenance_route_spec.rb prova a ausência em test.
   if Rails.env.development?
-    get "/manutencao", to: "maintenance#index"
+    get "/maintenance", to: "maintenance#index"
   end
 
   # Admin Console — namespace read-only (ADR-0002, brief §6).

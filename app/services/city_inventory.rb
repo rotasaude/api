@@ -1,5 +1,5 @@
 # Levantamento de configuração de todas as cidades registradas, para a tela de
-# manutenção de development (GET /manutencao, dev-only).
+# manutenção de development (GET /maintenance, dev-only).
 #
 # Por que é uma classe e não lógica no controller: a rota da tela só existe em
 # development, então nenhum request spec a alcança — a suíte roda em test. A
