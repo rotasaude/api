@@ -8,9 +8,18 @@ RSpec.describe ReportSnapshot, type: :model do
       Current.reset
     end
 
+    # Template fixado no exemplo, não herdado do ambiente: este spec passava com
+    # :5175 só porque CITY_WPDA_BASE_TEMPLATE não chegava ao processo. Quando a
+    # variável passou a existir (2026-09-16), virou vermelho sem nenhuma mudança
+    # de código. O que importa aqui é o link do wpda sair no template DO WPDA e
+    # sem barra dupla — o número da porta é cenário, não asserção.
     it "aponta pro wpda da cidade corrente, com o token em query param (sem barra dupla)" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("CITY_WPDA_BASE_TEMPLATE")
+        .and_return("http://%{slug}.localhost:5176")
+
       snap = ReportSnapshot.new(token: "abc123")
-      expect(snap.url).to eq("http://#{TEST_CITY_A.slug}.localhost:5175/wpda/?token=abc123")
+      expect(snap.url).to eq("http://#{TEST_CITY_A.slug}.localhost:5176/wpda/?token=abc123")
     end
   end
 

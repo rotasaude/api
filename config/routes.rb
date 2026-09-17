@@ -103,6 +103,19 @@ Rails.application.routes.draw do
   # spec/architecture/maintenance_route_spec.rb prova a ausência em test.
   if Rails.env.development?
     get "/maintenance", to: "maintenance#index"
+
+    # Abre sessão de municipal_admin da cidade do host, SEM credencial, e manda
+    # para o dashboard. Casada com a tela acima, que é quem oferece o link.
+    #
+    # Fica no host da CIDADE (nenhuma constraint de host aqui, então o
+    # CityResolution do ApplicationController resolve pelo subdomínio), porque o
+    # cookie de sessão é host-only: gravado em localhost não valeria em
+    # curitiba.localhost. Ver Dev::ImpersonationsController.
+    #
+    # GET por ser um link clicável na tela — o que é aceitável SÓ porque a rota
+    # não existe fora de development. A ação checa Rails.env.development? de
+    # novo: se esta linha um dia escapar do `if`, a segunda guarda ainda recusa.
+    get "/dev/impersonate", to: "dev/impersonations#create"
   end
 
   # Admin Console — namespace read-only (ADR-0002, brief §6).

@@ -100,6 +100,24 @@ RSpec.describe CityInventory do
       expect(entry[:urls][:wpda]).to eq("http://saudavel.localhost:5176/wpda/")
     end
 
+    # O link de impersonate tem de sair no HOST DA CIDADE, não no host da tela:
+    # o cookie de sessão é host-only (write_session_cookie nunca seta `domain:`),
+    # então um cookie gravado em localhost não vale em curitiba.localhost. A
+    # porta é a da API, não a do dashboard — cookie ignora porta, e é isso que
+    # faz o cookie gravado em :3030 valer no dashboard em :5175.
+    #
+    # Valor literal, de novo: comparar com a função que monta a URL provaria
+    # consistência, não correção.
+    it "points impersonation at the city host on the API port, because the cookie is host-only" do
+      allow(ENV).to receive(:fetch).and_call_original
+      allow(ENV).to receive(:fetch).with("CITY_PUBLIC_BASE_TEMPLATE", anything)
+        .and_return("http://%{slug}.localhost:5175")
+      allow(ENV).to receive(:fetch).with("PUBLIC_PORT", anything).and_return("3030")
+
+      expect(entry_for("saudavel")[:urls][:impersonate])
+        .to eq("http://saudavel.localhost:3030/dev/impersonate")
+    end
+
     # O modo de falha REAL observado em dev: a env var do wpda não chega ao
     # processo, CityPublicUrl cai no template público por design, e a tela passa
     # a apontar o wpda para a porta do dashboard — um link que abre a aplicação

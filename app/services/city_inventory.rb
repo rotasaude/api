@@ -93,8 +93,27 @@ module CityInventory
   def urls_for(city)
     {
       dashboard: "#{CityPublicUrl.base_for_slug(city.slug)}/dashboard/",
-      wpda: "#{CityPublicUrl.wpda_base_for_slug(city.slug)}/wpda/"
+      wpda: "#{CityPublicUrl.wpda_base_for_slug(city.slug)}/wpda/",
+      impersonate: impersonate_url_for(city.slug)
     }
+  end
+
+  # O link de impersonate sai no HOST DA CIDADE e na porta da API — as duas
+  # coisas são obrigatórias e por motivos diferentes.
+  #
+  # Host da cidade porque o cookie de sessão é host-only (write_session_cookie
+  # nunca seta `domain:`): gravado em `localhost`, onde esta tela vive, ele não
+  # seria enviado para `curitiba.localhost`. Porta da API porque é o Rails que
+  # grava o cookie — e cookie IGNORA porta, então o que ele grava em :3030 vale
+  # no dashboard em :5175. É essa assimetria que faz o atalho funcionar sem
+  # tocar em nenhum frontend.
+  #
+  # O host vem do mesmo template público das cidades, que é a fonte autoritativa
+  # de qual host resolve para qual cidade (CityCatalog lê o primeiro rótulo).
+  def impersonate_url_for(slug)
+    uri = URI.parse(CityPublicUrl.base_for_slug(slug))
+    uri.port = ENV.fetch("PUBLIC_PORT", "3000").to_i
+    "#{uri}/dev/impersonate"
   end
 
   # Quem entra NESTA cidade e com que papel. `roles` vem só de membership ativa
