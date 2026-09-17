@@ -29,7 +29,7 @@ development:
 test:
   <<: *default
 
-production:
+production: &production
   <<: *default
   workers:
     - queues: urgent
@@ -44,3 +44,7 @@ production:
       threads: 3
       processes: 1
       polling_interval: 1
+
+# staging é ensaio de produção: mesma configuração, por construção (spec da API
+# de manutenção §4; spec/architecture/staging_environment_parity_spec.rb).
+staging: *production

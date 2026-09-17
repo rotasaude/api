@@ -12,7 +12,7 @@ RSpec.describe "Solid Queue configuration per city and platform" do
     config(path, env).values.filter_map { |task| task["class"] }
   end
 
-  %w[development production].each do |env|
+  %w[development production staging].each do |env|
     context env do
       it "gives each city three workers, with urgent alone" do
         queues = config("config/queue.yml", env).fetch("workers").map { |worker| Array(worker["queues"]) }

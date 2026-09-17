@@ -13,8 +13,12 @@ RSpec.describe "Database configuration parity" do
     expect(raw["production"].keys).to match_array(raw["development"].keys)
   end
 
+  it "declares the same database keys under staging as under production" do
+    expect(raw["staging"].keys).to match_array(raw["production"].keys)
+  end
+
   it "declares a platform database in every environment" do
-    %w[development test production].each do |env|
+    %w[development test production staging].each do |env|
       expect(raw[env]).to have_key("platform"), "config/database.yml: no platform stanza under #{env}"
     end
   end

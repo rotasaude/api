@@ -88,7 +88,7 @@ test:
     port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
     database_tasks: false
 
-production:
+production: &production
   primary:
     <<: *default
     url: <%= ENV.fetch("CITY_UNSET_DATABASE_URL") { "" } %>
@@ -127,3 +127,7 @@ production:
     password: <%= ENV.fetch("ROTA_APP_PASSWORD") %>
     pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
     database_tasks: false
+
+# staging é ensaio de produção: mesma configuração, por construção (spec da API
+# de manutenção §4; spec/architecture/staging_environment_parity_spec.rb).
+staging: *production
