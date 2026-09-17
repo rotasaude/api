@@ -20,6 +20,7 @@ class MaintenanceController < ActionController::Base
 
   def index
     @cities = CityInventory.call
+    @console = CityInventory.console
     @expected_version = CitySchema.expected_version
   end
 end

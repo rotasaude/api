@@ -33,6 +33,24 @@ module CityInventory
     City.order(:slug).map { |city| entry_for(city) }
   end
 
+  # O console é da PLATAFORMA e não tem vínculo com cidade nenhuma: Operator
+  # vive no banco de plataforma e não tem membership. Por isso sai POR FORA do
+  # inventário por cidade — repetir a mesma lista dentro de cada seção
+  # sugeriria um vínculo que não existe.
+  #
+  # mfa_required é fixo em true porque Operators::SessionsController EXIGE
+  # TOTP, ao contrário do login da cidade, onde MFA é por conta. Sem isso na
+  # tela, quem tentar entrar só com e-mail e senha conclui que a conta quebrou.
+  def console
+    {
+      url: ENV.fetch("ALLOWED_ORIGINS", "http://admin.localhost:5174").split(",").first.to_s.strip + "/admin/",
+      mfa_required: true,
+      operators: Operator.order(:email_address).map do |o|
+        { email: o.email_address, active: o.active?, mfa: o.mfa_enrolled? }
+      end
+    }
+  end
+
   def entry_for(city)
     base = {
       slug: city.slug,
@@ -43,6 +61,7 @@ module CityInventory
       expected_version: CitySchema.expected_version,
       behind: CitySchema.behind?(city),
       channel: channel_for(city),
+      urls: urls_for(city),
       created_at: city.created_at,
       updated_at: city.updated_at
     }
@@ -62,6 +81,39 @@ module CityInventory
       display_phone_number: channel.display_phone_number,
       active: channel.active
     }
+  end
+
+  # Onde cada frontend da cidade atende. Sai do catálogo, sem abrir conexão.
+  #
+  # dashboard e wpda NÃO compartilham porta em dev: em produção um host só
+  # resolve os dois caminhos, mas aqui cada app Vite tem a sua, e é por isso que
+  # CityPublicUrl tem uma env var separada para o wpda. Esse é justamente o
+  # detalhe que ninguém lembra de cabeça — é o principal motivo destas URLs
+  # estarem na tela.
+  def urls_for(city)
+    {
+      dashboard: "#{CityPublicUrl.base_for_slug(city.slug)}/dashboard/",
+      wpda: "#{CityPublicUrl.wpda_base_for_slug(city.slug)}/wpda/"
+    }
+  end
+
+  # Quem entra NESTA cidade e com que papel. `roles` vem só de membership ativa
+  # (revogar é end-date, não DELETE): conta que perdeu o papel aparece com a
+  # lista vazia, em vez de sumir — ela ainda existe e ainda autentica.
+  #
+  # Senha e otp_secret ficam de fora por regra, não por esquecimento: otp_secret
+  # é `encrypts`, mesma classe do access_token já excluído, e digest de senha
+  # numa página é material de ataque offline, não diagnóstico. O que serve para
+  # acessar é saber SE a conta exige MFA — o segredo em si mora nas seeds.
+  def accounts_for
+    User.order(:email_address).map do |user|
+      {
+        email: user.email_address,
+        roles: user.memberships.active.order(:role).pluck(:role),
+        active: user.active?,
+        mfa: user.mfa_enrolled?
+      }
+    end
   end
 
   # O lado de dentro do banco da cidade. Todo o corpo é sondagem: qualquer
@@ -87,6 +139,7 @@ module CityInventory
         alert_recipients: AlertRecipient.active.map do |r|
           { channel: r.channel, destination: r.destination, escalation_order: r.escalation_order }
         end,
+        accounts: accounts_for,
         consent_version: ConsentTerm.maximum(:version),
         active_protocols: ProtocolDefinition.active.order(:name).pluck(:name, :version).map { |n, v| "#{n} v#{v}" },
         counts: counts

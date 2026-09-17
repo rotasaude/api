@@ -59,6 +59,30 @@
     <strong><%= @expected_version %></strong> · somente leitura, somente development
   </p>
 
+  <section class="city">
+    <header>
+      <span class="slug">console</span>
+      <span class="name">Admin — plataforma, não pertence a cidade nenhuma</span>
+      <span class="tag behind">exige TOTP</span>
+    </header>
+    <dl>
+      <dt>url</dt>
+      <dd><a href="<%= @console[:url] %>"><%= @console[:url] %></a></dd>
+      <dt>operadores</dt>
+      <dd>
+        <% if @console[:operators].present? %>
+          <%= @console[:operators].map { |o| "#{o[:email]}#{o[:active] ? '' : ' (inativo)'}#{o[:mfa] ? '' : ' (SEM MFA — não entra)'}" }.join(", ") %>
+        <% else %>
+          <span class="muted">nenhum operador. Use <code>rails db:seed</code>.</span>
+        <% end %>
+      </dd>
+    </dl>
+    <p class="muted" style="margin:12px 0 0">
+      Senha e <code>otp_secret</code> não aparecem aqui de propósito — são segredo.
+      <code>rails db:seed</code> os imprime ao rodar.
+    </p>
+  </section>
+
   <% if @cities.empty? %>
     <p class="empty">Nenhuma cidade registrada. Use <code>rails city:dev_up[slug,nome,uf]</code>.</p>
   <% end %>
@@ -83,6 +107,29 @@
         <dt>criada em</dt>
         <dd><%= city[:created_at]&.strftime("%d/%m/%Y %H:%M") %></dd>
       </dl>
+
+      <div class="group">
+        <h2>Como acessar</h2>
+        <dl>
+          <dt>dashboard</dt>
+          <dd><a href="<%= city[:urls][:dashboard] %>"><%= city[:urls][:dashboard] %></a></dd>
+          <dt>wpda</dt>
+          <dd><a href="<%= city[:urls][:wpda] %>"><%= city[:urls][:wpda] %></a></dd>
+          <dt>contas</dt>
+          <dd>
+            <% if !city[:reachable] %>
+              <span class="muted">—</span>
+            <% elsif city[:accounts].present? %>
+              <%= city[:accounts].map { |a|
+                    papeis = a[:roles].presence&.join("/") || "sem papel"
+                    "#{a[:email]} [#{papeis}]#{a[:active] ? '' : ' (inativa)'}#{a[:mfa] ? ' (MFA)' : ''}"
+                  }.join(", ") %>
+            <% else %>
+              <span class="muted">nenhum usuário no banco desta cidade</span>
+            <% end %>
+          </dd>
+        </dl>
+      </div>
 
       <div class="group">
         <h2>Canal WhatsApp</h2>

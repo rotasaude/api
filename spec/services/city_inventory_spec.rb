@@ -80,6 +80,113 @@ RSpec.describe CityInventory do
     end
   end
 
+  describe "the access data, which is the point of the screen" do
+    # Asserção contra valor LITERAL, não contra CityPublicUrl. Comparar com a
+    # mesma função que produz o valor prova consistência, não correção: a
+    # primeira versão deste exemplo passava verde enquanto a tela mostrava o
+    # wpda na porta do dashboard, porque os dois lados da igualdade tinham o
+    # mesmo defeito. Um template errado tem de deixar isto vermelho.
+    it "carries the public URL of each frontend, with the port each one really serves on" do
+      allow(ENV).to receive(:fetch).and_call_original
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:fetch).with("CITY_PUBLIC_BASE_TEMPLATE", anything)
+        .and_return("http://%{slug}.localhost:5175")
+      allow(ENV).to receive(:[]).with("CITY_WPDA_BASE_TEMPLATE")
+        .and_return("http://%{slug}.localhost:5176")
+
+      entry = entry_for("saudavel")
+
+      expect(entry[:urls][:dashboard]).to eq("http://saudavel.localhost:5175/dashboard/")
+      expect(entry[:urls][:wpda]).to eq("http://saudavel.localhost:5176/wpda/")
+    end
+
+    # O modo de falha REAL observado em dev: a env var do wpda não chega ao
+    # processo, CityPublicUrl cai no template público por design, e a tela passa
+    # a apontar o wpda para a porta do dashboard — um link que abre a aplicação
+    # errada sem erro nenhum.
+    it "falls back to the shared template when the wpda one is absent, which is how dev broke" do
+      allow(ENV).to receive(:fetch).and_call_original
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:fetch).with("CITY_PUBLIC_BASE_TEMPLATE", anything)
+        .and_return("http://%{slug}.localhost:5175")
+      allow(ENV).to receive(:[]).with("CITY_WPDA_BASE_TEMPLATE").and_return(nil)
+
+      expect(entry_for("saudavel")[:urls][:wpda]).to eq("http://saudavel.localhost:5175/wpda/")
+    end
+
+    it "lists who can sign in to the city, with the role that decides what they see" do
+      CityConnection.with(healthy) do
+        user = User.create!(email_address: "admin@saudavel.demo", password: "senha-de-teste-123")
+        Membership.create!(user: user, role: "municipal_admin", granted_at: Time.current)
+      end
+
+      entry = entry_for("saudavel")
+
+      expect(entry[:accounts])
+        .to contain_exactly(hash_including(email: "admin@saudavel.demo", roles: [ "municipal_admin" ], active: true))
+    end
+
+    # Papel revogado é end-date, não DELETE (Membership é append-only). Quem
+    # perdeu o papel não deve aparecer como quem ainda entra.
+    it "does not credit a revoked role to the account that had it" do
+      CityConnection.with(healthy) do
+        user = User.create!(email_address: "exmembro@saudavel.demo", password: "senha-de-teste-123")
+        Membership.create!(user: user, role: "viewer", granted_at: 1.day.ago, revoked_at: Time.current)
+      end
+
+      entry = entry_for("saudavel")
+
+      expect(entry[:accounts]).to contain_exactly(hash_including(email: "exmembro@saudavel.demo", roles: []))
+    end
+
+    # A regra central da tela, aplicada ao dado de acesso — que é onde ela é
+    # mais tentadora de quebrar. `otp_secret` é `encrypts`: é segredo cifrado,
+    # da mesma classe do access_token já excluído. Senha é digest, e digest de
+    # senha numa página é material de ataque offline, não diagnóstico.
+    it "never carries password or MFA material, only whether MFA is required" do
+      CityConnection.with(healthy) do
+        User.create!(email_address: "admin@saudavel.demo", password: "senha-de-teste-123",
+                     otp_enabled: true, otp_secret: "JBSWY3DPEHPK3PXP")
+      end
+
+      account = entry_for("saudavel")[:accounts].first
+      serialized = described_class.call.to_s
+
+      expect(account).to include(mfa: true)
+      expect(account.keys).not_to include(:password_digest, :otp_secret, :password)
+      expect(serialized).not_to include("JBSWY3DPEHPK3PXP")
+      expect(serialized).not_to match(/\$2[aby]\$/) # nenhum digest bcrypt na saída
+    end
+  end
+
+  # O console é da PLATAFORMA e não tem vínculo com cidade: repetir a mesma
+  # lista dentro de cada seção sugeriria um vínculo que não existe. Por isso
+  # sai por fora do inventário por cidade.
+  describe ".console" do
+    let!(:operator) do
+      Operator.create!(email_address: "dev@local", password: "senha-de-teste-123",
+                       otp_enabled: true, otp_secret: "JBSWY3DPEHPK3PXP")
+    end
+
+    it "carries the console URL and who signs in to it" do
+      console = described_class.console
+
+      expect(console[:url]).to be_present
+      expect(console[:operators]).to contain_exactly(hash_including(email: "dev@local", active: true))
+    end
+
+    # Operador SEMPRE entra com TOTP (Operators::SessionsController exige), ao
+    # contrário do usuário da cidade. Sem isso na tela, quem tentar entrar com
+    # e-mail e senha conclui que a conta está quebrada.
+    it "says that the console always requires TOTP" do
+      expect(described_class.console[:mfa_required]).to be(true)
+    end
+
+    it "never carries the operator's MFA material" do
+      expect(described_class.console.to_s).not_to include("JBSWY3DPEHPK3PXP")
+    end
+  end
+
   describe "a city that cannot be reached" do
     # A falha é INJETADA, não provocada por uma URL realmente inalcançável, por
     # duas razões que só apareceram ao rodar:
