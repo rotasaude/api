@@ -109,3 +109,28 @@ jobs:
             end
             puts "PRODUCTION_BOOT_OK hosts=#{Rails.application.config.hosts.inspect}"
           '
+
+  staging-boot:
+    runs-on: ubuntu-latest
+    # Spec da API de manutenção §4/§10: staging é ensaio de produção, com
+    # RAILS_ENV=staging. Nada na suíte (RAILS_ENV=test) carrega esse ambiente —
+    # uma stanza esquecida, credentials caindo no arquivo compartilhado ou uma
+    # proteção presa a Rails.env.production? só apareceriam no deploy. Mesmo
+    # desenho do production-boot: boot real, URLs inertes, nenhum banco tocado.
+    # O que é verificado mora em script/staging_boot_check.rb (roda à mão também).
+    env:
+      RAILS_ENV: staging
+      RAILS_MASTER_KEY: ${{ secrets.RAILS_STAGING_MASTER_KEY }}
+      ROTA_APP_PASSWORD: inert
+      ROTA_PLATFORM_PASSWORD: inert
+      CITY_PUBLIC_BASE_TEMPLATE: "https://%{slug}.ci.rota-saude.example"
+      CITY_UNSET_DATABASE_URL: "postgres://inert:inert@127.0.0.1:1/inert"
+      PLATFORM_DATABASE_URL: "postgres://inert:inert@127.0.0.1:1/inert"
+      CITY_DATABASE_HOST: db.ci.rota-saude.example
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - name: Boot RAILS_ENV=staging for real (no database connection)
+        run: bin/rails runner script/staging_boot_check.rb

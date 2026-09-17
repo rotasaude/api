@@ -40,6 +40,20 @@ cofre `rota-saude-prod` precisa ter: `postgres-roles` (campos `rota_app`,
 `deterministic_key`, `key_derivation_salt`) e `govbr` (campos `client_id`,
 `client_secret`), além dos já existentes.
 
+### Staging
+
+`RAILS_ENV=staging` é ensaio de produção e **não compartilha nenhum segredo** com os outros ambientes (spec da API de
+manutenção §4). As credentials ficam em `config/credentials/staging.yml.enc`, versionado, com chaves próprias
+(`secret_key_base`, `active_record_encryption.*`, `report_signing_key`). A chave que o decifra,
+`config/credentials/staging.key`, **nunca** entra no git:
+
+- no servidor de staging, vai como `RAILS_MASTER_KEY`;
+- na CI, é o secret `RAILS_STAGING_MASTER_KEY` do repositório (job `staging-boot`);
+- no cofre, fica no item `rails-master-key` do cofre `rota-saude-staging`.
+
+Staging sem `staging.yml.enc` **não sobe** (`config/initializers/00_credentials_isolation.rb`): cair em
+`config/credentials.yml.enc` seria usar as chaves de outro ambiente. Staging nunca recebe dump de produção.
+
 ## Não secretos: servidor das cidades
 
 `CITY_DATABASE_HOST`, `CITY_DATABASE_PORT` e `CITY_DATABASE_SSLMODE` ficam em `env.clear` do `deploy.yml` (não no
