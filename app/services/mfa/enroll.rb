@@ -10,7 +10,11 @@ module Mfa
       codes  = Array.new(RECOVERY_COUNT) { SecureRandom.alphanumeric(RECOVERY_LEN).downcase }
       hashed = codes.map { |c| BCrypt::Password.create(c).to_s }
 
-      user.update!(otp_secret: secret, otp_enabled: false, otp_recovery_codes: hashed)
+      # `otp_enabled` só existe em User/Operator: Maintainer marca a confirmação
+      # do TOTP em `otp_enabled_at` (Task 2), então este call não a toca.
+      attrs = { otp_secret: secret, otp_recovery_codes: hashed }
+      attrs[:otp_enabled] = false if user.respond_to?(:otp_enabled=)
+      user.update!(attrs)
 
       {
         secret: secret,
