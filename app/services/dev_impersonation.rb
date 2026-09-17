@@ -37,4 +37,19 @@ module DevImpersonation
         .order(:email_address)
         .first
   end
+
+  # O operador do console, na PLATAFORMA — não pertence a cidade nenhuma, então
+  # nada de CityConnection aqui.
+  #
+  # `otp_enabled` E `otp_secret` presentes (o mesmo que Operator#mfa_enrolled?
+  # exige) porque Operators::SessionsController#create responde 403
+  # mfa_enrollment_required a quem não tem TOTP inscrito: esse operador NÃO
+  # entra pelo caminho normal. O atalho de dev não pode ser mais permissivo que
+  # a porta da frente — senão ele deixa de ser atalho e vira outra porta.
+  def operator
+    Operator.where(deactivated_at: nil, otp_enabled: true)
+            .where.not(otp_secret: nil)
+            .order(:email_address)
+            .first
+  end
 end

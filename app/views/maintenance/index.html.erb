@@ -76,6 +76,15 @@
           <span class="muted">nenhum operador. Use <code>rails db:seed</code>.</span>
         <% end %>
       </dd>
+      <dt>entrar</dt>
+      <dd>
+        <% if @console[:operators].any? { |o| o[:active] && o[:mfa] } %>
+          <a href="<%= @console[:impersonate] %>">entrar como operador →</a>
+          <span class="muted">(pula senha E TOTP; audita <code>operator.impersonated</code>)</span>
+        <% else %>
+          <span class="muted">nenhum operador ativo com MFA inscrito para impersonar</span>
+        <% end %>
+      </dd>
     </dl>
     <p class="muted" style="margin:12px 0 0">
       Senha e <code>otp_secret</code> não aparecem aqui de propósito — são segredo.

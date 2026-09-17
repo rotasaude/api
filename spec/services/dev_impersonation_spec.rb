@@ -65,4 +65,49 @@ RSpec.describe DevImpersonation do
 
     expect(target_in(city)&.email_address).to eq("ana@cidade.demo")
   end
+
+  # O operador é da PLATAFORMA e não pertence a cidade nenhuma: nada de
+  # CityConnection aqui. Mesma regra de elegibilidade do lado da cidade — só
+  # quem já poderia entrar sozinho — mas com um requisito a mais, porque o
+  # login real do console tem um a mais: TOTP inscrito.
+  describe ".operator" do
+    def operator_with(email:, otp_enabled: true, otp_secret: "JBSWY3DPEHPK3PXP", deactivated_at: nil)
+      Operator.create!(email_address: email, password: "senha-de-teste-123",
+                       otp_enabled: otp_enabled, otp_secret: otp_secret,
+                       deactivated_at: deactivated_at)
+    end
+
+    it "picks the active operator with MFA enrolled" do
+      operator_with(email: "dev@local")
+
+      expect(described_class.operator&.email_address).to eq("dev@local")
+    end
+
+    # Operators::SessionsController#create responde 403 mfa_enrollment_required
+    # para operador sem TOTP inscrito: ele NÃO consegue entrar pelo caminho
+    # normal. Impersonar um daria acesso que o login real recusa — e o atalho de
+    # dev não pode ser mais permissivo que a porta da frente.
+    it "ignores an operator without MFA enrolled, whom the real login refuses" do
+      operator_with(email: "semtotp@local", otp_enabled: false, otp_secret: nil)
+
+      expect(described_class.operator).to be_nil
+    end
+
+    it "ignores a deactivated operator" do
+      operator_with(email: "inativo@local", deactivated_at: Time.current)
+
+      expect(described_class.operator).to be_nil
+    end
+
+    it "returns nil when there is no operator to impersonate" do
+      expect(described_class.operator).to be_nil
+    end
+
+    it "is deterministic when more than one operator qualifies" do
+      operator_with(email: "zulma@local")
+      operator_with(email: "ana@local")
+
+      expect(described_class.operator&.email_address).to eq("ana@local")
+    end
+  end
 end

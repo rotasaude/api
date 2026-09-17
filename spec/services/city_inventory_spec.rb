@@ -193,6 +193,20 @@ RSpec.describe CityInventory do
       expect(console[:operators]).to contain_exactly(hash_including(email: "dev@local", active: true))
     end
 
+    # Mesmo raciocínio de host-only do lado da cidade, aplicado ao console: o
+    # cookie de operador (operator_session_id) também é host-only, então o link
+    # tem de sair em admin.localhost — e na porta da API, porque é o Rails que
+    # grava o cookie e cookie ignora porta.
+    it "points console impersonation at the console host on the API port" do
+      allow(ENV).to receive(:fetch).and_call_original
+      allow(ENV).to receive(:fetch).with("ALLOWED_ORIGINS", anything)
+        .and_return("http://admin.localhost:5174,http://localhost:5174")
+      allow(ENV).to receive(:fetch).with("PUBLIC_PORT", anything).and_return("3030")
+
+      expect(described_class.console[:impersonate])
+        .to eq("http://admin.localhost:3030/dev/impersonate_operator")
+    end
+
     # Operador SEMPRE entra com TOTP (Operators::SessionsController exige), ao
     # contrário do usuário da cidade. Sem isso na tela, quem tentar entrar com
     # e-mail e senha conclui que a conta está quebrada.

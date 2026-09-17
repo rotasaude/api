@@ -43,7 +43,11 @@ module CityInventory
   # tela, quem tentar entrar só com e-mail e senha conclui que a conta quebrou.
   def console
     {
-      url: ENV.fetch("ALLOWED_ORIGINS", "http://admin.localhost:5174").split(",").first.to_s.strip + "/admin/",
+      url: console_base + "/admin/",
+      # Mesmo raciocínio do link de cidade: o cookie de operador também é
+      # host-only, então o link sai em admin.* e na porta da API, que é quem o
+      # grava. Cookie ignora porta, então vale no console em :5174.
+      impersonate: swap_to_api_port(console_base) + "/dev/impersonate_operator",
       mfa_required: true,
       operators: Operator.order(:email_address).map do |o|
         { email: o.email_address, active: o.active?, mfa: o.mfa_enrolled? }
@@ -111,9 +115,20 @@ module CityInventory
   # O host vem do mesmo template público das cidades, que é a fonte autoritativa
   # de qual host resolve para qual cidade (CityCatalog lê o primeiro rótulo).
   def impersonate_url_for(slug)
-    uri = URI.parse(CityPublicUrl.base_for_slug(slug))
+    swap_to_api_port(CityPublicUrl.base_for_slug(slug)) + "/dev/impersonate"
+  end
+
+  # Troca a porta pública (do frontend) pela da API, mantendo o host. É a porta
+  # da API que importa em todo link de impersonate, porque é o Rails que grava o
+  # cookie — e como cookie ignora porta, o que ele grava vale no frontend.
+  def swap_to_api_port(base)
+    uri = URI.parse(base)
     uri.port = ENV.fetch("PUBLIC_PORT", "3000").to_i
-    "#{uri}/dev/impersonate"
+    uri.to_s
+  end
+
+  def console_base
+    ENV.fetch("ALLOWED_ORIGINS", "http://admin.localhost:5174").split(",").first.to_s.strip
   end
 
   # Quem entra NESTA cidade e com que papel. `roles` vem só de membership ativa

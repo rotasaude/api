@@ -116,6 +116,17 @@ Rails.application.routes.draw do
     # não existe fora de development. A ação checa Rails.env.development? de
     # novo: se esta linha um dia escapar do `if`, a segunda guarda ainda recusa.
     get "/dev/impersonate", to: "dev/impersonations#create"
+
+    # Impersonate de OPERADOR, no host do console. Constrained a admin.* porque
+    # é lá que o cookie de operador precisa ser gravado — e porque a rota não
+    # tem o que fazer num subdomínio de cidade.
+    #
+    # Mais forte que o de cidade: carimba mfa_verified_at sem TOTP nenhum. Além
+    # desta constraint e do `if` acima, Operators::BaseController ainda recusa
+    # host que não seja o console, e a ação checa o ambiente de novo.
+    constraints(PlatformConsoleHost) do
+      get "/dev/impersonate_operator", to: "dev/operator_impersonations#create"
+    end
   end
 
   # Admin Console — namespace read-only (ADR-0002, brief §6).
