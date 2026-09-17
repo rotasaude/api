@@ -70,4 +70,19 @@ RSpec.describe MaintenanceToken do
     expect(token.reload.last_used_at).to be_present
     expect(token.last_used_ip).to eq("10.0.0.9")
   end
+
+  it "allows revoking a token whose expiry has already passed" do
+    token, _ = issue(expires_at: 1.hour.from_now)
+
+    travel_to(2.hours.from_now) do
+      expect { token.revoke! }.not_to raise_error
+      expect(token.reload.revoked_at).to be_present
+    end
+  end
+
+  it "raises for an environment with no mapped prefix" do
+    allow(Rails).to receive(:env).and_return(ActiveSupport::StringInquirer.new("canary"))
+
+    expect { described_class.prefix }.to raise_error(KeyError, /canary/)
+  end
 end

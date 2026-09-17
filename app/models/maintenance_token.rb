@@ -27,15 +27,19 @@ class MaintenanceToken < PlatformRecord
   scope :live, -> { where(revoked_at: nil).where("expires_at > ?", Time.current) }
 
   # rsm_dev_ / rsm_stg_ / rsm_test_: `Rails.env.first(N)` não dá essas siglas (
-  # "staging".first(3) é "sta", não "stg"), então o mapa é explícito. Ambiente
-  # fora do mapa (produção, onde a API nem liga) cai no nome cheio — nunca
-  # colide com os três de cima.
+  # "staging".first(3) é "sta", não "stg"), então o mapa é explícito. Um
+  # ambiente fora do mapa não cai num nome improvisado — isso deixaria um
+  # ambiente futuro reutilizar, por acidente, o prefixo de outro (ver `fetch`
+  # abaixo). É erro de configuração, e o prefixo só serve pra reconhecer o
+  # token num incidente se for previsível.
   PREFIX_BY_ENV = { "development" => "dev", "staging" => "stg", "test" => "test" }.freeze
 
   class << self
     # Prefixo por ambiente: dá para reconhecer o token num incidente e cadastrar
     # o padrão no secret scanning do GitHub (os repositórios são públicos).
-    def prefix = "rsm_#{PREFIX_BY_ENV.fetch(Rails.env.to_s, Rails.env.to_s)}_"
+    def prefix
+      "rsm_#{PREFIX_BY_ENV.fetch(Rails.env.to_s) { raise KeyError, "MaintenanceToken.prefix: ambiente #{Rails.env} sem prefixo mapeado em PREFIX_BY_ENV" }}_"
+    end
 
     def digest_for(secret)
       OpenSSL::HMAC.hexdigest("SHA256", Rails.application.secret_key_base.to_s, secret.to_s)
@@ -84,6 +88,15 @@ class MaintenanceToken < PlatformRecord
     return if expires_at.blank?
 
     errors.add(:expires_at, "além do teto de #{MAX_TTL.inspect}") if expires_at > MAX_TTL.from_now
+
+    # "já passou" só se aplica quando `expires_at` está sendo definido ou
+    # trocado. Sem essa guarda, revogar um token cuja validade já passou
+    # (o caso comum: desligar as credenciais paradas de um mantenedor que
+    # saiu) falharia — a mera passagem do tempo re-reprovaria um valor que já
+    # foi válido quando gravado. O teto acima não tem esse problema: ele não
+    # passa a valer sozinho com o tempo.
+    return unless new_record? || expires_at_changed?
+
     errors.add(:expires_at, "já passou") if expires_at <= Time.current
   end
 end
