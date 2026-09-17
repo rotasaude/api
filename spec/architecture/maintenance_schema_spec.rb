@@ -15,7 +15,7 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me maintenanceTokens],
+    "Query" => %w[me maintenanceTokens auditEvents],
     "Maintainer" => %w[id emailAddress createdAt],
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken],
     "InviteMaintainerPayload" => %w[ok errors],
@@ -23,6 +23,7 @@ RSpec.describe "Maintenance GraphQL schema" do
     "MaintenanceToken" => %w[id name access citySlugs expiresAt revokedAt lastUsedAt],
     "CreateMaintenanceTokenPayload" => %w[ok errors secretOnce],
     "RevokeMaintenanceTokenPayload" => %w[ok errors],
+    "AuditEvent" => %w[name module outcome occurredAt maintainerId login correlationId],
     "UserError" => %w[path message]
   }.freeze
 
