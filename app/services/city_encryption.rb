@@ -69,7 +69,18 @@ module CityEncryption
     OpenSSL::HMAC.digest("sha256", legacy_report_signing_key, "report-signing:#{material}")
   end
 
-  def legacy_report_signing_key = Rails.application.credentials.fetch(:report_signing_key)
+  # `fetch` de propósito (nunca `[]`): assinatura com chave nil é assinatura que
+  # confere contra qualquer coisa. Mas o KeyError cru escapava de todo `rescue
+  # MissingKey` rio acima — e como report_signing_key/1 passa por aqui, isso
+  # valia para TODA assinatura por cidade, não só pela legada. O chamador que
+  # mais sofria era city:rotate_key, cujo ramo de re-sign roda depois de os
+  # dados já terem sido reescritos: ali o operador precisa da instrução de
+  # recuperação, não de um backtrace.
+  def legacy_report_signing_key
+    Rails.application.credentials.fetch(:report_signing_key)
+  rescue KeyError
+    raise MissingKey, "credencial :report_signing_key ausente — não há chave de assinatura de relatório a derivar"
+  end
 
   def secret_for(city, platform_secret)
     material = city.respond_to?(:encryption_key) ? city.encryption_key.to_s : ""

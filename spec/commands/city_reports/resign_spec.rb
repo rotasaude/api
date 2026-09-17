@@ -66,4 +66,21 @@ RSpec.describe CityReports::Resign do
     second = CityConnection.with(city) { described_class.call }
     expect(second.payload[:count]).to eq(0)
   end
+
+  # O `rescue CityEncryption::MissingKey` acima era decorativo para o caso mais
+  # provável de chave faltando: a credencial :report_signing_key ausente saía
+  # como KeyError cru (credentials.fetch), escapava do rescue e derrubava
+  # city:resign_reports com stack trace em vez do Result.fail que o chamador
+  # trata. Pior no city:rotate_key, onde esse ramo roda DEPOIS de os dados já
+  # terem sido reescritos: o operador precisa da mensagem, não do backtrace.
+  it "fails with :missing_key, not a raw KeyError, when the signing credential is absent" do
+    snapshot_with_legacy_signature
+    allow(Rails.application.credentials).to receive(:fetch).with(:report_signing_key)
+      .and_raise(KeyError.new("key not found: :report_signing_key"))
+
+    result = CityConnection.with(city) { described_class.call }
+
+    expect(result.failure?).to be(true)
+    expect(result.reason).to eq(:missing_key)
+  end
 end
