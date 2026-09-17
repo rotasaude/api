@@ -20,6 +20,7 @@ module MaintenanceAudit
     maintenance.maintainer.invited
     maintenance.maintainer.enrolled
     maintenance.maintainer.accepted
+    maintenance.token.refused
   ].freeze
 
   OUTCOMES = %w[attempted ok rejected error].freeze
@@ -53,6 +54,7 @@ module MaintenanceAudit
     when "maintenance.maintainer.invited"  then Platform.audit("maintenance.maintainer.invited", **payload)
     when "maintenance.maintainer.enrolled" then Platform.audit("maintenance.maintainer.enrolled", **payload)
     when "maintenance.maintainer.accepted" then Platform.audit("maintenance.maintainer.accepted", **payload)
+    when "maintenance.token.refused"       then Platform.audit("maintenance.token.refused", **payload)
     else
       # Sem isto, um nome novo em NAMES sem branch correspondente passaria na
       # validação acima, não escreveria nada, e ainda devolveria um

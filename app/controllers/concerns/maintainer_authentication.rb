@@ -22,6 +22,7 @@ module MaintainerAuthentication
   MAX_TOTP_ATTEMPTS = 5
 
   included do
+    before_action :resolve_maintenance_credential
     before_action :require_maintenance_origin
     before_action :require_maintainer_authentication
   end
@@ -34,10 +35,47 @@ module MaintainerAuthentication
 
   private
 
-  def current_maintainer = Current.maintainer_session&.maintainer
+  BEARER = /\ABearer (.+)\z/
 
-  # Origem exata + header próprio. Sem os dois, um formulário de outro site
-  # dispararia mutation com o cookie do mantenedor.
+  def current_maintainer = Current.maintenance_credential&.maintainer
+
+  # Cookie OU bearer, nunca os dois: com as duas credenciais presentes não há
+  # resposta honesta para "quem agiu", e a auditoria é o que resta quando os
+  # poderes são totais (spec §7).
+  def resolve_maintenance_credential
+    bearer = request.headers["Authorization"].to_s[BEARER, 1]
+    cookie = cookies.signed[COOKIE]
+
+    return render(json: { error: "ambiguous_credentials" }, status: :unauthorized) if bearer && cookie
+
+    return resolve_token_credential(bearer) if bearer
+
+    session = find_verified_session
+    return unless session
+
+    touch_session(session)
+    Current.maintainer_session = session
+    Current.maintenance_credential = Maintenance::Credential.session(session)
+  end
+
+  def resolve_token_credential(secret)
+    token = MaintenanceToken.authenticate(secret)
+    unless token
+      # Sem maintainer_id: um segredo recusado não identifica ninguém. O evento
+      # existe para que uma enxurrada de recusas apareça na auditoria.
+      MaintenanceAudit.record("maintenance.token.refused", outcome: "rejected", module_name: "token",
+                              maintainer_id: nil, credential: { "kind" => "token" },
+                              token_prefix: secret.to_s.split("_").first(2).join("_"))
+      return render(json: { error: "unauthenticated" }, status: :unauthorized)
+    end
+
+    token.touch_use!(ip: request.remote_ip)
+    Current.maintenance_credential = Maintenance::Credential.token(token)
+  end
+
+  # A trava de CSRF é do NAVEGADOR. Um token não tem Origin nem cookie, então
+  # exigir os dois dele recusaria toda automação; o que protege o token é ele
+  # próprio ser secreto e não viajar sozinho como o cookie viaja.
   #
   # I3 (fix round 2): FALHA FECHADA quando a variável não está configurada. A
   # comparação direta degradava para `nil == nil` — sem MAINTENANCE_FRONTEND_ORIGIN
@@ -46,6 +84,8 @@ module MaintainerAuthentication
   # nunca permissão. MaintenanceApi.check_boot! torna a ausência barulhenta em
   # ambiente publicado; aqui ela é só fechada.
   def require_maintenance_origin
+    return if Current.maintenance_credential&.token?
+
     expected = ENV[MaintenanceApi::ORIGIN].to_s
     return head(:forbidden) if expected.blank?
     return head(:forbidden) unless request.headers["Origin"] == expected
@@ -54,7 +94,9 @@ module MaintainerAuthentication
   end
 
   def require_maintainer_authentication
-    resume_maintainer_session || render(json: { error: "unauthenticated" }, status: :unauthorized)
+    return if Current.maintenance_credential
+
+    render(json: { error: "unauthenticated" }, status: :unauthorized)
   end
 
   def resume_maintainer_session

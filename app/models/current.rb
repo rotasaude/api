@@ -11,6 +11,9 @@ class Current < ActiveSupport::CurrentAttributes
   # (maintenance-api.*). Nunca coexiste com uma cidade resolvida ou com uma
   # sessão de operador: a API de manutenção não resolve cidade.
   attribute :maintainer_session
+  # Credencial resolvida para a requisição corrente da API de manutenção:
+  # sessão humana OU token de serviço, nunca os dois (Plano 3, Task 2).
+  attribute :maintenance_credential
   # Flag curta (Plano 7, fix round 2 do CityRekey): quando :platform,
   # CityDeterministicKeyProvider serve o DeterministicKeyProvider GLOBAL em vez
   # do derivado por cidade. Existe porque dado pré-migração (antes deste plano)

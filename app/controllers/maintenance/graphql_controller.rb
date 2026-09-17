@@ -34,6 +34,7 @@ module Maintenance
         context: {
           maintainer: current_maintainer,
           maintainer_session: Current.maintainer_session,
+          credential: Current.maintenance_credential,
           request_id: request.request_id
         }
       )
