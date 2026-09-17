@@ -18,8 +18,8 @@
 # após cada reset — caso contrário você teria que re-enrolar toda vez.
 #
 # NUNCA roda em produção — senhas e segredo fixos são só para ambiente local.
-if Rails.env.production?
-  warn "[seeds] pulando: seeds de dev não rodam em produção"
+if Rota.deployed?
+  warn "[seeds] pulando: seeds de dev não rodam em ambiente publicado (#{Rails.env})"
 else
   password = ENV.fetch("DEV_USER_PASSWORD", "dev-password")
 
@@ -116,6 +116,6 @@ end
 # Dataset opcional e pesado dos painéis (todas as cidades de dev). Fora por
 # padrão; o seed base fica enxuto. Ligue com SEED_DASHBOARD_DEMO=1 bin/rails db:seed
 # (ou bin/rails db:seed:demo). Ver lib/dashboard_demo.rb.
-if ENV["SEED_DASHBOARD_DEMO"] == "1" && !Rails.env.production?
+if ENV["SEED_DASHBOARD_DEMO"] == "1" && !Rota.deployed?
   load Rails.root.join("db/seeds/dashboard_demo.rb")
 end

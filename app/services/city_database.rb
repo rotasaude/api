@@ -45,12 +45,12 @@ class CityDatabase
     end
 
     # URL que vai para cities.database_url: role e banco da cidade. Servidor e TLS
-    # vêm de CITY_DATABASE_HOST (obrigatória em produção), CITY_DATABASE_PORT e
-    # CITY_DATABASE_SSLMODE (default require em produção) — nunca da credencial do
-    # provisioner, que o processo web não recebe. Fora de produção, cai em
-    # DATABASE_HOST/DATABASE_PORT e sem sslmode.
+    # vêm de CITY_DATABASE_HOST (obrigatória em ambiente publicado — production e
+    # staging), CITY_DATABASE_PORT e CITY_DATABASE_SSLMODE (default require em
+    # ambiente publicado) — nunca da credencial do provisioner, que o processo web
+    # não recebe. Fora deles, cai em DATABASE_HOST/DATABASE_PORT e sem sslmode.
     def url_for(slug:, password:)
-      sslmode = ENV["CITY_DATABASE_SSLMODE"].presence || (Rails.env.production? ? "require" : nil)
+      sslmode = ENV["CITY_DATABASE_SSLMODE"].presence || (Rota.deployed? ? "require" : nil)
       URI::Generic.build(scheme: "postgres", userinfo: "#{role_name(slug)}:#{password}",
                          host: city_database_host, port: city_database_port.to_i, path: "/#{database_name(slug)}",
                          query: sslmode && "sslmode=#{sslmode}").to_s
@@ -148,17 +148,17 @@ class CityDatabase
     def city_database_host
       host = ENV["CITY_DATABASE_HOST"].presence
       return host if host
-      raise ConfigMissing, "CITY_DATABASE_HOST ausente" if Rails.env.production?
+      raise ConfigMissing, "CITY_DATABASE_HOST ausente" if Rota.deployed?
 
       ENV.fetch("DATABASE_HOST", "127.0.0.1")
     end
 
     def city_database_port
-      ENV["CITY_DATABASE_PORT"].presence || (Rails.env.production? ? "5432" : ENV.fetch("DATABASE_PORT", "5432"))
+      ENV["CITY_DATABASE_PORT"].presence || (Rota.deployed? ? "5432" : ENV.fetch("DATABASE_PORT", "5432"))
     end
 
     def local_provisioner_url
-      raise ProvisionerMissing, "PROVISIONER_DATABASE_URL ausente" if Rails.env.production?
+      raise ProvisionerMissing, "PROVISIONER_DATABASE_URL ausente" if Rota.deployed?
 
       host = ENV.fetch("DATABASE_HOST", "127.0.0.1")
       port = ENV.fetch("DATABASE_PORT", "5432")

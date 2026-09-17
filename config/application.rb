@@ -33,7 +33,7 @@ module RotaSaude
                           key: "_rota_saude_session",
                           httponly: true,
                           same_site: :lax,
-                          secure: Rails.env.production?
+                          secure: Rota.deployed?
 
     # ADR-0004 (enqueue só após o COMMIT) é configurado em ApplicationJob:
     # o activejob 8.1 descarta `config.active_job.enqueue_after_transaction_commit`.

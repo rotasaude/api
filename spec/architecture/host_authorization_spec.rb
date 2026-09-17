@@ -21,13 +21,15 @@ RSpec.describe PlatformHosts do
     yield
   end
 
-  it "declares the platform domain and the city wildcard in production" do
-    with_production_template do
-      expect(described_class.for("production")).to eq([ "rota-saude.example", ".rota-saude.example" ])
+  %w[production staging].each do |env|
+    it "declares the platform domain and the city wildcard in #{env}" do
+      with_production_template do
+        expect(described_class.for(env)).to eq([ "rota-saude.example", ".rota-saude.example" ])
+      end
     end
   end
 
-  it "stays empty outside production, where the harness uses synthetic hosts" do
+  it "stays empty outside the deployed environments, where the harness uses synthetic hosts" do
     with_production_template do
       expect(described_class.for("test")).to eq([])
       expect(described_class.for("development")).to eq([])

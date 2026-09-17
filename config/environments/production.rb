@@ -30,6 +30,7 @@ Rails.application.configure do
   # Plano 8: sem isto a lista fica vazia e o Rails PULA o HostAuthorization.
   # `.dominio` cobre api./admin./auth. e o curinga das cidades.
   require Rails.root.join("lib/platform_hosts").to_s
-  config.hosts += PlatformHosts.for("production")
+  # Rails.env, não o literal: config/environments/staging.rb herda este arquivo.
+  config.hosts += PlatformHosts.for(Rails.env)
   config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 end
