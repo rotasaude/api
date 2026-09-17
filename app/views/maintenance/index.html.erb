@@ -1,0 +1,137 @@
+<%#
+  Tela de manutenção (development). CSS inline porque a aplicação é api_only e
+  não tem asset pipeline — e porque uma página de diagnóstico que depende de
+  build é uma página que não abre justamente no dia em que o build quebrou.
+
+  REGRA QUE ESTA VIEW NÃO PODE VIOLAR: mostra configuração e contagem, nunca
+  segredo (database_url, encryption_key, access_token) e nunca conteúdo de
+  cidadão (telefone, mensagem, evidência de consentimento). O inventário já não
+  os carrega; não os traga por aqui.
+%>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manutenção — cidades</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px;
+      font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: Canvas; color: CanvasText;
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: color-mix(in srgb, CanvasText 55%, Canvas); margin: 0 0 24px; }
+    .city {
+      border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas);
+      border-radius: 8px; padding: 16px; margin-bottom: 16px;
+    }
+    .city header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .slug { font: 600 16px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .name { color: color-mix(in srgb, CanvasText 65%, Canvas); }
+    .tag {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+      padding: 2px 8px; border-radius: 999px;
+      border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas);
+    }
+    .tag.active   { border-color: #2a7; color: #2a7; }
+    .tag.suspended{ border-color: #c82; color: #c82; }
+    .tag.archived { border-color: color-mix(in srgb, CanvasText 40%, Canvas); }
+    .tag.behind   { border-color: #c44; color: #c44; }
+    .tag.down     { border-color: #c44; color: #c44; }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
+    dt { color: color-mix(in srgb, CanvasText 55%, Canvas); }
+    dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .group { margin-top: 12px; padding-top: 12px; border-top: 1px dashed color-mix(in srgb, CanvasText 15%, Canvas); }
+    .group h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+                color: color-mix(in srgb, CanvasText 55%, Canvas); margin: 0 0 8px; }
+    .error { color: #c44; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-word; }
+    .muted { color: color-mix(in srgb, CanvasText 45%, Canvas); }
+    .empty { padding: 32px; text-align: center; color: color-mix(in srgb, CanvasText 50%, Canvas); }
+  </style>
+</head>
+<body>
+  <h1>Manutenção — cidades</h1>
+  <p class="sub">
+    <%= @cities.size %> cidade(s) no catálogo · schema esperado por este código:
+    <strong><%= @expected_version %></strong> · somente leitura, somente development
+  </p>
+
+  <% if @cities.empty? %>
+    <p class="empty">Nenhuma cidade registrada. Use <code>rails city:dev_up[slug,nome,uf]</code>.</p>
+  <% end %>
+
+  <% @cities.each do |city| %>
+    <section class="city">
+      <header>
+        <span class="slug"><%= city[:slug] %></span>
+        <span class="name"><%= city[:name] %><%= " · #{city[:uf]}" if city[:uf] %></span>
+        <span class="tag <%= city[:status] %>"><%= city[:status] %></span>
+        <% if city[:behind] %>
+          <span class="tag behind">schema atrasado</span>
+        <% end %>
+        <% if !city[:reachable] && !city[:skipped] %>
+          <span class="tag down">inalcançável</span>
+        <% end %>
+      </header>
+
+      <dl>
+        <dt>schema</dt>
+        <dd><%= city[:schema_version] || "—" %> <span class="muted">(esperado <%= city[:expected_version] %>)</span></dd>
+        <dt>criada em</dt>
+        <dd><%= city[:created_at]&.strftime("%d/%m/%Y %H:%M") %></dd>
+      </dl>
+
+      <div class="group">
+        <h2>Canal WhatsApp</h2>
+        <% if city[:channel] %>
+          <dl>
+            <dt>phone_number_id</dt><dd><%= city[:channel][:phone_number_id] %></dd>
+            <dt>waba_id</dt><dd><%= city[:channel][:waba_id] %></dd>
+            <dt>número</dt><dd><%= city[:channel][:display_phone_number] %></dd>
+            <dt>ativo</dt><dd><%= city[:channel][:active] ? "sim" : "não" %></dd>
+          </dl>
+        <% else %>
+          <p class="muted">Sem canal registrado — o webhook não tem como rotear mensagem para esta cidade.</p>
+        <% end %>
+      </div>
+
+      <div class="group">
+        <h2>Dentro do banco da cidade</h2>
+        <% if city[:skipped] %>
+          <p class="muted"><%= city[:error] %></p>
+        <% elsif !city[:reachable] %>
+          <p class="error"><%= city[:error] %></p>
+        <% else %>
+          <dl>
+            <dt>perfil</dt>
+            <dd>
+              <% if city[:profile] %>
+                <%= city[:profile][:name] %><%= " · #{city[:profile][:uf]}" if city[:profile][:uf] %><%= " · IBGE #{city[:profile][:ibge_code]}" if city[:profile][:ibge_code] %>
+              <% else %>
+                <span class="muted">sem city_profile</span>
+              <% end %>
+            </dd>
+            <dt>consentimento</dt>
+            <dd><%= city[:consent_version] || "—" %></dd>
+            <dt>protocolos ativos</dt>
+            <dd><%= city[:active_protocols].presence&.join(", ") || "—" %></dd>
+            <dt>alertas</dt>
+            <dd>
+              <% if city[:alert_recipients].present? %>
+                <%= city[:alert_recipients].map { |r| "#{r[:destination]} (#{r[:channel]})" }.join(", ") %>
+              <% else %>
+                <span class="muted">nenhum destinatário ativo</span>
+              <% end %>
+            </dd>
+            <dt>contagens</dt>
+            <dd><%= city[:counts].map { |k, v| "#{k}=#{v}" }.join("  ") %></dd>
+          </dl>
+        <% end %>
+      </div>
+    </section>
+  <% end %>
+</body>
+</html>

@@ -90,6 +90,21 @@ Rails.application.routes.draw do
   # Publicação de protocolo — exige step-up MFA (ADR-0011 + ADR-0009)
   post "/protocols/:version/publish", to: "publications#create"
 
+  # Tela de manutenção: lista a configuração de todas as cidades registradas,
+  # SEM autenticar ninguém. Ferramenta de desenvolvimento e teste.
+  #
+  # O `if` é a guarda inteira, e é de propósito que ele esteja AQUI e não num
+  # before_action: fora de development a rota não é desenhada, então o Rails
+  # responde 404 no roteador, sem depender de nenhum controller lembrar de
+  # negar. Uma rota que existe e recusa está a um refactor de distância de uma
+  # rota que existe e aceita — um skip_before_action mal colocado, uma troca de
+  # superclasse. Uma rota que não existe não tem esse caminho.
+  #
+  # spec/architecture/maintenance_route_spec.rb prova a ausência em test.
+  if Rails.env.development?
+    get "/manutencao", to: "maintenance#index"
+  end
+
   # Admin Console — namespace read-only (ADR-0002, brief §6).
   # NENHUMA rota de escrita pode ser adicionada aqui (critério §10).
   namespace :admin do
