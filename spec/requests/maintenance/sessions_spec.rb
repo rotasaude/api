@@ -109,6 +109,16 @@ RSpec.describe "Maintainer session", type: :request do
     expect(json).to include("error" => "locked")
   end
 
+  it "pays the same bcrypt cost for an unknown e-mail as for a known one, to not enumerate accounts" do
+    expect(BCrypt::Password).to receive(:new).with(Maintenance::SessionsController::DUMMY_DIGEST).and_call_original
+
+    post "/session", params: { email_address: "nao-existe-#{SecureRandom.hex(3)}@rotasaude.app", password: "qualquer" },
+                      headers: headers
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(json).to include("error" => "invalid_credentials")
+  end
+
   it "refuses a request without the exact Origin or without the header" do
     verified_login!
 

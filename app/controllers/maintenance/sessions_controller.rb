@@ -11,14 +11,33 @@ module Maintenance
     rate_limit to: 10, within: 3.minutes, only: %i[create challenge_totp],
                with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
+    # Custo constante: sem isto, e-mail desconhecido responde sem passar por
+    # bcrypt e e-mail conhecido paga o hash — a diferença de tempo enumera
+    # contas de superusuário. O digest de descarte é gerado uma vez, no boot.
+    DUMMY_DIGEST = BCrypt::Password.create("rota-saude-dummy-password").freeze
+
     def create
       maintainer = Maintainer.active.find_by(email_address: params[:email_address].to_s.strip.downcase)
-      return render(json: { error: "invalid_credentials" }, status: :unauthorized) unless maintainer
+
+      unless maintainer
+        dummy_authenticate
+        return render(json: { error: "invalid_credentials" }, status: :unauthorized)
+      end
+
       return render(json: { error: "locked" }, status: :unauthorized) if maintainer.locked?
 
-      unless maintainer.enrolled? && maintainer.authenticate(params[:password].to_s)
+      # Mantenedor conhecido, mas ainda sem convite aceito: não há digest para
+      # comparar de verdade (authenticate nem chegaria a rodar bcrypt aqui), e o
+      # custo do dummy o equipara ao caminho de senha errada abaixo. O
+      # register_failed_password continua o mesmo de sempre — inclusive o
+      # acúmulo de tentativas para conta não matriculada, que é intencional
+      # nesta rodada (não é o achado desta correção).
+      unless maintainer.enrolled?
+        dummy_authenticate
         return register_failed_password(maintainer)
       end
+
+      return register_failed_password(maintainer) unless maintainer.authenticate(params[:password].to_s)
 
       maintainer.clear_failures!
       session = start_pending_session_for(maintainer)
@@ -69,6 +88,12 @@ module Maintenance
     end
 
     private
+
+    # Roda o mesmo bcrypt que authenticate rodaria, contra um digest de
+    # descarte, e joga o resultado fora — só o custo importa.
+    def dummy_authenticate
+      BCrypt::Password.new(DUMMY_DIGEST) == params[:password].to_s
+    end
 
     # O bloqueio é da conta, não do IP: o rate_limit acima atrapalha quem insiste
     # do mesmo lugar, e trocar de IP é barato demais para ser a única barreira.
