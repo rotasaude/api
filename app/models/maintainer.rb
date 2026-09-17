@@ -45,12 +45,12 @@ class Maintainer < PlatformRecord
     SQL
   end
 
-  # update_columns, não update!: register_failure! escreve por update_all, então
-  # a instância em memória já está desatualizada (failed_attempts ainda em 0/nil
-  # localmente) — um update! comum não geraria SQL nenhum para colunas que
-  # parecem "sem mudança" e o zerado real no banco nunca aconteceria.
+  # register_failure! escreve por update_all, então os atributos em memória aqui
+  # estão velhos: um update! direto não veria mudança nenhuma e não escreveria
+  # nada. O reload traz o estado real antes de zerar.
   def clear_failures!
-    update_columns(failed_attempts: 0, locked_until: nil)
+    reload
+    update!(failed_attempts: 0, locked_until: nil)
   end
 
   def deactivate!
