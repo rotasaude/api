@@ -135,6 +135,13 @@ RSpec.describe "Maintenance token mutations", type: :request do
     _record, secret = MaintenanceToken.issue!(maintainer: maintainer, name: "ci", access: "read_write",
                                               city_slugs: [], expires_at: 10.days.from_now)
     bearer = { "Authorization" => "Bearer #{secret}" }
+    # `login!` no `before` já deixou o cookie de sessão neste client de teste;
+    # um bearer real nunca chega com cookie junto (spec §7: cookie OU bearer,
+    # nunca os dois — `resolve_maintenance_credential` recusa como
+    # ambiguous_credentials antes até de chegar no GraphQL). `reset!` zera o
+    # client de teste (cookie incluso) para exercitar o token sozinho.
+    reset!
+    host! "maintenance-api.rotasaude.app"
 
     post "/graphql", params: { query: CREATE, variables: { name: "outro", access: "read",
                                                            expiresAt: 5.days.from_now.iso8601, code: totp,

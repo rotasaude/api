@@ -17,6 +17,12 @@ module Maintenance
     # o limite que interrompe a execução e devolve erro no campo.
     use GraphQL::Schema::Timeout, max_seconds: 10
 
+    # O que um token de serviço não pode fazer (spec §7, Task 5): recusa ANTES
+    # de executar, pelo mesmo mecanismo de análise que já barra profundidade e
+    # complexidade acima — nenhum resolver roda para uma query recusada.
+    query_analyzer Analyzers::WriteScope
+    query_analyzer Analyzers::HumanOnly
+
     def self.unauthorized_object(error)
       raise GraphQL::ExecutionError, "não autorizado: #{error.type.graphql_name}"
     end
