@@ -8,6 +8,10 @@ Bundler.require(*Rails.groups)
 # config/environments/*.rb, que rodam antes do Zeitwerk.
 require_relative "../lib/rota"
 
+# config/routes.rb pergunta MaintenanceApi.enabled? para decidir se desenha a
+# rota, e as rotas são carregadas antes do Zeitwerk terminar.
+require_relative "../lib/maintenance_api"
+
 # Pré-declara Protocols para Zeitwerk usar como namespace de app/protocols/
 # em vez de torná-la um root top-level. Sem isso, app/protocols/validator.rb
 # carregaria como `Validator`, não `Protocols::Validator`. Ver ADR-0009.
