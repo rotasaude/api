@@ -48,8 +48,11 @@ namespace :city do
   # resolvível (ex.: production sem PLATFORM_DATABASE_URL setada neste
   # container).
   # Bancos compartilhados aposentados no Plano 5: primary/queue/cache apontavam para
-  # eles. Não estão mais em database.yml, mas continuam existindo em dev e test com
-  # dados antigos, então city:load_schema segue recusando-os.
+  # eles. Saíram de database.yml, e o `rota_saude_development` foi APAGADO em
+  # 2026-09-16 (dump guardado fora do repo). A lista permanece de propósito: ela
+  # compara NOMES, sem consultar o Postgres, e o que ela protege é o caso de
+  # alguém recriar um banco com um desses nomes — aí city:load_schema precisa
+  # seguir recusando. `rota_saude_test` continua existindo (recriado vazio).
   retired_database_names = %w[rota_saude_development rota_saude_test rota_saude_production].freeze
 
   protected_database_names = lambda do
