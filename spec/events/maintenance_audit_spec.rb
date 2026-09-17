@@ -56,6 +56,17 @@ RSpec.describe MaintenanceAudit do
     expect(outcomes).to contain_exactly("attempted", "ok")
   end
 
+  MaintenanceAudit::NAMES.each do |name|
+    it "writes #{name} through its own dispatch branch" do
+      expect do
+        described_class.record(name, outcome: "ok", maintainer_id: maintainer.id,
+                               credential: { "kind" => "session" }, module_name: "session")
+      end.to change(PlatformEvent, :count).by(1)
+
+      expect(PlatformEvent.order(:created_at).last.name).to eq(name)
+    end
+  end
+
   describe "immutability in the database" do
     let!(:event) do
       described_class.record("maintenance.session.started", outcome: "ok", maintainer_id: maintainer.id,

@@ -51,6 +51,12 @@ module MaintenanceAudit
     when "maintenance.session.ended"       then Platform.audit("maintenance.session.ended", **payload)
     when "maintenance.maintainer.invited"  then Platform.audit("maintenance.maintainer.invited", **payload)
     when "maintenance.maintainer.accepted" then Platform.audit("maintenance.maintainer.accepted", **payload)
+    else
+      # Sem isto, um nome novo em NAMES sem branch correspondente passaria na
+      # validação acima, não escreveria nada, e ainda devolveria um
+      # correlation_id — quem chamou acreditaria que auditou. Numa trilha de
+      # auditoria, falha alta é sempre melhor que perda silenciosa.
+      raise ArgumentError, "sem branch de dispatch para #{name} — NAMES e o case saíram de sincronia"
     end
 
     correlation_id
