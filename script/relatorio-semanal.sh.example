@@ -23,7 +23,14 @@ set -euo pipefail
 MONOREPO_ROOT="${MONOREPO_ROOT:-$(cd "${BASH_SOURCE%/*}/../../.." && pwd)}"
 REPO_ROOT="$MONOREPO_ROOT"
 REPORTS_DIR="${REPORTS_DIR:-$REPO_ROOT/docs/relatorios}"
-PROMPT_FILE="${PROMPT_FILE:-$REPO_ROOT/docs/adr/prompts/prompt-relatorio-semanal.md}"
+# Sem default: o prompt NÃO está em repositório nenhum. O diretório
+# `docs/adr/prompts/` ficou deliberadamente fora do arquivo v1 — é material de
+# processo, não decisão de arquitetura — e o original segue no arquivo do
+# projeto (ver `_v1/README.md` no repo docs, "O que NÃO veio junto, e por quê").
+# O default anterior apontava para esse caminho inexistente, então o script
+# falhava lá na frente reclamando de outra coisa. Falhar aqui, dizendo o que
+# falta, é o mesmo padrão do placeholder da CLI mais abaixo.
+PROMPT_FILE="${PROMPT_FILE:-}"
 LOG_DIR="${LOG_DIR:-$REPO_ROOT/.relatorios-logs}"
 MAX_BASELINE_AGE_DAYS="${MAX_BASELINE_AGE_DAYS:-35}"
 
@@ -32,6 +39,23 @@ OUT_FILE="$REPORTS_DIR/$TODAY.md"
 LOG_FILE="$LOG_DIR/$TODAY.log"
 
 mkdir -p "$REPORTS_DIR" "$LOG_DIR"
+
+# PROMPT_FILE não tem default (ver acima): o prompt não está em repositório
+# nenhum. `set -euo pipefail` NÃO pega isto sozinho — `${PROMPT_FILE:-}` deixa a
+# variável definida e vazia, então o -u a considera válida e ela passaria batido
+# até a chamada do agente, que falharia dizendo outra coisa. A checagem é aqui,
+# antes de qualquer trabalho, e diz o que falta.
+if [[ -z "$PROMPT_FILE" ]]; then
+  echo "PROMPT_FILE não definido. O prompt do relatório semanal não vive em" >&2
+  echo "repositório nenhum (material de processo, deixado fora do arquivo v1" >&2
+  echo "de propósito). Aponte PROMPT_FILE para a sua cópia:" >&2
+  echo "  PROMPT_FILE=/caminho/para/prompt-relatorio-semanal.md $0" >&2
+  exit 1
+fi
+if [[ ! -r "$PROMPT_FILE" ]]; then
+  echo "PROMPT_FILE não encontrado ou ilegível: $PROMPT_FILE" >&2
+  exit 1
+fi
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG_FILE" >&2; }
 
