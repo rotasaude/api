@@ -4,6 +4,10 @@ require "rails/all"
 
 Bundler.require(*Rails.groups)
 
+# Rota.deployed? (lib/rota.rb) é perguntado aqui mesmo (CookieStore, abaixo) e em
+# config/environments/*.rb, que rodam antes do Zeitwerk.
+require_relative "../lib/rota"
+
 # Pré-declara Protocols para Zeitwerk usar como namespace de app/protocols/
 # em vez de torná-la um root top-level. Sem isso, app/protocols/validator.rb
 # carregaria como `Validator`, não `Protocols::Validator`. Ver ADR-0009.
