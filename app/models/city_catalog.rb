@@ -10,7 +10,10 @@
 # o próximo deploy. E o mapa tem um teto (MAX_CACHE_ENTRIES): a chave é um
 # label de host não autenticado e controlado pelo atacante.
 class CityCatalog
-  RESERVED = %w[admin api auth www].freeze
+  # maintenance.* (frontend) e maintenance-api.* (API) são da plataforma: a
+  # ferramenta alcança TODAS as cidades, então nenhuma cidade pode responder
+  # nesses hosts (spec da API de manutenção §3).
+  RESERVED = %w[admin api auth www maintenance maintenance-api].freeze
   CACHE_TTL = 30 # seconds
   MAX_CACHE_ENTRIES = 500
 
@@ -39,6 +42,11 @@ class CityCatalog
     # Host do callback único do gov.br (auth.*). Reservado: nunca resolve cidade.
     def auth_host?(host)
       label_for(host) == "auth"
+    end
+
+    # Host da API de manutenção (maintenance-api.*). Reservado: nunca resolve cidade.
+    def maintenance_api_host?(host)
+      label_for(host) == "maintenance-api"
     end
 
     def reset_cache!

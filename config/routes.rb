@@ -31,6 +31,24 @@ Rails.application.routes.draw do
     get "/auth/govbr/callback", to: "govbr/callbacks#show"
   end
 
+  # API de manutenção (spec da API de manutenção §3/§5). A rota SÓ existe em
+  # development e staging com MAINTENANCE_API_ENABLED=true — e em test, onde os
+  # request specs vivem. Em produção não é desenhada, e a chave ligada derruba o
+  # boot (config/initializers/01_maintenance_api.rb). PRECISA vir antes das
+  # rotas de cidade, como os blocos acima: a primeira rota que casa vence, e
+  # /session da cidade não tem constraint de host.
+  if MaintenanceApi.enabled?
+    constraints(MaintenanceApiHost) do
+      scope module: :maintenance, as: :maintenance do
+        resource :session, only: %i[create show destroy]
+        post "/session/challenge", to: "sessions#challenge_totp"
+        post "/invitations/enroll", to: "invitations#enroll"
+        post "/invitations/accept", to: "invitations#accept"
+        post "/graphql", to: "graphql#execute"
+      end
+    end
+  end
+
   # Sessão de usuário da cidade (ADR-0011). Operador: bloco do console, acima.
   resource :session, only: %i[create show destroy]
 

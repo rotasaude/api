@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_16_000003) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_17_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -53,6 +53,44 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_16_000003) do
     t.datetime "updated_at", null: false
     t.index ["city_id"], name: "index_city_grants_on_city_id"
     t.check_constraint "kind::text = ANY (ARRAY['operator'::character varying, 'user'::character varying]::text[])", name: "ck_city_grants_kind"
+  end
+
+  create_table "maintainer_invitations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.uuid "maintainer_id", null: false
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "used_at"
+    t.index ["maintainer_id"], name: "index_maintainer_invitations_on_maintainer_id"
+    t.index ["token_digest"], name: "index_maintainer_invitations_on_token_digest", unique: true
+  end
+
+  create_table "maintainer_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "ip_address"
+    t.datetime "last_seen_at"
+    t.uuid "maintainer_id", null: false
+    t.datetime "mfa_verified_at"
+    t.integer "totp_attempts", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.string "user_agent"
+    t.index ["maintainer_id"], name: "index_maintainer_sessions_on_maintainer_id"
+  end
+
+  create_table "maintainers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "deactivated_at"
+    t.string "email_address", null: false
+    t.integer "failed_attempts", default: 0, null: false
+    t.uuid "invited_by_id"
+    t.datetime "locked_until"
+    t.datetime "otp_enabled_at"
+    t.jsonb "otp_recovery_codes", default: [], null: false
+    t.string "otp_secret"
+    t.string "password_digest"
+    t.datetime "updated_at", null: false
+    t.index "lower((email_address)::text)", name: "index_maintainers_on_lower_email", unique: true
   end
 
   create_table "operator_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

@@ -1,0 +1,245 @@
+require "rails_helper"
+
+# Spec da API de manutenção §6: senha abre sessão PENDENTE, TOTP verifica, e o
+# cookie só autentica depois disso. Poderes totais ⇒ sessão curta, bloqueio por
+# conta e CSRF por Origin + header próprio.
+RSpec.describe "Maintainer session", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
+  let(:password) { "s3nha-forte-1" }
+  let(:frontend) { "https://maintenance.rotasaude.app" }
+  let!(:maintainer) do
+    Maintainer.create!(email_address: "m-#{SecureRandom.hex(3)}@rotasaude.app", password: password,
+                       otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)
+  end
+
+  def api_host = "maintenance-api.rotasaude.app"
+  def json = JSON.parse(response.body)
+  def totp = ROTP::TOTP.new(maintainer.otp_secret).now
+  def headers = { "Origin" => frontend, "X-Rota-Maintenance" => "1" }
+
+  def login!(pwd = password)
+    post "/session", params: { email_address: maintainer.email_address, password: pwd }, headers: headers
+  end
+
+  def verified_login!
+    login!
+    post "/session/challenge", params: { session_id: json["session_id"], code: totp }, headers: headers
+    expect(response).to have_http_status(:ok)
+  end
+
+  before do
+    host! api_host
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("MAINTENANCE_FRONTEND_ORIGIN").and_return(frontend)
+  end
+
+  it "opens a pending session on the password step, which does not authenticate yet" do
+    login!
+
+    expect(response).to have_http_status(:ok)
+    expect(json).to include("mfa_required" => true)
+    expect(MaintainerSession.find(json["session_id"]).mfa_verified_at).to be_nil
+
+    get "/session", headers: headers
+    expect(response).to have_http_status(:unauthorized)
+  end
+
+  it "authenticates after TOTP and audits the login with the maintainer id, never the e-mail" do
+    verified_login!
+
+    get "/session", headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(json).to include("email_address" => maintainer.email_address)
+
+    event = PlatformEvent.where(name: "maintenance.session.started").last
+    expect(event.payload).to include("maintainer_id" => maintainer.id, "outcome" => "ok")
+    expect(event.payload.to_json).not_to include(maintainer.email_address)
+  end
+
+  it "writes a host-only, HttpOnly, SameSite=Strict cookie" do
+    login!
+    set_cookie = Array(response.headers["Set-Cookie"]).join("\n")
+
+    expect(set_cookie).to include("maintainer_session_id")
+    expect(set_cookie).to match(/HttpOnly/i)
+    expect(set_cookie).to match(/SameSite=Strict/i)
+    expect(set_cookie).not_to include("domain")
+  end
+
+  it "expires the session eight hours after the TOTP, and after thirty idle minutes" do
+    verified_login!
+    login_time = Time.current
+
+    # Absolute TTL: touching the session every twenty-five minutes (well
+    # within IDLE_TTL) keeps it alive right up to eight hours, so the 401 just
+    # past eight hours is provably the ABSOLUTE limit, not idleness — a single
+    # check seven hours after login, with no activity in between, would have
+    # already tripped the thirty-minute idle limit and proven nothing about
+    # the absolute one.
+    (1..19).each do |step|
+      travel_to(login_time + (step * 25.minutes)) do
+        get "/session", headers: headers
+        expect(response).to have_http_status(:ok)
+      end
+    end
+
+    travel_to(login_time + 8.hours + 1.minute) do
+      get "/session", headers: headers
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    # Idle TTL: a single gap over thirty minutes kills the session well inside
+    # the eight-hour absolute window, with no activity in between.
+    verified_login!
+    travel_to(31.minutes.from_now) do
+      get "/session", headers: headers
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  # I2 (fix round 2): a conta bloqueada não se ANUNCIA. "locked" dizia a
+  # qualquer um que aquele e-mail é de um mantenedor — e ainda respondia sem
+  # passar pelo bcrypt de custo constante, o que denunciava a conta pelo tempo
+  # mesmo sem ler o corpo. O bloqueio continua valendo; só não é contado.
+  it "locks the account after five bad passwords and then answers the right one indistinguishably" do
+    Maintainer::LOCKOUT_ATTEMPTS.times { login!("errada") }
+
+    expect(maintainer.reload.locked?).to be(true)
+    expect(PlatformEvent.where(name: "maintenance.session.locked").count).to eq(1)
+
+    allow(BCrypt::Password).to receive(:new).and_call_original
+    expect(BCrypt::Password).to receive(:new).with(Maintenance::SessionsController::DUMMY_DIGEST).and_call_original
+
+    login!
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(json).to eq({ "error" => "invalid_credentials" })
+    expect(maintainer.reload.locked?).to be(true)
+    # I5: a tentativa contra conta bloqueada também é auditada — quatro falhas
+    # de senha antes do bloqueio, mais esta.
+    expect(PlatformEvent.where(name: "maintenance.session.failed").count).to eq(Maintainer::LOCKOUT_ATTEMPTS)
+  end
+
+  # C2 (fix round 2): antes, TOTP errado só incrementava o contador da SESSÃO —
+  # quem tivesse a senha abria uma sessão pendente nova e recomeçava a contar,
+  # para sempre. Agora a conta soma as falhas de senha E de TOTP, e o passo da
+  # senha não zera mais nada (só o TOTP certo zera).
+  it "counts a wrong TOTP toward the account lockout, across pending sessions" do
+    login!
+    first = json["session_id"]
+    (Maintainer::LOCKOUT_ATTEMPTS - 1).times do
+      post "/session/challenge", params: { session_id: first, code: "000000" }, headers: headers
+    end
+    expect(maintainer.reload.locked?).to be(false)
+
+    login!
+    second = json["session_id"]
+    post "/session/challenge", params: { session_id: second, code: "000000" }, headers: headers
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(maintainer.reload.locked?).to be(true)
+    expect(PlatformEvent.where(name: "maintenance.session.locked").count).to eq(1)
+    expect(MaintainerSession.where(id: second)).to be_empty
+  end
+
+  # I5 (fix round 2): quatro de cada cinco falhas de TOTP eram invisíveis — só a
+  # que apagava a sessão virava evento.
+  it "audits every failed TOTP, not only the last one" do
+    login!
+    session_id = json["session_id"]
+    3.times { post "/session/challenge", params: { session_id: session_id, code: "000000" }, headers: headers }
+
+    events = PlatformEvent.where(name: "maintenance.session.failed").order(:created_at)
+    expect(events.count).to eq(3)
+    expect(events.last.payload).to include("outcome" => "rejected", "maintainer_id" => maintainer.id,
+                                           "credential" => { "kind" => "totp" })
+  end
+
+  # C2/I5 (fix round 2): o bloqueio que cai ENTRE a senha e o challenge vale no
+  # challenge — com o código CERTO na mão, a sessão pendente não abre.
+  it "refuses and audits a challenge whose account got locked after the password step" do
+    login!
+    session_id = json["session_id"]
+    maintainer.update_columns(failed_attempts: Maintainer::LOCKOUT_ATTEMPTS,
+                              locked_until: Maintainer::LOCKOUT_WINDOW.from_now)
+
+    post "/session/challenge", params: { session_id: session_id, code: totp }, headers: headers
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(json).to include("error" => "invalid_session")
+    expect(PlatformEvent.where(name: "maintenance.session.failed").last.payload)
+      .to include("credential" => { "kind" => "totp" }, "maintainer_id" => maintainer.id)
+
+    get "/session", headers: headers
+    expect(response).to have_http_status(:unauthorized)
+  end
+
+  # C1 (fix round 2): spec §6 — "Não há recovery codes". Mesmo que uma linha
+  # antiga ainda carregue um código, ele não autentica: o challenge valida TOTP
+  # e mais nada.
+  it "never accepts a recovery code in place of the TOTP" do
+    code = "recuperacao1"
+    maintainer.update!(otp_recovery_codes: [ BCrypt::Password.create(code).to_s ])
+
+    login!
+    post "/session/challenge", params: { session_id: json["session_id"], code: code }, headers: headers
+    expect(response).to have_http_status(:unauthorized)
+
+    get "/session", headers: headers
+    expect(response).to have_http_status(:unauthorized)
+    expect(maintainer.reload.otp_recovery_codes.size).to eq(1)
+  end
+
+  # I3 (fix round 2): sem MAINTENANCE_FRONTEND_ORIGIN configurada, a checagem
+  # virava `nil == nil` e uma requisição SEM Origin nenhuma passava. Falha
+  # fechada: sem origem configurada, ninguém entra.
+  it "refuses every request when no frontend origin is configured" do
+    allow(ENV).to receive(:[]).with("MAINTENANCE_FRONTEND_ORIGIN").and_return(nil)
+
+    get "/session", headers: { "X-Rota-Maintenance" => "1" }
+
+    expect(response).to have_http_status(:forbidden)
+  end
+
+  it "pays the same bcrypt cost for an unknown e-mail as for a known one, to not enumerate accounts" do
+    expect(BCrypt::Password).to receive(:new).with(Maintenance::SessionsController::DUMMY_DIGEST).and_call_original
+
+    post "/session", params: { email_address: "nao-existe-#{SecureRandom.hex(3)}@rotasaude.app", password: "qualquer" },
+                      headers: headers
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(json).to include("error" => "invalid_credentials")
+  end
+
+  it "refuses a request without the exact Origin or without the header" do
+    verified_login!
+
+    get "/session", headers: { "Origin" => "https://attacker.example", "X-Rota-Maintenance" => "1" }
+    expect(response).to have_http_status(:forbidden)
+
+    get "/session", headers: { "Origin" => frontend }
+    expect(response).to have_http_status(:forbidden)
+  end
+
+  it "answers 404 on any other host, never 401" do
+    host! "curitiba.rotasaude.app"
+    get "/session", headers: headers
+    expect(response).to have_http_status(:not_found)
+
+    host! "admin.rotasaude.app"
+    post "/session", params: { email_address: maintainer.email_address, password: password }, headers: headers
+    expect(response).not_to have_http_status(:ok)
+  end
+
+  it "refuses a deactivated maintainer and ends the session on logout" do
+    verified_login!
+    delete "/session", headers: headers
+    expect(response).to have_http_status(:no_content)
+    expect(PlatformEvent.where(name: "maintenance.session.ended").count).to eq(1)
+
+    maintainer.deactivate!
+    login!
+    expect(response).to have_http_status(:unauthorized)
+  end
+end

@@ -10,7 +10,12 @@ module Mfa
       consume_recovery_code(user, code)
     end
 
+    # Guarda própria de branco: `call` já filtrava antes de chegar aqui, mas
+    # agora este método é chamado DIRETO pelo fluxo de manutenção (TOTP-only),
+    # e ROTP::TOTP.new(nil) levanta.
     def self.totp_valid?(user, code)
+      return false if user.otp_secret.blank? || code.blank?
+
       ROTP::TOTP.new(user.otp_secret).verify(code.to_s.gsub(/\s+/, ""), drift_behind: DRIFT, drift_ahead: DRIFT).present?
     end
 

@@ -4,9 +4,17 @@ require "rails_helper"
 # slug (CityPublicUrl.base_for_slug), e ANTES de consultar o catálogo. Assim um
 # atacante não consegue usar slug.attacker.example ou admin.attacker.example.
 RSpec.describe "CORS", type: :request do
-  def cors_header_for(origin)
-    get "/session", headers: { "Origin" => origin, "Host" => "#{TEST_CITY_A.slug}.rotasaude.app" }
+  MAINTENANCE_API_HOST = "maintenance-api.rotasaude.app".freeze
+  MAINTENANCE_ORIGIN = "https://maintenance.rotasaude.app".freeze
+
+  def cors_header_for(origin, host: "#{TEST_CITY_A.slug}.rotasaude.app")
+    get "/session", headers: { "Origin" => origin, "Host" => host }
     response.headers["Access-Control-Allow-Origin"]
+  end
+
+  def with_maintenance_origin
+    allow(ENV).to receive(:fetch).and_call_original
+    allow(ENV).to receive(:fetch).with("MAINTENANCE_FRONTEND_ORIGIN", "").and_return(MAINTENANCE_ORIGIN)
   end
 
   before { CityCatalog.reset_cache! }
@@ -41,6 +49,32 @@ RSpec.describe "CORS", type: :request do
     City.find_by!(slug: TEST_CITY_A.slug).update!(status: "suspended")
     CityCatalog.reset_cache!
     expect(cors_header_for("http://#{TEST_CITY_A.slug}.localhost:5175")).to be_nil
+  end
+
+  # I6 (fix round 2): o casamento de resource do rack-cors é por CAMINHO, e
+  # /session existe nos dois blocos. Sem separar por HOST, uma origem de cidade
+  # ganhava preflight credenciado no host da API de manutenção e vice-versa — e
+  # como todos os hosts são do mesmo site, SameSite=Strict não segura o cookie.
+  it "allows the maintenance frontend only on the maintenance API host" do
+    with_maintenance_origin
+
+    expect(cors_header_for(MAINTENANCE_ORIGIN, host: MAINTENANCE_API_HOST)).to eq(MAINTENANCE_ORIGIN)
+    expect(cors_header_for(MAINTENANCE_ORIGIN)).to be_nil
+  end
+
+  it "refuses a city origin, and the console origin, on the maintenance API host" do
+    with_maintenance_origin
+    allow(ENV).to receive(:fetch).with("ALLOWED_ORIGINS", "").and_return("http://admin.localhost:5174")
+
+    expect(cors_header_for("http://#{TEST_CITY_A.slug}.localhost:5175", host: MAINTENANCE_API_HOST)).to be_nil
+    expect(cors_header_for("http://admin.localhost:5174", host: MAINTENANCE_API_HOST)).to be_nil
+  end
+
+  it "refuses every origin on the maintenance API host when no origin is configured" do
+    allow(ENV).to receive(:fetch).and_call_original
+    allow(ENV).to receive(:fetch).with("MAINTENANCE_FRONTEND_ORIGIN", "").and_return("")
+
+    expect(cors_header_for(MAINTENANCE_ORIGIN, host: MAINTENANCE_API_HOST)).to be_nil
   end
 
   it "is scheme- and port-exact against the production shape of CITY_PUBLIC_BASE_TEMPLATE" do
