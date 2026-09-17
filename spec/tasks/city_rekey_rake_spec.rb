@@ -198,6 +198,27 @@ RSpec.describe "city:rekey and city:rotate_key rake tasks" do
       expect(found&.id).to eq(snapshot.id)
     end
 
+    # O ramo de aborto do re-sign (city.rake) nunca teve spec — e é o pior
+    # estado alcançável por esta task: a chave JÁ rotacionou e os dados JÁ foram
+    # reescritos (nada a desfazer), mas os relatórios emitidos seguem assinados
+    # com o material anterior. Quem parar de ler na palavra "rotacionada" libera
+    # a cidade e derruba todo link de relatório dos últimos 30 dias.
+    #
+    # Por isso a asserção é sobre o que a mensagem MANDA fazer, não sobre o
+    # SystemExit: o valor do ramo está em nomear city:resign_reports e proibir
+    # city:resume, e um abort silencioso passaria por um teste de exit status.
+    it "aborts naming the recovery task when the re-sign fails after a successful rotation" do
+      allow(CityReports::Resign).to receive(:call)
+        .and_return(Result.fail(:missing_key, message: "cidade sem encryption_key"))
+
+      out = capture_stderr do
+        expect { Rake::Task["city:rotate_key"].invoke(city.slug) }.to raise_error(SystemExit)
+      end
+
+      expect(out).to include("city:resign_reports[#{city.slug}]")
+      expect(out).to match(/NÃO libere a cidade/)
+    end
+
     it "reports the resign count alongside the rekey counts" do
       snapshot_signed_with_current_key
 

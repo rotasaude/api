@@ -40,4 +40,17 @@ RSpec.describe PlatformHosts do
 
     expect { described_class.for("production") }.to raise_error(PlatformHosts::BlankDomain)
   end
+
+  # O modo de falha que o BlankDomain NÃO cobre: um template em que o slug não é
+  # o primeiro rótulo do host produz um domínio errado em vez de vazio, então a
+  # guarda anterior passa e produção sobe com config.hosts MENTIROSO — aceitando
+  # um domínio que não é nosso e recusando os que são. Falha aberta disfarçada de
+  # sucesso, que é a classe de defeito que este módulo inteiro existe para negar.
+  it "raises when the slug is not the leading label, instead of deriving a wrong domain" do
+    allow(ENV).to receive(:fetch).and_call_original
+    allow(ENV).to receive(:fetch).with("CITY_PUBLIC_BASE_TEMPLATE", anything)
+      .and_return("https://%{slug}-cidades.rota-saude.example")
+
+    expect { described_class.for("production") }.to raise_error(PlatformHosts::UnexpectedTemplate, /x-cidades/)
+  end
 end

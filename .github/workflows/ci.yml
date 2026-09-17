@@ -30,6 +30,13 @@ jobs:
       DATABASE_HOST: 127.0.0.1
       DATABASE_PORT: "5432"
       POSTGRES_PASSWORD: postgres
+      # Uma fonte só para a senha do rota_app: o passo abaixo CRIA o role com
+      # ela e o config/database.yml CONECTA com ela. Antes o passo trazia o
+      # literal 'rota_app' e o database.yml o repetia como default do
+      # ENV.fetch — iguais por coincidência, não por construção. Quem viesse
+      # definir ROTA_APP_PASSWORD aqui mudaria só a conexão: o role já teria
+      # nascido com a senha velha, e a suíte inteira cairia em autenticação.
+      ROTA_APP_PASSWORD: rota_app
       # config/initializers/active_record_encryption.rb lê
       # Rails.application.credentials ANTES de cair no fallback de ENV — e
       # config/credentials.yml.enc está no git (config/master.key não está).
@@ -53,10 +60,11 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
-          psql -h 127.0.0.1 -U rota_saude -d postgres -v ON_ERROR_STOP=1 -c "
+          psql -h 127.0.0.1 -U rota_saude -d postgres -v ON_ERROR_STOP=1 \
+               -v app_password="$ROTA_APP_PASSWORD" -c "
           DO \$\$ BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='rota_app') THEN
-              CREATE ROLE rota_app LOGIN PASSWORD 'rota_app';
+              CREATE ROLE rota_app LOGIN PASSWORD :'app_password';
             END IF;
           END \$\$;
           "
