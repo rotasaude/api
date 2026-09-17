@@ -73,4 +73,34 @@ RSpec.describe "Maintenance token authentication", type: :request do
 
     expect(response).to have_http_status(:forbidden)
   end
+
+  # Fix round 1 (Critical): um segredo recusado sem o formato conhecido não
+  # pode virar dado gravado na auditoria — nem inteiro, nem em pedaço.
+  it "never echoes an unrecognized secret into the audit trail" do
+    garbage = "nounderscoreshere"
+    query!(bearer(garbage))
+
+    expect(response).to have_http_status(:unauthorized)
+
+    event = PlatformEvent.where(name: "maintenance.token.refused").last
+    expect(event.payload["token_prefix"]).to eq("unrecognized")
+    expect(event.payload.to_json).not_to include(garbage)
+    expect(event.payload.to_json).not_to include(garbage.first(8))
+  end
+
+  # Fix round 1 (I3): /session é do navegador. Um bearer não vira sessão ali —
+  # nem para ler, nem para encerrar.
+  it "refuses a bearer-authenticated GET /session" do
+    get "/session", headers: bearer
+
+    expect(response).to have_http_status(:forbidden)
+    expect(json).to eq({ "error" => "browser_only" })
+  end
+
+  it "refuses a bearer-authenticated DELETE /session" do
+    delete "/session", headers: bearer
+
+    expect(response).to have_http_status(:forbidden)
+    expect(json).to eq({ "error" => "browser_only" })
+  end
 end

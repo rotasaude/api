@@ -222,6 +222,23 @@ RSpec.describe "Maintainer session", type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
+  # Fix round 1 (I2): resolver a credencial não pode ESCREVER. Antes,
+  # touch_session rodava antes da checagem de Origin — um cookie válido com
+  # Origin errado renovava a janela de inatividade da vítima sem nunca passar
+  # pela trava de CSRF. O toque só pode acontecer depois que a origem aprova.
+  it "does not touch the session on a request with a valid cookie and the wrong Origin" do
+    verified_login!
+    session = maintainer.maintainer_sessions.last
+    last_seen = session.last_seen_at
+
+    travel_to(5.minutes.from_now) do
+      get "/session", headers: { "Origin" => "https://attacker.example", "X-Rota-Maintenance" => "1" }
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    expect(session.reload.last_seen_at).to eq(last_seen)
+  end
+
   it "answers 404 on any other host, never 401" do
     host! "curitiba.rotasaude.app"
     get "/session", headers: headers

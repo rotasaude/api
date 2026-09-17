@@ -42,6 +42,12 @@ module MaintainerAuthentication
   # Cookie OU bearer, nunca os dois: com as duas credenciais presentes não há
   # resposta honesta para "quem agiu", e a auditoria é o que resta quando os
   # poderes são totais (spec §7).
+  #
+  # Fix round 1 (I2): RESOLVER não escreve. `touch_session` saiu daqui — antes
+  # rodava aqui, ANTES da checagem de Origin, então um cookie válido com Origin
+  # errado ainda renovava a janela de inatividade da vítima sem nunca passar
+  # pela trava de CSRF. Quem toca a sessão agora é
+  # `require_maintainer_authentication`, que só roda depois da origem aprovar.
   def resolve_maintenance_credential
     bearer = request.headers["Authorization"].to_s[BEARER, 1]
     cookie = cookies.signed[COOKIE]
@@ -53,7 +59,6 @@ module MaintainerAuthentication
     session = find_verified_session
     return unless session
 
-    touch_session(session)
     Current.maintainer_session = session
     Current.maintenance_credential = Maintenance::Credential.session(session)
   end
@@ -65,12 +70,24 @@ module MaintainerAuthentication
       # existe para que uma enxurrada de recusas apareça na auditoria.
       MaintenanceAudit.record("maintenance.token.refused", outcome: "rejected", module_name: "token",
                               maintainer_id: nil, credential: { "kind" => "token" },
-                              token_prefix: secret.to_s.split("_").first(2).join("_"))
+                              token_prefix: refused_token_prefix(secret))
       return render(json: { error: "unauthenticated" }, status: :unauthorized)
     end
 
     token.touch_use!(ip: request.remote_ip)
     Current.maintenance_credential = Maintenance::Credential.token(token)
+  end
+
+  # Fix round 1 (Critical): NUNCA ecoa o valor apresentado. A versão anterior
+  # (`secret.split("_").first(2).join("_")`) só é um prefixo seguro quando o
+  # valor já tem a forma `rsm_<env>_...` — qualquer outra coisa (lixo de um
+  # prober, ou um cliente que colocou a credencial errada no header) ia inteira
+  # para platform_events, num caminho NÃO autenticado. Compara com o prefixo
+  # conhecido DESTE ambiente e só grava a constante quando bate; do contrário,
+  # um rótulo fixo — nunca um pedaço do valor apresentado.
+  def refused_token_prefix(secret)
+    presented = secret.to_s
+    presented.start_with?(MaintenanceToken.prefix) ? MaintenanceToken.prefix : "unrecognized"
   end
 
   # A trava de CSRF é do NAVEGADOR. Um token não tem Origin nem cookie, então
@@ -94,9 +111,12 @@ module MaintainerAuthentication
   end
 
   def require_maintainer_authentication
-    return if Current.maintenance_credential
+    credential = Current.maintenance_credential
+    return render(json: { error: "unauthenticated" }, status: :unauthorized) unless credential
 
-    render(json: { error: "unauthenticated" }, status: :unauthorized)
+    # Fix round 1 (I2): o toque na sessão mora AQUI agora, depois que a Origin
+    # já foi aprovada (este before_action roda por último) — nunca antes dela.
+    touch_session(Current.maintainer_session) if credential.human?
   end
 
   def resume_maintainer_session
