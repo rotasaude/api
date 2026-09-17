@@ -20,7 +20,8 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
                                 operator.impersonated
                                 maintenance.session.started maintenance.session.failed
                                 maintenance.session.locked maintenance.session.ended
-                                maintenance.maintainer.invited maintenance.maintainer.accepted].freeze
+                                maintenance.maintainer.invited maintenance.maintainer.enrolled
+                                maintenance.maintainer.accepted].freeze
 
   # Independent restatement of the rule (not PlatformEvent's own method), so the
   # static call-site check below cannot drift together with the model.

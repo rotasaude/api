@@ -37,6 +37,11 @@ RSpec.describe "Maintainer invitation", type: :request do
     expect(response).to have_http_status(:ok)
     expect(json).to include("email_address" => maintainer.email_address)
     expect(json["otpauth_uri"]).to include("otpauth://")
+    # C1 (fix round 2): spec §6 — "Não há recovery codes". Nem na resposta, nem
+    # no banco: um código de recuperação é um segundo fator estático e
+    # permanente numa conta de poder total.
+    expect(json).not_to have_key("recovery_codes")
+    expect(maintainer.reload.otp_recovery_codes).to eq([])
 
     code = ROTP::TOTP.new(maintainer.reload.otp_secret).now
     accept(code: code)
@@ -105,37 +110,57 @@ RSpec.describe "Maintainer invitation", type: :request do
     expect(response).to have_http_status(:ok)
   end
 
-  # Important #3 (fix round 1): recovery code também matricula, e o caminho
-  # feliz precisa continuar funcionando com Mfa::Verify rodando dentro da
-  # transação de aceite.
-  it "accepts using a confirmed recovery code" do
+  # C1 (fix round 2): um recovery code plantado na conta (linha antiga, resto de
+  # migração) NÃO matricula: o aceite valida TOTP e mais nada.
+  it "refuses a recovery code in place of the TOTP" do
     enroll
-    recovery_code = json["recovery_codes"].first
+    code = "recuperacao1"
+    maintainer.reload.update!(otp_recovery_codes: [ BCrypt::Password.create(code).to_s ])
 
-    accept(code: recovery_code)
+    accept(code: code)
 
-    expect(response).to have_http_status(:no_content)
-    expect(maintainer.reload.enrolled?).to be(true)
-    expect(maintainer.otp_recovery_codes.size).to eq(Mfa::Enroll::RECOVERY_COUNT - 1)
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(maintainer.reload.enrolled?).to be(false)
+    expect(maintainer.otp_recovery_codes.size).to eq(1)
+    expect(invitation.reload.usable?).to be(true)
   end
 
-  # Important #3 (fix round 1): se algo mais falhar DENTRO da mesma transação
-  # depois que o recovery code já foi verificado (e consumido em memória pelo
-  # update! de Mfa::Verify), o rollback tem que devolver o código — nunca gasto
-  # sem que a conta tenha sido matriculada de verdade.
-  it "keeps a recovery code unspent when something else fails inside the accept transaction" do
+  # Important #3 (fix round 1), reescrito para o mundo sem recovery code: se
+  # algo falhar DENTRO da transação de aceite, nada dela sobrevive — nem a
+  # senha, nem o consumo do convite.
+  it "leaves the account untouched when something else fails inside the accept transaction" do
     enroll
-    recovery_code = json["recovery_codes"].first
-    codes_before = maintainer.reload.otp_recovery_codes.dup
+    code = ROTP::TOTP.new(maintainer.reload.otp_secret).now
 
-    allow(MaintenanceAudit).to receive(:record).and_raise(ActiveRecord::Rollback)
+    allow(MaintenanceAudit).to receive(:record).and_call_original
+    allow(MaintenanceAudit).to receive(:record)
+      .with("maintenance.maintainer.accepted", hash_including(outcome: "ok"))
+      .and_raise(ActiveRecord::Rollback)
 
-    accept(code: recovery_code)
+    accept(code: code)
 
     expect(response).to have_http_status(:unprocessable_content)
     expect(json).to include("error" => "invalid_code")
-    expect(maintainer.reload.otp_recovery_codes).to eq(codes_before)
+    expect(maintainer.reload.enrolled?).to be(false)
     expect(maintainer.password_digest).to be_nil
     expect(invitation.reload.usable?).to be(true)
+  end
+
+  # I4 (fix round 2): o enroll ROTACIONA o otp_secret de um superusuário e não
+  # auditava nada; e o aceite recusado também não deixava rastro.
+  it "audits the enrollment and a rejected accept" do
+    enroll
+
+    enrolled = PlatformEvent.where(name: "maintenance.maintainer.enrolled").last
+    expect(enrolled.payload).to include("outcome" => "ok", "module" => "maintainer",
+                                        "maintainer_id" => maintainer.id, "invitation_id" => invitation.id,
+                                        "credential" => { "kind" => "invitation" })
+    expect(enrolled.payload.to_json).not_to include(maintainer.email_address)
+
+    accept(code: "000000")
+
+    rejected = PlatformEvent.where(name: "maintenance.maintainer.accepted").last
+    expect(rejected.payload).to include("outcome" => "rejected", "maintainer_id" => maintainer.id,
+                                        "invitation_id" => invitation.id)
   end
 end

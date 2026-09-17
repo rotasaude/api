@@ -1,7 +1,8 @@
 # Aceite do convite de mantenedor (spec §6), em dois passos:
 #
 #   POST /invitations/enroll   { token } → gera o TOTP e devolve o material de
-#                                          cadastro (uri, secret, recovery codes)
+#                                          cadastro (uri e secret; NÃO há
+#                                          recovery code — spec §6)
 #   POST /invitations/accept   { token, password, code } → só aqui a conta
 #                                          passa a logar, e o convite é consumido
 #
@@ -22,12 +23,24 @@ module Maintenance
     def enroll
       invitation = usable_invitation or return head(:not_found)
 
-      enrollment = Mfa::Enroll.call(invitation.maintainer)
+      # C1: `recovery_codes: false`. Spec §6 — "Não há recovery codes"; a
+      # recuperação é outro mantenedor reenviar o convite, que zera senha, TOTP
+      # e sessões. Um código de recuperação seria um segundo fator estático e
+      # permanente numa conta de poder total.
+      enrollment = Mfa::Enroll.call(invitation.maintainer, recovery_codes: false)
+
+      # I4: este POST ROTACIONA o otp_secret de um superusuário. Sem auditoria,
+      # a troca do segundo fator é o único ato desta superfície que não deixa
+      # rastro. O id do convite entra para amarrar a rotação ao convite que a
+      # autorizou.
+      MaintenanceAudit.record("maintenance.maintainer.enrolled", outcome: "ok", module_name: "maintainer",
+                              maintainer_id: invitation.maintainer_id,
+                              credential: { "kind" => "invitation" }, invitation_id: invitation.id)
+
       render json: {
         email_address: invitation.maintainer.email_address,
         otpauth_uri: enrollment[:otpauth_uri],
-        secret: enrollment[:secret],
-        recovery_codes: enrollment[:recovery_codes]
+        secret: enrollment[:secret]
       }, status: :ok
     end
 
@@ -38,13 +51,12 @@ module Maintenance
       password = params[:password].to_s
       return render(json: { error: "weak_password" }, status: :unprocessable_content) if password.length < 12
 
-      # Mfa::Verify roda DENTRO da transação (fix round 1): quando ela verifica
-      # por recovery code, o código já foi consumido por um update! próprio —
-      # sem isto, um rollback por qualquer outro motivo deixaria o código gasto
-      # sem que a conta tivesse sido matriculada. ActiveRecord::Rollback desfaz
-      # tudo sem propagar, e a transação devolve nil.
+      # C1: `totp_valid?`, nunca `Mfa::Verify.call` — `call` cai no recovery
+      # code quando o TOTP não bate, e aqui não existe recovery code. Com
+      # `call`, um código de recuperação sobrevivente (conta antiga, linha
+      # plantada) matricularia a conta sem TOTP nenhum.
       accepted = PlatformRecord.transaction do
-        raise ActiveRecord::Rollback unless Mfa::Verify.call(maintainer, code: params[:code])
+        raise ActiveRecord::Rollback unless Mfa::Verify.totp_valid?(maintainer, params[:code])
 
         maintainer.update!(password: password, otp_enabled_at: Time.current)
         invitation.update!(used_at: Time.current)
@@ -56,7 +68,14 @@ module Maintenance
         true
       end
 
-      return render(json: { error: "invalid_code" }, status: :unprocessable_content) unless accepted
+      unless accepted
+        # I4: o aceite recusado também é registro de auditoria — é a tentativa
+        # de tomar a conta com o token na mão.
+        MaintenanceAudit.record("maintenance.maintainer.accepted", outcome: "rejected", module_name: "maintainer",
+                                maintainer_id: maintainer.id, credential: { "kind" => "invitation" },
+                                invitation_id: invitation.id)
+        return render(json: { error: "invalid_code" }, status: :unprocessable_content)
+      end
 
       head :no_content
     end

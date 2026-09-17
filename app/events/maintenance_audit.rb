@@ -18,6 +18,7 @@ module MaintenanceAudit
     maintenance.session.locked
     maintenance.session.ended
     maintenance.maintainer.invited
+    maintenance.maintainer.enrolled
     maintenance.maintainer.accepted
   ].freeze
 
@@ -50,6 +51,7 @@ module MaintenanceAudit
     when "maintenance.session.locked"      then Platform.audit("maintenance.session.locked", **payload)
     when "maintenance.session.ended"       then Platform.audit("maintenance.session.ended", **payload)
     when "maintenance.maintainer.invited"  then Platform.audit("maintenance.maintainer.invited", **payload)
+    when "maintenance.maintainer.enrolled" then Platform.audit("maintenance.maintainer.enrolled", **payload)
     when "maintenance.maintainer.accepted" then Platform.audit("maintenance.maintainer.accepted", **payload)
     else
       # Sem isto, um nome novo em NAMES sem branch correspondente passaria na
