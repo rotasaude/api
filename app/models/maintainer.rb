@@ -70,13 +70,27 @@ class Maintainer < PlatformRecord
   # A trava vive AQUI, não na mutation: `last_active?` sozinho era consultivo, e
   # qualquer chamador novo (rake, console, mutation futura) trancaria todo mundo
   # para fora sem perceber.
+  #
+  # Fix round 1: `last_active?` era um SELECT sem trava dentro de uma
+  # transação de isolamento padrão — duas desativações concorrentes nos dois
+  # últimos mantenedores ativos liam uma a outra como ativa, as duas passavam
+  # na checagem e as duas commitavam: zero mantenedores ativos, exatamente o
+  # que a guarda existe para impedir (TOCTOU). A checagem "sou o último?" e a
+  # desativação precisam ser uma coisa só: a trava é por transação (liberada
+  # no commit OU no rollback), chaveada num literal fixo — o recurso disputado
+  # é "o conjunto de mantenedores ativos", não uma linha. connection.execute,
+  # nunca select_value: pg_advisory_xact_lock devolve void, e select_value
+  # tentava tipar esse retorno e logava aviso de OID desconhecido (mesma razão
+  # documentada em CityLifecycle::InviteAdmin, que usa a mesma mecânica).
   def deactivate!
     transaction do
+      self.class.connection.execute("SELECT pg_advisory_xact_lock(hashtext('maintainers:last_active'))")
+
       raise LastActive, "último mantenedor ativo" if last_active?
 
       update!(deactivated_at: Time.current)
       maintainer_sessions.destroy_all
-      maintenance_tokens.update_all(revoked_at: Time.current, updated_at: Time.current)
+      maintenance_tokens.each(&:revoke!)
     end
   end
 
