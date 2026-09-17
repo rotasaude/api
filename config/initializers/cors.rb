@@ -46,4 +46,19 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
              methods: %i[get options],
              credentials: true
   end
+
+  # Frontend da API de manutenção: origem ÚNICA e exata, com credenciais (o
+  # cookie de sessão). Bloco próprio, e não uma entrada em ALLOWED_ORIGINS,
+  # porque aquela lista também libera /session e /admin/api do console.
+  allow do
+    origins ENV.fetch("MAINTENANCE_FRONTEND_ORIGIN", "")
+    resource "/session",
+             headers: :any,
+             methods: %i[get post delete options],
+             credentials: true
+    resource "/session/challenge",
+             headers: :any,
+             methods: %i[post options],
+             credentials: true
+  end
 end

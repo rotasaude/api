@@ -7,6 +7,10 @@ class Current < ActiveSupport::CurrentAttributes
   # Sessão de operador JÁ verificada por TOTP, no console de plataforma (admin.*).
   # Nunca coexiste com uma cidade resolvida: o console não resolve cidade.
   attribute :operator_session
+  # Sessão de mantenedor JÁ verificada por TOTP, na API de manutenção
+  # (maintenance-api.*). Nunca coexiste com uma cidade resolvida ou com uma
+  # sessão de operador: a API de manutenção não resolve cidade.
+  attribute :maintainer_session
   # Flag curta (Plano 7, fix round 2 do CityRekey): quando :platform,
   # CityDeterministicKeyProvider serve o DeterministicKeyProvider GLOBAL em vez
   # do derivado por cidade. Existe porque dado pré-migração (antes deste plano)
