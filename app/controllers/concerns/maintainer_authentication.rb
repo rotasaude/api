@@ -21,7 +21,46 @@ module MaintainerAuthentication
   IDLE_TTL = 30.minutes
   MAX_TOTP_ATTEMPTS = 5
 
+  # C1 (fix round 2, segunda passada): o teto do HOST inteiro, e não de uma
+  # controller.
+  #
+  # Quem audita um bearer recusado é `resolve_maintenance_credential`, e ele
+  # roda em TODA controller de manutenção — não só em /graphql. Um teto por
+  # controller deixava buraco onde não havia teto nenhum (`GET /session`,
+  # `DELETE /session`) e chegava tarde onde havia: `rate_limit` ACRESCENTA o
+  # callback, então o de `POST /session`, `/session/challenge` e
+  # `/invitations/*` rodava DEPOIS da gravação — a mesma inversão que o
+  # `prepend: true` corrigiu em /graphql. Declarado aqui, ANTES dos três
+  # before_action abaixo, ele roda antes da gravação em qualquer rota, e uma
+  # controller de manutenção nova nasce coberta em vez de nascer com o buraco.
+  #
+  # `scope:` fixo: o teto é do host, uma contagem só, e não uma por controller
+  # que deixaria somar 240 em cada uma.
+  #
+  # Mais LARGO que o de /graphql de propósito: este é o teto de fora, e o
+  # endpoint mais pesado tem o seu próprio, mais estreito. Um navegador de
+  # verdade não chega perto — o fluxo de login inteiro são três requisições —
+  # e o `rate_limit to: 10, within: 3.minutes` de /session e /invitations
+  # continua valendo exatamente como está, por cima deste.
+  HOST_IP_RATE = 240
+  HOST_RATE_WINDOW = 1.minute
+  RATE_LIMIT_SCOPE = "maintenance"
+
+  # `store:` de `rate_limit` é avaliado no CARREGAMENTO da classe: passar
+  # `Rails.cache` direto congelaria o store daquele instante. Este delegador
+  # resolve o cache a cada requisição — em development e staging é o mesmo
+  # SolidCache de sempre, e é o que torna o teto EXERCITÁVEL por um spec (o
+  # cache do ambiente de teste é :null_store, que nunca conta nada).
+  module CacheStore
+    def self.increment(...) = Rails.cache.increment(...)
+  end
+
+  TOO_MANY = -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
+
   included do
+    rate_limit to: HOST_IP_RATE, within: HOST_RATE_WINDOW, name: "host-ip",
+               scope: RATE_LIMIT_SCOPE, store: CacheStore, with: TOO_MANY
+
     before_action :resolve_maintenance_credential
     before_action :require_maintenance_origin
     before_action :require_maintainer_authentication

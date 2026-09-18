@@ -24,28 +24,23 @@ module Maintenance
     TOKEN_RATE = 60
     RATE_WINDOW = 1.minute
 
-    # `store:` de `rate_limit` é avaliado no CARREGAMENTO da classe: passar
-    # `Rails.cache` direto congelaria o store daquele instante. Este delegador
-    # resolve o cache a cada requisição — em development e staging é o mesmo
-    # SolidCache de sempre, e é o que torna o teto EXERCITÁVEL por um spec (o
-    # cache do ambiente de teste é :null_store, que nunca conta nada).
-    module CacheStore
-      def self.increment(...) = Rails.cache.increment(...)
-    end
-
-    TOO_MANY = -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
+    # O delegador de store e o `with:` são os do concern: teto de fora e tetos
+    # daqui compartilham a mesma mecânica, e um só lugar para mudá-la.
+    STORE = MaintainerAuthentication::CacheStore
+    TOO_MANY = MaintainerAuthentication::TOO_MANY
 
     # C1: `prepend: true` porque este teto tem de rodar ANTES de
     # `resolve_maintenance_credential` — os before_action de
     # MaintainerAuthentication são declarados antes (em BaseController) e é lá
     # que um bearer recusado vira linha de auditoria. Um teto que só roda
-    # depois da gravação não segura amplificação nenhuma.
-    rate_limit to: IP_RATE, within: RATE_WINDOW, name: "ip", store: CacheStore, with: TOO_MANY, prepend: true
+    # depois da gravação não segura amplificação nenhuma. O teto do HOST, que
+    # o concern declara, cobre a mesma ordem em todas as outras rotas.
+    rate_limit to: IP_RATE, within: RATE_WINDOW, name: "ip", store: STORE, with: TOO_MANY, prepend: true
 
     # Spec §7 pede `rate_limit` POR TOKEN, que não existia. Roda depois da
     # resolução da credencial (é ela quem diz qual token é), e só quando há
     # token: sem o `if:`, toda sessão de navegador dividiria a mesma chave nula.
-    rate_limit to: TOKEN_RATE, within: RATE_WINDOW, name: "token", store: CacheStore, with: TOO_MANY,
+    rate_limit to: TOKEN_RATE, within: RATE_WINDOW, name: "token", store: STORE, with: TOO_MANY,
                by: -> { Current.maintenance_credential.token.id },
                if: -> { Current.maintenance_credential&.token? }
 

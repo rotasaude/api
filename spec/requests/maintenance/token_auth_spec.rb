@@ -123,6 +123,40 @@ RSpec.describe "Maintenance token authentication", type: :request do
       expect(json).to eq({ "error" => "too_many_requests" })
     end
 
+    # C1 (fix round 2, segunda passada): o teto de /graphql não cobria o resto
+    # do host. `resolve_maintenance_credential` — que é quem AUDITA o bearer
+    # recusado — roda em toda controller de manutenção, e `DELETE /session` não
+    # tinha teto nenhum: um bearer de lixo com o prefixo certo, repetido ali,
+    # continuava escrevendo uma linha indelével por requisição.
+    it "caps the per-IP volume on a non-GraphQL route too, before the refusal is audited" do
+      cap = MaintainerAuthentication::HOST_IP_RATE
+      refused = PlatformEvent.where(name: "maintenance.token.refused")
+      junk = bearer("#{MaintenanceToken.prefix}nao-existe")
+
+      expect {
+        (cap + 3).times { delete "/session", headers: junk }
+      }.to change { refused.count }.by(cap)
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(json).to eq({ "error" => "too_many_requests" })
+    end
+
+    # O teto do host é de fora e largo: um navegador de verdade não o sente. O
+    # `rate_limit to: 10, within: 3.minutes` de /session segue valendo por cima
+    # dele, inalterado.
+    it "does not throttle a normal browser login flow" do
+      post "/session", params: { email_address: maintainer.email_address, password: password }, headers: browser
+      post "/session/challenge", params: { session_id: json["session_id"], code: ROTP::TOTP.new(maintainer.otp_secret).now },
+           headers: browser
+      expect(response).to have_http_status(:ok)
+
+      get "/session", headers: browser
+      expect(response).to have_http_status(:ok)
+
+      delete "/session", headers: browser
+      expect(response).to have_http_status(:no_content)
+    end
+
     it "caps the per-token volume below the per-IP one, so the token cap can fire" do
       limit = Maintenance::GraphqlController::TOKEN_RATE
       expect(limit).to be < Maintenance::GraphqlController::IP_RATE
