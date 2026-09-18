@@ -56,6 +56,16 @@ RSpec.describe CitySchema do
     expect(schema_fingerprint(scratch)).to eq(schema_fingerprint("rota_saude_test_city_b"))
   end
 
+  # rota_saude_test_city_b é carregado do dump (db/city_schema.rb, que não
+  # representa trigger) — a proteção só existe ali porque city:test_databases
+  # roda db/city_triggers.sql depois de carregar o dump (load_city_schema).
+  it "loads the append-only triggers into a database restored from the dump" do
+    names = schema_fingerprint("rota_saude_test_city_b")[:triggers].map { |(_table, tgname, _def)| tgname }
+
+    expect(names).to include("protocol_contributions_append_only", "protocol_signatures_append_only",
+                             "protocol_activations_append_only")
+  end
+
   it "backfills versions below the highest recorded one and never records a higher one" do
     ScratchDatabases.create!(scratch)
     url = ScratchDatabases.url(scratch)
@@ -102,12 +112,20 @@ RSpec.describe CitySchema do
           WHERE schemaname = 'public' AND tablename NOT IN #{ignored}
           ORDER BY 1, 2
         SQL
-        constraints: conn.exec(<<~SQL).values
+        constraints: conn.exec(<<~SQL).values,
           SELECT rel.relname, con.conname, pg_get_constraintdef(con.oid)
           FROM pg_constraint con
           JOIN pg_class rel ON rel.oid = con.conrelid
           JOIN pg_namespace ns ON ns.oid = rel.relnamespace
           WHERE ns.nspname = 'public' AND rel.relname NOT IN #{ignored}
+          ORDER BY 1, 2
+        SQL
+        triggers: conn.exec(<<~SQL).values
+          SELECT c.relname, t.tgname, pg_get_triggerdef(t.oid)
+          FROM pg_trigger t
+          JOIN pg_class c ON c.oid = t.tgrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND NOT t.tgisinternal AND c.relname NOT IN #{ignored}
           ORDER BY 1, 2
         SQL
       }

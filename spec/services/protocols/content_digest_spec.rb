@@ -9,19 +9,6 @@ RSpec.describe Protocols::ContentDigest do
       "steps" => [ { "id" => "s1", "prompt" => "?" }, { "id" => "s2", "prompt" => "!" } ] }
   end
 
-  # Task 1: copiado de spec/commands/protocols_lifecycle_spec.rb#definition_hash.
-  # A Task 2 troca este `let` pelo helper spec/support/protocol_signatures.rb.
-  let(:protocol_definition_hash) do
-    {
-      "name" => "dengue", "version" => 1, "start_step_id" => "s1",
-      "steps" => [
-        { "id" => "s1", "prompt" => "?", "answer_type" => "boolean",
-          "branches" => { "true" => nil, "false" => nil }, "weights" => { "true" => 1, "false" => 0 } }
-      ],
-      "scoring" => { "type" => "weighted", "thresholds" => { "baixa" => 0 }, "priority_map" => { "baixa" => 9 } }
-    }
-  end
-
   it "is a hex SHA-256" do
     expect(described_class.call(definition)).to match(/\A\h{64}\z/)
   end

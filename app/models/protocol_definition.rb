@@ -5,6 +5,9 @@
 # com `retired` ao fim. `published` ≠ `active`.
 class ProtocolDefinition < ApplicationRecord
   has_many   :triages, dependent: :restrict_with_error
+  has_many :contributions, class_name: "ProtocolContribution", dependent: :restrict_with_error
+  has_many :signatures, class_name: "ProtocolSignature", dependent: :restrict_with_error
+  has_many :activations, class_name: "ProtocolActivation", dependent: :restrict_with_error
 
   validates :name, :version, :definition, :status, presence: true
   validates :version, uniqueness: { scope: :name }
@@ -16,6 +19,8 @@ class ProtocolDefinition < ApplicationRecord
   before_save :validate_definition_shape
 
   after_commit :invalidate_cache, if: :saved_change_to_status?
+
+  def content_digest = Protocols::ContentDigest.call(definition)
 
   private
 
