@@ -24,8 +24,9 @@ module Maintenance
         # pessoa), e PlatformEvent levantaria na gravação da tentativa.
         result = audited(event: "maintenance.token.created", module_name: "token", token_label: name.to_s.strip) do
           # Step-up: a sessão já está verificada, mas criar token é emitir uma
-          # credencial de longa vida (spec §7).
-          raise Rejected.new("código inválido", path: "code") unless Mfa::Verify.totp_valid?(credential.maintainer, code)
+          # credencial de longa vida (spec §7). O bloqueio de conta, a
+          # auditoria da falha e o consumo do código moram em `step_up!`.
+          step_up!(code)
 
           record, secret = MaintenanceToken.issue!(maintainer: credential.maintainer, name: name, access: access,
                                                    city_slugs: city_slugs, expires_at: expires_at)

@@ -53,7 +53,10 @@ RSpec.describe "Maintenance token mutations", type: :request do
     host! "maintenance-api.rotasaude.app"
     allow(ENV).to receive(:[]).and_call_original
     allow(ENV).to receive(:[]).with(MaintenanceApi::ORIGIN).and_return(frontend)
-    login!
+    # I3: o código do login é CONSUMIDO. O login acontece um minuto atrás para
+    # que os exemplos tenham um passo de TOTP novo para o step-up — que é
+    # exatamente o que a correção exige de quem usa a API de verdade.
+    travel_to(1.minute.ago) { login! }
   end
 
   it "creates a token with a fresh TOTP, returning the secret exactly once" do
@@ -90,8 +93,55 @@ RSpec.describe "Maintenance token mutations", type: :request do
     expect(json.dig("data", "createMaintenanceToken", "ok")).to be(false)
     expect(json.dig("data", "createMaintenanceToken", "errors").first["path"]).to eq("expiresAt")
 
-    create_token!(access: "admin")
+    # Passo de TOTP novo: o da chamada acima já foi consumido (I3).
+    travel(31.seconds) do
+      create_token!(access: "admin")
+      expect(json.dig("data", "createMaintenanceToken", "ok")).to be(false)
+      expect(MaintenanceToken.count).to eq(0)
+    end
+  end
+
+  # I3 (fix round 2): o código que acabou de verificar a sessão no navegador
+  # NÃO emite, segundos depois, uma credencial de 90 dias.
+  it "refuses the very TOTP code that opened the session" do
+    reset!
+    host! "maintenance-api.rotasaude.app"
+    code = totp
+
+    post "/session", params: { email_address: maintainer.email_address, password: password }, headers: browser
+    post "/session/challenge", params: { session_id: json["session_id"], code: code }, headers: browser
+    expect(response).to have_http_status(:ok)
+
+    create_token!(code: code)
+
     expect(json.dig("data", "createMaintenanceToken", "ok")).to be(false)
+    expect(json.dig("data", "createMaintenanceToken", "errors").first["path"]).to eq("code")
+    expect(MaintenanceToken.count).to eq(0)
+  end
+
+  # C2 (fix round 2): o step-up não tinha bloqueio nem teto. Uma sessão
+  # sequestrada podia adivinhar o TOTP à vontade — e a tolerância de relógio
+  # deixa ~3 códigos válidos ao mesmo tempo — até emitir uma credencial de 90
+  # dias, que sobrevive a toda a limitação de tempo da sessão de onde saiu.
+  it "counts a failed step-up toward the account lockout and audits it" do
+    expect { create_token!(code: "000000") }
+      .to change { PlatformEvent.where(name: "maintenance.session.failed").count }.by(1)
+
+    expect(maintainer.reload.failed_attempts).to eq(1)
+    expect(PlatformEvent.where(name: "maintenance.session.failed").last.payload)
+      .to include("credential" => { "kind" => "totp" }, "maintainer_id" => maintainer.id)
+  end
+
+  it "locks the account after five failed step-ups, and then refuses even the right code" do
+    Maintainer::LOCKOUT_ATTEMPTS.times { create_token!(code: "000000") }
+
+    expect(maintainer.reload.locked?).to be(true)
+    expect(PlatformEvent.where(name: "maintenance.session.locked").count).to eq(1)
+
+    create_token!
+
+    expect(json.dig("data", "createMaintenanceToken", "ok")).to be(false)
+    expect(json.dig("data", "createMaintenanceToken", "errors").first["path"]).to eq("code")
     expect(MaintenanceToken.count).to eq(0)
   end
 

@@ -3,6 +3,8 @@ require "rails_helper"
 # Spec §6: conceder e revogar acesso é só por sessão humana, o mantenedor não
 # desativa a si mesmo nem o último ativo, e a desativação mata sessões e tokens.
 RSpec.describe "Maintainer mutations", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:frontend) { "https://maintenance.rotasaude.app" }
   let(:password) { "s3nha-forte-1" }
   let!(:maintainer) do
@@ -16,12 +18,18 @@ RSpec.describe "Maintainer mutations", type: :request do
 
   def browser = { "Origin" => frontend, "X-Rota-Maintenance" => "1" }
   def json = JSON.parse(response.body)
+  def totp = ROTP::TOTP.new(maintainer.otp_secret).now
 
   def login!
     post "/session", params: { email_address: maintainer.email_address, password: password }, headers: browser
-    post "/session/challenge", params: { session_id: json["session_id"], code: ROTP::TOTP.new(maintainer.otp_secret).now },
-         headers: browser
+    post "/session/challenge", params: { session_id: json["session_id"], code: totp }, headers: browser
     expect(response).to have_http_status(:ok)
+  end
+
+  INVITE = 'mutation($e: String!, $c: String!) { inviteMaintainer(emailAddress: $e, code: $c) { ok errors { path message } } }'
+
+  def invite!(email, code: nil)
+    mutate!(INVITE, e: email, c: code || totp)
   end
 
   def mutate!(query, **variables)
@@ -32,12 +40,13 @@ RSpec.describe "Maintainer mutations", type: :request do
     host! "maintenance-api.rotasaude.app"
     allow(ENV).to receive(:[]).and_call_original
     allow(ENV).to receive(:[]).with(MaintenanceApi::ORIGIN).and_return(frontend)
-    login!
+    # I3: o código do login é CONSUMIDO — o step-up de `inviteMaintainer` (I2)
+    # precisa de um passo novo, então o login acontece um minuto atrás.
+    travel_to(1.minute.ago) { login! }
   end
 
   it "invites a maintainer and audits the attempt and its outcome on one correlation id" do
-    mutate!('mutation($e: String!) { inviteMaintainer(emailAddress: $e) { ok errors { message } } }',
-            e: "novo@rotasaude.app")
+    invite!("novo@rotasaude.app")
 
     expect(json.dig("data", "inviteMaintainer", "ok")).to be(true)
     invited = Maintainer.find_by(email_address: "novo@rotasaude.app")
@@ -50,7 +59,8 @@ RSpec.describe "Maintainer mutations", type: :request do
   end
 
   it "never returns the invitation token" do
-    mutate!('mutation($e: String!) { inviteMaintainer(emailAddress: $e) { ok } }', e: "outro@rotasaude.app")
+    mutate!('mutation($e: String!, $c: String!) { inviteMaintainer(emailAddress: $e, code: $c) { ok } }',
+            e: "outro@rotasaude.app", c: totp)
 
     invitation = Maintainer.find_by(email_address: "outro@rotasaude.app").maintainer_invitations.sole
     expect(response.body).not_to include(invitation.token_digest)
@@ -58,11 +68,53 @@ RSpec.describe "Maintainer mutations", type: :request do
   end
 
   it "refuses an invalid e-mail as a user error, not a crash" do
-    mutate!('mutation($e: String!) { inviteMaintainer(emailAddress: $e) { ok errors { path message } } }', e: "nao-e-email")
+    invite!("nao-e-email")
 
     expect(json.dig("data", "inviteMaintainer", "ok")).to be(false)
     expect(json.dig("data", "inviteMaintainer", "errors").first["path"]).to eq("emailAddress")
     expect(PlatformEvent.where(name: "maintenance.maintainer.invited").last.payload["outcome"]).to eq("rejected")
+  end
+
+  # I2 (fix round 2): `inviteMaintainer` apaga senha, TOTP e sessões de quem já
+  # existe e, sem mailer nesta fatia, não entrega convite nenhum — era a
+  # primitiva de bloqueio da superfície, e não pedia step-up nenhum.
+  it "requires a TOTP step-up to invite, counting a failure toward the lockout" do
+    expect { invite!("novo@rotasaude.app", code: "000000") }
+      .to change { PlatformEvent.where(name: "maintenance.session.failed").count }.by(1)
+
+    expect(json.dig("data", "inviteMaintainer", "ok")).to be(false)
+    expect(json.dig("data", "inviteMaintainer", "errors").first["path"]).to eq("code")
+    expect(Maintainer.find_by(email_address: "novo@rotasaude.app")).to be_nil
+    expect(maintainer.reload.failed_attempts).to eq(1)
+  end
+
+  it "refuses re-inviting an enrolled active maintainer, pointing at the rake task" do
+    other.maintainer_sessions.create!(mfa_verified_at: Time.current, last_seen_at: Time.current)
+
+    invite!(other.email_address)
+
+    expect(json.dig("data", "inviteMaintainer", "ok")).to be(false)
+    error = json.dig("data", "inviteMaintainer", "errors").first
+    expect(error["path"]).to eq("emailAddress")
+    expect(error["message"]).to include("maintainer:invite")
+
+    expect(other.reload.password_digest).to be_present
+    expect(other.otp_secret).to be_present
+    expect(other.maintainer_invitations.count).to eq(0)
+    expect(MaintainerSession.where(maintainer_id: other.id).count).to eq(1)
+  end
+
+  it "still invites a brand-new e-mail and re-invites whoever never finished enrolling" do
+    pending_maintainer = Maintainer.create!(email_address: "pend-#{SecureRandom.hex(3)}@rotasaude.app")
+
+    invite!("novissimo@rotasaude.app")
+    expect(json.dig("data", "inviteMaintainer", "ok")).to be(true)
+
+    travel(31.seconds) do
+      invite!(pending_maintainer.email_address)
+      expect(json.dig("data", "inviteMaintainer", "ok")).to be(true)
+      expect(pending_maintainer.maintainer_invitations.count).to eq(1)
+    end
   end
 
   it "deactivates another maintainer, killing sessions and tokens" do
