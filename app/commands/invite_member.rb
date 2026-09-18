@@ -11,6 +11,15 @@ class InviteMember
   end
 
   def call
+    # Spec de assinaturas §7: o mantenedor não convida quem aprova protocolo
+    # nem quem concede aprovação. Pelo TIPO de ator — ele passa em toda
+    # pergunta de papel.
+    if @invited_by.respond_to?(:actor_kind) && @invited_by.actor_kind == "maintainer" &&
+       Membership::PRIVILEGED_ROLES.include?(@role.to_s)
+      return Result.fail(:forbidden_for_maintainer,
+                         message: "o mantenedor não convida #{@role}: quem aprova protocolo é escolhido pela cidade")
+    end
+
     inv = nil
     ApplicationRecord.transaction do
       inv = Invitation.create!(
