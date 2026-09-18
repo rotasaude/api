@@ -85,7 +85,8 @@ RSpec.describe "Maintenance city", type: :request do
     gql!(city_query, slug: city.slug)
 
     answered = json.dig("data", "city")
-    expect(answered).to include("slug" => city.slug, "status" => city.status)
+    # M1: status agora é o enum CityStatus — publicado em maiúsculas.
+    expect(answered).to include("slug" => city.slug, "status" => city.status.upcase)
     expect(answered["channel"]&.keys).to satisfy { |keys| keys.nil? || keys.exclude?("accessToken") }
     expect(response.body).not_to include("access_token")
   end
@@ -262,7 +263,7 @@ RSpec.describe "Maintenance city", type: :request do
 
     gql!('query($slug: String!) { city(slug: $slug) { slug status profile { name } } }', slug: archived.slug)
 
-    expect(json.dig("data", "city", "status")).to eq("archived")
+    expect(json.dig("data", "city", "status")).to eq("ARCHIVED")
     expect(json.dig("data", "city", "profile")).to be_nil
     expect(json["errors"].first["extensions"]["code"]).to eq("CITY_ARCHIVED")
   end

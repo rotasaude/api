@@ -15,7 +15,11 @@ module Maintenance
       # a operação nunca cai por causa de uma cidade). `[CitySummary!]!` segue
       # não-nulo; só o CAMPO cede.
       field :uf, String, null: true
-      field :status, String, null: false
+      # M1 (achado na revisão final do Plano 4): publica o CityStatus que o
+      # filtro de `cities` já usa (spec §8: `status: CityStatus!`), em vez de
+      # devolver a string crua da coluna — um cliente não tem como saber, só
+      # pela String, quais são os valores possíveis.
+      field :status, Types::CityStatusEnum, null: false
       field :schema_version, String, null: true
       field :schema_behind, Boolean, null: false
       field :created_at, GraphQL::Types::ISO8601DateTime, null: false

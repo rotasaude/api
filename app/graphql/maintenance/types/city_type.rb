@@ -8,7 +8,8 @@ module Maintenance
       # P6: igual a CitySummary — `cities.uf` é opcional no catálogo real, e uma
       # cidade sem `uf` não pode derrubar a resposta inteira.
       field :uf, String, null: true
-      field :status, String, null: false
+      # M1: mesmo CityStatus de CitySummary — ver o comentário lá.
+      field :status, Types::CityStatusEnum, null: false
       # P7 (fix round 1): `ibgeCode` NÃO mora aqui — `cities` na plataforma não
       # tem essa coluna (achado do Task 2, ver task-2-report.md), e um campo
       # que sempre responde nulo é pior que nenhum campo. Quem quiser o código
