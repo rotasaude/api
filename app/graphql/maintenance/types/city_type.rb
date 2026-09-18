@@ -40,6 +40,15 @@ module Maintenance
       field :alert_recipients, [ Types::AlertRecipientType ], null: false
       field :accounts, [ Types::CityAccountType ], null: false
 
+      # Task 4: sinais operacionais. `null: true` como `profile` — não é que a
+      # contagem/os sinais estejam "legitimamente ausentes" numa cidade real,
+      # é que os dois só existem depois de abrir a conexão (mesmo `inside` de
+      # baixo), e um erro ali (CITY_ARCHIVED/CITY_UNREACHABLE) precisa nulificar
+      # SÓ este campo, nunca a cidade inteira — senão uma cidade inalcançável
+      # apagaria até `slug`/`status`, que responderam sem abrir banco nenhum.
+      field :counts, Types::CityCountsType, null: true
+      field :operations, Types::CityOperationsType, null: true
+
       def schema_behind = CitySchema.behind?(object)
 
       # Canal mora na PLATAFORMA, ao lado do catálogo: sai sem abrir conexão de
@@ -63,6 +72,42 @@ module Maintenance
             { login: user.email_address, roles: user.memberships.active.order(:role).pluck(:role),
               active: user.active?, mfa_enrolled: user.mfa_enrolled? }
           end
+        end
+      end
+
+      # `count` puro (spec §8: sem carregar linha nenhuma) — a mesma conexão
+      # de `inside` já sustenta as outras leituras de dentro do banco da
+      # cidade, então um Hash simples basta: CityCountsType só lê as chaves.
+      def counts
+        inside do
+          {
+            users: User.count,
+            conversations: Conversation.count,
+            triages: Triage.count,
+            inbound_messages: InboundMessage.count,
+            report_snapshots: ReportSnapshot.count,
+            consents: Consent.count
+          }
+        end
+      end
+
+      # Um só `inside` cobre as quatro listas: CityOperationsType e os tipos
+      # que ela referencia (DomainEventType, ReportSnapshotType,
+      # DashboardMetricType, FailedJobType) são "objetos simples" — só leem
+      # dos registros já carregados aqui, sem abrir conexão de novo.
+      #
+      # Teto de 50 em TODAS as quatro listas: o brief só amarra domainEvents e
+      # failedJobs a 50; reportSnapshots (1 por triage) e dashboardMetrics
+      # (cresce por dia × dimensão × chave) crescem sem limite do mesmo jeito
+      # — um teto consistente evita carregar uma tabela inteira por engano.
+      def operations
+        inside do
+          {
+            domain_events: DomainEvent.order(occurred_at: :desc).limit(50).to_a,
+            report_snapshots: ReportSnapshot.order(created_at: :desc).limit(50).to_a,
+            dashboard_metrics: DashboardMetric.order(updated_at: :desc).limit(50).to_a,
+            failed_jobs: SolidQueue::FailedExecution.includes(:job).order(created_at: :desc).limit(50).to_a
+          }
         end
       end
 
