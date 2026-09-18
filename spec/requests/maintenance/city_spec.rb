@@ -164,12 +164,33 @@ RSpec.describe "Maintenance city", type: :request do
     expect(json["errors"].first["extensions"]["code"]).to eq("CITY_BUDGET_EXCEEDED")
   end
 
+  # (fix round 1) Sem linha nenhuma nas tabelas de cidade o happy-path nunca
+  # exercitava a projeção sensível de `accounts` (email, papel ativo, MFA) nem
+  # `protocols`/`alertRecipients` — arranja uma linha de cada, dentro da MESMA
+  # sessão de TEST_CITY_A que o harness já abriu, e verifica VALORES, não só
+  # presença de chave.
   it "answers the configuration inside the city's database" do
+    password = "s3nha-staff-1"
+    otp_secret = ROTP::Base32.random
+    staff = User.create!(email_address: "staff-#{SecureRandom.hex(3)}@cidade.gov.br", password: password,
+                         otp_secret: otp_secret, otp_enabled: true)
+    Membership.create!(user: staff, role: "municipal_admin", granted_at: 2.days.ago)
+    Membership.create!(user: staff, role: "protocol_author", granted_at: 2.days.ago, revoked_at: 1.day.ago)
+
+    CityProfile.create!(name: "Cidade Teste", uf: "PR", ibge_code: "4106902")
+    AlertRecipient.create!(channel: "email", destination: "secretaria@cidade.gov.br",
+                           active: true, escalation_order: 1)
+    ProtocolDefinition.create!(name: "config-demo", version: 1, status: "active", definition: {
+      "name" => "config-demo", "version" => 1, "start_step_id" => "s1",
+      "steps" => [ { "id" => "s1", "prompt" => "?", "answer_type" => "boolean",
+                    "branches" => { "true" => nil, "false" => nil } } ],
+      "scoring" => { "type" => "weighted", "thresholds" => { "baixa" => 0 } }
+    })
+
     query = <<~GQL
       query($slug: String!) {
         city(slug: $slug) {
           profile { name uf ibgeCode }
-          consentTermVersion
           protocols { name version status }
           alertRecipients { channel destination escalationOrder }
           accounts { login roles active mfaEnrolled }
@@ -181,8 +202,28 @@ RSpec.describe "Maintenance city", type: :request do
 
     answered = json.dig("data", "city")
     expect(json["errors"]).to be_nil
-    expect(answered).to have_key("profile")
-    expect(answered["accounts"]).to be_an(Array)
+    expect(answered["profile"]).to eq("name" => "Cidade Teste", "uf" => "PR", "ibgeCode" => "4106902")
+    expect(answered["protocols"]).to include("name" => "config-demo", "version" => 1, "status" => "active")
+    expect(answered["alertRecipients"]).to include(
+      "channel" => "email", "destination" => "secretaria@cidade.gov.br", "escalationOrder" => 1
+    )
+    staff_account = answered["accounts"].find { |a| a["login"] == staff.email_address }
+    expect(staff_account).to include("roles" => [ "municipal_admin" ], "active" => true, "mfaEnrolled" => true)
+  end
+
+  # (fix round 1, ruling P9) `consent_terms.version` é STRING no banco da
+  # cidade — o campo não pode reimplementar "qual é a versão vigente", tem de
+  # responder exatamente o que `Consents.current_version` (o resto do app)
+  # trata como atual, seja lá qual for o resultado do MAX lexicográfico.
+  it "answers the consent term version exactly as the domain's Consents.current_version does" do
+    ConsentTerm.create!(version: "9", body: "termo", published_at: Time.current)
+    ConsentTerm.create!(version: "10", body: "termo", published_at: Time.current)
+    expected = Consents.current_version
+    expect(expected).to be_a(String)
+
+    gql!('query($slug: String!) { city(slug: $slug) { consentTermVersion } }', slug: city.slug)
+
+    expect(json.dig("data", "city", "consentTermVersion")).to eq(expected)
   end
 
   it "reports an unreachable city as a field error, redacted, without failing the operation" do
@@ -224,15 +265,28 @@ RSpec.describe "Maintenance city", type: :request do
     expect(json["errors"].first["extensions"]["code"]).to eq("CITY_ARCHIVED")
   end
 
+  # (fix round 1) Sem uma conta de verdade, os nomes proibidos nunca podiam
+  # aparecer de qualquer forma — a checagem provava só ausência de campo, não
+  # ausência de SEGREDO. Arranja um usuário com senha e OTP de verdade e prova
+  # que o digest e o segredo em si (não só o nome da chave) ficam fora.
   it "never answers citizen content or a secret from inside the city" do
+    otp_secret = ROTP::Base32.random
+    staff = User.create!(email_address: "staff-#{SecureRandom.hex(3)}@cidade.gov.br", password: "s3nha-staff-1",
+                         otp_secret: otp_secret, otp_enabled: true)
+    digest = staff.password_digest
+
     query = <<~GQL
       query($slug: String!) { city(slug: $slug) { accounts { login } alertRecipients { destination } } }
     GQL
 
     gql!(query, slug: city.slug)
 
+    expect(json.dig("data", "city", "accounts")).to include(include("login" => staff.email_address))
+
     %w[password_digest otp_secret database_url encryption_key access_token].each do |forbidden|
       expect(response.body).not_to include(forbidden)
     end
+    expect(response.body).not_to include(digest)
+    expect(response.body).not_to include(otp_secret)
   end
 end
