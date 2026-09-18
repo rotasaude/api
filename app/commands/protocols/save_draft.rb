@@ -15,11 +15,30 @@ module Protocols
       record = ProtocolDefinition.find_or_initialize_by(name: definition["name"], version: definition["version"])
       return Result.fail(:forbidden) unless ProtocolPolicy.new(by, record).author?
 
+      # Fast fail on the un-locked read (avoids opening a transaction for the
+      # common case). ProtocolPolicy#author? asks only the actor's role, never
+      # the record, so it needs no re-check under the lock below.
       if record.persisted? && !EDITABLE.include?(record.status)
         return Result.fail(:version_not_editable, message: "versão #{record.version} está #{record.status}")
       end
 
+      failure = nil
       ApplicationRecord.transaction do
+        # in_review is also where Publish leaves from: without a lock, a
+        # concurrent Publish can commit "published" between the read above and
+        # this write, and this command would silently send a published
+        # version back to draft with unsigned content. Locking and
+        # re-checking EDITABLE here is the only place that race is closed —
+        # the contribution and the event below are built from this same
+        # locked, saved record, never from the pre-lock read.
+        if record.persisted?
+          record.lock!
+          unless EDITABLE.include?(record.status)
+            failure = Result.fail(:version_not_editable, message: "versão #{record.version} está #{record.status}")
+            raise ActiveRecord::Rollback
+          end
+        end
+
         record.status = "draft"
         record.definition = definition
         record.save!
@@ -35,6 +54,8 @@ module Protocols
           correlation_id: correlation_id
         }.compact)
       end
+
+      return failure if failure
 
       Result.ok(protocol_definition: record)
     rescue ActiveRecord::RecordInvalid => e

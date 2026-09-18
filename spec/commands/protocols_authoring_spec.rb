@@ -55,6 +55,26 @@ RSpec.describe "Protocol authoring and signing" do
 
       expect(save!(by: author).reason).to eq(:version_not_editable)
     end
+
+    # Concurrency: the pre-lock read can be stale by the time SaveDraft writes.
+    # Simulate the race deterministically — capture an in-memory snapshot taken
+    # when the row was still draft, then let a concurrent Publish commit
+    # "published" through a separate path, and hand SaveDraft the stale
+    # snapshot instead of a fresh read (find_or_initialize_by is the only
+    # reader in the command, so stubbing it stands in for "the read that
+    # happened before the concurrent write committed").
+    it "refuses under the lock when a concurrent write already left the version un-editable" do
+      save!(by: author)
+      stale = version
+
+      ProtocolDefinition.find(stale.id).update!(status: "published")
+      allow(ProtocolDefinition).to receive(:find_or_initialize_by).and_return(stale)
+
+      result = save!(by: author)
+
+      expect(result.reason).to eq(:version_not_editable)
+      expect(ProtocolDefinition.find(stale.id).status).to eq("published")
+    end
   end
 
   describe "SubmitForReview" do
@@ -80,6 +100,43 @@ RSpec.describe "Protocol authoring and signing" do
       version.update!(status: "published")
 
       expect(Protocols::SubmitForReview.call(name: "dengue", version: 1, by: author).reason).to eq(:invalid_state)
+    end
+
+    # Same race as SaveDraft, on the other read: find_by is the only reader
+    # SubmitForReview uses, so stubbing it hands the command a snapshot taken
+    # before a concurrent write committed.
+    it "refuses under the lock when a concurrent write already moved the version out of draft" do
+      save!(by: author)
+      stale = version
+
+      ProtocolDefinition.find(stale.id).update!(status: "in_review")
+      allow(ProtocolDefinition).to receive(:find_by).and_return(stale)
+
+      result = Protocols::SubmitForReview.call(name: "dengue", version: 1, by: author)
+
+      expect(result.reason).to eq(:invalid_state)
+      expect(ProtocolDefinition.find(stale.id).status).to eq("in_review")
+    end
+
+    # The dangerous half of the same race: status is unchanged (still draft)
+    # but the CONTENT committed since the stale read is invalid. The pre-lock
+    # gate check (run on the stale, valid content) would wrongly pass; only
+    # re-running the gate on the locked row's actual content catches it.
+    it "reruns the gate on the locked content when a concurrent edit invalidated it since the read" do
+      save!(by: author)
+      stale = version
+
+      invalid_content = protocol_definition_hash.merge(
+        "scoring" => { "type" => "weighted", "thresholds" => { "baixa" => 0 }, "priority_map" => { "baixa" => 99 } }
+      )
+      save!(by: author, definition: invalid_content)
+
+      allow(ProtocolDefinition).to receive(:find_by).and_return(stale)
+
+      result = Protocols::SubmitForReview.call(name: "dengue", version: 1, by: author)
+
+      expect(result.reason).to eq(:invalid)
+      expect(ProtocolDefinition.find(stale.id).status).to eq("draft")
     end
   end
 
@@ -136,6 +193,23 @@ RSpec.describe "Protocol authoring and signing" do
       expect(sign(by: reviewer, purpose: "x").reason).to eq(:invalid_purpose)
       expect(Protocols::Sign.call(name: "dengue", version: 9, purpose: "publication", by: reviewer).reason)
         .to eq(:not_found)
+    end
+
+    # Same race, at the signing act: find_by is the only reader Sign uses, so
+    # stubbing it hands Sign a snapshot taken while the version was still
+    # in_review, while a concurrent Publish already committed "published".
+    # A publication signature must never land on a version no longer in_review.
+    it "refuses under the lock when a concurrent Publish already moved the version out of in_review" do
+      stale = version
+
+      ProtocolDefinition.find(stale.id).update!(status: "published")
+      allow(ProtocolDefinition).to receive(:find_by).and_return(stale)
+
+      result = sign(by: reviewer)
+
+      expect(result.reason).to eq(:invalid_state)
+      expect(ProtocolDefinition.find(stale.id).status).to eq("published")
+      expect(ProtocolSignature.count).to eq(0)
     end
   end
 end

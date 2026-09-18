@@ -22,6 +22,9 @@ module Protocols
       return Result.fail(:forbidden) unless ProtocolPolicy.new(by, protocol).review?
 
       expected = SIGNABLE_IN.fetch(purpose.to_s)
+      # Fast fail on the un-locked read; re-checked under the lock below.
+      # ProtocolPolicy#review? asks only the actor's role, never the record,
+      # so it needs no re-check under the lock.
       unless protocol.status == expected
         return Result.fail(:invalid_state, message: "assinatura de #{purpose} só com a versão em #{expected} " \
                                                     "(está #{protocol.status})")
@@ -34,7 +37,22 @@ module Protocols
       end
 
       signature = nil
+      failure = nil
       ApplicationRecord.transaction do
+        # A concurrent Publish/Activate can move the version out of the
+        # signable state between the read above and this insert — e.g. a
+        # publication signature landing right after the version was already
+        # published. Locking and re-checking the status here is what actually
+        # closes that race; the insert only happens once the locked row still
+        # matches the expected state.
+        protocol.lock!
+
+        unless protocol.status == expected
+          failure = Result.fail(:invalid_state, message: "assinatura de #{purpose} só com a versão em #{expected} " \
+                                                          "(está #{protocol.status})")
+          raise ActiveRecord::Rollback
+        end
+
         signature = ProtocolSignature.create!(protocol_definition: protocol, purpose: purpose.to_s, signer: by,
                                               content_digest: protocol.content_digest)
         DomainEvents.publish("protocol.signed",
@@ -42,6 +60,8 @@ module Protocols
                              version: protocol.version, purpose: purpose.to_s,
                              content_digest: signature.content_digest, actor: by.id, actor_kind: by.actor_kind)
       end
+
+      return failure if failure
 
       Result.ok(signature: signature)
     rescue ActiveRecord::RecordInvalid => e
