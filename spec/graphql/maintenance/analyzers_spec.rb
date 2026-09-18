@@ -149,17 +149,20 @@ RSpec.describe "Maintenance analyzers" do
     expect(root_fields).to all(be_in(classified))
   end
 
-  # Item 7: guarda do escopo por cidade (decisão 1). Nenhum campo de raiz
-  # aceita hoje um argumento `slug`/`citySlug`. O dia em que o Plano 4
-  # acrescentar `city(slug:)`, este exemplo falha — de propósito: é o lembrete
-  # de que ligar `Credential#allows_city?` é responsabilidade de quem escrever
-  # aquele campo, não algo que os analisadores desta task já resolvem.
-  it "has no root field with a city-scoped argument yet" do
+  # O Plano 3 deixou aqui um alarme: "nenhum campo de raiz tem argumento de
+  # cidade ainda". O Plano 4 criou `city(slug:)`, então o alarme cumpriu o
+  # papel e vira a guarda definitiva — todo campo de raiz com argumento de
+  # cidade PRECISA passar por Credential#allows_city?.
+  it "routes every city-scoped root field through the credential's city scope" do
     root_fields = Maintenance::Schema.query.fields.merge(Maintenance::Schema.mutation.fields)
+    scoped = root_fields.select { |_name, field| (field.arguments.keys & %w[slug citySlug]).any? }
 
-    city_args = root_fields.flat_map { |_name, field| field.arguments.keys }
-                           .select { |name| %w[slug citySlug].include?(name) }
+    expect(scoped.keys).to contain_exactly("city")
 
-    expect(city_args).to be_empty
+    scoped.each_key do |name|
+      source = File.read(Rails.root.join("app/graphql/maintenance/types/query_type.rb"))
+      expect(source).to match(/def #{name}\b.*?allows_city\?/m),
+                        "#{name} aceita argumento de cidade e não consulta allows_city?"
+    end
   end
 end

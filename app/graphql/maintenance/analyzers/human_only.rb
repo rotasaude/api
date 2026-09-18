@@ -16,7 +16,9 @@ module Maintenance
       # aplicado dentro do resolver (CityCatalogQuery#call, via
       # Credential#allows_city?) — barrar o campo aqui duplicaria a regra e
       # cegaria um token para o próprio catálogo que ele tem permissão de ler.
-      TOKEN_ALLOWED = %w[me cities].freeze
+      # `city` entra pelo mesmo motivo: o escopo é aplicado dentro do resolver
+      # de QueryType#city (Credential#allows_city?), não aqui.
+      TOKEN_ALLOWED = %w[me cities city].freeze
 
       def initialize(subject)
         super

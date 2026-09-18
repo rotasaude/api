@@ -15,7 +15,7 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me maintenanceTokens auditEvents cities],
+    "Query" => %w[me maintenanceTokens auditEvents cities city],
     "Maintainer" => %w[id emailAddress createdAt],
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken],
     "InviteMaintainerPayload" => %w[ok errors],
@@ -25,7 +25,9 @@ RSpec.describe "Maintenance GraphQL schema" do
     "RevokeMaintenanceTokenPayload" => %w[ok errors],
     "AuditEvent" => %w[name module outcome occurredAt maintainerId login correlationId],
     "UserError" => %w[path message],
-    "CitySummary" => %w[slug name uf status schemaVersion schemaBehind createdAt]
+    "CitySummary" => %w[slug name uf status schemaVersion schemaBehind createdAt],
+    "City" => %w[slug name uf status ibgeCode schemaVersion schemaBehind createdAt channel],
+    "CityChannel" => %w[phoneNumberId wabaId displayPhoneNumber active]
   }.freeze
 
   FORBIDDEN_FRAGMENTS = %w[phone body raw evidence response context digest secret token key url].freeze
@@ -40,7 +42,12 @@ RSpec.describe "Maintenance GraphQL schema" do
   ALLOWED_NAMES = %w[
     MaintenanceToken maintenanceTokens createMaintenanceToken revokeMaintenanceToken
     CreateMaintenanceTokenPayload RevokeMaintenanceTokenPayload secretOnce
+    phoneNumberId displayPhoneNumber
   ].freeze
+  # phoneNumberId/displayPhoneNumber (P3, Task 2): o número institucional de
+  # WhatsApp Business da cidade — mostrado a cidadãos, já publicado em
+  # /maintenance — não é telefone de cidadão. As restrições globais proíbem
+  # telefone de CIDADÃO, não o canal da própria cidade.
 
   def declared_types
     Maintenance::Schema.types
