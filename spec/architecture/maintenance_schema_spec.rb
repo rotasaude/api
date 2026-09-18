@@ -317,33 +317,66 @@ RSpec.describe "Maintenance GraphQL schema" do
   # sozinha não pegaria alguém que chamasse CityConnection.with direto, por
   # fora de CityReader, num arquivo qualquer da fatia.
   context "single path into a city database" do
-    # Hoje, só CityType chama CityReader.call (que por sua vez chama
-    # CityConnection.with — ver app/queries/maintenance/city_reader.rb). Task
-    # 3/4 não extraíram nenhum helper compartilhado; se uma task futura
-    # extrair um, o arquivo dele entra aqui.
-    def city_subtree_files
-      %w[app/graphql/maintenance/types/city_type.rb]
+    # I1 (achado na revisão final do Plano 4): a varredura original só olhava
+    # app/graphql/maintenance/ — um campo de raiz futuro apoiado num objeto de
+    # app/queries/maintenance/ ou app/services/maintenance/ que percorresse
+    # cidades (ou chamasse CityInventory) contornaria o escopo de
+    # city(slug:) com toda guarda verde. As três árvores são "alcançáveis pela
+    # API de manutenção" — é onde um segundo caminho poderia nascer.
+    def city_reachable_trees
+      %w[app/graphql/maintenance app/queries/maintenance app/services/maintenance]
     end
 
-    # Varre TODO app/graphql/maintenance/ por ocorrência textual das duas
-    # chamadas que abrem o banco de uma cidade. CityReader.call já ENVOLVE
-    # CityConnection.with, então bastam os dois nomes para cobrir tanto quem
-    # chama CityReader quanto quem, um dia, tentasse pular CityReader e
-    # chamar CityConnection direto.
+    def city_reachable_files
+      city_reachable_trees.flat_map { |tree| Dir.glob(Rails.root.join(tree, "**/*.rb")) }
+                           .map { |path| Pathname.new(path).relative_path_from(Rails.root).to_s }
+    end
+
+    # Cada chamada só é permitida no ÚNICO arquivo que a encerra: CityReader
+    # (app/queries/maintenance/city_reader.rb) é quem chama CityConnection.with
+    # de verdade; CityType (app/graphql/maintenance/types/city_type.rb) é quem
+    # chama CityReader.call. Isentar um arquivo inteiro para as DUAS chamadas
+    # (como a versão anterior desta guarda fazia) deixaria um terceiro arquivo
+    # livre para chamar CityConnection.with direto, contanto que ficasse fora
+    # da lista — qualificar por PAR (chamada, arquivo) fecha isso.
+    def allowed_call_sites
+      {
+        "CityConnection.with" => "app/queries/maintenance/city_reader.rb",
+        "CityReader.call" => "app/graphql/maintenance/types/city_type.rb"
+      }
+    end
+
     def city_connection_call_offenders
-      pattern = /CityConnection\.with|CityReader\.call/
-      allowed = city_subtree_files
+      city_reachable_files.filter_map do |relative|
+        content = File.read(Rails.root.join(relative))
 
-      Dir.glob(Rails.root.join("app/graphql/maintenance/**/*.rb")).filter_map do |path|
-        relative = Pathname.new(path).relative_path_from(Rails.root).to_s
-        next if allowed.include?(relative)
-
-        relative if File.read(path).match?(pattern)
+        offends = allowed_call_sites.any? { |pattern, allowed_file| content.include?(pattern) && relative != allowed_file }
+        relative if offends
       end
     end
 
-    it "calls CityConnection.with / CityReader.call only from the city-subtree file(s)" do
+    it "calls CityConnection.with / CityReader.call only from the one file that owns each" do
       expect(city_connection_call_offenders).to be_empty
+    end
+
+    # A mesma varredura, pelo nome de quem NUNCA deveria aparecer em CÓDIGO
+    # destas árvores: CityInventory é a leitura equivalente da tela
+    # /maintenance (dev-only, ver global-constraints.md) — chamá-la da API de
+    # manutenção acoplaria as duas e abriria um caminho que não passa por
+    # city(slug:) nem pelo escopo do token. Só linha de CÓDIGO conta — um
+    # comentário explicando "mesma escolha/lista de CityInventory" (como já
+    # existem em city_type.rb e city_reader.rb) é documentação, não a
+    # referência que esta guarda existe para recusar.
+    def code_only(path)
+      File.readlines(path).reject { |line| line.strip.start_with?("#") }.join
+    end
+
+    def city_inventory_offenders
+      city_reachable_files.select { |relative| code_only(Rails.root.join(relative)).include?("CityInventory") }
+    end
+
+    it "never references CityInventory from the maintenance API trees" do
+      expect(city_inventory_offenders).to be_empty
     end
 
     # Fecho transitivo dos tipos alcançados a partir dos campos de DENTRO do
@@ -394,6 +427,61 @@ RSpec.describe "Maintenance GraphQL schema" do
       end
 
       expect(offenders).to be_empty
+    end
+
+    # A metade que nem o scan de arquivo nem o fecho de tipos provam: que
+    # RESOLVER a query de verdade, hoje, não abre conexão nenhuma fora de
+    # `city`. Roda CADA campo de raiz (exceto `city`, que É o caminho) por si
+    # só, com um token de serviço — a mesma credencial que um campo futuro
+    # despistado precisaria aceitar para vazar. `FIELD_SELECTIONS` obriga
+    # quem acrescentar um campo de raiz sem argumento a decidir a seleção
+    # mínima aqui (mesmo espírito de EXPECTED_TYPES): um campo esquecido
+    # levanta, não passa em silêncio.
+    context "every non-city root Query field, run through a service token" do
+      let(:password) { "s3nha-forte-1" }
+      let!(:maintainer) do
+        Maintainer.create!(email_address: "1p-#{SecureRandom.hex(3)}@rotasaude.app", password: password,
+                           otp_secret: ROTP::Base32.random, otp_enabled_at: Time.current)
+      end
+
+      def token_credential(maintainer)
+        token, = MaintenanceToken.issue!(maintainer: maintainer, name: "ci", access: "read",
+                                         city_slugs: [], expires_at: 10.days.from_now)
+        Maintenance::Credential.token(token)
+      end
+
+      def execute(query, credential:)
+        Maintenance::Schema.execute(query, context: { maintainer: credential.maintainer, credential: credential,
+                                                       request_id: SecureRandom.uuid }).to_h
+      end
+
+      # Seleção mínima por campo — só os que hoje existem em Query além de
+      # `city`. Nenhum deles exige argumento (audit_events só tem opcionais),
+      # então nenhum precisa ser pulado; um campo de raiz futuro sem entrada
+      # aqui quebra `root_query_field_names` abaixo, de propósito.
+      def field_selections
+        { "me" => "{ id }", "maintenanceTokens" => "{ id }", "auditEvents" => "{ name }", "cities" => "{ slug }" }
+      end
+
+      def root_query_field_names
+        Maintenance::Schema.types.fetch("Query").fields.keys - [ "city" ]
+      end
+
+      it "opens no city connection, whether the token reaches the field or is refused before it" do
+        allow(CityConnection).to receive(:with).and_call_original
+        credential = token_credential(maintainer)
+
+        root_query_field_names.each do |field_name|
+          selection = field_selections.fetch(field_name) do
+            raise "add a minimal selection for the new root Query field #{field_name.inspect} to " \
+                  "field_selections above, so this guard actually exercises it"
+          end
+
+          execute("{ #{field_name} #{selection} }", credential: credential)
+        end
+
+        expect(CityConnection).not_to have_received(:with)
+      end
     end
   end
 end
