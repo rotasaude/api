@@ -53,17 +53,32 @@ RSpec.describe "Maintenance GraphQL schema" do
   ALLOWED_NAMES = %w[
     MaintenanceToken maintenanceTokens createMaintenanceToken revokeMaintenanceToken
     CreateMaintenanceTokenPayload RevokeMaintenanceTokenPayload secretOnce
-    phoneNumberId displayPhoneNumber
   ].freeze
-  # phoneNumberId/displayPhoneNumber (P3, Task 2): o número institucional de
-  # WhatsApp Business da cidade — mostrado a cidadãos, já publicado em
-  # /maintenance — não é telefone de cidadão. As restrições globais proíbem
-  # telefone de CIDADÃO, não o canal da própria cidade.
 
   def declared_types
     Maintenance::Schema.types
                        .reject { |name, _type| name.start_with?("__") }
                        .select { |_name, type| type.respond_to?(:fields) && type.kind.fields? }
+  end
+
+  # M3 (achado na revisão final do Plano 4): phoneNumberId/displayPhoneNumber
+  # moravam em ALLOWED_NAMES — isenção por NOME, em QUALQUER tipo. Isso isenta
+  # um `phoneNumberId` que apareça amanhã num tipo que NÃO seja o canal da
+  # própria cidade (ex.: um campo de cidadão disfarçado). Mesmo padrão de
+  # `content_exempt_fields`/P11 abaixo: a isenção é do PAR "Type.field", nunca
+  # do nome sozinho — só CityChannel.phoneNumberId e
+  # CityChannel.displayPhoneNumber (ruling P3, Task 2) ficam de fora: o número
+  # institucional de WhatsApp Business da cidade, mostrado a cidadãos e já
+  # publicado em /maintenance — não é telefone de CIDADÃO, que é o que as
+  # restrições globais proíbem.
+  def forbidden_name_exempt_fields
+    %w[CityChannel.phoneNumberId CityChannel.displayPhoneNumber]
+  end
+
+  def forbidden_name_offenders(type_name, type)
+    [ type_name, *type.fields.keys ].reject { |name| ALLOWED_NAMES.include?(name) }
+                                     .select { |name| name.match?(FORBIDDEN_NAME) }
+                                     .reject { |name| forbidden_name_exempt_fields.include?("#{type_name}.#{name}") }
   end
 
   it "publishes exactly the declared types" do
@@ -79,12 +94,26 @@ RSpec.describe "Maintenance GraphQL schema" do
   end
 
   it "publishes no type or field whose name is of a forbidden family" do
-    offenders = declared_types.flat_map do |type_name, type|
-      [ type_name, *type.fields.keys ].reject { |name| ALLOWED_NAMES.include?(name) }
-                                       .select { |name| name.match?(FORBIDDEN_NAME) }
-    end
+    offenders = declared_types.flat_map { |type_name, type| forbidden_name_offenders(type_name, type) }
 
     expect(offenders).to be_empty
+  end
+
+  # Auto-teste da isenção (M3): o PAR "CityChannel.phoneNumberId" está isento,
+  # mas o mesmo nome de campo, sozinho, continua proibido em QUALQUER outro
+  # tipo — senão a isenção seria, de fato, uma entrada em ALLOWED_NAMES
+  # disfarçada, exatamente o problema que motivou trocar uma pela outra.
+  it "exempts only CityChannel's own phoneNumberId/displayPhoneNumber, never the bare field name" do
+    # "AnotherType", não "AnotherTypeWithPhoneNumberId": o NOME do tipo
+    # sintético não pode, ele mesmo, conter um fragmento proibido — senão o
+    # tipo entraria na lista de ofensores e o teste provaria a coisa errada.
+    offender_type = Class.new(Maintenance::Types::BaseObject) do
+      graphql_name "AnotherType"
+      field :phone_number_id, String, null: true
+    end
+
+    expect(forbidden_name_offenders("AnotherType", offender_type)).to eq([ "phoneNumberId" ])
+    expect(forbidden_name_offenders("CityChannel", Maintenance::Schema.types.fetch("CityChannel"))).to be_empty
   end
 
   # Auto-teste da guarda: um padrão quebrado (fragmento com typo, Regexp.union
@@ -126,7 +155,13 @@ RSpec.describe "Maintenance GraphQL schema" do
   # createMaintenanceToken, revokeMaintenanceToken — ex.: "e-mail já
   # cadastrado", "código inválido") — nunca conteúdo de cidadão. Revisado em
   # 2026-09-18 (ruling P11, achado ao rodar esta guarda pela primeira vez).
-  def content_exempt_fields = %w[UserError.message].freeze
+  #
+  # CityChannel.phoneNumberId/displayPhoneNumber (M3) entram aqui TAMBÉM: o
+  # fragmento "phone" está em content_fragments (conteúdo de cidadão), não só
+  # em FORBIDDEN_FRAGMENTS (segredo) — a mesma isenção qualificada por tipo
+  # de forbidden_name_exempt_fields vale para as duas guardas, ou o campo
+  # passaria numa e quebraria na outra.
+  def content_exempt_fields = (%w[UserError.message] + forbidden_name_exempt_fields).freeze
 
   # Só campo STRING importa aqui — um Int chamado `messageCount` não carrega
   # texto nenhum. `field.type.unwrap` despe NonNull/List e devolve o tipo
