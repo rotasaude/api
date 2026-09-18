@@ -44,7 +44,10 @@ RSpec.describe "Protocols lifecycle" do
     end
 
     it "ativar uma versão published sucede e vira active" do
-      make_pd(version: 1, status: "published")
+      pd = make_pd(version: 1, status: "published")
+      sign!(pd, purpose: "activation", by: make_reviewer!)
+      sign!(pd, purpose: "activation", by: make_reviewer!)
+
       result = Protocols::Activate.call(version: 1, by: publisher)
       expect(result.ok?).to be true
       expect(ProtocolDefinition.find_by(version: 1).status).to eq("active")
@@ -55,6 +58,8 @@ RSpec.describe "Protocols lifecycle" do
     it "ativar v2 demove a v1 active para published (resta exatamente uma active)" do
       v1 = make_pd(version: 1, status: "active")
       v2 = make_pd(version: 2, status: "published")
+      sign!(v2, purpose: "activation", by: make_reviewer!)
+      sign!(v2, purpose: "activation", by: make_reviewer!)
 
       Protocols::Activate.call(version: 2, by: publisher)
 
@@ -73,9 +78,12 @@ RSpec.describe "Protocols lifecycle" do
         protocol_definition_id: v1.id, protocol_name: "dengue", status: "in_progress"
       )
 
-      make_pd(version: 2, status: "published")
-      Protocols::Activate.call(version: 2, by: publisher)
+      v2 = make_pd(version: 2, status: "published")
+      sign!(v2, purpose: "activation", by: make_reviewer!)
+      sign!(v2, purpose: "activation", by: make_reviewer!)
+      result = Protocols::Activate.call(version: 2, by: publisher)
 
+      expect(result.ok?).to be true
       expect(triage.reload.protocol_definition_id).to eq(v1.id)
     end
   end
@@ -96,9 +104,15 @@ RSpec.describe "Protocols lifecycle" do
     end
   end
 
-  describe "Publish: draft/in_review → published (publish ≠ active)" do
-    it "publica uma versão draft para published, sem ativá-la" do
-      make_pd(version: 1, status: "draft")
+  describe "Publish: in_review → published (publish ≠ active)" do
+    # Publish agora só parte de in_review (spec de assinaturas §4); o ponto
+    # deste exemplo continua sendo "publish ≠ active", não o estado de
+    # origem, então a versão nasce in_review, assinada, em vez de draft.
+    it "publica uma versão in_review para published, sem ativá-la" do
+      pd = make_pd(version: 1, status: "in_review")
+      sign!(pd, purpose: "publication", by: make_reviewer!)
+      sign!(pd, purpose: "publication", by: make_reviewer!)
+
       result = Protocols::Publish.call(version: 1, by: publisher)
       expect(result.ok?).to be true
       pd = ProtocolDefinition.find_by(version: 1)

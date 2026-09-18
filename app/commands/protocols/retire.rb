@@ -1,6 +1,9 @@
 # Aposenta uma versão de protocolo: → `retired`.
 # Ver ADR-0009 (RetireProtocolVersion; guarda R4).
 #
+# `by:` é um User ou Maintenance::MaintainerActor. Regra inalterada pela spec
+# de assinaturas: aposentar não exige assinatura de revisor.
+#
 # Invariante:
 # - R4 / INV-protocol-4: não se aposenta uma versão `active`. Se a cidade ainda a
 #   tem `active`, falha — a cidade deve migrar para outra versão antes. Nunca se
@@ -9,7 +12,7 @@
 # Result.ok(protocol_definition:) | Result.fail(:not_found|:ambiguous|:forbidden|:active_in_city)
 module Protocols
   module Retire
-    def self.call(version:, by:, name: nil)
+    def self.call(version:, by:, name: nil, correlation_id: nil)
       return Result.fail(:city_missing) if Current.city.nil?
 
       scope = ProtocolDefinition.where(version: version)
@@ -26,13 +29,10 @@ module Protocols
       ApplicationRecord.transaction do
         protocol.update!(status: "retired", retired_at: Time.current)
 
-        DomainEvents.publish(
-          "protocol.retired",
-          protocol_definition_id: protocol.id,
-          protocol_key: protocol.name,
-          version: protocol.version,
-          actor: by.id
-        )
+        DomainEvents.publish("protocol.retired", **{
+          protocol_definition_id: protocol.id, protocol_key: protocol.name, version: protocol.version,
+          actor: by.id, actor_kind: by.actor_kind, correlation_id: correlation_id
+        }.compact)
       end
 
       Result.ok(protocol_definition: protocol)
