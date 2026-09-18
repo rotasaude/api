@@ -99,6 +99,18 @@ module MaintainerAuthentication
                             token_prefix: MaintenanceToken.prefix, **audit_request_fields)
   end
 
+  # Fix round 1 (I3), estendido no round 2 (M7): endpoints do NAVEGADOR —
+  # cookie, TOTP, bloqueio por conta — recusam bearer. Um token de serviço se
+  # identifica pela query GraphQL `me`, nunca por ali. Mora no concern porque
+  # `SessionsController` e `InvitationsController` precisam da MESMA trava: em
+  # `/invitations/*` um bearer era aceito e, por ser token, ainda pulava a
+  # checagem de Origin logo abaixo.
+  def require_browser_credential
+    return unless Current.maintenance_credential&.token?
+
+    render json: { error: "browser_only" }, status: :forbidden
+  end
+
   # A trava de CSRF é do NAVEGADOR. Um token não tem Origin nem cookie, então
   # exigir os dois dele recusaria toda automação; o que protege o token é ele
   # próprio ser secreto e não viajar sozinho como o cookie viaja.

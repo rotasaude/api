@@ -235,4 +235,22 @@ RSpec.describe "Maintenance token authentication", type: :request do
     expect(response).to have_http_status(:forbidden)
     expect(json).to eq({ "error" => "browser_only" })
   end
+
+  # M7 (fix round 2): /invitations nunca ganhou a trava que /session tem. Um
+  # bearer era aceito ali — e, por ser token, ainda pulava a checagem de
+  # Origin. São os endpoints que DEFINEM senha e TOTP de um superusuário.
+  it "refuses a bearer on the invitation endpoints, which are browser-only too" do
+    invitation, invitation_token = MaintainerInvitation.issue!(maintainer: maintainer)
+
+    post "/invitations/enroll", params: { token: invitation_token }, headers: bearer
+    expect(response).to have_http_status(:forbidden)
+    expect(json).to eq({ "error" => "browser_only" })
+
+    post "/invitations/accept", params: { token: invitation_token, password: "s3nha-forte-nova",
+                                          code: "000000" }, headers: bearer
+    expect(response).to have_http_status(:forbidden)
+
+    expect(invitation.reload.used_at).to be_nil
+    expect(maintainer.reload.otp_secret).to be_present
+  end
 end

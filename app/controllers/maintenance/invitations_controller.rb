@@ -17,6 +17,12 @@ module Maintenance
   class InvitationsController < BaseController
     allow_unauthenticated_maintainer_access
 
+    # M7 (fix round 2): a mesma trava de SessionsController, que aqui faltava.
+    # Estes endpoints definem senha e TOTP de um superusuário, e um bearer
+    # chegando neles era aceito — e, por ser token, ainda pulava a checagem de
+    # Origin de `require_maintenance_origin`.
+    before_action :require_browser_credential
+
     rate_limit to: 10, within: 3.minutes,
                with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 

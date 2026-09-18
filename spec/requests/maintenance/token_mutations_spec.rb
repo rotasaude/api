@@ -41,7 +41,7 @@ RSpec.describe "Maintenance token mutations", type: :request do
   GQL
 
   LIST = <<~GQL
-    { maintenanceTokens { id name access citySlugs expiresAt lastUsedAt revokedAt } }
+    { maintenanceTokens { id maintainerId name access citySlugs expiresAt lastUsedAt revokedAt } }
   GQL
 
   def create_token!(name: "ci", access: "read_write", code: nil, expires_at: 30.days.from_now, city_slugs: [])
@@ -156,7 +156,10 @@ RSpec.describe "Maintenance token mutations", type: :request do
     gql!(LIST)
 
     listed = json.dig("data", "maintenanceTokens").sole
-    expect(listed.keys).to contain_exactly(*%w[id name access citySlugs expiresAt lastUsedAt revokedAt])
+    expect(listed.keys).to contain_exactly(*%w[id maintainerId name access citySlugs expiresAt lastUsedAt revokedAt])
+    # M2: a listagem mostra os tokens de TODO MUNDO e a revogação aceita
+    # qualquer id, então o tipo tem de dizer de quem é cada linha.
+    expect(listed["maintainerId"]).to eq(maintainer.id)
     expect(response.body).not_to include(secret)
     expect(response.body).not_to include(MaintenanceToken.sole.token_digest)
   end
@@ -174,6 +177,42 @@ RSpec.describe "Maintenance token mutations", type: :request do
 
     post "/graphql", params: { query: "{ me { id } }" }, headers: { "Authorization" => "Bearer #{secret}" }
     expect(response).to have_http_status(:unauthorized)
+  end
+
+  # M3 (fix round 2): revogar de novo respondia `ok` e re-carimbava
+  # `revoked_at`, apagando o instante em que o token foi de fato revogado.
+  it "refuses revoking an already revoked token, keeping the original revocation instant" do
+    create_token!
+    token = MaintenanceToken.sole
+    gql!(REVOKE, id: token.id)
+    revoked_at = token.reload.revoked_at
+
+    travel(1.minute) { gql!(REVOKE, id: token.id) }
+
+    expect(json.dig("data", "revokeMaintenanceToken", "ok")).to be(false)
+    expect(json.dig("data", "revokeMaintenanceToken", "errors").first["path"]).to eq("id")
+    expect(token.reload.revoked_at).to eq(revoked_at)
+    # Sem `.last`: as duas chamadas gravam duas linhas cada, e a segunda grava
+    # as suas com o mesmo `occurred_at` (o tempo está congelado no bloco).
+    outcomes = PlatformEvent.where(name: "maintenance.token.revoked").map { |e| e.payload["outcome"] }
+    expect(outcomes).to contain_exactly("attempted", "ok", "attempted", "rejected")
+  end
+
+  # M6 (fix round 2): o TOTP do step-up viaja dentro de `variables` — string
+  # JSON, do jeito que a maioria dos clientes manda — e caía em claro no
+  # "Parameters:" do log de requisição.
+  it "keeps the TOTP out of the request log, and still logs which operation ran" do
+    code = totp
+    post "/graphql", params: { query: CREATE, operationName: "CreateToken",
+                               variables: { name: "ci", access: "read", code: code,
+                                            expiresAt: 5.days.from_now.iso8601, citySlugs: [] }.to_json },
+         headers: browser
+
+    filtered = request.filtered_parameters
+    expect(filtered["variables"]).to eq("[FILTERED]")
+    expect(filtered["query"]).to eq("[FILTERED]")
+    expect(filtered.to_s).not_to include(code)
+    expect(filtered["operationName"]).to eq("CreateToken")
   end
 
   it "answers a user error, not a crash, for an unknown token id" do

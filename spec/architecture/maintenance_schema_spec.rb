@@ -20,7 +20,7 @@ RSpec.describe "Maintenance GraphQL schema" do
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken],
     "InviteMaintainerPayload" => %w[ok errors],
     "DeactivateMaintainerPayload" => %w[ok errors],
-    "MaintenanceToken" => %w[id name access citySlugs expiresAt revokedAt lastUsedAt],
+    "MaintenanceToken" => %w[id maintainerId name access citySlugs expiresAt revokedAt lastUsedAt],
     "CreateMaintenanceTokenPayload" => %w[ok errors secretOnce],
     "RevokeMaintenanceTokenPayload" => %w[ok errors],
     "AuditEvent" => %w[name module outcome occurredAt maintainerId login correlationId],

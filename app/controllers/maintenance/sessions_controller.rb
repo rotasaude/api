@@ -13,7 +13,8 @@ module Maintenance
     # GraphQL `me`, nunca por aqui; `show` lia `Current.maintainer_session`, que
     # um token nunca define, e estourava NoMethodError. Roda em TODA ação,
     # inclusive as que dispensam `require_maintainer_authentication` — um
-    # bearer não vira sessão de navegador só porque a ação é pública.
+    # bearer não vira sessão de navegador só porque a ação é pública. A trava
+    # mora em MaintainerAuthentication (M7), compartilhada com as invitations.
     before_action :require_browser_credential
 
     rate_limit to: 10, within: 3.minutes, only: %i[create challenge_totp],
@@ -125,12 +126,6 @@ module Maintenance
     end
 
     private
-
-    def require_browser_credential
-      return unless Current.maintenance_credential&.token?
-
-      render json: { error: "browser_only" }, status: :forbidden
-    end
 
     # Roda o mesmo bcrypt que authenticate rodaria, contra um digest de
     # descarte, e joga o resultado fora — só o custo importa.
