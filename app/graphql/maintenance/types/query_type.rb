@@ -35,11 +35,20 @@ module Maintenance
       # uma cidade é escolhida, e o único que abre conexão. Slug inexistente
       # responde nulo sem erro; slug fora do escopo responde erro explícito —
       # são coisas diferentes, e confundi-las esconderia a recusa.
+      #
+      # Fix round 1 (P8, spec §9): a recusa é etiquetada com as mesmas chaves
+      # que os analisadores usam (`Analyzers::Refusal::CITY_OUT_OF_SCOPE` +
+      # `refusedFields`), para que `GraphqlController#audit_scope_refusal` — o
+      # ÚNICO lugar que grava `maintenance.token.refused` — audite esta recusa
+      # pelo mesmo caminho, sem um segundo ponto de escrita. O slug PEDIDO
+      # nunca entra na etiqueta: é valor de argumento, e o contrato de
+      # `Refusal` proíbe isso — só o nome do campo de raiz (`city`) é gravado.
       def city(slug:)
         credential = context.fetch(:credential)
         unless credential.allows_city?(slug)
           raise GraphQL::ExecutionError.new("cidade fora do escopo do token",
-                                            extensions: { "code" => "CITY_OUT_OF_SCOPE" })
+                                            extensions: { "code" => Analyzers::Refusal::CITY_OUT_OF_SCOPE,
+                                                          Analyzers::Refusal::FIELDS => [ "city" ] })
         end
 
         City.find_by(slug: slug)

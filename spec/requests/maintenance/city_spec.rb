@@ -110,6 +110,34 @@ RSpec.describe "Maintenance city", type: :request do
     expect(json.dig("data", "city", "slug")).to eq(city.slug)
   end
 
+  # P8 (fix round 1, spec §9): "uso recusado de token … fora do escopo"
+  # cobre `city(slug:)` também — não só HumanOnly/WriteScope. A auditoria é
+  # ÚNICA por requisição recusada (mesmo caminho de token_auth_spec.rb), e o
+  # slug PEDIDO nunca aparece no evento — só o nome do campo (`city`).
+  it "audits a token refused outside its city scope, and nothing else" do
+    other = City.find_by!(slug: TEST_CITY_B.slug)
+    _token, secret = MaintenanceToken.issue!(maintainer: maintainer, name: "ci", access: "read",
+                                             city_slugs: [ city.slug ], expires_at: 5.days.from_now)
+    bearer = { "Authorization" => "Bearer #{secret}", "Cookie" => "" }
+    refused = PlatformEvent.where(name: "maintenance.token.refused")
+
+    expect { gql!(city_query, slug: other.slug, headers: bearer) }.to change { refused.count }.by(1)
+
+    event = refused.last.payload
+    expect(event).to include("outcome" => "rejected", "module" => "token", "refused_fields" => [ "city" ])
+    expect(event.to_json).not_to include(other.slug)
+  end
+
+  it "writes no refusal for an in-scope city, or for a human session" do
+    _token, secret = MaintenanceToken.issue!(maintainer: maintainer, name: "ci", access: "read",
+                                             city_slugs: [ city.slug ], expires_at: 5.days.from_now)
+    bearer = { "Authorization" => "Bearer #{secret}", "Cookie" => "" }
+    refused = PlatformEvent.where(name: "maintenance.token.refused")
+
+    expect { gql!(city_query, slug: city.slug, headers: bearer) }.not_to change { refused.count }
+    expect { gql!(city_query, slug: city.slug) }.not_to change { refused.count }
+  end
+
   it "refuses an operation that touches more than five cities, before executing it" do
     slugs = City.order(:slug).limit(6).pluck(:slug)
     expect(slugs.size).to eq(6)
