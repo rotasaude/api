@@ -194,10 +194,39 @@ RSpec.describe "Protocol acts that require signatures" do
     end
   end
 
-  it "keeps Retire as it was, now saying who acted and how" do
-    ProtocolDefinition.create!(name: "dengue", version: 1, status: "published", definition: protocol_definition_hash)
+  describe "Retire" do
+    it "keeps Retire as it was, now saying who acted and how" do
+      ProtocolDefinition.create!(name: "dengue", version: 1, status: "published", definition: protocol_definition_hash)
 
-    expect(Protocols::Retire.call(version: 1, name: "dengue", by: publisher).ok?).to be(true)
-    expect(DomainEvent.find_by!(name: "protocol.retired").payload).to include("actor_kind" => "user")
+      expect(Protocols::Retire.call(version: 1, name: "dengue", by: publisher).ok?).to be(true)
+      expect(DomainEvent.find_by!(name: "protocol.retired").payload).to include("actor_kind" => "user")
+    end
+
+    # I1: the pre-lock read can be stale by the time Retire writes. A
+    # concurrent Activate (or RevertActivation) can commit "active" over the
+    # same version between the un-locked read (still "published") and
+    # Retire's write — without the post-lock re-check, Retire would write
+    # "retired" over the city's active protocol (R4 violated, city left
+    # without an active version). ProtocolDefinition.where is the only
+    # class-level reader Retire uses, so stubbing it stands in for "the read
+    # that happened before the concurrent write committed".
+    it "refuses under the lock when a concurrent activate already moved the version to active" do
+      published = ProtocolDefinition.create!(name: "dengue", version: 1, status: "published",
+                                              definition: protocol_definition_hash)
+      stale = published
+
+      ProtocolDefinition.find(stale.id).update!(status: "active", activated_at: Time.current)
+      # Retire chains a second .where(name:) onto the version scope when
+      # `name:` is given (unlike Publish/Activate's single .where(conditions)
+      # call), so the stub omits `name:` here to keep the single-call stub
+      # standing in for "the read that happened before the concurrent write
+      # committed".
+      allow(ProtocolDefinition).to receive(:where).and_return([ stale ])
+
+      result = Protocols::Retire.call(version: 1, by: publisher)
+
+      expect(result.reason).to eq(:active_in_city)
+      expect(ProtocolDefinition.find(stale.id).status).to eq("active")
+    end
   end
 end
