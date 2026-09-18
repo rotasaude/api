@@ -26,8 +26,16 @@ module Maintenance
       # ter perfil/termo ainda (spec §8: uma linha ausente nunca derruba a
       # resposta inteira); `protocols`, `alertRecipients` e `accounts` são
       # listas — ausência vira lista vazia, não nulo.
+      #
+      # P9 (fix round 1): `consent_terms.version` é STRING no banco da cidade
+      # (db/city_schema.rb), não Integer — `ConsentTerm.maximum(:version)`
+      # sozinho é lexicográfico ("9" > "10") e o coercer Int do graphql-ruby
+      # faz `to_i` silenciosamente ("v2" → 0). O campo é tipado `String` e
+      # resolve pela MESMA definição de "versão vigente" que o resto do app
+      # usa (`Consents.current_version`, app/services/consents.rb) — nunca
+      # duplica a lógica de "qual é a atual" aqui.
       field :profile, Types::CityProfileType, null: true
-      field :consent_term_version, Integer, null: true
+      field :consent_term_version, String, null: true
       field :protocols, [ Types::ProtocolDefinitionType ], null: false
       field :alert_recipients, [ Types::AlertRecipientType ], null: false
       field :accounts, [ Types::CityAccountType ], null: false
@@ -41,7 +49,7 @@ module Maintenance
       end
 
       def profile = inside { CityProfile.current }
-      def consent_term_version = inside { ConsentTerm.maximum(:version) }
+      def consent_term_version = inside { Consents.current_version }
       def protocols = inside { ProtocolDefinition.active.order(:name).to_a }
       def alert_recipients = inside { AlertRecipient.active.order(:escalation_order).to_a }
 
