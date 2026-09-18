@@ -59,6 +59,28 @@ class Maintainer < PlatformRecord
     SQL
   end
 
+  # I3 (fix round 2): um código de TOTP vale UMA vez, para esta conta, em
+  # qualquer endpoint.
+  #
+  # `Mfa::Verify::DRIFT` mantém três passos válidos ao mesmo tempo, então o
+  # código digitado no /session/challenge continuava servindo, segundos depois,
+  # de step-up para emitir um token de 90 dias — quem visse a tela uma vez (ou
+  # o código num log, num print, num ombro) tinha os dois. Guardar o PASSO já
+  # consumido, e não o código, recusa a repetição sem nunca gravar segredo.
+  #
+  # A gravação é o próprio teste: `update_all` condicional devolve 1 só quando
+  # o passo é MAIOR que o último consumido, então duas requisições simultâneas
+  # com o mesmo código não passam as duas. Passo mais VELHO também é recusado —
+  # dentro da janela de drift ele é tão reapresentável quanto o repetido.
+  def consume_totp!(code)
+    step = Mfa::Verify.totp_step_for(self, code)
+    return false unless step
+
+    self.class.where(id: id)
+        .where("last_otp_step IS NULL OR last_otp_step < ?", step)
+        .update_all(last_otp_step: step, updated_at: Time.current) == 1
+  end
+
   # register_failure! escreve por update_all, então os atributos em memória aqui
   # estão velhos: um update! direto não veria mudança nenhuma e não escreveria
   # nada. O reload traz o estado real antes de zerar.

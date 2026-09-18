@@ -74,7 +74,12 @@ module Maintenance
       # C1: TOTP e nada mais. `Mfa::Verify.call` aceitaria um recovery code no
       # lugar do código — um segundo fator estático para a conta de maior poder
       # do sistema.
-      return register_failed_totp(session) unless Mfa::Verify.totp_valid?(session.maintainer, params[:code])
+      #
+      # I3 (fix round 2): `consume_totp!`, não `totp_valid?` — o código é
+      # CONSUMIDO aqui. Sem isso, o mesmo código ainda emitia um token de 90
+      # dias no step-up de `createMaintenanceToken`, segundos depois. Um código
+      # repetido conta como falha, como qualquer código que não serve.
+      return register_failed_totp(session) unless session.maintainer.consume_totp!(params[:code])
 
       # Atômico, pelo mesmo motivo de Operators::SessionsController: o cookie já
       # foi plantado no passo da senha, então um carimbo sem evento de auditoria

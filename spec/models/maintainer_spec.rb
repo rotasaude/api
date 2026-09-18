@@ -115,6 +115,59 @@ RSpec.describe Maintainer do
       travel_to(MaintainerInvitation::TTL.from_now + 1.second) { expect(other.reload.usable?).to be(false) }
     end
   end
+
+  # I3 (fix round 2): o código de TOTP é CONSUMIDO. Dentro da janela de drift
+  # (Mfa::Verify::DRIFT) o mesmo código continuava válido por ~90 segundos, em
+  # qualquer endpoint: o que verificou a sessão no navegador ainda emitia, logo
+  # depois, um token de serviço de 90 dias.
+  describe "#consume_totp!" do
+    let(:secret) { ROTP::Base32.random }
+    let(:maintainer) do
+      described_class.create!(email_address: "otp-#{SecureRandom.hex(3)}@rotasaude.app",
+                              otp_secret: secret, otp_enabled_at: Time.current)
+    end
+
+    it "accepts a code once and refuses the very same code afterwards" do
+      code = ROTP::TOTP.new(secret).now
+
+      expect(maintainer.consume_totp!(code)).to be(true)
+      expect(maintainer.reload.last_otp_step).to be_present
+      expect(maintainer.consume_totp!(code)).to be(false)
+    end
+
+    it "refuses a code from an earlier step, still inside the drift window" do
+      travel_to(Time.current) do
+        previous = ROTP::TOTP.new(secret).at(Mfa::Verify::DRIFT.seconds.ago)
+        current = ROTP::TOTP.new(secret).now
+
+        expect(maintainer.consume_totp!(current)).to be(true)
+        expect(maintainer.consume_totp!(previous)).to be(false)
+      end
+    end
+
+    it "accepts the next step, and refuses a wrong or blank code without consuming anything" do
+      expect(maintainer.consume_totp!(ROTP::TOTP.new(secret).now)).to be(true)
+      consumed = maintainer.reload.last_otp_step
+
+      expect(maintainer.consume_totp!("000000")).to be(false)
+      expect(maintainer.consume_totp!(nil)).to be(false)
+      expect(maintainer.reload.last_otp_step).to eq(consumed)
+
+      travel(2.minutes) do
+        expect(maintainer.consume_totp!(ROTP::TOTP.new(secret).now)).to be(true)
+        expect(maintainer.reload.last_otp_step).to be > consumed
+      end
+    end
+
+    # A trava vale para MANTENEDOR e só para ele: mexer em User/Operator
+    # mudaria o app de cidadão e o console, que não são o achado desta rodada.
+    it "leaves Mfa::Verify.totp_valid? — the path User and Operator use — replayable" do
+      code = ROTP::TOTP.new(secret).now
+
+      expect(Mfa::Verify.totp_valid?(maintainer, code)).to be(true)
+      expect(Mfa::Verify.totp_valid?(maintainer, code)).to be(true)
+    end
+  end
 end
 
 # Fix round 1 (Important): `last_active?` era um SELECT sem trava dentro de
@@ -170,4 +223,5 @@ RSpec.describe "Maintainer#deactivate! concurrency safety (fix round 1)" do
     expect(results).to contain_exactly(:ok, :last_active)
     expect(Maintainer.active.where(id: [ maintainer_a.id, maintainer_b.id ]).count).to eq(1)
   end
+
 end

@@ -91,8 +91,16 @@ RSpec.describe "Maintainer session", type: :request do
 
     # Idle TTL: a single gap over thirty minutes kills the session well inside
     # the eight-hour absolute window, with no activity in between.
-    verified_login!
-    travel_to(31.minutes.from_now) do
+    #
+    # O segundo login acontece numa janela de tempo PRÓPRIA, à frente da
+    # primeira: o código de TOTP do primeiro já foi CONSUMIDO (I3), e um login
+    # novo precisa de um passo novo, não de mais uma apresentação do mesmo
+    # código. Os dois blocos são irmãos, não aninhados — `travel_to` dentro de
+    # `travel_to` levanta.
+    idle_base = login_time + 9.hours
+    travel_to(idle_base) { verified_login! }
+
+    travel_to(idle_base + 31.minutes) do
       get "/session", headers: headers
       expect(response).to have_http_status(:unauthorized)
     end
@@ -189,6 +197,26 @@ RSpec.describe "Maintainer session", type: :request do
     get "/session", headers: headers
     expect(response).to have_http_status(:unauthorized)
     expect(maintainer.reload.otp_recovery_codes.size).to eq(1)
+  end
+
+  # I3 (fix round 2, replay): um código de TOTP vale UMA vez. A tolerância de
+  # relógio deixa ~3 passos válidos ao mesmo tempo, então o código que acabou
+  # de verificar uma sessão continuava verificando a próxima — e, pior, servia
+  # de step-up para emitir um token de 90 dias em /graphql (provado em
+  # spec/requests/maintenance/token_mutations_spec.rb).
+  it "never accepts the same TOTP code twice, not even in a brand-new session" do
+    code = totp
+
+    login!
+    post "/session/challenge", params: { session_id: json["session_id"], code: code }, headers: headers
+    expect(response).to have_http_status(:ok)
+
+    login!
+    second = json["session_id"]
+    post "/session/challenge", params: { session_id: second, code: code }, headers: headers
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(MaintainerSession.find_by(id: second)&.mfa_verified_at).to be_nil
   end
 
   # I3 (fix round 2): sem MAINTENANCE_FRONTEND_ORIGIN configurada, a checagem

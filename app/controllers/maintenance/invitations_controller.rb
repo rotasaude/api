@@ -56,7 +56,9 @@ module Maintenance
       # `call`, um código de recuperação sobrevivente (conta antiga, linha
       # plantada) matricularia a conta sem TOTP nenhum.
       accepted = PlatformRecord.transaction do
-        raise ActiveRecord::Rollback unless Mfa::Verify.totp_valid?(maintainer, params[:code])
+        # I3: consome o passo, pelo mesmo motivo do challenge — este código
+        # confirma o TOTP recém-cadastrado e não pode servir duas vezes.
+        raise ActiveRecord::Rollback unless maintainer.consume_totp!(params[:code])
 
         maintainer.update!(password: password, otp_enabled_at: Time.current)
         invitation.update!(used_at: Time.current)
