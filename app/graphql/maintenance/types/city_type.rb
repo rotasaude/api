@@ -19,12 +19,55 @@ module Maintenance
       field :created_at, GraphQL::Types::ISO8601DateTime, null: false
       field :channel, Types::CityChannelType, null: true
 
+      # Task 3: o lado de dentro do banco da cidade. Cada campo abre a conexão
+      # por `CityReader` (uma entrada por campo — barato, o pool já está
+      # registrado; ver "Atenção ao custo" no brief). `profile` e
+      # `consentTermVersion` são `null: true` porque uma cidade real pode não
+      # ter perfil/termo ainda (spec §8: uma linha ausente nunca derruba a
+      # resposta inteira); `protocols`, `alertRecipients` e `accounts` são
+      # listas — ausência vira lista vazia, não nulo.
+      field :profile, Types::CityProfileType, null: true
+      field :consent_term_version, Integer, null: true
+      field :protocols, [ Types::ProtocolDefinitionType ], null: false
+      field :alert_recipients, [ Types::AlertRecipientType ], null: false
+      field :accounts, [ Types::CityAccountType ], null: false
+
       def schema_behind = CitySchema.behind?(object)
 
       # Canal mora na PLATAFORMA, ao lado do catálogo: sai sem abrir conexão de
       # cidade (mesma escolha de CityInventory#channel_for).
       def channel
         CityChannel.where(city_id: object.id).order(active: :desc, created_at: :desc).first
+      end
+
+      def profile = inside { CityProfile.current }
+      def consent_term_version = inside { ConsentTerm.maximum(:version) }
+      def protocols = inside { ProtocolDefinition.active.order(:name).to_a }
+      def alert_recipients = inside { AlertRecipient.active.order(:escalation_order).to_a }
+
+      # login É o e-mail de conta de STAFF da prefeitura, não de cidadão (mesma
+      # informação que /maintenance já mostra). password_digest, otp_secret e
+      # recovery codes ficam de fora por regra: o que serve para operar é saber
+      # SE a conta exige MFA.
+      def accounts
+        inside do
+          User.order(:email_address).map do |user|
+            { login: user.email_address, roles: user.memberships.active.order(:role).pluck(:role),
+              active: user.active?, mfa_enrolled: user.mfa_enrolled? }
+          end
+        end
+      end
+
+      private
+
+      # Um só ponto converte as duas falhas previstas em erro de CAMPO: a
+      # operação segue, e o cliente vê exatamente qual cidade não respondeu.
+      def inside(&block)
+        CityReader.call(object, &block)
+      rescue CityReader::Archived => e
+        raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_ARCHIVED" })
+      rescue CityReader::Unreachable => e
+        raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_UNREACHABLE" })
       end
     end
   end

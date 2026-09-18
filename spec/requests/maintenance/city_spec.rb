@@ -163,4 +163,76 @@ RSpec.describe "Maintenance city", type: :request do
 
     expect(json["errors"].first["extensions"]["code"]).to eq("CITY_BUDGET_EXCEEDED")
   end
+
+  it "answers the configuration inside the city's database" do
+    query = <<~GQL
+      query($slug: String!) {
+        city(slug: $slug) {
+          profile { name uf ibgeCode }
+          consentTermVersion
+          protocols { name version status }
+          alertRecipients { channel destination escalationOrder }
+          accounts { login roles active mfaEnrolled }
+        }
+      }
+    GQL
+
+    gql!(query, slug: city.slug)
+
+    answered = json.dig("data", "city")
+    expect(json["errors"]).to be_nil
+    expect(answered).to have_key("profile")
+    expect(answered["accounts"]).to be_an(Array)
+  end
+
+  it "reports an unreachable city as a field error, redacted, without failing the operation" do
+    other = City.active.where.not(id: city.id).order(:slug).first
+    skip "harness com uma cidade ativa só" if other.nil?
+
+    # O harness de `city:test_databases` só carrega o schema, sem seed — sem
+    # isto `profile` de uma cidade que RESPONDEU seria nil por falta de linha,
+    # e não provaria a diferença entre "respondeu com sucesso" e "falhou". A
+    # exemplo já roda dentro da sessão de TEST_CITY_A (ver cabeçalho de
+    # spec/support/city_test_databases.rb), então a linha é visível ao resolver.
+    CityProfile.create!(name: "Cidade Teste", uf: "PR", ibge_code: "4106902")
+
+    allow(Maintenance::CityReader).to receive(:call).and_call_original
+    allow(Maintenance::CityReader).to receive(:call).with(having_attributes(slug: other.slug))
+      .and_raise(Maintenance::CityReader::Unreachable, "PG::ConnectionBad: connection to ://***@db failed")
+
+    query = <<~GQL
+      { ok: city(slug: "#{city.slug}") { profile { name } }
+        bad: city(slug: "#{other.slug}") { profile { name } } }
+    GQL
+    gql!(query)
+
+    expect(json.dig("data", "ok", "profile")).not_to be_nil
+    expect(json.dig("data", "bad", "profile")).to be_nil
+    error = json["errors"].find { |e| e["path"]&.include?("bad") }
+    expect(error["extensions"]["code"]).to eq("CITY_UNREACHABLE")
+    expect(error["message"]).to include("://***@")
+  end
+
+  it "answers CITY_ARCHIVED for the inner fields of an archived city, and still answers the platform ones" do
+    archived = City.where(status: "archived").order(:slug).first
+    skip "nenhuma cidade arquivada no harness" if archived.nil?
+
+    gql!('query($slug: String!) { city(slug: $slug) { slug status profile { name } } }', slug: archived.slug)
+
+    expect(json.dig("data", "city", "status")).to eq("archived")
+    expect(json.dig("data", "city", "profile")).to be_nil
+    expect(json["errors"].first["extensions"]["code"]).to eq("CITY_ARCHIVED")
+  end
+
+  it "never answers citizen content or a secret from inside the city" do
+    query = <<~GQL
+      query($slug: String!) { city(slug: $slug) { accounts { login } alertRecipients { destination } } }
+    GQL
+
+    gql!(query, slug: city.slug)
+
+    %w[password_digest otp_secret database_url encryption_key access_token].each do |forbidden|
+      expect(response.body).not_to include(forbidden)
+    end
+  end
 end

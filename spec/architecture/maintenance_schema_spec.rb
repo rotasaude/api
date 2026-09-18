@@ -26,8 +26,13 @@ RSpec.describe "Maintenance GraphQL schema" do
     "AuditEvent" => %w[name module outcome occurredAt maintainerId login correlationId],
     "UserError" => %w[path message],
     "CitySummary" => %w[slug name uf status schemaVersion schemaBehind createdAt],
-    "City" => %w[slug name uf status schemaVersion schemaBehind createdAt channel],
-    "CityChannel" => %w[phoneNumberId wabaId displayPhoneNumber active]
+    "City" => %w[slug name uf status schemaVersion schemaBehind createdAt channel
+                 profile consentTermVersion protocols alertRecipients accounts],
+    "CityChannel" => %w[phoneNumberId wabaId displayPhoneNumber active],
+    "CityProfile" => %w[name uf ibgeCode],
+    "ProtocolDefinition" => %w[name version status],
+    "AlertRecipient" => %w[channel destination escalationOrder],
+    "CityAccount" => %w[login roles active mfaEnrolled]
   }.freeze
 
   FORBIDDEN_FRAGMENTS = %w[phone body raw evidence response context digest secret token key url].freeze
