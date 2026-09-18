@@ -58,8 +58,10 @@ RSpec.describe "Maintenance city", type: :request do
 
   # P2: linhas extras só-de-plataforma para o exemplo de 6 cidades. O
   # analisador de teto recusa na ANÁLISE, antes de qualquer resolver abrir
-  # conexão (city_budget_spec cobre isso com `expect(CityConnection).not_to
-  # receive(:with)`), então uma URL que nunca é discada serve.
+  # conexão (o exemplo abaixo, "refuses an operation that touches more than
+  # five cities, before executing it", cobre isso com
+  # `expect(CityConnection).not_to receive(:with)`), então uma URL que nunca
+  # é discada serve.
   let!(:extra_cities) do
     Array.new(3) do |i|
       City.create!(slug: "extra-#{i}-#{SecureRandom.hex(3)}", name: "Extra #{i}", status: "provisioning",
