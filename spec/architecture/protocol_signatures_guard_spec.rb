@@ -4,11 +4,14 @@ require "rails_helper"
 # passar pela verificação de assinaturas derrubaria a regra inteira sem nenhum
 # teste vermelho. Esta guarda lê o código.
 RSpec.describe "Protocol signatures guard" do
-  # Escrita de status de protocolo para published/active: update!/update/
-  # update_all/update_column(s) com status: "published" | "active", ou atribuição.
+  # Escrita de status de protocolo para published/active, em qualquer forma usual:
+  # update!/update/update_all/update_columns/assign_attributes com status: "..."
+  # (keyword); update_column com :status posicional (:status, "..."); ou atribuição
+  # direta (.status = "..."). Fix round 1 (ruling P3): update_column posicional e
+  # assign_attributes (seguido de save) também contam — passavam batido antes.
   # Método, não constante: constante dentro de RSpec.describe vaza para Object.
   def status_write
-    /(update!?|update_all|update_columns?)\s*\(?\s*status:\s*"(published|active)"|\.status\s*=\s*"(published|active)"/
+    /(update!?|update_all|update_columns?|assign_attributes)\s*\(?\s*status:\s*"(published|active)"|\.status\s*=\s*"(published|active)"|update_column\s*\(\s*:status\s*,\s*"(published|active)"/
   end
 
   # A literal ProtocolDefinition, não a palavra "protocol": app/commands/
@@ -34,6 +37,10 @@ RSpec.describe "Protocol signatures guard" do
   # linhas antes/depois), o bastante para pegar `protocol.update!(status:
   # "published")` (Publish/Activate) sem confundir com a escrita de status de
   # outro modelo que mora no mesmo arquivo.
+  # Janela de ±3 linhas mantida como estava (fix round 1 não mexeu nisso): as
+  # formas novas (update_column posicional, assign_attributes) aparecem na
+  # mesma linha do objeto que as chama, igual às formas já cobertas — nenhuma
+  # delas pede uma janela diferente.
   def protocol_status_write?(path)
     lines = File.readlines(path)
     lines.each_with_index.any? do |line, i|
@@ -53,9 +60,15 @@ RSpec.describe "Protocol signatures guard" do
   end
 
   it "makes publish and activate ask Protocols::Signatures before the act" do
+    # Fix round 1 (ruling P3): comentário mencionando Signatures.missing( não
+    # basta — o header de publish.rb já cita isso em prosa. Só linhas de
+    # código contam; linha cujo texto (sem espaço à esquerda) começa com "#"
+    # é descartada antes de procurar a chamada real.
     %w[publish.rb activate.rb].each do |file|
-      source = File.read(Rails.root.join("app/commands/protocols", file))
-      expect(source).to include("Signatures.missing("), "#{file} publica/ativa sem perguntar as assinaturas"
+      code = File.readlines(Rails.root.join("app/commands/protocols", file))
+                 .reject { |line| line.strip.start_with?("#") }
+                 .join
+      expect(code).to include("Signatures.missing("), "#{file} publica/ativa sem perguntar as assinaturas"
     end
   end
 
