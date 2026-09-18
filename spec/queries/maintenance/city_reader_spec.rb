@@ -53,4 +53,20 @@ RSpec.describe Maintenance::CityReader do
         expect(e.message).not_to include("s3nha")
       }
   end
+
+  # T3 (achado na revisão final do Plano 4): sem isto, um bug de código real
+  # (não uma cidade de fato inalcançável) some dentro de CITY_UNREACHABLE sem
+  # rastro nenhum fora da resposta GraphQL redigida.
+  it "logs the exception class and the redacted message, never the raw one" do
+    logged = nil
+    allow(Rails.logger).to receive(:warn) { |message| logged = message }
+    allow(CityConnection).to receive(:with)
+      .and_raise(PG::ConnectionBad, "connection to postgres://rota_city_x:s3nha@db:5432/rota_saude_city_x failed")
+
+    expect { described_class.call(city) { CityProfile.current } }.to raise_error(described_class::Unreachable)
+
+    expect(logged).to include("PG::ConnectionBad")
+    expect(logged).to include("://***@")
+    expect(logged).not_to include("s3nha")
+  end
 end

@@ -24,7 +24,15 @@ module Maintenance
     rescue Archived
       raise
     rescue StandardError => e
-      raise Unreachable, "#{e.class}: #{CitySchema.redact(e.message)}"
+      redacted = CitySchema.redact(e.message)
+      # T3 (achado na revisão final do Plano 4): sem isto, um bug de CÓDIGO
+      # (não uma cidade de fato inalcançável) vira CITY_UNREACHABLE em
+      # silêncio — ninguém vê a classe da exceção fora da resposta GraphQL
+      # (que também é redigida, mas não é onde se procura um bug). A MENSAGEM
+      # nunca vai pro log crua — só a versão que já passou por
+      # CitySchema.redact.
+      Rails.logger.warn("Maintenance::CityReader: #{e.class}: #{redacted}")
+      raise Unreachable, "#{e.class}: #{redacted}"
     end
   end
 end
