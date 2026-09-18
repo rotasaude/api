@@ -50,6 +50,21 @@ RSpec.describe GrantRole do
     expect(publisher.reload.has_role?(:protocol_reviewer)).to be(false)
   end
 
+  # M8: allowlist, not denylist — an actor whose actor_kind is neither "user"
+  # nor "maintainer" (any actor the codebase does not have yet) must still be
+  # refused for a privileged role, because the check requires actor_kind ==
+  # "user" rather than enumerating every kind that is NOT allowed.
+  it "refuses an actor whose kind is neither user nor maintainer for every privileged role" do
+    other_kind_actor = Struct.new(:id, :actor_kind).new(SecureRandom.uuid, "service_token")
+
+    Membership::PRIVILEGED_ROLES.each do |role|
+      result = described_class.call(user_id: publisher.id, role: role, by: other_kind_actor)
+
+      expect(result.reason).to eq(:forbidden_for_maintainer)
+    end
+    expect(publisher.reload.has_role?(:protocol_reviewer)).to be(false)
+  end
+
   it "lets the maintainer grant a role that is not privileged, without a granted_by user" do
     result = described_class.call(user_id: publisher.id, role: "viewer", by: maintainer_actor)
 

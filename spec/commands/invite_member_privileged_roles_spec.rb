@@ -28,4 +28,28 @@ RSpec.describe "InviteMember and privileged roles" do
 
     expect(InviteMember.call(email: "novo@example.org", role: "protocol_reviewer", invited_by: admin).ok?).to be(true)
   end
+
+  # M8: allowlist, not denylist — an actor whose actor_kind is neither "user"
+  # nor "maintainer" must still be refused for a privileged role, because the
+  # check requires actor_kind == "user" rather than enumerating "!= maintainer".
+  it "refuses an actor whose kind is neither user nor maintainer for a privileged role" do
+    other_kind_actor = Struct.new(:id, :actor_kind).new(SecureRandom.uuid, "service_token")
+
+    result = InviteMember.call(email: "outro@example.org", role: "municipal_admin", invited_by: other_kind_actor)
+
+    expect(result.reason).to eq(:forbidden_for_maintainer)
+    expect(Invitation.where(email: "outro@example.org")).to be_empty
+  end
+
+  # M8: invited_by: nil is CityLifecycle::InviteAdmin's platform-operator path
+  # (provisioning a city's first municipal_admin) — it must keep working
+  # exactly as today, untouched by the actor-kind allowlist.
+  it "still invites a municipal_admin when invited_by is nil (the platform operator's provisioning path)" do
+    result = InviteMember.call(email: "primeiro-admin@example.org", role: "municipal_admin", invited_by: nil)
+
+    expect(result.ok?).to be(true)
+    expect(Invitation.find(result.payload[:invitation].id)).to have_attributes(
+      email: "primeiro-admin@example.org", role: "municipal_admin"
+    )
+  end
 end
