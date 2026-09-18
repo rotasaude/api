@@ -22,6 +22,11 @@ module Maintenance
         return unless node.name == "city"
         return unless visitor.query.schema.query == visitor.parent_type_definition
 
+        # Conta mesmo dentro de @skip/@include: a análise não avalia variável
+        # nenhuma, então não há como saber se a diretiva vai remover o campo em
+        # tempo de execução. É de propósito — contar a mais é seguro (o pior
+        # caso é recusar uma operação que teria ficado dentro do teto);
+        # contar a menos deixaria passar uma que de fato abre mais conexões.
         @city_fields += 1
       end
 
