@@ -384,6 +384,12 @@ não existem mais; o RLS que eles reproduziam saiu junto com o domínio.
   migration em `db/city_migrate/`, atualize `db/city_schema.rb` à mão: o spec de paridade compara os dois.
 - Upgrade do Solid Queue que mude tabelas exige migration nova em `db/city_migrate/` **e** em `db/platform_migrate/`
   (as duas usam `db/solid_queue_tables.rb`).
+- **Trigger de cidade mora em `db/city_triggers.sql`**, não em `db/city_schema.rb` — o dump em Ruby não representa
+  trigger. É uma fonte só, idempotente (`CREATE OR REPLACE`, `DROP TRIGGER IF EXISTS`), executada duas vezes: pela
+  migration que criou o trigger (via `execute File.read(...)`) e por `load_city_schema` (`lib/tasks/city.rake`), logo
+  depois de carregar o dump — sem isso, todo banco carregado do dump (`city:test_databases`, `city:dev_up`) ficaria
+  sem a proteção. O spec de paridade (`spec/services/city_schema_spec.rb`) compara triggers também, não só colunas,
+  índices e constraints.
 
 Migrations no dev: `bin/rails db:migrate` (plataforma) e `bin/rails city:migrate:all` (cidades) — ou `bin/migrate`,
 que roda os dois. `db/migrate/` fica vazio de propósito.

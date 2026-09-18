@@ -122,6 +122,8 @@ namespace :city do
     db_config = CitySchema.db_config_for(url)
     ActiveRecord::Tasks::DatabaseTasks.with_temporary_connection(db_config) do
       ActiveRecord::Tasks::DatabaseTasks.load_schema(db_config, :ruby, schema_file)
+      # O dump em Ruby não representa trigger (db/city_triggers.sql, cabeçalho).
+      ActiveRecord::Base.connection.execute(File.read(Rails.root.join("db/city_triggers.sql")))
     end
   end
 

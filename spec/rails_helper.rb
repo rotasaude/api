@@ -20,6 +20,7 @@ require_relative "support/provisioned_cities"
 require_relative "support/platform_queue"
 require_relative "support/city_test_databases"
 require_relative "support/city_request_auth"
+require_relative "support/protocol_signatures"
 # Add additional requires below this line. Rails is not loaded until this point!
 
 # Requires supporting ruby files with custom matchers and macros, etc, in

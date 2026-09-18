@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_16_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_18_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -153,7 +153,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_16_000001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['municipal_admin'::character varying::text, 'protocol_author'::character varying::text, 'protocol_publisher'::character varying::text, 'viewer'::character varying::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "outbound_messages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -180,6 +180,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_16_000001) do
     t.index ["processed_at"], name: "index_processed_events_on_processed_at"
   end
 
+  create_table "protocol_activations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "actor_id", null: false
+    t.string "actor_kind", null: false
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.uuid "protocol_definition_id", null: false
+    t.text "reason"
+    t.index ["protocol_definition_id"], name: "index_protocol_activations_on_protocol_definition_id"
+    t.check_constraint "actor_kind::text = ANY (ARRAY['user'::text, 'maintainer'::text])", name: "ck_protocol_activations_actor_kind"
+    t.check_constraint "kind::text = 'signed'::text OR reason IS NOT NULL AND length(btrim(reason)) > 0", name: "ck_protocol_activations_revert_reason"
+    t.check_constraint "kind::text = ANY (ARRAY['signed'::text, 'emergency_revert'::text])", name: "ck_protocol_activations_kind"
+  end
+
+  create_table "protocol_contributions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "actor_id", null: false
+    t.string "actor_kind", null: false
+    t.string "content_digest", null: false
+    t.datetime "created_at", null: false
+    t.uuid "protocol_definition_id", null: false
+    t.index ["protocol_definition_id"], name: "index_protocol_contributions_on_protocol_definition_id"
+    t.check_constraint "actor_kind::text = ANY (ARRAY['user'::text, 'maintainer'::text])", name: "ck_protocol_contributions_actor_kind"
+  end
+
   create_table "protocol_definitions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "activated_at"
     t.datetime "created_at", null: false
@@ -192,6 +215,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_16_000001) do
     t.index ["name", "version"], name: "idx_protocol_definitions_name_version_muni", unique: true
     t.index ["name"], name: "idx_protocol_definitions_one_active_per_name_muni", unique: true, where: "((status)::text = 'active'::text)"
     t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'in_review'::character varying::text, 'published'::character varying::text, 'active'::character varying::text, 'retired'::character varying::text])", name: "ck_protocol_definitions_status"
+  end
+
+  create_table "protocol_signatures", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "content_digest", null: false
+    t.datetime "created_at", null: false
+    t.uuid "protocol_definition_id", null: false
+    t.string "purpose", null: false
+    t.uuid "signer_user_id", null: false
+    t.index ["protocol_definition_id"], name: "index_protocol_signatures_on_protocol_definition_id"
+    t.index ["signer_user_id"], name: "index_protocol_signatures_on_signer_user_id"
+    t.check_constraint "purpose::text = ANY (ARRAY['publication'::text, 'activation'::text])", name: "ck_protocol_signatures_purpose"
   end
 
   create_table "report_snapshots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -385,15 +419,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_16_000001) do
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"
+  add_foreign_key "protocol_activations", "protocol_definitions"
+  add_foreign_key "protocol_contributions", "protocol_definitions"
+  add_foreign_key "protocol_signatures", "protocol_definitions"
+  add_foreign_key "protocol_signatures", "users", column: "signer_user_id"
   add_foreign_key "report_snapshots", "protocol_definitions"
   add_foreign_key "report_snapshots", "triages"
   add_foreign_key "sessions", "users"
-  add_foreign_key "triages", "conversations"
-  add_foreign_key "triages", "protocol_definitions"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_failed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
+  add_foreign_key "triages", "conversations"
+  add_foreign_key "triages", "protocol_definitions"
 end

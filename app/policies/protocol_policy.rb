@@ -17,4 +17,11 @@ class ProtocolPolicy < ApplicationPolicy
   def view?
     role?(:viewer) || author? || publish?
   end
+
+  # Quem assina uma versão (spec de assinaturas S1). Papel próprio, separado de
+  # quem publica. NOTA: o mantenedor responde "sim" a esta pergunta (D6) — é
+  # Protocols::Sign que o recusa, pelo tipo de ator.
+  def review?
+    role?(:protocol_reviewer)
+  end
 end

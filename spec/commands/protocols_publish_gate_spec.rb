@@ -51,6 +51,9 @@ RSpec.describe "Protocols::Publish gate (F-03.9)" do
 
   it "publishes a definition that passes the gate" do
     pd = make_pd(valid_definition)
+    sign!(pd, purpose: "publication", by: make_reviewer!)
+    sign!(pd, purpose: "publication", by: make_reviewer!)
+
     result = Protocols::Publish.call(version: 1, by: publisher)
     expect(result.ok?).to be true
     expect(pd.reload.status).to eq("published")

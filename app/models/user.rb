@@ -49,4 +49,8 @@ class User < ApplicationRecord
   def has_role?(role)
     memberships.active.exists?(role: role.to_s)
   end
+
+  # Par de Maintenance::MaintainerActor#actor_kind: o evento de domínio e as
+  # tabelas de protocolo dizem de qual tabela vem o id do ator.
+  def actor_kind = "user"
 end
