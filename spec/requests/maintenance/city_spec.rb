@@ -30,7 +30,7 @@ RSpec.describe "Maintenance city", type: :request do
     <<~GQL
       query($slug: String!) {
         city(slug: $slug) {
-          slug name uf status ibgeCode schemaVersion schemaBehind
+          slug name uf status schemaVersion schemaBehind
           channel { phoneNumberId wabaId displayPhoneNumber active }
         }
       }
