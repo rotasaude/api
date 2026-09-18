@@ -66,11 +66,7 @@ module MaintainerAuthentication
   def resolve_token_credential(secret)
     token = MaintenanceToken.authenticate(secret)
     unless token
-      # Sem maintainer_id: um segredo recusado não identifica ninguém. O evento
-      # existe para que uma enxurrada de recusas apareça na auditoria.
-      MaintenanceAudit.record("maintenance.token.refused", outcome: "rejected", module_name: "token",
-                              maintainer_id: nil, credential: { "kind" => "token" },
-                              token_prefix: refused_token_prefix(secret))
+      audit_refused_bearer(secret)
       return render(json: { error: "unauthenticated" }, status: :unauthorized)
     end
 
@@ -78,16 +74,24 @@ module MaintainerAuthentication
     Current.maintenance_credential = Maintenance::Credential.token(token)
   end
 
-  # Fix round 1 (Critical): NUNCA ecoa o valor apresentado. A versão anterior
-  # (`secret.split("_").first(2).join("_")`) só é um prefixo seguro quando o
-  # valor já tem a forma `rsm_<env>_...` — qualquer outra coisa (lixo de um
-  # prober, ou um cliente que colocou a credencial errada no header) ia inteira
-  # para platform_events, num caminho NÃO autenticado. Compara com o prefixo
-  # conhecido DESTE ambiente e só grava a constante quando bate; do contrário,
-  # um rótulo fixo — nunca um pedaço do valor apresentado.
-  def refused_token_prefix(secret)
-    presented = secret.to_s
-    presented.start_with?(MaintenanceToken.prefix) ? MaintenanceToken.prefix : "unrecognized"
+  # Fix round 1 (Critical): NUNCA ecoa o valor apresentado. O prefixo gravado é
+  # a constante DESTE ambiente, nunca um pedaço do que chegou no header.
+  #
+  # Fix round 2 (C1): e só audita o que tem a CARA de um token deste ambiente.
+  # A versão anterior gravava uma linha por bearer recusado, inclusive por lixo
+  # de prober — em `maintenance.%`, que o trigger torna indelével: qualquer um,
+  # sem credencial nenhuma, fazia o banco de plataforma crescer e afogava
+  # `auditEvents` (teto de 200, mais novos primeiro). Um evento que diz só
+  # "unrecognized" não carrega informação; o que interessa é alguém insistindo
+  # com um segredo do formato certo, e ESSE continua sendo gravado, um por
+  # tentativa. Para o resto sobram o 401 e o teto por IP da controller.
+  def audit_refused_bearer(secret)
+    return unless secret.to_s.start_with?(MaintenanceToken.prefix)
+
+    # Sem maintainer_id: um segredo recusado não identifica ninguém.
+    MaintenanceAudit.record("maintenance.token.refused", outcome: "rejected", module_name: "token",
+                            maintainer_id: nil, credential: { "kind" => "token" },
+                            token_prefix: MaintenanceToken.prefix)
   end
 
   # A trava de CSRF é do NAVEGADOR. Um token não tem Origin nem cookie, então

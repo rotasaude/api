@@ -74,7 +74,16 @@ class MaintenanceToken < PlatformRecord
   # chamador no Plano 4, quando o schema tiver `city(slug:)`.
   def allows_city?(slug) = city_slugs.empty? || city_slugs.include?(slug.to_s)
 
+  # I4 (fix round 2): uma ESCRITA por requisição autenticada. `last_used_at`
+  # existe para responder "este token ainda é usado?" numa faxina de
+  # credenciais — precisão de minutos basta, e cinco minutos é o menor valor em
+  # que essa resposta não muda para ninguém. O preço de não ter o teto é uma
+  # linha reescrita a cada chamada de automação que faz polling.
+  TOUCH_WINDOW = 5.minutes
+
   def touch_use!(ip:)
+    return if last_used_at && last_used_at > TOUCH_WINDOW.ago
+
     update_columns(last_used_at: Time.current, last_used_ip: ip)
   end
 
@@ -87,16 +96,20 @@ class MaintenanceToken < PlatformRecord
   def expiry_within_ceiling
     return if expires_at.blank?
 
-    errors.add(:expires_at, "além do teto de #{MAX_TTL.inspect}") if expires_at > MAX_TTL.from_now
-
-    # "já passou" só se aplica quando `expires_at` está sendo definido ou
-    # trocado. Sem essa guarda, revogar um token cuja validade já passou
-    # (o caso comum: desligar as credenciais paradas de um mantenedor que
-    # saiu) falharia — a mera passagem do tempo re-reprovaria um valor que já
-    # foi válido quando gravado. O teto acima não tem esse problema: ele não
-    # passa a valer sozinho com o tempo.
+    # As DUAS checagens só se aplicam quando `expires_at` está sendo definido
+    # ou trocado. Sem essa guarda, revogar um token cuja validade já passou (o
+    # caso comum: desligar as credenciais paradas de um mantenedor que saiu)
+    # falharia — a mera passagem do tempo re-reprovaria um valor que já foi
+    # válido quando gravado.
+    #
+    # M4 (fix round 2): o teto era o mesmo caso, só que adiado. Ele não muda
+    # sozinho com o tempo, mas MUDA quando alguém baixar MAX_TTL — e nesse dia
+    # todo token emitido sob o teto antigo ficaria insalvável, inclusive pelo
+    # `update!` de `revoke!`: a desativação de um mantenedor (que revoga os
+    # tokens dele) quebraria junto. A simetria é a correção.
     return unless new_record? || expires_at_changed?
 
+    errors.add(:expires_at, "além do teto de #{MAX_TTL.inspect}") if expires_at > MAX_TTL.from_now
     errors.add(:expires_at, "já passou") if expires_at <= Time.current
   end
 end

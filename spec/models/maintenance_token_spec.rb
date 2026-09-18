@@ -72,6 +72,39 @@ RSpec.describe MaintenanceToken do
     expect(token.last_used_ip).to eq("10.0.0.9")
   end
 
+  # I4 (fix round 2): o carimbo é de MINUTOS, não de requisição. Sem o teto,
+  # cada chamada de automação reescrevia a linha do token.
+  it "does not rewrite last_used_at inside the touch window" do
+    token, _ = issue
+    token.touch_use!(ip: "10.0.0.9")
+    first = token.reload.last_used_at
+
+    token.touch_use!(ip: "10.0.0.10")
+
+    expect(token.reload.last_used_at).to eq(first)
+    expect(token.last_used_ip).to eq("10.0.0.9")
+
+    travel_to(described_class::TOUCH_WINDOW.from_now + 1.minute) do
+      token.touch_use!(ip: "10.0.0.10")
+      expect(token.reload.last_used_at).to be > first
+      expect(token.last_used_ip).to eq("10.0.0.10")
+    end
+  end
+
+  # M4 (fix round 2): o ramo do TETO não estava guardado por
+  # `expires_at_changed?` como o de "já passou". No dia em que MAX_TTL baixar,
+  # todo token emitido sob o teto antigo fica insalvável — inclusive por
+  # `revoke!`, que é `update!`, e portanto a desativação do dono quebra junto.
+  it "keeps an existing token savable after the ceiling is lowered" do
+    token, _ = issue(expires_at: 60.days.from_now)
+
+    stub_const("#{described_class}::MAX_TTL", 7.days)
+
+    expect { token.revoke! }.not_to raise_error
+    expect(token.reload.revoked_at).to be_present
+    expect { issue(expires_at: 60.days.from_now) }.to raise_error(ActiveRecord::RecordInvalid)
+  end
+
   it "allows revoking a token whose expiry has already passed" do
     token, _ = issue(expires_at: 1.hour.from_now)
 

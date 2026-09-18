@@ -77,16 +77,78 @@ RSpec.describe "Maintenance token authentication", type: :request do
 
   # Fix round 1 (Critical): um segredo recusado sem o formato conhecido não
   # pode virar dado gravado na auditoria — nem inteiro, nem em pedaço.
-  it "never echoes an unrecognized secret into the audit trail" do
+  #
+  # Fix round 2 (C1): agora ele não vira gravação NENHUMA. Uma enxurrada de
+  # bearers de outro formato — o que um prober manda — não escreve uma linha
+  # sequer em platform_events, onde o trigger de `maintenance.%` impede apagar
+  # depois. O prefixo deste ambiente continua sendo o que separa "alguém
+  # insistindo com um segredo do formato certo" de ruído.
+  it "writes no audit row for a flood of bearers without this environment prefix" do
     garbage = "nounderscoreshere"
-    query!(bearer(garbage))
+    refused = PlatformEvent.where(name: "maintenance.token.refused")
+
+    expect {
+      query!(bearer(garbage))
+      5.times { |i| query!(bearer("rsm_other_#{i}")) }
+      query!(bearer("rsm_stg_#{SecureRandom.hex(4)}"))
+    }.not_to change { refused.count }
 
     expect(response).to have_http_status(:unauthorized)
+  end
 
-    event = PlatformEvent.where(name: "maintenance.token.refused").last
-    expect(event.payload["token_prefix"]).to eq("unrecognized")
-    expect(event.payload.to_json).not_to include(garbage)
-    expect(event.payload.to_json).not_to include(garbage.first(8))
+  it "still writes exactly one audit row for a refused bearer of this environment" do
+    refused = PlatformEvent.where(name: "maintenance.token.refused")
+
+    expect { query!(bearer("#{MaintenanceToken.prefix}nao-existe")) }.to change { refused.count }.by(1)
+
+    expect(refused.last.payload).to include("token_prefix" => MaintenanceToken.prefix, "outcome" => "rejected")
+  end
+
+  # C1: o teto de requisições, que não existia em /graphql. O cache do ambiente
+  # de teste é :null_store, que nunca conta — `rate_limit` recebe um store que
+  # resolve `Rails.cache` a cada requisição justamente para que este exemplo
+  # possa trocá-lo por um real.
+  describe "rate limiting" do
+    before { allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new) }
+
+    it "caps the per-IP volume, and the cap comes BEFORE the refusal is audited" do
+      limit = Maintenance::GraphqlController::IP_RATE
+      refused = PlatformEvent.where(name: "maintenance.token.refused")
+
+      expect {
+        (limit + 3).times { query!(bearer("#{MaintenanceToken.prefix}nao-existe")) }
+      }.to change { refused.count }.by(limit)
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(json).to eq({ "error" => "too_many_requests" })
+    end
+
+    it "caps the per-token volume below the per-IP one, so the token cap can fire" do
+      limit = Maintenance::GraphqlController::TOKEN_RATE
+      expect(limit).to be < Maintenance::GraphqlController::IP_RATE
+
+      limit.times { query!(bearer) }
+      expect(response).to have_http_status(:ok)
+
+      query!(bearer)
+      expect(response).to have_http_status(:too_many_requests)
+    end
+  end
+
+  # I4: `last_used_at` respondia "este token ainda é usado?" ao preço de uma
+  # ESCRITA por requisição autenticada.
+  it "stamps last_used_at once per window, not once per request" do
+    query!(bearer)
+    first = token.reload.last_used_at
+    expect(first).to be_present
+
+    query!(bearer)
+    expect(token.reload.last_used_at).to eq(first)
+
+    travel(MaintenanceToken::TOUCH_WINDOW + 1.minute) do
+      query!(bearer)
+      expect(token.reload.last_used_at).to be > first
+    end
   end
 
   # Fix round 1 (I3): /session é do navegador. Um bearer não vira sessão ali —
