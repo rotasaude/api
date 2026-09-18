@@ -12,6 +12,13 @@ class CityConnection
 
   MUTEX = Mutex.new
 
+  # I2 (achado na revisão final do Plano 4): sem teto, um host de cidade que só
+  # derruba pacote (nunca recusa a conexão) prende a thread do Puma por ~2
+  # minutos — GraphQL::Schema::Timeout não interrompe uma conexão TCP
+  # pendurada, só a execução depois que ela abre. Mesmo valor de
+  # config/database.yml para os pools de plataforma.
+  CONNECT_TIMEOUT_SECONDS = 5
+
   class << self
     # Domínio, fila E CIFRA da cidade (Planos 5 e 7).
     #
@@ -98,9 +105,14 @@ class CityConnection
 
     # Config resolvida do banco da cidade. Pública para o worker da cidade
     # (CityWorkers::Child), que liga o Solid Queue do processo inteiro a ela.
+    #
+    # connect_timeout só é acrescentado quando a própria database_url ainda não
+    # traz um — o mesmo tratamento que `pool=` já recebe acima, nunca
+    # sobrescrevendo um valor que já esteja lá.
     def database_config(city)
       url = city.database_url.to_s
       url += (url.include?("?") ? "&" : "?") + "pool=#{pool_size}"
+      url += "&connect_timeout=#{CONNECT_TIMEOUT_SECONDS}" unless url.match?(/[?&]connect_timeout=/)
 
       resolved = ActiveRecord::Base.configurations.resolve(url)
       if resolved.database.blank?

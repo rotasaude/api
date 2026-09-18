@@ -22,6 +22,7 @@ module Maintenance
     # complexidade acima — nenhum resolver roda para uma query recusada.
     query_analyzer Analyzers::WriteScope
     query_analyzer Analyzers::HumanOnly
+    query_analyzer Analyzers::CityBudget
 
     def self.unauthorized_object(error)
       raise GraphQL::ExecutionError, "não autorizado: #{error.type.graphql_name}"

@@ -75,4 +75,21 @@ RSpec.describe CityConnection do
     expect { described_class.with(broken) { 1 } }
       .to raise_error(CityConnection::InvalidCityDatabase, /#{broken.slug}/)
   end
+
+  # I2 (achado na revisão final do Plano 4): sem isto, um host de cidade que só
+  # derruba pacote prende a thread do Puma por ~2 minutos — o timeout do
+  # GraphQL não interrompe uma conexão TCP pendurada.
+  it "bounds the connect timeout of a city pool, like the platform pools" do
+    city = build_city
+    resolved = described_class.database_config(city)
+
+    expect(resolved.configuration_hash[:connect_timeout]).to eq("5")
+  end
+
+  it "keeps a connect_timeout the database_url already carries, instead of overriding it" do
+    city = build_city(database_url: "#{ENV.fetch('TEST_CITY_A_URL', city_database_url('rota_saude_test_city_a'))}?connect_timeout=30")
+    resolved = described_class.database_config(city)
+
+    expect(resolved.configuration_hash[:connect_timeout]).to eq("30")
+  end
 end
