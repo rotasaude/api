@@ -292,4 +292,29 @@ RSpec.describe "Maintenance city", type: :request do
     expect(response.body).not_to include(digest)
     expect(response.body).not_to include(otp_secret)
   end
+
+  # M4 (achado na revisão final do Plano 4): nenhum exemplo acima olha para
+  # DUAS cidades ao mesmo tempo — todos poderiam passar mesmo se `city(slug:)`
+  # reusasse, por engano, a MESMA sessão de banco para qualquer slug. Semeia
+  # em TEST_CITY_A (sem `within_city`: roda na sessão implícita do exemplo,
+  # que É a de TEST_CITY_A — ver cabeçalho de spec/support/city_test_databases.rb)
+  # e pede TEST_CITY_B pela API: se as sessões vazassem uma para a outra, o
+  # staff e a conversa de A apareceriam nas contagens/contas de B.
+  it "never answers TEST_CITY_A's accounts or counts when the slug requested is TEST_CITY_B" do
+    staff_a = User.create!(email_address: "staff-a-#{SecureRandom.hex(3)}@cidade.gov.br", password: "s3nha-staff-1",
+                           otp_secret: ROTP::Base32.random, otp_enabled: true)
+    Conversation.create!(phone: "+5541988880000", state: "greeting")
+
+    query = <<~GQL
+      query($slug: String!) { city(slug: $slug) { accounts { login } counts { users conversations } } }
+    GQL
+    other = City.find_by!(slug: TEST_CITY_B.slug)
+
+    gql!(query, slug: other.slug)
+
+    answered = json.dig("data", "city")
+    expect(json["errors"]).to be_nil
+    expect(answered["accounts"].map { |a| a["login"] }).not_to include(staff_a.email_address)
+    expect(answered["counts"]).to eq("users" => 0, "conversations" => 0)
+  end
 end
