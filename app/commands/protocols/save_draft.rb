@@ -60,6 +60,13 @@ module Protocols
       Result.ok(protocol_definition: record)
     rescue ActiveRecord::RecordInvalid => e
       Result.fail(:invalid_definition, message: e.record.errors.full_messages.join(", "))
+    # M9: the model's before_save (validate_definition_shape) throws :abort
+    # when Protocols::Validator rejects the definition — a halted callback
+    # chain makes save! raise RecordNotSaved, not RecordInvalid (the shape
+    # errors never reach ActiveRecord's own validations). Without this rescue
+    # a rejected definition 500s instead of failing as a user error.
+    rescue ActiveRecord::RecordNotSaved => e
+      Result.fail(:invalid_definition, message: e.record.errors.full_messages.join(", "))
     end
   end
 end

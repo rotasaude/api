@@ -56,6 +56,24 @@ RSpec.describe "Protocol authoring and signing" do
       expect(save!(by: author).reason).to eq(:version_not_editable)
     end
 
+    # M9: the model's before_save (validate_definition_shape) throws :abort
+    # when Protocols::Validator rejects the definition's shape — a halted
+    # callback chain makes save! raise ActiveRecord::RecordNotSaved, not
+    # RecordInvalid (the AR-level presence/inclusion validations all pass;
+    # only Protocols::Validator, run by hand inside before_save, rejects it).
+    # Without the RecordNotSaved rescue this 500s instead of failing as a
+    # user error.
+    it "reports a definition the validator rejects as a user error instead of raising" do
+      invalid = protocol_definition_hash.merge("start_step_id" => "no-such-step")
+
+      result = save!(by: author, definition: invalid)
+
+      expect(result.failure?).to be(true)
+      expect(result.reason).to eq(:invalid_definition)
+      expect(result.message).to match(/start_step_id/)
+      expect(ProtocolDefinition.find_by(name: "dengue", version: 1)).to be_nil
+    end
+
     # Concurrency: the pre-lock read can be stale by the time SaveDraft writes.
     # Simulate the race deterministically — capture an in-memory snapshot taken
     # when the row was still draft, then let a concurrent Publish commit
