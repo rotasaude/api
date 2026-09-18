@@ -17,10 +17,15 @@ module Maintenance
         argument :outcome, String, required: false
         argument :limit, Integer, required: false
       end
+      field :cities, [ Types::CitySummaryType ], null: false,
+            description: "Catálogo de cidades, sem abrir conexão com nenhuma delas" do
+        argument :status, Types::CityStatusEnum, required: false
+      end
 
       def me = context.fetch(:maintainer)
       def maintenance_tokens = MaintenanceToken.order(created_at: :desc)
       def audit_events(**filters) = AuditEventsQuery.call(**filters)
+      def cities(status: nil) = CityCatalogQuery.call(credential: context.fetch(:credential), status: status)
     end
   end
 end

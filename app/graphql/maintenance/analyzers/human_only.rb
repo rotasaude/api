@@ -12,8 +12,11 @@ module Maintenance
 
       # Campos de raiz que um token PODE usar. Existe para a guarda de
       # cobertura do spec: campo de raiz novo tem de entrar aqui ou em
-      # RESTRICTED.
-      TOKEN_ALLOWED = %w[me].freeze
+      # RESTRICTED. `cities` entra aqui porque o próprio escopo do token já é
+      # aplicado dentro do resolver (CityCatalogQuery#call, via
+      # Credential#allows_city?) — barrar o campo aqui duplicaria a regra e
+      # cegaria um token para o próprio catálogo que ele tem permissão de ler.
+      TOKEN_ALLOWED = %w[me cities].freeze
 
       def initialize(subject)
         super
