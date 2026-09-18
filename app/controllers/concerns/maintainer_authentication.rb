@@ -39,6 +39,11 @@ module MaintainerAuthentication
 
   def current_maintainer = Current.maintenance_credential&.maintainer
 
+  # I5 (spec §9): `request_id` e `ip` fazem parte do payload de auditoria — são
+  # o que liga uma linha da trilha à requisição no log da aplicação. Nenhuma
+  # das duas chaves esbarra na Ruling R18.
+  def audit_request_fields = { request_id: request.request_id, ip: request.remote_ip }
+
   # Cookie OU bearer, nunca os dois: com as duas credenciais presentes não há
   # resposta honesta para "quem agiu", e a auditoria é o que resta quando os
   # poderes são totais (spec §7).
@@ -91,7 +96,7 @@ module MaintainerAuthentication
     # Sem maintainer_id: um segredo recusado não identifica ninguém.
     MaintenanceAudit.record("maintenance.token.refused", outcome: "rejected", module_name: "token",
                             maintainer_id: nil, credential: { "kind" => "token" },
-                            token_prefix: MaintenanceToken.prefix)
+                            token_prefix: MaintenanceToken.prefix, **audit_request_fields)
   end
 
   # A trava de CSRF é do NAVEGADOR. Um token não tem Origin nem cookie, então

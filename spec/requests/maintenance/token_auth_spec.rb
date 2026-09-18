@@ -151,6 +151,75 @@ RSpec.describe "Maintenance token authentication", type: :request do
     end
   end
 
+  # I1 (fix round 2, spec §9): "uso recusado de token … fora do escopo" não
+  # deixava rastro nenhum. Um token batendo em `auditEvents` ou em mutation é
+  # recusado pelos analisadores ANTES de qualquer resolver, e era justamente
+  # essa recusa — o padrão que denuncia credencial vazada — que sumia.
+  describe "a token refused by the analyzers" do
+    def read_token
+      MaintenanceToken.issue!(maintainer: maintainer, name: "ci", access: "read",
+                              city_slugs: [], expires_at: 10.days.from_now).last
+    end
+
+    it "audits the refusal with the token id and the refused field names" do
+      refused = PlatformEvent.where(name: "maintenance.token.refused")
+
+      expect {
+        post "/graphql", params: { query: "{ auditEvents { name } }" }, headers: bearer
+      }.to change { refused.count }.by(1)
+
+      expect(json["errors"]).to be_present
+      event = refused.last.payload
+      expect(event).to include("outcome" => "rejected", "module" => "token",
+                               "maintainer_id" => maintainer.id,
+                               "refused_fields" => [ "auditEvents" ],
+                               "credential" => { "kind" => "token", "token_id" => token.id })
+      expect(event["request_id"]).to be_present
+      expect(event["ip"]).to be_present
+    end
+
+    it "audits a read token refused by the write scope, naming the mutation it tried" do
+      secret = read_token
+      mutation = <<~GQL
+        mutation { inviteMaintainer(emailAddress: "x@rotasaude.app", code: "000000") { ok } }
+      GQL
+      refused = PlatformEvent.where(name: "maintenance.token.refused")
+
+      expect {
+        post "/graphql", params: { query: mutation }, headers: bearer(secret)
+      }.to change { refused.count }.by(1)
+
+      expect(refused.last.payload["refused_fields"]).to include("inviteMaintainer")
+      expect(Maintainer.find_by(email_address: "x@rotasaude.app")).to be_nil
+    end
+
+    it "writes nothing when the token asks for what it may have" do
+      refused = PlatformEvent.where(name: "maintenance.token.refused")
+
+      expect { query!(bearer) }.not_to change { refused.count }
+      expect(response).to have_http_status(:ok)
+    end
+
+    # O segredo nunca entra no evento — nem o apresentado, nem o gravado.
+    it "never puts a secret in the refusal payload" do
+      post "/graphql", params: { query: "{ auditEvents { name } }" }, headers: bearer
+
+      payload = PlatformEvent.where(name: "maintenance.token.refused").last.payload.to_json
+      expect(payload).not_to include(secret)
+      expect(payload).not_to include(token.token_digest)
+    end
+  end
+
+  # I5 (spec §9): `request_id` e `ip` fazem parte do payload e não chegavam ao
+  # evento — são o que liga a linha da trilha à requisição no log.
+  it "carries request_id and ip on a refused bearer of this environment" do
+    query!(bearer("#{MaintenanceToken.prefix}nao-existe"))
+
+    payload = PlatformEvent.where(name: "maintenance.token.refused").last.payload
+    expect(payload["request_id"]).to be_present
+    expect(payload["ip"]).to eq("127.0.0.1")
+  end
+
   # Fix round 1 (I3): /session é do navegador. Um bearer não vira sessão ali —
   # nem para ler, nem para encerrar.
   it "refuses a bearer-authenticated GET /session" do

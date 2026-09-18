@@ -55,6 +55,9 @@ RSpec.describe "Maintainer session", type: :request do
     event = PlatformEvent.where(name: "maintenance.session.started").last
     expect(event.payload).to include("maintainer_id" => maintainer.id, "outcome" => "ok")
     expect(event.payload.to_json).not_to include(maintainer.email_address)
+    # I5 (spec §9): request_id e ip, que faltavam em todo evento de manutenção.
+    expect(event.payload["request_id"]).to be_present
+    expect(event.payload["ip"]).to eq("127.0.0.1")
   end
 
   it "writes a host-only, HttpOnly, SameSite=Strict cookie" do

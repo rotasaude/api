@@ -24,6 +24,11 @@ module Maintenance
 
       def credential = context.fetch(:credential)
 
+      # I5 (spec §9): `request_id` e `ip` fazem parte do payload de auditoria e
+      # os dois já estavam no contexto (o `ip` passou a estar) — só não
+      # chegavam ao evento. Nenhuma das duas chaves esbarra na Ruling R18.
+      def audit_request_fields = { request_id: context[:request_id], ip: context[:ip] }
+
       # Step-up de TOTP (spec §7). A sessão já está verificada, mas estas
       # escritas emitem uma credencial de longa vida ou refazem uma conta, e o
       # código é CONSUMIDO (I3) — o que verificou a sessão não vale aqui.
@@ -52,13 +57,15 @@ module Maintenance
 
         MaintenanceAudit.record(locked ? "maintenance.session.locked" : "maintenance.session.failed",
                                 outcome: "rejected", module_name: "session",
-                                maintainer_id: maintainer.id, credential: { "kind" => "totp" })
+                                maintainer_id: maintainer.id, credential: { "kind" => "totp" },
+                                **audit_request_fields)
       end
 
       def audited(event:, module_name:, **fields)
         correlation_id = MaintenanceAudit.record(event, outcome: "attempted", module_name: module_name,
                                                  maintainer_id: credential.maintainer.id,
-                                                 credential: credential.audit_payload, **fields)
+                                                 credential: credential.audit_payload,
+                                                 **audit_request_fields, **fields)
 
         result = yield
         record_outcome(event, "ok", module_name, correlation_id, fields)
@@ -75,7 +82,7 @@ module Maintenance
         MaintenanceAudit.record(event, outcome: outcome, module_name: module_name,
                                 maintainer_id: credential.maintainer.id,
                                 credential: credential.audit_payload,
-                                correlation_id: correlation_id, **fields)
+                                correlation_id: correlation_id, **audit_request_fields, **fields)
       end
     end
   end

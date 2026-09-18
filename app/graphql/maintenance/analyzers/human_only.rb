@@ -39,7 +39,10 @@ module Maintenance
         forbidden = @touched & RESTRICTED
         return if forbidden.empty?
 
-        GraphQL::AnalysisError.new("token de serviço não alcança: #{forbidden.uniq.join(', ')}")
+        # I1: `extensions` leva os campos recusados — nomes de campo do schema,
+        # nunca segredo — para a controller auditar a recusa.
+        GraphQL::AnalysisError.new("token de serviço não alcança: #{forbidden.uniq.join(', ')}",
+                                   extensions: { "code" => Refusal::CODE, "refusedFields" => forbidden.uniq })
       end
     end
   end

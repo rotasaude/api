@@ -47,7 +47,15 @@ RSpec.describe "Maintenance analyzers" do
   end
 
   # Item 1: token `read` + mutation → erro citando o escopo, nenhuma escrita.
-  it "refuses a mutation from a read token before execution, writing nothing" do
+  #
+  # I1 (fix round 2): "nenhuma escrita" continua sendo a asserção CERTA aqui, e
+  # agora ela tem um segundo propósito. A recusa passou a ser auditada (spec
+  # §9), mas pela CONTROLLER, a partir do erro etiquetado — o analisador roda
+  # na análise de toda query, inclusive de leitura, e não pode gravar nada. Um
+  # `PlatformEvent` aparecendo neste exemplo, que executa o schema direto, seria
+  # exatamente o efeito colateral que se quer manter fora do analisador; a
+  # gravação é provada em spec/requests/maintenance/token_auth_spec.rb.
+  it "refuses a mutation from a read token before execution, writing nothing itself" do
     credential = token_credential(access: "read")
     tokens_before = MaintenanceToken.count
     events_before = PlatformEvent.count
@@ -61,9 +69,27 @@ RSpec.describe "Maintenance analyzers" do
     expect(PlatformEvent.count).to eq(events_before)
   end
 
+  # I1: o erro CARREGA o que foi recusado, que é o que a controller audita.
+  # Sem a etiqueta não há como distinguir, no resultado, uma recusa de escopo
+  # de um erro qualquer de validação — e a auditoria da spec §9 não teria como
+  # existir sem reimplementar a regra fora dos analisadores.
+  it "tags the refusal with the refused root fields, for the audit trail" do
+    write_scope = execute(CREATE_MUTATION, credential: token_credential(access: "read"),
+                          variables: create_variables)
+    human_only = execute(LIST_QUERY, credential: token_credential(access: "read_write"))
+
+    [ write_scope, human_only ].each do |result|
+      extensions = result["errors"].filter_map { |e| e["extensions"] }
+      expect(extensions.map { |e| e["code"] }).to include(Maintenance::Analyzers::Refusal::CODE)
+    end
+
+    expect(Maintenance::Analyzers::Refusal.refused_fields(write_scope)).to eq(%w[createMaintenanceToken])
+    expect(Maintenance::Analyzers::Refusal.refused_fields(human_only)).to eq(%w[maintenanceTokens])
+  end
+
   # Item 2: token `read_write` + mutation de token → recusado por HumanOnly
   # (WriteScope não entra aqui: read_write não é read_only?).
-  it "refuses a read_write token managing tokens, writing nothing" do
+  it "refuses a read_write token managing tokens, writing nothing itself" do
     credential = token_credential(access: "read_write")
     tokens_before = MaintenanceToken.count
     events_before = PlatformEvent.count

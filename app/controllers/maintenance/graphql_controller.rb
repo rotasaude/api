@@ -72,14 +72,38 @@ module Maintenance
           maintainer: current_maintainer,
           maintainer_session: Current.maintainer_session,
           credential: Current.maintenance_credential,
-          request_id: request.request_id
+          request_id: request.request_id,
+          # I5: o IP não estava no contexto, então nenhuma mutation conseguia
+          # colocá-lo no payload de auditoria que a spec §9 descreve.
+          ip: request.remote_ip
         }
       )
+
+      audit_scope_refusal(result)
 
       render json: result
     end
 
     private
+
+    # I1 (spec §9): "uso recusado de token … fora do escopo" não deixava rastro
+    # nenhum — um token batendo em `auditEvents` ou tentando mutation era
+    # recusado em silêncio, e é justamente o padrão que denuncia credencial
+    # vazada. A gravação é AQUI, onde a recusa é observada e há requisição na
+    # mão, e não nos analisadores, que rodam em toda query e devem continuar
+    # sem efeito colateral.
+    def audit_scope_refusal(result)
+      credential = Current.maintenance_credential
+      return unless credential&.token?
+
+      fields = Analyzers::Refusal.refused_fields(result.to_h)
+      return if fields.empty?
+
+      MaintenanceAudit.record("maintenance.token.refused", outcome: "rejected", module_name: "token",
+                              maintainer_id: credential.maintainer.id,
+                              credential: credential.audit_payload,
+                              refused_fields: fields, **audit_request_fields)
+    end
 
     # Minor (fix round 2): `params[:variables]` cru não serve ao executor.
     # Cliente que manda `variables` como STRING JSON (é o que graphiql e vários

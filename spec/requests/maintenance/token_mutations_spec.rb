@@ -75,6 +75,10 @@ RSpec.describe "Maintenance token mutations", type: :request do
     expect(events.map { |e| e.payload["outcome"] }).to eq(%w[attempted ok])
     expect(events.map { |e| e.payload["correlation_id"] }.uniq.size).to eq(1)
     expect(events.last.payload).to include("token_label" => "ci", "module" => "token")
+    # I5 (spec §9): request_id e ip fazem parte do payload e não chegavam nele.
+    expect(events.map { |e| e.payload["request_id"] }.uniq.size).to eq(1)
+    expect(events.last.payload["request_id"]).to be_present
+    expect(events.last.payload["ip"]).to eq("127.0.0.1")
   end
 
   it "refuses a wrong TOTP as a user error, creating nothing and auditing the rejection" do

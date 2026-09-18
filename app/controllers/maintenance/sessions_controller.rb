@@ -42,7 +42,8 @@ module Maintenance
       if maintainer.locked?
         dummy_authenticate
         MaintenanceAudit.record("maintenance.session.failed", outcome: "rejected", module_name: "session",
-                                maintainer_id: maintainer.id, credential: { "kind" => "password" })
+                                maintainer_id: maintainer.id, credential: { "kind" => "password" },
+                                **audit_request_fields)
         return render(json: { error: "invalid_credentials" }, status: :unauthorized)
       end
 
@@ -93,7 +94,8 @@ module Maintenance
 
         MaintenanceAudit.record("maintenance.session.started", outcome: "ok", module_name: "session",
                                 maintainer_id: session.maintainer_id,
-                                credential: MaintenanceAudit.credential_for(session: session))
+                                credential: MaintenanceAudit.credential_for(session: session),
+                                **audit_request_fields)
         true
       end
       return render(json: { error: "invalid_session" }, status: :unauthorized) unless verified
@@ -115,7 +117,8 @@ module Maintenance
       if session
         MaintenanceAudit.record("maintenance.session.ended", outcome: "ok", module_name: "session",
                                 maintainer_id: session.maintainer_id,
-                                credential: MaintenanceAudit.credential_for(session: session))
+                                credential: MaintenanceAudit.credential_for(session: session),
+                                **audit_request_fields)
       end
       terminate_maintenance_session
       head :no_content
@@ -143,7 +146,7 @@ module Maintenance
 
       MaintenanceAudit.record(locked ? "maintenance.session.locked" : "maintenance.session.failed",
                               outcome: "rejected", module_name: "session", maintainer_id: maintainer.id,
-                              credential: { "kind" => "password" })
+                              credential: { "kind" => "password" }, **audit_request_fields)
 
       # I2: a resposta é a mesma bloqueado ou não. O bloqueio continua valendo
       # (o retorno antecipado lá em cima), só não é anunciado.
@@ -167,7 +170,8 @@ module Maintenance
       # única prova de que alguém continuou tentando com a conta travada.
       if session.maintainer.locked?
         MaintenanceAudit.record("maintenance.session.failed", outcome: "rejected", module_name: "session",
-                                maintainer_id: session.maintainer_id, credential: { "kind" => "totp" })
+                                maintainer_id: session.maintainer_id, credential: { "kind" => "totp" },
+                                **audit_request_fields)
         return nil
       end
 
@@ -190,7 +194,8 @@ module Maintenance
 
       MaintenanceAudit.record(locked ? "maintenance.session.locked" : "maintenance.session.failed",
                               outcome: "rejected", module_name: "session",
-                              maintainer_id: session.maintainer_id, credential: { "kind" => "totp" })
+                              maintainer_id: session.maintainer_id, credential: { "kind" => "totp" },
+                              **audit_request_fields)
 
       attempts = MaintainerSession.where(id: session.id).pick(:totp_attempts)
       over_cap = attempts.nil? || attempts >= MaintainerAuthentication::MAX_TOTP_ATTEMPTS

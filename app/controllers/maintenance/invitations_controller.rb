@@ -35,7 +35,8 @@ module Maintenance
       # autorizou.
       MaintenanceAudit.record("maintenance.maintainer.enrolled", outcome: "ok", module_name: "maintainer",
                               maintainer_id: invitation.maintainer_id,
-                              credential: { "kind" => "invitation" }, invitation_id: invitation.id)
+                              credential: { "kind" => "invitation" }, invitation_id: invitation.id,
+                              **audit_request_fields)
 
       render json: {
         email_address: invitation.maintainer.email_address,
@@ -66,7 +67,8 @@ module Maintenance
         # outro ainda pendente do mesmo mantenedor.
         MaintainerInvitation.invalidate_pending_for!(maintainer)
         MaintenanceAudit.record("maintenance.maintainer.accepted", outcome: "ok", module_name: "maintainer",
-                                maintainer_id: maintainer.id, credential: { "kind" => "invitation" })
+                                maintainer_id: maintainer.id, credential: { "kind" => "invitation" },
+                                **audit_request_fields)
         true
       end
 
@@ -75,7 +77,7 @@ module Maintenance
         # de tomar a conta com o token na mão.
         MaintenanceAudit.record("maintenance.maintainer.accepted", outcome: "rejected", module_name: "maintainer",
                                 maintainer_id: maintainer.id, credential: { "kind" => "invitation" },
-                                invitation_id: invitation.id)
+                                invitation_id: invitation.id, **audit_request_fields)
         return render(json: { error: "invalid_code" }, status: :unprocessable_content)
       end
 
