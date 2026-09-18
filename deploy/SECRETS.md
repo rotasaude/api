@@ -69,6 +69,15 @@ existir, uma das duas precisa estar resolvida: (a) esses nomes ganham um namespa
 `CITY_DATABASE_HOST` e `PROVISIONER_DATABASE_URL` de staging são comprovadamente um cluster que NÃO é o de
 produção. Sem isso, um provisionamento em staging escreve por cima do banco da cidade em produção.
 
+**Gate de go-live da leitura de cidades (Plano 4):** `CityConnection.database_config` limita o `connect_timeout`
+do pool de cada cidade (5s, achado I2 da revisão final do plano) — sem isso, um host de cidade que só derruba
+pacote prendia a thread do Puma por ~2 minutos. Deliberadamente NÃO define `statement_timeout` do lado da
+cidade: um teto errado ali derrubaria um job do worker no meio de uma operação longa, que é um caminho
+diferente do da API de manutenção. Antes de expor as leituras do Plano 4 em staging, falta decidir o
+`statement_timeout` das conexões de manutenção contra cada banco de cidade — os pontos que mais pesam são
+`COUNT(*)` em `inbound_messages`/`conversations` (`CityCounts`) e o `ORDER BY` sem índice em
+`report_snapshots.created_at`/`dashboard_metrics.updated_at` (`CityOperations`).
+
 ## Não secretos: servidor das cidades
 
 `CITY_DATABASE_HOST`, `CITY_DATABASE_PORT` e `CITY_DATABASE_SSLMODE` ficam em `env.clear` do `deploy.yml` (não no
