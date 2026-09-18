@@ -10,7 +10,11 @@ module Maintenance
 
       field :slug, String, null: false
       field :name, String, null: false
-      field :uf, String, null: false
+      # P6: a coluna `cities.uf` é opcional (sem `null: false`, sem presence) —
+      # uma cidade real sem `uf` não pode nulificar a lista inteira (spec §8:
+      # a operação nunca cai por causa de uma cidade). `[CitySummary!]!` segue
+      # não-nulo; só o CAMPO cede.
+      field :uf, String, null: true
       field :status, String, null: false
       field :schema_version, String, null: true
       field :schema_behind, Boolean, null: false
