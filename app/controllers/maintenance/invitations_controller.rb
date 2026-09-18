@@ -17,6 +17,12 @@ module Maintenance
   class InvitationsController < BaseController
     allow_unauthenticated_maintainer_access
 
+    # M7 (fix round 2): a mesma trava de SessionsController, que aqui faltava.
+    # Estes endpoints definem senha e TOTP de um superusuário, e um bearer
+    # chegando neles era aceito — e, por ser token, ainda pulava a checagem de
+    # Origin de `require_maintenance_origin`.
+    before_action :require_browser_credential
+
     rate_limit to: 10, within: 3.minutes,
                with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
@@ -35,7 +41,8 @@ module Maintenance
       # autorizou.
       MaintenanceAudit.record("maintenance.maintainer.enrolled", outcome: "ok", module_name: "maintainer",
                               maintainer_id: invitation.maintainer_id,
-                              credential: { "kind" => "invitation" }, invitation_id: invitation.id)
+                              credential: { "kind" => "invitation" }, invitation_id: invitation.id,
+                              **audit_request_fields)
 
       render json: {
         email_address: invitation.maintainer.email_address,
@@ -56,7 +63,9 @@ module Maintenance
       # `call`, um código de recuperação sobrevivente (conta antiga, linha
       # plantada) matricularia a conta sem TOTP nenhum.
       accepted = PlatformRecord.transaction do
-        raise ActiveRecord::Rollback unless Mfa::Verify.totp_valid?(maintainer, params[:code])
+        # I3: consome o passo, pelo mesmo motivo do challenge — este código
+        # confirma o TOTP recém-cadastrado e não pode servir duas vezes.
+        raise ActiveRecord::Rollback unless maintainer.consume_totp!(params[:code])
 
         maintainer.update!(password: password, otp_enabled_at: Time.current)
         invitation.update!(used_at: Time.current)
@@ -64,7 +73,8 @@ module Maintenance
         # outro ainda pendente do mesmo mantenedor.
         MaintainerInvitation.invalidate_pending_for!(maintainer)
         MaintenanceAudit.record("maintenance.maintainer.accepted", outcome: "ok", module_name: "maintainer",
-                                maintainer_id: maintainer.id, credential: { "kind" => "invitation" })
+                                maintainer_id: maintainer.id, credential: { "kind" => "invitation" },
+                                **audit_request_fields)
         true
       end
 
@@ -73,7 +83,7 @@ module Maintenance
         # de tomar a conta com o token na mão.
         MaintenanceAudit.record("maintenance.maintainer.accepted", outcome: "rejected", module_name: "maintainer",
                                 maintainer_id: maintainer.id, credential: { "kind" => "invitation" },
-                                invitation_id: invitation.id)
+                                invitation_id: invitation.id, **audit_request_fields)
         return render(json: { error: "invalid_code" }, status: :unprocessable_content)
       end
 

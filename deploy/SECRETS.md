@@ -54,6 +54,10 @@ manutenção §4). As credentials ficam em `config/credentials/staging.yml.enc`,
 Staging sem `staging.yml.enc` **não sobe** (`config/initializers/00_credentials_isolation.rb`): cair em
 `config/credentials.yml.enc` seria usar as chaves de outro ambiente. Staging nunca recebe dump de produção.
 
+Tokens de serviço da API de manutenção (`maintenance_tokens`) são HMAC do `secret_key_base` do ambiente: rotacionar essa
+chave **invalida todos os tokens** daquele ambiente, de propósito. O segredo em claro (`rsm_<env>_…`) aparece uma única
+vez, na resposta da mutation que o cria, e nunca é gravado — quem perder, cria outro e revoga o antigo.
+
 `config/credentials/staging.key` é montado (bind mount) dentro do container `api` a partir de `apps/api` no host —
 assim que a cópia no cofre existir (item `rails-master-key`, cofre `rota-saude-staging`), apague o arquivo local;
 ele é só uma conveniência de desenvolvimento, nunca a fonte de verdade.

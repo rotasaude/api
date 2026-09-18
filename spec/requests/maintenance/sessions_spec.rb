@@ -55,6 +55,9 @@ RSpec.describe "Maintainer session", type: :request do
     event = PlatformEvent.where(name: "maintenance.session.started").last
     expect(event.payload).to include("maintainer_id" => maintainer.id, "outcome" => "ok")
     expect(event.payload.to_json).not_to include(maintainer.email_address)
+    # I5 (spec §9): request_id e ip, que faltavam em todo evento de manutenção.
+    expect(event.payload["request_id"]).to be_present
+    expect(event.payload["ip"]).to eq("127.0.0.1")
   end
 
   it "writes a host-only, HttpOnly, SameSite=Strict cookie" do
@@ -91,8 +94,16 @@ RSpec.describe "Maintainer session", type: :request do
 
     # Idle TTL: a single gap over thirty minutes kills the session well inside
     # the eight-hour absolute window, with no activity in between.
-    verified_login!
-    travel_to(31.minutes.from_now) do
+    #
+    # O segundo login acontece numa janela de tempo PRÓPRIA, à frente da
+    # primeira: o código de TOTP do primeiro já foi CONSUMIDO (I3), e um login
+    # novo precisa de um passo novo, não de mais uma apresentação do mesmo
+    # código. Os dois blocos são irmãos, não aninhados — `travel_to` dentro de
+    # `travel_to` levanta.
+    idle_base = login_time + 9.hours
+    travel_to(idle_base) { verified_login! }
+
+    travel_to(idle_base + 31.minutes) do
       get "/session", headers: headers
       expect(response).to have_http_status(:unauthorized)
     end
@@ -191,6 +202,26 @@ RSpec.describe "Maintainer session", type: :request do
     expect(maintainer.reload.otp_recovery_codes.size).to eq(1)
   end
 
+  # I3 (fix round 2, replay): um código de TOTP vale UMA vez. A tolerância de
+  # relógio deixa ~3 passos válidos ao mesmo tempo, então o código que acabou
+  # de verificar uma sessão continuava verificando a próxima — e, pior, servia
+  # de step-up para emitir um token de 90 dias em /graphql (provado em
+  # spec/requests/maintenance/token_mutations_spec.rb).
+  it "never accepts the same TOTP code twice, not even in a brand-new session" do
+    code = totp
+
+    login!
+    post "/session/challenge", params: { session_id: json["session_id"], code: code }, headers: headers
+    expect(response).to have_http_status(:ok)
+
+    login!
+    second = json["session_id"]
+    post "/session/challenge", params: { session_id: second, code: code }, headers: headers
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(MaintainerSession.find_by(id: second)&.mfa_verified_at).to be_nil
+  end
+
   # I3 (fix round 2): sem MAINTENANCE_FRONTEND_ORIGIN configurada, a checagem
   # virava `nil == nil` e uma requisição SEM Origin nenhuma passava. Falha
   # fechada: sem origem configurada, ninguém entra.
@@ -222,6 +253,23 @@ RSpec.describe "Maintainer session", type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
+  # Fix round 1 (I2): resolver a credencial não pode ESCREVER. Antes,
+  # touch_session rodava antes da checagem de Origin — um cookie válido com
+  # Origin errado renovava a janela de inatividade da vítima sem nunca passar
+  # pela trava de CSRF. O toque só pode acontecer depois que a origem aprova.
+  it "does not touch the session on a request with a valid cookie and the wrong Origin" do
+    verified_login!
+    session = maintainer.maintainer_sessions.last
+    last_seen = session.last_seen_at
+
+    travel_to(5.minutes.from_now) do
+      get "/session", headers: { "Origin" => "https://attacker.example", "X-Rota-Maintenance" => "1" }
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    expect(session.reload.last_seen_at).to eq(last_seen)
+  end
+
   it "answers 404 on any other host, never 401" do
     host! "curitiba.rotasaude.app"
     get "/session", headers: headers
@@ -238,6 +286,7 @@ RSpec.describe "Maintainer session", type: :request do
     expect(response).to have_http_status(:no_content)
     expect(PlatformEvent.where(name: "maintenance.session.ended").count).to eq(1)
 
+    Maintainer.create!(email_address: "second-#{SecureRandom.hex(3)}@rotasaude.app") # último ativo não desativa (Plano 3)
     maintainer.deactivate!
     login!
     expect(response).to have_http_status(:unauthorized)

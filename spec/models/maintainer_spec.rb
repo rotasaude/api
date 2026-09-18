@@ -76,6 +76,7 @@ RSpec.describe Maintainer do
 
   it "deactivates, killing every session at once" do
     maintainer = build_maintainer
+    build_maintainer # segundo mantenedor ativo: `deactivate!` recusa o último ativo (Plano 3)
     maintainer.maintainer_sessions.create!(mfa_verified_at: Time.current, last_seen_at: Time.current)
 
     maintainer.deactivate!
@@ -114,4 +115,113 @@ RSpec.describe Maintainer do
       travel_to(MaintainerInvitation::TTL.from_now + 1.second) { expect(other.reload.usable?).to be(false) }
     end
   end
+
+  # I3 (fix round 2): o código de TOTP é CONSUMIDO. Dentro da janela de drift
+  # (Mfa::Verify::DRIFT) o mesmo código continuava válido por ~90 segundos, em
+  # qualquer endpoint: o que verificou a sessão no navegador ainda emitia, logo
+  # depois, um token de serviço de 90 dias.
+  describe "#consume_totp!" do
+    let(:secret) { ROTP::Base32.random }
+    let(:maintainer) do
+      described_class.create!(email_address: "otp-#{SecureRandom.hex(3)}@rotasaude.app",
+                              otp_secret: secret, otp_enabled_at: Time.current)
+    end
+
+    it "accepts a code once and refuses the very same code afterwards" do
+      code = ROTP::TOTP.new(secret).now
+
+      expect(maintainer.consume_totp!(code)).to be(true)
+      expect(maintainer.reload.last_otp_step).to be_present
+      expect(maintainer.consume_totp!(code)).to be(false)
+    end
+
+    it "refuses a code from an earlier step, still inside the drift window" do
+      travel_to(Time.current) do
+        previous = ROTP::TOTP.new(secret).at(Mfa::Verify::DRIFT.seconds.ago)
+        current = ROTP::TOTP.new(secret).now
+
+        expect(maintainer.consume_totp!(current)).to be(true)
+        expect(maintainer.consume_totp!(previous)).to be(false)
+      end
+    end
+
+    it "accepts the next step, and refuses a wrong or blank code without consuming anything" do
+      expect(maintainer.consume_totp!(ROTP::TOTP.new(secret).now)).to be(true)
+      consumed = maintainer.reload.last_otp_step
+
+      expect(maintainer.consume_totp!("000000")).to be(false)
+      expect(maintainer.consume_totp!(nil)).to be(false)
+      expect(maintainer.reload.last_otp_step).to eq(consumed)
+
+      travel(2.minutes) do
+        expect(maintainer.consume_totp!(ROTP::TOTP.new(secret).now)).to be(true)
+        expect(maintainer.reload.last_otp_step).to be > consumed
+      end
+    end
+
+    # A trava vale para MANTENEDOR e só para ele: mexer em User/Operator
+    # mudaria o app de cidadão e o console, que não são o achado desta rodada.
+    it "leaves Mfa::Verify.totp_valid? — the path User and Operator use — replayable" do
+      code = ROTP::TOTP.new(secret).now
+
+      expect(Mfa::Verify.totp_valid?(maintainer, code)).to be(true)
+      expect(Mfa::Verify.totp_valid?(maintainer, code)).to be(true)
+    end
+  end
+end
+
+# Fix round 1 (Important): `last_active?` era um SELECT sem trava dentro de
+# uma transação de isolamento padrão — duas desativações concorrentes nos
+# dois últimos mantenedores ativos liam uma a outra como ativa, as duas
+# passavam na checagem e as duas commitavam: zero mantenedores ativos,
+# exatamente o que a guarda existe para impedir (TOCTOU). Real threads
+# racing against the real platform database (not transactional fixtures —
+# same pattern as spec/commands/city_lifecycle/invite_admin_spec.rb, which
+# exercises the same pg_advisory_xact_lock mechanism) is the only way to
+# actually exercise the Postgres advisory lock.
+RSpec.describe "Maintainer#deactivate! concurrency safety (fix round 1)" do
+  self.use_transactional_tests = false
+
+  # use_transactional_tests = false means these writes really commit to the
+  # platform database (needed to exercise a real Postgres advisory lock
+  # across two threads/connections) — clean up everything this example
+  # commits so it doesn't leak into other specs that count or list
+  # Maintainer.active.
+  let(:maintainer_a) { Maintainer.create!(email_address: "race-a-#{SecureRandom.hex(4)}@rotasaude.app") }
+  let(:maintainer_b) { Maintainer.create!(email_address: "race-b-#{SecureRandom.hex(4)}@rotasaude.app") }
+
+  after do
+    Maintainer.where(id: [ maintainer_a.id, maintainer_b.id ]).delete_all
+  end
+
+  it "lets exactly one of two concurrent deactivations of the last two active maintainers win" do
+    maintainer_a
+    maintainer_b
+
+    ready = Queue.new
+    go = Queue.new
+    outcomes = Queue.new
+
+    threads = [ maintainer_a, maintainer_b ].map do |maintainer|
+      Thread.new do
+        ready << true
+        go.pop
+        begin
+          Maintainer.find(maintainer.id).deactivate!
+          outcomes << :ok
+        rescue Maintainer::LastActive
+          outcomes << :last_active
+        end
+      end
+    end
+
+    2.times { ready.pop }
+    2.times { go << true }
+    threads.each(&:join)
+
+    results = Array.new(2) { outcomes.pop }
+    expect(results).to contain_exactly(:ok, :last_active)
+    expect(Maintainer.active.where(id: [ maintainer_a.id, maintainer_b.id ]).count).to eq(1)
+  end
+
 end

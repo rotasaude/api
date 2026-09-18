@@ -12,6 +12,9 @@ class Maintainer < PlatformRecord
 
   has_many :maintainer_sessions, dependent: :destroy
   has_many :maintainer_invitations, dependent: :destroy
+  has_many :maintenance_tokens, dependent: :destroy
+
+  class LastActive < StandardError; end
 
   # Mesma custódia de Operator#otp_secret: chave da PLATAFORMA, fixa, porque
   # este atributo pode ser lido de dentro de CityConnection.with.
@@ -56,6 +59,28 @@ class Maintainer < PlatformRecord
     SQL
   end
 
+  # I3 (fix round 2): um código de TOTP vale UMA vez, para esta conta, em
+  # qualquer endpoint.
+  #
+  # `Mfa::Verify::DRIFT` mantém três passos válidos ao mesmo tempo, então o
+  # código digitado no /session/challenge continuava servindo, segundos depois,
+  # de step-up para emitir um token de 90 dias — quem visse a tela uma vez (ou
+  # o código num log, num print, num ombro) tinha os dois. Guardar o PASSO já
+  # consumido, e não o código, recusa a repetição sem nunca gravar segredo.
+  #
+  # A gravação é o próprio teste: `update_all` condicional devolve 1 só quando
+  # o passo é MAIOR que o último consumido, então duas requisições simultâneas
+  # com o mesmo código não passam as duas. Passo mais VELHO também é recusado —
+  # dentro da janela de drift ele é tão reapresentável quanto o repetido.
+  def consume_totp!(code)
+    step = Mfa::Verify.totp_step_for(self, code)
+    return false unless step
+
+    self.class.where(id: id)
+        .where("last_otp_step IS NULL OR last_otp_step < ?", step)
+        .update_all(last_otp_step: step, updated_at: Time.current) == 1
+  end
+
   # register_failure! escreve por update_all, então os atributos em memória aqui
   # estão velhos: um update! direto não veria mudança nenhuma e não escreveria
   # nada. O reload traz o estado real antes de zerar.
@@ -64,10 +89,30 @@ class Maintainer < PlatformRecord
     update!(failed_attempts: 0, locked_until: nil)
   end
 
+  # A trava vive AQUI, não na mutation: `last_active?` sozinho era consultivo, e
+  # qualquer chamador novo (rake, console, mutation futura) trancaria todo mundo
+  # para fora sem perceber.
+  #
+  # Fix round 1: `last_active?` era um SELECT sem trava dentro de uma
+  # transação de isolamento padrão — duas desativações concorrentes nos dois
+  # últimos mantenedores ativos liam uma a outra como ativa, as duas passavam
+  # na checagem e as duas commitavam: zero mantenedores ativos, exatamente o
+  # que a guarda existe para impedir (TOCTOU). A checagem "sou o último?" e a
+  # desativação precisam ser uma coisa só: a trava é por transação (liberada
+  # no commit OU no rollback), chaveada num literal fixo — o recurso disputado
+  # é "o conjunto de mantenedores ativos", não uma linha. connection.execute,
+  # nunca select_value: pg_advisory_xact_lock devolve void, e select_value
+  # tentava tipar esse retorno e logava aviso de OID desconhecido (mesma razão
+  # documentada em CityLifecycle::InviteAdmin, que usa a mesma mecânica).
   def deactivate!
     transaction do
+      self.class.connection.execute("SELECT pg_advisory_xact_lock(hashtext('maintainers:last_active'))")
+
+      raise LastActive, "último mantenedor ativo" if last_active?
+
       update!(deactivated_at: Time.current)
       maintainer_sessions.destroy_all
+      maintenance_tokens.each(&:revoke!)
     end
   end
 

@@ -21,7 +21,47 @@ module MaintainerAuthentication
   IDLE_TTL = 30.minutes
   MAX_TOTP_ATTEMPTS = 5
 
+  # C1 (fix round 2, segunda passada): o teto do HOST inteiro, e não de uma
+  # controller.
+  #
+  # Quem audita um bearer recusado é `resolve_maintenance_credential`, e ele
+  # roda em TODA controller de manutenção — não só em /graphql. Um teto por
+  # controller deixava buraco onde não havia teto nenhum (`GET /session`,
+  # `DELETE /session`) e chegava tarde onde havia: `rate_limit` ACRESCENTA o
+  # callback, então o de `POST /session`, `/session/challenge` e
+  # `/invitations/*` rodava DEPOIS da gravação — a mesma inversão que o
+  # `prepend: true` corrigiu em /graphql. Declarado aqui, ANTES dos três
+  # before_action abaixo, ele roda antes da gravação em qualquer rota, e uma
+  # controller de manutenção nova nasce coberta em vez de nascer com o buraco.
+  #
+  # `scope:` fixo: o teto é do host, uma contagem só, e não uma por controller
+  # que deixaria somar 240 em cada uma.
+  #
+  # Mais LARGO que o de /graphql de propósito: este é o teto de fora, e o
+  # endpoint mais pesado tem o seu próprio, mais estreito. Um navegador de
+  # verdade não chega perto — o fluxo de login inteiro são três requisições —
+  # e o `rate_limit to: 10, within: 3.minutes` de /session e /invitations
+  # continua valendo exatamente como está, por cima deste.
+  HOST_IP_RATE = 240
+  HOST_RATE_WINDOW = 1.minute
+  RATE_LIMIT_SCOPE = "maintenance"
+
+  # `store:` de `rate_limit` é avaliado no CARREGAMENTO da classe: passar
+  # `Rails.cache` direto congelaria o store daquele instante. Este delegador
+  # resolve o cache a cada requisição — em development e staging é o mesmo
+  # SolidCache de sempre, e é o que torna o teto EXERCITÁVEL por um spec (o
+  # cache do ambiente de teste é :null_store, que nunca conta nada).
+  module CacheStore
+    def self.increment(...) = Rails.cache.increment(...)
+  end
+
+  TOO_MANY = -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
+
   included do
+    rate_limit to: HOST_IP_RATE, within: HOST_RATE_WINDOW, name: "host-ip",
+               scope: RATE_LIMIT_SCOPE, store: CacheStore, with: TOO_MANY
+
+    before_action :resolve_maintenance_credential
     before_action :require_maintenance_origin
     before_action :require_maintainer_authentication
   end
@@ -34,10 +74,85 @@ module MaintainerAuthentication
 
   private
 
-  def current_maintainer = Current.maintainer_session&.maintainer
+  BEARER = /\ABearer (.+)\z/
 
-  # Origem exata + header próprio. Sem os dois, um formulário de outro site
-  # dispararia mutation com o cookie do mantenedor.
+  def current_maintainer = Current.maintenance_credential&.maintainer
+
+  # I5 (spec §9): `request_id` e `ip` fazem parte do payload de auditoria — são
+  # o que liga uma linha da trilha à requisição no log da aplicação. Nenhuma
+  # das duas chaves esbarra na Ruling R18.
+  def audit_request_fields = { request_id: request.request_id, ip: request.remote_ip }
+
+  # Cookie OU bearer, nunca os dois: com as duas credenciais presentes não há
+  # resposta honesta para "quem agiu", e a auditoria é o que resta quando os
+  # poderes são totais (spec §7).
+  #
+  # Fix round 1 (I2): RESOLVER não escreve. `touch_session` saiu daqui — antes
+  # rodava aqui, ANTES da checagem de Origin, então um cookie válido com Origin
+  # errado ainda renovava a janela de inatividade da vítima sem nunca passar
+  # pela trava de CSRF. Quem toca a sessão agora é
+  # `require_maintainer_authentication`, que só roda depois da origem aprovar.
+  def resolve_maintenance_credential
+    bearer = request.headers["Authorization"].to_s[BEARER, 1]
+    cookie = cookies.signed[COOKIE]
+
+    return render(json: { error: "ambiguous_credentials" }, status: :unauthorized) if bearer && cookie
+
+    return resolve_token_credential(bearer) if bearer
+
+    session = find_verified_session
+    return unless session
+
+    Current.maintainer_session = session
+    Current.maintenance_credential = Maintenance::Credential.session(session)
+  end
+
+  def resolve_token_credential(secret)
+    token = MaintenanceToken.authenticate(secret)
+    unless token
+      audit_refused_bearer(secret)
+      return render(json: { error: "unauthenticated" }, status: :unauthorized)
+    end
+
+    token.touch_use!(ip: request.remote_ip)
+    Current.maintenance_credential = Maintenance::Credential.token(token)
+  end
+
+  # Fix round 1 (Critical): NUNCA ecoa o valor apresentado. O prefixo gravado é
+  # a constante DESTE ambiente, nunca um pedaço do que chegou no header.
+  #
+  # Fix round 2 (C1): e só audita o que tem a CARA de um token deste ambiente.
+  # A versão anterior gravava uma linha por bearer recusado, inclusive por lixo
+  # de prober — em `maintenance.%`, que o trigger torna indelével: qualquer um,
+  # sem credencial nenhuma, fazia o banco de plataforma crescer e afogava
+  # `auditEvents` (teto de 200, mais novos primeiro). Um evento que diz só
+  # "unrecognized" não carrega informação; o que interessa é alguém insistindo
+  # com um segredo do formato certo, e ESSE continua sendo gravado, um por
+  # tentativa. Para o resto sobram o 401 e o teto por IP da controller.
+  def audit_refused_bearer(secret)
+    return unless secret.to_s.start_with?(MaintenanceToken.prefix)
+
+    # Sem maintainer_id: um segredo recusado não identifica ninguém.
+    MaintenanceAudit.record("maintenance.token.refused", outcome: "rejected", module_name: "token",
+                            maintainer_id: nil, credential: { "kind" => "token" },
+                            token_prefix: MaintenanceToken.prefix, **audit_request_fields)
+  end
+
+  # Fix round 1 (I3), estendido no round 2 (M7): endpoints do NAVEGADOR —
+  # cookie, TOTP, bloqueio por conta — recusam bearer. Um token de serviço se
+  # identifica pela query GraphQL `me`, nunca por ali. Mora no concern porque
+  # `SessionsController` e `InvitationsController` precisam da MESMA trava: em
+  # `/invitations/*` um bearer era aceito e, por ser token, ainda pulava a
+  # checagem de Origin logo abaixo.
+  def require_browser_credential
+    return unless Current.maintenance_credential&.token?
+
+    render json: { error: "browser_only" }, status: :forbidden
+  end
+
+  # A trava de CSRF é do NAVEGADOR. Um token não tem Origin nem cookie, então
+  # exigir os dois dele recusaria toda automação; o que protege o token é ele
+  # próprio ser secreto e não viajar sozinho como o cookie viaja.
   #
   # I3 (fix round 2): FALHA FECHADA quando a variável não está configurada. A
   # comparação direta degradava para `nil == nil` — sem MAINTENANCE_FRONTEND_ORIGIN
@@ -46,6 +161,8 @@ module MaintainerAuthentication
   # nunca permissão. MaintenanceApi.check_boot! torna a ausência barulhenta em
   # ambiente publicado; aqui ela é só fechada.
   def require_maintenance_origin
+    return if Current.maintenance_credential&.token?
+
     expected = ENV[MaintenanceApi::ORIGIN].to_s
     return head(:forbidden) if expected.blank?
     return head(:forbidden) unless request.headers["Origin"] == expected
@@ -54,7 +171,12 @@ module MaintainerAuthentication
   end
 
   def require_maintainer_authentication
-    resume_maintainer_session || render(json: { error: "unauthenticated" }, status: :unauthorized)
+    credential = Current.maintenance_credential
+    return render(json: { error: "unauthenticated" }, status: :unauthorized) unless credential
+
+    # Fix round 1 (I2): o toque na sessão mora AQUI agora, depois que a Origin
+    # já foi aprovada (este before_action roda por último) — nunca antes dela.
+    touch_session(Current.maintainer_session) if credential.human?
   end
 
   def resume_maintainer_session

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_17_000003) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_18_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -84,6 +84,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_000003) do
     t.string "email_address", null: false
     t.integer "failed_attempts", default: 0, null: false
     t.uuid "invited_by_id"
+    t.bigint "last_otp_step"
     t.datetime "locked_until"
     t.datetime "otp_enabled_at"
     t.jsonb "otp_recovery_codes", default: [], null: false
@@ -91,6 +92,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_000003) do
     t.string "password_digest"
     t.datetime "updated_at", null: false
     t.index "lower((email_address)::text)", name: "index_maintainers_on_lower_email", unique: true
+  end
+
+  create_table "maintenance_tokens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "access", null: false
+    t.string "city_slugs", default: [], null: false, array: true
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "last_used_at"
+    t.string "last_used_ip"
+    t.uuid "maintainer_id", null: false
+    t.string "name", null: false
+    t.datetime "revoked_at"
+    t.string "token_digest", null: false
+    t.string "token_prefix", null: false
+    t.datetime "updated_at", null: false
+    t.index ["maintainer_id"], name: "index_maintenance_tokens_on_maintainer_id"
+    t.index ["token_digest"], name: "index_maintenance_tokens_on_token_digest", unique: true
+    t.check_constraint "access::text = ANY (ARRAY['read'::character varying, 'read_write'::character varying]::text[])", name: "ck_maintenance_tokens_access"
   end
 
   create_table "operator_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

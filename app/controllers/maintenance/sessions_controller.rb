@@ -8,6 +8,15 @@ module Maintenance
   class SessionsController < BaseController
     allow_unauthenticated_maintainer_access only: %i[create challenge_totp destroy]
 
+    # Fix round 1 (I3): estes endpoints são do NAVEGADOR — cookie, TOTP,
+    # bloqueio por conta. Um token de serviço se identifica pela query
+    # GraphQL `me`, nunca por aqui; `show` lia `Current.maintainer_session`, que
+    # um token nunca define, e estourava NoMethodError. Roda em TODA ação,
+    # inclusive as que dispensam `require_maintainer_authentication` — um
+    # bearer não vira sessão de navegador só porque a ação é pública. A trava
+    # mora em MaintainerAuthentication (M7), compartilhada com as invitations.
+    before_action :require_browser_credential
+
     rate_limit to: 10, within: 3.minutes, only: %i[create challenge_totp],
                with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
@@ -34,7 +43,8 @@ module Maintenance
       if maintainer.locked?
         dummy_authenticate
         MaintenanceAudit.record("maintenance.session.failed", outcome: "rejected", module_name: "session",
-                                maintainer_id: maintainer.id, credential: { "kind" => "password" })
+                                maintainer_id: maintainer.id, credential: { "kind" => "password" },
+                                **audit_request_fields)
         return render(json: { error: "invalid_credentials" }, status: :unauthorized)
       end
 
@@ -66,7 +76,12 @@ module Maintenance
       # C1: TOTP e nada mais. `Mfa::Verify.call` aceitaria um recovery code no
       # lugar do código — um segundo fator estático para a conta de maior poder
       # do sistema.
-      return register_failed_totp(session) unless Mfa::Verify.totp_valid?(session.maintainer, params[:code])
+      #
+      # I3 (fix round 2): `consume_totp!`, não `totp_valid?` — o código é
+      # CONSUMIDO aqui. Sem isso, o mesmo código ainda emitia um token de 90
+      # dias no step-up de `createMaintenanceToken`, segundos depois. Um código
+      # repetido conta como falha, como qualquer código que não serve.
+      return register_failed_totp(session) unless session.maintainer.consume_totp!(params[:code])
 
       # Atômico, pelo mesmo motivo de Operators::SessionsController: o cookie já
       # foi plantado no passo da senha, então um carimbo sem evento de auditoria
@@ -80,7 +95,8 @@ module Maintenance
 
         MaintenanceAudit.record("maintenance.session.started", outcome: "ok", module_name: "session",
                                 maintainer_id: session.maintainer_id,
-                                credential: MaintenanceAudit.credential_for(session: session))
+                                credential: MaintenanceAudit.credential_for(session: session),
+                                **audit_request_fields)
         true
       end
       return render(json: { error: "invalid_session" }, status: :unauthorized) unless verified
@@ -102,7 +118,8 @@ module Maintenance
       if session
         MaintenanceAudit.record("maintenance.session.ended", outcome: "ok", module_name: "session",
                                 maintainer_id: session.maintainer_id,
-                                credential: MaintenanceAudit.credential_for(session: session))
+                                credential: MaintenanceAudit.credential_for(session: session),
+                                **audit_request_fields)
       end
       terminate_maintenance_session
       head :no_content
@@ -124,7 +141,7 @@ module Maintenance
 
       MaintenanceAudit.record(locked ? "maintenance.session.locked" : "maintenance.session.failed",
                               outcome: "rejected", module_name: "session", maintainer_id: maintainer.id,
-                              credential: { "kind" => "password" })
+                              credential: { "kind" => "password" }, **audit_request_fields)
 
       # I2: a resposta é a mesma bloqueado ou não. O bloqueio continua valendo
       # (o retorno antecipado lá em cima), só não é anunciado.
@@ -148,7 +165,8 @@ module Maintenance
       # única prova de que alguém continuou tentando com a conta travada.
       if session.maintainer.locked?
         MaintenanceAudit.record("maintenance.session.failed", outcome: "rejected", module_name: "session",
-                                maintainer_id: session.maintainer_id, credential: { "kind" => "totp" })
+                                maintainer_id: session.maintainer_id, credential: { "kind" => "totp" },
+                                **audit_request_fields)
         return nil
       end
 
@@ -171,7 +189,8 @@ module Maintenance
 
       MaintenanceAudit.record(locked ? "maintenance.session.locked" : "maintenance.session.failed",
                               outcome: "rejected", module_name: "session",
-                              maintainer_id: session.maintainer_id, credential: { "kind" => "totp" })
+                              maintainer_id: session.maintainer_id, credential: { "kind" => "totp" },
+                              **audit_request_fields)
 
       attempts = MaintainerSession.where(id: session.id).pick(:totp_attempts)
       over_cap = attempts.nil? || attempts >= MaintainerAuthentication::MAX_TOTP_ATTEMPTS

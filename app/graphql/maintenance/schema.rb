@@ -6,6 +6,7 @@
 module Maintenance
   class Schema < GraphQL::Schema
     query Types::QueryType
+    mutation Types::MutationType
 
     max_depth 10
     max_complexity 200
@@ -15,6 +16,12 @@ module Maintenance
     # simples de segurar um processo Puma numa conexão lenta de cidade — este é
     # o limite que interrompe a execução e devolve erro no campo.
     use GraphQL::Schema::Timeout, max_seconds: 10
+
+    # O que um token de serviço não pode fazer (spec §7, Task 5): recusa ANTES
+    # de executar, pelo mesmo mecanismo de análise que já barra profundidade e
+    # complexidade acima — nenhum resolver roda para uma query recusada.
+    query_analyzer Analyzers::WriteScope
+    query_analyzer Analyzers::HumanOnly
 
     def self.unauthorized_object(error)
       raise GraphQL::ExecutionError, "não autorizado: #{error.type.graphql_name}"
