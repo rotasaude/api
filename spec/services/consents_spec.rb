@@ -68,4 +68,33 @@ RSpec.describe Consents do
       expect(described_class.revoke_intent?(nil)).to be(false)
     end
   end
+
+  # `consent_terms.version` é STRING e `consents.version` é INTEGER: a vigente
+  # é a de maior valor NUMÉRICO (MAX de string diria que "9" > "10"), e sai
+  # sempre como String — inclusive no fallback sem termo.
+  describe ".current_version" do
+    def term!(version)
+      ConsentTerm.create!(version: version, body: "termo", published_at: Time.current)
+    end
+
+    it "orders versions numerically, so \"10\" beats \"9\"" do
+      term!("9")
+      term!("10")
+
+      expect(described_class.current_version).to eq("10")
+    end
+
+    it "does not depend on insertion order" do
+      term!("10")
+      term!("9")
+
+      expect(described_class.current_version).to eq("10")
+    end
+
+    it "falls back to \"1\" as a String when the city has no term" do
+      expect(ConsentTerm.count).to eq(0)
+
+      expect(described_class.current_version).to eq("1")
+    end
+  end
 end

@@ -188,7 +188,7 @@ module CityInventory
           { channel: r.channel, destination: r.destination, escalation_order: r.escalation_order }
         end,
         accounts: accounts_for,
-        consent_version: ConsentTerm.maximum(:version),
+        consent_version: ConsentTerm.current_version,
         active_protocols: ProtocolDefinition.active.order(:name).pluck(:name, :version).map { |n, v| "#{n} v#{v}" },
         counts: counts
       }

@@ -46,11 +46,10 @@ module Consents
     REVOKE_INTENT_PATTERNS.any? { |re| text.match?(re) }
   end
 
-  # Versão vigente do termo na cidade da conexão corrente (o banco é da cidade).
+  # Versão vigente do termo na cidade da conexão corrente (o banco é da cidade),
+  # sempre String. Sem termo na cidade, cai na versão das credentials (ou 1).
   def self.current_version
-    # ConsentTerm vem no Phase 6; até lá, fallback ao schema atual (1).
-    return Rails.application.credentials.dig(:policy, :version) || 1 unless defined?(ConsentTerm)
-    ConsentTerm.maximum(:version) || 1
+    (ConsentTerm.current_version || Rails.application.credentials.dig(:policy, :version) || 1).to_s
   end
 
   def self.policy_text_sha(version)

@@ -217,7 +217,7 @@ RSpec.describe "Maintenance city", type: :request do
   # (fix round 1, ruling P9) `consent_terms.version` é STRING no banco da
   # cidade — o campo não pode reimplementar "qual é a versão vigente", tem de
   # responder exatamente o que `Consents.current_version` (o resto do app)
-  # trata como atual, seja lá qual for o resultado do MAX lexicográfico.
+  # trata como atual (ordenação numérica: "10", não o "9" de um MAX de string).
   it "answers the consent term version exactly as the domain's Consents.current_version does" do
     ConsentTerm.create!(version: "9", body: "termo", published_at: Time.current)
     ConsentTerm.create!(version: "10", body: "termo", published_at: Time.current)

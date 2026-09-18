@@ -68,6 +68,17 @@ RSpec.describe CityInventory do
       expect(entry[:counts]).to include(conversations: 1)
     end
 
+    # consent_terms.version é STRING: MAX de string diria "9". Sem termo, a
+    # tela mostra que não há termo (nil), não o fallback das credentials.
+    it "reports the current consent term numerically, so \"10\" beats \"9\"" do
+      CityConnection.with(healthy) do
+        ConsentTerm.create!(version: "9", body: "termo", published_at: Time.current)
+        ConsentTerm.create!(version: "10", body: "termo", published_at: Time.current)
+      end
+
+      expect(entry_for("saudavel")[:consent_version]).to eq("10")
+    end
+
     # A contagem prova que a conversa existe; o telefone dela é dado do cidadão
     # e não tem lugar numa tela de configuração. Este exemplo falha se alguém
     # acrescentar "só mais um campo" ao levantamento.

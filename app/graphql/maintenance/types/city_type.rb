@@ -29,8 +29,8 @@ module Maintenance
       # listas — ausência vira lista vazia, não nulo.
       #
       # P9 (fix round 1): `consent_terms.version` é STRING no banco da cidade
-      # (db/city_schema.rb), não Integer — `ConsentTerm.maximum(:version)`
-      # sozinho é lexicográfico ("9" > "10") e o coercer Int do graphql-ruby
+      # (db/city_schema.rb), não Integer — um MAX de string seria
+      # lexicográfico ("9" > "10") e o coercer Int do graphql-ruby
       # faz `to_i` silenciosamente ("v2" → 0). O campo é tipado `String` e
       # resolve pela MESMA definição de "versão vigente" que o resto do app
       # usa (`Consents.current_version`, app/services/consents.rb) — nunca

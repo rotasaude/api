@@ -31,7 +31,8 @@ class Conversation < ApplicationRecord
 
   def consented?
     return false unless state_consented?
-    active_consent&.version == Consents.current_version
+    # consents.version é INTEGER; a versão vigente é String.
+    active_consent&.version&.to_s == Consents.current_version
   end
 
   def active_consent

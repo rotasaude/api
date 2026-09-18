@@ -19,7 +19,7 @@
 # ignorada — ativa, suspensa ou arquivada não volta a ser provisionada.
 #
 # NÃO semeia consent_terms (Plano 4, decisão 8): Consents.current_version lê
-# ConsentTerm.maximum(:version) e o texto do termo vem das credentials.
+# ConsentTerm.current_version e o texto do termo vem das credentials.
 class ProvisionCityJob < ApplicationJob
   queue_as :default
 
