@@ -189,7 +189,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_18_000001) do
     t.text "reason"
     t.index ["protocol_definition_id"], name: "index_protocol_activations_on_protocol_definition_id"
     t.check_constraint "actor_kind::text = ANY (ARRAY['user'::text, 'maintainer'::text])", name: "ck_protocol_activations_actor_kind"
-    t.check_constraint "kind::text = 'signed'::text OR length(btrim(reason)) > 0", name: "ck_protocol_activations_revert_reason"
+    t.check_constraint "kind::text = 'signed'::text OR reason IS NOT NULL AND length(btrim(reason)) > 0", name: "ck_protocol_activations_revert_reason"
     t.check_constraint "kind::text = ANY (ARRAY['signed'::text, 'emergency_revert'::text])", name: "ck_protocol_activations_kind"
   end
 

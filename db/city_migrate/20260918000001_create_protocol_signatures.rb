@@ -51,7 +51,13 @@ class CreateProtocolSignatures < ActiveRecord::Migration[8.1]
                          name: "ck_protocol_activations_kind"
     add_check_constraint :protocol_activations, "actor_kind::text = ANY (ARRAY['user', 'maintainer']::text[])",
                          name: "ck_protocol_activations_actor_kind"
-    add_check_constraint :protocol_activations, "kind = 'signed' OR length(btrim(reason)) > 0",
+    # kind = 'signed' OR length(btrim(reason)) > 0 evaluates to NULL (not
+    # false) quando kind = 'emergency_revert' e reason IS NULL — Postgres
+    # trata NULL como aprovação de CHECK, não como recusa (achado do review:
+    # uma reversão de emergência sem motivo passava sempre que o modelo fosse
+    # contornado). O IS NOT NULL explícito fecha isso.
+    add_check_constraint :protocol_activations,
+                         "kind = 'signed' OR (reason IS NOT NULL AND length(btrim(reason)) > 0)",
                          name: "ck_protocol_activations_revert_reason"
 
     execute File.read(Rails.root.join("db/city_triggers.sql"))
