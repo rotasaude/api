@@ -1,7 +1,7 @@
 module Maintenance
   module Types
     class CityCountsType < BaseObject
-      description "Contagens do banco da cidade — nenhum dado de cidadão sai daqui, só números (spec §8)."
+      description "Contagens do banco da cidade — nenhum dado de cidadão sai daqui, só números."
 
       field :users, Integer, null: false
       field :conversations, Integer, null: false

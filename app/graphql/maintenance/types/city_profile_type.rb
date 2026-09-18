@@ -1,7 +1,7 @@
 module Maintenance
   module Types
     class CityProfileType < BaseObject
-      description "Identidade da cidade no banco dela (Task 3, P7)."
+      description "Identidade da cidade no banco dela."
 
       field :name, String, null: false
       field :uf, String, null: true

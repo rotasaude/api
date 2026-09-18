@@ -1,7 +1,7 @@
 module Maintenance
   module Types
     class ProtocolDefinitionType < BaseObject
-      description "Definição de protocolo, metadado apenas (ver ADR-0009)."
+      description "Definição de protocolo, metadado apenas."
 
       field :name, String, null: false
       field :version, Integer, null: false

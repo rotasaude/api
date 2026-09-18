@@ -1,7 +1,7 @@
 module Maintenance
   module Types
     class DashboardMetricType < BaseObject
-      description "Agregado pré-computado do dashboard da cidade (ADR-0010). `label` é a chave dentro de " \
+      description "Agregado pré-computado do dashboard da cidade. `label` é a chave dentro de " \
                    "dimension/period (ex.: um tier, uma prioridade, \"total\") — nunca dado de cidadão."
 
       field :dimension, String, null: false

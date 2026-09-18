@@ -1,7 +1,7 @@
 module Maintenance
   module Types
     class ReportSnapshotType < BaseObject
-      description "Relatório congelado de uma triage, só metadado (ADR-0010). " \
+      description "Relatório congelado de uma triage, só metadado. " \
                    "`payload`, `outcome`, `signature` e `token` são conteúdo/segredo — nunca saem daqui."
 
       field :id, ID, null: false

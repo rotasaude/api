@@ -1,7 +1,7 @@
 module Maintenance
   module Types
     class AlertRecipientType < BaseObject
-      description "Destinatário de alerta urgente da cidade. Só configuração (ADR-0013)."
+      description "Destinatário de alerta urgente da cidade. Só configuração."
 
       field :channel, String, null: false
       field :destination, String, null: false
