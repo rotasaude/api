@@ -7,6 +7,13 @@ module Maintenance
     # governado pela Ruling R18, que não guarda conteúdo livre do cliente.
     # Só `reason_given` (booleano) entra na auditoria; o texto em si fica na
     # linha `emergency_revert` e no DomainEvent da própria cidade.
+    #
+    # `reason_given` usa EXATAMENTE a regra do command (`strip.empty?`, que não
+    # remove U+00A0): a auditoria diz "houve motivo" exatamente quando o
+    # command passou da checagem de motivo — nunca uma regra própria que
+    # divirja dela (`present?` divergia em U+00A0). A recusa só vai
+    # para `reason` quando é do motivo; qualquer outra (nada a reverter, versão
+    # anterior indisponível) é do protocolo, `name`.
     class RevertProtocolActivation < CityMutation
       description "Reversão de emergência: volta a ativação da cidade para a versão anterior assinada, " \
                   "com motivo. Exige o TOTP do momento; o motivo fica na cidade, nunca na auditoria da plataforma."
@@ -17,8 +24,9 @@ module Maintenance
 
       def resolve(city_slug:, name:, reason:, code:)
         in_city(city_slug: city_slug, step_up_code: code, event: "maintenance.protocol.reverted", module_name: "protocol",
-                rejection_path: "reason", protocol_key: name,
-                reason_given: reason.to_s.strip.present?, changed_fields: [ "status" ]) do |actor, correlation_id|
+                rejection_path: ->(result) { result.reason == :reason_required ? "reason" : "name" },
+                protocol_key: name, reason_given: !reason.to_s.strip.empty?,
+                changed_fields: [ "status" ]) do |actor, correlation_id|
           Protocols::RevertActivation.call(name: name, reason: reason, by: actor, correlation_id: correlation_id)
         end
       end

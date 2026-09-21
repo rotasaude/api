@@ -719,7 +719,7 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
         expect(revert_audit.payload).to include("reason_given" => false)
       end
 
-      it "refuses to revert a revert, on reason" do
+      it "refuses to revert a revert, on name" do
         legacy_active_version!
         publish_and_activate_v2!
         with_fresh_totp { |code| revert!(reason: "motivo 1", code: code) }
@@ -728,8 +728,34 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
         with_fresh_totp { |code| revert!(reason: "motivo 2", code: code) }
 
         expect(revert_payload["ok"]).to be(false)
-        expect(revert_payload["errors"].map { |e| e["path"] }).to eq([ "reason" ])
+        expect(revert_payload["errors"].map { |e| e["path"] }).to eq([ "name" ])
         expect(version_row(1).status).to eq("active")
+      end
+
+      it "refuses a protocol with no active version, on name" do
+        with_fresh_totp { |code| revert!(name: "inexistente", reason: "motivo", code: code) }
+
+        expect(revert_payload["ok"]).to be(false)
+        expect(revert_payload["errors"].map { |e| e["path"] }).to eq([ "name" ])
+      end
+
+      # O command só recusa motivo vazio (:reason_required) depois de
+      # String#strip, que não remove U+00A0. `reason_given` segue EXATAMENTE
+      # essa regra: para o command, um motivo só de espaço não-separável foi
+      # dado — é a validação de presença da linha ProtocolActivation (blank?,
+      # que conta U+00A0) que o recusa depois, como :invalid, desfazendo tudo.
+      it "audits reason_given with the command's own rule, even for a no-break-space reason" do
+        legacy_active_version!
+        publish_and_activate_v2!
+
+        with_fresh_totp { |code| revert!(reason: "\u00A0", code: code) }
+
+        expect(revert_payload["ok"]).to be(false)
+        expect(version_row(2).status).to eq("active")
+        expect(ProtocolActivation.where(kind: "emergency_revert")).to be_empty
+        revert_events = PlatformEvent.where(name: "maintenance.protocol.reverted")
+        expect(revert_events.map { |e| e.payload["outcome"] }).to match_array(%w[attempted rejected])
+        expect(revert_events.map { |e| e.payload["reason_given"] }).to eq([ true, true ])
       end
     end
 
