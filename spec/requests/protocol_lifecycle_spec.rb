@@ -230,6 +230,140 @@ RSpec.describe "Protocol lifecycle", type: :request do
     end
   end
 
+  # Fix final do Plano 2 (Minor 4): a matriz de autorização inteira, pela borda
+  # HTTP — quem não tem o papel leva 403 mesmo COM step-up recente, e nada muda.
+  describe "matriz de autorização" do
+    let(:admin) { enrolled_user(email: "admin@example.org", role: "municipal_admin") }
+
+    # dengue v1 active com linha-base; v2 published com duas assinaturas de
+    # ativação; v3 in_review com duas de publicação. Cada ato tem um alvo
+    # pronto, então a única coisa que decide o 403 é o papel.
+    def ready_protocols!
+      v1 = ProtocolDefinition.create!(name: "dengue", version: 1, status: "active", activated_at: 3.days.ago,
+                                      definition: protocol_definition_hash)
+      v1.activations.create!(kind: "baseline", actor_kind: "system", actor_id: nil, created_at: 3.days.ago)
+      v2 = ProtocolDefinition.create!(name: "dengue", version: 2, status: "published",
+                                      definition: protocol_definition_hash(version: 2))
+      sign!(v2, purpose: "activation", by: ana)
+      sign!(v2, purpose: "activation", by: bia)
+      v3 = ProtocolDefinition.create!(name: "dengue", version: 3, status: "in_review",
+                                      definition: protocol_definition_hash(version: 3))
+      sign!(v3, purpose: "publication", by: ana)
+      sign!(v3, purpose: "publication", by: bia)
+      [ v1, v2, v3 ]
+    end
+
+    def statuses = ProtocolDefinition.where(name: "dengue").order(:version).pluck(:status)
+
+    it "viewer e autor, com step-up, levam 403 em assinar, ativar, aposentar e reverter" do
+      ready_protocols!
+      before = statuses
+
+      { "viewer" => viewer, "author" => author }.each do |label, user|
+        [
+          [ "/protocols/3/signatures", { name: "dengue", purpose: "publication" } ],
+          [ "/protocols/2/activate", { name: "dengue" } ],
+          [ "/protocols/2/retire", { name: "dengue" } ],
+          [ "/protocols/revert", { name: "dengue", reason: "erro" } ]
+        ].each do |path, body|
+          sign_in_stepped_up!(user)
+          expect {
+            post path, params: body, as: :json
+          }.not_to change { [ ProtocolSignature.count, ProtocolActivation.count ] }
+          expect(response).to have_http_status(:forbidden), "#{label} #{path}: #{response.status} #{response.body}"
+          expect(json).to eq("error" => "forbidden"), "#{label} #{path}: #{response.body}"
+        end
+      end
+
+      expect(statuses).to eq(before)
+    end
+
+    it "municipal_admin ativa e reverte, mas leva 403 ao aposentar" do
+      ready_protocols!
+
+      sign_in_stepped_up!(admin)
+      post "/protocols/2/retire", params: { name: "dengue" }, as: :json
+      expect(response).to have_http_status(:forbidden)
+      expect(json).to eq("error" => "forbidden")
+      expect(statuses).to eq(%w[active published in_review])
+
+      sign_in_stepped_up!(admin)
+      post "/protocols/2/activate", params: { name: "dengue" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(statuses).to eq(%w[published active in_review])
+
+      sign_in_stepped_up!(admin)
+      post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(statuses).to eq(%w[active published in_review])
+    end
+
+    it "revisor sem protocol_publisher leva 403 ao publicar" do
+      ready_protocols!
+
+      sign_in_stepped_up!(ana)
+      post "/protocols/3/publish", params: { name: "dengue" }, as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(json).to eq("error" => "forbidden")
+      expect(statuses).to eq(%w[active published in_review])
+    end
+
+    it "reverter uma reversão responde 422 not_revertible" do
+      ready_protocols!
+      sign_in_stepped_up!(publisher)
+      post "/protocols/2/activate", params: { name: "dengue" }, as: :json
+      expect(response).to have_http_status(:ok)
+      post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade" }, as: :json
+      expect(response).to have_http_status(:ok)
+
+      expect {
+        post "/protocols/revert", params: { name: "dengue", reason: "de novo" }, as: :json
+      }.not_to change(ProtocolActivation, :count)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json["error"]).to eq("not_revertible")
+      expect(statuses).to eq(%w[active published in_review])
+    end
+
+    it "sem sessão: 401 unauthenticated em todo ato do ciclo" do
+      ready_protocols!
+
+      [
+        [ "/protocols/1/submit", { name: "dengue" } ],
+        [ "/protocols/3/signatures", { name: "dengue", purpose: "publication" } ],
+        [ "/protocols/3/publish", { name: "dengue" } ],
+        [ "/protocols/2/activate", { name: "dengue" } ],
+        [ "/protocols/2/retire", { name: "dengue" } ],
+        [ "/protocols/revert", { name: "dengue", reason: "erro" } ]
+      ].each do |path, body|
+        post path, params: body, as: :json
+        expect(response).to have_http_status(:unauthorized), "#{path}: #{response.status}"
+        expect(json).to eq("error" => "unauthenticated"), "#{path}: #{response.body}"
+      end
+      expect(statuses).to eq(%w[active published in_review])
+    end
+
+    it "step-up vencido (6 minutos depois): 401 mfa_required" do
+      ready_protocols!
+      sign_in_stepped_up!(publisher)
+
+      travel 6.minutes do
+        [
+          [ "/protocols/3/publish", { name: "dengue" } ],
+          [ "/protocols/2/activate", { name: "dengue" } ],
+          [ "/protocols/2/retire", { name: "dengue" } ],
+          [ "/protocols/revert", { name: "dengue", reason: "erro" } ]
+        ].each do |path, body|
+          post path, params: body, as: :json
+          expect(response).to have_http_status(:unauthorized), "#{path}: #{response.status} #{response.body}"
+          expect(json).to eq("error" => "mfa_required"), "#{path}: #{response.body}"
+        end
+      end
+      expect(statuses).to eq(%w[active published in_review])
+    end
+  end
+
   describe "reversão de emergência sobre a linha-base (Task 1)" do
     it "volta para a versão anterior e registra o motivo na linha emergency_revert" do
       legacy = ProtocolDefinition.create!(name: "dengue", version: 1, status: "active", activated_at: 3.days.ago,
