@@ -11,7 +11,13 @@
 #   3. CityWriter abre a cidade e o bloco roda o command com o ator mantenedor e
 #      o correlation_id, que o command grava no evento de domínio;
 #   4. resultado: `ok`, `rejected` (regra de domínio, cidade inexistente ou não
-#      ativa, step-up) ou `error` (qualquer exceção, inclusive conexão).
+#      ativa, step-up) ou `error` (o command levantou, ou a cidade não abriu).
+#      Sem resultado — o "desconhecido" da spec §9 — quando a conexão cai
+#      DEPOIS de o command começar (pode ter comitado): o cliente recebe
+#      CITY_UNREACHABLE dizendo isso, com o correlation id para conferir na
+#      cidade. Uma falha ao GRAVAR o resultado também deixa a tentativa sem
+#      resultado (BaseMutation#record_outcome) — o cliente recebe o resultado
+#      real do command.
 #
 # A mensagem de uma exceção nunca sai: a resposta leva a classe (ou, para falha
 # de conexão, a mensagem já redigida por CityWriter).
@@ -81,7 +87,9 @@ module Maintenance
         refusal = unauditable_input(city_slug, fields, DEFAULT_FIELD_PATHS.merge(field_paths))
         return refusal if refusal
 
-        audited(event: event, module_name: module_name, city_slug: city_slug, **fields) do |correlation_id|
+        correlation_id = nil
+        audited(event: event, module_name: module_name, city_slug: city_slug, **fields) do |attempt_id|
+          correlation_id = attempt_id
           city = City.find_by(slug: city_slug)
           raise Rejected.new("cidade inexistente", path: "citySlug") if city.nil?
 
@@ -95,13 +103,25 @@ module Maintenance
           result
         end
       rescue CityWriter::Unreachable => e
-        raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_UNREACHABLE" })
+        raise GraphQL::ExecutionError.new(unreachable_message(e, correlation_id), extensions: { "code" => "CITY_UNREACHABLE" })
       rescue GraphQL::ExecutionError
         raise
       rescue StandardError => e
         Rails.logger.warn("Maintenance::CityMutation: #{e.class} (mensagem omitida)")
         raise GraphQL::ExecutionError.new("falha ao escrever na cidade (#{e.class.name})",
                                           extensions: { "code" => "CITY_WRITE_FAILED" })
+      end
+
+      def outcome_unknown?(error) = error.is_a?(CityWriter::Unreachable) && error.started?
+
+      # A mensagem de CityWriter::Unreachable já vem redigida. Se a conexão caiu
+      # depois de o command começar, o cliente precisa saber que NÃO sabemos o
+      # resultado — repetir às cegas pode escrever duas vezes.
+      def unreachable_message(error, correlation_id)
+        return error.message unless error.started?
+
+        "resultado desconhecido: a conexão com a cidade caiu durante a escrita; confira na cidade " \
+          "pelo correlation id #{correlation_id} antes de repetir (#{error.message})"
       end
 
       # O primeiro valor que não pode ir para a auditoria vira UM erro de

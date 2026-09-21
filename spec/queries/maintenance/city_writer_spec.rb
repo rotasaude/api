@@ -38,7 +38,20 @@ RSpec.describe Maintenance::CityWriter do
       .and_raise(PG::ConnectionBad.new("connection to postgres://rota_city_x:s3nha@db:5432/x failed"))
 
     expect { described_class.call(city) { :never } }
-      .to raise_error(described_class::Unreachable) { |e| expect(e.message).not_to include("s3nha") }
+      .to raise_error(described_class::Unreachable) do |e|
+        expect(e.message).not_to include("s3nha")
+        expect(e).not_to be_started
+      end
+  end
+
+  # Spec §9: a conexão que cai com o bloco já rodando deixa o resultado
+  # desconhecido — quem chama precisa saber a diferença.
+  it "marks a connection failure raised by the block as started" do
+    expect { described_class.call(city) { raise ActiveRecord::ConnectionFailed, "postgres://u:s3nha@db/x gone" } }
+      .to raise_error(described_class::Unreachable) do |e|
+        expect(e).to be_started
+        expect(e.message).not_to include("s3nha")
+      end
   end
 
   it "lets any other exception raised by the block go up untouched" do

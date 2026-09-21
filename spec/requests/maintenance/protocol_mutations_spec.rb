@@ -205,15 +205,53 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
       expect(audit_events).to be_empty
     end
 
-    it "answers CITY_UNREACHABLE when the city does not answer, audited as error" do
-      allow(Maintenance::CityWriter).to receive(:call)
-        .and_raise(Maintenance::CityWriter::Unreachable, "PG::ConnectionBad: connection to [redigido] failed")
+    # Spec §9, os três casos de uma escrita cujo resultado não chega inteiro.
+    # 1. A cidade não abre: o command nem começou — `error` é a verdade.
+    it "answers CITY_UNREACHABLE when the city does not open, audited as error: nothing ran" do
+      allow(CityConnection).to receive(:with)
+        .and_raise(ActiveRecord::ConnectionNotEstablished, "connection to postgres://rota_city:s3nha@db:5432/x failed")
+      expect(Protocols::SaveDraft).not_to receive(:call)
 
       save_draft!(definition)
 
       expect(payload).to be_nil
       expect(json["errors"].first.dig("extensions", "code")).to eq("CITY_UNREACHABLE")
+      expect(json["errors"].first["message"]).not_to include("desconhecido")
+      expect(response.body).not_to include("s3nha")
       expect(audit_events.map { |e| e.payload["outcome"] }).to eq(%w[attempted error])
+    end
+
+    # 2. A conexão cai DEPOIS de o command começar (no meio dele ou no COMMIT):
+    # pode ter comitado. Nenhuma linha de resultado — a tentativa sozinha é o
+    # "desconhecido" — e o cliente é avisado disso, com o correlation id.
+    it "records no outcome when the connection drops after the command started, telling the client the result is unknown" do
+      allow(Protocols::SaveDraft).to receive(:call)
+        .and_raise(ActiveRecord::ConnectionFailed, "server closed the connection postgres://rota_city:s3nha@db:5432/x")
+
+      save_draft!(definition)
+
+      expect(payload).to be_nil
+      error = json["errors"].first
+      expect(error.dig("extensions", "code")).to eq("CITY_UNREACHABLE")
+      expect(audit_events.map { |e| e.payload["outcome"] }).to eq(%w[attempted])
+      expect(error["message"]).to include("resultado desconhecido")
+      expect(error["message"]).to include(audit_events.sole.payload["correlation_id"])
+      expect(response.body).not_to include("s3nha")
+    end
+
+    # 3. O command comitou e só a gravação do RESULTADO falhou: a escrita
+    # aconteceu, então o cliente recebe `ok`; a tentativa fica sem resultado.
+    it "answers the command's real result when recording the outcome fails after the command committed" do
+      allow(MaintenanceAudit).to receive(:record).and_call_original
+      allow(MaintenanceAudit).to receive(:record)
+        .with("maintenance.protocol.draft_saved", hash_including(outcome: "ok"))
+        .and_raise(ActiveRecord::StatementInvalid, "platform down")
+
+      save_draft!(definition)
+
+      expect(payload).to eq("ok" => true, "errors" => [])
+      expect(audit_events.map { |e| e.payload["outcome"] }).to eq(%w[attempted])
+      expect(versions.sole.status).to eq("draft")
     end
 
     it "answers CITY_WRITE_FAILED for any other failure, publishing only the class, audited as error" do
