@@ -540,11 +540,48 @@ RSpec.describe "Maintenance GraphQL schema" do
       Maintenance::Schema.mutation.fields.select { |_name, field| field.resolver < Maintenance::Mutations::CityMutation }
     end
 
-    # Métodos, não constante de topo (P1) — mas o array é o mesmo em cada
-    # chamada, então fica memoizado numa var de instância comum ao exemplo.
+    # M1 (fix round 1, achado do revisor): a forma anterior casava `\bNOME\b`
+    # dos dois lados — e "_" É caractere de palavra em Ruby regex, então
+    # `update_columns`, `delete_all`, `destroy_all` e `insert_all` nunca
+    # fechavam a fronteira direita (o "_columns"/"_all" que vem depois é tudo
+    # caractere de palavra) e passavam ilesos. A lista agora tem uma entrada
+    # por IDENTIFICADOR Ruby de verdade, não por raiz: `\bNOME\b` sozinho já
+    # pega a forma com `!` de graça, porque "!" NÃO é caractere de palavra —
+    # fecha a fronteira do lado direito sozinho ("update" casa "update!",
+    # "create" casa "create!", "insert" casa "insert!" etc.). Só as formas com
+    # sufixo que É caractere de palavra (`_all`, `_column(s)`,
+    # `_attribute(s)`, `_by`) precisam de entrada própria — e essa entrada,
+    # por ter o mesmo motivo (o que vem depois do sufixo é "(", espaço ou "!",
+    # nunca outro caractere de palavra), também cobre a forma com `!` do
+    # sufixo de graça (`insert_all!` casa em `\binsert_all\b`).
+    #
+    # `find_or_create_by`/`create_or_find_by` (e as formas com `!`) entram
+    # como identificador PRÓPRIO — não por conterem a palavra "create": dentro
+    # de `find_or_create_by`, "create" está colado por "_" dos dois lados, e
+    # `\bcreate\b` não teria fronteira nenhuma ali (mesma razão de
+    # `update_columns` acima). Sem a entrada própria, um finder que cria na
+    # ausência passaria como leitura.
+    #
+    # `toggle!`/`increment!`/`decrement!` são a única exceção OPOSTA: a forma
+    # SEM `!` (`toggle`, `increment`, `decrement`) só muda o atributo em
+    # memória — não persiste —, então exigir o `!` na própria regex evita
+    # marcar a forma que não é escrita.
+    PERSISTENCE_CALL_NAMES = %w[
+      update update_all update_column update_columns update_attribute update_attributes
+      save create find_or_create_by create_or_find_by
+      insert insert_all upsert upsert_all
+      destroy destroy_all destroy_by
+      delete delete_all delete_by
+      touch
+    ].freeze
+
+    # Métodos, não constante de topo pro RESULTADO (P1) — a lista de NOMES
+    # continua fixa (PERSISTENCE_CALL_NAMES acima), mas o array de Regexp é
+    # reconstruído a cada chamada, memoizado numa var de instância comum ao
+    # exemplo.
     def persistence_patterns
-      [ /\bupdate!/, /\bupdate\(/, /\bsave!/, /\bsave\(/, /\bcreate!/,
-       /\bdestroy\b/, /\bdelete\b/, /\bupdate_all\b/, /\bupdate_column\b/, /\binsert\b/ ]
+      PERSISTENCE_CALL_NAMES.map { |name| /\b#{Regexp.escape(name)}\b/ } +
+        [ /\btoggle!/, /\bincrement!/, /\bdecrement!/ ]
     end
 
     # Não-guloso até o primeiro `event:` depois de `in_city(` — a ordem dos
@@ -594,6 +631,75 @@ RSpec.describe "Maintenance GraphQL schema" do
 
       expect(persistence_patterns.none? { |p| strip_comments(commented).match?(p) }).to be(true)
       expect(persistence_patterns.any? { |p| strip_comments(real).match?(p) }).to be(true)
+    end
+
+    # M1 (fix round 1) — auto-teste permanente: uma linha de exemplo por
+    # variante da lista, incluindo as quatro que o revisor confirmou que a
+    # forma anterior deixava passar (`update_columns`, `delete_all`,
+    # `destroy_all`, `insert_all`) e as duas formas com `!` que dependem da
+    # fronteira "palavra → não-palavra" em vez de entrada própria
+    # (`update!`, `create!`). Cada linha é o tipo de chamada que apareceria
+    # de verdade num resolver que tentasse persistir por fora do command.
+    def flagged?(source) = persistence_patterns.any? { |pattern| source.match?(pattern) }
+
+    {
+      "update(" => 'protocol.update(status: "draft")',
+      "update!" => 'protocol.update!(status: "draft")',
+      "update_all" => 'ProtocolDefinition.where(name: n).update_all(status: "active")',
+      "update_column" => 'protocol.update_column(:status, "active")',
+      "update_columns" => 'protocol.update_columns(status: "active", version: 2)',
+      "update_attribute" => 'protocol.update_attribute(:status, "active")',
+      "update_attributes" => 'protocol.update_attributes(status: "active")',
+      "save" => "protocol.save",
+      "save!" => "protocol.save!",
+      "create(" => 'ProtocolDefinition.create(name: n, version: v)',
+      "create!" => 'ProtocolDefinition.create!(name: n, version: v)',
+      "find_or_create_by" => 'ProtocolDefinition.find_or_create_by(name: n, version: v)',
+      "find_or_create_by!" => 'ProtocolDefinition.find_or_create_by!(name: n, version: v)',
+      "create_or_find_by" => 'ProtocolDefinition.create_or_find_by(name: n, version: v)',
+      "insert" => "ProtocolDefinition.insert(attrs)",
+      "insert!" => "ProtocolDefinition.insert!(attrs)",
+      "insert_all" => "ProtocolDefinition.insert_all([attrs])",
+      "insert_all!" => "ProtocolDefinition.insert_all!([attrs])",
+      "upsert" => "ProtocolDefinition.upsert(attrs)",
+      "upsert_all" => "ProtocolDefinition.upsert_all([attrs])",
+      "destroy" => "version.destroy",
+      "destroy!" => "version.destroy!",
+      "destroy_all" => "version.destroy_all",
+      "destroy_by" => "ProtocolDefinition.destroy_by(name: n)",
+      "delete" => "version.delete",
+      "delete_all" => "ProtocolDefinition.where(name: n).delete_all",
+      "delete_by" => "ProtocolDefinition.delete_by(name: n)",
+      "toggle!" => "protocol.toggle!(:featured)",
+      "increment!" => "protocol.increment!(:views)",
+      "decrement!" => "protocol.decrement!(:views)",
+      "touch" => "protocol.touch"
+    }.each do |label, source|
+      it "flags a #{label} call as persistence" do
+        expect(flagged?(source)).to be(true)
+      end
+    end
+
+    # A metade oposta: a forma SEM `!` de toggle/increment/decrement não
+    # persiste (só muda o atributo em memória) — exigir o "!" evita marcar
+    # exatamente essa forma.
+    it "does not flag the bang-less form of toggle/increment/decrement, which does not persist" do
+      expect(flagged?("protocol.toggle(:featured)")).to be(false)
+      expect(flagged?("protocol.increment(:views)")).to be(false)
+      expect(flagged?("protocol.decrement(:views)")).to be(false)
+    end
+
+    # Leitura que não pode disparar a guarda — inclui `find_by`/`where` (as
+    # próprias mutations os usam por dentro dos commands, nunca no resolver,
+    # mas a guarda tem de continuar limpa se algum dia aparecessem aqui) e o
+    # identificador `updated_at`, que CONTÉM "update" como substring mas não é
+    # chamada nenhuma — só um nome de coluna.
+    it "does not flag a read, or 'updated_at' as a bare identifier" do
+      read = 'ProtocolDefinition.where(name: n).find_by(version: v)'
+      identifier = "protocol.updated_at"
+
+      expect(flagged?(read)).to be(false)
+      expect(flagged?(identifier)).to be(false)
     end
 
     it "catches an event that is not declared in MaintenanceAudit::NAMES" do
