@@ -4,6 +4,8 @@ module Maintenance
       description "Consultas da API de manutenção"
 
       field :me, MaintainerType, null: false, description: "O mantenedor da sessão corrente"
+      field :maintainers, [ Types::MaintainerType ], null: false,
+            description: "Todos os mantenedores, por e-mail. Só sessão humana."
       field :maintenance_tokens, [ Types::MaintenanceTokenType ], null: false,
             description: "Tokens de serviço, metadado apenas"
       field :audit_events, [ Types::AuditEventType ], null: false,
@@ -27,6 +29,7 @@ module Maintenance
       end
 
       def me = context.fetch(:maintainer)
+      def maintainers = Maintainer.order(:email_address)
       def maintenance_tokens = MaintenanceToken.order(created_at: :desc)
       def audit_events(**filters) = AuditEventsQuery.call(**filters)
       def cities(status: nil) = CityCatalogQuery.call(credential: context.fetch(:credential), status: status)
