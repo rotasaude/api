@@ -312,13 +312,7 @@ RSpec.describe "Maintenance analyzers" do
     def step_up_required = %w[publishProtocol activateProtocol retireProtocol revertProtocolActivation]
     def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview]
 
-    def city_mutation_fields
-      Maintenance::Schema.mutation.fields.select { |_name, field| field.resolver < Maintenance::Mutations::CityMutation }
-    end
-
-    def code_only(path)
-      File.readlines(path).reject { |line| line.strip.start_with?("#") }.join
-    end
+    include MaintenanceCityMutationSpecHelpers
 
     def resolve_code(field) = code_only(field.resolver.instance_method(:resolve).source_location.first)
 

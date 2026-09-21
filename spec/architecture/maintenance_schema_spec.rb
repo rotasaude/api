@@ -63,16 +63,11 @@ RSpec.describe "Maintenance GraphQL schema" do
     CreateMaintenanceTokenPayload RevokeMaintenanceTokenPayload secretOnce
   ].freeze
 
-  # Task 5: lido por Steps 1-2 abaixo — código sem comentário, sempre da mesma
-  # forma que as outras guardas deste projeto usam (uma delas foi enganada por
-  # comentário antes: ver o controlador desta task).
-  def strip_comments(source)
-    source.lines.reject { |line| line.strip.start_with?("#") }.join
-  end
-
-  def code_only(path)
-    strip_comments(File.read(path))
-  end
+  # Task 5: strip_comments/code_only/city_mutation_fields vêm de
+  # spec/support/maintenance_city_mutations.rb — código sem comentário, sempre
+  # da mesma forma que as outras guardas deste projeto usam (uma delas foi
+  # enganada por comentário antes: ver o controlador desta task).
+  include MaintenanceCityMutationSpecHelpers
 
   def declared_types
     Maintenance::Schema.types
@@ -405,10 +400,6 @@ RSpec.describe "Maintenance GraphQL schema" do
     # comentário explicando "mesma escolha/lista de CityInventory" (como já
     # existem em city_type.rb e city_reader.rb) é documentação, não a
     # referência que esta guarda existe para recusar.
-    def code_only(path)
-      File.readlines(path).reject { |line| line.strip.start_with?("#") }.join
-    end
-
     def city_inventory_offenders
       city_reachable_files.select { |relative| code_only(Rails.root.join(relative)).include?("CityInventory") }
     end
@@ -536,10 +527,6 @@ RSpec.describe "Maintenance GraphQL schema" do
   #      não deveria usar (a escrita é sempre command → CityWriter, nunca
   #      ActiveRecord direto no resolver).
   context "every city mutation is audited and passes through a command" do
-    def city_mutation_fields
-      Maintenance::Schema.mutation.fields.select { |_name, field| field.resolver < Maintenance::Mutations::CityMutation }
-    end
-
     # M1 (fix round 1, achado do revisor): a forma anterior casava `\bNOME\b`
     # dos dois lados — e "_" É caractere de palavra em Ruby regex, então
     # `update_columns`, `delete_all`, `destroy_all` e `insert_all` nunca
@@ -566,21 +553,23 @@ RSpec.describe "Maintenance GraphQL schema" do
     # SEM `!` (`toggle`, `increment`, `decrement`) só muda o atributo em
     # memória — não persiste —, então exigir o `!` na própria regex evita
     # marcar a forma que não é escrita.
-    PERSISTENCE_CALL_NAMES = %w[
-      update update_all update_column update_columns update_attribute update_attributes
-      save create find_or_create_by create_or_find_by
-      insert insert_all upsert upsert_all
-      destroy destroy_all destroy_by
-      delete delete_all delete_by
-      touch
-    ].freeze
+    def persistence_call_names
+      %w[
+        update update_all update_column update_columns update_attribute update_attributes
+        save create find_or_create_by create_or_find_by
+        insert insert_all upsert upsert_all
+        destroy destroy_all destroy_by
+        delete delete_all delete_by
+        touch
+      ]
+    end
 
-    # Métodos, não constante de topo pro RESULTADO (P1) — a lista de NOMES
-    # continua fixa (PERSISTENCE_CALL_NAMES acima), mas o array de Regexp é
-    # reconstruído a cada chamada, memoizado numa var de instância comum ao
-    # exemplo.
+    # Métodos, não constante (P1): uma constante definida dentro de um bloco
+    # `context` vaza para Object. A lista de NOMES é fixa
+    # (persistence_call_names acima); o array de Regexp é reconstruído a cada
+    # chamada.
     def persistence_patterns
-      PERSISTENCE_CALL_NAMES.map { |name| /\b#{Regexp.escape(name)}\b/ } +
+      persistence_call_names.map { |name| /\b#{Regexp.escape(name)}\b/ } +
         [ /\btoggle!/, /\bincrement!/, /\bdecrement!/ ]
     end
 
@@ -718,13 +707,13 @@ RSpec.describe "Maintenance GraphQL schema" do
   # "sign"/"signature" no nome — o segundo pega um nome que escondesse uma
   # assinatura atrás de um verbo diferente, sem chamar Sign de verdade.
   context "the maintainer never signs nor creates who approves" do
-    FORBIDDEN_APPROVAL_CALLS = %w[Protocols::Sign GrantRole InviteMember].freeze
+    def forbidden_approval_calls = %w[Protocols::Sign GrantRole InviteMember]
 
     def maintenance_api_files
       Dir.glob(Rails.root.join("app/graphql/maintenance/**/*.rb")).map(&:to_s)
     end
 
-    def approval_hits(code) = FORBIDDEN_APPROVAL_CALLS.select { |call| code.include?(call) }
+    def approval_hits(code) = forbidden_approval_calls.select { |call| code.include?(call) }
 
     def signish(field_names) = field_names.select { |name| name.match?(/sign/i) }
 

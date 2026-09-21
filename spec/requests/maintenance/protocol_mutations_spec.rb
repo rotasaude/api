@@ -770,18 +770,18 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
     # — só o escopo (cidade ativa) e, onde exigido, o step-up de verdade, que
     # tem de passar ANTES do command ser chamado.
     describe "no exception message ever leaves a city mutation" do
-      CITY_MUTATION_COMMANDS = {
-        "saveProtocolDraft" => Protocols::SaveDraft,
-        "submitProtocolForReview" => Protocols::SubmitForReview,
-        "publishProtocol" => Protocols::Publish,
-        "activateProtocol" => Protocols::Activate,
-        "retireProtocol" => Protocols::Retire,
-        "revertProtocolActivation" => Protocols::RevertActivation
-      }.freeze
+      include MaintenanceCityMutationSpecHelpers
 
-      def city_mutation_field_names
-        Maintenance::Schema.mutation.fields.select { |_name, field| field.resolver < Maintenance::Mutations::CityMutation }
-                                    .keys
+      # Método, não constante: uma constante num bloco `describe` vaza para Object.
+      def city_mutation_commands
+        {
+          "saveProtocolDraft" => Protocols::SaveDraft,
+          "submitProtocolForReview" => Protocols::SubmitForReview,
+          "publishProtocol" => Protocols::Publish,
+          "activateProtocol" => Protocols::Activate,
+          "retireProtocol" => Protocols::Retire,
+          "revertProtocolActivation" => Protocols::RevertActivation
+        }
       end
 
       def call_mutation(name, code:)
@@ -797,11 +797,11 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
       end
 
       it "maps every city mutation in the schema to the command it calls" do
-        expect(CITY_MUTATION_COMMANDS.keys).to match_array(city_mutation_field_names)
+        expect(city_mutation_commands.keys).to match_array(city_mutation_fields.keys)
       end
 
       it "never lets a command's exception message reach the response, answering CITY_WRITE_FAILED" do
-        CITY_MUTATION_COMMANDS.each do |mutation_name, command|
+        city_mutation_commands.each do |mutation_name, command|
           marker = "marcador-#{SecureRandom.hex(4)}"
           allow(command).to receive(:call).and_raise(RuntimeError, "falha interna #{marker}")
 
