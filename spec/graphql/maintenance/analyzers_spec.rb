@@ -176,8 +176,91 @@ RSpec.describe "Maintenance analyzers" do
                                 "#{name} aceita citySlug e não herda de CityMutation"
     end
     base = File.read(Rails.root.join("app/graphql/maintenance/mutations/city_mutation.rb"))
-    expect(base).to match(/def in_city\b.*?refuse_out_of_scope!/m)
-    expect(base).to match(/def refuse_out_of_scope!.*?allows_city\?/m)
+    expect(scope_checked_before_audit?(method_body(base, "in_city"))).to be(true),
+                                                                       "in_city não consulta o escopo antes de auditar"
+    expect(method_body(base, "refuse_out_of_scope!")).to include("allows_city?")
+  end
+
+  # Corpo de um método de CityMutation: da linha `def <nome>` até a próxima
+  # linha `def ` na MESMA indentação (exclusive). Um regex preguiçoso sobre o
+  # arquivo inteiro atravessava para o método seguinte — e casava
+  # `refuse_out_of_scope!` na definição dele, não na chamada (fix round 1).
+  def method_body(source, name)
+    lines = source.lines
+    start = lines.index { |line| line.match?(/\A\s*def #{Regexp.escape(name)}(?=[\s(]|$)/) }
+    raise "def #{name} não encontrado" if start.nil?
+
+    indent = lines[start][/\A\s*/]
+    finish = lines[(start + 1)..].index { |line| line.start_with?("#{indent}def ") }
+    lines[start...(finish ? start + 1 + finish : lines.size)].join
+  end
+
+  # Só CÓDIGO conta (um comentário citando o método não é chamada), e a
+  # chamada de escopo tem de vir antes da tentativa gravada.
+  def scope_checked_before_audit?(body)
+    code = body.lines.reject { |line| line.strip.start_with?("#") }.join
+    scope_at = code.index("refuse_out_of_scope!(")
+    audit_at = code.index("audited(")
+
+    !scope_at.nil? && !audit_at.nil? && scope_at < audit_at
+  end
+
+  it "catches an in_city that audits without consulting the scope first" do
+    without_scope = <<~RUBY
+      def in_city(city_slug:)
+        audited(event: "x") { :ok }
+      end
+
+      def refuse_out_of_scope!(city_slug)
+        credential.allows_city?(city_slug)
+      end
+    RUBY
+    scope_after = <<~RUBY
+      def in_city(city_slug:)
+        audited(event: "x") { :ok }
+        refuse_out_of_scope!(city_slug)
+      end
+    RUBY
+
+    expect(scope_checked_before_audit?(method_body(without_scope, "in_city"))).to be(false)
+    expect(scope_checked_before_audit?(method_body(scope_after, "in_city"))).to be(false)
+  end
+
+  # O comportamento, não só o texto: uma credencial que NÃO alcança a cidade
+  # recebe CITY_OUT_OF_SCOPE antes de qualquer auditoria, validação ou
+  # conexão — e a recusa leva a etiqueta que o controller audita
+  # (Refusal::CODES / refusedFields). Humano alcança toda cidade e token é
+  # barrado antes por HumanOnly; por isso a credencial é stubada aqui.
+  describe "city scope on mutations" do
+    def save_draft(city_slug, definition)
+      <<~GQL
+        mutation { saveProtocolDraft(citySlug: #{city_slug.to_json}, definition: #{definition}) { ok errors { path } } }
+      GQL
+    end
+
+    it "refuses a city outside the credential's scope before auditing or writing anything" do
+      credential = human_credential
+      allow(credential).to receive(:allows_city?).and_return(false)
+      expect(Protocols::SaveDraft).not_to receive(:call)
+      expect(CityConnection).not_to receive(:with)
+
+      result = execute(save_draft("curitiba", '{name: "dengue", version: 1}'), credential: credential)
+
+      expect(result.dig("data", "saveProtocolDraft")).to be_nil
+      expect(result["errors"].map { |e| e.dig("extensions", "code") }).to eq([ "CITY_OUT_OF_SCOPE" ])
+      expect(Maintenance::Analyzers::Refusal.refused_fields(result)).to eq([ "saveProtocolDraft" ])
+      expect(PlatformEvent.where("name LIKE ?", "maintenance.protocol.%")).to be_empty
+    end
+
+    it "answers CITY_OUT_OF_SCOPE before judging the slug or the definition" do
+      credential = human_credential
+      allow(credential).to receive(:allows_city?).and_return(false)
+
+      result = execute(save_draft("Não É Slug", '"nem objeto"'), credential: credential)
+
+      expect(result["errors"].map { |e| e.dig("extensions", "code") }).to eq([ "CITY_OUT_OF_SCOPE" ])
+      expect(PlatformEvent.where("name LIKE ?", "maintenance.protocol.%")).to be_empty
+    end
   end
 
   # Plano 5, Decisão 7: uma mutation de cidade abre uma conexão como um

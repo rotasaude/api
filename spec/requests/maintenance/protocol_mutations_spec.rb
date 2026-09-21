@@ -194,19 +194,53 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
     # A identidade do protocolo vai para a auditoria (protocol_key/version) —
     # então ela é recusada ANTES de auditar se não for o que diz ser: a
     # auditoria não grava estrutura arbitrária vinda do cliente.
-    it "refuses a definition whose name or version is not a plain String/Integer, before auditing" do
+    it "refuses a definition whose name or version is not a bounded identifier, before auditing" do
       protocols_before = ProtocolDefinition.count
       [ protocol_definition_hash.merge("name" => { "x" => marker }),
+        protocol_definition_hash.merge("name" => "Dengue #{marker}"),
+        protocol_definition_hash.merge("name" => "d#{'e' * 63}"),
+        protocol_definition_hash.merge("name" => "1dengue"),
         protocol_definition_hash.merge("version" => "1"),
-        protocol_definition_hash.merge("version" => [ 1 ]) ].each do |bad|
+        protocol_definition_hash.merge("version" => [ 1 ]),
+        protocol_definition_hash.merge("version" => 0),
+        protocol_definition_hash.merge("version" => -1),
+        protocol_definition_hash.merge("version" => 10_001) ].each do |bad|
         save_draft!(bad)
 
         expect(payload["ok"]).to be(false)
         expect(payload["errors"].map { |e| e["path"] }).to eq([ "definition" ])
       end
 
-      expect(audit_events).to be_empty
+      expect(PlatformEvent.where("name LIKE ?", "maintenance.protocol.%")).to be_empty
       expect(ProtocolDefinition.count).to eq(protocols_before)
+    end
+
+    # O JSON escalar aceita qualquer valor JSON; só objeto é definição.
+    it "refuses a definition that is not a JSON object as a user error, before auditing" do
+      [ "texto #{marker}", 42, [ 1, 2 ], true ].each do |bad|
+        save_draft!(bad)
+
+        expect(response).to have_http_status(:ok)
+        expect(payload["ok"]).to be(false)
+        expect(payload["errors"].map { |e| e["path"] }).to eq([ "definition" ])
+      end
+
+      expect(PlatformEvent.where("name LIKE ?", "maintenance.protocol.%")).to be_empty
+    end
+
+    # O slug vai para platform_events (imutável): só entra se tiver a forma de
+    # um slug de City. Qualquer outra coisa é erro de usuário, sem auditoria.
+    it "refuses a citySlug that is not a city slug, before auditing and without connecting" do
+      expect(CityConnection).not_to receive(:with)
+
+      [ "Cidade #{marker}", "a" * 64, "a" * 5_000, "x", "-curitiba", "curitiba-", "curi_tiba" ].each do |bad|
+        save_draft!(definition, city_slug: bad)
+
+        expect(payload["ok"]).to be(false)
+        expect(payload["errors"].map { |e| e["path"] }).to eq([ "citySlug" ])
+      end
+
+      expect(PlatformEvent.where("name LIKE ?", "maintenance.protocol.%")).to be_empty
     end
 
     it "never puts the definition, or any piece of it, in the platform audit" do
