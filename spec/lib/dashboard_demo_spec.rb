@@ -21,6 +21,20 @@ RSpec.describe DashboardDemo do
     expect(described_class.seed_current_city(cfg)).to eq(first)
   end
 
+  it "gives every active demo protocol a baseline activation, once" do
+    cfg = described_class::CITIES.first
+
+    described_class.seed_current_city(cfg)
+    described_class.seed_current_city(cfg)
+
+    ProtocolDefinition.where(status: "active").find_each do |protocol|
+      expect(protocol.activations.pluck(:kind, :actor_kind, :actor_id))
+        .to eq([ [ "baseline", "system", nil ] ]), "#{protocol.name} v#{protocol.version}"
+    end
+    expect(ProtocolDefinition.where(status: "active").pluck(:name))
+      .to match_array(%w[triage-respiratoria triagem-dengue])
+  end
+
   it "writes only into the connected city" do
     city_b = create(:city, slug: TEST_CITY_B.slug, database_url: city_database_url("rota_saude_test_city_b"))
 

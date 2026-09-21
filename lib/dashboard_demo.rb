@@ -88,7 +88,20 @@ module DashboardDemo
     upsert_protocol("triage-respiratoria", 3, "draft")
     dengue1 = upsert_protocol("triagem-dengue", 1, "active")
     upsert_protocol("triagem-dengue", 2, "retired")
+    [ resp1, dengue1 ].each { |protocol| ensure_baseline_activation(protocol) }
     { "triage-respiratoria" => resp1, "triagem-dengue" => dengue1 }
+  end
+
+  # Linha-base (fatia 2 das assinaturas), como no db/seeds.rb: a versão nasce
+  # ativa no dado de demonstração, como uma versão que já estava em uso antes das
+  # assinaturas — sem ela, a reversão de emergência não tem para onde voltar.
+  # Idempotente: protocol_activations só aceita acréscimo, então só cria quando
+  # a versão ainda não tem linha nenhuma.
+  def ensure_baseline_activation(protocol)
+    return if protocol.activations.exists?
+
+    protocol.activations.create!(kind: "baseline", actor_kind: "system", actor_id: nil,
+                                 created_at: protocol.activated_at || protocol.created_at)
   end
 
   def build_conversations_and_consents(cfg)
