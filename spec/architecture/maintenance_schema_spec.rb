@@ -63,6 +63,17 @@ RSpec.describe "Maintenance GraphQL schema" do
     CreateMaintenanceTokenPayload RevokeMaintenanceTokenPayload secretOnce
   ].freeze
 
+  # Task 5: lido por Steps 1-2 abaixo — código sem comentário, sempre da mesma
+  # forma que as outras guardas deste projeto usam (uma delas foi enganada por
+  # comentário antes: ver o controlador desta task).
+  def strip_comments(source)
+    source.lines.reject { |line| line.strip.start_with?("#") }.join
+  end
+
+  def code_only(path)
+    strip_comments(File.read(path))
+  end
+
   def declared_types
     Maintenance::Schema.types
                        .reject { |name, _type| name.start_with?("__") }
@@ -510,6 +521,133 @@ RSpec.describe "Maintenance GraphQL schema" do
 
         expect(CityConnection).not_to have_received(:with)
       end
+    end
+  end
+
+  # Task 5, Step 1 — toda mutation de cidade é auditada e passa por command.
+  #
+  # As três coisas que o brief pede, lidas do ARQUIVO da classe (código sem
+  # comentário, ver code_only acima — uma guarda satisfeita por comentário não
+  # serve, e este projeto já foi enganado assim uma vez):
+  #   1. chama `in_city(`;
+  #   2. o `event:` que ela passa está em MaintenanceAudit::NAMES (nome errado
+  #      ou ausente falha aqui, não só em runtime dentro de MaintenanceAudit.record);
+  #   3. nenhuma das formas de persistência direta que uma mutation de cidade
+  #      não deveria usar (a escrita é sempre command → CityWriter, nunca
+  #      ActiveRecord direto no resolver).
+  context "every city mutation is audited and passes through a command" do
+    def city_mutation_fields
+      Maintenance::Schema.mutation.fields.select { |_name, field| field.resolver < Maintenance::Mutations::CityMutation }
+    end
+
+    # Métodos, não constante de topo (P1) — mas o array é o mesmo em cada
+    # chamada, então fica memoizado numa var de instância comum ao exemplo.
+    def persistence_patterns
+      [ /\bupdate!/, /\bupdate\(/, /\bsave!/, /\bsave\(/, /\bcreate!/,
+       /\bdestroy\b/, /\bdelete\b/, /\bupdate_all\b/, /\bupdate_column\b/, /\binsert\b/ ]
+    end
+
+    # Não-guloso até o primeiro `event:` depois de `in_city(` — a ordem dos
+    # kwargs nas seis mutations sempre põe `event:` cedo, mas o regex não
+    # depende disso: só do primeiro `event: "..."` que aparecer depois do
+    # `in_city(` de verdade.
+    def in_city_event(code)
+      code.match(/in_city\(.*?event:\s*"([^"]+)"/m)&.captures&.first
+    end
+
+    def mutation_offenders
+      city_mutation_fields.filter_map do |name, field|
+        path = field.resolver.instance_method(:resolve).source_location.first
+        code = code_only(path)
+
+        reasons = []
+        reasons << "não chama in_city(" unless code.include?("in_city(")
+
+        event = in_city_event(code)
+        if event.nil? || MaintenanceAudit::NAMES.exclude?(event)
+          reasons << "evento #{event.inspect} não está em MaintenanceAudit::NAMES"
+        end
+
+        offending_calls = persistence_patterns.select { |pattern| code.match?(pattern) }
+        reasons << "persiste direto (#{offending_calls.map(&:source).join(', ')})" if offending_calls.any?
+
+        "#{name}: #{reasons.join('; ')}" if reasons.any?
+      end
+    end
+
+    it "calls in_city with a declared audit event, and never persists on its own" do
+      expect(mutation_offenders).to be_empty
+    end
+
+    # Auto-teste: prova que o CAMINHO (código sem comentário) pega uma escrita
+    # direta e um evento fora da lista, e que um `update!` só em COMENTÁRIO —
+    # explicando, por exemplo, "não fazemos protocol.update! aqui" — não conta.
+    it "ignores a persistence call mentioned only in a comment, but catches a real one" do
+      commented = <<~RUBY
+        # nunca protocol.update!(status: "active") aqui
+        in_city(event: "maintenance.protocol.draft_saved") { }
+      RUBY
+      real = <<~RUBY
+        in_city(event: "maintenance.protocol.draft_saved") { }
+        protocol.update!(status: "active")
+      RUBY
+
+      expect(persistence_patterns.none? { |p| strip_comments(commented).match?(p) }).to be(true)
+      expect(persistence_patterns.any? { |p| strip_comments(real).match?(p) }).to be(true)
+    end
+
+    it "catches an event that is not declared in MaintenanceAudit::NAMES" do
+      undeclared = <<~RUBY
+        in_city(city_slug: city_slug, event: "maintenance.protocol.made_up", module_name: "protocol") { }
+      RUBY
+
+      expect(in_city_event(undeclared)).to eq("maintenance.protocol.made_up")
+      expect(MaintenanceAudit::NAMES.exclude?(in_city_event(undeclared))).to be(true)
+    end
+  end
+
+  # Task 5, Step 2 — o mantenedor nunca assina nem cria quem aprova (Decisão 1,
+  # global-constraints.md). Duas metades: nenhum arquivo da API de manutenção
+  # chama os três commands de aprovação, e nenhum campo de Mutation tem
+  # "sign"/"signature" no nome — o segundo pega um nome que escondesse uma
+  # assinatura atrás de um verbo diferente, sem chamar Sign de verdade.
+  context "the maintainer never signs nor creates who approves" do
+    FORBIDDEN_APPROVAL_CALLS = %w[Protocols::Sign GrantRole InviteMember].freeze
+
+    def maintenance_api_files
+      Dir.glob(Rails.root.join("app/graphql/maintenance/**/*.rb")).map(&:to_s)
+    end
+
+    def approval_call_offenders
+      maintenance_api_files.filter_map do |path|
+        code = code_only(path)
+        hits = FORBIDDEN_APPROVAL_CALLS.select { |call| code.include?(call) }
+        next if hits.empty?
+
+        "#{Pathname.new(path).relative_path_from(Rails.root)}: #{hits.join(', ')}"
+      end
+    end
+
+    it "never calls Protocols::Sign, GrantRole or InviteMember from the maintenance API" do
+      expect(approval_call_offenders).to be_empty
+    end
+
+    it "publishes no Mutation field named after signing" do
+      signish = Maintenance::Schema.mutation.fields.keys.select { |name| name.match?(/sign/i) }
+
+      expect(signish).to be_empty
+    end
+
+    # Auto-teste: prova que a chamada é pega mesmo dentro de código de verdade
+    # (não só a string solta), e que "signature" casa o mesmo padrão de nome
+    # que "sign" — um campo chamado `approveWithSignature` não escaparia por
+    # não conter a palavra exata "sign" sozinha.
+    it "catches a stray approval call and a field name that merely contains 'signature'" do
+      stray = "Protocols::Sign.call(protocol: version, by: actor, purpose: \"publication\")"
+
+      expect(FORBIDDEN_APPROVAL_CALLS.select { |call| strip_comments(stray).include?(call) })
+        .to eq([ "Protocols::Sign" ])
+      expect("approveWithSignature").to match(/sign/i)
     end
   end
 end

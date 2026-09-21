@@ -616,5 +616,60 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
         expect(version_row(1).status).to eq("active")
       end
     end
+
+    # Task 5, Step 4 — nenhuma mensagem de exceção sai, para NENHUMA mutation
+    # de cidade. O mapa mutation → command é EXPLÍCITO e a primeira asserção
+    # confere ele contra o schema — uma sétima mutation de cidade sem entrada
+    # aqui faz o mapa falhar antes de qualquer stub rodar.
+    #
+    # Cada command é stubado para levantar RuntimeError com um marcador único
+    # por mutation; como o stub troca o command inteiro, nenhum estado de
+    # domínio precisa existir de verdade (rascunho salvo, revisado, assinado)
+    # — só o escopo (cidade ativa) e, onde exigido, o step-up de verdade, que
+    # tem de passar ANTES do command ser chamado.
+    describe "no exception message ever leaves a city mutation" do
+      CITY_MUTATION_COMMANDS = {
+        "saveProtocolDraft" => Protocols::SaveDraft,
+        "submitProtocolForReview" => Protocols::SubmitForReview,
+        "publishProtocol" => Protocols::Publish,
+        "activateProtocol" => Protocols::Activate,
+        "retireProtocol" => Protocols::Retire,
+        "revertProtocolActivation" => Protocols::RevertActivation
+      }.freeze
+
+      def city_mutation_field_names
+        Maintenance::Schema.mutation.fields.select { |_name, field| field.resolver < Maintenance::Mutations::CityMutation }
+                                    .keys
+      end
+
+      def call_mutation(name, code:)
+        case name
+        when "saveProtocolDraft" then save_draft!(protocol_definition_hash)
+        when "submitProtocolForReview" then submit!
+        when "publishProtocol" then publish!(code: code)
+        when "activateProtocol" then activate!(version: 1, code: code)
+        when "retireProtocol" then retire!(version: 1, code: code)
+        when "revertProtocolActivation" then revert!(reason: "motivo qualquer", code: code)
+        else raise "no call defined for #{name} — add one to call_mutation above"
+        end
+      end
+
+      it "maps every city mutation in the schema to the command it calls" do
+        expect(CITY_MUTATION_COMMANDS.keys).to match_array(city_mutation_field_names)
+      end
+
+      it "never lets a command's exception message reach the response, answering CITY_WRITE_FAILED" do
+        CITY_MUTATION_COMMANDS.each do |mutation_name, command|
+          marker = "marcador-#{SecureRandom.hex(4)}"
+          allow(command).to receive(:call).and_raise(RuntimeError, "falha interna #{marker}")
+
+          with_fresh_totp { |code| call_mutation(mutation_name, code: code) }
+
+          expect(response.body).not_to include(marker), "#{mutation_name} leaked the exception message"
+          expect(json["errors"]).to be_present, "#{mutation_name} did not answer with a GraphQL error"
+          expect(json["errors"].first.dig("extensions", "code")).to eq("CITY_WRITE_FAILED")
+        end
+      end
+    end
   end
 end
