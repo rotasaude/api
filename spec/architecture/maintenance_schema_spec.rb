@@ -724,10 +724,13 @@ RSpec.describe "Maintenance GraphQL schema" do
       Dir.glob(Rails.root.join("app/graphql/maintenance/**/*.rb")).map(&:to_s)
     end
 
+    def approval_hits(code) = FORBIDDEN_APPROVAL_CALLS.select { |call| code.include?(call) }
+
+    def signish(field_names) = field_names.select { |name| name.match?(/sign/i) }
+
     def approval_call_offenders
       maintenance_api_files.filter_map do |path|
-        code = code_only(path)
-        hits = FORBIDDEN_APPROVAL_CALLS.select { |call| code.include?(call) }
+        hits = approval_hits(code_only(path))
         next if hits.empty?
 
         "#{Pathname.new(path).relative_path_from(Rails.root)}: #{hits.join(', ')}"
@@ -739,21 +742,22 @@ RSpec.describe "Maintenance GraphQL schema" do
     end
 
     it "publishes no Mutation field named after signing" do
-      signish = Maintenance::Schema.mutation.fields.keys.select { |name| name.match?(/sign/i) }
-
-      expect(signish).to be_empty
+      expect(signish(Maintenance::Schema.mutation.fields.keys)).to be_empty
     end
 
-    # Auto-teste: prova que a chamada é pega mesmo dentro de código de verdade
-    # (não só a string solta), e que "signature" casa o mesmo padrão de nome
-    # que "sign" — um campo chamado `approveWithSignature` não escaparia por
-    # não conter a palavra exata "sign" sozinha.
+    # Auto-teste: passa pelos MESMOS métodos da guarda de verdade
+    # (approval_hits / signish) — um detector quebrado quebra os dois. Prova
+    # que a chamada é pega dentro de código de verdade e não num comentário,
+    # e que um nome de campo que só CONTÉM "Signature" é pego no meio de
+    # nomes que não assinam.
     it "catches a stray approval call and a field name that merely contains 'signature'" do
-      stray = "Protocols::Sign.call(protocol: version, by: actor, purpose: \"publication\")"
+      stray = <<~RUBY
+        # Protocols::Sign nunca é chamado daqui
+        GrantRole.call(user: u, role: "protocol_reviewer")
+      RUBY
 
-      expect(FORBIDDEN_APPROVAL_CALLS.select { |call| strip_comments(stray).include?(call) })
-        .to eq([ "Protocols::Sign" ])
-      expect("approveWithSignature").to match(/sign/i)
+      expect(approval_hits(strip_comments(stray))).to eq([ "GrantRole" ])
+      expect(signish(%w[publishProtocol approveWithSignature retireProtocol])).to eq([ "approveWithSignature" ])
     end
   end
 end
