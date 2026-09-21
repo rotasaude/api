@@ -17,12 +17,21 @@ RSpec.describe "Protocol signatures guard" do
     /"published"|"active"|:published(?!\w)|:active(?!\w)/
   end
 
+  # Fix final do Plano 2 (Minor 1): mais três formas — chave de hash string ou
+  # símbolo com `=>` (`update!("status" => "active")`), e SQL em string, com o
+  # valor literal em aspas simples (`update_all("status = 'active'")`) ou por
+  # placeholder com o valor mais adiante NA MESMA LINHA
+  # (`update_all(["status = ?", "active"])`). Leitura continua limpa pelo mesmo
+  # critério de sempre: o `(` que envolve o match abre um where(/find_by(.
   def status_write
     /
       \bstatus:\s*(?:#{status_value})                                             |
       \.status\s*=\s*(?:#{status_value})                                          |
       \[:status\]\s*=\s*(?:#{status_value})                                       |
-      (?:update_column|update_attribute|write_attribute)\s*\(\s*:status\s*,\s*(?:#{status_value})
+      (?:update_column|update_attribute|write_attribute)\s*\(\s*:status\s*,\s*(?:#{status_value}) |
+      (?:"status"|'status'|:status)\s*=>\s*(?:#{status_value})                    |
+      \bstatus\s*=\s*'(?:published|active)'                                        |
+      \bstatus\s*=\s*\?[^\n]*?(?:#{status_value})
     /x
   end
 
@@ -235,8 +244,11 @@ RSpec.describe "Protocol signatures guard" do
   # chave de tradução no_protocol) — exigir a literal, em vez de "protocol\b",
   # mantém no escopo todo arquivo que de fato manipula o registro de
   # protocolo, e só esse.
+  #
+  # Fix final do Plano 2 (Minor 1): lib/ também — lib/dashboard_demo.rb grava
+  # status de protocolo, e a guarda não olhava para lá.
   def app_files_touching_protocols
-    Dir[Rails.root.join("app/**/*.rb")].select { |path| File.read(path).include?("ProtocolDefinition") }
+    Dir[Rails.root.join("{app,lib}/**/*.rb")].select { |path| File.read(path).include?("ProtocolDefinition") }
   end
 
   # Separado de protocol_status_write? (que lê arquivo) para o auto-teste
@@ -257,11 +269,26 @@ RSpec.describe "Protocol signatures guard" do
 
   it "writes a protocol status of published or active only in the three signed-act commands" do
     allowed = %w[publish.rb activate.rb revert_activation.rb].map { |f| Rails.root.join("app/commands/protocols", f).to_s }
+    # ÚNICA exceção fora dos commands, e explícita: lib/dashboard_demo.rb é dado
+    # de demonstração de desenvolvimento (bin/rails db:seed:demo, nunca em
+    # produção), que cria versões já active/published direto na tabela —
+    # passar pelos commands exigiria autor, dois revisores e step-up fictícios
+    # só para popular um painel. A versão active ganha a mesma linha-base do
+    # db/seeds.rb (DashboardDemo#ensure_baseline_activation). Hoje o arquivo
+    # passa o status por variável (`p.status = status`), forma que a guarda
+    # não enxerga — ela só casa valor LITERAL. A exceção fica escrita aqui
+    # assim mesmo: o arquivo está fora da regra por decisão registrada, não
+    # por um ponto cego da regex.
+    allowed << Rails.root.join("lib/dashboard_demo.rb").to_s
 
     offenders = app_files_touching_protocols.reject { |path| allowed.include?(path) }
                                             .select { |path| protocol_status_write?(path) }
 
     expect(offenders).to be_empty
+  end
+
+  it "scans lib/ as well as app/" do
+    expect(app_files_touching_protocols).to include(Rails.root.join("lib/dashboard_demo.rb").to_s)
   end
 
   # Fix round 1 — auto-teste do MÉTODO de detecção, em trecho sintético, sem
@@ -411,6 +438,34 @@ RSpec.describe "Protocol signatures guard" do
 
     it "clears a status kwarg read inside a find_by!( (fix round 1: read_call? addition)" do
       expect(flags('protocol = ProtocolDefinition.find_by!(name: n, status: "active")')).to be false
+    end
+
+    # Fix final do Plano 2 (Minor 1): as formas que a guarda ainda não via —
+    # hash de chave string (ou símbolo com =>) e escrita por SQL em string.
+    it "flags a string-key hash write" do
+      expect(flags('protocol.update!("status" => "active")')).to be true
+    end
+
+    it "flags a hash-rocket symbol-key write" do
+      expect(flags('protocol.update!(:status => "published")')).to be true
+    end
+
+    it "flags a SQL-string update_all" do
+      expect(flags(%q{ProtocolDefinition.where(name: n).update_all("status = 'active'")})).to be true
+    end
+
+    it "flags a SQL-string update_all with a bound value" do
+      expect(flags('ProtocolDefinition.where(name: n).update_all(["status = ?", "active"])')).to be true
+    end
+
+    it "flags a SQL-string update_all that sets status after another column" do
+      expect(flags('scope.update_all(["activated_at = ?, status = ?", Time.current, "published"])')).to be true
+    end
+
+    it "clears the same new forms when they are a read inside where(" do
+      expect(flags('ProtocolDefinition.where("status" => "active")')).to be false
+      expect(flags(%q{ProtocolDefinition.where("status = 'active'")})).to be false
+      expect(flags('ProtocolDefinition.where("status = ?", "active")')).to be false
     end
   end
 
