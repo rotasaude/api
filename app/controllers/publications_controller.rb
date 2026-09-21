@@ -2,23 +2,20 @@
 class PublicationsController < ApplicationController
   include Authentication
   include MfaStepUp
+  include ProtocolResultRendering
+  include ScalarParams
 
   def create
     return require_step_up! unless reauthenticated_recently?(via: :totp)
 
-    result = Protocols::Publish.call(version: params[:version], by: Current.user)
+    result = Protocols::Publish.call(version: params[:version], name: optional_scalar_param(:name), by: Current.user)
+    return render_protocol_result(result) unless result.ok?
 
-    case result&.reason
-    when nil
-      render json: { ok: true, id: result.payload[:protocol_definition].id }
-    when :not_found
-      head :not_found
-    when :forbidden
-      render json: { error: "forbidden" }, status: :forbidden
-    when :city_missing
-      render json: { error: "city_missing" }, status: :unprocessable_entity
-    else
-      render json: { error: result.reason.to_s, message: result.message }, status: :unprocessable_entity
-    end
+    # `id` é o formato que o dashboard consome hoje (Plano 1) — mantido ao
+    # lado de `protocol`, o formato novo e único, para não quebrar o
+    # dashboard nesta task (ver relatório da Task 3).
+    protocol = result.payload[:protocol_definition]
+    render json: { ok: true, id: protocol.id,
+                   protocol: { name: protocol.name, version: protocol.version, status: protocol.status } }
   end
 end

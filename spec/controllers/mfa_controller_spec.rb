@@ -14,7 +14,7 @@ RSpec.describe MfaController, type: :request do
 
   it "step_up com TOTP correto carimba mfa_verified_at" do
     code = ROTP::TOTP.new(user.otp_secret).now
-    post "/mfa/step_up", params: { code: code }
+    post "/mfa/step_up", params: { code: code }, as: :json
     expect(response).to have_http_status(:ok)
     expect(@session.reload.mfa_verified_at).to be_within(5.seconds).of(Time.current)
   end

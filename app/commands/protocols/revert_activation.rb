@@ -108,6 +108,23 @@ module Protocols
       Result.fail(:invalid, message: e.record.errors.full_messages.join(", "))
     end
 
+    # Leitura pura das MESMAS três condições que `call` exige, para quem só
+    # quer perguntar "reverteria?" sem reverter — hoje só o painel da cidade
+    # (Admin::ProtocolsQuery, spec de assinaturas §5, ADR-0016). Reusa
+    # `activation_history` em vez de duplicar a consulta; não é a checagem que
+    # decide um `call` de verdade — essa segue travando as duas linhas e
+    # reconferindo tudo sob lock (P2, acima). Sem lock, esta resposta pode
+    # ficar obsoleta assim que outra escrita comita — quem chama sabe disso.
+    def self.revertible?(protocol)
+      return false unless protocol.status == "active"
+
+      latest, previous = activation_history(protocol.name)
+      return false unless latest&.protocol_definition_id == protocol.id && latest.kind == "signed"
+      return false if previous.nil?
+
+      ProtocolDefinition.where(id: previous.protocol_definition_id, status: "published").exists?
+    end
+
     def self.activation_history(name)
       ProtocolActivation.joins(:protocol_definition)
                         .where(protocol_definitions: { name: name })

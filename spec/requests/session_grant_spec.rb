@@ -23,7 +23,7 @@ RSpec.describe "POST /session/grant", type: :request do
     token = operator_grant
 
     expect {
-      post "/session/grant", params: { token: token }
+      post "/session/grant", params: { token: token }, as: :json
     }.to change(Session, :count).by(1)
       .and change { PlatformEvent.where(name: "operator.city_access").count }.by(1)
       .and change { DomainEvent.where(name: "operator.city_access").count }.by(1)
@@ -54,7 +54,7 @@ RSpec.describe "POST /session/grant", type: :request do
     token = Rack::Utils.parse_query(URI.parse(json["redirect_url"]).query).fetch("grant")
 
     host! test_city_host
-    post "/session/grant", params: { token: token }
+    post "/session/grant", params: { token: token }, as: :json
 
     expect(response).to have_http_status(:created)
     expect(json["operator"]).to be(true)
@@ -62,10 +62,10 @@ RSpec.describe "POST /session/grant", type: :request do
 
   it "refuses a grant used a second time" do
     token = operator_grant
-    post "/session/grant", params: { token: token }
+    post "/session/grant", params: { token: token }, as: :json
 
     expect {
-      post "/session/grant", params: { token: token }
+      post "/session/grant", params: { token: token }, as: :json
     }.not_to change(Session, :count)
     expect(response).to have_http_status(:unauthorized)
     expect(json).to eq("error" => "invalid_grant")
@@ -75,7 +75,7 @@ RSpec.describe "POST /session/grant", type: :request do
     other = create(:city, slug: TEST_CITY_B.slug, status: "active", database_url: city_database_url("rota_saude_test_city_b"))
     token = operator_grant(for_city: other)
 
-    post "/session/grant", params: { token: token }
+    post "/session/grant", params: { token: token }, as: :json
 
     expect(response).to have_http_status(:unauthorized)
     expect(CityGrant.order(:created_at).last.consumed_at).to be_nil
@@ -85,7 +85,7 @@ RSpec.describe "POST /session/grant", type: :request do
     token = operator_grant
 
     travel 61.seconds do
-      post "/session/grant", params: { token: token }
+      post "/session/grant", params: { token: token }, as: :json
     end
 
     expect(response).to have_http_status(:unauthorized)
@@ -96,7 +96,7 @@ RSpec.describe "POST /session/grant", type: :request do
     operator.update!(deactivated_at: Time.current)
 
     expect {
-      post "/session/grant", params: { token: token }
+      post "/session/grant", params: { token: token }, as: :json
     }.to not_change(Session, :count).and not_change(PlatformEvent, :count)
     expect(response).to have_http_status(:unauthorized)
   end
@@ -106,7 +106,7 @@ RSpec.describe "POST /session/grant", type: :request do
     allow(Platform).to receive(:audit).and_raise(ActiveRecord::StatementInvalid, "boom")
 
     expect {
-      post "/session/grant", params: { token: token }
+      post "/session/grant", params: { token: token }, as: :json
     }.to raise_error(ActiveRecord::StatementInvalid).and not_change(Session, :count)
   end
 
@@ -114,7 +114,7 @@ RSpec.describe "POST /session/grant", type: :request do
     user = User.create!(email_address: "u-#{SecureRandom.hex(3)}@x.com", password: "secret123")
     token = CityGrants.issue(city: city, kind: "user", subject_id: user.id)
 
-    post "/session/grant", params: { token: token }
+    post "/session/grant", params: { token: token }, as: :json
 
     expect(response).to have_http_status(:created)
     expect(json).to include("id" => user.id, "operator" => false)
@@ -124,7 +124,7 @@ RSpec.describe "POST /session/grant", type: :request do
   it "refuses a user grant whose user does not exist in this city" do
     token = CityGrants.issue(city: city, kind: "user", subject_id: SecureRandom.uuid)
 
-    post "/session/grant", params: { token: token }
+    post "/session/grant", params: { token: token }, as: :json
 
     expect(response).to have_http_status(:unauthorized)
     expect(json).to eq("error" => "invalid_grant")
@@ -135,7 +135,7 @@ RSpec.describe "POST /session/grant", type: :request do
     old_session = sign_in_as(user)
     token = operator_grant
 
-    post "/session/grant", params: { token: token }
+    post "/session/grant", params: { token: token }, as: :json
 
     expect(response).to have_http_status(:created)
     expect(Session.exists?(old_session.id)).to be(false)
@@ -147,7 +147,7 @@ RSpec.describe "POST /session/grant", type: :request do
 
   it "refuses a malformed or non-string token" do
     [ "lixo", [ "lixo" ], nil ].each do |token|
-      post "/session/grant", params: { token: token }
+      post "/session/grant", params: { token: token }, as: :json
       expect(response).to have_http_status(:unauthorized)
     end
   end

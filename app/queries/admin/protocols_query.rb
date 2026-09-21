@@ -42,7 +42,7 @@ class Admin::ProtocolsQuery
       schema: "ok",
       linter: "ok",
       gates: "ok"
-    }
+    }.merge(signature_state(d))
   end
 
   def self.serialize_version(d, audit)
@@ -56,6 +56,45 @@ class Admin::ProtocolsQuery
       schema: "ok",
       linter: "ok",
       gates: "ok"
+    }.merge(signature_state(d))
+  end
+
+  # Estado de assinatura de UMA versão (spec de assinaturas §5/§6, ADR-0016, Plano 2
+  # Task 5) — fonte de verdade daqui pra frente. createdBy/publishedBy/
+  # fourEyes acima (via fetch_audit, de domain_events) ficam como estão só
+  # porque o dashboard ainda os lê (Decisão 5 do plano); para "quem assinou o
+  # quê", "quem editou" e "dá pra reverter" é ISTO aqui, nunca domain_events —
+  # ver o spec que afirma DomainEvent não ser consultado neste método.
+  #
+  # E-mails em lote: uma única consulta a User para todo signatário válido +
+  # todo editor `user` desta versão, nunca uma por assinatura/editor.
+  def self.signature_state(d)
+    pub_ids = Protocols::Signatures.valid_signer_ids(d, purpose: "publication")
+    act_ids = Protocols::Signatures.valid_signer_ids(d, purpose: "activation")
+    editor_rows = ProtocolContribution.where(protocol_definition_id: d.id).distinct.pluck(:actor_kind, :actor_id)
+    user_editor_ids = editor_rows.select { |kind, _| kind == "user" }.map(&:last)
+
+    emails = User.where(id: (pub_ids + act_ids + user_editor_ids).uniq).pluck(:id, :email_address).to_h
+
+    {
+      signatures: {
+        publication: signer_block(pub_ids, emails: emails),
+        activation: signer_block(act_ids, emails: emails)
+      },
+      eligibleReviewers: Protocols::Signatures.eligible_reviewer_count(d),
+      editors: editor_rows.map { |kind, id| { kind: kind, id: id, email: kind == "user" ? emails[id] : nil } },
+      # Mesmas três condições que Protocols::RevertActivation exige para
+      # reverter de verdade (controller notes: extrair o predicado em vez de
+      # duplicar a lógica) — sem lock, então pode ficar obsoleto assim que
+      # outra escrita comita; é leitura de painel, não decisão de escrita.
+      revertible: Protocols::RevertActivation.revertible?(d)
+    }
+  end
+
+  def self.signer_block(ids, emails:)
+    {
+      signers: ids.map { |id| { id: id, email: emails[id] } },
+      missing: [ Protocols::Signatures::REQUIRED - ids.size, 0 ].max
     }
   end
 

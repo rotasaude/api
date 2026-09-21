@@ -25,6 +25,27 @@ module Authentication
     # exatamente o defeito que esta nota documentava ao contrário.
     before_action :require_authentication
 
+    # CSRF (fix final do Plano 2 das assinaturas). Escrita autenticada pelo
+    # cookie de sessão da cidade só aceita corpo `application/json`; qualquer
+    # outra coisa leva 415 { error: "json_required" } ANTES da ação.
+    #
+    # Por quê: o cookie é SameSite=Lax e todas as cidades dividem um domínio
+    # registrável, então uma página num host irmão (outra cidade) é "same-site"
+    # e o navegador MANDA o cookie num form POST vindo dela. Um form (ou um
+    # fetch no-cors) só consegue enviar x-www-form-urlencoded, multipart ou
+    # text/plain; um `application/json` cross-origin exige preflight de CORS, e
+    # a política de CORS (config/initializers/cors.rb) não dá credenciais a
+    # /protocols/* nem a /setup/* — o cookie nunca vai junto.
+    #
+    # A regra vale também para escrita SEM corpo (sem media type): um POST sem
+    # corpo com os parâmetros na query string (`/setup/memberships?user_id=…&
+    # role=…`) é um pedido "simples" que um host irmão dispara com o cookie.
+    # A única exceção é o logout (SessionsController#destroy), que os dois
+    # frontends mandam como DELETE sem corpo; ver o skip lá.
+    #
+    # Registrado aqui, depois de require_authentication: sem sessão continua 401.
+    before_action :require_json_for_cookie_writes
+
     # Sessão de operador aberta por grant (Plano 3B) é negada por padrão. Cada
     # controller libera por nome as ações de LEITURA que aceitam operador.
     class_attribute :operator_grant_actions, default: [], instance_writer: false
@@ -55,6 +76,16 @@ module Authentication
     return if !Current.session.operator_grant? || operator_grant_access_allowed?
 
     render json: { error: "operator_read_only" }, status: :forbidden
+  end
+
+  STATE_CHANGING_METHODS = %w[POST PUT PATCH DELETE].freeze
+
+  def require_json_for_cookie_writes
+    return unless STATE_CHANGING_METHODS.include?(request.request_method)
+    return if request.media_type == "application/json"
+    return unless resume_session
+
+    render json: { error: "json_required" }, status: :unsupported_media_type
   end
 
   def operator_grant_access_allowed?

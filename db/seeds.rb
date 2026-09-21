@@ -85,6 +85,13 @@ else
           p.definition = protocol_defn
         end
 
+        # Linha-base (fatia 2 das assinaturas): o protocolo nasce ativo no seed,
+        # como uma versão que já estava em uso antes das assinaturas.
+        unless protocol.activations.exists?
+          protocol.activations.create!(kind: "baseline", actor_kind: "system", actor_id: nil,
+                                       created_at: protocol.activated_at || protocol.created_at)
+        end
+
         # state "consented": a pessoa consentiu e concluiu a triagem — é o estado
         # que os painéis live/funil de Conversas contam. created_at ~5 min antes
         # de completed_at para o KPI avgToCompleteMin exibir uma duração realista.

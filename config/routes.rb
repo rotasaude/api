@@ -72,6 +72,7 @@ Rails.application.routes.draw do
   scope "/setup" do
     post "/invitations",                 to: "setup#invite_member"
     post "/accept_invitation",           to: "setup#accept_invitation"
+    post "/memberships",                 to: "setup#grant_role"
     get  "/memberships",                 to: "setup#list_memberships"
     post "/memberships/:id/revoke",      to: "setup#revoke_membership"
     post "/users/:id/deactivate",        to: "setup#deactivate_user"
@@ -107,6 +108,15 @@ Rails.application.routes.draw do
 
   # Publicação de protocolo — exige step-up MFA (ADR-0011 + ADR-0009)
   post "/protocols/:version/publish", to: "publications#create"
+
+  # Ciclo de vida com assinaturas (spec de assinaturas, ADR-0016). `name` vai no corpo.
+  constraints(version: /\d+/) do
+    post "/protocols/:version/submit",     to: "protocol_lifecycle#submit"
+    post "/protocols/:version/signatures", to: "protocol_lifecycle#sign"
+    post "/protocols/:version/activate",   to: "protocol_lifecycle#activate"
+    post "/protocols/:version/retire",     to: "protocol_lifecycle#retire"
+  end
+  post "/protocols/revert", to: "protocol_lifecycle#revert"
 
   # Tela de manutenção: lista a configuração de todas as cidades registradas,
   # SEM autenticar ninguém. Ferramenta de desenvolvimento e teste.
