@@ -632,7 +632,52 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
       end
     end
 
+    # A ordem do step-up mora na base (CityMutation#in_city): cidade conferida
+    # → step-up → conexão da cidade → command.
+    describe "step-up order in the city write base" do
+      it "spends no code on a city that refuses, before any step-up" do
+        expect_any_instance_of(Maintainer).not_to receive(:consume_totp!)
+
+        with_fresh_totp { |code| publish!(code: code, city_slug: archived_city.slug) }
+
+        expect(publish_payload["errors"].map { |e| e["path"] }).to eq([ "citySlug" ])
+      end
+
+      it "reports a platform failure during step-up as a write failure, never as an unreachable city" do
+        allow_any_instance_of(Maintainer).to receive(:consume_totp!)
+          .and_raise(ActiveRecord::ConnectionNotEstablished, "platform down")
+        expect(CityConnection).not_to receive(:with)
+
+        with_fresh_totp { |code| publish!(code: code) }
+
+        expect(json["errors"].first.dig("extensions", "code")).to eq("CITY_WRITE_FAILED")
+        expect(publish_audit_events.map { |e| e.payload["outcome"] }).to eq(%w[attempted error])
+      end
+    end
+
     describe "revertProtocolActivation" do
+      # Arranjo em que o código CERTO reverteria (a última linha prova isso):
+      # o código errado é recusado antes de abrir a cidade, sem tocar em nada.
+      it "refuses a wrong step-up code before opening the city, leaving the activation as it was" do
+        legacy_active_version!
+        publish_and_activate_v2!
+        wrong_code = ->(code) { format("%06d", (code.to_i + 1) % 1_000_000) }
+
+        allow(CityConnection).to receive(:with).and_call_original
+        with_fresh_totp { |code| revert!(reason: "motivo qualquer", code: wrong_code.call(code)) }
+        expect(CityConnection).not_to have_received(:with)
+
+        expect(revert_payload["ok"]).to be(false)
+        expect(revert_payload["errors"].map { |e| e["path"] }).to eq([ "code" ])
+        expect(version_row(2).status).to eq("active")
+        expect(version_row(1).status).to eq("published")
+        expect(ProtocolActivation.where(kind: "emergency_revert")).to be_empty
+
+        with_fresh_totp { |code| revert!(reason: "motivo qualquer", code: code) }
+        expect(revert_payload).to eq("ok" => true, "errors" => [])
+        expect(version_row(1).status).to eq("active")
+      end
+
       it "reverts an emergency activation to the previous signed/baseline version, recording the reason and " \
          "the maintainer actor in the city, never in the platform audit" do
         legacy = legacy_active_version!

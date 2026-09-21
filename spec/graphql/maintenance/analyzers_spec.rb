@@ -299,9 +299,18 @@ RSpec.describe "Maintenance analyzers" do
   # acima: uma mutation de cidade nova que não esteja em nenhuma das duas faz
   # o exemplo de classificação falhar, antes de qualquer pergunta sobre
   # step-up de verdade.
+  #
+  # A ORDEM do step-up mora na base (CityMutation#in_city: cidade conferida →
+  # step-up → conexão da cidade → command); a mutation só entrega o código com
+  # `step_up_code:`. Por isso a guarda exige `step_up_code:` nas que aprovam e
+  # proíbe `step_up!(` em TODAS as mutations de cidade — chamá-lo no bloco
+  # rodaria o step-up já dentro da conexão da cidade, fora da ordem da base.
+  # A ordem em si é provada por comportamento em
+  # spec/requests/maintenance/protocol_mutations_spec.rb (código errado não
+  # abre a cidade).
   describe "step-up on the acts that approve or put a version in use" do
-    STEP_UP_REQUIRED = %w[publishProtocol activateProtocol retireProtocol revertProtocolActivation].freeze
-    STEP_UP_EXEMPT = %w[saveProtocolDraft submitProtocolForReview].freeze
+    def step_up_required = %w[publishProtocol activateProtocol retireProtocol revertProtocolActivation]
+    def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview]
 
     def city_mutation_fields
       Maintenance::Schema.mutation.fields.select { |_name, field| field.resolver < Maintenance::Mutations::CityMutation }
@@ -311,37 +320,52 @@ RSpec.describe "Maintenance analyzers" do
       File.readlines(path).reject { |line| line.strip.start_with?("#") }.join
     end
 
-    it "classifies every city mutation as requiring step-up or explicitly exempt" do
-      unclassified = city_mutation_fields.keys - STEP_UP_REQUIRED - STEP_UP_EXEMPT
+    def resolve_code(field) = code_only(field.resolver.instance_method(:resolve).source_location.first)
 
-      expect(unclassified).to be_empty
+    def unclassified(field_names) = field_names - step_up_required - step_up_exempt
+
+    # Por que um resolver não obedece à regra do step-up; nil se obedece.
+    def step_up_violation(name, code, required:)
+      return "#{name} calls step_up! itself instead of passing step_up_code: to in_city" if code.include?("step_up!(")
+      return "#{name} does not pass step_up_code: to in_city" if required && !code.include?("step_up_code:")
+      return "#{name} unexpectedly passes step_up_code:" if !required && code.include?("step_up_code:")
+
+      nil
     end
 
-    it "declares argument :code and calls step_up! on every mutation that approves or activates" do
-      city_mutation_fields.select { |name, _field| STEP_UP_REQUIRED.include?(name) }.each do |name, field|
-        expect(field.arguments.keys).to include("code"), "#{name} does not declare argument :code"
+    it "classifies every city mutation as requiring step-up or explicitly exempt" do
+      expect(unclassified(city_mutation_fields.keys)).to be_empty
+    end
 
-        path = field.resolver.instance_method(:resolve).source_location.first
-        expect(code_only(path)).to include("step_up!("), "#{name} does not call step_up!"
+    it "declares argument :code and passes step_up_code: to in_city on every mutation that approves or activates" do
+      city_mutation_fields.select { |name, _field| step_up_required.include?(name) }.each do |name, field|
+        expect(field.arguments.keys).to include("code"), "#{name} does not declare argument :code"
+        expect(step_up_violation(name, resolve_code(field), required: true)).to be_nil
       end
     end
 
     it "asks for no step-up to save a draft or submit it for review" do
-      city_mutation_fields.select { |name, _field| STEP_UP_EXEMPT.include?(name) }.each do |name, field|
-        path = field.resolver.instance_method(:resolve).source_location.first
-        expect(code_only(path)).not_to include("step_up!("), "#{name} unexpectedly calls step_up!"
+      city_mutation_fields.select { |name, _field| step_up_exempt.include?(name) }.each do |name, field|
+        expect(field.arguments.keys).not_to include("code"), "#{name} unexpectedly declares argument :code"
+        expect(step_up_violation(name, resolve_code(field), required: false)).to be_nil
       end
     end
 
-    # Auto-teste da guarda de cobertura: uma mutation de cidade nova
-    # ("archiveProtocol") que não entrasse em nenhuma das duas listas sobra na
-    # subtração — é exatamente o que o exemplo de classificação acima checa
-    # contra a lista de verdade.
+    # Auto-testes: cada um passa pelo MESMO método que a guarda de verdade usa
+    # (unclassified / step_up_violation) — quebrar o detector quebra os dois.
     it "catches a new city mutation left off both lists" do
-      known = STEP_UP_REQUIRED + STEP_UP_EXEMPT
-      field_names_with_a_new_one = city_mutation_fields.keys + [ "archiveProtocol" ]
+      expect(unclassified(city_mutation_fields.keys + [ "archiveProtocol" ])).to eq([ "archiveProtocol" ])
+    end
 
-      expect(field_names_with_a_new_one - known).to eq([ "archiveProtocol" ])
+    it "catches a step-up mutation that calls step_up! itself or forgets step_up_code:" do
+      in_block = 'in_city(city_slug: s, step_up_code: code, event: "e") { step_up!(code); Cmd.call }'
+      forgotten = 'in_city(city_slug: s, event: "e") { Cmd.call }'
+      proper = 'in_city(city_slug: s, step_up_code: code, event: "e") { Cmd.call }'
+
+      expect(step_up_violation("x", in_block, required: true)).to include("calls step_up! itself")
+      expect(step_up_violation("x", forgotten, required: true)).to include("does not pass step_up_code:")
+      expect(step_up_violation("x", proper, required: true)).to be_nil
+      expect(step_up_violation("x", proper, required: false)).to include("unexpectedly passes")
     end
   end
 end

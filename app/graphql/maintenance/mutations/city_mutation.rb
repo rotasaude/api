@@ -8,6 +8,12 @@
 #      usuário SEM linha de auditoria — platform_events é imutável e governado
 #      pela Ruling R18, e não guarda texto livre do cliente;
 #   2. tentativa gravada na plataforma (BaseMutation#audited) — se falhar, nada roda;
+#   2b. a cidade existe e está ativa (sem conectar);
+#   2c. step-up de TOTP, quando a mutation passa `step_up_code:` — AQUI, na
+#      base, depois de a cidade ser conferida (código não é gasto numa cidade
+#      que recusaria) e ANTES de abrir a conexão da cidade (falha de
+#      plataforma no step-up não se confunde com cidade inalcançável, e o
+#      command nunca roda sem ele);
 #   3. CityWriter abre a cidade e o bloco roda o command com o ator mantenedor e
 #      o correlation_id, que o command grava no evento de domínio;
 #   4. resultado: `ok`, `rejected` (regra de domínio, cidade inexistente ou não
@@ -82,7 +88,15 @@ module Maintenance
       # convertem em GraphQL::ExecutionError. O ExecutionError de
       # refuse_out_of_scope! sai antes de `audited` — recusa de escopo é
       # auditada pelo controller (Refusal::CODES), não aqui.
-      def in_city(city_slug:, event:, module_name:, rejection_path: "version", field_paths: {}, **fields)
+      #
+      # `step_up_code:` (nil = sem step-up) é o TOTP das mutations que aprovam
+      # ou põem em uso; elas nunca chamam step_up! por conta própria (guarda em
+      # spec/graphql/maintenance/analyzers_spec.rb).
+      #
+      # `rejection_path` é o caminho da recusa do command: uma String, ou algo
+      # que responde a `call(result)` quando o caminho depende do motivo.
+      def in_city(city_slug:, event:, module_name:, rejection_path: "version", field_paths: {}, step_up_code: nil,
+                  **fields)
         refuse_out_of_scope!(city_slug)
         refusal = unauditable_input(city_slug, fields, DEFAULT_FIELD_PATHS.merge(field_paths))
         return refusal if refusal
@@ -94,11 +108,16 @@ module Maintenance
           raise Rejected.new("cidade inexistente", path: "citySlug") if city.nil?
 
           begin
+            CityWriter.ensure_writable!(city)
+            step_up!(step_up_code) unless step_up_code.nil?
             result = CityWriter.call(city) { yield(MaintainerActor.new(credential.maintainer), correlation_id) }
           rescue CityWriter::NotWritable => e
             raise Rejected.new(e.message, path: "citySlug")
           end
-          raise Rejected.new(result.message.presence || result.reason.to_s, path: rejection_path) if result.failure?
+          if result.failure?
+            path = rejection_path.respond_to?(:call) ? rejection_path.call(result) : rejection_path
+            raise Rejected.new(result.message.presence || result.reason.to_s, path: path)
+          end
 
           result
         end
