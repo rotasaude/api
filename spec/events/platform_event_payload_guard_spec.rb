@@ -24,7 +24,8 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
                                 maintenance.maintainer.accepted maintenance.maintainer.deactivated
                                 maintenance.token.refused maintenance.token.created
                                 maintenance.token.revoked
-                                maintenance.protocol.draft_saved].freeze
+                                maintenance.protocol.draft_saved maintenance.protocol.submitted
+                                maintenance.protocol.published].freeze
 
   # Independent restatement of the rule (not PlatformEvent's own method), so the
   # static call-site check below cannot drift together with the model.

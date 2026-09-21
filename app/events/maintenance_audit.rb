@@ -25,6 +25,8 @@ module MaintenanceAudit
     maintenance.token.created
     maintenance.token.revoked
     maintenance.protocol.draft_saved
+    maintenance.protocol.submitted
+    maintenance.protocol.published
   ].freeze
 
   OUTCOMES = %w[attempted ok rejected error].freeze
@@ -63,6 +65,8 @@ module MaintenanceAudit
     when "maintenance.token.created"       then Platform.audit("maintenance.token.created", **payload)
     when "maintenance.token.revoked"       then Platform.audit("maintenance.token.revoked", **payload)
     when "maintenance.protocol.draft_saved" then Platform.audit("maintenance.protocol.draft_saved", **payload)
+    when "maintenance.protocol.submitted"  then Platform.audit("maintenance.protocol.submitted", **payload)
+    when "maintenance.protocol.published"  then Platform.audit("maintenance.protocol.published", **payload)
     else
       # Sem isto, um nome novo em NAMES sem branch correspondente passaria na
       # validação acima, não escreveria nada, e ainda devolveria um

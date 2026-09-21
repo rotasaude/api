@@ -9,7 +9,7 @@ module Maintenance
       RESTRICTED = %w[
         maintainers maintenanceTokens auditEvents
         inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
-        saveProtocolDraft
+        saveProtocolDraft submitProtocolForReview publishProtocol
       ].freeze
 
       # Campos de raiz que um token PODE usar. Existe para a guarda de

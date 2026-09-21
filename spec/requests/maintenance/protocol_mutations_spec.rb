@@ -255,4 +255,137 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
       end
     end
   end
+
+  # Task 3: submitProtocolForReview e publishProtocol. O mantenedor nunca
+  # assina (D6) — as assinaturas de publicação vêm de revisores da própria
+  # cidade, arranjadas direto no banco (make_reviewer!/sign!), como a spec de
+  # assinaturas já faz.
+  describe "submitProtocolForReview and publishProtocol" do
+    def submit_mutation
+      <<~GQL
+        mutation($citySlug: String!, $name: String!, $version: Int!) {
+          submitProtocolForReview(citySlug: $citySlug, name: $name, version: $version) { ok errors { path message } }
+        }
+      GQL
+    end
+
+    def submit!(name: "dengue", version: 1, city_slug: city.slug, headers: browser)
+      gql!(submit_mutation, headers: headers, citySlug: city_slug, name: name, version: version)
+    end
+
+    def submit_payload = json.dig("data", "submitProtocolForReview")
+
+    def publish_mutation
+      <<~GQL
+        mutation($citySlug: String!, $name: String!, $version: Int!, $code: String!) {
+          publishProtocol(citySlug: $citySlug, name: $name, version: $version, code: $code) { ok errors { path message } }
+        }
+      GQL
+    end
+
+    def publish!(name: "dengue", version: 1, code:, city_slug: city.slug, headers: browser)
+      gql!(publish_mutation, headers: headers, citySlug: city_slug, name: name, version: version, code: code)
+    end
+
+    def publish_payload = json.dig("data", "publishProtocol")
+
+    def publish_audit_events = PlatformEvent.where(name: "maintenance.protocol.published").order(:created_at)
+
+    # Arranjo direto no banco da cidade (já aberto pelo harness — ver
+    # spec/support/city_test_databases.rb), do mesmo jeito que a spec de
+    # assinaturas assina: nenhum dos dois signatários pode ser o mantenedor,
+    # porque não existe mutation de assinatura para ele chamar.
+    def sign_two_reviewers!(protocol, purpose: "publication")
+      Array.new(2) { make_reviewer! }.each { |reviewer| sign!(protocol, purpose: purpose, by: reviewer) }
+    end
+
+    it "submits a draft for review, is signed by two city reviewers, and is published with step-up" do
+      save_draft!(definition)
+      version = versions.sole
+
+      submit!
+      expect(submit_payload).to eq("ok" => true, "errors" => [])
+      expect(version.reload.status).to eq("in_review")
+
+      reviewers = Array.new(2) { make_reviewer! }
+      reviewers.each { |reviewer| sign!(version, purpose: "publication", by: reviewer) }
+
+      publish!(code: totp)
+
+      expect(publish_payload).to eq("ok" => true, "errors" => [])
+      expect(version.reload.status).to eq("published")
+
+      publish_audit = publish_audit_events.last
+      expect(publish_audit.payload["outcome"]).to eq("ok")
+
+      domain_event = DomainEvent.where(name: "protocol.published").order(:occurred_at).last
+      expect(domain_event.payload).to include("actor_kind" => "maintainer", "actor" => maintainer.id,
+                                              "correlation_id" => publish_audit.payload["correlation_id"])
+      expect(domain_event.payload["signers"]).to match_array(reviewers.map(&:id))
+    end
+
+    it "refuses to publish without the city's two publication signatures, leaving the version in_review" do
+      save_draft!(definition)
+      submit!
+      version = versions.sole
+
+      publish!(code: totp)
+
+      expect(publish_payload["ok"]).to be(false)
+      expect(publish_payload["errors"].map { |e| e["path"] }).to eq([ "version" ])
+      expect(publish_payload["errors"].first["message"])
+        .to match(/faltam 2 assinaturas de publicação; revisores elegíveis na cidade: \d+/)
+      expect(publish_audit_events.map { |e| e.payload["outcome"] }).to eq(%w[attempted rejected])
+      expect(version.reload.status).to eq("in_review")
+    end
+
+    it "never counts the maintainer as a signer: one city signature still leaves one missing" do
+      save_draft!(definition)
+      submit!
+      version = versions.sole
+      sign!(version, purpose: "publication", by: make_reviewer!)
+
+      publish!(code: totp)
+
+      expect(publish_payload["ok"]).to be(false)
+      expect(publish_payload["errors"].first["message"]).to include("falta 1 assinatura de publicação")
+      expect(version.reload.status).to eq("in_review")
+    end
+
+    it "requires the step-up code to publish, refusing a wrong one on code without changing anything" do
+      save_draft!(definition)
+      submit!
+      version = versions.sole
+      sign_two_reviewers!(version)
+
+      publish!(code: "000000")
+
+      expect(publish_payload["ok"]).to be(false)
+      expect(publish_payload["errors"].map { |e| e["path"] }).to eq([ "code" ])
+      expect(publish_audit_events.map { |e| e.payload["outcome"] }).to eq(%w[attempted rejected])
+      expect(version.reload.status).to eq("in_review")
+    end
+
+    it "asks for no step-up code to submit a draft for review" do
+      save_draft!(definition)
+
+      submit!
+
+      expect(submit_payload).to eq("ok" => true, "errors" => [])
+    end
+
+    it "refuses to submit a version that is not a draft, on version" do
+      save_draft!(definition)
+      submit!
+      version = versions.sole
+      expect(version.status).to eq("in_review")
+
+      submit!
+
+      expect(submit_payload["ok"]).to be(false)
+      expect(submit_payload["errors"].map { |e| e["path"] }).to eq([ "version" ])
+      expect(submit_payload["errors"].first["message"]).to include("rascunho")
+      expect(version.reload.status).to eq("in_review")
+    end
+  end
 end
