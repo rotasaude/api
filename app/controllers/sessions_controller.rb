@@ -18,6 +18,12 @@ class SessionsController < ApplicationController
   # Operador dentro da cidade (grant, Plano 3B) vê e encerra a própria sessão; nada mais.
   allow_operator_grant_access only: %i[show destroy]
 
+  # Logout é a única escrita autenticada por cookie que não exige JSON: os dois
+  # frontends mandam DELETE /session SEM corpo (logo sem Content-Type), e o pior
+  # que um host irmão consegue forçando-o é deslogar a vítima — não lê nada, não
+  # muda dado nenhum. Ver Authentication#require_json_for_cookie_writes.
+  skip_before_action :require_json_for_cookie_writes, only: :destroy
+
   rate_limit to: 10, within: 3.minutes, only: :create, name: "login",
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
   rate_limit to: 10, within: 3.minutes, only: :grant, name: "grant",

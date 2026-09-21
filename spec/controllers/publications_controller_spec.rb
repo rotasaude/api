@@ -17,7 +17,7 @@ RSpec.describe PublicationsController, type: :request do
 
   it "sem step-up recente devolve 401 mfa_required" do
     allow(Protocols::Publish).to receive(:call)
-    post "/protocols/v1/publish"
+    post "/protocols/v1/publish", as: :json
     expect(response).to have_http_status(:unauthorized)
     expect(JSON.parse(response.body)["error"]).to eq("mfa_required")
   end
@@ -28,7 +28,7 @@ RSpec.describe PublicationsController, type: :request do
     expect(Protocols::Publish).to receive(:call)
       .with(version: "v1", name: nil, by: user)
       .and_return(Result.ok(protocol_definition: fake_pd))
-    post "/protocols/v1/publish"
+    post "/protocols/v1/publish", as: :json
     expect(response).to have_http_status(:ok)
     expect(JSON.parse(response.body)).to eq(
       "ok" => true, "id" => fake_pd.id,
@@ -42,21 +42,21 @@ RSpec.describe PublicationsController, type: :request do
     expect(Protocols::Publish).to receive(:call)
       .with(version: "v1", name: "dengue", by: user)
       .and_return(Result.ok(protocol_definition: fake_pd))
-    post "/protocols/v1/publish", params: { name: "dengue" }
+    post "/protocols/v1/publish", params: { name: "dengue" }, as: :json
     expect(response).to have_http_status(:ok)
   end
 
   it "versão inexistente devolve 404" do
     @session.update!(mfa_verified_at: Time.current)
     allow(Protocols::Publish).to receive(:call).and_return(Result.fail(:not_found))
-    post "/protocols/v1/publish"
+    post "/protocols/v1/publish", as: :json
     expect(response).to have_http_status(:not_found)
   end
 
   it "sem permissão devolve 403 forbidden" do
     @session.update!(mfa_verified_at: Time.current)
     allow(Protocols::Publish).to receive(:call).and_return(Result.fail(:forbidden))
-    post "/protocols/v1/publish"
+    post "/protocols/v1/publish", as: :json
     expect(response).to have_http_status(:forbidden)
     expect(JSON.parse(response.body)).to eq("error" => "forbidden")
   end
@@ -65,7 +65,7 @@ RSpec.describe PublicationsController, type: :request do
     @session.update!(mfa_verified_at: Time.current)
     allow(Protocols::Publish).to receive(:call)
       .and_return(Result.fail(:signatures_missing, message: "falta 1 assinatura de publicação; revisores elegíveis na cidade: 2"))
-    post "/protocols/v1/publish"
+    post "/protocols/v1/publish", as: :json
     expect(response).to have_http_status(:unprocessable_entity)
     expect(JSON.parse(response.body)).to eq(
       "error" => "signatures_missing",
