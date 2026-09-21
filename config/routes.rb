@@ -72,6 +72,7 @@ Rails.application.routes.draw do
   scope "/setup" do
     post "/invitations",                 to: "setup#invite_member"
     post "/accept_invitation",           to: "setup#accept_invitation"
+    post "/memberships",                 to: "setup#grant_role"
     get  "/memberships",                 to: "setup#list_memberships"
     post "/memberships/:id/revoke",      to: "setup#revoke_membership"
     post "/users/:id/deactivate",        to: "setup#deactivate_user"

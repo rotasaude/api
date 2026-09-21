@@ -58,6 +58,22 @@ class SetupController < ApplicationController
     end
   end
 
+  # POST /setup/memberships
+  # body: { user_id, role } — só municipal_admin (spec de assinaturas §3). O
+  # command recusa o resto: papel desconhecido, já concedido, usuário inativo.
+  def grant_role
+    return head(:forbidden) unless can_manage_members?
+
+    result = GrantRole.call(user_id: params.require(:user_id), role: params.require(:role), by: current_user)
+    if result.ok?
+      m = result.payload[:membership]
+      render json: { id: m.id, user_id: m.user_id, role: m.role, granted_at: m.granted_at.iso8601 }, status: :created
+    else
+      render json: { error: result.reason.to_s, message: result.message }.compact,
+             status: result.reason == :forbidden ? :forbidden : :unprocessable_entity
+    end
+  end
+
   # POST /setup/memberships/:id/revoke
   def revoke_membership
     membership = Membership.find_by(id: params[:id])
