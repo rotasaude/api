@@ -15,8 +15,8 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me maintenanceTokens auditEvents cities city],
-    "Maintainer" => %w[id emailAddress createdAt],
+    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city],
+    "Maintainer" => %w[id emailAddress active enrolled createdAt],
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken],
     "InviteMaintainerPayload" => %w[ok errors],
     "DeactivateMaintainerPayload" => %w[ok errors],
@@ -460,7 +460,8 @@ RSpec.describe "Maintenance GraphQL schema" do
       # então nenhum precisa ser pulado; um campo de raiz futuro sem entrada
       # aqui quebra `root_query_field_names` abaixo, de propósito.
       def field_selections
-        { "me" => "{ id }", "maintenanceTokens" => "{ id }", "auditEvents" => "{ name }", "cities" => "{ slug }" }
+        { "me" => "{ id }", "maintainers" => "{ id }", "maintenanceTokens" => "{ id }", "auditEvents" => "{ name }",
+          "cities" => "{ slug }" }
       end
 
       def root_query_field_names
