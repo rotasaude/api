@@ -8,6 +8,17 @@ module Maintenance
     CLASSES = [
       ActiveRecord::ConnectionNotEstablished,
       ActiveRecord::ConnectionTimeoutError,
+      # Conexão que cai NO MEIO de uma query (não ao tentar abrir) — o adapter
+      # de Postgres do Rails 8.1 (translate_exception) a levanta como
+      # ConnectionFailed (< QueryAborted < StatementInvalid), não como
+      # ConnectionNotEstablished. StatementInvalid/QueryCanceled continuam de
+      # fora (cobrem qualquer erro de SQL/timeout de consulta, não só de
+      # conexão) — só esta subclasse específica entra.
+      ActiveRecord::ConnectionFailed,
+      # Defensiva: o adapter normalmente já embrulha PG::ConnectionBad em
+      # ConnectionNotEstablished/ConnectionFailed (translate_exception), mas
+      # um PG::ConnectionBad cru pode escapar (por exemplo, ao registrar o
+      # pool, antes do adapter existir) — fica na lista para esse caso.
       PG::ConnectionBad,
       CityConnection::InvalidCityDatabase
     ].freeze

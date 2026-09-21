@@ -102,4 +102,16 @@ RSpec.describe Maintenance::CityReader do
         .to raise_error(described_class::Unreachable) { |e| expect(e.message).not_to include("s3nha") }
     end
   end
+
+  # Fix round 1: a conexão que cai NO MEIO de uma query (não ao tentar abrir)
+  # sai do adapter de Postgres do Rails como ActiveRecord::ConnectionFailed
+  # (< QueryAborted < StatementInvalid), não como ConnectionNotEstablished —
+  # sem esta classe na lista, essa cidade virava CITY_READ_FAILED em vez de
+  # CITY_UNREACHABLE.
+  it "treats a connection dropped mid-query as unreachable, not as a read failure" do
+    allow(CityConnection).to receive(:with)
+      .and_raise(ActiveRecord::ConnectionFailed, "server closed the connection unexpectedly")
+
+    expect { described_class.call(city) { :never } }.to raise_error(described_class::Unreachable)
+  end
 end
