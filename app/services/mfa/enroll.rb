@@ -14,7 +14,7 @@ module Mfa
     def self.call(user, recovery_codes: true)
       secret = ROTP::Base32.random
       codes  = recovery_codes ? Array.new(RECOVERY_COUNT) { SecureRandom.alphanumeric(RECOVERY_LEN).downcase } : []
-      hashed = codes.map { |c| BCrypt::Password.create(c).to_s }
+      hashed = codes.map { |c| BCrypt::Password.create(c, cost: recovery_code_cost).to_s }
 
       # `otp_enabled` só existe em User/Operator: Maintainer marca a confirmação
       # do TOTP em `otp_enabled_at` (Task 2), então este call não a toca.
@@ -30,6 +30,13 @@ module Mfa
       # nada para um controller repassar por engano.
       result[:recovery_codes] = codes if recovery_codes
       result
+    end
+
+    # A mesma política de custo que o Rails aplica à senha (has_secure_password):
+    # custo mínimo quando ActiveModel::SecurePassword.min_cost está ligado (o
+    # ambiente de teste), o custo padrão do BCrypt em qualquer outro caso.
+    def self.recovery_code_cost
+      ActiveModel::SecurePassword.min_cost ? BCrypt::Engine::MIN_COST : BCrypt::Engine.cost
     end
   end
 end
