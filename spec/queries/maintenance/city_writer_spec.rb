@@ -54,6 +54,36 @@ RSpec.describe Maintenance::CityWriter do
       end
   end
 
+  # Tetos de espera só na escrita: o bloco roda numa transação que já traz
+  # lock_timeout/statement_timeout locais a ela.
+  it "runs the block in a transaction bounded by lock_timeout and statement_timeout" do
+    settings = described_class.call(city) do
+      connection = CityRecord.lease_connection
+      [ connection.transaction_open?, connection.select_value("SHOW lock_timeout"),
+        connection.select_value("SHOW statement_timeout") ]
+    end
+
+    expect(settings).to eq([ true, described_class::LOCK_TIMEOUT, described_class::STATEMENT_TIMEOUT ])
+    expect(settings.drop(1)).to eq(%w[5s 10s])
+  end
+
+  # A transação de fora não é "joinable": a transação do próprio command vira
+  # SAVEPOINT, e o `raise ActiveRecord::Rollback` dele desfaz o que ele
+  # escreveu (juntando-se à de fora, o Rollback seria engolido e a escrita
+  # ficaria).
+  it "keeps a command's own transaction a savepoint, so its Rollback still undoes its writes" do
+    kept = described_class.call(city) do
+      ApplicationRecord.transaction do
+        ProtocolDefinition.create!(name: "savepoint-probe", version: 1,
+                                   definition: protocol_definition_hash(name: "savepoint-probe", version: 1))
+        raise ActiveRecord::Rollback
+      end
+      ProtocolDefinition.where(name: "savepoint-probe").count
+    end
+
+    expect(kept).to eq(0)
+  end
+
   it "lets any other exception raised by the block go up untouched" do
     expect { described_class.call(city) { raise ArgumentError, "bug" } }.to raise_error(ArgumentError, "bug")
   end

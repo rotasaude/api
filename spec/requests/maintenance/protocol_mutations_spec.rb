@@ -254,6 +254,39 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
       expect(versions.sole.status).to eq("draft")
     end
 
+    # I2: uma trava presa por OUTRA sessão não prende a thread. O arranjo é
+    # uma segunda conexão Postgres de verdade (PG cru, fora do pool pinado
+    # pela transação de fixture) ao mesmo banco da cidade, com uma transação
+    # aberta que inseriu a MESMA (name, version) — sem commit. O INSERT do
+    # command espera essa transação no índice único
+    # idx_protocol_definitions_name_version_muni: é espera de trava, a que o
+    # lock_timeout de CityWriter corta. O teto é reduzido para 300ms só aqui,
+    # para o exemplo ser curto; o valor real (5s) é conferido em
+    # spec/queries/maintenance/city_writer_spec.rb.
+    it "fails fast with CITY_WRITE_FAILED when another session holds the lock the command waits on" do
+      stub_const("Maintenance::CityWriter::LOCK_TIMEOUT", "300ms")
+      blocker = PG.connect(TEST_CITY_A.database_url)
+      begin
+        blocker.exec("BEGIN")
+        blocker.exec_params("INSERT INTO protocol_definitions (name, version, definition, status, created_at, updated_at) " \
+                            "VALUES ($1, $2, '{}', 'draft', now(), now())", [ "dengue", 1 ])
+
+        started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        save_draft!(definition)
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+      ensure
+        blocker.exec("ROLLBACK")
+        blocker.close
+      end
+
+      expect(elapsed).to be < 3
+      expect(payload).to be_nil
+      expect(json["errors"].first.dig("extensions", "code")).to eq("CITY_WRITE_FAILED")
+      expect(json["errors"].first["message"]).to include("ActiveRecord::LockWaitTimeout")
+      expect(audit_events.map { |e| e.payload["outcome"] }).to eq(%w[attempted error])
+      expect(versions).to be_empty
+    end
+
     it "answers CITY_WRITE_FAILED for any other failure, publishing only the class, audited as error" do
       allow(Protocols::SaveDraft).to receive(:call).and_raise(ArgumentError, "telefone +55 41 99999-0000")
 
