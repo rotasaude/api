@@ -110,7 +110,7 @@ module Protocols
 
     # Leitura pura das MESMAS três condições que `call` exige, para quem só
     # quer perguntar "reverteria?" sem reverter — hoje só o painel da cidade
-    # (Admin::ProtocolsQuery, spec de assinaturas §5). Reusa
+    # (Admin::ProtocolsQuery, spec de assinaturas §5, ADR-0016). Reusa
     # `activation_history` em vez de duplicar a consulta; não é a checagem que
     # decide um `call` de verdade — essa segue travando as duas linhas e
     # reconferindo tudo sob lock (P2, acima). Sem lock, esta resposta pode

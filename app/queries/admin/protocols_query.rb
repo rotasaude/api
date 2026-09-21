@@ -59,7 +59,7 @@ class Admin::ProtocolsQuery
     }.merge(signature_state(d))
   end
 
-  # Estado de assinatura de UMA versão (spec de assinaturas §5/§6, Plano 2
+  # Estado de assinatura de UMA versão (spec de assinaturas §5/§6, ADR-0016, Plano 2
   # Task 5) — fonte de verdade daqui pra frente. createdBy/publishedBy/
   # fourEyes acima (via fetch_audit, de domain_events) ficam como estão só
   # porque o dashboard ainda os lê (Decisão 5 do plano); para "quem assinou o

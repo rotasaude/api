@@ -1,5 +1,5 @@
 # Ciclo de vida do protocolo na cidade, com assinaturas (spec de
-# assinaturas §4 e §8). Endpoints finos: a regra mora nos commands.
+# assinaturas §4 e §8, ADR-0016). Endpoints finos: a regra mora nos commands.
 #
 # Step-up de MFA (ADR-0011) em todo ato que aprova ou põe em uso — assinar,
 # ativar, aposentar, reverter; a publicação mora em PublicationsController.

@@ -1,4 +1,4 @@
-# Um ato de ativação (spec de assinaturas §5, §6). A última linha de uma versão
+# Um ato de ativação (spec de assinaturas §5, §6, ADR-0016). A última linha de uma versão
 # marca até quando as assinaturas de ativação dela já foram consumidas, e a
 # sequência por protocolo é o que a reversão de emergência lê. Três tipos:
 # `signed` e `emergency_revert` (atos de verdade, sempre com ator humano) e

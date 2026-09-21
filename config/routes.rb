@@ -109,7 +109,7 @@ Rails.application.routes.draw do
   # Publicação de protocolo — exige step-up MFA (ADR-0011 + ADR-0009)
   post "/protocols/:version/publish", to: "publications#create"
 
-  # Ciclo de vida com assinaturas (spec de assinaturas). `name` vai no corpo.
+  # Ciclo de vida com assinaturas (spec de assinaturas, ADR-0016). `name` vai no corpo.
   constraints(version: /\d+/) do
     post "/protocols/:version/submit",     to: "protocol_lifecycle#submit"
     post "/protocols/:version/signatures", to: "protocol_lifecycle#sign"

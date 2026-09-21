@@ -1,4 +1,4 @@
-# Linha-base de ativação (spec de assinaturas §6, decisão do usuário na fatia 2).
+# Linha-base de ativação (spec de assinaturas §6, ADR-0016, decisão do usuário na fatia 2).
 #
 # Versões em uso antes das assinaturas não têm linha em protocol_activations,
 # e sem uma linha ANTERIOR a primeira ativação assinada de cada cidade não
