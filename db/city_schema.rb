@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_18_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_21_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -181,16 +181,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_18_000001) do
   end
 
   create_table "protocol_activations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "actor_id", null: false
+    t.uuid "actor_id"
     t.string "actor_kind", null: false
     t.datetime "created_at", null: false
     t.string "kind", null: false
     t.uuid "protocol_definition_id", null: false
     t.text "reason"
     t.index ["protocol_definition_id"], name: "index_protocol_activations_on_protocol_definition_id"
-    t.check_constraint "actor_kind::text = ANY (ARRAY['user'::text, 'maintainer'::text])", name: "ck_protocol_activations_actor_kind"
-    t.check_constraint "kind::text = 'signed'::text OR reason IS NOT NULL AND length(btrim(reason)) > 0", name: "ck_protocol_activations_revert_reason"
-    t.check_constraint "kind::text = ANY (ARRAY['signed'::text, 'emergency_revert'::text])", name: "ck_protocol_activations_kind"
+    t.check_constraint "(kind::text = 'baseline'::text) = (actor_id IS NULL)", name: "ck_protocol_activations_baseline_has_no_actor"
+    t.check_constraint "(kind::text = 'baseline'::text) = (actor_kind::text = 'system'::text)", name: "ck_protocol_activations_system_is_baseline"
+    t.check_constraint "actor_kind::text = ANY (ARRAY['user'::text, 'maintainer'::text, 'system'::text])", name: "ck_protocol_activations_actor_kind"
+    t.check_constraint "kind::text <> 'emergency_revert'::text OR reason IS NOT NULL AND length(btrim(reason)) > 0", name: "ck_protocol_activations_revert_reason"
+    t.check_constraint "kind::text = ANY (ARRAY['signed'::text, 'emergency_revert'::text, 'baseline'::text])", name: "ck_protocol_activations_kind"
   end
 
   create_table "protocol_contributions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

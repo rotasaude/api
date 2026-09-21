@@ -91,6 +91,25 @@ RSpec.describe Protocols::RevertActivation do
     expect(revert.reason).to eq(:not_revertible)
   end
 
+  it "reverts the first signed activation of a city to the baseline version" do
+    legacy = ProtocolDefinition.create!(name: "dengue", version: 1, status: "active", activated_at: 3.days.ago,
+                                        definition: protocol_definition_hash)
+    legacy.activations.create!(kind: "baseline", actor_kind: "system", actor_id: nil, created_at: 3.days.ago)
+    activate_signed!(2)
+
+    result = revert
+
+    expect(result.ok?).to be(true)
+    expect([ version(1).status, version(2).status ]).to eq(%w[active published])
+  end
+
+  it "refuses to revert while the only activation is the baseline" do
+    legacy = ProtocolDefinition.create!(name: "dengue", version: 1, status: "active", definition: protocol_definition_hash)
+    legacy.activations.create!(kind: "baseline", actor_kind: "system", actor_id: nil)
+
+    expect(revert.reason).to eq(:not_revertible)
+  end
+
   # Concurrency (P2): lock BOTH the current and target rows, in deterministic
   # id order, then re-check everything — including the activation history —
   # before writing. Simulate a stale read on the target: capture it while it
