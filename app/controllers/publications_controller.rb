@@ -3,11 +3,12 @@ class PublicationsController < ApplicationController
   include Authentication
   include MfaStepUp
   include ProtocolResultRendering
+  include ScalarParams
 
   def create
     return require_step_up! unless reauthenticated_recently?(via: :totp)
 
-    result = Protocols::Publish.call(version: params[:version], name: params[:name], by: Current.user)
+    result = Protocols::Publish.call(version: params[:version], name: optional_scalar_param(:name), by: Current.user)
     return render_protocol_result(result) unless result.ok?
 
     # `id` é o formato que o dashboard consome hoje (Plano 1) — mantido ao

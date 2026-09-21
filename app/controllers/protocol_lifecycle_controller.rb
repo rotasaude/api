@@ -11,6 +11,7 @@ class ProtocolLifecycleController < ApplicationController
   include Authentication
   include MfaStepUp
   include ProtocolResultRendering
+  include ScalarParams
 
   before_action :require_step_up!, except: :submit
 
@@ -19,7 +20,7 @@ class ProtocolLifecycleController < ApplicationController
   end
 
   def sign
-    result = Protocols::Sign.call(name: protocol_name, version: version, purpose: params.require(:purpose),
+    result = Protocols::Sign.call(name: protocol_name, version: version, purpose: params.expect(:purpose),
                                   by: Current.user)
     return render_protocol_result(result) unless result.ok?
 
@@ -39,12 +40,13 @@ class ProtocolLifecycleController < ApplicationController
   end
 
   def revert
-    render_protocol_result(Protocols::RevertActivation.call(name: protocol_name, reason: params[:reason].to_s,
+    render_protocol_result(Protocols::RevertActivation.call(name: protocol_name,
+                                                            reason: optional_scalar_param(:reason).to_s,
                                                             by: Current.user))
   end
 
   private
 
-  def protocol_name = params.require(:name)
+  def protocol_name = params.expect(:name)
   def version = Integer(params.require(:version))
 end

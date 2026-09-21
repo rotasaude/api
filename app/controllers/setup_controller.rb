@@ -15,6 +15,7 @@
 # Aceite de convite (POST /setup/accept_invitation) é PÚBLICO (token é cred).
 class SetupController < ApplicationController
   include Authentication
+  include ScalarParams
 
   allow_unauthenticated_access only: %i[accept_invitation]
 
@@ -29,8 +30,8 @@ class SetupController < ApplicationController
     return head(:forbidden) unless can_manage_members?
 
     result = InviteMember.call(
-      email: params.require(:email),
-      role:  params.require(:role),
+      email: params.expect(:email),
+      role:  params.expect(:role),
       invited_by: current_user
     )
     if result.ok?
@@ -46,8 +47,8 @@ class SetupController < ApplicationController
   # PUBLIC — token é a credencial.
   def accept_invitation
     result = AcceptInvitation.call(
-      token: params.require(:token),
-      password: params.require(:password)
+      token: params.expect(:token),
+      password: params.expect(:password)
     )
     if result.ok?
       user = result.payload[:user]
@@ -64,7 +65,7 @@ class SetupController < ApplicationController
   def grant_role
     return head(:forbidden) unless can_manage_members?
 
-    result = GrantRole.call(user_id: params.require(:user_id), role: params.require(:role), by: current_user)
+    result = GrantRole.call(user_id: params.expect(:user_id), role: params.expect(:role), by: current_user)
     if result.ok?
       m = result.payload[:membership]
       render json: { id: m.id, user_id: m.user_id, role: m.role, granted_at: m.granted_at.iso8601 }, status: :created
