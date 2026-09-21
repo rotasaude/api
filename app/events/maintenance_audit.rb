@@ -27,6 +27,9 @@ module MaintenanceAudit
     maintenance.protocol.draft_saved
     maintenance.protocol.submitted
     maintenance.protocol.published
+    maintenance.protocol.activated
+    maintenance.protocol.retired
+    maintenance.protocol.reverted
   ].freeze
 
   OUTCOMES = %w[attempted ok rejected error].freeze
@@ -67,6 +70,9 @@ module MaintenanceAudit
     when "maintenance.protocol.draft_saved" then Platform.audit("maintenance.protocol.draft_saved", **payload)
     when "maintenance.protocol.submitted"  then Platform.audit("maintenance.protocol.submitted", **payload)
     when "maintenance.protocol.published"  then Platform.audit("maintenance.protocol.published", **payload)
+    when "maintenance.protocol.activated"  then Platform.audit("maintenance.protocol.activated", **payload)
+    when "maintenance.protocol.retired"    then Platform.audit("maintenance.protocol.retired", **payload)
+    when "maintenance.protocol.reverted"   then Platform.audit("maintenance.protocol.reverted", **payload)
     else
       # Sem isto, um nome novo em NAMES sem branch correspondente passaria na
       # validação acima, não escreveria nada, e ainda devolveria um

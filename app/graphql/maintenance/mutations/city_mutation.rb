@@ -47,6 +47,11 @@ module Maintenance
         # Nomes de campo escritos pelo CÓDIGO da mutation, nunca valores.
         changed_fields: lambda do |value|
           "changed_fields inválido" unless value.is_a?(Array) && value.all? { |f| f.is_a?(String) && f.match?(/\A[a-z_]{1,40}\z/) }
+        end,
+        # Decisão 4 (global-constraints.md): o TEXTO do motivo de reversão
+        # nunca entra na auditoria de plataforma — só se um foi dado.
+        reason_given: lambda do |value|
+          "reason_given inválido" unless value == true || value == false
         end
       }.freeze
 

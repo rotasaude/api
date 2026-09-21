@@ -18,7 +18,8 @@ RSpec.describe "Maintenance GraphQL schema" do
     "Query" => %w[me maintainers maintenanceTokens auditEvents cities city],
     "Maintainer" => %w[id emailAddress active enrolled createdAt],
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
-                     saveProtocolDraft submitProtocolForReview publishProtocol],
+                     saveProtocolDraft submitProtocolForReview publishProtocol
+                     activateProtocol retireProtocol revertProtocolActivation],
     "InviteMaintainerPayload" => %w[ok errors],
     "DeactivateMaintainerPayload" => %w[ok errors],
     "MaintenanceToken" => %w[id maintainerId name access citySlugs expiresAt revokedAt lastUsedAt],
@@ -27,6 +28,9 @@ RSpec.describe "Maintenance GraphQL schema" do
     "SaveProtocolDraftPayload" => %w[ok errors],
     "SubmitProtocolForReviewPayload" => %w[ok errors],
     "PublishProtocolPayload" => %w[ok errors],
+    "ActivateProtocolPayload" => %w[ok errors],
+    "RetireProtocolPayload" => %w[ok errors],
+    "RevertProtocolActivationPayload" => %w[ok errors],
     "AuditEvent" => %w[name module outcome occurredAt maintainerId login correlationId],
     "UserError" => %w[path message],
     "CitySummary" => %w[slug name uf status schemaVersion schemaBehind createdAt],

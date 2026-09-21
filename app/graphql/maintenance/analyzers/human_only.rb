@@ -10,6 +10,7 @@ module Maintenance
         maintainers maintenanceTokens auditEvents
         inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
         saveProtocolDraft submitProtocolForReview publishProtocol
+        activateProtocol retireProtocol revertProtocolActivation
       ].freeze
 
       # Campos de raiz que um token PODE usar. Existe para a guarda de
