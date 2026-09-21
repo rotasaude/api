@@ -17,12 +17,14 @@ RSpec.describe "Maintenance GraphQL schema" do
   EXPECTED_TYPES = {
     "Query" => %w[me maintainers maintenanceTokens auditEvents cities city],
     "Maintainer" => %w[id emailAddress active enrolled createdAt],
-    "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken],
+    "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
+                     saveProtocolDraft],
     "InviteMaintainerPayload" => %w[ok errors],
     "DeactivateMaintainerPayload" => %w[ok errors],
     "MaintenanceToken" => %w[id maintainerId name access citySlugs expiresAt revokedAt lastUsedAt],
     "CreateMaintenanceTokenPayload" => %w[ok errors secretOnce],
     "RevokeMaintenanceTokenPayload" => %w[ok errors],
+    "SaveProtocolDraftPayload" => %w[ok errors],
     "AuditEvent" => %w[name module outcome occurredAt maintainerId login correlationId],
     "UserError" => %w[path message],
     "CitySummary" => %w[slug name uf status schemaVersion schemaBehind createdAt],
@@ -332,31 +334,50 @@ RSpec.describe "Maintenance GraphQL schema" do
                            .map { |path| Pathname.new(path).relative_path_from(Rails.root).to_s }
     end
 
-    # Cada chamada só é permitida no ÚNICO arquivo que a encerra: CityReader
-    # (app/queries/maintenance/city_reader.rb) é quem chama CityConnection.with
-    # de verdade; CityType (app/graphql/maintenance/types/city_type.rb) é quem
-    # chama CityReader.call. Isentar um arquivo inteiro para as DUAS chamadas
-    # (como a versão anterior desta guarda fazia) deixaria um terceiro arquivo
+    # Cada chamada só é permitida nos arquivos que a encerram: CityReader
+    # (leitura) e CityWriter (escrita, Plano 5) são os dois que chamam
+    # CityConnection.with de verdade; CityType
+    # (app/graphql/maintenance/types/city_type.rb) é quem chama
+    # CityReader.call, e a base CityMutation
+    # (app/graphql/maintenance/mutations/city_mutation.rb) é quem chama
+    # CityWriter.call. Isentar um arquivo inteiro para TODAS as chamadas (como
+    # uma versão anterior desta guarda fazia) deixaria um terceiro arquivo
     # livre para chamar CityConnection.with direto, contanto que ficasse fora
     # da lista — qualificar por PAR (chamada, arquivo) fecha isso.
     def allowed_call_sites
       {
-        "CityConnection.with" => "app/queries/maintenance/city_reader.rb",
-        "CityReader.call" => "app/graphql/maintenance/types/city_type.rb"
+        "CityConnection.with" => %w[app/queries/maintenance/city_reader.rb app/queries/maintenance/city_writer.rb],
+        "CityReader.call" => %w[app/graphql/maintenance/types/city_type.rb],
+        "CityWriter.call" => %w[app/graphql/maintenance/mutations/city_mutation.rb]
       }
     end
 
-    def city_connection_call_offenders
-      city_reachable_files.filter_map do |relative|
-        content = File.read(Rails.root.join(relative))
-
-        offends = allowed_call_sites.any? { |pattern, allowed_file| content.include?(pattern) && relative != allowed_file }
+    def call_site_offenders(files)
+      files.filter_map do |relative, content|
+        offends = allowed_call_sites.any? do |pattern, allowed_files|
+          content.include?(pattern) && allowed_files.exclude?(relative)
+        end
         relative if offends
       end
     end
 
-    it "calls CityConnection.with / CityReader.call only from the one file that owns each" do
+    def city_connection_call_offenders
+      call_site_offenders(city_reachable_files.map { |relative| [ relative, File.read(Rails.root.join(relative)) ] })
+    end
+
+    it "calls CityConnection.with / CityReader.call / CityWriter.call only from the files that own each" do
       expect(city_connection_call_offenders).to be_empty
+    end
+
+    # Auto-teste da guarda: uma escrita que abrisse a cidade por fora da base
+    # (uma mutation chamando CityWriter.call direto, sem o escopo e a
+    # auditoria de CityMutation) é pega — e o mesmo texto na base, não.
+    it "catches a stray CityWriter.call outside the CityMutation base" do
+      stray = "Maintenance::CityWriter.call(city) { Protocols::SaveDraft.call(definition: d, by: a) }"
+
+      expect(call_site_offenders([ [ "app/graphql/maintenance/mutations/stray.rb", stray ] ]))
+        .to eq([ "app/graphql/maintenance/mutations/stray.rb" ])
+      expect(call_site_offenders([ [ "app/graphql/maintenance/mutations/city_mutation.rb", stray ] ])).to be_empty
     end
 
     # A mesma varredura, pelo nome de quem NUNCA deveria aparecer em CÓDIGO

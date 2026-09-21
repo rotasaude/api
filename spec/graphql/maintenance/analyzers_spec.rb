@@ -153,16 +153,61 @@ RSpec.describe "Maintenance analyzers" do
   # cidade ainda". O Plano 4 criou `city(slug:)`, então o alarme cumpriu o
   # papel e vira a guarda definitiva — todo campo de raiz com argumento de
   # cidade PRECISA passar por Credential#allows_city?.
+  #
+  # Plano 5: em Mutation, o escopo não mora em cada resolver — mora na base
+  # CityMutation (`in_city` → `refuse_out_of_scope!` → allows_city?). Então a
+  # guarda exige, para todo campo de Mutation com `citySlug`, que a classe da
+  # mutation herde de CityMutation, e que a base de fato consulte o escopo.
   it "routes every city-scoped root field through the credential's city scope" do
-    root_fields = Maintenance::Schema.query.fields.merge(Maintenance::Schema.mutation.fields)
-    scoped = root_fields.select { |_name, field| (field.arguments.keys & %w[slug citySlug]).any? }
+    city_argument = ->(field) { (field.arguments.keys & %w[slug citySlug]).any? }
 
-    expect(scoped.keys).to contain_exactly("city")
-
-    scoped.each_key do |name|
+    query_scoped = Maintenance::Schema.query.fields.select { |_name, field| city_argument.call(field) }
+    expect(query_scoped.keys).to contain_exactly("city")
+    query_scoped.each_key do |name|
       source = File.read(Rails.root.join("app/graphql/maintenance/types/query_type.rb"))
       expect(source).to match(/def #{name}\b.*?allows_city\?/m),
                         "#{name} aceita argumento de cidade e não consulta allows_city?"
+    end
+
+    mutation_scoped = Maintenance::Schema.mutation.fields.select { |_name, field| city_argument.call(field) }
+    expect(mutation_scoped.keys).to include("saveProtocolDraft")
+    mutation_scoped.each do |name, field|
+      expect(field.resolver).to be < Maintenance::Mutations::CityMutation,
+                                "#{name} aceita citySlug e não herda de CityMutation"
+    end
+    base = File.read(Rails.root.join("app/graphql/maintenance/mutations/city_mutation.rb"))
+    expect(base).to match(/def in_city\b.*?refuse_out_of_scope!/m)
+    expect(base).to match(/def refuse_out_of_scope!.*?allows_city\?/m)
+  end
+
+  # Plano 5, Decisão 7: uma mutation de cidade abre uma conexão como um
+  # `city(slug:)` — conta no mesmo teto. Uma operação só tem UM tipo de raiz
+  # (a análise visita só a operação selecionada), então o teto de mutation se
+  # prova com mutations: 6 escritas de cidade numa operação são recusadas
+  # antes de executar; 5 passam pelo analisador.
+  describe "city budget on mutations" do
+    def save_drafts(count)
+      fields = Array.new(count) do |i|
+        %(s#{i}: saveProtocolDraft(citySlug: "nenhuma", definition: {name: "x", version: 1}) { ok })
+      end
+      "mutation { #{fields.join(' ')} }"
+    end
+
+    it "counts every root Mutation field that takes citySlug toward the 5-city budget" do
+      expect(Protocols::SaveDraft).not_to receive(:call)
+
+      result = execute(save_drafts(6), credential: human_credential)
+
+      expect(result["data"]).to be_nil
+      expect(result["errors"].map { |e| e.dig("extensions", "code") }).to eq([ "CITY_BUDGET_EXCEEDED" ])
+      expect(PlatformEvent.where(name: "maintenance.protocol.draft_saved")).to be_empty
+    end
+
+    it "lets five city writes through the analyzer" do
+      result = execute(save_drafts(5), credential: human_credential)
+
+      expect(result["errors"]).to be_nil
+      expect(result["data"].values).to all(eq("ok" => false))
     end
   end
 end

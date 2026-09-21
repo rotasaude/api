@@ -67,7 +67,7 @@ module Maintenance
                                                  credential: credential.audit_payload,
                                                  **audit_request_fields, **fields)
 
-        result = yield
+        result = yield(correlation_id)
         record_outcome(event, "ok", module_name, correlation_id, fields)
         { ok: true, errors: [] }
       rescue Rejected => e
