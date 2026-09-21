@@ -45,21 +45,109 @@ RSpec.describe "Protocol signatures guard" do
   # fora de qualquer chamada) não tem como ser leitura: é escrita por
   # eliminação.
   def read_call?(name)
-    name.match?(/\A(where|find_by|exists\?)\z/)
+    name.match?(/\A(where|find_by|find_by!|exists\?)\z/)
   end
 
-  # Anda por CARACTERE no texto do ARQUIVO INTEIRO (não por linha nem por
-  # janela): é o que sustenta o caso multi-linha que já vivia aqui antes —
-  # `ProtocolDefinition.where(\n  name: ...,\n  status: "active"\n)` em
-  # conversation_advance.rb tem o "where(" que abre duas linhas acima do
-  # "status:" que fecha; casar parênteses por posição no texto acha esse
-  # "where(" não importa quantas linhas atrás ele abriu, sem precisar de
-  # janela nenhuma.
+  # Fix round 1 (revisão do Task 2): métodos de ESCRITA reconhecidos quando
+  # NÃO há `(` nenhum envolvendo o match — chamada sem parênteses, Ruby
+  # válido (`protocol.update! status: "active"`). Confirma escrita pelo NOME
+  # do método — nunca por eliminação pura. Eliminação pura foi exatamente o
+  # que deixou passar o achado do fix round 1: sem fronteira de instrução
+  # (ver unclosed_paren_before abaixo), a travessia para trás cruzava
+  # `def`/`end`/linha em branco/comentário e achava um `(` de OUTRA
+  # instrução, bem mais atrás no arquivo, como se fosse o `where(` desta.
+  def write_call?(name)
+    name.match?(/\A(update|update!|update_all|update_column|update_columns|
+                    assign_attributes|update_attribute|write_attribute)\z/x)
+  end
+
+  # Fix round 1: apaga o CONTEÚDO de comentário (do `#` que não está dentro
+  # de string até a quebra de linha) inteiro, e SÓ os caracteres `(`/`)` de
+  # dentro de literal de string ("..."/'...', respeitando `\"`/`\'`) — não a
+  # string inteira. Um `(` solto dentro de `"fallback lookup where ("` ou
+  # depois de um `#` de comentário À DIREITA de código de verdade não pode
+  # contar como parêntese; a forma de antes só apagava comentário de LINHA
+  # INTEIRA (`line.strip.start_with?`), que deixa passar comentário à direita
+  # e qualquer string literal.
+  #
+  # Apagar a string INTEIRA (tentativa anterior a esta) quebra o próprio
+  # `status_write`: o valor que ele precisa casar — `"active"`/`"published"`
+  # — é UM LITERAL DE STRING, e apagado ele some do texto antes do regex
+  # rodar (achado rodando este arquivo: toda a suíte de auto-teste ficava
+  # vermelha, inclusive os dez casos originais que não tinham nada a ver com
+  # o achado do fix round 1). Só neutralizar `(`/`)` resolve o bug sem
+  # destruir o valor que a guarda existe para achar — nenhum dos valores
+  # monitorados (`"active"`, `"published"`) tem parêntese dentro.
+  def blank_strings_and_comments(source)
+    out = source.dup
+    i = 0
+    len = out.length
+    while i < len
+      char = out[i]
+      if char == "#"
+        i += 1
+        while i < len && out[i] != "\n"
+          out[i] = " "
+          i += 1
+        end
+      elsif char == '"' || char == "'"
+        quote = char
+        i += 1
+        while i < len && out[i] != quote
+          if out[i] == "\\" && i + 1 < len
+            i += 1
+            out[i] = " " if out[i] == "(" || out[i] == ")"
+            i += 1
+            next
+          end
+          out[i] = " " if out[i] == "(" || out[i] == ")"
+          i += 1
+        end
+        i += 1
+      else
+        i += 1
+      end
+    end
+    out
+  end
+
+  # Fix round 1: um `\n` só é atravessado quando alguma das duas pontas diz
+  # que a instrução continua — a linha anterior termina em vírgula, `(`,
+  # `[`, `{`, `|` ou `\` (lista/bloco/expressão partida ao meio), ou a linha
+  # seguinte começa com `.`/`&.` (encadeamento de método, como em
+  # `Activate`: `.where(...)\n.where.not(...)\n.update_all(...)` — embora
+  # nesse caso específico a escrita já resolva na própria linha, sem precisar
+  # cruzar nada). Qualquer outra coisa — inclusive `end`, `def`, linha em
+  # branco — é fronteira de instrução: para. Roda sobre o texto JÁ sem
+  # comentário/string (blank_strings_and_comments corre antes, em
+  # protocol_status_write_in?): senão um comentário à direita faria a linha
+  # parecer terminar em outra coisa que não o `(` de verdade que vem antes
+  # dele.
+  def statement_continues_across?(text, newline_idx)
+    before_start = (text.rindex("\n", newline_idx - 1) || -1) + 1
+    before_line = text[before_start...newline_idx].rstrip
+    return true if before_line.end_with?(",", "(", "[", "{", "|", "\\")
+
+    after_end = text.index("\n", newline_idx + 1) || text.length
+    after_line = text[(newline_idx + 1)...after_end].lstrip
+    after_line.start_with?(".", "&.")
+  end
+
+  # Anda por CARACTERE (não por linha nem por janela) — sustenta o caso
+  # multi-linha que já vivia aqui antes (o "where(" de
+  # conversation_advance.rb abre duas linhas acima do "status:" que fecha) —
+  # mas PARA na fronteira da instrução (fix round 1): sem essa borda, a
+  # travessia atravessava o arquivo inteiro e podia achar um `(` de outra
+  # instrução — ver statement_continues_across? e write_call? acima para o
+  # achado que motivou isto.
   def unclosed_paren_before(text, pos)
     depth = 0
     i = pos - 1
     while i >= 0
-      case text[i]
+      char = text[i]
+      return nil if char == "\n" && depth.zero? && !statement_continues_across?(text, i)
+
+      case char
       when ")" then depth += 1
       when "("
         return i if depth.zero?
@@ -110,18 +198,34 @@ RSpec.describe "Protocol signatures guard" do
     unclosed_paren_before(text, match.begin(0))
   end
 
-  # Sem `(` nenhum envolvendo: escrita (não há como ser leitura). Com `(`:
-  # leitura só se o método que o abre é where/find_by/exists?; senão, escrita
-  # — a menos que o receptor da escrita seja explicitamente não-protocolo.
+  # Com `(` na MESMA instrução: leitura só se o método que o abre é
+  # where/find_by/find_by!/exists?; senão, escrita — a menos que o receptor
+  # seja explicitamente não-protocolo. Sem `(` (unclosed_paren_before parou
+  # na fronteira da instrução, ou nunca houve nenhum): `.status =`/
+  # `[:status] =` são atribuição — não têm como ser leitura, escrita sem
+  # mais pergunta; `status:` solto (chamada sem parênteses) só confirma
+  # escrita pelo NOME do método antes (write_call?) — nunca por eliminação
+  # pura (fix round 1: eliminação pura foi o que deixou passar um `(`
+  # perdido bem mais atrás no arquivo como se fosse o `where(`/`find_by(`
+  # desta instrução).
   def write_at?(text, match)
     paren_idx = enclosing_paren_index(text, match)
-    return true if paren_idx.nil?
 
-    method = call_before(text, paren_idx)
+    if paren_idx
+      method = call_before(text, paren_idx)
+      return false if method && read_call?(method[1])
+
+      receiver = receiver_before(text, paren_idx)
+      return false if receiver && non_protocol_receiver?(receiver[1])
+
+      return true
+    end
+
+    return true if match[0].match?(/\A(?:\.status\s*=|\[:status\]\s*=)/)
+
+    method = call_before(text, match.begin(0))
+    return true if method && write_call?(method[1])
     return false if method && read_call?(method[1])
-
-    receiver = receiver_before(text, paren_idx)
-    return false if receiver && non_protocol_receiver?(receiver[1])
 
     true
   end
@@ -135,21 +239,20 @@ RSpec.describe "Protocol signatures guard" do
     Dir[Rails.root.join("app/**/*.rb")].select { |path| File.read(path).include?("ProtocolDefinition") }
   end
 
-  # Comentário de uma linha só (`#` depois de rstrip) some do texto ANTES da
-  # travessia — não só não conta como escrita, como não pode atrapalhar o
-  # casamento de parênteses: várias docstrings do projeto citam código com um
-  # `(` sem o `)` correspondente na mesma linha (ex.: "exige
-  # Signatures.missing(..." partido em duas linhas de comentário em
-  # publish.rb). Trocar a linha inteira por uma linha em branco preserva as
-  # posições de todo o resto do texto.
-  def protocol_status_write?(path)
-    lines = File.readlines(path)
-    text = lines.map { |line| line.strip.start_with?("#") ? "\n" : line }.join
+  # Separado de protocol_status_write? (que lê arquivo) para o auto-teste
+  # abaixo poder provar o MÉTODO de detecção direto em trecho sintético, sem
+  # precisar escrever e apagar arquivo em disco a cada caso.
+  def protocol_status_write_in?(source)
+    text = blank_strings_and_comments(source)
 
     matches = []
     text.scan(status_write) { matches << Regexp.last_match }
 
     matches.any? { |match| write_at?(text, match) }
+  end
+
+  def protocol_status_write?(path)
+    protocol_status_write_in?(File.read(path))
   end
 
   it "writes a protocol status of published or active only in the three signed-act commands" do
@@ -159,6 +262,156 @@ RSpec.describe "Protocol signatures guard" do
                                             .select { |path| protocol_status_write?(path) }
 
     expect(offenders).to be_empty
+  end
+
+  # Fix round 1 — auto-teste do MÉTODO de detecção, em trecho sintético, sem
+  # precisar de arquivo em disco nem da literal ProtocolDefinition (esse
+  # filtro é de app_files_touching_protocols, uma camada acima, alheia ao
+  # que está sendo provado aqui). Mesmo espírito de
+  # spec/architecture/maintenance_schema_spec.rb: prova o CAMINHO DE CÓDIGO,
+  # não só a regex — e funciona como regressão permanente para os dez casos
+  # que motivaram o Task 2 e para o achado do fix round 1, sem depender de
+  # escrever e apagar arquivo temporário a cada rodada.
+  context "detection self-test (per statement, not by proximity)" do
+    def flags(source) = protocol_status_write_in?(source)
+
+    # Achado do fix round 1 (reproduzido pela revisão): um `(` perdido num
+    # COMENTÁRIO À DIREITA de código de verdade, muito antes no arquivo, não
+    # pode contar como o parêntese desta instrução — a travessia sem
+    # fronteira cruzava `end`/linha em branco/`def` e achava esse `(` como
+    # se fosse um `where(` de verdade, deixando passar a escrita sem
+    # parênteses como se fosse leitura.
+    it "flags a parens-less write even with a stray '(' inside an earlier trailing comment" do
+      source = <<~RUBY
+        class Something
+          def helper
+            x = 1 # fallback lookup where (
+          end
+
+          def other
+            protocol.update! status: "active"
+          end
+        end
+      RUBY
+
+      expect(flags(source)).to be true
+    end
+
+    # A mesma forma, com o `(` perdido dentro de um LITERAL DE STRING
+    # (código de verdade, não comentário) — blank_strings_and_comments apaga
+    # o miolo da string antes de qualquer varredura, e a fronteira de
+    # instrução já para antes de a travessia chegar lá de qualquer jeito.
+    it "flags a parens-less write even with a stray '(' inside an earlier string literal" do
+      source = <<~RUBY
+        class Something
+          def helper
+            x = "fallback lookup find_by ("
+          end
+
+          def other
+            protocol.update! status: "active"
+          end
+        end
+      RUBY
+
+      expect(flags(source)).to be true
+    end
+
+    # Escrita sem parênteses nenhum, valor símbolo — confirmada por
+    # write_call?("update!"), não por eliminação.
+    it "flags a parens-less write with a symbol value" do
+      expect(flags('protocol.update! status: :active')).to be true
+    end
+
+    # Os dez casos do Task 2 original (8 do brief, o 7º com 3 formas),
+    # mantidos aqui como regressão permanente em vez de arquivo temporário
+    # escrito e apagado a cada rodada.
+    it "flags read-then-write across separate statements (find_by, then update! two lines later)" do
+      source = <<~RUBY
+        version = ProtocolDefinition.find_by(name: n)
+
+        version.update!(status: "published")
+      RUBY
+
+      expect(flags(source)).to be true
+    end
+
+    it "flags a write on the line right after an unrelated status comparison" do
+      source = <<~RUBY
+        if protocol.status == "in_review"
+          protocol.update!(status: "published")
+        end
+      RUBY
+
+      expect(flags(source)).to be true
+    end
+
+    it "flags a write on the line right after an unrelated include? guard" do
+      source = <<~RUBY
+        return unless ALLOWED.include?(x)
+
+        record.update!(status: "active")
+      RUBY
+
+      expect(flags(source)).to be true
+    end
+
+    it "flags a write chained off a variable assigned from a where on an earlier statement" do
+      source = <<~RUBY
+        scope = ProtocolDefinition.where(name: n)
+
+        scope.first.update!(status: "active")
+      RUBY
+
+      expect(flags(source)).to be true
+    end
+
+    it "flags status outside the first kwarg position" do
+      expect(flags('record.update!(activated_at: Time.current, status: "active")')).to be true
+    end
+
+    it "flags a symbol value" do
+      expect(flags("record.update!(status: :published)")).to be true
+    end
+
+    it "flags update_attribute" do
+      expect(flags('record.update_attribute(:status, "active")')).to be true
+    end
+
+    it "flags write_attribute" do
+      expect(flags('record.write_attribute(:status, "active")')).to be true
+    end
+
+    it "flags a bracket attribute assignment" do
+      expect(flags('record[:status] = "active"')).to be true
+    end
+
+    it "flags a write chained onto a where" do
+      expect(flags('ProtocolDefinition.where(name: n).update_all(status: "active")')).to be true
+    end
+
+    # E os casos que precisam continuar limpos — a mesma distinção que o
+    # Task 2 original provou contra o código real, aqui fixada como trecho
+    # sintético, para nunca mais depender só do scan do app/ para pegar uma
+    # regressão nestes três.
+    it "clears a status kwarg read inside a where(, even split across lines" do
+      source = <<~RUBY
+        record = ProtocolDefinition.where(
+          name: DEFAULT_PROTOCOL_NAME,
+          status: "active"
+        ).first
+      RUBY
+
+      expect(flags(source)).to be false
+    end
+
+    it "clears a status write whose receiver is explicitly not the protocol (city)" do
+      expect(flags('city.update!(status: "active")')).to be false
+    end
+
+    it "clears a status kwarg read inside a find_by!( (fix round 1: read_call? addition)" do
+      expect(flags('protocol = ProtocolDefinition.find_by!(name: n, status: "active")')).to be false
+    end
   end
 
   it "makes publish and activate ask Protocols::Signatures before the act" do
