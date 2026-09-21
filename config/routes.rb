@@ -108,6 +108,15 @@ Rails.application.routes.draw do
   # Publicação de protocolo — exige step-up MFA (ADR-0011 + ADR-0009)
   post "/protocols/:version/publish", to: "publications#create"
 
+  # Ciclo de vida com assinaturas (spec de assinaturas). `name` vai no corpo.
+  constraints(version: /\d+/) do
+    post "/protocols/:version/submit",     to: "protocol_lifecycle#submit"
+    post "/protocols/:version/signatures", to: "protocol_lifecycle#sign"
+    post "/protocols/:version/activate",   to: "protocol_lifecycle#activate"
+    post "/protocols/:version/retire",     to: "protocol_lifecycle#retire"
+  end
+  post "/protocols/revert", to: "protocol_lifecycle#revert"
+
   # Tela de manutenção: lista a configuração de todas as cidades registradas,
   # SEM autenticar ninguém. Ferramenta de desenvolvimento e teste.
   #
