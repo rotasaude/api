@@ -126,9 +126,23 @@ class Admin::ProtocolsQuery
     }
   end
 
+  # Os commands de Protocols publicam `protocol_key:`, nunca `name:` — o
+  # filtro por `payload ->> 'name'` nunca batia com nada, e a lista de nomes
+  # aceitos não incluía os eventos de assinatura (spec de assinaturas §5/§6).
+  # Nomes conferidos em app/commands/protocols/*.rb: submissão, assinatura,
+  # ativação, reversão, publicação e aposentadoria.
+  PROTOCOL_EVENT_NAMES = %w[
+    protocol.submitted_for_review
+    protocol.signed
+    protocol.activated
+    protocol.activation_reverted
+    protocol.published
+    protocol.retired
+  ].freeze
+
   def self.protocol_events(name)
-    DomainEvent.where("payload ->> 'name' = ?", name)
-      .where(name: %w[protocol.created protocol.published protocol.retired])
+    DomainEvent.where("payload ->> 'protocol_key' = ?", name)
+      .where(name: PROTOCOL_EVENT_NAMES)
       .order(occurred_at: :desc)
       .limit(20)
       .map do |ev|
