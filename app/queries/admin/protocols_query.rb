@@ -98,9 +98,13 @@ class Admin::ProtocolsQuery
     }
   end
 
+  # `active` costumava virar `published` aqui — colapso que escondia do painel
+  # a versão de fato em uso na cidade. A versão `active` é a única que pode
+  # ser revertida (Protocols::RevertActivation) e a única que NÃO pode ser
+  # aposentada (R4); quem lê precisa distinguir das demais `published`.
   def self.status_label(d)
     case d.status
-    when "active"  then "published"
+    when "active"  then "active"
     when "draft"   then "draft"
     when "retired" then "retired"
     else d.status
