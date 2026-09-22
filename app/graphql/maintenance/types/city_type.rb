@@ -38,6 +38,11 @@ module Maintenance
       field :profile, Types::CityProfileType, null: true
       field :consent_term_version, String, null: true
       field :protocols, [ Types::ProtocolDefinitionType ], null: false
+      # Plano 2 do frontend (telas de escrita): TODAS as versões, com o estado
+      # de assinatura — `protocols` acima segue só com as ativas (contrato já
+      # consumido). Teto de 100 como as listas de `operations`: cada versão
+      # custa algumas consultas de assinatura.
+      field :protocol_versions, [ Types::ProtocolVersionType ], null: false
       field :alert_recipients, [ Types::AlertRecipientType ], null: false
       field :accounts, [ Types::CityAccountType ], null: false
 
@@ -61,6 +66,25 @@ module Maintenance
       def profile = inside { CityProfile.current }
       def consent_term_version = inside { Consents.current_version }
       def protocols = inside { ProtocolDefinition.active.order(:name).to_a }
+
+      # Calculado DENTRO de `inside`: a conexão da cidade fecha ao sair do
+      # bloco, então ProtocolVersionType só lê as chaves já prontas.
+      def protocol_versions
+        inside do
+          ProtocolDefinition.order(:name, version: :desc).limit(100).map do |d|
+            {
+              name: d.name, version: d.version, status: d.status,
+              publication_signatures: Protocols::Signatures.valid_signer_ids(d, purpose: "publication").size,
+              publication_missing: Protocols::Signatures.missing(d, purpose: "publication"),
+              activation_signatures: Protocols::Signatures.valid_signer_ids(d, purpose: "activation").size,
+              activation_missing: Protocols::Signatures.missing(d, purpose: "activation"),
+              eligible_reviewers: Protocols::Signatures.eligible_reviewer_count(d),
+              revertible: Protocols::RevertActivation.revertible?(d)
+            }
+          end
+        end
+      end
+
       def alert_recipients = inside { AlertRecipient.active.order(:escalation_order).to_a }
 
       # login É o e-mail de conta de STAFF da prefeitura, não de cidadão (mesma

@@ -35,10 +35,12 @@ RSpec.describe "Maintenance GraphQL schema" do
     "UserError" => %w[path message],
     "CitySummary" => %w[slug name uf status schemaVersion schemaBehind createdAt],
     "City" => %w[slug name uf status schemaVersion schemaBehind createdAt channel
-                 profile consentTermVersion protocols alertRecipients accounts counts operations],
+                 profile consentTermVersion protocols protocolVersions alertRecipients accounts counts operations],
     "CityChannel" => %w[phoneNumberId wabaId displayPhoneNumber active],
     "CityProfile" => %w[name uf ibgeCode],
     "ProtocolDefinition" => %w[name version status],
+    "ProtocolVersion" => %w[name version status publicationSignatures publicationMissing
+                            activationSignatures activationMissing eligibleReviewers revertible],
     "AlertRecipient" => %w[channel destination escalationOrder],
     "CityAccount" => %w[login roles active mfaEnrolled],
     "CityCounts" => %w[users conversations triages inboundMessages reportSnapshots consents],
@@ -713,7 +715,12 @@ RSpec.describe "Maintenance GraphQL schema" do
       Dir.glob(Rails.root.join("app/graphql/maintenance/**/*.rb")).map(&:to_s)
     end
 
-    def approval_hits(code) = forbidden_approval_calls.select { |call| code.include?(call) }
+    # Casa `call` só quando NÃO é seguido de caractere de identificador — sem
+    # isso, "Protocols::Sign" (regra 1) também batia dentro de
+    # "Protocols::Signatures", o módulo de LEITURA que CityType passou a
+    # chamar (protocolVersions, spec de assinaturas §5) e que nunca assina
+    # nem cria quem aprova.
+    def approval_hits(code) = forbidden_approval_calls.select { |call| code.match?(/#{Regexp.escape(call)}(?!\w)/) }
 
     def signish(field_names) = field_names.select { |name| name.match?(/sign/i) }
 
