@@ -8,9 +8,15 @@ require "rails_helper"
 RSpec.describe "Setup grant_role", type: :request do
   def json = JSON.parse(response.body)
 
+  # protocol_reviewer é privilegiado (Membership::PRIVILEGED_ROLES) desde a
+  # Task 1 da fatia "dashboard-signatures": conceder ou revogar exige step-up
+  # de MFA, então o admin precisa estar inscrito para poder carimbar a janela
+  # nos testes que concedem/revogam esse papel.
   let!(:admin) do
     User.create!(email_address: "admin-#{SecureRandom.hex(3)}@example.org", password: "secret123").tap do |u|
       Membership.create!(user: u, role: "municipal_admin", granted_at: Time.current)
+      Mfa::Enroll.call(u)
+      u.update!(otp_enabled: true)
     end
   end
   let!(:publisher) do
@@ -20,7 +26,7 @@ RSpec.describe "Setup grant_role", type: :request do
   end
 
   it "lets a municipal_admin turn a publisher into a reviewer too" do
-    sign_in_as(admin)
+    sign_in_as(admin).update!(mfa_verified_at: Time.current)
 
     post "/setup/memberships", params: { user_id: publisher.id, role: "protocol_reviewer" }, as: :json
 
@@ -72,7 +78,7 @@ RSpec.describe "Setup grant_role", type: :request do
   end
 
   it "revokes the granted role through the existing route, and the reviewer stops counting" do
-    sign_in_as(admin)
+    sign_in_as(admin).update!(mfa_verified_at: Time.current)
     post "/setup/memberships", params: { user_id: publisher.id, role: "protocol_reviewer" }, as: :json
     membership_id = json["id"]
 

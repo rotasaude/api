@@ -16,6 +16,7 @@
 class SetupController < ApplicationController
   include Authentication
   include ScalarParams
+  include MfaStepUp
 
   allow_unauthenticated_access only: %i[accept_invitation]
 
@@ -65,7 +66,11 @@ class SetupController < ApplicationController
   def grant_role
     return head(:forbidden) unless can_manage_members?
 
-    result = GrantRole.call(user_id: params.expect(:user_id), role: params.expect(:role), by: current_user)
+    user_id = params.expect(:user_id)
+    role = params.expect(:role)
+    return require_step_up! if privileged_role?(role) && !reauthenticated_recently?
+
+    result = GrantRole.call(user_id: user_id, role: role, by: current_user)
     if result.ok?
       m = result.payload[:membership]
       render json: { id: m.id, user_id: m.user_id, role: m.role, granted_at: m.granted_at.iso8601 }, status: :created
@@ -80,6 +85,7 @@ class SetupController < ApplicationController
     membership = Membership.find_by(id: params[:id])
     return head(:not_found) unless membership
     return head(:forbidden) unless can_manage_members?
+    return require_step_up! if privileged_role?(membership.role) && !reauthenticated_recently?
 
     result = RevokeMembership.call(membership_id: membership.id, by: current_user)
     if result.ok?
@@ -121,5 +127,14 @@ class SetupController < ApplicationController
   # municipal_admin DESTA cidade (o banco é o da cidade do host).
   def can_manage_members?
     current_user.has_role?("municipal_admin")
+  end
+
+  # Spec do dashboard §4.1: conceder ou revogar um papel de
+  # Membership::PRIVILEGED_ROLES exige verificação recente de TOTP — quem
+  # decide quem revisa protocolo decide quem aprova protocolo clínico, e o
+  # login da cidade é só senha. Papel comum (viewer, author, publisher) segue
+  # sem step-up: o §8 do spec de assinaturas mudou só para os privilegiados.
+  def privileged_role?(role)
+    Membership::PRIVILEGED_ROLES.include?(role.to_s)
   end
 end

@@ -113,7 +113,7 @@ RSpec.describe "Cookie-authenticated writes require JSON", type: :request do
     end
 
     it "POST /setup/memberships grants the role" do
-      sign_in_as(admin)
+      sign_in_stepped_up!(admin)
 
       post "/setup/memberships", params: { user_id: publisher.id, role: "protocol_reviewer" }, as: :json
 
