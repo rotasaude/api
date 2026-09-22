@@ -13,12 +13,19 @@
 module CityEncryption
   class MissingKey < StandardError; end
 
-  # Os cinco atributos cifrados que moram no banco DA CIDADE e usam material
+  # Os atributos cifrados que moram no banco DA CIDADE e usam material
   # DERIVADO por cidade (via key_provider: CityDeterministicKeyProvider.new ou
   # a ausência de key_provider:, que cai no contexto de CityConnection.with) —
   # não os de plataforma, que ficam fixos em PlatformKeyProvider
   # (City#database_url, City#encryption_key, CityChannel#access_token,
   # Operator#otp_secret) e por isso nunca entram aqui.
+  #
+  # `spec/architecture/city_encrypted_attributes_guard_spec.rb` prova que esta
+  # lista é EXAUSTIVA: todo `encrypts` de um modelo de cidade (ApplicationRecord)
+  # precisa ter uma entrada aqui, ou a spec falha (achado real, Task 1 do
+  # autenticador pendente: User#otp_pending_secret ganhou `encrypts` sem entrar
+  # nesta lista — city:rotate_key/ReencryptionJob iam pular o atributo em
+  # silêncio).
   #
   # Fonte única (fix F6, rodada final de revisão): CityRekey::TARGETS
   # (migração/rotação, app/commands/city_rekey.rb) e ReencryptionJob::TARGETS
@@ -28,6 +35,7 @@ module CityEncryption
   # num registro e ficar esquecido no outro.
   CITY_KEYED_TARGETS = [
     [ User,           :otp_secret ],
+    [ User,           :otp_pending_secret ],
     [ Conversation,   :phone ],
     [ InboundMessage, :raw ],
     [ Consent,        :evidence ],

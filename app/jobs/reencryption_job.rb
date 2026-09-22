@@ -42,9 +42,16 @@ class ReencryptionJob < ApplicationJob
   def perform(only: nil)
     selected = only ? TARGETS.select { |m, _| only.map(&:to_sym).include?(m.name.underscore.to_sym) } : TARGETS
 
-    stats = {}
+    # `+=`, not `=` (fix: Task 1 do autenticador pendente adicionou um SEGUNDO
+    # target para User — otp_pending_secret — e uma atribuição simples fazia o
+    # stats do segundo atributo SUBSTITUIR o do primeiro, em vez de somar: o
+    # count relatado (e logado) para um modelo com mais de um atributo cifrado
+    # passava a refletir só o ÚLTIMO target processado, não o total de linhas
+    # de fato re-cifradas. Mesmo padrão de acúmulo que CityRekey já usa
+    # (`counts = Hash.new(0)` + `+=`) para o mesmo TARGETS.
+    stats = Hash.new(0)
     selected.each do |model, attr|
-      stats[model.name] = reencrypt(model, attr)
+      stats[model.name] += reencrypt(model, attr)
     end
     Rails.logger.info("[ReencryptionJob] done #{stats.inspect}")
     stats
