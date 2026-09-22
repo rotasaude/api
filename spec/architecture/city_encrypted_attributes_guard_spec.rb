@@ -21,5 +21,28 @@ RSpec.describe "City-keyed encryption targets guard" do
       .flat_map { |model| model.encrypted_attributes.map { |attribute| [ model, attribute.to_sym ] } }
 
     expect(declared - registered).to eq([])
+
+    # A4: a direção inversa. Uma entrada ÓRFÃ em CITY_KEYED_TARGETS — cujo
+    # `encrypts` foi removido do modelo, mas a entrada ficou esquecida na
+    # lista — não quebrava nada aqui antes: `declared - registered` só via o
+    # lado que falta REGISTRAR, nunca o lado que sobra. ReencryptionJob e
+    # CityRekey nem notam a entrada morta (o `attr` simplesmente nunca está
+    # presente em registro nenhum), então ela só apodrece a lista em silêncio.
+    expect(registered - declared).to eq([])
+  end
+
+  # Prova que a checagem acima DETECTA o caso que ela existe para pegar —
+  # sem depender de haver uma entrada órfã de verdade no código agora.
+  it "detecta uma entrada registrada sem encrypts correspondente (registered - declared)" do
+    Rails.application.eager_load!
+
+    declared = ApplicationRecord.descendants
+      .select { |model| model.respond_to?(:encrypted_attributes) && model.encrypted_attributes.present? }
+      .flat_map { |model| model.encrypted_attributes.map { |attribute| [ model, attribute.to_sym ] } }
+
+    orphaned = CityEncryption::CITY_KEYED_TARGETS.map { |model, attribute| [ model, attribute.to_sym ] } +
+               [ [ User, :not_actually_encrypted ] ]
+
+    expect(orphaned - declared).to include([ User, :not_actually_encrypted ])
   end
 end
