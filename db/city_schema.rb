@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_21_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_22_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -408,7 +408,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_21_000001) do
     t.datetime "created_at", null: false
     t.datetime "deactivated_at"
     t.string "email_address", null: false
+    t.integer "last_otp_step"
     t.boolean "otp_enabled", default: false, null: false
+    t.datetime "otp_pending_at"
+    t.jsonb "otp_pending_recovery_codes", default: [], null: false
+    t.string "otp_pending_secret"
     t.jsonb "otp_recovery_codes", default: [], null: false
     t.string "otp_secret"
     t.string "password_digest", null: false

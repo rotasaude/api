@@ -19,13 +19,22 @@ RSpec.describe "MFA enroll with step-up", type: :request do
     expect(json["otpauth_uri"]).to start_with("otpauth://totp/")
   end
 
-  it "cadastro começado e nunca confirmado recomeça sem step-up" do
-    Mfa::Enroll.call(user) # otp_enabled continua false
-    sign_in_as(user)
+  it "conta ativa com cadastro pendente continua exigindo step-up" do
+    Mfa::Enroll.call(user)
+    user.update!(otp_enabled: true)
+    session = sign_in_as(user)
+    session.update!(mfa_verified_at: 1.minute.ago)
+
+    post "/mfa/enroll", as: :json
+    expect(response).to have_http_status(:ok)
+    expect(user.reload.otp_pending_secret).to be_present
+
+    session.update!(mfa_verified_at: nil)
 
     post "/mfa/enroll", as: :json
 
-    expect(response).to have_http_status(:ok)
+    expect(response).to have_http_status(:unauthorized)
+    expect(json).to eq("error" => "mfa_required")
   end
 
   context "conta com autenticador ativo" do
@@ -55,14 +64,17 @@ RSpec.describe "MFA enroll with step-up", type: :request do
       expect(json).to eq("error" => "mfa_required")
     end
 
-    it "com a janela aberta troca o autenticador" do
+    it "com a janela aberta propõe o autenticador novo sem trocar o ativo" do
       secret = user.reload.otp_secret
       sign_in_as(user).update!(mfa_verified_at: 1.minute.ago)
 
       post "/mfa/enroll", as: :json
 
       expect(response).to have_http_status(:ok)
-      expect(user.reload.otp_secret).not_to eq(secret)
+      user.reload
+      expect(user.otp_secret).to eq(secret)
+      expect(user.otp_pending_secret).to be_present
+      expect(user.otp_pending_secret).not_to eq(secret)
     end
   end
 end

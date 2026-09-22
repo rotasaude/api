@@ -33,6 +33,20 @@ RSpec.describe ReencryptionJob do
     expect(stats["User"]).to be >= 1
   end
 
+  # A3: User tem DOIS targets em CITY_KEYED_TARGETS (otp_secret,
+  # otp_pending_secret), e record.encrypt re-cifra TODOS os atributos
+  # encriptados do registro de uma vez (não só o target da vez). Sem
+  # deduplicar por modelo, uma linha com os dois atributos presentes era
+  # varrida (e contada) duas vezes — uma por target, não uma por linha.
+  it "conta uma linha com dois atributos cifrados (otp_secret e otp_pending_secret) uma vez só, não duas" do
+    User.create!(email_address: "double-#{SecureRandom.hex(3)}@example.org", password: "secret123",
+                 otp_secret: "ATIVO", otp_pending_secret: "PENDENTE")
+
+    stats = call_body(only: [:user])
+
+    expect(stats["User"]).to eq(1)
+  end
+
   # R41: `record[attr] = record[attr]` never dirtied an encrypted attribute, so
   # save! issued no UPDATE and a rotation re-encrypted nothing. The job now calls
   # record.encrypt, which rewrites the ciphertext under the current primary key.

@@ -42,9 +42,18 @@ class ReencryptionJob < ApplicationJob
   def perform(only: nil)
     selected = only ? TARGETS.select { |m, _| only.map(&:to_sym).include?(m.name.underscore.to_sym) } : TARGETS
 
-    stats = {}
-    selected.each do |model, attr|
-      stats[model.name] = reencrypt(model, attr)
+    # Agrupa por MODELO antes de varrer (fix A3, rodada final de revisão):
+    # record.encrypt re-cifra TODOS os atributos cifrados do registro de uma
+    # vez, não só o attr do target da vez — então User, com DOIS targets em
+    # CITY_KEYED_TARGETS (otp_secret, otp_pending_secret), varria `users` duas
+    # vezes inteiras e somava a MESMA linha duas vezes no stats (o `+=` do fix
+    # round 1 tratou o sintoma — stats deixou de se sobrescrever — sem
+    # eliminar a segunda varredura). Uma passada por modelo, sobre TODOS os
+    # atributos daquele modelo juntos: cada linha é lida, re-cifrada e contada
+    # no máximo uma vez.
+    stats = Hash.new(0)
+    selected.group_by(&:first).each do |model, pairs|
+      stats[model.name] += reencrypt(model, pairs.map(&:second))
     end
     Rails.logger.info("[ReencryptionJob] done #{stats.inspect}")
     stats
@@ -52,16 +61,16 @@ class ReencryptionJob < ApplicationJob
 
   private
 
-  def reencrypt(model, attr)
+  def reencrypt(model, attrs)
     count = 0
     model.unscoped.find_each(batch_size: BATCH_SIZE) do |record|
-      next if record[attr].nil?
+      next if attrs.all? { |attr| record[attr].nil? }
       record.encrypt
       count += 1
     end
     count
   rescue => e
-    Rails.logger.error("[ReencryptionJob] #{model.name}##{attr} falhou em row #{count}: #{e.message}")
+    Rails.logger.error("[ReencryptionJob] #{model.name}##{attrs.join(',')} falhou em row #{count}: #{e.message}")
     raise
   end
 end

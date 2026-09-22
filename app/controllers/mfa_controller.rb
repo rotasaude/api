@@ -22,31 +22,48 @@ class MfaController < ApplicationController
     # a pedir e segue só com a sessão.
     return require_step_up! if Current.user.mfa_enrolled? && !reauthenticated_recently?
 
-    payload = Mfa::Enroll.call(Current.user)
+    payload = Mfa::PendingEnrollment.start(Current.user)
     render json: {
       otpauth_uri: payload[:otpauth_uri],
       recovery_codes: payload[:recovery_codes]   # mostrar uma vez, nunca mais
     }
   end
 
+  # A matrícula só vale depois daqui: é `confirm` que promove o pendente. O
+  # autenticador anterior vale até esta linha passar.
   def confirm
-    # A2: confirmar a matrícula prova que o autenticador NOVO foi escaneado —
-    # um recovery code (que nem existiria ainda no primeiro cadastro) não
-    # pode ligar otp_enabled no lugar do TOTP.
-    if Mfa::Verify.totp_valid?(Current.user, params[:code])
-      Current.user.update!(otp_enabled: true)
+    outcome = Mfa::PendingEnrollment.confirm(Current.user, code: params[:code])
+    return render(json: { ok: true }) if outcome == :ok
+
+    # :no_pending_enrollment | :enrollment_expired | :invalid_code | :code_reused
+    render json: { error: outcome.to_s }, status: :unprocessable_entity
+  end
+
+  def step_up
+    return render(json: { error: "code_reused" }, status: :unprocessable_entity) if reused_totp?
+
+    if stepped_up?
+      Current.session.update!(mfa_verified_at: Time.current)
       render json: { ok: true }
     else
       render json: { error: "invalid_code" }, status: :unprocessable_entity
     end
   end
 
-  def step_up
-    if Mfa::Verify.call(Current.user, code: params[:code])
-      Current.session.update!(mfa_verified_at: Time.current)
-      render json: { ok: true }
-    else
-      render json: { error: "invalid_code" }, status: :unprocessable_entity
-    end
+  private
+
+  # TOTP do segredo ativo, consumido uma vez (User#consume_totp_step!), ou um
+  # código de recuperação, consumido como sempre.
+  def reused_totp?
+    step = Mfa::Verify.totp_step_for(Current.user, params[:code])
+    step.present? && !Current.user.consume_totp_step!(step)
+  end
+
+  # Atenção: `reused_totp?` já consome o passo quando o código é válido, então
+  # este método não pode consumir de novo — só repete `totp_step_for`, que é
+  # leitura pura.
+  def stepped_up?
+    Mfa::Verify.totp_step_for(Current.user, params[:code]).present? ||
+      Mfa::Verify.consume_recovery_code(Current.user, params[:code])
   end
 end

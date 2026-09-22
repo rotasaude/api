@@ -29,9 +29,15 @@ module Mfa
     # de comportamento: quem tem senha permanente e recovery code não ganha
     # nada com isto, e mexer ali mudaria o console e o app de cidadão.
     def self.totp_step_for(user, code)
-      return nil if user.otp_secret.blank? || code.blank?
+      step_for_secret(user.otp_secret, code)
+    end
 
-      totp = ROTP::TOTP.new(user.otp_secret)
+    # O passo de um segredo QUALQUER — a confirmação de matrícula verifica
+    # contra o segredo PENDENTE, que não está em nenhum atributo do modelo.
+    def self.step_for_secret(secret, code)
+      return nil if secret.blank? || code.blank?
+
+      totp = ROTP::TOTP.new(secret)
       at = totp.verify(code.to_s.gsub(/\s+/, ""), drift_behind: DRIFT, drift_ahead: DRIFT)
       at && (at.to_i / totp.interval)
     end
