@@ -1,7 +1,14 @@
 class MfaController < ApplicationController
   include Authentication
+  include MfaStepUp
 
   def enroll
+    # Spec do dashboard §4.2: trocar o autenticador de uma conta que JÁ tem
+    # TOTP exige step-up — senão a senha sozinha (ou uma sessão roubada)
+    # substituiria o segundo fator. O primeiro cadastro não tem fator anterior
+    # a pedir e segue só com a sessão.
+    return require_step_up! if Current.user.mfa_enrolled? && !reauthenticated_recently?
+
     payload = Mfa::Enroll.call(Current.user)
     render json: {
       otpauth_uri: payload[:otpauth_uri],
