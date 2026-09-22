@@ -30,9 +30,13 @@ class SetupController < ApplicationController
   def invite_member
     return head(:forbidden) unless can_manage_members?
 
+    email = params.expect(:email)
+    role = params.expect(:role)
+    return require_step_up! if privileged_role?(role) && !reauthenticated_recently?
+
     result = InviteMember.call(
-      email: params.expect(:email),
-      role:  params.expect(:role),
+      email: email,
+      role:  role,
       invited_by: current_user
     )
     if result.ok?

@@ -76,6 +76,38 @@ RSpec.describe "Setup privileged role step-up", type: :request do
     end
   end
 
+  describe "convidar" do
+    def invite!(role: "protocol_reviewer", email: "novo-#{SecureRandom.hex(3)}@example.org")
+      post "/setup/invitations", params: { email: email, role: role }, as: :json
+    end
+
+    it "sem janela de step-up: 401 mfa_required e nenhum convite criado" do
+      sign_in_admin!(stepped_up: false)
+
+      expect { invite! }.not_to change(Invitation, :count)
+      expect(response).to have_http_status(:unauthorized)
+      expect(json).to eq("error" => "mfa_required")
+    end
+
+    it "com a janela aberta: cria o convite" do
+      sign_in_admin!(stepped_up: true)
+
+      invite!
+
+      expect(response).to have_http_status(:created)
+      expect(Invitation.last.role).to eq("protocol_reviewer")
+    end
+
+    it "papel comum continua sem step-up" do
+      sign_in_admin!(stepped_up: false)
+
+      invite!(role: "viewer")
+
+      expect(response).to have_http_status(:created)
+      expect(Invitation.last.role).to eq("viewer")
+    end
+  end
+
   describe "revogar" do
     let!(:membership) { Membership.create!(user: target, role: "protocol_reviewer", granted_at: Time.current) }
 
