@@ -755,5 +755,17 @@ RSpec.describe "Maintenance GraphQL schema" do
       expect(approval_hits(strip_comments(stray))).to eq([ "GrantRole" ])
       expect(signish(%w[publishProtocol approveWithSignature retireProtocol])).to eq([ "approveWithSignature" ])
     end
+
+    # Regressão do fix round 1: a troca de `include?` por regex com lookahead
+    # negativo (para não confundir "Protocols::Sign" com "Protocols::Signatures",
+    # ver comentário em `approval_hits`) precisa continuar pegando uma chamada
+    # DE VERDADE ao command de assinatura, com ou sem `::` no início e em
+    # qualquer forma de invocação (`.call`, `.new`) — e continuar deixando
+    # passar o módulo de leitura que `CityType#protocol_versions` chama.
+    it "still catches a real Protocols::Sign call, prefixed or not, and still ignores Protocols::Signatures" do
+      expect(approval_hits("Protocols::Sign.call(protocol: p)")).to eq([ "Protocols::Sign" ])
+      expect(approval_hits("::Protocols::Sign.new")).to eq([ "Protocols::Sign" ])
+      expect(approval_hits('Protocols::Signatures.missing(p, purpose: "publication")')).to eq([])
+    end
   end
 end
