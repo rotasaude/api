@@ -3,7 +3,7 @@
 class RevokeMembership
   def self.call(membership_id:, by:)
     m = Membership.find(membership_id)
-    return Result.fail(:already_revoked) if m.revoked_at.present?
+    return Result.fail(:already_revoked, message: "este papel já foi revogado") if m.revoked_at.present?
 
     ApplicationRecord.transaction do
       m.update!(revoked_at: Time.current)

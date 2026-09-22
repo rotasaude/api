@@ -57,6 +57,7 @@ RSpec.describe "Setup grant_role", type: :request do
 
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json["error"]).to eq("invalid_role")
+    expect(json["message"]).to be_present
   end
 
   it "responds 422 already_granted when the role is already held" do
@@ -66,6 +67,7 @@ RSpec.describe "Setup grant_role", type: :request do
 
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json["error"]).to eq("already_granted")
+    expect(json["message"]).to be_present
   end
 
   it "responds 422 user_not_found for a user that does not exist" do

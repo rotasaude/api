@@ -16,7 +16,7 @@
 class GrantRole
   def self.call(user_id:, role:, by:)
     return Result.fail(:city_missing) if Current.city.nil?
-    return Result.fail(:invalid_role) unless Membership::ROLES.include?(role.to_s)
+    return Result.fail(:invalid_role, message: "papel desconhecido") unless Membership::ROLES.include?(role.to_s)
 
     if Membership::PRIVILEGED_ROLES.include?(role.to_s)
       authorized_actor = by.respond_to?(:actor_kind) && by.actor_kind == "user"
@@ -29,8 +29,8 @@ class GrantRole
 
     user = User.find_by(id: user_id)
     return Result.fail(:user_not_found) if user.nil?
-    return Result.fail(:user_inactive) unless user.active?
-    return Result.fail(:already_granted) if user.has_role?(role)
+    return Result.fail(:user_inactive, message: "usuário desativado") unless user.active?
+    return Result.fail(:already_granted, message: "esta pessoa já tem o papel") if user.has_role?(role)
 
     membership = nil
     ApplicationRecord.transaction do

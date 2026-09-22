@@ -75,12 +75,19 @@ RSpec.describe GrantRole do
   end
 
   it "refuses an unknown role, a missing user, a deactivated user and a role already held" do
-    expect(described_class.call(user_id: publisher.id, role: "god", by: admin).reason).to eq(:invalid_role)
+    invalid_role = described_class.call(user_id: publisher.id, role: "god", by: admin)
+    expect(invalid_role.reason).to eq(:invalid_role)
+    expect(invalid_role.message).to be_present
+
     expect(described_class.call(user_id: SecureRandom.uuid, role: "viewer", by: admin).reason).to eq(:user_not_found)
-    expect(described_class.call(user_id: publisher.id, role: "protocol_publisher", by: admin).reason)
-      .to eq(:already_granted)
+
+    already_granted = described_class.call(user_id: publisher.id, role: "protocol_publisher", by: admin)
+    expect(already_granted.reason).to eq(:already_granted)
+    expect(already_granted.message).to be_present
 
     publisher.update!(deactivated_at: Time.current)
-    expect(described_class.call(user_id: publisher.id, role: "viewer", by: admin).reason).to eq(:user_inactive)
+    user_inactive = described_class.call(user_id: publisher.id, role: "viewer", by: admin)
+    expect(user_inactive.reason).to eq(:user_inactive)
+    expect(user_inactive.message).to be_present
   end
 end
