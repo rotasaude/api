@@ -17,4 +17,13 @@ RSpec.describe RevokeMembership do
     event = DomainEvent.find_by!(name: "membership.revoked")
     expect(event.payload).to include("user_id" => user.id, "role" => "viewer", "by" => by.id)
   end
+
+  it "refuses a membership already revoked, with a message" do
+    described_class.call(membership_id: m.id, by: by)
+
+    result = described_class.call(membership_id: m.id, by: by)
+
+    expect(result.reason).to eq(:already_revoked)
+    expect(result.message).to be_present
+  end
 end
