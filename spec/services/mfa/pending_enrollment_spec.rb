@@ -99,5 +99,28 @@ RSpec.describe Mfa::PendingEnrollment do
 
       expect(described_class.confirm(user, code: codes.first)).to eq(:invalid_code)
     end
+
+    # A2: confirm promove o segredo e os códigos de recuperação sem deixar
+    # rastro nenhum — a troca do segundo fator era o único ato desta
+    # superfície sem auditoria (achado gêmeo do I4 de
+    # app/controllers/maintenance/invitations_controller.rb, mas aqui é ato de
+    # usuário DE CIDADE, não de plataforma: DomainEvents.publish, não
+    # Platform.audit — ver comentário de app/models/domain_event.rb).
+    it "registra user.authenticator_replaced exatamente uma vez numa confirmação bem-sucedida" do
+      described_class.start(user)
+
+      expect { described_class.confirm(user, code: pending_code(user)) }
+        .to change { DomainEvent.where(name: "user.authenticator_replaced").count }.by(1)
+
+      event = DomainEvent.where(name: "user.authenticator_replaced").sole
+      expect(event.payload).to eq("user_id" => user.id)
+    end
+
+    it "não registra nada numa confirmação recusada" do
+      described_class.start(user)
+
+      expect { described_class.confirm(user, code: "000000") }
+        .not_to change { DomainEvent.where(name: "user.authenticator_replaced").count }
+    end
   end
 end

@@ -47,16 +47,30 @@ module Mfa
       # prova que o autenticador novo foi lido.
       step = Mfa::Verify.step_for_secret(user.otp_pending_secret, code)
       return :invalid_code unless step
+      # consume_totp_step! e a promoção logo abaixo são DOIS statements: se a
+      # promoção levantar depois daqui (ex.: validação, erro de conexão), o
+      # passo já foi queimado e não pode ser reusado — a pessoa só repete a
+      # confirmação com o código SEGUINTE, não trava.
       return :code_reused unless user.consume_totp_step!(step)
 
-      user.update!(
-        otp_secret: user.otp_pending_secret,
-        otp_recovery_codes: user.otp_pending_recovery_codes,
-        otp_enabled: true,
-        otp_pending_secret: nil,
-        otp_pending_recovery_codes: [],
-        otp_pending_at: nil
-      )
+      # A2: promoção auditada — é o único ato desta superfície que rotaciona o
+      # segundo fator sem deixar rastro (achado gêmeo do I4 de
+      # maintenance/invitations_controller.rb). Ato de usuário DE CIDADE, não
+      # de plataforma: DomainEvents.publish (banco da cidade), nunca
+      # Platform.audit (ver app/models/domain_event.rb). update! e publish na
+      # mesma transação: ADR-0004 exige publicar dentro da transação da
+      # cidade, para o evento comitar junto com a promoção ou nenhum dos dois.
+      ApplicationRecord.transaction do
+        user.update!(
+          otp_secret: user.otp_pending_secret,
+          otp_recovery_codes: user.otp_pending_recovery_codes,
+          otp_enabled: true,
+          otp_pending_secret: nil,
+          otp_pending_recovery_codes: [],
+          otp_pending_at: nil
+        )
+        DomainEvents.publish("user.authenticator_replaced", user_id: user.id)
+      end
       :ok
     end
 
