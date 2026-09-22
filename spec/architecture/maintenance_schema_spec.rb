@@ -17,12 +17,20 @@ RSpec.describe "Maintenance GraphQL schema" do
   EXPECTED_TYPES = {
     "Query" => %w[me maintainers maintenanceTokens auditEvents cities city],
     "Maintainer" => %w[id emailAddress active enrolled createdAt],
-    "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken],
+    "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
+                     saveProtocolDraft submitProtocolForReview publishProtocol
+                     activateProtocol retireProtocol revertProtocolActivation],
     "InviteMaintainerPayload" => %w[ok errors],
     "DeactivateMaintainerPayload" => %w[ok errors],
     "MaintenanceToken" => %w[id maintainerId name access citySlugs expiresAt revokedAt lastUsedAt],
     "CreateMaintenanceTokenPayload" => %w[ok errors secretOnce],
     "RevokeMaintenanceTokenPayload" => %w[ok errors],
+    "SaveProtocolDraftPayload" => %w[ok errors],
+    "SubmitProtocolForReviewPayload" => %w[ok errors],
+    "PublishProtocolPayload" => %w[ok errors],
+    "ActivateProtocolPayload" => %w[ok errors],
+    "RetireProtocolPayload" => %w[ok errors],
+    "RevertProtocolActivationPayload" => %w[ok errors],
     "AuditEvent" => %w[name module outcome occurredAt maintainerId login correlationId],
     "UserError" => %w[path message],
     "CitySummary" => %w[slug name uf status schemaVersion schemaBehind createdAt],
@@ -54,6 +62,12 @@ RSpec.describe "Maintenance GraphQL schema" do
     MaintenanceToken maintenanceTokens createMaintenanceToken revokeMaintenanceToken
     CreateMaintenanceTokenPayload RevokeMaintenanceTokenPayload secretOnce
   ].freeze
+
+  # Task 5: strip_comments/code_only/city_mutation_fields vêm de
+  # spec/support/maintenance_city_mutations.rb — código sem comentário, sempre
+  # da mesma forma que as outras guardas deste projeto usam (uma delas foi
+  # enganada por comentário antes: ver o controlador desta task).
+  include MaintenanceCityMutationSpecHelpers
 
   def declared_types
     Maintenance::Schema.types
@@ -332,31 +346,50 @@ RSpec.describe "Maintenance GraphQL schema" do
                            .map { |path| Pathname.new(path).relative_path_from(Rails.root).to_s }
     end
 
-    # Cada chamada só é permitida no ÚNICO arquivo que a encerra: CityReader
-    # (app/queries/maintenance/city_reader.rb) é quem chama CityConnection.with
-    # de verdade; CityType (app/graphql/maintenance/types/city_type.rb) é quem
-    # chama CityReader.call. Isentar um arquivo inteiro para as DUAS chamadas
-    # (como a versão anterior desta guarda fazia) deixaria um terceiro arquivo
+    # Cada chamada só é permitida nos arquivos que a encerram: CityReader
+    # (leitura) e CityWriter (escrita, Plano 5) são os dois que chamam
+    # CityConnection.with de verdade; CityType
+    # (app/graphql/maintenance/types/city_type.rb) é quem chama
+    # CityReader.call, e a base CityMutation
+    # (app/graphql/maintenance/mutations/city_mutation.rb) é quem chama
+    # CityWriter.call. Isentar um arquivo inteiro para TODAS as chamadas (como
+    # uma versão anterior desta guarda fazia) deixaria um terceiro arquivo
     # livre para chamar CityConnection.with direto, contanto que ficasse fora
     # da lista — qualificar por PAR (chamada, arquivo) fecha isso.
     def allowed_call_sites
       {
-        "CityConnection.with" => "app/queries/maintenance/city_reader.rb",
-        "CityReader.call" => "app/graphql/maintenance/types/city_type.rb"
+        "CityConnection.with" => %w[app/queries/maintenance/city_reader.rb app/queries/maintenance/city_writer.rb],
+        "CityReader.call" => %w[app/graphql/maintenance/types/city_type.rb],
+        "CityWriter.call" => %w[app/graphql/maintenance/mutations/city_mutation.rb]
       }
     end
 
-    def city_connection_call_offenders
-      city_reachable_files.filter_map do |relative|
-        content = File.read(Rails.root.join(relative))
-
-        offends = allowed_call_sites.any? { |pattern, allowed_file| content.include?(pattern) && relative != allowed_file }
+    def call_site_offenders(files)
+      files.filter_map do |relative, content|
+        offends = allowed_call_sites.any? do |pattern, allowed_files|
+          content.include?(pattern) && allowed_files.exclude?(relative)
+        end
         relative if offends
       end
     end
 
-    it "calls CityConnection.with / CityReader.call only from the one file that owns each" do
+    def city_connection_call_offenders
+      call_site_offenders(city_reachable_files.map { |relative| [ relative, File.read(Rails.root.join(relative)) ] })
+    end
+
+    it "calls CityConnection.with / CityReader.call / CityWriter.call only from the files that own each" do
       expect(city_connection_call_offenders).to be_empty
+    end
+
+    # Auto-teste da guarda: uma escrita que abrisse a cidade por fora da base
+    # (uma mutation chamando CityWriter.call direto, sem o escopo e a
+    # auditoria de CityMutation) é pega — e o mesmo texto na base, não.
+    it "catches a stray CityWriter.call outside the CityMutation base" do
+      stray = "Maintenance::CityWriter.call(city) { Protocols::SaveDraft.call(definition: d, by: a) }"
+
+      expect(call_site_offenders([ [ "app/graphql/maintenance/mutations/stray.rb", stray ] ]))
+        .to eq([ "app/graphql/maintenance/mutations/stray.rb" ])
+      expect(call_site_offenders([ [ "app/graphql/maintenance/mutations/city_mutation.rb", stray ] ])).to be_empty
     end
 
     # A mesma varredura, pelo nome de quem NUNCA deveria aparecer em CÓDIGO
@@ -367,10 +400,6 @@ RSpec.describe "Maintenance GraphQL schema" do
     # comentário explicando "mesma escolha/lista de CityInventory" (como já
     # existem em city_type.rb e city_reader.rb) é documentação, não a
     # referência que esta guarda existe para recusar.
-    def code_only(path)
-      File.readlines(path).reject { |line| line.strip.start_with?("#") }.join
-    end
-
     def city_inventory_offenders
       city_reachable_files.select { |relative| code_only(Rails.root.join(relative)).include?("CityInventory") }
     end
@@ -483,6 +512,241 @@ RSpec.describe "Maintenance GraphQL schema" do
 
         expect(CityConnection).not_to have_received(:with)
       end
+    end
+  end
+
+  # Task 5, Step 1 — toda mutation de cidade é auditada e passa por command.
+  #
+  # As três coisas que o brief pede, lidas do ARQUIVO da classe (código sem
+  # comentário, ver code_only acima — uma guarda satisfeita por comentário não
+  # serve, e este projeto já foi enganado assim uma vez):
+  #   1. chama `in_city(`;
+  #   2. o `event:` que ela passa está em MaintenanceAudit::NAMES (nome errado
+  #      ou ausente falha aqui, não só em runtime dentro de MaintenanceAudit.record);
+  #   3. nenhuma das formas de persistência direta que uma mutation de cidade
+  #      não deveria usar (a escrita é sempre command → CityWriter, nunca
+  #      ActiveRecord direto no resolver).
+  context "every city mutation is audited and passes through a command" do
+    # M1 (fix round 1, achado do revisor): a forma anterior casava `\bNOME\b`
+    # dos dois lados — e "_" É caractere de palavra em Ruby regex, então
+    # `update_columns`, `delete_all`, `destroy_all` e `insert_all` nunca
+    # fechavam a fronteira direita (o "_columns"/"_all" que vem depois é tudo
+    # caractere de palavra) e passavam ilesos. A lista agora tem uma entrada
+    # por IDENTIFICADOR Ruby de verdade, não por raiz: `\bNOME\b` sozinho já
+    # pega a forma com `!` de graça, porque "!" NÃO é caractere de palavra —
+    # fecha a fronteira do lado direito sozinho ("update" casa "update!",
+    # "create" casa "create!", "insert" casa "insert!" etc.). Só as formas com
+    # sufixo que É caractere de palavra (`_all`, `_column(s)`,
+    # `_attribute(s)`, `_by`) precisam de entrada própria — e essa entrada,
+    # por ter o mesmo motivo (o que vem depois do sufixo é "(", espaço ou "!",
+    # nunca outro caractere de palavra), também cobre a forma com `!` do
+    # sufixo de graça (`insert_all!` casa em `\binsert_all\b`).
+    #
+    # `find_or_create_by`/`create_or_find_by` (e as formas com `!`) entram
+    # como identificador PRÓPRIO — não por conterem a palavra "create": dentro
+    # de `find_or_create_by`, "create" está colado por "_" dos dois lados, e
+    # `\bcreate\b` não teria fronteira nenhuma ali (mesma razão de
+    # `update_columns` acima). Sem a entrada própria, um finder que cria na
+    # ausência passaria como leitura.
+    #
+    # `toggle!`/`increment!`/`decrement!` são a única exceção OPOSTA: a forma
+    # SEM `!` (`toggle`, `increment`, `decrement`) só muda o atributo em
+    # memória — não persiste —, então exigir o `!` na própria regex evita
+    # marcar a forma que não é escrita.
+    def persistence_call_names
+      %w[
+        update update_all update_column update_columns update_attribute update_attributes
+        save create find_or_create_by create_or_find_by
+        insert insert_all upsert upsert_all
+        destroy destroy_all destroy_by
+        delete delete_all delete_by
+        touch
+      ]
+    end
+
+    # Métodos, não constante (P1): uma constante definida dentro de um bloco
+    # `context` vaza para Object. A lista de NOMES é fixa
+    # (persistence_call_names acima); o array de Regexp é reconstruído a cada
+    # chamada.
+    def persistence_patterns
+      persistence_call_names.map { |name| /\b#{Regexp.escape(name)}\b/ } +
+        [ /\btoggle!/, /\bincrement!/, /\bdecrement!/ ]
+    end
+
+    # Não-guloso até o primeiro `event:` depois de `in_city(` — a ordem dos
+    # kwargs nas seis mutations sempre põe `event:` cedo, mas o regex não
+    # depende disso: só do primeiro `event: "..."` que aparecer depois do
+    # `in_city(` de verdade.
+    def in_city_event(code)
+      code.match(/in_city\(.*?event:\s*"([^"]+)"/m)&.captures&.first
+    end
+
+    def mutation_offenders
+      city_mutation_fields.filter_map do |name, field|
+        path = field.resolver.instance_method(:resolve).source_location.first
+        code = code_only(path)
+
+        reasons = []
+        reasons << "não chama in_city(" unless code.include?("in_city(")
+
+        event = in_city_event(code)
+        if event.nil? || MaintenanceAudit::NAMES.exclude?(event)
+          reasons << "evento #{event.inspect} não está em MaintenanceAudit::NAMES"
+        end
+
+        offending_calls = persistence_patterns.select { |pattern| code.match?(pattern) }
+        reasons << "persiste direto (#{offending_calls.map(&:source).join(', ')})" if offending_calls.any?
+
+        "#{name}: #{reasons.join('; ')}" if reasons.any?
+      end
+    end
+
+    it "calls in_city with a declared audit event, and never persists on its own" do
+      expect(mutation_offenders).to be_empty
+    end
+
+    # Auto-teste: prova que o CAMINHO (código sem comentário) pega uma escrita
+    # direta e um evento fora da lista, e que um `update!` só em COMENTÁRIO —
+    # explicando, por exemplo, "não fazemos protocol.update! aqui" — não conta.
+    it "ignores a persistence call mentioned only in a comment, but catches a real one" do
+      commented = <<~RUBY
+        # nunca protocol.update!(status: "active") aqui
+        in_city(event: "maintenance.protocol.draft_saved") { }
+      RUBY
+      real = <<~RUBY
+        in_city(event: "maintenance.protocol.draft_saved") { }
+        protocol.update!(status: "active")
+      RUBY
+
+      expect(persistence_patterns.none? { |p| strip_comments(commented).match?(p) }).to be(true)
+      expect(persistence_patterns.any? { |p| strip_comments(real).match?(p) }).to be(true)
+    end
+
+    # M1 (fix round 1) — auto-teste permanente: uma linha de exemplo por
+    # variante da lista, incluindo as quatro que o revisor confirmou que a
+    # forma anterior deixava passar (`update_columns`, `delete_all`,
+    # `destroy_all`, `insert_all`) e as duas formas com `!` que dependem da
+    # fronteira "palavra → não-palavra" em vez de entrada própria
+    # (`update!`, `create!`). Cada linha é o tipo de chamada que apareceria
+    # de verdade num resolver que tentasse persistir por fora do command.
+    def flagged?(source) = persistence_patterns.any? { |pattern| source.match?(pattern) }
+
+    {
+      "update(" => 'protocol.update(status: "draft")',
+      "update!" => 'protocol.update!(status: "draft")',
+      "update_all" => 'ProtocolDefinition.where(name: n).update_all(status: "active")',
+      "update_column" => 'protocol.update_column(:status, "active")',
+      "update_columns" => 'protocol.update_columns(status: "active", version: 2)',
+      "update_attribute" => 'protocol.update_attribute(:status, "active")',
+      "update_attributes" => 'protocol.update_attributes(status: "active")',
+      "save" => "protocol.save",
+      "save!" => "protocol.save!",
+      "create(" => 'ProtocolDefinition.create(name: n, version: v)',
+      "create!" => 'ProtocolDefinition.create!(name: n, version: v)',
+      "find_or_create_by" => 'ProtocolDefinition.find_or_create_by(name: n, version: v)',
+      "find_or_create_by!" => 'ProtocolDefinition.find_or_create_by!(name: n, version: v)',
+      "create_or_find_by" => 'ProtocolDefinition.create_or_find_by(name: n, version: v)',
+      "insert" => "ProtocolDefinition.insert(attrs)",
+      "insert!" => "ProtocolDefinition.insert!(attrs)",
+      "insert_all" => "ProtocolDefinition.insert_all([attrs])",
+      "insert_all!" => "ProtocolDefinition.insert_all!([attrs])",
+      "upsert" => "ProtocolDefinition.upsert(attrs)",
+      "upsert_all" => "ProtocolDefinition.upsert_all([attrs])",
+      "destroy" => "version.destroy",
+      "destroy!" => "version.destroy!",
+      "destroy_all" => "version.destroy_all",
+      "destroy_by" => "ProtocolDefinition.destroy_by(name: n)",
+      "delete" => "version.delete",
+      "delete_all" => "ProtocolDefinition.where(name: n).delete_all",
+      "delete_by" => "ProtocolDefinition.delete_by(name: n)",
+      "toggle!" => "protocol.toggle!(:featured)",
+      "increment!" => "protocol.increment!(:views)",
+      "decrement!" => "protocol.decrement!(:views)",
+      "touch" => "protocol.touch"
+    }.each do |label, source|
+      it "flags a #{label} call as persistence" do
+        expect(flagged?(source)).to be(true)
+      end
+    end
+
+    # A metade oposta: a forma SEM `!` de toggle/increment/decrement não
+    # persiste (só muda o atributo em memória) — exigir o "!" evita marcar
+    # exatamente essa forma.
+    it "does not flag the bang-less form of toggle/increment/decrement, which does not persist" do
+      expect(flagged?("protocol.toggle(:featured)")).to be(false)
+      expect(flagged?("protocol.increment(:views)")).to be(false)
+      expect(flagged?("protocol.decrement(:views)")).to be(false)
+    end
+
+    # Leitura que não pode disparar a guarda — inclui `find_by`/`where` (as
+    # próprias mutations os usam por dentro dos commands, nunca no resolver,
+    # mas a guarda tem de continuar limpa se algum dia aparecessem aqui) e o
+    # identificador `updated_at`, que CONTÉM "update" como substring mas não é
+    # chamada nenhuma — só um nome de coluna.
+    it "does not flag a read, or 'updated_at' as a bare identifier" do
+      read = 'ProtocolDefinition.where(name: n).find_by(version: v)'
+      identifier = "protocol.updated_at"
+
+      expect(flagged?(read)).to be(false)
+      expect(flagged?(identifier)).to be(false)
+    end
+
+    it "catches an event that is not declared in MaintenanceAudit::NAMES" do
+      undeclared = <<~RUBY
+        in_city(city_slug: city_slug, event: "maintenance.protocol.made_up", module_name: "protocol") { }
+      RUBY
+
+      expect(in_city_event(undeclared)).to eq("maintenance.protocol.made_up")
+      expect(MaintenanceAudit::NAMES.exclude?(in_city_event(undeclared))).to be(true)
+    end
+  end
+
+  # Task 5, Step 2 — o mantenedor nunca assina nem cria quem aprova (Decisão 1,
+  # global-constraints.md). Duas metades: nenhum arquivo da API de manutenção
+  # chama os três commands de aprovação, e nenhum campo de Mutation tem
+  # "sign"/"signature" no nome — o segundo pega um nome que escondesse uma
+  # assinatura atrás de um verbo diferente, sem chamar Sign de verdade.
+  context "the maintainer never signs nor creates who approves" do
+    def forbidden_approval_calls = %w[Protocols::Sign GrantRole InviteMember]
+
+    def maintenance_api_files
+      Dir.glob(Rails.root.join("app/graphql/maintenance/**/*.rb")).map(&:to_s)
+    end
+
+    def approval_hits(code) = forbidden_approval_calls.select { |call| code.include?(call) }
+
+    def signish(field_names) = field_names.select { |name| name.match?(/sign/i) }
+
+    def approval_call_offenders
+      maintenance_api_files.filter_map do |path|
+        hits = approval_hits(code_only(path))
+        next if hits.empty?
+
+        "#{Pathname.new(path).relative_path_from(Rails.root)}: #{hits.join(', ')}"
+      end
+    end
+
+    it "never calls Protocols::Sign, GrantRole or InviteMember from the maintenance API" do
+      expect(approval_call_offenders).to be_empty
+    end
+
+    it "publishes no Mutation field named after signing" do
+      expect(signish(Maintenance::Schema.mutation.fields.keys)).to be_empty
+    end
+
+    # Auto-teste: passa pelos MESMOS métodos da guarda de verdade
+    # (approval_hits / signish) — um detector quebrado quebra os dois. Prova
+    # que a chamada é pega dentro de código de verdade e não num comentário,
+    # e que um nome de campo que só CONTÉM "Signature" é pego no meio de
+    # nomes que não assinam.
+    it "catches a stray approval call and a field name that merely contains 'signature'" do
+      stray = <<~RUBY
+        # Protocols::Sign nunca é chamado daqui
+        GrantRole.call(user: u, role: "protocol_reviewer")
+      RUBY
+
+      expect(approval_hits(strip_comments(stray))).to eq([ "GrantRole" ])
+      expect(signish(%w[publishProtocol approveWithSignature retireProtocol])).to eq([ "approveWithSignature" ])
     end
   end
 end

@@ -69,4 +69,49 @@ RSpec.describe Maintenance::CityReader do
     expect(logged).to include("://***@")
     expect(logged).not_to include("s3nha")
   end
+
+  # Resíduo do Plano 4 (Task 1): só falha de CONEXÃO merece mensagem
+  # publicada. Qualquer outra exceção é texto sem controle — pode carregar
+  # dado de cidadão de um bug de interpolação — e sai só pelo nome da classe.
+  it "reports a non-connection failure by its class only, never its message" do
+    expect {
+      described_class.call(city) { raise ArgumentError, "telefone +55 41 99999-0000 inválido" }
+    }.to raise_error(described_class::Failed) { |e|
+      expect(e.message).to eq("ArgumentError")
+      expect(e.message).not_to include("99999")
+    }
+  end
+
+  it "logs a non-connection failure by its class, without the raw message" do
+    logged = []
+    allow(Rails.logger).to receive(:warn) { |msg| logged << msg }
+
+    expect { described_class.call(city) { raise ArgumentError, "telefone +55 41 99999-0000" } }
+      .to raise_error(described_class::Failed)
+
+    expect(logged.join).to include("ArgumentError")
+    expect(logged.join).not_to include("99999")
+  end
+
+  it "still treats every class in CityConnectionErrors as unreachable, with a redacted message" do
+    Maintenance::CityConnectionErrors::CLASSES.each do |klass|
+      allow(CityConnection).to receive(:with)
+        .and_raise(klass.new("connection to postgres://rota_city_x:s3nha@db:5432/x failed"))
+
+      expect { described_class.call(city) { :never } }
+        .to raise_error(described_class::Unreachable) { |e| expect(e.message).not_to include("s3nha") }
+    end
+  end
+
+  # Fix round 1: a conexão que cai NO MEIO de uma query (não ao tentar abrir)
+  # sai do adapter de Postgres do Rails como ActiveRecord::ConnectionFailed
+  # (< QueryAborted < StatementInvalid), não como ConnectionNotEstablished —
+  # sem esta classe na lista, essa cidade virava CITY_READ_FAILED em vez de
+  # CITY_UNREACHABLE.
+  it "treats a connection dropped mid-query as unreachable, not as a read failure" do
+    allow(CityConnection).to receive(:with)
+      .and_raise(ActiveRecord::ConnectionFailed, "server closed the connection unexpectedly")
+
+    expect { described_class.call(city) { :never } }.to raise_error(described_class::Unreachable)
+  end
 end

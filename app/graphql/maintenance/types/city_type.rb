@@ -114,14 +114,18 @@ module Maintenance
 
       private
 
-      # Um só ponto converte as duas falhas previstas em erro de CAMPO: a
-      # operação segue, e o cliente vê exatamente qual cidade não respondeu.
+      # Um só ponto converte as três falhas previstas em erro de CAMPO: a
+      # operação segue, e o cliente vê exatamente qual cidade não respondeu
+      # (e, para uma falha que não é de conexão, só o nome da classe —
+      # CityReader::Failed nunca carrega a mensagem original).
       def inside(&block)
         CityReader.call(object, &block)
       rescue CityReader::Archived => e
         raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_ARCHIVED" })
       rescue CityReader::Unreachable => e
         raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_UNREACHABLE" })
+      rescue CityReader::Failed => e
+        raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_READ_FAILED" })
       end
     end
   end

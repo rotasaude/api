@@ -67,22 +67,41 @@ module Maintenance
                                                  credential: credential.audit_payload,
                                                  **audit_request_fields, **fields)
 
-        result = yield
+        begin
+          yield(correlation_id)
+        rescue Rejected => e
+          record_outcome(event, "rejected", module_name, correlation_id, fields)
+          return { ok: false, errors: [ { path: e.path, message: e.message } ] }
+        rescue StandardError => e
+          record_outcome(event, "error", module_name, correlation_id, fields) unless outcome_unknown?(e)
+          raise
+        end
+
         record_outcome(event, "ok", module_name, correlation_id, fields)
         { ok: true, errors: [] }
-      rescue Rejected => e
-        record_outcome(event, "rejected", module_name, correlation_id, fields)
-        { ok: false, errors: [ { path: e.path, message: e.message } ] }
-      rescue StandardError
-        record_outcome(event, "error", module_name, correlation_id, fields) if correlation_id
-        raise
       end
 
+      # Gancho para a subclasse: uma exceção que diz "não se sabe se a escrita
+      # comitou" não ganha linha de resultado — a tentativa sem resultado É o
+      # "desconhecido" da spec §9. Gravar `error` ali afirmaria uma falha que
+      # talvez não aconteceu.
+      def outcome_unknown?(_error) = false
+
+      # Gravar o RESULTADO acontece depois que a escrita já terminou (comitada,
+      # recusada ou desfeita). Se essa gravação falhar, a escrita não volta
+      # atrás: a tentativa fica sem resultado (o "desconhecido" da spec §9),
+      # só a classe vai para o log, e o cliente recebe o resultado REAL — nunca
+      # um `error` por causa da auditoria, que o faria repetir uma escrita
+      # que já aconteceu.
       def record_outcome(event, outcome, module_name, correlation_id, fields)
         MaintenanceAudit.record(event, outcome: outcome, module_name: module_name,
                                 maintainer_id: credential.maintainer.id,
                                 credential: credential.audit_payload,
                                 correlation_id: correlation_id, **audit_request_fields, **fields)
+      rescue StandardError => e
+        Rails.logger.error("Maintenance::BaseMutation: resultado #{outcome} de #{event} não gravado " \
+                           "(#{e.class}; correlation_id #{correlation_id})")
+        nil
       end
     end
   end

@@ -257,6 +257,33 @@ RSpec.describe "Maintenance city", type: :request do
     expect(error["message"]).to include("://***@")
   end
 
+  # Resíduo do Plano 4 (Task 1): uma falha que NÃO é de conexão (um bug de
+  # código, não uma cidade de fato inalcançável) sai como CITY_READ_FAILED,
+  # com a mensagem restrita ao nome da classe — nunca o texto da exceção
+  # original, que pode carregar dado de cidadão.
+  it "reports a non-connection read failure as a field error with only the exception class" do
+    other = City.active.where.not(id: city.id).order(:slug).first
+    skip "harness com uma cidade ativa só" if other.nil?
+
+    CityProfile.create!(name: "Cidade Teste", uf: "PR", ibge_code: "4106902")
+
+    allow(Maintenance::CityReader).to receive(:call).and_call_original
+    allow(Maintenance::CityReader).to receive(:call).with(having_attributes(slug: other.slug))
+      .and_raise(Maintenance::CityReader::Failed, "ArgumentError")
+
+    query = <<~GQL
+      { ok: city(slug: "#{city.slug}") { profile { name } }
+        bad: city(slug: "#{other.slug}") { profile { name } } }
+    GQL
+    gql!(query)
+
+    expect(json.dig("data", "ok", "profile")).not_to be_nil
+    expect(json.dig("data", "bad", "profile")).to be_nil
+    error = json["errors"].find { |e| e["path"]&.include?("bad") }
+    expect(error["extensions"]["code"]).to eq("CITY_READ_FAILED")
+    expect(error["message"]).to eq("ArgumentError")
+  end
+
   it "answers CITY_ARCHIVED for the inner fields of an archived city, and still answers the platform ones" do
     archived = City.where(status: "archived").order(:slug).first
     skip "nenhuma cidade arquivada no harness" if archived.nil?

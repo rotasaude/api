@@ -1,6 +1,7 @@
 # Campos que SÓ sessão humana alcança (spec §7): gerenciar mantenedores,
-# gerenciar tokens e ler auditoria. Lista única — um resolver não repete a
-# regra, e a guarda de cobertura em analyzers_spec.rb força todo campo de raiz
+# gerenciar tokens, ler auditoria e escrever protocolo numa cidade (Plano 5,
+# Decisão 3: escrita por token de serviço é decisão própria). Lista única — um
+# resolver não repete a regra, e a guarda de cobertura em analyzers_spec.rb força todo campo de raiz
 # novo a entrar aqui ou em TOKEN_ALLOWED antes de ir para produção.
 module Maintenance
   module Analyzers
@@ -8,6 +9,8 @@ module Maintenance
       RESTRICTED = %w[
         maintainers maintenanceTokens auditEvents
         inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
+        saveProtocolDraft submitProtocolForReview publishProtocol
+        activateProtocol retireProtocol revertProtocolActivation
       ].freeze
 
       # Campos de raiz que um token PODE usar. Existe para a guarda de
