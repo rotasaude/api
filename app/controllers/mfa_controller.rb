@@ -17,7 +17,10 @@ class MfaController < ApplicationController
   end
 
   def confirm
-    if Mfa::Verify.call(Current.user, code: params[:code])
+    # A2: confirmar a matrícula prova que o autenticador NOVO foi escaneado —
+    # um recovery code (que nem existiria ainda no primeiro cadastro) não
+    # pode ligar otp_enabled no lugar do TOTP.
+    if Mfa::Verify.totp_valid?(Current.user, params[:code])
       Current.user.update!(otp_enabled: true)
       render json: { ok: true }
     else
