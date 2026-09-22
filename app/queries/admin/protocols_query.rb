@@ -98,9 +98,13 @@ class Admin::ProtocolsQuery
     }
   end
 
+  # `active` costumava virar `published` aqui — colapso que escondia do painel
+  # a versão de fato em uso na cidade. A versão `active` é a única que pode
+  # ser revertida (Protocols::RevertActivation) e a única que NÃO pode ser
+  # aposentada (R4); quem lê precisa distinguir das demais `published`.
   def self.status_label(d)
     case d.status
-    when "active"  then "published"
+    when "active"  then "active"
     when "draft"   then "draft"
     when "retired" then "retired"
     else d.status
@@ -122,9 +126,23 @@ class Admin::ProtocolsQuery
     }
   end
 
+  # Os commands de Protocols publicam `protocol_key:`, nunca `name:` — o
+  # filtro por `payload ->> 'name'` nunca batia com nada, e a lista de nomes
+  # aceitos não incluía os eventos de assinatura (spec de assinaturas §5/§6).
+  # Nomes conferidos em app/commands/protocols/*.rb: submissão, assinatura,
+  # ativação, reversão, publicação e aposentadoria.
+  PROTOCOL_EVENT_NAMES = %w[
+    protocol.submitted_for_review
+    protocol.signed
+    protocol.activated
+    protocol.activation_reverted
+    protocol.published
+    protocol.retired
+  ].freeze
+
   def self.protocol_events(name)
-    DomainEvent.where("payload ->> 'name' = ?", name)
-      .where(name: %w[protocol.created protocol.published protocol.retired])
+    DomainEvent.where("payload ->> 'protocol_key' = ?", name)
+      .where(name: PROTOCOL_EVENT_NAMES)
       .order(occurred_at: :desc)
       .limit(20)
       .map do |ev|
