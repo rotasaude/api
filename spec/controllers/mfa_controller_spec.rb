@@ -20,7 +20,7 @@ RSpec.describe MfaController, type: :request do
   end
 
   # A2: confirmar a matrícula prova que o autenticador NOVO foi escaneado —
-  # um recovery code (segredo antigo, se já houvesse um) não serve para isso.
+  # um recovery code (do pendente) não serve para isso.
   describe "#confirm" do
     let!(:fresh_user) { User.create!(email_address: "erin@example.org", password: "secret123") }
     let!(:fresh_session) { fresh_user.sessions.create!(user_agent: "rspec", ip_address: "127.0.0.1") }
@@ -29,7 +29,7 @@ RSpec.describe MfaController, type: :request do
       allow_any_instance_of(MfaController).to receive(:resume_session) do
         Current.session = fresh_session
       end
-      @fresh_enroll = Mfa::Enroll.call(fresh_user)
+      @fresh_enroll = Mfa::PendingEnrollment.start(fresh_user)
     end
 
     it "recusa um recovery code e não liga otp_enabled" do
@@ -43,7 +43,7 @@ RSpec.describe MfaController, type: :request do
     end
 
     it "aceita o TOTP e liga otp_enabled" do
-      code = ROTP::TOTP.new(fresh_user.otp_secret).now
+      code = ROTP::TOTP.new(fresh_user.reload.otp_pending_secret).now
 
       post "/mfa/confirm", params: { code: code }, as: :json
 
@@ -58,11 +58,14 @@ RSpec.describe MfaController, type: :request do
     before { allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new) }
 
     it "caps mfa actions at 10 within the window: the 11th step_up gets 429" do
-      code = ROTP::TOTP.new(user.otp_secret).now
-      10.times { post "/mfa/step_up", params: { code: code }, as: :json }
+      # Um código de TOTP só vale uma vez (Task 2): repetir o mesmo pelas 10
+      # chamadas cairia em code_reused antes do teto. Os dez recovery codes
+      # são igualmente single-use e provam o mesmo limite sem tocar nisso.
+      codes = @enroll[:recovery_codes]
+      codes.each { |code| post "/mfa/step_up", params: { code: code }, as: :json }
       expect(response).to have_http_status(:ok)
 
-      post "/mfa/step_up", params: { code: code }, as: :json
+      post "/mfa/step_up", params: { code: codes.last }, as: :json
 
       expect(response).to have_http_status(:too_many_requests)
       expect(JSON.parse(response.body)).to eq("error" => "too_many_requests")
