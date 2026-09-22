@@ -111,7 +111,7 @@ class SetupController < ApplicationController
   def list_memberships
     return head(:forbidden) unless can_manage_members?
 
-    rows = Membership.active.includes(:user).map do |m|
+    rows = Membership.active.joins(:user).where(users: { deactivated_at: nil }).includes(:user).map do |m|
       {
         id: m.id,
         user: { id: m.user.id, email_address: m.user.email_address },
