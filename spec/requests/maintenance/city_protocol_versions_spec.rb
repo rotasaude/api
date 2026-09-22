@@ -79,7 +79,23 @@ RSpec.describe "Maintenance city protocolVersions", type: :request do
 
     expect(json["errors"]).to be_nil
     expect(versions.map { |v| [ v["version"], v["status"] ] })
-      .to eq([ [ 4, "retired" ], [ 3, "published" ], [ 2, "in_review" ], [ 1, "draft" ] ])
+      .to eq([ [ 3, "published" ], [ 2, "in_review" ], [ 1, "draft" ], [ 4, "retired" ] ])
+  end
+
+  # A1: sem o CASE de status, order(:name, version: :desc) sozinho intercalaria
+  # aposentadas com vivas — "amarelo" (aposentada) viria ANTES de "zika" (viva)
+  # e, sob o teto de 100, poderia empurrar uma versão viva para fora da
+  # resposta. Aqui "amarelo" tem o nome que ordenaria primeiro e "zika" o que
+  # ordenaria por último — e mesmo assim a aposentada sai depois da viva.
+  it "nunca deixa uma aposentada de nome anterior sair antes de uma viva de nome posterior" do
+    create_version!(name: "amarelo", status: "retired", version: 1)
+    create_version!(name: "zika", status: "draft", version: 1)
+
+    gql!(versions_query, slug: city.slug)
+
+    expect(json["errors"]).to be_nil
+    expect(versions.map { |v| [ v["name"], v["status"] ] })
+      .to eq([ [ "zika", "draft" ], [ "amarelo", "retired" ] ])
   end
 
   it "conta assinaturas válidas e o que falta por finalidade" do

@@ -69,9 +69,18 @@ module Maintenance
 
       # Calculado DENTRO de `inside`: a conexão da cidade fecha ao sair do
       # bloco, então ProtocolVersionType só lê as chaves já prontas.
+      #
+      # A1 (fix wave): não-aposentadas primeiro, aposentadas por último —
+      # nessa ordem, dentro de cada grupo, nome asc e versão desc. Sem o
+      # CASE, uma aposentada de nome cedo no alfabeto (ex. "amarelo")
+      # ocuparia uma vaga do teto de 100 antes de uma versão VIVA de nome
+      # tardio (ex. "zika"), derrubando a viva da resposta — order(:name,
+      # version: :desc).limit(100) sozinho não protege contra isso.
       def protocol_versions
         inside do
-          ProtocolDefinition.order(:name, version: :desc).limit(100).map do |d|
+          ProtocolDefinition
+            .order(Arel.sql("CASE WHEN status = 'retired' THEN 1 ELSE 0 END"), :name, version: :desc)
+            .limit(100).map do |d|
             {
               name: d.name, version: d.version, status: d.status,
               publication_signatures: Protocols::Signatures.valid_signer_ids(d, purpose: "publication").size,
