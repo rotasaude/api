@@ -51,4 +51,21 @@ RSpec.describe MfaController, type: :request do
       expect(fresh_user.reload.otp_enabled).to be(true)
     end
   end
+
+  # A1: mirror SessionsController's rate_limit; test env cache is :null_store
+  # (nunca conta), então trocamos por um MemoryStore real só neste describe.
+  describe "rate limiting" do
+    before { allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new) }
+
+    it "caps mfa actions at 10 within the window: the 11th step_up gets 429" do
+      code = ROTP::TOTP.new(user.otp_secret).now
+      10.times { post "/mfa/step_up", params: { code: code }, as: :json }
+      expect(response).to have_http_status(:ok)
+
+      post "/mfa/step_up", params: { code: code }, as: :json
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(JSON.parse(response.body)).to eq("error" => "too_many_requests")
+    end
+  end
 end

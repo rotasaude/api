@@ -2,6 +2,19 @@ class MfaController < ApplicationController
   include Authentication
   include MfaStepUp
 
+  # A1: `store:` de `rate_limit` é avaliado no CARREGAMENTO da classe — passar
+  # `Rails.cache` direto congelaria o store daquele instante (o do ambiente de
+  # teste é :null_store, que nunca conta). Mesmo delegador que
+  # MaintainerAuthentication::CacheStore usa, pela mesma razão: resolve
+  # Rails.cache a cada requisição, o que torna o teto exercitável em spec.
+  module RateLimitStore
+    def self.increment(...) = Rails.cache.increment(...)
+  end
+
+  rate_limit to: 10, within: 3.minutes, only: %i[enroll confirm step_up], name: "mfa",
+             store: RateLimitStore,
+             with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
+
   def enroll
     # Spec do dashboard §4.2: trocar o autenticador de uma conta que JÁ tem
     # TOTP exige step-up — senão a senha sozinha (ou uma sessão roubada)
