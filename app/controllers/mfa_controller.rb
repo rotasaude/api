@@ -32,8 +32,15 @@ class MfaController < ApplicationController
   # A matrícula só vale depois daqui: é `confirm` que promove o pendente. O
   # autenticador anterior vale até esta linha passar.
   def confirm
+    # ANTES do command: depois da promoção a conta sempre tem autenticador, e
+    # este é o único ponto onde cadastro e troca se distinguem.
+    replacing = Current.user.mfa_enrolled?
+
     outcome = Mfa::PendingEnrollment.confirm(Current.user, code: params[:code])
-    return render(json: { ok: true }) if outcome == :ok
+    if outcome == :ok
+      notify_authenticator_change(replacing: replacing)
+      return render(json: { ok: true })
+    end
 
     # :no_pending_enrollment | :enrollment_expired | :invalid_code | :code_reused
     render json: { error: outcome.to_s }, status: :unprocessable_entity
@@ -51,6 +58,36 @@ class MfaController < ApplicationController
   end
 
   private
+
+  # Aviso ao dono da conta (spec 2026-09-23-authenticator-change-notice §3).
+  # Roda DEPOIS de a promoção comitar — dentro da transação, um rollback
+  # mandaria aviso de algo que não aconteceu.
+  #
+  # Nunca derruba a ação: quem confirmou já tem o autenticador novo, e um
+  # servidor de e-mail fora do ar não pode transformar isso em 500. O log leva
+  # o id do usuário, nunca o e-mail nem o IP (CityMailDeliveryJob já desliga
+  # log_arguments para a mesma razão).
+  def notify_authenticator_change(replacing:)
+    SecurityMailer.authenticator_changed(
+      email_address: Current.user.email_address,
+      kind: replacing ? "replaced" : "enrolled",
+      city_name: Current.city&.name.to_s,
+      ip_address: safe_remote_ip,
+      occurred_at: Time.current.iso8601
+    ).deliver_later
+  rescue StandardError => e
+    Rails.logger.error("[mfa] aviso de autenticador não enfileirado para #{Current.user.id}: #{e.class}")
+  end
+
+  # F1: `request.remote_ip` (ActionDispatch::RemoteIp) levanta IpSpoofAttackError
+  # — um StandardError — quando Client-IP e X-Forwarded-For divergem. Isolado
+  # do resto de notify_authenticator_change para que esse erro nunca cancele o
+  # aviso inteiro: degrada para "desconhecido" e o e-mail sai do mesmo jeito.
+  def safe_remote_ip
+    request.remote_ip
+  rescue StandardError
+    "desconhecido"
+  end
 
   # TOTP do segredo ativo, consumido uma vez (User#consume_totp_step!), ou um
   # código de recuperação, consumido como sempre.
