@@ -90,6 +90,15 @@ Rails.application.routes.draw do
   # Relatório público (ADR-0010)
   get "/r/:token", to: "reports#show", as: :report
 
+  # Canal web do cidadão (spec 2026-09-22-web-citizen-channel). Servido no host
+  # da cidade, como o relatório; sessão própria por cookie `citizen_session`.
+  scope "/citizen", module: "citizen_api", as: "citizen" do
+    post   "otp",     to: "otps#create"
+    post   "session", to: "sessions#create"
+    get    "session", to: "sessions#show"
+    delete "session", to: "sessions#destroy"
+  end
+
   # Autoria/preview de protocolos (ADR-0009)
   scope "/protocols" do
     get  ":name",         to: "protocols#show",    as: :protocol
