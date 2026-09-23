@@ -81,6 +81,9 @@ module Maintenance
           ProtocolDefinition
             .order(Arel.sql("CASE WHEN status = 'retired' THEN 1 ELSE 0 END"), :name, version: :desc)
             .limit(100).map do |d|
+            # Calculado uma vez e derivado nos dois campos abaixo — duas
+            # consultas por versão custariam o dobro e poderiam divergir.
+            target = Protocols::RevertActivation.revert_target(d)
             {
               name: d.name, version: d.version, status: d.status,
               publication_signatures: Protocols::Signatures.valid_signer_ids(d, purpose: "publication").size,
@@ -88,7 +91,8 @@ module Maintenance
               activation_signatures: Protocols::Signatures.valid_signer_ids(d, purpose: "activation").size,
               activation_missing: Protocols::Signatures.missing(d, purpose: "activation"),
               eligible_reviewers: Protocols::Signatures.eligible_reviewer_count(d),
-              revertible: Protocols::RevertActivation.revertible?(d)
+              revertible: target.present?,
+              revert_target_version: target&.version
             }
           end
         end

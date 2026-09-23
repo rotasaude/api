@@ -73,6 +73,7 @@ RSpec.describe "Admin protocols — signature state", type: :request do
     get "/admin/api/protocols/sarampo"
     v1 = json["data"]["versions"].find { |v| v["version"] == "1" }
     expect(v1["revertible"]).to be(false)
+    expect(v1["revertTargetVersion"]).to be_nil
 
     v2 = ProtocolDefinition.create!(name: "sarampo", version: 2, status: "published",
                                     definition: protocol_definition_hash(name: "sarampo", version: 2))
@@ -90,6 +91,12 @@ RSpec.describe "Admin protocols — signature state", type: :request do
     v1_after = json["data"]["versions"].find { |v| v["version"] == "1" }
     expect(v2_after["revertible"]).to be(true)
     expect(v1_after["revertible"]).to be(false)
+    expect(v2_after["revertTargetVersion"]).to eq("1")
+    expect(v1_after["revertTargetVersion"]).to be_nil
+
+    get "/admin/api/protocols"
+    row = json["data"]["list"].find { |r| r["name"] == "sarampo" }
+    expect(row["revertTargetVersion"]).to eq("1")
   end
 
   it "mantém createdBy, publishedBy e fourEyes com o mesmo significado de antes" do
@@ -129,5 +136,6 @@ RSpec.describe "Admin protocols — signature state", type: :request do
     expect(row["eligibleReviewers"]).to eq(0)
     expect(row["editors"]).to eq([])
     expect(row["revertible"]).to be(false)
+    expect(row["revertTargetVersion"]).to be_nil
   end
 end

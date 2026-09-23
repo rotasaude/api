@@ -40,7 +40,8 @@ RSpec.describe "Maintenance GraphQL schema" do
     "CityProfile" => %w[name uf ibgeCode],
     "ProtocolDefinition" => %w[name version status],
     "ProtocolVersion" => %w[name version status publicationSignatures publicationMissing
-                            activationSignatures activationMissing eligibleReviewers revertible],
+                            activationSignatures activationMissing eligibleReviewers revertible
+                            revertTargetVersion],
     "AlertRecipient" => %w[channel destination escalationOrder],
     "CityAccount" => %w[login roles active mfaEnrolled],
     "CityCounts" => %w[users conversations triages inboundMessages reportSnapshots consents],
