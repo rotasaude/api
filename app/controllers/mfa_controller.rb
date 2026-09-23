@@ -72,11 +72,21 @@ class MfaController < ApplicationController
       email_address: Current.user.email_address,
       kind: replacing ? "replaced" : "enrolled",
       city_name: Current.city&.name.to_s,
-      ip_address: request.remote_ip,
+      ip_address: safe_remote_ip,
       occurred_at: Time.current.iso8601
     ).deliver_later
   rescue StandardError => e
     Rails.logger.error("[mfa] aviso de autenticador não enfileirado para #{Current.user.id}: #{e.class}")
+  end
+
+  # F1: `request.remote_ip` (ActionDispatch::RemoteIp) levanta IpSpoofAttackError
+  # — um StandardError — quando Client-IP e X-Forwarded-For divergem. Isolado
+  # do resto de notify_authenticator_change para que esse erro nunca cancele o
+  # aviso inteiro: degrada para "desconhecido" e o e-mail sai do mesmo jeito.
+  def safe_remote_ip
+    request.remote_ip
+  rescue StandardError
+    "desconhecido"
   end
 
   # TOTP do segredo ativo, consumido uma vez (User#consume_totp_step!), ou um
