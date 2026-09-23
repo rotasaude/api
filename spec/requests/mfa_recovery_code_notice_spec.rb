@@ -1,0 +1,100 @@
+require "rails_helper"
+
+# Spec do aviso de código de recuperação (2026-09-23-recovery-code-notice §6).
+# Só o step-up aprovado por CÓDIGO DE RECUPERAÇÃO avisa; TOTP e recusa não.
+RSpec.describe "MFA recovery code notice", type: :request do
+  include ActiveJob::TestHelper
+
+  def json = JSON.parse(response.body)
+  def deliveries = ActionMailer::Base.deliveries
+
+  let!(:user) { User.create!(email_address: "eve-#{SecureRandom.hex(3)}@example.org", password: "secret123") }
+  let(:codes) { @codes }
+
+  before do
+    @codes = Mfa::Enroll.call(user)[:recovery_codes]
+    user.update!(otp_enabled: true)
+    deliveries.clear
+  end
+
+  def step_up!(code)
+    perform_enqueued_jobs { post "/mfa/step_up", params: { code: code }, as: :json }
+  end
+
+  it "código de recuperação: um aviso, com a contagem que sobrou" do
+    session = sign_in_as(user)
+
+    step_up!(codes.first)
+
+    expect(response).to have_http_status(:ok)
+    expect(session.reload.mfa_verified_at).to be_within(5.seconds).of(Time.current)
+    expect(deliveries.size).to eq(1)
+    expect(deliveries.first.to).to eq([ user.email_address ])
+    expect(deliveries.first.subject).to eq("[rota-saúde] Código de recuperação usado")
+    expect(deliveries.first.text_part.body.decoded).to include("Restam #{user.reload.otp_recovery_codes.size} códigos")
+  end
+
+  it "TOTP não avisa" do
+    sign_in_as(user)
+
+    step_up!(ROTP::TOTP.new(user.reload.otp_secret).now)
+
+    expect(response).to have_http_status(:ok)
+    expect(deliveries).to be_empty
+  end
+
+  it "código inválido não avisa" do
+    sign_in_as(user)
+
+    step_up!("000000")
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json).to eq("error" => "invalid_code")
+    expect(deliveries).to be_empty
+  end
+
+  it "código de recuperação já usado não avisa de novo" do
+    sign_in_as(user)
+    step_up!(codes.first)
+    deliveries.clear
+
+    step_up!(codes.first)
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(deliveries).to be_empty
+  end
+
+  it "último código: aviso dizendo que só o autenticador aprova" do
+    user.update!(otp_recovery_codes: user.otp_recovery_codes.first(1))
+    sign_in_as(user)
+
+    step_up!(codes.first)
+
+    expect(deliveries.size).to eq(1)
+    expect(deliveries.first.text_part.body.decoded).to include("Não resta nenhum código")
+    expect(user.reload.otp_recovery_codes).to eq([])
+  end
+
+  it "falha ao enfileirar não descarimba a sessão nem muda a resposta" do
+    session = sign_in_as(user)
+    allow(SecurityMailer).to receive(:recovery_code_used).and_raise(StandardError, "fila fora do ar")
+
+    step_up!(codes.first)
+
+    expect(response).to have_http_status(:ok)
+    expect(session.reload.mfa_verified_at).to be_present
+  end
+
+  it "o TOTP continua sendo consumido uma vez só" do
+    sign_in_as(user)
+    code = ROTP::TOTP.new(user.reload.otp_secret).now
+    step_up!(code)
+    expect(response).to have_http_status(:ok)
+
+    step_up!(code)
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json).to eq("error" => "code_reused")
+    expect(deliveries).to be_empty
+  end
+end
