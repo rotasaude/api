@@ -42,14 +42,32 @@ module Mfa
       at && (at.to_i / totp.interval)
     end
 
+    # Consome UM código de recuperação, e nunca dois ao preço de um.
+    #
+    # A lista é uma coluna jsonb: consumir é ler o array, tirar um item e
+    # regravar o array inteiro. Sem lock, duas requisições simultâneas partem do
+    # mesmo array e a segunda gravação desfaz a primeira — o código que a outra
+    # acabou de consumir volta a valer, e o mesmo código aceito duas vezes rende
+    # dois step-up. Por isso a remoção acontece sob lock da linha do usuário
+    # (`with_lock` = transação + SELECT FOR UPDATE + reload), que é o que garante
+    # que o array regravado saiu do estado ATUAL, não de um retrato velho.
+    #
+    # O BCrypt fica FORA do lock de propósito: comparar até dez hashes custa
+    # ~3 s no custo de produção, e segurar a linha por isso bloquearia as outras
+    # requisições da mesma pessoa. Fora do lock a comparação só escolhe QUAL
+    # hash procurar; dentro do lock a remoção é comparação de string, e é ela
+    # que decide se este código ainda valia.
     def self.consume_recovery_code(user, code)
-      remaining = user.otp_recovery_codes.dup
-      idx = remaining.find_index { |hashed| BCrypt::Password.new(hashed) == code.to_s.downcase }
-      return false unless idx
+      matched = user.otp_recovery_codes.find { |hashed| BCrypt::Password.new(hashed) == code.to_s.downcase }
+      return false if matched.nil?
 
-      remaining.delete_at(idx)
-      user.update!(otp_recovery_codes: remaining)
-      true
+      consumed = false
+      user.with_lock do
+        remaining = user.otp_recovery_codes.dup
+        consumed = !remaining.delete(matched).nil?
+        user.update!(otp_recovery_codes: remaining) if consumed
+      end
+      consumed
     end
   end
 end
