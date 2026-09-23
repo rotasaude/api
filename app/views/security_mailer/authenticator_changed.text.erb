@@ -4,7 +4,7 @@ O autenticador da sua conta na <%= @city_name %> foi <%= @replaced ? "trocado" :
 
 Data/hora: <%= @occurred_at.strftime("%d/%m/%Y %H:%M") %> (horário de Brasília)
 IP de origem: <%= @ip_address %>
+Se não foi você, fale agora com o administrador municipal — quem tem o autenticador aprova protocolo em seu nome.
 <% if @replaced %>
 Os códigos de recuperação anteriores deixaram de valer.
 <% end %>
-Se não foi você, fale agora com o administrador municipal — quem tem o autenticador aprova protocolo em seu nome.

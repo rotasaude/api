@@ -63,4 +63,16 @@ RSpec.describe SecurityMailer, type: :mailer do
       ip_address: "203.0.113.10", occurred_at: occurred_at
     ).subject }.to raise_error(ArgumentError)
   end
+
+  it "na troca, a frase de ação é a última coisa antes do aviso de códigos antigos" do
+    mail = build_mail(kind: "replaced")
+    bodies(mail).each do |body|
+      ip_idx = body.index("203.0.113.10")
+      action_idx = body.index("Se não foi você")
+      codes_idx = body.index("códigos de recuperação anteriores")
+
+      expect(ip_idx).to be < action_idx, "IP deve vir antes da frase de ação"
+      expect(action_idx).to be < codes_idx, "frase de ação deve vir antes do aviso de códigos"
+    end
+  end
 end
