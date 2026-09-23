@@ -5,6 +5,7 @@ require "rails_helper"
 # envio não desfaz nem derruba a promoção.
 RSpec.describe "MFA confirm notice", type: :request do
   include ActiveJob::TestHelper
+  include ActiveSupport::Testing::TimeHelpers
 
   def json = JSON.parse(response.body)
   def deliveries = ActionMailer::Base.deliveries
@@ -75,6 +76,40 @@ RSpec.describe "MFA confirm notice", type: :request do
     perform_enqueued_jobs { post "/mfa/confirm", params: { code: "123456" }, as: :json }
 
     expect(json).to eq("error" => "no_pending_enrollment")
+    expect(deliveries).to be_empty
+  end
+
+  # F2 (final-fix-brief.md): faltavam duas das quatro recusas de
+  # Mfa::PendingEnrollment.confirm nesta cobertura.
+  it "pendente vencido: recusa e nenhum aviso" do
+    enroll!
+    user.update!(otp_pending_at: 16.minutes.ago)
+
+    confirm!
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json).to eq("error" => "enrollment_expired")
+    expect(deliveries).to be_empty
+  end
+
+  it "código já usado: recusa e nenhum aviso" do
+    # travel_to prende as duas confirmações no MESMO passo de 30s: sem isso o
+    # teste depende de as duas requisições HTTP caberem na mesma janela real
+    # (flaky perto da virada — visto falhar sob carga da suíte completa).
+    travel_to Time.current do
+      enroll!
+      confirm!
+      deliveries.clear
+
+      # O mesmo passo já foi queimado pela confirmação acima
+      # (User#consume_totp_step! é por usuário, não por segredo) — o pendente
+      # novo herda a recusa mesmo com um código diferente.
+      enroll!(stepped_up: true)
+      confirm!
+    end
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json).to eq("error" => "code_reused")
     expect(deliveries).to be_empty
   end
 
