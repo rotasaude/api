@@ -2,8 +2,8 @@ require "rotp"
 
 # Semente de dev do ciclo assinado (plano 2026-09-23). Cria, DENTRO da conexão
 # da cidade corrente, as quatro contas que o ciclo exige — autor, duas
-# revisoras e publisher — com TOTP já pronto, e um rascunho de versão 2 criado
-# PELO command de autoria.
+# revisoras e publisher — com TOTP já pronto, e um rascunho (achado ou, na
+# falta de um, criado na próxima versão livre) PELO command de autoria.
 #
 # Por que pelo command: `Protocols::SaveDraft` grava a ProtocolContribution do
 # autor e o content_digest. É disso que as assinaturas dependem: quem editou
@@ -19,7 +19,10 @@ require "rotp"
 class SignatureCrew
   PASSWORD_ENV = "DEV_USER_PASSWORD".freeze
 
-  PROTOCOL_NAME = "triage-respiratoria".freeze
+  # Derivado do template (não um literal solto): se o template for renomeado,
+  # a busca abaixo acompanha — um literal desatualizado faria ensure_draft
+  # nunca achar a versão certa e SaveDraft reescrever a cada seed (ver F3).
+  PROTOCOL_NAME = CityTemplates.protocol.fetch(:name)
 
   MEMBERS = [
     { email_prefix: "autor",     role: "protocol_author",    secret_env: "DEV_AUTHOR_OTP_SECRET",
@@ -64,18 +67,26 @@ class SignatureCrew
       { email: user.email_address, role: member[:role], otpauth_uri: otpauth_uri(user) }
     end
 
-    # O rascunho nasce do autor, pelo command. Já existindo, nada é reescrito:
+    # O rascunho nasce do autor, pelo command. Já existindo UM rascunho de
+    # verdade (status draft, qualquer versão), devolve-o sem reescrever:
     # reescrever mudaria o digest e derrubaria assinatura que você acabou de
-    # coletar na mão.
+    # coletar na mão. Não havendo, cria a PRÓXIMA versão livre — nunca a v2
+    # fixa: em uma cidade com v1 published, v2 active e v3 in_review (por
+    # exemplo), a próxima livre é a v4.
     def ensure_draft(slug:)
       author = User.find_by!(email_address: "autor@#{slug}.demo")
-      existing = ProtocolDefinition.find_by(name: PROTOCOL_NAME, version: 2)
-      return summarize(existing) if existing
+      existing_draft = ProtocolDefinition.find_by(name: PROTOCOL_NAME, status: "draft")
+      return summarize(existing_draft) if existing_draft
 
-      result = Protocols::SaveDraft.call(definition: draft_definition, by: author)
+      version = next_free_version
+      result = Protocols::SaveDraft.call(definition: draft_definition(version), by: author)
       return nil unless result.ok?
 
       summarize(result.payload[:protocol_definition])
+    end
+
+    def next_free_version
+      (ProtocolDefinition.where(name: PROTOCOL_NAME).maximum(:version) || 0) + 1
     end
 
     def summarize(record)
@@ -85,12 +96,12 @@ class SignatureCrew
     # A definição vem do MESMO template que o provisionamento e o seed usam
     # (CityTemplates.protocol → config/city_templates/triage_respiratoria.json),
     # que já passa no portão. Só a versão muda, e o prompt do primeiro passo
-    # ganha um sufixo para a diferença entre v1 e v2 ficar visível na tela.
-    def draft_definition
+    # ganha um sufixo para a versão ficar visível na tela.
+    def draft_definition(version)
       definition = CityTemplates.protocol.fetch(:definition).deep_dup
-      definition["version"] = 2
+      definition["version"] = version
       first_step = definition.fetch("steps").first
-      first_step["prompt"] = "#{first_step['prompt']} (v2)"
+      first_step["prompt"] = "#{first_step['prompt']} (v#{version})"
       definition
     end
   end

@@ -56,20 +56,67 @@ RSpec.describe SignatureCrew do
     expect(user("autor").otp_secret).to eq(mine)
   end
 
-  it "cria a versão 2 em rascunho pelo command, com a contribuição do autor" do
-    out = seed!
+  it "PROTOCOL_NAME vem do nome do template, não de um literal solto" do
+    expect(described_class::PROTOCOL_NAME).to eq(CityTemplates.protocol.fetch(:name))
+  end
 
-    draft = ProtocolDefinition.find_by(name: described_class::PROTOCOL_NAME, version: 2)
-    expect(out[:draft]).to include(name: described_class::PROTOCOL_NAME, version: 2, status: "draft")
-    expect(draft.status).to eq("draft")
-    expect(ProtocolContribution.where(protocol_definition: draft).pluck(:actor_kind, :actor_id))
-      .to eq([ [ "user", user("autor").id ] ])
-    expect(ProtocolContribution.find_by(protocol_definition: draft).content_digest).to eq(draft.content_digest)
+  describe "ensure_draft (achar/criar um rascunho de verdade)" do
+    it "sem nenhuma versão do protocolo, cria a v1 em rascunho pelo command, com a contribuição do autor" do
+      out = seed!
+
+      draft = ProtocolDefinition.find_by(name: described_class::PROTOCOL_NAME, version: 1)
+      expect(draft).not_to be_nil
+      expect(draft.status).to eq("draft")
+      expect(out[:draft]).to eq(name: described_class::PROTOCOL_NAME, version: 1, status: "draft")
+      expect(ProtocolContribution.where(protocol_definition: draft).pluck(:actor_kind, :actor_id))
+        .to eq([ [ "user", user("autor").id ] ])
+      expect(ProtocolContribution.find_by(protocol_definition: draft).content_digest).to eq(draft.content_digest)
+    end
+
+    it "com a v1 active (o caso do seed atual), cria a v2 em rascunho" do
+      ProtocolDefinition.create!(name: described_class::PROTOCOL_NAME, version: 1, status: "active",
+                                 definition: protocol_definition_hash(name: described_class::PROTOCOL_NAME))
+
+      out = seed!
+
+      draft = ProtocolDefinition.find_by(name: described_class::PROTOCOL_NAME, version: 2)
+      expect(draft).not_to be_nil
+      expect(draft.status).to eq("draft")
+      expect(out[:draft]).to eq(name: described_class::PROTOCOL_NAME, version: 2, status: "draft")
+    end
+
+    it "com v1 active e v2 published, cria a v3 em rascunho" do
+      ProtocolDefinition.create!(name: described_class::PROTOCOL_NAME, version: 1, status: "active",
+                                 definition: protocol_definition_hash(name: described_class::PROTOCOL_NAME))
+      ProtocolDefinition.create!(name: described_class::PROTOCOL_NAME, version: 2, status: "published",
+                                 definition: protocol_definition_hash(name: described_class::PROTOCOL_NAME, version: 2))
+
+      out = seed!
+
+      draft = ProtocolDefinition.find_by(name: described_class::PROTOCOL_NAME, version: 3)
+      expect(draft).not_to be_nil
+      expect(draft.status).to eq("draft")
+      expect(out[:draft]).to eq(name: described_class::PROTOCOL_NAME, version: 3, status: "draft")
+    end
+
+    it "com um rascunho já existente, devolve-o e NÃO cria outro nem reescreve (F2)" do
+      seed!
+      draft = ProtocolDefinition.find_by(name: described_class::PROTOCOL_NAME, status: "draft")
+      original_digest = draft.content_digest
+      original_contribution_count = ProtocolContribution.where(protocol_definition: draft).count
+
+      out = seed!
+
+      expect(ProtocolDefinition.where(name: described_class::PROTOCOL_NAME).count).to eq(1)
+      expect(draft.reload.content_digest).to eq(original_digest)
+      expect(ProtocolContribution.where(protocol_definition: draft).count).to eq(original_contribution_count)
+      expect(out[:draft]).to eq(name: draft.name, version: draft.version, status: "draft")
+    end
   end
 
   it "as duas revisoras são elegíveis para assinar o rascunho, e o autor não" do
     seed!
-    draft = ProtocolDefinition.find_by(name: described_class::PROTOCOL_NAME, version: 2)
+    draft = ProtocolDefinition.find_by(name: described_class::PROTOCOL_NAME, status: "draft")
 
     expect(Protocols::Signatures.eligible_reviewer_count(draft)).to eq(2)
     expect(Protocols::Signatures.valid_signer_ids(draft, purpose: "publication")).to eq([])
