@@ -22,4 +22,9 @@ Rails.application.config.to_prepare do
   # A2 (fix final do autenticador pendente): auditoria da promoção do segundo
   # fator (Mfa::PendingEnrollment#confirm). Sem consumidor, de propósito.
   DomainEvents.bind "user.authenticator_replaced", to: []
+
+  # F2 (final-fix-brief.md): auditoria do uso de código de recuperação para
+  # aprovar step-up (MfaController#step_up). Sem consumidor, de propósito —
+  # mesmo caso de user.authenticator_replaced acima.
+  DomainEvents.bind "user.recovery_code_used", to: []
 end

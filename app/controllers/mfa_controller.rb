@@ -54,7 +54,7 @@ class MfaController < ApplicationController
 
     # O carimbo vem primeiro: um aviso não pode sair se a sessão não valeu.
     Current.session.update!(mfa_verified_at: Time.current)
-    notify_recovery_code_used if factor == :recovery
+    record_and_notify_recovery_code_used if factor == :recovery
     render json: { ok: true }
   end
 
@@ -109,6 +109,22 @@ class MfaController < ApplicationController
     return :recovery if Mfa::Verify.consume_recovery_code(Current.user, params[:code])
 
     nil
+  end
+
+  # F2 (final-fix-brief.md): consumir um código de recuperação compra uma
+  # janela de 5 minutos para assinar, publicar, ativar, aposentar, reverter e
+  # gerir papéis — sem isto, o único vestígio era o e-mail, e o rescue dele
+  # mesmo o engolia. Mesmo precedente de Mfa::PendingEnrollment#confirm (ver o
+  # comentário lá): DomainEvents.publish, ato de usuário DE CIDADE. Publica
+  # ANTES do e-mail e fica DE PROPÓSITO fora do rescue de
+  # notify_recovery_code_used — falhar ao publicar é falha de verdade, não
+  # algo para degradar. Mesma disciplina de dado do e-mail: só o id do usuário
+  # e a contagem restante, nunca o código, nunca o e-mail, nunca o IP.
+  def record_and_notify_recovery_code_used
+    DomainEvents.publish("user.recovery_code_used",
+                          user_id: Current.user.id,
+                          remaining: Current.user.otp_recovery_codes.size)
+    notify_recovery_code_used
   end
 
   # Aviso de uso de código de recuperação (spec 2026-09-23-recovery-code-notice

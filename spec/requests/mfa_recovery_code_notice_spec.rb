@@ -85,6 +85,36 @@ RSpec.describe "MFA recovery code notice", type: :request do
     expect(session.reload.mfa_verified_at).to be_present
   end
 
+  # F2 (final-fix-brief.md): consumir um código compra uma janela de 5 minutos
+  # para assinar, publicar, ativar, aposentar, reverter e gerir papéis — o
+  # e-mail acima é o único vestígio hoje, e o rescue dele o engole se a fila
+  # cair. DomainEvents.publish deixa rastro que sobrevive a isso (mesmo
+  # precedente de Mfa::PendingEnrollment#confirm, ver
+  # spec/services/mfa/pending_enrollment_spec.rb).
+  it "código de recuperação: publica exatamente um user.recovery_code_used com o id do usuário" do
+    sign_in_as(user)
+
+    expect { step_up!(codes.first) }
+      .to change { DomainEvent.where(name: "user.recovery_code_used").count }.by(1)
+
+    event = DomainEvent.where(name: "user.recovery_code_used").sole
+    expect(event.payload).to eq("user_id" => user.id, "remaining" => user.reload.otp_recovery_codes.size)
+  end
+
+  it "TOTP não publica user.recovery_code_used" do
+    sign_in_as(user)
+
+    expect { step_up!(ROTP::TOTP.new(user.reload.otp_secret).now) }
+      .not_to change { DomainEvent.where(name: "user.recovery_code_used").count }
+  end
+
+  it "recusa não publica user.recovery_code_used" do
+    sign_in_as(user)
+
+    expect { step_up!("000000") }
+      .not_to change { DomainEvent.where(name: "user.recovery_code_used").count }
+  end
+
   it "o TOTP continua sendo consumido uma vez só" do
     sign_in_as(user)
     code = ROTP::TOTP.new(user.reload.otp_secret).now
