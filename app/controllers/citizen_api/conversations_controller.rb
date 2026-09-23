@@ -9,6 +9,14 @@ module CitizenApi
     }.freeze
 
     def create
+      # LGPD (spec §4): nenhum CPF é gravado sem o consentimento da versão
+      # vigente. Confira ANTES de resolve_citizen — RegisterPerson cria o
+      # Citizen (com o CPF) para um CPF novo, e StartConversation só recusaria
+      # depois, tarde demais.
+      unless params[:consent_version].to_s == Consents.current_version
+        return render_error("consent_outdated", :conflict)
+      end
+
       citizen = resolve_citizen
       return if performed?
 

@@ -81,6 +81,22 @@ RSpec.describe "Citizen triage flow", type: :request do
     expect(body["error"]).to eq("consent_outdated")
   end
 
+  it "termo desatualizado com CPF novo: 409 e nenhum CPF é gravado (LGPD, spec §4)" do
+    expect {
+      json_post "/citizen/conversations", cpf: "529.982.247-25", consent_version: "0"
+    }.not_to change(Citizen, :count)
+    expect(response).to have_http_status(:conflict)
+    expect(body["error"]).to eq("consent_outdated")
+  end
+
+  it "sem consent_version com CPF novo: 409 e nenhum CPF é gravado" do
+    expect {
+      json_post "/citizen/conversations", cpf: "529.982.247-25"
+    }.not_to change(Citizen, :count)
+    expect(response).to have_http_status(:conflict)
+    expect(body["error"]).to eq("consent_outdated")
+  end
+
   it "revogar o consentimento anonimiza pelo fluxo de sempre" do
     started = start_new
     json_post "/citizen/conversations/#{started['conversation_id']}/answers", answer: "false", idempotency_key: "a1"
