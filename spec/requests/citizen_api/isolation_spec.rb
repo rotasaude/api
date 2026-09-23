@@ -34,6 +34,9 @@ RSpec.describe "Citizen isolation", type: :request do
     json_post "/citizen/conversations/#{other[:conversation].id}/answers", answer: "true", idempotency_key: "z"
     expect(response).to have_http_status(:not_found)
 
+    json_post "/citizen/conversations/#{other[:conversation].id}/undo"
+    expect(response).to have_http_status(:not_found)
+
     get "/citizen/triages/#{other[:triage].id}"
     expect(response).to have_http_status(:not_found)
 
