@@ -4,8 +4,13 @@
 #     fixo) — loga no console, host admin.* (Operators::SessionsController); e um
 #     canal WhatsApp por cidade (CityChannel).
 #   - CADA CIDADE (curitiba, maringa), dentro da conexão dela: admin@<slug>.demo /
-#     dev-password como municipal_admin, o city_profile, um AlertRecipient de e-mail ativo,
-#     protocolo ATIVO (triage-respiratoria), uma triagem completa e o relatório.
+#     dev-password como municipal_admin (também com TOTP, para a tela Equipe), o
+#     city_profile, um AlertRecipient de e-mail ativo, protocolo ATIVO
+#     (triage-respiratoria), uma triagem completa e o relatório; e o elenco do
+#     ciclo assinado (autor, duas revisoras e publisher, todos com TOTP) mais um
+#     rascunho de verdade do protocolo (achado ou criado na próxima versão
+#     livre), criados por `SignatureCrew` (plano 2026-09-23) — ver
+#     `lib/signature_crew.rb`.
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -21,7 +26,9 @@
 if Rota.deployed?
   warn "[seeds] pulando: seeds de dev não rodam em ambiente publicado (#{Rails.env})"
 else
-  password = ENV.fetch("DEV_USER_PASSWORD", "dev-password")
+  require Rails.root.join("lib/signature_crew").to_s
+
+  password = ENV.fetch(SignatureCrew::PASSWORD_ENV, "dev-password")
 
   # ── Operador de plataforma + MFA ──────────────────────────────────────────────
   # otp_secret fixo (dev) para o autenticador sobreviver a resets. Só é setado
@@ -107,6 +114,23 @@ else
         )
         GenerateReportJob.new.handle(triage_id: triage.id, status: "terminal", tier: "alta", priority: 1)
         report = ReportSnapshot.find_by(triage_id: triage.id)
+
+        # ── Elenco do ciclo assinado (plano 2026-09-23) ───────────────────────
+        # Autor, duas revisoras e publisher com TOTP fixo, mais um rascunho de
+        # verdade (achado em `draft`, ou criado na próxima versão livre) pelo
+        # command de autoria — sem isso, exercitar assinatura no navegador
+        # exige cadastrar quatro autenticadores à mão a cada reset. O admin
+        # municipal também ganha TOTP: a tela Equipe pede step-up para
+        # conceder papel.
+        SignatureCrew.ensure_totp(muni_admin, secret_env: "DEV_MUNI_ADMIN_OTP_SECRET",
+                                              default_secret: "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP")
+        crew = SignatureCrew.seed_current_city(slug: slug, password: password)
+        puts "[seeds] admin ...... #{muni_admin.email_address} / #{password} + MFA → #{SignatureCrew.otpauth_uri(muni_admin)}"
+        crew[:accounts].each do |account|
+          puts "[seeds] #{account[:role].ljust(18)} #{account[:email]} / #{password} + MFA → #{account[:otpauth_uri]}"
+        end
+        puts crew[:draft] ? "[seeds] rascunho ... #{crew[:draft][:name]} v#{crew[:draft][:version]} (#{crew[:draft][:status]})" \
+                          : "[seeds] rascunho ... NÃO criado (veja o retorno do command)"
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"

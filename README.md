@@ -45,6 +45,21 @@ Bancos que precisam existir no Postgres do host:
 subdomínio como em produção. `*.localhost` resolve para 127.0.0.1 no Chrome e no Firefox sem `/etc/hosts`; no Safari,
 acrescente uma linha por cidade.
 
+**Elenco do ciclo assinado (`SignatureCrew`, plano 2026-09-23).** Em cada cidade, além do
+`admin@<slug>.demo` (agora também com TOTP, `DEV_MUNI_ADMIN_OTP_SECRET`), o seed cria quatro contas —
+mesma senha `dev-password` — para exercitar enviar/assinar/publicar/ativar na tela Protocolos:
+
+| Conta | Papel | Variável de override do segredo TOTP |
+|---|---|---|
+| `autor@<slug>.demo` | `protocol_author` | `DEV_AUTHOR_OTP_SECRET` |
+| `revisora1@<slug>.demo` | `protocol_reviewer` | `DEV_REVIEWER1_OTP_SECRET` |
+| `revisora2@<slug>.demo` | `protocol_reviewer` | `DEV_REVIEWER2_OTP_SECRET` |
+| `publisher@<slug>.demo` | `protocol_publisher` | `DEV_PUBLISHER_OTP_SECRET` |
+
+O TOTP de cada conta (inclusive a do admin municipal) é fixo em dev para sobreviver a um reset do banco sem
+reescanear autenticador; o `db:seed` imprime o `otpauth://` de cada uma no console para cadastro. Nada disso —
+segredo fixo, senha fixa, elenco inteiro — roda em ambiente publicado (`Rota.deployed?` guarda o seed inteiro).
+
 Em desenvolvimento o dev server do Vite responde CORS por conta própria pra qualquer origem `.localhost` — um teste de
 CORS pelo browser nas portas 5174/5175/5176 não prova nada sobre a política do Rails. Para testar a política de
 verdade, chame a API direto: `curl -H "Host: <slug>.localhost:5175" -H "Origin: http://<slug>.localhost:5175" http://localhost:3030/session`. Sem equivalente em produção (um host só serve API e proxy).
