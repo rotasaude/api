@@ -47,14 +47,21 @@ class MfaController < ApplicationController
   end
 
   def step_up
-    return render(json: { error: "code_reused" }, status: :unprocessable_entity) if reused_totp?
+    # F3 (final-fix-brief.md): calculado uma única vez e compartilhado com
+    # reused_totp? e step_up_factor — duas leituras de totp_step_for sobre o
+    # mesmo código podiam discordar na borda da janela de validade, e um passo
+    # já consumido respondia 422 pelo motivo errado (invalid_code em vez de
+    # code_reused).
+    step = Mfa::Verify.totp_step_for(Current.user, params[:code])
+    return render(json: { error: "code_reused" }, status: :unprocessable_entity) if reused_totp?(step)
 
-    if stepped_up?
-      Current.session.update!(mfa_verified_at: Time.current)
-      render json: { ok: true }
-    else
-      render json: { error: "invalid_code" }, status: :unprocessable_entity
-    end
+    factor = step_up_factor(step)
+    return render(json: { error: "invalid_code" }, status: :unprocessable_entity) if factor.nil?
+
+    # O carimbo vem primeiro: um aviso não pode sair se a sessão não valeu.
+    Current.session.update!(mfa_verified_at: Time.current)
+    record_and_notify_recovery_code_used if factor == :recovery
+    render json: { ok: true }
   end
 
   private
@@ -89,18 +96,62 @@ class MfaController < ApplicationController
     "desconhecido"
   end
 
-  # TOTP do segredo ativo, consumido uma vez (User#consume_totp_step!), ou um
-  # código de recuperação, consumido como sempre.
-  def reused_totp?
-    step = Mfa::Verify.totp_step_for(Current.user, params[:code])
+  # F4 (final-fix-brief.md): comentário antigo falava de código de
+  # recuperação aqui, herança do `stepped_up?` apagado — este método só trata
+  # TOTP. `step` vem calculado uma vez na ação (F3) e é o passo do segredo
+  # ATIVO: um passo já visto (User#consume_totp_step!) é reuso de um TOTP
+  # válido.
+  def reused_totp?(step)
     step.present? && !Current.user.consume_totp_step!(step)
   end
 
-  # Atenção: `reused_totp?` já consome o passo quando o código é válido, então
-  # este método não pode consumir de novo — só repete `totp_step_for`, que é
-  # leitura pura.
-  def stepped_up?
-    Mfa::Verify.totp_step_for(Current.user, params[:code]).present? ||
-      Mfa::Verify.consume_recovery_code(Current.user, params[:code])
+  # Qual fator aprovou o step-up: :totp, :recovery, ou nil quando nenhum.
+  #
+  # `step` vem calculado uma vez na ação (F3, final-fix-brief.md) e chega aqui
+  # já pronto — nenhuma segunda chamada a `totp_step_for` sobre o mesmo
+  # código. A ordem importa e o consumo também: `reused_totp?` (chamado antes,
+  # na ação) já consumiu o passo do TOTP quando o código é de TOTP válido,
+  # então aqui checar `step.present?` é leitura pura e nunca consome de novo.
+  # `consume_recovery_code` é o único consumo deste método, e só é tentado
+  # quando o código não é um TOTP válido.
+  def step_up_factor(step)
+    return :totp if step.present?
+    return :recovery if Mfa::Verify.consume_recovery_code(Current.user, params[:code])
+
+    nil
+  end
+
+  # F2 (final-fix-brief.md): consumir um código de recuperação compra uma
+  # janela de 5 minutos para assinar, publicar, ativar, aposentar, reverter e
+  # gerir papéis — sem isto, o único vestígio era o e-mail, e o rescue dele
+  # mesmo o engolia. Mesmo precedente de Mfa::PendingEnrollment#confirm (ver o
+  # comentário lá): DomainEvents.publish, ato de usuário DE CIDADE. Publica
+  # ANTES do e-mail e fica DE PROPÓSITO fora do rescue de
+  # notify_recovery_code_used — falhar ao publicar é falha de verdade, não
+  # algo para degradar. Mesma disciplina de dado do e-mail: só o id do usuário
+  # e a contagem restante, nunca o código, nunca o e-mail, nunca o IP.
+  def record_and_notify_recovery_code_used
+    DomainEvents.publish("user.recovery_code_used",
+                          user_id: Current.user.id,
+                          remaining: Current.user.otp_recovery_codes.size)
+    notify_recovery_code_used
+  end
+
+  # Aviso de uso de código de recuperação (spec 2026-09-23-recovery-code-notice
+  # §3). Mesmas regras do aviso de autenticador: depois do carimbo, nunca
+  # derruba a ação, log só com o id do usuário.
+  #
+  # `otp_recovery_codes` já está atualizado em memória: consume_recovery_code
+  # regrava a lista no mesmo registro (`user.update!`).
+  def notify_recovery_code_used
+    SecurityMailer.recovery_code_used(
+      email_address: Current.user.email_address,
+      city_name: Current.city&.name.to_s,
+      ip_address: safe_remote_ip,
+      occurred_at: Time.current.iso8601,
+      remaining: Current.user.otp_recovery_codes.size
+    ).deliver_later
+  rescue StandardError => e
+    Rails.logger.error("[mfa] aviso de recovery code não enfileirado para #{Current.user.id}: #{e.class}")
   end
 end

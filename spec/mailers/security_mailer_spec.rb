@@ -94,4 +94,67 @@ RSpec.describe SecurityMailer, type: :mailer do
       expect(action_idx).to be < codes_idx, "frase de ação deve vir antes do aviso de códigos"
     end
   end
+
+  describe "recovery_code_used" do
+    def build_recovery_mail(remaining:)
+      described_class.recovery_code_used(
+        email_address: "ana@cidade.gov.br", city_name: "Curitiba",
+        ip_address: "203.0.113.10", occurred_at: occurred_at, remaining: remaining
+      )
+    end
+
+    it "assunto e corpo com cidade, hora de Brasília, IP, frase de ação e contagem" do
+      mail = build_recovery_mail(remaining: 9)
+
+      expect(mail.to).to eq([ "ana@cidade.gov.br" ])
+      expect(mail.subject).to eq("[rota-saúde] Código de recuperação usado")
+      bodies(mail).each do |body|
+        expect(body).to include("cidade de Curitiba")
+        expect(body).to include("23/09/2026 10:30")
+        expect(body).to include("203.0.113.10")
+        expect(body).to include("Se não foi você")
+        expect(body).to include("Restam 9 códigos de recuperação")
+      end
+    end
+
+    it "sem nenhum código restante, avisa que só o autenticador aprova" do
+      bodies(build_recovery_mail(remaining: 0)).each do |body|
+        expect(body).to include("Não resta nenhum código")
+        expect(body).to include("só o autenticador")
+      end
+    end
+
+    it "com códigos restantes, NÃO fala do 'só o autenticador'" do
+      bodies(build_recovery_mail(remaining: 9)).each do |body|
+        expect(body).not_to include("só o autenticador")
+      end
+    end
+
+    # F1 (final-fix-brief.md): com um código só restando, é a última chamada
+    # antes do "não resta nenhum" — lida por um servidor municipal, que "Restam
+    # 1 códigos" atropela.
+    it "com só um código restante, usa o singular" do
+      bodies(build_recovery_mail(remaining: 1)).each do |body|
+        expect(body).to include("Resta 1 código de recuperação")
+        expect(body).not_to include("Restam 1")
+      end
+    end
+
+    it "a frase de ação vem antes da contagem" do
+      bodies(build_recovery_mail(remaining: 9)).each do |body|
+        expect(body.index("Se não foi você")).to be < body.index("Restam 9")
+      end
+    end
+
+    it "não leva código, segredo nem link" do
+      bodies(build_recovery_mail(remaining: 1)).each do |body|
+        expect(body).not_to match(/otpauth|otp_secret/i)
+        expect(body).not_to match(/https?:\/\//)
+        # Nenhum código de recuperação tem esta forma no corpo: 10 caracteres
+        # alfanuméricos minúsculos isolados (Mfa::PendingEnrollment::RECOVERY_LEN
+        # — o código de usuário de cidade vem de lá, não de Mfa::Enroll).
+        expect(body).not_to match(/\b[a-z0-9]{10}\b/)
+      end
+    end
+  end
 end

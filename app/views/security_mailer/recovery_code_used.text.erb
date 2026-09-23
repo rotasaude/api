@@ -1,0 +1,16 @@
+Olá,
+
+Um código de recuperação da sua conta na cidade de <%= @city_name %> foi usado para aprovar uma ação sensível.
+
+Data/hora: <%= @occurred_at.strftime("%d/%m/%Y %H:%M") %> (horário de Brasília)
+IP de origem: <%= @ip_address %>
+
+Se não foi você, fale agora com o administrador municipal — com este acesso é possível assinar e publicar protocolo em seu nome.
+
+<% if @remaining.zero? -%>
+Não resta nenhum código: a partir de agora só o autenticador aprova ações sensíveis.
+<% elsif @remaining == 1 -%>
+Resta 1 código de recuperação.
+<% else -%>
+Restam <%= @remaining %> códigos de recuperação.
+<% end -%>
