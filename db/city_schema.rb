@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_22_000003) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_23_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -49,6 +49,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000003) do
     t.check_constraint "singleton", name: "ck_city_profile_singleton"
   end
 
+  create_table "citizen_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "last_seen_at"
+    t.string "phone", null: false
+    t.datetime "revoked_at"
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.index ["phone"], name: "index_citizen_sessions_on_phone"
+    t.index ["token_digest"], name: "index_citizen_sessions_on_token_digest", unique: true
+  end
+
+  create_table "citizens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cpf", null: false
+    t.datetime "created_at", null: false
+    t.string "phone", null: false
+    t.datetime "updated_at", null: false
+    t.string "verification_level", default: "declared", null: false
+    t.index ["cpf", "phone"], name: "index_citizens_on_cpf_and_phone", unique: true
+    t.index ["phone"], name: "index_citizens_on_phone"
+    t.check_constraint "(verification_level)::text = ANY (ARRAY['declared'::text, 'verified'::text])", name: "ck_citizens_verification_level"
+  end
+
   create_table "consent_terms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.text "body", null: false
     t.datetime "created_at", null: false
@@ -74,12 +97,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000003) do
   end
 
   create_table "conversations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "channel", default: "whatsapp", null: false
+    t.uuid "citizen_id"
     t.datetime "created_at", null: false
+    t.string "last_answer_key"
     t.string "phone", null: false
     t.string "state", default: "greeting", null: false
     t.datetime "updated_at", null: false
-    t.index ["phone"], name: "idx_conversations_active_phone", unique: true, where: "((state)::text = ANY (ARRAY[('awaiting_consent'::character varying)::text, ('consented'::character varying)::text, ('greeting'::character varying)::text]))"
+    t.index ["citizen_id"], name: "idx_conversations_active_citizen", unique: true, where: "(((channel)::text = 'web'::text) AND ((state)::text = ANY (ARRAY['greeting'::text, 'awaiting_consent'::text, 'consented'::text])))"
+    t.index ["citizen_id"], name: "index_conversations_on_citizen_id"
+    t.index ["phone"], name: "idx_conversations_active_phone", unique: true, where: "(((channel)::text = 'whatsapp'::text) AND ((state)::text = ANY (ARRAY['greeting'::text, 'awaiting_consent'::text, 'consented'::text])))"
     t.index ["state"], name: "index_conversations_on_state"
+    t.check_constraint "(channel)::text = ANY (ARRAY['whatsapp'::text, 'web'::text])", name: "ck_conversations_channel"
   end
 
   create_table "dashboard_metrics", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -154,6 +183,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000003) do
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
     t.check_constraint "role::text = ANY (ARRAY['municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
+  end
+
+  create_table "otp_challenges", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "attempts", default: 0, null: false
+    t.string "code_digest", null: false
+    t.datetime "consumed_at"
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.string "phone", null: false
+    t.datetime "updated_at", null: false
+    t.index ["phone", "created_at"], name: "index_otp_challenges_on_phone_and_created_at"
   end
 
   create_table "outbound_messages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -421,6 +461,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000003) do
   end
 
   add_foreign_key "consents", "conversations"
+  add_foreign_key "conversations", "citizens"
   add_foreign_key "identities", "users"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "memberships", "users"

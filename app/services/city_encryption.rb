@@ -39,7 +39,10 @@ module CityEncryption
     [ Conversation,   :phone ],
     [ InboundMessage, :raw ],
     [ Consent,        :evidence ],
-    [ Author,         :token ]
+    [ Author,         :token ],
+    [ Citizen,        :cpf ],
+    [ Citizen,        :phone ],
+    [ CitizenSession, :phone ]
   ].freeze
 
   module_function
