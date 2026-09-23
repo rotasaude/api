@@ -20,7 +20,7 @@ RSpec.describe ReencryptionJob do
 
     stats = call_body
 
-    expect(stats.keys).to match_array(%w[User Conversation InboundMessage Consent Author Citizen CitizenSession])
+    expect(stats.keys).to match_array(%w[User Conversation InboundMessage Consent Author Citizen CitizenSession OtpChallenge])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end

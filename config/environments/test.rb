@@ -16,4 +16,6 @@ Rails.application.configure do
 
   config.active_support.deprecation = :stderr
   config.active_record.dump_schema_after_migration = false
+
+  config.x.otp_sender = :test
 end

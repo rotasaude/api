@@ -42,7 +42,8 @@ module CityEncryption
     [ Author,         :token ],
     [ Citizen,        :cpf ],
     [ Citizen,        :phone ],
-    [ CitizenSession, :phone ]
+    [ CitizenSession, :phone ],
+    [ OtpChallenge,   :phone ]
   ].freeze
 
   module_function
