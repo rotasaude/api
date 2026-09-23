@@ -31,4 +31,6 @@ Rails.application.configure do
   # responde 403 "Blocked hosts: api:3000".
   config.hosts << "api"
   config.hosts << "api:3000"
+
+  config.x.otp_sender = :log
 end

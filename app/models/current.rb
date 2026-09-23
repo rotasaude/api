@@ -23,6 +23,9 @@ class Current < ActiveSupport::CurrentAttributes
   # LEITURA de uma migração `source: :platform`; nil (o padrão) preserva o
   # comportamento de sempre.
   attribute :deterministic_key_source
+  # Sessão do cidadão no canal web (CitizenAuthentication). Nunca coexiste com
+  # `session` (servidor da cidade): são cookies e tabelas diferentes.
+  attribute :citizen_session
 
   delegate :user, to: :session, allow_nil: true
 end
