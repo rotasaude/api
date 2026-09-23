@@ -64,6 +64,25 @@ RSpec.describe SecurityMailer, type: :mailer do
     ).subject }.to raise_error(ArgumentError)
   end
 
+  # F3 (final-fix-brief.md): "sua conta na <cidade>" lê mal — falta a palavra
+  # "cidade" entre a preposição e o nome próprio.
+  it "o corpo usa \"cidade de\" antes do nome da cidade, não \"na <cidade>\" direto" do
+    bodies(build_mail(kind: "enrolled")).each do |body|
+      expect(body).to include("cidade de Curitiba")
+    end
+  end
+
+  # F3: no texto puro, linha em branco antes da frase de ação e antes do aviso
+  # de códigos antigos — sem linha solta extra deixada pelas tags <% if %>/<% end %>.
+  it "o texto puro separa a frase de ação e o aviso de códigos antigos com linha em branco, sem linha solta" do
+    mail = build_mail(kind: "replaced")
+    text = mail.text_part.body.decoded
+
+    expect(text).to include("203.0.113.10\n\nSe não foi você")
+    expect(text).to include("em seu nome.\n\nOs códigos de recuperação anteriores deixaram de valer.\n")
+    expect(text).not_to match(/\n{3,}/)
+  end
+
   it "na troca, a frase de ação é a última coisa antes do aviso de códigos antigos" do
     mail = build_mail(kind: "replaced")
     bodies(mail).each do |body|
