@@ -55,6 +55,21 @@ RSpec.describe OtpChallenge do
     expect { described_class.issue!(phone: phone) }.not_to raise_error
   end
 
+  it "toma um advisory lock por telefone dentro da transação, sem o telefone na SQL" do
+    executed_sql = []
+    allow(described_class.connection).to receive(:execute).and_wrap_original do |original, sql, *args|
+      executed_sql << sql
+      original.call(sql, *args)
+    end
+
+    described_class.issue!(phone: phone)
+
+    lock_statements = executed_sql.select { |sql| sql.include?("pg_advisory_xact_lock") }
+    expect(lock_statements).not_to be_empty
+    expect(lock_statements).to all(match(/pg_advisory_xact_lock\(-?\d+\)/))
+    expect(executed_sql.join(" ")).not_to include("998765432")
+  end
+
   it "vale o código mais recente: um reenvio invalida o anterior" do
     _, first = described_class.issue!(phone: phone)
     travel 61.seconds

@@ -12,14 +12,30 @@ class OtpChallenge < ApplicationRecord
 
   encrypts :phone, deterministic: true, key_provider: CityDeterministicKeyProvider.new
 
+  # Fix round 1 (Important): a checagem de cota (DAILY_LIMIT/RESEND_AFTER) era
+  # dois SELECTs sem trava — duas chamadas concorrentes de issue! para o mesmo
+  # telefone liam a mesma contagem "de antes", as duas passavam na checagem e
+  # as duas criavam: o limite de SMS (custa dinheiro) era contornável só
+  # mandando duas requisições ao mesmo tempo. A trava é
+  # pg_advisory_xact_lock, escopada à transação (liberada sozinha no commit
+  # OU rollback), chaveada por um inteiro derivado do telefone — nunca o
+  # telefone literal na SQL, que iria parar no log de query.
   def self.issue!(phone:)
-    recent = where(phone: phone).where("created_at > ?", 24.hours.ago)
-    raise DailyLimit if recent.count >= DAILY_LIMIT
-    raise TooSoon if recent.where("created_at > ?", RESEND_AFTER.ago).exists?
+    transaction do
+      connection.execute("SELECT pg_advisory_xact_lock(#{lock_key(phone)})")
 
-    code = format("%06d", SecureRandom.random_number(1_000_000))
-    challenge = create!(phone: phone, code_digest: digest(phone, code), expires_at: TTL.from_now)
-    [challenge, code]
+      recent = where(phone: phone).where("created_at > ?", 24.hours.ago)
+      raise DailyLimit if recent.count >= DAILY_LIMIT
+      raise TooSoon if recent.where("created_at > ?", RESEND_AFTER.ago).exists?
+
+      code = format("%06d", SecureRandom.random_number(1_000_000))
+      challenge = create!(phone: phone, code_digest: digest(phone, code), expires_at: TTL.from_now)
+      [challenge, code]
+    end
+  end
+
+  def self.lock_key(phone)
+    OpenSSL::Digest::SHA256.digest("citizen-otp-issue:#{phone}").unpack1("q>")
   end
 
   # Só o desafio mais recente e não usado do telefone vale: um reenvio
