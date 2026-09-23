@@ -19,6 +19,21 @@ module Citizens
       return Result.fail(:consent_outdated) unless @consent_version == Consents.current_version
 
       conversation = find_or_create_conversation
+      result = nil
+      # Sem lock, duas abas / toque duplo em "start" correm a mesma conversa em
+      # paralelo: os dois passam pelo state_awaiting_consent? do GiveConsent
+      # antes de qualquer um gravar (segundo consent duplicado ou 500 no índice
+      # único), e os dois veem "nenhuma triagem em andamento" antes de qualquer
+      # um criar (500 no índice único de triagem). with_lock serializa e
+      # recarrega a conversa: quem chega depois já vê o estado gravado pelo
+      # primeiro.
+      conversation.with_lock { result = locked_call(conversation) }
+      result
+    end
+
+    private
+
+    def locked_call(conversation)
       consent = ensure_consent(conversation)
       return consent if consent.failure?
 
@@ -30,8 +45,6 @@ module Citizens
 
       Result.ok(conversation: conversation, triage: started.payload[:triage], resumed: false)
     end
-
-    private
 
     def active_scope
       Conversation.channel_web.where(citizen: @citizen, state: Conversation::ACTIVE_STATES)

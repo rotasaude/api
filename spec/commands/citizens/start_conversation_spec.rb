@@ -55,4 +55,49 @@ RSpec.describe Citizens::StartConversation do
     expect(result.reason).to eq(:no_protocol)
     expect(Conversation.channel_web.last).to be_state_consented
   end
+
+  # Regressão: duas abas / toque duplo em "start" chamam o comando de novo
+  # para a MESMA conversa antes de qualquer outro passo (ex.: repost do
+  # formulário). Sem lock, os dois veem "sem consentimento vigente" e "sem
+  # triagem em andamento" ao mesmo tempo: consent duplicado e 500 no índice
+  # único de triagem em andamento. Aqui a chamada é sequencial (sem thread),
+  # mas cobre a mesma conversa gravada pela primeira chamada e confere que a
+  # segunda não grava consentimento nem triagem de novo.
+  it "não duplica consentimento nem triagem ao chamar de novo para a mesma conversa" do
+    first = start.payload
+    again = start
+
+    expect(again).to be_ok
+    expect(again.payload[:conversation]).to eq(first[:conversation])
+    expect(again.payload[:triage]).to eq(first[:triage])
+    expect(again.payload[:resumed]).to be(true)
+
+    conversation = first[:conversation]
+    expect(conversation.consents.count).to eq(1)
+    expect(conversation.triages.status_in_progress.count).to eq(1)
+    expect(
+      DomainEvent.where(name: "consent.given")
+                 .where("payload->>'conversation_id' = ?", conversation.id).count
+    ).to eq(1)
+  end
+
+  it "não duplica o consentimento novo ao chamar de novo depois de um termo publicado no meio" do
+    first = start.payload
+    ConsentTerm.create!(version: (Consents.current_version.to_i + 1).to_s, body: "Termo novo", published_at: Time.current)
+    new_version = Consents.current_version
+
+    start(version: new_version)
+    again = start(version: new_version)
+
+    expect(again).to be_ok
+    conversation = first[:conversation].reload
+    expect(again.payload[:conversation]).to eq(conversation)
+    expect(conversation.consents.where(version: new_version.to_i).count).to eq(1)
+    expect(conversation.consents.where(revoked_at: nil).count).to eq(1)
+    expect(
+      DomainEvent.where(name: "consent.given")
+                 .where("payload->>'conversation_id' = ?", conversation.id)
+                 .where("payload->>'version' = ?", new_version).count
+    ).to eq(1)
+  end
 end
