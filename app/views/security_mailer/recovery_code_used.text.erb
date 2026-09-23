@@ -9,6 +9,8 @@ Se não foi você, fale agora com o administrador municipal — com este acesso 
 
 <% if @remaining.zero? -%>
 Não resta nenhum código: a partir de agora só o autenticador aprova ações sensíveis.
+<% elsif @remaining == 1 -%>
+Resta 1 código de recuperação.
 <% else -%>
 Restam <%= @remaining %> códigos de recuperação.
 <% end -%>

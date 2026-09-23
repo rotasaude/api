@@ -7,6 +7,8 @@
 <p>Se não foi você, fale agora com o administrador municipal — com este acesso é possível assinar e publicar protocolo em seu nome.</p>
 <% if @remaining.zero? %>
   <p>Não resta nenhum código: a partir de agora só o autenticador aprova ações sensíveis.</p>
+<% elsif @remaining == 1 %>
+  <p>Resta 1 código de recuperação.</p>
 <% else %>
   <p>Restam <%= @remaining %> códigos de recuperação.</p>
 <% end %>

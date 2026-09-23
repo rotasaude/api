@@ -130,6 +130,16 @@ RSpec.describe SecurityMailer, type: :mailer do
       end
     end
 
+    # F1 (final-fix-brief.md): com um código só restando, é a última chamada
+    # antes do "não resta nenhum" — lida por um servidor municipal, que "Restam
+    # 1 códigos" atropela.
+    it "com só um código restante, usa o singular" do
+      bodies(build_recovery_mail(remaining: 1)).each do |body|
+        expect(body).to include("Resta 1 código de recuperação")
+        expect(body).not_to include("Restam 1")
+      end
+    end
+
     it "a frase de ação vem antes da contagem" do
       bodies(build_recovery_mail(remaining: 9)).each do |body|
         expect(body.index("Se não foi você")).to be < body.index("Restam 9")
