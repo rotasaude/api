@@ -14,7 +14,7 @@
 class ConversationAdvance
   Result = Struct.new(:reply, keyword_init: true)
 
-  DEFAULT_PROTOCOL_NAME = "triage-respiratoria"
+  DEFAULT_PROTOCOL_NAME = StartTriage::DEFAULT_PROTOCOL_NAME
 
   def self.call(conversation:, inbound:)
     new(conversation, inbound).call
@@ -132,22 +132,7 @@ class ConversationAdvance
   end
 
   def begin_triage_or_nil
-    record = ProtocolDefinition.where(
-      name: DEFAULT_PROTOCOL_NAME,
-      status: "active"
-    ).first
-    return nil unless record
-
-    engine = Protocols.current(name: DEFAULT_PROTOCOL_NAME)
-    @conversation.triages.create!(
-      protocol_definition: record,
-      protocol_name: record.name,
-      answers: {},
-      current_step: engine.start_step_id.to_s,
-      status: :in_progress
-    )
-  rescue Protocols::NotFound
-    nil
+    StartTriage.call(conversation: @conversation).payload[:triage]
   end
 
   def step_reply(triage, step_id, template_key)

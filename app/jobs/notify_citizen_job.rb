@@ -6,6 +6,9 @@ class NotifyCitizenJob < ApplicationJob
 
   def handle(triage_id:, **)
     triage = Triage.find(triage_id)
+    # Na web o link aparece na própria tela final (spec 2026-09-22-web-citizen-
+    # channel §3.2); não há para onde mandar mensagem.
+    return if triage.conversation.channel_web?
     snapshot = triage.report_snapshot or return   # GenerateReportJob ainda não rodou; vai tentar de novo via replay
     phone = triage.conversation.phone
 

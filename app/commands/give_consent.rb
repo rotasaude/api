@@ -1,14 +1,15 @@
 # Concede consentimento à conversa. Ver ADR-0004 e ADR-0008.
 # Reasons: :wrong_state, :version_mismatch.
 class GiveConsent
-  def self.call(conversation:, version:, evidence:)
-    new(conversation: conversation, version: version, evidence: evidence).call
+  def self.call(conversation:, version:, evidence:, channel: "whatsapp")
+    new(conversation: conversation, version: version, evidence: evidence, channel: channel).call
   end
 
-  def initialize(conversation:, version:, evidence:)
+  def initialize(conversation:, version:, evidence:, channel: "whatsapp")
     @conversation = conversation
     @version = version
     @evidence = evidence
+    @channel = channel
   end
 
   def call
@@ -22,7 +23,7 @@ class GiveConsent
         version: @version,
         policy_text_sha: Consents.policy_text_sha(@version),
         given_at: Time.current,
-        channel: "whatsapp",
+        channel: @channel,
         evidence: @evidence
       )
       @conversation.update!(state: :consented)
