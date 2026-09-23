@@ -47,9 +47,15 @@ class MfaController < ApplicationController
   end
 
   def step_up
-    return render(json: { error: "code_reused" }, status: :unprocessable_entity) if reused_totp?
+    # F3 (final-fix-brief.md): calculado uma única vez e compartilhado com
+    # reused_totp? e step_up_factor — duas leituras de totp_step_for sobre o
+    # mesmo código podiam discordar na borda da janela de validade, e um passo
+    # já consumido respondia 422 pelo motivo errado (invalid_code em vez de
+    # code_reused).
+    step = Mfa::Verify.totp_step_for(Current.user, params[:code])
+    return render(json: { error: "code_reused" }, status: :unprocessable_entity) if reused_totp?(step)
 
-    factor = step_up_factor
+    factor = step_up_factor(step)
     return render(json: { error: "invalid_code" }, status: :unprocessable_entity) if factor.nil?
 
     # O carimbo vem primeiro: um aviso não pode sair se a sessão não valeu.
@@ -90,22 +96,26 @@ class MfaController < ApplicationController
     "desconhecido"
   end
 
-  # TOTP do segredo ativo, consumido uma vez (User#consume_totp_step!), ou um
-  # código de recuperação, consumido como sempre.
-  def reused_totp?
-    step = Mfa::Verify.totp_step_for(Current.user, params[:code])
+  # F4 (final-fix-brief.md): comentário antigo falava de código de
+  # recuperação aqui, herança do `stepped_up?` apagado — este método só trata
+  # TOTP. `step` vem calculado uma vez na ação (F3) e é o passo do segredo
+  # ATIVO: um passo já visto (User#consume_totp_step!) é reuso de um TOTP
+  # válido.
+  def reused_totp?(step)
     step.present? && !Current.user.consume_totp_step!(step)
   end
 
   # Qual fator aprovou o step-up: :totp, :recovery, ou nil quando nenhum.
   #
-  # A ordem importa e o consumo também: `reused_totp?` (chamado antes, na ação)
-  # já consumiu o passo do TOTP quando o código é de TOTP válido, então aqui a
-  # checagem de TOTP é leitura pura (`totp_step_for`) e nunca consome de novo.
+  # `step` vem calculado uma vez na ação (F3, final-fix-brief.md) e chega aqui
+  # já pronto — nenhuma segunda chamada a `totp_step_for` sobre o mesmo
+  # código. A ordem importa e o consumo também: `reused_totp?` (chamado antes,
+  # na ação) já consumiu o passo do TOTP quando o código é de TOTP válido,
+  # então aqui checar `step.present?` é leitura pura e nunca consome de novo.
   # `consume_recovery_code` é o único consumo deste método, e só é tentado
   # quando o código não é um TOTP válido.
-  def step_up_factor
-    return :totp if Mfa::Verify.totp_step_for(Current.user, params[:code]).present?
+  def step_up_factor(step)
+    return :totp if step.present?
     return :recovery if Mfa::Verify.consume_recovery_code(Current.user, params[:code])
 
     nil

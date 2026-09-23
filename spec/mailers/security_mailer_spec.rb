@@ -151,7 +151,8 @@ RSpec.describe SecurityMailer, type: :mailer do
         expect(body).not_to match(/otpauth|otp_secret/i)
         expect(body).not_to match(/https?:\/\//)
         # Nenhum código de recuperação tem esta forma no corpo: 10 caracteres
-        # alfanuméricos minúsculos isolados (Mfa::Enroll::RECOVERY_LEN).
+        # alfanuméricos minúsculos isolados (Mfa::PendingEnrollment::RECOVERY_LEN
+        # — o código de usuário de cidade vem de lá, não de Mfa::Enroll).
         expect(body).not_to match(/\b[a-z0-9]{10}\b/)
       end
     end

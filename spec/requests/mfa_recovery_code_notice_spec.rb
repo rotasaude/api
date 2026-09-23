@@ -31,7 +31,14 @@ RSpec.describe "MFA recovery code notice", type: :request do
     expect(deliveries.size).to eq(1)
     expect(deliveries.first.to).to eq([ user.email_address ])
     expect(deliveries.first.subject).to eq("[rota-saúde] Código de recuperação usado")
-    expect(deliveries.first.text_part.body.decoded).to include("Restam #{user.reload.otp_recovery_codes.size} códigos")
+    body = deliveries.first.text_part.body.decoded
+    expect(body).to include("Restam #{user.reload.otp_recovery_codes.size} códigos")
+    # F5 (final-fix-brief.md): até aqui só o spec de mailer provava cidade e
+    # IP no corpo, com literais — nunca a ponta a ponta a partir da
+    # requisição real. `request.remote_ip` é o valor que o Rails reportou
+    # para ESTA requisição de teste, não um literal inventado.
+    expect(body).to include(City.find_by!(slug: TEST_CITY_A.slug).name)
+    expect(body).to include(request.remote_ip)
   end
 
   it "TOTP não avisa" do
