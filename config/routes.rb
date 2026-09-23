@@ -97,6 +97,15 @@ Rails.application.routes.draw do
     post   "session", to: "sessions#create"
     get    "session", to: "sessions#show"
     delete "session", to: "sessions#destroy"
+
+    get  "consent_term",               to: "consent_terms#show"
+    get  "people",                     to: "people#index"
+    post "conversations",              to: "conversations#create"
+    post "conversations/:id/answers",  to: "conversations#answer"
+    post "conversations/:id/undo",     to: "conversations#undo"
+    get  "triages",                    to: "triages#index"
+    get  "triages/:id",                to: "triages#show"
+    post "triages/:id/revoke_consent", to: "triages#revoke_consent"
   end
 
   # Autoria/preview de protocolos (ADR-0009)
