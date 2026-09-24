@@ -25,6 +25,7 @@ require_relative "support/maintenance_city_mutations"
 require_relative "support/triage_protocol_helpers"
 require_relative "support/citizen_request_helpers"
 require_relative "support/verification_helpers"
+require_relative "support/attendance_helpers"
 # Add additional requires below this line. Rails is not loaded until this point!
 
 # Requires supporting ruby files with custom matchers and macros, etc, in

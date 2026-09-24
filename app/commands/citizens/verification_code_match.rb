@@ -7,18 +7,20 @@ module Citizens
   class VerificationCodeMatch
     RECENT = 24.hours
 
-    def self.call(cpf:, code:, lock: false)
+    def self.call(cpf:, code:, lock: false, purpose: "verification")
       digits = CitizenIdentity::Cpf.normalize(cpf)
       return Result.fail(:invalid_cpf) unless digits
       return Result.fail(:invalid_code) unless code.to_s.match?(/\A\d{6}\z/)
 
       citizens = Citizen.where(cpf: digits)
-      candidates = CitizenVerificationCode.usable.where(citizen: citizens).order(:created_at)
+      candidates = CitizenVerificationCode.usable.for_purpose(purpose).where(citizen: citizens).order(:created_at)
       candidates = candidates.lock if lock
       candidates = candidates.to_a
 
       if candidates.empty?
-        recent = CitizenVerificationCode.where(citizen: citizens).where("created_at > ?", RECENT.ago).exists?
+        recent = CitizenVerificationCode.for_purpose(purpose).where(citizen: citizens)
+                                         .where("created_at > ?", RECENT.ago)
+                                         .any? { |c| ActiveSupport::SecurityUtils.secure_compare(c.code_digest, CitizenVerificationCode.digest(c.citizen_id, code.to_s)) }
         return Result.fail(recent ? :code_expired : :invalid_code)
       end
 
@@ -32,7 +34,7 @@ module Citizens
       end
       return Result.fail(:code_exhausted) if hit.attempts >= CitizenVerificationCode::MAX_ATTEMPTS
 
-      Result.ok(citizen: hit.citizen, verification_code: hit)
+      Result.ok(citizen: hit.citizen, verification_code: hit, triage: hit.triage)
     end
   end
 end

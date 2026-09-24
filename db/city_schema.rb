@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_24_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -25,6 +25,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_24_000001) do
     t.datetime "updated_at", null: false
     t.index ["escalation_order"], name: "index_alert_recipients_on_escalation_order"
     t.check_constraint "channel::text = ANY (ARRAY['whatsapp'::character varying::text, 'email'::character varying::text])", name: "ck_alert_recipients_channel"
+  end
+
+  create_table "attendances", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "checked_in_at", null: false
+    t.uuid "checked_in_by_user_id", null: false
+    t.string "check_in_method", null: false
+    t.uuid "citizen_id", null: false
+    t.datetime "closed_at"
+    t.uuid "closed_by_user_id"
+    t.datetime "created_at", null: false
+    t.text "exception_reason"
+    t.uuid "health_unit_id", null: false
+    t.string "outcome"
+    t.text "referral_note"
+    t.uuid "referral_unit_id"
+    t.string "status", default: "open", null: false
+    t.uuid "triage_id", null: false
+    t.index ["checked_in_by_user_id"], name: "index_attendances_on_checked_in_by_user_id"
+    t.index ["citizen_id"], name: "index_attendances_on_citizen_id"
+    t.index ["closed_by_user_id"], name: "index_attendances_on_closed_by_user_id"
+    t.index ["health_unit_id"], name: "index_attendances_on_health_unit_id"
+    t.index ["referral_unit_id"], name: "index_attendances_on_referral_unit_id"
+    t.index ["triage_id"], name: "index_attendances_on_triage_id", unique: true
+    t.check_constraint "check_in_method::text = ANY (ARRAY['code', 'cpf_exception']::text[])", name: "ck_attendances_method"
+    t.check_constraint "(check_in_method::text = 'code'::text AND exception_reason IS NULL) OR (check_in_method::text = 'cpf_exception'::text AND exception_reason IS NOT NULL AND length(btrim(exception_reason)) >= 10)", name: "ck_attendances_exception_reason"
+    t.check_constraint "(status::text = 'open'::text AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'closed'::text AND outcome IS NOT NULL AND closed_by_user_id IS NOT NULL AND closed_at IS NOT NULL)", name: "ck_attendances_closing"
+    t.check_constraint "outcome IS NULL OR outcome::text = ANY (ARRAY['discharged', 'referred', 'left']::text[])", name: "ck_attendances_outcome"
+    t.check_constraint "(outcome IS DISTINCT FROM 'referred' AND referral_unit_id IS NULL AND referral_note IS NULL) OR (outcome = 'referred' AND (referral_unit_id IS NOT NULL OR (referral_note IS NOT NULL AND length(btrim(referral_note)) > 0)))", name: "ck_attendances_referral"
+    t.check_constraint "status::text = ANY (ARRAY['open', 'closed']::text[])", name: "ck_attendances_status"
   end
 
   create_table "authors", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -68,8 +97,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_24_000001) do
     t.datetime "consumed_at"
     t.datetime "created_at", null: false
     t.datetime "expires_at", null: false
+    t.string "purpose", default: "verification", null: false
+    t.uuid "triage_id"
     t.datetime "updated_at", null: false
     t.index ["citizen_id"], name: "index_citizen_verification_codes_on_citizen_id"
+    t.index ["triage_id"], name: "index_citizen_verification_codes_on_triage_id"
+    t.check_constraint "purpose::text = ANY (ARRAY['verification', 'check_in']::text[])", name: "ck_citizen_verification_codes_purpose"
+    t.check_constraint "(purpose::text = 'check_in'::text) = (triage_id IS NOT NULL)", name: "ck_citizen_verification_codes_purpose_triage"
   end
 
   create_table "citizen_verifications", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -158,6 +192,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_24_000001) do
     t.index ["name"], name: "index_domain_events_on_name"
     t.index ["occurred_at"], name: "idx_domain_events_pending", where: "(published_at IS NULL)"
     t.index ["occurred_at"], name: "index_domain_events_on_occurred_at"
+  end
+
+  create_table "health_units", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.string "name", null: false
+    t.datetime "updated_at", null: false
+    t.index "lower((name)::text)", name: "idx_health_units_name_ci", unique: true
+    t.check_constraint "kind::text = ANY (ARRAY['ubs', 'upa', 'hospital', 'other']::text[])", name: "ck_health_units_kind"
   end
 
   create_table "identities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -486,7 +530,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_24_000001) do
     t.index "lower((email_address)::text)", name: "index_users_on_lower_email", unique: true
   end
 
+  add_foreign_key "attendances", "citizens"
+  add_foreign_key "attendances", "health_units"
+  add_foreign_key "attendances", "health_units", column: "referral_unit_id"
+  add_foreign_key "attendances", "triages"
+  add_foreign_key "attendances", "users", column: "checked_in_by_user_id"
+  add_foreign_key "attendances", "users", column: "closed_by_user_id"
   add_foreign_key "citizen_verification_codes", "citizens"
+  add_foreign_key "citizen_verification_codes", "triages"
   add_foreign_key "citizen_verifications", "citizens"
   add_foreign_key "citizen_verifications", "users", column: "revoked_by_user_id"
   add_foreign_key "citizen_verifications", "users", column: "verified_by_user_id"

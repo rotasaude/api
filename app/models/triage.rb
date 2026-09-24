@@ -4,6 +4,7 @@ class Triage < ApplicationRecord
   belongs_to :conversation
   belongs_to :protocol_definition
   has_one :report_snapshot
+  has_one :attendance, dependent: :restrict_with_error
 
   enum :status, {
     in_progress: "in_progress",

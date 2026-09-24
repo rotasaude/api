@@ -16,15 +16,22 @@ module Citizens
         end
 
         match.payload[:verification_code].update!(consumed_at: Time.current)
-        verification = CitizenVerification.create!(citizen: citizen, verified_by_user: by, verified_at: Time.current)
-        citizen.update!(verification_level: "verified")
-        DomainEvents.publish("citizen.verified", citizen_id: citizen.id, verification_id: verification.id,
-                                                 verified_by_user_id: by.id)
+        verification = record!(citizen: citizen, by: by)
         result = Result.ok(verification: verification)
       end
       result
     rescue ActiveRecord::RecordNotUnique
       Result.fail(:already_verified)
+    end
+
+    # Cria a validação dentro de uma transação que o chamador já abriu (usado
+    # também pelo check-in, spec 2026-09-24-citizen-attendance-check-in §2.6).
+    def self.record!(citizen:, by:)
+      verification = CitizenVerification.create!(citizen: citizen, verified_by_user: by, verified_at: Time.current)
+      citizen.update!(verification_level: "verified")
+      DomainEvents.publish("citizen.verified", citizen_id: citizen.id, verification_id: verification.id,
+                                               verified_by_user_id: by.id)
+      verification
     end
   end
 end
