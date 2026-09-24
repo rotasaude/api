@@ -41,7 +41,7 @@ class CheckInsController < ApplicationController
   end
 
   def search
-    result = Attendances::EligibleTriages.call(cpf: params[:cpf])
+    result = Attendances::EligibleTriages.call(cpf: params[:cpf], by: Current.user)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: { triages: result.payload[:triages].map { |t| triage_json(t) } }

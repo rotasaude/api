@@ -87,6 +87,22 @@ RSpec.describe "Check-ins", type: :request do
     expect(body["triages"].map { |t| t["id"] }).to eq([ fresh.id ])
   end
 
+  it "search publica attendance.exception_searched sem CPF, com by_user_id e result_count" do
+    fresh = completed_web_triage_for(citizen)
+    sign_in_as(verifier)
+
+    json_post "/attendance/check_ins/search", cpf: citizen.cpf
+    expect(response).to have_http_status(:ok)
+
+    events = DomainEvent.where(name: "attendance.exception_searched")
+    expect(events.count).to eq(1)
+    event = events.sole
+    expect(event.payload.keys).to contain_exactly("by_user_id", "result_count")
+    expect(event.payload["by_user_id"]).to eq(verifier.id)
+    expect(event.payload["result_count"]).to eq([ fresh.id ].size)
+    expect(event.payload.to_s).not_to match(/\d{11}/)
+  end
+
   it "exceção com motivo: 201 e check_in_method cpf_exception" do
     triage = completed_web_triage_for(citizen)
     sign_in_as(verifier)
