@@ -131,6 +131,7 @@ Rails.application.routes.draw do
     get  "triages",                    to: "triages#index"
     get  "triages/:id",                to: "triages#show"
     post "triages/:id/revoke_consent", to: "triages#revoke_consent"
+    post "triages/:id/check_in_code",  to: "check_in_codes#create"
     post "verification_codes",         to: "verification_codes#create"
   end
 
