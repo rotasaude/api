@@ -31,4 +31,9 @@ Rails.application.config.to_prepare do
   # Validação presencial (spec 2026-09-24): trilha; a prova é citizen_verifications.
   DomainEvents.bind "citizen.verified", to: []
   DomainEvents.bind "citizen.verification_revoked", to: []
+
+  # Check-in e desfecho do atendimento (ADR 0018): trilha; sem consumidor, de
+  # propósito.
+  DomainEvents.bind "attendance.checked_in", to: []
+  DomainEvents.bind "attendance.closed", to: []
 end
