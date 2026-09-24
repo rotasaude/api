@@ -2,7 +2,9 @@
 #
 #   - PLATAFORMA: operador dev@local / dev-password (Operator + MFA, otp_secret
 #     fixo) — loga no console, host admin.* (Operators::SessionsController); e um
-#     canal WhatsApp por cidade (CityChannel).
+#     canal WhatsApp por cidade (CityChannel); e o mantenedor dev@local /
+#     dev-password (Maintainer + TOTP fixo), que é OUTRA tabela e é a única
+#     conta que o console de manutenção aceita — ver `lib/dev_maintainer.rb`.
 #   - CADA CIDADE (curitiba, maringa), dentro da conexão dela: admin@<slug>.demo /
 #     dev-password como municipal_admin (também com TOTP, para a tela Equipe), o
 #     city_profile, um AlertRecipient de e-mail ativo, protocolo ATIVO
@@ -27,6 +29,7 @@ if Rota.deployed?
   warn "[seeds] pulando: seeds de dev não rodam em ambiente publicado (#{Rails.env})"
 else
   require Rails.root.join("lib/signature_crew").to_s
+  require Rails.root.join("lib/dev_maintainer").to_s
 
   password = ENV.fetch(SignatureCrew::PASSWORD_ENV, "dev-password")
 
@@ -41,6 +44,18 @@ else
   end
   operator.save!
   puts "[seeds] operador .... #{operator.email_address} / #{password} + MFA (otp_secret fixo) → console admin.*"
+
+  # ── Mantenedor da API de manutenção ───────────────────────────────────────────
+  # Conta de OUTRA tabela, não o operador acima: o console de manutenção
+  # (apps/maintenance) só aceita Maintainer. Mesmo e-mail e mesma senha de dev
+  # para não haver duas coisas para lembrar; segredo de TOTP próprio, fixo.
+  if MaintenanceApi.enabled?
+    maintainer = DevMaintainer.ensure!(email_address: "dev@local", password: password)
+    puts "[seeds] mantenedor .. #{maintainer.email_address} / #{password} + MFA → http://maintenance.localhost:5177"
+    puts "[seeds]               #{DevMaintainer.otpauth_uri(maintainer)}"
+  else
+    warn "[seeds] API de manutenção desligada neste ambiente — mantenedor de dev não semeado"
+  end
 
   # Mesmo protocolo que o provisionamento semeia em rascunho (Plano 4); aqui ativo.
   protocol_defn = CityTemplates.protocol.fetch(:definition)
