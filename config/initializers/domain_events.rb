@@ -27,4 +27,8 @@ Rails.application.config.to_prepare do
   # aprovar step-up (MfaController#step_up). Sem consumidor, de propósito —
   # mesmo caso de user.authenticator_replaced acima.
   DomainEvents.bind "user.recovery_code_used", to: []
+
+  # Validação presencial (spec 2026-09-24): trilha; a prova é citizen_verifications.
+  DomainEvents.bind "citizen.verified", to: []
+  DomainEvents.bind "citizen.verification_revoked", to: []
 end
