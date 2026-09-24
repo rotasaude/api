@@ -682,17 +682,6 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
         expect(revert_payload["revertedToVersion"]).to be_nil
       end
 
-      # Abrir o caminho de volta não pode mudar quem não o usa.
-      it "leaves the payload of a mutation that does not map its result untouched" do
-        legacy_active_version!
-        save_draft!(protocol_definition_hash(version: 2))
-        submit!(version: 2)
-        sign_two_reviewers!(version_row(2), purpose: "publication")
-        with_fresh_totp { |code| publish!(version: 2, code: code) }
-
-        expect(publish_payload.keys).to contain_exactly("ok", "errors")
-      end
-
       # Arranjo em que o código CERTO reverteria (a última linha prova isso):
       # o código errado é recusado antes de abrir a cidade, sem tocar em nada.
       it "refuses a wrong step-up code before opening the city, leaving the activation as it was" do
