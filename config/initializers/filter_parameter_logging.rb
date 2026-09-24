@@ -2,7 +2,7 @@
 Rails.application.config.filter_parameters += [
   :passw, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn,
   :raw, :payload, :evidence, :phone, :body, :authorization,
-  :grant, :cpf, :answer, :reason, /\A(code|state)\z/,
+  :grant, :cpf, :answer, :reason, :referral_note, /\A(code|state)\z/,
   # M6 (fix round 2): o corpo do POST /graphql da API de manutenção. `code` já
   # era filtrado como parâmetro, mas o TOTP do step-up viaja DENTRO de
   # `variables` — que chega como string JSON de vários clientes — e a string

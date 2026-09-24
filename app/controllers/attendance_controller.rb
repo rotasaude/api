@@ -7,11 +7,7 @@
 # acesso e no histórico do navegador).
 class AttendanceController < ApplicationController
   include Authentication
-
-  # Mesmo delegador de MfaController::RateLimitStore.
-  module RateLimitStore
-    def self.increment(...) = Rails.cache.increment(...)
-  end
+  include AttendanceAccess
 
   ERROR_STATUS = {
     invalid_cpf: :unprocessable_entity, invalid_code: :unprocessable_entity, code_expired: :unprocessable_entity,
@@ -24,12 +20,12 @@ class AttendanceController < ApplicationController
   before_action :require_admin, only: %i[search revoke]
 
   rate_limit to: 30, within: 10.minutes, only: %i[lookup verify], name: "attendance",
-             by: -> { Current.user&.id || request.remote_ip }, store: RateLimitStore,
+             by: -> { Current.user&.id || request.remote_ip }, store: AttendanceAccess::RateLimitStore,
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
   def lookup
     result = Citizens::LookupForVerification.call(cpf: params[:cpf], code: params[:code])
-    return render_failure(result) if result.failure?
+    return render_failure(result, ERROR_STATUS) if result.failure?
 
     citizen = result.payload[:citizen]
     render json: {
@@ -44,7 +40,7 @@ class AttendanceController < ApplicationController
   def verify
     result = Citizens::Verify.call(cpf: params[:cpf], code: params[:code],
                                    document_checked: params[:document_checked] == true, by: Current.user)
-    return render_failure(result) if result.failure?
+    return render_failure(result, ERROR_STATUS) if result.failure?
 
     v = result.payload[:verification]
     render json: { verification: { id: v.id, citizen_id: v.citizen_id, verified_at: v.verified_at.iso8601 } },
@@ -65,30 +61,12 @@ class AttendanceController < ApplicationController
     return render json: { error: "not_found" }, status: :not_found unless verification
 
     result = Citizens::RevokeVerification.call(verification: verification, reason: params[:reason], by: Current.user)
-    return render_failure(result) if result.failure?
+    return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: { verification: verification_json(verification.reload) }
   end
 
   private
-
-  def require_verifier
-    forbid unless CitizenVerificationPolicy.new(Current.user, nil).verify?
-  end
-
-  def require_admin
-    forbid unless CitizenVerificationPolicy.new(Current.user, nil).manage?
-  end
-
-  def forbid
-    render json: { error: "forbidden" }, status: :forbidden
-  end
-
-  def render_failure(result)
-    payload = { error: result.reason.to_s }
-    payload[:verified_at] = result.details[:verified_at].iso8601 if result.details[:verified_at]
-    render json: payload, status: ERROR_STATUS.fetch(result.reason, :unprocessable_entity)
-  end
 
   def verification_json(v)
     {

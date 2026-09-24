@@ -85,6 +85,22 @@ Rails.application.routes.draw do
     post "verifications",            to: "attendance#verify"
     post "verifications/search",     to: "attendance#search"
     post "verifications/:id/revoke", to: "attendance#revoke"
+
+    # Unidades de saúde e check-in (spec 2026-09-24-citizen-attendance-check-in
+    # §4). `units/all` PRECISA vir antes de `units/:id`: a primeira rota que
+    # casa vence.
+    get  "units",                   to: "health_units#index"
+    get  "units/all",               to: "health_units#all"
+    post "units",                   to: "health_units#create"
+    post "units/:id",               to: "health_units#update"
+    post "units/:id/deactivate",    to: "health_units#deactivate"
+    post "units/:id/activate",      to: "health_units#activate"
+    get  "units/:id/open",          to: "attendances#open"
+    post "check_ins/lookup",        to: "check_ins#lookup"
+    post "check_ins",               to: "check_ins#create"
+    post "check_ins/search",        to: "check_ins#search"
+    post "check_ins/exception",     to: "check_ins#exception"
+    post "attendances/:id/close",   to: "attendances#close"
   end
 
   # Healthcheck — usado pelo Kamal (ADR-0001).
