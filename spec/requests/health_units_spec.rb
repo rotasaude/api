@@ -50,6 +50,32 @@ RSpec.describe "Health units", type: :request do
     expect(body["error"]).to eq("invalid_kind")
   end
 
+  it "desativar com atendimento aberto: 409 unit_has_open_attendances; depois de encerrado, 200" do
+    citizen = Citizen.create!(cpf: "52998224725", phone: "+5541998765432")
+    unit = create_unit
+    triage = completed_web_triage_for(citizen)
+    code = Citizens::IssueCheckInCode.call(citizen: citizen, triage: triage).payload.fetch(:code)
+    sign_in_as(verifier)
+    json_post "/attendance/check_ins", cpf: citizen.cpf, code: code, health_unit_id: unit.id
+    expect(response).to have_http_status(:created)
+    attendance_id = body.dig("attendance", "id")
+
+    sign_in_as(admin)
+    json_post "/attendance/units/#{unit.id}/deactivate"
+    expect(response).to have_http_status(:conflict)
+    expect(body["error"]).to eq("unit_has_open_attendances")
+    expect(unit.reload.active).to be(true)
+
+    sign_in_as(verifier)
+    json_post "/attendance/attendances/#{attendance_id}/close", outcome: "discharged"
+    expect(response).to have_http_status(:ok)
+
+    sign_in_as(admin)
+    json_post "/attendance/units/#{unit.id}/deactivate"
+    expect(response).to have_http_status(:ok)
+    expect(body["unit"]["active"]).to be(false)
+  end
+
   it "atendente lista só ativas e recebe 403 nas escritas e em /units/all" do
     active = create_unit("UBS Ativa")
     create_unit("UBS Inativa", active: false)

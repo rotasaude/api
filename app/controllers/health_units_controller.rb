@@ -39,6 +39,10 @@ class HealthUnitsController < ApplicationController
   def deactivate
     return render json: { error: "not_found" }, status: :not_found unless @unit
 
+    if Attendance.open_attendances.where(health_unit: @unit).exists?
+      return render json: { error: "unit_has_open_attendances" }, status: :conflict
+    end
+
     @unit.update!(active: false)
     render json: { unit: unit_json(@unit, include_active: true) }
   end
