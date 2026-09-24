@@ -97,3 +97,44 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- attendances (spec 2026-09-24-citizen-attendance-check-in §3; ADR 0018): só
+-- acréscimo, exceto encerrar UMA vez. O check-in nunca muda.
+CREATE OR REPLACE FUNCTION rota_attendance_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'attendances is append-only: DELETE refused';
+  END IF;
+  IF OLD.status = 'closed' THEN
+    RAISE EXCEPTION 'attendances: already closed';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.triage_id IS DISTINCT FROM OLD.triage_id
+     OR NEW.citizen_id IS DISTINCT FROM OLD.citizen_id
+     OR NEW.health_unit_id IS DISTINCT FROM OLD.health_unit_id
+     OR NEW.checked_in_by_user_id IS DISTINCT FROM OLD.checked_in_by_user_id
+     OR NEW.checked_in_at IS DISTINCT FROM OLD.checked_in_at
+     OR NEW.check_in_method IS DISTINCT FROM OLD.check_in_method
+     OR NEW.exception_reason IS DISTINCT FROM OLD.exception_reason
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'attendances: the check-in columns never change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.attendances') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS attendances_guard ON attendances';
+    EXECUTE 'CREATE TRIGGER attendances_guard
+      BEFORE UPDATE OR DELETE ON attendances
+      FOR EACH ROW EXECUTE FUNCTION rota_attendance_guard()';
+
+    EXECUTE 'DROP TRIGGER IF EXISTS attendances_append_only_truncate ON attendances';
+    EXECUTE 'CREATE TRIGGER attendances_append_only_truncate
+      BEFORE TRUNCATE ON attendances
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;
