@@ -132,10 +132,21 @@ module Protocols
       revert_target(protocol).present?
     end
 
+    # O desempate por `id` existe porque este método roda DUAS vezes na mesma
+    # reversão — a leitura rápida sem lock e a reconferência sob lock. Com
+    # `created_at` empatado e a ordem incompleta, as duas execuções do mesmo
+    # SQL podem devolver ordens diferentes, e o alvo conferido deixa de ser o
+    # alvo revertido.
+    #
+    # Ele compra DETERMINISMO, não cronologia: `id` é UUID (gen_random_uuid),
+    # então num empate a linha escolhida é estável e arbitrária — não a mais
+    # recente. Num empate de microssegundo não existe ordem a respeitar; o que
+    # existe é consistência a garantir. Quem um dia precisar da cronologia de
+    # verdade precisa de uma coluna de sequência, não deste `id`.
     def self.activation_history(name)
       ProtocolActivation.joins(:protocol_definition)
                         .where(protocol_definitions: { name: name })
-                        .order(created_at: :desc).limit(2).to_a
+                        .order(created_at: :desc, id: :desc).limit(2).to_a
     end
     private_class_method :activation_history
   end
