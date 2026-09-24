@@ -6,6 +6,8 @@ class HealthUnit < ApplicationRecord
 
   has_many :attendances, dependent: :restrict_with_error
 
+  before_validation { self.name = name&.strip }
+
   validates :name, presence: true, uniqueness: { case_sensitive: false }
   validates :kind, inclusion: { in: KINDS }
 
