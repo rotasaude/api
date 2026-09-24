@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_23_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_24_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -59,6 +59,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_23_000001) do
     t.datetime "updated_at", null: false
     t.index ["phone"], name: "index_citizen_sessions_on_phone"
     t.index ["token_digest"], name: "index_citizen_sessions_on_token_digest", unique: true
+  end
+
+  create_table "citizen_verification_codes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "attempts", default: 0, null: false
+    t.uuid "citizen_id", null: false
+    t.string "code_digest", null: false
+    t.datetime "consumed_at"
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["citizen_id"], name: "index_citizen_verification_codes_on_citizen_id"
+  end
+
+  create_table "citizen_verifications", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "citizen_id", null: false
+    t.datetime "created_at", null: false
+    t.text "revoke_reason"
+    t.datetime "revoked_at"
+    t.uuid "revoked_by_user_id"
+    t.datetime "verified_at", null: false
+    t.uuid "verified_by_user_id", null: false
+    t.index ["citizen_id"], name: "idx_citizen_verifications_one_active", unique: true, where: "(revoked_at IS NULL)"
+    t.index ["citizen_id"], name: "index_citizen_verifications_on_citizen_id"
+    t.index ["revoked_by_user_id"], name: "index_citizen_verifications_on_revoked_by_user_id"
+    t.index ["verified_by_user_id"], name: "index_citizen_verifications_on_verified_by_user_id"
+    t.check_constraint "revoked_at IS NULL AND revoked_by_user_id IS NULL AND revoke_reason IS NULL OR revoked_at IS NOT NULL AND revoked_by_user_id IS NOT NULL AND revoke_reason IS NOT NULL AND length(btrim(revoke_reason)) >= 10", name: "ck_citizen_verifications_revocation"
   end
 
   create_table "citizens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -182,7 +208,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_23_000001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['citizen_verifier'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "otp_challenges", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -460,6 +486,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_23_000001) do
     t.index "lower((email_address)::text)", name: "index_users_on_lower_email", unique: true
   end
 
+  add_foreign_key "citizen_verification_codes", "citizens"
+  add_foreign_key "citizen_verifications", "citizens"
+  add_foreign_key "citizen_verifications", "users", column: "revoked_by_user_id"
+  add_foreign_key "citizen_verifications", "users", column: "verified_by_user_id"
   add_foreign_key "consents", "conversations"
   add_foreign_key "conversations", "citizens"
   add_foreign_key "identities", "users"
