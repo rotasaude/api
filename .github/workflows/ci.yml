@@ -55,6 +55,12 @@ jobs:
       # conteúdo de apps/api/config/master.key) — não é algo que este workflow
       # possa prover por conta própria.
       RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+      # spec/requests/webhooks/whatsapp_spec.rb monta o handshake e assina o
+      # corpo lendo estas duas do ambiente — em dev elas vêm do compose. O
+      # valor é irrelevante (o spec assina e confere com a MESMA variável); o
+      # que não pode é faltar, e faltando o ENV.fetch levanta KeyError.
+      WHATSAPP_VERIFY_TOKEN: citoken
+      WHATSAPP_APP_SECRET: cisecret
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
@@ -99,6 +105,7 @@ jobs:
         run: |
           bin/rails platform:bootstrap
           bin/rails db:migrate
+          bin/rails platform:triggers
           bin/rails city:test_databases
       - run: bundle exec rspec
 

@@ -4,9 +4,15 @@
 #   1. db:migrate — só platform migra de fato (Plano 5: primary, cache e
 #      city_unset têm database_tasks: false em config/database.yml; o banco
 #      compartilhado e a config queue foram aposentados);
-#   2. city:migrate:all — toda cidade active/suspended, com lock por cidade; sai
+#   2. platform:triggers — db/platform_schema.rb não representa trigger, e
+#      `db:migrate` num banco de plataforma VAZIO carrega o dump e marca todas
+#      as versões como aplicadas sem executar nenhuma. Sem este passo, a
+#      primeira subida de uma plataforma nova nasce sem a imutabilidade da
+#      auditoria de manutenção. Idempotente, então roda em todo deploy;
+#   3. city:migrate:all — toda cidade active/suspended, com lock por cidade; sai
 #      com status != 0 listando as cidades que ficaram para trás.
 # O código antigo segue no ar enquanto isto roda: migração destrutiva exige
 # expand/contract. Cidade que falhar responde 503 até ser migrada.
 ./bin/rails db:migrate
+./bin/rails platform:triggers
 ./bin/rails city:migrate:all

@@ -17,6 +17,25 @@ namespace :platform do
     }
   end
 
+  desc "Instala os triggers do banco de plataforma (idempotente)."
+  # Existe porque db/platform_schema.rb não representa trigger, e banco vazio
+  # nasce do schema, não das migrações: `db:migrate` num banco sem tabelas
+  # carrega o dump e marca TODAS as versões como aplicadas, sem executar
+  # nenhuma. Foi assim que a CI rodou a suíte pela primeira vez com a
+  # imutabilidade da auditoria de manutenção ausente — e seria assim numa
+  # plataforma recém-provisionada. Mesmo desenho do city:load_schema, que já
+  # executa db/city_triggers.sql depois de carregar o schema da cidade.
+  #
+  # Roda pela conexão de plataforma (dona das tabelas): criar trigger em
+  # platform_events exige ser dono da tabela.
+  task triggers: :environment do
+    file = Rails.root.join("db/platform_triggers.sql")
+    abort "[platform:triggers] #{file} não existe." unless File.exist?(file)
+
+    PlatformRecord.connection.execute(File.read(file))
+    puts "[platform:triggers] instalados em #{PlatformRecord.connection.current_database}"
+  end
+
   desc "Cria o database e o role da plataforma (idempotente)."
   task bootstrap: :environment do
     p   = platform_conn_params
