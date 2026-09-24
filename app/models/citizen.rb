@@ -9,6 +9,8 @@ class Citizen < ApplicationRecord
   encrypts :phone, deterministic: true, key_provider: CityDeterministicKeyProvider.new
 
   has_many :conversations, dependent: :restrict_with_error
+  has_many :verifications, class_name: "CitizenVerification", dependent: :restrict_with_error
+  has_many :verification_codes, class_name: "CitizenVerificationCode", dependent: :restrict_with_error
 
   enum :verification_level, { declared: "declared", verified: "verified" }, prefix: true
 
@@ -16,5 +18,9 @@ class Citizen < ApplicationRecord
 
   def cpf_masked
     CitizenIdentity::Cpf.mask(cpf)
+  end
+
+  def active_verification
+    verifications.active.first
   end
 end
