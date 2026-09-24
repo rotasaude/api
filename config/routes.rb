@@ -78,6 +78,15 @@ Rails.application.routes.draw do
     post "/users/:id/deactivate",        to: "setup#deactivate_user"
   end
 
+  # Balcão da UBS: validação presencial do cidadão (spec 2026-09-24). Escrita
+  # de servidor da cidade — fora de /admin/api, que é só leitura.
+  scope "/attendance" do
+    post "lookup",                   to: "attendance#lookup"
+    post "verifications",            to: "attendance#verify"
+    get  "verifications",            to: "attendance#index"
+    post "verifications/:id/revoke", to: "attendance#revoke"
+  end
+
   # Healthcheck — usado pelo Kamal (ADR-0001).
   get "up", to: ->(_env) { [200, {}, ["ok"]] }
 
@@ -106,6 +115,7 @@ Rails.application.routes.draw do
     get  "triages",                    to: "triages#index"
     get  "triages/:id",                to: "triages#show"
     post "triages/:id/revoke_consent", to: "triages#revoke_consent"
+    post "verification_codes",         to: "verification_codes#create"
   end
 
   # Autoria/preview de protocolos (ADR-0009)
