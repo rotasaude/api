@@ -73,4 +73,66 @@ RSpec.describe Protocols::RevertActivation, ".revert_target" do
       expect(described_class.revertible?(protocol)).to eq(described_class.revert_target(protocol).present?)
     end
   end
+
+  # `activation_history` roda DUAS vezes na mesma reversão — a leitura rápida
+  # sem lock e a reconferência sob lock. Com `created_at` empatado e sem
+  # desempate, as duas execuções do MESMO SQL podem devolver ordens
+  # diferentes: o alvo conferido deixa de ser o alvo revertido.
+  #
+  # O desempate por `id` compra DETERMINISMO, não cronologia — `id` é UUID
+  # (gen_random_uuid), então a linha escolhida é estável e arbitrária. Num
+  # empate de microssegundo não há ordem a respeitar; há consistência a
+  # garantir. A segunda asserção prende qual linha vence, porque sem ela o
+  # exemplo passaria por sorte: com tabela pequena o Postgres costuma devolver
+  # ordem estável mesmo sem ORDER BY completo.
+  # `activation_history` roda DUAS vezes na mesma reversão — a leitura rápida
+  # sem lock e a reconferência sob lock. Com `created_at` empatado e a ordem
+  # incompleta, as duas execuções do MESMO SQL podem devolver ordens
+  # diferentes, e o alvo conferido deixa de ser o alvo revertido.
+  #
+  # Por que a asserção é sobre o SQL e não sobre qual linha volta: sem
+  # desempate o Postgres devolve a ordem física, que numa tabela pequena é
+  # estável — um exemplo que afirmasse "vence a de maior id" passaria por
+  # sorte, ANTES da correção, e não provaria nada (já aconteceu duas vezes
+  # neste projeto). O que se compra aqui é ordem totalmente especificada; é
+  # isso que o exemplo prende.
+  #
+  # O desempate por `id` compra DETERMINISMO, não cronologia: `id` é UUID
+  # (gen_random_uuid), então num empate a linha escolhida é estável e
+  # arbitrária. Num empate de microssegundo não há ordem a respeitar; há
+  # consistência a garantir.
+  describe "ordenação do histórico de ativações" do
+    include ActiveSupport::Testing::TimeHelpers
+
+    # ProtocolActivation é append-only (trigger + readonly no modelo), então o
+    # empate não se monta editando a linha: monta-se congelando o relógio e
+    # ativando duas versões pelo caminho real.
+    let!(:tied) { travel_to(1.hour.from_now) { activate!(3); activate!(4) } }
+
+    def dengue_activations
+      ProtocolActivation.joins(:protocol_definition).where(protocol_definitions: { name: "dengue" })
+    end
+
+    it "o arranjo empata de verdade — senão não há o que desempatar" do
+      tie = dengue_activations.maximum(:created_at)
+
+      expect(dengue_activations.where(created_at: tie).count).to eq(2)
+    end
+
+    it "ordena por created_at E por id, sem deixar empate para o banco resolver" do
+      queries = []
+      sub = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+        queries << payload[:sql] if payload[:sql].include?("protocol_activations")
+      end
+      begin
+        described_class.send(:activation_history, "dengue")
+      ensure
+        ActiveSupport::Notifications.unsubscribe(sub)
+      end
+
+      ordering = queries.last[/ORDER BY (.+?)(?: LIMIT|$)/, 1]
+      expect(ordering).to match(/created_at.*DESC/i)
+      expect(ordering).to match(/\bid\b.*DESC/i)
+    end
+  end
 end
