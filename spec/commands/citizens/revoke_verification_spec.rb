@@ -35,6 +35,14 @@ RSpec.describe Citizens::RevokeVerification do
       .to eq(:already_revoked)
   end
 
+  it "duas revogações concorrentes: a segunda vê already_revoked, não erro de banco" do
+    verification # força a criação antes de carregar a cópia obsoleta
+    stale = CitizenVerification.find(verification.id)
+    expect(described_class.call(verification: verification, reason: "documento de outra pessoa", by: admin)).to be_ok
+    expect(described_class.call(verification: stale, reason: "outro motivo, também válido", by: admin).reason)
+      .to eq(:already_revoked)
+  end
+
   it "depois de desfeita, o par pode ser validado de novo" do
     described_class.call(verification: verification, reason: "documento de outra pessoa", by: admin)
     again = Citizens::Verify.call(cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: true, by: verifier)
