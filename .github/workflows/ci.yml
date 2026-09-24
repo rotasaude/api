@@ -89,9 +89,16 @@ jobs:
           WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='rota_app')\gexec
           SQL
       - name: Bancos e roles de plataforma e de cidade
+        # `db:migrate`, não `db:migrate:platform`: o Rails só gera as tarefas
+        # por banco quando MAIS DE UM config do ambiente tem
+        # `database_tasks` ligado, e em test só o `platform` tem (primary e
+        # city_unset são database_tasks: false). Com um banco só, a tarefa
+        # namespaced não existe — `bin/rails -T` não a lista nem aqui nem em
+        # dev — e `db:migrate` já aponta para rota_saude_platform_test, como
+        # `db:migrate:status` confirma.
         run: |
           bin/rails platform:bootstrap
-          bin/rails db:migrate:platform
+          bin/rails db:migrate
           bin/rails city:test_databases
       - run: bundle exec rspec
 
