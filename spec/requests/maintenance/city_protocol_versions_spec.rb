@@ -55,7 +55,7 @@ RSpec.describe "Maintenance city protocolVersions", type: :request do
             name version status
             publicationSignatures publicationMissing
             activationSignatures activationMissing
-            eligibleReviewers revertible
+            eligibleReviewers revertible revertTargetVersion
           }
         }
       }
@@ -108,7 +108,7 @@ RSpec.describe "Maintenance city protocolVersions", type: :request do
     expect(row("dengue", 1)).to include(
       "publicationSignatures" => 1, "publicationMissing" => 1,
       "activationSignatures" => 0, "activationMissing" => 2,
-      "eligibleReviewers" => 3, "revertible" => false
+      "eligibleReviewers" => 3, "revertible" => false, "revertTargetVersion" => nil
     )
   end
 
@@ -193,5 +193,7 @@ RSpec.describe "Maintenance city protocolVersions", type: :request do
     expect(json["errors"]).to be_nil
     expect(row("sarampo", 2)["revertible"]).to be(true)
     expect(row("sarampo", 1)["revertible"]).to be(false)
+    expect(row("sarampo", 2)["revertTargetVersion"]).to eq(1)
+    expect(row("sarampo", 1)["revertTargetVersion"]).to be_nil
   end
 end

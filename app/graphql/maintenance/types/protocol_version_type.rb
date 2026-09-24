@@ -24,6 +24,8 @@ module Maintenance
       field :activation_missing, Integer, null: false
       field :eligible_reviewers, Integer, null: false
       field :revertible, Boolean, null: false
+      field :revert_target_version, Integer, null: true,
+            description: "Versão que voltaria a valer numa reversão de emergência; nula quando não há."
     end
   end
 end

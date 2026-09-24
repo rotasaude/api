@@ -108,21 +108,28 @@ module Protocols
       Result.fail(:invalid, message: e.record.errors.full_messages.join(", "))
     end
 
-    # Leitura pura das MESMAS três condições que `call` exige, para quem só
-    # quer perguntar "reverteria?" sem reverter — hoje só o painel da cidade
-    # (Admin::ProtocolsQuery, spec de assinaturas §5, ADR-0016). Reusa
-    # `activation_history` em vez de duplicar a consulta; não é a checagem que
-    # decide um `call` de verdade — essa segue travando as duas linhas e
-    # reconferindo tudo sob lock (P2, acima). Sem lock, esta resposta pode
-    # ficar obsoleta assim que outra escrita comita — quem chama sabe disso.
-    def self.revertible?(protocol)
-      return false unless protocol.status == "active"
+    # A versão que voltaria a valer, ou nil. Leitura pura das MESMAS três
+    # condições que `call` exige (spec 2026-09-23-revert-target §3):
+    # a versão tem de estar em uso, a ativação corrente tem de ser dela e
+    # assinada (linha-base não reverte: não há passo anterior), e a ativação
+    # anterior tem de apontar para uma versão ainda `published`.
+    #
+    # Sem lock: a resposta pode ficar obsoleta assim que outra escrita comita —
+    # quem chama sabe disso, e as telas dizem "deve voltar", não "vai voltar".
+    def self.revert_target(protocol)
+      return nil unless protocol.status == "active"
 
       latest, previous = activation_history(protocol.name)
-      return false unless latest&.protocol_definition_id == protocol.id && latest.kind == "signed"
-      return false if previous.nil?
+      return nil unless latest&.protocol_definition_id == protocol.id && latest.kind == "signed"
+      return nil if previous.nil?
 
-      ProtocolDefinition.where(id: previous.protocol_definition_id, status: "published").exists?
+      ProtocolDefinition.find_by(id: previous.protocol_definition_id, status: "published")
+    end
+
+    # Uma fonte só: quem pergunta "reverteria?" recebe a resposta derivada do
+    # ALVO, e não de uma consulta paralela que poderia divergir dele.
+    def self.revertible?(protocol)
+      revert_target(protocol).present?
     end
 
     def self.activation_history(name)

@@ -76,6 +76,13 @@ class Admin::ProtocolsQuery
 
     emails = User.where(id: (pub_ids + act_ids + user_editor_ids).uniq).pluck(:id, :email_address).to_h
 
+    # Mesmas três condições que Protocols::RevertActivation exige para
+    # reverter de verdade — calculado UMA VEZ e derivado nos dois campos
+    # abaixo; duas consultas por versão custariam o dobro e poderiam
+    # divergir. Sem lock, então pode ficar obsoleto assim que outra escrita
+    # comita; é leitura de painel, não decisão de escrita.
+    target = Protocols::RevertActivation.revert_target(d)
+
     {
       signatures: {
         publication: signer_block(pub_ids, emails: emails),
@@ -83,11 +90,10 @@ class Admin::ProtocolsQuery
       },
       eligibleReviewers: Protocols::Signatures.eligible_reviewer_count(d),
       editors: editor_rows.map { |kind, id| { kind: kind, id: id, email: kind == "user" ? emails[id] : nil } },
-      # Mesmas três condições que Protocols::RevertActivation exige para
-      # reverter de verdade (controller notes: extrair o predicado em vez de
-      # duplicar a lógica) — sem lock, então pode ficar obsoleto assim que
-      # outra escrita comita; é leitura de painel, não decisão de escrita.
-      revertible: Protocols::RevertActivation.revertible?(d)
+      revertible: target.present?,
+      # `version` é string em toda esta query (`d.version.to_s`); o alvo segue a
+      # mesma forma, para o dashboard não ter dois tipos para o mesmo conceito.
+      revertTargetVersion: target&.version&.to_s
     }
   end
 
