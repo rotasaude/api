@@ -670,6 +670,20 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
         expect(version_row(1).status).to eq("active")
       end
 
+      # Um mapa que levanta roda DEPOIS do commit e depois de a auditoria já ter
+      # gravado "ok". Sem rescue, o `rescue StandardError` do in_city o
+      # converteria em CITY_WRITE_FAILED — dizendo "falhou" de um ato que deu
+      # certo, e convidando a repetir uma reversão, que não é idempotente.
+      it "keeps a committed act reported as ok when the payload map raises" do
+        legacy_active_version!
+        publish_and_activate_v2!
+        allow(Protocols::RevertActivation).to receive(:call).and_return(Result.ok)
+
+        with_fresh_totp { |code| revert!(reason: "motivo qualquer", code: code) }
+
+        expect(revert_payload).to eq("ok" => true, "errors" => [], "revertedToVersion" => nil)
+      end
+
       # Recusa não tem Result de sucesso para ler: o mapa não pode ser chamado,
       # e o campo não pode inventar número. A cidade aqui está ativa só pela
       # baseline da v1, e RevertActivation exige a ativação corrente `signed`.

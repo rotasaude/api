@@ -33,7 +33,7 @@ module Maintenance
                 rejection_path: ->(result) { result.reason == :reason_required ? "reason" : "name" },
                 protocol_key: name, reason_given: !reason.to_s.strip.empty?,
                 changed_fields: [ "status" ],
-                payload: ->(result) { { reverted_to_version: result.payload[:protocol_definition].version } }) do |actor, correlation_id|
+                payload_from_result: ->(r) { { reverted_to_version: r.payload[:protocol_definition].version } }) do |actor, correlation_id|
           Protocols::RevertActivation.call(name: name, reason: reason, by: actor, correlation_id: correlation_id)
         end
       end

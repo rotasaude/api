@@ -95,7 +95,7 @@ module Maintenance
       #
       # `rejection_path` é o caminho da recusa do command: uma String, ou algo
       # que responde a `call(result)` quando o caminho depende do motivo.
-      # `payload:` (opcional) traduz o Result do command em chaves extras do
+      # `payload_from_result:` (opcional) traduz o Result do command em chaves extras do
       # payload da mutation. Existe porque `audited` devolve `{ ok:, errors: }`
       # literal e DESCARTA o Result — sem isto, nenhuma mutation de cidade
       # consegue devolver dado nenhum. Fica aqui, e não no `audited`, porque
@@ -105,7 +105,7 @@ module Maintenance
       # Só é chamado no caminho de sucesso: numa recusa não existe Result de
       # sucesso para ler.
       def in_city(city_slug:, event:, module_name:, rejection_path: "version", field_paths: {}, step_up_code: nil,
-                  payload: nil, **fields)
+                  payload_from_result: nil, **fields)
         refuse_out_of_scope!(city_slug)
         refusal = unauditable_input(city_slug, fields, DEFAULT_FIELD_PATHS.merge(field_paths))
         return refusal if refusal
@@ -133,9 +133,20 @@ module Maintenance
           result
         end
 
-        return outcome if payload.nil? || !outcome[:ok]
+        return outcome if payload_from_result.nil? || !outcome[:ok]
 
-        outcome.merge(payload.call(command_result))
+        # O mapa roda DEPOIS do commit e depois de a auditoria ter gravado
+        # "ok". Se ele levantasse, o `rescue StandardError` lá embaixo
+        # converteria um ato que DEU CERTO em CITY_WRITE_FAILED — e convidaria
+        # a repetir a escrita, que em geral não é idempotente (uma reversão
+        # não é). Um mapa quebrado degrada para o payload sem as chaves
+        # extras, que é o caso "sem número" que as telas já tratam.
+        begin
+          outcome.merge(payload_from_result.call(command_result))
+        rescue StandardError => e
+          Rails.logger.warn("Maintenance::CityMutation: payload_from_result levantou #{e.class} (mensagem omitida)")
+          outcome
+        end
       rescue CityWriter::Unreachable => e
         raise GraphQL::ExecutionError.new(unreachable_message(e, correlation_id), extensions: { "code" => "CITY_UNREACHABLE" })
       rescue GraphQL::ExecutionError
