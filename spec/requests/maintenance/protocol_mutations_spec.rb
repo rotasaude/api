@@ -507,7 +507,11 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
     def revert_mutation
       <<~GQL
         mutation($citySlug: String!, $name: String!, $reason: String!, $code: String!) {
-          revertProtocolActivation(citySlug: $citySlug, name: $name, reason: $reason, code: $code) { ok errors { path message } }
+          revertProtocolActivation(citySlug: $citySlug, name: $name, reason: $reason, code: $code) {
+            ok
+            revertedToVersion
+            errors { path message }
+          }
         }
       GQL
     end
@@ -656,6 +660,28 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
     end
 
     describe "revertProtocolActivation" do
+      it "responds with the version that took effect" do
+        legacy_active_version!
+        publish_and_activate_v2!
+
+        with_fresh_totp { |code| revert!(reason: "motivo qualquer", code: code) }
+
+        expect(revert_payload).to eq("ok" => true, "errors" => [], "revertedToVersion" => 1)
+        expect(version_row(1).status).to eq("active")
+      end
+
+      # Recusa não tem Result de sucesso para ler: o mapa não pode ser chamado,
+      # e o campo não pode inventar número. A cidade aqui está ativa só pela
+      # baseline da v1, e RevertActivation exige a ativação corrente `signed`.
+      it "does not invent a version when the revert is refused" do
+        legacy_active_version!
+
+        with_fresh_totp { |code| revert!(reason: "motivo qualquer", code: code) }
+
+        expect(revert_payload["ok"]).to be(false)
+        expect(revert_payload["revertedToVersion"]).to be_nil
+      end
+
       # Arranjo em que o código CERTO reverteria (a última linha prova isso):
       # o código errado é recusado antes de abrir a cidade, sem tocar em nada.
       it "refuses a wrong step-up code before opening the city, leaving the activation as it was" do
@@ -674,7 +700,7 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
         expect(ProtocolActivation.where(kind: "emergency_revert")).to be_empty
 
         with_fresh_totp { |code| revert!(reason: "motivo qualquer", code: code) }
-        expect(revert_payload).to eq("ok" => true, "errors" => [])
+        expect(revert_payload).to eq("ok" => true, "errors" => [], "revertedToVersion" => 1)
         expect(version_row(1).status).to eq("active")
       end
 
@@ -688,7 +714,7 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
         reason = "prioriza dengue errado #{marker}"
         with_fresh_totp { |code| revert!(reason: reason, code: code) }
 
-        expect(revert_payload).to eq("ok" => true, "errors" => [])
+        expect(revert_payload).to eq("ok" => true, "errors" => [], "revertedToVersion" => 1)
         expect(version_row(1).status).to eq("active")
         expect(version_row(2).status).to eq("published")
 
