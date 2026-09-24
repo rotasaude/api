@@ -37,6 +37,14 @@ jobs:
       # definir ROTA_APP_PASSWORD aqui mudaria só a conexão: o role já teria
       # nascido com a senha velha, e a suíte inteira cairia em autenticação.
       ROTA_APP_PASSWORD: rota_app
+      # Obrigatória mesmo com RAILS_ENV=test: o config/database.yml é UM
+      # documento ERB, avaliado inteiro a cada carga, e o bloco `production`
+      # lê `ENV.fetch("ROTA_PLATFORM_PASSWORD")` sem default (linha 104). Sem
+      # ela, qualquer `bin/rails` morre em "Cannot load database
+      # configuration: key not found" antes de olhar para o ambiente. Em dev
+      # ela vem do compose; aqui, como o ROTA_APP_PASSWORD acima, é a mesma
+      # fonte para quem CRIA o role (platform:bootstrap) e para quem CONECTA.
+      ROTA_PLATFORM_PASSWORD: rota_platform
       # config/initializers/active_record_encryption.rb lê
       # Rails.application.credentials ANTES de cair no fallback de ENV — e
       # config/credentials.yml.enc está no git (config/master.key não está).
