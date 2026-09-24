@@ -82,7 +82,7 @@ RSpec.describe "Attendance", type: :request do
     expect(response).to have_http_status(:forbidden)
 
     sign_in_as(admin)
-    get "/attendance/verifications", params: { cpf: "529.982.247-25" }
+    json_post "/attendance/verifications/search", cpf: "529.982.247-25"
     expect(body["verifications"].sole).to include("verified_by" => "atendente@cidade.gov.br", "active" => true)
 
     json_post "/attendance/verifications/#{id}/revoke", reason: "curto"
@@ -103,8 +103,21 @@ RSpec.describe "Attendance", type: :request do
 
   it "o histórico por CPF é só do admin" do
     sign_in_as(verifier)
-    get "/attendance/verifications", params: { cpf: citizen.cpf }
+    json_post "/attendance/verifications/search", cpf: citizen.cpf
     expect(response).to have_http_status(:forbidden)
+  end
+
+  it "o histórico não é acessível por GET (CPF nunca vai na URL)" do
+    sign_in_as(admin)
+    get "/attendance/verifications", params: { cpf: citizen.cpf }
+    expect(response).to have_http_status(:not_found)
+  end
+
+  it "CPF inválido no histórico: 422" do
+    sign_in_as(admin)
+    json_post "/attendance/verifications/search", cpf: "111.111.111-11"
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(body["error"]).to eq("invalid_cpf")
   end
 
   it "escrita sem JSON é recusada" do

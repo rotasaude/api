@@ -83,7 +83,7 @@ Rails.application.routes.draw do
   scope "/attendance" do
     post "lookup",                   to: "attendance#lookup"
     post "verifications",            to: "attendance#verify"
-    get  "verifications",            to: "attendance#index"
+    post "verifications/search",     to: "attendance#search"
     post "verifications/:id/revoke", to: "attendance#revoke"
   end
 

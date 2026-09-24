@@ -1,8 +1,10 @@
 # Balcão da UBS (spec 2026-09-24-citizen-presencial-verification §4–§7).
 #   POST /attendance/lookup                   {cpf, code}                    citizen_verifier
 #   POST /attendance/verifications             {cpf, code, document_checked}  citizen_verifier
-#   GET  /attendance/verifications?cpf=                                      municipal_admin
+#   POST /attendance/verifications/search      {cpf}                          municipal_admin
 #   POST /attendance/verifications/:id/revoke {reason}                       municipal_admin
+# O CPF do histórico vai no corpo, não na URL (LGPD: URLs acabam em logs de
+# acesso e no histórico do navegador).
 class AttendanceController < ApplicationController
   include Authentication
 
@@ -19,7 +21,7 @@ class AttendanceController < ApplicationController
   }.freeze
 
   before_action :require_verifier, only: %i[lookup verify]
-  before_action :require_admin, only: %i[index revoke]
+  before_action :require_admin, only: %i[search revoke]
 
   rate_limit to: 30, within: 10.minutes, only: %i[lookup verify], name: "attendance",
              by: -> { Current.user&.id || request.remote_ip }, store: RateLimitStore,
@@ -49,7 +51,7 @@ class AttendanceController < ApplicationController
            status: :created
   end
 
-  def index
+  def search
     digits = CitizenIdentity::Cpf.normalize(params[:cpf])
     return render json: { error: "invalid_cpf" }, status: :unprocessable_entity unless digits
 
