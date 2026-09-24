@@ -69,6 +69,22 @@ RSpec.describe "Verified citizen history", type: :request do
     expect(other.conversation.reload.active_consent).to be_present
   end
 
+  it "celular com um par declarado e outro verificado não vê a triagem de um terceiro par com o mesmo CPF do declarado" do
+    citizen_a = mine # CPF X, declarado, celular P
+    citizen_b = Citizen.create!(cpf: "11144477735", phone: citizen_a.phone) # CPF Y, celular P
+    citizen_c = Citizen.create!(cpf: citizen_a.cpf, phone: "+5541900001111") # CPF X, celular Q
+    verify(citizen_b)
+    own = triage_for(citizen_a)
+    other = triage_for(citizen_c)
+
+    sign_in_citizen(citizen_a.phone)
+    get "/citizen/triages/#{other.id}"
+    expect(response).to have_http_status(:not_found)
+
+    get "/citizen/triages", params: { citizen_id: citizen_a.id }
+    expect(body["triages"].map { |t| t["id"] }).to eq([own.id])
+  end
+
   it "o par verificado abre o detalhe de uma triagem de outro par" do
     triage_for(mine)
     other = triage_for(family)
