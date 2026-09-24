@@ -30,7 +30,7 @@ RSpec.describe "Maintenance GraphQL schema" do
     "PublishProtocolPayload" => %w[ok errors],
     "ActivateProtocolPayload" => %w[ok errors],
     "RetireProtocolPayload" => %w[ok errors],
-    "RevertProtocolActivationPayload" => %w[ok errors],
+    "RevertProtocolActivationPayload" => %w[ok errors revertedToVersion],
     "AuditEvent" => %w[name module outcome occurredAt maintainerId login correlationId],
     "UserError" => %w[path message],
     "CitySummary" => %w[slug name uf status schemaVersion schemaBehind createdAt],

@@ -18,6 +18,12 @@ module Maintenance
       description "Reversão de emergência: volta a ativação da cidade para a versão anterior assinada, " \
                   "com motivo. Exige o TOTP do momento; o motivo fica na cidade, nunca na auditoria da plataforma."
 
+      # O número que passou a valer. Vem do Result do command — o que a tela
+      # afirma é o que ele decidiu sob lock, nunca uma releitura depois do ato.
+      # Int como `version` já é nos tipos de manutenção; nulo quando a mutation
+      # não chegou a reverter.
+      field :reverted_to_version, Integer, null: true
+
       argument :name, String, required: true
       argument :reason, String, required: true
       argument :code, String, required: true, description: "TOTP do momento"
@@ -26,7 +32,8 @@ module Maintenance
         in_city(city_slug: city_slug, step_up_code: code, event: "maintenance.protocol.reverted", module_name: "protocol",
                 rejection_path: ->(result) { result.reason == :reason_required ? "reason" : "name" },
                 protocol_key: name, reason_given: !reason.to_s.strip.empty?,
-                changed_fields: [ "status" ]) do |actor, correlation_id|
+                changed_fields: [ "status" ],
+                payload: ->(result) { { reverted_to_version: result.payload[:protocol_definition].version } }) do |actor, correlation_id|
           Protocols::RevertActivation.call(name: name, reason: reason, by: actor, correlation_id: correlation_id)
         end
       end

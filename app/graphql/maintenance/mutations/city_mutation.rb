@@ -95,14 +95,24 @@ module Maintenance
       #
       # `rejection_path` é o caminho da recusa do command: uma String, ou algo
       # que responde a `call(result)` quando o caminho depende do motivo.
+      # `payload:` (opcional) traduz o Result do command em chaves extras do
+      # payload da mutation. Existe porque `audited` devolve `{ ok:, errors: }`
+      # literal e DESCARTA o Result — sem isto, nenhuma mutation de cidade
+      # consegue devolver dado nenhum. Fica aqui, e não no `audited`, porque
+      # auditoria não tem nada a ver com "o command devolveu dado", e este
+      # método já conhece Result (inspeciona failure? e message logo abaixo).
+      #
+      # Só é chamado no caminho de sucesso: numa recusa não existe Result de
+      # sucesso para ler.
       def in_city(city_slug:, event:, module_name:, rejection_path: "version", field_paths: {}, step_up_code: nil,
-                  **fields)
+                  payload: nil, **fields)
         refuse_out_of_scope!(city_slug)
         refusal = unauditable_input(city_slug, fields, DEFAULT_FIELD_PATHS.merge(field_paths))
         return refusal if refusal
 
         correlation_id = nil
-        audited(event: event, module_name: module_name, city_slug: city_slug, **fields) do |attempt_id|
+        command_result = nil
+        outcome = audited(event: event, module_name: module_name, city_slug: city_slug, **fields) do |attempt_id|
           correlation_id = attempt_id
           city = City.find_by(slug: city_slug)
           raise Rejected.new("cidade inexistente", path: "citySlug") if city.nil?
@@ -119,8 +129,13 @@ module Maintenance
             raise Rejected.new(result.message.presence || result.reason.to_s, path: path)
           end
 
+          command_result = result
           result
         end
+
+        return outcome if payload.nil? || !outcome[:ok]
+
+        outcome.merge(payload.call(command_result))
       rescue CityWriter::Unreachable => e
         raise GraphQL::ExecutionError.new(unreachable_message(e, correlation_id), extensions: { "code" => "CITY_UNREACHABLE" })
       rescue GraphQL::ExecutionError
