@@ -60,4 +60,14 @@ RSpec.describe Citizens::VerificationCodeMatch do
     issue_code_for(mine)
     expect(described_class.call(cpf: mine.cpf, code: "").reason).to eq(:invalid_code)
   end
+
+  it "código em branco ou parcial não consome tentativa de nenhum código utilizável" do
+    issue_code_for(family)
+    issue_code_for(mine)
+
+    expect(described_class.call(cpf: mine.cpf, code: "").reason).to eq(:invalid_code)
+    expect(described_class.call(cpf: mine.cpf, code: "123").reason).to eq(:invalid_code)
+
+    expect(CitizenVerificationCode.usable.pluck(:attempts)).to all(eq(0))
+  end
 end

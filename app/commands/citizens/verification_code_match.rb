@@ -10,6 +10,7 @@ module Citizens
     def self.call(cpf:, code:, lock: false)
       digits = CitizenIdentity::Cpf.normalize(cpf)
       return Result.fail(:invalid_cpf) unless digits
+      return Result.fail(:invalid_code) unless code.to_s.match?(/\A\d{6}\z/)
 
       citizens = Citizen.where(cpf: digits)
       candidates = CitizenVerificationCode.usable.where(citizen: citizens).order(:created_at)

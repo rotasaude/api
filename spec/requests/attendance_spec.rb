@@ -38,6 +38,18 @@ RSpec.describe "Attendance", type: :request do
     expect(body.keys).to eq(["error"])
   end
 
+  it "lookup com código em branco ou parcial não queima tentativa" do
+    issue_code_for(citizen)
+    sign_in_as(verifier)
+
+    json_post "/attendance/lookup", cpf: "529.982.247-25", code: ""
+    expect(body["error"]).to eq("invalid_code")
+    json_post "/attendance/lookup", cpf: "529.982.247-25", code: "123"
+    expect(body["error"]).to eq("invalid_code")
+
+    expect(CitizenVerificationCode.usable.pluck(:attempts)).to all(eq(0))
+  end
+
   it "sem a caixa 'conferi o documento': 422" do
     sign_in_as(verifier)
     json_post "/attendance/verifications", cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: false
