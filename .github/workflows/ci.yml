@@ -56,18 +56,30 @@ jobs:
         # primary e city_unset (config/database.yml) conectam como rota_app.
         # Nem platform:bootstrap nem city:test_databases criam esse role —
         # só rota_platform e rota_provisioner (ver lib/tasks/platform.rake).
-        # Em dev isso vem do bloco DO $$ ... $$ do start.sh; replicamos aqui.
+        # Em dev isso vem do bloco DO $$ ... $$ do start.sh; aqui a forma é
+        # outra, por dois motivos que só aparecem rodando (os dois juntos
+        # derrubavam este passo com `syntax error at or near ":"`, antes de a
+        # suíte chegar a rodar uma única vez):
+        #
+        #   1. `psql -c` NÃO interpola `:'variavel'`. O SQL tem de chegar pela
+        #      entrada padrão — daí o heredoc.
+        #   2. A interpolação também não acontece DENTRO de aspas-dólar. Num
+        #      `DO $$ ... $$`, o literal `:'app_password'` atravessa o psql
+        #      intacto e é o PL/pgSQL que tropeça no `:`. Por isso a variável
+        #      fica fora do bloco, e `format(%L)` é quem cita o valor com
+        #      segurança (nada de interpolar senha pelo shell).
+        #
+        # `\gexec` executa o comando que o SELECT montou — e o SELECT não
+        # devolve linha nenhuma quando o role já existe, o que mantém o passo
+        # idempotente sem precisar de bloco condicional.
         env:
           PGPASSWORD: postgres
         run: |
           psql -h 127.0.0.1 -U rota_saude -d postgres -v ON_ERROR_STOP=1 \
-               -v app_password="$ROTA_APP_PASSWORD" -c "
-          DO \$\$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='rota_app') THEN
-              CREATE ROLE rota_app LOGIN PASSWORD :'app_password';
-            END IF;
-          END \$\$;
-          "
+               -v app_password="$ROTA_APP_PASSWORD" <<'SQL'
+          SELECT format('CREATE ROLE rota_app LOGIN PASSWORD %L', :'app_password')
+          WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='rota_app')\gexec
+          SQL
       - name: Bancos e roles de plataforma e de cidade
         run: |
           bin/rails platform:bootstrap
