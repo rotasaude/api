@@ -18,7 +18,7 @@ module Attendances
       Triage.joins(:conversation)
             .where(conversations: { channel: "web", citizen_id: citizens.select(:id) })
             .where(status: "completed").where("triages.completed_at >= ?", WINDOW.ago)
-            .where.not(id: Attendance.select(:triage_id))
+            .where.not(id: Attendance.where.not(triage_id: nil).select(:triage_id))
             .order(completed_at: :desc)
     end
   end

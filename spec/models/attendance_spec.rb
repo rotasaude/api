@@ -27,6 +27,7 @@ RSpec.describe Attendance do
 
   it "encerra uma vez; encaminhado exige destino ou descrição" do
     a = open!
+    a.update!(status: "in_care", called_by_user: staff, called_at: Time.current)
     expect { a.update!(status: "closed", outcome: "referred", closed_by_user: staff, closed_at: Time.current) }
       .to raise_error(ActiveRecord::StatementInvalid, /ck_attendances_referral/)
     a.reload.update!(status: "closed", outcome: "referred", referral_note: "cardiologia", closed_by_user: staff,

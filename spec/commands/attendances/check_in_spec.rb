@@ -20,7 +20,7 @@ RSpec.describe Attendances::CheckIn do
     result = check_in(c)
     attendance = result.payload[:attendance]
     expect(attendance).to have_attributes(triage_id: triage.id, health_unit_id: unit.id, check_in_method: "code",
-                                          status: "open")
+                                          status: "waiting")
     expect(result.payload[:verified]).to be(false)
     expect(check_in(c).reason).to eq(:code_expired)
     expect(DomainEvent.where(name: "attendance.checked_in").sole.payload.keys)

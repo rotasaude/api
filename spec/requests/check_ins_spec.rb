@@ -51,7 +51,7 @@ RSpec.describe "Check-ins", type: :request do
     json_post "/attendance/check_ins", cpf: citizen.cpf, code: code, health_unit_id: unit.id
     expect(response).to have_http_status(:created)
     expect(body["attendance"]).to include("triage_id" => triage.id, "health_unit_id" => unit.id,
-                                          "unit_name" => unit.name, "status" => "open",
+                                          "unit_name" => unit.name, "status" => "waiting",
                                           "check_in_method" => "code")
     expect(body["verified"]).to be(false)
 

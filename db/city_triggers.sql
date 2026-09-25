@@ -110,6 +110,7 @@ BEGIN
   END IF;
   IF NEW.id IS DISTINCT FROM OLD.id
      OR NEW.triage_id IS DISTINCT FROM OLD.triage_id
+     OR NEW.appointment_id IS DISTINCT FROM OLD.appointment_id
      OR NEW.citizen_id IS DISTINCT FROM OLD.citizen_id
      OR NEW.health_unit_id IS DISTINCT FROM OLD.health_unit_id
      OR NEW.checked_in_by_user_id IS DISTINCT FROM OLD.checked_in_by_user_id
@@ -118,6 +119,16 @@ BEGIN
      OR NEW.exception_reason IS DISTINCT FROM OLD.exception_reason
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'attendances: the check-in columns never change';
+  END IF;
+  IF OLD.called_at IS NOT NULL
+     AND (NEW.called_at IS DISTINCT FROM OLD.called_at OR NEW.called_by_user_id IS DISTINCT FROM OLD.called_by_user_id) THEN
+    RAISE EXCEPTION 'attendances: the call never changes';
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status
+     AND NOT ((OLD.status = 'waiting' AND NEW.status = 'in_care')
+          OR (OLD.status = 'waiting' AND NEW.status = 'closed' AND NEW.outcome = 'left')
+          OR (OLD.status = 'in_care' AND NEW.status = 'closed' AND NEW.outcome IS DISTINCT FROM 'left')) THEN
+    RAISE EXCEPTION 'attendances: invalid transition % -> %', OLD.status, NEW.status;
   END IF;
   RETURN NEW;
 END;
@@ -134,6 +145,83 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS attendances_append_only_truncate ON attendances';
     EXECUTE 'CREATE TRIGGER attendances_append_only_truncate
       BEFORE TRUNCATE ON attendances
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;
+
+-- Pedido de agendamento (ADR 0019): só acréscimo; a origem nunca muda; encerrado não muda.
+CREATE OR REPLACE FUNCTION rota_appointment_request_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'appointment_requests is append-only: DELETE refused';
+  END IF;
+  IF OLD.status = 'closed' THEN
+    RAISE EXCEPTION 'appointment_requests: already closed';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.origin_attendance_id IS DISTINCT FROM OLD.origin_attendance_id
+     OR NEW.citizen_id IS DISTINCT FROM OLD.citizen_id
+     OR NEW.root_triage_id IS DISTINCT FROM OLD.root_triage_id
+     OR NEW.origin_unit_id IS DISTINCT FROM OLD.origin_unit_id
+     OR NEW.target_unit_id IS DISTINCT FROM OLD.target_unit_id
+     OR NEW.kind IS DISTINCT FROM OLD.kind
+     OR NEW.note IS DISTINCT FROM OLD.note
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'appointment_requests: the origin columns never change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Horário (ADR 0019): só acréscimo e as transições previstas; o que foi marcado nunca muda.
+CREATE OR REPLACE FUNCTION rota_appointment_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'appointments is append-only: DELETE refused';
+  END IF;
+  IF OLD.status IN ('checked_in', 'cancelled_by_citizen', 'expired', 'no_show') THEN
+    RAISE EXCEPTION 'appointments: already ended';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.request_id IS DISTINCT FROM OLD.request_id
+     OR NEW.citizen_id IS DISTINCT FROM OLD.citizen_id
+     OR NEW.health_unit_id IS DISTINCT FROM OLD.health_unit_id
+     OR NEW.scheduled_at IS DISTINCT FROM OLD.scheduled_at
+     OR NEW.scheduled_by_user_id IS DISTINCT FROM OLD.scheduled_by_user_id
+     OR NEW.confirmation_deadline_at IS DISTINCT FROM OLD.confirmation_deadline_at
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'appointments: the scheduled columns never change';
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status
+     AND NOT ((OLD.status = 'scheduled' AND NEW.status IN ('confirmed', 'cancelled_by_citizen', 'expired'))
+          OR (OLD.status = 'confirmed' AND NEW.status IN ('checked_in', 'cancelled_by_citizen', 'no_show'))) THEN
+    RAISE EXCEPTION 'appointments: invalid transition % -> %', OLD.status, NEW.status;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.appointment_requests') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS appointment_requests_guard ON appointment_requests';
+    EXECUTE 'CREATE TRIGGER appointment_requests_guard
+      BEFORE UPDATE OR DELETE ON appointment_requests
+      FOR EACH ROW EXECUTE FUNCTION rota_appointment_request_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS appointment_requests_append_only_truncate ON appointment_requests';
+    EXECUTE 'CREATE TRIGGER appointment_requests_append_only_truncate
+      BEFORE TRUNCATE ON appointment_requests
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  IF to_regclass('public.appointments') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS appointments_guard ON appointments';
+    EXECUTE 'CREATE TRIGGER appointments_guard
+      BEFORE UPDATE OR DELETE ON appointments
+      FOR EACH ROW EXECUTE FUNCTION rota_appointment_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS appointments_append_only_truncate ON appointments';
+    EXECUTE 'CREATE TRIGGER appointments_append_only_truncate
+      BEFORE TRUNCATE ON appointments
       FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
   END IF;
 END

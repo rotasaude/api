@@ -34,7 +34,7 @@ RSpec.describe "Attendance in citizen history", type: :request do
     sign_in_citizen("+5541998765432")
 
     get "/citizen/triages/#{triage.id}"
-    expect(body["attendance"]).to include("status" => "open", "unit_name" => unit.name)
+    expect(body["attendance"]).to include("status" => "waiting", "unit_name" => unit.name)
     expect(body["check_in_available"]).to be(false)
   end
 

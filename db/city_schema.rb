@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_26_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
@@ -27,7 +27,66 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
     t.check_constraint "channel::text = ANY (ARRAY['whatsapp'::character varying::text, 'email'::character varying::text])", name: "ck_alert_recipients_channel"
   end
 
+  create_table "appointment_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "citizen_id", null: false
+    t.datetime "closed_at"
+    t.uuid "closed_by_user_id"
+    t.string "closed_reason"
+    t.datetime "created_at", null: false
+    t.text "dismiss_reason"
+    t.string "kind", null: false
+    t.text "note"
+    t.uuid "origin_attendance_id", null: false
+    t.uuid "origin_unit_id", null: false
+    t.string "reopened_reason"
+    t.uuid "root_triage_id", null: false
+    t.string "status", default: "open", null: false
+    t.uuid "target_unit_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["citizen_id"], name: "index_appointment_requests_on_citizen_id"
+    t.index ["closed_by_user_id"], name: "index_appointment_requests_on_closed_by_user_id"
+    t.index ["origin_attendance_id"], name: "index_appointment_requests_on_origin_attendance_id", unique: true
+    t.index ["origin_unit_id"], name: "index_appointment_requests_on_origin_unit_id"
+    t.index ["root_triage_id"], name: "index_appointment_requests_on_root_triage_id"
+    t.index ["target_unit_id"], name: "index_appointment_requests_on_target_unit_id"
+    t.check_constraint "(closed_reason IS DISTINCT FROM 'dismissed' AND dismiss_reason IS NULL) OR (closed_reason = 'dismissed' AND dismiss_reason IS NOT NULL AND length(btrim(dismiss_reason)) >= 10)", name: "ck_appointment_requests_dismiss_reason"
+    t.check_constraint "closed_reason IS NULL OR closed_reason::text = ANY (ARRAY['fulfilled', 'citizen_cancelled', 'dismissed']::text[])", name: "ck_appointment_requests_closed_reason"
+    t.check_constraint "(status::text <> 'closed'::text AND closed_reason IS NULL AND closed_at IS NULL) OR (status::text = 'closed'::text AND closed_reason IS NOT NULL AND closed_at IS NOT NULL)", name: "ck_appointment_requests_closing"
+    t.check_constraint "kind::text = ANY (ARRAY['return', 'referral']::text[])", name: "ck_appointment_requests_kind"
+    t.check_constraint "kind::text <> 'return'::text OR origin_unit_id = target_unit_id", name: "ck_appointment_requests_return_same_unit"
+    t.check_constraint "reopened_reason IS NULL OR reopened_reason::text = ANY (ARRAY['expired', 'no_show']::text[])", name: "ck_appointment_requests_reopened_reason"
+    t.check_constraint "status::text = ANY (ARRAY['open', 'scheduled', 'closed']::text[])", name: "ck_appointment_requests_status"
+  end
+
+  create_table "appointments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "cancel_reason"
+    t.uuid "citizen_id", null: false
+    t.datetime "confirmation_deadline_at"
+    t.datetime "confirmed_at"
+    t.datetime "created_at", null: false
+    t.datetime "ended_at"
+    t.uuid "health_unit_id", null: false
+    t.uuid "request_id", null: false
+    t.datetime "scheduled_at", null: false
+    t.uuid "scheduled_by_user_id", null: false
+    t.string "status", null: false
+    t.datetime "updated_at", null: false
+    t.index ["citizen_id"], name: "index_appointments_on_citizen_id"
+    t.index ["health_unit_id", "scheduled_at"], name: "idx_appointments_unit_time"
+    t.index ["health_unit_id"], name: "index_appointments_on_health_unit_id"
+    t.index ["request_id"], name: "idx_appointments_one_live_per_request", unique: true, where: "status IN ('scheduled', 'confirmed')"
+    t.index ["request_id"], name: "index_appointments_on_request_id"
+    t.index ["scheduled_by_user_id"], name: "index_appointments_on_scheduled_by_user_id"
+    t.check_constraint "(status::text <> 'cancelled_by_citizen'::text AND cancel_reason IS NULL) OR (status::text = 'cancelled_by_citizen'::text AND cancel_reason IS NOT NULL AND length(btrim(cancel_reason)) >= 10)", name: "ck_appointments_cancel_reason"
+    t.check_constraint "status::text <> 'scheduled'::text OR confirmation_deadline_at IS NOT NULL", name: "ck_appointments_deadline"
+    t.check_constraint "(status::text = ANY (ARRAY['scheduled', 'confirmed']::text[])) = (ended_at IS NULL)", name: "ck_appointments_ended"
+    t.check_constraint "status::text = ANY (ARRAY['scheduled', 'confirmed', 'checked_in', 'cancelled_by_citizen', 'expired', 'no_show']::text[])", name: "ck_appointments_status"
+  end
+
   create_table "attendances", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "appointment_id"
+    t.datetime "called_at"
+    t.uuid "called_by_user_id"
     t.datetime "checked_in_at", null: false
     t.uuid "checked_in_by_user_id", null: false
     t.string "check_in_method", null: false
@@ -40,8 +99,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
     t.string "outcome"
     t.text "referral_note"
     t.uuid "referral_unit_id"
-    t.string "status", default: "open", null: false
-    t.uuid "triage_id", null: false
+    t.string "status", default: "waiting", null: false
+    t.uuid "triage_id"
+    t.index ["appointment_id"], name: "index_attendances_on_appointment_id", unique: true
+    t.index ["called_by_user_id"], name: "index_attendances_on_called_by_user_id"
     t.index ["checked_in_by_user_id"], name: "index_attendances_on_checked_in_by_user_id"
     t.index ["citizen_id"], name: "index_attendances_on_citizen_id"
     t.index ["closed_by_user_id"], name: "index_attendances_on_closed_by_user_id"
@@ -50,10 +111,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
     t.index ["triage_id"], name: "index_attendances_on_triage_id", unique: true
     t.check_constraint "check_in_method::text = ANY (ARRAY['code', 'cpf_exception']::text[])", name: "ck_attendances_method"
     t.check_constraint "(check_in_method::text = 'code'::text AND exception_reason IS NULL) OR (check_in_method::text = 'cpf_exception'::text AND exception_reason IS NOT NULL AND length(btrim(exception_reason)) >= 10)", name: "ck_attendances_exception_reason"
-    t.check_constraint "(status::text = 'open'::text AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'closed'::text AND outcome IS NOT NULL AND closed_by_user_id IS NOT NULL AND closed_at IS NOT NULL)", name: "ck_attendances_closing"
-    t.check_constraint "outcome IS NULL OR outcome::text = ANY (ARRAY['discharged', 'referred', 'left']::text[])", name: "ck_attendances_outcome"
-    t.check_constraint "(outcome IS DISTINCT FROM 'referred' AND referral_unit_id IS NULL AND referral_note IS NULL) OR (outcome = 'referred' AND (referral_unit_id IS NOT NULL OR (referral_note IS NOT NULL AND length(btrim(referral_note)) > 0)))", name: "ck_attendances_referral"
-    t.check_constraint "status::text = ANY (ARRAY['open', 'closed']::text[])", name: "ck_attendances_status"
+    t.check_constraint "(called_by_user_id IS NULL) = (called_at IS NULL)", name: "ck_attendances_calling"
+    t.check_constraint "(status::text = 'waiting'::text AND called_at IS NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'in_care'::text AND called_at IS NOT NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'closed'::text AND outcome IS NOT NULL AND closed_by_user_id IS NOT NULL AND closed_at IS NOT NULL)", name: "ck_attendances_closing"
+    t.check_constraint "(triage_id IS NULL) <> (appointment_id IS NULL)", name: "ck_attendances_origin"
+    t.check_constraint "outcome IS NULL OR outcome::text = ANY (ARRAY['discharged', 'referred', 'return', 'left']::text[])", name: "ck_attendances_outcome"
+    t.check_constraint "((outcome IS NULL OR outcome::text = ANY (ARRAY['discharged', 'left']::text[])) AND referral_unit_id IS NULL AND referral_note IS NULL) OR (outcome = 'referred' AND (referral_unit_id IS NOT NULL OR (referral_note IS NOT NULL AND length(btrim(referral_note)) > 0))) OR (outcome = 'return' AND referral_unit_id IS NULL)", name: "ck_attendances_referral"
+    t.check_constraint "status::text = ANY (ARRAY['waiting', 'in_care', 'closed']::text[])", name: "ck_attendances_status"
   end
 
   create_table "authors", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -91,6 +154,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
   end
 
   create_table "citizen_verification_codes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "appointment_id"
     t.integer "attempts", default: 0, null: false
     t.uuid "citizen_id", null: false
     t.string "code_digest", null: false
@@ -100,10 +164,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
     t.string "purpose", default: "verification", null: false
     t.uuid "triage_id"
     t.datetime "updated_at", null: false
+    t.index ["appointment_id"], name: "index_citizen_verification_codes_on_appointment_id"
     t.index ["citizen_id"], name: "index_citizen_verification_codes_on_citizen_id"
     t.index ["triage_id"], name: "index_citizen_verification_codes_on_triage_id"
     t.check_constraint "purpose::text = ANY (ARRAY['verification', 'check_in']::text[])", name: "ck_citizen_verification_codes_purpose"
-    t.check_constraint "(purpose::text = 'check_in'::text) = (triage_id IS NOT NULL)", name: "ck_citizen_verification_codes_purpose_triage"
+    t.check_constraint "(purpose::text = 'verification'::text AND triage_id IS NULL AND appointment_id IS NULL) OR (purpose::text = 'check_in'::text AND (triage_id IS NULL) <> (appointment_id IS NULL))", name: "ck_citizen_verification_codes_purpose_target"
   end
 
   create_table "citizen_verifications", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -252,7 +317,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['citizen_verifier'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['citizen_verifier'::text, 'health_professional'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "otp_challenges", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -530,12 +595,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_000001) do
     t.index "lower((email_address)::text)", name: "index_users_on_lower_email", unique: true
   end
 
+  add_foreign_key "appointment_requests", "attendances", column: "origin_attendance_id"
+  add_foreign_key "appointment_requests", "citizens"
+  add_foreign_key "appointment_requests", "health_units", column: "origin_unit_id"
+  add_foreign_key "appointment_requests", "health_units", column: "target_unit_id"
+  add_foreign_key "appointment_requests", "triages", column: "root_triage_id"
+  add_foreign_key "appointment_requests", "users", column: "closed_by_user_id"
+  add_foreign_key "appointments", "appointment_requests", column: "request_id"
+  add_foreign_key "appointments", "citizens"
+  add_foreign_key "appointments", "health_units"
+  add_foreign_key "appointments", "users", column: "scheduled_by_user_id"
+  add_foreign_key "attendances", "appointments"
   add_foreign_key "attendances", "citizens"
   add_foreign_key "attendances", "health_units"
   add_foreign_key "attendances", "health_units", column: "referral_unit_id"
   add_foreign_key "attendances", "triages"
+  add_foreign_key "attendances", "users", column: "called_by_user_id"
   add_foreign_key "attendances", "users", column: "checked_in_by_user_id"
   add_foreign_key "attendances", "users", column: "closed_by_user_id"
+  add_foreign_key "citizen_verification_codes", "appointments"
   add_foreign_key "citizen_verification_codes", "citizens"
   add_foreign_key "citizen_verification_codes", "triages"
   add_foreign_key "citizen_verifications", "citizens"
