@@ -24,7 +24,8 @@ RSpec.describe Attendances::CheckIn do
     expect(result.payload[:verified]).to be(false)
     expect(check_in(c).reason).to eq(:code_expired)
     expect(DomainEvent.where(name: "attendance.checked_in").sole.payload.keys)
-      .to match_array(%w[attendance_id triage_id citizen_id health_unit_id checked_in_by_user_id check_in_method])
+      .to match_array(%w[attendance_id triage_id appointment_id citizen_id health_unit_id checked_in_by_user_id
+                          check_in_method])
   end
 
   it "declarado com a caixa: valida e faz check-in juntos" do
