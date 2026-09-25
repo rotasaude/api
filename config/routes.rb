@@ -141,6 +141,11 @@ Rails.application.routes.draw do
     post "triages/:id/revoke_consent", to: "triages#revoke_consent"
     post "triages/:id/check_in_code",  to: "check_in_codes#create"
     post "verification_codes",         to: "verification_codes#create"
+
+    get  "appointments",                   to: "appointments#index"
+    post "appointments/:id/confirm",       to: "appointments#confirm"
+    post "appointments/:id/cancel",        to: "appointments#cancel"
+    post "appointments/:id/check_in_code", to: "appointments#check_in_code"
   end
 
   # Autoria/preview de protocolos (ADR-0009)
