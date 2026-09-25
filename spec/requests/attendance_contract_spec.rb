@@ -10,6 +10,7 @@ RSpec.describe "Attendance contract: triages/consents/reports/metrics untouched"
   after { Current.reset }
 
   let(:verifier) { user_with("atendente@cidade.gov.br", "citizen_verifier") }
+  let(:doctor) { user_with("medica@cidade.gov.br", "health_professional") }
   let(:unit) { create_unit }
 
   def user_with(email, role)
@@ -66,6 +67,10 @@ RSpec.describe "Attendance contract: triages/consents/reports/metrics untouched"
     expect(response).to have_http_status(:created)
     attendance_id = JSON.parse(response.body).dig("attendance", "id")
     referral_unit = create_unit("UBS Referência")
+
+    sign_in_as(doctor)
+    json_post "/attendance/attendances/#{attendance_id}/call", health_unit_id: unit.id
+    expect(response).to have_http_status(:ok)
 
     before = snapshot
     json_post "/attendance/attendances/#{attendance_id}/close", outcome: "referred", referral_unit_id: referral_unit.id

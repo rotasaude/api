@@ -7,4 +7,8 @@ class CitizenVerificationPolicy < ApplicationPolicy
   def manage?
     role?(:municipal_admin)
   end
+
+  def care?
+    role?(:health_professional)
+  end
 end

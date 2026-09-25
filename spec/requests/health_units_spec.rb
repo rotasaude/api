@@ -6,6 +6,7 @@ RSpec.describe "Health units", type: :request do
 
   let(:admin) { user_with("admin@cidade.gov.br", "municipal_admin") }
   let(:verifier) { user_with("atendente@cidade.gov.br", "citizen_verifier") }
+  let(:doctor) { user_with("medica@cidade.gov.br", "health_professional") }
   def body = JSON.parse(response.body)
 
   def user_with(email, role)
@@ -66,7 +67,9 @@ RSpec.describe "Health units", type: :request do
     expect(body["error"]).to eq("unit_has_open_attendances")
     expect(unit.reload.active).to be(true)
 
-    sign_in_as(verifier)
+    sign_in_as(doctor)
+    json_post "/attendance/attendances/#{attendance_id}/call", health_unit_id: unit.id
+    expect(response).to have_http_status(:ok)
     json_post "/attendance/attendances/#{attendance_id}/close", outcome: "discharged"
     expect(response).to have_http_status(:ok)
 

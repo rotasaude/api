@@ -10,6 +10,11 @@ RSpec.describe "Attendance in citizen history", type: :request do
       Membership.create!(user: u, role: "citizen_verifier", granted_at: Time.current)
     end
   end
+  let(:doctor) do
+    User.create!(email_address: "medica@cidade.gov.br", password: "senha-segura-123").tap do |u|
+      Membership.create!(user: u, role: "health_professional", granted_at: Time.current)
+    end
+  end
   def body = JSON.parse(response.body)
 
   def check_in!(triage, unit)
@@ -43,8 +48,9 @@ RSpec.describe "Attendance in citizen history", type: :request do
     referral_unit = create_unit("UPA Norte", kind: "upa")
     triage = completed_web_triage_for(citizen)
     attendance = check_in!(triage, unit)
+    Attendances::Call.call(attendance: attendance, health_unit_id: unit.id, by: doctor)
     Attendances::Close.call(attendance: attendance, outcome: "referred", referral_unit_id: referral_unit.id,
-                            referral_note: "encaminhado para avaliação", by: verifier)
+                            referral_note: "encaminhado para avaliação", by: doctor)
     sign_in_citizen("+5541998765432")
 
     get "/citizen/triages/#{triage.id}"
