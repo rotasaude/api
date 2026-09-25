@@ -103,6 +103,12 @@ Rails.application.routes.draw do
     post "check_ins/search",        to: "check_ins#search"
     post "check_ins/exception",     to: "check_ins#exception"
     post "attendances/:id/close",   to: "attendances#close"
+
+    # Pedidos de agendamento, marcação e agenda do dia (spec 2026-09-25 §4).
+    get  "units/:id/requests",         to: "appointment_requests#index"
+    get  "units/:id/agenda",           to: "appointment_requests#agenda"
+    post "requests/:id/appointments",  to: "appointment_requests#schedule"
+    post "requests/:id/dismiss",       to: "appointment_requests#dismiss"
   end
 
   # Healthcheck — usado pelo Kamal (ADR-0001).
