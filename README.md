@@ -1,5 +1,59 @@
 # Rota Saúde — API
 
+O backend único do Rota Saúde: toda regra de negócio, todos os bancos e todas as
+filas. Os quatro frontends são SPAs sem regra própria que falam com este
+processo. Rails 8 (Ruby 3.3), PostgreSQL, Solid Queue, GraphQL (só na API de
+manutenção). Decisões arquiteturais em `rotasaude/docs` (ADRs 0001–0018 e as
+specs em `superpowers/specs/`).
+
+## Papel no ecossistema
+
+| Frontend | Quem usa | Host | O que consome aqui |
+|---|---|---|---|
+| `wpda` | Cidadão | `<cidade>.*/wpda/` | `/citizen/*` (canal web, ADR 0017) e `/r/:token` (relatório público) |
+| `dashboard` | Equipe da prefeitura | `<cidade>.*/dashboard/` | `/session`, `/mfa`, `/setup`, `/admin/api/*` (leitura), `/authoring`, `/protocols`, `/attendance` |
+| `admin` | Operador da plataforma | `admin.*/admin/` | `/session` e `/mfa` de operador, `/cities`, `/city_grants` |
+| `maintenance` | Mantenedor (superusuário) | `maintenance.*` → `maintenance-api.*` | `/graphql` e sessão própria; só development/staging |
+
+**O Host da requisição decide quem responde.** `config/routes.rb` casa na ordem:
+console (`PlatformConsoleHost`, `admin.*`), callback do gov.br
+(`PlatformAuthHost`, `auth.*`), API de manutenção (`MaintenanceApiHost`) e, por
+último, as rotas de cidade, em que o `CityCatalog` resolve a cidade pelo
+subdomínio. O webhook do WhatsApp (`/webhooks/whatsapp`) acha a cidade pelo
+`phone_number_id` do canal.
+
+**Bancos.** Um banco de **plataforma** (catálogo de cidades, canais, operadores,
+mantenedores e tokens de manutenção, grants, auditoria de plataforma, fila de plataforma e Solid Cache)
+e **um banco por cidade** (usuários municipais, conversas, triagens, protocolos,
+eventos de domínio e a fila da cidade). Ver as seções dos Planos 4, 5 e 7
+abaixo.
+
+**Processos.** `web` (Puma) e `worker` (`bin/city_workers`: um supervisor Solid
+Queue por cidade ativa, mais o da plataforma).
+
+**Três identidades, três tabelas.** `User` (no banco da cidade, com papéis por
+membership, ADR 0012), `Operator` (plataforma, console) e `Maintainer`
+(plataforma, API de manutenção). O mesmo e-mail pode existir nas três sem
+relação entre elas. O cidadão não tem conta: tem sessão por telefone
+confirmado por SMS.
+
+## Testes
+
+```bash
+docker compose stop worker          # na raiz do monorepo
+docker compose exec api bundle exec rspec
+docker compose start worker
+```
+
+Pare o worker antes da suíte completa. Com o `bin/city_workers` de dev ligado,
+o Postgres do host (`max_connections` 100) esgota e a suíte dá falhas
+transitórias de "too many clients". A suíte leva cerca de 2,5 min; bem mais que
+3 min é regressão (`rspec --profile`).
+
+A CI (`.github/workflows/ci.yml`) roda três jobs: `rspec`, `production-boot` e
+`staging-boot`. `rspec` e `production-boot` leem o secret de repositório
+`RAILS_MASTER_KEY`; `staging-boot` lê o `RAILS_STAGING_MASTER_KEY`.
+
 ## Ambiente de desenvolvimento (monorepo)
 
 `docker-compose.yml` e `start.sh` ficam na raiz do monorepo, **fora de qualquer
@@ -39,9 +93,11 @@ Bancos que precisam existir no Postgres do host:
 | `rota_saude_city_<slug>` (cidades provisionadas) | `rota_city_<slug>` | `ProvisionCityJob` (worker), a partir de `POST /cities` |
 
 `start.sh` chama essas tasks e `city:dev_baseline` antes do `db:seed`. Contas de dev:
-`admin@curitiba.demo` e `admin@maringa.demo` (senha `dev-password`) em cada cidade, e o operador `dev@local`
-(mesma senha + TOTP) no console. Hosts de dev: `curitiba.localhost:5175`, `maringa.localhost:5175` (dashboard), `admin.localhost:5174` (console),
-`curitiba.localhost:5176` (wpda). O proxy do Vite repassa o Host (Plano 6), então o Rails resolve a cidade pelo
+`admin@curitiba.demo` e `admin@maringa.demo` (senha `dev-password`) em cada cidade, o operador `dev@local`
+(mesma senha + TOTP) no console e o mantenedor `dev@local` (mesma senha, TOTP próprio, `lib/dev_maintainer.rb`) na
+API de manutenção. Hosts de dev: `curitiba.localhost:5175`, `maringa.localhost:5175` (dashboard), `admin.localhost:5174` (console),
+`curitiba.localhost:5176` (wpda), `maintenance.localhost:5177` (manutenção, com `MAINTENANCE_API_ENABLED=true` e
+`MAINTENANCE_FRONTEND_ORIGIN` no api). O proxy do Vite repassa o Host (Plano 6), então o Rails resolve a cidade pelo
 subdomínio como em produção. `*.localhost` resolve para 127.0.0.1 no Chrome e no Firefox sem `/etc/hosts`; no Safari,
 acrescente uma linha por cidade.
 
@@ -71,6 +127,10 @@ verdade, chame a API direto: `curl -H "Host: <slug>.localhost:5175" -H "Origin: 
 Ao puxar código que adiciona um novo diretório sob `app/` (por exemplo
 `app/constraints`), reinicie o `api` (`docker compose restart api`): um
 servidor já rodando só reconhece novas raízes de autoload no boot.
+
+**Código SMS do cidadão.** Em dev não há provedor: `config.x.otp_sender = :log` escreve o código no log do api
+(`docker compose logs -f api | grep "\[otp\]"`). O provedor real é pendência de go-live; sem ele o envio responde
+503.
 
 Em produção os mesmos nomes vêm do Kamal — ver `deploy/SECRETS.md`.
 
@@ -167,11 +227,13 @@ máquina. As imagens buildam localmente; falta só a credencial para publicá-la
   em rascunho e o convite do primeiro `municipal_admin`, e marca a cidade `active`.
 - O convite vai por e-mail (`?invite=<token>` no dashboard; a tela é do Plano 6).
 - `GET /cities/:id` mostra o status. Repetir o POST com o mesmo slug retoma um provisionamento que falhou.
-- O canal WhatsApp é outro passo: `CITY_SLUG=... PHONE_NUMBER_ID=... WABA_ID=... DISPLAY_PHONE_NUMBER=... ACCESS_TOKEN=... rails channels:register`.
+- O canal WhatsApp é outro passo: pela tela "Registrar canal" do console (`POST /cities/:id/channel`, Plano 8) ou
+  por `CITY_SLUG=... PHONE_NUMBER_ID=... WABA_ID=... DISPLAY_PHONE_NUMBER=... ACCESS_TOKEN=... rails channels:register`.
 - O provisionamento não semeia termo de consentimento.
 
 **Migrar (deploy).** O boot NÃO migra. Com a imagem nova, antes de trocar o código em execução, rode `bin/migrate`
-(`db:migrate` + `city:migrate:all`). Por exemplo: `kamal app exec --roles=worker --version=<nova> bin/migrate` e só
+(`db:migrate` + `platform:triggers` + `city:migrate:all`). O `platform:triggers` existe porque o dump em Ruby não
+representa trigger: sem ele, um banco de plataforma criado do zero nasce sem o trigger de imutabilidade da auditoria. Por exemplo: `kamal app exec --roles=worker --version=<nova> bin/migrate` e só
 então `kamal deploy`.
 - `city:migrate:all` migra toda cidade `active`/`suspended`, com lock por cidade, e sai com erro listando as que
   ficaram para trás.
@@ -432,15 +494,7 @@ Deliberado, não esquecido — cada item tem um motivo e nenhum é bloqueador do
   aceita a assinatura antiga (só a chave global, sem derivar por `cities.encryption_key`) — é o que mantém válidos os
   links que cidadãos já receberam. Está documentado para saída (`report_snapshot.rb`, `deploy/SECRETS.md`) quando
   todo `report_snapshot` vivo tiver sido re-assinado com a chave por cidade.
-- **`apps/admin` não tem remote no GitHub.** Tudo que este plano construiu no console existe só nesta máquina.
-- **A correção da Task 11 na spec (`docs/superpowers/specs/2026-09-12-banco-por-cidade-design.md`, §4: backup deixou
-  de ser "restaurável sozinho" desde o Plano 7) não está versionada.** `docs/` na raiz do monorepo não é um repositório
-  git — não dá `git log`, `git diff` nem `git push` ali. A correção existe só nesta máquina, no mesmo sentido em que
-  `apps/admin` acima existe só nesta máquina: sem clone fresco de `docs/` como repositório próprio, ela não viaja com
-  o resto deste plano.
-- **A CI da API (`apps/api/.github/workflows/ci.yml`) não passa sem o secret de repositório `RAILS_MASTER_KEY`.** Todo
-  boot do Rails (mesmo `RAILS_ENV=test`) lê `Rails.application.credentials` antes de qualquer fallback de ENV
-  (`config/initializers/active_record_encryption.rb`) — sem esse secret configurado em Settings → Secrets → Actions,
-  com o conteúdo de `apps/api/config/master.key`, o primeiro passo do workflow (`bin/rails platform:bootstrap`) já
-  levanta `ActiveSupport::EncryptedFile::MissingKeyError`. Isso vale também para o job `production-boot` que este fix
-  pass adicionou (F1) — mesmo secret, mesma exigência.
+
+Três pendências que esta seção registrava já foram resolvidas depois do plano: `apps/admin` ganhou remote
+(`rotasaude/admin`); `docs/` virou clone de `rotasaude/docs`, e a correção da spec viaja com ele; e a CI ficou verde
+em 2026-09-24, com os secrets `RAILS_MASTER_KEY` e `RAILS_STAGING_MASTER_KEY` configurados (ver "Testes" acima).
