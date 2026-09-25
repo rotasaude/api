@@ -3,7 +3,8 @@ require "rotp"
 # Semente de dev do ciclo assinado (plano 2026-09-23). Cria, DENTRO da conexão
 # da cidade corrente, as quatro contas que o ciclo exige — autor, duas
 # revisoras e publisher — com TOTP já pronto, e um rascunho (achado ou, na
-# falta de um, criado na próxima versão livre) PELO command de autoria.
+# falta de um, criado na próxima versão livre) PELO command de autoria; e a
+# dupla do atendimento (spec 2026-09-25 §6).
 #
 # Por que pelo command: `Protocols::SaveDraft` grava a ProtocolContribution do
 # autor e o content_digest. É disso que as assinaturas dependem: quem editou
@@ -32,7 +33,11 @@ class SignatureCrew
     { email_prefix: "revisora2", role: "protocol_reviewer",  secret_env: "DEV_REVIEWER2_OTP_SECRET",
       default_secret: "NBSWY3DPFQQFO33SNBSWY3DPFQQFO33S" },
     { email_prefix: "publisher", role: "protocol_publisher", secret_env: "DEV_PUBLISHER_OTP_SECRET",
-      default_secret: "OBQXG43XN5ZGILLQOBQXG43XN5ZGILLQ" }
+      default_secret: "OBQXG43XN5ZGILLQOBQXG43XN5ZGILLQ" },
+    { email_prefix: "profissional", role: "health_professional", secret_env: "DEV_PROFESSIONAL_OTP_SECRET",
+      default_secret: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" },
+    { email_prefix: "recepcao", role: "citizen_verifier", secret_env: "DEV_RECEPTION_OTP_SECRET",
+      default_secret: "MZXW6YTBOIQHEZLDMVUXEZLTOQQGC3TE" }
   ].freeze
 
   class << self
