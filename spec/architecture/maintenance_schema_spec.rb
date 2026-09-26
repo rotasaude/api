@@ -92,10 +92,21 @@ RSpec.describe "Maintenance GraphQL schema" do
     %w[CityChannel.phoneNumberId CityChannel.displayPhoneNumber]
   end
 
+  # Argumentos são julgados pelo PRÓPRIO nome (o do campo já foi julgado ao
+  # lado; qualificar antes de casar acusaria `revokeMaintenanceToken.id` pelo
+  # campo) e reportados qualificados, "field.argument". A isenção, quando
+  # houver, é do trio "Type.field.argument" nesta mesma lista — nunca um
+  # fragmento a menos em FORBIDDEN_FRAGMENTS.
+  def forbidden_name?(name) = !ALLOWED_NAMES.include?(name) && name.match?(FORBIDDEN_NAME)
+
   def forbidden_name_offenders(type_name, type)
-    [ type_name, *type.fields.keys ].reject { |name| ALLOWED_NAMES.include?(name) }
-                                     .select { |name| name.match?(FORBIDDEN_NAME) }
-                                     .reject { |name| forbidden_name_exempt_fields.include?("#{type_name}.#{name}") }
+    argument_offenders = type.fields.flat_map do |field_name, field|
+      field.arguments.keys.select { |argument_name| forbidden_name?(argument_name) }
+                          .map { |argument_name| "#{field_name}.#{argument_name}" }
+    end
+
+    ([ type_name, *type.fields.keys ].select { |name| forbidden_name?(name) } + argument_offenders)
+      .reject { |name| forbidden_name_exempt_fields.include?("#{type_name}.#{name}") }
   end
 
   it "publishes exactly the declared types" do
@@ -131,6 +142,34 @@ RSpec.describe "Maintenance GraphQL schema" do
 
     expect(forbidden_name_offenders("AnotherType", offender_type)).to eq([ "phoneNumberId" ])
     expect(forbidden_name_offenders("CityChannel", Maintenance::Schema.types.fetch("CityChannel"))).to be_empty
+  end
+
+  # ARGUMENTOS também são superfície: um `argument :access_token` pede ao
+  # cliente exatamente o que os campos não podem devolver. A guarda andava só
+  # por `type.fields.keys` e o primeiro argumento que esta API ganhou
+  # (`expectedVersion`) passou sem ninguém perguntar.
+  it "refuses a forbidden argument name on a field whose own name is clean" do
+    offender_type = Class.new(Maintenance::Types::BaseObject) do
+      graphql_name "AnotherType"
+      field :lookup, String, null: true do
+        argument :access_token, String, required: true
+      end
+    end
+
+    expect(forbidden_name_offenders("AnotherType", offender_type)).to eq([ "lookup.accessToken" ])
+  end
+
+  # E o inverso: argumento limpo num campo cujo nome carrega fragmento
+  # (revisado em ALLOWED_NAMES) não é acusado pelo nome do campo.
+  it "does not blame a clean argument for its field's reviewed name" do
+    token_type = Class.new(Maintenance::Types::BaseObject) do
+      graphql_name "AnotherType"
+      field :revoke_maintenance_token, String, null: true do
+        argument :id, GraphQL::Types::ID, required: true
+      end
+    end
+
+    expect(forbidden_name_offenders("AnotherType", token_type)).to be_empty
   end
 
   # Auto-teste da guarda: um padrão quebrado (fragmento com typo, Regexp.union
