@@ -106,4 +106,35 @@ RSpec.describe CityScopedJob do
       expect(job_class.ran).to be true
     end
   end
+
+  # Mesmo vazamento corrigido no EachCityJob (cff9078): with_city atribuía
+  # Current.city e não restaurava. Rodado inline (perform_now) para a cidade B
+  # num processo que já estava na cidade A — runner, console —, o chamador
+  # ficava na B, e a escrita seguinte saía cifrada com a chave determinística
+  # da B dentro do banco da A.
+  describe "caller's city context" do
+    let!(:city_a) { create(:city, slug: "escoa#{SecureRandom.hex(3)}", database_url: city_database_url("rota_saude_test_city_a")) }
+    let!(:city_b) { create(:city, slug: "escob#{SecureRandom.hex(3)}", database_url: city_database_url("rota_saude_test_city_b")) }
+
+    it "leaves Current.city as it was after running inline for another city" do
+      Current.set(city: city_a) do
+        job_class.perform_now(city_b.slug)
+
+        expect(job_class.ran).to be true
+        expect(Current.city).to eq(city_a)
+      end
+    end
+
+    it "keeps a write right after the job readable with the caller's city key" do
+      phone = "+5541999991#{rand(100..999)}"
+
+      id = CityConnection.with(city_a) do
+        job_class.perform_now(city_b.slug)
+        Conversation.create!(phone: phone, state: :greeting).id
+      end
+
+      expect(job_class.ran).to be true
+      expect(CityConnection.with(city_a) { Conversation.find(id).phone }).to eq(phone)
+    end
+  end
 end
