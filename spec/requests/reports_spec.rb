@@ -67,4 +67,50 @@ RSpec.describe "Reports", type: :request do
     get "/r/#{snap.token}", headers: { "HOST" => "#{other_city.slug}.rotasaude.app" }
     expect(response).to have_http_status(:ok)
   end
+
+  # F-04.3/F-04.4: todo caminho de token inválido é o MESMO 404 — sem corpo que
+  # diga se o token existe, expirou ou teve a assinatura trocada.
+  describe "404" do
+    let(:payload) { { "tier" => "alta", "priority" => 1, "summary" => [], "completed_at" => nil } }
+
+    def expect_not_found(token)
+      get "/r/#{token}"
+      expect(response).to have_http_status(:not_found)
+      expect(response.body).to be_empty
+    end
+
+    it "for an expired token" do
+      snap = create_snapshot(payload: payload)
+      snap.update!(expires_at: 1.minute.ago)
+
+      expect_not_found(snap.token)
+    end
+
+    it "for a token that does not exist" do
+      expect_not_found(ReportSnapshot.mint_token)
+    end
+
+    it "for a tampered token (one character changed)" do
+      snap = create_snapshot(payload: payload)
+      tampered = snap.token.dup
+      tampered[-1] = (tampered[-1] == "A" ? "B" : "A")
+
+      expect_not_found(tampered)
+    end
+
+    it "for a stored signature that does not match the token" do
+      snap = create_snapshot(payload: payload)
+      snap.update_columns(signature: OpenSSL::HMAC.hexdigest("sha256", "outra-chave", snap.token))
+
+      expect_not_found(snap.token)
+    end
+
+    it "still serves the snapshot right before it expires" do
+      snap = create_snapshot(payload: payload)
+      snap.update!(expires_at: 1.minute.from_now)
+
+      get "/r/#{snap.token}"
+      expect(response).to have_http_status(:ok)
+    end
+  end
 end
