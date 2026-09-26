@@ -4,6 +4,7 @@ pt-BR:
   conversation_advance:
     greeting: "Olá! Para começar uma triagem, preciso do seu consentimento para usar suas respostas. Você concorda? (sim/não)"
     consent_prompt: "Não entendi. Você concorda com o uso dos seus dados para uma triagem? (sim/não)"
+    consent_renew: "Nossos termos de uso dos seus dados foram atualizados. Para continuar a triagem de onde parou, você concorda com os novos termos? (sim/não)"
     consent_revoked: "Consentimento revogado. Para retomar, envie \"olá\" a qualquer momento."
     consent_declined: "Tudo bem, não vamos seguir. Envie \"olá\" se mudar de ideia."
     triage_cancelled: "Triagem cancelada. Envie \"olá\" para recomeçar."

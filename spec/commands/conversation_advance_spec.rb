@@ -204,6 +204,49 @@ RSpec.describe ConversationAdvance do
       end
     end
 
+    # Regressão (F-02.1): termo novo publicado no meio da triagem. O estado
+    # seguia consented, CompleteTriage recusava com :no_consent e o cidadão
+    # recebia o pedido de consentimento em laço até a varredura de abandono.
+    context "quando um termo novo sai no meio da triagem" do
+      let(:raw_body) { "true" }
+
+      def whatsapp(body)
+        InboundMessage.create!(
+          message_id: "wamid.#{SecureRandom.hex(6)}",
+          from: "+5511988888888",
+          kind: "text",
+          raw: { "type" => "text", "text" => { "body" => body } }.to_json
+        )
+      end
+
+      before do
+        described_class.call(conversation: conversation, inbound: inbound) # tosse → febre
+        ConsentTerm.create!(version: (Consents.current_version.to_i + 1).to_s, body: "Termo novo", published_at: Time.current)
+      end
+
+      it "volta para awaiting_consent e pede o consentimento do termo novo em botões, sem registrar a resposta" do
+        result = described_class.call(conversation: conversation, inbound: whatsapp("true"))
+
+        expect(conversation.reload.state).to eq("awaiting_consent")
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.consent_renew"))
+        expect(result.reply.kind).to eq(:buttons)
+        expect(result.reply.options.map { |o| o[:id] }).to eq(%w[consent_give consent_revoke])
+        triage = conversation.triages.status_in_progress.sole
+        expect(triage.current_step).to eq("febre")
+        expect(triage.answers).to eq("tosse" => "true")
+      end
+
+      it "com o sim, consente no termo novo e retoma a mesma triagem no passo em que parou" do
+        described_class.call(conversation: conversation, inbound: whatsapp("true"))
+        result = described_class.call(conversation: conversation, inbound: whatsapp("sim"))
+
+        expect(conversation.reload).to be_consented
+        expect(conversation.active_consent.version.to_s).to eq(Consents.current_version)
+        expect(conversation.triages.count).to eq(1)
+        expect(result.reply.body).to eq(I18n.t("conversation_advance.triage_next", prompt: "Está com febre alta?"))
+      end
+    end
+
     context "quando o cidadão cancela no meio da triagem (cancelar)" do
       let(:raw_body) { "true" } # 1ª chamada inicia a triage e avança para 'febre'
 
