@@ -76,7 +76,7 @@ class ConversationAdvance
         evidence: { text: text, message_id: @inbound.message_id, channel: "whatsapp" }
       )
       return Result.new(reply: Messaging::Reply.text(t(:consent_failed))) if result.failure?
-      begin_triage_and_ask
+      resume_or_begin_triage
     when :revoke
       @conversation.update!(state: :declined)
       Result.new(reply: Messaging::Reply.text(t(:consent_declined)))
@@ -88,6 +88,7 @@ class ConversationAdvance
   def handle_consented
     return revoke_and_finish if Consents.revoke_intent?(text)
     return cancel_and_finish if Consents.cancel?(text)
+    return renew_consent unless @conversation.consented?
 
     triage = active_triage || begin_triage_or_nil
     return Result.new(reply: Messaging::Reply.text(t(:no_protocol))) unless triage
@@ -123,6 +124,23 @@ class ConversationAdvance
                  )
     @conversation.update!(state: :cancelled)
     Result.new(reply: Messaging::Reply.text(t(:triage_cancelled)))
+  end
+
+  # O estado diz consented, mas o consentimento é de um termo antigo (termo
+  # novo publicado no meio da triagem): volta a awaiting_consent e pede de
+  # novo, como a web faz em Citizens::StartConversation#ensure_consent.
+  # A mensagem que chegou não é registrada como resposta.
+  def renew_consent
+    @conversation.update!(state: :awaiting_consent)
+    Result.new(reply: consent_reply(t(:consent_renew)))
+  end
+
+  # Depois de um reconsentimento a triagem já existe: retoma no passo em que
+  # parou em vez de abrir uma segunda triagem in_progress.
+  def resume_or_begin_triage
+    triage = active_triage
+    return begin_triage_and_ask unless triage
+    Result.new(reply: step_reply(triage, triage.current_step, :triage_next))
   end
 
   def begin_triage_and_ask
