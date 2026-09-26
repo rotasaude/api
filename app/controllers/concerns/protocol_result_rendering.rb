@@ -2,7 +2,10 @@
 # das assinaturas). A mensagem é a do próprio command — texto nosso, com a
 # contagem de assinaturas que faltam —, nunca a de uma exceção.
 module ProtocolResultRendering
-  STATUS_FOR = { forbidden: :forbidden, not_found: :not_found }.freeze
+  # 409 e não o 422 de todo o resto: o corpo estava bem formado; o mundo é que
+  # mudou entre a leitura da tela e o clique. A tela distingue os dois para
+  # saber quando deve reler a lista em vez de repetir a frase genérica.
+  STATUS_FOR = { forbidden: :forbidden, not_found: :not_found, current_version_changed: :conflict }.freeze
 
   private
 
