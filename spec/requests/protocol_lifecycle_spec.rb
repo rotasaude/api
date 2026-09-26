@@ -342,6 +342,36 @@ RSpec.describe "Protocol lifecycle", type: :request do
       expect(statuses).to eq(%w[active published in_review])
     end
 
+    # Token ilegível não pode virar 500 numa tela de emergência: `Integer("abc")`
+    # levanta, e ArgumentError é 500 por padrão no Rails. Ilegível é tratado
+    # como divergência — não dá para afirmar que o cliente viu o estado atual.
+    it "token não numérico é recusado como divergência, nunca 500" do
+      ready_protocols!
+      sign_in_stepped_up!(admin)
+      post "/protocols/2/activate", params: { name: "dengue" }, as: :json
+
+      sign_in_stepped_up!(admin)
+      post "/protocols/revert",
+           params: { name: "dengue", reason: "v2 erra a prioridade", expected_version: "abc" }, as: :json
+
+      expect(response).to have_http_status(:conflict)
+      expect(json["error"]).to eq("current_version_changed")
+    end
+
+    # Vazio desligava a guarda em silêncio: "" é blank?, então o `present?`
+    # antigo pulava a conferência. Só a AUSÊNCIA da chave é ausência de token.
+    it "token vazio é recusado, não ignorado" do
+      ready_protocols!
+      sign_in_stepped_up!(admin)
+      post "/protocols/2/activate", params: { name: "dengue" }, as: :json
+
+      sign_in_stepped_up!(admin)
+      post "/protocols/revert",
+           params: { name: "dengue", reason: "v2 erra a prioridade", expected_version: "" }, as: :json
+
+      expect(response).to have_http_status(:conflict)
+    end
+
     it "reverter uma reversão responde 422 not_revertible" do
       ready_protocols!
       sign_in_stepped_up!(publisher)

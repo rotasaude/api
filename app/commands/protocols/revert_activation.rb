@@ -57,9 +57,25 @@ module Protocols
       # GraphQL recusa argumento não declarado já na validação. Enquanto o
       # terceiro passo não vier, existe um caminho de reversão sem esta
       # guarda — deliberado, com issue própria.
-      if expected_version.present? && Integer(expected_version) != current.version
-        return Result.fail(:current_version_changed,
-                           message: "a versão em uso agora é a #{current.version}")
+      # Só a AUSÊNCIA da chave é ausência de token: `""` e `"  "` são blank?,
+      # e um `present?` aqui deixaria um cliente que calculou mal a versão
+      # DESLIGAR a guarda em silêncio, em vez de falhar alto.
+      #
+      # `exception: false` porque `Integer("abc")` levanta ArgumentError, que o
+      # Rails traduz em 500 — inaceitável num endpoint de emergência, e pior:
+      # a tela mostraria "tente de novo", que é a dica errada. Token ilegível
+      # é tratado como DIVERGÊNCIA, não como ausência: não dá para afirmar que
+      # quem mandou aquilo estava vendo o estado atual.
+      #
+      # Base 10 explícita porque a automática lê "010" como octal (8): uma
+      # versão 10 mandada com zero à esquerda recusaria uma reversão legítima
+      # dizendo um número que confere com o que a pessoa mandou.
+      unless expected_version.nil?
+        seen = Integer(expected_version.to_s.strip, 10, exception: false)
+        if seen != current.version
+          return Result.fail(:current_version_changed,
+                             message: "a versão em uso agora é a #{current.version}")
+        end
       end
 
       return Result.fail(:forbidden) unless ProtocolPolicy.new(by, current).activate?
