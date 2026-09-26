@@ -39,15 +39,15 @@ class HealthUnitsController < ApplicationController
   def deactivate
     return render json: { error: "not_found" }, status: :not_found unless @unit
 
-    if Attendance.open_attendances.where(health_unit: @unit).exists?
-      return render json: { error: "unit_has_open_attendances" }, status: :conflict
+    # FOR UPDATE na unidade: espera o check-in ou encaminhamento em curso
+    # (HealthUnit.lock_active!) e só então confere o que está aberto.
+    conflict = nil
+    @unit.with_lock do
+      conflict = deactivation_conflict
+      @unit.update!(active: false) unless conflict
     end
+    return render json: { error: conflict }, status: :conflict if conflict
 
-    if AppointmentRequest.live_requests.where(target_unit: @unit).exists?
-      return render json: { error: "unit_has_open_requests" }, status: :conflict
-    end
-
-    @unit.update!(active: false)
     render json: { unit: unit_json(@unit, include_active: true) }
   end
 
@@ -59,6 +59,12 @@ class HealthUnitsController < ApplicationController
   end
 
   private
+
+  def deactivation_conflict
+    return "unit_has_open_attendances" if Attendance.open_attendances.where(health_unit: @unit).exists?
+
+    "unit_has_open_requests" if AppointmentRequest.live_requests.where(target_unit: @unit).exists?
+  end
 
   def require_verifier_or_admin
     policy = CitizenVerificationPolicy.new(Current.user, nil)

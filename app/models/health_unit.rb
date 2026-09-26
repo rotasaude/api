@@ -4,6 +4,9 @@
 class HealthUnit < ApplicationRecord
   KINDS = %w[ubs upa hospital other].freeze
 
+  # A unidade foi desativada entre a leitura e a transação.
+  class Inactive < StandardError; end
+
   has_many :attendances, dependent: :restrict_with_error
 
   before_validation { self.name = name&.strip }
@@ -12,4 +15,13 @@ class HealthUnit < ApplicationRecord
   validates :kind, inclusion: { in: KINDS }
 
   scope :active_units, -> { where(active: true).order(:name) }
+
+  # Segura a unidade ativa até o fim da transação (FOR SHARE). Quem liga
+  # trabalho novo à unidade (check-in, encaminhamento) chama isto dentro da
+  # transação; a desativação trava a mesma linha com FOR UPDATE, então um
+  # espera o outro: ou a desativação vê o atendimento/pedido novo e recusa,
+  # ou o comando relê a unidade já inativa e levanta Inactive.
+  def self.lock_active!(id)
+    where(active: true).lock("FOR SHARE").find_by(id: id) || raise(Inactive)
+  end
 end

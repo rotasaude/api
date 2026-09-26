@@ -36,4 +36,18 @@ RSpec.describe Attendances::CheckInByException do
     expect(call(triage_id: other.id).reason).to eq(:triage_not_eligible)
     expect(Attendance.count).to eq(0)
   end
+
+  it "unidade inativa: invalid_unit, nada criado" do
+    t = completed_web_triage_for(citizen)
+    unit.update!(active: false)
+    expect(call(triage_id: t.id).reason).to eq(:invalid_unit)
+    expect(Attendance.count).to eq(0)
+  end
+
+  it "unidade desativada depois da leitura: invalid_unit, nada criado" do
+    t = completed_web_triage_for(citizen)
+    deactivate_before_transaction(unit)
+    expect(call(triage_id: t.id).reason).to eq(:invalid_unit)
+    expect(Attendance.count).to eq(0)
+  end
 end

@@ -13,6 +13,15 @@ module AttendanceHelpers
     triage.update_columns(completed_at: completed_at)
     triage
   end
+
+  # A unidade é desativada entre a leitura sem lock e a transação do comando
+  # (módulo 09): a desativação "chega" logo antes do corpo da transação.
+  def deactivate_before_transaction(unit)
+    allow(ApplicationRecord).to receive(:transaction).and_wrap_original do |original, *args, **kwargs, &block|
+      HealthUnit.where(id: unit.id).update_all(active: false)
+      original.call(*args, **kwargs, &block)
+    end
+  end
 end
 
 RSpec.configure { |c| c.include AttendanceHelpers }

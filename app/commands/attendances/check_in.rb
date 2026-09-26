@@ -13,6 +13,7 @@ module Attendances
 
       result = nil
       ApplicationRecord.transaction do
+        HealthUnit.lock_active!(unit.id)
         match = Citizens::VerificationCodeMatch.call(cpf: cpf, code: code, lock: true, purpose: "check_in")
         next result = match if match.failure?
 
@@ -44,6 +45,8 @@ module Attendances
       Result.fail(:already_checked_in)
     rescue AppointmentNotEligible
       Result.fail(:appointment_not_eligible)
+    rescue HealthUnit::Inactive
+      Result.fail(:invalid_unit)
     end
 
     # O horário virou atendimento: fecha o horário e o pedido (ADR 0019).

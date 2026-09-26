@@ -23,6 +23,7 @@ module Attendances
 
         attendance = nil
         ApplicationRecord.transaction do
+          HealthUnit.lock_active!(unit.id)
           attendance = Attendance.create!(triage: nil, appointment: appointment, citizen: appointment.citizen,
                                           health_unit: unit, checked_in_by_user: by, checked_in_at: Time.current,
                                           check_in_method: "cpf_exception", exception_reason: reason.to_s.strip)
@@ -37,6 +38,7 @@ module Attendances
 
       attendance = nil
       ApplicationRecord.transaction do
+        HealthUnit.lock_active!(unit.id)
         attendance = Attendance.create!(triage: triage, citizen: triage.conversation.citizen, health_unit: unit,
                                         checked_in_by_user: by, checked_in_at: Time.current,
                                         check_in_method: "cpf_exception", exception_reason: reason.to_s.strip)
@@ -47,6 +49,8 @@ module Attendances
       Result.fail(:triage_not_eligible)
     rescue CheckIn::AppointmentNotEligible
       Result.fail(:appointment_not_eligible)
+    rescue HealthUnit::Inactive
+      Result.fail(:invalid_unit)
     end
   end
 end

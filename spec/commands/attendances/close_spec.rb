@@ -85,4 +85,12 @@ RSpec.describe Attendances::Close do
     end.to raise_error(ActiveRecord::StatementInvalid)
     expect(a.reload.status).to eq("in_care")
   end
+
+  it "destino desativado depois da leitura: invalid_unit, atendimento continua aberto" do
+    attendance
+    deactivate_before_transaction(upa)
+    expect(close("referred", unit_id: upa.id).reason).to eq(:invalid_unit)
+    expect(attendance.reload).to be_open
+    expect(AppointmentRequest.count).to eq(0)
+  end
 end
