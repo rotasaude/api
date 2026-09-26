@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe GenerateReportJob do
+  include ActiveSupport::Testing::TimeHelpers
+
   def definition_hash(with_recs:)
     base = {
       "name" => "triagem-rec",
@@ -57,5 +59,62 @@ RSpec.describe GenerateReportJob do
     snap = ReportSnapshot.find_by!(triage_id: triage.id)
     expect(snap.payload).to have_key("recommendation")
     expect(snap.payload["recommendation"]).to be_nil
+  end
+
+  # O snapshot congela a versão por REFERÊNCIA (ADR 0010: protocol_definition_id
+  # é a "versão exata usada"; não existe coluna protocol_version): a da
+  # triagem, não a vigente no momento da geração.
+  it "records the protocol_definition_id the triage ran under, even after another version is active" do
+    triage = build_triage(tier: "alta", with_recs: true)
+    ran_under = triage.protocol_definition
+    ran_under.update!(status: "published")
+    ProtocolDefinition.create!(name: "triagem-rec", version: 2, status: "active",
+                               definition: definition_hash(with_recs: true).merge("version" => 2))
+
+    GenerateReportJob.new.handle(triage_id: triage.id, **triage.outcome.symbolize_keys)
+
+    expect(ReportSnapshot.find_by!(triage_id: triage.id).protocol_definition_id).to eq(ran_under.id)
+  end
+
+  it "expires the link 30 days after generation by default" do
+    triage = build_triage(tier: "alta", with_recs: true)
+    freeze_time do
+      GenerateReportJob.new.handle(triage_id: triage.id, **triage.outcome.symbolize_keys)
+      expect(ReportSnapshot.find_by!(triage_id: triage.id).expires_at).to eq(30.days.from_now)
+    end
+  end
+
+  # Reentrega (ADR 0005) pelo perform completo: o mesmo event_id é deduplicado
+  # pelo IdempotentConsumer; um event_id NOVO para a mesma triagem (replay,
+  # evento republicado) cai na guarda `return if triage.report_snapshot` — e o
+  # índice único por triagem é a última linha de defesa.
+  describe "redelivery" do
+    let!(:city) { create(:city, slug: TEST_CITY_A.slug, database_url: city_database_url("rota_saude_test_city_a")) }
+
+    def deliver(triage, event_id:)
+      described_class.perform_now(event_id: event_id, event_name: "triage.completed", city_slug: city.slug,
+                                  payload: { "triage_id" => triage.id, "tier" => triage.tier })
+    end
+
+    it "does not create a second snapshot for the same event" do
+      triage = build_triage(tier: "alta", with_recs: true)
+      event_id = SecureRandom.uuid
+
+      deliver(triage, event_id: event_id)
+      first = ReportSnapshot.find_by!(triage_id: triage.id)
+      deliver(triage, event_id: event_id)
+
+      expect(ReportSnapshot.where(triage_id: triage.id).pluck(:id)).to eq([ first.id ])
+    end
+
+    it "does not create a second snapshot, nor change the first, for a new event of the same triage" do
+      triage = build_triage(tier: "alta", with_recs: true)
+
+      deliver(triage, event_id: SecureRandom.uuid)
+      first = ReportSnapshot.find_by!(triage_id: triage.id)
+      expect { deliver(triage, event_id: SecureRandom.uuid) }.not_to raise_error
+
+      expect(ReportSnapshot.where(triage_id: triage.id).pluck(:id, :token)).to eq([ [ first.id, first.token ] ])
+    end
   end
 end
