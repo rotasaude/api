@@ -31,12 +31,37 @@
 #   :not_found|:forbidden|:not_revertible|:no_previous_activation|:invalid)
 module Protocols
   module RevertActivation
-    def self.call(name:, by:, reason:, correlation_id: nil)
+    def self.call(name:, by:, reason:, expected_version: nil, correlation_id: nil)
       return Result.fail(:city_missing) if Current.city.nil?
       return Result.fail(:reason_required, message: "a reversão de emergência exige um motivo") if reason.to_s.strip.empty?
 
       current = ProtocolDefinition.find_by(name: name, status: "active")
       return Result.fail(:not_found) if current.nil?
+
+      # O que a TELA via quando a pessoa decidiu, contra o que vale agora.
+      # Divergiram: outra ativação comitou entre a leitura e o clique, e a
+      # decisão foi tomada sobre informação que não vale mais. Vem antes da
+      # política para um token errado não virar :forbidden por acaso.
+      #
+      # UMA conferência, e de propósito: repeti-la dentro da transação seria
+      # código morto. `current` é esta mesma linha, travada e não
+      # re-resolvida — a `version` dela não muda —, e se outra versão tiver
+      # sido ativada no meio do caminho, Protocols::Activate demove esta para
+      # `published` antes (o índice único parcial em status='active' não
+      # admite duas), de modo que o `unless current.status == "active"` que já
+      # existe lá embaixo dispara primeiro.
+      #
+      # `expected_version` é OPCIONAL porque o rollout tem três passos (spec
+      # 2026-09-25 §5): o api aceita, os clientes passam a mandar, e só então
+      # a ausência vira recusa. O frontend não pôde ir primeiro porque o
+      # GraphQL recusa argumento não declarado já na validação. Enquanto o
+      # terceiro passo não vier, existe um caminho de reversão sem esta
+      # guarda — deliberado, com issue própria.
+      if expected_version.present? && Integer(expected_version) != current.version
+        return Result.fail(:current_version_changed,
+                           message: "a versão em uso agora é a #{current.version}")
+      end
+
       return Result.fail(:forbidden) unless ProtocolPolicy.new(by, current).activate?
 
       # Fast fail on the un-locked read (avoids opening a transaction and

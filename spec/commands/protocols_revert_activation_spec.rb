@@ -136,4 +136,40 @@ RSpec.describe Protocols::RevertActivation do
     expect(ProtocolDefinition.find_by!(id: stale_target.id).status).to eq("retired")
     expect(ProtocolActivation.count).to eq(2)
   end
+
+  describe "expected_version" do
+    it "reverts when the token matches the active version" do
+      activate_signed!(1)
+      activate_signed!(2)
+
+      result = described_class.call(name: "dengue", by: publisher, reason: "motivo", expected_version: 2)
+
+      expect(result.ok?).to be(true)
+      expect(version(1).status).to eq("active")
+    end
+
+    # A corrida que o token existe para pegar: a tela mostrava a v2 como
+    # vigente, alguém ativou a v3, e só então o clique chegou.
+    it "refuses when the active version changed since the screen read it" do
+      activate_signed!(1)
+      activate_signed!(2)
+      activate_signed!(3)
+
+      result = described_class.call(name: "dengue", by: publisher, reason: "motivo", expected_version: 2)
+
+      expect(result.failure?).to be(true)
+      expect(result.reason).to eq(:current_version_changed)
+      expect(result.message).to include("3")
+      expect(version(3).status).to eq("active")
+    end
+
+    # Review Focus 1: é o que permite o rollout em três passos.
+    it "reverts exactly as before when no token is sent" do
+      activate_signed!(1)
+      activate_signed!(2)
+
+      expect(revert.ok?).to be(true)
+      expect(version(1).status).to eq("active")
+    end
+  end
 end
