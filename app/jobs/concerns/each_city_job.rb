@@ -28,7 +28,11 @@ module EachCityJob
 
     each_city_cities.each do |city|
       begin
-        Current.city = city
+        # CityConnection.with já faz Current.set(city:) só durante o bloco e
+        # restaura a cidade do chamador ao sair. NÃO atribua Current.city aqui:
+        # rodado inline (perform_now) num processo com cidade — runner, console —,
+        # a atribuição vazava a última cidade do laço para o chamador, e a escrita
+        # seguinte saía cifrada com a chave determinística da cidade errada.
         CityConnection.with(city) { super(*args, **kwargs) }
       rescue => e
         Rails.logger.error("[#{self.class.name}] city=#{city.slug} failed: #{e.class}: #{e.message}")

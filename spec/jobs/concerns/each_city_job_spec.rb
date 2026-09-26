@@ -56,4 +56,31 @@ RSpec.describe EachCityJob do
     expect(job_class.visited).to eq([])
     expect(Rails.logger).to have_received(:warn).with(a_string_matching(/cidade-nao-cadastrada/))
   end
+
+  # Bug de 2026-09-25: perform atribuía Current.city a cada cidade do laço e não
+  # restaurava. Rodado inline (perform_now) num processo que já tinha cidade —
+  # script de runner, console com ReencryptionJob.perform_now —, a cidade do
+  # chamador virava a ÚLTIMA do laço, e a escrita seguinte saía cifrada com a
+  # chave determinística dela dentro do banco da cidade do chamador.
+  describe "caller's city context" do
+    it "leaves Current.city as it was after running inline" do
+      Current.set(city: city_a) do
+        job_class.perform_now
+
+        expect(Current.city).to eq(city_a)
+      end
+    end
+
+    it "keeps a write right after the job readable with the caller's city key" do
+      phone = "+5541999990#{rand(100..999)}"
+
+      id = CityConnection.with(city_a) do
+        job_class.perform_now
+        Conversation.create!(phone: phone, state: :greeting).id
+      end
+
+      expect(job_class.visited.map(&:first)).to include(city_b.slug)
+      expect(CityConnection.with(city_a) { Conversation.find(id).phone }).to eq(phone)
+    end
+  end
 end
