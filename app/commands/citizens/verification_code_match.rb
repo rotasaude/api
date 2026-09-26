@@ -34,7 +34,7 @@ module Citizens
       end
       return Result.fail(:code_exhausted) if hit.attempts >= CitizenVerificationCode::MAX_ATTEMPTS
 
-      Result.ok(citizen: hit.citizen, verification_code: hit, triage: hit.triage)
+      Result.ok(citizen: hit.citizen, verification_code: hit, triage: hit.triage, appointment: hit.appointment)
     end
   end
 end

@@ -43,7 +43,7 @@ module CitizenApi
     def history_scope(citizen)
       ids = citizen.verification_level_verified? ? Citizen.where(cpf: citizen.cpf).select(:id) : [citizen.id]
       Triage.joins(:conversation).where(conversations: { channel: "web", citizen_id: ids })
-            .includes(attendance: %i[health_unit referral_unit])
+            .includes(attendance: %i[health_unit referral_unit appointment_request])
     end
 
     # Triagens que a sessão pode ver: as dos pares do celular, mais as dos
@@ -53,7 +53,7 @@ module CitizenApi
       verified_cpfs = own.select(&:verification_level_verified?).map(&:cpf)
       ids = Citizen.where(id: own.select(:id)).or(Citizen.where(cpf: verified_cpfs)).select(:id)
       Triage.joins(:conversation).where(conversations: { channel: "web", citizen_id: ids })
-            .includes(attendance: %i[health_unit referral_unit])
+            .includes(attendance: %i[health_unit referral_unit appointment_request])
     end
 
     def own_triage?(triage)
@@ -84,7 +84,8 @@ module CitizenApi
         status: attendance.status, unit_name: attendance.health_unit.name,
         checked_in_at: attendance.checked_in_at.iso8601, outcome: attendance.outcome,
         referral_unit_name: attendance.referral_unit&.name, referral_note: attendance.referral_note,
-        closed_at: attendance.closed_at&.iso8601
+        closed_at: attendance.closed_at&.iso8601, called_at: attendance.called_at&.iso8601,
+        request_kind: attendance.appointment_request&.kind
       }
     end
   end

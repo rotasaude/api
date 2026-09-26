@@ -18,6 +18,15 @@ module AttendanceAccess
     forbid unless CitizenVerificationPolicy.new(Current.user, nil).manage?
   end
 
+  def require_professional
+    forbid unless CitizenVerificationPolicy.new(Current.user, nil).care?
+  end
+
+  def require_attendance_staff
+    policy = CitizenVerificationPolicy.new(Current.user, nil)
+    forbid unless policy.verify? || policy.care?
+  end
+
   def forbid
     render json: { error: "forbidden" }, status: :forbidden
   end

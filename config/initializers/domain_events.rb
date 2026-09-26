@@ -37,6 +37,18 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "attendance.checked_in", to: []
   DomainEvents.bind "attendance.closed", to: []
 
+  # Chamada e pedido de agendamento (spec 2026-09-25): trilha; sem
+  # consumidor, de propósito.
+  DomainEvents.bind "attendance.called", to: []
+  DomainEvents.bind "appointment_request.created", to: []
+  DomainEvents.bind "appointment_request.closed", to: []
+  DomainEvents.bind "appointment.scheduled", to: []
+  DomainEvents.bind "appointment.checked_in", to: []
+  DomainEvents.bind "appointment.confirmed", to: []
+  DomainEvents.bind "appointment.cancelled", to: []
+  DomainEvents.bind "appointment.expired", to: []
+  DomainEvents.bind "appointment.no_show", to: []
+
   # ADR 0018: rastro LGPD da busca por exceção (POST check_ins/search) — expõe
   # dado de saúde sem código; sem CPF no payload, sem consumidor, de propósito.
   DomainEvents.bind "attendance.exception_searched", to: []

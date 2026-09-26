@@ -95,12 +95,20 @@ Rails.application.routes.draw do
     post "units/:id",               to: "health_units#update"
     post "units/:id/deactivate",    to: "health_units#deactivate"
     post "units/:id/activate",      to: "health_units#activate"
-    get  "units/:id/open",          to: "attendances#open"
+    get  "units/:id/queue",           to: "attendances#queue"
+    post "units/:id/call_next",       to: "attendances#call_next"
+    post "attendances/:id/call",      to: "attendances#call"
     post "check_ins/lookup",        to: "check_ins#lookup"
     post "check_ins",               to: "check_ins#create"
     post "check_ins/search",        to: "check_ins#search"
     post "check_ins/exception",     to: "check_ins#exception"
     post "attendances/:id/close",   to: "attendances#close"
+
+    # Pedidos de agendamento, marcação e agenda do dia (spec 2026-09-25 §4).
+    get  "units/:id/requests",         to: "appointment_requests#index"
+    get  "units/:id/agenda",           to: "appointment_requests#agenda"
+    post "requests/:id/appointments",  to: "appointment_requests#schedule"
+    post "requests/:id/dismiss",       to: "appointment_requests#dismiss"
   end
 
   # Healthcheck — usado pelo Kamal (ADR-0001).
@@ -133,6 +141,11 @@ Rails.application.routes.draw do
     post "triages/:id/revoke_consent", to: "triages#revoke_consent"
     post "triages/:id/check_in_code",  to: "check_in_codes#create"
     post "verification_codes",         to: "verification_codes#create"
+
+    get  "appointments",                   to: "appointments#index"
+    post "appointments/:id/confirm",       to: "appointments#confirm"
+    post "appointments/:id/cancel",        to: "appointments#cancel"
+    post "appointments/:id/check_in_code", to: "appointments#check_in_code"
   end
 
   # Autoria/preview de protocolos (ADR-0009)

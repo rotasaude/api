@@ -9,7 +9,7 @@ RSpec.describe CitizenVerificationCode do
   it "check_in exige triagem e verification não aceita triagem" do
     base = { citizen: citizen, code_digest: "x", expires_at: 10.minutes.from_now }
     expect { described_class.create!(base.merge(purpose: "check_in")) }
-      .to raise_error(ActiveRecord::StatementInvalid, /ck_citizen_verification_codes_purpose_triage/)
+      .to raise_error(ActiveRecord::StatementInvalid, /ck_citizen_verification_codes_purpose_target/)
     expect(described_class.create!(base).purpose).to eq("verification")
   end
 end

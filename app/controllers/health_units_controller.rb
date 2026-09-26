@@ -43,6 +43,10 @@ class HealthUnitsController < ApplicationController
       return render json: { error: "unit_has_open_attendances" }, status: :conflict
     end
 
+    if AppointmentRequest.live_requests.where(target_unit: @unit).exists?
+      return render json: { error: "unit_has_open_requests" }, status: :conflict
+    end
+
     @unit.update!(active: false)
     render json: { unit: unit_json(@unit, include_active: true) }
   end

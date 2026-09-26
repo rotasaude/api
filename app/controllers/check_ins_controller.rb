@@ -8,7 +8,9 @@ class CheckInsController < ApplicationController
     invalid_cpf: :unprocessable_entity, invalid_code: :unprocessable_entity, code_expired: :unprocessable_entity,
     code_exhausted: :unprocessable_entity, triage_too_old: :unprocessable_entity,
     triage_not_eligible: :unprocessable_entity, invalid_unit: :unprocessable_entity,
-    reason_too_short: :unprocessable_entity, already_checked_in: :conflict
+    reason_too_short: :unprocessable_entity, already_checked_in: :conflict,
+    not_today: :unprocessable_entity, wrong_unit: :unprocessable_entity,
+    appointment_not_eligible: :unprocessable_entity
   }.freeze
 
   before_action :require_verifier
@@ -18,16 +20,20 @@ class CheckInsController < ApplicationController
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
   def lookup
-    result = Attendances::LookupForCheckIn.call(cpf: params[:cpf], code: params[:code])
+    result = Attendances::LookupForCheckIn.call(cpf: params[:cpf], code: params[:code],
+                                                health_unit_id: params[:health_unit_id])
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     citizen = result.payload[:citizen]
+    triage = result.payload[:triage]
+    appointment = result.payload[:appointment]
     render json: {
       citizen: {
         id: citizen.id, cpf_masked: citizen.cpf_masked, phone_masked: CitizenIdentity::Phone.mask(citizen.phone),
         verification_level: citizen.verification_level
       },
-      triage: triage_json(result.payload[:triage])
+      triage: (triage && triage_json(triage)),
+      appointment: (appointment && appointment_json(appointment))
     }
   end
 
@@ -41,14 +47,17 @@ class CheckInsController < ApplicationController
   end
 
   def search
-    result = Attendances::EligibleTriages.call(cpf: params[:cpf], by: Current.user)
+    result = Attendances::EligibleTriages.call(cpf: params[:cpf], by: Current.user,
+                                               health_unit_id: params[:health_unit_id])
     return render_failure(result, ERROR_STATUS) if result.failure?
 
-    render json: { triages: result.payload[:triages].map { |t| triage_json(t) } }
+    render json: { triages: result.payload[:triages].map { |t| triage_json(t) },
+                  appointments: result.payload[:appointments].map { |a| appointment_json(a) } }
   end
 
   def exception
     result = Attendances::CheckInByException.call(cpf: params[:cpf], triage_id: params[:triage_id],
+                                                   appointment_id: params[:appointment_id],
                                                    health_unit_id: params[:health_unit_id], reason: params[:reason],
                                                    by: Current.user)
     return render_failure(result, ERROR_STATUS) if result.failure?
@@ -62,12 +71,18 @@ class CheckInsController < ApplicationController
     { id: t.id, date: (t.completed_at || t.created_at).iso8601, protocol_name: t.protocol_name, priority: t.priority }
   end
 
+  def appointment_json(a)
+    root = a.request.root_triage
+    { id: a.id, scheduled_at: a.scheduled_at.iso8601, kind: a.request.kind, unit_name: a.health_unit.name,
+      protocol_name: root.protocol_name, priority: root.priority }
+  end
+
   def attendance_json(a)
     {
-      id: a.id, triage_id: a.triage_id, health_unit_id: a.health_unit_id, unit_name: a.health_unit.name,
-      status: a.status, checked_in_at: a.checked_in_at&.iso8601, check_in_method: a.check_in_method,
-      outcome: a.outcome, referral_unit_name: a.referral_unit&.name, referral_note: a.referral_note,
-      closed_at: a.closed_at&.iso8601
+      id: a.id, triage_id: a.triage_id, appointment_id: a.appointment_id, health_unit_id: a.health_unit_id,
+      unit_name: a.health_unit.name, status: a.status, checked_in_at: a.checked_in_at&.iso8601,
+      check_in_method: a.check_in_method, outcome: a.outcome, referral_unit_name: a.referral_unit&.name,
+      referral_note: a.referral_note, closed_at: a.closed_at&.iso8601
     }
   end
 end

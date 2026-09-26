@@ -6,6 +6,7 @@ RSpec.describe "Health units", type: :request do
 
   let(:admin) { user_with("admin@cidade.gov.br", "municipal_admin") }
   let(:verifier) { user_with("atendente@cidade.gov.br", "citizen_verifier") }
+  let(:doctor) { user_with("medica@cidade.gov.br", "health_professional") }
   def body = JSON.parse(response.body)
 
   def user_with(email, role)
@@ -66,7 +67,9 @@ RSpec.describe "Health units", type: :request do
     expect(body["error"]).to eq("unit_has_open_attendances")
     expect(unit.reload.active).to be(true)
 
-    sign_in_as(verifier)
+    sign_in_as(doctor)
+    json_post "/attendance/attendances/#{attendance_id}/call", health_unit_id: unit.id
+    expect(response).to have_http_status(:ok)
     json_post "/attendance/attendances/#{attendance_id}/close", outcome: "discharged"
     expect(response).to have_http_status(:ok)
 
@@ -99,5 +102,18 @@ RSpec.describe "Health units", type: :request do
 
     json_post "/attendance/units/#{active.id}/activate"
     expect(response).to have_http_status(:forbidden)
+  end
+
+  it "desativar unidade com pedido vivo: 409 unit_has_open_requests" do
+    reception = staff_with("recepcao2@cidade.gov.br", "citizen_verifier")
+    doctor = staff_with("medica@cidade.gov.br", "health_professional")
+    unit = create_unit("UBS Sul")
+    a = in_care!(waiting_attendance(Citizen.create!(cpf: "52998224725", phone: "+5541998765432"), unit: unit,
+                                    by: reception), by: doctor)
+    Attendances::Close.call(attendance: a, outcome: "return", referral_unit_id: nil, referral_note: nil, by: doctor)
+    sign_in_as(admin)
+    json_post "/attendance/units/#{unit.id}/deactivate"
+    expect(response).to have_http_status(:conflict)
+    expect(JSON.parse(response.body)["error"]).to eq("unit_has_open_requests")
   end
 end

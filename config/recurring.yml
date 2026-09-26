@@ -54,6 +54,16 @@ default: &default
     queue: urgent
     schedule: "every 5 minutes"
 
+  expire_unconfirmed_appointments:
+    class: ExpireUnconfirmedAppointmentsJob
+    queue: housekeeping
+    schedule: "every 15 minutes"
+
+  mark_no_show_appointments:
+    class: MarkNoShowAppointmentsJob
+    queue: housekeeping
+    schedule: "every 15 minutes"
+
   clear_solid_queue_finished:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     queue: housekeeping

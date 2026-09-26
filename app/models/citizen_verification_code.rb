@@ -8,6 +8,7 @@ class CitizenVerificationCode < ApplicationRecord
 
   belongs_to :citizen
   belongs_to :triage, optional: true
+  belongs_to :appointment, optional: true
 
   scope :usable, -> { where(consumed_at: nil).where("expires_at > ?", Time.current) }
   scope :for_purpose, ->(purpose) { where(purpose: purpose.to_s) }

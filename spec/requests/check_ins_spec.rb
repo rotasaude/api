@@ -51,7 +51,7 @@ RSpec.describe "Check-ins", type: :request do
     json_post "/attendance/check_ins", cpf: citizen.cpf, code: code, health_unit_id: unit.id
     expect(response).to have_http_status(:created)
     expect(body["attendance"]).to include("triage_id" => triage.id, "health_unit_id" => unit.id,
-                                          "unit_name" => unit.name, "status" => "open",
+                                          "unit_name" => unit.name, "status" => "waiting",
                                           "check_in_method" => "code")
     expect(body["verified"]).to be(false)
 
@@ -112,6 +112,46 @@ RSpec.describe "Check-ins", type: :request do
     expect(response).to have_http_status(:created)
     expect(body["attendance"]).to include("triage_id" => triage.id, "check_in_method" => "cpf_exception")
     expect(citizen.reload).to be_verification_level_declared
+  end
+
+  it "lookup com código de horário: appointment com scheduled_at, kind e priority, triage nulo" do
+    a = in_care!(waiting_attendance(citizen, unit: unit, by: verifier), by: verifier)
+    a.triage.update_columns(priority: 3)
+    req = Attendances::Close.call(attendance: a, outcome: "return", referral_unit_id: nil, referral_note: nil,
+                                  by: verifier).payload.fetch(:appointment_request)
+    appt = Appointments::Schedule.call(request: req, scheduled_at: 1.hour.from_now.iso8601, health_unit_id: unit.id,
+                                       by: verifier).payload.fetch(:appointment)
+    code = Citizens::IssueAppointmentCheckInCode.call(citizen: citizen, appointment: appt).payload.fetch(:code)
+    sign_in_as(verifier)
+
+    json_post "/attendance/check_ins/lookup", cpf: citizen.cpf, code: code, health_unit_id: unit.id
+    expect(response).to have_http_status(:ok)
+    expect(body["appointment"]).to include("id" => appt.id, "scheduled_at" => appt.scheduled_at.iso8601,
+                                           "kind" => req.kind, "priority" => 3)
+    expect(body["triage"]).to be_nil
+  end
+
+  it "exceção: search com health_unit_id devolve a chave appointments" do
+    sign_in_as(verifier)
+
+    json_post "/attendance/check_ins/search", cpf: citizen.cpf, health_unit_id: unit.id
+    expect(response).to have_http_status(:ok)
+    expect(body).to have_key("appointments")
+  end
+
+  it "exceção com appointment_id: 201" do
+    a = in_care!(waiting_attendance(citizen, unit: unit, by: verifier), by: verifier)
+    a.triage.update_columns(priority: 3)
+    req = Attendances::Close.call(attendance: a, outcome: "return", referral_unit_id: nil, referral_note: nil,
+                                  by: verifier).payload.fetch(:appointment_request)
+    appt = Appointments::Schedule.call(request: req, scheduled_at: 1.hour.from_now.iso8601, health_unit_id: unit.id,
+                                       by: verifier).payload.fetch(:appointment)
+    sign_in_as(verifier)
+
+    json_post "/attendance/check_ins/exception", cpf: citizen.cpf, appointment_id: appt.id, health_unit_id: unit.id,
+                                                 reason: "cidadão sem celular"
+    expect(response).to have_http_status(:created)
+    expect(body["attendance"]).to include("appointment_id" => appt.id, "check_in_method" => "cpf_exception")
   end
 
   it "viewer: 403" do

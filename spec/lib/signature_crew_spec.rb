@@ -14,16 +14,19 @@ RSpec.describe SignatureCrew do
 
   def user(email_prefix) = User.find_by(email_address: "#{email_prefix}@#{slug}.demo")
 
-  it "cria as quatro contas com o papel de cada uma" do
+  it "cria as seis contas com o papel de cada uma" do
     out = seed!
 
     expect(out[:accounts].map { |a| a[:email] }).to eq([
-      "autor@#{slug}.demo", "revisora1@#{slug}.demo", "revisora2@#{slug}.demo", "publisher@#{slug}.demo"
+      "autor@#{slug}.demo", "revisora1@#{slug}.demo", "revisora2@#{slug}.demo", "publisher@#{slug}.demo",
+      "profissional@#{slug}.demo", "recepcao@#{slug}.demo"
     ])
     expect(user("autor").memberships.active.pluck(:role)).to eq([ "protocol_author" ])
     expect(user("revisora1").memberships.active.pluck(:role)).to eq([ "protocol_reviewer" ])
     expect(user("revisora2").memberships.active.pluck(:role)).to eq([ "protocol_reviewer" ])
     expect(user("publisher").memberships.active.pluck(:role)).to eq([ "protocol_publisher" ])
+    expect(user("profissional").memberships.active.pluck(:role)).to eq([ "health_professional" ])
+    expect(user("recepcao").memberships.active.pluck(:role)).to eq([ "citizen_verifier" ])
   end
 
   it "deixa cada conta com TOTP pronto e com a senha de dev" do
