@@ -3,6 +3,10 @@
 # mesma transação.
 module Attendances
   class CheckIn
+    # O horário deixou de estar confirmado entre a leitura sem lock e o lock
+    # (ex.: o cidadão cancelou): o check-in inteiro desfaz.
+    class AppointmentNotEligible < StandardError; end
+
     def self.call(cpf:, code:, health_unit_id:, document_checked:, by:)
       unit = HealthUnit.active_units.find_by(id: health_unit_id)
       return Result.fail(:invalid_unit) unless unit
@@ -38,11 +42,17 @@ module Attendances
       result
     rescue ActiveRecord::RecordNotUnique
       Result.fail(:already_checked_in)
+    rescue AppointmentNotEligible
+      Result.fail(:appointment_not_eligible)
     end
 
     # O horário virou atendimento: fecha o horário e o pedido (ADR 0019).
+    # Reconfere o status sob lock; levanta AppointmentNotEligible para o
+    # chamador desfazer a transação.
     def self.fulfil(appointment)
       appointment.lock!
+      raise AppointmentNotEligible unless appointment.status == "confirmed"
+
       appointment.update!(status: "checked_in", ended_at: Time.current)
       AppointmentRequests::Lifecycle.close!(appointment.request, reason: "fulfilled")
       DomainEvents.publish("appointment.checked_in", appointment_id: appointment.id,

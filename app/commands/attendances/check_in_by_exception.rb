@@ -42,6 +42,8 @@ module Attendances
       Result.ok(attendance: attendance)
     rescue ActiveRecord::RecordNotUnique
       Result.fail(:triage_not_eligible)
+    rescue CheckIn::AppointmentNotEligible
+      Result.fail(:appointment_not_eligible)
     end
   end
 end

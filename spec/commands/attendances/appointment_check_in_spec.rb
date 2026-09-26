@@ -88,4 +88,47 @@ RSpec.describe "Check-in de horário" do
         .to eq(:appointment_not_eligible)
     end
   end
+
+  context "corrida: o cidadão cancela entre a checagem sem lock e o lock" do
+    def cancel_elsewhere(appt)
+      r = Appointments::CancelByCitizen.call(appointment: Appointment.find(appt.id), reason: "não vou conseguir ir")
+      expect(r).to be_ok
+    end
+
+    it "por código: falha com appointment_not_eligible, não cria atendimento nem consome o código" do
+      travel_to(Time.zone.parse("2026-10-02 09:00")) do
+        appt = confirmed_today
+        code = Citizens::IssueAppointmentCheckInCode.call(citizen: citizen, appointment: appt).payload.fetch(:code)
+        vcode = CitizenVerificationCode.find_by!(appointment_id: appt.id)
+        allow(Citizens::VerificationCodeMatch).to receive(:call).and_wrap_original do |m, **kw|
+          m.call(**kw).tap { cancel_elsewhere(appt) }
+        end
+
+        r = Attendances::CheckIn.call(cpf: citizen.cpf, code: code, health_unit_id: unit.id, document_checked: false,
+                                      by: reception)
+        expect(r.reason).to eq(:appointment_not_eligible)
+        expect(Attendance.where(appointment_id: appt.id)).to be_empty
+        expect(vcode.reload.consumed_at).to be_nil
+        # O cancelamento simulado roda na mesma conexão, dentro da transação do
+        # check-in, e desfaz junto; em produção ele já teria sido commitado.
+        expect(DomainEvent.where(name: "appointment.checked_in").count).to eq(0)
+      end
+    end
+
+    it "por exceção: falha com appointment_not_eligible e não cria atendimento" do
+      travel_to(Time.zone.parse("2026-10-02 09:00")) do
+        appt = confirmed_today
+        stale = Appointment.find(appt.id)
+        cancel_elsewhere(appt)
+        scope = instance_double(ActiveRecord::Relation, find_by: stale)
+        allow(Attendances::AppointmentCheckInEligibility).to receive(:eligible_for).and_return(scope)
+
+        r = Attendances::CheckInByException.call(cpf: citizen.cpf, appointment_id: appt.id, health_unit_id: unit.id,
+                                                 reason: "chegou sem o celular", by: reception)
+        expect(r.reason).to eq(:appointment_not_eligible)
+        expect(Attendance.where(appointment_id: appt.id)).to be_empty
+        expect(appt.reload.status).to eq("cancelled_by_citizen")
+      end
+    end
+  end
 end
