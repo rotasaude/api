@@ -28,7 +28,8 @@
 # Step-up de MFA é do chamador.
 #
 # Result.ok(protocol_definition:) | Result.fail(:city_missing|:reason_required|
-#   :not_found|:forbidden|:not_revertible|:no_previous_activation|:invalid)
+#   :not_found|:forbidden|:current_version_changed|:not_revertible|
+#   :no_previous_activation|:invalid)
 module Protocols
   module RevertActivation
     def self.call(name:, by:, reason:, expected_version: nil, correlation_id: nil)
@@ -49,7 +50,7 @@ module Protocols
       # sido ativada no meio do caminho, Protocols::Activate demove esta para
       # `published` antes (o índice único parcial em status='active' não
       # admite duas), de modo que o `unless current.status == "active"` que já
-      # existe lá embaixo dispara primeiro.
+      # existe lá embaixo dispara primeiro — com esta mesma recusa.
       #
       # `expected_version` é OPCIONAL porque o rollout tem três passos (spec
       # 2026-09-25 §5): o api aceita, os clientes passam a mandar, e só então
@@ -104,8 +105,17 @@ module Protocols
         # o estado real assim que trava.
         [ current, target ].sort_by(&:id).each(&:lock!)
 
+        # A mesma corrida que o `expected_version` pega lá em cima, só que
+        # comitada depois da leitura rápida: para quem clicou é o mesmo evento,
+        # então é a mesma recusa (409, a tela relê e nomeia a versão). A outra
+        # transação já comitou — é por isso que este ramo disparou —, então a
+        # releitura enxerga a versão que passou a valer; pode não haver
+        # nenhuma (um Retire), e a mensagem degrada em vez de interpolar nada.
         unless current.status == "active"
-          failure = Result.fail(:not_revertible, message: "a versão vigente mudou (está #{current.status})")
+          now_active = ProtocolDefinition.find_by(name: name, status: "active")
+          failure = Result.fail(:current_version_changed,
+                                message: now_active ? "a versão em uso agora é a #{now_active.version}" :
+                                                      "nenhuma versão está em uso agora")
           raise ActiveRecord::Rollback
         end
 

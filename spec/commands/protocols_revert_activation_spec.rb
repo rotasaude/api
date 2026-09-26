@@ -163,6 +163,60 @@ RSpec.describe Protocols::RevertActivation do
       expect(version(3).status).to eq("active")
     end
 
+    # A MESMA corrida, alguns microssegundos depois: a ativação da v3 comita
+    # entre a leitura rápida (que ainda viu a v2 ativa e passou pelo token) e
+    # o lock. Para quem clicou é o mesmo evento, então tem de ser a mesma
+    # recusa — não um :not_revertible genérico que a tela não relê.
+    # A ativação concorrente roda DENTRO do primeiro lock!, antes do lock de
+    # verdade: é o único jeito de ela cair depois da leitura rápida.
+    it "refuses with current_version_changed when the activation lands between the fast read and the lock" do
+      activate_signed!(1)
+      activate_signed!(2)
+      ProtocolDefinition.create!(name: "dengue", version: 3, status: "published",
+                                 definition: protocol_definition_hash(version: 3))
+      sign!(version(3), purpose: "activation", by: ana)
+      sign!(version(3), purpose: "activation", by: bia)
+
+      raced = false
+      allow_any_instance_of(ProtocolDefinition).to receive(:lock!).and_wrap_original do |original, *args|
+        unless raced
+          raced = true
+          expect(Protocols::Activate.call(version: 3, name: "dengue", by: publisher).ok?).to be(true)
+        end
+        original.call(*args)
+      end
+
+      result = described_class.call(name: "dengue", by: publisher, reason: "motivo", expected_version: 2)
+
+      expect(raced).to be(true)
+      expect(result.reason).to eq(:current_version_changed)
+      expect(result.message).to eq("a versão em uso agora é a 3")
+      # Sem asserção sobre o estado final: a ativação "concorrente" rodou
+      # dentro da transação da reversão e o Rollback a desfez junto. Numa
+      # corrida real ela é outra transação, já comitada.
+    end
+
+    # Janela em que nenhuma versão está ativa (um Retire da vigente comitou
+    # entre a leitura e o lock): a mensagem degrada em vez de interpolar nada.
+    it "degrades the message when no version is active under the lock" do
+      activate_signed!(1)
+      activate_signed!(2)
+
+      raced = false
+      allow_any_instance_of(ProtocolDefinition).to receive(:lock!).and_wrap_original do |original, *args|
+        unless raced
+          raced = true
+          ProtocolDefinition.where(name: "dengue", status: "active").update_all(status: "published")
+        end
+        original.call(*args)
+      end
+
+      result = described_class.call(name: "dengue", by: publisher, reason: "motivo", expected_version: 2)
+
+      expect(result.reason).to eq(:current_version_changed)
+      expect(result.message).to eq("nenhuma versão está em uso agora")
+    end
+
     # Review Focus 1: é o que permite o rollout em três passos.
     it "reverts exactly as before when no token is sent" do
       activate_signed!(1)
