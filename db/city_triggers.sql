@@ -226,3 +226,36 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- report_snapshots (ADR 0010): o relatório é PROVA do que foi respondido, sob
+-- a versão exata do protocolo — nunca muda depois de criado. Continua
+-- permitido o que o próprio app faz: reassinar (signature, CityReports::Resign
+-- na rotação de chave), expirar o link (expires_at — "corrigir" um relatório é
+-- expirar o token e gerar outro; updated_at acompanha um update pelo modelo) e
+-- apagar (PurgeExpiredReportsJob). TRUNCATE fica de fora de propósito: esvaziar
+-- a tabela é uma purga, que DELETE já pode fazer.
+CREATE OR REPLACE FUNCTION rota_report_snapshot_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.triage_id IS DISTINCT FROM OLD.triage_id
+     OR NEW.protocol_definition_id IS DISTINCT FROM OLD.protocol_definition_id
+     OR NEW.outcome IS DISTINCT FROM OLD.outcome
+     OR NEW.payload IS DISTINCT FROM OLD.payload
+     OR NEW.token IS DISTINCT FROM OLD.token
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'report_snapshots is immutable: only signature and expires_at may change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.report_snapshots') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS report_snapshots_immutable ON report_snapshots';
+    EXECUTE 'CREATE TRIGGER report_snapshots_immutable
+      BEFORE UPDATE ON report_snapshots
+      FOR EACH ROW EXECUTE FUNCTION rota_report_snapshot_guard()';
+  END IF;
+END
+$do$;
