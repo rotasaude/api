@@ -28,9 +28,10 @@ module Protocols
     attr_reader :definition
 
     def schema_errors
-      # JSON Schema real fica em packages/protocols/schema.json (ADR-0009).
-      # Aqui validamos as obrigações mínimas para evitar acoplamento ao JSON
-      # Schema runtime durante o boot — o lint completo roda no script offline.
+      # JSON Schema real: config/protocols/schema.json, cópia de contracts/protocols/schema.json (ADR-0009).
+      # Aqui validamos só as obrigações mínimas, porque este validador roda em
+      # todo save do ProtocolDefinition. A validação completa contra o schema
+      # roda no Protocols::Gate (publicar e preview), via Validation::Schema.
       errors = []
       errors << "missing :name" unless definition["name"].is_a?(String)
       errors << "missing :version" unless definition["version"].is_a?(Integer)
