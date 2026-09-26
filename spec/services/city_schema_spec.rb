@@ -63,7 +63,7 @@ RSpec.describe CitySchema do
     names = schema_fingerprint("rota_saude_test_city_b")[:triggers].map { |(_table, tgname, _def)| tgname }
 
     expect(names).to include("protocol_contributions_append_only", "protocol_signatures_append_only",
-                             "protocol_activations_append_only")
+                             "protocol_activations_append_only", "report_snapshots_immutable")
   end
 
   it "backfills versions below the highest recorded one and never records a higher one" do

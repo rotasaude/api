@@ -1,5 +1,10 @@
 # GET /r/:token — endpoint público do relatório congelado. Ver ADR-0010.
-# Verifica HMAC antes de qualquer query indexada — barra varredura.
+# Quem barra varredura é o token: 256 bits aleatórios (ReportSnapshot.mint_token),
+# imprevisíveis. A ordem real é: lookup pelo índice único de `token`, DEPOIS a
+# comparação em tempo constante do HMAC guardado na linha com o HMAC do token
+# sob a chave da cidade (e a legada, na transição), e a checagem de
+# expires_at — ver ReportSnapshot.find_by_signed_token. Não há HMAC antes da
+# query: a URL leva só o token, a assinatura mora no banco.
 #
 # banco da cidade do host (CityResolution), então um token só vale no host da
 # própria cidade — o de outra cidade não existe ali. O link enviado ao cidadão
