@@ -27,14 +27,28 @@ module Maintenance
       argument :name, String, required: true
       argument :reason, String, required: true
       argument :code, String, required: true, description: "TOTP do momento"
+      # ANULÁVEL neste passo, de propósito: um argumento não-anulável faria o
+      # console em produção — que ainda não manda nada — quebrar na validação
+      # no instante em que este api subisse. Vira obrigatório no terceiro passo
+      # do rollout (spec 2026-09-25 §5), com issue própria. O frontend não pôde
+      # ir primeiro porque o GraphQL recusa argumento não declarado.
+      argument :expected_version, Integer, required: false,
+               description: "A versão que a tela via como vigente. Divergiu, a reversão é recusada."
 
-      def resolve(city_slug:, name:, reason:, code:)
+      def resolve(city_slug:, name:, reason:, code:, expected_version: nil)
         in_city(city_slug: city_slug, step_up_code: code, event: "maintenance.protocol.reverted", module_name: "protocol",
-                rejection_path: ->(result) { result.reason == :reason_required ? "reason" : "name" },
+                rejection_path: lambda { |result|
+                  case result.reason
+                  when :reason_required then "reason"
+                  when :current_version_changed then "expectedVersion"
+                  else "name"
+                  end
+                },
                 protocol_key: name, reason_given: !reason.to_s.strip.empty?,
                 changed_fields: [ "status" ],
                 payload_from_result: ->(r) { { reverted_to_version: r.payload[:protocol_definition].version } }) do |actor, correlation_id|
-          Protocols::RevertActivation.call(name: name, reason: reason, by: actor, correlation_id: correlation_id)
+          Protocols::RevertActivation.call(name: name, reason: reason, by: actor,
+                                           expected_version: expected_version, correlation_id: correlation_id)
         end
       end
     end

@@ -506,8 +506,8 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
 
     def revert_mutation
       <<~GQL
-        mutation($citySlug: String!, $name: String!, $reason: String!, $code: String!) {
-          revertProtocolActivation(citySlug: $citySlug, name: $name, reason: $reason, code: $code) {
+        mutation($citySlug: String!, $name: String!, $reason: String!, $code: String!, $expectedVersion: Int) {
+          revertProtocolActivation(citySlug: $citySlug, name: $name, reason: $reason, code: $code, expectedVersion: $expectedVersion) {
             ok
             revertedToVersion
             errors { path message }
@@ -516,8 +516,9 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
       GQL
     end
 
-    def revert!(name: "dengue", reason:, code:, city_slug: city.slug, headers: browser)
-      gql!(revert_mutation, headers: headers, citySlug: city_slug, name: name, reason: reason, code: code)
+    def revert!(name: "dengue", reason:, code:, expected_version: nil, city_slug: city.slug, headers: browser)
+      gql!(revert_mutation, headers: headers, citySlug: city_slug, name: name, reason: reason, code: code,
+                            expectedVersion: expected_version)
     end
 
     def revert_payload = json.dig("data", "revertProtocolActivation")
@@ -660,6 +661,29 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
     end
 
     describe "revertProtocolActivation" do
+      it "refuses when the expected version is no longer the active one, pointing at the argument" do
+        legacy_active_version!
+        publish_and_activate_v2!
+
+        with_fresh_totp { |code| revert!(reason: "motivo qualquer", code: code, expected_version: 99) }
+
+        expect(revert_payload["ok"]).to be(false)
+        expect(revert_payload["errors"].map { |e| e["path"] }).to eq([ "expectedVersion" ])
+        expect(version_row(2).status).to eq("active")
+      end
+
+      # O argumento é ANULÁVEL neste passo: não-anulável quebraria o console em
+      # produção — que ainda não manda nada — na validação, no instante do
+      # deploy do api.
+      it "accepts the mutation without the argument, which is what keeps the old console working" do
+        legacy_active_version!
+        publish_and_activate_v2!
+
+        with_fresh_totp { |code| revert!(reason: "motivo qualquer", code: code) }
+
+        expect(revert_payload["ok"]).to be(true)
+      end
+
       it "responds with the version that took effect" do
         legacy_active_version!
         publish_and_activate_v2!

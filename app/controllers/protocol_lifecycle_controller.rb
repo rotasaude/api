@@ -42,6 +42,7 @@ class ProtocolLifecycleController < ApplicationController
   def revert
     render_protocol_result(Protocols::RevertActivation.call(name: protocol_name,
                                                             reason: optional_scalar_param(:reason).to_s,
+                                                            expected_version: optional_scalar_param(:expected_version),
                                                             by: Current.user))
   end
 

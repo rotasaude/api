@@ -309,6 +309,39 @@ RSpec.describe "Protocol lifecycle", type: :request do
       expect(statuses).to eq(%w[active published in_review])
     end
 
+    # O token diz o que a TELA via. Divergiu, a reversão é recusada com 409 —
+    # conflito de concorrência, não corpo inválido (que é o 422 de todo o
+    # resto). É esse código que faz a tela saber que deve reler a lista em vez
+    # de repetir a frase genérica.
+    it "responde 409 quando a versão esperada não é mais a vigente" do
+      ready_protocols!
+      sign_in_stepped_up!(admin)
+      post "/protocols/2/activate", params: { name: "dengue" }, as: :json
+      expect(statuses).to eq(%w[published active in_review])
+
+      sign_in_stepped_up!(admin)
+      post "/protocols/revert",
+           params: { name: "dengue", reason: "v2 erra a prioridade", expected_version: "99" }, as: :json
+
+      expect(response).to have_http_status(:conflict)
+      expect(json["error"]).to eq("current_version_changed")
+      expect(json["message"]).to include("2")
+      expect(statuses).to eq(%w[published active in_review])
+    end
+
+    it "reverter com o token certo reverte" do
+      ready_protocols!
+      sign_in_stepped_up!(admin)
+      post "/protocols/2/activate", params: { name: "dengue" }, as: :json
+
+      sign_in_stepped_up!(admin)
+      post "/protocols/revert",
+           params: { name: "dengue", reason: "v2 erra a prioridade", expected_version: "2" }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(statuses).to eq(%w[active published in_review])
+    end
+
     it "reverter uma reversão responde 422 not_revertible" do
       ready_protocols!
       sign_in_stepped_up!(publisher)
