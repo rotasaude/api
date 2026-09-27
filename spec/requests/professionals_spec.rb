@@ -24,11 +24,11 @@ RSpec.describe "Professionals", type: :request do
                                               "cns_masked" => "*** **** **** 0005")
     end
 
-    it "usuário sem o papel: 422 missing_role" do
+    it "usuário sem o papel: 422 user_missing_role" do
       sign_in_as(admin)
       json_post "/professionals", attrs.merge(user_id: admin.id)
       expect(response).to have_http_status(:unprocessable_entity)
-      expect(json["error"]).to eq("missing_role")
+      expect(json["error"]).to eq("user_missing_role")
     end
 
     it "campo inválido: 422 invalid com fields" do

@@ -30,7 +30,7 @@ RSpec.describe "Invariantes dos profissionais (ADR 0021)", type: :request do
 
   # Mutação: tirar a checagem de papel de Professionals::Create.
   it "perfil só para quem tem o papel" do
-    expect(Professionals::Create.call(user_id: reception.id, attrs: attrs, by: admin).reason).to eq(:missing_role)
+    expect(Professionals::Create.call(user_id: reception.id, attrs: attrs, by: admin).reason).to eq(:user_missing_role)
   end
 
   # Mutação: desligar professional_links_guard.

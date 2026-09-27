@@ -11,7 +11,7 @@ module Professionals
     def self.call(user_id:, attrs:, by:)
       user = User.find_by(id: user_id)
       return Result.fail(:not_found) unless user
-      return Result.fail(:missing_role) unless user.active? && user.has_role?("health_professional")
+      return Result.fail(:user_missing_role) unless user.active? && user.has_role?("health_professional")
       return Result.fail(:already_exists) if Professional.exists?(user_id: user.id)
 
       professional = Professional.new(attrs.to_h.stringify_keys.slice(*Professional::FIELDS).merge("user" => user))

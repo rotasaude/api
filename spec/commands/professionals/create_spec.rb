@@ -20,15 +20,15 @@ RSpec.describe Professionals::Create do
     expect(event.payload).to eq("professional_id" => professional.id, "user_id" => user.id, "by_user_id" => admin.id)
   end
 
-  it "usuário sem o papel ativo: missing_role" do
+  it "usuário sem o papel ativo: user_missing_role" do
     plain = staff_with("viewer@cidade.gov.br", "viewer")
-    expect(described_class.call(user_id: plain.id, attrs: attrs, by: admin).reason).to eq(:missing_role)
+    expect(described_class.call(user_id: plain.id, attrs: attrs, by: admin).reason).to eq(:user_missing_role)
     expect(Professional.count).to eq(0)
   end
 
-  it "papel revogado: missing_role" do
+  it "papel revogado: user_missing_role" do
     user.memberships.sole.revoke!
-    expect(described_class.call(user_id: user.id, attrs: attrs, by: admin).reason).to eq(:missing_role)
+    expect(described_class.call(user_id: user.id, attrs: attrs, by: admin).reason).to eq(:user_missing_role)
   end
 
   it "usuário inexistente: not_found" do

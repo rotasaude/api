@@ -8,7 +8,7 @@ class ProfessionalsController < ApplicationController
   wrap_parameters false
 
   ERROR_STATUS = {
-    not_found: :not_found, missing_role: :unprocessable_entity, already_exists: :conflict,
+    not_found: :not_found, user_missing_role: :unprocessable_entity, already_exists: :conflict,
     invalid: :unprocessable_entity, cns_taken: :conflict, registration_taken: :conflict,
     field_not_editable: :unprocessable_entity, council_in_use: :unprocessable_entity
   }.freeze
