@@ -19,7 +19,8 @@ module AttendanceAccess
   end
 
   def require_professional
-    forbid unless CitizenVerificationPolicy.new(Current.user, nil).care?
+    # ADR 0021: a recusa diz o que falta. O vínculo é conferido no comando.
+    forbid("missing_role") unless CitizenVerificationPolicy.new(Current.user, nil).care?
   end
 
   def require_attendance_staff
@@ -27,8 +28,8 @@ module AttendanceAccess
     forbid unless policy.verify? || policy.care?
   end
 
-  def forbid
-    render json: { error: "forbidden" }, status: :forbidden
+  def forbid(reason = "forbidden")
+    render json: { error: reason }, status: :forbidden
   end
 
   def render_failure(result, status_map)

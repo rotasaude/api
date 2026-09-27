@@ -7,7 +7,8 @@ class AttendancesController < ApplicationController
   ERROR_STATUS = {
     invalid_outcome: :unprocessable_entity, referral_required: :unprocessable_entity,
     invalid_unit: :unprocessable_entity, already_closed: :conflict, already_called: :conflict,
-    wrong_unit: :unprocessable_entity, invalid_transition: :unprocessable_entity, queue_empty: :not_found
+    wrong_unit: :unprocessable_entity, invalid_transition: :unprocessable_entity, queue_empty: :not_found,
+    missing_role: :forbidden, missing_link: :forbidden
   }.freeze
 
   before_action :require_attendance_staff, only: %i[queue close]
@@ -41,7 +42,7 @@ class AttendancesController < ApplicationController
   def close
     attendance = Attendance.find_by(id: params[:id])
     return render json: { error: "not_found" }, status: :not_found unless attendance
-    return forbid unless params[:outcome].to_s == "left" || CitizenVerificationPolicy.new(Current.user, nil).care?
+    return forbid("missing_role") unless params[:outcome].to_s == "left" || CitizenVerificationPolicy.new(Current.user, nil).care?
 
     result = Attendances::Close.call(attendance: attendance, outcome: params[:outcome],
                                      referral_unit_id: params[:referral_unit_id],
@@ -59,7 +60,7 @@ class AttendancesController < ApplicationController
       id: a.id, cpf_masked: a.citizen.cpf_masked, checked_in_at: a.checked_in_at&.iso8601,
       protocol_name: a.root_triage&.protocol_name, priority: a.priority,
       source: a.appointment_id ? "appointment" : "triage", appointment_time: a.appointment&.scheduled_at&.iso8601,
-      called_at: a.called_at&.iso8601, called_by_name: a.called_by_user&.email_address
+      called_at: a.called_at&.iso8601, called_by_name: staff_name(a.called_by_user)
     }
   end
 
@@ -68,7 +69,8 @@ class AttendancesController < ApplicationController
       id: a.id, triage_id: a.triage_id, appointment_id: a.appointment_id, health_unit_id: a.health_unit_id,
       unit_name: a.health_unit.name, status: a.status, checked_in_at: a.checked_in_at&.iso8601,
       check_in_method: a.check_in_method, called_at: a.called_at&.iso8601, outcome: a.outcome,
-      referral_unit_name: a.referral_unit&.name, referral_note: a.referral_note, closed_at: a.closed_at&.iso8601
+      referral_unit_name: a.referral_unit&.name, referral_note: a.referral_note, closed_at: a.closed_at&.iso8601,
+      called_by_name: staff_name(a.called_by_user), closed_by_name: staff_name(a.closed_by_user)
     }
   end
 
@@ -76,5 +78,13 @@ class AttendancesController < ApplicationController
     return nil unless r
 
     { id: r.id, kind: r.kind, target_unit_name: r.target_unit.name, status: r.status }
+  end
+
+  # F-10.5: quem chamou/fechou aparece pelo nome profissional; sem perfil,
+  # pelo e-mail (recepção, ou profissional ainda sem cadastro).
+  def staff_name(user)
+    return nil unless user
+
+    user.professional&.professional_name || user.email_address
   end
 end
