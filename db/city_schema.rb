@@ -10,8 +10,9 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_27_300001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_28_000001) do
   # These are extensions that must be enabled in order to support this database
+  enable_extension "btree_gist"
   enable_extension "citext"
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -355,6 +356,64 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_27_300001) do
     t.index ["processed_at"], name: "index_processed_events_on_processed_at"
   end
 
+  create_table "professional_links", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cbo_code", null: false
+    t.datetime "created_at", null: false
+    t.datetime "ended_at"
+    t.uuid "ended_by_user_id"
+    t.uuid "health_unit_id", null: false
+    t.uuid "professional_id", null: false
+    t.datetime "started_at", null: false
+    t.uuid "started_by_user_id", null: false
+    t.index ["ended_by_user_id"], name: "index_professional_links_on_ended_by_user_id"
+    t.index ["health_unit_id"], name: "index_professional_links_on_health_unit_id"
+    t.index ["professional_id", "health_unit_id", "cbo_code"], name: "idx_professional_links_one_active", unique: true, where: "(ended_at IS NULL)"
+    t.index ["professional_id"], name: "index_professional_links_on_professional_id"
+    t.index ["started_by_user_id"], name: "index_professional_links_on_started_by_user_id"
+    t.check_constraint "(ended_at IS NULL) = (ended_by_user_id IS NULL)", name: "ck_professional_links_ending"
+    t.check_constraint "cbo_code::text ~ '^[0-9]{6}$'::text", name: "ck_professional_links_cbo_code"
+    t.check_constraint "ended_at IS NULL OR ended_at >= started_at", name: "ck_professional_links_order"
+  end
+
+  create_table "professional_shifts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cancel_reason"
+    t.datetime "cancelled_at"
+    t.uuid "cancelled_by_user_id"
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.datetime "ends_at", null: false
+    t.uuid "professional_id", null: false
+    t.uuid "professional_link_id", null: false
+    t.datetime "starts_at", null: false
+    t.index ["cancelled_by_user_id"], name: "index_professional_shifts_on_cancelled_by_user_id"
+    t.index ["created_by_user_id"], name: "index_professional_shifts_on_created_by_user_id"
+    t.index ["professional_id"], name: "index_professional_shifts_on_professional_id"
+    t.index ["professional_link_id", "starts_at"], name: "idx_professional_shifts_link_start"
+    t.index ["professional_link_id"], name: "index_professional_shifts_on_professional_link_id"
+    t.check_constraint "cancelled_at IS NULL AND cancelled_by_user_id IS NULL AND cancel_reason IS NULL OR cancelled_at IS NOT NULL AND cancelled_by_user_id IS NOT NULL AND cancel_reason IS NOT NULL AND length(btrim(cancel_reason::text)) > 0", name: "ck_professional_shifts_cancelling"
+    t.check_constraint "ends_at > starts_at AND (ends_at - starts_at) <= 'PT24H'::interval", name: "ck_professional_shifts_window"
+    t.exclusion_constraint "professional_id WITH =, tsrange(starts_at, ends_at) WITH &&", where: "cancelled_at IS NULL", using: :gist, name: "excl_professional_shifts_overlap"
+  end
+
+  create_table "professionals", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cns", null: false
+    t.string "contact_email"
+    t.string "council", null: false
+    t.string "council_state", null: false
+    t.datetime "created_at", null: false
+    t.string "phone"
+    t.string "professional_name", null: false
+    t.string "registration_number", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "user_id", null: false
+    t.index ["cns"], name: "idx_professionals_cns", unique: true
+    t.index ["council", "council_state", "registration_number"], name: "idx_professionals_registration", unique: true
+    t.index ["user_id"], name: "index_professionals_on_user_id", unique: true
+    t.check_constraint "council_state::text ~ '^[A-Z]{2}$'::text", name: "ck_professionals_council_state"
+    t.check_constraint "length(btrim(professional_name::text)) > 0", name: "ck_professionals_name"
+    t.check_constraint "registration_number::text ~ '^[0-9]{1,10}$'::text", name: "ck_professionals_registration_number"
+  end
+
   create_table "protocol_activations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "actor_id"
     t.string "actor_kind", null: false
@@ -625,6 +684,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_27_300001) do
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"
+  add_foreign_key "professional_links", "health_units"
+  add_foreign_key "professional_links", "professionals"
+  add_foreign_key "professional_links", "users", column: "ended_by_user_id"
+  add_foreign_key "professional_links", "users", column: "started_by_user_id"
+  add_foreign_key "professional_shifts", "professional_links"
+  add_foreign_key "professional_shifts", "professionals"
+  add_foreign_key "professional_shifts", "users", column: "cancelled_by_user_id"
+  add_foreign_key "professional_shifts", "users", column: "created_by_user_id"
+  add_foreign_key "professionals", "users"
   add_foreign_key "protocol_activations", "protocol_definitions"
   add_foreign_key "protocol_contributions", "protocol_definitions"
   add_foreign_key "protocol_signatures", "protocol_definitions"

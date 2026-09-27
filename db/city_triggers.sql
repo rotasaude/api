@@ -439,3 +439,81 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- professional_links (ADR 0021; spec 2026-09-27-module-10-professionals §3.2):
+-- só acréscimo, exceto encerrar UMA vez. Quem, onde, com qual CBO e desde
+-- quando nunca mudam; o vínculo nunca é apagado. Sem trigger de TRUNCATE,
+-- como em memberships: a limpeza das suítes/restauração usa TRUNCATE/--clean.
+CREATE OR REPLACE FUNCTION rota_professional_link_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'professional_links is append-only: DELETE refused';
+  END IF;
+  IF OLD.ended_at IS NOT NULL THEN
+    RAISE EXCEPTION 'professional_links: already ended';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.professional_id IS DISTINCT FROM OLD.professional_id
+     OR NEW.health_unit_id IS DISTINCT FROM OLD.health_unit_id
+     OR NEW.cbo_code IS DISTINCT FROM OLD.cbo_code
+     OR NEW.started_at IS DISTINCT FROM OLD.started_at
+     OR NEW.started_by_user_id IS DISTINCT FROM OLD.started_by_user_id
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'professional_links: only the ending columns may change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- professional_shifts (§3.3): só acréscimo, exceto cancelar UMA vez. No
+-- INSERT, o profissional tem de ser o do vínculo (a coluna existe só para a
+-- EXCLUDE) e o vínculo tem de estar ativo — "não existe turno em vínculo
+-- encerrado" fica garantido pelo banco, não só pelo comando.
+CREATE OR REPLACE FUNCTION rota_professional_shift_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NOT EXISTS (SELECT 1 FROM professional_links l
+                   WHERE l.id = NEW.professional_link_id AND l.professional_id = NEW.professional_id) THEN
+      RAISE EXCEPTION 'professional_shifts: professional_id must match the link';
+    END IF;
+    IF EXISTS (SELECT 1 FROM professional_links l
+               WHERE l.id = NEW.professional_link_id AND l.ended_at IS NOT NULL) THEN
+      RAISE EXCEPTION 'professional_shifts: link is ended';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'professional_shifts is append-only: DELETE refused';
+  END IF;
+  IF OLD.cancelled_at IS NOT NULL THEN
+    RAISE EXCEPTION 'professional_shifts: already cancelled';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.professional_link_id IS DISTINCT FROM OLD.professional_link_id
+     OR NEW.professional_id IS DISTINCT FROM OLD.professional_id
+     OR NEW.starts_at IS DISTINCT FROM OLD.starts_at
+     OR NEW.ends_at IS DISTINCT FROM OLD.ends_at
+     OR NEW.created_by_user_id IS DISTINCT FROM OLD.created_by_user_id
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'professional_shifts: only the cancellation columns may change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.professional_links') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS professional_links_guard ON professional_links';
+    EXECUTE 'CREATE TRIGGER professional_links_guard
+      BEFORE UPDATE OR DELETE ON professional_links
+      FOR EACH ROW EXECUTE FUNCTION rota_professional_link_guard()';
+  END IF;
+  IF to_regclass('public.professional_shifts') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS professional_shifts_guard ON professional_shifts';
+    EXECUTE 'CREATE TRIGGER professional_shifts_guard
+      BEFORE INSERT OR UPDATE OR DELETE ON professional_shifts
+      FOR EACH ROW EXECUTE FUNCTION rota_professional_shift_guard()';
+  END IF;
+END
+$do$;
