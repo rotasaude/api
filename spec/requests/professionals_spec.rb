@@ -76,6 +76,20 @@ RSpec.describe "Professionals", type: :request do
       json_post "/professionals/#{p.id}", user_id: admin.id
       expect(json).to include("error" => "field_not_editable", "fields" => [ "user_id" ])
     end
+
+    it "conselho em uso por vínculo ativo (D9): 422 council_in_use" do
+      p = create_profile!
+      unit = create_unit
+      Current.set(city: TEST_CITY_A) do
+        ProfessionalLink.create!(professional: p, health_unit: unit, cbo_code: "225125", started_at: Time.current,
+                                 started_by_user: admin)
+      end
+      sign_in_as(admin)
+      json_post "/professionals/#{p.id}", council: "COREN"
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json["error"]).to eq("council_in_use")
+      expect(p.reload.council).to eq("CRM")
+    end
   end
 
   describe "GET /professionals/pending" do

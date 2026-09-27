@@ -47,4 +47,40 @@ RSpec.describe Professionals::UpdateProfile do
     expect(result.reason).to eq(:invalid)
     expect(professional.reload.contact_email).to be_nil
   end
+
+  describe "trocar o conselho com vínculo ativo cujo CBO exige o conselho antigo (D9)" do
+    let(:unit) { create_unit }
+
+    it "vínculo ativo com CBO que exige o conselho antigo: council_in_use e nada muda" do
+      ProfessionalLink.create!(professional: professional, health_unit: unit, cbo_code: "225125",
+                               started_at: Time.current, started_by_user: admin)
+
+      result = described_class.call(professional: professional, attrs: { "council" => "COREN" }, by: admin)
+
+      expect(result.reason).to eq(:council_in_use)
+      expect(result.details[:cbo_codes]).to eq(%w[225125])
+      expect(professional.reload.council).to eq("CRM")
+    end
+
+    it "só um vínculo já encerrado com aquele CBO: permitido" do
+      link = ProfessionalLink.create!(professional: professional, health_unit: unit, cbo_code: "225125",
+                                      started_at: Time.current, started_by_user: admin)
+      link.update!(ended_at: Time.current, ended_by_user: admin)
+
+      result = described_class.call(professional: professional, attrs: { "council" => "COREN" }, by: admin)
+
+      expect(result).to be_ok
+      expect(professional.reload.council).to eq("COREN")
+    end
+
+    it "vínculo ativo com CBO sem conselho exigido: permitido" do
+      ProfessionalLink.create!(professional: professional, health_unit: unit, cbo_code: "515105",
+                               started_at: Time.current, started_by_user: admin)
+
+      result = described_class.call(professional: professional, attrs: { "council" => "COREN" }, by: admin)
+
+      expect(result).to be_ok
+      expect(professional.reload.council).to eq("COREN")
+    end
+  end
 end

@@ -18,6 +18,14 @@ module Professionals
         return Result.fail(:invalid, details: { fields: fields })
       end
 
+      if changed.include?("council")
+        blocking_codes = blocking_cbo_codes(professional)
+        if blocking_codes.any?
+          professional.restore_attributes
+          return Result.fail(:council_in_use, details: { cbo_codes: blocking_codes })
+        end
+      end
+
       ApplicationRecord.transaction do
         professional.save!
         DomainEvents.publish("professional.profile_updated", professional_id: professional.id, fields: changed,
@@ -27,6 +35,17 @@ module Professionals
     rescue ActiveRecord::RecordNotUnique => e
       professional.restore_attributes
       Result.fail(Create.unique_reason(e))
+    end
+
+    # D9: trocar de conselho não pode deixar um vínculo ativo cuja ocupação
+    # (CBO) exige o conselho antigo. CBO sem conselho exigido (council nil)
+    # nunca bloqueia.
+    def self.blocking_cbo_codes(professional)
+      new_council = professional.council
+      professional.links.active.distinct.pluck(:cbo_code).select do |code|
+        entry = Cbo.find(code)
+        entry&.council && entry.council != new_council
+      end.sort
     end
   end
 end
