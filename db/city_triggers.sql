@@ -468,16 +468,24 @@ $fn$ LANGUAGE plpgsql;
 -- professional_shifts (§3.3): só acréscimo, exceto cancelar UMA vez. No
 -- INSERT, o profissional tem de ser o do vínculo (a coluna existe só para a
 -- EXCLUDE) e o vínculo tem de estar ativo — "não existe turno em vínculo
--- encerrado" fica garantido pelo banco, não só pelo comando.
+-- encerrado" fica garantido pelo banco, não só pelo comando. O INSERT trava a
+-- linha do vínculo com FOR SHARE antes de checar: sob READ COMMITTED, um
+-- EXISTS puro não vê um UPDATE concorrente que ainda não commitou (o
+-- encerramento do vínculo) e deixaria o turno entrar por uma fresta; o FOR
+-- SHARE faz o INSERT esperar esse UPDATE terminar (commit ou rollback) antes
+-- de decidir.
 CREATE OR REPLACE FUNCTION rota_professional_shift_guard() RETURNS trigger AS $fn$
+DECLARE
+  link_professional uuid;
+  link_ended timestamptz;
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    IF NOT EXISTS (SELECT 1 FROM professional_links l
-                   WHERE l.id = NEW.professional_link_id AND l.professional_id = NEW.professional_id) THEN
+    SELECT l.professional_id, l.ended_at INTO link_professional, link_ended
+      FROM professional_links l WHERE l.id = NEW.professional_link_id FOR SHARE;
+    IF NOT FOUND OR link_professional IS DISTINCT FROM NEW.professional_id THEN
       RAISE EXCEPTION 'professional_shifts: professional_id must match the link';
     END IF;
-    IF EXISTS (SELECT 1 FROM professional_links l
-               WHERE l.id = NEW.professional_link_id AND l.ended_at IS NOT NULL) THEN
+    IF link_ended IS NOT NULL THEN
       RAISE EXCEPTION 'professional_shifts: link is ended';
     END IF;
     RETURN NEW;
