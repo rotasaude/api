@@ -2,11 +2,18 @@
 # coerente com o conselho do perfil, unidade ativa, um ativo por (profissional,
 # unidade, CBO). Início = agora, sem data retroativa. Abrir concede autoridade
 # clínica naquela unidade (F-10.5): quem chama já passou por step-up.
+#
+# Ordem de travas: unidade -> profissional -> vínculo (D: race do conselho).
+# FOR UPDATE no profissional depois da unidade e antes de ler o conselho:
+# uma troca de conselho concorrente (UpdateProfile, que só trava o
+# profissional) espera ou é vista, então a checagem de coerência nunca lê um
+# conselho que está sendo trocado.
 module Professionals
   class OpenLink
     def self.call(professional:, health_unit_id:, cbo_code:, by:)
       ApplicationRecord.transaction(requires_new: true) do
         HealthUnit.lock_active!(health_unit_id)
+        professional.lock!
 
         entry = Cbo.find(cbo_code)
         next Result.fail(:invalid_cbo) if entry.nil? || entry.deprecated
