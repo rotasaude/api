@@ -9,5 +9,10 @@ class ProfessionalLink < ApplicationRecord
 
   scope :active, -> { where(ended_at: nil) }
 
+  # Deprecated codes remain valid for existing rows (append-only table); only
+  # creation of a new link is checked against the catalogue. OpenLink already
+  # refuses unknown/deprecated codes before this runs.
+  validates :cbo_code, inclusion: { in: ->(_) { Professionals::Cbo.all.map(&:code) } }, on: :create
+
   def active? = ended_at.nil?
 end
