@@ -74,6 +74,14 @@ RSpec.describe "Professional links", type: :request do
     expect(json["error"]).to eq("already_ended")
   end
 
+  it "cbo_code não escalar: 422 invalid; nada abre" do
+    sign_in_admin!
+    json_post "/professionals/#{doctor.id}/links", health_unit_id: unit.id, cbo_code: [ "x" ]
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json).to eq("error" => "invalid")
+    expect(ProfessionalLink.count).to eq(0)
+  end
+
   it "perfil ou vínculo inexistente: 404" do
     sign_in_admin!
     json_post "/professionals/#{SecureRandom.uuid}/links", health_unit_id: unit.id, cbo_code: "225125"

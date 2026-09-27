@@ -22,6 +22,8 @@ class ProfessionalLinksController < ApplicationController
     return require_step_up! unless reauthenticated_recently?
 
     body = scalar_body(%w[health_unit_id cbo_code])
+    return render(json: { error: "invalid" }, status: :unprocessable_entity) if body.value?(:non_scalar)
+
     result = Professionals::OpenLink.call(professional: professional, health_unit_id: body["health_unit_id"],
                                           cbo_code: body["cbo_code"], by: Current.user)
     return render_failure(result, ERROR_STATUS) if result.failure?
