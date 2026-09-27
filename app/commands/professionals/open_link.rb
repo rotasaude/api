@@ -5,7 +5,7 @@
 module Professionals
   class OpenLink
     def self.call(professional:, health_unit_id:, cbo_code:, by:)
-      ApplicationRecord.transaction do
+      ApplicationRecord.transaction(requires_new: true) do
         HealthUnit.lock_active!(health_unit_id)
 
         entry = Cbo.find(cbo_code)
