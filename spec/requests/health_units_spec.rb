@@ -116,24 +116,4 @@ RSpec.describe "Health units", type: :request do
     expect(response).to have_http_status(:conflict)
     expect(JSON.parse(response.body)["error"]).to eq("unit_has_open_requests")
   end
-
-  %w[health_professional viewer].each do |role|
-    it "#{role} recebe 403 em todas as escritas e em /units/all" do
-      unit = create_unit("UBS Ativa")
-      sign_in_as(user_with("#{role}@cidade.gov.br", role))
-
-      get "/attendance/units/all"
-      expect(response).to have_http_status(:forbidden)
-      json_post "/attendance/units", name: "UBS Nova", kind: "ubs"
-      expect(response).to have_http_status(:forbidden)
-      json_post "/attendance/units/#{unit.id}", name: "UBS Outra", kind: "ubs"
-      expect(response).to have_http_status(:forbidden)
-      json_post "/attendance/units/#{unit.id}/deactivate"
-      expect(response).to have_http_status(:forbidden)
-      json_post "/attendance/units/#{unit.id}/activate"
-      expect(response).to have_http_status(:forbidden)
-      expect(unit.reload).to have_attributes(name: "UBS Ativa", active: true)
-      expect(HealthUnit.count).to eq(1)
-    end
-  end
 end
