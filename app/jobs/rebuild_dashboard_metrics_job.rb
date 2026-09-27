@@ -3,24 +3,38 @@
 #
 # Roda uma vez por cidade (EachCityJob), na conexão dela: o banco inteiro é da
 # cidade, então as linhas são chaveadas só por (dimension, period, key).
+#
+# Recria TODA dimensão que apaga (ADR 0022): triagens concluídas e revogações de
+# consentimento (consents_revoked, do RecordConsentRevocationJob). Com since:
+# (um dia, "AAAA-MM-DD", no fuso da aplicação) apaga e recria só os dias a partir
+# dele — os anteriores ficam como estão.
 class RebuildDashboardMetricsJob < ApplicationJob
   prepend EachCityJob
   queue_as :housekeeping
 
   def perform(since: nil)
+    from = since && Time.zone.parse(since).beginning_of_day
     buffer = Hash.new(0)
-    scope = Triage.where(status: :completed)
-    scope = scope.where("completed_at >= ?", Time.parse(since)) if since
 
     ApplicationRecord.transaction do
-      DashboardMetric.delete_all
+      metrics = DashboardMetric.all
+      metrics = metrics.where("period >= ?", from.to_date.iso8601) if from
+      metrics.delete_all
 
-      scope.find_each(batch_size: 1000) do |triage|
+      triages = Triage.where(status: :completed)
+      triages = triages.where("completed_at >= ?", from) if from
+      triages.find_each(batch_size: 1000) do |triage|
         date = triage.completed_at.to_date.iso8601
 
         buffer[["triages_by_tier",       date, triage.tier.to_s]] += 1
         buffer[["triages_total",         date, "total"]] += 1
         buffer[["priority_distribution", date, triage.priority.to_s]] += 1
+      end
+
+      revoked = Consent.where.not(revoked_at: nil)
+      revoked = revoked.where("revoked_at >= ?", from) if from
+      revoked.find_each(batch_size: 1000) do |consent|
+        buffer[["consents_revoked", consent.revoked_at.to_date.iso8601, "total"]] += 1
       end
 
       rows = buffer.map do |(dimension, period, key), value|
