@@ -94,4 +94,30 @@ RSpec.describe "Citizen OTP and session", type: :request do
     get "/citizen/session"
     expect(response).to have_http_status(:unauthorized)
   end
+
+  # F-06.19: tetos por IP. O cache do ambiente de teste é :null_store, que
+  # nunca conta; troca por um real só aqui (mesmo padrão de check_in_codes_spec).
+  describe "teto por IP" do
+    before { allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new) }
+
+    it "o 11º POST /citizen/otp do mesmo IP em uma hora leva 429 too_many_requests" do
+      10.times { |i| json_post "/citizen/otp", phone: format("(41) 9%04d-%04d", 8000 + i, i) }
+      expect(response).to have_http_status(:accepted)
+
+      json_post "/citizen/otp", phone: "(41) 97777-0000"
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(JSON.parse(response.body)["error"]).to eq("too_many_requests")
+    end
+
+    it "o 21º POST /citizen/session do mesmo IP em uma hora leva 429 too_many_requests" do
+      20.times { |i| json_post "/citizen/session", phone: format("(41) 9%04d-%04d", 8000 + i, i), code: "000000" }
+      expect(response).to have_http_status(:unprocessable_entity)
+
+      json_post "/citizen/session", phone: phone, code: "000000"
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(JSON.parse(response.body)["error"]).to eq("too_many_requests")
+    end
+  end
 end

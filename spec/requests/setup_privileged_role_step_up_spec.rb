@@ -140,4 +140,49 @@ RSpec.describe "Setup privileged role step-up", type: :request do
       expect(plain.reload.revoked_at).to be_present
     end
   end
+
+  # F-06.21 e F-06.25: citizen_verifier (validação presencial) e
+  # health_professional (chamada e desfecho clínico) são papéis privilegiados —
+  # conceder e revogar exigem step-up, como os de protocolo.
+  %w[citizen_verifier health_professional].each do |role|
+    describe role do
+      it "conceder sem step-up: 401 mfa_required e nenhuma membership" do
+        sign_in_admin!(stepped_up: false)
+
+        expect { grant!(role: role) }.not_to change { Membership.where(user: target, role: role).count }
+        expect(response).to have_http_status(:unauthorized)
+        expect(json).to eq("error" => "mfa_required")
+      end
+
+      it "conceder com step-up: concede" do
+        sign_in_admin!(stepped_up: true)
+
+        grant!(role: role)
+
+        expect(response).to have_http_status(:created)
+        expect(target.reload.has_role?(role)).to be(true)
+      end
+
+      it "revogar sem step-up: 401 e a membership segue ativa" do
+        membership = Membership.create!(user: target, role: role, granted_at: Time.current)
+        sign_in_admin!(stepped_up: false)
+
+        post "/setup/memberships/#{membership.id}/revoke", as: :json
+
+        expect(response).to have_http_status(:unauthorized)
+        expect(json).to eq("error" => "mfa_required")
+        expect(membership.reload.revoked_at).to be_nil
+      end
+
+      it "revogar com step-up: revoga" do
+        membership = Membership.create!(user: target, role: role, granted_at: Time.current)
+        sign_in_admin!(stepped_up: true)
+
+        post "/setup/memberships/#{membership.id}/revoke", as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(membership.reload.revoked_at).to be_present
+      end
+    end
+  end
 end
