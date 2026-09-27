@@ -17,7 +17,7 @@ RSpec.describe AcceptInvitation do
   after { Current.reset }
 
   it "cria user + membership a partir do convite" do
-    res = described_class.call(token: "abc123", password: "secretpw")
+    res = described_class.call(token: "abc123", password: "secretpw-long")
     expect(res.ok?).to be true
     user = res.payload[:user]
     expect(Membership.where(user: user, role: "municipal_admin").exists?).to be true
@@ -35,9 +35,45 @@ RSpec.describe AcceptInvitation do
     Invitation.create!(email: "primeira@example.org", role: "municipal_admin", token: "plataforma-1",
                        invited_by: nil, expires_at: 1.day.from_now)
 
-    res = described_class.call(token: "plataforma-1", password: "secretpw")
+    res = described_class.call(token: "plataforma-1", password: "secretpw-long")
 
     expect(res.ok?).to be true
     expect(Membership.find_by!(user: res.payload[:user], role: "municipal_admin").granted_by_id).to be_nil
+  end
+
+  # Invariante de fechamento do módulo 06: convite vencido não vira conta.
+  it "convite vencido: falha :expired sem criar usuário nem membership, e segue não aceito" do
+    inv.update_column(:expires_at, 1.minute.ago)
+
+    res = nil
+    expect { res = described_class.call(token: "abc123", password: "secretpw-long") }
+      .not_to change { [ User.count, Membership.count, Identity.count ] }
+    expect(res.reason).to eq(:expired)
+    expect(inv.reload.accepted_at).to be_nil
+  end
+
+  it "token já aceito não vale de novo" do
+    described_class.call(token: "abc123", password: "secretpw-long")
+
+    res = nil
+    expect { res = described_class.call(token: "abc123", password: "outra-senha-longa") }.not_to change(User, :count)
+    expect(res.failure?).to be(true)
+    expect(res.reason).to eq(:invalid_token)
+  end
+
+  it "e-mail que já é usuário da cidade: falha :already_member em vez de levantar" do
+    User.create!(email_address: "new@example.org", password: "secret123")
+
+    res = described_class.call(token: "abc123", password: "secretpw-long")
+
+    expect(res.reason).to eq(:already_member)
+    expect(inv.reload.accepted_at).to be_nil
+  end
+
+  it "senha com menos de 12 caracteres: falha :weak_password sem criar nada" do
+    res = nil
+    expect { res = described_class.call(token: "abc123", password: "curta-11chr") }.not_to change(User, :count)
+    expect(res.reason).to eq(:weak_password)
+    expect(inv.reload.accepted_at).to be_nil
   end
 end

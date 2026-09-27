@@ -39,6 +39,12 @@ class SetupController < ApplicationController
     )
     if result.ok?
       inv = result.payload[:invitation]
+      # Fora da transação do command (já commitada): a fila é a da cidade do
+      # host. O token só viaja no argumento do job, que CityMailDeliveryJob
+      # não loga.
+      MemberInvitationMailer.invite(
+        email_address: inv.email, accept_url: CityDashboardUrl.invitation(Current.city, token: inv.token)
+      ).deliver_later
       render json: { id: inv.id, email: inv.email, role: inv.role, expires_at: inv.expires_at.iso8601 }, status: :created
     else
       render json: { error: result.reason.to_s, message: result.message }, status: :unprocessable_entity
