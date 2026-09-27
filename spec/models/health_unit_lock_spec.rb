@@ -32,7 +32,7 @@ RSpec.describe "HealthUnit lock contra a desativação" do
         release.pop
       end
     end
-    locked.pop
+    locked.pop(timeout: 5) or raise "a thread não pegou o lock"
 
     threads << deactivator = Thread.new do
       in_city { HealthUnit.find(unit_id).with_lock { HealthUnit.where(id: unit_id).update_all(active: false) } }
@@ -56,7 +56,7 @@ RSpec.describe "HealthUnit lock contra a desativação" do
         end
       end
     end
-    locked.pop
+    locked.pop(timeout: 5) or raise "a thread não pegou o lock"
 
     outcome = Queue.new
     threads << checker = Thread.new do
