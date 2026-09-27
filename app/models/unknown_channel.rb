@@ -17,7 +17,8 @@ class UnknownChannel < PlatformRecord
     now = Time.current
     row.assign_attributes(
       sample_change: redact(change),
-      hits: (row.hits || 0) + 1,
+      # Não somar sobre o default da coluna (1): o primeiro avistamento é 1.
+      hits: row.new_record? ? 1 : row.hits + 1,
       first_seen_at: row.first_seen_at || now,
       last_seen_at: now
     )

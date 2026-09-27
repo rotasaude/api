@@ -41,6 +41,17 @@ RSpec.describe UnknownChannel do
     expect(second.hits).to eq(first.hits + 1)
   end
 
+  # A coluna tem default 1: somar 1 sobre o default contava o primeiro
+  # avistamento como 2 (e o console de plataforma exibe hits).
+  it "counts the first sighting as one hit, and audits the first three sightings" do
+    rows = nil
+    expect {
+      rows = Array.new(4) { described_class.record!(phone_number_id: phone_number_id, change: {}) }
+    }.to change { PlatformEvent.where(name: "channel.unknown_seen").count }.by(3)
+
+    expect(rows.map(&:hits)).to eq([1, 2, 3, 4])
+  end
+
   it "preserves first_seen_at across repeat sightings" do
     first = described_class.record!(phone_number_id: phone_number_id, change: {})
     original_first_seen_at = first.first_seen_at
