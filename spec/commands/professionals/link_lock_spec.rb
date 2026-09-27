@@ -40,22 +40,6 @@ RSpec.describe "Vínculo: encerrar × lançar turno" do
 
   def in_city(&) = CityConnection.with(TEST_CITY_A) { Current.set(city: TEST_CITY_A) { ApplicationRecord.transaction(&) } }
 
-  # A conexão do exemplo (aberta pelo around de city_test_databases.rb) já
-  # está em TEST_CITY_A, então basta consultar pg_stat_activity nela: nenhuma
-  # das duas threads em disputa é a dona dessa conexão.
-  def wait_for_lock_wait(timeout: 5)
-    deadline = Time.current + timeout
-    loop do
-      count = ApplicationRecord.connection.select_value(
-        "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'"
-      ).to_i
-      return true if count.positive?
-      return false if Time.current > deadline
-
-      sleep 0.05
-    end
-  end
-
   it "o lançamento que espera o encerramento recebe link_ended" do
     locked = Queue.new
     threads << ender = Thread.new do

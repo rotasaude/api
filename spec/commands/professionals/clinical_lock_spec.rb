@@ -1,10 +1,18 @@
 require "rails_helper"
 
 # A chamada (ClinicalAuthorization, FOR SHARE no vínculo) e o encerramento
-# (EndLink, FOR UPDATE) se excluem: o encerramento espera a chamada em curso;
-# a chamada que chega depois de um encerramento em curso espera e recebe
-# missing_link. Threads reais contra TEST_CITY_A, sem fixture transacional.
-RSpec.describe "Vínculo: encerrar × chamar" do
+# (EndLink, FOR UPDATE) se excluem, nas duas direções, provadas com threads
+# reais contra TEST_CITY_A (sem fixture transacional):
+#   1. checagem em curso trava o encerramento — ele espera o FOR SHARE, e só
+#      depois que a checagem committa o FOR UPDATE é concedido.
+#   2. encerramento em curso trava a checagem seguinte — ela espera o
+#      FOR UPDATE, e só depois que o encerramento committa ela roda e vê o
+#      vínculo já encerrado (missing_link).
+# A espera real é verificada consultando pg_stat_activity (wait_for_lock_wait
+# em spec/support/lock_wait.rb), não por join com timeout curto: um join que
+# retorna nil por timeout não distingue "está esperando o lock" de "está
+# lento por outro motivo".
+RSpec.describe "Vínculo: encerrar × checar autorização clínica" do
   self.use_transactional_tests = false
 
   let(:release) { Queue.new }
@@ -36,29 +44,49 @@ RSpec.describe "Vínculo: encerrar × chamar" do
 
   def in_city(&) = CityConnection.with(TEST_CITY_A) { Current.set(city: TEST_CITY_A) { ApplicationRecord.transaction(&) } }
 
-  it "o encerramento espera a checagem em curso; a checagem seguinte recebe missing_link" do
+  it "a checagem em curso trava o encerramento; ele só passa depois que ela committa" do
     checked = Queue.new
     threads << caller_thread = Thread.new do
       in_city do
         checked << Professionals::ClinicalAuthorization.check(user: User.find(ids[:doctor]), health_unit_id: ids[:unit])
-        release.pop
+        release.pop(timeout: 5) or raise "timeout esperando release na checagem"
       end
     end
-    expect(checked.pop(timeout: 5)).to eq(:ok)
+    expect(checked.pop(timeout: 5) || raise("timeout esperando o resultado da checagem")).to eq(:ok)
 
     threads << ender = Thread.new do
-      in_city do
-        link = ProfessionalLink.find(ids[:link])
-        link.lock!
-        link.update!(ended_at: Time.current, ended_by_user_id: ids[:admin])
-      end
+      in_city { Professionals::EndLink.call(link: ProfessionalLink.find(ids[:link]), by: User.find(ids[:admin])) }
     end
-    expect(ender.join(0.5)).to be_nil # esperando o FOR SHARE da chamada
+    expect(wait_for_lock_wait).to be(true) # o encerramento espera o FOR SHARE da checagem em curso
 
     release << true
-    caller_thread.join(5)
-    expect(ender.join(5)).to be(ender)
+    caller_thread.join(5) or raise "a checagem não terminou"
+    ender.join(5) or raise "o encerramento não terminou"
+
     after_end = in_city { Professionals::ClinicalAuthorization.check(user: User.find(ids[:doctor]), health_unit_id: ids[:unit]) }
     expect(after_end).to eq(:missing_link)
+  end
+
+  it "o encerramento em curso trava a checagem seguinte; ela espera e recebe missing_link" do
+    holding = Queue.new
+    threads << ender = Thread.new do
+      in_city do
+        Professionals::EndLink.call(link: ProfessionalLink.find(ids[:link]), by: User.find(ids[:admin]))
+        holding << true
+        release.pop(timeout: 5) or raise "timeout esperando release no encerramento"
+      end
+    end
+    holding.pop(timeout: 5) or raise "o encerramento não travou a linha do vínculo"
+
+    outcome = Queue.new
+    threads << checker = Thread.new do
+      in_city { outcome << Professionals::ClinicalAuthorization.check(user: User.find(ids[:doctor]), health_unit_id: ids[:unit]) }
+    end
+    expect(wait_for_lock_wait).to be(true) # a checagem espera o FOR UPDATE do encerramento em curso
+
+    release << true
+    ender.join(5) or raise "o encerramento não terminou"
+    checker.join(5) or raise "a checagem não terminou"
+    expect(outcome.pop(timeout: 5) || raise("timeout esperando o resultado da checagem")).to eq(:missing_link)
   end
 end
