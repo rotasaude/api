@@ -377,3 +377,70 @@ RSpec.describe "city:invite_admin rake task on an active city" do
     expect(CityConnection.with(city) { Invitation.count }).to eq(0)
   end
 end
+
+# F-06.13: publicar termo de consentimento é tarefa de operador, na cidade, e
+# só para frente — a versão nova precisa ser MAIOR que a vigente (ordem
+# numérica: consent_terms.version é string). Auditoria na plataforma, como os
+# outros atos de operador sobre uma cidade (city.key_rotated, city.admin_reinvited).
+RSpec.describe "city:consent_term:publish rake task" do
+  before(:all) do
+    Rails.application.load_tasks unless Rake::Task.task_defined?("city:consent_term:publish")
+  end
+
+  before { Rake::Task["city:consent_term:publish"].reenable }
+
+  let!(:city) do
+    City.find_by(slug: TEST_CITY_A.slug) || City.create!(
+      slug: TEST_CITY_A.slug, name: TEST_CITY_A.name, status: "active",
+      database_url: TEST_CITY_A.database_url, encryption_key: TEST_CITY_A.encryption_key,
+      schema_version: CitySchema.expected_version.to_s
+    )
+  end
+  let(:body_file) do
+    Tempfile.new([ "termo", ".txt" ]).tap { |f| f.write("Texto do termo, versão nova.\n"); f.flush }
+  end
+
+  after { body_file.close! }
+
+  def invoke(*args)
+    original_stdout, $stdout = $stdout, StringIO.new
+    original_stderr, $stderr = $stderr, StringIO.new
+    Rake::Task["city:consent_term:publish"].invoke(*args)
+    $stdout.string
+  ensure
+    $stdout = original_stdout
+    $stderr = original_stderr
+  end
+
+  it "publica a versão nova na cidade e audita city.consent_term_published" do
+    ConsentTerm.create!(version: "9", body: "antigo", published_at: 1.day.ago)
+
+    invoke(city.slug, "10", body_file.path)
+
+    term = ConsentTerm.find_by!(version: "10")
+    expect(term.body).to eq("Texto do termo, versão nova.\n")
+    expect(term.published_at).to be_within(1.minute).of(Time.current)
+    expect(ConsentTerm.current_version).to eq("10")
+    event = PlatformEvent.where(name: "city.consent_term_published").where("payload->>'city_id' = ?", city.id).sole
+    expect(event.payload).to eq("city_id" => city.id, "version" => "10")
+  end
+
+  it "recusa versão que não é maior que a vigente (ordem numérica, não de string)" do
+    ConsentTerm.create!(version: "10", body: "vigente", published_at: 1.day.ago)
+
+    expect { invoke(city.slug, "9", body_file.path) }.to raise_error(SystemExit)
+    expect { invoke(city.slug, "10", body_file.path) }.to raise_error(SystemExit)
+    expect(ConsentTerm.pluck(:version)).to eq([ "10" ])
+    expect(PlatformEvent.where(name: "city.consent_term_published")).to be_empty
+  end
+
+  it "recusa versão não inteira, arquivo ausente ou vazio, e cidade desconhecida" do
+    expect { invoke(city.slug, "v2", body_file.path) }.to raise_error(SystemExit)
+    expect { invoke(city.slug, "3", "/nao/existe.txt") }.to raise_error(SystemExit)
+    empty = Tempfile.new("vazio")
+    expect { invoke(city.slug, "3", empty.path) }.to raise_error(SystemExit)
+    empty.close!
+    expect { invoke("nao-existe", "3", body_file.path) }.to raise_error(SystemExit)
+    expect(ConsentTerm.count).to eq(0)
+  end
+end

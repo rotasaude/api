@@ -337,3 +337,19 @@ DROP TRIGGER IF EXISTS protocol_definitions_append_only_truncate ON protocol_def
 CREATE TRIGGER protocol_definitions_append_only_truncate
   BEFORE TRUNCATE ON protocol_definitions
   FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only();
+
+-- consent_terms (ADR-0013; F-06.13): o termo é append-only. O consentimento
+-- do cidadão aponta para a versão e o hash do texto — mudar ou apagar um termo
+-- publicado reescreveria o que ele aceitou. Versão nova é linha nova
+-- (rake city:consent_term:publish). Sem trigger de TRUNCATE, como em
+-- report_snapshots: a garantia é contra UPDATE/DELETE de linha.
+DO $do$
+BEGIN
+  IF to_regclass('public.consent_terms') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS consent_terms_append_only ON consent_terms';
+    EXECUTE 'CREATE TRIGGER consent_terms_append_only
+      BEFORE UPDATE OR DELETE ON consent_terms
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;
