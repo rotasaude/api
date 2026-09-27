@@ -14,6 +14,9 @@
 - { code: "225225", title: "Médico cirurgião geral", council: CRM }
 - { code: "225150", title: "Médico em medicina intensiva", council: CRM }
 - { code: "225112", title: "Médico neurologista", council: CRM }
+- { code: "225130", title: "Médico de família e comunidade", council: CRM }
+- { code: "225151", title: "Médico anestesiologista", council: CRM }
+- { code: "225265", title: "Médico oftalmologista", council: CRM }
 - { code: "223505", title: "Enfermeiro", council: COREN }
 - { code: "223565", title: "Enfermeiro da estratégia de saúde da família", council: COREN }
 - { code: "322205", title: "Técnico de enfermagem", council: COREN }
