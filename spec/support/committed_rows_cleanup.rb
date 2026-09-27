@@ -2,6 +2,11 @@
 # As tabelas do módulo 10, memberships, users e domain_events recusam DELETE
 # por trigger; a suíte conecta como superusuário e desliga os triggers SÓ na
 # transação da limpeza (mesmo recurso de invite_admin_spec.rb).
+#
+# session_replication_role = replica também desliga a checagem de FK (não só
+# os triggers de guarda), então esta função não tem uma foreign key para se
+# apoiar: quem chama precisa apagar os dependentes primeiro (na ordem certa)
+# e passar TODO id criado, senão a linha fica órfã e comprometida para sempre.
 module CommittedRowsCleanup
   def purge_committed_rows(ids)
     CityConnection.with(TEST_CITY_A) do
