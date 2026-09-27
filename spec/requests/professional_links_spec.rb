@@ -42,10 +42,13 @@ RSpec.describe "Professional links", type: :request do
   it "recusas nomeadas: invalid_cbo, council_mismatch, invalid_unit (422) e already_linked (409)" do
     sign_in_admin!
     json_post "/professionals/#{doctor.id}/links", health_unit_id: unit.id, cbo_code: "999999"
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(json["error"]).to eq("invalid_cbo")
     json_post "/professionals/#{doctor.id}/links", health_unit_id: unit.id, cbo_code: "223505"
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(json["error"]).to eq("council_mismatch")
     json_post "/professionals/#{doctor.id}/links", health_unit_id: SecureRandom.uuid, cbo_code: "225125"
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(json["error"]).to eq("invalid_unit")
     json_post "/professionals/#{doctor.id}/links", health_unit_id: unit.id, cbo_code: "225125"
     json_post "/professionals/#{doctor.id}/links", health_unit_id: unit.id, cbo_code: "225125"
