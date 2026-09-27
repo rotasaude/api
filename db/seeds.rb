@@ -30,6 +30,7 @@ if Rota.deployed?
 else
   require Rails.root.join("lib/signature_crew").to_s
   require Rails.root.join("lib/dev_maintainer").to_s
+  require Rails.root.join("lib/professional_crew").to_s
 
   password = ENV.fetch(SignatureCrew::PASSWORD_ENV, "dev-password")
 
@@ -146,6 +147,15 @@ else
         end
         puts crew[:draft] ? "[seeds] rascunho ... #{crew[:draft][:name]} v#{crew[:draft][:version]} (#{crew[:draft][:status]})" \
                           : "[seeds] rascunho ... NÃO criado (veja o retorno do command)"
+
+        # ── Profissionais (módulo 10, spec 2026-09-27 §6) ─────────────────────
+        pros = ProfessionalCrew.seed_current_city(slug: slug, password: password, admin: muni_admin)
+        pros[:accounts].each do |account|
+          puts "[seeds] #{account[:role].ljust(18)} #{account[:email]} / #{password} + MFA → #{account[:otpauth_uri]}"
+        end
+        pros[:professionals].each do |p|
+          puts "[seeds] profissional . #{p[:email]} — #{p[:name]} (#{p[:links]} vínculos, #{p[:shifts]} turnos)"
+        end
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
