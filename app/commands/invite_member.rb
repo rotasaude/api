@@ -7,7 +7,9 @@ class InviteMember
   end
 
   def initialize(email:, role:, invited_by:, expires_in:)
-    @email, @role, @invited_by, @expires_in = email, role, invited_by, expires_in
+    # Normalizado UMA vez: checagens, convite gravado e evento usam o mesmo valor.
+    @email = email.to_s.strip.downcase
+    @role, @invited_by, @expires_in = role, invited_by, expires_in
   end
 
   def call
@@ -32,7 +34,7 @@ class InviteMember
 
     # F-06.9: quem já tem conta na cidade não é convidado (o aceite criaria
     # usuário duplicado).
-    if User.exists?(email_address: @email.to_s.strip.downcase)
+    if User.exists?(email_address: @email)
       return Result.fail(:already_member, message: "este e-mail já tem conta nesta cidade")
     end
 
@@ -41,9 +43,9 @@ class InviteMember
       # Convite novo SUPERA o pendente do mesmo e-mail: o link antigo vence
       # agora (reenviar é a saída de quem perdeu o e-mail) e só o novo vale.
       now = Time.current
-      Invitation.pending.where(email: @email.to_s.strip.downcase).update_all(expires_at: now, updated_at: now)
+      Invitation.pending.where(email: @email).update_all(expires_at: now, updated_at: now)
       inv = Invitation.create!(
-        email: @email.downcase,
+        email: @email,
         role: @role,
         token: SecureRandom.urlsafe_base64(32),
         invited_by: @invited_by,

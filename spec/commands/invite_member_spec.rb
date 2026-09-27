@@ -48,4 +48,11 @@ RSpec.describe InviteMember do
 
     expect(described_class.call(email: "venc@example.org", role: "viewer", invited_by: inviter).ok?).to be(true)
   end
+
+  it "normaliza o e-mail uma vez (strip + downcase) para checar, gravar e publicar" do
+    res = described_class.call(email: "  Nova.Pessoa@Example.ORG ", role: "viewer", invited_by: inviter)
+
+    expect(res.payload[:invitation].email).to eq("nova.pessoa@example.org")
+    expect(DomainEvent.find_by!(name: "user.invited").payload["email"]).to eq("nova.pessoa@example.org")
+  end
 end
