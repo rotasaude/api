@@ -33,6 +33,20 @@ RSpec.describe "Professional shifts", type: :request do
     expect(json["shifts"].sole).to include("cancel_reason" => "troca de escala")
   end
 
+  it "turno noturno iniciado antes do intervalo padrão aparece por sobreposição" do
+    old_link = Current.set(city: TEST_CITY_A) do
+      ProfessionalLink.create!(professional: doctor, health_unit_id: create_unit.id, cbo_code: "225125",
+                               started_at: 2.days.ago.in_time_zone, started_by_user: admin)
+    end
+    from = Time.zone.today
+    overnight = ProfessionalShift.create!(professional_link: old_link, professional_id: doctor.id,
+                                          starts_at: 1.day.ago.in_time_zone.change(hour: 19),
+                                          ends_at: from.in_time_zone.change(hour: 7), created_by_user: admin)
+
+    get "/professionals/#{doctor.id}/shifts"
+    expect(json["shifts"].map { |s| s["id"] }).to eq([ overnight.id ])
+  end
+
   it "sobreposição: 409 shift_overlap com o conflito" do
     json_post "/professionals/links/#{link.id}/shifts", starts_at: day.change(hour: 7).iso8601, ends_at: day.change(hour: 13).iso8601
     json_post "/professionals/links/#{link.id}/shifts", starts_at: day.change(hour: 12).iso8601, ends_at: day.change(hour: 14).iso8601

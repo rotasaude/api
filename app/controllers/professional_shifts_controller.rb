@@ -23,7 +23,8 @@ class ProfessionalShiftsController < ApplicationController
     range = requested_range
     return render(json: { error: "invalid_range" }, status: :unprocessable_entity) unless range
 
-    shifts = ProfessionalShift.where(professional: professional, starts_at: range)
+    shifts = ProfessionalShift.where(professional: professional)
+                              .where("ends_at > ? AND starts_at < ?", range.begin, range.end)
                               .includes(professional_link: :health_unit).order(:starts_at)
     render json: { shifts: shifts.map { |s| shift_json(s) } }
   end
