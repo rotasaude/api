@@ -52,3 +52,27 @@ RSpec.describe GiveConsent, "recusas" do
     expect(conversation.active_consent).to eq(fresh)
   end
 end
+
+# Termo publicado no banco da cidade (city:consent_term:publish, F-06.13): o
+# consentimento carrega o hash do texto QUE O CIDADÃO VIU — o body da linha —,
+# não o das credentials (que para uma versão nova nem existe: daria SHA256("")).
+RSpec.describe GiveConsent, "hash do texto do termo" do
+  before { Current.city = TEST_CITY_A }
+  after { Current.reset }
+
+  let(:conversation) { Conversation.create!(phone: "+5541998765433", state: :awaiting_consent) }
+
+  it "usa o body do termo da cidade quando a versão está em consent_terms" do
+    ConsentTerm.create!(version: "907", body: "Texto do termo 907", published_at: Time.current)
+
+    described_class.call(conversation: conversation, version: "907", evidence: {}, channel: "web")
+
+    expect(conversation.consents.last.policy_text_sha).to eq(Digest::SHA256.hexdigest("Texto do termo 907"))
+  end
+
+  it "sem linha no banco, cai no texto das credentials" do
+    text = Rails.application.credentials.dig(:policy, "v#{Consents.current_version}", :text).to_s
+
+    expect(Consents.policy_text_sha(Consents.current_version)).to eq(Digest::SHA256.hexdigest(text))
+  end
+end
