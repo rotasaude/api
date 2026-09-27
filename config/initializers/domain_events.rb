@@ -52,4 +52,13 @@ Rails.application.config.to_prepare do
   # ADR 0018: rastro LGPD da busca por exceção (POST check_ins/search) — expõe
   # dado de saúde sem código; sem CPF no payload, sem consumidor, de propósito.
   DomainEvents.bind "attendance.exception_searched", to: []
+
+  # Profissionais (ADR 0021; spec 2026-09-27): trilha, só ids; sem consumidor,
+  # de propósito.
+  DomainEvents.bind "professional.created", to: []
+  DomainEvents.bind "professional.profile_updated", to: []
+  DomainEvents.bind "professional.linked", to: []
+  DomainEvents.bind "professional.unlinked", to: []
+  DomainEvents.bind "professional.shift_scheduled", to: []
+  DomainEvents.bind "professional.shift_cancelled", to: []
 end
