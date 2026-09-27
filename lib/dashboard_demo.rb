@@ -357,7 +357,7 @@ module DashboardDemo
     pr = Admin::ProtocolsQuery.index
     check.call(pr[:list].size >= 5, "<5 protocol rows")
 
-    ev = Admin::EventsQuery.call(name: nil, from: nil, to: nil, period: p)
+    ev = Admin::EventsQuery.call(name: nil, period: p)
     names = ev[:byType].map { |x| x[:name] }
     %w[triage. consent. conversation. protocol. priority.].each do |pre|
       check.call(names.any? { |n| n.start_with?(pre) }, "no events for prefix #{pre}")

@@ -82,8 +82,9 @@ class Admin::Api::Period
   private
 
   def self.parse_custom(from, to, tz)
-    f = tz.parse(from.to_s).beginning_of_day
-    t = tz.parse(to.to_s).end_of_day
+    f = tz.parse(from.to_s)&.beginning_of_day
+    t = tz.parse(to.to_s)&.end_of_day
+    raise Admin::Api::InvalidScope, "datas inválidas" if f.nil? || t.nil?
     raise Admin::Api::InvalidScope, "from > to" if f > t
     [ f, t ]
   rescue ArgumentError
