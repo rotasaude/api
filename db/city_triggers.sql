@@ -396,3 +396,46 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- domain_events (ADR-0014; F-07.1, fechamento do módulo 07): a trilha de
+-- auditoria da cidade é só acréscimo. A única mudança aceita é marcar a
+-- publicação — published_at de NULL para um valor, UMA vez (IdempotentConsumer,
+-- por update_all). DELETE só passa para evento além da retenção de 12 meses:
+-- é o TTL da purga (PurgeDomainEventsJob, F-07.3) imposto pelo banco, não pelo
+-- job — encurtar a retenção exige migração que troque este intervalo.
+-- occurred_at é timestamp sem fuso gravado em UTC; comparar com
+-- now() AT TIME ZONE 'UTC' não depende do TimeZone da sessão. Sem trigger de
+-- TRUNCATE, como em memberships: a limpeza das suítes/restauração usa
+-- TRUNCATE/--clean.
+CREATE OR REPLACE FUNCTION rota_domain_event_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.occurred_at >= (now() AT TIME ZONE 'UTC') - interval '12 months' THEN
+      RAISE EXCEPTION 'domain_events is append-only: DELETE refused inside retention (12 months)';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF OLD.published_at IS NOT NULL THEN
+    RAISE EXCEPTION 'domain_events: already published';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.name IS DISTINCT FROM OLD.name
+     OR NEW.payload IS DISTINCT FROM OLD.payload
+     OR NEW.occurred_at IS DISTINCT FROM OLD.occurred_at
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'domain_events: only published_at may change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.domain_events') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS domain_events_guard ON domain_events';
+    EXECUTE 'CREATE TRIGGER domain_events_guard
+      BEFORE UPDATE OR DELETE ON domain_events
+      FOR EACH ROW EXECUTE FUNCTION rota_domain_event_guard()';
+  END IF;
+END
+$do$;
