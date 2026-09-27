@@ -5,7 +5,12 @@
 # sai dos dados, do mais urgente para o menos urgente. A urgência usa a mesma
 # régua do alerta (Protocols::Urgency: priority <= URGENT_MAX_PRIORITY). O modo
 # de scoring é o da versão do protocolo em que cada triagem terminou.
+#
+# Expand/contract (ADR 0015): priorityTrue/priorityTrend e as chaves
+# low/medium/high do pivô ficam como apelidos do contrato antigo enquanto o
+# console do operador (apps/admin) não migra para urgent/urgentTrend/counts.
 class Admin::ClassificationQuery
+  LEGACY_TIERS = %w[low medium high].freeze
   MODE_SQL = "protocol_definitions.definition -> 'scoring' ->> 'type'".freeze
 
   def self.call(period:)
@@ -21,13 +26,17 @@ class Admin::ClassificationQuery
              .where(status: "completed", completed_at: @period.from..@period.to)
     urgent_max = Protocols::Urgency.max_priority
     tiers = tier_counts(base, urgent_max)
+    urgent = base.where(priority: ..urgent_max).count
+    urgent_trend = @period.series(Triage.all.where(status: "completed", priority: ..urgent_max), :completed_at)
 
     {
       tiers: tiers,
       tierKeys: tiers.map { |t| t[:key] },
-      urgent: base.where(priority: ..urgent_max).count,
+      urgent: urgent,
       urgentMaxPriority: urgent_max,
-      urgentTrend: @period.series(Triage.all.where(status: "completed", priority: ..urgent_max), :completed_at),
+      urgentTrend: urgent_trend,
+      priorityTrue: urgent,        # apelido (apps/admin)
+      priorityTrend: urgent_trend, # apelido (apps/admin)
       byProtocol: by_protocol(base),
       byMode: by_mode(base),
       sampleTriages: sample(base.limit(8), urgent_max)
@@ -60,7 +69,9 @@ class Admin::ClassificationQuery
       key = "#{name} · #{version}"
       pivot[key] ||= { protocol: key, counts: {} }
       pivot[key][:counts][tier || "sem tier"] = count
-    end.values
+    end.values.map do |row|
+      row.merge(LEGACY_TIERS.to_h { |t| [ t.to_sym, row[:counts][t] || 0 ] }) # apelidos (apps/admin)
+    end
   end
 
   def by_mode(scope)

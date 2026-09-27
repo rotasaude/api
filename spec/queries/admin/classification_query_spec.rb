@@ -62,9 +62,17 @@ RSpec.describe Admin::ClassificationQuery do
 
     expect(out[:tierKeys]).to eq(%w[alta indefinido baixa])
     expect(out[:byProtocol]).to contain_exactly(
-      { protocol: "resp · 1", counts: { "alta" => 2, "baixa" => 1 } },
-      { protocol: "dor · 1",  counts: { "indefinido" => 1 } }
+      a_hash_including(protocol: "resp · 1", counts: { "alta" => 2, "baixa" => 1 }),
+      a_hash_including(protocol: "dor · 1",  counts: { "indefinido" => 1 })
     )
+  end
+
+  it "keeps the old contract as aliases for the operator console (ADR 0015 expand/contract)" do
+    out = described_class.call(period: period)
+
+    expect(out[:priorityTrue]).to eq(out[:urgent])
+    expect(out[:priorityTrend]).to eq(out[:urgentTrend])
+    expect(out[:byProtocol].first.keys).to include(:low, :medium, :high)
   end
 
   it "splits by the scoring mode of the protocol version each triage used" do
