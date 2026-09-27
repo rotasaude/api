@@ -33,7 +33,7 @@ module ProvisionedCities
   ensure
     CityChannel.where(city_id: city.id).delete_all
     CityGrant.where(city_id: city.id).delete_all
-    PlatformEvent.where("payload->>'city_id' = ?", city.id).delete_all
+    AuditCleanup.delete_platform_events!("payload->>'city_id' = $1", city.id)
     City.where(id: city.id).delete_all
   end
 end

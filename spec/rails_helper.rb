@@ -16,6 +16,7 @@ require 'factory_bot_rails'
 require_relative "support/city_probe_controller"
 require_relative "support/city_database_urls"
 require_relative "support/scratch_databases"
+require_relative "support/audit_cleanup"
 require_relative "support/provisioned_cities"
 require_relative "support/platform_queue"
 require_relative "support/city_test_databases"

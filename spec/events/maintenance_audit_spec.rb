@@ -113,11 +113,31 @@ RSpec.describe MaintenanceAudit do
       expect(PlatformEvent.find_by(id: event.id)).to be_present
     end
 
-    it "leaves the other platform events alone" do
+    # F-07.11 (fechamento do módulo 07): a imutabilidade vale para toda a
+    # trilha de plataforma, não só para manutenção. Evento de identidade só sai
+    # além da retenção de 12 meses; manutenção nunca.
+    it "also protects identity events, deletable only beyond the 12-month retention" do
       Platform.audit("operator.login", operator_id: SecureRandom.uuid)
-      other = PlatformEvent.order(:created_at).last
+      login = PlatformEvent.order(:created_at).last
 
-      expect { other.destroy! }.not_to raise_error
+      expect {
+        PlatformRecord.transaction(requires_new: true) { login.update!(payload: { "operator_id" => "outro" }) }
+      }.to raise_error(ActiveRecord::StatementInvalid, /immutable: only published_at may change/i)
+      login.reload
+      expect {
+        PlatformRecord.transaction(requires_new: true) { PlatformEvent.where(id: login.id).delete_all }
+      }.to raise_error(ActiveRecord::StatementInvalid, /DELETE refused inside retention/i)
+
+      old = PlatformEvent.create!(name: "operator.login", occurred_at: 13.months.ago, payload: {})
+      expect { PlatformEvent.where(id: old.id).delete_all }.to change { PlatformEvent.where(id: old.id).count }.from(1).to(0)
+    end
+
+    it "never deletes a maintenance event, even beyond the retention" do
+      old = PlatformEvent.create!(name: "maintenance.session.started", occurred_at: 13.months.ago, payload: {})
+
+      expect {
+        PlatformRecord.transaction(requires_new: true) { PlatformEvent.where(id: old.id).delete_all }
+      }.to raise_error(ActiveRecord::StatementInvalid, /maintenance audit events are immutable: DELETE refused/)
     end
 
     # O trigger não aparece em db/platform_schema.rb (o dump em Ruby não
@@ -125,7 +145,7 @@ RSpec.describe MaintenanceAudit do
     it "is installed as a trigger, not only as application code" do
       installed = PlatformRecord.connection.select_value(<<~SQL.squish)
         SELECT count(*) FROM pg_trigger
-        WHERE NOT tgisinternal AND tgname = 'platform_events_maintenance_immutable'
+        WHERE NOT tgisinternal AND tgname = 'platform_events_immutable'
       SQL
 
       expect(installed.to_i).to eq(1)

@@ -27,7 +27,7 @@ RSpec.describe CityLifecycle::Restore do
   # NÃO o updated_at da City. Envelhecer o campo errado faria o exemplo de
   # recusa nunca ficar vermelho e o de sucesso passar pelo motivo errado.
   def suspend_at!(moment)
-    PlatformEvent.where(name: "city.suspended").where("payload->>'city_id' = ?", city.id).delete_all
+    AuditCleanup.delete_platform_events!("name = 'city.suspended' AND payload->>'city_id' = $1", city.id)
     PlatformEvent.create!(name: "city.suspended", occurred_at: moment, payload: { "city_id" => city.id })
     city.update!(status: "suspended")
   end
