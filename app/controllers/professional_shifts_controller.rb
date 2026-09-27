@@ -34,6 +34,8 @@ class ProfessionalShiftsController < ApplicationController
     return render(json: { error: "not_found" }, status: :not_found) unless link
 
     body = scalar_body(%w[starts_at ends_at])
+    return render(json: { error: "invalid" }, status: :unprocessable_entity) if body.value?(:non_scalar)
+
     result = Professionals::ScheduleShift.call(link: link, starts_at: body["starts_at"], ends_at: body["ends_at"],
                                                by: Current.user)
     return render_failure(result, ERROR_STATUS) if result.failure?
@@ -45,7 +47,10 @@ class ProfessionalShiftsController < ApplicationController
     shift = ProfessionalShift.find_by(id: params[:id])
     return render(json: { error: "not_found" }, status: :not_found) unless shift
 
-    result = Professionals::CancelShift.call(shift: shift, reason: scalar_body(%w[reason])["reason"], by: Current.user)
+    body = scalar_body(%w[reason])
+    return render(json: { error: "invalid" }, status: :unprocessable_entity) if body.value?(:non_scalar)
+
+    result = Professionals::CancelShift.call(shift: shift, reason: body["reason"], by: Current.user)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: { shift: shift_json(result.payload[:shift]) }

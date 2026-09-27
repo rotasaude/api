@@ -62,6 +62,22 @@ RSpec.describe "Professional shifts", type: :request do
     expect(json["error"]).to eq("invalid_range")
   end
 
+  it "reason não escalar: 422 invalid e o turno permanece sem cancelar" do
+    json_post "/professionals/links/#{link.id}/shifts", starts_at: day.change(hour: 7).iso8601, ends_at: day.change(hour: 13).iso8601
+    id = json.dig("shift", "id")
+
+    json_post "/professionals/shifts/#{id}/cancel", reason: [ "x" ]
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json["error"]).to eq("invalid")
+    expect(ProfessionalShift.find(id).cancelled_at).to be_nil
+  end
+
+  it "starts_at não escalar: 422 invalid" do
+    json_post "/professionals/links/#{link.id}/shifts", starts_at: {}, ends_at: day.change(hour: 13).iso8601
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json["error"]).to eq("invalid")
+  end
+
   it "motivo vazio: 422 reason_required; cancelar duas vezes: 409" do
     json_post "/professionals/links/#{link.id}/shifts", starts_at: day.change(hour: 7).iso8601, ends_at: day.change(hour: 13).iso8601
     id = json.dig("shift", "id")
