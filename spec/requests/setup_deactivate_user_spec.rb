@@ -62,6 +62,9 @@ RSpec.describe "POST /setup/users/:id/deactivate", type: :request do
     expect(Session.exists?(target_session.id)).to be(false)
     event = DomainEvent.find_by!(name: "user.deactivated")
     expect(event.payload).to include("user_id" => target.id, "by" => admin.id)
+    expect(target.memberships.active).to be_empty
+    expect(DomainEvent.find_by!(name: "membership.revoked").payload)
+      .to include("user_id" => target.id, "role" => "viewer", "by" => admin.id)
   end
 
   it "a sessão que o alvo já tinha deixa de autenticar" do

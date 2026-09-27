@@ -1,10 +1,11 @@
 require "rails_helper"
 
 # A1 do fix wave da fatia 2 (Equipe): a lista de equipe não pode contar gente
-# desativada. `DeactivateUser` não revoga memberships — só marca
-# `users.deactivated_at` —, então `Membership.active` sozinho ainda inclui a
-# membership de um usuário desativado; a tela contaria um revisor a mais do
-# que `Protocols::Signatures.active_reviewer_ids` (que já exclui desativado).
+# desativada. Até o fechamento do módulo 06, `DeactivateUser` não revogava
+# memberships — só marcava `users.deactivated_at` —, e usuários desativados
+# antes disso seguem com memberships ativas: `Membership.active` sozinho ainda
+# as inclui, e a tela contaria um revisor a mais do que
+# `Protocols::Signatures.active_reviewer_ids` (que já exclui desativado).
 RSpec.describe "Setup list_memberships", type: :request do
   def json = JSON.parse(response.body)
 
