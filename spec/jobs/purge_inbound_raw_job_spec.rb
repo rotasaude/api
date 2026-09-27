@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe PurgeInboundRawJob, type: :job do
+  include ActiveSupport::Testing::TimeHelpers
+
   before { Current.city = TEST_CITY_A }
 
   def make_inbound(created_at:)
@@ -56,5 +58,45 @@ RSpec.describe PurgeInboundRawJob, type: :job do
     call_body(older_than_days: 90)
 
     expect(recent.reload.raw).to eq(%({"text":"dado pessoal"}))
+  end
+
+  # F-07.5 (fechamento do módulo 07): limite exato — o corte é estrito
+  # (created_at < cutoff), então a mensagem criada exatamente no corte fica.
+  it "keeps a message created exactly at the cutoff and clears one a second older" do
+    freeze_time do
+      at_cutoff = make_inbound(created_at: 90.days.ago)
+      past_cutoff = make_inbound(created_at: 90.days.ago - 1.second)
+
+      call_body(older_than_days: 90)
+
+      expect(at_cutoff.reload.raw).to be_present
+      expect(past_cutoff.reload.raw).to be_nil
+    end
+  end
+
+  it "is idempotent: a second run clears nothing new" do
+    make_inbound(created_at: 91.days.ago)
+    call_body(older_than_days: 90)
+
+    expect(InboundMessage.where("created_at < ?", 90.days.ago).where.not(raw: nil).count).to eq(0)
+    expect { call_body(older_than_days: 90) }.not_to(change { InboundMessage.where(raw: nil).count })
+  end
+
+  # ADR-0014: o raw "vira NULL após a janela" — teto de retenção, sem condição
+  # de processamento. Uma mensagem que nunca foi processada também perde o raw
+  # (fica o metadado); o dado pessoal não sobrevive à janela por falha do worker.
+  it "clears raw even of a message that was never processed" do
+    stuck = make_inbound(created_at: 91.days.ago)
+    expect(stuck.processed_at).to be_nil
+
+    call_body(older_than_days: 90)
+
+    expect(stuck.reload.raw).to be_nil
+  end
+
+  # Regressão (migração de cidade 20260922000003): com raw NOT NULL o job
+  # levantava NotNullViolation e nunca purgou nada.
+  it "relies on a nullable raw column" do
+    expect(InboundMessage.columns_hash.fetch("raw").null).to be(true)
   end
 end
