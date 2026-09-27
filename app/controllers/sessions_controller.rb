@@ -24,11 +24,18 @@ class SessionsController < ApplicationController
   # muda dado nenhum. Ver Authentication#require_json_for_cookie_writes.
   skip_before_action :require_json_for_cookie_writes, only: :destroy
 
-  rate_limit to: 10, within: 3.minutes, only: :create, name: "login",
+  # `store:` de `rate_limit` é avaliado no CARREGAMENTO da classe (mesmo
+  # delegador de MfaController::RateLimitStore): resolve Rails.cache a cada
+  # requisição, o que torna o teto exercitável em spec (F-06.1).
+  module RateLimitStore
+    def self.increment(...) = Rails.cache.increment(...)
+  end
+
+  rate_limit to: 10, within: 3.minutes, only: :create, name: "login", store: RateLimitStore,
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
-  rate_limit to: 10, within: 3.minutes, only: :grant, name: "grant",
+  rate_limit to: 10, within: 3.minutes, only: :grant, name: "grant", store: RateLimitStore,
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
-  rate_limit to: 10, within: 3.minutes, only: :govbr_start, name: "govbr_start",
+  rate_limit to: 10, within: 3.minutes, only: :govbr_start, name: "govbr_start", store: RateLimitStore,
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
   def create
