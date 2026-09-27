@@ -19,6 +19,7 @@ module Attendances
 
       ApplicationRecord.transaction do
         attendance.lock!
+        HealthUnit.lock_active!(unit.id) if unit
         next Result.fail(:already_closed) unless attendance.open?
         next Result.fail(:invalid_transition) unless allowed?(attendance.status, outcome)
 
@@ -29,6 +30,8 @@ module Attendances
                                                   closed_by_user_id: by.id)
         Result.ok(attendance: attendance, appointment_request: request)
       end
+    rescue HealthUnit::Inactive
+      Result.fail(:invalid_unit)
     end
 
     def self.allowed?(status, outcome)

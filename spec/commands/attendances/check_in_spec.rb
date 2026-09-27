@@ -57,4 +57,11 @@ RSpec.describe Attendances::CheckIn do
     triage.update_columns(completed_at: 4.days.ago)
     expect(check_in(c).reason).to eq(:triage_too_old)
   end
+
+  it "unidade desativada depois da leitura: invalid_unit, nada criado" do
+    c = code
+    deactivate_before_transaction(unit)
+    expect(check_in(c).reason).to eq(:invalid_unit)
+    expect(Attendance.count).to eq(0)
+  end
 end
