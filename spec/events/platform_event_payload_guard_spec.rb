@@ -16,7 +16,7 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
                                 city.archived
                                 city.admin_reinvited city.key_rotated
                                 channel.registered channel.token_rotated channel.unknown_seen
-                                operator.login operator.city_access
+                                operator.login operator.city_access operator.created
                                 operator.impersonated
                                 maintenance.session.started maintenance.session.failed
                                 maintenance.session.locked maintenance.session.ended

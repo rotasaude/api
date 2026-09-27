@@ -2,7 +2,8 @@
 # de PLATAFORMA. Só para eventos sobre objetos de plataforma: a cidade
 # (municipality.provisioned, city.suspended, city.resumed, city.backed_up,
 # city.archived), canais (channel.registered, channel.token_rotated,
-# channel.unknown_seen) e operadores (operator.login, operator.city_access).
+# channel.unknown_seen) e operadores (operator.login, operator.city_access,
+# operator.created).
 # Eventos sobre usuários, memberships e convites de uma cidade usam
 # DomainEvents.publish dentro da conexão da cidade (Ruling R18). PlatformEvent
 # recusa payload com chave de dado pessoal.
