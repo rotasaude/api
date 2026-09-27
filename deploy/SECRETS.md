@@ -7,6 +7,10 @@ Chaves protegidas em `deploy/<env>/secrets`, nunca em git. Injetadas no boot pel
 - `ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY` — cifra `city_channels.access_token` (plataforma), `inbound_messages.raw`, `users.otp_secret`, `conversations.phone` (bancos de cidade).
 - `ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY` — cifra `conversations.phone` (deterministic).
 - `ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT` — derivação de chave.
+  As três são lidas por `lib/encryption_keys.rb`: credentials primeiro, depois estas variáveis, depois os nomes
+  legados `AR_ENCRYPTION_*`. Em ambiente publicado (`Rota.deployed?`), faltando qualquer uma o boot falha. Atenção:
+  production ainda não tem `config/credentials/production.yml.enc`; se o `RAILS_MASTER_KEY` de produção abrir o
+  `config/credentials.yml.enc` compartilhado, as chaves de lá vencem as do cofre.
 - `WHATSAPP_APP_SECRET` — HMAC de webhook.
 - `ROTA_APP_PASSWORD` — senha do papel `rota_app` (banco vazio `rota_saude_no_city_selected`).
 - `ROTA_PLATFORM_PASSWORD` — senha do papel `rota_platform` (banco de plataforma).
