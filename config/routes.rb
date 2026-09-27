@@ -124,8 +124,10 @@ Rails.application.routes.draw do
     get  "me",      to: "professionals#me"
     post "me",      to: "professionals#update_me"
     get  "cbo",     to: "professionals#cbo"
+    post "links/:id/end", to: "professional_links#end_link"
     get  ":id",     to: "professionals#show"
     post ":id",     to: "professionals#update"
+    post ":id/links",     to: "professional_links#create"
   end
 
   # Healthcheck — usado pelo Kamal (ADR-0001).
