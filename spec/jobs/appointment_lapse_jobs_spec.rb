@@ -54,6 +54,13 @@ RSpec.describe "Jobs de expiração e falta" do
     expect(DomainEvent.where(name: "appointment.expired").count).to eq(1)
   end
 
+  it "falta: rodar duas vezes não muda nada a mais" do
+    appt = appointment_at(Time.zone.parse("2026-10-01 23:00"), now: Time.zone.parse("2026-10-01 20:00"))
+    travel_to(Time.zone.parse("2026-10-02 00:01")) { 2.times { MarkNoShowAppointmentsJob.perform_now } }
+    expect(appt.reload.status).to eq("no_show")
+    expect(DomainEvent.where(name: "appointment.no_show").count).to eq(1)
+  end
+
   it "se o cidadão confirmou antes do lock do job, o job não faz nada" do
     appt = appointment_at(t0 + 3.days)
     stale = Appointment.find(appt.id) # visão antiga, ainda scheduled
