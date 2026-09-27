@@ -15,20 +15,24 @@ module Protocols
       def call(trail)
         answers = trail.to_h { |entry| [entry[:step].to_s, entry[:answer].to_s] }
 
-        match = rules.find { |rule| matches?(rule[:when] || rule["when"], answers) }
-        if match
-          Outcome.terminal(
-            trail: trail,
-            tier: (match[:tier] || match["tier"]).to_s,
-            priority: (match[:priority] || match["priority"]).to_i
-          )
-        else
-          Outcome.terminal(
-            trail: trail,
-            tier: fallback[:tier].to_s,
-            priority: fallback[:priority].to_i
-          )
-        end
+        index = rules.find_index { |rule| matches?(rule[:when] || rule["when"], answers) }
+        match = index && rules[index]
+        tier, priority, ref =
+          if match
+            [(match[:tier] || match["tier"]).to_s, (match[:priority] || match["priority"]).to_i, "rule:#{index}"]
+          else
+            [fallback[:tier].to_s, fallback[:priority].to_i, "fallback"]
+          end
+
+        Outcome.terminal(
+          trail: trail,
+          tier: tier,
+          priority: priority,
+          explanation: [
+            { ev: "rule_matched", rule: "decision_table", ref: ref, out: tier },
+            { ev: "tier_assigned", rule: "decision_table", ref: ref, out: tier }
+          ]
+        )
       end
 
       def to_h

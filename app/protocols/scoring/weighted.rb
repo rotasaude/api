@@ -20,7 +20,8 @@ module Protocols
           trail: trail,
           tier: tier,
           priority: priority_map.fetch(tier, 5),
-          score: score
+          score: score,
+          explanation: explain(trail, score, tier)
         )
       end
 
@@ -33,6 +34,11 @@ module Protocols
       end
 
       private
+
+      def explain(trail, score, tier)
+        scored = trail.map { |entry| { ev: "scored", rule: "weighted", ref: "step:#{entry[:step]}", out: entry[:weight].to_i } }
+        scored + [{ ev: "tier_assigned", rule: "threshold", ref: "score:#{score}", out: tier }]
+      end
 
       def pick_tier(score)
         match = thresholds.find { |_, threshold| score >= threshold }

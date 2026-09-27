@@ -184,7 +184,8 @@ module DashboardDemo
           "status" => "terminal", "tier" => tier, "priority" => priority,
           "scoring" => { "mode" => mode, "score" => (tier == "high" ? 8 : tier == "medium" ? 4 : 1) },
           "trail" => [ { "step" => "tosse", "answer" => "true" },
-                       { "step" => "febre", "answer" => (tier == "high" ? "true" : "false") } ]
+                       { "step" => "febre", "answer" => (tier == "high" ? "true" : "false") } ],
+          "explanation" => demo_explanation(tier)
         } : {})
       )
 
@@ -213,6 +214,17 @@ module DashboardDemo
       token: token, signature: ReportSnapshot.sign(token),
       created_at: created_at, expires_at: expires_at
     )
+  end
+
+  # Explicação no formato que o motor congela no Outcome (F-03.7) — é o que o
+  # drawer de trail lê. Triagem semeada antes disso fica sem (re-seed é no-op).
+  def demo_explanation(tier)
+    febre = tier == "high" ? 5 : 0
+    [
+      { "ev" => "scored", "rule" => "weighted", "ref" => "step:tosse", "out" => 3 },
+      { "ev" => "scored", "rule" => "weighted", "ref" => "step:febre", "out" => febre },
+      { "ev" => "tier_assigned", "rule" => "threshold", "ref" => "score:#{3 + febre}", "out" => tier }
+    ]
   end
 
   # Idempotente por payload.demo_id sintético (domain_events não tem chave natural).

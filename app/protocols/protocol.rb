@@ -63,11 +63,14 @@ module Protocols
     def apply_priority_when(outcome, trail)
       return outcome unless outcome.terminal?
       answers = trail.to_h { |entry| [entry[:step].to_s, entry[:answer].to_s] }
-      escalated = PriorityRules.override_for(priority_rules, answers)
+      index, escalated = PriorityRules.match_for(priority_rules, answers)
       return outcome unless escalated
       final = [outcome.priority, escalated].compact.min
       return outcome if final == outcome.priority
-      Outcome.terminal(trail: outcome.trail, tier: outcome.tier, priority: final, score: outcome.score)
+      Outcome.terminal(
+        trail: outcome.trail, tier: outcome.tier, priority: final, score: outcome.score,
+        explanation: outcome.explanation + [{ ev: "priority_rule", rule: "priority_when", ref: "rule:#{index}", out: final }]
+      )
     end
   end
 end
