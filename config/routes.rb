@@ -114,6 +114,19 @@ Rails.application.routes.draw do
     post "requests/:id/dismiss",       to: "appointment_requests#dismiss"
   end
 
+  # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
+  # Prefixo único: uma entrada só no proxy de dev do dashboard. As rotas
+  # literais (me, pending, cbo, links, shifts) PRECISAM vir antes de `:id`.
+  scope "/professionals" do
+    get  "",        to: "professionals#index"
+    post "",        to: "professionals#create"
+    get  "pending", to: "professionals#pending"
+    get  "me",      to: "professionals#me"
+    post "me",      to: "professionals#update_me"
+    get  ":id",     to: "professionals#show"
+    post ":id",     to: "professionals#update"
+  end
+
   # Healthcheck — usado pelo Kamal (ADR-0001).
   get "up", to: ->(_env) { [200, {}, ["ok"]] }
 
