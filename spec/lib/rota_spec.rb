@@ -38,8 +38,28 @@ RSpec.describe Rota do
       end.to raise_error(Rota::SharedCredentials)
     end
 
+    # Decisão do usuário (fechamento do módulo 06, F-06.12): produção também
+    # não sobe lendo o arquivo compartilhado — antes, com o RAILS_MASTER_KEY
+    # certo, as chaves de dev venciam as do cofre.
+    it "refuses production reading the shared credentials file" do
+      expect do
+        described_class.check_credentials!(env: "production", content_path: Pathname("/rails/config/credentials.yml.enc"))
+      end.to raise_error(Rota::SharedCredentials, %r{config/credentials/production\.yml\.enc})
+    end
+
+    it "accepts production reading its own credentials file" do
+      expect do
+        described_class.check_credentials!(env: "production",
+                                           content_path: Pathname("/rails/config/credentials/production.yml.enc"))
+      end.not_to raise_error
+    end
+
+    it "isolates every deployed environment" do
+      expect(Rota::ISOLATED_CREDENTIALS_ENVS).to match_array(Rota::DEPLOYED_ENVS)
+    end
+
     it "does not judge the environments outside the isolated list" do
-      %w[development test production].each do |env|
+      %w[development test].each do |env|
         expect do
           described_class.check_credentials!(env: env, content_path: Pathname("/rails/config/credentials.yml.enc"))
         end.not_to raise_error

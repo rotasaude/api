@@ -7,9 +7,8 @@
 # Fica em lib/ e é `require`ado pelo initializer (mesmo motivo de lib/rota.rb):
 # roda antes do Zeitwerk.
 #
-# production ainda não tem config/credentials/production.yml.enc (não está em
-# Rota::ISOLATED_CREDENTIALS_ENVS): se o RAILS_MASTER_KEY de produção abrir o
-# config/credentials.yml.enc compartilhado, as chaves dele VENCEM as do cofre.
+# Ambiente publicado só lê as credentials DELE (Rota::ISOLATED_CREDENTIALS_ENVS):
+# as chaves do arquivo compartilhado de dev nunca vencem as do cofre.
 module EncryptionKeys
   class Missing < StandardError; end
 
