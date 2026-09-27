@@ -140,6 +140,34 @@ RSpec.describe "Professionals", type: :request do
     end
   end
 
+  describe "POST /professionals conflitos" do
+    it "segundo perfil para o mesmo usuário: 409 already_exists" do
+      create_profile!
+      sign_in_as(admin)
+      json_post "/professionals", attrs.merge(user_id: doctor.id)
+      expect(response).to have_http_status(:conflict)
+      expect(json["error"]).to eq("already_exists")
+    end
+
+    it "CNS já usado: 409 cns_taken" do
+      create_profile!
+      other = staff_with("outro@cidade.gov.br", "health_professional")
+      sign_in_as(admin)
+      json_post "/professionals", attrs.merge(user_id: other.id, registration_number: "99999")
+      expect(response).to have_http_status(:conflict)
+      expect(json["error"]).to eq("cns_taken")
+    end
+
+    it "número de registro já usado: 409 registration_taken" do
+      create_profile!
+      other = staff_with("outro@cidade.gov.br", "health_professional")
+      sign_in_as(admin)
+      json_post "/professionals", attrs.merge(user_id: other.id, cns: "100000000000007")
+      expect(response).to have_http_status(:conflict)
+      expect(json["error"]).to eq("registration_taken")
+    end
+  end
+
   describe "só o municipal_admin usa as rotas de admin" do
     (Membership::ROLES - %w[municipal_admin]).each do |role|
       it "#{role}: 403 em todas" do
