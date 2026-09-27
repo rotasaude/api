@@ -15,15 +15,18 @@ module Attendances
       citizens = Citizen.where(cpf: digits)
 
       if appointment_id
-        appointment = AppointmentCheckInEligibility.eligible_for(citizens, unit.id).find_by(id: appointment_id)
-        return Result.fail(:triage_not_eligible) unless appointment
+        appointment = Appointment.where(citizen_id: citizens.select(:id)).find_by(id: appointment_id)
+        return Result.fail(:appointment_not_eligible) unless appointment
+
+        state = AppointmentCheckInEligibility.check(appointment, health_unit_id: unit.id)
+        return AppointmentCheckInEligibility.failure_for(state, appointment) unless state == :ok
 
         attendance = nil
         ApplicationRecord.transaction do
           attendance = Attendance.create!(triage: nil, appointment: appointment, citizen: appointment.citizen,
                                           health_unit: unit, checked_in_by_user: by, checked_in_at: Time.current,
                                           check_in_method: "cpf_exception", exception_reason: reason.to_s.strip)
-          CheckIn.fulfil(appointment)
+          CheckIn.fulfil(appointment, health_unit_id: unit.id)
           CheckIn.publish(attendance)
         end
         return Result.ok(attendance: attendance)

@@ -35,7 +35,7 @@ module Attendances
         end
         attendance = Attendance.create!(triage: triage, appointment: appointment, citizen: citizen, health_unit: unit,
                                         checked_in_by_user: by, checked_in_at: Time.current, check_in_method: "code")
-        fulfil(appointment) if appointment
+        fulfil(appointment, health_unit_id: unit.id) if appointment
         publish(attendance)
         result = Result.ok(attendance: attendance, verified: verified)
       end
@@ -47,11 +47,12 @@ module Attendances
     end
 
     # O horário virou atendimento: fecha o horário e o pedido (ADR 0019).
-    # Reconfere o status sob lock; levanta AppointmentNotEligible para o
-    # chamador desfazer a transação.
-    def self.fulfil(appointment)
+    # Reconfere status, dia e unidade sob lock; levanta AppointmentNotEligible
+    # para o chamador desfazer a transação.
+    def self.fulfil(appointment, health_unit_id:)
       appointment.lock!
-      raise AppointmentNotEligible unless appointment.status == "confirmed"
+      state = AppointmentCheckInEligibility.check(appointment, health_unit_id: health_unit_id)
+      raise AppointmentNotEligible unless state == :ok
 
       appointment.update!(status: "checked_in", ended_at: Time.current)
       AppointmentRequests::Lifecycle.close!(appointment.request, reason: "fulfilled")

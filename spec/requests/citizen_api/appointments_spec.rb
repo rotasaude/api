@@ -37,6 +37,27 @@ RSpec.describe "Citizen appointments", type: :request do
     expect(response).to have_http_status(:ok)
   end
 
+  it "confirmar depois do prazo: 409 confirmation_closed e o horário segue sem confirmação" do
+    appt = appointment_for(citizen)
+    travel_to(appt.confirmation_deadline_at) do
+      sign_in_citizen("+5541998765432")
+      json_post "/citizen/appointments/#{appt.id}/confirm"
+      expect(response).to have_http_status(:conflict)
+      expect(body["error"]).to eq("confirmation_closed")
+    end
+    expect(appt.reload.status).to eq("scheduled")
+  end
+
+  it "o motivo do cancelamento não volta em nenhuma resposta" do
+    appt = appointment_for(citizen)
+    sign_in_citizen("+5541998765432")
+    json_post "/citizen/appointments/#{appt.id}/cancel", reason: "vou viajar nessa semana"
+    expect(response.body).not_to include("vou viajar")
+    get "/citizen/appointments", params: { citizen_id: citizen.id }
+    expect(body["appointments"].first["appointment"]["status"]).to eq("cancelled_by_citizen")
+    expect(response.body).not_to include("vou viajar")
+  end
+
   it "horário de outro celular com o mesmo CPF: 404 nos dois sentidos" do
     other = Citizen.create!(cpf: citizen.cpf, phone: "+5541911112222")
     mine = appointment_for(citizen)
