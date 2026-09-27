@@ -25,6 +25,12 @@ class Conversation < ApplicationRecord
 
   ACTIVE_STATES = %w[greeting awaiting_consent consented].freeze
 
+  # Terminal é terminal (critério de fechamento do módulo 02): uma conversa
+  # encerrada nunca volta a ativa nem troca de desfecho. A única saída é a
+  # revogação, porque o cidadão pode revogar o consentimento a qualquer
+  # momento (LGPD) — inclusive depois de concluir a triagem.
+  validate :terminal_is_terminal, on: :update, if: :state_changed?
+
   def self.for(phone)
     channel_whatsapp.where(phone: phone, state: ACTIVE_STATES).first ||
       create!(phone: phone, state: :greeting, channel: "whatsapp")
@@ -45,5 +51,14 @@ class Conversation < ApplicationRecord
 
   def active_consent
     consents.where(revoked_at: nil).order(given_at: :desc).first
+  end
+
+  private
+
+  def terminal_is_terminal
+    from, to = state_change
+    return if ACTIVE_STATES.include?(from)
+    return if to == "revoked" && from != "revoked"
+    errors.add(:state, "#{from} é terminal: não passa para #{to}")
   end
 end

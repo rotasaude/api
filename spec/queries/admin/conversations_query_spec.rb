@@ -39,4 +39,46 @@ RSpec.describe Admin::ConversationsQuery do
     expect(out[:avgToCompleteMin]).to be_nil
     expect(out[:funnel].find { |f| f[:key] == "greeting" }[:count]).to eq(1)
   end
+
+  # F-02.9: o funil mostra os estados ativos e as saídas mostram TODOS os
+  # desfechos terminais; a web (único canal do cidadão desde o ADR 0017) conta.
+  describe "distribuição por estado (F-02.9)" do
+    let(:citizen) { Citizen.create!(cpf: "52998224725", phone: "+5541998765432") }
+
+    def conversation!(state, channel: "web")
+      attrs = { phone: citizen.phone, state: state, channel: channel }
+      attrs[:citizen] = citizen if channel == "web"
+      Conversation.create!(attrs)
+    end
+
+    it "counts every terminal state as an exit, web conversations included" do
+      %w[completed completed abandoned declined cancelled revoked].each { |s| conversation!(s) }
+      conversation!("consented")
+
+      out = Admin::ConversationsQuery.call(period: period)
+
+      exits = out[:exits].to_h { |e| [ e[:key], e[:count] ] }
+      expect(exits).to eq("completed" => 2, "abandoned" => 1, "declined" => 1, "cancelled" => 1, "revoked" => 1)
+      expect(out[:funnel].find { |f| f[:key] == "consented" }[:count]).to eq(1)
+    end
+
+    it "computes abandonRate as abandoned over conversations started in the period, in percent" do
+      %w[abandoned completed completed consented].each { |s| conversation!(s) }
+
+      expect(Admin::ConversationsQuery.call(period: period)[:abandonRate]).to eq(25.0)
+    end
+
+    it "returns nil abandonRate when no conversation started in the period" do
+      expect(Admin::ConversationsQuery.call(period: period)[:abandonRate]).to be_nil
+    end
+
+    it "leaves conversations started before the period out of the distribution" do
+      conversation!("abandoned").update_columns(created_at: 30.days.ago)
+
+      out = Admin::ConversationsQuery.call(period: period)
+
+      expect(out[:exits].sum { |e| e[:count] }).to eq(0)
+      expect(out[:abandonRate]).to be_nil
+    end
+  end
 end
