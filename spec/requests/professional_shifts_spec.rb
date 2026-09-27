@@ -78,6 +78,23 @@ RSpec.describe "Professional shifts", type: :request do
     expect(json["error"]).to eq("invalid")
   end
 
+  it "vínculo encerrado: 409 link_ended" do
+    Current.set(city: TEST_CITY_A) { Professionals::EndLink.call(link: link, by: admin) }
+
+    json_post "/professionals/links/#{link.id}/shifts", starts_at: day.change(hour: 7).iso8601, ends_at: day.change(hour: 13).iso8601
+    expect(response).to have_http_status(:conflict)
+    expect(json["error"]).to eq("link_ended")
+  end
+
+  it "starts_at com offset UTC (Z) mantém o mesmo instante na resposta" do
+    utc_starts_at = (day.change(hour: 10) + 1.day).utc.iso8601
+    ends_at = (day.change(hour: 12) + 1.day).iso8601
+
+    json_post "/professionals/links/#{link.id}/shifts", starts_at: utc_starts_at, ends_at: ends_at
+    expect(response).to have_http_status(:created)
+    expect(Time.iso8601(json.dig("shift", "starts_at"))).to eq(Time.iso8601(utc_starts_at))
+  end
+
   it "motivo vazio: 422 reason_required; cancelar duas vezes: 409" do
     json_post "/professionals/links/#{link.id}/shifts", starts_at: day.change(hour: 7).iso8601, ends_at: day.change(hour: 13).iso8601
     id = json.dig("shift", "id")
