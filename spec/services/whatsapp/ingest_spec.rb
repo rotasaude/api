@@ -58,6 +58,62 @@ RSpec.describe Whatsapp::Ingest do
     expect(InboundMessage.count).to eq(0)
   end
 
+  # F-01.4: sem cidade resolvida e servível, falha fechada — nenhuma cidade
+  # recebe nada (city_a, city_b e a conexão default do harness).
+  describe "fail-closed routing" do
+    def expect_nothing_written_anywhere
+      expect(CityConnection.with(city_a) { InboundMessage.count }).to eq(0)
+      expect(CityConnection.with(city_b) { InboundMessage.count }).to eq(0)
+      expect(InboundMessage.count).to eq(0)
+    end
+
+    before { city_b } # força criação: "a outra cidade ficou em zero" precisa existir
+
+    it "discards messages for a channel whose city is not servable" do
+      city_a.update!(status: "suspended")
+
+      expect {
+        described_class.call(payload)
+      }.not_to have_enqueued_job(ProcessInboundMessageJob)
+
+      expect_nothing_written_anywhere
+      expect(UnknownChannel.count).to eq(0)
+    end
+
+    it "discards a change with blank phone_number_id without recording an unknown channel" do
+      payload["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"] = ""
+      missing = { "entry" => [{ "changes" => [{ "value" => { "messages" => payload.dig("entry", 0, "changes", 0, "value", "messages") } }] }] }
+
+      expect {
+        described_class.call(payload)
+        described_class.call(missing)
+      }.not_to have_enqueued_job(ProcessInboundMessageJob)
+
+      expect_nothing_written_anywhere
+      expect(UnknownChannel.count).to eq(0)
+    end
+
+    # ADR 0017: WhatsApp desligado por cidade = CityChannel inativo. Um número
+    # conhecido e desligado não é "número desconhecido mal configurado" — não
+    # vai para UnknownChannel, só é descartado e logado.
+    it "discards messages for an inactive channel without recording it as unknown" do
+      channel.update!(active: false)
+      allow(Rails.logger).to receive(:warn).and_call_original
+
+      expect {
+        described_class.call(payload)
+      }.not_to have_enqueued_job(ProcessInboundMessageJob)
+
+      expect_nothing_written_anywhere
+      expect(UnknownChannel.count).to eq(0)
+      expect(Rails.logger).to have_received(:warn)
+        .with(satisfy { |line|
+          line.include?("phone_number_id=PNID123") && line.include?("city=#{city_a.slug}") &&
+            !line.include?("+551188") && !line.include?("wamid.1")
+        })
+    end
+  end
+
   it "reentrega do mesmo wamid não duplica na cidade" do
     described_class.call(payload)
     expect {

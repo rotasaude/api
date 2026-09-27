@@ -6,6 +6,10 @@
 # catálogo de PLATAFORMA → City. Só então abre a conexão daquela cidade e grava
 # a mensagem no banco DELA. Conteúdo de mensagem nunca toca a plataforma — o
 # UnknownChannel guarda só metadado de roteamento (Ruling R17).
+#
+# Falha fechada (F-01.4): sem cidade resolvida E servível, nada é gravado em
+# banco de cidade nenhum. Só o número que nenhum CityChannel conhece vai para
+# UnknownChannel; canal inativo e cidade não servível são descartados e logados.
 module Whatsapp
   module Ingest
     # Resultado de #call: `schema_behind?` é true quando QUALQUER mudança do
@@ -20,8 +24,9 @@ module Whatsapp
     end
 
     # Sentinela interno de #route: distingue "cidade com schema atrasado" (nada
-    # é gravado, resultado sinaliza) de "descartar e seguir" (canal
-    # desconhecido, cidade não servível) — os dois retornam nil hoje.
+    # é gravado, resultado sinaliza) de "descartar e seguir" (phone_number_id
+    # vazio, canal desconhecido, canal inativo, cidade não servível) — todos
+    # esses retornam nil.
     SCHEMA_BEHIND = :schema_behind
     private_constant :SCHEMA_BEHIND
 
@@ -56,11 +61,28 @@ module Whatsapp
     end
 
     def self.route(phone_number_id, change)
+      # Sem phone_number_id não há o que rotear nem o que diagnosticar: descarta
+      # sem UnknownChannel (a linha teria chave vazia).
       return nil if phone_number_id.blank?
 
-      channel = CityChannel.active.find_by(phone_number_id: phone_number_id)
+      channel = CityChannel.find_by(phone_number_id: phone_number_id)
       if channel.nil?
+        # Número que nenhum CityChannel conhece: WABA mal configurado. Vai para
+        # UnknownChannel (plataforma, só metadado de roteamento) para o
+        # operador diagnosticar.
         UnknownChannel.record!(phone_number_id: phone_number_id, change: change)
+        return nil
+      end
+
+      unless channel.active?
+        # Canal conhecido e DESLIGADO (ADR 0017: WhatsApp desligado por
+        # cidade). Não é número desconhecido — gravá-lo em UnknownChannel faria
+        # uma cidade desligada parecer um número mal configurado. Falha
+        # fechada: descarta e loga só phone_number_id e slug, nunca payload.
+        Rails.logger.warn(
+          "[whatsapp.ingest] phone_number_id=#{phone_number_id} city=#{channel.city.slug}: " \
+          "canal inativo, mensagens descartadas"
+        )
         return nil
       end
 
