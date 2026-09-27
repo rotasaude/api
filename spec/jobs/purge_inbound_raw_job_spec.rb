@@ -28,6 +28,28 @@ RSpec.describe PurgeInboundRawJob, type: :job do
     expect(old.from).to eq("5541999990000")
   end
 
+  # F-01.3: a janela do agendamento de produção é a mesma constante que o job
+  # usa por padrão — uma fonte só para os 90 dias da ADR-0014.
+  describe "schedule" do
+    let(:task) do
+      ActiveSupport::ConfigurationFile.parse(Rails.root.join("config/recurring.yml"))
+        .fetch("production").fetch("purge_inbound_raw")
+    end
+
+    it "keeps RAW_RETENTION_DAYS at 90 (ADR-0014) and uses it as the default window" do
+      expect(described_class::RAW_RETENTION_DAYS).to eq(90)
+
+      old = make_inbound(created_at: (described_class::RAW_RETENTION_DAYS + 1).days.ago)
+      call_body
+      expect(old.reload.raw).to be_nil
+    end
+
+    it "is scheduled in production against PurgeInboundRawJob at RAW_RETENTION_DAYS" do
+      expect(task["class"]).to eq("PurgeInboundRawJob")
+      expect(task["args"]).to eq("older_than_days" => described_class::RAW_RETENTION_DAYS)
+    end
+  end
+
   it "keeps raw of messages inside the window" do
     recent = make_inbound(created_at: 89.days.ago)
 

@@ -4,7 +4,11 @@ class PurgeInboundRawJob < ApplicationJob
   prepend EachCityJob
   queue_as :housekeeping
 
-  def perform(older_than_days: 90)
+  # Janela de retenção do raw (ADR-0014). config/recurring.yml agenda com este
+  # mesmo valor (spec/jobs/purge_inbound_raw_job_spec.rb garante a igualdade).
+  RAW_RETENTION_DAYS = 90
+
+  def perform(older_than_days: RAW_RETENTION_DAYS)
     cutoff = older_than_days.days.ago
     count = InboundMessage.where("created_at < ?", cutoff)
                           .where.not(raw: nil)
