@@ -45,6 +45,16 @@ RSpec.describe Professionals::OpenLink do
     expect(open(health_unit_id: SecureRandom.uuid).reason).to eq(:invalid_unit)
   end
 
+  it "unidade inativa E CBO inválido: invalid_unit" do
+    inactive_unit = create_unit("UBS Fechada", active: false)
+    expect(open(health_unit_id: inactive_unit.id, cbo_code: "999999").reason).to eq(:invalid_unit)
+  end
+
+  it "unidade inativa E conselho incoerente: invalid_unit" do
+    inactive_unit = create_unit("UBS Fechada", active: false)
+    expect(open(health_unit_id: inactive_unit.id, cbo_code: "223505").reason).to eq(:invalid_unit)
+  end
+
   it "mesmo par ativo: already_linked; outro CBO na mesma unidade passa" do
     open
     expect(open.reason).to eq(:already_linked)

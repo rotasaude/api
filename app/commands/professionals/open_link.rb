@@ -5,12 +5,13 @@
 module Professionals
   class OpenLink
     def self.call(professional:, health_unit_id:, cbo_code:, by:)
-      entry = Cbo.find(cbo_code)
-      return Result.fail(:invalid_cbo) if entry.nil? || entry.deprecated
-      return Result.fail(:council_mismatch) if entry.council && entry.council != professional.council
-
       ApplicationRecord.transaction do
         HealthUnit.lock_active!(health_unit_id)
+
+        entry = Cbo.find(cbo_code)
+        next Result.fail(:invalid_cbo) if entry.nil? || entry.deprecated
+        next Result.fail(:council_mismatch) if entry.council && entry.council != professional.council
+
         if professional.links.active.exists?(health_unit_id: health_unit_id, cbo_code: entry.code)
           next Result.fail(:already_linked)
         end
