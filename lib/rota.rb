@@ -14,8 +14,10 @@ module Rota
 
   # Ambientes que exigem config/credentials/<env>.yml.enc. Sem esse arquivo o Rails
   # cai, em silêncio, em config/credentials.yml.enc — as chaves de outro ambiente.
-  # production entra aqui quando ganhar o arquivo próprio.
-  ISOLATED_CREDENTIALS_ENVS = %w[staging].freeze
+  # production entrou no fechamento do módulo 06 (decisão do usuário): sem
+  # config/credentials/production.yml.enc o boot de produção FALHA — criar o
+  # arquivo e guardar production.key no cofre está em deploy/SECRETS.md.
+  ISOLATED_CREDENTIALS_ENVS = %w[staging production].freeze
 
   class SharedCredentials < StandardError; end
 

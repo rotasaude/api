@@ -498,4 +498,41 @@ namespace :city do
     puts "[city:offboard] #{city.slug} → archived; banco e role apagados; dump final: " \
          "#{result.payload[:backup_path] || 'feito na execução anterior'}"
   end
+
+  # Termo de consentimento da cidade (F-06.13). consent_terms é append-only
+  # (trigger em db/city_triggers.sql): publicar é acrescentar a versão SEGUINTE,
+  # nunca editar a vigente. A ordem é numérica (version é string no banco — ver
+  # ConsentTerm.current_version). O texto vem de um arquivo, lido inteiro.
+  # Auditoria na plataforma, como os outros atos de operador sobre uma cidade;
+  # só id da cidade e versão, nunca o texto.
+  namespace :consent_term do
+    desc "Publica versão nova do termo de consentimento. Uso: city:consent_term:publish[slug,versao,/caminho/termo.txt]"
+    task :publish, %i[slug version path] => :environment do |_t, args|
+      city = lifecycle_city.call("city:consent_term:publish", args[:slug])
+      version = args[:version].to_s.strip
+      path = args[:path].to_s
+      abort "uso: rails 'city:consent_term:publish[slug,versao,/caminho/termo.txt]'" if version.empty? || path.empty?
+      abort "[city:consent_term:publish] versão precisa ser inteira: #{version.inspect}" unless version.match?(/\A\d+\z/)
+      abort "[city:consent_term:publish] arquivo #{path} não existe" unless File.file?(path)
+      body = File.read(path)
+      abort "[city:consent_term:publish] arquivo #{path} está vazio" if body.strip.empty?
+      abort "[city:consent_term:publish] cidade #{city.slug} está archived — não tem banco" if city.status == "archived"
+
+      failure = CityConnection.with(city) do
+        ApplicationRecord.transaction do
+          current = ConsentTerm.current_version
+          if current && version.to_i <= current.to_i
+            next "versão #{version} não é maior que a vigente (#{current})"
+          end
+
+          ConsentTerm.create!(version: version, body: body, published_at: Time.current)
+          nil
+        end
+      end
+      abort "[city:consent_term:publish] #{city.slug}: #{failure}" if failure
+
+      Platform.audit("city.consent_term_published", city_id: city.id, version: version)
+      puts "[city:consent_term:publish] #{city.slug} → termo versão #{version} publicado"
+    end
+  end
 end

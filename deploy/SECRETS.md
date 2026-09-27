@@ -7,6 +7,26 @@ Chaves protegidas em `deploy/<env>/secrets`, nunca em git. Injetadas no boot pel
 - `ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY` — cifra `city_channels.access_token` (plataforma), `inbound_messages.raw`, `users.otp_secret`, `conversations.phone` (bancos de cidade).
 - `ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY` — cifra `conversations.phone` (deterministic).
 - `ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT` — derivação de chave.
+  As três são lidas por `lib/encryption_keys.rb`: credentials primeiro, depois estas variáveis, depois os nomes
+  legados `AR_ENCRYPTION_*`. Em ambiente publicado (`Rota.deployed?`), faltando qualquer uma o boot falha.
+
+## Credentials próprias de produção
+
+staging e production só sobem com o próprio `config/credentials/<env>.yml.enc` (`Rota::ISOLATED_CREDENTIALS_ENVS`,
+`config/initializers/00_credentials_isolation.rb`): lendo o `config/credentials.yml.enc` compartilhado, o boot falha
+com `Rota::SharedCredentials`. Para produção, uma vez:
+
+1. `bin/rails credentials:edit --environment production` — cria `config/credentials/production.yml.enc` (commitado)
+   e `config/credentials/production.key` (NUNCA commitado; `.gitignore` e `.dockerignore` já o excluem). Preencha
+   pelo menos `secret_key_base`, `report_signing_key` e o que mais o app lê de credentials (compare com
+   `bin/rails credentials:show` de dev, sem copiar valores). As chaves do AR Encryption podem ficar só no cofre
+   (`ACTIVE_RECORD_ENCRYPTION_*`, acima) — se entrarem aqui, vencem as do cofre.
+2. Guarde o conteúdo de `production.key` no cofre `rota-saude-prod`, item `rails-master-key` (é o que
+   `deploy/production/secrets` já lê como `RAILS_MASTER_KEY`), e apague a cópia local.
+3. Troque o secret `RAILS_MASTER_KEY` do GitHub (job `production-boot` da CI) pelo mesmo valor.
+
+`report_signing_key` NOVO invalida os links de relatório assinados com o antigo: rode `city:resign_reports` por
+cidade depois do primeiro deploy com o arquivo novo.
 - `WHATSAPP_APP_SECRET` — HMAC de webhook.
 - `ROTA_APP_PASSWORD` — senha do papel `rota_app` (banco vazio `rota_saude_no_city_selected`).
 - `ROTA_PLATFORM_PASSWORD` — senha do papel `rota_platform` (banco de plataforma).
@@ -17,7 +37,7 @@ Chaves protegidas em `deploy/<env>/secrets`, nunca em git. Injetadas no boot pel
 - `PLATFORM_DATABASE_URL` — banco de plataforma (catálogo de cidades, operadores, `platform_events`), fila de plataforma e Solid Cache.
 - `CITY_UNSET_DATABASE_URL` — banco VAZIO que precisa existir; destino do shard `bootstrap` do `CityRecord`, faz query fora de cidade falhar fechado. Nunca apontar para o banco compartilhado.
 - `GOVBR_CLIENT_ID` / `GOVBR_CLIENT_SECRET` — cliente OIDC do gov.br; a redirect_uri registrada é a ÚNICA de auth.* (`GOVBR_REDIRECT_URI`).
-- `report_signing_key` — NÃO fica em `deploy/<env>/secrets`: mora em `config/credentials.yml.enc`, protegido pelo
+- `report_signing_key` — NÃO fica em `deploy/<env>/secrets`: mora nas credentials do ambiente (`config/credentials/<env>.yml.enc` em staging e production), protegido pelo
   `RAILS_MASTER_KEY` acima. Desde a Task 6 (Plano 8), a chave HMAC efetiva do token de relatório (`ReportSnapshot.sign`)
   é DERIVADA deste valor global com o `cities.encryption_key` da cidade (`CityEncryption.report_signing_key`) — a
   mesma composição usada para cifra (ver README.md § Material de cifra). Quem restaura um dump de cidade precisa dos

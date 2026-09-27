@@ -1,12 +1,15 @@
-# Chaves do AR Encryption. Ver ADR-0013.
-# Em produção, vêm de credentials criptografados (master.key + credentials.yml.enc).
-# Em dev/test, aceitamos ENV — gere com:
+# Chaves do AR Encryption. Ver ADR-0013 e lib/encryption_keys.rb (ordem de
+# resolução e falha de boot em ambiente publicado).
+# Em dev/test, gere com:
 #   bin/rails db:encryption:init
 # e copie a saída para credentials, ou exporte:
-#   AR_ENCRYPTION_PRIMARY_KEY, AR_ENCRYPTION_DETERMINISTIC_KEY, AR_ENCRYPTION_KEY_DERIVATION_SALT
-config = Rails.application.config.active_record.encryption
-creds  = Rails.application.credentials
+#   ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY, ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY,
+#   ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT (os AR_ENCRYPTION_* antigos ainda valem)
+require_relative "../../lib/encryption_keys"
 
-config.primary_key            = creds.dig(:active_record_encryption, :primary_key)            || ENV["AR_ENCRYPTION_PRIMARY_KEY"]
-config.deterministic_key      = creds.dig(:active_record_encryption, :deterministic_key)      || ENV["AR_ENCRYPTION_DETERMINISTIC_KEY"]
-config.key_derivation_salt    = creds.dig(:active_record_encryption, :key_derivation_salt)    || ENV["AR_ENCRYPTION_KEY_DERIVATION_SALT"]
+config = Rails.application.config.active_record.encryption
+keys = EncryptionKeys.resolve(credentials: Rails.application.credentials, env: ENV, deployed: Rota.deployed?)
+
+config.primary_key         = keys[:primary_key]
+config.deterministic_key   = keys[:deterministic_key]
+config.key_derivation_salt = keys[:key_derivation_salt]

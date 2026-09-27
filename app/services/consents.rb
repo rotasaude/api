@@ -52,8 +52,12 @@ module Consents
     (ConsentTerm.current_version || Rails.application.credentials.dig(:policy, :version) || 1).to_s
   end
 
+  # Hash do texto que o cidadão viu: o body do termo da cidade quando a versão
+  # está em consent_terms (city:consent_term:publish, e é esse body que
+  # GET /citizen/consent_term serve); sem a linha, o texto das credentials.
   def self.policy_text_sha(version)
-    text = Rails.application.credentials.dig(:policy, "v#{version}", :text).to_s
+    text = ConsentTerm.find_by(version: version.to_s)&.body ||
+           Rails.application.credentials.dig(:policy, "v#{version}", :text).to_s
     Digest::SHA256.hexdigest(text)
   end
 

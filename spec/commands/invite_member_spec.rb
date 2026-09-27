@@ -19,4 +19,40 @@ RSpec.describe InviteMember do
     event = DomainEvent.find_by!(name: "user.invited")
     expect(event.payload).to include("email" => "new@example.org", "role" => "municipal_admin", "invitation_id" => inv.id)
   end
+
+  # F-06.9: o convite não duplica quem já está na cidade nem um convite vivo.
+  it "recusa e-mail de usuário que já existe na cidade (already_member), sem criar convite" do
+    User.create!(email_address: "ja@example.org", password: "secret123")
+
+    res = nil
+    expect { res = described_class.call(email: "JA@example.org", role: "viewer", invited_by: inviter) }
+      .not_to change(Invitation, :count)
+    expect(res.reason).to eq(:already_member)
+    expect(res.message).to be_present
+  end
+
+  it "e-mail com convite pendente: vence o anterior e cria um novo (o reenvio é a saída)" do
+    first = described_class.call(email: "pend@example.org", role: "viewer", invited_by: inviter).payload[:invitation]
+
+    res = described_class.call(email: "Pend@example.org", role: "protocol_author", invited_by: inviter)
+
+    expect(res.ok?).to be(true)
+    expect(first.reload.expired?).to be(true)
+    expect(Invitation.pending.where(email: "pend@example.org").sole).to eq(res.payload[:invitation])
+    expect(res.payload[:invitation].role).to eq("protocol_author")
+  end
+
+  it "convida de novo quando o convite anterior venceu ou foi aceito" do
+    old = described_class.call(email: "venc@example.org", role: "viewer", invited_by: inviter).payload[:invitation]
+    old.update_column(:expires_at, 1.minute.ago)
+
+    expect(described_class.call(email: "venc@example.org", role: "viewer", invited_by: inviter).ok?).to be(true)
+  end
+
+  it "normaliza o e-mail uma vez (strip + downcase) para checar, gravar e publicar" do
+    res = described_class.call(email: "  Nova.Pessoa@Example.ORG ", role: "viewer", invited_by: inviter)
+
+    expect(res.payload[:invitation].email).to eq("nova.pessoa@example.org")
+    expect(DomainEvent.find_by!(name: "user.invited").payload["email"]).to eq("nova.pessoa@example.org")
+  end
 end

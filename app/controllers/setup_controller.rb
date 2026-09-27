@@ -6,9 +6,7 @@
 #     deactivate_user agem SOBRE dados da cidade — convites, usuários e
 #     memberships moram no banco dela —, então resolvem a cidade pelo host como
 #     qualquer controller, e a sessão é a da cidade;
-#   - deactivate_user segue exigindo operador; nenhum usuário de cidade é
-#     operador (User#operator?), então responde 403 até o grant de operador
-#     do Plano 3B;
+#   - deactivate_user é do municipal_admin da cidade, com step-up (F-06.10);
 #   - provisionar cidade não é mais daqui: é POST /cities no console de
 #     plataforma (Operators::CitiesController, Plano 4).
 #
@@ -41,6 +39,12 @@ class SetupController < ApplicationController
     )
     if result.ok?
       inv = result.payload[:invitation]
+      # Fora da transação do command (já commitada): a fila é a da cidade do
+      # host. O token só viaja no argumento do job, que CityMailDeliveryJob
+      # não loga.
+      MemberInvitationMailer.invite(
+        email_address: inv.email, accept_url: CityDashboardUrl.invitation(Current.city, token: inv.token)
+      ).deliver_later
       render json: { id: inv.id, email: inv.email, role: inv.role, expires_at: inv.expires_at.iso8601 }, status: :created
     else
       render json: { error: result.reason.to_s, message: result.message }, status: :unprocessable_entity
@@ -100,9 +104,16 @@ class SetupController < ApplicationController
   end
 
   # POST /setup/users/:id/deactivate
+  # Só municipal_admin e SEMPRE com step-up (F-06.10): desativar derruba todas
+  # as sessões do alvo — o mesmo peso de revogar papel privilegiado.
   def deactivate_user
-    return head(:forbidden) unless current_user.operator?
-    result = DeactivateUser.call(user_id: params[:id], by: current_user)
+    return head(:forbidden) unless can_manage_members?
+
+    user = User.find_by(id: params[:id])
+    return head(:not_found) unless user
+    return require_step_up! unless reauthenticated_recently?
+
+    result = DeactivateUser.call(user_id: user.id, by: current_user)
     if result.ok?
       user = result.payload[:user]
       render json: { id: user.id, deactivated_at: user.deactivated_at.iso8601 }, status: :ok
