@@ -16,14 +16,18 @@ RSpec.describe "Vínculo: encerrar × lançar turno" do
       Current.set(city: TEST_CITY_A) do
         tag = SecureRandom.hex(4)
         admin = User.create!(email_address: "adm-#{tag}@c.gov.br", password: "senha-segura-123")
+        ids[:admin] = admin.id
         doc_user = User.create!(email_address: "doc-#{tag}@c.gov.br", password: "senha-segura-123")
+        ids[:doc_user] = doc_user.id
         Membership.create!(user: doc_user, role: "health_professional", granted_at: Time.current)
         unit = HealthUnit.create!(name: "UBS Trava #{tag}", kind: "ubs")
+        ids[:unit] = unit.id
         pro = Professional.create!(user: doc_user, professional_name: "P", council: "CRM", council_state: "PR",
                                    registration_number: tag.to_i(16).to_s[0, 8], cns: Professionals::Cns.generate(tag))
+        ids[:pro] = pro.id
         link = Professionals::OpenLink.call(professional: pro, health_unit_id: unit.id, cbo_code: "225125", by: admin)
                                       .payload[:link]
-        ids.merge!(admin: admin.id, link: link.id, unit: unit.id, pro: pro.id, doc_user: doc_user.id)
+        ids[:link] = link.id
       end
     end
   end
@@ -35,6 +39,22 @@ RSpec.describe "Vínculo: encerrar × lançar turno" do
   end
 
   def in_city(&) = CityConnection.with(TEST_CITY_A) { Current.set(city: TEST_CITY_A) { ApplicationRecord.transaction(&) } }
+
+  # A conexão do exemplo (aberta pelo around de city_test_databases.rb) já
+  # está em TEST_CITY_A, então basta consultar pg_stat_activity nela: nenhuma
+  # das duas threads em disputa é a dona dessa conexão.
+  def wait_for_lock_wait(timeout: 5)
+    deadline = Time.current + timeout
+    loop do
+      count = ApplicationRecord.connection.select_value(
+        "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'"
+      ).to_i
+      return true if count.positive?
+      return false if Time.current > deadline
+
+      sleep 0.05
+    end
+  end
 
   it "o lançamento que espera o encerramento recebe link_ended" do
     locked = Queue.new
@@ -59,10 +79,42 @@ RSpec.describe "Vínculo: encerrar × lançar turno" do
         end
       end
     end
-    expect(scheduler.join(0.5)).to be_nil # esperando o FOR UPDATE
+    expect(wait_for_lock_wait).to be(true) # o lançamento está esperando o FOR UPDATE do encerramento
 
     release << true
     ender.join(5)
     expect(outcome.pop(timeout: 5)).to eq(:link_ended)
+  end
+
+  it "o encerramento que espera o lançamento em curso cancela o turno futuro recém-lançado" do
+    locked = Queue.new
+    scheduled = Queue.new
+    threads << scheduler = Thread.new do
+      in_city do
+        start = 2.days.from_now
+        result = Professionals::ScheduleShift.call(link: ProfessionalLink.find(ids[:link]), starts_at: start,
+                                                   ends_at: start + 4.hours, by: User.find(ids[:admin]))
+        scheduled << result
+        locked << true
+        release.pop
+      end
+    end
+    result = scheduled.pop(timeout: 5) or raise "o lançamento não terminou"
+    ids[:shift] = result.payload[:shift].id
+    locked.pop(timeout: 5) or raise "a thread não pegou o FOR SHARE"
+
+    outcome = Queue.new
+    threads << ender = Thread.new do
+      in_city { outcome << Professionals::EndLink.call(link: ProfessionalLink.find(ids[:link]), by: User.find(ids[:admin])) }
+    end
+    expect(wait_for_lock_wait).to be(true) # o encerramento está esperando o FOR SHARE do lançamento
+
+    release << true
+    scheduler.join(5)
+    ender.join(5)
+    end_result = outcome.pop(timeout: 5)
+    expect(end_result.payload[:cancelled_shift_ids]).to eq([ ids[:shift] ])
+    expect(ProfessionalShift.find(ids[:shift]))
+      .to have_attributes(cancel_reason: ProfessionalShift::LINK_ENDED_REASON, cancelled_at: be_present)
   end
 end
