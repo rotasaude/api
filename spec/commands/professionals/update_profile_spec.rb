@@ -74,7 +74,12 @@ RSpec.describe Professionals::UpdateProfile do
     end
 
     it "vínculo ativo com CBO sem conselho exigido: permitido" do
-      ProfessionalLink.create!(professional: professional, health_unit: unit, cbo_code: "515105",
+      # Nenhum CBO real fica sem conselho hoje (ACS/ACE voltam com CNES, ADR
+      # 0021 em aberto); stub `.all` (não só `.find`) porque ProfessionalLink
+      # também valida cbo_code contra o catálogo na criação.
+      council_less = Professionals::Cbo::Entry.new(code: "999998", title: "x", council: nil, deprecated: false)
+      allow(Professionals::Cbo).to receive(:all).and_return(Professionals::Cbo.all + [ council_less ])
+      ProfessionalLink.create!(professional: professional, health_unit: unit, cbo_code: "999998",
                                started_at: Time.current, started_by_user: admin)
 
       result = described_class.call(professional: professional, attrs: { "council" => "COREN" }, by: admin)

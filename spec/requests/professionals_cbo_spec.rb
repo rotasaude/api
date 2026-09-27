@@ -5,7 +5,7 @@ RSpec.describe "GET /professionals/cbo", type: :request do
     sign_in_as(staff_with("admin@cidade.gov.br", "municipal_admin"))
     get "/professionals/cbo"
     codes = JSON.parse(response.body)["cbo"].map { |e| e["code"] }
-    expect(codes).to include("225125", "223505", "322205", "515105")
+    expect(codes).to include("225125", "223505", "322205")
   end
 
   it "outro papel: 403" do

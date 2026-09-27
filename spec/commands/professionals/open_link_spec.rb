@@ -37,7 +37,13 @@ RSpec.describe Professionals::OpenLink do
 
   it "CBO que exige outro conselho: council_mismatch; CBO sem conselho aceita" do
     expect(open(cbo_code: "223505").reason).to eq(:council_mismatch)
-    expect(open(cbo_code: "515105")).to be_ok
+
+    # Nenhum CBO real fica sem conselho hoje (ACS/ACE voltam com CNES, ADR
+    # 0021 em aberto); stub `.all` (não só `.find`) porque ProfessionalLink
+    # também valida cbo_code contra o catálogo na criação.
+    council_less = Professionals::Cbo::Entry.new(code: "999998", title: "x", council: nil, deprecated: false)
+    allow(Professionals::Cbo).to receive(:all).and_return(Professionals::Cbo.all + [ council_less ])
+    expect(open(cbo_code: "999998")).to be_ok
   end
 
   it "unidade inativa ou inexistente: invalid_unit" do

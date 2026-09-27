@@ -11,8 +11,11 @@ RSpec.describe Professionals::Cbo do
 
   it "acha pelo código, com o conselho esperado" do
     expect(described_class.find("225125")).to have_attributes(title: "Médico clínico", council: "CRM")
-    expect(described_class.find("515105").council).to be_nil
     expect(described_class.find("999999")).to be_nil
+  end
+
+  it "toda entrada exige conselho (ACS/ACE voltam com CNES, ADR 0021 em aberto)" do
+    expect(described_class.all.map(&:council)).to all(be_present)
   end
 
   it "active deixa de fora os deprecated" do
