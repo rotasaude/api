@@ -123,6 +123,21 @@ RSpec.describe "Professionals", type: :request do
       expect(json).to include("error" => "field_not_editable", "fields" => %w[cns user_id])
       expect(p.reload.professional_name).to eq("Helena Duarte")
     end
+
+    it "traz o turno em andamento; não traz o turno já encerrado" do
+      now = Time.current
+      p = create_profile!
+      unit = create_unit
+      link = ProfessionalLink.create!(professional: p, health_unit: unit, cbo_code: "225125",
+                                      started_at: now - 1.day, started_by_user: admin)
+      in_progress = ProfessionalShift.create!(professional_link: link, professional: p, created_by_user: admin,
+                                              starts_at: now - 1.hour, ends_at: now + 3.hours)
+      ProfessionalShift.create!(professional_link: link, professional: p, created_by_user: admin,
+                                starts_at: now - 4.hours, ends_at: now - 1.hour)
+      sign_in_as(doctor)
+      get "/professionals/me"
+      expect(json["shifts"].map { |s| s["id"] }).to contain_exactly(in_progress.id)
+    end
   end
 
   describe "só o municipal_admin usa as rotas de admin" do

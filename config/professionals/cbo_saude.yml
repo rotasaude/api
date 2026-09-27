@@ -1,0 +1,7 @@
+# Lista CBO da saúde (spec 2026-09-27-module-10-professionals-design.md §3.4).
+# MÍNIMA por ora: só o(s) código(s) usados pelos testes deste slice. A lista
+# CBO completa é entrega da fatia 2 (rotas de vínculo / catálogo).
+- code: "225125"
+  title: "Médico clínico"
+  council: "CRM"
+  deprecated: false

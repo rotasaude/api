@@ -56,8 +56,9 @@ class ProfessionalsController < ApplicationController
     professional = Current.user.professional
     return render(json: { error: "no_profile" }, status: :not_found) unless professional
 
-    window = Time.current..UPCOMING_DAYS.days.from_now
-    shifts = ProfessionalShift.valid_shifts.where(professional: professional, starts_at: window)
+    now = Time.current
+    shifts = ProfessionalShift.valid_shifts.where(professional: professional)
+                              .where("ends_at > ? AND starts_at < ?", now, UPCOMING_DAYS.days.from_now(now))
                               .includes(professional_link: :health_unit).order(:starts_at)
     render json: {
       professional: profile_json(professional, full: true),
