@@ -353,3 +353,46 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- users e memberships (ADR-0012; fechamento do módulo 06): desativar e revogar
+-- são end-dating, nunca DELETE. users continua mudando (senha, MFA,
+-- deactivated_at); membership só muda para receber a revogação, UMA vez —
+-- papel, usuário, quem concedeu e quando nunca mudam (updated_at acompanha o
+-- update pelo modelo). Sem trigger de TRUNCATE: a garantia é contra DELETE e
+-- UPDATE de linha, e a limpeza das suítes/restauração usa TRUNCATE/--clean.
+CREATE OR REPLACE FUNCTION rota_membership_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'memberships is append-only: DELETE refused';
+  END IF;
+  IF OLD.revoked_at IS NOT NULL THEN
+    RAISE EXCEPTION 'memberships: already revoked';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.user_id IS DISTINCT FROM OLD.user_id
+     OR NEW.role IS DISTINCT FROM OLD.role
+     OR NEW.granted_by_id IS DISTINCT FROM OLD.granted_by_id
+     OR NEW.granted_at IS DISTINCT FROM OLD.granted_at
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'memberships: only revoked_at may change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.memberships') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS memberships_guard ON memberships';
+    EXECUTE 'CREATE TRIGGER memberships_guard
+      BEFORE UPDATE OR DELETE ON memberships
+      FOR EACH ROW EXECUTE FUNCTION rota_membership_guard()';
+  END IF;
+  IF to_regclass('public.users') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS users_no_delete ON users';
+    EXECUTE 'CREATE TRIGGER users_no_delete
+      BEFORE DELETE ON users
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;

@@ -65,7 +65,7 @@ RSpec.describe CitySchema do
     expect(names).to include("protocol_contributions_append_only", "protocol_signatures_append_only",
                              "protocol_activations_append_only", "report_snapshots_immutable",
                              "consents_guard", "protocol_definitions_guard",
-                             "consent_terms_append_only")
+                             "consent_terms_append_only", "memberships_guard", "users_no_delete")
   end
 
   it "backfills versions below the highest recorded one and never records a higher one" do

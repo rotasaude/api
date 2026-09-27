@@ -47,7 +47,14 @@ RSpec.describe CityLifecycle::Restore do
 
   it "restores a dump into its own city" do
     path = dump_with_one_user!
-    CityConnection.with(city) { User.delete_all }
+    # users não aceita DELETE (trigger users_no_delete): o dono da tabela
+    # desliga o trigger para simular o dado perdido que o restore traz de volta.
+    CityConnection.with(city) do
+      conn = ApplicationRecord.connection
+      conn.execute("ALTER TABLE users DISABLE TRIGGER users_no_delete")
+      User.delete_all
+      conn.execute("ALTER TABLE users ENABLE TRIGGER users_no_delete")
+    end
 
     result = described_class.call(city: city, path: path)
 
