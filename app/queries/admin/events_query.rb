@@ -4,24 +4,24 @@
 # nada de campos livres do payload — só name/actor/ref/aggregate.
 #
 # domain_events mora no banco da cidade do host: sem filtro, lê só aquela cidade.
+# A janela é o período já validado pelo controller (Admin::Api::Period, que
+# devolve 422 para data inválida) — nunca from/to crus.
 class Admin::EventsQuery
   RETENTION_MONTHS = 12
 
-  def self.call(name:, from:, to:, period:)
-    new(name, from, to, period).call
+  def self.call(name:, period:)
+    new(name, period).call
   end
 
-  def initialize(name, from, to, period)
+  def initialize(name, period)
     @name_filter = name.presence
-    @from = from.presence
-    @to = to.presence
     @period = period
   end
 
   def call
     base = DomainEvent.all
     base = filter_name(base)
-    base = base.where(occurred_at: window)
+    base = base.where(occurred_at: @period.from..@period.to)
 
     {
       total: base.count,
@@ -43,11 +43,6 @@ class Admin::EventsQuery
     else
       scope.where(name: @name_filter)
     end
-  end
-
-  def window
-    return Time.parse(@from)..Time.parse(@to) if @from && @to
-    @period.from..@period.to
   end
 
   def replay_anchor

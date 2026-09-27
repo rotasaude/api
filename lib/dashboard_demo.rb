@@ -346,9 +346,9 @@ module DashboardDemo
     check.call(tr[:started].to_i.positive?, "no triages started")
 
     cl = Admin::ClassificationQuery.call(period: p)
-    check.call(cl[:tiers].all? { |t| t[:count].to_i.positive? }, "a tier bucket is empty")
-    check.call(cl[:priorityTrue].to_i.positive?, "no priority triages")
-    check.call(cl[:byMode].size >= 2, "<2 scoring modes")
+    check.call(cl[:tiers].size >= 2 && cl[:tiers].all? { |t| t[:count].to_i.positive? }, "<2 tiers classified")
+    check.call(cl[:urgent].to_i.positive?, "no urgent triages")
+    check.call(cl[:byMode].any? { |m| m[:count].to_i.positive? }, "no scoring mode")
 
     rp = Admin::ReportsQuery.call(period: p)
     check.call(rp[:reports].any? { |r| r[:live] }, "no live reports")
@@ -357,7 +357,7 @@ module DashboardDemo
     pr = Admin::ProtocolsQuery.index
     check.call(pr[:list].size >= 5, "<5 protocol rows")
 
-    ev = Admin::EventsQuery.call(name: nil, from: nil, to: nil, period: p)
+    ev = Admin::EventsQuery.call(name: nil, period: p)
     names = ev[:byType].map { |x| x[:name] }
     %w[triage. consent. conversation. protocol. priority.].each do |pre|
       check.call(names.any? { |n| n.start_with?(pre) }, "no events for prefix #{pre}")

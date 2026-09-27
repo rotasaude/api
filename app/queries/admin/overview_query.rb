@@ -1,8 +1,8 @@
 # GET /admin/api/overview — KPIs operacionais (§4.0).
 #
-# Mix de fontes: usa dashboard_metrics quando existem (source: proj),
-# cai para agregação ao vivo (source: live) quando não há projeção
-# correspondente. Cada KPI carrega seu source no contrato (§7).
+# Todos os KPIs agregam ao vivo no banco da cidade (ADR 0022; source: live).
+# O campo source continua no contrato (§7) para quando um KPI passar a ler
+# projeção por ADR novo. Urgência = régua do alerta (Protocols::Urgency).
 class Admin::OverviewQuery
   def self.call(period:)
     new(period).call
@@ -17,7 +17,7 @@ class Admin::OverviewQuery
       kpis: [
         kpi_done,
         kpi_active,
-        kpi_priority,
+        kpi_urgent,
         kpi_completion,
         kpi_failed_jobs
       ]
@@ -59,18 +59,17 @@ class Admin::OverviewQuery
     }
   end
 
-  def kpi_priority
-    priority = Triage.all
-                 .where(priority: true, created_at: @period.from..@period.to)
-                 .count
+  def kpi_urgent
+    urgent = Triage.all.where(status: "completed", priority: ..Protocols::Urgency.max_priority)
+    count = urgent.where(completed_at: @period.from..@period.to).count
     {
-      id: "priority",
-      label: "Casos priority",
-      value: priority,
+      id: "urgent",
+      label: "Casos urgentes",
+      value: count,
       unit: "",
       delta: nil,
-      tone: priority.positive? ? "warn" : "ok",
-      spark: @period.series(Triage.all.where(priority: true), :created_at),
+      tone: count.positive? ? "warn" : "ok",
+      spark: @period.series(urgent, :completed_at),
       source: "live"
     }
   end
@@ -92,8 +91,8 @@ class Admin::OverviewQuery
     }
   end
 
-  # Infraestrutura — lê a fila compartilhada: o Solid Queue só vai para o banco
-  # da cidade no Plano 5, então este número ainda soma todas as cidades.
+  # Infraestrutura — o Solid Queue mora no banco da cidade desde o Plano 5:
+  # este número é só desta cidade (city_connection_queue_spec).
   def kpi_failed_jobs
     failed = SolidQueue::FailedExecution.count
     {

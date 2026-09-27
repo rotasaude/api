@@ -38,11 +38,8 @@ class Admin::ProtocolsQuery
       publishedBy: audit[:published_by],
       fourEyes: four_eyes(audit),
       publishedAt: d.activated_at&.iso8601,
-      retiredAt: d.retired_at&.iso8601,
-      schema: "ok",
-      linter: "ok",
-      gates: "ok"
-    }.merge(signature_state(d))
+      retiredAt: d.retired_at&.iso8601
+    }.merge(gate_columns(d)).merge(signature_state(d))
   end
 
   def self.serialize_version(d, audit)
@@ -52,11 +49,21 @@ class Admin::ProtocolsQuery
       createdBy: audit[:created_by],
       publishedBy: audit[:published_by],
       fourEyes: four_eyes(audit),
-      at: (d.activated_at || d.created_at).iso8601,
-      schema: "ok",
-      linter: "ok",
-      gates: "ok"
-    }.merge(signature_state(d))
+      at: (d.activated_at || d.created_at).iso8601
+    }.merge(gate_columns(d)).merge(signature_state(d))
+  end
+
+  # Colunas schema/linter/gates (F-05.10): o portão de publicação (F-03.9) rodado
+  # sobre a definição desta versão, ao vivo (ADR 0022). Funções puras sobre o
+  # JSON, sem banco. Como no Protocols::Gate, schema reprovado pula o linter.
+  def self.gate_columns(d)
+    definition = d.definition || {}
+    if Protocols::Validation::Schema.call(definition).any?
+      return { schema: "fail", linter: "skipped", gates: "fail" }
+    end
+
+    verdict = Protocols::Gate.call(definition).valid? ? "ok" : "fail"
+    { schema: "ok", linter: verdict, gates: verdict }
   end
 
   # Estado de assinatura de UMA versão (spec de assinaturas §5/§6, ADR-0016, Plano 2

@@ -50,6 +50,15 @@ RSpec.describe RebuildDashboardMetricsJob, type: :job do
     )
   end
 
+  def revoked_consent!(day)
+    Consent.create!(
+      conversation: conversation("+55419#{SecureRandom.random_number(10**8).to_s.rjust(8, "0")}"),
+      version: 1, policy_text_sha: "sha", channel: "web",
+      given_at: Time.zone.parse("#{day} 09:00:00 UTC"),
+      revoked_at: Time.zone.parse("#{day} 12:00:00 UTC")
+    )
+  end
+
   def stale_metric!
     DashboardMetric.create!(dimension: "triages_total", period: "2020-01-01", key: "total", value: 99)
   end
@@ -88,13 +97,30 @@ RSpec.describe RebuildDashboardMetricsJob, type: :job do
     )
   end
 
-  it "with since:, wipes every existing metric and rebuilds only triages completed from that moment on" do
-    run_body(since: "#{REBUILD_CHAR_DAY2} 00:00:00 UTC")
+  it "with since:, rebuilds from that day on and keeps the metrics of earlier days" do
+    run_body(since: REBUILD_CHAR_DAY2)
 
     expect(metric_rows).to contain_exactly(
+      [ "triages_total",         "2020-01-01",      "total", 99 ],
       [ "triages_by_tier",       REBUILD_CHAR_DAY2, "alta",  1 ],
       [ "triages_total",         REBUILD_CHAR_DAY2, "total", 1 ],
       [ "priority_distribution", REBUILD_CHAR_DAY2, "1",     1 ]
+    )
+  end
+
+  # ADR 0010/0022: o rebuild recria toda dimensão que apaga. consents_revoked
+  # vem do RecordConsentRevocationJob (F-07.15) e zerava toda madrugada.
+  it "rebuilds consents_revoked per revocation day from the consents" do
+    revoked_consent!(REBUILD_CHAR_DAY1)
+    revoked_consent!(REBUILD_CHAR_DAY1)
+    revoked_consent!(REBUILD_CHAR_DAY2)
+    DashboardMetric.create!(dimension: "consents_revoked", period: REBUILD_CHAR_DAY1, key: "total", value: 7)
+
+    run_body
+
+    expect(metric_rows.select { |row| row.first == "consents_revoked" }).to contain_exactly(
+      [ "consents_revoked", REBUILD_CHAR_DAY1, "total", 2 ],
+      [ "consents_revoked", REBUILD_CHAR_DAY2, "total", 1 ]
     )
   end
 

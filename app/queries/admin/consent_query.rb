@@ -1,8 +1,10 @@
-# GET /admin/api/consent — LGPD (§4.3).
+# GET /admin/api/consent — LGPD (§4.3; F-05.7).
 #
 # Schema real: Consent#version (integer), `revoked_at` (nullable).
-# NÃO existe coluna `status` nem sinal de "declined" — "declined" sai
-# null até existir consent.declined em domain_events ou flag explícita.
+# "given" conta todo consentimento dado no período, mesmo o revogado depois;
+# "revoked" conta as revogações do período. "declined" sai nil: na web (ADR
+# 0017) quem não aceita o termo não deixa registro — sem consentimento nada é
+# gravado. A recusa só existia no WhatsApp, canal descontinuado.
 class Admin::ConsentQuery
   def self.call(period:)
     new(period).call
@@ -15,7 +17,7 @@ class Admin::ConsentQuery
   def call
     base = Consent.all
     in_period = base.where(given_at: @period.from..@period.to)
-    given_count = in_period.where(revoked_at: nil).count
+    given_count = in_period.count
     revoked_count = base.where(revoked_at: @period.from..@period.to).count
 
     {

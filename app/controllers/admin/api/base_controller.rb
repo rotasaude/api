@@ -52,6 +52,8 @@ class Admin::Api::BaseController < ApplicationController
     )
   end
 
+  # as_of = instante da leitura: os painéis agregam ao vivo (ADR 0022), então
+  # é também o horário de origem do dado.
   def render_envelope(data, as_of: Time.current)
     render json: {
       data: data.deep_merge(scope_block),
@@ -85,12 +87,5 @@ class Admin::Api::BaseController < ApplicationController
 
   def render_invalid_scope(err)
     render json: { error: "invalid_scope", message: err.message }, status: :unprocessable_entity
-  end
-
-  # Helper: as_of derivado do max(updated_at) das proj. relevantes.
-  def latest_metric_at(*dimensions)
-    DashboardMetric
-      .where(dimension: dimensions.flatten)
-      .maximum(:updated_at) || Time.current
   end
 end
