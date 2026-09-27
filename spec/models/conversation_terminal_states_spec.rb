@@ -27,11 +27,13 @@ RSpec.describe "Conversation terminal states (F-02.2)", type: :model do
     expect(triage.reload.status).to eq("aborted_by_cancellation")
   end
 
-  it "accepts completed / declined / cancelled conversation states" do
-    convo = Conversation.create!(phone: "+5511990000011", state: "consented")
-    expect { convo.update!(state: :completed) }.not_to raise_error
-    expect(convo.reload.state_completed?).to be(true)
-    convo.update!(state: :declined);  expect(convo.reload.state_declined?).to be(true)
-    convo.update!(state: :cancelled); expect(convo.reload.state_cancelled?).to be(true)
+  it "reaches completed / cancelled from consented and declined from awaiting_consent" do
+    %w[completed cancelled].each do |terminal|
+      convo = Conversation.create!(phone: "+5511990000011", state: "consented")
+      expect { convo.update!(state: terminal) }.not_to raise_error
+      expect(convo.reload.state).to eq(terminal)
+    end
+    convo = Conversation.create!(phone: "+5511990000012", state: "awaiting_consent")
+    convo.update!(state: :declined); expect(convo.reload.state_declined?).to be(true)
   end
 end

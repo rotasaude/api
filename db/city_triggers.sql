@@ -259,3 +259,39 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- consents (ADR 0008; critério de fechamento do módulo 02): o consentimento é
+-- prova do que o cidadão aceitou. Só acréscimo, exceto preencher a revogação
+-- UMA vez. Versão, hash do texto, canal, data e conversa nunca mudam; uma
+-- linha nunca é apagada. evidence (e updated_at) continua mudando: city:rotate_key
+-- recifra a coluna com a chave nova.
+CREATE OR REPLACE FUNCTION rota_consent_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'consents is append-only: DELETE refused';
+  END IF;
+  IF OLD.revoked_at IS NOT NULL AND NEW.revoked_at IS DISTINCT FROM OLD.revoked_at THEN
+    RAISE EXCEPTION 'consents: already revoked';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.conversation_id IS DISTINCT FROM OLD.conversation_id
+     OR NEW.version IS DISTINCT FROM OLD.version
+     OR NEW.policy_text_sha IS DISTINCT FROM OLD.policy_text_sha
+     OR NEW.channel IS DISTINCT FROM OLD.channel
+     OR NEW.given_at IS DISTINCT FROM OLD.given_at
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'consents: only revoked_at (once) and evidence may change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS consents_guard ON consents;
+CREATE TRIGGER consents_guard
+  BEFORE UPDATE OR DELETE ON consents
+  FOR EACH ROW EXECUTE FUNCTION rota_consent_guard();
+
+DROP TRIGGER IF EXISTS consents_append_only_truncate ON consents;
+CREATE TRIGGER consents_append_only_truncate
+  BEFORE TRUNCATE ON consents
+  FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only();
