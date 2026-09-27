@@ -10,19 +10,31 @@
 -- bin/migrate o chama depois do db:migrate. Idempotente: pode rodar quantas
 -- vezes for preciso.
 --
--- O conteúdo é o estado CORRENTE da função, igual ao da migração
--- 20260917000003 (que substituiu a de 20260917000002 para passar a olhar
--- também o `id`). Mudança futura no trigger muda ESTE arquivo, e a migração
--- que a aplica executa este arquivo — nunca duas cópias do corpo.
+-- O conteúdo é o estado CORRENTE do trigger. Histórico: 20260917000002/3
+-- protegiam só maintenance.%; 20260927300002 (F-07.11, fechamento do módulo
+-- 07) estendeu a imutabilidade a toda a trilha de plataforma. Mudança futura
+-- no trigger muda ESTE arquivo, e a migração que a aplica executa este
+-- arquivo — nunca duas cópias do corpo.
 --
 -- O que isto defende: bug de aplicação, update_all/delete_all, um psql aberto
 -- com o papel da aplicação. O que NÃO defende: o dono das tabelas, que sempre
 -- pode DROP TRIGGER — como já diz o cabeçalho de db/city_triggers.sql.
 
-CREATE OR REPLACE FUNCTION platform_events_maintenance_immutable() RETURNS trigger AS $fn$
+-- Toda a trilha de plataforma é imutável (ADR-0014/0020; F-07.11): só
+-- published_at pode mudar (é o outbox, ADR-0004). DELETE: auditoria de
+-- manutenção nunca; o resto só além da retenção de 12 meses — o TTL de uma
+-- purga futura, imposto pelo banco (mesmo desenho de domain_events em
+-- db/city_triggers.sql). occurred_at é timestamp sem fuso gravado em UTC.
+CREATE OR REPLACE FUNCTION platform_events_immutable() RETURNS trigger AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
-    RAISE EXCEPTION 'maintenance audit events are immutable: DELETE refused (%)', OLD.name;
+    IF OLD.name LIKE 'maintenance.%' THEN
+      RAISE EXCEPTION 'maintenance audit events are immutable: DELETE refused (%)', OLD.name;
+    END IF;
+    IF OLD.occurred_at >= (now() AT TIME ZONE 'UTC') - interval '12 months' THEN
+      RAISE EXCEPTION 'platform events are immutable: DELETE refused inside retention (12 months) (%)', OLD.name;
+    END IF;
+    RETURN OLD;
   END IF;
 
   IF NEW.id IS DISTINCT FROM OLD.id
@@ -30,7 +42,7 @@ BEGIN
      OR NEW.payload IS DISTINCT FROM OLD.payload
      OR NEW.occurred_at IS DISTINCT FROM OLD.occurred_at
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
-    RAISE EXCEPTION 'maintenance audit events are immutable: only published_at may change (%)', OLD.name;
+    RAISE EXCEPTION 'platform events are immutable: only published_at may change (%)', OLD.name;
   END IF;
 
   RETURN NEW;
@@ -39,11 +51,12 @@ $fn$ LANGUAGE plpgsql;
 
 -- DROP + CREATE em vez de CREATE OR REPLACE TRIGGER: o REPLACE só existe do
 -- PostgreSQL 14 para cima, e este arquivo precisa valer em qualquer banco que
--- a aplicação aceite.
+-- a aplicação aceite. O trigger antigo (só maintenance.%) sai junto.
 DROP TRIGGER IF EXISTS platform_events_maintenance_immutable ON platform_events;
+DROP FUNCTION IF EXISTS platform_events_maintenance_immutable();
+DROP TRIGGER IF EXISTS platform_events_immutable ON platform_events;
 
-CREATE TRIGGER platform_events_maintenance_immutable
+CREATE TRIGGER platform_events_immutable
   BEFORE UPDATE OR DELETE ON platform_events
   FOR EACH ROW
-  WHEN (OLD.name LIKE 'maintenance.%')
-  EXECUTE FUNCTION platform_events_maintenance_immutable();
+  EXECUTE FUNCTION platform_events_immutable();

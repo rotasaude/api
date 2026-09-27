@@ -34,12 +34,21 @@ RSpec.describe PurgeDomainEventsJob, type: :job do
     expect(DomainEvent.exists?(just_inside_id)).to be(true)
   end
 
-  it "honors a custom window" do
+  it "honors a longer window" do
+    fourteen_id = make_event(occurred_at: 14.months.ago)
+    twenty_id   = make_event(occurred_at: 20.months.ago)
+    call_body(older_than_months: 18)
+    expect(DomainEvent.exists?(twenty_id)).to be(false)
+    expect(DomainEvent.exists?(fourteen_id)).to be(true)
+  end
+
+  # F-07.1: o trigger de domain_events só aceita DELETE além de 12 meses. Uma
+  # janela menor seria recusada linha a linha pelo banco; o job recusa antes,
+  # com mensagem clara, sem apagar nada.
+  it "refuses a window shorter than the 12-month retention" do
     two_months_id = make_event(occurred_at: 2.months.ago)
-    one_week_id    = make_event(occurred_at: 1.week.ago)
-    call_body(older_than_months: 1)
-    expect(DomainEvent.exists?(two_months_id)).to be(false)
-    expect(DomainEvent.exists?(one_week_id)).to be(true)
+    expect { call_body(older_than_months: 1) }.to raise_error(ArgumentError, /12/)
+    expect(DomainEvent.exists?(two_months_id)).to be(true)
   end
 
   it "roda uma vez por cidade ATIVA (EachCityJob): purga em AMBAS as cidades" do

@@ -110,7 +110,13 @@ RSpec.describe "CityLifecycle::InviteAdmin concurrency safety (M1)" do
   after do
     CityConnection.with(TEST_CITY_A) do
       Invitation.where(email: email.downcase).delete_all
-      DomainEvent.where(name: "user.invited").where("payload->>'email' = ?", email).delete_all
+      # domain_events recusa DELETE dentro da retenção (F-07.1, trigger
+      # domain_events_guard). A suíte conecta como superusuário, que pode
+      # desligar triggers na transação — só para limpar o que o exemplo commitou.
+      ApplicationRecord.transaction do
+        ApplicationRecord.connection.execute("SET LOCAL session_replication_role = replica")
+        DomainEvent.where(name: "user.invited").where("payload->>'email' = ?", email).delete_all
+      end
     end
   end
 

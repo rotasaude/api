@@ -40,6 +40,45 @@ RSpec.describe DomainEvents do
     DomainEvents.registry["foo.bar"].clear
   end
 
+  # F-07.2 (ADR-0004/0014): o evento comita junto com a escrita de domínio.
+  # Rollback da transação da cidade leva o DomainEvent e o subscriber juntos —
+  # nem auditoria de algo que não aconteceu, nem job órfão na fila.
+  describe "atomicidade com a transação da cidade" do
+    include ActiveJob::TestHelper
+
+    it "some com o rollback: nenhum evento gravado, nenhum subscriber enfileirado" do
+      Current.city = TEST_CITY_A
+      stub_const("FakeSub", Class.new(ApplicationJob) { def perform(**); end })
+      DomainEvents.bind("foo.rolled_back", to: FakeSub)
+      event_id = nil
+
+      ApplicationRecord.transaction do
+        event_id = DomainEvents.publish("foo.rolled_back", x: 1)
+        expect(DomainEvent.exists?(event_id)).to be(true)
+        raise ActiveRecord::Rollback
+      end
+
+      expect(DomainEvent.exists?(event_id)).to be(false)
+      expect(enqueued_jobs.count { |j| j["job_class"] == "FakeSub" }).to eq(0)
+    ensure
+      DomainEvents.registry["foo.rolled_back"].clear
+    end
+
+    it "comita com a transação: evento gravado e subscriber enfileirado depois do COMMIT" do
+      Current.city = TEST_CITY_A
+      stub_const("FakeSub", Class.new(ApplicationJob) { def perform(**); end })
+      DomainEvents.bind("foo.committed", to: FakeSub)
+      event_id = nil
+
+      ApplicationRecord.transaction { event_id = DomainEvents.publish("foo.committed", x: 1) }
+
+      expect(DomainEvent.exists?(event_id)).to be(true)
+      expect(enqueued_jobs.count { |j| j["job_class"] == "FakeSub" }).to eq(1)
+    ensure
+      DomainEvents.registry["foo.committed"].clear
+    end
+  end
+
   describe ".redispatch" do
     it "exige cidade para redespachar" do
       event = DomainEvent.new(id: SecureRandom.uuid, name: "foo.bar", payload: {})

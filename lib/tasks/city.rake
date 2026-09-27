@@ -299,6 +299,36 @@ namespace :city do
     "#{local[0]}***@#{domain}"
   end
 
+  # api#19: cifra o telefone das mensagens (InboundMessage#from,
+  # OutboundMessage#to) gravadas antes de `encrypts`. Rodar em cada cidade logo
+  # depois do deploy que trouxe a cifra (idempotente).
+  desc "Cifra o telefone em claro das mensagens de uma cidade (idempotente). Uso: city:encrypt_message_phones[slug]"
+  task :encrypt_message_phones, %i[slug] => :environment do |_t, args|
+    abort "uso: rails 'city:encrypt_message_phones[slug]'" if args[:slug].blank?
+    city = City.find_by(slug: args[:slug]) || abort("[city:encrypt_message_phones] cidade #{args[:slug]} não existe")
+    abort "[city:encrypt_message_phones] cidade #{city.slug} está archived — não tem banco" if city.status == "archived"
+
+    counts = CityConnection.with(city) { CityLifecycle::EncryptMessagePhones.call }
+    puts "[city:encrypt_message_phones] #{city.slug}: #{counts.map { |m, n| "#{m}=#{n}" }.join(' ')}"
+  end
+
+  namespace :encrypt_message_phones do
+    # Revisão do fechamento do módulo 07: rodar cidade a cidade deixa esquecer
+    # uma. Depois do deploy (e com web/worker antigos já drenados), rode isto.
+    desc "Cifra o telefone em claro das mensagens de toda cidade active/suspended (idempotente)."
+    task all: :environment do
+      failed = []
+      City.where(status: %w[active suspended]).order(:slug).each do |city|
+        counts = CityConnection.with(city) { CityLifecycle::EncryptMessagePhones.call }
+        puts "[city:encrypt_message_phones:all] #{city.slug}: #{counts.map { |m, n| "#{m}=#{n}" }.join(' ')}"
+      rescue StandardError => e
+        failed << city.slug
+        warn "[city:encrypt_message_phones:all] #{city.slug} falhou — #{e.class}"
+      end
+      abort "[city:encrypt_message_phones:all] falharam: #{failed.join(', ')}" if failed.any?
+    end
+  end
+
   desc "Suspende uma cidade (o host dela responde 403). Uso: city:suspend[slug]"
   task :suspend, %i[slug] => :environment do |_t, args|
     city = lifecycle_city.call("city:suspend", args[:slug])

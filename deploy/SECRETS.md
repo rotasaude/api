@@ -110,9 +110,11 @@ produção `CITY_DATABASE_HOST` é obrigatório (sem ele, `POST /cities` respond
 
 Criado pela infra, com o superusuário do Postgres, antes do primeiro provisionamento:
 
-    CREATE ROLE rota_provisioner LOGIN CREATEDB CREATEROLE PASSWORD '<senha do cofre>';
+    CREATE ROLE rota_provisioner LOGIN CREATEDB CREATEROLE NOSUPERUSER INHERIT PASSWORD '<senha do cofre>';
 
-Nunca `SUPERUSER`. Em dev e test, `rails platform:bootstrap` cria o mesmo papel com `ROTA_PROVISIONER_PASSWORD`
+Nunca `SUPERUSER`. `INHERIT` explícito: o `CityDatabase.drop!` depende de o provisioner herdar os privilégios
+do role de cidade em que é incluído (`ensure!`), sem `SET ROLE` — um `NOINHERIT` quebra o offboarding em silêncio
+(mesma razão de `lib/tasks/platform.rake`). Em dev e test, `rails platform:bootstrap` cria o mesmo papel com `ROTA_PROVISIONER_PASSWORD`
 (default `rota_provisioner`).
 
 ## Backup e offboarding
