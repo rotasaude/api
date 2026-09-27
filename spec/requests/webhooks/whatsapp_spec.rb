@@ -69,6 +69,18 @@ RSpec.describe "Webhooks::Whatsapp", type: :request do
       expect(CityConnection.with(city) { InboundMessage.count }).to eq(0)
     end
 
+    # F-01.1: sem o cabeçalho a assinatura é string vazia — secure_compare
+    # recusa, e nada chega a Whatsapp::Ingest.
+    it "responde 401 quando o cabeçalho X-Hub-Signature-256 está ausente e não grava nada" do
+      expect {
+        post "/webhooks/whatsapp", params: payload.to_json, headers: { "CONTENT_TYPE" => "application/json" }
+      }.not_to have_enqueued_job(ProcessInboundMessageJob)
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(CityConnection.with(city) { InboundMessage.count }).to eq(0)
+      expect(UnknownChannel.count).to eq(0)
+    end
+
     it "grava a mensagem e responde 200 para uma cidade saudável" do
       expect {
         post_whatsapp(payload)
