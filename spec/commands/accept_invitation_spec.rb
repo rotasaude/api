@@ -76,4 +76,35 @@ RSpec.describe AcceptInvitation do
     expect(res.reason).to eq(:weak_password)
     expect(inv.reload.accepted_at).to be_nil
   end
+
+  # Corrida de dois aceites do mesmo token: o segundo leu o convite ainda
+  # pendente, mas a linha travada já está aceita — não cria outra conta.
+  it "relê o convite depois de travar a linha: aceito no meio do caminho não vira segunda conta" do
+    stale = Invitation.find(inv.id)
+    Invitation.where(id: inv.id).update_all(accepted_at: Time.current)
+    allow(Invitation).to receive(:find_by).with(token: "abc123").and_return(stale)
+
+    res = nil
+    expect { res = described_class.call(token: "abc123", password: "secretpw-long") }.not_to change(User, :count)
+    expect(res.reason).to eq(:invalid_token)
+  end
+
+  it "relê o convite depois de travar a linha: vencido no meio do caminho falha :expired" do
+    stale = Invitation.find(inv.id)
+    Invitation.where(id: inv.id).update_all(expires_at: 1.minute.ago)
+    allow(Invitation).to receive(:find_by).with(token: "abc123").and_return(stale)
+
+    res = nil
+    expect { res = described_class.call(token: "abc123", password: "secretpw-long") }.not_to change(User, :count)
+    expect(res.reason).to eq(:expired)
+  end
+
+  it "e-mail criado por outro aceite concorrente (índice único) vira :already_member, sem levantar" do
+    allow(User).to receive(:create!).and_raise(ActiveRecord::RecordNotUnique, "index_users_on_lower_email")
+
+    res = described_class.call(token: "abc123", password: "secretpw-long")
+
+    expect(res.reason).to eq(:already_member)
+    expect(inv.reload.accepted_at).to be_nil
+  end
 end
