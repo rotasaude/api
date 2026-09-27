@@ -30,17 +30,18 @@ class InviteMember
       end
     end
 
-    # F-06.9: nem quem já tem conta na cidade (o aceite criaria usuário
-    # duplicado), nem um segundo convite vivo para o mesmo e-mail.
+    # F-06.9: quem já tem conta na cidade não é convidado (o aceite criaria
+    # usuário duplicado).
     if User.exists?(email_address: @email.to_s.strip.downcase)
       return Result.fail(:already_member, message: "este e-mail já tem conta nesta cidade")
-    end
-    if Invitation.pending.exists?(email: @email.to_s.strip.downcase)
-      return Result.fail(:already_invited, message: "este e-mail já tem um convite pendente")
     end
 
     inv = nil
     ApplicationRecord.transaction do
+      # Convite novo SUPERA o pendente do mesmo e-mail: o link antigo vence
+      # agora (reenviar é a saída de quem perdeu o e-mail) e só o novo vale.
+      now = Time.current
+      Invitation.pending.where(email: @email.to_s.strip.downcase).update_all(expires_at: now, updated_at: now)
       inv = Invitation.create!(
         email: @email.downcase,
         role: @role,

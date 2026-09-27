@@ -55,13 +55,15 @@ RSpec.describe "POST /setup/invitations", type: :request do
     expect(json["error"]).to eq("already_member")
   end
 
-  it "convite pendente para o mesmo e-mail: 422 already_invited, sem segundo e-mail" do
+  it "convite pendente para o mesmo e-mail: vence o anterior, cria outro e manda o link novo" do
     invite!(email: "pend@example.org")
+    first = Invitation.find(json["id"])
 
-    expect { invite!(email: "pend@example.org") }.not_to have_enqueued_mail(MemberInvitationMailer, :invite)
+    expect { invite!(email: "pend@example.org") }.to have_enqueued_mail(MemberInvitationMailer, :invite)
 
-    expect(response).to have_http_status(:unprocessable_entity)
-    expect(json["error"]).to eq("already_invited")
+    expect(response).to have_http_status(:created)
+    expect(first.reload.expired?).to be(true)
+    expect(Invitation.pending.where(email: "pend@example.org").sole.id).to eq(json["id"])
   end
 
   it "o e-mail leva o link de aceite nas duas partes" do

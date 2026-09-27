@@ -31,13 +31,15 @@ RSpec.describe InviteMember do
     expect(res.message).to be_present
   end
 
-  it "recusa e-mail com convite pendente (already_invited)" do
-    described_class.call(email: "pend@example.org", role: "viewer", invited_by: inviter)
+  it "e-mail com convite pendente: vence o anterior e cria um novo (o reenvio é a saída)" do
+    first = described_class.call(email: "pend@example.org", role: "viewer", invited_by: inviter).payload[:invitation]
 
     res = described_class.call(email: "Pend@example.org", role: "protocol_author", invited_by: inviter)
 
-    expect(res.reason).to eq(:already_invited)
-    expect(Invitation.where(email: "pend@example.org").count).to eq(1)
+    expect(res.ok?).to be(true)
+    expect(first.reload.expired?).to be(true)
+    expect(Invitation.pending.where(email: "pend@example.org").sole).to eq(res.payload[:invitation])
+    expect(res.payload[:invitation].role).to eq("protocol_author")
   end
 
   it "convida de novo quando o convite anterior venceu ou foi aceito" do
