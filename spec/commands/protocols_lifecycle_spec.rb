@@ -86,6 +86,35 @@ RSpec.describe "Protocols lifecycle" do
       expect(result.ok?).to be true
       expect(triage.reload.protocol_definition_id).to eq(v1.id)
     end
+
+    # Não basta o FK ficar em v1: as respostas seguintes e o Outcome final têm
+    # de sair das regras da v1, mesmo com a v2 (pesos diferentes) já ativa.
+    it "a triage em voo completa com o Outcome da v1 depois de ativar a v2" do
+      v1 = ProtocolDefinition.create!(name: "dengue", version: 1, status: "active",
+                                      definition: definition_hash.merge(
+                                        "scoring" => { "type" => "weighted", "thresholds" => { "baixa" => 0, "alta" => 1 },
+                                                       "priority_map" => { "baixa" => 9, "alta" => 1 } }
+                                      ))
+      conv = Conversation.create!(phone: "+5511999999998", state: "consented")
+      conv.consents.create!(version: Consents.current_version,
+                            policy_text_sha: Consents.policy_text_sha(Consents.current_version),
+                            given_at: 1.minute.ago, channel: "web", evidence: { text: "sim" })
+      triage = Triage.create!(conversation: conv, protocol_definition: v1, protocol_name: "dengue",
+                              status: "in_progress", current_step: "s1", answers: {})
+
+      v2 = ProtocolDefinition.create!(name: "dengue", version: 2, status: "published",
+                                      definition: definition_hash.merge("version" => 2))
+      sign!(v2, purpose: "activation", by: make_reviewer!)
+      sign!(v2, purpose: "activation", by: make_reviewer!)
+      expect(Protocols::Activate.call(version: 2, by: publisher).ok?).to be true
+
+      result = CompleteTriage.call(triage: triage.reload, answer: "true")
+
+      expect(result.ok?).to be true
+      expect(triage.reload).to have_attributes(protocol_definition_id: v1.id, tier: "alta", priority: 1)
+      expect(Protocols.current(name: "dengue").version).to eq(2)
+      expect(Protocols.current(name: "dengue").evaluate("s1" => "true").tier).to eq("baixa")
+    end
   end
 
   describe "INV-protocol-4 (R4): retired nunca está active" do
