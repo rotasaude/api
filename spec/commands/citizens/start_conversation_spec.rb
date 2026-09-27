@@ -100,4 +100,36 @@ RSpec.describe Citizens::StartConversation do
                  .where("payload->>'version' = ?", new_version).count
     ).to eq(1)
   end
+
+  # F-02.10: estado terminal libera o cidadão para uma conversa web nova.
+  %w[revoked abandoned completed declined cancelled].each do |terminal|
+    it "abre conversa web nova quando a anterior está #{terminal}" do
+      old = start.payload[:conversation]
+      old.update!(state: terminal)
+
+      again = start
+
+      expect(again).to be_ok
+      expect(again.payload[:conversation]).not_to eq(old)
+      expect(again.payload[:resumed]).to be(false)
+      expect(old.reload.state).to eq(terminal)
+    end
+  end
+
+  # Corrida de abertura: duas requisições não acham conversa ativa e as duas
+  # criam; a perdedora bate no índice único e retoma a da vencedora.
+  it "na corrida de abertura, retoma a conversa que venceu" do
+    winner = Conversation.create!(channel: "web", citizen: citizen, phone: citizen.phone, state: :awaiting_consent)
+    calls = 0
+    allow(Conversation).to receive(:channel_web).and_wrap_original do |original|
+      calls += 1
+      calls == 1 ? Conversation.none : original.call
+    end
+
+    result = start
+
+    expect(result).to be_ok
+    expect(result.payload[:conversation]).to eq(winner)
+    expect(Conversation.where(citizen: citizen).count).to eq(1)
+  end
 end

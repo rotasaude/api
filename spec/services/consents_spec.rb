@@ -22,6 +22,26 @@ RSpec.describe Consents do
       expect(described_class.interpret("talvez")).to eq(:unknown)
     end
 
+    # F-02.6 default-deny: nada além da palavra inteira (ou do botão) vira
+    # consentimento; hesitação ou texto misto nunca é :give.
+    ["acho que sim", "sim?", "sim sim", "talvez sim", "okay", "pode ser",
+     "sim, mas depois", "concordo em parte", "simm", "ok ok"].each do |doubtful|
+      it "never reads #{doubtful.inspect} as :give" do
+        expect(described_class.interpret(doubtful)).not_to eq(:give)
+      end
+    end
+
+    it "reads mixed text with an exit word as :revoke (caution bias)" do
+      expect(described_class.interpret("sim, mas quero sair")).to eq(:revoke)
+      expect(described_class.interpret("pode parar")).to eq(:revoke)
+    end
+
+    ["SIM", "  sim  ", "Aceito", "concordo", "de acordo", "ok"].each do |give|
+      it "reads #{give.inspect} as :give" do
+        expect(described_class.interpret(give)).to eq(:give)
+      end
+    end
+
     it "returns :unknown for blank and nil" do
       expect(described_class.interpret("")).to eq(:unknown)
       expect(described_class.interpret(nil)).to eq(:unknown)
