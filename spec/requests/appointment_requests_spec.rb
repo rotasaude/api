@@ -2,7 +2,7 @@ require "rails_helper"
 
 RSpec.describe "Appointment requests", type: :request do
   include ActiveSupport::Testing::TimeHelpers
-  before { Current.city = TEST_CITY_A; Rails.cache.clear }
+  before { Current.city = TEST_CITY_A; Rails.cache.clear; link_professional!(doctor, unit) }
   after { Current.reset }
 
   let(:unit) { create_unit }

@@ -7,6 +7,7 @@ RSpec.describe "Check-ins", type: :request do
   let!(:citizen) { Citizen.create!(cpf: "52998224725", phone: "+5541998765432") }
   let(:verifier) { user_with("atendente@cidade.gov.br", "citizen_verifier") }
   let(:viewer) { user_with("leitura@cidade.gov.br", "viewer") }
+  let(:doctor) { user_with("medica@cidade.gov.br", "health_professional") }
   let(:unit) { create_unit }
   def body = JSON.parse(response.body)
 
@@ -115,10 +116,11 @@ RSpec.describe "Check-ins", type: :request do
   end
 
   it "lookup com código de horário: appointment com scheduled_at, kind e priority, triage nulo" do
+    link_professional!(doctor, unit)
     a = in_care!(waiting_attendance(citizen, unit: unit, by: verifier), by: verifier)
     a.triage.update_columns(priority: 3)
     req = Attendances::Close.call(attendance: a, outcome: "return", referral_unit_id: nil, referral_note: nil,
-                                  by: verifier).payload.fetch(:appointment_request)
+                                  by: doctor).payload.fetch(:appointment_request)
     appt = Appointments::Schedule.call(request: req, scheduled_at: 1.hour.from_now.iso8601, health_unit_id: unit.id,
                                        by: verifier).payload.fetch(:appointment)
     code = Citizens::IssueAppointmentCheckInCode.call(citizen: citizen, appointment: appt).payload.fetch(:code)
@@ -140,10 +142,11 @@ RSpec.describe "Check-ins", type: :request do
   end
 
   it "exceção com appointment_id: 201" do
+    link_professional!(doctor, unit)
     a = in_care!(waiting_attendance(citizen, unit: unit, by: verifier), by: verifier)
     a.triage.update_columns(priority: 3)
     req = Attendances::Close.call(attendance: a, outcome: "return", referral_unit_id: nil, referral_note: nil,
-                                  by: verifier).payload.fetch(:appointment_request)
+                                  by: doctor).payload.fetch(:appointment_request)
     appt = Appointments::Schedule.call(request: req, scheduled_at: 1.hour.from_now.iso8601, health_unit_id: unit.id,
                                        by: verifier).payload.fetch(:appointment)
     sign_in_as(verifier)

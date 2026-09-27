@@ -16,12 +16,14 @@ RSpec.describe Attendances::Close do
   end
 
   it "liberado e saiu sem atendimento" do
+    link_professional!(doctor, unit)
     expect(close("discharged")).to be_ok
     expect(attendance.reload).to have_attributes(status: "closed", outcome: "discharged", closed_by_user_id: doctor.id)
     expect(DomainEvent.where(name: "attendance.closed").sole.payload).to include("outcome" => "discharged")
   end
 
   it "encaminhado exige destino ou descrição, e o destino precisa estar ativo" do
+    link_professional!(doctor, unit)
     expect(close("referred").reason).to eq(:referral_required)
     upa.update!(active: false)
     expect(close("referred", unit_id: upa.id).reason).to eq(:invalid_unit)
@@ -29,6 +31,7 @@ RSpec.describe Attendances::Close do
   end
 
   it "encerrar duas vezes, inclusive com registro velho, dá already_closed" do
+    link_professional!(doctor, unit)
     stale = Attendance.find(attendance.id)
     close("discharged")
     expect(described_class.call(attendance: stale, outcome: "discharged", referral_unit_id: nil, referral_note: nil,
@@ -49,12 +52,14 @@ RSpec.describe Attendances::Close do
   end
 
   it "desfecho clínico a partir de waiting: invalid_transition" do
+    link_professional!(doctor, unit)
     a = waiting_attendance(citizen, unit: unit, by: reception)
     r = described_class.call(attendance: a, outcome: "discharged", referral_unit_id: nil, referral_note: nil, by: doctor)
     expect(r.reason).to eq(:invalid_transition)
   end
 
   it "return cria pedido na própria unidade, com a nota, na mesma transação" do
+    link_professional!(doctor, unit)
     a = in_care!(waiting_attendance(citizen, unit: unit, by: reception), by: doctor)
     r = described_class.call(attendance: a, outcome: "return", referral_unit_id: nil,
                              referral_note: "reavaliar em 15 dias", by: doctor)
@@ -65,6 +70,7 @@ RSpec.describe Attendances::Close do
   end
 
   it "referred com unidade cria pedido de encaminhamento; só com descrição não cria" do
+    link_professional!(doctor, unit)
     other = create_unit("UPA Norte", kind: "upa")
     a = in_care!(waiting_attendance(citizen, unit: unit, by: reception), by: doctor)
     r = described_class.call(attendance: a, outcome: "referred", referral_unit_id: other.id, referral_note: nil, by: doctor)
@@ -78,6 +84,7 @@ RSpec.describe Attendances::Close do
   end
 
   it "falha ao criar o pedido desfaz o encerramento" do
+    link_professional!(doctor, unit)
     a = in_care!(waiting_attendance(citizen, unit: unit, by: reception), by: doctor)
     allow(AppointmentRequest).to receive(:create!).and_raise(ActiveRecord::StatementInvalid, "boom")
     expect do
@@ -92,5 +99,31 @@ RSpec.describe Attendances::Close do
     expect(close("referred", unit_id: upa.id).reason).to eq(:invalid_unit)
     expect(attendance.reload).to be_open
     expect(AppointmentRequest.count).to eq(0)
+  end
+
+  describe "regra clínica (F-10.5)" do
+    it "desfecho clínico sem vínculo: missing_link e nada fecha" do
+      attendance = in_care!(waiting_attendance(citizen, unit: unit, by: reception), by: doctor)
+      result = Attendances::Close.call(attendance: attendance, outcome: "discharged", referral_unit_id: nil,
+                                       referral_note: nil, by: doctor)
+      expect(result.reason).to eq(:missing_link)
+      expect(attendance.reload).to be_open
+    end
+
+    it "left pela recepção, sem vínculo: fecha" do
+      attendance = waiting_attendance(citizen, unit: unit, by: reception)
+      result = Attendances::Close.call(attendance: attendance, outcome: "left", referral_unit_id: nil,
+                                       referral_note: nil, by: reception)
+      expect(result).to be_ok
+    end
+
+    it "vínculo encerrado entre a leitura e a chamada do desfecho: missing_link" do
+      link = link_professional!(doctor, unit)
+      attendance = in_care!(waiting_attendance(citizen, unit: unit, by: reception), by: doctor)
+      link.update!(ended_at: Time.current, ended_by_user: link.started_by_user)
+      result = Attendances::Close.call(attendance: attendance, outcome: "discharged", referral_unit_id: nil,
+                                       referral_note: nil, by: doctor)
+      expect(result.reason).to eq(:missing_link)
+    end
   end
 end

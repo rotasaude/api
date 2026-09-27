@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe "Attendances", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
-  before { Current.city = TEST_CITY_A; Rails.cache.clear }
+  before { Current.city = TEST_CITY_A; Rails.cache.clear; link_professional!(doctor, unit) }
   after { Current.reset }
 
   let(:verifier) { user_with("atendente@cidade.gov.br", "citizen_verifier") }

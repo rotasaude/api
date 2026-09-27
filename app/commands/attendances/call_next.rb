@@ -5,6 +5,11 @@ module Attendances
     ATTEMPTS = 3
 
     def self.call(health_unit_id:, by:)
+      # Atalho: sem papel ou vínculo, não gasta tentativas. Quem garante é o
+      # Call, que rechecar sob lock.
+      authorization = Professionals::ClinicalAuthorization.check(user: by, health_unit_id: health_unit_id)
+      return Result.fail(authorization) unless authorization == :ok
+
       ATTEMPTS.times do
         candidate = UnitQueue.waiting(health_unit_id).first
         return Result.fail(:queue_empty) unless candidate
