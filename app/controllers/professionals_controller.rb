@@ -23,6 +23,10 @@ class ProfessionalsController < ApplicationController
     render json: { professionals: professionals.map { |p| profile_json(p, full: false).merge(links: p.links.sort_by(&:started_at).map { |l| link_json(l) }) } }
   end
 
+  def cbo
+    render json: { cbo: Professionals::Cbo.active.map { |e| { code: e.code, title: e.title, council: e.council } } }
+  end
+
   def pending
     users = User.joins(:memberships).merge(Membership.active.where(role: "health_professional"))
                 .where(deactivated_at: nil).distinct.order(:email_address).to_a

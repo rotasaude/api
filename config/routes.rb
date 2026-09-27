@@ -123,6 +123,7 @@ Rails.application.routes.draw do
     get  "pending", to: "professionals#pending"
     get  "me",      to: "professionals#me"
     post "me",      to: "professionals#update_me"
+    get  "cbo",     to: "professionals#cbo"
     get  ":id",     to: "professionals#show"
     post ":id",     to: "professionals#update"
   end
