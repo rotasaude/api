@@ -17,7 +17,14 @@ module Professionals
       end
     end
 
-    # Fatia 3 (Task 9) cancela aqui os turnos que ainda não começaram.
-    def self.cancel_future_shifts(_link, _by) = []
+    # Turnos que ainda não começaram (D8): "não existe turno em vínculo
+    # encerrado". O passado e o em curso ficam — valiam quando começaram.
+    def self.cancel_future_shifts(link, by)
+      now = link.ended_at
+      link.shifts.valid_shifts.where("starts_at > ?", now).lock.order(:starts_at).map do |shift|
+        shift.update!(cancelled_at: now, cancelled_by_user: by, cancel_reason: ProfessionalShift::LINK_ENDED_REASON)
+        shift.id
+      end
+    end
   end
 end

@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe Professionals::EndLink do
+  include ActiveSupport::Testing::TimeHelpers
+
   before { Current.city = TEST_CITY_A }
   after { Current.reset }
 
@@ -33,5 +35,25 @@ RSpec.describe Professionals::EndLink do
     described_class.call(link: link, by: admin)
     again = Professionals::OpenLink.call(professional: doctor, health_unit_id: link.health_unit_id, cbo_code: "225125", by: admin)
     expect(again).to be_ok
+  end
+
+  describe "turnos do vínculo" do
+    def schedule(starts_at, ends_at)
+      Professionals::ScheduleShift.call(link: link, starts_at: starts_at, ends_at: ends_at, by: admin).payload[:shift]
+    end
+
+    it "cancela os futuros; mantém o que já passou e o que está em curso" do
+      base = Time.zone.parse("2026-10-05 10:00")
+      travel_to(base - 3.days) { link }
+      past = travel_to(base - 2.days) { schedule(base - 1.day, base - 1.day + 4.hours) }
+      current = travel_to(base - 2.days) { schedule(base - 2.hours, base + 2.hours) }
+      future = travel_to(base - 2.days) { schedule(base + 1.day, base + 1.day + 6.hours) }
+
+      result = travel_to(base) { described_class.call(link: link, by: admin) }
+      expect(result.payload[:cancelled_shift_ids]).to eq([ future.id ])
+      expect(future.reload).to have_attributes(cancel_reason: ProfessionalShift::LINK_ENDED_REASON, cancelled_by_user: admin)
+      expect(past.reload.cancelled_at).to be_nil
+      expect(current.reload.cancelled_at).to be_nil
+    end
   end
 end
