@@ -116,8 +116,10 @@ RSpec.describe "Appointment requests", type: :request do
     end
 
     it "não mostra horários de outra unidade" do
-      schedule_at(Time.zone.parse("2026-10-02 10:00"))
+      mine = schedule_at(Time.zone.parse("2026-10-02 10:00"))
       sign_in_as(reception)
+      get "/attendance/units/#{unit.id}/agenda", params: { date: "2026-10-02" }
+      expect(body["appointments"].map { |a| a["id"] }).to eq([ mine.id ])
       get "/attendance/units/#{other_unit.id}/agenda", params: { date: "2026-10-02" }
       expect(body["appointments"]).to eq([])
     end
