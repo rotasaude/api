@@ -116,8 +116,14 @@ RSpec.describe "Invariante: relatório congelado (ADR 0010)", type: :request do
     # Sem modelo de propósito: simula a pior hipótese (linha editada por fora).
     Triage.where(id: triage.id).update_all(tier: "baixa", priority: 9,
                                            outcome: { "tier" => "baixa", "priority" => 9, "trail" => [] })
+    # Versão publicada é imutável (protocol_definitions_guard, módulo 03): só o
+    # DONO da tabela a edita, desligando o trigger — a pior hipótese. DDL é
+    # transacional no Postgres, então a fixture desfaz isso no rollback.
+    conn = ProtocolDefinition.connection
+    conn.execute("ALTER TABLE protocol_definitions DISABLE TRIGGER protocol_definitions_guard")
     ProtocolDefinition.where(id: protocol.id)
                       .update_all(definition: municipal_definition(v_1_2_0, rec_1_3_0))
+    conn.execute("ALTER TABLE protocol_definitions ENABLE TRIGGER protocol_definitions_guard")
 
     expect(read_report(snapshot.token)).to eq(before)
   end

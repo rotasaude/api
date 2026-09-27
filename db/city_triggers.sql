@@ -295,3 +295,45 @@ DROP TRIGGER IF EXISTS consents_append_only_truncate ON consents;
 CREATE TRIGGER consents_append_only_truncate
   BEFORE TRUNCATE ON consents
   FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only();
+
+-- protocol_definitions (ADR 0009; F-03.14 e critério de fechamento do módulo
+-- 03): uma versão nunca é apagada — aposentar é mudar o status — e, depois de
+-- publicada, definition/name/version não mudam mais: triagem e relatório
+-- apontam para ESTA linha (imutabilidade por versão). draft e in_review
+-- continuam editáveis. O status só anda para frente: published/active nunca
+-- voltam a draft/in_review, e retired é final. published <-> active é o
+-- ciclo de ativação e reversão (Protocols::Activate / RevertActivation).
+CREATE OR REPLACE FUNCTION rota_protocol_definition_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'protocol_definitions: DELETE refused (retire the version instead)';
+  END IF;
+  IF OLD.status IN ('draft', 'in_review') THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.definition IS DISTINCT FROM OLD.definition
+     OR NEW.name IS DISTINCT FROM OLD.name
+     OR NEW.version IS DISTINCT FROM OLD.version
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'protocol_definitions: content is frozen once published';
+  END IF;
+  IF OLD.status = 'retired' AND NEW.status <> 'retired' THEN
+    RAISE EXCEPTION 'protocol_definitions: retired is final';
+  END IF;
+  IF NEW.status IN ('draft', 'in_review') THEN
+    RAISE EXCEPTION 'protocol_definitions: a published version cannot go back to %', NEW.status;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS protocol_definitions_guard ON protocol_definitions;
+CREATE TRIGGER protocol_definitions_guard
+  BEFORE UPDATE OR DELETE ON protocol_definitions
+  FOR EACH ROW EXECUTE FUNCTION rota_protocol_definition_guard();
+
+DROP TRIGGER IF EXISTS protocol_definitions_append_only_truncate ON protocol_definitions;
+CREATE TRIGGER protocol_definitions_append_only_truncate
+  BEFORE TRUNCATE ON protocol_definitions
+  FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only();

@@ -9,6 +9,8 @@
 # banco da cidade do host (CityResolution), então um token só vale no host da
 # própria cidade — o de outra cidade não existe ali. O link enviado ao cidadão
 # sai de CityPublicUrl.wpda (host da cidade, Plano 6).
+# Nunca devolve respostas do cidadão (F-03.17): o link é público. Snapshot
+# antigo que ainda guarda "summary" no payload não o expõe.
 class ReportsController < ApplicationController
   def show
     snapshot = ReportSnapshot.find_by_signed_token(params[:token])
@@ -18,7 +20,6 @@ class ReportsController < ApplicationController
       tier: snapshot.payload["tier"],
       priority: snapshot.payload["priority"],
       recommendation: snapshot.payload["recommendation"],
-      summary: snapshot.payload["summary"],
       completed_at: snapshot.payload["completed_at"],
       expires_at: snapshot.expires_at&.iso8601
     }

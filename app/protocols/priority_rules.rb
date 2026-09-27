@@ -7,12 +7,18 @@ module Protocols
     module_function
 
     def override_for(rules, answers)
+      match_for(rules, answers)&.last
+    end
+
+    # [índice da regra, priority] da regra que escala mais (menor priority;
+    # empate fica com a primeira), ou nil. O índice alimenta o trail (F-03.7).
+    def match_for(rules, answers)
       return nil unless rules.is_a?(Array)
 
-      rules
-        .select { |rule| rule.is_a?(Hash) && Condition.eval(rule["when"] || rule[:when], answers) }
-        .filter_map { |rule| valid_priority(rule) }
-        .min
+      rules.each_with_index
+        .select { |rule, _| rule.is_a?(Hash) && Condition.eval(rule["when"] || rule[:when], answers) }
+        .filter_map { |rule, index| (priority = valid_priority(rule)) && [index, priority] }
+        .min_by { |index, priority| [priority, index] }
     end
 
     # nil se priority ausente/não-inteira/< 1 (a regra é ignorada — nunca escala a 0).
