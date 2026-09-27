@@ -53,6 +53,16 @@ RSpec.describe GenerateReportJob do
     )
   end
 
+  # F-03.17: o link /r/:token é público (30 dias, sem login). O snapshot não
+  # guarda as respostas do cidadão — só tier, prioridade e recomendação.
+  it "never freezes the citizen's answers into the payload" do
+    triage = build_triage(tier: "alta", with_recs: true)
+    GenerateReportJob.new.handle(triage_id: triage.id, **triage.outcome.symbolize_keys)
+    snap = ReportSnapshot.find_by!(triage_id: triage.id)
+    expect(snap.payload.keys).to contain_exactly("tier", "priority", "recommendation", "completed_at")
+    expect(snap.payload.to_json).not_to include("answer")
+  end
+
   it "freezes nil when the protocol has no recommendations" do
     triage = build_triage(tier: "alta", with_recs: false)
     GenerateReportJob.new.handle(triage_id: triage.id, **triage.outcome.symbolize_keys)

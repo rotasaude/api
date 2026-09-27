@@ -51,6 +51,19 @@ RSpec.describe "Reports", type: :request do
     expect(body["recommendation"]).to be_nil
   end
 
+  # F-03.17: snapshot gerado antes da correção ainda guarda as respostas em
+  # "summary"; o link público nunca as devolve.
+  it "never serves the answers of an old snapshot that still holds a summary" do
+    snap = create_snapshot(payload: {
+      "tier" => "alta", "priority" => 1,
+      "summary" => [{ "step" => "febre", "answer" => "sim" }], "completed_at" => nil
+    })
+    get "/r/#{snap.token}"
+    body = JSON.parse(response.body)
+    expect(body).not_to have_key("summary")
+    expect(response.body).not_to include("answer")
+  end
+
   it "a token minted in one city does not resolve on another city's host" do
     other_city = create(:city, slug: TEST_CITY_B.slug, status: "active",
                                database_url: city_database_url("rota_saude_test_city_b"))

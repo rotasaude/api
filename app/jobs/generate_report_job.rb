@@ -29,7 +29,6 @@ class GenerateReportJob < ApplicationJob
       tier: triage.tier,
       priority: triage.priority,
       recommendation: recs&.dig(triage.tier),
-      summary: triage.outcome.dig("trail")&.map { |e| { step: e["step"], answer: e["answer"] } },
       completed_at: triage.completed_at&.iso8601
     }
   end
