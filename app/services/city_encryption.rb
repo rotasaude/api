@@ -38,6 +38,8 @@ module CityEncryption
     [ User,           :otp_pending_secret ],
     [ Conversation,   :phone ],
     [ InboundMessage, :raw ],
+    [ InboundMessage, :from ],
+    [ OutboundMessage, :to ],
     [ Consent,        :evidence ],
     [ Author,         :token ],
     [ Citizen,        :cpf ],
