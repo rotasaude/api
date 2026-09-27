@@ -39,9 +39,8 @@ class User < ApplicationRecord
 
   # Nenhum usuário de cidade é operador de plataforma: operadores são Operator,
   # no banco de plataforma (spec banco-por-cidade §5), e memberships não aceita
-  # platform_operator (ck_memberships_role). Fica `false` para que o call site
-  # que ainda ramifica por operador (SetupController#deactivate_user) falhe
-  # fechado até o Plano 3B trazer o grant de operador para dentro da cidade.
+  # platform_operator (ck_memberships_role). Fica `false` para que qualquer
+  # call site que ramifique por operador falhe fechado.
   def operator?
     false
   end
