@@ -62,6 +62,15 @@ RSpec.describe "Professional shifts", type: :request do
     expect(json["error"]).to eq("invalid_range")
   end
 
+  it "exatamente 62 dias: 200; 63 dias: 422 invalid_range" do
+    get "/professionals/#{doctor.id}/shifts", params: { from: "2026-10-01", to: "2026-12-02" }
+    expect(response).to have_http_status(:ok)
+
+    get "/professionals/#{doctor.id}/shifts", params: { from: "2026-10-01", to: "2026-12-03" }
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json["error"]).to eq("invalid_range")
+  end
+
   it "reason não escalar: 422 invalid e o turno permanece sem cancelar" do
     json_post "/professionals/links/#{link.id}/shifts", starts_at: day.change(hour: 7).iso8601, ends_at: day.change(hour: 13).iso8601
     id = json.dig("shift", "id")
