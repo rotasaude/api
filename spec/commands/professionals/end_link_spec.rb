@@ -26,6 +26,16 @@ RSpec.describe Professionals::EndLink do
     )
   end
 
+  it "started_at no futuro (clock skew entre hosts): ended_at nunca fica antes do início" do
+    skewed = ProfessionalLink.create!(professional: doctor, health_unit_id: create_unit.id, cbo_code: "225125",
+                                      started_at: 1.second.from_now, started_by_user: admin)
+
+    result = described_class.call(link: skewed, by: admin)
+
+    expect(result).to be_ok
+    expect(skewed.reload.ended_at).to eq(skewed.started_at)
+  end
+
   it "segunda vez: already_ended" do
     described_class.call(link: link, by: admin)
     expect(described_class.call(link: link, by: admin).reason).to eq(:already_ended)

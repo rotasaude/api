@@ -8,7 +8,10 @@ module Professionals
         link.lock!
         next Result.fail(:already_ended) unless link.active?
 
-        link.update!(ended_at: Time.current, ended_by_user: by)
+        # Relógios divergentes entre hosts podem fazer Time.current cair antes
+        # de started_at (gravado por outro host); nunca menos que started_at,
+        # senão viola ck_professional_links_order.
+        link.update!(ended_at: [ Time.current, link.started_at ].max, ended_by_user: by)
         cancelled_ids = cancel_future_shifts(link, by)
         DomainEvents.publish("professional.unlinked", professional_link_id: link.id, professional_id: link.professional_id,
                                                       health_unit_id: link.health_unit_id,

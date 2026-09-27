@@ -35,11 +35,14 @@ RSpec.describe "Guardas das tabelas de profissionais" do
   end
 
   it "vínculo: encerra uma vez; a segunda é recusada" do
-    # clock_timestamp(), não now(): now() é o instante de ABERTURA da transação
-    # da fixture, que pode ser anterior ao started_at gravado com Time.current
-    # (let de professional/link roda depois que a transação já começou) —
-    # now() aqui poderia violar ck_professional_links_order por engano.
-    sql("UPDATE professional_links SET ended_at = clock_timestamp(), ended_by_user_id = '#{admin.id}' WHERE id = '#{link.id}'")
+    # Valor Ruby vinculado, não now(): now() é o instante de ABERTURA da
+    # transação da fixture, que pode ser anterior ao started_at gravado com
+    # Time.current (let de professional/link roda depois que a transação já
+    # começou) — now() aqui poderia violar ck_professional_links_order por
+    # engano. Usar um valor >= started_at evita comparar o relógio do banco
+    # (clock_timestamp()) com o relógio da aplicação.
+    ended_at = (link.started_at + 1.second).utc.strftime("%Y-%m-%d %H:%M:%S.%6N")
+    sql("UPDATE professional_links SET ended_at = '#{ended_at}', ended_by_user_id = '#{admin.id}' WHERE id = '#{link.id}'")
     expect { sql("UPDATE professional_links SET ended_at = now() WHERE id = '#{link.id}'") }
       .to raise_error(ActiveRecord::StatementInvalid, /already ended/)
   end
