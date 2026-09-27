@@ -14,8 +14,13 @@ class PurgeDomainEventsJob < ApplicationJob
       raise ArgumentError, "domain_events retention is at least #{RETENTION_MONTHS} months (got #{older_than_months})"
     end
 
-    cutoff = older_than_months.months.ago
-    count = DomainEvent.where("occurred_at < ?", cutoff).delete_all
-    Rails.logger.info("[purge_domain_events] deleted=#{count} cutoff=#{cutoff.iso8601}")
+    # O corte é a MESMA expressão do trigger (UTC, intervalo em SQL): um
+    # `older_than_months.months.ago` em Ruby, no fuso de São Paulo, pode cair
+    # um dia depois do corte do banco no fim de mês — o trigger recusaria uma
+    # linha e o delete_all inteiro da cidade cairia.
+    cutoff_sql = "(now() AT TIME ZONE 'UTC') - make_interval(months => ?)"
+    cutoff = DomainEvent.connection.select_value(DomainEvent.sanitize_sql(["SELECT #{cutoff_sql}", older_than_months]))
+    count = DomainEvent.where("occurred_at < #{cutoff_sql}", older_than_months).delete_all
+    Rails.logger.info("[purge_domain_events] deleted=#{count} cutoff=#{cutoff}")
   end
 end

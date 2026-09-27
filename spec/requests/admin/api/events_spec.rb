@@ -44,6 +44,13 @@ RSpec.describe "Admin::Api::Events", type: :request do
     expect(data["byType"].map { |t| t["name"] }).to contain_exactly("triage.completed", "triage.urgent")
   end
 
+  it "trata % e _ do prefixo como texto, não como curinga" do
+    event("triage.completed")
+
+    expect(fetch(name: "tri_ge.*")["total"]).to eq(0)
+    expect(fetch(name: "%.*")["total"]).to eq(0)
+  end
+
   it "respeita a janela: custom from/to e o período padrão" do
     inside = event("triage.completed", at: Time.zone.parse("2026-09-10T12:00:00-03:00"))
     event("triage.completed", at: Time.zone.parse("2026-08-01T12:00:00-03:00"))

@@ -38,8 +38,8 @@ class Admin::EventsQuery
   def filter_name(scope)
     return scope unless @name_filter
     if @name_filter.end_with?(".*")
-      prefix = @name_filter.sub(".*", "")
-      scope.where("name LIKE ?", "#{prefix}.%")
+      prefix = @name_filter.delete_suffix(".*")
+      scope.where("name LIKE ?", "#{DomainEvent.sanitize_sql_like(prefix)}.%")
     else
       scope.where(name: @name_filter)
     end

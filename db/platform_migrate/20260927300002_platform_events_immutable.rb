@@ -6,8 +6,9 @@ class PlatformEventsImmutable < ActiveRecord::Migration[8.1]
     execute File.read(Rails.root.join("db/platform_triggers.sql"))
   end
 
+  # Desfazer deixaria a auditoria de manutenção sem proteção nenhuma: o trigger
+  # antigo (só maintenance.%) saiu do db/platform_triggers.sql junto.
   def down
-    execute "DROP TRIGGER IF EXISTS platform_events_immutable ON platform_events"
-    execute "DROP FUNCTION IF EXISTS platform_events_immutable()"
+    raise ActiveRecord::IrreversibleMigration, "platform_events ficaria sem trigger de imutabilidade"
   end
 end
