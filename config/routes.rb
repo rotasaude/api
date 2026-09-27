@@ -22,6 +22,9 @@ Rails.application.routes.draw do
       resources :cities, only: [] do
         resource :channel, only: :create, controller: "city_channels"
       end
+      # Números sem CityChannel vistos pelo webhook (F-01.5): leitura para o
+      # operador diagnosticar. Só metadado de roteamento, nunca payload.
+      resources :unknown_channels, only: :index
     end
   end
 

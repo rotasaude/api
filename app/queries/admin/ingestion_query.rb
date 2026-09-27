@@ -1,13 +1,14 @@
-# GET /admin/api/ingestion — webhook WhatsApp (§4.1).
+# GET /admin/api/ingestion — webhook WhatsApp (§4.1, F-01.10): volume inbound,
+# ack aproximado e backlog de purga do raw.
 #
 # Limitações honestas (ver RECONCILE.md):
 #  - inbound_messages mora no banco da cidade do host: sem filtro, lê só aquela cidade.
-#  - inbound_messages NÃO tem `status`/`processed`/`raw_purged_at` →
-#    ack[] vem vazio (ou aproximado pelos outbound_messages.status);
-#    purge.pending é derivado pela IDADE da linha vs TTL configurado.
-#  - dedup é null até existir contagem persistida de reentregas.
+#  - conta só o webhook do WhatsApp; o canal web do cidadão (ADR 0017) não entra.
+#  - inbound_messages NÃO tem `status`/`processed` → ack vem aproximado pelos
+#    outbound_messages.status.
 class Admin::IngestionQuery
-  TTL_HOURS = 24
+  # A janela do backlog é a retenção real do raw, uma fonte só (ADR-0014).
+  TTL_HOURS = PurgeInboundRawJob::RAW_RETENTION_DAYS * 24
 
   def self.call(period:)
     new(period).call
@@ -23,7 +24,6 @@ class Admin::IngestionQuery
       inboundSeries: @period.series(InboundMessage.all, :created_at),
       inboundTotal: base.count,
       ack: ack_breakdown,
-      dedup: nil,
       purge: purge_status
     }
   end
@@ -41,14 +41,12 @@ class Admin::IngestionQuery
     ]
   end
 
-  # purge: backlog LGPD. Sem coluna `raw_purged_at` no schema, estimamos
-  # pela idade do registro vs TTL. ÉTICA: isso superestima — a purga real
-  # pode ter rodado. Quando a projeção de purga existir (ADR candidato),
-  # esta lógica vira leitura da projeção.
+  # purge: backlog LGPD. PurgeInboundRawJob zera o raw e mantém a linha, então
+  # só conta (e só mede idade de) linha com raw ainda guardado.
   def purge_status
-    cutoff = TTL_HOURS.hours.ago
-    over_ttl = InboundMessage.all.where(created_at: ..cutoff)
-    oldest = InboundMessage.all.minimum(:created_at)
+    stored = InboundMessage.where.not(raw: nil)
+    over_ttl = stored.where(created_at: ..TTL_HOURS.hours.ago)
+    oldest = stored.minimum(:created_at)
     oldest_h = oldest ? ((Time.current - oldest) / 1.hour).round : 0
     {
       pending: over_ttl.count,

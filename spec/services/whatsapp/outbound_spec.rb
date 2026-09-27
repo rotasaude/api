@@ -26,6 +26,36 @@ RSpec.describe Whatsapp::Outbound do
     expect(payload[:interactive][:action][:button]).to eq(I18n.t("whatsapp.list_button"))
   end
 
+  # F-01.6. Sem WebMock ligado no projeto: stuba Net::HTTP.start, que é a
+  # camada que Outbound#post usa, e captura a requisição montada.
+  describe "#deliver_text" do
+    let(:http) { instance_double(Net::HTTP) }
+    let(:response) { instance_double(Net::HTTPOK, code: "200", body: %({"messages":[{"id":"wamid.out"}]})) }
+    let(:sent) { [] }
+
+    before do
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) { |req| sent << req; response }
+    end
+
+    it "POSTs the text payload to the channel's Graph messages endpoint with its Bearer token" do
+      result = outbound.deliver_text(to: "5541999990000", body: "Olá")
+
+      expect(Net::HTTP).to have_received(:start).with("graph.facebook.com", 443, use_ssl: true)
+      req = sent.sole
+      expect(req).to be_a(Net::HTTP::Post)
+      expect(req.uri.to_s).to eq("https://graph.facebook.com/v19.0/PNID/messages")
+      expect(req["Authorization"]).to eq("Bearer tok")
+      expect(req["Content-Type"]).to eq("application/json")
+      expect(JSON.parse(req.body)).to eq(
+        "messaging_product" => "whatsapp", "to" => "5541999990000",
+        "type" => "text", "text" => { "body" => "Olá" }
+      )
+      expect(result.status).to eq(200)
+      expect(result.body).to include("wamid.out")
+    end
+  end
+
   describe "#template_payload" do
     let(:reply) { Messaging::Reply.template(name: "rota_saude_resume", params: ["Curitiba"]) }
 
