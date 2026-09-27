@@ -23,7 +23,8 @@ RSpec.describe Professionals::CancelShift do
     expect(described_class.call(shift: shift, reason: "  troca de escala ", by: admin)).to be_ok
     expect(shift.reload).to have_attributes(cancel_reason: "troca de escala", cancelled_by_user: admin)
     expect(DomainEvent.where(name: "professional.shift_cancelled").sole.payload)
-      .to eq("shift_id" => shift.id, "professional_id" => doctor.id, "by_user_id" => admin.id)
+      .to eq("shift_id" => shift.id, "professional_id" => doctor.id, "professional_link_id" => link.id,
+             "by_user_id" => admin.id)
   end
 
   it "sem motivo: reason_required; motivo com mais de 200: reason_too_long" do

@@ -12,6 +12,7 @@ module Professionals
 
         shift.update!(cancelled_at: Time.current, cancelled_by_user: by, cancel_reason: reason)
         DomainEvents.publish("professional.shift_cancelled", shift_id: shift.id, professional_id: shift.professional_id,
+                                                             professional_link_id: shift.professional_link_id,
                                                              by_user_id: by.id)
         Result.ok(shift: shift)
       end
