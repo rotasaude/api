@@ -12,7 +12,10 @@
 #
 # Filtro de bairro (ADR 0023): triagens pelo bairro copiado; com o filtro
 # ligado, contagens de 1 a 4 (e o share delas) saem suprimidas, e a amostra
-# vem null quando o total filtrado é de 1 a 4.
+# vem null quando o total filtrado é de 1 a 4 OU quando qualquer contagem do
+# painel (tier, protocolo, urgência, modo) sai suprimida — a amostra lista
+# cada triagem com o tier dela, então uma categoria suprimida apareceria de
+# novo, sem disfarce, na mesma resposta.
 class Admin::ClassificationQuery
   LEGACY_TIERS = %w[low medium high].freeze
   MODE_SQL = "protocol_definitions.definition -> 'scoring' ->> 'type'".freeze
@@ -34,6 +37,12 @@ class Admin::ClassificationQuery
     tiers = tier_counts(base, urgent_max)
     urgent = @filter.count(base.where(priority: ..urgent_max).count)
     urgent_trend = @filter.series(@period.series(triages.where(status: "completed", priority: ..urgent_max), :completed_at))
+    protocol_rows = by_protocol(base)
+    mode_rows = by_mode(base)
+    sample_rows = sample(base.limit(8), urgent_max)
+    listed = @filter.list(total, sample_rows)
+    listed = nil if suppressed_anywhere?(tiers) || suppressed_anywhere?(urgent) ||
+      suppressed_anywhere?(protocol_rows) || suppressed_anywhere?(mode_rows)
 
     {
       tiers: tiers,
@@ -43,13 +52,27 @@ class Admin::ClassificationQuery
       urgentTrend: urgent_trend,
       priorityTrue: urgent,        # apelido (apps/admin)
       priorityTrend: urgent_trend, # apelido (apps/admin)
-      byProtocol: by_protocol(base),
-      byMode: by_mode(base),
-      sampleTriages: @filter.list(total, sample(base.limit(8), urgent_max))
+      byProtocol: protocol_rows,
+      byMode: mode_rows,
+      sampleTriages: listed
     }
   end
 
   private
+
+  # A amostra some se algum número do painel (tier, protocolo, urgência ou
+  # modo) saiu suprimido — não só se o total saiu.
+  def suppressed_anywhere?(node)
+    case node
+    when Hash
+      return true if node == Admin::SmallCount::SUPPRESSED
+      node.values.any? { |v| suppressed_anywhere?(v) }
+    when Array
+      node.any? { |v| suppressed_anywhere?(v) }
+    else
+      false
+    end
+  end
 
   # Ordena pela prioridade mais urgente que o tier recebeu no período (menor
   # primeiro); tier sem priority vai para o fim.

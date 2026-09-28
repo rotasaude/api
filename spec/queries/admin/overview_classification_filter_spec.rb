@@ -8,6 +8,26 @@ RSpec.describe "Visão geral e Classificação filtradas por bairro (ADR 0023)" 
   let!(:small) { Neighborhood.create!(name: "Batel", source: "seed") }
   let!(:big) { Neighborhood.create!(name: "Centro", source: "seed") }
 
+  # Nenhum Integer 1..4 solto no JSON filtrado: contagem pequena tem que
+  # virar `suppressed`, nunca sobreviver crua em outra chave (ex.: dentro de
+  # uma linha de amostra). Exceções: urgentMaxPriority (config, não contagem),
+  # priority das linhas de amostra (já é o próprio caso, não uma contagem de
+  # bairro) e o KPI "failed" (jobs, ignora o filtro por completo).
+  def refute_small_ints_anywhere(node, skip_keys: %i[urgentMaxPriority priority])
+    walk = lambda do |n|
+      case n
+      when Hash
+        next if n[:id] == "failed"
+        n.each { |k, v| walk.call(v) unless skip_keys.include?(k) }
+      when Array
+        n.each { |v| walk.call(v) }
+      when Integer
+        expect(n).not_to be_between(1, 4), "found an un-suppressed small int (#{n})"
+      end
+    end
+    walk.call(node)
+  end
+
   before do
     3.times { territory_triage!(small) }
     6.times { territory_triage!(big) }
@@ -31,6 +51,7 @@ RSpec.describe "Visão geral e Classificação filtradas por bairro (ADR 0023)" 
       expect(k["done"][:spark]).to include(suppressed)
       expect(k["completion"]).to include(value: suppressed, tone: "neutral")
       expect(k["failed"][:value]).to eq(SolidQueue::FailedExecution.count)
+      refute_small_ints_anywhere(k)
     end
 
     it "bairro com 5 ou mais: o número aparece" do
@@ -57,16 +78,23 @@ RSpec.describe "Visão geral e Classificação filtradas por bairro (ADR 0023)" 
       expect(o[:byMode].map { |m| [ m[:count], m[:share] ] }).to all(eq([ suppressed, suppressed ]))
       expect(o[:byProtocol].flat_map { |r| r[:counts].values }).to all(eq(suppressed))
       expect(o[:sampleTriages]).to be_nil
+      refute_small_ints_anywhere(o)
     end
 
-    it "bairro grande com uma categoria de 1 caso: a categoria e o share dela saem suppressed; o resto aparece" do
+    it "bairro grande com uma categoria de 1 caso: a categoria e o share dela saem suppressed; amostra vem null (revelaria o caso suprimido)" do
       territory_triage!(big, tier: "baixa", priority: 9)
       o = out(big.id)
       counts = o[:tiers].to_h { |t| [ t[:key], t[:count] ] }
       expect(counts).to eq("alta" => 6, "baixa" => suppressed)
       expect(o[:byProtocol].sole[:counts]).to eq("alta" => 6, "baixa" => suppressed)
       expect(o[:byMode].sole).to include(count: 7, share: 100)
-      expect(o[:sampleTriages].size).to eq(7)
+      expect(o[:sampleTriages]).to be_nil
+    end
+
+    it "bairro grande sem nenhuma contagem suprimida: a amostra aparece" do
+      o = out(big.id)
+      expect(o[:tiers]).to all(satisfy { |t| t[:count] != suppressed })
+      expect(o[:sampleTriages].size).to eq(6)
     end
 
     it "sem filtro: igual ao de antes" do
