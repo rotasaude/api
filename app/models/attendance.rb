@@ -31,4 +31,12 @@ class Attendance < ApplicationRecord
   def priority
     root_triage&.priority
   end
+
+  # Bairro do caso para a unidade de referência (ADR 0023): o copiado na
+  # triagem raiz; sem triagem raiz (nem pela cadeia do horário), o bairro
+  # atual do cidadão. Triagem sem bairro continua sem bairro.
+  def territory_neighborhood_id
+    root = root_triage
+    root ? root.neighborhood_id : citizen&.neighborhood_id
+  end
 end

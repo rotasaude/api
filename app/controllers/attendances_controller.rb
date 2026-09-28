@@ -18,8 +18,14 @@ class AttendancesController < ApplicationController
     unit = HealthUnit.find_by(id: params[:id])
     return render json: { error: "not_found" }, status: :not_found unless unit
 
-    render json: { waiting: Attendances::UnitQueue.waiting(unit.id).map { |a| queue_json(a) },
-                   in_care: Attendances::UnitQueue.in_care(unit.id).map { |a| queue_json(a) } }
+    waiting = Attendances::UnitQueue.waiting(unit.id)
+    in_care = Attendances::UnitQueue.in_care(unit.id)
+    # ADR 0023: o formulário de desfecho (dashboard) pré-seleciona a primeira
+    # por nome; informa e sugere, nunca restringe. A própria unidade da linha
+    # nunca entra (decisão de 2026-09-28): encaminhar para si mesma não é
+    # encaminhamento.
+    refs = Territory::ReferenceUnits.ids_by_neighborhood((waiting + in_care).map(&:territory_neighborhood_id))
+    render json: { waiting: waiting.map { |a| queue_json(a, refs) }, in_care: in_care.map { |a| queue_json(a, refs) } }
   end
 
   def call
@@ -55,12 +61,13 @@ class AttendancesController < ApplicationController
 
   private
 
-  def queue_json(a)
+  def queue_json(a, refs)
     {
       id: a.id, cpf_masked: a.citizen.cpf_masked, checked_in_at: a.checked_in_at&.iso8601,
       protocol_name: a.root_triage&.protocol_name, priority: a.priority,
       source: a.appointment_id ? "appointment" : "triage", appointment_time: a.appointment&.scheduled_at&.iso8601,
-      called_at: a.called_at&.iso8601, called_by_name: staff_name(a.called_by_user)
+      called_at: a.called_at&.iso8601, called_by_name: staff_name(a.called_by_user),
+      reference_unit_ids: refs.fetch(a.territory_neighborhood_id, []) - [ a.health_unit_id ]
     }
   end
 
