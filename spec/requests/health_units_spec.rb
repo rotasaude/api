@@ -105,6 +105,31 @@ RSpec.describe "Health units", type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
+  it "profissional de saúde lista só ativas e recebe 403 nas escritas e em /units/all" do
+    active = create_unit("UBS Ativa")
+    create_unit("UBS Inativa", active: false)
+    sign_in_as(doctor)
+
+    get "/attendance/units"
+    expect(response).to have_http_status(:ok)
+    expect(body["units"].map { |u| u["id"] }).to eq([ active.id ])
+
+    get "/attendance/units/all"
+    expect(response).to have_http_status(:forbidden)
+
+    json_post "/attendance/units", name: "UBS Nova", kind: "ubs"
+    expect(response).to have_http_status(:forbidden)
+
+    json_post "/attendance/units/#{active.id}", name: "UBS Outra", kind: "ubs"
+    expect(response).to have_http_status(:forbidden)
+
+    json_post "/attendance/units/#{active.id}/deactivate"
+    expect(response).to have_http_status(:forbidden)
+
+    json_post "/attendance/units/#{active.id}/activate"
+    expect(response).to have_http_status(:forbidden)
+  end
+
   it "desativar unidade com pedido vivo: 409 unit_has_open_requests" do
     reception = staff_with("recepcao2@cidade.gov.br", "citizen_verifier")
     doctor = staff_with("medica@cidade.gov.br", "health_professional")

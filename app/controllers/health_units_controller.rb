@@ -1,11 +1,11 @@
 # Cadastro de unidades de saúde (spec 2026-09-24-citizen-attendance-check-in
-# §4, §6): leitura para citizen_verifier e municipal_admin; escrita só para
-# municipal_admin.
+# §4, §6): leitura para citizen_verifier, health_professional e
+# municipal_admin; escrita só para municipal_admin.
 class HealthUnitsController < ApplicationController
   include Authentication
   include AttendanceAccess
 
-  before_action :require_verifier_or_admin, only: %i[index]
+  before_action :require_unit_reader, only: %i[index]
   before_action :require_admin, only: %i[all create update deactivate activate]
   before_action :set_unit, only: %i[update deactivate activate]
 
@@ -66,9 +66,9 @@ class HealthUnitsController < ApplicationController
     "unit_has_open_requests" if AppointmentRequest.live_requests.where(target_unit: @unit).exists?
   end
 
-  def require_verifier_or_admin
+  def require_unit_reader
     policy = CitizenVerificationPolicy.new(Current.user, nil)
-    forbid unless policy.verify? || policy.manage?
+    forbid unless policy.verify? || policy.care? || policy.manage?
   end
 
   def set_unit
