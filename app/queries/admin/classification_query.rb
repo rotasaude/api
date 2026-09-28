@@ -13,8 +13,9 @@
 # Filtro de bairro (ADR 0023): triagens pelo bairro copiado; com o filtro
 # ligado, contagens de 1 a 4 (e o share delas) saem suprimidas, e a amostra
 # vem null quando o total filtrado é de 1 a 4 OU quando qualquer contagem do
-# painel (tier, protocolo, urgência, modo) sai suprimida — a amostra lista
-# cada triagem com o tier dela, então uma categoria suprimida apareceria de
+# painel (tier, protocolo, urgência, modo, incluindo QUALQUER ponto de
+# urgentTrend, seja hora ou dia) sai suprimida — a amostra lista cada
+# triagem com o tier dela, então uma categoria suprimida apareceria de
 # novo, sem disfarce, na mesma resposta.
 class Admin::ClassificationQuery
   LEGACY_TIERS = %w[low medium high].freeze
@@ -42,7 +43,7 @@ class Admin::ClassificationQuery
     sample_rows = sample(base.limit(8), urgent_max)
     listed = @filter.list(total, sample_rows)
     listed = nil if suppressed_anywhere?(tiers) || suppressed_anywhere?(urgent) ||
-      suppressed_anywhere?(protocol_rows) || suppressed_anywhere?(mode_rows)
+      suppressed_anywhere?(urgent_trend) || suppressed_anywhere?(protocol_rows) || suppressed_anywhere?(mode_rows)
 
     {
       tiers: tiers,

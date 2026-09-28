@@ -97,6 +97,22 @@ RSpec.describe "Triagens, Relatórios e Conversas filtrados por bairro (ADR 0023
       expect(o[:reports].size).to eq(6)
     end
 
+    it "bairro com 5 ou mais e mesmo tier em 2 versões do protocolo, split 5+1: lista sai null (grupo de protocolo pequeno)" do
+      versions = Neighborhood.create!(name: "Água Verde", source: "seed")
+      v1 = ProtocolDefinition.find_by(name: StartTriage::DEFAULT_PROTOCOL_NAME, version: 1, status: "active") ||
+           create_default_protocol!
+      v2 = ProtocolDefinition.create!(name: v1.name, version: 2, status: "retired", definition: v1.definition.merge("version" => 2))
+
+      5.times { territory_report!(territory_triage!(versions, tier: "alta", priority: 1)) }
+      other_version_triage = territory_triage!(versions, tier: "alta", priority: 1)
+      other_version_triage.update!(protocol_definition: v2)
+      territory_report!(other_version_triage)
+
+      o = out(versions.id)
+      expect(o[:total]).to eq(6)
+      expect(o[:reports]).to be_nil
+    end
+
     it "bairro com 5 ou mais mas um tier com 1 a 4 linhas: lista sai null mesmo com o total visível" do
       territory_report!(territory_triage!(big, tier: "baixa", priority: 9))
       o = out(big.id)

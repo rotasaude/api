@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "Visão geral e Classificação filtradas por bairro (ADR 0023)" do
+  include ActiveSupport::Testing::TimeHelpers
+
   def period = Admin::Api::Period.parse(key: "7d", from: nil, to: nil, tz: ActiveSupport::TimeZone["America/Sao_Paulo"])
   def filter(raw) = Admin::NeighborhoodFilter.parse(raw)
 
@@ -104,6 +106,24 @@ RSpec.describe "Visão geral e Classificação filtradas por bairro (ADR 0023)" 
       o = out(big.id)
       expect(o[:tiers]).to all(satisfy { |t| t[:count] != suppressed })
       expect(o[:sampleTriages].size).to eq(6)
+    end
+
+    it "período por hora: uma hora com 1 a 4 urgentes esconde a amostra mesmo com as demais contagens grandes" do
+      travel_to(Time.utc(2026, 9, 28, 15, 0, 0)) do # 12h em America/Sao_Paulo
+        hourly = Admin::Api::Period.parse(key: "today", from: nil, to: nil, tz: ActiveSupport::TimeZone["America/Sao_Paulo"])
+        portao = Neighborhood.create!(name: "Portão", source: "seed")
+        5.times { territory_triage!(portao, tier: "alta", priority: 1, created_at: 5.hours.ago) }
+        2.times { territory_triage!(portao, tier: "alta", priority: 1, created_at: 1.hour.ago) }
+
+        o = described_class.call(period: hourly, filter: filter(portao.id))
+
+        expect(o[:tiers].sole[:count]).to eq(7)
+        expect(o[:urgent]).to eq(7)
+        expect(o[:byMode].sole[:count]).to eq(7)
+        expect(o[:byProtocol].sole[:counts].values).to all(eq(7))
+        expect(o[:urgentTrend]).to include(suppressed)
+        expect(o[:sampleTriages]).to be_nil
+      end
     end
 
     it "sem filtro: igual ao de antes" do
