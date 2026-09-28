@@ -31,6 +31,7 @@ else
   require Rails.root.join("lib/signature_crew").to_s
   require Rails.root.join("lib/dev_maintainer").to_s
   require Rails.root.join("lib/professional_crew").to_s
+  require Rails.root.join("lib/territory_crew").to_s
 
   password = ENV.fetch(SignatureCrew::PASSWORD_ENV, "dev-password")
 
@@ -156,6 +157,15 @@ else
         pros[:professionals].each do |p|
           puts "[seeds] profissional . #{p[:email]} — #{p[:name]} (#{p[:links]} vínculos, #{p[:shifts]} turnos)"
         end
+
+        # ── Território (módulo 11, spec 2026-09-28 §8) ────────────────────────
+        # Depois do ProfessionalCrew: a cobertura da semente liga as unidades dele.
+        territory = Territory::Seed.call(path: Territory::Seed.path_for(slug))
+        puts "[seeds] território .. #{territory.created} bairros criados, #{territory.existing} já existentes"
+        territory.warnings.each { |warning| puts "[seeds] território .. aviso: #{warning}" }
+        demo = TerritoryCrew.seed_current_city(slug: slug, ddd: ddd)
+        puts "[seeds] território .. #{demo[:units_with_address]} unidades com endereço, " \
+             "#{demo[:citizens]} cidadãos de demonstração (#{demo[:new_triages]} triagens novas)"
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
