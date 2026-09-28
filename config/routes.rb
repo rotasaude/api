@@ -133,6 +133,17 @@ Rails.application.routes.draw do
     get  ":id/shifts",        to: "professional_shifts#index"
   end
 
+  # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo
+  # único: uma entrada só no proxy de dev do dashboard.
+  scope "/territory" do
+    get  "neighborhoods",                to: "territory#index"
+    post "neighborhoods",                to: "territory#create"
+    post "neighborhoods/:id",            to: "territory#update"
+    post "neighborhoods/:id/deactivate", to: "territory#deactivate"
+    post "neighborhoods/:id/activate",   to: "territory#activate"
+    post "neighborhoods/:id/coverage",   to: "territory#coverage"
+  end
+
   # Healthcheck — usado pelo Kamal (ADR-0001).
   get "up", to: ->(_env) { [200, {}, ["ok"]] }
 
