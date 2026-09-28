@@ -3,13 +3,18 @@
 # Todos os KPIs agregam ao vivo no banco da cidade (ADR 0022; source: live).
 # O campo source continua no contrato (§7) para quando um KPI passar a ler
 # projeção por ADR novo. Urgência = régua do alerta (Protocols::Urgency).
+#
+# Filtro de bairro (ADR 0023): triagens pelo bairro copiado, conversas pelo
+# bairro atual do cidadão; com o filtro ligado, 1 a 4 sai suprimido. Jobs com
+# falha não são do cidadão: ignoram o filtro.
 class Admin::OverviewQuery
-  def self.call(period:)
-    new(period).call
+  def self.call(period:, filter: Admin::NeighborhoodFilter.off)
+    new(period, filter).call
   end
 
-  def initialize(period)
+  def initialize(period, filter)
     @period = period
+    @filter = filter
   end
 
   def call
@@ -26,73 +31,78 @@ class Admin::OverviewQuery
 
   private
 
+  def triages = @filter.triages(Triage.all)
+  def conversations = @filter.conversations(Conversation.all)
+
   def kpi_done
-    completed = Triage.all
+    completed = triages
                   .where(status: "completed", completed_at: @period.from..@period.to)
                   .count
     {
       id: "done",
       label: "Triagens concluídas",
-      value: completed,
+      value: @filter.count(completed),
       unit: "",
       delta: nil,
       tone: completed.positive? ? "ok" : "neutral",
-      spark: @period.series(Triage.all.where(status: "completed"), :completed_at),
+      spark: @filter.series(@period.series(triages.where(status: "completed"), :completed_at)),
       source: "live"
     }
   end
 
   def kpi_active
-    active = Conversation.all
+    active = conversations
                .where(state: %w[awaiting_consent consented])
                .where(updated_at: 1.hour.ago..)
                .count
     {
       id: "active",
       label: "Conversas ativas agora",
-      value: active,
+      value: @filter.count(active),
       unit: "",
       delta: nil,
       tone: "info",
-      spark: @period.series(Conversation.all, :updated_at),
+      spark: @filter.series(@period.series(conversations, :updated_at)),
       source: "live"
     }
   end
 
   def kpi_urgent
-    urgent = Triage.all.where(status: "completed", priority: ..Protocols::Urgency.max_priority)
+    urgent = triages.where(status: "completed", priority: ..Protocols::Urgency.max_priority)
     count = urgent.where(completed_at: @period.from..@period.to).count
     {
       id: "urgent",
       label: "Casos urgentes",
-      value: count,
+      value: @filter.count(count),
       unit: "",
       delta: nil,
       tone: count.positive? ? "warn" : "ok",
-      spark: @period.series(urgent, :completed_at),
+      spark: @filter.series(@period.series(urgent, :completed_at)),
       source: "live"
     }
   end
 
   def kpi_completion
-    base = Triage.all.where(created_at: @period.from..@period.to)
+    base = triages.where(created_at: @period.from..@period.to)
     started = base.count
     completed = base.where(status: "completed").count
     rate = started.zero? ? 0.0 : (completed.to_f / started * 100).round(1)
+    value = @filter.over(started, rate)
     {
       id: "completion",
       label: "Taxa de conclusão",
-      value: rate,
+      value: value,
       unit: "%",
       delta: nil,
-      tone: rate >= 70 ? "ok" : (rate >= 40 ? "warn" : "down"),
+      tone: value.is_a?(Hash) ? "neutral" : (rate >= 70 ? "ok" : (rate >= 40 ? "warn" : "down")),
       spark: [],
       source: "live"
     }
   end
 
   # Infraestrutura — o Solid Queue mora no banco da cidade desde o Plano 5:
-  # este número é só desta cidade (city_connection_queue_spec).
+  # este número é só desta cidade (city_connection_queue_spec). Não é do
+  # cidadão: ignora o filtro de bairro.
   def kpi_failed_jobs
     failed = SolidQueue::FailedExecution.count
     {

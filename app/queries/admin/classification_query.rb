@@ -9,25 +9,31 @@
 # Expand/contract (ADR 0015): priorityTrue/priorityTrend e as chaves
 # low/medium/high do pivô ficam como apelidos do contrato antigo enquanto o
 # console do operador (apps/admin) não migra para urgent/urgentTrend/counts.
+#
+# Filtro de bairro (ADR 0023): triagens pelo bairro copiado; com o filtro
+# ligado, contagens de 1 a 4 (e o share delas) saem suprimidas, e a amostra
+# vem null quando o total filtrado é de 1 a 4.
 class Admin::ClassificationQuery
   LEGACY_TIERS = %w[low medium high].freeze
   MODE_SQL = "protocol_definitions.definition -> 'scoring' ->> 'type'".freeze
 
-  def self.call(period:)
-    new(period).call
+  def self.call(period:, filter: Admin::NeighborhoodFilter.off)
+    new(period, filter).call
   end
 
-  def initialize(period)
+  def initialize(period, filter)
     @period = period
+    @filter = filter
   end
 
   def call
-    base = Triage.all
-             .where(status: "completed", completed_at: @period.from..@period.to)
+    triages = @filter.triages(Triage.all)
+    base = triages.where(status: "completed", completed_at: @period.from..@period.to)
+    total = base.count
     urgent_max = Protocols::Urgency.max_priority
     tiers = tier_counts(base, urgent_max)
-    urgent = base.where(priority: ..urgent_max).count
-    urgent_trend = @period.series(Triage.all.where(status: "completed", priority: ..urgent_max), :completed_at)
+    urgent = @filter.count(base.where(priority: ..urgent_max).count)
+    urgent_trend = @filter.series(@period.series(triages.where(status: "completed", priority: ..urgent_max), :completed_at))
 
     {
       tiers: tiers,
@@ -39,7 +45,7 @@ class Admin::ClassificationQuery
       priorityTrend: urgent_trend, # apelido (apps/admin)
       byProtocol: by_protocol(base),
       byMode: by_mode(base),
-      sampleTriages: sample(base.limit(8), urgent_max)
+      sampleTriages: @filter.list(total, sample(base.limit(8), urgent_max))
     }
   end
 
@@ -51,7 +57,7 @@ class Admin::ClassificationQuery
     rows = scope.group(:tier).pluck(:tier, Arel.sql("COUNT(*)"), Arel.sql("MIN(priority)"))
     rows.sort_by { |tier, _count, min_priority| [ min_priority || Float::INFINITY, tier.to_s ] }.map do |tier, count, min_priority|
       key = tier || "sem tier"
-      { key: key, label: key, count: count, tone: tone(min_priority, urgent_max) }
+      { key: key, label: key, count: @filter.count(count), tone: tone(min_priority, urgent_max) }
     end
   end
 
@@ -70,7 +76,8 @@ class Admin::ClassificationQuery
       pivot[key] ||= { protocol: key, counts: {} }
       pivot[key][:counts][tier || "sem tier"] = count
     end.values.map do |row|
-      row.merge(LEGACY_TIERS.to_h { |t| [ t.to_sym, row[:counts][t] || 0 ] }) # apelidos (apps/admin)
+      legacy = LEGACY_TIERS.to_h { |t| [ t.to_sym, @filter.count(row[:counts][t] || 0) ] } # apelidos (apps/admin)
+      row.merge(counts: row[:counts].transform_values { |c| @filter.count(c) }).merge(legacy)
     end
   end
 
@@ -78,11 +85,12 @@ class Admin::ClassificationQuery
     rows = scope.joins(:protocol_definition).group(Arel.sql(MODE_SQL)).count
     total = rows.values.sum
     rows.map do |mode, count|
+      share = total.zero? ? 0 : (count.to_f / total * 100).round
       {
         mode: mode,
         label: mode,
-        count: count,
-        share: total.zero? ? 0 : (count.to_f / total * 100).round
+        count: @filter.count(count),
+        share: @filter.share(count, total, share)
       }
     end
   end
