@@ -14,8 +14,19 @@ class HealthUnit < ApplicationRecord
 
   before_validation { self.name = name&.strip }
 
+  # Endereço em texto (ADR 0023; módulo 11 entrega o que o ADR 0018 deixou em
+  # aberto). Tudo opcional. O CEP vem do navegador do dashboard; o api só
+  # confere o formato (8 dígitos) e nunca consulta serviço de CEP.
+  normalizes :address_street, :address_number, :address_complement,
+             with: ->(v) { v.to_s.squish.presence }, apply_to_nil: true
+  normalizes :address_zip, with: ->(v) { v.to_s.gsub(/[\s.-]/, "").presence }, apply_to_nil: true
+
   validates :name, presence: true, uniqueness: { case_sensitive: false }
   validates :kind, inclusion: { in: KINDS }
+  validates :address_street, length: { maximum: 160 }
+  validates :address_number, length: { maximum: 20 }
+  validates :address_complement, length: { maximum: 80 }
+  validates :address_zip, format: { with: /\A\d{8}\z/ }, allow_nil: true
 
   scope :active_units, -> { where(active: true).order(:name) }
 
