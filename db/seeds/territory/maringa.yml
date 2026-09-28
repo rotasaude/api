@@ -1,0 +1,101 @@
+# Bairros de Maringá: subconjunto de nomes reais, na grafia da base de CEP
+# (a cidade tem centenas de loteamentos; a prefeitura completa pelo
+# dashboard). A cobertura liga as unidades da semente de dev.
+neighborhoods:
+  - name: Zona 01
+    key: zona-01
+    units: ["UPA 24h Centro"]
+  - name: Zona 02
+    key: zona-02
+    units: ["UPA 24h Centro"]
+  - name: Zona 03
+    key: zona-03
+    units: ["UPA 24h Centro"]
+  - name: Zona 04
+    key: zona-04
+  - name: Zona 05
+    key: zona-05
+  - name: Zona 06
+    key: zona-06
+    units: ["UBS Jardim das Flores"]
+  - name: Zona 07
+    key: zona-07
+    units: ["UBS Jardim das Flores"]
+  - name: Zona 08
+    key: zona-08
+  - name: Zona Armazém
+    key: zona-armazem
+  - name: Vila Morangueira
+    key: vila-morangueira
+  - name: Vila Ipiranga
+    key: vila-ipiranga
+  - name: Vila Marumby
+    key: vila-marumby
+  - name: Vila Emília
+    key: vila-emilia
+  - name: Jardim Alvorada
+    key: jardim-alvorada
+    units: ["UBS Vila Esperança"]
+  - name: Jardim Novo Alvorada
+    key: jardim-novo-alvorada
+  - name: Parque Residencial Cidade Nova
+    key: parque-residencial-cidade-nova
+    units: ["UBS Vila Esperança"]
+  - name: Parque Residencial Eldorado
+    key: parque-residencial-eldorado
+    units: ["UBS Vila Esperança"]
+  - name: Parque Avenida
+    key: parque-avenida
+    units: ["UBS Vila Esperança"]
+  - name: Parque da Gávea
+    key: parque-da-gavea
+  - name: Jardim Novo Horizonte
+    key: jardim-novo-horizonte
+  - name: Jardim Ipanema
+    key: jardim-ipanema
+  - name: Parque Industrial
+    key: parque-industrial
+  - name: Parque Industrial Bandeirantes
+    key: parque-industrial-bandeirantes
+  - name: Loteamento Sumaré
+    key: loteamento-sumare
+  - name: Jardim Tupinambá
+    key: jardim-tupinamba
+  - name: Jardim Santa Clara
+    key: jardim-santa-clara
+  - name: Jardim Real
+    key: jardim-real
+  - name: Jardim Pinheiros
+    key: jardim-pinheiros
+  - name: Jardim Oásis
+    key: jardim-oasis
+  - name: Jardim Higienópolis
+    key: jardim-higienopolis
+  - name: Jardim Dourados
+    key: jardim-dourados
+  - name: Bom Jardim
+    key: bom-jardim
+  - name: Alto das Grevíleas
+    key: alto-das-grevileas
+  - name: Parque das Grevíleas
+    key: parque-das-grevileas
+  - name: Parque das Bandeiras
+    key: parque-das-bandeiras
+  - name: Portal das Torres
+    key: portal-das-torres
+  - name: Jardim Vitória
+    key: jardim-vitoria
+  - name: Jardim Paris
+    key: jardim-paris
+  - name: Jardim Brasil
+    key: jardim-brasil
+  - name: Jardim Carolina
+    key: jardim-carolina
+  - name: Jardim Tropical
+    key: jardim-tropical
+  - name: Conjunto Habitacional Hermann Moraes Barros
+    key: conjunto-habitacional-hermann-moraes-barros
+  - name: Parque Residencial Tuiuti
+    key: parque-residencial-tuiuti
+  - name: Jardim Santa Alice
+    key: jardim-santa-alice

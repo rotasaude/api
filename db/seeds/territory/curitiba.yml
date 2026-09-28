@@ -1,0 +1,163 @@
+# Bairros oficiais de Curitiba (75, divisão da prefeitura). A cobertura liga
+# as unidades da semente de dev; em outro ambiente, unidade não encontrada é
+# aviso da carga, não erro. Editar pelo dashboard depois da carga.
+neighborhoods:
+  - name: Abranches
+    key: abranches
+  - name: Água Verde
+    key: agua-verde
+  - name: Ahú
+    key: ahu
+  - name: Alto Boqueirão
+    key: alto-boqueirao
+    units: ["UBS Vila Esperança"]
+  - name: Alto da Glória
+    key: alto-da-gloria
+  - name: Alto da Rua XV
+    key: alto-da-rua-xv
+  - name: Atuba
+    key: atuba
+  - name: Augusta
+    key: augusta
+  - name: Bacacheri
+    key: bacacheri
+  - name: Bairro Alto
+    key: bairro-alto
+  - name: Barreirinha
+    key: barreirinha
+  - name: Batel
+    key: batel
+  - name: Bigorrilho
+    key: bigorrilho
+  - name: Boa Vista
+    key: boa-vista
+  - name: Bom Retiro
+    key: bom-retiro
+  - name: Boqueirão
+    key: boqueirao
+    units: ["UBS Vila Esperança"]
+  - name: Butiatuvinha
+    key: butiatuvinha
+    units: ["UBS Jardim das Flores"]
+  - name: Cabral
+    key: cabral
+  - name: Cachoeira
+    key: cachoeira
+  - name: Cajuru
+    key: cajuru
+  - name: Campina do Siqueira
+    key: campina-do-siqueira
+  - name: Campo Comprido
+    key: campo-comprido
+  - name: Campo de Santana
+    key: campo-de-santana
+  - name: Capão da Imbuia
+    key: capao-da-imbuia
+  - name: Capão Raso
+    key: capao-raso
+  - name: Cascatinha
+    key: cascatinha
+    units: ["UBS Jardim das Flores"]
+  - name: Caximba
+    key: caximba
+  - name: Centro
+    key: centro
+    units: ["UPA 24h Centro"]
+  - name: Centro Cívico
+    key: centro-civico
+  - name: Cidade Industrial
+    key: cidade-industrial
+  - name: Cristo Rei
+    key: cristo-rei
+  - name: Fanny
+    key: fanny
+  - name: Fazendinha
+    key: fazendinha
+  - name: Ganchinho
+    key: ganchinho
+  - name: Guabirotuba
+    key: guabirotuba
+  - name: Guaíra
+    key: guaira
+  - name: Hauer
+    key: hauer
+    units: ["UBS Vila Esperança"]
+  - name: Hugo Lange
+    key: hugo-lange
+  - name: Jardim Botânico
+    key: jardim-botanico
+  - name: Jardim das Américas
+    key: jardim-das-americas
+  - name: Jardim Social
+    key: jardim-social
+  - name: Juvevê
+    key: juveve
+  - name: Lamenha Pequena
+    key: lamenha-pequena
+  - name: Lindóia
+    key: lindoia
+  - name: Mercês
+    key: merces
+  - name: Mossunguê
+    key: mossungue
+  - name: Novo Mundo
+    key: novo-mundo
+  - name: Orleans
+    key: orleans
+  - name: Parolin
+    key: parolin
+  - name: Pilarzinho
+    key: pilarzinho
+  - name: Pinheirinho
+    key: pinheirinho
+  - name: Portão
+    key: portao
+  - name: Prado Velho
+    key: prado-velho
+  - name: Rebouças
+    key: reboucas
+  - name: Riviera
+    key: riviera
+  - name: Santa Cândida
+    key: santa-candida
+  - name: Santa Felicidade
+    key: santa-felicidade
+    units: ["UBS Jardim das Flores"]
+  - name: Santa Quitéria
+    key: santa-quiteria
+  - name: Santo Inácio
+    key: santo-inacio
+  - name: São Braz
+    key: sao-braz
+  - name: São Francisco
+    key: sao-francisco
+    units: ["UPA 24h Centro"]
+  - name: São João
+    key: sao-joao
+    units: ["UBS Jardim das Flores"]
+  - name: São Lourenço
+    key: sao-lourenco
+  - name: São Miguel
+    key: sao-miguel
+  - name: Seminário
+    key: seminario
+  - name: Sítio Cercado
+    key: sitio-cercado
+  - name: Taboão
+    key: taboao
+  - name: Tarumã
+    key: taruma
+  - name: Tatuquara
+    key: tatuquara
+  - name: Tingui
+    key: tingui
+  - name: Uberaba
+    key: uberaba
+  - name: Umbará
+    key: umbara
+  - name: Vila Izabel
+    key: vila-izabel
+  - name: Vista Alegre
+    key: vista-alegre
+  - name: Xaxim
+    key: xaxim
