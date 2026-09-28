@@ -79,4 +79,22 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
     expect(Triage.find(target_triage.id).answers).to eq({})
     expect(Triage.find(done.id).answers).to eq({ "s1" => "true" }) # completed untouched
   end
+
+  # ADR 0023, decisão de 2026-09-28: revogar apaga também o bairro copiado.
+  it "zera o bairro da triagem revogada e não toca a de outra conversa" do
+    pd = ProtocolDefinition.create!(name: "rev-demo", version: 1, status: "active", definition: definition_hash)
+    centro = Neighborhood.create!(name: "Centro", source: "seed")
+    convo = Conversation.create!(phone: "+551133", state: "revoked")
+    revoked = Triage.create!(conversation: convo, protocol_definition: pd, protocol_name: "rev-demo",
+                             status: "aborted_by_revocation", answers: {}, neighborhood_id: centro.id,
+                             completed_at: Time.current)
+    other = Triage.create!(conversation: Conversation.create!(phone: "+551144", state: "completed"),
+                           protocol_definition: pd, protocol_name: "rev-demo", status: "completed",
+                           answers: {}, neighborhood_id: centro.id, completed_at: Time.current)
+
+    described_class.new.perform(**event_args(convo.id))
+
+    expect(revoked.reload.neighborhood_id).to be_nil
+    expect(other.reload.neighborhood_id).to eq(centro.id)
+  end
 end

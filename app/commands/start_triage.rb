@@ -1,6 +1,10 @@
 # Abre a triagem do protocolo padrão numa conversa já consentida. Usado pelo
 # WhatsApp (ConversationAdvance) e pela web (Citizens::StartConversation).
 # Ver ADR-0009. Reasons: :no_protocol.
+#
+# Copia o bairro atual do cidadão na criação (ADR 0023): é a única escrita de
+# triages.neighborhood_id — depois, o trigger triages_neighborhood_immutable
+# recusa qualquer mudança. Conversa do WhatsApp sem cidadão: sem bairro.
 class StartTriage
   DEFAULT_PROTOCOL_NAME = "triage-respiratoria"
 
@@ -14,7 +18,8 @@ class StartTriage
       protocol_name: record.name,
       answers: {},
       current_step: engine.start_step_id.to_s,
-      status: :in_progress
+      status: :in_progress,
+      neighborhood_id: conversation.citizen&.neighborhood_id
     )
     Result.ok(triage: triage)
   rescue Protocols::NotFound
