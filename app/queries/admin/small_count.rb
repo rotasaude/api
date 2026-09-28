@@ -8,7 +8,7 @@ module Admin::SmallCount
   module_function
 
   def small?(value)
-    value.is_a?(Integer) && RANGE.cover?(value)
+    value.is_a?(Numeric) && value == value.to_i && RANGE.cover?(value)
   end
 
   def wrap(value)

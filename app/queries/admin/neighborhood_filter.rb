@@ -57,11 +57,17 @@ class Admin::NeighborhoodFilter
   end
 
   def count(n)
-    active? ? Admin::SmallCount.wrap(n) : n
+    return n unless active?
+    raise ArgumentError, "count expects a Numeric or nil, got #{n.class}" unless n.nil? || n.is_a?(Numeric)
+
+    Admin::SmallCount.wrap(n)
   end
 
   def series(values)
-    active? ? values.map { |v| Admin::SmallCount.wrap(v) } : values
+    return values unless active?
+    raise ArgumentError, "series expects an Array, got #{values.class}" unless values.is_a?(Array)
+
+    values.map { |v| Admin::SmallCount.wrap(v) }
   end
 
   # Taxa ou média calculada sobre `total`.
