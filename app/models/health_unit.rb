@@ -9,6 +9,9 @@ class HealthUnit < ApplicationRecord
 
   has_many :attendances, dependent: :restrict_with_error
 
+  # ADR 0023: onde a unidade FICA (pode não estar entre os bairros que atende).
+  belongs_to :neighborhood, optional: true
+
   before_validation { self.name = name&.strip }
 
   validates :name, presence: true, uniqueness: { case_sensitive: false }

@@ -525,3 +525,37 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- triages.neighborhood_id (ADR 0023; spec 2026-09-28-module-11-territory §3.3):
+-- o bairro do cidadão é COPIADO na criação da triagem (StartTriage) e nunca
+-- muda depois — nem para outro bairro, nem de nulo para um bairro. É o que faz
+-- o painel contar cada caso no bairro onde a pessoa morava quando ele
+-- aconteceu. UMA exceção (decisão de 2026-09-28): ir para NULL quando a linha
+-- fica em aborted_by_revocation — a anonimização da revogação
+-- (AnonymizeRevokedTriageJob) apaga o bairro junto com o conteúdo clínico. As
+-- outras colunas continuam mudando. A guarda é pela COLUNA, não pela tabela:
+-- triages existe desde a primeira migração, e um replay do zero executa este
+-- arquivo antes de a coluna existir.
+CREATE OR REPLACE FUNCTION rota_triage_neighborhood_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.neighborhood_id IS DISTINCT FROM OLD.neighborhood_id THEN
+    IF NEW.neighborhood_id IS NULL AND NEW.status = 'aborted_by_revocation' THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'triages: neighborhood_id never changes after insert (only to NULL on revocation)';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'triages' AND column_name = 'neighborhood_id') THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS triages_neighborhood_immutable ON triages';
+    EXECUTE 'CREATE TRIGGER triages_neighborhood_immutable
+      BEFORE UPDATE ON triages
+      FOR EACH ROW EXECUTE FUNCTION rota_triage_neighborhood_guard()';
+  END IF;
+END
+$do$;

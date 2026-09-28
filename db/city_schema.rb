@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_28_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_28_100001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -190,10 +190,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_000001) do
   create_table "citizens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "cpf", null: false
     t.datetime "created_at", null: false
+    t.uuid "neighborhood_id"
     t.string "phone", null: false
     t.datetime "updated_at", null: false
     t.string "verification_level", default: "declared", null: false
     t.index ["cpf", "phone"], name: "index_citizens_on_cpf_and_phone", unique: true
+    t.index ["neighborhood_id"], name: "index_citizens_on_neighborhood_id"
     t.index ["phone"], name: "index_citizens_on_phone"
     t.check_constraint "(verification_level)::text = ANY (ARRAY['declared'::text, 'verified'::text])", name: "ck_citizens_verification_level"
   end
@@ -262,11 +264,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_000001) do
 
   create_table "health_units", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
+    t.string "address_complement", limit: 80
+    t.string "address_number", limit: 20
+    t.string "address_street", limit: 160
+    t.string "address_zip", limit: 8
     t.datetime "created_at", null: false
     t.string "kind", null: false
     t.string "name", null: false
+    t.uuid "neighborhood_id"
     t.datetime "updated_at", null: false
     t.index "lower((name)::text)", name: "idx_health_units_name_ci", unique: true
+    t.index ["neighborhood_id"], name: "index_health_units_on_neighborhood_id"
+    t.check_constraint "address_zip IS NULL OR address_zip::text ~ '^[0-9]{8}$'::text", name: "ck_health_units_address_zip"
     t.check_constraint "kind::text = ANY (ARRAY['ubs', 'upa', 'hospital', 'other']::text[])", name: "ck_health_units_kind"
   end
 
@@ -319,6 +328,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_000001) do
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
     t.check_constraint "role::text = ANY (ARRAY['citizen_verifier'::text, 'health_professional'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
+  end
+
+  create_table "neighborhood_coverages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.uuid "neighborhood_id", null: false
+    t.index ["health_unit_id"], name: "index_neighborhood_coverages_on_health_unit_id"
+    t.index ["neighborhood_id", "health_unit_id"], name: "idx_neighborhood_coverages_pair", unique: true
+  end
+
+  create_table "neighborhoods", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.string "name", limit: 120, null: false
+    t.string "seed_key"
+    t.string "source", null: false
+    t.datetime "updated_at", null: false
+    t.index "lower((name)::text)", name: "idx_neighborhoods_name_ci", unique: true
+    t.index ["seed_key"], name: "idx_neighborhoods_seed_key", unique: true, where: "(seed_key IS NOT NULL)"
+    t.check_constraint "length(btrim(name::text)) > 0 AND name::text = btrim(name::text)", name: "ck_neighborhoods_name"
+    t.check_constraint "source::text = ANY (ARRAY['seed'::text, 'manual'::text])", name: "ck_neighborhoods_source"
   end
 
   create_table "otp_challenges", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -621,6 +651,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_000001) do
     t.uuid "conversation_id", null: false
     t.datetime "created_at", null: false
     t.string "current_step"
+    t.uuid "neighborhood_id"
     t.jsonb "outcome"
     t.integer "priority"
     t.uuid "protocol_definition_id", null: false
@@ -632,6 +663,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_000001) do
     t.index ["conversation_id", "status"], name: "index_triages_on_conversation_id_and_status"
     t.index ["conversation_id"], name: "idx_triagens_one_in_progress_per_conversation", unique: true, where: "((status)::text = 'in_progress'::text)"
     t.index ["conversation_id"], name: "index_triages_on_conversation_id"
+    t.index ["neighborhood_id", "created_at"], name: "idx_triages_neighborhood_created"
     t.index ["protocol_definition_id"], name: "index_triages_on_protocol_definition_id"
     t.index ["status"], name: "index_triages_on_status"
     t.index ["tier"], name: "index_triages_on_tier"
@@ -678,12 +710,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_000001) do
   add_foreign_key "citizen_verifications", "citizens"
   add_foreign_key "citizen_verifications", "users", column: "revoked_by_user_id"
   add_foreign_key "citizen_verifications", "users", column: "verified_by_user_id"
+  add_foreign_key "citizens", "neighborhoods"
   add_foreign_key "consents", "conversations"
   add_foreign_key "conversations", "citizens"
+  add_foreign_key "health_units", "neighborhoods"
   add_foreign_key "identities", "users"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"
+  add_foreign_key "neighborhood_coverages", "health_units"
+  add_foreign_key "neighborhood_coverages", "neighborhoods"
   add_foreign_key "professional_links", "health_units"
   add_foreign_key "professional_links", "professionals"
   add_foreign_key "professional_links", "users", column: "ended_by_user_id"
@@ -707,5 +743,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_000001) do
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "triages", "conversations"
+  add_foreign_key "triages", "neighborhoods"
   add_foreign_key "triages", "protocol_definitions"
 end

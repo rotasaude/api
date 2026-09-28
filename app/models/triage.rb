@@ -3,6 +3,8 @@
 class Triage < ApplicationRecord
   belongs_to :conversation
   belongs_to :protocol_definition
+  # ADR 0023: cópia do bairro do cidadão na criação; imutável (trigger).
+  belongs_to :neighborhood, optional: true
   has_one :report_snapshot
   has_one :attendance, dependent: :restrict_with_error
 

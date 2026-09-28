@@ -12,6 +12,9 @@ class Citizen < ApplicationRecord
   has_many :verifications, class_name: "CitizenVerification", dependent: :restrict_with_error
   has_many :verification_codes, class_name: "CitizenVerificationCode", dependent: :restrict_with_error
 
+  # ADR 0023: bairro declarado; nil = "prefiro não informar".
+  belongs_to :neighborhood, optional: true
+
   enum :verification_level, { declared: "declared", verified: "verified" }, prefix: true
 
   validates :cpf, :phone, presence: true
