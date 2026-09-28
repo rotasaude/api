@@ -8,6 +8,12 @@
 # Filtro de bairro (ADR 0023): conversa pelo bairro ATUAL do cidadão (none
 # inclui conversa sem cidadão); tempo médio pelo bairro copiado na triagem.
 # Com o filtro ligado, 1 a 4 sai suprimido (e taxa/média sobre eles).
+# abandonRate usa @filter.share(abandoned, started, rate) — não @filter.over
+# (started, rate) — pelo mesmo motivo de TriagesQuery#completionRate: com
+# started visível, a taxa sozinha devolveria o abandoned suprimido por
+# subtração. avgToCompleteMin continua em @filter.over(total, ...): ali
+# `total` já É a própria contagem descrita (nº de triagens concluídas usadas
+# na média), não uma razão entre duas contagens diferentes.
 class Admin::ConversationsQuery
   EXITS = { "completed" => "ok", "abandoned" => "warn", "declined" => "neutral",
             "cancelled" => "neutral", "revoked" => "warn" }.freeze
@@ -48,7 +54,8 @@ class Admin::ConversationsQuery
   def abandon_rate(state_counts)
     started = state_counts.values.sum
     return nil if started.zero?
-    @filter.over(started, ((state_counts["abandoned"] || 0).to_f / started * 100).round(1))
+    abandoned = state_counts["abandoned"] || 0
+    @filter.share(abandoned, started, (abandoned.to_f / started * 100).round(1))
   end
 
   def avg_complete_minutes

@@ -60,6 +60,15 @@ RSpec.describe "Visão geral e Classificação filtradas por bairro (ADR 0023)" 
       expect(k["completion"][:value]).to eq(100.0)
     end
 
+    it "iniciadas 5 ou mais mas concluídas 1 a 4: completion sai suprimida (não dá pra descobrir por subtração)" do
+      cabral = Neighborhood.create!(name: "Cabral", source: "seed")
+      2.times { territory_triage!(cabral) }
+      4.times { territory_triage!(cabral, status: "in_progress") }
+      k = kpis(cabral.id)
+      expect(k["done"][:value]).to eq(suppressed)
+      expect(k["completion"]).to include(value: suppressed, tone: "neutral")
+    end
+
     it "none: triagens sem bairro; conversas ativas sem cidadão ou sem bairro" do
       k = kpis("none")
       expect(k["done"][:value]).to eq(suppressed)

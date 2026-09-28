@@ -5,6 +5,10 @@
 #
 # Filtro de bairro (ADR 0023): pelo bairro copiado na triagem; com o filtro
 # ligado, 1 a 4 sai suprimido (e a taxa/share calculados sobre eles).
+# completionRate usa @filter.share(completed, started, rate), não @filter.over
+# (started, rate): com started visível e completed suprimido, a taxa sozinha
+# devolveria o completed por subtração (ex.: 6 iniciadas, 33.3% = 2
+# concluídas) — share suprime quando QUALQUER um dos dois lados é pequeno.
 class Admin::TriagesQuery
   def self.call(period:, filter: Admin::NeighborhoodFilter.off)
     new(period, filter).call
@@ -26,7 +30,7 @@ class Admin::TriagesQuery
       series: @filter.series(@period.series(triages, :created_at)),
       started: @filter.count(started),
       completed: @filter.count(completed),
-      completionRate: @filter.over(started, rate),
+      completionRate: @filter.share(completed, started, rate),
       byProtocol: by_protocol(base, started)
     }
   end

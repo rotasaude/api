@@ -53,6 +53,16 @@ RSpec.describe "Triagens, Relatórios e Conversas filtrados por bairro (ADR 0023
       expect(o[:byProtocol].sole).to include(count: 6, share: 100)
     end
 
+    it "iniciadas 5 ou mais mas concluídas 1 a 4: completionRate sai suprimida (não dá pra descobrir por subtração)" do
+      cabral = Neighborhood.create!(name: "Cabral", source: "seed")
+      2.times { territory_triage!(cabral) }
+      4.times { territory_triage!(cabral, status: "in_progress") }
+      o = out(cabral.id)
+      expect(o[:started]).to eq(6)
+      expect(o[:completed]).to eq(suppressed)
+      expect(o[:completionRate]).to eq(suppressed)
+    end
+
     it "sem filtro: igual ao de antes" do
       expect(out(nil)).to eq(described_class.call(period: period))
       expect(out(nil)[:started]).to eq(11)
@@ -87,7 +97,15 @@ RSpec.describe "Triagens, Relatórios e Conversas filtrados por bairro (ADR 0023
       expect(o[:reports].size).to eq(6)
     end
 
+    it "bairro com 5 ou mais mas um tier com 1 a 4 linhas: lista sai null mesmo com o total visível" do
+      territory_report!(territory_triage!(big, tier: "baixa", priority: 9))
+      o = out(big.id)
+      expect(o[:total]).to eq(7)
+      expect(o[:reports]).to be_nil
+    end
+
     it "sem filtro: igual ao de antes" do
+      expect(out(nil)).to eq(described_class.call(period: period))
       expect(out(nil)[:total]).to eq(11)
     end
   end
@@ -110,6 +128,15 @@ RSpec.describe "Triagens, Relatórios e Conversas filtrados por bairro (ADR 0023
       expect(o[:exits].find { |e| e[:key] == "completed" }[:count]).to eq(6)
       expect(o[:avgToCompleteMin]).to eq(5.0)
       expect(o[:abandonRate]).to eq(0.0)
+    end
+
+    it "iniciadas 5 ou mais mas abandonadas 1 a 4: abandonRate sai suprimida (não dá pra descobrir por subtração)" do
+      cabral = Neighborhood.create!(name: "Cabral", source: "seed")
+      4.times { territory_triage!(cabral) }
+      2.times { territory_triage!(cabral, status: "in_progress").conversation.update!(state: "abandoned") }
+      o = out(cabral.id)
+      expect(o[:exits].to_h { |e| [ e[:key], e[:count] ] }["abandoned"]).to eq(suppressed)
+      expect(o[:abandonRate]).to eq(suppressed)
     end
 
     it "none: a conversa do WhatsApp sem cidadão entra, suprimida" do

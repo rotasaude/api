@@ -6,7 +6,11 @@
 #
 # Filtro de bairro (ADR 0023): triagens pelo bairro copiado, conversas pelo
 # bairro atual do cidadão; com o filtro ligado, 1 a 4 sai suprimido. Jobs com
-# falha não são do cidadão: ignoram o filtro.
+# falha não são do cidadão: ignoram o filtro. kpi_completion usa
+# @filter.share(completed, started, rate), não @filter.over(started, rate):
+# com started visível, a taxa sozinha devolveria o completed suprimido por
+# subtração (mesmo ajuste de Admin::TriagesQuery#completionRate e
+# Admin::ConversationsQuery#abandonRate).
 class Admin::OverviewQuery
   def self.call(period:, filter: Admin::NeighborhoodFilter.off)
     new(period, filter).call
@@ -87,7 +91,7 @@ class Admin::OverviewQuery
     started = base.count
     completed = base.where(status: "completed").count
     rate = started.zero? ? 0.0 : (completed.to_f / started * 100).round(1)
-    value = @filter.over(started, rate)
+    value = @filter.share(completed, started, rate)
     {
       id: "completion",
       label: "Taxa de conclusão",
