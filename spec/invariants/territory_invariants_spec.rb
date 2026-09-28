@@ -119,6 +119,11 @@ RSpec.describe "Invariantes do território (ADR 0023)", type: :request do
     small_numbers = lambda do |node, path = "$"|
       case node
       when Hash
+        # KPI "failed" (jobs falhados) ignora o filtro de propósito (não é do
+        # cidadão) — pular pelo id, não pelo nome da chave `value`, senão um
+        # `value` legítimo de outro KPI escaparia da varredura também.
+        next [] if node["id"] == "failed"
+
         node.flat_map { |k, v| non_count_keys.include?(k) ? [] : small_numbers.call(v, "#{path}.#{k}") }
       when Array
         node.each_with_index.flat_map { |v, i| small_numbers.call(v, "#{path}[#{i}]") }
@@ -135,6 +140,17 @@ RSpec.describe "Invariantes do território (ADR 0023)", type: :request do
       territory_report!(territory_triage!(centro, tier: "baixa", priority: 9))
       2.times { territory_report!(territory_triage!(nil)) }
       Conversation.create!(phone: "+5541911110000", state: "consented") # WhatsApp, sem cidadão
+      # Jobs falhados de propósito: um número pequeno (2), LEGÍTIMO e nunca
+      # filtrado (não é do cidadão). Prova que a varredura não confunde esse
+      # "value" com uma contagem suprimível só porque a chave se chama
+      # "value" — a exclusão é pelo id do KPI ("failed"), não pelo nome da
+      # chave ou por acaso (FailedExecution.count == 0).
+      2.times do |i|
+        job = SolidQueue::Job.create!(queue_name: "default", class_name: "TerritoryInvariantsProbeJob",
+                                      active_job_id: SecureRandom.uuid, arguments: "[]", scheduled_at: Time.current)
+        SolidQueue::FailedExecution.create!(job: job,
+          error: { exception_class: "RuntimeError", message: "prova #{i}", backtrace: [] })
+      end
       sign_in_as(staff_with("viewer@cidade.gov.br", "viewer"))
     end
 
@@ -150,10 +166,52 @@ RSpec.describe "Invariantes do território (ADR 0023)", type: :request do
         offenders = panels.flat_map do |panel|
           get "/admin/api/#{panel}", params: { period: "7d", neighborhood_id: param }
           expect(response).to have_http_status(:ok), panel
+          if panel == "overview"
+            # O KPI "failed" (2, um número pequeno LEGÍTIMO) tem de continuar
+            # visível e sem supressão — a varredura só o ignora, nunca esconde
+            # o valor real do painel.
+            failed_kpi = JSON.parse(response.body).dig("data", "kpis").find { |k| k["id"] == "failed" }
+            expect(failed_kpi["value"]).to eq(2)
+          end
           small_numbers.call(JSON.parse(response.body)["data"], panel)
         end
         expect(offenders).to eq([])
       end
+    end
+
+    # Falha crítica encontrada na revisão: a varredura de números 1-4 não
+    # prova, por si só, que a AMOSTRA (Classificação) e a LISTA (Relatórios)
+    # somem quando qualquer contagem do painel é suprimida — cada linha da
+    # amostra/lista carrega tier/protocolo, nunca um inteiro cru, então
+    # `listed = nil if suppressed_anywhere?(...)` (Admin::ClassificationQuery)
+    # e `suppress_list?` (Admin::ReportsQuery) podiam ambos ser mutados para
+    # sempre `false`/nunca suprimir e a varredura continuaria verde. Por isso
+    # a chave em si precisa ser checada, não só o conteúdo por números.
+    # Mutação: em Admin::ClassificationQuery#call, trocar
+    # `listed = nil if suppressed_anywhere?(...)` por `listed = sample_rows`
+    # (nunca suprime); em Admin::ReportsQuery#suppress_list?, trocar o corpo
+    # por `false` (nunca suprime).
+    it "sampleTriages (Classificação) e reports (Relatórios) somem quando o bairro tem contagem suprimida" do
+      get "/admin/api/classification", params: { period: "7d", neighborhood_id: centro.id }
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("data", "sampleTriages")).to be_nil
+
+      get "/admin/api/reports", params: { period: "7d", neighborhood_id: centro.id }
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("data", "reports")).to be_nil
+    end
+
+    it "sampleTriages e reports aparecem quando nenhuma contagem do bairro é pequena" do
+      grande = Neighborhood.create!(name: "Grande", source: "seed")
+      6.times { territory_report!(territory_triage!(grande)) }
+
+      get "/admin/api/classification", params: { period: "7d", neighborhood_id: grande.id }
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("data", "sampleTriages")).to be_present
+
+      get "/admin/api/reports", params: { period: "7d", neighborhood_id: grande.id }
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("data", "reports")).to be_present
     end
 
     # O cenário acima usa um único protocolo (um só modo de scoring), então
