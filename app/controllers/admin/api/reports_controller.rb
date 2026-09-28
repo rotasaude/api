@@ -3,6 +3,6 @@
 # operador: é painel POR CIDADE (como Triages) — lê o banco da cidade do host.
 class Admin::Api::ReportsController < Admin::Api::BaseController
   def show
-    render_envelope(Admin::ReportsQuery.call(period: period))
+    render_envelope(Admin::ReportsQuery.call(period: period, filter: neighborhood_filter), filter: neighborhood_filter)
   end
 end

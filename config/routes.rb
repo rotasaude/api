@@ -268,6 +268,7 @@ Rails.application.routes.draw do
       get "events",          to: "events#show"
       get "health",          to: "health#show"
       get "municipalities",  to: "municipalities#index"
+      get "neighborhoods",   to: "neighborhoods#index"
     end
   end
 end

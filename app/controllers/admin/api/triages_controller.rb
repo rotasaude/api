@@ -1,7 +1,7 @@
 class Admin::Api::TriagesController < Admin::Api::BaseController
   def show
-    data = Admin::TriagesQuery.call(period: period)
-    render_envelope(data)
+    data = Admin::TriagesQuery.call(period: period, filter: neighborhood_filter)
+    render_envelope(data, filter: neighborhood_filter)
   end
 
   # GET /admin/api/triages/:id/trail — referências apenas (ADR 0009).

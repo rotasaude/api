@@ -33,6 +33,7 @@ class Admin::Api::BaseController < ApplicationController
   attr_reader :period
 
   rescue_from Admin::Api::InvalidScope, with: :render_invalid_scope
+  rescue_from Admin::NeighborhoodFilter::Invalid, with: :render_invalid_neighborhood
 
   private
 
@@ -52,9 +53,18 @@ class Admin::Api::BaseController < ApplicationController
     )
   end
 
+  # Filtro de bairro (ADR 0023; spec 2026-09-28 §4.3): só os cinco painéis com
+  # cidadão o leem (Visão geral, Classificação, Triagens, Relatórios,
+  # Conversas). Ausente = cidade inteira, sem supressão — o console admin
+  # nunca o manda.
+  def neighborhood_filter
+    @neighborhood_filter ||= Admin::NeighborhoodFilter.parse(params[:neighborhood_id])
+  end
+
   # as_of = instante da leitura: os painéis agregam ao vivo (ADR 0022), então
-  # é também o horário de origem do dado.
-  def render_envelope(data, as_of: Time.current)
+  # é também o horário de origem do dado. `filter` só nos painéis filtráveis.
+  def render_envelope(data, as_of: Time.current, filter: nil)
+    data = data.merge(filter: { neighborhood: filter.descriptor }) if filter
     render json: {
       data: data.deep_merge(scope_block),
       as_of: as_of.iso8601
@@ -87,5 +97,9 @@ class Admin::Api::BaseController < ApplicationController
 
   def render_invalid_scope(err)
     render json: { error: "invalid_scope", message: err.message }, status: :unprocessable_entity
+  end
+
+  def render_invalid_neighborhood(_error)
+    render json: { error: "invalid_neighborhood" }, status: :unprocessable_entity
   end
 end
