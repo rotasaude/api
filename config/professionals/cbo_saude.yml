@@ -1,0 +1,38 @@
+# Ocupações de saúde (CBO, Ministério do Trabalho) usadas no vínculo do
+# profissional com a unidade (ADR 0021). Igual para todas as cidades; a
+# prefeitura não edita. Código nunca sai daqui: em desuso, `deprecated: true`
+# (continua válido nos vínculos existentes, some da lista de vínculo novo).
+# `council`: conselho exigido do perfil para abrir vínculo com este CBO
+# (null = qualquer perfil).
+- { code: "225125", title: "Médico clínico", council: CRM }
+- { code: "225124", title: "Médico pediatra", council: CRM }
+- { code: "225142", title: "Médico da estratégia de saúde da família", council: CRM }
+- { code: "225170", title: "Médico generalista", council: CRM }
+- { code: "225250", title: "Médico ginecologista e obstetra", council: CRM }
+- { code: "225133", title: "Médico psiquiatra", council: CRM }
+- { code: "225120", title: "Médico cardiologista", council: CRM }
+- { code: "225225", title: "Médico cirurgião geral", council: CRM }
+- { code: "225150", title: "Médico em medicina intensiva", council: CRM }
+- { code: "225112", title: "Médico neurologista", council: CRM }
+- { code: "225130", title: "Médico de família e comunidade", council: CRM }
+- { code: "225151", title: "Médico anestesiologista", council: CRM }
+- { code: "225265", title: "Médico oftalmologista", council: CRM }
+- { code: "223505", title: "Enfermeiro", council: COREN }
+- { code: "223565", title: "Enfermeiro da estratégia de saúde da família", council: COREN }
+- { code: "322205", title: "Técnico de enfermagem", council: COREN }
+- { code: "322245", title: "Técnico de enfermagem da estratégia de saúde da família", council: COREN }
+- { code: "322230", title: "Auxiliar de enfermagem", council: COREN }
+- { code: "223208", title: "Cirurgião-dentista - clínico geral", council: CRO }
+- { code: "223293", title: "Cirurgião-dentista da estratégia de saúde da família", council: CRO }
+- { code: "322405", title: "Técnico em saúde bucal", council: CRO }
+- { code: "322415", title: "Auxiliar em saúde bucal", council: CRO }
+- { code: "223405", title: "Farmacêutico", council: CRF }
+- { code: "251510", title: "Psicólogo clínico", council: CRP }
+- { code: "223605", title: "Fisioterapeuta geral", council: CREFITO }
+- { code: "223905", title: "Terapeuta ocupacional", council: CREFITO }
+- { code: "223710", title: "Nutricionista", council: CRN }
+- { code: "223810", title: "Fonoaudiólogo geral", council: CRFa }
+- { code: "251605", title: "Assistente social", council: CRESS }
+- { code: "221205", title: "Biomédico", council: CRBM }
+- { code: "224140", title: "Profissional de educação física na saúde", council: CREF }
+# Ocupações sem conselho (ACS/ACE) voltam com o CNES (ADR 0021, em aberto): o perfil hoje exige conselho e registro, que esses agentes não têm.

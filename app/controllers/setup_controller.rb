@@ -126,13 +126,14 @@ class SetupController < ApplicationController
   def list_memberships
     return head(:forbidden) unless can_manage_members?
 
-    rows = Membership.active.joins(:user).where(users: { deactivated_at: nil }).includes(:user).map do |m|
-      {
-        id: m.id,
-        user: { id: m.user.id, email_address: m.user.email_address },
-        role: m.role,
-        granted_at: m.granted_at.iso8601
-      }
+    memberships = Membership.active.joins(:user).where(users: { deactivated_at: nil }).includes(:user).to_a
+    pro_ids = memberships.select { |m| m.role == "health_professional" }.map(&:user_id)
+    status = Professionals::Status.for_users(pro_ids)
+    rows = memberships.map do |m|
+      row = { id: m.id, user: { id: m.user.id, email_address: m.user.email_address }, role: m.role,
+              granted_at: m.granted_at.iso8601 }
+      row[:professional_status] = status[m.user_id] if m.role == "health_professional"
+      row
     end
     render json: { data: rows }
   end

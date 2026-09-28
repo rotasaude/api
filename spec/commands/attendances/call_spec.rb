@@ -12,6 +12,7 @@ RSpec.describe Attendances::Call do
   let(:citizen) { Citizen.create!(cpf: "52998224725", phone: "+5541998765432") }
 
   it "chama: waiting → in_care, grava quem e quando, publica evento" do
+    link_professional!(doctor, unit)
     a = waiting_attendance(citizen, unit: unit, by: reception)
     expect { described_class.call(attendance: a, health_unit_id: unit.id, by: doctor) }
       .to change { DomainEvent.where(name: "attendance.called").count }.by(1)
@@ -20,6 +21,8 @@ RSpec.describe Attendances::Call do
   end
 
   it "segundo profissional recebe already_called" do
+    link_professional!(doctor, unit)
+    link_professional!(doctor2, unit)
     a = waiting_attendance(citizen, unit: unit, by: reception)
     described_class.call(attendance: a, health_unit_id: unit.id, by: doctor)
     result = described_class.call(attendance: Attendance.find(a.id), health_unit_id: unit.id, by: doctor2)
@@ -34,6 +37,7 @@ RSpec.describe Attendances::Call do
 
   describe Attendances::CallNext do
     it "chama o primeiro por prioridade e depois por chegada; fila vazia dá queue_empty" do
+      link_professional!(doctor, unit)
       calm = waiting_attendance(Citizen.create!(cpf: "11144477735", phone: "+5541911112222"), unit: unit, by: reception)
       calm.triage.update_columns(priority: 9)
       urgent = waiting_attendance(citizen, unit: unit, by: reception)
@@ -42,6 +46,33 @@ RSpec.describe Attendances::Call do
       expect(Attendances::CallNext.call(health_unit_id: unit.id, by: doctor).payload[:attendance].id).to eq(urgent.id)
       expect(Attendances::CallNext.call(health_unit_id: unit.id, by: doctor).payload[:attendance].id).to eq(calm.id)
       expect(Attendances::CallNext.call(health_unit_id: unit.id, by: doctor).reason).to eq(:queue_empty)
+    end
+  end
+
+  describe "regra clínica (F-10.5)" do
+    it "profissional sem vínculo com a unidade: missing_link e o atendimento segue aguardando" do
+      attendance = waiting_attendance(citizen, unit: unit, by: reception)
+      result = Attendances::Call.call(attendance: attendance, health_unit_id: unit.id, by: doctor)
+      expect(result.reason).to eq(:missing_link)
+      expect(attendance.reload.status).to eq("waiting")
+    end
+
+    it "usuário sem o papel: missing_role" do
+      attendance = waiting_attendance(citizen, unit: unit, by: reception)
+      result = Attendances::Call.call(attendance: attendance, health_unit_id: unit.id, by: reception)
+      expect(result.reason).to eq(:missing_role)
+    end
+
+    it "vínculo ativo sem nenhum turno: chama" do
+      link_professional!(doctor, unit)
+      attendance = waiting_attendance(citizen, unit: unit, by: reception)
+      expect(Attendances::Call.call(attendance: attendance, health_unit_id: unit.id, by: doctor)).to be_ok
+    end
+
+    it "CallNext sem vínculo: missing_link sem gastar tentativas" do
+      waiting_attendance(citizen, unit: unit, by: reception)
+      expect(Attendances::Call).not_to receive(:call)
+      expect(Attendances::CallNext.call(health_unit_id: unit.id, by: doctor).reason).to eq(:missing_link)
     end
   end
 end

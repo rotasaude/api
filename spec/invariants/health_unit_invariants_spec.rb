@@ -56,6 +56,7 @@ RSpec.describe "Invariantes das unidades (ADR 0018)", type: :request do
     end
 
     it "pedido de agendamento vivo: 409 e a unidade continua ativa" do
+      link_professional!(doctor, unit)
       a = in_care!(waiting_attendance(citizen, unit: unit, by: reception), by: doctor)
       Attendances::Close.call(attendance: a, outcome: "return", referral_unit_id: nil, referral_note: nil, by: doctor)
       sign_in_as(admin)

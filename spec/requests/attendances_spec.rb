@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe "Attendances", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
-  before { Current.city = TEST_CITY_A; Rails.cache.clear }
+  before { Current.city = TEST_CITY_A; Rails.cache.clear; link_professional!(doctor, unit) }
   after { Current.reset }
 
   let(:verifier) { user_with("atendente@cidade.gov.br", "citizen_verifier") }
@@ -141,7 +141,10 @@ RSpec.describe "Attendances", type: :request do
     expect(response).to have_http_status(:ok)
     get "/attendance/units/#{unit.id}/queue"
     expect(body["waiting"]).to eq([])
-    expect(body["in_care"].first).to include("id" => a.id, "called_by_name" => "medica@cidade.gov.br")
+    # doctor está vinculada a unit (before do arquivo) e ganhou perfil com
+    # nome derivado do e-mail (link_professional!): a fila mostra esse nome,
+    # não o e-mail (F-10.5).
+    expect(body["in_care"].first).to include("id" => a.id, "called_by_name" => "Medica")
   end
 
   it "recepção não chama nem registra desfecho clínico; pode marcar left" do
@@ -171,5 +174,48 @@ RSpec.describe "Attendances", type: :request do
     json_post "/attendance/attendances/#{a.id}/close", outcome: "return", referral_note: "reavaliar"
     expect(response).to have_http_status(:ok)
     expect(body["appointment_request"]).to include("kind" => "return", "target_unit_name" => unit.name)
+  end
+
+  describe "regra clínica (F-10.5) na API" do
+    let(:citizen) { Citizen.create!(cpf: "52998224725", phone: "+5541998765432") }
+    let(:reception) { verifier }
+    # O `before` do arquivo já vincula `doctor` a `unit`; para o cenário de
+    # "sem vínculo" precisamos de um profissional distinto, ainda não ligado.
+    let(:unlinked_doctor) { user_with("outra-medica@cidade.gov.br", "health_professional") }
+
+    it "chamar sem vínculo: 403 missing_link" do
+      attendance = waiting_attendance(citizen, unit: unit, by: reception)
+      sign_in_as(unlinked_doctor)
+      json_post "/attendance/attendances/#{attendance.id}/call", health_unit_id: unit.id
+      expect(response).to have_http_status(:forbidden)
+      expect(JSON.parse(response.body)).to eq("error" => "missing_link")
+    end
+
+    it "chamar próximo sem o papel: 403 missing_role" do
+      waiting_attendance(citizen, unit: unit, by: reception)
+      sign_in_as(reception)
+      json_post "/attendance/units/#{unit.id}/call_next"
+      expect(response).to have_http_status(:forbidden)
+      expect(JSON.parse(response.body)).to eq("error" => "missing_role")
+    end
+
+    it "desfecho clínico pela recepção: 403 missing_role; left pela recepção: 200" do
+      attendance = waiting_attendance(citizen, unit: unit, by: reception)
+      sign_in_as(reception)
+      json_post "/attendance/attendances/#{attendance.id}/close", outcome: "discharged"
+      expect(JSON.parse(response.body)).to eq("error" => "missing_role")
+      json_post "/attendance/attendances/#{attendance.id}/close", outcome: "left"
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "a fila mostra o nome profissional de quem chamou" do
+      # doctor já está vinculado a unit pelo `before` do arquivo.
+      doctor.professional.update!(professional_name: "Helena Duarte")
+      waiting_attendance(citizen, unit: unit, by: reception)
+      sign_in_as(doctor)
+      json_post "/attendance/units/#{unit.id}/call_next"
+      get "/attendance/units/#{unit.id}/queue"
+      expect(JSON.parse(response.body)["in_care"].sole["called_by_name"]).to eq("Helena Duarte")
+    end
   end
 end

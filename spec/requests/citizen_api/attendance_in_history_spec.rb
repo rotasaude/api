@@ -46,6 +46,7 @@ RSpec.describe "Attendance in citizen history", type: :request do
   it "depois de encerrar como encaminhado: outcome referred com referral_unit_name e referral_note" do
     unit = create_unit
     referral_unit = create_unit("UPA Norte", kind: "upa")
+    link_professional!(doctor, unit)
     triage = completed_web_triage_for(citizen)
     attendance = check_in!(triage, unit)
     Attendances::Call.call(attendance: attendance, health_unit_id: unit.id, by: doctor)

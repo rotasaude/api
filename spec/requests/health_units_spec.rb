@@ -67,6 +67,7 @@ RSpec.describe "Health units", type: :request do
     expect(body["error"]).to eq("unit_has_open_attendances")
     expect(unit.reload.active).to be(true)
 
+    link_professional!(doctor, unit)
     sign_in_as(doctor)
     json_post "/attendance/attendances/#{attendance_id}/call", health_unit_id: unit.id
     expect(response).to have_http_status(:ok)
@@ -110,6 +111,7 @@ RSpec.describe "Health units", type: :request do
     unit = create_unit("UBS Sul")
     a = in_care!(waiting_attendance(Citizen.create!(cpf: "52998224725", phone: "+5541998765432"), unit: unit,
                                     by: reception), by: doctor)
+    link_professional!(doctor, unit)
     Attendances::Close.call(attendance: a, outcome: "return", referral_unit_id: nil, referral_note: nil, by: doctor)
     sign_in_as(admin)
     json_post "/attendance/units/#{unit.id}/deactivate"

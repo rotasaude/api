@@ -2,7 +2,7 @@ require "rails_helper"
 
 RSpec.describe "Check-in de horário" do
   include ActiveSupport::Testing::TimeHelpers
-  before { Current.city = TEST_CITY_A }
+  before { Current.city = TEST_CITY_A; link_professional!(doctor, unit) }
   after { Current.reset }
 
   let(:unit) { create_unit }

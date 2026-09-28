@@ -2,7 +2,7 @@
 # triagem raiz) e chegada; em atendimento por hora da chamada.
 module Attendances
   module UnitQueue
-    INCLUDES = [ :citizen, :called_by_user, :triage, { appointment: { request: :root_triage } } ].freeze
+    INCLUDES = [ :citizen, { called_by_user: :professional }, :triage, { appointment: { request: :root_triage } } ].freeze
 
     module_function
 

@@ -45,7 +45,10 @@ module CityEncryption
     [ Citizen,        :cpf ],
     [ Citizen,        :phone ],
     [ CitizenSession, :phone ],
-    [ OtpChallenge,   :phone ]
+    [ OtpChallenge,   :phone ],
+    [ Professional,   :cns ],
+    [ Professional,   :phone ],
+    [ Professional,   :contact_email ]
   ].freeze
 
   module_function

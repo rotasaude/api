@@ -36,4 +36,14 @@ RSpec.describe "Setup list_memberships", type: :request do
     expect(user_ids).to include(admin.id, active_reviewer.id)
     expect(user_ids).not_to include(deactivated_reviewer.id)
   end
+
+  it "linhas de health_professional trazem professional_status; outras não" do
+    novato = staff_with("novato@cidade.gov.br", "health_professional")
+    sign_in_as(admin)
+    get "/setup/memberships"
+    rows = JSON.parse(response.body)["data"]
+    pro_row = rows.find { |r| r["user"]["id"] == novato.id }
+    expect(pro_row["professional_status"]).to eq("missing_profile")
+    expect(rows.find { |r| r["role"] == "municipal_admin" }).not_to have_key("professional_status")
+  end
 end

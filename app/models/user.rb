@@ -14,6 +14,7 @@ class User < ApplicationRecord
   has_many :sessions,    dependent: :destroy
   has_many :identities,  dependent: :destroy
   has_many :memberships, dependent: :restrict_with_error  # Phase 4
+  has_one :professional, dependent: :restrict_with_error  # ADR 0021
 
   encrypts :otp_secret
   encrypts :otp_pending_secret

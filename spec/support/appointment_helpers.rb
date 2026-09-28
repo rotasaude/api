@@ -18,6 +18,20 @@ module AppointmentHelpers
     attendance
   end
 
+  # F-10.5: chamar e registrar desfecho clínico exigem vínculo ativo com a
+  # unidade. Cria o perfil (se faltar) e abre o vínculo direto no banco.
+  def link_professional!(user, unit, cbo: "225125")
+    professional = user.professional || Professional.create!(
+      user: user, professional_name: user.email_address.split("@").first.capitalize, council: "CRM",
+      council_state: "PR", registration_number: (Professional.count + 10_000).to_s,
+      cns: Professionals::Cns.generate(user.id)
+    )
+    admin = User.joins(:memberships).merge(Membership.active.where(role: "municipal_admin")).first ||
+            staff_with("admin-link-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin")
+    ProfessionalLink.create!(professional: professional, health_unit: unit, cbo_code: cbo,
+                             started_at: Time.current, started_by_user: admin)
+  end
+
   # Grava o pedido direto (cenário de teste); o caminho real é Attendances::Close.
   def request_for(attendance, kind: "return", target: attendance.health_unit)
     AppointmentRequest.create!(origin_attendance: attendance, citizen: attendance.citizen,

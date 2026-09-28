@@ -6,7 +6,7 @@ require "rails_helper"
 # db/city_triggers.sql, isto NÃO defende contra o DONO da tabela.
 RSpec.describe "Invariantes do agendamento (ADR 0019)" do
   include ActiveSupport::Testing::TimeHelpers
-  before { Current.city = TEST_CITY_A }
+  before { Current.city = TEST_CITY_A; link_professional!(doctor, unit) }
   after { Current.reset }
 
   let(:unit) { create_unit }

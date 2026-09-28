@@ -2,7 +2,7 @@ require "rails_helper"
 
 RSpec.describe "Jobs de expiração e falta" do
   include ActiveSupport::Testing::TimeHelpers
-  before { Current.city = TEST_CITY_A }
+  before { Current.city = TEST_CITY_A; link_professional!(doctor, unit) }
   after { Current.reset }
 
   # EachCityJob (perform_now real, como o brief pede) itera City.where(status:

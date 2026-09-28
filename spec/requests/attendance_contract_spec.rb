@@ -69,6 +69,7 @@ RSpec.describe "Attendance contract: triages/consents/reports/metrics untouched"
     expect(response).to have_http_status(:created)
     attendance_id = JSON.parse(response.body).dig("attendance", "id")
     referral_unit = create_unit("UBS Referência")
+    link_professional!(doctor, unit)
 
     sign_in_as(doctor)
     json_post "/attendance/attendances/#{attendance_id}/call", health_unit_id: unit.id
@@ -86,6 +87,7 @@ RSpec.describe "Attendance contract: triages/consents/reports/metrics untouched"
       citizen = Citizen.create!(cpf: "52998224725", phone: "+5541998765432")
       triage = completed_web_triage_for(citizen)
       code = check_in_code_for(citizen, triage)
+      link_professional!(doctor, unit)
       sign_in_as(verifier)
 
       before = snapshot

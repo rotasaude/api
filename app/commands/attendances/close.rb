@@ -20,6 +20,11 @@ module Attendances
       ApplicationRecord.transaction do
         attendance.lock!
         HealthUnit.lock_active!(unit.id) if unit
+        # Desfecho clínico exige papel e vínculo (F-10.5); left é ato de balcão.
+        unless outcome == "left"
+          authorization = Professionals::ClinicalAuthorization.check(user: by, health_unit_id: attendance.health_unit_id)
+          next Result.fail(authorization) unless authorization == :ok
+        end
         next Result.fail(:already_closed) unless attendance.open?
         next Result.fail(:invalid_transition) unless allowed?(attendance.status, outcome)
 
