@@ -28,3 +28,13 @@ RSpec.describe "triage.completed bindings (F-04.1, F-04.7)" do
     Current.reset
   end
 end
+
+# Módulo 11 (ADR 0023): eventos do território declarados, só trilha.
+RSpec.describe "territory event bindings (ADR 0023)" do
+  it "declares every territory event with no consumer" do
+    names = %w[neighborhood.created neighborhood.renamed neighborhood.deactivated neighborhood.activated
+               neighborhood.coverage_changed citizen.neighborhood_changed]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end

@@ -61,4 +61,13 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "professional.unlinked", to: []
   DomainEvents.bind "professional.shift_scheduled", to: []
   DomainEvents.bind "professional.shift_cancelled", to: []
+
+  # Território (ADR 0023; spec 2026-09-28 §3.5): trilha, só ids; sem
+  # consumidor, de propósito.
+  DomainEvents.bind "neighborhood.created", to: []
+  DomainEvents.bind "neighborhood.renamed", to: []
+  DomainEvents.bind "neighborhood.deactivated", to: []
+  DomainEvents.bind "neighborhood.activated", to: []
+  DomainEvents.bind "neighborhood.coverage_changed", to: []
+  DomainEvents.bind "citizen.neighborhood_changed", to: []
 end
