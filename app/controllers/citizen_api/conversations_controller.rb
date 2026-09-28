@@ -1,4 +1,4 @@
-#   POST /citizen/conversations              { citizen_id | cpf, consent_version }
+#   POST /citizen/conversations              { citizen_id | cpf, consent_version, neighborhood_id? }
 #   POST /citizen/conversations/:id/answers  { answer, idempotency_key }
 #   POST /citizen/conversations/:id/undo
 module CitizenApi
@@ -17,8 +17,21 @@ module CitizenApi
         return render_error("consent_outdated", :conflict)
       end
 
+      # ADR 0023: bairro inválido é recusado ANTES de resolve_citizen, que cria
+      # o Citizen (com o CPF) para um CPF novo — um pedido recusado não grava
+      # nada. Depois do consentimento, como o CPF.
+      neighborhood_id = requested_neighborhood_id
+      return if performed?
+
       citizen = resolve_citizen
       return if performed?
+
+      # Grava só quando a pessoa ainda não tem bairro; a troca é pela rota
+      # própria. Antes do StartConversation: a triagem nova copia o bairro.
+      if neighborhood_id && citizen.neighborhood_id.nil?
+        set = Citizens::SetNeighborhood.call(citizen: citizen, neighborhood_id: neighborhood_id)
+        return render_error(set.reason, :unprocessable_entity) if set.failure?
+      end
 
       result = Citizens::StartConversation.call(
         citizen: citizen, consent_version: params[:consent_version], session_id: current_citizen_session.id
@@ -75,6 +88,17 @@ module CitizenApi
         render_error(result.reason, :unprocessable_entity) if result.failure?
         result.payload[:citizen]
       end
+    end
+
+    # nil quando não veio (ou veio vazio/null: "prefiro não informar"); o id
+    # quando é um bairro ativo; senão responde 422 e devolve nil.
+    def requested_neighborhood_id
+      raw = params[:neighborhood_id]
+      return nil if raw.nil? || raw == ""
+      return raw if raw.is_a?(String) && Neighborhood.active_neighborhoods.exists?(id: raw)
+
+      render_error("invalid_neighborhood", :unprocessable_entity)
+      nil
     end
 
     def find_conversation
