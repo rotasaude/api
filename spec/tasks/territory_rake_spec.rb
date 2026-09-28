@@ -62,6 +62,24 @@ RSpec.describe "city:territory:seed rake task" do
     expect(run("city:territory:seed:all")).to include("#{city.slug}: 1 criados")
   end
 
+  it ":all loga a classe E a mensagem do erro quando uma cidade falha" do
+    path = dir.join("todas.yml")
+    path.write("neighborhoods:\n  - name: Centro\n    key: centro\n")
+    allow(Territory::Seed).to receive(:path_for).and_return(path)
+    allow(City).to receive(:where).and_call_original
+    allow(City).to receive(:where).with(status: %w[active suspended]).and_return(City.where(id: city.id))
+    allow(Territory::Seed).to receive(:call).and_raise(StandardError, "boom detalhado")
+
+    err = StringIO.new
+    original_stderr, $stderr = $stderr, err
+    begin
+      expect { Rake::Task["city:territory:seed:all"].invoke }.to raise_error(SystemExit)
+    ensure
+      $stderr = original_stderr
+    end
+    expect(err.string).to include("StandardError").and include("boom detalhado")
+  end
+
   it "slug inexistente: aborta" do
     expect { run("city:territory:seed", "nao-existe") }.to raise_error(SystemExit)
   end

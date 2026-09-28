@@ -44,6 +44,16 @@ RSpec.describe Territory::ReplaceCoverage do
     expect(centro.coverages.pluck(:health_unit_id)).to eq([ ubs.id ])
   end
 
+  it "id em caixa alta de unidade já coberta: normaliza, não remove+readiciona nem publica evento" do
+    described_class.call(neighborhood: centro, health_unit_ids: [ ubs.id, upa.id ], by: admin)
+    result = described_class.call(neighborhood: centro, health_unit_ids: [ ubs.id.upcase, upa.id ], by: admin)
+
+    expect(result).to be_ok
+    expect(result.payload).to include(added: [], removed: [])
+    expect(centro.coverages.pluck(:health_unit_id)).to contain_exactly(ubs.id, upa.id)
+    expect(payloads.size).to eq(1)
+  end
+
   it "bairro inativo: inactive_neighborhood" do
     centro.update!(active: false)
     expect(described_class.call(neighborhood: centro, health_unit_ids: [ ubs.id ], by: admin).reason)

@@ -36,7 +36,7 @@ namespace :city do
           territory_seed.call(city)
         rescue StandardError => e
           failed << city.slug
-          warn "[city:territory:seed:all] #{city.slug} falhou — #{e.class}"
+          warn "[city:territory:seed:all] #{city.slug} falhou — #{e.class}: #{e.message}"
         end
         abort "[city:territory:seed:all] falharam: #{failed.join(', ')}" if failed.any?
       end

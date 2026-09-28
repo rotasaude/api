@@ -51,6 +51,8 @@ class TerritoryController < ApplicationController
   private
 
   def require_territory_admin
+    # CitizenVerificationPolicy#manage? é reaproveitada aqui de propósito: seu
+    # critério (papel privilegiado) hoje equivale a "é municipal_admin".
     forbid("missing_role") unless CitizenVerificationPolicy.new(Current.user, nil).manage?
   end
 

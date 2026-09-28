@@ -6,7 +6,7 @@
 module Territory
   class ReplaceCoverage
     def self.call(neighborhood:, health_unit_ids:, by:)
-      ids = Array(health_unit_ids).map(&:to_s).uniq
+      ids = Array(health_unit_ids).map { _1.to_s.downcase }.uniq
       result = nil
       ApplicationRecord.transaction do
         locked = Neighborhood.lock("FOR UPDATE").find(neighborhood.id)
