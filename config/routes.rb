@@ -200,6 +200,9 @@ Rails.application.routes.draw do
     post "appointments/:id/cancel",        to: "appointments#cancel"
     post "appointments/:id/check_in_code", to: "appointments#check_in_code"
 
+    get  "notices",          to: "notices#index"
+    post "notices/:id/read", to: "notices#read"
+
     get "contact_preferences",             to: "contact_preferences#index"
     put "contact_preferences/:citizen_id", to: "contact_preferences#update"
   end
