@@ -35,22 +35,27 @@ RSpec.describe Campaigns::DueJob, "concorrência" do
   after do
     2.times { release << true }
     threads.each { |t| t.join(5) || t.kill }
-    CityConnection.with(TEST_CITY_A) do
-      # Campanha (só rascunho apaga), evento de domínio e usuário são
-      # append-only: o dono das tabelas desliga o trigger só nesta limpeza.
-      guards = { "campaigns" => "campaigns_frozen_after_send", "domain_events" => "domain_events_guard",
-                 "users" => "users_no_delete" }
-      connection = ApplicationRecord.connection
-      guards.each { |table, trigger| connection.execute("ALTER TABLE #{table} DISABLE TRIGGER #{trigger}") }
-      begin
-        DomainEvent.where("payload ->> 'campaign_id' = ?", campaign_id.to_s).delete_all
-        Campaign.where(id: campaign_id).delete_all
-        User.where(id: author.id).delete_all
-      ensure
-        guards.each { |table, trigger| connection.execute("ALTER TABLE #{table} ENABLE TRIGGER #{trigger}") }
+    begin
+      CityConnection.with(TEST_CITY_A) do
+        # Campanha (só rascunho apaga), evento de domínio e usuário são
+        # append-only: o dono das tabelas desliga o trigger só nesta limpeza.
+        # Tudo numa transação (DDL do Postgres é transacional): as outras
+        # sessões nunca veem o trigger desligado e uma falha volta a ligado.
+        guards = { "campaigns" => "campaigns_frozen_after_send", "domain_events" => "domain_events_guard",
+                   "users" => "users_no_delete" }
+        ApplicationRecord.transaction do
+          connection = ApplicationRecord.connection
+          connection.execute("SET LOCAL lock_timeout = '5s'")
+          guards.each { |table, trigger| connection.execute("ALTER TABLE #{table} DISABLE TRIGGER #{trigger}") }
+          DomainEvent.where("payload ->> 'campaign_id' = ?", campaign_id.to_s).delete_all
+          Campaign.where(id: campaign_id).delete_all
+          User.where(id: author.id).delete_all
+          guards.each { |table, trigger| connection.execute("ALTER TABLE #{table} ENABLE TRIGGER #{trigger}") }
+        end
       end
+    ensure
+      city_record.destroy if created_city
     end
-    city_record.destroy if created_city
   end
 
   def status = CityConnection.with(TEST_CITY_A) { Campaign.find(campaign_id).status }
