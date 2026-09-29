@@ -32,6 +32,7 @@ else
   require Rails.root.join("lib/dev_maintainer").to_s
   require Rails.root.join("lib/professional_crew").to_s
   require Rails.root.join("lib/territory_crew").to_s
+  require Rails.root.join("lib/campaign_crew").to_s
 
   password = ENV.fetch(SignatureCrew::PASSWORD_ENV, "dev-password")
 
@@ -166,6 +167,13 @@ else
         demo = TerritoryCrew.seed_current_city(slug: slug, ddd: ddd)
         puts "[seeds] território .. #{demo[:units_with_address]} unidades com endereço, " \
              "#{demo[:citizens]} cidadãos de demonstração (#{demo[:new_triages]} triagens novas)"
+
+        # ── Campanhas (módulo 12, spec 2026-09-29 §10) ────────────────────────
+        # Depois do território e dos profissionais: usa os bairros e as unidades.
+        campaigns = CampaignCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        puts "[seeds] campaign_manager   #{campaigns[:account][:email]} / #{password} + MFA → #{campaigns[:account][:otpauth_uri]}"
+        puts "[seeds] campanhas .. #{campaigns[:citizens]} cidadãos (#{campaigns[:opted_in]} com opt-in de SMS, " \
+             "#{campaigns[:new_histories]} históricos novos); chave de SMS da cidade desligada"
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
