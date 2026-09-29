@@ -17,6 +17,7 @@ module Campaigns
                               .order(created_at: :desc, id: :desc).pick(:id)
       return 0 unless latest_id == conversation.id
 
+      RecipientsFreezeLock.acquire!
       CampaignRecipient.where(citizen_id: conversation.citizen_id).delete_all
     end
   end

@@ -40,6 +40,7 @@ module Campaigns
     def freeze_recipients(campaign, sms_enabled)
       counts = nil
       ApplicationRecord.transaction(requires_new: true) do
+        RecipientsFreezeLock.acquire!
         ApplicationRecord.connection.execute(insert_sql(campaign, sms_enabled))
         rows = CampaignRecipient.where(campaign_id: campaign.id).joins(:citizen)
         counts = { recipients: rows.count, phones: rows.distinct.count("citizens.phone") }
