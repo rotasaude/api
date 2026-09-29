@@ -145,8 +145,8 @@ Rails.application.routes.draw do
   end
 
   # Campanhas (ADR 0024; spec 2026-09-29 §6.1). Prefixo único: uma entrada só
-  # no proxy de dev do dashboard. Rotas literais (options, preview e, na Task
-  # 14, sms_setting) ANTES de ":id".
+  # no proxy de dev do dashboard. Rotas literais (options, preview,
+  # sms_setting) ANTES de ":id".
   get  "/campaigns", to: "campaigns#index"
   post "/campaigns", to: "campaigns#create"
   scope "/campaigns" do
