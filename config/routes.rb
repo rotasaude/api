@@ -144,6 +144,18 @@ Rails.application.routes.draw do
     post "neighborhoods/:id/coverage",   to: "territory#coverage"
   end
 
+  # Campanhas (ADR 0024; spec 2026-09-29 §6.1). Prefixo único: uma entrada só
+  # no proxy de dev do dashboard. Rotas literais (options, preview e, na Task
+  # 14, sms_setting) ANTES de ":id".
+  get  "/campaigns", to: "campaigns#index"
+  post "/campaigns", to: "campaigns#create"
+  scope "/campaigns" do
+    get   "options", to: "campaigns#options"
+    post  "preview", to: "campaigns#preview"
+    get   ":id",     to: "campaigns#show"
+    patch ":id",     to: "campaigns#update"
+  end
+
   # Healthcheck — usado pelo Kamal (ADR-0001).
   get "up", to: ->(_env) { [200, {}, ["ok"]] }
 
