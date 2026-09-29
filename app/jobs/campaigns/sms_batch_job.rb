@@ -53,8 +53,9 @@ module Campaigns
     # Um lote por campanha de cada vez (trava de transação, sem esperar): o
     # DueJob reenfileira lote encalhado e a reprogramação das 8h pode coincidir
     # com ele. Quem não pega a trava sai sem se reenfileirar — quem a segura
-    # continua a cadeia. O SKIP LOCKED do lote segue sendo a guarda contra SMS
-    # em dobro; esta evita cadeias paralelas batendo no provedor.
+    # continua a cadeia. É esta a guarda que opera contra SMS em dobro e contra
+    # cadeias paralelas batendo no provedor; o SKIP LOCKED do lote é a segunda,
+    # para o caso de dois lotes passarem daqui.
     def chain_lock(campaign)
       ApplicationRecord.connection.select_value(
         "SELECT pg_try_advisory_xact_lock(hashtext('campaign_sms_batch'), " \
@@ -68,7 +69,9 @@ module Campaigns
 
     # Uma vez por campanha, venha do gateway não configurado ou do provedor que
     # cai no meio do lote: o count é o do primeiro lote que viu a falha (o
-    # painel conta os unavailable ao vivo).
+    # painel conta os unavailable ao vivo). O "uma vez" depende do chain_lock:
+    # dois lotes da mesma campanha em paralelo leriam os dois "nenhum evento"
+    # antes de qualquer commit e publicariam dois.
     def publish_unavailable(campaign, count)
       return unless count.positive?
       return if DomainEvent.where(name: "campaign.sms_unavailable")

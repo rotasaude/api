@@ -25,6 +25,7 @@ RSpec.describe Campaigns::SmsBatchJob, "concorrência" do
 
   before do
     stub_const("Campaigns::SmsBatchJob::WINDOW_HOURS", (0...24))
+    @previous_queue_adapter = ActiveJob::Base.queue_adapter
     ActiveJob::Base.queue_adapter = :test
     ActiveJob::Base.queue_adapter.enqueued_jobs.clear
   end
@@ -50,6 +51,7 @@ RSpec.describe Campaigns::SmsBatchJob, "concorrência" do
         end
       end
     ensure
+      ActiveJob::Base.queue_adapter = @previous_queue_adapter
       city_record.destroy if created_city
     end
   end
@@ -72,7 +74,10 @@ RSpec.describe Campaigns::SmsBatchJob, "concorrência" do
     end
   end
 
-  it "dois lotes ao mesmo tempo: cada telefone recebe um SMS só" do
+  # O chain_lock faria o segundo lote sair antes do SELECT; aqui ele é
+  # neutralizado para provar a segunda guarda sozinha: o SKIP LOCKED.
+  it "dois lotes ao mesmo tempo, mesmo sem a trava por campanha: cada telefone recebe um SMS só (SKIP LOCKED)" do
+    allow_any_instance_of(described_class).to receive(:chain_lock).and_return(true)
     delivering = Queue.new
     log = Queue.new
     holder = nil
