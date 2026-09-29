@@ -82,6 +82,14 @@ module CampaignHelpers
                    protocol_name: StartTriage::DEFAULT_PROTOCOL_NAME, status: "completed", tier: "alta", priority: 1,
                    answers: {}, created_at: at - 5.minutes, completed_at: at)
   end
+
+  # Jobs de cidade (with_city, EachCityJob) procuram a cidade no catálogo;
+  # TEST_CITY_A não é persistida lá. Mesmo slug e banco: reentra a sessão que
+  # o harness já abriu (nota 1 de spec/support/city_test_databases.rb).
+  def register_test_city!
+    City.find_by(slug: TEST_CITY_A.slug) ||
+      create(:city, slug: TEST_CITY_A.slug, database_url: TEST_CITY_A.database_url)
+  end
 end
 
 RSpec.configure do |c|
