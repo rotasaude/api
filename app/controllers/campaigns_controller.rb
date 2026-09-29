@@ -16,7 +16,7 @@ class CampaignsController < ApplicationController
   }.freeze
 
   before_action :require_campaign_manager
-  before_action :set_campaign, only: %i[show update]
+  before_action :set_campaign, only: %i[show update send_now schedule unschedule cancel]
 
   def index
     campaigns = Campaign.order(created_at: :desc, id: :desc)
@@ -54,6 +54,24 @@ class CampaignsController < ApplicationController
     respond(Campaigns::Update.call(campaign: @campaign, attrs: body_params))
   end
 
+  # Enviar, agendar, desagendar e cancelar pedem step-up (D5), depois do papel e
+  # do 404. `send` é método de Object: a ação é send_now (desvio 3).
+  def send_now
+    transition { Campaigns::Send.call(campaign: @campaign, by: Current.user) }
+  end
+
+  def schedule
+    transition { Campaigns::Schedule.call(campaign: @campaign, send_at: body_params["send_at"], by: Current.user) }
+  end
+
+  def unschedule
+    transition { Campaigns::Unschedule.call(campaign: @campaign, by: Current.user) }
+  end
+
+  def cancel
+    transition { Campaigns::Cancel.call(campaign: @campaign, by: Current.user) }
+  end
+
   private
 
   # Corpo JSON como Hash de chaves de texto (Authentication já exige
@@ -69,6 +87,12 @@ class CampaignsController < ApplicationController
   def set_campaign
     @campaign = Campaign.find_by(id: params[:id])
     render json: { error: "not_found" }, status: :not_found unless @campaign
+  end
+
+  def transition
+    return require_step_up! unless reauthenticated_recently?
+
+    respond(yield)
   end
 
   def respond(result, status: :ok)

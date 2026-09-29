@@ -154,6 +154,10 @@ Rails.application.routes.draw do
     post  "preview", to: "campaigns#preview"
     get   ":id",     to: "campaigns#show"
     patch ":id",     to: "campaigns#update"
+    post  ":id/send",       to: "campaigns#send_now"
+    post  ":id/schedule",   to: "campaigns#schedule"
+    post  ":id/unschedule", to: "campaigns#unschedule"
+    post  ":id/cancel",     to: "campaigns#cancel"
   end
 
   # Healthcheck — usado pelo Kamal (ADR-0001).
