@@ -38,3 +38,14 @@ RSpec.describe "territory event bindings (ADR 0023)" do
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
 end
+
+# Módulo 12 (ADR 0024): eventos das campanhas declarados, só trilha.
+RSpec.describe "campaign event bindings (ADR 0024)" do
+  it "declares every campaign event with no consumer" do
+    names = %w[campaign.created campaign.scheduled campaign.unscheduled campaign.cancelled campaign.dispatched
+               campaign.failed campaign.sms_unavailable citizen.contact_preferences_changed
+               city.campaigns_sms_toggled]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end

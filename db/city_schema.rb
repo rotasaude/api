@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_28_100001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_29_100001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -130,7 +130,52 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_100001) do
     t.index ["token"], name: "index_authors_on_token", unique: true
   end
 
+  create_table "campaign_recipients", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "campaign_id", null: false
+    t.uuid "citizen_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "notice_read_at"
+    t.string "sms_error", limit: 200
+    t.datetime "sms_sent_at"
+    t.string "sms_status", null: false
+    t.index ["campaign_id", "citizen_id"], name: "idx_campaign_recipients_pair", unique: true
+    t.index ["campaign_id", "sms_status"], name: "idx_campaign_recipients_sms"
+    t.index ["citizen_id"], name: "index_campaign_recipients_on_citizen_id"
+    t.check_constraint "sms_status::text = ANY (ARRAY['not_opted_in', 'duplicate_phone', 'pending', 'deferred', 'sent', 'failed', 'unavailable']::text[])", name: "ck_campaign_recipients_sms_status"
+  end
+
+  create_table "campaigns", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.jsonb "audience", null: false
+    t.text "body", null: false
+    t.datetime "cancelled_at"
+    t.uuid "cancelled_by_user_id"
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.datetime "dispatched_at"
+    t.uuid "dispatched_by_user_id"
+    t.string "failure_reason"
+    t.integer "phones_count"
+    t.integer "recipients_count"
+    t.datetime "send_at"
+    t.boolean "sms_enabled"
+    t.string "status", default: "draft", null: false
+    t.string "title", limit: 120, null: false
+    t.datetime "updated_at", null: false
+    t.index ["cancelled_by_user_id"], name: "index_campaigns_on_cancelled_by_user_id"
+    t.index ["created_at"], name: "index_campaigns_on_created_at"
+    t.index ["created_by_user_id"], name: "index_campaigns_on_created_by_user_id"
+    t.index ["dispatched_by_user_id"], name: "index_campaigns_on_dispatched_by_user_id"
+    t.index ["status", "send_at"], name: "idx_campaigns_status_send_at"
+    t.check_constraint "status::text = ANY (ARRAY['draft', 'scheduled', 'sending', 'sent', 'cancelled', 'failed']::text[])", name: "ck_campaigns_status"
+    t.check_constraint "length(title::text) >= 3 AND length(title::text) <= 120 AND title::text = btrim(title::text)", name: "ck_campaigns_title"
+    t.check_constraint "length(body) >= 10 AND length(body) <= 2000", name: "ck_campaigns_body"
+    t.check_constraint "status::text <> 'scheduled'::text OR send_at IS NOT NULL", name: "ck_campaigns_send_at"
+    t.check_constraint "(status::text = 'failed'::text) = (failure_reason IS NOT NULL) AND (failure_reason IS NULL OR failure_reason::text = 'below_minimum'::text)", name: "ck_campaigns_failure"
+    t.check_constraint "(cancelled_by_user_id IS NULL) = (cancelled_at IS NULL) AND (status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL)", name: "ck_campaigns_cancelled"
+  end
+
   create_table "city_profile", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "campaigns_sms_enabled", default: false, null: false
     t.datetime "created_at", null: false
     t.string "ibge_code", limit: 7
     t.string "name", null: false
@@ -140,6 +185,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_100001) do
     t.datetime "updated_at", null: false
     t.index ["singleton"], name: "index_city_profile_singleton", unique: true
     t.check_constraint "singleton", name: "ck_city_profile_singleton"
+  end
+
+  create_table "citizen_contact_preferences", primary_key: "citizen_id", id: :uuid, default: nil, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.boolean "notices_muted", default: false, null: false
+    t.boolean "sms_opt_in", default: false, null: false
+    t.datetime "sms_opt_in_changed_at"
+    t.datetime "updated_at", null: false
   end
 
   create_table "citizen_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -327,7 +380,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_100001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['citizen_verifier'::text, 'health_professional'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['campaign_manager'::text, 'citizen_verifier'::text, 'health_professional'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "neighborhood_coverages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -704,6 +757,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_100001) do
   add_foreign_key "attendances", "users", column: "called_by_user_id"
   add_foreign_key "attendances", "users", column: "checked_in_by_user_id"
   add_foreign_key "attendances", "users", column: "closed_by_user_id"
+  add_foreign_key "campaign_recipients", "campaigns"
+  add_foreign_key "campaign_recipients", "citizens"
+  add_foreign_key "campaigns", "users", column: "cancelled_by_user_id"
+  add_foreign_key "campaigns", "users", column: "created_by_user_id"
+  add_foreign_key "campaigns", "users", column: "dispatched_by_user_id"
+  add_foreign_key "citizen_contact_preferences", "citizens"
   add_foreign_key "citizen_verification_codes", "appointments"
   add_foreign_key "citizen_verification_codes", "citizens"
   add_foreign_key "citizen_verification_codes", "triages"

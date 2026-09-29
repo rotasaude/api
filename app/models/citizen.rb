@@ -15,6 +15,10 @@ class Citizen < ApplicationRecord
   # ADR 0023: bairro declarado; nil = "prefiro não informar".
   belongs_to :neighborhood, optional: true
 
+  # ADR 0024: preferências de contato e avisos recebidos.
+  has_one :contact_preference, class_name: "CitizenContactPreference"
+  has_many :campaign_recipients, dependent: :restrict_with_error
+
   enum :verification_level, { declared: "declared", verified: "verified" }, prefix: true
 
   validates :cpf, :phone, presence: true

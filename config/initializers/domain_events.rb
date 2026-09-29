@@ -70,4 +70,16 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "neighborhood.activated", to: []
   DomainEvents.bind "neighborhood.coverage_changed", to: []
   DomainEvents.bind "citizen.neighborhood_changed", to: []
+
+  # Campanhas (ADR 0024; spec 2026-09-29 §5.7): trilha, só ids, contagens,
+  # booleanos e o público (JSON sem dado pessoal); sem consumidor, de propósito.
+  DomainEvents.bind "campaign.created", to: []
+  DomainEvents.bind "campaign.scheduled", to: []
+  DomainEvents.bind "campaign.unscheduled", to: []
+  DomainEvents.bind "campaign.cancelled", to: []
+  DomainEvents.bind "campaign.dispatched", to: []
+  DomainEvents.bind "campaign.failed", to: []
+  DomainEvents.bind "campaign.sms_unavailable", to: []
+  DomainEvents.bind "citizen.contact_preferences_changed", to: []
+  DomainEvents.bind "city.campaigns_sms_toggled", to: []
 end

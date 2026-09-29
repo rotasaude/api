@@ -559,3 +559,80 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- campaigns (ADR 0024; spec 2026-09-29-module-12-campaigns §3.1): a campanha
+-- enviada é prova do que a secretaria mandou e para quem — em sent, cancelled
+-- ou failed nenhuma coluna muda. Em sending, a única saída é o congelamento
+-- (sent ou failed), mudando só as colunas dele (status, sms_enabled,
+-- recipients_count, phones_count, dispatched_at, failure_reason, updated_at).
+-- draft e scheduled seguem pelos comandos. Só draft se apaga (não há rota;
+-- defesa contra acidente). Sem trigger de TRUNCATE, como em memberships.
+CREATE OR REPLACE FUNCTION rota_campaign_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.status = 'draft' THEN
+      RETURN OLD;
+    END IF;
+    RAISE EXCEPTION 'campaigns: only a draft may be deleted';
+  END IF;
+  IF OLD.status IN ('sent', 'cancelled', 'failed') THEN
+    RAISE EXCEPTION 'campaigns: frozen after send (status %)', OLD.status;
+  END IF;
+  IF OLD.status = 'sending' THEN
+    IF NEW.status NOT IN ('sent', 'failed') THEN
+      RAISE EXCEPTION 'campaigns: sending only moves to sent or failed';
+    END IF;
+    IF NEW.id IS DISTINCT FROM OLD.id
+       OR NEW.title IS DISTINCT FROM OLD.title
+       OR NEW.body IS DISTINCT FROM OLD.body
+       OR NEW.audience IS DISTINCT FROM OLD.audience
+       OR NEW.send_at IS DISTINCT FROM OLD.send_at
+       OR NEW.created_by_user_id IS DISTINCT FROM OLD.created_by_user_id
+       OR NEW.dispatched_by_user_id IS DISTINCT FROM OLD.dispatched_by_user_id
+       OR NEW.cancelled_by_user_id IS DISTINCT FROM OLD.cancelled_by_user_id
+       OR NEW.cancelled_at IS DISTINCT FROM OLD.cancelled_at
+       OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+      RAISE EXCEPTION 'campaigns: while sending only the freeze columns change';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- campaign_recipients (§3.2): o público congelado. Só mudam a leitura do
+-- aviso (de NULL para um valor, UMA vez) e as colunas do SMS. DELETE passa: a
+-- revogação que anonimiza o cidadão apaga as linhas dele (§5.6).
+CREATE OR REPLACE FUNCTION rota_campaign_recipient_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.campaign_id IS DISTINCT FROM OLD.campaign_id
+     OR NEW.citizen_id IS DISTINCT FROM OLD.citizen_id
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'campaign_recipients: only the reading and the SMS columns change';
+  END IF;
+  IF OLD.notice_read_at IS NOT NULL AND NEW.notice_read_at IS DISTINCT FROM OLD.notice_read_at THEN
+    RAISE EXCEPTION 'campaign_recipients: notice_read_at is set once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.campaigns') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS campaigns_frozen_after_send ON campaigns';
+    EXECUTE 'CREATE TRIGGER campaigns_frozen_after_send
+      BEFORE UPDATE OR DELETE ON campaigns
+      FOR EACH ROW EXECUTE FUNCTION rota_campaign_guard()';
+  END IF;
+  IF to_regclass('public.campaign_recipients') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS campaign_recipients_append_only ON campaign_recipients';
+    EXECUTE 'CREATE TRIGGER campaign_recipients_append_only
+      BEFORE UPDATE OR DELETE ON campaign_recipients
+      FOR EACH ROW EXECUTE FUNCTION rota_campaign_recipient_guard()';
+  END IF;
+END
+$do$;
