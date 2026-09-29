@@ -2,12 +2,13 @@
 # Entrega do SMS de uma campanha já enviada (ADR 0024; spec 2026-09-29 §5.4).
 # Recebe só ids (nunca telefone): decifra dentro. Até BATCH_SIZE linhas
 # pending/deferred por vez, travadas com SKIP LOCKED (dois lotes não pegam a
-# mesma linha). Gateway não configurado → unavailable na hora (desvio 9), e o
-# provedor que cai no meio do lote também marca unavailable; nos dois casos
-# campaign.sms_unavailable sai uma vez por campanha. Fora da janela 8h–20h no
-# fuso da cidade → deferred e reagenda para as 8h. O opt-in é conferido de
-# novo aqui. A falha de um destinatário nunca interrompe
-# o lote; sms_error guarda só a classe do erro (a mensagem pode ter telefone).
+# mesma linha), e um lote por campanha de cada vez (chain_lock). Gateway não
+# configurado → unavailable na hora (desvio 9), e o provedor que cai no meio do
+# lote também marca unavailable; nos dois casos campaign.sms_unavailable sai
+# uma vez por campanha. Fora da janela 8h–20h no fuso da cidade → deferred e
+# reagenda para as 8h. O opt-in é conferido de novo aqui. A falha de um
+# destinatário nunca interrompe o lote; sms_error guarda só a classe do erro
+# (a mensagem pode ter telefone). Lote encalhado: o DueJob reenfileira.
 module Campaigns
   class SmsBatchJob < ApplicationJob
     include CityScopedJob
@@ -22,6 +23,7 @@ module Campaigns
       with_city(city_slug) do
         campaign = Campaign.find_by(id: campaign_id)
         next unless campaign&.status == "sent"
+        next unless chain_lock(campaign)
 
         batch = campaign.recipients.where(sms_status: OPEN).order(:id).limit(BATCH_SIZE)
                         .lock("FOR UPDATE SKIP LOCKED").includes(:citizen).to_a
@@ -47,6 +49,18 @@ module Campaigns
     end
 
     private
+
+    # Um lote por campanha de cada vez (trava de transação, sem esperar): o
+    # DueJob reenfileira lote encalhado e a reprogramação das 8h pode coincidir
+    # com ele. Quem não pega a trava sai sem se reenfileirar — quem a segura
+    # continua a cadeia. O SKIP LOCKED do lote segue sendo a guarda contra SMS
+    # em dobro; esta evita cadeias paralelas batendo no provedor.
+    def chain_lock(campaign)
+      ApplicationRecord.connection.select_value(
+        "SELECT pg_try_advisory_xact_lock(hashtext('campaign_sms_batch'), " \
+        "hashtext(#{ApplicationRecord.connection.quote(campaign.id)}))"
+      )
+    end
 
     def mark_unavailable(campaign)
       publish_unavailable(campaign, campaign.recipients.where(sms_status: OPEN).update_all(sms_status: "unavailable"))

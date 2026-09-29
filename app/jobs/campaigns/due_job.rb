@@ -16,6 +16,16 @@ module Campaigns
     STALE_SENDING = 10.minutes
     STALE_MAX = 24.hours
 
+    # SMS encalhado: o SmsBatchJob entra na fila depois do commit do dispatch e
+    # se reagenda sozinho (resto do lote, 8h do dia seguinte); se um desses se
+    # perde, as linhas ficam pending/deferred sem ninguém. Parado = pending há
+    # mais de STALE_PENDING (created_at: a linha nasce pending no congelamento e
+    # nenhuma coluna marca a última tentativa), ou deferred dentro da janela.
+    # Reenfileirar é seguro: o lote pega as linhas com SKIP LOCKED e só um lote
+    # por campanha roda de cada vez (chain_lock); o que já saiu não volta a
+    # pending/deferred.
+    STALE_PENDING = 10.minutes
+
     def perform
       ApplicationRecord.transaction do
         due = Campaign.where(status: "scheduled").where(send_at: ..Time.current)
@@ -25,6 +35,7 @@ module Campaigns
           DispatchJob.perform_later(city_slug: Current.city.slug, campaign_id: campaign.id)
         end
         requeue_stale_sending
+        requeue_stuck_sms
       end
     end
 
@@ -34,6 +45,18 @@ module Campaigns
       Campaign.where(status: "sending", updated_at: (Time.current - STALE_MAX)..(Time.current - STALE_SENDING))
               .pluck(:id).each do |id|
         DispatchJob.perform_later(city_slug: Current.city.slug, campaign_id: id)
+      end
+    end
+
+    def requeue_stuck_sms
+      stuck = CampaignRecipient.where(sms_status: "pending", created_at: ...(Time.current - STALE_PENDING))
+      if SmsBatchJob::WINDOW_HOURS.cover?(Time.current.hour)
+        stuck = stuck.or(CampaignRecipient.where(sms_status: "deferred"))
+      end
+      Campaign.where(status: "sent", sms_enabled: true)
+              .where(stuck.where("campaign_recipients.campaign_id = campaigns.id").arel.exists)
+              .pluck(:id).each do |id|
+        SmsBatchJob.perform_later(city_slug: Current.city.slug, campaign_id: id)
       end
     end
   end
