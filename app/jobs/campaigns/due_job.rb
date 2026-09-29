@@ -23,8 +23,18 @@ module Campaigns
     # nenhuma coluna marca a última tentativa), ou deferred dentro da janela.
     # Reenfileirar é seguro: o lote pega as linhas com SKIP LOCKED e só um lote
     # por campanha roda de cada vez (chain_lock); o que já saiu não volta a
-    # pending/deferred.
+    # pending/deferred. Teto de STALE_SMS_MAX: um lote que sempre levanta fora
+    # do attempt (telefone que não decifra, CityPublicUrl mal configurado)
+    # desfaz a transação e deixa as linhas como estavam; sem teto, ele voltaria
+    # a cada minuto para sempre.
+    #
+    # Ruído de fila aceito: numa campanha grande, cujo lote legítimo passa de
+    # 10 min, cada minuto enfileira um lote a mais. Com worker em série ele roda
+    # entre dois lotes da cadeia, pega a trava e vira a cadeia; o próximo da
+    # cadeia velha sai. Pode sobrar uma cadeia a mais por minuto na fila, nunca
+    # SMS em dobro (SKIP LOCKED e chain_lock).
     STALE_PENDING = 10.minutes
+    STALE_SMS_MAX = 48.hours
 
     def perform
       ApplicationRecord.transaction do
@@ -49,9 +59,10 @@ module Campaigns
     end
 
     def requeue_stuck_sms
-      stuck = CampaignRecipient.where(sms_status: "pending", created_at: ...(Time.current - STALE_PENDING))
-      if SmsBatchJob::WINDOW_HOURS.cover?(Time.current.hour)
-        stuck = stuck.or(CampaignRecipient.where(sms_status: "deferred"))
+      now = Time.current
+      stuck = CampaignRecipient.where(sms_status: "pending", created_at: (now - STALE_SMS_MAX)...(now - STALE_PENDING))
+      if SmsBatchJob::WINDOW_HOURS.cover?(now.hour)
+        stuck = stuck.or(CampaignRecipient.where(sms_status: "deferred", created_at: (now - STALE_SMS_MAX)..))
       end
       Campaign.where(status: "sent", sms_enabled: true)
               .where(stuck.where("campaign_recipients.campaign_id = campaigns.id").arel.exists)

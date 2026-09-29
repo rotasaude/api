@@ -102,6 +102,17 @@ RSpec.describe Campaigns::DueJob do
         .each { |at| travel_to(at) { expect { described_class.perform_now }.not_to batch_job } }
     end
 
+    it "desiste de pending/deferred com mais de 48h (lote que sempre levanta não volta para sempre)" do
+      stuck!("pending", created_at: ten_am - 49.hours)
+      stuck!("deferred", created_at: ten_am - 49.hours)
+      travel_to(ten_am) { expect { described_class.perform_now }.not_to batch_job }
+    end
+
+    it "ainda volta com 47h (dentro do teto)" do
+      stuck!("pending", created_at: ten_am - 47.hours)
+      travel_to(ten_am) { expect { described_class.perform_now }.to batch_job.exactly(:once) }
+    end
+
     it "ignora linhas já resolvidas e campanhas sem SMS" do
       %w[sent failed unavailable not_opted_in duplicate_phone].each { |s| stuck!(s, created_at: ten_am - 1.hour) }
       without_sms = sent_campaign!(sms_enabled: false)
