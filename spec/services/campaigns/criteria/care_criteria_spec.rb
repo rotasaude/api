@@ -45,6 +45,25 @@ RSpec.describe "Critérios de atendimento e agendamento" do
       person!.tap { |c| CampaignHistory.request!(c, unit: unit!, by: staff!, at: inside) }
       expect(ids(described_class, { "kind" => "appointment_no_show" }.merge(period))).to contain_exactly(on_first.id, on_last.id)
     end
+
+    # Horário no período em qualquer status que não seja no_show: não entra.
+    def appointment_with_status!(citizen, status, at:)
+      request = CampaignHistory.request!(citizen, unit: unit!, by: staff!, at: at - 7.days)
+      live = Appointment::LIVE.include?(status)
+      Appointment.create!(request: request, citizen: citizen, health_unit: unit!, scheduled_by_user: staff!,
+                          scheduled_at: at, status: status, confirmation_deadline_at: at - 1.day,
+                          confirmed_at: status == "scheduled" ? nil : at - 1.day, ended_at: live ? nil : at.end_of_day,
+                          cancel_reason: status == "cancelled_by_citizen" ? "Não consigo ir nesse dia" : nil)
+    end
+
+    it "não entra quem tem horário no período em outro status (scheduled, confirmed, checked_in, cancelado, expirado)" do
+      missed = person!.tap { |c| CampaignHistory.no_show!(c, at: inside, unit: unit!, by: staff!) }
+      (Appointment::STATUSES - [ "no_show" ]).each do |status|
+        person!.tap { |c| appointment_with_status!(c, status, at: inside) }
+      end
+      expect(Appointment.where(scheduled_at: inside).distinct.pluck(:status)).to match_array(Appointment::STATUSES)
+      expect(ids(described_class, { "kind" => "appointment_no_show" }.merge(period))).to eq([ missed.id ])
+    end
   end
 
   describe Campaigns::Criteria::AppointmentRequestOpen do
