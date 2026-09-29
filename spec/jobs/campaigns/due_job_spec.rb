@@ -36,6 +36,30 @@ RSpec.describe Campaigns::DueJob do
     expect([ cancelled.reload.status, unscheduled.reload.status ]).to eq(%w[cancelled draft])
   end
 
+  describe "campanhas presas em sending" do
+    def sending!(entered_at)
+      draft_campaign!.tap { |c| c.update_columns(status: "sending", updated_at: entered_at) }
+    end
+
+
+    it "reenfileira o DispatchJob de quem está em sending há mais de 10 minutos, só com city_slug e campaign_id" do
+      stale = sending!(11.minutes.ago)
+      expect { described_class.perform_now }.to have_enqueued_job(Campaigns::DispatchJob)
+        .with(city_slug: Current.city.slug, campaign_id: stale.id).exactly(:once)
+      expect(stale.reload.status).to eq("sending")
+    end
+
+    it "não mexe em quem entrou em sending há 1 minuto" do
+      sending!(1.minute.ago)
+      expect { described_class.perform_now }.not_to have_enqueued_job(Campaigns::DispatchJob)
+    end
+
+    it "desiste de quem está em sending há mais de 24 horas" do
+      sending!(25.hours.ago)
+      expect { described_class.perform_now }.not_to have_enqueued_job(Campaigns::DispatchJob)
+    end
+  end
+
   it "está no recurring.yml, a cada minuto, na fila default" do
     task = YAML.load_file(Rails.root.join("config/recurring.yml"), aliases: true).dig("production", "campaigns_due")
     expect(task).to eq("class" => "Campaigns::DueJob", "queue" => "default", "schedule" => "every minute")
