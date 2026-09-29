@@ -97,4 +97,31 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
     expect(revoked.reload.neighborhood_id).to be_nil
     expect(other.reload.neighborhood_id).to eq(centro.id)
   end
+
+  # ADR 0024 §5.6: a revogação da conversa MAIS RECENTE do cidadão apaga as
+  # linhas dele em campaign_recipients; os contadores da campanha não mudam.
+  it "revogar a conversa mais recente apaga as linhas de campanha do cidadão; conversa antiga não" do
+    citizen = Citizen.create!(cpf: "52998224725", phone: "+5541998765432")
+    old = Conversation.create!(channel: "web", citizen: citizen, phone: citizen.phone, state: "revoked",
+                               created_at: 3.days.ago)
+    latest = Conversation.create!(channel: "web", citizen: citizen, phone: citizen.phone, state: "revoked",
+                                  created_at: 1.day.ago)
+    campaign = sent_campaign!
+    recipient!(campaign, citizen, sms_status: "not_opted_in")
+    other = recipient!(campaign, Citizen.create!(cpf: "11144477735", phone: "+5541998765433"), sms_status: "not_opted_in")
+
+    described_class.new.perform(**event_args(old.id))
+    expect(CampaignRecipient.where(citizen_id: citizen.id).count).to eq(1)
+
+    described_class.new.perform(**event_args(latest.id))
+    expect(CampaignRecipient.where(citizen_id: citizen.id)).to be_empty
+    expect(other.reload).to be_present
+    expect(campaign.reload).to have_attributes(recipients_count: 0, phones_count: 0, status: "sent")
+  end
+
+  it "conversa sem cidadão (WhatsApp antigo): nada a apagar" do
+    convo = Conversation.create!(phone: "+551135", state: "revoked")
+    expect(Campaigns::ForgetRevokedRecipients.call(conversation_id: convo.id)).to eq(0)
+    expect { described_class.new.perform(**event_args(convo.id)) }.not_to raise_error
+  end
 end
