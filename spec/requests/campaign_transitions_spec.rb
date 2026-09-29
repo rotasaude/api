@@ -17,7 +17,13 @@ RSpec.describe "Transições da campanha", type: :request do
     session.update!(mfa_verified_at: Time.current) if stepped_up
   end
 
-  def payloads(name) = DomainEvent.where(name: name).order(:occurred_at, :id).map(&:payload)
+  # Só eventos das campanhas deste exemplo (as do `manager`): evento commitado por
+  # outra spec (append-only, sobrevive ao rollback) não pode entrar na conta.
+  def payloads(name)
+    ids = Campaign.where(created_by_user_id: manager.id).pluck(:id)
+    DomainEvent.where(name: name).where("payload ->> 'campaign_id' IN (?)", ids.presence || [ "" ])
+               .order(:occurred_at, :id).map(&:payload)
+  end
 
   before { 5.times { person! } }
 
