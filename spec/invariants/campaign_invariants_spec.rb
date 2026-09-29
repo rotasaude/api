@@ -28,7 +28,7 @@ RSpec.describe "Invariantes das campanhas (ADR 0024)", type: :request do
   end
 
   # Mutação: tirar o `raise ActiveRecord::Rollback` de DispatchJob#freeze_recipients,
-  # ou o `below_minimum?` de Campaigns::Send.
+  # ou o `below_minimum?` de Campaigns::SendGate (app/commands/campaigns/send_gate.rb).
   it "nenhuma campanha sai com menos de 5 telefones distintos" do
     shared = next_phone
     5.times { |i| person!(phone: shared, cpf: CampaignHistory.cpf_for("#{shared}-#{i}")) }
@@ -167,17 +167,44 @@ RSpec.describe "Invariantes das campanhas (ADR 0024)", type: :request do
     end
   end
 
-  # Mutação: acrescentar `phone: citizen.phone` aos argumentos do perform_later do SmsBatchJob.
+  # Mutação: acrescentar `phone: citizen.phone` aos argumentos de qualquer um
+  # dos 5 perform_later de campanha: Send → DispatchJob (send.rb), DueJob →
+  # DispatchJob (due_job.rb), DispatchJob → SmsBatchJob (dispatch_job.rb),
+  # SmsBatchJob fora da janela 8h–20h (sms_batch_job.rb) e SmsBatchJob com
+  # lote cheio (sms_batch_job.rb). Cada etapa exige que o job esperado tenha
+  # sido enfileirado, para o exemplo não passar no vazio.
   it "jobs de campanha recebem só o slug e o id" do
     sms_profile!(enabled: true)
     5.times { person!.tap { |p| opt_in!(p) } }
+    queue = ActiveJob::Base.queue_adapter
+    stage = lambda do |expected|
+      jobs = queue.enqueued_jobs.select { |j| j["job_class"].start_with?("Campaigns::") }
+      expect(jobs.map { |j| j["job_class"] }).to include(expected)
+      jobs.each do |job|
+        expect(job["arguments"].first.keys - [ "_aj_ruby2_keywords" ]).to match_array(%w[city_slug campaign_id]), job["job_class"]
+      end
+      queue.enqueued_jobs.clear
+    end
+
     campaign = draft_campaign!(by: manager)
     Campaigns::Send.call(campaign: campaign, by: manager)
+    stage.call("Campaigns::DispatchJob")
+
+    due = draft_campaign!(by: manager)
+    due.update_columns(status: "scheduled", send_at: 1.minute.ago)
+    Campaigns::DueJob.perform_now
+    stage.call("Campaigns::DispatchJob")
+
     Campaigns::DispatchJob.perform_now(city_slug: TEST_CITY_A.slug, campaign_id: campaign.id)
-    jobs = ActiveJob::Base.queue_adapter.enqueued_jobs.select { |j| j["job_class"].start_with?("Campaigns::") }
-    expect(jobs.map { |j| j["job_class"] }).to include("Campaigns::DispatchJob", "Campaigns::SmsBatchJob")
-    jobs.each do |job|
-      expect(job["arguments"].first.keys - [ "_aj_ruby2_keywords" ]).to match_array(%w[city_slug campaign_id])
+    stage.call("Campaigns::SmsBatchJob")
+
+    travel_to(Time.zone.now.change(hour: 7)) do
+      Campaigns::SmsBatchJob.perform_now(city_slug: TEST_CITY_A.slug, campaign_id: campaign.id)
     end
+    stage.call("Campaigns::SmsBatchJob")
+
+    stub_const("Campaigns::SmsBatchJob::BATCH_SIZE", 2)
+    sms_batch!(campaign)
+    stage.call("Campaigns::SmsBatchJob")
   end
 end
