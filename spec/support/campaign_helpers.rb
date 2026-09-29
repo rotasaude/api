@@ -1,3 +1,5 @@
+require Rails.root.join("lib/campaign_history").to_s
+
 # spec/support/campaign_helpers.rb
 # Módulo 12 (ADR 0024): campanhas prontas para specs. A campanha enviada chega a
 # `sent` pelo mesmo caminho que o trigger aceita (draft → sending → sent).
@@ -39,6 +41,46 @@ module CampaignHelpers
 
   def sms_profile!(enabled:)
     (CityProfile.current || CityProfile.new(name: "Curitiba")).tap { |p| p.update!(campaigns_sms_enabled: enabled) }
+  end
+
+  # Telefones distintos por exemplo (+55 41 99xxxxxxx).
+  def next_phone
+    @campaign_phone_seq = (@campaign_phone_seq || 0) + 1
+    format("+554199%07d", @campaign_phone_seq)
+  end
+
+  def person!(phone: next_phone, cpf: nil, neighborhood: nil)
+    CampaignHistory.citizen!(cpf: cpf || CampaignHistory.cpf_for(phone), phone: phone, neighborhood: neighborhood)
+  end
+
+  def staff!
+    @campaign_staff ||= staff_with("recepcao-#{SecureRandom.hex(4)}@cidade.gov.br", "citizen_verifier")
+  end
+
+  def unit!
+    @campaign_unit ||= create_unit("UBS Campanha")
+  end
+
+  def opt_in!(citizen, value = true)
+    CitizenContactPreference.for(citizen.id).tap { |p| p.update!(sms_opt_in: value) }
+  end
+
+  # Conversa revogada do cidadão, criada em `at` (a revogação vale para o
+  # público só se esta for a conversa mais recente dele).
+  def revoked_conversation!(citizen, at: 1.hour.ago)
+    conversation = Conversation.create!(channel: "web", citizen: citizen, phone: citizen.phone, state: "revoked",
+                                        created_at: at)
+    Consent.create!(conversation: conversation, version: 1, policy_text_sha: "sha-teste", channel: "web",
+                    given_at: at, revoked_at: at + 1.minute)
+    conversation
+  end
+
+  # Triagem do WhatsApp antigo: conversa sem cidadão.
+  def anonymous_triage!(at:)
+    conversation = Conversation.create!(phone: "+5541911110000", state: "completed", created_at: at - 5.minutes)
+    Triage.create!(conversation: conversation, protocol_definition: CampaignHistory.protocol,
+                   protocol_name: StartTriage::DEFAULT_PROTOCOL_NAME, status: "completed", tier: "alta", priority: 1,
+                   answers: {}, created_at: at - 5.minutes, completed_at: at)
   end
 end
 
