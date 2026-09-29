@@ -199,6 +199,9 @@ Rails.application.routes.draw do
     post "appointments/:id/confirm",       to: "appointments#confirm"
     post "appointments/:id/cancel",        to: "appointments#cancel"
     post "appointments/:id/check_in_code", to: "appointments#check_in_code"
+
+    get "contact_preferences",             to: "contact_preferences#index"
+    put "contact_preferences/:citizen_id", to: "contact_preferences#update"
   end
 
   # Autoria/preview de protocolos (ADR-0009)
