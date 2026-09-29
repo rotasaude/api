@@ -71,6 +71,27 @@ RSpec.describe Campaigns::SmsBatchJob do
     expect(DomainEvent.where(name: "campaign.sms_unavailable").count).to eq(1)
   end
 
+  it "gateway configurado que cai no meio do lote: o destinatário vira unavailable e o evento sai uma vez por campanha" do
+    stub_const("Campaigns::SmsBatchJob::BATCH_SIZE", 2)
+    people = Array.new(4) { opted_person }
+    rows = people.map { |p| recipient!(campaign, p) }.sort_by(&:id)
+    by_phone = rows.to_h { |r| [ r.citizen.phone, r ] }
+    down_after_first = false
+    allow(SmsGateway).to receive(:deliver).and_wrap_original do |original, **args|
+      raise SmsGateway::Unavailable, "provedor fora do ar" if down_after_first
+
+      down_after_first = true
+      original.call(**args)
+    end
+    travel_to(inside) { run; run }
+
+    statuses = rows.map { |r| r.reload.sms_status }
+    expect(statuses).to eq(%w[sent unavailable unavailable unavailable])
+    expect(deliveries.map { |d| by_phone.fetch(d[:phone]) }).to eq([ rows.first ])
+    expect(DomainEvent.where(name: "campaign.sms_unavailable").map(&:payload))
+      .to eq([ { "campaign_id" => campaign.id, "count" => 1 } ])
+  end
+
   it "uma falha não interrompe o lote: tenta de novo uma vez e grava só a classe do erro" do
     bad = opted_person
     good = opted_person
