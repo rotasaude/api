@@ -50,6 +50,27 @@ RSpec.describe Campaigns::SmsBatchJob do
       .to eq([ { "campaign_id" => campaign.id, "count" => 2 } ])
   end
 
+  it "gateway não configurado fora da janela (22h e 06h): unavailable na hora, sem adiar, com um evento só" do
+    rows = [ recipient!(campaign, opted_person), recipient!(campaign, opted_person, sms_status: "deferred") ]
+    with_sms_gateway(nil) do
+      travel_to(Time.zone.now.change(hour: 22)) { expect { run }.not_to have_enqueued_job(described_class) }
+      expect(rows.map { |r| r.reload.sms_status }).to eq(%w[unavailable unavailable])
+      travel_to((Time.zone.now + 1.day).change(hour: 6)) { expect { run }.not_to have_enqueued_job(described_class) }
+    end
+    expect(rows.map { |r| r.reload.sms_status }).to eq(%w[unavailable unavailable])
+    expect(DomainEvent.where(name: "campaign.sms_unavailable").map(&:payload))
+      .to eq([ { "campaign_id" => campaign.id, "count" => 2 } ])
+  end
+
+  it "gateway não configurado às 06h, primeira execução: unavailable, não deferred" do
+    row = recipient!(campaign, opted_person)
+    with_sms_gateway(nil) do
+      travel_to(Time.zone.now.change(hour: 6)) { expect { run }.not_to have_enqueued_job(described_class) }
+    end
+    expect(row.reload.sms_status).to eq("unavailable")
+    expect(DomainEvent.where(name: "campaign.sms_unavailable").count).to eq(1)
+  end
+
   it "uma falha não interrompe o lote: tenta de novo uma vez e grava só a classe do erro" do
     bad = opted_person
     good = opted_person
