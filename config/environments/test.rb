@@ -18,4 +18,5 @@ Rails.application.configure do
   config.active_record.dump_schema_after_migration = false
 
   config.x.otp_sender = :test
+  config.x.sms_gateway = :test
 end

@@ -28,6 +28,21 @@ module CampaignHelpers
   def sql_in_savepoint(statement)
     ApplicationRecord.transaction(requires_new: true) { ApplicationRecord.connection.execute(statement) }
   end
+
+  def with_sms_gateway(value)
+    previous = Rails.configuration.x.sms_gateway
+    Rails.configuration.x.sms_gateway = value
+    yield
+  ensure
+    Rails.configuration.x.sms_gateway = previous
+  end
+
+  def sms_profile!(enabled:)
+    (CityProfile.current || CityProfile.new(name: "Curitiba")).tap { |p| p.update!(campaigns_sms_enabled: enabled) }
+  end
 end
 
-RSpec.configure { |c| c.include CampaignHelpers }
+RSpec.configure do |c|
+  c.include CampaignHelpers
+  c.before { SmsGateway::Test.reset! }
+end

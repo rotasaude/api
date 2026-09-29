@@ -33,4 +33,7 @@ Rails.application.configure do
   config.hosts << "api:3000"
 
   config.x.otp_sender = :log
+
+  # Campanhas (ADR 0024): o SMS vai para o log do api, com telefone mascarado.
+  config.x.sms_gateway = :log
 end
