@@ -152,6 +152,8 @@ Rails.application.routes.draw do
   scope "/campaigns" do
     get   "options", to: "campaigns#options"
     post  "preview", to: "campaigns#preview"
+    get   "sms_setting", to: "campaign_sms_settings#show"
+    put   "sms_setting", to: "campaign_sms_settings#update"
     get   ":id",     to: "campaigns#show"
     patch ":id",     to: "campaigns#update"
     post  ":id/send",       to: "campaigns#send_now"
