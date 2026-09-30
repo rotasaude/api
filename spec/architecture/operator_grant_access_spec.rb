@@ -14,6 +14,9 @@ RSpec.describe "Operator grant access allowlist" do
 
     expect(allowed).to include("Admin::Api::BaseController" => :all, "SessionsController" => %i[show destroy])
     expect(allowed.keys - [ "SessionsController" ]).to all(start_with("Admin::Api::"))
+
+    # ADR 0025 (D12): o Analytics da cidade é a exceção dentro de Admin::Api.
+    expect(Admin::Api::AnalyticsController.operator_grant_actions).to eq([])
     expect(allowed.except("SessionsController").values.uniq).to eq([ :all ])
   end
 
