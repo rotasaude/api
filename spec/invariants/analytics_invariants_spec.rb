@@ -87,6 +87,103 @@ RSpec.describe "Invariantes do Analytics (ADR 0025)", type: :request do
     expect(rows.find_by!(week_start: monday - 7, indicator: "triages_started")).to have_attributes(suppressed: true, value: nil)
   end
 
+  # Total do grupo (contratos §0, decisão de 2026-09-30).
+  # Mutação: em Analytics::Suppression.group, devolver sempre `cell(total)`; ou, em
+  # BaseQuery#row, voltar `total: Suppression.cell(by_period.values.sum)`; ou, em
+  # Analytics::Suppression.group_rate, devolver sempre `rate(numerator, denominator)`.
+  it "nenhum total ou taxa é exibido quando alguma parte que o compõe, na mesma resposta, está oculta" do
+    monday = (today - 21).beginning_of_week
+    ProtocolDefinition.create!(name: "arbo", version: 1, status: "active", definition: analytics_definition(name: "arbo"))
+    other = create_unit("UPA Invariante", kind: "upa")
+    # Grade com contagens grandes e pequenas misturadas: sem a regra, o total
+    # (quase sempre >= 5) sairia visível ao lado da parte oculta.
+    (0..13).each do |offset|
+      day = monday + offset
+      small = (offset % 4) + 1
+      big = 10 + offset
+      triage = { protocol_name: "arbo", protocol_version: 1 }
+      fact!(metric: "triage.started", day: day, value: big, neighborhood_id: centro.id, **triage)
+      fact!(metric: "triage.started", day: day, value: small, **triage) if offset.odd?
+      fact!(metric: "triage.completed", day: day, value: big, neighborhood_id: centro.id, tier: "alta", **triage)
+      fact!(metric: "triage.completed", day: day, value: small, tier: "baixa", **triage) if offset % 3 == 0
+      fact!(metric: "triage.aborted", day: day, value: big, dim: "timeout", **triage)
+      fact!(metric: "calibration.outcome", day: day, value: big, tier: "alta", dim: "discharged", **triage)
+      fact!(metric: "calibration.outcome", day: day, value: small, tier: "alta", dim: "left", **triage) if offset == 5
+      fact!(metric: "calibration.outcome", day: day, value: big, tier: "baixa", dim: "none", **triage)
+      fact!(metric: "epi.answer", day: day, value: big, question_id: "febre", dim: "true", **triage)
+      fact!(metric: "epi.answer", day: day, value: small, question_id: "febre", dim: "false", **triage) if offset == 9
+      [ unit, other ].each do |at|
+        %w[attendance.closed attendance.wait appointment.ended attendance.checked_in request.opened]
+          .zip(%w[discharged 0-15 checked_in code return])
+          .each { |metric, dim| fact!(metric: metric, day: day, value: big, health_unit_id: at.id, dim: dim) }
+      end
+      %w[attendance.closed attendance.wait appointment.ended attendance.checked_in request.opened]
+        .zip(%w[left 120+ no_show cpf_exception referral])
+        .each { |metric, dim| fact!(metric: metric, day: day, value: small, health_unit_id: unit.id, dim: dim) if offset == 8 }
+    end
+    consolidated_run!
+    sign_in_as(staff_with("analise@cidade.gov.br", "analyst"))
+
+    hidden = { "suppressed" => true }
+    hidden_in = ->(values) { values.any? { |value| value == hidden } }
+    violations = []
+    exercised = Hash.new(0)
+    check = lambda do |label, parts, *shown|
+      next unless hidden_in.call(parts)
+
+      exercised[label.split(":").first] += 1
+      shown.each { |value| violations << label unless value == hidden || value.nil? }
+    end
+    rows_with_series = lambda do |node, &block|
+      case node
+      when Hash
+        block.call(node) if node.key?("series") && node.key?("total")
+        node.each_value { |value| rows_with_series.call(value, &block) }
+      when Array then node.each { |value| rows_with_series.call(value, &block) }
+      end
+    end
+    column = ->(rows, index) { rows.map { |row| row["series"][index] } }
+
+    base = { from: monday.iso8601, to: (monday + 13).iso8601 }
+    filters = [ {}, { neighborhood_id: centro.id }, { health_unit_id: unit.id }, { protocol_name: "arbo" } ]
+    [ {}, { granularity: "month" } ].product(filters).each do |granularity, filter|
+      %w[demand quality calibration epidemiology].each do |front|
+        get "/admin/api/analytics/#{front}", params: base.merge(granularity).merge(filter)
+        expect(response).to have_http_status(:ok), "#{front} #{granularity} #{filter}: #{response.body}"
+        data = json["data"]
+        where = "#{front} #{granularity} #{filter}"
+        rows_with_series.call(data) { |row| check.call("row: #{where} #{row.except('series', 'total')}", row["series"], row["total"]) }
+
+        case front
+        when "demand"
+          parts = data["by_tier"] + data["by_protocol"]
+          data["periods"].each_index do |i|
+            check.call("triages.completed[p]: #{where} #{i}", column.call(parts, i), data["triages"]["completed"][i])
+          end
+          totals = data["triages"].values.flatten +
+                   (data["by_tier"] + data["by_protocol"] + data["by_neighborhood"]).map { |row| row["total"] }
+          check.call("triages_total: #{where}", totals, *data["triages_total"].values)
+        when "quality"
+          rates = [ [ data["wait"]["buckets"], data["wait"]["within_30_pct"], data["wait"]["within_30_pct_total"] ],
+                    [ data["appointments"].select { |row| %w[checked_in no_show].include?(row["status"]) },
+                      data["no_show_pct"], data["no_show_pct_total"] ],
+                    [ data["attendance_outcomes"], data["left_pct"], data["left_pct_total"] ] ]
+          rates.each do |rows, series, total|
+            data["periods"].each_index { |i| check.call("rate[p]: #{where} #{i}", column.call(rows, i), series[i]) }
+            check.call("rate_total: #{where}", rows.flat_map { |row| row["series"] + [ row["total"] ] }, total)
+          end
+        when "calibration"
+          data["versions"].flat_map { |version| version["rows"] }.each do |row|
+            check.call("calibration: #{where} #{row['tier']}", row["outcomes"].values, row["total"], *row["shares"].values)
+          end
+        end
+      end
+    end
+
+    expect(violations).to be_empty
+    expect(exercised.keys).to include("row", "triages.completed[p]", "triages_total", "rate[p]", "rate_total", "calibration")
+  end
+
   # Mutação: em Analytics::Consolidate::Epidemiology, tirar
   # `AND s.step -> 'analytic' = 'true'::jsonb`; ou trocar a condição de answer_type por `TRUE`.
   it "nenhum fato epidemiológico vem de pergunta sem analytic, nem de integer ou text" do
