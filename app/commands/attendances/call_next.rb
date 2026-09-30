@@ -1,23 +1,23 @@
-# "Chamar próximo": o primeiro da fila; se outro profissional levou esse
-# no mesmo instante, tenta o seguinte.
+# "Chamar próximo": trava o primeiro da fila que ninguém mais está chamando
+# (FOR UPDATE SKIP LOCKED) e chama esse. Dois profissionais ao mesmo tempo
+# levam atendimentos diferentes, sem esperar um pelo outro; queue_empty só
+# quando não sobra ninguém disponível.
 module Attendances
   class CallNext
-    ATTEMPTS = 3
-
     def self.call(health_unit_id:, by:)
-      # Atalho: sem papel ou vínculo, não gasta tentativas. Quem garante é o
-      # Call, que rechecar sob lock.
+      # Atalho: sem papel ou vínculo, não trava ninguém. Quem garante é o
+      # Call, que reconfere sob lock (FOR SHARE no vínculo).
       authorization = Professionals::ClinicalAuthorization.check(user: by, health_unit_id: health_unit_id)
       return Result.fail(authorization) unless authorization == :ok
 
-      ATTEMPTS.times do
-        candidate = UnitQueue.waiting(health_unit_id).first
-        return Result.fail(:queue_empty) unless candidate
+      ApplicationRecord.transaction do
+        candidate = UnitQueue.lock_next_waiting(health_unit_id)
+        next Result.fail(:queue_empty) unless candidate
 
-        result = Call.call(attendance: candidate, health_unit_id: health_unit_id, by: by)
-        return result unless result.failure? && result.reason == :already_called
+        # Call trava de novo a mesma linha (já nossa) e reconfere papel, vínculo
+        # e status na mesma transação.
+        Call.call(attendance: candidate, health_unit_id: health_unit_id, by: by)
       end
-      Result.fail(:already_called)
     end
   end
 end
