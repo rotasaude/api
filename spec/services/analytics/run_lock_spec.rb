@@ -43,4 +43,59 @@ RSpec.describe "Analytics::Run: uma consolidação por cidade" do
     threads.each { |t| t.join(10) }
     expect(CityConnection.with(TEST_CITY_A) { AnalyticsRun.pluck(:kind, :status) }).to eq([ %w[scheduled succeeded] ])
   end
+
+  # O primeiro run roda numa thread que SEGURA a própria conexão depois de
+  # terminar (fica esperando dentro do CityConnection.with): se a trava de
+  # sessão não fosse liberada, o run seguinte, em outra conexão, sairia nil.
+  def first_run_holding_connection(&run)
+    done = Queue.new
+    threads << Thread.new do
+      CityConnection.with(TEST_CITY_A) do
+        outcome = begin
+          run.call
+        rescue StandardError => e
+          e
+        end
+        done << [ outcome ]
+        release.pop
+      end
+    end
+    (done.pop(timeout: 10) or raise "o primeiro run não terminou").first
+  end
+
+  def second_run
+    from, to = Analytics::Run.scheduled_window
+    CityConnection.with(TEST_CITY_A) { Analytics::Run.call(kind: "rebuild", from: from, to: to) }
+  end
+
+  it "depois que o primeiro run termina, um novo run consegue a trava" do
+    allow(Analytics::Publish).to receive(:call)
+    from, to = Analytics::Run.scheduled_window
+    first = first_run_holding_connection { Analytics::Run.call(kind: "scheduled", from: from, to: to) }
+    expect(first.status).to eq("succeeded")
+
+    expect(second_run&.status).to eq("succeeded")
+  end
+
+  it "run que falha libera a trava: o seguinte roda normalmente" do
+    allow(Analytics::Publish).to receive(:call)
+    from, to = Analytics::Run.scheduled_window
+    allow(Analytics::Consolidate).to receive(:call).and_raise(RuntimeError, "boom")
+    first = first_run_holding_connection { Analytics::Run.call(kind: "scheduled", from: from, to: to) }
+    expect(first.status).to eq("failed")
+
+    allow(Analytics::Consolidate).to receive(:call).and_call_original
+    expect(second_run&.status).to eq("succeeded")
+  end
+
+  it "exceção que escapa do run libera a trava: o seguinte roda normalmente" do
+    allow(Analytics::Publish).to receive(:call)
+    from, to = Analytics::Run.scheduled_window
+    allow(AnalyticsRun).to receive(:create!).and_raise(ActiveRecord::StatementInvalid, "PG::ConnectionBad")
+    first = first_run_holding_connection { Analytics::Run.call(kind: "scheduled", from: from, to: to) }
+    expect(first).to be_a(ActiveRecord::StatementInvalid)
+
+    allow(AnalyticsRun).to receive(:create!).and_call_original
+    expect(second_run&.status).to eq("succeeded")
+  end
 end
