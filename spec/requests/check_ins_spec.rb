@@ -209,6 +209,50 @@ RSpec.describe "Check-ins", type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
+  it "health_professional sem papel de recepção: 403 em todas as rotas de check-in" do
+    triage = completed_web_triage_for(citizen)
+    code = check_in_code_for(triage)
+    sign_in_as(doctor)
+
+    { "/attendance/check_ins/lookup" => { cpf: citizen.cpf, code: code },
+      "/attendance/check_ins" => { cpf: citizen.cpf, code: code, health_unit_id: unit.id },
+      "/attendance/check_ins/search" => { cpf: citizen.cpf },
+      "/attendance/check_ins/exception" => { cpf: citizen.cpf, triage_id: triage.id, health_unit_id: unit.id,
+                                             reason: "cidadão sem celular" } }.each do |path, params|
+      json_post path, params
+      expect(response).to have_http_status(:forbidden), path
+    end
+    expect(Attendance.count).to eq(0)
+    expect(DomainEvent.where(name: "attendance.exception_searched")).to be_empty
+  end
+
+  it "limite de 30 em 10 minutos por servidor em /attendance/check_ins*, contando a busca" do
+    # O cache do ambiente de teste é :null_store, que nunca conta; troca por um
+    # real só aqui (mesmo padrão de citizen_api/check_in_codes_spec.rb).
+    store = ActiveSupport::Cache::MemoryStore.new
+    allow(Rails).to receive(:cache).and_return(store)
+    sign_in_as(verifier)
+
+    15.times do
+      json_post "/attendance/check_ins/search", cpf: citizen.cpf
+      expect(response).to have_http_status(:ok)
+      json_post "/attendance/check_ins/lookup", cpf: citizen.cpf, code: "000000"
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    json_post "/attendance/check_ins/search", cpf: citizen.cpf
+    expect(response).to have_http_status(:too_many_requests)
+    expect(body["error"]).to eq("too_many_requests")
+    json_post "/attendance/check_ins", cpf: citizen.cpf, code: "000000", health_unit_id: unit.id
+    expect(response).to have_http_status(:too_many_requests)
+
+    # Outro servidor tem o próprio limite.
+    other = user_with("outra-atendente@cidade.gov.br", "citizen_verifier")
+    sign_in_as(other)
+    json_post "/attendance/check_ins/search", cpf: citizen.cpf
+    expect(response).to have_http_status(:ok)
+  end
+
   it "escrita sem JSON: 415" do
     sign_in_as(verifier)
     post "/attendance/check_ins", params: { cpf: citizen.cpf, code: "123456", health_unit_id: unit.id }

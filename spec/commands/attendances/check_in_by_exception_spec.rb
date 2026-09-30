@@ -37,6 +37,20 @@ RSpec.describe Attendances::CheckInByException do
     expect(Attendance.count).to eq(0)
   end
 
+  it "triagem fora da janela (mais de 3 dias) pelo triage_id direto: triage_not_eligible, nada criado" do
+    old = completed_web_triage_for(citizen, completed_at: 3.days.ago - 1.minute)
+    expect(call(triage_id: old.id).reason).to eq(:triage_not_eligible)
+    expect(Attendance.count).to eq(0)
+    expect(DomainEvent.where(name: "attendance.checked_in")).to be_empty
+  end
+
+  it "triagem já atendida pelo triage_id direto: triage_not_eligible, nenhum segundo atendimento" do
+    t = completed_web_triage_for(citizen)
+    first = call(triage_id: t.id).payload.fetch(:attendance)
+    expect(call(triage_id: t.id, reason: "segunda tentativa de exceção").reason).to eq(:triage_not_eligible)
+    expect(Attendance.pluck(:id)).to eq([ first.id ])
+  end
+
   it "unidade inativa: invalid_unit, nada criado" do
     t = completed_web_triage_for(citizen)
     unit.update!(active: false)

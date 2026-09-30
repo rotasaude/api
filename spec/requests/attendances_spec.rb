@@ -100,6 +100,24 @@ RSpec.describe "Attendances", type: :request do
     expect(body["error"]).to eq("referral_required")
   end
 
+  it "encaminhado com referral_unit_id inválido (inexistente, inativo ou lixo): 422 invalid_unit e segue em atendimento" do
+    citizen = Citizen.create!(cpf: "52998224725", phone: "+5541998765432")
+    attendance = check_in!(citizen, completed_web_triage_for(citizen))
+    inactive = create_unit("UBS Fechada", active: false)
+    sign_in_as(doctor)
+    json_post "/attendance/attendances/#{attendance.id}/call", health_unit_id: unit.id
+    expect(response).to have_http_status(:ok)
+
+    [ SecureRandom.uuid, inactive.id, "não-é-unidade" ].each do |bad|
+      json_post "/attendance/attendances/#{attendance.id}/close", outcome: "referred", referral_unit_id: bad,
+                                                                  referral_note: "cardiologia"
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(body["error"]).to eq("invalid_unit")
+    end
+    expect(attendance.reload).to have_attributes(status: "in_care", outcome: nil)
+    expect(AppointmentRequest.where(origin_attendance_id: attendance.id)).to be_empty
+  end
+
   it "encerrar atendimento já encerrado: 409 already_closed" do
     citizen = Citizen.create!(cpf: "52998224725", phone: "+5541998765432")
     triage = completed_web_triage_for(citizen)
