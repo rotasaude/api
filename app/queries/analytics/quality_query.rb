@@ -66,7 +66,10 @@ module Analytics
           Suppression.group_rate(at.call(source, numerator), at.call(source, denominator),
                                  denominator.map { |dim| source.fetch([ id, dim ], 0) })
         end
-        { health_unit_id: id, name: names.fetch(id, id), attendances: Suppression.cell(at.call(outcomes, OUTCOMES)),
+        # attendances é o total dos desfechos da unidade: com o recorte dela,
+        # esses desfechos saem na mesma resposta (total do grupo, contratos §0).
+        attendances = Suppression.group(at.call(outcomes, OUTCOMES), OUTCOMES.map { |dim| outcomes.fetch([ id, dim ], 0) })
+        { health_unit_id: id, name: names.fetch(id, id), attendances: attendances,
           wait_within_30_pct: rate.call(wait, WITHIN_30, AnalyticsDailyFact::WAIT_BUCKETS),
           no_show_pct: rate.call(appointments, %w[no_show], SHOWN),
           left_pct: rate.call(outcomes, %w[left], OUTCOMES) }

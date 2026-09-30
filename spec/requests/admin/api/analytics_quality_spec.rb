@@ -84,11 +84,17 @@ RSpec.describe "GET /admin/api/analytics/quality", type: :request do
 
     get "/admin/api/analytics/quality", params: range
 
+    # attendances (52) é o total dos desfechos da unidade, e referred (2) é
+    # oculto: com o recorte da unidade, 52 − 40 − 10 devolveria o 2.
     expect(data["by_unit"]).to eq([
-      { "health_unit_id" => unit.id, "name" => "UBS Centro", "attendances" => 52,
+      { "health_unit_id" => unit.id, "name" => "UBS Centro", "attendances" => hidden,
         "wait_within_30_pct" => hidden, "no_show_pct" => 25.0, "left_pct" => hidden }
     ])
     expect(data["left_pct"]).to eq([ hidden, nil ])
+
+    get "/admin/api/analytics/quality", params: range.merge(health_unit_id: unit.id)
+    expect(data["attendance_outcomes"].map { |row| row["total"] }).to eq([ 40, hidden, 0, 10 ])
+    expect(data["by_unit"].first["attendances"]).to eq(hidden)
   end
 
   it "sem denominador a taxa é nula" do
