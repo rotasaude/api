@@ -294,7 +294,7 @@ Rails.application.routes.draw do
       get "municipalities",  to: "municipalities#index"
       get "neighborhoods",   to: "neighborhoods#index"
       # Analytics (ADR 0025; contratos §1): só leitura, sem grant de operador.
-      get "analytics/:front", to: "analytics#show", constraints: { front: /demand/ }
+      get "analytics/:front", to: "analytics#show", constraints: { front: /demand|quality/ }
     end
   end
 end
