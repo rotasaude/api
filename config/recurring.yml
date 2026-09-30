@@ -33,6 +33,11 @@ default: &default
     schedule: "every day at 2am America/Sao_Paulo"
     args: { idle_hours: 24 }
 
+  consolidate_analytics:
+    class: ConsolidateAnalyticsJob
+    queue: housekeeping
+    schedule: "every day at 2:30am America/Sao_Paulo"
+
   reconcile_consents:
     class: ReconcileConsentsJob
     queue: housekeeping
