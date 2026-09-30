@@ -98,6 +98,16 @@ RSpec.describe "Setup privileged role step-up", type: :request do
       expect(Invitation.last.role).to eq("protocol_reviewer")
     end
 
+    # ADR 0025: analyst só lê agregados já suprimidos — fora de PRIVILEGED_ROLES.
+    it "analyst é convidado sem step-up" do
+      sign_in_admin!(stepped_up: false)
+
+      invite!(role: "analyst")
+
+      expect(response).to have_http_status(:created)
+      expect(Invitation.last.role).to eq("analyst")
+    end
+
     it "papel comum continua sem step-up" do
       sign_in_admin!(stepped_up: false)
 

@@ -4,6 +4,8 @@ require "rails_helper"
 # ADR 0025 (D6, D12) e contratos §0/§1: quem lê, o envelope, os parâmetros e
 # a soma antes da supressão. O conteúdo de cada frente tem spec própria.
 RSpec.describe "Admin::Api analytics: acesso, envelope e parâmetros", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:today) { Time.zone.today }
   let(:monday) { (today - 14).beginning_of_week }
   let(:range) { { from: monday.iso8601, to: (monday + 6).iso8601 } }
@@ -116,5 +118,73 @@ RSpec.describe "Admin::Api analytics: acesso, envelope e parâmetros", type: :re
     expect(json.dig("data", "triages_total", "completed")).to eq(6)
     get "/admin/api/analytics/demand", params: { from: month.iso8601, to: (month + 27).iso8601 }
     expect(json.dig("data", "triages", "completed")).to all(eq(0).or(eq(hidden)))
+  end
+
+  it "vínculo de analyst revogado: 403 forbidden_role (com outro vínculo ativo) ou no_city_membership (sem nenhum)" do
+    consolidated_run!
+    with_viewer = staff_with("revogado-#{SecureRandom.hex(3)}@cidade.gov.br", "analyst", "viewer")
+    with_viewer.memberships.find_by!(role: "analyst").revoke!
+    sign_in_as(with_viewer)
+    get "/admin/api/analytics/demand", params: range
+    expect(response).to have_http_status(:forbidden)
+    expect(json).to eq("error" => "forbidden_role")
+
+    only_analyst = analyst
+    only_analyst.memberships.each(&:revoke!)
+    sign_in_as(only_analyst)
+    get "/admin/api/analytics/demand", params: range
+    expect(response).to have_http_status(:forbidden)
+    expect(json).to eq("error" => "no_city_membership")
+  end
+
+  # Status::STALE_AFTER com `<`: exatamente 36 h ainda não é velho.
+  it "stale na borda: 36 h exatas é fresco; 36 h + 1 s é velho" do
+    freeze_time do
+      run = consolidated_run!(finished_at: Time.current - 36.hours)
+      sign_in_as(analyst)
+
+      get "/admin/api/analytics/demand", params: range
+      expect(json["stale"]).to be(false)
+
+      run.update!(finished_at: Time.current - 36.hours - 1.second)
+      get "/admin/api/analytics/demand", params: range
+      expect(json["stale"]).to be(true)
+    end
+  end
+
+  it "422 por HTTP: versão sem protocolo, unidade inexistente, 61 meses, parâmetro em array" do
+    consolidated_run!
+    sign_in_as(analyst)
+    ProtocolDefinition.create!(name: "resp", version: 1, status: "active", definition: analytics_definition(name: "resp"))
+    month = (today << 3).beginning_of_month
+    {
+      [ "epidemiology", range.merge(protocol_version: "1") ] => "invalid_protocol",
+      [ "calibration", range.merge(protocol_version: "1") ] => "invalid_protocol",
+      [ "quality", range.merge(health_unit_id: SecureRandom.uuid) ] => "invalid_unit",
+      [ "demand", { from: (month << 60).iso8601, to: month.iso8601, granularity: "month" } ] => "invalid_range",
+      [ "demand", range.merge(neighborhood_id: [ SecureRandom.uuid ]) ] => "invalid_neighborhood",
+      [ "demand", range.merge(health_unit_id: [ SecureRandom.uuid ]) ] => "invalid_unit",
+      [ "demand", range.merge(protocol_name: [ "resp" ]) ] => "invalid_protocol",
+      [ "epidemiology", range.merge(protocol_name: "resp", protocol_version: [ "1" ]) ] => "invalid_protocol"
+    }.each do |(front, params), error|
+      get "/admin/api/analytics/#{front}", params: params
+      expect(response).to have_http_status(:unprocessable_entity), "#{front} #{params.inspect}"
+      expect(json).to eq("error" => error), "#{front} #{params.inspect}"
+    end
+
+    # 60 meses é a borda aceita.
+    get "/admin/api/analytics/demand", params: { from: (month << 59).iso8601, to: month.iso8601, granularity: "month" }
+    expect(response).to have_http_status(:ok)
+  end
+
+  # O analyst não lê /attendance/units, mas precisa dos seletores de bairro e
+  # protocolo (contratos §1): as duas leituras de /admin/api que o dashboard usa.
+  it "analyst lê /admin/api/neighborhoods e /admin/api/protocols" do
+    sign_in_as(analyst)
+
+    get "/admin/api/neighborhoods"
+    expect(response).to have_http_status(:ok)
+    get "/admin/api/protocols"
+    expect(response).to have_http_status(:ok)
   end
 end
