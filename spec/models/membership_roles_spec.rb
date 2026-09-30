@@ -24,4 +24,11 @@ RSpec.describe Membership do
     user = User.create!(email_address: "campanhas@cidade.gov.br", password: "senha-segura-123")
     expect { described_class.create!(user: user, role: "campaign_manager", granted_at: Time.current) }.not_to raise_error
   end
+
+  it "conhece o papel analyst e NÃO o trata como privilegiado (ADR 0025)" do
+    expect(described_class::ROLES).to include("analyst")
+    expect(described_class::PRIVILEGED_ROLES).not_to include("analyst")
+    user = User.create!(email_address: "analise@cidade.gov.br", password: "senha-segura-123")
+    expect { described_class.create!(user: user, role: "analyst", granted_at: Time.current) }.not_to raise_error
+  end
 end
