@@ -5,7 +5,9 @@ module Analytics
     # triagem marca `analytic`, só boolean/enum, e só a resposta que bate com
     # uma opção declarada. Pergunta sem marca, integer, text e resposta fora da
     # lista nunca viram agregado — mesmo numa definição gravada direto no
-    # banco, sem passar pelo schema.
+    # banco, sem passar pelo schema. Definição malformada (steps que não é
+    # array, null nas opções) é ignorada: uma linha ruim não pode abortar a
+    # transação das quatro frentes da cidade.
     class Epidemiology < Base
       ANSWER = "t.answers ->> (s.step ->> 'id')"
 
@@ -14,9 +16,12 @@ module Analytics
           SELECT #{day('t.completed_at')}, 'epi.answer', NULL, t.neighborhood_id, t.protocol_name, pd.version,
                  NULL, s.step ->> 'id', #{ANSWER}, COUNT(*), :at
           #{TRIAGES}
-          CROSS JOIN LATERAL jsonb_array_elements(pd.definition -> 'steps') AS s(step)
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(pd.definition -> 'steps') = 'array' THEN pd.definition -> 'steps' ELSE '[]'::jsonb END
+          ) AS s(step)
           WHERE t.status = 'completed' AND NOT #{REVOKED} AND #{window('t.completed_at')}
             AND s.step -> 'analytic' = 'true'::jsonb
+            AND #{ANSWER} IS NOT NULL
             AND (
               (s.step ->> 'answer_type' = 'boolean' AND #{ANSWER} IN ('true', 'false'))
               OR (s.step ->> 'answer_type' = 'enum' AND jsonb_typeof(s.step -> 'options') = 'array'

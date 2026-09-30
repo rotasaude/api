@@ -59,6 +59,33 @@ RSpec.describe Analytics::Consolidate::Epidemiology do
     expect(rows).to contain_exactly([ day, nil, v2.name, 2, "febre", "true", 1 ])
   end
 
+  # Definição gravada direto no banco, sem schema: uma linha malformada não
+  # pode derrubar a transação da cidade inteira (as quatro frentes).
+  it "definição com steps que não é array é ignorada, sem abortar a consolidação" do
+    # Em rascunho o guarda do banco deixa trocar o conteúdo; o consolidador
+    # não olha o status, só a versão da triagem.
+    broken = analytics_protocol!(name: "quebrado", status: "draft")
+    broken.update_columns(definition: broken.definition.merge("steps" => { "febre" => "x" }))
+    a_triage!(day: day, protocol: broken, answers: { "febre" => "true" })
+    a_triage!(day: day, protocol: v2, answers: { "febre" => "true" })
+
+    run!
+
+    expect(rows).to contain_exactly([ day, nil, v2.name, 2, "febre", "true", 1 ])
+  end
+
+  it "enum com null nas opções e resposta ausente não grava dim nulo" do
+    definition = analytics_definition(name: "nulo")
+    definition["steps"][1]["options"] = [ "Manchas", nil ]
+    nullable = analytics_protocol!(name: "nulo", status: "draft")
+    nullable.update_columns(definition: definition)
+    a_triage!(day: day, protocol: nullable, answers: { "febre" => "true" })
+
+    run!
+
+    expect(rows).to contain_exactly([ day, nil, "nulo", 1, "febre", "true", 1 ])
+  end
+
   it "triagem não concluída ou revogada não entra" do
     a_triage!(day: day, protocol: v2, status: "aborted_by_timeout", answers: { "febre" => "true" })
     a_triage!(day: day, protocol: v2, revoked: true, answers: { "febre" => "true" })
