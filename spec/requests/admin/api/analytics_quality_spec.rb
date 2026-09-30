@@ -97,6 +97,50 @@ RSpec.describe "GET /admin/api/analytics/quality", type: :request do
     expect(data["by_unit"].first["attendances"]).to eq(hidden)
   end
 
+  # Total do grupo por unidade com o recorte dela: as partes são as células de
+  # cada período (não só o total da linha). Célula 2 da 2ª semana com linha
+  # total 12: a linha sai oculta, e a unidade mostraria 52 e 23,1% → 52 − 40 − 10 = 2.
+  describe "total do grupo por unidade: célula oculta num período esconde a taxa da unidade" do
+    let(:filtered) { range.merge(health_unit_id: unit.id) }
+
+    it "desfecho: attendances e left_pct" do
+      [ [ monday, 20, 10 ], [ monday + 7, 20, 2 ] ].each do |day, discharged, left|
+        unit_fact!("attendance.closed", day, discharged, "discharged")
+        unit_fact!("attendance.closed", day, left, "left")
+      end
+
+      get "/admin/api/analytics/quality", params: filtered
+
+      expect(data["attendance_outcomes"].last).to eq("outcome" => "left", "series" => [ 10, hidden ], "total" => hidden)
+      expect(data["left_pct_total"]).to eq(hidden)
+      expect(data["by_unit"].first).to include("attendances" => hidden, "left_pct" => hidden)
+    end
+
+    it "faixa de espera: wait_within_30_pct" do
+      [ [ monday, 20, 10 ], [ monday + 7, 20, 2 ] ].each do |day, fast, slow|
+        unit_fact!("attendance.wait", day, fast, "0-15")
+        unit_fact!("attendance.wait", day, slow, "120+")
+      end
+
+      get "/admin/api/analytics/quality", params: filtered
+
+      expect(data["wait"]["within_30_pct_total"]).to eq(hidden)
+      expect(data["by_unit"].first["wait_within_30_pct"]).to eq(hidden)
+    end
+
+    it "estado do agendamento: no_show_pct" do
+      [ [ monday, 20, 10 ], [ monday + 7, 20, 2 ] ].each do |day, checked_in, no_show|
+        unit_fact!("appointment.ended", day, checked_in, "checked_in")
+        unit_fact!("appointment.ended", day, no_show, "no_show")
+      end
+
+      get "/admin/api/analytics/quality", params: filtered
+
+      expect(data["no_show_pct_total"]).to eq(hidden)
+      expect(data["by_unit"].first["no_show_pct"]).to eq(hidden)
+    end
+  end
+
   it "sem denominador a taxa é nula" do
     get "/admin/api/analytics/quality", params: range
 

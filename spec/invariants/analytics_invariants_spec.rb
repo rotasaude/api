@@ -139,7 +139,8 @@ RSpec.describe "Invariantes do Analytics (ADR 0025)", type: :request do
   # Total do grupo (contratos §0, decisão de 2026-09-30).
   # Mutação: em Analytics::Suppression.group, devolver sempre `cell(total)`; ou, em
   # BaseQuery#row, voltar `total: Suppression.cell(by_period.values.sum)`; ou, em
-  # Analytics::Suppression.group_rate, devolver sempre `rate(numerator, denominator)`.
+  # Analytics::Suppression.group_rate, devolver sempre `rate(numerator, denominator)`; ou,
+  # em QualityQuery#by_unit, usar como partes só o total de cada linha da unidade.
   it "nenhum total ou taxa é exibido quando alguma parte que o compõe, na mesma resposta, está oculta" do
     monday = (today - 21).beginning_of_week
     ProtocolDefinition.create!(name: "arbo", version: 1, status: "active", definition: analytics_definition(name: "arbo"))
@@ -169,6 +170,10 @@ RSpec.describe "Invariantes do Analytics (ADR 0025)", type: :request do
       %w[attendance.closed attendance.wait appointment.ended attendance.checked_in request.opened]
         .zip(%w[left 120+ no_show cpf_exception referral])
         .each { |metric, dim| fact!(metric: metric, day: day, value: small, health_unit_id: unit.id, dim: dim) if offset == 8 }
+      # Mesmas linhas com 9 na 1ª semana: a célula da 2ª (1) segue oculta, mas o
+      # total da linha na unidade (10) passa de 4 — by_unit precisa olhar as células.
+      %w[attendance.closed attendance.wait appointment.ended].zip(%w[left 120+ no_show])
+        .each { |metric, dim| fact!(metric: metric, day: day, value: 9, health_unit_id: unit.id, dim: dim) if offset == 1 }
     end
     consolidated_run!
     sign_in_as(staff_with("analise@cidade.gov.br", "analyst"))

@@ -5,7 +5,7 @@ module Analytics
   # Com `periods` vazio (nunca consolidou), as séries saem vazias; a frente
   # sem série (calibração) olha `consolidated`.
   class BaseQuery
-    def initialize(params, periods:, consolidated: true)
+    def initialize(params, periods:, consolidated:)
       @params = params
       @periods = periods
       @consolidated = consolidated
