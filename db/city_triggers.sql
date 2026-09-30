@@ -150,6 +150,33 @@ BEGIN
 END
 $do$;
 
+-- attendances nasce waiting (critério de fechamento do módulo 13): sem chamada
+-- nem desfecho no INSERT. O CHECK ck_attendances_closing sozinho aceitaria uma
+-- linha in_care ou closed coerente; a chamada e o desfecho só chegam pelas
+-- transições do rota_attendance_guard.
+CREATE OR REPLACE FUNCTION rota_attendance_insert_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.status IS DISTINCT FROM 'waiting'
+     OR NEW.called_at IS NOT NULL OR NEW.called_by_user_id IS NOT NULL
+     OR NEW.outcome IS NOT NULL OR NEW.closed_at IS NOT NULL OR NEW.closed_by_user_id IS NOT NULL
+     OR NEW.referral_unit_id IS NOT NULL OR NEW.referral_note IS NOT NULL THEN
+    RAISE EXCEPTION 'attendances: born waiting, without call or outcome';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.attendances') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS attendances_born_waiting ON attendances';
+    EXECUTE 'CREATE TRIGGER attendances_born_waiting
+      BEFORE INSERT ON attendances
+      FOR EACH ROW EXECUTE FUNCTION rota_attendance_insert_guard()';
+  END IF;
+END
+$do$;
+
 -- Pedido de agendamento (ADR 0019): só acréscimo; a origem nunca muda; encerrado não muda.
 CREATE OR REPLACE FUNCTION rota_appointment_request_guard() RETURNS trigger AS $fn$
 BEGIN

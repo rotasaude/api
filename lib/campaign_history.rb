@@ -49,15 +49,17 @@ module CampaignHistory
   end
 
   # Atendimento encerrado em `at`, a partir de uma triagem (a dada ou uma nova,
-  # uma hora antes). "left" é saída antes da chamada: sem chamada.
+  # uma hora antes). "left" é saída antes da chamada: sem chamada. Nasce
+  # waiting e percorre as transições (o banco recusa nascer chamado ou
+  # encerrado: trigger attendances_born_waiting).
   def attendance!(citizen, outcome:, at:, unit:, by:, triage: nil)
     triage ||= triage!(citizen, at: at - 1.hour)
-    called = outcome != "left"
-    Attendance.create!(triage: triage, citizen: citizen, health_unit: unit, checked_in_by_user: by,
-                       checked_in_at: at - 50.minutes, check_in_method: "code", status: "closed",
-                       called_by_user: called ? by : nil, called_at: called ? at - 30.minutes : nil,
-                       outcome: outcome, closed_by_user: by, closed_at: at,
+    attendance = Attendance.create!(triage: triage, citizen: citizen, health_unit: unit, checked_in_by_user: by,
+                                    checked_in_at: at - 50.minutes, check_in_method: "code")
+    attendance.update!(status: "in_care", called_by_user: by, called_at: at - 30.minutes) unless outcome == "left"
+    attendance.update!(status: "closed", outcome: outcome, closed_by_user: by, closed_at: at,
                        referral_note: outcome == "referred" ? "Encaminhado para avaliação especializada" : nil)
+    attendance
   end
 
   # Pedido de agendamento nascido de um desfecho: return (mesma unidade) ou
