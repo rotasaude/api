@@ -13,6 +13,7 @@
 #     rascunho de verdade do protocolo (achado ou criado na próxima versão
 #     livre), criados por `SignatureCrew` (plano 2026-09-23) — ver
 #     `lib/signature_crew.rb`.
+#     O analyst (analise@<slug>.demo) e ~6 meses de histórico consolidado para o Analytics vêm de `lib/analytics_crew.rb` (módulo 14).
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -33,6 +34,7 @@ else
   require Rails.root.join("lib/professional_crew").to_s
   require Rails.root.join("lib/territory_crew").to_s
   require Rails.root.join("lib/campaign_crew").to_s
+  require Rails.root.join("lib/analytics_crew").to_s
 
   password = ENV.fetch(SignatureCrew::PASSWORD_ENV, "dev-password")
 
@@ -174,6 +176,16 @@ else
         puts "[seeds] campaign_manager   #{campaigns[:account][:email]} / #{password} + MFA → #{campaigns[:account][:otpauth_uri]}"
         puts "[seeds] campanhas .. #{campaigns[:citizens]} cidadãos (#{campaigns[:opted_in]} com opt-in de SMS, " \
              "#{campaigns[:new_histories]} históricos novos); chave de SMS da cidade desligada"
+
+        # ── Analytics (módulo 14, spec 2026-09-30 §11) ────────────────────────
+        # Depois do território, dos profissionais e do elenco do ciclo assinado:
+        # usa bairros, unidades, recepção, autor, revisoras e publisher. A
+        # primeira vez leva uns segundos por cidade (~6 meses de histórico).
+        analytics = AnalyticsCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        puts "[seeds] analyst .......... #{analytics[:account][:email]} / #{password} + MFA → #{analytics[:account][:otpauth_uri]}"
+        puts "[seeds] analytics .. #{analytics[:protocol][:name]} v#{analytics[:protocol][:version]} " \
+             "(#{analytics[:protocol][:status]}), #{analytics[:new_triages]} triagens novas, " \
+             "#{analytics[:runs]} blocos consolidados#{analytics[:failed] ? " — FALHOU: #{analytics[:failed]}" : ''}"
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
