@@ -30,6 +30,23 @@ RSpec.describe Analytics::Rebuild do
     expect(AnalyticsDailyFact.where(metric: "triage.started", day: today - 70).sum(:value)).to eq(1)
   end
 
+  # Cada bloco publica as próprias semanas (spec §4.3): published_at em todo
+  # run e as semanas fechadas tocadas pelos blocos na plataforma.
+  it "republica: published_at em todo bloco e os indicadores das semanas afetadas na plataforma" do
+    a_triage!(day: today - 70)
+
+    report = described_class.call
+
+    expect(report.runs.map(&:published_at)).to all(be_present)
+    first_week = (today - 70).beginning_of_week
+    closed_weeks = (first_week..(today - 1).beginning_of_week).step(7).select { |week| week + 6 <= today - 1 }
+    expect(CityAnalyticsIndicator.where(city_id: city_record.id).distinct.pluck(:week_start))
+      .to match_array(closed_weeks)
+    expect(CityAnalyticsIndicator.find_by(city_id: city_record.id, week_start: (today - 70).beginning_of_week,
+                                          indicator: "triages_started"))
+      .to have_attributes(suppressed: true, value: nil) # a triagem única: 1, oculta
+  end
+
   it "to depois de ontem é truncado; from explícito vale" do
     report = described_class.call(from: today - 5, to: today + 3)
     expect(windows(report)).to eq([ [ today - 5, today - 1, "rebuild", "succeeded" ] ])

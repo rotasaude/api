@@ -22,13 +22,15 @@ RSpec.describe "city:analytics:rebuild rake task" do
   def run(task, *args)
     out = StringIO.new
     original_stdout, $stdout = $stdout, out
-    original_stderr, $stderr = $stderr, StringIO.new
+    original_stderr, $stderr = $stderr, (@err = StringIO.new)
     Rake::Task[task].invoke(*args)
     out.string
   ensure
     $stdout = original_stdout
     $stderr = original_stderr
   end
+
+  def err = @err.string
 
   it "reconsolida a cidade do cru mais antigo até ontem e relata os blocos" do
     a_triage!(day: Time.zone.today - 40)
@@ -61,5 +63,47 @@ RSpec.describe "city:analytics:rebuild rake task" do
 
     expect { run("city:analytics:rebuild:all") }.to raise_error(SystemExit)
     expect(AnalyticsRun.where(status: "failed")).to exist
+  end
+
+  it ":all caminho de sucesso: reconsolida a cidade ativa e relata os blocos" do
+    a_triage!(day: Time.zone.today - 3)
+
+    expect(run("city:analytics:rebuild:all")).to include("#{city.slug}: 1 blocos de #{Time.zone.today - 3}")
+    expect(AnalyticsRun.where(kind: "rebuild").pluck(:status)).to eq(%w[succeeded])
+  end
+
+  it ":all pula cidade que não está active" do
+    suspended = create(:city, status: "suspended")
+    # Sem o atalho do schema: a cidade suspensa não pode ser pulada por ele.
+    allow(CitySchema).to receive(:behind?).and_return(false)
+    allow(CityConnection).to receive(:with).and_call_original
+
+    expect { run("city:analytics:rebuild:all") }.not_to raise_error
+
+    expect(CityConnection).not_to have_received(:with).with(have_attributes(id: suspended.id))
+    expect(CityConnection).to have_received(:with).with(have_attributes(id: city.id))
+  end
+
+  it "schema atrasado: a cidade aborta com a mensagem, sem consolidar" do
+    allow(CitySchema).to receive(:behind?).and_return(true)
+
+    expect { run("city:analytics:rebuild", city.slug) }
+      .to raise_error(SystemExit, "[city:analytics:rebuild] #{city.slug} com schema atrasado — rode city:migrate:all")
+    Rake::Task["city:analytics:rebuild:all"].reenable
+    expect { run("city:analytics:rebuild:all") }.to raise_error(SystemExit, /falharam: #{city.slug}/)
+    expect(err).to include("#{city.slug} falhou — RuntimeError: schema atrasado — rode city:migrate:all")
+    expect(AnalyticsRun.count).to eq(0)
+  end
+
+  it "outra consolidação em curso: aborta pedindo para tentar de novo" do
+    a_triage!(day: Time.zone.today - 3)
+    allow(Analytics::Run).to receive(:try_lock).and_return(false)
+
+    expect { run("city:analytics:rebuild", city.slug) }
+      .to raise_error(SystemExit, "[city:analytics:rebuild] #{city.slug}: outra consolidação em curso — tente de novo")
+    Rake::Task["city:analytics:rebuild:all"].reenable
+    expect { run("city:analytics:rebuild:all") }.to raise_error(SystemExit, /falharam: #{city.slug}/)
+    expect(err).to include("outra consolidação em curso")
+    expect(AnalyticsRun.count).to eq(0)
   end
 end

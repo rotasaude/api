@@ -3,6 +3,8 @@ require "rails_helper"
 # Spec §4.1 e §10.1 (job): janela, idempotência, atraso dentro e fora da
 # janela, falha num consolidador, dia corrente, publicação e purgas.
 RSpec.describe Analytics::Run do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city_record) { register_test_city! }
   let(:today) { Time.zone.today }
   let(:unit) { create_unit("UBS Centro") }
@@ -148,5 +150,21 @@ RSpec.describe Analytics::Run do
     expect(AnalyticsDailyFact.exists?(edge.id)).to be(true)
     expect(AnalyticsRun.exists?(old_failed.id)).to be(false)
     expect(AnalyticsRun.exists?(kept_run.id)).to be(false) # já há um succeeded mais novo
+  end
+
+  # Borda da purga (spec §3.2: "mais de 90 dias"): started_at < agora − 90 d.
+  # Exatamente 90 dias fica; 1 s a mais já sai.
+  it "purga de runs na borda exata de 90 dias" do
+    freeze_time do
+      ages = { "89d" => 89.days, "90d" => 90.days, "90d+1s" => 90.days + 1.second, "91d" => 91.days }
+      runs = ages.transform_values do |age|
+        AnalyticsRun.create!(kind: "scheduled", status: "failed", window_from: today - 130, window_to: today - 101,
+                             started_at: Time.current - age, finished_at: Time.current - age, error: "RuntimeError: x")
+      end
+
+      scheduled_run!
+
+      expect(ages.keys.select { |key| AnalyticsRun.exists?(runs[key].id) }).to eq(%w[89d 90d])
+    end
   end
 end
