@@ -59,7 +59,7 @@ RSpec.describe "Marca analytic no ciclo de autoria (F-14.6)", type: :request do
 
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json["error"]).to eq("invalid")
-    expect(json["message"]).to include("/steps/0")
+    expect(json["message"]).to include("schema: /steps/0 required")
   end
 
   # Conteúdo que chegou a in_review por fora (gravado direto no banco): a
