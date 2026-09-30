@@ -94,4 +94,16 @@ RSpec.describe Analytics::Consolidate::Epidemiology do
 
     expect(rows).to be_empty
   end
+
+  # api#27: o dia é o do fuso da cidade (America/Sao_Paulo, UTC−3). 23:30
+  # local já é o dia seguinte em UTC; 00:10 local ainda é o dia anterior em UTC.
+  it "borda de fuso: concluída 23:30 local fica no dia; 00:10 do dia seguinte, no seguinte" do
+    a_triage!(day: day - 1, hour: 23, minute: 24, protocol: v2, answers: { "febre" => "true" })   # conclui 23:30
+    a_triage!(day: day, hour: 0, minute: 4, protocol: v2, answers: { "febre" => "false" })        # conclui 00:10
+
+    run!(day - 1, day)
+
+    expect(rows).to contain_exactly([ day - 1, nil, v2.name, 2, "febre", "true", 1 ],
+                                    [ day, nil, v2.name, 2, "febre", "false", 1 ])
+  end
 end

@@ -74,4 +74,44 @@ RSpec.describe "GET /admin/api/analytics/epidemiology", type: :request do
     get "/admin/api/analytics/epidemiology", params: range.merge(protocol_name: "triage-respiratoria")
     expect(data["questions"]).to eq([])
   end
+
+  # Contratos §1.4: as opções vêm da versão mais recente do ciclo. Opção que
+  # uma versão nova tirou some da resposta, mesmo com fato das versões antigas
+  # (comportamento documentado na verificação de 2026-09-30).
+  it "opção removida numa versão mais nova: a série dela não aparece" do
+    definition = analytics_definition(version: 4)
+    definition["steps"][1]["options"] = [ "Dor nas juntas", "Nenhum", "Febre alta" ]
+    definition["steps"][1]["branches"] = { "Dor nas juntas" => "gestante", "Nenhum" => "gestante", "Febre alta" => "gestante" }
+    definition["steps"][1]["weights"] = { "Dor nas juntas" => 2, "Nenhum" => 0, "Febre alta" => 3 }
+    ProtocolDefinition.create!(name: "triagem-arbovirose", version: 4, status: "published", definition: definition)
+
+    get "/admin/api/analytics/epidemiology", params: range
+
+    sintoma = data["questions"].find { |q| q["question_id"] == "sintoma" }
+    expect(sintoma["options"].map { |o| o["value"] }).to eq([ "Dor nas juntas", "Nenhum", "Febre alta" ])
+    expect(sintoma["options"].map { |o| o["total"] }).to eq([ 0, 0, 0 ]) # os 7 de "Manchas" (v2) não saem
+  end
+
+  # Desvio 11 do plano: a pergunta entra se ALGUMA versão do ciclo a marca;
+  # prompt e opções vêm da maior versão que a marca. Desmarcar numa versão
+  # nova não apaga o que a antiga contou.
+  it "pergunta marcada na versão antiga e desmarcada na nova: continua, com o fato da antiga" do
+    ProtocolDefinition.create!(name: "resp", version: 1, status: "retired",
+                               definition: analytics_definition(name: "resp", marks: %w[gestante]))
+    newer = analytics_definition(name: "resp", version: 2, marks: [])
+    newer["steps"][2]["prompt"] = "Está grávida?"
+    ProtocolDefinition.create!(name: "resp", version: 2, status: "active", definition: newer)
+    fact!(metric: "epi.answer", day: monday, value: 6, protocol_name: "resp", protocol_version: 1,
+          question_id: "gestante", dim: "true")
+
+    get "/admin/api/analytics/epidemiology", params: range.merge(protocol_name: "resp")
+
+    expect(data["questions"]).to eq([
+      { "protocol_name" => "resp", "question_id" => "gestante", "prompt" => "Está gestante?", "answer_type" => "boolean",
+        "options" => [
+          { "value" => "true", "label" => "Sim", "series" => [ 6, 0 ], "total" => 6 },
+          { "value" => "false", "label" => "Não", "series" => [ 0, 0 ], "total" => 0 }
+        ] }
+    ])
+  end
 end
