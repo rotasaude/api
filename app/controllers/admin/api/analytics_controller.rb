@@ -29,7 +29,8 @@ class Admin::Api::AnalyticsController < Admin::Api::BaseController
     periods = status.last_succeeded_at ? parsed.periods : []
     data = { front: front, granularity: parsed.granularity, from: parsed.from.iso8601, to: parsed.to.iso8601,
              filter: parsed.filter, periods: periods.map(&:iso8601) }
-    data.merge!(QUERIES.fetch(front).constantize.new(parsed, periods: periods).call)
+    data.merge!(QUERIES.fetch(front).constantize.new(parsed, periods: periods,
+                                                     consolidated: !status.last_succeeded_at.nil?).call)
     render json: { data: data, as_of: status.last_succeeded_at&.utc&.iso8601, stale: status.stale }
   end
 

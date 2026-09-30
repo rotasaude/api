@@ -2,16 +2,20 @@
 module Analytics
   # Leitura de analytics_daily_facts para uma frente (contratos §1). Soma
   # período e recorte no SQL e só então suprime (Analytics::Suppression).
-  # Com `periods` vazio (nunca consolidou), as séries saem vazias.
+  # Com `periods` vazio (nunca consolidou), as séries saem vazias; a frente
+  # sem série (calibração) olha `consolidated`.
   class BaseQuery
-    def initialize(params, periods:)
+    def initialize(params, periods:, consolidated: true)
       @params = params
       @periods = periods
+      @consolidated = consolidated
     end
 
     private
 
     attr_reader :params, :periods
+
+    def consolidated? = @consolidated
 
     # { [período, *chaves] => soma } de uma métrica no intervalo e nos recortes.
     def sums(metric, keys: [], filters: [])

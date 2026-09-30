@@ -59,6 +59,20 @@ RSpec.describe "GET /admin/api/analytics/calibration", type: :request do
     ])
   end
 
+  # Mesma regra das outras frentes (contratos §1): sem run succeeded, as_of
+  # nulo e nada de dado, mesmo com fatos no banco.
+  it "nunca consolidou (fatos existentes, nenhum run succeeded): versions vazio e stale" do
+    AnalyticsRun.delete_all
+    AnalyticsRun.create!(kind: "scheduled", status: "failed", window_from: monday, window_to: monday + 6,
+                         started_at: 1.hour.ago, finished_at: 1.hour.ago, error: "RuntimeError: boom")
+
+    get "/admin/api/analytics/calibration", params: range
+
+    body = JSON.parse(response.body)
+    expect(body).to include("as_of" => nil, "stale" => true)
+    expect(data["versions"]).to eq([])
+  end
+
   it "recorta por protocolo e versão" do
     get "/admin/api/analytics/calibration", params: range.merge(protocol_name: "resp", protocol_version: "2")
 

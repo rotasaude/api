@@ -6,6 +6,9 @@ module Analytics
     FILTERS = %i[protocol version].freeze
 
     def call
+      # Nunca consolidou (as_of nulo): nada, como as séries das outras frentes.
+      return { versions: [] } unless consolidated?
+
       facts = totals("calibration.outcome", keys: %i[protocol_name protocol_version tier dim], filters: FILTERS)
       versions = facts.group_by { |(name, version, _tier, _dim), _value| [ name, version ] }
       {
