@@ -30,6 +30,7 @@ require_relative "support/attendance_helpers"
 require_relative "support/appointment_helpers"
 require_relative "support/territory_helpers"
 require_relative "support/campaign_helpers"
+require_relative "support/analytics_helpers"
 require_relative "support/committed_rows_cleanup"
 require_relative "support/lock_wait"
 # Add additional requires below this line. Rails is not loaded until this point!
