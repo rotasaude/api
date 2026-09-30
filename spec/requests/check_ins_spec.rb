@@ -88,20 +88,48 @@ RSpec.describe "Check-ins", type: :request do
     expect(body["triages"].map { |t| t["id"] }).to eq([ fresh.id ])
   end
 
-  it "search publica attendance.exception_searched sem CPF, com by_user_id e result_count" do
+  it "search publica attendance.exception_searched sem CPF, com by_user_id, result_count, citizen_ids e unidade" do
     fresh = completed_web_triage_for(citizen)
+    same_cpf = Citizen.create!(cpf: citizen.cpf, phone: "+5541933334444")
+    Citizen.create!(cpf: "11144477735", phone: "+5541911112222")
     sign_in_as(verifier)
 
-    json_post "/attendance/check_ins/search", cpf: citizen.cpf
+    json_post "/attendance/check_ins/search", cpf: citizen.cpf, health_unit_id: unit.id
     expect(response).to have_http_status(:ok)
 
     events = DomainEvent.where(name: "attendance.exception_searched")
     expect(events.count).to eq(1)
     event = events.sole
-    expect(event.payload.keys).to contain_exactly("by_user_id", "result_count")
+    expect(event.payload.keys).to contain_exactly("by_user_id", "result_count", "citizen_ids", "health_unit_id")
     expect(event.payload["by_user_id"]).to eq(verifier.id)
     expect(event.payload["result_count"]).to eq([ fresh.id ].size)
-    expect(event.payload.to_s).not_to match(/\d{11}/)
+    # Trilha LGPD (ADR 0018): quem foi encontrado pelo CPF, só por id.
+    expect(event.payload["citizen_ids"]).to match_array([ citizen.id, same_cpf.id ])
+    expect(event.payload["health_unit_id"]).to eq(unit.id)
+    expect(event.payload.to_json).not_to include(citizen.cpf)
+    expect(event.payload.to_json).not_to include("998765432")
+  end
+
+  it "search sem unidade e sem cidadão para o CPF: trilha com citizen_ids vazio e health_unit_id nulo" do
+    sign_in_as(verifier)
+
+    json_post "/attendance/check_ins/search", cpf: "93541134780"
+    expect(response).to have_http_status(:ok)
+
+    payload = DomainEvent.where(name: "attendance.exception_searched").sole.payload
+    expect(payload).to include("citizen_ids" => [], "health_unit_id" => nil, "result_count" => 0)
+    expect(payload.to_json).not_to include("93541134780")
+  end
+
+  it "search: health_unit_id que não é unidade não vai para a trilha (nem um CPF digitado ali)" do
+    sign_in_as(verifier)
+
+    json_post "/attendance/check_ins/search", cpf: citizen.cpf, health_unit_id: citizen.cpf
+    expect(response).to have_http_status(:ok)
+
+    payload = DomainEvent.where(name: "attendance.exception_searched").sole.payload
+    expect(payload["health_unit_id"]).to be_nil
+    expect(payload.to_json).not_to include(citizen.cpf)
   end
 
   it "exceção com motivo: 201 e check_in_method cpf_exception" do
