@@ -59,6 +59,20 @@ RSpec.describe "GET /admin/api/analytics/calibration", type: :request do
     ])
   end
 
+  # Tier nulo (triagem sem classificação): a linha sai com "tier": null e a
+  # ordenação por total empatado não quebra ao comparar nil com texto.
+  it "linha com tier nulo: JSON válido e ordenação estável" do
+    outcome!("tb", 1, nil, "discharged", 6)
+    outcome!("tb", 1, "alta", "discharged", 6)
+    outcome!("tb", 1, "baixa", "referred", 9)
+
+    get "/admin/api/analytics/calibration", params: range
+
+    expect(response).to have_http_status(:ok)
+    rows = data["versions"].find { |v| v["protocol_name"] == "tb" }["rows"]
+    expect(rows.map { |row| [ row["tier"], row["total"] ] }).to eq([ [ "baixa", 9 ], [ nil, 6 ], [ "alta", 6 ] ])
+  end
+
   # Mesma regra das outras frentes (contratos §1): sem run succeeded, as_of
   # nulo e nada de dado, mesmo com fatos no banco.
   it "nunca consolidou (fatos existentes, nenhum run succeeded): versions vazio e stale" do

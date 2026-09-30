@@ -125,4 +125,34 @@ RSpec.describe "GET /admin/api/analytics/quality", type: :request do
     expect(data["attendance_outcomes"].first).to eq("outcome" => "discharged", "series" => [ hidden, 0 ], "total" => hidden)
     expect(data["units"].map { |u| u["health_unit_id"] }).to eq([ unit.id, upa.id ])
   end
+
+  it "nunca consolidou: séries vazias, by_unit vazio e a lista de unidades presente" do
+    AnalyticsRun.delete_all
+    unit_fact!("attendance.wait", monday, 10, "0-15")
+    unit_fact!("attendance.closed", monday, 40, "discharged")
+    unit_fact!("appointment.ended", monday, 30, "checked_in")
+
+    get "/admin/api/analytics/quality", params: range
+
+    body = JSON.parse(response.body)
+    expect(body).to include("as_of" => nil, "stale" => true)
+    expect(data["periods"]).to eq([])
+    expect(data["wait"]["buckets"].map { |row| row["series"] }).to all(eq([]))
+    expect(data["wait"]["within_30_pct"]).to eq([])
+    expect(data["no_show_pct"]).to eq([])
+    expect(data["left_pct"]).to eq([])
+    expect(data["by_unit"]).to eq([])
+    expect(data["units"].map { |u| u["health_unit_id"] }).to eq([ unit.id ])
+  end
+
+  it "faltas sem checked_in nem no_show (só expired): taxa nula, não 0" do
+    unit_fact!("appointment.ended", monday, 10, "expired")
+    unit_fact!("appointment.ended", monday + 7, 6, "cancelled_by_citizen")
+
+    get "/admin/api/analytics/quality", params: range
+
+    expect(data["no_show_pct"]).to eq([ nil, nil ])
+    expect(data["no_show_pct_total"]).to be_nil
+    expect(data["by_unit"].first["no_show_pct"]).to be_nil
+  end
 end
