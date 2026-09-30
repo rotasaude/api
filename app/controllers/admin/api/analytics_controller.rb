@@ -9,7 +9,8 @@ class Admin::Api::AnalyticsController < Admin::Api::BaseController
   QUERIES = {
     "demand" => "Analytics::DemandQuery",
     "quality" => "Analytics::QualityQuery",
-    "calibration" => "Analytics::CalibrationQuery"
+    "calibration" => "Analytics::CalibrationQuery",
+    "epidemiology" => "Analytics::EpidemiologyQuery"
   }.freeze
 
   # Zero ações para sessão de grant (a base libera todas).
