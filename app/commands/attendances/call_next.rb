@@ -12,6 +12,9 @@ module Attendances
 
       ApplicationRecord.transaction do
         candidate = UnitQueue.lock_next_waiting(health_unit_id)
+        # Com SKIP LOCKED, queue_empty momentâneo é possível quando todas as
+        # linhas aguardando estão travadas por outra transação (milissegundos);
+        # o dashboard recarrega a fila.
         next Result.fail(:queue_empty) unless candidate
 
         # Call trava de novo a mesma linha (já nossa) e reconfere papel, vínculo

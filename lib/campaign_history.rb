@@ -4,8 +4,9 @@ require "digest"
 # Histórico clínico no passado, gravado direto no banco (módulo 12; desvio 16
 # do plano): os critérios de campanha olham para trás, mas os comandos do
 # domínio só aceitam "agora" (desfecho) ou o futuro (horário). Usado pelas
-# specs e pela semente de dev. Só INSERT: os CHECKs e triggers de cada tabela
-# continuam valendo, e é o que garante que a linha é coerente.
+# specs e pela semente de dev. INSERT direto, e o attendance! faz UPDATE pelas
+# transições reais: os CHECKs e triggers de cada tabela continuam valendo, e é
+# o que garante que a linha é coerente.
 module CampaignHistory
   CONVERSATION_STATE = {
     "completed" => "completed", "aborted_by_timeout" => "abandoned",

@@ -27,7 +27,9 @@ module Attendances
     end
 
     # O primeiro da fila que ninguém está chamando ou encerrando agora. Chame
-    # dentro de uma transação: o lock vale até ela terminar.
+    # dentro de uma transação: o lock vale até ela terminar. Se todas as linhas
+    # aguardando estiverem travadas por outras transações, devolve nil mesmo com
+    # fila (por milissegundos).
     def lock_next_waiting(unit_id)
       ordered_waiting(unit_id).lock("FOR UPDATE OF attendances SKIP LOCKED").first
     end

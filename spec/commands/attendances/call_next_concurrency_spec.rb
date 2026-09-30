@@ -17,34 +17,43 @@ RSpec.describe Attendances::CallNext, "concorrência" do
     CityConnection.with(TEST_CITY_A) do
       Current.set(city: TEST_CITY_A) do
         tag = SecureRandom.hex(4)
+        # Cada id entra em `ids` assim que a linha nasce: se o before falhar no
+        # meio, o after ainda limpa o que já foi commitado.
         admin = User.create!(email_address: "adm-#{tag}@c.gov.br", password: "senha-segura-123")
+        ids[:admin] = admin.id
         unit = HealthUnit.create!(name: "UBS Fila #{tag}", kind: "ubs")
-        doctors = %w[a b].map do |suffix|
+        ids[:unit] = unit.id
+        ids[:rows] = []
+        %w[a b].each do |suffix|
           doctor = User.create!(email_address: "doc-#{suffix}-#{tag}@c.gov.br", password: "senha-segura-123")
+          ids[suffix == "a" ? :doctor : :doc_user] = doctor.id
           Membership.create!(user: doctor, role: "health_professional", granted_at: Time.current)
           pro = Professional.create!(user: doctor, professional_name: "P#{suffix}", council: "CRM", council_state: "PR",
                                      registration_number: "#{tag.to_i(16).to_s[0, 7]}#{suffix.ord}",
                                      cns: Professionals::Cns.generate("#{tag}#{suffix}"))
           ProfessionalLink.create!(professional: pro, health_unit: unit, cbo_code: "225125",
                                    started_at: Time.current, started_by_user: admin)
-          doctor
         end
         protocol = ProtocolDefinition.create!(name: "fila-#{tag}", version: 1, status: "draft",
                                               definition: ProtocolDefinition.find_by(name: StartTriage::DEFAULT_PROTOCOL_NAME)&.definition ||
                                                           default_protocol_definition("fila-#{tag}"))
+        ids[:protocol] = protocol.id
         # Fila: prioridade 1 (primeiro), 5 (segundo), 9 (terceiro).
-        rows = [ 1, 5, 9 ].each_with_index.map do |priority, i|
+        [ 1, 5, 9 ].each_with_index do |priority, i|
+          row = {}
+          ids[:rows] << row
           citizen = Citizen.create!(cpf: CampaignHistory.cpf_for("fila-#{tag}-#{i}"), phone: "+55419#{format('%08d', 20_000_000 + i)}")
+          row[:citizen] = citizen.id
           conversation = Conversation.create!(channel: "web", citizen: citizen, phone: citizen.phone, state: "completed")
+          row[:conversation] = conversation.id
           triage = Triage.create!(conversation: conversation, protocol_definition: protocol, protocol_name: protocol.name,
                                   status: "completed", tier: "alta", priority: priority, answers: {},
                                   completed_at: Time.current)
+          row[:triage] = triage.id
           attendance = Attendance.create!(triage: triage, citizen: citizen, health_unit: unit, checked_in_by_user: admin,
                                           checked_in_at: Time.current - (10 - i).minutes, check_in_method: "code")
-          { citizen: citizen.id, conversation: conversation.id, triage: triage.id, attendance: attendance.id }
+          row[:attendance] = attendance.id
         end
-        ids.merge!(admin: admin.id, doctor: doctors[0].id, doc_user: doctors[1].id, unit: unit.id,
-                   protocol: protocol.id, rows: rows)
       end
     end
   end
