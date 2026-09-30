@@ -55,6 +55,16 @@ module Maintenance
       field :counts, Types::CityCountsType, null: true
       field :operations, Types::CityOperationsType, null: true
 
+      # Módulo 14 (ADR 0025; contratos §3). analyticsIndicators lê o banco de
+      # PLATAFORMA — nunca abre a cidade; analyticsStatus lê analytics_runs da
+      # cidade pelo `inside`, anulável como counts/operations: cidade
+      # inalcançável anula só ele.
+      field :analytics_indicators, [ Types::AnalyticsIndicatorType ], null: false do
+        argument :from, GraphQL::Types::ISO8601Date, required: true
+        argument :to, GraphQL::Types::ISO8601Date, required: true
+      end
+      field :analytics_status, Types::AnalyticsStatusType, null: true
+
       def schema_behind = CitySchema.behind?(object)
 
       # Canal mora na PLATAFORMA, ao lado do catálogo: sai sem abrir conexão de
@@ -148,6 +158,18 @@ module Maintenance
           }
         end
       end
+
+      def analytics_indicators(from:, to:)
+        weeks = Analytics::CityIndicatorsQuery.weeks(from.iso8601, to.iso8601, Time.zone.today)
+        CityAnalyticsIndicator.where(city_id: object.id, week_start: weeks).order(:week_start, :indicator).map do |row|
+          { week_start: row.week_start, indicator: row.indicator, value: row.value&.to_f, suppressed: row.suppressed }
+        end
+      rescue Analytics::Params::Invalid
+        raise GraphQL::ExecutionError.new("intervalo inválido (from <= to, até 104 semanas)",
+                                          extensions: { "code" => "INVALID_RANGE" })
+      end
+
+      def analytics_status = inside { Analytics::Status.call.to_h }
 
       private
 

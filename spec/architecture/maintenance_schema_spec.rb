@@ -35,7 +35,10 @@ RSpec.describe "Maintenance GraphQL schema" do
     "UserError" => %w[path message],
     "CitySummary" => %w[slug name uf status schemaVersion schemaBehind createdAt],
     "City" => %w[slug name uf status schemaVersion schemaBehind createdAt channel
-                 profile consentTermVersion protocols protocolVersions alertRecipients accounts counts operations],
+                 profile consentTermVersion protocols protocolVersions alertRecipients accounts counts operations
+                 analyticsIndicators analyticsStatus],
+    "AnalyticsIndicator" => %w[weekStart indicator value suppressed],
+    "AnalyticsStatus" => %w[lastRunStatus lastSucceededAt lastPublishedAt lastError stale],
     "CityChannel" => %w[phoneNumberId wabaId displayPhoneNumber active],
     "CityProfile" => %w[name uf ibgeCode],
     "ProtocolDefinition" => %w[name version status],
@@ -456,7 +459,7 @@ RSpec.describe "Maintenance GraphQL schema" do
     # aqui obrigaria CityChannel a só ser alcançável por City, o que não é a
     # regra que este plano pede.
     def city_inner_field_names
-      %w[profile counts operations protocols alertRecipients accounts]
+      %w[profile counts operations protocols alertRecipients accounts analyticsStatus]
     end
 
     def city_db_type_names
