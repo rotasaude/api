@@ -5,6 +5,8 @@ require "rails_helper"
 # suprimidos, no banco de plataforma. Idempotente; taxa sem denominador não é
 # gravada; o número de 1 a 4 nunca sai.
 RSpec.describe Analytics::Publish do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city_record) { register_test_city! }
   let(:monday) { (Time.zone.today - 21).beginning_of_week }
 
@@ -55,6 +57,33 @@ RSpec.describe Analytics::Publish do
 
     expect(CityAnalyticsIndicator.where(city_id: city_record.id, week_start: monday).count).to eq(5)
     expect(CityAnalyticsIndicator.exists?(stale.id)).to be(false)
+  end
+
+  # Decisão de 2026-09-30 (verificação do módulo 14): só semana fechada —
+  # segunda + 6 ≤ ontem. A semana corrente nunca é gravada, e a linha dela de
+  # uma publicação anterior sai na republicação.
+  it "janela terminando numa quarta: a semana dessa quarta não sai; a anterior, sim" do
+    wednesday = monday + 9
+    previous = monday + 7
+    fact!(metric: "triage.started", day: wednesday, value: 8)
+    fact!(metric: "triage.started", day: previous, value: 8)
+    leftover = CityAnalyticsIndicator.create!(city: city_record, week_start: wednesday.beginning_of_week,
+                                              indicator: "triages_started", value: 5, suppressed: false,
+                                              published_at: 2.days.ago)
+
+    travel_to(local_at(wednesday + 1, 3)) { described_class.call(from: monday, to: wednesday) }
+
+    expect(CityAnalyticsIndicator.where(city_id: city_record.id).distinct.pluck(:week_start))
+      .to contain_exactly(monday)
+    expect(CityAnalyticsIndicator.exists?(leftover.id)).to be(false)
+  end
+
+  it "domingo de ontem fecha a semana: ela sai" do
+    sunday = monday + 6
+
+    travel_to(local_at(sunday + 1, 3)) { described_class.call(from: monday, to: sunday) }
+
+    expect(published.map(&:first)).to include("triages_started")
   end
 
   it "purga só os indicadores da cidade com mais de 5 anos" do

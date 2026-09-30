@@ -5,6 +5,8 @@ module Analytics
   # janela apagando e gravando numa transação da plataforma (desvio 7 do
   # plano): idempotente, e a taxa que passou a "sem dado" some. O suprimido
   # vai como value NULL — o número de 1 a 4 nunca sai do banco da cidade.
+  # Só semana fechada (segunda + 6 ≤ ontem; decisão de 2026-09-30): a semana
+  # corrente é apagada se já estava lá e nunca é gravada.
   class Publish
     METRICS = %w[triage.started triage.completed attendance.closed attendance.wait appointment.ended].freeze
     RETENTION = 5.years
@@ -13,12 +15,14 @@ module Analytics
 
     def initialize(from:, to:, at:)
       @weeks = (from.beginning_of_week..to.beginning_of_week).step(7).to_a
+      yesterday = Time.zone.yesterday
+      @closed = @weeks.select { |week| week + 6 <= yesterday }
       @at = at
     end
 
     def call
       city = City.find_by!(slug: Current.city.slug)
-      rows = @weeks.flat_map { |week| indicators(week).map { |name, value| row(city, week, name, value) } }
+      rows = @closed.flat_map { |week| indicators(week).map { |name, value| row(city, week, name, value) } }
       PlatformRecord.transaction(requires_new: true) do
         CityAnalyticsIndicator.where(city_id: city.id, week_start: @weeks).delete_all
         CityAnalyticsIndicator.insert_all!(rows) if rows.any?
