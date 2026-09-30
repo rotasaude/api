@@ -49,7 +49,8 @@ module Analytics
 
     def series(by_period) = periods.map { |period| Suppression.cell(by_period.fetch(period, 0)) }
 
-    def row(by_period) = { series: series(by_period), total: Suppression.cell(by_period.values.sum) }
+    # Total do grupo: uma célula oculta na série esconde o total da linha.
+    def row(by_period) = { series: series(by_period), total: Suppression.group(by_period.values.sum, by_period.values) }
 
     def ordered(rows, name:) = rows.sort_by { |row| [ -Suppression.sort_value(row[:total]), row[name].to_s ] }
 

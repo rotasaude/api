@@ -41,7 +41,8 @@ RSpec.describe "GET /admin/api/analytics/demand", type: :request do
 
     expect(data["periods"]).to eq([ monday.iso8601, (monday + 7).iso8601 ])
     expect(data["triages"]).to eq("started" => [ 8, hidden ], "completed" => [ 13, hidden ], "aborted" => [ 5, 0 ])
-    expect(data["triages_total"]).to eq("started" => 11, "completed" => 15, "aborted" => 5)
+    # Total do grupo: uma célula de triages.* oculta esconde os três totais.
+    expect(data["triages_total"]).to eq("started" => hidden, "completed" => hidden, "aborted" => hidden)
     expect(data["by_tier"]).to eq([
       { "tier" => "alta", "series" => [ 13, 0 ], "total" => 13 },
       { "tier" => "baixa", "series" => [ 0, hidden ], "total" => hidden }
@@ -55,6 +56,42 @@ RSpec.describe "GET /admin/api/analytics/demand", type: :request do
       { "neighborhood_id" => centro.id, "name" => "Centro", "total" => 6 },
       { "neighborhood_id" => batel.id, "name" => "Batel", "total" => hidden }
     ])
+  end
+
+  it "totais do período visíveis quando nenhuma parte é oculta" do
+    triage_fact!("triage.started", monday, 8, neighborhood: centro)
+    triage_fact!("triage.started", monday + 8, 9, neighborhood: centro)
+    triage_fact!("triage.completed", monday + 1, 6, neighborhood: centro, tier: "alta")
+    triage_fact!("triage.completed", monday + 9, 7, neighborhood: centro, tier: "alta")
+    triage_fact!("triage.aborted", monday + 2, 5, neighborhood: centro, dim: "timeout")
+
+    get "/admin/api/analytics/demand", params: range
+
+    expect(data["triages"]).to eq("started" => [ 8, 9 ], "completed" => [ 6, 7 ], "aborted" => [ 5, 0 ])
+    expect(data["triages_total"]).to eq("started" => 17, "completed" => 13, "aborted" => 5)
+  end
+
+  it "total do grupo: tier ou protocolo oculto esconde a célula de triages.completed; bairro oculto, os totais" do
+    triage_fact!("triage.started", monday, 20, neighborhood: centro)
+    triage_fact!("triage.completed", monday, 10, neighborhood: centro, tier: "alta")
+    triage_fact!("triage.completed", monday, 3, neighborhood: centro, tier: "baixa")
+
+    get "/admin/api/analytics/demand", params: range
+
+    expect(data["triages"]["completed"]).to eq([ hidden, 0 ]) # 13 sairia por 13 − 10
+    expect(data["by_tier"].map { |row| row["total"] }).to eq([ 10, hidden ])
+    expect(data["triages_total"]).to eq("started" => hidden, "completed" => hidden, "aborted" => hidden)
+
+    AnalyticsDailyFact.delete_all
+    triage_fact!("triage.started", monday, 20, neighborhood: centro)
+    triage_fact!("triage.completed", monday, 10, neighborhood: centro, tier: "alta")
+    triage_fact!("triage.completed", monday, 3, neighborhood: batel, tier: "alta")
+
+    get "/admin/api/analytics/demand", params: range
+
+    expect(data["triages"]).to eq("started" => [ 20, 0 ], "completed" => [ 13, 0 ], "aborted" => [ 0, 0 ])
+    expect(data["by_neighborhood"].map { |row| row["total"] }).to eq([ 10, hidden ])
+    expect(data["triages_total"]).to eq("started" => hidden, "completed" => hidden, "aborted" => hidden)
   end
 
   it "chegadas por unidade, pedidos por tipo e motivo (todos, mesmo zerados) e a lista de todas as unidades" do

@@ -21,6 +21,19 @@ module Analytics
       (numerator * 100.0 / denominator).round(1)
     end
 
+    # Total do grupo (contratos §0, decisão de 2026-09-30): total ou taxa
+    # exibidos ao lado das partes que os compõem ficam ocultos se QUALQUER
+    # parte está oculta — senão a parte sairia por subtração. `parts` aceita
+    # contagens cruas e células já montadas (SUPPRESSED).
+    def hidden?(part) = part == SUPPRESSED || Admin::SmallCount.small?(part)
+
+    def group(total, parts) = parts.any? { |part| hidden?(part) } ? SUPPRESSED : cell(total)
+
+    def group_rate(numerator, denominator, parts)
+      value = rate(numerator, denominator)
+      value.nil? || parts.none? { |part| hidden?(part) } ? value : SUPPRESSED
+    end
+
     # Ordenação sem vazar a ordem das contagens pequenas (contratos §1.1).
     def sort_value(value) = value.is_a?(Numeric) ? value : 0
   end

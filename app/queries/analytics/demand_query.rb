@@ -13,13 +13,24 @@ module Analytics
       started = flat(sums("triage.started", filters: TRIAGE))
       completed = flat(sums("triage.completed", filters: TRIAGE))
       aborted = flat(sums("triage.aborted", filters: TRIAGE))
+      tiers = split(sums("triage.completed", keys: [ :tier ], filters: TRIAGE))
+      protocols = split(sums("triage.completed", keys: [ :protocol_name ], filters: TRIAGE))
+      triages = { started: series(started), completed: completed_series(completed, tiers.values + protocols.values),
+                  aborted: series(aborted) }
+      by_tier = keyed_rows(tiers, :tier)
+      by_protocol = keyed_rows(protocols, :protocol_name)
+      by_neighborhood = ordered(neighborhood_rows, name: :name)
+      # Total do grupo: qualquer célula de triages.* ou total de tier,
+      # protocolo ou bairro oculto esconde os três totais do período.
+      parts = triages.values.flatten + (by_tier + by_protocol + by_neighborhood).map { |row| row[:total] }
       {
-        triages: { started: series(started), completed: series(completed), aborted: series(aborted) },
-        triages_total: { started: Suppression.cell(started.values.sum), completed: Suppression.cell(completed.values.sum),
-                         aborted: Suppression.cell(aborted.values.sum) },
-        by_tier: keyed_rows("triage.completed", :tier),
-        by_protocol: keyed_rows("triage.completed", :protocol_name),
-        by_neighborhood: ordered(neighborhood_rows, name: :name),
+        triages: triages,
+        triages_total: { started: Suppression.group(started.values.sum, parts),
+                         completed: Suppression.group(completed.values.sum, parts),
+                         aborted: Suppression.group(aborted.values.sum, parts) },
+        by_tier: by_tier,
+        by_protocol: by_protocol,
+        by_neighborhood: by_neighborhood,
         attendances_by_unit: ordered(unit_rows, name: :name),
         requests_opened: ordered(fixed_rows("request.opened", REQUEST_KINDS, :kind), name: :kind),
         requests_closed: ordered(fixed_rows("request.closed", CLOSED_REASONS, :reason), name: :reason),
@@ -29,9 +40,14 @@ module Analytics
 
     private
 
-    def keyed_rows(metric, column)
-      rows = split(sums(metric, keys: [ column ], filters: TRIAGE)).map { |key, by_period| { column => key, **row(by_period) } }
-      ordered(rows, name: column)
+    def keyed_rows(split_rows, column)
+      ordered(split_rows.map { |key, by_period| { column => key, **row(by_period) } }, name: column)
+    end
+
+    # Célula de período do agregado: oculta se o tier ou o protocolo daquele
+    # período (as partes exibidas na mesma resposta) for oculto.
+    def completed_series(completed, parts)
+      periods.map { |period| Suppression.group(completed.fetch(period, 0), parts.map { |part| part.fetch(period, 0) }) }
     end
 
     def neighborhood_rows

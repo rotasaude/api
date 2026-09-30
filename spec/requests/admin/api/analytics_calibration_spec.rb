@@ -46,6 +46,19 @@ RSpec.describe "GET /admin/api/analytics/calibration", type: :request do
     ])
   end
 
+  it "total do grupo: um desfecho oculto esconde o total e todas as proporções da linha" do
+    outcome!("arbo", 1, "media", "discharged", 20)
+    outcome!("arbo", 1, "media", "referred", 2)
+
+    get "/admin/api/analytics/calibration", params: range
+
+    expect(data["versions"].find { |v| v["protocol_name"] == "arbo" }["rows"]).to eq([
+      { "tier" => "media", "total" => hidden,
+        "outcomes" => { "discharged" => 20, "referred" => hidden, "return" => 0, "left" => 8, "none" => 0 },
+        "shares" => { "discharged" => hidden, "referred" => hidden, "return" => hidden, "left" => hidden, "none" => hidden } }
+    ])
+  end
+
   it "recorta por protocolo e versão" do
     get "/admin/api/analytics/calibration", params: range.merge(protocol_name: "resp", protocol_version: "2")
 

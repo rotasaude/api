@@ -22,11 +22,14 @@ module Analytics
 
     private
 
+    # Total do grupo: um desfecho oculto esconde o total e todas as
+    # proporções da linha (contratos §0).
     def tier_row(tier, by_outcome)
-      total = OUTCOMES.sum { |outcome| by_outcome.fetch(outcome, 0) }
-      { tier: tier, total: Suppression.cell(total),
+      counts = OUTCOMES.map { |outcome| by_outcome.fetch(outcome, 0) }
+      total = counts.sum
+      { tier: tier, total: Suppression.group(total, counts),
         outcomes: OUTCOMES.to_h { |outcome| [ outcome, Suppression.cell(by_outcome.fetch(outcome, 0)) ] },
-        shares: OUTCOMES.to_h { |outcome| [ outcome, Suppression.rate(by_outcome.fetch(outcome, 0), total) ] } }
+        shares: OUTCOMES.to_h { |outcome| [ outcome, Suppression.group_rate(by_outcome.fetch(outcome, 0), total, counts) ] } }
     end
   end
 end

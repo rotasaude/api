@@ -48,6 +48,16 @@ RSpec.describe "GET /admin/api/analytics/epidemiology", type: :request do
     ])
   end
 
+  it "total do grupo: série [10, oculto] esconde o total da opção" do
+    answer!(2, "sintoma", "Dor nas juntas", 10)
+    answer!(2, "sintoma", "Dor nas juntas", 3, day: monday + 8)
+
+    get "/admin/api/analytics/epidemiology", params: range
+
+    option = data["questions"].last["options"].find { |o| o["value"] == "Dor nas juntas" }
+    expect(option).to include("series" => [ 10, hidden ], "total" => hidden)
+  end
+
   it "recorte de versão: só as perguntas marcadas nela, ainda com o texto da mais recente" do
     get "/admin/api/analytics/epidemiology",
         params: range.merge(protocol_name: "triagem-arbovirose", protocol_version: "1")

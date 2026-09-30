@@ -33,7 +33,7 @@ RSpec.describe "GET /admin/api/analytics/quality", type: :request do
       { "bucket" => "120+", "series" => [ 0, 20 ], "total" => 20 }
     ])
     expect(data["wait"]["within_30_pct"]).to eq([ 50.0, hidden ]) # 2ª semana: numerador 3
-    expect(data["wait"]["within_30_pct_total"]).to eq(30.2)       # 13 ÷ 43
+    expect(data["wait"]["within_30_pct_total"]).to eq(hidden)     # 13 ÷ 43, mas a faixa 15-30 é oculta
   end
 
   it "faltas: no_show ÷ (checked_in + no_show); saiu sem atendimento: left ÷ desfechos" do
@@ -49,15 +49,46 @@ RSpec.describe "GET /admin/api/analytics/quality", type: :request do
 
     expect(data["appointments"]).to eq([
       { "status" => "checked_in", "series" => [ 30, 0 ], "total" => 30 },
-      { "status" => "no_show", "series" => [ 10, hidden ], "total" => 12 },
+      { "status" => "no_show", "series" => [ 10, hidden ], "total" => hidden },
       { "status" => "expired", "series" => [ 7, 0 ], "total" => 7 },
       { "status" => "cancelled_by_citizen", "series" => [ 0, 0 ], "total" => 0 }
     ])
     expect(data["no_show_pct"]).to eq([ 25.0, hidden ])
-    expect(data["no_show_pct_total"]).to eq(28.6) # 12 ÷ 42
+    expect(data["no_show_pct_total"]).to eq(hidden) # 12 ÷ 42, mas no_show da 2ª semana é oculto
     expect(data["attendance_outcomes"].map { |r| r["outcome"] }).to eq(%w[discharged referred return left])
     expect(data["left_pct"]).to eq([ 20.0, 0.0 ])
     expect(data["left_pct_total"]).to eq(18.2) # 10 ÷ 55
+  end
+
+  it "total do grupo: a taxa do período e do total com todas as partes visíveis" do
+    unit_fact!("attendance.wait", monday, 10, "0-15")
+    unit_fact!("attendance.wait", monday + 7, 5, "15-30")
+    unit_fact!("attendance.wait", monday + 7, 25, "120+")
+
+    get "/admin/api/analytics/quality", params: range
+
+    expect(data["wait"]["within_30_pct"]).to eq([ 100.0, 16.7 ])
+    expect(data["wait"]["within_30_pct_total"]).to eq(37.5) # 15 ÷ 40
+  end
+
+  it "total do grupo por unidade: taxa oculta quando uma faixa ou desfecho que a compõe é oculto" do
+    unit_fact!("attendance.wait", monday, 20, "0-15")
+    unit_fact!("attendance.wait", monday, 3, "30-60")
+    unit_fact!("attendance.wait", monday, 10, "120+")
+    unit_fact!("attendance.closed", monday, 40, "discharged")
+    unit_fact!("attendance.closed", monday, 10, "left")
+    unit_fact!("attendance.closed", monday, 2, "referred")
+    unit_fact!("appointment.ended", monday, 30, "checked_in")
+    unit_fact!("appointment.ended", monday, 10, "no_show")
+    unit_fact!("appointment.ended", monday, 2, "expired") # fora da taxa de faltas
+
+    get "/admin/api/analytics/quality", params: range
+
+    expect(data["by_unit"]).to eq([
+      { "health_unit_id" => unit.id, "name" => "UBS Centro", "attendances" => 52,
+        "wait_within_30_pct" => hidden, "no_show_pct" => 25.0, "left_pct" => hidden }
+    ])
+    expect(data["left_pct"]).to eq([ hidden, nil ])
   end
 
   it "sem denominador a taxa é nula" do

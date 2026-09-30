@@ -1,6 +1,8 @@
 module Analytics
   # Qualidade operacional (contratos §1.2). Taxa: numerador e denominador
-  # somados no período (ou na unidade) e só então a regra de supressão.
+  # somados no período (ou na unidade) e só então a regra de supressão; e
+  # oculta se qualquer parte (faixa, estado, desfecho) for oculta (total do
+  # grupo, contratos §0). O denominador de cada taxa contém o numerador.
   class QualityQuery < BaseQuery
     UNIT = %i[unit].freeze
     APPOINTMENT_STATUSES = %w[checked_in no_show expired cancelled_by_citizen].freeze
@@ -33,11 +35,17 @@ module Analytics
     private
 
     def rate_series(by_dim, numerator, denominator)
-      periods.map { |period| Suppression.rate(sum_at(by_dim, numerator, period), sum_at(by_dim, denominator, period)) }
+      periods.map do |period|
+        Suppression.group_rate(sum_at(by_dim, numerator, period), sum_at(by_dim, denominator, period),
+                               denominator.map { |dim| by_dim.fetch(dim, {}).fetch(period, 0) })
+      end
     end
 
+    # Partes do total: cada célula da série e o total de cada linha.
     def rate_total(by_dim, numerator, denominator)
-      Suppression.rate(sum_all(by_dim, numerator), sum_all(by_dim, denominator))
+      parts = denominator.flat_map { |dim| periods.map { |period| by_dim.fetch(dim, {}).fetch(period, 0) } } +
+              denominator.map { |dim| sum_all(by_dim, [ dim ]) }
+      Suppression.group_rate(sum_all(by_dim, numerator), sum_all(by_dim, denominator), parts)
     end
 
     def sum_at(by_dim, dims, period) = dims.sum { |dim| by_dim.fetch(dim, {}).fetch(period, 0) }
@@ -54,11 +62,14 @@ module Analytics
       names = unit_names(ids)
       rows = ids.map do |id|
         at = ->(source, dims) { dims.sum { |dim| source.fetch([ id, dim ], 0) } }
-        closed = at.call(outcomes, OUTCOMES)
-        { health_unit_id: id, name: names.fetch(id, id), attendances: Suppression.cell(closed),
-          wait_within_30_pct: Suppression.rate(at.call(wait, WITHIN_30), at.call(wait, AnalyticsDailyFact::WAIT_BUCKETS)),
-          no_show_pct: Suppression.rate(at.call(appointments, %w[no_show]), at.call(appointments, SHOWN)),
-          left_pct: Suppression.rate(at.call(outcomes, %w[left]), closed) }
+        rate = lambda do |source, numerator, denominator|
+          Suppression.group_rate(at.call(source, numerator), at.call(source, denominator),
+                                 denominator.map { |dim| source.fetch([ id, dim ], 0) })
+        end
+        { health_unit_id: id, name: names.fetch(id, id), attendances: Suppression.cell(at.call(outcomes, OUTCOMES)),
+          wait_within_30_pct: rate.call(wait, WITHIN_30, AnalyticsDailyFact::WAIT_BUCKETS),
+          no_show_pct: rate.call(appointments, %w[no_show], SHOWN),
+          left_pct: rate.call(outcomes, %w[left], OUTCOMES) }
       end
       rows.sort_by { |row| [ -Suppression.sort_value(row[:attendances]), row[:name].to_s ] }
     end

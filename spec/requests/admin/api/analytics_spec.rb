@@ -105,13 +105,15 @@ RSpec.describe "Admin::Api analytics: acesso, envelope e parâmetros", type: :re
 
     get "/admin/api/analytics/demand", params: { from: monday.iso8601, to: (monday + 13).iso8601 }
     expect(json.dig("data", "triages", "started")).to eq([ 6, hidden ])
-    expect(json.dig("data", "triages_total", "started")).to eq(9)
+    # Total do grupo (contratos §0): 9 ao lado do 3 oculto o devolveria por subtração.
+    expect(json.dig("data", "triages_total", "started")).to eq(hidden)
 
     month = (today << 3).beginning_of_month
     fact!(metric: "triage.completed", day: month + 1, value: 3, tier: "alta", protocol_name: "resp", protocol_version: 1)
     fact!(metric: "triage.completed", day: month + 20, value: 3, tier: "alta", protocol_name: "resp", protocol_version: 1)
     get "/admin/api/analytics/demand", params: { from: month.iso8601, to: (month + 27).iso8601, granularity: "month" }
     expect(json.dig("data", "triages", "completed")).to eq([ 6 ])
+    expect(json.dig("data", "triages_total", "completed")).to eq(6)
     get "/admin/api/analytics/demand", params: { from: month.iso8601, to: (month + 27).iso8601 }
     expect(json.dig("data", "triages", "completed")).to all(eq(0).or(eq(hidden)))
   end
