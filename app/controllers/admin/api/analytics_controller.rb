@@ -8,7 +8,8 @@ class Admin::Api::AnalyticsController < Admin::Api::BaseController
   ROLES = %w[analyst municipal_admin].freeze
   QUERIES = {
     "demand" => "Analytics::DemandQuery",
-    "quality" => "Analytics::QualityQuery"
+    "quality" => "Analytics::QualityQuery",
+    "calibration" => "Analytics::CalibrationQuery"
   }.freeze
 
   # Zero ações para sessão de grant (a base libera todas).
