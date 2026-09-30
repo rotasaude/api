@@ -86,6 +86,27 @@ RSpec.describe Analytics::Publish do
     expect(published.map(&:first)).to include("triages_started")
   end
 
+  it "falha no insert: a transação da plataforma desfaz o delete e as linhas antigas ficam" do
+    old = CityAnalyticsIndicator.create!(city: city_record, week_start: monday, indicator: "triages_started", value: 40,
+                                         suppressed: false, published_at: 2.days.ago)
+    allow(CityAnalyticsIndicator).to receive(:insert_all!).and_raise(ActiveRecord::StatementInvalid, "PG::Error: boom")
+
+    expect { described_class.call(from: monday, to: monday + 6) }.to raise_error(ActiveRecord::StatementInvalid)
+
+    expect(CityAnalyticsIndicator.where(city_id: city_record.id).pluck(:id)).to eq([ old.id ])
+    expect(old.reload.value.to_i).to eq(40)
+  end
+
+  # Suppression.rate: numerador 0 é visível, mas o denominador de 1 a 4
+  # devolveria a contagem pequena (0 % de 3 faltas = 3 comparecimentos).
+  it "taxa com denominador de 1 a 4 sai suprimida, mesmo com numerador 0" do
+    fact!(metric: "appointment.ended", day: monday + 1, value: 3, dim: "checked_in")
+
+    described_class.call(from: monday, to: monday + 6)
+
+    expect(published).to include([ "no_show_pct", nil, true ])
+  end
+
   it "purga só os indicadores da cidade com mais de 5 anos" do
     old_week = (Time.zone.today - 5.years - 7).beginning_of_week
     kept_week = (Time.zone.today - 5.years + 7).beginning_of_week

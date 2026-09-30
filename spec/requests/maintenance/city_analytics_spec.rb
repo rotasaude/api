@@ -77,6 +77,37 @@ RSpec.describe "Maintenance city analytics", type: :request do
     expect(json["errors"].first.dig("extensions", "code")).to eq("INVALID_RANGE")
   end
 
+  it "analyticsIndicators com exatamente 104 semanas: aceito" do
+    CityAnalyticsIndicator.create!(city: city, week_start: monday - 7 * 103, indicator: "triages_started", value: 12,
+                                   suppressed: false, published_at: Time.current)
+
+    gql!(indicators_query, slug: city.slug, from: (monday - 7 * 103).iso8601, to: monday.iso8601)
+
+    expect(json["errors"]).to be_nil
+    expect(json.dig("data", "city", "analyticsIndicators")).to eq([
+      { "weekStart" => (monday - 7 * 103).iso8601, "indicator" => "triages_started", "value" => 12.0, "suppressed" => false }
+    ])
+  end
+
+  # Run.describe guarda classe + primeira linha: a linha DETAIL do PostgreSQL
+  # traria o valor da linha que falhou (aqui, um CPF de mentira).
+  it "analyticsStatus de um run failed: lastError só com a primeira linha, sem DETAIL nem CPF, e stale" do
+    message = "ERROR:  duplicate key value violates unique constraint \"index_citizens_on_cpf\"\n" \
+              "DETAIL:  Key (cpf)=(123.456.789-09) already exists."
+    allow(Analytics::Consolidate).to receive(:call).and_raise(ActiveRecord::RecordNotUnique, message)
+    expect(scheduled_run!.status).to eq("failed")
+
+    gql!('query($slug: String!) { city(slug: $slug) { analyticsStatus { lastRunStatus lastError stale } } }',
+         slug: city.slug)
+
+    expect(json["errors"]).to be_nil
+    expect(json.dig("data", "city", "analyticsStatus")).to eq(
+      "lastRunStatus" => "failed", "stale" => true,
+      "lastError" => "ActiveRecord::RecordNotUnique: ERROR:  duplicate key value violates unique constraint " \
+                     "\"index_citizens_on_cpf\""
+    )
+  end
+
   it "analyticsStatus: estado do pipeline lido de analytics_runs da cidade" do
     run = consolidated_run!(finished_at: 2.hours.ago)
 

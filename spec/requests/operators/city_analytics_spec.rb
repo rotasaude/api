@@ -78,6 +78,16 @@ RSpec.describe "GET /city_analytics (console do operador)", type: :request do
     end
   end
 
+  it "exatamente 104 semanas: aceito" do
+    verified_login!
+
+    get "/city_analytics", params: { from: (last_week - 7 * 103).iso8601, to: last_week.iso8601 }
+
+    expect(response).to have_http_status(:ok)
+    expect(json["data"]["weeks"].size).to eq(104)
+    expect(json["data"]["weeks"].values_at(0, -1)).to eq([ (last_week - 7 * 103).iso8601, last_week.iso8601 ])
+  end
+
   it "sem sessão de operador: 401; no host de uma cidade: 404" do
     get "/city_analytics"
     expect(response).to have_http_status(:unauthorized)
