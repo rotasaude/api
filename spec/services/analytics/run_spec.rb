@@ -92,6 +92,44 @@ RSpec.describe Analytics::Run do
     expect(AnalyticsDailyFact.where(day: today - 2)).to exist
   end
 
+  it "consolidação com erro de unicidade: nunca expõe CPF nem DETAIL do PostgreSQL" do
+    a_triage!(day: today - 3)
+    message = "ERROR:  duplicate key value violates unique constraint \"index_citizens_on_cpf\"\nDETAIL:  Key (cpf)=(123.456.789-09) already exists."
+    allow(Analytics::Consolidate::Quality).to receive(:call).and_raise(ActiveRecord::RecordNotUnique, message)
+
+    run = scheduled_run!
+
+    expect(run.reload).to have_attributes(status: "failed")
+    expect(run.error).to match(/^ActiveRecord::RecordNotUnique: ERROR:.*index_citizens_on_cpf/)
+    expect(run.error).not_to include("123.456.789-09")
+    expect(run.error).not_to include("DETAIL")
+  end
+
+  it "falha de publicação com erro de unicidade: error começa com 'publish:' e exclui CPF" do
+    a_triage!(day: today - 2)
+    message = "ERROR:  duplicate key value violates unique constraint \"some_idx\"\nDETAIL:  Key (cpf)=(999.999.999-99) already exists."
+    allow(Analytics::Publish).to receive(:call).and_raise(ActiveRecord::RecordNotUnique, message)
+
+    run = scheduled_run!
+
+    expect(run.reload).to have_attributes(status: "succeeded")
+    expect(run.error).to start_with("publish: ActiveRecord::RecordNotUnique: ERROR:")
+    expect(run.error).not_to include("999.999.999-99")
+    expect(run.error).not_to include("DETAIL")
+  end
+
+  it "erro com primeira linha maior que 500 chars: armazenado truncado" do
+    a_triage!(day: today - 3)
+    long_first_line = "x" * 600 + "\nDETAIL: secret"
+    allow(Analytics::Consolidate::Quality).to receive(:call).and_raise(RuntimeError, long_first_line)
+
+    run = scheduled_run!
+
+    expect(run.reload).to have_attributes(status: "failed")
+    expect(run.error.length).to be <= 500
+    expect(run.error).not_to include("DETAIL")
+  end
+
   it "purga fatos com mais de 5 anos e runs com mais de 90 dias, guardando o último succeeded" do
     old = fact!(metric: "triage.started", day: today - 5.years - 1, value: 9)
     edge = fact!(metric: "triage.started", day: today - 5.years, value: 9)
