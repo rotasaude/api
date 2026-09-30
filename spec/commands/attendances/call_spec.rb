@@ -30,6 +30,23 @@ RSpec.describe Attendances::Call do
     expect(a.reload.called_by_user_id).to eq(doctor.id)
   end
 
+  it "atendimento encerrado (por desfecho ou saída): already_called, nada muda" do
+    link_professional!(doctor, unit)
+    left = waiting_attendance(citizen, unit: unit, by: reception)
+    Attendances::Close.call(attendance: left, outcome: "left", referral_unit_id: nil, referral_note: nil, by: reception)
+    discharged = in_care!(waiting_attendance(Citizen.create!(cpf: "11144477735", phone: "+5541911112222"), unit: unit,
+                                             by: reception), by: doctor)
+    Attendances::Close.call(attendance: discharged, outcome: "discharged", referral_unit_id: nil, referral_note: nil,
+                            by: doctor)
+
+    [ left, discharged ].each do |a|
+      before = a.reload.attributes
+      expect(described_class.call(attendance: a, health_unit_id: unit.id, by: doctor).reason).to eq(:already_called)
+      expect(a.reload.attributes).to eq(before)
+    end
+    expect(DomainEvent.where(name: "attendance.called").count).to eq(0)
+  end
+
   it "atendimento de outra unidade: wrong_unit" do
     a = waiting_attendance(citizen, unit: unit, by: reception)
     expect(described_class.call(attendance: a, health_unit_id: other_unit.id, by: doctor).reason).to eq(:wrong_unit)

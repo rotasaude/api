@@ -51,7 +51,11 @@ RSpec.describe Attendances::CallNext, "concorrência" do
 
   after do
     3.times { release << true }
-    threads.each { |t| t.join(5) || t.kill }
+    threads.each do |t|
+      t.join(5) || t.kill
+    rescue StandardError
+      nil # join relança a exceção da thread; o exemplo já falhou e a limpeza precisa rodar
+    end
     rows = ids.fetch(:rows, [])
     CityConnection.with(TEST_CITY_A) do
       ApplicationRecord.transaction do
@@ -141,5 +145,42 @@ RSpec.describe Attendances::CallNext, "concorrência" do
     release << true
     expect(locker.join(5)).to be(locker)
     expect(status_of(attendance_ids[0])).to eq("waiting")
+  end
+  it "dois profissionais chamando o MESMO atendimento: o segundo espera o lock e recebe already_called" do
+    holding = Queue.new
+    holder = nil
+    original = DomainEvents.method(:publish)
+    allow(DomainEvents).to receive(:publish) do |*args, **kwargs, &blk|
+      result = original.call(*args, **kwargs, &blk)
+      if Thread.current == holder && args.first == "attendance.called"
+        holding << true
+        release.pop(timeout: 10) or raise "timeout esperando release"
+      end
+      result
+    end
+    call_one = lambda do |user_key|
+      CityConnection.with(TEST_CITY_A) do
+        Current.set(city: TEST_CITY_A) do
+          Attendances::Call.call(attendance: Attendance.find(attendance_ids[0]), health_unit_id: ids[:unit],
+                                 by: User.find(ids[user_key]))
+        end
+      end
+    end
+
+    first_result = Queue.new
+    threads << (holder = Thread.new { first_result << call_one.call(:doctor) })
+    holding.pop(timeout: 5) or raise "o primeiro não travou o atendimento"
+
+    second_result = Queue.new
+    threads << second = Thread.new { second_result << call_one.call(:doc_user) }
+    expect(wait_for_lock_wait).to be(true) # o segundo espera o FOR UPDATE do primeiro
+
+    release << true
+    expect(holder.join(5)).to be(holder)
+    expect(second.join(5)).to be(second)
+    expect(first_result.pop(timeout: 1)).to be_ok
+    expect(second_result.pop(timeout: 1).reason).to eq(:already_called)
+    called_by = CityConnection.with(TEST_CITY_A) { Attendance.find(attendance_ids[0]).called_by_user_id }
+    expect(called_by).to eq(ids[:doctor])
   end
 end
