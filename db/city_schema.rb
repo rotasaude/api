@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_100001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_200001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -26,6 +26,41 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_100001) do
     t.datetime "updated_at", null: false
     t.index ["escalation_order"], name: "index_alert_recipients_on_escalation_order"
     t.check_constraint "channel::text = ANY (ARRAY['whatsapp'::character varying::text, 'email'::character varying::text])", name: "ck_alert_recipients_channel"
+  end
+
+  create_table "analytics_daily_facts", force: :cascade do |t|
+    t.datetime "consolidated_at", null: false
+    t.date "day", null: false
+    t.string "dim", default: "", null: false
+    t.uuid "health_unit_id"
+    t.string "metric", null: false
+    t.uuid "neighborhood_id"
+    t.string "protocol_name"
+    t.integer "protocol_version"
+    t.string "question_id"
+    t.string "tier"
+    t.integer "value", null: false
+    t.index ["day", "metric", "health_unit_id", "neighborhood_id", "protocol_name", "protocol_version", "tier", "question_id", "dim"], name: "idx_analytics_facts_cell", unique: true, nulls_not_distinct: true
+    t.index ["metric", "day"], name: "idx_analytics_facts_metric_day"
+    t.index ["metric", "health_unit_id", "day"], name: "idx_analytics_facts_metric_unit_day"
+    t.index ["metric", "neighborhood_id", "day"], name: "idx_analytics_facts_metric_neighborhood_day"
+    t.check_constraint "metric::text = ANY (ARRAY['triage.started', 'triage.completed', 'triage.aborted', 'attendance.checked_in', 'attendance.closed', 'attendance.wait', 'appointment.ended', 'request.opened', 'request.closed', 'calibration.outcome', 'epi.answer']::text[])", name: "ck_analytics_facts_metric"
+    t.check_constraint "value >= 1", name: "ck_analytics_facts_value"
+  end
+
+  create_table "analytics_runs", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "error", limit: 500
+    t.datetime "finished_at"
+    t.string "kind", null: false
+    t.datetime "published_at"
+    t.datetime "started_at", null: false
+    t.string "status", null: false
+    t.date "window_from", null: false
+    t.date "window_to", null: false
+    t.index ["started_at"], name: "idx_analytics_runs_started_at"
+    t.check_constraint "kind::text = ANY (ARRAY['scheduled', 'rebuild']::text[])", name: "ck_analytics_runs_kind"
+    t.check_constraint "status::text = ANY (ARRAY['running', 'succeeded', 'failed']::text[])", name: "ck_analytics_runs_status"
+    t.check_constraint "window_from <= window_to", name: "ck_analytics_runs_window"
   end
 
   create_table "appointment_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -380,7 +415,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_100001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['campaign_manager'::text, 'citizen_verifier'::text, 'health_professional'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'campaign_manager'::text, 'citizen_verifier'::text, 'health_professional'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "neighborhood_coverages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
