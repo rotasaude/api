@@ -13,6 +13,7 @@ module Attendances
       return Result.fail(:invalid_unit) unless unit
 
       citizens = Citizen.where(cpf: digits)
+      appointment = triage = nil
 
       if appointment_id
         appointment = Appointment.where(citizen_id: citizens.select(:id)).find_by(id: appointment_id)
@@ -45,8 +46,8 @@ module Attendances
         CheckIn.publish(attendance)
       end
       Result.ok(attendance: attendance)
-    rescue ActiveRecord::RecordNotUnique
-      Result.fail(:triage_not_eligible)
+    rescue ActiveRecord::RecordNotUnique => e
+      CheckIn.already_checked_in(e, triage_id: triage&.id, appointment_id: appointment&.id)
     rescue CheckIn::AppointmentNotEligible
       Result.fail(:appointment_not_eligible)
     rescue HealthUnit::Inactive

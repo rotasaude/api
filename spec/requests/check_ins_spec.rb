@@ -143,6 +143,21 @@ RSpec.describe "Check-ins", type: :request do
     expect(citizen.reload).to be_verification_level_declared
   end
 
+  it "exceção que perde a corrida do INSERT: 409 already_checked_in com unit_name e checked_in_at, como o código" do
+    triage = completed_web_triage_for(citizen)
+    other_unit = create_unit("UPA Norte", kind: "upa")
+    Attendance.create!(triage: triage, citizen: citizen, health_unit: other_unit, checked_in_by_user: verifier,
+                       checked_in_at: Time.current, check_in_method: "code")
+    allow(Attendances::CheckInEligibility).to receive(:eligible_for).and_return(Triage.where(id: triage.id))
+    sign_in_as(verifier)
+
+    json_post "/attendance/check_ins/exception", cpf: citizen.cpf, triage_id: triage.id, health_unit_id: unit.id,
+                                                 reason: "cidadão sem celular"
+    expect(response).to have_http_status(:conflict)
+    expect(body).to include("error" => "already_checked_in", "unit_name" => other_unit.name)
+    expect(body["checked_in_at"]).to be_present
+  end
+
   it "lookup com código de horário: appointment com scheduled_at, kind e priority, triage nulo" do
     link_professional!(doctor, unit)
     a = in_care!(waiting_attendance(citizen, unit: unit, by: verifier), by: verifier)

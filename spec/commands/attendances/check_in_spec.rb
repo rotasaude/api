@@ -64,4 +64,43 @@ RSpec.describe Attendances::CheckIn do
     expect(check_in(c).reason).to eq(:invalid_unit)
     expect(Attendance.count).to eq(0)
   end
+  describe "corrida no INSERT (RecordNotUnique)" do
+    let(:other_unit) { create_unit("UPA Norte", kind: "upa") }
+
+    it "outro check-in da mesma triagem commitou entre a checagem e o INSERT: already_checked_in com unidade e hora, código intacto" do
+      c = code
+      earlier = Attendance.create!(triage: triage, citizen: citizen, health_unit: other_unit, checked_in_by_user: staff,
+                                   checked_in_at: 2.minutes.ago, check_in_method: "code")
+      # A checagem sem lock ainda não via o atendimento da outra recepção.
+      allow(Attendances::CheckInEligibility).to receive(:check).and_return(:ok)
+
+      result = check_in(c)
+      expect(result.reason).to eq(:already_checked_in)
+      expect(result.details).to eq(unit_name: other_unit.name, checked_in_at: earlier.reload.checked_in_at)
+      expect(CitizenVerificationCode.where(consumed_at: nil).count).to eq(1)
+      expect(Attendance.count).to eq(1)
+    end
+
+    it "outro atendente validou o cadastro no mesmo instante: o check-in segue, sem validar de novo" do
+      c = code
+      other_staff = User.create!(email_address: "outra@cidade.gov.br", password: "senha-segura-123")
+      Citizens::Verify.record!(citizen: citizen, by: other_staff)
+      # A leitura sem lock ainda não via a validação da outra recepção.
+      allow_any_instance_of(Citizen).to receive(:active_verification).and_return(nil)
+
+      result = check_in(c, checked: true)
+      expect(result).to be_ok
+      expect(result.payload[:verified]).to be(false)
+      expect(result.payload[:attendance]).to have_attributes(triage_id: triage.id, status: "waiting")
+      expect(CitizenVerification.where(citizen: citizen).sole.verified_by_user_id).to eq(other_staff.id)
+    end
+
+    it "outra violação de unicidade não vira already_checked_in" do
+      c = code
+      allow(Attendance).to receive(:create!)
+        .and_raise(ActiveRecord::RecordNotUnique, 'PG::UniqueViolation: ERROR:  duplicate key value violates unique constraint "idx_qualquer_outro"')
+
+      expect { check_in(c) }.to raise_error(ActiveRecord::RecordNotUnique, /idx_qualquer_outro/)
+    end
+  end
 end

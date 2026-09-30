@@ -7,11 +7,16 @@ module Attendances
     # (ex.: o cidadão cancelou): o check-in inteiro desfaz.
     class AppointmentNotEligible < StandardError; end
 
+    # Só a violação destes índices é "outro check-in chegou antes" (corrida
+    # entre a checagem sem lock e o INSERT). Qualquer outra sobe.
+    ORIGIN_INDEXES = %w[index_attendances_on_triage_id index_attendances_on_appointment_id].freeze
+
     def self.call(cpf:, code:, health_unit_id:, document_checked:, by:)
       unit = HealthUnit.active_units.find_by(id: health_unit_id)
       return Result.fail(:invalid_unit) unless unit
 
       result = nil
+      triage = appointment = nil
       ApplicationRecord.transaction do
         HealthUnit.lock_active!(unit.id)
         match = Citizens::VerificationCodeMatch.call(cpf: cpf, code: code, lock: true, purpose: "check_in")
@@ -29,11 +34,7 @@ module Attendances
         end
 
         match.payload[:verification_code].update!(consumed_at: Time.current)
-        verified = false
-        if document_checked == true && citizen.active_verification.nil?
-          Citizens::Verify.record!(citizen: citizen, by: by)
-          verified = true
-        end
+        verified = document_checked == true && citizen.active_verification.nil? && verify_once(citizen, by)
         attendance = Attendance.create!(triage: triage, appointment: appointment, citizen: citizen, health_unit: unit,
                                         checked_in_by_user: by, checked_in_at: Time.current, check_in_method: "code")
         fulfil(appointment, health_unit_id: unit.id) if appointment
@@ -41,12 +42,44 @@ module Attendances
         result = Result.ok(attendance: attendance, verified: verified)
       end
       result
-    rescue ActiveRecord::RecordNotUnique
-      Result.fail(:already_checked_in)
+    rescue ActiveRecord::RecordNotUnique => e
+      already_checked_in(e, triage_id: triage&.id, appointment_id: appointment&.id)
     rescue AppointmentNotEligible
       Result.fail(:appointment_not_eligible)
     rescue HealthUnit::Inactive
       Result.fail(:invalid_unit)
+    end
+
+    # Outro atendente validou o mesmo cadastro no mesmo instante (índice
+    # idx_citizen_verifications_one_active): o cadastro ficou validado por ele,
+    # e o check-in segue sem validar de novo. O savepoint mantém a transação
+    # do check-in viva.
+    def self.verify_once(citizen, by)
+      ApplicationRecord.transaction(requires_new: true) { Citizens::Verify.record!(citizen: citizen, by: by) }
+      true
+    rescue ActiveRecord::RecordNotUnique => e
+      raise unless constraint_name(e) == "idx_citizen_verifications_one_active"
+
+      false
+    end
+
+    # Corrida no INSERT (a transação já desfez): responde como o caminho sem
+    # corrida, com a unidade e a hora do check-in que chegou antes.
+    def self.already_checked_in(error, triage_id:, appointment_id:)
+      raise error unless ORIGIN_INDEXES.include?(constraint_name(error))
+
+      existing = (triage_id && Attendance.find_by(triage_id: triage_id)) ||
+                 (appointment_id && Attendance.find_by(appointment_id: appointment_id))
+      return Result.fail(:already_checked_in) unless existing
+
+      Result.fail(:already_checked_in, details: { unit_name: existing.health_unit.name,
+                                                  checked_in_at: existing.checked_in_at })
+    end
+
+    def self.constraint_name(error)
+      pg = error.cause
+      name = pg.result&.error_field(PG::Result::PG_DIAG_CONSTRAINT_NAME) if pg.respond_to?(:result)
+      name || error.message[/unique constraint "([^"]+)"/, 1]
     end
 
     # O horário virou atendimento: fecha o horário e o pedido (ADR 0019).

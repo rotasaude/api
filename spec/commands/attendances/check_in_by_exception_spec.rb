@@ -50,4 +50,49 @@ RSpec.describe Attendances::CheckInByException do
     expect(call(triage_id: t.id).reason).to eq(:invalid_unit)
     expect(Attendance.count).to eq(0)
   end
+
+  describe "corrida no INSERT: responde como o caminho do código (already_checked_in com unidade e hora)" do
+    let(:other_unit) { create_unit("UPA Norte", kind: "upa") }
+
+    it "triagem: outro check-in commitou entre a busca e o INSERT" do
+      t = completed_web_triage_for(citizen)
+      earlier = Attendance.create!(triage: t, citizen: citizen, health_unit: other_unit, checked_in_by_user: staff,
+                                   checked_in_at: 2.minutes.ago, check_in_method: "code")
+      # A busca sem lock ainda não via o atendimento da outra recepção.
+      allow(Attendances::CheckInEligibility).to receive(:eligible_for).and_return(Triage.where(id: t.id))
+
+      result = call(triage_id: t.id)
+      expect(result.reason).to eq(:already_checked_in)
+      expect(result.details).to eq(unit_name: other_unit.name, checked_in_at: earlier.reload.checked_in_at)
+      expect(Attendance.count).to eq(1)
+    end
+
+    it "horário: outro check-in commitou entre a checagem e o INSERT" do
+      doctor = staff_with("medica@cidade.gov.br", "health_professional")
+      link_professional!(doctor, unit)
+      first = in_care!(waiting_attendance(citizen, unit: unit, by: staff), by: doctor)
+      req = Attendances::Close.call(attendance: first, outcome: "return", referral_unit_id: nil, referral_note: nil,
+                                    by: doctor).payload.fetch(:appointment_request)
+      appt = Appointments::Schedule.call(request: req, scheduled_at: 1.hour.from_now.iso8601, health_unit_id: unit.id,
+                                         by: staff).payload.fetch(:appointment)
+      reason = "cidadão sem celular"
+      earlier = described_class.call(cpf: citizen.cpf, appointment_id: appt.id, health_unit_id: unit.id, reason: reason,
+                                     by: staff).payload.fetch(:attendance)
+      allow(Attendances::AppointmentCheckInEligibility).to receive(:check).and_return(:ok)
+
+      result = described_class.call(cpf: citizen.cpf, appointment_id: appt.id, health_unit_id: unit.id, reason: reason,
+                                    by: staff)
+      expect(result.reason).to eq(:already_checked_in)
+      expect(result.details).to eq(unit_name: unit.name, checked_in_at: earlier.reload.checked_in_at)
+      expect(Attendance.where(appointment_id: appt.id).count).to eq(1)
+    end
+
+    it "outra violação de unicidade não vira already_checked_in" do
+      t = completed_web_triage_for(citizen)
+      allow(Attendance).to receive(:create!)
+        .and_raise(ActiveRecord::RecordNotUnique, 'PG::UniqueViolation: ERROR:  duplicate key value violates unique constraint "idx_qualquer_outro"')
+
+      expect { call(triage_id: t.id) }.to raise_error(ActiveRecord::RecordNotUnique, /idx_qualquer_outro/)
+    end
+  end
 end
