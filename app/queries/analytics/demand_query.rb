@@ -20,14 +20,16 @@ module Analytics
       by_tier = keyed_rows(tiers, :tier)
       by_protocol = keyed_rows(protocols, :protocol_name)
       by_neighborhood = ordered(neighborhood_rows, name: :name)
-      # Total do grupo: qualquer célula de triages.* ou total de tier,
-      # protocolo ou bairro oculto esconde os três totais do período.
-      parts = triages.values.flatten + (by_tier + by_protocol + by_neighborhood).map { |row| row[:total] }
+      # Total do grupo: cada total olha só as próprias partes. started e aborted,
+      # as células da própria série; completed, também os totais de tier,
+      # protocolo e bairro (só recortam triagens concluídas).
+      breakdown = (by_tier + by_protocol + by_neighborhood).map { |row| row[:total] }
+      completed_parts = triages[:completed] + breakdown
       {
         triages: triages,
-        triages_total: { started: Suppression.group(started.values.sum, parts),
-                         completed: Suppression.group(completed.values.sum, parts),
-                         aborted: Suppression.group(aborted.values.sum, parts) },
+        triages_total: { started: Suppression.group(started.values.sum, triages[:started]),
+                         completed: Suppression.group(completed.values.sum, completed_parts),
+                         aborted: Suppression.group(aborted.values.sum, triages[:aborted]) },
         by_tier: by_tier,
         by_protocol: by_protocol,
         by_neighborhood: by_neighborhood,

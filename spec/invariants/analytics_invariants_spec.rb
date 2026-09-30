@@ -160,9 +160,11 @@ RSpec.describe "Invariantes do Analytics (ADR 0025)", type: :request do
           data["periods"].each_index do |i|
             check.call("triages.completed[p]: #{where} #{i}", column.call(parts, i), data["triages"]["completed"][i])
           end
-          totals = data["triages"].values.flatten +
-                   (data["by_tier"] + data["by_protocol"] + data["by_neighborhood"]).map { |row| row["total"] }
-          check.call("triages_total: #{where}", totals, *data["triages_total"].values)
+          breakdown = (data["by_tier"] + data["by_protocol"] + data["by_neighborhood"]).map { |row| row["total"] }
+          triages_total = data["triages_total"]
+          check.call("triages_total: #{where}", data["triages"]["started"], triages_total["started"])
+          check.call("triages_total: #{where}", data["triages"]["aborted"], triages_total["aborted"])
+          check.call("triages_total: #{where}", data["triages"]["completed"] + breakdown, triages_total["completed"])
         when "quality"
           rates = [ [ data["wait"]["buckets"], data["wait"]["within_30_pct"], data["wait"]["within_30_pct_total"] ],
                     [ data["appointments"].select { |row| %w[checked_in no_show].include?(row["status"]) },
