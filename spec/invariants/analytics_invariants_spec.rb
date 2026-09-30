@@ -29,6 +29,25 @@ RSpec.describe "Invariantes do Analytics (ADR 0025)", type: :request do
     end
   end
 
+  # Caminhos das células { suppressed: true } — prova que a varredura passou
+  # pelas células pequenas (e não só achou [] por falta delas).
+  LABELS = %w[name kind reason bucket status outcome tier value question_id protocol_name].freeze
+
+  def hidden_paths(node, path = "", acc = [])
+    case node
+    when Hash
+      return acc << path if node == { "suppressed" => true }
+
+      node.each { |key, value| hidden_paths(value, "#{path}.#{key}", acc) }
+    when Array
+      node.each_with_index do |value, i|
+        label = value.is_a?(Hash) && LABELS.map { |key| value[key] }.compact.first
+        hidden_paths(value, "#{path}[#{label || i}]", acc)
+      end
+    end
+    acc
+  end
+
   def operator!
     Operator.create!(email_address: "op-#{SecureRandom.hex(3)}@rotasaude.app", password: operator_password,
                      otp_secret: ROTP::Base32.random, otp_enabled: true)
@@ -64,21 +83,51 @@ RSpec.describe "Invariantes do Analytics (ADR 0025)", type: :request do
         .each { |metric, dim| fact!(metric: metric, day: day, value: small, health_unit_id: unit.id, dim: dim) }
     end
     fact!(metric: "triage.started", day: monday - 7, value: 2, protocol_name: "arbo", protocol_version: 1)
+    # Varredura forte (verificação de 2026-09-30): por frente, uma linha ou
+    # célula de cada lista cuja SOMA no período e no recorte fica em 1..4 —
+    # fatos de um dia só, em chaves que a grade acima não usa.
+    # Mutação: em Analytics::QualityQuery#by_unit, `attendances: at.call(outcomes, OUTCOMES)` sem o
+    # Suppression.cell; ou, em DemandQuery#fixed_rows / #unit_rows, trocar `**row(...)` por
+    # `series: ..., total: by_period.values.sum`; ou, em CalibrationQuery#tier_row, `outcomes` sem cell.
+    vila = Neighborhood.create!(name: "Vila Pequena", source: "manual")
+    tiny = create_unit("UBS Pequena")
+    day = monday + 3
+    arbo = { protocol_name: "arbo", protocol_version: 1 }
+    fact!(metric: "triage.completed", day: day, value: 2, neighborhood_id: vila.id, tier: "media", **arbo)
+    fact!(metric: "triage.completed", day: day, value: 3, neighborhood_id: centro.id, tier: "alta",
+          protocol_name: "resp", protocol_version: 1)
+    fact!(metric: "calibration.outcome", day: day, value: 2, tier: "baixa", dim: "referred", **arbo)
+    fact!(metric: "epi.answer", day: day, value: 3, neighborhood_id: centro.id, question_id: "sintoma", dim: "Manchas", **arbo)
+    [ %w[attendance.closed referred], %w[attendance.closed return], %w[attendance.wait 30-60], %w[attendance.wait 120+],
+      %w[appointment.ended expired], %w[appointment.ended checked_in], %w[request.opened referral],
+      %w[request.closed fulfilled], %w[request.closed dismissed], %w[attendance.checked_in code] ]
+      .each_with_index { |(metric, dim), i| fact!(metric: metric, day: day, value: (i % 4) + 1, health_unit_id: tiny.id, dim: dim) }
     consolidated_run!
     sign_in_as(staff_with("analise@cidade.gov.br", "analyst"))
 
     found = []
+    hidden = []
     base = { from: (monday - 7).iso8601, to: (monday + 13).iso8601 }
-    filters = [ {}, { neighborhood_id: centro.id }, { neighborhood_id: "none" }, { health_unit_id: unit.id },
-                { protocol_name: "arbo", protocol_version: "1" } ]
+    filters = [ {}, { neighborhood_id: centro.id }, { neighborhood_id: "none" }, { neighborhood_id: vila.id },
+                { health_unit_id: unit.id }, { health_unit_id: tiny.id }, { protocol_name: "arbo", protocol_version: "1" } ]
     [ {}, { granularity: "month" } ].product(filters).each do |granularity, filter|
       %w[demand quality calibration epidemiology].each do |front|
         get "/admin/api/analytics/#{front}", params: base.merge(granularity).merge(filter)
         expect(response).to have_http_status(:ok), "#{front} #{granularity} #{filter}: #{response.body}"
         counts_in(json["data"]) { |n| found << [ front, granularity, filter, n ] if (1..4).cover?(n) }
+        hidden.concat(hidden_paths(json["data"]).map { |path| "#{front}#{path}" }) if granularity.empty? && filter.empty?
       end
     end
     expect(found).to be_empty
+    expect(hidden).to include(
+      "demand.by_tier[media].total", "demand.by_protocol[resp].total", "demand.by_neighborhood[Vila Pequena].total",
+      "demand.attendances_by_unit[UBS Pequena].total", "demand.requests_opened[referral].total",
+      "demand.requests_closed[fulfilled].total", "demand.requests_closed[dismissed].total",
+      "quality.wait.buckets[30-60].total", "quality.wait.buckets[120+].total", "quality.appointments[expired].total",
+      "quality.attendance_outcomes[referred].total", "quality.attendance_outcomes[return].total",
+      "quality.by_unit[UBS Pequena].attendances", "calibration.versions[arbo].rows[baixa].outcomes.referred",
+      "epidemiology.questions[sintoma].options[Manchas].total"
+    )
 
     Analytics::Publish.call(from: monday - 7, to: monday + 13)
     rows = CityAnalyticsIndicator.where(city_id: city_record.id)
@@ -174,6 +223,16 @@ RSpec.describe "Invariantes do Analytics (ADR 0025)", type: :request do
             data["periods"].each_index { |i| check.call("rate[p]: #{where} #{i}", column.call(rows, i), series[i]) }
             check.call("rate_total: #{where}", rows.flat_map { |row| row["series"] + [ row["total"] ] }, total)
           end
+          # by_unit: com o recorte da unidade, as linhas de faixa, estado e
+          # desfecho da resposta SÃO as partes da taxa daquela unidade.
+          if filter[:health_unit_id]
+            row = data["by_unit"].find { |entry| entry["health_unit_id"] == filter[:health_unit_id] }
+            totals = ->(rows) { rows.map { |entry| entry["total"] } }
+            check.call("by_unit_rate: #{where} wait", totals.call(data["wait"]["buckets"]), row["wait_within_30_pct"])
+            check.call("by_unit_rate: #{where} no_show", totals.call(rates[1][0]), row["no_show_pct"])
+            check.call("by_unit_rate: #{where} left", totals.call(data["attendance_outcomes"]), row["left_pct"])
+            check.call("by_unit_attendances: #{where}", totals.call(data["attendance_outcomes"]), row["attendances"])
+          end
         when "calibration"
           data["versions"].flat_map { |version| version["rows"] }.each do |row|
             check.call("calibration: #{where} #{row['tier']}", row["outcomes"].values, row["total"], *row["shares"].values)
@@ -183,7 +242,8 @@ RSpec.describe "Invariantes do Analytics (ADR 0025)", type: :request do
     end
 
     expect(violations).to be_empty
-    expect(exercised.keys).to include("row", "triages.completed[p]", "triages_total", "rate[p]", "rate_total", "calibration")
+    expect(exercised.keys).to include("row", "triages.completed[p]", "triages_total", "rate[p]", "rate_total", "calibration",
+                                      "by_unit_rate")
   end
 
   # Mutação: em Analytics::Consolidate::Epidemiology, tirar
