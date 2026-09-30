@@ -85,7 +85,18 @@
           "type": "object",
           "additionalProperties": { "type": "integer" },
           "description": "answer_value -> peso numérico (usado por scoring weighted)"
+        },
+        "analytic": {
+          "type": "boolean",
+          "description": "Usar em Analytics (ADR 0025): respostas agregadas por bairro, nunca por pessoa. Só boolean e enum."
         }
+      },
+      "if": {
+        "required": ["analytic"],
+        "properties": { "analytic": { "const": true } }
+      },
+      "then": {
+        "properties": { "answer_type": { "enum": ["boolean", "enum"] } }
       }
     },
     "scoring_weighted": {
