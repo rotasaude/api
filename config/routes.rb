@@ -25,6 +25,8 @@ Rails.application.routes.draw do
       # Números sem CityChannel vistos pelo webhook (F-01.5): leitura para o
       # operador diagnosticar. Só metadado de roteamento, nunca payload.
       resources :unknown_channels, only: :index
+      # Indicadores publicados das cidades (ADR 0025; contratos §2). Só plataforma.
+      get "/city_analytics", to: "city_analytics#index"
     end
   end
 
