@@ -154,4 +154,44 @@ RSpec.describe "GET /admin/api/analytics/demand", type: :request do
     expect(data["triages"]["started"]).to eq([ 6, 0 ])
     expect(data["attendances_by_unit"].map { |r| r["health_unit_id"] }).to contain_exactly(unit.id, upa.id)
   end
+
+  it "pedidos abertos e encerrados: célula oculta esconde o total da linha" do
+    fact!(metric: "request.opened", day: monday, value: 10, health_unit_id: unit.id, dim: "referral")
+    fact!(metric: "request.opened", day: monday + 7, value: 2, health_unit_id: unit.id, dim: "referral")
+    fact!(metric: "request.closed", day: monday + 1, value: 3, health_unit_id: unit.id, dim: "dismissed")
+    fact!(metric: "request.closed", day: monday + 8, value: 20, health_unit_id: unit.id, dim: "dismissed")
+
+    get "/admin/api/analytics/demand", params: range
+
+    expect(data["requests_opened"]).to include({ "kind" => "referral", "series" => [ 10, hidden ], "total" => hidden })
+    expect(data["requests_closed"]).to include({ "reason" => "dismissed", "series" => [ hidden, 20 ], "total" => hidden })
+  end
+
+  it "granularidade mensal: célula oculta no mês esconde o total do grupo" do
+    first = (Time.zone.today << 3).beginning_of_month
+    fact!(metric: "attendance.checked_in", day: first + 2, value: 10, health_unit_id: unit.id, dim: "code")
+    fact!(metric: "attendance.checked_in", day: first.next_month + 2, value: 2, health_unit_id: unit.id, dim: "code")
+
+    get "/admin/api/analytics/demand", params: { from: first.iso8601, to: first.next_month.end_of_month.iso8601,
+                                                 granularity: "month" }
+
+    expect(data["periods"]).to eq([ first.iso8601, first.next_month.iso8601 ])
+    expect(data["attendances_by_unit"]).to eq([
+      { "health_unit_id" => unit.id, "name" => "UBS Centro", "series" => [ 10, hidden ], "total" => hidden }
+    ])
+  end
+
+  # Contratos §1: demanda recorta por protocolo, não por versão.
+  it "protocol_version na demanda é ignorado e volta nulo no filter" do
+    triage_fact!("triage.started", monday, 8, version: 1)
+    triage_fact!("triage.started", monday, 9, version: 7)
+
+    get "/admin/api/analytics/demand", params: range.merge(protocol_name: "resp", protocol_version: "1")
+    expect(data["filter"]).to include("protocol_name" => "resp", "protocol_version" => nil)
+    expect(data["triages"]["started"]).to eq([ 17, 0 ])
+
+    get "/admin/api/analytics/demand", params: range.merge(protocol_version: "lixo")
+    expect(response).to have_http_status(:ok)
+    expect(data["filter"]["protocol_version"]).to be_nil
+  end
 end
