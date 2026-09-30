@@ -50,13 +50,8 @@ RSpec.describe "Marca analytic no ciclo de autoria (F-14.6)", type: :request do
     expect(ProtocolDefinition.find_by!(name: "arbo-flag", version: 1).status).to eq("draft")
   end
 
-  # Verificação de 2026-09-30: NÃO existe regra que exija `options` em enum —
-  # o schema.json (cópia do contracts protocols-v1.2.0) só o diz na
-  # description, e nenhuma validação Ruby o cobra. O Analytics não vaza (o
-  # consolidador e a leitura exigem options em array), mas o portão aceita.
-  # Pendente até o usuário decidir onde a regra mora (contracts ou api).
+  # A regra "enum exige options" mora no schema (contracts protocols-v1.3.0).
   it "enum marcado sem options: submeter recusa pela regra de options" do
-    pending "o portão não exige options em enum (schema só descreve; ver relatório da verificação do módulo 14)"
     Protocols::SaveDraft.call(definition: enum_without_options, by: author)
     sign_in_as(author)
 

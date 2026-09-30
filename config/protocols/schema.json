@@ -91,13 +91,27 @@
           "description": "Usar em Analytics (ADR 0025): respostas agregadas por bairro, nunca por pessoa. Só boolean e enum."
         }
       },
-      "if": {
-        "required": ["analytic"],
-        "properties": { "analytic": { "const": true } }
-      },
-      "then": {
-        "properties": { "answer_type": { "enum": ["boolean", "enum"] } }
-      }
+      "allOf": [
+        {
+          "if": {
+            "required": ["analytic"],
+            "properties": { "analytic": { "const": true } }
+          },
+          "then": {
+            "properties": { "answer_type": { "enum": ["boolean", "enum"] } }
+          }
+        },
+        {
+          "if": {
+            "required": ["answer_type"],
+            "properties": { "answer_type": { "const": "enum" } }
+          },
+          "then": {
+            "required": ["options"],
+            "properties": { "options": { "minItems": 1 } }
+          }
+        }
+      ]
     },
     "scoring_weighted": {
       "type": "object",
