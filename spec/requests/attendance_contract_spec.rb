@@ -82,6 +82,23 @@ RSpec.describe "Attendance contract: triages/consents/reports/metrics untouched"
     expect(snapshot).to eq(before)
   end
 
+  it "saiu sem atendimento (left, pela recepção) não altera triagens/consentimentos/relatórios/métricas" do
+    citizen = Citizen.create!(cpf: "52998224725", phone: "+5541998765432")
+    triage = completed_web_triage_for(citizen)
+    code = check_in_code_for(citizen, triage)
+    sign_in_as(verifier)
+    json_post "/attendance/check_ins", cpf: citizen.cpf, code: code, health_unit_id: unit.id
+    expect(response).to have_http_status(:created)
+    attendance_id = JSON.parse(response.body).dig("attendance", "id")
+
+    before = snapshot
+    json_post "/attendance/attendances/#{attendance_id}/close", outcome: "left"
+    expect(response).to have_http_status(:ok)
+    expect(JSON.parse(response.body).dig("attendance", "outcome")).to eq("left")
+
+    expect(snapshot).to eq(before)
+  end
+
   it "cadeia completa (chamada, retorno e agendamento) não altera triagens/consentimentos/relatórios/métricas" do
     travel_to(Time.zone.parse("2026-10-01 10:00")) do
       citizen = Citizen.create!(cpf: "52998224725", phone: "+5541998765432")
