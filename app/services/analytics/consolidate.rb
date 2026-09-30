@@ -5,7 +5,7 @@ module Analytics
   # quem chama (Analytics::Run) — sozinho, uma falha no meio deixaria a janela
   # pela metade.
   module Consolidate
-    def self.fronts = [ Demand ]
+    def self.fronts = [ Demand, Quality ]
 
     def self.call(from:, to:, at: Time.current)
       AnalyticsDailyFact.where(day: from..to).delete_all
