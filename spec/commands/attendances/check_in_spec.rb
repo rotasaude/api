@@ -64,6 +64,42 @@ RSpec.describe Attendances::CheckIn do
     expect(check_in(c).reason).to eq(:invalid_unit)
     expect(Attendance.count).to eq(0)
   end
+  describe "código de check-in: validade, tentativas e CPF (F-13.1)" do
+    include ActiveSupport::Testing::TimeHelpers
+
+    def lookup(c, cpf: citizen.cpf) = Attendances::LookupForCheckIn.call(cpf: cpf, code: c)
+
+    it "vale 10 minutos: aos 9min59s confere; passado o prazo, code_expired no lookup e no check-in" do
+      t = Time.current.change(usec: 0)
+      c = travel_to(t) { code }
+      travel_to(t + 10.minutes - 1.second) { expect(lookup(c)).to be_ok }
+      travel_to(t + 10.minutes + 1.second) do
+        expect(lookup(c).reason).to eq(:code_expired)
+        expect(check_in(c).reason).to eq(:code_expired)
+      end
+      expect(Attendance.count).to eq(0)
+    end
+
+    it "esgota em 5 tentativas erradas: depois nem o código certo passa, no lookup nem no check-in" do
+      c = code
+      wrong = c == "000000" ? "111111" : "000000"
+      5.times { expect(lookup(wrong).reason).to eq(:invalid_code) }
+      expect(lookup(c).reason).to eq(:code_exhausted)
+      expect(check_in(c).reason).to eq(:code_exhausted)
+      expect(Attendance.count).to eq(0)
+    end
+
+    it "CPF de outra pessoa com o código de check-in: invalid_code, e o código não é consumido" do
+      c = code
+      Citizen.create!(cpf: "11144477735", phone: "+5541911112222")
+      expect(lookup(c, cpf: "11144477735").reason).to eq(:invalid_code)
+      result = described_class.call(cpf: "11144477735", code: c, health_unit_id: unit.id, document_checked: false,
+                                    by: staff)
+      expect(result.reason).to eq(:invalid_code)
+      expect(check_in(c)).to be_ok
+    end
+  end
+
   describe "corrida no INSERT (RecordNotUnique)" do
     let(:other_unit) { create_unit("UPA Norte", kind: "upa") }
 

@@ -36,4 +36,17 @@ RSpec.describe "Counter code purposes" do
     old = completed_web_triage_for(Citizen.create!(cpf: "11144477735", phone: "+5541911112222"), completed_at: 4.days.ago)
     expect(Citizens::IssueCheckInCode.call(citizen: old.conversation.citizen, triage: old).reason).to eq(:triage_too_old)
   end
+  it "triagem em andamento ou fora da web: triage_not_eligible e nenhum código nasce (F-13.1)" do
+    not_web = completed_web_triage_for(citizen) # também cria o protocolo padrão
+    other = Citizen.create!(cpf: "11144477735", phone: "+5541911112222")
+    started = Citizens::StartConversation.call(citizen: other, consent_version: Consents.current_version, session_id: "s")
+                                         .payload
+    in_progress = started[:triage]
+    expect(in_progress.status).to eq("in_progress")
+    expect(Citizens::IssueCheckInCode.call(citizen: other, triage: in_progress).reason).to eq(:triage_not_eligible)
+
+    not_web.conversation.update_columns(channel: "whatsapp")
+    expect(Citizens::IssueCheckInCode.call(citizen: citizen, triage: not_web.reload).reason).to eq(:triage_not_eligible)
+    expect(CitizenVerificationCode.count).to eq(0)
+  end
 end
