@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_27_300002) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_200002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -27,6 +27,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_27_300002) do
     t.index ["slug"], name: "index_cities_on_slug", unique: true
     t.check_constraint "slug::text ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug::text) >= 2 AND length(slug::text) <= 63", name: "ck_cities_slug_is_dns_label"
     t.check_constraint "status::text = ANY (ARRAY['provisioning'::character varying, 'active'::character varying, 'suspended'::character varying, 'archived'::character varying]::text[])", name: "ck_cities_status"
+  end
+
+  create_table "city_analytics_indicators", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "city_id", null: false
+    t.string "indicator", null: false
+    t.datetime "published_at", null: false
+    t.boolean "suppressed", null: false
+    t.decimal "value", precision: 8, scale: 2
+    t.date "week_start", null: false
+    t.index ["city_id", "week_start", "indicator"], name: "idx_city_analytics_indicators_cell", unique: true
+    t.index ["week_start"], name: "idx_city_analytics_indicators_week"
+    t.check_constraint "EXTRACT(isodow FROM week_start) = 1::numeric", name: "ck_city_analytics_indicators_monday"
+    t.check_constraint "indicator::text = ANY (ARRAY['triages_started'::character varying, 'triages_completed'::character varying, 'attendances_closed'::character varying, 'wait_within_30_pct'::character varying, 'no_show_pct'::character varying, 'left_pct'::character varying]::text[])", name: "ck_city_analytics_indicators_indicator"
+    t.check_constraint "suppressed = (value IS NULL)", name: "ck_city_analytics_indicators_suppressed"
   end
 
   create_table "city_channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -290,6 +304,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_27_300002) do
     t.index ["phone_number_id"], name: "index_unknown_channels_on_phone_number_id", unique: true
   end
 
+  add_foreign_key "city_analytics_indicators", "cities"
   add_foreign_key "city_channels", "cities"
   add_foreign_key "city_grants", "cities"
   add_foreign_key "operator_sessions", "operators"
