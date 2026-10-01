@@ -1,5 +1,7 @@
 # ADR 0026: o municipal_admin recusa o pedido de exclusão, com motivo (≥ 10
-# caracteres depois do strip). Nada se apaga; a recusa é gravada uma vez.
+# caracteres depois do strip). Nada se apaga; a recusa é gravada uma vez, e o
+# pedido deixa de guardar o CPF (marcador), para que uma exclusão futura do
+# mesmo CPF não o deixe achável por aqui. O par apresentado continua ligado.
 # Reasons: :reason_too_short, :not_pending.
 module Citizens
   module RejectErasure
@@ -17,7 +19,8 @@ module Citizens
         next result = Result.fail(:not_pending) unless request.status == "pending"
 
         # O banco não exige decided_by_user: quem decide é gravado aqui, sempre.
-        request.update!(status: "rejected", decided_by_user: by, decided_at: Time.current, reject_reason: reason)
+        request.update!(status: "rejected", decided_by_user: by, decided_at: Time.current, reject_reason: reason,
+                        cpf: Citizens::Erase.tombstone)
         DomainEvents.publish("citizen.erasure_rejected", request_id: request.id)
         result = Result.ok(request: request)
       end

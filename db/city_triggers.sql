@@ -668,7 +668,8 @@ END
 $do$;
 
 -- citizen_erasure_requests (ADR 0026): só acréscimo; a decisão sai de pending
--- UMA vez; o cpf só muda na mesma UPDATE que confirma (vira o marcador).
+-- UMA vez; o cpf só muda na mesma UPDATE que decide por confirmar ou recusar
+-- (vira o marcador; a recusa também não guarda o CPF).
 CREATE OR REPLACE FUNCTION rota_citizen_erasure_request_guard() RETURNS trigger AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
@@ -682,7 +683,7 @@ BEGIN
      OR NEW.requested_by_user_id IS DISTINCT FROM OLD.requested_by_user_id
      OR NEW.document_checked IS DISTINCT FROM OLD.document_checked
      OR NEW.created_at IS DISTINCT FROM OLD.created_at
-     OR (NEW.cpf IS DISTINCT FROM OLD.cpf AND NEW.status <> 'confirmed') THEN
+     OR (NEW.cpf IS DISTINCT FROM OLD.cpf AND NEW.status NOT IN ('confirmed', 'rejected')) THEN
     RAISE EXCEPTION 'citizen_erasure_requests: only the decision columns may change';
   END IF;
   RETURN NEW;

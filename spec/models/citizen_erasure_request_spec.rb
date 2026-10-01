@@ -37,6 +37,19 @@ RSpec.describe CitizenErasureRequest do
     expect(request.reload.status).to eq("confirmed")
   end
 
+  it "aceita trocar o cpf na recusa; recusa na retenção e em linha já decidida" do
+    request.update_columns(cpf: "marcador", status: "rejected", decided_by_user_id: admin.id, decided_at: Time.current,
+                           reject_reason: "documento não confere")
+    expect(request.reload.status).to eq("rejected")
+    expect { attempt { request.update_columns(cpf: "outro") } }.to raise_error(ActiveRecord::StatementInvalid, /already decided/)
+
+    other = Citizen.create!(cpf: "11144477735", phone: "+5541998765433")
+    pending = described_class.create!(cpf: other.cpf, presented_citizen: other, requested_by_user: verifier,
+                                      document_checked: true, status: "pending")
+    expect { attempt { pending.update_columns(cpf: "marcador", status: "retained", decided_at: Time.current) } }
+      .to raise_error(ActiveRecord::StatementInvalid, /only the decision columns/)
+  end
+
   it "exige documento conferido e decisão coerente com o status" do
     expect { attempt { described_class.create!(cpf: "x", presented_citizen: citizen, requested_by_user: verifier, document_checked: false, status: "pending") } }
       .to raise_error(ActiveRecord::StatementInvalid, /ck_citizen_erasure_requests_document/)
