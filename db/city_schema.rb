@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_01_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -230,6 +230,28 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "citizen_erasure_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cpf", null: false
+    t.datetime "created_at", null: false
+    t.uuid "decided_by_user_id"
+    t.timestamptz "decided_at"
+    t.boolean "document_checked", null: false
+    t.uuid "presented_citizen_id", null: false
+    t.text "reject_reason"
+    t.uuid "requested_by_user_id", null: false
+    t.string "status", null: false
+    t.datetime "updated_at", null: false
+    t.index ["cpf"], name: "idx_citizen_erasure_requests_one_pending", unique: true, where: "((status)::text = 'pending'::text)"
+    t.index ["cpf"], name: "index_citizen_erasure_requests_on_cpf"
+    t.index ["decided_by_user_id"], name: "index_citizen_erasure_requests_on_decided_by_user_id"
+    t.index ["presented_citizen_id"], name: "index_citizen_erasure_requests_on_presented_citizen_id"
+    t.index ["requested_by_user_id"], name: "index_citizen_erasure_requests_on_requested_by_user_id"
+    t.check_constraint "(status)::text = 'pending'::text AND decided_at IS NULL OR (status)::text <> 'pending'::text AND decided_at IS NOT NULL", name: "ck_citizen_erasure_requests_decision"
+    t.check_constraint "(status)::text <> 'rejected'::text OR length(btrim(COALESCE(reject_reason, ''::text))) >= 10", name: "ck_citizen_erasure_requests_reason"
+    t.check_constraint "(status)::text = ANY (ARRAY['pending'::character varying, 'confirmed'::character varying, 'rejected'::character varying, 'retained'::character varying]::text[])", name: "ck_citizen_erasure_requests_status"
+    t.check_constraint "document_checked", name: "ck_citizen_erasure_requests_document"
+  end
+
   create_table "citizen_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "expires_at", null: false
@@ -278,6 +300,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
   create_table "citizens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "cpf", null: false
     t.datetime "created_at", null: false
+    t.timestamptz "erased_at"
     t.uuid "neighborhood_id"
     t.string "phone", null: false
     t.datetime "updated_at", null: false
@@ -799,6 +822,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000001) do
   add_foreign_key "campaigns", "users", column: "created_by_user_id"
   add_foreign_key "campaigns", "users", column: "dispatched_by_user_id"
   add_foreign_key "citizen_contact_preferences", "citizens"
+  add_foreign_key "citizen_erasure_requests", "citizens", column: "presented_citizen_id"
+  add_foreign_key "citizen_erasure_requests", "users", column: "decided_by_user_id"
+  add_foreign_key "citizen_erasure_requests", "users", column: "requested_by_user_id"
   add_foreign_key "citizen_verification_codes", "appointments"
   add_foreign_key "citizen_verification_codes", "citizens"
   add_foreign_key "citizen_verification_codes", "triages"

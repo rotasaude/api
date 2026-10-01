@@ -23,6 +23,10 @@ class Citizen < ApplicationRecord
 
   validates :cpf, :phone, presence: true
 
+  # ADR 0026: cadastro excluído vira lápide (erased_at); consultas de uso
+  # corrente ignoram a lápide.
+  scope :not_erased, -> { where(erased_at: nil) }
+
   def cpf_masked
     CitizenIdentity::Cpf.mask(cpf)
   end
