@@ -397,9 +397,11 @@ RSpec.describe "Invariantes do atendimento: o CPF nunca vai na URL", type: :requ
   let(:cpf) { "52998224725" }
 
   # Os únicos GET de /attendance: nenhum recebe CPF (unidades, fila, pedidos e agenda).
+  # erasure_requests lista os pedidos de exclusão pendentes: sem CPF no caminho
+  # nem na query, e a lista nunca devolve o CPF.
   let(:get_allowlist) do
     [ "/attendance/units", "/attendance/units/all", "/attendance/units/:id/queue",
-      "/attendance/units/:id/requests", "/attendance/units/:id/agenda" ]
+      "/attendance/units/:id/requests", "/attendance/units/:id/agenda", "/attendance/erasure_requests" ]
   end
 
   def attendance_routes
