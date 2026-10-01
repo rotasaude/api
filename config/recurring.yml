@@ -49,6 +49,11 @@ default: &default
     schedule: "every day at 5:30am America/Sao_Paulo"
     args: { older_than_days: 90 }
 
+  purge_citizen_channel:
+    class: PurgeCitizenChannelJob
+    queue: housekeeping
+    schedule: "every day at 5:45am America/Sao_Paulo"
+
   purge_operator_city_sessions:
     class: PurgeOperatorCitySessionsJob
     queue: housekeeping
@@ -73,6 +78,11 @@ default: &default
     class: Campaigns::DueJob
     queue: default
     schedule: "every minute"
+
+  discard_old_failed_jobs:
+    command: "SolidQueueRetention.discard_failed"
+    queue: housekeeping
+    schedule: "every day at 6am America/Sao_Paulo"
 
   clear_solid_queue_finished:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
