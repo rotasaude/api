@@ -32,6 +32,10 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "citizen.verified", to: []
   DomainEvents.bind "citizen.verification_revoked", to: []
 
+  # Exclusão do cadastro (ADR 0026): trilha do pedido; payload só {request_id}.
+  DomainEvents.bind "citizen.erasure_requested", to: []
+  DomainEvents.bind "citizen.erasure_retained", to: []
+
   # Check-in e desfecho do atendimento (ADR 0018): trilha; sem consumidor, de
   # propósito.
   DomainEvents.bind "attendance.checked_in", to: []
