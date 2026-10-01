@@ -157,6 +157,14 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
       end
     end
 
+    # A in_progress é encerrada por RevokeConsent (aborted_by_revocation); o job
+    # não a toca, mesmo se chegar a ela antes (conteúdo ainda em uso).
+    it "não anonimiza a triagem in_progress da conversa" do
+      triage.update_columns(status: "in_progress", completed_at: nil)
+      expect { described_class.new.handle(conversation_id: conversation.id) }.not_to(change { triage.reload.attributes })
+      expect(triage.anonymized_at).to be_nil
+    end
+
     it "não toca a concluída que virou atendimento" do
       Attendance.create!(triage: triage, citizen: citizen, health_unit: create_unit, checked_in_by_user: staff,
                          checked_in_at: Time.current, check_in_method: "code")
