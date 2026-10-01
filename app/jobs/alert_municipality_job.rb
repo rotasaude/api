@@ -7,6 +7,11 @@ class AlertMunicipalityJob < ApplicationJob
   def handle(triage_id:, **)
     triage = Triage.find(triage_id)
 
+    if triage.anonymized_at   # revogada/apagada antes da fila esvaziar (ADR 0026): nada a fazer
+      Rails.logger.info("[AlertMunicipalityJob] skip triagem anonimizada")
+      return
+    end
+
     # HTTP/E-mail para a secretaria fica em job próprio (ADR-0005).
     # Aqui só registramos a intenção e enfileiramos o envio, para a MESMA cidade
     # do evento (Current.city, setado pelo with_city do IdempotentConsumer).

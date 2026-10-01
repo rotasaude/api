@@ -7,6 +7,10 @@ class GenerateReportJob < ApplicationJob
 
   def handle(triage_id:, **)
     triage = Triage.find(triage_id)
+    if triage.anonymized_at   # revogada/apagada antes da fila esvaziar (ADR 0026): nada a fazer
+      Rails.logger.info("[GenerateReportJob] skip triagem anonimizada")
+      return
+    end
     return if triage.report_snapshot   # belongs_to inverso: defesa em profundidade
 
     token = ReportSnapshot.mint_token

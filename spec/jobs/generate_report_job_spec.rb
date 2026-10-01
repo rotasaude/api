@@ -137,4 +137,12 @@ RSpec.describe GenerateReportJob do
       expect(ReportSnapshot.where(triage_id: triage.id).pluck(:id, :token)).to eq([ [ first.id, first.token ] ])
     end
   end
+
+  it "pula uma triagem anonimizada: sem snapshot e sem levantar (ADR 0026)" do
+    triage = build_triage(tier: "alta", with_recs: true)
+    triage.update_columns(anonymized_at: Time.current, outcome: nil, tier: nil, priority: nil)
+
+    expect { described_class.new.handle(triage_id: triage.id) }.not_to raise_error
+    expect(ReportSnapshot.where(triage_id: triage.id)).to be_empty
+  end
 end

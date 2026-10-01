@@ -43,4 +43,14 @@ RSpec.describe AlertMunicipalityJob, type: :job do
       occurred_at: completed_at.iso8601
     ))
   end
+
+  it "pula uma triagem anonimizada: nenhum alerta é enfileirado (ADR 0026)" do
+    triage = CityConnection.with(city) { make_triage(completed_at: 1.hour.ago) }
+    CityConnection.with(city) { triage.update_columns(anonymized_at: Time.current, outcome: nil, tier: nil, priority: nil) }
+
+    expect {
+      described_class.new.perform(event_id: SecureRandom.uuid, event_name: "triage.urgent",
+                                   city_slug: city.slug, payload: { "triage_id" => triage.id })
+    }.not_to have_enqueued_job(DispatchMunicipalityAlertJob)
+  end
 end

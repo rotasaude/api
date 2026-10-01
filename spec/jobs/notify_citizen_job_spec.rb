@@ -101,4 +101,12 @@ RSpec.describe NotifyCitizenJob do
       expect(processed?(event.id)).to be(true)
     end
   end
+
+  it "pula uma triagem anonimizada: sem mensagem e sem SnapshotNotReady (ADR 0026)" do
+    triage = triage_for(whatsapp_conversation)
+    triage.update_columns(anonymized_at: Time.current, outcome: nil, tier: nil, priority: nil)
+
+    expect { described_class.new.handle(triage_id: triage.id) }.not_to raise_error
+    expect(SendWhatsappJob).not_to have_been_enqueued
+  end
 end
