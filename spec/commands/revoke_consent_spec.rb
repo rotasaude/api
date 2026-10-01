@@ -16,7 +16,7 @@ RSpec.describe RevokeConsent do
   it "recusa com :no_active_consent sem consentimento, sem mudar nada nem publicar" do
     conversation.update!(state: :consented)
     expect(DomainEvents).not_to receive(:publish)
-    result = described_class.call(conversation: conversation)
+    result = described_class.call(conversation: conversation, origin: "web")
     expect(result.reason).to eq(:no_active_consent)
     expect(conversation.reload).to be_state_consented
   end
@@ -24,20 +24,33 @@ RSpec.describe RevokeConsent do
   it "revoga sem triagem em andamento: consentimento marcado, conversa revoked, evento publicado" do
     consent = consent!
     allow(DomainEvents).to receive(:publish)
-    result = described_class.call(conversation: conversation, reason: "revogar")
+    result = described_class.call(conversation: conversation, origin: "web")
 
     expect(result).to be_ok
     expect(consent.reload.revoked_at).to be_present
     expect(conversation.reload).to be_state_revoked
     expect(DomainEvents).to have_received(:publish)
-      .with("consent.revoked", conversation_id: conversation.id, consent_id: consent.id, reason: "revogar")
+      .with("consent.revoked", conversation_id: conversation.id, consent_id: consent.id, origin: "web")
   end
 
   it "é tudo ou nada: se publicar falha, nada fica revogado" do
     consent = consent!
     allow(DomainEvents).to receive(:publish).and_raise("falha ao publicar")
-    expect { described_class.call(conversation: conversation) }.to raise_error("falha ao publicar")
+    expect { described_class.call(conversation: conversation, origin: "web") }.to raise_error("falha ao publicar")
     expect(consent.reload.revoked_at).to be_nil
     expect(conversation.reload).to be_state_consented
+  end
+
+  it "grava a origem da revogação, nunca o texto do cidadão" do
+    consent!
+    described_class.call(conversation: conversation, origin: "whatsapp")
+    event = DomainEvent.where(name: "consent.revoked").order(:created_at).last
+    expect(event.payload).to include("origin" => "whatsapp")
+    expect(event.payload).not_to have_key("reason")
+  end
+
+  it "recusa origem desconhecida" do
+    expect { described_class.call(conversation: conversation, origin: "apagar meus dados") }
+      .to raise_error(ArgumentError, /origin/)
   end
 end

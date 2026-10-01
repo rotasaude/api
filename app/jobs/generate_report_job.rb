@@ -5,7 +5,7 @@ class GenerateReportJob < ApplicationJob
 
   EXPIRATION = 30.days
 
-  def handle(triage_id:, **outcome)
+  def handle(triage_id:, **)
     triage = Triage.find(triage_id)
     return if triage.report_snapshot   # belongs_to inverso: defesa em profundidade
 
@@ -13,7 +13,7 @@ class GenerateReportJob < ApplicationJob
     ReportSnapshot.create!(
       triage: triage,
       protocol_definition: triage.protocol_definition,
-      outcome: outcome,
+      outcome: triage.outcome,
       payload: build_payload(triage),
       token: token,
       signature: ReportSnapshot.sign(token),

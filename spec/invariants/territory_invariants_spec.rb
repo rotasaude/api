@@ -34,7 +34,7 @@ RSpec.describe "Invariantes do território (ADR 0023)", type: :request do
     ConsentTerm.create!(version: "1", body: "Termo", published_at: Time.current)
     citizen = Citizen.create!(cpf: "52998224725", phone: "+5541998765432", neighborhood: centro)
     started = Citizens::StartConversation.call(citizen: citizen, consent_version: "1", session_id: "s").payload
-    RevokeConsent.call(conversation: started[:conversation], reason: "citizen_web")
+    RevokeConsent.call(conversation: started[:conversation], origin: "web")
     AnonymizeRevokedTriageJob.new.handle(conversation_id: started[:conversation].id)
     expect(started[:triage].reload).to have_attributes(status: "aborted_by_revocation", neighborhood_id: nil)
   end
