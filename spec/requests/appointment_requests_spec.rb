@@ -39,6 +39,26 @@ RSpec.describe "Appointment requests", type: :request do
                                                   "status" => "scheduled")
   end
 
+  it "horário ocupado: 409 slot_taken com quantos; com allow_overlap marca o encaixe" do
+    at = 3.days.from_now.change(hour: 14, min: 0)
+    first = returned_attendance
+    Appointments::Schedule.call(request: first, scheduled_at: at.iso8601, health_unit_id: unit.id, by: reception)
+    second = returned_attendance
+    sign_in_as(reception)
+
+    json_post "/attendance/requests/#{second.id}/appointments", scheduled_at: at.iso8601, health_unit_id: unit.id
+    expect(response).to have_http_status(:conflict)
+    expect(body).to eq("error" => "slot_taken", "taken" => 1)
+
+    json_post "/attendance/requests/#{second.id}/appointments", scheduled_at: at.iso8601, health_unit_id: unit.id,
+                                                                allow_overlap: "true"
+    expect(response).to have_http_status(:conflict) # só o booleano true libera
+
+    json_post "/attendance/requests/#{second.id}/appointments", scheduled_at: at.iso8601, health_unit_id: unit.id,
+                                                                allow_overlap: true
+    expect(response).to have_http_status(:created)
+  end
+
   it "profissional não marca horário (403)" do
     req = returned_attendance
     sign_in_as(doctor)

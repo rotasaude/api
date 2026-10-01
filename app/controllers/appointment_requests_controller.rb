@@ -5,7 +5,7 @@ class AppointmentRequestsController < ApplicationController
 
   ERROR_STATUS = {
     invalid_time: :unprocessable_entity, request_not_open: :conflict, wrong_unit: :unprocessable_entity,
-    invalid_unit: :unprocessable_entity, reason_too_short: :unprocessable_entity
+    invalid_unit: :unprocessable_entity, reason_too_short: :unprocessable_entity, slot_taken: :conflict
   }.freeze
 
   before_action :require_verifier
@@ -25,7 +25,8 @@ class AppointmentRequestsController < ApplicationController
     return render json: { error: "not_found" }, status: :not_found unless request
 
     result = Appointments::Schedule.call(request: request, scheduled_at: params[:scheduled_at],
-                                         health_unit_id: params[:health_unit_id], by: Current.user)
+                                         health_unit_id: params[:health_unit_id], by: Current.user,
+                                         allow_overlap: params[:allow_overlap] == true)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: { appointment: appointment_json(result.payload[:appointment]) }, status: :created
