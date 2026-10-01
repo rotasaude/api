@@ -264,7 +264,7 @@ RSpec.describe "Protocol lifecycle", type: :request do
           [ "/protocols/3/signatures", { name: "dengue", purpose: "publication" } ],
           [ "/protocols/2/activate", { name: "dengue" } ],
           [ "/protocols/2/retire", { name: "dengue" } ],
-          [ "/protocols/revert", { name: "dengue", reason: "erro" } ]
+          [ "/protocols/revert", { name: "dengue", reason: "erro", expected_version: 1 } ]
         ].each do |path, body|
           sign_in_stepped_up!(user)
           expect {
@@ -293,7 +293,7 @@ RSpec.describe "Protocol lifecycle", type: :request do
       expect(statuses).to eq(%w[published active in_review])
 
       sign_in_stepped_up!(admin)
-      post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade" }, as: :json
+      post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade", expected_version: 2 }, as: :json
       expect(response).to have_http_status(:ok)
       expect(statuses).to eq(%w[active published in_review])
     end
@@ -326,6 +326,24 @@ RSpec.describe "Protocol lifecycle", type: :request do
       expect(response).to have_http_status(:conflict)
       expect(json["error"]).to eq("current_version_changed")
       expect(json["message"]).to include("2")
+      expect(statuses).to eq(%w[published active in_review])
+    end
+
+    # Passo 3 do rollout (api#11): sem a versão que a tela via, a reversão é
+    # recusada com 422 — o corpo está incompleto; não há o que reler.
+    it "reverter sem a versão esperada responde 422 expected_version_required" do
+      ready_protocols!
+      sign_in_stepped_up!(admin)
+      post "/protocols/2/activate", params: { name: "dengue" }, as: :json
+
+      sign_in_stepped_up!(admin)
+      expect {
+        post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade" }, as: :json
+      }.not_to change(ProtocolActivation, :count)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json).to eq("error" => "expected_version_required",
+                         "message" => "a reversão exige a versão que a tela mostrava em uso")
       expect(statuses).to eq(%w[published active in_review])
     end
 
@@ -377,11 +395,11 @@ RSpec.describe "Protocol lifecycle", type: :request do
       sign_in_stepped_up!(publisher)
       post "/protocols/2/activate", params: { name: "dengue" }, as: :json
       expect(response).to have_http_status(:ok)
-      post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade" }, as: :json
+      post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade", expected_version: 2 }, as: :json
       expect(response).to have_http_status(:ok)
 
       expect {
-        post "/protocols/revert", params: { name: "dengue", reason: "de novo" }, as: :json
+        post "/protocols/revert", params: { name: "dengue", reason: "de novo", expected_version: 1 }, as: :json
       }.not_to change(ProtocolActivation, :count)
 
       expect(response).to have_http_status(:unprocessable_entity)
@@ -442,7 +460,7 @@ RSpec.describe "Protocol lifecycle", type: :request do
       expect(response).to have_http_status(:ok)
 
       sign_in_stepped_up!(publisher)
-      post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade" }, as: :json
+      post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade", expected_version: 2 }, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(json).to eq("ok" => true, "protocol" => { "name" => "dengue", "version" => 1, "status" => "active" })

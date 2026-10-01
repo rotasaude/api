@@ -152,7 +152,7 @@ RSpec.describe "Scalar protocol and role parameters", type: :request do
     revertible!("dengue")
     sign_in_stepped_up!(publisher)
 
-    post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade" }, as: :json
+    post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade", expected_version: 2 }, as: :json
 
     expect(response).to have_http_status(:ok)
   end

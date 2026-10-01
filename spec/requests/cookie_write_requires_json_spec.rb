@@ -105,7 +105,7 @@ RSpec.describe "Cookie-authenticated writes require JSON", type: :request do
       legacy, v2 = revertible_protocol!
       sign_in_stepped_up!(publisher)
 
-      post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade" }, as: :json
+      post "/protocols/revert", params: { name: "dengue", reason: "v2 erra a prioridade", expected_version: 2 }, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(legacy.reload.status).to eq("active")

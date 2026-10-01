@@ -516,7 +516,13 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
       GQL
     end
 
-    def revert!(name: "dengue", reason:, code:, expected_version: nil, city_slug: city.slug, headers: browser)
+    # Por padrão manda a versão ativa agora, como o console faz (a versão é
+    # obrigatória desde o passo 3 do rollout, api#11). `expected_version: nil`
+    # simula um cliente que não manda nada.
+    def revert!(name: "dengue", reason:, code:, expected_version: :active, city_slug: city.slug, headers: browser)
+      if expected_version == :active
+        expected_version = ProtocolDefinition.find_by(name: name, status: "active")&.version
+      end
       gql!(revert_mutation, headers: headers, citySlug: city_slug, name: name, reason: reason, code: code,
                             expectedVersion: expected_version)
     end
@@ -672,16 +678,23 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
         expect(version_row(2).status).to eq("active")
       end
 
-      # O argumento é ANULÁVEL neste passo: não-anulável quebraria o console em
-      # produção — que ainda não manda nada — na validação, no instante do
-      # deploy do api.
-      it "accepts the mutation without the argument, which is what keeps the old console working" do
+      # Passo 3 do rollout (api#11): sem a versão, a reversão é recusada no
+      # argumento. O schema continua ANULÁVEL de propósito — o console publicado
+      # declara `$expectedVersion: Int`, e uma variável anulável numa posição
+      # `Int!` quebraria a validação da mutation inteira. Por isso a recusa é
+      # do command, e esta mesma mutation (com a variável anulável) valida.
+      it "refuses the mutation without the argument on expectedVersion, changing nothing" do
         legacy_active_version!
         publish_and_activate_v2!
 
-        with_fresh_totp { |code| revert!(reason: "motivo qualquer", code: code) }
+        with_fresh_totp { |code| revert!(reason: "motivo qualquer", code: code, expected_version: nil) }
 
-        expect(revert_payload["ok"]).to be(true)
+        expect(json["errors"]).to be_nil
+        expect(revert_payload["ok"]).to be(false)
+        expect(revert_payload["errors"]).to eq([ { "path" => "expectedVersion",
+                                                   "message" => "a reversão exige a versão que a tela mostrava em uso" } ])
+        expect(version_row(2).status).to eq("active")
+        expect(ProtocolActivation.where(kind: "emergency_revert")).to be_empty
       end
 
       it "responds with the version that took effect" do
