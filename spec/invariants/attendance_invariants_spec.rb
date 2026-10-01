@@ -40,8 +40,10 @@ RSpec.describe "Invariantes do atendimento (ADR 0018, 0019)" do
     first = in_care!(waiting_attendance(for_citizen, unit: unit, by: reception), by: doctor)
     req = Attendances::Close.call(attendance: first, outcome: "return", referral_unit_id: nil, referral_note: nil,
                                   by: doctor).payload.fetch(:appointment_request)
+    # allow_overlap: os testes marcam vários horários no mesmo instante; o
+    # aviso de conflito (api#26) não é o que se prova aqui.
     Appointments::Schedule.call(request: req, scheduled_at: (Time.current + 2.hours).iso8601, health_unit_id: unit.id,
-                                by: reception).payload.fetch(:appointment)
+                                by: reception, allow_overlap: true).payload.fetch(:appointment)
   end
 
   def closed!(attendance, outcome: "discharged")
