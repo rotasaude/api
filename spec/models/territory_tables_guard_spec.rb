@@ -40,6 +40,15 @@ RSpec.describe "Guardas das tabelas de território" do
     expect { sql("UPDATE triages SET neighborhood_id = NULL WHERE id = '#{revoked.id}'") }.not_to raise_error
   end
 
+  it "ADR 0026: bairro nulo na concluída passa com anonymized_at preenchido; sem ele, recusa" do
+    triage = territory_triage!(centro, status: "completed")
+    expect { sql("UPDATE triages SET neighborhood_id = NULL WHERE id = '#{triage.id}'") }
+      .to raise_error(ActiveRecord::StatementInvalid, /neighborhood_id never changes/)
+    expect { sql("UPDATE triages SET neighborhood_id = NULL, anonymized_at = now() WHERE id = '#{triage.id}'") }
+      .not_to raise_error
+    expect(triage.reload.neighborhood_id).to be_nil
+  end
+
   it "triagem sem bairro não ganha bairro depois; as outras colunas continuam mudando" do
     triage = territory_triage!(nil, status: "in_progress")
     expect { sql("UPDATE triages SET neighborhood_id = '#{centro.id}' WHERE id = '#{triage.id}'") }

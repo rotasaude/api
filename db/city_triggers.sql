@@ -563,10 +563,13 @@ $do$;
 -- outras colunas continuam mudando. A guarda é pela COLUNA, não pela tabela:
 -- triages existe desde a primeira migração, e um replay do zero executa este
 -- arquivo antes de a coluna existir.
+-- ADR 0026: a exceção vale também para a triagem concluída anonimizada
+-- (anonymized_at preenchido, na mesma atualização que zera o bairro).
 CREATE OR REPLACE FUNCTION rota_triage_neighborhood_guard() RETURNS trigger AS $fn$
 BEGIN
   IF NEW.neighborhood_id IS DISTINCT FROM OLD.neighborhood_id THEN
-    IF NEW.neighborhood_id IS NULL AND NEW.status = 'aborted_by_revocation' THEN
+    IF NEW.neighborhood_id IS NULL
+       AND (NEW.status = 'aborted_by_revocation' OR NEW.anonymized_at IS NOT NULL) THEN
       RETURN NEW;
     END IF;
     RAISE EXCEPTION 'triages: neighborhood_id never changes after insert (only to NULL on revocation)';

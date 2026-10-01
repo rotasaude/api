@@ -124,4 +124,47 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
     expect(Campaigns::ForgetRevokedRecipients.call(conversation_id: convo.id)).to eq(0)
     expect { described_class.new.perform(**event_args(convo.id)) }.not_to raise_error
   end
+
+  # ADR 0026: a revogação anonimiza também a triagem concluída sem atendimento.
+  describe "triagem concluída (ADR 0026)" do
+    let(:centro) { Neighborhood.create!(name: "Centro", source: "seed") }
+    # O bairro é copiado do cidadão no início da triagem (ADR 0023).
+    let(:citizen) { Citizen.create!(cpf: "52998224725", phone: "+5541998765432", neighborhood: centro) }
+    let!(:triage) { completed_web_triage_for(citizen) }
+    let(:conversation) { triage.conversation }
+    let(:staff) { User.create!(email_address: "s-#{SecureRandom.hex(3)}@x.com", password: "secret123") }
+
+    it "anonimiza a concluída sem atendimento, com bairro e anonymized_at" do
+      expect(triage.neighborhood_id).to eq(centro.id)
+      described_class.new.handle(conversation_id: conversation.id)
+
+      triage.reload
+      expect(triage.status).to eq("completed")
+      expect([triage.answers, triage.outcome, triage.tier, triage.priority, triage.neighborhood_id])
+        .to eq([{}, nil, nil, nil, nil])
+      expect(triage.anonymized_at).to be_present
+    end
+
+    it "não toca a concluída que virou atendimento" do
+      Attendance.create!(triage: triage, citizen: citizen, health_unit: create_unit, checked_in_by_user: staff,
+                         checked_in_at: Time.current, check_in_method: "code")
+      expect { described_class.new.handle(conversation_id: conversation.id) }.not_to(change { triage.reload.attributes })
+    end
+
+    it "é idempotente" do
+      described_class.new.handle(conversation_id: conversation.id)
+      expect { described_class.new.handle(conversation_id: conversation.id) }.not_to(change { triage.reload.anonymized_at })
+    end
+
+    it "Triages::Anonymize.clear! limpa sem checar atendimento e preserva anonymized_at existente" do
+      Attendance.create!(triage: triage, citizen: citizen, health_unit: create_unit, checked_in_by_user: staff,
+                         checked_in_at: Time.current, check_in_method: "code")
+      Triages::Anonymize.clear!(triage)
+      first = triage.reload.anonymized_at
+      expect(first).to be_present
+      expect([triage.answers, triage.outcome, triage.tier]).to eq([{}, nil, nil])
+      Triages::Anonymize.clear!(triage)
+      expect(triage.reload.anonymized_at).to eq(first)
+    end
+  end
 end
