@@ -1,12 +1,14 @@
 # ADR 0026: a recusa do pedido de exclusão também troca o cpf do pedido por um
-# marcador; o trigger passa a aceitar a troca na UPDATE que recusa.
+# marcador; o trigger passa a aceitar a troca na UPDATE que recusa e, numa
+# linha já decidida, a mudança só do cpf (re-cifra: CityRekey/ReencryptionJob).
 class TombstoneRejectedErasureCpf < ActiveRecord::Migration[8.1]
   def up
     execute File.read(Rails.root.join("db/city_triggers.sql"))
   end
 
   def down
-    # Volta à função anterior: o cpf só muda na UPDATE que confirma.
+    # Volta à função anterior: o cpf só muda na UPDATE que confirma e a linha
+    # decidida não aceita UPDATE nenhum.
     execute <<~SQL
       CREATE OR REPLACE FUNCTION rota_citizen_erasure_request_guard() RETURNS trigger AS $fn$
       BEGIN

@@ -37,6 +37,45 @@ RSpec.describe CityRekey do
     end
   end
 
+  # Pedidos de exclusão já decididos (ADR 0026): o trigger só os deixa re-cifrar o cpf.
+  def decided_erasure_requests!
+    verifier = User.create!(email_address: "v-#{SecureRandom.hex(3)}@x.com", password: "secret123")
+    admin = User.create!(email_address: "a-#{SecureRandom.hex(3)}@x.com", password: "secret123")
+    mk = lambda do |cpf, status, **attrs|
+      citizen = Citizen.create!(cpf: cpf, phone: "+55419#{rand(10_000_000..99_999_999)}")
+      CitizenErasureRequest.create!(cpf: cpf, presented_citizen: citizen, requested_by_user: verifier,
+                                    document_checked: true, status: status, **attrs)
+    end
+    confirmed = mk.call("52998224725", "pending")
+    confirmed.update_columns(status: "confirmed", cpf: "erased:#{SecureRandom.uuid}", decided_by_user_id: admin.id, decided_at: Time.current)
+    rejected = mk.call("11144477735", "pending")
+    rejected.update_columns(status: "rejected", cpf: "erased:#{SecureRandom.uuid}", decided_by_user_id: admin.id,
+                            decided_at: Time.current, reject_reason: "documento não confere")
+    retained = mk.call("39053344705", "retained", decided_at: Time.current)
+    [confirmed, rejected, retained]
+  end
+
+  def decision_columns(request)
+    request.reload.attributes.slice("status", "decided_by_user_id", "decided_at", "reject_reason",
+                                    "requested_by_user_id", "presented_citizen_id", "document_checked")
+  end
+
+  it "re-cifra o cpf de pedidos de exclusão já decididos sem tocar na decisão" do
+    confirmed, rejected, retained = CityConnection.with(city) { decided_erasure_requests! }
+    reqs = [confirmed, rejected, retained]
+    before = CityConnection.with(city) { reqs.map { |r| decision_columns(r) } }
+    cpfs = CityConnection.with(city) { reqs.map { |r| r.reload.cpf } }
+
+    expect { CityRekey.call(city: city).tap { |r| raise r.reason.to_s unless r.ok? } }.not_to raise_error
+
+    CityConnection.with(city) do
+      expect(reqs.map { |r| decision_columns(r) }).to eq(before)
+      expect(reqs.map { |r| r.reload.cpf }).to eq(cpfs)
+      expect(retained.cpf).to eq("39053344705")
+      expect(confirmed.cpf).to start_with("erased:")
+    end
+  end
+
   it "rewrites rows so they are unreadable under the old material and readable under the city's own" do
     old_material = "0" * 64
     convo = with_material(old_material) { Conversation.create!(phone: "+5541988880001", state: :greeting) }
