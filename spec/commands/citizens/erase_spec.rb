@@ -98,6 +98,12 @@ RSpec.describe Citizens::Erase do
     OutboundMessage.create!(to: phone, template: { "name" => "x" }, idempotency_key: SecureRandom.hex, status: 200)
     Conversation.create!(phone: whatsapp_phone, state: :greeting)
 
+    # Um pedido anterior, RECUSADO, do mesmo CPF: a recusa não pode deixar o CPF
+    # achável quando o pedido seguinte for confirmado.
+    rejected = Citizens::RequestErasure.call(cpf: cpf, document_checked: true, by: verifier).payload[:request]
+    Citizens::RejectErasure.call(request: rejected, reason: "documento com foto não confere", by: admin)
+    expect(rejected.reload.status).to eq("rejected")
+
     described_class.call(request: request, by: admin)
 
     # Para casar o telefone em qualquer formato (com ou sem +55) e o CPF com ou sem máscara.

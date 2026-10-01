@@ -71,6 +71,7 @@ module Citizens
     # dígitos, sem "+". Os dois formatos são o mesmo telefone.
     def phone_variants(phone) = [ phone, phone.delete_prefix("+") ].uniq
 
+    # Marcador sem identidade; também usado por RejectErasure.
     def tombstone = "#{TOMBSTONE_PREFIX}#{SecureRandom.uuid}"
   end
 end

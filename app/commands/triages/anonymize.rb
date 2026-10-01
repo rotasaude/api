@@ -1,6 +1,7 @@
 # ADR 0026: apaga o conteúdo clínico de uma triagem.
 #   clear!  — limpa incondicionalmente (sem trava, sem checar atendimento); a
-#             exclusão do cadastro usa, pois ali o atendimento também é apagado.
+#             exclusão do cadastro usa, mas só de quem não tem atendimento (CPF
+#             com atendimento é retido, nada dele se apaga).
 #   call    — o caminho da revogação: trava a linha e reconfere o atendimento.
 #             Os dois check-ins (Attendances::CheckIn e CheckInByException)
 #             travam a mesma linha e reconferem, então um dos dois vence,

@@ -22,7 +22,7 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
 
   def event_args(conversation_id, event_id: SecureRandom.uuid)
     { event_id: event_id, event_name: "consent.revoked", city_slug: city.slug,
-      payload: { "conversation_id" => conversation_id, "consent_id" => SecureRandom.uuid, "reason" => "revogar" } }
+      payload: { "conversation_id" => conversation_id, "consent_id" => SecureRandom.uuid, "origin" => "revogar" } }
   end
 
   it "scrubs clinical fields of the aborted_by_revocation triage, keeps the audit shell" do
@@ -60,7 +60,7 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
     expect(Triage.where(conversation_id: convo.id).first.answers).to eq({})
   end
 
-  it "does not touch a completed triage or another conversation's triage" do
+  it "does not touch another conversation's triage" do
     pd = ProtocolDefinition.create!(name: "rev-demo", version: 1, status: "active", definition: definition_hash)
     target = Conversation.create!(phone: "+551135", state: "revoked")
     target_triage = Triage.create!(conversation: target, protocol_definition: pd, protocol_name: "rev-demo",
@@ -77,7 +77,7 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
     # every row — including `done` — untouched, and the assertion below would
     # pass vacuously for the wrong reason.
     expect(Triage.find(target_triage.id).answers).to eq({})
-    expect(Triage.find(done.id).answers).to eq({ "s1" => "true" }) # completed untouched
+    expect(Triage.find(done.id).answers).to eq({ "s1" => "true" }) # other conversation untouched
   end
 
   # ADR 0023, decisão de 2026-09-28: revogar apaga também o bairro copiado.
@@ -145,10 +145,45 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
       expect(triage.anonymized_at).to be_present
     end
 
+    %w[aborted_by_timeout aborted_by_cancellation].each do |status|
+      it "anonimiza também a triagem #{status} sem atendimento" do
+        triage.update_columns(status: status)
+        described_class.new.handle(conversation_id: conversation.id)
+
+        triage.reload
+        expect(triage.status).to eq(status)
+        expect([triage.answers, triage.tier, triage.neighborhood_id]).to eq([{}, nil, nil])
+        expect(triage.anonymized_at).to be_present
+      end
+    end
+
+    # A in_progress é encerrada por RevokeConsent (aborted_by_revocation); o job
+    # não a toca, mesmo se chegar a ela antes (conteúdo ainda em uso).
+    it "não anonimiza a triagem in_progress da conversa" do
+      triage.update_columns(status: "in_progress", completed_at: nil)
+      expect { described_class.new.handle(conversation_id: conversation.id) }.not_to(change { triage.reload.attributes })
+      expect(triage.anonymized_at).to be_nil
+    end
+
     it "não toca a concluída que virou atendimento" do
       Attendance.create!(triage: triage, citizen: citizen, health_unit: create_unit, checked_in_by_user: staff,
                          checked_in_at: Time.current, check_in_method: "code")
       expect { described_class.new.handle(conversation_id: conversation.id) }.not_to(change { triage.reload.attributes })
+    end
+
+    # A revogação apaga a triagem, não o relatório já emitido (ADR 0026).
+    it "não altera o relatório já emitido" do
+      GenerateReportJob.new.handle(triage_id: triage.id)
+      snap = ReportSnapshot.find_by!(triage_id: triage.id)
+      before = snap.attributes.slice("outcome", "payload", "token", "signature", "expires_at")
+      expect(before["outcome"]).to be_present
+
+      RevokeConsent.call(conversation: conversation, origin: "web")
+      described_class.new.handle(conversation_id: conversation.id)
+
+      expect(triage.reload.anonymized_at).to be_present
+      expect(ReportSnapshot.find_by!(triage_id: triage.id).attributes.slice("outcome", "payload", "token", "signature", "expires_at"))
+        .to eq(before)
     end
 
     it "é idempotente" do

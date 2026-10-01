@@ -37,6 +37,33 @@ RSpec.describe CitizenErasureRequest do
     expect(request.reload.status).to eq("confirmed")
   end
 
+  it "aceita trocar o cpf na recusa; recusa na retenção" do
+    request.update_columns(cpf: "marcador", status: "rejected", decided_by_user_id: admin.id, decided_at: Time.current,
+                           reject_reason: "documento não confere")
+    expect(request.reload.status).to eq("rejected")
+
+    other = Citizen.create!(cpf: "11144477735", phone: "+5541998765433")
+    pending = described_class.create!(cpf: other.cpf, presented_citizen: other, requested_by_user: verifier,
+                                      document_checked: true, status: "pending")
+    expect { attempt { pending.update_columns(cpf: "marcador", status: "retained", decided_at: Time.current) } }
+      .to raise_error(ActiveRecord::StatementInvalid, /only the decision columns/)
+  end
+
+  it "numa linha decidida aceita só a mudança do cpf (re-cifra) e recusa o resto" do
+    request.update_columns(status: "rejected", cpf: "marcador", decided_by_user_id: admin.id, decided_at: Time.current,
+                           reject_reason: "documento não confere")
+    request.update_columns(cpf: "outro-marcador")
+    expect(request.reload.cpf).to eq("outro-marcador")
+
+    {
+      status: "confirmed", decided_by_user_id: verifier.id, decided_at: 1.day.ago, reject_reason: "outro motivo qualquer",
+      requested_by_user_id: admin.id, presented_citizen_id: Citizen.create!(cpf: "11144477735", phone: "+5541998765433").id
+    }.each do |column, value|
+      expect { attempt { request.update_columns(column => value) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /already decided/), "#{column} mudou"
+    end
+  end
+
   it "exige documento conferido e decisão coerente com o status" do
     expect { attempt { described_class.create!(cpf: "x", presented_citizen: citizen, requested_by_user: verifier, document_checked: false, status: "pending") } }
       .to raise_error(ActiveRecord::StatementInvalid, /ck_citizen_erasure_requests_document/)
