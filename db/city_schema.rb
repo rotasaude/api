@@ -246,9 +246,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000002) do
     t.index ["decided_by_user_id"], name: "index_citizen_erasure_requests_on_decided_by_user_id"
     t.index ["presented_citizen_id"], name: "index_citizen_erasure_requests_on_presented_citizen_id"
     t.index ["requested_by_user_id"], name: "index_citizen_erasure_requests_on_requested_by_user_id"
-    t.check_constraint "(status)::text = 'pending'::text AND decided_at IS NULL OR (status)::text <> 'pending'::text AND decided_at IS NOT NULL", name: "ck_citizen_erasure_requests_decision"
+    t.check_constraint "((status)::text = 'pending'::text) = (decided_at IS NULL)", name: "ck_citizen_erasure_requests_decision"
     t.check_constraint "(status)::text <> 'rejected'::text OR length(btrim(COALESCE(reject_reason, ''::text))) >= 10", name: "ck_citizen_erasure_requests_reason"
-    t.check_constraint "(status)::text = ANY (ARRAY['pending'::character varying, 'confirmed'::character varying, 'rejected'::character varying, 'retained'::character varying]::text[])", name: "ck_citizen_erasure_requests_status"
+    t.check_constraint "status IN ('pending', 'confirmed', 'rejected', 'retained')", name: "ck_citizen_erasure_requests_status"
     t.check_constraint "document_checked", name: "ck_citizen_erasure_requests_document"
   end
 
