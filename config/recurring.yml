@@ -79,6 +79,11 @@ default: &default
     queue: default
     schedule: "every minute"
 
+  discard_old_failed_jobs:
+    command: "SolidQueueRetention.discard_failed"
+    queue: housekeeping
+    schedule: "every day at 6am America/Sao_Paulo"
+
   clear_solid_queue_finished:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     queue: housekeeping
