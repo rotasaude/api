@@ -163,6 +163,21 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
       expect { described_class.new.handle(conversation_id: conversation.id) }.not_to(change { triage.reload.attributes })
     end
 
+    # A revogação apaga a triagem, não o relatório já emitido (ADR 0026).
+    it "não altera o relatório já emitido" do
+      GenerateReportJob.new.handle(triage_id: triage.id)
+      snap = ReportSnapshot.find_by!(triage_id: triage.id)
+      before = snap.attributes.slice("outcome", "payload", "token", "signature", "expires_at")
+      expect(before["outcome"]).to be_present
+
+      RevokeConsent.call(conversation: conversation, origin: "web")
+      described_class.new.handle(conversation_id: conversation.id)
+
+      expect(triage.reload.anonymized_at).to be_present
+      expect(ReportSnapshot.find_by!(triage_id: triage.id).attributes.slice("outcome", "payload", "token", "signature", "expires_at"))
+        .to eq(before)
+    end
+
     it "é idempotente" do
       described_class.new.handle(conversation_id: conversation.id)
       expect { described_class.new.handle(conversation_id: conversation.id) }.not_to(change { triage.reload.anonymized_at })
