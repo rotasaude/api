@@ -29,8 +29,11 @@ RSpec.describe Protocols::RevertActivation do
     travel(1.second)
   end
 
-  def revert(reason: "v2 prioriza febre errado", by: publisher)
-    described_class.call(name: "dengue", by: by, reason: reason)
+  # A versão esperada é obrigatória (passo 3 do rollout, api#11): por padrão
+  # o helper manda a que está ativa agora, como a tela faria.
+  def revert(reason: "v2 prioriza febre errado", by: publisher,
+             expected_version: ProtocolDefinition.find_by(name: "dengue", status: "active")&.version)
+    described_class.call(name: "dengue", by: by, reason: reason, expected_version: expected_version)
   end
 
   it "puts the previous version back in use without signatures, recording the reason" do
@@ -217,13 +220,23 @@ RSpec.describe Protocols::RevertActivation do
       expect(result.message).to eq("nenhuma versão está em uso agora")
     end
 
-    # Review Focus 1: é o que permite o rollout em três passos.
-    it "reverts exactly as before when no token is sent" do
+    # Passo 3 do rollout (spec 2026-09-25 §5, api#11): sem a versão que a
+    # tela via, não há como saber se a decisão foi tomada sobre o estado atual.
+    it "refuses when no token is sent, changing nothing" do
       activate_signed!(1)
       activate_signed!(2)
 
-      expect(revert.ok?).to be(true)
-      expect(version(1).status).to eq("active")
+      result = described_class.call(name: "dengue", by: publisher, reason: "motivo", expected_version: nil)
+
+      expect(result.reason).to eq(:expected_version_required)
+      expect(result.message).to eq("a reversão exige a versão que a tela mostrava em uso")
+      expect(version(2).status).to eq("active")
+      expect(ProtocolActivation.where(kind: "emergency_revert")).to be_empty
+    end
+
+    it "requires the keyword: omitting it is a programming error" do
+      expect { described_class.call(name: "dengue", by: publisher, reason: "motivo") }
+        .to raise_error(ArgumentError, /expected_version/)
     end
   end
 end

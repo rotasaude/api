@@ -96,7 +96,7 @@ RSpec.describe "Admin protocols — events panel", type: :request do
     expect(response).to have_http_status(:ok)
 
     sign_in_stepped_up!(admin_user)
-    post "/protocols/revert", params: { name: "coqueluche3", reason: "teste A2" }, as: :json
+    post "/protocols/revert", params: { name: "coqueluche3", reason: "teste A2", expected_version: 2 }, as: :json
     expect(response).to have_http_status(:ok)
 
     sign_in_as(admin_user)

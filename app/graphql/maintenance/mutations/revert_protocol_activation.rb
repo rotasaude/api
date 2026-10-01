@@ -27,20 +27,21 @@ module Maintenance
       argument :name, String, required: true
       argument :reason, String, required: true
       argument :code, String, required: true, description: "TOTP do momento"
-      # ANULÁVEL neste passo, de propósito: um argumento não-anulável faria o
-      # console em produção — que ainda não manda nada — quebrar na validação
-      # no instante em que este api subisse. Vira obrigatório no terceiro passo
-      # do rollout (spec 2026-09-25 §5), com issue própria. O frontend não pôde
-      # ir primeiro porque o GraphQL recusa argumento não declarado.
+      # Obrigatório desde o passo 3 do rollout (spec 2026-09-25 §5, api#11),
+      # mas ANULÁVEL no schema, de propósito: o console publicado declara
+      # `$expectedVersion: Int`, e uma variável anulável numa posição `Int!`
+      # é recusada já na validação — a reversão inteira quebraria. A ausência
+      # vira recusa no command (path expectedVersion), o que fecha o caminho
+      # sem guarda sem depender da ordem de deploy.
       argument :expected_version, Integer, required: false,
-               description: "A versão que a tela via como vigente. Divergiu, a reversão é recusada."
+               description: "Obrigatório: a versão que a tela via como vigente. Ausente ou divergente, a reversão é recusada."
 
       def resolve(city_slug:, name:, reason:, code:, expected_version: nil)
         in_city(city_slug: city_slug, step_up_code: code, event: "maintenance.protocol.reverted", module_name: "protocol",
                 rejection_path: lambda { |result|
                   case result.reason
                   when :reason_required then "reason"
-                  when :current_version_changed then "expectedVersion"
+                  when :current_version_changed, :expected_version_required then "expectedVersion"
                   else "name"
                   end
                 },

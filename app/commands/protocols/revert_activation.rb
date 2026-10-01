@@ -28,11 +28,12 @@
 # Step-up de MFA é do chamador.
 #
 # Result.ok(protocol_definition:) | Result.fail(:city_missing|:reason_required|
-#   :not_found|:forbidden|:current_version_changed|:not_revertible|
+#   :not_found|:expected_version_required|:forbidden|:current_version_changed|
+#   :not_revertible|
 #   :no_previous_activation|:invalid)
 module Protocols
   module RevertActivation
-    def self.call(name:, by:, reason:, expected_version: nil, correlation_id: nil)
+    def self.call(name:, by:, reason:, expected_version:, correlation_id: nil)
       return Result.fail(:city_missing) if Current.city.nil?
       return Result.fail(:reason_required, message: "a reversão de emergência exige um motivo") if reason.to_s.strip.empty?
 
@@ -52,12 +53,14 @@ module Protocols
       # admite duas), de modo que o `unless current.status == "active"` que já
       # existe lá embaixo dispara primeiro — com esta mesma recusa.
       #
-      # `expected_version` é OPCIONAL porque o rollout tem três passos (spec
-      # 2026-09-25 §5): o api aceita, os clientes passam a mandar, e só então
-      # a ausência vira recusa. O frontend não pôde ir primeiro porque o
-      # GraphQL recusa argumento não declarado já na validação. Enquanto o
-      # terceiro passo não vier, existe um caminho de reversão sem esta
-      # guarda — deliberado, com issue própria.
+      # `expected_version` é OBRIGATÓRIO desde o passo 3 do rollout (spec
+      # 2026-09-25 §5, api#11): sem ele não há como saber se a decisão foi
+      # tomada sobre o estado atual. A palavra-chave não tem default — omiti-la
+      # é erro de programação —, e `nil` (cliente que não mandou nada) é
+      # recusa própria, distinta da divergência: a tela não tem o que reler.
+      # O schema GraphQL continua com o argumento anulável de propósito: um
+      # `Int!` quebraria na validação o console publicado, que declara
+      # `$expectedVersion: Int`, e a recusa aqui fecha o caminho do mesmo jeito.
       # Só a AUSÊNCIA da chave é ausência de token: `""` e `"  "` são blank?,
       # e um `present?` aqui deixaria um cliente que calculou mal a versão
       # DESLIGAR a guarda em silêncio, em vez de falhar alto.
@@ -71,12 +74,14 @@ module Protocols
       # Base 10 explícita porque a automática lê "010" como octal (8): uma
       # versão 10 mandada com zero à esquerda recusaria uma reversão legítima
       # dizendo um número que confere com o que a pessoa mandou.
-      unless expected_version.nil?
-        seen = Integer(expected_version.to_s.strip, 10, exception: false)
-        if seen != current.version
-          return Result.fail(:current_version_changed,
-                             message: "a versão em uso agora é a #{current.version}")
-        end
+      if expected_version.nil?
+        return Result.fail(:expected_version_required,
+                           message: "a reversão exige a versão que a tela mostrava em uso")
+      end
+      seen = Integer(expected_version.to_s.strip, 10, exception: false)
+      if seen != current.version
+        return Result.fail(:current_version_changed,
+                           message: "a versão em uso agora é a #{current.version}")
       end
 
       return Result.fail(:forbidden) unless ProtocolPolicy.new(by, current).activate?
