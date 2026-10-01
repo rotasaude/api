@@ -2,8 +2,9 @@
 #   clear!  — limpa incondicionalmente (sem trava, sem checar atendimento); a
 #             exclusão do cadastro usa, pois ali o atendimento também é apagado.
 #   call    — o caminho da revogação: trava a linha e reconfere o atendimento.
-#             O check-in trava a mesma linha (Attendances::CheckIn), então um
-#             dos dois vence, nunca os dois.
+#             Os dois check-ins (Attendances::CheckIn e CheckInByException)
+#             travam a mesma linha e reconferem, então um dos dois vence,
+#             nunca os dois.
 module Triages
   module Anonymize
     module_function

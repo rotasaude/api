@@ -37,15 +37,22 @@ module Attendances
       triage = CheckInEligibility.eligible_for(citizens).find_by(id: triage_id)
       return Result.fail(:triage_not_eligible) unless triage
 
-      attendance = nil
+      result = nil
       ApplicationRecord.transaction do
         HealthUnit.lock_active!(unit.id)
+        # Trava a triagem e reconfere (ADR 0026): a anonimização trava a mesma
+        # linha, então um dos dois vence, nunca os dois.
+        triage.lock!
+        state = CheckInEligibility.check(triage)
+        next result = LookupForCheckIn.failure_for(state, triage) unless state == :ok
+
         attendance = Attendance.create!(triage: triage, citizen: triage.conversation.citizen, health_unit: unit,
                                         checked_in_by_user: by, checked_in_at: Time.current,
                                         check_in_method: "cpf_exception", exception_reason: reason.to_s.strip)
         CheckIn.publish(attendance)
+        result = Result.ok(attendance: attendance)
       end
-      Result.ok(attendance: attendance)
+      result
     rescue ActiveRecord::RecordNotUnique => e
       CheckIn.already_checked_in(e, triage_id: triage&.id, appointment_id: appointment&.id)
     rescue CheckIn::AppointmentNotEligible

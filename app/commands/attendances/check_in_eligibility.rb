@@ -8,6 +8,8 @@ module Attendances
 
     def check(triage)
       return :triage_not_eligible unless triage.status_completed? && triage.conversation.channel_web?
+      # Anonimizada, ou conversa revogada cujo job ainda não rodou (ADR 0026).
+      return :triage_not_eligible if triage.anonymized_at.present? || triage.conversation.state_revoked?
       return :already_checked_in if Attendance.exists?(triage_id: triage.id)
       return :triage_too_old if triage.completed_at.nil? || triage.completed_at < WINDOW.ago
 
@@ -17,7 +19,8 @@ module Attendances
     def eligible_for(citizens)
       Triage.joins(:conversation)
             .where(conversations: { channel: "web", citizen_id: citizens.select(:id) })
-            .where(status: "completed").where("triages.completed_at >= ?", WINDOW.ago)
+            .where.not(conversations: { state: "revoked" })
+            .where(status: "completed", anonymized_at: nil).where("triages.completed_at >= ?", WINDOW.ago)
             .where.not(id: Attendance.where.not(triage_id: nil).select(:triage_id))
             .order(completed_at: :desc)
     end

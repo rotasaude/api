@@ -49,4 +49,20 @@ RSpec.describe Attendances::CheckInEligibility do
       end
     end
   end
+
+  describe "revogação (ADR 0026)" do
+    let(:triage) { completed_web_triage_for(citizen) }
+
+    it "recusa triagem anonimizada" do
+      triage.update_columns(anonymized_at: Time.current)
+      expect(described_class.check(triage)).to eq(:triage_not_eligible)
+      expect(described_class.eligible_for(Citizen.where(id: citizen.id))).to be_empty
+    end
+
+    it "recusa logo depois do COMMIT da revogação, antes do job anonimizar" do
+      RevokeConsent.call(conversation: triage.conversation, origin: "web")
+      expect(described_class.check(triage.reload)).to eq(:triage_not_eligible)
+      expect(described_class.eligible_for(Citizen.where(id: citizen.id))).to be_empty
+    end
+  end
 end

@@ -139,4 +139,25 @@ RSpec.describe Attendances::CheckIn do
       expect { check_in(c) }.to raise_error(ActiveRecord::RecordNotUnique, /idx_qualquer_outro/)
     end
   end
+
+  it "não cria atendimento se a triagem foi anonimizada antes do lock (ADR 0026)" do
+    c = code
+    allow(ApplicationRecord).to receive(:transaction).and_wrap_original do |original, *args, **kwargs, &block|
+      triage.update_columns(anonymized_at: Time.current)
+      original.call(*args, **kwargs, &block)
+    end
+    result = check_in(c)
+    expect(result.reason).to eq(:triage_not_eligible)
+    expect(Attendance.where(triage_id: triage.id)).to be_empty
+  end
+
+  it "não cria atendimento se a conversa foi revogada antes do lock (ADR 0026)" do
+    c = code
+    allow(ApplicationRecord).to receive(:transaction).and_wrap_original do |original, *args, **kwargs, &block|
+      triage.conversation.update_columns(state: "revoked")
+      original.call(*args, **kwargs, &block)
+    end
+    expect(check_in(c).reason).to eq(:triage_not_eligible)
+    expect(Attendance.where(triage_id: triage.id)).to be_empty
+  end
 end

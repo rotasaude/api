@@ -109,4 +109,14 @@ RSpec.describe Attendances::CheckInByException do
       expect { call(triage_id: t.id) }.to raise_error(ActiveRecord::RecordNotUnique, /idx_qualquer_outro/)
     end
   end
+
+  it "não cria atendimento se a triagem foi anonimizada entre a leitura e o lock (ADR 0026)" do
+    t = completed_web_triage_for(citizen)
+    allow(ApplicationRecord).to receive(:transaction).and_wrap_original do |original, *args, **kwargs, &block|
+      t.update_columns(anonymized_at: Time.current)
+      original.call(*args, **kwargs, &block)
+    end
+    expect(call(triage_id: t.id).reason).to eq(:triage_not_eligible)
+    expect(Attendance.where(triage_id: t.id)).to be_empty
+  end
 end
