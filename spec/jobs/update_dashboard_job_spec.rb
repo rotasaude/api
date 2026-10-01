@@ -55,4 +55,11 @@ RSpec.describe UpdateDashboardJob, type: :job do
 
     expect(DashboardMetric.find_by(dimension: "triages_total").value).to eq(1)
   end
+
+  it "pula uma triagem anonimizada: nenhuma métrica é somada (ADR 0026)" do
+    triage.update_columns(anonymized_at: Time.current, outcome: nil, tier: nil, priority: nil)
+
+    expect { described_class.new.perform(**event_args) }.not_to raise_error
+    expect(metrics).to be_empty
+  end
 end

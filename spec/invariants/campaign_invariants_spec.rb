@@ -119,7 +119,7 @@ RSpec.describe "Invariantes das campanhas (ADR 0024)", type: :request do
     Consent.create!(conversation: conversation, version: 1, policy_text_sha: "sha-teste", channel: "web",
                     given_at: Time.current)
     recipient!(sent_campaign!(by: manager), citizen, sms_status: "not_opted_in")
-    RevokeConsent.call(conversation: conversation, reason: "citizen_web")
+    RevokeConsent.call(conversation: conversation, origin: "web")
     AnonymizeRevokedTriageJob.new.handle(conversation_id: conversation.id)
     expect(CampaignRecipient.where(citizen_id: citizen.id)).to be_empty
   end

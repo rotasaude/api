@@ -1,5 +1,5 @@
 # Publisher de eventos de domínio (ADR-0004).
-#   DomainEvents.publish("triage.completed", triage_id: t.id, tier: :alta)
+#   DomainEvents.publish("triage.completed", triage_id: t.id)  (só referências — ADR 0026)
 # Publique dentro da transação da cidade (ADR-0004): o DomainEvent comita junto
 # com a escrita de domínio, e os subscribers (ApplicationJob, com
 # enqueue_after_transaction_commit — R40) só entram na fila após esse COMMIT;

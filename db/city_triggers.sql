@@ -563,10 +563,13 @@ $do$;
 -- outras colunas continuam mudando. A guarda é pela COLUNA, não pela tabela:
 -- triages existe desde a primeira migração, e um replay do zero executa este
 -- arquivo antes de a coluna existir.
+-- ADR 0026: a exceção vale também para a triagem concluída anonimizada
+-- (anonymized_at preenchido, na mesma atualização que zera o bairro).
 CREATE OR REPLACE FUNCTION rota_triage_neighborhood_guard() RETURNS trigger AS $fn$
 BEGIN
   IF NEW.neighborhood_id IS DISTINCT FROM OLD.neighborhood_id THEN
-    IF NEW.neighborhood_id IS NULL AND NEW.status = 'aborted_by_revocation' THEN
+    IF NEW.neighborhood_id IS NULL
+       AND (NEW.status = 'aborted_by_revocation' OR NEW.anonymized_at IS NOT NULL) THEN
       RETURN NEW;
     END IF;
     RAISE EXCEPTION 'triages: neighborhood_id never changes after insert (only to NULL on revocation)';
@@ -660,6 +663,43 @@ BEGIN
     EXECUTE 'CREATE TRIGGER campaign_recipients_append_only
       BEFORE UPDATE OR DELETE ON campaign_recipients
       FOR EACH ROW EXECUTE FUNCTION rota_campaign_recipient_guard()';
+  END IF;
+END
+$do$;
+
+-- citizen_erasure_requests (ADR 0026): só acréscimo; a decisão sai de pending
+-- UMA vez; o cpf só muda na mesma UPDATE que confirma (vira o marcador).
+CREATE OR REPLACE FUNCTION rota_citizen_erasure_request_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'citizen_erasure_requests is append-only: DELETE refused';
+  END IF;
+  IF OLD.status <> 'pending' THEN
+    RAISE EXCEPTION 'citizen_erasure_requests: already decided';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.presented_citizen_id IS DISTINCT FROM OLD.presented_citizen_id
+     OR NEW.requested_by_user_id IS DISTINCT FROM OLD.requested_by_user_id
+     OR NEW.document_checked IS DISTINCT FROM OLD.document_checked
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR (NEW.cpf IS DISTINCT FROM OLD.cpf AND NEW.status <> 'confirmed') THEN
+    RAISE EXCEPTION 'citizen_erasure_requests: only the decision columns may change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.citizen_erasure_requests') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS citizen_erasure_requests_guard ON citizen_erasure_requests';
+    EXECUTE 'CREATE TRIGGER citizen_erasure_requests_guard
+      BEFORE UPDATE OR DELETE ON citizen_erasure_requests
+      FOR EACH ROW EXECUTE FUNCTION rota_citizen_erasure_request_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS citizen_erasure_requests_append_only_truncate ON citizen_erasure_requests';
+    EXECUTE 'CREATE TRIGGER citizen_erasure_requests_append_only_truncate
+      BEFORE TRUNCATE ON citizen_erasure_requests
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
   END IF;
 END
 $do$;

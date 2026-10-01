@@ -1,13 +1,18 @@
 # Revoga consentimento e aborta triage em curso. Ver ADR-0004 e ADR-0008.
 # Reasons: :no_active_consent.
 class RevokeConsent
-  def self.call(conversation:, reason: nil)
-    new(conversation: conversation, reason: reason).call
+  # ADR 0026: o evento (imutável) leva só a origem da revogação, nunca o texto do cidadão.
+  ORIGINS = %w[web whatsapp erasure].freeze
+
+  def self.call(conversation:, origin:)
+    raise ArgumentError, "origin must be one of #{ORIGINS.join(', ')}" unless ORIGINS.include?(origin)
+
+    new(conversation: conversation, origin: origin).call
   end
 
-  def initialize(conversation:, reason:)
+  def initialize(conversation:, origin:)
     @conversation = conversation
-    @reason = reason
+    @origin = origin
   end
 
   def call
@@ -22,7 +27,7 @@ class RevokeConsent
         completed_at: Time.current
       )
 
-      DomainEvents.publish("consent.revoked", conversation_id: @conversation.id, consent_id: active.id, reason: @reason)
+      DomainEvents.publish("consent.revoked", conversation_id: @conversation.id, consent_id: active.id, origin: @origin)
     end
 
     Result.ok(conversation: @conversation)

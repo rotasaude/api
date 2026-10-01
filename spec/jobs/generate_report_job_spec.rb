@@ -44,6 +44,16 @@ RSpec.describe GenerateReportJob do
 
   after { Current.reset }
 
+  it "monta o outcome do relatório a partir da triagem, não do payload (ADR 0026)" do
+    citizen = Citizen.create!(cpf: "52998224725", phone: "+5541998765432")
+    triage = completed_web_triage_for(citizen)
+    ReportSnapshot.where(triage_id: triage.id).delete_all
+
+    described_class.new.handle(triage_id: triage.id)
+
+    expect(ReportSnapshot.find_by!(triage_id: triage.id).outcome).to eq(triage.reload.outcome)
+  end
+
   it "freezes the tier's recommendation into the payload" do
     triage = build_triage(tier: "alta", with_recs: true)
     GenerateReportJob.new.handle(triage_id: triage.id, **triage.outcome.symbolize_keys)
@@ -126,5 +136,13 @@ RSpec.describe GenerateReportJob do
 
       expect(ReportSnapshot.where(triage_id: triage.id).pluck(:id, :token)).to eq([ [ first.id, first.token ] ])
     end
+  end
+
+  it "pula uma triagem anonimizada: sem snapshot e sem levantar (ADR 0026)" do
+    triage = build_triage(tier: "alta", with_recs: true)
+    triage.update_columns(anonymized_at: Time.current, outcome: nil, tier: nil, priority: nil)
+
+    expect { described_class.new.handle(triage_id: triage.id) }.not_to raise_error
+    expect(ReportSnapshot.where(triage_id: triage.id)).to be_empty
   end
 end

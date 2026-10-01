@@ -91,6 +91,13 @@ Rails.application.routes.draw do
     post "verifications/search",     to: "attendance#search"
     post "verifications/:id/revoke", to: "attendance#revoke"
 
+    # Exclusão do cadastro no balcão (ADR 0026): pedido por um servidor,
+    # confirmação por outro, com step-up. O CPF vai no corpo, nunca na URL.
+    get  "erasure_requests",             to: "erasure_requests#index"
+    post "erasure_requests",             to: "erasure_requests#create"
+    post "erasure_requests/:id/confirm", to: "erasure_requests#confirm"
+    post "erasure_requests/:id/reject",  to: "erasure_requests#reject"
+
     # Unidades de saúde e check-in (spec 2026-09-24-citizen-attendance-check-in
     # §4). `units/all` PRECISA vir antes de `units/:id`: a primeira rota que
     # casa vence.

@@ -16,6 +16,10 @@ class NotifyCitizenJob < ApplicationJob
 
   def handle(triage_id:, **)
     triage = Triage.find(triage_id)
+    if triage.anonymized_at   # revogada/apagada antes da fila esvaziar (ADR 0026): nada a fazer
+      Rails.logger.info("[NotifyCitizenJob] skip triagem anonimizada")
+      return
+    end
     # Na web o link aparece na própria tela final (spec 2026-09-22-web-citizen-
     # channel §3.2); não há para onde mandar mensagem.
     return if triage.conversation.channel_web?

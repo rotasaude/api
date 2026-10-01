@@ -5,15 +5,19 @@ class GenerateReportJob < ApplicationJob
 
   EXPIRATION = 30.days
 
-  def handle(triage_id:, **outcome)
+  def handle(triage_id:, **)
     triage = Triage.find(triage_id)
+    if triage.anonymized_at   # revogada/apagada antes da fila esvaziar (ADR 0026): nada a fazer
+      Rails.logger.info("[GenerateReportJob] skip triagem anonimizada")
+      return
+    end
     return if triage.report_snapshot   # belongs_to inverso: defesa em profundidade
 
     token = ReportSnapshot.mint_token
     ReportSnapshot.create!(
       triage: triage,
       protocol_definition: triage.protocol_definition,
-      outcome: outcome,
+      outcome: triage.outcome,
       payload: build_payload(triage),
       token: token,
       signature: ReportSnapshot.sign(token),

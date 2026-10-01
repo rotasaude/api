@@ -59,7 +59,7 @@ RSpec.describe "Conversation invariants (module 02 closing criteria)" do
       conversation = start.payload[:conversation]
       conversation.update!(state: :completed)
 
-      expect(RevokeConsent.call(conversation: conversation)).to be_ok
+      expect(RevokeConsent.call(conversation: conversation, origin: "web")).to be_ok
       expect(conversation.reload).to be_state_revoked
     end
   end

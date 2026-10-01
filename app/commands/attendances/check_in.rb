@@ -29,6 +29,10 @@ module Attendances
           state = AppointmentCheckInEligibility.check(appointment, health_unit_id: unit.id)
           next result = AppointmentCheckInEligibility.failure_for(state, appointment) unless state == :ok
         else
+          # Trava a triagem (ADR 0026): Triages::Anonymize trava a mesma linha,
+          # então o check-in ou a anonimização vence, nunca os dois. O lock!
+          # relê a linha e a conversa antes de reconferir a elegibilidade.
+          triage.lock!
           state = CheckInEligibility.check(triage)
           next result = LookupForCheckIn.failure_for(state, triage) unless state == :ok
         end

@@ -295,7 +295,7 @@ RSpec.describe "Invariantes do Analytics (ADR 0025)", type: :request do
     expect(outside).to include([ "epi.answer", "true", centro.id, 1 ])
 
     [ old, recent ].each do |triage|
-      RevokeConsent.call(conversation: triage.conversation, reason: "citizen_web")
+      RevokeConsent.call(conversation: triage.conversation, origin: "web")
       AnonymizeRevokedTriageJob.new.handle(conversation_id: triage.conversation_id)
     end
     scheduled_run!

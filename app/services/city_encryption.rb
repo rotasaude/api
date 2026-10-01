@@ -44,6 +44,7 @@ module CityEncryption
     [ Author,         :token ],
     [ Citizen,        :cpf ],
     [ Citizen,        :phone ],
+    [ CitizenErasureRequest, :cpf ],
     [ CitizenSession, :phone ],
     [ OtpChallenge,   :phone ],
     [ Professional,   :cns ],

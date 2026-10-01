@@ -113,7 +113,7 @@ class ConversationAdvance
   end
 
   def revoke_and_finish
-    RevokeConsent.call(conversation: @conversation, reason: text)
+    RevokeConsent.call(conversation: @conversation, origin: "whatsapp")
     Result.new(reply: Messaging::Reply.text(t(:consent_revoked)))
   end
 

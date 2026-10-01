@@ -33,7 +33,7 @@ module CitizenApi
       return render_error("not_found", :not_found) unless triage
       return render_error("not_own_triage", :forbidden) unless own_triage?(triage)
 
-      result = RevokeConsent.call(conversation: triage.conversation, reason: "citizen_web")
+      result = RevokeConsent.call(conversation: triage.conversation, origin: "web")
       return render_error(result.reason, :conflict) if result.failure?
 
       render json: summary(triage.reload)
