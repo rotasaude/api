@@ -9,7 +9,10 @@
 #   - citizen_sessions: 30 dias depois de expirar OU de revogar (a sessão
 #     desliza 30 dias).
 #   - outbound_messages: 90 dias de criação; o conteúdo vive em
-#     template/context/response.
+#     template/context/response. Apagar a linha encerra a idempotência do
+#     SendWhatsappJob para aquela mensagem (idempotency_key = SHA256(to|message)
+#     sem dedup_key): mensagem idêntica ao mesmo número pode sair de novo após
+#     90 dias — aceito (WhatsApp descontinuado).
 #   - inbound_messages: 12 meses de criação; o painel Ingestão lê até 30 dias e
 #     a deduplicação de reentrega da Meta usa message_id por ~7 dias.
 class PurgeCitizenChannelJob < ApplicationJob

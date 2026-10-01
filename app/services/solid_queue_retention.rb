@@ -13,8 +13,13 @@ class SolidQueueRetention
   def self.discard_failed_older_than(age)
     discarded = 0
     SolidQueue::FailedExecution.where("created_at < ?", age.ago).find_each do |execution|
-      execution.discard
-      discarded += 1
+      begin
+        execution.discard
+        discarded += 1
+      rescue ActiveRecord::RecordNotFound
+        # Reexecutada ou descartada em paralelo: já saiu, segue a varredura.
+        next
+      end
     end
     Rails.logger.info("[solid_queue_retention] failed_discarded=#{discarded}")
     discarded

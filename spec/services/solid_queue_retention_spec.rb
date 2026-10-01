@@ -47,6 +47,23 @@ RSpec.describe SolidQueueRetention do
     expect(described_class.discard_failed_older_than(30.days)).to eq(2)
   end
 
+  it "keeps going when an execution disappears mid-run and counts only what it discarded" do
+    gone = failed!(created_at: 40.days.ago)
+    others = [ failed!(created_at: 41.days.ago), failed!(created_at: 42.days.ago) ]
+    original = SolidQueue::FailedExecution.instance_method(:discard)
+    allow_any_instance_of(SolidQueue::FailedExecution).to receive(:discard) do |execution|
+      raise ActiveRecord::RecordNotFound if execution.job_id == gone.id
+
+      original.bind_call(execution)
+    end
+
+    result = nil
+    expect { result = described_class.discard_failed_older_than(30.days) }.not_to raise_error
+
+    expect(result).to eq(2)
+    others.each { |job| expect(SolidQueue::Job.exists?(job.id)).to be(false) }
+  end
+
   it "defaults to FAILED_RETENTION" do
     old = failed!(created_at: 31.days.ago)
 
