@@ -66,16 +66,15 @@ RSpec.describe "Invariantes do fuso da cidade (api#27)" do
     end
   end
 
-  describe "telas e e-mails" do
-    before(type: :request) do
-      City.find_by!(slug: TEST_CITY_A.slug).update!(time_zone: "America/Manaus")
-      CityCatalog.reset_cache!
-    end
+  describe "telas e e-mails", type: :request do
+    # O fuso nasce com a cidade e não muda (trigger): a linha do catálogo já
+    # nasce em Manaus.
+    def use_test_city_host! = super(time_zone: "America/Manaus")
     # O catálogo guarda a cidade em memória: sem isto, Manaus vazaria para o
     # próximo spec que resolver TEST_CITY_A pelo host.
     after { CityCatalog.reset_cache! }
 
-    it "a agenda do dia usa o dia de Manaus", type: :request do
+    it "a agenda do dia usa o dia de Manaus" do
       late = in_manaus do
         travel_to(Time.utc(2026, 10, 2, 13)) { confirmed_at(Time.zone.parse("2026-10-02 23:30")) }
       end
@@ -86,7 +85,7 @@ RSpec.describe "Invariantes do fuso da cidade (api#27)" do
       expect(JSON.parse(response.body)["appointments"]).to eq([])
     end
 
-    it "os painéis declaram o fuso da cidade e cortam 'hoje' na meia-noite local", type: :request do
+    it "os painéis declaram o fuso da cidade e cortam 'hoje' na meia-noite local" do
       admin = staff_with("admin@cidade.gov.br", "municipal_admin")
       sign_in_as(admin)
       travel_to(Time.utc(2026, 10, 3, 3, 30)) do

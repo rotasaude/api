@@ -18,11 +18,24 @@ RSpec.describe "Fuso da cidade" do
     end
   end
 
-  it "o banco recusa fuso fora da lista, mesmo por update_all" do
-    city = create(:city)
+  it "o banco recusa nascer com fuso fora da lista, mesmo por insert_all" do
+    row = build(:city).attributes.except("id", "created_at", "updated_at").merge("time_zone" => "Europe/Lisbon")
     expect do
-      PlatformRecord.transaction(requires_new: true) { City.where(id: city.id).update_all(time_zone: "Europe/Lisbon") }
+      PlatformRecord.transaction(requires_new: true) { City.insert_all!([ row ]) }
     end.to raise_error(ActiveRecord::StatementInvalid, /ck_cities_time_zone/)
+  end
+
+  # Decisão do usuário (2026-10-02, api#36): o fuso de uma cidade é definido no
+  # provisionamento e não muda. O trigger de db/platform_triggers.sql garante.
+  it "o banco recusa trocar o fuso de uma cidade, mesmo por update_all" do
+    city = create(:city, time_zone: "America/Manaus")
+    expect do
+      PlatformRecord.transaction(requires_new: true) do
+        City.where(id: city.id).update_all(time_zone: "America/Sao_Paulo")
+      end
+    end.to raise_error(ActiveRecord::StatementInvalid, /cities.time_zone is set once/)
+    expect { city.update!(name: "Outro nome", status: "active") }.not_to raise_error
+    expect(city.reload.time_zone).to eq("America/Manaus")
   end
 
   describe "CityConnection.with" do
