@@ -7,6 +7,11 @@ RSpec.describe "Fuso da cidade nas respostas", type: :request do
     City.find_by!(slug: TEST_CITY_A.slug).update!(time_zone: "America/Manaus")
     CityCatalog.reset_cache!
   end
+  # Caixa de envio do OTP e catálogo em memória não voltam com a transação.
+  after do
+    OtpSender::Test.reset!
+    CityCatalog.reset_cache!
+  end
 
   it "GET /session traz o fuso da cidade do host" do
     sign_in_as(User.create!(email_address: "admin@cidade.gov.br", password: "senha-segura-123"))

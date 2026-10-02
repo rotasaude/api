@@ -71,6 +71,9 @@ RSpec.describe "Invariantes do fuso da cidade (api#27)" do
       City.find_by!(slug: TEST_CITY_A.slug).update!(time_zone: "America/Manaus")
       CityCatalog.reset_cache!
     end
+    # O catálogo guarda a cidade em memória: sem isto, Manaus vazaria para o
+    # próximo spec que resolver TEST_CITY_A pelo host.
+    after { CityCatalog.reset_cache! }
 
     it "a agenda do dia usa o dia de Manaus", type: :request do
       late = in_manaus do
@@ -105,8 +108,8 @@ RSpec.describe "Invariantes do fuso da cidade (api#27)" do
         occurred_at: "2026-10-03T03:30:00Z", time_zone: "America/Manaus"
       )
       expect(Time.zone.name).to eq("America/Sao_Paulo") # fora da cidade
-      expect(mail.body.encoded).to include("23:30")
-      expect(mail.body.encoded).not_to include("00:30")
+      expect(mail.text_part.decoded).to include("02/10/2026 23:30 (horário local, UTC-04:00)")
+      expect(mail.text_part.decoded).not_to include("Brasília")
     end
   end
 

@@ -3,7 +3,7 @@
 <p>
   Tier: <%= @tier %><br>
   Prioridade: <%= @priority %><br>
-  Data/hora: <%= @occurred_at.strftime("%d/%m/%Y %H:%M") %> (horário de Brasília)<br>
+  Data/hora: <%= @occurred_at.strftime("%d/%m/%Y %H:%M") %> (horário local, UTC<%= @occurred_at.formatted_offset %>)<br>
   ID da triagem: <%= @triage_id %>
 </p>
 <p>Consulte os detalhes desta triagem no painel da cidade.</p>
