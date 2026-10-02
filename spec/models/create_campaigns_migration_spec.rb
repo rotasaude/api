@@ -1,6 +1,7 @@
 require "rails_helper"
 require Rails.root.join("db/city_migrate/20260929100001_create_campaigns.rb").to_s
 require Rails.root.join("db/city_migrate/20260930200001_create_analytics.rb").to_s
+require Rails.root.join("db/city_migrate/20261002300001_create_appointment_reminders.rb").to_s
 
 # F-12.1/F-12.3: o down() da migração de cidade 20260929100001 desfaz tudo o que
 # o up() cria (três tabelas, a coluna da chave de SMS, as duas funções de guarda
@@ -31,6 +32,14 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
   # do down/up de campanhas e volta depois, para a igualdade do schema valer.
   def migrate_analytics(direction)
     ActiveRecord::Migration.suppress_messages { CreateAnalytics.new.exec_migration(conn, direction) }
+    models.each(&:reset_column_information)
+  end
+
+  # 20261002300001 (api#39) acrescenta appointment_reminders_muted a
+  # citizen_contact_preferences, que o down de CreateCampaigns derruba: sai
+  # antes e volta depois, como o analytics.
+  def migrate_reminders(direction)
+    ActiveRecord::Migration.suppress_messages { CreateAppointmentReminders.new.exec_migration(conn, direction) }
     models.each(&:reset_column_information)
   end
 
@@ -92,6 +101,7 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
       expect(before[:functions].map(&:first)).to include(*new_functions)
       expect(roles_check(before)).to include("'campaign_manager'")
 
+      migrate_reminders(:down)
       migrate_analytics(:down)
       migrate(:down)
       down = fingerprint
@@ -116,7 +126,8 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
           list.reject do |row|
             text = row.join(" ")
             text.include?("campaign") || text.include?("citizen_contact_preferences") ||
-              text.include?("analytics") || row.second == "ck_memberships_role"
+              text.include?("analytics") || text.include?("appointment_reminder") ||
+              row.second == "ck_memberships_role"
           end
         end
       end
@@ -124,6 +135,7 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
 
       migrate(:up)
       migrate_analytics(:up)
+      migrate_reminders(:up)
 
       expect(fingerprint).to eq(before)
       # O trigger restaurado segue recusando apagar campanha que não é rascunho.

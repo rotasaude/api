@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_01_000003) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -61,6 +61,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000003) do
     t.check_constraint "kind::text = ANY (ARRAY['scheduled', 'rebuild']::text[])", name: "ck_analytics_runs_kind"
     t.check_constraint "status::text = ANY (ARRAY['running', 'succeeded', 'failed']::text[])", name: "ck_analytics_runs_status"
     t.check_constraint "window_from <= window_to", name: "ck_analytics_runs_window"
+  end
+
+  create_table "appointment_reminders", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "appointment_id", null: false
+    t.datetime "created_at", null: false
+    t.string "error"
+    t.string "status", null: false
+    t.index ["appointment_id"], name: "index_appointment_reminders_on_appointment_id", unique: true
+    t.check_constraint "status::text = ANY (ARRAY['sent'::character varying, 'failed'::character varying]::text[])", name: "ck_appointment_reminders_status"
   end
 
   create_table "appointment_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -223,6 +232,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000003) do
   end
 
   create_table "citizen_contact_preferences", primary_key: "citizen_id", id: :uuid, default: nil, force: :cascade do |t|
+    t.boolean "appointment_reminders_muted", default: false, null: false
     t.datetime "created_at", null: false
     t.boolean "notices_muted", default: false, null: false
     t.boolean "sms_opt_in", default: false, null: false
@@ -798,6 +808,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000003) do
     t.index "lower((email_address)::text)", name: "index_users_on_lower_email", unique: true
   end
 
+  add_foreign_key "appointment_reminders", "appointments"
   add_foreign_key "appointment_requests", "attendances", column: "origin_attendance_id"
   add_foreign_key "appointment_requests", "citizens"
   add_foreign_key "appointment_requests", "health_units", column: "origin_unit_id"

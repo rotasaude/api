@@ -69,6 +69,11 @@ default: &default
     queue: housekeeping
     schedule: "every 15 minutes"
 
+  send_confirmation_reminders:
+    class: SendConfirmationRemindersJob
+    queue: housekeeping
+    schedule: "every 15 minutes"
+
   mark_no_show_appointments:
     class: MarkNoShowAppointmentsJob
     queue: housekeeping

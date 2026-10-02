@@ -14,8 +14,10 @@ RSpec.describe "Preferências de contato do cidadão", type: :request do
     expect(body).to eq(
       "sms_available" => true,
       "people" => [
-        { "citizen_id" => ana.id, "cpf_masked" => ana.cpf_masked, "sms_opt_in" => false, "notices_muted" => false },
-        { "citizen_id" => bia.id, "cpf_masked" => bia.cpf_masked, "sms_opt_in" => false, "notices_muted" => false }
+        { "citizen_id" => ana.id, "cpf_masked" => ana.cpf_masked, "sms_opt_in" => false, "notices_muted" => false,
+          "appointment_reminders_muted" => false },
+        { "citizen_id" => bia.id, "cpf_masked" => bia.cpf_masked, "sms_opt_in" => false, "notices_muted" => false,
+          "appointment_reminders_muted" => false }
       ]
     )
   end
@@ -23,7 +25,8 @@ RSpec.describe "Preferências de contato do cidadão", type: :request do
   it "altera a pessoa do telefone e devolve a entrada" do
     sign_in_citizen(phone)
     put "/citizen/contact_preferences/#{bia.id}", params: { sms_opt_in: true }, as: :json
-    expect(body).to eq("citizen_id" => bia.id, "cpf_masked" => bia.cpf_masked, "sms_opt_in" => true, "notices_muted" => false)
+    expect(body).to eq("citizen_id" => bia.id, "cpf_masked" => bia.cpf_masked, "sms_opt_in" => true, "notices_muted" => false,
+                       "appointment_reminders_muted" => false)
     get "/citizen/contact_preferences"
     expect(body["sms_available"]).to be(false)
     expect(body["people"].map { |p| p["sms_opt_in"] }).to eq([ false, true ])
@@ -39,6 +42,15 @@ RSpec.describe "Preferências de contato do cidadão", type: :request do
     expect(CitizenContactPreference.for(other.id)).to be_new_record
     put "/citizen/contact_preferences/#{ana.id}", params: { sms_opt_in: "sim" }, as: :json
     expect([ response.status, body["error"] ]).to eq([ 422, "invalid_preferences" ])
+  end
+
+  it "desliga os lembretes de horário sem mexer no opt-in das campanhas (api#39)" do
+    sign_in_citizen(phone)
+    put "/citizen/contact_preferences/#{ana.id}", params: { appointment_reminders_muted: true }, as: :json
+    expect(body).to include("appointment_reminders_muted" => true, "sms_opt_in" => false)
+    expect(CitizenContactPreference.for(ana.id).appointment_reminders_muted).to be(true)
+    payload = DomainEvent.find_by!(name: "citizen.contact_preferences_changed").payload
+    expect(payload).to include("appointment_reminders_muted" => true)
   end
 
   it "sem sessão: 401" do
