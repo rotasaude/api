@@ -32,6 +32,39 @@ RSpec.describe "Migração de plataforma 20260930200002 (CreateCityAnalyticsIndi
     }
   end
 
+  # api#38: na CI o banco de plataforma nasce de db/platform_schema.rb, aqui das
+  # migrações. Se a regra escrita pela migração e a guardada no dump não forem o
+  # mesmo texto depois que o Postgres as normaliza, o down/up abaixo só falha lá.
+  def deparse(expression)
+    conn.execute("CREATE TEMP TABLE api38_check (indicator varchar NOT NULL, CONSTRAINT api38_k CHECK (#{expression}))")
+    conn.select_value(<<~SQL)
+      SELECT pg_get_constraintdef(oid) FROM pg_constraint
+      WHERE conname = 'api38_k' AND conrelid = 'api38_check'::regclass
+    SQL
+  ensure
+    conn.execute("DROP TABLE IF EXISTS api38_check")
+  end
+
+  it "a regra de indicador criada pela migração é a mesma que o schema da plataforma carrega" do
+    dumped = File.read(Rails.root.join("db/platform_schema.rb"))[
+      /check_constraint "([^"]+)", name: "ck_city_analytics_indicators_indicator"/, 1
+    ]
+    expect(dumped).to be_present
+
+    PlatformRecord.transaction(requires_new: true) do
+      migrate(:down)
+      migrate(:up)
+      created = conn.select_value(<<~SQL)
+        SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conname = 'ck_city_analytics_indicators_indicator'
+      SQL
+      expect(created).to eq(deparse(dumped))
+      raise ActiveRecord::Rollback
+    end
+  ensure
+    CityAnalyticsIndicator.reset_column_information
+  end
+
   it "down remove a tabela e a FK; up seguinte restaura o schema idêntico" do
     PlatformRecord.transaction(requires_new: true) do
       before = fingerprint
