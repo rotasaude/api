@@ -1,6 +1,6 @@
 # GET /citizen/contact_preferences — por pessoa do telefone da sessão (o
 #   cidadão não tem nome: cpf_masked), mais sms_available (a chave da cidade).
-# PUT /citizen/contact_preferences/:citizen_id { sms_opt_in?, notices_muted? }
+# PUT /citizen/contact_preferences/:citizen_id { sms_opt_in?, notices_muted?, appointment_reminders_muted? }
 #   — pessoa de outro telefone: 404.
 module CitizenApi
   class ContactPreferencesController < BaseController
@@ -27,7 +27,7 @@ module CitizenApi
 
     def person_json(citizen, preference)
       { citizen_id: citizen.id, cpf_masked: citizen.cpf_masked, sms_opt_in: preference.sms_opt_in,
-        notices_muted: preference.notices_muted }
+        notices_muted: preference.notices_muted, appointment_reminders_muted: preference.appointment_reminders_muted }
     end
   end
 end

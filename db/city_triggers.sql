@@ -717,3 +717,21 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- appointment_reminders (api#39; ADR 0019, Revisão 2026-10-02): o lembrete de
+-- confirmação é prova de que foi tentado e com que resultado. Só acréscimo;
+-- um por horário (índice único).
+DO $do$
+BEGIN
+  IF to_regclass('public.appointment_reminders') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS appointment_reminders_append_only ON appointment_reminders';
+    EXECUTE 'CREATE TRIGGER appointment_reminders_append_only
+      BEFORE UPDATE OR DELETE ON appointment_reminders
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS appointment_reminders_append_only_truncate ON appointment_reminders';
+    EXECUTE 'CREATE TRIGGER appointment_reminders_append_only_truncate
+      BEFORE TRUNCATE ON appointment_reminders
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;

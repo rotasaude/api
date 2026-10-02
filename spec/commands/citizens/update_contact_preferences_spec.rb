@@ -14,8 +14,10 @@ RSpec.describe Citizens::UpdateContactPreferences do
     end
     described_class.call(citizen: citizen, changes: { "notices_muted" => true })
     expect(payloads).to eq([
-      { "citizen_id" => citizen.id, "sms_opt_in" => true, "notices_muted" => false },
-      { "citizen_id" => citizen.id, "sms_opt_in" => true, "notices_muted" => true }
+      { "citizen_id" => citizen.id, "sms_opt_in" => true, "notices_muted" => false,
+        "appointment_reminders_muted" => false },
+      { "citizen_id" => citizen.id, "sms_opt_in" => true, "notices_muted" => true,
+        "appointment_reminders_muted" => false }
     ])
   end
 
