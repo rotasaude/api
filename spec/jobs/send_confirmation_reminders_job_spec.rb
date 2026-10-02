@@ -4,7 +4,8 @@ require "rails_helper"
 # enquanto o horário segue sem confirmação, dentro das 8h–20h da cidade. Não
 # exige o opt-in das campanhas (é do próprio atendimento), mas respeita o
 # opt-out de lembretes. Texto fixo, sem unidade, data nem motivo. Sem a chave
-# de SMS da cidade ou sem provedor, nada sai e o lembrete fica registrado.
+# de SMS da cidade, sem provedor ou com opt-out, nada sai e nada se grava: o
+# próximo run dentro da janela tenta de novo até o prazo.
 RSpec.describe SendConfirmationRemindersJob do
   include ActiveSupport::Testing::TimeHelpers
   before { Current.city = TEST_CITY_A; SmsGateway::Test.reset! }
@@ -78,29 +79,49 @@ RSpec.describe SendConfirmationRemindersJob do
     expect(AppointmentReminder.where(appointment_id: [ confirmed.id, late.id ])).to be_empty
   end
 
-  it "não exige o opt-in das campanhas, mas respeita o opt-out de lembretes" do
+  it "não exige o opt-in das campanhas, mas respeita o opt-out; reativar a tempo ainda manda" do
     sms_on!
     appt = appointment_at(Time.zone.parse("2026-10-04 14:00"))
     expect(CitizenContactPreference.find_by(citizen_id: citizen.id)&.sms_opt_in).to be_falsey
-    CitizenContactPreference.create!(citizen_id: citizen.id, appointment_reminders_muted: true)
+    pref = CitizenContactPreference.create!(citizen_id: citizen.id, appointment_reminders_muted: true)
     run_at(Time.zone.parse("2026-10-02 14:00"))
     expect(SmsGateway::Test.deliveries).to be_empty
-    expect(AppointmentReminder.find_by!(appointment_id: appt.id).status).to eq("opted_out")
+    expect(AppointmentReminder.where(appointment_id: appt.id)).to be_empty
+
+    pref.update!(appointment_reminders_muted: false)
+    run_at(Time.zone.parse("2026-10-02 14:15"))
+    expect(SmsGateway::Test.deliveries.size).to eq(1)
   end
 
-  it "com a chave de SMS da cidade desligada, nada sai e o lembrete fica como disabled" do
+  it "com a chave de SMS desligada nada sai nem se grava; ligada antes do prazo, sai" do
     appt = appointment_at(Time.zone.parse("2026-10-04 14:00"))
     run_at(Time.zone.parse("2026-10-02 14:00"))
     expect(SmsGateway::Test.deliveries).to be_empty
-    expect(AppointmentReminder.find_by!(appointment_id: appt.id).status).to eq("disabled")
+    expect(AppointmentReminder.where(appointment_id: appt.id)).to be_empty
+    expect(DomainEvent.where(name: "appointment.reminder_recorded")).to be_empty
+
+    sms_on!
+    run_at(Time.zone.parse("2026-10-03 09:00"))
+    expect(SmsGateway::Test.deliveries.size).to eq(1)
   end
 
-  it "sem provedor, nada sai e o lembrete fica como unavailable" do
+  it "sem provedor nada sai nem se grava" do
     sms_on!
     appt = appointment_at(Time.zone.parse("2026-10-04 14:00"))
     allow(SmsGateway).to receive(:configured?).and_return(false)
     run_at(Time.zone.parse("2026-10-02 14:00"))
-    expect(AppointmentReminder.find_by!(appointment_id: appt.id).status).to eq("unavailable")
+    expect(AppointmentReminder.where(appointment_id: appt.id)).to be_empty
+  end
+
+  it "erro do provedor grava failed só com a classe e não insiste" do
+    sms_on!
+    appt = appointment_at(Time.zone.parse("2026-10-04 14:00"))
+    allow(SmsGateway).to receive(:deliver).and_raise(Timeout::Error, "+5541998765432 timed out")
+    run_at(Time.zone.parse("2026-10-02 14:00"))
+    run_at(Time.zone.parse("2026-10-02 14:15"))
+    reminder = AppointmentReminder.find_by!(appointment_id: appt.id)
+    expect(reminder).to have_attributes(status: "failed", error: "Timeout::Error")
+    expect(SmsGateway).to have_received(:deliver).once
   end
 
   it "o evento carrega só ids e o status" do
@@ -119,7 +140,7 @@ RSpec.describe SendConfirmationRemindersJob do
     attempt = ->(&b) { ApplicationRecord.transaction(requires_new: true, &b) }
     expect { attempt.call { AppointmentReminder.create!(appointment: appt, status: "sent") } }
       .to raise_error(ActiveRecord::RecordNotUnique)
-    expect { attempt.call { AppointmentReminder.where(id: reminder.id).update_all(status: "failed") } }
+    expect { attempt.call { AppointmentReminder.where(id: reminder.id).update_all(error: "x") } }
       .to raise_error(ActiveRecord::StatementInvalid, /append-only/)
     expect { attempt.call { AppointmentReminder.where(id: reminder.id).delete_all } }
       .to raise_error(ActiveRecord::StatementInvalid, /append-only/)

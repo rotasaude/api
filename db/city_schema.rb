@@ -69,7 +69,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
     t.string "error"
     t.string "status", null: false
     t.index ["appointment_id"], name: "index_appointment_reminders_on_appointment_id", unique: true
-    t.check_constraint "status::text = ANY (ARRAY['sent'::character varying, 'failed'::character varying, 'unavailable'::character varying, 'disabled'::character varying, 'opted_out'::character varying]::text[])", name: "ck_appointment_reminders_status"
+    t.check_constraint "status::text = ANY (ARRAY['sent'::character varying, 'failed'::character varying]::text[])", name: "ck_appointment_reminders_status"
   end
 
   create_table "appointment_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

@@ -1,9 +1,16 @@
-# Lembrete de confirmação (api#39; ADR 0019, Revisão 2026-10-02): um SMS 24h
-# antes do prazo, só para horário ainda sem confirmação. É mensagem do próprio
-# atendimento: não exige o opt-in das campanhas, mas respeita o opt-out de
-# lembretes. Sem a chave de SMS da cidade ou sem provedor, nada sai e o
-# resultado fica registrado (disabled / unavailable). Sob lock do horário:
-# o cidadão que confirma ao mesmo tempo não recebe o SMS.
+# Lembrete de confirmação (api#39): um SMS 24h antes do prazo, só para horário
+# ainda sem confirmação. É mensagem do próprio atendimento: não exige o opt-in
+# das campanhas, mas respeita o opt-out de lembretes.
+#
+# O lembrete só se gasta quando o provedor responde: `sent`, ou `failed` (erro
+# do provedor, sem nova tentativa, para não insistir num número que recusa).
+# Opt-out, chave de SMS da cidade desligada ou sem provedor não gravam nada:
+# o próximo run dentro da janela tenta de novo até o prazo, então ligar o SMS
+# ou reativar o lembrete a tempo ainda alcança o cidadão.
+#
+# Sob lock do horário: o cidadão que confirma ao mesmo tempo não recebe o SMS.
+# O SMS sai dentro da transação, como no lote das campanhas: no go-live, o
+# provedor precisa de timeout curto (segura o lock do horário).
 module Appointments
   class SendConfirmationReminder
     LEAD = 24.hours # antes do prazo de confirmação
@@ -17,10 +24,15 @@ module Appointments
     def self.call(appointment:, now: Time.current)
       ApplicationRecord.transaction do
         appointment.lock!
-        next Result.ok(skipped: true) unless appointment.status == "scheduled"
-        next Result.ok(skipped: true) if AppointmentReminder.exists?(appointment_id: appointment.id)
+        next Result.ok(skipped: :not_scheduled) unless appointment.status == "scheduled"
+        next Result.ok(skipped: :already_sent) if AppointmentReminder.exists?(appointment_id: appointment.id)
+        next Result.ok(skipped: :opted_out) if muted?(appointment)
+        next Result.ok(skipped: :disabled) unless Campaigns::SmsSetting.enabled?
+        next Result.ok(skipped: :unavailable) unless SmsGateway.configured?
 
         status, error = deliver(appointment)
+        next Result.ok(skipped: :unavailable) if status == "unavailable"
+
         AppointmentReminder.create!(appointment: appointment, status: status, error: error, created_at: now)
         DomainEvents.publish("appointment.reminder_recorded", appointment_id: appointment.id,
                                                               appointment_request_id: appointment.request_id,
@@ -29,12 +41,12 @@ module Appointments
       end
     end
 
-    def self.deliver(appointment)
-      return [ "opted_out", nil ] if CitizenContactPreference.find_by(citizen_id: appointment.citizen_id)
-                                                             &.appointment_reminders_muted
-      return [ "disabled", nil ] unless Campaigns::SmsSetting.enabled?
-      return [ "unavailable", nil ] unless SmsGateway.configured?
+    def self.muted?(appointment)
+      CitizenContactPreference.find_by(citizen_id: appointment.citizen_id)&.appointment_reminders_muted == true
+    end
 
+    # Só a chamada ao provedor é resgatada; erro de banco segue adiante.
+    def self.deliver(appointment)
       SmsGateway.deliver(phone: appointment.citizen.phone, body: body)
       [ "sent", nil ]
     rescue SmsGateway::Unavailable
