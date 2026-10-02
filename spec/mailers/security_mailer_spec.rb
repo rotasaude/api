@@ -5,7 +5,7 @@ require "rails_helper"
 # vermelho aqui, não na primeira entrega em produção.
 RSpec.describe SecurityMailer, type: :mailer do
   # 13:30 UTC == 10:30 em America/Sao_Paulo — prova que a view exibe no horário
-  # de Brasília, qualquer que seja o offset da string recebida.
+  # da cidade (o Time.zone corrente ou o time_zone recebido), qualquer que seja o offset da string recebida.
   let(:occurred_at) { "2026-09-23T13:30:00Z" }
 
   def build_mail(kind:)
@@ -17,7 +17,7 @@ RSpec.describe SecurityMailer, type: :mailer do
 
   def bodies(mail) = [ mail.text_part.body.decoded, mail.html_part.body.decoded ]
 
-  it "cadastro: assunto e corpo com cidade, hora de Brasília, IP e o que fazer" do
+  it "cadastro: assunto e corpo com cidade, hora local, IP e o que fazer" do
     mail = build_mail(kind: "enrolled")
 
     expect(mail.to).to eq([ "ana@cidade.gov.br" ])
@@ -103,7 +103,7 @@ RSpec.describe SecurityMailer, type: :mailer do
       )
     end
 
-    it "assunto e corpo com cidade, hora de Brasília, IP, frase de ação e contagem" do
+    it "assunto e corpo com cidade, hora local, IP, frase de ação e contagem" do
       mail = build_recovery_mail(remaining: 9)
 
       expect(mail.to).to eq([ "ana@cidade.gov.br" ])

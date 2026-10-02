@@ -13,14 +13,13 @@
 class SecurityMailer < ApplicationMailer
   KINDS = { "enrolled" => "Autenticador cadastrado", "replaced" => "Autenticador trocado" }.freeze
 
-  def authenticator_changed(email_address:, kind:, city_name:, ip_address:, occurred_at:)
+  def authenticator_changed(email_address:, kind:, city_name:, ip_address:, occurred_at:, time_zone: nil)
     subject = KINDS.fetch(kind) { raise ArgumentError, "kind desconhecido: #{kind.inspect}" }
 
     @replaced = kind == "replaced"
     @city_name = city_name
     @ip_address = ip_address
-    # Normaliza para America/Sao_Paulo na exibição, como AlertMailer.
-    @occurred_at = Time.iso8601(occurred_at).in_time_zone("America/Sao_Paulo")
+    @occurred_at = local_time(occurred_at, time_zone)
 
     mail(to: email_address, subject: "[rota-saúde] #{subject}")
   end
@@ -33,12 +32,21 @@ class SecurityMailer < ApplicationMailer
   # consumida; zero é conta sem rede de segurança).
   #
   # Nenhum código, nem parte dele, entra aqui. Só a contagem.
-  def recovery_code_used(email_address:, city_name:, ip_address:, occurred_at:, remaining:)
+  def recovery_code_used(email_address:, city_name:, ip_address:, occurred_at:, remaining:, time_zone: nil)
     @city_name = city_name
     @ip_address = ip_address
     @remaining = Integer(remaining)
-    @occurred_at = Time.iso8601(occurred_at).in_time_zone("America/Sao_Paulo")
+    @occurred_at = local_time(occurred_at, time_zone)
 
     mail(to: email_address, subject: "[rota-saúde] Código de recuperação usado")
+  end
+
+  private
+
+  # Hora no fuso da cidade (api#27). deliver_later roda no worker FORA de
+  # CityConnection.with, onde Time.zone é o global: por isso o fuso vem como
+  # argumento (valor simples, R42). Sem ele, cai no Time.zone corrente.
+  def local_time(occurred_at, time_zone)
+    Time.iso8601(occurred_at).in_time_zone(time_zone.presence || Time.zone)
   end
 end

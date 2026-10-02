@@ -131,7 +131,8 @@ class SessionsController < ApplicationController
       mfa_enrolled: operator.mfa_enrolled?,
       operator: true,
       mfa_verified_at: nil,
-      memberships: []
+      memberships: [],
+      time_zone: Current.city.time_zone
     }
   end
 
@@ -144,7 +145,9 @@ class SessionsController < ApplicationController
       # é operador; operador loga no console (Operators::SessionsController).
       operator: false,
       mfa_verified_at: Current.session&.mfa_verified_at&.iso8601,
-      memberships: serialize_memberships(user)
+      memberships: serialize_memberships(user),
+      # Fuso da cidade do host (api#27): as telas formatam hora nele.
+      time_zone: Current.city.time_zone
     }
   end
 

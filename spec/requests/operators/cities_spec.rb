@@ -52,7 +52,8 @@ RSpec.describe "City provisioning on the platform console", type: :request do
 
     get "/cities/#{id}"
     expect(response).to have_http_status(:ok)
-    expect(json).to eq("id" => id, "slug" => "novacidade", "status" => "provisioning", "schema_version" => nil)
+    expect(json).to eq("id" => id, "slug" => "novacidade", "status" => "provisioning", "schema_version" => nil,
+                       "time_zone" => "America/Sao_Paulo")
 
     get "/cities/#{SecureRandom.uuid}"
     expect(response).to have_http_status(:not_found)
@@ -110,7 +111,7 @@ RSpec.describe "City provisioning on the platform console", type: :request do
     expect(response).to have_http_status(:ok)
     rows = json["data"]
     expect(rows.first["slug"]).to eq("novacidade")
-    expect(rows.first.keys).to match_array(%w[id slug name uf status schema_version created_at])
+    expect(rows.first.keys).to match_array(%w[id slug name uf status schema_version time_zone created_at])
     expect(response.body).not_to include("postgres://")
   end
 

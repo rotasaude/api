@@ -9,9 +9,10 @@ class AlertMailer < ApplicationMailer
     @tier = tier
     @priority = priority
     # occurred_at chega como string ISO8601 (R42: só valores simples).
-    # Normaliza para America/Sao_Paulo na exibição, independente do offset
-    # que a string carregava.
-    @occurred_at = Time.iso8601(occurred_at).in_time_zone("America/Sao_Paulo")
+    # Normaliza para o fuso da cidade (api#27) na exibição, independente do
+    # offset que a string carregava: o envio é deliver_now dentro do
+    # DispatchMunicipalityAlertJob, que roda em CityConnection.with.
+    @occurred_at = Time.iso8601(occurred_at).in_time_zone
     mail(to: to, subject: "[rota-saúde] Triage urgente — tier #{tier}")
   end
 end

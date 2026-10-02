@@ -17,7 +17,7 @@ RSpec.describe "Citizen OTP and session", type: :request do
 
     json_post "/citizen/session", phone: phone, code: last_code
     expect(response).to have_http_status(:created)
-    expect(JSON.parse(response.body)).to eq("phone_masked" => "(**) *****-5432")
+    expect(JSON.parse(response.body)).to eq("phone_masked" => "(**) *****-5432", "time_zone" => "America/Sao_Paulo")
     expect(response.headers["Set-Cookie"]).to match(/citizen_session=.*httponly/i)
 
     get "/citizen/session"

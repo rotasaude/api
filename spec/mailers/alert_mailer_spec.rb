@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe AlertMailer, type: :mailer do
   let(:triage_id) { SecureRandom.uuid }
   # 13:30 UTC == 10:30 em America/Sao_Paulo (UTC-3) -- prova que a view
-  # exibe no horário de Brasília independente do offset da string recebida.
+  # exibe no fuso da cidade (Time.zone) independente do offset da string recebida.
   let(:occurred_at) { "2026-09-15T13:30:00Z" }
 
   def build_mail

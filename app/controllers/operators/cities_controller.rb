@@ -1,6 +1,6 @@
 # Provisionamento de cidade pelo console (spec banco-por-cidade §4, Plano 4):
 #
-#   POST /cities { slug, name, uf, ibge_code, admin_email, alert_email } → 202 { id }
+#   POST /cities { slug, name, uf, ibge_code, admin_email, alert_email, time_zone? } → 202 { id }
 #   GET  /cities/:id                                                     → 200 { id, slug, status, schema_version }
 #   GET  /cities                                                        → 200 { data: [...] }
 #
@@ -18,7 +18,7 @@ module Operators
       rows = City.order(created_at: :desc).map do |city|
         {
           id: city.id, slug: city.slug, name: city.name, uf: city.uf,
-          status: city.status, schema_version: city.schema_version,
+          status: city.status, schema_version: city.schema_version, time_zone: city.time_zone,
           created_at: city.created_at.iso8601
         }
       end
@@ -28,7 +28,8 @@ module Operators
     def create
       result = ProvisionCity.call(
         slug: params[:slug], name: params[:name], uf: params[:uf], ibge_code: params[:ibge_code],
-        admin_email: params[:admin_email], alert_email: params[:alert_email], by: current_operator
+        admin_email: params[:admin_email], alert_email: params[:alert_email], by: current_operator,
+        time_zone: params[:time_zone].presence || ProvisionCity::DEFAULT_TIME_ZONE
       )
       return render(json: { id: result.payload[:city].id }, status: :accepted) if result.ok?
       return render(json: { error: "misconfigured" }, status: :service_unavailable) if result.reason == :misconfigured
@@ -41,7 +42,8 @@ module Operators
       city = City.find_by(id: params[:id].to_s)
       return head(:not_found) unless city
 
-      render json: { id: city.id, slug: city.slug, status: city.status, schema_version: city.schema_version }
+      render json: { id: city.id, slug: city.slug, status: city.status, schema_version: city.schema_version,
+                     time_zone: city.time_zone }
     end
   end
 end

@@ -37,7 +37,8 @@ module CitizenApi
     private
 
     def session_json(session)
-      { phone_masked: CitizenIdentity::Phone.mask(session.phone) }
+      # time_zone (api#27): o wpda mostra horários no fuso da cidade.
+      { phone_masked: CitizenIdentity::Phone.mask(session.phone), time_zone: Current.city.time_zone }
     end
   end
 end

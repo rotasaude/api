@@ -1,7 +1,7 @@
 <p>Olá,</p>
 <p>O autenticador da sua conta na cidade de <%= @city_name %> foi <%= @replaced ? "trocado" : "cadastrado" %>.</p>
 <p>
-  Data/hora: <%= @occurred_at.strftime("%d/%m/%Y %H:%M") %> (horário de Brasília)<br>
+  Data/hora: <%= @occurred_at.strftime("%d/%m/%Y %H:%M") %> (horário local, UTC<%= @occurred_at.formatted_offset %>)<br>
   IP de origem: <%= @ip_address %>
 </p>
 
