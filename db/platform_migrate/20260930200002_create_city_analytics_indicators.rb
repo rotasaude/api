@@ -6,6 +6,15 @@ class CreateCityAnalyticsIndicators < ActiveRecord::Migration[8.1]
   INDICATORS = %w[triages_started triages_completed attendances_closed wait_within_30_pct no_show_pct
                   left_pct].freeze
 
+  # Array de text, não `indicator IN (...)`: é a forma que o Postgres devolve
+  # igual ao reler o próprio texto. Com IN, a regra criada aqui e a carregada de
+  # db/platform_schema.rb (como a CI monta o banco) saem diferentes (api#38).
+  def self.indicator_check
+    "indicator::text = ANY (ARRAY[#{INDICATORS.map { |i| "'#{i}'::text" }.join(', ')}])"
+  end
+
+  def indicator_check = self.class.indicator_check
+
   def change
     create_table :city_analytics_indicators, id: :uuid, default: -> { "gen_random_uuid()" } do |t|
       t.uuid :city_id, null: false
@@ -16,8 +25,7 @@ class CreateCityAnalyticsIndicators < ActiveRecord::Migration[8.1]
       t.datetime :published_at, null: false
       t.index %i[city_id week_start indicator], unique: true, name: "idx_city_analytics_indicators_cell"
       t.index :week_start, name: "idx_city_analytics_indicators_week"
-      t.check_constraint "indicator IN (#{INDICATORS.map { |i| "'#{i}'" }.join(', ')})",
-                         name: "ck_city_analytics_indicators_indicator"
+      t.check_constraint indicator_check, name: "ck_city_analytics_indicators_indicator"
       t.check_constraint "suppressed = (value IS NULL)", name: "ck_city_analytics_indicators_suppressed"
       t.check_constraint "EXTRACT(ISODOW FROM week_start) = 1", name: "ck_city_analytics_indicators_monday"
     end

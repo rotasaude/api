@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_02_200001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -41,7 +41,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_200001) do
     t.index ["city_id", "week_start", "indicator"], name: "idx_city_analytics_indicators_cell", unique: true
     t.index ["week_start"], name: "idx_city_analytics_indicators_week"
     t.check_constraint "EXTRACT(isodow FROM week_start) = 1::numeric", name: "ck_city_analytics_indicators_monday"
-    t.check_constraint "indicator::text = ANY (ARRAY['triages_started'::character varying, 'triages_completed'::character varying, 'attendances_closed'::character varying, 'wait_within_30_pct'::character varying, 'no_show_pct'::character varying, 'left_pct'::character varying]::text[])", name: "ck_city_analytics_indicators_indicator"
+    t.check_constraint "indicator::text = ANY (ARRAY['triages_started'::text, 'triages_completed'::text, 'attendances_closed'::text, 'wait_within_30_pct'::text, 'no_show_pct'::text, 'left_pct'::text])", name: "ck_city_analytics_indicators_indicator"
     t.check_constraint "suppressed = (value IS NULL)", name: "ck_city_analytics_indicators_suppressed"
   end
 
