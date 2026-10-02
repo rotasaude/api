@@ -33,7 +33,8 @@ RSpec.describe "Operator session inside a city", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(json).to eq("id" => operator.id, "email_address" => operator.email_address, "mfa_enrolled" => true,
-                       "operator" => true, "mfa_verified_at" => nil, "memberships" => [])
+                       "operator" => true, "mfa_verified_at" => nil, "memberships" => [],
+                       "time_zone" => "America/Sao_Paulo")
   end
 
   it "is refused on every action that is not explicitly read-only" do

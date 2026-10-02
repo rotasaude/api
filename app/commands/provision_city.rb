@@ -13,13 +13,17 @@ class ProvisionCity
   UF = /\A[A-Z]{2}\z/
   IBGE_CODE = /\A\d{7}\z/
 
-  def self.call(slug:, name:, uf:, ibge_code:, admin_email:, alert_email:, by:)
+  # Fuso da cidade (api#27): o console escolhe; sem escolha, o horário de Brasília.
+  DEFAULT_TIME_ZONE = "America/Sao_Paulo".freeze
+
+  def self.call(slug:, name:, uf:, ibge_code:, admin_email:, alert_email:, by:, time_zone: DEFAULT_TIME_ZONE)
     new(slug: slug, name: name, uf: uf, ibge_code: ibge_code, admin_email: admin_email,
-        alert_email: alert_email, by: by).call
+        alert_email: alert_email, by: by, time_zone: time_zone).call
   end
 
-  def initialize(slug:, name:, uf:, ibge_code:, admin_email:, alert_email:, by:)
+  def initialize(slug:, name:, uf:, ibge_code:, admin_email:, alert_email:, by:, time_zone: DEFAULT_TIME_ZONE)
     @slug, @name, @uf, @ibge_code = slug, name, uf, ibge_code
+    @time_zone = time_zone
     @admin_email, @alert_email, @by = admin_email, alert_email, by
   end
 
@@ -32,7 +36,7 @@ class ProvisionCity
       return Result.fail(:city_exists, message: "cidade #{@slug} já existe (status=#{city.status})")
     end
 
-    city ||= City.create!(slug: @slug, name: @name, uf: @uf, status: "provisioning",
+    city ||= City.create!(slug: @slug, name: @name, uf: @uf, time_zone: @time_zone, status: "provisioning",
                           database_url: CityDatabase.url_for(slug: @slug, password: SecureRandom.hex(24)),
                           encryption_key: SecureRandom.hex(32))
 
@@ -56,6 +60,7 @@ class ProvisionCity
       errors << "slug inválido" unless CityDatabase.valid_slug?(@slug)
       errors << "name obrigatório" unless @name.is_a?(String) && @name.present?
       errors << "uf inválida" unless string_matching?(@uf, UF)
+      errors << "time_zone inválido" unless City::TIME_ZONES.include?(@time_zone)
       errors << "ibge_code inválido" unless string_matching?(@ibge_code, IBGE_CODE)
       errors << "admin_email inválido" unless string_matching?(@admin_email, URI::MailTo::EMAIL_REGEXP)
       errors << "alert_email inválido" unless string_matching?(@alert_email, URI::MailTo::EMAIL_REGEXP)
