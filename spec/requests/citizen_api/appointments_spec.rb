@@ -15,8 +15,10 @@ RSpec.describe "Citizen appointments", type: :request do
     a = in_care!(waiting_attendance(person, unit: unit, by: reception), by: doctor)
     req = Attendances::Close.call(attendance: a, outcome: "return", referral_unit_id: nil, referral_note: nil,
                                   by: doctor).payload.fetch(:appointment_request)
+    # allow_overlap: dois cidadãos podem cair no mesmo segundo; o aviso de
+    # conflito (api#26) não é o que se prova aqui.
     Appointments::Schedule.call(request: req, scheduled_at: delta.from_now.iso8601, health_unit_id: unit.id,
-                                by: reception).payload.fetch(:appointment)
+                                by: reception, allow_overlap: true).payload.fetch(:appointment)
   end
 
   it "lista, confirma e cancela os próprios" do
