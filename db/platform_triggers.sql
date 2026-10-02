@@ -60,3 +60,22 @@ CREATE TRIGGER platform_events_immutable
   BEFORE UPDATE OR DELETE ON platform_events
   FOR EACH ROW
   EXECUTE FUNCTION platform_events_immutable();
+
+-- Fuso da cidade (api#27): definido no provisionamento e não muda (decisão do
+-- usuário, api#36). Trocar o fuso deslocaria prazos, faltas e o "hoje" da
+-- cidade, e os fatos diários já gravados ficariam no fuso antigo.
+CREATE OR REPLACE FUNCTION cities_time_zone_immutable() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.time_zone IS DISTINCT FROM OLD.time_zone THEN
+    RAISE EXCEPTION 'cities.time_zone is set once at provisioning: UPDATE refused (%)', OLD.slug;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS cities_time_zone_immutable ON cities;
+
+CREATE TRIGGER cities_time_zone_immutable
+  BEFORE UPDATE ON cities
+  FOR EACH ROW
+  EXECUTE FUNCTION cities_time_zone_immutable();

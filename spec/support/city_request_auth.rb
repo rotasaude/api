@@ -17,9 +17,12 @@ module CityRequestAuth
   end
 
   # Registers TEST_CITY_A in the platform catalog and points requests at its host.
-  def use_test_city_host!
+  # The city's time zone is set once (cities_time_zone_immutable trigger): a
+  # spec that needs another zone overrides this method and calls
+  # super(time_zone: ...), so the row is born with it.
+  def use_test_city_host!(time_zone: "America/Sao_Paulo")
     unless City.exists?(slug: TEST_CITY_A.slug)
-      City.create!(slug: TEST_CITY_A.slug, name: TEST_CITY_A.name, status: "active",
+      City.create!(slug: TEST_CITY_A.slug, name: TEST_CITY_A.name, status: "active", time_zone: time_zone,
                    database_url: TEST_CITY_A.database_url, encryption_key: TEST_CITY_A.encryption_key,
                    schema_version: CitySchema.expected_version.to_s)
     end

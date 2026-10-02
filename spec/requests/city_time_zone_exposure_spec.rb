@@ -3,10 +3,9 @@ require "rails_helper"
 # api#27: as telas formatam hora no fuso da cidade, então o api entrega esse
 # fuso onde a tela já lê a sessão; o console escolhe o fuso ao provisionar.
 RSpec.describe "Fuso da cidade nas respostas", type: :request do
-  before do
-    City.find_by!(slug: TEST_CITY_A.slug).update!(time_zone: "America/Manaus")
-    CityCatalog.reset_cache!
-  end
+  # O fuso nasce com a cidade e não muda (trigger): a linha do catálogo já
+  # nasce em Manaus.
+  def use_test_city_host! = super(time_zone: "America/Manaus")
   # Caixa de envio do OTP e catálogo em memória não voltam com a transação.
   after do
     OtpSender::Test.reset!
