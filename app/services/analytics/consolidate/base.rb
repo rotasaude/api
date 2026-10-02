@@ -29,7 +29,7 @@ module Analytics
       def self.call(from:, to:, at:) = new(from: from, to: to, at: at).call
 
       def initialize(from:, to:, at:)
-        @binds = { lower: from.in_time_zone.utc, upper: (to + 1).in_time_zone.utc, at: at, tz: Analytics::TZ }
+        @binds = { lower: from.in_time_zone.utc, upper: (to + 1).in_time_zone.utc, at: at, tz: Analytics.tz }
       end
 
       private

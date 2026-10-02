@@ -1,4 +1,4 @@
-# Período do escopo do painel. Janelas em America/Sao_Paulo (não UTC).
+# Período do escopo do painel. Janelas no fuso da cidade (não UTC; api#27).
 #
 #   today  → 00:00 do dia local → agora; buckets por hora (24)
 #   7d     → últimos 7 dias locais; buckets por dia (7)

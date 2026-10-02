@@ -11,7 +11,7 @@ module Analytics
 
     # Primeiro dia local com dado cru que o Analytics lê.
     EARLIEST_SQL = <<~SQL.squish
-      SELECT MIN(((moment AT TIME ZONE 'UTC') AT TIME ZONE '#{Analytics::TZ}')::date)::text FROM (
+      SELECT MIN(((moment AT TIME ZONE 'UTC') AT TIME ZONE :tz)::date)::text FROM (
         SELECT MIN(created_at) AS moment FROM triages
         UNION ALL SELECT MIN(checked_in_at) FROM attendances
         UNION ALL SELECT MIN(created_at) FROM appointment_requests
@@ -20,7 +20,7 @@ module Analytics
     SQL
 
     def self.earliest_raw_day
-      value = ApplicationRecord.connection.select_value(EARLIEST_SQL)
+      value = ApplicationRecord.connection.select_value(ApplicationRecord.sanitize_sql_array([ EARLIEST_SQL, { tz: Analytics.tz } ]))
       value && Date.iso8601(value)
     end
 

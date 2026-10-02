@@ -325,7 +325,7 @@ module DashboardDemo
 
   # Falhas da cidade da conexão CORRENTE (vazio = todos os painéis populados).
   def verify_current_city(slug)
-    tz = ActiveSupport::TimeZone["America/Sao_Paulo"]
+    tz = Time.zone # o da cidade (api#27)
     p = Admin::Api::Period.parse(key: "30d", from: nil, to: nil, tz: tz)
     failures = []
     check = ->(cond, msg) { failures << "#{slug}: #{msg}" unless cond }

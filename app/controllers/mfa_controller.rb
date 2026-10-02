@@ -80,7 +80,8 @@ class MfaController < ApplicationController
       kind: replacing ? "replaced" : "enrolled",
       city_name: Current.city&.name.to_s,
       ip_address: safe_remote_ip,
-      occurred_at: Time.current.iso8601
+      occurred_at: Time.current.iso8601,
+      time_zone: Time.zone.tzinfo.name
     ).deliver_later
   rescue StandardError => e
     Rails.logger.error("[mfa] aviso de autenticador não enfileirado para #{Current.user.id}: #{e.class}")
@@ -149,7 +150,8 @@ class MfaController < ApplicationController
       city_name: Current.city&.name.to_s,
       ip_address: safe_remote_ip,
       occurred_at: Time.current.iso8601,
-      remaining: Current.user.otp_recovery_codes.size
+      remaining: Current.user.otp_recovery_codes.size,
+      time_zone: Time.zone.tzinfo.name
     ).deliver_later
   rescue StandardError => e
     Rails.logger.error("[mfa] aviso de recovery code não enfileirado para #{Current.user.id}: #{e.class}")

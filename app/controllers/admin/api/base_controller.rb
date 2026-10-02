@@ -22,8 +22,6 @@ class Admin::Api::BaseController < ApplicationController
   # namespace não tem escrita (critério §10).
   allow_operator_grant_access
 
-  TZ = ActiveSupport::TimeZone["America/Sao_Paulo"]
-
   # Depois de require_authentication (incluído acima) e antes de qualquer
   # leitura. Papel específico por painel não é deste plano: hoje qualquer papel
   # local lê os painéis da própria cidade.
@@ -49,7 +47,7 @@ class Admin::Api::BaseController < ApplicationController
       key:  params[:period],
       from: params[:from],
       to:   params[:to],
-      tz:   TZ
+      tz:   Time.zone # o da cidade (api#27): CityConnection.with o instala
     )
   end
 
@@ -76,7 +74,7 @@ class Admin::Api::BaseController < ApplicationController
       scope: {
         municipality: city_descriptor,
         period: @period.descriptor,
-        tz: TZ.name
+        tz: Time.zone.tzinfo.name
       }
     }
   end
