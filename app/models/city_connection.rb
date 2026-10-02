@@ -20,7 +20,7 @@ class CityConnection
   CONNECT_TIMEOUT_SECONDS = 5
 
   class << self
-    # Domínio, fila E CIFRA da cidade (Planos 5 e 7).
+    # Domínio, fila, CIFRA e FUSO da cidade (Planos 5 e 7; api#27).
     #
     # Current.city é setado aqui porque o provedor determinístico
     # (CityDeterministicKeyProvider) resolve a chave a partir dele a cada
@@ -35,9 +35,14 @@ class CityConnection
       ensure_pool(city)
       properties = CityEncryption.context_properties(city)
 
+      # Fuso da cidade (api#27): tudo que roda aqui dentro (requisição, job,
+      # console) calcula "hoje", prazos e janelas no fuso dela. Time.use_zone
+      # devolve o fuso anterior na saída, como Current.set.
       Current.set(city: city) do
-        ActiveRecord::Encryption.with_encryption_context(**properties) do
-          ActiveRecord::Base.connected_to_many([ CityRecord, SolidQueue::Record ], role: :writing, shard: city.shard, &block)
+        Time.use_zone(city.time_zone) do
+          ActiveRecord::Encryption.with_encryption_context(**properties) do
+            ActiveRecord::Base.connected_to_many([ CityRecord, SolidQueue::Record ], role: :writing, shard: city.shard, &block)
+          end
         end
       end
     end

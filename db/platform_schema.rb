@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_200002) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_02_100001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -22,11 +22,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_200002) do
     t.string "schema_version"
     t.string "slug", null: false
     t.string "status", default: "provisioning", null: false
+    t.string "time_zone", default: "America/Sao_Paulo", null: false
     t.string "uf", limit: 2
     t.datetime "updated_at", null: false
     t.index ["slug"], name: "index_cities_on_slug", unique: true
     t.check_constraint "slug::text ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug::text) >= 2 AND length(slug::text) <= 63", name: "ck_cities_slug_is_dns_label"
     t.check_constraint "status::text = ANY (ARRAY['provisioning'::character varying, 'active'::character varying, 'suspended'::character varying, 'archived'::character varying]::text[])", name: "ck_cities_status"
+    t.check_constraint "time_zone::text = ANY (ARRAY['America/Noronha'::character varying, 'America/Belem'::character varying, 'America/Fortaleza'::character varying, 'America/Recife'::character varying, 'America/Araguaina'::character varying, 'America/Maceio'::character varying, 'America/Bahia'::character varying, 'America/Sao_Paulo'::character varying, 'America/Santarem'::character varying, 'America/Campo_Grande'::character varying, 'America/Cuiaba'::character varying, 'America/Porto_Velho'::character varying, 'America/Boa_Vista'::character varying, 'America/Manaus'::character varying, 'America/Eirunepe'::character varying, 'America/Rio_Branco'::character varying]::text[])", name: "ck_cities_time_zone"
   end
 
   create_table "city_analytics_indicators", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
