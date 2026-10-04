@@ -151,14 +151,17 @@ class SessionsController < ApplicationController
     }
   end
 
-  # Memberships ativos na cidade do host. As chaves municipality_* seguem o
-  # contrato que dashboard e admin já leem (apps/*/src/lib/api.ts), mas os
-  # valores vêm da cidade resolvida — a chave de id carrega o slug. Renomear o
-  # contrato é dos frontends (Plano 6).
+  # Memberships ativos na cidade do host. city_slug/city_name/city_uf são as
+  # chaves do contrato; municipality_id/name/uf são aliases DEPRECADOS (id =
+  # slug) mantidos até o passo 3 do api#35. Ordem de deploy: api (expand) →
+  # dashboard/admin → api (contract).
   def serialize_memberships(user)
     city = Current.city
     user.memberships.active.map do |m|
       {
+        city_slug: city.slug,
+        city_name: city.name,
+        city_uf: city.uf,
         municipality_id: city.slug,
         municipality_name: city.name,
         municipality_uf: city.uf,

@@ -72,6 +72,7 @@ class Admin::Api::BaseController < ApplicationController
   def scope_block
     {
       scope: {
+        city: { slug: Current.city.slug, name: Current.city.name, uf: Current.city.uf },
         municipality: city_descriptor,
         period: @period.descriptor,
         tz: Time.zone.tzinfo.name
@@ -79,10 +80,10 @@ class Admin::Api::BaseController < ApplicationController
     }
   end
 
-  # Descritor da cidade do host. A chave do envelope segue `municipality`, e
-  # `id`/`name` seguem no formato que dashboard e admin já leem
-  # (apps/*/src/lib/api.ts) — `id` agora é o slug. Renomear o contrato é dos
-  # frontends (Plano 6).
+  # Descritor da cidade do host. `scope.city` {slug, name, uf} é o contrato;
+  # `scope.municipality` é alias DEPRECADO (id = slug, name = "Nome · UF") mantido
+  # até o passo 3 do api#35. Ordem de deploy: api (expand) → dashboard/admin →
+  # api (contract).
   def city_descriptor
     city = Current.city
     {
