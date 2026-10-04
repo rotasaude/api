@@ -72,8 +72,9 @@ RSpec.describe Admin::ClassificationQuery do
   it "no longer serves the old contract's aliases" do
     out = described_class.call(period: period)
 
+    # `revoked` (api#34) é chave nova do contrato, não apelido antigo.
     expect(out.keys).to contain_exactly(:tiers, :tierKeys, :urgent, :urgentMaxPriority, :urgentTrend,
-                                        :byProtocol, :byMode, :sampleTriages)
+                                        :byProtocol, :byMode, :sampleTriages, :revoked)
     expect(out).not_to include(:priorityTrue, :priorityTrend)
     expect(out[:byProtocol].flat_map(&:keys).uniq).to contain_exactly(:protocol, :counts)
   end
