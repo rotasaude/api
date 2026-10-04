@@ -17,6 +17,10 @@
 # urgentTrend, seja hora ou dia) sai suprimida — a amostra lista cada
 # triagem com o tier dela, então uma categoria suprimida apareceria de
 # novo, sem disfarce, na mesma resposta.
+#
+# Revogada (api#34; Triage.revoked, a definição do Analytics) fica fora de
+# tiers, urgência, pivôs e amostra; sai à parte em `revoked`, só a contagem
+# das iniciadas no período, suprimida pelo filtro. Nunca linha de revogada.
 class Admin::ClassificationQuery
   LEGACY_TIERS = %w[low medium high].freeze
   MODE_SQL = "protocol_definitions.definition -> 'scoring' ->> 'type'".freeze
@@ -32,12 +36,12 @@ class Admin::ClassificationQuery
 
   def call
     triages = @filter.triages(Triage.all)
-    base = triages.where(status: "completed", completed_at: @period.from..@period.to)
+    base = triages.counted_completed.where(completed_at: @period.from..@period.to)
     total = base.count
     urgent_max = Protocols::Urgency.max_priority
     tiers = tier_counts(base, urgent_max)
     urgent = @filter.count(base.where(priority: ..urgent_max).count)
-    urgent_trend = @filter.series(@period.series(triages.where(status: "completed", priority: ..urgent_max), :completed_at))
+    urgent_trend = @filter.series(@period.series(triages.counted_completed.where(priority: ..urgent_max), :completed_at))
     protocol_rows = by_protocol(base)
     mode_rows = by_mode(base)
     sample_rows = sample(base.limit(8), urgent_max)
@@ -55,7 +59,8 @@ class Admin::ClassificationQuery
       priorityTrend: urgent_trend, # apelido (apps/admin)
       byProtocol: protocol_rows,
       byMode: mode_rows,
-      sampleTriages: listed
+      sampleTriages: listed,
+      revoked: @filter.count(triages.revoked.where(created_at: @period.from..@period.to).count)
     }
   end
 

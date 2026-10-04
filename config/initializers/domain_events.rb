@@ -17,7 +17,7 @@ Rails.application.config.to_prepare do
   # explícito que ninguém escuta, e não por esquecimento.
   DomainEvents.bind "consent.given",   to: []
 
-  DomainEvents.bind "consent.revoked", to: [AnonymizeRevokedTriageJob, RecordConsentRevocationJob]
+  DomainEvents.bind "consent.revoked", to: [AnonymizeRevokedTriageJob, RecordConsentRevocationJob, ForgetRevokedTriageMetricsJob]
 
   # A2 (fix final do autenticador pendente): auditoria da promoção do segundo
   # fator (Mfa::PendingEnrollment#confirm). Sem consumidor, de propósito.
