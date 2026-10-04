@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_04_100001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -80,6 +80,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
     t.datetime "created_at", null: false
     t.text "dismiss_reason"
     t.string "kind", null: false
+    t.uuid "moved_from_request_id"
     t.text "note"
     t.uuid "origin_attendance_id", null: false
     t.uuid "origin_unit_id", null: false
@@ -90,15 +91,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
     t.datetime "updated_at", null: false
     t.index ["citizen_id"], name: "index_appointment_requests_on_citizen_id"
     t.index ["closed_by_user_id"], name: "index_appointment_requests_on_closed_by_user_id"
-    t.index ["origin_attendance_id"], name: "index_appointment_requests_on_origin_attendance_id", unique: true
+    t.index ["moved_from_request_id"], name: "index_appointment_requests_on_moved_from_request_id", unique: true
+    t.index ["origin_attendance_id"], name: "index_appointment_requests_on_origin_attendance_id", unique: true, where: "((closed_reason)::text IS DISTINCT FROM 'moved'::text)"
     t.index ["origin_unit_id"], name: "index_appointment_requests_on_origin_unit_id"
     t.index ["root_triage_id"], name: "index_appointment_requests_on_root_triage_id"
     t.index ["target_unit_id"], name: "index_appointment_requests_on_target_unit_id"
     t.check_constraint "(closed_reason IS DISTINCT FROM 'dismissed' AND dismiss_reason IS NULL) OR (closed_reason = 'dismissed' AND dismiss_reason IS NOT NULL AND length(btrim(dismiss_reason)) >= 10)", name: "ck_appointment_requests_dismiss_reason"
-    t.check_constraint "closed_reason IS NULL OR closed_reason::text = ANY (ARRAY['fulfilled', 'citizen_cancelled', 'dismissed']::text[])", name: "ck_appointment_requests_closed_reason"
+    t.check_constraint "closed_reason IS NULL OR closed_reason::text = ANY (ARRAY['fulfilled', 'citizen_cancelled', 'dismissed', 'moved']::text[])", name: "ck_appointment_requests_closed_reason"
     t.check_constraint "(status::text <> 'closed'::text AND closed_reason IS NULL AND closed_at IS NULL) OR (status::text = 'closed'::text AND closed_reason IS NOT NULL AND closed_at IS NOT NULL)", name: "ck_appointment_requests_closing"
     t.check_constraint "kind::text = ANY (ARRAY['return', 'referral']::text[])", name: "ck_appointment_requests_kind"
-    t.check_constraint "kind::text <> 'return'::text OR origin_unit_id = target_unit_id", name: "ck_appointment_requests_return_same_unit"
+    t.check_constraint "kind::text <> 'return'::text OR origin_unit_id = target_unit_id OR moved_from_request_id IS NOT NULL", name: "ck_appointment_requests_return_same_unit"
     t.check_constraint "reopened_reason IS NULL OR reopened_reason::text = ANY (ARRAY['expired', 'no_show']::text[])", name: "ck_appointment_requests_reopened_reason"
     t.check_constraint "status::text = ANY (ARRAY['open', 'scheduled', 'closed']::text[])", name: "ck_appointment_requests_status"
   end
@@ -111,6 +113,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
     t.datetime "created_at", null: false
     t.datetime "ended_at"
     t.uuid "health_unit_id", null: false
+    t.uuid "moved_from_appointment_id"
     t.uuid "request_id", null: false
     t.datetime "scheduled_at", null: false
     t.uuid "scheduled_by_user_id", null: false
@@ -119,13 +122,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
     t.index ["citizen_id"], name: "index_appointments_on_citizen_id"
     t.index ["health_unit_id", "scheduled_at"], name: "idx_appointments_unit_time"
     t.index ["health_unit_id"], name: "index_appointments_on_health_unit_id"
+    t.index ["moved_from_appointment_id"], name: "index_appointments_on_moved_from_appointment_id", unique: true
     t.index ["request_id"], name: "idx_appointments_one_live_per_request", unique: true, where: "status IN ('scheduled', 'confirmed')"
     t.index ["request_id"], name: "index_appointments_on_request_id"
     t.index ["scheduled_by_user_id"], name: "index_appointments_on_scheduled_by_user_id"
     t.check_constraint "(status::text <> 'cancelled_by_citizen'::text AND cancel_reason IS NULL) OR (status::text = 'cancelled_by_citizen'::text AND cancel_reason IS NOT NULL AND length(btrim(cancel_reason)) >= 10)", name: "ck_appointments_cancel_reason"
     t.check_constraint "status::text <> 'scheduled'::text OR confirmation_deadline_at IS NOT NULL", name: "ck_appointments_deadline"
     t.check_constraint "(status::text = ANY (ARRAY['scheduled', 'confirmed']::text[])) = (ended_at IS NULL)", name: "ck_appointments_ended"
-    t.check_constraint "status::text = ANY (ARRAY['scheduled', 'confirmed', 'checked_in', 'cancelled_by_citizen', 'expired', 'no_show']::text[])", name: "ck_appointments_status"
+    t.check_constraint "status::text = ANY (ARRAY['scheduled', 'confirmed', 'checked_in', 'cancelled_by_citizen', 'expired', 'no_show', 'moved']::text[])", name: "ck_appointments_status"
   end
 
   create_table "attendances", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -381,6 +385,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
     t.index ["name"], name: "index_domain_events_on_name"
     t.index ["occurred_at"], name: "idx_domain_events_pending", where: "(published_at IS NULL)"
     t.index ["occurred_at"], name: "index_domain_events_on_occurred_at"
+  end
+
+  create_table "health_unit_drains", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "appointments_count", null: false
+    t.datetime "created_at", null: false
+    t.uuid "drained_by_user_id", null: false
+    t.uuid "health_unit_id", null: false
+    t.text "reason", null: false
+    t.integer "requests_count", null: false
+    t.uuid "target_unit_id", null: false
+    t.index ["drained_by_user_id"], name: "index_health_unit_drains_on_drained_by_user_id"
+    t.index ["health_unit_id"], name: "index_health_unit_drains_on_health_unit_id"
+    t.index ["target_unit_id"], name: "index_health_unit_drains_on_target_unit_id"
+    t.check_constraint "length(btrim(reason)) >= 10", name: "ck_health_unit_drains_reason"
   end
 
   create_table "health_units", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -809,6 +827,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
   end
 
   add_foreign_key "appointment_reminders", "appointments"
+  add_foreign_key "appointment_requests", "appointment_requests", column: "moved_from_request_id"
   add_foreign_key "appointment_requests", "attendances", column: "origin_attendance_id"
   add_foreign_key "appointment_requests", "citizens"
   add_foreign_key "appointment_requests", "health_units", column: "origin_unit_id"
@@ -816,6 +835,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
   add_foreign_key "appointment_requests", "triages", column: "root_triage_id"
   add_foreign_key "appointment_requests", "users", column: "closed_by_user_id"
   add_foreign_key "appointments", "appointment_requests", column: "request_id"
+  add_foreign_key "appointments", "appointments", column: "moved_from_appointment_id"
   add_foreign_key "appointments", "citizens"
   add_foreign_key "appointments", "health_units"
   add_foreign_key "appointments", "users", column: "scheduled_by_user_id"
@@ -845,6 +865,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
   add_foreign_key "citizens", "neighborhoods"
   add_foreign_key "consents", "conversations"
   add_foreign_key "conversations", "citizens"
+  add_foreign_key "health_unit_drains", "health_units"
+  add_foreign_key "health_unit_drains", "health_units", column: "target_unit_id"
+  add_foreign_key "health_unit_drains", "users", column: "drained_by_user_id"
   add_foreign_key "health_units", "neighborhoods"
   add_foreign_key "identities", "users"
   add_foreign_key "invitations", "users", column: "invited_by_id"

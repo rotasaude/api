@@ -55,6 +55,9 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "appointment.expired", to: []
   DomainEvents.bind "appointment.no_show", to: []
   DomainEvents.bind "appointment.reminder_recorded", to: []
+  DomainEvents.bind "appointment.moved", to: []
+  DomainEvents.bind "appointment_request.moved", to: []
+  DomainEvents.bind "health_unit.drained", to: []
 
   # ADR 0018: rastro LGPD da busca por exceção (POST check_ins/search) — expõe
   # dado de saúde sem código; sem CPF no payload, sem consumidor, de propósito.

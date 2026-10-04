@@ -178,6 +178,8 @@ END
 $do$;
 
 -- Pedido de agendamento (ADR 0019): só acréscimo; a origem nunca muda; encerrado não muda.
+-- Mover para outra unidade (api#29) encerra este como `moved` e cria outro com
+-- moved_from_request_id; a ligação também nunca muda.
 CREATE OR REPLACE FUNCTION rota_appointment_request_guard() RETURNS trigger AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
@@ -194,6 +196,7 @@ BEGIN
      OR NEW.target_unit_id IS DISTINCT FROM OLD.target_unit_id
      OR NEW.kind IS DISTINCT FROM OLD.kind
      OR NEW.note IS DISTINCT FROM OLD.note
+     OR NEW.moved_from_request_id IS DISTINCT FROM OLD.moved_from_request_id
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'appointment_requests: the origin columns never change';
   END IF;
@@ -202,12 +205,13 @@ END;
 $fn$ LANGUAGE plpgsql;
 
 -- Horário (ADR 0019): só acréscimo e as transições previstas; o que foi marcado nunca muda.
+-- `moved` (api#29): o horário foi para outra unidade, num horário novo ligado a este.
 CREATE OR REPLACE FUNCTION rota_appointment_guard() RETURNS trigger AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'appointments is append-only: DELETE refused';
   END IF;
-  IF OLD.status IN ('checked_in', 'cancelled_by_citizen', 'expired', 'no_show') THEN
+  IF OLD.status IN ('checked_in', 'cancelled_by_citizen', 'expired', 'no_show', 'moved') THEN
     RAISE EXCEPTION 'appointments: already ended';
   END IF;
   IF NEW.id IS DISTINCT FROM OLD.id
@@ -217,12 +221,13 @@ BEGIN
      OR NEW.scheduled_at IS DISTINCT FROM OLD.scheduled_at
      OR NEW.scheduled_by_user_id IS DISTINCT FROM OLD.scheduled_by_user_id
      OR NEW.confirmation_deadline_at IS DISTINCT FROM OLD.confirmation_deadline_at
+     OR NEW.moved_from_appointment_id IS DISTINCT FROM OLD.moved_from_appointment_id
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'appointments: the scheduled columns never change';
   END IF;
   IF NEW.status IS DISTINCT FROM OLD.status
-     AND NOT ((OLD.status = 'scheduled' AND NEW.status IN ('confirmed', 'cancelled_by_citizen', 'expired'))
-          OR (OLD.status = 'confirmed' AND NEW.status IN ('checked_in', 'cancelled_by_citizen', 'no_show'))) THEN
+     AND NOT ((OLD.status = 'scheduled' AND NEW.status IN ('confirmed', 'cancelled_by_citizen', 'expired', 'moved'))
+          OR (OLD.status = 'confirmed' AND NEW.status IN ('checked_in', 'cancelled_by_citizen', 'no_show', 'moved'))) THEN
     RAISE EXCEPTION 'appointments: invalid transition % -> %', OLD.status, NEW.status;
   END IF;
   RETURN NEW;
@@ -731,6 +736,23 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS appointment_reminders_append_only_truncate ON appointment_reminders';
     EXECUTE 'CREATE TRIGGER appointment_reminders_append_only_truncate
       BEFORE TRUNCATE ON appointment_reminders
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;
+
+-- health_unit_drains (api#29; F-09.3): o esvaziamento de unidade é prova de
+-- quem moveu, para onde e por quê. Só acréscimo; o motivo nunca muda.
+DO $do$
+BEGIN
+  IF to_regclass('public.health_unit_drains') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS health_unit_drains_append_only ON health_unit_drains';
+    EXECUTE 'CREATE TRIGGER health_unit_drains_append_only
+      BEFORE UPDATE OR DELETE ON health_unit_drains
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS health_unit_drains_append_only_truncate ON health_unit_drains';
+    EXECUTE 'CREATE TRIGGER health_unit_drains_append_only_truncate
+      BEFORE TRUNCATE ON health_unit_drains
       FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
   END IF;
 END

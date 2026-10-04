@@ -1,9 +1,9 @@
 # Horário marcado dentro de um pedido (ADR 0019). Remarcar = linha nova;
 # o que foi marcado nunca muda (trigger).
 class Appointment < ApplicationRecord
-  STATUSES = %w[scheduled confirmed checked_in cancelled_by_citizen expired no_show].freeze
+  STATUSES = %w[scheduled confirmed checked_in cancelled_by_citizen expired no_show moved].freeze
   LIVE = %w[scheduled confirmed].freeze
-  ENDED = %w[checked_in cancelled_by_citizen expired no_show].freeze
+  ENDED = %w[checked_in cancelled_by_citizen expired no_show moved].freeze
   CONFIRMATION_LEAD = 24.hours
   BORN_CONFIRMED_WITHIN = 48.hours
   MAX_AHEAD = 180.days
@@ -12,6 +12,8 @@ class Appointment < ApplicationRecord
   belongs_to :citizen
   belongs_to :health_unit
   belongs_to :scheduled_by_user, class_name: "User"
+  # Horário movido de unidade (api#29): o novo aponta para o antigo.
+  belongs_to :moved_from_appointment, class_name: "Appointment", optional: true
   has_one :attendance
 
   scope :live, -> { where(status: LIVE) }

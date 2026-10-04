@@ -13,7 +13,10 @@ class Attendance < ApplicationRecord
   belongs_to :called_by_user, class_name: "User", optional: true
   belongs_to :referral_unit, class_name: "HealthUnit", optional: true
   belongs_to :closed_by_user, class_name: "User", optional: true
-  has_one :appointment_request, foreign_key: :origin_attendance_id, inverse_of: :origin_attendance
+  # O pedido vigente do atendimento: um pedido movido de unidade (api#29) fica
+  # encerrado como `moved` e o novo, ligado a ele, é o que vale.
+  has_one :appointment_request, -> { where("appointment_requests.closed_reason IS DISTINCT FROM 'moved'") },
+          foreign_key: :origin_attendance_id, inverse_of: :origin_attendance
 
   scope :open_attendances, -> { where(status: %w[waiting in_care]) }
   scope :waiting, -> { where(status: "waiting") }
