@@ -6,6 +6,12 @@
 # vez de decrementar: não depende do tier da triagem (o
 # AnonymizeRevokedTriageJob o apaga, em qualquer ordem) e é idempotente.
 # conversation_id só acha os dias; a métrica segue agregada por cidade.
+#
+# Corrida aceita: se o UpdateDashboardJob de OUTRA triagem do mesmo dia ainda
+# estiver na fila quando o dia é recalculado, o recálculo já a conta e o bump
+# atrasado a soma de novo — fica contada em dobro até o rebuild noturno
+# (RebuildDashboardMetricsJob) refazer o dia. Os dois jobs estão na fila
+# :reports, em ordem de chegada, então é raro.
 class ForgetRevokedTriageMetricsJob < ApplicationJob
   include IdempotentConsumer
   queue_as :reports

@@ -73,6 +73,20 @@ RSpec.describe "Triagens revogadas nos painéis ao vivo (api#34)" do
     end
   end
 
+  describe Admin::TriagesQuery do
+    let(:out) { described_class.call(period: period) }
+
+    it "conta só a concluída não revogada em concluídas e na taxa; iniciadas seguem todas" do
+      expect(out[:started]).to eq(4)
+      expect(out[:completed]).to eq(1)
+      expect(out[:completionRate]).to eq(25.0)
+    end
+
+    it "mostra as revogadas do período à parte, só como contagem" do
+      expect(out[:revoked]).to eq(3)
+    end
+  end
+
   describe Admin::ConversationsQuery do
     it "calcula o tempo até concluir só sobre a concluída não revogada" do
       expect(described_class.call(period: period)[:avgToCompleteMin]).to eq(6.0)
@@ -89,8 +103,8 @@ RSpec.describe "Triagens revogadas nos painéis ao vivo (api#34)" do
       5.times { |i| a_triage!(day: day, hour: 15, minute: i, neighborhood: centro, revoked: true) }
     end
 
-    it "suprime a contagem de revogadas de 1 a 4 e mostra a de 5 ou mais, nos dois painéis" do
-      [ Admin::OverviewQuery, Admin::ClassificationQuery ].each do |query|
+    it "suprime a contagem de revogadas de 1 a 4 e mostra a de 5 ou mais, nos três painéis" do
+      [ Admin::OverviewQuery, Admin::ClassificationQuery, Admin::TriagesQuery ].each do |query|
         expect(query.call(period: period, filter: Admin::NeighborhoodFilter.parse(batel.id))[:revoked]).to eq(suppressed)
         expect(query.call(period: period, filter: Admin::NeighborhoodFilter.parse(centro.id))[:revoked]).to eq(5)
       end
