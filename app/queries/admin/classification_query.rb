@@ -6,9 +6,9 @@
 # régua do alerta (Protocols::Urgency: priority <= URGENT_MAX_PRIORITY). O modo
 # de scoring é o da versão do protocolo em que cada triagem terminou.
 #
-# Expand/contract (ADR 0015): priorityTrue/priorityTrend e as chaves
-# low/medium/high do pivô ficam como apelidos do contrato antigo enquanto o
-# console do operador (apps/admin) não migra para urgent/urgentTrend/counts.
+# Expand/contract (ADR 0015): os apelidos do contrato antigo
+# (priorityTrue/priorityTrend e as chaves low/medium/high do pivô) saíram
+# depois que o console do operador (apps/admin) migrou (admin#2).
 #
 # Filtro de bairro (ADR 0023): triagens pelo bairro copiado; com o filtro
 # ligado, contagens de 1 a 4 (e o share delas) saem suprimidas, e a amostra
@@ -18,7 +18,6 @@
 # triagem com o tier dela, então uma categoria suprimida apareceria de
 # novo, sem disfarce, na mesma resposta.
 class Admin::ClassificationQuery
-  LEGACY_TIERS = %w[low medium high].freeze
   MODE_SQL = "protocol_definitions.definition -> 'scoring' ->> 'type'".freeze
 
   def self.call(period:, filter: Admin::NeighborhoodFilter.off)
@@ -51,8 +50,6 @@ class Admin::ClassificationQuery
       urgent: urgent,
       urgentMaxPriority: urgent_max,
       urgentTrend: urgent_trend,
-      priorityTrue: urgent,        # apelido (apps/admin)
-      priorityTrend: urgent_trend, # apelido (apps/admin)
       byProtocol: protocol_rows,
       byMode: mode_rows,
       sampleTriages: listed
@@ -100,8 +97,7 @@ class Admin::ClassificationQuery
       pivot[key] ||= { protocol: key, counts: {} }
       pivot[key][:counts][tier || "sem tier"] = count
     end.values.map do |row|
-      legacy = LEGACY_TIERS.to_h { |t| [ t.to_sym, @filter.count(row[:counts][t] || 0) ] } # apelidos (apps/admin)
-      row.merge(counts: row[:counts].transform_values { |c| @filter.count(c) }).merge(legacy)
+      row.merge(counts: row[:counts].transform_values { |c| @filter.count(c) })
     end
   end
 

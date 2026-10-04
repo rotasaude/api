@@ -67,12 +67,15 @@ RSpec.describe Admin::ClassificationQuery do
     )
   end
 
-  it "keeps the old contract as aliases for the operator console (ADR 0015 expand/contract)" do
+  # ADR 0015 expand/contract, fase contract (admin#2): o console do operador
+  # migrou para urgent/urgentTrend/counts, então os apelidos saíram.
+  it "no longer serves the old contract's aliases" do
     out = described_class.call(period: period)
 
-    expect(out[:priorityTrue]).to eq(out[:urgent])
-    expect(out[:priorityTrend]).to eq(out[:urgentTrend])
-    expect(out[:byProtocol].first.keys).to include(:low, :medium, :high)
+    expect(out.keys).to contain_exactly(:tiers, :tierKeys, :urgent, :urgentMaxPriority, :urgentTrend,
+                                        :byProtocol, :byMode, :sampleTriages)
+    expect(out).not_to include(:priorityTrue, :priorityTrend)
+    expect(out[:byProtocol].flat_map(&:keys).uniq).to contain_exactly(:protocol, :counts)
   end
 
   it "splits by the scoring mode of the protocol version each triage used" do

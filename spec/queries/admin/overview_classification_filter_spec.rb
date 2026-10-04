@@ -81,10 +81,10 @@ RSpec.describe "Visão geral e Classificação filtradas por bairro (ADR 0023)" 
   describe Admin::ClassificationQuery do
     def out(raw) = described_class.call(period: period, filter: filter(raw))
 
-    it "bairro com 1 a 4: contagens, apelidos, share e série suprimidos; amostra null" do
+    it "bairro com 1 a 4: contagens, share e série suprimidos; amostra null" do
       o = out(small.id)
       expect(o[:tiers].map { |t| t[:count] }).to all(eq(suppressed))
-      expect([ o[:urgent], o[:priorityTrue] ]).to eq([ suppressed, suppressed ])
+      expect(o[:urgent]).to eq(suppressed)
       expect(o[:urgentTrend]).to include(suppressed)
       expect(o[:byMode].map { |m| [ m[:count], m[:share] ] }).to all(eq([ suppressed, suppressed ]))
       expect(o[:byProtocol].flat_map { |r| r[:counts].values }).to all(eq(suppressed))
