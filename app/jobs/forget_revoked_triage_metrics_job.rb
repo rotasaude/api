@@ -15,6 +15,8 @@
 class ForgetRevokedTriageMetricsJob < ApplicationJob
   include IdempotentConsumer
   queue_as :reports
+  # Cinto e suspensório: o recálculo é idempotente, então repetir é seguro.
+  retry_on ActiveRecord::RecordNotUnique, wait: 5.seconds, attempts: 3
 
   def handle(conversation_id:, **)
     Triage.status_completed.where(conversation_id: conversation_id).where.not(completed_at: nil)

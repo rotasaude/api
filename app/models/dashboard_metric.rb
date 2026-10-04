@@ -32,7 +32,14 @@ class DashboardMetric < ApplicationRecord
       rows = counts.map do |(dimension, period, key), value|
         { dimension: dimension, period: period, key: key, value: value, created_at: now, updated_at: now }
       end
-      insert_all(rows) if rows.any?
+      # upsert, não insert_all: um bump! (UpdateDashboardJob) ou o rebuild de
+      # outra thread da fila :reports pode gravar a mesma chave entre o delete
+      # e aqui — insert_all a pularia em silêncio e o dia ficaria com o valor
+      # dele. A fonte vence.
+      if rows.any?
+        upsert_all(rows, unique_by: %i[dimension period key],
+                         on_duplicate: Arel.sql("value = EXCLUDED.value, updated_at = EXCLUDED.updated_at"))
+      end
     end
   end
 

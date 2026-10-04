@@ -107,6 +107,26 @@ RSpec.describe "dashboard_metrics sem triagem revogada (api#34)", type: :job do
     end
   end
 
+  describe "DashboardMetric.recompute_triage_day! sob bump concorrente" do
+    it "fica com o valor da fonte mesmo se outro job grava a mesma chave entre o delete e o insert" do
+      2.times { |i| a_triage!(day: day, hour: 10 + i, tier: "alta", priority: 1) }
+      allow(DashboardMetric).to receive(:triage_counts).and_wrap_original do |original, *args, **kwargs|
+        original.call(*args, **kwargs).tap do
+          # Simula o UpdateDashboardJob (ou o rebuild) de outra thread da fila :reports.
+          DashboardMetric.bump!(dimension: "triages_by_tier", period: date, key: "alta")
+          DashboardMetric.bump!(dimension: "triages_total", period: date, key: "total")
+        end
+      end
+
+      expect { DashboardMetric.recompute_triage_day!(date) }.not_to raise_error
+      expect(triage_rows).to eq([
+        [ "priority_distribution", date, "1",     2 ],
+        [ "triages_by_tier",       date, "alta",  2 ],
+        [ "triages_total",         date, "total", 2 ]
+      ])
+    end
+  end
+
   it "consent.revoked também liga o ForgetRevokedTriageMetricsJob" do
     expect(DomainEvents.registry["consent.revoked"].map(&:job)).to include("ForgetRevokedTriageMetricsJob")
   end
