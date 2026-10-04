@@ -9,15 +9,34 @@ class HealthUnitsController < ApplicationController
   ADDRESS_FIELDS = %w[address_street address_number address_complement address_zip neighborhood_id].freeze
 
   before_action :require_unit_reader, only: %i[index]
-  before_action :require_admin, only: %i[all create update deactivate activate]
-  before_action :set_unit, only: %i[update deactivate activate]
+  before_action :require_admin, only: %i[all create update deactivate activate drain]
+  before_action :set_unit, only: %i[update deactivate activate drain]
 
   def index
     render json: { units: HealthUnit.active_units.map { |u| unit_json(u) } }
   end
 
+  # Para o admin: cada unidade com quantos pedidos vivos e horários marcados
+  # ainda a prendem (o que "Esvaziar unidade" moveria; api#29).
   def all
-    render json: { units: HealthUnit.order(:name).map { |u| unit_json(u, include_active: true) } }
+    requests = AppointmentRequest.live_requests.group(:target_unit_id).count
+    appointments = Appointment.live.group(:health_unit_id).count
+    render json: { units: HealthUnit.order(:name).map do |u|
+      unit_json(u, include_active: true).merge(live_requests_count: requests[u.id] || 0,
+                                               live_appointments_count: appointments[u.id] || 0)
+    end }
+  end
+
+  # POST /attendance/units/:id/drain { target_unit_id, reason } (api#29; F-09.3)
+  def drain
+    return render json: { error: "not_found" }, status: :not_found unless @unit
+
+    result = HealthUnits::Drain.call(unit: @unit, target_unit_id: params[:target_unit_id], reason: params[:reason],
+                                     by: Current.user)
+    return render json: { error: result.reason.to_s }, status: :unprocessable_entity if result.failure?
+
+    render json: { drain: { id: result.payload[:drain].id, requests_count: result.payload[:requests],
+                            appointments_count: result.payload[:appointments] } }
   end
 
   def create

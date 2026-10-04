@@ -4,7 +4,7 @@
 class AppointmentRequest < ApplicationRecord
   KINDS = %w[return referral].freeze
   STATUSES = %w[open scheduled closed].freeze
-  CLOSED_REASONS = %w[fulfilled citizen_cancelled dismissed].freeze
+  CLOSED_REASONS = %w[fulfilled citizen_cancelled dismissed moved].freeze
 
   belongs_to :origin_attendance, class_name: "Attendance", inverse_of: :appointment_request
   belongs_to :citizen
@@ -12,6 +12,8 @@ class AppointmentRequest < ApplicationRecord
   belongs_to :origin_unit, class_name: "HealthUnit"
   belongs_to :target_unit, class_name: "HealthUnit"
   belongs_to :closed_by_user, class_name: "User", optional: true
+  # Pedido movido de unidade (api#29): o novo aponta para o antigo.
+  belongs_to :moved_from_request, class_name: "AppointmentRequest", optional: true
   has_many :appointments, foreign_key: :request_id, inverse_of: :request, dependent: :restrict_with_error
 
   scope :live_requests, -> { where(status: %w[open scheduled]) }

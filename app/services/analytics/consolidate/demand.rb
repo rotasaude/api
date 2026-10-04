@@ -71,6 +71,7 @@ module Analytics
                  NULL, NULL, r.kind, COUNT(*), :at
           FROM appointment_requests r
           WHERE #{window('r.created_at')}
+            AND r.moved_from_request_id IS NULL -- cópia de unidade esvaziada não é demanda nova (api#29)
           GROUP BY 1, 3, 9
         SQL
       end
@@ -81,6 +82,7 @@ module Analytics
                  NULL, NULL, r.closed_reason, COUNT(*), :at
           FROM appointment_requests r
           WHERE r.closed_at IS NOT NULL AND #{window('r.closed_at')}
+            AND r.closed_reason <> 'moved' -- mudou de unidade, não encerrou (api#29)
           GROUP BY 1, 3, 9
         SQL
       end

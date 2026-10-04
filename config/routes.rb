@@ -107,6 +107,7 @@ Rails.application.routes.draw do
     post "units/:id",               to: "health_units#update"
     post "units/:id/deactivate",    to: "health_units#deactivate"
     post "units/:id/activate",      to: "health_units#activate"
+    post "units/:id/drain",         to: "health_units#drain"
     get  "units/:id/queue",           to: "attendances#queue"
     post "units/:id/call_next",       to: "attendances#call_next"
     post "attendances/:id/call",      to: "attendances#call"

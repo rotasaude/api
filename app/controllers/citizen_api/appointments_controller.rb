@@ -17,7 +17,10 @@ module CitizenApi
       citizen = current_citizen_session.citizens.find_by(id: params[:citizen_id])
       return render_error("not_found", :not_found) unless citizen
 
-      requests = AppointmentRequest.where(citizen: citizen).includes(:target_unit, :appointments)
+      # O pedido movido de unidade (api#29) some da lista: vale o novo, que diz
+      # de onde veio (moved_from_unit_name).
+      requests = AppointmentRequest.where(citizen: citizen).where("closed_reason IS DISTINCT FROM 'moved'")
+                                   .includes(:target_unit, :appointments, moved_from_request: :target_unit)
                                    .order(created_at: :desc)
       render json: { appointments: requests.map { |r| item_json(r) } }
     end
@@ -61,7 +64,8 @@ module CitizenApi
       {
         request: { id: request.id, kind: request.kind, target_unit_name: request.target_unit.name,
                    status: request.status, closed_reason: request.closed_reason,
-                   reopened_reason: request.reopened_reason },
+                   reopened_reason: request.reopened_reason,
+                   moved_from_unit_name: request.moved_from_request&.target_unit&.name },
         appointment: latest && appointment_json(latest)
       }
     end

@@ -4,6 +4,7 @@ require "rails_helper"
 # Spec 2026-09-30 §3.4 (demanda) e desvio 1 do plano (revogação). Cada
 # métrica: entra, não entra, borda do dia no fuso da cidade.
 RSpec.describe Analytics::Consolidate::Demand do
+  include ActiveSupport::Testing::TimeHelpers
   let(:day) { Time.zone.today - 3 }
   let(:centro) { Neighborhood.create!(name: "Centro", source: "manual") }
   let(:unit) { create_unit("UBS Centro") }
@@ -93,5 +94,20 @@ RSpec.describe Analytics::Consolidate::Demand do
 
     expect(rows("request.opened")).to contain_exactly([ day, unit.id, nil, nil, nil, nil, "return", 1 ])
     expect(rows("request.closed")).to contain_exactly([ day, other_unit.id, nil, nil, nil, nil, "dismissed", 1 ])
+  end
+
+  it "unidade esvaziada (api#29): a cópia movida não é demanda nova e o `moved` não é encerramento" do
+    back = an_attendance!(triage: a_triage!(day: day - 2), unit: unit, outcome: "return")
+    req = AnalyticsHistory.request!(origin: back, kind: "return", by: analytics_staff, created_at: local_at(day, 9))
+    travel_to(local_at(day, 15)) do
+      HealthUnits::Drain.call(unit: unit, target_unit_id: other_unit.id, reason: "unidade fechada para reforma",
+                              by: analytics_staff)
+    end
+    expect(AppointmentRequest.where(moved_from_request_id: req.id).count).to eq(1)
+
+    run!
+
+    expect(rows("request.opened")).to contain_exactly([ day, unit.id, nil, nil, nil, nil, "return", 1 ])
+    expect(rows("request.closed")).to be_empty
   end
 end
