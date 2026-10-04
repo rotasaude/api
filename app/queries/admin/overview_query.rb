@@ -14,7 +14,8 @@
 #
 # Revogada (api#34; Triage.revoked, a definição do Analytics) não entra em
 # concluídas, urgentes nem na taxa; sai à parte em `revoked`, só a contagem
-# das iniciadas no período (mesmo recorte do Analytics), suprimida pelo filtro.
+# das iniciadas no período (mesmo recorte do Analytics), e só sem filtro de
+# bairro (com ele, null).
 class Admin::OverviewQuery
   def self.call(period:, filter: Admin::NeighborhoodFilter.off)
     new(period, filter).call
@@ -34,7 +35,11 @@ class Admin::OverviewQuery
         kpi_completion,
         kpi_failed_jobs
       ],
-      revoked: @filter.count(triages.revoked.where(created_at: @period.from..@period.to).count)
+      # Revogadas: recortadas por created_at (iniciadas no período, como o
+      # Analytics), enquanto as concluídas são por completed_at — a triagem
+      # iniciada antes do período e revogada dentro dele não aparece aqui.
+      # Sem número com o filtro de bairro ligado (NeighborhoodFilter#unfiltered).
+      revoked: @filter.unfiltered { triages.revoked.where(created_at: @period.from..@period.to).count }
     }
   end
 

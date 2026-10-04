@@ -20,7 +20,8 @@
 #
 # Revogada (api#34; Triage.revoked, a definição do Analytics) fica fora de
 # tiers, urgência, pivôs e amostra; sai à parte em `revoked`, só a contagem
-# das iniciadas no período, suprimida pelo filtro. Nunca linha de revogada.
+# das iniciadas no período, e só sem filtro de bairro (com ele, null). Nunca
+# linha de revogada.
 class Admin::ClassificationQuery
   LEGACY_TIERS = %w[low medium high].freeze
   MODE_SQL = "protocol_definitions.definition -> 'scoring' ->> 'type'".freeze
@@ -60,7 +61,11 @@ class Admin::ClassificationQuery
       byProtocol: protocol_rows,
       byMode: mode_rows,
       sampleTriages: listed,
-      revoked: @filter.count(triages.revoked.where(created_at: @period.from..@period.to).count)
+      # Revogadas: recortadas por created_at (iniciadas no período, como o
+      # Analytics), enquanto as concluídas são por completed_at — a triagem
+      # iniciada antes do período e revogada dentro dele não aparece aqui.
+      # Sem número com o filtro de bairro ligado (NeighborhoodFilter#unfiltered).
+      revoked: @filter.unfiltered { triages.revoked.where(created_at: @period.from..@period.to).count }
     }
   end
 

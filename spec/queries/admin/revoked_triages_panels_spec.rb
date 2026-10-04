@@ -140,10 +140,16 @@ RSpec.describe "Triagens revogadas nos painéis ao vivo (api#34)" do
       5.times { |i| a_triage!(day: day, hour: 15, minute: i, neighborhood: centro, revoked: true) }
     end
 
-    it "suprime a contagem de revogadas de 1 a 4 e mostra a de 5 ou mais, nos três painéis" do
+    it "com o filtro ligado, os três painéis não devolvem a contagem de revogadas (null)" do
+      # A revogada anonimizada perde o bairro: a contagem filtrada enganaria,
+      # e em Triagens sairia por subtração de iniciadas e concluídas.
       [ Admin::OverviewQuery, Admin::ClassificationQuery, Admin::TriagesQuery ].each do |query|
-        expect(query.call(period: period, filter: Admin::NeighborhoodFilter.parse(batel.id))[:revoked]).to eq(suppressed)
-        expect(query.call(period: period, filter: Admin::NeighborhoodFilter.parse(centro.id))[:revoked]).to eq(5)
+        [ batel.id, centro.id, "none" ].each do |raw|
+          out = query.call(period: period, filter: Admin::NeighborhoodFilter.parse(raw))
+          expect(out).to have_key(:revoked)
+          expect(out[:revoked]).to be_nil, "#{query} com filtro #{raw} devolveu #{out[:revoked].inspect}"
+        end
+        expect(query.call(period: period)[:revoked]).to eq(10)
       end
     end
   end

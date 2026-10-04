@@ -84,6 +84,13 @@ class Admin::NeighborhoodFilter
     value
   end
 
+  # Número que só existe sem filtro (null com o filtro ligado). api#34: a
+  # contagem de revogadas — a revogada anonimizada perde o bairro copiado, então
+  # a contagem filtrada enganaria, e em Triagens sairia por subtração.
+  def unfiltered
+    active? ? nil : yield
+  end
+
   # Lista de amostra: null quando o total filtrado é pequeno (a chave fica).
   def list(total, rows)
     active? && Admin::SmallCount.small?(total) ? nil : rows
