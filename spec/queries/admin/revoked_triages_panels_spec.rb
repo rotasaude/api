@@ -37,6 +37,43 @@ RSpec.describe "Triagens revogadas nos painéis ao vivo (api#34)" do
       expect(Triage.revoked.ids).to match_array(analytics)
       expect(Triage.not_revoked.ids).to contain_exactly(normal.id)
     end
+
+    def revoked_on_both_sides?(triage)
+      analytics = ApplicationRecord.connection.select_value(ApplicationRecord.sanitize_sql_array([
+        "SELECT #{Analytics::Consolidate::Base::REVOCATION} #{Analytics::Consolidate::Base::TRIAGES} WHERE t.id = ?",
+        triage.id
+      ]))
+      [ Triage.revoked.exists?(id: triage.id), !Triage.not_revoked.exists?(id: triage.id), analytics ]
+    end
+
+    def bare_triage!(conversation, status:)
+      protocol = ProtocolDefinition.find_by(name: StartTriage::DEFAULT_PROTOCOL_NAME, status: "active") ||
+                 create_default_protocol!
+      completed = status == "completed"
+      Triage.create!(conversation: conversation, protocol_definition: protocol, protocol_name: protocol.name,
+                     status: status, tier: completed ? "alta" : nil, priority: completed ? 1 : nil, answers: {},
+                     created_at: 2.hours.ago, completed_at: 1.hour.ago)
+    end
+
+    it "abortada por revogação conta como revogada mesmo com o consentimento da conversa ativo, nos dois lados" do
+      conversation = Conversation.create!(phone: "+5541977770001", state: "consented")
+      Consent.create!(conversation: conversation, version: 1, policy_text_sha: "sha", channel: "web", given_at: 3.hours.ago)
+      triage = bare_triage!(conversation, status: "aborted_by_revocation")
+
+      expect(revoked_on_both_sides?(triage)).to eq([ true, true, true ])
+    end
+
+    it "só a conversa da própria triagem conta: outra conversa revogada do mesmo cidadão não, nos dois lados" do
+      citizen = analytics_citizen!
+      other = Conversation.create!(channel: "web", citizen: citizen, phone: citizen.phone, state: "revoked")
+      Consent.create!(conversation: other, version: 1, policy_text_sha: "sha", channel: "web",
+                      given_at: 5.hours.ago, revoked_at: 4.hours.ago)
+      own = Conversation.create!(channel: "web", citizen: citizen, phone: citizen.phone, state: "completed")
+      Consent.create!(conversation: own, version: 1, policy_text_sha: "sha", channel: "web", given_at: 3.hours.ago)
+      triage = bare_triage!(own, status: "completed")
+
+      expect(revoked_on_both_sides?(triage)).to eq([ false, false, false ])
+    end
   end
 
   describe Admin::OverviewQuery do
