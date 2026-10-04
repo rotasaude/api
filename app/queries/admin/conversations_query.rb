@@ -13,7 +13,8 @@
 # started visível, a taxa sozinha devolveria o abandoned suprimido por
 # subtração. avgToCompleteMin continua em @filter.over(total, ...): ali
 # `total` já É a própria contagem descrita (nº de triagens concluídas usadas
-# na média), não uma razão entre duas contagens diferentes.
+# na média), não uma razão entre duas contagens diferentes. Triagem revogada
+# (api#34; Triage.revoked) não entra no tempo médio.
 class Admin::ConversationsQuery
   EXITS = { "completed" => "ok", "abandoned" => "warn", "declined" => "neutral",
             "cancelled" => "neutral", "revoked" => "warn" }.freeze
@@ -60,7 +61,7 @@ class Admin::ConversationsQuery
 
   def avg_complete_minutes
     completed = @filter.triages(Triage.all)
-                  .where(status: "completed", completed_at: @period.from..@period.to)
+                  .counted_completed.where(completed_at: @period.from..@period.to)
     total = completed.count
     return nil if total.zero?
     seconds = completed

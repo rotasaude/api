@@ -9,6 +9,11 @@
 # (started, rate): com started visível e completed suprimido, a taxa sozinha
 # devolveria o completed por subtração (ex.: 6 iniciadas, 33.3% = 2
 # concluídas) — share suprime quando QUALQUER um dos dois lados é pequeno.
+#
+# Revogada (api#34; Triage.revoked, a definição do Analytics) segue em
+# iniciadas, mas não entra em concluídas nem na taxa; sai à parte em
+# `revoked`, só a contagem das iniciadas no período, e só sem filtro de bairro (com ele,
+# null).
 class Admin::TriagesQuery
   def self.call(period:, filter: Admin::NeighborhoodFilter.off)
     new(period, filter).call
@@ -23,7 +28,7 @@ class Admin::TriagesQuery
     triages = @filter.triages(Triage.all)
     base = triages.where(created_at: @period.from..@period.to)
     started = base.count
-    completed = base.where(status: "completed").count
+    completed = base.counted_completed.count
     rate = started.zero? ? 0.0 : (completed.to_f / started * 100).round(1)
 
     {
@@ -31,7 +36,12 @@ class Admin::TriagesQuery
       started: @filter.count(started),
       completed: @filter.count(completed),
       completionRate: @filter.share(completed, started, rate),
-      byProtocol: by_protocol(base, started)
+      byProtocol: by_protocol(base, started),
+      # Revogadas: recortadas por created_at (iniciadas no período, como o
+      # Analytics), enquanto as concluídas são por completed_at — a triagem
+      # iniciada antes do período e revogada dentro dele não aparece aqui.
+      # Sem número com o filtro de bairro ligado (NeighborhoodFilter#unfiltered).
+      revoked: @filter.unfiltered { base.revoked.count }
     }
   end
 

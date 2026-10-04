@@ -16,6 +16,19 @@ class Triage < ApplicationRecord
     aborted_by_cancellation: "aborted_by_cancellation"
   }, prefix: true
 
+  # Revogada (api#34): a MESMA definição do Analytics (ADR 0025;
+  # Analytics::Consolidate::Base::REVOCATION) — abortada por revogação, ou com
+  # o consentimento da PRÓPRIA conversa revogado (o wpda revoga depois de
+  # concluir e a triagem segue completed; com ou sem atendimento). Os painéis
+  # ao vivo (ADR 0022) e o dashboard_metrics contam concluída só fora daqui. A
+  # spec revoked_triages_panels_spec prende as duas definições juntas.
+  REVOKED_SQL = "(triages.status = 'aborted_by_revocation' OR EXISTS (SELECT 1 FROM consents c " \
+                "WHERE c.conversation_id = triages.conversation_id AND c.revoked_at IS NOT NULL))".freeze
+  scope :revoked, -> { where(Arel.sql(REVOKED_SQL)) }
+  scope :not_revoked, -> { where(Arel.sql("NOT #{REVOKED_SQL}")) }
+  # Concluída que conta como concluída nos painéis e nas métricas.
+  scope :counted_completed, -> { status_completed.not_revoked }
+
   validates :protocol_name, presence: true
   # answers é jsonb e começa vazio ({}) ao iniciar a triage. presence: true
   # falha em hash vazio (Rails considera blank). Disallow só nil.

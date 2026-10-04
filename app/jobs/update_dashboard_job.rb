@@ -10,6 +10,10 @@ class UpdateDashboardJob < ApplicationJob
       Rails.logger.info("[UpdateDashboardJob] skip triagem anonimizada")
       return
     end
+    if Triage.revoked.exists?(id: triage.id) # revogada com atendimento (api#34): o recálculo do dia já a tirou
+      Rails.logger.info("[UpdateDashboardJob] skip triagem revogada")
+      return
+    end
     date = (triage.completed_at || Time.current).to_date.iso8601
 
     DashboardMetric.bump!(

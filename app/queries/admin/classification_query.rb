@@ -17,6 +17,11 @@
 # urgentTrend, seja hora ou dia) sai suprimida — a amostra lista cada
 # triagem com o tier dela, então uma categoria suprimida apareceria de
 # novo, sem disfarce, na mesma resposta.
+#
+# Revogada (api#34; Triage.revoked, a definição do Analytics) fica fora de
+# tiers, urgência, pivôs e amostra; sai à parte em `revoked`, só a contagem
+# das iniciadas no período, e só sem filtro de bairro (com ele, null). Nunca
+# linha de revogada.
 class Admin::ClassificationQuery
   MODE_SQL = "protocol_definitions.definition -> 'scoring' ->> 'type'".freeze
 
@@ -31,12 +36,12 @@ class Admin::ClassificationQuery
 
   def call
     triages = @filter.triages(Triage.all)
-    base = triages.where(status: "completed", completed_at: @period.from..@period.to)
+    base = triages.counted_completed.where(completed_at: @period.from..@period.to)
     total = base.count
     urgent_max = Protocols::Urgency.max_priority
     tiers = tier_counts(base, urgent_max)
     urgent = @filter.count(base.where(priority: ..urgent_max).count)
-    urgent_trend = @filter.series(@period.series(triages.where(status: "completed", priority: ..urgent_max), :completed_at))
+    urgent_trend = @filter.series(@period.series(triages.counted_completed.where(priority: ..urgent_max), :completed_at))
     protocol_rows = by_protocol(base)
     mode_rows = by_mode(base)
     sample_rows = sample(base.limit(8), urgent_max)
@@ -52,7 +57,12 @@ class Admin::ClassificationQuery
       urgentTrend: urgent_trend,
       byProtocol: protocol_rows,
       byMode: mode_rows,
-      sampleTriages: listed
+      sampleTriages: listed,
+      # Revogadas: recortadas por created_at (iniciadas no período, como o
+      # Analytics), enquanto as concluídas são por completed_at — a triagem
+      # iniciada antes do período e revogada dentro dele não aparece aqui.
+      # Sem número com o filtro de bairro ligado (NeighborhoodFilter#unfiltered).
+      revoked: @filter.unfiltered { triages.revoked.where(created_at: @period.from..@period.to).count }
     }
   end
 

@@ -11,6 +11,11 @@
 # com started visível, a taxa sozinha devolveria o completed suprimido por
 # subtração (mesmo ajuste de Admin::TriagesQuery#completionRate e
 # Admin::ConversationsQuery#abandonRate).
+#
+# Revogada (api#34; Triage.revoked, a definição do Analytics) não entra em
+# concluídas, urgentes nem na taxa; sai à parte em `revoked`, só a contagem
+# das iniciadas no período (mesmo recorte do Analytics), e só sem filtro de
+# bairro (com ele, null).
 class Admin::OverviewQuery
   def self.call(period:, filter: Admin::NeighborhoodFilter.off)
     new(period, filter).call
@@ -29,7 +34,12 @@ class Admin::OverviewQuery
         kpi_urgent,
         kpi_completion,
         kpi_failed_jobs
-      ]
+      ],
+      # Revogadas: recortadas por created_at (iniciadas no período, como o
+      # Analytics), enquanto as concluídas são por completed_at — a triagem
+      # iniciada antes do período e revogada dentro dele não aparece aqui.
+      # Sem número com o filtro de bairro ligado (NeighborhoodFilter#unfiltered).
+      revoked: @filter.unfiltered { triages.revoked.where(created_at: @period.from..@period.to).count }
     }
   end
 
@@ -40,7 +50,7 @@ class Admin::OverviewQuery
 
   def kpi_done
     completed = triages
-                  .where(status: "completed", completed_at: @period.from..@period.to)
+                  .counted_completed.where(completed_at: @period.from..@period.to)
                   .count
     {
       id: "done",
@@ -49,7 +59,7 @@ class Admin::OverviewQuery
       unit: "",
       delta: nil,
       tone: completed.positive? ? "ok" : "neutral",
-      spark: @filter.series(@period.series(triages.where(status: "completed"), :completed_at)),
+      spark: @filter.series(@period.series(triages.counted_completed, :completed_at)),
       source: "live"
     }
   end
@@ -72,7 +82,7 @@ class Admin::OverviewQuery
   end
 
   def kpi_urgent
-    urgent = triages.where(status: "completed", priority: ..Protocols::Urgency.max_priority)
+    urgent = triages.counted_completed.where(priority: ..Protocols::Urgency.max_priority)
     count = urgent.where(completed_at: @period.from..@period.to).count
     {
       id: "urgent",
@@ -89,7 +99,7 @@ class Admin::OverviewQuery
   def kpi_completion
     base = triages.where(created_at: @period.from..@period.to)
     started = base.count
-    completed = base.where(status: "completed").count
+    completed = base.counted_completed.count
     rate = started.zero? ? 0.0 : (completed.to_f / started * 100).round(1)
     value = @filter.share(completed, started, rate)
     {
