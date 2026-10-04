@@ -37,22 +37,11 @@ class AddUnitDrains < ActiveRecord::Migration[8.1]
     execute File.read(Rails.root.join("db/city_triggers.sql"))
   end
 
+  # Desfazer deixaria as funções guarda de db/city_triggers.sql citando colunas
+  # que não existem mais (todo UPDATE em pedido e horário quebraria), e as linhas
+  # `moved` não caberiam nos CHECKs antigos.
   def down
-    drop_table :health_unit_drains
-    replace_check :appointments, "ck_appointments_status",
-                  "status::text = ANY (ARRAY['scheduled', 'confirmed', 'checked_in', 'cancelled_by_citizen', " \
-                  "'expired', 'no_show']::text[])"
-    remove_reference :appointments, :moved_from_appointment
-    replace_check :appointment_requests, "ck_appointment_requests_return_same_unit",
-                  "kind::text <> 'return'::text OR origin_unit_id = target_unit_id"
-    replace_check :appointment_requests, "ck_appointment_requests_closed_reason",
-                  "closed_reason IS NULL OR closed_reason::text = ANY (ARRAY['fulfilled', 'citizen_cancelled', " \
-                  "'dismissed']::text[])"
-    remove_index :appointment_requests, name: "index_appointment_requests_on_origin_attendance_id"
-    add_index :appointment_requests, :origin_attendance_id, unique: true,
-              name: "index_appointment_requests_on_origin_attendance_id"
-    remove_reference :appointment_requests, :moved_from_request
-    execute File.read(Rails.root.join("db/city_triggers.sql"))
+    raise ActiveRecord::IrreversibleMigration, "pedidos e horários movidos e os guardas dependem destas colunas"
   end
 
   private

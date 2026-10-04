@@ -138,4 +138,30 @@ RSpec.describe HealthUnits::Drain do
     expect { attempt.call { HealthUnitDrain.where(id: record.id).delete_all } }
       .to raise_error(ActiveRecord::StatementInvalid, /append-only/)
   end
+
+  it "o pedido movido mantém o lugar na fila (mesmo created_at)" do
+    req = travel_to(now) { new_request }
+    travel_to(now + 3.days) { drain }
+    fresh = AppointmentRequest.find_by!(moved_from_request_id: req.id)
+    expect(fresh.created_at).to eq(req.created_at)
+  end
+
+  it "horário com prazo já vencido segue o caminho normal antes: expira e o pedido vai aberto" do
+    appt = travel_to(now) { schedule(new_request, now + 5.days) } # prazo: now + 4 dias
+    travel_to(now + 4.days + 1.hour) do # prazo vencido, job ainda não rodou
+      expect(drain.payload).to include(requests: 1, appointments: 0)
+    end
+    expect(appt.reload.status).to eq("expired")
+    fresh = AppointmentRequest.find_by!(moved_from_request_id: appt.request_id)
+    expect(fresh).to have_attributes(status: "open", reopened_reason: "expired", target_unit_id: dest.id)
+    expect(Appointment.where(moved_from_appointment_id: appt.id)).to be_empty
+  end
+
+  it "trava o horário no destino antes de conferir o encaixe" do
+    travel_to(now) do
+      appt = schedule(new_request, now + 5.days)
+      expect(Appointments::Schedule).to receive(:lock_slot!).with(dest.id, appt.scheduled_at).and_call_original
+      drain
+    end
+  end
 end
