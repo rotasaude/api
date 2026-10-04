@@ -12,7 +12,8 @@
 # Escopo = o banco da cidade do host. Não há município a resolver nem visão
 # cross-tenant (spec banco-por-cidade §5): as queries deste namespace leem o
 # banco inteiro da cidade, sem filtro. O parâmetro de município que os
-# frontends ainda enviam é ignorado.
+# frontends ainda enviam é ignorado. O descritor da cidade é `scope.city`
+# {slug, name, uf} (contracts/session, api#35).
 #
 # Nenhuma rota de escrita é permitida neste namespace (critério de aceite §10).
 class Admin::Api::BaseController < ApplicationController
@@ -73,24 +74,9 @@ class Admin::Api::BaseController < ApplicationController
     {
       scope: {
         city: { slug: Current.city.slug, name: Current.city.name, uf: Current.city.uf },
-        municipality: city_descriptor,
         period: @period.descriptor,
         tz: Time.zone.tzinfo.name
       }
-    }
-  end
-
-  # Descritor da cidade do host. `scope.city` {slug, name, uf} é o contrato;
-  # `scope.municipality` é alias DEPRECADO (id = slug, name = "Nome · UF") mantido
-  # até o passo 3 do api#35. Ordem de deploy: api (expand) → dashboard/admin →
-  # api (contract).
-  def city_descriptor
-    city = Current.city
-    {
-      id: city.slug,
-      slug: city.slug,
-      name: [ city.name, city.uf ].compact.join(" · "),
-      uf: city.uf
     }
   end
 

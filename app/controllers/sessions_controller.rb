@@ -152,9 +152,7 @@ class SessionsController < ApplicationController
   end
 
   # Memberships ativos na cidade do host. city_slug/city_name/city_uf são as
-  # chaves do contrato; municipality_id/name/uf são aliases DEPRECADOS (id =
-  # slug) mantidos até o passo 3 do api#35. Ordem de deploy: api (expand) →
-  # dashboard/admin → api (contract).
+  # chaves do contrato de sessão (contracts/session, api#35).
   def serialize_memberships(user)
     city = Current.city
     user.memberships.active.map do |m|
@@ -162,9 +160,6 @@ class SessionsController < ApplicationController
         city_slug: city.slug,
         city_name: city.name,
         city_uf: city.uf,
-        municipality_id: city.slug,
-        municipality_name: city.name,
-        municipality_uf: city.uf,
         role: m.role
       }
     end
