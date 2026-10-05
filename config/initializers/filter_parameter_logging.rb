@@ -11,7 +11,9 @@ Rails.application.config.filter_parameters += [
   #
   # O log de GraphQL continua útil: `operationName` não é filtrado, e é ele que
   # diz qual operação a requisição executou.
-  :variables, :query
+  :variables, :query,
+  # ADR 0027: perfil do par — dado de saúde sensível, nunca em log.
+  :birth_date, :sex, :gender_identity
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
