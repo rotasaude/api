@@ -15,6 +15,8 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
   R18_PLATFORM_EVENT_NAMES = %w[municipality.provisioned city.suspended city.resumed city.backed_up city.restored
                                 city.archived
                                 city.admin_reinvited city.key_rotated city.consent_term_published
+                                city.feature_changed city.record_settings_changed
+                                terminology.release_activated cnes.snapshot_imported
                                 channel.registered channel.token_rotated channel.unknown_seen
                                 operator.login operator.city_access operator.created
                                 operator.impersonated
@@ -26,7 +28,8 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
                                 maintenance.token.revoked
                                 maintenance.protocol.draft_saved maintenance.protocol.submitted
                                 maintenance.protocol.published maintenance.protocol.activated
-                                maintenance.protocol.retired maintenance.protocol.reverted].freeze
+                                maintenance.protocol.retired maintenance.protocol.reverted
+                                maintenance.city.feature_changed].freeze
 
   # Independent restatement of the rule (not PlatformEvent's own method), so the
   # static call-site check below cannot drift together with the model.
