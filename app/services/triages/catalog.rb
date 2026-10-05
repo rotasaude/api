@@ -41,6 +41,22 @@ module Triages
                       .update_all(status: "expired", resolved_at: Time.current)
     end
 
+    # "Recomendamos também" (contratos §3.6): as pendentes nascidas DESTA
+    # triagem e ainda available para o par dela. Urgente nunca gerou nenhuma.
+    def suggestions_for(triage, on: Time.zone.today)
+      citizen = triage.conversation.citizen
+      return [] unless citizen
+
+      pending = TriageSuggestion.status_pending.where(source_triage_id: triage.id).order(:created_at).to_a
+      return [] if pending.empty?
+
+      available = Offer.for(citizen: citizen, on: on).select(&:available?).index_by(&:protocol_name)
+      pending.filter_map do |suggestion|
+        item = available[suggestion.protocol_name]
+        item && { suggestion_id: suggestion.id, protocol_name: item.protocol_name, title: item.title, summary: item.summary }
+      end
+    end
+
     def item_json(item) = { protocol_name: item.protocol_name, title: item.title, summary: item.summary }
 
     def recent_json(item)
