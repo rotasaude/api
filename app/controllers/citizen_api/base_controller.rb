@@ -16,5 +16,16 @@ module CitizenApi
     def render_error(code, status)
       render json: { error: code.to_s }, status: status
     end
+
+    # nil quando não veio (ou veio vazio/null: "prefiro não informar"); o id
+    # quando é um bairro ativo; senão responde 422 e devolve nil (ADR 0023).
+    def requested_neighborhood_id
+      raw = params[:neighborhood_id]
+      return nil if raw.nil? || raw == ""
+      return raw if raw.is_a?(String) && Neighborhood.active_neighborhoods.exists?(id: raw)
+
+      render_error("invalid_neighborhood", :unprocessable_entity)
+      nil
+    end
   end
 end
