@@ -63,6 +63,15 @@ class TriageCatalogCrew
     }
   }.freeze
 
+  # Protocolos anteriores ao módulo 15, sem bloco `offer`: sem título, o cidadão
+  # vê o nome técnico. Sem elegibilidade, seguem "para todos".
+  LEGACY_TITLES = {
+    "triage-respiratoria" => { "title" => "Sintomas respiratórios", "summary" => "Perguntas sobre tosse e febre." },
+    "triagem-arbovirose" => { "title" => "Dengue, zika e chikungunya",
+                              "summary" => "Febre, manchas na pele e dores no corpo." },
+    "triagem-dengue" => { "title" => "Dengue", "summary" => "Perguntas sobre febre e outros sintomas." }
+  }.freeze
+
   # Ordem no catálogo da cidade.
   POSITIONS = { ELDERLY => 1, MENTAL => 2, DEEP => 3 }.freeze
 
@@ -71,37 +80,59 @@ class TriageCatalogCrew
   class << self
     def seed_current_city(slug:, ddd:)
       PROTOCOLS.each_key { |name| ensure_protocol!(slug, name) }
+      titled = LEGACY_TITLES.keys.select { |name| title_legacy!(slug, name) }
       restricted = slug == "curitiba" ? elderly_neighborhoods : []
       enable_catalog!(slug, restricted)
       family = ensure_family!(slug, ddd, restricted.first)
-      { protocols: PROTOCOLS.keys, restricted_neighborhoods: restricted.map(&:name), family: family }
+      { protocols: PROTOCOLS.keys, titled: titled, restricted_neighborhoods: restricted.map(&:name), family: family }
     end
 
     private
 
-    # Retoma de onde parou: cada passo só roda se a versão estiver no estado dele.
     def ensure_protocol!(slug, name)
-      record = ProtocolDefinition.find_by(name: name, version: 1)
+      active = ProtocolDefinition.find_by(name: name, status: "active")
+      return active if active
+
+      run_cycle!(slug, name, 1, PROTOCOLS.fetch(name))
+    end
+
+    # Versão nova = a ativa + o título; a versão sai da que já leva o título
+    # (retomada) ou da próxima livre, sem tocar nos rascunhos da demo.
+    def title_legacy!(slug, name)
+      offer = LEGACY_TITLES.fetch(name)
+      active = ProtocolDefinition.find_by(name: name, status: "active")
+      return false if active.nil? || active.definition["offer"].present?
+
+      versions = ProtocolDefinition.where(name: name)
+      pending = versions.where.not(status: %w[active retired]).find { |v| v.definition["offer"] == offer }
+      version = pending&.version || (versions.maximum(:version) + 1)
+      run_cycle!(slug, name, version, active.definition.merge("version" => version, "offer" => offer))
+      true
+    end
+
+    # Retoma de onde parou: cada passo só roda se a versão estiver no estado dele.
+    def run_cycle!(slug, name, version, definition)
+      record = ProtocolDefinition.find_by(name: name, version: version)
       return record if record&.status == "active"
 
       author, first, second, publisher = %w[autor revisora1 revisora2 publisher]
                                          .map { |prefix| User.find_by!(email_address: "#{prefix}@#{slug}.demo") }
-      status = -> { ProtocolDefinition.find_by!(name: name, version: 1).status }
-      check!(Protocols::SaveDraft.call(definition: PROTOCOLS.fetch(name).deep_dup, by: author), name, "rascunho") if record.nil?
-      check!(Protocols::SubmitForReview.call(name: name, version: 1, by: author), name, "revisão") if status.call == "draft"
+      status = -> { ProtocolDefinition.find_by!(name: name, version: version).status }
+      check!(Protocols::SaveDraft.call(definition: definition.deep_dup, by: author), name, "rascunho") if record.nil?
+      check!(Protocols::SubmitForReview.call(name: name, version: version, by: author), name, "revisão") if status.call == "draft"
       if status.call == "in_review"
-        [ first, second ].each { |reviewer| sign!(reviewer, name, "publication") }
-        check!(Protocols::Publish.call(name: name, version: 1, by: publisher), name, "publicação")
+        [ first, second ].each { |reviewer| sign!(reviewer, name, version, "publication") }
+        check!(Protocols::Publish.call(name: name, version: version, by: publisher), name, "publicação")
       end
       if status.call == "published"
-        [ first, second ].each { |reviewer| sign!(reviewer, name, "activation") }
-        check!(Protocols::Activate.call(name: name, version: 1, by: publisher), name, "ativação")
+        [ first, second ].each { |reviewer| sign!(reviewer, name, version, "activation") }
+        check!(Protocols::Activate.call(name: name, version: version, by: publisher), name, "ativação")
       end
-      ProtocolDefinition.find_by!(name: name, version: 1)
+      ProtocolDefinition.find_by!(name: name, version: version)
     end
 
-    def sign!(reviewer, name, purpose)
-      result = Protocols::Sign.call(name: name, version: 1, purpose: purpose, by: reviewer)
+    def sign!(reviewer, name, version, purpose)
+      result = Protocols::Sign.call(name: name, version: version, purpose: purpose, by: reviewer)
       check!(result, name, "assinatura de #{purpose}") unless result.reason == :already_signed
     end
 

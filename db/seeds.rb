@@ -195,6 +195,7 @@ else
         catalog = TriageCatalogCrew.seed_current_city(slug: slug, ddd: ddd)
         puts "[seeds] catálogo .... #{catalog[:protocols].join(', ')} ativos" \
              "#{catalog[:restricted_neighborhoods].any? ? "; idoso só em #{catalog[:restricted_neighborhoods].join(' e ')}" : ''}"
+        puts "[seeds] títulos ..... #{catalog[:titled].join(', ')} (versão nova assinada)" if catalog[:titled].any?
         catalog[:family].each { |p| puts "[seeds] família ..... #{p[:cpf_masked]} (#{p[:age]} anos, #{p[:sex]})" }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"

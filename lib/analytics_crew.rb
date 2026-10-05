@@ -81,6 +81,11 @@ class AnalyticsCrew
 
     # Retoma de onde parou: cada passo só roda se a versão estiver no estado dele.
     def ensure_protocol!(slug)
+      # Outra versão ativa (o título do módulo 15) também conta como pronto:
+      # reativar a v1 faria cada db:seed alternar as versões.
+      active = ProtocolDefinition.find_by(name: PROTOCOL_NAME, status: "active")
+      return active if active
+
       record = ProtocolDefinition.find_by(name: PROTOCOL_NAME, version: 1)
       return record if record&.status == "active"
 

@@ -2,6 +2,7 @@
 require "rails_helper"
 require Rails.root.join("lib/signature_crew")
 require Rails.root.join("lib/analytics_crew")
+require Rails.root.join("lib/triage_catalog_crew")
 
 RSpec.describe AnalyticsCrew do
   let!(:city_record) { register_test_city! }
@@ -47,5 +48,18 @@ RSpec.describe AnalyticsCrew do
 
     expect(seed[:new_triages]).to eq(0)
     expect(counts.call).to eq(before)
+  end
+
+  # A semente do catálogo (módulo 15) dá título à arbovirose numa versão nova.
+  # Rodar de novo não pode reativar a v1: cada db:seed alternaria as versões.
+  it "não reativa a v1 quando outra versão do protocolo está ativa" do
+    seed
+    staff_with("admin@curitiba.demo", "municipal_admin")
+    TriageCatalogCrew.seed_current_city(slug: "curitiba", ddd: "41")
+    titled = ProtocolDefinition.find_by!(name: "triagem-arbovirose", status: "active")
+    expect(titled.version).to be > 1
+
+    expect { seed }.not_to change(ProtocolActivation, :count)
+    expect(ProtocolDefinition.find_by!(name: "triagem-arbovirose", status: "active")).to eq(titled)
   end
 end

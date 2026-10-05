@@ -84,6 +84,26 @@ RSpec.describe TriageCatalogCrew do
       .to include("saude-do-idoso", "saude-mental", "saude-mental-aprofundada")
   end
 
+  # Protocolo antigo sem `offer` aparece ao cidadão pelo nome técnico. A semente
+  # publica uma versão nova com título pelo ciclo assinado (conteúdo publicado
+  # é imutável), sem elegibilidade: continua "para todos".
+  it "dá título aos protocolos antigos sem offer, numa versão nova assinada" do
+    draft = ProtocolDefinition.find_by!(name: StartTriage::DEFAULT_PROTOCOL_NAME, status: "draft") # SignatureCrew
+    result = seed
+    expect(result[:titled]).to eq([ StartTriage::DEFAULT_PROTOCOL_NAME ])
+    active = ProtocolDefinition.find_by!(name: StartTriage::DEFAULT_PROTOCOL_NAME, status: "active")
+    expect(active.version).to eq(draft.version + 1) # o rascunho da demo fica intocado
+    expect(draft.reload.attributes.slice("status", "definition")).to eq(draft.attributes.slice("status", "definition"))
+    expect(active.definition["offer"]).to eq(TriageCatalogCrew::LEGACY_TITLES.fetch(StartTriage::DEFAULT_PROTOCOL_NAME))
+    expect(active.definition.except("offer", "version"))
+      .to eq(ProtocolDefinition.find_by!(name: StartTriage::DEFAULT_PROTOCOL_NAME, version: 1).definition.except("version"))
+    expect(ProtocolSignature.where(protocol_definition: active).pluck(:purpose).tally)
+      .to eq("publication" => 2, "activation" => 2)
+    avo = Citizen.where(phone: "+5541944440001").to_a.find { |c| c.age.to_i >= 60 }
+    titles = Triages::Catalog.for(citizen: avo)[:available].to_h { |e| [ e[:protocol_name], e[:title] ] }
+    expect(titles[StartTriage::DEFAULT_PROTOCOL_NAME]).to eq("Sintomas respiratórios")
+  end
+
   it "rodar de novo não duplica nada" do
     seed
     expect { seed }.not_to change { [ ProtocolDefinition.count, Citizen.count, TriageOffer.count ] }
