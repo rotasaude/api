@@ -56,4 +56,14 @@ RSpec.describe "Authoring::Protocols gate", type: :request do
     expect(body["valid"]).to be false
     expect(body["errors"]).to be_present
   end
+
+  it "valid:true com warnings quando a sugestão aponta protocolo que não existe na cidade" do
+    sign_in_as(author)
+    definition = valid_def.merge("suggestions" => [ { "protocol" => "fantasma", "when" => { "eq" => ["tosse", "true"] } } ])
+    post "/authoring/protocols/gate", params: { definition: definition }, as: :json
+    expect(response).to have_http_status(:ok)
+    expect(JSON.parse(response.body)).to eq(
+      "valid" => true, "warnings" => ["suggestion protocol 'fantasma' does not exist in this city"]
+    )
+  end
 end

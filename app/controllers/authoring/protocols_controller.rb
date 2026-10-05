@@ -7,7 +7,7 @@ module Authoring
     before_action :require_author!
 
     def gate
-      render_gate(Protocols::Gate.call(definition_param))
+      render_gate(Protocols::Gate.call(definition_param), warnings: Protocols::SuggestionTargets.warnings(definition_param))
     end
 
     def preview
@@ -48,11 +48,12 @@ module Authoring
       params.fetch(:answers, {}).to_unsafe_h
     end
 
-    def render_gate(result)
+    def render_gate(result, warnings: [])
+      extra = warnings.any? ? { warnings: warnings } : {}
       if result.valid?
-        render json: { valid: true }
+        render json: { valid: true }.merge(extra)
       else
-        render json: { valid: false, errors: result.errors }, status: :unprocessable_entity
+        render json: { valid: false, errors: result.errors }.merge(extra), status: :unprocessable_entity
       end
     end
 
