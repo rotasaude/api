@@ -71,8 +71,10 @@ module Triages
     end
 
     # Data local (fuso da cidade) do created_at da última conclusão do PAR.
+    # Só conclusão que conta (Triage.counted_completed): triagem com o
+    # consentimento revogado não segura o protocolo em `recent`.
     def last_completed(citizen)
-      Triage.joins(:conversation).where(conversations: { citizen_id: citizen.id }).status_completed
+      Triage.joins(:conversation).where(conversations: { citizen_id: citizen.id }).counted_completed
             .group(:protocol_name).maximum(:created_at)
             .transform_values { |at| at.in_time_zone.to_date }
     end

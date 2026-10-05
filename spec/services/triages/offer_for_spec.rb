@@ -36,6 +36,18 @@ RSpec.describe Triages::Offer, ".for" do
     expect(described_class.for(citizen: outro).find { |i| i.protocol_name == "saude-do-idoso" }.state).to eq("recent")
   end
 
+  it "conclusão com o consentimento revogado não conta para o intervalo de repetição" do
+    avo = profiled_citizen!(age: 62)
+    started = start_for!(avo, "saude-do-idoso")
+    expect(started).to be_ok
+    started.payload[:triage].update_columns(status: "completed", tier: "baixa", priority: 9,
+                                            completed_at: 10.days.ago, created_at: 10.days.ago)
+    expect(described_class.for(citizen: avo).find { |i| i.protocol_name == "saude-do-idoso" }.state).to eq("recent")
+    expect(RevokeConsent.call(conversation: started.payload[:conversation], origin: "web")).to be_ok
+    item = described_class.for(citizen: avo).find { |i| i.protocol_name == "saude-do-idoso" }
+    expect(item).to have_attributes(state: "available", last_completed_on: nil, next_available_on: nil)
+  end
+
   it "faz 60 hoje no fuso de Manaus, não no de São Paulo" do
     manaus = TEST_CITY_A.dup.tap { |c| c.time_zone = "America/Manaus" }
     CityConnection.with(manaus) do
