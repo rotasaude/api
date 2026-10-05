@@ -78,6 +78,9 @@ RSpec.describe Protocols::Validation::Condition do
       expect(place({ "gt" => ["profile.sex", 1] }, vars)).to eq(["condition 'gt' requires a numeric variable, got profile.sex"])
       expect(place({ "in" => ["citizen.neighborhood_id", ["nao-uuid"]] }, vars))
         .to eq(["condition 'in' invalid value 'nao-uuid' for citizen.neighborhood_id"])
+      # O runtime compara texto com o id em minúsculas: maiúscula nunca casaria.
+      expect(place({ "in" => ["citizen.neighborhood_id", ["0B6F6C1E-9F1A-4D8B-9A4C-1F2E3D4C5B6A"]] }, vars))
+        .to eq(["condition 'in' invalid value '0B6F6C1E-9F1A-4D8B-9A4C-1F2E3D4C5B6A' for citizen.neighborhood_id"])
       expect(place({ "eq" => ["profile.age", "sessenta"] }, vars)).to eq(["condition 'eq' invalid value 'sessenta' for profile.age"])
       expect(place({ "gte" => ["profile.height", 1] }, vars)).to eq(["condition variable 'profile.height' is not allowed here"])
     end

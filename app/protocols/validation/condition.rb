@@ -17,7 +17,8 @@ module Protocols
         "outcome.score" => :number, "outcome.priority" => :number, "citizen.neighborhood_id" => :uuid
       }.freeze
       SEXES = %w[female male].freeze
-      UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
+      # Só minúsculas: o runtime compara texto exato com o id do banco (minúsculo).
+      UUID = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
 
       module_function
 
