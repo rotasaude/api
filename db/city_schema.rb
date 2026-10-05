@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_04_100001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_05_100001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -312,17 +312,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_04_100001) do
   end
 
   create_table "citizens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "birth_date"
     t.string "cpf", null: false
     t.datetime "created_at", null: false
     t.timestamptz "erased_at"
+    t.text "gender_identity"
     t.uuid "neighborhood_id"
     t.string "phone", null: false
+    t.string "profile_source"
+    t.text "sex"
     t.datetime "updated_at", null: false
     t.string "verification_level", default: "declared", null: false
     t.index ["cpf", "phone"], name: "index_citizens_on_cpf_and_phone", unique: true
     t.index ["neighborhood_id"], name: "index_citizens_on_neighborhood_id"
     t.index ["phone"], name: "index_citizens_on_phone"
     t.check_constraint "(verification_level)::text = ANY (ARRAY['declared'::text, 'verified'::text])", name: "ck_citizens_verification_level"
+    t.check_constraint "profile_source IS NULL OR profile_source::text = ANY (ARRAY['declared', 'verified']::text[])", name: "ck_citizens_profile_source"
+    t.check_constraint "(profile_source IS NULL AND birth_date IS NULL AND sex IS NULL) OR (profile_source IS NOT NULL AND birth_date IS NOT NULL AND sex IS NOT NULL)", name: "ck_citizens_profile_complete"
   end
 
   create_table "consent_terms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -784,6 +790,47 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_04_100001) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
+  create_table "triage_offer_daily_counts", force: :cascade do |t|
+    t.date "day", null: false
+    t.integer "offered", null: false
+    t.string "protocol_name", null: false
+    t.index ["day", "protocol_name"], name: "idx_triage_offer_daily_counts_cell", unique: true
+    t.check_constraint "offered >= 1", name: "ck_triage_offer_daily_counts_offered"
+  end
+
+  create_table "triage_offers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.date "available_from"
+    t.date "available_until"
+    t.datetime "created_at", null: false
+    t.boolean "enabled", default: true, null: false
+    t.integer "position", default: 1, null: false
+    t.string "protocol_name", null: false
+    t.jsonb "restriction"
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["protocol_name"], name: "index_triage_offers_on_protocol_name", unique: true
+    t.index ["updated_by_user_id"], name: "index_triage_offers_on_updated_by_user_id"
+    t.check_constraint "available_from IS NULL OR available_until IS NULL OR available_until >= available_from", name: "ck_triage_offers_period"
+    t.check_constraint "position >= 1 AND position <= 10000", name: "ck_triage_offers_position"
+  end
+
+  create_table "triage_suggestions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "citizen_id", null: false
+    t.timestamptz "created_at", null: false
+    t.string "protocol_name", null: false
+    t.timestamptz "resolved_at"
+    t.uuid "source_triage_id", null: false
+    t.string "status", default: "pending", null: false
+    t.uuid "taken_triage_id"
+    t.index ["citizen_id", "protocol_name"], name: "idx_triage_suggestions_one_pending", unique: true, where: "((status)::text = 'pending'::text)"
+    t.index ["citizen_id", "status"], name: "idx_triage_suggestions_citizen_status"
+    t.index ["source_triage_id"], name: "index_triage_suggestions_on_source_triage_id"
+    t.index ["taken_triage_id"], name: "index_triage_suggestions_on_taken_triage_id"
+    t.check_constraint "status::text = ANY (ARRAY['pending', 'taken', 'expired']::text[])", name: "ck_triage_suggestions_status"
+    t.check_constraint "(status::text = 'pending'::text) = (resolved_at IS NULL)", name: "ck_triage_suggestions_resolved"
+    t.check_constraint "(status::text = 'taken'::text) = (taken_triage_id IS NOT NULL)", name: "ck_triage_suggestions_taken"
+  end
+
   create_table "triages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.timestamptz "anonymized_at"
     t.jsonb "answers", default: {}, null: false
@@ -897,6 +944,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_04_100001) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
+  add_foreign_key "triage_offers", "users", column: "updated_by_user_id"
+  add_foreign_key "triage_suggestions", "citizens"
+  add_foreign_key "triage_suggestions", "triages", column: "source_triage_id"
+  add_foreign_key "triage_suggestions", "triages", column: "taken_triage_id"
   add_foreign_key "triages", "conversations"
   add_foreign_key "triages", "neighborhoods"
   add_foreign_key "triages", "protocol_definitions"

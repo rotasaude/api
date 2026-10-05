@@ -757,3 +757,41 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- triage_suggestions (ADR 0027; spec 2026-10-05 §3.3): a sugestão nasce
+-- pending e só sai dali uma vez, para taken (a triagem iniciada a partir dela)
+-- ou expired (o protocolo deixou de estar em oferta para o par). Resolvida,
+-- congela. As colunas de identidade nunca mudam. DELETE passa de propósito: a
+-- exclusão do cadastro e a revogação apagam as sugestões (ADR 0026, §5.5).
+CREATE OR REPLACE FUNCTION rota_triage_suggestion_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.citizen_id IS DISTINCT FROM OLD.citizen_id
+     OR NEW.source_triage_id IS DISTINCT FROM OLD.source_triage_id
+     OR NEW.protocol_name IS DISTINCT FROM OLD.protocol_name
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'triage_suggestions: only the status columns change';
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    IF OLD.status <> 'pending' OR NEW.status NOT IN ('taken', 'expired') THEN
+      RAISE EXCEPTION 'triage_suggestions: % -> % refused (only pending -> taken | expired)', OLD.status, NEW.status;
+    END IF;
+  ELSIF OLD.status <> 'pending'
+        AND (NEW.taken_triage_id IS DISTINCT FROM OLD.taken_triage_id
+             OR NEW.resolved_at IS DISTINCT FROM OLD.resolved_at) THEN
+    RAISE EXCEPTION 'triage_suggestions: a resolved suggestion is frozen';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.triage_suggestions') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS triage_suggestions_transition ON triage_suggestions';
+    EXECUTE 'CREATE TRIGGER triage_suggestions_transition
+      BEFORE UPDATE ON triage_suggestions
+      FOR EACH ROW EXECUTE FUNCTION rota_triage_suggestion_guard()';
+  END IF;
+END
+$do$;

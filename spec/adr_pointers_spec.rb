@@ -1,7 +1,7 @@
 require "rails_helper"
 
-# Guarda de numeração do corpus de ADRs. O v2 vai de 0001 a 0026 (0020 banco
-# por cidade, 0021 profissionais, 0022 painéis ao vivo, 0023 território, 0024 campanhas, 0025 analytics, 0026 exclusão do cadastro e revogação); qualquer outro número
+# Guarda de numeração do corpus de ADRs. O v2 vai de 0001 a 0027 (0020 banco
+# por cidade, 0021 profissionais, 0022 painéis ao vivo, 0023 território, 0024 campanhas, 0025 analytics, 0026 exclusão do cadastro e revogação, 0027 catálogo de triagens por perfil); qualquer outro número
 # é da numeração v1, que foi aposentada. ADR novo no docs: suba o fim da faixa.
 #
 # Escopo desta guarda: ela pega ponteiro FORA da faixa. Ela NÃO pega um
@@ -10,7 +10,7 @@ require "rails_helper"
 # docs/adr/RECONCILIACAO-PONTEIROS.md (no repo docs) e a revisão.
 RSpec.describe "ADR pointers" do
   ROOTS = %w[app config db lib spec deploy].freeze
-  VALID_RANGE = (1..26).freeze
+  VALID_RANGE = (1..27).freeze
   SELF_PATH = "spec/adr_pointers_spec.rb"
   # Casa a forma compacta também: "ADR-0012/0013" carrega DOIS ponteiros, e um
   # regex que só lê o primeiro deixaria o segundo passar sem conferência.
@@ -31,7 +31,7 @@ RSpec.describe "ADR pointers" do
     end
   end
 
-  it "only points at ADRs that exist in the v2 corpus (0001..0026)" do
+  it "only points at ADRs that exist in the v2 corpus (0001..0027)" do
     offenders = out_of_range
     expect(offenders).to eq([]),
       "#{offenders.size} ponteiro(s) fora do corpus v2:\n#{offenders.join("\n")}"
