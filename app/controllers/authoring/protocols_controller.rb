@@ -20,7 +20,9 @@ module Authoring
 
     # ADR 0027 (contratos §4.3): autor e revisor; sempre 200, nunca grava.
     def simulate_offer
-      render json: Protocols::SimulateOffer.call(definition: definition_param, profile: hash_param(:profile),
+      # Definição que não é objeto (ou ausente) vai como nil: o simulador responde
+      # 200 com o erro, nunca 422/500 (contratos §4.3).
+      render json: Protocols::SimulateOffer.call(definition: hash_param(:definition, nil), profile: hash_param(:profile),
                                                  answers: hash_param(:answers), outcome: hash_param(:outcome))
     end
 
@@ -55,9 +57,9 @@ module Authoring
       params.fetch(:answers, {}).to_unsafe_h
     end
 
-    def hash_param(key)
+    def hash_param(key, fallback = {})
       value = params[key]
-      value.respond_to?(:to_unsafe_h) ? value.to_unsafe_h : {}
+      value.respond_to?(:to_unsafe_h) ? value.to_unsafe_h : fallback
     end
 
     def render_gate(result, warnings: [])

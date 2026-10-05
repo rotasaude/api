@@ -59,4 +59,13 @@ RSpec.describe "Simulador de oferta", type: :request do
     expect(body["errors"]).to include(a_string_starting_with("schema: /offer/title"))
     expect(body["eligible"]).to be(false)
   end
+  it "definição que não é objeto, ou ausente: 200 com o erro, nunca 4xx/500" do
+    sign_in_as(staff_with("autor3-sim@cidade.gov.br", "protocol_author"))
+    [ { definition: "texto" }, { definition: [ 1, 2 ] }, {} ].each do |extra|
+      simulate(extra.merge(profile: { age: 62, sex: "female" }))
+      expect(response).to have_http_status(:ok), extra.inspect
+      expect(body).to include("eligible" => false, "suggestions" => [], "errors" => [ "schema: (root) object" ],
+                              "warnings" => [])
+    end
+  end
 end

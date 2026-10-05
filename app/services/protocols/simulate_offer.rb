@@ -5,10 +5,17 @@
 # errors — nunca 422 (o editor mostra o erro ao lado do construtor).
 module Protocols
   module SimulateOffer
+    # Mesmo texto do Validation::Schema para raiz que não é objeto.
+    NOT_AN_OBJECT = "schema: (root) object".freeze
+
     module_function
 
     def call(definition:, profile: {}, answers: {}, outcome: {})
-      definition = {} unless definition.is_a?(Hash)
+      unless definition.is_a?(Hash)
+        return { eligible: false, eligibility_text: ConditionText.call(nil), suggestions: [], errors: [ NOT_AN_OBJECT ],
+                 warnings: [] }
+      end
+
       offer = definition["offer"].is_a?(Hash) ? definition["offer"] : {}
       eligibility = offer["eligibility"]
       errors = errors(definition)
