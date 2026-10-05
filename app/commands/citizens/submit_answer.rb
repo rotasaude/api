@@ -1,6 +1,11 @@
 # Uma resposta da web. Tudo sob o lock da conversa: duas abas ou um toque duplo
 # não avançam a triagem duas vezes. A mesma idempotency_key devolve o estado
 # atual sem gravar (spec §4.3).
+# Ordem de lock cidadão → conversa (desvio 5 do plano), a mesma de
+# StartConversation e Citizens::Erase: na conclusão, Triages::Suggest grava
+# triage_suggestions, cuja FK pega FOR KEY SHARE no cidadão; travar só a
+# conversa fecharia um ciclo com quem trava o cidadão antes (deadlock).
+# Conversa sem cidadão (WhatsApp) trava só a conversa.
 # Reasons: :invalid_answer, :not_in_progress (e as de CompleteTriage).
 module Citizens
   class SubmitAnswer
@@ -16,7 +21,11 @@ module Citizens
 
     def call
       result = nil
-      @conversation.with_lock { result = locked_call }
+      ApplicationRecord.transaction do
+        @conversation.citizen&.lock!
+        @conversation.lock!
+        result = locked_call
+      end
       result
     end
 

@@ -50,4 +50,26 @@ RSpec.describe Citizens::SubmitAnswer do
     submit("false")
     expect(submit("true").reason).to eq(:not_in_progress)
   end
+  # Desvio 5: toda escrita que toca cidadão e conversa trava cidadão → conversa
+  # (StartConversation, Erase). Na conclusão, Triages::Suggest grava
+  # triage_suggestions, cuja FK pega FOR KEY SHARE no cidadão; travar a conversa
+  # primeiro fecharia um ciclo com StartConversation/Erase (deadlock).
+  it "trava o cidadão antes da conversa (ordem cidadão → conversa)" do
+    conversation # cria antes de escutar
+    locks = []
+    callback = lambda do |*, payload|
+      sql = payload[:sql].to_s
+      next unless sql.include?("FOR UPDATE")
+      locks << :citizen if sql.include?('"citizens"')
+      locks << :conversation if sql.include?('"conversations"')
+    end
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { submit("true") }
+    expect(locks.first(2)).to eq(%i[citizen conversation])
+  end
+
+  it "conversa sem cidadão (WhatsApp) continua respondendo" do
+    conversation.update_columns(citizen_id: nil)
+    expect(submit("true")).to be_ok
+    expect(triage.reload.current_step).to eq("febre")
+  end
 end

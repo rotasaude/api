@@ -5,7 +5,9 @@
 # (perfil + respostas + resultado) e cujo protocolo está `available` para o par
 # vira uma linha pending. Já havendo pendente daquele protocolo para o par, o
 # índice único parcial recusa e a sugestão é ignorada (savepoint: a transação
-# da conclusão segue). Não trava o cidadão (desvio 5 do plano).
+# da conclusão segue). Não trava o cidadão por conta própria: SubmitAnswer já
+# travou cidadão → conversa antes (desvio 5 do plano), então o FOR KEY SHARE da
+# FK de triage_suggestions não inverte a ordem.
 module Triages
   module Suggest
     module_function
