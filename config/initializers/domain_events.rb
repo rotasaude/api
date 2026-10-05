@@ -92,4 +92,9 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "campaign.sms_unavailable", to: []
   DomainEvents.bind "citizen.contact_preferences_changed", to: []
   DomainEvents.bind "city.campaigns_sms_toggled", to: []
+
+  # Catálogo de triagens (ADR 0027; spec 2026-10-05 §3–§5): trilha, só ids e
+  # nome de protocolo; nunca data de nascimento, idade, sexo ou identidade de
+  # gênero. Sem consumidor, de propósito.
+  DomainEvents.bind "citizen.profile_changed", to: []
 end
