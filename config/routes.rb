@@ -172,6 +172,11 @@ Rails.application.routes.draw do
     post  ":id/cancel",     to: "campaigns#cancel"
   end
 
+  # Catálogo de triagens da cidade (ADR 0027; contratos §4). Prefixo próprio:
+  # /protocols/:name já captura qualquer segmento.
+  get "/triage_catalog",                to: "triage_catalog#index"
+  put "/triage_catalog/:protocol_name", to: "triage_catalog#update"
+
   # Healthcheck — usado pelo Kamal (ADR-0001).
   get "up", to: ->(_env) { [200, {}, ["ok"]] }
 

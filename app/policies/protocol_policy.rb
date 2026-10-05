@@ -24,4 +24,19 @@ class ProtocolPolicy < ApplicationPolicy
   def review?
     role?(:protocol_reviewer)
   end
+
+  # Catálogo de triagens (ADR 0027; contratos §4): quem lê protocolos lê o
+  # catálogo; só o municipal_admin muda (com step-up, no controller); o
+  # simulador é do editor (autor e revisor).
+  def read_catalog?
+    author? || review? || role?(:municipal_admin)
+  end
+
+  def manage_catalog?
+    role?(:municipal_admin)
+  end
+
+  def simulate?
+    author? || review?
+  end
 end
