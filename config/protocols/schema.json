@@ -55,6 +55,29 @@
           "priority": { "type": "integer", "minimum": 1, "maximum": 9 }
         }
       }
+    },
+    "offer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title":             { "type": "string", "minLength": 1, "maxLength": 60 },
+        "summary":           { "type": "string", "minLength": 1, "maxLength": 200 },
+        "eligibility":       { "$ref": "#/$defs/condition" },
+        "retake_after_days": { "type": "integer", "minimum": 1, "maximum": 3650 }
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["protocol", "when"],
+        "properties": {
+          "protocol": { "type": "string", "pattern": "^[a-z][a-z0-9-]+$" },
+          "when":     { "$ref": "#/$defs/condition" }
+        }
+      }
     }
   },
   "$defs": {
@@ -180,6 +203,8 @@
         { "required": ["eq"], "additionalProperties": false, "properties": { "eq": { "$ref": "#/$defs/condition_operand" } } },
         { "required": ["gt"], "additionalProperties": false, "properties": { "gt": { "$ref": "#/$defs/condition_operand" } } },
         { "required": ["lt"], "additionalProperties": false, "properties": { "lt": { "$ref": "#/$defs/condition_operand" } } },
+        { "required": ["gte"], "additionalProperties": false, "properties": { "gte": { "$ref": "#/$defs/condition_operand" } } },
+        { "required": ["lte"], "additionalProperties": false, "properties": { "lte": { "$ref": "#/$defs/condition_operand" } } },
         { "required": ["in"], "additionalProperties": false, "properties": { "in": { "type": "array", "prefixItems": [{ "type": "string" }, { "type": "array" }], "minItems": 2, "maxItems": 2 } } },
         { "required": ["all"], "additionalProperties": false, "properties": { "all": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/condition" } } } },
         { "required": ["any"], "additionalProperties": false, "properties": { "any": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/condition" } } } },

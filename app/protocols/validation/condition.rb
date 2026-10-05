@@ -43,6 +43,16 @@ module Protocols
         end
       end
 
+      # ADR 0027: nenhum passo pode ter id que comece por prefixo reservado — a
+      # variável sempre venceria a resposta no contexto.
+      def reserved_prefix_errors(steps)
+        Array(steps).filter_map do |s|
+          next unless s.is_a?(Hash) && reserved?(s["id"])
+
+          "step id '#{s["id"]}' uses a reserved prefix (profile., outcome., citizen.)"
+        end
+      end
+
       def operator_node?(node)
         node.size == 1 && OPERATORS.include?(node.keys.first.to_s)
       end

@@ -17,6 +17,8 @@ module Protocols
       errors.concat(Validation::Scoring.call(definition))
       errors.concat(Validation::PriorityWhen.call(definition))
       errors.concat(Validation::Condition.step_id_collision_errors(definition["steps"] || []))
+      errors.concat(Validation::Condition.reserved_prefix_errors(definition["steps"] || []))
+      errors.concat(Validation::Offer.call(definition)) # ADR 0027: offer.eligibility, suggestions
       Validator::Result.new(errors: errors)
     end
   end
