@@ -196,6 +196,7 @@ Rails.application.routes.draw do
     get  "people",                     to: "people#index"
     post "people",                     to: "people#create"
     post "people/:id/profile",         to: "people#profile"
+    get  "people/:id/catalog",         to: "people#catalog"
     post "people/:id/neighborhood",    to: "people#neighborhood"
     get  "neighborhoods",              to: "neighborhoods#index"
     post "conversations",              to: "conversations#create"

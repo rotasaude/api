@@ -9,6 +9,7 @@
 # POST /citizen/people/:id/neighborhood { neighborhood_id | null } — troca o
 #   bairro ("Trocar bairro" no wpda). Não muda triagem antiga: a cópia de cada
 #   uma é imutável. Sem a chave: 422 (só null explícito apaga).
+# GET  /citizen/people/:id/catalog — catálogo do par (contratos §3.4); sem perfil, 409.
 module CitizenApi
   class PeopleController < BaseController
     def index
@@ -50,6 +51,14 @@ module CitizenApi
       end
 
       render json: { person: person_json(citizen.reload) }
+    end
+
+    def catalog
+      citizen = current_citizen_session.citizens.find_by(id: params[:id])
+      return render_error("not_found", :not_found) unless citizen
+      return render_error("profile_required", :conflict) unless citizen.profile?
+
+      render json: Triages::Catalog.for(citizen: citizen)
     end
 
     def neighborhood
