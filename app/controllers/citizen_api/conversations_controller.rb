@@ -1,11 +1,11 @@
-#   POST /citizen/conversations              { citizen_id | cpf, consent_version, neighborhood_id? }
+#   POST /citizen/conversations              { citizen_id | cpf, consent_version, protocol_name, neighborhood_id? }
 #   POST /citizen/conversations/:id/answers  { answer, idempotency_key }
 #   POST /citizen/conversations/:id/undo
 module CitizenApi
   class ConversationsController < BaseController
     START_ERRORS = {
       consent_outdated: :conflict, wrong_state: :conflict, version_mismatch: :conflict,
-      no_protocol: :service_unavailable
+      not_offered: :conflict, triage_in_progress: :conflict, no_protocol: :service_unavailable
     }.freeze
 
     def create
@@ -17,6 +17,13 @@ module CitizenApi
         return render_error("consent_outdated", :conflict)
       end
 
+      # ADR 0027: o cidadão escolhe o protocolo no catálogo. Antes de
+      # resolve_citizen, como o consentimento: um pedido recusado não grava CPF.
+      protocol_name = params[:protocol_name]
+      unless protocol_name.is_a?(String) && protocol_name.present?
+        return render_error("protocol_name_required", :unprocessable_entity)
+      end
+
       # ADR 0023: bairro inválido é recusado ANTES de resolve_citizen, que cria
       # o Citizen (com o CPF) para um CPF novo — um pedido recusado não grava
       # nada. Depois do consentimento, como o CPF.
@@ -26,6 +33,9 @@ module CitizenApi
       citizen = resolve_citizen
       return if performed?
 
+      # O catálogo é por perfil (ADR 0027): sem perfil, o wpda pede antes.
+      return render_error("profile_required", :conflict) unless citizen.profile?
+
       # Grava só quando a pessoa ainda não tem bairro; a troca é pela rota
       # própria. Antes do StartConversation: a triagem nova copia o bairro.
       if neighborhood_id && citizen.neighborhood_id.nil?
@@ -34,7 +44,8 @@ module CitizenApi
       end
 
       result = Citizens::StartConversation.call(
-        citizen: citizen, consent_version: params[:consent_version], session_id: current_citizen_session.id
+        citizen: citizen, consent_version: params[:consent_version], session_id: current_citizen_session.id,
+        protocol_name: protocol_name
       )
       return render_error(result.reason, START_ERRORS.fetch(result.reason, :unprocessable_entity)) if result.failure?
 

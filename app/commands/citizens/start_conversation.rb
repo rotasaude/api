@@ -2,17 +2,21 @@
 # vigente, e garante uma triagem em andamento. O consentimento é dado na tela
 # ANTES do CPF (spec §4); aqui ele é registrado na conversa, pelo mesmo
 # GiveConsent do WhatsApp, com channel "web".
-# Reasons: :consent_outdated, :no_protocol (e as de GiveConsent).
+# ADR 0027: o cidadão escolhe o protocolo. Uma triagem em andamento por par:
+# pedir o MESMO protocolo retoma; pedir outro é :triage_in_progress. O lock é
+# cidadão → conversa, a mesma ordem de Citizens::Erase (desvio 5 do plano).
+# Reasons: :consent_outdated, :no_protocol, :not_offered, :triage_in_progress (e as de GiveConsent).
 module Citizens
   class StartConversation
-    def self.call(citizen:, consent_version:, session_id:)
-      new(citizen, consent_version.to_s, session_id).call
+    def self.call(citizen:, consent_version:, session_id:, protocol_name: StartTriage::DEFAULT_PROTOCOL_NAME)
+      new(citizen, consent_version.to_s, session_id, protocol_name.to_s).call
     end
 
-    def initialize(citizen, consent_version, session_id)
+    def initialize(citizen, consent_version, session_id, protocol_name)
       @citizen = citizen
       @consent_version = consent_version
       @session_id = session_id
+      @protocol_name = protocol_name
     end
 
     def call
@@ -27,7 +31,11 @@ module Citizens
       # um criar (500 no índice único de triagem). with_lock serializa e
       # recarrega a conversa: quem chega depois já vê o estado gravado pelo
       # primeiro.
-      conversation.with_lock { result = locked_call(conversation) }
+      ApplicationRecord.transaction do
+        @citizen.lock!
+        conversation.lock!
+        result = locked_call(conversation)
+      end
       result
     end
 
@@ -38,9 +46,13 @@ module Citizens
       return consent if consent.failure?
 
       triage = conversation.triages.status_in_progress.order(created_at: :desc).first
-      return Result.ok(conversation: conversation, triage: triage, resumed: true) if triage
+      if triage
+        return Result.fail(:triage_in_progress) unless triage.protocol_name == @protocol_name
 
-      started = StartTriage.call(conversation: conversation)
+        return Result.ok(conversation: conversation, triage: triage, resumed: true)
+      end
+
+      started = StartTriage.call(conversation: conversation, protocol_name: @protocol_name)
       return started if started.failure?
 
       Result.ok(conversation: conversation, triage: started.payload[:triage], resumed: false)

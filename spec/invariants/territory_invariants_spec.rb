@@ -94,8 +94,7 @@ RSpec.describe "Invariantes do território (ADR 0023)", type: :request do
     ubs = create_unit("UBS Centro")
     NeighborhoodCoverage.create!(neighborhood: centro, health_unit: ubs)
     sign_in_citizen("+5541998765432")
-    json_post "/citizen/conversations", cpf: "529.982.247-25", consent_version: "1", neighborhood_id: centro.id
-    triage_id = JSON.parse(response.body).dig("step", "triage_id")
+    triage_id = start_citizen_triage(neighborhood_id: centro.id).dig("step", "triage_id")
     triage = Triage.find(triage_id)
     token = ReportSnapshot.mint_token
     ReportSnapshot.create!(triage: triage, protocol_definition: triage.protocol_definition,

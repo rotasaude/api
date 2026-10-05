@@ -28,7 +28,7 @@ RSpec.describe "Citizen isolation", type: :request do
     get "/citizen/triages", params: { citizen_id: other[:citizen].id }
     expect(response).to have_http_status(:not_found)
 
-    json_post "/citizen/conversations", citizen_id: other[:citizen].id, consent_version: "1"
+    json_post "/citizen/conversations", citizen_id: other[:citizen].id, consent_version: "1", protocol_name: StartTriage::DEFAULT_PROTOCOL_NAME
     expect(response).to have_http_status(:not_found)
 
     json_post "/citizen/conversations/#{other[:conversation].id}/answers", answer: "true", idempotency_key: "z"
@@ -45,8 +45,7 @@ RSpec.describe "Citizen isolation", type: :request do
   end
 
   it "o mesmo CPF digitado neste telefone vira outro cidadão, sem ver as triagens do primeiro" do
-    json_post "/citizen/conversations", cpf: "529.982.247-25", consent_version: "1"
-    mine = JSON.parse(response.body)["citizen_id"]
+    mine = start_citizen_triage(cpf: "529.982.247-25")["citizen_id"]
     expect(mine).not_to eq(other[:citizen].id)
     get "/citizen/triages", params: { citizen_id: mine }
     expect(JSON.parse(response.body)["triages"].map { |t| t["id"] }).not_to include(other[:triage].id)

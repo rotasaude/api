@@ -22,7 +22,7 @@ RSpec.describe "Unidade de referência do cidadão", type: :request do
   let!(:fechada) { create_unit("UBS Antiga", active: false) }
 
   def start_triage(neighborhood_id)
-    json_post "/citizen/conversations", cpf: "529.982.247-25", consent_version: "1", neighborhood_id: neighborhood_id
+    start_citizen_triage(neighborhood_id: neighborhood_id)
     { triage_id: body.dig("step", "triage_id"), citizen_id: body["citizen_id"] }
   end
 

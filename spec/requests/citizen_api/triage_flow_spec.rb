@@ -12,8 +12,7 @@ RSpec.describe "Citizen triage flow", type: :request do
   def body = JSON.parse(response.body)
 
   def start_new(cpf = "529.982.247-25")
-    json_post "/citizen/conversations", cpf: cpf, consent_version: "1"
-    body
+    start_citizen_triage(cpf: cpf)
   end
 
   it "mostra o termo vigente" do
@@ -55,7 +54,7 @@ RSpec.describe "Citizen triage flow", type: :request do
   it "retoma a conversa em andamento com 200" do
     started = start_new
     json_post "/citizen/conversations/#{started['conversation_id']}/answers", answer: "true", idempotency_key: "a1"
-    json_post "/citizen/conversations", citizen_id: started["citizen_id"], consent_version: "1"
+    json_post "/citizen/conversations", citizen_id: started["citizen_id"], consent_version: "1", protocol_name: StartTriage::DEFAULT_PROTOCOL_NAME
     expect(response).to have_http_status(:ok)
     expect(body).to include("resumed" => true)
     expect(body["step"]).to include("step_id" => "febre")

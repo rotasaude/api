@@ -15,8 +15,17 @@ RSpec.describe "Bairro do cidadão", type: :request do
   let!(:batel) { Neighborhood.create!(name: "Batel", source: "seed") }
   let!(:fechado) { Neighborhood.create!(name: "Ahu", source: "seed", active: false) }
 
-  def start(params) = json_post("/citizen/conversations", { consent_version: "1" }.merge(params))
-  def own_citizen(**attrs) = Citizen.create!({ cpf: "52998224725", phone: "+5541998765432" }.merge(attrs))
+  def start(params)
+    return start_citizen_triage(**params.slice(:cpf, :neighborhood_id)) if params.key?(:cpf)
+
+    json_post("/citizen/conversations",
+              { consent_version: "1", protocol_name: StartTriage::DEFAULT_PROTOCOL_NAME }.merge(params))
+  end
+
+  def own_citizen(**attrs)
+    Citizen.create!({ cpf: "52998224725", phone: "+5541998765432", birth_date: "1980-05-10", sex: "female",
+                      profile_source: "declared" }.merge(attrs))
+  end
 
   it "lista só os bairros ativos, por nome" do
     get "/citizen/neighborhoods"

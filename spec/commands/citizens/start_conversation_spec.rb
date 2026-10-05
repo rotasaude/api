@@ -132,4 +132,28 @@ RSpec.describe Citizens::StartConversation do
     expect(result.payload[:conversation]).to eq(winner)
     expect(Conversation.where(citizen: citizen).count).to eq(1)
   end
+
+  describe "por nome (ADR 0027)" do
+    before do
+      create_default_protocol! unless ProtocolDefinition.exists?(name: StartTriage::DEFAULT_PROTOCOL_NAME, status: "active")
+      active_protocol!("saude-mental")
+    end
+    after { Rails.cache.clear }
+
+    let(:par) { profiled_citizen!(age: 30, phone: "+5541977770001") }
+
+    def start(name) = described_class.call(citizen: par, consent_version: Consents.current_version, session_id: "s", protocol_name: name)
+
+    it "mesmo protocolo em andamento retoma; outro protocolo: :triage_in_progress" do
+      first = start("saude-mental")
+      expect(first.payload[:resumed]).to be(false)
+      expect(start("saude-mental").payload).to include(resumed: true, triage: first.payload[:triage])
+      expect(start(StartTriage::DEFAULT_PROTOCOL_NAME).reason).to eq(:triage_in_progress)
+    end
+
+    it "não oferecido: :not_offered, sem triagem" do
+      expect(start("fantasma").reason).to eq(:not_offered)
+      expect(Triage.joins(:conversation).where(conversations: { citizen_id: par.id })).to be_empty
+    end
+  end
 end
