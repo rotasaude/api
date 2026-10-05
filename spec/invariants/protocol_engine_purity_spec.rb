@@ -24,7 +24,7 @@ RSpec.describe "Invariante: motor de protocolo puro (ADR 0009)" do
     # JSON Schema do disco), urgency.rb (limiar operacional lido do ambiente)
     # e definitions.rb (fábrica que chama o gate).
     def core
-      %w[protocol.rb step.rb outcome.rb condition.rb priority_rules.rb scoring.rb
+      %w[protocol.rb step.rb outcome.rb condition.rb condition_context.rb priority_rules.rb scoring.rb
          scoring/weighted.rb scoring/decision_table.rb]
     end
 

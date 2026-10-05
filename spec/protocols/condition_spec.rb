@@ -65,4 +65,28 @@ RSpec.describe Protocols::Condition do
     # {"eq" => "true"} é lido como operador eq com operando "true" (String, não [key,val]) => false
     expect(described_class.eval({ "eq" => "true" }, answers)).to be(false)
   end
+
+  # ADR 0027: gte/lte com o mesmo guarda de gt/lt.
+  it "gte/lte: inclusive numeric comparison, total on bad operands" do
+    expect(ev({ "gte" => ["idade", 70] })).to be(true)
+    expect(ev({ "gte" => ["idade", 71] })).to be(false)
+    expect(ev({ "lte" => ["idade", 70] })).to be(true)
+    expect(ev({ "lte" => ["idade", 69] })).to be(false)
+    expect(ev({ "gte" => ["ausente", 1] })).to be(false)
+    expect(ev({ "gte" => ["febre", 1] })).to be(false)
+    expect(ev({ "gte" => ["idade", "abc"] })).to be(false)
+    expect(ev({ "gte" => "idade" })).to be(false)
+    expect(ev({ "lte" => ["idade"] })).to be(false)
+  end
+
+  it "evaluates reserved variables from a ConditionContext and keeps the answers-only call" do
+    context = Protocols::ConditionContext.build(
+      answers: answers, profile: { age: 60, sex: "female" }, outcome: { tier: "media", score: 15, priority: 5 }
+    )
+    expect(described_class.eval({ "all" => [{ "gte" => ["profile.age", 60] }, { "eq" => ["profile.sex", "female"] }] }, context)).to be(true)
+    expect(described_class.eval({ "gte" => ["outcome.score", 15] }, context)).to be(true)
+    expect(described_class.eval({ "eq" => ["outcome.priority", 5] }, context)).to be(true)
+    expect(described_class.eval({ "eq" => ["febre", "true"] }, context)).to be(true)
+    expect(described_class.eval({ "gte" => ["profile.age", 60] }, answers)).to be(false)
+  end
 end
