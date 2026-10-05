@@ -46,4 +46,39 @@ RSpec.describe StartTriage, "por nome" do
     triage = start(avo).payload[:triage]
     expect(suggestion.reload).to have_attributes(status: "taken", taken_triage_id: triage.id, resolved_at: be_present)
   end
+  # Uma leitura do catálogo em paralelo pode expirar a sugestão (catálogo:
+  # pending → expired) enquanto o início a marca taken; o trigger recusa
+  # expired → taken. O início nunca vira 500: a triagem nasce e quem chegou
+  # primeiro decide o estado da sugestão.
+  context "sugestão expirada por uma leitura do catálogo em paralelo" do
+    before { create_default_protocol! }
+
+    let!(:suggestion) do
+      source = completed_triage!(avo, StartTriage::DEFAULT_PROTOCOL_NAME)
+      TriageSuggestion.create!(citizen: avo, source_triage: source, protocol_name: "saude-do-idoso")
+    end
+
+    def expire! = TriageSuggestion.where(id: suggestion.id).update_all(status: "expired", resolved_at: Time.current)
+
+    it "entre a leitura e a escrita: o início não levanta" do
+      allow_any_instance_of(TriageSuggestion).to receive(:update!).and_wrap_original do |original, *args, **kwargs|
+        expire!
+        original.call(*args, **kwargs)
+      end
+      result = start(avo)
+      expect(result).to be_ok
+      expect(result.payload[:triage]).to be_status_in_progress
+      expect(suggestion.reload.status).not_to eq("pending")
+    end
+
+    it "antes da escrita: a sugestão fica expired e a triagem nasce" do
+      allow(described_class).to receive(:take_suggestion!).and_wrap_original do |original, *args|
+        expire!
+        original.call(*args)
+      end
+      result = start(avo)
+      expect(result).to be_ok
+      expect(suggestion.reload).to have_attributes(status: "expired", taken_triage_id: nil)
+    end
+  end
 end

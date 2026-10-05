@@ -42,8 +42,11 @@ class StartTriage
     Result.fail(:no_protocol)
   end
 
+  # UPDATE guardado por status = pending: se uma leitura do catálogo em paralelo
+  # já expirou a sugestão, o WHERE não casa (READ COMMITTED reavalia a linha) e
+  # nada muda — em vez de o trigger recusar expired → taken com 500.
   def self.take_suggestion!(citizen, triage)
-    TriageSuggestion.status_pending.find_by(citizen_id: citizen.id, protocol_name: triage.protocol_name)
-                    &.update!(status: "taken", taken_triage_id: triage.id, resolved_at: Time.current)
+    TriageSuggestion.status_pending.where(citizen_id: citizen.id, protocol_name: triage.protocol_name)
+                    .update_all(status: "taken", taken_triage_id: triage.id, resolved_at: Time.current)
   end
 end
