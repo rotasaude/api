@@ -1,6 +1,6 @@
 # Balcão da UBS (spec 2026-09-24-citizen-presencial-verification §4–§7).
 #   POST /attendance/lookup                   {cpf, code}                    citizen_verifier
-#   POST /attendance/verifications             {cpf, code, document_checked}  citizen_verifier
+#   POST /attendance/verifications             {cpf, code, document_checked, birth_date, sex, gender_identity?}  citizen_verifier
 #   POST /attendance/verifications/search      {cpf}                          municipal_admin
 #   POST /attendance/verifications/:id/revoke {reason}                       municipal_admin
 # O CPF do histórico vai no corpo, não na URL (LGPD: URLs acabam em logs de
@@ -12,6 +12,8 @@ class AttendanceController < ApplicationController
   ERROR_STATUS = {
     invalid_cpf: :unprocessable_entity, invalid_code: :unprocessable_entity, code_expired: :unprocessable_entity,
     code_exhausted: :unprocessable_entity, document_check_required: :unprocessable_entity,
+    invalid_birth_date: :unprocessable_entity, invalid_sex: :unprocessable_entity,
+    invalid_gender_identity: :unprocessable_entity,
     reason_too_short: :unprocessable_entity, already_verified: :conflict, already_revoked: :conflict,
     own_verification: :forbidden
   }.freeze
@@ -31,15 +33,19 @@ class AttendanceController < ApplicationController
     render json: {
       citizen: {
         id: citizen.id, cpf_masked: citizen.cpf_masked, phone_masked: CitizenIdentity::Phone.mask(citizen.phone),
-        created_at: citizen.created_at.iso8601, verification_level: citizen.verification_level
+        created_at: citizen.created_at.iso8601, verification_level: citizen.verification_level,
+        profile: Citizens::ProfileJson.call(citizen)
       },
       triages: result.payload[:triages].map { |t| { date: t[:date].iso8601, protocol_name: t[:protocol_name] } }
     }
   end
 
   def verify
-    result = Citizens::Verify.call(cpf: params[:cpf], code: params[:code],
-                                   document_checked: params[:document_checked] == true, by: Current.user)
+    result = Citizens::Verify.call(
+      cpf: params[:cpf], code: params[:code], document_checked: params[:document_checked] == true, by: Current.user,
+      birth_date: params[:birth_date], sex: params[:sex],
+      gender_identity: params.key?(:gender_identity) ? params[:gender_identity] : Citizens::Verify::UNCHANGED
+    )
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     v = result.payload[:verification]

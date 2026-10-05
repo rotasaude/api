@@ -7,8 +7,9 @@ RSpec.describe Citizens::Verify do
   let(:citizen) { Citizen.create!(cpf: "52998224725", phone: "+5541998765432") }
   let(:verifier) { User.create!(email_address: "atendente@cidade.gov.br", password: "senha-segura-123") }
 
-  def verify(code, checked: true)
-    described_class.call(cpf: "529.982.247-25", code: code, document_checked: checked, by: verifier)
+  def verify(code, checked: true, **profile)
+    described_class.call(cpf: "529.982.247-25", code: code, document_checked: checked, by: verifier,
+                         birth_date: "1963-04-02", sex: "female", **profile)
   end
 
   it "valida o par, consome o código, atualiza o nível e publica o evento" do
@@ -51,5 +52,29 @@ RSpec.describe Citizens::Verify do
     before = snapshot.call
     verify(issue_code_for(citizen))
     expect(snapshot.call).to eq(before)
+  end
+
+  describe "perfil conferido no documento (ADR 0027)" do
+    it "grava o perfil verified no par validado e publica só o id" do
+      citizen.update!(birth_date: "1963-04-03", sex: "male", gender_identity: "cis_man", profile_source: "declared")
+      expect(verify(issue_code_for(citizen))).to be_ok
+      expect(citizen.reload).to have_attributes(birth_date: "1963-04-02", sex: "female", gender_identity: "cis_man",
+                                                profile_source: "verified")
+      expect(DomainEvent.where(name: "citizen.profile_changed").sole.payload).to eq("citizen_id" => citizen.id)
+    end
+
+    it "gender_identity presente (inclusive nil) substitui o declarado" do
+      citizen.update!(birth_date: "1963-04-02", sex: "female", gender_identity: "cis_woman", profile_source: "declared")
+      verify(issue_code_for(citizen), gender_identity: nil)
+      expect(citizen.reload.gender_identity).to be_nil
+    end
+
+    it "valor inválido: motivo e o código continua usável" do
+      code = issue_code_for(citizen)
+      expect(verify(code, birth_date: "2999-01-01").reason).to eq(:invalid_birth_date)
+      expect(verify(code, sex: "x").reason).to eq(:invalid_sex)
+      expect(citizen.reload).to be_verification_level_declared
+      expect(CitizenVerificationCode.usable.where(citizen: citizen)).to exist
+    end
   end
 end

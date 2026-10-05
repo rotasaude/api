@@ -21,7 +21,8 @@ RSpec.describe "Verified citizen history", type: :request do
   end
 
   def verify(citizen)
-    Citizens::Verify.call(cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: true, by: verifier)
+    Citizens::Verify.call(cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: true, by: verifier,
+                           birth_date: "1963-04-02", sex: "female")
                     .payload[:verification]
   end
 

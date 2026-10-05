@@ -8,7 +8,8 @@ RSpec.describe Citizens::RevokeVerification do
   let(:verifier) { User.create!(email_address: "atendente@cidade.gov.br", password: "senha-segura-123") }
   let(:admin) { User.create!(email_address: "admin@cidade.gov.br", password: "senha-segura-123") }
   let(:verification) do
-    Citizens::Verify.call(cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: true, by: verifier)
+    Citizens::Verify.call(cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: true, by: verifier,
+                           birth_date: "1963-04-02", sex: "female")
                     .payload[:verification]
   end
 
@@ -45,7 +46,8 @@ RSpec.describe Citizens::RevokeVerification do
 
   it "depois de desfeita, o par pode ser validado de novo" do
     described_class.call(verification: verification, reason: "documento de outra pessoa", by: admin)
-    again = Citizens::Verify.call(cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: true, by: verifier)
+    again = Citizens::Verify.call(cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: true, by: verifier,
+                           birth_date: "1963-04-02", sex: "female")
     expect(again).to be_ok
     expect(CitizenVerification.where(citizen: citizen).count).to eq(2)
   end

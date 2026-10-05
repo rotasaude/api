@@ -25,7 +25,8 @@ RSpec.describe "Attendance", type: :request do
                                        "verification_level" => "declared")
     expect(body.to_s).not_to include("998765432")
 
-    json_post "/attendance/verifications", cpf: "529.982.247-25", code: code, document_checked: true
+    json_post "/attendance/verifications", cpf: "529.982.247-25", code: code, document_checked: true,
+              birth_date: "1963-04-02", sex: "female"
     expect(response).to have_http_status(:created)
     expect(citizen.reload).to be_verification_level_verified
   end
@@ -59,7 +60,8 @@ RSpec.describe "Attendance", type: :request do
   it "par já verificado: 409 com a data" do
     code = issue_code_for(citizen)
     sign_in_as(verifier)
-    json_post "/attendance/verifications", cpf: citizen.cpf, code: code, document_checked: true
+    json_post "/attendance/verifications", cpf: citizen.cpf, code: code, document_checked: true,
+              birth_date: "1963-04-02", sex: "female"
     CitizenVerificationCode.create!(citizen: citizen, code_digest: CitizenVerificationCode.digest(citizen.id, "123456"),
                                     expires_at: 10.minutes.from_now)
     json_post "/attendance/lookup", cpf: citizen.cpf, code: "123456"
@@ -75,7 +77,8 @@ RSpec.describe "Attendance", type: :request do
 
   it "admin lista e desfaz; o próprio validador não desfaz" do
     sign_in_as(verifier)
-    json_post "/attendance/verifications", cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: true
+    json_post "/attendance/verifications", cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: true,
+              birth_date: "1963-04-02", sex: "female"
     id = body.dig("verification", "id")
 
     json_post "/attendance/verifications/#{id}/revoke", reason: "documento de outra pessoa"
@@ -95,7 +98,8 @@ RSpec.describe "Attendance", type: :request do
   it "admin que também é atendente não desfaz a própria validação: 403 own_verification" do
     Membership.create!(user: admin, role: "citizen_verifier", granted_at: Time.current)
     sign_in_as(admin)
-    json_post "/attendance/verifications", cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: true
+    json_post "/attendance/verifications", cpf: citizen.cpf, code: issue_code_for(citizen), document_checked: true,
+              birth_date: "1963-04-02", sex: "female"
     json_post "/attendance/verifications/#{body.dig('verification', 'id')}/revoke", reason: "documento de outra pessoa"
     expect(response).to have_http_status(:forbidden)
     expect(body["error"]).to eq("own_verification")
@@ -124,5 +128,22 @@ RSpec.describe "Attendance", type: :request do
     sign_in_as(verifier)
     post "/attendance/lookup", params: { cpf: citizen.cpf, code: "123456" }
     expect(response).to have_http_status(:unsupported_media_type)
+  end
+
+  it "validação sem perfil conferido: 422 com o motivo" do
+    code = issue_code_for(citizen)
+    sign_in_as(verifier)
+    json_post "/attendance/verifications", cpf: citizen.cpf, code: code, document_checked: true
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(body["error"]).to eq("invalid_birth_date")
+  end
+
+  it "lookup mostra o perfil declarado para o atendente conferir" do
+    citizen.update!(birth_date: "1963-04-02", sex: "female", profile_source: "declared")
+    code = issue_code_for(citizen)
+    sign_in_as(verifier)
+    json_post "/attendance/lookup", cpf: citizen.cpf, code: code
+    expect(body.dig("citizen", "profile"))
+      .to eq("birth_date" => "1963-04-02", "sex" => "female", "gender_identity" => nil, "profile_source" => "declared")
   end
 end
