@@ -26,6 +26,7 @@ class CompleteTriage
           @triage.complete!(outcome)
           DomainEvents.publish("triage.completed", triage_id: @triage.id)
           DomainEvents.publish("triage.urgent",    triage_id: @triage.id) if Protocols::Urgency.urgent?(outcome)
+          Triages::Suggest.call(triage: @triage, outcome: outcome) # ADR 0027: nunca em urgente
         end
       end
     end

@@ -97,4 +97,5 @@ Rails.application.config.to_prepare do
   # nome de protocolo; nunca data de nascimento, idade, sexo ou identidade de
   # gênero. Sem consumidor, de propósito.
   DomainEvents.bind "citizen.profile_changed", to: []
+  DomainEvents.bind "triage.suggested", to: []
 end

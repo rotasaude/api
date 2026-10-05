@@ -53,7 +53,7 @@ end
 # Módulo 15 (ADR 0027): eventos do catálogo de triagens, só ids e sem consumidor.
 RSpec.describe "triage catalog event bindings (ADR 0027)" do
   it "declares every triage catalog event with no consumer" do
-    names = %w[citizen.profile_changed]
+    names = %w[citizen.profile_changed triage.suggested]
     expect(DomainEvents.registry.keys).to include(*names)
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
