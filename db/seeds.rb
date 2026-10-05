@@ -14,6 +14,7 @@
 #     livre), criados por `SignatureCrew` (plano 2026-09-23) — ver
 #     `lib/signature_crew.rb`.
 #     O analyst (analise@<slug>.demo) e ~6 meses de histórico consolidado para o Analytics vêm de `lib/analytics_crew.rb` (módulo 14).
+#     Os protocolos do catálogo (saúde do idoso, saúde mental e aprofundamento), a família avó+neto no mesmo celular e o idoso restrito a dois bairros em Curitiba vêm de `lib/triage_catalog_crew.rb` (módulo 15).
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -35,6 +36,7 @@ else
   require Rails.root.join("lib/territory_crew").to_s
   require Rails.root.join("lib/campaign_crew").to_s
   require Rails.root.join("lib/analytics_crew").to_s
+  require Rails.root.join("lib/triage_catalog_crew").to_s
 
   password = ENV.fetch(SignatureCrew::PASSWORD_ENV, "dev-password")
 
@@ -186,6 +188,14 @@ else
         puts "[seeds] analytics .. #{analytics[:protocol][:name]} v#{analytics[:protocol][:version]} " \
              "(#{analytics[:protocol][:status]}), #{analytics[:new_triages]} triagens novas, " \
              "#{analytics[:runs]} blocos consolidados#{analytics[:failed] ? " — FALHOU: #{analytics[:failed]}" : ''}"
+
+        # ── Catálogo de triagens (módulo 15, spec 2026-10-05 §10) ─────────────
+        # Depois do elenco do ciclo assinado e do território: usa autor,
+        # revisoras, publisher, admin e bairros.
+        catalog = TriageCatalogCrew.seed_current_city(slug: slug, ddd: ddd)
+        puts "[seeds] catálogo .... #{catalog[:protocols].join(', ')} ativos" \
+             "#{catalog[:restricted_neighborhoods].any? ? "; idoso só em #{catalog[:restricted_neighborhoods].join(' e ')}" : ''}"
+        catalog[:family].each { |p| puts "[seeds] família ..... #{p[:cpf_masked]} (#{p[:age]} anos, #{p[:sex]})" }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
