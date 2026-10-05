@@ -239,6 +239,7 @@ Rails.application.routes.draw do
     post "gate",    to: "authoring/protocols#gate"
     post "preview", to: "authoring/protocols#preview"
     post "draft",   to: "authoring/protocols#draft"
+    post "simulate_offer", to: "authoring/protocols#simulate_offer"
   end
 
   # Publicação de protocolo — exige step-up MFA (ADR-0011 + ADR-0009)

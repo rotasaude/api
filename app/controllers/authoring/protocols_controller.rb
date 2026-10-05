@@ -4,7 +4,8 @@
 module Authoring
   class ProtocolsController < ApplicationController
     include Authentication
-    before_action :require_author!
+    before_action :require_author!, except: :simulate_offer
+    before_action :require_simulator!, only: :simulate_offer
 
     def gate
       render_gate(Protocols::Gate.call(definition_param), warnings: Protocols::SuggestionTargets.warnings(definition_param))
@@ -15,6 +16,12 @@ module Authoring
       return render_gate(result) unless result.valid?
       outcome = Protocols::Definitions.build(definition_param).evaluate(answers_param)
       render json: { outcome: outcome.to_h }
+    end
+
+    # ADR 0027 (contratos §4.3): autor e revisor; sempre 200, nunca grava.
+    def simulate_offer
+      render json: Protocols::SimulateOffer.call(definition: definition_param, profile: hash_param(:profile),
+                                                 answers: hash_param(:answers), outcome: hash_param(:outcome))
     end
 
     def draft
@@ -48,6 +55,11 @@ module Authoring
       params.fetch(:answers, {}).to_unsafe_h
     end
 
+    def hash_param(key)
+      value = params[key]
+      value.respond_to?(:to_unsafe_h) ? value.to_unsafe_h : {}
+    end
+
     def render_gate(result, warnings: [])
       extra = warnings.any? ? { warnings: warnings } : {}
       if result.valid?
@@ -59,6 +71,12 @@ module Authoring
 
     def require_author!
       head :forbidden unless ProtocolPolicy.new(Current.user, ProtocolDefinition.new).author?
+    end
+
+    def require_simulator!
+      return if ProtocolPolicy.new(Current.user, ProtocolDefinition.new).simulate?
+
+      render json: { error: "missing_role" }, status: :forbidden
     end
   end
 end
