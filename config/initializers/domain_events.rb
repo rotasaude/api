@@ -98,4 +98,5 @@ Rails.application.config.to_prepare do
   # gênero. Sem consumidor, de propósito.
   DomainEvents.bind "citizen.profile_changed", to: []
   DomainEvents.bind "triage.suggested", to: []
+  DomainEvents.bind "triage_offer.changed", to: []
 end
