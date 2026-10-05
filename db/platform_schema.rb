@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_05_200001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -19,6 +19,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
     t.text "database_url", null: false
     t.text "encryption_key", null: false
     t.string "name", null: false
+    t.string "pec_url", limit: 255
+    t.string "record_mode", default: "off", null: false
     t.string "schema_version"
     t.string "slug", null: false
     t.string "status", default: "provisioning", null: false
@@ -26,6 +28,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
     t.string "uf", limit: 2
     t.datetime "updated_at", null: false
     t.index ["slug"], name: "index_cities_on_slug", unique: true
+    t.check_constraint "pec_url IS NULL OR pec_url::text ~ '^https://'::text", name: "ck_cities_pec_url_https"
+    t.check_constraint "record_mode::text = ANY (ARRAY['off'::text, 'integrated'::text, 'record'::text])", name: "ck_cities_record_mode"
     t.check_constraint "slug::text ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'::text AND length(slug::text) >= 2 AND length(slug::text) <= 63", name: "ck_cities_slug_is_dns_label"
     t.check_constraint "status::text = ANY (ARRAY['provisioning'::character varying, 'active'::character varying, 'suspended'::character varying, 'archived'::character varying]::text[])", name: "ck_cities_status"
     t.check_constraint "time_zone::text = ANY (ARRAY['America/Noronha'::character varying, 'America/Belem'::character varying, 'America/Fortaleza'::character varying, 'America/Recife'::character varying, 'America/Araguaina'::character varying, 'America/Maceio'::character varying, 'America/Bahia'::character varying, 'America/Sao_Paulo'::character varying, 'America/Santarem'::character varying, 'America/Campo_Grande'::character varying, 'America/Cuiaba'::character varying, 'America/Porto_Velho'::character varying, 'America/Boa_Vista'::character varying, 'America/Manaus'::character varying, 'America/Eirunepe'::character varying, 'America/Rio_Branco'::character varying]::text[])", name: "ck_cities_time_zone"
@@ -57,6 +61,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
     t.index ["city_id", "active"], name: "index_city_channels_on_city_id_and_active"
     t.index ["city_id"], name: "index_city_channels_on_city_id"
     t.index ["phone_number_id"], name: "index_city_channels_on_phone_number_id", unique: true
+  end
+
+  create_table "city_features", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "changed_at", null: false
+    t.uuid "changed_by_maintainer_id", null: false
+    t.uuid "city_id", null: false
+    t.datetime "created_at", null: false
+    t.boolean "enabled", default: false, null: false
+    t.string "key", null: false
+    t.datetime "updated_at", null: false
+    t.index ["city_id", "key"], name: "idx_city_features_city_key", unique: true
   end
 
   create_table "city_grants", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -308,6 +323,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_02_300001) do
 
   add_foreign_key "city_analytics_indicators", "cities"
   add_foreign_key "city_channels", "cities"
+  add_foreign_key "city_features", "cities"
+  add_foreign_key "city_features", "maintainers", column: "changed_by_maintainer_id"
   add_foreign_key "city_grants", "cities"
   add_foreign_key "operator_sessions", "operators"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

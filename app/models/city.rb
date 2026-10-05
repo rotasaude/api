@@ -13,6 +13,11 @@ class City < PlatformRecord
     America/Eirunepe America/Rio_Branco
   ].freeze
 
+  # ADR 0028 (spec 2026-10-05 §3.2): o modo é decisão de contrato, do operador
+  # no console. Toda cidade nasce off.
+  RECORD_MODES = %w[off integrated record].freeze
+  PEC_URL_MAX = 255
+
   # key_provider: fixo na chave da plataforma (PlatformKeyProvider) — sem
   # isso, ler/escrever estes atributos de dentro de CityConnection.with usaria
   # a chave da cidade (o contexto de cifra é global por thread, não por
@@ -29,6 +34,21 @@ class City < PlatformRecord
   validates :name, :database_url, :encryption_key, presence: true
   validates :status, inclusion: { in: STATUSES }
   validates :time_zone, inclusion: { in: TIME_ZONES }
+  validates :record_mode, inclusion: { in: RECORD_MODES }
+  validate { errors.add(:pec_url, :invalid) unless pec_url.nil? || self.class.valid_pec_url?(pec_url) }
+
+  has_many :features, class_name: "CityFeature", dependent: :restrict_with_error
+
+  # Endereço do PEC da cidade (ADR 0028): só HTTPS, sem usuário/senha na URL
+  # (credencial é da cidade, cifrada no banco dela), sem query nem fragmento.
+  def self.valid_pec_url?(value)
+    return false unless value.is_a?(String) && value.length <= PEC_URL_MAX
+
+    uri = URI.parse(value)
+    uri.is_a?(URI::HTTPS) && uri.host.present? && uri.userinfo.nil? && uri.query.nil? && uri.fragment.nil?
+  rescue URI::InvalidURIError
+    false
+  end
 
   def shard = slug.to_sym
 
