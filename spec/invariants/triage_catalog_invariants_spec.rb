@@ -133,6 +133,8 @@ RSpec.describe "Invariantes do catálogo de triagens (ADR 0027)" do
   it "6. a triagem aponta a versão ativa exata" do
     ProtocolDefinition.create!(name: "saude-mental", version: 1, status: "retired", definition: catalog_definition("saude-mental"))
     v2 = active_protocol!("saude-mental", version: 2)
+    # Versão mais nova que NÃO é a ativa: pega quem busca a primeira ou a última.
+    ProtocolDefinition.create!(name: "saude-mental", version: 3, status: "published", definition: catalog_definition("saude-mental"))
     citizen = profiled_citizen!(age: 30)
     triage = start_for!(citizen, "saude-mental").payload[:triage]
     expect(triage.protocol_definition_id).to eq(v2.id)
