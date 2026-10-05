@@ -313,6 +313,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_300001) do
 
   create_table "citizens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.text "birth_date"
+    t.timestamptz "cadsus_checked_at"
+    t.timestamptz "cadsus_pending_at"
+    t.string "cadsus_pending_cns"
+    t.uuid "cadsus_pending_session_id"
+    t.string "cns"
     t.string "cpf", null: false
     t.datetime "created_at", null: false
     t.timestamptz "erased_at"
@@ -393,6 +398,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_300001) do
     t.index ["occurred_at"], name: "index_domain_events_on_occurred_at"
   end
 
+  create_table "health_team_members", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cbo_code", null: false
+    t.datetime "created_at", null: false
+    t.date "ended_on"
+    t.uuid "health_team_id", null: false
+    t.uuid "professional_id", null: false
+    t.date "started_on", null: false
+    t.datetime "updated_at", null: false
+    t.index ["health_team_id"], name: "index_health_team_members_on_health_team_id"
+    t.index ["professional_id", "health_team_id"], name: "idx_health_team_members_one_active", unique: true, where: "(ended_on IS NULL)"
+    t.index ["professional_id"], name: "index_health_team_members_on_professional_id"
+    t.check_constraint "cbo_code::text ~ '^[0-9]{6}$'::text", name: "ck_health_team_members_cbo_code"
+    t.check_constraint "ended_on IS NULL OR ended_on >= started_on", name: "ck_health_team_members_order"
+  end
+
+  create_table "health_teams", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.string "ine", limit: 10, null: false
+    t.string "kind", null: false
+    t.string "name", limit: 120
+    t.datetime "updated_at", null: false
+    t.index ["health_unit_id"], name: "index_health_teams_on_health_unit_id"
+    t.index ["ine"], name: "index_health_teams_on_ine", unique: true
+    t.check_constraint "ine::text ~ '^[0-9]{10}$'::text", name: "ck_health_teams_ine"
+    t.check_constraint "kind::text = ANY (ARRAY['70', '76']::text[])", name: "ck_health_teams_kind"
+  end
+
   create_table "health_unit_drains", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.integer "appointments_count", null: false
     t.datetime "created_at", null: false
@@ -413,14 +447,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_300001) do
     t.string "address_number", limit: 20
     t.string "address_street", limit: 160
     t.string "address_zip", limit: 8
+    t.string "cnes", limit: 7
     t.datetime "created_at", null: false
     t.string "kind", null: false
     t.string "name", null: false
     t.uuid "neighborhood_id"
     t.datetime "updated_at", null: false
+    t.index ["cnes"], name: "idx_health_units_cnes", unique: true, where: "(cnes IS NOT NULL)"
     t.index "lower((name)::text)", name: "idx_health_units_name_ci", unique: true
     t.index ["neighborhood_id"], name: "index_health_units_on_neighborhood_id"
     t.check_constraint "address_zip IS NULL OR address_zip::text ~ '^[0-9]{8}$'::text", name: "ck_health_units_address_zip"
+    t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_health_units_cnes"
     t.check_constraint "kind::text = ANY (ARRAY['ubs', 'upa', 'hospital', 'other']::text[])", name: "ck_health_units_kind"
   end
 
@@ -446,6 +483,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_300001) do
     t.index ["created_at"], name: "index_inbound_messages_on_created_at"
     t.index ["from"], name: "index_inbound_messages_on_from"
     t.index ["message_id"], name: "index_inbound_messages_on_message_id", unique: true
+  end
+
+  create_table "integration_credentials", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.datetime "last_check_at"
+    t.string "last_check_message", limit: 200
+    t.string "last_check_status"
+    t.text "secret", null: false
+    t.datetime "set_at", null: false
+    t.uuid "set_by_user_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["kind"], name: "index_integration_credentials_on_kind", unique: true
+    t.index ["set_by_user_id"], name: "index_integration_credentials_on_set_by_user_id"
+    t.check_constraint "kind::text = ANY (ARRAY['ledi', 'cadsus']::text[])", name: "ck_integration_credentials_kind"
+    t.check_constraint "last_check_status IS NULL OR last_check_status::text = ANY (ARRAY['ok', 'unauthorized', 'unreachable', 'error']::text[])", name: "ck_integration_credentials_status"
   end
 
   create_table "invitations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -575,6 +628,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_300001) do
     t.string "contact_email"
     t.string "council", null: false
     t.string "council_state", null: false
+    t.string "cpf"
     t.datetime "created_at", null: false
     t.string "phone"
     t.string "professional_name", null: false
@@ -582,6 +636,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_300001) do
     t.datetime "updated_at", null: false
     t.uuid "user_id", null: false
     t.index ["cns"], name: "idx_professionals_cns", unique: true
+    t.index ["cpf"], name: "idx_professionals_cpf", unique: true, where: "(cpf IS NOT NULL)"
     t.index ["council", "council_state", "registration_number"], name: "idx_professionals_registration", unique: true
     t.index ["user_id"], name: "index_professionals_on_user_id", unique: true
     t.check_constraint "council_state::text ~ '^[A-Z]{2}$'::text", name: "ck_professionals_council_state"
@@ -913,11 +968,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_300001) do
   add_foreign_key "citizens", "neighborhoods"
   add_foreign_key "consents", "conversations"
   add_foreign_key "conversations", "citizens"
+  add_foreign_key "health_team_members", "health_teams"
+  add_foreign_key "health_team_members", "professionals"
+  add_foreign_key "health_teams", "health_units"
   add_foreign_key "health_unit_drains", "health_units"
   add_foreign_key "health_unit_drains", "health_units", column: "target_unit_id"
   add_foreign_key "health_unit_drains", "users", column: "drained_by_user_id"
   add_foreign_key "health_units", "neighborhoods"
   add_foreign_key "identities", "users"
+  add_foreign_key "integration_credentials", "users", column: "set_by_user_id"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"

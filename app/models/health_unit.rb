@@ -21,6 +21,11 @@ class HealthUnit < ApplicationRecord
              with: ->(v) { v.to_s.squish.presence }, apply_to_nil: true
   normalizes :address_zip, with: ->(v) { v.to_s.gsub(/[\s.-]/, "").presence }, apply_to_nil: true
 
+  # CNES da unidade (ADR 0028): confirmado pela cidade a partir do retrato do
+  # CNES, ou editado pelo admin. Só dígitos; único.
+  normalizes :cnes, with: ->(v) { v.to_s.gsub(/\D/, "").presence }, apply_to_nil: true
+  validates :cnes, format: { with: /\A\d{7}\z/ }, uniqueness: true, allow_nil: true
+
   validates :name, presence: true, uniqueness: { case_sensitive: false }
   validates :kind, inclusion: { in: KINDS }
   validates :address_street, length: { maximum: 160 }

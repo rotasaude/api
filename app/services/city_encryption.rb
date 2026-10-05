@@ -51,6 +51,10 @@ module CityEncryption
     [ CitizenSession, :phone ],
     [ OtpChallenge,   :phone ],
     [ Professional,   :cns ],
+    [ Professional,   :cpf ],
+    [ Citizen,        :cns ],
+    [ Citizen,        :cadsus_pending_cns ],
+    [ IntegrationCredential, :secret ],
     [ Professional,   :phone ],
     [ Professional,   :contact_email ]
   ].freeze

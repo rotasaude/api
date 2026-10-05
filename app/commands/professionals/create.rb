@@ -5,6 +5,7 @@ module Professionals
     UNIQUE_REASONS = {
       "index_professionals_on_user_id" => :already_exists,
       "idx_professionals_cns" => :cns_taken,
+      "idx_professionals_cpf" => :cpf_taken,
       "idx_professionals_registration" => :registration_taken
     }.freeze
 

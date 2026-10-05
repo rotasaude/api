@@ -19,6 +19,12 @@ class Citizen < ApplicationRecord
   encrypts :sex
   encrypts :gender_identity
 
+  # ADR 0028 (spec 2026-10-05 §7): do CADSUS só ficam o CNS e a marca da
+  # conferência. O pendente guarda o CNS da última consulta até a validação
+  # confirmar (contratos §5.4), e é limpo por ela.
+  encrypts :cns
+  encrypts :cadsus_pending_cns
+
   has_many :conversations, dependent: :restrict_with_error
   has_many :verifications, class_name: "CitizenVerification", dependent: :restrict_with_error
   has_many :verification_codes, class_name: "CitizenVerificationCode", dependent: :restrict_with_error
@@ -68,6 +74,8 @@ class Citizen < ApplicationRecord
   def cpf_masked
     CitizenIdentity::Cpf.mask(cpf)
   end
+
+  def cns_masked = Professionals::Cns.mask(cns)
 
   def active_verification
     verifications.active.first
