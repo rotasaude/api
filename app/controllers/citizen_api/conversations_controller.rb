@@ -10,9 +10,8 @@ module CitizenApi
 
     def create
       # LGPD (spec §4): nenhum CPF é gravado sem o consentimento da versão
-      # vigente. Confira ANTES de resolve_citizen — RegisterPerson cria o
-      # Citizen (com o CPF) para um CPF novo, e StartConversation só recusaria
-      # depois, tarde demais.
+      # vigente. Confira ANTES de resolve_citizen, que só acha o par — o par
+      # novo nasce pelo POST /citizen/people.
       unless params[:consent_version].to_s == Consents.current_version
         return render_error("consent_outdated", :conflict)
       end
@@ -24,9 +23,8 @@ module CitizenApi
         return render_error("protocol_name_required", :unprocessable_entity)
       end
 
-      # ADR 0023: bairro inválido é recusado ANTES de resolve_citizen, que cria
-      # o Citizen (com o CPF) para um CPF novo — um pedido recusado não grava
-      # nada. Depois do consentimento, como o CPF.
+      # ADR 0023: bairro inválido é recusado ANTES de resolve_citizen — um
+      # pedido recusado não grava nada. Depois do consentimento.
       neighborhood_id = requested_neighborhood_id
       return if performed?
 
@@ -95,9 +93,15 @@ module CitizenApi
         render_error("not_found", :not_found) unless citizen
         citizen
       else
-        result = Citizens::RegisterPerson.call(phone: current_citizen_session.phone, cpf: params[:cpf])
-        render_error(result.reason, :unprocessable_entity) if result.failure?
-        result.payload[:citizen]
+        # Caminho de compatibilidade: só ACHA o par. O par novo nasce pelo POST
+        # /citizen/people, com o perfil (ADR 0027) — aqui um CPF novo seria
+        # recusado com profile_required, e um pedido recusado não grava CPF.
+        digits = CitizenIdentity::Cpf.normalize(params[:cpf])
+        return render_error("invalid_cpf", :unprocessable_entity) unless digits
+
+        citizen = current_citizen_session.citizens.find_by(cpf: digits)
+        render_error("profile_required", :conflict) unless citizen
+        citizen
       end
     end
 

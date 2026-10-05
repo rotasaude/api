@@ -43,17 +43,27 @@ RSpec.describe "Início de triagem por nome", type: :request do
     expect(Citizen.where(cpf: "52998224725")).to be_empty
   end
 
-  # Desvio 12: o caminho por cpf continua, mas o par novo nasce sem perfil.
-  # O par (celular + CPF) FICA gravado, sem perfil, como o RegisterPerson faz;
-  # nenhuma conversa nem triagem.
-  it "CPF novo pelo caminho de compatibilidade: 409 profile_required, par gravado sem perfil" do
+  # LGPD: o caminho por cpf não cria par — o par novo nasce pelo POST
+  # /citizen/people, com o perfil. Um pedido recusado não grava o CPF.
+  it "CPF novo pelo caminho de compatibilidade: 409 profile_required e nenhum CPF gravado" do
     expect do
       start(cpf: "529.982.247-25", protocol_name: StartTriage::DEFAULT_PROTOCOL_NAME)
-    end.to change(Citizen, :count).by(1)
+    end.not_to change(Citizen, :count)
     expect([ Conversation.count, Triage.count ]).to eq([ 0, 0 ])
     expect(status_and_error).to eq([ 409, "profile_required" ])
-    citizen = Citizen.find_by!(cpf: "52998224725", phone: "+5541998765432")
-    expect(citizen.profile?).to be(false)
+    expect(Citizen.where(cpf: "52998224725")).to be_empty
+  end
+
+  it "CPF de par existente com perfil: inicia a triagem" do
+    par = profiled_citizen!(age: 30)
+    start(cpf: par.cpf, protocol_name: StartTriage::DEFAULT_PROTOCOL_NAME)
+    expect(response).to have_http_status(:created)
+    expect(response.parsed_body["citizen_id"]).to eq(par.id)
+  end
+
+  it "CPF inválido: 422 invalid_cpf" do
+    start(cpf: "111.111.111-11", protocol_name: StartTriage::DEFAULT_PROTOCOL_NAME)
+    expect(status_and_error).to eq([ 422, "invalid_cpf" ])
   end
 
   it "não oferecido e triagem em andamento: 409" do
