@@ -53,4 +53,16 @@ RSpec.describe RevokeConsent do
     expect { described_class.call(conversation: conversation, origin: "apagar meus dados") }
       .to raise_error(ArgumentError, /origin/)
   end
+
+  it "ADR 0027: apaga as sugestões nascidas das triagens da conversa revogada; o perfil e as outras ficam" do
+    citizen = profiled_citizen!(age: 40, phone: "+5541998761099")
+    revoked = completed_web_triage_for(citizen)
+    kept_source = completed_triage!(citizen, revoked.protocol_name)
+    TriageSuggestion.create!(citizen: citizen, source_triage: revoked, protocol_name: "saude-mental")
+    kept = TriageSuggestion.create!(citizen: citizen, source_triage: kept_source, protocol_name: "saude-do-idoso")
+
+    expect(described_class.call(conversation: revoked.conversation, origin: "web")).to be_ok
+    expect(TriageSuggestion.where(citizen_id: citizen.id)).to eq([ kept ])
+    expect(citizen.reload).to have_attributes(profile_source: "declared", sex: "female")
+  end
 end

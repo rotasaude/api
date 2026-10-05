@@ -26,6 +26,9 @@ class RevokeConsent
         status: :aborted_by_revocation,
         completed_at: Time.current
       )
+      # ADR 0027 (spec 2026-10-05 §5.5): somem as sugestões nascidas das
+      # triagens desta conversa; o perfil, como o bairro, é cadastro e fica.
+      TriageSuggestion.where(source_triage_id: @conversation.triages.select(:id)).delete_all
 
       DomainEvents.publish("consent.revoked", conversation_id: @conversation.id, consent_id: active.id, origin: @origin)
     end

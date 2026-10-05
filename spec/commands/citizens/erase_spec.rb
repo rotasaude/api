@@ -208,4 +208,16 @@ RSpec.describe Citizens::Erase do
     expect(Conversation.where(citizen_id: fresh.id)).to be_empty
     expect(Citizens::RequestErasure.pairs_of(cpf).to_a).to eq([ fresh ])
   end
+
+  it "ADR 0027: zera o perfil e apaga todas as sugestões do par" do
+    pair.update!(birth_date: "1963-04-02", sex: "female", gender_identity: "cis_woman", profile_source: "declared")
+    other_source = completed_triage!(pair, triage.protocol_name)
+    TriageSuggestion.create!(citizen: pair, source_triage: triage, protocol_name: "saude-mental")
+    TriageSuggestion.create!(citizen: pair, source_triage: other_source, protocol_name: "saude-do-idoso",
+                             status: "expired", resolved_at: Time.current)
+
+    expect(described_class.call(request: request, by: admin)).to be_ok
+    expect(pair.reload).to have_attributes(birth_date: nil, sex: nil, gender_identity: nil, profile_source: nil)
+    expect(TriageSuggestion.where(citizen_id: pair.id)).to be_empty
+  end
 end

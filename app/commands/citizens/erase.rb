@@ -60,10 +60,14 @@ module Citizens
       CitizenVerificationCode.where(citizen_id: citizen.id).delete_all
       CitizenContactPreference.where(citizen_id: citizen.id).delete_all
       CampaignRecipient.where(citizen_id: citizen.id).delete_all
+      # ADR 0027 (spec 2026-10-05 §5.5): as sugestões do par (o trigger deixa o
+      # DELETE passar de propósito).
+      TriageSuggestion.where(citizen_id: citizen.id).delete_all
 
       # update_columns cifra (o tipo cifrado serializa); um marcador por coluna,
       # para não repetir valor entre cpf e phone.
       citizen.update_columns(cpf: tombstone, phone: tombstone, neighborhood_id: nil, erased_at: Time.current,
+                             birth_date: nil, sex: nil, gender_identity: nil, profile_source: nil,
                              updated_at: Time.current)
     end
 
