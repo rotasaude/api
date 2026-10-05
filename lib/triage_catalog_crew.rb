@@ -7,7 +7,11 @@ require_relative "campaign_history"
 # SubmitForReview → 2 assinaturas → Publish → 2 assinaturas → Activate), o
 # aprofundamento primeiro (é o alvo da sugestão da saúde mental); avó (62) e
 # neto (8) no mesmo celular, CPF com dígito válido; em Curitiba, o idoso fica
-# restrito a dois bairros e a avó mora num deles. Idempotente.
+# restrito a dois bairros e a avó mora num deles. Todo protocolo da semente tem
+# offer.eligibility, e protocolo com elegibilidade sem linha em triage_offers
+# não é oferecido (spec §5.1, regra 1): por isso cada cidade ganha as linhas do
+# catálogo (idoso, saúde mental e aprofundamento), o idoso sem restrição fora
+# de Curitiba. Idempotente.
 class TriageCatalogCrew
   PHONE_PREFIX = "94444"
   DEEP = "saude-mental-aprofundada"
@@ -59,12 +63,16 @@ class TriageCatalogCrew
     }
   }.freeze
 
+  # Ordem no catálogo da cidade.
+  POSITIONS = { ELDERLY => 1, MENTAL => 2, DEEP => 3 }.freeze
+
   FAMILY = [ { key: "avo", age: 62, extra_days: 40, sex: "female" }, { key: "neto", age: 8, extra_days: 100, sex: "male" } ].freeze
 
   class << self
     def seed_current_city(slug:, ddd:)
       PROTOCOLS.each_key { |name| ensure_protocol!(slug, name) }
-      restricted = slug == "curitiba" ? restrict_elderly!(slug) : []
+      restricted = slug == "curitiba" ? elderly_neighborhoods : []
+      enable_catalog!(slug, restricted)
       family = ensure_family!(slug, ddd, restricted.first)
       { protocols: PROTOCOLS.keys, restricted_neighborhoods: restricted.map(&:name), family: family }
     end
@@ -104,16 +112,22 @@ class TriageCatalogCrew
     end
 
     # Curitiba: o idoso só nos dois primeiros bairros ativos (por nome).
-    def restrict_elderly!(slug)
+    def elderly_neighborhoods
       neighborhoods = Neighborhood.where(active: true).order(:name).first(2)
       raise "semente do catálogo: nenhum bairro (rode a Territory::Seed antes)" if neighborhoods.empty?
 
-      admin = User.find_by!(email_address: "admin@#{slug}.demo")
-      attributes = { "enabled" => true, "position" => 1, "available_from" => nil, "available_until" => nil,
-                     "restriction" => { "in" => [ "citizen.neighborhood_id", neighborhoods.map(&:id) ] } }
-      result = Triages::SetOffer.call(protocol_name: ELDERLY, attributes: attributes, by: admin)
-      check!(result, ELDERLY, "linha do catálogo")
       neighborhoods
+    end
+
+    # Uma linha habilitada por protocolo; o idoso restrito aos bairros quando há.
+    def enable_catalog!(slug, restricted)
+      admin = User.find_by!(email_address: "admin@#{slug}.demo")
+      POSITIONS.each do |name, position|
+        restriction = name == ELDERLY && restricted.any? ? { "in" => [ "citizen.neighborhood_id", restricted.map(&:id) ] } : nil
+        attributes = { "enabled" => true, "position" => position, "available_from" => nil, "available_until" => nil,
+                       "restriction" => restriction }
+        check!(Triages::SetOffer.call(protocol_name: name, attributes: attributes, by: admin), name, "linha do catálogo")
+      end
     end
 
     def ensure_family!(slug, ddd, neighborhood)
