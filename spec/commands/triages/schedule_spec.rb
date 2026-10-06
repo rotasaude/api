@@ -109,6 +109,17 @@ RSpec.describe Triages::Schedule do
     expect(request.reload.origin_triage_id).to eq(first.id)
   end
 
+  it "regra sem prazo ou com prazo inválido: +30 dias, o padrão do pedido do atendimento" do
+    unit
+    active_protocol!("saude-do-idoso", scheduling: [ rules[1].except("due_in_days") ])
+    active_protocol!("saude-do-idoso-2", scheduling: [ rules[1].merge("appointment_type" => "retorno",
+                                                                      "due_in_days" => "abc") ])
+    complete(par, "true")
+    complete(par, "true", "saude-do-idoso-2")
+    expect(requests_of(par).pluck(:appointment_type_key, :due_on))
+      .to contain_exactly([ "consulta_medica", Time.zone.today + 30 ], [ "retorno", Time.zone.today + 30 ])
+  end
+
   it "tipo inexistente na cidade: o pedido nasce com a key (nenhuma necessidade some)" do
     active_protocol!("saude-do-idoso", scheduling: [ rules[1].merge("appointment_type" => "geriatria") ])
     complete(par, "true")

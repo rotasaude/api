@@ -59,8 +59,11 @@ RSpec.describe Citizens::SubmitAnswer do
     locks = []
     callback = lambda do |*, payload|
       sql = payload[:sql].to_s
-      next unless sql.include?("FOR UPDATE")
-      locks << :citizen if sql.include?('"citizens"')
+      next unless sql.match?(/FOR (NO KEY )?UPDATE/)
+      # Cidadão em FOR NO KEY UPDATE: deixa passar o FOR KEY SHARE das FKs do
+      # HealthUnits::Drain (sem deadlock com Triages::Schedule, revisão da Task 14).
+      locks << :citizen if sql.include?('"citizens"') && sql.include?("FOR NO KEY UPDATE")
+      locks << :citizen_for_update if sql.include?('"citizens"') && sql.include?("FOR UPDATE")
       locks << :conversation if sql.include?('"conversations"')
     end
     ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { submit("true") }

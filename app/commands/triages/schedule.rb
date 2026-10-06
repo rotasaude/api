@@ -23,8 +23,14 @@ module Triages
 
       attrs = { key: rule["appointment_type"].to_s,
                 priority: AppointmentRequest::PRIORITIES.include?(rule["priority"]) ? rule["priority"] : "routine",
-                due_on: on + rule["due_in_days"].to_i.clamp(1, 365) }
+                due_on: on + due_in_days(rule["due_in_days"]) }
       merge(found.citizen, triage, attrs) || create(found.citizen, triage, attrs)
+    end
+
+    # Prazo da regra (1..365 dias, pelo schema); ausente ou inválido, o mesmo
+    # padrão do pedido do atendimento (+30), nunca "amanhã".
+    def due_in_days(value)
+      value.is_a?(Integer) && value.between?(1, 365) ? value : AppointmentRequest::DUE_IN_DAYS
     end
 
     def merge(citizen, triage, attrs)
@@ -49,6 +55,11 @@ module Triages
       DomainEvents.publish("appointment_request.created_from_triage", request_id: request.id, triage_id: triage.id)
       request
     rescue ActiveRecord::RecordNotUnique
+      # Quem ganhou o índice único é um pedido vivo do mesmo tipo: a fusão o
+      # acha. Só devolveria nil (triagem sem pedido) se ele deixasse de estar
+      # vivo entre o insert e a busca — na prática inalcançável: a trava do
+      # cidadão (SubmitAnswer) já serializa as conclusões do mesmo cidadão, e
+      # a corrida aqui é a defesa de reserva.
       merge(citizen, triage, attrs)
     end
   end

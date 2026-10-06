@@ -32,7 +32,7 @@ module Citizens
       # recarrega a conversa: quem chega depois já vê o estado gravado pelo
       # primeiro.
       ApplicationRecord.transaction do
-        @citizen.lock!
+        @citizen.lock!("FOR NO KEY UPDATE")
         conversation.lock!
         result = locked_call(conversation)
       end

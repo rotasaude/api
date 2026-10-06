@@ -5,6 +5,13 @@
 # StartConversation e Citizens::Erase: na conclusão, Triages::Suggest grava
 # triage_suggestions, cuja FK pega FOR KEY SHARE no cidadão; travar só a
 # conversa fecharia um ciclo com quem trava o cidadão antes (deadlock).
+# O cidadão vai em FOR NO KEY UPDATE (como Placement.lock!): exclui as outras
+# travas do cidadão, mas deixa passar o FOR KEY SHARE das FKs de quem grava
+# linhas do cidadão. Com FOR UPDATE, a conclusão (Triages::Schedule grava o
+# pedido, FK na unidade, ou trava o pedido vivo na fusão) cruzava com
+# HealthUnits::Drain, que trava a unidade e os pedidos e grava o pedido novo
+# com FK no cidadão: deadlock (spec/commands/triages/schedule_drain_concurrency_spec.rb).
+# StartConversation e StartTriage usam o mesmo modo (sem promover a trava).
 # Conversa sem cidadão (WhatsApp) trava só a conversa.
 # Reasons: :invalid_answer, :not_in_progress (e as de CompleteTriage).
 module Citizens
@@ -22,7 +29,7 @@ module Citizens
     def call
       result = nil
       ApplicationRecord.transaction do
-        @conversation.citizen&.lock!
+        @conversation.citizen&.lock!("FOR NO KEY UPDATE")
         @conversation.lock!
         result = locked_call
       end

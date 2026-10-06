@@ -19,7 +19,7 @@ class StartTriage
     citizen = conversation.citizen
     ApplicationRecord.transaction do
       if citizen
-        citizen.lock!
+        citizen.lock!("FOR NO KEY UPDATE")
         return Result.fail(:not_offered) unless Triages::Offer.startable?(citizen: citizen, protocol_name: name)
       end
 
