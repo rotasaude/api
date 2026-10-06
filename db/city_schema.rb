@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_05_300001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_200001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -512,6 +512,34 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_300001) do
     t.datetime "updated_at", null: false
     t.index ["invited_by_id"], name: "index_invitations_on_invited_by_id"
     t.index ["token"], name: "index_invitations_on_token", unique: true
+  end
+
+  create_table "ledi_outbox", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "accepted_at"
+    t.integer "attempts", default: 0, null: false
+    t.string "competence", limit: 6, null: false
+    t.datetime "created_at", null: false
+    t.string "ficha_type", null: false
+    t.datetime "first_attempt_at"
+    t.string "last_error", limit: 500
+    t.string "ledi_version", null: false
+    t.datetime "next_attempt_at", null: false
+    t.text "payload"
+    t.uuid "source_id", null: false
+    t.string "source_type", null: false
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.string "uuid", limit: 44, null: false
+    t.index ["competence", "status"], name: "idx_ledi_outbox_competence"
+    t.index ["source_type", "source_id", "ficha_type"], name: "idx_ledi_outbox_source", unique: true
+    t.index ["status", "next_attempt_at"], name: "idx_ledi_outbox_due"
+    t.index ["uuid"], name: "idx_ledi_outbox_uuid", unique: true
+    t.check_constraint "(status::text = 'accepted'::text) = (accepted_at IS NOT NULL)", name: "ck_ledi_outbox_accepted_at"
+    t.check_constraint "competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text", name: "ck_ledi_outbox_competence"
+    t.check_constraint "ficha_type::text ~ '^[a-z_]+$'::text", name: "ck_ledi_outbox_ficha_type"
+    t.check_constraint "status::text <> 'accepted'::text OR payload IS NULL", name: "ck_ledi_outbox_accepted_payload"
+    t.check_constraint "status::text <> 'rejected'::text OR last_error IS NOT NULL", name: "ck_ledi_outbox_rejected_error"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'sending'::text, 'accepted'::text, 'rejected'::text, 'failed'::text])", name: "ck_ledi_outbox_status"
   end
 
   create_table "memberships", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

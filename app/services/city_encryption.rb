@@ -56,7 +56,8 @@ module CityEncryption
     [ Citizen,        :cadsus_pending_cns ],
     [ IntegrationCredential, :secret ],
     [ Professional,   :phone ],
-    [ Professional,   :contact_email ]
+    [ Professional,   :contact_email ],
+    [ LediOutboxEntry, :payload ]
   ].freeze
 
   module_function

@@ -104,4 +104,8 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "integration_credential.changed", to: []
   DomainEvents.bind "cnes.proposals_applied", to: []
   DomainEvents.bind "citizen.cadsus_looked_up", to: []
+
+  # Exportador LEDI (ADR 0028; contratos §6): só trilha, só ids.
+  DomainEvents.bind "ledi.ficha_accepted", to: []
+  DomainEvents.bind "ledi.ficha_rejected", to: []
 end
