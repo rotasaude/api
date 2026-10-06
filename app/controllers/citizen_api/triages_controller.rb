@@ -1,5 +1,5 @@
 #   GET  /citizen/triages?citizen_id=
-#   GET  /citizen/triages/:id   (com reference_units, ADR 0023, suggestions, ADR 0027, e scheduling_request, ADR 0029)
+#   GET  /citizen/triages/:id   (com reference_units, ADR 0023, suggestions, ADR 0027, e scheduling_request com status e scheduled_at, ADR 0029)
 #   POST /citizen/triages/:id/revoke_consent
 # O nível declarado vê só as triagens do próprio par CPF + telefone (spec §2.3).
 module CitizenApi

@@ -27,7 +27,8 @@ RSpec.describe "GET /citizen/triages/:id — scheduling_request", type: :request
 
     get "/citizen/triages/#{triage_id}"
     expect(body["scheduling_request"]).to eq("unit_name" => nil, "due_on" => (Time.zone.today + 30).iso8601,
-                                             "appointment_type_name" => "Consulta médica")
+                                             "appointment_type_name" => "Consulta médica",
+                                             "status" => "open", "scheduled_at" => nil)
 
     unit = create_unit("UBS Batel")
     AppointmentRequest.find_by!(origin_triage_id: triage_id).update!(target_unit: unit)
@@ -52,7 +53,44 @@ RSpec.describe "GET /citizen/triages/:id — scheduling_request", type: :request
     expect(request.request_triages.pluck(:triage_id)).to eq([ second_id ])
 
     get "/citizen/triages/#{second_id}"
-    expect(body["scheduling_request"]).to include("appointment_type_name" => "Consulta médica")
+    expect(body["scheduling_request"]).to include("appointment_type_name" => "Consulta médica",
+                                                  "status" => "open", "scheduled_at" => nil)
+
+    at = book!(request)
+    get "/citizen/triages/#{second_id}"
+    expect(body["scheduling_request"]).to include("appointment_type_name" => "Consulta médica", "status" => "scheduled")
+    expect(Time.iso8601(body["scheduling_request"]["scheduled_at"])).to eq(at)
+  end
+
+  # Horário vivo marcado direto (cenário): o caminho real é Appointments::Book.
+  def book!(request, status: "confirmed")
+    unit = create_unit("UBS Batel")
+    request.update!(target_unit: unit) unless request.target_unit_id
+    starts_at = (Time.zone.today + 3).in_time_zone.change(hour: 9)
+    shift = shift!(doctor_link!(unit), starts_at: starts_at.change(hour: 8))
+    appointment_row!(request, shift, starts_at: starts_at, status: status)
+    request.update!(status: "scheduled")
+    starts_at
+  end
+
+  it "pedido marcado: status scheduled e a hora do horário vivo, com fuso" do
+    active_protocol!("saude-do-idoso", scheduling: rule)
+    triage_id = finish("saude-do-idoso")
+    request = AppointmentRequest.find_by!(origin_triage_id: triage_id)
+    at = book!(request, status: "scheduled")
+
+    get "/citizen/triages/#{triage_id}"
+    got = body["scheduling_request"]
+    expect(got).to include("unit_name" => "UBS Batel", "status" => "scheduled")
+    expect(got["scheduled_at"]).to match(/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})\z/)
+    expect(Time.iso8601(got["scheduled_at"])).to eq(at)
+
+    # O horário deixa de ser vivo (cancelado): a chave fica, nula.
+    request.appointments.live.first.update!(status: "cancelled_by_citizen", ended_at: Time.current,
+                                            cancel_reason: "Cancelado no teste do resultado")
+    get "/citizen/triages/#{triage_id}"
+    expect(body["scheduling_request"]).to have_key("scheduled_at")
+    expect(body["scheduling_request"]["scheduled_at"]).to be_nil
   end
 
   it "tipo que a cidade não tem: o nome cai na chave" do
