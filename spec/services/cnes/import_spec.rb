@@ -62,6 +62,52 @@ RSpec.describe Cnes::Import do
     expect(described_class.call(competence: "202609", path: path).reason).to eq(:no_city)
   end
 
+  it "CNES e INE repetidos na base não derrubam a importação: um de cada, a equipe ativa vence" do
+    Dir.mktmpdir do |dir|
+      FileUtils.cp(Dir[path.join("*.csv")], dir)
+      File.open(File.join(dir, "tbEstabelecimento202609.csv"), "a") do |f|
+        f.puts '"4106902000005";"0000001";"";"UBS DUPLICADA";"02";"410690"'
+      end
+      File.open(File.join(dir, "tbEquipe202609.csv"), "a") do |f|
+        f.puts '"410690";"0004";"4";"70";"4106902000002";"0000123458";"ESF REATIVADA";"01/01/2026";""'
+        f.puts '"410690";"0005";"5";"76";"4106902000002";"0000123457";"EAP VILA BIS";"01/01/2026";""'
+      end
+
+      result = described_class.call(competence: "202609", path: dir)
+
+      expect(result).to be_ok
+      expect(result.payload[:imported]).to eq("4106902" => { establishments: 4, teams: 3, bonds: 5 })
+      snapshot = CnesSnapshot.find_by!(ibge_code: "4106902", competence: "202609")
+      expect(snapshot.establishments.where(cnes: "0000001").pluck(:name)).to eq([ "UBS JARDIM DAS FLORES" ])
+      expect(snapshot.teams.order(:ine).pluck(:ine, :cnes, :name, :active)).to eq([
+        [ "0000123456", "0000001", "ESF JARDIM 1", true ],
+        [ "0000123457", "0000002", "EAP VILA", true ],
+        [ "0000123458", "0000002", "ESF REATIVADA", true ]
+      ])
+    end
+  end
+
+  it "falha no meio: os municípios já gravados ficam, são auditados e aparecem no resultado" do
+    allow(described_class).to receive(:municipalities)
+      .and_return([ { "4106902" => [ "4106902", [ city.slug ] ], "3550308" => [ "3550308", [ "outra" ] ] }, [] ])
+    allow(Cnes::SnapshotWriter).to receive(:write!).and_wrap_original do |original, **kwargs|
+      raise ActiveRecord::StatementInvalid, "PG::UniqueViolation: Key (cpf)=(98765432100)" if kwargs[:ibge_code] == "3550308"
+
+      original.call(**kwargs)
+    end
+
+    result = described_class.call(competence: "202609", path: path)
+
+    expect(result.reason).to eq(:interrupted)
+    expect(result.message).to eq("ActiveRecord::StatementInvalid")
+    expect(result.details).to include(imported: { "4106902" => { establishments: 4, teams: 3, bonds: 5 } },
+                                      failed_ibge_code: "3550308")
+    expect(result.to_h.to_s).not_to include("98765432100")
+    expect(CnesSnapshot.where(competence: "202609").pluck(:ibge_code)).to eq([ "4106902" ])
+    expect(PlatformEvent.where(name: "cnes.snapshot_imported").map(&:payload))
+      .to eq([ { "competence" => "202609", "ibge_codes_count" => 1 } ])
+  end
+
   it "município sem linha no arquivo vira not_in_file" do
     CityProfile.current.update!(ibge_code: "4115200")
     result = described_class.call(competence: "202609", path: path)

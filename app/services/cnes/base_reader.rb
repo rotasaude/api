@@ -3,7 +3,8 @@
 # pronto para Cnes::SnapshotWriter (ADR 0028; spec 2026-10-05 §5). Cinco
 # passadas, cada uma filtrando pelo que a anterior achou; só os profissionais
 # com vínculo num estabelecimento de interesse têm CPF/CNS lidos. Vínculo
-# desligado não entra; equipe desativada entra com active: false.
+# desligado não entra; equipe desativada entra com active: false. Estabelecimento
+# sai único por CNES e equipe única por INE (ver o fim de read).
 module Cnes
   module BaseReader
     module_function
@@ -60,10 +61,16 @@ module Cnes
       end
 
       municipalities.values.uniq.to_h do |ibge|
-        establishments = units.values.select { |u| u[:ibge] == ibge }.map { |u| u.slice(:cnes, :name, :unit_type) }
+        # O retrato é único por CNES e por INE (índices do snapshot): linha
+        # repetida na base (mesmo CNES em dois CO_UNIDADE, mesmo INE em duas
+        # áreas/sequências) fica uma só — a primeira no arquivo; da equipe,
+        # a primeira ATIVA, se houver.
+        establishments = units.values.select { |u| u[:ibge] == ibge }.uniq { |u| u[:cnes] }
+                              .map { |u| u.slice(:cnes, :name, :unit_type) }
         [ ibge, {
           establishments: establishments,
-          teams: teams.select { |t| t[:ibge] == ibge }.map { |t| t.except(:ibge) },
+          teams: teams.select { |t| t[:ibge] == ibge }.sort_by.with_index { |t, i| [ t[:active] ? 0 : 1, i ] }
+                      .uniq { |t| t[:ine] }.map { |t| t.except(:ibge) },
           bonds: bonds.select { |b| b[:ibge] == ibge }.map do |b|
             person = people.fetch(b[:professional_id], {})
             { cnes: b[:cnes], ine: b[:ine], cbo_code: b[:cbo_code], cpf: person[:cpf], cns: person[:cns] }
