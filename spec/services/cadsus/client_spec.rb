@@ -18,13 +18,13 @@ RSpec.describe Cadsus::Client do
   end
 
   it "sem credencial: Unavailable" do
-    expect { described_class.for(city) }.to raise_error(Cadsus::Unavailable)
+    expect { Cadsus::Client.for(city) }.to raise_error(Cadsus::Unavailable)
   end
 
   describe Cadsus::Simulated do
     it "casos fixos: achado determinístico, não achado, fora do ar, credencial recusada" do
       credential!
-      client = described_class.for(city)
+      client = Cadsus::Client.for(city)
       record = client.lookup("52998224725")
       expect(record.cns).to satisfy { |cns| Professionals::Cns.valid?(cns) }
       expect(client.lookup("52998224725")).to eq(record)
@@ -79,6 +79,14 @@ RSpec.describe Cadsus::Client do
         expect { client.lookup("52998224725") }.to raise_error(Cadsus::Unavailable) { |e|
           expect(e.message).not_to include("senha-pdq")
         }
+      end
+    end
+
+    it "2xx sem resposta PDQ (HTML de proxy, corpo vazio, XML truncado): Unavailable, nunca nil nem :ok" do
+      [ "<html><body>Bem-vindo</body></html>", "", "<soap:Envelope><soap:Body><PRPA_IN" ].each do |body|
+        stub_request(:post, url).to_return(status: 200, body: body)
+        expect { client.lookup("52998224725") }.to raise_error(Cadsus::Unavailable)
+        expect { client.health_check }.to raise_error(Cadsus::Unavailable)
       end
     end
 

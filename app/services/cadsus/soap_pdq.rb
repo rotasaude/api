@@ -44,6 +44,8 @@ module Cadsus
       raise Unauthorized, "o CADSUS recusou a credencial" if [ 401, 403 ].include?(code) || security_fault?(fault)
       raise Unavailable, "o CADSUS respondeu #{code}" if fault || code >= 300
 
+      raise Unavailable, "resposta do CADSUS ilegível" unless doc.at_xpath("//*[local-name()='PRPA_IN201306UV02']")
+
       patient = doc.at_xpath("//*[local-name()='patient']")
       return nil unless patient
 
