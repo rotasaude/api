@@ -74,6 +74,25 @@ RSpec.describe Cnes::Proposal do
     expect(find("member", "create")[:id]).to match(/\A\h{24}\z/)
   end
 
+  it "mesmo profissional com dois CBOs na mesma equipe: uma só proposta, CBO menor" do
+    jardim.update!(cnes: "0000001")
+    HealthTeam.create!(ine: "0000123456", kind: "70", name: "ESF 1", health_unit: jardim)
+    professional_with!("medica@cidade.gov.br", unit: jardim, cbo: "225125", cpf: "52998224725")
+    cnes_snapshot!(establishments: [ { cnes: "0000001", name: "UBS JARDIM DAS FLORES", unit_type: "02" } ],
+                   teams: [ { ine: "0000123456", kind: "70", cnes: "0000001", name: "ESF 1", active: true } ],
+                   bonds: [ { cnes: "0000001", ine: "0000123456", cbo_code: "225142", cpf: "52998224725", cns: nil },
+                            { cnes: "0000001", ine: "0000123456", cbo_code: "225125", cpf: "52998224725", cns: nil } ])
+    creates = proposals.select { |p| p[:kind] == "member" && p[:action] == "create" }
+    expect(creates.size).to eq(1)
+    expect(creates.first[:cnes][:cbo]).to eq("225125")
+  end
+
+  it "unidade so com equipe fora de 70/76 nao e criada" do
+    cnes_snapshot!(establishments: [ { cnes: "0000008", name: "CLINICA X", unit_type: "02" } ],
+                   teams: [ { ine: "0000999999", kind: "71", cnes: "0000008", name: "EMULTI", active: true } ])
+    expect(find("unit", "create")).to be_nil
+  end
+
   it "o retrato mais recente vence" do
     cnes_snapshot!(competence: "202608", establishments: [ { cnes: "0000009", name: "VELHA", unit_type: "02" } ])
     cnes_snapshot!(competence: "202609", establishments: [])

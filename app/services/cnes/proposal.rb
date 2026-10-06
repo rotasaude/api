@@ -43,7 +43,7 @@ module Cnes
     end
 
     def units
-      teamed = @cnes_teams.select(&:active).map(&:cnes).to_set
+      teamed = @cnes_teams.select { |t| t.active && HealthTeam::KINDS.include?(t.kind) }.map(&:cnes).to_set
       linked = []
       @establishments.each do |est|
         next if @unit_by_cnes.key?(est.cnes)
@@ -84,12 +84,14 @@ module Cnes
     end
 
     def members
-      @bonds.select(&:ine).each do |bond|
+      seen = Set.new
+      @bonds.select(&:ine).sort_by { |b| b.cbo_code.to_s }.each do |bond|
         team = @team_by_ine[bond.ine]
         next unless team&.active
 
         professional, confidence = match(bond)
         next unless professional
+        next unless seen.add?([ professional.id, team.id ])
         next if @members.any? { |m| m.professional_id == professional.id && m.health_team_id == team.id }
 
         add("member", "create", confidence, person(professional),
