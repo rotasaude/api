@@ -29,6 +29,8 @@ Rails.application.routes.draw do
       resources :unknown_channels, only: :index
       # Indicadores publicados das cidades (ADR 0025; contratos §2). Só plataforma.
       get "/city_analytics", to: "city_analytics#index"
+      # Produção LEDI das cidades (ADR 0028; contratos §4.3). Só plataforma.
+      get "/city_production", to: "city_production#index"
     end
   end
 

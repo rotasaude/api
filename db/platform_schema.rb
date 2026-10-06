@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_05_200003) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_200002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -100,6 +100,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_200003) do
     t.datetime "updated_at", null: false
     t.index ["city_id"], name: "index_city_grants_on_city_id"
     t.check_constraint "kind::text = ANY (ARRAY['operator'::character varying, 'user'::character varying]::text[])", name: "ck_city_grants_kind"
+  end
+
+  create_table "city_production_summaries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "accepted", default: 0, null: false
+    t.uuid "city_id", null: false
+    t.string "competence", limit: 6, null: false
+    t.integer "failed", default: 0, null: false
+    t.integer "pending", default: 0, null: false
+    t.datetime "published_at", null: false
+    t.integer "rejected", default: 0, null: false
+    t.integer "sending", default: 0, null: false
+    t.index ["city_id", "competence"], name: "idx_city_production_summaries_cell", unique: true
+    t.check_constraint "competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text", name: "ck_city_production_summaries_competence"
   end
 
   create_table "cnes_establishments", force: :cascade do |t|
@@ -434,6 +447,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_200003) do
   add_foreign_key "city_features", "cities"
   add_foreign_key "city_features", "maintainers", column: "changed_by_maintainer_id"
   add_foreign_key "city_grants", "cities"
+  add_foreign_key "city_production_summaries", "cities"
   add_foreign_key "cnes_establishments", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
   add_foreign_key "cnes_professional_bonds", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
   add_foreign_key "cnes_teams", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
