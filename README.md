@@ -88,7 +88,7 @@ Bancos que precisam existir no Postgres do host:
 |---|---|---|
 | `rota_saude_platform_development`, `rota_saude_platform_test` | `rota_platform` | `rails platform:bootstrap` (com `RAILS_ENV=test` para o de test) |
 | `rota_saude_no_city_selected` (vazio de propósito) | `rota_saude` | `rails city:test_databases` |
-| `rota_saude_test_city_a`, `rota_saude_test_city_b` | `rota_saude` | `rails city:test_databases` |
+| `rota_saude_test_city_a`, `rota_saude_test_city_b` (+ sufixo opcional `ROTA_TEST_DB_SUFFIX`, ex. `_mod17`, para sessões paralelas — passe o mesmo valor à task e ao rspec) | `rota_saude` | `rails city:test_databases` |
 | `rota_saude_city_curitiba`, `rota_saude_city_maringa` | `rota_saude` | `rails city:dev_baseline` |
 | `rota_saude_city_<slug>` (cidades provisionadas) | `rota_city_<slug>` | `ProvisionCityJob` (worker), a partir de `POST /cities` |
 

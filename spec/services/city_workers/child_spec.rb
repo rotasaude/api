@@ -10,7 +10,7 @@ RSpec.describe CityWorkers::Child do
   let(:slug) { "filho#{SecureRandom.hex(3)}" }
   let!(:city) do
     City.create!(slug: slug, name: "Filho", status: "active", schema_version: CitySchema.expected_version.to_s,
-                 database_url: city_database_url("rota_saude_test_city_b"), encryption_key: SecureRandom.hex(32))
+                 database_url: city_database_url(TEST_CITY_B_DATABASE), encryption_key: SecureRandom.hex(32))
   end
 
   after do
@@ -73,8 +73,8 @@ RSpec.describe CityWorkers::Child do
   it "binds the whole process's Solid Queue to the city's database and marks the process's city" do
     expect(prepare_in_fork(CityWorkers::Unit.city(slug))).to eq(
       "context" => slug,
-      "queue_database" => "rota_saude_test_city_b",
-      "queue_database_other_thread" => "rota_saude_test_city_b",
+      "queue_database" => TEST_CITY_B_DATABASE,
+      "queue_database_other_thread" => TEST_CITY_B_DATABASE,
       "config_file" => "config/queue.yml",
       "recurring_schedule_file" => "config/recurring.yml",
       "group_leader" => true

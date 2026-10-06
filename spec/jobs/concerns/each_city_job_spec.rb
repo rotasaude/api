@@ -15,8 +15,8 @@ RSpec.describe EachCityJob do
     end)
   end
 
-  let!(:city_a) { create(:city, slug: "cadaa#{SecureRandom.hex(3)}", database_url: city_database_url("rota_saude_test_city_a")) }
-  let!(:city_b) { create(:city, slug: "cadab#{SecureRandom.hex(3)}", database_url: city_database_url("rota_saude_test_city_b")) }
+  let!(:city_a) { create(:city, slug: "cadaa#{SecureRandom.hex(3)}", database_url: city_database_url(TEST_CITY_A_DATABASE)) }
+  let!(:city_b) { create(:city, slug: "cadab#{SecureRandom.hex(3)}", database_url: city_database_url(TEST_CITY_B_DATABASE)) }
 
   before { job_class.visited = [] }
   after { CityWorkers::Context.city_slug = nil }
@@ -24,8 +24,8 @@ RSpec.describe EachCityJob do
   it "visits every active city outside a city worker" do
     job_class.new.perform
 
-    expect(job_class.visited).to contain_exactly([ city_a.slug, "rota_saude_test_city_a" ],
-                                                 [ city_b.slug, "rota_saude_test_city_b" ])
+    expect(job_class.visited).to contain_exactly([ city_a.slug, TEST_CITY_A_DATABASE ],
+                                                 [ city_b.slug, TEST_CITY_B_DATABASE ])
   end
 
   it "visits only the worker's own city inside a city worker" do
@@ -33,7 +33,7 @@ RSpec.describe EachCityJob do
 
     job_class.new.perform
 
-    expect(job_class.visited).to eq([ [ city_b.slug, "rota_saude_test_city_b" ] ])
+    expect(job_class.visited).to eq([ [ city_b.slug, TEST_CITY_B_DATABASE ] ])
   end
 
   it "skips a city whose schema is behind" do
@@ -41,7 +41,7 @@ RSpec.describe EachCityJob do
 
     job_class.new.perform
 
-    expect(job_class.visited).to eq([ [ city_a.slug, "rota_saude_test_city_a" ] ])
+    expect(job_class.visited).to eq([ [ city_a.slug, TEST_CITY_A_DATABASE ] ])
   end
 
   # Fix round 1, Minor: a city worker whose own slug matches no active city

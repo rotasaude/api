@@ -10,7 +10,7 @@ require "rails_helper"
 #   grant   — spec/requests/session_grant_spec.rb, spec/services/city_grants_spec.rb
 RSpec.describe "City isolation through the Host", type: :request do
   let!(:city_b) do
-    create(:city, slug: TEST_CITY_B.slug, status: "active", database_url: city_database_url("rota_saude_test_city_b"))
+    create(:city, slug: TEST_CITY_B.slug, status: "active", database_url: city_database_url(TEST_CITY_B_DATABASE))
   end
 
   def city_b_host = "#{TEST_CITY_B.slug}.rotasaude.app"

@@ -5,7 +5,7 @@ RSpec.describe RecordConsentRevocationJob, type: :job do
   # shard the harness already has open — DashboardMetric is then readable via
   # the default connection below without a second CityConnection.with.
   let!(:city) do
-    create(:city, slug: TEST_CITY_A.slug, status: "active", database_url: city_database_url("rota_saude_test_city_a"))
+    create(:city, slug: TEST_CITY_A.slug, status: "active", database_url: city_database_url(TEST_CITY_A_DATABASE))
   end
 
   def event_args(event_id: SecureRandom.uuid)

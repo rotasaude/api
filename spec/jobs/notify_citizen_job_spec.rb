@@ -56,7 +56,7 @@ RSpec.describe NotifyCitizenJob do
   # cidadão do WhatsApp sumiria em silêncio. Passa pelo perform completo
   # (with_city + dedup + retry_on), não só pelo #handle.
   describe "quando o snapshot ainda não existe (corrida com GenerateReportJob)" do
-    let!(:city) { create(:city, slug: TEST_CITY_A.slug, database_url: city_database_url("rota_saude_test_city_a")) }
+    let!(:city) { create(:city, slug: TEST_CITY_A.slug, database_url: city_database_url(TEST_CITY_A_DATABASE)) }
     let(:event) { DomainEvent.create!(name: "triage.completed", payload: {}, occurred_at: Time.current) }
 
     def deliver(triage)

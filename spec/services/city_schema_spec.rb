@@ -53,14 +53,14 @@ RSpec.describe CitySchema do
     ScratchDatabases.create!(scratch)
     described_class.migrate!(ScratchDatabases.url(scratch))
 
-    expect(schema_fingerprint(scratch)).to eq(schema_fingerprint("rota_saude_test_city_b"))
+    expect(schema_fingerprint(scratch)).to eq(schema_fingerprint(TEST_CITY_B_DATABASE))
   end
 
   # rota_saude_test_city_b é carregado do dump (db/city_schema.rb, que não
   # representa trigger) — a proteção só existe ali porque city:test_databases
   # roda db/city_triggers.sql depois de carregar o dump (load_city_schema).
   it "loads the append-only triggers into a database restored from the dump" do
-    names = schema_fingerprint("rota_saude_test_city_b")[:triggers].map { |(_table, tgname, _def)| tgname }
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
 
     expect(names).to include("protocol_contributions_append_only", "protocol_signatures_append_only",
                              "protocol_activations_append_only", "report_snapshots_immutable",

@@ -1,3 +1,5 @@
+require_relative "../../lib/test_database_suffix"
+
 # Harness de banco por cidade para a suíte.
 #
 # Cada exemplo roda dentro da conexão de uma cidade de teste. Specs que precisam
@@ -121,8 +123,16 @@ module CityTestDatabases
   end
 end
 
-TEST_CITY_A = CityTestDatabases.city("testcitya", "rota_saude_test_city_a").freeze
-TEST_CITY_B = CityTestDatabases.city("testcityb", "rota_saude_test_city_b").freeze
+# Nomes físicos dos dois bancos de cidade da suíte, com o sufixo opcional
+# ROTA_TEST_DB_SUFFIX (lib/test_database_suffix.rb; o mesmo que
+# city:test_databases usa ao criá-los). Specs referenciam estas constantes, nunca
+# o literal: com o sufixo, o literal apontaria para o banco de outra sessão.
+# Sufixo inválido levanta TestDatabaseSuffix::Invalid já na carga da suíte.
+TEST_CITY_A_DATABASE = TestDatabaseSuffix.apply("rota_saude_test_city_a").freeze
+TEST_CITY_B_DATABASE = TestDatabaseSuffix.apply("rota_saude_test_city_b").freeze
+
+TEST_CITY_A = CityTestDatabases.city("testcitya", TEST_CITY_A_DATABASE).freeze
+TEST_CITY_B = CityTestDatabases.city("testcityb", TEST_CITY_B_DATABASE).freeze
 
 class CityHarnessProbe < CityRecord
   self.table_name = "probes"

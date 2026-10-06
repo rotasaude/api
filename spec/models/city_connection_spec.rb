@@ -13,7 +13,7 @@ RSpec.describe CityConnection do
 
   def build_city(slug: "conn#{SecureRandom.hex(4)}", **attrs)
     build(:city, slug: slug,
-          database_url: ENV.fetch("TEST_CITY_A_URL", city_database_url("rota_saude_test_city_a")),
+          database_url: ENV.fetch("TEST_CITY_A_URL", city_database_url(TEST_CITY_A_DATABASE)),
           **attrs)
   end
 
@@ -34,7 +34,7 @@ RSpec.describe CityConnection do
   it "runs the block against the city's database" do
     city = build_city
     result = described_class.with(city) { CityRecord.connection_db_config.database }
-    expect(result).to eq("rota_saude_test_city_a")
+    expect(result).to eq(TEST_CITY_A_DATABASE)
   end
 
   it "raises for a city whose pool cannot be built" do
@@ -49,7 +49,7 @@ RSpec.describe CityConnection do
     # because it now wraps the whole registration, not just db_config_for.
     secret = "hunter2-#{SecureRandom.hex(3)}"
     broken = build_city(slug: "adptr#{SecureRandom.hex(4)}",
-      database_url: "postgress://rota_saude:#{secret}@#{db_host}:5432/rota_saude_test_city_a")
+      database_url: "postgress://rota_saude:#{secret}@#{db_host}:5432/#{TEST_CITY_A_DATABASE}")
 
     expect { described_class.with(broken) { 1 } }
       .to raise_error(CityConnection::InvalidCityDatabase) { |error|
@@ -70,7 +70,7 @@ RSpec.describe CityConnection do
 
   it "raises for a city whose database_url cannot be parsed as a URI" do
     broken = build_city(slug: "uriparse#{SecureRandom.hex(4)}",
-      database_url: "postgres://rota_saude:pa[sswd@#{db_host}:5432/rota_saude_test_city_a")
+      database_url: "postgres://rota_saude:pa[sswd@#{db_host}:5432/#{TEST_CITY_A_DATABASE}")
 
     expect { described_class.with(broken) { 1 } }
       .to raise_error(CityConnection::InvalidCityDatabase, /#{broken.slug}/)
@@ -87,7 +87,7 @@ RSpec.describe CityConnection do
   end
 
   it "keeps a connect_timeout the database_url already carries, instead of overriding it" do
-    city = build_city(database_url: "#{ENV.fetch('TEST_CITY_A_URL', city_database_url('rota_saude_test_city_a'))}?connect_timeout=30")
+    city = build_city(database_url: "#{ENV.fetch('TEST_CITY_A_URL', city_database_url(TEST_CITY_A_DATABASE))}?connect_timeout=30")
     resolved = described_class.database_config(city)
 
     expect(resolved.configuration_hash[:connect_timeout]).to eq("30")

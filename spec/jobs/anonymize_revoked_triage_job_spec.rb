@@ -8,7 +8,7 @@ RSpec.describe AnonymizeRevokedTriageJob, type: :job do
   # second, separate Postgres session — see idempotent_consumer_transaction_spec.rb
   # for the pattern that keeps the two apart on purpose).
   let!(:city) do
-    create(:city, slug: TEST_CITY_A.slug, status: "active", database_url: city_database_url("rota_saude_test_city_a"))
+    create(:city, slug: TEST_CITY_A.slug, status: "active", database_url: city_database_url(TEST_CITY_A_DATABASE))
   end
 
   def definition_hash

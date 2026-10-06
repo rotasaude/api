@@ -87,7 +87,7 @@ RSpec.describe "Operator session inside a city", type: :request do
 
   it "only exists in the city where it was opened" do
     sign_in_operator_grant(operator)
-    create(:city, slug: TEST_CITY_B.slug, status: "active", database_url: city_database_url("rota_saude_test_city_b"))
+    create(:city, slug: TEST_CITY_B.slug, status: "active", database_url: city_database_url(TEST_CITY_B_DATABASE))
 
     get "/admin/api/reports", params: { period: "30d" }, headers: { "HOST" => "#{TEST_CITY_B.slug}.rotasaude.app" }
 

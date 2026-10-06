@@ -17,7 +17,7 @@ RSpec.describe CityRecord do
 
   it "still serves a real city" do
     within_city(TEST_CITY_B) do
-      expect(CityRecord.connection_db_config.database).to eq("rota_saude_test_city_b")
+      expect(CityRecord.connection_db_config.database).to eq(TEST_CITY_B_DATABASE)
     end
   end
 

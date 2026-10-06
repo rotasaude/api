@@ -11,7 +11,7 @@ require "rails_helper"
 # volta a ter acesso por esta porta — senão o atalho de dev vira um jeito de
 # ressuscitar acesso que o domínio já tirou.
 RSpec.describe DevImpersonation do
-  let!(:city) { create(:city, database_url: city_database_url("rota_saude_test_city_a")) }
+  let!(:city) { create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE)) }
 
   def target_in(city) = CityConnection.with(city) { described_class.target }
 

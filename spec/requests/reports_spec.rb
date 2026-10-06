@@ -66,7 +66,7 @@ RSpec.describe "Reports", type: :request do
 
   it "a token minted in one city does not resolve on another city's host" do
     other_city = create(:city, slug: TEST_CITY_B.slug, status: "active",
-                               database_url: city_database_url("rota_saude_test_city_b"))
+                               database_url: city_database_url(TEST_CITY_B_DATABASE))
     snap = CityConnection.with(other_city) do
       create_snapshot(payload: { "tier" => "alta", "priority" => 1, "summary" => [], "completed_at" => nil })
     end

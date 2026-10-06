@@ -6,7 +6,7 @@ RSpec.describe DispatchMunicipalityAlertJob, type: :job do
   # Mesmo slug/database_url de TEST_CITY_A: with_city(city.slug) reentra o
   # shard que o harness já tem aberto (ver anonymize_revoked_triage_job_spec.rb).
   let!(:city) do
-    create(:city, slug: TEST_CITY_A.slug, status: "active", database_url: city_database_url("rota_saude_test_city_a"))
+    create(:city, slug: TEST_CITY_A.slug, status: "active", database_url: city_database_url(TEST_CITY_A_DATABASE))
   end
 
   let(:triage_id) { SecureRandom.uuid }

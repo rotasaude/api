@@ -109,7 +109,7 @@ RSpec.describe GenerateReportJob do
   # evento republicado) cai na guarda `return if triage.report_snapshot` — e o
   # índice único por triagem é a última linha de defesa.
   describe "redelivery" do
-    let!(:city) { create(:city, slug: TEST_CITY_A.slug, database_url: city_database_url("rota_saude_test_city_a")) }
+    let!(:city) { create(:city, slug: TEST_CITY_A.slug, database_url: city_database_url(TEST_CITY_A_DATABASE)) }
 
     def deliver(triage, event_id:)
       described_class.perform_now(event_id: event_id, event_name: "triage.completed", city_slug: city.slug,

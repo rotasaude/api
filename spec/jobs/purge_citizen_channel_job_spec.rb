@@ -105,8 +105,8 @@ RSpec.describe PurgeCitizenChannelJob, type: :job do
   end
 
   it "runs once per active city (EachCityJob)" do
-    city_a = create(:city, database_url: city_database_url("rota_saude_test_city_a"))
-    city_b = create(:city, database_url: city_database_url("rota_saude_test_city_b"))
+    city_a = create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE))
+    city_b = create(:city, database_url: city_database_url(TEST_CITY_B_DATABASE))
     old_a = CityConnection.with(city_a) { otp(expires_at: 8.days.ago).id }
     old_b = CityConnection.with(city_b) { otp(expires_at: 8.days.ago).id }
 

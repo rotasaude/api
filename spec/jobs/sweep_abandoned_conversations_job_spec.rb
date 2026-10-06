@@ -79,8 +79,8 @@ RSpec.describe SweepAbandonedConversationsJob, type: :job do
   end
 
   it "roda uma vez por cidade ATIVA (EachCityJob): abandona em AMBAS as cidades" do
-    city_a = create(:city, database_url: city_database_url("rota_saude_test_city_a"))
-    city_b = create(:city, database_url: city_database_url("rota_saude_test_city_b"))
+    city_a = create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE))
+    city_b = create(:city, database_url: city_database_url(TEST_CITY_B_DATABASE))
 
     convo_a = CityConnection.with(city_a) { make_convo(phone: "+551200", state: "awaiting_consent", updated_at: 30.hours.ago) }
     convo_b = CityConnection.with(city_b) { make_convo(phone: "+551201", state: "awaiting_consent", updated_at: 30.hours.ago) }
@@ -92,7 +92,7 @@ RSpec.describe SweepAbandonedConversationsJob, type: :job do
   end
 
   it "não visita uma cidade que não está active" do
-    suspended = create(:city, database_url: city_database_url("rota_saude_test_city_b"), status: "suspended")
+    suspended = create(:city, database_url: city_database_url(TEST_CITY_B_DATABASE), status: "suspended")
     convo = CityConnection.with(suspended) { make_convo(phone: "+551202", state: "awaiting_consent", updated_at: 30.hours.ago) }
 
     described_class.new.perform(idle_hours: 24)

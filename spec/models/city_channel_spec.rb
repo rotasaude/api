@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe CityChannel do
   let(:city) do
     City.create!(slug: "canaltest", name: "Canal", status: "active",
-                 database_url: city_database_url("rota_saude_test_city_a"),
+                 database_url: city_database_url(TEST_CITY_A_DATABASE),
                  encryption_key: SecureRandom.hex(32))
   end
 

@@ -54,7 +54,7 @@ RSpec.describe "gov.br login through the single auth callback", type: :request d
   end
 
   it "provisions the user only in the city named by the state" do
-    city_b = create(:city, slug: TEST_CITY_B.slug, status: "active", database_url: city_database_url("rota_saude_test_city_b"))
+    city_b = create(:city, slug: TEST_CITY_B.slug, status: "active", database_url: city_database_url(TEST_CITY_B_DATABASE))
     state, nonce = start_on("#{TEST_CITY_B.slug}.rotasaude.app")
     stub_exchange(nonce)
 

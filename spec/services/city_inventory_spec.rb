@@ -20,7 +20,7 @@ require "rails_helper"
 RSpec.describe CityInventory do
   let!(:healthy) do
     create(:city, slug: "saudavel", name: "Cidade Saudável", uf: "PR",
-                  database_url: city_database_url("rota_saude_test_city_a"),
+                  database_url: city_database_url(TEST_CITY_A_DATABASE),
                   status: "active", schema_version: CitySchema.expected_version.to_s)
   end
 
@@ -245,7 +245,7 @@ RSpec.describe CityInventory do
     #      exemplo só passa se CitySchema.redact tirá-la.
     let!(:broken) do
       create(:city, slug: "quebrada", name: "Cidade Quebrada",
-                    database_url: city_database_url("rota_saude_test_city_a"),
+                    database_url: city_database_url(TEST_CITY_A_DATABASE),
                     status: "active", schema_version: CitySchema.expected_version.to_s)
     end
 
@@ -312,7 +312,7 @@ RSpec.describe CityInventory do
   describe "a suspended city" do
     let!(:suspended) do
       create(:city, slug: "suspensa", name: "Cidade Suspensa",
-                    database_url: city_database_url("rota_saude_test_city_a"),
+                    database_url: city_database_url(TEST_CITY_A_DATABASE),
                     status: "suspended")
     end
 

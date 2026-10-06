@@ -1,11 +1,21 @@
 require "open3"
+require_relative "../test_database_suffix"
 
 namespace :city do
   # Local variable, not a constant: a `namespace` block does not scope
   # constants either — `TEST_CITY_DATABASES = ...` here would assign at the
   # top level, same class of collision as SELF_PATH in the architecture spec.
   # A local var is captured by the task blocks' closures without leaking.
-  test_city_databases = %w[rota_saude_test_city_a rota_saude_test_city_b].freeze
+  #
+  # Lambda, avaliada só dentro da task: ROTA_TEST_DB_SUFFIX (opcional, ver
+  # lib/test_database_suffix.rb) vira sufixo dos dois nomes, e um valor
+  # inválido aborta city:test_databases sem quebrar a carga das outras tasks.
+  test_city_databases = lambda do
+    suffix = TestDatabaseSuffix.value
+    %w[rota_saude_test_city_a rota_saude_test_city_b].map { |db| "#{db}#{suffix}" }
+  rescue TestDatabaseSuffix::Invalid => e
+    abort "[city:test_databases] #{e.message}"
+  end
 
   # Destino do shard `bootstrap` de CityRecord (ver config/database.yml e
   # app/models/city_record.rb). Precisa EXISTIR — RSpec's
@@ -146,7 +156,8 @@ namespace :city do
     env  = { "PGPASSWORD" => pwd }
     base = ["psql", "-h", host, "-p", port, "-U", su, "-v", "ON_ERROR_STOP=1"]
 
-    (test_city_databases + [no_city_selected_database]).each do |db|
+    city_databases = test_city_databases.call
+    (city_databases + [no_city_selected_database]).each do |db|
       exists, = Open3.capture2e(env, *base, "-tA", "-d", "postgres",
                                 "-c", "SELECT 1 FROM pg_database WHERE datname='#{db}'")
       if exists.strip == "1"
@@ -158,7 +169,7 @@ namespace :city do
       puts "[city:test_databases] #{db} criado"
     end
 
-    test_city_databases.each do |db|
+    city_databases.each do |db|
       # Carrega (recarrega, se já carregado — o dump usa force: :cascade e é
       # idempotente) o schema limpo de cidade da Task 4. Só afeta as tabelas
       # que o próprio dump declara; `probes`, criada logo abaixo, nunca é

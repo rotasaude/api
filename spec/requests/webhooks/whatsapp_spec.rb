@@ -7,7 +7,7 @@ require "rails_helper"
 RSpec.describe "Webhooks::Whatsapp", type: :request do
   include ActiveJob::TestHelper
 
-  let(:city) { create(:city, database_url: city_database_url("rota_saude_test_city_a")) }
+  let(:city) { create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE)) }
   let!(:channel) do
     CityChannel.create!(city: city, phone_number_id: "PNIDREQ", waba_id: "WABAREQ",
                         display_phone_number: "+5511999999999", access_token: "tok", active: true)

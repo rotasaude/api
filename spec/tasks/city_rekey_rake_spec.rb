@@ -8,7 +8,7 @@ RSpec.describe "city:rekey and city:rotate_key rake tasks" do
   before { %w[city:rekey city:rotate_key].each { |t| Rake::Task[t].reenable } }
 
   let!(:city) do
-    create(:city, database_url: city_database_url("rota_saude_test_city_a"), status: "suspended")
+    create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE), status: "suspended")
   end
 
   def invoke_silently(name, *args)

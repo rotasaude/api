@@ -28,8 +28,9 @@ RSpec.describe CityDatabase do
   end
 
   it "names databases and roles per environment and refuses slugs that are unsafe as identifiers" do
-    expect(described_class.database_name("curitiba")).to eq("rota_saude_test_city_curitiba")
-    expect(described_class.role_name("curitiba")).to eq("rota_test_city_curitiba")
+    suffix = TestDatabaseSuffix.value
+    expect(described_class.database_name("curitiba")).to eq("rota_saude_test_city_curitiba#{suffix}")
+    expect(described_class.role_name("curitiba")).to eq("rota_test_city_curitiba#{suffix}")
 
     [ "a", "x" * 41, "Maiuscula", "com espaco", "-hifen", "admin", %w[lista], nil ].each do |bad|
       expect { described_class.database_name(bad) }.to raise_error(CityDatabase::InvalidSlug)
@@ -48,8 +49,9 @@ RSpec.describe CityDatabase do
     url = URI.parse(described_class.url_for(slug: "curitiba", password: "abc123"))
 
     expect([ url.scheme, url.user, url.password, url.host, url.port, url.path, url.query ])
-      .to eq([ "postgres", "rota_test_city_curitiba", "abc123", ENV.fetch("DATABASE_HOST", "127.0.0.1"),
-               ENV.fetch("DATABASE_PORT", "5432").to_i, "/rota_saude_test_city_curitiba", nil ])
+      .to eq([ "postgres", "rota_test_city_curitiba#{TestDatabaseSuffix.value}", "abc123",
+               ENV.fetch("DATABASE_HOST", "127.0.0.1"), ENV.fetch("DATABASE_PORT", "5432").to_i,
+               "/rota_saude_test_city_curitiba#{TestDatabaseSuffix.value}", nil ])
 
     allow(ENV).to receive(:[]).with("CITY_DATABASE_SSLMODE").and_return("verify-full")
     expect(URI.parse(described_class.url_for(slug: "curitiba", password: "abc123")).query).to eq("sslmode=verify-full")

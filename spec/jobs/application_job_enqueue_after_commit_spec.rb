@@ -31,7 +31,7 @@ RSpec.describe "ApplicationJob enqueue after the city transaction commits (ADR-0
     expect(ApplicationJob.enqueue_after_transaction_commit).to be(true)
   end
 
-  [["TEST_CITY_A", "rota_saude_test_city_a"], ["TEST_CITY_B", "rota_saude_test_city_b"]].each do |const, database|
+  [["TEST_CITY_A", TEST_CITY_A_DATABASE], ["TEST_CITY_B", TEST_CITY_B_DATABASE]].each do |const, database|
     context "on #{const}'s shard" do
       let(:city) { Object.const_get(const) }
 

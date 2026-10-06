@@ -2,7 +2,7 @@ require "rails_helper"
 
 RSpec.describe "City test database harness" do
   it "runs every example inside the default test city's connection" do
-    expect(CityRecord.connection_db_config.database).to eq("rota_saude_test_city_a")
+    expect(CityRecord.connection_db_config.database).to eq(TEST_CITY_A_DATABASE)
   end
 
   # Two symmetric, self-contained examples instead of "one writes, the next
@@ -31,7 +31,7 @@ RSpec.describe "City test database harness" do
   # Without forgetting them after each example, the full suite piled up ~95
   # pools and exhausted Postgres max_connections (100) near the end.
   it "forgets every city shard except the two test cities" do
-    city = create(:city, database_url: city_database_url("rota_saude_test_city_b"))
+    city = create(:city, database_url: city_database_url(TEST_CITY_B_DATABASE))
     CityConnection.ensure_pool(city) # registers without checking out, so nothing is pinned
 
     expect(CityTestDatabases.transient_city_shards).to include(city.shard)
@@ -45,8 +45,8 @@ RSpec.describe "City test database harness" do
 
   it "can switch to the second city with within_city" do
     within_city(TEST_CITY_B) do
-      expect(CityRecord.connection_db_config.database).to eq("rota_saude_test_city_b")
+      expect(CityRecord.connection_db_config.database).to eq(TEST_CITY_B_DATABASE)
     end
-    expect(CityRecord.connection_db_config.database).to eq("rota_saude_test_city_a")
+    expect(CityRecord.connection_db_config.database).to eq(TEST_CITY_A_DATABASE)
   end
 end

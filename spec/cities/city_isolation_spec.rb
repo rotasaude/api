@@ -13,8 +13,8 @@ RSpec.describe "City isolation", type: :model do
     self.table_name = "probes"
   end
 
-  let(:city_a) { build(:city, slug: "isoa", database_url: city_database_url("rota_saude_test_city_a")) }
-  let(:city_b) { build(:city, slug: "isob", database_url: city_database_url("rota_saude_test_city_b")) }
+  let(:city_a) { build(:city, slug: "isoa", database_url: city_database_url(TEST_CITY_A_DATABASE)) }
+  let(:city_b) { build(:city, slug: "isob", database_url: city_database_url(TEST_CITY_B_DATABASE)) }
 
   before do
     [city_a, city_b].each do |c|

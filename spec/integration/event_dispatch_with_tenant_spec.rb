@@ -9,7 +9,7 @@ RSpec.describe "Evento → consumer com cidade (ADR-0004 e ADR-0003)", type: :jo
 
   it "publish dentro de uma cidade → consumer roda dentro da MESMA cidade" do
     city = create(:city, slug: TEST_CITY_A.slug, status: "active",
-                         database_url: city_database_url("rota_saude_test_city_a"))
+                         database_url: city_database_url(TEST_CITY_A_DATABASE))
 
     klass = Class.new(ApplicationJob) do
       include IdempotentConsumer

@@ -12,7 +12,7 @@ RSpec.describe MunicipalityChannels::RotateToken, type: :model do
   end
   let!(:other_city) do
     create(:city, slug: TEST_CITY_B.slug, status: "active",
-                  database_url: city_database_url("rota_saude_test_city_b"))
+                  database_url: city_database_url(TEST_CITY_B_DATABASE))
   end
   let!(:channel) do
     CityChannel.create!(city: city, phone_number_id: "PN#{SecureRandom.hex(3)}",

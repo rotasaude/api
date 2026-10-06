@@ -3,7 +3,7 @@ require "rails_helper"
 # Suspender tira a cidade do ar sem apagar nada (spec banco-por-cidade §4). O 403
 # no host está em spec/requests/city_resolution_spec.rb.
 RSpec.describe "CityLifecycle::Suspend and CityLifecycle::Resume" do
-  let(:city) { create(:city, status: "active", database_url: city_database_url("rota_saude_test_city_b")) }
+  let(:city) { create(:city, status: "active", database_url: city_database_url(TEST_CITY_B_DATABASE)) }
 
   def events(name) = PlatformEvent.where(name: name).where("payload->>'city_id' = ?", city.id)
 

@@ -8,7 +8,7 @@ RSpec.describe "City session isolation", type: :request do
   # Mesmo slug de TEST_CITY_B: a requisição ao host de B e o CityConnection.with
   # deste spec compartilham a sessão pinada daquele shard (ver o harness).
   let!(:city_b) do
-    create(:city, slug: TEST_CITY_B.slug, status: "active", database_url: city_database_url("rota_saude_test_city_b"))
+    create(:city, slug: TEST_CITY_B.slug, status: "active", database_url: city_database_url(TEST_CITY_B_DATABASE))
   end
 
   def city_b_host = "#{TEST_CITY_B.slug}.rotasaude.app"

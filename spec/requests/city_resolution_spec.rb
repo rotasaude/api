@@ -19,7 +19,7 @@ RSpec.describe "City resolution", type: :request do
     Rails.application.reload_routes!
   end
 
-  let(:city_a_url) { ENV.fetch("TEST_CITY_A_URL", city_database_url("rota_saude_test_city_a")) }
+  let(:city_a_url) { ENV.fetch("TEST_CITY_A_URL", city_database_url(TEST_CITY_A_DATABASE)) }
 
   it "serves an active city and exposes it on Current" do
     create(:city, slug: "cidadeviva", status: "active", database_url: city_a_url)
@@ -27,7 +27,7 @@ RSpec.describe "City resolution", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(JSON.parse(response.body)).to include(
-      "city" => "cidadeviva", "database" => "rota_saude_test_city_a"
+      "city" => "cidadeviva", "database" => TEST_CITY_A_DATABASE
     )
   end
 

@@ -21,7 +21,7 @@ RSpec.describe "CityConnection queue routing" do
   it "enqueues a job inside a city onto that city's own database" do
     probe_job.perform_later
 
-    expect(SolidQueue::Job.connection_db_config.database).to eq("rota_saude_test_city_a")
+    expect(SolidQueue::Job.connection_db_config.database).to eq(TEST_CITY_A_DATABASE)
     expect(probe_jobs.count).to eq(1)
     expect(on_platform_queue { probe_jobs.count }).to eq(0)
   end
@@ -31,7 +31,7 @@ RSpec.describe "CityConnection queue routing" do
 
     expect(probe_jobs.count).to eq(0)
     expect(CityConnection.with(TEST_CITY_B) { [ SolidQueue::Job.connection_db_config.database, probe_jobs.count ] })
-      .to eq([ "rota_saude_test_city_b", 1 ])
+      .to eq([ TEST_CITY_B_DATABASE, 1 ])
   end
 
   it "enqueues a platform job outside any city onto the platform database" do
@@ -43,7 +43,7 @@ RSpec.describe "CityConnection queue routing" do
   end
 
   it "registers and forgets both pools of a city" do
-    city = create(:city, slug: "fila#{SecureRandom.hex(3)}", database_url: city_database_url("rota_saude_test_city_b"))
+    city = create(:city, slug: "fila#{SecureRandom.hex(3)}", database_url: city_database_url(TEST_CITY_B_DATABASE))
     handler = ActiveRecord::Base.connection_handler
 
     CityConnection.ensure_pool(city)

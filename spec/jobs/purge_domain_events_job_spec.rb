@@ -52,8 +52,8 @@ RSpec.describe PurgeDomainEventsJob, type: :job do
   end
 
   it "roda uma vez por cidade ATIVA (EachCityJob): purga em AMBAS as cidades" do
-    city_a = create(:city, database_url: city_database_url("rota_saude_test_city_a"))
-    city_b = create(:city, database_url: city_database_url("rota_saude_test_city_b"))
+    city_a = create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE))
+    city_b = create(:city, database_url: city_database_url(TEST_CITY_B_DATABASE))
 
     old_a = CityConnection.with(city_a) { DomainEvent.create!(name: "triage.completed", payload: {}, occurred_at: 13.months.ago).id }
     old_b = CityConnection.with(city_b) { DomainEvent.create!(name: "triage.completed", payload: {}, occurred_at: 13.months.ago).id }
@@ -65,7 +65,7 @@ RSpec.describe PurgeDomainEventsJob, type: :job do
   end
 
   it "não visita uma cidade que não está active" do
-    suspended = create(:city, database_url: city_database_url("rota_saude_test_city_b"), status: "suspended")
+    suspended = create(:city, database_url: city_database_url(TEST_CITY_B_DATABASE), status: "suspended")
     old_id = CityConnection.with(suspended) { DomainEvent.create!(name: "triage.completed", payload: {}, occurred_at: 13.months.ago).id }
 
     described_class.new.perform(older_than_months: 12)

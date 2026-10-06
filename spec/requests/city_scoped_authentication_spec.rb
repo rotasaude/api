@@ -25,7 +25,7 @@ RSpec.describe "Authentication runs inside city resolution", type: :request do
     CityCatalog.reset_cache!
   end
 
-  let(:city_a_url) { city_database_url("rota_saude_test_city_a") }
+  let(:city_a_url) { city_database_url(TEST_CITY_A_DATABASE) }
 
   it "returns 401, not 500, for a signed session cookie whose session does not exist in the resolved city" do
     create(:city, slug: "cidadeviva", status: "active", database_url: city_a_url)

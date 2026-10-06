@@ -114,7 +114,7 @@ RSpec.describe "city:load_schema rake task" do
     # Reloading city_b's schema here can't contend with that ambient
     # connection, and is otherwise the same idempotent force: :cascade reload
     # city:test_databases already does for both city test databases.
-    expect { invoke_silently("rota_saude_test_city_b") }.not_to raise_error
+    expect { invoke_silently(TEST_CITY_B_DATABASE) }.not_to raise_error
   end
 end
 

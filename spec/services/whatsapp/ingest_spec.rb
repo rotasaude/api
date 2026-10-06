@@ -8,8 +8,8 @@ RSpec.describe Whatsapp::Ingest do
   # is a silent no-op returning whichever city is currently connected
   # (5c-1: ApplicationRecord IS the primary class, so connected_to(role:
   # :admin) never raises and never routes anywhere else).
-  let(:city_a) { create(:city, database_url: city_database_url("rota_saude_test_city_a")) }
-  let(:city_b) { create(:city, database_url: city_database_url("rota_saude_test_city_b")) }
+  let(:city_a) { create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE)) }
+  let(:city_b) { create(:city, database_url: city_database_url(TEST_CITY_B_DATABASE)) }
   let!(:channel) do
     CityChannel.create!(city: city_a, phone_number_id: "PNID123", waba_id: "WABA1",
                         display_phone_number: "+5511999999999", access_token: "tok", active: true)

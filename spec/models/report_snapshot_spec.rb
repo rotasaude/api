@@ -24,8 +24,8 @@ RSpec.describe ReportSnapshot, type: :model do
   end
 
   # Duas cidades porque isolamento não se prova com uma (spec, Verification).
-  let!(:city_a) { create(:city, slug: TEST_CITY_A.slug, database_url: city_database_url("rota_saude_test_city_a")) }
-  let!(:city_b) { create(:city, slug: TEST_CITY_B.slug, database_url: city_database_url("rota_saude_test_city_b")) }
+  let!(:city_a) { create(:city, slug: TEST_CITY_A.slug, database_url: city_database_url(TEST_CITY_A_DATABASE)) }
+  let!(:city_b) { create(:city, slug: TEST_CITY_B.slug, database_url: city_database_url(TEST_CITY_B_DATABASE)) }
 
   # Snapshot mínimo dentro da cidade corrente. `create_snapshot` do
   # spec/requests/reports_spec.rb NÃO está disponível aqui: é local daquele

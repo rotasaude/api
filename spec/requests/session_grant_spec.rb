@@ -72,7 +72,7 @@ RSpec.describe "POST /session/grant", type: :request do
   end
 
   it "refuses a grant issued for another city without consuming it" do
-    other = create(:city, slug: TEST_CITY_B.slug, status: "active", database_url: city_database_url("rota_saude_test_city_b"))
+    other = create(:city, slug: TEST_CITY_B.slug, status: "active", database_url: city_database_url(TEST_CITY_B_DATABASE))
     token = operator_grant(for_city: other)
 
     post "/session/grant", params: { token: token }, as: :json

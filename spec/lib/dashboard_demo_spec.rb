@@ -36,7 +36,7 @@ RSpec.describe DashboardDemo do
   end
 
   it "writes only into the connected city" do
-    city_b = create(:city, slug: TEST_CITY_B.slug, database_url: city_database_url("rota_saude_test_city_b"))
+    city_b = create(:city, slug: TEST_CITY_B.slug, database_url: city_database_url(TEST_CITY_B_DATABASE))
 
     described_class.seed_current_city(described_class::CITIES.first)
 

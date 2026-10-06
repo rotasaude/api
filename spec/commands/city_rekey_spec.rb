@@ -12,7 +12,7 @@ require "rails_helper"
 RSpec.describe CityRekey do
   include ActiveSupport::Testing::TimeHelpers
 
-  let!(:city) { create(:city, database_url: city_database_url("rota_saude_test_city_a")) }
+  let!(:city) { create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE)) }
 
   def with_material(material, &block)
     other = City.new(slug: city.slug, name: city.name, status: city.status,

@@ -26,7 +26,8 @@ RSpec.describe ProvisionCity do
     expect(city).to have_attributes(slug: "novacidade", name: "Nova Cidade", uf: "PR", status: "provisioning",
                                     schema_version: nil)
     url = URI.parse(city.database_url)
-    expect([ url.user, url.path ]).to eq([ "rota_test_city_novacidade", "/rota_saude_test_city_novacidade" ])
+    suffix = TestDatabaseSuffix.value # vazio sem ROTA_TEST_DB_SUFFIX: nomes de sempre
+    expect([ url.user, url.path ]).to eq([ "rota_test_city_novacidade#{suffix}", "/rota_saude_test_city_novacidade#{suffix}" ])
     expect(url.password).to match(/\A\h{48}\z/)
   end
 

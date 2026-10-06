@@ -6,7 +6,7 @@ RSpec.describe SendWhatsappJob do
   # readable via the default connection below without a second
   # CityConnection.with.
   let!(:city) do
-    create(:city, slug: TEST_CITY_A.slug, status: "active", database_url: city_database_url("rota_saude_test_city_a"))
+    create(:city, slug: TEST_CITY_A.slug, status: "active", database_url: city_database_url(TEST_CITY_A_DATABASE))
   end
   let!(:channel) do
     CityChannel.create!(city: city, phone_number_id: "PNID", waba_id: "WABA",
@@ -17,7 +17,7 @@ RSpec.describe SendWhatsappJob do
   # the current city (e.g. "any active channel") would pick the wrong one
   # instead of vacuously passing because only one channel existed.
   let!(:other_channel) do
-    other_city = create(:city, database_url: city_database_url("rota_saude_test_city_b"))
+    other_city = create(:city, database_url: city_database_url(TEST_CITY_B_DATABASE))
     CityChannel.create!(city: other_city, phone_number_id: "PNID-OTHER", waba_id: "WABA-OTHER",
                         display_phone_number: "+551188", access_token: "tok2", active: true)
   end

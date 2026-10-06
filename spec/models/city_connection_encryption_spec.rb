@@ -1,8 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "CityConnection encryption context" do
-  let!(:city_a) { create(:city, database_url: city_database_url("rota_saude_test_city_a")) }
-  let!(:city_b) { create(:city, database_url: city_database_url("rota_saude_test_city_b")) }
+  let!(:city_a) { create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE)) }
+  let!(:city_b) { create(:city, database_url: city_database_url(TEST_CITY_B_DATABASE)) }
 
   it "sets Current.city for the block" do
     expect(CityConnection.with(city_a) { Current.city&.slug }).to eq(city_a.slug)

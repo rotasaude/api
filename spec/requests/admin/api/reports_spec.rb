@@ -41,7 +41,7 @@ RSpec.describe "Admin::Api::Reports", type: :request do
   it "a municipal_admin sees only their own city's reports (per-city, not operator-only)" do
     seed_report(tier: "alta", token: "TOK-SECRET-123")
     other_city = create(:city, slug: TEST_CITY_B.slug, status: "active",
-                               database_url: city_database_url("rota_saude_test_city_b"))
+                               database_url: city_database_url(TEST_CITY_B_DATABASE))
     CityConnection.with(other_city) { seed_report(tier: "baixa") }
     admin = municipal_admin_for(email: "adm-#{SecureRandom.hex(3)}@x.com")
     sign_in_as(admin)

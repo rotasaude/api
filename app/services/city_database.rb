@@ -1,3 +1,5 @@
+require_relative "../../lib/test_database_suffix"
+
 # Banco e role de uma cidade no Postgres (spec banco-por-cidade §4, Plano 4).
 #
 # Tudo o que conecta aqui conecta como rota_provisioner — CREATEDB e CREATEROLE,
@@ -34,14 +36,17 @@ class CityDatabase
         !CityCatalog::RESERVED.include?(slug)
     end
 
+    # Em test, ROTA_TEST_DB_SUFFIX (lib/test_database_suffix.rb) entra no banco
+    # E no role: duas sessões provisionando o mesmo slug não dividem nenhum dos
+    # dois (role é global no servidor). Sem a variável, nomes de sempre.
     def database_name(slug)
       check!(slug)
-      Rails.env.test? ? "rota_saude_test_city_#{slug}" : "rota_saude_city_#{slug}"
+      Rails.env.test? ? TestDatabaseSuffix.apply("rota_saude_test_city_#{slug}") : "rota_saude_city_#{slug}"
     end
 
     def role_name(slug)
       check!(slug)
-      Rails.env.test? ? "rota_test_city_#{slug}" : "rota_city_#{slug}"
+      Rails.env.test? ? TestDatabaseSuffix.apply("rota_test_city_#{slug}") : "rota_city_#{slug}"
     end
 
     # URL que vai para cities.database_url: role e banco da cidade. Servidor e TLS

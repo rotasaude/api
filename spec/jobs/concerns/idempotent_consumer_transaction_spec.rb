@@ -7,7 +7,7 @@ require "rails_helper"
 # at-most-once (e um triage.urgent que falha na entrega nunca seria
 # reentregue). Esta é a prova de que a regressão está fechada.
 RSpec.describe "IdempotentConsumer transaction parity" do
-  let(:city) { create(:city, database_url: city_database_url("rota_saude_test_city_a")) }
+  let(:city) { create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE)) }
   let(:event_id) { SecureRandom.uuid }
   let(:attempts) { { count: 0 } }
 

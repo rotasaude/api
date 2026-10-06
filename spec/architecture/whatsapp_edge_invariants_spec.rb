@@ -8,7 +8,7 @@ require "rails_helper"
 RSpec.describe "WhatsApp edge invariants (module 01 closing criteria)" do
   include ActiveJob::TestHelper
 
-  let(:city) { create(:city, database_url: city_database_url("rota_saude_test_city_a")) }
+  let(:city) { create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE)) }
   let!(:channel) do
     CityChannel.create!(city: city, phone_number_id: "PNID-INV", waba_id: "WABA-INV",
                         display_phone_number: "+5541999999999", access_token: "tok", active: true)

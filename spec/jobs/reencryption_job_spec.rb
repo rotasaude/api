@@ -4,7 +4,7 @@
 require "rails_helper"
 
 RSpec.describe ReencryptionJob do
-  let(:city_a) { create(:city, database_url: city_database_url("rota_saude_test_city_a")) }
+  let(:city_a) { create(:city, database_url: city_database_url(TEST_CITY_A_DATABASE)) }
 
   # ReencryptionJob prepends EachCityJob, cujo #perform não devolve o stats
   # hash do job (só agrega falhas ou levanta) — para inspecionar `stats` por
@@ -159,7 +159,7 @@ RSpec.describe ReencryptionJob do
     end
 
     it "re-encrypts in the database of EVERY active city" do
-      city_b = create(:city, database_url: city_database_url("rota_saude_test_city_b"), status: "active")
+      city_b = create(:city, database_url: city_database_url(TEST_CITY_B_DATABASE), status: "active")
       user_a = create_user(city_a, "a@example.org")
       user_b = create_user(city_b, "b@example.org")
       raw_a_before = raw_otp_secret(city_a, user_a)
@@ -174,7 +174,7 @@ RSpec.describe ReencryptionJob do
     end
 
     it "does not touch the database of a city that is not active" do
-      suspended = create(:city, database_url: city_database_url("rota_saude_test_city_b"), status: "suspended")
+      suspended = create(:city, database_url: city_database_url(TEST_CITY_B_DATABASE), status: "suspended")
       user_a = create_user(city_a, "a@example.org")
       user_s = create_user(suspended, "s@example.org")
       raw_a_before = raw_otp_secret(city_a, user_a)

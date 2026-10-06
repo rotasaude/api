@@ -27,7 +27,7 @@ RSpec.describe CityScopedJob do
   # the city's own connection plus Current.city, not a GUC.
   it "runs the block on the city's database, with Current.city set" do
     city = create(:city, slug: TEST_CITY_B.slug, status: "active",
-                         database_url: city_database_url("rota_saude_test_city_b"))
+                         database_url: city_database_url(TEST_CITY_B_DATABASE))
     seen = {}
     probe = Class.new(ApplicationJob) do
       include CityScopedJob
@@ -42,7 +42,7 @@ RSpec.describe CityScopedJob do
 
     probe.new.perform(city.slug)
 
-    expect(seen).to eq(database: "rota_saude_test_city_b", city: TEST_CITY_B.slug)
+    expect(seen).to eq(database: TEST_CITY_B_DATABASE, city: TEST_CITY_B.slug)
   end
 
   it "raises CityMissing for a blank slug, without running the block" do
@@ -75,7 +75,7 @@ RSpec.describe CityScopedJob do
 
     it "raises CitySchemaBehind for a city whose schema is behind, without running the block" do
       city = create(:city, slug: "atrasadajob", status: "active", schema_version: nil,
-                           database_url: city_database_url("rota_saude_test_city_b"))
+                           database_url: city_database_url(TEST_CITY_B_DATABASE))
 
       expect { job_class.new.perform(city.slug) }.to raise_error(CityScopedJob::CitySchemaBehind)
       expect(job_class.ran).to be false
@@ -83,14 +83,14 @@ RSpec.describe CityScopedJob do
 
     it "reschedules the job instead of failing it when the city's schema is behind" do
       city = create(:city, slug: "atrasadaretry", status: "active", schema_version: nil,
-                           database_url: city_database_url("rota_saude_test_city_b"))
+                           database_url: city_database_url(TEST_CITY_B_DATABASE))
 
       expect { job_class.perform_now(city.slug) }.to have_enqueued_job(job_class).with(city.slug)
       expect(job_class.ran).to be false
     end
 
     it "raises CityMismatch for a job of another city than this worker's, without running the block" do
-      city = create(:city, slug: "outracidade", status: "active", database_url: city_database_url("rota_saude_test_city_b"))
+      city = create(:city, slug: "outracidade", status: "active", database_url: city_database_url(TEST_CITY_B_DATABASE))
       CityWorkers::Context.city_slug = "curitiba"
 
       expect { job_class.new.perform(city.slug) }.to raise_error(CityScopedJob::CityMismatch)
@@ -98,7 +98,7 @@ RSpec.describe CityScopedJob do
     end
 
     it "runs a job of the worker's own city" do
-      city = create(:city, slug: "propriacidade", status: "active", database_url: city_database_url("rota_saude_test_city_b"))
+      city = create(:city, slug: "propriacidade", status: "active", database_url: city_database_url(TEST_CITY_B_DATABASE))
       CityWorkers::Context.city_slug = city.slug
 
       job_class.new.perform(city.slug)
@@ -113,8 +113,8 @@ RSpec.describe CityScopedJob do
   # ficava na B, e a escrita seguinte saía cifrada com a chave determinística
   # da B dentro do banco da A.
   describe "caller's city context" do
-    let!(:city_a) { create(:city, slug: "escoa#{SecureRandom.hex(3)}", database_url: city_database_url("rota_saude_test_city_a")) }
-    let!(:city_b) { create(:city, slug: "escob#{SecureRandom.hex(3)}", database_url: city_database_url("rota_saude_test_city_b")) }
+    let!(:city_a) { create(:city, slug: "escoa#{SecureRandom.hex(3)}", database_url: city_database_url(TEST_CITY_A_DATABASE)) }
+    let!(:city_b) { create(:city, slug: "escob#{SecureRandom.hex(3)}", database_url: city_database_url(TEST_CITY_B_DATABASE)) }
 
     it "leaves Current.city as it was after running inline for another city" do
       Current.set(city: city_a) do
