@@ -63,6 +63,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_200001) do
     t.check_constraint "window_from <= window_to", name: "ck_analytics_runs_window"
   end
 
+  create_table "appointment_notices", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "appointment_id", null: false
+    t.uuid "citizen_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "read_at"
+    t.index ["appointment_id"], name: "index_appointment_notices_on_appointment_id", unique: true
+    t.index ["citizen_id"], name: "index_appointment_notices_on_citizen_id"
+  end
+
   create_table "appointment_reminders", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "appointment_id", null: false
     t.datetime "created_at", null: false
@@ -72,64 +81,124 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_200001) do
     t.check_constraint "status::text = ANY (ARRAY['sent'::character varying, 'failed'::character varying]::text[])", name: "ck_appointment_reminders_status"
   end
 
+  create_table "appointment_request_triages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "request_id", null: false
+    t.uuid "triage_id", null: false
+    t.index ["request_id", "triage_id"], name: "idx_appointment_request_triages_pair", unique: true
+    t.index ["triage_id"], name: "index_appointment_request_triages_on_triage_id"
+  end
+
   create_table "appointment_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "appointment_type_key", default: "retorno", null: false
     t.uuid "citizen_id", null: false
     t.datetime "closed_at"
     t.uuid "closed_by_user_id"
     t.string "closed_reason"
     t.datetime "created_at", null: false
     t.text "dismiss_reason"
+    t.date "due_on", null: false
     t.string "kind", null: false
     t.uuid "moved_from_request_id"
     t.text "note"
-    t.uuid "origin_attendance_id", null: false
-    t.uuid "origin_unit_id", null: false
+    t.uuid "origin_attendance_id"
+    t.uuid "origin_triage_id"
+    t.uuid "origin_unit_id"
+    t.string "preferred_period"
+    t.string "priority", default: "routine", null: false
     t.string "reopened_reason"
+    t.integer "reschedule_count", default: 0, null: false
+    t.text "reschedule_note"
+    t.string "reschedule_reason_code"
     t.uuid "root_triage_id", null: false
     t.string "status", default: "open", null: false
-    t.uuid "target_unit_id", null: false
+    t.uuid "target_unit_id"
     t.datetime "updated_at", null: false
+    t.index ["citizen_id", "appointment_type_key"], name: "idx_appointment_requests_one_live_triage_type", unique: true, where: "kind::text = 'triage'::text AND status::text = 'open'::text"
     t.index ["citizen_id"], name: "index_appointment_requests_on_citizen_id"
     t.index ["closed_by_user_id"], name: "index_appointment_requests_on_closed_by_user_id"
     t.index ["moved_from_request_id"], name: "index_appointment_requests_on_moved_from_request_id", unique: true
     t.index ["origin_attendance_id"], name: "index_appointment_requests_on_origin_attendance_id", unique: true, where: "((closed_reason)::text IS DISTINCT FROM 'moved'::text)"
+    t.index ["origin_triage_id"], name: "index_appointment_requests_on_origin_triage_id"
     t.index ["origin_unit_id"], name: "index_appointment_requests_on_origin_unit_id"
     t.index ["root_triage_id"], name: "index_appointment_requests_on_root_triage_id"
+    t.index ["target_unit_id", "status", "due_on"], name: "idx_appointment_requests_queue"
     t.index ["target_unit_id"], name: "index_appointment_requests_on_target_unit_id"
     t.check_constraint "(closed_reason IS DISTINCT FROM 'dismissed' AND dismiss_reason IS NULL) OR (closed_reason = 'dismissed' AND dismiss_reason IS NOT NULL AND length(btrim(dismiss_reason)) >= 10)", name: "ck_appointment_requests_dismiss_reason"
-    t.check_constraint "closed_reason IS NULL OR closed_reason::text = ANY (ARRAY['fulfilled', 'citizen_cancelled', 'dismissed', 'moved']::text[])", name: "ck_appointment_requests_closed_reason"
+    t.check_constraint "closed_reason IS NULL OR closed_reason::text = ANY (ARRAY['fulfilled', 'citizen_cancelled', 'dismissed', 'moved', 'consent_revoked']::text[])", name: "ck_appointment_requests_closed_reason"
     t.check_constraint "(status::text <> 'closed'::text AND closed_reason IS NULL AND closed_at IS NULL) OR (status::text = 'closed'::text AND closed_reason IS NOT NULL AND closed_at IS NOT NULL)", name: "ck_appointment_requests_closing"
-    t.check_constraint "kind::text = ANY (ARRAY['return', 'referral']::text[])", name: "ck_appointment_requests_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['return', 'referral', 'triage']::text[])", name: "ck_appointment_requests_kind"
+    t.check_constraint "(kind::text = 'triage'::text) = (origin_triage_id IS NOT NULL)", name: "ck_appointment_requests_triage_kind"
+    t.check_constraint "(origin_attendance_id IS NULL) <> (origin_triage_id IS NULL)", name: "ck_appointment_requests_origin"
+    t.check_constraint "origin_attendance_id IS NULL OR (origin_unit_id IS NOT NULL AND target_unit_id IS NOT NULL)", name: "ck_appointment_requests_attendance_units"
+    t.check_constraint "preferred_period IS NULL OR preferred_period::text = ANY (ARRAY['morning', 'afternoon', 'any']::text[])", name: "ck_appointment_requests_preferred_period"
+    t.check_constraint "priority::text = ANY (ARRAY['routine', 'priority']::text[])", name: "ck_appointment_requests_priority"
+    t.check_constraint "reschedule_count >= 0", name: "ck_appointment_requests_reschedule_count"
+    t.check_constraint "reschedule_note IS NULL OR length(reschedule_note) <= 200", name: "ck_appointment_requests_reschedule_note"
+    t.check_constraint "reschedule_reason_code IS NULL OR reschedule_reason_code::text = ANY (ARRAY['work', 'health', 'transport', 'other']::text[])", name: "ck_appointment_requests_reschedule_reason_code"
     t.check_constraint "kind::text <> 'return'::text OR origin_unit_id = target_unit_id OR moved_from_request_id IS NOT NULL", name: "ck_appointment_requests_return_same_unit"
-    t.check_constraint "reopened_reason IS NULL OR reopened_reason::text = ANY (ARRAY['expired', 'no_show']::text[])", name: "ck_appointment_requests_reopened_reason"
+    t.check_constraint "reopened_reason IS NULL OR reopened_reason::text = ANY (ARRAY['expired', 'no_show', 'citizen_reschedule']::text[])", name: "ck_appointment_requests_reopened_reason"
     t.check_constraint "status::text = ANY (ARRAY['open', 'scheduled', 'closed']::text[])", name: "ck_appointment_requests_status"
   end
 
+  create_table "appointment_types", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "cbo_prefixes", default: [], null: false, array: true
+    t.datetime "created_at", null: false
+    t.integer "duration_minutes", null: false
+    t.string "key", null: false
+    t.string "name", null: false
+    t.string "origin", null: false
+    t.integer "position", default: 100, null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_appointment_types_on_key", unique: true
+    t.check_constraint "cardinality(cbo_prefixes) >= 1 AND cardinality(cbo_prefixes) <= 20", name: "ck_appointment_types_cbo_prefixes"
+    t.check_constraint "duration_minutes >= 5 AND duration_minutes <= 240", name: "ck_appointment_types_duration"
+    t.check_constraint "key::text ~ '^[a-z][a-z0-9_]{1,40}$'::text", name: "ck_appointment_types_key"
+    t.check_constraint "origin::text = ANY (ARRAY['platform', 'city']::text[])", name: "ck_appointment_types_origin"
+  end
+
   create_table "appointments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "appointment_type_key"
+    t.string "booking_kind", default: "legacy", null: false
     t.text "cancel_reason"
     t.uuid "citizen_id", null: false
     t.datetime "confirmation_deadline_at"
     t.datetime "confirmed_at"
     t.datetime "created_at", null: false
     t.datetime "ended_at"
+    t.datetime "ends_at"
+    t.text "fit_in_reason"
     t.uuid "health_unit_id", null: false
     t.uuid "moved_from_appointment_id"
+    t.uuid "professional_id"
+    t.datetime "reminded_at"
     t.uuid "request_id", null: false
+    t.boolean "reschedule_requested", default: false, null: false
     t.datetime "scheduled_at", null: false
     t.uuid "scheduled_by_user_id", null: false
+    t.uuid "shift_id"
     t.string "status", null: false
     t.datetime "updated_at", null: false
+    t.index ["citizen_id", "scheduled_at"], name: "idx_appointments_citizen_time"
     t.index ["citizen_id"], name: "index_appointments_on_citizen_id"
     t.index ["health_unit_id", "scheduled_at"], name: "idx_appointments_unit_time"
     t.index ["health_unit_id"], name: "index_appointments_on_health_unit_id"
     t.index ["moved_from_appointment_id"], name: "index_appointments_on_moved_from_appointment_id", unique: true
+    t.index ["professional_id", "scheduled_at"], name: "idx_appointments_professional_time"
     t.index ["request_id"], name: "idx_appointments_one_live_per_request", unique: true, where: "status IN ('scheduled', 'confirmed')"
     t.index ["request_id"], name: "index_appointments_on_request_id"
     t.index ["scheduled_by_user_id"], name: "index_appointments_on_scheduled_by_user_id"
+    t.index ["shift_id"], name: "index_appointments_on_shift_id"
+    t.check_constraint "booking_kind::text = 'legacy'::text OR (professional_id IS NOT NULL AND appointment_type_key IS NOT NULL AND ends_at IS NOT NULL AND shift_id IS NOT NULL)", name: "ck_appointments_booking_fields"
+    t.check_constraint "booking_kind::text = ANY (ARRAY['slot', 'fit_in', 'legacy']::text[])", name: "ck_appointments_booking_kind"
     t.check_constraint "(status::text <> 'cancelled_by_citizen'::text AND cancel_reason IS NULL) OR (status::text = 'cancelled_by_citizen'::text AND cancel_reason IS NOT NULL AND length(btrim(cancel_reason)) >= 10)", name: "ck_appointments_cancel_reason"
     t.check_constraint "status::text <> 'scheduled'::text OR confirmation_deadline_at IS NOT NULL", name: "ck_appointments_deadline"
     t.check_constraint "(status::text = ANY (ARRAY['scheduled', 'confirmed']::text[])) = (ended_at IS NULL)", name: "ck_appointments_ended"
+    t.check_constraint "ends_at IS NULL OR ends_at > scheduled_at", name: "ck_appointments_ends"
+    t.check_constraint "((booking_kind::text = 'fit_in'::text) = (fit_in_reason IS NOT NULL)) AND (fit_in_reason IS NULL OR length(btrim(fit_in_reason)) >= 10)", name: "ck_appointments_fit_in_reason"
     t.check_constraint "status::text = ANY (ARRAY['scheduled', 'confirmed', 'checked_in', 'cancelled_by_citizen', 'expired', 'no_show', 'moved']::text[])", name: "ck_appointments_status"
+    t.exclusion_constraint "professional_id WITH =, tsrange(scheduled_at, ends_at) WITH &&", where: "(booking_kind::text = 'slot'::text AND status::text = ANY (ARRAY['scheduled', 'confirmed', 'checked_in']::text[]))", using: :gist, name: "excl_appointments_slot_overlap"
   end
 
   create_table "attendances", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -225,6 +294,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_200001) do
   create_table "city_profile", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "campaigns_sms_enabled", default: false, null: false
     t.datetime "created_at", null: false
+    t.integer "default_fit_in_limit", default: 2, null: false
     t.string "ibge_code", limit: 7
     t.string "name", null: false
     t.jsonb "settings", default: {}, null: false
@@ -232,6 +302,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_200001) do
     t.string "uf", limit: 2
     t.datetime "updated_at", null: false
     t.index ["singleton"], name: "index_city_profile_singleton", unique: true
+    t.check_constraint "default_fit_in_limit >= 0 AND default_fit_in_limit <= 20", name: "ck_city_profile_default_fit_in_limit"
     t.check_constraint "singleton", name: "ck_city_profile_singleton"
   end
 
@@ -615,6 +686,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_200001) do
   create_table "professional_links", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "cbo_code", null: false
     t.datetime "created_at", null: false
+    t.string "default_appointment_type_key"
     t.datetime "ended_at"
     t.uuid "ended_by_user_id"
     t.uuid "health_unit_id", null: false
@@ -640,12 +712,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_200001) do
     t.datetime "ends_at", null: false
     t.uuid "professional_id", null: false
     t.uuid "professional_link_id", null: false
+    t.uuid "schedule_template_id"
     t.datetime "starts_at", null: false
     t.index ["cancelled_by_user_id"], name: "index_professional_shifts_on_cancelled_by_user_id"
     t.index ["created_by_user_id"], name: "index_professional_shifts_on_created_by_user_id"
     t.index ["professional_id"], name: "index_professional_shifts_on_professional_id"
     t.index ["professional_link_id", "starts_at"], name: "idx_professional_shifts_link_start"
     t.index ["professional_link_id"], name: "index_professional_shifts_on_professional_link_id"
+    t.index ["schedule_template_id"], name: "index_professional_shifts_on_schedule_template_id"
     t.check_constraint "cancelled_at IS NULL AND cancelled_by_user_id IS NULL AND cancel_reason IS NULL OR cancelled_at IS NOT NULL AND cancelled_by_user_id IS NOT NULL AND cancel_reason IS NOT NULL AND length(btrim(cancel_reason::text)) > 0", name: "ck_professional_shifts_cancelling"
     t.check_constraint "ends_at > starts_at AND (ends_at - starts_at) <= 'PT24H'::interval", name: "ck_professional_shifts_window"
     t.exclusion_constraint "professional_id WITH =, tsrange(starts_at, ends_at) WITH &&", where: "cancelled_at IS NULL", using: :gist, name: "excl_professional_shifts_overlap"
@@ -737,6 +811,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_200001) do
     t.index ["token"], name: "index_report_snapshots_on_token", unique: true
     t.index ["triage_id"], name: "idx_report_snapshots_one_per_triagem", unique: true
     t.index ["triage_id"], name: "index_report_snapshots_on_triage_id"
+  end
+
+  create_table "schedule_templates", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.jsonb "blocks", default: [], null: false
+    t.datetime "created_at", null: false
+    t.integer "fit_in_limit", default: 2, null: false
+    t.string "name", null: false
+    t.datetime "updated_at", null: false
+    t.check_constraint "fit_in_limit >= 0 AND fit_in_limit <= 20", name: "ck_schedule_templates_fit_in_limit"
+    t.check_constraint "jsonb_typeof(blocks) = 'array'::text", name: "ck_schedule_templates_blocks"
   end
 
   create_table "sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -957,18 +1042,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_200001) do
     t.index "lower((email_address)::text)", name: "index_users_on_lower_email", unique: true
   end
 
+  add_foreign_key "appointment_notices", "appointments"
+  add_foreign_key "appointment_notices", "citizens"
   add_foreign_key "appointment_reminders", "appointments"
+  add_foreign_key "appointment_request_triages", "appointment_requests", column: "request_id"
+  add_foreign_key "appointment_request_triages", "triages"
   add_foreign_key "appointment_requests", "appointment_requests", column: "moved_from_request_id"
   add_foreign_key "appointment_requests", "attendances", column: "origin_attendance_id"
   add_foreign_key "appointment_requests", "citizens"
   add_foreign_key "appointment_requests", "health_units", column: "origin_unit_id"
   add_foreign_key "appointment_requests", "health_units", column: "target_unit_id"
+  add_foreign_key "appointment_requests", "triages", column: "origin_triage_id"
   add_foreign_key "appointment_requests", "triages", column: "root_triage_id"
   add_foreign_key "appointment_requests", "users", column: "closed_by_user_id"
   add_foreign_key "appointments", "appointment_requests", column: "request_id"
   add_foreign_key "appointments", "appointments", column: "moved_from_appointment_id"
   add_foreign_key "appointments", "citizens"
   add_foreign_key "appointments", "health_units"
+  add_foreign_key "appointments", "professional_shifts", column: "shift_id"
+  add_foreign_key "appointments", "professionals"
   add_foreign_key "appointments", "users", column: "scheduled_by_user_id"
   add_foreign_key "attendances", "appointments"
   add_foreign_key "attendances", "citizens"
@@ -1016,6 +1108,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_200001) do
   add_foreign_key "professional_links", "users", column: "started_by_user_id"
   add_foreign_key "professional_shifts", "professional_links"
   add_foreign_key "professional_shifts", "professionals"
+  add_foreign_key "professional_shifts", "schedule_templates"
   add_foreign_key "professional_shifts", "users", column: "cancelled_by_user_id"
   add_foreign_key "professional_shifts", "users", column: "created_by_user_id"
   add_foreign_key "professionals", "users"

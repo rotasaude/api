@@ -180,6 +180,7 @@ $do$;
 -- Pedido de agendamento (ADR 0019): só acréscimo; a origem nunca muda; encerrado não muda.
 -- Mover para outra unidade (api#29) encerra este como `moved` e cria outro com
 -- moved_from_request_id; a ligação também nunca muda.
+-- Módulo 17 (ADR 0029): a unidade de destino nula (fila "sem unidade") recebe uma unidade UMA vez; depois nunca muda.
 CREATE OR REPLACE FUNCTION rota_appointment_request_guard() RETURNS trigger AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
@@ -193,7 +194,8 @@ BEGIN
      OR NEW.citizen_id IS DISTINCT FROM OLD.citizen_id
      OR NEW.root_triage_id IS DISTINCT FROM OLD.root_triage_id
      OR NEW.origin_unit_id IS DISTINCT FROM OLD.origin_unit_id
-     OR NEW.target_unit_id IS DISTINCT FROM OLD.target_unit_id
+     OR (OLD.target_unit_id IS NOT NULL AND NEW.target_unit_id IS DISTINCT FROM OLD.target_unit_id)
+     OR NEW.origin_triage_id IS DISTINCT FROM OLD.origin_triage_id
      OR NEW.kind IS DISTINCT FROM OLD.kind
      OR NEW.note IS DISTINCT FROM OLD.note
      OR NEW.moved_from_request_id IS DISTINCT FROM OLD.moved_from_request_id
@@ -222,6 +224,12 @@ BEGIN
      OR NEW.scheduled_by_user_id IS DISTINCT FROM OLD.scheduled_by_user_id
      OR NEW.confirmation_deadline_at IS DISTINCT FROM OLD.confirmation_deadline_at
      OR NEW.moved_from_appointment_id IS DISTINCT FROM OLD.moved_from_appointment_id
+     OR NEW.professional_id IS DISTINCT FROM OLD.professional_id
+     OR NEW.appointment_type_key IS DISTINCT FROM OLD.appointment_type_key
+     OR NEW.ends_at IS DISTINCT FROM OLD.ends_at
+     OR NEW.shift_id IS DISTINCT FROM OLD.shift_id
+     OR NEW.booking_kind IS DISTINCT FROM OLD.booking_kind
+     OR NEW.fit_in_reason IS DISTINCT FROM OLD.fit_in_reason
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'appointments: the scheduled columns never change';
   END IF;
@@ -832,6 +840,34 @@ BEGIN
 END;
 $fn$ LANGUAGE plpgsql;
 
+-- appointment_types (ADR 0029; spec 2026-10-05 §3.1): o tipo da plataforma e o
+-- da cidade nunca mudam de key nem de origem; desativar em vez de apagar
+-- (pedidos e horários guardam a key). Sem trigger de TRUNCATE (limpeza de suíte).
+CREATE OR REPLACE FUNCTION rota_appointment_type_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'appointment_types: DELETE refused (deactivate instead)';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.key IS DISTINCT FROM OLD.key OR NEW.origin IS DISTINCT FROM OLD.origin THEN
+    RAISE EXCEPTION 'appointment_types: key and origin never change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- appointment_notices (ADR 0029 §6): o aviso de lembrete só registra a
+-- primeira leitura; DELETE passa de propósito (exclusão do cadastro, ADR 0026).
+CREATE OR REPLACE FUNCTION rota_appointment_notice_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.appointment_id IS DISTINCT FROM OLD.appointment_id
+     OR NEW.citizen_id IS DISTINCT FROM OLD.citizen_id OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR (OLD.read_at IS NOT NULL AND NEW.read_at IS DISTINCT FROM OLD.read_at) THEN
+    RAISE EXCEPTION 'appointment_notices: only the first read is recorded';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
 DO $do$
 BEGIN
   IF to_regclass('public.ledi_outbox') IS NOT NULL THEN
@@ -839,6 +875,36 @@ BEGIN
     EXECUTE 'CREATE TRIGGER ledi_outbox_guard
       BEFORE UPDATE OR DELETE ON ledi_outbox
       FOR EACH ROW EXECUTE FUNCTION rota_ledi_outbox_guard()';
+  END IF;
+  IF to_regclass('public.appointment_types') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS appointment_types_guard ON appointment_types';
+    EXECUTE 'CREATE TRIGGER appointment_types_guard
+      BEFORE UPDATE OR DELETE ON appointment_types
+      FOR EACH ROW EXECUTE FUNCTION rota_appointment_type_guard()';
+  END IF;
+  -- Modelo: desativar em vez de apagar (turnos apontam para ele).
+  IF to_regclass('public.schedule_templates') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS schedule_templates_no_delete ON schedule_templates';
+    EXECUTE 'CREATE TRIGGER schedule_templates_no_delete
+      BEFORE DELETE ON schedule_templates
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  -- Ligação pedido↔triagem (fusão de triagens num pedido): só acréscimo.
+  IF to_regclass('public.appointment_request_triages') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS appointment_request_triages_append_only ON appointment_request_triages';
+    EXECUTE 'CREATE TRIGGER appointment_request_triages_append_only
+      BEFORE UPDATE OR DELETE ON appointment_request_triages
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS appointment_request_triages_append_only_truncate ON appointment_request_triages';
+    EXECUTE 'CREATE TRIGGER appointment_request_triages_append_only_truncate
+      BEFORE TRUNCATE ON appointment_request_triages
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  IF to_regclass('public.appointment_notices') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS appointment_notices_guard ON appointment_notices';
+    EXECUTE 'CREATE TRIGGER appointment_notices_guard
+      BEFORE UPDATE ON appointment_notices
+      FOR EACH ROW EXECUTE FUNCTION rota_appointment_notice_guard()';
   END IF;
 END
 $do$;

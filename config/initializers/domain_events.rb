@@ -58,6 +58,18 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "appointment.moved", to: []
   DomainEvents.bind "appointment_request.moved", to: []
   DomainEvents.bind "health_unit.drained", to: []
+  # Agenda dos profissionais (ADR 0029; contratos §6): trilha, só ids, sem consumidor.
+  DomainEvents.bind "appointment.booked", to: []
+  DomainEvents.bind "appointment.fit_in_created", to: []
+  DomainEvents.bind "appointment.reschedule_requested", to: []
+  DomainEvents.bind "appointment.reminded", to: []
+  DomainEvents.bind "appointment_request.created_from_triage", to: []
+  DomainEvents.bind "appointment_request.merged_triage", to: []
+  DomainEvents.bind "appointment_request.unit_assigned", to: []
+  DomainEvents.bind "appointment_type.changed", to: []
+  DomainEvents.bind "schedule_template.changed", to: []
+  DomainEvents.bind "professional.shift_template_set", to: []
+  DomainEvents.bind "professional.link_default_type_set", to: []
 
   # ADR 0018: rastro LGPD da busca por exceção (POST check_ins/search) — expõe
   # dado de saúde sem código; sem CPF no payload, sem consumidor, de propósito.

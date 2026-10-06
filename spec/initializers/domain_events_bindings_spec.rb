@@ -76,3 +76,15 @@ RSpec.describe "ledi event bindings (ADR 0028)" do
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
 end
+
+# Módulo 17 (ADR 0029): eventos da agenda declarados, só trilha.
+RSpec.describe "scheduling event bindings (ADR 0029)" do
+  it "declares every scheduling event with no consumer" do
+    names = %w[appointment.booked appointment.fit_in_created appointment.reschedule_requested appointment.reminded
+               appointment_request.created_from_triage appointment_request.merged_triage
+               appointment_request.unit_assigned appointment_type.changed schedule_template.changed
+               professional.shift_template_set professional.link_default_type_set]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end

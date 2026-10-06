@@ -9,6 +9,7 @@ class ProfessionalShift < ApplicationRecord
   belongs_to :professional
   belongs_to :created_by_user, class_name: "User"
   belongs_to :cancelled_by_user, class_name: "User", optional: true
+  belongs_to :schedule_template, optional: true
 
   scope :valid_shifts, -> { where(cancelled_at: nil) }
 end

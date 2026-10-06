@@ -1,0 +1,19 @@
+# Base da plataforma (ADR 0029; spec 2026-10-05 §3.1). Copiada para cada cidade
+# pela migração 20261006100001 e pelo provisionamento (só insere o que falta,
+# nunca sobrescreve o que a cidade ajustou). Grupos = prefixos de CBO.
+- key: consulta_medica
+  name: Consulta médica
+  duration_minutes: 20
+  cbo_prefixes: ["2251", "2252", "2253"]
+- key: consulta_enfermagem
+  name: Consulta de enfermagem
+  duration_minutes: 15
+  cbo_prefixes: ["2235"]
+- key: consulta_odontologica
+  name: Consulta odontológica
+  duration_minutes: 30
+  cbo_prefixes: ["2232"]
+- key: retorno
+  name: Retorno
+  duration_minutes: 15
+  cbo_prefixes: ["2251", "2252", "2253", "2235", "2232"]

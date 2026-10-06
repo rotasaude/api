@@ -36,11 +36,11 @@ RSpec.describe "Invariantes do agendamento (ADR 0019)" do
   end
 
   describe "todo horário pertence a um pedido e todo pedido nasce de um atendimento" do
-    it "o banco recusa pedido sem atendimento de origem" do
+    it "o banco recusa pedido sem nenhuma origem (nem atendimento, nem triagem)" do
       req = travel_to(t0) { request_from_return }
       row = req.attributes.except("id", "origin_attendance_id").merge("origin_attendance_id" => nil)
       expect { attempt { AppointmentRequest.insert_all!([ row ]) } }
-        .to raise_error(ActiveRecord::NotNullViolation)
+        .to raise_error(ActiveRecord::StatementInvalid, /ck_appointment_requests_origin/)
     end
 
     it "o banco recusa horário sem pedido" do
