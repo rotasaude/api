@@ -1,0 +1,29 @@
+# Prova técnica do módulo 16 (Task 1 do plano api-exporter). Valores OBSERVADOS
+# contra o PEC local; o exportador lê este arquivo (Ledi::Observations). Só mude
+# com uma nova prova contra um PEC de verdade, registrando a data.
+observed_on: "2026-10-06"
+pec_version: "5.5.28"
+ledi_version: "8.7.0"
+idl_commit: "9316f280f5"
+login:
+  path: "/api/recebimento/login"
+  content_type: "application/x-www-form-urlencoded"
+  rejected_status: 400
+# NÃO observado: um 2xx exige o CNES importado no PEC (limite do ambiente de
+# dev; o XML do CNES vem da área restrita do e-Gestor APS). Preencher numa nova prova.
+success_statuses: null
+compression: none
+deserialization_error_marker: "Erro na desserialização"
+rejection:
+  status: 400
+  format: "json"
+  example: '{"descricaoErro":"Erro de validação","errosValidacao":{"cnesDadoSerializado":"CnesDadoSerializado possui um valor inválido: …"}}'
+# NÃO observado (depende de um 2xx anterior).
+duplicate_after_accept:
+  status: null
+  marker: null
+# O PEC revalida um uuid reenviado após 400 (não o recusa como duplicado).
+# Valor provisório: o 2xx do reenvio ainda não foi observado.
+resend_after_rejection:
+  same_uuid: accepted
+session_expired_statuses: [401]
