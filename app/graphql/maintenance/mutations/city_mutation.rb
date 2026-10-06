@@ -64,6 +64,14 @@ module Maintenance
         # nunca entra na auditoria de plataforma — só se um foi dado.
         reason_given: lambda do |value|
           "reason_given inválido" unless value == true || value == false
+        end,
+        # ADR 0028: chave do interruptor — o valor só entra na auditoria se for
+        # do catálogo, e a recusa é a do contrato (§3).
+        feature_key: lambda do |value|
+          "unknown_feature" unless value.is_a?(String) && Platform::Features.find(value)
+        end,
+        enabled: lambda do |value|
+          "enabled inválido" unless value == true || value == false
         end
       }.freeze
 
@@ -106,17 +114,8 @@ module Maintenance
       # sucesso para ler.
       def in_city(city_slug:, event:, module_name:, rejection_path: "version", field_paths: {}, step_up_code: nil,
                   payload_from_result: nil, **fields)
-        refuse_out_of_scope!(city_slug)
-        refusal = unauditable_input(city_slug, fields, DEFAULT_FIELD_PATHS.merge(field_paths))
-        return refusal if refusal
-
-        correlation_id = nil
-        command_result = nil
-        outcome = audited(event: event, module_name: module_name, city_slug: city_slug, **fields) do |attempt_id|
-          correlation_id = attempt_id
-          city = City.find_by(slug: city_slug)
-          raise Rejected.new("cidade inexistente", path: "citySlug") if city.nil?
-
+        city_operation(city_slug: city_slug, event: event, module_name: module_name, field_paths: field_paths,
+                       payload_from_result: payload_from_result, fields: fields) do |city, correlation_id|
           begin
             CityWriter.ensure_writable!(city)
             step_up!(step_up_code) unless step_up_code.nil?
@@ -129,8 +128,44 @@ module Maintenance
             raise Rejected.new(result.message.presence || result.reason.to_s, path: path)
           end
 
-          command_result = result
           result
+        end
+      end
+
+      # Escrita de PLATAFORMA sobre uma cidade (ADR 0028: interruptores). O
+      # mesmo prefixo de in_city (city_operation: escopo, campos auditáveis,
+      # tentativa gravada, cidade existe) e os mesmos rescue, mas SEM abrir o
+      # banco da cidade: o contrato (§3) exige que o liga/desliga funcione com
+      # a cidade fora do ar. O bloco recebe (city, actor, correlation_id) e
+      # devolve um Result.
+      def on_platform(city_slug:, event:, module_name:, field_paths: {}, payload_from_result: nil, **fields)
+        city_operation(city_slug: city_slug, event: event, module_name: module_name, field_paths: field_paths,
+                       payload_from_result: payload_from_result, fields: fields) do |city, correlation_id|
+          raise Rejected.new("cidade não está ativa (#{city.status})", path: "citySlug") unless city.servable?
+
+          result = yield(city, MaintainerActor.new(credential.maintainer), correlation_id)
+          raise Rejected.new(result.message.presence || result.reason.to_s, path: "citySlug") if result.failure?
+
+          result
+        end
+      end
+
+      # Prefixo e rescue comuns de in_city e on_platform. O bloco recebe
+      # (city, correlation_id) e devolve o Result do command, levantando
+      # Rejected para recusa.
+      def city_operation(city_slug:, event:, module_name:, field_paths:, payload_from_result:, fields:)
+        refuse_out_of_scope!(city_slug)
+        refusal = unauditable_input(city_slug, fields, DEFAULT_FIELD_PATHS.merge(field_paths))
+        return refusal if refusal
+
+        correlation_id = nil
+        command_result = nil
+        outcome = audited(event: event, module_name: module_name, city_slug: city_slug, **fields) do |attempt_id|
+          correlation_id = attempt_id
+          city = City.find_by(slug: city_slug)
+          raise Rejected.new("cidade inexistente", path: "citySlug") if city.nil?
+
+          command_result = yield(city, correlation_id)
         end
 
         return outcome if payload_from_result.nil? || !outcome[:ok]

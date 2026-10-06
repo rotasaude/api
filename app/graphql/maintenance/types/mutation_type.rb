@@ -13,6 +13,7 @@ module Maintenance
       field :activate_protocol, mutation: Mutations::ActivateProtocol
       field :retire_protocol, mutation: Mutations::RetireProtocol
       field :revert_protocol_activation, mutation: Mutations::RevertProtocolActivation
+      field :set_city_feature, mutation: Mutations::SetCityFeature
     end
   end
 end

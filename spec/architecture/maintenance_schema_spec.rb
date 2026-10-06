@@ -19,7 +19,7 @@ RSpec.describe "Maintenance GraphQL schema" do
     "Maintainer" => %w[id emailAddress active enrolled createdAt],
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
                      saveProtocolDraft submitProtocolForReview publishProtocol
-                     activateProtocol retireProtocol revertProtocolActivation],
+                     activateProtocol retireProtocol revertProtocolActivation setCityFeature],
     "InviteMaintainerPayload" => %w[ok errors],
     "DeactivateMaintainerPayload" => %w[ok errors],
     "MaintenanceToken" => %w[id maintainerId name access citySlugs expiresAt revokedAt lastUsedAt],
@@ -31,12 +31,14 @@ RSpec.describe "Maintenance GraphQL schema" do
     "ActivateProtocolPayload" => %w[ok errors],
     "RetireProtocolPayload" => %w[ok errors],
     "RevertProtocolActivationPayload" => %w[ok errors revertedToVersion],
+    "SetCityFeaturePayload" => %w[ok errors feature],
+    "CityFeature" => %w[key description enabled usable missing changedAt changedBy],
     "AuditEvent" => %w[name module outcome occurredAt maintainerId login correlationId],
     "UserError" => %w[path message],
     "CitySummary" => %w[slug name uf status schemaVersion schemaBehind createdAt],
     "City" => %w[slug name uf status schemaVersion schemaBehind createdAt channel
                  profile consentTermVersion protocols protocolVersions alertRecipients accounts counts operations
-                 analyticsIndicators analyticsStatus],
+                 analyticsIndicators analyticsStatus recordMode features],
     "AnalyticsIndicator" => %w[weekStart indicator value suppressed],
     "AnalyticsStatus" => %w[lastRunStatus lastSucceededAt lastPublishedAt lastError stale],
     "CityChannel" => %w[phoneNumberId wabaId displayPhoneNumber active],
@@ -91,8 +93,10 @@ RSpec.describe "Maintenance GraphQL schema" do
   # institucional de WhatsApp Business da cidade, mostrado a cidadãos e já
   # publicado em /maintenance — não é telefone de CIDADÃO, que é o que as
   # restrições globais proíbem.
+  # ADR 0028: `key` do interruptor é o identificador do catálogo em código
+  # ("ledi_export"), não uma chave criptográfica — o par exato, nunca o nome.
   def forbidden_name_exempt_fields
-    %w[CityChannel.phoneNumberId CityChannel.displayPhoneNumber]
+    %w[CityChannel.phoneNumberId CityChannel.displayPhoneNumber CityFeature.key Mutation.setCityFeature.key]
   end
 
   # Argumentos são julgados pelo PRÓPRIO nome (o do campo já foi julgado ao
@@ -618,12 +622,17 @@ RSpec.describe "Maintenance GraphQL schema" do
         [ /\btoggle!/, /\bincrement!/, /\bdecrement!/ ]
     end
 
-    # Não-guloso até o primeiro `event:` depois de `in_city(` — a ordem dos
-    # kwargs nas seis mutations sempre põe `event:` cedo, mas o regex não
-    # depende disso: só do primeiro `event: "..."` que aparecer depois do
-    # `in_city(` de verdade.
+    # Toda mutation de cidade escreve por `in_city(` (banco da cidade) ou
+    # `on_platform(` (plataforma, ADR 0028) — nunca por outro caminho, que não
+    # teria a tentativa/resultado auditados.
+    def audited_call?(code) = code.match?(/\b(?:in_city|on_platform)\(/)
+
+    # Não-guloso até o primeiro `event:` depois de `in_city(`/`on_platform(` — a
+    # ordem dos kwargs sempre põe `event:` cedo, mas o regex não depende
+    # disso: só do primeiro `event: "..."` que aparecer depois da chamada de
+    # verdade.
     def in_city_event(code)
-      code.match(/in_city\(.*?event:\s*"([^"]+)"/m)&.captures&.first
+      code.match(/\b(?:in_city|on_platform)\(.*?event:\s*"([^"]+)"/m)&.captures&.first
     end
 
     def mutation_offenders
@@ -632,7 +641,7 @@ RSpec.describe "Maintenance GraphQL schema" do
         code = code_only(path)
 
         reasons = []
-        reasons << "não chama in_city(" unless code.include?("in_city(")
+        reasons << "não chama in_city( nem on_platform(" unless audited_call?(code)
 
         event = in_city_event(code)
         if event.nil? || MaintenanceAudit::NAMES.exclude?(event)
@@ -734,6 +743,19 @@ RSpec.describe "Maintenance GraphQL schema" do
 
       expect(flagged?(read)).to be(false)
       expect(flagged?(identifier)).to be(false)
+    end
+
+    # Auto-teste (ADR 0028): `on_platform(` é aceito como `in_city(`, mas um
+    # resolver que não chama NENHUM dos dois continua pego.
+    it "accepts on_platform( as the audited call, and still catches a resolver that calls neither" do
+      platform = 'on_platform(city_slug: s, event: "maintenance.city.feature_changed", module_name: "city") { }'
+      neither = 'Platform::Features.set!(city: c, key: k, enabled: true, maintainer: m)'
+
+      expect(audited_call?(platform)).to be(true)
+      expect(in_city_event(platform)).to eq("maintenance.city.feature_changed")
+      expect(audited_call?(neither)).to be(false)
+      expect(audited_call?('in_city(city_slug: s, event: "e", module_name: "m") { }')).to be(true)
+      expect(audited_call?(strip_comments("# on_platform(\nfoo"))).to be(false)
     end
 
     it "catches an event that is not declared in MaintenanceAudit::NAMES" do

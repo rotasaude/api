@@ -10,11 +10,12 @@ module Maintenance
       field :uf, String, null: true
       # M1: mesmo CityStatus de CitySummary — ver o comentário lá.
       field :status, Types::CityStatusEnum, null: false
-      # P7 (fix round 1): `ibgeCode` NÃO mora aqui — `cities` na plataforma não
-      # tem essa coluna (achado do Task 2, ver task-2-report.md), e um campo
-      # que sempre responde nulo é pior que nenhum campo. Quem quiser o código
-      # IBGE lê `city.profile.ibgeCode` (Task 3), que é onde o dado de verdade
-      # mora — dentro do banco da cidade, em `CityProfile`.
+      # O código IBGE mora em `city.profile.ibgeCode` (banco da cidade), fonte
+      # única (ADR 0028; contratos §3): `cities` na plataforma não tem a coluna.
+      # Modo de prontuário (só leitura aqui; quem escreve é o console) e
+      # interruptores (escritos por setCityFeature).
+      field :record_mode, String, null: false
+      field :features, [ Types::CityFeatureType ], null: false
       field :schema_version, String, null: true
       field :schema_behind, Boolean, null: false
       field :created_at, GraphQL::Types::ISO8601DateTime, null: false
@@ -66,6 +67,9 @@ module Maintenance
       field :analytics_status, Types::AnalyticsStatusType, null: true
 
       def schema_behind = CitySchema.behind?(object)
+
+      # Nunca levanta: cidade inalcançável degrada só usable/missing.
+      def features = Platform::Features.summary(object)
 
       # Canal mora na PLATAFORMA, ao lado do catálogo: sai sem abrir conexão de
       # cidade (mesma escolha de CityInventory#channel_for).

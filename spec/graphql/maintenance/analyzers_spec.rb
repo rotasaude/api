@@ -176,8 +176,13 @@ RSpec.describe "Maintenance analyzers" do
                                 "#{name} aceita citySlug e não herda de CityMutation"
     end
     base = File.read(Rails.root.join("app/graphql/maintenance/mutations/city_mutation.rb"))
-    expect(scope_checked_before_audit?(method_body(base, "in_city"))).to be(true),
-                                                                       "in_city não consulta o escopo antes de auditar"
+    # O escopo é consultado antes da auditoria no prefixo comum; in_city e
+    # on_platform só valem se passarem por ele.
+    expect(scope_checked_before_audit?(method_body(base, "city_operation"))).to be(true),
+                                                                                 "city_operation (prefixo de in_city e on_platform) não consulta o escopo antes de auditar"
+    %w[in_city on_platform].each do |name|
+      expect(method_body(base, name)).to include("city_operation("), "#{name} não passa pelo prefixo comum city_operation"
+    end
     expect(method_body(base, "refuse_out_of_scope!")).to include("allows_city?")
   end
 
@@ -310,7 +315,7 @@ RSpec.describe "Maintenance analyzers" do
   # abre a cidade).
   describe "step-up on the acts that approve or put a version in use" do
     def step_up_required = %w[publishProtocol activateProtocol retireProtocol revertProtocolActivation]
-    def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview]
+    def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview setCityFeature]
 
     include MaintenanceCityMutationSpecHelpers
 

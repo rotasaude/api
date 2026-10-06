@@ -852,12 +852,14 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
       # Método, não constante: uma constante num bloco `describe` vaza para Object.
       def city_mutation_commands
         {
-          "saveProtocolDraft" => Protocols::SaveDraft,
-          "submitProtocolForReview" => Protocols::SubmitForReview,
-          "publishProtocol" => Protocols::Publish,
-          "activateProtocol" => Protocols::Activate,
-          "retireProtocol" => Protocols::Retire,
-          "revertProtocolActivation" => Protocols::RevertActivation
+          "saveProtocolDraft" => [ Protocols::SaveDraft, :call ],
+          "submitProtocolForReview" => [ Protocols::SubmitForReview, :call ],
+          "publishProtocol" => [ Protocols::Publish, :call ],
+          "activateProtocol" => [ Protocols::Activate, :call ],
+          "retireProtocol" => [ Protocols::Retire, :call ],
+          "revertProtocolActivation" => [ Protocols::RevertActivation, :call ],
+          # ADR 0028: escreve na plataforma, não por um Command de cidade.
+          "setCityFeature" => [ Platform::Features, :set! ]
         }
       end
 
@@ -869,6 +871,12 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
         when "activateProtocol" then activate!(version: 1, code: code)
         when "retireProtocol" then retire!(version: 1, code: code)
         when "revertProtocolActivation" then revert!(reason: "motivo qualquer", code: code)
+        when "setCityFeature"
+          gql!(<<~GQL, citySlug: city.slug, key: "cadsus_lookup", enabled: true)
+            mutation($citySlug: String!, $key: String!, $enabled: Boolean!) {
+              setCityFeature(citySlug: $citySlug, key: $key, enabled: $enabled) { ok errors { path message } }
+            }
+          GQL
         else raise "no call defined for #{name} — add one to call_mutation above"
         end
       end
@@ -878,9 +886,9 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
       end
 
       it "never lets a command's exception message reach the response, answering CITY_WRITE_FAILED" do
-        city_mutation_commands.each do |mutation_name, command|
+        city_mutation_commands.each do |mutation_name, (command, method_name)|
           marker = "marcador-#{SecureRandom.hex(4)}"
-          allow(command).to receive(:call).and_raise(RuntimeError, "falha interna #{marker}")
+          allow(command).to receive(method_name).and_raise(RuntimeError, "falha interna #{marker}")
 
           with_fresh_totp { |code| call_mutation(mutation_name, code: code) }
 
