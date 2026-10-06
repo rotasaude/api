@@ -21,6 +21,25 @@ RSpec.describe Cadsus::Client do
     expect { Cadsus::Client.for(city) }.to raise_error(Cadsus::Unavailable)
   end
 
+  it "lê usuário e senha dentro do bloco da cidade (chave da cidade)" do
+    credential!
+    inside = false
+    allow(CityConnection).to receive(:with).and_wrap_original do |original, *args, &block|
+      original.call(*args) do
+        inside = true
+        block.call
+      ensure
+        inside = false
+      end
+    end
+    allow(Rails.configuration.x).to receive(:cadsus_backend).and_return(nil)
+    expect(Cadsus::SoapPdq).to receive(:new) { |**kwargs|
+      expect(inside).to be(true)
+      expect(kwargs).to include(username: "rota", password: "senha-pdq")
+    }
+    Cadsus::Client.for(city)
+  end
+
   describe Cadsus::Simulated do
     it "casos fixos: achado determinístico, não achado, fora do ar, credencial recusada" do
       credential!
