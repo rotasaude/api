@@ -35,6 +35,7 @@ require_relative "support/triage_catalog_helpers"
 require_relative "support/cnes_helpers"
 require_relative "support/committed_rows_cleanup"
 require_relative "support/lock_wait"
+require_relative "support/ledi_helpers"
 # Add additional requires below this line. Rails is not loaded until this point!
 
 # Requires supporting ruby files with custom matchers and macros, etc, in

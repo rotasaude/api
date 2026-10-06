@@ -5,10 +5,7 @@ require "rails_helper"
 # que o resultado volta igual. A aceitação pelo PEC é a prova :pec
 # (spec/integration/ledi_pec_spec.rb). Todos os valores são fictícios.
 RSpec.describe "Serialização Thrift LEDI 8.7.0 (ida e volta)" do
-  gen = Rails.root.join("vendor/ledi/8.7.0/gen-rb").to_s
-  $LOAD_PATH.unshift(gen) unless $LOAD_PATH.include?(gen)
-  require "dado_transporte_types"
-  require "ficha_atendimento_procedimento_types"
+  Ledi::Version.load!
 
   let(:ras) { Br::Gov::Saude::Esusab::Ras }
   let(:transp) { Br::Gov::Saude::Esusab::Dadotransp }

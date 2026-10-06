@@ -13,12 +13,7 @@ RSpec.describe "Prova técnica LEDI contra o PEC local", :pec do
     WebMock.enable! if defined?(WebMock)
   end
 
-  before(:all) do
-    gen = Rails.root.join("vendor/ledi/8.7.0/gen-rb").to_s
-    $LOAD_PATH.unshift(gen) unless $LOAD_PATH.include?(gen)
-    require "dado_transporte_types"
-    require "ficha_atendimento_procedimento_types"
-  end
+  before(:all) { Ledi::Version.load! }
 
   let(:client) do
     Ledi::PecClient.new(base_url: ENV.fetch("LEDI_PEC_URL"), username: ENV.fetch("LEDI_PEC_USERNAME"),
