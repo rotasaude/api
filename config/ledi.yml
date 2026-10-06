@@ -1,0 +1,23 @@
+# Quem envia as fichas LEDI (DadoInstalacaoThrift, ADR 0028): o CNPJ e o nome
+# do responsável pelo software. development/test usam um CNPJ fictício com dígito
+# válido; publicados leem do ambiente (vazio → Ledi::Sender::Missing, o envio
+# falha visível no job e nada sai com remetente em branco).
+shared:
+  sender_email: <%= ENV.fetch("LEDI_SENDER_EMAIL", "") %>
+  sender_phone: <%= ENV.fetch("LEDI_SENDER_PHONE", "") %>
+
+development:
+  sender_cnpj: "11222333000181"
+  sender_name: "Rota Saúde (desenvolvimento)"
+
+test:
+  sender_cnpj: "11222333000181"
+  sender_name: "Rota Saúde (teste)"
+
+staging:
+  sender_cnpj: <%= ENV.fetch("LEDI_SENDER_CNPJ", "") %>
+  sender_name: <%= ENV.fetch("LEDI_SENDER_NAME", "") %>
+
+production:
+  sender_cnpj: <%= ENV.fetch("LEDI_SENDER_CNPJ", "") %>
+  sender_name: <%= ENV.fetch("LEDI_SENDER_NAME", "") %>
