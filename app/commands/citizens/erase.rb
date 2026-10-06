@@ -3,6 +3,7 @@
 # reconfere a retenção (atendimento chegado depois do pedido vira `retained`,
 # nada mais muda); senão, para cada par, revoga, anonimiza, apaga o apagável e
 # troca CPF e telefone por um marcador que não identifica ninguém.
+# ADR 0028: também o CNS do CADSUS e a consulta pendente.
 # Reasons: :not_pending, :own_request.
 module Citizens
   module Erase
@@ -64,11 +65,13 @@ module Citizens
       # DELETE passar de propósito).
       TriageSuggestion.where(citizen_id: citizen.id).delete_all
 
+      # ADR 0028: o CNS do CADSUS, a marca e a consulta pendente saem junto.
       # update_columns cifra (o tipo cifrado serializa); um marcador por coluna,
       # para não repetir valor entre cpf e phone.
       citizen.update_columns(cpf: tombstone, phone: tombstone, neighborhood_id: nil, erased_at: Time.current,
                              birth_date: nil, sex: nil, gender_identity: nil, profile_source: nil,
-                             updated_at: Time.current)
+                             cns: nil, cadsus_checked_at: nil, cadsus_pending_cns: nil,
+                             cadsus_pending_session_id: nil, cadsus_pending_at: nil, updated_at: Time.current)
     end
 
     # O cadastro web guarda "+55…"; o WhatsApp grava o que a Meta manda, só

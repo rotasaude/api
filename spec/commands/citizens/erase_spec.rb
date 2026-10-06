@@ -220,4 +220,19 @@ RSpec.describe Citizens::Erase do
     expect(pair.reload).to have_attributes(birth_date: nil, sex: nil, gender_identity: nil, profile_source: nil)
     expect(TriageSuggestion.where(citizen_id: pair.id)).to be_empty
   end
+
+  # ADR 0028 (spec 2026-10-05 §8): a casca não guarda o CNS do CADSUS, a marca
+  # da conferência nem a consulta pendente.
+  it "apaga CNS, marca do CADSUS e pendente" do
+    pair.update!(cns: "700000000000005", cadsus_checked_at: Time.current, cadsus_pending_cns: "700000000000005",
+                 cadsus_pending_session_id: SecureRandom.uuid, cadsus_pending_at: Time.current)
+
+    described_class.call(request: request, by: admin)
+
+    row = ApplicationRecord.connection.select_one(
+      ApplicationRecord.sanitize_sql([ "SELECT cns, cadsus_checked_at, cadsus_pending_cns, cadsus_pending_session_id, " \
+                                       "cadsus_pending_at FROM citizens WHERE id = ?", pair.id ])
+    )
+    expect(row.values).to all(be_nil)
+  end
 end
