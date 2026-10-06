@@ -67,6 +67,18 @@ RSpec.describe Ledi::DeliverJob do
     end
   end
 
+  # R32: uma ficha que levanta erro inesperado não derruba nem trava o lote.
+  it "erro inesperado numa ficha: ela volta a pending com a classe do erro e o resto do lote segue" do
+    first, second, third = enqueue!(3)
+    pec.delivery_replies = [ [ 201, "" ], RuntimeError.new("segredo"), [ 201, "" ] ]
+    run!
+    expect(first.reload.status).to eq("accepted")
+    expect(second.reload.slice(:status, :attempts, :last_error))
+      .to eq("status" => "pending", "attempts" => 1, "last_error" => "erro interno (RuntimeError)")
+    expect(second.last_error).not_to include("segredo")
+    expect(third.reload.status).to eq("accepted")
+  end
+
   it "24 h depois da primeira tentativa: failed" do
     entry = enqueue!.first
     pec.delivery_replies = [ [ 500, "" ] ]

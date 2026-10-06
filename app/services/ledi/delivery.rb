@@ -44,6 +44,11 @@ module Ledi
       retry_later(entry, "PEC inacessível")
     rescue Ledi::PecClient::Failed => e
       retry_later(entry, "login no PEC respondeu #{e.status}")
+    rescue StandardError => e
+      # R32: erro inesperado numa ficha não trava o lote. Só o nome da classe
+      # vai para last_error, nunca a mensagem (pode carregar dado da ficha).
+      Rails.error.report(e, handled: true, severity: :error)
+      retry_later(entry, "erro interno (#{e.class.name})")
     end
 
     def post(entry, relogged: false)

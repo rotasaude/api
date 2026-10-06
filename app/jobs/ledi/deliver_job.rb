@@ -20,7 +20,13 @@ module Ledi
       entries = LediOutboxEntry.claim!(limit: BATCH_SIZE)
       return if entries.empty?
 
-      Ledi::Delivery.new(city).run(entries)
+      begin
+        Ledi::Delivery.new(city).run(entries)
+      ensure
+        # R32: o que escapou do caminho por ficha não fica preso em sending
+        # (release! só toca linhas ainda sending).
+        LediOutboxEntry.release!(entries.map(&:id))
+      end
     end
   end
 end
