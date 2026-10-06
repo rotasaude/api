@@ -24,7 +24,8 @@ RSpec.describe "Appointment requests", type: :request do
 
     get "/attendance/units/#{unit.id}/requests"
     expect(body["requests"].first).to include("id" => req.id, "kind" => "return", "cpf_masked" => citizen.cpf_masked,
-                                              "priority" => 5, "note" => "reavaliar", "reopened_reason" => nil)
+                                              "triage_priority" => 5, "priority" => "routine", "note" => "reavaliar",
+                                              "reopened_reason" => nil)
 
     at = 3.days.from_now.change(hour: 14, min: 30)
     json_post "/attendance/requests/#{req.id}/appointments", scheduled_at: at.iso8601, health_unit_id: unit.id

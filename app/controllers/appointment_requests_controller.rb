@@ -8,21 +8,52 @@ class AppointmentRequestsController < ApplicationController
     invalid_unit: :unprocessable_entity, reason_too_short: :unprocessable_entity, slot_taken: :conflict,
     slot_unavailable: :conflict, citizen_busy: :conflict, fit_in_limit: :conflict, use_slots: :conflict,
     invalid_reason: :unprocessable_entity, type_not_served: :unprocessable_entity, outside_shift: :unprocessable_entity,
-    invalid_kind: :unprocessable_entity
+    invalid_kind: :unprocessable_entity, already_assigned: :conflict
   }.freeze
   AVAILABILITY_MAX_DAYS = 14
   AVAILABILITY_DEFAULT_DAYS = 7
 
   before_action :require_verifier
 
+  # Fila da unidade (contratos §4.1, §10): abertos e os marcados que precisam
+  # remarcar (turno cancelado ou fora do modelo; derivado, filtrado em Ruby
+  # entre os marcados com horário vivo num turno).
   def index
     unit = HealthUnit.find_by(id: params[:id])
     return render json: { error: "not_found" }, status: :not_found unless unit
 
-    requests = AppointmentRequest.where(target_unit: unit, status: "open")
-                                 .includes(:citizen, :origin_unit, :root_triage).to_a
-                                 .sort_by { |r| [ r.root_triage.priority || 999, r.created_at ] }
-    render json: { requests: requests.map { |r| request_json(r) } }
+    base = AppointmentRequest.where(target_unit: unit)
+    on_shift = Appointment.live.where.not(shift_id: nil).select(:request_id)
+    requests = base.where(status: "open").or(base.where(status: "scheduled", id: on_shift))
+    rows = queue_rows(requests).select { |r, row| r.status == "open" || row[:needs_reschedule] }
+    render json: { requests: rows.map(&:last) }
+  end
+
+  # Fila "sem unidade" (contratos §4.1): mesma forma, pedidos abertos sem destino.
+  def unassigned
+    render json: { requests: queue_rows(AppointmentRequest.where(target_unit_id: nil, status: "open")).map(&:last) }
+  end
+
+  # Detalhe (contratos §9): o item da fila + reschedule_note, objeto puro.
+  def show
+    appointment_request = AppointmentRequest.includes(*Scheduling::RequestJson::INCLUDES).find_by(id: params[:id])
+    return render json: { error: "not_found" }, status: :not_found unless appointment_request
+
+    render json: request_json_builder.call(appointment_request, detail: true)
+  end
+
+  # Contratos §4.1, §10: { unit_id } → o item (objeto puro); 409 already_assigned.
+  def assign_unit
+    appointment_request = AppointmentRequest.find_by(id: params[:id])
+    return render json: { error: "not_found" }, status: :not_found unless appointment_request
+
+    result = AppointmentRequests::AssignUnit.call(request: appointment_request,
+                                                  unit_id: request.request_parameters["unit_id"], by: Current.user)
+    return render_failure(result, ERROR_STATUS) if result.failure?
+
+    render json: request_json_builder.call(
+      AppointmentRequest.includes(*Scheduling::RequestJson::INCLUDES).find(appointment_request.id)
+    )
   end
 
   # Contratos §4.3, §9: vaga, encaixe ou livre. `appointment_request` (nunca
@@ -86,14 +117,14 @@ class AppointmentRequestsController < ApplicationController
 
   private
 
-  # origin_unit_name é nulo no pedido da triagem (contratos §9).
-  def request_json(r)
-    {
-      id: r.id, kind: r.kind, origin_unit_name: r.origin_unit&.name, created_at: r.created_at.iso8601,
-      cpf_masked: r.citizen.cpf_masked, priority: r.root_triage.priority, note: r.note,
-      reopened_reason: r.reopened_reason
-    }
+  # Pares [pedido, item] na ordem da fila (atrasados, prazo, prioridade, criação).
+  def queue_rows(scope)
+    requests = Scheduling::RequestJson.sort(scope.includes(*Scheduling::RequestJson::INCLUDES).to_a,
+                                            today: Time.zone.today)
+    requests.map { |r| [ r, request_json_builder.call(r) ] }
   end
+
+  def request_json_builder = @request_json_builder ||= Scheduling::RequestJson.new(presenter: presenter)
 
   # Contratos §4.3, §9: health_unit_id vai nas três formas; ausência de kind = legacy.
   def book(appointment_request, body)

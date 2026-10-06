@@ -129,6 +129,11 @@ Rails.application.routes.draw do
     get  "units/:id/availability",     to: "appointment_requests#availability"
     post "requests/:id/appointments",  to: "appointment_requests#schedule"
     post "requests/:id/dismiss",       to: "appointment_requests#dismiss"
+    # Fila "sem unidade", detalhe e atribuição (ADR 0029; contratos §4.1).
+    # `requests/unassigned` PRECISA vir antes de `requests/:id`.
+    get  "requests/unassigned",        to: "appointment_requests#unassigned"
+    get  "requests/:id",               to: "appointment_requests#show"
+    post "requests/:id/assign_unit",   to: "appointment_requests#assign_unit"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).

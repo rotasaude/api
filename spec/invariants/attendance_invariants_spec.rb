@@ -406,7 +406,7 @@ RSpec.describe "Invariantes do atendimento: o CPF nunca vai na URL", type: :requ
   let(:get_allowlist) do
     [ "/attendance/units", "/attendance/units/all", "/attendance/units/:id/queue",
       "/attendance/units/:id/requests", "/attendance/units/:id/agenda", "/attendance/units/:id/availability",
-      "/attendance/erasure_requests" ]
+      "/attendance/requests/unassigned", "/attendance/requests/:id", "/attendance/erasure_requests" ]
   end
 
   def attendance_routes
