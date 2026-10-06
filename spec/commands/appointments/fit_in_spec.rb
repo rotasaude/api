@@ -52,6 +52,21 @@ RSpec.describe Appointments::FitIn do
     expect(fit_in(requests[3], at: other.starts_at + 10.minutes, on: other).reason).to eq(:fit_in_limit)
   end
 
+  # Só o horário VIVO do pedido (o que Placement.create! move) sai da conta. Um
+  # encaixe do pedido já com check-in segue ocupando o turno: se o pedido ainda
+  # estiver marcável, um segundo encaixe dele não pode levar o turno a limite+1.
+  # (O CheckIn real fecha o pedido; o estado aqui é montado direto para provar
+  # a conta, sem depender desse fechamento.)
+  it "encaixe do próprio pedido já com check-in continua contando contra o limite" do
+    own = fit_in(requests[0]).payload[:appointment]
+    own.update!(status: "confirmed", confirmed_at: Time.current)
+    own.update!(status: "checked_in", ended_at: Time.current)
+    expect(requests[0].reload.status).to eq("scheduled")
+    expect(fit_in(requests[1], at: shift.starts_at + 40.minutes)).to be_ok
+    expect(fit_in(requests[0], at: shift.starts_at + 70.minutes).reason).to eq(:fit_in_limit)
+    expect(Appointment.where(shift_id: shift.id, booking_kind: "fit_in", status: Appointment::ACTIVE).count).to eq(2)
+  end
+
   it "encaixe cancelado pelo cidadão não conta contra o limite" do
     fit_in(requests[0]).payload[:appointment].update!(status: "cancelled_by_citizen", ended_at: Time.current,
                                                       cancel_reason: "não poderei comparecer")

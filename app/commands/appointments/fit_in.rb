@@ -29,7 +29,10 @@ module Appointments
         next Result.fail(:outside_shift) if shift.cancelled_at || link.health_unit_id != request.target_unit_id
         next Result.fail(:type_not_served) unless Scheduling::AppointmentTypes.serves?(type, link.cbo_code)
         next Result.fail(:outside_shift) unless at >= shift.starts_at && ends <= shift.ends_at
-        if Scheduling::FitInLimit.count(shift, except_request_id: request.id) >= Scheduling::FitInLimit.for(shift)
+        # Só o horário VIVO do pedido sai da conta (Placement.create! o move); um
+        # encaixe dele já com check-in continua ocupando o turno.
+        moving = Appointment.where(request_id: request.id, status: Appointment::LIVE).pluck(:id)
+        if Scheduling::FitInLimit.count(shift, except_ids: moving) >= Scheduling::FitInLimit.for(shift)
           next Result.fail(:fit_in_limit)
         end
         next Result.fail(:citizen_busy) if Placement.citizen_busy?(request, at, ends)
