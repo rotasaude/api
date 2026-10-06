@@ -20,7 +20,7 @@ RSpec.describe "Caixa de avisos do cidadão", type: :request do
     get "/citizen/notices"
     expect(body["notices"].map { |n| n["id"] }).to eq([ newer.id, older.id ])
     expect(body["notices"].first).to eq(
-      "id" => newer.id, "title" => "Aviso novo", "body" => newer.campaign.body,
+      "kind" => "campaign", "id" => newer.id, "title" => "Aviso novo", "body" => newer.campaign.body,
       "dispatched_at" => newer.campaign.reload.dispatched_at.iso8601, "read" => false, "cpf_masked" => nil
     )
     expect(body["unread_count"]).to eq(2)
