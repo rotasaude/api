@@ -67,3 +67,12 @@ RSpec.describe "record mode event bindings (ADR 0028)" do
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
 end
+
+# Módulo 16 (ADR 0028): eventos do exportador LEDI, só trilha.
+RSpec.describe "ledi event bindings (ADR 0028)" do
+  it "declares every exporter event with no consumer" do
+    names = %w[ledi.ficha_accepted ledi.ficha_rejected ledi.ficha_resent]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end

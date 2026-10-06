@@ -84,6 +84,11 @@ default: &default
     queue: default
     schedule: "every minute"
 
+  ledi_deliver:
+    class: Ledi::DeliverJob
+    queue: default
+    schedule: "every minute"
+
   discard_old_failed_jobs:
     command: "SolidQueueRetention.discard_failed"
     queue: housekeeping

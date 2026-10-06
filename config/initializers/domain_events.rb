@@ -108,4 +108,5 @@ Rails.application.config.to_prepare do
   # Exportador LEDI (ADR 0028; contratos §6): só trilha, só ids.
   DomainEvents.bind "ledi.ficha_accepted", to: []
   DomainEvents.bind "ledi.ficha_rejected", to: []
+  DomainEvents.bind "ledi.ficha_resent", to: []
 end
