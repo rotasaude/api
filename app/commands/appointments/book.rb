@@ -13,11 +13,12 @@ module Appointments
       return Result.fail(:type_not_served) if type.nil?
       return Result.fail(:wrong_unit) if request.target_unit_id.nil?
 
-      ApplicationRecord.transaction do
+      # requires_new: dentro de uma transação de quem chama, a EXCLUDE aborta só
+      # o savepoint, e o slot_taken devolvido deixa a transação de fora usável.
+      ApplicationRecord.transaction(requires_new: true) do
         Placement.lock!(request)
         next Result.fail(:request_not_open) unless Placement.bookable?(request)
 
-        HealthUnit.lock_active!(request.target_unit_id)
         slot = find_slot(request, professional, type, at, now)
         next Result.fail(served?(request, professional, type) ? :slot_unavailable : :type_not_served) unless slot
         next Result.fail(:citizen_busy) if Placement.citizen_busy?(request, at, slot.ends_at)

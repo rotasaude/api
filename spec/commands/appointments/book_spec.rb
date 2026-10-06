@@ -79,6 +79,33 @@ RSpec.describe Appointments::Book do
     expect(request.reload.status).to eq("open")
   end
 
+  it "dentro de uma transação de quem chama, a trava vira slot_taken e a transação de fora segue usável" do
+    rival = triage_request!(Citizen.create!(cpf: "11144477735", phone: "+5541911112222"), unit: unit)
+    slot = Scheduling::Availability.for(unit: unit, from: day, to: day, appointment_type: medica).first
+    appointment_row!(rival, shift, starts_at: shift.starts_at)
+    allow(Scheduling::Availability).to receive(:for).and_return([ slot ])
+    ApplicationRecord.transaction do
+      expect(book.reason).to eq(:slot_taken)
+      # sem savepoint próprio a transação estaria abortada (PG::InFailedSqlTransaction)
+      expect(AppointmentRequest.find(request.id).status).to eq("open")
+    end
+  end
+
+  it "cidadão com horário de vaga sobreposto em OUTRA unidade é citizen_busy" do
+    other_unit = create_unit("UBS Norte")
+    other_link = doctor_link!(other_unit)
+    other_shift = shift!(other_link, starts_at: shift.starts_at, ends_at: shift.ends_at)
+    appointment_row!(triage_request!(citizen, unit: other_unit, type_key: "retorno"), other_shift,
+                     starts_at: shift.starts_at + 10.minutes)
+    expect(book.reason).to eq(:citizen_busy)
+  end
+
+  it "pedido reaberto marcado de novo perde o reopened_reason" do
+    request.update!(reopened_reason: "no_show")
+    expect(book).to be_ok
+    expect(request.reload).to have_attributes(status: "scheduled", reopened_reason: nil)
+  end
+
   it "remarcação pela recepção: o horário vivo vira moved e o novo aponta para ele" do
     first = book.payload[:appointment]
     second = book(at: shift.starts_at + 40.minutes).payload[:appointment]

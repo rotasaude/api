@@ -1,10 +1,13 @@
 # O que Book e FitIn compartilham (ADR 0029 §4.3). Chamado DENTRO da transação.
 #
-# Ordem de travas: cidadão (FOR UPDATE: duas marcações do mesmo cidadão se
-# enfileiram, e citizen_busy vê a anterior) → horários vivos do pedido → pedido.
-# Horário antes de pedido é a ordem de CancelByCitizen, Lapse e Drain; cidadão
-# antes de tudo é a de Citizens::Erase. Depois disso vêm a unidade (FOR SHARE)
-# e, no encaixe, o turno (FOR UPDATE).
+# Ordem de travas: unidade do pedido (FOR SHARE) → cidadão (FOR NO KEY UPDATE:
+# duas marcações do mesmo cidadão se enfileiram, e citizen_busy vê a anterior)
+# → horários vivos do pedido → pedido; no encaixe, depois, o turno (FOR UPDATE).
+# Unidade primeiro é a ordem de HealthUnits::Drain (unidade FOR UPDATE →
+# horários → pedidos) e do check-in: com a unidade por último, marcação e
+# esvaziamento cruzados davam deadlock (500). Horário antes de pedido é a ordem
+# de CancelByCitizen, Lapse e Drain. Unidade desativada levanta
+# HealthUnit::Inactive (quem chama devolve invalid_unit).
 module Appointments
   module Placement
     module_function
@@ -16,7 +19,8 @@ module Appointments
     end
 
     def lock!(request)
-      Citizen.lock.find(request.citizen_id)
+      HealthUnit.lock_active!(request.target_unit_id)
+      Citizen.lock("FOR NO KEY UPDATE").find(request.citizen_id)
       Appointment.where(request_id: request.id, status: Appointment::LIVE).order(:id).lock.to_a
       request.lock!
     end
