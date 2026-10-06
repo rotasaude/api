@@ -141,8 +141,10 @@ Rails.application.routes.draw do
     post "me",      to: "professionals#update_me"
     get  "cbo",     to: "professionals#cbo"
     post "links/:id/end", to: "professional_links#end_link"
+    post "links/:id/default_type", to: "professional_links#default_type"
     post "links/:id/shifts",  to: "professional_shifts#create"
     post "shifts/:id/cancel", to: "professional_shifts#cancel"
+    post "shifts/:id/template", to: "professional_shifts#template"
     # Agenda dos profissionais (ADR 0029; contratos §3).
     get  "appointment_types",      to: "appointment_types#index"
     post "appointment_types",      to: "appointment_types#create"

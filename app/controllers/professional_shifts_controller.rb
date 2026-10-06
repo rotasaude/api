@@ -9,7 +9,8 @@ class ProfessionalShiftsController < ApplicationController
 
   ERROR_STATUS = {
     invalid_shift: :unprocessable_entity, link_ended: :conflict, shift_overlap: :conflict,
-    reason_required: :unprocessable_entity, reason_too_long: :unprocessable_entity, already_cancelled: :conflict
+    reason_required: :unprocessable_entity, reason_too_long: :unprocessable_entity, already_cancelled: :conflict,
+    invalid_template: :unprocessable_entity
   }.freeze
   DEFAULT_DAYS = 14
   MAX_DAYS = 62
@@ -33,11 +34,11 @@ class ProfessionalShiftsController < ApplicationController
     link = ProfessionalLink.find_by(id: params[:id])
     return render(json: { error: "not_found" }, status: :not_found) unless link
 
-    body = scalar_body(%w[starts_at ends_at])
+    body = scalar_body(%w[starts_at ends_at schedule_template_id])
     return render(json: { error: "invalid" }, status: :unprocessable_entity) if body.value?(:non_scalar)
 
     result = Professionals::ScheduleShift.call(link: link, starts_at: body["starts_at"], ends_at: body["ends_at"],
-                                               by: Current.user)
+                                               by: Current.user, schedule_template_id: body["schedule_template_id"])
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: { shift: shift_json(result.payload[:shift]) }, status: :created
@@ -54,6 +55,22 @@ class ProfessionalShiftsController < ApplicationController
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: { shift: shift_json(result.payload[:shift]) }
+  end
+
+  # Liga, troca ou tira (null) o modelo do turno. Contrato §9: devolve o turno
+  # puro, sem envelope.
+  def template
+    shift = ProfessionalShift.find_by(id: params[:id])
+    return render(json: { error: "not_found" }, status: :not_found) unless shift
+
+    body = scalar_body(%w[schedule_template_id])
+    return render(json: { error: "invalid" }, status: :unprocessable_entity) if body.value?(:non_scalar)
+
+    result = Professionals::SetShiftTemplate.call(shift: shift, schedule_template_id: body["schedule_template_id"],
+                                                  by: Current.user)
+    return render_failure(result, ERROR_STATUS) if result.failure?
+
+    render json: shift_json(result.payload[:shift])
   end
 
   private

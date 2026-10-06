@@ -21,7 +21,7 @@ module ProfessionalRendering
       id: l.id, health_unit_id: l.health_unit_id, unit_name: l.health_unit.name, cbo_code: l.cbo_code,
       cbo_title: Professionals::Cbo.find(l.cbo_code)&.title, started_at: l.started_at.iso8601,
       started_by: l.started_by_user.email_address, ended_at: l.ended_at&.iso8601,
-      ended_by: l.ended_by_user&.email_address
+      ended_by: l.ended_by_user&.email_address, default_appointment_type_key: l.default_appointment_type_key
     }
   end
 
@@ -29,7 +29,7 @@ module ProfessionalRendering
     {
       id: s.id, professional_link_id: s.professional_link_id, unit_name: s.professional_link.health_unit.name,
       starts_at: s.starts_at.iso8601, ends_at: s.ends_at.iso8601, cancelled_at: s.cancelled_at&.iso8601,
-      cancel_reason: s.cancel_reason
+      cancel_reason: s.cancel_reason, schedule_template_id: s.schedule_template_id
     }
   end
 

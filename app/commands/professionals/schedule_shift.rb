@@ -1,10 +1,11 @@
 # Lança um turno no vínculo (ADR 0021): até 24h, dentro do vínculo, sem
 # sobrepor outro turno válido do mesmo profissional em qualquer unidade (a
 # EXCLUDE do banco decide; aqui só se nomeia o conflito). FOR SHARE no
-# vínculo: o encerramento (FOR UPDATE) espera, ou é visto.
+# vínculo: o encerramento (FOR UPDATE) espera, ou é visto. O modelo de agenda
+# (ADR 0029 §3.2) é opcional e tem de estar ativo.
 module Professionals
   class ScheduleShift
-    def self.call(link:, starts_at:, ends_at:, by:)
+    def self.call(link:, starts_at:, ends_at:, by:, schedule_template_id: nil)
       starts = parse(starts_at)
       ends = parse(ends_at)
       return Result.fail(:invalid_shift) unless starts && ends && ends > starts && ends - starts <= ProfessionalShift::MAX_DURATION
@@ -14,8 +15,15 @@ module Professionals
         next Result.fail(:link_ended) unless locked.active?
         next Result.fail(:invalid_shift) if starts < locked.started_at
 
+        template = nil
+        if schedule_template_id.present?
+          template = SetShiftTemplate.active_template(schedule_template_id)
+          next Result.fail(:invalid_template) unless template
+        end
+
         shift = ProfessionalShift.create!(professional_link: locked, professional_id: locked.professional_id,
-                                          starts_at: starts, ends_at: ends, created_by_user: by)
+                                          starts_at: starts, ends_at: ends, created_by_user: by,
+                                          schedule_template: template)
         DomainEvents.publish("professional.shift_scheduled", shift_id: shift.id, professional_link_id: locked.id,
                                                              professional_id: locked.professional_id, by_user_id: by.id)
         Result.ok(shift: shift)
