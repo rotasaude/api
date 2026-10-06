@@ -8,15 +8,29 @@ require "digest"
 # diferenciar maiúsculas, em qualquer subpasta.
 class OfficialArchive
   class NotFound < StandardError; end
+  class LineTooLong < StandardError; end
+
+  # Teto por linha (não por arquivo): os formatos CSV/largura fixa do DATASUS
+  # têm linhas curtas; entrada sem quebra de linha não pode ocupar a memória.
+  MAX_LINE_BYTES = 64 * 1024
 
   def self.open(path)
     path = Pathname(path.to_s)
     raise NotFound, "arquivo não encontrado: #{path}" unless path.exist?
     return yield(new(path, nil)) if path.directory?
 
-    Zip::File.open(path.to_s) { |zip| return yield(new(path, zip)) }
-  rescue Zip::Error
-    raise NotFound, "não é um ZIP legível: #{path.basename}"
+    # O rescue cobre só a abertura do ZIP: erro no meio da leitura (CRC,
+    # dados truncados) sobe como está, para quem lê decidir (Import marca failed).
+    zip = begin
+      Zip::File.open(path.to_s)
+    rescue Zip::Error
+      raise NotFound, "não é um ZIP legível: #{path.basename}"
+    end
+    begin
+      yield(new(path, zip))
+    ensure
+      zip.close
+    end
   end
 
   def initialize(path, zip)
@@ -33,7 +47,10 @@ class OfficialArchive
 
   def each_line(pattern, encoding: "ISO-8859-1")
     open_entry(pattern) do |io|
-      io.each_line do |raw|
+      while (raw = io.gets("\n", MAX_LINE_BYTES + 1))
+        if raw.bytesize > MAX_LINE_BYTES && !raw.end_with?("\n")
+          raise LineTooLong, "linha acima de #{MAX_LINE_BYTES} bytes em #{pattern.source}"
+        end
         line = raw.dup.force_encoding(encoding).encode("UTF-8", invalid: :replace, undef: :replace).delete_prefix("﻿").chomp
         yield line unless line.strip.empty?
       end

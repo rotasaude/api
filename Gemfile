@@ -37,6 +37,7 @@ end
 gem "json_schemer"
 # Arquivos oficiais do DATASUS chegam em ZIP (SIGTAP, CNES) — ADR 0028.
 gem "rubyzip", "~> 2.4", require: "zip"
+gem "csv"
 
 gem "bcrypt", "~> 3.1"
 gem "rotp", "~> 6.3"   # TOTP RFC 6238 — ADR-0022

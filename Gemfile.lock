@@ -91,6 +91,7 @@ GEM
       bigdecimal
       rexml
     crass (1.0.6)
+    csv (3.3.6)
     date (3.5.1)
     debug (1.11.1)
       irb (~> 1.10)
@@ -356,6 +357,7 @@ PLATFORMS
 DEPENDENCIES
   bcrypt (~> 3.1)
   bootsnap
+  csv
   debug
   factory_bot_rails
   graphql (~> 2.3)

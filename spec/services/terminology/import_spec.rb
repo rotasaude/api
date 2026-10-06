@@ -51,4 +51,34 @@ RSpec.describe Terminology::Import do
     expect(described_class.call(kind: "ciap2", version: "2", path: tmp.join("nada")).reason).to eq(:file_not_found)
     expect(TerminologyRelease.count).to eq(0)
   end
+
+it "ZIP corrompido no meio da leitura: failed, invalid_file, a ativa continua" do
+  active = described_class.call(kind: "ciap2", version: "2", path: ciap2).payload[:release]
+  path = tmp.join("corrompido.zip")
+  Zip::File.open(path.to_s, create: true) { |z| z.get_output_stream("ciap2.csv") { |o| o.write("codigo;titulo\n" + "K86;Hipertensao\n" * 500) } }
+  bytes = path.binread
+  bytes[60, 40] = "\x00" * 40
+  path.binwrite(bytes)
+
+  result = described_class.call(kind: "ciap2", version: "3", path: path)
+
+  expect(result.reason).to eq(:invalid_file)
+  expect(TerminologyRelease.find_by!(kind: "ciap2", version: "3").status).to eq("failed")
+  expect(active.reload.status).to eq("active")
+end
+
+it "linha longa demais: failed e invalid_file" do
+  tmp.join("ciap2.csv").write("codigo;titulo\nK86;" + ("a" * (OfficialArchive::MAX_LINE_BYTES + 10)))
+  result = described_class.call(kind: "ciap2", version: "3", path: tmp)
+  expect(result.reason).to eq(:invalid_file)
+  expect(TerminologyRelease.find_by!(kind: "ciap2", version: "3").status).to eq("failed")
+end
+
+it "erro inesperado também marca failed, sem ser mascarado por falha ao marcar" do
+  allow_any_instance_of(Terminology::Ciap2Reader).to receive(:write).and_raise(IOError, "disco")
+  result = described_class.call(kind: "ciap2", version: "3", path: ciap2)
+  expect(result.reason).to eq(:invalid_file)
+  expect(result.message).to include("disco")
+  expect(TerminologyRelease.find_by!(kind: "ciap2", version: "3").status).to eq("failed")
+end
 end

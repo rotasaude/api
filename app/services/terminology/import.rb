@@ -36,9 +36,16 @@ module Terminology
         written
       end
       Result.ok(release: release.reload, counts: counts)
-    rescue Invalid, OfficialArchive::NotFound, ActiveRecord::ActiveRecordError, CSV::MalformedCSVError => e
-      release&.update!(status: "failed")
+    rescue StandardError => e
+      mark_failed(release)
       Result.fail(:invalid_file, message: e.message.truncate(300))
+    end
+
+    # Nunca mascara o erro original: se nem o `failed` grava, segue com o motivo.
+    def mark_failed(release)
+      release&.update!(status: "failed")
+    rescue StandardError => e
+      Rails.logger.error("[terminology:import] não marcou failed: #{e.class}")
     end
 
     # CID-10 e CIAP-2: uma ativa por kind. SIGTAP: uma ativa por competência (a

@@ -39,4 +39,27 @@ RSpec.describe OfficialArchive do
     expect { described_class.open(tmp.join("ruim.zip")) { nil } }.to raise_error(described_class::NotFound)
     expect { described_class.open(dir) { |x| x.each_row(/\Aoutro\.csv\z/) { nil } } }.to raise_error(described_class::NotFound)
   end
+
+it "linha acima do teto levanta LineTooLong sem ler o arquivo todo" do
+  tmp.join("x.csv").binwrite("codigo;titulo
+" + ("a" * (described_class::MAX_LINE_BYTES + 10)))
+  expect { described_class.open(tmp) { |a| a.each_row(/\Ax\.csv\z/) { nil } } }.to raise_error(described_class::LineTooLong)
+end
+
+it "aceita linha exatamente no teto" do
+  tmp.join("x.csv").binwrite("codigo;titulo\nK86;" + ("a" * (described_class::MAX_LINE_BYTES - 5)) + "\n")
+  rows = []
+  described_class.open(tmp) { |a| a.each_row(/\Ax\.csv\z/) { |r| rows << r } }
+  expect(rows.size).to eq(1)
+end
+
+it "erro de ZIP no meio da leitura sobe como Zip::Error, não como NotFound" do
+  path = tmp.join("corrompido.zip")
+  Zip::File.open(path.to_s, create: true) { |z| z.get_output_stream("ciap2.csv") { |o| o.write("codigo;titulo\n" + "K86;Hipertensao\n" * 500) } }
+  bytes = path.binread
+  bytes[60, 40] = "\x00" * 40
+  path.binwrite(bytes)
+  expect { described_class.open(path) { |a| a.each_row(/\Aciap2\.csv\z/, encoding: "UTF-8") { nil } } }
+    .to raise_error(Zip::Error)
+end
 end
