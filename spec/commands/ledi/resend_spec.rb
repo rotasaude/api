@@ -41,6 +41,15 @@ RSpec.describe Ledi::Resend do
     expect(Ledi::Transport.read(entry.bytes).uuidDadoSerializado).to eq(entry.uuid)
   end
 
+  it "reinicia a janela de tentativas: first_attempt_at volta a nil e um erro transitório não vira failed" do
+    allow(Ledi::Observations).to receive(:resend_uuid_policy).and_return(:same)
+    entry.update_columns(first_attempt_at: 3.days.ago)
+    described_class.call(entry: entry, by: by)
+    expect(entry.reload.first_attempt_at).to be_nil
+    entry.retry_later!(error: "timeout", wait: 60, give_up_after: 24.hours)
+    expect(entry.reload.status).to eq("pending")
+  end
+
   it "publica ledi.ficha_resent só com ids" do
     allow(Ledi::Observations).to receive(:resend_uuid_policy).and_return(:same)
     described_class.call(entry: entry, by: by)
