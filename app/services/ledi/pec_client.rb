@@ -20,7 +20,14 @@ module Ledi
       end
     end
 
-    Session = Data.define(:cookie)
+    # O cookie é a sessão autenticada no PEC: nunca em inspect, to_s nem pp
+    # (log, mensagem de exceção, console).
+    Session = Data.define(:cookie) do
+      def inspect = "#<Ledi::PecClient::Session cookie=[FILTERED]>"
+      alias_method :to_s, :inspect
+
+      def pretty_print(q) = q.text(inspect)
+    end
 
     LOGIN_PATH = "/api/recebimento/login".freeze
     TIMEOUT = 10

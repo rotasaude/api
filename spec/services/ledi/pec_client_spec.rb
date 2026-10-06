@@ -40,4 +40,13 @@ RSpec.describe Ledi::PecClient do
   it "inspect nunca mostra a senha" do
     expect(client.inspect).not_to include("senha-secreta")
   end
+
+  it "a sessão nunca mostra o JSESSIONID em inspect, to_s, interpolação nem pp" do
+    stub_request(:post, url).to_return(status: 200, headers: { "Set-Cookie" => "JSESSIONID=abc123; Path=/" })
+    session = client.login
+    expect(session.cookie).to eq("JSESSIONID=abc123")
+    shown = [ session.inspect, session.to_s, "#{session}", [ session ].inspect, session.pretty_inspect ]
+    shown.each { |text| expect(text).not_to include("abc123") }
+    expect(session.inspect).to include("[FILTERED]")
+  end
 end
