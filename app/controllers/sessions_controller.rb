@@ -132,7 +132,11 @@ class SessionsController < ApplicationController
       operator: true,
       mfa_verified_at: nil,
       memberships: [],
-      time_zone: Current.city.time_zone
+      time_zone: Current.city.time_zone,
+      # Interruptores LIGADOS na cidade do host (ADR 0028; contratos §1,
+      # session-v1.1.0). O que falta para usar, a tela pergunta à rota da
+      # funcionalidade (GET /integrations).
+      features: Platform::Features.enabled_keys(Current.city)
     }
   end
 
@@ -147,7 +151,11 @@ class SessionsController < ApplicationController
       mfa_verified_at: Current.session&.mfa_verified_at&.iso8601,
       memberships: serialize_memberships(user),
       # Fuso da cidade do host (api#27): as telas formatam hora nele.
-      time_zone: Current.city.time_zone
+      time_zone: Current.city.time_zone,
+      # Interruptores LIGADOS na cidade do host (ADR 0028; contratos §1,
+      # session-v1.1.0). O que falta para usar, a tela pergunta à rota da
+      # funcionalidade (GET /integrations).
+      features: Platform::Features.enabled_keys(Current.city)
     }
   end
 
