@@ -32,8 +32,7 @@ module Territory
       units.map do |u|
         {
           id: u.id, name: u.name, kind: u.kind,
-          address: { street: u.address_street, number: u.address_number, complement: u.address_complement,
-                     zip: u.address_zip }
+          address: Scheduling::UnitAddress.call(u)
         }
       end
     end

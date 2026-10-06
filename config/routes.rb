@@ -254,6 +254,7 @@ Rails.application.routes.draw do
     post "appointments/:id/confirm",       to: "appointments#confirm"
     post "appointments/:id/cancel",        to: "appointments#cancel"
     post "appointments/:id/check_in_code", to: "appointments#check_in_code"
+    post "appointments/:id/reschedule_request", to: "appointments#reschedule_request"
 
     get  "notices",          to: "notices#index"
     post "notices/:id/read", to: "notices#read"

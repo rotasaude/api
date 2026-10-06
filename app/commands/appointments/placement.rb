@@ -20,6 +20,11 @@ module Appointments
 
     def lock!(request)
       HealthUnit.lock_active!(request.target_unit_id)
+      lock_from_citizen!(request)
+    end
+
+    # O resto da ordem, para quem já travou a unidade (RequestReschedule).
+    def lock_from_citizen!(request)
       Citizen.lock("FOR NO KEY UPDATE").find(request.citizen_id)
       Appointment.where(request_id: request.id, status: Appointment::LIVE).order(:id).lock.to_a
       request.lock!
