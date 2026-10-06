@@ -81,6 +81,27 @@ RSpec.describe "Console: modo de prontuário da cidade", type: :request do
     expect(down.reload.record_mode).to eq("off")
   end
 
+  it "linha da cidade inválida por outra regra: 422 invalid_city e o IBGE do banco da cidade não muda" do
+    city.update_columns(name: "")
+    patch_settings(ibge_code: "4106902", record_mode: "record")
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json).to eq("error" => "invalid_city")
+    expect(CityProfile.current&.ibge_code).to be_nil
+    expect(city.reload.record_mode).to eq("off")
+    expect(audits).to be_empty
+  end
+
+  it "cidade suspensa com ibge_code: 503 city_unreachable e nada gravado" do
+    suspended = create(:city, status: "suspended")
+    patch_settings({ ibge_code: "4106902", record_mode: "record" }, id: suspended.id)
+
+    expect(response).to have_http_status(:service_unavailable)
+    expect(json).to eq("error" => "city_unreachable")
+    expect(suspended.reload.record_mode).to eq("off")
+    expect(audits).to be_empty
+  end
+
   it "lista e ficha trazem os mesmos campos; cidade inalcançável responde 200 com city_reachable false" do
     down = create(:city, name: "Fora do Ar")
     allow(CityConnection).to receive(:with).and_call_original

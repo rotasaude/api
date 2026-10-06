@@ -4,7 +4,7 @@
 # no city_profile do banco da cidade (fonte única); modo e PEC, na plataforma.
 # A cidade é escrita primeiro: se ela não responde, a plataforma não muda.
 # null e "" limpam PEC e IBGE; record_mode nunca é nulo.
-# Reasons: :invalid_record_mode, :invalid_ibge_code, :invalid_pec_url, :city_unreachable.
+# Reasons: :invalid_city (linha da cidade inválida por outra regra), :invalid_record_mode, :invalid_ibge_code, :invalid_pec_url, :city_unreachable.
 class UpdateCityRecordSettings
   FIELDS = %w[record_mode ibge_code pec_url].freeze
   IBGE_CODE = /\A\d{7}\z/
@@ -14,6 +14,12 @@ class UpdateCityRecordSettings
     error = invalid(attrs)
     return Result.fail(error) if error
 
+    # Atribui e valida a linha da plataforma ANTES de tocar o banco da cidade:
+    # assim o IBGE (que commita na cidade) nunca fica meio aplicado por uma
+    # validação da City que falharia depois.
+    city.assign_attributes(attrs.slice("record_mode", "pec_url"))
+    return Result.fail(:invalid_city) unless city.valid?
+
     changed = []
     if attrs.key?("ibge_code")
       return Result.fail(:city_unreachable) unless city.servable?
@@ -21,7 +27,6 @@ class UpdateCityRecordSettings
       changed << "ibge_code" if write_ibge_code(city, attrs["ibge_code"])
     end
 
-    city.assign_attributes(attrs.slice("record_mode", "pec_url"))
     changed.concat(city.changed & %w[record_mode pec_url])
     city.save!
     changed.sort!
