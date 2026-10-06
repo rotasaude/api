@@ -52,8 +52,12 @@ RSpec.describe "City provisioning on the platform console", type: :request do
 
     get "/cities/#{id}"
     expect(response).to have_http_status(:ok)
-    expect(json).to eq("id" => id, "slug" => "novacidade", "status" => "provisioning", "schema_version" => nil,
-                       "time_zone" => "America/Sao_Paulo")
+    expect(json).to include("id" => id, "slug" => "novacidade", "status" => "provisioning", "schema_version" => nil,
+                            "time_zone" => "America/Sao_Paulo", "record_mode" => "off", "pec_url" => nil,
+                            "ibge_code" => nil, "city_reachable" => false)
+    expect(json.keys).to match_array(%w[id slug name uf status schema_version time_zone created_at record_mode pec_url
+                                        ibge_code city_reachable features])
+    expect(json["features"].first["missing"]).to eq([ "city_unreachable" ])
 
     get "/cities/#{SecureRandom.uuid}"
     expect(response).to have_http_status(:not_found)
@@ -111,7 +115,8 @@ RSpec.describe "City provisioning on the platform console", type: :request do
     expect(response).to have_http_status(:ok)
     rows = json["data"]
     expect(rows.first["slug"]).to eq("novacidade")
-    expect(rows.first.keys).to match_array(%w[id slug name uf status schema_version time_zone created_at])
+    expect(rows.first.keys).to match_array(%w[id slug name uf status schema_version time_zone created_at record_mode pec_url
+                                                  ibge_code city_reachable features])
     expect(response.body).not_to include("postgres://")
   end
 

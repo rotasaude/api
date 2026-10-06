@@ -16,6 +16,8 @@ Rails.application.routes.draw do
       resources :city_grants, only: :create
       # Provisionamento em duas fases (Plano 4).
       resources :cities, only: %i[index create show]
+      # Modo de prontuário, PEC e IBGE (ADR 0028; contratos §4.1).
+      patch "/cities/:id/record_settings", to: "cities#record_settings"
       # Canal do WhatsApp da cidade (Plano 8). O canal mora na PLATAFORMA e é
       # passo à parte do provisionamento (Plano 4): entra quando a Meta libera o
       # número. Sem ele, Whatsapp::Ingest não acha a cidade pelo phone_number_id.

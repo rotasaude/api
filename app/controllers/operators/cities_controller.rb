@@ -1,7 +1,8 @@
 # Provisionamento de cidade pelo console (spec banco-por-cidade §4, Plano 4):
 #
 #   POST /cities { slug, name, uf, ibge_code, admin_email, alert_email, time_zone? } → 202 { id }
-#   GET  /cities/:id                                                     → 200 { id, slug, status, schema_version }
+#   GET  /cities/:id                                                     → 200 { id, slug, status, schema_version, ... }
+#   PATCH /cities/:id/record_settings { record_mode?, ibge_code?, pec_url? } → 200 { city }
 #   GET  /cities                                                        → 200 { data: [...] }
 #
 # O POST só registra e enfileira (ProvisionCity): quem cria o banco é o worker. A
@@ -10,19 +11,9 @@
 # { error: "misconfigured" }.
 module Operators
   class CitiesController < BaseController
-    # GET /cities — catálogo para o console (Plano 6). Só o que vive na
-    # plataforma: nada aqui abre conexão de cidade, então a lista continua
-    # barata com N cidades. Métrica por cidade é dentro da cidade (spec §5: o
-    # console perde a visão cross-tenant).
+    # GET /cities — catálogo para o console (Plano 6). ADR 0028: cada cidade ativa abre a conexão dela uma vez (IBGE e credenciais, para ibge_code e features); cidade que não responde sai com city_reachable false, nunca derruba a lista.
     def index
-      rows = City.order(created_at: :desc).map do |city|
-        {
-          id: city.id, slug: city.slug, name: city.name, uf: city.uf,
-          status: city.status, schema_version: city.schema_version, time_zone: city.time_zone,
-          created_at: city.created_at.iso8601
-        }
-      end
-      render json: { data: rows }
+      render json: { data: City.order(created_at: :desc).map { |city| city_json(city) } }
     end
 
     def create
@@ -42,8 +33,34 @@ module Operators
       city = City.find_by(id: params[:id].to_s)
       return head(:not_found) unless city
 
-      render json: { id: city.id, slug: city.slug, status: city.status, schema_version: city.schema_version,
-                     time_zone: city.time_zone }
+      render json: city_json(city)
+    end
+
+    def record_settings
+      city = City.find_by(id: params[:id].to_s)
+      return render(json: { error: "not_found" }, status: :not_found) unless city
+
+      result = UpdateCityRecordSettings.call(city: city, attrs: request.request_parameters)
+      if result.failure?
+        status = result.reason == :city_unreachable ? :service_unavailable : :unprocessable_entity
+        return render(json: { error: result.reason.to_s }, status: status)
+      end
+
+      render json: { city: city_json(city.reload) }
+    end
+
+    private
+
+    # Mesmo formato na lista, na ficha e no PATCH (contratos §4.2).
+    def city_json(city)
+      state = Platform::Features.city_state(city)
+      {
+        id: city.id, slug: city.slug, name: city.name, uf: city.uf, status: city.status,
+        schema_version: city.schema_version, time_zone: city.time_zone, created_at: city.created_at.iso8601,
+        record_mode: city.record_mode, pec_url: city.pec_url, ibge_code: state&.dig(:ibge_code),
+        city_reachable: !state.nil?,
+        features: Platform::Features.summary(city, state: state).map { |f| f.slice(:key, :enabled, :usable, :missing) }
+      }
     end
   end
 end
