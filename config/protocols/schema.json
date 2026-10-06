@@ -78,6 +78,21 @@
           "when":     { "$ref": "#/$defs/condition" }
         }
       }
+    },
+    "scheduling": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["when", "appointment_type", "priority", "due_in_days"],
+        "properties": {
+          "when":             { "$ref": "#/$defs/condition" },
+          "appointment_type": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,40}$" },
+          "priority":         { "enum": ["routine", "priority"] },
+          "due_in_days":      { "type": "integer", "minimum": 1, "maximum": 365 }
+        }
+      }
     }
   },
   "$defs": {

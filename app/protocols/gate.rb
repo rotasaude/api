@@ -19,6 +19,7 @@ module Protocols
       errors.concat(Validation::Condition.step_id_collision_errors(definition["steps"] || []))
       errors.concat(Validation::Condition.reserved_prefix_errors(definition["steps"] || []))
       errors.concat(Validation::Offer.call(definition)) # ADR 0027: offer.eligibility, suggestions
+      errors.concat(Validation::Scheduling.call(definition)) # ADR 0029: scheduling[].when
       Validator::Result.new(errors: errors)
     end
   end
