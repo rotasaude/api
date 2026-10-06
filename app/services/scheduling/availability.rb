@@ -1,7 +1,7 @@
 # Vagas calculadas (ADR 0029 §4.1). A vaga nunca é gravada: sai de turnos não
 # cancelados, do modelo ligado a cada turno e dos horários ativos do
 # profissional. A parte de cima é PURA (recebe dados e o fuso); a carga do
-# banco fica em `for` (Task 8).
+# banco fica em `for`.
 #
 # 1. turno cujo vínculo tem CBO servido pelo tipo pedido;
 # 2. faixas: as do modelo (horas no fuso da cidade, em cada dia local que o
@@ -91,6 +91,52 @@ module Scheduling
       busy.any? do |b|
         b.professional_id == slot.professional_id && b.starts_at < slot.ends_at && b.ends_at > slot.starts_at
       end
+    end
+
+    # ── Carga do banco (não é pura) ─────────────────────────────────────────
+    # `from`/`to` são datas inclusivas no fuso da cidade. Tipo inexistente ou
+    # desativado: nenhuma vaga. O tipo padrão do vínculo pode ter sido
+    # desativado depois: `types` só traz os ativos, e `default_key` cai na base.
+    def for(unit:, from:, to:, appointment_type:, now: Time.current, catalog: AppointmentTypes.catalog)
+      types = catalog.active
+      type = appointment_type && types[appointment_type.key]
+      return [] unless type
+
+      window = from.in_time_zone.beginning_of_day..to.in_time_zone.end_of_day
+      shifts = shifts_in(unit.id, window)
+      busy = busy_for(shifts.map(&:professional_id).uniq, window)
+      compute(shifts: shifts, type: type, types: types, fallback: catalog.fallback, busy: busy, now: now,
+              zone: Time.zone, window: window)
+    end
+
+    def shifts_in(unit_id, window, include_cancelled: false)
+      scope = ProfessionalShift.joins(:professional_link).where(professional_links: { health_unit_id: unit_id })
+                               .where("professional_shifts.starts_at <= ? AND professional_shifts.ends_at > ?",
+                                      window.end, window.begin)
+                               .includes(:professional_link, :schedule_template)
+      scope = scope.where(cancelled_at: nil) unless include_cancelled
+      scope.order(:starts_at).map { |s| shift_data(s) }
+    end
+
+    # Faixas do modelo com chaves STRING (jsonb): chave símbolo seria lida 00:00.
+    def shift_data(shift)
+      Shift.new(id: shift.id, professional_id: shift.professional_id, starts_at: shift.starts_at, ends_at: shift.ends_at,
+                cbo_code: shift.professional_link.cbo_code,
+                default_type_key: shift.professional_link.default_appointment_type_key,
+                blocks: shift.schedule_template&.blocks&.map { |b| b.to_h.stringify_keys },
+                cancelled: shift.cancelled_at.present?)
+    end
+
+    # Horários ativos do profissional em QUALQUER unidade (com folga de um dia
+    # nas bordas: vaga do fim da janela pode passar da meia-noite). Horário
+    # livre (legacy) não tem profissional e não entra aqui.
+    def busy_for(professional_ids, window)
+      return [] if professional_ids.empty?
+
+      Appointment.where(status: Appointment::ACTIVE, professional_id: professional_ids).where.not(ends_at: nil)
+                 .where("scheduled_at < ? AND ends_at > ?", window.end + 1.day, window.begin - 1.day)
+                 .pluck(:professional_id, :scheduled_at, :ends_at)
+                 .map { |pro, starts, ends| Busy.new(professional_id: pro, starts_at: starts, ends_at: ends) }
     end
   end
 end

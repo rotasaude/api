@@ -7,6 +7,8 @@ class AppointmentRequestsController < ApplicationController
     invalid_time: :unprocessable_entity, request_not_open: :conflict, wrong_unit: :unprocessable_entity,
     invalid_unit: :unprocessable_entity, reason_too_short: :unprocessable_entity, slot_taken: :conflict
   }.freeze
+  AVAILABILITY_MAX_DAYS = 14
+  AVAILABILITY_DEFAULT_DAYS = 7
 
   before_action :require_verifier
 
@@ -51,6 +53,30 @@ class AppointmentRequestsController < ApplicationController
     appointments = Appointment.where(health_unit: unit, scheduled_at: day.in_time_zone.all_day)
                               .includes(:citizen, :request).order(:scheduled_at)
     render json: { appointments: appointments.map { |a| agenda_json(a) } }
+  end
+
+  # Vagas da unidade e dias de marcação livre (contratos §4.2, §10). Tipo
+  # inexistente ou desativado: 200 sem vagas e sem dias legacy.
+  def availability
+    unit = HealthUnit.find_by(id: params[:id])
+    return render json: { error: "not_found" }, status: :not_found unless unit
+
+    range = Scheduling::DateRange.parse(params[:from], params[:to], default_days: AVAILABILITY_DEFAULT_DAYS,
+                                                                    max_days: AVAILABILITY_MAX_DAYS)
+    return render json: { error: "invalid_range" }, status: :unprocessable_entity unless range
+
+    type = AppointmentType.find_by(key: params[:type].to_s, active: true)
+    return render json: { slots: [], legacy_days: [] } unless type
+
+    slots = Scheduling::Availability.for(unit: unit, from: range.begin, to: range.end, appointment_type: type)
+    names = Professional.where(id: slots.map(&:professional_id).uniq).pluck(:id, :professional_name).to_h
+    render json: {
+      slots: slots.map do |s|
+        { professional_id: s.professional_id, professional_name: names[s.professional_id], shift_id: s.shift_id,
+          starts_at: s.starts_at.iso8601, ends_at: s.ends_at.iso8601 }
+      end,
+      legacy_days: Scheduling::Transition.legacy_days(unit.id, range.begin, range.end).map(&:iso8601)
+    }
   end
 
   private

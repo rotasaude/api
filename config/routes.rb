@@ -126,6 +126,7 @@ Rails.application.routes.draw do
     # Pedidos de agendamento, marcação e agenda do dia (spec 2026-09-25 §4).
     get  "units/:id/requests",         to: "appointment_requests#index"
     get  "units/:id/agenda",           to: "appointment_requests#agenda"
+    get  "units/:id/availability",     to: "appointment_requests#availability"
     post "requests/:id/appointments",  to: "appointment_requests#schedule"
     post "requests/:id/dismiss",       to: "appointment_requests#dismiss"
   end
