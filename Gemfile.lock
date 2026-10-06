@@ -302,6 +302,7 @@ GEM
       rubocop-performance (>= 1.24)
       rubocop-rails (>= 2.30)
     ruby-progressbar (1.13.0)
+    rubyzip (2.4.1)
     securerandom (0.4.1)
     simpleidn (0.2.3)
     solid_cache (1.0.10)
@@ -368,6 +369,7 @@ DEPENDENCIES
   rotp (~> 6.3)
   rspec-rails
   rubocop-rails-omakase
+  rubyzip (~> 2.4)
   solid_cache
   solid_queue
   tzinfo-data

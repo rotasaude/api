@@ -35,6 +35,8 @@ end
 
 # JSON Schema (draft 2020-12) validation for the protocol definition gate (F-03.9).
 gem "json_schemer"
+# Arquivos oficiais do DATASUS chegam em ZIP (SIGTAP, CNES) — ADR 0028.
+gem "rubyzip", "~> 2.4", require: "zip"
 
 gem "bcrypt", "~> 3.1"
 gem "rotp", "~> 6.3"   # TOTP RFC 6238 — ADR-0022
