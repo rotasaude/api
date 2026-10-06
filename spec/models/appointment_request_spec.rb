@@ -43,6 +43,7 @@ RSpec.describe AppointmentRequest do
     expect { req.update!(status: "open") }.to raise_error(ActiveRecord::StatementInvalid, /already closed/)
     expect { req.destroy }.to raise_error(ActiveRecord::StatementInvalid, /DELETE refused/)
   end
+
   # ADR 0029 + ADR 0026 (pré-merge PM-B item 3): a exclusão LGPD apaga o texto
   # livre do remarque também do pedido encerrado — só isso, mais nada.
   describe "pedido encerrado: só a nota do remarque pode ir a NULL" do

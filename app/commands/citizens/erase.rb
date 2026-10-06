@@ -54,7 +54,9 @@ module Citizens
         end
 
         # Horários vivos do par travados ANTES de qualquer escrita em pedido:
-        # Lapse/Remind/Confirm travam o horário e depois o pedido.
+        # Lapse/Confirm/CancelByCitizen travam o horário e depois o pedido.
+        # Quem grava linha com FK para o cidadão depois do horário (o aviso do
+        # Remind) trava o cidadão ANTES do horário, e espera esta exclusão.
         live = Appointment.live.where(citizen_id: pairs.map(&:id)).order(:id).lock.to_a
         pairs.each { |citizen| erase_pair(citizen, live.select { |a| a.citizen_id == citizen.id }) }
         # O trigger aceita a troca do cpf só nesta mesma UPDATE, mas não a

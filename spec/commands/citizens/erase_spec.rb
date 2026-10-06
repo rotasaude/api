@@ -289,6 +289,7 @@ RSpec.describe Citizens::Erase do
     expect(calls).to eq(2)
     expect(waiting.reload).to have_attributes(status: "closed", closed_reason: "consent_revoked")
   end
+
   # Pré-merge PM-B item 4 (ADR 0026, ADR 0029): a exclusão cancela os horários
   # vivos do par e fecha os pedidos vivos; nenhum lembrete, vencimento ou
   # falta reabre nada para a casca.

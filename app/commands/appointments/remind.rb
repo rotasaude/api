@@ -13,6 +13,11 @@ module Appointments
 
     def call(appointment:, now: Time.current)
       ApplicationRecord.transaction do
+        # Ordem global (cidadão → horário): o aviso tem FK para o cidadão, e a
+        # exclusão (Citizens::Erase) segura o cidadão em FOR UPDATE antes de
+        # travar o horário. Pegar o KEY SHARE só depois do horário cruzava as
+        # duas (deadlock). citizen_id do horário nunca muda (trigger).
+        Citizen.lock("FOR KEY SHARE").find(appointment.citizen_id)
         appointment.lock!
         next Result.ok(skipped: :not_due) unless appointment.status == "confirmed" && appointment.reminded_at.nil?
 
