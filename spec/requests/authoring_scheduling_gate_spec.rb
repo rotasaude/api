@@ -46,5 +46,8 @@ RSpec.describe "POST /authoring/protocols/gate com scheduling", type: :request d
     expect(Protocols::Validation::Scheduling).to have_received(:call).once
     errors = JSON.parse(response.body)["errors"]
     expect(errors).to include(a_string_starting_with("scheduling[0].when: "))
+    # Como no módulo 15: o 422 também leva os avisos.
+    expect(JSON.parse(response.body)["warnings"])
+      .to eq([ "scheduling appointment_type 'fantasma' does not exist in this city" ])
   end
 end

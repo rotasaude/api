@@ -44,8 +44,14 @@ RSpec.describe "Guardas das tabelas da agenda" do
         .to raise_error(ActiveRecord::ExclusionViolation, /excl_appointments_slot_overlap/)
       expect { attempt { appointment_row!(triage_request!(other, unit: unit), shift, starts_at: shift.starts_at + 10.minutes, kind: "fit_in", reason: "retorno que não espera") } }
         .not_to raise_error
-      first.update!(status: "cancelled_by_citizen", cancel_reason: "não posso ir mais", ended_at: Time.current)
       third = Citizen.create!(cpf: "39053344705", phone: "+5541933334444")
+      attempt do
+        first.update!(status: "checked_in", ended_at: Time.current)
+        expect { attempt { appointment_row!(triage_request!(third, unit: unit), shift, starts_at: shift.starts_at) } }
+          .to raise_error(ActiveRecord::ExclusionViolation, /excl_appointments_slot_overlap/)
+        raise ActiveRecord::Rollback
+      end
+      first.reload.update!(status: "cancelled_by_citizen", cancel_reason: "não posso ir mais", ended_at: Time.current)
       expect { attempt { appointment_row!(triage_request!(third, unit: unit), shift, starts_at: shift.starts_at) } }.not_to raise_error
     end
 
@@ -58,6 +64,11 @@ RSpec.describe "Guardas das tabelas da agenda" do
           .to raise_error(ActiveRecord::StatementInvalid, /scheduled columns never change/), column.to_s
       end
       expect { Appointment.where(id: appt.id).update_all(reminded_at: Time.current, reschedule_requested: false) }.not_to raise_error
+
+      fit_in = appointment_row!(triage_request!(other, unit: unit), shift, starts_at: shift.starts_at, kind: "fit_in",
+                                reason: "gestante com dor forte")
+      expect { attempt { Appointment.where(id: fit_in.id).update_all(fit_in_reason: "outro motivo qualquer") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /scheduled columns never change/)
     end
   end
 
@@ -86,15 +97,15 @@ RSpec.describe "Guardas das tabelas da agenda" do
         .to raise_error(ActiveRecord::StatementInvalid, /origin columns never change/)
     end
 
-    # Spec §5.2 ("aberto"; decisão C2): só o pedido aberto recebe a fusão; o
-    # agendado não segura o tipo, e a triagem nova abre outro pedido.
-    it "um pedido de triagem aberto por tipo por cidadão; o agendado não conta" do
+    # Vivo = aberto ou agendado: reabrir o agendado nunca colide com outro aberto.
+    it "um pedido de triagem vivo (aberto ou agendado) por tipo por cidadão" do
       first = triage_request!(citizen, unit: unit)
       expect { attempt { triage_request!(citizen, unit: unit) } }
         .to raise_error(ActiveRecord::RecordNotUnique, /idx_appointment_requests_one_live_triage_type/)
       expect { attempt { triage_request!(citizen, unit: unit, type_key: "retorno") } }.not_to raise_error
       AppointmentRequest.where(id: first.id).update_all(status: "scheduled")
-      expect { attempt { triage_request!(citizen, unit: unit) } }.not_to raise_error
+      expect { attempt { triage_request!(citizen, unit: unit) } }
+        .to raise_error(ActiveRecord::RecordNotUnique, /idx_appointment_requests_one_live_triage_type/)
     end
   end
 

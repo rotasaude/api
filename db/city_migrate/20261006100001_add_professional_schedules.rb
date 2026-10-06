@@ -147,10 +147,10 @@ class AddProfessionalSchedules < ActiveRecord::Migration[8.1]
     add_check_constraint :appointment_requests, "reschedule_note IS NULL OR length(reschedule_note) <= 200",
                          name: "ck_appointment_requests_reschedule_note"
     add_check_constraint :appointment_requests, "reschedule_count >= 0", name: "ck_appointment_requests_reschedule_count"
-    # Spec §5.2: a triagem só se funde ao pedido ABERTO do mesmo tipo; o
-    # agendado não segura o tipo (a triagem nova abre outro pedido).
+    # Um pedido de triagem vivo (aberto ou agendado) por tipo por cidadão: assim
+    # reabrir o agendado (lapso, remarcação) nunca colide com outro aberto.
     add_index :appointment_requests, %i[citizen_id appointment_type_key], unique: true,
-              where: "kind::text = 'triage'::text AND status::text = 'open'::text",
+              where: "kind::text = 'triage'::text AND status::text = ANY (ARRAY['open', 'scheduled']::text[])",
               name: "idx_appointment_requests_one_live_triage_type"
     add_index :appointment_requests, %i[target_unit_id status due_on], name: "idx_appointment_requests_queue"
   end

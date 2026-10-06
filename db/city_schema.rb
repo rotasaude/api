@@ -114,7 +114,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_200001) do
     t.string "status", default: "open", null: false
     t.uuid "target_unit_id"
     t.datetime "updated_at", null: false
-    t.index ["citizen_id", "appointment_type_key"], name: "idx_appointment_requests_one_live_triage_type", unique: true, where: "kind::text = 'triage'::text AND status::text = 'open'::text"
+    t.index ["citizen_id", "appointment_type_key"], name: "idx_appointment_requests_one_live_triage_type", unique: true, where: "kind::text = 'triage'::text AND status::text = ANY (ARRAY['open', 'scheduled']::text[])"
     t.index ["citizen_id"], name: "index_appointment_requests_on_citizen_id"
     t.index ["closed_by_user_id"], name: "index_appointment_requests_on_closed_by_user_id"
     t.index ["moved_from_request_id"], name: "index_appointment_requests_on_moved_from_request_id", unique: true
