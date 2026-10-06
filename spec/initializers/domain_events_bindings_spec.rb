@@ -58,3 +58,12 @@ RSpec.describe "triage catalog event bindings (ADR 0027)" do
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
 end
+
+# Módulo 16 (ADR 0028): eventos declarados, só trilha.
+RSpec.describe "record mode event bindings (ADR 0028)" do
+  it "declares every module 16 city event with no consumer" do
+    names = %w[integration_credential.changed cnes.proposals_applied citizen.cadsus_looked_up]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end

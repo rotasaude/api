@@ -99,4 +99,9 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "citizen.profile_changed", to: []
   DomainEvents.bind "triage.suggested", to: []
   DomainEvents.bind "triage_offer.changed", to: []
+
+  # Módulo 16 (ADR 0028): trilha; payload só com ids. Sem consumidor.
+  DomainEvents.bind "integration_credential.changed", to: []
+  DomainEvents.bind "cnes.proposals_applied", to: []
+  DomainEvents.bind "citizen.cadsus_looked_up", to: []
 end
