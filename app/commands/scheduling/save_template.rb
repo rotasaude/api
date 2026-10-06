@@ -17,9 +17,14 @@ module Scheduling
       limit = attrs.key?("fit_in_limit") ? attrs["fit_in_limit"] : template.fit_in_limit
       return Result.fail(:invalid_fit_in_limit) unless valid_limit?(limit)
 
+      # Só valida as faixas que vêm no corpo (ou no modelo novo): as guardadas
+      # podem usar um tipo desativado depois, e isso não pode travar desativar,
+      # renomear ou mudar o limite do modelo.
       blocks = attrs.key?("blocks") ? attrs["blocks"] : template.blocks
-      detail = TemplateBlocks.detail(blocks, AppointmentTypes.catalog)
-      return Result.fail(:invalid_blocks, details: { detail: detail.to_s }) if detail
+      if attrs.key?("blocks") || template.new_record?
+        detail = TemplateBlocks.detail(blocks, AppointmentTypes.catalog)
+        return Result.fail(:invalid_blocks, details: { detail: detail.to_s }) if detail
+      end
 
       active = attrs.key?("active") ? attrs["active"] : template.active
       return Result.fail(:invalid) unless [ true, false ].include?(active)

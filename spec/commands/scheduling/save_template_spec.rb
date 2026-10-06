@@ -25,4 +25,22 @@ RSpec.describe Scheduling::SaveTemplate do
     expect(described_class.call(attrs: { "name" => "M", "blocks" => blocks, "active" => "sim" }, by: admin).reason).to eq(:invalid)
     expect(ScheduleTemplate.count).to eq(0)
   end
+
+  # Revisão final (Task 6): edição parcial não revalida as faixas guardadas. O
+  # admin desativa um tipo e depois o modelo que o usa (o dashboard manda só
+  # `{ active: false }`); renomear e mudar o limite também passam. Mandar as
+  # faixas de novo, sim, revalida.
+  it "edição sem faixas não revalida as guardadas: tipo desativado não trava ativo, nome nem limite" do
+    template = described_class.call(attrs: { "name" => "Manhã", "blocks" => blocks }, by: admin).payload[:template]
+    AppointmentType.find_by!(key: "consulta_medica").update!(active: false)
+
+    expect(described_class.call(template: template, attrs: { "active" => false }, by: admin)).to be_ok
+    expect(described_class.call(template: template, attrs: { "name" => "Tarde" }, by: admin)).to be_ok
+    expect(described_class.call(template: template, attrs: { "fit_in_limit" => 1 }, by: admin)).to be_ok
+    expect(template.reload).to have_attributes(name: "Tarde", fit_in_limit: 1, active: false, blocks: blocks)
+
+    resent = described_class.call(template: template, attrs: { "blocks" => blocks }, by: admin)
+    expect([ resent.reason, resent.details ]).to eq([ :invalid_blocks, { detail: "inactive_type" } ])
+    expect(described_class.call(attrs: { "name" => "Sem faixas" }, by: admin).reason).to eq(:invalid_blocks)
+  end
 end

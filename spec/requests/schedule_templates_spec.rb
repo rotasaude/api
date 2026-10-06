@@ -52,4 +52,15 @@ RSpec.describe "/professionals/schedule_templates", type: :request do
     expect(body).to eq("error" => "invalid_blocks", "detail" => "inactive_type")
     expect(ScheduleTemplate.count).to eq(0)
   end
+
+  it "desativar o modelo cujo tipo foi desativado: 200 (só valida faixas quando elas vêm)" do
+    sign_in_as(admin)
+    json_post "/professionals/schedule_templates", name: "Manhã", blocks: blocks
+    id = body["id"]
+    AppointmentType.find_by!(key: "consulta_medica").update!(active: false)
+
+    json_post "/professionals/schedule_templates/#{id}", active: false
+    expect(response).to have_http_status(:ok)
+    expect(body).to include("id" => id, "active" => false)
+  end
 end
