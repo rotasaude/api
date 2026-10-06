@@ -10,9 +10,25 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_05_200001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_05_200002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "ciap2_codes", force: :cascade do |t|
+    t.string "code", limit: 3, null: false
+    t.text "description", null: false
+    t.uuid "release_id", null: false
+    t.index ["release_id", "code"], name: "index_ciap2_codes_on_release_id_and_code", unique: true
+  end
+
+  create_table "cid10_codes", force: :cascade do |t|
+    t.string "code", limit: 4, null: false
+    t.text "description", null: false
+    t.uuid "release_id", null: false
+    t.string "sex_restriction", limit: 1
+    t.index ["release_id", "code"], name: "index_cid10_codes_on_release_id_and_code", unique: true
+    t.check_constraint "sex_restriction IS NULL OR (sex_restriction::text = ANY (ARRAY['F'::text, 'M'::text]))", name: "ck_cid10_codes_sex"
+  end
 
   create_table "cities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
@@ -178,6 +194,40 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_200001) do
     t.index ["occurred_at"], name: "index_platform_events_on_occurred_at"
   end
 
+  create_table "sigtap_procedure_cbos", force: :cascade do |t|
+    t.string "cbo_code", limit: 6, null: false
+    t.string "procedure_code", limit: 10, null: false
+    t.uuid "release_id", null: false
+    t.index ["release_id", "procedure_code", "cbo_code"], name: "idx_sigtap_procedure_cbos_unique", unique: true
+  end
+
+  create_table "sigtap_procedure_cids", force: :cascade do |t|
+    t.string "cid_code", limit: 4, null: false
+    t.boolean "principal", default: false, null: false
+    t.string "procedure_code", limit: 10, null: false
+    t.uuid "release_id", null: false
+    t.index ["release_id", "procedure_code", "cid_code"], name: "idx_sigtap_procedure_cids_unique", unique: true
+  end
+
+  create_table "sigtap_procedure_instruments", force: :cascade do |t|
+    t.string "instrument_code", limit: 2, null: false
+    t.string "instrument_name", null: false
+    t.string "procedure_code", limit: 10, null: false
+    t.uuid "release_id", null: false
+    t.index ["release_id", "procedure_code", "instrument_code"], name: "idx_sigtap_procedure_instruments_unique", unique: true
+  end
+
+  create_table "sigtap_procedures", force: :cascade do |t|
+    t.integer "age_max_months"
+    t.integer "age_min_months"
+    t.string "code", limit: 10, null: false
+    t.string "complexity", limit: 1
+    t.text "name", null: false
+    t.uuid "release_id", null: false
+    t.string "sex", limit: 1
+    t.index ["release_id", "code"], name: "index_sigtap_procedures_on_release_id_and_code", unique: true
+  end
+
   create_table "solid_cache_entries", force: :cascade do |t|
     t.integer "byte_size", null: false
     t.datetime "created_at", null: false
@@ -310,6 +360,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_200001) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
+  create_table "terminology_releases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "activated_at"
+    t.datetime "created_at", null: false
+    t.datetime "imported_at", null: false
+    t.string "imported_by", limit: 80, null: false
+    t.string "kind", null: false
+    t.string "source_sha256", limit: 64, null: false
+    t.string "status", default: "importing", null: false
+    t.datetime "updated_at", null: false
+    t.string "version", limit: 20, null: false
+    t.index ["kind", "status", "version"], name: "idx_terminology_releases_lookup"
+    t.index ["kind", "version"], name: "idx_terminology_releases_one_active", unique: true, where: "((status)::text = 'active'::text)"
+    t.check_constraint "kind::text <> 'sigtap'::text OR version::text ~ '^[0-9]{6}$'::text", name: "ck_terminology_releases_sigtap_version"
+    t.check_constraint "kind::text = ANY (ARRAY['cid10'::text, 'ciap2'::text, 'sigtap'::text])", name: "ck_terminology_releases_kind"
+    t.check_constraint "status::text = ANY (ARRAY['importing'::text, 'active'::text, 'superseded'::text, 'failed'::text])", name: "ck_terminology_releases_status"
+  end
+
   create_table "unknown_channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "first_seen_at", null: false
@@ -321,12 +388,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_200001) do
     t.index ["phone_number_id"], name: "index_unknown_channels_on_phone_number_id", unique: true
   end
 
+  add_foreign_key "ciap2_codes", "terminology_releases", column: "release_id"
+  add_foreign_key "cid10_codes", "terminology_releases", column: "release_id"
   add_foreign_key "city_analytics_indicators", "cities"
   add_foreign_key "city_channels", "cities"
   add_foreign_key "city_features", "cities"
   add_foreign_key "city_features", "maintainers", column: "changed_by_maintainer_id"
   add_foreign_key "city_grants", "cities"
   add_foreign_key "operator_sessions", "operators"
+  add_foreign_key "sigtap_procedure_cbos", "terminology_releases", column: "release_id"
+  add_foreign_key "sigtap_procedure_cids", "terminology_releases", column: "release_id"
+  add_foreign_key "sigtap_procedure_instruments", "terminology_releases", column: "release_id"
+  add_foreign_key "sigtap_procedures", "terminology_releases", column: "release_id"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_failed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

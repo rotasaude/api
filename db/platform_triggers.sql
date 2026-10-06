@@ -79,3 +79,87 @@ CREATE TRIGGER cities_time_zone_immutable
   BEFORE UPDATE ON cities
   FOR EACH ROW
   EXECUTE FUNCTION cities_time_zone_immutable();
+
+-- Terminologias (ADR 0028; spec 2026-10-05 §4): release ativa nunca muda,
+-- release com falha nunca fica ativa, nada ativo ou substituído se apaga. Só
+-- status (pelas transições abaixo), activated_at (na ativação) e updated_at
+-- mudam.
+CREATE OR REPLACE FUNCTION terminology_release_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.status IN ('active', 'superseded') THEN
+      RAISE EXCEPTION 'terminology release % % is immutable: DELETE refused', OLD.kind, OLD.version;
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.kind IS DISTINCT FROM OLD.kind
+     OR NEW.version IS DISTINCT FROM OLD.version OR NEW.source_sha256 IS DISTINCT FROM OLD.source_sha256
+     OR NEW.imported_by IS DISTINCT FROM OLD.imported_by OR NEW.imported_at IS DISTINCT FROM OLD.imported_at
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR (OLD.status <> 'importing' AND NEW.activated_at IS DISTINCT FROM OLD.activated_at) THEN
+    RAISE EXCEPTION 'terminology release % % is immutable: only status may change', OLD.kind, OLD.version;
+  END IF;
+
+  IF NEW.status IS DISTINCT FROM OLD.status AND NOT (
+       (OLD.status = 'importing' AND NEW.status IN ('active', 'failed'))
+       OR (OLD.status = 'active' AND NEW.status = 'superseded')) THEN
+    RAISE EXCEPTION 'terminology release % %: transition % -> % refused', OLD.kind, OLD.version, OLD.status, NEW.status;
+  END IF;
+
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- O arquivo inteiro roda também em bancos ainda sem estas tabelas (migrações
+-- antigas que o executam, platform:triggers): o trigger só é instalado onde a
+-- tabela existe.
+DO $$
+BEGIN
+  IF to_regclass('public.terminology_releases') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS terminology_releases_guard ON terminology_releases;
+    CREATE TRIGGER terminology_releases_guard
+      BEFORE UPDATE OR DELETE ON terminology_releases
+      FOR EACH ROW EXECUTE FUNCTION terminology_release_guard();
+  END IF;
+END $$;
+
+-- Códigos: entram só numa release em importação; não mudam nem saem de
+-- release ativa ou substituída.
+CREATE OR REPLACE FUNCTION terminology_codes_guard() RETURNS trigger AS $fn$
+DECLARE
+  release_status text;
+BEGIN
+  SELECT status INTO release_status FROM terminology_releases
+   WHERE id = CASE WHEN TG_OP = 'DELETE' THEN OLD.release_id ELSE NEW.release_id END;
+
+  IF TG_OP = 'INSERT' THEN
+    IF release_status IS DISTINCT FROM 'importing' THEN
+      RAISE EXCEPTION '% accepts rows only for a release being imported', TG_TABLE_NAME;
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF release_status IN ('active', 'superseded') THEN
+    RAISE EXCEPTION '% rows of an active or superseded release are immutable: % refused', TG_TABLE_NAME, TG_OP;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $$
+DECLARE
+  t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['cid10_codes', 'ciap2_codes', 'sigtap_procedures', 'sigtap_procedure_cbos',
+                           'sigtap_procedure_cids', 'sigtap_procedure_instruments'] LOOP
+    CONTINUE WHEN to_regclass('public.' || t) IS NULL;
+    EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', t || '_guard', t);
+    EXECUTE format('CREATE TRIGGER %I BEFORE INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW ' ||
+                   'EXECUTE FUNCTION terminology_codes_guard()', t || '_guard', t);
+  END LOOP;
+END $$;
