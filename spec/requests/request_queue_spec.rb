@@ -81,6 +81,88 @@ RSpec.describe "Fila de pedidos (agenda)", type: :request do
     expect(row["appointment"]).to include("id" => appointment.id, "outside_template" => true, "shift_cancelled" => false)
   end
 
+  # Fusão de triagem que encurta o prazo de um pedido já marcado (PM-A item 1):
+  # prazo antes do dia (fuso da cidade) do horário vivo → needs_reschedule e
+  # volta à fila; o horário fica como está (a recepção decide).
+  context "prazo antes do dia do horário vivo" do
+    def scheduled_on(req, day, hour: 8)
+      shift = shift!(doctor_link!(unit), starts_at: day.in_time_zone.change(hour: hour))
+      appointment_row!(req, shift, starts_at: shift.starts_at).tap { req.update!(status: "scheduled") }
+    end
+
+    it "a fusão (Triages::Schedule) que puxa o prazo para antes do horário marca needs_reschedule" do
+      par = profiled_citizen!(age: 70)
+      active_protocol!("saude-do-idoso", scheduling: [ { "when" => { "eq" => ["q1", "true"] },
+                                                         "appointment_type" => "consulta_medica",
+                                                         "priority" => "routine", "due_in_days" => 7 } ])
+      req = triage_request!(par, unit: unit, due_on: today + 30)
+      appointment = scheduled_on(req, today + 10)
+      get "/attendance/units/#{unit.id}/requests"
+      expect(body["requests"]).to eq([])
+
+      started = start_for!(par, "saude-do-idoso").payload
+      Citizens::SubmitAnswer.call(conversation: started[:conversation], answer: "true",
+                                  idempotency_key: SecureRandom.uuid)
+      expect(req.reload).to have_attributes(due_on: today + 7, status: "scheduled")
+
+      get "/attendance/units/#{unit.id}/requests"
+      row = body["requests"].sole
+      expect(row).to include("id" => req.id, "needs_reschedule" => true, "overdue" => false,
+                             "due_on" => (today + 7).iso8601)
+      expect(row["appointment"]).to include("id" => appointment.id, "shift_cancelled" => false,
+                                            "outside_template" => false)
+      expect(appointment.reload).to have_attributes(status: "confirmed", scheduled_at: appointment.scheduled_at)
+    end
+
+    it "prazo no próprio dia (mesmo à noite no fuso da cidade) ou depois: não marca" do
+      same_day = triage_request!(citizen(0), unit: unit, due_on: today + 5)
+      scheduled_on(same_day, today + 5, hour: 22)
+      after = triage_request!(citizen(1), unit: unit, due_on: today + 9)
+      scheduled_on(after, today + 5)
+
+      get "/attendance/units/#{unit.id}/requests"
+      expect(body["requests"]).to eq([])
+      [ same_day, after ].each do |r|
+        get "/attendance/requests/#{r.id}"
+        expect(body).to include("needs_reschedule" => false, "overdue" => false)
+      end
+    end
+
+    it "horário livre (legacy) também conta" do
+      req = triage_request!(citizen(0), unit: unit, due_on: today + 30)
+      result = Appointments::Schedule.call(request: req, scheduled_at: (today + 10).in_time_zone.change(hour: 9).iso8601,
+                                           health_unit_id: unit.id, by: reception)
+      expect(result.failure?).to be(false)
+      req.update!(due_on: today + 4)
+
+      get "/attendance/units/#{unit.id}/requests"
+      row = body["requests"].sole
+      expect(row).to include("id" => req.id, "needs_reschedule" => true)
+      expect(row["appointment"]).to include("booking_kind" => "legacy")
+    end
+
+    # PM-A item 2: precisa remarcar e o prazo já passou → atrasado, e ordena
+    # com os atrasados (prazo menor primeiro).
+    it "precisa remarcar com prazo vencido: overdue e ordena entre os atrasados" do
+      flagged = triage_request!(citizen(0), unit: unit, due_on: today - 2)
+      scheduled_on(flagged, today + 3)
+      late_open = triage_request!(citizen(1), unit: unit, due_on: today - 1)
+      soon_open = triage_request!(citizen(2), unit: unit, due_on: today + 1, priority: "priority")
+
+      get "/attendance/units/#{unit.id}/requests"
+      expect(body["requests"].map { |r| r["id"] }).to eq([ flagged.id, late_open.id, soon_open.id ])
+      expect(body["requests"].first).to include("needs_reschedule" => true, "overdue" => true)
+    end
+
+    it "marcado sem precisar remarcar continua overdue false mesmo com prazo vencido" do
+      req = triage_request!(citizen(0), unit: unit, due_on: today - 1)
+      scheduled_on(req, today - 2)
+
+      get "/attendance/requests/#{req.id}"
+      expect(body).to include("needs_reschedule" => false, "overdue" => false)
+    end
+  end
+
   it "fila sem unidade, atribuição (duas vezes = 409) e detalhe com a nota" do
     orphan = triage_request!(citizen(4), unit: nil)
     orphan.update!(reschedule_note: "trabalho de manhã")

@@ -16,15 +16,16 @@ class AppointmentRequestsController < ApplicationController
   before_action :require_verifier
 
   # Fila da unidade (contratos §4.1, §10): abertos e os marcados que precisam
-  # remarcar (turno cancelado ou fora do modelo; derivado, filtrado em Ruby
-  # entre os marcados com horário vivo num turno).
+  # remarcar (turno cancelado, fora do modelo ou horário depois do prazo;
+  # derivado, filtrado em Ruby entre os marcados com horário vivo — legacy
+  # incluído).
   def index
     unit = HealthUnit.find_by(id: params[:id])
     return render json: { error: "not_found" }, status: :not_found unless unit
 
     base = AppointmentRequest.where(target_unit: unit)
-    on_shift = Appointment.live.where.not(shift_id: nil).select(:request_id)
-    requests = base.where(status: "open").or(base.where(status: "scheduled", id: on_shift))
+    with_live = Appointment.live.select(:request_id)
+    requests = base.where(status: "open").or(base.where(status: "scheduled", id: with_live))
     rows = queue_rows(requests).select { |r, row| r.status == "open" || row[:needs_reschedule] }
     render json: { requests: rows.map(&:last) }
   end
@@ -119,9 +120,8 @@ class AppointmentRequestsController < ApplicationController
 
   # Pares [pedido, item] na ordem da fila (atrasados, prazo, prioridade, criação).
   def queue_rows(scope)
-    requests = Scheduling::RequestJson.sort(scope.includes(*Scheduling::RequestJson::INCLUDES).to_a,
-                                            today: Time.zone.today)
-    requests.map { |r| [ r, request_json_builder.call(r) ] }
+    rows = scope.includes(*Scheduling::RequestJson::INCLUDES).map { |r| [ r, request_json_builder.call(r) ] }
+    Scheduling::RequestJson.sort(rows)
   end
 
   def request_json_builder = @request_json_builder ||= Scheduling::RequestJson.new(presenter: presenter)
