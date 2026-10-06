@@ -11,6 +11,11 @@ module Ledi
     class Error < StandardError; end
     class Unauthorized < Error; end
     class Unreachable < Error; end
+    # Endereço do PEC malformado ou sem http(s): erro de configuração, não de
+    # rede (R38). A mensagem nunca carrega a URL.
+    class InvalidUrl < Error
+      def initialize(message = "endereço do PEC inválido") = super
+    end
 
     class Failed < Error
       attr_reader :status
@@ -78,18 +83,19 @@ module Ledi
 
     def post(path, body, content_type, headers = {})
       uri = URI.parse("#{@base_url}#{path}")
+      raise InvalidUrl unless uri.is_a?(URI::HTTP) && uri.host.present?
+
       request = Net::HTTP::Post.new(uri)
       request["Content-Type"] = content_type
       headers.each { |name, value| request[name] = value }
       request.body = body
-      raise Unreachable, "URL do PEC inválida" if uri.host.blank?
 
       Net::HTTP.start(uri.host, uri.port, **http_options(uri)) do |http|
         http.request(request)
       end
     rescue URI::InvalidURIError
       # A mensagem original da URI::InvalidURIError carrega a URL: não repassa.
-      raise Unreachable, "URL do PEC inválida"
+      raise InvalidUrl
     rescue *NETWORK_ERRORS => e
       raise Unreachable, "PEC inalcançável (#{e.class.name})"
     end

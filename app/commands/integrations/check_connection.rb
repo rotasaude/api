@@ -30,6 +30,8 @@ module Integrations
       [ "ok", "Login no PEC aceito" ]
     rescue Ledi::PecClient::Unauthorized
       [ "unauthorized", "O PEC recusou usuário ou senha" ]
+    rescue Ledi::PecClient::InvalidUrl
+      [ "error", "Endereço do PEC inválido" ]
     rescue Ledi::PecClient::Unreachable
       [ "unreachable", "PEC inalcançável" ]
     rescue Ledi::PecClient::Failed => e

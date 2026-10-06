@@ -28,6 +28,18 @@ RSpec.describe Ledi::PecClient do
     expect { client.login }.to raise_error(described_class::Unreachable)
   end
 
+  it "URL do PEC malformada ou sem http(s): InvalidUrl (não Unreachable), sem a URL na mensagem, no login e no envio" do
+    [ "http://exemplo com/x", "", "ftp://pec.cidade.gov.br" ].each do |bad|
+      bad_client = described_class.new(base_url: bad, username: "rota", password: "senha-secreta")
+      expect { bad_client.login }.to raise_error(described_class::InvalidUrl) do |e|
+        expect(e).not_to be_a(described_class::Unreachable)
+        expect(e.message).not_to include("exemplo")
+        expect(e.message).not_to include("cidade.gov.br")
+      end
+      expect { bad_client.deliver(cookie: "JSESSIONID=x", filename: "a.esus", bytes: "x") }.to raise_error(described_class::InvalidUrl)
+    end
+  end
+
   # Review Focus 2: proxy que responde 200 em HTML, sem cookie.
   it "200 sem cookie e 500: Failed com o status, sem o corpo" do
     stub_request(:post, url).to_return(status: 200, body: "<html>login</html>")

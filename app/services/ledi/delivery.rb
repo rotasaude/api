@@ -14,6 +14,8 @@ module Ledi
   class Delivery
     PAUSE_MESSAGE = "O PEC recusou a credencial durante o envio; o envio está pausado.".freeze
 
+    INVALID_URL_MESSAGE = "endereço do PEC inválido".freeze
+
     # Login sem resposta útil do PEC (inacessível ou com erro): para o lote.
     class LoginDown < StandardError; end
 
@@ -53,6 +55,10 @@ module Ledi
     rescue LoginDown => e
       retry_later(entry, e.message)
       :halted
+    rescue Ledi::PecClient::InvalidUrl
+      # R38: endereço do PEC inválido é falha da cidade (como o login): para o lote.
+      retry_later(entry, INVALID_URL_MESSAGE)
+      :halted
     rescue Ledi::PecClient::Unreachable
       retry_later(entry, "PEC inacessível")
     rescue StandardError => e
@@ -75,6 +81,8 @@ module Ledi
 
     def cookie
       Ledi::SessionCache.fetch(@cache_key) { @client.login.cookie }
+    rescue Ledi::PecClient::InvalidUrl
+      raise LoginDown, INVALID_URL_MESSAGE
     rescue Ledi::PecClient::Unreachable
       raise LoginDown, "PEC inacessível"
     rescue Ledi::PecClient::Failed => e

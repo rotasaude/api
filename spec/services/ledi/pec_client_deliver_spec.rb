@@ -50,14 +50,14 @@ RSpec.describe Ledi::PecClient, "#deliver" do
     end
   end
 
-  it "base_url malformada vira Unreachable sem vazar a URL" do
+  it "base_url malformada vira InvalidUrl (R38) sem vazar a URL" do
     bad = described_class.new(base_url: "https://usuario:segredo@pec .cidade.gov.br", username: "rota", password: "senha-secreta")
     expect { bad.deliver(cookie: "c", filename: "f.esus", bytes: "x") }
-      .to raise_error(Ledi::PecClient::Unreachable) { |e|
+      .to raise_error(Ledi::PecClient::InvalidUrl) { |e|
         expect(e.message).not_to include("segredo")
         expect(e.message).not_to include("cidade.gov.br")
       }
-    expect { bad.login }.to raise_error(Ledi::PecClient::Unreachable)
+    expect { bad.login }.to raise_error(Ledi::PecClient::InvalidUrl)
     expect(Net::HTTP).not_to have_received(:start)
   end
 

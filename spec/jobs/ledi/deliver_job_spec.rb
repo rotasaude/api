@@ -98,6 +98,31 @@ RSpec.describe Ledi::DeliverJob do
     end
   end
 
+  # R38: endereço do PEC malformado é erro de configuração da cidade (não rede):
+  # mesma resposta de falha de cidade do login (R33), com texto fixo, sem a URL.
+  it "PEC com URL inválida no login: só a ficha da vez conta tentativa, o resto volta sem contar, um login só" do
+    first, *rest = enqueue!(3)
+    pec.login_replies = [ Ledi::PecClient::InvalidUrl ]
+    run!
+    expect(pec.logins.size).to eq(1)
+    expect(pec.deliveries).to be_empty
+    expect(first.reload.slice(:status, :attempts, :last_error))
+      .to eq("status" => "pending", "attempts" => 1, "last_error" => "endereço do PEC inválido")
+    expect(rest.map { |e| e.reload.slice(:status, :attempts, :last_error, :first_attempt_at) })
+      .to all(eq("status" => "pending", "attempts" => 0, "last_error" => nil, "first_attempt_at" => nil))
+  end
+
+  it "PEC com URL inválida no envio: mesma resposta de falha de cidade, o lote para" do
+    first, *rest = enqueue!(3)
+    pec.delivery_replies = [ Ledi::PecClient::InvalidUrl ]
+    run!
+    expect(pec.deliveries.size).to eq(1)
+    expect(first.reload.slice(:status, :attempts, :last_error))
+      .to eq("status" => "pending", "attempts" => 1, "last_error" => "endereço do PEC inválido")
+    expect(rest.map { |e| e.reload.slice(:status, :attempts, :last_error, :first_attempt_at) })
+      .to all(eq("status" => "pending", "attempts" => 0, "last_error" => nil, "first_attempt_at" => nil))
+  end
+
   it "lote parcial: primeira aceita, 401 duas vezes pausa, a aceita continua aceita e o resto volta sem contar" do
     first, *rest = enqueue!(3)
     pec.delivery_replies = [ [ 201, "" ], [ 401, "" ], [ 401, "" ] ]
