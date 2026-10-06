@@ -14,6 +14,7 @@
 #     livre), criados por `SignatureCrew` (plano 2026-09-23) — ver
 #     `lib/signature_crew.rb`.
 #     O analyst (analise@<slug>.demo) e ~6 meses de histórico consolidado para o Analytics vêm de `lib/analytics_crew.rb` (módulo 14).
+#     Modo de prontuário (módulo 16): SIGTAP reduzida, CPF dos profissionais, credencial cadsus simulada e um retrato do CNES — ver lib/record_mode_crew.rb. Interruptores e record_mode ficam desligados.
 #     Os protocolos do catálogo (saúde do idoso, saúde mental e aprofundamento), a família avó+neto no mesmo celular e o idoso restrito a dois bairros em Curitiba vêm de `lib/triage_catalog_crew.rb` (módulo 15).
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
@@ -37,6 +38,7 @@ else
   require Rails.root.join("lib/campaign_crew").to_s
   require Rails.root.join("lib/analytics_crew").to_s
   require Rails.root.join("lib/triage_catalog_crew").to_s
+  require Rails.root.join("lib/record_mode_crew").to_s
 
   password = ENV.fetch(SignatureCrew::PASSWORD_ENV, "dev-password")
 
@@ -63,6 +65,10 @@ else
   else
     warn "[seeds] API de manutenção desligada neste ambiente — mantenedor de dev não semeado"
   end
+
+  # ── Terminologias (módulo 16, spec 2026-10-05 §10) ──────────────────────────
+  sigtap = RecordModeCrew.seed_platform!
+  puts "[seeds] SIGTAP ....... #{sigtap[:sigtap]} #{sigtap[:imported] ? 'importada (recorte de dev)' : 'já ativa'}"
 
   # Mesmo protocolo que o provisionamento semeia em rascunho (Plano 4); aqui ativo.
   protocol_defn = CityTemplates.protocol.fetch(:definition)
@@ -188,6 +194,13 @@ else
         puts "[seeds] analytics .. #{analytics[:protocol][:name]} v#{analytics[:protocol][:version]} " \
              "(#{analytics[:protocol][:status]}), #{analytics[:new_triages]} triagens novas, " \
              "#{analytics[:runs]} blocos consolidados#{analytics[:failed] ? " — FALHOU: #{analytics[:failed]}" : ''}"
+
+        # ── Modo de prontuário (módulo 16, spec 2026-10-05 §10) ───────────────
+        # Depois do ProfessionalCrew: o retrato do CNES usa as unidades e os
+        # profissionais dele. record_mode fica off e nenhum interruptor ligado.
+        record = RecordModeCrew.seed_current_city(slug: slug, admin: muni_admin)
+        puts "[seeds] CNES ......... #{record[:ibge_code]} #{record[:cnes_competence]}: #{record[:establishments]} " \
+             "estabelecimentos, #{record[:teams]} equipes, #{record[:bonds]} vínculos; credencial cadsus simulada"
 
         # ── Catálogo de triagens (módulo 15, spec 2026-10-05 §10) ─────────────
         # Depois do elenco do ciclo assinado e do território: usa autor,
