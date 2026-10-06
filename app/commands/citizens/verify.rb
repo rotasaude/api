@@ -6,7 +6,7 @@
 # (UNCHANGED) mantém o declarado. Os valores são conferidos ANTES do código:
 # um erro de digitação não gasta o código.
 # ADR 0028: com cadsus_confirmed, efetiva o CNS da consulta ao CADSUS desta
-# sessão (Reasons: :cadsus_lookup_missing).
+# sessão (Reasons: :cadsus_lookup_missing); toda validação limpa o pendente.
 module Citizens
   class Verify
     UNCHANGED = Object.new.freeze
@@ -38,7 +38,7 @@ module Citizens
         match.payload[:verification_code].update!(consumed_at: Time.current)
         verification = record!(citizen: citizen, by: by)
         apply_profile!(citizen, values.payload, keep_identity: keep_identity)
-        confirm_cadsus!(citizen) if cadsus_confirmed
+        settle_cadsus!(citizen, confirmed: cadsus_confirmed)
         result = Result.ok(verification: verification)
       end
       result
@@ -62,10 +62,17 @@ module Citizens
         citizen.cadsus_pending_at.present? && citizen.cadsus_pending_at >= Cadsus::Lookup::WINDOW.ago
     end
 
-    # Do CADSUS só ficam o CNS e a marca da conferência (ADR 0028).
-    def self.confirm_cadsus!(citizen)
-      citizen.update!(cns: citizen.cadsus_pending_cns, cadsus_checked_at: Time.current, cadsus_pending_cns: nil,
-                      cadsus_pending_session_id: nil, cadsus_pending_at: nil)
+    # Do CADSUS só ficam o CNS e a marca da conferência (ADR 0028). Toda
+    # validação bem-sucedida limpa o pendente (minimização, LGPD): confirmada,
+    # o CNS da consulta desta sessão vira o CNS do cidadão; sem confirmação, o
+    # pendente (vencido, de outra sessão ou só não confirmado) é descartado.
+    def self.settle_cadsus!(citizen, confirmed:)
+      cleared = { cadsus_pending_cns: nil, cadsus_pending_session_id: nil, cadsus_pending_at: nil }
+      if confirmed
+        citizen.update!(cleared.merge(cns: citizen.cadsus_pending_cns, cadsus_checked_at: Time.current))
+      elsif cleared.keys.any? { |k| !citizen.public_send(k).nil? }
+        citizen.update!(cleared)
+      end
     end
 
     def self.apply_profile!(citizen, values, keep_identity:)

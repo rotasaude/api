@@ -146,5 +146,40 @@ RSpec.describe "CADSUS na validação presencial", type: :request do
     verify(code)
     expect(response).to have_http_status(:created)
     expect(citizen.reload.cns).to be_nil
+    # LGPD (ADR 0028): a validação sem confirmação descarta o pendente da
+    # outra sessão — o CNS do CADSUS não fica guardado sem uso.
+    expect([ citizen.cadsus_pending_cns, citizen.cadsus_pending_session_id, citizen.cadsus_pending_at ]).to eq([ nil, nil, nil ])
+  end
+
+  it "validação simples depois de consulta vencida limpa o pendente e não grava CNS" do
+    switch_on!
+    credential!
+    sign_in_as(verifier)
+    lookup
+    expect(citizen.reload.cadsus_pending_cns).to be_present
+    travel 12.minutes do
+      verify(issue_code_for(citizen))
+      expect(response).to have_http_status(:created)
+    end
+    citizen.reload
+    expect([ citizen.cns, citizen.cadsus_checked_at ]).to eq([ nil, nil ])
+    expect([ citizen.cadsus_pending_cns, citizen.cadsus_pending_session_id, citizen.cadsus_pending_at ]).to eq([ nil, nil, nil ])
+  end
+
+  it "cidadão já validado: 409 already_verified como no lookup, sem chamar o CADSUS nem gravar pendente" do
+    switch_on!
+    credential!
+    sign_in_as(verifier)
+    # O cidadão tem código vivo e foi validado por outro caminho (check-in).
+    code = issue_code_for(citizen)
+    Citizens::Verify.record!(citizen: citizen, by: verifier)
+
+    expect(Cadsus::Client).not_to receive(:for)
+    lookup(citizen, code)
+    expect(response).to have_http_status(:conflict)
+    expect(json["error"]).to eq("already_verified")
+    citizen.reload
+    expect([ citizen.cadsus_pending_cns, citizen.cadsus_pending_session_id, citizen.cadsus_pending_at ]).to eq([ nil, nil, nil ])
+    expect(DomainEvent.where(name: "citizen.cadsus_looked_up")).to be_empty
   end
 end

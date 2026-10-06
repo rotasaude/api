@@ -4,7 +4,9 @@
 # como PENDENTE desta sessão — quem o efetiva é Citizens::Verify com
 # cadsus_confirmed. Credencial recusada marca a credencial (o interruptor deixa
 # de ser utilizável e a tela de Integrações mostra). Banco da cidade
-# inalcançável também vira indisponível. Reasons: :cadsus_unavailable.
+# inalcançável também vira indisponível. Cidadão já validado sai como no
+# POST /attendance/lookup (Citizens::LookupForVerification): sem chamar o
+# CADSUS nem gravar pendente. Reasons: :already_verified, :cadsus_unavailable.
 module Cadsus
   module Lookup
     WINDOW = 10.minutes
@@ -12,6 +14,9 @@ module Cadsus
     module_function
 
     def call(citizen:, by:, session:, city:)
+      if (active = citizen.active_verification)
+        return Result.fail(:already_verified, details: { verified_at: active.verified_at })
+      end
       return Result.fail(:cadsus_unavailable) unless Platform::Features.usable?(city, "cadsus_lookup")
 
       record = Client.for(city).lookup(citizen.cpf)

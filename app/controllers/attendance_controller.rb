@@ -65,6 +65,7 @@ class AttendanceController < ApplicationController
 
     result = Cadsus::Lookup.call(citizen: match.payload[:citizen], by: Current.user, session: Current.session,
                                  city: Current.city)
+    return render_failure(result, ERROR_STATUS) if result.failure? && result.reason == :already_verified
     return render(json: { error: "cadsus_unavailable" }, status: :service_unavailable) if result.failure?
 
     render json: result.payload
