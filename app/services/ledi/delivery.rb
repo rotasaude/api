@@ -91,9 +91,12 @@ module Ledi
                          give_up_after: Ledi::Backoff::GIVE_UP_AFTER)
     end
 
+    # Só marca a credencial usada no lote: se ela foi trocada no meio (set_at
+    # novo), a nova não herda a recusa da antiga (R35).
     def pause!
-      @credential.update!(last_check_status: "unauthorized", last_check_at: Time.current,
-                          last_check_message: PAUSE_MESSAGE)
+      IntegrationCredential.where(id: @credential.id, set_at: @credential.set_at)
+                           .update_all(last_check_status: "unauthorized", last_check_at: Time.current,
+                                       last_check_message: PAUSE_MESSAGE, updated_at: Time.current)
       :paused
     end
   end

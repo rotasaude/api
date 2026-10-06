@@ -147,6 +147,22 @@ RSpec.describe Ledi::DeliverJob do
     expect(pec.deliveries.size).to eq(2) # pausado: usable? é falso com credential_unauthorized
   end
 
+  # R35: a credencial trocada durante o envio não herda a recusa da antiga.
+  it "credencial trocada antes do 401: a nova não é marcada unauthorized" do
+    enqueue!
+    pec.delivery_replies = [ [ 401, "" ], [ 401, "" ] ]
+    credential = IntegrationCredential.find_by!(kind: "ledi")
+    allow(pec).to receive(:deliver).and_wrap_original do |original, **args|
+      IntegrationCredential.where(id: credential.id)
+                           .update_all(set_at: credential.set_at + 1.second, last_check_status: "ok")
+      original.call(**args)
+    end
+    run!
+    expect(credential.reload.last_check_status).to eq("ok")
+    expect(credential.last_check_message).not_to eq(Ledi::Delivery::PAUSE_MESSAGE)
+    expect(LediOutboxEntry.pluck(:status, :attempts)).to eq([ [ "pending", 0 ] ])
+  end
+
   it "login recusado: pausa direto" do
     enqueue!
     pec.login_replies = [ Ledi::PecClient::Unauthorized ]
