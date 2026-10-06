@@ -53,7 +53,7 @@ RSpec.describe "Invariantes do modo de prontuário (ADR 0028)", type: :request d
     Rails.logger.broadcast_to(capture)
     put "/integrations/credentials/ledi", params: { username: "rota", password: marker, cpf: "52998224725", cns: "700000000000005" }, as: :json
     bodies << response.body
-    post "/integrations/credentials/ledi/check"
+    post "/integrations/credentials/ledi/check", as: :json
     bodies << response.body
     get "/integrations"
     bodies << response.body
@@ -142,15 +142,26 @@ RSpec.describe "Invariantes do modo de prontuário (ADR 0028)", type: :request d
     found = Cadsus::Simulated.new(username: "u").lookup(citizen.cpf)
     sign_in_as(verifier)
     code = issue_code_for(citizen)
+    raw_row = lambda do # coluna crua: birth_date/sex são cifrados, então a prova é a coluna vazia, não texto
+      ApplicationRecord.connection.select_one(ApplicationRecord.sanitize_sql([ "SELECT * FROM citizens WHERE id = ?", citizen.id ]))
+                       .slice("birth_date", "sex")
+    end
     json_post "/attendance/cadsus_lookup", cpf: citizen.cpf, code: code
-    json_post "/attendance/verifications", cpf: citizen.cpf, code: code, document_checked: true, cadsus_confirmed: true
+    # Logo após a consulta (antes da verificação, que grava o perfil declarado): nascimento
+    # e sexo do CADSUS nunca ficam gravados, e o CNS ainda não foi efetivado.
+    expect(raw_row.call).to eq("birth_date" => nil, "sex" => nil)
+    expect(citizen.reload.cns).to be_nil
+
+    # Perfil declarado diferente do CADSUS, para o raw não confundir um com o outro.
+    json_post "/attendance/verifications", cpf: citizen.cpf, code: code, document_checked: true, cadsus_confirmed: true,
+                                           birth_date: (found.birth_date + 1).iso8601, sex: found.sex == "female" ? "male" : "female"
+    expect(response).to have_http_status(:created)
 
     citizen.reload
     expect(citizen.cns).to eq(found.cns)
     expect(citizen.cadsus_checked_at).to be_present
     expect(Citizen.column_names.grep(/cadsus|cns/)).to match_array(%w[cns cadsus_checked_at cadsus_pending_cns
                                                                       cadsus_pending_session_id cadsus_pending_at])
-    raw = ApplicationRecord.connection.select_one(ApplicationRecord.sanitize_sql([ "SELECT * FROM citizens WHERE id = ?", citizen.id ]))
-    expect(raw.values.compact.map(&:to_s).join("|")).not_to include(found.birth_date.iso8601, found.birth_date.strftime("%Y%m%d"))
+    expect(citizen.birth_date).to eq((found.birth_date + 1).iso8601) # o declarado, nunca o do CADSUS
   end
 end

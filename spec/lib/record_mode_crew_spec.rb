@@ -35,7 +35,7 @@ RSpec.describe RecordModeCrew do
     expect(proposals.select { |p| p[:kind] == "unit" && p[:action] == "link" }.map { |p| p[:local][:name] })
       .to contain_exactly("UBS Jardim das Flores", "UBS Vila Esperança", "UPA 24h Centro")
     expect(HealthUnit.where.not(cnes: nil)).to be_empty
-    city = City.find_by(slug: TEST_CITY_A.slug)
+    city = register_test_city!
     expect(city).not_to be_nil
     expect(city.record_mode).to eq("off")
   end
