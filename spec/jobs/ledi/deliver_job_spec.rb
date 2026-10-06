@@ -79,6 +79,40 @@ RSpec.describe Ledi::DeliverJob do
     expect(third.reload.status).to eq("accepted")
   end
 
+  # R33: PEC fora do ar no login é falha da cidade, não de cada ficha: um login,
+  # só a ficha da vez conta tentativa, o resto volta a pending e o lote para.
+  {
+    "inacessível" => [ Ledi::PecClient::Unreachable, "PEC inacessível" ],
+    "com erro" => [ Ledi::PecClient::Failed.new(503), "login no PEC respondeu 503" ]
+  }.each do |label, (error, text)|
+    it "login #{label}: só a ficha da vez conta tentativa, o resto volta sem contar, um login só" do
+      first, *rest = enqueue!(3)
+      pec.login_replies = [ error ]
+      run!
+      expect(pec.logins.size).to eq(1)
+      expect(pec.deliveries).to be_empty
+      expect(first.reload.slice(:status, :attempts, :last_error))
+        .to eq("status" => "pending", "attempts" => 1, "last_error" => text)
+      expect(rest.map { |e| e.reload.slice(:status, :attempts, :last_error) })
+        .to all(eq("status" => "pending", "attempts" => 0, "last_error" => nil))
+    end
+  end
+
+  it "lote parcial: primeira aceita, 401 duas vezes pausa, a aceita continua aceita e o resto volta sem contar" do
+    first, *rest = enqueue!(3)
+    pec.delivery_replies = [ [ 201, "" ], [ 401, "" ], [ 401, "" ] ]
+    run!
+    expect(first.reload.status).to eq("accepted")
+    expect(rest.map { |e| e.reload.slice(:status, :attempts) }).to all(eq("status" => "pending", "attempts" => 0))
+    expect(pec.deliveries.size).to eq(3)
+  end
+
+  it "uma execução por cidade: concorrência 1, chave fixa (o semáforo mora no banco de fila da cidade)" do
+    expect(described_class.concurrency_limit).to eq(1)
+    expect(described_class.concurrency_duration).to eq(described_class::STALE_SENDING)
+    expect(described_class.new.concurrency_key).to eq("Ledi::DeliverJob/ledi_deliver")
+  end
+
   it "24 h depois da primeira tentativa: failed" do
     entry = enqueue!.first
     pec.delivery_replies = [ [ 500, "" ] ]

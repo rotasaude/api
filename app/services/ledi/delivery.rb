@@ -3,6 +3,9 @@
 # sessão expirada → novo login uma vez; segunda recusa (ou login recusado) →
 # credencial unauthorized, o resto do lote volta a pending sem contar
 # tentativa e a cidade fica pausada (usable? falso) até a credencial voltar a ok.
+# PEC fora do ar (ou com erro) NO LOGIN é falha da cidade (R33): só a ficha da
+# vez conta tentativa, o resto volta a pending sem contar e o lote para — um
+# login (um timeout) por execução, nunca um por ficha.
 # A credencial e o cookie nunca saem daqui: nem log, nem evento, nem last_error.
 #
 # PROVISÓRIO (rotasaude/api#41): duplicidade após aceite e reenvio com o mesmo
@@ -10,6 +13,9 @@
 module Ledi
   class Delivery
     PAUSE_MESSAGE = "O PEC recusou a credencial durante o envio; o envio está pausado.".freeze
+
+    # Login sem resposta útil do PEC (inacessível ou com erro): para o lote.
+    class LoginDown < StandardError; end
 
     def initialize(city)
       @city = city
@@ -21,10 +27,11 @@ module Ledi
 
     def run(entries)
       entries.each_with_index do |entry, index|
-        next if deliver(entry) != :paused
+        outcome = deliver(entry)
+        next unless %i[paused halted].include?(outcome)
 
         LediOutboxEntry.release!(entries[index..].map(&:id))
-        return :paused
+        return outcome == :paused ? :paused : :done
       end
       :done
     end
@@ -36,14 +43,18 @@ module Ledi
       return pause! if reply == :unauthorized
 
       case Ledi::Outcome.classify(reply.status, reply.body)
+      # PROVISÓRIO (rotasaude/api#41): se accept! levantar DEPOIS de um 2xx, o
+      # rescue de StandardError (R32) agenda o reenvio de uma ficha que o PEC já
+      # aceitou; o que o PEC faz com esse reenvio só se sabe com o PEC real.
       when :accepted then entry.accept!
       when :rejected then reject(entry, reply)
       else retry_later(entry, "HTTP #{reply.status}")
       end
+    rescue LoginDown => e
+      retry_later(entry, e.message)
+      :halted
     rescue Ledi::PecClient::Unreachable
       retry_later(entry, "PEC inacessível")
-    rescue Ledi::PecClient::Failed => e
-      retry_later(entry, "login no PEC respondeu #{e.status}")
     rescue StandardError => e
       # R32: erro inesperado numa ficha não trava o lote. Só o nome da classe
       # vai para last_error, nunca a mensagem (pode carregar dado da ficha).
@@ -64,6 +75,10 @@ module Ledi
 
     def cookie
       Ledi::SessionCache.fetch(@cache_key) { @client.login.cookie }
+    rescue Ledi::PecClient::Unreachable
+      raise LoginDown, "PEC inacessível"
+    rescue Ledi::PecClient::Failed => e
+      raise LoginDown, "login no PEC respondeu #{e.status}"
     end
 
     def reject(entry, reply)

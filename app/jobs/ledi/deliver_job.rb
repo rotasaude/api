@@ -12,6 +12,14 @@ module Ledi
     BATCH_SIZE = 20
     STALE_SENDING = 10.minutes
 
+    # R33: um lote por cidade de cada vez. A chave é fixa porque o semáforo do
+    # Solid Queue mora no banco de fila da CIDADE (CityConnection põe o
+    # SolidQueue::Record no shard dela; o worker da cidade usa o banco dela) —
+    # cidades diferentes nunca disputam o mesmo semáforo. A duração casa com
+    # STALE_SENDING: o semáforo nunca vence antes de release_stale! poder
+    # devolver linhas de um lote ainda em voo.
+    limits_concurrency to: 1, key: "ledi_deliver", duration: STALE_SENDING
+
     def perform
       city = Current.city
       return unless Platform::Features.usable?(city, :ledi_export)
