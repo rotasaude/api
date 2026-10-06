@@ -1,8 +1,9 @@
 # Semente de dev da Produção e-SUS (módulo 16; spec §10). Grava direto na fila
 # uma competência corrente com todos os estados, para o painel do dashboard e
 # do console terem o que mostrar. Nada é enviado: as linhas nascem com
-# next_attempt_at no futuro distante, e o envio só acontece com o interruptor
-# ledi_export ligado (a semente não o liga; RecordModeCrew deixa record_mode=off).
+# next_attempt_at no futuro distante. A semente não altera record_mode nem liga
+# interruptor algum; nada é enviado enquanto ledi_export estiver desligado ou
+# record_mode=off.
 # Identificadores fictícios; payload só nas linhas não aceitas, com a ficha
 # sintética de verdade. Idempotente: não semeia se a fila já tem linha
 # sintética da competência.

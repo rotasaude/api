@@ -206,7 +206,7 @@ else
         # ── Produção e-SUS (módulo 16, spec §10) ──────────────────────────────
         # Fila LEDI com todos os estados na competência corrente; nada é
         # enviado enquanto o interruptor ledi_export estiver desligado ou
-        # record_mode=off (a semente não liga nenhum dos dois).
+        # record_mode=off. Esta semente não altera record_mode nem liga interruptor.
         ledi = LediCrew.seed_current_city(slug: slug)
         puts "[seeds] produção e-SUS .. #{ledi[:created]} fichas sintéticas na fila (não enviadas)"
 
