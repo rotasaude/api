@@ -65,6 +65,10 @@ module HealthUnits
     def self.move(request, target, now)
       live = request.appointments.live.first
       live&.update!(status: "moved", ended_at: now)
+      # A nota livre do remarque vai só para o pedido novo: o de origem fecha
+      # sem ela (encerrado é imutável e não poderia mais ser limpo).
+      reschedule_note = request.reschedule_note
+      request.reschedule_note = nil
       AppointmentRequests::Lifecycle.close!(request, reason: "moved")
 
       fresh = AppointmentRequest.create!(
@@ -74,7 +78,7 @@ module HealthUnits
         moved_from_request: request, status: live ? "scheduled" : "open", created_at: request.created_at,
         origin_triage_id: request.origin_triage_id, appointment_type_key: request.appointment_type_key,
         priority: request.priority, due_on: request.due_on, reschedule_reason_code: request.reschedule_reason_code,
-        reschedule_note: request.reschedule_note, preferred_period: request.preferred_period,
+        reschedule_note: reschedule_note, preferred_period: request.preferred_period,
         reschedule_count: request.reschedule_count
       )
       request.request_triages.each do |link|

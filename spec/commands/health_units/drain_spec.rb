@@ -191,4 +191,18 @@ RSpec.describe HealthUnits::Drain do
                                      reschedule_reason_code: "work", reschedule_note: "trabalho de manhã",
                                      reschedule_count: 1)
   end
+
+  # Revisão final: a nota livre do remarque vai só para o pedido novo; o de
+  # origem fecha como moved sem ela (encerrado é imutável e não poderia mais
+  # ser limpo — cada esvaziamento multiplicaria o texto).
+  it "o pedido de origem fecha sem a nota do remarque; só o novo a guarda" do
+    req = travel_to(now) { new_request }
+    req.update_columns(reschedule_reason_code: "work", reschedule_note: "trabalho de manhã", reschedule_count: 1)
+    travel_to(now + 1.hour) { drain }
+    expect(req.reload).to have_attributes(status: "closed", closed_reason: "moved", reschedule_note: nil,
+                                          reschedule_reason_code: "work")
+    expect(AppointmentRequest.find_by!(moved_from_request_id: req.id).reschedule_note).to eq("trabalho de manhã")
+    expect(AppointmentRequest.where(reschedule_note: "trabalho de manhã").count).to eq(1)
+  end
 end
+
