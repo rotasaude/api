@@ -40,6 +40,14 @@ RSpec.describe Ledi::Enqueue do
     expect(Ledi::DeliverJob).not_to have_received(:perform_later)
   end
 
+  # R35: Current.city vem do CityCatalog (cache de ~30 s); o record_mode é relido.
+  it "record_mode desligado há pouco (cidade em memória ainda diz integrated): nada entra" do
+    City.where(id: city.id).update_all(record_mode: "off")
+    expect(city.record_mode).to eq("integrated")
+    expect(described_class.call(ficha, city: city)).to be_nil
+    expect(LediOutboxEntry.count).to eq(0)
+  end
+
   it "ficha fora da interface: Ledi::Ficha::Invalid, nada gravado" do
     expect { described_class.call(Object.new, city: city) }.to raise_error(Ledi::Ficha::Invalid)
     expect(LediOutboxEntry.count).to eq(0)

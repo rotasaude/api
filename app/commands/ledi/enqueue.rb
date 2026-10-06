@@ -9,7 +9,7 @@ module Ledi
 
     def call(ficha, city:)
       Ledi::Ficha.assert!(ficha)
-      return nil unless Platform::Features.enabled?(city, :ledi_export) && city.record_mode != "off"
+      return nil unless accepting?(city)
 
       source = ficha.source
       existing = find_existing(source, ficha)
@@ -28,6 +28,13 @@ module Ledi
       end
       Ledi::DeliverJob.perform_later
       entry
+    end
+
+    # record_mode relido da plataforma: Current.city vem do CityCatalog, com
+    # cache de ~30 s, e uma cidade recém-desligada não pode receber ficha (R35).
+    def accepting?(city)
+      Platform::Features.enabled?(city, :ledi_export) &&
+        Platform::Features.settings(city)[:record_mode] != "off"
     end
 
     def find_existing(source, ficha)
