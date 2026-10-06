@@ -19,4 +19,6 @@ Rails.application.configure do
 
   config.x.otp_sender = :test
   config.x.sms_gateway = :test
+  # CADSUS (ADR 0028): simulado, sem rede. Ausente (staging, production) → PDQv3.
+  config.x.cadsus_backend = :simulated
 end

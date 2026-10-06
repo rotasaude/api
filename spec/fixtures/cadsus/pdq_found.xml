@@ -1,0 +1,23 @@
+<!-- spec/fixtures/cadsus/pdq_found.xml — recorte de PRPA_IN201306UV02 (spec PDQ v5 do DATASUS); valores fictícios -->
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+  <soap:Body>
+    <PRPA_IN201306UV02 xmlns="urn:hl7-org:v3" ITSVersion="XML_1.0">
+      <controlActProcess classCode="CACT" moodCode="EVN">
+        <subject typeCode="SUBJ">
+          <registrationEvent classCode="REG" moodCode="EVN">
+            <subject1 typeCode="SBJ">
+              <patient classCode="PAT">
+                <id root="2.16.840.1.113883.13.236" extension="700000000000005"/>
+                <patientPerson classCode="PSN" determinerCode="INSTANCE">
+                  <name use="L"><given>NOME QUE NUNCA SAI</given></name>
+                  <administrativeGenderCode code="F" codeSystem="2.16.840.1.113883.5.1"/>
+                  <birthTime value="19800517000000"/>
+                </patientPerson>
+              </patient>
+            </subject1>
+          </registrationEvent>
+        </subject>
+      </controlActProcess>
+    </PRPA_IN201306UV02>
+  </soap:Body>
+</soap:Envelope>

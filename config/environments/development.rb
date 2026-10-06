@@ -36,4 +36,6 @@ Rails.application.configure do
 
   # Campanhas (ADR 0024): o SMS vai para o log do api, com telefone mascarado.
   config.x.sms_gateway = :log
+  # CADSUS (ADR 0028): simulado, sem rede. Ausente (staging, production) → PDQv3.
+  config.x.cadsus_backend = :simulated
 end

@@ -1,0 +1,10 @@
+<!-- spec/fixtures/cadsus/pdq_not_found.xml -->
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+  <soap:Body>
+    <PRPA_IN201306UV02 xmlns="urn:hl7-org:v3" ITSVersion="XML_1.0">
+      <controlActProcess classCode="CACT" moodCode="EVN">
+        <queryAck><queryResponseCode code="NF"/></queryAck>
+      </controlActProcess>
+    </PRPA_IN201306UV02>
+  </soap:Body>
+</soap:Envelope>
