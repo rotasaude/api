@@ -180,6 +180,10 @@ Rails.application.routes.draw do
   put  "/integrations/credentials/:kind", to: "integrations#update"
   post "/integrations/credentials/:kind/check", to: "integrations#check"
 
+  # CNES da cidade (ADR 0028; contratos §5.2).
+  get  "/cnes", to: "cnes#show"
+  post "/cnes/apply", to: "cnes#apply"
+
   # Catálogo de triagens da cidade (ADR 0027; contratos §4). Prefixo próprio:
   # /protocols/:name já captura qualquer segmento.
   get "/triage_catalog",                to: "triage_catalog#index"
