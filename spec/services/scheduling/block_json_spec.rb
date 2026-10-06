@@ -31,4 +31,15 @@ RSpec.describe Scheduling::BlockJson do
     out = described_class.list([ block(at(day, 9), at(day, 10), "bookable", "fantasma") ], zone: zone, catalog: catalog)
     expect(out.first).to include(appointment_type_key: "fantasma", appointment_type_name: "fantasma")
   end
+
+  it "for_day devolve só o pedaço de cada faixa que cai no dia, com 24:00 no recorte da meia-noite" do
+    blocks = [ block(at(day, 18), at(day, 22), "walk_in", nil), block(at(day, 22), at(day + 1, 2), "blocked", nil) ]
+    expect(described_class.for_day(blocks, day: day, zone: zone, catalog: catalog)).to eq([
+      { starts: "18:00", ends: "22:00", kind: "walk_in" }, { starts: "22:00", ends: "24:00", kind: "blocked" }
+    ])
+    expect(described_class.for_day(blocks, day: day + 1, zone: zone, catalog: catalog)).to eq([
+      { starts: "00:00", ends: "02:00", kind: "blocked" }
+    ])
+    expect(described_class.for_day(blocks, day: day + 2, zone: zone, catalog: catalog)).to eq([])
+  end
 end

@@ -109,13 +109,19 @@ module Scheduling
               zone: Time.zone, window: window)
     end
 
-    def shifts_in(unit_id, window, include_cancelled: false)
+    def shifts_in(unit_id, window)
+      unit_shifts(unit_id, window).map { |s| shift_data(s) }
+    end
+
+    # Turnos da unidade que cruzam a janela, em ordem de início (os cancelados
+    # só com include_cancelled: a agenda os mostra marcados).
+    def unit_shifts(unit_id, window, include_cancelled: false)
       scope = ProfessionalShift.joins(:professional_link).where(professional_links: { health_unit_id: unit_id })
                                .where("professional_shifts.starts_at <= ? AND professional_shifts.ends_at > ?",
                                       window.end, window.begin)
                                .includes(:professional_link, :schedule_template)
       scope = scope.where(cancelled_at: nil) unless include_cancelled
-      scope.order(:starts_at).map { |s| shift_data(s) }
+      scope.order(:starts_at)
     end
 
     # Faixas do modelo com chaves STRING (jsonb): chave símbolo seria lida 00:00.

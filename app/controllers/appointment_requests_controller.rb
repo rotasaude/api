@@ -57,9 +57,7 @@ class AppointmentRequestsController < ApplicationController
     return render json: { error: "not_found" }, status: :not_found unless unit
 
     day = (Date.iso8601(params[:date].to_s) rescue Time.zone.today)
-    appointments = Appointment.where(health_unit: unit, scheduled_at: day.in_time_zone.all_day)
-                              .includes(:citizen, :request).order(:scheduled_at)
-    render json: { appointments: appointments.map { |a| agenda_json(a) } }
+    render json: Scheduling::UnitAgenda.call(unit: unit, date: day)
   end
 
   # Vagas da unidade e dias de marcação livre (contratos §4.2, §10). Tipo
@@ -123,9 +121,4 @@ class AppointmentRequestsController < ApplicationController
 
   # Quem chega aqui marca (require_verifier): vê a justificativa do encaixe.
   def presenter = @presenter ||= Scheduling::AppointmentPresenter.new(show_reason: true)
-
-  def agenda_json(a)
-    { id: a.id, scheduled_at: a.scheduled_at.iso8601, cpf_masked: a.citizen.cpf_masked, kind: a.request.kind,
-      status: a.status }
-  end
 end

@@ -15,6 +15,11 @@ module Scheduling
       end
     end
 
+    # Só o pedaço de cada faixa que cai no dia local `day` (agendas do dia).
+    def for_day(blocks, day:, zone:, catalog:)
+      blocks.filter_map { |block| piece(block, day: day, zone: zone, catalog: catalog) }
+    end
+
     # O pedaço da faixa que cai no dia local `day`, ou nil.
     def piece(block, day:, zone:, catalog:)
       day_start = zone.local(day.year, day.month, day.day)

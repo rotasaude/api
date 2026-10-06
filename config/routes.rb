@@ -139,6 +139,7 @@ Rails.application.routes.draw do
     post "",        to: "professionals#create"
     get  "pending", to: "professionals#pending"
     get  "me",      to: "professionals#me"
+    get  "me/agenda", to: "professional_agenda#show"
     post "me",      to: "professionals#update_me"
     get  "cbo",     to: "professionals#cbo"
     post "links/:id/end", to: "professional_links#end_link"
