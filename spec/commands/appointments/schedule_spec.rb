@@ -52,4 +52,34 @@ RSpec.describe Appointments::Schedule do
     req.target_unit.update!(active: false)
     expect(schedule(now + 3.days).reason).to eq(:invalid_unit)
   end
+
+  it "dia com turno não cancelado na unidade: use_slots (ADR 0029, transição)" do
+    ensure_appointment_types!
+    at = 3.days.from_now.change(hour: 14)
+    shift = shift!(ProfessionalLink.find_by!(health_unit: unit), starts_at: at.change(hour: 8))
+    expect(Appointments::Schedule.call(request: req, scheduled_at: at.iso8601, health_unit_id: unit.id, by: reception).reason)
+      .to eq(:use_slots)
+    expect(req.reload.status).to eq("open")
+
+    shift.update!(cancelled_at: Time.current, cancelled_by_user: reception, cancel_reason: "troca de escala")
+    expect(Appointments::Schedule.call(request: req, scheduled_at: at.iso8601, health_unit_id: unit.id, by: reception))
+      .to be_ok
+  end
+
+  it "cidadão com outro horário ativo sobreposto (15 min do livre): citizen_busy; encostado passa" do
+    ensure_appointment_types!
+    other = triage_request!(citizen, unit: unit)
+    at = now + 3.days
+    expect(described_class.call(request: other, scheduled_at: at.iso8601, health_unit_id: unit.id, by: reception,
+                                now: now)).to be_ok
+    expect(schedule(at + 10.minutes).reason).to eq(:citizen_busy)
+    expect(req.reload.status).to eq("open")
+    expect(schedule(at + Appointment::LEGACY_SPAN)).to be_ok
+  end
+
+  it "trava como Book: unidade, cidadão, horários vivos e pedido antes da trava do horário" do
+    expect(Appointments::Placement).to receive(:lock!).with(req).ordered.and_call_original
+    expect(Appointments::Schedule).to receive(:lock_slot!).ordered.and_call_original
+    expect(schedule(now + 3.days)).to be_ok
+  end
 end

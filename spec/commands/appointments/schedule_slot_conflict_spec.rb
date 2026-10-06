@@ -17,8 +17,10 @@ RSpec.describe "Appointments::Schedule — conflito de horário" do
   let(:now) { Time.zone.parse("2026-10-01 10:00") }
   let(:slot) { Time.zone.parse("2026-10-06 14:00") }
 
+  # Cada pedido de um cidadão diferente: o mesmo cidadão no mesmo instante é
+  # citizen_busy (ADR 0029), não o conflito da unidade que se prova aqui.
   def new_request
-    a = in_care!(waiting_attendance(citizen, unit: unit, by: reception), by: doctor)
+    a = in_care!(waiting_attendance(person!, unit: unit, by: reception), by: doctor)
     Attendances::Close.call(attendance: a, outcome: "return", referral_unit_id: nil, referral_note: nil, by: doctor)
                       .payload.fetch(:appointment_request)
   end
@@ -63,9 +65,25 @@ RSpec.describe "Appointments::Schedule — conflito de horário" do
     expect(schedule(new_request, late)).to be_ok
   end
 
+  # As travas de linha de Placement.lock! (unidade → cidadão → horários vivos →
+  # pedido) vêm antes, na ordem do Drain; a contagem do horário vem depois.
   it "trava unidade + início antes de contar os horários vivos" do
+    req = new_request
+    allow(Appointment).to receive(:where).and_call_original
+    expect(Appointments::Placement).to receive(:lock!).with(req).ordered.and_call_original
     expect(Appointments::Schedule).to receive(:lock_slot!).with(unit.id, slot).ordered.and_call_original
-    expect(Appointment).to receive(:where).ordered.and_call_original
-    schedule(new_request, slot)
+    expect(Appointment).to receive(:where).with(health_unit_id: unit.id, scheduled_at: slot, status: Appointment::LIVE)
+                                          .ordered.and_call_original
+    expect(schedule(req, slot)).to be_ok
+  end
+
+  it "o mesmo cidadão no mesmo horário: citizen_busy, que allow_overlap não libera" do
+    citizen_req = ->(c) do
+      a = in_care!(waiting_attendance(c, unit: unit, by: reception), by: doctor)
+      Attendances::Close.call(attendance: a, outcome: "return", referral_unit_id: nil, referral_note: nil, by: doctor)
+                        .payload.fetch(:appointment_request)
+    end
+    expect(schedule(citizen_req.(citizen), slot)).to be_ok
+    expect(schedule(citizen_req.(citizen), slot, allow_overlap: true).reason).to eq(:citizen_busy)
   end
 end

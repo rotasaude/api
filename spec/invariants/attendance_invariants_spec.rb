@@ -95,7 +95,8 @@ RSpec.describe "Invariantes do atendimento (ADR 0018, 0019)" do
     {
       "id" => ->(_) { { id: SecureRandom.uuid } },
       "triage_id" => ->(_) { { triage_id: completed_web_triage_for(citizen).id } },
-      "appointment_id" => ->(_) { { appointment_id: travel_to(t0) { todays_appointment }.id } },
+      # Um cidadão por horário: o mesmo cidadão no mesmo instante é citizen_busy (ADR 0029).
+      "appointment_id" => ->(_) { { appointment_id: travel_to(t0) { todays_appointment(person!) }.id } },
       "citizen_id" => ->(_) { { citizen_id: stranger.id } },
       "health_unit_id" => ->(_) { { health_unit_id: other_unit.id } },
       "checked_in_by_user_id" => ->(_) { { checked_in_by_user_id: doctor.id } },

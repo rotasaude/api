@@ -73,8 +73,10 @@ RSpec.describe HealthUnits::Drain do
 
   it "horário ocupado no destino vai como encaixe" do
     travel_to(now) do
+      # Outro cidadão: o mesmo cidadão no mesmo instante seria citizen_busy (ADR 0029).
+      someone = Citizen.create!(cpf: "11144477735", phone: "+5541911112222")
       other = Attendances::Close.call(
-        attendance: in_care!(waiting_attendance(citizen, unit: closing, by: reception), by: doctor),
+        attendance: in_care!(waiting_attendance(someone, unit: closing, by: reception), by: doctor),
         outcome: "referred", referral_unit_id: dest.id, referral_note: nil, by: doctor
       ).payload.fetch(:appointment_request)
       Appointments::Schedule.call(request: other, scheduled_at: (now + 5.days).iso8601, health_unit_id: dest.id,

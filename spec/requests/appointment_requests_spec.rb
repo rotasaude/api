@@ -11,8 +11,8 @@ RSpec.describe "Appointment requests", type: :request do
   let(:citizen) { Citizen.create!(cpf: "52998224725", phone: "+5541998765432") }
   def body = JSON.parse(response.body)
 
-  def returned_attendance(priority: 5)
-    a = in_care!(waiting_attendance(citizen, unit: unit, by: reception), by: doctor)
+  def returned_attendance(priority: 5, of: citizen)
+    a = in_care!(waiting_attendance(of, unit: unit, by: reception), by: doctor)
     a.triage.update_columns(priority: priority)
     Attendances::Close.call(attendance: a, outcome: "return", referral_unit_id: nil, referral_note: "reavaliar",
                             by: doctor).payload.fetch(:appointment_request)
@@ -43,7 +43,8 @@ RSpec.describe "Appointment requests", type: :request do
     at = 3.days.from_now.change(hour: 14, min: 0)
     first = returned_attendance
     Appointments::Schedule.call(request: first, scheduled_at: at.iso8601, health_unit_id: unit.id, by: reception)
-    second = returned_attendance
+    # Outro cidadão: o mesmo cidadão no mesmo instante seria citizen_busy (ADR 0029).
+    second = returned_attendance(of: Citizen.create!(cpf: "11144477735", phone: "+5541911112222"))
     sign_in_as(reception)
 
     json_post "/attendance/requests/#{second.id}/appointments", scheduled_at: at.iso8601, health_unit_id: unit.id

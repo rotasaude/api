@@ -5,7 +5,10 @@ class AppointmentRequestsController < ApplicationController
 
   ERROR_STATUS = {
     invalid_time: :unprocessable_entity, request_not_open: :conflict, wrong_unit: :unprocessable_entity,
-    invalid_unit: :unprocessable_entity, reason_too_short: :unprocessable_entity, slot_taken: :conflict
+    invalid_unit: :unprocessable_entity, reason_too_short: :unprocessable_entity, slot_taken: :conflict,
+    slot_unavailable: :conflict, citizen_busy: :conflict, fit_in_limit: :conflict, use_slots: :conflict,
+    invalid_reason: :unprocessable_entity, type_not_served: :unprocessable_entity, outside_shift: :unprocessable_entity,
+    invalid_kind: :unprocessable_entity
   }.freeze
   AVAILABILITY_MAX_DAYS = 14
   AVAILABILITY_DEFAULT_DAYS = 7
@@ -22,16 +25,20 @@ class AppointmentRequestsController < ApplicationController
     render json: { requests: requests.map { |r| request_json(r) } }
   end
 
+  # Contratos §4.3, §9: vaga, encaixe ou livre. `appointment_request` (nunca
+  # `request`, que é o pedido HTTP do Rails).
   def schedule
-    request = AppointmentRequest.find_by(id: params[:id])
-    return render json: { error: "not_found" }, status: :not_found unless request
+    appointment_request = AppointmentRequest.find_by(id: params[:id])
+    return render json: { error: "not_found" }, status: :not_found unless appointment_request
 
-    result = Appointments::Schedule.call(request: request, scheduled_at: params[:scheduled_at],
-                                         health_unit_id: params[:health_unit_id], by: Current.user,
-                                         allow_overlap: params[:allow_overlap] == true)
+    result = book(appointment_request, request.request_parameters)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
-    render json: { appointment: appointment_json(result.payload[:appointment]) }, status: :created
+    appointment = Appointment.includes(:citizen, :professional, shift: %i[professional_link schedule_template])
+                             .find(result.payload[:appointment].id)
+    render json: { appointment: presenter.call(appointment)
+                                         .merge(confirmation_deadline_at: appointment.confirmation_deadline_at&.iso8601) },
+           status: :created
   end
 
   def dismiss
@@ -89,10 +96,33 @@ class AppointmentRequestsController < ApplicationController
     }
   end
 
-  def appointment_json(a)
-    { id: a.id, scheduled_at: a.scheduled_at.iso8601, status: a.status,
-      confirmation_deadline_at: a.confirmation_deadline_at&.iso8601 }
+  # Contratos §4.3, §9: health_unit_id vai nas três formas; ausência de kind = legacy.
+  def book(appointment_request, body)
+    kind = body["kind"].presence || "legacy"
+    return Result.fail(:invalid_kind) unless Appointment::BOOKING_KINDS.include?(kind)
+    if kind == "legacy"
+      return Appointments::Schedule.call(request: appointment_request, scheduled_at: body["scheduled_at"],
+                                         health_unit_id: body["health_unit_id"], by: Current.user,
+                                         allow_overlap: body["allow_overlap"] == true)
+    end
+    if appointment_request.target_unit_id.nil? || body["health_unit_id"].to_s != appointment_request.target_unit_id
+      return Result.fail(:wrong_unit)
+    end
+
+    professional = Professional.find_by(id: body["professional_id"].to_s)
+    type = AppointmentType.find_by(key: body["appointment_type_key"].to_s)
+    if kind == "slot"
+      Appointments::Book.call(request: appointment_request, professional: professional, starts_at: body["starts_at"],
+                              type: type, by: Current.user)
+    else
+      Appointments::FitIn.call(request: appointment_request, professional: professional,
+                               shift: ProfessionalShift.find_by(id: body["shift_id"].to_s), starts_at: body["starts_at"],
+                               type: type, reason: body["reason"], by: Current.user)
+    end
   end
+
+  # Quem chega aqui marca (require_verifier): vê a justificativa do encaixe.
+  def presenter = @presenter ||= Scheduling::AppointmentPresenter.new(show_reason: true)
 
   def agenda_json(a)
     { id: a.id, scheduled_at: a.scheduled_at.iso8601, cpf_masked: a.citizen.cpf_masked, kind: a.request.kind,
