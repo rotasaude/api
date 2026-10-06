@@ -79,6 +79,11 @@ default: &default
     queue: housekeeping
     schedule: "every 15 minutes"
 
+  remind_appointments:
+    class: Appointments::RemindJob
+    queue: housekeeping
+    schedule: "every 15 minutes"
+
   campaigns_due:
     class: Campaigns::DueJob
     queue: default
