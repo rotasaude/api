@@ -130,6 +130,8 @@ class TriageCatalogCrew
       end
       ProtocolDefinition.find_by!(name: name, version: version)
     end
+    # O ciclo assinado é reaproveitado pela semente do módulo 17 (SchedulingCrew).
+    public :run_cycle!
 
     def sign!(reviewer, name, version, purpose)
       result = Protocols::Sign.call(name: name, version: version, purpose: purpose, by: reviewer)

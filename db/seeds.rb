@@ -16,6 +16,7 @@
 #     O analyst (analise@<slug>.demo) e ~6 meses de histórico consolidado para o Analytics vêm de `lib/analytics_crew.rb` (módulo 14).
 #     Modo de prontuário (módulo 16): SIGTAP reduzida, CPF dos profissionais, credencial cadsus simulada e um retrato do CNES — ver lib/record_mode_crew.rb. A semente não altera record_mode nem liga interruptor (cidade nova nasce com record_mode off, o padrão da tabela cities).
 #     Os protocolos do catálogo (saúde do idoso, saúde mental e aprofundamento), a família avó+neto no mesmo celular e o idoso restrito a dois bairros em Curitiba vêm de `lib/triage_catalog_crew.rb` (módulo 15).
+#     A base de tipos de atendimento, o modelo "Manhã" nos turnos da médica (Curitiba), os turnos da semana da médica e da enfermeira e o idoso com regra de agendamento vêm de `lib/scheduling_crew.rb` (módulo 17).
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -38,6 +39,7 @@ else
   require Rails.root.join("lib/campaign_crew").to_s
   require Rails.root.join("lib/analytics_crew").to_s
   require Rails.root.join("lib/triage_catalog_crew").to_s
+  require Rails.root.join("lib/scheduling_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -219,6 +221,12 @@ else
              "#{catalog[:restricted_neighborhoods].any? ? "; idoso só em #{catalog[:restricted_neighborhoods].join(' e ')}" : ''}"
         puts "[seeds] títulos ..... #{catalog[:titled].join(', ')} (versão nova assinada)" if catalog[:titled].any?
         catalog[:family].each { |p| puts "[seeds] família ..... #{p[:cpf_masked]} (#{p[:age]} anos, #{p[:sex]})" }
+
+        # ── Agenda (módulo 17, spec 2026-10-05 §10) ───────────────────────────
+        # Depois do catálogo: usa o saude-do-idoso ativo, a médica e a enfermeira.
+        agenda = SchedulingCrew.seed_current_city(slug: slug)
+        puts "[seeds] agenda ...... #{agenda[:types]} tipos; modelo: #{agenda[:template] || 'nenhum'}; " \
+             "#{agenda[:new_shifts]} turnos novos, #{agenda[:templated]} com modelo; #{agenda[:protocol]} com agendamento"
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"

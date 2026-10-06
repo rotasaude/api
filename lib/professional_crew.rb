@@ -40,10 +40,10 @@ class ProfessionalCrew
       ensure_ended_link(professionals["enfermeira"], ubs2, "223505", admin)
       tec_upa = ensure_link(professionals["tecnico"], upa, "322205", admin)
 
-      business_days = (1..9).map { |n| Time.zone.today + n }.reject { |d| d.saturday? || d.sunday? }.first(5)
-      ensure_shifts(medica_ubs, admin, business_days.map { |d| [ at(d, 7), at(d, 13) ] })
-      ensure_shifts(medica_upa, admin, [ [ at(business_days.last + 1, 19), at(business_days.last + 2, 7) ] ])
-      ensure_shifts(enf_ubs, admin, business_days.map { |d| [ at(d, 7), at(d, 19) ] })
+      days = business_days
+      ensure_shifts(medica_ubs, admin, days.map { |d| [ at(d, 7), at(d, 13) ] })
+      ensure_shifts(medica_upa, admin, [ [ at(days.last + 1, 19), at(days.last + 2, 7) ] ])
+      ensure_shifts(enf_ubs, admin, days.map { |d| [ at(d, 7), at(d, 19) ] })
       ensure_shifts(tec_upa, admin, [ [ at(Time.zone.today + 2, 7), at(Time.zone.today + 3, 7) ] ])
 
       {
@@ -56,9 +56,13 @@ class ProfessionalCrew
       }
     end
 
-    private
+    # Os cinco próximos dias úteis (a partir de amanhã). Público: a semente da
+    # agenda (módulo 17) completa a mesma semana.
+    def business_days = (1..9).map { |n| Time.zone.today + n }.reject { |d| d.saturday? || d.sunday? }.first(5)
 
     def at(day, hour) = day.in_time_zone.change(hour: hour)
+
+    private
 
     def ensure_member(member, slug:, password:)
       user = User.find_or_initialize_by(email_address: "#{member[:email_prefix]}@#{slug}.demo")
