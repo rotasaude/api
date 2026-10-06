@@ -3,6 +3,10 @@
 # (cenário de teste). Os caminhos reais são ScheduleShift, Triages::Schedule e
 # Appointments::Book/FitIn.
 module SchedulingHelpers
+  # Bancos de teste nascem de db/city_schema.rb, sem a base de tipos (só a
+  # migração 20261006100001 a copia): specs que dependem dela chamam isto.
+  def ensure_appointment_types! = Scheduling::AppointmentTypes.seed_platform!
+
   def type_row!(key, cbo: ["2251"], minutes: 20, origin: "city", active: true, name: key.humanize)
     AppointmentType.create!(key: key, name: name, duration_minutes: minutes, cbo_prefixes: cbo, origin: origin,
                             active: active)

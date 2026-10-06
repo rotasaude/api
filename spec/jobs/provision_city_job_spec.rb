@@ -49,11 +49,28 @@ RSpec.describe ProvisionCityJob, type: :job do
       expect(ProtocolDefinition.pluck(:name, :status)).to eq([ %w[triage-respiratoria draft] ])
       expect(Invitation.pluck(:email, :role, :invited_by_id)).to eq([ [ "prefeita@cidade.gov.br", "municipal_admin", nil ] ])
       expect(ConsentTerm.count).to eq(0)
+      expect(AppointmentType.where(origin: "platform").order(:position).pluck(:key))
+        .to eq(%w[consulta_medica consulta_enfermagem consulta_odontologica retorno])
     end
 
     expect(provisioned_events.count).to eq(1)
     expect(provisioned_events.first.payload.keys).to contain_exactly("city_id", "ibge_code", "by")
     expect(provisioned_events.first.payload).to include("ibge_code" => "4113700", "by" => operator_id)
+  end
+
+  # ADR 0029 §3.1: a migração copia a base, mas o provisionamento a garante por
+  # conta própria (idempotente), no banco da cidade. Sem isto o exemplo acima
+  # passaria só pela migração.
+  it "seeds the platform appointment types itself, inside the city database" do
+    seeded_in = []
+    allow(Scheduling::AppointmentTypes).to receive(:seed_platform!).and_wrap_original do |original, *a, **kw|
+      seeded_in << AppointmentType.connection.current_database
+      original.call(*a, **kw)
+    end
+
+    on_platform_queue { described_class.perform_now(city_id: city.id, **args) }
+
+    expect(seeded_in).to eq([ URI.parse(city.reload.database_url).path.delete_prefix("/") ])
   end
 
   # I1 (hardening review): same LogSubscriber gap fixed for CityMailDeliveryJob
@@ -98,6 +115,7 @@ RSpec.describe ProvisionCityJob, type: :job do
     expect(city.reload.status).to eq("active")
     CityConnection.with(city) do
       expect([ CityProfile.count, AlertRecipient.count, ProtocolDefinition.count, Invitation.count ]).to eq([ 1, 1, 1, 1 ])
+      expect(AppointmentType.count).to eq(4)
     end
     expect(provisioned_events.count).to eq(1)
     expect(InvitationMailer).to have_received(:invite).once

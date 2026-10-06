@@ -86,6 +86,10 @@ class ProvisionCityJob < ApplicationJob
           template = CityTemplates.protocol
           SeedProtocol.call(template: template) unless ProtocolDefinition.exists?(name: template.fetch(:name))
 
+          # ADR 0029 §3.1: a base de tipos (a migração já copiou; aqui é a
+          # garantia idempotente do provisionamento).
+          Scheduling::AppointmentTypes.seed_platform!
+
           invited = CityLifecycle::InviteAdmin.call(city: city, email: admin_email)
           raise SeedFailed, "convite do primeiro municipal_admin: #{invited.message}" if invited.failure?
 
