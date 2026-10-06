@@ -1,6 +1,7 @@
 # Balcão da UBS (spec 2026-09-24-citizen-presencial-verification §4–§7).
 #   POST /attendance/lookup                   {cpf, code}                    citizen_verifier
-#   POST /attendance/verifications             {cpf, code, document_checked, birth_date, sex, gender_identity?}  citizen_verifier
+#   POST /attendance/verifications             {cpf, code, document_checked, birth_date, sex, gender_identity?, cadsus_confirmed?}  citizen_verifier
+#   POST /attendance/cadsus_lookup              {cpf, code}                    citizen_verifier + cadsus_lookup
 #   POST /attendance/verifications/search      {cpf}                          municipal_admin
 #   POST /attendance/verifications/:id/revoke {reason}                       municipal_admin
 # O CPF do histórico vai no corpo, não na URL (LGPD: URLs acabam em logs de
@@ -8,6 +9,7 @@
 class AttendanceController < ApplicationController
   include Authentication
   include AttendanceAccess
+  include FeatureGate
 
   ERROR_STATUS = {
     invalid_cpf: :unprocessable_entity, invalid_code: :unprocessable_entity, code_expired: :unprocessable_entity,
@@ -15,13 +17,14 @@ class AttendanceController < ApplicationController
     invalid_birth_date: :unprocessable_entity, invalid_sex: :unprocessable_entity,
     invalid_gender_identity: :unprocessable_entity,
     reason_too_short: :unprocessable_entity, already_verified: :conflict, already_revoked: :conflict,
-    own_verification: :forbidden
+    own_verification: :forbidden, cadsus_lookup_missing: :conflict
   }.freeze
 
-  before_action :require_verifier, only: %i[lookup verify]
+  before_action :require_verifier, only: %i[lookup verify cadsus_lookup]
+  require_feature "cadsus_lookup", only: :cadsus_lookup
   before_action :require_admin, only: %i[search revoke]
 
-  rate_limit to: 30, within: 10.minutes, only: %i[lookup verify], name: "attendance",
+  rate_limit to: 30, within: 10.minutes, only: %i[lookup verify cadsus_lookup], name: "attendance",
              by: -> { Current.user&.id || request.remote_ip }, store: AttendanceAccess::RateLimitStore,
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
@@ -44,13 +47,27 @@ class AttendanceController < ApplicationController
     result = Citizens::Verify.call(
       cpf: params[:cpf], code: params[:code], document_checked: params[:document_checked] == true, by: Current.user,
       birth_date: params[:birth_date], sex: params[:sex],
-      gender_identity: params.key?(:gender_identity) ? params[:gender_identity] : Citizens::Verify::UNCHANGED
+      gender_identity: params.key?(:gender_identity) ? params[:gender_identity] : Citizens::Verify::UNCHANGED,
+      cadsus_confirmed: params[:cadsus_confirmed] == true, session_id: Current.session&.id
     )
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     v = result.payload[:verification]
     render json: { verification: { id: v.id, citizen_id: v.citizen_id, verified_at: v.verified_at.iso8601 } },
            status: :created
+  end
+
+  # ADR 0028 (contratos §5.4): o par sai do mesmo CPF + código do lookup, sem
+  # consumir o código; a resposta nunca traz nome, mãe, endereço nem CPF.
+  def cadsus_lookup
+    match = Citizens::VerificationCodeMatch.call(cpf: params[:cpf], code: params[:code])
+    return render_failure(match, ERROR_STATUS) if match.failure?
+
+    result = Cadsus::Lookup.call(citizen: match.payload[:citizen], by: Current.user, session: Current.session,
+                                 city: Current.city)
+    return render(json: { error: "cadsus_unavailable" }, status: :service_unavailable) if result.failure?
+
+    render json: result.payload
   end
 
   def search

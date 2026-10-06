@@ -89,6 +89,8 @@ Rails.application.routes.draw do
   # de servidor da cidade — fora de /admin/api, que é só leitura.
   scope "/attendance" do
     post "lookup",                   to: "attendance#lookup"
+    # CADSUS no balcão (ADR 0028; contratos §5.4), atrás do interruptor.
+    post "cadsus_lookup",            to: "attendance#cadsus_lookup"
     post "verifications",            to: "attendance#verify"
     post "verifications/search",     to: "attendance#search"
     post "verifications/:id/revoke", to: "attendance#revoke"
