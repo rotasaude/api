@@ -8,17 +8,44 @@
 module Citizens
   module Erase
     TOMBSTONE_PREFIX = "erased:".freeze
+    MAX_ATTEMPTS = 3
+
+    # Um pedido do par mudou de unidade entre a trava das unidades e a dos pares.
+    class UnitsChanged < StandardError; end
 
     module_function
 
     def call(request:, by:)
+      attempts = 0
+      begin
+        attempt(request: request, by: by)
+      rescue UnitsChanged
+        attempts += 1
+        raise if attempts >= MAX_ATTEMPTS
+
+        request.reload
+        retry
+      end
+    end
+
+    def attempt(request:, by:)
       result = nil
       ApplicationRecord.transaction do
         request.lock!
         next result = Result.fail(:not_pending) unless request.status == "pending"
         next result = Result.fail(:own_request) if request.requested_by_user_id == by.id
 
+        # Ordem global de travas: unidade FOR SHARE → cidadão → horários → pedido.
+        # A exclusão escreve pedidos do par (nota do remarque, CloseRevoked) e
+        # trava o cidadão em FOR UPDATE (segura a FK de um atendimento novo
+        # enquanto reconfere a retenção). Sem a unidade na frente, cruzava com o
+        # HealthUnits::Drain, que segura o pedido e espera o cidadão (FK do
+        # pedido novo) — deadlock. Com a unidade em FOR SHARE, o Drain espera.
+        locked_units = lock_units!(RequestErasure.pairs_of(request.cpf).order(:id).to_a)
         pairs = RequestErasure.pairs_of(request.cpf).order(:id).lock.to_a
+        # Pares travados: nenhum pedido novo nasce para eles (FK). Se um pedido
+        # entrou noutra unidade antes da trava, recomeça com ela na frente.
+        raise UnitsChanged unless (unit_ids_of(pairs) - locked_units).empty?
         # O banco não exige decided_by_user: quem decide é gravado aqui, sempre.
         if RequestErasure.attended?(Citizen.where(id: pairs.map(&:id)))
           request.update!(status: "retained", decided_by_user: by, decided_at: Time.current)
@@ -79,6 +106,35 @@ module Citizens
                              birth_date: nil, sex: nil, gender_identity: nil, profile_source: nil,
                              cns: nil, cadsus_checked_at: nil, cadsus_pending_cns: nil,
                              cadsus_pending_session_id: nil, cadsus_pending_at: nil, updated_at: Time.current)
+    end
+
+    # Trava FOR SHARE (por id) as unidades dos pedidos que a exclusão vai
+    # escrever, até o conjunto parar de mudar (um Drain que commitou enquanto
+    # esperávamos levou o pedido para outra unidade). Devolve os ids travados.
+    def lock_units!(pairs)
+      locked = []
+      loop do
+        missing = unit_ids_of(pairs) - locked
+        return locked if missing.empty?
+
+        HealthUnit.where(id: missing).order(:id).lock("FOR SHARE").to_a
+        locked += missing
+      end
+    end
+
+    # Unidades dos pedidos vivos que erase_pair escreve: os do par (nota do
+    # remarque) e os de triagem ligados às conversas do par (CloseRevoked).
+    def unit_ids_of(pairs)
+      return [] if pairs.empty?
+
+      citizen_ids = pairs.map(&:id)
+      phones = pairs.flat_map { |citizen| phone_variants(citizen.phone) }
+      conversations = Conversation.where(citizen_id: citizen_ids).or(Conversation.where(citizen_id: nil, phone: phones))
+      triage_ids = Triage.where(conversation_id: conversations.select(:id)).select(:id)
+      linked = AppointmentRequestTriage.where(triage_id: triage_ids).select(:request_id)
+      live = AppointmentRequest.live_requests
+      live.where(citizen_id: citizen_ids).or(live.where(origin_triage_id: triage_ids)).or(live.where(id: linked))
+          .where.not(target_unit_id: nil).distinct.pluck(:target_unit_id).sort
     end
 
     # O cadastro web guarda "+55…"; o WhatsApp grava o que a Meta manda, só

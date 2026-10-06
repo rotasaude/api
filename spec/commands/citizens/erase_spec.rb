@@ -257,4 +257,21 @@ RSpec.describe Citizens::Erase do
     # O aberto também fecha pela revogação (ADR 0029 §5.2) — depois de perder o texto.
     expect(waiting.reload).to have_attributes(status: "closed", closed_reason: "consent_revoked", reschedule_note: nil)
   end
+
+  # Revisão final (Important 1): as unidades dos pedidos do par vão em FOR
+  # SHARE antes do cidadão. Se um pedido apareceu noutra unidade entre as duas
+  # travas, a exclusão recomeça com ela na frente (ver erase_drain_concurrency_spec).
+  it "recomeça quando a unidade de um pedido do par não estava travada" do
+    ensure_appointment_types!
+    waiting = triage_request!(pair, unit: create_unit("UBS Recomeço"))
+    calls = 0
+    allow(described_class).to receive(:lock_units!).and_wrap_original do |original, *args|
+      (calls += 1) == 1 ? [] : original.call(*args)
+    end
+
+    expect(described_class.call(request: request, by: admin)).to be_ok
+    expect(calls).to eq(2)
+    expect(waiting.reload).to have_attributes(status: "closed", closed_reason: "consent_revoked")
+  end
 end
+
