@@ -43,4 +43,50 @@ RSpec.describe AppointmentRequest do
     expect { req.update!(status: "open") }.to raise_error(ActiveRecord::StatementInvalid, /already closed/)
     expect { req.destroy }.to raise_error(ActiveRecord::StatementInvalid, /DELETE refused/)
   end
+  # ADR 0029 + ADR 0026 (pré-merge PM-B item 3): a exclusão LGPD apaga o texto
+  # livre do remarque também do pedido encerrado — só isso, mais nada.
+  describe "pedido encerrado: só a nota do remarque pode ir a NULL" do
+    def closed_with_note
+      req = request_for(origin)
+      req.update!(reschedule_note: "Trabalho no turno da manhã", reschedule_reason_code: "work",
+                  preferred_period: "afternoon")
+      req.update!(status: "closed", closed_reason: "citizen_cancelled", closed_at: Time.current)
+      req
+    end
+
+    def raw_update(req, **attrs)
+      AppointmentRequest.transaction(requires_new: true) { AppointmentRequest.where(id: req.id).update_all(attrs) }
+    end
+
+    it "anular a nota passa" do
+      req = closed_with_note
+      expect { raw_update(req, reschedule_note: nil) }.not_to raise_error
+      expect(req.reload.reschedule_note).to be_nil
+      expect(req).to have_attributes(status: "closed", reschedule_reason_code: "work", preferred_period: "afternoon")
+    end
+
+    it "trocar a nota por outro texto continua recusado" do
+      req = closed_with_note
+      expect { raw_update(req, reschedule_note: "outro texto qualquer") }
+        .to raise_error(ActiveRecord::StatementInvalid, /already closed/)
+    end
+
+    it "qualquer outra coluna continua recusada" do
+      req = closed_with_note
+      { status: "open", due_on: Time.zone.today + 90, priority: "priority", reschedule_reason_code: "health",
+        preferred_period: "morning", reschedule_count: 3, closed_reason: "dismissed",
+        updated_at: 1.day.from_now }.each do |column, value|
+        expect { raw_update(req, column => value) }
+          .to raise_error(ActiveRecord::StatementInvalid, /already closed/), "#{column} passou"
+      end
+    end
+
+    it "anular a nota junto com outra coluna é recusado" do
+      req = closed_with_note
+      expect { raw_update(req, reschedule_note: nil, priority: "priority") }
+        .to raise_error(ActiveRecord::StatementInvalid, /already closed/)
+      expect { raw_update(req, reschedule_note: nil, updated_at: Time.current + 1) }
+        .to raise_error(ActiveRecord::StatementInvalid, /already closed/)
+    end
+  end
 end

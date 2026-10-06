@@ -186,6 +186,14 @@ BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'appointment_requests is append-only: DELETE refused';
   END IF;
+  -- Exclusão LGPD (ADR 0026, ADR 0029): o texto livre do remarque sai também
+  -- do pedido encerrado. Só a nota indo a NULL; qualquer outra coluna (até
+  -- updated_at) mudando junto é recusada.
+  IF OLD.status = 'closed'
+     AND OLD.reschedule_note IS NOT NULL AND NEW.reschedule_note IS NULL
+     AND (to_jsonb(NEW) - 'reschedule_note') = (to_jsonb(OLD) - 'reschedule_note') THEN
+    RETURN NEW;
+  END IF;
   IF OLD.status = 'closed' THEN
     RAISE EXCEPTION 'appointment_requests: already closed';
   END IF;

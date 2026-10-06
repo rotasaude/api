@@ -66,10 +66,13 @@ module Citizens
     def erase_pair(citizen)
       phones = phone_variants(citizen.phone)
 
-      # ADR 0029: o texto livre do remarque sai dos pedidos ainda vivos ANTES da
-      # revogação (que fecha os abertos; o trigger não deixa mudar o encerrado).
-      AppointmentRequest.where(citizen_id: citizen.id).live_requests.where.not(reschedule_note: nil)
-                        .update_all(reschedule_note: nil, updated_at: Time.current)
+      # ADR 0029: o texto livre do remarque sai de todos os pedidos do par; dos vivos, ANTES da
+      # revogação (que fecha os abertos).
+      noted = AppointmentRequest.where(citizen_id: citizen.id).where.not(reschedule_note: nil)
+      noted.live_requests.update_all(reschedule_note: nil, updated_at: Time.current)
+      # No encerrado o trigger só aceita a nota indo a NULL, sem nenhuma outra
+      # coluna junto (nem updated_at).
+      noted.where(status: "closed").update_all(reschedule_note: nil)
 
       # Conversas do par: as dele (web) e as do WhatsApp do telefone, que não
       # têm citizen_id. Uma conversa web de OUTRO cidadão no mesmo celular (a

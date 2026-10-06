@@ -258,6 +258,21 @@ RSpec.describe Citizens::Erase do
     expect(waiting.reload).to have_attributes(status: "closed", closed_reason: "consent_revoked", reschedule_note: nil)
   end
 
+  # Pré-merge PM-B item 3: o trigger deixa a nota do remarque ir a NULL no
+  # pedido encerrado (só ela); a exclusão a apaga de TODOS os pedidos do par.
+  it "ADR 0029: apaga o texto do remarque também dos pedidos encerrados" do
+    ensure_appointment_types!
+    closed = triage_request!(pair, unit: create_unit("UBS Encerrado"))
+    closed.update!(reschedule_note: "Trabalho de manhã na padaria", reschedule_reason_code: "work")
+    closed.update!(status: "closed", closed_reason: "citizen_cancelled", closed_at: Time.current)
+    before = closed.reload.attributes.except("reschedule_note")
+
+    expect(described_class.call(request: request, by: admin)).to be_ok
+
+    expect(closed.reload.reschedule_note).to be_nil
+    expect(closed.attributes.except("reschedule_note")).to eq(before)
+  end
+
   # Revisão final (Important 1): as unidades dos pedidos do par vão em FOR
   # SHARE antes do cidadão. Se um pedido apareceu noutra unidade entre as duas
   # travas, a exclusão recomeça com ela na frente (ver erase_drain_concurrency_spec).
