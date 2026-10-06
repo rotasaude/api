@@ -27,8 +27,7 @@ RSpec.describe LediOutboxEntry do
     entry = entry!
     expect { in_savepoint { entry.update_columns(status: "accepted", accepted_at: Time.current) } }
       .to raise_error(ActiveRecord::StatementInvalid, /ck_ledi_outbox_accepted_payload/)
-    entry.reload # update_columns já mudou os atributos em memória antes de o banco recusar
-    entry.reload.accept! # update_columns sujou o objeto em memória antes do SQL falhar
+    entry.reload.accept! # update_columns sujou o objeto em memória antes de o banco recusar
     expect(entry.reload.payload).to be_nil
     expect { in_savepoint { entry.update_columns(last_error: "x") } }.to raise_error(ActiveRecord::StatementInvalid, /accepted is immutable/)
     expect { in_savepoint { entry.delete } }.to raise_error(ActiveRecord::StatementInvalid, /accepted is immutable/)
