@@ -67,6 +67,24 @@ RSpec.describe LediOutboxEntry do
     expect(due.reload.slice(:status, :attempts)).to eq("status" => "pending", "attempts" => 0)
   end
 
+  # R34: devolver sem ter tentado (pausa, ensure, login fora do ar) não abre a
+  # janela de 24 h; quem já tentou mantém a primeira tentativa.
+  it "release! zera first_attempt_at de quem nunca tentou e mantém o de quem já tentou" do
+    fresh = entry!(next_attempt_at: 1.minute.ago)
+    tried = entry!(next_attempt_at: 1.minute.ago)
+    described_class.claim!(limit: 10)
+    first_try = 2.hours.ago.change(usec: 0)
+    tried.update_columns(attempts: 1, first_attempt_at: first_try)
+    untouched = entry!.tap { |e| e.update_columns(first_attempt_at: first_try) } # pending: release! não toca
+
+    described_class.release!([ fresh.id, tried.id, untouched.id ])
+    expect(fresh.reload.slice(:status, :attempts, :first_attempt_at))
+      .to eq("status" => "pending", "attempts" => 0, "first_attempt_at" => nil)
+    expect(tried.reload.slice(:status, :attempts, :first_attempt_at))
+      .to eq("status" => "pending", "attempts" => 1, "first_attempt_at" => first_try)
+    expect(untouched.reload.first_attempt_at).to eq(first_try)
+  end
+
   it "release_stale! devolve só o sending parado há mais do limite" do
     stale = entry!.tap { |e| e.update_columns(status: "sending", updated_at: 11.minutes.ago) }
     fresh = entry!.tap { |e| e.update_columns(status: "sending", updated_at: 1.minute.ago) }

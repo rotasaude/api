@@ -93,8 +93,8 @@ RSpec.describe Ledi::DeliverJob do
       expect(pec.deliveries).to be_empty
       expect(first.reload.slice(:status, :attempts, :last_error))
         .to eq("status" => "pending", "attempts" => 1, "last_error" => text)
-      expect(rest.map { |e| e.reload.slice(:status, :attempts, :last_error) })
-        .to all(eq("status" => "pending", "attempts" => 0, "last_error" => nil))
+      expect(rest.map { |e| e.reload.slice(:status, :attempts, :last_error, :first_attempt_at) })
+        .to all(eq("status" => "pending", "attempts" => 0, "last_error" => nil, "first_attempt_at" => nil))
     end
   end
 

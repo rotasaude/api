@@ -36,8 +36,14 @@ class LediOutboxEntry < ApplicationRecord
                                 { now: Time.current } ])
   end
 
+  # Devolve a pending sem contar tentativa. Quem nunca tentou (attempts 0) perde
+  # o first_attempt_at que o claim! gravou: pausa, ensure ou login fora do ar
+  # não abrem a janela de 24 h (R34).
   def self.release!(ids)
-    where(id: ids, status: "sending").update_all(status: "pending", updated_at: Time.current)
+    where(id: ids, status: "sending").update_all(
+      [ "status = 'pending', updated_at = :now, " \
+        "first_attempt_at = CASE WHEN attempts = 0 THEN NULL ELSE first_attempt_at END", { now: Time.current } ]
+    )
   end
 
   def self.release_stale!(before:)
