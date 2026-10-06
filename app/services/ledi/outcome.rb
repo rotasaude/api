@@ -26,7 +26,8 @@ module Ledi
 
       parts = [ parsed["descricaoErro"].presence&.to_s ]
       parts.concat(flatten(parsed["errosValidacao"], nil))
-      parts.compact.join("; ")
+      parts = parts.compact
+      parts.empty? ? body.to_s : parts.join("; ")
     rescue JSON::ParserError
       body.to_s
     end

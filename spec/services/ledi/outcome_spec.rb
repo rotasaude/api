@@ -66,6 +66,11 @@ RSpec.describe Ledi::Outcome do
       expect(described_class.message("[1,2]")).to eq("[1,2]")
     end
 
+    it "devolve o corpo cru quando o JSON objeto não tem campos de erro conhecidos" do
+      expect(described_class.message('{"erro":"x"}')).to eq('{"erro":"x"}')
+      expect(described_class.message("{}")).to eq("{}")
+    end
+
     it "trata nil" do
       expect(described_class.message(nil)).to eq("")
     end
