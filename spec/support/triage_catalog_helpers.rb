@@ -6,14 +6,15 @@ module TriageCatalogHelpers
 
   # Um passo boolean "q1" (sim = 4 pontos → tier media, prioridade 5, não
   # urgente). priority_when pode tornar o "sim" urgente.
-  def catalog_definition(name, offer: nil, suggestions: nil, priority_when: nil)
+  def catalog_definition(name, offer: nil, suggestions: nil, priority_when: nil, scheduling: nil)
     {
       "name" => name, "version" => 1, "start_step_id" => "q1",
       "steps" => [ { "id" => "q1", "prompt" => "Tudo bem?", "answer_type" => "boolean",
                      "branches" => { "true" => nil, "false" => nil }, "weights" => { "true" => 4, "false" => 0 } } ],
       "scoring" => { "type" => "weighted", "thresholds" => { "baixa" => 0, "media" => 3 },
                      "priority_map" => { "baixa" => 9, "media" => 5 } },
-      "offer" => offer, "suggestions" => suggestions, "priority_when" => priority_when
+      "offer" => offer, "suggestions" => suggestions, "priority_when" => priority_when,
+      "scheduling" => scheduling
     }.compact
   end
 

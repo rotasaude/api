@@ -86,9 +86,10 @@ class AppointmentRequestsController < ApplicationController
 
   private
 
+  # origin_unit_name é nulo no pedido da triagem (contratos §9).
   def request_json(r)
     {
-      id: r.id, kind: r.kind, origin_unit_name: r.origin_unit.name, created_at: r.created_at.iso8601,
+      id: r.id, kind: r.kind, origin_unit_name: r.origin_unit&.name, created_at: r.created_at.iso8601,
       cpf_masked: r.citizen.cpf_masked, priority: r.root_triage.priority, note: r.note,
       reopened_reason: r.reopened_reason
     }

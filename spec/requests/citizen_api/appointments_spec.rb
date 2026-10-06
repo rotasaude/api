@@ -21,6 +21,16 @@ RSpec.describe "Citizen appointments", type: :request do
                                 by: reception, allow_overlap: true).payload.fetch(:appointment)
   end
 
+  it "pedido da triagem sem unidade aparece com target_unit_name nulo (contratos §8)" do
+    ensure_appointment_types!
+    req = triage_request!(citizen, unit: nil)
+    sign_in_citizen("+5541998765432")
+    get "/citizen/appointments", params: { citizen_id: citizen.id }
+    expect(response).to have_http_status(:ok)
+    item = body["appointments"].find { |i| i["request"]["id"] == req.id }
+    expect(item["request"]).to include("kind" => "triage", "target_unit_name" => nil)
+  end
+
   it "lista, confirma e cancela os próprios" do
     appt = appointment_for(citizen)
     sign_in_citizen("+5541998765432")

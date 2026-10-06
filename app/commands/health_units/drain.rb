@@ -16,6 +16,10 @@
 # Travas, na ordem que evita deadlock: as duas unidades em ordem de id (FOR
 # UPDATE na que esvazia, FOR SHARE no destino), depois os horários e só então
 # os pedidos — a mesma ordem de Cancel e Lapse (horário, depois pedido).
+#
+# Módulo 17: o pedido novo leva tipo, prioridade, prazo, origem (atendimento ou
+# triagem) e as triagens ligadas; o horário vai como legacy (o profissional não
+# atende no destino).
 # Reasons: :invalid_target, :reason_too_short.
 module HealthUnits
   class Drain
@@ -67,8 +71,15 @@ module HealthUnits
         origin_attendance_id: request.origin_attendance_id, citizen_id: request.citizen_id,
         root_triage_id: request.root_triage_id, origin_unit_id: request.origin_unit_id, target_unit: target,
         kind: request.kind, note: request.note, reopened_reason: request.reopened_reason,
-        moved_from_request: request, status: live ? "scheduled" : "open", created_at: request.created_at
+        moved_from_request: request, status: live ? "scheduled" : "open", created_at: request.created_at,
+        origin_triage_id: request.origin_triage_id, appointment_type_key: request.appointment_type_key,
+        priority: request.priority, due_on: request.due_on, reschedule_reason_code: request.reschedule_reason_code,
+        reschedule_note: request.reschedule_note, preferred_period: request.preferred_period,
+        reschedule_count: request.reschedule_count
       )
+      request.request_triages.each do |link|
+        AppointmentRequestTriage.create!(request: fresh, triage_id: link.triage_id, created_at: link.created_at)
+      end
       DomainEvents.publish("appointment_request.moved", from_request_id: request.id, to_request_id: fresh.id,
                                                         from_unit_id: request.target_unit_id, to_unit_id: target.id)
       return 0 unless live

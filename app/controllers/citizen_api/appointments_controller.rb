@@ -62,7 +62,7 @@ module CitizenApi
     def item_json(request)
       latest = request.latest_appointment
       {
-        request: { id: request.id, kind: request.kind, target_unit_name: request.target_unit.name,
+        request: { id: request.id, kind: request.kind, target_unit_name: request.target_unit&.name,
                    status: request.status, closed_reason: request.closed_reason,
                    reopened_reason: request.reopened_reason,
                    moved_from_unit_name: request.moved_from_request&.target_unit&.name },

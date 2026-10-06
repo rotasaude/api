@@ -166,4 +166,29 @@ RSpec.describe HealthUnits::Drain do
       drain
     end
   end
+  it "pedido de triagem movido leva tipo, prioridade, prazo, origem e as triagens ligadas (ADR 0029)" do
+    ensure_appointment_types!
+    req = triage_request!(Citizen.create!(cpf: "39053344705", phone: "+5541933334444"), unit: closing,
+                          priority: "priority", due_on: Time.zone.today + 9)
+    extra = completed_web_triage_for(req.citizen)
+    AppointmentRequestTriage.create!(request: req, triage: extra, created_at: Time.current)
+    HealthUnits::Drain.call(unit: closing, target_unit_id: dest.id, reason: "reforma da unidade", by: admin)
+    fresh = AppointmentRequest.find_by!(moved_from_request_id: req.id)
+    expect(fresh).to have_attributes(kind: "triage", origin_triage_id: req.origin_triage_id, origin_attendance_id: nil,
+                                     origin_unit_id: nil, priority: "priority", due_on: Time.zone.today + 9,
+                                     appointment_type_key: "consulta_medica", target_unit_id: dest.id, status: "open")
+    expect(fresh.request_triages.pluck(:triage_id)).to eq([ extra.id ])
+  end
+
+  it "pedido de retorno movido leva tipo, prioridade, prazo e os dados da remarcação" do
+    req = travel_to(now) { new_request }
+    req.update_columns(priority: "priority", due_on: Date.new(2026, 10, 20), preferred_period: "morning",
+                       reschedule_reason_code: "work", reschedule_note: "trabalho de manhã", reschedule_count: 1)
+    travel_to(now + 1.hour) { drain }
+    fresh = AppointmentRequest.find_by!(moved_from_request_id: req.id)
+    expect(fresh).to have_attributes(appointment_type_key: "retorno", priority: "priority",
+                                     due_on: Date.new(2026, 10, 20), preferred_period: "morning",
+                                     reschedule_reason_code: "work", reschedule_note: "trabalho de manhã",
+                                     reschedule_count: 1)
+  end
 end

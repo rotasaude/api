@@ -11,7 +11,9 @@ module AppointmentRequests
       request = AppointmentRequest.create!(
         origin_attendance: attendance, citizen: attendance.citizen, root_triage: attendance.root_triage,
         origin_unit: attendance.health_unit, target_unit: target,
-        kind: outcome == "return" ? "return" : "referral", note: attendance.referral_note
+        kind: outcome == "return" ? "return" : "referral", note: attendance.referral_note,
+        appointment_type_key: "retorno", priority: "routine",
+        due_on: Time.zone.today + AppointmentRequest::DUE_IN_DAYS
       )
       DomainEvents.publish("appointment_request.created", appointment_request_id: request.id,
                                                           origin_attendance_id: attendance.id,

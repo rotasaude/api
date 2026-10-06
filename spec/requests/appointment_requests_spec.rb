@@ -39,6 +39,16 @@ RSpec.describe "Appointment requests", type: :request do
                                                   "status" => "scheduled")
   end
 
+  it "pedido da triagem na fila: origin_unit_name nulo, sem quebrar (contratos §9)" do
+    ensure_appointment_types!
+    req = triage_request!(citizen, unit: unit)
+    sign_in_as(reception)
+    get "/attendance/units/#{unit.id}/requests"
+    expect(response).to have_http_status(:ok)
+    expect(body["requests"].sole).to include("id" => req.id, "kind" => "triage", "origin_unit_name" => nil,
+                                             "created_at" => req.created_at.iso8601)
+  end
+
   it "horário ocupado: 409 slot_taken com quantos; com allow_overlap marca o encaixe" do
     at = 3.days.from_now.change(hour: 14, min: 0)
     first = returned_attendance
