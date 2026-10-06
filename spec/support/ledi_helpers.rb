@@ -26,22 +26,33 @@ class FakePec
     self
   end
 
-  # login_replies: :ok (padrão) ou uma classe de erro do Ledi::PecClient.
+  # login_replies: :ok (padrão), uma instância de erro (ex.: Failed.new(503)) ou
+  # uma classe de erro do Ledi::PecClient (Failed vira Failed.new(500)).
   def login
     @logins << { username: @username, password: @password }
     reply = @login_replies.shift || :ok
-    raise reply, "fake" unless reply == :ok
+    raise build_error(reply) unless reply == :ok
 
     Ledi::PecClient::Session.new(cookie: "JSESSIONID=fake-#{@logins.size}")
   end
 
-  # delivery_replies: [status, corpo] (padrão [201, ""]) ou uma classe de erro.
+  # delivery_replies: [status, corpo] (padrão [201, ""]), uma instância de erro
+  # ou uma classe de erro (mesmas regras do login).
   def deliver(cookie:, filename:, bytes:)
     @deliveries << { cookie: cookie, filename: filename, bytes: bytes }
     reply = @delivery_replies.shift || [ 201, "" ]
-    raise reply, "fake" if reply.is_a?(Class)
+    raise build_error(reply) if reply.is_a?(Exception) || reply.is_a?(Class)
 
     Ledi::PecClient::Reply.new(status: reply[0], body: reply[1])
+  end
+
+  private
+
+  # Constrói o erro com os construtores reais do PecClient.
+  def build_error(reply)
+    return reply if reply.is_a?(Exception)
+
+    reply == Ledi::PecClient::Failed ? reply.new(500) : reply.new("fake")
   end
 end
 
