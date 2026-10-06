@@ -66,6 +66,16 @@ RSpec.describe "Produção e-SUS", type: :request do
     expect(status_and_error).to eq([ 422, "invalid_competence" ])
   end
 
+  # R35: página absurda não estoura o offset; fora de 1..10_000 ela é limitada.
+  it "página enorme: 200 com fichas vazias" do
+    entry!("pending")
+    sign_in_as(admin)
+    get "/production", params: { page: "99999999999999999999" }
+    expect(response).to have_http_status(:ok)
+    expect(body["fichas"]).to eq([])
+    expect(body["fichas_total"]).to eq(1)
+  end
+
   it "analyst lê; viewer não; sem sessão 401" do
     sign_in_as(staff_with("analista@cidade.gov.br", "analyst"))
     get "/production"

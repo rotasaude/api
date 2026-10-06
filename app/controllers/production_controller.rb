@@ -10,6 +10,7 @@ class ProductionController < ApplicationController
   wrap_parameters false
 
   PER_PAGE = 50
+  MAX_PAGE = 10_000
 
   before_action :require_read, only: :show
   before_action :require_resend, only: :resend
@@ -51,7 +52,9 @@ class ProductionController < ApplicationController
   def forbid = render(json: { error: "missing_role" }, status: :forbidden)
 
   def fichas(competence)
-    page = [ optional_scalar_param(:page).to_i, 1 ].max
+    # Fora de 1..MAX_PAGE (ou não inteira) a página é limitada: um número
+    # enorme nunca estoura o offset (R35).
+    page = (Integer(optional_scalar_param(:page).to_s, 10, exception: false) || 1).clamp(1, MAX_PAGE)
     LediOutboxEntry.for_competence(competence).order(created_at: :desc, id: :desc)
                    .offset((page - 1) * PER_PAGE).limit(PER_PAGE).map { |entry| ficha_json(entry) }
   end
