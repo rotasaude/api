@@ -2,7 +2,8 @@
 # suggestions[].when de uma definição em edição contra um perfil, respostas e
 # resultado de exemplo. Não grava nada. Definição inválida para offer/
 # suggestions (schema ou gate) responde eligible false e suggestions [] com os
-# errors — nunca 422 (o editor mostra o erro ao lado do construtor).
+# errors — nunca 422 (o editor mostra o erro ao lado do construtor). Cada
+# sugestão leva o título do protocolo sugerido, como o cidadão o vê.
 module Protocols
   module SimulateOffer
     # Mesmo texto do Validation::Schema para raiz que não é objeto.
@@ -26,9 +27,17 @@ module Protocols
       context = context(profile, answers, outcome)
       result.merge(
         eligible: eligibility.nil? || Condition.eval(eligibility, context),
-        suggestions: Array(definition["suggestions"]).select { |s| s.is_a?(Hash) }
-                                                    .map { |s| { protocol: s["protocol"], matches: Condition.eval(s["when"], context) } }
+        suggestions: Array(definition["suggestions"]).select { |s| s.is_a?(Hash) }.map do |s|
+          { protocol: s["protocol"], title: title_for(s["protocol"]), matches: Condition.eval(s["when"], context) }
+        end
       )
+    end
+
+    # O título que o cidadão veria: o da versão ativa do protocolo sugerido, ou
+    # o nome quando não há título nem versão ativa.
+    def title_for(name)
+      active = ProtocolDefinition.find_by(name: name, status: "active")
+      Triages::Offer.title_for(active&.definition, name)
     end
 
     def context(profile, answers, outcome)

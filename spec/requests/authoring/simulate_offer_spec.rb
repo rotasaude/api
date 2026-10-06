@@ -27,7 +27,9 @@ RSpec.describe "Simulador de oferta", type: :request do
   it "avalia elegibilidade e sugestões sobre perfil, respostas e resultado" do
     sign_in_as(staff_with("autor-sim@cidade.gov.br", "protocol_author"))
     create_default_protocol!
+    active_protocol!("saude-mental", offer: { "title" => "Saúde mental" })
     suggestions = [ { "protocol" => StartTriage::DEFAULT_PROTOCOL_NAME, "when" => { "gte" => ["outcome.score", 4] } },
+                    { "protocol" => "saude-mental", "when" => { "eq" => ["q1", "false"] } },
                     { "protocol" => "fantasma", "when" => { "eq" => ["q1", "true"] } } ]
     expect do
       simulate(definition: definition(suggestions: suggestions), profile: { age: 62, sex: "female", neighborhood_id: nil },
@@ -35,8 +37,12 @@ RSpec.describe "Simulador de oferta", type: :request do
     end.not_to change { [ ProtocolDefinition.count, TriageSuggestion.count, DomainEvent.count ] }
     expect(body).to eq(
       "eligible" => true, "eligibility_text" => "idade ≥ 60",
-      "suggestions" => [ { "protocol" => StartTriage::DEFAULT_PROTOCOL_NAME, "matches" => true },
-                         { "protocol" => "fantasma", "matches" => false } ],
+      # title: o da versão ativa do protocolo sugerido; sem título (ou sem
+      # versão ativa), o nome — como no catálogo do cidadão.
+      "suggestions" => [ { "protocol" => StartTriage::DEFAULT_PROTOCOL_NAME, "title" => StartTriage::DEFAULT_PROTOCOL_NAME,
+                           "matches" => true },
+                         { "protocol" => "saude-mental", "title" => "Saúde mental", "matches" => true },
+                         { "protocol" => "fantasma", "title" => "fantasma", "matches" => false } ],
       "errors" => [], "warnings" => [ "suggestion protocol 'fantasma' does not exist in this city" ]
     )
 
