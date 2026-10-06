@@ -13,9 +13,9 @@ RSpec.describe "Prova técnica LEDI contra o PEC local", :pec do
     WebMock.enable! if defined?(WebMock)
   end
 
-  GEN = Rails.root.join("vendor/ledi/8.7.0/gen-rb").to_s
   before(:all) do
-    $LOAD_PATH.unshift(GEN) unless $LOAD_PATH.include?(GEN)
+    gen = Rails.root.join("vendor/ledi/8.7.0/gen-rb").to_s
+    $LOAD_PATH.unshift(gen) unless $LOAD_PATH.include?(gen)
     require "dado_transporte_types"
     require "ficha_atendimento_procedimento_types"
   end

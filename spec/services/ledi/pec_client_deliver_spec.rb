@@ -68,4 +68,13 @@ RSpec.describe Ledi::PecClient, "#deliver" do
     client.deliver(cookie: "c", filename: "f.esus", bytes: "x")
     expect(Net::HTTP).to have_received(:start).with("pec.cidade.gov.br", 443, hash_including(ca_file: "/tmp/ca.pem"))
   end
+
+  it "fora de development/test ignora LEDI_PEC_CA_FILE" do
+    allow(http).to receive(:request).and_return(instance_double(Net::HTTPCreated, code: "201", body: ""))
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("LEDI_PEC_CA_FILE").and_return("/tmp/ca.pem")
+    allow(Rails.env).to receive(:local?).and_return(false)
+    client.deliver(cookie: "c", filename: "f.esus", bytes: "x")
+    expect(Net::HTTP).to have_received(:start).with("pec.cidade.gov.br", 443, hash_excluding(:ca_file))
+  end
 end

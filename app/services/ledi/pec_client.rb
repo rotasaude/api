@@ -23,19 +23,7 @@ module Ledi
     # O cookie é a sessão autenticada no PEC: nunca em inspect, to_s nem pp
     # (log, mensagem de exceção, console).
     Session = Data.define(:cookie) do
-      # POST do binário .esus (DadoTransporteThrift em TBinaryProtocol), como no
-    # exemplo oficial ExemploEnvioApi.java: multipart, campo `ficha`, nome do
-    # arquivo = uuidDadoSerializado + ".esus". Nunca loga corpo nem cookie.
-    def deliver(cookie:, filename:, bytes:)
-      boundary = "rotasaude#{SecureRandom.hex(12)}"
-      body = "--#{boundary}\r\n" \
-             "Content-Disposition: form-data; name=\"ficha\"; filename=\"#{filename}\"\r\n" \
-             "Content-Type: application/octet-stream\r\n\r\n".b + bytes.b + "\r\n--#{boundary}--\r\n".b
-      response = post(DELIVER_PATH, body, "multipart/form-data; boundary=#{boundary}", "Cookie" => cookie)
-      Reply.new(status: response.code.to_i, body: response.body.to_s)
-    end
-
-    def inspect = "#<Ledi::PecClient::Session cookie=[FILTERED]>"
+      def inspect = "#<Ledi::PecClient::Session cookie=[FILTERED]>"
       alias_method :to_s, :inspect
 
       def pretty_print(q) = q.text(inspect)
