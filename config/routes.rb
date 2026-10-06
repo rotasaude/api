@@ -182,6 +182,10 @@ Rails.application.routes.draw do
   put  "/integrations/credentials/:kind", to: "integrations#update"
   post "/integrations/credentials/:kind/check", to: "integrations#check"
 
+  # Produção e-SUS (ADR 0028; contratos §5.3).
+  get  "/production", to: "production#show"
+  post "/production/fichas/:id/resend", to: "production#resend"
+
   # CNES da cidade (ADR 0028; contratos §5.2).
   get  "/cnes", to: "cnes#show"
   post "/cnes/apply", to: "cnes#apply"
