@@ -1,5 +1,5 @@
 # Base de tipos da plataforma e catálogo da cidade (ADR 0029 §3.1). A base vem
-# de config/scheduling/appointment_types.yml; a migração 20261006100001 e o
+# de config/scheduling/appointment_types.yml; a migração 20261006210001 e o
 # provisionamento a copiam só inserindo o que falta.
 module Scheduling
   module AppointmentTypes

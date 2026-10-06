@@ -1,10 +1,10 @@
 require "rails_helper"
-require Rails.root.join("db/city_migrate/20261006100001_add_professional_schedules.rb").to_s
+require Rails.root.join("db/city_migrate/20261006210001_add_professional_schedules.rb").to_s
 
 # ADR 0029 (Consequências): a migração recusa seguir com horários `slot` ativos
 # sobrepostos herdados, listando os ids. Num savepoint: tira a EXCLUDE, grava a
 # sobreposição e chama a verificação que o up() roda antes de recriá-la.
-RSpec.describe "Migração de cidade 20261006100001 (AddProfessionalSchedules): sobreposição herdada" do
+RSpec.describe "Migração de cidade 20261006210001 (AddProfessionalSchedules): sobreposição herdada" do
   before { Current.city = TEST_CITY_A }
   after { Current.reset }
 
