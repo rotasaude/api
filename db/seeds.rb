@@ -14,7 +14,7 @@
 #     livre), criados por `SignatureCrew` (plano 2026-09-23) — ver
 #     `lib/signature_crew.rb`.
 #     O analyst (analise@<slug>.demo) e ~6 meses de histórico consolidado para o Analytics vêm de `lib/analytics_crew.rb` (módulo 14).
-#     Modo de prontuário (módulo 16): SIGTAP reduzida, CPF dos profissionais, credencial cadsus simulada e um retrato do CNES — ver lib/record_mode_crew.rb. Interruptores e record_mode ficam desligados.
+#     Modo de prontuário (módulo 16): SIGTAP reduzida, CPF dos profissionais, credencial cadsus simulada e um retrato do CNES — ver lib/record_mode_crew.rb. A semente não altera record_mode nem liga interruptor (cidade nova nasce com record_mode off, o padrão da tabela cities).
 #     Os protocolos do catálogo (saúde do idoso, saúde mental e aprofundamento), a família avó+neto no mesmo celular e o idoso restrito a dois bairros em Curitiba vêm de `lib/triage_catalog_crew.rb` (módulo 15).
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
@@ -198,7 +198,8 @@ else
 
         # ── Modo de prontuário (módulo 16, spec 2026-10-05 §10) ───────────────
         # Depois do ProfessionalCrew: o retrato do CNES usa as unidades e os
-        # profissionais dele. record_mode fica off e nenhum interruptor ligado.
+        # profissionais dele. Não altera record_mode nem liga interruptor
+        # (cidade nova nasce com record_mode off, o padrão da tabela cities).
         record = RecordModeCrew.seed_current_city(slug: slug, admin: muni_admin)
         puts "[seeds] CNES ......... #{record[:ibge_code]} #{record[:cnes_competence]}: #{record[:establishments]} " \
              "estabelecimentos, #{record[:teams]} equipes, #{record[:bonds]} vínculos; credencial cadsus simulada"
