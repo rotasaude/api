@@ -53,7 +53,10 @@ module Citizens
           next result = Result.ok(request: request)
         end
 
-        pairs.each { |citizen| erase_pair(citizen) }
+        # Horários vivos do par travados ANTES de qualquer escrita em pedido:
+        # Lapse/Remind/Confirm travam o horário e depois o pedido.
+        live = Appointment.live.where(citizen_id: pairs.map(&:id)).order(:id).lock.to_a
+        pairs.each { |citizen| erase_pair(citizen, live.select { |a| a.citizen_id == citizen.id }) }
         # O trigger aceita a troca do cpf só nesta mesma UPDATE, mas não a
         # exige: o pedido confirmado deixa de guardar o CPF por causa daqui.
         request.update!(status: "confirmed", decided_by_user: by, decided_at: Time.current, cpf: tombstone)
@@ -63,7 +66,7 @@ module Citizens
       result
     end
 
-    def erase_pair(citizen)
+    def erase_pair(citizen, live_appointments)
       phones = phone_variants(citizen.phone)
 
       # ADR 0029: o texto livre do remarque sai de todos os pedidos do par; dos vivos, ANTES da
@@ -109,6 +112,24 @@ module Citizens
                              birth_date: nil, sex: nil, gender_identity: nil, profile_source: nil,
                              cns: nil, cadsus_checked_at: nil, cadsus_pending_cns: nil,
                              cadsus_pending_session_id: nil, cadsus_pending_at: nil, updated_at: Time.current)
+
+      end_live_bookings(citizen, live_appointments)
+    end
+
+    # ADR 0029 (pré-merge PM-B item 4): a casca não fica com horário nem pedido
+    # vivo — sem lembrete, sem vencimento/falta reabrindo o pedido, fora da
+    # fila. Horários (já travados) antes dos pedidos; o motivo fixo fica só no
+    # horário, o evento leva ids.
+    def end_live_bookings(citizen, live_appointments)
+      now = Time.current
+      live_appointments.each do |appointment|
+        appointment.update!(status: "cancelled_by_citizen", cancel_reason: Appointment::ERASURE_CANCEL_REASON,
+                            ended_at: now)
+        DomainEvents.publish("appointment.cancelled", appointment_id: appointment.id, by: "erasure")
+      end
+      AppointmentRequest.where(citizen_id: citizen.id).live_requests.order(:id).lock.each do |request|
+        AppointmentRequests::Lifecycle.close!(request, reason: "consent_revoked")
+      end
     end
 
     # Trava FOR SHARE (por id) as unidades dos pedidos que a exclusão vai

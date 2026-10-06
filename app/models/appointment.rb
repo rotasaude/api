@@ -15,6 +15,8 @@ class Appointment < ApplicationRecord
   LEGACY_SPAN = 15.minutes
   MIN_FIT_IN_REASON = 10
   RESCHEDULE_CANCEL_REASON = "Remarcação pedida pelo cidadão".freeze
+  # Exclusão LGPD (ADR 0026): texto fixo, nunca vai para evento.
+  ERASURE_CANCEL_REASON = "Exclusão do cadastro pedida pelo cidadão".freeze
 
   belongs_to :request, class_name: "AppointmentRequest", inverse_of: :appointments
   belongs_to :citizen

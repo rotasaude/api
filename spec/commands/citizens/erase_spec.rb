@@ -253,7 +253,8 @@ RSpec.describe Citizens::Erase do
 
     expect(AppointmentNotice.where(id: notice.id)).to be_empty
     expect(AppointmentNotice.where(citizen_id: pair.id)).to be_empty
-    expect(booked.reload).to have_attributes(status: "scheduled", reschedule_note: nil)
+    # PM-B item 4: o pedido marcado também fecha (ver o bloco abaixo).
+    expect(booked.reload).to have_attributes(status: "closed", closed_reason: "consent_revoked", reschedule_note: nil)
     # O aberto também fecha pela revogação (ADR 0029 §5.2) — depois de perder o texto.
     expect(waiting.reload).to have_attributes(status: "closed", closed_reason: "consent_revoked", reschedule_note: nil)
   end
@@ -288,5 +289,92 @@ RSpec.describe Citizens::Erase do
     expect(calls).to eq(2)
     expect(waiting.reload).to have_attributes(status: "closed", closed_reason: "consent_revoked")
   end
-end
+  # Pré-merge PM-B item 4 (ADR 0026, ADR 0029): a exclusão cancela os horários
+  # vivos do par e fecha os pedidos vivos; nenhum lembrete, vencimento ou
+  # falta reabre nada para a casca.
+  describe "horários e pedidos vivos do par" do
+    let(:unit) { create_unit("UBS Exclusão") }
+    let(:shift) { shift!(doctor_link!(unit), starts_at: 1.day.from_now.change(hour: 8)) }
 
+    before { ensure_appointment_types! }
+
+    def booked!(status: "confirmed")
+      booked = triage_request!(pair, unit: unit, type_key: "consulta_enfermagem")
+      booked.update!(status: "scheduled")
+      [ booked, appointment_row!(booked, shift, starts_at: shift.starts_at, status: status) ]
+    end
+
+    def expect_erased_booking(booked, appointment)
+      expect(appointment.reload).to have_attributes(status: "cancelled_by_citizen", ended_at: be_present,
+                                                    cancel_reason: Appointment::ERASURE_CANCEL_REASON)
+      expect(booked.reload).to have_attributes(status: "closed", closed_reason: "consent_revoked")
+    end
+
+    it "(a) horário marcado: cancelado, pedido fechado e o lembrete não cria aviso" do
+      booked, appointment = booked!
+
+      expect(described_class.call(request: request, by: admin)).to be_ok
+
+      expect_erased_booking(booked, appointment)
+      expect(Appointments::Remind.call(appointment: appointment, now: shift.starts_at - 1.day).payload)
+        .to eq(skipped: :not_due)
+      expect(AppointmentNotice.where(appointment_id: appointment.id)).to be_empty
+      expect(Appointment.live.where(citizen_id: pair.id)).to be_empty
+      expect(DomainEvent.where(name: "appointment.cancelled").last.payload)
+        .to eq("appointment_id" => appointment.id, "by" => "erasure")
+      expect(DomainEvent.where(name: "appointment_request.closed").pluck(:payload))
+        .to include("appointment_request_id" => booked.id, "closed_reason" => "consent_revoked")
+      # A frase fixa é do horário, nunca de evento.
+      expect(DomainEvent.where("payload::text LIKE ?", "%#{Appointment::ERASURE_CANCEL_REASON}%")).to be_empty
+    end
+
+    it "(b) pedido aberto: fecha e sai da fila da unidade" do
+      waiting = triage_request!(pair, unit: unit)
+
+      expect(described_class.call(request: request, by: admin)).to be_ok
+
+      expect(waiting.reload).to have_attributes(status: "closed", closed_reason: "consent_revoked")
+      expect(AppointmentRequest.where(target_unit: unit).live_requests).to be_empty
+    end
+
+    it "(b) pedido aberto que a revogação não fecha (fora das conversas do par) também fecha" do
+      waiting = triage_request!(pair, unit: unit)
+      # O pedido nasceu de uma triagem cuja conversa não é do par: CloseRevoked não o alcança.
+      Conversation.where(id: waiting.origin_triage.conversation_id).update_all(citizen_id: nil, phone: "+5541900000001")
+
+      expect(described_class.call(request: request, by: admin)).to be_ok
+
+      expect(waiting.reload).to have_attributes(status: "closed", closed_reason: "consent_revoked")
+    end
+
+    it "(c) já lembrado: cancelado e fechado, avisos apagados, nada reabre" do
+      booked, appointment = booked!
+      expect(Appointments::Remind.call(appointment: appointment, now: shift.starts_at - 1.day)).to be_ok
+      expect(AppointmentNotice.where(appointment_id: appointment.id)).to exist
+
+      expect(described_class.call(request: request, by: admin)).to be_ok
+
+      expect_erased_booking(booked, appointment)
+      expect(AppointmentNotice.where(citizen_id: pair.id)).to be_empty
+      expect(Appointments::Lapse.call(appointment: appointment, to: "no_show", now: shift.starts_at + 2.days).payload)
+        .to include(skipped: true)
+      expect(booked.reload).to have_attributes(status: "closed", reopened_reason: nil)
+    end
+
+    it "(d) vencimento e falta não reabrem nada do par" do
+      booked, appointment = booked!(status: "scheduled")
+
+      expect(described_class.call(request: request, by: admin)).to be_ok
+
+      expect_erased_booking(booked, appointment)
+      %w[expired no_show].each do |to|
+        expect(Appointments::Lapse.call(appointment: appointment, to: to, now: shift.starts_at + 2.days).payload)
+          .to include(skipped: true)
+      end
+      expect(appointment.reload.status).to eq("cancelled_by_citizen")
+      expect(booked.reload).to have_attributes(status: "closed", reopened_reason: nil)
+      # As rodadas dos jobs não acham horário vivo do par.
+      expect(Appointment.where(citizen_id: pair.id, status: %w[scheduled confirmed])).to be_empty
+    end
+  end
+end
