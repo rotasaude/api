@@ -73,4 +73,16 @@ RSpec.describe Triages::SetOffer do
     expect(set("restriction" => nil)).to be_ok
     expect(TriageOffer.sole.restriction).to be_nil
   end
+
+  # Chave opcional: ausente mantém o valor (dashboard anterior a ela não desliga).
+  it "grava só por sugestão; ausente mantém; não booleano é recusado" do
+    expect(set("suggestion_only" => true)).to be_ok
+    expect(TriageOffer.sole.suggestion_only).to be(true)
+    expect(set).to be_ok
+    expect(TriageOffer.sole.suggestion_only).to be(true)
+    expect(set("suggestion_only" => false)).to be_ok
+    expect(TriageOffer.sole.suggestion_only).to be(false)
+    [ "true", 1, nil ].each { |value| expect(set("suggestion_only" => value).reason).to eq(:invalid_suggestion_only), value.inspect }
+  end
+
 end

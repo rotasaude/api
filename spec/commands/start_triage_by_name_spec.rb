@@ -81,4 +81,16 @@ RSpec.describe StartTriage, "por nome" do
       expect(suggestion.reload).to have_attributes(status: "expired", taken_triage_id: nil)
     end
   end
+
+  it "só por sugestão: começa apenas com sugestão pendente, que vira taken" do
+    offer_row.update!(suggestion_only: true)
+    expect(start(avo).reason).to eq(:not_offered)
+
+    suggestion = TriageSuggestion.create!(citizen: avo, protocol_name: "saude-do-idoso",
+                                          source_triage: completed_triage!(avo, "saude-do-idoso", at: 400.days.ago))
+    triage = start(avo).payload[:triage]
+    expect(triage).to have_attributes(protocol_name: "saude-do-idoso")
+    expect(suggestion.reload).to have_attributes(status: "taken", taken_triage_id: triage.id)
+  end
+
 end

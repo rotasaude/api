@@ -4,7 +4,9 @@
 # elegibilidade assinada (Triages::Offer): a cidade restringe, nunca amplia.
 # Quem pode e o step-up ficam no controller. Evento só quando muda.
 # Reasons: :unknown_protocol, :invalid_enabled, :invalid_position,
-# :invalid_period, :invalid_restriction.
+# :invalid_period, :invalid_restriction, :invalid_suggestion_only.
+# `suggestion_only` é a única chave opcional: ausente mantém o valor gravado
+# (o dashboard anterior a ela não a manda).
 module Triages
   module SetOffer
     POSITIONS = (1..10_000)
@@ -38,7 +40,12 @@ module Triages
       restriction = attributes["restriction"]
       return Result.fail(:invalid_restriction) unless restriction_valid?(restriction)
 
-      { enabled: enabled, position: position, restriction: restriction, available_from: from, available_until: until_on }
+      changes = { enabled: enabled, position: position, restriction: restriction, available_from: from,
+                  available_until: until_on }
+      return changes unless attributes.key?("suggestion_only")
+      return Result.fail(:invalid_suggestion_only) unless [ true, false ].include?(attributes["suggestion_only"])
+
+      changes.merge(suggestion_only: attributes["suggestion_only"])
     end
 
     def date(raw)

@@ -48,7 +48,7 @@ RSpec.describe "Catálogo de triagens da cidade", type: :request do
     expect(idoso).to eq(
       "protocol_name" => "saude-do-idoso", "title" => "Saúde do idoso", "active_version" => 1,
       "eligibility" => { "gte" => ["profile.age", 60] }, "retake_after_days" => 365, "configured" => false,
-      "enabled" => nil, "position" => nil, "restriction" => nil, "available_from" => nil, "available_until" => nil,
+      "enabled" => nil, "position" => nil, "restriction" => nil, "suggestion_only" => nil, "available_from" => nil, "available_until" => nil,
       "counters" => { "offered" => 0, "started" => 0, "completed" => 0, "from_suggestion" => 0 }
     )
   end

@@ -6,12 +6,18 @@
 #   2. offer.eligibility verdadeira no contexto do par;
 #   3. restriction verdadeira (ausente = verdadeira) — soma com E, nunca amplia;
 #   4. intervalo: recent enquanto hoje < última conclusão + retake_after_days.
+# `suggestion_only` (linha da cidade) não muda a oferta: a sugestão nasce e
+# fica pendente. Só tira de "Disponíveis" (Catalog) e exige a sugestão para
+# começar (startable?).
 # `evaluate` é PURA (dados já carregados, data por argumento) e testável em
 # tabela; `for` só carrega do banco da cidade e chama.
 module Triages
   module Offer
-    Row = Data.define(:enabled, :position, :restriction, :available_from, :available_until)
-    Item = Data.define(:protocol_name, :title, :summary, :state, :position, :last_completed_on, :next_available_on) do
+    Row = Data.define(:enabled, :position, :restriction, :available_from, :available_until, :suggestion_only) do
+      def initialize(suggestion_only: false, **rest) = super
+    end
+    Item = Data.define(:protocol_name, :title, :summary, :state, :position, :last_completed_on, :next_available_on,
+                       :suggestion_only) do
       def available? = state == "available"
       def recent? = state == "recent"
     end
@@ -45,7 +51,7 @@ module Triages
       recent = next_on.present? && on < next_on
       Item.new(protocol_name: name, title: offer["title"].presence || name, summary: offer["summary"].presence,
                state: recent ? "recent" : "available", position: row&.position, last_completed_on: last_on,
-               next_available_on: recent ? next_on : nil)
+               next_available_on: recent ? next_on : nil, suggestion_only: row&.suggestion_only || false)
     end
 
     def title_for(definition, name)
@@ -59,7 +65,8 @@ module Triages
       end
       rows = TriageOffer.all.to_h do |r|
         [ r.protocol_name, Row.new(enabled: r.enabled, position: r.position, restriction: r.restriction,
-                                   available_from: r.available_from, available_until: r.available_until) ]
+                                   available_from: r.available_from, available_until: r.available_until,
+                                   suggestion_only: r.suggestion_only) ]
       end
       context = Protocols::ConditionContext.build(profile: citizen.profile_context(on: on),
                                                   citizen: { neighborhood_id: citizen.neighborhood_id })
@@ -68,6 +75,15 @@ module Triages
 
     def available?(citizen:, protocol_name:, on: Time.zone.today)
       self.for(citizen: citizen, on: on).any? { |i| i.protocol_name == protocol_name.to_s && i.available? }
+    end
+
+    # Pode começar agora: em oferta e, se só por sugestão, com uma pendente do par.
+    def startable?(citizen:, protocol_name:, on: Time.zone.today)
+      item = self.for(citizen: citizen, on: on).find { |i| i.protocol_name == protocol_name.to_s && i.available? }
+      return false unless item
+      return true unless item.suggestion_only
+
+      TriageSuggestion.status_pending.exists?(citizen_id: citizen.id, protocol_name: item.protocol_name)
     end
 
     # Data local (fuso da cidade) do created_at da última conclusão do PAR.

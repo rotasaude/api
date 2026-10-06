@@ -20,7 +20,7 @@ class StartTriage
     ApplicationRecord.transaction do
       if citizen
         citizen.lock!
-        return Result.fail(:not_offered) unless Triages::Offer.available?(citizen: citizen, protocol_name: name)
+        return Result.fail(:not_offered) unless Triages::Offer.startable?(citizen: citizen, protocol_name: name)
       end
 
       record = ProtocolDefinition.find_by(name: name, status: "active")

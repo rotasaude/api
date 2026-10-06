@@ -1,5 +1,6 @@
 require "rails_helper"
 require Rails.root.join("db/city_migrate/20261005100001_add_triage_catalog.rb").to_s
+require Rails.root.join("db/city_migrate/20261005300001_add_suggestion_only_to_triage_offers.rb").to_s
 
 # F-15.1/F-15.4: o down() da migração de cidade 20261005100001 desfaz o que o
 # up() cria, e o up() seguinte restaura o schema idêntico. DDL do Postgres é
@@ -10,8 +11,20 @@ RSpec.describe "Migração de cidade 20261005100001 (AddTriageCatalog): down e u
 
   def conn = ApplicationRecord.connection
 
+  # As migrações posteriores que mexem nas mesmas tabelas saem antes e voltam
+  # depois, na ordem certa: senão o up recria triage_offers sem a coluna delas.
+  LATER = [ AddSuggestionOnlyToTriageOffers ].freeze
+
   def migrate(direction)
-    ActiveRecord::Migration.suppress_messages { AddTriageCatalog.new.exec_migration(conn, direction) }
+    ActiveRecord::Migration.suppress_messages do
+      if direction == :down
+        LATER.reverse_each { |m| m.new.exec_migration(conn, :down) }
+        AddTriageCatalog.new.exec_migration(conn, :down)
+      else
+        AddTriageCatalog.new.exec_migration(conn, :up)
+        LATER.each { |m| m.new.exec_migration(conn, :up) }
+      end
+    end
     models.each(&:reset_column_information)
   end
 

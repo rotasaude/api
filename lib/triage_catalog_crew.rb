@@ -155,8 +155,9 @@ class TriageCatalogCrew
       admin = User.find_by!(email_address: "admin@#{slug}.demo")
       POSITIONS.each do |name, position|
         restriction = name == ELDERLY && restricted.any? ? { "in" => [ "citizen.neighborhood_id", restricted.map(&:id) ] } : nil
+        # O aprofundamento só chega pela sugestão da saúde mental.
         attributes = { "enabled" => true, "position" => position, "available_from" => nil, "available_until" => nil,
-                       "restriction" => restriction }
+                       "restriction" => restriction, "suggestion_only" => name == DEEP }
         check!(Triages::SetOffer.call(protocol_name: name, attributes: attributes, by: admin), name, "linha do catálogo")
       end
     end

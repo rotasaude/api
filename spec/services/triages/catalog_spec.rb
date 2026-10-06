@@ -78,4 +78,20 @@ RSpec.describe Triages::Catalog do
     avo.update!(neighborhood: centro)
     expect(described_class.for(citizen: avo)[:reference_units]).to eq(Territory::ReferenceUnits.as_json_list([ ubs ]))
   end
+
+  # "Só por sugestão": fora de "Disponíveis"; aparece em "Sugeridas" quando há
+  # sugestão pendente, que não expira por isso. "Oferecida" só conta quando aparece.
+  it "protocolo só por sugestão fica fora de Disponíveis e aparece só sugerido" do
+    TriageOffer.find_by!(protocol_name: "saude-mental-aprofundada").update!(suggestion_only: true)
+    catalog = described_class.for(citizen: avo)
+    expect(catalog[:available].map { |i| i[:protocol_name] }).not_to include("saude-mental-aprofundada")
+    expect(TriageOfferDailyCount.where(protocol_name: "saude-mental-aprofundada").sum(:offered)).to eq(0)
+
+    suggestion = suggest!(avo, "saude-mental-aprofundada")
+    catalog = described_class.for(citizen: avo)
+    expect(catalog[:suggested].map { |i| i[:protocol_name] }).to eq(%w[saude-mental-aprofundada])
+    expect(suggestion.reload.status).to eq("pending")
+    expect(TriageOfferDailyCount.where(protocol_name: "saude-mental-aprofundada").sum(:offered)).to eq(1)
+  end
+
 end

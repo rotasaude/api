@@ -19,7 +19,8 @@ module Triages
                                 .includes(source_triage: :protocol_definition).index_by(&:protocol_name)
       shown = available.reject { |item| item.protocol_name == in_progress&.protocol_name }
       suggested, offered = shown.partition { |item| pending.key?(item.protocol_name) }
-      TriageOfferDailyCount.increment!(shown.map(&:protocol_name), day: on)
+      offered.reject!(&:suggestion_only) # só por sugestão: nunca em "Disponíveis"
+      TriageOfferDailyCount.increment!((suggested + offered).map(&:protocol_name), day: on)
 
       {
         in_progress: in_progress && in_progress_json(in_progress),

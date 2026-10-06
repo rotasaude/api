@@ -53,8 +53,13 @@ RSpec.describe TriageCatalogCrew do
       .to include("saude-do-idoso", "saude-mental", "saude-mental-aprofundada")
     expect(Triages::Offer.for(citizen: neto).map(&:protocol_name))
       .not_to include("saude-do-idoso", "saude-mental", "saude-mental-aprofundada")
-    expect(TriageOffer.where(protocol_name: %w[saude-mental saude-mental-aprofundada]).pluck(:enabled, :restriction))
-      .to eq([ [ true, nil ], [ true, nil ] ])
+    expect(TriageOffer.where(protocol_name: %w[saude-mental saude-mental-aprofundada]).order(:position)
+                      .pluck(:enabled, :restriction, :suggestion_only))
+      .to eq([ [ true, nil, false ], [ true, nil, true ] ])
+    # O aprofundamento só chega pela sugestão: fora de "Disponíveis".
+    available = Triages::Catalog.for(citizen: avo)[:available].map { |e| e[:protocol_name] }
+    expect(available).to include("saude-mental")
+    expect(available).not_to include("saude-mental-aprofundada")
   end
 
   it "a avó concluindo saúde mental com escore 6 recebe uma sugestão pendente do aprofundamento" do

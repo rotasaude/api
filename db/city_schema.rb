@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_05_100001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_05_300001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -806,6 +806,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_05_100001) do
     t.integer "position", default: 1, null: false
     t.string "protocol_name", null: false
     t.jsonb "restriction"
+    t.boolean "suggestion_only", default: false, null: false
     t.datetime "updated_at", null: false
     t.uuid "updated_by_user_id", null: false
     t.index ["protocol_name"], name: "index_triage_offers_on_protocol_name", unique: true

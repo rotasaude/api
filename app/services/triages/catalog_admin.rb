@@ -26,6 +26,7 @@ module Triages
         protocol_name: name, title: Offer.title_for(definition&.definition, name), active_version: definition&.version,
         eligibility: offer["eligibility"], retake_after_days: offer["retake_after_days"], configured: !row.nil?,
         enabled: row&.enabled, position: row&.position, restriction: row&.restriction,
+        suggestion_only: row&.suggestion_only,
         available_from: row&.available_from&.iso8601, available_until: row&.available_until&.iso8601,
         counters: counters
       }
