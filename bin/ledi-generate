@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# bin/ledi-generate <versão-ledi> <commit-do-esusaps-integracao>
+# Gera vendor/ledi/<versão>/ a partir dos IDLs oficiais (github.com/laboratoriobridge/
+# esusaps-integracao, pasta thrift/), conferindo cada .thrift contra o sha256 que o
+# próprio repositório publica em thrift/hash/. Roda no HOST (precisa de docker,
+# curl, tar e shasum). O compilador vem do pacote thrift-compiler do Debian, num
+# container descartável. Nunca edite vendor/ledi/ à mão: rode de novo.
+set -euo pipefail
+
+VERSION="${1:?uso: bin/ledi-generate <versão> <commit>}"
+COMMIT="${2:?uso: bin/ledi-generate <versão> <commit>}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+OUT="$ROOT/vendor/ledi/$VERSION"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+curl -fsSL "https://codeload.github.com/laboratoriobridge/esusaps-integracao/tar.gz/$COMMIT" | tar -xz -C "$WORK"
+SRC="$(find "$WORK" -maxdepth 1 -mindepth 1 -type d)/thrift"
+
+for idl in "$SRC"/layout-ras/thrift/*.thrift "$SRC"/layout-camada-transport/thrift/*.thrift; do
+  name="$(basename "$idl")"
+  expected="$(tr -d '[:space:]' < "$SRC/hash/$name.sha256")"
+  actual="$(shasum -a 256 "$idl" | cut -d' ' -f1)"
+  if [ "$expected" != "$actual" ]; then
+    echo "hash divergente para $name: esperado $expected, obtido $actual" >&2
+    exit 1
+  fi
+done
+
+rm -rf "$OUT"
+mkdir -p "$OUT/idl/ras" "$OUT/idl/transport" "$OUT/gen-rb"
+cp "$SRC"/layout-ras/thrift/*.thrift "$OUT/idl/ras/"
+cp "$SRC"/layout-camada-transport/thrift/*.thrift "$OUT/idl/transport/"
+
+docker run --rm -v "$OUT:/ledi" debian:bookworm-slim sh -c '
+  apt-get update -qq >/dev/null && apt-get install -y -qq thrift-compiler >/dev/null &&
+  for f in /ledi/idl/ras/*.thrift /ledi/idl/transport/*.thrift; do thrift --gen rb -out /ledi/gen-rb "$f"; done &&
+  thrift --version' > "$WORK/compiler.txt"
+
+{
+  echo "ledi_version: $VERSION"
+  echo "source: https://github.com/laboratoriobridge/esusaps-integracao/tree/$COMMIT/thrift"
+  echo "generated_on: $(date +%F)"
+  echo "compiler: $(tail -1 "$WORK/compiler.txt")"
+  echo "idl_sha256:"
+  (cd "$OUT/idl" && find . -name '*.thrift' | sort | while read -r f; do echo "  $f: $(shasum -a 256 "$f" | cut -d' ' -f1)"; done)
+} > "$OUT/SOURCE"
+
+echo "vendor/ledi/$VERSION gerado de $COMMIT"

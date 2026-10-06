@@ -44,6 +44,11 @@ RSpec.configure do |config|
   # triggering implicit auto-inclusion in groups with matching metadata.
   config.shared_context_metadata_behavior = :apply_to_host_groups
 
+  # Prova técnica do módulo 16: specs `:pec` falam com um PEC real (dev) e só
+  # rodam com LEDI_PEC_URL definida — nunca na CI. (Fica aqui, fora do bloco
+  # =begin/=end das "configurações sugeridas", que está comentado.)
+  config.filter_run_excluding :pec unless ENV["LEDI_PEC_URL"].to_s.strip != ""
+
 # The settings below are suggested to provide a good initial experience
 # with RSpec, but feel free to customize to your heart's content.
 =begin

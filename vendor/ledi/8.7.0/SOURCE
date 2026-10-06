@@ -1,0 +1,21 @@
+ledi_version: 8.7.0
+source: https://github.com/laboratoriobridge/esusaps-integracao/tree/9316f280f5/thrift
+generated_on: 2026-10-06
+compiler: Thrift version 0.17.0
+idl_sha256:
+  ./ras/cadastro_domiciliar.thrift: d05edadaf960aa67b4a5b51644c3d7ccf0eabdd1fff19c717dcb0bd4e5d07808
+  ./ras/cadastro_individual.thrift: 4f47bbc7577f4c94be5576d0281293122505b959693d647fded342b8dd60625f
+  ./ras/common.thrift: 6ed35415e84118090b0134c18db818e554057775865ab90e36abd1b86cc20a04
+  ./ras/cuidado_compartilhado.thrift: 1c4bb6f667558b864a6e7826c7120f4e65cc44924a1ef88a25ef88f84a4d2b45
+  ./ras/ficha_atendimento_domiciliar.thrift: f5fb7c7504ff94a04fb3215773a86d161ab82c1a12b7752332241d9b835d17ba
+  ./ras/ficha_atendimento_individual.thrift: d0be99985a841261a58a3e054be9e1710a80db84b449d33b59b531fd4711c19e
+  ./ras/ficha_atendimento_odonto.thrift: 0ccf13b780f720c80d4a43a5528a48c22daa600efc7abffc65d00b3476fbc6b2
+  ./ras/ficha_atendimento_procedimento.thrift: a5391f687969321cccb325e5df27d7475de8898a430efa860cb96c3957cc242b
+  ./ras/ficha_atividade_coletiva.thrift: d22d0df344d51b6755f5a1b1d1490eaaf850ba321ce4ffba0e7d0488cfc94692
+  ./ras/ficha_avaliacao_elegibilidade.thrift: 965f0539e5517fb6a02a3a37b66cb93d5c61b7681075adf398e758b901a1d3df
+  ./ras/ficha_complementar_zika_microcefalia.thrift: 14980f2ba8d79e99cab1c59047fcfa19494d4af30661b40730af06522b7dae76
+  ./ras/ficha_consumo_alimentar.thrift: a7d6aad92a9f5b8a947832ea4cf224289aa2f40e8a79c74148cab1b87044b8ed
+  ./ras/ficha_vacinacao.thrift: bf70d9e6cfd57b827b7f62d93b7b5476fcac5851144edec95adcda4f4c852dfa
+  ./ras/ficha_visita_domiciliar.thrift: 81bea4d5eeb255d0c294dda5b479ac9e359ce1c8e3cfb23234a53888ae0b71c1
+  ./ras/solicitacao_oci.thrift: ec623268379906f1dbf244fe80f1f5dd4ee0918a3f6be026426eeaa765f03479
+  ./transport/dado_transporte.thrift: 07f0319b1a3dc3d7ecff7a55c775854e7f1b885f4f913f23e430584ad7766af0

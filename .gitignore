@@ -29,3 +29,6 @@
 
 # Workspace do subagent-driven-development (scratch, nao versionado)
 .superpowers/
+
+# PEC local da prova técnica (módulo 16): instalador, certificados e CA. Nunca no git.
+/deploy/development/pec/local/

@@ -1,0 +1,43 @@
+# deploy/development/pec/compose.yml
+# PEC local da prova técnica (módulo 16). Projeto separado do compose da raiz;
+# entra na rede dele (rota-saude_default) com o apelido pec.rota.test, que é o
+# pec_url da cidade de dev. Subir: ver docs/operacao/pec-local-dev.md.
+name: rota-saude-pec
+
+services:
+  pec-db:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: esus
+      POSTGRES_PASSWORD: esus
+      POSTGRES_DB: esus
+    volumes:
+      - pec-db:/var/lib/postgresql/data
+
+  pec:
+    build: .
+    platform: linux/amd64
+    environment:
+      PEC_JAR: ${PEC_JAR:?defina PEC_JAR com o nome do instalador em local/}
+      PEC_KEYSTORE_PASSWORD: ${PEC_KEYSTORE_PASSWORD:?defina PEC_KEYSTORE_PASSWORD}
+    volumes:
+      - ./local:/pec/local:ro
+      - pec-opt:/opt/e-SUS
+    ports:
+      - "8443:8443"
+    depends_on:
+      - pec-db
+    networks:
+      default: {}
+      rota:
+        aliases:
+          - pec.rota.test
+
+networks:
+  rota:
+    external: true
+    name: rota-saude_default
+
+volumes:
+  pec-db:
+  pec-opt:
