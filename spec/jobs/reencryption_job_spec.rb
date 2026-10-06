@@ -57,9 +57,32 @@ RSpec.describe ReencryptionJob do
 
     stats = call_body
 
-    expect(stats.keys).to match_array(%w[User Conversation InboundMessage OutboundMessage Consent Author Citizen CitizenErasureRequest CitizenSession OtpChallenge Professional IntegrationCredential])
+    expect(stats.keys).to match_array(%w[User Conversation InboundMessage OutboundMessage Consent Author Citizen CitizenErasureRequest CitizenSession OtpChallenge Professional IntegrationCredential LediOutboxEntry])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
+  end
+
+  # Módulo 16: a fila LEDI guarda o payload cifrado com a chave da cidade
+  # (CITY_KEYED_TARGETS); a rotação tem de cobri-la, e linhas aceitas (payload
+  # nulo, por CHECK) não podem quebrar o job.
+  it "re-cifra o payload da fila LEDI pendente e ignora a aceita (payload nulo)" do
+    mk = lambda do |status, **attrs|
+      LediOutboxEntry.create!(uuid: "1234567-#{SecureRandom.uuid}", ficha_type: "procedimento", competence: "202610",
+                              ledi_version: "8.7.0", source_type: "Attendance", source_id: SecureRandom.uuid,
+                              next_attempt_at: Time.current, status: status, **attrs)
+    end
+    pending = mk.call("pending", bytes: "ficha-binaria".b)
+    accepted = mk.call("accepted", accepted_at: Time.current)
+    raw = ->(e) { LediOutboxEntry.connection.select_value(LediOutboxEntry.sanitize_sql([ "SELECT payload FROM ledi_outbox WHERE id = ?", e.id ])) }
+    raw_before = raw.call(pending)
+
+    stats = nil
+    expect { stats = call_body(only: [ :ledi_outbox_entry ]) }.not_to raise_error
+
+    expect(stats).to eq("LediOutboxEntry" => 1)
+    expect(raw.call(pending)).not_to eq(raw_before)
+    expect(pending.reload.bytes).to eq("ficha-binaria".b)
+    expect(accepted.reload.payload).to be_nil
   end
 
   it "conta apenas as linhas do target selecionado via :only (não prova re-encriptação)" do
