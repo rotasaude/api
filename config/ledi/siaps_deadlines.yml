@@ -1,0 +1,17 @@
+# Official LEDI/CDS competence deadlines.
+# Source: SIAPS official calendar
+# (sisaps.saude.gov.br/sistemas/siaps/docs/manual/calendario-siaps/).
+# Update yearly. Keys are competences (AAAAMM); values are ISO dates.
+# Competences missing here fall back to the computed 10th business day.
+"202601": "2026-02-13"
+"202602": "2026-03-13"
+"202603": "2026-04-15"
+"202604": "2026-05-15"
+"202605": "2026-06-16"
+"202606": "2026-07-14"
+"202607": "2026-08-14"
+"202608": "2026-09-15"
+"202609": "2026-10-15"
+"202610": "2026-11-16"
+"202611": "2026-12-14"
+"202612": "2027-01-15"
