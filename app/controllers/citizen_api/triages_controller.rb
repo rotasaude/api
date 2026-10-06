@@ -1,5 +1,5 @@
 #   GET  /citizen/triages?citizen_id=
-#   GET  /citizen/triages/:id   (com reference_units, ADR 0023, e suggestions, ADR 0027)
+#   GET  /citizen/triages/:id   (com reference_units, ADR 0023, suggestions, ADR 0027, e scheduling_request, ADR 0029)
 #   POST /citizen/triages/:id/revoke_consent
 # O nível declarado vê só as triagens do próprio par CPF + telefone (spec §2.3).
 module CitizenApi
@@ -25,9 +25,12 @@ module CitizenApi
       # ADR 0023: do bairro COPIADO na triagem (o mesmo do atendimento), não do
       # atual do cidadão. ADR 0027: sugestões só para o próprio par.
       units = Territory::ReferenceUnits.for(triage.neighborhood_id)
-      suggestions = own_triage?(triage) ? Triages::Catalog.suggestions_for(triage) : []
+      own = own_triage?(triage)
+      suggestions = own ? Triages::Catalog.suggestions_for(triage) : []
+      # ADR 0029 (contratos §5): o pedido de agendamento, só para o próprio par.
+      scheduling = own ? Scheduling::TriageRequest.for(triage) : nil
       render json: summary(triage).merge(reference_units: Territory::ReferenceUnits.as_json_list(units),
-                                         suggestions: suggestions)
+                                         suggestions: suggestions, scheduling_request: scheduling)
     end
 
     def revoke_consent

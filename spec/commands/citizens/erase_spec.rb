@@ -235,4 +235,26 @@ RSpec.describe Citizens::Erase do
     )
     expect(row.values).to all(be_nil)
   end
+
+  # ADR 0029 (contratos §8, Task 16): os avisos de lembrete do par somem; o
+  # texto livre do remarque (reschedule_note) sai dos pedidos ainda vivos.
+  it "ADR 0029: apaga os avisos do par e o texto do remarque dos pedidos vivos" do
+    ensure_appointment_types!
+    unit = create_unit("UBS Aviso")
+    shift = shift!(doctor_link!(unit), starts_at: 3.days.from_now.change(hour: 8))
+    booked = triage_request!(pair, unit: unit, type_key: "consulta_enfermagem")
+    booked.update!(status: "scheduled", reschedule_note: "Trabalho de manhã na padaria")
+    appointment = appointment_row!(booked, shift, starts_at: shift.starts_at)
+    notice = AppointmentNotice.create!(appointment: appointment, citizen: pair, created_at: Time.current)
+    waiting = triage_request!(pair, unit: unit)
+    waiting.update!(reschedule_note: "Só depois das 14h")
+
+    expect(described_class.call(request: request, by: admin)).to be_ok
+
+    expect(AppointmentNotice.where(id: notice.id)).to be_empty
+    expect(AppointmentNotice.where(citizen_id: pair.id)).to be_empty
+    expect(booked.reload).to have_attributes(status: "scheduled", reschedule_note: nil)
+    # O aberto também fecha pela revogação (ADR 0029 §5.2) — depois de perder o texto.
+    expect(waiting.reload).to have_attributes(status: "closed", closed_reason: "consent_revoked", reschedule_note: nil)
+  end
 end

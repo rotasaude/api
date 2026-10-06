@@ -29,6 +29,8 @@ class RevokeConsent
       # ADR 0027 (spec 2026-10-05 §5.5): somem as sugestões nascidas das
       # triagens desta conversa; o perfil, como o bairro, é cadastro e fica.
       TriageSuggestion.where(source_triage_id: @conversation.triages.select(:id)).delete_all
+      # ADR 0029 §5.2: o pedido de agendamento ainda sem horário fecha.
+      AppointmentRequests::CloseRevoked.call(conversation: @conversation)
 
       DomainEvents.publish("consent.revoked", conversation_id: @conversation.id, consent_id: active.id, origin: @origin)
     end

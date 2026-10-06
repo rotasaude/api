@@ -39,6 +39,11 @@ module Citizens
     def erase_pair(citizen)
       phones = phone_variants(citizen.phone)
 
+      # ADR 0029: o texto livre do remarque sai dos pedidos ainda vivos ANTES da
+      # revogação (que fecha os abertos; o trigger não deixa mudar o encerrado).
+      AppointmentRequest.where(citizen_id: citizen.id).live_requests.where.not(reschedule_note: nil)
+                        .update_all(reschedule_note: nil, updated_at: Time.current)
+
       # Conversas do par: as dele (web) e as do WhatsApp do telefone, que não
       # têm citizen_id. Uma conversa web de OUTRO cidadão no mesmo celular (a
       # família) não é deste par e fica intacta.
@@ -64,6 +69,8 @@ module Citizens
       # ADR 0027 (spec 2026-10-05 §5.5): as sugestões do par (o trigger deixa o
       # DELETE passar de propósito).
       TriageSuggestion.where(citizen_id: citizen.id).delete_all
+      # ADR 0029: os avisos de lembrete do par (o trigger deixa o DELETE passar).
+      AppointmentNotice.where(citizen_id: citizen.id).delete_all
 
       # ADR 0028: o CNS do CADSUS, a marca e a consulta pendente saem junto.
       # update_columns cifra (o tipo cifrado serializa); um marcador por coluna,
