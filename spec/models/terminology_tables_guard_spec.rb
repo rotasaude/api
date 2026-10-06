@@ -47,4 +47,13 @@ RSpec.describe "Terminologias: guarda do banco" do
     expect { release!(status: "active") }.to raise_error(ActiveRecord::RecordNotUnique)
     expect { release!(version: "2026-10") }.to raise_error(ActiveRecord::StatementInvalid)
   end
+  it "códigos: não se move linha para fora de release ativa ou substituída (release_id)" do
+    active = release!(kind: "ciap2", version: "2")
+    Ciap2Code.create!(release: active, code: "K86", description: "x")
+    target = release!(kind: "ciap2", version: "3")
+    active.update!(status: "active", activated_at: Time.current)
+    expect { sql("UPDATE ciap2_codes SET release_id = '#{target.id}'") }.to raise_error(ActiveRecord::StatementInvalid, /immutable/)
+    active.update!(status: "superseded")
+    expect { sql("UPDATE ciap2_codes SET release_id = '#{target.id}'") }.to raise_error(ActiveRecord::StatementInvalid, /immutable/)
+  end
 end

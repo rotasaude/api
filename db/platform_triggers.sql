@@ -129,6 +129,7 @@ END $$;
 CREATE OR REPLACE FUNCTION terminology_codes_guard() RETURNS trigger AS $fn$
 DECLARE
   release_status text;
+  old_release_status text;
 BEGIN
   SELECT status INTO release_status FROM terminology_releases
    WHERE id = CASE WHEN TG_OP = 'DELETE' THEN OLD.release_id ELSE NEW.release_id END;
@@ -138,6 +139,15 @@ BEGIN
       RAISE EXCEPTION '% accepts rows only for a release being imported', TG_TABLE_NAME;
     END IF;
     RETURN NEW;
+  END IF;
+
+  -- UPDATE também confere a release de ORIGEM: mover a linha (release_id) para uma
+  -- release em importação a tiraria de uma ativa sem que NEW a denunciasse.
+  IF TG_OP = 'UPDATE' AND OLD.release_id IS DISTINCT FROM NEW.release_id THEN
+    SELECT status INTO old_release_status FROM terminology_releases WHERE id = OLD.release_id;
+    IF old_release_status IN ('active', 'superseded') THEN
+      RAISE EXCEPTION '% rows of an active or superseded release are immutable: moving out of it refused', TG_TABLE_NAME;
+    END IF;
   END IF;
 
   IF release_status IN ('active', 'superseded') THEN
