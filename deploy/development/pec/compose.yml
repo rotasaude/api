@@ -11,6 +11,11 @@ services:
       POSTGRES_USER: esus
       POSTGRES_PASSWORD: esus
       POSTGRES_DB: esus
+      # O driver JDBC do instalador não fala SCRAM (padrão do postgres 14):
+      # "O tipo de autenticação 10 não é suportado". Senhas e acesso em md5.
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: --auth-host=md5
+    command: postgres -c password_encryption=md5
     volumes:
       - pec-db:/var/lib/postgresql/data
 

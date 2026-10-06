@@ -26,6 +26,10 @@ RUN printf '#!/bin/sh\nexit 0\n' > /bin/systemctl && chmod +x /bin/systemctl \
     && printf '#!/bin/sh\nif [ "$1" = "-L" ] && [ "$2" = "/sbin/init" ]; then echo "/sbin/init: ELF 64-bit LSB executable, x86-64, systemd"; else exec /usr/bin/file.original "$@"; fi\n' > /usr/bin/file \
     && chmod +x /usr/bin/file
 
+# O instalador roda comandos no diretório corrente e normaliza "/" para "" (falha
+# "Cannot run program /bin/sh (in directory \"\")"): nunca rode a partir da raiz.
+WORKDIR /opt
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]

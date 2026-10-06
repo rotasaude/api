@@ -25,4 +25,12 @@ security.require-ssl=true
 EOF
 fi
 
+# O PEC valida o próprio link HTTPS: sem a CA local no truststore da JRE dele o
+# handshake falha (PKIX). Importa uma vez; o -list torna o passo idempotente.
+KEYTOOL=/opt/e-SUS/jre/current/bin/keytool
+if [ -f /pec/local/ca.pem ] && [ -x "$KEYTOOL" ] \
+   && ! "$KEYTOOL" -list -cacerts -alias rota-saude-dev-ca -storepass changeit >/dev/null 2>&1; then
+  "$KEYTOOL" -importcert -noprompt -cacerts -alias rota-saude-dev-ca -file /pec/local/ca.pem -storepass changeit
+fi
+
 exec /opt/e-SUS/webserver/standalone.sh

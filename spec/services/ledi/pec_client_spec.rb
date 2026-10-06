@@ -7,16 +7,18 @@ RSpec.describe Ledi::PecClient do
   let(:url) { "https://pec.cidade.gov.br/api/recebimento/login" }
   let(:client) { described_class.new(base_url: "https://pec.cidade.gov.br/", username: "rota", password: "senha-secreta") }
 
-  it "200 com JSESSIONID: devolve a sessão; manda usuario/senha em JSON" do
-    stub_request(:post, url).with(body: { usuario: "rota", senha: "senha-secreta" }.to_json,
-                                  headers: { "Content-Type" => "application/json" })
+  it "200 com JSESSIONID: devolve a sessão; manda usuario/senha como formulário, nunca JSON" do
+    stub_request(:post, url).with(body: URI.encode_www_form(usuario: "rota", senha: "senha-secreta"),
+                                  headers: { "Content-Type" => "application/x-www-form-urlencoded" })
                             .to_return(status: 200, headers: { "Set-Cookie" => "JSESSIONID=abc123; Path=/; Secure; HttpOnly" })
     expect(client.login.cookie).to eq("JSESSIONID=abc123")
   end
 
-  it "401/403: Unauthorized" do
-    stub_request(:post, url).to_return(status: 401, body: "usuário senha-secreta inválido")
-    expect { client.login }.to raise_error(described_class::Unauthorized) { |e| expect(e.message).not_to include("senha-secreta") }
+  it "400/401/403: Unauthorized (o PEC 5.5 responde 400 a credencial errada); a mensagem não traz a senha" do
+    [ 400, 401, 403 ].each do |status|
+      stub_request(:post, url).to_return(status: status, body: "usuário senha-secreta inválido")
+      expect { client.login }.to raise_error(described_class::Unauthorized) { |e| expect(e.message).not_to include("senha-secreta") }
+    end
   end
 
   it "timeout e conexão recusada: Unreachable" do

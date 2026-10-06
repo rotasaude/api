@@ -1,8 +1,9 @@
 require "net/http"
 
 # Cliente da API de recebimento do PEC da cidade (ADR 0028; spec 2026-10-05 §1;
-# pesquisa frente 1): POST /api/recebimento/login (usuario/senha em JSON →
-# cookie JSESSIONID). Único lugar que conhece o formato do login — a prova
+# pesquisa frente 1): POST /api/recebimento/login (usuario/senha como formulário
+# application/x-www-form-urlencoded → cookie JSESSIONID; observado no PEC 5.5.28:
+# JSON dá 400, igual a credencial errada, então 400 também é Unauthorized). Único lugar que conhece o formato do login — a prova
 # técnica do exportador confirma, e o envio da ficha entra aqui no plano dele.
 # Nenhuma mensagem de erro carrega senha, cookie ou corpo da resposta.
 module Ledi
@@ -47,14 +48,14 @@ module Ledi
     end
 
     def login
-      response = post(LOGIN_PATH, { usuario: @username, senha: @password }.to_json, "application/json")
+      response = post(LOGIN_PATH, URI.encode_www_form(usuario: @username, senha: @password), "application/x-www-form-urlencoded")
       case response.code.to_i
       when 200..299
         cookie = session_cookie(response)
         raise Failed.new(response.code.to_i) unless cookie
 
         Session.new(cookie: cookie)
-      when 401, 403 then raise Unauthorized, "o PEC recusou usuário ou senha"
+      when 400, 401, 403 then raise Unauthorized, "o PEC recusou usuário ou senha"
       else raise Failed.new(response.code.to_i)
       end
     end
