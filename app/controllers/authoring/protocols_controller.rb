@@ -8,7 +8,9 @@ module Authoring
     before_action :require_simulator!, only: :simulate_offer
 
     def gate
-      render_gate(Protocols::Gate.call(definition_param), warnings: Protocols::SuggestionTargets.warnings(definition_param))
+      definition = definition_param
+      warnings = Protocols::SuggestionTargets.warnings(definition) + Protocols::SchedulingTargets.warnings(definition)
+      render_gate(Protocols::Gate.call(definition), warnings: warnings)
     end
 
     def preview
