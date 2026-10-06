@@ -165,3 +165,106 @@ RSpec.describe "Invariantes do modo de prontuário (ADR 0028)", type: :request d
     expect(citizen.birth_date).to eq((found.birth_date + 1).iso8601) # o declarado, nunca o do CADSUS
   end
 end
+
+# Módulo 16, exportador (ADR 0028 "Invariantes"; spec §9). Cada bloco tem a
+# mutação que precisa deixá-lo vermelho (registrada no relatório da entrega).
+RSpec.describe "Invariantes do exportador LEDI (ADR 0028)", type: :request do
+  let(:city) { City.find_by!(slug: TEST_CITY_A.slug) }
+
+  before do
+    stub_pec!
+    allow(Ledi::Observations).to receive(:duplicate_marker).and_return(nil)
+    allow(Ledi::Observations).to receive(:session_expired_statuses).and_return([ 401 ])
+  end
+
+  def synthetic
+    Ledi::Fichas::Synthetic.new(cnes: "1234567", ine: "0000123456", professional_cns: "700000000000005",
+                                cbo: "225142", attended_at: Time.current)
+  end
+
+  def enqueue!(target = city)
+    allow(Ledi::DeliverJob).to receive(:perform_later)
+    Ledi::Enqueue.call(synthetic, city: target)
+  end
+
+  def refusal(text) = { descricaoErro: text, errosValidacao: nil }.to_json
+
+  # Mutação: tirar o `return unless Platform::Features.usable?` de
+  # Ledi::DeliverJob#perform, ou o `enabled?`/`record_mode` de Ledi::Enqueue.
+  it "com o interruptor desligado ou record_mode off, nenhuma ficha sai e as rotas respondem 403" do
+    ledi_ready!(city, pec_url: "https://pec.a.test")
+    enqueue!
+    ledi_off!(city)
+    Ledi::DeliverJob.perform_now
+    expect(enqueue!).to be_nil
+    ledi_ready!(city, pec_url: "https://pec.a.test", record_mode: "off")
+    Ledi::DeliverJob.perform_now
+    expect(FakePec.for("https://pec.a.test").deliveries).to be_empty
+
+    ledi_off!(city)
+    sign_in_as(staff_with("inv-admin@cidade.gov.br", "municipal_admin"))
+    get "/production"
+    expect([ response.status, JSON.parse(response.body)["error"] ]).to eq([ 403, "feature_disabled" ])
+  end
+
+  # Mutação: logar `@credential.password` em Ledi::Delivery, passar a
+  # credencial ao perform_later, ou incluir a senha no last_check_message/evento.
+  it "nenhuma resposta, log, evento ou argumento de job contém a credencial" do
+    ledi_ready!(city, pec_url: "https://pec.a.test", username: "usuario-secreto", password: "senha-secreta-123")
+    log = StringIO.new
+    capture = ActiveSupport::Logger.new(log).tap { |l| l.level = Logger::DEBUG }
+    Rails.logger.broadcast_to(capture)
+    begin
+      Ledi::Enqueue.call(synthetic, city: city)
+      FakePec.for("https://pec.a.test").delivery_replies = [ [ 401, "" ], [ 401, "" ] ]
+      Ledi::DeliverJob.perform_now # sessão recusada duas vezes: credencial pausada
+      FakePec.for("https://pec.a.test").delivery_replies = [ [ 400, refusal("recusada") ] ]
+      IntegrationCredential.find_by!(kind: "ledi").update!(last_check_status: "ok", set_at: Time.current)
+      Ledi::DeliverJob.perform_now
+    ensure
+      Rails.logger.stop_broadcasting_to(capture)
+    end
+    expect(LediOutboxEntry.pluck(:status)).to eq([ "rejected" ])
+
+    sign_in_as(staff_with("inv-admin2@cidade.gov.br", "municipal_admin"))
+    get "/production"
+    surfaces = [ log.string, response.body, DomainEvent.pluck(:payload).to_json,
+                 ActiveJob::Base.queue_adapter.enqueued_jobs.to_json,
+                 IntegrationCredential.find_by!(kind: "ledi").last_check_message.to_s,
+                 LediOutboxEntry.pluck(:last_error).to_json ]
+    surfaces.each { |text| expect(text).not_to include("usuario-secreto", "senha-secreta-123") }
+  end
+
+  # Mutação: tirar o `payload: nil` de LediOutboxEntry#accept!, ou o CHECK
+  # ck_ledi_outbox_accepted_payload, ou o ramo de payload do trigger.
+  it "o conteúdo serializado de ficha aceita não existe mais na fila" do
+    ledi_ready!(city, pec_url: "https://pec.a.test")
+    entry = enqueue!
+    Ledi::DeliverJob.perform_now
+    expect(entry.reload.status).to eq("accepted")
+    expect(LediOutboxEntry.where(status: "accepted").where.not(payload: nil)).to be_empty
+    expect { ApplicationRecord.transaction(requires_new: true) { entry.update_columns(payload: "x") } }
+      .to raise_error(ActiveRecord::StatementInvalid)
+  end
+
+  # Mutação: guardar o cookie no SessionCache sem o city.id na chave (chave
+  # igual para as duas cidades), ou construir o PecClient com outro pec_url que
+  # não o da cidade corrente.
+  it "uma ficha da cidade A nunca usa a credencial nem o endereço do PEC da cidade B" do
+    city_b = City.find_by(slug: TEST_CITY_B.slug) ||
+             create(:city, slug: TEST_CITY_B.slug, database_url: TEST_CITY_B.database_url)
+    ledi_ready!(city, pec_url: "https://pec.a.test", username: "usuario-a", password: "senha-a")
+    ledi_ready!(city_b, pec_url: "https://pec.b.test", username: "usuario-b", password: "senha-b")
+    entry_a = enqueue!(city)
+    entry_b = CityConnection.with(city_b) { enqueue!(city_b) }
+
+    Ledi::DeliverJob.perform_now # EachCityJob: as duas cidades ativas
+
+    pec_a = FakePec.for("https://pec.a.test")
+    pec_b = FakePec.for("https://pec.b.test")
+    expect(pec_a.logins.map { |l| l[:username] }.uniq).to eq([ "usuario-a" ])
+    expect(pec_b.logins.map { |l| l[:username] }.uniq).to eq([ "usuario-b" ])
+    expect(pec_a.deliveries.map { |d| d[:filename] }).to eq([ "#{entry_a.uuid}.esus" ])
+    expect(pec_b.deliveries.map { |d| d[:filename] }).to eq([ "#{entry_b.uuid}.esus" ])
+  end
+end
