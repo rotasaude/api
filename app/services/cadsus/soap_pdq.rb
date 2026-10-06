@@ -22,7 +22,7 @@ module Cadsus
                        Net::WriteTimeout, Net::ProtocolError, OpenSSL::SSL::SSLError ].freeze
     SEX = { "F" => "female", "M" => "male" }.freeze
 
-    def self.default_url = Rails.env.production? ? PRODUCTION_URL : HOMOLOGATION_URL
+    def self.default_url = Rails.application.config.x.cadsus_pdq_url || HOMOLOGATION_URL
 
     def initialize(url:, username:, password:, timeout: TIMEOUT)
       @url = url

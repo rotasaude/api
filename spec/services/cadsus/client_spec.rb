@@ -90,6 +90,14 @@ RSpec.describe Cadsus::Client do
       end
     end
 
+    it "default_url: homologação, ou o que a configuração mandar; produção usa a constante de produção" do
+      allow(Rails.application.config.x).to receive(:cadsus_pdq_url).and_return(nil)
+      expect(described_class.default_url).to eq(described_class::HOMOLOGATION_URL)
+      allow(Rails.application.config.x).to receive(:cadsus_pdq_url).and_return(described_class::PRODUCTION_URL)
+      expect(described_class.default_url).to eq(described_class::PRODUCTION_URL)
+      expect(File.read(Rails.root.join("config/environments/production.rb"))).to include(described_class::PRODUCTION_URL)
+    end
+
     it "endereço inválido: Unavailable sem repetir a URL" do
       [ "http://exemplo.com:porta/x?token=segredo-na-url", "sem-esquema", "" ].each do |bad|
         bad_client = described_class.new(url: bad, username: "rota", password: "senha-pdq")

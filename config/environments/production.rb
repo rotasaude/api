@@ -33,4 +33,9 @@ Rails.application.configure do
   # Rails.env, não o literal: config/environments/staging.rb herda este arquivo.
   config.hosts += PlatformHosts.for(Rails.env)
   config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+
+  # CADSUS (ADR 0028): só a produção de verdade consulta o CADSUS de produção;
+  # staging herda este arquivo e fica na homologação (default de SoapPdq.default_url).
+  # Literal = Cadsus::SoapPdq::PRODUCTION_URL (constante não carrega em tempo de config).
+  config.x.cadsus_pdq_url = "https://servicos.saude.gov.br/cadsus/PDQSupplier" if Rails.env.production?
 end
