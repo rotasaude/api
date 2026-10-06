@@ -9,9 +9,10 @@ module ProfessionalRendering
     json = {
       id: p.id, user_id: p.user_id, email_address: p.user.email_address,
       professional_name: p.professional_name, council: p.council, council_state: p.council_state,
-      registration_number: p.registration_number, cns_masked: p.cns_masked
+      registration_number: p.registration_number, cns_masked: p.cns_masked,
+      cpf_masked: p.cpf_masked
     }
-    json.merge!(cns: p.cns, phone: p.phone, contact_email: p.contact_email) if full
+    json.merge!(cns: p.cns, cpf: p.cpf, phone: p.phone, contact_email: p.contact_email) if full
     json
   end
 

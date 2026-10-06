@@ -41,26 +41,28 @@ class HealthUnitsController < ApplicationController
 
   def create
     unit = HealthUnit.new(name: params[:name], kind: params[:kind])
-    error = assign_address(unit)
+    error = assign_address(unit) || assign_cnes(unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
     return render_invalid(unit) unless unit.save
 
     render json: { unit: unit_json(unit, include_active: true) }, status: :created
-  rescue ActiveRecord::RecordNotUnique
-    render json: { error: "unit_name_taken" }, status: :unprocessable_entity
+  rescue ActiveRecord::RecordNotUnique => e
+    render json: { error: e.message.include?("idx_health_units_cnes") ? "cnes_taken" : "unit_name_taken" },
+           status: :unprocessable_entity
   end
 
   def update
     return render json: { error: "not_found" }, status: :not_found unless @unit
 
     @unit.assign_attributes(name: params[:name], kind: params[:kind])
-    error = assign_address(@unit)
+    error = assign_address(@unit) || assign_cnes(@unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
     return render_invalid(@unit) unless @unit.save
 
     render json: { unit: unit_json(@unit, include_active: true) }
-  rescue ActiveRecord::RecordNotUnique
-    render json: { error: "unit_name_taken" }, status: :unprocessable_entity
+  rescue ActiveRecord::RecordNotUnique => e
+    render json: { error: e.message.include?("idx_health_units_cnes") ? "cnes_taken" : "unit_name_taken" },
+           status: :unprocessable_entity
   end
 
   def deactivate
@@ -121,6 +123,18 @@ class HealthUnitsController < ApplicationController
     nil
   end
 
+  # CNES da unidade (ADR 0028): só muda quando a chave vem no corpo; null e ""
+  # limpam. Formato e unicidade ficam com o modelo (render_invalid).
+  def assign_cnes(unit)
+    return nil unless params.key?("cnes")
+
+    value = params["cnes"]
+    return "invalid_cnes" unless value.nil? || value.is_a?(String)
+
+    unit.cnes = value.presence
+    nil
+  end
+
   def address_error(field)
     { "address_zip" => "invalid_zip", "neighborhood_id" => "invalid_neighborhood" }.fetch(field, "invalid_unit")
   end
@@ -128,6 +142,10 @@ class HealthUnitsController < ApplicationController
   def render_invalid(unit)
     if unit.errors.details[:name]&.any? { |e| e[:error] == :taken }
       render json: { error: "unit_name_taken" }, status: :unprocessable_entity
+    elsif unit.errors.details[:cnes]&.any? { |e| e[:error] == :taken }
+      render json: { error: "cnes_taken" }, status: :unprocessable_entity
+    elsif unit.errors.details[:cnes].present?
+      render json: { error: "invalid_cnes" }, status: :unprocessable_entity
     elsif unit.errors.details[:kind].present?
       render json: { error: "invalid_kind" }, status: :unprocessable_entity
     elsif unit.errors.details[:address_zip].present?
@@ -138,7 +156,7 @@ class HealthUnitsController < ApplicationController
   end
 
   def unit_json(unit, include_active: false)
-    json = { id: unit.id, name: unit.name, kind: unit.kind }.merge(unit.slice(*ADDRESS_FIELDS).symbolize_keys)
+    json = { id: unit.id, name: unit.name, kind: unit.kind, cnes: unit.cnes }.merge(unit.slice(*ADDRESS_FIELDS).symbolize_keys)
     json[:active] = unit.active if include_active
     json
   end
