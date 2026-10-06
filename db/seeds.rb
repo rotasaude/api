@@ -39,6 +39,7 @@ else
   require Rails.root.join("lib/analytics_crew").to_s
   require Rails.root.join("lib/triage_catalog_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
+  require Rails.root.join("lib/ledi_crew").to_s
 
   password = ENV.fetch(SignatureCrew::PASSWORD_ENV, "dev-password")
 
@@ -201,6 +202,13 @@ else
         record = RecordModeCrew.seed_current_city(slug: slug, admin: muni_admin)
         puts "[seeds] CNES ......... #{record[:ibge_code]} #{record[:cnes_competence]}: #{record[:establishments]} " \
              "estabelecimentos, #{record[:teams]} equipes, #{record[:bonds]} vínculos; credencial cadsus simulada"
+
+        # ── Produção e-SUS (módulo 16, spec §10) ──────────────────────────────
+        # Fila LEDI com todos os estados na competência corrente; nada é
+        # enviado enquanto o interruptor ledi_export estiver desligado ou
+        # record_mode=off (a semente não liga nenhum dos dois).
+        ledi = LediCrew.seed_current_city(slug: slug)
+        puts "[seeds] produção e-SUS .. #{ledi[:created]} fichas sintéticas na fila (não enviadas)"
 
         # ── Catálogo de triagens (módulo 15, spec 2026-10-05 §10) ─────────────
         # Depois do elenco do ciclo assinado e do território: usa autor,

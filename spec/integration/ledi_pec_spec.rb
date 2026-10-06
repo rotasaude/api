@@ -89,4 +89,21 @@ RSpec.describe "Prova técnica LEDI contra o PEC local", :pec do
     puts "[pec] login recusado → #{e.class.name} #{e.respond_to?(:status) ? e.status : ''}"
     expect(e).to be_a(Ledi::PecClient::Unauthorized)
   end
+
+  it "caminho de produção: Enqueue + DeliverJob entregam e a ficha vira accepted" do
+    skip("rotasaude/api#41: 2xx not observable until CNES is imported") unless ENV["LEDI_PEC_EXPECT_ACCEPT"].present?
+
+    city = register_test_city!
+    ledi_ready!(city, pec_url: ENV.fetch("LEDI_PEC_URL"), username: ENV.fetch("LEDI_PEC_USERNAME"),
+                      password: ENV.fetch("LEDI_PEC_PASSWORD"), ibge_code: ENV.fetch("LEDI_PROOF_IBGE"))
+    allow(Ledi::DeliverJob).to receive(:perform_later)
+    entry = Ledi::Enqueue.call(
+      Ledi::Fichas::Synthetic.new(cnes: ENV.fetch("LEDI_PROOF_CNES"), ine: ENV.fetch("LEDI_PROOF_INE"),
+                                  professional_cns: ENV.fetch("LEDI_PROOF_CNS"), cbo: ENV.fetch("LEDI_PROOF_CBO"),
+                                  attended_at: 1.hour.ago),
+      city: city
+    )
+    Ledi::DeliverJob.perform_now
+    expect(entry.reload.slice(:status, :payload)).to eq("status" => "accepted", "payload" => nil)
+  end
 end
