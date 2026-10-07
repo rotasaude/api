@@ -11,6 +11,8 @@ module Attendances
         next authorization unless authorization == :ok
         next :already_called unless attendance.status == "waiting"
 
+        # ADR 0030 (Desvio 7): chamar no meio da escuta encerra a escuta.
+        Screenings::Abandon.release!(attendance, by: by)
         attendance.update!(status: "in_care", called_by_user: by, called_at: Time.current)
         DomainEvents.publish("attendance.called", attendance_id: attendance.id, called_by_user_id: by.id)
         :ok

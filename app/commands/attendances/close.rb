@@ -28,6 +28,9 @@ module Attendances
         next Result.fail(:already_closed) unless attendance.open?
         next Result.fail(:invalid_transition) unless allowed?(attendance.status, outcome)
 
+        # ADR 0030 (Desvio 7): quem sai (ou é encerrado) com escuta em curso
+        # não deixa a escuta pendurada.
+        Screenings::Abandon.release!(attendance, by: by)
         attendance.update!(status: "closed", outcome: outcome, closed_by_user: by, closed_at: Time.current,
                            referral_unit: unit, referral_note: (%w[referred return].include?(outcome) ? note : nil))
         request = AppointmentRequests::Lifecycle.open_for!(attendance, outcome: outcome, unit: unit)
