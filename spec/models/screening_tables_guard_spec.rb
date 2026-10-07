@@ -63,6 +63,17 @@ RSpec.describe "Guardas das tabelas da escuta" do
       expect(revision.reload).to be_persisted
     end
 
+    it "abandonada não vai direto a concluída (precisa voltar a em curso)" do
+      screening = screening!(status: "abandoned")
+      revision = revision!(screening)
+      expect do
+        attempt do
+          screening.update_columns(status: "completed", completed_at: Time.current, destination: "same_day",
+                                   current_revision_id: revision.id)
+        end
+      end.to raise_error(ActiveRecord::StatementInvalid, /screenings: invalid transition abandoned -> completed/)
+    end
+
     it "CHECKs: concluída exige destino, revisão e hora; orientação só com oriented; schedule exige pedido" do
       screening = screening!
       # update_columns/update! que falham deixam o objeto em memória diferente
@@ -130,6 +141,17 @@ RSpec.describe "Guardas das tabelas da escuta" do
       expect { close_from_waiting("discharged") }.to raise_error(ActiveRecord::StatementInvalid, /invalid transition/)
       expect { close_from_waiting("oriented") }.not_to raise_error
       expect(attendance.reload.outcome).to eq("oriented")
+    end
+
+    it "com a escuta schedule concluída e o pedido aberto, fecha scheduled_from_screening de waiting" do
+      screening = screening!
+      request = AppointmentRequest.create!(kind: "screening", origin_attendance: attendance, origin_screening: screening,
+                                           citizen: attendance.citizen, root_triage: attendance.root_triage,
+                                           origin_unit: unit, target_unit: unit, appointment_type_key: appointment_type!.key,
+                                           priority: "routine", due_on: Time.zone.today + 7)
+      complete!(screening, destination: "schedule", appointment_request: request)
+      expect { close_from_waiting("scheduled_from_screening") }.not_to raise_error
+      expect(attendance.reload).to have_attributes(status: "closed", outcome: "scheduled_from_screening", called_at: nil)
     end
 
     it "oriented e scheduled_from_screening nunca saem de in_care" do

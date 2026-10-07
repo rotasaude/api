@@ -117,7 +117,6 @@ class AddScreenings < ActiveRecord::Migration[8.1]
                          "(status::text = 'waiting'::text AND called_at IS NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR " \
                          "(status::text = 'in_care'::text AND called_at IS NOT NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR " \
                          "(status::text = 'closed'::text AND outcome IS NOT NULL AND closed_by_user_id IS NOT NULL AND closed_at IS NOT NULL " \
-                         "AND (called_at IS NOT NULL OR outcome::text = ANY (ARRAY['left'::text, 'referred'::text, #{SCREENING_OUTCOMES}])) " \
                          "AND (called_at IS NULL OR outcome::text <> ALL (ARRAY[#{SCREENING_OUTCOMES}])))",
                          name: "ck_attendances_closing"
 
