@@ -32,7 +32,15 @@ RSpec.describe "Contrato LEDI 8.7.0" do
       "Br::Gov::Saude::Esusab::Ras::Atendprocedimentos::FichaProcedimentoMasterThrift",
     [ "ras/ficha_atendimento_procedimento.thrift", "FichaProcedimentoChildThrift" ] =>
       "Br::Gov::Saude::Esusab::Ras::Atendprocedimentos::FichaProcedimentoChildThrift",
-    [ "ras/common.thrift", "UnicaLotacaoHeaderThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::UnicaLotacaoHeaderThrift"
+    [ "ras/common.thrift", "UnicaLotacaoHeaderThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::UnicaLotacaoHeaderThrift",
+    [ "ras/ficha_atendimento_individual.thrift", "FichaAtendimentoIndividualMasterThrift" ] =>
+      "Br::Gov::Saude::Esusab::Ras::Atendindividual::FichaAtendimentoIndividualMasterThrift",
+    [ "ras/ficha_atendimento_individual.thrift", "FichaAtendimentoIndividualChildThrift" ] =>
+      "Br::Gov::Saude::Esusab::Ras::Atendindividual::FichaAtendimentoIndividualChildThrift",
+    [ "ras/common.thrift", "VariasLotacoesHeaderThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::VariasLotacoesHeaderThrift",
+    [ "ras/common.thrift", "LotacaoHeaderThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::LotacaoHeaderThrift",
+    [ "ras/common.thrift", "MedicoesThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::MedicoesThrift",
+    [ "ras/common.thrift", "ProblemaCondicaoThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::ProblemaCondicaoThrift"
   }.each do |(file, struct), class_name|
     it "#{class_name.demodulize} tem os mesmos ids e nomes de campo do IDL" do
       expected = idl_fields(file, struct)

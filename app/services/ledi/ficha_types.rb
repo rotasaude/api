@@ -7,7 +7,12 @@ module Ledi
 
     REGISTRY = {
       "procedimento" => { code: 7, klass: "Br::Gov::Saude::Esusab::Ras::Atendprocedimentos::FichaProcedimentoMasterThrift",
-                          uuid_field: :uuidFicha }
+                          uuid_field: :uuidFicha },
+      # ADR 0030 (Task 1): escuta inicial por nível superior. O código é o
+      # tipo_dado_serializado.atendimento_individual de config/ledi/screening_mapping.yml
+      # (spec de initial_listening confere os dois).
+      "atendimento_individual" => { code: 4, klass: "Br::Gov::Saude::Esusab::Ras::Atendindividual::FichaAtendimentoIndividualMasterThrift",
+                                    uuid_field: :uuidFicha }
     }.freeze
 
     module_function
