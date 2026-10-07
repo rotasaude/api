@@ -111,4 +111,15 @@ RSpec.describe Ledi::ScreeningFicha do
     expect(described_class.generate(started.reload, city: city)).to eq(:skipped)
     expect([ LediOutboxEntry.count, LediGenerationFailure.count ]).to eq([ 0, 0 ])
   end
+  # "Gerar de novo" decide sob lock da linha: uma cópia lida antes de outra
+  # tentativa resolver recebe AlreadyResolved, sem publicar o evento.
+  it "retry! relê sob lock: cópia antiga de uma já resolvida → AlreadyResolved, sem ledi.generation_retried" do
+    screening = screening_for(Citizen.create!(cpf: "52998224725", phone: "+5541998765432"))
+    described_class.generate(screening, city: city)
+    stale = LediGenerationFailure.sole
+    LediGenerationFailure.find(stale.id).update!(resolved_at: Time.current)
+    expect(stale.resolved?).to be(false)
+    expect { described_class.retry!(stale, by: nurse) }.to raise_error(described_class::AlreadyResolved)
+    expect(DomainEvent.where(name: "ledi.generation_retried").count).to eq(0)
+  end
 end

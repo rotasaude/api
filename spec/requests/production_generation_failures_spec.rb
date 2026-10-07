@@ -104,6 +104,7 @@ RSpec.describe "Produção — fichas não geradas", type: :request do
     unit.update!(cnes: nil)
     json_post "/production/fichas/#{rejected.id}/resend"
     expect(status_and_error).to eq([ 409, "generation_failed" ])
+    expect(LediGenerationFailure.unresolved.sole.reason_codes).to eq(%w[unit_without_cnes])
     unit.update!(cnes: "1234567")
 
     json_post "/production/fichas/#{rejected.id}/resend"
@@ -114,6 +115,7 @@ RSpec.describe "Produção — fichas não geradas", type: :request do
     expect(body["id"]).not_to eq(rejected.id)
     fresh = LediOutboxEntry.find(body["id"])
     expect(fresh.uuid).not_to eq(rejected.uuid)
+    expect(LediGenerationFailure.unresolved).to be_empty # a "não gerada" do 409 acima fica resolvida
 
     json_post "/production/fichas/#{rejected.id}/resend"
     expect(status_and_error).to eq([ 409, "not_rejected" ])

@@ -101,14 +101,18 @@ module Ledi
     # "Gerar de novo" (contratos §6): tenta agora; sucesso (ou ficha que já
     # existe) resolve; falta de identificação atualiza os motivos;
     # exportação inutilizável deixa como está.
+    # Sob lock da linha (relida): duas tentativas simultâneas não publicam
+    # duas vezes; a segunda vê a resolvida e recebe AlreadyResolved.
     def retry!(failure, by:)
-      raise AlreadyResolved if failure.resolved?
+      failure.with_lock do
+        raise AlreadyResolved if failure.resolved?
 
-      screening = Screening.find_by(id: failure.source_id)
-      outcome = screening ? generate(screening) : :skipped
-      resolve_failure!(screening) if outcome == :exists
-      DomainEvents.publish("ledi.generation_retried", failure_id: failure.id, source_type: failure.source_type,
-                                                      source_id: failure.source_id)
+        screening = Screening.find_by(id: failure.source_id)
+        outcome = screening ? generate(screening) : :skipped
+        resolve_failure!(screening) if outcome == :exists
+        DomainEvents.publish("ledi.generation_retried", failure_id: failure.id, source_type: failure.source_type,
+                                                        source_id: failure.source_id)
+      end
       failure.reload
     end
 
@@ -134,6 +138,9 @@ module Ledi
         fresh = Ledi::Enqueue.call(ficha, city: city, replaces: entry)
         next [ :export_unusable, nil ] unless fresh
 
+        # Só depois de a ficha entrar na fila: a "não gerada" de uma tentativa
+        # anterior não fica aberta para sempre (o varredor pula fonte com ficha).
+        resolve_failure!(screening)
         DomainEvents.publish("ledi.ficha_resent", outbox_id: entry.id, user_id: by.id)
         [ :ok, fresh ]
       end

@@ -44,6 +44,10 @@ RSpec.describe Ledi::Resend, "fonte Screening" do
     expect { described_class.call(entry: entry, by: by) }.to raise_error(described_class::NotRegenerated)
     expect(LediGenerationFailure.unresolved.sole.reason_codes).to eq(%w[unit_without_cnes])
     unit.update!(cnes: "1234567")
+    expect(described_class.call(entry: entry.reload, by: by).replaces_outbox_id).to eq(entry.id)
+    expect(LediGenerationFailure.unresolved).to be_empty
+    entry = LediOutboxEntry.find_by!(replaces_outbox_id: entry.id)
+    entry.reject!([ { "field" => "cpfCidadao", "code" => "invalid" } ])
     ledi_off!(city)
     expect { described_class.call(entry: entry.reload, by: by) }.to raise_error(described_class::ExportUnusable)
     expect(entry.reload.status).to eq("rejected")
