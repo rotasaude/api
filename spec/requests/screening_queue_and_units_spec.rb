@@ -48,6 +48,7 @@ RSpec.describe "Filas com escuta e escopo da unidade", type: :request do
 
   # Contrato §9: quem ainda aguarda acolhimento vem por último "e marcado".
   it "fila do profissional marca quem aguarda acolhimento (fora do escopo e com escuta concluída não)" do
+    acolhimento!
     awaiting = walk_in_attendance!(unit, citizen: screening_citizen!(1))
     scheduled = scheduled_attendance!(unit, citizen: screening_citizen!(2))
     green = screened!(3, "green")
@@ -58,6 +59,21 @@ RSpec.describe "Filas com escuta e escopo da unidade", type: :request do
     flags = body["waiting"].to_h { |i| [ i["id"], i["awaiting_screening"] ] }
     expect(flags).to eq(green.id => false, scheduled.id => false, awaiting.id => true, in_progress.id => true)
     expect(body["waiting"].last(2).map { |i| i["id"] }).to contain_exactly(awaiting.id, in_progress.id)
+  end
+
+  # Spec §11.4: a cidade que não usa o acolhimento continua chamando como hoje.
+  it "sem protocolo de acolhimento ativo ninguém vem marcado nem por último" do
+    freeze_time do
+      awaiting = walk_in_attendance!(unit, citizen: screening_citizen!(1), checked_in_at: 1.hour.ago)
+      awaiting.triage.update_columns(priority: 1)
+      scheduled = scheduled_attendance!(unit, citizen: screening_citizen!(2), checked_in_at: 2.hours.ago)
+      scheduled.appointment.request.root_triage.update_columns(priority: 5)
+      green = screened!(3, "green")
+      sign_in_as(reception!)
+      get "/attendance/units/#{unit.id}/queue"
+      expect(body["waiting"].map { |i| [ i["id"], i["awaiting_screening"] ] })
+        .to eq([ [ green.id, false ], [ awaiting.id, false ], [ scheduled.id, false ] ])
+    end
   end
 
   it "o detalhe da chamada traz a escuta para o profissional e deixa trilha" do

@@ -22,9 +22,12 @@ module Screenings
     def items(unit) = pending(unit).includes(*INCLUDES).order(:checked_in_at, :id).to_a
 
     # Marcador "aguardando acolhimento" de um item da fila (mesma regra de
-    # pending, em Ruby, sobre o atendimento já carregado).
-    def awaiting?(attendance)
-      attendance.status == "waiting" && Scope.required?(attendance) && !attendance.screening&.completed?
+    # pending, em Ruby, sobre o atendimento já carregado). Concorda com o
+    # grupo 3 de Attendances::UnitQueue: sem protocolo de acolhimento ativo na
+    # cidade ninguém aguarda acolhimento (contrato §9; spec §11.4). Quem lista
+    # vários itens lê o protocolo uma vez e passa em active:.
+    def awaiting?(attendance, active: ActiveProtocol.current.present?)
+      active && attendance.status == "waiting" && Scope.required?(attendance) && !attendance.screening&.completed?
     end
   end
 end

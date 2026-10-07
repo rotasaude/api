@@ -25,7 +25,9 @@ class AttendancesController < ApplicationController
     # nunca entra (decisão de 2026-09-28): encaminhar para si mesma não é
     # encaminhamento.
     refs = Territory::ReferenceUnits.ids_by_neighborhood((waiting + in_care).map(&:territory_neighborhood_id))
-    render json: { waiting: waiting.map { |a| queue_json(a, refs) }, in_care: in_care.map { |a| queue_json(a, refs) } }
+    screening_active = Screenings::ActiveProtocol.current.present?
+    render json: { waiting: waiting.map { |a| queue_json(a, refs, screening_active) },
+                   in_care: in_care.map { |a| queue_json(a, refs, screening_active) } }
   end
 
   def call
@@ -61,7 +63,7 @@ class AttendancesController < ApplicationController
 
   private
 
-  def queue_json(a, refs)
+  def queue_json(a, refs, screening_active)
     {
       id: a.id, cpf_masked: a.citizen.cpf_masked, checked_in_at: a.checked_in_at&.iso8601,
       protocol_name: a.root_triage&.protocol_name, priority: a.priority,
@@ -70,8 +72,10 @@ class AttendancesController < ApplicationController
       reference_unit_ids: refs.fetch(a.territory_neighborhood_id, []) - [ a.health_unit_id ],
       # ADR 0030 (contratos §4 e §9): só cor, destino e espera — nunca queixa
       # nem sinais, nem para a recepção; quem ainda aguarda acolhimento vem
-      # marcado (e por último, Attendances::UnitQueue).
-      screening: Screenings::Json.queue_block(a), awaiting_screening: Screenings::Queue.awaiting?(a)
+      # marcado (e por último, Attendances::UnitQueue) — só com protocolo de
+      # acolhimento ativo na cidade (spec §11.4).
+      screening: Screenings::Json.queue_block(a),
+      awaiting_screening: Screenings::Queue.awaiting?(a, active: screening_active)
     }
   end
 

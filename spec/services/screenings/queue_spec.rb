@@ -62,6 +62,7 @@ RSpec.describe Screenings::Queue do
   # do profissional — exige escuta e não tem escuta concluída.
   describe ".awaiting?" do
     it "verdadeiro sem escuta, em curso ou abandonada; falso com escuta concluída ou fora do escopo" do
+      acolhimento!
       none = walk_in_attendance!(unit, citizen: screening_citizen!(1), checked_in_at: t0)
       in_progress = walk_in_attendance!(unit, citizen: screening_citizen!(2), checked_in_at: t0)
       Screenings::Start.call(attendance: in_progress, by: nurse)
@@ -81,7 +82,21 @@ RSpec.describe Screenings::Queue do
       expect(awaiting.call(scheduled)).to be(true)
     end
 
+    # Spec §11.4: concorda com o grupo 3 da fila do profissional, que só
+    # existe com protocolo de acolhimento ativo.
+    it "falso para todos sem protocolo de acolhimento ativo" do
+      none = walk_in_attendance!(unit, citizen: screening_citizen!(1), checked_in_at: t0)
+      in_progress = walk_in_attendance!(unit, citizen: screening_citizen!(2), checked_in_at: t0)
+      Screenings::Start.call(attendance: in_progress, by: nurse)
+      expect([ none, in_progress ].map { |a| described_class.awaiting?(Attendance.find(a.id)) }).to all(be(false))
+
+      acolhimento!
+      expect(described_class.awaiting?(Attendance.find(none.id))).to be(true)
+      expect(described_class.awaiting?(Attendance.find(none.id), active: false)).to be(false)
+    end
+
     it "falso para quem já foi chamado" do
+      acolhimento!
       called = walk_in_attendance!(unit, citizen: screening_citizen!(1), checked_in_at: t0)
       called.update!(status: "in_care", called_by_user: nurse, called_at: Time.current)
       expect(described_class.awaiting?(called.reload)).to be(false)

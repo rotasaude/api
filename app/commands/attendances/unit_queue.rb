@@ -1,10 +1,16 @@
 # Fila da unidade (spec 2026-09-25 §6; ADR 0030 §4; contrato §9 do módulo 18).
-# Aguardando, em três grupos:
+# Aguardando, em até três grupos:
 #   1. escuta concluída same_day (os outros destinos já fecharam o
 #      atendimento), pela cor da revisão corrente (red, yellow, green, blue);
 #   2. quem não exige escuta pelo escopo da unidade (ex.: horário em walk_in);
 #   3. quem ainda aguarda a escuta (exige e não tem escuta concluída; em curso
 #      e abandonada contam) — ninguém é pulado, só vem depois.
+# O grupo 3 só existe com protocolo de acolhimento ativo na cidade
+# (Screenings::ActiveProtocol): o contrato §9 vale onde o acolhimento está em
+# uso, e a cidade que não usa o acolhimento continua chamando como hoje (spec
+# §11.4) — sem protocolo, quem seria do grupo 3 fica no grupo 2, e uma
+# chegada urgente não afunda na fila. O protocolo é lido uma vez por consulta,
+# em Ruby, e escolhe a ordem; o lock continua só em attendances.
 # Nos grupos 2 e 3 vale a ordem do módulo 13: prioridade da triagem raiz (a
 # própria, ou a do pedido do horário; sem prioridade por último). Em todos,
 # depois a chegada e, no empate, o id. Em atendimento por hora da chamada.
@@ -30,19 +36,22 @@ module Attendances
     TIER_SQL = "CASE WHEN #{SCREENED_SQL} THEN 1 " \
                "WHEN #{Screenings::Scope::REQUIRED_SQL} AND #{Screenings::Queue::NOT_COMPLETED_SQL} THEN 3 " \
                "ELSE 2 END".freeze
-    ORDER = Arel.sql(
-      "#{TIER_SQL} ASC, " \
+    # Sem protocolo de acolhimento ativo não há grupo 3 (ver acima).
+    TIER_WITHOUT_SCREENING_SQL = "CASE WHEN #{SCREENED_SQL} THEN 1 ELSE 2 END".freeze
+    REST_OF_ORDER_SQL =
       "CASE queue_revisions.final_color WHEN 'red' THEN 0 WHEN 'yellow' THEN 1 WHEN 'green' THEN 2 " \
       "WHEN 'blue' THEN 3 END ASC NULLS LAST, " \
       "CASE WHEN #{SCREENED_SQL} THEN NULL " \
       "ELSE COALESCE(queue_triages.priority, queue_root_triages.priority) END ASC NULLS LAST, " \
-      "attendances.checked_in_at ASC, attendances.id ASC"
-    ).freeze
+      "attendances.checked_in_at ASC, attendances.id ASC".freeze
+    ORDER = Arel.sql("#{TIER_SQL} ASC, #{REST_OF_ORDER_SQL}").freeze
+    ORDER_WITHOUT_SCREENING = Arel.sql("#{TIER_WITHOUT_SCREENING_SQL} ASC, #{REST_OF_ORDER_SQL}").freeze
 
     module_function
 
     def ordered_waiting(unit_id)
-      Attendance.waiting.where(health_unit_id: unit_id).joins(ROOT_TRIAGE_JOINS).order(ORDER)
+      order = Screenings::ActiveProtocol.current ? ORDER : ORDER_WITHOUT_SCREENING
+      Attendance.waiting.where(health_unit_id: unit_id).joins(ROOT_TRIAGE_JOINS).order(order)
     end
 
     def waiting(unit_id)

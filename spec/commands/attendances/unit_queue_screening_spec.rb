@@ -5,6 +5,8 @@ require "rails_helper"
 # blue) e chegada; (2) quem não exige escuta pelo escopo, na ordem de hoje;
 # (3) quem ainda aguarda a escuta (em curso e abandonada contam), na ordem de
 # hoje, por último. Ninguém é pulado: o chamar próximo segue a mesma ordem.
+# O grupo 3 só existe com protocolo de acolhimento ativo na cidade (spec
+# §11.4): sem ele, a escuta concluída vem antes e o resto segue o módulo 13.
 RSpec.describe Attendances::UnitQueue, "com escuta" do
   before { Current.city = TEST_CITY_A; ciap2_release! }
   after { Current.reset }
@@ -31,7 +33,8 @@ RSpec.describe Attendances::UnitQueue, "com escuta" do
     ids
   end
 
-  it "cor antes de chegada; depois quem não exige escuta; quem aguarda a escuta por último, na ordem de hoje" do
+  it "com protocolo ativo: cor antes de chegada; depois quem não exige escuta; quem aguarda a escuta por último" do
+    acolhimento!
     plain_urgent = walk_in_attendance!(unit, citizen: screening_citizen!(1), checked_in_at: t0)
     plain_urgent.triage.update_columns(priority: 1)
     plain_later = walk_in_attendance!(unit, citizen: screening_citizen!(2), checked_in_at: t0 + 1.minute)
@@ -49,7 +52,26 @@ RSpec.describe Attendances::UnitQueue, "com escuta" do
     expect(call_order).to eq(expected)
   end
 
+  it "sem protocolo ativo: escuta concluída por cor primeiro; o resto na ordem do módulo 13, sem grupo 3" do
+    plain_urgent = walk_in_attendance!(unit, citizen: screening_citizen!(1), checked_in_at: t0 + 5.minutes)
+    plain_urgent.triage.update_columns(priority: 1)
+    plain_later = walk_in_attendance!(unit, citizen: screening_citizen!(2), checked_in_at: t0 + 1.minute)
+    plain_later.triage.update_columns(priority: 9)
+    green = screened!(3, "green", at: t0 + 2.minutes)
+    red = screened!(4, "red", at: t0 + 30.minutes)
+    scheduled = scheduled_attendance!(unit, citizen: screening_citizen!(5), checked_in_at: t0)
+    scheduled.appointment.request.root_triage.update_columns(priority: 5)
+
+    # a chegada urgente (walk-in sem escuta) não afunda atrás do horário, e
+    # ninguém vem marcado como aguardando acolhimento.
+    expected = [ red.id, green.id, plain_urgent.id, scheduled.id, plain_later.id ]
+    expect(described_class.waiting(unit.id).map(&:id)).to eq(expected)
+    expect(Attendance.where(id: expected).map { |a| Screenings::Queue.awaiting?(a) }).to all(be(false))
+    expect(call_order).to eq(expected)
+  end
+
   it "escopo all: o horário sem escuta passa a aguardar a escuta (grupo 3)" do
+    acolhimento!
     scheduled = scheduled_attendance!(unit, citizen: screening_citizen!(1), checked_in_at: t0)
     walk_in = walk_in_attendance!(unit, citizen: screening_citizen!(2), checked_in_at: t0 + 1.minute)
     walk_in.triage.update_columns(priority: 1)
