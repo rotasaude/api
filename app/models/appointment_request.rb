@@ -3,7 +3,7 @@
 # unidade de destino marca o horário. Só acréscimo (trigger); a origem nunca
 # muda; a unidade de destino nula recebe uma unidade uma vez.
 class AppointmentRequest < ApplicationRecord
-  KINDS = %w[return referral triage].freeze
+  KINDS = %w[return referral triage screening].freeze
   STATUSES = %w[open scheduled closed].freeze
   CLOSED_REASONS = %w[fulfilled citizen_cancelled dismissed moved consent_revoked].freeze
   PRIORITIES = %w[routine priority].freeze
@@ -13,6 +13,7 @@ class AppointmentRequest < ApplicationRecord
 
   belongs_to :origin_attendance, class_name: "Attendance", inverse_of: :appointment_request, optional: true
   belongs_to :origin_triage, class_name: "Triage", optional: true
+  belongs_to :origin_screening, class_name: "Screening", optional: true
   belongs_to :citizen
   belongs_to :root_triage, class_name: "Triage"
   belongs_to :origin_unit, class_name: "HealthUnit", optional: true

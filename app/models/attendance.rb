@@ -3,7 +3,11 @@
 class Attendance < ApplicationRecord
   METHODS = %w[code cpf_exception].freeze
   STATUSES = %w[waiting in_care closed].freeze
-  OUTCOMES = %w[discharged referred return left].freeze
+  OUTCOMES = %w[discharged referred return left scheduled_from_screening oriented].freeze
+  # ADR 0030: destino da escuta → desfecho que fecha o atendimento de waiting.
+  SCREENING_OUTCOMES = { "schedule" => "scheduled_from_screening", "oriented" => "oriented", "referred" => "referred" }.freeze
+  # O que a rota de desfecho (Attendances::Close) aceita: os de escuta só saem de Screenings::Complete.
+  CLOSE_OUTCOMES = %w[discharged referred return left].freeze
 
   belongs_to :triage, optional: true
   belongs_to :appointment, optional: true
@@ -17,6 +21,7 @@ class Attendance < ApplicationRecord
   # encerrado como `moved` e o novo, ligado a ele, é o que vale.
   has_one :appointment_request, -> { where("appointment_requests.closed_reason IS DISTINCT FROM 'moved'") },
           foreign_key: :origin_attendance_id, inverse_of: :origin_attendance
+  has_one :screening, dependent: :restrict_with_error
 
   scope :open_attendances, -> { where(status: %w[waiting in_care]) }
   scope :waiting, -> { where(status: "waiting") }

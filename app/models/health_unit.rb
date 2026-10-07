@@ -3,6 +3,8 @@
 # antigos continuam apontando para ela.
 class HealthUnit < ApplicationRecord
   KINDS = %w[ubs upa hospital other].freeze
+  # ADR 0030: quem passa pela escuta inicial (demanda espontânea, ou todos).
+  SCREENING_SCOPES = %w[walk_in all].freeze
 
   # A unidade foi desativada entre a leitura e a transação.
   class Inactive < StandardError; end
@@ -28,6 +30,7 @@ class HealthUnit < ApplicationRecord
 
   validates :name, presence: true, uniqueness: { case_sensitive: false }
   validates :kind, inclusion: { in: KINDS }
+  validates :screening_scope, inclusion: { in: SCREENING_SCOPES }
   validates :address_street, length: { maximum: 160 }
   validates :address_number, length: { maximum: 20 }
   validates :address_complement, length: { maximum: 80 }

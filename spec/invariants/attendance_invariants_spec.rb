@@ -164,8 +164,13 @@ RSpec.describe "Invariantes do atendimento (ADR 0018, 0019)" do
             Attendance.where(id: a.id).update_all(attrs.merge(status: "closed", closed_by_user_id: doctor.id,
                                                               closed_at: Time.current))
           end
-        end.to raise_error(ActiveRecord::StatementInvalid, /invalid transition waiting -> closed/), outcome
+        end.to raise_error(ActiveRecord::StatementInvalid, refusal(outcome)), outcome
       end
+    end
+
+    # ADR 0030: referred sai de waiting só com escuta concluída com esse destino.
+    def refusal(outcome)
+      outcome == "referred" ? /requires a completed screening/ : /invalid transition waiting -> closed/
     end
 
     it "o banco recusa left a partir de in_care e aceita left a partir de waiting" do

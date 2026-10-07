@@ -88,3 +88,13 @@ RSpec.describe "scheduling event bindings (ADR 0029)" do
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
 end
+
+# Módulo 18 (ADR 0030): escuta e fichas não geradas, só trilha.
+RSpec.describe "screening event bindings (ADR 0030)" do
+  it "declares every module 18 city event with no consumer" do
+    names = %w[screening.started screening.abandoned screening.completed screening.reassessed screening.viewed
+               ledi.generation_failed ledi.generation_retried ledi.payload_purged]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end

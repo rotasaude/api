@@ -72,7 +72,8 @@ module HealthUnits
       AppointmentRequests::Lifecycle.close!(request, reason: "moved")
 
       fresh = AppointmentRequest.create!(
-        origin_attendance_id: request.origin_attendance_id, citizen_id: request.citizen_id,
+        origin_attendance_id: request.origin_attendance_id, origin_screening_id: request.origin_screening_id,
+        citizen_id: request.citizen_id,
         root_triage_id: request.root_triage_id, origin_unit_id: request.origin_unit_id, target_unit: target,
         kind: request.kind, note: request.note, reopened_reason: request.reopened_reason,
         moved_from_request: request, status: live ? "scheduled" : "open", created_at: request.created_at,

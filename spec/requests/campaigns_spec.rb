@@ -109,7 +109,7 @@ RSpec.describe "Campanhas — rascunho e prévia", type: :request do
       get "/campaigns/options"
       expect(body).to eq(
         "protocols" => %w[dengue triage-respiratoria], "tiers" => %w[alta baixa],
-        "outcomes" => %w[discharged referred return left],
+        "outcomes" => %w[discharged referred return left scheduled_from_screening oriented],
         "neighborhoods" => [ { "id" => centro.id, "name" => "Centro" } ],
         "units" => [ { "id" => ubs.id, "name" => "UBS Centro" } ]
       )

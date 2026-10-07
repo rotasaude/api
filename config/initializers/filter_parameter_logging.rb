@@ -13,7 +13,11 @@ Rails.application.config.filter_parameters += [
   # diz qual operação a requisição executou.
   :variables, :query,
   # ADR 0027: perfil do par — dado de saúde sensível, nunca em log.
-  :birth_date, :sex, :gender_identity
+  :birth_date, :sex, :gender_identity,
+  # ADR 0030: escuta inicial — sinais vitais e queixa são dado de saúde
+  # (`:note` e `:reason` já cobrem complaint_note, orientation_note e
+  # color_change_reason).
+  :vitals, :ciap2
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

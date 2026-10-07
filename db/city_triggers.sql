@@ -126,8 +126,10 @@ BEGIN
   END IF;
   IF NEW.status IS DISTINCT FROM OLD.status
      AND NOT ((OLD.status = 'waiting' AND NEW.status = 'in_care')
-          OR (OLD.status = 'waiting' AND NEW.status = 'closed' AND NEW.outcome = 'left')
-          OR (OLD.status = 'in_care' AND NEW.status = 'closed' AND NEW.outcome IS DISTINCT FROM 'left')) THEN
+          OR (OLD.status = 'waiting' AND NEW.status = 'closed'
+              AND NEW.outcome IN ('left', 'scheduled_from_screening', 'oriented', 'referred'))
+          OR (OLD.status = 'in_care' AND NEW.status = 'closed'
+              AND NEW.outcome NOT IN ('left', 'scheduled_from_screening', 'oriented'))) THEN
     RAISE EXCEPTION 'attendances: invalid transition % -> %', OLD.status, NEW.status;
   END IF;
   RETURN NEW;
@@ -208,6 +210,7 @@ BEGIN
      OR NEW.kind IS DISTINCT FROM OLD.kind
      OR NEW.note IS DISTINCT FROM OLD.note
      OR NEW.moved_from_request_id IS DISTINCT FROM OLD.moved_from_request_id
+     OR NEW.origin_screening_id IS DISTINCT FROM OLD.origin_screening_id
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'appointment_requests: the origin columns never change';
   END IF;
@@ -914,6 +917,82 @@ BEGIN
     EXECUTE 'CREATE TRIGGER appointment_notices_guard
       BEFORE UPDATE ON appointment_notices
       FOR EACH ROW EXECUTE FUNCTION rota_appointment_notice_guard()';
+  END IF;
+END
+$do$;
+
+-- screenings (ADR 0030; spec 2026-10-07 §3): uma por atendimento; nunca some.
+-- Em curso → concluída ou abandonada; abandonada pode voltar a em curso
+-- (outra profissional retoma); concluída só troca a revisão corrente e o
+-- autor clínico (reavaliação).
+CREATE OR REPLACE FUNCTION rota_screening_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'screenings is append-only: DELETE refused';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.attendance_id IS DISTINCT FROM OLD.attendance_id
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'screenings: identity columns never change';
+  END IF;
+  IF OLD.status = 'completed'
+     AND (NEW.status IS DISTINCT FROM OLD.status OR NEW.completed_at IS DISTINCT FROM OLD.completed_at
+          OR NEW.destination IS DISTINCT FROM OLD.destination
+          OR NEW.orientation_note IS DISTINCT FROM OLD.orientation_note
+          OR NEW.appointment_request_id IS DISTINCT FROM OLD.appointment_request_id
+          OR NEW.started_at IS DISTINCT FROM OLD.started_at
+          OR NEW.started_by_user_id IS DISTINCT FROM OLD.started_by_user_id) THEN
+    RAISE EXCEPTION 'screenings: a completed screening only gains revisions';
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status
+     AND NOT ((OLD.status = 'in_progress' AND NEW.status IN ('completed', 'abandoned'))
+          OR (OLD.status = 'abandoned' AND NEW.status = 'in_progress')) THEN
+    RAISE EXCEPTION 'screenings: invalid transition % -> %', OLD.status, NEW.status;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Exceção na trava do módulo 13 (ADR 0030, Invariantes): fechar de waiting
+-- com desfecho de escuta exige escuta concluída com aquele destino.
+CREATE OR REPLACE FUNCTION rota_attendance_screening_close_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF OLD.status = 'waiting' AND NEW.status = 'closed'
+     AND NEW.outcome IN ('scheduled_from_screening', 'oriented', 'referred')
+     AND NOT EXISTS (
+       SELECT 1 FROM screenings s
+       WHERE s.attendance_id = NEW.id AND s.status = 'completed'
+         AND s.destination = CASE NEW.outcome WHEN 'scheduled_from_screening' THEN 'schedule' ELSE NEW.outcome END) THEN
+    RAISE EXCEPTION 'attendances: closing from waiting with % requires a completed screening with that destination', NEW.outcome;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.screenings') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS screenings_guard ON screenings';
+    EXECUTE 'CREATE TRIGGER screenings_guard
+      BEFORE UPDATE OR DELETE ON screenings
+      FOR EACH ROW EXECUTE FUNCTION rota_screening_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS screenings_append_only_truncate ON screenings';
+    EXECUTE 'CREATE TRIGGER screenings_append_only_truncate
+      BEFORE TRUNCATE ON screenings
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS attendances_screening_close_guard ON attendances';
+    EXECUTE 'CREATE TRIGGER attendances_screening_close_guard
+      BEFORE UPDATE ON attendances
+      FOR EACH ROW EXECUTE FUNCTION rota_attendance_screening_close_guard()';
+  END IF;
+  IF to_regclass('public.screening_revisions') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS screening_revisions_append_only ON screening_revisions';
+    EXECUTE 'CREATE TRIGGER screening_revisions_append_only
+      BEFORE UPDATE OR DELETE ON screening_revisions
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS screening_revisions_append_only_truncate ON screening_revisions';
+    EXECUTE 'CREATE TRIGGER screening_revisions_append_only_truncate
+      BEFORE TRUNCATE ON screening_revisions
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
   END IF;
 END
 $do$;

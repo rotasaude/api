@@ -1,0 +1,13 @@
+# Quem faz a escuta inicial (ADR 0030; spec 2026-10-07 §3.2): nível superior
+# da equipe e técnico/auxiliar de enfermagem. Prefixos de CBO. A ficha LEDI
+# recorta (Screenings::Cbos.allowed?): o CBO precisa ter ficha possível.
+- { prefix: "2251", group: "Médicos clínicos" }
+- { prefix: "2252", group: "Médicos em especialidades cirúrgicas" }
+- { prefix: "2253", group: "Médicos em medicina diagnóstica e terapêutica" }
+- { prefix: "2235", group: "Enfermeiros" }
+- { prefix: "2234", group: "Farmacêuticos" }
+- { prefix: "2516", group: "Assistentes sociais" }
+- { prefix: "2237", group: "Nutricionistas" }
+- { prefix: "2236", group: "Fisioterapeutas" }
+- { prefix: "2232", group: "Cirurgiões-dentistas" }
+- { prefix: "3222", group: "Técnicos e auxiliares de enfermagem" }

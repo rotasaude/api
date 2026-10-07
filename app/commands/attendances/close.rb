@@ -5,7 +5,7 @@ module Attendances
   class Close
     def self.call(attendance:, outcome:, referral_unit_id:, referral_note:, by:)
       outcome = outcome.to_s
-      return Result.fail(:invalid_outcome) unless Attendance::OUTCOMES.include?(outcome)
+      return Result.fail(:invalid_outcome) unless Attendance::CLOSE_OUTCOMES.include?(outcome)
 
       note = referral_note.to_s.strip.presence
       unit = nil

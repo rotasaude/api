@@ -42,6 +42,11 @@ RSpec.describe Attendances::Close do
     expect(close("cured").reason).to eq(:invalid_outcome)
   end
 
+  it "desfechos de escuta não saem pela rota de desfecho (ADR 0030)" do
+    expect(close("oriented").reason).to eq(:invalid_outcome)
+    expect(close("scheduled_from_screening").reason).to eq(:invalid_outcome)
+  end
+
   it "left só a partir de waiting" do
     a = in_care!(waiting_attendance(citizen, unit: unit, by: reception), by: doctor)
     r = described_class.call(attendance: a, outcome: "left", referral_unit_id: nil, referral_note: nil, by: doctor)

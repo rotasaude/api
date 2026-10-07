@@ -121,4 +121,15 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "ledi.ficha_accepted", to: []
   DomainEvents.bind "ledi.ficha_rejected", to: []
   DomainEvents.bind "ledi.ficha_resent", to: []
+
+  # Módulo 18 (ADR 0030; contratos §7): escuta e fichas não geradas; só trilha,
+  # só ids. Nenhum texto livre da escuta entra em evento.
+  DomainEvents.bind "screening.started", to: []
+  DomainEvents.bind "screening.abandoned", to: []
+  DomainEvents.bind "screening.completed", to: []
+  DomainEvents.bind "screening.reassessed", to: []
+  DomainEvents.bind "screening.viewed", to: []
+  DomainEvents.bind "ledi.generation_failed", to: []
+  DomainEvents.bind "ledi.generation_retried", to: []
+  DomainEvents.bind "ledi.payload_purged", to: []
 end

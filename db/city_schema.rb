@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_06_210001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_300001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -102,6 +102,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_210001) do
     t.uuid "moved_from_request_id"
     t.text "note"
     t.uuid "origin_attendance_id"
+    t.uuid "origin_screening_id"
     t.uuid "origin_triage_id"
     t.uuid "origin_unit_id"
     t.string "preferred_period"
@@ -119,6 +120,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_210001) do
     t.index ["closed_by_user_id"], name: "index_appointment_requests_on_closed_by_user_id"
     t.index ["moved_from_request_id"], name: "index_appointment_requests_on_moved_from_request_id", unique: true
     t.index ["origin_attendance_id"], name: "index_appointment_requests_on_origin_attendance_id", unique: true, where: "((closed_reason)::text IS DISTINCT FROM 'moved'::text)"
+    t.index ["origin_screening_id"], name: "index_appointment_requests_on_origin_screening_id", unique: true, where: "((closed_reason)::text IS DISTINCT FROM 'moved'::text)"
     t.index ["origin_triage_id"], name: "index_appointment_requests_on_origin_triage_id"
     t.index ["origin_unit_id"], name: "index_appointment_requests_on_origin_unit_id"
     t.index ["root_triage_id"], name: "index_appointment_requests_on_root_triage_id"
@@ -127,7 +129,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_210001) do
     t.check_constraint "(closed_reason IS DISTINCT FROM 'dismissed' AND dismiss_reason IS NULL) OR (closed_reason = 'dismissed' AND dismiss_reason IS NOT NULL AND length(btrim(dismiss_reason)) >= 10)", name: "ck_appointment_requests_dismiss_reason"
     t.check_constraint "closed_reason IS NULL OR closed_reason::text = ANY (ARRAY['fulfilled', 'citizen_cancelled', 'dismissed', 'moved', 'consent_revoked']::text[])", name: "ck_appointment_requests_closed_reason"
     t.check_constraint "(status::text <> 'closed'::text AND closed_reason IS NULL AND closed_at IS NULL) OR (status::text = 'closed'::text AND closed_reason IS NOT NULL AND closed_at IS NOT NULL)", name: "ck_appointment_requests_closing"
-    t.check_constraint "kind::text = ANY (ARRAY['return', 'referral', 'triage']::text[])", name: "ck_appointment_requests_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['return'::text, 'referral'::text, 'triage'::text, 'screening'::text])", name: "ck_appointment_requests_kind"
+    t.check_constraint "(kind::text = 'screening'::text) = (origin_screening_id IS NOT NULL)", name: "ck_appointment_requests_screening_kind"
+    t.check_constraint "origin_screening_id IS NULL OR origin_attendance_id IS NOT NULL", name: "ck_appointment_requests_screening_origin"
     t.check_constraint "(kind::text = 'triage'::text) = (origin_triage_id IS NOT NULL)", name: "ck_appointment_requests_triage_kind"
     t.check_constraint "(origin_attendance_id IS NULL) <> (origin_triage_id IS NULL)", name: "ck_appointment_requests_origin"
     t.check_constraint "origin_attendance_id IS NULL OR (origin_unit_id IS NOT NULL AND target_unit_id IS NOT NULL)", name: "ck_appointment_requests_attendance_units"
@@ -230,10 +234,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_210001) do
     t.check_constraint "check_in_method::text = ANY (ARRAY['code', 'cpf_exception']::text[])", name: "ck_attendances_method"
     t.check_constraint "(check_in_method::text = 'code'::text AND exception_reason IS NULL) OR (check_in_method::text = 'cpf_exception'::text AND exception_reason IS NOT NULL AND length(btrim(exception_reason)) >= 10)", name: "ck_attendances_exception_reason"
     t.check_constraint "(called_by_user_id IS NULL) = (called_at IS NULL)", name: "ck_attendances_calling"
-    t.check_constraint "(status::text = 'waiting'::text AND called_at IS NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'in_care'::text AND called_at IS NOT NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'closed'::text AND outcome IS NOT NULL AND closed_by_user_id IS NOT NULL AND closed_at IS NOT NULL)", name: "ck_attendances_closing"
+    t.check_constraint "(status::text = 'waiting'::text AND called_at IS NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'in_care'::text AND called_at IS NOT NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'closed'::text AND outcome IS NOT NULL AND closed_by_user_id IS NOT NULL AND closed_at IS NOT NULL AND (called_at IS NOT NULL OR outcome::text = ANY (ARRAY['left'::text, 'referred'::text, 'scheduled_from_screening'::text, 'oriented'::text])) AND (called_at IS NULL OR outcome::text <> ALL (ARRAY['scheduled_from_screening'::text, 'oriented'::text])))", name: "ck_attendances_closing"
     t.check_constraint "(triage_id IS NULL) <> (appointment_id IS NULL)", name: "ck_attendances_origin"
-    t.check_constraint "outcome IS NULL OR outcome::text = ANY (ARRAY['discharged', 'referred', 'return', 'left']::text[])", name: "ck_attendances_outcome"
-    t.check_constraint "((outcome IS NULL OR outcome::text = ANY (ARRAY['discharged', 'left']::text[])) AND referral_unit_id IS NULL AND referral_note IS NULL) OR (outcome = 'referred' AND (referral_unit_id IS NOT NULL OR (referral_note IS NOT NULL AND length(btrim(referral_note)) > 0))) OR (outcome = 'return' AND referral_unit_id IS NULL)", name: "ck_attendances_referral"
+    t.check_constraint "outcome IS NULL OR outcome::text = ANY (ARRAY['discharged'::text, 'referred'::text, 'return'::text, 'left'::text, 'scheduled_from_screening'::text, 'oriented'::text])", name: "ck_attendances_outcome"
+    t.check_constraint "((outcome IS NULL OR outcome::text = ANY (ARRAY['discharged'::text, 'left'::text, 'scheduled_from_screening'::text, 'oriented'::text])) AND referral_unit_id IS NULL AND referral_note IS NULL) OR (outcome = 'referred' AND (referral_unit_id IS NOT NULL OR (referral_note IS NOT NULL AND length(btrim(referral_note)) > 0))) OR (outcome = 'return' AND referral_unit_id IS NULL)", name: "ck_attendances_referral"
     t.check_constraint "status::text = ANY (ARRAY['waiting', 'in_care', 'closed']::text[])", name: "ck_attendances_status"
   end
 
@@ -523,6 +527,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_210001) do
     t.string "kind", null: false
     t.string "name", null: false
     t.uuid "neighborhood_id"
+    t.string "screening_scope", default: "walk_in", null: false
     t.datetime "updated_at", null: false
     t.index ["cnes"], name: "idx_health_units_cnes", unique: true, where: "(cnes IS NOT NULL)"
     t.index "lower((name)::text)", name: "idx_health_units_name_ci", unique: true
@@ -530,6 +535,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_210001) do
     t.check_constraint "address_zip IS NULL OR address_zip::text ~ '^[0-9]{8}$'::text", name: "ck_health_units_address_zip"
     t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_health_units_cnes"
     t.check_constraint "kind::text = ANY (ARRAY['ubs', 'upa', 'hospital', 'other']::text[])", name: "ck_health_units_kind"
+    t.check_constraint "screening_scope::text = ANY (ARRAY['walk_in'::text, 'all'::text])", name: "ck_health_units_screening_scope"
   end
 
   create_table "identities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -583,6 +589,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_210001) do
     t.datetime "updated_at", null: false
     t.index ["invited_by_id"], name: "index_invitations_on_invited_by_id"
     t.index ["token"], name: "index_invitations_on_token", unique: true
+  end
+
+  create_table "ledi_generation_failures", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.jsonb "reason_codes", default: [], null: false
+    t.datetime "resolved_at"
+    t.uuid "source_id", null: false
+    t.string "source_type", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_ledi_generation_failures_on_created_at"
+    t.index ["source_type", "source_id"], name: "idx_ledi_generation_failures_open", unique: true, where: "(resolved_at IS NULL)"
+    t.check_constraint "jsonb_typeof(reason_codes) = 'array'::text AND jsonb_array_length(reason_codes) > 0", name: "ck_ledi_generation_failures_reason_codes"
   end
 
   create_table "ledi_outbox", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -824,6 +842,77 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_210001) do
     t.check_constraint "jsonb_typeof(blocks) = 'array'::text", name: "ck_schedule_templates_blocks"
   end
 
+  create_table "screening_revisions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "by_user_id", null: false
+    t.integer "capillary_glucose"
+    t.string "ciap2_code", limit: 3, null: false
+    t.uuid "ciap2_release_id", null: false
+    t.text "color_change_reason"
+    t.text "complaint_note"
+    t.datetime "created_at", null: false
+    t.integer "diastolic"
+    t.string "final_color", null: false
+    t.string "glucose_moment"
+    t.integer "heart_rate"
+    t.integer "height_cm"
+    t.integer "matched_rules", default: [], null: false, array: true
+    t.integer "pain_score"
+    t.integer "respiratory_rate"
+    t.uuid "rule_protocol_definition_id"
+    t.uuid "screening_id", null: false
+    t.integer "spo2"
+    t.string "suggested_color"
+    t.integer "systolic"
+    t.decimal "temperature_c", precision: 3, scale: 1
+    t.decimal "weight_kg", precision: 5, scale: 2
+    t.index ["by_user_id"], name: "index_screening_revisions_on_by_user_id"
+    t.index ["screening_id"], name: "index_screening_revisions_on_screening_id"
+    t.check_constraint "(systolic IS NULL AND diastolic IS NULL) OR (systolic IS NOT NULL AND diastolic IS NOT NULL AND diastolic < systolic)", name: "ck_screening_revisions_bp"
+    t.check_constraint "ciap2_code::text ~ '^[A-Z][0-9]{2}$'::text", name: "ck_screening_revisions_ciap2"
+    t.check_constraint "suggested_color IS NULL OR final_color::text = suggested_color::text OR color_change_reason IS NOT NULL", name: "ck_screening_revisions_color_change"
+    t.check_constraint "color_change_reason IS NULL OR length(btrim(color_change_reason)) BETWEEN 10 AND 500", name: "ck_screening_revisions_color_change_reason"
+    t.check_constraint "complaint_note IS NULL OR length(complaint_note) <= 500", name: "ck_screening_revisions_complaint_note"
+    t.check_constraint "diastolic IS NULL OR diastolic BETWEEN 20 AND 200", name: "ck_screening_revisions_diastolic"
+    t.check_constraint "final_color::text = ANY (ARRAY['red'::text, 'yellow'::text, 'green'::text, 'blue'::text])", name: "ck_screening_revisions_final_color"
+    t.check_constraint "(capillary_glucose IS NULL AND glucose_moment IS NULL) OR (capillary_glucose IS NOT NULL AND glucose_moment IS NOT NULL AND capillary_glucose BETWEEN 10 AND 800 AND glucose_moment::text = ANY (ARRAY['fasting'::text, 'postprandial'::text, 'random'::text]))", name: "ck_screening_revisions_glucose"
+    t.check_constraint "heart_rate IS NULL OR heart_rate BETWEEN 20 AND 250", name: "ck_screening_revisions_heart_rate"
+    t.check_constraint "height_cm IS NULL OR height_cm BETWEEN 30 AND 250", name: "ck_screening_revisions_height"
+    t.check_constraint "pain_score IS NULL OR pain_score BETWEEN 0 AND 10", name: "ck_screening_revisions_pain_score"
+    t.check_constraint "respiratory_rate IS NULL OR respiratory_rate BETWEEN 4 AND 80", name: "ck_screening_revisions_respiratory_rate"
+    t.check_constraint "spo2 IS NULL OR spo2 BETWEEN 50 AND 100", name: "ck_screening_revisions_spo2"
+    t.check_constraint "suggested_color IS NULL OR suggested_color::text = ANY (ARRAY['red'::text, 'yellow'::text, 'green'::text, 'blue'::text])", name: "ck_screening_revisions_suggested_color"
+    t.check_constraint "systolic IS NULL OR systolic BETWEEN 50 AND 300", name: "ck_screening_revisions_systolic"
+    t.check_constraint "temperature_c IS NULL OR temperature_c BETWEEN 30 AND 45", name: "ck_screening_revisions_temperature"
+    t.check_constraint "weight_kg IS NULL OR weight_kg BETWEEN 0.5 AND 400", name: "ck_screening_revisions_weight"
+  end
+
+  create_table "screenings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "appointment_request_id"
+    t.uuid "attendance_id", null: false
+    t.string "cbo_code", null: false
+    t.datetime "completed_at"
+    t.datetime "created_at", null: false
+    t.uuid "current_revision_id"
+    t.string "destination"
+    t.text "orientation_note"
+    t.uuid "professional_link_id", null: false
+    t.datetime "started_at", null: false
+    t.uuid "started_by_user_id", null: false
+    t.string "status", default: "in_progress", null: false
+    t.datetime "updated_at", null: false
+    t.index ["appointment_request_id"], name: "index_screenings_on_appointment_request_id"
+    t.index ["attendance_id"], name: "index_screenings_on_attendance_id", unique: true
+    t.index ["professional_link_id"], name: "index_screenings_on_professional_link_id"
+    t.index ["started_by_user_id"], name: "index_screenings_on_started_by_user_id"
+    t.index ["status"], name: "index_screenings_on_status"
+    t.check_constraint "cbo_code::text ~ '^[0-9]{6}$'::text", name: "ck_screenings_cbo_code"
+    t.check_constraint "(status::text = 'completed'::text) = (completed_at IS NOT NULL AND destination IS NOT NULL AND current_revision_id IS NOT NULL)", name: "ck_screenings_completion"
+    t.check_constraint "destination IS NULL OR destination::text = ANY (ARRAY['same_day'::text, 'schedule'::text, 'oriented'::text, 'referred'::text])", name: "ck_screenings_destination"
+    t.check_constraint "(destination IS DISTINCT FROM 'oriented' AND orientation_note IS NULL) OR (destination IS NOT DISTINCT FROM 'oriented' AND orientation_note IS NOT NULL AND length(btrim(orientation_note)) BETWEEN 1 AND 500)", name: "ck_screenings_orientation"
+    t.check_constraint "(destination IS NOT DISTINCT FROM 'schedule') = (appointment_request_id IS NOT NULL)", name: "ck_screenings_schedule"
+    t.check_constraint "status::text = ANY (ARRAY['in_progress'::text, 'completed'::text, 'abandoned'::text])", name: "ck_screenings_status"
+  end
+
   create_table "sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "ip_address"
@@ -1052,6 +1141,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_210001) do
   add_foreign_key "appointment_requests", "citizens"
   add_foreign_key "appointment_requests", "health_units", column: "origin_unit_id"
   add_foreign_key "appointment_requests", "health_units", column: "target_unit_id"
+  add_foreign_key "appointment_requests", "screenings", column: "origin_screening_id"
   add_foreign_key "appointment_requests", "triages", column: "origin_triage_id"
   add_foreign_key "appointment_requests", "triages", column: "root_triage_id"
   add_foreign_key "appointment_requests", "users", column: "closed_by_user_id"
@@ -1118,6 +1208,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_210001) do
   add_foreign_key "protocol_signatures", "users", column: "signer_user_id"
   add_foreign_key "report_snapshots", "protocol_definitions"
   add_foreign_key "report_snapshots", "triages"
+  add_foreign_key "screening_revisions", "protocol_definitions", column: "rule_protocol_definition_id"
+  add_foreign_key "screening_revisions", "screenings"
+  add_foreign_key "screening_revisions", "users", column: "by_user_id"
+  add_foreign_key "screenings", "appointment_requests"
+  add_foreign_key "screenings", "attendances"
+  add_foreign_key "screenings", "professional_links"
+  add_foreign_key "screenings", "screening_revisions", column: "current_revision_id"
+  add_foreign_key "screenings", "users", column: "started_by_user_id"
   add_foreign_key "sessions", "users"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
