@@ -10,6 +10,8 @@ module Ledi
   module ScreeningFicha
     SOURCE_TYPE = "Screening".freeze
 
+    class AlreadyResolved < StandardError; end
+
     module_function
 
     def exportable?(city)
@@ -94,6 +96,47 @@ module Ledi
     def resolve_failure!(screening)
       LediGenerationFailure.unresolved.where(source_type: SOURCE_TYPE, source_id: screening.id)
                            .update_all(resolved_at: Time.current, updated_at: Time.current)
+    end
+
+    # "Gerar de novo" (contratos §6): tenta agora; sucesso (ou ficha que já
+    # existe) resolve; falta de identificação atualiza os motivos;
+    # exportação inutilizável deixa como está.
+    def retry!(failure, by:)
+      raise AlreadyResolved if failure.resolved?
+
+      screening = Screening.find_by(id: failure.source_id)
+      outcome = screening ? generate(screening) : :skipped
+      resolve_failure!(screening) if outcome == :exists
+      DomainEvents.publish("ledi.generation_retried", failure_id: failure.id, source_type: failure.source_type,
+                                                      source_id: failure.source_id)
+      failure.reload
+    end
+
+    # Recusada corrigida na origem (spec §5): monta a ficha de novo da escuta,
+    # com uuid novo e replaces_outbox_id; a linha antiga fica recusada. Não
+    # levanta dentro da transação: a "não gerada" registrada aqui precisa ficar.
+    # Já regenerada (existe linha que a substitui) → :not_rejected (Review Focus 5).
+    def regenerate(entry, by:, city: Current.city)
+      ApplicationRecord.transaction do
+        entry.lock!
+        next [ :not_rejected, nil ] unless entry.status == "rejected"
+        next [ :not_rejected, nil ] if LediOutboxEntry.exists?(replaces_outbox_id: entry.id)
+        next [ :export_unusable, nil ] unless exportable?(city)
+
+        screening = Screening.find(entry.source_id)
+        ficha, reasons = build(screening)
+        if reasons.any?
+          record_failure!(screening, reasons)
+          next [ :generation_failed, nil ]
+        end
+        next [ :generation_failed, nil ] unless ficha
+
+        fresh = Ledi::Enqueue.call(ficha, city: city, replaces: entry)
+        next [ :export_unusable, nil ] unless fresh
+
+        DomainEvents.publish("ledi.ficha_resent", outbox_id: entry.id, user_id: by.id)
+        [ :ok, fresh ]
+      end
     end
 
     # INE da equipe ativa da unidade em que o profissional está (eSF/eAP).

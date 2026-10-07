@@ -4,10 +4,14 @@
 module Ledi
   module Resend
     class NotRejected < StandardError; end
+    class ExportUnusable < StandardError; end
+    class NotRegenerated < StandardError; end
 
     module_function
 
     def call(entry:, by:)
+      return regenerate(entry, by) if entry.source_type == Ledi::ScreeningFicha::SOURCE_TYPE
+
       entry.with_lock do
         raise NotRejected unless entry.status == "rejected"
 
@@ -24,6 +28,18 @@ module Ledi
       end
       Ledi::DeliverJob.perform_later
       entry
+    end
+
+    # ADR 0030 (spec §5): ficha de escuta não reaproveita o conteúdo antigo —
+    # é regerada da origem (linha nova, outro uuid, replaces_outbox_id).
+    def regenerate(entry, by)
+      status, fresh = Ledi::ScreeningFicha.regenerate(entry, by: by)
+      case status
+      when :ok then fresh
+      when :not_rejected then raise NotRejected
+      when :export_unusable then raise ExportUnusable
+      else raise NotRegenerated
+      end
     end
   end
 end

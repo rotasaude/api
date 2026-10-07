@@ -215,6 +215,9 @@ Rails.application.routes.draw do
   # Produção e-SUS (ADR 0028; contratos §5.3).
   get  "/production", to: "production#show"
   post "/production/fichas/:id/resend", to: "production#resend"
+  # Fichas que não puderam ser geradas (ADR 0030; contratos §6).
+  get  "/production/generation_failures",           to: "production#generation_failures"
+  post "/production/generation_failures/:id/retry", to: "production#retry_generation"
 
   # CNES da cidade (ADR 0028; contratos §5.2).
   get  "/cnes", to: "cnes#show"
