@@ -36,6 +36,8 @@ module Attendances
         request = AppointmentRequests::Lifecycle.open_for!(attendance, outcome: outcome, unit: unit)
         DomainEvents.publish("attendance.closed", attendance_id: attendance.id, outcome: outcome,
                                                   closed_by_user_id: by.id)
+        # ADR 0030 (spec §5): escuta concluída (same_day) gera a ficha no fechamento.
+        Ledi::ScreeningFichaJob.enqueue_for(attendance.screening) if attendance.screening&.completed?
         Result.ok(attendance: attendance, appointment_request: request)
       end
     rescue HealthUnit::Inactive

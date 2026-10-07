@@ -105,6 +105,12 @@ default: &default
     schedule: "every day at 5:15am America/Sao_Paulo"
     args: { older_than_days: 90 }
 
+  # ADR 0030 (spec §5): só age às 23h no fuso da cidade (o job confere).
+  ledi_screening_ficha_sweep:
+    class: Ledi::ScreeningFichaSweepJob
+    queue: housekeeping
+    schedule: "every hour at minute 10"
+
   discard_old_failed_jobs:
     command: "SolidQueueRetention.discard_failed"
     queue: housekeeping

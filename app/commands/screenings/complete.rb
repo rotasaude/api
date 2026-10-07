@@ -35,6 +35,8 @@ module Screenings
         request = close!(attendance, destination, referral_unit, plan.payload, by) || request unless destination == "same_day"
         DomainEvents.publish("screening.completed", screening_id: screening.id, attendance_id: attendance.id,
                                                     destination: destination, final_color: revision.final_color)
+        # ADR 0030 (spec §5): a ficha nasce no fechamento (o job relê tudo).
+        Ledi::ScreeningFichaJob.enqueue_for(screening) unless destination == "same_day"
         Result.ok(screening: screening, attendance: attendance, appointment_request: request)
       end
     rescue HealthUnit::Inactive
