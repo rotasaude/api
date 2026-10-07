@@ -109,8 +109,9 @@ RSpec.describe "Invariantes do acolhimento (ADR 0030)", type: :request do
     end
   end
 
-  # Mutação: gravar Ledi::Outcome/corpo do 400 em qualquer coluna, ou um
-  # Rails.logger com o corpo em Ledi::Delivery.
+  # Mutações verificadas (aplicadas, vermelho, revertidas): um Rails.logger com
+  # o corpo do 400 em Ledi::Delivery; gravar o corpo do 400 em
+  # last_error_codes (fica vermelho pelo Ledi::ErrorCodes.valid?).
   it "nenhuma resposta crua do PEC é persistida nem logada; last_error_codes nunca contém valor" do
     stub_pec!
     allow(Ledi::Observations).to receive(:duplicate_marker).and_return(nil)
