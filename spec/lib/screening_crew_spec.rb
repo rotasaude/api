@@ -19,6 +19,11 @@ RSpec.describe ScreeningCrew do
     expect(red[:color]).to eq("red")
   end
 
+  it "o prefixo do telefone da semente não aparece em nenhum outro lib/*_crew.rb" do
+    others = Dir[Rails.root.join("lib/*_crew.rb")].reject { |f| f.end_with?("/screening_crew.rb") }
+    expect(others.select { |f| File.read(f).include?(described_class::PHONE_PREFIX) }).to eq([])
+  end
+
   # Semente inteira no banco de teste, com o elenco que ela exige (mesmo setup
   # do SchedulingCrew); pega, p.ex., run_cycle! privado.
   describe ".seed_current_city" do

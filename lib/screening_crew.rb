@@ -24,6 +24,9 @@ class ScreeningCrew
       "color" => "green" }
   ].freeze
   WALK_INS = [ [ "1958-03-14", "female" ], [ "1991-11-02", "male" ] ].freeze
+  # Prefixo do telefone dos cidadãos da semente: único entre os lib/*_crew.rb
+  # (96666 é do CampaignCrew, 97777 do TerritoryCrew).
+  PHONE_PREFIX = "98888"
 
   class << self
     def seed_current_city(slug:, ddd:)
@@ -76,7 +79,7 @@ class ScreeningCrew
 
     # true quando fez o check-in agora; quem já está aguardando hoje fica.
     def ensure_walk_in(slug, ddd, unit, index, birth, sex)
-      registered = Citizens::RegisterPerson.call(phone: format("+55%s96666%04d", ddd, index + 1),
+      registered = Citizens::RegisterPerson.call(phone: format("+55%s#{PHONE_PREFIX}%04d", ddd, index + 1),
                                                  cpf: cpf_for("#{slug}:screening:#{index}"),
                                                  profile: { birth_date: birth, sex: sex, gender_identity: nil })
       raise "semente do acolhimento: cidadão recusado (#{registered.reason})" if registered.failure?
