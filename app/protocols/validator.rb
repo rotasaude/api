@@ -17,6 +17,8 @@ module Protocols
     end
 
     def call
+      return screening_result if definition.is_a?(Hash) && definition["kind"] == "screening"
+
       errors = []
       errors.concat(schema_errors)
       errors.concat(linter_errors) if errors.empty?
@@ -26,6 +28,16 @@ module Protocols
     private
 
     attr_reader :definition
+
+    # ADR 0030: a variante de escuta não tem passos; o save só exige a forma
+    # mínima (o gate completo roda em publicar e na prévia).
+    def screening_result
+      errors = []
+      errors << "missing :name" unless definition["name"].is_a?(String)
+      errors << "missing :version" unless definition["version"].is_a?(Integer)
+      errors << "missing :risk_rules" unless definition["risk_rules"].is_a?(Array)
+      Result.new(errors: errors)
+    end
 
     def schema_errors
       # JSON Schema real: config/protocols/schema.json, cópia de contracts/protocols/schema.json (ADR-0009).

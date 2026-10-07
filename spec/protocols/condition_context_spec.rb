@@ -28,6 +28,7 @@ RSpec.describe Protocols::ConditionContext do
     expect(described_class.reserved?("profile.age")).to be(true)
     expect(described_class.reserved?("outcome.x")).to be(true)
     expect(described_class.reserved?("citizen.neighborhood_id")).to be(true)
+    expect(described_class.reserved?("vitals.spo2")).to be(true)
     expect(described_class.reserved?("profiles")).to be(false)
   end
 end

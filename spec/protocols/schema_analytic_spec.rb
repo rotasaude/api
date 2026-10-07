@@ -35,11 +35,11 @@ RSpec.describe "protocols schema.json analytic contract (F-14.6)" do
   end
 
   # O api valida contra uma CÓPIA do schema do contracts, que não está dentro
-  # do container. Igual a contracts protocols-v1.5.0 (copiada da tag com git show); ao mudar,
+  # do container. Igual a contracts protocols-v1.6.0 (copiada com git show; commit 0c6c753 até a tag existir); ao mudar,
   # copiar do contracts e atualizar o digest.
-  it "config/protocols/schema.json é a cópia de contracts protocols-v1.5.0" do
+  it "config/protocols/schema.json é a cópia de contracts protocols-v1.6.0" do
     digest = Digest::SHA256.file(Rails.root.join("config/protocols/schema.json")).hexdigest
-    expect(digest).to eq("10e08b0878a8cb4bba60f1baff25d3f3c5ca0e9b98afa6b3a1987cefc659b6b3")
+    expect(digest).to eq("f75628b27229a81585aac3c36b80a998845ecbb853945bfd7507b01c93a63872")
   end
 
   describe "a marca faz parte do conteúdo assinado (ADR 0016)" do

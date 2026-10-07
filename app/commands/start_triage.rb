@@ -23,7 +23,7 @@ class StartTriage
         return Result.fail(:not_offered) unless Triages::Offer.startable?(citizen: citizen, protocol_name: name)
       end
 
-      record = ProtocolDefinition.find_by(name: name, status: "active")
+      record = ProtocolDefinition.triage_protocols.find_by(name: name, status: "active")
       return Result.fail(:no_protocol) unless record
 
       engine = Protocols.current(name: name)

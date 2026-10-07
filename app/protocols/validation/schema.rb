@@ -9,7 +9,7 @@ module Protocols
         schemer.validate(definition || {}).map do |error|
           pointer = error["data_pointer"].presence || "(root)"
           "schema: #{pointer} #{error["type"]}"
-        end
+        end.uniq
       end
 
       def self.schemer

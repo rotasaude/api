@@ -60,7 +60,7 @@ module Triages
     end
 
     def for(citizen:, on: Time.zone.today)
-      protocols = ProtocolDefinition.active.pluck(:name, :definition).map do |name, definition|
+      protocols = ProtocolDefinition.triage_protocols.active.pluck(:name, :definition).map do |name, definition|
         { name: name, offer: definition.is_a?(Hash) ? definition["offer"] : nil }
       end
       rows = TriageOffer.all.to_h do |r|

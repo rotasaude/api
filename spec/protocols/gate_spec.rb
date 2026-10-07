@@ -117,7 +117,7 @@ RSpec.describe Protocols::Gate do
     it "recusa id de passo com prefixo reservado e variável reservada em priority_when" do
       steps = [ base["steps"].first.merge("id" => "profile.age") ]
       result = Protocols::Gate.call(base.merge("steps" => steps, "start_step_id" => "profile.age"))
-      expect(result.errors).to include("step id 'profile.age' uses a reserved prefix (profile., outcome., citizen.)")
+      expect(result.errors).to include("step id 'profile.age' uses a reserved prefix (profile., outcome., citizen., vitals., complaint.)")
       result = Protocols::Gate.call(base.merge("priority_when" => [ { "when" => { "gte" => ["profile.age", 60] }, "priority" => 2 } ]))
       expect(result.errors).to include("condition variable 'profile.age' is not allowed here")
     end

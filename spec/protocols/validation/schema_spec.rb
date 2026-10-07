@@ -31,4 +31,13 @@ RSpec.describe Protocols::Validation::Schema do
   it "rejects an unknown top-level property (additionalProperties: false)" do
     expect(Protocols::Validation::Schema.call(valid_def.merge("bogus" => true))).not_to be_empty
   end
+
+  # Contrato §9: erros repetidos da ramificação por kind não se repetem na lista.
+  it "does not repeat the same error message" do
+    errors = Protocols::Validation::Schema.call(
+      { "name" => "acolhimento", "version" => 1, "kind" => "screening", "risk_rules" => [ { "color" => "red" }, { "color" => "red" } ] }
+    )
+    expect(errors).not_to be_empty
+    expect(errors).to eq(errors.uniq)
+  end
 end

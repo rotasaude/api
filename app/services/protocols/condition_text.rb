@@ -4,7 +4,12 @@ module Protocols
   module ConditionText
     LABELS = {
       "profile.age" => "idade", "profile.sex" => "sexo", "outcome.tier" => "faixa", "outcome.score" => "pontuação",
-      "outcome.priority" => "prioridade", "citizen.neighborhood_id" => "bairro"
+      "outcome.priority" => "prioridade", "citizen.neighborhood_id" => "bairro",
+      "vitals.systolic" => "pressão sistólica", "vitals.diastolic" => "pressão diastólica",
+      "vitals.heart_rate" => "frequência cardíaca", "vitals.respiratory_rate" => "frequência respiratória",
+      "vitals.temperature_c" => "temperatura", "vitals.spo2" => "saturação", "vitals.capillary_glucose" => "glicemia",
+      "vitals.glucose_moment" => "momento da glicemia", "vitals.weight_kg" => "peso", "vitals.height_cm" => "altura",
+      "vitals.bmi" => "IMC", "vitals.pain_score" => "dor", "complaint.ciap2" => "queixa (CIAP-2)"
     }.freeze
     VALUES = { "female" => "feminino", "male" => "masculino" }.freeze
     SYMBOLS = { "eq" => "=", "gt" => ">", "lt" => "<", "gte" => "≥", "lte" => "≤" }.freeze

@@ -14,6 +14,12 @@ module Authoring
     end
 
     def preview
+      # ADR 0030: a escuta não tem passos para simular resposta.
+      if Protocols::Validation::Screening.screening?(definition_param)
+        return render(json: { valid: false, errors: [ "preview is not available for screening protocols" ] },
+                      status: :unprocessable_entity)
+      end
+
       result = Protocols::Gate.call(definition_param)
       return render_gate(result) unless result.valid?
       outcome = Protocols::Definitions.build(definition_param).evaluate(answers_param)

@@ -14,9 +14,17 @@ module Protocols
       NUMERIC_OPERATORS = %w[gt lt gte lte].freeze
       VARIABLES = {
         "profile.age" => :number, "profile.sex" => :sex, "outcome.tier" => :text,
-        "outcome.score" => :number, "outcome.priority" => :number, "citizen.neighborhood_id" => :uuid
+        "outcome.score" => :number, "outcome.priority" => :number, "citizen.neighborhood_id" => :uuid,
+        # ADR 0030 (contratos §1): variáveis da escuta.
+        "vitals.systolic" => :number, "vitals.diastolic" => :number, "vitals.heart_rate" => :number,
+        "vitals.respiratory_rate" => :number, "vitals.temperature_c" => :number, "vitals.spo2" => :number,
+        "vitals.capillary_glucose" => :number, "vitals.glucose_moment" => :glucose_moment,
+        "vitals.weight_kg" => :number, "vitals.height_cm" => :number, "vitals.bmi" => :number,
+        "vitals.pain_score" => :number, "complaint.ciap2" => :ciap2
       }.freeze
       SEXES = %w[female male].freeze
+      GLUCOSE_MOMENTS = %w[fasting postprandial random].freeze
+      CIAP2 = /\A[A-Z]\d{2}\z/
       # Só minúsculas: o runtime compara texto exato com o id do banco (minúsculo).
       UUID = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
 
@@ -50,7 +58,7 @@ module Protocols
         Array(steps).filter_map do |s|
           next unless s.is_a?(Hash) && reserved?(s["id"])
 
-          "step id '#{s["id"]}' uses a reserved prefix (profile., outcome., citizen.)"
+          "step id '#{s["id"]}' uses a reserved prefix (profile., outcome., citizen., vitals., complaint.)"
         end
       end
 
@@ -102,6 +110,8 @@ module Protocols
                 when :sex then ->(v) { SEXES.include?(v.to_s) }
                 when :uuid then ->(v) { v.to_s.match?(UUID) }
                 when :number then ->(v) { numeric?(v) }
+                when :glucose_moment then ->(v) { GLUCOSE_MOMENTS.include?(v.to_s) }
+                when :ciap2 then ->(v) { v.to_s.match?(CIAP2) }
                 else ->(_v) { true }
                 end
         values.reject { |v| valid.call(v) }.map { |v| "condition '#{op}' invalid value '#{v}' for #{name}" }

@@ -15,6 +15,9 @@ class ProtocolDefinition < ApplicationRecord
 
   scope :active, -> { where(status: "active") }
   scope :published, -> { where(status: "published") }
+  # ADR 0030: a variante de escuta (acolhimento) não é triagem do cidadão.
+  scope :screening_protocols, -> { where("definition->>'kind' = 'screening'") }
+  scope :triage_protocols, -> { where("definition->>'kind' IS NULL OR definition->>'kind' <> 'screening'") }
 
   before_save :validate_definition_shape
 

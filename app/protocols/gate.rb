@@ -11,6 +11,10 @@ module Protocols
       schema_errors = Validation::Schema.call(definition)
       return Validator::Result.new(errors: schema_errors) if schema_errors.any?
 
+      # ADR 0030: a variante de escuta só tem regras de cor; os linters de
+      # triagem (passos, pontuação, oferta) não se aplicam.
+      return Validator::Result.new(errors: Validation::Screening.call(definition)) if Validation::Screening.screening?(definition)
+
       errors = []
       errors.concat(Validator.call(definition).errors)   # refs, cycles, recommendation↔tier
       errors.concat(Validation::Graph.call(definition))
@@ -20,6 +24,7 @@ module Protocols
       errors.concat(Validation::Condition.reserved_prefix_errors(definition["steps"] || []))
       errors.concat(Validation::Offer.call(definition)) # ADR 0027: offer.eligibility, suggestions
       errors.concat(Validation::Scheduling.call(definition)) # ADR 0029: scheduling[].when
+      errors.concat(Validation::Screening.reserved_name_errors(definition))
       Validator::Result.new(errors: errors)
     end
   end

@@ -6,7 +6,7 @@ module Triages
     module_function
 
     def index
-      actives = ProtocolDefinition.active.to_a
+      actives = ProtocolDefinition.triage_protocols.active.to_a
       names = actives.map(&:name)
       rows = TriageOffer.where(protocol_name: names).index_by(&:protocol_name)
       counters = Counters.for(names)
@@ -16,7 +16,7 @@ module Triages
 
     def item_for(protocol_name)
       name = protocol_name.to_s
-      item(name, ProtocolDefinition.active.find_by(name: name), TriageOffer.find_by(protocol_name: name),
+      item(name, ProtocolDefinition.triage_protocols.active.find_by(name: name), TriageOffer.find_by(protocol_name: name),
            Counters.for([ name ]).fetch(name))
     end
 

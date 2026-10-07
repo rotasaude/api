@@ -4,8 +4,10 @@
   "title": "Protocol Definition",
   "description": "Contrato compartilhado por motor Ruby (ADR-0013) e preview TS (ADR-0016).",
   "type": "object",
-  "required": ["name", "version", "start_step_id", "steps"],
   "additionalProperties": false,
+  "if": { "required": ["kind"] },
+  "then": { "$ref": "#/$defs/screening" },
+  "else": { "$ref": "#/$defs/triage" },
   "properties": {
     "name": {
       "type": "string",
@@ -93,9 +95,47 @@
           "due_in_days":      { "type": "integer", "minimum": 1, "maximum": 365 }
         }
       }
+    },
+    "kind": {
+      "const": "screening",
+      "description": "Ausente = triagem. screening = acolhimento (ADR 0030): só risk_rules."
+    },
+    "risk_rules": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["when", "color"],
+        "properties": {
+          "when":  { "$ref": "#/$defs/condition" },
+          "color": { "enum": ["red", "yellow", "green", "blue"] }
+        }
+      }
     }
   },
   "$defs": {
+    "triage": {
+      "description": "Triagem (kind ausente): perguntas, pontuação e blocos opcionais; nunca risk_rules.",
+      "required": ["name", "version", "start_step_id", "steps"],
+      "not": { "required": ["kind"] },
+      "properties": { "risk_rules": false }
+    },
+    "screening": {
+      "description": "Acolhimento (kind: screening, ADR 0030): só regras de cor da escala do CAB 28.",
+      "required": ["name", "version", "kind", "risk_rules"],
+      "properties": {
+        "start_step_id":   false,
+        "steps":           false,
+        "scoring":         false,
+        "recommendations": false,
+        "priority_when":   false,
+        "offer":           false,
+        "suggestions":     false,
+        "scheduling":      false
+      }
+    },
     "step": {
       "type": "object",
       "required": ["id", "prompt", "answer_type"],
