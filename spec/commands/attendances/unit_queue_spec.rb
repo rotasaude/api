@@ -3,6 +3,8 @@ require "rails_helper"
 # F-13.4: a fila da unidade ordena pela prioridade da triagem raiz (a própria,
 # ou a do pedido do horário), sem prioridade por último, depois pela chegada e,
 # no empate, pelo id. "Chamar próximo" segue exatamente a mesma ordem.
+# Desde o módulo 18 (contrato §9) isso vale dentro de cada grupo da fila (escuta
+# concluída; não exige escuta; aguarda escuta) — ver unit_queue_screening_spec.
 RSpec.describe Attendances::UnitQueue do
   include ActiveSupport::Testing::TimeHelpers
   before { Current.city = TEST_CITY_A; link_professional!(doctor, unit) }
@@ -56,6 +58,13 @@ RSpec.describe Attendances::UnitQueue do
     calm = from_triage(2, priority: 9, at: t0 + 1.minute)
     slot = from_slot(3, root_priority: 2, at: t0 + 40.minutes)
 
+    # contrato §9 (módulo 18): no escopo padrão (walk_in) o horário não exige
+    # escuta e vem antes de quem ainda aguarda o acolhimento (grupo 2 antes do 3).
+    expect(described_class.waiting(unit.id).map(&:id)).to eq([ slot.id, urgent.id, calm.id, no_priority.id ])
+
+    # contrato §9 (módulo 18): com escopo all todos aguardam a escuta (mesmo
+    # grupo) e vale a ordem do módulo 13 — o horário na posição da triagem raiz.
+    unit.update!(screening_scope: "all")
     expected = [ urgent.id, slot.id, calm.id, no_priority.id ]
     expect(described_class.waiting(unit.id).map(&:id)).to eq(expected)
     expect(travel_to(t0 + 2.hours) { call_order }).to eq(expected)
