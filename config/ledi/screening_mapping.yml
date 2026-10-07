@@ -1,0 +1,131 @@
+# config/ledi/screening_mapping.yml
+# Escuta inicial (ADR 0030; spec 2026-10-07 §5, Tarefa 1). Cada valor tem a
+# fonte em que foi conferido. Mudar uma linha = reconferir a fonte e rodar
+# spec/config/ledi/screening_mapping_spec.rb. Base: https://integracao.esusaps.bridge.ufsc.tech
+ledi_version: "8.7.0"
+checked_on: "2026-10-07"
+entries:
+  tipo_dado_serializado.atendimento_individual:
+    value: 4
+    source: "ledi/documentacao/referencias/dicionario.html — TipoDadoSerializado: 4 Modelo de Informação de Atendimento Individual"
+  tipo_dado_serializado.procedimento:
+    value: 7
+    source: "ledi/documentacao/referencias/dicionario.html — TipoDadoSerializado: 7 Modelo de Informação de Procedimentos"
+  initial_listening.tipo_atendimento:
+    value: 4
+    source: "referencias/dicionario.html — TipoDeAtendimento 4 'Escuta inicial / Orientação'; estrutura_arquivos/dicionario-fai.html #7 aceita 1, 2, 4, 5, 6"
+  initial_listening.local_de_atendimento:
+    value: 1
+    source: "referencias/dicionario.html — LocalDeAtendimento 1 UBS"
+  initial_listening.conduta.same_day:
+    value: 11
+    source: "referencias/dicionario.html — CondutaEncaminhamento 11 'Encaminhamento interno no dia'"
+  initial_listening.conduta.schedule:
+    value: 1
+    source: "referencias/dicionario.html — CondutaEncaminhamento 1 'Retorno para consulta agendada'"
+  initial_listening.conduta.oriented:
+    value: 9
+    source: "referencias/dicionario.html — CondutaEncaminhamento 9 'Alta do episódio'"
+  initial_listening.conduta.referred:
+    value: 4
+    source: "referencias/dicionario.html — CondutaEncaminhamento 4 'Encaminhamento para serviço especializado'"
+  screening_procedures.status_escuta_inicial_orientacao:
+    value: true
+    source: "estrutura_arquivos/dicionario-fp.html — statusEscutaInicialOrientacao: identifica registro de procedimentos que representa uma escuta inicial"
+  screening_procedures.flag_only_accepted:
+    value: true
+    source: "estrutura_arquivos/dicionario-fp.html (conferido 2026-10-07, decisão do product owner que substitui spec §5/D10) — técnico de enfermagem (3222xx) SEM aferição ainda recebe MIP com só statusEscutaInicialOrientacao=true, sem procedimentos e sem medicoes. Base: procedimentos 'Se statusEscutaInicialOrientacao = false, este campo é obrigatório' (logo opcional com true); medicoes Obrigatório=Não; nenhuma regra no filho exige procedimentos/medicoes/ivcf; 'É requerido pelo menos um dentre os itens #4 a #11' é do MESTRE (#4 atendProcedimentos, #5..#11 numTotal*) e fica satisfeito por atendProcedimentos com 1 filho. O mestre do MIP usa UnicaLotacaoHeaderThrift (IDL), não VariasLotacoes."
+  screening_procedures.local_atendimento:
+    value: 1
+    source: "referencias/dicionario.html — LocalDeAtendimento 1 UBS"
+  screening_procedures.forbidden_procedure:
+    value: "0301040079"
+    source: "estrutura_arquivos/dicionario-fp.html — procedimentos: não pode ser preenchido com 03.01.04.007-9"
+  procedure.blood_pressure:
+    value: "0301100039"
+    source: "SIGTAP 03.01.10.003-9 AFERIÇÃO DE PRESSÃO ARTERIAL (Tabela Unificada; já usado por Ledi::Fichas::Synthetic, módulo 16)"
+  procedure.capillary_glucose:
+    value: "0214010015"
+    source: "SIGTAP 02.14.01.001-5 GLICEMIA CAPILAR (Tabela Unificada, grupo 02 aceito pelo MIP)"
+  procedure.temperature:
+    value: "0301100250"
+    source: "estrutura_arquivos/dicionario-fp.html — Procedimentos do Modelo de Informação: 03.01.10.025-0 Aferição de temperatura (ABPG034)"
+  procedure.weight:
+    value: "0101040083"
+    source: "estrutura_arquivos/dicionario-fp.html — 01.01.04.008-3 Medição de peso (ABPG039)"
+  procedure.height:
+    value: "0101040075"
+    source: "estrutura_arquivos/dicionario-fp.html — 01.01.04.007-5 Medição de altura (ABPG038)"
+  measurement.systolic:
+    value: pressaoArterialSistolica
+    source: "vendor/ledi/8.7.0/idl/ras/common.thrift MedicoesThrift #3 (i32, mmHg)"
+  measurement.diastolic:
+    value: pressaoArterialDiastolica
+    source: "common.thrift MedicoesThrift #4 (i32, mmHg); dicionário: uma exige a outra"
+  measurement.respiratory_rate:
+    value: frequenciaRespiratoria
+    source: "common.thrift MedicoesThrift #5 (i32, 0–200)"
+  measurement.heart_rate:
+    value: frequenciaCardiaca
+    source: "common.thrift MedicoesThrift #6 (i32, 0–999)"
+  measurement.temperature_c:
+    value: temperatura
+    source: "common.thrift MedicoesThrift #7 (double, 20.0–45.0, 1 casa)"
+  measurement.spo2:
+    value: saturacaoO2
+    source: "common.thrift MedicoesThrift #8 (i32, 0–100)"
+  measurement.capillary_glucose:
+    value: glicemiaCapilar
+    source: "common.thrift MedicoesThrift #9 (i32, 0–800; exige tipoGlicemiaCapilar)"
+  measurement.glucose_moment:
+    value: tipoGlicemiaCapilar
+    source: "common.thrift MedicoesThrift #10 (i64)"
+  measurement.weight_kg:
+    value: peso
+    source: "common.thrift MedicoesThrift #11 (double, 0.5–500, 3 casas)"
+  measurement.height_cm:
+    value: altura
+    source: "common.thrift MedicoesThrift #12 (double, 20–250, 1 casa)"
+  measurement_limit.capillary_glucose_max:
+    value: 800
+    source: "estrutura_arquivos/dicionario-fai.html e dicionario-fp.html — glicemiaCapilar: valor máximo 800"
+  glucose_moment.fasting:
+    value: 0
+    source: "referencias/dicionario.html — TipoGlicemiaCapilar 0 Jejum"
+  glucose_moment.postprandial:
+    value: 1
+    source: "referencias/dicionario.html — TipoGlicemiaCapilar 1 Pós-prandial"
+  glucose_moment.random:
+    value: 3
+    source: "referencias/dicionario.html — TipoGlicemiaCapilar 3 Não especificado"
+  sex.male:
+    value: 0
+    source: "referencias/dicionario.html — Sexo 0 Masculino"
+  sex.female:
+    value: 1
+    source: "referencias/dicionario.html — Sexo 1 Feminino"
+  turno.morning:
+    value: 1
+    source: "referencias/dicionario.html — Turno 1 Manhã (antes das 12h, fuso da cidade)"
+  turno.afternoon:
+    value: 2
+    source: "referencias/dicionario.html — Turno 2 Tarde (12h–18h)"
+  turno.night:
+    value: 3
+    source: "referencias/dicionario.html — Turno 3 Noite (a partir das 18h)"
+  citizen_identifier:
+    value: cpf
+    source: "dicionario-fai.html e dicionario-fp.html — cpfCidadao e cnsCidadao não podem ir juntos; CPF é o identificador primário desde o LEDI 8.4.0"
+miai_cbos:
+  source: "ledi/documentacao/regras/cbo.html — tabela 'Modelo de Informação de Atendimento Individual' (só os grupos da escuta, spec §3.2)"
+  codes: [
+    "225103", "225105", "225109", "225110", "225112", "225118", "225120", "225121", "225124", "225125", "225127",
+    "225130", "225133", "225135", "225136", "225139", "225140", "225142", "225154", "225155", "225160", "225165",
+    "225170", "225180", "225185", "225195", "225250", "225255", "225265", "225270", "225275", "225285", "225350",
+    "223405", "223415", "223425", "223430", "223445", "223505", "223530", "223545", "223550", "223555",
+    "223560", "223565", "223605", "223650", "223710", "251505", "251510", "251530", "251540", "251545", "251550",
+    "251555", "251605"
+  ]
+procedures_cbo_prefixes:
+  source: "ledi/documentacao/regras/cbo.html — tabela 'Modelo de Informação de Procedimentos' contém 322205, 322210, 322230, 322245, 322250"
+  prefixes: [ "3222" ]
