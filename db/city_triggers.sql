@@ -839,7 +839,10 @@ BEGIN
      OR NEW.source_type IS DISTINCT FROM OLD.source_type
      OR NEW.source_id IS DISTINCT FROM OLD.source_id
      OR NEW.ledi_version IS DISTINCT FROM OLD.ledi_version
-     OR NEW.replaces_outbox_id IS DISTINCT FROM OLD.replaces_outbox_id
+     -- via jsonb: entre as migrações 20261007300001 (que reexecuta este arquivo)
+     -- e 20261007300002 (que cria a coluna) NEW.replaces_outbox_id não existe e
+     -- o plpgsql falharia em todo UPDATE; ausente, os dois lados são NULL.
+     OR (to_jsonb(NEW) -> 'replaces_outbox_id') IS DISTINCT FROM (to_jsonb(OLD) -> 'replaces_outbox_id')
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'ledi_outbox: identity columns never change';
   END IF;

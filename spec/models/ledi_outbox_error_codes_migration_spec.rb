@@ -113,4 +113,29 @@ RSpec.describe "Migração de cidade 20261007300002 (LediOutboxErrorCodes): dado
   ensure
     LediOutboxEntry.reset_column_information
   end
+
+  # Entre a 20261007300001 (que reexecuta db/city_triggers.sql) e a 300002 (que
+  # cria replaces_outbox_id), o guarda já é o novo e a coluna ainda não existe:
+  # um UPDATE na fila nesse intervalo não pode falhar por campo ausente.
+  it "o guarda tolera a coluna replaces_outbox_id ainda ausente e segue recusando mudança de identidade" do
+    ApplicationRecord.transaction(requires_new: true) do
+      ActiveRecord::Migration.suppress_messages do
+        CreateLediOutbox.new.exec_migration(conn, :down)
+        CreateLediOutbox.new.exec_migration(conn, :up)
+      end
+      expect(conn.column_exists?(:ledi_outbox, :replaces_outbox_id)).to be(false)
+      id = old_row!("pending", last_error: nil, attempts: 0)
+
+      conn.execute("UPDATE ledi_outbox SET attempts = 1, status = 'sending' WHERE id = #{quote(id)}")
+      expect(conn.select_value("SELECT status FROM ledi_outbox WHERE id = #{quote(id)}")).to eq("sending")
+      expect do
+        ApplicationRecord.transaction(requires_new: true) do
+          conn.execute("UPDATE ledi_outbox SET competence = '202611' WHERE id = #{quote(id)}")
+        end
+      end.to raise_error(ActiveRecord::StatementInvalid, /identity columns never change/)
+      raise ActiveRecord::Rollback
+    end
+  ensure
+    LediOutboxEntry.reset_column_information
+  end
 end

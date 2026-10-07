@@ -40,6 +40,9 @@ RSpec.describe LediOutboxEntry do
 
     other = entry!
     expect { in_savepoint { other.update_columns(competence: "202611") } }.to raise_error(ActiveRecord::StatementInvalid, /identity/)
+    # replaces_outbox_id é identidade (comparada via jsonb no guarda; ver city_triggers.sql).
+    expect { in_savepoint { other.update_columns(replaces_outbox_id: entry.id) } }
+      .to raise_error(ActiveRecord::StatementInvalid, /identity columns never change/)
     expect { in_savepoint { other.update_columns(uuid: "1234567-x") } }.to raise_error(ActiveRecord::StatementInvalid, /uuid/)
     other.reject!([ { "field" => "cnes", "code" => "invalid" } ])
     other.update!(status: "pending", uuid: "1234567-#{SecureRandom.uuid}")
