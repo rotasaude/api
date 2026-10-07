@@ -36,6 +36,9 @@ RSpec.describe Ledi::Resend, "fonte Screening" do
     expect(rejected.reload.status).to eq("rejected")
     expect { described_class.call(entry: rejected.reload, by: by) }.to raise_error(described_class::NotRejected)
     expect(LediOutboxEntry.where(source_id: rejected.source_id).count).to eq(2)
+    # a recusada regerada sai do painel: conta a linha nova (pendente).
+    expect(Ledi::ProductionSummary.counts(rejected.competence)).to include(rejected: 0, pending: 1)
+    expect(Ledi::ProductionSummary.rejections(rejected.competence)).to eq([])
   end
 
   it "identificação quebrada desde então: 'não gerada' registrada e NotRegenerated; exportação inutilizável: ExportUnusable" do
