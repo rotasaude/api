@@ -4,8 +4,8 @@
 module Authoring
   class ProtocolsController < ApplicationController
     include Authentication
-    before_action :require_author!, except: :simulate_offer
-    before_action :require_simulator!, only: :simulate_offer
+    before_action :require_author!, except: %i[simulate_offer simulate_screening]
+    before_action :require_simulator!, only: %i[simulate_offer simulate_screening]
 
     def gate
       definition = definition_param
@@ -32,6 +32,13 @@ module Authoring
       # 200 com o erro, nunca 422/500 (contratos §4.3).
       render json: Protocols::SimulateOffer.call(definition: hash_param(:definition, nil), profile: hash_param(:profile),
                                                  answers: hash_param(:answers), outcome: hash_param(:outcome))
+    end
+
+    # ADR 0030 (contrato §9): simula a cor da definição em edição; sempre 200.
+    def simulate_screening
+      render json: Protocols::SimulateScreening.call(definition: hash_param(:definition, nil), vitals: hash_param(:vitals),
+                                                     ciap2_code: params[:ciap2_code].is_a?(String) ? params[:ciap2_code] : nil,
+                                                     profile: hash_param(:profile))
     end
 
     def draft

@@ -35,14 +35,14 @@ class AttendancesController < ApplicationController
     result = Attendances::Call.call(attendance: attendance, health_unit_id: params[:health_unit_id], by: Current.user)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
-    render json: { attendance: attendance_json(result.payload[:attendance]) }
+    render json: { attendance: called_json(result.payload[:attendance]) }
   end
 
   def call_next
     result = Attendances::CallNext.call(health_unit_id: params[:id], by: Current.user)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
-    render json: { attendance: attendance_json(result.payload[:attendance]) }
+    render json: { attendance: called_json(result.payload[:attendance]) }
   end
 
   def close
@@ -66,9 +66,22 @@ class AttendancesController < ApplicationController
       id: a.id, cpf_masked: a.citizen.cpf_masked, checked_in_at: a.checked_in_at&.iso8601,
       protocol_name: a.root_triage&.protocol_name, priority: a.priority,
       source: a.appointment_id ? "appointment" : "triage", appointment_time: a.appointment&.scheduled_at&.iso8601,
-      called_at: a.called_at&.iso8601, called_by_name: staff_name(a.called_by_user),
-      reference_unit_ids: refs.fetch(a.territory_neighborhood_id, []) - [ a.health_unit_id ]
+      called_at: a.called_at&.iso8601, called_by_name: Screenings::Json.staff_name(a.called_by_user),
+      reference_unit_ids: refs.fetch(a.territory_neighborhood_id, []) - [ a.health_unit_id ],
+      # ADR 0030 (contratos §4 e §9): só cor, destino e espera — nunca queixa
+      # nem sinais, nem para a recepção; quem ainda aguarda acolhimento vem
+      # marcado (e por último, Attendances::UnitQueue).
+      screening: Screenings::Json.queue_block(a), awaiting_screening: Screenings::Queue.awaiting?(a)
     }
+  end
+
+  # ADR 0030 (contratos §4 e §9): quem chamou recebe a escuta concluída (leitura
+  # auditada). Só a rota da chamada; o balcão não passa por aqui.
+  def called_json(attendance)
+    screening = attendance.screening
+    screening = nil unless screening&.completed?
+    DomainEvents.publish("screening.viewed", screening_id: screening.id, user_id: Current.user.id) if screening
+    attendance_json(attendance).merge(screening: screening && Screenings::Json.screening(screening))
   end
 
   def attendance_json(a)
@@ -77,7 +90,7 @@ class AttendancesController < ApplicationController
       unit_name: a.health_unit.name, status: a.status, checked_in_at: a.checked_in_at&.iso8601,
       check_in_method: a.check_in_method, called_at: a.called_at&.iso8601, outcome: a.outcome,
       referral_unit_name: a.referral_unit&.name, referral_note: a.referral_note, closed_at: a.closed_at&.iso8601,
-      called_by_name: staff_name(a.called_by_user), closed_by_name: staff_name(a.closed_by_user)
+      called_by_name: Screenings::Json.staff_name(a.called_by_user), closed_by_name: Screenings::Json.staff_name(a.closed_by_user)
     }
   end
 
@@ -85,13 +98,5 @@ class AttendancesController < ApplicationController
     return nil unless r
 
     { id: r.id, kind: r.kind, target_unit_name: r.target_unit.name, status: r.status }
-  end
-
-  # F-10.5: quem chamou/fechou aparece pelo nome profissional; sem perfil,
-  # pelo e-mail (recepção, ou profissional ainda sem cadastro).
-  def staff_name(user)
-    return nil unless user
-
-    user.professional&.professional_name || user.email_address
   end
 end

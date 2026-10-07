@@ -123,6 +123,17 @@ Rails.application.routes.draw do
     post "check_ins/exception",     to: "check_ins#exception"
     post "attendances/:id/close",   to: "attendances#close"
 
+    # Escuta inicial (ADR 0030; contratos §3). `screenings/suggest` PRECISA vir
+    # antes de `screenings/:id` (a primeira rota que casa vence).
+    get  "units/:id/screening_queue",   to: "screenings#queue"
+    post "attendances/:id/screening",   to: "screenings#create"
+    post "screenings/suggest",          to: "screenings#suggest"
+    get  "screenings/:id",              to: "screenings#show"
+    post "screenings/:id/abandon",      to: "screenings#abandon"
+    post "screenings/:id/complete",     to: "screenings#complete"
+    post "screenings/:id/reassess",     to: "screenings#reassess"
+    post "ciap2/search",                to: "ciap2_codes#search"
+
     # Pedidos de agendamento, marcação e agenda do dia (spec 2026-09-25 §4).
     get  "units/:id/requests",         to: "appointment_requests#index"
     get  "units/:id/agenda",           to: "appointment_requests#agenda"
@@ -278,6 +289,7 @@ Rails.application.routes.draw do
     post "preview", to: "authoring/protocols#preview"
     post "draft",   to: "authoring/protocols#draft"
     post "simulate_offer", to: "authoring/protocols#simulate_offer"
+    post "simulate_screening", to: "authoring/protocols#simulate_screening"
   end
 
   # Publicação de protocolo — exige step-up MFA (ADR-0011 + ADR-0009)

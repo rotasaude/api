@@ -41,7 +41,7 @@ class HealthUnitsController < ApplicationController
 
   def create
     unit = HealthUnit.new(name: params[:name], kind: params[:kind])
-    error = assign_address(unit) || assign_cnes(unit)
+    error = assign_address(unit) || assign_cnes(unit) || assign_screening_scope(unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
     return render_invalid(unit) unless unit.save
 
@@ -55,7 +55,7 @@ class HealthUnitsController < ApplicationController
     return render json: { error: "not_found" }, status: :not_found unless @unit
 
     @unit.assign_attributes(name: params[:name], kind: params[:kind])
-    error = assign_address(@unit) || assign_cnes(@unit)
+    error = assign_address(@unit) || assign_cnes(@unit) || assign_screening_scope(@unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
     return render_invalid(@unit) unless @unit.save
 
@@ -135,6 +135,17 @@ class HealthUnitsController < ApplicationController
     nil
   end
 
+  # ADR 0030: para quem a escuta é obrigatória. Só muda quando a chave vem.
+  def assign_screening_scope(unit)
+    return nil unless params.key?("screening_scope")
+
+    value = params["screening_scope"]
+    return "invalid_screening_scope" unless value.is_a?(String) && HealthUnit::SCREENING_SCOPES.include?(value)
+
+    unit.screening_scope = value
+    nil
+  end
+
   def address_error(field)
     { "address_zip" => "invalid_zip", "neighborhood_id" => "invalid_neighborhood" }.fetch(field, "invalid_unit")
   end
@@ -156,7 +167,8 @@ class HealthUnitsController < ApplicationController
   end
 
   def unit_json(unit, include_active: false)
-    json = { id: unit.id, name: unit.name, kind: unit.kind, cnes: unit.cnes }.merge(unit.slice(*ADDRESS_FIELDS).symbolize_keys)
+    json = { id: unit.id, name: unit.name, kind: unit.kind, cnes: unit.cnes, screening_scope: unit.screening_scope }
+           .merge(unit.slice(*ADDRESS_FIELDS).symbolize_keys)
     json[:active] = unit.active if include_active
     json
   end

@@ -11,9 +11,11 @@ Rails.application.config.to_prepare do
     class << self
       # Versão ativa de `name` na cidade da conexão corrente. O banco inteiro é
       # da cidade: não existe mais override por município nem versão global.
+      # Só protocolos de triagem: o acolhimento (ADR 0030) não tem passos e
+      # não vira motor — para estas rotas ele não existe (NotFound).
       def current(name: "triage-respiratoria")
         Rails.cache.fetch(current_cache_key(name)) do
-          record = ProtocolDefinition.find_by(name: name, status: "active")
+          record = ProtocolDefinition.triage_protocols.find_by(name: name, status: "active")
           raise NotFound, "no active definition for #{name}" unless record
           Definitions.build(record.definition)
         end
@@ -21,7 +23,7 @@ Rails.application.config.to_prepare do
 
       # Versão exata. Usado por relatórios históricos (ADR-0010 / ADR-0009).
       def fetch(name:, version:)
-        record = ProtocolDefinition.find_by(name: name, version: version)
+        record = ProtocolDefinition.triage_protocols.find_by(name: name, version: version)
         raise NotFound, "definition #{name}@#{version} not found" unless record
         Definitions.build(record.definition)
       end
