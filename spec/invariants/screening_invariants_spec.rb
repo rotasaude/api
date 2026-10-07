@@ -77,6 +77,20 @@ RSpec.describe "Invariantes do acolhimento (ADR 0030)", type: :request do
     expect(analytics).not_to match(/complaint_note|color_change_reason|orientation_note|screening_revisions/)
   end
 
+  # Mutação: tirar /\Aq\z/ de filter_parameters (ou desancorá-lo).
+  it "o termo da busca de CIAP-2 (queixa sendo digitada) nunca cai no log; só a chave q é filtrada" do
+    log = capture_log do
+      sign_in_as(nurse)
+      json_post "/attendance/ciap2/search", q: "dor #{marker}"
+      expect(response).to have_http_status(:ok)
+    end
+    expect(log.lines.grep(/Parameters:/).join).to include("Parameters:")
+    expect(log).not_to include(marker)
+    filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
+    expect(filter.filter("q" => "dor", "quantity" => "2", "sequence" => "3", "faq" => "4"))
+      .to eq("q" => "[FILTERED]", "quantity" => "2", "sequence" => "3", "faq" => "4")
+  end
+
   # Mutação: devolver queixa ou sinais vitais em Screenings::Json.queue_block.
   it "a recepção nunca recebe queixa nem sinais vitais" do
     attendance = walk_in_attendance!(unit, citizen: screening_citizen!(1))

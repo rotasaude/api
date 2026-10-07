@@ -17,7 +17,10 @@ Rails.application.config.filter_parameters += [
   # ADR 0030: escuta inicial — sinais vitais e queixa são dado de saúde
   # (`:note` e `:reason` já cobrem complaint_note, orientation_note e
   # color_change_reason).
-  :vitals, :ciap2
+  :vitals, :ciap2,
+  # ADR 0030: o termo da busca de CIAP-2 (POST /attendance/ciap2/search, `q`) é
+  # a queixa sendo digitada. Ancorado: só a chave `q`, não toda chave com "q".
+  /\Aq\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
