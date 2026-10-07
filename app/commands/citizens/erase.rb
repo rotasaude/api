@@ -106,6 +106,8 @@ module Citizens
       TriageSuggestion.where(citizen_id: citizen.id).delete_all
       # ADR 0029: os avisos de lembrete do par (o trigger deixa o DELETE passar).
       AppointmentNotice.where(citizen_id: citizen.id).delete_all
+      # ADR 0030 (api#43): conteúdo e códigos da fila LEDI das fontes do par.
+      Ledi::CitizenSources.scrub!([ citizen.id ])
 
       # ADR 0028: o CNS do CADSUS, a marca e a consulta pendente saem junto.
       # update_columns cifra (o tipo cifrado serializa); um marcador por coluna,
