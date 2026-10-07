@@ -40,6 +40,7 @@ else
   require Rails.root.join("lib/analytics_crew").to_s
   require Rails.root.join("lib/triage_catalog_crew").to_s
   require Rails.root.join("lib/scheduling_crew").to_s
+  require Rails.root.join("lib/screening_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -227,6 +228,12 @@ else
         agenda = SchedulingCrew.seed_current_city(slug: slug)
         puts "[seeds] agenda ...... #{agenda[:types]} tipos; modelo: #{agenda[:template] || 'nenhum'}; " \
              "#{agenda[:new_shifts]} turnos novos, #{agenda[:templated]} com modelo; #{agenda[:protocol]} com agendamento"
+
+        # ── Acolhimento (módulo 18, spec 2026-10-07 §10) ──────────────────────
+        # Depois da agenda: usa o elenco do ciclo assinado, a UBS, a técnica e a recepção.
+        screening = ScreeningCrew.seed_current_city(slug: slug, ddd: ddd)
+        puts "[seeds] acolhimento . #{screening[:protocol]}; técnica na UBS (#{screening[:technician_link]}); " \
+             "#{screening[:walk_ins]} check-ins novos de demanda espontânea"
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
