@@ -32,6 +32,18 @@ RSpec.describe Screenings::Start do
     expect(first.reload).to have_attributes(status: "in_progress", started_by_user_id: tech.id, cbo_code: "322205")
   end
 
+  it "escuta concluída com destino same_day (atendimento segue aguardando) → already_screening" do
+    ciap2_release!
+    started = described_class.call(attendance: attendance, by: nurse).payload[:screening]
+    completed = Screenings::Complete.call(screening: started, revision_params: revision_params, destination: "same_day",
+                                          destination_params: {}, by: nurse)
+    expect(completed).to be_ok
+    expect(attendance.reload.status).to eq("waiting")
+    expect(described_class.call(attendance: attendance, by: screener!(unit, cbo: "322205")).reason)
+      .to eq(:already_screening)
+    expect(started.reload.status).to eq("completed")
+  end
+
   it "escopo: walk_in não exige escuta de quem tem horário; all exige" do
     scheduled = scheduled_attendance!(unit, citizen: screening_citizen!(2))
     expect(described_class.call(attendance: scheduled, by: nurse).reason).to eq(:screening_not_required)
