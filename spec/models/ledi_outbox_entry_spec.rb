@@ -29,7 +29,7 @@ RSpec.describe LediOutboxEntry do
       .to raise_error(ActiveRecord::StatementInvalid, /ck_ledi_outbox_accepted_payload/)
     entry.reload.accept! # update_columns sujou o objeto em memória antes de o banco recusar
     expect(entry.reload.payload).to be_nil
-    expect { in_savepoint { entry.update_columns(last_error: "x") } }.to raise_error(ActiveRecord::StatementInvalid, /accepted is immutable/)
+    expect { in_savepoint { entry.update_columns(last_error_codes: [ { "field" => "other", "code" => "unknown" } ]) } }.to raise_error(ActiveRecord::StatementInvalid, /accepted is immutable/)
     expect { in_savepoint { entry.delete } }.to raise_error(ActiveRecord::StatementInvalid, /accepted is immutable/)
   end
 
@@ -41,7 +41,7 @@ RSpec.describe LediOutboxEntry do
     other = entry!
     expect { in_savepoint { other.update_columns(competence: "202611") } }.to raise_error(ActiveRecord::StatementInvalid, /identity/)
     expect { in_savepoint { other.update_columns(uuid: "1234567-x") } }.to raise_error(ActiveRecord::StatementInvalid, /uuid/)
-    other.reject!("CNES inválido")
+    other.reject!([ { "field" => "cnes", "code" => "invalid" } ])
     other.update!(status: "pending", uuid: "1234567-#{SecureRandom.uuid}")
     expect(other.reload.status).to eq("pending")
   end

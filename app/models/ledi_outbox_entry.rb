@@ -52,24 +52,27 @@ class LediOutboxEntry < ApplicationRecord
 
   def accept!
     transaction do
-      update!(status: "accepted", accepted_at: Time.current, payload: nil, last_error: nil, attempts: attempts + 1)
+      update!(status: "accepted", accepted_at: Time.current, payload: nil, last_error_codes: [], attempts: attempts + 1,
+              last_attempted_at: Time.current)
       DomainEvents.publish("ledi.ficha_accepted", outbox_id: id, ficha_type: ficha_type, competence: competence)
     end
   end
 
-  def reject!(message)
+  # api#43: só códigos de lista fechada; qualquer outra coisa vira desconhecido.
+  def reject!(codes)
+    codes = Ledi::ErrorCodes.valid?(codes) && codes.any? ? codes : [ Ledi::ErrorCodes::UNKNOWN.dup ]
     transaction do
-      update!(status: "rejected", last_error: Ledi::ErrorText.sanitize(message), attempts: attempts + 1)
+      update!(status: "rejected", last_error_codes: codes, attempts: attempts + 1, last_attempted_at: Time.current)
       DomainEvents.publish("ledi.ficha_rejected", outbox_id: id, ficha_type: ficha_type, competence: competence)
     end
   end
 
   # Falha transitória: nova tentativa depois de `wait`, ou failed quando a
   # primeira tentativa já passou de `give_up_after`.
-  def retry_later!(error:, wait:, give_up_after:, now: Time.current)
+  def retry_later!(codes:, wait:, give_up_after:, now: Time.current)
     started = first_attempt_at || now
     status = started <= now - give_up_after ? "failed" : "pending"
-    update!(status: status, attempts: attempts + 1, last_error: Ledi::ErrorText.sanitize(error),
+    update!(status: status, attempts: attempts + 1, last_error_codes: codes, last_attempted_at: now,
             next_attempt_at: now + wait)
   end
 end

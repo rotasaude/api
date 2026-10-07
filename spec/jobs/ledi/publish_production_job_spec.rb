@@ -13,7 +13,7 @@ RSpec.describe Ledi::PublishProductionJob do
               source_type: "synthetic", source_id: SecureRandom.uuid, ledi_version: "8.7.0",
               next_attempt_at: Time.current, status: status }
     status == "accepted" ? attrs[:accepted_at] = Time.current : attrs[:bytes] = "x".b
-    attrs[:last_error] = "x" if status == "rejected"
+    attrs[:last_error_codes] = [ Ledi::ErrorCodes::UNKNOWN ] if status == "rejected"
     LediOutboxEntry.create!(attrs)
   end
 

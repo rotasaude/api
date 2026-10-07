@@ -41,13 +41,15 @@ RSpec.describe Ledi::DeliverJob do
     )
   end
 
-  it "400: rejected com a mensagem mascarada, sem nova tentativa sozinha" do
+  it "400: rejected só com códigos, sem nova tentativa sozinha" do
     entry = enqueue!.first
     pec.delivery_replies = [ [ 400, { descricaoErro: "Erro de validação",
                                        errosValidacao: { cpfCidadao: "CPF 12345678909 inválido" } }.to_json ] ]
     run!
-    expect(entry.reload.slice(:status, :last_error, :attempts))
-      .to eq("status" => "rejected", "last_error" => "Erro de validação; cpfCidadao: CPF [número] inválido", "attempts" => 1)
+    expect(entry.reload.slice(:status, :last_error_codes, :attempts))
+      .to eq("status" => "rejected", "last_error_codes" => [ { "field" => "cpfCidadao", "code" => "invalid" } ],
+             "attempts" => 1)
+    expect(entry.reload.last_error_codes.to_json).not_to include("12345678909")
     expect(events("ledi.ficha_rejected").sole).to eq("outbox_id" => entry.id, "ficha_type" => "procedimento",
                                                       "competence" => entry.competence)
     run!
@@ -59,10 +61,11 @@ RSpec.describe Ledi::DeliverJob do
     pec.delivery_replies = [ [ 503, "" ], Ledi::PecClient::Unreachable ]
     freeze_time(1.second.from_now) do # freeze_time trunca os microssegundos: sem folga a fila ainda não venceu
       run!
-      expect(first.reload.slice(:status, :attempts, :last_error)).to eq("status" => "pending", "attempts" => 1,
-                                                                        "last_error" => "HTTP 503")
+      expect(first.reload.slice(:status, :attempts, :last_error_codes))
+        .to eq("status" => "pending", "attempts" => 1,
+               "last_error_codes" => [ { "field" => "transport", "code" => "http_error" } ])
       expect(first.next_attempt_at).to eq(1.minute.from_now)
-      expect(second.reload.last_error).to eq("PEC inacessível")
+      expect(second.reload.last_error_codes).to eq([ { "field" => "transport", "code" => "unreachable" } ])
       expect(second.bytes).to be_present
     end
   end
@@ -73,28 +76,29 @@ RSpec.describe Ledi::DeliverJob do
     pec.delivery_replies = [ [ 201, "" ], RuntimeError.new("segredo"), [ 201, "" ] ]
     run!
     expect(first.reload.status).to eq("accepted")
-    expect(second.reload.slice(:status, :attempts, :last_error))
-      .to eq("status" => "pending", "attempts" => 1, "last_error" => "erro interno (RuntimeError)")
-    expect(second.last_error).not_to include("segredo")
+    expect(second.reload.slice(:status, :attempts, :last_error_codes))
+      .to eq("status" => "pending", "attempts" => 1,
+             "last_error_codes" => [ { "field" => "transport", "code" => "internal_error" } ])
+    expect(second.last_error_codes.to_json).not_to include("segredo")
     expect(third.reload.status).to eq("accepted")
   end
 
   # R33: PEC fora do ar no login é falha da cidade, não de cada ficha: um login,
   # só a ficha da vez conta tentativa, o resto volta a pending e o lote para.
   {
-    "inacessível" => [ Ledi::PecClient::Unreachable, "PEC inacessível" ],
-    "com erro" => [ Ledi::PecClient::Failed.new(503), "login no PEC respondeu 503" ]
-  }.each do |label, (error, text)|
+    "inacessível" => [ Ledi::PecClient::Unreachable, "unreachable" ],
+    "com erro" => [ Ledi::PecClient::Failed.new(503), "login_failed" ]
+  }.each do |label, (error, code)|
     it "login #{label}: só a ficha da vez conta tentativa, o resto volta sem contar, um login só" do
       first, *rest = enqueue!(3)
       pec.login_replies = [ error ]
       run!
       expect(pec.logins.size).to eq(1)
       expect(pec.deliveries).to be_empty
-      expect(first.reload.slice(:status, :attempts, :last_error))
-        .to eq("status" => "pending", "attempts" => 1, "last_error" => text)
-      expect(rest.map { |e| e.reload.slice(:status, :attempts, :last_error, :first_attempt_at) })
-        .to all(eq("status" => "pending", "attempts" => 0, "last_error" => nil, "first_attempt_at" => nil))
+      expect(first.reload.slice(:status, :attempts, :last_error_codes))
+        .to eq("status" => "pending", "attempts" => 1, "last_error_codes" => Ledi::ErrorCodes.transport(code))
+      expect(rest.map { |e| e.reload.slice(:status, :attempts, :last_error_codes, :first_attempt_at) })
+        .to all(eq("status" => "pending", "attempts" => 0, "last_error_codes" => [], "first_attempt_at" => nil))
     end
   end
 
@@ -106,10 +110,10 @@ RSpec.describe Ledi::DeliverJob do
     run!
     expect(pec.logins.size).to eq(1)
     expect(pec.deliveries).to be_empty
-    expect(first.reload.slice(:status, :attempts, :last_error))
-      .to eq("status" => "pending", "attempts" => 1, "last_error" => "endereço do PEC inválido")
-    expect(rest.map { |e| e.reload.slice(:status, :attempts, :last_error, :first_attempt_at) })
-      .to all(eq("status" => "pending", "attempts" => 0, "last_error" => nil, "first_attempt_at" => nil))
+    expect(first.reload.slice(:status, :attempts, :last_error_codes))
+      .to eq("status" => "pending", "attempts" => 1, "last_error_codes" => Ledi::ErrorCodes.transport("invalid_url"))
+    expect(rest.map { |e| e.reload.slice(:status, :attempts, :last_error_codes, :first_attempt_at) })
+      .to all(eq("status" => "pending", "attempts" => 0, "last_error_codes" => [], "first_attempt_at" => nil))
   end
 
   it "PEC com URL inválida no envio: mesma resposta de falha de cidade, o lote para" do
@@ -117,10 +121,10 @@ RSpec.describe Ledi::DeliverJob do
     pec.delivery_replies = [ Ledi::PecClient::InvalidUrl ]
     run!
     expect(pec.deliveries.size).to eq(1)
-    expect(first.reload.slice(:status, :attempts, :last_error))
-      .to eq("status" => "pending", "attempts" => 1, "last_error" => "endereço do PEC inválido")
-    expect(rest.map { |e| e.reload.slice(:status, :attempts, :last_error, :first_attempt_at) })
-      .to all(eq("status" => "pending", "attempts" => 0, "last_error" => nil, "first_attempt_at" => nil))
+    expect(first.reload.slice(:status, :attempts, :last_error_codes))
+      .to eq("status" => "pending", "attempts" => 1, "last_error_codes" => Ledi::ErrorCodes.transport("invalid_url"))
+    expect(rest.map { |e| e.reload.slice(:status, :attempts, :last_error_codes, :first_attempt_at) })
+      .to all(eq("status" => "pending", "attempts" => 0, "last_error_codes" => [], "first_attempt_at" => nil))
   end
 
   it "lote parcial: primeira aceita, 401 duas vezes pausa, a aceita continua aceita e o resto volta sem contar" do

@@ -40,39 +40,4 @@ RSpec.describe Ledi::Outcome do
     body = { descricaoErro: "A ficha já foi recebida.", errosValidacao: nil }.to_json
     expect(described_class.classify(400, body)).to eq(:rejected)
   end
-
-  describe ".message" do
-    it "junta descricaoErro e errosValidacao achatados (chaves aninhadas com ponto)" do
-      body = { descricaoErro: "Erro de validação",
-               errosValidacao: { cnesDadoSerializado: "valor inválido: 1",
-                                 dadoSerializado: { headerTransport: { ine: "inválido" } },
-                                 lista: [ "a", "b" ] } }.to_json
-      expect(described_class.message(body)).to eq(
-        "Erro de validação; cnesDadoSerializado: valor inválido: 1; " \
-        "dadoSerializado.headerTransport.ine: inválido; lista: a; lista: b"
-      )
-    end
-
-    it "aceita errosValidacao nulo" do
-      body = { descricaoErro: "Erro na desserialização", errosValidacao: nil }.to_json
-      expect(described_class.message(body)).to eq("Erro na desserialização")
-    end
-
-    it "devolve o corpo cru quando não é JSON" do
-      expect(described_class.message("CNES 1234567 não pertence")).to eq("CNES 1234567 não pertence")
-    end
-
-    it "devolve o corpo cru quando o JSON não é objeto" do
-      expect(described_class.message("[1,2]")).to eq("[1,2]")
-    end
-
-    it "devolve o corpo cru quando o JSON objeto não tem campos de erro conhecidos" do
-      expect(described_class.message('{"erro":"x"}')).to eq('{"erro":"x"}')
-      expect(described_class.message("{}")).to eq("{}")
-    end
-
-    it "trata nil" do
-      expect(described_class.message(nil)).to eq("")
-    end
-  end
 end

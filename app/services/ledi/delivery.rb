@@ -6,15 +6,13 @@
 # PEC fora do ar (ou com erro) NO LOGIN é falha da cidade (R33): só a ficha da
 # vez conta tentativa, o resto volta a pending sem contar e o lote para — um
 # login (um timeout) por execução, nunca um por ficha.
-# A credencial e o cookie nunca saem daqui: nem log, nem evento, nem last_error.
+# A credencial e o cookie nunca saem daqui: nem log, nem evento, nem a fila.
 #
 # PROVISÓRIO (rotasaude/api#41): duplicidade após aceite e reenvio com o mesmo
 # uuid dependem do que Ledi::Outcome/Observations observaram no PEC real.
 module Ledi
   class Delivery
     PAUSE_MESSAGE = "O PEC recusou a credencial durante o envio; o envio está pausado.".freeze
-
-    INVALID_URL_MESSAGE = "endereço do PEC inválido".freeze
 
     # Login sem resposta útil do PEC (inacessível ou com erro): para o lote.
     class LoginDown < StandardError; end
@@ -49,23 +47,26 @@ module Ledi
       # rescue de StandardError (R32) agenda o reenvio de uma ficha que o PEC já
       # aceitou; o que o PEC faz com esse reenvio só se sabe com o PEC real.
       when :accepted then entry.accept!
-      when :rejected then reject(entry, reply)
-      else retry_later(entry, "HTTP #{reply.status}")
+      # api#43: o corpo do 400 vira códigos aqui e é descartado.
+      when :rejected then entry.reject!(Ledi::ErrorCodes.from_rejection(reply.body))
+      else retry_later(entry, "http_error")
       end
     rescue LoginDown => e
+      # A mensagem de LoginDown é um código de Ledi::ErrorCodes::CODES.
       retry_later(entry, e.message)
       :halted
     rescue Ledi::PecClient::InvalidUrl
       # R38: endereço do PEC inválido é falha da cidade (como o login): para o lote.
-      retry_later(entry, INVALID_URL_MESSAGE)
+      retry_later(entry, "invalid_url")
       :halted
     rescue Ledi::PecClient::Unreachable
-      retry_later(entry, "PEC inacessível")
+      retry_later(entry, "unreachable")
     rescue StandardError => e
-      # R32: erro inesperado numa ficha não trava o lote. Só o nome da classe
-      # vai para last_error, nunca a mensagem (pode carregar dado da ficha).
-      Rails.error.report(e, handled: true, severity: :error)
-      retry_later(entry, "erro interno (#{e.class.name})")
+      # R32: erro inesperado numa ficha não trava o lote. Só a classe vai para
+      # o relatório de erro (a mensagem original pode carregar dado da ficha);
+      # a fila guarda só o código.
+      Rails.error.report(RuntimeError.new("ledi delivery: #{e.class.name}"), handled: true, severity: :error)
+      retry_later(entry, "internal_error")
     end
 
     def post(entry, relogged: false)
@@ -82,20 +83,15 @@ module Ledi
     def cookie
       Ledi::SessionCache.fetch(@cache_key) { @client.login.cookie }
     rescue Ledi::PecClient::InvalidUrl
-      raise LoginDown, INVALID_URL_MESSAGE
+      raise LoginDown, "invalid_url"
     rescue Ledi::PecClient::Unreachable
-      raise LoginDown, "PEC inacessível"
-    rescue Ledi::PecClient::Failed => e
-      raise LoginDown, "login no PEC respondeu #{e.status}"
+      raise LoginDown, "unreachable"
+    rescue Ledi::PecClient::Failed
+      raise LoginDown, "login_failed"
     end
 
-    def reject(entry, reply)
-      message = Ledi::ErrorText.sanitize(Ledi::Outcome.message(reply.body))
-      entry.reject!(message.presence || "HTTP #{reply.status}")
-    end
-
-    def retry_later(entry, error)
-      entry.retry_later!(error: error, wait: Ledi::Backoff.wait(entry.attempts + 1),
+    def retry_later(entry, code)
+      entry.retry_later!(codes: Ledi::ErrorCodes.transport(code), wait: Ledi::Backoff.wait(entry.attempts + 1),
                          give_up_after: Ledi::Backoff::GIVE_UP_AFTER)
     end
 

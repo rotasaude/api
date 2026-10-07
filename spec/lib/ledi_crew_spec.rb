@@ -14,7 +14,7 @@ RSpec.describe LediCrew do
     expect(LediOutboxEntry.for_competence(competence).group(:status).count)
       .to eq("accepted" => 6, "rejected" => 3, "pending" => 2, "failed" => 1)
     expect(LediOutboxEntry.where(status: "accepted").where.not(payload: nil)).to be_empty
-    expect(LediOutboxEntry.where(status: "rejected").distinct.pluck(:last_error).size).to eq(2)
+    expect(LediOutboxEntry.where(status: "rejected").distinct.pluck(:last_error_codes).size).to eq(2)
     expect(LediOutboxEntry.pluck(:source_type).uniq).to eq([ "synthetic" ])
   end
 end

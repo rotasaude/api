@@ -1,6 +1,5 @@
 # Resumo de uma competência da fila LEDI da cidade corrente (spec §6.5).
-# Recusas agrupadas pela mensagem JÁ saneada (Ledi::ErrorText) — nunca dado de
-# cidadão.
+# Recusas agrupadas por campo e código — nunca texto do PEC.
 module Ledi
   module ProductionSummary
     STATUSES = %i[accepted rejected pending sending failed].freeze
@@ -12,10 +11,13 @@ module Ledi
       STATUSES.to_h { |status| [ status, grouped.fetch(status.to_s, 0) ] }
     end
 
+    # api#43: recusas agrupadas por campo e código (nunca texto do PEC).
     def rejections(competence)
-      LediOutboxEntry.for_competence(competence).where(status: "rejected").group(:last_error).count
-                     .sort_by { |message, count| [ -count, message ] }
-                     .map { |message, count| { message: message, count: count } }
+      LediOutboxEntry.for_competence(competence).where(status: "rejected")
+                     .joins("CROSS JOIN LATERAL jsonb_array_elements(ledi_outbox.last_error_codes) AS error_code")
+                     .group(Arel.sql("error_code->>'field'"), Arel.sql("error_code->>'code'")).count
+                     .map { |(field, code), count| { field: field, code: code, count: count } }
+                     .sort_by { |row| [ -row[:count], row[:field], row[:code] ] }
     end
 
     def call(competence:, today:, record_mode:)

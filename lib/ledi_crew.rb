@@ -12,8 +12,8 @@ module LediCrew
   INE = "9999999991"
   PROFESSIONAL_CNS = "700000000000005"
   CBO = "225142"
-  REJECTIONS = [ "CNES 9999991 não pertence ao município da instalação.",
-                 "CBO 225142 não permitido para o procedimento informado." ].freeze
+  REJECTIONS = [ [ { "field" => "cnes", "code" => "not_allowed" } ],
+                 [ { "field" => "cboCodigo_2002", "code" => "not_allowed" } ] ].freeze
   PLAN = { "accepted" => 6, "rejected" => 3, "pending" => 2, "failed" => 1 }.freeze
 
   module_function
@@ -44,8 +44,8 @@ module LediCrew
       attrs.merge!(accepted_at: Time.current, first_attempt_at: Time.current)
     else
       attrs[:bytes] = Ledi::Transport.wrap(ficha, city: city || Struct.new(:id).new(SecureRandom.uuid), uuid: uuid)
-      attrs[:last_error] = REJECTIONS[index % REJECTIONS.size] if status == "rejected"
-      attrs[:last_error] = "HTTP 503" if status == "failed"
+      attrs[:last_error_codes] = REJECTIONS[index % REJECTIONS.size] if status == "rejected"
+      attrs[:last_error_codes] = Ledi::ErrorCodes.transport("http_error") if status == "failed"
       attrs[:first_attempt_at] = 2.days.ago if status == "failed"
     end
     LediOutboxEntry.create!(attrs)

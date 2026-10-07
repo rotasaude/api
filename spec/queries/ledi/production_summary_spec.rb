@@ -3,10 +3,10 @@ require "rails_helper"
 RSpec.describe Ledi::ProductionSummary do
   around { |ex| CityConnection.with(register_test_city!) { ex.run } }
 
-  def entry!(status, competence: "202610", error: nil)
+  def entry!(status, competence: "202610", codes: nil)
     attrs = { uuid: "1234567-#{SecureRandom.uuid}", ficha_type: "procedimento", competence: competence,
               source_type: "synthetic", source_id: SecureRandom.uuid, ledi_version: "8.7.0",
-              next_attempt_at: Time.current, status: status, last_error: error }
+              next_attempt_at: Time.current, status: status, last_error_codes: codes || [] }
     attrs[:accepted_at] = Time.current if status == "accepted"
     attrs[:bytes] = "x".b unless status == "accepted"
     LediOutboxEntry.create!(attrs)
@@ -14,11 +14,11 @@ RSpec.describe Ledi::ProductionSummary do
 
   before do
     3.times { entry!("accepted") }
-    entry!("rejected", error: "CNES 1234567 não pertence ao município")
-    entry!("rejected", error: "CNES 1234567 não pertence ao município")
-    entry!("rejected", error: "CBO incompatível")
+    entry!("rejected", codes: [ { "field" => "cnes", "code" => "not_allowed" } ])
+    entry!("rejected", codes: [ { "field" => "cnes", "code" => "not_allowed" } ])
+    entry!("rejected", codes: [ { "field" => "cboCodigo_2002", "code" => "not_allowed" } ])
     entry!("pending")
-    entry!("failed", error: "HTTP 500")
+    entry!("failed", codes: Ledi::ErrorCodes.transport("http_error"))
     entry!("accepted", competence: "202609")
   end
 
@@ -26,9 +26,9 @@ RSpec.describe Ledi::ProductionSummary do
     expect(described_class.counts("202610")).to eq(accepted: 3, rejected: 3, pending: 1, sending: 0, failed: 1)
   end
 
-  it "agrupa recusas por mensagem, da mais frequente para a menos" do
+  it "agrupa recusas por campo e código" do
     expect(described_class.rejections("202610")).to eq([
-      { message: "CNES 1234567 não pertence ao município", count: 2 }, { message: "CBO incompatível", count: 1 }
+      { field: "cnes", code: "not_allowed", count: 2 }, { field: "cboCodigo_2002", code: "not_allowed", count: 1 }
     ])
   end
 

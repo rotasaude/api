@@ -231,7 +231,7 @@ RSpec.describe "Invariantes do exportador LEDI (ADR 0028)", type: :request do
     surfaces = [ log.string, response.body, DomainEvent.pluck(:payload).to_json,
                  ActiveJob::Base.queue_adapter.enqueued_jobs.to_json,
                  IntegrationCredential.find_by!(kind: "ledi").last_check_message.to_s,
-                 LediOutboxEntry.pluck(:last_error).to_json ]
+                 LediOutboxEntry.pluck(:last_error_codes).to_json ]
     surfaces.each { |text| expect(text).not_to include("usuario-secreto", "senha-secreta-123") }
   end
 

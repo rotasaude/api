@@ -16,7 +16,7 @@ RSpec.describe Ledi::Resend do
   end
 
   before do
-    entry.update!(status: "rejected", last_error: "CNES inválido", attempts: 1)
+    entry.update!(status: "rejected", last_error_codes: [ { "field" => "cnes", "code" => "invalid" } ], attempts: 1)
     allow(DomainEvents).to receive(:publish).and_call_original
   end
 
@@ -25,8 +25,8 @@ RSpec.describe Ledi::Resend do
     uuid = entry.uuid
     freeze_time do
       described_class.call(entry: entry, by: by)
-      expect(entry.reload.slice(:status, :uuid, :last_error, :next_attempt_at))
-        .to eq("status" => "pending", "uuid" => uuid, "last_error" => nil, "next_attempt_at" => Time.current)
+      expect(entry.reload.slice(:status, :uuid, :last_error_codes, :next_attempt_at))
+        .to eq("status" => "pending", "uuid" => uuid, "last_error_codes" => [], "next_attempt_at" => Time.current)
     end
     expect(Ledi::DeliverJob).to have_received(:perform_later).twice
   end
@@ -46,7 +46,7 @@ RSpec.describe Ledi::Resend do
     entry.update_columns(first_attempt_at: 3.days.ago)
     described_class.call(entry: entry, by: by)
     expect(entry.reload.first_attempt_at).to be_nil
-    entry.retry_later!(error: "timeout", wait: 60, give_up_after: 24.hours)
+    entry.retry_later!(codes: Ledi::ErrorCodes.transport("unreachable"), wait: 60, give_up_after: 24.hours)
     expect(entry.reload.status).to eq("pending")
   end
 

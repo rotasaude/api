@@ -61,6 +61,7 @@ class ProductionController < ApplicationController
 
   def ficha_json(entry)
     { id: entry.id, ficha_type: entry.ficha_type, status: entry.status, attempts: entry.attempts,
-      last_error: entry.last_error, created_at: entry.created_at.iso8601, accepted_at: entry.accepted_at&.iso8601 }
+      last_error_codes: entry.last_error_codes, replaces_outbox_id: entry.replaces_outbox_id,
+      created_at: entry.created_at.iso8601, accepted_at: entry.accepted_at&.iso8601 }
   end
 end

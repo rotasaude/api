@@ -21,17 +21,17 @@ RSpec.describe "Produção e-SUS", type: :request do
     allow(Ledi::DeliverJob).to receive(:perform_later)
   end
 
-  def entry!(status, competence: Ledi::Deadline.current(Time.zone.today), error: nil)
+  def entry!(status, competence: Ledi::Deadline.current(Time.zone.today), codes: nil)
     attrs = { uuid: "1234567-#{SecureRandom.uuid}", ficha_type: "procedimento", competence: competence,
               source_type: "synthetic", source_id: SecureRandom.uuid, ledi_version: "8.7.0",
-              next_attempt_at: Time.current, status: status, last_error: error }
+              next_attempt_at: Time.current, status: status, last_error_codes: codes || [] }
     status == "accepted" ? attrs[:accepted_at] = Time.current : attrs[:bytes] = "x".b
     LediOutboxEntry.create!(attrs)
   end
 
   it "devolve o resumo da competência corrente no formato do contrato" do
     entry!("accepted")
-    rejected = entry!("rejected", error: Ledi::ErrorText.sanitize("CPF 12345678909 inválido"))
+    rejected = entry!("rejected", codes: [ { "field" => "cpfCidadao", "code" => "invalid" } ])
     sign_in_as(admin)
     get "/production"
 
@@ -41,17 +41,19 @@ RSpec.describe "Produção e-SUS", type: :request do
     expect(body["competence"]).to eq(competence)
     expect(body["deadline_on"]).to eq(Ledi::Deadline.on(competence).iso8601)
     expect(body["counts"]).to eq("accepted" => 1, "rejected" => 1, "pending" => 0, "sending" => 0, "failed" => 0)
-    expect(body["fichas"].map(&:keys).uniq).to eq([ %w[id ficha_type status attempts last_error created_at accepted_at] ])
-    expect(body["fichas"].find { |f| f["id"] == rejected.id }["last_error"]).to eq("CPF [número] inválido")
+    expect(body["fichas"].map(&:keys).uniq)
+      .to eq([ %w[id ficha_type status attempts last_error_codes replaces_outbox_id created_at accepted_at] ])
+    expect(body["fichas"].find { |f| f["id"] == rejected.id }.slice("last_error_codes", "replaces_outbox_id"))
+      .to eq("last_error_codes" => [ { "field" => "cpfCidadao", "code" => "invalid" } ], "replaces_outbox_id" => nil)
   end
 
   # Review Focus 3.
-  it "rejections agrupa a mensagem já mascarada e nenhum payload sai" do
-    2.times { entry!("rejected", error: Ledi::ErrorText.sanitize("CNS 898001160660761 sem vínculo")) }
+  it "rejections agrupa por campo e código e nenhum payload sai" do
+    2.times { entry!("rejected", codes: [ { "field" => "cnsCidadao", "code" => "not_allowed" } ]) }
     sign_in_as(admin)
     get "/production"
-    expect(body["rejections"]).to eq([ { "message" => "CNS [número] sem vínculo", "count" => 2 } ])
-    expect(response.body).not_to include("898001160660761", "payload")
+    expect(body["rejections"]).to eq([ { "field" => "cnsCidadao", "code" => "not_allowed", "count" => 2 } ])
+    expect(response.body).not_to include("payload")
   end
 
   it "competência pedida, paginação de 50 e competência inválida" do
@@ -90,7 +92,7 @@ RSpec.describe "Produção e-SUS", type: :request do
   end
 
   it "interruptor desligado: 403 feature_disabled nas duas rotas" do
-    entry = entry!("rejected", error: "x")
+    entry = entry!("rejected", codes: Ledi::ErrorCodes.transport("unknown"))
     ledi_off!(city)
     sign_in_as(admin).update!(mfa_verified_at: Time.current)
     get "/production"
@@ -102,7 +104,7 @@ RSpec.describe "Produção e-SUS", type: :request do
   it "reenvio: municipal_admin com step-up; 409 not_rejected; 404; analyst 403; sem step-up 401" do
     allow(Ledi::Observations).to receive(:resend_uuid_policy).and_return(:same)
     allow(DomainEvents).to receive(:publish).and_call_original
-    rejected = entry!("rejected", error: "CNES inválido")
+    rejected = entry!("rejected", codes: [ { "field" => "cnes", "code" => "invalid" } ])
     pending = entry!("pending")
 
     sign_in_as(admin)
@@ -116,7 +118,8 @@ RSpec.describe "Produção e-SUS", type: :request do
     sign_in_as(admin).update!(mfa_verified_at: Time.current)
     post "/production/fichas/#{rejected.id}/resend", as: :json
     expect(response).to have_http_status(:ok)
-    expect(body.slice("id", "status", "last_error")).to eq("id" => rejected.id, "status" => "pending", "last_error" => nil)
+    expect(body.slice("id", "status", "last_error_codes"))
+      .to eq("id" => rejected.id, "status" => "pending", "last_error_codes" => [])
     expect(DomainEvents).to have_received(:publish).with("ledi.ficha_resent", outbox_id: rejected.id, user_id: admin.id)
     post "/production/fichas/#{pending.id}/resend", as: :json
     expect(status_and_error).to eq([ 409, "not_rejected" ])

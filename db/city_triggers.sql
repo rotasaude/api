@@ -839,6 +839,7 @@ BEGIN
      OR NEW.source_type IS DISTINCT FROM OLD.source_type
      OR NEW.source_id IS DISTINCT FROM OLD.source_id
      OR NEW.ledi_version IS DISTINCT FROM OLD.ledi_version
+     OR NEW.replaces_outbox_id IS DISTINCT FROM OLD.replaces_outbox_id
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'ledi_outbox: identity columns never change';
   END IF;

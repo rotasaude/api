@@ -12,7 +12,7 @@ module Ledi
         raise NotRejected unless entry.status == "rejected"
 
         # first_attempt_at nil: reenviar reinicia a janela de 24h (contrato §8).
-        attrs = { status: "pending", last_error: nil, next_attempt_at: Time.current, first_attempt_at: nil }
+        attrs = { status: "pending", last_error_codes: [], next_attempt_at: Time.current, first_attempt_at: nil }
         # PROVISÓRIO: a política vem de pec_observations.yml (resend_after_rejection.same_uuid
         # = accepted ainda não provado contra PEC real). Gate de go-live: rotasaude/api#41.
         if Ledi::Observations.resend_uuid_policy == :new

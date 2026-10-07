@@ -1,5 +1,6 @@
 require "rails_helper"
 require Rails.root.join("db/city_migrate/20261006200001_create_ledi_outbox.rb").to_s
+require Rails.root.join("db/city_migrate/20261007300002_ledi_outbox_error_codes.rb").to_s
 
 RSpec.describe "Migração de cidade 20261006200001 (CreateLediOutbox): down e up" do
   around { |ex| CityConnection.with(register_test_city!) { ex.run } }
@@ -7,7 +8,10 @@ RSpec.describe "Migração de cidade 20261006200001 (CreateLediOutbox): down e u
   def conn = ApplicationRecord.connection
 
   def migrate(direction)
-    ActiveRecord::Migration.suppress_messages { CreateLediOutbox.new.exec_migration(conn, direction) }
+    ActiveRecord::Migration.suppress_messages do
+      CreateLediOutbox.new.exec_migration(conn, direction)
+      LediOutboxErrorCodes.new.exec_migration(conn, :up) if direction == :up
+    end
     LediOutboxEntry.reset_column_information
   end
 
