@@ -45,6 +45,8 @@ module Citizens
         verification = record!(citizen: citizen, by: by)
         apply_profile!(citizen, values.payload, keep_identity: keep_identity)
         citizen.update!(names.payload) if names.payload.any?
+        # ADR 0031: par revalidado já ligado a paciente — nome e perfil seguem.
+        Patients::Resolve.refresh!(Patient.lock.find(citizen.patient_id)) if citizen.patient_id
         settle_cadsus!(citizen, confirmed: cadsus_confirmed)
         result = Result.ok(verification: verification)
       end

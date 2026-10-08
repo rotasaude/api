@@ -17,6 +17,7 @@ module Citizens
         citizen = verification.citizen
         citizen.lock!
         citizen.update!(names.payload)
+        Patients::Resolve.refresh!(Patient.lock.find(citizen.patient_id)) if citizen.patient_id
         DomainEvents.publish("citizen.profile_changed", citizen_id: citizen.id)
         Result.ok(citizen: citizen)
       end
