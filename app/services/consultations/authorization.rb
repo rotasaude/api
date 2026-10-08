@@ -22,6 +22,13 @@ module Consultations
 
     def any_link(user:) = any_allowed_link(user: user).first
 
+    # Todos os vínculos ativos com CBO permitido (sem trava): as opções da consulta.
+    def allowed_links(user:)
+      return [] unless user&.has_role?("health_professional")
+
+      active_links(user).to_a.select { |link| Cbos.allowed?(link.cbo_code) }
+    end
+
     def active_links(user)
       ProfessionalLink.active.joins(:professional).where(professionals: { user_id: user.id }).order(:started_at, :id)
     end

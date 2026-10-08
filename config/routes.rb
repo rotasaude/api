@@ -135,6 +135,17 @@ Rails.application.routes.draw do
     post "screenings/:id/reassess",     to: "screenings#reassess"
     post "ciap2/search",                to: "ciap2_codes#search"
 
+    # Consulta e prontuário em contexto (ADR 0031; contratos §3–§5).
+    # `consultation_options` é literal: não colide com `consultations/:id`.
+    get   "consultation_options",            to: "consultations#options"
+    post  "attendances/:id/consultation",    to: "consultations#create"
+    get   "attendances/:id/record",          to: "clinical_records#context"
+    get   "consultations/:id",               to: "consultations#show"
+    patch "consultations/:id",               to: "consultations#update"
+    post  "consultations/:id/finalize",      to: "consultations#finalize"
+    post  "consultations/:id/addenda",       to: "consultations#addenda"
+    post  "sigtap/search",                   to: "sigtap_procedures#search"
+
     # Pedidos de agendamento, marcação e agenda do dia (spec 2026-09-25 §4).
     get  "units/:id/requests",         to: "appointment_requests#index"
     get  "units/:id/agenda",           to: "appointment_requests#agenda"
@@ -146,6 +157,15 @@ Rails.application.routes.draw do
     get  "requests/unassigned",        to: "appointment_requests#unassigned"
     get  "requests/:id",               to: "appointment_requests#show"
     post "requests/:id/assign_unit",   to: "appointment_requests#assign_unit"
+  end
+
+  # Prontuário fora de contexto (ADR 0031; contratos §3). Prefixo próprio no
+  # proxy de dev do dashboard. A abertura exige step-up; o relatório é do
+  # municipal_admin.
+  scope "/clinical_record" do
+    post "openings",     to: "clinical_record_openings#create"
+    get  "openings",     to: "clinical_record_openings#index"
+    get  "patients/:id", to: "clinical_records#patient"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
