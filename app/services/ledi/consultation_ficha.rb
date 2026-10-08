@@ -28,27 +28,38 @@ module Ledi
       Ledi::Enqueue.call(ficha, city: city) ? :enqueued : :unusable
     end
 
+    # Sob o lock da linha, o status antes de tudo: em envio → InFlight (o job
+    # tenta de novo), nunca "não gerada". Regravada/regerada/correção → a
+    # "não gerada" aberta da consulta fica resolvida.
     def refresh!(consultation, city: Current.city)
       return :unusable unless exportable?(city)
 
-      latest = LediOutboxEntry.where(source_type: SOURCE_TYPE, source_id: consultation.id)
-                              .where.not(status: "correction_pending").order(created_at: :desc, id: :desc).first
+      latest = latest_entry(consultation)
       return generate(consultation, city: city) unless latest
-
-      ficha, reasons = build(consultation)
-      return record_failure!(consultation, reasons) if reasons.any?
 
       ApplicationRecord.transaction do
         latest.lock!
-        case latest.status
-        when "sending" then raise InFlight
-        when "pending", "failed"
-          latest.update!(bytes: Ledi::Transport.wrap(ficha, city: city, uuid: latest.uuid))
-          :rewritten
-        when "rejected" then Ledi::Enqueue.call(ficha, city: city, replaces: latest) ? :regenerated : :unusable
-        when "accepted" then correction!(latest, ficha, city)
-        end
+        raise InFlight if latest.status == "sending"
+
+        ficha, reasons = build(consultation)
+        next record_failure!(consultation, reasons) if reasons.any?
+
+        outcome = case latest.status
+                  when "pending", "failed"
+                    latest.update!(bytes: Ledi::Transport.wrap(ficha, city: city, uuid: latest.uuid))
+                    :rewritten
+                  when "rejected" then Ledi::Enqueue.call(ficha, city: city, replaces: latest) ? :regenerated : :unusable
+                  when "accepted" then correction!(latest, ficha, city)
+                  end
+        resolve_failure!(consultation) unless outcome == :unusable
+        outcome
       end
+    end
+
+    # A ficha da consulta (a mais recente; a correção de uma aceita não conta).
+    def latest_entry(consultation)
+      LediOutboxEntry.where(source_type: SOURCE_TYPE, source_id: consultation.id)
+                     .where.not(status: "correction_pending").order(created_at: :desc, id: :desc).first
     end
 
     def build(consultation)
@@ -108,17 +119,29 @@ module Ledi
     end
 
     # "Gerar de novo" (contratos §6 do 18), como Ledi::ScreeningFicha.retry!.
+    # Falha nascida de um adendo (a ficha já existe): refresh!, que leva o
+    # adendo à ficha — generate só diria :exists e resolveria sem regravar.
     def retry!(failure, by:)
       failure.with_lock do
         raise AlreadyResolved if failure.resolved?
 
         consultation = Consultation.find_by(id: failure.source_id)
-        outcome = consultation ? generate(consultation) : :skipped
+        outcome = consultation ? attempt(consultation) : :skipped
         resolve_failure!(consultation) if outcome == :exists
         DomainEvents.publish("ledi.generation_retried", failure_id: failure.id, source_type: failure.source_type,
                                                         source_id: failure.source_id)
       end
       failure.reload
+    end
+
+    # Ficha em envio: a falha fica aberta e o job tenta de novo (InFlight).
+    def attempt(consultation)
+      return generate(consultation) unless latest_entry(consultation)
+
+      refresh!(consultation)
+    rescue InFlight
+      Ledi::ConsultationFichaJob.enqueue_for(consultation, reason: "addendum")
+      :in_flight
     end
 
     # "Reenviar" recusada: regera da consulta (uuid novo, replaces_outbox_id).
@@ -186,6 +209,6 @@ module Ledi
     rescue Date::Error
       nil
     end
-    private_class_method :correction!, :problem, :measurements, :birth_date
+    private_class_method :attempt, :latest_entry, :correction!, :problem, :measurements, :birth_date
   end
 end

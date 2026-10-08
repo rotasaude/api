@@ -136,6 +136,88 @@ RSpec.describe Ledi::ConsultationFicha do
     expect(ficha_of(correction).atendimentosIndividuais.sole.condutas).to eq([ 9 ])
   end
 
+  # Fix round 1: falha nascida no refresh! (a ficha já existe) — "gerar de
+  # novo" leva o adendo à ficha em vez de só resolver.
+  it "falha do adendo depois do aceite: gerar de novo regrava a correction_pending e resolve" do
+    consultation = finalized!
+    described_class.generate(consultation)
+    accepted = LediOutboxEntry.sole.tap(&:accept!)
+    unit.update_columns(cnes: nil)
+    addendum!(consultation, "conducts" => [ 1, 9 ])
+    expect(described_class.refresh!(consultation.reload)).to eq(:failed)
+    failure = LediGenerationFailure.sole
+    expect([ failure.reason_codes, LediOutboxEntry.count ]).to eq([ %w[unit_without_cnes], 1 ])
+    unit.update_columns(cnes: "1234567")
+    expect(described_class.retry!(failure, by: ledi_admin!).resolved_at).to be_present
+    correction = LediOutboxEntry.find_by!(replaces_outbox_id: accepted.id)
+    expect(correction.status).to eq("correction_pending")
+    expect(ficha_of(correction).atendimentosIndividuais.sole.condutas).to eq([ 1, 9 ])
+  end
+
+  it "falha do adendo com a ficha pendente: gerar de novo regrava o mesmo uuid" do
+    consultation = finalized!
+    described_class.generate(consultation)
+    entry = LediOutboxEntry.sole
+    unit.update_columns(cnes: nil)
+    addendum!(consultation, "conducts" => [ 1, 9 ])
+    described_class.refresh!(consultation.reload)
+    unit.update_columns(cnes: "1234567")
+    expect(described_class.retry!(LediGenerationFailure.sole, by: ledi_admin!).resolved_at).to be_present
+    expect([ LediOutboxEntry.sole.uuid, ficha_of(entry.reload).atendimentosIndividuais.sole.condutas ])
+      .to eq([ entry.uuid, [ 1, 9 ] ])
+  end
+
+  it "gerar de novo com a ficha em envio: a falha fica aberta e o job tenta de novo" do
+    ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+    consultation = finalized!
+    described_class.generate(consultation)
+    unit.update_columns(cnes: nil)
+    addendum!(consultation, "conducts" => [ 1, 9 ])
+    described_class.refresh!(consultation.reload)
+    failure = LediGenerationFailure.sole
+    LediOutboxEntry.update_all(status: "sending")
+    unit.update_columns(cnes: "1234567")
+    expect(described_class.retry!(failure, by: ledi_admin!).resolved_at).to be_nil
+    job = ActiveJob::Base.queue_adapter.enqueued_jobs.select { |j| j[:job] == Ledi::ConsultationFichaJob }.last
+    expect(ActiveJob::Arguments.deserialize(job[:args]).first)
+      .to eq(city_slug: city.slug, consultation_id: consultation.id, reason: "addendum")
+    expect(DomainEvent.where(name: "ledi.generation_retried").count).to eq(1)
+  end
+
+  it "ficha em envio com motivos presentes: InFlight, nunca 'não gerada'" do
+    consultation = finalized!
+    described_class.generate(consultation)
+    LediOutboxEntry.update_all(status: "sending")
+    unit.update_columns(cnes: nil)
+    addendum!(consultation, "conducts" => [ 1, 9 ])
+    expect { described_class.refresh!(consultation.reload) }.to raise_error(described_class::InFlight)
+    expect(LediGenerationFailure.count).to eq(0)
+  end
+
+  # Decisão do usuário 2026-10-08: consulta de não médico omite CID-10 na ficha.
+  it "enfermeira avalia CID-10 da lista e um CIAP-2: a ficha só leva o CIAP-2; a do médico leva o CID-10" do
+    nurse = doctor!(unit, cbo: "223505")
+    exportable_unit!(unit, doctor, nurse)
+    citizen = verified_citizen!(1)
+    medical = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen,
+                                      evaluated_problems: [ { "terminology" => "cid10", "code" => "E119", "action" => "add" } ])
+    nursing = started_consultation!(unit: unit, doctor: nurse, citizen: citizen.reload)
+    cid10 = PatientProblem.find_by!(code: "E119")
+    problems = [ { "problem_id" => cid10.id, "action" => "evaluate" },
+                 { "terminology" => "ciap2", "code" => "T90", "action" => "add" } ]
+    Consultations::SaveDraft.call(consultation: nursing, params: draft_body(evaluated_problems: problems), by: nurse)
+    result = Consultations::Finalize.call(consultation: nursing.reload, outcome_params: { "outcome" => "discharged" }, by: nurse)
+    expect(result).to be_ok
+    expect(nursing.reload.problem_items.map(&:code)).to contain_exactly("E119", "T90")
+
+    described_class.generate(medical)
+    described_class.generate(nursing)
+    sent = ->(c) { ficha_of(LediOutboxEntry.find_by!(source_id: c.id)).atendimentosIndividuais.sole.problemasCondicoes }
+    expect(sent.(nursing).map(&:cid10)).to all(be_nil)
+    expect(sent.(nursing).map(&:ciap)).to eq([ "T90" ])
+    expect(sent.(medical).map(&:cid10)).to eq([ "E119" ])
+  end
+
   it "ficha em envio: tenta de novo depois (InFlight)" do
     consultation = finalized!
     described_class.generate(consultation)
