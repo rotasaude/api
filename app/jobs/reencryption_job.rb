@@ -65,7 +65,9 @@ class ReencryptionJob < ApplicationJob
     count = 0
     model.unscoped.find_each(batch_size: BATCH_SIZE) do |record|
       next if attrs.all? { |attr| record[attr].nil? }
-      record.encrypt
+      # ADR 0031: consulta finalizada, adendo, abertura e o cpf do paciente só
+      # aceitam a regravação do texto cifrado sob a marca da re-cifra.
+      CityEncryption.allowing_reencryption { record.encrypt }
       count += 1
     end
     count

@@ -27,6 +27,10 @@
 # (tentar a chave nova, cair para a antiga) foi rejeitado: colapsaria "já
 # migrado" e "corrompido" no mesmo caminho, escondendo corrupção real como um
 # resume qualquer.
+# ADR 0031: a transação leva a marca rota.reencrypting (consulta finalizada,
+# adendo, abertura e o cpf do paciente só aceitam a regravação do texto
+# cifrado sob ela) — por isso é CityEncryption.allowing_reencryption, que abre
+# a mesma `ApplicationRecord.transaction` (com savepoint próprio).
 #
 # Fix round 2: a migração real de uma cidade em dev/produção NÃO é "chave de
 # cidade A -> chave de cidade B" — é "chave da PLATAFORMA (o que já existia
@@ -89,7 +93,7 @@ class CityRekey
     # aqui, então o Result.fail só é construído depois que o banco já voltou ao
     # estado anterior — nunca antes, nunca com a transação ainda aberta.
     CityConnection.with(@city) do
-      ApplicationRecord.transaction do
+      CityEncryption.allowing_reencryption do
         TARGETS.each { |model, attribute| counts[model.name] += rewrite(model, attribute) }
       end
     end

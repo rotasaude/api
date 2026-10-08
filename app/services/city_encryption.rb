@@ -67,10 +67,38 @@ module CityEncryption
     [ Patient,        :social_name ],
     [ Patient,        :mother_name ],
     [ Patient,        :birth_date ],
-    [ Patient,        :sex ]
+    [ Patient,        :sex ],
+    # ADR 0031: texto clínico (imutável; a re-cifra passa pela marca abaixo).
+    [ Consultation,   :subjective ],
+    [ Consultation,   :objective ],
+    [ Consultation,   :assessment ],
+    [ Consultation,   :plan ],
+    [ ConsultationAddendum, :text ],
+    [ ClinicalRecordOpening, :reason_note ]
   ].freeze
 
   module_function
+
+  # ADR 0031 (Desvio 4): consulta finalizada, adendo, abertura e o cpf do
+  # paciente são imutáveis no banco; a única escrita aceita é regravar as
+  # colunas cifradas sob esta marca. Usado por ReencryptionJob e CityRekey.
+  #
+  # Savepoint próprio (requires_new): na falha, o ROLLBACK TO SAVEPOINT desfaz
+  # o SET LOCAL. No sucesso, não: SET LOCAL sobrevive ao RELEASE SAVEPOINT até
+  # o fim da transação EXTERNA — por isso a marca volta a 'off' na mão. Só no
+  # sucesso (`$!` nulo, inclusive `return`/`break` do bloco): depois de um erro
+  # de SQL a transação está abortada, e o SET levantaria por cima do erro real.
+  def allowing_reencryption
+    connection = ApplicationRecord.connection
+    ApplicationRecord.transaction(requires_new: true) do
+      connection.execute("SET LOCAL rota.reencrypting = 'on'")
+      begin
+        yield
+      ensure
+        connection.execute("SET LOCAL rota.reencrypting = 'off'") unless $!
+      end
+    end
+  end
 
   def context_properties(city)
     { key_provider: key_provider(city) }

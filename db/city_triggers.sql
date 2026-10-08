@@ -1006,17 +1006,28 @@ $do$;
 -- recente (Patients::Resolve).
 -- Re-cifra (CityRekey, ReencryptionJob): o cpf é cifrado DETERMINÍSTICO, e
 -- trocar o material da cidade muda o texto cifrado sem mudar o valor. Só a
--- transação que se marca com rota.reencrypting = 'on' (SET LOCAL) pode
--- regravá-lo; id e created_at não mudam nem assim. Os demais campos cifrados
--- (nomes, nascimento, sexo) já mudam livremente.
+-- transação marcada por CityEncryption.allowing_reencryption
+-- (rota.reencrypting = 'on', SET LOCAL) pode regravá-lo — e, sob a marca,
+-- SÓ as colunas cifradas mudam (o mesmo critério das consultas, abaixo); id
+-- e created_at não mudam nem assim. Fora da marca, os demais campos cifrados
+-- (nomes, nascimento, sexo) mudam livremente (Patients::Resolve).
 CREATE OR REPLACE FUNCTION rota_patient_guard() RETURNS trigger AS $fn$
+DECLARE
+  encrypted text[] := ARRAY['cpf', 'full_name', 'social_name', 'mother_name', 'birth_date', 'sex'];
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'patients is append-only: DELETE refused';
   END IF;
-  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.created_at IS DISTINCT FROM OLD.created_at
-     OR (NEW.cpf IS DISTINCT FROM OLD.cpf
-         AND current_setting('rota.reencrypting', true) IS DISTINCT FROM 'on') THEN
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'patients: identity columns never change';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' THEN
+    IF (to_jsonb(NEW) - encrypted) IS DISTINCT FROM (to_jsonb(OLD) - encrypted) THEN
+      RAISE EXCEPTION 'patients: re-encryption only rewrites the encrypted columns';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.cpf IS DISTINCT FROM OLD.cpf THEN
     RAISE EXCEPTION 'patients: identity columns never change';
   END IF;
   RETURN NEW;
@@ -1102,6 +1113,126 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS patient_profile_divergences_append_only_truncate ON patient_profile_divergences';
     EXECUTE 'CREATE TRIGGER patient_profile_divergences_append_only_truncate
       BEFORE TRUNCATE ON patient_profile_divergences
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;
+
+-- consultations (ADR 0031, Invariantes; spec §4): uma por atendimento; nunca
+-- some; a identidade não muda; o rascunho muda à vontade; finalizada nunca
+-- muda. Única exceção: a re-cifra (CityEncryption.allowing_reencryption marca
+-- a transação com rota.reencrypting) pode regravar SÓ o texto cifrado.
+CREATE OR REPLACE FUNCTION rota_consultation_guard() RETURNS trigger AS $fn$
+DECLARE
+  texts text[] := ARRAY['subjective', 'objective', 'assessment', 'plan'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'consultations is append-only: DELETE refused';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.attendance_id IS DISTINCT FROM OLD.attendance_id
+     OR NEW.patient_id IS DISTINCT FROM OLD.patient_id OR NEW.author_user_id IS DISTINCT FROM OLD.author_user_id
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'consultations: identity columns never change';
+  END IF;
+  IF OLD.status = 'finalized' THEN
+    IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - texts) = (to_jsonb(OLD) - texts) THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'consultations: a finalized consultation never changes; corrections are addenda';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Itens da consulta (ADR 0031; spec §4): só acréscimo. Sem adendo, só com a
+-- consulta ainda em rascunho (a finalização grava os itens antes de virar o
+-- status); depois, só com um adendo DESTA consulta.
+CREATE OR REPLACE FUNCTION rota_consultation_item_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.addendum_id IS NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM consultations c WHERE c.id = NEW.consultation_id AND c.status = 'draft') THEN
+      RAISE EXCEPTION '%: items of a finalized consultation only come with an addendum', TG_TABLE_NAME;
+    END IF;
+  ELSIF NOT EXISTS (SELECT 1 FROM consultation_addenda a WHERE a.id = NEW.addendum_id AND a.consultation_id = NEW.consultation_id) THEN
+    RAISE EXCEPTION '%: addendum of another consultation', TG_TABLE_NAME;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Adendo só em consulta finalizada (ADR 0031).
+CREATE OR REPLACE FUNCTION rota_consultation_addendum_insert_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM consultations c WHERE c.id = NEW.consultation_id AND c.status = 'finalized') THEN
+    RAISE EXCEPTION 'consultation_addenda: only a finalized consultation gains addenda';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Só acréscimo, com a exceção da re-cifra: as colunas passadas em TG_ARGV (as
+-- cifradas) podem ser regravadas com rota.reencrypting; nada mais muda.
+CREATE OR REPLACE FUNCTION rota_reencryption_only() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION '% is append-only: DELETE refused', TG_TABLE_NAME;
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - TG_ARGV) = (to_jsonb(OLD) - TG_ARGV) THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION '% is append-only: UPDATE refused', TG_TABLE_NAME;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.consultations') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS consultations_guard ON consultations';
+    EXECUTE 'CREATE TRIGGER consultations_guard
+      BEFORE UPDATE OR DELETE ON consultations
+      FOR EACH ROW EXECUTE FUNCTION rota_consultation_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS consultations_append_only_truncate ON consultations';
+    EXECUTE 'CREATE TRIGGER consultations_append_only_truncate
+      BEFORE TRUNCATE ON consultations
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  FOREACH item IN ARRAY ARRAY['consultation_problems', 'consultation_conducts', 'consultation_exam_requests'] LOOP
+    IF to_regclass('public.' || item) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_items_guard', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE INSERT ON %I FOR EACH ROW EXECUTE FUNCTION rota_consultation_item_guard()',
+                     item || '_items_guard', item);
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only', item);
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END IF;
+  END LOOP;
+  IF to_regclass('public.consultation_addenda') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS consultation_addenda_born_finalized ON consultation_addenda';
+    EXECUTE 'CREATE TRIGGER consultation_addenda_born_finalized
+      BEFORE INSERT ON consultation_addenda
+      FOR EACH ROW EXECUTE FUNCTION rota_consultation_addendum_insert_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS consultation_addenda_reencryption_only ON consultation_addenda';
+    EXECUTE 'CREATE TRIGGER consultation_addenda_reencryption_only
+      BEFORE UPDATE OR DELETE ON consultation_addenda
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''text'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS consultation_addenda_append_only_truncate ON consultation_addenda';
+    EXECUTE 'CREATE TRIGGER consultation_addenda_append_only_truncate
+      BEFORE TRUNCATE ON consultation_addenda
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  IF to_regclass('public.clinical_record_openings') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS clinical_record_openings_reencryption_only ON clinical_record_openings';
+    EXECUTE 'CREATE TRIGGER clinical_record_openings_reencryption_only
+      BEFORE UPDATE OR DELETE ON clinical_record_openings
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason_note'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS clinical_record_openings_append_only_truncate ON clinical_record_openings';
+    EXECUTE 'CREATE TRIGGER clinical_record_openings_append_only_truncate
+      BEFORE TRUNCATE ON clinical_record_openings
       FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
   END IF;
 END

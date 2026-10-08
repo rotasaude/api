@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_400001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_400002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -416,6 +416,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_400001) do
     t.check_constraint "(profile_source IS NULL AND birth_date IS NULL AND sex IS NULL) OR (profile_source IS NOT NULL AND birth_date IS NOT NULL AND sex IS NOT NULL)", name: "ck_citizens_profile_complete"
   end
 
+  create_table "clinical_record_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.uuid "patient_id", null: false
+    t.string "reason_code", null: false
+    t.text "reason_note"
+    t.uuid "user_id", null: false
+    t.index ["created_at"], name: "index_clinical_record_openings_on_created_at"
+    t.index ["patient_id"], name: "index_clinical_record_openings_on_patient_id"
+    t.index ["user_id", "patient_id", "expires_at"], name: "idx_clinical_record_openings_valid"
+    t.check_constraint "expires_at > created_at", name: "ck_clinical_record_openings_expiry"
+    t.check_constraint "(reason_code::text = 'other'::text) = (reason_note IS NOT NULL)", name: "ck_clinical_record_openings_note"
+    t.check_constraint "reason_code::text = ANY (ARRAY['case_review'::text, 'active_search'::text, 'continuity_of_care'::text, 'other'::text])", name: "ck_clinical_record_openings_reason"
+  end
+
   create_table "consent_terms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.text "body", null: false
     t.datetime "created_at", null: false
@@ -438,6 +453,123 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_400001) do
     t.index ["conversation_id", "revoked_at"], name: "idx_consents_one_active_per_conversation", unique: true, where: "(revoked_at IS NULL)"
     t.index ["conversation_id"], name: "index_consents_on_conversation_id"
     t.index ["given_at"], name: "index_consents_on_given_at"
+  end
+
+  create_table "consultation_addenda", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "author_user_id", null: false
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", null: false
+    t.jsonb "item_changes", default: {}, null: false
+    t.uuid "opening_id"
+    t.text "reason", null: false
+    t.text "text", null: false
+    t.index ["author_user_id"], name: "index_consultation_addenda_on_author_user_id"
+    t.index ["consultation_id"], name: "index_consultation_addenda_on_consultation_id"
+    t.index ["opening_id"], name: "index_consultation_addenda_on_opening_id"
+    t.check_constraint "jsonb_typeof(item_changes) = 'object'::text", name: "ck_consultation_addenda_item_changes"
+    t.check_constraint "length(btrim(reason)) >= 10 AND length(btrim(reason)) <= 500", name: "ck_consultation_addenda_reason"
+  end
+
+  create_table "consultation_conducts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "action", default: "add", null: false
+    t.uuid "addendum_id"
+    t.integer "code", null: false
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", null: false
+    t.index ["addendum_id"], name: "index_consultation_conducts_on_addendum_id"
+    t.index ["consultation_id"], name: "index_consultation_conducts_on_consultation_id"
+    t.check_constraint "action::text = ANY (ARRAY['add'::text, 'remove'::text])", name: "ck_consultation_conducts_action"
+    t.check_constraint "code = ANY (ARRAY[1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14])", name: "ck_consultation_conducts_code"
+    t.check_constraint "action::text = 'add'::text OR addendum_id IS NOT NULL", name: "ck_consultation_conducts_removal"
+  end
+
+  create_table "consultation_exam_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "addendum_id"
+    t.string "cid10_justification", limit: 4
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", null: false
+    t.string "sigtap_code", limit: 10, null: false
+    t.string "sigtap_competence", limit: 6, null: false
+    t.string "status", default: "requested", null: false
+    t.index ["addendum_id"], name: "index_consultation_exam_requests_on_addendum_id"
+    t.index ["consultation_id"], name: "index_consultation_exam_requests_on_consultation_id"
+    t.check_constraint "status::text = 'requested'::text OR addendum_id IS NOT NULL", name: "ck_consultation_exam_requests_cancel"
+    t.check_constraint "cid10_justification IS NULL OR cid10_justification::text ~ '^[A-Z][0-9]{2}[0-9X]?$'::text", name: "ck_consultation_exam_requests_cid10"
+    t.check_constraint "sigtap_competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text", name: "ck_consultation_exam_requests_competence"
+    t.check_constraint "sigtap_code::text ~ '^02[0-9]{8}$'::text", name: "ck_consultation_exam_requests_sigtap"
+    t.check_constraint "status::text = ANY (ARRAY['requested'::text, 'cancelled'::text])", name: "ck_consultation_exam_requests_status"
+  end
+
+  create_table "consultation_problems", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "action", null: false
+    t.uuid "addendum_id"
+    t.string "code", limit: 4, null: false
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", null: false
+    t.date "onset_on"
+    t.string "onset_precision"
+    t.uuid "patient_problem_id", null: false
+    t.date "resolved_on"
+    t.string "status_after", null: false
+    t.string "terminology", null: false
+    t.uuid "terminology_release_id", null: false
+    t.index ["addendum_id"], name: "index_consultation_problems_on_addendum_id"
+    t.index ["consultation_id"], name: "index_consultation_problems_on_consultation_id"
+    t.index ["patient_problem_id"], name: "index_consultation_problems_on_patient_problem_id"
+    t.check_constraint "action::text = ANY (ARRAY['evaluate'::text, 'add'::text, 'resolve'::text, 'correct_onset'::text])", name: "ck_consultation_problems_action"
+    t.check_constraint "status_after::text = ANY (ARRAY['active'::text, 'resolved'::text])", name: "ck_consultation_problems_status"
+    t.check_constraint "terminology::text = ANY (ARRAY['ciap2'::text, 'cid10'::text])", name: "ck_consultation_problems_terminology"
+  end
+
+  create_table "consultations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "assessment"
+    t.uuid "attendance_id", null: false
+    t.uuid "author_user_id", null: false
+    t.integer "capillary_glucose"
+    t.integer "care_type"
+    t.string "cbo_code", null: false
+    t.datetime "created_at", null: false
+    t.integer "diastolic"
+    t.jsonb "draft_items", default: {}, null: false
+    t.datetime "finalized_at"
+    t.string "glucose_moment"
+    t.integer "heart_rate"
+    t.integer "height_cm"
+    t.text "objective"
+    t.integer "pain_score"
+    t.uuid "patient_id", null: false
+    t.text "plan"
+    t.uuid "professional_link_id", null: false
+    t.integer "respiratory_rate"
+    t.integer "spo2"
+    t.datetime "started_at", null: false
+    t.string "status", default: "draft", null: false
+    t.text "subjective"
+    t.integer "systolic"
+    t.decimal "temperature_c", precision: 3, scale: 1
+    t.datetime "updated_at", null: false
+    t.decimal "weight_kg", precision: 5, scale: 2
+    t.index ["attendance_id"], name: "index_consultations_on_attendance_id", unique: true
+    t.index ["author_user_id"], name: "index_consultations_on_author_user_id"
+    t.index ["patient_id"], name: "index_consultations_on_patient_id"
+    t.index ["professional_link_id"], name: "index_consultations_on_professional_link_id"
+    t.check_constraint "(systolic IS NULL AND diastolic IS NULL) OR (systolic IS NOT NULL AND diastolic IS NOT NULL AND diastolic < systolic)", name: "ck_consultations_bp"
+    t.check_constraint "care_type IS NULL OR care_type = ANY (ARRAY[1, 2, 5, 6])", name: "ck_consultations_care_type"
+    t.check_constraint "cbo_code::text ~ '^[0-9A-Z]{6}$'::text", name: "ck_consultations_cbo_code"
+    t.check_constraint "diastolic IS NULL OR diastolic BETWEEN 20 AND 200", name: "ck_consultations_diastolic"
+    t.check_constraint "jsonb_typeof(draft_items) = 'object'::text AND (status::text = 'draft'::text OR draft_items = '{}'::jsonb)", name: "ck_consultations_draft_items"
+    t.check_constraint "(status::text = 'finalized'::text) = (finalized_at IS NOT NULL)", name: "ck_consultations_finalization"
+    t.check_constraint "status::text = 'draft'::text OR care_type IS NOT NULL", name: "ck_consultations_finalized_care_type"
+    t.check_constraint "(capillary_glucose IS NULL AND glucose_moment IS NULL) OR (capillary_glucose BETWEEN 10 AND 800 AND glucose_moment::text = ANY (ARRAY['fasting'::text, 'postprandial'::text, 'random'::text]))", name: "ck_consultations_glucose"
+    t.check_constraint "heart_rate IS NULL OR heart_rate BETWEEN 20 AND 250", name: "ck_consultations_heart_rate"
+    t.check_constraint "height_cm IS NULL OR height_cm BETWEEN 30 AND 250", name: "ck_consultations_height"
+    t.check_constraint "pain_score IS NULL OR pain_score BETWEEN 0 AND 10", name: "ck_consultations_pain_score"
+    t.check_constraint "respiratory_rate IS NULL OR respiratory_rate BETWEEN 4 AND 80", name: "ck_consultations_respiratory_rate"
+    t.check_constraint "spo2 IS NULL OR spo2 BETWEEN 50 AND 100", name: "ck_consultations_spo2"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::text, 'finalized'::text])", name: "ck_consultations_status"
+    t.check_constraint "systolic IS NULL OR systolic BETWEEN 50 AND 300", name: "ck_consultations_systolic"
+    t.check_constraint "temperature_c IS NULL OR temperature_c BETWEEN 30 AND 45", name: "ck_consultations_temperature"
+    t.check_constraint "weight_kg IS NULL OR weight_kg BETWEEN 0.5 AND 400", name: "ck_consultations_weight"
   end
 
   create_table "conversations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1252,7 +1384,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_400001) do
   add_foreign_key "citizen_verifications", "users", column: "verified_by_user_id"
   add_foreign_key "citizens", "neighborhoods"
   add_foreign_key "citizens", "patients"
+  add_foreign_key "clinical_record_openings", "patients"
+  add_foreign_key "clinical_record_openings", "users"
   add_foreign_key "consents", "conversations"
+  add_foreign_key "consultation_addenda", "clinical_record_openings", column: "opening_id"
+  add_foreign_key "consultation_addenda", "consultations"
+  add_foreign_key "consultation_addenda", "users", column: "author_user_id"
+  add_foreign_key "consultation_conducts", "consultation_addenda", column: "addendum_id"
+  add_foreign_key "consultation_conducts", "consultations"
+  add_foreign_key "consultation_exam_requests", "consultation_addenda", column: "addendum_id"
+  add_foreign_key "consultation_exam_requests", "consultations"
+  add_foreign_key "consultation_problems", "consultation_addenda", column: "addendum_id"
+  add_foreign_key "consultation_problems", "consultations"
+  add_foreign_key "consultation_problems", "patient_problems"
+  add_foreign_key "consultations", "attendances"
+  add_foreign_key "consultations", "patients"
+  add_foreign_key "consultations", "professional_links"
+  add_foreign_key "consultations", "users", column: "author_user_id"
   add_foreign_key "conversations", "citizens"
   add_foreign_key "health_team_members", "health_teams"
   add_foreign_key "health_team_members", "professionals"
@@ -1269,6 +1417,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_400001) do
   add_foreign_key "memberships", "users", column: "granted_by_id"
   add_foreign_key "neighborhood_coverages", "health_units"
   add_foreign_key "neighborhood_coverages", "neighborhoods"
+  add_foreign_key "patient_problem_events", "consultation_addenda", column: "addendum_id", deferrable: :deferred
+  add_foreign_key "patient_problem_events", "consultations", deferrable: :deferred
   add_foreign_key "patient_problem_events", "patient_problems", deferrable: :deferred
   add_foreign_key "patient_problem_events", "users"
   add_foreign_key "patient_problems", "patients"

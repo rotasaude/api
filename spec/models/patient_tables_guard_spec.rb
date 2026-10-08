@@ -92,6 +92,15 @@ RSpec.describe "Guardas das tabelas do paciente" do
       expect { with_reencrypting.call { patient.update_columns(id: SecureRandom.uuid) } }
         .to raise_error(ActiveRecord::StatementInvalid, /identity columns never change/)
     end
+
+    # Sob a marca, só as colunas cifradas mudam (o mesmo critério das consultas).
+    it "com a marca da re-cifra, nada além das colunas cifradas muda" do
+      patient
+      expect { attempt { CityEncryption.allowing_reencryption { patient.update_columns(updated_at: 1.day.from_now) } } }
+        .to raise_error(ActiveRecord::StatementInvalid, /re-encryption only rewrites the encrypted columns/)
+      expect { CityEncryption.allowing_reencryption { patient.reload.encrypt } }.not_to raise_error
+      expect(patient.reload.slice(:cpf, :full_name)).to eq("cpf" => citizen.cpf, "full_name" => "Maria Aparecida da Silva")
+    end
   end
 
   describe "patient_problems" do

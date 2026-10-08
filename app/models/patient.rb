@@ -12,6 +12,7 @@ class Patient < ApplicationRecord
 
   has_many :citizens, dependent: :restrict_with_error
   has_many :problems, class_name: "PatientProblem", dependent: :restrict_with_error
+  has_many :consultations, dependent: :restrict_with_error
 
   validates :cpf, presence: true
 

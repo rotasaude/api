@@ -22,6 +22,7 @@ class Attendance < ApplicationRecord
   has_one :appointment_request, -> { where("appointment_requests.closed_reason IS DISTINCT FROM 'moved'") },
           foreign_key: :origin_attendance_id, inverse_of: :origin_attendance
   has_one :screening, dependent: :restrict_with_error
+  has_one :consultation, dependent: :restrict_with_error
 
   scope :open_attendances, -> { where(status: %w[waiting in_care]) }
   scope :waiting, -> { where(status: "waiting") }
