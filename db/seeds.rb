@@ -41,6 +41,7 @@ else
   require Rails.root.join("lib/triage_catalog_crew").to_s
   require Rails.root.join("lib/scheduling_crew").to_s
   require Rails.root.join("lib/screening_crew").to_s
+  require Rails.root.join("lib/clinical_record_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -76,6 +77,12 @@ else
 
   ciap2 = ScreeningCrew.seed_platform!
   puts "[seeds] CIAP-2 ....... #{ciap2[:ciap2]} #{ciap2[:imported] ? 'importada (recorte de dev)' : 'já ativa'}"
+
+  # ── Terminologias da consulta (módulo 19, spec 2026-10-07 §9) ─────────────────
+  # Depois do ScreeningCrew: o recorte de CIAP-2 do acolhimento (32 códigos) já
+  # fica ativo; aqui só entra a CID-10 (e a CIAP-2 só se ainda faltar).
+  terms = ClinicalRecordCrew.seed_platform!
+  puts "[seeds] CIAP-2/CID-10 #{terms.map { |kind, imported| "#{kind} #{imported ? 'importada (recorte de dev)' : 'já ativa'}" }.join('; ')}"
 
   # Mesmo protocolo que o provisionamento semeia em rascunho (Plano 4); aqui ativo.
   protocol_defn = CityTemplates.protocol.fetch(:definition)
@@ -237,6 +244,11 @@ else
         screening = ScreeningCrew.seed_current_city(slug: slug, ddd: ddd)
         puts "[seeds] acolhimento . #{screening[:protocol]}; técnica na UBS (#{screening[:technician_link]}); " \
              "#{screening[:walk_ins]} check-ins novos de demanda espontânea"
+
+        # ── Prontuário (módulo 19, spec 2026-10-07 §9) ────────────────────────
+        # Depois do acolhimento: usa a UBS, a médica, a enfermeira e a recepção.
+        clinical = ClinicalRecordCrew.seed_current_city(slug: slug, ddd: ddd)
+        puts "[seeds] prontuário ... interruptor #{clinical[:switch]}; #{clinical[:patient]}: #{clinical[:consultation]}"
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
