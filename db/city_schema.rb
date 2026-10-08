@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_300002) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_400001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -396,15 +396,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_300002) do
     t.string "cpf", null: false
     t.datetime "created_at", null: false
     t.timestamptz "erased_at"
+    t.text "full_name"
     t.text "gender_identity"
+    t.text "mother_name"
     t.uuid "neighborhood_id"
+    t.uuid "patient_id"
     t.string "phone", null: false
     t.string "profile_source"
     t.text "sex"
+    t.text "social_name"
     t.datetime "updated_at", null: false
     t.string "verification_level", default: "declared", null: false
     t.index ["cpf", "phone"], name: "index_citizens_on_cpf_and_phone", unique: true
     t.index ["neighborhood_id"], name: "index_citizens_on_neighborhood_id"
+    t.index ["patient_id"], name: "index_citizens_on_patient_id"
     t.index ["phone"], name: "index_citizens_on_phone"
     t.check_constraint "(verification_level)::text = ANY (ARRAY['declared'::text, 'verified'::text])", name: "ck_citizens_verification_level"
     t.check_constraint "profile_source IS NULL OR profile_source::text = ANY (ARRAY['declared', 'verified']::text[])", name: "ck_citizens_profile_source"
@@ -694,6 +699,71 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_300002) do
     t.index ["idempotency_key"], name: "index_outbound_messages_on_idempotency_key", unique: true
     t.index ["status", "created_at"], name: "index_outbound_messages_on_status_and_created_at"
     t.index ["to"], name: "index_outbound_messages_on_to"
+  end
+
+  create_table "patient_problem_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "addendum_id"
+    t.uuid "consultation_id"
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.date "onset_on"
+    t.string "onset_precision"
+    t.uuid "patient_problem_id", null: false
+    t.date "resolved_on"
+    t.string "status_after", null: false
+    t.uuid "terminology_release_id"
+    t.bigint "txid", default: -> { "txid_current()" }, null: false
+    t.uuid "user_id", null: false
+    t.index ["addendum_id"], name: "index_patient_problem_events_on_addendum_id"
+    t.index ["consultation_id"], name: "index_patient_problem_events_on_consultation_id"
+    t.index ["patient_problem_id"], name: "index_patient_problem_events_on_patient_problem_id"
+    t.index ["user_id"], name: "index_patient_problem_events_on_user_id"
+    t.check_constraint "kind::text = ANY (ARRAY['added'::text, 'resolved'::text, 'reactivated'::text, 'onset_corrected'::text])", name: "ck_patient_problem_events_kind"
+    t.check_constraint "(consultation_id IS NULL) <> (addendum_id IS NULL)", name: "ck_patient_problem_events_source"
+    t.check_constraint "status_after::text = ANY (ARRAY['active'::text, 'resolved'::text])", name: "ck_patient_problem_events_status"
+  end
+
+  create_table "patient_problems", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "code", limit: 4, null: false
+    t.datetime "created_at", null: false
+    t.date "onset_on"
+    t.string "onset_precision"
+    t.uuid "patient_id", null: false
+    t.date "resolved_on"
+    t.string "status", null: false
+    t.string "terminology", null: false
+    t.uuid "terminology_release_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["patient_id", "terminology", "code"], name: "idx_patient_problems_one_active", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["patient_id"], name: "index_patient_problems_on_patient_id"
+    t.check_constraint "(terminology::text = 'ciap2'::text AND code::text ~ '^[A-Z][0-9]{2}$'::text) OR (terminology::text = 'cid10'::text AND code::text ~ '^[A-Z][0-9]{2}[0-9X]?$'::text)", name: "ck_patient_problems_code"
+    t.check_constraint "(onset_on IS NULL) = (onset_precision IS NULL)", name: "ck_patient_problems_onset"
+    t.check_constraint "onset_precision IS NULL OR onset_precision::text = ANY (ARRAY['day'::text, 'month'::text, 'year'::text])", name: "ck_patient_problems_onset_precision"
+    t.check_constraint "(status::text = 'resolved'::text) = (resolved_on IS NOT NULL)", name: "ck_patient_problems_resolution"
+    t.check_constraint "status::text = ANY (ARRAY['active'::text, 'resolved'::text])", name: "ck_patient_problems_status"
+    t.check_constraint "terminology::text = ANY (ARRAY['ciap2'::text, 'cid10'::text])", name: "ck_patient_problems_terminology"
+  end
+
+  create_table "patient_profile_divergences", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "citizen_id", null: false
+    t.datetime "created_at", null: false
+    t.text "fields", null: false, array: true
+    t.uuid "patient_id", null: false
+    t.index ["citizen_id"], name: "index_patient_profile_divergences_on_citizen_id"
+    t.index ["patient_id"], name: "index_patient_profile_divergences_on_patient_id"
+    t.check_constraint "cardinality(fields) > 0 AND fields <@ ARRAY['birth_date'::text, 'sex'::text]", name: "ck_patient_profile_divergences_fields"
+  end
+
+  create_table "patients", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "birth_date"
+    t.string "cpf", null: false
+    t.datetime "created_at", null: false
+    t.text "full_name"
+    t.text "mother_name"
+    t.text "sex"
+    t.text "social_name"
+    t.datetime "updated_at", null: false
+    t.index ["cpf"], name: "index_patients_on_cpf", unique: true
   end
 
   create_table "processed_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1181,6 +1251,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_300002) do
   add_foreign_key "citizen_verifications", "users", column: "revoked_by_user_id"
   add_foreign_key "citizen_verifications", "users", column: "verified_by_user_id"
   add_foreign_key "citizens", "neighborhoods"
+  add_foreign_key "citizens", "patients"
   add_foreign_key "consents", "conversations"
   add_foreign_key "conversations", "citizens"
   add_foreign_key "health_team_members", "health_teams"
@@ -1198,6 +1269,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_300002) do
   add_foreign_key "memberships", "users", column: "granted_by_id"
   add_foreign_key "neighborhood_coverages", "health_units"
   add_foreign_key "neighborhood_coverages", "neighborhoods"
+  add_foreign_key "patient_problem_events", "patient_problems", deferrable: :deferred
+  add_foreign_key "patient_problem_events", "users"
+  add_foreign_key "patient_problems", "patients"
+  add_foreign_key "patient_profile_divergences", "citizens"
+  add_foreign_key "patient_profile_divergences", "patients"
   add_foreign_key "professional_links", "health_units"
   add_foreign_key "professional_links", "professionals"
   add_foreign_key "professional_links", "users", column: "ended_by_user_id"

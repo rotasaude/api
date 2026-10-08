@@ -1000,3 +1000,109 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- patients (ADR 0031; spec 2026-10-07 §3): um por CPF; nunca some; a
+-- identidade não muda. Nome, nascimento e sexo seguem o par validado mais
+-- recente (Patients::Resolve).
+-- Re-cifra (CityRekey, ReencryptionJob): o cpf é cifrado DETERMINÍSTICO, e
+-- trocar o material da cidade muda o texto cifrado sem mudar o valor. Só a
+-- transação que se marca com rota.reencrypting = 'on' (SET LOCAL) pode
+-- regravá-lo; id e created_at não mudam nem assim. Os demais campos cifrados
+-- (nomes, nascimento, sexo) já mudam livremente.
+CREATE OR REPLACE FUNCTION rota_patient_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'patients is append-only: DELETE refused';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR (NEW.cpf IS DISTINCT FROM OLD.cpf
+         AND current_setting('rota.reencrypting', true) IS DISTINCT FROM 'on') THEN
+    RAISE EXCEPTION 'patients: identity columns never change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- citizens.patient_id (ADR 0031, Invariantes): só par validado se liga a
+-- paciente; ligado, nunca troca nem desliga. A revogação (verification_level
+-- volta a declared) não mexe na ligação: "revogação não afeta o prontuário".
+CREATE OR REPLACE FUNCTION rota_citizen_patient_link_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'UPDATE' AND OLD.patient_id IS NOT NULL AND NEW.patient_id IS DISTINCT FROM OLD.patient_id THEN
+    RAISE EXCEPTION 'citizens: the patient link never changes';
+  END IF;
+  IF NEW.patient_id IS NOT NULL AND (TG_OP = 'INSERT' OR OLD.patient_id IS NULL)
+     AND NEW.verification_level IS DISTINCT FROM 'verified' THEN
+    RAISE EXCEPTION 'citizens: only a verified pair links to a patient';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- patient_problems (ADR 0031, Invariantes): o estado só nasce e só muda com
+-- um evento da MESMA transação com os mesmos valores novos
+-- (Patients::ApplyProblemEvent grava o evento antes; a FK do evento é
+-- DEFERRABLE). Identidade fixa; nunca some.
+CREATE OR REPLACE FUNCTION rota_patient_problem_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'patient_problems is append-only: DELETE refused';
+  END IF;
+  IF TG_OP = 'UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.patient_id IS DISTINCT FROM OLD.patient_id
+     OR NEW.terminology IS DISTINCT FROM OLD.terminology OR NEW.code IS DISTINCT FROM OLD.code
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at) THEN
+    RAISE EXCEPTION 'patient_problems: identity columns never change';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM patient_problem_events e
+    WHERE e.patient_problem_id = NEW.id AND e.txid = txid_current()
+      AND e.status_after = NEW.status
+      AND e.onset_on IS NOT DISTINCT FROM NEW.onset_on
+      AND e.onset_precision IS NOT DISTINCT FROM NEW.onset_precision
+      AND e.resolved_on IS NOT DISTINCT FROM NEW.resolved_on) THEN
+    RAISE EXCEPTION 'patient_problems: changes only through an event of the same transaction';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.patients') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS patients_guard ON patients';
+    EXECUTE 'CREATE TRIGGER patients_guard
+      BEFORE UPDATE OR DELETE ON patients
+      FOR EACH ROW EXECUTE FUNCTION rota_patient_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS citizens_patient_link_guard ON citizens';
+    EXECUTE 'CREATE TRIGGER citizens_patient_link_guard
+      BEFORE INSERT OR UPDATE ON citizens
+      FOR EACH ROW EXECUTE FUNCTION rota_citizen_patient_link_guard()';
+  END IF;
+  IF to_regclass('public.patient_problems') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS patient_problems_guard ON patient_problems';
+    EXECUTE 'CREATE TRIGGER patient_problems_guard
+      BEFORE INSERT OR UPDATE OR DELETE ON patient_problems
+      FOR EACH ROW EXECUTE FUNCTION rota_patient_problem_guard()';
+  END IF;
+  IF to_regclass('public.patient_problem_events') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS patient_problem_events_append_only ON patient_problem_events';
+    EXECUTE 'CREATE TRIGGER patient_problem_events_append_only
+      BEFORE UPDATE OR DELETE ON patient_problem_events
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS patient_problem_events_append_only_truncate ON patient_problem_events';
+    EXECUTE 'CREATE TRIGGER patient_problem_events_append_only_truncate
+      BEFORE TRUNCATE ON patient_problem_events
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  IF to_regclass('public.patient_profile_divergences') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS patient_profile_divergences_append_only ON patient_profile_divergences';
+    EXECUTE 'CREATE TRIGGER patient_profile_divergences_append_only
+      BEFORE UPDATE OR DELETE ON patient_profile_divergences
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS patient_profile_divergences_append_only_truncate ON patient_profile_divergences';
+    EXECUTE 'CREATE TRIGGER patient_profile_divergences_append_only_truncate
+      BEFORE TRUNCATE ON patient_profile_divergences
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;

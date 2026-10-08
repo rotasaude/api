@@ -25,6 +25,19 @@ class Citizen < ApplicationRecord
   encrypts :cns
   encrypts :cadsus_pending_cns
 
+  # ADR 0031 (spec §3): nome conferido no documento na validação presencial.
+  # Cifrados com a chave da cidade, não determinísticos (nenhum é chave de
+  # busca). Nome de exibição = social, se houver; senão o completo.
+  encrypts :full_name
+  encrypts :social_name
+  encrypts :mother_name
+  NAME_LIMITS = { "full_name" => 3..200, "social_name" => 1..200, "mother_name" => 1..200 }.freeze
+
+  # ADR 0031: o paciente do CPF, só para par validado (trigger).
+  belongs_to :patient, optional: true
+
+  def display_name = social_name.presence || full_name
+
   has_many :conversations, dependent: :restrict_with_error
   has_many :verifications, class_name: "CitizenVerification", dependent: :restrict_with_error
   has_many :verification_codes, class_name: "CitizenVerificationCode", dependent: :restrict_with_error

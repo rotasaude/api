@@ -132,4 +132,15 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "ledi.generation_failed", to: []
   DomainEvents.bind "ledi.generation_retried", to: []
   DomainEvents.bind "ledi.payload_purged", to: []
+
+  # Módulo 19 (ADR 0031; contratos §7): prontuário; só trilha, só ids. Nenhum
+  # texto clínico, nota de abertura ou nome entra em evento.
+  DomainEvents.bind "patient.created", to: []
+  DomainEvents.bind "patient.linked", to: []
+  DomainEvents.bind "patient_problem.changed", to: []
+  DomainEvents.bind "consultation.started", to: []
+  DomainEvents.bind "consultation.finalized", to: []
+  DomainEvents.bind "consultation.addendum_added", to: []
+  DomainEvents.bind "clinical_record.viewed", to: []
+  DomainEvents.bind "clinical_record.opened", to: []
 end

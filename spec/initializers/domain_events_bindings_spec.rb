@@ -98,3 +98,13 @@ RSpec.describe "screening event bindings (ADR 0030)" do
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
 end
+
+# Módulo 19 (ADR 0031): prontuário, só trilha.
+RSpec.describe "clinical record event bindings (ADR 0031)" do
+  it "declares every module 19 city event with no consumer" do
+    names = %w[patient.created patient.linked patient_problem.changed consultation.started consultation.finalized
+               consultation.addendum_added clinical_record.viewed clinical_record.opened]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end

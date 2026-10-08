@@ -20,7 +20,10 @@ Rails.application.config.filter_parameters += [
   :vitals, :ciap2,
   # ADR 0030: o termo da busca de CIAP-2 (POST /attendance/ciap2/search, `q`) é
   # a queixa sendo digitada. Ancorado: só a chave `q`, não toda chave com "q".
-  /\Aq\z/
+  /\Aq\z/,
+  # ADR 0031: texto clínico da consulta e do adendo, e os nomes da pessoa.
+  # (`:reason` e `:note` já cobrem o motivo do adendo e a nota da abertura.)
+  :subjective, :objective, :assessment, :plan, :text, :full_name, :social_name, :mother_name
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
