@@ -8,7 +8,7 @@ class AttendancesController < ApplicationController
     invalid_outcome: :unprocessable_entity, referral_required: :unprocessable_entity,
     invalid_unit: :unprocessable_entity, already_closed: :conflict, already_called: :conflict,
     wrong_unit: :unprocessable_entity, invalid_transition: :unprocessable_entity, queue_empty: :not_found,
-    missing_role: :forbidden, missing_link: :forbidden
+    missing_role: :forbidden, missing_link: :forbidden, consultation_in_progress: :conflict
   }.freeze
 
   before_action :require_attendance_staff, only: %i[queue close]

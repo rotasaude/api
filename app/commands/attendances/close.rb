@@ -25,6 +25,9 @@ module Attendances
           authorization = Professionals::ClinicalAuthorization.check(user: by, health_unit_id: attendance.health_unit_id)
           next Result.fail(authorization) unless authorization == :ok
         end
+        # ADR 0031 (Desvio 13): com a consulta em rascunho, o desfecho sai pela
+        # finalização (Consultations::Finalize vira a consulta antes de chamar aqui).
+        next Result.fail(:consultation_in_progress) if Consultation.exists?(attendance_id: attendance.id, status: "draft")
         next Result.fail(:already_closed) unless attendance.open?
         next Result.fail(:invalid_transition) unless allowed?(attendance.status, outcome)
 
