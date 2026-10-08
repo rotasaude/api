@@ -12,7 +12,11 @@ module Platform
                 requires: %w[record_mode pec_url ibge_code credential:ledi]),
       Entry.new(key: "cadsus_lookup",
                 description: "Consulta ao CADSUS na validação presencial",
-                requires: %w[credential:cadsus])
+                requires: %w[credential:cadsus]),
+      # ADR 0031: prontuário da APS (módulo 19a), só no modo record.
+      Entry.new(key: "clinical_record",
+                description: "Prontuário da atenção primária (consulta SOAP, lista de problemas, adendos)",
+                requires: %w[record_mode:record])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
@@ -99,6 +103,7 @@ module Platform
     def missing_for(requirement, platform, state)
       case requirement
       when "record_mode" then "record_mode_off" if platform[:record_mode] == "off"
+      when "record_mode:record" then "record_mode_not_record" unless platform[:record_mode] == "record"
       when "pec_url" then "pec_url_missing" if platform[:pec_url].blank?
       when "ibge_code" then "ibge_code_missing" if state[:ibge_code].blank?
       when /\Acredential:(\w+)\z/

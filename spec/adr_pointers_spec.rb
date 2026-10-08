@@ -10,7 +10,7 @@ require "rails_helper"
 # docs/adr/RECONCILIACAO-PONTEIROS.md (no repo docs) e a revisão.
 RSpec.describe "ADR pointers" do
   ROOTS = %w[app config db lib spec deploy].freeze
-  VALID_RANGE = (1..30).freeze
+  VALID_RANGE = (1..31).freeze
   SELF_PATH = "spec/adr_pointers_spec.rb"
   # Casa a forma compacta também: "ADR-0012/0013" carrega DOIS ponteiros, e um
   # regex que só lê o primeiro deixaria o segundo passar sem conferência.
