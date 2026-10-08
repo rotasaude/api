@@ -72,6 +72,40 @@ RSpec.describe Consultations::AddAddendum do
     expect(effective[:exam_requests].sole).to have_attributes(sigtap_code: "0202010503", addendum_id: back.payload[:addendum].id)
   end
 
+  it "não médico mantém a justificativa CID-10 vigente ao acrescentar exame; não troca nem põe nova" do
+    add(changes: { "exam_requests" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "E119" } ] })
+    nurse = doctor!(unit, cbo: "223505")
+    opening = opening_for(nurse)
+    justified_row = Consultations::Effective.call(consultation.reload)[:exam_requests].sole
+    result = add(by: nurse, opening_id: opening.id,
+                 changes: { "exam_requests" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "E119" },
+                                                 { "sigtap_code" => "0202010317" } ] })
+    expect(result).to be_ok
+    addendum = result.payload[:addendum]
+    expect(consultation.exam_requests.where(addendum: addendum).pluck(:sigtap_code, :status)).to eq([ [ "0202010317", "requested" ] ])
+    effective = Consultations::Effective.call(consultation.reload)[:exam_requests]
+    expect(effective.map { |r| [ r.sigtap_code, r.cid10_justification ] }).to eq([ [ "0202010503", "E119" ], [ "0202010317", nil ] ])
+    expect(effective.first).to eq(justified_row)
+
+    count = ConsultationAddendum.count
+    { "trocar" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "I10" } ],
+      "nova" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "E119" },
+                  { "sigtap_code" => "0202010317", "cid10_justification" => "E119" } ] }.each do |label, list|
+      expect(add(by: nurse, opening_id: opening.id, changes: { "exam_requests" => list }).reason).to eq(:cid10_not_allowed_for_cbo), label
+    end
+    expect(ConsultationAddendum.count).to eq(count)
+  end
+
+  it "falha ao aplicar o evento de problema depois de gravar o adendo: nada fica, com o index" do
+    problem = PatientProblem.where(patient_id: consultation.patient_id).sole
+    allow(Patients::ApplyProblemEvent).to receive(:call).and_return(Result.fail(:invalid_problem))
+    result = add(changes: { "evaluated_problems" => [ { "problem_id" => problem.id, "action" => "resolve" } ],
+                            "conducts" => [ 9 ] })
+    expect([ result.reason, result.details ]).to eq([ :invalid_problem, { index: 0 } ])
+    expect([ ConsultationAddendum.count, consultation.conducts.where.not(addendum_id: nil).count ]).to eq([ 0, 0 ])
+    expect(DomainEvent.where(name: "consultation.addendum_added")).to be_empty
+  end
+
   it "não médico avalia CID-10 existente mas não acrescenta CID-10 nem justifica exame com CID-10" do
     nurse = doctor!(unit, cbo: "223505")
     opening = opening_for(nurse)

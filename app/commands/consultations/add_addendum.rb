@@ -96,7 +96,8 @@ module Consultations
       end
 
       if changes.key?("exam_requests")
-        exams = ItemsInput.exams(changes["exam_requests"], cbo: cbo, on: today)
+        kept = effective[:exam_requests].map { |row| [ row.sigtap_code, row.cid10_justification ] }
+        exams = ItemsInput.exams(changes["exam_requests"], cbo: cbo, on: today, kept: kept)
         return exams if exams.failure?
 
         final = exams.payload[:items]

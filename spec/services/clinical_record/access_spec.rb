@@ -54,6 +54,13 @@ RSpec.describe ClinicalRecord::Access do
     expect(access(doctor).then { |g| [ g.kind, g.reason ] }).to eq([ :denied, :out_of_context ])
   end
 
+  it "sem paciente, atendimento de par só declarado nunca é contexto" do
+    declared = screening_citizen!(4)
+    attendance = in_care!(walk_in_attendance!(unit, citizen: declared), by: doctor)
+    grant = described_class.call(user: doctor, patient: nil, attendance: attendance)
+    expect([ grant.kind, grant.reason ]).to eq([ :denied, :out_of_context ])
+  end
+
   it "abertura de outro paciente não justifica" do
     other = Patients::Resolve.call(verified_citizen!(2)).payload[:patient]
     ClinicalRecordOpening.create!(patient: other, user: doctor, reason_code: "case_review", created_at: Time.current,

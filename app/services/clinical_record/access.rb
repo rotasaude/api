@@ -32,7 +32,8 @@ module ClinicalRecord
 
     def in_context?(user, attendance, patient)
       citizen = attendance.citizen
-      return false if patient && !(citizen.verification_level_verified? && citizen.cpf == patient.cpf)
+      return false unless citizen.verification_level_verified?
+      return false if patient && citizen.cpf != patient.cpf
 
       case attendance.status
       when "in_care" then attendance.called_by_user_id == user.id

@@ -88,7 +88,9 @@ module Consultations
       valid ? Result.ok(items: list) : Result.fail(:invalid_conduct)
     end
 
-    def exams(list, cbo:, on:)
+    # `kept`: pares [sigtap_code, cid10] já vigentes (adendo) — o não médico
+    # mantém a justificativa CID-10 que já existe, só não põe nova.
+    def exams(list, cbo:, on:, kept: [])
       return fail_index(:invalid_exam, nil) unless list.is_a?(Array) && list.size <= Ledi::ConsultationMapping.max_exams
 
       seen = []
@@ -102,7 +104,9 @@ module Consultations
         if raw["cid10_justification"].present?
           cid = ClinicalTerms.find("cid10", raw["cid10_justification"])
           return fail_index(:invalid_exam, index) unless cid
-          return fail_index(:cid10_not_allowed_for_cbo, index) unless Ledi::ConsultationMapping.cid10_allowed?(cbo)
+          unless Ledi::ConsultationMapping.cid10_allowed?(cbo) || kept.include?([ exam.code, cid.code ])
+            return fail_index(:cid10_not_allowed_for_cbo, index)
+          end
 
           justification = cid.code
         end
