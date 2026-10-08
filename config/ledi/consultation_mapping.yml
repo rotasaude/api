@@ -27,10 +27,10 @@ entries:
     source: "dicionario-fai.html bloco Exame, codigoExame — só exames do grupo 02 Procedimentos com finalidade diagnóstica (ou ListaExames)"
   exam.max_per_ficha:
     value: 100
-    source: "dicionario-fai.html #17 exame — máximo 100"
+    source: "dicionario-fai.html #13 exame (FichaAtendimentoIndividualChild) — mínimo 0, máximo 100 itens"
   conducts.max:
     value: 12
-    source: "dicionario-fai.html #22 condutas — mínimo 1, máximo 12, sem repetir"
+    source: "dicionario-fai.html #17 condutas — obrigatório, mínimo 1, máximo 12, \"Não deve conter duas condutas iguais.\""
 care_types:
   source: "dicionario-fai.html #7 tipoAtendimento — aceita 1, 2, 4, 5, 6; referencias/dicionario.html TipoDeAtendimento. 4 é a escuta inicial (módulo 18), fora da consulta"
   codes:
@@ -40,6 +40,7 @@ care_types:
     - { code: 6, label: "Atendimento de urgência" }
 conducts:
   source: "referencias/dicionario.html — CondutaEncaminhamento (tabela completa em 2026-10-07)"
+  # NOTA (dicionario-fai.html #26 encaminhamentos, lido em 2026-10-08): "é obrigatório o preenchimento do campo condutas com o valor 4 - Encaminhamento para serviço especializado" quando o grupo encaminhamentos é preenchido. A única conduta que a doc exige é a 4, e só COM encaminhamentos. O projeto não preenche encaminhamentos (sem tabela de especialidades); as condutas 4/5/6/7/8/10 entram só em condutas. Lista de condutas NÃO alterada (decisão do controlador).
   codes:
     - { code: 1, label: "Retorno para consulta agendada" }
     - { code: 2, label: "Retorno para cuidado continuado / programado" }

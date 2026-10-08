@@ -53,6 +53,8 @@ RSpec.describe Ledi::ConsultationMapping do
   it "CID-10 só para médicos (physicians_only; contrato §9)" do
     expect(described_class.data.dig("cid10_cbos", "rule")).to eq("physicians_only")
     %w[225125 225142 225170 225250 225350].each { |cbo| expect(described_class.cid10_allowed?(cbo)).to be(true), cbo }
+    expect(described_class.data.dig("cid10_cbos", "prefixes")).to eq(%w[2251 2252 2253])
+    expect(described_class.cid10_allowed?("225199")).to be(false) # prefixo médico fora da Tabela 3
     expect(described_class.cid10_allowed?("223505")).to be(false) # enfermeiro
     expect(described_class.cid10_allowed?("322205")).to be(false) # técnico
     unknown = described_class.data.merge("cid10_cbos" => { "rule" => "outra", "source" => "x" })
