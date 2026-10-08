@@ -125,4 +125,40 @@ RSpec.describe Consultations::ItemsInput do
       expect(input(cid_exam, cbo: "225125")).to be_ok
     end
   end
+
+  describe "início do problema contra o nascimento (2000-06-15)" do
+    let(:patient) { Patient.create!(cpf: citizen.cpf, birth_date: "2000-06-15", sex: "female") }
+
+    def onset(date, precision)
+      input("evaluated_problems" => [ { "terminology" => "ciap2", "code" => "T90", "action" => "add",
+                                         "onset_on" => date, "onset_precision" => precision } ]).reason
+    end
+
+    it "mês: anterior ao nascimento falha; o mês do nascimento passa" do
+      expect(onset("2000-02-01", "month")).to eq(:invalid_onset)
+      expect(onset("2000-05-01", "month")).to eq(:invalid_onset)
+      expect(onset("2000-06-01", "month")).to be_nil
+    end
+
+    it "ano: o ano do nascimento passa; o anterior falha" do
+      expect(onset("2000-01-01", "year")).to be_nil
+      expect(onset("1999-01-01", "year")).to eq(:invalid_onset)
+    end
+
+    it "dia: antes do nascimento falha; no dia passa" do
+      expect(onset("2000-06-14", "day")).to eq(:invalid_onset)
+      expect(onset("2000-06-15", "day")).to be_nil
+    end
+  end
+
+  it "sexo: masculino com C61 passa" do
+    male = Patient.create!(cpf: verified_citizen!(3).cpf, birth_date: "1970-01-01", sex: "male")
+    result = described_class.call({ "evaluated_problems" => [ { "terminology" => "cid10", "code" => "C61", "action" => "add" } ] },
+                                  patient: male, cbo: "225125", on: today)
+    expect(result).to be_ok
+  end
+
+  it "exam_requests que não é lista falha como invalid_exam" do
+    expect(failure("exam_requests" => "x")).to eq([ :invalid_exam, nil ])
+  end
 end

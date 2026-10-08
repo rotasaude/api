@@ -153,7 +153,8 @@ module Consultations
       parsed = parsed.beginning_of_month if precision == "month"
       parsed = parsed.beginning_of_year if precision == "year"
       birth = patient.birth_date.present? ? Date.iso8601(patient.birth_date) : nil
-      return :invalid if parsed > on || (birth && parsed < (precision == "day" ? birth : birth.beginning_of_year))
+      floor = birth && { "day" => birth, "month" => birth.beginning_of_month, "year" => birth.beginning_of_year }.fetch(precision)
+      return :invalid if parsed > on || (floor && parsed < floor)
 
       [ parsed, precision ]
     rescue Date::Error
