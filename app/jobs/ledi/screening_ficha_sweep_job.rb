@@ -8,6 +8,12 @@
 # tenta-se na noite seguinte. Escuta com "não gerada" (resolvida ou não) é do
 # caminho de falha / "gerar de novo". Agendado a cada hora; só age na hora 23
 # local (CityConnection.with usa o fuso da cidade).
+#
+# Task 16b (módulo 19a, decisão do usuário 2026-10-08; desvio do contrato §9):
+# o mesmo varredor também gera a ficha da CONSULTA finalizada que ficou sem
+# ficha e sem "não gerada", com as mesmas regras (competência atual e anterior,
+# por finalized_at; exportação inutilizável → ConsultationFicha.generate não
+# faz nada e a noite seguinte tenta de novo).
 module Ledi
   class ScreeningFichaSweepJob < ApplicationJob
     prepend EachCityJob
@@ -18,6 +24,13 @@ module Ledi
     def perform
       return unless Time.current.hour == SWEEP_HOUR
 
+      sweep_screenings
+      sweep_consultations
+    end
+
+    private
+
+    def sweep_screenings
       source = Ledi::ScreeningFicha::SOURCE_TYPE
       since = Time.current.beginning_of_month.prev_month
       failed = LediGenerationFailure.where(source_type: source).select(:source_id)
@@ -26,6 +39,15 @@ module Ledi
                .where.not(id: LediOutboxEntry.where(source_type: source).select(:source_id))
                .merge(Attendance.open_attendances.or(late_closed))
                .find_each { |screening| Ledi::ScreeningFicha.generate(screening, city: Current.city) }
+    end
+
+    def sweep_consultations
+      source = Ledi::ConsultationFicha::SOURCE_TYPE
+      since = Time.current.beginning_of_month.prev_month
+      Consultation.finalized_consultations.where(finalized_at: since..)
+                  .where.not(id: LediOutboxEntry.where(source_type: source).select(:source_id))
+                  .where.not(id: LediGenerationFailure.where(source_type: source).select(:source_id))
+                  .find_each { |consultation| Ledi::ConsultationFicha.generate(consultation, city: Current.city) }
     end
   end
 end
