@@ -52,8 +52,7 @@ class ProductionController < ApplicationController
     resolved = optional_scalar_param(:resolved).to_s
     scope = resolved == "true" ? LediGenerationFailure.where.not(resolved_at: nil) : LediGenerationFailure.unresolved
     failures = scope.order(created_at: :desc, id: :desc).limit(FAILURES_LIMIT).to_a
-    attendances = Screening.where(id: failures.select { |f| f.source_type == "Screening" }.map(&:source_id))
-                           .pluck(:id, :attendance_id).to_h
+    attendances = Ledi::FichaSources.attendance_ids(failures)
     render json: { items: failures.map { |f| failure_json(f, attendances[f.source_id]) } }
   end
 
@@ -63,8 +62,9 @@ class ProductionController < ApplicationController
     failure = LediGenerationFailure.find_by(id: params[:id])
     return render(json: { error: "not_found" }, status: :not_found) unless failure
 
-    failure = Ledi::ScreeningFicha.retry!(failure, by: Current.user)
-    render json: failure_json(failure, Screening.where(id: failure.source_id).pick(:attendance_id))
+    failure = Ledi::FichaSources.for(failure.source_type).retry!(failure, by: Current.user)
+    render json: failure_json(failure, Ledi::FichaSources.attendance_ids([ failure ])[failure.source_id])
+  # Ledi::ConsultationFicha::AlreadyResolved é a mesma classe: cobre as duas origens.
   rescue Ledi::ScreeningFicha::AlreadyResolved
     render json: { error: "already_resolved" }, status: :conflict
   end

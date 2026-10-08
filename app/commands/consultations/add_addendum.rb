@@ -43,6 +43,8 @@ module Consultations
           raise ActiveRecord::Rollback
         end
         DomainEvents.publish("consultation.addendum_added", consultation_id: consultation.id, addendum_id: addendum.id)
+        # ADR 0031 (spec §6): mudança estruturada regera (ou vira correção pendente).
+        Ledi::ConsultationFichaJob.enqueue_for(consultation, reason: "addendum") if plan.payload[:stored].any?
         result = Result.ok(addendum: addendum, structured: plan.payload[:stored].any?)
       end
       result

@@ -10,7 +10,7 @@ module Ledi
     module_function
 
     def call(entry:, by:)
-      return regenerate(entry, by) if entry.source_type == Ledi::ScreeningFicha::SOURCE_TYPE
+      return regenerate(entry, by) if Ledi::FichaSources.for(entry.source_type)
 
       entry.with_lock do
         raise NotRejected unless entry.status == "rejected"
@@ -30,10 +30,10 @@ module Ledi
       entry
     end
 
-    # ADR 0030 (spec §5): ficha de escuta não reaproveita o conteúdo antigo —
-    # é regerada da origem (linha nova, outro uuid, replaces_outbox_id).
+    # ADR 0030/0031: ficha de escuta ou de consulta não reaproveita o conteúdo
+    # antigo — é regerada da origem (linha nova, outro uuid, replaces_outbox_id).
     def regenerate(entry, by)
-      status, fresh = Ledi::ScreeningFicha.regenerate(entry, by: by)
+      status, fresh = Ledi::FichaSources.for(entry.source_type).regenerate(entry, by: by)
       case status
       when :ok then fresh
       when :not_rejected then raise NotRejected

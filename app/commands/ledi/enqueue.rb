@@ -43,10 +43,12 @@ module Ledi
         Platform::Features.settings(city)[:record_mode] != "off"
     end
 
-    # A mais recente da fonte (com recusadas regeneradas há mais de uma).
+    # A mais recente da fonte (com recusadas regeneradas há mais de uma). A
+    # correção de uma aceita (correction_pending, ADR 0031) nunca é "a ficha
+    # da fonte": quem a regrava é Ledi::ConsultationFicha.refresh!.
     def find_existing(source, ficha)
       LediOutboxEntry.where(source_type: source[:type], source_id: source[:id], ficha_type: ficha.type)
-                     .order(created_at: :desc, id: :desc).first
+                     .where.not(status: "correction_pending").order(created_at: :desc, id: :desc).first
     end
   end
 end

@@ -36,6 +36,8 @@ module Consultations
           raise ActiveRecord::Rollback
         end
         DomainEvents.publish("consultation.finalized", consultation_id: consultation.id, attendance_id: attendance.id)
+        # ADR 0031 (spec §6): a ficha nasce na finalização (o job relê tudo).
+        Ledi::ConsultationFichaJob.enqueue_for(consultation)
         result = Result.ok(consultation: consultation, attendance: closed.payload[:attendance],
                            appointment_request: closed.payload[:appointment_request])
       end
