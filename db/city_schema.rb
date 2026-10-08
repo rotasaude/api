@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_400002) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_400003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -760,7 +760,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_400002) do
     t.string "uuid", limit: 44, null: false
     t.index ["competence", "status"], name: "idx_ledi_outbox_competence"
     t.index ["replaces_outbox_id"], name: "idx_ledi_outbox_replaces", unique: true
-    t.index ["source_type", "source_id", "ficha_type"], name: "idx_ledi_outbox_source", unique: true, where: "((status)::text <> 'rejected'::text)"
+    t.index ["source_type", "source_id", "ficha_type"], name: "idx_ledi_outbox_source", unique: true, where: "((status)::text <> ALL (ARRAY['rejected'::text, 'correction_pending'::text]))"
     t.index ["source_type", "source_id"], name: "idx_ledi_outbox_source_lookup"
     t.index ["status", "next_attempt_at"], name: "idx_ledi_outbox_due"
     t.index ["uuid"], name: "idx_ledi_outbox_uuid", unique: true
@@ -769,8 +769,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_400002) do
     t.check_constraint "ficha_type::text ~ '^[a-z_]+$'::text", name: "ck_ledi_outbox_ficha_type"
     t.check_constraint "jsonb_typeof(last_error_codes) = 'array'::text", name: "ck_ledi_outbox_error_codes"
     t.check_constraint "status::text <> 'accepted'::text OR payload IS NULL", name: "ck_ledi_outbox_accepted_payload"
+    t.check_constraint "status::text <> 'correction_pending'::text OR replaces_outbox_id IS NOT NULL", name: "ck_ledi_outbox_correction"
     t.check_constraint "status::text <> 'rejected'::text OR jsonb_array_length(last_error_codes) > 0 OR payload IS NULL", name: "ck_ledi_outbox_rejected_error"
-    t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'sending'::text, 'accepted'::text, 'rejected'::text, 'failed'::text])", name: "ck_ledi_outbox_status"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'sending'::text, 'accepted'::text, 'rejected'::text, 'failed'::text, 'correction_pending'::text])", name: "ck_ledi_outbox_status"
   end
 
   create_table "memberships", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

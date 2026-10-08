@@ -4,7 +4,8 @@
 class LediOutboxEntry < ApplicationRecord
   self.table_name = "ledi_outbox"
 
-  STATUSES = %w[pending sending accepted rejected failed].freeze
+  # correction_pending: correção de ficha aceita, nunca enviada até api#41 (ADR 0031).
+  STATUSES = %w[pending sending accepted rejected failed correction_pending].freeze
 
   encrypts :payload
 

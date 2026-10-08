@@ -1237,3 +1237,35 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Correção de ficha aceita (ADR 0031, Invariantes; spec §6; api#41): a linha
+-- que substitui uma ficha ACEITA nasce e fica correction_pending — nunca
+-- pending/sending, logo nunca vai ao PEC — até o reenvio após aceite ser
+-- confirmado. O conteúdo pode ser regravado (novo adendo).
+CREATE OR REPLACE FUNCTION rota_ledi_outbox_correction_guard() RETURNS trigger AS $fn$
+DECLARE
+  -- via jsonb: este arquivo é reexecutado pela 20261007300001, antes de a
+  -- 20261007300002 criar a coluna; ausente, é NULL (como no guarda acima).
+  replaces uuid := (to_jsonb(NEW) ->> 'replaces_outbox_id')::uuid;
+BEGIN
+  IF replaces IS NOT NULL AND NEW.status <> 'correction_pending'
+     AND EXISTS (SELECT 1 FROM ledi_outbox o WHERE o.id = replaces AND o.status = 'accepted') THEN
+    RAISE EXCEPTION 'ledi_outbox: the correction of an accepted ficha stays correction_pending (api#41)';
+  END IF;
+  IF TG_OP = 'UPDATE' AND OLD.status = 'correction_pending' AND NEW.status IS DISTINCT FROM OLD.status THEN
+    RAISE EXCEPTION 'ledi_outbox: the correction of an accepted ficha stays correction_pending (api#41)';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.ledi_outbox') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS ledi_outbox_correction_guard ON ledi_outbox';
+    EXECUTE 'CREATE TRIGGER ledi_outbox_correction_guard
+      BEFORE INSERT OR UPDATE ON ledi_outbox
+      FOR EACH ROW EXECUTE FUNCTION rota_ledi_outbox_correction_guard()';
+  END IF;
+END
+$do$;
