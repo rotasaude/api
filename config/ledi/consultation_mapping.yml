@@ -1,0 +1,61 @@
+# config/ledi/consultation_mapping.yml
+# Consulta da APS → Ficha de Atendimento Individual (ADR 0031; spec 2026-10-07
+# §6, Tarefa 1). Cada valor tem a fonte em que foi conferido. Mudar uma linha =
+# reconferir a fonte e rodar spec/config/ledi/consultation_mapping_spec.rb.
+# Base: https://integracao.esusaps.bridge.ufsc.tech/ledi/documentacao
+# Medições, sexo, turno e CPF: config/ledi/screening_mapping.yml (módulo 18).
+ledi_version: "8.7.0"
+checked_on: "2026-10-07"
+entries:
+  tipo_dado_serializado.atendimento_individual:
+    value: 4
+    source: "referencias/dicionario.html — TipoDadoSerializado 4 Modelo de Informação de Atendimento Individual"
+  local_de_atendimento:
+    value: 1
+    source: "referencias/dicionario.html — LocalDeAtendimento 1 UBS"
+  problem_situation.active:
+    value: 0
+    source: "referencias/dicionario.html — SituacaoProblemasCondicoes 0 Ativo"
+  problem_situation.resolved:
+    value: 2
+    source: "referencias/dicionario.html — SituacaoProblemasCondicoes 2 Resolvido; dicionario-fai.html #8 dataFimProblema obrigatória com situacao 2"
+  exam.requested:
+    value: "S"
+    source: "referencias/dicionario.html — SituacaoExame S Solicitado; dicionario-fai.html bloco Exame, solicitadoAvaliado lista de 1 a 2"
+  exam.sigtap_group_prefix:
+    value: "02"
+    source: "dicionario-fai.html bloco Exame, codigoExame — só exames do grupo 02 Procedimentos com finalidade diagnóstica (ou ListaExames)"
+  exam.max_per_ficha:
+    value: 100
+    source: "dicionario-fai.html #17 exame — máximo 100"
+  conducts.max:
+    value: 12
+    source: "dicionario-fai.html #22 condutas — mínimo 1, máximo 12, sem repetir"
+care_types:
+  source: "dicionario-fai.html #7 tipoAtendimento — aceita 1, 2, 4, 5, 6; referencias/dicionario.html TipoDeAtendimento. 4 é a escuta inicial (módulo 18), fora da consulta"
+  codes:
+    - { code: 1, label: "Consulta agendada programada / Cuidado continuado" }
+    - { code: 2, label: "Consulta agendada" }
+    - { code: 5, label: "Consulta no dia" }
+    - { code: 6, label: "Atendimento de urgência" }
+conducts:
+  source: "referencias/dicionario.html — CondutaEncaminhamento (tabela completa em 2026-10-07)"
+  codes:
+    - { code: 1, label: "Retorno para consulta agendada" }
+    - { code: 2, label: "Retorno para cuidado continuado / programado" }
+    - { code: 4, label: "Encaminhamento para serviço especializado" }
+    - { code: 5, label: "Encaminhamento para CAPS" }
+    - { code: 6, label: "Encaminhamento para internação hospitalar" }
+    - { code: 7, label: "Encaminhamento para urgência" }
+    - { code: 8, label: "Encaminhamento para serviço de atenção domiciliar" }
+    - { code: 9, label: "Alta do episódio" }
+    - { code: 10, label: "Encaminhamento intersetorial" }
+    - { code: 11, label: "Encaminhamento interno no dia" }
+    - { code: 12, label: "Agendamento para grupos" }
+    - { code: 14, label: "Agendamento para eMulti" }
+cid10_cbos:
+  # physicians_only: CID-10 só para médicos (CBO 2251, 2252, 2253), como no PEC;
+  # enfermeiros e demais CBOs registram só CIAP-2.
+  rule: physicians_only
+  prefixes: ["2251", "2252", "2253"]
+  source: "Decisão do usuário 2026-10-07 (contrato §9, comportamento do PEC). Layout: dicionario-fai.html — cid10 (ProblemaCondicao #5) sem regra de CBO, regras/cbo.html Tabela 3 (CBOs do MIAI) não restringe; a restrição é do produto, não do LEDI. Lido em 2026-10-07"
