@@ -4,6 +4,7 @@
 #   POST /attendance/cadsus_lookup              {cpf, code}                    citizen_verifier + cadsus_lookup
 #   POST /attendance/verifications/search      {cpf}                          municipal_admin
 #   POST /attendance/verifications/:id/revoke {reason}                       municipal_admin
+#   POST /attendance/verifications/:id/names  {full_name, social_name?, mother_name?}  citizen_verifier
 # O CPF do histórico vai no corpo, não na URL (LGPD: URLs acabam em logs de
 # acesso e no histórico do navegador).
 class AttendanceController < ApplicationController
@@ -15,16 +16,17 @@ class AttendanceController < ApplicationController
     invalid_cpf: :unprocessable_entity, invalid_code: :unprocessable_entity, code_expired: :unprocessable_entity,
     code_exhausted: :unprocessable_entity, document_check_required: :unprocessable_entity,
     invalid_birth_date: :unprocessable_entity, invalid_sex: :unprocessable_entity,
-    invalid_gender_identity: :unprocessable_entity,
+    invalid_gender_identity: :unprocessable_entity, invalid_full_name: :unprocessable_entity,
+    invalid_social_name: :unprocessable_entity, invalid_mother_name: :unprocessable_entity,
     reason_too_short: :unprocessable_entity, already_verified: :conflict, already_revoked: :conflict,
     own_verification: :forbidden, cadsus_lookup_missing: :conflict
   }.freeze
 
-  before_action :require_verifier, only: %i[lookup verify cadsus_lookup]
+  before_action :require_verifier, only: %i[lookup verify cadsus_lookup names]
   require_feature "cadsus_lookup", only: :cadsus_lookup
   before_action :require_admin, only: %i[search revoke]
 
-  rate_limit to: 30, within: 10.minutes, only: %i[lookup verify cadsus_lookup], name: "attendance",
+  rate_limit to: 30, within: 10.minutes, only: %i[lookup verify cadsus_lookup names], name: "attendance",
              by: -> { Current.user&.id || request.remote_ip }, store: AttendanceAccess::RateLimitStore,
              with: -> { render json: { error: "too_many_requests" }, status: :too_many_requests }
 
@@ -37,7 +39,7 @@ class AttendanceController < ApplicationController
       citizen: {
         id: citizen.id, cpf_masked: citizen.cpf_masked, phone_masked: CitizenIdentity::Phone.mask(citizen.phone),
         created_at: citizen.created_at.iso8601, verification_level: citizen.verification_level,
-        profile: Citizens::ProfileJson.call(citizen)
+        profile: Citizens::ProfileJson.call(citizen), names: Citizens::NamesJson.call(citizen)
       },
       triages: result.payload[:triages].map { |t| { date: t[:date].iso8601, protocol_name: t[:protocol_name] } }
     }
@@ -47,6 +49,8 @@ class AttendanceController < ApplicationController
     result = Citizens::Verify.call(
       cpf: params[:cpf], code: params[:code], document_checked: params[:document_checked] == true, by: Current.user,
       birth_date: params[:birth_date], sex: params[:sex],
+      full_name: params.key?(:full_name) ? params[:full_name] : Citizens::NameValues::ABSENT,
+      social_name: params[:social_name], mother_name: params[:mother_name],
       gender_identity: params.key?(:gender_identity) ? params[:gender_identity] : Citizens::Verify::UNCHANGED,
       cadsus_confirmed: params[:cadsus_confirmed] == true, session_id: Current.session&.id
     )
@@ -69,6 +73,22 @@ class AttendanceController < ApplicationController
     return render(json: { error: "cadsus_unavailable" }, status: :service_unavailable) if result.failure?
 
     render json: result.payload
+  end
+
+  # ADR 0031 (contratos §2 e §9): completar os nomes de par já validado (no
+  # check-in). :id é a validação ativa.
+  def names
+    verification = CitizenVerification.find_by(id: params[:id])
+    return render json: { error: "not_found" }, status: :not_found unless verification
+
+    result = Citizens::CompleteNames.call(verification: verification, full_name: params[:full_name],
+                                          social_name: params[:social_name], mother_name: params[:mother_name],
+                                          by: Current.user)
+    return render_failure(result, ERROR_STATUS) if result.failure?
+
+    citizen = result.payload[:citizen]
+    render json: { citizen: { id: citizen.id, cpf_masked: citizen.cpf_masked, verification_level: citizen.verification_level,
+                              names: Citizens::NamesJson.call(citizen) } }
   end
 
   def search

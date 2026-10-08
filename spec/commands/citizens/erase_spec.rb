@@ -221,6 +221,19 @@ RSpec.describe Citizens::Erase do
     expect(TriageSuggestion.where(citizen_id: pair.id)).to be_empty
   end
 
+  # ADR 0031 (C6, LGPD/ADR 0026): os três nomes do documento saem na exclusão.
+  it "ADR 0031: apaga nome completo, social e da mãe" do
+    pair.update!(full_name: "Maria Aparecida da Silva", social_name: "Mariana", mother_name: "Joana da Silva")
+
+    expect(described_class.call(request: request, by: admin)).to be_ok
+
+    row = ApplicationRecord.connection.select_one(
+      ApplicationRecord.sanitize_sql([ "SELECT full_name, social_name, mother_name FROM citizens WHERE id = ?", pair.id ])
+    )
+    expect(row.values).to all(be_nil)
+    expect(pair.reload).to have_attributes(full_name: nil, social_name: nil, mother_name: nil)
+  end
+
   # ADR 0028 (spec 2026-10-05 §8): a casca não guarda o CNS do CADSUS, a marca
   # da conferência nem a consulta pendente.
   it "apaga CNS, marca do CADSUS e pendente" do

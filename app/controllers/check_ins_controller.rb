@@ -30,7 +30,8 @@ class CheckInsController < ApplicationController
     render json: {
       citizen: {
         id: citizen.id, cpf_masked: citizen.cpf_masked, phone_masked: CitizenIdentity::Phone.mask(citizen.phone),
-        verification_level: citizen.verification_level
+        verification_level: citizen.verification_level, names: Citizens::NamesJson.call(citizen),
+        verification_id: citizen.active_verification&.id
       },
       triage: (triage && triage_json(triage)),
       appointment: (appointment && appointment_json(appointment))
@@ -42,8 +43,10 @@ class CheckInsController < ApplicationController
                                        document_checked: params[:document_checked] == true, by: Current.user)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
-    render json: { attendance: attendance_json(result.payload[:attendance]), verified: result.payload[:verified] },
-           status: :created
+    json = { attendance: attendance_json(result.payload[:attendance]), verified: result.payload[:verified] }
+    # ADR 0031 (contrato §9): validou agora → o balcão completa os nomes com esta validação.
+    json[:verification_id] = result.payload[:attendance].citizen.active_verification&.id if result.payload[:verified]
+    render json: json, status: :created
   end
 
   def search

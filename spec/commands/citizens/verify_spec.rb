@@ -77,4 +77,14 @@ RSpec.describe Citizens::Verify do
       expect(CitizenVerificationCode.usable.where(citizen: citizen)).to exist
     end
   end
+
+  describe "nomes conferidos no documento (ADR 0031)" do
+    it "grava os nomes cifrados; nome inválido não gasta o código; sem a chave, valida sem nome" do
+      code = issue_code_for(citizen)
+      expect(verify(code, full_name: "x").reason).to eq(:invalid_full_name)
+      expect(verify(code, full_name: "Maria Aparecida da Silva", social_name: "Mariana")).to be_ok
+      expect(citizen.reload.slice(:full_name, :social_name, :mother_name))
+        .to eq("full_name" => "Maria Aparecida da Silva", "social_name" => "Mariana", "mother_name" => nil)
+    end
+  end
 end

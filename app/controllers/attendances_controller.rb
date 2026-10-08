@@ -65,7 +65,7 @@ class AttendancesController < ApplicationController
 
   def queue_json(a, refs, screening_active)
     {
-      id: a.id, cpf_masked: a.citizen.cpf_masked, checked_in_at: a.checked_in_at&.iso8601,
+      id: a.id, cpf_masked: a.citizen.cpf_masked, display_name: a.citizen.display_name, checked_in_at: a.checked_in_at&.iso8601,
       protocol_name: a.root_triage&.protocol_name, priority: a.priority,
       source: a.appointment_id ? "appointment" : "triage", appointment_time: a.appointment&.scheduled_at&.iso8601,
       called_at: a.called_at&.iso8601, called_by_name: Screenings::Json.staff_name(a.called_by_user),

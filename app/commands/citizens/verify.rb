@@ -5,19 +5,25 @@
 # validado passa a `verified` e só muda no posto. gender_identity ausente
 # (UNCHANGED) mantém o declarado. Os valores são conferidos ANTES do código:
 # um erro de digitação não gasta o código.
+# ADR 0031: também o nome completo (com a chave, obrigatório), o social e o da mãe.
 # ADR 0028: com cadsus_confirmed, efetiva o CNS da consulta ao CADSUS desta
 # sessão (Reasons: :cadsus_lookup_missing); toda validação limpa o pendente.
 module Citizens
   class Verify
     UNCHANGED = Object.new.freeze
 
-    def self.call(cpf:, code:, document_checked:, by:, birth_date:, sex:, gender_identity: UNCHANGED,
-                  cadsus_confirmed: false, session_id: nil)
+    def self.call(cpf:, code:, document_checked:, by:, birth_date:, sex:, full_name: NameValues::ABSENT, social_name: nil,
+                  mother_name: nil, gender_identity: UNCHANGED, cadsus_confirmed: false, session_id: nil)
       return Result.fail(:document_check_required) unless document_checked == true
 
       keep_identity = gender_identity.equal?(UNCHANGED)
       values = ProfileValues.call(birth_date: birth_date, sex: sex, gender_identity: keep_identity ? nil : gender_identity)
       return values if values.failure?
+
+      # ADR 0031: o nome conferido no documento, também antes de gastar o
+      # código. Sem a chave (cliente antigo), nada a gravar.
+      names = NameValues.call(full_name: full_name, social_name: social_name, mother_name: mother_name)
+      return names if names.failure?
 
       result = nil
       ApplicationRecord.transaction do
@@ -38,6 +44,7 @@ module Citizens
         match.payload[:verification_code].update!(consumed_at: Time.current)
         verification = record!(citizen: citizen, by: by)
         apply_profile!(citizen, values.payload, keep_identity: keep_identity)
+        citizen.update!(names.payload) if names.payload.any?
         settle_cadsus!(citizen, confirmed: cadsus_confirmed)
         result = Result.ok(verification: verification)
       end

@@ -4,6 +4,7 @@
 # nada mais muda); senão, para cada par, revoga, anonimiza, apaga o apagável e
 # troca CPF e telefone por um marcador que não identifica ninguém.
 # ADR 0028: também o CNS do CADSUS e a consulta pendente.
+# ADR 0031: também o nome completo, o social e o da mãe.
 # Reasons: :not_pending, :own_request.
 module Citizens
   module Erase
@@ -115,7 +116,7 @@ module Citizens
       citizen.update_columns(cpf: tombstone, phone: tombstone, neighborhood_id: nil, erased_at: Time.current,
                              birth_date: nil, sex: nil, gender_identity: nil, profile_source: nil,
                              cns: nil, cadsus_checked_at: nil, cadsus_pending_cns: nil,
-                             cadsus_pending_session_id: nil, cadsus_pending_at: nil, updated_at: Time.current)
+                             full_name: nil, social_name: nil, mother_name: nil, cadsus_pending_session_id: nil, cadsus_pending_at: nil, updated_at: Time.current)
 
       end_live_bookings(citizen, live_appointments)
     end

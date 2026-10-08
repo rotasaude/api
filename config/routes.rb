@@ -96,6 +96,7 @@ Rails.application.routes.draw do
     post "verifications",            to: "attendance#verify"
     post "verifications/search",     to: "attendance#search"
     post "verifications/:id/revoke", to: "attendance#revoke"
+    post "verifications/:id/names",  to: "attendance#names"
 
     # Exclusão do cadastro no balcão (ADR 0026): pedido por um servidor,
     # confirmação por outro, com step-up. O CPF vai no corpo, nunca na URL.
