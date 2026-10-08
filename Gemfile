@@ -31,6 +31,7 @@ end
 group :test do
   gem "webmock"
   gem "vcr"
+  gem "pdf-reader", "~> 2.12"   # ADR 0031: lê o impresso nas specs
 end
 
 # JSON Schema (draft 2020-12) validation for the protocol definition gate (F-03.9).
@@ -45,3 +46,4 @@ gem "jwt", "~> 2.8"    # OIDC id_token verification — ADR-0022 (gov.br seam)
 
 gem "graphql", "~> 2.3"
 gem "thrift", "~> 0.22"   # LEDI APS (ADR 0028): TBinaryProtocol das fichas para o PEC
+gem "prawn", "~> 2.5"     # ADR 0031: impresso da consulta, gerado na hora (Ruby puro, sem binário)

@@ -99,6 +99,7 @@ RSpec.describe "Prontuário", type: :request do
       [ :post, "/attendance/attendances/#{attendance.id}/consultation" ], [ :get, "/attendance/consultations/#{consultation.id}" ],
       [ :patch, "/attendance/consultations/#{consultation.id}" ], [ :post, "/attendance/consultations/#{consultation.id}/finalize" ],
       [ :post, "/attendance/consultations/#{consultation.id}/addenda" ],
+      [ :get, "/attendance/consultations/#{consultation.id}/print" ],
       [ :get, "/clinical_record/patients/#{consultation.patient_id}" ], [ :post, "/clinical_record/openings" ],
       [ :post, "/attendance/sigtap/search" ] ].each do |verb, path|
       send(verb, path, params: {}.to_json, headers: { "CONTENT_TYPE" => "application/json" })

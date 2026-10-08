@@ -144,6 +144,7 @@ Rails.application.routes.draw do
     patch "consultations/:id",               to: "consultations#update"
     post  "consultations/:id/finalize",      to: "consultations#finalize"
     post  "consultations/:id/addenda",       to: "consultations#addenda"
+    get   "consultations/:id/print",         to: "consultations#print"
     post  "sigtap/search",                   to: "sigtap_procedures#search"
 
     # Pedidos de agendamento, marcação e agenda do dia (spec 2026-09-25 §4).

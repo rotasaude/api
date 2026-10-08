@@ -67,6 +67,20 @@ class ConsultationsController < ApplicationController
     render json: Consultations::Json.addendum(result.payload[:addendum]), status: :created
   end
 
+  # Spec §4: PDF na hora, nunca gravado nem em cache; o nome do arquivo não
+  # leva dado da pessoa.
+  def print
+    return render(json: { error: "not_finalized" }, status: :conflict) unless @consultation.finalized?
+
+    grant = read_grant
+    return forbid(grant.reason.to_s) unless grant.allowed?
+    return render(json: { error: "patient_name_missing" }, status: :conflict) if @consultation.patient.full_name.blank?
+
+    ClinicalRecord::Trail.viewed!(patient: @consultation.patient, user: Current.user, grant: grant)
+    response.headers["Cache-Control"] = "no-store"
+    send_data Consultations::Print.call(@consultation), type: "application/pdf", disposition: "inline", filename: "consulta.pdf"
+  end
+
   private
 
   def set_consultation
