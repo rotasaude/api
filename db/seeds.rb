@@ -74,6 +74,9 @@ else
   sigtap = RecordModeCrew.seed_platform!
   puts "[seeds] SIGTAP ....... #{sigtap[:sigtap]} #{sigtap[:imported] ? 'importada (recorte de dev)' : 'já ativa'}"
 
+  ciap2 = ScreeningCrew.seed_platform!
+  puts "[seeds] CIAP-2 ....... #{ciap2[:ciap2]} #{ciap2[:imported] ? 'importada (recorte de dev)' : 'já ativa'}"
+
   # Mesmo protocolo que o provisionamento semeia em rascunho (Plano 4); aqui ativo.
   protocol_defn = CityTemplates.protocol.fetch(:definition)
 

@@ -61,3 +61,28 @@ RSpec.describe ScreeningCrew do
     end
   end
 end
+
+# Terminologia da plataforma: a semente garante uma release CIAP-2 ativa.
+RSpec.describe ScreeningCrew, ".seed_platform!" do
+  def wipe_ciap2! = TerminologyRelease.where(kind: "ciap2").destroy_all
+
+  it "sem release ativa importa o recorte de dev; rodar de novo não cria outra" do
+    wipe_ciap2!
+    first = described_class.seed_platform!
+    expect(first).to eq(ciap2: described_class::CIAP2_DEV_VERSION, imported: true)
+    release = TerminologyRelease.active.find_by!(kind: "ciap2")
+    codes = Ciap2Code.where(release_id: release.id).pluck(:code)
+    expect(codes).to include("K86", "R05", "W78", "A03", "K87", "T89", "T90")
+    expect(Screenings::Ciap2.search("febre").map(&:code)).to eq(["A03"])
+
+    expect(described_class.seed_platform!).to include(imported: false)
+    expect(TerminologyRelease.where(kind: "ciap2").count).to eq(1)
+  end
+
+  it "com release ativa de qualquer versão não mexe em nada" do
+    wipe_ciap2!
+    existing = ciap2_release!
+    expect(described_class.seed_platform!).to eq(ciap2: existing.version, imported: false)
+    expect(TerminologyRelease.where(kind: "ciap2").pluck(:id)).to eq([existing.id])
+  end
+end

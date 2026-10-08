@@ -28,7 +28,23 @@ class ScreeningCrew
   # (96666 é do CampaignCrew, 97777 do TerritoryCrew).
   PHONE_PREFIX = "98888"
 
+  # Pasta (o OfficialArchive aceita pasta ou ZIP) com o recorte de dev do CIAP-2.
+  CIAP2_DEV_DIR = Rails.root.join("db/seeds/terminology/ciap2")
+  CIAP2_DEV_VERSION = "dev-seed-2026-10"
+
   class << self
+    # Plataforma: garante UMA release CIAP-2 ativa (qualquer versão basta; nada
+    # a fazer se já houver). Entra pelo caminho real, Terminology::Import.
+    def seed_platform!
+      return { ciap2: TerminologyRelease.active.find_by(kind: "ciap2").version, imported: false } if
+        TerminologyRelease.active.exists?(kind: "ciap2")
+
+      result = Terminology::Import.call(kind: "ciap2", version: CIAP2_DEV_VERSION, path: CIAP2_DEV_DIR, by: "db:seed")
+      raise "semente: CIAP-2 recusado (#{result.reason} #{result.message})" if result.failure?
+
+      { ciap2: CIAP2_DEV_VERSION, imported: true }
+    end
+
     def seed_current_city(slug:, ddd:)
       admin = User.find_by!(email_address: "admin@#{slug}.demo")
       unit = HealthUnit.find_by!(name: UNIT)
