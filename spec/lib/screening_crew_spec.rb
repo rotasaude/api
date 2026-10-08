@@ -64,6 +64,7 @@ end
 
 # Terminologia da plataforma: a semente garante uma release CIAP-2 ativa.
 RSpec.describe ScreeningCrew, ".seed_platform!" do
+  # Depende do rollback transacional (banco de plataforma de teste compartilhado).
   def wipe_ciap2! = TerminologyRelease.where(kind: "ciap2").destroy_all
 
   it "sem release ativa importa o recorte de dev; rodar de novo não cria outra" do

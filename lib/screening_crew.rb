@@ -36,8 +36,9 @@ class ScreeningCrew
     # Plataforma: garante UMA release CIAP-2 ativa (qualquer versão basta; nada
     # a fazer se já houver). Entra pelo caminho real, Terminology::Import.
     def seed_platform!
-      return { ciap2: TerminologyRelease.active.find_by(kind: "ciap2").version, imported: false } if
-        TerminologyRelease.active.exists?(kind: "ciap2")
+      if (active = TerminologyRelease.active.find_by(kind: "ciap2"))
+        return { ciap2: active.version, imported: false }
+      end
 
       result = Terminology::Import.call(kind: "ciap2", version: CIAP2_DEV_VERSION, path: CIAP2_DEV_DIR, by: "db:seed")
       raise "semente: CIAP-2 recusado (#{result.reason} #{result.message})" if result.failure?

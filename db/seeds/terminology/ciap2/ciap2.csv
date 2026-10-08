@@ -1,43 +1,27 @@
 codigo;titulo
 A01;Dor generalizada/múltipla
-A02;Calafrios
 A03;Febre
 A04;Fraqueza/cansaço geral
-A05;Sensação de estar doente
 A06;Desmaio/síncope
 D01;Dor abdominal generalizada/cólicas
 D02;Dor abdominal epigástrica
-D03;Pirose/azia
 D09;Náusea
 D10;Vômito
 D11;Diarreia
-D12;Obstipação
-H01;Dor de ouvido/otalgia
 K01;Dor atribuída ao coração
-K04;Palpitações/percepção do batimento cardíaco
 K77;Insuficiência cardíaca
 K85;Pressão arterial elevada
 K86;Hipertensão sem complicações
 K87;Hipertensão com complicações
-L02;Sinais/sintomas das costas
 L03;Sinais/sintomas da região lombar
-L84;Síndrome da coluna sem irradiação de dor
 N01;Cefaleia
-N17;Vertigem/tontura
 N89;Enxaqueca
 P01;Sensação de ansiedade/nervosismo/tensão
 P03;Sensação de depressão
-P06;Distúrbios do sono
-P74;Perturbação ansiosa/estado de ansiedade
-P76;Perturbações depressivas
-R02;Falta de ar/dispneia
-R03;Sibilo
 R05;Tosse
-R21;Sintomas/queixas da garganta
 R74;Infecção aguda do aparelho respiratório superior
 R76;Amigdalite aguda
 R78;Bronquite aguda/bronquiolite
-R80;Influenza
 R96;Asma
 S02;Prurido
 S03;Verrugas
