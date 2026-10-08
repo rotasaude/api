@@ -13,12 +13,14 @@ module Consultations
       pick(links)
     end
 
-    # Para a abertura justificada: um vínculo permitido em qualquer unidade.
-    def any_link(user:)
-      return :missing_role unless user&.has_role?("health_professional")
+    # Para a abertura e o adendo de terceiro: um vínculo permitido em qualquer unidade.
+    def any_allowed_link(user:)
+      return [ :missing_role, nil ] unless user&.has_role?("health_professional")
 
-      pick(active_links(user).to_a).first
+      pick(active_links(user).to_a)
     end
+
+    def any_link(user:) = any_allowed_link(user: user).first
 
     def active_links(user)
       ProfessionalLink.active.joins(:professional).where(professionals: { user_id: user.id }).order(:started_at, :id)
