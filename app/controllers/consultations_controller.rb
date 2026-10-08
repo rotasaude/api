@@ -70,6 +70,7 @@ class ConsultationsController < ApplicationController
   # Spec §4: PDF na hora, nunca gravado nem em cache; o nome do arquivo não
   # leva dado da pessoa.
   def print
+    return forbid("not_author") if @consultation.draft? && @consultation.author_user_id != Current.user.id
     return render(json: { error: "not_finalized" }, status: :conflict) unless @consultation.finalized?
 
     grant = read_grant

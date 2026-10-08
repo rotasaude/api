@@ -45,4 +45,8 @@ RSpec.describe Consultations::Print do
     consultation.patient.update_columns(full_name: nil, social_name: nil)
     expect { described_class.call(consultation.reload) }.to raise_error(described_class::NotPrintable)
   end
+
+  it "os rótulos de sinais vitais cobrem todas as colunas impressas (VITALS.fetch não levanta)" do
+    expect(described_class::VITALS.keys).to match_array(Consultation::VITAL_COLUMNS - [ "glucose_moment" ])
+  end
 end

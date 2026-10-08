@@ -35,4 +35,14 @@ RSpec.describe "Impresso da consulta", type: :request do
     get "/attendance/consultations/#{consultation.id}/print"
     expect([ response.status, body["error"] ]).to eq([ 403, "out_of_context" ])
   end
+
+  it "rascunho de outro profissional → 403 not_author (não revela o estado); o autor recebe 409" do
+    draft = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    sign_in_as(doctor!(unit))
+    get "/attendance/consultations/#{draft.id}/print"
+    expect([ response.status, body["error"] ]).to eq([ 403, "not_author" ])
+    sign_in_as(doctor)
+    get "/attendance/consultations/#{draft.id}/print"
+    expect([ response.status, body["error"] ]).to eq([ 409, "not_finalized" ])
+  end
 end
