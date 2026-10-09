@@ -184,6 +184,9 @@ Rails.application.routes.draw do
     post   "sessions",              to: "sessions#create"
     get    "sessions/current",      to: "sessions#show"
     delete "sessions/current",      to: "sessions#destroy"
+    get    "requests",              to: "requests#index"
+    post   "requests/:id/return_to_paper", to: "requests#return_to_paper"
+    post   "batches",               to: "batches#create"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).

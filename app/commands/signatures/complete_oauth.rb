@@ -45,6 +45,10 @@ module Signatures
         accepted.ok? ? Result.ok(record: accepted.payload[:certificate]) : accepted
       when "session"
         OpenSession.call(user: user, provider: row.provider, client: client, token: token, now: now)
+      when "batch"
+        return Result.fail(:authorization_denied) unless token.scope.to_s.split.include?(StartBatch::SCOPE)
+
+        RunBatch.call(user: user, request_ids: row.request_ids, token: token, now: now)
       else
         Result.fail(:invalid_state)
       end
