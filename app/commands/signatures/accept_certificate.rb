@@ -47,8 +47,10 @@ module Signatures
       nil
     end
 
+    # Savepoint próprio: a corrida com outro vínculo do mesmo usuário (índice
+    # parcial de um active por usuário) desfaz só este bloco e relê o vencedor.
     def store(user, provider, entry, info, now, check)
-      ApplicationRecord.transaction do
+      ApplicationRecord.transaction(requires_new: true) do
         active = SignerCertificate.active.lock.find_by(user_id: user.id)
         next Result.ok(certificate: active, changed: false) if active && active.serial_number == info.serial_number && active.provider == provider
 
@@ -63,6 +65,13 @@ module Signatures
         DomainEvents.publish("signature.certificate_linked", certificate_id: certificate.id, user_id: user.id, provider: provider)
         Result.ok(certificate: certificate, changed: true)
       end
+    rescue ActiveRecord::RecordNotUnique
+      # Outro vínculo do mesmo usuário gravou o active entre a leitura e o
+      # create!: vale o que ficou gravado (é do próprio usuário), sem troca.
+      winner = SignerCertificate.active.find_by(user_id: user.id)
+      raise unless winner
+
+      Result.ok(certificate: winner, changed: false)
     end
     private_class_method :parse, :store
   end

@@ -22,7 +22,13 @@ class SignerCertificate < ApplicationRecord
 
   def der = Base64.strict_decode64(certificate_der)
   def info = (@info ||= Signatures::CertificateInfo.parse(der))
-  def expires_in_days(now = Time.current) = ((not_after - now) / 1.day).floor
+  # Contrato §13: dias inteiros de calendário no fuso da cidade (Time.zone é o
+  # dela dentro do CityConnection.with), negativo depois do vencimento — no
+  # próprio dia do vencimento, já vencido, é -1.
+  def expires_in_days(now = Time.current)
+    days = (not_after.in_time_zone.to_date - now.in_time_zone.to_date).to_i
+    now >= not_after ? [ days, -1 ].min : days
+  end
   def expiring?(now = Time.current) = not_after <= now + EXPIRING_WITHIN
   def inspect = "#<SignerCertificate id=#{id} provider=#{provider} status=#{status}>"
 end
