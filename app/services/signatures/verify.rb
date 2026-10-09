@@ -15,7 +15,12 @@ module Signatures
                         last_verification_reasons: checks.flat_map(&:reasons).uniq)
       DomainEvents.publish("signature.verified", signature_id: signature.id, verification: status) if changed || explicit
       signature
-    rescue Signer::Unavailable, Signer::Rejected
+    rescue Signer::Unavailable
+      signature
+    rescue Signer::Rejected => e
+      # Recusa permanente do signer: devolve o guardado, mas aparece no log
+      # (só o id e o código; nunca corpo, CPF ou conteúdo).
+      Rails.logger.warn("[signatures.verify] signer recusou signature_id=#{signature.id} code=#{e.code}")
       signature
     end
 

@@ -11,7 +11,9 @@ module Signatures
     def blocks(documents)
       return {} if documents.empty?
 
-      requests = SignatureRequest.where(document_id: documents.map(&:id)).includes(:author_user)
+      # Pelo consultation_id (indexado): a consulta e os adendos dela.
+      consultation_ids = documents.map { |document| DocumentTypes.consultation_id(document) }.uniq
+      requests = SignatureRequest.where(consultation_id: consultation_ids).includes(:author_user)
                                  .index_by { |r| [ r.document_type, r.document_id ] }
       signatures = Signature.where(signature_request_id: requests.values.map(&:id))
                             .select(:id, :signature_request_id, :signed_at, :last_verification, :provider)
@@ -33,8 +35,8 @@ module Signatures
       when "signed"
         signature = signatures[request.id]
         { mode: "digital", request_id: request.id, signature_id: signature&.id, signed_at: signature&.signed_at&.iso8601,
-          signer_name: Screenings::Json.staff_name(request.author_user), verification: signature&.last_verification,
-          simulated: signature&.simulated? }.compact
+          signer_name: Screenings::Json.staff_name(request.author_user), verification: signature&.last_verification }
+          .compact.merge(simulated: signature.present? && signature.simulated?)
       when "returned_to_paper" then { mode: "manual", request_id: request.id, reason_code: request.reason_code }
       else { mode: "pending", request_id: request.id, reason_code: request.reason_code }.compact
       end

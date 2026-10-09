@@ -92,12 +92,49 @@ RSpec.describe "Leitura da assinatura", type: :request do
     expect(body["verification"]).to eq("invalid") # o guardado, sem cair
 
     sign_in_as(signer_doctor!(create_unit("UBS Dois"), cpf: SignatureHelpers::OTHER_CPF))
+    trails = viewed.count
     %W[/signature/signatures/#{signature.id} /signature/signatures/#{signature.id}/pdf /signature/signatures/#{signature.id}/package].each do |path|
       get path
       expect([ response.status, body["error"] ]).to eq([ 403, "opening_required" ]), path
     end
     json_post "/signature/signatures/#{signature.id}/verify", {}
     expect([ response.status, body["error"] ]).to eq([ 403, "opening_required" ])
+    expect(viewed.count).to eq(trails) # recusa não deixa trilha
+  end
+
+  it "profissional e admin ao mesmo tempo: grant de profissional primeiro; fora de contexto, show cai no administrativo e PDF 403" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
+    signature = sign_document!(consultation, author: doctor)
+    both = signer_doctor!(create_unit("UBS Dois"), cpf: SignatureHelpers::OTHER_CPF)
+    Membership.create!(user: both, role: "municipal_admin", granted_at: Time.current)
+
+    step_up!(both)
+    get "/signature/signatures/#{signature.id}"
+    expect(response).to have_http_status(:ok)
+    expect(viewed.pluck(:payload).last).to include("user_id" => both.id, "access" => "administrative")
+    expect(ClinicalRecordAdministrativeRead.where(user_id: both.id).count).to eq(1)
+    trails = viewed.count
+    get "/signature/signatures/#{signature.id}/pdf"
+    expect([ response.status, body["error"] ]).to eq([ 403, "opening_required" ])
+    expect(viewed.count).to eq(trails)
+
+    ClinicalRecordOpening.create!(patient: consultation.patient, user: both, reason_code: "case_review",
+                                  created_at: Time.current, expires_at: 30.minutes.from_now)
+    get "/signature/signatures/#{signature.id}"
+    expect(response).to have_http_status(:ok)
+    expect(viewed.pluck(:payload).last).to include("user_id" => both.id, "access" => "justified")
+    expect(ClinicalRecordAdministrativeRead.where(user_id: both.id).count).to eq(1) # o grant de profissional veio primeiro
+  end
+
+  it "verify recusado pelo signer: devolve o guardado e registra só o id e o código" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
+    signature = sign_document!(consultation, author: doctor)
+    allow(@signer).to receive(:verify).and_raise(Signatures::Signer::Rejected.new("invalid_request"))
+    sign_in_as(doctor)
+    log = capture_log { json_post "/signature/signatures/#{signature.id}/verify", {} }
+    expect([ response.status, body["verification"] ]).to eq([ 200, "valid" ])
+    expect(log).to include("signature_id=#{signature.id} code=invalid_request")
+    expect(log).not_to include(SignatureHelpers::DOCTOR_CPF)
   end
 
   it "a autora lê sem contexto (trilha author); outro profissional lê com abertura justificada (trilha justified)" do
@@ -228,6 +265,18 @@ RSpec.describe "Leitura da assinatura", type: :request do
     text = text_of(response.body)
     expect(text).to include("Assinaturas", "Consulta: assinada digitalmente por", "validação válida", "Adendo de",
                             "sem assinatura digital", "Assinatura e carimbo")
+  end
+
+  it "impresso: consulta digital sem adendo mas revalidação inválida → impresso do 19a com o estado (R21)" do
+    signed = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
+    signature = sign_document!(signed, author: doctor)
+    @signer.revoked_serials << signature.signer_certificate.serial_number
+    sign_in_as(doctor)
+    get "/attendance/consultations/#{signed.id}/print"
+    expect(response.body.b).not_to eq(signature.signed_pdf_bytes.b)
+    text = text_of(response.body)
+    expect(text).to include("Assinaturas", "Consulta: assinada digitalmente por", "validação inválida")
+    expect(signature.reload.last_verification).to eq("invalid")
   end
 
   it "impresso com todas as partes digitais: seção Assinaturas sem espaço para assinar à mão" do

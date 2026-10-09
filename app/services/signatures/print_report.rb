@@ -13,11 +13,16 @@ module Signatures
 
     module_function
 
+    # Só o PAdES puro quando a consulta é digital, sem adendo, e a revalidação
+    # dá `valid` (R21); inválida/indeterminada → o impresso com o estado.
     def signed_pdf(consultation)
       return nil if consultation.addenda.exists?
 
       request = SignatureRequest.find_by(document_type: "Consultation", document_id: consultation.id, status: "signed")
-      request&.signature && Verify.call(request.signature).signed_pdf_bytes
+      return nil unless request&.signature
+
+      signature = Verify.call(request.signature)
+      signature.last_verification == "valid" ? signature.signed_pdf_bytes : nil
     end
 
     def for(consultation)
