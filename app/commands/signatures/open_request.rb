@@ -11,8 +11,13 @@ module Signatures
   module OpenRequest
     module_function
 
-    def call(document, now: Time.current)
-      return :unusable unless Gate.usable?(Current.city)
+    # usable: a decisão do interruptor já tomada FORA da transação (Finalize/
+    # AddAddendum): Platform::Features engole StatementInvalid, e dentro do
+    # savepoint um erro do PG engolido abortaria a finalização. O consumidor
+    # não passa nada e lê aqui (:load).
+    def call(document, now: Time.current, usable: :load)
+      usable = Gate.usable?(Current.city) if usable == :load
+      return :unusable unless usable
       return :manual unless SignerCertificate.active.exists?(user_id: document.author_user_id)
 
       inserted = SignatureRequest.insert_all(

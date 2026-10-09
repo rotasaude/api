@@ -42,7 +42,7 @@ RSpec.describe "Pedido de assinatura nascido na finalização", type: :request d
     end
   end
 
-  def consuming(name)
+  def consuming
     Current.city = signature_city!
     yield
   ensure
@@ -70,7 +70,7 @@ RSpec.describe "Pedido de assinatura nascido na finalização", type: :request d
       finalize!(draft!)
       expect(SignatureRequest.count).to eq(1)
       clear_enqueued_jobs
-      consuming("consultation.finalized") { consume!("consultation.finalized") }
+      consuming { consume!("consultation.finalized") }
       expect(SignatureRequest.count).to eq(1)
       expect(sign_jobs).to be_empty
     end
@@ -99,7 +99,7 @@ RSpec.describe "Pedido de assinatura nascido na finalização", type: :request d
       expect(sign_jobs.map { |job| job[:queue] }).to eq([ "signatures" ])
 
       clear_enqueued_jobs
-      consuming("consultation.addendum_added") { consume!("consultation.addendum_added") }
+      consuming { consume!("consultation.addendum_added") }
       expect(SignatureRequest.where(document_type: "ConsultationAddendum").count).to eq(1)
       expect(sign_jobs).to be_empty
     end
@@ -131,6 +131,20 @@ RSpec.describe "Pedido de assinatura nascido na finalização", type: :request d
       expect(SignatureRequest.count).to eq(0)
       expect(sign_jobs).to be_empty
       expect(consultation.reload).to be_draft
+    end
+
+    it "nenhuma leitura de interruptor dentro da transação da finalização nem do adendo" do
+      depths = []
+      allow(Signatures::Gate).to receive(:usable?).and_wrap_original do |original, *args|
+        depths << ApplicationRecord.connection.open_transactions
+        original.call(*args)
+      end
+      consultation = draft!
+      baseline = ApplicationRecord.connection.open_transactions
+      expect(Consultations::Finalize.call(consultation: consultation, outcome_params: { "outcome" => "discharged" }, by: doctor)).to be_ok
+      expect(Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "acréscimo de dados", text: "UM")).to be_ok
+      expect(depths).to eq([ baseline, baseline ])
+      expect(SignatureRequest.count).to eq(2)
     end
 
     it "transação externa desfeita: nem pedido nem SignJob (enfileira só no commit)" do

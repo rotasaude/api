@@ -49,7 +49,11 @@ module SignatureHelpers
     type = document ? Signatures::DocumentTypes.db(document) : "Consultation"
     resolved_at = %w[signed returned_to_paper].include?(status) ? Time.current : nil
     existing = document && SignatureRequest.find_by(document_type: type, document_id: document.id)
-    return existing.tap { |r| r.update!(status: status, reason_code: reason_code, resolved_at: resolved_at) } if existing
+    if existing
+      raise "pedido existente é de outro autor" unless existing.author_user_id == author.id
+
+      return existing.tap { |r| r.update!(status: status, reason_code: reason_code, resolved_at: resolved_at) }
+    end
 
     SignatureRequest.create!(document_type: type, document_id: document&.id || SecureRandom.uuid,
                              consultation_id: document ? Signatures::DocumentTypes.consultation_id(document) : SecureRandom.uuid,

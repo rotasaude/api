@@ -15,6 +15,8 @@ module Consultations
 
     def self.call(consultation:, outcome_params:, by:)
       outcome = normalize(outcome_params)
+      # Fora da transação: nenhuma leitura de interruptor dentro do savepoint (OpenRequest).
+      signing = Signatures::Gate.usable?(Current.city)
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
         attendance = Attendance.lock.find(consultation.attendance_id)
@@ -39,7 +41,7 @@ module Consultations
           result = closed
           raise ActiveRecord::Rollback
         end
-        Signatures::OpenRequest.call(consultation)
+        Signatures::OpenRequest.call(consultation, usable: signing)
         DomainEvents.publish("consultation.finalized", consultation_id: consultation.id, attendance_id: attendance.id)
         # ADR 0031 (spec §6): a ficha nasce na finalização (o job relê tudo).
         Ledi::ConsultationFichaJob.enqueue_for(consultation)
