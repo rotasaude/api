@@ -170,16 +170,21 @@ module Consultations
     end
 
     # NGS2.06.05: o rodapé sai em toda página (repeater do Prawn, aplicado na
-    # renderização a todas as páginas, inclusive as criadas depois).
+    # renderização a todas as páginas, inclusive as criadas depois). O bloco
+    # roda já aqui (criação do stamp), e canvas + bounding_box de altura fixa
+    # deixam o cursor no fundo da caixa, abaixo da margem: sem o `float`, o
+    # primeiro texto abria uma 2ª página e a 1ª ficava só com o rodapé (api#55).
     def stamp_footer(pdf, footer)
       width = pdf.bounds.width
       text = safe(footer.text)
       pdf.repeat(:all) do
-        pdf.canvas do
-          pdf.bounding_box([ 40, 70 ], width: width, height: 56) do
-            pdf.stroke_horizontal_rule
-            pdf.move_down 4
-            pdf.text text, size: 7
+        pdf.float do
+          pdf.canvas do
+            pdf.bounding_box([ 40, 70 ], width: width, height: 56) do
+              pdf.stroke_horizontal_rule
+              pdf.move_down 4
+              pdf.text text, size: 7
+            end
           end
         end
       end

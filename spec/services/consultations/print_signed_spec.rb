@@ -27,6 +27,30 @@ RSpec.describe "Impresso assinável" do
     expect(texts.join).not_to include("Assinatura e carimbo")
   end
 
+  # api#55: o rodapé não pode abrir uma página vazia antes do conteúdo.
+  it "consulta curta: uma página, com o conteúdo e o rodapé na 1ª" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    texts = pages(Consultations::Print.call(consultation, footer: footer, addenda: false))
+    expect(texts.size).to eq(1)
+    expect(texts.first).to include("Registro de atendimento individual", "Mariana", "assinado digitalmente por MARIA ? SOUZA")
+  end
+
+  it "consulta longa: nenhuma página só com o rodapé, e a 1ª abre com o conteúdo" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen, plan: "linha de plano " * 1_300)
+    texts = pages(Consultations::Print.call(consultation, footer: footer, addenda: false))
+    expect(texts.first).to include("Registro de atendimento individual")
+    texts.each { |text| expect(text.sub(/Documento assinado digitalmente.*\z/, "").strip).not_to be_empty }
+  end
+
+  it "PDF do adendo curto: uma página" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    addendum = Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "exame adicional pedido",
+                                               text: "Texto do ADENDO").payload[:addendum]
+    texts = pages(Consultations::Print.addendum(addendum, footer: footer))
+    expect(texts.size).to eq(1)
+    expect(texts.first).to include("Texto do ADENDO", "assinado digitalmente por")
+  end
+
   it "addenda: false deixa o adendo de fora; o PDF do adendo é só dele" do
     consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
     addendum = Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "exame adicional pedido",
