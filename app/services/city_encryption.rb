@@ -74,7 +74,18 @@ module CityEncryption
     [ Consultation,   :assessment ],
     [ Consultation,   :plan ],
     [ ConsultationAddendum, :text ],
-    [ ClinicalRecordOpening, :reason_note ]
+    [ ClinicalRecordOpening, :reason_note ],
+    # ADR 0032: assinatura digital.
+    [ SignerCertificate, :subject_cpf ],
+    [ SignerCertificate, :certificate_der ],
+    [ SignatureSession, :access_token ],
+    [ SignatureOauthState, :code_verifier ],
+    [ SignatureRequest, :return_note ],
+    [ Signature, :canonical_json ],
+    [ Signature, :cades ],
+    [ Signature, :signed_pdf ],
+    [ Signature, :validation_material ],
+    [ Signature, :signer_cpf ]
   ].freeze
 
   module_function

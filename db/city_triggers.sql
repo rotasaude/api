@@ -1289,3 +1289,70 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- ADR 0032: assinatura gravada não muda. Só a validação (estado, instante e
+-- motivos) é regravada; sob rota.reencrypting (CityEncryption.allowing_reencryption),
+-- só as colunas cifradas. DELETE e TRUNCATE recusados.
+CREATE OR REPLACE FUNCTION rota_signature_guard() RETURNS trigger AS $fn$
+DECLARE
+  verification text[] := ARRAY['last_verification', 'last_verification_at', 'last_verification_reasons'];
+  encrypted text[] := ARRAY['canonical_json', 'cades', 'signed_pdf', 'validation_material', 'signer_cpf'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'signatures is append-only: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - verification) = (to_jsonb(OLD) - verification) THEN
+    RETURN NEW;
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'a recorded signature never changes';
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- ADR 0032: o pedido não troca de documento nem de autor, não some e não sai de
+-- estado resolvido (signed, returned_to_paper) — exceto a re-cifra do motivo.
+CREATE OR REPLACE FUNCTION rota_signature_request_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'signature_requests is append-only: DELETE refused';
+  END IF;
+  IF (NEW.document_type, NEW.document_id, NEW.consultation_id, NEW.author_user_id)
+     IS DISTINCT FROM (OLD.document_type, OLD.document_id, OLD.consultation_id, OLD.author_user_id) THEN
+    RAISE EXCEPTION 'signature request identity columns never change';
+  END IF;
+  IF OLD.status IN ('signed', 'returned_to_paper') THEN
+    IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - 'return_note') = (to_jsonb(OLD) - 'return_note') THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'a resolved signature request never changes';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.signatures') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS signatures_guard ON signatures';
+    EXECUTE 'CREATE TRIGGER signatures_guard
+      BEFORE UPDATE OR DELETE ON signatures
+      FOR EACH ROW EXECUTE FUNCTION rota_signature_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS signatures_append_only_truncate ON signatures';
+    EXECUTE 'CREATE TRIGGER signatures_append_only_truncate
+      BEFORE TRUNCATE ON signatures
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  IF to_regclass('public.signature_requests') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS signature_requests_guard ON signature_requests';
+    EXECUTE 'CREATE TRIGGER signature_requests_guard
+      BEFORE UPDATE OR DELETE ON signature_requests
+      FOR EACH ROW EXECUTE FUNCTION rota_signature_request_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS signature_requests_append_only_truncate ON signature_requests';
+    EXECUTE 'CREATE TRIGGER signature_requests_append_only_truncate
+      BEFORE TRUNCATE ON signature_requests
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;

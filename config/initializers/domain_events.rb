@@ -143,4 +143,14 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "consultation.addendum_added", to: []
   DomainEvents.bind "clinical_record.viewed", to: []
   DomainEvents.bind "clinical_record.opened", to: []
+
+  # Módulo 19b (ADR 0032; contrato §11): assinatura digital; trilha, só ids.
+  # Nenhum token, CPF, nome ou conteúdo assinado entra em evento.
+  DomainEvents.bind "signature.certificate_linked", to: []
+  DomainEvents.bind "signature.certificate_unlinked", to: []
+  DomainEvents.bind "signature.session_opened", to: []
+  DomainEvents.bind "signature.signed", to: []
+  DomainEvents.bind "signature.failed", to: []
+  DomainEvents.bind "signature.returned_to_paper", to: []
+  DomainEvents.bind "signature.verified", to: []
 end

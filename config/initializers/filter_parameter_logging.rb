@@ -25,10 +25,16 @@ Rails.application.config.filter_parameters += [
   # (`:reason` e `:note` já cobrem o motivo do adendo e a nota da abertura.)
   :subjective, :objective, :assessment, :plan, :text, :full_name, :social_name, :mother_name,
   # ADR 0031: a justificativa CID-10 do pedido de exame é um diagnóstico.
-  :cid10_justification
+  :cid10_justification,
+  # ADR 0032: PKCE, estado opaco do signer, valor da assinatura e o JSON
+  # canônico (`code`, `state`, `token` e `cpf` já estavam na lista).
+  :verifier, :prepared, :signature_value, :raw_signature, :canonical
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
 # isso o grant assinado (uso único, 60 s, mas ainda um bearer de sessão) cai
 # em claro no log de toda linha "Redirected to".
 Rails.application.config.filter_redirect += [ /grant=/ ]
+
+# ADR 0032: o retorno do PSC traz code e state na URL do dashboard.
+Rails.application.config.filter_redirect += [ /code=/ ]

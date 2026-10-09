@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_400004) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -1144,6 +1144,120 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_400004) do
     t.check_constraint "(user_id IS NULL) <> (operator_id IS NULL)", name: "ck_sessions_exactly_one_actor"
   end
 
+  create_table "signature_oauth_states", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "code_verifier", null: false
+    t.datetime "consumed_at"
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.string "provider", null: false
+    t.string "purpose", null: false
+    t.uuid "request_ids", default: [], null: false, array: true
+    t.string "return_to", default: "/", null: false
+    t.uuid "user_id", null: false
+    t.index ["expires_at"], name: "index_signature_oauth_states_on_expires_at"
+    t.index ["user_id"], name: "index_signature_oauth_states_on_user_id"
+    t.check_constraint "((purpose)::text = 'batch'::text) = (cardinality(request_ids) > 0) AND cardinality(request_ids) <= 50", name: "ck_signature_oauth_states_batch"
+    t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text])", name: "ck_signature_oauth_states_provider"
+    t.check_constraint "purpose::text = ANY (ARRAY['link'::text, 'session'::text, 'batch'::text])", name: "ck_signature_oauth_states_purpose"
+    t.check_constraint "(return_to)::text ~ '^/([^/].*)?$'::text", name: "ck_signature_oauth_states_return_to"
+  end
+
+  create_table "signature_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "attempts", default: 0, null: false
+    t.uuid "author_user_id", null: false
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "document_id", null: false
+    t.string "document_type", null: false
+    t.string "reason_code"
+    t.datetime "resolved_at"
+    t.text "return_note"
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.index ["author_user_id", "status", "created_at"], name: "idx_signature_requests_queue"
+    t.index ["consultation_id"], name: "index_signature_requests_on_consultation_id"
+    t.index ["document_type", "document_id"], name: "idx_signature_requests_document", unique: true
+    t.check_constraint "attempts >= 0", name: "ck_signature_requests_attempts"
+    t.check_constraint "document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text])", name: "ck_signature_requests_document_type"
+    t.check_constraint "reason_code IS NULL OR reason_code::text = ANY (ARRAY['no_session'::text, 'session_expired'::text, 'provider_unavailable'::text, 'provider_rejected'::text, 'signer_unavailable'::text, 'verification_failed'::text, 'certificate_expired'::text, 'certificate_revoked'::text, 'certificate_cpf_mismatch'::text, 'feature_disabled'::text, 'user_request'::text])", name: "ck_signature_requests_reason"
+    t.check_constraint "(status::text = ANY (ARRAY['signed'::text, 'returned_to_paper'::text])) = (resolved_at IS NOT NULL)", name: "ck_signature_requests_resolution"
+    t.check_constraint "(status)::text = 'returned_to_paper'::text OR return_note IS NULL", name: "ck_signature_requests_return_note"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'signed'::text, 'failed'::text, 'returned_to_paper'::text])", name: "ck_signature_requests_status"
+  end
+
+  create_table "signature_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "access_token", null: false
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.string "provider", null: false
+    t.string "scope", null: false
+    t.uuid "signer_certificate_id", null: false
+    t.datetime "started_at", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "user_id", null: false
+    t.index ["signer_certificate_id"], name: "index_signature_sessions_on_signer_certificate_id"
+    t.index ["user_id"], name: "idx_signature_sessions_one_active", unique: true, where: "((status)::text = 'active'::text)"
+    t.check_constraint "expires_at > started_at AND expires_at <= (started_at + '12:00:00'::interval)", name: "ck_signature_sessions_lifetime"
+    t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text])", name: "ck_signature_sessions_provider"
+    t.check_constraint "scope::text = 'signature_session'::text", name: "ck_signature_sessions_scope"
+    t.check_constraint "status::text = ANY (ARRAY['active'::text, 'expired'::text, 'revoked'::text])", name: "ck_signature_sessions_status"
+  end
+
+  create_table "signatures", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "cades", null: false
+    t.text "canonical_json", null: false
+    t.string "canonical_sha256", null: false
+    t.datetime "created_at", null: false
+    t.uuid "document_id", null: false
+    t.string "document_type", null: false
+    t.string "last_verification", null: false
+    t.datetime "last_verification_at", null: false
+    t.string "last_verification_reasons", default: [], null: false, array: true
+    t.string "pdf_sha256", null: false
+    t.string "policy", default: "AD-RB", null: false
+    t.string "policy_oid", null: false
+    t.string "provider", null: false
+    t.datetime "signed_at", null: false
+    t.text "signed_pdf", null: false
+    t.uuid "signature_request_id", null: false
+    t.uuid "signer_certificate_id", null: false
+    t.text "signer_cpf", null: false
+    t.text "validation_material", null: false
+    t.index ["document_type", "document_id"], name: "idx_signatures_document", unique: true
+    t.index ["last_verification"], name: "index_signatures_on_last_verification"
+    t.index ["signature_request_id"], name: "index_signatures_on_signature_request_id", unique: true
+    t.index ["signer_certificate_id"], name: "index_signatures_on_signer_certificate_id"
+    t.check_constraint "document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text])", name: "ck_signatures_document_type"
+    t.check_constraint "last_verification::text = ANY (ARRAY['valid'::text, 'invalid'::text, 'indeterminate'::text])", name: "ck_signatures_verification"
+    t.check_constraint "policy::text = ANY (ARRAY['AD-RB'::text, 'AD-RT'::text])", name: "ck_signatures_policy"
+    t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text])", name: "ck_signatures_provider"
+    t.check_constraint "(canonical_sha256)::text ~ '^[0-9a-f]{64}$'::text AND (pdf_sha256)::text ~ '^[0-9a-f]{64}$'::text", name: "ck_signatures_sha256"
+  end
+
+  create_table "signer_certificates", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "certificate_alias", null: false
+    t.text "certificate_der", null: false
+    t.datetime "created_at", null: false
+    t.text "issuer_dn", null: false
+    t.string "link_check_reasons", default: [], null: false, array: true
+    t.string "link_check_status", default: "valid", null: false
+    t.datetime "not_after", null: false
+    t.datetime "not_before", null: false
+    t.string "provider", null: false
+    t.string "serial_number", null: false
+    t.string "status", default: "active", null: false
+    t.text "subject_cpf", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "user_id", null: false
+    t.index ["user_id"], name: "idx_signer_certificates_one_active", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["user_id"], name: "index_signer_certificates_on_user_id"
+    t.check_constraint "not_after > not_before", name: "ck_signer_certificates_validity"
+    t.check_constraint "link_check_status::text = ANY (ARRAY['valid'::text, 'indeterminate'::text])", name: "ck_signer_certificates_link_check"
+    t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text])", name: "ck_signer_certificates_provider"
+    t.check_constraint "status::text = ANY (ARRAY['active'::text, 'replaced'::text, 'unlinked'::text, 'revoked'::text, 'expired'::text])", name: "ck_signer_certificates_status"
+  end
+
   create_table "solid_queue_blocked_executions", force: :cascade do |t|
     t.string "concurrency_key", null: false
     t.datetime "created_at", null: false
@@ -1463,6 +1577,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_400004) do
   add_foreign_key "screenings", "screening_revisions", column: "current_revision_id"
   add_foreign_key "screenings", "users", column: "started_by_user_id"
   add_foreign_key "sessions", "users"
+  add_foreign_key "signature_oauth_states", "users"
+  add_foreign_key "signature_requests", "users", column: "author_user_id"
+  add_foreign_key "signature_sessions", "signer_certificates"
+  add_foreign_key "signature_sessions", "users"
+  add_foreign_key "signatures", "signature_requests"
+  add_foreign_key "signatures", "signer_certificates"
+  add_foreign_key "signer_certificates", "users"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_failed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
