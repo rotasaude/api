@@ -1,6 +1,5 @@
 # spec/support/signature_helpers.rb
-# Assinatura digital (ADR 0032). Os helpers que falam com o PSC falso e com o
-# signer falso entram nas Tasks 4 e 5, neste mesmo módulo.
+# Assinatura digital (ADR 0032): helpers do PSC falso e do signer falso.
 require_relative "../../lib/fake_psc/pki"
 require_relative "../../lib/fake_psc/app"
 require "webmock/rspec"
@@ -63,6 +62,11 @@ module SignatureHelpers
                       last_verification: "valid", last_verification_at: Time.current)
   end
 
+  def stub_signer!(fake = FakeSigner.new)
+    allow(Signatures::Signer).to receive(:client).and_return(fake)
+    fake
+  end
+
   def attempt(&) = ApplicationRecord.transaction(requires_new: true, &)
 
   PSC_BASES = { "vidaas" => "https://psc-vidaas.test", "birdid" => "https://psc-birdid.test",
@@ -107,4 +111,20 @@ module SignatureHelpers
   end
 end
 
-RSpec.configure { |c| c.include SignatureHelpers }
+RSpec.configure do |config|
+  config.include SignatureHelpers
+
+  # Specs :signer falam com o serviço real (compose: http://signer:8090). Sem
+  # SIGNER_URL ficam fora — com aviso, nunca em silêncio.
+  if ENV["SIGNER_URL"].to_s.empty?
+    config.filter_run_excluding(:signer)
+    config.before(:suite) { warn "[signer] SIGNER_URL ausente: specs :signer fora desta corrida" }
+  end
+
+  config.around(:each, :signer) do |example|
+    WebMock.disable_net_connect!(allow: URI(ENV.fetch("SIGNER_URL")).host)
+    example.run
+  ensure
+    WebMock.disable_net_connect!
+  end
+end

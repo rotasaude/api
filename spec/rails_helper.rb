@@ -39,6 +39,7 @@ require_relative "support/lock_wait"
 require_relative "support/ledi_helpers"
 require_relative "support/screening_helpers"
 require_relative "support/clinical_record_helpers"
+require_relative "support/fake_signer"
 require_relative "support/signature_helpers"
 # Add additional requires below this line. Rails is not loaded until this point!
 
