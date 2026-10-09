@@ -24,6 +24,7 @@ module Signatures
     Provider = Data.define(:key, :client_id, :client_secret, :base_url, :authorize_base_url) do
       def inspect = "#<Signatures::Providers::Provider #{key}>"
       alias_method :to_s, :inspect
+      def pretty_print(pp) = pp.text(inspect)
     end
 
     module_function

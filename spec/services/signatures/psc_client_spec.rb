@@ -132,3 +132,15 @@ RSpec.describe Signatures::Psc::Client do
       .to eq("x" => "RAW")
   end
 end
+
+RSpec.describe "Redação de segredos (Psc::Token, Psc::CertificateEntry, Providers::Provider)" do
+  it "pretty_inspect e to_s não mostram token, segredo nem DER" do
+    token = Signatures::Psc::Token.new(access_token: "TOKEN-SEGREDO", expires_in: 60, scope: "single_signature")
+    entry = Signatures::Psc::CertificateEntry.new(certificate_alias: "a", der: "DER-SEGREDO")
+    provider = Signatures::Providers::Provider.new(key: "vidaas", client_id: "cid", client_secret: "CLIENT-SEGREDO",
+                                                   base_url: "https://x.test", authorize_base_url: "https://x.test")
+    [ token, entry, provider ].each do |value|
+      expect([ value.pretty_inspect, value.to_s, "#{value}", value.inspect ].join).not_to match(/SEGREDO/)
+    end
+  end
+end

@@ -24,10 +24,13 @@ module Signatures
     Token = Data.define(:access_token, :expires_in, :scope) do
       def inspect = "#<Signatures::Psc::Token scope=#{scope} expires_in=#{expires_in}>"
       alias_method :to_s, :inspect
+      def pretty_print(pp) = pp.text(inspect)
     end
 
     CertificateEntry = Data.define(:certificate_alias, :der) do
       def inspect = "#<Signatures::Psc::CertificateEntry>"
+      alias_method :to_s, :inspect
+      def pretty_print(pp) = pp.text(inspect)
     end
   end
 end

@@ -25,6 +25,8 @@ module Signatures
     # não inspect, então os dois são sobrescritos).
     module Redacted
       def pretty_print(pp) = pp.text(inspect)
+      # Data#to_s é alias separado do inspect original: sem isto vazaria.
+      def to_s = inspect
     end
 
     Prepared = Data.define(:digest, :state) do

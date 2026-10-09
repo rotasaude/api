@@ -43,9 +43,12 @@ class FakeSigner
 
     certificate = OpenSSL::X509::Certificate.new(Base64.strict_decode64(data["cert"]))
     digest = Digest::SHA256.digest("#{kind}|#{data['doc']}")
-    unless certificate.public_key.verify_raw("SHA256", signature_value, digest)
-      raise Signatures::Signer::Rejected, "invalid_signature_value"
+    valid = begin
+      certificate.public_key.verify_raw("SHA256", signature_value, digest)
+    rescue OpenSSL::PKey::PKeyError
+      false
     end
+    raise Signatures::Signer::Rejected, "invalid_signature_value" unless valid
 
     envelope = JSON.generate("fake" => kind, "doc" => data["doc"], "cert" => data["cert"],
                              "sig" => Base64.strict_encode64(signature_value))

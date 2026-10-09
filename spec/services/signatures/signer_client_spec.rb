@@ -47,7 +47,13 @@ RSpec.describe Signatures::Signer::Client do
     prepared = Signatures::Signer::Prepared.new(digest: "SEGREDO-BYTES", state: "SEGREDO-ESTADO")
     assembled = Signatures::Signer::Assembled.new(signature: "SEGREDO-ASSINATURA", validation_material: "SEGREDO-LCR")
     [ prepared, assembled ].each do |value|
-      expect([ value.inspect, value.pretty_inspect ].join).not_to include("SEGREDO")
+      expect([ value.inspect, value.pretty_inspect, value.to_s, "#{value}" ].join).not_to include("SEGREDO")
+    end
+    verification = Signatures::Signer::Verification.new(status: "valid", signer_cpf: "52998224725", signer_name: "MARIA",
+                                                        policy_oid: "1", signed_at: nil, reasons: [])
+    check = Signatures::Signer::CertificateCheck.new(status: "valid", signer_cpf: "52998224725", not_after: nil, reasons: [])
+    [ verification, check ].each do |value|
+      expect([ value.to_s, "#{value}", value.pretty_inspect ].join).not_to include("52998224725", "MARIA")
     end
     expect(client.pretty_inspect).not_to include("SEGREDO")
   end
@@ -95,6 +101,12 @@ RSpec.describe FakeSigner do
   let(:fake) { described_class.new }
   let(:leaf) { test_pki.leaf_for(SignatureHelpers::DOCTOR_CPF) }
   let(:serial) { Signatures::CertificateInfo.parse(leaf.der).serial_number }
+
+  it "assinatura RAW malformada é recusada, não estoura" do
+    prepared = fake.prepare(kind: "cades", document: "{}", certificate_der: leaf.der)
+    expect { fake.assemble(kind: "cades", state: prepared.state, signature_value: "x") }
+      .to raise_error(Signatures::Signer::Rejected) { |e| expect(e.code).to eq("invalid_signature_value") }
+  end
 
   it "mesma superfície do cliente real" do
     %i[prepare assemble verify check_certificate health].each do |name|
