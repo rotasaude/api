@@ -33,6 +33,20 @@ RSpec.describe DigitalSignatureCrew do
     expect(described_class.seed_current_city(slug: "curitiba")).to include(switch: "ligado", professionals: [])
   end
 
+  it "reexecução com profissional novo sem CPF não colide com CPF já semeado" do
+    maintainer!
+    unit = create_unit
+    first = doctor!(unit)
+    first.professional.update_columns(cpf: nil)
+    described_class.seed_current_city(slug: "curitiba")
+    second = doctor!(unit)
+    second.professional.update_columns(cpf: nil)
+    expect { described_class.seed_current_city(slug: "curitiba") }.not_to raise_error
+    cpfs = [ first, second ].map { |u| u.professional.reload.cpf }
+    expect(cpfs.uniq.size).to eq(2)
+    expect(cpfs).to all(satisfy { |c| CitizenIdentity::Cpf.normalize(c) == c })
+  end
+
   it "outra cidade fica intocada" do
     maintainer!
     expect(described_class.seed_current_city(slug: "maringa")).to eq(switch: "desligado (só Curitiba liga)", professionals: [])

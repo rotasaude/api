@@ -21,22 +21,25 @@ module DigitalSignatureCrew
 
     city = City.find(Current.city.id)
     SWITCHES.each { |key| Platform::Features.set!(city: city, key: key, enabled: true, maintainer: maintainer) }
-    professionals = Professional.where(cpf: nil).order(:id).each_with_index.map do |professional, index|
-      professional.update!(cpf: cpf_from(900_000_000 + index))
+    professionals = Professional.where(cpf: nil).order(:id).map do |professional|
+      professional.update!(cpf: free_cpf_for(slug, professional))
       professional.professional_name
     end
     missing = SWITCHES.flat_map { |key| Platform::Features.missing(city, key) }
     { switch: missing.empty? ? "ligado" : "ligado, falta: #{missing.join(', ')}", professionals: professionals }
   end
 
-  # CPF fictício com dígitos verificadores válidos a partir de 9 dígitos.
-  def cpf_from(base)
-    digits = format("%09d", base).chars.map(&:to_i)
-    2.times do
-      weights = (digits.size + 1).downto(2).to_a
-      sum = digits.zip(weights).sum { |digit, weight| digit * weight }
-      digits << ((sum * 10) % 11) % 10
+  # CPF fictício estável por profissional (hash de slug + id), com dígitos
+  # verificadores válidos; pula candidatos já em uso (reexecução idempotente).
+  def free_cpf_for(slug, professional)
+    (0..).each do |attempt|
+      base = Digest::SHA256.hexdigest("digital-signature:#{slug}:#{professional.id}:#{attempt}").scan(/\d/).join[0, 9].ljust(9, "1")
+      next if base.chars.uniq.size == 1
+
+      nums = base.chars.map(&:to_i)
+      first = CitizenIdentity::Cpf.check_digit(nums)
+      cpf = base + first.to_s + CitizenIdentity::Cpf.check_digit(nums + [ first ]).to_s
+      return cpf unless Professional.exists?(cpf: cpf)
     end
-    digits.join
   end
 end

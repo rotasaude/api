@@ -4,6 +4,8 @@
 # profissional sem certificado.
 require_relative "app"
 
+abort "fake-psc nunca sobe em produção" if (ENV["RAILS_ENV"] || ENV["RACK_ENV"]).to_s == "production"
+
 pki = FakePsc::Pki.load(ENV.fetch("SIGNER_DEV_PKI_DIR"))
 app = FakePsc::App.new(pki: pki)
 app.absent_cpfs = ENV.fetch("FAKE_PSC_ABSENT_CPFS", "").split(",").map(&:strip).reject(&:empty?)
