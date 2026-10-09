@@ -56,6 +56,18 @@ RSpec.describe "Painel de assinatura do admin", type: :request do
     expect(body["invalid_or_indeterminate"].sole).to include("simulated" => true, "verification" => "invalid")
   end
 
+  it "fronteira do dia: o dia de `to` conta inteiro (até 23:59), o dia anterior não" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
+    day = consultation.finalized_at.in_time_zone.to_date
+    sign_in_as(ledi_admin!)
+    get "/signature/admin/overview", params: { from: day.iso8601, to: day.iso8601 }
+    expect(body["documents_by_mode"]["manual"]).to eq(1)
+    get "/signature/admin/overview", params: { from: (day - 5).iso8601, to: (day - 1).iso8601 }
+    expect(body["documents_by_mode"]["manual"]).to eq(0)
+    get "/signature/admin/overview", params: { from: (day + 1).iso8601, to: (day + 3).iso8601 }
+    expect(body["documents_by_mode"]["manual"]).to eq(0)
+  end
+
   it "período: fora dele não conta; data inválida 422; não admin 403; interruptor desligado 403" do
     finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
     sign_in_as(ledi_admin!)
@@ -63,6 +75,8 @@ RSpec.describe "Painel de assinatura do admin", type: :request do
     expect(body["documents_by_mode"]["manual"]).to eq(1) # padrão: últimos 30 dias até hoje
     get "/signature/admin/overview", params: { from: (Time.zone.today - 60).iso8601, to: (Time.zone.today - 40).iso8601 }
     expect(body["documents_by_mode"]).to eq("digital" => 0, "pending" => 0, "manual" => 0)
+    get "/signature/admin/overview", params: { from: Time.zone.tomorrow.iso8601 }
+    expect([ response.status, body["error"] ]).to eq([ 422, "invalid_period" ]) # from > to (to = hoje)
     get "/signature/admin/overview", params: { from: "2026-13-01" }
     expect([ response.status, body["error"] ]).to eq([ 422, "invalid_period" ])
     sign_in_as(doctor)

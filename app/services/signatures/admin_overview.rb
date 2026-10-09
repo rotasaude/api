@@ -33,14 +33,14 @@ module Signatures
     end
 
     def documents_by_mode(range)
-      consultation_ids = Consultation.where(status: "finalized", finalized_at: range).pluck(:id)
-      addendum_ids = ConsultationAddendum.where(created_at: range).pluck(:id)
-      statuses = SignatureRequest.where(document_type: "Consultation", document_id: consultation_ids)
-                                 .or(SignatureRequest.where(document_type: "ConsultationAddendum", document_id: addendum_ids))
+      consultations = Consultation.where(status: "finalized", finalized_at: range)
+      addenda = ConsultationAddendum.where(created_at: range)
+      statuses = SignatureRequest.where(document_type: "Consultation", document_id: consultations.select(:id))
+                                 .or(SignatureRequest.where(document_type: "ConsultationAddendum", document_id: addenda.select(:id)))
                                  .group(:status).count
       digital = statuses.fetch("signed", 0)
       pending = statuses.fetch("pending", 0) + statuses.fetch("failed", 0)
-      { digital: digital, pending: pending, manual: consultation_ids.size + addendum_ids.size - digital - pending }
+      { digital: digital, pending: pending, manual: consultations.count + addenda.count - digital - pending }
     end
 
     # `simulated` sempre booleano (R5): marcador legal não depende de ausência.
