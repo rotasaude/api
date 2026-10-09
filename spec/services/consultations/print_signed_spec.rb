@@ -53,8 +53,8 @@ RSpec.describe "Impresso assinável" do
     simulated = footer.with(simulated: true)
     texts = pages(Consultations::Print.call(consultation, footer: simulated, addenda: false))
     expect(texts.size).to be > 1
-    texts.each { |text| expect(text).to include("SIMULADA — SEM VALIDADE JURÍDICA", "assinado digitalmente por") }
-    expect(simulated.text.downcase).to include("simulada — sem validade jurídica")
+    texts.each { |text| expect(text).to include("simulada — sem validade jurídica", "assinado digitalmente por") }
+    expect(simulated.text).to include("simulada — sem validade jurídica")
     real = pages(Consultations::Print.call(consultation, footer: footer, addenda: false)).join
     expect(real.downcase).not_to include("simulada")
     expect(footer.text).to eq("Documento assinado digitalmente por MARIA ≥ SOUZA (CPF ***.982.247-**) em 08/10/2026 13:45 UTC — " \
@@ -85,5 +85,16 @@ RSpec.describe "Impresso assinável" do
     expect(texts.size).to be > 1
     texts.each { |text| expect(text).to include("assinado digitalmente por JOÃO DA CONCEIÇÃO ?", "validar.iti.gov.br") }
     expect(texts.join).to include("Dor ? ? 3")
+  end
+
+  it "prefixo simulado com certificado acentuado longo: rodapé inteiro em toda página" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen, plan: "linha de plano " * 1_300)
+    name = "JOÃO DA CONCEIÇÃO ÁVILA DE ARAÚJO E SÁ " * 3
+    texts = pages(Consultations::Print.call(consultation, footer: footer.with(simulated: true, signer_name: name.strip), addenda: false))
+    expect(texts.size).to be > 1
+    texts.each do |text|
+      expect(text).to include("simulada — sem validade jurídica", "JOÃO DA CONCEIÇÃO ÁVILA", "***.982.247-**",
+                              "08/10/2026 13:45 UTC", "Verifique em https://validar.iti.gov.br")
+    end
   end
 end
