@@ -83,6 +83,7 @@ RSpec.describe "Invariantes do ADR 0032" do
     # authorize_url deles é, por desenho, o endereço que o navegador do próprio
     # titular abre (leva state e login_hint=CPF ao PSC); fora de log/evento.
     surfaces = []
+    starts = []
     approve = lambda do |url|
       states << URI.decode_www_form(URI(url).query).to_h["state"]
       codes << authorize_and_approve!(url)
@@ -91,12 +92,14 @@ RSpec.describe "Invariantes do ADR 0032" do
     log = capture_log do
       link = Signatures::StartLink.call(user: doctor, provider: "vidaas", return_to: "/conta")
       state, code = approve.call(link.payload[:authorize_url])
+      starts << link
       linked = Signatures::CompleteOauth.call(user: doctor, state: state, code: code)
       expect(linked).to be_ok
       surfaces << linked
 
       session = Signatures::StartSession.call(user: doctor, return_to: "/fila")
       state, code = approve.call(session.payload[:authorize_url])
+      starts << session
       opened = Signatures::CompleteOauth.call(user: doctor, state: state, code: code)
       expect(opened).to be_ok
       surfaces << opened
@@ -115,6 +118,7 @@ RSpec.describe "Invariantes do ADR 0032" do
       pending = signature_request!(addendum, author: doctor)
       batch = Signatures::StartBatch.call(user: doctor, request_ids: [ pending.id ], return_to: "/fila")
       expect(batch).to be_ok
+      starts << batch
       state, code = approve.call(batch.payload[:authorize_url])
       ran = Signatures::CompleteOauth.call(user: doctor, state: state, code: code)
       expect(ran.payload[:record]).to eq(signed: 1, failed: [])
@@ -126,12 +130,25 @@ RSpec.describe "Invariantes do ADR 0032" do
       surfaces.push(Signatures::Psc::Token.new(access_token: fake_psc.issued_tokens.last, expires_in: 300, scope: "multi_signature"))
     end
     verifiers = SignatureOauthState.all.map(&:code_verifier)
+    # não vacuidade: sem o que procurar, os "não contém" abaixo passariam à toa
+    expect(fake_psc.issued_tokens).not_to be_empty
+    expect(codes).not_to be_empty
+    expect(verifiers).not_to be_empty
+    expect(log).not_to be_empty
     secrets = fake_psc.issued_tokens + codes + states + verifiers +
               [ cpf, FakePsc::App::CLIENT_SECRET, "Refere sede", "Metformina 500", "Diabetes mellitus", "adendo sigiloso" ]
     expect(secrets.compact.select { |secret| log.include?(secret) }).to be_empty
 
     payloads = DomainEvent.where("name LIKE 'signature.%'").pluck(:payload).map(&:to_json).join
     expect(secrets.compact.select { |secret| payloads.include?(secret) }).to be_empty
+    # Start*: a URL leva state, code_challenge e login_hint (por desenho), mas
+    # nunca token, code, code_verifier ou segredo do cliente; e o inspect também não.
+    starts.each do |start|
+      url = start.payload[:authorize_url]
+      expect(URI.decode_www_form(URI(url).query).to_h).to include("code_challenge")
+      leaks = fake_psc.issued_tokens + codes + verifiers + [ FakePsc::App::CLIENT_SECRET ]
+      expect(leaks.select { |secret| [ url, start.inspect, start.pretty_inspect, start.to_s ].any? { |t| t.include?(secret) } }).to be_empty
+    end
     errors = surfaces.grep(Result).reject(&:ok?).flat_map { |r| [ r.reason, r.message, r.details ].map(&:to_s) }.join
     expect(secrets.compact.select { |secret| errors.include?(secret) }).to be_empty
     texts = surfaces.flat_map { |object| [ object.inspect, object.pretty_inspect, object.to_s ] }.join
