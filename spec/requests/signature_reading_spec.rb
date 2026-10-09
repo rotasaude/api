@@ -275,7 +275,7 @@ RSpec.describe "Leitura da assinatura", type: :request do
     get "/attendance/consultations/#{signed.id}/print"
     expect(response.body.b).not_to eq(signature.signed_pdf_bytes.b)
     text = text_of(response.body)
-    expect(text).to include("Assinaturas", "Consulta: assinada digitalmente por", "validação inválida")
+    expect(text).to include("Assinaturas", "Consulta: assinada digitalmente por", "validação inválida", "Assinatura e carimbo")
     expect(signature.reload.last_verification).to eq("invalid")
   end
 
