@@ -21,19 +21,50 @@ module Consultations
 
     module_function
 
-    def call(consultation)
+    # footer: PDF que vai ao PAdES (rodapé em toda página, sem assinatura à
+    # mão). report: impresso com a seção "Assinaturas" (19b). Sem os dois: o
+    # impresso do 19a.
+    def call(consultation, footer: nil, addenda: true, report: nil)
       patient = consultation.patient
       raise NotPrintable, "not_finalized" unless consultation.finalized?
       raise NotPrintable, "patient_name_missing" if patient.full_name.blank?
 
-      pdf = Prawn::Document.new(page_size: "A4", margin: 40, info: { Title: "Registro de consulta", Producer: "Rota Saúde" })
-      pdf.font_size(10)
+      pdf = document(footer)
       header(pdf, consultation)
       patient_block(pdf, patient)
       professional_block(pdf, consultation)
       record(pdf, consultation)
-      addenda(pdf, consultation)
-      signature(pdf)
+      addenda(pdf, consultation) if addenda
+      signatures(pdf, report) if report
+      signature(pdf) if footer.nil? && (report.nil? || report.hand_signature?)
+      pdf.render
+    end
+
+    # ADR 0032: o adendo tem documento próprio (JSON canônico e PDF). As
+    # mudanças estruturadas vêm de item_changes (`changes` é do ActiveModel::Dirty).
+    def addendum(addendum, footer:)
+      consultation = addendum.consultation
+      patient = consultation.patient
+      raise NotPrintable, "patient_name_missing" if patient.full_name.blank?
+
+      pdf = document(footer)
+      header(pdf, consultation)
+      pdf.move_down 6
+      pdf.text safe("Adendo à consulta de #{consultation.finalized_at.in_time_zone.strftime('%d/%m/%Y %H:%M')}"),
+               style: :bold, size: 12
+      line(pdf, "Registrado em", addendum.created_at.in_time_zone.strftime("%d/%m/%Y %H:%M"))
+      patient_block(pdf, patient)
+      title(pdf, "Profissional")
+      line(pdf, "Nome", addendum.author_user.professional&.professional_name || addendum.author_user.email_address)
+      title(pdf, "Motivo")
+      pdf.text safe(addendum.reason)
+      title(pdf, "Texto")
+      pdf.text safe(addendum.text)
+      changes = addendum.item_changes.to_h
+      if changes.present?
+        title(pdf, "Mudanças estruturadas")
+        change_lines(changes).each { |text| pdf.text safe(text) }
+      end
       pdf.render
     end
 
@@ -130,6 +161,60 @@ module Consultations
       pdf.text safe("Impresso em #{Time.current.strftime('%d/%m/%Y %H:%M')}. Sem assinatura digital: vale com a assinatura manual."),
                size: 8
     end
-    private_class_method :line, :title, :header, :patient_block, :professional_block, :record, :outcome, :addenda, :signature
+    def document(footer)
+      pdf = Prawn::Document.new(page_size: "A4", margin: footer ? [ 40, 40, 80, 40 ] : 40,
+                                info: { Title: "Registro de consulta", Producer: "Rota Saúde" })
+      pdf.font_size(10)
+      stamp_footer(pdf, footer) if footer
+      pdf
+    end
+
+    # NGS2.06.05: o rodapé sai em toda página (repeater do Prawn, aplicado na
+    # renderização a todas as páginas, inclusive as criadas depois).
+    def stamp_footer(pdf, footer)
+      width = pdf.bounds.width
+      text = safe(footer.text)
+      pdf.repeat(:all) do
+        pdf.canvas do
+          pdf.bounding_box([ 40, 70 ], width: width, height: 56) do
+            pdf.stroke_horizontal_rule
+            pdf.move_down 4
+            pdf.text text, size: 7
+          end
+        end
+      end
+    end
+
+    def signatures(pdf, report)
+      title(pdf, "Assinaturas")
+      report.lines.each { |text| pdf.text safe(text) }
+    end
+
+    # item_changes: chave presente = mudou; conducts/exam_requests são listas
+    # finais (exam_requests [] = todos cancelados).
+    def change_lines(changes)
+      lines = []
+      if changes.key?("evaluated_problems")
+        lines << "Problemas avaliados:"
+        Array(changes["evaluated_problems"]).each do |item|
+          label = item["terminology"] && item["code"] ? ClinicalTerms.label(item["terminology"], item["code"], item["release_id"]) : nil
+          lines << "  #{[ item['terminology']&.upcase, item['code'], label ].compact.join(' ')} — #{item['action']}"
+        end
+      end
+      if changes.key?("conducts")
+        lines << "Condutas (lista final):"
+        Array(changes["conducts"]).each { |code| lines << "  #{Ledi::ConsultationMapping.conduct_label(code.to_i)}" }
+      end
+      if changes.key?("exam_requests")
+        exams = Array(changes["exam_requests"])
+        lines << (exams.empty? ? "Exames solicitados (lista final): nenhum (todos cancelados)" : "Exames solicitados (lista final):")
+        exams.each do |item|
+          label = ClinicalTerms::SigtapExams.label(item["sigtap_code"], item["sigtap_competence"])
+          lines << "  #{item['sigtap_code']} #{label}#{item['cid10_justification'].present? ? " (CID-10 #{item['cid10_justification']})" : ''}"
+        end
+      end
+      lines
+    end
+    private_class_method :document, :stamp_footer, :signatures, :change_lines, :line, :title, :header, :patient_block, :professional_block, :record, :outcome, :addenda, :signature
   end
 end
