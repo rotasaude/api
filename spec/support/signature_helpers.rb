@@ -2,6 +2,8 @@
 # Assinatura digital (ADR 0032). Os helpers que falam com o PSC falso e com o
 # signer falso entram nas Tasks 4 e 5, neste mesmo módulo.
 require_relative "../../lib/fake_psc/pki"
+require_relative "../../lib/fake_psc/app"
+require "webmock/rspec"
 
 module SignatureHelpers
   DOCTOR_CPF = "52998224725".freeze
@@ -62,6 +64,47 @@ module SignatureHelpers
   end
 
   def attempt(&) = ApplicationRecord.transaction(requires_new: true, &)
+
+  PSC_BASES = { "vidaas" => "https://psc-vidaas.test", "birdid" => "https://psc-birdid.test",
+                "simulated" => "https://psc-simulated.test" }.freeze
+
+  def fake_psc(key = "vidaas") = (@fake_pscs ||= {})[key] ||= FakePsc::App.new(pki: test_pki)
+
+  # Credenciais da plataforma só destes PSC (reais), cada um servido pelo seu
+  # falso. Vale com o interruptor signature_psc_mock DESLIGADO.
+  def stub_psc!(keys = %w[vidaas])
+    credentials = keys.to_h do |key|
+      [ key, { "client_id" => FakePsc::App::CLIENT_ID, "client_secret" => FakePsc::App::CLIENT_SECRET,
+               "base_url" => PSC_BASES.fetch(key) } ]
+    end
+    allow(Signatures::Providers).to receive(:credentials).and_return(credentials)
+    keys.each { |key| stub_request(:any, /\A#{Regexp.escape(PSC_BASES.fetch(key))}/).to_rack(fake_psc(key)) }
+  end
+
+  # O PSC simulado (ADR 0032, revisão): liga digital_signature e
+  # signature_psc_mock na cidade (signature_city! por padrão; vira a
+  # Current.city), aponta FAKE_PSC_URL/FAKE_PSC_PUBLIC_URL para o falso e o
+  # serve por WebMock. Devolve a cidade.
+  def stub_psc_mock!(city = nil)
+    city ||= signature_city!
+    [ Signatures::Gate::KEY, Signatures::PscMock::KEY ].each do |key|
+      Platform::Features.set!(city: city, key: key, enabled: true, maintainer: ledi_maintainer!)
+    end
+    base = PSC_BASES.fetch("simulated")
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("FAKE_PSC_URL").and_return(base)
+    allow(ENV).to receive(:[]).with("FAKE_PSC_PUBLIC_URL").and_return(nil)
+    stub_request(:any, /\A#{Regexp.escape(base)}/).to_rack(fake_psc("simulated"))
+    city
+  end
+
+  # O navegador abre a URL de autorização (o falso registra o pedido) e o
+  # titular aprova no "celular". Devolve o code.
+  def authorize_and_approve!(url, key: "vidaas")
+    Net::HTTP.get_response(URI(url))
+    state = URI.decode_www_form(URI(url).query).to_h.fetch("state")
+    fake_psc(key).approve!(state)
+  end
 end
 
 RSpec.configure { |c| c.include SignatureHelpers }

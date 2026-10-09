@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_06_200002) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -244,6 +244,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_200002) do
     t.index ["name"], name: "index_platform_events_on_name"
     t.index ["occurred_at"], name: "idx_platform_events_pending", where: "(published_at IS NULL)"
     t.index ["occurred_at"], name: "index_platform_events_on_occurred_at"
+  end
+
+  create_table "signature_provider_checks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "last_check_at", null: false
+    t.boolean "last_check_ok", null: false
+    t.string "provider", null: false
+    t.datetime "updated_at", null: false
+    t.index ["provider"], name: "index_signature_provider_checks_on_provider", unique: true
+    t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text])", name: "ck_signature_provider_checks_provider"
   end
 
   create_table "sigtap_procedure_cbos", force: :cascade do |t|
