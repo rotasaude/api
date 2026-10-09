@@ -121,15 +121,19 @@ module Ledi
     # "Gerar de novo" (contratos §6 do 18), como Ledi::ScreeningFicha.retry!.
     # Falha nascida de um adendo (a ficha já existe): refresh!, que leva o
     # adendo à ficha — generate só diria :exists e resolveria sem regravar.
+    # Ordem de travas de refresh!/regenerate: a ficha da consulta, depois a falha.
     def retry!(failure, by:)
-      failure.with_lock do
-        raise AlreadyResolved if failure.resolved?
-
+      ApplicationRecord.transaction do
         consultation = Consultation.find_by(id: failure.source_id)
-        outcome = consultation ? attempt(consultation) : :skipped
-        resolve_failure!(consultation) if outcome == :exists
-        DomainEvents.publish("ledi.generation_retried", failure_id: failure.id, source_type: failure.source_type,
-                                                        source_id: failure.source_id)
+        consultation && latest_entry(consultation)&.lock!
+        failure.with_lock do
+          raise AlreadyResolved if failure.resolved?
+
+          outcome = consultation ? attempt(consultation) : :skipped
+          resolve_failure!(consultation) if outcome == :exists
+          DomainEvents.publish("ledi.generation_retried", failure_id: failure.id, source_type: failure.source_type,
+                                                          source_id: failure.source_id)
+        end
       end
       failure.reload
     end

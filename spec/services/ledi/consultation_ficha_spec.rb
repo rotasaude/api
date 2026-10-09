@@ -167,6 +167,26 @@ RSpec.describe Ledi::ConsultationFicha do
       .to eq([ entry.uuid, [ 1, 9 ] ])
   end
 
+  # Revisão final: a mesma ordem de travas de refresh!/regenerate (outbox →
+  # falha); a ordem inversa arrisca deadlock com o job do adendo.
+  it "gerar de novo trava a ficha da consulta ANTES da falha" do
+    consultation = finalized!
+    described_class.generate(consultation)
+    unit.update_columns(cnes: nil)
+    addendum!(consultation, "conducts" => [ 1, 9 ])
+    described_class.refresh!(consultation.reload)
+    unit.update_columns(cnes: "1234567")
+    locks = []
+    callback = lambda do |*, payload|
+      sql = payload[:sql]
+      locks << sql[/FROM "(ledi_outbox|ledi_generation_failures)"/, 1] if sql.include?("FOR UPDATE")
+    end
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      described_class.retry!(LediGenerationFailure.sole, by: ledi_admin!)
+    end
+    expect(locks.compact.first(2)).to eq(%w[ledi_outbox ledi_generation_failures])
+  end
+
   it "gerar de novo com a ficha em envio: a falha fica aberta e o job tenta de novo" do
     ActiveJob::Base.queue_adapter.enqueued_jobs.clear
     consultation = finalized!
