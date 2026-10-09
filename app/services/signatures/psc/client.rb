@@ -41,10 +41,13 @@ module Signatures
         "#{@provider.authorize_base_url || @provider.base_url}#{PATHS[:authorize]}?#{URI.encode_www_form(query)}"
       end
 
-      def exchange(code:, verifier:, redirect_uri:)
-        body = call(:token, form: { grant_type: "authorization_code", client_id: @provider.client_id,
-                                    client_secret: @provider.client_secret, code: code, redirect_uri: redirect_uri,
-                                    code_verifier: verifier })
+      # holder_name: nome do profissional, só para o PSC simulado (api#55), que
+      # emite o e-CPF de teste com ele; fora do DOC-ICP-17.01, nunca vai a PSC real.
+      def exchange(code:, verifier:, redirect_uri:, holder_name: nil)
+        form = { grant_type: "authorization_code", client_id: @provider.client_id, client_secret: @provider.client_secret,
+                 code: code, redirect_uri: redirect_uri, code_verifier: verifier }
+        form[:simulated_holder_name] = holder_name if @provider.key == Providers::SIMULATED && holder_name.present?
+        body = call(:token, form: form)
         access = body["access_token"]
         raise Rejected, "invalid_token_response" unless access.is_a?(String) && access.present?
 

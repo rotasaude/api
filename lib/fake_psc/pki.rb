@@ -94,15 +94,29 @@ module FakePsc
       Leaf.new(certificate: cert, key: key)
     end
 
-    def leaf_for(cpf, name: "PROFISSIONAL DE TESTE #{cpf.to_s[-4..]}")
-      @mutex.synchronize { @leaves[cpf] ||= issue(cpf: cpf, name: name) }
+    # Uma folha por CPF e nome. Com o nome do profissional (o api o manda na
+    # troca do código, só ao PSC simulado; api#55), o CN é "<NOME>:<CPF>" como
+    # num e-CPF real; sem ele, o nome genérico de teste.
+    def leaf_for(cpf, name: nil)
+      name = holder_name(name) || "PROFISSIONAL DE TESTE #{cpf.to_s[-4..]}"
+      @mutex.synchronize { @leaves[[ cpf, name ]] ||= issue(cpf: cpf, name: name) }
     end
 
-    def replace_leaf!(cpf, leaf) = @mutex.synchronize { @leaves[cpf] = leaf }
+    def replace_leaf!(cpf, leaf, name: nil)
+      name = holder_name(name) || "PROFISSIONAL DE TESTE #{cpf.to_s[-4..]}"
+      @mutex.synchronize { @leaves[[ cpf, name ]] = leaf }
+    end
 
     def inspect = "#<FakePsc::Pki>"
 
     private
+
+    # Maiúsculas, sem ":" (separa nome e CPF no CN) nem controle, espaços
+    # colapsados; cabe no CN (ub-common-name = 64, menos ":" e o CPF).
+    def holder_name(name)
+      clean = name.to_s.gsub(/[[:cntrl:]:]/, " ").squeeze(" ").strip.upcase[0, 52].to_s.strip
+      clean.empty? ? nil : clean
+    end
 
     # [0] otherName { 2.16.76.1.3.1, [0] EXPLICIT OCTET STRING } — nascimento
     # (ddMMaaaa) + CPF + NIS (11 zeros) + RG (15 zeros) + órgão/UF (6 zeros).

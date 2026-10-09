@@ -60,8 +60,8 @@ module FakePsc
       URI.decode_www_form(URI(decide!(state)).query).to_h.fetch("code")
     end
 
-    def leaf(cpf) = @certificate_overrides[cpf] || @pki.leaf_for(cpf)
-    def token_for!(cpf:, scope: "signature_session", ttl: 3600) = issue_token(cpf, scope, ttl)
+    def leaf(cpf, name = nil) = @certificate_overrides[cpf] || @pki.leaf_for(cpf, name: name)
+    def token_for!(cpf:, scope: "signature_session", ttl: 3600, name: nil) = issue_token(cpf, scope, ttl, name)
     def expire_tokens! = @mutex.synchronize { @tokens.each_value { |token| token[:expires_at] = Time.now - 1 } }
     def issued_tokens = @mutex.synchronize { @tokens.keys }
 
@@ -161,7 +161,9 @@ module FakePsc
 
       ttl = ONE_SHOT_TTL
       ttl = @forced_lifetime || [ grant[:lifetime] || @max_lifetime, @max_lifetime ].min if grant[:scope] == "signature_session"
-      access = issue_token(grant[:cpf], grant[:scope], ttl)
+      # Não é do DOC-ICP-17.01: o api manda o nome do profissional só ao PSC
+      # simulado (api#55), e o e-CPF de teste sai com ele no CN.
+      access = issue_token(grant[:cpf], grant[:scope], ttl, params["simulated_holder_name"])
       json(200, { access_token: access, token_type: "Bearer", expires_in: ttl, scope: grant[:scope],
                   authorized_identification_type: "CPF", authorized_identification: grant[:cpf] })
     end
@@ -171,7 +173,7 @@ module FakePsc
       return json(401, { error: "invalid_token" }) unless token
 
       json(200, { status: "S",
-                  certificates: [ { alias: token[:cpf], certificate: Base64.strict_encode64(leaf(token[:cpf]).der) } ] })
+                  certificates: [ { alias: token[:cpf], certificate: Base64.strict_encode64(leaf(token[:cpf], token[:name]).der) } ] })
     end
 
     def signature(request)
@@ -185,7 +187,7 @@ module FakePsc
       return json(401, { error: "invalid_token" }) if %w[single_signature multi_signature].include?(token[:scope]) && token[:uses].positive?
 
       @before_sign&.call
-      key = leaf(token[:cpf]).key
+      key = leaf(token[:cpf], token[:name]).key
       signatures = hashes.map do |item|
         digest = Base64.strict_decode64(item["hash"].to_s)
         unless item["hash_algorithm"] == SHA256_OID && item["signature_format"] == "RAW" && digest.bytesize == 32
@@ -204,9 +206,9 @@ module FakePsc
       token if token && token[:expires_at] > Time.now
     end
 
-    def issue_token(cpf, scope, ttl)
+    def issue_token(cpf, scope, ttl, name = nil)
       access = SecureRandom.urlsafe_base64(32)
-      @mutex.synchronize { @tokens[access] = { cpf: cpf, scope: scope, expires_at: Time.now + ttl, uses: 0 } }
+      @mutex.synchronize { @tokens[access] = { cpf: cpf, name: name, scope: scope, expires_at: Time.now + ttl, uses: 0 } }
       access
     end
 

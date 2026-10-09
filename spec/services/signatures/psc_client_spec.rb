@@ -105,6 +105,37 @@ RSpec.describe Signatures::Psc::Client do
     expect { described_class.for("vidaas") }.to raise_error(Signatures::Psc::Unavailable)
   end
 
+  # api#55: o nome do titular vai só ao PSC simulado, no corpo do POST do
+  # token (servidor a servidor, nunca na URL); o PSC real não o recebe.
+  it "PSC real: o nome do titular nunca vai na troca do código" do
+    code = authorize_and_approve!(url("single_signature"))
+    client.exchange(code: code, verifier: verifier, redirect_uri: redirect_uri, holder_name: "Helena Duarte Moreira")
+    expect(a_request(:post, "#{SignatureHelpers::PSC_BASES['vidaas']}/v0/oauth/token")
+      .with { |req| !req.body.include?("Helena") && !req.body.include?("holder") }).to have_been_made.once
+  end
+
+  it "PSC simulado: e-CPF com o nome do titular (formato ICP); sem nome, o genérico; assina com a mesma chave" do
+    city = stub_psc_mock!
+    simulated = described_class.for("simulated", city: city)
+    issue = lambda do |holder_name|
+      authorize = simulated.authorize_url(state: "sim-#{SecureRandom.hex(4)}", challenge: challenge, scope: "signature_session",
+                                          login_hint: cpf, redirect_uri: redirect_uri)
+      expect(authorize).not_to include("Helena", "HELENA")
+      code = authorize_and_approve!(authorize, key: "simulated")
+      simulated.exchange(code: code, verifier: verifier, redirect_uri: redirect_uri, holder_name: holder_name)
+    end
+    named = issue.call("Helena: Duarte\u0000 Moreira")
+    entry = simulated.certificates(named.access_token).sole
+    info = Signatures::CertificateInfo.parse(entry.der)
+    expect([ info.holder_name, info.cpf ]).to eq([ "HELENA DUARTE MOREIRA", cpf ])
+    digest = Digest::SHA256.digest("um")
+    raw = simulated.sign(access_token: named.access_token, certificate_alias: cpf, digests: { "d" => digest })
+    expect(info.certificate.public_key.verify_raw("SHA256", raw.fetch("d"), digest)).to be(true)
+
+    generic = Signatures::CertificateInfo.parse(simulated.certificates(issue.call(nil).access_token).sole.der)
+    expect(generic.holder_name).to eq("PROFISSIONAL DE TESTE #{cpf[-4..]}")
+  end
+
   it "lê as respostas no formato literal do DOC-ICP-17.01 (sem o falso)" do
     WebMock.reset!
     base = SignatureHelpers::PSC_BASES["vidaas"]

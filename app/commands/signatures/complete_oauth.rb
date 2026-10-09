@@ -28,7 +28,8 @@ module Signatures
       return Result.fail(:invalid_state) unless code.is_a?(String) && code.present? && code.size <= MAX_CODE
 
       client = Psc::Client.for(row.provider)
-      token = client.exchange(code: code, verifier: row.code_verifier, redirect_uri: Providers.redirect_uri(Current.city))
+      token = client.exchange(code: code, verifier: row.code_verifier, redirect_uri: Providers.redirect_uri(Current.city),
+                              holder_name: user.professional&.professional_name)
       dispatch(row, user: user, client: client, token: token, now: now)
     rescue Psc::Unavailable
       Result.fail(:provider_unavailable)
