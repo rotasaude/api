@@ -27,7 +27,7 @@ RSpec.describe "Console: modo de prontuário da cidade", type: :request do
     expect(response).to have_http_status(:ok)
     expect(json["city"]).to include("record_mode" => "integrated", "pec_url" => "https://pec.cidade.gov.br",
                                     "ibge_code" => "4106902", "city_reachable" => true)
-    expect(json["city"]["features"].map { |f| f["key"] }).to eq(%w[ledi_export cadsus_lookup clinical_record])
+    expect(json["city"]["features"].map { |f| f["key"] }).to eq(%w[ledi_export cadsus_lookup clinical_record digital_signature signature_psc_mock])
     expect(json["city"]["features"].first).to include("enabled" => false, "usable" => false,
                                                       "missing" => [ "credential_missing:ledi" ])
     expect(CityProfile.current.ibge_code).to eq("4106902")
