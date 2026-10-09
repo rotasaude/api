@@ -29,6 +29,31 @@ RSpec.describe Consultations::Json do
     expect(json["care_type"]).to eq("5")
   end
 
+  # Revisão final: `changes` na MESMA forma dos itens da consulta (rótulo,
+  # opcionais só com valor, códigos de conduta como string), nunca o cru.
+  it "adendo: changes passa pelos serializadores dos itens da consulta" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
+    Consultations::AddAddendum.call(
+      consultation: consultation, by: doctor, reason: "correção estruturada", text: "ajuste",
+      changes: { "evaluated_problems" => [ { "terminology" => "cid10", "code" => "E119", "action" => "add" } ],
+                 "conducts" => [ "1", 9 ],
+                 "exam_requests" => [ { "sigtap_code" => "0202010503" },
+                                      { "sigtap_code" => "0202010317", "cid10_justification" => "E119" } ] }
+    )
+    changes = described_class.consultation(consultation.reload).deep_stringify_keys["addenda"].sole["changes"]
+    expect(changes).to eq(
+      "evaluated_problems" => [ { "problem_id" => nil, "terminology" => "cid10", "code" => "E119",
+                                  "label" => ClinicalTerms.label("cid10", "E119", TerminologyRelease.active.find_by!(kind: "cid10").id),
+                                  "action" => "add" } ],
+      "conducts" => %w[1 9],
+      "exam_requests" => [ { "sigtap_code" => "0202010503", "label" => "DOSAGEM DE HEMOGLOBINA GLICOSILADA" },
+                           { "sigtap_code" => "0202010317", "label" => ClinicalTerms::SigtapExams.label("0202010317", Time.zone.today.strftime("%Y%m")),
+                             "cid10_justification" => "E119" } ]
+    )
+    expect(changes["evaluated_problems"].sole["label"]).to be_present
+    expect(changes["exam_requests"].last["label"]).to be_present
+  end
+
   it "finalizada: itens gravados (sem os do adendo), adendos em ordem com autor e mudanças" do
     consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
     Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "exame adicional pedido",

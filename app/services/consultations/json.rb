@@ -21,8 +21,14 @@ module Consultations
         reason: a.reason, text: a.text, changes: changes(a.item_changes) }
     end
 
+    # Mesma forma dos itens da consulta (rótulo, opcionais só com valor,
+    # conduta como string); só as chaves que o adendo mudou.
     def changes(stored)
-      stored.key?("conducts") ? stored.merge("conducts" => stored["conducts"].map(&:to_s)) : stored
+      exams = ->(list) { list.map { |e| e.values_at("sigtap_code", "sigtap_competence", "cid10_justification") } }
+      { "evaluated_problems" => -> { problem_list(stored["evaluated_problems"]) },
+        "conducts" => -> { stored["conducts"].map(&:to_s) },
+        "exam_requests" => -> { exam_list(exams.(stored["exam_requests"])) } }
+        .select { |key, _| stored.key?(key) }.transform_values(&:call)
     end
 
     def summary(c)
@@ -33,9 +39,7 @@ module Consultations
 
     def evaluated_problems(c)
       if c.draft?
-        Array(c.draft_items["evaluated_problems"]).map do |i|
-          problem_item(i["problem_id"], i["terminology"], i["code"], i["release_id"], i["action"], i["onset_on"], i["onset_precision"])
-        end
+        problem_list(c.draft_items["evaluated_problems"])
       else
         c.problem_items.where(addendum_id: nil).order(:created_at, :id).map do |row|
           problem_item(row.patient_problem_id, row.terminology, row.code, row.terminology_release_id, row.action,
@@ -58,6 +62,17 @@ module Consultations
              else
                c.exam_requests.where(addendum_id: nil).order(:created_at, :id).pluck(:sigtap_code, :sigtap_competence, :cid10_justification)
              end
+      exam_list(rows)
+    end
+
+    # Itens no formato de draft_items / item_changes (chaves string).
+    def problem_list(items)
+      Array(items).map do |i|
+        problem_item(i["problem_id"], i["terminology"], i["code"], i["release_id"], i["action"], i["onset_on"], i["onset_precision"])
+      end
+    end
+
+    def exam_list(rows)
       rows.map do |code, competence, cid|
         { sigtap_code: code, label: ClinicalTerms::SigtapExams.label(code, competence), cid10_justification: cid }.compact
       end
@@ -67,6 +82,6 @@ module Consultations
       { problem_id: problem_id, terminology: terminology, code: code, label: ClinicalTerms.label(terminology, code, release_id),
         action: action, onset_on: onset_on, onset_precision: onset_precision }.reject { |k, v| v.nil? && %i[onset_on onset_precision].include?(k) }
     end
-    private_class_method :changes, :vitals, :conducts, :exam_requests, :problem_item
+    private_class_method :changes, :vitals, :conducts, :exam_requests, :problem_list, :exam_list, :problem_item
   end
 end
