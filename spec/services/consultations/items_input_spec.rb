@@ -44,6 +44,16 @@ RSpec.describe Consultations::ItemsInput do
     )
   end
 
+  # Contrato §4: códigos chegam como string de dígitos (o dashboard manda "5",
+  # ["9"]); inteiro segue aceito. Guarda inteiro (coluna e ficha LEDI).
+  it "care_type e conducts: string de dígitos vira inteiro; inteiro segue aceito" do
+    result = input("care_type" => "5", "conducts" => [ "9", 1 ])
+    expect(result).to be_ok
+    expect(result.payload[:attrs]["care_type"]).to eq(5)
+    expect(result.payload[:draft_items]["conducts"]).to eq([ 9, 1 ])
+    expect(input("care_type" => nil).payload[:attrs]).to eq("care_type" => nil)
+  end
+
   it "avaliar e resolver usam o problema do paciente" do
     problem = ApplicationRecord.transaction do
       Patients::ApplyProblemEvent.call(patient: patient, action: "add", by: verifier!, source: { consultation: Struct.new(:id).new(SecureRandom.uuid) },
@@ -66,11 +76,20 @@ RSpec.describe Consultations::ItemsInput do
     { "vitals" => { "spo2" => "37,5" } } => [ :implausible_vital, "spo2" ],
     { "vitals" => "lixo" } => [ :implausible_vital, "vitals" ],
     { "care_type" => 4 } => [ :invalid_care_type, nil ],
-    { "care_type" => "5" } => [ :invalid_care_type, nil ],
+    { "care_type" => "abc" } => [ :invalid_care_type, nil ],
+    { "care_type" => "5.0" } => [ :invalid_care_type, nil ],
+    { "care_type" => "" } => [ :invalid_care_type, nil ],
+    { "care_type" => "4" } => [ :invalid_care_type, nil ],
+    { "care_type" => 5.0 } => [ :invalid_care_type, nil ],
     { "conducts" => [ 3 ] } => [ :invalid_conduct, nil ],
     { "conducts" => [ 1, 1 ] } => [ :invalid_conduct, nil ],
     { "conducts" => (1..13).to_a } => [ :invalid_conduct, nil ],
     { "conducts" => "9" } => [ :invalid_conduct, nil ],
+    { "conducts" => [ "abc" ] } => [ :invalid_conduct, nil ],
+    { "conducts" => [ "9.0" ] } => [ :invalid_conduct, nil ],
+    { "conducts" => [ "" ] } => [ :invalid_conduct, nil ],
+    { "conducts" => [ "3" ] } => [ :invalid_conduct, nil ],
+    { "conducts" => [ 1, "1" ] } => [ :invalid_conduct, nil ],
     { "evaluated_problems" => "T90" } => [ :invalid_problem, nil ],
     { "evaluated_problems" => [ "T90" ] } => [ :invalid_problem, 0 ],
     { "evaluated_problems" => [ { "terminology" => "ciap2", "code" => "Z99", "action" => "add" } ] } => [ :invalid_problem, 0 ],

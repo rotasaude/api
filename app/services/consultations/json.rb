@@ -11,14 +11,18 @@ module Consultations
       { id: c.id, attendance_id: c.attendance_id, patient_id: c.patient_id, status: c.status,
         author: { id: c.author_user_id, name: Screenings::Json.staff_name(c.author_user) }, cbo_code: c.cbo_code,
         subjective: c.subjective, objective: c.objective, assessment: c.assessment, plan: c.plan, vitals: vitals(c),
-        care_type: c.care_type, evaluated_problems: evaluated_problems(c), conducts: conducts(c),
+        care_type: c.care_type&.to_s, evaluated_problems: evaluated_problems(c), conducts: conducts(c),
         exam_requests: exam_requests(c), started_at: c.started_at.iso8601, finalized_at: c.finalized_at&.iso8601,
         addenda: c.addenda.order(:created_at, :id).map { |a| addendum(a) } }
     end
 
     def addendum(a)
       { id: a.id, author_name: Screenings::Json.staff_name(a.author_user), created_at: a.created_at.iso8601,
-        reason: a.reason, text: a.text, changes: a.item_changes }
+        reason: a.reason, text: a.text, changes: changes(a.item_changes) }
+    end
+
+    def changes(stored)
+      stored.key?("conducts") ? stored.merge("conducts" => stored["conducts"].map(&:to_s)) : stored
     end
 
     def summary(c)
@@ -42,7 +46,11 @@ module Consultations
 
     def vitals(c) = Screenings::VitalSigns.json(c.vitals).merge("bmi" => Screenings::VitalSigns.bmi(c.vitals)).compact
 
-    def conducts(c) = c.draft? ? Array(c.draft_items["conducts"]) : c.conducts.where(addendum_id: nil).order(:created_at, :id).pluck(:code)
+    # Contrato §4: códigos como string (guardados como inteiro).
+    def conducts(c)
+      codes = c.draft? ? Array(c.draft_items["conducts"]) : c.conducts.where(addendum_id: nil).order(:created_at, :id).pluck(:code)
+      codes.map(&:to_s)
+    end
 
     def exam_requests(c)
       rows = if c.draft?
@@ -59,6 +67,6 @@ module Consultations
       { problem_id: problem_id, terminology: terminology, code: code, label: ClinicalTerms.label(terminology, code, release_id),
         action: action, onset_on: onset_on, onset_precision: onset_precision }.reject { |k, v| v.nil? && %i[onset_on onset_precision].include?(k) }
     end
-    private_class_method :vitals, :conducts, :exam_requests, :problem_item
+    private_class_method :changes, :vitals, :conducts, :exam_requests, :problem_item
   end
 end

@@ -34,8 +34,8 @@ module Consultations
       end
 
       if params.key?("care_type")
-        value = params["care_type"]
-        return Result.fail(:invalid_care_type) unless value.nil? || Ledi::ConsultationMapping.care_type?(value)
+        value = params["care_type"].nil? ? nil : Ledi::ConsultationMapping.code(params["care_type"])
+        return Result.fail(:invalid_care_type) unless params["care_type"].nil? || Ledi::ConsultationMapping.care_type?(value)
 
         attrs["care_type"] = value
       end
@@ -82,10 +82,14 @@ module Consultations
       Result.ok(items: items)
     end
 
+    # Códigos como string de dígitos ou inteiro; a lista sai em inteiros.
     def conducts(list)
-      valid = list.is_a?(Array) && list.size <= Ledi::ConsultationMapping.max_conducts && list.uniq.size == list.size &&
-              list.all? { |code| Ledi::ConsultationMapping.conduct?(code) }
-      valid ? Result.ok(items: list) : Result.fail(:invalid_conduct)
+      return Result.fail(:invalid_conduct) unless list.is_a?(Array)
+
+      codes = list.map { |code| Ledi::ConsultationMapping.code(code) }
+      valid = codes.size <= Ledi::ConsultationMapping.max_conducts && codes.uniq.size == codes.size &&
+              codes.all? { |code| Ledi::ConsultationMapping.conduct?(code) }
+      valid ? Result.ok(items: codes) : Result.fail(:invalid_conduct)
     end
 
     # `kept`: pares [sigtap_code, cid10] já vigentes (adendo) — o não médico

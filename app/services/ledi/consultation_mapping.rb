@@ -19,6 +19,16 @@ module Ledi
     def care_types = coded("care_types")
     def conducts = coded("conducts")
 
+    # Contrato §4: o código chega como "<código>" (string de dígitos) ou inteiro
+    # (compatibilidade) → Integer; qualquer outra coisa ("abc", "5.0", "") → nil.
+    # Guardado e mandado ao LEDI como inteiro; devolvido ao cliente como string.
+    def code(value)
+      case value
+      when Integer then value
+      when String then value.match?(/\A\d+\z/) ? value.to_i : nil
+      end
+    end
+
     def care_type?(code) = code.is_a?(Integer) && care_types.any? { |t| t[:code] == code }
     def conduct?(code) = code.is_a?(Integer) && conducts.any? { |c| c[:code] == code }
     def care_type_label(code) = care_types.find { |t| t[:code] == code }&.dig(:label)

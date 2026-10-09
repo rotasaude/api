@@ -23,8 +23,8 @@ RSpec.describe "Consulta", type: :request do
   it "opções da consulta para o usuário" do
     sign_in_as(doctor)
     get "/attendance/consultation_options"
-    expect(body["care_types"].map { |t| t["code"] }).to eq([ 1, 2, 5, 6 ])
-    expect(body["conducts"].first).to eq("code" => 1, "label" => "Retorno para consulta agendada")
+    expect(body["care_types"].map { |t| t["code"] }).to eq(%w[1 2 5 6])
+    expect(body["conducts"].first).to eq("code" => "1", "label" => "Retorno para consulta agendada")
     expect(body["cid10_allowed_for_cbo"]).to be(true)
   end
 
@@ -66,6 +66,29 @@ RSpec.describe "Consulta", type: :request do
     expect(status_and_error).to eq([ 409, "not_draft" ])
   end
 
+  # Contrato §4: códigos são "<código>" (string) na entrada e na saída.
+  it "códigos como string ponta a ponta: PATCH, finalize e adendo ecoam strings; não numérico 422" do
+    id = start!["id"]
+    json_patch "/attendance/consultations/#{id}", draft_body(care_type: "5", conducts: [ "9" ])
+    expect(response).to have_http_status(:ok)
+    expect(body.values_at("care_type", "conducts")).to eq([ "5", [ "9" ] ])
+    expect(Consultation.find(id).care_type).to eq(5)
+    { { "care_type" => "abc" } => "invalid_care_type", { "care_type" => "5.0" } => "invalid_care_type",
+      { "care_type" => "" } => "invalid_care_type", { "conducts" => [ "abc" ] } => "invalid_conduct",
+      { "conducts" => [ "" ] } => "invalid_conduct" }.each do |params, error|
+      json_patch "/attendance/consultations/#{id}", params
+      expect(status_and_error).to eq([ 422, error ]), params.inspect
+    end
+    json_post "/attendance/consultations/#{id}/finalize", outcome: { outcome: "discharged" }
+    expect(response).to have_http_status(:ok)
+    expect(body.values_at("status", "care_type", "conducts")).to eq([ "finalized", "5", [ "9" ] ])
+    json_post "/attendance/consultations/#{id}/addenda", reason: "acréscimo de dados", text: "texto",
+                                                         changes: { conducts: [ "9", "1" ] }
+    expect(response).to have_http_status(:created)
+    expect(body["changes"]["conducts"]).to eq(%w[9 1])
+    expect(ConsultationAddendum.sole.item_changes["conducts"]).to eq([ 9, 1 ])
+  end
+
   it "finaliza com o desfecho; requisitos 422; erros do close passam" do
     id = start!["id"]
     json_patch "/attendance/consultations/#{id}", draft_body(conducts: [])
@@ -76,7 +99,7 @@ RSpec.describe "Consulta", type: :request do
     expect(status_and_error).to eq([ 422, "referral_required" ])
     json_post "/attendance/consultations/#{id}/finalize", outcome: { outcome: "return" }
     expect(response).to have_http_status(:ok)
-    expect(body.values_at("status", "conducts")).to eq([ "finalized", [ 1 ] ])
+    expect(body.values_at("status", "conducts")).to eq([ "finalized", [ "1" ] ])
     expect(attendance.reload.outcome).to eq("return")
   end
 

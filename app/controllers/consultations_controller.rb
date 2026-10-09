@@ -25,8 +25,10 @@ class ConsultationsController < ApplicationController
   def options
     cid10 = Consultations::Authorization.allowed_links(user: Current.user)
                                         .any? { |link| Ledi::ConsultationMapping.cid10_allowed?(link.cbo_code) }
-    render json: { care_types: Ledi::ConsultationMapping.care_types, conducts: Ledi::ConsultationMapping.conducts,
-                   cid10_allowed_for_cbo: cid10 }
+    # Contrato §4: o código vai como string.
+    as_strings = ->(rows) { rows.map { |row| row.merge(code: row[:code].to_s) } }
+    render json: { care_types: as_strings.(Ledi::ConsultationMapping.care_types),
+                   conducts: as_strings.(Ledi::ConsultationMapping.conducts), cid10_allowed_for_cbo: cid10 }
   end
 
   def create
