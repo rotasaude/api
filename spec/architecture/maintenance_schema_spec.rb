@@ -15,7 +15,9 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city],
+    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus],
+    "SignatureProvider" => %w[key configured lastCheckAt lastCheckOk],
+    "SignerStatus" => %w[reachable version crlUpdatedAt],
     "Maintainer" => %w[id emailAddress active enrolled createdAt],
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
                      saveProtocolDraft submitProtocolForReview publishProtocol
@@ -95,8 +97,11 @@ RSpec.describe "Maintenance GraphQL schema" do
   # restrições globais proíbem.
   # ADR 0028: `key` do interruptor é o identificador do catálogo em código
   # ("ledi_export"), não uma chave criptográfica — o par exato, nunca o nome.
+  # ADR 0032: `key` do prestador é a chave do catálogo em código ("vidaas"),
+  # não uma chave criptográfica — o par exato, nunca o nome.
   def forbidden_name_exempt_fields
-    %w[CityChannel.phoneNumberId CityChannel.displayPhoneNumber CityFeature.key Mutation.setCityFeature.key]
+    %w[CityChannel.phoneNumberId CityChannel.displayPhoneNumber CityFeature.key Mutation.setCityFeature.key
+       SignatureProvider.key]
   end
 
   # Argumentos são julgados pelo PRÓPRIO nome (o do campo já foi julgado ao
@@ -539,7 +544,7 @@ RSpec.describe "Maintenance GraphQL schema" do
       # aqui quebra `root_query_field_names` abaixo, de propósito.
       def field_selections
         { "me" => "{ id }", "maintainers" => "{ id }", "maintenanceTokens" => "{ id }", "auditEvents" => "{ name }",
-          "cities" => "{ slug }" }
+          "cities" => "{ slug }", "signatureProviders" => "{ key }", "signerStatus" => "{ reachable }" }
       end
 
       def root_query_field_names

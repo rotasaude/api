@@ -12,6 +12,7 @@ module Maintenance
         saveProtocolDraft submitProtocolForReview publishProtocol
         activateProtocol retireProtocol revertProtocolActivation
         setCityFeature
+        signatureProviders signerStatus
       ].freeze
 
       # Campos de raiz que um token PODE usar. Existe para a guarda de

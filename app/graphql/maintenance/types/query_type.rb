@@ -27,12 +27,31 @@ module Maintenance
             description: "Uma cidade. Único caminho para dentro do banco dela." do
         argument :slug, String, required: true
       end
+      # ADR 0032 (contrato §8): plataforma, sem abrir cidade, sem segredo.
+      field :signature_providers, [ Types::SignatureProviderType ], null: false,
+            description: "PSC de assinatura do ambiente: credencial presente e última checagem"
+      field :signer_status, Types::SignerStatusType, null: false,
+            description: "Estado do serviço interno de assinatura (signer)"
+
+      ProviderRow = Data.define(:key, :configured, :last_check_at, :last_check_ok)
 
       def me = context.fetch(:maintainer)
       def maintainers = Maintainer.order(:email_address)
       def maintenance_tokens = MaintenanceToken.order(created_at: :desc)
       def audit_events(**filters) = AuditEventsQuery.call(**filters)
       def cities(status: nil) = CityCatalogQuery.call(credential: context.fetch(:credential), status: status)
+
+      # R3: só os 5 PSC reais; `configured` é do ambiente, não da cidade.
+      def signature_providers
+        checks = Signatures::Providers.checks
+        Signatures::Providers::CATALOG.map do |key|
+          check = checks[key]
+          ProviderRow.new(key: key, configured: Signatures::Providers.configured_in_environment?(key),
+                          last_check_at: check&.last_check_at, last_check_ok: check&.last_check_ok)
+        end
+      end
+
+      def signer_status = Signatures::SignerStatus.call
 
       # O escopo do token é aplicado AQUI (spec §7): é um dos dois pontos em que
       # uma cidade é escolhida, e o único que abre conexão. Slug inexistente
