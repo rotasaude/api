@@ -189,6 +189,42 @@ RSpec.describe "Consulta", type: :request do
     expect(body["cid10_allowed_for_cbo"]).to be(true)
   end
 
+  # Task 22 (decisão do usuário 2026-10-09): o admin municipal lê as opções
+  # (rótulos da tela "Consultas por profissional"); as demais rotas seguem
+  # exigindo health_professional.
+  describe "opções para o admin municipal" do
+    let(:admin) { staff_with("adm-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin") }
+
+    it "admin sem health_professional: 200, cid10 false, códigos string" do
+      sign_in_as(admin)
+      get "/attendance/consultation_options"
+      expect(response).to have_http_status(:ok)
+      expect(body["cid10_allowed_for_cbo"]).to be(false)
+      expect(body["care_types"].map { |t| t["code"] }).to eq(%w[1 2 5 6])
+      expect(body["conducts"].map { |c| c["code"] }).to all(be_a(String))
+      expect(body["conducts"]).not_to be_empty
+    end
+
+    it "recepção: 403 missing_role" do
+      sign_in_as(verifier!)
+      get "/attendance/consultation_options"
+      expect(status_and_error).to eq([ 403, "missing_role" ])
+    end
+
+    it "interruptor desligado: 403 feature_disabled para o admin" do
+      clinical_city!(enabled: false)
+      sign_in_as(admin)
+      get "/attendance/consultation_options"
+      expect([ response.status, body["error"] ]).to eq([ 403, "feature_disabled" ])
+    end
+
+    it "admin sem health_professional segue com 403 missing_role nas outras rotas" do
+      sign_in_as(admin)
+      get "/attendance/consultations/mine"
+      expect(status_and_error).to eq([ 403, "missing_role" ])
+    end
+  end
+
   it "interruptor desligado: 403 feature_disabled em toda rota da consulta (ClinicalRecordGate)" do
     id = start!["id"]
     clinical_city!(enabled: false)

@@ -20,13 +20,16 @@ class ConsultationsController < ApplicationController
   DRAFT_KEYS = (Consultation::TEXT_FIELDS + %w[vitals care_type evaluated_problems conducts exam_requests]).freeze
 
   before_action :require_clinical_record!
-  before_action :require_professional
+  before_action :require_professional, except: :options
+  before_action :require_options_reader, only: :options
   before_action :set_consultation, except: %i[options create mine]
 
   # cid10_allowed_for_cbo: QUALQUER vínculo ativo permitido do usuário com CBO
-  # de médico (contrato §9; physicians_only), não só o primeiro.
+  # de médico (contrato §9; physicians_only), não só o primeiro. Quem só é admin
+  # municipal (sem health_professional) lê os rótulos, com cid10 false.
   def options
-    cid10 = Consultations::Authorization.allowed_links(user: Current.user)
+    cid10 = CitizenVerificationPolicy.new(Current.user, nil).care? &&
+            Consultations::Authorization.allowed_links(user: Current.user)
                                         .any? { |link| Ledi::ConsultationMapping.cid10_allowed?(link.cbo_code) }
     # Contrato §4: o código vai como string.
     as_strings = ->(rows) { rows.map { |row| row.merge(code: row[:code].to_s) } }
@@ -99,6 +102,12 @@ class ConsultationsController < ApplicationController
   end
 
   private
+
+  # Dado estático (sem conteúdo clínico, sem trilha): profissional OU admin municipal.
+  def require_options_reader
+    policy = CitizenVerificationPolicy.new(Current.user, nil)
+    forbid("missing_role") unless policy.care? || policy.manage?
+  end
 
   def set_consultation
     @consultation = Consultation.find_by(id: params[:id])
