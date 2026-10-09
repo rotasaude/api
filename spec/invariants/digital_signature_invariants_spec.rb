@@ -59,7 +59,7 @@ RSpec.describe "Invariantes do ADR 0032" do
     expect(request.reload.reason_code).to eq("no_session") # a sessão do outro não serve
     token = Signatures::Psc::Token.new(access_token: fake_psc.token_for!(cpf: SignatureHelpers::OTHER_CPF, scope: "multi_signature"),
                                        expires_in: 300, scope: "multi_signature")
-    batch = Signatures::RunBatch.call(user: other, request_ids: [ request.id ], token: token)
+    batch = Signatures::RunBatch.call(user: other, request_ids: [ request.id ], token: token, provider: other_certificate.provider)
     expect(batch.payload[:record]).to eq(signed: 0, failed: [])
     expect(Signatures::ReturnToPaper.call(request_id: request.id, by: other, reason: "não é meu documento").reason).to eq(:not_author)
     expect(Signature.count).to eq(0)

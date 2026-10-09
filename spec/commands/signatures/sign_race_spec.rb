@@ -63,7 +63,7 @@ RSpec.describe "Corrida job × lote" do
   def batch
     token = Signatures::Psc::Token.new(access_token: "t", expires_in: 300, scope: "multi_signature")
     track(Thread.new do
-      CityConnection.with(city) { Signatures::RunBatch.call(user: @rows[:user], request_ids: [ @rows[:request].id ], token: token) }
+      CityConnection.with(city) { Signatures::RunBatch.call(user: @rows[:user], request_ids: [ @rows[:request].id ], token: token, provider: "vidaas") }
     end)
   end
 

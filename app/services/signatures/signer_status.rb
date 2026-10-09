@@ -9,9 +9,14 @@ module Signatures
     def call(signer: Signer.client)
       health = signer.health
       Row.new(reachable: true, version: health[:version].presence, crl_updated_at: health[:crl_updated_at])
+    rescue Signer::Error
+      unreachable
     rescue StandardError => e
-      Rails.logger.warn("[signer_status] #{e.class}")
-      Row.new(reachable: false, version: nil, crl_updated_at: nil)
+      Rails.error.report(e, handled: true, severity: :warning) # bug nosso, não "fora do ar": visível, mas a consulta não cai
+      unreachable
     end
+
+    def unreachable = Row.new(reachable: false, version: nil, crl_updated_at: nil)
+    private_class_method :unreachable
   end
 end

@@ -31,7 +31,7 @@ module Signatures
     def not_before = certificate.not_before
     def not_after = certificate.not_after
     def expired?(now = Time.current) = now >= not_after || now < not_before
-    def holder_name = entry(certificate.subject, "CN").to_s.split(":").first.to_s.strip
+    def holder_name = entry(certificate.subject, "CN").to_s.sub(/:\d{11}\z/, "").strip
 
     def cpf
       san = certificate.extensions.find { |extension| extension.oid == "subjectAltName" }

@@ -20,6 +20,12 @@ RSpec.describe Signatures::CertificateInfo do
     expect(info.expired?).to be(false)
   end
 
+  it "nome com dois-pontos: só o sufixo :CPF (11 dígitos) sai" do
+    info = described_class.parse(pki.issue(cpf: "52998224725", name: "ANA: FILHA DE MARIA").der)
+    expect(info.holder_name).to eq("ANA: FILHA DE MARIA")
+    expect(described_class.new(info.certificate).holder_name).not_to include("52998224725")
+  end
+
   it "nome com acento; certificado vencido; uso de chave sem não repúdio" do
     leaf = pki.issue(cpf: "11144477735", name: "JOÃO CONCEIÇÃO", not_before: Time.now - 7200, not_after: Time.now - 60,
                      key_usage: "digitalSignature")

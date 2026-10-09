@@ -136,6 +136,16 @@ RSpec.describe Signatures::Canonical do
     expect(described_class.addendum(addendum).sha256).to eq(original.sha256)
   end
 
+  it "cadeia pulando o não assinado: adendo 1 assinado, 2 não, o 3 aponta para o 1" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    one = add_addendum!(consultation, reason: "primeiro adendo aqui", text: "UM")
+    add_addendum!(consultation, reason: "segundo adendo aqui", text: "DOIS")
+    three = add_addendum!(consultation, reason: "terceiro adendo aqui", text: "TRES")
+    signed = signature_row!(signature_request!(one, author: doctor, status: "signed"), certificate: linked_certificate!(doctor),
+                            canonical_json: described_class.addendum(one).json)
+    expect(described_class.addendum(three).document.dig("addendum", "previous_sha256")).to eq(signed.canonical_sha256)
+  end
+
   it "previous_sha256 sem adendo anterior assinado: a assinatura da consulta, se houver" do
     consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
     one = add_addendum!(consultation, reason: "primeiro adendo aqui", text: "UM")

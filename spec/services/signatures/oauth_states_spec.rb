@@ -64,7 +64,7 @@ RSpec.describe Signatures::OauthStates do
 
   it "return_to só aceita caminho relativo do dashboard" do
     expect(described_class.safe_return_to("/signature/pendentes")).to eq("/signature/pendentes")
-    [ "//evil.test/x", "https://evil.test", "assinatura", "/a b", nil, 42, "/#{'x' * 300}" ].each do |value|
+    [ "//evil.test/x", "https://evil.test", "assinatura", "/a b", "/\\evil.test", "/\\\\x", "/ok\\x", nil, 42, "/#{'x' * 300}" ].each do |value|
       expect(described_class.safe_return_to(value)).to eq("/"), value.inspect
     end
   end

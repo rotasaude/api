@@ -207,6 +207,15 @@ RSpec.describe "Tabelas da assinatura digital" do
     end
   end
 
+  it "o CHECK do return_to recusa a barra invertida (/\\host vira //host no navegador)" do
+    doctor # criado fora do attempt (que desfaz a transação)
+    ["/\\evil.test", "/a\\b", "//x"].each do |value|
+      expect { attempt { SignatureOauthState.create!(user: doctor, purpose: "link", provider: "vidaas", code_verifier: "v" * 43, expires_at: 10.minutes.from_now, return_to: value) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /ck_signature_oauth_states_return_to/), value
+    end
+    expect(SignatureOauthState.create!(user: doctor, purpose: "link", provider: "vidaas", code_verifier: "v" * 43, expires_at: 10.minutes.from_now, return_to: "/ok/a")).to be_persisted
+  end
+
   describe "provedor simulado (signature_psc_mock)" do
     it "os CHECKs aceitam os cinco PSCs reais e o simulado, e nada mais" do
       expect(SignerCertificate::PROVIDERS).to eq(SignerCertificate::REAL_PROVIDERS + [ "simulated" ])

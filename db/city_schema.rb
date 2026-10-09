@@ -1159,7 +1159,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.check_constraint "((purpose)::text = 'batch'::text) = (cardinality(request_ids) > 0) AND cardinality(request_ids) <= 50", name: "ck_signature_oauth_states_batch"
     t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text])", name: "ck_signature_oauth_states_provider"
     t.check_constraint "purpose::text = ANY (ARRAY['link'::text, 'session'::text, 'batch'::text])", name: "ck_signature_oauth_states_purpose"
-    t.check_constraint "(return_to)::text ~ '^/([^/].*)?$'::text", name: "ck_signature_oauth_states_return_to"
+    t.check_constraint "(return_to)::text ~ '^/([^/\\\\][^\\\\]*)?$'::text", name: "ck_signature_oauth_states_return_to"
   end
 
   create_table "signature_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

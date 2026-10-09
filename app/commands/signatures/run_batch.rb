@@ -10,7 +10,7 @@ module Signatures
   module RunBatch
     module_function
 
-    def call(user:, request_ids:, token:, now: Time.current, signer: Signer.client)
+    def call(user:, request_ids:, token:, provider:, now: Time.current, signer: Signer.client)
       ApplicationRecord.transaction do
         requests = SignatureRequest.where(id: Array(request_ids), author_user_id: user.id, status: "pending")
                                    .order(:created_at, :id).lock("FOR UPDATE SKIP LOCKED").to_a
@@ -23,6 +23,9 @@ module Signatures
 
         certificate = SignerCertificate.active.find_by(user_id: user.id)
         next Result.fail(:certificate_not_linked) unless certificate
+        # O token foi trocado com o PSC do state: re-vínculo entre o início e a volta
+        # não pode levar o bearer de um PSC a outro. Nada é chamado; pedidos intactos.
+        next Result.fail(:authorization_denied) unless certificate.provider == provider
 
         reason = CertificateRules.reason(certificate, now: now)
         next Result.ok(record: report(Signing::Outcome.new(signed: [], failed: requests.map { |request| [ request, reason ] }), now)) if reason

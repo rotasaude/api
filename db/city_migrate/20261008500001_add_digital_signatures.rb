@@ -87,7 +87,7 @@ class AddDigitalSignatures < ActiveRecord::Migration[8.1]
            "ck_signature_oauth_states_purpose" => text_in("purpose", %w[link session batch]),
            "ck_signature_oauth_states_provider" => text_in("provider", PROVIDERS),
            "ck_signature_oauth_states_batch" => "((purpose)::text = 'batch'::text) = (cardinality(request_ids) > 0) AND cardinality(request_ids) <= 50",
-           "ck_signature_oauth_states_return_to" => "(return_to)::text ~ '^/([^/].*)?$'::text")
+           "ck_signature_oauth_states_return_to" => "(return_to)::text ~ '^/([^/\\\\][^\\\\]*)?$'::text")
 
     create_table :signature_requests, id: :uuid do |t|
       t.string :document_type, null: false

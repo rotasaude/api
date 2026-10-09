@@ -179,6 +179,23 @@ RSpec.describe "Pendentes, lote e volta ao papel", type: :request do
     expect(requests.first.reload.status).to eq("pending")
   end
 
+  it "certificado re-vinculado a outro PSC entre o início e a volta: 403 authorization_denied, nenhum PSC é chamado" do
+    certificate = linked_certificate!(doctor, leaf: fake_psc.leaf(cpf))
+    requests = pending_for!(doctor, 1)
+    sign_in_as(doctor)
+    post "/signature/batches", params: { return_to: "/" }, as: :json
+    url = body.fetch("authorize_url")
+    state = URI.decode_www_form(URI(url).query).to_h.fetch("state")
+    code = authorize_and_approve!(url)
+    certificate.update_columns(provider: "birdid") # re-vínculo: o token foi trocado com o vidaas
+    expect(Signatures::Signing).not_to receive(:call)
+    expect_any_instance_of(Signatures::Psc::Client).not_to receive(:sign)
+    post "/signature/oauth/callback", params: { state: state, code: code }, as: :json
+    expect([ response.status, body["error"] ]).to eq([ 403, "authorization_denied" ])
+    expect(requests.first.reload.slice(:status, :reason_code, :attempts).values).to eq([ "pending", "no_session", requests.first.attempts ])
+    expect(Signature.count).to eq(0)
+  end
+
   it "o lote pega no máximo 50" do
     linked_certificate!(doctor)
     51.times { signature_request!(author: doctor) }

@@ -7,7 +7,7 @@ module Signatures
   module OauthStates
     PURPOSE = :signature_oauth_state
     SIGNATURE_TTL = 1.day # a validade de USO é a da linha (10 min); esta só separa forjado de vencido
-    RETURN_TO = %r{\A/(?:[^/]\S{0,198})?\z}
+    RETURN_TO = %r{\A/(?:[^/\\\s][^\\\s]{0,198})?\z} # sem barra invertida: /\host vira //host no navegador
     MAX_STATE = 1024
 
     Issued = Data.define(:state, :verifier, :challenge, :row) do

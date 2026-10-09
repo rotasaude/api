@@ -52,6 +52,10 @@ RSpec.describe "Maintenance: assinatura digital", type: :request do
     allow(Signatures::Signer.client).to receive(:health).and_raise(Signatures::Signer::Unavailable)
     gql!("{ signerStatus { reachable version crlUpdatedAt } }")
     expect(json.dig("data", "signerStatus")).to eq("reachable" => false, "version" => nil, "crlUpdatedAt" => nil)
+    allow(Signatures::Signer.client).to receive(:health).and_raise(NoMethodError, "bug nosso")
+    expect(Rails.error).to receive(:report).with(an_instance_of(NoMethodError), anything)
+    gql!("{ signerStatus { reachable version crlUpdatedAt } }")
+    expect(json.dig("data", "signerStatus")).to eq("reachable" => false, "version" => nil, "crlUpdatedAt" => nil)
   end
 
   it "signer status against the real compose signer", :signer do

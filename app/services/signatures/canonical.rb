@@ -7,8 +7,10 @@
 # o vetor e os exemplos ficam em spec/fixtures/clinical/). Fechados: o que não
 # está no esquema não entra. Texto vazio = null; horários UTC com Z; CPF, CNES,
 # IBGE e CBO só dígitos; care_type, condutas e height_cm inteiros; todo exame
-# com a competência SIGTAP (AAAAMM) gravada no ato. Gerado de documentos
-# imutáveis → determinístico (a ordem das chaves é a do RFC 8785).
+# com a competência SIGTAP (AAAAMM) gravada no ato. O cabeçalho lê o CityProfile, a unidade, o profissional e o paciente ATUAIS;
+# o canonical_json gravado na assinatura é o definitivo (nunca se regera um
+# documento já assinado). Determinístico para um mesmo estado (a ordem das
+# chaves é a do RFC 8785).
 require "json_schemer"
 
 module Signatures
