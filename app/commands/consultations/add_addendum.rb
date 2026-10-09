@@ -1,8 +1,8 @@
 # app/commands/consultations/add_addendum.rb
 # Adendo de consulta finalizada (ADR 0031; spec §4; contrato §9; Desvio 6): só
-# acréscimo, motivo 10–500, texto cifrado (1–20.000). O autor sempre (a
-# abertura dele, se mandada e válida, fica registrada); outro profissional só
-# com abertura justificada válida DELE para ESTE paciente. `changes`:
+# acréscimo, motivo 10–500, texto cifrado (1–20.000). Só da autora (decisão do
+# usuário 2026-10-09): outro profissional recebe not_author antes de qualquer
+# validação, mesmo com abertura; novos adendos não gravam opening_id. `changes`:
 # `evaluated_problems` = eventos novos de problema; `conducts` e
 # `exam_requests` = listas FINAIS (só entram em `changes` quando mudam). O
 # banco recebe as diferenças como linhas novas (add/remove; requested/
@@ -11,7 +11,10 @@ module Consultations
   class AddAddendum
     CHANGE_KEYS = %w[evaluated_problems conducts exam_requests].freeze
 
-    def self.call(consultation:, by:, reason:, text:, changes: nil, opening_id: nil)
+    def self.call(consultation:, by:, reason:, text:, changes: nil)
+      return Result.fail(:missing_role) unless by&.has_role?("health_professional")
+      return Result.fail(:not_author) unless consultation.author_user_id == by.id
+
       reason = reason.is_a?(String) ? reason.strip : ""
       unless reason.length.between?(ConsultationAddendum::MIN_REASON, ConsultationAddendum::MAX_REASON)
         return Result.fail(:invalid_reason)
@@ -28,15 +31,11 @@ module Consultations
         next result = Result.fail(:not_finalized) unless consultation.finalized?
 
         patient = Patient.lock.find(consultation.patient_id)
-        authorized = authorize(consultation, patient, by, opening_id)
-        next result = authorized if authorized.failure?
-
-        cbo, opening = authorized.payload.values_at(:cbo, :opening)
-        plan = prepare(consultation, patient, cbo, changes)
+        plan = prepare(consultation, patient, consultation.cbo_code, changes)
         next result = plan if plan.failure?
 
         addendum = ConsultationAddendum.create!(consultation: consultation, author_user: by, text: text, reason: reason,
-                                                item_changes: plan.payload[:stored], opening: opening)
+                                                item_changes: plan.payload[:stored])
         failure = apply!(consultation, patient, addendum, plan.payload, by)
         if failure
           result = failure
@@ -57,17 +56,6 @@ module Consultations
 
       changes = changes.deep_stringify_keys
       (changes.keys - CHANGE_KEYS).empty? ? changes : nil
-    end
-
-    def self.authorize(consultation, patient, by, opening_id)
-      return Result.fail(:missing_role) unless by&.has_role?("health_professional")
-
-      opening = opening_id.is_a?(String) && ClinicalRecordOpening.valid_for(user_id: by.id, patient_id: patient.id).find_by(id: opening_id)
-      return Result.ok(cbo: consultation.cbo_code, opening: opening || nil) if consultation.author_user_id == by.id
-      return Result.fail(:opening_required) unless opening
-
-      status, link = Authorization.any_allowed_link(user: by)
-      status == :ok ? Result.ok(cbo: link.cbo_code, opening: opening) : Result.fail(status)
     end
 
     # Valida tudo antes de gravar; devolve as diferenças a gravar e o que fica em `changes`.
@@ -140,6 +128,6 @@ module Consultations
       end
       nil
     end
-    private_class_method :normalize, :authorize, :prepare, :apply!
+    private_class_method :normalize, :prepare, :apply!
   end
 end

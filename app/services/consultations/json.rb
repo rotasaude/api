@@ -31,6 +31,14 @@ module Consultations
         .select { |key, _| stored.key?(key) }.transform_values(&:call)
     end
 
+    # Item das listas de finalizadas ("minhas consultas" e a administrativa):
+    # sem conteúdo clínico; nome social se houver; código como string.
+    def list_item(c)
+      { id: c.id, finalized_at: c.finalized_at.iso8601, patient: { id: c.patient_id, display_name: c.patient.display_name },
+        care_type: c.care_type&.to_s, care_type_label: Ledi::ConsultationMapping.care_type_label(c.care_type),
+        health_unit: { id: c.attendance.health_unit_id, name: c.attendance.health_unit.name } }
+    end
+
     def summary(c)
       { id: c.id, finalized_at: c.finalized_at&.iso8601, author_name: Screenings::Json.staff_name(c.author_user),
         cbo_label: Professionals::Cbo.find(c.cbo_code)&.title, care_type_label: Ledi::ConsultationMapping.care_type_label(c.care_type),

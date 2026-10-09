@@ -140,6 +140,8 @@ Rails.application.routes.draw do
     get   "consultation_options",            to: "consultations#options"
     post  "attendances/:id/consultation",    to: "consultations#create"
     get   "attendances/:id/record",          to: "clinical_records#context"
+    # `consultations/mine` (literal) PRECISA vir antes de `consultations/:id`.
+    get   "consultations/mine",              to: "consultations#mine"
     get   "consultations/:id",               to: "consultations#show"
     patch "consultations/:id",               to: "consultations#update"
     post  "consultations/:id/finalize",      to: "consultations#finalize"
@@ -162,11 +164,14 @@ Rails.application.routes.draw do
 
   # Prontuário fora de contexto (ADR 0031; contratos §3). Prefixo próprio no
   # proxy de dev do dashboard. A abertura exige step-up; o relatório é do
-  # municipal_admin.
+  # municipal_admin. Leitura administrativa das consultas (contrato §9):
+  # municipal_admin com step-up, só leitura.
   scope "/clinical_record" do
     post "openings",     to: "clinical_record_openings#create"
     get  "openings",     to: "clinical_record_openings#index"
     get  "patients/:id", to: "clinical_records#patient"
+    get  "professionals/:user_id/consultations", to: "clinical_record_consultations#index"
+    get  "consultations/:id",                    to: "clinical_record_consultations#show"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).

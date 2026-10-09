@@ -68,6 +68,23 @@ RSpec.describe ClinicalRecord::Access do
     expect(access(doctor).kind).to eq(:denied)
   end
 
+  # Decisão do usuário (2026-10-09): a autora da consulta FINALIZADA lê sem
+  # atendimento aberto e sem abertura; o resto cai no Access.call de hoje.
+  it "for_consultation: autora de finalizada → :author sem contexto; não autora fora de contexto; rascunho como hoje" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen, exam_requests: [])
+    expect(Attendance.open_attendances.where(id: consultation.attendance_id)).to be_empty
+    grant = described_class.for_consultation(user: doctor, consultation: consultation)
+    expect([ grant.kind, grant.opening, grant.reason, grant.allowed? ]).to eq([ :author, nil, nil, true ])
+    nurse = doctor!(unit, cbo: "223505")
+    expect(described_class.for_consultation(user: nurse, consultation: consultation).then { |g| [ g.kind, g.reason ] })
+      .to eq([ :denied, :out_of_context ])
+    expect(described_class.for_consultation(user: reception!, consultation: consultation).then { |g| [ g.kind, g.reason ] })
+      .to eq([ :denied, :missing_role ])
+    draft = started_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(2))
+    expect(described_class.for_consultation(user: doctor, consultation: draft).kind).to eq(:in_context)
+    expect(described_class.for_consultation(user: nurse, consultation: draft).kind).to eq(:denied)
+  end
+
   it "recepção e papel ausente: missing_role" do
     expect(access(reception!).then { |g| [ g.kind, g.reason ] }).to eq([ :denied, :missing_role ])
   end

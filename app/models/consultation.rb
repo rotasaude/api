@@ -7,6 +7,7 @@ class Consultation < ApplicationRecord
   TEXT_FIELDS = %w[subjective objective assessment plan].freeze
   MAX_TEXT = 20_000
   VITAL_COLUMNS = ScreeningRevision::VITAL_COLUMNS
+  LIST_LIMIT = 500
 
   encrypts :subjective, :objective, :assessment, :plan
 
@@ -23,6 +24,16 @@ class Consultation < ApplicationRecord
 
   def draft? = status == "draft"
   def finalized? = status == "finalized"
+
+  # As finalizadas de uma autora, mais novas primeiro, até LIST_LIMIT; o
+  # período filtra finalized_at ("minhas consultas" e a leitura administrativa).
+  def self.finalized_list(author_user_id:, from: nil, to: nil)
+    scope = finalized_consultations.where(author_user_id: author_user_id).includes(:patient, attendance: :health_unit)
+                                   .order(finalized_at: :desc, id: :desc).limit(LIST_LIMIT)
+    scope = scope.where(finalized_at: from..) if from
+    scope = scope.where(finalized_at: ..to) if to
+    scope
+  end
 
   def vitals = VITAL_COLUMNS.to_h { |column| [ column, self[column] ] }.compact
 end

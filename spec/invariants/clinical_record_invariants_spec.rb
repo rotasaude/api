@@ -38,22 +38,73 @@ RSpec.describe "Invariantes do prontuário (ADR 0031)", type: :request do
       .to all(satisfy { |consultation_id, addendum_id| consultation_id.present? ^ addendum_id.present? })
   end
 
-  # Mutação: tirar ClinicalRecord::Trail.viewed! de qualquer ação de leitura.
+  def admin!
+    staff_with("adm-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin").tap do |u|
+      Mfa::Enroll.call(u)
+      u.update!(otp_enabled: true)
+    end
+  end
+
+  # Mutação: tirar ClinicalRecord::Trail.viewed! de qualquer ação de leitura
+  # (inclusive a da autora sem contexto e a administrativa).
   it "nenhuma leitura de prontuário sem trilha" do
     citizen = verified_citizen!(1)
     consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    authored = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(2))
     attendance = consulting_attendance!(unit, citizen: citizen.reload, doctor: doctor)
     nurse = doctor!(unit, cbo: "223505")
+    admin = admin!
     now = Time.current
     ClinicalRecordOpening.create!(patient: consultation.patient, user: nurse, reason_code: "case_review", created_at: now,
                                   expires_at: now + 30.minutes)
-    reads = [ [ doctor, "/attendance/attendances/#{attendance.id}/record" ], [ doctor, "/attendance/consultations/#{consultation.id}" ],
-              [ doctor, "/attendance/consultations/#{consultation.id}/print" ], [ nurse, "/clinical_record/patients/#{consultation.patient_id}" ] ]
-    reads.each do |user, path|
-      sign_in_as(user)
+    reads = [ [ doctor, "/attendance/attendances/#{attendance.id}/record", "in_context" ],
+              [ doctor, "/attendance/consultations/#{consultation.id}", "author" ],
+              [ doctor, "/attendance/consultations/#{consultation.id}/print", "author" ],
+              [ doctor, "/attendance/consultations/#{authored.id}", "author" ],
+              [ doctor, "/attendance/consultations/#{authored.id}/print", "author" ],
+              [ nurse, "/attendance/consultations/#{consultation.id}", "justified" ],
+              [ nurse, "/clinical_record/patients/#{consultation.patient_id}", "justified" ],
+              [ admin, "/clinical_record/consultations/#{authored.id}", "administrative" ] ]
+    reads.each do |user, path, access|
+      sign_in_as(user).tap { |session| session.update!(mfa_verified_at: Time.current) if user == admin }
       expect { get path }.to change { DomainEvent.where(name: "clinical_record.viewed").count }.by(1), path
       expect(response).to have_http_status(:ok), path
+      expect(DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).last["access"]).to eq(access), path
     end
+  end
+
+  # Decisão do usuário (2026-10-09). Mutação: tirar a checagem de autoria de
+  # ConsultationsController#print ou de Consultations::AddAddendum, ou deixar o
+  # admin imprimir/adendar; tirar a leitura administrativa do relatório.
+  it "impresso e adendo só da autora; leitura administrativa só leitura, com trilha e no relatório" do
+    citizen = verified_citizen!(1)
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    walk_in_attendance!(unit, citizen: citizen.reload)
+    nurse = doctor!(unit, cbo: "223505")
+    now = Time.current
+    opening = ClinicalRecordOpening.create!(patient: consultation.patient, user: nurse, reason_code: "case_review",
+                                            created_at: now, expires_at: now + 30.minutes)
+    sign_in_as(nurse)
+    get "/attendance/consultations/#{consultation.id}"
+    expect(response).to have_http_status(:ok)
+    get "/attendance/consultations/#{consultation.id}/print"
+    expect([ response.status, body["error"] ]).to eq([ 403, "not_author" ])
+    json_post "/attendance/consultations/#{consultation.id}/addenda", reason: "acréscimo de dados", text: "x", opening_id: opening.id
+    expect([ response.status, body["error"] ]).to eq([ 403, "not_author" ])
+
+    admin = admin!
+    sign_in_as(admin).update!(mfa_verified_at: Time.current)
+    get "/clinical_record/consultations/#{consultation.id}"
+    expect(response).to have_http_status(:ok)
+    get "/attendance/consultations/#{consultation.id}/print"
+    expect(response).to have_http_status(:forbidden)
+    json_post "/attendance/consultations/#{consultation.id}/addenda", reason: "acréscimo de dados", text: "x"
+    expect(response).to have_http_status(:forbidden)
+    expect(ConsultationAddendum.count).to eq(0)
+
+    get "/clinical_record/openings"
+    expect(body["items"].map { |i| [ i["kind"], i["consultation_id"] ] })
+      .to eq([ [ "administrative_read", consultation.id ], [ "justified_opening", nil ] ])
   end
 
   # Mutação: tirar :subjective/:plan/:text/:full_name de filter_parameters, pôr

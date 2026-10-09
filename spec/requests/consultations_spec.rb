@@ -103,7 +103,7 @@ RSpec.describe "Consulta", type: :request do
     expect(attendance.reload.outcome).to eq("return")
   end
 
-  it "leitura: rascunho só do autor; finalizada em contexto ou com abertura; trilha" do
+  it "leitura: rascunho só do autor; finalizada pela autora, em contexto ou com abertura; trilha" do
     id = start!["id"]
     nurse = doctor!(unit, cbo: "223505")
     sign_in_as(nurse)
@@ -122,9 +122,37 @@ RSpec.describe "Consulta", type: :request do
     expect(response).to have_http_status(:ok)
     expect(DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).last)
       .to eq("patient_id" => patient_id, "user_id" => nurse.id, "access" => "justified", "reason_code" => "case_review")
+    sign_in_as(doctor)
+    get "/attendance/consultations/#{id}"
+    expect(response).to have_http_status(:ok)
+    expect(DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).last)
+      .to eq("patient_id" => patient_id, "user_id" => doctor.id, "access" => "author", "reason_code" => nil)
   end
 
-  it "adendo (201) do autor; de terceiro sem abertura 403; em rascunho 409" do
+  # Decisão do usuário (2026-10-09): outro profissional só visualiza (contexto
+  # ou abertura); impresso e adendo são só da autora, mesmo com contexto ou abertura.
+  it "outro profissional em contexto ou com abertura: lê; impresso e adendo 403 not_author" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    walk_in_attendance!(unit, citizen: citizen.reload)
+    nurse = doctor!(unit, cbo: "223505")
+    sign_in_as(nurse)
+    get "/attendance/consultations/#{consultation.id}"
+    expect(response).to have_http_status(:ok)
+    expect(DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).last).to include("access" => "in_context")
+    now = Time.current
+    opening = ClinicalRecordOpening.create!(patient: consultation.patient, user: nurse, reason_code: "case_review",
+                                            created_at: now, expires_at: now + 30.minutes)
+    get "/attendance/consultations/#{consultation.id}/print"
+    expect(status_and_error).to eq([ 403, "not_author" ])
+    json_post "/attendance/consultations/#{consultation.id}/addenda", reason: "acréscimo de dados", text: "texto",
+                                                                      opening_id: opening.id
+    expect(status_and_error).to eq([ 403, "not_author" ])
+    json_post "/attendance/consultations/#{consultation.id}/addenda", reason: "curto", text: "texto"
+    expect(status_and_error).to eq([ 403, "not_author" ])
+    expect(ConsultationAddendum.count).to eq(0)
+  end
+
+  it "adendo (201) da autora; opening_id dela aceito e ignorado; de terceiro 403; em rascunho 409" do
     id = start!["id"]
     json_post "/attendance/consultations/#{id}/addenda", reason: "acréscimo de dados", text: "texto"
     expect(status_and_error).to eq([ 409, "not_finalized" ])
@@ -134,11 +162,17 @@ RSpec.describe "Consulta", type: :request do
                                                          changes: { conducts: [ 1, 9 ] }
     expect(response).to have_http_status(:created)
     expect(body.keys).to match_array(%w[id author_name created_at reason text changes])
-    sign_in_as(doctor!(unit, cbo: "223505"))
-    json_post "/attendance/consultations/#{id}/addenda", reason: "acréscimo de dados", text: "texto"
-    expect(status_and_error).to eq([ 403, "opening_required" ])
     json_post "/attendance/consultations/#{id}/addenda", reason: "curto", text: "texto"
     expect(status_and_error).to eq([ 422, "invalid_reason" ])
+    now = Time.current
+    mine = ClinicalRecordOpening.create!(patient_id: Consultation.find(id).patient_id, user: doctor, reason_code: "case_review",
+                                         created_at: now, expires_at: now + 30.minutes)
+    json_post "/attendance/consultations/#{id}/addenda", reason: "acréscimo de dados", text: "texto", opening_id: mine.id
+    expect(response).to have_http_status(:created)
+    expect(ConsultationAddendum.where.not(opening_id: nil)).to be_empty
+    sign_in_as(doctor!(unit, cbo: "223505"))
+    json_post "/attendance/consultations/#{id}/addenda", reason: "acréscimo de dados", text: "texto"
+    expect(status_and_error).to eq([ 403, "not_author" ])
   end
 
   # Contrato §9 D10 + physicians_only: qualquer vínculo ativo permitido do usuário.

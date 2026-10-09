@@ -1,9 +1,10 @@
 require "rails_helper"
 
 # ADR 0031 (spec §4): adendo só em consulta finalizada, com motivo de 10+,
-# texto cifrado; de terceiro, só com abertura válida dele para o paciente;
-# pode mudar problemas, condutas e exames (eventos com o adendo).
-# Review Focus 5: abertura de outro paciente/usuário ou vencida → opening_required.
+# texto cifrado; só da autora (decisão do usuário 2026-10-09: terceiro →
+# not_author, mesmo com abertura; o opening_id do corpo é ignorado no
+# controller); pode mudar
+# problemas, condutas e exames (eventos com o adendo).
 RSpec.describe Consultations::AddAddendum do
   include ActiveSupport::Testing::TimeHelpers
   before { Current.city = clinical_city!; ciap2_release!; cid10_release!; sigtap_release! }
@@ -41,23 +42,16 @@ RSpec.describe Consultations::AddAddendum do
     expect(described_class.call(consultation: draft, by: doctor, reason: "motivo suficiente", text: "x").reason).to eq(:not_finalized)
   end
 
-  it "terceiro só com abertura válida DELE para ESTE paciente (Review Focus 5)" do
+  it "só a autora: terceiro → not_author mesmo com abertura válida e antes de validar a entrada; recepção missing_role" do
     nurse = doctor!(unit, cbo: "223505")
-    expect(add(by: nurse).reason).to eq(:opening_required)
-    other_patient = Patients::Resolve.call(verified_citizen!(3)).payload[:patient]
-    expect(add(by: nurse, opening_id: opening_for(nurse, patient: other_patient).id).reason).to eq(:opening_required)
-    expect(add(by: nurse, opening_id: opening_for(doctor).id).reason).to eq(:opening_required)
-    stale = opening_for(nurse, at: 31.minutes.ago)
-    expect(add(by: nurse, opening_id: stale.id).reason).to eq(:opening_required)
-    edge = opening_for(nurse)
-    travel_to(edge.expires_at, with_usec: true) { expect(add(by: nurse, opening_id: edge.id).reason).to eq(:opening_required) }
-    expect(add(by: nurse, opening_id: [ edge.id ]).reason).to eq(:opening_required)
-    valid = opening_for(nurse)
-    result = add(by: nurse, opening_id: valid.id)
-    expect(result.payload[:addendum]).to have_attributes(author_user_id: nurse.id, opening_id: valid.id)
+    expect(add(by: nurse).reason).to eq(:not_author)
+    opening_for(nurse)
+    expect(add(by: nurse).reason).to eq(:not_author)
+    expect(add(by: nurse, reason: "curto", text: " ").reason).to eq(:not_author)
+    draft = started_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(2))
+    expect(described_class.call(consultation: draft, by: nurse, reason: "motivo suficiente", text: "x").reason).to eq(:not_author)
     expect(add(by: reception!).reason).to eq(:missing_role)
-    tech = doctor!(unit, cbo: "322205")
-    expect(add(by: tech, opening_id: opening_for(tech).id).reason).to eq(:cbo_not_allowed)
+    expect(ConsultationAddendum.count).to eq(0)
   end
 
   it "condutas e exames removidos viram linhas remove/cancelled ligadas ao adendo; o efetivo os tira" do
@@ -72,30 +66,6 @@ RSpec.describe Consultations::AddAddendum do
     expect(effective[:exam_requests].sole).to have_attributes(sigtap_code: "0202010503", addendum_id: back.payload[:addendum].id)
   end
 
-  it "não médico mantém a justificativa CID-10 vigente ao acrescentar exame; não troca nem põe nova" do
-    add(changes: { "exam_requests" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "E119" } ] })
-    nurse = doctor!(unit, cbo: "223505")
-    opening = opening_for(nurse)
-    justified_row = Consultations::Effective.call(consultation.reload)[:exam_requests].sole
-    result = add(by: nurse, opening_id: opening.id,
-                 changes: { "exam_requests" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "E119" },
-                                                 { "sigtap_code" => "0202010317" } ] })
-    expect(result).to be_ok
-    addendum = result.payload[:addendum]
-    expect(consultation.exam_requests.where(addendum: addendum).pluck(:sigtap_code, :status)).to eq([ [ "0202010317", "requested" ] ])
-    effective = Consultations::Effective.call(consultation.reload)[:exam_requests]
-    expect(effective.map { |r| [ r.sigtap_code, r.cid10_justification ] }).to eq([ [ "0202010503", "E119" ], [ "0202010317", nil ] ])
-    expect(effective.first).to eq(justified_row)
-
-    count = ConsultationAddendum.count
-    { "trocar" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "I10" } ],
-      "nova" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "E119" },
-                  { "sigtap_code" => "0202010317", "cid10_justification" => "E119" } ] }.each do |label, list|
-      expect(add(by: nurse, opening_id: opening.id, changes: { "exam_requests" => list }).reason).to eq(:cid10_not_allowed_for_cbo), label
-    end
-    expect(ConsultationAddendum.count).to eq(count)
-  end
-
   it "falha ao aplicar o evento de problema depois de gravar o adendo: nada fica, com o index" do
     problem = PatientProblem.where(patient_id: consultation.patient_id).sole
     allow(Patients::ApplyProblemEvent).to receive(:call).and_return(Result.fail(:invalid_problem))
@@ -106,20 +76,20 @@ RSpec.describe Consultations::AddAddendum do
     expect(DomainEvent.where(name: "consultation.addendum_added")).to be_empty
   end
 
-  it "não médico avalia CID-10 existente mas não acrescenta CID-10 nem justifica exame com CID-10" do
+  it "autora não médica avalia CID-10 existente mas não acrescenta CID-10 nem justifica exame com CID-10" do
+    citizen = verified_citizen!(1)
+    finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen,
+                            evaluated_problems: [ { "terminology" => "cid10", "code" => "E119", "action" => "add" } ])
     nurse = doctor!(unit, cbo: "223505")
-    opening = opening_for(nurse)
+    nursing = finalized_consultation!(unit: unit, doctor: nurse, citizen: citizen.reload, exam_requests: [])
+    add_nursing = ->(changes) { described_class.call(consultation: nursing, by: nurse, reason: "acréscimo de dados", text: "x", changes: changes) }
     cid = { "evaluated_problems" => [ { "terminology" => "cid10", "code" => "I10", "action" => "add" } ] }
-    expect(add(by: nurse, opening_id: opening.id, changes: cid).reason).to eq(:cid10_not_allowed_for_cbo)
+    expect(add_nursing.(cid).reason).to eq(:cid10_not_allowed_for_cbo)
     exam = { "exam_requests" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "E119" } ] }
-    expect(add(by: nurse, opening_id: opening.id, changes: exam).reason).to eq(:cid10_not_allowed_for_cbo)
+    expect(add_nursing.(exam).reason).to eq(:cid10_not_allowed_for_cbo)
     expect(ConsultationAddendum.count).to eq(0)
-  end
-
-  it "o autor pode mandar a própria abertura (contrato §9): guardada se válida, ignorada se não" do
-    mine = opening_for(doctor)
-    expect(add(opening_id: mine.id).payload[:addendum].opening_id).to eq(mine.id)
-    expect(add(opening_id: SecureRandom.uuid).payload[:addendum].opening_id).to be_nil
+    existing = PatientProblem.find_by!(code: "E119")
+    expect(add_nursing.({ "evaluated_problems" => [ { "problem_id" => existing.id, "action" => "evaluate" } ] })).to be_ok
   end
 
   it "evaluated_problems são eventos novos; conducts e exam_requests são as listas finais; o efetivo reflete" do

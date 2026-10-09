@@ -4,6 +4,9 @@
 # permitido, de um par VALIDADO do mesmo CPF —, com abertura justificada
 # válida, ou ninguém. A recepção (sem health_professional) nunca lê. Toda
 # leitura permitida deixa trilha (ClinicalRecord::Trail).
+# A autora da consulta FINALIZADA lê a própria consulta a qualquer momento
+# (for_consultation → :author; decisão do usuário 2026-10-09). A leitura
+# administrativa do municipal_admin (:administrative) não passa por aqui.
 module ClinicalRecord
   module Access
     Grant = Data.define(:kind, :opening, :reason) do
@@ -21,6 +24,15 @@ module ClinicalRecord
       opening = patient && ClinicalRecordOpening.valid_for(user_id: user.id, patient_id: patient.id, now: now)
                                                 .order(created_at: :desc).first
       opening ? Grant.new(kind: :justified, opening: opening, reason: nil) : deny(:out_of_context)
+    end
+
+    # A consulta: a autora da finalizada lê sem contexto nem abertura (desde
+    # que siga com health_professional); o resto (inclusive o rascunho) como call.
+    def for_consultation(user:, consultation:, now: Time.current)
+      return deny(:missing_role) unless user&.has_role?("health_professional")
+      return Grant.new(kind: :author, opening: nil, reason: nil) if consultation.finalized? && consultation.author_user_id == user.id
+
+      call(user: user, patient: consultation.patient, now: now)
     end
 
     def open_attendances_of(patient)

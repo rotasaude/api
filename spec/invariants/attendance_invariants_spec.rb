@@ -411,14 +411,15 @@ RSpec.describe "Invariantes do atendimento: o CPF nunca vai na URL", type: :requ
   # screening_queue e screenings/:id (módulo 18, ADR 0030): só ids no caminho;
   # a busca de CIAP-2 é POST (o termo vai no corpo). Consulta e prontuário
   # (módulo 19, ADR 0031; contratos §4): opções da consulta sem parâmetro; o
-  # registro, a consulta e a impressão só com ids no caminho.
+  # registro, a consulta e a impressão só com ids no caminho; "minhas consultas"
+  # (decisão do usuário 2026-10-09) só com o período (datas) na query.
   let(:get_allowlist) do
     [ "/attendance/units", "/attendance/units/all", "/attendance/units/:id/queue",
       "/attendance/units/:id/requests", "/attendance/units/:id/agenda", "/attendance/units/:id/availability",
       "/attendance/requests/unassigned", "/attendance/requests/:id", "/attendance/erasure_requests",
       "/attendance/units/:id/screening_queue", "/attendance/screenings/:id",
       "/attendance/attendances/:id/record", "/attendance/consultation_options", "/attendance/consultations/:id",
-      "/attendance/consultations/:id/print" ]
+      "/attendance/consultations/:id/print", "/attendance/consultations/mine" ]
   end
 
   def attendance_routes

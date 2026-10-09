@@ -79,7 +79,8 @@ RSpec.describe "Prontuário", type: :request do
     sign_in_as(staff_with("adm-rel@cidade.gov.br", "municipal_admin"))
     get "/clinical_record/openings", params: { from: Time.zone.today.iso8601, to: Time.zone.today.iso8601, user_id: nurse.id }
     item = body["items"].sole
-    expect(item.keys).to match_array(%w[id user_name cpf_masked reason_code created_at expires_at])
+    expect(item.keys).to match_array(%w[kind id user_name cpf_masked reason_code consultation_id created_at expires_at])
+    expect(item.values_at("kind", "consultation_id")).to eq([ "justified_opening", nil ])
     expect(item.values_at("user_name", "cpf_masked", "reason_code")).to eq([ nurse.professional.professional_name, patient.cpf_masked, "other" ])
     expect(response.body).not_to include("MARCADOR")
     get "/clinical_record/openings", params: { from: "ontem" }
