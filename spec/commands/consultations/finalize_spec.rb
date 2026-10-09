@@ -104,6 +104,23 @@ RSpec.describe Consultations::Finalize do
     expect(second.reload.status).to eq("draft")
   end
 
+  it "resolve P e add do código de P na mesma consulta → recusado no rascunho; nada muda no problema" do
+    draft!
+    finalize
+    problem = PatientProblem.sole
+    second = started_consultation!(unit: unit, doctor: doctor, citizen: consultation.attendance.citizen.reload)
+    saved = Consultations::SaveDraft.call(consultation: second, by: doctor, params: draft_body(
+      evaluated_problems: [ { "problem_id" => problem.id, "action" => "resolve" },
+                            { "terminology" => "ciap2", "code" => "T90", "action" => "add" } ]
+    ))
+    expect([ saved.reason, saved.details ]).to eq([ :invalid_problem, { index: 1 } ])
+    expect(Array(second.reload.draft_items["evaluated_problems"])).to be_empty
+    expect(described_class.call(consultation: second, outcome_params: { "outcome" => "discharged" }, by: doctor).reason)
+      .to eq(:no_problem_evaluated)
+    expect(PatientProblem.sole).to have_attributes(id: problem.id, status: "active")
+    expect(ConsultationProblem.where(consultation: second)).to be_empty
+  end
+
   it "rascunho aberto bloqueia a rota antiga de desfecho (Review Focus 4)" do
     draft!
     result = Attendances::Close.call(attendance: consultation.attendance, outcome: "discharged", referral_unit_id: nil,

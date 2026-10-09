@@ -73,7 +73,11 @@ module Consultations
         item = problem(raw, patient: patient, cbo: cbo, on: on, index: index)
         return item if item.is_a?(Result)
 
-        key = item["problem_id"] || [ item["terminology"], item["code"] ]
+        # `add` de código já na lista do paciente (qualquer status) é o mesmo
+        # problema do id: junto com resolve/evaluate dele, é duplicado.
+        key = item["problem_id"] ||
+              PatientProblem.where(patient_id: patient.id, terminology: item["terminology"], code: item["code"]).pick(:id) ||
+              [ item["terminology"], item["code"] ]
         return fail_index(:invalid_problem, index) if seen.include?(key)
 
         seen << key

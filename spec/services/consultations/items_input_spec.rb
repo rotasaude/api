@@ -68,6 +68,39 @@ RSpec.describe Consultations::ItemsInput do
                                 patient: other, cbo: "225125", on: today).reason).to eq(:invalid_problem)
   end
 
+  # Revisão final: `add` de código que já está na lista do paciente (qualquer
+  # status) é o MESMO problema que o id — junto com resolve/evaluate dele é
+  # duplicado (senão o Finalize resolve e reativa na mesma consulta).
+  describe "add de código já na lista do paciente conta como o mesmo problema" do
+    let!(:problem) do
+      ApplicationRecord.transaction do
+        Patients::ApplyProblemEvent.call(patient: patient, action: "add", by: verifier!, source: { consultation: Struct.new(:id).new(SecureRandom.uuid) },
+                                         terminology: "ciap2", code: "T90", release_id: TerminologyRelease.active.find_by!(kind: "ciap2").id)
+                                   .payload[:problem]
+      end
+    end
+
+    it "resolve P + add do código de P → invalid_problem no segundo" do
+      expect(failure("evaluated_problems" => [ { "problem_id" => problem.id, "action" => "resolve" },
+                                               { "terminology" => "ciap2", "code" => "t90", "action" => "add" } ]))
+        .to eq([ :invalid_problem, 1 ])
+    end
+
+    it "add do código de P + evaluate P → invalid_problem no segundo (P resolvido também conta)" do
+      ApplicationRecord.transaction do
+        Patients::ApplyProblemEvent.call(patient: patient, action: "resolve", problem: problem, by: verifier!,
+                                         source: { consultation: Struct.new(:id).new(SecureRandom.uuid) })
+      end
+      expect(failure("evaluated_problems" => [ { "terminology" => "ciap2", "code" => "T90", "action" => "add" },
+                                               { "problem_id" => problem.id, "action" => "evaluate" } ]))
+        .to eq([ :invalid_problem, 1 ])
+    end
+
+    it "add do código de P sozinho segue" do
+      expect(input("evaluated_problems" => [ { "terminology" => "ciap2", "code" => "T90", "action" => "add" } ])).to be_ok
+    end
+  end
+
   {
     { "subjective" => "x" * 20_001 } => [ :text_too_long, "subjective" ],
     { "plan" => [ "a" ] } => [ :invalid_text, "plan" ],
