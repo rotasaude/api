@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_400003) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_400004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -414,6 +414,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_400003) do
     t.check_constraint "(verification_level)::text = ANY (ARRAY['declared'::text, 'verified'::text])", name: "ck_citizens_verification_level"
     t.check_constraint "profile_source IS NULL OR profile_source::text = ANY (ARRAY['declared', 'verified']::text[])", name: "ck_citizens_profile_source"
     t.check_constraint "(profile_source IS NULL AND birth_date IS NULL AND sex IS NULL) OR (profile_source IS NOT NULL AND birth_date IS NOT NULL AND sex IS NOT NULL)", name: "ck_citizens_profile_complete"
+  end
+
+  create_table "clinical_record_administrative_reads", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", default: -> { "now()" }, null: false
+    t.uuid "patient_id", null: false
+    t.uuid "user_id", null: false
+    t.index ["consultation_id"], name: "index_clinical_record_administrative_reads_on_consultation_id"
+    t.index ["created_at", "id"], name: "idx_clinical_record_administrative_reads_report"
+    t.index ["user_id"], name: "index_clinical_record_administrative_reads_on_user_id"
   end
 
   create_table "clinical_record_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1385,6 +1395,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_400003) do
   add_foreign_key "citizen_verifications", "users", column: "verified_by_user_id"
   add_foreign_key "citizens", "neighborhoods"
   add_foreign_key "citizens", "patients"
+  add_foreign_key "clinical_record_administrative_reads", "consultations"
+  add_foreign_key "clinical_record_administrative_reads", "patients"
+  add_foreign_key "clinical_record_administrative_reads", "users"
   add_foreign_key "clinical_record_openings", "patients"
   add_foreign_key "clinical_record_openings", "users"
   add_foreign_key "consents", "conversations"

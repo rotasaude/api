@@ -209,4 +209,30 @@ RSpec.describe "Guardas das tabelas da consulta" do
       expect(ClinicalRecordOpening.valid_for(user_id: doctor.id, patient_id: patient.id, now: now + 30.minutes)).to be_empty
     end
   end
+
+  # Task 23 (decisão do usuário 2026-10-09): a leitura administrativa fica
+  # para sempre — sem UPDATE, DELETE nem TRUNCATE, sem exceção de re-cifra
+  # (não há coluna cifrada) nem de exclusão LGPD (como as aberturas).
+  describe "clinical_record_administrative_reads" do
+    it "só acréscimo, inclusive com a marca da re-cifra; o banco preenche created_at" do
+      consultation = consultation!
+      finalize!(consultation)
+      read = ClinicalRecordAdministrativeRead.create!(user: doctor, patient: patient, consultation: consultation)
+      expect(read.reload.created_at).to be_present
+      expect(read).to be_readonly
+      expect { read.update!(created_at: 1.day.ago) }.to raise_error(ActiveRecord::ReadOnlyRecord)
+      other = User.create!(email_address: "x-#{SecureRandom.hex(3)}@x.br", password: "senha-segura-123")
+      expect { attempt { ClinicalRecordAdministrativeRead.where(id: read.id).update_all(user_id: other.id) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /append-only: UPDATE refused/)
+      expect { attempt { ClinicalRecordAdministrativeRead.where(id: read.id).update_all(created_at: 1.day.ago) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /append-only: UPDATE refused/)
+      expect { attempt { CityEncryption.allowing_reencryption { ClinicalRecordAdministrativeRead.where(id: read.id).update_all(created_at: 1.day.ago) } } }
+        .to raise_error(ActiveRecord::StatementInvalid, /append-only: UPDATE refused/)
+      expect { attempt { ClinicalRecordAdministrativeRead.where(id: read.id).delete_all } }
+        .to raise_error(ActiveRecord::StatementInvalid, /append-only: DELETE refused/)
+      expect { attempt { ApplicationRecord.connection.execute("TRUNCATE clinical_record_administrative_reads") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /append-only: TRUNCATE refused/)
+      expect(ClinicalRecordAdministrativeRead.count).to eq(1)
+    end
+  end
 end

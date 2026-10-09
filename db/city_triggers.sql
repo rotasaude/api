@@ -1269,3 +1269,23 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Leituras administrativas (Task 23 do módulo 19; decisão do usuário
+-- 2026-10-09): guardadas para sempre. Nenhum UPDATE nem DELETE — sem exceção
+-- de re-cifra (só ids, nada cifrado) e sem exceção de exclusão LGPD (como
+-- clinical_record_openings: paciente atendido é retido, ADR 0026) — e nenhum
+-- TRUNCATE.
+DO $do$
+BEGIN
+  IF to_regclass('public.clinical_record_administrative_reads') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS clinical_record_administrative_reads_append_only ON clinical_record_administrative_reads';
+    EXECUTE 'CREATE TRIGGER clinical_record_administrative_reads_append_only
+      BEFORE UPDATE OR DELETE ON clinical_record_administrative_reads
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS clinical_record_administrative_reads_append_only_truncate ON clinical_record_administrative_reads';
+    EXECUTE 'CREATE TRIGGER clinical_record_administrative_reads_append_only_truncate
+      BEFORE TRUNCATE ON clinical_record_administrative_reads
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;

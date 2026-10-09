@@ -1,8 +1,8 @@
 # Abertura justificada (step-up) e o relatório das aberturas (municipal_admin)
 # (ADR 0031; spec §5; contratos §3). O relatório nunca mostra a nota. Desde a
 # decisão do usuário de 2026-10-09 (contrato §9) ele traz também as leituras
-# administrativas (kind administrative_read), lidas da trilha
-# clinical_record.viewed com access = administrative (DomainEvent).
+# administrativas (kind administrative_read), lidas da tabela
+# clinical_record_administrative_reads (Task 23: guardadas para sempre).
 class ClinicalRecordOpeningsController < ApplicationController
   include Authentication
   include AttendanceAccess
@@ -61,25 +61,21 @@ class ClinicalRecordOpeningsController < ApplicationController
       created_at: opening.created_at.iso8601, expires_at: opening.expires_at.iso8601 }
   end
 
-  # A trilha só tem ids (patient_id, user_id, consultation_id): nome e CPF
-  # mascarado vêm das tabelas, carregados de uma vez.
+  # Lidas de clinical_record_administrative_reads (Task 23), guardadas para
+  # sempre — não da trilha, que a purga de 12 meses leva. A linha só tem ids:
+  # nome e CPF mascarado vêm das tabelas, carregados com ela.
   def administrative_reads(from, to, user_id)
-    scope = DomainEvent.where(name: "clinical_record.viewed").where("payload->>'access' = ?", "administrative")
-                       .order(occurred_at: :desc, id: :desc).limit(REPORT_LIMIT)
-    scope = scope.where(occurred_at: from..) if from
-    scope = scope.where(occurred_at: ..to) if to
-    scope = scope.where("payload->>'user_id' = ?", user_id) if user_id
-    events = scope.to_a
-    users = User.includes(:professional).where(id: events.map { |e| e.payload["user_id"] }).index_by(&:id)
-    patients = Patient.where(id: events.map { |e| e.payload["patient_id"] }).index_by(&:id)
-    events.map do |event|
-      user, patient = users[event.payload["user_id"]], patients[event.payload["patient_id"]]
-      [ event.occurred_at, event.id, administrative_item(event, user, patient) ]
-    end
+    scope = ClinicalRecordAdministrativeRead.includes(:patient, user: :professional)
+                                            .order(created_at: :desc, id: :desc).limit(REPORT_LIMIT)
+    scope = scope.where(created_at: from..) if from
+    scope = scope.where(created_at: ..to) if to
+    scope = scope.where(user_id: user_id) if user_id
+    scope.map { |read| [ read.created_at, read.id, administrative_item(read) ] }
   end
 
-  def administrative_item(event, user, patient)
-    { kind: "administrative_read", id: event.id, user_name: Screenings::Json.staff_name(user), cpf_masked: patient&.cpf_masked,
-      reason_code: nil, consultation_id: event.payload["consultation_id"], created_at: event.occurred_at.iso8601, expires_at: nil }
+  def administrative_item(read)
+    { kind: "administrative_read", id: read.id, user_name: Screenings::Json.staff_name(read.user),
+      cpf_masked: read.patient.cpf_masked, reason_code: nil, consultation_id: read.consultation_id,
+      created_at: read.created_at.iso8601, expires_at: nil }
   end
 end

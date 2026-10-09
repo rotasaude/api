@@ -107,6 +107,39 @@ RSpec.describe "Invariantes do prontuário (ADR 0031)", type: :request do
       .to eq([ [ "administrative_read", consultation.id ], [ "justified_opening", nil ] ])
   end
 
+  # Task 23 (decisão do usuário 2026-10-09): a leitura administrativa fica
+  # para sempre em tabela própria, fora da purga de 12 meses dos eventos.
+  # Mutação: não gravar ClinicalRecordAdministrativeRead no show do admin,
+  # tirar o guarda de clinical_record_administrative_reads de
+  # db/city_triggers.sql, ou voltar o relatório a ler de DomainEvent.
+  it "toda leitura administrativa deixa linha imutável, e o relatório a mostra depois da purga dos eventos" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
+    admin = admin!
+    sign_in_as(admin).update!(mfa_verified_at: Time.current)
+    2.times do
+      expect { get "/clinical_record/consultations/#{consultation.id}" }.to change(ClinicalRecordAdministrativeRead, :count).by(1)
+    end
+    reads = ClinicalRecordAdministrativeRead.order(:created_at, :id).to_a
+    expect(reads.map { |r| [ r.user_id, r.patient_id, r.consultation_id ] }).to all(eq([ admin.id, consultation.patient_id, consultation.id ]))
+
+    rows = ClinicalRecordAdministrativeRead.where(id: reads.map(&:id))
+    expect { attempt { rows.update_all(consultation_id: nil) } }.to raise_error(ActiveRecord::StatementInvalid, /UPDATE refused/)
+    expect { attempt { rows.delete_all } }.to raise_error(ActiveRecord::StatementInvalid, /DELETE refused/)
+    expect { attempt { ApplicationRecord.connection.execute("TRUNCATE clinical_record_administrative_reads") } }
+      .to raise_error(ActiveRecord::StatementInvalid, /TRUNCATE refused/)
+
+    # A purga (12 meses) leva os eventos; aqui simulada com o guarda desligado.
+    attempt do
+      ApplicationRecord.connection.execute("SET LOCAL session_replication_role = replica")
+      DomainEvent.where(name: "clinical_record.viewed").delete_all
+      ApplicationRecord.connection.execute("SET LOCAL session_replication_role = origin")
+    end
+    expect(DomainEvent.where(name: "clinical_record.viewed").count).to eq(0)
+    get "/clinical_record/openings"
+    expect(body["items"].map { |i| [ i["kind"], i["id"], i["consultation_id"] ] })
+      .to eq(reads.reverse.map { |r| [ "administrative_read", r.id, consultation.id ] })
+  end
+
   # Mutação: tirar :subjective/:plan/:text/:full_name de filter_parameters, pôr
   # texto ou nome em payload de evento ou argumento de job, ou devolver o texto
   # recebido numa mensagem de erro.

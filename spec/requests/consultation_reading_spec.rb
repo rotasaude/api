@@ -19,6 +19,7 @@ RSpec.describe "Leitura da consulta finalizada", type: :request do
   def body = JSON.parse(response.body)
   def status_and_error = [ response.status, body["error"] ]
   def viewed = DomainEvent.where(name: "clinical_record.viewed")
+  def admin_reads = ClinicalRecordAdministrativeRead.all
   def step_up!(user) = sign_in_as(user).update!(mfa_verified_at: Time.current)
   def json_patch(path, params) = patch(path, params: params.to_json, headers: { "CONTENT_TYPE" => "application/json" })
 
@@ -102,14 +103,18 @@ RSpec.describe "Leitura da consulta finalizada", type: :request do
     get read
     expect(status_and_error).to eq([ 401, "mfa_required" ])
     expect(viewed.count).to eq(0)
+    expect(admin_reads.count).to eq(0)
 
     step_up!(admin)
     expect { get list }.not_to(change { viewed.count })
     expect(body["professional"]).to eq("id" => doctor.id, "name" => doctor.professional.professional_name)
     expect(body["consultations"].sole).to include("id" => consultation.id,
                                                   "patient" => { "id" => consultation.patient_id, "display_name" => "Mariana" })
-    get read
+    expect { get read }.to change { admin_reads.count }.by(1)
     expect(response).to have_http_status(:ok)
+    expect(admin_reads.sole.attributes.values_at("user_id", "patient_id", "consultation_id"))
+      .to eq([ admin.id, consultation.patient_id, consultation.id ])
+    expect { get read }.to change { admin_reads.count }.by(1)
     expect(body).to eq(JSON.parse(Consultations::Json.consultation(consultation.reload).to_json))
     expect(body.values_at("subjective", "plan")).to eq(consultation.reload.then { |c| [ c.subjective, c.plan ] })
     expect(body["addenda"].sole["text"]).to eq("texto do adendo")
@@ -120,7 +125,7 @@ RSpec.describe "Leitura da consulta finalizada", type: :request do
     { "/clinical_record/consultations/#{draft.id}" => "rascunho", "/clinical_record/consultations/#{SecureRandom.uuid}" => "inexistente",
       "/clinical_record/consultations/nao-uuid" => "id inválido",
       "/clinical_record/professionals/#{SecureRandom.uuid}/consultations" => "profissional inexistente" }.each do |path, label|
-      expect { get path }.not_to(change { viewed.count })
+      expect { get path }.not_to(change { [ viewed.count, admin_reads.count ] })
       expect(status_and_error).to eq([ 404, "not_found" ]), label
     end
     expect(response.body).not_to include(draft.id)
@@ -148,6 +153,7 @@ RSpec.describe "Leitura da consulta finalizada", type: :request do
       get path
       expect(status_and_error).to eq([ 403, "missing_role" ]), path
     end
+    expect(admin_reads.count).to eq(0)
     clinical_city!(enabled: false)
     step_up!(admin)
     paths.each do |path|
@@ -168,12 +174,12 @@ RSpec.describe "Leitura da consulta finalizada", type: :request do
     get "/attendance/consultations/#{consultation.id}"
     step_up!(admin)
     get "/clinical_record/consultations/#{consultation.id}"
-    event = viewed.where("payload->>'access' = ?", "administrative").sole
+    read = admin_reads.sole
 
     get "/clinical_record/openings"
-    administrative = { "kind" => "administrative_read", "id" => event.id, "user_name" => admin.email_address,
+    administrative = { "kind" => "administrative_read", "id" => read.id, "user_name" => admin.email_address,
                        "cpf_masked" => patient.cpf_masked, "reason_code" => nil, "consultation_id" => consultation.id,
-                       "created_at" => event.occurred_at.iso8601, "expires_at" => nil }
+                       "created_at" => read.created_at.iso8601, "expires_at" => nil }
     justified = { "kind" => "justified_opening", "id" => opening.id, "user_name" => nurse.professional.professional_name,
                   "cpf_masked" => patient.cpf_masked, "reason_code" => "case_review", "consultation_id" => nil,
                   "created_at" => opening.created_at.iso8601, "expires_at" => opening.expires_at.iso8601 }

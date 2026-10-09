@@ -2,8 +2,9 @@
 # §9): o municipal_admin vê as consultas FINALIZADAS de cada profissional com o
 # conteúdo completo, só leitura (sem impresso, adendo ou edição), sem precisar
 # de health_professional. Step-up nas duas rotas. A leitura da consulta deixa
-# trilha administrative com o id da consulta (entra no relatório das
-# aberturas); a lista não tem conteúdo clínico e não publica trilha.
+# trilha administrative com o id da consulta e uma linha para sempre em
+# clinical_record_administrative_reads (Task 23; é ela que entra no relatório
+# das aberturas); a lista não tem conteúdo clínico e não publica trilha.
 class ClinicalRecordConsultationsController < ApplicationController
   include Authentication
   include AttendanceAccess
@@ -33,8 +34,13 @@ class ClinicalRecordConsultationsController < ApplicationController
     return not_found unless consultation
 
     grant = ClinicalRecord::Access::Grant.new(kind: :administrative, opening: nil, reason: nil)
-    ClinicalRecord::Trail.viewed!(patient: consultation.patient, user: Current.user, grant: grant,
-                                  consultation_id: consultation.id)
+    # A linha (para sempre, fonte do relatório) e a trilha saem juntas,
+    # antes de renderizar: sem uma, nenhuma.
+    ApplicationRecord.transaction do
+      ClinicalRecordAdministrativeRead.create!(user: Current.user, patient: consultation.patient, consultation: consultation)
+      ClinicalRecord::Trail.viewed!(patient: consultation.patient, user: Current.user, grant: grant,
+                                    consultation_id: consultation.id)
+    end
     render json: Consultations::Json.consultation(consultation)
   end
 
