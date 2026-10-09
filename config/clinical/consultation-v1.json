@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rota-saude/schemas/clinical/consultation-v1.json",
+  "title": "rotasaude.consultation.v1",
+  "description": "JSON canônico da consulta finalizada (ADR 0032; módulo 19b). É o conteúdo assinado em CAdES destacado AD-RB, serializado em RFC 8785 (JCS): o api gera, o signer assina o hash dos bytes JCS. Só datas UTC com segundos e 'Z'; o JCS escreve os números na forma mais curta (o esquema não a impõe). Fechado (additionalProperties: false) porque o que não está no esquema não pode entrar no que se assina.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "city", "unit", "professional", "patient", "consultation"],
+  "properties": {
+    "schema": { "const": "rotasaude.consultation.v1" },
+    "city": { "$ref": "#/$defs/city" },
+    "unit": { "$ref": "#/$defs/unit" },
+    "professional": { "$ref": "#/$defs/professional" },
+    "patient": { "$ref": "#/$defs/patient" },
+    "consultation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "started_at", "finalized_at", "care_type", "subjective", "objective", "assessment", "plan",
+                   "vitals", "evaluated_problems", "conducts", "exam_requests", "outcome"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "started_at": { "$ref": "#/$defs/utc_datetime" },
+        "finalized_at": { "$ref": "#/$defs/utc_datetime" },
+        "care_type": { "enum": [1, 2, 5, 6], "description": "Tipo de atendimento (config/ledi/consultation_mapping.yml do api, 19a)." },
+        "subjective": { "$ref": "#/$defs/clinical_text" },
+        "objective": { "$ref": "#/$defs/clinical_text" },
+        "assessment": { "$ref": "#/$defs/clinical_text" },
+        "plan": { "$ref": "#/$defs/clinical_text" },
+        "vitals": { "$ref": "#/$defs/vitals" },
+        "evaluated_problems": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "$ref": "#/$defs/evaluated_problem" } },
+        "conducts": { "$ref": "#/$defs/conducts" },
+        "exam_requests": { "$ref": "#/$defs/exam_requests" },
+        "outcome": { "$ref": "#/$defs/outcome" }
+      }
+    }
+  },
+  "$defs": {
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "utc_datetime": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", "description": "ISO 8601 em UTC, com segundos, sem fração, com 'Z'." },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "cpf": { "type": "string", "pattern": "^[0-9]{11}$", "description": "Só dígitos, sem máscara." },
+    "clinical_text": { "type": ["string", "null"], "minLength": 1, "maxLength": 20000, "description": "null quando o campo ficou vazio; nunca string vazia." },
+    "city": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ibge_code", "name"],
+      "properties": {
+        "ibge_code": { "type": ["string", "null"], "pattern": "^[0-9]{7}$" },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cnes", "name"],
+      "properties": {
+        "cnes": { "type": ["string", "null"], "pattern": "^[0-9]{7}$" },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "professional": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "cpf", "cbo_code", "council"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "cpf": { "$ref": "#/$defs/cpf" },
+        "cbo_code": { "type": "string", "pattern": "^[0-9]{6}$" },
+        "council": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "state", "registration_number"],
+          "properties": {
+            "name": { "enum": ["CRM", "COREN", "CRO", "CRF", "CRP", "CREFITO", "CRN", "CRFa", "CRESS", "CRBM", "CREF", "CRMV"] },
+            "state": { "type": "string", "pattern": "^[A-Z]{2}$" },
+            "registration_number": { "type": "string", "pattern": "^[0-9]{1,10}$" }
+          }
+        }
+      }
+    },
+    "patient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["display_name", "cpf", "birth_date"],
+      "properties": {
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "cpf": { "$ref": "#/$defs/cpf" },
+        "birth_date": { "anyOf": [{ "$ref": "#/$defs/date" }, { "type": "null" }] }
+      }
+    },
+    "vitals": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Só as medidas preenchidas; objeto vazio quando nenhuma. Plausibilidade é regra do api.",
+      "properties": {
+        "systolic": { "type": "integer" },
+        "diastolic": { "type": "integer" },
+        "heart_rate": { "type": "integer" },
+        "respiratory_rate": { "type": "integer" },
+        "temperature_c": { "type": "number" },
+        "spo2": { "type": "integer" },
+        "capillary_glucose": { "type": "integer" },
+        "glucose_moment": { "enum": ["fasting", "postprandial", "random"] },
+        "weight_kg": { "type": "number" },
+        "height_cm": { "type": "integer" },
+        "bmi": { "type": "number" },
+        "pain_score": { "type": "integer", "minimum": 0, "maximum": 10 }
+      }
+    },
+    "evaluated_problem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminology", "code", "label", "release", "action"],
+      "properties": {
+        "terminology": { "enum": ["ciap2", "cid10"] },
+        "code": { "type": "string", "minLength": 1, "maxLength": 8 },
+        "label": { "type": "string", "minLength": 1 },
+        "release": { "type": "string", "minLength": 1, "description": "Versão da tabela (TerminologyRelease#version) vigente no ato." },
+        "action": { "enum": ["evaluate", "add", "resolve", "correct_onset"] },
+        "onset_on": { "$ref": "#/$defs/date" },
+        "onset_precision": { "enum": ["day", "month", "year"] }
+      }
+    },
+    "conducts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": { "enum": [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14] }
+    },
+    "exam_requests": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sigtap_code", "competence", "label"],
+        "properties": {
+          "sigtap_code": { "type": "string", "pattern": "^02[0-9]{8}$" },
+          "competence": { "type": "string", "pattern": "^[0-9]{4}(0[1-9]|1[0-2])$", "description": "Competência SIGTAP (AAAAMM) da tabela de onde saiu o rótulo, vigente no ato." },
+          "label": { "type": "string", "minLength": 1 },
+          "cid10_justification": { "type": "string", "minLength": 1, "maxLength": 8 }
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": { "enum": ["discharged", "referred", "return"] },
+        "referral_unit_cnes": { "type": "string", "pattern": "^[0-9]{7}$" },
+        "referral_note": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

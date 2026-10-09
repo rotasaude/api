@@ -1,0 +1,90 @@
+{
+  "schema": "rotasaude.consultation.v1",
+  "city": {
+    "ibge_code": "4106902",
+    "name": "Curitiba"
+  },
+  "unit": {
+    "cnes": "0015466",
+    "name": "UBS Ouvidor Pardinho"
+  },
+  "professional": {
+    "name": "Ana Beatriz Souza",
+    "cpf": "52998224725",
+    "cbo_code": "225142",
+    "council": {
+      "name": "CRX",
+      "state": "PR",
+      "registration_number": "45678"
+    }
+  },
+  "patient": {
+    "display_name": "Joana D'Arc Conceição 👩🏽‍⚕️",
+    "cpf": "39053344705",
+    "birth_date": "1961-03-14"
+  },
+  "consultation": {
+    "id": "0b6f3c1e-8a2d-4c47-9f1e-2d3a4b5c6d7e",
+    "started_at": "2026-10-08T13:20:05Z",
+    "finalized_at": "2026-10-08T13:41:37Z",
+    "care_type": 5,
+    "subjective": "Refere sede excessiva há 3 semanas.\nNega febre.",
+    "objective": "BEG, corada, hidratada.",
+    "assessment": "DM2 descompensado; HAS controlada.",
+    "plan": "Ajustar metformina; retorno em 30 dias com exames.",
+    "vitals": {
+      "systolic": 132,
+      "diastolic": 84,
+      "heart_rate": 78,
+      "respiratory_rate": 16,
+      "temperature_c": 36.7,
+      "spo2": 97,
+      "capillary_glucose": 245,
+      "glucose_moment": "random",
+      "weight_kg": 81.5,
+      "height_cm": 162,
+      "bmi": 31.1,
+      "pain_score": 0
+    },
+    "evaluated_problems": [
+      {
+        "terminology": "ciap2",
+        "code": "T90",
+        "label": "Diabetes não insulino-dependente",
+        "release": "2",
+        "action": "evaluate"
+      },
+      {
+        "terminology": "cid10",
+        "code": "I10",
+        "label": "Hipertensão essencial (primária)",
+        "release": "2008",
+        "action": "add",
+        "onset_on": "2019-01-01",
+        "onset_precision": "year"
+      }
+    ],
+    "conducts": [
+      1,
+      9
+    ],
+    "exam_requests": [
+      {
+        "sigtap_code": "0202010503",
+        "competence": "202609",
+        "label": "Dosagem de hemoglobina glicosilada",
+        "cid10_justification": "E119"
+      },
+      {
+        "sigtap_code": "0202010317",
+        "competence": "202609",
+        "label": "Dosagem de creatinina"
+      }
+    ],
+    "outcome": {
+      "code": "referred",
+      "referral_unit_cnes": "2384299",
+      "referral_note": "Avaliação oftalmológica."
+    }
+  }
+}

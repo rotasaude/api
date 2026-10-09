@@ -1,0 +1,53 @@
+{
+  "schema": "rotasaude.consultation.v1",
+  "city": {
+    "ibge_code": null,
+    "name": "Curitiba"
+  },
+  "unit": {
+    "cnes": null,
+    "name": "UBS Ouvidor Pardinho"
+  },
+  "professional": {
+    "name": "Ana Beatriz Souza",
+    "cpf": "52998224725",
+    "cbo_code": "225142",
+    "council": {
+      "name": "CRM",
+      "state": "PR",
+      "registration_number": "45678"
+    }
+  },
+  "patient": {
+    "display_name": "Maria Silva",
+    "cpf": "11144477735",
+    "birth_date": null
+  },
+  "consultation": {
+    "id": "0b6f3c1e-8a2d-4c47-9f1e-2d3a4b5c6d7e",
+    "started_at": "2026-10-08T13:20:05Z",
+    "finalized_at": "2026-10-08T13:41:37Z",
+    "care_type": 1,
+    "subjective": null,
+    "objective": null,
+    "assessment": "Sem queixas.",
+    "plan": null,
+    "vitals": {},
+    "evaluated_problems": [
+      {
+        "terminology": "ciap2",
+        "code": "A98",
+        "label": "Medicina preventiva",
+        "release": "2",
+        "action": "evaluate"
+      }
+    ],
+    "conducts": [
+      1
+    ],
+    "exam_requests": [],
+    "outcome": {
+      "code": "discharged"
+    }
+  }
+}

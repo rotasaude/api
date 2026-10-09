@@ -1,0 +1,37 @@
+{
+  "schema": "rotasaude.consultation_addendum.v1",
+  "city": {
+    "ibge_code": "4106902",
+    "name": "Curitiba"
+  },
+  "unit": {
+    "cnes": "0015466",
+    "name": "UBS Ouvidor Pardinho"
+  },
+  "professional": {
+    "name": "Ana Beatriz Souza",
+    "cpf": "52998224725",
+    "cbo_code": "225142",
+    "council": {
+      "name": "CRM",
+      "state": "PR",
+      "registration_number": "45678"
+    }
+  },
+  "patient": {
+    "display_name": "Joana D'Arc Conceição 👩🏽‍⚕️",
+    "cpf": "39053344705",
+    "birth_date": "1961-03-14"
+  },
+  "addendum": {
+    "consultation_id": "0b6f3c1e-8a2d-4c47-9f1e-2d3a4b5c6d7e",
+    "id": "5e1d2c3b-4a59-4687-b7c8-d9e0f1a2b3c4",
+    "created_at": "2026-10-09T09:02:11Z",
+    "reason": "Resultado de exame chegou depois da consulta.",
+    "text": "HbA1c 9,2%. Mantida a conduta.",
+    "changes": {
+      "conducts": []
+    },
+    "previous_sha256": "9f2c4b7e1d0a8c6f3e5b2a1d4c7f0e9b8a6d3c2f1e0b9a8d7c6f5e4d3c2b1a09"
+  }
+}

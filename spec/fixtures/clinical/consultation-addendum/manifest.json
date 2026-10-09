@@ -1,0 +1,15 @@
+{
+  "cases": [
+    {"file": "addendum-text-only.json", "expect": "valid"},
+    {"file": "addendum-structured.json", "expect": "valid"},
+    {"file": "invalid-consultation-schema-name.json", "expect": "/schema const"},
+    {"file": "invalid-without-previous-sha256.json", "expect": "/addendum required"},
+    {"file": "invalid-previous-sha256-uppercase.json", "expect": "/addendum/previous_sha256 pattern"},
+    {"file": "invalid-reason-short.json", "expect": "/addendum/reason minLength"},
+    {"file": "invalid-text-empty.json", "expect": "/addendum/text minLength"},
+    {"file": "invalid-changes-unknown-key.json", "expect": "/addendum/changes/care_type schema"},
+    {"file": "invalid-changes-empty-conducts.json", "expect": "/addendum/changes/conducts minItems"},
+    {"file": "invalid-changes-with-consultation-key.json", "expect": "/consultation schema"},
+    {"file": "invalid-changes-exam-without-competence.json", "expect": "/addendum/changes/exam_requests/0 required"}
+  ]
+}
