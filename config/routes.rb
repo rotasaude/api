@@ -191,6 +191,7 @@ Rails.application.routes.draw do
     get    "signatures/:id/pdf",     to: "signatures#pdf"
     get    "signatures/:id/package", to: "signatures#package"
     post   "signatures/:id/verify",  to: "signatures#verify"
+    get    "admin/overview",         to: "admin#overview"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
