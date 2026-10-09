@@ -41,7 +41,8 @@ module Signatures
         next Result.fail(:invalid_state) unless row && row.user_id == user.id && row.consumed_at.nil?
 
         row.update!(consumed_at: now)
-        next Result.fail(:authorization_expired) if row.expires_at <= now
+        # O dono do state recebe o return_to também no vencido (contrato §13).
+        next Result.fail(:authorization_expired, details: { return_to: row.return_to }) if row.expires_at <= now
 
         Result.ok(state: row)
       end

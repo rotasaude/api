@@ -174,6 +174,15 @@ Rails.application.routes.draw do
     get  "consultations/:id",                    to: "clinical_record_consultations#show"
   end
 
+  # Assinatura digital do prontuário (ADR 0032; contrato §3–§7).
+  scope "/signature", module: :signatures, as: :signature do
+    get    "certificates/current",  to: "certificates#show"
+    delete "certificates/current",  to: "certificates#destroy"
+    post   "certificates/discover", to: "certificates#discover"
+    post   "certificates/link",     to: "certificates#link"
+    post   "oauth/callback",        to: "oauth#callback"
+  end
+
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
   # Prefixo único: uma entrada só no proxy de dev do dashboard. As rotas
   # literais (me, pending, cbo, links, shifts) PRECISAM vir antes de `:id`.
