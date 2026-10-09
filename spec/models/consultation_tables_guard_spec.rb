@@ -94,6 +94,27 @@ RSpec.describe "Guardas das tabelas da consulta" do
         .to raise_error(ActiveRecord::StatementInvalid, /finalized consultation never changes/)
     end
 
+    # Revisão final: dentro de um `rescue` do chamador `$!` não é nulo; o
+    # ensure por `$!` deixava a marca 'on' depois de um bloco com sucesso.
+    it "a marca volta a 'off' quando o bloco (com sucesso) roda dentro de um rescue do chamador" do
+      consultation = consultation!
+      finalize!(consultation)
+      marker = -> { ApplicationRecord.connection.select_value("SELECT current_setting('rota.reencrypting', true)") }
+
+      begin
+        raise ArgumentError, "erro já tratado pelo chamador"
+      rescue ArgumentError
+        CityEncryption.allowing_reencryption { consultation.encrypt }
+      end
+      expect(marker.call).to eq("off")
+      expect { attempt { consultation.update_columns(plan: "regravado fora da re-cifra") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /finalized consultation never changes/)
+
+      # `break` do bloco ainda é sucesso.
+      [ 1 ].each { CityEncryption.allowing_reencryption { break } }
+      expect(marker.call).to eq("off")
+    end
+
     it "CHECKs: finalizada exige tipo e itens do rascunho vazios; tipo 4 não; pressão aos pares" do
       # Atendimento e paciente nascem FORA dos savepoints: criados dentro, o
       # rollback os levaria e o `let` memoizado apontaria para linha nenhuma.

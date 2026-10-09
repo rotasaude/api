@@ -86,16 +86,21 @@ module CityEncryption
   # Savepoint próprio (requires_new): na falha, o ROLLBACK TO SAVEPOINT desfaz
   # o SET LOCAL. No sucesso, não: SET LOCAL sobrevive ao RELEASE SAVEPOINT até
   # o fim da transação EXTERNA — por isso a marca volta a 'off' na mão. Só no
-  # sucesso (`$!` nulo, inclusive `return`/`break` do bloco): depois de um erro
-  # de SQL a transação está abortada, e o SET levantaria por cima do erro real.
+  # sucesso (inclusive `return`/`break` do bloco): depois de um erro de SQL a
+  # transação está abortada, e o SET levantaria por cima do erro real. Flag
+  # local, não `$!`: dentro de um `rescue` do chamador `$!` já vem preenchido.
   def allowing_reencryption
     connection = ApplicationRecord.connection
     ApplicationRecord.transaction(requires_new: true) do
       connection.execute("SET LOCAL rota.reencrypting = 'on'")
+      failed = false
       begin
         yield
+      rescue Exception # qualquer saída por erro (só marca e relança)
+        failed = true
+        raise
       ensure
-        connection.execute("SET LOCAL rota.reencrypting = 'off'") unless $!
+        connection.execute("SET LOCAL rota.reencrypting = 'off'") unless failed
       end
     end
   end
