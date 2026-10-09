@@ -83,6 +83,14 @@ RSpec.describe "Invariantes do prontuário (ADR 0031)", type: :request do
     expect(analytics).not_to match(/consultations|consultation_addenda|clinical_record_openings|full_name|social_name|mother_name/)
   end
 
+  # Mutação: tirar :cid10_justification de filter_parameters (diagnóstico em
+  # claro no "Parameters:" do log do autosave e do adendo).
+  it "a justificativa CID-10 do exame nunca cai no log de parâmetros" do
+    filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
+    expect(filter.filter("exam_requests" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "E119" } ]))
+      .to eq("exam_requests" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "[FILTERED]" } ])
+  end
+
   # Mutação: trocar require_professional por require_attendance_staff em
   # ClinicalRecordsController deixa o exemplo vermelho (a 2ª camada devolve outro
   # código). No ConsultationsController a 2ª camada (ClinicalRecord::Access)

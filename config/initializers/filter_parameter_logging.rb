@@ -23,7 +23,9 @@ Rails.application.config.filter_parameters += [
   /\Aq\z/,
   # ADR 0031: texto clínico da consulta e do adendo, e os nomes da pessoa.
   # (`:reason` e `:note` já cobrem o motivo do adendo e a nota da abertura.)
-  :subjective, :objective, :assessment, :plan, :text, :full_name, :social_name, :mother_name
+  :subjective, :objective, :assessment, :plan, :text, :full_name, :social_name, :mother_name,
+  # ADR 0031: a justificativa CID-10 do pedido de exame é um diagnóstico.
+  :cid10_justification
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
