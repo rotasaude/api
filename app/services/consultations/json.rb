@@ -7,18 +7,26 @@ module Consultations
   module Json
     module_function
 
+    # ADR 0032 (contrato §2 do 19b): a finalizada e cada adendo levam o bloco
+    # `signature` (Signatures::Mode, numa leitura só); rascunho não tem.
     def consultation(c)
-      { id: c.id, attendance_id: c.attendance_id, patient_id: c.patient_id, status: c.status,
-        author: { id: c.author_user_id, name: Screenings::Json.staff_name(c.author_user) }, cbo_code: c.cbo_code,
-        subjective: c.subjective, objective: c.objective, assessment: c.assessment, plan: c.plan, vitals: vitals(c),
-        care_type: c.care_type&.to_s, evaluated_problems: evaluated_problems(c), conducts: conducts(c),
-        exam_requests: exam_requests(c), started_at: c.started_at.iso8601, finalized_at: c.finalized_at&.iso8601,
-        addenda: c.addenda.order(:created_at, :id).map { |a| addendum(a) } }
+      addenda_rows = c.addenda.order(:created_at, :id).to_a
+      blocks = c.draft? ? {} : Signatures::Mode.blocks([ c, *addenda_rows ])
+      json = { id: c.id, attendance_id: c.attendance_id, patient_id: c.patient_id, status: c.status,
+               author: { id: c.author_user_id, name: Screenings::Json.staff_name(c.author_user) }, cbo_code: c.cbo_code,
+               subjective: c.subjective, objective: c.objective, assessment: c.assessment, plan: c.plan, vitals: vitals(c),
+               care_type: c.care_type&.to_s, evaluated_problems: evaluated_problems(c), conducts: conducts(c),
+               exam_requests: exam_requests(c), started_at: c.started_at.iso8601, finalized_at: c.finalized_at&.iso8601,
+               addenda: addenda_rows.map { |a| addendum(a, signature: blocks[[ "ConsultationAddendum", a.id ]]) } }
+      json[:signature] = blocks[[ "Consultation", c.id ]] unless c.draft?
+      json
     end
 
-    def addendum(a)
+    # signature: :load lê o modo do adendo (adendo avulso, ex. o 201 do POST).
+    def addendum(a, signature: :load)
       { id: a.id, author_name: Screenings::Json.staff_name(a.author_user), created_at: a.created_at.iso8601,
-        reason: a.reason, text: a.text, changes: changes(a.item_changes) }
+        reason: a.reason, text: a.text, changes: changes(a.item_changes),
+        signature: signature == :load ? Signatures::Mode.for(a) : signature }
     end
 
     # Mesma forma dos itens da consulta (rótulo, opcionais só com valor,

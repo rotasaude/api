@@ -187,6 +187,10 @@ Rails.application.routes.draw do
     get    "requests",              to: "requests#index"
     post   "requests/:id/return_to_paper", to: "requests#return_to_paper"
     post   "batches",               to: "batches#create"
+    get    "signatures/:id",         to: "signatures#show"
+    get    "signatures/:id/pdf",     to: "signatures#pdf"
+    get    "signatures/:id/package", to: "signatures#package"
+    post   "signatures/:id/verify",  to: "signatures#verify"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).

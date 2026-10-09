@@ -102,6 +102,23 @@ module SignatureHelpers
     city
   end
 
+  # Assina de verdade (PSC falso + signer stubado pelo chamador) um documento
+  # finalizado. provider "simulated" pede stub_psc_mock! antes; os demais, stub_psc!.
+  def sign_document!(document, author:, provider: "vidaas")
+    cpf = author.professional.cpf
+    psc = fake_psc(provider)
+    certificate = SignerCertificate.active.find_by(user_id: author.id) ||
+                  linked_certificate!(author, provider: provider, leaf: psc.leaf(cpf))
+    SignatureSession.usable_for(author.id) ||
+      signature_session!(author, certificate: certificate, token: psc.token_for!(cpf: cpf))
+    request = SignatureRequest.find_by(document_type: Signatures::DocumentTypes.db(document), document_id: document.id) ||
+              signature_request!(document, author: author)
+    outcome = ApplicationRecord.transaction { Signatures::SignPending.call(request_id: request.id) }
+    raise "não assinou: #{outcome} #{request.reload.reason_code}" unless outcome == :signed
+
+    request.reload.signature
+  end
+
   # O navegador abre a URL de autorização (o falso registra o pedido) e o
   # titular aprova no "celular". Devolve o code.
   def authorize_and_approve!(url, key: "vidaas")

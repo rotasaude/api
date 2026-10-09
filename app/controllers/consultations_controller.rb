@@ -98,7 +98,11 @@ class ConsultationsController < ApplicationController
 
     ClinicalRecord::Trail.viewed!(patient: @consultation.patient, user: Current.user, grant: grant)
     response.headers["Cache-Control"] = "no-store"
-    send_data Consultations::Print.call(@consultation), type: "application/pdf", disposition: "inline", filename: "consulta.pdf"
+    # ADR 0032 (Desvio 13): digital sem adendo → o próprio PAdES; senão o
+    # impresso, com a seção de assinaturas quando houver pedido.
+    bytes = Signatures::PrintReport.signed_pdf(@consultation) ||
+            Consultations::Print.call(@consultation, report: Signatures::PrintReport.for(@consultation))
+    send_data bytes, type: "application/pdf", disposition: "inline", filename: "consulta.pdf"
   end
 
   private

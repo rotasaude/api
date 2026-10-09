@@ -62,7 +62,7 @@ RSpec.describe Consultations::Json do
     expect(json["evaluated_problems"].sole).to include("problem_id" => PatientProblem.sole.id, "code" => "T90", "action" => "add")
     expect(json["exam_requests"].map { |e| e["sigtap_code"] }).to eq([ "0202010503" ])
     addendum = json["addenda"].sole
-    expect(addendum.keys).to match_array(%w[id author_name created_at reason text changes])
+    expect(addendum.keys).to match_array(%w[id author_name created_at reason text changes signature])
     expect(addendum.values_at("author_name", "reason", "text")).to eq([ doctor.professional.professional_name, "exame adicional pedido", "Pedido creatinina" ])
     expect(addendum["changes"]["exam_requests"].map { |e| e["sigtap_code"] }).to eq(%w[0202010503 0202010317])
     expect(described_class.summary(consultation).deep_stringify_keys)

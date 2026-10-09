@@ -1,5 +1,5 @@
 # app/services/signatures/json.rb
-# Formas do contrato do 19b (contrato §3–§5). O provider sai como gravado
+# Formas do contrato do 19b (contrato §3–§6). O provider sai como gravado
 # (inclusive `simulated`).
 module Signatures
   module Json
@@ -15,6 +15,18 @@ module Signatures
       return { active: false } unless session
 
       { active: true, expires_at: session.expires_at.iso8601, provider: session.provider }
+    end
+
+    # <signature> (contrato §6). O CPF só mascarado; o conteúdo é o JSON
+    # canônico; signer_name = nome cadastrado do autor (§13). provider sempre e
+    # simulated SEMPRE booleano (R5).
+    def signature(signature)
+      { id: signature.id, document_type: DocumentTypes.api(signature.document_type), document_id: signature.document_id,
+        signed_at: signature.signed_at.iso8601, signer_name: Screenings::Json.staff_name(signature.signature_request.author_user),
+        signer_cpf_masked: CitizenIdentity::Cpf.mask(signature.signer_cpf), policy: signature.policy,
+        provider: signature.provider, simulated: signature.simulated?,
+        verification: signature.last_verification, verification_reasons: signature.last_verification_reasons,
+        verified_at: signature.last_verification_at.iso8601, content: JSON.parse(signature.canonical_json) }
     end
 
     # <request> (contrato §5, §13), sem N+1: consultas e adendos numa consulta

@@ -161,7 +161,7 @@ RSpec.describe "Consulta", type: :request do
     json_post "/attendance/consultations/#{id}/addenda", reason: "acréscimo de dados", text: "texto",
                                                          changes: { conducts: [ 1, 9 ] }
     expect(response).to have_http_status(:created)
-    expect(body.keys).to match_array(%w[id author_name created_at reason text changes])
+    expect(body.keys).to match_array(%w[id author_name created_at reason text changes signature])
     json_post "/attendance/consultations/#{id}/addenda", reason: "curto", text: "texto"
     expect(status_and_error).to eq([ 422, "invalid_reason" ])
     now = Time.current
