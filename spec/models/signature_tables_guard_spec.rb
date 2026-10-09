@@ -51,6 +51,8 @@ RSpec.describe "Tabelas da assinatura digital" do
       expect { attempt { request.update!(status: "pending", resolved_at: nil) } }
         .to raise_error(ActiveRecord::StatementInvalid, /resolved signature request never changes/)
       expect(raw("signature_requests", "return_note", request.id)).not_to include("sem certificado")
+      expect { attempt { ApplicationRecord.connection.execute("TRUNCATE signature_requests CASCADE") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /signature_requests is append-only: TRUNCATE refused/)
     end
 
     it "CHECKs: motivo do catálogo; resolvido exige resolved_at; nota só na volta ao papel" do
@@ -77,7 +79,8 @@ RSpec.describe "Tabelas da assinatura digital" do
       expect { signature.update!(last_verification: "indeterminate", last_verification_at: Time.current, last_verification_reasons: [ "crl_unavailable" ]) }
         .not_to raise_error
       expect { attempt { signature.delete } }.to raise_error(ActiveRecord::StatementInvalid, /DELETE refused/)
-      expect { attempt { ApplicationRecord.connection.execute("TRUNCATE signatures CASCADE") } }.to raise_error(ActiveRecord::StatementInvalid)
+      expect { attempt { ApplicationRecord.connection.execute("TRUNCATE signatures") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /signatures is append-only: TRUNCATE refused/)
       expect(raw("signatures", "canonical_json", signature.id)).not_to include("MARCADOR")
     end
 
@@ -97,6 +100,110 @@ RSpec.describe "Tabelas da assinatura digital" do
           signature.update_columns(policy_oid: "1.2.3")
         end
       end.to raise_error(ActiveRecord::StatementInvalid, /never changes/)
+    end
+  end
+
+  # Review Focus 2: a rotação de chave da cidade (o código real, não só
+  # record.encrypt) regrava o que a assinatura cifrou sem esbarrar na
+  # imutabilidade, e o conteúdo assinado continua idêntico byte a byte.
+  describe "rotação de chave com assinatura gravada" do
+    let(:old_material) { "0" * 64 }
+    let(:city) { Current.city }
+
+    def in_city(&) = CityConnection.with(city) { Current.set(city: city, &) }
+
+    # Material arbitrário (a chave "antiga"), como em spec/commands/clinical_record_reencryption_spec.rb.
+    def with_material(material, &block)
+      other = City.new(slug: city.slug, name: city.name, status: city.status,
+                       database_url: city.database_url, encryption_key: material)
+      CityConnection.with(city) do
+        Current.set(city: other) do
+          ActiveRecord::Encryption.with_encryption_context(**CityEncryption.context_properties(other), &block)
+        end
+      end
+    end
+
+    def call_job_body(**kwargs)
+      ReencryptionJob.instance_method(:perform).super_method.bind_call(ReencryptionJob.new, **kwargs)
+    end
+
+    # Assinatura gravada (pedido signed), pedido devolvido ao papel com nota,
+    # sessão e state do OAuth.
+    def signature_rows!
+      doctor = signer_doctor!(create_unit)
+      certificate = linked_certificate!(doctor)
+      session = signature_session!(doctor, certificate: certificate, token: "TOKEN-DA-SESSAO")
+      oauth = SignatureOauthState.create!(user: doctor, purpose: "link", provider: "vidaas", code_verifier: "verificador-pkce-#{'x' * 30}",
+                                          expires_at: 10.minutes.from_now, created_at: Time.current)
+      signed = signature_request!(author: doctor)
+      signature = signature_row!(signed, certificate: certificate, canonical_json: "{\"MARCADOR\":1}")
+      signed.update!(status: "signed", resolved_at: Time.current)
+      returned = signature_request!(author: doctor)
+      returned.update!(status: "returned_to_paper", reason_code: "user_request", return_note: "devolvido ao papel hoje",
+                       resolved_at: Time.current)
+      { certificate: certificate.id, session: session.id, oauth: oauth.id, signed: signed.id, signature: signature.id,
+        returned: returned.id }
+    end
+
+    def plaintexts(rows)
+      signature = Signature.find(rows[:signature])
+      certificate = SignerCertificate.find(rows[:certificate])
+      signature.slice(:canonical_json, :cades, :signed_pdf, :validation_material, :signer_cpf, :canonical_sha256, :pdf_sha256)
+               .merge("certificate_der" => certificate.certificate_der, "subject_cpf" => certificate.subject_cpf,
+                      "return_note" => SignatureRequest.find(rows[:returned]).return_note,
+                      "access_token" => SignatureSession.find(rows[:session]).access_token,
+                      "code_verifier" => SignatureOauthState.find(rows[:oauth]).code_verifier)
+    end
+
+    def expect_intact(rows, expected)
+      expect(plaintexts(rows)).to eq(expected)
+      signature = Signature.find(rows[:signature])
+      expect(Digest::SHA256.hexdigest(signature.canonical_json)).to eq(signature.canonical_sha256)
+      expect(Digest::SHA256.hexdigest(signature.signed_pdf_bytes)).to eq(signature.pdf_sha256)
+      expect(Signature.where(signer_cpf: SignatureHelpers::DOCTOR_CPF).pluck(:id)).to eq([ rows[:signature] ])
+      expect(SignerCertificate.where(subject_cpf: SignatureHelpers::DOCTOR_CPF).pluck(:id)).to eq([ rows[:certificate] ])
+      expect(ApplicationRecord.connection.select_value("SELECT current_setting('rota.reencrypting', true)")).not_to eq("on")
+      expect { attempt { signature.update_columns(policy_oid: "1.2.3") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /never changes/)
+      expect { attempt { signature.update_columns(canonical_json: "{}") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /never changes/)
+      expect { attempt { SignatureRequest.find(rows[:returned]).update_columns(return_note: "outra nota qualquer") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /resolved signature request never changes/)
+      expect { attempt { SignatureRequest.find(rows[:signed]).update_columns(status: "pending", resolved_at: nil) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /resolved signature request never changes/)
+    end
+
+    it "ReencryptionJob (chave atual): regrava sob a marca, conteúdo idêntico, imutabilidade de volta" do
+      rows = in_city { signature_rows! }
+      expected = in_city { plaintexts(rows) }
+      before = in_city { raw("signatures", "canonical_json", rows[:signature]) }
+
+      stats = in_city { call_job_body(only: %i[signer_certificate signature_session signature_oauth_state signature_request signature]) }
+
+      expect(stats).to include("SignerCertificate" => 1, "SignatureSession" => 1, "SignatureOauthState" => 1,
+                               "SignatureRequest" => 1, "Signature" => 1)
+      in_city do
+        expect(raw("signatures", "canonical_json", rows[:signature])).not_to eq(before)
+        expect_intact(rows, expected)
+      end
+    end
+
+    it "CityRekey (material antigo → material da cidade): legível com a nova, ilegível com a antiga" do
+      rows = with_material(old_material) { signature_rows! }
+      expected = with_material(old_material) { plaintexts(rows) }
+
+      result = CityRekey.call(city: city, from_key: old_material)
+
+      expect(result).to be_ok
+      expect(result.payload[:counts]).to include("SignerCertificate" => 2, "SignatureSession" => 1, "SignatureOauthState" => 1,
+                                                 "SignatureRequest" => 1, "Signature" => 5)
+      in_city { expect_intact(rows, expected) }
+      with_material(old_material) do
+        expect { Signature.find(rows[:signature]).canonical_json }.to raise_error(ActiveRecord::Encryption::Errors::Decryption)
+        expect { SignatureSession.find(rows[:session]).access_token }.to raise_error(ActiveRecord::Encryption::Errors::Decryption)
+        expect { SignatureRequest.find(rows[:returned]).return_note }.to raise_error(ActiveRecord::Encryption::Errors::Decryption)
+        expect(Signature.where(signer_cpf: SignatureHelpers::DOCTOR_CPF).count).to eq(0)
+      end
     end
   end
 
