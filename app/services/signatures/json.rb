@@ -10,5 +10,11 @@ module Signatures
         serial_number: certificate.serial_number, not_after: certificate.not_after.iso8601, status: certificate.status,
         expires_in_days: certificate.expires_in_days(now) }
     end
+
+    def session(session)
+      return { active: false } unless session
+
+      { active: true, expires_at: session.expires_at.iso8601, provider: session.provider }
+    end
   end
 end

@@ -43,6 +43,8 @@ module Signatures
       when "link"
         accepted = AcceptCertificate.call(user: user, provider: row.provider, entries: client.certificates(token.access_token), now: now)
         accepted.ok? ? Result.ok(record: accepted.payload[:certificate]) : accepted
+      when "session"
+        OpenSession.call(user: user, provider: row.provider, client: client, token: token, now: now)
       else
         Result.fail(:invalid_state)
       end

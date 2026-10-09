@@ -181,6 +181,9 @@ Rails.application.routes.draw do
     post   "certificates/discover", to: "certificates#discover"
     post   "certificates/link",     to: "certificates#link"
     post   "oauth/callback",        to: "oauth#callback"
+    post   "sessions",              to: "sessions#create"
+    get    "sessions/current",      to: "sessions#show"
+    delete "sessions/current",      to: "sessions#destroy"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
