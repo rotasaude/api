@@ -49,10 +49,10 @@ module Signatures
       final = []
       chain = {}   # [document_type, document_id] => canonical_sha256 dos já preparados neste lote
       blocked = {} # consultation_id => [motivo, definitivo?] da primeira falha (os seguintes da mesma consulta não assinam)
-      verdict = nil # motivo do certificado (R9): vale para todos os pedidos
+      verdict = nil # [motivo, definitivo?] do certificado (R9): vale para todos os pedidos
       # Ordem cronológica de criação dos documentos: a consulta, depois os adendos.
       chronological(requests).each do |request|
-        next failed << [ request, verdict ] if verdict
+        next if verdict
         next block(request, *blocked[request.consultation_id], failed, final) if blocked.key?(request.consultation_id)
 
         docs = Documents.for(request, info: info, signed_at: now, chain: chain, simulated: simulated)
@@ -64,19 +64,22 @@ module Signatures
       rescue Signer::Rejected => e
         if e.code == "invalid_certificate"
           verdict = certificate_verdict(certificate, signer)
-          failed << [ request, verdict ]
         else
           blocked[request.consultation_id] ||= [ "verification_failed", true ]
           block(request, "verification_failed", true, failed, final)
         end
       rescue Canonical::Invalid, Consultations::Print::NotPrintable
-        blocked[request.consultation_id] ||= [ "verification_failed", false ]
-        block(request, "verification_failed", false, failed, final)
+        # Determinístico (documento ausente, fora do esquema, não imprimível):
+        # tentar de novo daria o mesmo resultado.
+        blocked[request.consultation_id] ||= [ "verification_failed", true ]
+        block(request, "verification_failed", true, failed, final)
       end
       if verdict
         # O certificado não serve: nada do lote vai ao PSC.
-        mark!(certificate, verdict)
-        return Outcome.new(signed: [], failed: requests.map { |request| [ request, verdict ] })
+        reason, definitive = verdict
+        mark!(certificate, reason)
+        return Outcome.new(signed: [], failed: requests.map { |request| [ request, reason ] },
+                           final: definitive ? requests.map(&:id) : [])
       end
       return Outcome.new(signed: [], failed: failed, final: final) if ready.empty?
 
@@ -122,15 +125,17 @@ module Signatures
     end
 
     # R9: uma consulta a /certificates/check diz por que o signer recusou o
-    # certificado. Signer::Unavailable sobe (antes do PSC: passageiro).
+    # certificado -> [motivo, definitivo?]. Só a resposta `valid` (recusa que a
+    # consulta não confirma) fica passageira. Signer::Unavailable sobe (antes
+    # do PSC: passageiro).
     def certificate_verdict(certificate, signer)
       check = signer.check_certificate(certificate_der: certificate.der)
-      return "certificate_revoked" if check.reasons.include?("certificate_revoked")
-      return "certificate_expired" if check.reasons.include?("certificate_expired")
+      return [ "certificate_revoked", true ] if check.reasons.include?("certificate_revoked")
+      return [ "certificate_expired", true ] if check.reasons.include?("certificate_expired")
 
-      "verification_failed"
+      [ "verification_failed", check.status != "valid" ]
     rescue Signer::Rejected
-      "verification_failed"
+      [ "verification_failed", true ]
     end
 
     # O certificado revogado/vencido não volta a ser usado (o vínculo cai).

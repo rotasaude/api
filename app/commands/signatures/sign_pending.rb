@@ -25,6 +25,10 @@ module Signatures
       return park(request, reason, now) if reason
 
       session = SignatureSession.usable_for(request.author_user_id, now: now)
+      # A sessão é do certificado ATIVO; a de um certificado anterior não serve.
+      if session && session.signer_certificate_id != certificate.id
+        return park(request, "no_session", now)
+      end
       unless session
         return park(request, SignatureSession.lapsed?(request.author_user_id, now: now) ? "session_expired" : "no_session", now)
       end

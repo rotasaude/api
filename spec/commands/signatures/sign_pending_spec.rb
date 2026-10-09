@@ -137,12 +137,39 @@ RSpec.describe Signatures::SignPending do
     expect(@signer).to have_received(:check_certificate).once
   end
 
-  it "R9: invalid_certificate por outro motivo (cadeia) → verification_failed" do
+  it "R9: invalid_certificate por outro motivo (cadeia não confiável) → verification_failed definitivo" do
     session!
     request = signature_request!(consultation, author: doctor)
     @signer.untrusted_serials << certificate.serial_number
+    expect(sign(request)).to eq(:pending)
+    expect([ request.reload.reason_code, request.attempts, certificate.reload.status ]).to eq([ "verification_failed", 0, "active" ])
+    expect(psc_signature_calls).to eq(0)
+  end
+
+  it "R9: invalid_certificate que a consulta diz valid → verification_failed passageiro" do
+    session!
+    request = signature_request!(consultation, author: doctor)
+    allow(@signer).to receive(:prepare).and_raise(Signatures::Signer::Rejected, "invalid_certificate")
     expect(sign(request)).to eq(:retry)
-    expect([ request.reload.reason_code, certificate.reload.status ]).to eq(%w[verification_failed active])
+    expect(request.reload).to have_attributes(reason_code: "verification_failed", attempts: 1)
+  end
+
+  it "documento que não se monta (inexistente) → verification_failed definitivo, sem tentativa" do
+    session!
+    request = signature_request!(author: doctor)
+    expect(sign(request)).to eq(:pending)
+    expect(request.reload).to have_attributes(status: "pending", reason_code: "verification_failed", attempts: 0)
+    expect(psc_signature_calls).to eq(0)
+  end
+
+  it "sessão aberta com outro certificado (anterior) não serve: no_session" do
+    old = linked_certificate!(doctor, status: "replaced", leaf: fake_psc.leaf(cpf))
+    signature_session!(doctor, certificate: old, token: fake_psc.token_for!(cpf: cpf))
+    certificate
+    request = signature_request!(consultation, author: doctor)
+    expect(sign(request)).to eq(:pending)
+    expect(request.reload.reason_code).to eq("no_session")
+    expect(psc_signature_calls).to eq(0)
   end
 
   it "R9: 400 invalid_request no /prepare (estado > 32 MiB) → verification_failed sem tentar de novo" do
@@ -180,6 +207,28 @@ RSpec.describe Signatures::SignPending do
     expect(request.reload).to have_attributes(status: "returned_to_paper", reason_code: "feature_disabled")
     expect(DomainEvent.where(name: "signature.returned_to_paper").sole.payload).to eq("request_id" => request.id, "reason_code" => "feature_disabled")
     expect(sign(request)).to eq(:skipped)
+  end
+
+  it "consulta e adendo no mesmo Signing: o adendo falha no preparo (400) e a consulta assina mesmo assim" do
+    session!
+    addendum = Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "exame adicional pedido",
+                                               text: "Pedido creatinina").payload[:addendum]
+    requests = [ signature_request!(addendum, author: doctor), signature_request!(consultation, author: doctor) ]
+    real_prepare = @signer.method(:prepare)
+    allow(@signer).to receive(:prepare) do |kind:, document:, certificate_der:|
+      if kind == "cades" && JSON.parse(document).key?("addendum")
+        raise Signatures::Signer::Rejected, "invalid_request"
+      end
+
+      real_prepare.call(kind: kind, document: document, certificate_der: certificate_der)
+    end
+    outcome = ApplicationRecord.transaction do
+      Signatures::Signing.call(requests: requests, access_token: SignatureSession.usable_for(doctor.id).access_token,
+                               certificate: certificate, signer: @signer)
+    end
+    expect(outcome.signed.map(&:signature_request_id)).to eq([ requests.last.id ])
+    expect(outcome.failed).to eq([ [ requests.first, "verification_failed" ] ])
+    expect(outcome.final).to eq([ requests.first.id ])
   end
 
   it "trava o pedido com FOR UPDATE SKIP LOCKED (Review Focus 1)" do
