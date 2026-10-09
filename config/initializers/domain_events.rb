@@ -139,8 +139,10 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "patient.linked", to: []
   DomainEvents.bind "patient_problem.changed", to: []
   DomainEvents.bind "consultation.started", to: []
-  DomainEvents.bind "consultation.finalized", to: []
-  DomainEvents.bind "consultation.addendum_added", to: []
+  # ADR 0032 (19b): a finalização e o adendo abrem o pedido de assinatura
+  # (Signatures::RequestJob só abre o pedido e enfileira; o 19a não muda).
+  DomainEvents.bind "consultation.finalized", to: [ Signatures::RequestJob ]
+  DomainEvents.bind "consultation.addendum_added", to: [ Signatures::RequestJob ]
   DomainEvents.bind "clinical_record.viewed", to: []
   DomainEvents.bind "clinical_record.opened", to: []
 

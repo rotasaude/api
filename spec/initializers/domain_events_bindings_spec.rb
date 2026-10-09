@@ -102,10 +102,19 @@ end
 # Módulo 19 (ADR 0031): prontuário, só trilha.
 RSpec.describe "clinical record event bindings (ADR 0031)" do
   it "declares every module 19 city event with no consumer" do
-    names = %w[patient.created patient.linked patient_problem.changed consultation.started consultation.finalized
-               consultation.addendum_added clinical_record.viewed clinical_record.opened]
+    names = %w[patient.created patient.linked patient_problem.changed consultation.started
+               clinical_record.viewed clinical_record.opened]
     expect(DomainEvents.registry.keys).to include(*names)
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end
+
+# Módulo 19b (ADR 0032): a finalização e o adendo abrem o pedido de assinatura.
+RSpec.describe "consultation signature bindings (ADR 0032)" do
+  it "binds consultation.finalized and consultation.addendum_added to Signatures::RequestJob" do
+    %w[consultation.finalized consultation.addendum_added].each do |name|
+      expect(DomainEvents.registry[name].map(&:job)).to eq([ "Signatures::RequestJob" ])
+    end
   end
 end
 
