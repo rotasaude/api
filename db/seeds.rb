@@ -42,6 +42,7 @@ else
   require Rails.root.join("lib/scheduling_crew").to_s
   require Rails.root.join("lib/screening_crew").to_s
   require Rails.root.join("lib/clinical_record_crew").to_s
+  require Rails.root.join("lib/digital_signature_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -249,6 +250,11 @@ else
         # Depois do acolhimento: usa a UBS, a médica, a enfermeira e a recepção.
         clinical = ClinicalRecordCrew.seed_current_city(slug: slug, ddd: ddd)
         puts "[seeds] prontuário ... interruptor #{clinical[:switch]}; #{clinical[:patient]}: #{clinical[:consultation]}"
+
+        # ── Assinatura digital (módulo 19b, ADR 0032) ─────────────────────────
+        # Depois do prontuário: só Curitiba liga digital_signature + PSC simulado.
+        signature = DigitalSignatureCrew.seed_current_city(slug: slug)
+        puts "[seeds] assinatura .. interruptores #{signature[:switch]}; #{signature[:professionals].size} profissionais com CPF novo"
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
