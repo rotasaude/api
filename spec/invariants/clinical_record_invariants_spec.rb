@@ -84,7 +84,10 @@ RSpec.describe "Invariantes do prontuário (ADR 0031)", type: :request do
   end
 
   # Mutação: trocar require_professional por require_attendance_staff em
-  # qualquer controller do prontuário.
+  # ClinicalRecordsController deixa o exemplo vermelho (a 2ª camada devolve outro
+  # código). No ConsultationsController a 2ª camada (ClinicalRecord::Access)
+  # também devolve 403 missing_role, então o guard é defesa redundante e a
+  # mutação não é observável por HTTP.
   it "a recepção nunca lê o prontuário" do
     citizen = verified_citizen!(1, full_name: "#{marker} Nome")
     consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen, subjective: "S #{marker}")
@@ -94,6 +97,7 @@ RSpec.describe "Invariantes do prontuário (ADR 0031)", type: :request do
       "/attendance/consultations/#{consultation.id}/print", "/clinical_record/patients/#{consultation.patient_id}" ].each do |path|
       get path
       expect(response).to have_http_status(:forbidden), path
+      expect(body["error"]).to eq("missing_role"), path
       expect(response.body).not_to include(marker)
     end
   end
