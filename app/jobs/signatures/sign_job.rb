@@ -3,12 +3,14 @@
 # até 3 tentativas com espera crescente (30 s, 2 min); depois o pedido fica
 # pending com o motivo, à espera do lote ou da volta ao papel. Nunca levanta
 # por PSC/signer (a transação do CityScopedJob commita o motivo). Nunca
-# atribui Current.city (CityScopedJob#with_city).
+# atribui Current.city (CityScopedJob#with_city). Fila própria `signatures`
+# (worker dedicado em config/queue.yml): a chamada ao PSC/signer nunca ocupa as
+# threads de realtime/default; as novas tentativas herdam a fila.
 module Signatures
   class SignJob < ApplicationJob
     include CityScopedJob
 
-    queue_as :default
+    queue_as :signatures
 
     BACKOFF = [ 30.seconds, 2.minutes ].freeze
 

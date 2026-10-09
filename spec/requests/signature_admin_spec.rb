@@ -15,17 +15,18 @@ RSpec.describe "Painel de assinatura do admin", type: :request do
   def body = JSON.parse(response.body)
 
   it "profissionais, documentos por modo e assinaturas inválidas" do
-    certificate = linked_certificate!(doctor)
     expiring = signer_doctor!(create_unit("UBS Dois"), cpf: SignatureHelpers::OTHER_CPF)
     linked_certificate!(expiring, leaf: test_pki.issue(cpf: SignatureHelpers::OTHER_CPF, name: "VENCE LOGO", not_after: 10.days.from_now))
     without = doctor!(create_unit("UBS Tres"))
 
+    # Antes do certificado: com ele ativo, o pedido nasceria na finalização (Task 20).
     signed = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
     pending = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(2))
     manual = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(3))
+    Consultations::AddAddendum.call(consultation: manual, by: doctor, reason: "adendo sem pedido", text: "x")
+    certificate = linked_certificate!(doctor)
     signed_request = signature_request!(signed, author: doctor, status: "signed")
     pending_request = signature_request!(pending, author: doctor, reason_code: "no_session")
-    Consultations::AddAddendum.call(consultation: manual, by: doctor, reason: "adendo sem pedido", text: "x")
     signature_row!(signed_request, certificate: certificate)
       .update!(last_verification: "indeterminate", last_verification_at: Time.current, last_verification_reasons: [ "crl_unavailable" ])
 

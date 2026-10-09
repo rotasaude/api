@@ -5,6 +5,10 @@
 # fechamento do atendimento pelo comando existente (retorno/encaminhamento
 # geram o pedido). A consulta vira finalized ANTES do Close: o Close recusa
 # rascunho aberto. Ordem de travas: atendimento → consulta → paciente.
+# ADR 0032 (decisão do usuário 2026-10-09): com o interruptor utilizável e o
+# autor com certificado ativo, o pedido de assinatura nasce AQUI, na mesma
+# transação, já pending; o SignJob (fila signatures) só entra depois do commit.
+# Só uma linha local: finalizar nunca depende do PSC nem do signer.
 module Consultations
   class Finalize
     OUTCOME_KEYS = %w[outcome referral_unit_id referral_note].freeze
@@ -35,6 +39,7 @@ module Consultations
           result = closed
           raise ActiveRecord::Rollback
         end
+        Signatures::OpenRequest.call(consultation)
         DomainEvents.publish("consultation.finalized", consultation_id: consultation.id, attendance_id: attendance.id)
         # ADR 0031 (spec §6): a ficha nasce na finalização (o job relê tudo).
         Ledi::ConsultationFichaJob.enqueue_for(consultation)

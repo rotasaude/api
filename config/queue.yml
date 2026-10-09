@@ -1,7 +1,8 @@
 # Solid Queue de CADA CIDADE (Plano 5, spec banco-por-cidade §4): o supervisor da
-# cidade roda estes processos contra o banco dela. Três workers — urgent isolado
+# cidade roda estes processos contra o banco dela. Quatro workers — urgent isolado
 # (alertas à secretaria, ADR-0006), realtime+default (webhook, envio, avisos,
-# e-mail), reports+housekeeping — mais o dispatcher; o scheduler vem de
+# e-mail), reports+housekeeping, signatures isolado (SignJob fala com PSC e
+# signer; ADR 0032) — mais o dispatcher; o scheduler vem de
 # config/recurring.yml. O pool do banco precisa de pelo menos (maior número de
 # threads + 2) conexões: RAILS_MAX_THREADS do worker.
 
@@ -22,6 +23,10 @@ default: &default
       threads: 2
       processes: 1
       polling_interval: 1
+    - queues: signatures
+      threads: 2
+      processes: 1
+      polling_interval: 0.5
 
 development:
   <<: *default
@@ -44,6 +49,10 @@ production: &production
       threads: 3
       processes: 1
       polling_interval: 1
+    - queues: signatures
+      threads: 3
+      processes: 1
+      polling_interval: 0.5
 
 # staging é ensaio de produção: mesma configuração, por construção (spec da API
 # de manutenção §4; spec/architecture/staging_environment_parity_spec.rb).

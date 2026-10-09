@@ -1,6 +1,9 @@
 # Consumidor de consultation.finalized e consultation.addendum_added (ADR 0032;
-# spec §5). Só abre o pedido e enfileira o SignJob: nada de HTTP aqui
-# (ADR-0005). O 19a não muda. Nunca atribui Current.city (CityScopedJob).
+# spec §5). Rede de segurança: o pedido já nasce na finalização/no adendo
+# (decisão do usuário 2026-10-09); aqui OpenRequest devolve :exists e nada se
+# enfileira. Só abre quando a transação de origem não abriu (ex.: certificado
+# ativado entre o commit e o consumo). Nada de HTTP aqui (ADR-0005). Nunca
+# atribui Current.city (CityScopedJob).
 module Signatures
   class RequestJob < ApplicationJob
     include IdempotentConsumer

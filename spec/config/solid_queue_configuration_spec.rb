@@ -1,7 +1,8 @@
 require "rails_helper"
 
-# Plano 5 (spec banco-por-cidade §4): cada cidade roda três workers — urgent
-# isolado (ADR-0006) — e agenda só tarefas de cidade; a plataforma roda um worker
+# Plano 5 (spec banco-por-cidade §4): cada cidade roda quatro workers — urgent
+# isolado (ADR-0006), signatures isolado (ADR 0032, Task 20) — e agenda só
+# tarefas de cidade; a plataforma roda um worker
 # e agenda só jobs de plataforma.
 RSpec.describe "Solid Queue configuration per city and platform" do
   def config(path, env)
@@ -12,12 +13,20 @@ RSpec.describe "Solid Queue configuration per city and platform" do
     config(path, env).values.filter_map { |task| task["class"] }
   end
 
-  %w[development production staging].each do |env|
+  %w[development test production staging].each do |env|
     context env do
-      it "gives each city three workers, with urgent alone" do
+      it "gives each city four workers, with urgent and signatures alone" do
         queues = config("config/queue.yml", env).fetch("workers").map { |worker| Array(worker["queues"]) }
 
-        expect(queues).to eq([ %w[urgent], %w[realtime default], %w[reports housekeeping] ])
+        expect(queues).to eq([ %w[urgent], %w[realtime default], %w[reports housekeeping], %w[signatures] ])
+      end
+
+      it "serves the queue of every signature job from a city worker" do
+        served = config("config/queue.yml", env).fetch("workers").flat_map { |worker| Array(worker["queues"]) }
+
+        expect(Signatures::SignJob.queue_name).to eq("signatures")
+        expect(served).to include(Signatures::SignJob.queue_name, Signatures::RequestJob.queue_name,
+                                  Signatures::SweepJob.queue_name)
       end
 
       it "gives the platform workers covering the queues of every platform job and of e-mail delivery" do

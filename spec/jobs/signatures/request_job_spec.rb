@@ -27,15 +27,25 @@ RSpec.describe Signatures::RequestJob do
     end
   end
 
-  it "autor com certificado: pedido pending e job enfileirado; consumir de novo não duplica" do
+  it "autor com certificado: o pedido nasce na finalização (Task 20); o consumidor não duplica pedido nem job" do
     linked_certificate!(doctor)
-    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
-    expect { consume!("consultation.finalized") }.to have_enqueued_job(Signatures::SignJob)
+    consultation = nil
+    expect { consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1)) }
+      .to have_enqueued_job(Signatures::SignJob).on_queue("signatures")
     request = SignatureRequest.sole
     expect(request).to have_attributes(document_type: "Consultation", document_id: consultation.id,
                                        consultation_id: consultation.id, author_user_id: doctor.id, status: "pending", attempts: 0)
+    expect { consume!("consultation.finalized") }.not_to have_enqueued_job(Signatures::SignJob)
     expect { consume!("consultation.finalized") }.not_to change(SignatureRequest, :count)
     expect(Signatures::OpenRequest.call(consultation)).to eq(:exists)
+  end
+
+  it "rede de segurança: certificado ativado depois da finalização → o consumidor abre o pedido e enfileira" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
+    expect(SignatureRequest.count).to eq(0)
+    linked_certificate!(doctor)
+    expect { consume!("consultation.finalized") }.to have_enqueued_job(Signatures::SignJob).on_queue("signatures")
+    expect(SignatureRequest.sole).to have_attributes(document_id: consultation.id, status: "pending")
   end
 
   it "autor sem certificado: nada nasce (manual); interruptor desligado: nada nasce" do

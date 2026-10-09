@@ -2,7 +2,11 @@
 # §5): só com o interruptor utilizável (digital_signature e seus requisitos) e
 # o autor com certificado ativo (adoção por profissional — sem certificado, o
 # documento é manual). Um por documento (índice único; o consumidor pode
-# repetir). O assinante do adendo é sempre a autora da consulta.
+# repetir). O assinante do adendo é sempre a autora da consulta. Chamado
+# dentro da transação da finalização/do adendo (Consultations::Finalize,
+# AddAddendum) e de novo pelo consumidor do evento (RequestJob): o segundo
+# recebe :exists e não enfileira nada. O SignJob só entra após o commit
+# (ApplicationJob.enqueue_after_transaction_commit).
 module Signatures
   module OpenRequest
     module_function

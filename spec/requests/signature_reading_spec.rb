@@ -58,8 +58,10 @@ RSpec.describe "Leitura da assinatura", type: :request do
     expect(json[:signature]).to eq(mode: "digital", request_id: signature.signature_request_id, signature_id: signature.id,
                                    signed_at: signature.signed_at.iso8601, signer_name: doctor.professional.professional_name,
                                    verification: "valid", simulated: false)
-    expect(json[:addenda].sole[:signature]).to eq(mode: "manual")
-    expect(Consultations::Json.addendum(addendum)[:signature]).to eq(mode: "manual")
+    # Autora com certificado ativo: o pedido do adendo nasce no próprio adendo (Task 20).
+    addendum_request = SignatureRequest.find_by!(document_type: "ConsultationAddendum", document_id: addendum.id)
+    expect(json[:addenda].sole[:signature]).to eq(mode: "pending", request_id: addendum_request.id)
+    expect(Consultations::Json.addendum(addendum)[:signature]).to eq(mode: "pending", request_id: addendum_request.id)
     draft = started_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(4))
     expect(Consultations::Json.consultation(draft)).not_to have_key(:signature)
   end
@@ -260,7 +262,10 @@ RSpec.describe "Leitura da assinatura", type: :request do
     get "/attendance/consultations/#{signed.id}/print"
     expect(response.body.b).to eq(signature.signed_pdf_bytes.b)
 
+    # Sem certificado ativo o adendo fica no papel (com ele, o pedido nasceria no adendo — Task 20).
+    SignerCertificate.where(user_id: doctor.id).update_all(status: "unlinked")
     Consultations::AddAddendum.call(consultation: signed, by: doctor, reason: "exame adicional pedido", text: "Adendo sem assinatura")
+    expect(SignatureRequest.where(document_type: "ConsultationAddendum")).to be_empty
     get "/attendance/consultations/#{signed.id}/print"
     text = text_of(response.body)
     expect(text).to include("Assinaturas", "Consulta: assinada digitalmente por", "validação válida", "Adendo de",

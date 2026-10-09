@@ -7,6 +7,8 @@
 # `exam_requests` = listas FINAIS (só entram em `changes` quando mudam). O
 # banco recebe as diferenças como linhas novas (add/remove; requested/
 # cancelled); a conduta efetiva nunca fica vazia. Tudo num savepoint.
+# ADR 0032 (decisão do usuário 2026-10-09): o pedido de assinatura do adendo
+# nasce aqui, na mesma transação (como na finalização; Signatures::OpenRequest).
 module Consultations
   class AddAddendum
     CHANGE_KEYS = %w[evaluated_problems conducts exam_requests].freeze
@@ -41,6 +43,7 @@ module Consultations
           result = failure
           raise ActiveRecord::Rollback
         end
+        Signatures::OpenRequest.call(addendum)
         DomainEvents.publish("consultation.addendum_added", consultation_id: consultation.id, addendum_id: addendum.id)
         # ADR 0031 (spec §6): mudança estruturada regera (ou vira correção pendente).
         Ledi::ConsultationFichaJob.enqueue_for(consultation, reason: "addendum") if plan.payload[:stored].any?
