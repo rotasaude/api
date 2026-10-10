@@ -23,9 +23,12 @@ RSpec.describe "Protocolos de enfermagem", type: :request do
     expect(protocol).to include("title" => "Saúde da mulher na APS", "number" => "PE-01", "year" => 2026)
     expect(protocol["current_version"]).to include("version" => 1, "valid_from" => "2026-01-01", "valid_until" => nil)
     expect(protocol["current_version"]["items"].first)
-      .to eq("catalog_item" => ClinicalDocuments::Json.catalog_ref(catalog_item(267_503)).as_json,
+      .to eq("catalog_item" => ClinicalDocuments::Json.catalog_item(catalog_item(267_503)).as_json,
              "max_dose" => { "quantity" => 30, "unit" => "comprimido" })
     expect(protocol["current_version"]["items"].second["max_dose"]).to be_nil
+    expect(protocol["current_version"]["items"].map { |row| row["catalog_item"].slice("antimicrobial", "controlled") })
+      .to all(eq("antimicrobial" => false, "controlled" => false))
+    expect(protocol["current_version"]["items"].first["catalog_item"]).not_to have_key("in_network")
 
     json_post "/clinical_documents/nursing_protocols", protocol_body
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "already_exists" } ])
@@ -38,6 +41,17 @@ RSpec.describe "Protocolos de enfermagem", type: :request do
     expect(json_body["current_version"]["version"]).to eq(2) # a 3 ainda não vale
     get "/clinical_documents/nursing_protocols"
     expect(json_body["items"].map { |row| row.dig("current_version", "version") }).to eq([ 2 ])
+  end
+
+  it "expõe antimicrobial e controlled nos itens da versão vigente" do
+    stepped_up!(admin)
+    json_post "/clinical_documents/nursing_protocols",
+              protocol_body(items: [ { catalog_item_id: catalog_item(271_089).id } ])
+    expect(response).to have_http_status(:created)
+    expect(json_body["current_version"]["items"].first["catalog_item"])
+      .to eq(ClinicalDocuments::Json.catalog_item(catalog_item(271_089)).as_json)
+    expect(json_body["current_version"]["items"].first["catalog_item"])
+      .to include("antimicrobial" => true, "controlled" => false)
   end
 
   it "valida cabeçalho, vigência e itens; controlado e escondido recusados" do

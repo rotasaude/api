@@ -34,7 +34,7 @@ module ClinicalDocuments
           valid_until: version.valid_until&.iso8601,
           items: version.items.order(:created_at, :id).filter_map do |item|
             entry = catalog[item.catalog_item_id]
-            entry && { catalog_item: catalog_ref(entry),
+            entry && { catalog_item: catalog_item(entry),
                        max_dose: item.max_quantity && { quantity: number(item.max_quantity), unit: item.max_quantity_unit } }
           end
         } }
