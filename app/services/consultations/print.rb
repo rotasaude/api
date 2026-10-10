@@ -161,9 +161,11 @@ module Consultations
       pdf.text safe("Impresso em #{Time.current.strftime('%d/%m/%Y %H:%M')}. Sem assinatura digital: vale com a assinatura manual."),
                size: 8
     end
-    def document(footer)
+    # A4 com a margem de baixo maior quando há rodapé NGS2. Público: o PDF do
+    # documento clínico (19c) parte da mesma folha.
+    def document(footer, title: "Registro de consulta")
       pdf = Prawn::Document.new(page_size: "A4", margin: footer ? [ 40, 40, 80, 40 ] : 40,
-                                info: { Title: "Registro de consulta", Producer: "Rota Saúde" })
+                                info: { Title: title, Producer: "Rota Saúde" })
       pdf.font_size(10)
       stamp_footer(pdf, footer) if footer
       pdf
@@ -220,6 +222,6 @@ module Consultations
       end
       lines
     end
-    private_class_method :document, :stamp_footer, :signatures, :change_lines, :line, :title, :header, :patient_block, :professional_block, :record, :outcome, :addenda, :signature
+    private_class_method :signatures, :change_lines, :line, :title, :header, :patient_block, :professional_block, :record, :outcome, :addenda, :signature
   end
 end

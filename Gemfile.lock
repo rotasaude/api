@@ -271,6 +271,7 @@ GEM
       io-console (~> 0.5)
     rexml (3.4.4)
     rotp (6.3.0)
+    rqrcode_core (2.1.0)
     rspec-core (3.13.6)
       rspec-support (~> 3.13.0)
     rspec-expectations (3.13.5)
@@ -389,6 +390,7 @@ DEPENDENCIES
   rack-cors
   rails (~> 8.0)
   rotp (~> 6.3)
+  rqrcode_core (~> 2.1)
   rspec-rails
   rubocop-rails-omakase
   rubyzip (~> 2.4)

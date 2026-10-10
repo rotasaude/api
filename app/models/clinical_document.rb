@@ -28,4 +28,6 @@ class ClinicalDocument < ApplicationRecord
   def prescription? = kind == "prescription"
   def verification_url = "#{CityPublicUrl.base(Current.city)}/v/#{verification_token}"
   def signature_request = SignatureRequest.find_by(document_type: "ClinicalDocument", document_id: id)
+  # A assinatura gravada (pedido signed), ou nil: o impresso e a página pública.
+  def signed_signature = SignatureRequest.find_by(document_type: "ClinicalDocument", document_id: id, status: "signed")&.signature
 end

@@ -47,3 +47,4 @@ gem "jwt", "~> 2.8"    # OIDC id_token verification — ADR-0022 (gov.br seam)
 gem "graphql", "~> 2.3"
 gem "thrift", "~> 0.22"   # LEDI APS (ADR 0028): TBinaryProtocol das fichas para o PEC
 gem "prawn", "~> 2.5"     # ADR 0031: impresso da consulta, gerado na hora (Ruby puro, sem binário)
+gem "rqrcode_core", "~> 2.1" # ADR 0033: QR code da conferência do documento clínico (Ruby puro, desenhado em vetor no Prawn)

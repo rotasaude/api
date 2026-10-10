@@ -40,17 +40,22 @@ module ClinicalDocuments
         } }
     end
 
+    # Texto do conselho ("CRM-PR 12345"), o mesmo no JSON, no PDF e na página
+    # pública; nil sem perfil profissional (a recepção).
+    def council(professional)
+      professional && "#{professional.council}-#{professional.council_state} #{professional.registration_number}"
+    end
+
     # <document> (contrato §2). `signature` = o bloco do 19b quando há pedido
     # (documento digital, ou que voltou ao papel); nil no papel puro.
     def document(document, signature: :load)
       author = document.author_user
-      professional = author.professional
       signature = document.signature_request ? Signatures::Mode.for(document) : nil if signature == :load
       { id: document.id, kind: document.kind, status: document.status, issue_mode: document.issue_mode,
         issued_at: document.issued_at.iso8601, cancelled_at: document.cancelled_at&.iso8601,
         cancel_reason: document.cancel_reason,
         author: { id: author.id, name: Screenings::Json.staff_name(author),
-                  council: professional && "#{professional.council}-#{professional.council_state} #{professional.registration_number}",
+                  council: council(author.professional),
                   cbo_code: document.cbo_code },
         patient: document.patient && { id: document.patient.id, display_name: document.patient.display_name },
         consultation_id: document.consultation_id, attendance_id: document.attendance_id,

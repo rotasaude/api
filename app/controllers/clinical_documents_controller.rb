@@ -2,8 +2,8 @@
 # Documentos clínicos (ADR 0033; contrato §3). Emitir: da consulta (autora) ou
 # do atendimento (declaração); interruptor clinical_documents. Ler: autora
 # sempre, demais pelas regras do 19a, com trilha; segue com o interruptor
-# desligado (atrás só do clinical_record). Impresso (Task 17) e cancelamento
-# (Task 20) moram aqui.
+# desligado (atrás só do clinical_record). Impresso e cancelamento (Task 20)
+# moram aqui.
 class ClinicalDocumentsController < ApplicationController
   include Authentication
   include AttendanceAccess
@@ -56,6 +56,27 @@ class ClinicalDocumentsController < ApplicationController
   def show
     document = readable_document
     render json: ClinicalDocuments::Json.document(document) if document
+  end
+
+  # Contrato §3 (Desvio 7): o PDF do modo do documento, na hora, sem cache.
+  # Digital: só o PAdES gravado (o papel de um digital criaria duas vias
+  # válidas com o mesmo código); papel: gerado agora.
+  def print
+    document = readable_document
+    return unless document
+    return render(json: { error: "already_cancelled" }, status: :conflict) if document.cancelled?
+
+    bytes =
+      if document.digital?
+        signature = document.signed_signature
+        return render(json: { error: "awaiting_signature" }, status: :conflict) unless signature
+
+        signature.signed_pdf_bytes
+      else
+        ClinicalDocuments::Pdf.call(document)
+      end
+    response.headers["Cache-Control"] = "no-store"
+    send_data bytes, type: "application/pdf", disposition: "inline", filename: "documento.pdf"
   end
 
   private
