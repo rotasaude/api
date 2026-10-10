@@ -3,7 +3,8 @@
 # na API e nos eventos, o nome do contrato.
 module Signatures
   module DocumentTypes
-    MODELS = { "Consultation" => "consultation", "ConsultationAddendum" => "consultation_addendum" }.freeze
+    MODELS = { "Consultation" => "consultation", "ConsultationAddendum" => "consultation_addendum",
+               "ClinicalDocument" => "clinical_document" }.freeze
 
     module_function
 

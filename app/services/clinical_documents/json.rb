@@ -1,6 +1,6 @@
 # app/services/clinical_documents/json.rb
-# Formas do contrato do 19c (§2, §5, §6). Este arquivo cresce nas Tasks 11,
-# 15 e 16 (protocolo, documento, medicamento).
+# Formas do contrato do 19c (§2, §5, §6): item do catálogo, protocolo,
+# documento e medicamento em uso.
 module ClinicalDocuments
   module Json
     module_function
@@ -38,6 +38,32 @@ module ClinicalDocuments
                        max_dose: item.max_quantity && { quantity: number(item.max_quantity), unit: item.max_quantity_unit } }
           end
         } }
+    end
+
+    # <document> (contrato §2). `signature` = o bloco do 19b quando há pedido
+    # (documento digital, ou que voltou ao papel); nil no papel puro.
+    def document(document, signature: :load)
+      author = document.author_user
+      professional = author.professional
+      signature = document.signature_request ? Signatures::Mode.for(document) : nil if signature == :load
+      { id: document.id, kind: document.kind, status: document.status, issue_mode: document.issue_mode,
+        issued_at: document.issued_at.iso8601, cancelled_at: document.cancelled_at&.iso8601,
+        cancel_reason: document.cancel_reason,
+        author: { id: author.id, name: Screenings::Json.staff_name(author),
+                  council: professional && "#{professional.council}-#{professional.council_state} #{professional.registration_number}",
+                  cbo_code: document.cbo_code },
+        patient: document.patient && { id: document.patient.id, display_name: document.patient.display_name },
+        consultation_id: document.consultation_id, attendance_id: document.attendance_id,
+        short_code: Codes.display(document.short_code), verification_url: document.verification_url,
+        replaces_document_id: document.replaces_document_id, content: document.content_data, signature: signature }
+    end
+
+    # <medication> (contrato §2); `catalog` = { id => MedicationCatalogItem }.
+    def medication(medication, catalog:)
+      item = medication.catalog_item_id && catalog[medication.catalog_item_id]
+      { id: medication.id, catalog_item: item && catalog_ref(item), free_text: medication.free_text, label: medication.label,
+        dosage_summary: medication.dosage_summary, continuous: medication.continuous, status: medication.status,
+        origin: medication.origin, started_on: medication.started_on&.iso8601, updated_at: medication.updated_at.iso8601 }
     end
   end
 end
