@@ -34,7 +34,13 @@ module Platform
       Entry.new(key: "signature_psc_mock",
                 description: "PSC simulado (desenvolvimento) — assinatura sem validade jurídica",
                 requires: %w[feature:digital_signature],
-                environments: SIMULATION_ENVS)
+                environments: SIMULATION_ENVS),
+      # ADR 0033: documentos clínicos da consulta (19c); só com o prontuário
+      # utilizável. Desligado: nada novo é emitido; os documentos existentes
+      # seguem legíveis e a página de conferência segue respondendo.
+      Entry.new(key: "clinical_documents",
+                description: "Documentos clínicos (atestado, declaração, receita, requisição) e lista de medicamentos",
+                requires: %w[feature:clinical_record])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
