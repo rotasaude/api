@@ -78,7 +78,7 @@ module Medications
 
           body
         rescue Unavailable, JSON::ParserError, Net::OpenTimeout, Net::ReadTimeout, SocketError, SystemCallError, OpenSSL::SSL::SSLError,
-               EOFError, IOError, Net::ProtocolError, Timeout::Error => e
+               EOFError, IOError, Net::ProtocolError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError, Timeout::Error => e
           if attempts <= RETRIES && !client_error?(e)
             @sleeper.call(BACKOFF.fetch(attempts - 1, BACKOFF.last))
             retry
