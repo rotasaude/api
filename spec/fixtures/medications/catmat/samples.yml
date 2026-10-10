@@ -1,0 +1,60 @@
+# spec/fixtures/medications/catmat/samples.yml
+# Itens reais do CATMAT classe 6505 (API do Compras.gov, 2026-10-09).
+- { code: 268856, pdm: "LOSARTANA POTÁSSICA", description: "LOSARTANA POTÁSSICA, DOSAGEM: 50 MG",
+    expected: { active_ingredient: "LOSARTANA POTÁSSICA", strength: "50 MG", unit: "mg", parse_status: "ok" } }
+- { code: 287471, pdm: "LOSARTANA POTÁSSICA", description: "LOSARTANA POTÁSSICA, APRESENTAÇÃO: ASSOCIADO à HIDROCLOROTIAZIDA , DOSAGEM: 100 MG + 25 MG ",
+    expected: { active_ingredient: "LOSARTANA POTÁSSICA + HIDROCLOROTIAZIDA", strength: "100 MG + 25 MG", unit: "mg", parse_status: "ok" } }
+- { code: 270788, pdm: "LOSARTANA POTÁSSICA", description: "LOSARTANA POTÁSSICA, APRESENTAÇÃO: ASSOCIADO à HIDROCLOROTIAZIDA , DOSAGEM: 50MG + 12,5MG ",
+    expected: { active_ingredient: "LOSARTANA POTÁSSICA + HIDROCLOROTIAZIDA", strength: "50 MG + 12,5 MG", unit: "mg", parse_status: "ok" } }
+- { code: 384258, pdm: "LOSARTANA POTÁSSICA", description: "LOSARTANA POTÁSSICA, COMPOSIÇÃO: ASSOC. À FUROSEMIDA,AMIODARONA E ESPIRONOLACTONA , CONCENTRAÇÃO: 50 MG + 60 MG + 150 MG + 25 MG, CARACTERÍSTICA ADICIONAL: FORMULAÇÃO ESPECIALMENTE MANIPULADA ",
+    expected: { active_ingredient: "LOSARTANA POTÁSSICA", parse_status: "review", review_reason: "manipulated" } }
+- { code: 268252, pdm: "DIPIRONA SÓDICA", description: "DIPIRONA SÓDICA, DOSAGEM: 500 MG/ML, APRESENTAÇÃO: SOLUÇÃO INJETÁVEL ",
+    expected: { active_ingredient: "DIPIRONA SÓDICA", strength: "500 MG/ML", dosage_form: "solução injetável", unit: "mg/mL", parse_status: "ok" } }
+- { code: 448841, pdm: "AMOXICILINA", description: "AMOXICILINA, PRINCÍPIO ATIVO: ASSOCIADA COM CLAVULANATO DE POTÁSSIO , CONCENTRAÇÃO: 50 MG/ML + 12,5 MG/ML, FORMA FARMACÊUTICA: SUSPENSÃO ORAL ",
+    expected: { active_ingredient: "AMOXICILINA + CLAVULANATO DE POTÁSSIO", strength: "50 MG/ML + 12,5 MG/ML", dosage_form: "suspensão oral", unit: "mg/mL", parse_status: "ok" } }
+- { code: 271113, pdm: "AMOXICILINA", description: "AMOXICILINA, CONCENTRAÇÃO: 100 MG/ML, APRESENTAÇÃO: PÓ PARA SUSPENSÃO ORAL ",
+    expected: { active_ingredient: "AMOXICILINA", strength: "100 MG/ML", dosage_form: "pó para suspensão oral", unit: "mg/mL", parse_status: "ok" } }
+- { code: 271089, pdm: "AMOXICILINA", description: "AMOXICILINA, CONCENTRAÇÃO: 500MG ",
+    expected: { active_ingredient: "AMOXICILINA", strength: "500 MG", unit: "mg", parse_status: "ok" } }
+- { code: 270120, pdm: "CLONAZEPAM", description: "CLONAZEPAM, DOSAGEM: 2,5 MG/ML, APRESENTAÇÃO: SOLUÇÃO ORAL- GOTAS ",
+    expected: { active_ingredient: "CLONAZEPAM", strength: "2,5 MG/ML", dosage_form: "solução oral- gotas", unit: "mg/mL", parse_status: "ok" } }
+- { code: 294887, pdm: "SALBUTAMOL", description: "SALBUTAMOL, DOSAGEM: 100MCG/DOSE , FORMA FARMACÊUTICA: AEROSOL ORAL ",
+    expected: { active_ingredient: "SALBUTAMOL", strength: "100 MCG/DOSE", dosage_form: "aerosol oral", unit: "mcg/dose", parse_status: "ok" } }
+- { code: 629308, pdm: "SULFAMETOXAZOL", description: "SULFAMETOXAZOL, COMPOSIÇÃO: ASSOCIADO À TRIMETOPRIMA , CONCENTRAÇÃO: 200 mg + 40 MG, FORMA FARMACÊUTICA: SUSPENSÃO ORAL ",
+    expected: { active_ingredient: "SULFAMETOXAZOL + TRIMETOPRIMA", strength: "200 MG + 40 MG", dosage_form: "suspensão oral", unit: "mg", parse_status: "ok" } }
+- { code: 277513, pdm: "FLUOXETINA", description: "FLUOXETINA, DOSAGEM: 20 MG/ML, APRESENTAÇÃO: SOLUÇÃO ORAL, GOTAS ",
+    expected: { active_ingredient: "FLUOXETINA", strength: "20 MG/ML", dosage_form: "solução oral, gotas", unit: "mg/mL", parse_status: "ok" } }
+- { code: 266788, pdm: "NISTATINA", description: "NISTATINA, DOSAGEM: 25.000 UI/G , APRESENTAÇÃO: CREME VAGINAL ",
+    expected: { active_ingredient: "NISTATINA", strength: "25.000 UI/G", dosage_form: "creme vaginal", unit: "UI/g", parse_status: "ok" } }
+- { code: 438153, pdm: "INSULINA", description: "INSULINA, TIPO: GLARGINA , CONCENTRAÇÃO: 100 UI/ML, FORMA FARMACEUTICA: SOLUÇÃO INJETÁVEL , CARACTERISTICA ADICIONAL: REFIL ",
+    expected: { active_ingredient: "INSULINA GLARGINA", strength: "100 UI/ML", dosage_form: "solução injetável", unit: "UI/mL", parse_status: "ok" } }
+- { code: 396051, pdm: "INSULINA", description: "INSULINA, ORIGEM: ASPART , CONCENTRAÇÃO: 100 UI/ML, FORMA FARMACEUTICA: SOLUÇÃO INJETÁVEL , CARACTERISTICA ADICIONAL: COM APLICADOR ",
+    expected: { active_ingredient: "INSULINA ASPART", strength: "100 UI/ML", dosage_form: "solução injetável", unit: "UI/mL", parse_status: "ok" } }
+- { code: 296649, pdm: "LEVOTIROXINA SÓDICA", description: "LEVOTIROXINA SÓDICA, DOSAGEM: 88 MCG ",
+    expected: { active_ingredient: "LEVOTIROXINA SÓDICA", strength: "88 MCG", unit: "mcg", parse_status: "ok" } }
+- { code: 267187, pdm: "DEXAMETASONA", description: "DEXAMETASONA, DOSAGEM: 0,1% , APRESENTAÇÃO: SOLUÇÃO OFTÁLMICA ",
+    expected: { active_ingredient: "DEXAMETASONA", strength: "0,1 %", dosage_form: "solução oftálmica", unit: "%", parse_status: "ok" } }
+- { code: 270906, pdm: "PARACETAMOL", description: "PARACETAMOL, APRESENTAÇÃO: ASSOCIADO COM CODEÍNA , DOSAGEM: 500MG + 7,5MG ",
+    expected: { active_ingredient: "PARACETAMOL + CODEÍNA", strength: "500 MG + 7,5 MG", unit: "mg", parse_status: "ok" } }
+- { code: 267778, pdm: "PARACETAMOL", description: "PARACETAMOL, DOSAGEM COMPRIMIDO: 500 MG",
+    expected: { active_ingredient: "PARACETAMOL", strength: "500 MG", dosage_form: "comprimido", unit: "mg", parse_status: "ok" } }
+- { code: 474749, pdm: "DIPIRONA SÓDICA", description: "DIPIRONA SÓDICA, CONCENTRAÇÃO: 1 G, FORMA FARMACÊUTICA: COMPRIMIDO EFERVESCENTE ",
+    expected: { active_ingredient: "DIPIRONA SÓDICA", strength: "1 G", dosage_form: "comprimido efervescente", unit: "g", parse_status: "ok" } }
+- { code: 268493, pdm: "DOXAZOSINA MESILATO", description: "DOXAZOSINA MESILATO, COMPOSIÇÃO: 2 MG ",
+    expected: { active_ingredient: "DOXAZOSINA MESILATO", strength: "2 MG", unit: "mg", parse_status: "ok" } }
+- { code: 268162, pdm: "MICONAZOL NITRATO", description: "MICONAZOL NITRATO, DOSAGEM: 2% , APRESENTAÇÃO: CREME VAGINAL ",
+    expected: { active_ingredient: "MICONAZOL NITRATO", strength: "2 %", dosage_form: "creme vaginal", unit: "%", parse_status: "ok" } }
+- { code: 271172, pdm: "ENALAPRIL MALEATO", description: "ENALAPRIL MALEATO, APRESENTAÇÃO: ASSOCIADO COM HIDROCLOROTIAZIDA , CARACTERÍSTICAS ADICIONAIS: 10MG + 25MG ",
+    expected: { active_ingredient: "ENALAPRIL MALEATO", parse_status: "review", review_reason: "missing_strength" } }
+- { code: 406477, pdm: "DEXAMETASONA", description: "DEXAMETASONA, COMPOSIÇÃO: ACETATO, ASSOCIADA À NEOMICINA SULFATO , CONCENTRAÇAO: 1 MG + 5 MG/G, FORMA FARMACEUTICA: CREME ",
+    expected: { active_ingredient: "DEXAMETASONA", parse_status: "review", review_reason: "unknown_field" } }
+- { code: 273621, pdm: "SULFATO FERROSO", description: "SULFATO FERROSO, DOSAGEM FERRO: 300 MG",
+    expected: { active_ingredient: "SULFATO FERROSO", parse_status: "review", review_reason: "unknown_field" } }
+- { code: 471885, pdm: "MEDICAMENTO HOMEOPÁTICO", description: "MEDICAMENTO HOMEOPÁTICO, COMPOSIÇÃO: À BASE DE ANTIMONIUM TARTARICUM , ESCALA: 30 CH ",
+    expected: { active_ingredient: "MEDICAMENTO HOMEOPÁTICO", parse_status: "review", review_reason: "unknown_field" } }
+- { code: 381881, pdm: "OMEPRAZOL", description: "OMEPRAZOL, COMPOSIÇÃO: OMEPRAZOL MAGNÉSICO , CONCENTRAÇÃO: 41,3 MG",
+    expected: { active_ingredient: "OMEPRAZOL", parse_status: "review", review_reason: "unknown_field" } }
+- { code: 292778, pdm: "METOPROLOL", description: "METOPROLOL, PRINCÍPIO ATIVO: TARTARATO, ASSOCIADO À HIDROCLOROTIAZIDA , DOSAGEM: 100 MG + 12,5 MG",
+    expected: { active_ingredient: "METOPROLOL", parse_status: "review", review_reason: "unknown_field" } }
+- { code: 267777, pdm: "PARACETAMOL", description: "PARACETAMOL, DOSAGEM SOLUÇÃO ORAL: 200 MG/ML, APRESENTAÇÃO: SOLUÇÃO ORAL ",
+    expected: { active_ingredient: "PARACETAMOL", parse_status: "review", review_reason: "duplicated_form" } }
