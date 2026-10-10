@@ -2,8 +2,8 @@
 # Documentos clínicos (ADR 0033; contrato §3). Emitir: da consulta (autora) ou
 # do atendimento (declaração); interruptor clinical_documents. Ler: autora
 # sempre, demais pelas regras do 19a, com trilha; segue com o interruptor
-# desligado (atrás só do clinical_record). Impresso e cancelamento (Task 20)
-# moram aqui.
+# desligado (atrás só do clinical_record). Impresso e cancelamento (autora,
+# step-up; segue com o interruptor desligado) moram aqui.
 class ClinicalDocumentsController < ApplicationController
   include Authentication
   include AttendanceAccess
@@ -21,6 +21,7 @@ class ClinicalDocumentsController < ApplicationController
   before_action :require_clinical_record!
   before_action :require_clinical_documents!, only: %i[create declaration]
   before_action :require_staff
+  before_action :require_step_up!, only: :cancel
 
   def index
     consultation = find(Consultation, params[:id])
@@ -79,6 +80,15 @@ class ClinicalDocumentsController < ApplicationController
       end
     response.headers["Cache-Control"] = "no-store"
     send_data bytes, type: "application/pdf", disposition: "inline", filename: "documento.pdf"
+  end
+
+  # Contrato §3 (Desvio 13): só a autora, com step-up; segue com o interruptor
+  # desligado (protege o paciente).
+  def cancel
+    result = ClinicalDocuments::Cancel.call(document_id: params[:id], by: Current.user, reason: body["reason"])
+    return render_failure(result, ERROR_STATUS) if result.failure?
+
+    render json: ClinicalDocuments::Json.document(result.payload[:document].reload)
   end
 
   private

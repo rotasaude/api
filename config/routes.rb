@@ -153,6 +153,7 @@ Rails.application.routes.draw do
     post "attendances/:id/declarations",   to: "clinical_documents#declaration"
     get  "documents/:id",                  to: "clinical_documents#show"
     get  "documents/:id/print",            to: "clinical_documents#print"
+    post "documents/:id/cancel",           to: "clinical_documents#cancel"
     get  "patients/:id/medications",       to: "patient_medications#index"
     post "consultations/:id/medications",  to: "patient_medications#create"
     get  "consultations/:id/renewal",      to: "patient_medications#renewal"
