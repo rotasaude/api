@@ -49,6 +49,8 @@ RSpec.describe "Medicamentos em uso", type: :request do
                                "route" => "oral", "dosage_instructions" => "1 comprimido pela manhã", "duration_days" => 30,
                                "continuous" => true } ] }
     ClinicalDocuments::Issue.call(kind: "prescription", content: content, by: doctor, consultation: consultation)
+    # A renovação segue a regra de contexto (fix round 1): na consulta seguinte, com o paciente em atendimento.
+    consultation = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
     sign_in_as(doctor)
     get "/attendance/consultations/#{consultation.id}/renewal"
     expect(json_body["items"]).to eq([ { "position" => 1, "catalog_item" => ClinicalDocuments::Json.catalog_ref(catalog_item(268_856)).as_json,
@@ -129,6 +131,44 @@ RSpec.describe "Medicamentos em uso", type: :request do
     sign_in_as(doctor)
     get "/attendance/patients/#{SecureRandom.uuid}/medications"
     expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
+  end
+
+  # Fix round 1: a renovação expõe a lista do paciente — mesma regra e mesma
+  # trilha do GET de medicamentos (a autora fora de contexto não lê por aqui).
+  it "renovação: autora fora de contexto 403 out_of_context; em contexto 200 com trilha" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen) # finalizar encerra o atendimento
+    sign_in_as(doctor)
+    get "/attendance/consultations/#{consultation.id}/renewal"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "out_of_context" } ])
+    get "/attendance/patients/#{consultation.patient_id}/medications"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "out_of_context" } ])
+
+    draft = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    expect { get "/attendance/consultations/#{draft.id}/renewal" }
+      .to change { DomainEvent.where(name: "clinical_record.viewed").count }.by(1)
+    expect([ response.status, json_body ]).to eq([ 200, { "items" => [] } ])
+    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+      .to include("access" => "in_context", "user_id" => doctor.id, "patient_id" => draft.patient_id)
+  end
+
+  it "consulta finalizada entre a checagem e a trava do paciente → 409 not_draft, nada gravado" do
+    draft = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    sign_in_as(doctor)
+    allow_any_instance_of(Consultation).to receive(:draft?).and_return(true, false)
+    json_post "/attendance/consultations/#{draft.id}/medications", action: "add_external", free_text: "Chá de boldo"
+    expect([ response.status, json_body ]).to eq([ 409, { "error" => "not_draft" } ])
+    expect(PatientMedication.where(patient_id: draft.patient_id)).to be_empty
+  end
+
+  it "continuous não booleano → 422 invalid_content field continuous" do
+    draft = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    sign_in_as(doctor)
+    [ nil, "true", 1 ].each do |value|
+      json_post "/attendance/consultations/#{draft.id}/medications", action: "add_external", free_text: "Chá de boldo",
+                                                                     continuous: value
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_content", "field" => "continuous" } ])
+    end
+    expect(PatientMedication.where(patient_id: draft.patient_id)).to be_empty
   end
 
   it "leitura da lista em contexto deixa trilha in_context" do

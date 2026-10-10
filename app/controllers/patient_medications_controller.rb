@@ -57,6 +57,11 @@ class PatientMedicationsController < ApplicationController
     return not_found unless consultation
     return forbid("not_author") unless consultation.author_user_id == Current.user.id
 
+    # A renovação expõe a lista do paciente: a mesma regra e a mesma trilha do index.
+    grant = ClinicalRecord::Access.call(user: Current.user, patient: consultation.patient)
+    return forbid(grant.reason.to_s) unless grant.allowed?
+
+    ClinicalRecord::Trail.viewed!(patient: consultation.patient, user: Current.user, grant: grant)
     render json: { items: ClinicalDocuments::Renewal.items(consultation) }
   end
 
@@ -65,6 +70,9 @@ class PatientMedicationsController < ApplicationController
   def apply(consultation, action, catalog_item, input)
     ApplicationRecord.transaction do
       patient = Patient.lock.find(consultation.patient_id)
+      # Finalizada entre a checagem e a trava: a consulta relida sob a trava do paciente.
+      next Result.fail(:not_draft) unless consultation.reload.draft?
+
       common = { patient: patient, by: Current.user, source: { consultation: consultation } }
       case action
       when "add_external"
@@ -74,10 +82,11 @@ class PatientMedicationsController < ApplicationController
         end
         summary = input["dosage_summary"]
         next Result.fail(:invalid_content, details: { field: "dosage_summary" }) unless summary.nil? || (summary.is_a?(String) && summary.size <= 200)
+        next Result.fail(:invalid_content, details: { field: "continuous" }) if input.key?("continuous") && ![ true, false ].include?(input["continuous"])
 
         Patients::ApplyMedicationEvent.call(**common, action: "add", origin: "external", catalog_item: catalog_item,
                                             free_text: catalog_item ? nil : free_text, dosage_summary: summary,
-                                            continuous: input.fetch("continuous", true) == true, on_active: :fail)
+                                            continuous: input.fetch("continuous", true), on_active: :fail)
       when "suspend", "reactivate"
         medication = uuid?(input["medication_id"]) ? PatientMedication.find_by(id: input["medication_id"], patient_id: patient.id) : nil
         next Result.fail(:invalid_medication) unless medication
