@@ -151,4 +151,44 @@ RSpec.describe ClinicalDocuments::Pdf do
     without = issue!("sick_note", base)
     expect(text_of(described_class.call(without)).join).to include("em #{without.issued_at.in_time_zone.strftime('%d/%m/%Y')}")
   end
+  describe "texto dos itens da receita e da declaração (prova no navegador)" do
+    def prescription_text(item)
+      import_test_catalog!
+      base = { "catalog_item" => { "id" => catalog_item(268_856).id }, "quantity" => 30,
+               "quantity_unit" => "comprimido", "route" => "oral" }
+      text_of(described_class.call(issue!("prescription", { "items" => [ base.merge(item) ] }))).join.gsub(/\s+/, " ")
+    end
+
+    it "item não contínuo não imprime nada sobre uso contínuo (nunca 'false')" do
+      text = prescription_text("dosage_instructions" => "Tomar 1 comprimido ao dia", "duration_days" => 30, "continuous" => false)
+      expect(text).to include("Uso: via oral. Tomar 1 comprimido ao dia. por 30 dia(s)")
+      expect(text).not_to include("false")
+      expect(text).not_to include("contínuo")
+    end
+
+    it "item contínuo mantém o texto de uso contínuo" do
+      text = prescription_text("dosage_instructions" => "Tomar 1 comprimido ao dia", "continuous" => true)
+      expect(text).to include("Tomar 1 comprimido ao dia. uso contínuo")
+    end
+
+    it "posologia que já termina em pontuação não ganha ponto duplo" do
+      text = prescription_text("dosage_instructions" => "Tomar 1 comprimido pela manha.", "duration_days" => 30)
+      expect(text).to include("Tomar 1 comprimido pela manha. por 30 dia(s)")
+      expect(text).not_to include("..")
+      expect(prescription_text("dosage_instructions" => "Tomar se tiver dor!", "duration_days" => 5))
+        .to include("Tomar se tiver dor! por 5 dia(s)")
+    end
+
+    it "declaração sem saída: 'a partir das HH:MM'; com saída: 'das X às Y'; período inalterado" do
+      open_text = text_of(described_class.call(issue!("attendance_declaration", { "arrived_at" => "19:14", "left_at" => nil }))).join.gsub(/\s+/, " ")
+      expect(open_text).to include("a partir das 19:14.")
+      expect(open_text).not_to include(", das 19:14.")
+
+      closed_text = text_of(described_class.call(issue!("attendance_declaration", { "arrived_at" => "08:00", "left_at" => "09:30" }))).join.gsub(/\s+/, " ")
+      expect(closed_text).to include("das 08:00 às 09:30.")
+
+      period_text = text_of(described_class.call(issue!("attendance_declaration", { "period" => "morning" }))).join.gsub(/\s+/, " ")
+      expect(period_text).to include(described_class::PERIODS.fetch("morning"))
+    end
+  end
 end

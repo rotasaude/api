@@ -101,7 +101,10 @@ module ClinicalDocuments
     end
 
     def attendance_declaration_body(pdf, _document, content)
-      when_text = content["period"] ? PERIODS.fetch(content["period"]) : "das #{content['arrived_at']}#{content['left_at'] ? " às #{content['left_at']}" : ''}"
+      when_text = if content["period"] then PERIODS.fetch(content["period"])
+                  elsif content["left_at"] then "das #{content['arrived_at']} às #{content['left_at']}"
+                  else "a partir das #{content['arrived_at']}" # atendimento ainda aberto: sem hora de saída
+                  end
       pdf.move_down 10
       pdf.text s("Declaro, para os devidos fins, que o(a) paciente acima esteve nesta unidade de saúde (#{content['unit_name']}) " \
                  "em #{date(content['date'])}, #{when_text}" \
@@ -119,11 +122,17 @@ module ClinicalDocuments
         pdf.text s("#{item['position']}. #{item['printed_description']}#{item['free_text'] ? ' (registro manual)' : ''} — " \
                    "#{item['quantity']} #{item['quantity_unit']}"), style: :bold
         details = [ "Uso: #{ROUTES.fetch(item['route'])}", item["dosage_instructions"],
-                    item["duration_days"] && "por #{item['duration_days']} dia(s)", item["continuous"] && "uso contínuo" ].compact
-        pdf.indent(14) { pdf.text s(details.join(". ")) }
+                    ("por #{item['duration_days']} dia(s)" if item["duration_days"]), ("uso contínuo" if item["continuous"]) ].compact
+        pdf.indent(14) { pdf.text s(sentences(details)) }
         pdf.move_down 4
       end
       pdf.text s("Validade: até #{date(content['valid_until'])}#{content['antimicrobial'] ? ' (10 dias — antimicrobiano)' : ''}") if content["valid_until"]
+    end
+
+    # Junta as partes com ". ", sem ponto duplo quando a parte (texto livre da
+    # posologia) já termina em pontuação.
+    def sentences(parts)
+      parts.each_with_index.map { |part, i| i == parts.size - 1 || part.match?(/[.!?;:…]\s*\z/) ? part : "#{part}." }.join(" ")
     end
 
     def exam_requisition_body(pdf, _document, content)
