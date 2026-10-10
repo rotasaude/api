@@ -68,12 +68,12 @@ class ClinicalDocumentsController < ApplicationController
 
     bytes =
       if document.digital?
-        return render(json: { error: "awaiting_signature" }, status: :conflict) unless document.signed_signature
+        # Só o PAdES gravado, sem revalidar e sem PDF gerado de fallback: um
+        # segundo PDF com o mesmo código criaria duas vias (Desvio 7).
+        signature = document.signed_signature
+        return render(json: { error: "awaiting_signature" }, status: :conflict) unless signature
 
-        # A política do impresso da consulta: o PAdES só com a revalidação
-        # `valid`; senão o PDF gerado com o estado da assinatura e espaço à mão.
-        Signatures::PrintReport.signed_document_pdf(document) ||
-          ClinicalDocuments::Pdf.call(document, report: Signatures::PrintReport.document_report(document))
+        signature.signed_pdf_bytes
       else
         ClinicalDocuments::Pdf.call(document)
       end

@@ -36,7 +36,7 @@ RSpec.describe "Impresso do documento clínico", type: :request do
     expect([ response.status, response.media_type ]).to eq([ 200, "application/pdf" ])
   end
 
-  # A fiação do impresso (pendente → 409; com assinatura gravada e válida → os
+  # A fiação do impresso (pendente → 409; com assinatura gravada → os
   # bytes dela, sem gerar outro PDF; cancelado ganha do modo). O caminho real,
   # assinado pelo 19b, é o contexto abaixo.
   it "digital: sem assinatura 409 awaiting_signature; com a gravada, os bytes do PAdES; cancelado 409" do
@@ -45,9 +45,8 @@ RSpec.describe "Impresso do documento clínico", type: :request do
     get "/attendance/documents/#{document.id}/print"
     expect([ response.status, JSON.parse(response.body) ]).to eq([ 409, { "error" => "awaiting_signature" } ])
 
-    signed = instance_double(Signature, signed_pdf_bytes: "%PDF-1.7 pades".b, last_verification: "valid")
+    signed = instance_double(Signature, signed_pdf_bytes: "%PDF-1.7 pades".b)
     allow_any_instance_of(ClinicalDocument).to receive(:signed_signature).and_return(signed)
-    allow(Signatures::Verify).to receive(:call).with(signed).and_return(signed)
     expect(ClinicalDocuments::Pdf).not_to receive(:call)
     get "/attendance/documents/#{document.id}/print"
     expect([ response.status, response.media_type, response.body.b ]).to eq([ 200, "application/pdf", "%PDF-1.7 pades".b ])
@@ -59,12 +58,8 @@ RSpec.describe "Impresso do documento clínico", type: :request do
     expect([ response.status, JSON.parse(response.body) ]).to eq([ 409, { "error" => "already_cancelled" } ])
   end
 
-  def text_of(bytes) = PDF::Reader.new(StringIO.new(bytes)).pages.map(&:text).join(" ").gsub(/\s+/, " ")
-
-  # Ponta a ponta com o PSC simulado do 19b: o impresso do documento assinado
-  # segue a política do impresso da consulta (Signatures::PrintReport.signed_pdf
-  # revalida antes de devolver o PAdES; fora de `valid`, o PDF gerado com o
-  # estado da assinatura e espaço à mão).
+  # Ponta a ponta com o PSC simulado do 19b: o impresso do documento assinado é
+  # o PAdES gravado, sempre (nunca um PDF gerado com o mesmo código — Desvio 7).
   context "assinado de verdade (PSC simulado)" do
     let(:signer) { stub_signer! }
 
@@ -91,20 +86,6 @@ RSpec.describe "Impresso do documento clínico", type: :request do
       # de 7 pt do rodapé quando ficam próximas.
       runs = PDF::Reader.new(StringIO.new(bytes[0...bytes.rindex(FakeSigner::MARKER)])).pages.map { |page| page.runs.map(&:text).join(" ") }
       expect(runs).to all(include("Assinatura simulada — sem validade jurídica"))
-      expect(signer.calls.count(:verify)).to be >= 2 # revalidou ao imprimir (CAdES e PAdES)
-    end
-
-    it "assinatura que não revalida como válida → o PDF gerado com o estado e espaço à mão, não o PAdES" do
-      document = issue!
-      signature = sign_document!(document, author: doctor, provider: "simulated")
-      signer.revoked_serials << signature.signer_certificate.serial_number
-      sign_in_as(doctor)
-      get "/attendance/documents/#{document.id}/print"
-      expect([ response.status, response.media_type ]).to eq([ 200, "application/pdf" ])
-      expect(response.body.b).not_to eq(signature.signed_pdf_bytes.b)
-      text = text_of(response.body)
-      expect(text).to include("Via digital: assinada digitalmente (simulada — sem validade jurídica) por", "validação inválida")
-      expect(signature.reload.last_verification).to eq("invalid")
     end
 
     # Uma linha de assinatura ao lado de pedido não signed (estado que o fluxo

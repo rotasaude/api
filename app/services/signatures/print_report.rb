@@ -28,22 +28,6 @@ module Signatures
       signature.last_verification == "valid" ? signature.signed_pdf_bytes : nil
     end
 
-    # ADR 0033: o documento clínico digital segue a mesma política — o PAdES
-    # só com a revalidação `valid`; senão nil (o impresso gerado com o estado,
-    # document_report, e espaço à mão).
-    def signed_document_pdf(document)
-      signature = document.signed_signature
-      return nil unless signature
-
-      Verify.call(signature).last_verification == "valid" ? signature.signed_pdf_bytes : nil
-    end
-
-    # A seção "Assinatura" do impresso gerado de um documento clínico digital
-    # cuja assinatura não revalidou como válida: sempre com espaço à mão.
-    def document_report(document)
-      Report.new(lines: [ "Via digital: #{describe(Mode.for(document))}" ], hand_signature: true)
-    end
-
     def for(consultation)
       return nil unless SignatureRequest.exists?(consultation_id: consultation.id, document_type: CONSULTATION_TYPES)
 
