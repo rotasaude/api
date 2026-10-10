@@ -174,6 +174,13 @@ Rails.application.routes.draw do
     get  "consultations/:id",                    to: "clinical_record_consultations#show"
   end
 
+  # Documentos clínicos (ADR 0033; contrato §6): configuração da cidade (CNPJ,
+  # REMUME, protocolos de enfermagem). Prefixo próprio no proxy do dashboard.
+  scope "/clinical_documents", module: :clinical_documents, as: :clinical_documents do
+    get "city_profile", to: "city_profiles#show"
+    put "city_profile", to: "city_profiles#update"
+  end
+
   # Assinatura digital do prontuário (ADR 0032; contrato §3–§7).
   scope "/signature", module: :signatures, as: :signature do
     get    "certificates/current",  to: "certificates#show"
