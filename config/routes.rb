@@ -148,6 +148,8 @@ Rails.application.routes.draw do
     post  "consultations/:id/addenda",       to: "consultations#addenda"
     get   "consultations/:id/print",         to: "consultations#print"
     post  "sigtap/search",                   to: "sigtap_procedures#search"
+    # Busca no catálogo de medicamentos (ADR 0033; contrato §5).
+    post  "medications/search",              to: "medication_searches#search"
 
     # Pedidos de agendamento, marcação e agenda do dia (spec 2026-09-25 §4).
     get  "units/:id/requests",         to: "appointment_requests#index"
@@ -179,6 +181,9 @@ Rails.application.routes.draw do
   scope "/clinical_documents", module: :clinical_documents, as: :clinical_documents do
     get "city_profile", to: "city_profiles#show"
     put "city_profile", to: "city_profiles#update"
+    get    "remume",                  to: "remume#index"
+    post   "remume",                  to: "remume#create"
+    delete "remume/:catalog_item_id", to: "remume#destroy"
   end
 
   # Assinatura digital do prontuário (ADR 0032; contrato §3–§7).
