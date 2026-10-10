@@ -184,6 +184,9 @@ Rails.application.routes.draw do
     get    "remume",                  to: "remume#index"
     post   "remume",                  to: "remume#create"
     delete "remume/:catalog_item_id", to: "remume#destroy"
+    get  "nursing_protocols",              to: "nursing_protocols#index"
+    post "nursing_protocols",              to: "nursing_protocols#create"
+    post "nursing_protocols/:id/versions", to: "nursing_protocols#add_version"
   end
 
   # Assinatura digital do prontuário (ADR 0032; contrato §3–§7).

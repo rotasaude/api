@@ -24,5 +24,20 @@ module ClinicalDocuments
       value = BigDecimal(decimal.to_s)
       value.frac.zero? ? value.to_i : value.to_f
     end
+
+    # Protocolo de enfermagem (contrato §6) com a versão vigente na data.
+    def protocol(protocol, catalog:, on: Time.zone.today)
+      version = protocol.current_version(on: on)
+      { id: protocol.id, title: protocol.title, number: protocol.number, year: protocol.year,
+        current_version: version && {
+          id: version.id, version: version.version, valid_from: version.valid_from.iso8601,
+          valid_until: version.valid_until&.iso8601,
+          items: version.items.order(:created_at, :id).filter_map do |item|
+            entry = catalog[item.catalog_item_id]
+            entry && { catalog_item: catalog_ref(entry),
+                       max_dose: item.max_quantity && { quantity: number(item.max_quantity), unit: item.max_quantity_unit } }
+          end
+        } }
+    end
   end
 end
