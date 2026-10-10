@@ -13,6 +13,7 @@ module Maintenance
         activateProtocol retireProtocol revertProtocolActivation
         setCityFeature
         signatureProviders signerStatus
+        medicationCatalog importMedicationCatalog importAnvisaLists
       ].freeze
 
       # Campos de raiz que um token PODE usar. Existe para a guarda de

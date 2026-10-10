@@ -15,13 +15,19 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus],
+    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog],
     "SignatureProvider" => %w[key configured lastCheckAt lastCheckOk],
+    "MedicationCatalog" => %w[currentRelease reviewItems],
+    "MedicationCatalogRelease" => %w[id importedAt itemsCount hiddenCount],
+    "MedicationCatalogItem" => %w[catmatCode sourceDescription parseStatus],
+    "ImportMedicationCatalogPayload" => %w[ok errors releaseId added changed removed],
+    "ImportAnvisaListsPayload" => %w[ok errors antimicrobials controlled],
     "SignerStatus" => %w[reachable version crlUpdatedAt],
     "Maintainer" => %w[id emailAddress active enrolled createdAt],
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
                      saveProtocolDraft submitProtocolForReview publishProtocol
-                     activateProtocol retireProtocol revertProtocolActivation setCityFeature],
+                     activateProtocol retireProtocol revertProtocolActivation setCityFeature
+                     importMedicationCatalog importAnvisaLists],
     "InviteMaintainerPayload" => %w[ok errors],
     "DeactivateMaintainerPayload" => %w[ok errors],
     "MaintenanceToken" => %w[id maintainerId name access citySlugs expiresAt revokedAt lastUsedAt],
@@ -544,7 +550,8 @@ RSpec.describe "Maintenance GraphQL schema" do
       # aqui quebra `root_query_field_names` abaixo, de propósito.
       def field_selections
         { "me" => "{ id }", "maintainers" => "{ id }", "maintenanceTokens" => "{ id }", "auditEvents" => "{ name }",
-          "cities" => "{ slug }", "signatureProviders" => "{ key }", "signerStatus" => "{ reachable }" }
+          "cities" => "{ slug }", "signatureProviders" => "{ key }", "signerStatus" => "{ reachable }",
+          "medicationCatalog" => "{ currentRelease { id } }" }
       end
 
       def root_query_field_names

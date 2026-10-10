@@ -32,6 +32,9 @@ module Maintenance
             description: "PSC de assinatura do ambiente: credencial presente e última checagem"
       field :signer_status, Types::SignerStatusType, null: false,
             description: "Estado do serviço interno de assinatura (signer)"
+      # ADR 0033 (contrato §8): catálogo de medicamentos da plataforma.
+      field :medication_catalog, Types::MedicationCatalogType, null: false,
+            description: "Release ativa do CATMAT e itens em revisão"
 
       ProviderRow = Data.define(:key, :configured, :last_check_at, :last_check_ok)
 
@@ -52,6 +55,8 @@ module Maintenance
       end
 
       def signer_status = Signatures::SignerStatus.call
+
+      def medication_catalog = {}
 
       # O escopo do token é aplicado AQUI (spec §7): é um dos dois pontos em que
       # uma cidade é escolhida, e o único que abre conexão. Slug inexistente

@@ -14,6 +14,8 @@ module Maintenance
       field :retire_protocol, mutation: Mutations::RetireProtocol
       field :revert_protocol_activation, mutation: Mutations::RevertProtocolActivation
       field :set_city_feature, mutation: Mutations::SetCityFeature
+      field :import_medication_catalog, mutation: Mutations::ImportMedicationCatalog
+      field :import_anvisa_lists, mutation: Mutations::ImportAnvisaLists
     end
   end
 end
