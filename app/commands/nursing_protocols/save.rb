@@ -80,7 +80,9 @@ module NursingProtocols
 
       quantity = max.is_a?(Hash) && max["quantity"].is_a?(Numeric) ? BigDecimal(max["quantity"].to_s) : nil
       unit = max.is_a?(Hash) && max["unit"].is_a?(String) ? max["unit"].squish : ""
-      return bad.("max_dose") unless quantity && quantity.positive? && quantity <= 9999 && unit.size.between?(1, 30)
+      # Até 2 casas, como a receita: a coluna decimal(10,2) arredondaria em silêncio (0.125 → 0.13, o teto sobe).
+      return bad.("max_dose") unless quantity && quantity.positive? && quantity <= 9999 && quantity.scale <= 2 &&
+                                     unit.size.between?(1, 30)
 
       { catalog_item_id: entry.id, max_quantity: quantity, max_quantity_unit: unit }
     end

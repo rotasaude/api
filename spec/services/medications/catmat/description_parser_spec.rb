@@ -18,6 +18,14 @@ RSpec.describe Medications::Catmat::DescriptionParser do
     expect(parsed.ok?).to be(false)
   end
 
+  # Revisão final I3: chave que nenhuma amostra real provou não vira forma.
+  %w[USO TIPO\ USO APLICAÇÃO INDICAÇÃO TIPO\ MEDICAMENTO].each do |key|
+    it "#{key}: vai a revisão (unknown_field), nunca a dosage_form" do
+      parsed = described_class.call("AMOXICILINA", "AMOXICILINA, CONCENTRAÇÃO: 500 MG, #{key}: ADULTO")
+      expect(parsed).to have_attributes(parse_status: "review", review_reason: "unknown_field", dosage_form: nil)
+    end
+  end
+
   it "descrição vazia ou sem PDM não levanta" do
     expect(described_class.call(nil, "").parse_status).to eq("review")
     expect(described_class.call("", "AMOXICILINA, DOSAGEM: 500 MG").active_ingredient).to eq("AMOXICILINA")

@@ -55,6 +55,12 @@ RSpec.describe "Protocolos de enfermagem", type: :request do
     json_post "/clinical_documents/nursing_protocols",
               protocol_body(items: [ { catalog_item_id: catalog_item(267_503).id, max_dose: { quantity: 0, unit: "cp" } } ])
     expect(json_body).to eq("error" => "invalid_item", "index" => 0, "field" => "max_dose")
+    # Revisão final M4: mais de 2 casas é recusado, nunca arredondado pela coluna.
+    expect {
+      json_post "/clinical_documents/nursing_protocols",
+                protocol_body(items: [ { catalog_item_id: catalog_item(267_503).id, max_dose: { quantity: 0.125, unit: "mL" } } ])
+    }.not_to change(NursingProtocolVersionItem, :count)
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_item", "index" => 0, "field" => "max_dose" } ])
   end
 
   it "enfermeira lê; recepção não; escrita exige admin com step-up" do

@@ -2,7 +2,8 @@
 # spec §3). Entende o recorte que a APS prescreve: princípio ativo (o nome do
 # PDM, mais os associados), concentração, forma e unidade. O resto vai a
 # revisão (parse_status review → hidden) com o motivo — nunca um palpite.
-# Sobre os 6.778 itens reais de 2026-10-09: 4.098 ok, 2.680 em revisão.
+# Sobre os 6.778 itens reais de 2026-10-09: 4.098 ok, 2.680 em revisão
+# (contagem anterior à poda de FORM_KEYS; refazer na prova de dev).
 module Medications
   module Catmat
     module DescriptionParser
@@ -17,8 +18,10 @@ module Medications
       STRENGTH_KEYS = %w[CONCENTRACAO DOSAGEM TEOR].freeze
       # "DOSAGEM COMPRIMIDO: 500 MG": a chave traz a forma.
       STRENGTH_WITH_FORM = /\ADOSAGEM (COMPRIMIDO|CAPSULA|DRAGEA|SOLUCAO ORAL|SUSPENSAO ORAL|XAROPE)\z/
-      FORM_KEYS = [ "FORMA FARMACEUTICA", "APRESENTACAO", "USO", "TIPO USO", "APLICACAO", "INDICACAO",
-                    "TIPO MEDICAMENTO" ].freeze
+      # Só as chaves que as amostras reais provam trazer a forma. USO, TIPO USO,
+      # APLICACAO, INDICACAO e TIPO MEDICAMENTO ("USO: ADULTO") caem em
+      # unknown_field (revisão): a forma vai ao canônico assinado e ao impresso.
+      FORM_KEYS = [ "FORMA FARMACEUTICA", "APRESENTACAO" ].freeze
       ASSOCIATION_KEYS = [ "COMPOSICAO", "PRINCIPIO ATIVO", "APRESENTACAO" ].freeze
       VARIANT_KEYS = %w[TIPO ORIGEM].freeze
       EXTRA_KEYS = [ "CARACTERISTICA ADICIONAL", "CARACTERISTICAS ADICIONAIS", "ADICIONAL" ].freeze
