@@ -11,7 +11,7 @@ module NursingProtocols
     module_function
 
     def catalog_ids(params)
-      Array(params["items"]).filter_map { |item| item.is_a?(Hash) && item["catalog_item_id"].to_s.match?(ClinicalDocuments::BaseController::UUID) ? item["catalog_item_id"] : nil }
+      Array(params["items"]).filter_map { |item| item.is_a?(Hash) && ClinicalDocuments::Uuid.valid?(item["catalog_item_id"].to_s) ? item["catalog_item_id"] : nil }
     end
 
     def create(params:, by:, catalog:, today: Time.zone.today)

@@ -12,7 +12,6 @@ module ClinicalDocuments
       MAX_ITEMS = 20
       ANTIMICROBIAL_DAYS = 10
       MAX_VALIDITY_DAYS = 365
-      UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
 
       module_function
 
@@ -90,7 +89,7 @@ module ClinicalDocuments
       def nursing(input, items, today, city_cnpj)
         items.each_with_index { |it, index| return Result.fail(:free_text_not_allowed, details: { index: index }) if it[:free_text] }
         version_id = input["nursing_protocol"].is_a?(Hash) ? input["nursing_protocol"]["version_id"].to_s : ""
-        version = version_id.match?(UUID) ? NursingProtocolVersion.includes(:nursing_protocol, :items).find_by(id: version_id) : nil
+        version = Uuid.valid?(version_id) ? NursingProtocolVersion.includes(:nursing_protocol, :items).find_by(id: version_id) : nil
         return Result.fail(:not_in_nursing_protocol) unless version && version.nursing_protocol.current_version(on: today)&.id == version.id
 
         allowed = version.items.index_by(&:catalog_item_id)

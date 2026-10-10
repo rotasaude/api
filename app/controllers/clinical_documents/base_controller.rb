@@ -9,8 +9,7 @@ module ClinicalDocuments
     include ClinicalRecordGate
     include MfaStepUp
 
-    # Fonte única do regex de UUID para os controllers de documentos clínicos.
-    UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
+    UUID = ClinicalDocuments::Uuid::PATTERN
 
     wrap_parameters false
     before_action :require_clinical_record!
@@ -24,6 +23,6 @@ module ClinicalDocuments
     def body = params.to_unsafe_h.except("controller", "action", "id", "format")
     def unprocessable(error, **extra) = render(json: { error: error, **extra }, status: :unprocessable_entity)
     def not_found = render(json: { error: "not_found" }, status: :not_found)
-    def uuid?(value) = value.is_a?(String) && value.match?(UUID)
+    def uuid?(value) = ClinicalDocuments::Uuid.valid?(value)
   end
 end
