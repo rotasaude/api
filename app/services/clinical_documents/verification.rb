@@ -17,7 +17,7 @@ module ClinicalDocuments
 
     def lookup(short_code:, birth_year:)
       code = Codes.normalize(short_code)
-      year = birth_year.is_a?(Integer) ? birth_year : Integer(birth_year.to_s, 10, exception: false)
+      year = birth_year.to_s.match?(/\A\d{4}\z/) ? birth_year.to_s.to_i : nil
       document = code && year ? ClinicalDocument.find_by(short_code: code) : nil
       document = nil if document && birth_year_of(document) != year
       trail!(document, "short_code")
@@ -35,8 +35,9 @@ module ClinicalDocuments
                else "valid"
                end
       json = { kind: document.kind, issued_at: document.issued_at.iso8601,
-               professional: { name: Screenings::Json.staff_name(author),
-                               council: Json.council(professional) },
+               # Só o nome do perfil profissional: sem perfil (a recepção), null —
+               # nunca o e-mail da conta.
+               professional: { name: professional&.professional_name.presence, council: Json.council(professional) },
                unit: document.attendance.health_unit.name,
                patient: { initials: initials(person(document).display_name), birth_year: birth_year_of(document) },
                status: status, mode: document.issue_mode, simulated: signature&.simulated? || false }

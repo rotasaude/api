@@ -13,12 +13,13 @@ module ClinicalDocuments
 
     def result(data)
       issued = Time.iso8601(data[:issued_at]).in_time_zone.strftime("%d/%m/%Y %H:%M")
+      professional = [ data.dig(:professional, :name), data.dig(:professional, :council) ].compact.join(" — ")
       rows = [ [ "Documento", KINDS.fetch(data[:kind]) ], [ "Emitido em", issued ],
-               [ "Profissional", [ data.dig(:professional, :name), data.dig(:professional, :council) ].compact.join(" — ") ],
+               ([ "Profissional", professional ] unless professional.empty?),
                [ "Unidade", data[:unit] ],
                [ "Paciente", "#{data.dig(:patient, :initials)} (nascido(a) em #{data.dig(:patient, :birth_year) || '—'})" ],
                [ "Situação", STATUS.fetch(data[:status]) + (data[:cancelled_at] ? " em #{Time.iso8601(data[:cancelled_at]).in_time_zone.strftime('%d/%m/%Y %H:%M')}" : "") ],
-               [ "Modo", data[:mode] == "digital" ? "Assinado digitalmente#{' (simulada — sem validade jurídica)' if data[:simulated]}" : "Papel (assinatura à mão)" ] ]
+               [ "Modo", data[:mode] == "digital" ? "Assinado digitalmente#{' (simulada — sem validade jurídica)' if data[:simulated]}" : "Papel (assinatura à mão)" ] ].compact
       table = rows.map { |label, value| "<tr><th>#{h(label)}</th><td>#{h(value)}</td></tr>" }.join
       link = data[:signed_pdf_url] ? %(<p><a href="#{h(data[:signed_pdf_url])}">Baixar o PDF assinado</a></p>) : ""
       layout("<table>#{table}</table>#{link}")
@@ -39,7 +40,8 @@ module ClinicalDocuments
           if (r.status === 429) { out.textContent = "Muitas tentativas. Tente de novo em alguns minutos."; return; }
           if (!r.ok) { out.textContent = "Documento não encontrado. Confira o código e o ano."; return; }
           const j = await r.json();
-          out.textContent = `${j.status === "valid" ? "Válido" : j.status === "cancelled" ? "Cancelado" : "Aguardando assinatura digital"} — ${j.professional.name} — ${j.unit}`;
+          const status = j.status === "valid" ? "Válido" : j.status === "cancelled" ? "Cancelado" : "Aguardando assinatura digital";
+          out.textContent = [ status, j.professional.name, j.unit ].filter(Boolean).join(" — ");
         });
         </script>
       HTML

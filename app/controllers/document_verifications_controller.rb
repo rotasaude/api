@@ -22,6 +22,7 @@ class DocumentVerificationsController < ApplicationController
     return not_found unless document
 
     data = ClinicalDocuments::Verification.public_json(document)
+    response.headers["Cache-Control"] = "no-store"
     json? ? render(json: data) : html(ClinicalDocuments::Page.result(data))
   end
 

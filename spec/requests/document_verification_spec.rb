@@ -32,8 +32,10 @@ RSpec.describe "Conferência pública de documento", type: :request do
                                            "council" => "CRM-PR #{doctor.professional.registration_number}" },
                        "unit" => unit.name, "patient" => { "initials" => "M.A.S.", "birth_year" => Date.iso8601(citizen.birth_date).year },
                        "status" => "valid", "mode" => "paper", "simulated" => false)
+    expect(response.headers["Cache-Control"]).to eq("no-store")
     get "/v/#{document.verification_token}"
     expect(response.media_type).to eq("text/html")
+    expect(response.headers["Cache-Control"]).to eq("no-store")
     [ response.body, body.to_json ].each do |text|
       expect(text).not_to include("I10", "Hipertensão", "5 dia", citizen.cpf, "Maria Aparecida")
     end
@@ -58,11 +60,12 @@ RSpec.describe "Conferência pública de documento", type: :request do
     typed = ClinicalDocuments::Codes.display(document.short_code).downcase.sub("-", " - ")
     json_post "/v/lookup", short_code: typed, birth_year: year
     expect(JSON.parse(response.body)["status"]).to eq("valid")
-    [ [ typed, year + 1 ], [ typed, year % 100 ], [ "AAAAA-AAAAA", year ], [ "", "" ] ].each do |code, birth|
+    [ [ typed, year + 1 ], [ typed, year % 100 ], [ typed, "0#{year}" ], [ typed, "#{year}.0" ], [ typed, year.to_f ],
+      [ "AAAAA-AAAAA", year ], [ "", "" ] ].each do |code, birth|
       json_post "/v/lookup", short_code: code, birth_year: birth
       expect([ response.status, JSON.parse(response.body) ]).to eq([ 404, { "error" => "not_found" } ])
     end
-    expect(DocumentVerificationLookup.where(outcome: "not_found").count).to eq(4)
+    expect(DocumentVerificationLookup.where(outcome: "not_found").count).to eq(7)
   end
 
   it "o código de outra cidade não existe aqui" do
@@ -100,6 +103,40 @@ RSpec.describe "Conferência pública de documento", type: :request do
     expect(body["signed_pdf_url"]).to end_with("/v/#{document.verification_token}/signed.pdf")
     get "/v/#{document.verification_token}/signed.pdf"
     expect(response.body.b).to eq(signature.signed_pdf_bytes.b)
+  end
+
+  it "digital assinado e depois cancelado: cancelled, sem signed_pdf_url, PDF 404" do
+    stub_psc!; stub_signer!; signature_city!
+    doctor.professional.update!(cpf: SignatureHelpers::DOCTOR_CPF)
+    linked_certificate!(doctor, leaf: fake_psc.leaf(SignatureHelpers::DOCTOR_CPF))
+    document = sick_note!
+    sign_document!(document, author: doctor)
+    document.update!(status: "cancelled", cancel_reason: "Emitido por engano aqui", cancelled_at: Time.current, cancelled_by_user_id: doctor.id)
+    get "/v/#{document.verification_token}", headers: json_headers
+    body = JSON.parse(response.body)
+    expect(body).to include("status" => "cancelled", "mode" => "digital", "cancelled_at" => document.cancelled_at.iso8601)
+    expect(body).not_to have_key("signed_pdf_url")
+    get "/v/#{document.verification_token}"
+    expect(response.body).to include("Cancelado").and(not_include("signed.pdf"))
+    get "/v/#{document.verification_token}/signed.pdf"
+    expect(response).to have_http_status(:not_found)
+  end
+
+  it "declaração da recepção: sem perfil profissional, professional.name null; o e-mail nunca aparece" do
+    reception = verifier!
+    sign_in_as(reception)
+    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}
+    expect(response).to have_http_status(:created)
+    document = ClinicalDocument.find(JSON.parse(response.body)["id"])
+    get "/v/#{document.verification_token}", headers: json_headers
+    body = JSON.parse(response.body)
+    expect(body).to include("kind" => "attendance_declaration", "professional" => { "name" => nil, "council" => nil },
+                            "status" => "valid", "mode" => "paper")
+    json_text = response.body
+    get "/v/#{document.verification_token}"
+    expect(response).to have_http_status(:ok)
+    expect(response.body).not_to include("Profissional")
+    [ json_text, response.body ].each { |text| expect(text).not_to include(reception.email_address, "@cidade.gov.br") }
   end
 
   it "token desconhecido → 404; o formulário existe" do
