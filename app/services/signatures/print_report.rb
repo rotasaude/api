@@ -6,6 +6,9 @@
 module Signatures
   module PrintReport
     VERIFICATION = { "valid" => "válida", "invalid" => "inválida", "indeterminate" => "indeterminada" }.freeze
+    # O impresso do 19a só olha a consulta e os adendos (os documentos clínicos
+    # do 19c têm o impresso próprio).
+    CONSULTATION_TYPES = %w[Consultation ConsultationAddendum].freeze
 
     Report = Data.define(:lines, :hand_signature) do
       def hand_signature? = hand_signature
@@ -25,11 +28,27 @@ module Signatures
       signature.last_verification == "valid" ? signature.signed_pdf_bytes : nil
     end
 
-    def for(consultation)
-      return nil unless SignatureRequest.exists?(consultation_id: consultation.id)
+    # ADR 0033: o documento clínico digital segue a mesma política — o PAdES
+    # só com a revalidação `valid`; senão nil (o impresso gerado com o estado,
+    # document_report, e espaço à mão).
+    def signed_document_pdf(document)
+      signature = document.signed_signature
+      return nil unless signature
 
-      Signature.where(signature_request_id: SignatureRequest.where(consultation_id: consultation.id, status: "signed").select(:id))
-               .find_each { |signature| Verify.call(signature) }
+      Verify.call(signature).last_verification == "valid" ? signature.signed_pdf_bytes : nil
+    end
+
+    # A seção "Assinatura" do impresso gerado de um documento clínico digital
+    # cuja assinatura não revalidou como válida: sempre com espaço à mão.
+    def document_report(document)
+      Report.new(lines: [ "Via digital: #{describe(Mode.for(document))}" ], hand_signature: true)
+    end
+
+    def for(consultation)
+      return nil unless SignatureRequest.exists?(consultation_id: consultation.id, document_type: CONSULTATION_TYPES)
+
+      signed = SignatureRequest.where(consultation_id: consultation.id, status: "signed", document_type: CONSULTATION_TYPES)
+      Signature.where(signature_request_id: signed.select(:id)).find_each { |signature| Verify.call(signature) }
       addenda = consultation.addenda.order(:created_at, :id).to_a
       blocks = Mode.blocks([ consultation, *addenda ])
       parts = [ [ "Consulta", blocks[[ "Consultation", consultation.id ]] ] ] +

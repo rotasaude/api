@@ -36,17 +36,18 @@ RSpec.describe "Impresso do documento clínico", type: :request do
     expect([ response.status, response.media_type ]).to eq([ 200, "application/pdf" ])
   end
 
-  # Sem a Task 18 o 19b ainda não assina documento clínico: aqui a fiação do
-  # impresso (pendente → 409; com assinatura gravada → os bytes dela, sem
-  # gerar outro PDF; cancelado ganha do modo). O caminho real é o exemplo abaixo.
+  # A fiação do impresso (pendente → 409; com assinatura gravada e válida → os
+  # bytes dela, sem gerar outro PDF; cancelado ganha do modo). O caminho real,
+  # assinado pelo 19b, é o contexto abaixo.
   it "digital: sem assinatura 409 awaiting_signature; com a gravada, os bytes do PAdES; cancelado 409" do
     document = raw_document!(consultation: consultation, issue_mode: "digital")
     sign_in_as(doctor)
     get "/attendance/documents/#{document.id}/print"
     expect([ response.status, JSON.parse(response.body) ]).to eq([ 409, { "error" => "awaiting_signature" } ])
 
-    signed = instance_double(Signature, signed_pdf_bytes: "%PDF-1.7 pades".b)
+    signed = instance_double(Signature, signed_pdf_bytes: "%PDF-1.7 pades".b, last_verification: "valid")
     allow_any_instance_of(ClinicalDocument).to receive(:signed_signature).and_return(signed)
+    allow(Signatures::Verify).to receive(:call).with(signed).and_return(signed)
     expect(ClinicalDocuments::Pdf).not_to receive(:call)
     get "/attendance/documents/#{document.id}/print"
     expect([ response.status, response.media_type, response.body.b ]).to eq([ 200, "application/pdf", "%PDF-1.7 pades".b ])
@@ -58,19 +59,71 @@ RSpec.describe "Impresso do documento clínico", type: :request do
     expect([ response.status, JSON.parse(response.body) ]).to eq([ 409, { "error" => "already_cancelled" } ])
   end
 
-  it "digital pendente → 409 awaiting_signature; assinado → o PDF assinado",
-     skip: "depende da Task 18 (Signatures::Documents ainda não prepara ClinicalDocument); a Task 18 tira o skip" do
-    stub_psc!
-    stub_signer!
-    signature_city!
-    doctor.professional.update!(cpf: SignatureHelpers::DOCTOR_CPF)
-    linked_certificate!(doctor, leaf: fake_psc.leaf(SignatureHelpers::DOCTOR_CPF))
-    document = issue!
-    sign_in_as(doctor)
-    get "/attendance/documents/#{document.id}/print"
-    expect([ response.status, JSON.parse(response.body) ]).to eq([ 409, { "error" => "awaiting_signature" } ])
-    signature = sign_document!(document, author: doctor)
-    get "/attendance/documents/#{document.id}/print"
-    expect(response.body.b).to eq(signature.signed_pdf_bytes.b)
+  def text_of(bytes) = PDF::Reader.new(StringIO.new(bytes)).pages.map(&:text).join(" ").gsub(/\s+/, " ")
+
+  # Ponta a ponta com o PSC simulado do 19b: o impresso do documento assinado
+  # segue a política do impresso da consulta (Signatures::PrintReport.signed_pdf
+  # revalida antes de devolver o PAdES; fora de `valid`, o PDF gerado com o
+  # estado da assinatura e espaço à mão).
+  context "assinado de verdade (PSC simulado)" do
+    let(:signer) { stub_signer! }
+
+    before do
+      stub_psc_mock!
+      signer
+      doctor.professional.update!(cpf: SignatureHelpers::DOCTOR_CPF)
+      linked_certificate!(doctor, provider: "simulated", leaf: fake_psc("simulated").leaf(SignatureHelpers::DOCTOR_CPF))
+    end
+
+    it "digital pendente → 409 awaiting_signature; assinado → os bytes do PAdES, com o aviso de simulada" do
+      document = issue!
+      expect(document.signed_signature).to be_nil # pending
+      sign_in_as(doctor)
+      get "/attendance/documents/#{document.id}/print"
+      expect([ response.status, JSON.parse(response.body) ]).to eq([ 409, { "error" => "awaiting_signature" } ])
+      signature = sign_document!(document, author: doctor, provider: "simulated")
+      expect(document.signed_signature).to eq(signature)
+      get "/attendance/documents/#{document.id}/print"
+      expect([ response.status, response.media_type ]).to eq([ 200, "application/pdf" ])
+      expect(response.body.b).to eq(signature.signed_pdf_bytes.b)
+      bytes = response.body.b
+      # Por trecho de texto (runs): o layout do PDF::Reader embaralha as linhas
+      # de 7 pt do rodapé quando ficam próximas.
+      runs = PDF::Reader.new(StringIO.new(bytes[0...bytes.rindex(FakeSigner::MARKER)])).pages.map { |page| page.runs.map(&:text).join(" ") }
+      expect(runs).to all(include("Assinatura simulada — sem validade jurídica"))
+      expect(signer.calls.count(:verify)).to be >= 2 # revalidou ao imprimir (CAdES e PAdES)
+    end
+
+    it "assinatura que não revalida como válida → o PDF gerado com o estado e espaço à mão, não o PAdES" do
+      document = issue!
+      signature = sign_document!(document, author: doctor, provider: "simulated")
+      signer.revoked_serials << signature.signer_certificate.serial_number
+      sign_in_as(doctor)
+      get "/attendance/documents/#{document.id}/print"
+      expect([ response.status, response.media_type ]).to eq([ 200, "application/pdf" ])
+      expect(response.body.b).not_to eq(signature.signed_pdf_bytes.b)
+      text = text_of(response.body)
+      expect(text).to include("Via digital: assinada digitalmente (simulada — sem validade jurídica) por", "validação inválida")
+      expect(signature.reload.last_verification).to eq("invalid")
+    end
+
+    # Uma linha de assinatura ao lado de pedido não signed (estado que o fluxo
+    # não produz): o filtro por status é o que decide, não a existência da linha.
+    it "signed_signature só devolve a assinatura de pedido signed (pending/returned_to_paper → nil)" do
+      certificate = SignerCertificate.active.find_by!(user_id: doctor.id)
+      pending = issue!
+      signature_row!(pending.signature_request, certificate: certificate)
+      expect(pending.signature_request.status).to eq("pending")
+      expect(pending.signed_signature).to be_nil
+
+      returned = issue!
+      Signatures::ToPaper.call(returned.signature_request.lock!, reason_code: "user_request")
+      signature_row!(returned.signature_request, certificate: certificate)
+      expect(returned.signed_signature).to be_nil
+
+      signed = issue!
+      signature = sign_document!(signed, author: doctor, provider: "simulated")
+      expect(signed.signed_signature).to eq(signature)
+    end
   end
 end

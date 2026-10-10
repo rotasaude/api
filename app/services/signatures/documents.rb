@@ -1,5 +1,5 @@
 # app/services/signatures/documents.rb
-# Os dois documentos de cada pedido (ADR 0032; spec §7): o JSON canônico (vai
+# Os dois documentos de cada pedido (ADR 0032; ADR 0033; spec §7): o JSON canônico (vai
 # ao CAdES destacado) e o PDF com o rodapé NGS2 (vai ao PAdES). O rodapé leva o
 # nome e o CPF do CERTIFICADO, que é o que se assina; com o PSC simulado
 # (ADR 0032, revisão), o aviso "simulada — sem validade jurídica".
@@ -27,6 +27,9 @@ module Signatures
       when ConsultationAddendum
         Prepared.new(request: request, canonical: Canonical.addendum(document, chain: chain),
                      pdf: Consultations::Print.addendum(document, footer: footer))
+      when ClinicalDocument
+        Prepared.new(request: request, canonical: Canonical.clinical_document(document),
+                     pdf: ClinicalDocuments::Pdf.call(document, footer: footer))
       end
     end
   end

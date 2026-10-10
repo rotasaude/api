@@ -1,0 +1,66 @@
+{
+  "schema": "rotasaude.clinical_document.v1",
+  "city": {
+    "ibge_code": "4106902",
+    "name": "Curitiba"
+  },
+  "unit": {
+    "cnes": "0015466",
+    "name": "UBS Ouvidor Pardinho"
+  },
+  "professional": {
+    "name": "Carla Mendes",
+    "cpf": "16899535009",
+    "cbo_code": "223565",
+    "council": {
+      "name": "COREN",
+      "state": "PR",
+      "registration_number": "123456"
+    }
+  },
+  "patient": {
+    "display_name": "Joana D'Arc Conceição 👩🏽‍⚕️",
+    "cpf": "39053344705",
+    "birth_date": "1961-03-14"
+  },
+  "document": {
+    "id": "7c1e2a3b-4d5e-4f60-8a1b-2c3d4e5f6a76",
+    "kind": "prescription",
+    "issued_at": "2026-10-09T13:41:37Z",
+    "replaces_document_id": null
+  },
+  "content": {
+    "items": [
+      {
+        "position": 1,
+        "catalog_item": {
+          "id": "3f0e1d2c-3b4a-4596-8877-665544332212",
+          "catmat_code": 268144,
+          "label": "Dipirona sódica 500 mg/mL, solução oral",
+          "active_ingredient": "dipirona sódica",
+          "strength": "500 mg/mL",
+          "dosage_form": "solução oral"
+        },
+        "printed_description": "Dipirona sódica 500 mg/mL — solução oral",
+        "quantity": 1,
+        "quantity_unit": "frasco",
+        "route": "oral",
+        "dosage_instructions": "Tomar 20 gotas até de 6 em 6 horas se dor ou febre.",
+        "duration_days": 3,
+        "continuous": false,
+        "antimicrobial": false
+      }
+    ],
+    "catalog_release": "2026-10-09",
+    "nursing_protocol": {
+      "id": "5b4a3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d",
+      "title": "Protocolo de enfermagem na atenção primária",
+      "number": "007/2025",
+      "year": 2025,
+      "version_id": "5b4a3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1e"
+    },
+    "city_cnpj": "12ABC34501DE35",
+    "antimicrobial": false,
+    "copies": 1
+  }
+}

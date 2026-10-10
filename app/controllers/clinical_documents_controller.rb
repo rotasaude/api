@@ -59,8 +59,8 @@ class ClinicalDocumentsController < ApplicationController
   end
 
   # Contrato §3 (Desvio 7): o PDF do modo do documento, na hora, sem cache.
-  # Digital: só o PAdES gravado (o papel de um digital criaria duas vias
-  # válidas com o mesmo código); papel: gerado agora.
+  # Digital: só depois de assinado (o papel de um digital pendente criaria duas
+  # vias válidas com o mesmo código); papel: gerado agora.
   def print
     document = readable_document
     return unless document
@@ -68,10 +68,12 @@ class ClinicalDocumentsController < ApplicationController
 
     bytes =
       if document.digital?
-        signature = document.signed_signature
-        return render(json: { error: "awaiting_signature" }, status: :conflict) unless signature
+        return render(json: { error: "awaiting_signature" }, status: :conflict) unless document.signed_signature
 
-        signature.signed_pdf_bytes
+        # A política do impresso da consulta: o PAdES só com a revalidação
+        # `valid`; senão o PDF gerado com o estado da assinatura e espaço à mão.
+        Signatures::PrintReport.signed_document_pdf(document) ||
+          ClinicalDocuments::Pdf.call(document, report: Signatures::PrintReport.document_report(document))
       else
         ClinicalDocuments::Pdf.call(document)
       end

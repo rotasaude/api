@@ -29,15 +29,21 @@ module Signatures
         verified_at: signature.last_verification_at.iso8601, content: JSON.parse(signature.canonical_json) }
     end
 
-    # <request> (contrato §5, §13), sem N+1: consultas e adendos numa consulta
-    # só. reason_code só quando há; patient_display_name pode ser nulo.
+    # <request> (contrato §5, §13), sem N+1: consultas, adendos e documentos
+    # clínicos numa consulta cada. reason_code só quando há; patient_display_name pode ser nulo.
     def requests(rows)
       consultations = Consultation.where(id: rows.map(&:consultation_id)).includes(:patient).index_by(&:id)
       addendum_ids = rows.select { |row| row.document_type == "ConsultationAddendum" }.map(&:document_id)
       addenda = ConsultationAddendum.where(id: addendum_ids).pluck(:id, :created_at).to_h
+      document_ids = rows.select { |row| row.document_type == "ClinicalDocument" }.map(&:document_id)
+      documents = ClinicalDocument.where(id: document_ids).pluck(:id, :issued_at).to_h
       rows.map do |row|
         consultation = consultations[row.consultation_id]
-        finalized_at = row.document_type == "Consultation" ? consultation&.finalized_at : addenda[row.document_id]
+        finalized_at = case row.document_type
+                       when "Consultation" then consultation&.finalized_at
+                       when "ConsultationAddendum" then addenda[row.document_id]
+                       else documents[row.document_id] # ClinicalDocument: a emissão
+                       end
         { id: row.id, document_type: DocumentTypes.api(row.document_type), document_id: row.document_id,
           consultation_id: row.consultation_id, patient_display_name: consultation&.patient&.display_name,
           finalized_at: finalized_at&.iso8601, status: row.status, reason_code: row.reason_code, attempts: row.attempts }

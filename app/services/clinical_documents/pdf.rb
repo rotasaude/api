@@ -31,7 +31,10 @@ module ClinicalDocuments
 
     module_function
 
-    def call(document, footer: nil)
+    # report: o estado da assinatura digital que não revalidou como válida
+    # (Signatures::PrintReport.document_report) — sai antes do espaço à mão,
+    # como a seção "Assinaturas" do impresso da consulta.
+    def call(document, footer: nil, report: nil)
       raise NotPrintable, "cancelled" if document.cancelled?
 
       content = document.content_data
@@ -39,16 +42,17 @@ module ClinicalDocuments
       pdf = Consultations::Print.document(footer, title: "Documento clínico")
       labels.each_with_index do |label, index|
         pdf.start_new_page if index.positive?
-        copy(pdf, document, content, label, footer)
+        copy(pdf, document, content, label, footer, report)
       end
       pdf.render
     end
 
-    def copy(pdf, document, content, label, footer)
+    def copy(pdf, document, content, label, footer, report)
       header(pdf, document, content, label)
       person(pdf, document)
       send(:"#{document.kind}_body", pdf, document, content)
       professional(pdf, document, content)
+      signature_state(pdf, report) if report
       hand_signature(pdf) unless footer
       verification(pdf, document)
     end
@@ -151,6 +155,12 @@ module ClinicalDocuments
       pdf.text s("Matrícula: #{content['issuer_registration']}") if content["issuer_registration"]
     end
 
+    def signature_state(pdf, report)
+      pdf.move_down 10
+      pdf.text s("Assinatura digital"), style: :bold
+      report.lines.each { |line| pdf.text s(line), size: 9 }
+    end
+
     def hand_signature(pdf)
       pdf.move_down 30
       pdf.stroke_horizontal_line 0, 250
@@ -171,6 +181,6 @@ module ClinicalDocuments
       pdf.move_cursor_to(top - QR_SIZE) if pdf.cursor > top - QR_SIZE
     end
     private_class_method :copy, :s, :date, :header, :person, :sick_note_body, :attendance_declaration_body,
-                         :prescription_body, :exam_requisition_body, :note, :professional, :hand_signature, :verification
+                         :prescription_body, :exam_requisition_body, :note, :professional, :signature_state, :hand_signature, :verification
   end
 end

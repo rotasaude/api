@@ -12,8 +12,9 @@ RSpec.describe "Vetor RFC 8785 do contracts (clinical-v1.0.0)" do
   end
 
   it "os SHA-256 publicados são os fixados no contrato" do
-    expect(sums).to eq("consultation-full.jcs" => "4caa5160378b1ed8a3a29a6338af1709dd6adbf7744a79e2996e5019d91f4e70",
-                       "addendum-structured.jcs" => "6ba35a6bd3dab76bdbe515769608fe30473dd3acc15e280672b8b41e54259279")
+    # A tag clinical-v1.1.0 acrescentou os vetores do documento clínico (19c).
+    expect(sums).to include("consultation-full.jcs" => "4caa5160378b1ed8a3a29a6338af1709dd6adbf7744a79e2996e5019d91f4e70",
+                            "addendum-structured.jcs" => "6ba35a6bd3dab76bdbe515769608fe30473dd3acc15e280672b8b41e54259279")
   end
 
   {

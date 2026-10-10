@@ -1,5 +1,7 @@
 # app/services/signatures/canonical.rb
-# JSON canônico da consulta e do adendo (ADR 0032; spec §7; contrato §10): o
+# JSON canônico da consulta, do adendo e do documento clínico (ADR 0032; ADR
+# 0033; spec §7; contrato §10; esquema clinical-document-v1 da tag
+# clinical-v1.1.0 em config/clinical/clinical-document-v1.json): o
 # registro estruturado assinado em CAdES (fonte de verdade), na forma EXATA dos
 # esquemas da tag clinical-v1.0.0 do contracts (commit ff7df1d), copiados sem
 # alteração em config/clinical/consultation-v1.json e
@@ -17,8 +19,10 @@ module Signatures
   module Canonical
     CONSULTATION_SCHEMA = "rotasaude.consultation.v1".freeze
     ADDENDUM_SCHEMA = "rotasaude.consultation_addendum.v1".freeze
+    DOCUMENT_SCHEMA = "rotasaude.clinical_document.v1".freeze
     SCHEMA_FILES = { CONSULTATION_SCHEMA => Rails.root.join("config/clinical/consultation-v1.json"),
-                     ADDENDUM_SCHEMA => Rails.root.join("config/clinical/consultation-addendum-v1.json") }.freeze
+                     ADDENDUM_SCHEMA => Rails.root.join("config/clinical/consultation-addendum-v1.json"),
+                     DOCUMENT_SCHEMA => Rails.root.join("config/clinical/clinical-document-v1.json") }.freeze
 
     class Invalid < StandardError; end
 
@@ -33,6 +37,7 @@ module Signatures
       case document
       when Consultation then consultation(document)
       when ConsultationAddendum then addendum(document)
+      when ClinicalDocument then clinical_document(document)
       else raise ArgumentError, "documento fora do catálogo"
       end
     end
@@ -66,6 +71,20 @@ module Signatures
                "previous_sha256" => previous_sha256(addendum, chain: chain) }
       built(ADDENDUM_SCHEMA, header(consultation, addendum.author_user)
                                .merge("schema" => ADDENDUM_SCHEMA, "addendum" => body))
+    end
+
+    # ADR 0033 (contrato §12): documento clínico da consulta, na forma do
+    # esquema clinical-document-v1 (tag clinical-v1.1.0). O da recepção (sem
+    # consulta) nunca é assinado.
+    def clinical_document(document)
+      raise Invalid, "not_signable" unless document.consultation_id && document.patient
+
+      head = header_for(unit: document.attendance.health_unit, author: document.author_user, cbo_code: document.cbo_code,
+                        patient: document.patient)
+      body = { "id" => document.id, "kind" => document.kind, "issued_at" => time(document.issued_at),
+               "replaces_document_id" => document.replaces_document_id }
+      built(DOCUMENT_SCHEMA, head.merge("schema" => DOCUMENT_SCHEMA, "document" => body,
+                                        "content" => ClinicalDocuments::Canonical.content(document)))
     end
 
     # Desvio 1 (esquema do contracts): o canonical_sha256 do documento ASSINADO
@@ -104,16 +123,19 @@ module Signatures
     end
 
     def header(consultation, author)
+      header_for(unit: consultation.attendance.health_unit, author: author, cbo_code: consultation.cbo_code,
+                 patient: consultation.patient)
+    end
+
+    def header_for(unit:, author:, cbo_code:, patient:)
       profile = CityProfile.current
-      unit = consultation.attendance.health_unit
       professional = author.professional
-      patient = consultation.patient
       council = professional && { "name" => professional.council, "state" => professional.council_state,
                                   "registration_number" => professional.registration_number }
       { "city" => { "ibge_code" => profile&.ibge_code.presence, "name" => profile&.name.presence || Current.city&.name },
         "unit" => { "cnes" => unit.cnes.presence, "name" => unit.name },
         "professional" => { "name" => professional&.professional_name, "cpf" => professional&.cpf,
-                            "cbo_code" => consultation.cbo_code, "council" => council },
+                            "cbo_code" => cbo_code, "council" => council },
         "patient" => { "display_name" => patient.display_name, "cpf" => patient.cpf, "birth_date" => patient.birth_date.presence } }
     end
 
@@ -172,6 +194,6 @@ module Signatures
       @schemas ||= {}
       @schemas[name] ||= JSONSchemer.schema(JSON.parse(File.read(SCHEMA_FILES.fetch(name))))
     end
-    private_class_method :built, :header, :changes, :problem, :exam, :vitals, :outcome, :release_version, :text, :time, :schema
+    private_class_method :built, :header, :header_for, :changes, :problem, :exam, :vitals, :outcome, :release_version, :text, :time, :schema
   end
 end

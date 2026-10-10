@@ -48,12 +48,12 @@ module Signatures
       failed = []
       final = []
       chain = {}   # [document_type, document_id] => canonical_sha256 dos já preparados neste lote
-      blocked = {} # consultation_id => [motivo, definitivo?] da primeira falha (os seguintes da mesma consulta não assinam)
+      blocked = {} # chain_key => [motivo, definitivo?] da primeira falha (os seguintes da mesma cadeia não assinam)
       verdict = nil # [motivo, definitivo?] do certificado (R9): vale para todos os pedidos
-      # Ordem cronológica de criação dos documentos: a consulta, depois os adendos.
+      # Ordem cronológica de criação dos documentos: a consulta, depois os adendos e os documentos clínicos.
       chronological(requests).each do |request|
         next if verdict
-        next block(request, *blocked[request.consultation_id], failed, final) if blocked.key?(request.consultation_id)
+        next block(request, *blocked[chain_key(request)], failed, final) if blocked.key?(chain_key(request))
 
         docs = Documents.for(request, info: info, signed_at: now, chain: chain, simulated: simulated)
         prepared = KINDS.to_h do |kind|
@@ -65,13 +65,13 @@ module Signatures
         if e.code == "invalid_certificate"
           verdict = certificate_verdict(certificate, signer)
         else
-          blocked[request.consultation_id] ||= [ "verification_failed", true ]
+          blocked[chain_key(request)] ||= [ "verification_failed", true ]
           block(request, "verification_failed", true, failed, final)
         end
-      rescue Canonical::Invalid, Consultations::Print::NotPrintable
+      rescue Canonical::Invalid, Consultations::Print::NotPrintable, ClinicalDocuments::Pdf::NotPrintable
         # Determinístico (documento ausente, fora do esquema, não imprimível):
         # tentar de novo daria o mesmo resultado.
-        blocked[request.consultation_id] ||= [ "verification_failed", true ]
+        blocked[chain_key(request)] ||= [ "verification_failed", true ]
         block(request, "verification_failed", true, failed, final)
       end
       if verdict
@@ -90,16 +90,16 @@ module Signatures
                                                        digests: digests)
       signed = []
       # Só falha de gravação bloqueia aqui: o pedido em `ready` é anterior a
-      # qualquer falha de preparo da mesma consulta (ordem cronológica).
-      unstored = {} # consultation_id => motivo
+      # qualquer falha de preparo da mesma cadeia (ordem cronológica).
+      unstored = {} # chain_key => motivo
       ready.each do |request, docs, prepared|
-        next failed << [ request, unstored[request.consultation_id] ] if unstored.key?(request.consultation_id)
+        next failed << [ request, unstored[chain_key(request)] ] if unstored.key?(chain_key(request))
 
         result = store(request, docs, prepared, raw, certificate, info, signer, now)
         if result.is_a?(Signature)
           signed << result
         else
-          unstored[request.consultation_id] = result
+          unstored[chain_key(request)] = result
           failed << [ request, result ]
           mark!(certificate, result)
         end
@@ -107,17 +107,23 @@ module Signatures
       Outcome.new(signed: signed, failed: failed, final: final)
     end
 
-    # Consulta pela finalização, adendo pela criação; desempate pelo id do pedido.
+    # Consulta pela finalização, adendo pela criação, documento clínico pela
+    # emissão; desempate pelo id do pedido.
     def chronological(requests)
       requests.sort_by do |request|
         document = request.document
         time = case document
                when Consultation then document.finalized_at
                when ConsultationAddendum then document.created_at
+               when ClinicalDocument then document.issued_at
                end
         [ time || request.created_at, request.id ]
       end
     end
+
+    # A cadeia (ADR 0032) é da consulta e dos adendos dela; o documento clínico
+    # não encadeia — a falha de um não segura os outros pedidos da consulta.
+    def chain_key(request) = request.document_type == "ClinicalDocument" ? [ "ClinicalDocument", request.document_id ] : request.consultation_id
 
     def block(request, reason, definitive, failed, final)
       failed << [ request, reason ]
@@ -182,6 +188,6 @@ module Signatures
 
       nil
     end
-    private_class_method :store, :rejection, :chronological, :block, :certificate_verdict, :mark!
+    private_class_method :store, :rejection, :chronological, :chain_key, :block, :certificate_verdict, :mark!
   end
 end
