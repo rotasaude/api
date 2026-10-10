@@ -312,6 +312,13 @@ Rails.application.routes.draw do
   # Relatório público (ADR-0010)
   get "/r/:token", to: "reports#show", as: :report
 
+  # Conferência pública de documento clínico (ADR 0033; contrato §7). Host da
+  # cidade; sem login. O token tem 22 caracteres url-safe (sem ponto).
+  get  "/v",                     to: "document_verifications#form"
+  post "/v/lookup",              to: "document_verifications#lookup"
+  get  "/v/:token/signed.pdf",   to: "document_verifications#signed_pdf", format: false, constraints: { token: /[A-Za-z0-9_-]{22}/ }
+  get  "/v/:token",              to: "document_verifications#show", constraints: { token: /[A-Za-z0-9_-]+/ }
+
   # Canal web do cidadão (spec 2026-09-22-web-citizen-channel). Servido no host
   # da cidade, como o relatório; sessão própria por cookie `citizen_session`.
   scope "/citizen", module: "citizen_api", as: "citizen" do
