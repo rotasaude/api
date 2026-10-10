@@ -155,4 +155,9 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "signature.failed", to: []
   DomainEvents.bind "signature.returned_to_paper", to: []
   DomainEvents.bind "signature.verified", to: []
+
+  # Módulo 19c (ADR 0033): documentos clínicos e lista de medicamentos, só trilha.
+  DomainEvents.bind "clinical_document.issued", to: []
+  DomainEvents.bind "clinical_document.cancelled", to: []
+  DomainEvents.bind "patient_medication.changed", to: []
 end

@@ -85,7 +85,17 @@ module CityEncryption
     [ Signature, :cades ],
     [ Signature, :signed_pdf ],
     [ Signature, :validation_material ],
-    [ Signature, :signer_cpf ]
+    [ Signature, :signer_cpf ],
+    # ADR 0033: documentos clínicos e lista de medicamentos.
+    [ ClinicalDocument, :content ],
+    [ ClinicalDocument, :cancel_reason ],
+    [ PrescriptionItem, :free_text ],
+    [ PrescriptionItem, :printed_description ],
+    [ PrescriptionItem, :dosage_instructions ],
+    [ PatientMedication, :free_text ],
+    [ PatientMedication, :label ],
+    [ PatientMedication, :dosage_summary ],
+    [ PatientMedicationEvent, :dosage_summary ]
   ].freeze
 
   module_function

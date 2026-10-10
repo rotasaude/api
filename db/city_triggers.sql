@@ -1356,3 +1356,133 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Documentos clínicos (ADR 0033, Invariantes; spec 2026-10-09 §4): nascem
+-- emitidos; nunca somem; só mudam (a) de issued para cancelled, com motivo,
+-- data e usuário e nada mais; (b) de digital para paper, pela volta ao papel
+-- do 19b, se ainda não há assinatura gravada; (c) na re-cifra (rota.reencrypting),
+-- só o conteúdo e o motivo cifrados. paper → digital nunca.
+CREATE OR REPLACE FUNCTION rota_clinical_document_guard() RETURNS trigger AS $fn$
+DECLARE
+  cancel_cols text[] := ARRAY['status', 'cancel_reason', 'cancelled_at', 'cancelled_by_user_id'];
+  encrypted text[] := ARRAY['content', 'cancel_reason'];
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status <> 'issued' THEN
+      RAISE EXCEPTION 'clinical_documents: a document is born issued';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'clinical_documents is append-only: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.status = 'issued' AND NEW.status = 'cancelled' AND (to_jsonb(NEW) - cancel_cols) = (to_jsonb(OLD) - cancel_cols) THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.issue_mode = 'digital' AND NEW.issue_mode = 'paper' AND (to_jsonb(NEW) - 'issue_mode') = (to_jsonb(OLD) - 'issue_mode')
+     AND NOT EXISTS (SELECT 1 FROM signatures s WHERE s.document_type = 'ClinicalDocument' AND s.document_id = NEW.id) THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'clinical_documents: an issued document never changes; it is only cancelled by its author';
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Itens da receita: nascem na MESMA transação do documento (que é uma
+-- receita) e nunca mudam, salvo a re-cifra dos textos.
+CREATE OR REPLACE FUNCTION rota_prescription_item_insert_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM clinical_documents d WHERE d.id = NEW.clinical_document_id AND d.kind = 'prescription'
+                 AND d.txid = txid_current()) THEN
+    RAISE EXCEPTION 'prescription_items are born with their prescription, in the same transaction';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Itens da versão do protocolo: nascem com a versão (mesma transação).
+CREATE OR REPLACE FUNCTION rota_nursing_protocol_item_insert_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM nursing_protocol_versions v WHERE v.id = NEW.nursing_protocol_version_id
+                 AND v.txid = txid_current()) THEN
+    RAISE EXCEPTION 'nursing_protocol_version_items are born with their version, in the same transaction';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Lista de medicamentos em uso (ADR 0033, Invariantes): o estado só nasce e só
+-- muda com um evento da MESMA transação com o mesmo status
+-- (Patients::ApplyMedicationEvent grava o evento antes; a FK do evento é
+-- DEFERRABLE). Identidade fixa; nunca some; a re-cifra regrava só os textos.
+CREATE OR REPLACE FUNCTION rota_patient_medication_guard() RETURNS trigger AS $fn$
+DECLARE
+  encrypted text[] := ARRAY['free_text', 'label', 'dosage_summary'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'patient_medications is append-only: DELETE refused';
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
+      RETURN NEW;
+    END IF;
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.patient_id IS DISTINCT FROM OLD.patient_id
+       OR NEW.catalog_item_id IS DISTINCT FROM OLD.catalog_item_id OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+      RAISE EXCEPTION 'patient_medications: identity columns never change';
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM patient_medication_events e WHERE e.patient_medication_id = NEW.id
+                 AND e.txid = txid_current() AND e.status_after = NEW.status) THEN
+    RAISE EXCEPTION 'patient_medications: changes only through an event of the same transaction';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.clinical_documents') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS clinical_documents_guard ON clinical_documents';
+    EXECUTE 'CREATE TRIGGER clinical_documents_guard
+      BEFORE INSERT OR UPDATE OR DELETE ON clinical_documents
+      FOR EACH ROW EXECUTE FUNCTION rota_clinical_document_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS prescription_items_born_with_document ON prescription_items';
+    EXECUTE 'CREATE TRIGGER prescription_items_born_with_document
+      BEFORE INSERT ON prescription_items
+      FOR EACH ROW EXECUTE FUNCTION rota_prescription_item_insert_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS prescription_items_reencryption_only ON prescription_items';
+    EXECUTE 'CREATE TRIGGER prescription_items_reencryption_only
+      BEFORE UPDATE OR DELETE ON prescription_items
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''free_text'', ''printed_description'', ''dosage_instructions'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS patient_medications_guard ON patient_medications';
+    EXECUTE 'CREATE TRIGGER patient_medications_guard
+      BEFORE INSERT OR UPDATE OR DELETE ON patient_medications
+      FOR EACH ROW EXECUTE FUNCTION rota_patient_medication_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS patient_medication_events_reencryption_only ON patient_medication_events';
+    EXECUTE 'CREATE TRIGGER patient_medication_events_reencryption_only
+      BEFORE UPDATE OR DELETE ON patient_medication_events
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''dosage_summary'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS nursing_protocol_version_items_born_with_version ON nursing_protocol_version_items';
+    EXECUTE 'CREATE TRIGGER nursing_protocol_version_items_born_with_version
+      BEFORE INSERT ON nursing_protocol_version_items
+      FOR EACH ROW EXECUTE FUNCTION rota_nursing_protocol_item_insert_guard()';
+    FOREACH item IN ARRAY ARRAY['nursing_protocols', 'nursing_protocol_versions', 'nursing_protocol_version_items',
+                                'document_verification_lookups'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['clinical_documents', 'prescription_items', 'patient_medications', 'patient_medication_events',
+                                'nursing_protocols', 'nursing_protocol_versions', 'nursing_protocol_version_items',
+                                'document_verification_lookups'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

@@ -127,3 +127,12 @@ RSpec.describe "digital signature event bindings (ADR 0032)" do
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
 end
+
+# Módulo 19c (ADR 0033): documentos clínicos, só trilha.
+RSpec.describe "clinical document event bindings (ADR 0033)" do
+  it "declares every module 19c event with no consumer" do
+    names = %w[clinical_document.issued clinical_document.cancelled patient_medication.changed]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end

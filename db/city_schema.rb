@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -295,8 +295,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.check_constraint "(cancelled_by_user_id IS NULL) = (cancelled_at IS NULL) AND (status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL)", name: "ck_campaigns_cancelled"
   end
 
+  create_table "city_medication_list", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "added_by_user_id", null: false
+    t.uuid "catalog_item_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "unit_ids", default: [], null: false, array: true
+    t.datetime "updated_at", null: false
+    t.index ["added_by_user_id"], name: "index_city_medication_list_on_added_by_user_id"
+    t.index ["catalog_item_id"], name: "index_city_medication_list_on_catalog_item_id", unique: true
+  end
+
   create_table "city_profile", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "campaigns_sms_enabled", default: false, null: false
+    t.string "cnpj", limit: 14
     t.datetime "created_at", null: false
     t.integer "default_fit_in_limit", default: 2, null: false
     t.string "ibge_code", limit: 7
@@ -306,6 +317,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.string "uf", limit: 2
     t.datetime "updated_at", null: false
     t.index ["singleton"], name: "index_city_profile_singleton", unique: true
+    t.check_constraint "cnpj IS NULL OR cnpj::text ~ '^[0-9A-Z]{12}[0-9]{2}$'::text", name: "ck_city_profile_cnpj"
     t.check_constraint "default_fit_in_limit >= 0 AND default_fit_in_limit <= 20", name: "ck_city_profile_default_fit_in_limit"
     t.check_constraint "singleton", name: "ck_city_profile_singleton"
   end
@@ -414,6 +426,48 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.check_constraint "(verification_level)::text = ANY (ARRAY['declared'::text, 'verified'::text])", name: "ck_citizens_verification_level"
     t.check_constraint "profile_source IS NULL OR profile_source::text = ANY (ARRAY['declared', 'verified']::text[])", name: "ck_citizens_profile_source"
     t.check_constraint "(profile_source IS NULL AND birth_date IS NULL AND sex IS NULL) OR (profile_source IS NOT NULL AND birth_date IS NOT NULL AND sex IS NOT NULL)", name: "ck_citizens_profile_complete"
+  end
+
+  create_table "clinical_documents", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "attendance_id", null: false
+    t.uuid "author_user_id", null: false
+    t.text "cancel_reason"
+    t.datetime "cancelled_at"
+    t.uuid "cancelled_by_user_id"
+    t.string "cbo_code"
+    t.uuid "citizen_id", null: false
+    t.uuid "consultation_id"
+    t.text "content", null: false
+    t.datetime "created_at", null: false
+    t.string "issue_mode", null: false
+    t.datetime "issued_at", null: false
+    t.string "kind", null: false
+    t.uuid "patient_id"
+    t.uuid "replaces_document_id"
+    t.string "short_code", limit: 10, null: false
+    t.string "status", default: "issued", null: false
+    t.bigint "txid", default: -> { "txid_current()" }, null: false
+    t.string "verification_token", null: false
+    t.index ["attendance_id"], name: "index_clinical_documents_on_attendance_id"
+    t.index ["author_user_id"], name: "index_clinical_documents_on_author_user_id"
+    t.index ["cancelled_by_user_id"], name: "index_clinical_documents_on_cancelled_by_user_id"
+    t.index ["citizen_id"], name: "index_clinical_documents_on_citizen_id"
+    t.index ["consultation_id"], name: "index_clinical_documents_on_consultation_id"
+    t.index ["patient_id"], name: "index_clinical_documents_on_patient_id"
+    t.index ["replaces_document_id"], name: "index_clinical_documents_on_replaces_document_id", unique: true, where: "(replaces_document_id IS NOT NULL)"
+    t.index ["short_code"], name: "index_clinical_documents_on_short_code", unique: true
+    t.index ["verification_token"], name: "index_clinical_documents_on_verification_token", unique: true
+    t.check_constraint "(status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL) AND (status::text = 'cancelled'::text) = (cancel_reason IS NOT NULL) AND (status::text = 'cancelled'::text) = (cancelled_by_user_id IS NOT NULL)", name: "ck_clinical_documents_cancellation"
+    t.check_constraint "cbo_code IS NULL OR cbo_code::text ~ '^[0-9]{6}$'::text", name: "ck_clinical_documents_cbo"
+    t.check_constraint "consultation_id IS NULL OR cbo_code IS NOT NULL", name: "ck_clinical_documents_cbo_required"
+    t.check_constraint "consultation_id IS NOT NULL OR issue_mode::text = 'paper'::text", name: "ck_clinical_documents_paper_outside_consultation"
+    t.check_constraint "consultation_id IS NOT NULL OR kind::text = 'attendance_declaration'::text", name: "ck_clinical_documents_consultation"
+    t.check_constraint "issue_mode::text = ANY (ARRAY['digital'::text, 'paper'::text])", name: "ck_clinical_documents_issue_mode"
+    t.check_constraint "kind::text = ANY (ARRAY['sick_note'::text, 'attendance_declaration'::text, 'prescription'::text, 'exam_requisition'::text])", name: "ck_clinical_documents_kind"
+    t.check_constraint "patient_id IS NOT NULL OR kind::text = 'attendance_declaration'::text", name: "ck_clinical_documents_patient"
+    t.check_constraint "short_code::text ~ '^[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{10}$'::text", name: "ck_clinical_documents_short_code"
+    t.check_constraint "status::text = ANY (ARRAY['issued'::text, 'cancelled'::text])", name: "ck_clinical_documents_status"
+    t.check_constraint "verification_token::text ~ '^[A-Za-z0-9_-]{22}$'::text", name: "ck_clinical_documents_token"
   end
 
   create_table "clinical_record_administrative_reads", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -606,6 +660,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.integer "value", default: 0, null: false
     t.index ["dimension", "period", "key"], name: "idx_dashboard_metrics_dim_period_key", unique: true
     t.index ["dimension", "period"], name: "index_dashboard_metrics_on_dimension_and_period"
+  end
+
+  create_table "document_verification_lookups", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "clinical_document_id"
+    t.datetime "created_at", null: false
+    t.string "outcome", null: false
+    t.string "via", null: false
+    t.index ["clinical_document_id"], name: "index_document_verification_lookups_on_clinical_document_id"
+    t.index ["created_at"], name: "index_document_verification_lookups_on_created_at"
+    t.check_constraint "(outcome::text = 'found'::text) = (clinical_document_id IS NOT NULL)", name: "ck_document_verification_lookups_document"
+    t.check_constraint "outcome::text = ANY (ARRAY['found'::text, 'not_found'::text])", name: "ck_document_verification_lookups_outcome"
+    t.check_constraint "via::text = ANY (ARRAY['token'::text, 'short_code'::text])", name: "ck_document_verification_lookups_via"
   end
 
   create_table "domain_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -819,6 +885,43 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.check_constraint "source::text = ANY (ARRAY['seed'::text, 'manual'::text])", name: "ck_neighborhoods_source"
   end
 
+  create_table "nursing_protocol_version_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "catalog_item_id", null: false
+    t.datetime "created_at", null: false
+    t.decimal "max_quantity", precision: 10, scale: 2
+    t.string "max_quantity_unit", limit: 30
+    t.uuid "nursing_protocol_version_id", null: false
+    t.index ["nursing_protocol_version_id", "catalog_item_id"], name: "idx_nursing_protocol_version_items_unique", unique: true
+    t.check_constraint "(max_quantity IS NULL) = (max_quantity_unit IS NULL) AND (max_quantity IS NULL OR max_quantity > 0::numeric)", name: "ck_nursing_protocol_version_items_max"
+  end
+
+  create_table "nursing_protocol_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.uuid "nursing_protocol_id", null: false
+    t.bigint "txid", default: -> { "txid_current()" }, null: false
+    t.date "valid_from", null: false
+    t.date "valid_until"
+    t.integer "version", null: false
+    t.index ["created_by_user_id"], name: "index_nursing_protocol_versions_on_created_by_user_id"
+    t.index ["nursing_protocol_id", "version"], name: "idx_nursing_protocol_versions_unique", unique: true
+    t.check_constraint "valid_until IS NULL OR valid_until >= valid_from", name: "ck_nursing_protocol_versions_validity"
+    t.check_constraint "version >= 1", name: "ck_nursing_protocol_versions_version"
+  end
+
+  create_table "nursing_protocols", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.string "number", limit: 30, null: false
+    t.string "title", null: false
+    t.integer "year", null: false
+    t.index ["created_by_user_id"], name: "index_nursing_protocols_on_created_by_user_id"
+    t.index ["number", "year"], name: "index_nursing_protocols_on_number_and_year", unique: true
+    t.check_constraint "length(btrim(number::text)) >= 1", name: "ck_nursing_protocols_number"
+    t.check_constraint "length(btrim(title::text)) >= 3 AND length(btrim(title::text)) <= 200", name: "ck_nursing_protocols_title"
+    t.check_constraint "year >= 1990 AND year <= 2100", name: "ck_nursing_protocols_year"
+  end
+
   create_table "otp_challenges", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.integer "attempts", default: 0, null: false
     t.string "code_digest", null: false
@@ -842,6 +945,47 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.index ["idempotency_key"], name: "index_outbound_messages_on_idempotency_key", unique: true
     t.index ["status", "created_at"], name: "index_outbound_messages_on_status_and_created_at"
     t.index ["to"], name: "index_outbound_messages_on_to"
+  end
+
+  create_table "patient_medication_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "addendum_id"
+    t.uuid "clinical_document_id"
+    t.uuid "consultation_id"
+    t.datetime "created_at", null: false
+    t.text "dosage_summary"
+    t.string "kind", null: false
+    t.uuid "patient_medication_id", null: false
+    t.string "status_after", null: false
+    t.bigint "txid", default: -> { "txid_current()" }, null: false
+    t.uuid "user_id", null: false
+    t.index ["addendum_id"], name: "index_patient_medication_events_on_addendum_id"
+    t.index ["clinical_document_id"], name: "index_patient_medication_events_on_clinical_document_id"
+    t.index ["consultation_id"], name: "index_patient_medication_events_on_consultation_id"
+    t.index ["patient_medication_id"], name: "index_patient_medication_events_on_patient_medication_id"
+    t.index ["user_id"], name: "index_patient_medication_events_on_user_id"
+    t.check_constraint "kind::text = ANY (ARRAY['added'::text, 'suspended'::text, 'reactivated'::text, 'changed'::text])", name: "ck_patient_medication_events_kind"
+    t.check_constraint "num_nonnulls(consultation_id, addendum_id, clinical_document_id) = 1", name: "ck_patient_medication_events_source"
+    t.check_constraint "status_after::text = ANY (ARRAY['active'::text, 'suspended'::text])", name: "ck_patient_medication_events_status"
+  end
+
+  create_table "patient_medications", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "catalog_item_id"
+    t.integer "catmat_code"
+    t.boolean "continuous", default: true, null: false
+    t.datetime "created_at", null: false
+    t.text "dosage_summary"
+    t.text "free_text"
+    t.text "label", null: false
+    t.string "origin", null: false
+    t.uuid "patient_id", null: false
+    t.date "started_on"
+    t.string "status", null: false
+    t.datetime "updated_at", null: false
+    t.index ["patient_id", "catalog_item_id"], name: "idx_patient_medications_one_active", unique: true, where: "(((status)::text = 'active'::text) AND (catalog_item_id IS NOT NULL))"
+    t.index ["patient_id"], name: "index_patient_medications_on_patient_id"
+    t.check_constraint "(catalog_item_id IS NULL) <> (free_text IS NULL) AND (catalog_item_id IS NULL) = (catmat_code IS NULL)", name: "ck_patient_medications_source"
+    t.check_constraint "origin::text = ANY (ARRAY['prescription'::text, 'external'::text])", name: "ck_patient_medications_origin"
+    t.check_constraint "status::text = ANY (ARRAY['active'::text, 'suspended'::text])", name: "ck_patient_medications_status"
   end
 
   create_table "patient_problem_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -907,6 +1051,36 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.text "social_name"
     t.datetime "updated_at", null: false
     t.index ["cpf"], name: "index_patients_on_cpf", unique: true
+  end
+
+  create_table "prescription_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "antimicrobial", default: false, null: false
+    t.uuid "catalog_release_id"
+    t.integer "catmat_code"
+    t.uuid "clinical_document_id", null: false
+    t.boolean "continuous", default: false, null: false
+    t.datetime "created_at", null: false
+    t.text "dosage_instructions", null: false
+    t.integer "duration_days"
+    t.text "free_text"
+    t.uuid "medication_catalog_item_id"
+    t.uuid "nursing_protocol_version_item_id"
+    t.integer "position", null: false
+    t.text "printed_description", null: false
+    t.decimal "quantity", precision: 10, scale: 2, null: false
+    t.string "quantity_unit", limit: 30, null: false
+    t.uuid "reason_problem_id"
+    t.string "route", null: false
+    t.index ["clinical_document_id", "position"], name: "idx_prescription_items_position", unique: true
+    t.index ["medication_catalog_item_id"], name: "index_prescription_items_on_medication_catalog_item_id"
+    t.index ["nursing_protocol_version_item_id"], name: "index_prescription_items_on_nursing_protocol_version_item_id"
+    t.index ["reason_problem_id"], name: "index_prescription_items_on_reason_problem_id"
+    t.check_constraint "(medication_catalog_item_id IS NULL) <> (free_text IS NULL)", name: "ck_prescription_items_source"
+    t.check_constraint "(medication_catalog_item_id IS NULL) = (catmat_code IS NULL) AND (medication_catalog_item_id IS NULL) = (catalog_release_id IS NULL)", name: "ck_prescription_items_catalog"
+    t.check_constraint "duration_days IS NULL OR duration_days >= 1 AND duration_days <= 365", name: "ck_prescription_items_duration"
+    t.check_constraint "position >= 1", name: "ck_prescription_items_position"
+    t.check_constraint "quantity > 0::numeric AND quantity <= 9999::numeric", name: "ck_prescription_items_quantity"
+    t.check_constraint "route::text = ANY (ARRAY['oral'::text, 'sublingual'::text, 'topical'::text, 'ophthalmic'::text, 'otic'::text, 'nasal'::text, 'inhalation'::text, 'vaginal'::text, 'rectal'::text, 'intramuscular'::text, 'intravenous'::text, 'subcutaneous'::text, 'other'::text])", name: "ck_prescription_items_route"
   end
 
   create_table "processed_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1178,8 +1352,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.index ["consultation_id"], name: "index_signature_requests_on_consultation_id"
     t.index ["document_type", "document_id"], name: "idx_signature_requests_document", unique: true
     t.check_constraint "attempts >= 0", name: "ck_signature_requests_attempts"
-    t.check_constraint "document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text])", name: "ck_signature_requests_document_type"
-    t.check_constraint "reason_code IS NULL OR reason_code::text = ANY (ARRAY['no_session'::text, 'session_expired'::text, 'provider_unavailable'::text, 'provider_rejected'::text, 'signer_unavailable'::text, 'verification_failed'::text, 'certificate_expired'::text, 'certificate_revoked'::text, 'certificate_cpf_mismatch'::text, 'feature_disabled'::text, 'user_request'::text])", name: "ck_signature_requests_reason"
+    t.check_constraint "document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text, 'ClinicalDocument'::text])", name: "ck_signature_requests_document_type"
+    t.check_constraint "reason_code IS NULL OR reason_code::text = ANY (ARRAY['no_session'::text, 'session_expired'::text, 'provider_unavailable'::text, 'provider_rejected'::text, 'signer_unavailable'::text, 'verification_failed'::text, 'certificate_expired'::text, 'certificate_revoked'::text, 'certificate_cpf_mismatch'::text, 'feature_disabled'::text, 'user_request'::text, 'document_cancelled'::text])", name: "ck_signature_requests_reason"
     t.check_constraint "(status::text = ANY (ARRAY['signed'::text, 'returned_to_paper'::text])) = (resolved_at IS NOT NULL)", name: "ck_signature_requests_resolution"
     t.check_constraint "(status)::text = 'returned_to_paper'::text OR return_note IS NULL", name: "ck_signature_requests_return_note"
     t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'signed'::text, 'failed'::text, 'returned_to_paper'::text])", name: "ck_signature_requests_status"
@@ -1228,7 +1402,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.index ["last_verification"], name: "index_signatures_on_last_verification"
     t.index ["signature_request_id"], name: "index_signatures_on_signature_request_id", unique: true
     t.index ["signer_certificate_id"], name: "index_signatures_on_signer_certificate_id"
-    t.check_constraint "document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text])", name: "ck_signatures_document_type"
+    t.check_constraint "document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text, 'ClinicalDocument'::text])", name: "ck_signatures_document_type"
     t.check_constraint "last_verification::text = ANY (ARRAY['valid'::text, 'invalid'::text, 'indeterminate'::text])", name: "ck_signatures_verification"
     t.check_constraint "policy::text = ANY (ARRAY['AD-RB'::text, 'AD-RT'::text])", name: "ck_signatures_policy"
     t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text])", name: "ck_signatures_provider"
@@ -1509,6 +1683,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
   add_foreign_key "citizen_verifications", "users", column: "verified_by_user_id"
   add_foreign_key "citizens", "neighborhoods"
   add_foreign_key "citizens", "patients"
+  add_foreign_key "city_medication_list", "users", column: "added_by_user_id"
+  add_foreign_key "clinical_documents", "attendances"
+  add_foreign_key "clinical_documents", "citizens"
+  add_foreign_key "clinical_documents", "clinical_documents", column: "replaces_document_id"
+  add_foreign_key "clinical_documents", "consultations"
+  add_foreign_key "clinical_documents", "patients"
+  add_foreign_key "clinical_documents", "users", column: "author_user_id"
+  add_foreign_key "clinical_documents", "users", column: "cancelled_by_user_id"
   add_foreign_key "clinical_record_administrative_reads", "consultations"
   add_foreign_key "clinical_record_administrative_reads", "patients"
   add_foreign_key "clinical_record_administrative_reads", "users"
@@ -1530,6 +1712,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
   add_foreign_key "consultations", "professional_links"
   add_foreign_key "consultations", "users", column: "author_user_id"
   add_foreign_key "conversations", "citizens"
+  add_foreign_key "document_verification_lookups", "clinical_documents"
   add_foreign_key "health_team_members", "health_teams"
   add_foreign_key "health_team_members", "professionals"
   add_foreign_key "health_teams", "health_units"
@@ -1545,6 +1728,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
   add_foreign_key "memberships", "users", column: "granted_by_id"
   add_foreign_key "neighborhood_coverages", "health_units"
   add_foreign_key "neighborhood_coverages", "neighborhoods"
+  add_foreign_key "nursing_protocol_version_items", "nursing_protocol_versions"
+  add_foreign_key "nursing_protocol_versions", "nursing_protocols"
+  add_foreign_key "nursing_protocol_versions", "users", column: "created_by_user_id"
+  add_foreign_key "nursing_protocols", "users", column: "created_by_user_id"
+  add_foreign_key "patient_medication_events", "clinical_documents", deferrable: :deferred
+  add_foreign_key "patient_medication_events", "consultation_addenda", column: "addendum_id", deferrable: :deferred
+  add_foreign_key "patient_medication_events", "consultations", deferrable: :deferred
+  add_foreign_key "patient_medication_events", "patient_medications", deferrable: :deferred
+  add_foreign_key "patient_medication_events", "users"
+  add_foreign_key "patient_medications", "patients"
   add_foreign_key "patient_problem_events", "consultation_addenda", column: "addendum_id", deferrable: :deferred
   add_foreign_key "patient_problem_events", "consultations", deferrable: :deferred
   add_foreign_key "patient_problem_events", "patient_problems", deferrable: :deferred
@@ -1552,6 +1745,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
   add_foreign_key "patient_problems", "patients"
   add_foreign_key "patient_profile_divergences", "citizens"
   add_foreign_key "patient_profile_divergences", "patients"
+  add_foreign_key "prescription_items", "clinical_documents"
+  add_foreign_key "prescription_items", "nursing_protocol_version_items"
+  add_foreign_key "prescription_items", "patient_problems", column: "reason_problem_id"
   add_foreign_key "professional_links", "health_units"
   add_foreign_key "professional_links", "professionals"
   add_foreign_key "professional_links", "users", column: "ended_by_user_id"

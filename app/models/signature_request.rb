@@ -4,7 +4,8 @@
 class SignatureRequest < ApplicationRecord
   STATUSES = %w[pending signed failed returned_to_paper].freeze
   REASONS = %w[no_session session_expired provider_unavailable provider_rejected signer_unavailable verification_failed
-               certificate_expired certificate_revoked certificate_cpf_mismatch feature_disabled user_request].freeze
+               certificate_expired certificate_revoked certificate_cpf_mismatch feature_disabled user_request
+               document_cancelled].freeze
   TRANSIENT_REASONS = %w[provider_unavailable signer_unavailable verification_failed].freeze
   MIN_RETURN_NOTE = 10
   MAX_RETURN_NOTE = 500

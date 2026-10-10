@@ -28,7 +28,11 @@ Rails.application.config.filter_parameters += [
   :cid10_justification,
   # ADR 0032: PKCE, estado opaco do signer, valor da assinatura e o JSON
   # canônico (`code`, `state`, `token` e `cpf` já estavam na lista).
-  :verifier, :prepared, :signature_value, :raw_signature, :canonical
+  :verifier, :prepared, :signature_value, :raw_signature, :canonical,
+  # ADR 0033: conteúdo dos documentos clínicos, medicamentos e a conferência
+  # pública (`:reason`, `:note`, `:cpf` e `/\Aq\z/` já estavam na lista).
+  :content, :items, :free_text, :dosage_instructions, :dosage_summary, :printed_description, :cid10,
+  :companion_name, :companion_kinship, :short_code, :birth_year
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
