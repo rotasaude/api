@@ -43,6 +43,7 @@ else
   require Rails.root.join("lib/screening_crew").to_s
   require Rails.root.join("lib/clinical_record_crew").to_s
   require Rails.root.join("lib/digital_signature_crew").to_s
+  require Rails.root.join("lib/clinical_documents_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -84,6 +85,10 @@ else
   # fica ativo; aqui só entra a CID-10 (e a CIAP-2 só se ainda faltar).
   terms = ClinicalRecordCrew.seed_platform!
   puts "[seeds] CIAP-2/CID-10 #{terms.map { |kind, imported| "#{kind} #{imported ? 'importada (recorte de dev)' : 'já ativa'}" }.join('; ')}"
+
+  # ── Medicamentos (módulo 19c, ADR 0033) ───────────────────────────────────────
+  # Recorte real do CATMAT (sem rede) e listas Anvisa do repositório.
+  puts "[seeds] medicamentos . #{ClinicalDocumentsCrew.seed_platform!.inspect}"
 
   # Mesmo protocolo que o provisionamento semeia em rascunho (Plano 4); aqui ativo.
   protocol_defn = CityTemplates.protocol.fetch(:definition)
@@ -255,6 +260,10 @@ else
         # Depois do prontuário: só Curitiba liga digital_signature + PSC simulado.
         signature = DigitalSignatureCrew.seed_current_city(slug: slug)
         puts "[seeds] assinatura .. interruptores #{signature[:switch]}; #{signature[:professionals].size} profissionais com CPF novo"
+
+        # ── Documentos clínicos (módulo 19c, ADR 0033) ────────────────────────
+        documents = ClinicalDocumentsCrew.seed_current_city(slug: slug)
+        puts "[seeds] documentos .. #{documents.inspect}"
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
