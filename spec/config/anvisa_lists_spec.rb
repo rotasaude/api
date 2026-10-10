@@ -15,6 +15,7 @@ RSpec.describe "config/medications/anvisa" do
     expect(controlled.map(&:first)).to eq(controlled.map(&:first).uniq)
     expect((antimicrobials + controlled.map(&:first)).all? { |name| name == name.upcase && name.strip == name }).to be(true)
     expect(controlled.map(&:last).uniq - %w[A1 A2 A3 B1 B2 C1 C2 C3 C4 C5]).to eq([])
+    expect((antimicrobials + controlled.map(&:first)).grep(%r{[()/]})).to eq([]) # um nome por linha
     expect(sources.to_yaml).not_to include("<")
   end
 
