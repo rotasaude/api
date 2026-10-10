@@ -184,6 +184,7 @@ Rails.application.routes.draw do
     get  "patients/:id", to: "clinical_records#patient"
     get  "professionals/:user_id/consultations", to: "clinical_record_consultations#index"
     get  "consultations/:id",                    to: "clinical_record_consultations#show"
+    get  "consultations/:id/documents",          to: "clinical_record_documents#index"
   end
 
   # Documentos clínicos (ADR 0033; contrato §6): configuração da cidade (CNPJ,
