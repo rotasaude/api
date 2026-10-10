@@ -1,0 +1,12 @@
+antimicrobials:
+  label: "IN Anvisa nº 360/2025 (lista de antimicrobianos da RDC nº 471/2021, redação de 23/04/2025; revoga a IN 244/2023), mais 10 grafias DCB"
+  read_at: "2026-10-10"
+  source: "https://anvisalegis.datalegis.net/action/ActionDatalegis.php?acao=abrirTextoAto&link=S&tipo=INM&numeroAto=00000360&seqAto=000&valorAno=2025&orgao=DC%2FANVISA%2FMS&cod_modulo=310&cod_menu=9431 (conferida com https://www.legisweb.com.br/legislacao/?id=477175)"
+  official_count: 131
+  dcb_spelling_aliases: "CIPROFLOXACINO, GATIFLOXACINO, LEVOFLOXACINO, LOMEFLOXACINO, NORFLOXACINO, OFLOXACINO, PEFLOXACINO, ROSOXACINO, TROVAFLOXACINO, CEFPIROMA (o anexo oficial grafa -floxacina e 'cefefpiroma'; o CATMAT usa a grafia DCB)"
+  count: 141
+controlled:
+  label: "Portaria SVS/MS nº 344/1998, Anexo I, listas A1–C5 (sem C4, que não existe no texto), atualização nº 101 dada pela RDC nº 1.036/2026"
+  read_at: "2026-10-10"
+  source: "https://anvisalegis.datalegis.net/action/ActionDatalegis.php?acao=abrirTextoAto&tipo=RDC&numeroAto=00001036&seqAto=000&valorAno=2026&orgao=RDC/DC/ANVISA/MS&codTipo=&desItem=&desItemFim=&cod_menu=1696&cod_modulo=134&pesquisa=true"
+  counts: { A1: 94, A2: 13, A3: 14, B1: 95, B2: 8, C1: 213, C2: 5, C3: 3, C5: 31 }

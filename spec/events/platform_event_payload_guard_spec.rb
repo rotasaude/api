@@ -16,7 +16,7 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
                                 city.archived
                                 city.admin_reinvited city.key_rotated city.consent_term_published
                                 city.feature_changed city.record_settings_changed
-                                terminology.release_activated cnes.snapshot_imported
+                                terminology.release_activated cnes.snapshot_imported anvisa_lists.imported
                                 channel.registered channel.token_rotated channel.unknown_seen
                                 operator.login operator.city_access operator.created
                                 operator.impersonated

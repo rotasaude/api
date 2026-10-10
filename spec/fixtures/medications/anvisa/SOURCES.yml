@@ -1,0 +1,10 @@
+antimicrobials:
+  label: "Fixture de teste (recorte da RDC 471/2021)"
+  read_at: "2026-10-09"
+  source: "spec/fixtures"
+  count: 7
+controlled:
+  label: "Fixture de teste (recorte da Portaria 344/1998)"
+  read_at: "2026-10-09"
+  source: "spec/fixtures"
+  counts: { A1: 2, A2: 1, B1: 2, C1: 1 }
