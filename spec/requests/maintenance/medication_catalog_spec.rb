@@ -68,4 +68,60 @@ RSpec.describe "Maintenance: catálogo de medicamentos", type: :request do
     end
     expect(PlatformEvent.where(name: %w[maintenance.medication_catalog.imported maintenance.anvisa_lists.imported])).to be_empty
   end
+  # Prova no navegador: o CATMAT real leva ~25 s; com o limite de 10 s do
+  # schema a importação concluía e a resposta voltava "Timeout on
+  # ImportMedicationCatalog.ok". O relógio monotônico (o mesmo que
+  # GraphQL::Schema::Timeout lê) salta dentro da chamada lenta.
+  describe "limite de tempo do GraphQL" do
+    let(:clock_offset_ms) { [ 0 ] }
+
+    before do
+      allow(Process).to receive(:clock_gettime).and_wrap_original do |original, *args|
+        value = original.call(*args)
+        args == [ Process::CLOCK_MONOTONIC, :millisecond ] ? value + clock_offset_ms[0] : value
+      end
+    end
+
+    def slow!(klass, method, seconds:)
+      allow(klass).to receive(method).and_wrap_original do |original, *args, **kw|
+        original.call(*args, **kw).tap { clock_offset_ms[0] += seconds * 1000 }
+      end
+    end
+
+    it "importMedicationCatalog que passa de 10 s (até 300 s) responde ok, sem Timeout" do
+      stub_catmat!
+      slow!(Medications::CatalogImport, :call, seconds: 25)
+      gql!("mutation { importMedicationCatalog { ok errors { message } added } }")
+      expect(json["errors"]).to be_nil
+      expect(json.dig("data", "importMedicationCatalog")).to include("ok" => true, "errors" => [], "added" => 17)
+    end
+
+    it "importAnvisaLists que passa de 10 s responde ok, sem Timeout" do
+      slow!(Medications::AnvisaImport, :call, seconds: 25)
+      gql!("mutation { importAnvisaLists { ok errors { message } } }")
+      expect(json["errors"]).to be_nil
+      expect(json.dig("data", "importAnvisaLists")).to include("ok" => true)
+    end
+
+    it "query comum continua com 10 s: passou disso, o campo seguinte cai no Timeout" do
+      slow!(MedicationCatalogRelease, :current, seconds: 11)
+      gql!("{ medicationCatalog { currentRelease { id } reviewItems(first: 1) { catmatCode } } }")
+      expect(json["errors"].map { |e| e["message"] }).to include(a_string_starting_with("Timeout on"))
+    end
+  end
+
+  describe "Maintenance::Timeout" do
+    subject(:timeout) { Maintenance::Timeout.new(max_seconds: 10) }
+
+    def limit_for(query_string) = timeout.max_seconds(GraphQL::Query.new(Maintenance::Schema, query_string))
+
+    it "300 s só para operação feita apenas das importações; o resto fica com os 10 s do schema" do
+      expect(limit_for("mutation { importMedicationCatalog { ok } }")).to eq(300)
+      expect(limit_for("mutation { importAnvisaLists { ok } }")).to eq(300)
+      expect(limit_for("mutation { a: importAnvisaLists { ok } b: importMedicationCatalog { ok } }")).to eq(300)
+      expect(limit_for("{ medicationCatalog { currentRelease { id } } }")).to eq(10)
+      expect(limit_for("mutation { importMedicationCatalog { ok } revokeMaintenanceToken(id: \"x\") { ok } }")).to eq(10)
+      expect(limit_for("mutation { ... on Mutation { importMedicationCatalog { ok } } }")).to eq(10)
+    end
+  end
 end

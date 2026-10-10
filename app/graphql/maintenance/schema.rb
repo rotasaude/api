@@ -14,8 +14,9 @@ module Maintenance
     # Limite de TEMPO (spec §8: 10 s), que faltava. Profundidade e complexidade
     # limitam a FORMA da query; nenhuma das duas impede uma query rasa e
     # simples de segurar um processo Puma numa conexão lenta de cidade — este é
-    # o limite que interrompe a execução e devolve erro no campo.
-    use GraphQL::Schema::Timeout, max_seconds: 10
+    # o limite que interrompe a execução e devolve erro no campo. As duas
+    # importações síncronas têm 300 s (Maintenance::Timeout).
+    use Maintenance::Timeout, max_seconds: 10
 
     # O que um token de serviço não pode fazer (spec §7, Task 5): recusa ANTES
     # de executar, pelo mesmo mecanismo de análise que já barra profundidade e
