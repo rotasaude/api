@@ -419,7 +419,10 @@ RSpec.describe "Invariantes do atendimento: o CPF nunca vai na URL", type: :requ
       "/attendance/requests/unassigned", "/attendance/requests/:id", "/attendance/erasure_requests",
       "/attendance/units/:id/screening_queue", "/attendance/screenings/:id",
       "/attendance/attendances/:id/record", "/attendance/consultation_options", "/attendance/consultations/:id",
-      "/attendance/consultations/:id/print", "/attendance/consultations/mine" ]
+      "/attendance/consultations/:id/print", "/attendance/consultations/mine",
+      # Documentos clínicos e medicamentos em uso (ADR 0033): só ids na URL.
+      "/attendance/consultations/:id/documents", "/attendance/documents/:id", "/attendance/patients/:id/medications",
+      "/attendance/consultations/:id/renewal" ]
   end
 
   def attendance_routes

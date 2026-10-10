@@ -32,7 +32,9 @@ Rails.application.config.filter_parameters += [
   # ADR 0033: conteúdo dos documentos clínicos, medicamentos e a conferência
   # pública (`:reason`, `:note`, `:cpf` e `/\Aq\z/` já estavam na lista).
   :content, :items, :free_text, :dosage_instructions, :dosage_summary, :printed_description, :cid10,
-  :companion_name, :companion_kinship, :short_code, :birth_year
+  :companion_name, :companion_kinship, :short_code, :birth_year,
+  # O medicamento informado de fora vai pelo id do catálogo, na URL da consulta.
+  /\Acatalog_item_id\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

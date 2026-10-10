@@ -147,6 +147,14 @@ Rails.application.routes.draw do
     post  "consultations/:id/finalize",      to: "consultations#finalize"
     post  "consultations/:id/addenda",       to: "consultations#addenda"
     get   "consultations/:id/print",         to: "consultations#print"
+    # Documentos clínicos e medicamentos em uso (ADR 0033; contrato §3–§4).
+    get  "consultations/:id/documents",    to: "clinical_documents#index"
+    post "consultations/:id/documents",    to: "clinical_documents#create"
+    post "attendances/:id/declarations",   to: "clinical_documents#declaration"
+    get  "documents/:id",                  to: "clinical_documents#show"
+    get  "patients/:id/medications",       to: "patient_medications#index"
+    post "consultations/:id/medications",  to: "patient_medications#create"
+    get  "consultations/:id/renewal",      to: "patient_medications#renewal"
     post  "sigtap/search",                   to: "sigtap_procedures#search"
     # Busca no catálogo de medicamentos (ADR 0033; contrato §5).
     post  "medications/search",              to: "medication_searches#search"
