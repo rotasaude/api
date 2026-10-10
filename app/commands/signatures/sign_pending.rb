@@ -12,6 +12,7 @@ module Signatures
     def call(request_id:, now: Time.current, signer: Signer.client, env: Rails.env)
       request = SignatureRequest.lock("FOR UPDATE SKIP LOCKED").find_by(id: request_id)
       return :skipped unless request&.pending?
+      return :returned_to_paper if CancelledDocuments.retire!([ request ], now: now).empty?
 
       unless Gate.usable?(Current.city)
         ToPaper.call(request, reason_code: "feature_disabled", now: now)

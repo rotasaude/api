@@ -14,6 +14,7 @@ module Signatures
       ApplicationRecord.transaction do
         requests = SignatureRequest.where(id: Array(request_ids), author_user_id: user.id, status: "pending")
                                    .order(:created_at, :id).lock("FOR UPDATE SKIP LOCKED").to_a
+        requests = CancelledDocuments.retire!(requests, now: now)
         next Result.ok(record: { signed: 0, failed: [] }) if requests.empty?
 
         unless Gate.usable?(Current.city)

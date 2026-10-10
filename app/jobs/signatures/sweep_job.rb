@@ -12,12 +12,26 @@ module Signatures
 
     def perform
       now = Time.current
+      retire_cancelled_documents(now)
       return_pending_to_paper(now) unless Gate.usable?(Current.city)
       SignatureSession.active.where(expires_at: ..now).update_all(status: "expired", updated_at: now)
       SignatureOauthState.where(expires_at: ...(now - 1.day)).delete_all
     end
 
     private
+
+    # Desvio 6 (ADR 0033): documento cancelado com pedido ainda pendente (o
+    # job estava assinando quando o cancelamento tentou tirá-lo da fila).
+    def retire_cancelled_documents(now)
+      ids = SignatureRequest.pending.where(document_type: "ClinicalDocument")
+                            .where(document_id: ClinicalDocument.where(status: "cancelled").select(:id)).pluck(:id)
+      ids.each do |id|
+        ApplicationRecord.transaction do
+          request = SignatureRequest.lock("FOR UPDATE SKIP LOCKED").find_by(id: id)
+          CancelledDocuments.retire!([ request ], now: now) if request&.pending?
+        end
+      end
+    end
 
     # Um pedido por transação; o que o job/lote está assinando fica para a
     # próxima volta (SKIP LOCKED) — e o job, ao tocá-lo, já o devolve ao papel.
