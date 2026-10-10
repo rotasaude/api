@@ -55,6 +55,19 @@ RSpec.describe Medications::Catmat::Client do
     expect { client.fetch_all }.to raise_error(described_class::Incomplete)
   end
 
+  it "erro de leitura/protocolo e corpo que não é objeto JSON → Unavailable" do
+    [ EOFError, IOError, Net::HTTPBadResponse, Timeout::Error ].each do |error|
+      WebMock.reset!
+      stub_request(:get, MedicationHelpers::CATMAT_URL).to_raise(error)
+      expect { client.fetch_all }.to raise_error(described_class::Unavailable)
+    end
+    [ "null", "123", "[]", '"texto"' ].each do |body|
+      WebMock.reset!
+      stub_request(:get, MedicationHelpers::CATMAT_URL).to_return(status: 200, body: body)
+      expect { client.fetch_all }.to raise_error(described_class::Unavailable)
+    end
+  end
+
   it "o FixtureClient devolve as mesmas linhas, sem rede" do
     rows = Medications::Catmat::FixtureClient.new(Rails.root.join("db/seeds/medications/catmat-dev.json")).fetch_all
     expect(rows.map(&:catmat_code)).to include(268_856, 384_258)

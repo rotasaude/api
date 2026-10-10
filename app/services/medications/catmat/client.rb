@@ -8,8 +8,6 @@ require "net/http"
 
 module Medications
   module Catmat
-    Row = Data.define(:catmat_code, :pdm_code, :pdm_name, :description, :updated_at)
-
     class Client
       class Unavailable < StandardError; end
       class Incomplete < StandardError; end
@@ -75,8 +73,12 @@ module Medications
           response = http_get(page)
           raise Unavailable, "HTTP #{response.code} na página #{page}" unless response.code == "200"
 
-          JSON.parse(response.body)
-        rescue Unavailable, JSON::ParserError, Net::OpenTimeout, Net::ReadTimeout, SocketError, SystemCallError, OpenSSL::SSL::SSLError => e
+          body = JSON.parse(response.body)
+          raise Unavailable, "resposta fora do formato esperado na página #{page}" unless body.is_a?(Hash)
+
+          body
+        rescue Unavailable, JSON::ParserError, Net::OpenTimeout, Net::ReadTimeout, SocketError, SystemCallError, OpenSSL::SSL::SSLError,
+               EOFError, IOError, Net::ProtocolError, Timeout::Error => e
           if attempts <= RETRIES && !client_error?(e)
             @sleeper.call(BACKOFF.fetch(attempts - 1, BACKOFF.last))
             retry
