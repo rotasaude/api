@@ -44,6 +44,21 @@ RSpec.describe "Cancelamento de documento clínico", type: :request do
     expect(json_body["replaces_document_id"]).to eq(document.id)
   end
 
+  # Revisão final M1: o cancelamento já gravado não vira 500 se a retirada do
+  # pedido falhar depois do commit; o log leva só a classe e o id.
+  it "falha ao retirar o pedido depois do commit → 200 cancelado, log sem a mensagem do erro" do
+    document = issue!
+    stepped_up!(doctor)
+    allow(SignatureRequest).to receive(:lock).and_call_original
+    allow(SignatureRequest).to receive(:lock).with("FOR UPDATE SKIP LOCKED")
+                                              .and_raise(ActiveRecord::StatementInvalid, "PG::Secret detalhe-do-erro")
+    log = capture_log { json_post "/attendance/documents/#{document.id}/cancel", reason: "Dias errados no atestado" }
+    expect([ response.status, json_body["status"] ]).to eq([ 200, "cancelled" ])
+    expect(document.reload).to be_cancelled
+    expect(log).to include("retire deferred: ActiveRecord::StatementInvalid document_id=#{document.id}")
+    expect(log).not_to include("detalhe-do-erro")
+  end
+
   it "pedido pendente sai da fila; travado pelo job, sai depois pelo job (Review Focus 4)" do
     stub_psc!; stub_signer!; signature_city!
     linked_certificate!(doctor, leaf: fake_psc.leaf(SignatureHelpers::DOCTOR_CPF))

@@ -7,7 +7,7 @@ module ClinicalDocuments
     module Input
       module_function
 
-      def hash(value)
+      def object(value)
         value = value.to_unsafe_h if value.respond_to?(:to_unsafe_h)
         value.is_a?(Hash) ? value.to_h.stringify_keys : {}
       end

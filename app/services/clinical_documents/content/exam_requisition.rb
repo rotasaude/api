@@ -8,7 +8,7 @@ module ClinicalDocuments
       module_function
 
       def call(input, consultation:)
-        input = Input.hash(input)
+        input = Input.object(input)
         exams = Consultations::Effective.call(consultation)[:exam_requests]
         return Result.fail(:no_exam_requests) if exams.empty?
 
@@ -16,7 +16,11 @@ module ClinicalDocuments
         return Input.invalid("note") if note == :invalid
 
         rows = exams.map do |exam|
-          { "sigtap_code" => exam.sigtap_code, "label" => ClinicalTerms::SigtapExams.label(exam.sigtap_code, exam.sigtap_competence),
+          label = ClinicalTerms::SigtapExams.label(exam.sigtap_code, exam.sigtap_competence)
+          # Sem rótulo o canônico seria inválido (label é obrigatório): recusa aqui.
+          return Input.invalid("exams") if label.blank?
+
+          { "sigtap_code" => exam.sigtap_code, "label" => label,
             "competence" => exam.sigtap_competence, "cid10_justification" => exam.cid10_justification }.compact
         end
         Result.ok(content: { "exams" => rows, "note" => note })

@@ -16,7 +16,7 @@ module ClinicalDocuments
       module_function
 
       def call(input, role:, patient:, catalog:, matcher:, today: Time.zone.today, city_cnpj: nil)
-        input = Input.hash(input)
+        input = Input.object(input)
         raw = input["items"]
         return Input.invalid("items") unless raw.is_a?(Array) && raw.size.between?(1, MAX_ITEMS)
 
@@ -50,7 +50,7 @@ module ClinicalDocuments
       end
 
       def item(entry, index, catalog, matcher, problems)
-        entry = Input.hash(entry)
+        entry = Input.object(entry)
         bad = ->(field) { Result.fail(:invalid_item, details: { index: index, field: field }) }
         reference = entry["catalog_item"].is_a?(Hash) ? entry["catalog_item"]["id"] : nil
         free = entry["free_text"].is_a?(String) ? entry["free_text"].squish : nil

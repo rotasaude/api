@@ -51,7 +51,11 @@ RSpec.describe ClinicalDocuments::Pdf do
   it "declaração da recepção: matrícula de quem emite; enfermagem: protocolo, CNPJ e Coren" do
     declaration = ClinicalDocuments::Issue.call(kind: "attendance_declaration", content: { "issuer_registration" => "4471" },
                                                 by: verifier!, attendance: consultation.attendance).payload[:document]
-    expect(text_of(described_class.call(declaration)).join).to include("DECLARAÇÃO DE COMPARECIMENTO", "Matrícula: 4471")
+    text = text_of(described_class.call(declaration)).join
+    expect(text).to include("DECLARAÇÃO DE COMPARECIMENTO", "Emitido pela recepção", "Matrícula: 4471")
+    # Revisão final I4: o papel vai ao cidadão; o e-mail de login da recepção nunca.
+    email = declaration.author_user.email_address
+    expect([ text, text.gsub(/\s+/, "") ]).to all(satisfy { |t| !t.include?(email) && !t.include?(email.split("@").first) })
 
     import_test_catalog!
     city_cnpj!

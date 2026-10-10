@@ -34,7 +34,7 @@ module ClinicalDocuments
     def prescription_platform(content)
       return Result.fail(:catalog_unavailable) unless Medications::Search.available?
 
-      items = Content::Input.hash(content)["items"]
+      items = Content::Input.object(content)["items"]
       ids = Array(items).filter_map do |item|
         reference = item.is_a?(Hash) && item["catalog_item"].is_a?(Hash) ? item["catalog_item"]["id"].to_s : nil
         reference if Uuid.valid?(reference)
@@ -69,6 +69,8 @@ module ClinicalDocuments
       document = create!(kind: kind, patient_id: patient&.id, citizen_id: attendance.citizen_id, consultation: consultation,
                          attendance: attendance, author_user_id: by.id, cbo_code: cbo, issue_mode: digital ? "digital" : "paper",
                          replaces_document_id: replaces&.id, issued_at: now, content: content.to_json)
+      return document if document.is_a?(Result)
+
       rows.each { |row| PrescriptionItem.create!(row.merge(clinical_document: document)) }
       failure = medications!(document, patient, rows, platform, by, now)
       return failure if failure
@@ -104,7 +106,9 @@ module ClinicalDocuments
       valid ? old : invalid("replaces_document_id")
     end
 
-    # Código curto/token repetido (improvável): tenta de novo com outros.
+    # Código curto/token repetido (improvável): tenta de novo com outros. O
+    # índice único em replaces_document_id fecha a corrida de dois "cancelar e
+    # emitir outro" do mesmo documento: o segundo recebe 422, nunca 500.
     def create!(attrs)
       attempts = 0
       begin
@@ -113,6 +117,7 @@ module ClinicalDocuments
           ClinicalDocument.create!(attrs.merge(verification_token: Codes.token, short_code: Codes.short_code))
         end
       rescue ActiveRecord::RecordNotUnique => e
+        return invalid("replaces_document_id") if e.message.include?("index_clinical_documents_on_replaces_document_id")
         raise unless attempts < 3 && e.message.match?(/short_code|verification_token/)
 
         retry

@@ -15,7 +15,7 @@ module ClinicalDocuments
       module_function
 
       def call(input, today: Time.zone.today)
-        input = Input.hash(input)
+        input = Input.object(input)
         return Input.invalid("type") unless TYPES.include?(input["type"])
         return Input.invalid("cid_authorized") unless [ nil, true, false ].include?(input["cid_authorized"])
 

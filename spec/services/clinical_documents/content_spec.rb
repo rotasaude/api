@@ -3,6 +3,8 @@ require "rails_helper"
 
 # Spec §4; contrato §2/§3: o conteúdo de cada tipo, validado campo a campo.
 RSpec.describe "Conteúdo dos documentos" do
+  include ActiveSupport::Testing::TimeHelpers
+
   before { clinical_city!; ciap2_release!; cid10_release!; sigtap_release! }
 
   let(:today) { Date.new(2026, 10, 9) }
@@ -74,6 +76,42 @@ RSpec.describe "Conteúdo dos documentos" do
       expect(described_class.call({ "arrived_at" => "10:00", "left_at" => "09:00" }, attendance: attendance).details).to eq(field: "left_at")
       expect(described_class.call({ "period" => "night" }, attendance: attendance).details).to eq(field: "period")
     end
+
+    # Revisão final I1: a consulta finalizada no dia seguinte não vira hora de
+    # saída (nem recusa um left_at que ninguém digitou, nem atesta outro dia).
+    context "encerramento do atendimento" do
+      let(:doctor) { doctor!(unit) }
+
+      def closed_attendance(checked_in:, closed:)
+        consultation = travel_to(Time.zone.parse(checked_in)) do
+          started_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(2))
+        end
+        travel_to(Time.zone.parse(closed)) do
+          Consultations::SaveDraft.call(consultation: consultation, params: draft_body, by: doctor)
+          result = Consultations::Finalize.call(consultation: consultation.reload, outcome_params: { "outcome" => "discharged" }, by: doctor)
+          raise "finalização recusada: #{result.reason}" if result.failure?
+        end
+        consultation.attendance.reload
+      end
+
+      it "no mesmo dia do check-in: a saída padrão é o encerramento" do
+        visit = closed_attendance(checked_in: "2026-10-09 08:12", closed: "2026-10-09 11:40")
+        expect(described_class.call({}, attendance: visit).payload[:content])
+          .to eq("date" => "2026-10-09", "arrived_at" => "08:12", "left_at" => "11:40", "unit_name" => unit.name)
+      end
+
+      it "encerrado em D+1, check-in à tarde: não recusa; a saída fica ausente" do
+        visit = closed_attendance(checked_in: "2026-10-09 14:00", closed: "2026-10-10 09:00")
+        result = described_class.call({}, attendance: visit)
+        expect(result).to be_ok
+        expect(result.payload[:content]).to eq("date" => "2026-10-09", "arrived_at" => "14:00", "unit_name" => unit.name)
+      end
+
+      it "encerrado em D+1, check-in de manhã: não atesta a hora de outro dia" do
+        visit = closed_attendance(checked_in: "2026-10-09 08:00", closed: "2026-10-10 17:30")
+        expect(described_class.call({}, attendance: visit).payload[:content]).not_to have_key("left_at")
+      end
+    end
   end
 
   describe ClinicalDocuments::Content::ExamRequisition do
@@ -88,6 +126,14 @@ RSpec.describe "Conteúdo dos documentos" do
       expect(content["note"]).to eq("Jejum de 8 horas")
       empty = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(2), exam_requests: [])
       expect(described_class.call({}, consultation: empty).reason).to eq(:no_exam_requests)
+    end
+
+    # Revisão final M2: sem rótulo SIGTAP o canônico seria inválido; recusa na emissão.
+    it "exame sem rótulo SIGTAP na competência → invalid_content field exams" do
+      consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
+      allow(ClinicalTerms::SigtapExams).to receive(:label).and_return(nil)
+      result = described_class.call({}, consultation: consultation)
+      expect([ result.reason, result.details ]).to eq([ :invalid_content, { field: "exams" } ])
     end
   end
 end

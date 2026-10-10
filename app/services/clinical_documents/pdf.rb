@@ -28,6 +28,7 @@ module ClinicalDocuments
                           "other" => "acompanhar o paciente" }.freeze
     PERIODS = { "morning" => "no período da manhã", "afternoon" => "no período da tarde", "full_day" => "em período integral" }.freeze
     QR_SIZE = 84
+    RECEPTION_ISSUER = "Emitido pela recepção".freeze
 
     module_function
 
@@ -145,7 +146,9 @@ module ClinicalDocuments
       author = document.author_user
       council = Json.council(author.professional)
       pdf.move_down 14
-      pdf.text s(Screenings::Json.staff_name(author)), style: :bold
+      # Sem perfil profissional (recepção) não há nome: linha neutra e a
+      # matrícula abaixo, nunca o e-mail de login (o papel vai ao cidadão).
+      pdf.text s(author.professional&.professional_name || RECEPTION_ISSUER), style: :bold
       pdf.text s(council) if council
       pdf.text s("CBO #{document.cbo_code} #{Professionals::Cbo.find(document.cbo_code)&.title}") if document.cbo_code
       pdf.text s("Matrícula: #{content['issuer_registration']}") if content["issuer_registration"]

@@ -110,6 +110,17 @@ RSpec.describe ClinicalDocuments::Issue do
     expect(issue(kind: "attendance_declaration", content: {}, replaces_document_id: old.id).details).to eq(field: "replaces_document_id")
   end
 
+  # Revisão final M5: o índice único em replaces_document_id barra o segundo
+  # "cancelar e emitir outro" do mesmo documento com 422, nunca 500.
+  it "substituir de novo um documento já substituído → invalid_content field replaces_document_id, sem levantar" do
+    old = issue.payload[:document]
+    old.update!(status: "cancelled", cancel_reason: "Dias errados no atestado", cancelled_at: Time.current, cancelled_by_user_id: doctor.id)
+    expect(issue(replaces_document_id: old.id)).to be_ok
+    second = nil
+    expect { second = issue(replaces_document_id: old.id) }.not_to change(ClinicalDocument, :count)
+    expect([ second.reason, second.details ]).to eq([ :invalid_content, { field: "replaces_document_id" } ])
+  end
+
   it "o JSON do documento segue o contrato §2" do
     document = issue.payload[:document]
     json = ClinicalDocuments::Json.document(document).as_json
