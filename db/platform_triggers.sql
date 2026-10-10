@@ -173,3 +173,54 @@ BEGIN
                    'EXECUTE FUNCTION terminology_codes_guard()', t || '_guard', t);
   END LOOP;
 END $$;
+
+-- Catálogo de medicamentos (ADR 0033; spec §3): item nunca é apagado (receitas,
+-- REMUME e protocolos das cidades guardam o id); release ativa ou substituída
+-- nunca volta, release com falha nunca ativa; as substâncias das listas Anvisa
+-- só nascem numa release em importação e nunca mudam.
+CREATE OR REPLACE FUNCTION medication_catalog_items_no_delete() RETURNS trigger AS $fn$
+BEGIN
+  RAISE EXCEPTION 'medication_catalog_items are never deleted';
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION medication_release_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION '% release is never deleted', TG_TABLE_NAME;
+  END IF;
+  IF OLD.status IS DISTINCT FROM NEW.status AND NOT (
+       (OLD.status = 'importing' AND NEW.status IN ('active', 'failed'))
+    OR (OLD.status = 'active' AND NEW.status = 'superseded')) THEN
+    RAISE EXCEPTION '% release: % -> % refused', TG_TABLE_NAME, OLD.status, NEW.status;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION anvisa_list_substances_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'INSERT' AND EXISTS (SELECT 1 FROM anvisa_list_releases r WHERE r.id = NEW.release_id AND r.status = 'importing') THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'anvisa_list_substances accept rows only for a release being imported, and never change';
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $$
+BEGIN
+  IF to_regclass('public.medication_catalog_items') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS medication_catalog_items_no_delete ON medication_catalog_items;
+    CREATE TRIGGER medication_catalog_items_no_delete BEFORE DELETE ON medication_catalog_items
+      FOR EACH ROW EXECUTE FUNCTION medication_catalog_items_no_delete();
+    DROP TRIGGER IF EXISTS medication_catalog_releases_guard ON medication_catalog_releases;
+    CREATE TRIGGER medication_catalog_releases_guard BEFORE UPDATE OR DELETE ON medication_catalog_releases
+      FOR EACH ROW EXECUTE FUNCTION medication_release_guard();
+    DROP TRIGGER IF EXISTS anvisa_list_releases_guard ON anvisa_list_releases;
+    CREATE TRIGGER anvisa_list_releases_guard BEFORE UPDATE OR DELETE ON anvisa_list_releases
+      FOR EACH ROW EXECUTE FUNCTION medication_release_guard();
+    DROP TRIGGER IF EXISTS anvisa_list_substances_guard ON anvisa_list_substances;
+    CREATE TRIGGER anvisa_list_substances_guard BEFORE INSERT OR UPDATE OR DELETE ON anvisa_list_substances
+      FOR EACH ROW EXECUTE FUNCTION anvisa_list_substances_guard();
+  END IF;
+END $$;

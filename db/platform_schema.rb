@@ -10,9 +10,37 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "anvisa_list_releases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "activated_at"
+    t.integer "antimicrobials_count", default: 0, null: false
+    t.integer "controlled_count", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "imported_at", null: false
+    t.string "imported_by", limit: 80, null: false
+    t.string "source_sha256", limit: 64, null: false
+    t.jsonb "sources", default: {}, null: false
+    t.string "status", default: "importing", null: false
+    t.datetime "updated_at", null: false
+    t.index ["status"], name: "idx_anvisa_list_releases_one_active", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["status"], name: "idx_anvisa_list_releases_one_importing", unique: true, where: "((status)::text = 'importing'::text)"
+    t.check_constraint "status::text = ANY (ARRAY['importing'::text, 'active'::text, 'superseded'::text, 'failed'::text])", name: "ck_anvisa_list_releases_status"
+  end
+
+  create_table "anvisa_list_substances", force: :cascade do |t|
+    t.string "controlled_list", limit: 3
+    t.string "kind", null: false
+    t.uuid "release_id", null: false
+    t.string "substance", null: false
+    t.string "substance_key", null: false
+    t.index ["release_id", "kind", "substance_key"], name: "idx_anvisa_list_substances_unique", unique: true
+    t.check_constraint "(kind::text = 'controlled'::text) = (controlled_list IS NOT NULL)", name: "ck_anvisa_list_substances_list"
+    t.check_constraint "controlled_list IS NULL OR controlled_list::text ~ '^[A-F][0-9]?$'::text", name: "ck_anvisa_list_substances_list_code"
+    t.check_constraint "kind::text = ANY (ARRAY['antimicrobial'::text, 'controlled'::text])", name: "ck_anvisa_list_substances_kind"
+  end
 
   create_table "ciap2_codes", force: :cascade do |t|
     t.string "code", limit: 3, null: false
@@ -209,6 +237,59 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.index ["maintainer_id"], name: "index_maintenance_tokens_on_maintainer_id"
     t.index ["token_digest"], name: "index_maintenance_tokens_on_token_digest", unique: true
     t.check_constraint "access::text = ANY (ARRAY['read'::character varying, 'read_write'::character varying]::text[])", name: "ck_maintenance_tokens_access"
+  end
+
+  create_table "medication_catalog_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "active_ingredient", null: false
+    t.boolean "antimicrobial", default: false, null: false
+    t.integer "catmat_code", null: false
+    t.boolean "controlled", default: false, null: false
+    t.string "controlled_list", limit: 3
+    t.datetime "created_at", null: false
+    t.string "dosage_form"
+    t.uuid "first_release_id", null: false
+    t.boolean "hidden", default: false, null: false
+    t.uuid "last_release_id", null: false
+    t.string "obm_code"
+    t.string "parse_status", null: false
+    t.integer "pdm_code"
+    t.string "review_reason"
+    t.text "search_text", null: false
+    t.text "source_description", null: false
+    t.datetime "source_updated_at"
+    t.string "status", default: "active", null: false
+    t.string "strength"
+    t.string "unit", limit: 20
+    t.datetime "updated_at", null: false
+    t.index ["catmat_code"], name: "index_medication_catalog_items_on_catmat_code", unique: true
+    t.index ["parse_status"], name: "index_medication_catalog_items_on_parse_status"
+    t.index ["status", "hidden"], name: "idx_medication_catalog_items_prescribable"
+    t.check_constraint "(parse_status::text = 'review'::text) OR strength IS NOT NULL", name: "ck_medication_catalog_items_strength"
+    t.check_constraint "catmat_code > 0", name: "ck_medication_catalog_items_catmat_code"
+    t.check_constraint "controlled = (controlled_list IS NOT NULL)", name: "ck_medication_catalog_items_controlled_list"
+    t.check_constraint "obm_code IS NULL", name: "ck_medication_catalog_items_obm_reserved"
+    t.check_constraint "parse_status::text = 'ok'::text OR hidden", name: "ck_medication_catalog_items_review_hidden"
+    t.check_constraint "parse_status::text = ANY (ARRAY['ok'::text, 'review'::text])", name: "ck_medication_catalog_items_parse_status"
+    t.check_constraint "status::text = ANY (ARRAY['active'::text, 'removed'::text])", name: "ck_medication_catalog_items_status"
+  end
+
+  create_table "medication_catalog_releases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "activated_at"
+    t.integer "added_count", default: 0, null: false
+    t.integer "changed_count", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.integer "hidden_count", default: 0, null: false
+    t.datetime "imported_at", null: false
+    t.string "imported_by", limit: 80, null: false
+    t.integer "items_count", default: 0, null: false
+    t.integer "removed_count", default: 0, null: false
+    t.string "source", default: "catmat_6505", null: false
+    t.string "status", default: "importing", null: false
+    t.datetime "updated_at", null: false
+    t.index ["status"], name: "idx_medication_catalog_releases_one_active", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["status"], name: "idx_medication_catalog_releases_one_importing", unique: true, where: "((status)::text = 'importing'::text)"
+    t.check_constraint "(status::text = 'active'::text) <= (activated_at IS NOT NULL)", name: "ck_medication_catalog_releases_activation"
+    t.check_constraint "status::text = ANY (ARRAY['importing'::text, 'active'::text, 'superseded'::text, 'failed'::text])", name: "ck_medication_catalog_releases_status"
   end
 
   create_table "operator_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -450,6 +531,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
     t.index ["phone_number_id"], name: "index_unknown_channels_on_phone_number_id", unique: true
   end
 
+  add_foreign_key "anvisa_list_substances", "anvisa_list_releases", column: "release_id"
   add_foreign_key "ciap2_codes", "terminology_releases", column: "release_id"
   add_foreign_key "cid10_codes", "terminology_releases", column: "release_id"
   add_foreign_key "city_analytics_indicators", "cities"
@@ -461,6 +543,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_08_500001) do
   add_foreign_key "cnes_establishments", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
   add_foreign_key "cnes_professional_bonds", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
   add_foreign_key "cnes_teams", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
+  add_foreign_key "medication_catalog_items", "medication_catalog_releases", column: "first_release_id"
+  add_foreign_key "medication_catalog_items", "medication_catalog_releases", column: "last_release_id"
   add_foreign_key "operator_sessions", "operators"
   add_foreign_key "sigtap_procedure_cbos", "terminology_releases", column: "release_id"
   add_foreign_key "sigtap_procedure_cids", "terminology_releases", column: "release_id"
