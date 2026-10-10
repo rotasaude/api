@@ -105,6 +105,26 @@ RSpec.describe "Conferência pública de documento", type: :request do
     expect(response.body.b).to eq(signature.signed_pdf_bytes.b)
   end
 
+  # Revisão final I2: o token abre o PDF assinado com o documento inteiro;
+  # a linha "Started GET" do Rails nunca o grava.
+  it "o token não vai ao log de requisição: /v/:token e /v/:token/signed.pdf mascarados; /v/lookup legível" do
+    stub_psc!; stub_signer!; signature_city!
+    doctor.professional.update!(cpf: SignatureHelpers::DOCTOR_CPF)
+    linked_certificate!(doctor, leaf: fake_psc.leaf(SignatureHelpers::DOCTOR_CPF))
+    document = sick_note!
+    sign_document!(document, author: doctor)
+    token = document.verification_token
+    log = capture_log do
+      get "/v/#{token}", headers: json_headers
+      get "/v/#{token}"
+      get "/v/#{token}/signed.pdf"
+      expect(response).to have_http_status(:ok)
+      json_post "/v/lookup", short_code: "AAAAA-AAAAA", birth_year: 1980
+    end
+    expect(log).not_to include(token)
+    expect(log).to include('Started GET "/v/[FILTERED]"', 'Started GET "/v/[FILTERED]/signed.pdf"', 'Started POST "/v/lookup"')
+  end
+
   it "digital assinado e depois cancelado: cancelled, sem signed_pdf_url, PDF 404" do
     stub_psc!; stub_signer!; signature_city!
     doctor.professional.update!(cpf: SignatureHelpers::DOCTOR_CPF)

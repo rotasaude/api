@@ -29,6 +29,16 @@ RSpec.describe "Reports", type: :request do
     )
   end
 
+  # Final review I2 (module 19c): the bearer token in the path never reaches
+  # the Rails request log line.
+  it "masks the token in the request log line" do
+    snap = create_snapshot(payload: { "tier" => "alta", "priority" => 1, "summary" => [], "completed_at" => nil })
+    log = capture_log { get "/r/#{snap.token}" }
+    expect(response).to have_http_status(:ok)
+    expect(log).to include('Started GET "/r/[FILTERED]"')
+    expect(log).not_to include(snap.token)
+  end
+
   it "includes recommendation in the JSON" do
     snap = create_snapshot(payload: {
       "tier" => "alta", "priority" => 1,
