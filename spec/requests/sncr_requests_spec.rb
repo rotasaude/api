@@ -96,6 +96,21 @@ RSpec.describe "Pedido de números SNCR", type: :request do
     expect(SncrNumberBatch.where(kind: "rce").count).to eq(0)
   end
 
+  it "o SNCR recusando por limite no 4º pedido: 409 com return_to, sem lote e sem session_id no log" do
+    sign_in_as(doctor)
+    states = Array.new(4) { start }
+    url = client_url_of(states.first["authorize_url"])
+    states.first(3).each do |started|
+      callback(started["state"], session_id: fake_sncr.approve!(url))
+      expect(response).to have_http_status(:ok)
+    end
+    session_id = fake_sncr.approve!(url)
+    log = capture_log { callback(states.last["state"], session_id: session_id) }
+    expect([ response.status, body["error"], body["return_to"] ]).to eq([ 409, "monthly_limit_reached", "/dashboard/minha-conta/sncr" ])
+    expect(SncrNumberBatch.where(user_id: doctor.id, kind: "rce").count).to eq(3)
+    expect(log).not_to include(session_id)
+  end
+
   it "enfermeiro, recepção, tipo inválido, interruptor desligado" do
     sign_in_as(nurse!(unit))
     start

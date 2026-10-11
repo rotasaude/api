@@ -56,7 +56,7 @@ module Sncr
     def quietly(&) = ActiveRecord::Base.logger ? ActiveRecord::Base.logger.silence(&) : yield
 
     def take!(user:, kind:, simulated:, env: Rails.env)
-      return nil if simulated && env.to_s == "production"
+      return nil if simulated && Rota.deployed?(env)
 
       SncrNumber.available.where(user_id: user.id, kind: kind, simulated: simulated)
                 .order(:number).lock("FOR UPDATE SKIP LOCKED").first

@@ -24,7 +24,7 @@ module FakeSncr
                  "CE" => 23, "RN" => 24, "PB" => 25, "PE" => 26, "AL" => 27, "SE" => 28, "BA" => 29, "MG" => 31, "ES" => 32,
                  "RJ" => 33, "SP" => 35, "PR" => 41, "SC" => 42, "RS" => 43, "MS" => 50, "MT" => 51, "GO" => 52, "DF" => 53 }.freeze
     MESSAGES = {
-      ok: "Numeração gerada com sucesso.", session: "Sessão inválida ou expirada", domain: "Domínio não autorizado",
+      ok: "Numeração gerada com sucesso.", session: "Sessão inválida ou expirada", domain_refused: "Domínio não autorizado",
       unauthorized: "Não autorizado.", limit: "Usuário atingiu o limite máximo de receita para o tipo de receita no mês atual.",
       exhausted: "Faixa de numeração esgotada para a UF.", mismatch: "Inscrição fornecida é diferente da autenticada.",
       conselho_nulo: "Conselho não pode ser nulo.", conselho: "Conselho inválido", tipo_nulo: "Tipo de receita não pode ser nulo.",
@@ -99,7 +99,7 @@ module FakeSncr
     def login(request)
       client_url = request.params["client_url"].to_s
       origin = origin_of(client_url)
-      return html(400, "<p>#{MESSAGES[:domain]}</p>") unless origin
+      return html(400, "<p>#{MESSAGES[:domain_refused]}</p>") unless origin
 
       id = SecureRandom.hex(8)
       @mutex.synchronize { @pending[id] = { client_url: client_url, origin: origin } }
@@ -129,7 +129,7 @@ module FakeSncr
     def token(request)
       session = @mutex.synchronize { @sessions.delete(request.params["session_id"].to_s) }
       return json(400, { error: MESSAGES[:session] }) unless session && session[:expires_at] > now
-      return json(403, { error: MESSAGES[:domain] }) unless request.get_header("HTTP_ORIGIN") == session[:origin]
+      return json(403, { error: MESSAGES[:domain_refused] }) unless request.get_header("HTTP_ORIGIN") == session[:origin]
 
       token = SecureRandom.urlsafe_base64(32)
       @mutex.synchronize { @tokens[token] = now + TOKEN_TTL }
