@@ -28,6 +28,18 @@ RSpec.describe "Painel do SNCR do admin", type: :request do
     expect(response.body).not_to include("2610.", doctor.professional.registration_number)
   end
 
+  it "lote só do outro modo dá last_request_at nil; usuário desativado fica fora" do
+    sncr_stock!(doctor, kind: "rce", count: 3, simulated: false)
+    gone = dentist!(unit)
+    sncr_stock!(gone, kind: "rce", count: 3)
+    gone.update_columns(deactivated_at: Time.current)
+    sign_in_as(municipal_admin!)
+    get "/sncr/admin/overview"
+    rows = body["professionals"].index_by { |row| row["user_id"] }
+    expect(rows.keys).to eq([ doctor.id ])
+    expect(rows[doctor.id]).to include("rce_free" => 0, "last_request_at" => nil)
+  end
+
   it "profissional não vê; interruptor desligado recusa" do
     sign_in_as(doctor)
     get "/sncr/admin/overview"
