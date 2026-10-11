@@ -1,8 +1,9 @@
 # app/controllers/patient_medications_controller.rb
 # Medicamentos em uso (ADR 0033; contrato §4). Leitura: regra do prontuário
 # (contexto ou abertura), com trilha. Escrita: a autora, na consulta em
-# rascunho, pelo caminho único (Patients::ApplyMedicationEvent), com o
-# paciente travado aqui (o comando não trava); catálogo lido FORA da
+# rascunho, pelo caminho único (Patients::ApplyMedicationEvent), com a
+# consulta e o paciente travados aqui, nessa ordem (o comando não trava; a
+# autoria é relida sob a trava — card api#51); catálogo lido FORA da
 # transação. Renovação: a autora.
 class PatientMedicationsController < ApplicationController
   include Authentication
@@ -72,9 +73,15 @@ class PatientMedicationsController < ApplicationController
 
   def apply(consultation, action, catalog_item, input)
     ApplicationRecord.transaction do
+      # Finalizada, descartada ou designada (card api#51) entre a checagem e a
+      # trava: autoria e status relidos sob a trava da consulta (lock! relê).
+      # Ordem de travas: consulta → paciente, compatível com atendimento →
+      # consulta → paciente (Finalize, Discard, Reassign).
+      consultation.lock!
+      next Result.fail(:not_author) unless consultation.author_user_id == Current.user.id
+      next Result.fail(:not_draft) unless consultation.draft?
+
       patient = Patient.lock.find(consultation.patient_id)
-      # Finalizada entre a checagem e a trava: a consulta relida sob a trava do paciente.
-      next Result.fail(:not_draft) unless consultation.reload.draft?
 
       common = { patient: patient, by: Current.user, source: { consultation: consultation } }
       case action

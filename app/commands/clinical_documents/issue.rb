@@ -95,6 +95,11 @@ module ClinicalDocuments
 
     def issue(kind, input, by, consultation, attendance, replaces_id, ctx, now)
       if consultation
+        # Card api#51: autoria e status relidos sob a trava da consulta (lock!
+        # relê) — a designação ou o descarte entre a leitura e aqui vence. Ordem
+        # de travas: consulta → paciente (atendimento → consulta → paciente no
+        # Finalize, Discard e Reassign; aqui o atendimento não é travado).
+        consultation.lock!
         # Descartada (card api#51) é casca: inexistente para emitir.
         return Result.fail(:not_found) if consultation.discarded?
         return Result.fail(:not_author) unless consultation.author_user_id == by.id

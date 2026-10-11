@@ -38,6 +38,23 @@ RSpec.describe ClinicalDocuments::Issue do
     expect { issue(content: { "type" => "leave", "days" => 0 }) }.not_to change(ClinicalDocument, :count)
   end
 
+  # Card api#51 (revisão final): a autoria é relida sob a trava da consulta. A
+  # autora antiga, com a consulta carregada ANTES da designação (stale), não
+  # emite no rascunho que já é de outra pessoa.
+  it "rascunho designado a outro profissional: a autora antiga com a consulta stale → not_author, nada gravado" do
+    draft = started_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(3, full_name: "Ana Lima"))
+    stale = Consultation.find(draft.id)
+    colleague = doctor!(unit)
+    admin = staff_with("admin-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin")
+    expect(ConsultationDrafts::Reassign.call(consultation_id: draft.id, user_id: colleague.id,
+                                             reason: "Autora afastada; segue com o colega", by: admin)).to be_ok
+    expect(stale.author_user_id).to eq(doctor.id)
+    result = nil
+    expect { result = described_class.call(kind: "sick_note", content: leave, by: doctor, consultation: stale) }
+      .not_to change(ClinicalDocument, :count)
+    expect(result.reason).to eq(:not_author)
+  end
+
   it "digital quando a assinatura está utilizável e a autora tem certificado; nasce o pedido pending" do
     signature_city!
     linked_certificate!(doctor.tap { |u| u.professional.update!(cpf: SignatureHelpers::DOCTOR_CPF) })

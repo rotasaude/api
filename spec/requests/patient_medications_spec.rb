@@ -43,6 +43,27 @@ RSpec.describe "Medicamentos em uso", type: :request do
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "out_of_context" } ])
   end
 
+  # Card api#51 (revisão final): a designação entra entre a leitura da
+  # consulta pelo controlador e a trava; a autoria é relida sob a trava da
+  # consulta e a autora antiga recebe 403 not_author, sem gravar nada.
+  it "rascunho designado entre a leitura e a trava: a autora antiga → 403 not_author, nada gravado" do
+    draft = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    colleague = doctor!(unit)
+    admin = staff_with("admin-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin")
+    allow_any_instance_of(PatientMedicationsController).to receive(:find_consultation).and_wrap_original do |original|
+      original.call.tap do
+        result = ConsultationDrafts::Reassign.call(consultation_id: draft.id, user_id: colleague.id,
+                                                   reason: "Autora afastada; segue com o colega", by: admin)
+        raise "designação recusada: #{result.reason}" if result.failure?
+      end
+    end
+    sign_in_as(doctor)
+    json_post "/attendance/consultations/#{draft.id}/medications", action: "add_external", free_text: "Chá de boldo"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "not_author" } ])
+    expect(PatientMedication.where(patient_id: draft.patient_id)).to be_empty
+    expect(draft.reload.author_user_id).to eq(colleague.id)
+  end
+
   it "renovação: os contínuos ativos, com a última posologia da receita" do
     consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
     content = { "items" => [ { "catalog_item" => { "id" => catalog_item(268_856).id }, "quantity" => 30, "quantity_unit" => "comprimido",
