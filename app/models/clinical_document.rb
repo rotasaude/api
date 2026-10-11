@@ -4,7 +4,8 @@
 # ao papel do 19b (digital → paper, sem assinatura). Conteúdo do tipo em JSON
 # cifrado com a chave da cidade (a forma de saída do contrato §2).
 class ClinicalDocument < ApplicationRecord
-  KINDS = %w[sick_note attendance_declaration prescription exam_requisition].freeze
+  KINDS = %w[sick_note attendance_declaration prescription exam_requisition controlled_notification_record].freeze
+  PAPER_REASONS = %w[no_certificate signature_unavailable no_sncr_number nurse_antimicrobial feature_disabled].freeze
   MODES = %w[digital paper].freeze
   STATUSES = %w[issued cancelled].freeze
   CANCEL_REASON = (10..500)
@@ -26,6 +27,7 @@ class ClinicalDocument < ApplicationRecord
   def cancelled? = status == "cancelled"
   def digital? = issue_mode == "digital"
   def prescription? = kind == "prescription"
+  def notification_record? = kind == "controlled_notification_record"
   def verification_url = "#{CityPublicUrl.base(Current.city)}/v/#{verification_token}"
   def signature_request = SignatureRequest.find_by(document_type: "ClinicalDocument", document_id: id)
   # A assinatura gravada (pedido signed), ou nil: o impresso e a página pública.

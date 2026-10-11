@@ -34,7 +34,9 @@ Rails.application.config.filter_parameters += [
   :content, :items, :free_text, :dosage_instructions, :dosage_summary, :printed_description, :cid10,
   :companion_name, :companion_kinship, :short_code, :birth_year,
   # O medicamento informado de fora vai pelo id do catálogo, na URL da consulta.
-  /\Acatalog_item_id\z/
+  /\Acatalog_item_id\z/,
+  # ADR 0034: endereço, telefone e identificação do paciente/prescritor e o número SNCR.
+  /\A(session_id|access_token|street|zip|address|phone|paper_number|sncr|patient_identification|prescriber_contact)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

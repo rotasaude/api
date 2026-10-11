@@ -160,4 +160,10 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "clinical_document.issued", to: []
   DomainEvents.bind "clinical_document.cancelled", to: []
   DomainEvents.bind "patient_medication.changed", to: []
+
+  # Módulo 19d (ADR 0034): estoque SNCR e registro da Notificação — só ids.
+  DomainEvents.bind "sncr.numbers_requested", to: []
+  DomainEvents.bind "sncr.number_used", to: []
+  DomainEvents.bind "sncr.number_voided", to: []
+  DomainEvents.bind "controlled_notification.recorded", to: []
 end

@@ -57,6 +57,7 @@ module CityEncryption
     [ IntegrationCredential, :secret ],
     [ Professional,   :phone ],
     [ Professional,   :contact_email ],
+    [ Professional,   :prescriber_address ],
     [ LediOutboxEntry, :payload ],
     # ADR 0031: nome no par e o paciente.
     [ Citizen,        :full_name ],

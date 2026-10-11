@@ -136,3 +136,12 @@ RSpec.describe "clinical document event bindings (ADR 0033)" do
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
 end
+
+# Módulo 19d (ADR 0034): estoque SNCR e registro da Notificação, só trilha.
+RSpec.describe "controlled prescription event bindings (ADR 0034)" do
+  it "declares every module 19d event with no consumer" do
+    names = %w[sncr.numbers_requested sncr.number_used sncr.number_voided controlled_notification.recorded]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end

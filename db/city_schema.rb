@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -442,6 +442,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
     t.string "issue_mode", null: false
     t.datetime "issued_at", null: false
     t.string "kind", null: false
+    t.string "paper_reason"
     t.uuid "patient_id"
     t.uuid "replaces_document_id"
     t.string "short_code", limit: 10, null: false
@@ -463,7 +464,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
     t.check_constraint "consultation_id IS NOT NULL OR issue_mode::text = 'paper'::text", name: "ck_clinical_documents_paper_outside_consultation"
     t.check_constraint "consultation_id IS NOT NULL OR kind::text = 'attendance_declaration'::text", name: "ck_clinical_documents_consultation"
     t.check_constraint "issue_mode::text = ANY (ARRAY['digital'::text, 'paper'::text])", name: "ck_clinical_documents_issue_mode"
-    t.check_constraint "kind::text = ANY (ARRAY['sick_note'::text, 'attendance_declaration'::text, 'prescription'::text, 'exam_requisition'::text])", name: "ck_clinical_documents_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['sick_note'::text, 'attendance_declaration'::text, 'prescription'::text, 'exam_requisition'::text, 'controlled_notification_record'::text])", name: "ck_clinical_documents_kind"
+    t.check_constraint "kind::text <> 'controlled_notification_record'::text OR issue_mode::text = 'paper'::text", name: "ck_clinical_documents_notification_paper"
+    t.check_constraint "paper_reason IS NULL OR paper_reason::text = ANY (ARRAY['no_certificate'::text, 'signature_unavailable'::text, 'no_sncr_number'::text, 'nurse_antimicrobial'::text, 'feature_disabled'::text])", name: "ck_clinical_documents_paper_reason"
+    t.check_constraint "paper_reason IS NULL OR issue_mode::text = 'paper'::text", name: "ck_clinical_documents_paper_reason_mode"
     t.check_constraint "patient_id IS NOT NULL OR kind::text = 'attendance_declaration'::text", name: "ck_clinical_documents_patient"
     t.check_constraint "short_code::text ~ '^[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{10}$'::text", name: "ck_clinical_documents_short_code"
     t.check_constraint "status::text = ANY (ARRAY['issued'::text, 'cancelled'::text])", name: "ck_clinical_documents_status"
@@ -1143,6 +1147,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
     t.string "cpf"
     t.datetime "created_at", null: false
     t.string "phone"
+    t.text "prescriber_address"
     t.string "professional_name", null: false
     t.string "registration_number", null: false
     t.datetime "updated_at", null: false
@@ -1331,8 +1336,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
     t.index ["expires_at"], name: "index_signature_oauth_states_on_expires_at"
     t.index ["user_id"], name: "index_signature_oauth_states_on_user_id"
     t.check_constraint "((purpose)::text = 'batch'::text) = (cardinality(request_ids) > 0) AND cardinality(request_ids) <= 50", name: "ck_signature_oauth_states_batch"
-    t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text])", name: "ck_signature_oauth_states_provider"
-    t.check_constraint "purpose::text = ANY (ARRAY['link'::text, 'session'::text, 'batch'::text])", name: "ck_signature_oauth_states_purpose"
+    t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text, 'sncr'::text, 'sncr_simulated'::text])", name: "ck_signature_oauth_states_provider"
+    t.check_constraint "purpose::text = ANY (ARRAY['link'::text, 'session'::text, 'batch'::text, 'sncr_rce'::text, 'sncr_ret'::text])", name: "ck_signature_oauth_states_purpose"
     t.check_constraint "(return_to)::text ~ '^/([^/\\\\][^\\\\]*)?$'::text", name: "ck_signature_oauth_states_return_to"
   end
 
@@ -1430,6 +1435,45 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
     t.check_constraint "link_check_status::text = ANY (ARRAY['valid'::text, 'indeterminate'::text])", name: "ck_signer_certificates_link_check"
     t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text])", name: "ck_signer_certificates_provider"
     t.check_constraint "status::text = ANY (ARRAY['active'::text, 'replaced'::text, 'unlinked'::text, 'revoked'::text, 'expired'::text])", name: "ck_signer_certificates_status"
+  end
+
+  create_table "sncr_number_batches", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "first_number", null: false
+    t.string "kind", null: false
+    t.string "last_number", null: false
+    t.date "month", null: false
+    t.integer "month_request", null: false
+    t.integer "quantity", null: false
+    t.datetime "requested_at", null: false
+    t.boolean "simulated", null: false
+    t.uuid "user_id", null: false
+    t.index ["user_id", "kind", "month"], name: "idx_sncr_number_batches_month"
+    t.check_constraint "kind::text = ANY (ARRAY['rce'::text, 'ret'::text])", name: "ck_sncr_number_batches_kind"
+    t.check_constraint "month = date_trunc('month'::text, month::timestamp with time zone)::date", name: "ck_sncr_number_batches_month"
+    t.check_constraint "month_request >= 1", name: "ck_sncr_number_batches_month_request"
+    t.check_constraint "quantity >= 1 AND quantity <= 1000", name: "ck_sncr_number_batches_quantity"
+  end
+
+  create_table "sncr_numbers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "batch_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "document_id"
+    t.string "kind", null: false
+    t.string "number", null: false
+    t.boolean "simulated", null: false
+    t.string "status", default: "free", null: false
+    t.datetime "used_at"
+    t.uuid "user_id", null: false
+    t.datetime "voided_at"
+    t.index ["batch_id"], name: "index_sncr_numbers_on_batch_id"
+    t.index ["document_id"], name: "idx_sncr_numbers_document", unique: true, where: "(document_id IS NOT NULL)"
+    t.index ["kind", "number"], name: "idx_sncr_numbers_kind_number", unique: true
+    t.index ["user_id", "kind", "simulated", "number"], name: "idx_sncr_numbers_free", where: "((status)::text = 'free'::text)"
+    t.check_constraint "(status::text = 'free'::text) = (document_id IS NULL) AND (status::text = 'free'::text) = (used_at IS NULL) AND (status::text = 'voided'::text) = (voided_at IS NOT NULL)", name: "ck_sncr_numbers_state"
+    t.check_constraint "kind::text = ANY (ARRAY['rce'::text, 'ret'::text])", name: "ck_sncr_numbers_kind"
+    t.check_constraint "number::text ~ '^[0-9]{4}\\.[0-9]-[0-9]{2}\\.[0-9]{7}$'::text", name: "ck_sncr_numbers_format"
+    t.check_constraint "status::text = ANY (ARRAY['free'::text, 'used'::text, 'voided'::text])", name: "ck_sncr_numbers_status"
   end
 
   create_table "solid_queue_blocked_executions", force: :cascade do |t|
@@ -1780,6 +1824,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
   add_foreign_key "signatures", "signature_requests"
   add_foreign_key "signatures", "signer_certificates"
   add_foreign_key "signer_certificates", "users"
+  add_foreign_key "sncr_number_batches", "users"
+  add_foreign_key "sncr_numbers", "clinical_documents", column: "document_id"
+  add_foreign_key "sncr_numbers", "sncr_number_batches", column: "batch_id"
+  add_foreign_key "sncr_numbers", "users"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_failed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

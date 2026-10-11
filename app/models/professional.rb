@@ -15,6 +15,23 @@ class Professional < ApplicationRecord
   encrypts :phone
   encrypts :contact_email
 
+  # ADR 0034 (Lei 5.991, art. 35): endereço do prescritor impresso na RCE e na
+  # RET digitais; JSON cifrado com a chave da cidade. O telefone é o `phone`.
+  encrypts :prescriber_address
+
+  def prescriber_address_data
+    data = prescriber_address.present? ? JSON.parse(prescriber_address) : nil
+    data.is_a?(Hash) ? data : nil
+  rescue JSON::ParserError
+    nil
+  end
+
+  # { "address" => {…}, "phone" => "…" } só quando os dois existem.
+  def prescriber_contact
+    address = prescriber_address_data
+    address && phone.present? ? { "address" => address, "phone" => phone } : nil
+  end
+
   belongs_to :user
   has_many :links, class_name: "ProfessionalLink", dependent: :restrict_with_error
 

@@ -1486,3 +1486,58 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- 19d (ADR 0034): estoque de números SNCR. Número nasce free; só
+-- free → used (com documento) e used → voided; número, tipo, lote, dono e
+-- simulado nunca mudam; nada é apagado. Lote só acréscimo.
+CREATE OR REPLACE FUNCTION rota_sncr_number_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'sncr_numbers: DELETE refused';
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status <> 'free' OR NEW.document_id IS NOT NULL THEN
+      RAISE EXCEPTION 'sncr_numbers: a number is born free';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.number <> OLD.number OR NEW.kind <> OLD.kind OR NEW.batch_id <> OLD.batch_id OR NEW.user_id <> OLD.user_id
+     OR NEW.simulated <> OLD.simulated OR NEW.created_at <> OLD.created_at THEN
+    RAISE EXCEPTION 'sncr_numbers: a number never changes';
+  END IF;
+  IF OLD.status = 'free' AND NEW.status = 'used' AND NEW.document_id IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.status = 'used' AND NEW.status = 'voided' AND NEW.document_id = OLD.document_id AND NEW.used_at = OLD.used_at THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'sncr_numbers: transition % -> % refused', OLD.status, NEW.status;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION rota_sncr_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION '%: append-only (% refused)', TG_TABLE_NAME, TG_OP;
+END
+$$;
+
+DO $$
+BEGIN
+  IF to_regclass('public.sncr_numbers') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS sncr_numbers_guard ON sncr_numbers;
+    CREATE TRIGGER sncr_numbers_guard BEFORE INSERT OR UPDATE OR DELETE ON sncr_numbers
+      FOR EACH ROW EXECUTE FUNCTION rota_sncr_number_guard();
+    DROP TRIGGER IF EXISTS sncr_numbers_no_truncate ON sncr_numbers;
+    CREATE TRIGGER sncr_numbers_no_truncate BEFORE TRUNCATE ON sncr_numbers
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_sncr_append_only();
+  END IF;
+  IF to_regclass('public.sncr_number_batches') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS sncr_number_batches_append_only ON sncr_number_batches;
+    CREATE TRIGGER sncr_number_batches_append_only BEFORE UPDATE OR DELETE ON sncr_number_batches
+      FOR EACH ROW EXECUTE FUNCTION rota_sncr_append_only();
+    DROP TRIGGER IF EXISTS sncr_number_batches_no_truncate ON sncr_number_batches;
+    CREATE TRIGGER sncr_number_batches_no_truncate BEFORE TRUNCATE ON sncr_number_batches
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_sncr_append_only();
+  END IF;
+END
+$$;

@@ -3,7 +3,7 @@
 # cidade (pelo token assinado), ao usuário e ao propósito; o code_verifier do
 # PKCE cifrado com a chave da cidade.
 class SignatureOauthState < ApplicationRecord
-  PURPOSES = %w[link session batch].freeze
+  PURPOSES = %w[link session batch sncr_rce sncr_ret].freeze
   TTL = 10.minutes
 
   encrypts :code_verifier
