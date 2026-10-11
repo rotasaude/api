@@ -140,6 +140,8 @@ Rails.application.routes.draw do
     get   "consultation_options",            to: "consultations#options"
     post  "attendances/:id/consultation",    to: "consultations#create"
     get   "attendances/:id/record",          to: "clinical_records#context"
+    # Linha do tempo do paciente (ADR 0035; contrato §3).
+    get   "timeline",                        to: "timelines#show"
     # `consultations/mine` (literal) PRECISA vir antes de `consultations/:id`.
     get   "consultations/mine",              to: "consultations#mine"
     get   "consultations/:id",               to: "consultations#show"
