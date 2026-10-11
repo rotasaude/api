@@ -9,7 +9,7 @@ NET=fix62-net; BE=fix62-backend; PX=fix62-proxy
 T=$(mktemp -d)
 cleanup() { docker rm -f $PX $BE >/dev/null 2>&1 || true; docker network rm $NET >/dev/null 2>&1 || true; rm -rf "$T"; }
 trap cleanup EXIT
-cleanup
+cleanup; T=$(mktemp -d)
 
 # Backend fake: ecoa XFF e X-Real-IP na resposta.
 cat > "$T/backend.conf" <<'CONF'
