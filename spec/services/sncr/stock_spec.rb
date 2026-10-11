@@ -54,6 +54,8 @@ RSpec.describe Sncr::Stock do
       expect(described_class.take!(user: doctor, kind: "rce", simulated: true).number).to eq("2610.1-41.0000001")
       expect(described_class.take!(user: doctor, kind: "ret", simulated: true)).to be_nil
       expect(described_class.take!(user: doctor, kind: "rce", simulated: true, env: "production")).to be_nil
+      expect(described_class.take!(user: doctor, kind: "rce", simulated: true, env: "staging").number).to eq("2610.1-41.0000001")
+      expect(described_class.take!(user: doctor, kind: "rce", simulated: true, env: "test").number).to eq("2610.1-41.0000001")
       expect(described_class.take!(user: doctor!(unit), kind: "rce", simulated: true)).to be_nil # o estoque é do prescritor
     end
   end
