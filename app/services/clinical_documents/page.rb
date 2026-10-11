@@ -5,6 +5,7 @@ module ClinicalDocuments
   module Page
     KINDS = { "sick_note" => "Atestado", "attendance_declaration" => "Declaração de comparecimento",
               "prescription" => "Receita", "exam_requisition" => "Requisição de exames" }.freeze
+    CATEGORIES = { "special_control" => "Receita de controle especial", "antimicrobial" => "Receita de antimicrobiano" }.freeze
     STATUS = { "valid" => "Válido", "cancelled" => "Cancelado", "awaiting_signature" => "Aguardando assinatura digital" }.freeze
 
     module_function
@@ -14,12 +15,18 @@ module ClinicalDocuments
     def result(data)
       issued = Time.iso8601(data[:issued_at]).in_time_zone.strftime("%d/%m/%Y %H:%M")
       professional = [ data.dig(:professional, :name), data.dig(:professional, :council) ].compact.join(" — ")
-      rows = [ [ "Documento", KINDS.fetch(data[:kind]) ], [ "Emitido em", issued ],
+      rows = [ [ "Documento", CATEGORIES[data[:category]] || KINDS.fetch(data[:kind]) ], [ "Emitido em", issued ],
                ([ "Profissional", professional ] unless professional.empty?),
                [ "Unidade", data[:unit] ],
                [ "Paciente", "#{data.dig(:patient, :initials)} (nascido(a) em #{data.dig(:patient, :birth_year) || '—'})" ],
                [ "Situação", STATUS.fetch(data[:status]) + (data[:cancelled_at] ? " em #{Time.iso8601(data[:cancelled_at]).in_time_zone.strftime('%d/%m/%Y %H:%M')}" : "") ],
                [ "Modo", data[:mode] == "digital" ? "Assinado digitalmente#{' (simulada — sem validade jurídica)' if data[:simulated]}" : "Papel (assinatura à mão)" ] ].compact
+      if data[:sncr]
+        rows << [ "Numeração SNCR", "#{data.dig(:sncr, :number)}#{' (simulada — sem validade)' if data.dig(:sncr, :simulated)}" ]
+        if data[:status] == "cancelled"
+          rows << [ "Atenção", "Receita cancelada: não dispense. O SNCR não registra o cancelamento; vale esta conferência." ]
+        end
+      end
       table = rows.map { |label, value| "<tr><th>#{h(label)}</th><td>#{h(value)}</td></tr>" }.join
       link = data[:signed_pdf_url] ? %(<p><a href="#{h(data[:signed_pdf_url])}">Baixar o PDF assinado</a></p>) : ""
       layout("<table>#{table}</table>#{link}")

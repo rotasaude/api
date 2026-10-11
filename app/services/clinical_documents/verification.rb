@@ -41,9 +41,21 @@ module ClinicalDocuments
                unit: document.attendance.health_unit.name,
                patient: { initials: initials(person(document).display_name), birth_year: birth_year_of(document) },
                status: status, mode: document.issue_mode, simulated: signature&.simulated? || false }
+      add_prescription_fields(json, document) if document.prescription?
       json[:cancelled_at] = document.cancelled_at.iso8601 if document.cancelled?
       json[:signed_pdf_url] = "#{document.verification_url}/signed.pdf" if signature && !document.cancelled?
       json
+    end
+
+    # Contrato §7: categoria em toda receita; numeração SNCR só no digital que a
+    # tem. Nunca medicamento, CPF, endereço ou telefone.
+    def add_prescription_fields(json, document)
+      content = document.content_data
+      json[:category] = content["category"] || (content["antimicrobial"] ? "antimicrobial" : "common")
+      return unless document.digital? && content["sncr"].is_a?(Hash)
+
+      json[:sncr] = { kind: content.dig("sncr", "kind"), number: content.dig("sncr", "number"),
+                      simulated: content.dig("sncr", "simulated") == true }
     end
 
     def trail!(document, via)
@@ -61,6 +73,6 @@ module ClinicalDocuments
     def initials(name)
       name.to_s.split.reject { |word| PARTICLES.include?(word.downcase) }.map { |word| "#{word[0].upcase}." }.join
     end
-    private_class_method :trail!, :person, :birth_year_of, :initials
+    private_class_method :add_prescription_fields, :trail!, :person, :birth_year_of, :initials
   end
 end
