@@ -16,6 +16,7 @@ class ClinicalDocumentsController < ApplicationController
     feature_disabled: :forbidden, not_found: :not_found, already_cancelled: :conflict, awaiting_signature: :conflict,
     attendance_not_found_or_closed_long_ago: :conflict, catalog_unavailable: :service_unavailable
   }.freeze
+  IDENTIFICATION_LOOKBACK = 50
 
   wrap_parameters false
   before_action :require_clinical_record!
@@ -57,6 +58,25 @@ class ClinicalDocumentsController < ApplicationController
   def show
     document = readable_document
     render json: ClinicalDocuments::Json.document(document) if document
+  end
+
+  # "Reaproveitar o último" (19d spec §5; contrato §12): a identificação do
+  # paciente da última receita emitida dele que a tenha. Só a autora da
+  # consulta (é ela quem emite a próxima receita), pela regra do prontuário
+  # (ClinicalRecord::Access via Read.consultation_grant), com trilha.
+  def patient_identification
+    consultation = find(Consultation, params[:id])
+    return not_found unless consultation
+    return forbid("not_author") unless consultation.author_user_id == Current.user.id
+
+    grant = ClinicalDocuments::Read.consultation_grant(user: Current.user, consultation: consultation)
+    return forbid(grant.reason.to_s) unless grant.allowed?
+
+    ClinicalRecord::Trail.viewed!(patient: consultation.patient, user: Current.user, grant: grant)
+    last = ClinicalDocument.where(patient_id: consultation.patient_id, kind: "prescription", status: "issued")
+                           .order(issued_at: :desc, id: :desc).limit(IDENTIFICATION_LOOKBACK)
+                           .lazy.map { |document| document.content_data["patient_identification"] }.find(&:present?)
+    render json: { patient_identification: last }
   end
 
   # Contrato §3 (Desvio 7): o PDF do modo do documento, na hora, sem cache.

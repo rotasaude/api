@@ -18,8 +18,10 @@ module ClinicalDocuments
       PREFIXES.find { |_role, prefixes| prefixes.any? { |prefix| code.start_with?(prefix) } }&.first || :other
     end
 
+    # Tipo fora da matriz (ex.: o registro da Notificação antes de ser
+    # liberado) é recusado, nunca KeyError.
     def allowed?(kind, cbo)
-      allowed = MATRIX.fetch(kind.to_s)
+      allowed = MATRIX.fetch(kind.to_s, [])
       allowed == :any || allowed.include?(role(cbo))
     end
 

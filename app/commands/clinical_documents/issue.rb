@@ -1,16 +1,30 @@
 # app/commands/clinical_documents/issue.rb
-# Emissão de documento clínico (ADR 0033; spec §4–§5; contrato §3). Da
-# consulta, pela autora (rascunho ou finalizada — emitir depois não muda a
-# consulta); do atendimento, só a declaração de comparecimento (recepção ou
-# profissional da unidade), sempre em papel. Interruptor da assinatura,
-# catálogo e listas Anvisa lidos FORA da transação (como Consultations::Finalize:
+# Emissão de documento clínico (ADR 0033 + ADR 0034; spec 19c §4–§5, 19d
+# §5–§6; contrato §3 do 19c, §2/§12 do 19d). Da consulta, pela autora
+# (rascunho ou finalizada — emitir depois não muda a consulta); do
+# atendimento, só a declaração de comparecimento (recepção ou profissional da
+# unidade), sempre em papel. Interruptores, catálogo, listas Anvisa e o
+# contato do prescritor lidos FORA da transação (como Consultations::Finalize:
 # Platform::Features engole StatementInvalid, e um erro do PG engolido dentro
 # do savepoint abortaria a emissão). Numa transação só: documento, itens da
-# receita, eventos da lista de medicamentos, pedido de assinatura e evento.
-# O modo é decidido aqui e nunca convertido (só a volta ao papel do 19b).
+# receita, número SNCR (tirado com FOR UPDATE SKIP LOCKED e marcado used — a
+# falha devolve por rollback), eventos da lista de medicamentos, pedido de
+# assinatura (só no digital) e eventos. O modo é decidido aqui e nunca
+# convertido (só a volta ao papel do 19b, que não grava paper_reason); o
+# motivo do papel é gravado no documento e volta na resposta (Desvio 10).
+# Nenhum número SNCR, CPF ou endereço em evento, log ou erro.
 module ClinicalDocuments
   module Issue
     DECLARATION_DAYS = 30
+    SNCR_KINDS = { "special_control" => "rce", "antimicrobial" => "ret" }.freeze
+    CATALOG_KINDS = %w[prescription controlled_notification_record].freeze
+
+    # Decisões lidas fora da transação. `contact` (endereço e telefone do
+    # prescritor) fica fora do inspect.
+    Context = Data.define(:signing, :controlled, :simulated, :platform, :contact) do
+      def inspect = "#<ClinicalDocuments::Issue::Context signing=#{signing} controlled=#{controlled} simulated=#{simulated}>"
+      alias_method :to_s, :inspect
+    end
 
     module_function
 
@@ -19,30 +33,55 @@ module ClinicalDocuments
       return invalid("kind") unless ClinicalDocument::KINDS.include?(kind)
       return invalid("kind") if attendance && kind != "attendance_declaration"
 
-      signing = consultation ? Signatures::Gate.usable?(Current.city) : false
-      platform = kind == "prescription" ? prescription_platform(content) : nil
+      controlled = consultation ? ControlledPrescriptions::Gate.usable?(Current.city) : false
+      if kind == "controlled_notification_record" && !controlled
+        return Result.fail(:feature_disabled, details: { feature: ControlledPrescriptions::Gate::KEY })
+      end
+
+      platform = CATALOG_KINDS.include?(kind) ? prescription_platform(content) : nil
       return platform if platform.is_a?(Result)
 
+      ctx = Context.new(signing: consultation ? Signatures::Gate.usable?(Current.city) : false, controlled: controlled,
+                        simulated: controlled && Sncr::Mock.on?(Current.city), platform: platform,
+                        contact: (by.professional&.prescriber_contact if consultation && kind == "prescription"))
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
-        result = issue(kind, content, by, consultation, attendance, replaces_document_id, signing, platform, now)
+        result = issue(kind, content, by, consultation, attendance, replaces_document_id, ctx, now)
         raise ActiveRecord::Rollback if result.failure?
       end
       result
     end
 
+    # Desvio 10: o modo e o motivo do papel, na ordem fixada — interruptor da
+    # receita controlada, enfermagem no antimicrobiano, assinatura, certificado
+    # (o número SNCR vem depois, na transação). O registro da Notificação é
+    # sempre papel, sem motivo.
+    def decide(kind:, category:, role:, ctx:, certificate:)
+      return [ :paper, nil ] if kind == "controlled_notification_record"
+
+      if category == "antimicrobial"
+        return [ :paper, :feature_disabled ] unless ctx.controlled
+        return [ :paper, :nurse_antimicrobial ] if role == :nurse
+      end
+      return [ :paper, :signature_unavailable ] unless ctx.signing
+      return [ :paper, :no_certificate ] unless certificate
+
+      [ :digital, nil ]
+    end
+
     def prescription_platform(content)
       return Result.fail(:catalog_unavailable) unless Medications::Search.available?
 
-      items = Content::Input.object(content)["items"]
-      ids = Array(items).filter_map do |item|
+      input = Content::Input.object(content)
+      entries = Array(input["items"]) + [ input["item"] ].compact
+      ids = entries.filter_map do |item|
         reference = item.is_a?(Hash) && item["catalog_item"].is_a?(Hash) ? item["catalog_item"]["id"].to_s : nil
         reference if Uuid.valid?(reference)
       end
       { catalog: MedicationCatalogItem.where(id: ids.uniq).index_by(&:id), matcher: Medications::Substances.matcher }
     end
 
-    def issue(kind, input, by, consultation, attendance, replaces_id, signing, platform, now)
+    def issue(kind, input, by, consultation, attendance, replaces_id, ctx, now)
       if consultation
         return Result.fail(:not_author) unless consultation.author_user_id == by.id
 
@@ -61,28 +100,54 @@ module ClinicalDocuments
       replaces = replaced(replaces_id, kind, attendance, by)
       return replaces if replaces.is_a?(Result)
 
-      built = build(kind, input, consultation, attendance, patient, cbo, platform, now)
+      built = build(kind, input, consultation, attendance, patient, cbo, ctx, now)
       return built if built.failure?
 
-      content, rows, antimicrobial = built.payload.values_at(:content, :items, :antimicrobial)
-      digital = signing && !antimicrobial && SignerCertificate.active.exists?(user_id: by.id)
+      content, rows, category = built.payload.values_at(:content, :items, :category)
+      mode, reason =
+        if consultation
+          decide(kind: kind, category: category, role: Issuers.role(cbo), ctx: ctx,
+                 certificate: SignerCertificate.active.exists?(user_id: by.id))
+        else
+          [ :paper, nil ]
+        end
+      number = nil
+      if mode == :digital && SNCR_KINDS.key?(category)
+        number = Sncr::Stock.take!(user: by, kind: SNCR_KINDS.fetch(category), simulated: ctx.simulated)
+        mode, reason = :paper, :no_sncr_number unless number
+      end
+      # §12: a RET sem contato do prescritor só é recusada quando sairia digital
+      # (o número tirado volta por rollback).
+      return Result.fail(:prescriber_address_missing) if category == "antimicrobial" && mode == :digital && ctx.contact.nil?
+
+      content = content.merge("sncr" => { "kind" => number.kind, "number" => number.number, "simulated" => number.simulated }) if number
       document = create!(kind: kind, patient_id: patient&.id, citizen_id: attendance.citizen_id, consultation: consultation,
-                         attendance: attendance, author_user_id: by.id, cbo_code: cbo, issue_mode: digital ? "digital" : "paper",
-                         replaces_document_id: replaces&.id, issued_at: now, content: content.to_json)
+                         attendance: attendance, author_user_id: by.id, cbo_code: cbo, issue_mode: mode.to_s,
+                         paper_reason: reason&.to_s, replaces_document_id: replaces&.id, issued_at: now,
+                         content: content.to_json)
       return document if document.is_a?(Result)
 
       rows.each { |row| PrescriptionItem.create!(row.merge(clinical_document: document)) }
-      failure = medications!(document, patient, rows, platform, by, now)
+      Sncr::Stock.use!(number, document: document, now: now) if number
+      failure = medications!(document, patient, rows, ctx.platform, by, now)
       return failure if failure
 
-      Signatures::OpenRequest.call(document, now: now, usable: true) if digital
-      link = consultation ? { consultation_id: consultation.id } : { attendance_id: attendance.id }
-      DomainEvents.publish("clinical_document.issued", document_id: document.id, kind: kind, **link,
-                                                       issue_mode: document.issue_mode)
-      Result.ok(document: document)
+      # Papel nunca prepara assinatura (nem pedido, nem SignJob, nem canônico).
+      Signatures::OpenRequest.call(document, now: now, usable: true) if mode == :digital
+      publish!(document, kind, category, consultation, attendance)
+      Result.ok(document: document, paper_reason: reason&.to_s)
     end
 
-    def build(kind, input, consultation, attendance, patient, cbo, platform, now)
+    def publish!(document, kind, category, consultation, attendance)
+      link = consultation ? { consultation_id: consultation.id } : { attendance_id: attendance.id }
+      payload = { document_id: document.id, kind: kind, **link, issue_mode: document.issue_mode }
+      payload[:category] = category if kind == "prescription"
+      DomainEvents.publish("clinical_document.issued", **payload)
+    end
+
+    # O registro da Notificação (Content::NotificationRecord) entra na Task 13;
+    # até lá Issuers.allowed? o recusa antes daqui.
+    def build(kind, input, consultation, attendance, patient, cbo, ctx, now)
       today = now.in_time_zone.to_date
       result =
         case kind
@@ -90,10 +155,12 @@ module ClinicalDocuments
         when "attendance_declaration" then Content::Declaration.call(input, attendance: attendance)
         when "exam_requisition" then Content::ExamRequisition.call(input, consultation: consultation)
         when "prescription"
-          return Content::Prescription.call(input, role: Issuers.role(cbo), patient: patient, catalog: platform[:catalog],
-                                                   matcher: platform[:matcher], today: today, city_cnpj: CityProfile.current&.cnpj)
+          return Content::Prescription.call(input, role: Issuers.role(cbo), patient: patient, catalog: ctx.platform[:catalog],
+                                                   matcher: ctx.platform[:matcher], today: today, city_cnpj: CityProfile.current&.cnpj,
+                                                   controlled: ctx.controlled, prescriber_contact: ctx.contact)
+        else raise ArgumentError, "tipo sem conteúdo: #{kind}"
         end
-      result.ok? ? Result.ok(content: result.payload[:content], items: [], antimicrobial: false) : result
+      result.ok? ? Result.ok(content: result.payload[:content], items: [], category: nil) : result
     end
 
     # "Cancelar e emitir outro" (spec §6): o substituído é um cancelado do
@@ -138,6 +205,6 @@ module ClinicalDocuments
     end
 
     def invalid(field) = Result.fail(:invalid_content, details: { field: field })
-    private_class_method :prescription_platform, :issue, :build, :replaced, :create!, :medications!, :invalid
+    private_class_method :prescription_platform, :issue, :publish!, :build, :replaced, :create!, :medications!, :invalid
   end
 end

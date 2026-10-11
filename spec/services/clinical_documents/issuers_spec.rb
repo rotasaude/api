@@ -25,6 +25,10 @@ RSpec.describe ClinicalDocuments::Issuers do
     end
   end
 
+  it "tipo fora da matriz é recusado (sem KeyError)" do
+    expect(described_class.allowed?("desconhecido", "225125")).to be(false)
+  end
+
   describe ".declaration_staff" do
     before { clinical_city! }
 

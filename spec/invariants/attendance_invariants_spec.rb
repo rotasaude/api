@@ -424,7 +424,9 @@ RSpec.describe "Invariantes do atendimento: o CPF nunca vai na URL", type: :requ
       "/attendance/consultations/:id/documents", "/attendance/documents/:id", "/attendance/patients/:id/medications",
       "/attendance/consultations/:id/renewal", "/attendance/documents/:id/print",
       # Contato do prescritor (ADR 0034): perfil do próprio profissional, sem parâmetro.
-      "/attendance/professional_profile/contact" ]
+      "/attendance/professional_profile/contact",
+      # Última identificação do paciente (ADR 0034; contrato §12): só o id da consulta; o CPF vem na resposta.
+      "/attendance/consultations/:id/patient_identification" ]
   end
 
   def attendance_routes

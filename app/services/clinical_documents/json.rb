@@ -51,13 +51,14 @@ module ClinicalDocuments
       professional && "#{professional.council}-#{professional.council_state} #{professional.registration_number}"
     end
 
-    # <document> (contrato §2). `signature` = o bloco do 19b quando há pedido
+    # <document> (contrato §2; 19d §12: `paper_reason` gravado e devolvido em
+    # toda leitura, null no digital e na volta ao papel). `signature` = o bloco do 19b quando há pedido
     # (documento digital, ou que voltou ao papel); nil no papel puro.
     def document(document, signature: :load)
       author = document.author_user
       signature = document.signature_request ? Signatures::Mode.for(document) : nil if signature == :load
       { id: document.id, kind: document.kind, status: document.status, issue_mode: document.issue_mode,
-        issued_at: document.issued_at.iso8601, cancelled_at: document.cancelled_at&.iso8601,
+        paper_reason: document.paper_reason, issued_at: document.issued_at.iso8601, cancelled_at: document.cancelled_at&.iso8601,
         cancel_reason: document.cancel_reason,
         author: { id: author.id, name: Screenings::Json.staff_name(author),
                   council: council(author.professional),

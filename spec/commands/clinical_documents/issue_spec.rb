@@ -124,7 +124,7 @@ RSpec.describe ClinicalDocuments::Issue do
   it "o JSON do documento segue o contrato §2" do
     document = issue.payload[:document]
     json = ClinicalDocuments::Json.document(document).as_json
-    expect(json.keys).to match_array(%w[id kind status issue_mode issued_at cancelled_at cancel_reason author patient consultation_id
+    expect(json.keys).to match_array(%w[id kind status issue_mode paper_reason issued_at cancelled_at cancel_reason author patient consultation_id
                                         attendance_id short_code verification_url replaces_document_id content signature])
     expect(json["author"]).to eq("id" => doctor.id, "name" => doctor.professional.professional_name,
                                  "council" => "#{doctor.professional.council}-#{doctor.professional.council_state} #{doctor.professional.registration_number}",

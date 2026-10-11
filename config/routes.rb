@@ -150,6 +150,7 @@ Rails.application.routes.draw do
     # Documentos clínicos e medicamentos em uso (ADR 0033; contrato §3–§4).
     get  "consultations/:id/documents",    to: "clinical_documents#index"
     post "consultations/:id/documents",    to: "clinical_documents#create"
+    get  "consultations/:id/patient_identification", to: "clinical_documents#patient_identification"
     post "attendances/:id/declarations",   to: "clinical_documents#declaration"
     # Contato do prescritor (ADR 0034; contrato §5).
     get "professional_profile/contact", to: "professional_contacts#show"
