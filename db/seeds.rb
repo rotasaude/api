@@ -44,6 +44,7 @@ else
   require Rails.root.join("lib/clinical_record_crew").to_s
   require Rails.root.join("lib/digital_signature_crew").to_s
   require Rails.root.join("lib/clinical_documents_crew").to_s
+  require Rails.root.join("lib/controlled_prescriptions_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -264,6 +265,11 @@ else
         # ── Documentos clínicos (módulo 19c, ADR 0033) ────────────────────────
         documents = ClinicalDocumentsCrew.seed_current_city(slug: slug)
         puts "[seeds] documentos .. #{documents.inspect}"
+
+        # ── Receita controlada (módulo 19d, ADR 0034) ────────────────────────
+        # Depois do DigitalSignatureCrew e do ClinicalDocumentsCrew.
+        controlled = ControlledPrescriptionsCrew.seed_current_city(slug: slug, password: password, admin: muni_admin)
+        puts "[seeds] receita controlada .. #{controlled[:switch]}#{controlled[:dentist] ? " — #{controlled[:dentist]} — estoque: #{controlled[:block]}" : ''}"
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
