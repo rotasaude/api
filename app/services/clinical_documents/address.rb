@@ -1,10 +1,13 @@
 # Endereço completo da RCE/RET (ADR 0034; Lei 5.991, art. 35; Valores fixados
 # 2): do prescritor (perfil) e do paciente (digitado na receita). Devolve o
-# campo exato que falhou; nunca loga o valor.
+# campo exato que falhou; nunca loga o valor. Caractere de controle (NUL, BEL…)
+# no valor digitado é recusado, mesmo na ponta (o strip do Ruby comeria o NUL
+# final calado); quebra de linha e tab continuam virando espaço no squish.
 module ClinicalDocuments
   module Address
     LIMITS = { "street" => 1..120, "number" => 1..10, "district" => 1..80, "city" => 1..80 }.freeze
     COMPLEMENT = 1..60
+    CONTROL = /[[:cntrl:]&&[^[:space:]]]/
 
     module_function
 
@@ -14,13 +17,15 @@ module ClinicalDocuments
       value = (value.respond_to?(:to_unsafe_h) ? value.to_unsafe_h : value.to_h).transform_keys(&:to_s)
       out = {}
       LIMITS.each do |key, range|
-        text = value[key].is_a?(String) ? value[key].squish : ""
-        return [ nil, key ] unless range.cover?(text.size)
+        raw = value[key].is_a?(String) ? value[key] : ""
+        text = raw.squish
+        return [ nil, key ] unless range.cover?(text.size) && !raw.match?(CONTROL)
 
         out[key] = text
       end
-      complement = value["complement"].is_a?(String) ? value["complement"].squish : ""
-      return [ nil, "complement" ] if complement.size > COMPLEMENT.max
+      raw = value["complement"].is_a?(String) ? value["complement"] : ""
+      complement = raw.squish
+      return [ nil, "complement" ] if complement.size > COMPLEMENT.max || raw.match?(CONTROL)
 
       out["complement"] = complement if complement.present?
       # Formatos do esquema (clinical-v1.2.0): sem máscara, uma representação por valor.

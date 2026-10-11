@@ -152,6 +152,7 @@ RSpec.describe "Invariantes do ADR 0034" do
     Signatures::ReturnToPaper.call(request_id: document.signature_request.id, by: doctor, reason: "Paciente pediu o papel agora")
     expect(document.reload.issue_mode).to eq("paper")
     expect(SncrNumber.find_by(document_id: document.id).status).to eq("voided")
+    expect(ClinicalDocuments::Json.document(document)[:content]["sncr"]).to be_nil # FW1: a leitura não devolve o número anulado
     json = ClinicalDocuments::Verification.public_json(document)
     expect(json).not_to have_key(:sncr)
     expect(json.to_json).not_to include(SncrNumber.find_by(document_id: document.id).number)

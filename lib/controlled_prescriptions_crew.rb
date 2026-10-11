@@ -72,18 +72,37 @@ module ControlledPrescriptionsCrew
     user
   end
 
-  # Bloco 0 de cada tipo (o fake-sncr começa do bloco 100 em diante: não colide).
-  # Idempotente por tipo; um lote repetido é absorvido pelo ON CONFLICT do estoque.
-  def ensure_block(doctor)
-    return "já tinha" if %w[rce ret].all? { |kind| SncrNumberBatch.exists?(user_id: doctor.id, kind: kind, simulated: true) }
+  # Um bloco simulado de 1.000 por tipo, só se o prescritor NÃO tem número
+  # LIVRE desse tipo no simulado (com estoque livre, não gasta cota: cada bloco
+  # conta como 1 pedido do mês, como um pedido de verdade). Os blocos da semente
+  # ocupam as faixas 0..99 do mês (sequência 0000001..0100000); o fake-sncr
+  # começa do bloco 100 em diante: não colide. Depois de esgotar, o próximo
+  # bloco da semente vem na faixa seguinte (o ON CONFLICT do estoque absorveria
+  # uma faixa repetida e o prescritor ficaria sem número).
+  SEED_BLOCKS = 100
+  BLOCK = 1000
 
-    %w[rce ret].each do |kind|
-      next if SncrNumberBatch.exists?(user_id: doctor.id, kind: kind, simulated: true)
+  def ensure_block(doctor)
+    granted = %w[rce ret].reject do |kind|
+      next true if SncrNumber.available.exists?(user_id: doctor.id, kind: kind, simulated: true)
 
       prefix = "#{Time.zone.today.strftime('%y%m')}.#{kind == 'rce' ? 1 : 2}-41."
-      block = Sncr::Client::Block.new(first: "#{prefix}0000001", last: "#{prefix}0001000", quantity: 1000)
-      Sncr::Stock.record_batch!(user: doctor, kind: kind, block: block, simulated: true)
+      index = next_seed_block(kind, prefix)
+      first, last = [ (index * BLOCK) + 1, (index + 1) * BLOCK ].map { |seq| "#{prefix}#{format('%07d', seq)}" }
+      Sncr::Stock.record_batch!(user: doctor, kind: kind, block: Sncr::Client::Block.new(first: first, last: last, quantity: BLOCK),
+                                simulated: true)
+      false
     end
-    "1.000 RCE + 1.000 RET simulados"
+    granted.empty? ? "já tinha" : "#{granted.map { |kind| "1.000 #{kind.upcase}" }.join(' + ')} simulados"
+  end
+
+  # A faixa seguinte à maior sequência simulada da semente neste mês e tipo.
+  def next_seed_block(kind, prefix)
+    top = SncrNumber.where(kind: kind, simulated: true).where("number LIKE ?", "#{prefix}%")
+                    .where("right(number, 7)::int <= ?", SEED_BLOCKS * BLOCK).maximum(Arel.sql("right(number, 7)::int"))
+    index = top ? ((top - 1) / BLOCK) + 1 : 0
+    raise "semente: faixas simuladas do mês esgotadas" if index >= SEED_BLOCKS
+
+    index
   end
 end

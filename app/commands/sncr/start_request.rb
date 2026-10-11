@@ -12,9 +12,11 @@ module Sncr
     def call(user:, kind:, return_to:, now: Time.current)
       return Result.fail(:invalid_content, details: { field: "kind" }) unless Client::KINDS.key?(kind)
       return Result.fail(:cbo_not_allowed) unless COUNCILS.include?(user.professional&.council)
-      return Result.fail(:monthly_limit_reached) if Stock.requests_this_month(user: user, kind: kind, now: now) >= Stock::MONTHLY_LIMIT
-
       client = Client.for(Current.city)
+      if Stock.requests_this_month(user: user, kind: kind, simulated: client.simulated?, now: now) >= Stock::MONTHLY_LIMIT
+        return Result.fail(:monthly_limit_reached)
+      end
+
       issued = Signatures::OauthStates.issue!(user: user, purpose: "sncr_#{kind}", provider: client.provider,
                                               return_to: return_to, now: now)
       Result.ok(authorize_url: client.login_url(client_url: callback_url(Current.city), state: issued.state), state: issued.state)

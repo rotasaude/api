@@ -54,6 +54,14 @@ RSpec.describe "PDF da receita controlada" do
       text = pages(document).join("\n")
       expect(text).to include("RECEITA DE ANTIMICROBIANO — ELETRÔNICA", "Nº 2610.2-41.0000001",
                               "Validade: até #{(Time.zone.today + 10).strftime('%d/%m/%Y')}")
+      expect(text).not_to include("Endereço: ____") # FW7: a RET digital sem identificação não pede endereço
+    end
+
+    it "RET de papel sem identificação: a linha de endereço em branco continua (FW7)" do
+      document = issue!("items" => [ { "catalog_item" => { "id" => catalog_item(271_089).id }, "quantity" => 21, "quantity_unit" => "cápsula",
+                                       "route" => "oral", "dosage_instructions" => "1 cápsula de 8 em 8 horas", "duration_days" => 7 } ])
+      expect(document.issue_mode).to eq("paper")
+      expect(pages(document).join("\n")).to include("ANTIMICROBIANO", "Endereço: ____")
     end
 
     it "RCE de papel: sem número nem faixa, endereços impressos, assinatura à mão, 2 vias" do
@@ -98,6 +106,43 @@ RSpec.describe "PDF da receita controlada" do
       expect(texts.size).to be >= 2
       expect(texts).to all(include("NUMERAÇÃO SIMULADA — SEM VALIDADE"))
       expect(texts.join).to include("Rua São João ?", "Nº 2610.1-41.0000001", "2ª via — paciente")
+    end
+  end
+
+  describe "CNPJ do rodapé Anvisa: o do modo do número, não o modo corrente da cidade (FW4)" do
+    let(:real_cnpj) { "11444777000161" }
+
+    before do
+      stub_sncr_mock!
+      allow(Sncr::Config).to receive(:credentials)
+        .and_return("base_url" => ControlledPrescriptionHelpers::SNCR_REAL_BASE, "auth_url" => ControlledPrescriptionHelpers::SNCR_REAL_AUTH,
+                    "maintainer_cnpj" => real_cnpj)
+      linked_certificate!(doctor)
+    end
+
+    # As linhas de 8 pt do rodapé colidem no grid do page.text: lê os trechos de texto.
+    def runs(document) = PDF::Reader.new(StringIO.new(ClinicalDocuments::Pdf.call(document))).pages.flat_map { |page| page.runs.map(&:text) }.join("\n")
+
+    def mock!(city, enabled) = Platform::Features.set!(city: city, key: "sncr_mock", enabled: enabled, maintainer: ledi_maintainer!)
+
+    it "número real impresso com a cidade já no simulado: CNPJ real" do
+      city = controlled_city!(mock: false)
+      sncr_stock!(doctor, kind: "rce", count: 1, simulated: false)
+      document = issue!("items" => [ rce_item ], "patient_identification" => patient_identification)
+      mock!(city, true)
+      text = runs(document)
+      expect(text).to include("CNPJ #{Cnpj.display(real_cnpj)}")
+      expect(text).not_to include(Cnpj.display(Sncr::Config::SIMULATED_CNPJ))
+    end
+
+    it "número simulado impresso com a cidade já no real: CNPJ do simulado" do
+      city = controlled_city!(mock: true)
+      sncr_stock!(doctor, kind: "rce", count: 1, simulated: true)
+      document = issue!("items" => [ rce_item ], "patient_identification" => patient_identification)
+      mock!(city, false)
+      text = runs(document)
+      expect(text).to include("CNPJ #{Cnpj.display(Sncr::Config::SIMULATED_CNPJ)}")
+      expect(text).not_to include(Cnpj.display(real_cnpj))
     end
   end
 

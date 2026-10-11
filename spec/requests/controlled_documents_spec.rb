@@ -44,6 +44,27 @@ RSpec.describe "Receita controlada pela API", type: :request do
     expect(log).not_to include(consultation.patient.cpf, "Araucárias")
   end
 
+  it "GET do documento: sncr null na RCE que voltou ao papel; a digital cancelada continua mostrando (FW1)" do
+    signer = signer_doctor!(unit).tap { |user| prescriber_contact!(user); linked_certificate!(user) }
+    sncr_stock!(signer, kind: "rce", count: 2)
+    issue = lambda do |citizen|
+      ClinicalDocuments::Issue.call(kind: "prescription", by: signer, content: rce,
+                                    consultation: finalized_consultation!(unit: unit, doctor: signer, citizen: verified_citizen!(citizen))).payload[:document]
+    end
+    back, cancelled = issue.call(2), issue.call(3)
+    expect([ back, cancelled ].map(&:issue_mode)).to eq(%w[digital digital])
+    Signatures::ReturnToPaper.call(request_id: back.signature_request.id, by: signer, reason: "Paciente pediu o papel agora")
+    ClinicalDocuments::Cancel.call(document_id: cancelled.id, by: signer, reason: "Emitida para o paciente errado")
+    expect(back.reload.content_data["sncr"]).to be_present
+    sign_in_as(signer)
+    get "/attendance/documents/#{back.id}"
+    expect([ response.status, body["issue_mode"], body["content"]["sncr"] ]).to eq([ 200, "paper", nil ])
+    expect(response.body).not_to include(SncrNumber.find_by(document_id: back.id).number)
+    get "/attendance/documents/#{cancelled.id}"
+    expect([ body["status"], body["issue_mode"] ]).to eq(%w[cancelled digital])
+    expect(body["content"]["sncr"]).to include("number" => SncrNumber.find_by(document_id: cancelled.id).number)
+  end
+
   it "a identificação reaproveitada traz o CPF do cadastro de agora, não o gravado na receita (§12)" do
     sign_in_as(doctor)
     post_document(rce)
@@ -62,6 +83,10 @@ RSpec.describe "Receita controlada pela API", type: :request do
       post_document(rce("patient_identification" => patient_identification("address" => ControlledPrescriptionHelpers::ADDRESS.merge("zip" => "80010-000"))))
     end
     expect([ response.status, body ]).to eq([ 422, { "error" => "invalid_content", "field" => "patient_identification.address.zip" } ])
+    post_document(rce("patient_identification" => patient_identification("address" => ControlledPrescriptionHelpers::ADDRESS.merge("district" => "Centro\u0000"))))
+    expect([ response.status, body ]).to eq([ 422, { "error" => "invalid_content", "field" => "patient_identification.address.district" } ])
+    post_document(rce("patient_identification" => patient_identification("address" => ControlledPrescriptionHelpers::ADDRESS.merge("city" => "Curitiba\u0007"))))
+    expect([ response.status, body ]).to eq([ 422, { "error" => "invalid_content", "field" => "patient_identification.address.city" } ])
     expect(log).not_to include(consultation.patient.cpf, "Araucárias")
     post_document(rce.merge("items" => rce["items"] * 4))
     expect([ response.status, body["error"] ]).to eq([ 422, "too_many_c1_substances" ])

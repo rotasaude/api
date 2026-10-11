@@ -94,8 +94,17 @@ module ClinicalDocuments
       else
         # O impresso é do paciente: CPF completo, como o impresso da consulta do 19a.
         pdf.text s("CPF: #{cpf(person.cpf)} — Nascimento: #{birth}")
-        pdf.text s("Endereço: ________________________________________________") if document.prescription?
+        pdf.text s("Endereço: ________________________________________________") if blank_address_line?(document)
       end
+    end
+
+    # A RET digital (com número) não pede endereço do paciente (RDC 1.000): sem
+    # identificação, nada de linha em branco; a RET de papel continua com ela.
+    def blank_address_line?(document)
+      return false unless document.prescription?
+
+      content = document.content_data
+      !(content["category"] == "antimicrobial" && sncr_shown?(document, content))
     end
 
     def cpf(value) = value.to_s.sub(/\A(\d{3})(\d{3})(\d{3})(\d{2})\z/, '\1.\2.\3-\4')
@@ -125,8 +134,11 @@ module ClinicalDocuments
       end
     end
 
+    # O CNPJ é o do modo em que o número saiu (o do documento), não o modo
+    # corrente da cidade.
     def anvisa_footer(pdf, document)
-      cnpj = Sncr::Config.for_city(Current.city)&.cnpj
+      settings = document.content_data.dig("sncr", "simulated") ? Sncr::Config.simulated : Sncr::Config.real
+      cnpj = settings&.cnpj
       pdf.move_down 6
       pdf.text s("Plataforma de prescrição: #{PLATFORM_NAME}#{cnpj ? " — CNPJ #{Cnpj.display(cnpj)}" : ''}"), size: 8
       pdf.text s("Esta prescrição pode ser verificada em: #{document.verification_url}"), size: 8
@@ -243,6 +255,6 @@ module ClinicalDocuments
     end
     private_class_method :copy, :s, :date, :header, :person, :sick_note_body, :attendance_declaration_body,
                          :prescription_body, :exam_requisition_body, :note, :professional, :hand_signature, :verification,
-                         :title, :sncr_shown?, :simulated_band, :anvisa_footer, :cpf, :phone
+                         :title, :sncr_shown?, :simulated_band, :anvisa_footer, :cpf, :phone, :blank_address_line?
   end
 end

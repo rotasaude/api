@@ -44,6 +44,12 @@ RSpec.describe "Contato do prescritor", type: :request do
     expect([ response.status, body["error"] ]).to eq([ 422, "invalid_phone" ])
     put "/attendance/professional_profile/contact", params: { address: ControlledPrescriptionHelpers::ADDRESS.merge("zip" => "80010-000"), phone: "4133330000" }, as: :json
     expect([ response.status, body ]).to eq([ 422, { "error" => "invalid_address", "field" => "zip" } ])
+    # FW5: caractere de controle em campo de texto é recusado com o campo (NUL nem cabe no jsonb).
+    put "/attendance/professional_profile/contact", params: { address: ControlledPrescriptionHelpers::ADDRESS.merge("street" => "Rua\u0000 X"), phone: "4133330000" }, as: :json
+    expect([ response.status, body ]).to eq([ 422, { "error" => "invalid_address", "field" => "street" } ])
+    put "/attendance/professional_profile/contact", params: { address: ControlledPrescriptionHelpers::ADDRESS.merge("complement" => "Bloco\u0007"), phone: "4133330000" }, as: :json
+    expect([ response.status, body ]).to eq([ 422, { "error" => "invalid_address", "field" => "complement" } ])
+    expect(doctor.professional.reload.prescriber_address_data).to be_nil
     sign_in_as(verifier!)
     get "/attendance/professional_profile/contact"
     expect([ response.status, body["error"] ]).to eq([ 404, "not_found" ])

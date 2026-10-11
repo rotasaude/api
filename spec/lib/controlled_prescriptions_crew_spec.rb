@@ -34,6 +34,25 @@ RSpec.describe ControlledPrescriptionsCrew do
     expect(User.where(email_address: "dentista@curitiba.demo").count).to eq(1)
   end
 
+  # FW6: com número livre do tipo no simulado, não pede bloco (não gasta cota);
+  # depois de esgotar, o próximo bloco vem na faixa seguinte (não é absorvido).
+  it "bloco só para o tipo sem estoque livre; esgotado, o próximo bloco não colide com o anterior" do
+    prefix = Time.zone.today.strftime("%y%m")
+    Sncr::Stock.record_batch!(user: doctor, kind: "rce", simulated: true,
+                              block: Sncr::Client::Block.new(first: "#{prefix}.1-41.0500001", last: "#{prefix}.1-41.0500001", quantity: 1))
+    first = described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: admin)
+    expect(first[:block]).to eq("1.000 RET simulados")
+    expect(SncrNumberBatch.where(user_id: doctor.id).group(:kind).count).to eq("rce" => 1, "ret" => 1)
+
+    allow(SncrNumber).to receive(:available).and_return(SncrNumber.none) # o estoque livre acabou
+    expect(described_class.ensure_block(doctor)).to eq("1.000 RCE + 1.000 RET simulados")
+    ret = SncrNumberBatch.where(user_id: doctor.id, kind: "ret").order(:month_request).last
+    expect(ret).to have_attributes(month_request: 2, quantity: 1000)
+    expect(SncrNumber.where(batch_id: ret.id).count).to eq(1000)
+    expect(SncrNumber.where(user_id: doctor.id, kind: "ret", simulated: true).count).to eq(2000)
+    expect(SncrNumber.where(user_id: doctor.id, kind: "rce", simulated: true).count).to eq(1001)
+  end
+
   it "grava endereço e telefone nos formatos do esquema, pela normalização da Task 10" do
     described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: admin)
     [ doctor, User.find_by!(email_address: "dentista@curitiba.demo") ].each do |user|

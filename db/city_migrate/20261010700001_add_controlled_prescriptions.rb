@@ -1,7 +1,7 @@
 # db/city_migrate/20261010700001_add_controlled_prescriptions.rb
 # Receita de controlado e antimicrobiano com SNCR (ADR 0034; spec 2026-10-10
 # §3–§5). Estoque de números por prescritor (lotes só acréscimo; número
-# free → used → voided por trigger, único por tipo), endereço do prescritor
+# free → used → voided por trigger, único por tipo e modo), endereço do prescritor
 # (cifrado), o documento controlled_notification_record (sempre papel) e os
 # propósitos do state do SNCR no state de uso único do 19b. Triggers em
 # db/city_triggers.sql. Irreversível.
@@ -46,7 +46,7 @@ class AddControlledPrescriptions < ActiveRecord::Migration[8.1]
       t.datetime :voided_at
       t.datetime :created_at, null: false
     end
-    add_index :sncr_numbers, %i[kind number], unique: true, name: "idx_sncr_numbers_kind_number"
+    add_index :sncr_numbers, %i[kind number simulated], unique: true, name: "idx_sncr_numbers_kind_number_simulated"
     add_index :sncr_numbers, %i[user_id kind simulated number], where: "status = 'free'", name: "idx_sncr_numbers_free"
     add_index :sncr_numbers, :document_id, unique: true, where: "document_id IS NOT NULL", name: "idx_sncr_numbers_document"
     add_index :sncr_numbers, :batch_id

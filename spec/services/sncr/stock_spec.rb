@@ -21,10 +21,31 @@ RSpec.describe Sncr::Stock do
     second = described_class.record_batch!(user: doctor, kind: "rce", block: block("2610.1-41.0000011", "2610.1-41.0000012", 2),
                                            simulated: true)
     expect(second.batch.month_request).to eq(2)
-    expect(described_class.requests_this_month(user: doctor, kind: "rce")).to eq(2)
-    expect(described_class.requests_this_month(user: doctor, kind: "ret")).to eq(0)
+    expect(described_class.requests_this_month(user: doctor, kind: "rce", simulated: true)).to eq(2)
+    expect(described_class.requests_this_month(user: doctor, kind: "ret", simulated: true)).to eq(0)
     event = DomainEvent.where(name: "sncr.numbers_requested").order(:created_at).last
     expect(event.payload).to eq("user_id" => doctor.id, "kind" => "rce", "count" => 2, "simulated" => true)
+  end
+
+  it "pedidos do mês contam por modo (FW2): o real não gasta a cota simulada e vice-versa" do
+    2.times { |i| described_class.record_batch!(user: doctor, kind: "rce", block: block("2610.1-41.000000#{i + 1}", "2610.1-41.000000#{i + 1}", 1), simulated: true) }
+    real = described_class.record_batch!(user: doctor, kind: "rce", block: block("2610.1-41.0009001", "2610.1-41.0009001", 1), simulated: false)
+    expect(real.batch.month_request).to eq(1)
+    expect(described_class.requests_this_month(user: doctor, kind: "rce", simulated: true)).to eq(2)
+    expect(described_class.requests_this_month(user: doctor, kind: "rce", simulated: false)).to eq(1)
+    expect(described_class.summary(user: doctor, simulated: true)["rce"]).to include(requests_this_month: 2)
+    expect(described_class.summary(user: doctor, simulated: false)["rce"]).to include(requests_this_month: 1)
+  end
+
+  it "o mesmo número simulado e real coexistem; repetido no mesmo modo continua absorvido (FW3)" do
+    described_class.record_batch!(user: doctor, kind: "rce", block: block("2610.1-41.0000001", "2610.1-41.0000003", 3), simulated: true)
+    real = described_class.record_batch!(user: doctor, kind: "rce", block: block("2610.1-41.0000001", "2610.1-41.0000003", 3), simulated: false)
+    expect(real.received).to eq(3)
+    expect(SncrNumber.where(number: "2610.1-41.0000001").pluck(:simulated)).to contain_exactly(true, false)
+    again = described_class.record_batch!(user: doctor, kind: "rce", block: block("2610.1-41.0000002", "2610.1-41.0000004", 3), simulated: false)
+    expect(again.received).to eq(1)
+    expect(SncrNumber.where(kind: "rce", simulated: false).count).to eq(4)
+    expect(SncrNumber.where(kind: "rce", simulated: true).count).to eq(3)
   end
 
   it "bloco com números repetidos: grava só os novos, sem erro (Review Focus 2)" do

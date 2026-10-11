@@ -1468,7 +1468,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
     t.datetime "voided_at"
     t.index ["batch_id"], name: "index_sncr_numbers_on_batch_id"
     t.index ["document_id"], name: "idx_sncr_numbers_document", unique: true, where: "(document_id IS NOT NULL)"
-    t.index ["kind", "number"], name: "idx_sncr_numbers_kind_number", unique: true
+    t.index ["kind", "number", "simulated"], name: "idx_sncr_numbers_kind_number_simulated", unique: true
     t.index ["user_id", "kind", "simulated", "number"], name: "idx_sncr_numbers_free", where: "((status)::text = 'free'::text)"
     t.check_constraint "(status::text = 'free'::text) = (document_id IS NULL) AND (status::text = 'free'::text) = (used_at IS NULL) AND (status::text = 'voided'::text) = (voided_at IS NOT NULL)", name: "ck_sncr_numbers_state"
     t.check_constraint "kind::text = ANY (ARRAY['rce'::text, 'ret'::text])", name: "ck_sncr_numbers_kind"

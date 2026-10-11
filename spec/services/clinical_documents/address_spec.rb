@@ -32,6 +32,16 @@ RSpec.describe ClinicalDocuments::Address do
     expect(described_class.normalize("rua tal")).to eq([ nil, "address" ])
   end
 
+  it "caractere de controle em qualquer campo de texto é recusado com o campo (FW5); quebra de linha vira espaço" do
+    %w[street number district city complement].each do |key|
+      expect(described_class.normalize(base.merge(key => "A\u0000B"))).to eq([ nil, key ])
+      expect(described_class.normalize(base.merge(key => "A\u0007B"))).to eq([ nil, key ])
+      expect(described_class.normalize(base.merge(key => "AB\u0000"))).to eq([ nil, key ]) # o strip comeria o NUL final
+    end
+    address, field = described_class.normalize(base.merge("street" => "Rua das\nAraucárias"))
+    expect([ address["street"], field ]).to eq([ "Rua das Araucárias", nil ])
+  end
+
   it "telefone só com dígitos (10 ou 11); acento e emoji passam (o PDF troca o que não tem)" do
     expect(described_class.phone("41999990000")).to eq("41999990000")
     expect(described_class.phone("4133330000")).to eq("4133330000")

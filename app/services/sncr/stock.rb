@@ -15,15 +15,17 @@ module Sncr
 
     def month(now) = now.in_time_zone.to_date.beginning_of_month
 
-    def requests_this_month(user:, kind:, now: Time.current)
-      SncrNumberBatch.where(user_id: user.id, kind: kind, month: month(now)).count
+    # Pedidos do mês no modo de quem pergunta (D17): em staging, simulado e
+    # real contam cotas separadas (o SNCR real impõe a dele).
+    def requests_this_month(user:, kind:, simulated:, now: Time.current)
+      SncrNumberBatch.where(user_id: user.id, kind: kind, simulated: simulated, month: month(now)).count
     end
 
     def summary(user:, simulated:, now: Time.current)
       counts = SncrNumber.where(user_id: user.id, simulated: simulated).group(:kind, :status).count
       SncrNumber::KINDS.to_h do |kind|
         [ kind, { free: counts.fetch([ kind, "free" ], 0), used: counts.fetch([ kind, "used" ], 0),
-                  voided: counts.fetch([ kind, "voided" ], 0), requests_this_month: requests_this_month(user: user, kind: kind, now: now) } ]
+                  voided: counts.fetch([ kind, "voided" ], 0), requests_this_month: requests_this_month(user: user, kind: kind, simulated: simulated, now: now) } ]
       end
     end
 
@@ -37,13 +39,13 @@ module Sncr
         current = month(now)
         batch = quietly { SncrNumberBatch.create!(user: user, kind: kind, first_number: block.first, last_number: block.last,
                                         quantity: block.quantity, month: current,
-                                        month_request: SncrNumberBatch.where(user_id: user.id, kind: kind, month: current).count + 1,
+                                        month_request: requests_this_month(user: user, kind: kind, simulated: simulated, now: now) + 1,
                                         simulated: simulated, requested_at: now, created_at: now) }
         rows = numbers.map do |number|
           { kind: kind, number: number, batch_id: batch.id, user_id: user.id, simulated: simulated, status: "free", created_at: now }
         end
         inserted = quietly do
-          SncrNumber.insert_all(rows, unique_by: :idx_sncr_numbers_kind_number, returning: %w[id], record_timestamps: false).length
+          SncrNumber.insert_all(rows, unique_by: :idx_sncr_numbers_kind_number_simulated, returning: %w[id], record_timestamps: false).length
         end
         repeated = numbers.size - inserted
         Rails.logger.warn("[sncr] lote com #{repeated} número(s) já existente(s)") if repeated.positive?

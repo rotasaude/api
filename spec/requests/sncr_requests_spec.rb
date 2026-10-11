@@ -45,6 +45,17 @@ RSpec.describe "Pedido de números SNCR", type: :request do
                        "low_threshold" => 50, "simulated" => true)
   end
 
+  it "saldo e cota do mês do modo corrente: lotes reais não contam no simulado (FW2)" do
+    sign_in_as(doctor)
+    3.times { sncr_stock!(doctor, kind: "rce", count: 1, simulated: false) }
+    sncr_stock!(doctor, kind: "rce", count: 1, simulated: true)
+    get "/sncr/stock"
+    expect(body["rce"]).to eq("free" => 1, "used" => 0, "voided" => 0, "requests_this_month" => 1)
+    expect(body["simulated"]).to be(true)
+    start("rce")
+    expect(response).to have_http_status(:ok)
+  end
+
   it "callback repetido, vencido, de outro usuário, recusado no gov.br (Review Focus 1)" do
     sign_in_as(doctor)
     started = start

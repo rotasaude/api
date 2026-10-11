@@ -53,7 +53,9 @@ module ClinicalDocuments
 
     # <document> (contrato §2; 19d §12: `paper_reason` gravado e devolvido em
     # toda leitura, null no digital e na volta ao papel). `signature` = o bloco do 19b quando há pedido
-    # (documento digital, ou que voltou ao papel); nil no papel puro.
+    # (documento digital, ou que voltou ao papel); nil no papel puro. O `sncr`
+    # do content só sai na receita digital (cancelada inclusive): a que voltou
+    # ao papel guarda o número anulado no content, mas a leitura devolve null.
     def document(document, signature: :load)
       author = document.author_user
       signature = document.signature_request ? Signatures::Mode.for(document) : nil if signature == :load
@@ -67,7 +69,13 @@ module ClinicalDocuments
         consultation_id: document.consultation_id, attendance_id: document.attendance_id,
         short_code: (Codes.display(document.short_code) unless document.notification_record?),
         verification_url: (document.verification_url unless document.notification_record?),
-        replaces_document_id: document.replaces_document_id, content: document.content_data, signature: signature }
+        replaces_document_id: document.replaces_document_id, content: content(document), signature: signature }
+    end
+
+    def content(document)
+      data = document.content_data
+      data["sncr"] = nil if document.prescription? && !document.digital? && data.key?("sncr")
+      data
     end
 
     # <medication> (contrato §2); `catalog` = { id => MedicationCatalogItem }.
