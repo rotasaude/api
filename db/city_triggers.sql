@@ -1501,7 +1501,7 @@ BEGIN
     END IF;
     RETURN NEW;
   END IF;
-  IF NEW.number <> OLD.number OR NEW.kind <> OLD.kind OR NEW.batch_id <> OLD.batch_id OR NEW.user_id <> OLD.user_id
+  IF NEW.id <> OLD.id OR NEW.number <> OLD.number OR NEW.kind <> OLD.kind OR NEW.batch_id <> OLD.batch_id OR NEW.user_id <> OLD.user_id
      OR NEW.simulated <> OLD.simulated OR NEW.created_at <> OLD.created_at THEN
     RAISE EXCEPTION 'sncr_numbers: a number never changes';
   END IF;

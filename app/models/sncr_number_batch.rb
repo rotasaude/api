@@ -5,6 +5,8 @@
 class SncrNumberBatch < ApplicationRecord
   KINDS = %w[rce ret].freeze
 
+  self.filter_attributes += %i[first_number last_number]
+
   belongs_to :user
   has_many :numbers, class_name: "SncrNumber", foreign_key: :batch_id, inverse_of: :batch, dependent: :restrict_with_exception
 

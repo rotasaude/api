@@ -7,6 +7,8 @@ class SncrNumber < ApplicationRecord
   STATUSES = %w[free used voided].freeze
   FORMAT = /\A\d{4}\.\d-\d{2}\.\d{7}\z/
 
+  self.filter_attributes += %i[number]
+
   belongs_to :batch, class_name: "SncrNumberBatch", inverse_of: :numbers
   belongs_to :user
 
