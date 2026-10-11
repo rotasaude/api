@@ -11,7 +11,9 @@ require "net/http"
 
 module Sncr
   class Client
-    TIMEOUT = 8 # duas chamadas com folga dentro dos 30 s do token
+    OPEN_TIMEOUT = 3 # conexão/escrita curtas; leitura 8 s: pior caso por chamada ~14 s, uma só tentativa (sem retry)
+    TIMEOUT = 8
+    SESSION_INVALID = /Sess[aã]o inv[aá]lida|expirad/i
     KINDS = { "rce" => "RCE", "ret" => "RET" }.freeze
     COUNCILS = %w[CRM CRMV CRO].freeze
     # Nao provado (Task 0 pulada): gate de go-live em docs/pesquisa/2026-10-10-sncr-token-no-servidor.md
@@ -70,16 +72,22 @@ module Sncr
       request["Origin"] = origin if SEND_ORIGIN
       response = perform(uri, request)
       code = response.code.to_i
-      raise Unavailable, "sncr_token_#{code}" if code >= 500 || code == 403 # 403 = domínio: configuração da plataforma
+      text = response.body.to_s.dup.force_encoding("UTF-8").scrub
+      if code == 401 || (code == 400 && SESSION_INVALID.match?(text))
+        raise Expired, "sncr_session"
+      elsif code != 200
+        raise Unavailable, "sncr_token_#{code}" # 5xx, 403 (domínio) e demais 4xx: plataforma/SNCR
+      end
 
-      access = parse(response.body)["access_token"]
-      raise Expired, "sncr_session" unless code == 200 && access.is_a?(String) && access.present?
+      access = parse(text)["access_token"]
+      raise Unavailable, "sncr_token_invalid" unless access.is_a?(String) && access.present?
 
       Token.new(access_token: access)
     end
 
     def request_block(token:, kind:, council:, registration:, uf:)
       raise ArgumentError, "tipo desconhecido" unless KINDS.key?(kind)
+      raise ArgumentError, "conselho desconhecido" unless COUNCILS.include?(council)
 
       uri = URI("#{@settings.base_url}#{PATHS[:block]}")
       request = Net::HTTP::Post.new(uri)
@@ -120,8 +128,12 @@ module Sncr
     end
 
     def perform(uri, request)
-      response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: @timeout,
-                                                     read_timeout: @timeout, write_timeout: @timeout) { |http| http.request(request) }
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == "https"
+      http.open_timeout = http.write_timeout = [ OPEN_TIMEOUT, @timeout ].min
+      http.read_timeout = @timeout
+      http.max_retries = 0 # o GET do exchange consome o session_id: reenviar viraria Expired
+      response = http.start { |conn| conn.request(request) }
       Checks.record!(@settings, ok: response.code.to_i < 500)
       response
     rescue *NETWORK_ERRORS => e

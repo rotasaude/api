@@ -15,6 +15,8 @@ RSpec.describe Sncr::Client do
   let(:callback) { "#{CityPublicUrl.dashboard(Current.city)}sncr/callback" }
   let(:origin) { CityPublicUrl.base(Current.city) }
 
+  let(:issued) { token }
+
   def token = client.exchange(session_id: fake_sncr.approve!(callback), origin: origin)
   def block(kind: "rce", registration: "12345", uf: "PR", token: self.token)
     client.request_block(token: token, kind: kind, council: "CRM", registration: registration, uf: uf)
@@ -28,13 +30,13 @@ RSpec.describe Sncr::Client do
   end
 
   it "troca o session_id no servidor e pede o bloco: 1.000 números no mesmo prefixo" do
-    result = block
+    result = block(token: issued)
     expect(result.quantity).to eq(1000)
     numbers = Sncr::Numbers.expand(result.first, result.last, result.quantity)
     expect(numbers.size).to eq(1000)
     expect(numbers).to all(match(SncrNumber::FORMAT))
     expect(result.inspect).not_to include(result.first)
-    expect(token.inspect).not_to include(*fake_sncr.issued_tokens)
+    expect(issued.inspect).not_to include(*fake_sncr.issued_tokens)
     expect(SncrCheck.last("real")).to have_attributes(last_check_ok: true)
   end
 
@@ -63,8 +65,15 @@ RSpec.describe Sncr::Client do
   end
 
   it "queda, recusa de conexão e resposta sem bloco válido: Unavailable, checagem falsa" do
+    session_id = fake_sncr.approve!(callback)
     fake_sncr.failures << 503
-    expect { token }.to raise_error(described_class::Unavailable)
+    error = begin
+      client.exchange(session_id: session_id, origin: origin)
+    rescue described_class::Unavailable => e
+      e
+    end
+    expect(error).to be_a(described_class::Unavailable)
+    expect([ error.message, error.cause&.message ].join).not_to include(session_id)
     expect(SncrCheck.last("real")).to have_attributes(last_check_ok: false)
     fake_sncr.failures << :refused
     expect { token }.to raise_error(described_class::Unavailable)
@@ -72,6 +81,37 @@ RSpec.describe Sncr::Client do
     stub_request(:post, "#{ControlledPrescriptionHelpers::SNCR_REAL_BASE}/numeracoes/receita-especial-retencao")
       .to_return(status: 201, body: { inicio: "2610.1-41.0000001", fim: "2610.2-41.0001000", quantidade: 1000 }.to_json)
     expect { block(token: fresh) }.to raise_error(described_class::Unavailable)
+  end
+
+  it "timeout de leitura não repete o GET: Unavailable, checagem falsa, sem segredo na exceção" do
+    session_id = fake_sncr.approve!(callback)
+    stub_request(:get, /#{Regexp.escape(ControlledPrescriptionHelpers::SNCR_REAL_AUTH)}\/auth\/token/).to_timeout
+    error = begin
+      client.exchange(session_id: session_id, origin: origin)
+    rescue described_class::Unavailable => e
+      e
+    end
+    expect(error).to be_a(described_class::Unavailable)
+    expect(WebMock).to have_requested(:get, /auth\/token/).once
+    expect(SncrCheck.last("real")).to have_attributes(last_check_ok: false)
+    expect([ error.message, error.cause&.message ].join).not_to include(session_id)
+  end
+
+  it "exchange: 200 malformado e 4xx diferente de 401 são Unavailable; 401 é Expired" do
+    auth = /#{Regexp.escape(ControlledPrescriptionHelpers::SNCR_REAL_AUTH)}\/auth\/token/
+    stub_request(:get, auth).to_return(status: 200, body: "<html>")
+    expect { client.exchange(session_id: "x", origin: origin) }.to raise_error(described_class::Unavailable)
+    stub_request(:get, auth).to_return(status: 200, body: "{}")
+    expect { client.exchange(session_id: "x", origin: origin) }.to raise_error(described_class::Unavailable)
+    stub_request(:get, auth).to_return(status: 404, body: "{}")
+    expect { client.exchange(session_id: "x", origin: origin) }.to raise_error(described_class::Unavailable)
+    stub_request(:get, auth).to_return(status: 401, body: "{}")
+    expect { client.exchange(session_id: "x", origin: origin) }.to raise_error(described_class::Expired)
+  end
+
+  it "conselho desconhecido é ArgumentError" do
+    expect { client.request_block(token: issued, kind: "rce", council: "XYZ", registration: "1", uf: "PR") }
+      .to raise_error(ArgumentError)
   end
 
   it "sem configuração: Unavailable; com sncr_mock, o simulado" do
