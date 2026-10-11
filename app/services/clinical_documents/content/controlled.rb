@@ -6,7 +6,10 @@
 # se houver antimicrobiano, senão comum. RCE só com C1/C5 do catálogo (nenhum
 # antimicrobiano); RET só com antimicrobianos do catálogo (texto livre não
 # recebe número SNCR sem conferência do catálogo); o que não serve à categoria
-# dominante é recusado com o índice (vira outra receita). Controlado em texto
+# dominante é recusado com o índice (vira outra receita). Receita só de texto
+# livre antimicrobiano não vira RET (fix round 1, coordenador, §12): sai
+# `paper_only`, pelo caminho da receita antimicrobiana em papel do 19c (o mesmo
+# de `legacy`; a emissão a leva a papel sem tirar número). Controlado em texto
 # livre, listas A/B (notificação) e C2/C3/C4 são recusados antes; lista
 # desconhecida falha fechada. Desligado o interruptor, `legacy` repete o 19c.
 module ClinicalDocuments
@@ -32,8 +35,9 @@ module ClinicalDocuments
         elsif items.any? { |it| it[:antimicrobial] } then "antimicrobial"
         else "common"
         end
-        index = items.index { |it| !fits?(category, it) }
-        index ? Result.fail(:mixed_categories, details: { index: index }) : Result.ok(category: category)
+        paper_only = category == "antimicrobial" && items.all? { |it| it[:catalog].nil? }
+        index = paper_only ? nil : items.index { |it| !fits?(category, it) }
+        index ? Result.fail(:mixed_categories, details: { index: index }) : Result.ok(category: category, paper_only: paper_only)
       end
 
       def legacy(items)

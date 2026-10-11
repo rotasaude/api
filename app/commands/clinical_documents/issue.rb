@@ -56,12 +56,14 @@ module ClinicalDocuments
     # receita controlada, enfermagem no antimicrobiano, assinatura, certificado
     # (o número SNCR vem depois, na transação). O registro da Notificação é
     # sempre papel, sem motivo.
-    def decide(kind:, category:, role:, ctx:, certificate:)
+    def decide(kind:, category:, role:, ctx:, certificate:, paper_only: false)
       return [ :paper, nil ] if kind == "controlled_notification_record"
 
       if category == "antimicrobial"
         return [ :paper, :feature_disabled ] unless ctx.controlled
         return [ :paper, :nurse_antimicrobial ] if role == :nurse
+        # Só texto livre antimicrobiano (fix round 1 da Task 11): papel do 19c, sem tirar número.
+        return [ :paper, :no_sncr_number ] if paper_only
       end
       return [ :paper, :signature_unavailable ] unless ctx.signing
       return [ :paper, :no_certificate ] unless certificate
@@ -103,10 +105,10 @@ module ClinicalDocuments
       built = build(kind, input, consultation, attendance, patient, cbo, ctx, now)
       return built if built.failure?
 
-      content, rows, category = built.payload.values_at(:content, :items, :category)
+      content, rows, category, paper_only = built.payload.values_at(:content, :items, :category, :paper_only)
       mode, reason =
         if consultation
-          decide(kind: kind, category: category, role: Issuers.role(cbo), ctx: ctx,
+          decide(kind: kind, category: category, role: Issuers.role(cbo), ctx: ctx, paper_only: paper_only == true,
                  certificate: SignerCertificate.active.exists?(user_id: by.id))
         else
           [ :paper, nil ]

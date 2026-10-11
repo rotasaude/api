@@ -36,8 +36,10 @@ module ClinicalDocuments
         return classified if classified.failure?
 
         category = classified.payload[:category]
-        rules = Controlled.check(category, items, role: role, identification: (input["patient_identification"] if controlled),
-                                                  prescriber_contact: (prescriber_contact if controlled), patient: patient)
+        paper_only = classified.payload[:paper_only] == true
+        rules_19d = controlled && !paper_only # paper_only: a receita antimicrobiana em papel do 19c, como o legacy
+        rules = Controlled.check(category, items, role: role, identification: (input["patient_identification"] if rules_19d),
+                                                  prescriber_contact: (prescriber_contact if rules_19d), patient: patient)
         return rules if rules.failure?
 
         version = nil
@@ -59,7 +61,7 @@ module ClinicalDocuments
                        "prescriber_contact" => rules.payload[:prescriber_contact])
         # Uma vez por receita (esquema clinical-v1.1.0): a release do catálogo na emissão; null se só texto livre.
         content["catalog_release"] = rows.filter_map { |row| row[:catalog_release_id] }.first
-        Result.ok(content: content, items: rows, antimicrobial: antimicrobial, category: category)
+        Result.ok(content: content, items: rows, antimicrobial: antimicrobial, category: category, paper_only: paper_only)
       end
 
       def item(entry, index, catalog, matcher, problems)

@@ -51,6 +51,24 @@ RSpec.describe "Emissão de receita controlada" do
     expect(DomainEvent.where(name: %w[clinical_document.issued sncr.number_used]).pluck(:payload).to_json).not_to include("2610.1-41")
   end
 
+  # Fix round 1 da Task 11 (coordenador, §12): só texto livre antimicrobiano
+  # não vira RET; papel do 19c sem tirar número, motivo no_sncr_number.
+  it "só texto livre antimicrobiano: papel no_sncr_number, nenhum número tirado, sem pedido de assinatura" do
+    linked_certificate!(doctor)
+    sncr_stock!(doctor, kind: "ret", count: 1)
+    free = { "items" => [ { "free_text" => "Azitromicina 500mg", "quantity" => 3, "quantity_unit" => "comprimido", "route" => "oral",
+                            "dosage_instructions" => "1 ao dia", "duration_days" => 3 } ] }
+    result = issue!(free).payload
+    document = result[:document]
+    expect([ document.issue_mode, result[:paper_reason], document.paper_reason ]).to eq([ "paper", "no_sncr_number", "no_sncr_number" ])
+    expect(document.content_data).to include("category" => "antimicrobial", "sncr" => nil, "copies" => 2,
+                                             "patient_identification" => nil, "prescriber_contact" => nil)
+    expect(document.signature_request).to be_nil
+    expect(SncrNumber.where(user_id: doctor.id).pluck(:status)).to eq([ "free" ])
+    mixed = issue!(free.merge("items" => ret_content["items"] + free["items"]))
+    expect([ mixed.reason, mixed.details ]).to eq([ :mixed_categories, { index: 1 } ])
+  end
+
   it "duas emissões com 1 número: a segunda sai em papel com no_sncr_number (Review Focus 3)" do
     linked_certificate!(doctor)
     sncr_stock!(doctor, kind: "rce", count: 1)

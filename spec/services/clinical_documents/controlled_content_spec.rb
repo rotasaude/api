@@ -87,10 +87,25 @@ RSpec.describe ClinicalDocuments::Content::Prescription do
       end
     end
 
-    it "texto livre não entra em RCE nem em RET (P1 revogado)" do
+    it "texto livre não entra em RCE nem em RET (P1 revogado): misturado com item do catálogo, mixed_categories com o índice" do
       expect(failure(call([ item(:fluoxetina), free("chá de camomila", duration: 30) ]))).to eq([ :mixed_categories, { index: 1 } ])
       expect(failure(call([ item(:amoxicilina, duration: 7), free("Azitromicina 500mg") ]))).to eq([ :mixed_categories, { index: 1 } ])
-      expect(failure(call([ free("Azitromicina 500mg") ], identification: nil))).to eq([ :mixed_categories, { index: 0 } ])
+      expect(failure(call([ free("Azitromicina 500mg"), item(:amoxicilina, duration: 7) ]))).to eq([ :mixed_categories, { index: 0 } ])
+    end
+
+    # Fix round 1 (coordenador, §12): só texto livre antimicrobiano não vira RET
+    # (sem número SNCR sem conferência do catálogo): sai pelo caminho da receita
+    # antimicrobiana em papel do 19c, o mesmo do interruptor desligado.
+    it "só texto livre antimicrobiano: receita antimicrobiana em papel do 19c (sem identificação nem contato)" do
+      result = call([ free("Azitromicina 500mg"), free("Cefalexina 500mg") ])
+      expect(result).to be_ok
+      expect(result.payload).to include(category: "antimicrobial", paper_only: true, antimicrobial: true)
+      expect(result.payload[:content]).to include("category" => "antimicrobial", "copies" => 2, "valid_until" => "2026-10-20", "sncr" => nil,
+                                                  "patient_identification" => nil, "prescriber_contact" => nil, "antimicrobial" => true)
+      legacy = call([ free("Azitromicina 500mg"), free("Cefalexina 500mg") ], controlled: false)
+      expect(result.payload[:content]).to eq(legacy.payload[:content])
+      expect(call([ item(:amoxicilina, duration: 7) ]).payload[:paper_only]).to be(false)
+      expect(call([ free("Azitromicina 500mg") ], role: :nurse).reason).to eq(:free_text_not_allowed)
     end
 
     it "comum com texto livre comum continua uma receita só" do
@@ -177,6 +192,15 @@ RSpec.describe ClinicalDocuments::Content::Prescription do
       expect([ described_class::MAX_C1, described_class::SPECIAL_DAYS, described_class::ANTICONVULSANT_DAYS ]).to eq([ 3, 60, 180 ])
       expect(described_class::VALIDITY).to eq("special_control" => 30, "antimicrobial" => 10)
       expect(described_class::PRESCRIBERS).to eq(%i[physician dentist])
+    end
+
+    it "classify: só texto livre antimicrobiano marca paper_only; com item do catálogo, mixed_categories" do
+      free = { catalog: nil, free_text: "Azitromicina", controlled: false, controlled_list: nil, antimicrobial: true }
+      amox = { catalog: Object.new, free_text: nil, controlled: false, controlled_list: nil, antimicrobial: true }
+      expect(described_class.classify([ free, free ]).payload).to eq(category: "antimicrobial", paper_only: true)
+      expect(described_class.classify([ amox ]).payload).to eq(category: "antimicrobial", paper_only: false)
+      expect(failure(described_class.classify([ amox, free ]))).to eq([ :mixed_categories, { index: 1 } ])
+      expect(failure(described_class.classify([ free, amox ]))).to eq([ :mixed_categories, { index: 0 } ])
     end
 
     it "lista de controle desconhecida (fora de C1/C5/A/B) falha fechada: not_supported" do
