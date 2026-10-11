@@ -1,0 +1,86 @@
+# Proxy de borda de uma cidade: snippet de REFERÊNCIA (nginx).
+#
+# O proxy de borda NÃO vive neste repositório. Este arquivo documenta o que ele
+# precisa fazer para o api não vazar segredo em log (card rotasaude/api#62):
+#
+#  1. O token de /v/<token> (e de /v/<token>/signed.pdf, o PDF assinado inteiro)
+#     e de /r/<token> (relatório) é uma credencial de portador. Se o access log
+#     gravar a URL inteira, quem lê o log abre o documento. Por isso o log usa
+#     uma URL MASCARADA, com a mesma semântica do initializer do Rails
+#     (config/initializers/request_log_path_mask.rb): /v/lookup segue legível.
+#  2. O Referer pode carregar o token (página /v/...), então NÃO é registrado.
+#     Query string de rota mascarada também não é registrada.
+#  3. O IP real do cidadão chega ao api via X-Forwarded-For / X-Real-IP.
+#
+# CONTEXTO DE INCLUSÃO: este arquivo vai DENTRO do bloco `http { ... }`, ex.:
+#     include /etc/nginx/conf.d/nginx-city.conf;   # (conf.d já é incluído no http)
+# Ele declara map, log_format, upstream e server; ajuste server_name, TLS e o
+# endereço do upstream. Produção: cidadão -> ESTE proxy -> kamal-proxy -> Rails.
+
+# --- 1. URL mascarada para log --------------------------------------------
+# A ordem importa: em `map` com regex vale a primeira que casar.
+map $request_uri $rota_log_uri {
+    default                              $request_uri;
+
+    # /v/lookup (e /v/lookup/..., /v/lookup?...) fica legível, como no Rails.
+    "~^/v/lookup(?:[/?]|$)"              $request_uri;
+
+    # PDF assinado: preserva o sufixo (útil para diagnóstico), esconde o token
+    # e descarta a query string.
+    "~^/v/[^/?]+/signed\.pdf(?:\?|$)"    "/v/[FILTERED]/signed.pdf";
+
+    # /v/<token> e /r/<token>: o que vier depois do token (incluindo a query)
+    # é descartado, para nada de sensível vazar por ali.
+    "~^/(?<rota>[vr])/[^/?]+"            "/$rota/[FILTERED]";
+}
+
+# --- 2. Formato de log sem URL crua nem Referer ---------------------------
+# Nunca use $request, $request_uri, $uri, $args, $query_string nem
+# $http_referer aqui. $request_method + $rota_log_uri substituem $request.
+log_format city_masked '$remote_addr - [$time_local] '
+                       '"$request_method $rota_log_uri $server_protocol" '
+                       '$status $body_bytes_sent "$http_user_agent"';
+
+# --- 3. Upstream (api) -----------------------------------------------------
+# Em produção, o kamal-proxy do host do api. Ajuste.
+upstream api_cidade {
+    server kamal-proxy.interno:80;
+}
+
+server {
+    listen 80;                       # em produção: 443 ssl + certificados
+    server_name _;                   # ajuste: domínio da cidade
+
+    access_log /var/log/nginx/access.log city_masked;
+
+    # Cabeçalhos repassados ao api (valem para todas as locations).
+    #
+    # IMPORTANTE: o Rails (ActionDispatch::RemoteIp) escolhe o primeiro IP NÃO
+    # confiável lendo a lista [X-Forwarded-For..., REMOTE_ADDR] da DIREITA para a
+    # esquerda. Por isso a defesa contra IP forjado é cada salto ACRESCENTAR o
+    # endereço do par que o contactou ($proxy_add_x_forwarded_for): um valor
+    # forjado pelo cliente fica à esquerda do IP real e é ignorado.
+    # Se este for o PRIMEIRO salto e você quiser ser mais estrito, pode trocar
+    # por `proxy_set_header X-Forwarded-For $remote_addr;` (descarta o que o
+    # cliente mandou) — opcional, não é requisito para o Rails escolher certo.
+    #
+    # O IP/CIDR DESTE proxy precisa estar em TRUSTED_PROXIES do api (ver
+    # deploy/SECRETS.md), senão o Rails o toma por cliente e loga/limita o IP
+    # do proxy em vez do cidadão.
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    location /v {
+        proxy_pass http://api_cidade;
+    }
+
+    location /r {
+        proxy_pass http://api_cidade;
+    }
+
+    location / {
+        proxy_pass http://api_cidade;
+    }
+}
