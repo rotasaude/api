@@ -189,6 +189,11 @@ Rails.application.routes.draw do
     get  "professionals/:user_id/consultations", to: "clinical_record_consultations#index"
     get  "consultations/:id",                    to: "clinical_record_consultations#show"
     get  "consultations/:id/documents",          to: "clinical_record_documents#index"
+    # Rascunho órfão (card api#51): lista, candidatos, descartar, designar.
+    get  "consultation_drafts",                  to: "consultation_drafts#index"
+    get  "consultation_drafts/:id/candidates",   to: "consultation_drafts#candidates"
+    post "consultation_drafts/:id/discard",      to: "consultation_drafts#discard"
+    post "consultation_drafts/:id/reassign",     to: "consultation_drafts#reassign"
   end
 
   # Documentos clínicos (ADR 0033; contrato §6): configuração da cidade (CNPJ,
