@@ -19,6 +19,65 @@ RSpec.describe Rota do
     end
   end
 
+  # Card api#62: os rate_limit contam por request.remote_ip; atrás do proxy de
+  # borda das cidades o Rails só enxerga o IP real se souber quem é proxy.
+  describe ".trusted_proxies" do
+    let(:defaults) { ActionDispatch::RemoteIp::TRUSTED_PROXIES }
+
+    def added(value) = described_class.trusted_proxies(value) - defaults
+
+    it "separa por vírgula, espaço ou os dois, ignorando entradas vazias" do
+      expect(added("198.51.100.0/24,203.0.113.10")).to eq([ IPAddr.new("198.51.100.0/24"), IPAddr.new("203.0.113.10") ])
+      expect(added("198.51.100.0/24 203.0.113.10")).to eq(added("198.51.100.0/24,203.0.113.10"))
+      expect(added(" 198.51.100.0/24 ,, 203.0.113.10\n")).to eq(added("198.51.100.0/24,203.0.113.10"))
+    end
+
+    it "aceita IPv6, CIDR e IP único" do
+      expect(added("2001:db8::/32,2001:db8:1::5")).to eq([ IPAddr.new("2001:db8::/32"), IPAddr.new("2001:db8:1::5") ])
+    end
+
+    it "mantém os padrões do Rails (loopback e redes privadas)" do
+      list = described_class.trusted_proxies("198.51.100.0/24")
+      expect(list.first(defaults.size)).to eq(defaults.to_a)
+      expect(list.any? { |p| p === IPAddr.new("10.1.2.3") }).to be(true)
+      expect(list.any? { |p| p === IPAddr.new("198.51.100.7") }).to be(true)
+      expect(list.any? { |p| p === IPAddr.new("192.0.2.99") }).to be(false)
+    end
+
+    it "devolve nil quando não configurado (nil ou só espaços)" do
+      expect(described_class.trusted_proxies(nil)).to be_nil
+      expect(described_class.trusted_proxies("  \n ")).to be_nil
+      expect(described_class.trusted_proxies(" , ")).to be_nil
+    end
+
+    it "recusa entrada inválida nomeando a variável e a entrada" do
+      [ "10.0.0.0/33", "banana", "1.2.3", "198.51.100.0/24,banana" ].each do |value|
+        bad = value.split(",").last
+        expect { described_class.trusted_proxies(value) }
+          .to raise_error(Rota::InvalidTrustedProxies, /TRUSTED_PROXIES.*#{Regexp.escape(bad)}/)
+      end
+    end
+  end
+
+  describe ".warn_missing_trusted_proxies" do
+    let(:logger) { instance_double(Logger, warn: nil) }
+
+    it "avisa, nomeando a variável e o efeito, em ambiente publicado sem a variável" do
+      %w[production staging].each do |env|
+        described_class.warn_missing_trusted_proxies(env: env, value: nil, logger: logger)
+      end
+      expect(logger).to have_received(:warn).twice.with(/TRUSTED_PROXIES.*IP do proxy/m)
+      described_class.warn_missing_trusted_proxies(env: "production", value: "  ", logger: logger)
+      expect(logger).to have_received(:warn).exactly(3).times
+    end
+
+    it "não avisa com a variável presente nem em development/test" do
+      described_class.warn_missing_trusted_proxies(env: "production", value: "198.51.100.0/24", logger: logger)
+      %w[development test].each { |env| described_class.warn_missing_trusted_proxies(env: env, value: nil, logger: logger) }
+      expect(logger).not_to have_received(:warn)
+    end
+  end
+
   describe ".check_credentials!" do
     it "refuses staging reading the shared credentials file" do
       expect do

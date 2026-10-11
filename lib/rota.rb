@@ -4,6 +4,9 @@
 # Fica em lib/ e é `require`ado por config/application.rb, não autoloaded:
 # config/application.rb e config/environments/*.rb rodam antes do Zeitwerk, e
 # ambos perguntam Rota.deployed? (mesmo motivo de lib/platform_hosts.rb).
+require "ipaddr"
+require "action_dispatch/middleware/remote_ip"
+
 module Rota
   # Ambientes publicados em infraestrutura compartilhada. staging é ensaio de
   # produção: tudo que endurece produção — cookie Secure, TLS no banco da cidade,
@@ -20,6 +23,7 @@ module Rota
   ISOLATED_CREDENTIALS_ENVS = %w[staging production].freeze
 
   class SharedCredentials < StandardError; end
+  class InvalidTrustedProxies < StandardError; end
 
   module_function
 
@@ -35,5 +39,41 @@ module Rota
 
     raise SharedCredentials, "#{env} está lendo #{Pathname(content_path.to_s).basename} — precisa de " \
                              "config/credentials/#{expected} com chaves próprias (isolamento entre ambientes)"
+  end
+
+  # Card api#62: os rate_limit do api contam por `request.remote_ip`. Atrás do
+  # proxy de borda da cidade + kamal-proxy, sem saber quem é proxy o Rails vê o
+  # IP do proxy (todos os cidadãos dividem um balde) ou aceita um
+  # X-Forwarded-For forjado. TRUSTED_PROXIES lista os CIDRs desses proxies,
+  # separados por vírgula e/ou espaço (IP único ou CIDR, IPv4 ou IPv6).
+  #
+  # Soma-se aos padrões do Rails (loopback e redes privadas): o kamal-proxy fala
+  # com o container por rede docker privada, e atribuir uma lista própria
+  # SUBSTITUIRIA esses padrões. Devolve nil quando não configurado — quem chama
+  # decide (em production/staging, só avisa). Valor inválido levanta: engolir
+  # deixaria o limite por IP errado em silêncio.
+  def trusted_proxies(value)
+    entries = value.to_s.split(/[,\s]+/).reject(&:empty?)
+    return nil if entries.empty?
+
+    parsed = entries.map do |entry|
+      IPAddr.new(entry)
+    rescue IPAddr::Error
+      raise InvalidTrustedProxies, "TRUSTED_PROXIES tem a entrada inválida #{entry.inspect} — use IP ou CIDR " \
+                                   "(IPv4 ou IPv6) separados por vírgula, ex.: 203.0.113.10/32,2001:db8::/32"
+    end
+    ActionDispatch::RemoteIp::TRUSTED_PROXIES + parsed
+  end
+
+  # Ausência de TRUSTED_PROXIES em ambiente publicado só avisa (decisão do
+  # usuário): derrubar o boot travaria o deploy por um valor ainda desconhecido
+  # (gate de go-live). O aviso deixa o efeito explícito no log.
+  def warn_missing_trusted_proxies(env: Rails.env, value: ENV["TRUSTED_PROXIES"], logger: Rails.logger)
+    return unless deployed?(env)
+    return unless value.to_s.strip.empty?
+
+    logger.warn "TRUSTED_PROXIES não está definida em #{env}: o limite por IP (rate_limit) vê o IP do proxy de " \
+                "borda, não o do cidadão — todos dividem um balde e X-Forwarded-For pode ser forjado. " \
+                "Defina os CIDRs dos proxies (deploy/SECRETS.md)."
   end
 end

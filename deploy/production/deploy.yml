@@ -100,6 +100,12 @@ env:
     # BLOQUEADO (dono: usuário) nos passos 1 e 2: exigem acesso ao servidor e à
     # CA. NÃO trocar o valor abaixo até os dois estarem confirmados feitos.
     CITY_DATABASE_SSLMODE: "require"   # → "verify-full" depois dos passos acima
+    # Card api#62. CIDRs dos proxies de borda das cidades (não secreto), separados
+    # por vírgula; somam-se aos padrões do Rails (loopback e redes privadas). Sem
+    # isto o rate_limit por IP vê o IP do proxy. GATE DE GO-LIVE (dono: usuário):
+    # o valor real depende da topologia de borda e não é conhecido aqui — ausente,
+    # o boot só avisa no log; inválido, o boot falha. Descomentar com o valor real.
+    # TRUSTED_PROXIES: "203.0.113.10/32,2001:db8::/32"
   secret:
     - ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
     - ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT

@@ -34,6 +34,13 @@ Rails.application.configure do
   config.hosts += PlatformHosts.for(Rails.env)
   config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 
+  # Card api#62: rate_limit conta por request.remote_ip; atrás do proxy de borda
+  # só com os CIDRs dele em trusted_proxies o Rails enxerga o IP real do cidadão.
+  # Soma aos padrões do Rails (Rota.trusted_proxies); ausente → nil (o aviso sai
+  # no initializer 02_trusted_proxies_warning), inválida → o boot falha.
+  proxies = Rota.trusted_proxies(ENV["TRUSTED_PROXIES"])
+  config.action_dispatch.trusted_proxies = proxies if proxies
+
   # CADSUS (ADR 0028): só a produção de verdade consulta o CADSUS de produção;
   # staging herda este arquivo e fica na homologação (default de SoapPdq.default_url).
   # Literal = Cadsus::SoapPdq::PRODUCTION_URL (constante não carrega em tempo de config).
