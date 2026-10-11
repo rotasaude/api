@@ -125,6 +125,23 @@ RSpec.describe "Conferência pública de documento", type: :request do
     expect(log).to include('Started GET "/v/[FILTERED]"', 'Started GET "/v/[FILTERED]/signed.pdf"', 'Started POST "/v/lookup"')
   end
 
+  it "o token não vai ao log nem por /v//token, //v/token, /%76/token ou /%72/token (legível: //v//lookup)" do
+    token = "abc123token"
+    log = capture_log do
+      get "/v//#{token}"
+      get "//v/#{token}"
+      get "/%76/#{token}"
+      get "/%72/#{token}"
+      get "/v//#{token}//signed.pdf"
+      get "//v//lookup"
+    end
+    # Só a linha de requisição é mascarada aqui; o RoutingError de caminho sem
+    # rota (ex. /%76/...) é outra linha de log, fora deste escopo (ver rollout).
+    expect(log.lines.grep(/Started/).join).not_to include(token)
+    expect(log).to include('Started GET "/v/[FILTERED]"', 'Started GET "/r/[FILTERED]"', 'Started GET "/v/[FILTERED]/signed.pdf"')
+    expect(log).to include('Started GET "//v//lookup"')
+  end
+
   it "digital assinado e depois cancelado: cancelled, sem signed_pdf_url, PDF 404" do
     stub_psc!; stub_signer!; signature_city!
     doctor.professional.update!(cpf: SignatureHelpers::DOCTOR_CPF)

@@ -27,7 +27,9 @@ echo "== nginx -t"; docker run --rm --network $NET --add-host fix62-backend:127.
   -v "$T/nginx.conf:/etc/nginx/nginx.conf:ro" -v "$T/city.conf:/etc/nginx/city.conf:ro" $IMG nginx -t 2>&1
 docker run -d --name $PX --network $NET -v "$T/nginx.conf:/etc/nginx/nginx.conf:ro" -v "$T/city.conf:/etc/nginx/city.conf:ro" $IMG >/dev/null
 sleep 1
-for p in /v/abc123token /v/abc123token/signed.pdf?x=1 /r/abc123token /r/abc123token?k=abc123token /v/lookup /v/lookup?cpf=1; do
+for p in /v/abc123token /v/abc123token/signed.pdf?x=1 /r/abc123token /r/abc123token?k=abc123token /v/lookup /v/lookup?cpf=1 \
+         /v//abc123token //v/abc123token /v/abc123token/ /v//abc123token//signed.pdf /%76/abc123token /%72/abc123token \
+         /%56/abc123token /%52//abc123token /v%2Fabc123token //v//lookup /%76/lookup; do
   echo "== GET $p"
   docker exec $PX wget -qO- --header='X-Forwarded-For: 6.6.6.6' --header='Referer: http://x/v/abc123token' "http://127.0.0.1$p"
 done

@@ -59,6 +59,20 @@ RSpec.describe Rota do
     end
   end
 
+  describe ".trusted_proxies (confiar em tudo)" do
+    it "recusa entrada de prefixo 0, que anularia o limite por IP, nomeando a variável e a entrada" do
+      [ "0.0.0.0/0", "::/0", "::ffff:0:0/0", "10.1.2.3/0", "198.51.100.0/24,0.0.0.0/0", "::1/0" ].each do |value|
+        bad = value.split(",").last
+        expect { described_class.trusted_proxies(value) }
+          .to raise_error(Rota::InvalidTrustedProxies, /TRUSTED_PROXIES.*#{Regexp.escape(bad)}.*limite por IP/m)
+      end
+    end
+
+    it "continua aceitando CIDRs largos porém não totais" do
+      expect { described_class.trusted_proxies("10.0.0.0/8,2001:db8::/32,0.0.0.0/1") }.not_to raise_error
+    end
+  end
+
   describe ".warn_missing_trusted_proxies" do
     let(:logger) { instance_double(Logger, warn: nil) }
 

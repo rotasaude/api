@@ -57,10 +57,19 @@ module Rota
     return nil if entries.empty?
 
     parsed = entries.map do |entry|
-      IPAddr.new(entry)
-    rescue IPAddr::Error
-      raise InvalidTrustedProxies, "TRUSTED_PROXIES tem a entrada inválida #{entry.inspect} — use IP ou CIDR " \
-                                   "(IPv4 ou IPv6) separados por vírgula, ex.: 203.0.113.10/32,2001:db8::/32"
+      ip = begin
+        IPAddr.new(entry)
+      rescue IPAddr::Error
+        raise InvalidTrustedProxies, "TRUSTED_PROXIES tem a entrada inválida #{entry.inspect} — use IP ou CIDR " \
+                                     "(IPv4 ou IPv6) separados por vírgula, ex.: 203.0.113.10/32,2001:db8::/32"
+      end
+      # Prefixo 0 cobre a família inteira (0.0.0.0/0, ::/0, mesmo escrito com host bits).
+      if ip.prefix.zero?
+        raise InvalidTrustedProxies, "TRUSTED_PROXIES tem a entrada #{entry.inspect}, que cobre todos os endereços: " \
+                                     "confiar em tudo anula o limite por IP (todo X-Forwarded-For passaria a valer). " \
+                                     "Liste só os CIDRs dos proxies de borda."
+      end
+      ip
     end
     ActionDispatch::RemoteIp::TRUSTED_PROXIES + parsed
   end

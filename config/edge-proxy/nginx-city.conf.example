@@ -19,19 +19,30 @@
 
 # --- 1. URL mascarada para log --------------------------------------------
 # A ordem importa: em `map` com regex vale a primeira que casar.
+#
+# $request_uri é CRU: não decodificado e com barras repetidas intactas, mas o
+# roteador do Rails trata "/v//TOKEN", "//v/TOKEN", "/%76/TOKEN" como a mesma
+# rota. Por isso os padrões (todos `~*`, sem diferença de caixa, então %2f/%2F e
+# idem para os hex) aceitam: barras repetidas ou %2F como separador
+# `(?:/|%2f)+`; "v"/"V" ou %76/%56 e "r"/"R" ou %72/%52 como letra da rota; e um
+# token sem "/", "?" nem %2F (`(?:[^/?%]|%(?!2f))+`). Fora do alcance de regex (e do Rails, que
+# nem roteia): segmentos de ponto ("/./v/T", "/x/../v/T") e a forma absoluta
+# da linha de requisição ("GET http://h/v/T").
 map $request_uri $rota_log_uri {
     default                              $request_uri;
 
-    # /v/lookup (e /v/lookup/..., /v/lookup?...) fica legível, como no Rails.
-    "~^/v/lookup(?:[/?]|$)"              $request_uri;
+    # /v/lookup (e /v/lookup/..., /v/lookup?..., //v//lookup, /%76/lookup) fica
+    # legível, como no Rails.
+    "~*^(?:/|%2f)+(?:v|%[57]6)(?:/|%2f)+lookup(?:[/?]|%2f|$)"   $request_uri;
 
     # PDF assinado: preserva o sufixo (útil para diagnóstico), esconde o token
     # e descarta a query string.
-    "~^/v/[^/?]+/signed\.pdf(?:\?|$)"    "/v/[FILTERED]/signed.pdf";
+    "~*^(?:/|%2f)+(?:v|%[57]6)(?:/|%2f)+(?:[^/?%]|%(?!2f))+(?:/|%2f)+signed\.pdf(?:\?|$)"   "/v/[FILTERED]/signed.pdf";
 
     # /v/<token> e /r/<token>: o que vier depois do token (incluindo a query)
     # é descartado, para nada de sensível vazar por ali.
-    "~^/(?<rota>[vr])/[^/?]+"            "/$rota/[FILTERED]";
+    "~*^(?:/|%2f)+(?:v|%[57]6)(?:/|%2f)+(?:[^/?%]|%(?!2f))+"   "/v/[FILTERED]";
+    "~*^(?:/|%2f)+(?:r|%[57]2)(?:/|%2f)+(?:[^/?%]|%(?!2f))+"   "/r/[FILTERED]";
 }
 
 # --- 2. Formato de log sem URL crua nem Referer ---------------------------
