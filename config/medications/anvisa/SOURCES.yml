@@ -13,7 +13,7 @@ controlled:
   split_synonyms: "entradas oficiais com parênteses, barra ou 'OU' viraram uma linha por nome na mesma lista (ex.: CANABIDIOL e CBD); descrição que não é nome de substância (química dos intermediários da petidina/metadona/moramida, 'hormônio do crescimento humano') foi descartada"
   counts: { A1: 95, A2: 13, A3: 14, B1: 100, B2: 8, C1: 216, C2: 5, C3: 4, C5: 35 }
 anticonvulsants:
-  label: "ATC/OMS N03A (antiepilépticos), cruzada com a RENAME vigente — limite de 6 meses da Portaria 344/1998, art. 59"
+  label: "ATC/OMS N03A (antiepilépticos): subgrupos N03AA a N03AX lidos um a um, nomes em DCB; mais GABAPENTINA e PREGABALINA (RENAME, antiepilépticos em uso na APS, hoje fora do N03A no ATC) e as grafias ACETATO DE ESLICARBAZEPINA, VALPROATO SODICO/DE SODIO e DIVALPROATO DE SODIO — limite de 6 meses da Portaria 344/1998, art. 59. Conferência com a RENAME vigente pendente."
   read_at: "2026-10-10"
-  source: "https://atcddd.fhi.no/atc_ddd_index/?code=N03A"
-  count: 36
+  source: "https://atcddd.fhi.no/atc_ddd_index/?code=N03A (e ...?code=N03AA, N03AB, N03AC, N03AD, N03AE, N03AF, N03AG, N03AX)"
+  count: 52

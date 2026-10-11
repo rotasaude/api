@@ -71,7 +71,8 @@ module ClinicalDocuments
     # <medication> (contrato §2); `catalog` = { id => MedicationCatalogItem }.
     def medication(medication, catalog:)
       item = medication.catalog_item_id && catalog[medication.catalog_item_id]
-      { id: medication.id, catalog_item: item && catalog_ref(item).merge(catalog_marks(item)), free_text: medication.free_text, label: medication.label,
+      { id: medication.id, catalog_item: item && catalog_ref(item).merge(catalog_marks(item)),
+        free_text: medication.free_text, label: medication.label,
         dosage_summary: medication.dosage_summary, continuous: medication.continuous, status: medication.status,
         origin: medication.origin, started_on: medication.started_on&.iso8601, updated_at: medication.updated_at.iso8601 }
     end

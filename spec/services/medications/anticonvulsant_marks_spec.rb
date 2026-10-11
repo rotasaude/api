@@ -17,6 +17,16 @@ RSpec.describe "Lista por item e anticonvulsivante" do
     expect(matcher.flags_for([ "TALIDOMIDA" ]).controlled_list).to eq("C3")
   end
 
+  it "casa por prefixo as grafias reais (valproato, eslicarbazepina, canabidiol)" do
+    names = CSV.read(Rails.root.join("config/medications/anvisa/anticonvulsants.csv"), headers: true).map { |row| row["substance"] }
+    real = Medications::Substances::Matcher.new(antimicrobials: [], controlled: {}, anticonvulsants: names)
+    [ "ACIDO VALPROICO", "VALPROATO DE SODIO", "DIVALPROATO DE SODIO", "ESLICARBAZEPINA ACETATO", "ACETATO DE ESLICARBAZEPINA",
+      "CANABIDIOL", "FOSFENITOINA", "FENFLURAMINA" ].each do |ingredient|
+      expect(real.flags_for([ ingredient ]).anticonvulsant).to be(true), ingredient
+    end
+    expect(real.flags_for([ "LOSARTANA POTASSICA" ]).anticonvulsant).to be(false)
+  end
+
   it "Flags com três chaves (19c) segue valendo, anticonvulsant false" do
     flags = Medications::Substances::Flags.new(antimicrobial: false, controlled: false, controlled_list: nil)
     expect(flags.anticonvulsant).to be(false)
