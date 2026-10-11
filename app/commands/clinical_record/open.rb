@@ -2,7 +2,8 @@
 # Abertura justificada (ADR 0031; spec §5; contratos §3): profissional com
 # vínculo permitido, motivo de lista (nota de 10–500 só com other), válida 30
 # minutos para aquele usuário e paciente. O step-up é do controller. CPF que
-# não tem paciente (nunca consultou, ou só par declarado) = patient_not_found.
+# não tem paciente (nunca consultou, ou só par declarado) = patient_not_found,
+# salvo com patient_timeline ligado e par validado (ADR 0035: a abertura é do par).
 module ClinicalRecord
   module Open
     module_function
@@ -22,13 +23,19 @@ module ClinicalRecord
 
       digits = CitizenIdentity::Cpf.normalize(cpf)
       patient = digits && Patient.find_by(cpf: digits)
-      return Result.fail(:patient_not_found) unless patient
+      # ADR 0035 (Divergência D5): sem paciente, com a linha do tempo ligada, a
+      # abertura é de um par VALIDADO do CPF (a pessoa da linha do tempo).
+      citizen = nil
+      if patient.nil? && digits && Timeline::Gate.enabled?(Current.city)
+        citizen = Citizen.not_erased.verification_level_verified.where(cpf: digits).order(:created_at, :id).first
+      end
+      return Result.fail(:patient_not_found) unless patient || citizen
 
       now = Time.current
-      opening = ClinicalRecordOpening.create!(patient: patient, user: user, reason_code: code, reason_note: note,
+      opening = ClinicalRecordOpening.create!(patient: patient, citizen: citizen, user: user, reason_code: code, reason_note: note,
                                               created_at: now, expires_at: now + ClinicalRecordOpening::VALIDITY)
-      DomainEvents.publish("clinical_record.opened", opening_id: opening.id, patient_id: patient.id, user_id: user.id,
-                                                     reason_code: code)
+      DomainEvents.publish("clinical_record.opened", opening_id: opening.id, patient_id: patient&.id, citizen_id: citizen&.id,
+                                                     user_id: user.id, reason_code: code)
       Result.ok(opening: opening)
     end
   end

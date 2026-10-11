@@ -22,7 +22,8 @@ RSpec.describe ClinicalRecord::Open do
     expect(opening).to have_attributes(patient_id: patient.id, user_id: nurse.id, reason_code: "other")
     expect(opening.expires_at - opening.created_at).to eq(30.minutes)
     expect(DomainEvent.where(name: "clinical_record.opened").sole.payload)
-      .to eq("opening_id" => opening.id, "patient_id" => patient.id, "user_id" => nurse.id, "reason_code" => "other")
+      .to eq("opening_id" => opening.id, "patient_id" => patient.id, "citizen_id" => nil, "user_id" => nurse.id,
+              "reason_code" => "other")
     expect(DomainEvent.pluck(:payload).to_json).not_to include("MARCADOR-NOTA")
   end
 
@@ -50,5 +51,31 @@ RSpec.describe ClinicalRecord::Open do
     expect(described_class.call(user: loose, cpf: citizen.cpf, reason_code: "case_review").reason).to eq(:missing_link)
     expect(described_class.call(user: doctor!(unit, cbo: "322205"), cpf: citizen.cpf, reason_code: "case_review").reason)
       .to eq(:cbo_not_allowed)
+  end
+
+  describe "pela pessoa sem paciente (ADR 0035)" do
+    let(:unit) { create_unit }
+    let(:nurse) { doctor!(unit, cbo: "223505") }
+
+    it "com patient_timeline ligado, abre pelo par validado; sem par validado, patient_not_found" do
+      timeline_city!(record_mode: "integrated", clinical_record: false)
+      citizen = verified_citizen!(44)
+      result = ClinicalRecord::Open.call(user: nurse, cpf: citizen.cpf, reason_code: "active_search")
+      expect(result).to be_ok
+      opening = result.payload[:opening]
+      expect([ opening.patient_id, opening.citizen_id ]).to eq([ nil, citizen.id ])
+      expect(DomainEvent.where(name: "clinical_record.opened").last.payload)
+        .to include("opening_id" => opening.id, "patient_id" => nil, "citizen_id" => citizen.id)
+      declared = screening_citizen!(45)
+      expect(ClinicalRecord::Open.call(user: nurse, cpf: declared.cpf, reason_code: "active_search").reason)
+        .to eq(:patient_not_found)
+    end
+
+    it "com patient_timeline desligado, CPF sem paciente segue patient_not_found (19a)" do
+      clinical_city!
+      citizen = verified_citizen!(46)
+      expect(ClinicalRecord::Open.call(user: nurse, cpf: citizen.cpf, reason_code: "active_search").reason)
+        .to eq(:patient_not_found)
+    end
   end
 end

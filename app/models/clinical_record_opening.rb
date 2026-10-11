@@ -18,4 +18,11 @@ class ClinicalRecordOpening < ApplicationRecord
   scope :valid_for, ->(user_id:, patient_id:, now: Time.current) {
     where(user_id: user_id, patient_id: patient_id).where("expires_at > ?", now)
   }
+
+  # ADR 0035: abertura válida da pessoa — do paciente ou de um par dela.
+  scope :valid_for_person, ->(user_id:, person:, now: Time.current) {
+    base = where(user_id: user_id).where("expires_at > ?", now)
+    by_pair = base.where(citizen_id: person.citizen_ids)
+    person.patient_id ? base.where(patient_id: person.patient_id).or(by_pair) : by_pair
+  }
 end

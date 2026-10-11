@@ -14,7 +14,7 @@ class ClinicalRecordOpeningsController < ApplicationController
   ERROR_STATUS = { missing_role: :forbidden, missing_link: :forbidden, cbo_not_allowed: :forbidden,
                    patient_not_found: :not_found, invalid_reason: :unprocessable_entity }.freeze
 
-  before_action :require_clinical_record!
+  before_action :require_record_or_timeline!
   before_action :require_professional, only: :create
   before_action :require_report_role, only: :index
 
@@ -44,12 +44,20 @@ class ClinicalRecordOpeningsController < ApplicationController
 
   private
 
+  # ADR 0035 (Divergência D5): a abertura também serve à linha do tempo, que
+  # existe sem o prontuário (modo integrado). Sem nenhum dos dois, o 403 do 19a.
+  def require_record_or_timeline!
+    return if ClinicalRecord::Gate.usable?(Current.city) || Timeline::Gate.enabled?(Current.city)
+
+    render json: { error: "feature_disabled", feature: ClinicalRecord::Gate::KEY }, status: :forbidden
+  end
+
   def require_report_role
     forbid("missing_role") unless CitizenVerificationPolicy.new(Current.user, nil).manage?
   end
 
   def openings(from, to, user_id)
-    scope = ClinicalRecordOpening.includes(:patient, user: :professional).order(created_at: :desc, id: :desc).limit(REPORT_LIMIT)
+    scope = ClinicalRecordOpening.includes(:patient, :citizen, user: :professional).order(created_at: :desc, id: :desc).limit(REPORT_LIMIT)
     scope = scope.where(created_at: from..) if from
     scope = scope.where(created_at: ..to) if to
     user_id ? scope.where(user_id: user_id) : scope
@@ -57,7 +65,7 @@ class ClinicalRecordOpeningsController < ApplicationController
 
   def item(opening)
     { kind: "justified_opening", id: opening.id, user_name: Screenings::Json.staff_name(opening.user),
-      cpf_masked: opening.patient.cpf_masked, reason_code: opening.reason_code, consultation_id: nil,
+      cpf_masked: (opening.patient || opening.citizen)&.cpf_masked, reason_code: opening.reason_code, consultation_id: nil,
       created_at: opening.created_at.iso8601, expires_at: opening.expires_at.iso8601 }
   end
 

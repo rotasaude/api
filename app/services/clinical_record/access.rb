@@ -35,6 +35,20 @@ module ClinicalRecord
       call(user: user, patient: consultation.patient, now: now)
     end
 
+    # ADR 0035 (spec §5): a mesma regra sobre A PESSOA da linha do tempo
+    # (Timeline::Person): em contexto por um atendimento aberto de um par dela,
+    # ou abertura justificada válida do paciente OU de um par dela.
+    def for_person(user:, person:, attendance: nil, now: Time.current)
+      return deny(:missing_role) unless user&.has_role?("health_professional")
+
+      candidates = attendance ? [ attendance ] : Attendance.open_attendances.where(citizen_id: person.citizen_ids).includes(:citizen).to_a
+      in_context = candidates.any? { |a| person.citizen_ids.include?(a.citizen_id) && in_context?(user, a, nil) }
+      return Grant.new(kind: :in_context, opening: nil, reason: nil) if in_context
+
+      opening = ClinicalRecordOpening.valid_for_person(user_id: user.id, person: person, now: now).order(created_at: :desc).first
+      opening ? Grant.new(kind: :justified, opening: opening, reason: nil) : deny(:out_of_context)
+    end
+
     def open_attendances_of(patient)
       return [] unless patient
 
