@@ -5,7 +5,7 @@
 # cifrado com a chave da cidade (a forma de saída do contrato §2).
 class ClinicalDocument < ApplicationRecord
   KINDS = %w[sick_note attendance_declaration prescription exam_requisition controlled_notification_record].freeze
-  PAPER_REASONS = %w[no_certificate signature_unavailable no_sncr_number nurse_antimicrobial feature_disabled].freeze
+  PAPER_REASONS = %w[no_certificate signature_unavailable no_sncr_number nurse_antimicrobial feature_disabled free_text_items].freeze
   MODES = %w[digital paper].freeze
   STATUSES = %w[issued cancelled].freeze
   CANCEL_REASON = (10..500)

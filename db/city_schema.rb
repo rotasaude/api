@@ -466,7 +466,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
     t.check_constraint "issue_mode::text = ANY (ARRAY['digital'::text, 'paper'::text])", name: "ck_clinical_documents_issue_mode"
     t.check_constraint "kind::text = ANY (ARRAY['sick_note'::text, 'attendance_declaration'::text, 'prescription'::text, 'exam_requisition'::text, 'controlled_notification_record'::text])", name: "ck_clinical_documents_kind"
     t.check_constraint "kind::text <> 'controlled_notification_record'::text OR issue_mode::text = 'paper'::text", name: "ck_clinical_documents_notification_paper"
-    t.check_constraint "paper_reason IS NULL OR paper_reason::text = ANY (ARRAY['no_certificate'::text, 'signature_unavailable'::text, 'no_sncr_number'::text, 'nurse_antimicrobial'::text, 'feature_disabled'::text])", name: "ck_clinical_documents_paper_reason"
+    t.check_constraint "paper_reason IS NULL OR paper_reason::text = ANY (ARRAY['no_certificate'::text, 'signature_unavailable'::text, 'no_sncr_number'::text, 'nurse_antimicrobial'::text, 'feature_disabled'::text, 'free_text_items'::text])", name: "ck_clinical_documents_paper_reason"
     t.check_constraint "paper_reason IS NULL OR issue_mode::text = 'paper'::text", name: "ck_clinical_documents_paper_reason_mode"
     t.check_constraint "patient_id IS NOT NULL OR kind::text = 'attendance_declaration'::text", name: "ck_clinical_documents_patient"
     t.check_constraint "short_code::text ~ '^[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{10}$'::text", name: "ck_clinical_documents_short_code"

@@ -80,7 +80,7 @@ RSpec.describe "Tabelas do estoque SNCR (triggers)" do
     expect { refused { ClinicalDocument.create!(attrs.merge("paper_reason" => "outro")) } }.to raise_error(ActiveRecord::StatementInvalid, /ck_clinical_documents_paper_reason/)
     expect { refused { ClinicalDocument.create!(attrs.merge("issue_mode" => "digital", "paper_reason" => "no_certificate")) } }
       .to raise_error(ActiveRecord::StatementInvalid, /ck_clinical_documents_paper_reason_mode/)
-    expect(ClinicalDocument::PAPER_REASONS).to eq(%w[no_certificate signature_unavailable no_sncr_number nurse_antimicrobial feature_disabled])
+    expect(ClinicalDocument::PAPER_REASONS).to eq(%w[no_certificate signature_unavailable no_sncr_number nurse_antimicrobial feature_disabled free_text_items])
   end
 
   it "o tipo novo de documento é sempre papel; o state aceita os propósitos do SNCR" do

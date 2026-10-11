@@ -54,7 +54,8 @@ module ClinicalDocuments
     end
 
     # Desvio 10: o modo e o motivo do papel, na ordem fixada — interruptor da
-    # receita controlada, enfermagem no antimicrobiano, assinatura, certificado
+    # receita controlada, enfermagem no antimicrobiano, só texto livre
+    # (free_text_items), assinatura, certificado
     # (o número SNCR vem depois, na transação). O registro da Notificação é
     # sempre papel, sem motivo.
     def decide(kind:, category:, role:, ctx:, certificate:, paper_only: false)
@@ -63,8 +64,9 @@ module ClinicalDocuments
       if category == "antimicrobial"
         return [ :paper, :feature_disabled ] unless ctx.controlled
         return [ :paper, :nurse_antimicrobial ] if role == :nurse
-        # Só texto livre antimicrobiano (fix round 1 da Task 11): papel do 19c, sem tirar número.
-        return [ :paper, :no_sncr_number ] if paper_only
+        # Só itens em texto livre (antimicrobiano, com ou sem texto livre comum; §12,
+        # docs 89f6748): papel do 19c, sem tirar número, motivo próprio.
+        return [ :paper, :free_text_items ] if paper_only
       end
       return [ :paper, :signature_unavailable ] unless ctx.signing
       return [ :paper, :no_certificate ] unless certificate

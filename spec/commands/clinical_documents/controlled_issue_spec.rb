@@ -52,17 +52,21 @@ RSpec.describe "Emissão de receita controlada" do
   end
 
   # Fix round 1 da Task 11 (coordenador, §12): só texto livre antimicrobiano
-  # não vira RET; papel do 19c sem tirar número, motivo no_sncr_number.
-  it "só texto livre antimicrobiano: papel no_sncr_number, nenhum número tirado, sem pedido de assinatura" do
+  # não vira RET; papel do 19c sem tirar número, motivo free_text_items (§12, docs 89f6748).
+  it "só texto livre antimicrobiano: papel free_text_items, nenhum número tirado, sem pedido de assinatura" do
     linked_certificate!(doctor)
     sncr_stock!(doctor, kind: "ret", count: 1)
     free = { "items" => [ { "free_text" => "Azitromicina 500mg", "quantity" => 3, "quantity_unit" => "comprimido", "route" => "oral",
                             "dosage_instructions" => "1 ao dia", "duration_days" => 3 } ] }
     result = issue!(free).payload
     document = result[:document]
-    expect([ document.issue_mode, result[:paper_reason], document.paper_reason ]).to eq([ "paper", "no_sncr_number", "no_sncr_number" ])
+    expect([ document.issue_mode, result[:paper_reason], document.paper_reason ]).to eq([ "paper", "free_text_items", "free_text_items" ])
     expect(document.content_data).to include("category" => "antimicrobial", "sncr" => nil, "copies" => 2,
                                              "patient_identification" => nil, "prescriber_contact" => nil)
+    both = issue!(free.merge("items" => free["items"] + [ free["items"].first.merge("free_text" => "Dipirona 500mg gotas") ])).payload
+    expect([ both[:document].issue_mode, both[:paper_reason], both[:document].paper_reason ]).to eq([ "paper", "free_text_items", "free_text_items" ])
+    expect(both[:document].content_data).to include("category" => "antimicrobial", "sncr" => nil, "patient_identification" => nil,
+                                                    "prescriber_contact" => nil)
     expect(document.signature_request).to be_nil
     expect(SncrNumber.where(user_id: doctor.id).pluck(:status)).to eq([ "free" ])
     mixed = issue!(free.merge("items" => ret_content["items"] + free["items"]))
@@ -190,6 +194,14 @@ RSpec.describe "Emissão de receita controlada" do
     expect(decide.("special_control", signing: false, certificate: false)).to eq([ :paper, :signature_unavailable ])
     expect(decide.("special_control", certificate: false)).to eq([ :paper, :no_certificate ])
     expect(decide.("common")).to eq([ :digital, nil ])
+    free = ->(**opts) do
+      ClinicalDocuments::Issue.decide(kind: "prescription", category: "antimicrobial", role: opts.fetch(:role, :physician),
+                                      ctx: ctx.(**opts.except(:role)), certificate: true, paper_only: true)
+    end
+    expect(free.()).to eq([ :paper, :free_text_items ])
+    expect(free.(signing: false)).to eq([ :paper, :free_text_items ])
+    expect(free.(role: :nurse)).to eq([ :paper, :nurse_antimicrobial ])
+    expect(free.(controlled: false)).to eq([ :paper, :feature_disabled ])
     expect(ClinicalDocuments::Issue.decide(kind: "controlled_notification_record", category: nil, role: :physician, ctx: ctx.(), certificate: true))
       .to eq([ :paper, nil ])
     expect(ctx.().inspect).not_to include("contact")

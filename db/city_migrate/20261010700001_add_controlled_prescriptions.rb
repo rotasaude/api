@@ -8,7 +8,7 @@
 class AddControlledPrescriptions < ActiveRecord::Migration[8.1]
   KINDS = %w[sick_note attendance_declaration prescription exam_requisition controlled_notification_record].freeze
   PURPOSES = %w[link session batch sncr_rce sncr_ret].freeze
-  PAPER_REASONS = %w[no_certificate signature_unavailable no_sncr_number nurse_antimicrobial feature_disabled].freeze
+  PAPER_REASONS = %w[no_certificate signature_unavailable no_sncr_number nurse_antimicrobial feature_disabled free_text_items].freeze
   # A lista do 19b (conferida na Task 0, Step 6) somada aos provedores do SNCR.
   PROVIDERS = %w[vidaas birdid safeid neoid remoteid simulated sncr sncr_simulated].freeze
 
