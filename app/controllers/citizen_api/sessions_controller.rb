@@ -36,9 +36,12 @@ module CitizenApi
 
     private
 
+    # time_zone (api#27): o wpda mostra horários no fuso da cidade.
+    # features (ADR 0035, pedido W2): os interruptores UTILIZÁVEIS da cidade,
+    # para o wpda mostrar "Meu histórico" só quando existe.
     def session_json(session)
-      # time_zone (api#27): o wpda mostra horários no fuso da cidade.
-      { phone_masked: CitizenIdentity::Phone.mask(session.phone), time_zone: Current.city.time_zone }
+      features = Platform::Features.summary(Current.city).select { |row| row[:usable] }.map { |row| row[:key] }
+      { phone_masked: CitizenIdentity::Phone.mask(session.phone), time_zone: Current.city.time_zone, features: features }
     end
   end
 end
