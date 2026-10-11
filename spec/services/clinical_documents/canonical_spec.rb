@@ -167,4 +167,61 @@ RSpec.describe "JSON canônico rotasaude.clinical_document.v1" do
       expect { Signatures::Canonical.clinical_document(reception) }.to raise_error(Signatures::Canonical::Invalid, /not_signable/)
     end
   end
+
+  # Task 16 (19d): RCE e RET emitidas pelo Issue saem válidas no esquema 1.2.0
+  # com as chaves do ADR 0034; a de papel (sncr nulo) não é assinável.
+  describe "RCE e RET emitidas (clinical-v1.2.0)" do
+    before do
+      controlled_city!(mock: true)
+      ciap2_release!; cid10_release!; sigtap_release!; city_profile!; import_test_catalog!
+    end
+
+    let(:unit) { create_unit }
+    let(:doctor) { signer_doctor!(unit).tap { |user| prescriber_contact!(user); linked_certificate!(user) } }
+    let(:consultation) { finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1)) }
+
+    def issue!(content) = ClinicalDocuments::Issue.call(kind: "prescription", by: doctor, consultation: consultation, content: content).payload.fetch(:document)
+
+    def item(code, duration)
+      { "catalog_item" => { "id" => MedicationCatalogItem.find_by!(catmat_code: code).id }, "quantity" => 30, "quantity_unit" => "cápsula",
+        "route" => "oral", "dosage_instructions" => "1 cápsula ao dia", "duration_days" => duration }
+    end
+
+    it "RCE digital: category, sncr, patient_identification e prescriber_contact; válida no esquema" do
+      controlled_item!(code: 9_900_001, ingredient: "FLUOXETINA", list: "C1")
+      sncr_stock!(doctor, kind: "rce", count: 1)
+      document = issue!("items" => [ item(9_900_001, 30) ], "patient_identification" => patient_identification)
+      expect(document.issue_mode).to eq("digital")
+      built = Signatures::Canonical.clinical_document(document) # valida no esquema 1.2.0
+      expect(built.document["content"]).to include(
+        "category" => "special_control", "sncr" => { "kind" => "rce", "number" => "2610.1-41.0000001", "simulated" => true },
+        "patient_identification" => { "cpf" => consultation.patient.cpf, "address" => ControlledPrescriptionHelpers::ADDRESS },
+        "prescriber_contact" => { "address" => ControlledPrescriptionHelpers::ADDRESS, "phone" => "41999990000" }
+      )
+      expect(built.document["content"]).not_to have_key("paper_reason")
+    end
+
+    it "registro da Notificação de papel não é assinável (sem canônico)" do
+      controlled_item!(code: 9_900_003, ingredient: "DIAZEPAM", list: "B1")
+      record = ClinicalDocuments::Issue.call(
+        kind: "controlled_notification_record", by: doctor, consultation: consultation,
+        content: { "notification_type" => "B", "paper_number" => "PR-1234567", "numbering_uf" => "PR",
+                   "item" => { "catalog_item" => { "id" => MedicationCatalogItem.find_by!(catmat_code: 9_900_003).id }, "quantity" => 30,
+                               "quantity_unit" => "comprimido", "route" => "oral", "dosage_instructions" => "1 à noite", "duration_days" => 30 } }
+      ).payload.fetch(:document)
+      expect(record.issue_mode).to eq("paper")
+      expect { Signatures::Canonical.clinical_document(record) }.to raise_error(Signatures::Canonical::Invalid, /not_signable/)
+    end
+
+    it "RET digital: category antimicrobial, sncr ret e contato; sem identificação do paciente; válida no esquema" do
+      controlled_item!(code: 9_900_010, ingredient: "AMOXICILINA", antimicrobial: true)
+      sncr_stock!(doctor, kind: "ret", count: 1)
+      document = issue!("items" => [ item(9_900_010, 7) ])
+      expect(document.issue_mode).to eq("digital")
+      built = Signatures::Canonical.clinical_document(document)
+      expect(built.document["content"]).to include("category" => "antimicrobial", "sncr" => include("kind" => "ret", "simulated" => true),
+                                                   "prescriber_contact" => include("phone" => "41999990000"))
+      expect(built.document["content"]).not_to have_key("patient_identification")
+    end
+  end
 end
