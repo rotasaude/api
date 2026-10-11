@@ -38,7 +38,7 @@ RSpec.describe ConsultationDrafts::OpenList do
     expect(first).to eq(
       consultation_id: older.id, attendance_id: older.attendance_id, health_unit: { id: unit.id, name: unit.name },
       author: { user_id: colleague.id, name: Screenings::Json.staff_name(colleague) }, author_linked: true,
-      patient_initials: "J.S.", started_at: older.started_at.iso8601, last_saved_at: older.reload.updated_at.iso8601
+      patient_initials: "J.S.", issued_documents: 0, started_at: older.started_at.iso8601, last_saved_at: older.reload.updated_at.iso8601
     )
     expect(second).to include(author_linked: false, patient_initials: "M.A.S.", author: { user_id: doctor.id, name: Screenings::Json.staff_name(doctor) })
   end
@@ -57,6 +57,42 @@ RSpec.describe ConsultationDrafts::OpenList do
     citizen = consultation.attendance.citizen
     [ "Maria", "Aparecida", "Silva", citizen.cpf, consultation.patient.cpf, "MARCADOR", "T90", "0202010503", "draft_items" ].each do |forbidden|
       expect(json).not_to include(forbidden), forbidden
+    end
+  end
+
+  # Decisão do usuário (api#51): documentos emitidos no rascunho continuam valendo
+  # depois do descarte; o admin só precisa saber QUANTOS há (nunca o conteúdo).
+  describe "issued_documents" do
+    def cancel!(document)
+      document.update!(status: "cancelled", cancel_reason: "Emitido para o paciente errado", cancelled_at: Time.current,
+                       cancelled_by_user_id: doctor.id)
+    end
+
+    it "0 sem documento emitido" do
+      draft!(1, full_name: "Maria Aparecida da Silva")
+      expect(described_class.call.sole[:issued_documents]).to eq(0)
+    end
+
+    it "conta os emitidos de qualquer tipo, por consulta, e não os cancelados" do
+      one = draft!(1, full_name: "Maria Aparecida da Silva")
+      two = draft!(2, full_name: "José dos Santos")
+      raw_document!(consultation: one)
+      raw_document!(consultation: one, kind: "attendance_declaration", content: { "type" => "attendance" })
+      cancelled = raw_document!(consultation: one)
+      cancel!(cancelled)
+      raw_document!(consultation: two)
+      cancel!(raw_document!(consultation: two))
+
+      counts = described_class.call.to_h { |row| [ row[:consultation_id], row[:issued_documents] ] }
+      expect(counts).to eq(one.id => 2, two.id => 1)
+    end
+
+    it "uma única consulta de contagem para a página inteira" do
+      3.times { |i| raw_document!(consultation: draft!(i + 1, full_name: "Maria Silva #{i}")) }
+      sql = []
+      callback = ->(*, payload) { sql << payload[:sql] if payload[:sql] =~ /FROM "clinical_documents"/ }
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { described_class.call }
+      expect(sql.size).to eq(1)
     end
   end
 end

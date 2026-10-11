@@ -39,10 +39,10 @@ RSpec.describe "Rascunhos de consulta órfãos", type: :request do
     get base
     expect(response).to have_http_status(:ok)
     draft = json_body["drafts"].sole
-    expect(draft.keys).to match_array(%w[consultation_id attendance_id health_unit author author_linked patient_initials started_at last_saved_at])
+    expect(draft.keys).to match_array(%w[consultation_id attendance_id health_unit author author_linked patient_initials issued_documents started_at last_saved_at])
     expect(draft).to include("consultation_id" => consultation.id, "attendance_id" => consultation.attendance_id,
                              "health_unit" => { "id" => unit.id, "name" => unit.name }, "author_linked" => true,
-                             "patient_initials" => "M.A.S.")
+                             "patient_initials" => "M.A.S.", "issued_documents" => 0)
     expect(draft["author"].keys).to match_array(%w[user_id name])
     expect(draft["author"]["user_id"]).to eq(doctor.id)
     expect { Time.iso8601(draft["started_at"]) && Time.iso8601(draft["last_saved_at"]) }.not_to raise_error
