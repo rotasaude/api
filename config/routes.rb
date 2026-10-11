@@ -220,6 +220,13 @@ Rails.application.routes.draw do
     get    "admin/overview",         to: "admin#overview"
   end
 
+  # SNCR (ADR 0034; contrato §4, §6). Prefixo único: uma entrada no proxy de dev do dashboard.
+  scope "/sncr", module: :sncr, as: :sncr do
+    get  "stock",           to: "stock#show"
+    post "requests",        to: "requests#create"
+    post "oauth/callback",  to: "oauth#callback"
+  end
+
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
   # Prefixo único: uma entrada só no proxy de dev do dashboard. As rotas
   # literais (me, pending, cbo, links, shifts) PRECISAM vir antes de `:id`.
