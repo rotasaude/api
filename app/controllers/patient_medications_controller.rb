@@ -33,7 +33,7 @@ class PatientMedicationsController < ApplicationController
   # O corpo do contrato usa a chave `action`, que no `params` é o nome da ação
   # do Rails (o roteamento vence): o corpo é lido de request.request_parameters.
   def create
-    consultation = uuid?(params[:id]) ? Consultation.find_by(id: params[:id]) : nil
+    consultation = find_consultation
     return not_found unless consultation
     return forbid("not_author") unless consultation.author_user_id == Current.user.id
     return render(json: { error: "not_draft" }, status: :conflict) unless consultation.draft?
@@ -53,7 +53,7 @@ class PatientMedicationsController < ApplicationController
   end
 
   def renewal
-    consultation = uuid?(params[:id]) ? Consultation.find_by(id: params[:id]) : nil
+    consultation = find_consultation
     return not_found unless consultation
     return forbid("not_author") unless consultation.author_user_id == Current.user.id
 
@@ -66,6 +66,9 @@ class PatientMedicationsController < ApplicationController
   end
 
   private
+
+  # Descartada (card api#51) é casca sem conteúdo: inexistente aqui (404).
+  def find_consultation = uuid?(params[:id]) ? Consultation.where.not(status: "discarded").find_by(id: params[:id]) : nil
 
   def apply(consultation, action, catalog_item, input)
     ApplicationRecord.transaction do

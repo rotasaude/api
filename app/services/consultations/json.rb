@@ -8,17 +8,19 @@ module Consultations
     module_function
 
     # ADR 0032 (contrato §2 do 19b): a finalizada e cada adendo levam o bloco
-    # `signature` (Signatures::Mode, numa leitura só); rascunho não tem.
+    # `signature` (Signatures::Mode, numa leitura só); rascunho não tem. A
+    # descartada (card api#51) é casca: nunca o ramo da finalizada — sem
+    # assinatura, itens dos draft_items (vazios).
     def consultation(c)
       addenda_rows = c.addenda.order(:created_at, :id).to_a
-      blocks = c.draft? ? {} : Signatures::Mode.blocks([ c, *addenda_rows ])
+      blocks = c.finalized? ? Signatures::Mode.blocks([ c, *addenda_rows ]) : {}
       json = { id: c.id, attendance_id: c.attendance_id, patient_id: c.patient_id, status: c.status,
                author: { id: c.author_user_id, name: Screenings::Json.staff_name(c.author_user) }, cbo_code: c.cbo_code,
                subjective: c.subjective, objective: c.objective, assessment: c.assessment, plan: c.plan, vitals: vitals(c),
                care_type: c.care_type&.to_s, evaluated_problems: evaluated_problems(c), conducts: conducts(c),
                exam_requests: exam_requests(c), started_at: c.started_at.iso8601, finalized_at: c.finalized_at&.iso8601,
                addenda: addenda_rows.map { |a| addendum(a, signature: blocks[[ "ConsultationAddendum", a.id ]]) } }
-      json[:signature] = blocks[[ "Consultation", c.id ]] unless c.draft?
+      json[:signature] = blocks[[ "Consultation", c.id ]] if c.finalized?
       json
     end
 
@@ -54,7 +56,7 @@ module Consultations
     end
 
     def evaluated_problems(c)
-      if c.draft?
+      if !c.finalized?
         problem_list(c.draft_items["evaluated_problems"])
       else
         c.problem_items.where(addendum_id: nil).order(:created_at, :id).map do |row|
@@ -68,12 +70,12 @@ module Consultations
 
     # Contrato §4: códigos como string (guardados como inteiro).
     def conducts(c)
-      codes = c.draft? ? Array(c.draft_items["conducts"]) : c.conducts.where(addendum_id: nil).order(:created_at, :id).pluck(:code)
+      codes = !c.finalized? ? Array(c.draft_items["conducts"]) : c.conducts.where(addendum_id: nil).order(:created_at, :id).pluck(:code)
       codes.map(&:to_s)
     end
 
     def exam_requests(c)
-      rows = if c.draft?
+      rows = if !c.finalized?
                Array(c.draft_items["exam_requests"]).map { |e| e.values_at("sigtap_code", "sigtap_competence", "cid10_justification") }
              else
                c.exam_requests.where(addendum_id: nil).order(:created_at, :id).pluck(:sigtap_code, :sigtap_competence, :cid10_justification)

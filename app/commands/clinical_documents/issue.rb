@@ -95,6 +95,8 @@ module ClinicalDocuments
 
     def issue(kind, input, by, consultation, attendance, replaces_id, ctx, now)
       if consultation
+        # Descartada (card api#51) é casca: inexistente para emitir.
+        return Result.fail(:not_found) if consultation.discarded?
         return Result.fail(:not_author) unless consultation.author_user_id == by.id
 
         attendance = consultation.attendance

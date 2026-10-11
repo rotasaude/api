@@ -12,6 +12,8 @@ module ClinicalDocuments
 
     def consultation_grant(user:, consultation:)
       return deny(:missing_role) unless user.has_role?("health_professional")
+      # Descartada (card api#51): casca, nunca o ramo da finalizada.
+      return deny(:not_found) if consultation.discarded?
       return consultation.author_user_id == user.id ? Grant.new(kind: :in_context, opening: nil, reason: nil) : deny(:not_author) if consultation.draft?
 
       ClinicalRecord::Access.for_consultation(user: user, consultation: consultation)
@@ -20,7 +22,9 @@ module ClinicalDocuments
     def document_grant(user:, document:)
       staff = user.has_role?("health_professional") || user.has_role?("citizen_verifier")
       return Grant.new(kind: :author, opening: nil, reason: nil) if staff && document.author_user_id == user.id
-      return consultation_grant(user: user, consultation: document.consultation) if document.consultation
+      # Documento emitido num rascunho depois descartado (card api#51): segue
+      # válido; lê-se pelo paciente e pelo atendimento, como a declaração.
+      return consultation_grant(user: user, consultation: document.consultation) if document.consultation && !document.consultation.discarded?
 
       ClinicalRecord::Access.call(user: user, patient: document.patient, attendance: document.attendance)
     end

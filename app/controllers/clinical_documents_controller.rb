@@ -25,7 +25,7 @@ class ClinicalDocumentsController < ApplicationController
   before_action :require_step_up!, only: :cancel
 
   def index
-    consultation = find(Consultation, params[:id])
+    consultation = find_consultation
     return not_found unless consultation
 
     grant = ClinicalDocuments::Read.consultation_grant(user: Current.user, consultation: consultation)
@@ -38,7 +38,7 @@ class ClinicalDocumentsController < ApplicationController
   end
 
   def create
-    consultation = find(Consultation, params[:id])
+    consultation = find_consultation
     return not_found unless consultation
 
     result = ClinicalDocuments::Issue.call(kind: body["kind"], content: body["content"], by: Current.user,
@@ -66,7 +66,7 @@ class ClinicalDocumentsController < ApplicationController
   # consulta (é ela quem emite a próxima receita), pela regra do prontuário
   # (ClinicalRecord::Access via Read.consultation_grant), com trilha.
   def patient_identification
-    consultation = find(Consultation, params[:id])
+    consultation = find_consultation
     return not_found unless consultation
     return forbid("not_author") unless consultation.author_user_id == Current.user.id
 
@@ -153,6 +153,8 @@ class ClinicalDocumentsController < ApplicationController
   end
 
   def find(model, id) = ClinicalDocuments::Uuid.valid?(id) ? model.find_by(id: id) : nil
+  # Descartada (card api#51) é casca sem conteúdo: inexistente aqui (404).
+  def find_consultation = find(Consultation, params[:id]).then { |consultation| consultation unless consultation&.discarded? }
   def body = params.to_unsafe_h.except("controller", "action", "id", "format")
   def not_found = render(json: { error: "not_found" }, status: :not_found)
 end

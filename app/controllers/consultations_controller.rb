@@ -113,8 +113,10 @@ class ConsultationsController < ApplicationController
     forbid("missing_role") unless policy.care? || policy.manage?
   end
 
+  # Descartada (card api#51) é casca sem conteúdo: para toda rota daqui é
+  # inexistente (o mesmo 404), nunca o ramo da finalizada.
   def set_consultation
-    @consultation = Consultation.find_by(id: params[:id])
+    @consultation = Consultation.where.not(status: "discarded").find_by(id: params[:id])
     not_found unless @consultation
   end
 
