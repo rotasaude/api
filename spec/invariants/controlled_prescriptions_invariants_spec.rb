@@ -65,7 +65,8 @@ RSpec.describe "Invariantes do ADR 0034" do
     expect(ApplicationRecord.transaction { Sncr::Stock.take!(user: doctor, kind: "rce", simulated: true, env: "production") }).to be_nil
     allow(ENV).to receive(:[]).with("RAILS_ENV").and_return("production")
     allow(ENV).to receive(:[]).with("RACK_ENV").and_return("production")
-    expect { Rack::Builder.parse_file(Rails.root.join("lib/fake_sncr/config.ru").to_s) }.to raise_error(SystemExit)
+    expect { Rack::Builder.parse_file(Rails.root.join("lib/fake_sncr/config.ru").to_s) }
+      .to raise_error(SystemExit).and output(/fake-sncr/).to_stderr
   end
 
   # Mutação: gravar simulated false (ou omitir) ao consumir um número simulado.
@@ -78,6 +79,8 @@ RSpec.describe "Invariantes do ADR 0034" do
 
   # Mutação: aceitar enfermeiro em special_control, ou tirar NOTIFICATION/UNSUPPORTED do Controlled.
   it "controle especial só por médico ou dentista; nunca A, B, C2, C3 em receita" do
+    sncr_stock!(doctor, kind: "rce", count: 1)
+    expect(issue.payload[:document].content_data["category"]).to eq("special_control")
     { "A1" => :requires_notification, "A2" => :requires_notification, "A3" => :requires_notification,
       "B1" => :requires_notification, "B2" => :requires_notification, "C2" => :not_supported, "C3" => :not_supported }
       .each_with_index do |(list, reason), index|
@@ -88,7 +91,7 @@ RSpec.describe "Invariantes do ADR 0034" do
       .to eq(:cbo_not_allowed)
     issued = ClinicalDocument.where(kind: "prescription").flat_map { |document| document.content_data["items"].map { |i| i.dig("catalog_item", "id") } }
     lists = MedicationCatalogItem.where(id: issued.compact).pluck(:controlled_list).compact
-    expect(lists - %w[C1 C5]).to eq([])
+    expect(lists).to eq([ "C1" ]) # só a válida existe; nenhuma A, B, C2 ou C3 foi gravada
   end
 
   # Mutação: afrouxar o classify da Task 11 (aceitar item comum ou texto livre em RCE/RET).
@@ -106,8 +109,10 @@ RSpec.describe "Invariantes do ADR 0034" do
       result = issue("items" => [ line(first), line(second) ], "patient_identification" => patient_identification)
       expect([ result.reason, result.details ]).to eq([ :mixed_categories, { index: 1 } ])
     end
-    expect(issue("items" => [ line(fluoxetina), free ], "patient_identification" => patient_identification).reason).to eq(:mixed_categories)
-    expect(issue("items" => [ line(amoxicilina), free ]).reason).to eq(:mixed_categories)
+    retfree = issue("items" => [ line(amoxicilina), free ])
+    expect([ retfree.reason, retfree.details ]).to eq([ :mixed_categories, { index: 1 } ])
+    special_free = issue("items" => [ line(fluoxetina), free ], "patient_identification" => patient_identification)
+    expect([ special_free.reason, special_free.details ]).to eq([ :mixed_categories, { index: 1 } ])
     expect(ClinicalDocument.count).to eq(before_count)
     expect(SncrNumber.where(user_id: doctor.id).pluck(:status)).to eq(%w[free free])
   end
@@ -149,7 +154,7 @@ RSpec.describe "Invariantes do ADR 0034" do
     expect(SncrNumber.find_by(document_id: document.id).status).to eq("voided")
     json = ClinicalDocuments::Verification.public_json(document)
     expect(json).not_to have_key(:sncr)
-    expect(json.to_json).not_to include("2610.1-41")
+    expect(json.to_json).not_to include(SncrNumber.find_by(document_id: document.id).number)
   end
 
   # Mutação: pôr número, CPF ou endereço no payload de um evento de emissão/cancelamento.
@@ -161,7 +166,13 @@ RSpec.describe "Invariantes do ADR 0034" do
     issue("items" => [ { "free_text" => "Azitromicina 500mg", "quantity" => 3, "quantity_unit" => "comprimido", "route" => "oral",
                          "dosage_instructions" => "1 ao dia", "duration_days" => 3 } ])
     ClinicalDocuments::Cancel.call(document_id: first.id, by: doctor, reason: "Emitida para o paciente errado")
-    secrets = SncrNumber.pluck(:number) + [ consultation.patient.cpf, doctor.professional.cpf, "Araucárias", "80010000", "Rua das" ]
+    diazepam = controlled_item!(code: 9_900_003, ingredient: "DIAZEPAM", list: "B1")
+    record = ClinicalDocuments::Issue.call(kind: "controlled_notification_record", by: doctor, consultation: consultation,
+                                           content: { "notification_type" => "B", "paper_number" => "PR-1234567", "numbering_uf" => "PR",
+                                                      "item" => line(diazepam) })
+    expect(record.failure?).to be(false), record.inspect
+    expect(DomainEvent.where(name: "controlled_notification.recorded").count).to eq(1)
+    secrets = SncrNumber.pluck(:number) + [ consultation.patient.cpf, doctor.professional.cpf, "Araucárias", "80010000", "Rua das", "PR-1234567" ]
     expect(secrets.size).to be > 4
     payloads = DomainEvent.pluck(:payload).to_json
     expect(DomainEvent.where(name: %w[sncr.number_used sncr.number_voided]).count).to be >= 2
@@ -201,7 +212,10 @@ RSpec.describe "Invariantes do ADR 0034 — nada sensível fora do lugar", type:
     end
     number = SncrNumber.where(status: "used").pick(:number)
     patient_cpf = ClinicalDocument.where(kind: "prescription").last.patient.cpf
-    secrets = fake_sncr.issued_tokens + [ session_id, number, patient_cpf, "Araucárias" ]
+    expect(fake_sncr.issued_tokens).not_to be_empty # a troca ocorreu no fake: a checagem de token não é vácua
+    expect(DomainEvent.where(name: "sncr.numbers_requested")).to exist
+    secrets = fake_sncr.issued_tokens + [ session_id, number, patient_cpf, "Araucárias" ] +
+              SncrNumberBatch.pluck(:first_number, :last_number).flatten + SncrNumber.pluck(:number)
     expect(log).not_to include(*secrets)
     expect(DomainEvent.pluck(:payload).to_json).not_to include(*secrets)
     rows = SignatureOauthState.where(user_id: doctor.id).map { |row| row.attributes.values.join("|") }.join
