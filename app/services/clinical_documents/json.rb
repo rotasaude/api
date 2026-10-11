@@ -65,7 +65,8 @@ module ClinicalDocuments
                   cbo_code: document.cbo_code },
         patient: document.patient && { id: document.patient.id, display_name: document.patient.display_name },
         consultation_id: document.consultation_id, attendance_id: document.attendance_id,
-        short_code: Codes.display(document.short_code), verification_url: document.verification_url,
+        short_code: (Codes.display(document.short_code) unless document.notification_record?),
+        verification_url: (document.verification_url unless document.notification_record?),
         replaces_document_id: document.replaces_document_id, content: document.content_data, signature: signature }
     end
 

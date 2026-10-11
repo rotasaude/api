@@ -87,6 +87,7 @@ class ClinicalDocumentsController < ApplicationController
   def print
     document = readable_document
     return unless document
+    return not_found if document.notification_record?
     return render(json: { error: "already_cancelled" }, status: :conflict) if document.cancelled?
 
     bytes =

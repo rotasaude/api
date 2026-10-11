@@ -9,7 +9,8 @@ module ClinicalDocuments
   module Issuers
     PREFIXES = { physician: %w[2251 2252 2253], dentist: %w[2232], nurse: %w[2235] }.freeze
     MATRIX = { "sick_note" => %i[physician dentist], "prescription" => %i[physician dentist nurse],
-               "attendance_declaration" => :any, "exam_requisition" => :any }.freeze
+               "attendance_declaration" => :any, "exam_requisition" => :any,
+               "controlled_notification_record" => %i[physician dentist] }.freeze
 
     module_function
 

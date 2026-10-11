@@ -174,8 +174,9 @@ RSpec.describe "Emissão de receita controlada" do
     expect(ClinicalDocuments::Canonical).not_to have_received(:content)
   end
 
-  it "registro da Notificação ainda não liberado: recusado sem 500 (a Task 13 libera)" do
-    expect(issue!({}, kind: "controlled_notification_record").reason).to eq(:cbo_not_allowed)
+  it "registro da Notificação: conteúdo vazio é invalid_content; interruptor desligado, feature_disabled" do
+    empty = issue!({}, kind: "controlled_notification_record")
+    expect([ empty.reason, empty.details ]).to eq([ :invalid_content, { field: "notification_type" } ])
     Platform::Features.set!(city: Current.city, key: "controlled_prescriptions", enabled: false, maintainer: ledi_maintainer!)
     off = issue!({}, kind: "controlled_notification_record")
     expect([ off.reason, off.details ]).to eq([ :feature_disabled, { feature: "controlled_prescriptions" } ])

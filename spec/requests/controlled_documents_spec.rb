@@ -70,10 +70,10 @@ RSpec.describe "Receita controlada pela API", type: :request do
     expect([ response.status, body["error"] ]).to eq([ 422, "prescriber_address_missing" ])
   end
 
-  it "registro da Notificação antes da Task 13: 403, nunca 500; interruptor desligado: feature_disabled com o interruptor" do
+  it "registro da Notificação: conteúdo vazio é 422 invalid_content; interruptor desligado: feature_disabled com o interruptor" do
     sign_in_as(doctor)
     post_document({}, kind: "controlled_notification_record")
-    expect([ response.status, body["error"] ]).to eq([ 403, "cbo_not_allowed" ])
+    expect([ response.status, body ]).to eq([ 422, { "error" => "invalid_content", "field" => "notification_type" } ])
     Platform::Features.set!(city: Current.city, key: "controlled_prescriptions", enabled: false, maintainer: ledi_maintainer!)
     post_document({}, kind: "controlled_notification_record")
     expect([ response.status, body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "controlled_prescriptions" } ])

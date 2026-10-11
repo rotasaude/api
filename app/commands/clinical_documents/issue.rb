@@ -39,6 +39,13 @@ module ClinicalDocuments
         return Result.fail(:feature_disabled, details: { feature: ControlledPrescriptions::Gate::KEY })
       end
 
+      # A checagem de CBO do registro vem antes de ler o catálogo da plataforma:
+      # catálogo indisponível não vira 503 para quem nem poderia emitir.
+      if kind == "controlled_notification_record" && consultation&.author_user_id == by.id &&
+         !Issuers.allowed?(kind, consultation.cbo_code)
+        return Result.fail(:cbo_not_allowed)
+      end
+
       platform = CATALOG_KINDS.include?(kind) ? prescription_platform(content) : nil
       return platform if platform.is_a?(Result)
 
@@ -109,6 +116,7 @@ module ClinicalDocuments
       return built if built.failure?
 
       content, rows, category, paper_only = built.payload.values_at(:content, :items, :category, :paper_only)
+      record_item = built.payload[:catalog_item]
       mode, reason =
         if consultation
           decide(kind: kind, category: category, role: Issuers.role(cbo), ctx: ctx, paper_only: paper_only == true,
@@ -137,9 +145,17 @@ module ClinicalDocuments
       failure = medications!(document, patient, rows, ctx.platform, by, now)
       return failure if failure
 
+      # O registro da Notificação entra na lista de medicamentos (não contínuo).
+      failure = record_medication!(document, patient, record_item, content, by, now) if record_item
+      return failure if failure
+
       # Papel nunca prepara assinatura (nem pedido, nem SignJob, nem canônico).
       Signatures::OpenRequest.call(document, now: now, usable: true) if mode == :digital
       publish!(document, kind, category, consultation, attendance)
+      if kind == "controlled_notification_record"
+        DomainEvents.publish("controlled_notification.recorded", document_id: document.id,
+                                                                  notification_type: content["notification_type"])
+      end
       Result.ok(document: document, paper_reason: reason&.to_s)
     end
 
@@ -150,8 +166,6 @@ module ClinicalDocuments
       DomainEvents.publish("clinical_document.issued", **payload)
     end
 
-    # O registro da Notificação (Content::NotificationRecord) entra na Task 13;
-    # até lá Issuers.allowed? o recusa antes daqui.
     def build(kind, input, consultation, attendance, patient, cbo, ctx, now)
       today = now.in_time_zone.to_date
       result =
@@ -163,6 +177,8 @@ module ClinicalDocuments
           return Content::Prescription.call(input, role: Issuers.role(cbo), patient: patient, catalog: ctx.platform[:catalog],
                                                    matcher: ctx.platform[:matcher], today: today, city_cnpj: CityProfile.current&.cnpj,
                                                    controlled: ctx.controlled, prescriber_contact: ctx.contact)
+        when "controlled_notification_record"
+          return Content::NotificationRecord.call(input, role: Issuers.role(cbo), catalog: ctx.platform[:catalog])
         else raise ArgumentError, "tipo sem conteúdo: #{kind}"
         end
       result.ok? ? Result.ok(content: result.payload[:content], items: [], category: nil) : result
@@ -209,7 +225,16 @@ module ClinicalDocuments
       nil
     end
 
+    def record_medication!(document, patient, entry, content, by, now)
+      result = Patients::ApplyMedicationEvent.call(
+        patient: patient, action: "add", by: by, source: { document: document }, origin: "prescription",
+        catalog_item: entry, dosage_summary: content.dig("item", "dosage_instructions"), continuous: false, on_active: :change,
+        on: now.in_time_zone.to_date
+      )
+      result.failure? ? result : nil
+    end
+
     def invalid(field) = Result.fail(:invalid_content, details: { field: field })
-    private_class_method :prescription_platform, :issue, :publish!, :build, :replaced, :create!, :medications!, :invalid
+    private_class_method :prescription_platform, :issue, :publish!, :build, :replaced, :create!, :medications!, :record_medication!, :invalid
   end
 end

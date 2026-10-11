@@ -11,14 +11,14 @@ module ClinicalDocuments
     module_function
 
     def by_token(token)
-      document = token.is_a?(String) && token.match?(/\A[A-Za-z0-9_-]{22}\z/) ? ClinicalDocument.find_by(verification_token: token) : nil
+      document = token.is_a?(String) && token.match?(/\A[A-Za-z0-9_-]{22}\z/) ? ClinicalDocument.where.not(kind: "controlled_notification_record").find_by(verification_token: token) : nil
       trail!(document, "token")
     end
 
     def lookup(short_code:, birth_year:)
       code = Codes.normalize(short_code)
       year = birth_year.to_s.match?(/\A\d{4}\z/) ? birth_year.to_s.to_i : nil
-      document = code && year ? ClinicalDocument.find_by(short_code: code) : nil
+      document = code && year ? ClinicalDocument.where.not(kind: "controlled_notification_record").find_by(short_code: code) : nil
       document = nil if document && birth_year_of(document) != year
       trail!(document, "short_code")
     end

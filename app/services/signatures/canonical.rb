@@ -77,6 +77,7 @@ module Signatures
     # esquema clinical-document-v1 (tag clinical-v1.1.0). O da recepção (sem
     # consulta) nunca é assinado.
     def clinical_document(document)
+      raise Invalid, "not_signable" if document.notification_record?
       raise Invalid, "not_signable" unless document.consultation_id && document.patient
 
       head = header_for(unit: document.attendance.health_unit, author: document.author_user, cbo_code: document.cbo_code,
