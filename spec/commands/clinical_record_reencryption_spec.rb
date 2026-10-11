@@ -64,6 +64,52 @@ RSpec.describe "Re-cifra do prontuário" do
     expect(Patient.where(cpf: rows[:cpf]).pluck(:id)).to eq([ rows[:patient].id ])
   end
 
+  # Card api#51: rascunho descartado (casca, sem texto) e a trilha com o motivo
+  # cifrado do descarte.
+  def draft_trail_rows!
+    ciap2_release!
+    unit = create_unit
+    doctor = doctor!(unit)
+    citizen = verified_citizen!(1)
+    patient = Patient.create!(cpf: citizen.cpf)
+    link = doctor.professional.links.active.sole
+    attendance = consulting_attendance!(unit, citizen: citizen, doctor: doctor)
+    consultation = Consultation.create!(attendance: attendance, patient: patient, author_user: doctor, professional_link: link,
+                                        cbo_code: link.cbo_code, status: "draft", started_at: Time.current, subjective: "texto S")
+    Consultation.with_draft_admin do
+      consultation.update_columns(Consultation::CLINICAL_COLUMNS.index_with(nil).merge(status: "discarded", discarded_at: Time.current))
+    end
+    admin = staff_with("admin-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin")
+    action = ConsultationDraftAction.create!(consultation: consultation, attendance: attendance, action: "discarded",
+                                             by_user: admin, previous_author_user: doctor, reason: "profissional desligado da unidade")
+    { consultation: consultation, action: action }
+  end
+
+  describe "trilha do rascunho órfão (card api#51)" do
+    it "ReencryptionJob regrava o motivo sob a marca; a consulta descartada (sem texto) fica de fora" do
+      rows = in_city { draft_trail_rows! }
+      before = in_city { raw("consultation_draft_actions", "reason", rows[:action].id) }
+      stats = in_city { call_job_body(only: %i[consultation consultation_draft_action]) }
+      expect(stats).to include("ConsultationDraftAction" => 1, "Consultation" => 0)
+      in_city do
+        expect(raw("consultation_draft_actions", "reason", rows[:action].id)).not_to eq(before)
+        expect(ConsultationDraftAction.find(rows[:action].id).reason).to eq("profissional desligado da unidade")
+        expect(rows[:consultation].reload).to be_discarded
+      end
+    end
+
+    it "CityRekey regrava o motivo com o material da cidade" do
+      rows = with_material(old_material) { draft_trail_rows! }
+      result = CityRekey.call(city: city, from_key: old_material)
+      expect(result).to be_ok
+      expect(result.payload[:counts]).to include("ConsultationDraftAction" => 1, "Consultation" => 0)
+      in_city { expect(ConsultationDraftAction.find(rows[:action].id).reason).to eq("profissional desligado da unidade") }
+      with_material(old_material) do
+        expect { ConsultationDraftAction.find(rows[:action].id).reason }.to raise_error(ActiveRecord::Encryption::Errors::Decryption)
+      end
+    end
+  end
+
   describe "ReencryptionJob (chave atual da cidade)" do
     let!(:rows) { in_city { clinical_rows! } }
 

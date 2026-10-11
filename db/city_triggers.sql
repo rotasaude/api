@@ -99,7 +99,12 @@ END
 $do$;
 
 -- attendances (spec 2026-09-24-citizen-attendance-check-in §3; ADR 0018): só
--- acréscimo, exceto encerrar UMA vez. O check-in nunca muda.
+-- acréscimo, exceto encerrar UMA vez. O check-in nunca muda. A chamada também
+-- não, com UMA exceção (rascunho órfão, card api#51): sob a marca
+-- rota.draft_admin (Consultation.with_draft_admin), o atendimento in_care que
+-- continua in_care pode trocar quem chamou (para alguém), com o mesmo called_at.
+-- coalesce na marca: sem ela, numa sessão que nunca viu a marca, o NULL de
+-- current_setting(..., true) dentro do NOT (...) desligaria a recusa.
 CREATE OR REPLACE FUNCTION rota_attendance_guard() RETURNS trigger AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
@@ -121,7 +126,11 @@ BEGIN
     RAISE EXCEPTION 'attendances: the check-in columns never change';
   END IF;
   IF OLD.called_at IS NOT NULL
-     AND (NEW.called_at IS DISTINCT FROM OLD.called_at OR NEW.called_by_user_id IS DISTINCT FROM OLD.called_by_user_id) THEN
+     AND (NEW.called_at IS DISTINCT FROM OLD.called_at OR NEW.called_by_user_id IS DISTINCT FROM OLD.called_by_user_id)
+     AND NOT (coalesce(current_setting('rota.draft_admin', true), '') = 'on'
+              AND OLD.status = 'in_care' AND NEW.status = 'in_care'
+              AND NEW.called_at IS NOT DISTINCT FROM OLD.called_at
+              AND NEW.called_by_user_id IS NOT NULL) THEN
     RAISE EXCEPTION 'attendances: the call never changes';
   END IF;
   IF NEW.status IS DISTINCT FROM OLD.status
@@ -1122,23 +1131,37 @@ $do$;
 -- some; a identidade não muda; o rascunho muda à vontade; finalizada nunca
 -- muda. Única exceção: a re-cifra (CityEncryption.allowing_reencryption marca
 -- a transação com rota.reencrypting) pode regravar SÓ o texto cifrado.
+-- Rascunho órfão (card api#51): sob a marca rota.draft_admin
+-- (Consultation.with_draft_admin), o rascunho pode trocar de autora
+-- (designação) ou virar `discarded` (descarte; os CHECKs exigem o conteúdo
+-- clínico zerado). A descartada nunca muda, como a finalizada.
 CREATE OR REPLACE FUNCTION rota_consultation_guard() RETURNS trigger AS $fn$
 DECLARE
   texts text[] := ARRAY['subjective', 'objective', 'assessment', 'plan'];
+  -- coalesce: numa sessão que nunca viu a marca, current_setting(..., true) é
+  -- NULL, e um NULL dentro de NOT (...) desligaria a recusa em silêncio.
+  draft_admin boolean := coalesce(current_setting('rota.draft_admin', true), '') = 'on';
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'consultations is append-only: DELETE refused';
   END IF;
   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.attendance_id IS DISTINCT FROM OLD.attendance_id
-     OR NEW.patient_id IS DISTINCT FROM OLD.patient_id OR NEW.author_user_id IS DISTINCT FROM OLD.author_user_id
-     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+     OR NEW.patient_id IS DISTINCT FROM OLD.patient_id OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR (NEW.author_user_id IS DISTINCT FROM OLD.author_user_id
+         AND NOT (draft_admin AND OLD.status = 'draft' AND NEW.status = 'draft')) THEN
     RAISE EXCEPTION 'consultations: identity columns never change';
   END IF;
-  IF OLD.status = 'finalized' THEN
+  IF OLD.status IN ('finalized', 'discarded') THEN
     IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - texts) = (to_jsonb(OLD) - texts) THEN
       RETURN NEW;
     END IF;
+    IF OLD.status = 'discarded' THEN
+      RAISE EXCEPTION 'consultations: a discarded consultation never changes';
+    END IF;
     RAISE EXCEPTION 'consultations: a finalized consultation never changes; corrections are addenda';
+  END IF;
+  IF NEW.status = 'discarded' AND NOT draft_admin THEN
+    RAISE EXCEPTION 'consultations: discarding a draft needs rota.draft_admin';
   END IF;
   RETURN NEW;
 END;
@@ -1223,6 +1246,18 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS consultation_addenda_append_only_truncate ON consultation_addenda';
     EXECUTE 'CREATE TRIGGER consultation_addenda_append_only_truncate
       BEFORE TRUNCATE ON consultation_addenda
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+  -- Trilha do rascunho órfão (card api#51): só acréscimo; a re-cifra regrava
+  -- só o motivo.
+  IF to_regclass('public.consultation_draft_actions') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS consultation_draft_actions_reencryption_only ON consultation_draft_actions';
+    EXECUTE 'CREATE TRIGGER consultation_draft_actions_reencryption_only
+      BEFORE UPDATE OR DELETE ON consultation_draft_actions
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS consultation_draft_actions_append_only_truncate ON consultation_draft_actions';
+    EXECUTE 'CREATE TRIGGER consultation_draft_actions_append_only_truncate
+      BEFORE TRUNCATE ON consultation_draft_actions
       FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
   END IF;
   IF to_regclass('public.clinical_record_openings') IS NOT NULL THEN

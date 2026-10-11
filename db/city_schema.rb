@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_11_800001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -551,6 +551,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
     t.check_constraint "action::text = 'add'::text OR addendum_id IS NOT NULL", name: "ck_consultation_conducts_removal"
   end
 
+  create_table "consultation_draft_actions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "action", null: false
+    t.uuid "attendance_id", null: false
+    t.uuid "by_user_id", null: false
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "new_author_user_id"
+    t.uuid "previous_author_user_id", null: false
+    t.text "reason", null: false
+    t.index ["consultation_id"], name: "index_consultation_draft_actions_on_consultation_id"
+    t.index ["created_at"], name: "index_consultation_draft_actions_on_created_at"
+    t.check_constraint "action::text = ANY (ARRAY['discarded'::text, 'reassigned'::text])", name: "ck_consultation_draft_actions_action"
+    t.check_constraint "(action::text = 'reassigned'::text) = (new_author_user_id IS NOT NULL)", name: "ck_consultation_draft_actions_new_author"
+  end
+
   create_table "consultation_exam_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "addendum_id"
     t.string "cid10_justification", limit: 4
@@ -598,6 +613,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
     t.string "cbo_code", null: false
     t.datetime "created_at", null: false
     t.integer "diastolic"
+    t.datetime "discarded_at"
     t.jsonb "draft_items", default: {}, null: false
     t.datetime "finalized_at"
     t.string "glucose_moment"
@@ -625,16 +641,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
     t.check_constraint "care_type IS NULL OR care_type = ANY (ARRAY[1, 2, 5, 6])", name: "ck_consultations_care_type"
     t.check_constraint "cbo_code::text ~ '^[0-9A-Z]{6}$'::text", name: "ck_consultations_cbo_code"
     t.check_constraint "diastolic IS NULL OR diastolic BETWEEN 20 AND 200", name: "ck_consultations_diastolic"
+    t.check_constraint "(status::text = 'discarded'::text) = (discarded_at IS NOT NULL)", name: "ck_consultations_discard"
+    t.check_constraint "status::text <> 'discarded'::text OR (subjective IS NULL AND objective IS NULL AND assessment IS NULL AND plan IS NULL AND systolic IS NULL AND diastolic IS NULL AND heart_rate IS NULL AND respiratory_rate IS NULL AND temperature_c IS NULL AND spo2 IS NULL AND capillary_glucose IS NULL AND glucose_moment IS NULL AND weight_kg IS NULL AND height_cm IS NULL AND pain_score IS NULL)", name: "ck_consultations_discarded_empty"
     t.check_constraint "jsonb_typeof(draft_items) = 'object'::text AND (status::text = 'draft'::text OR draft_items = '{}'::jsonb)", name: "ck_consultations_draft_items"
     t.check_constraint "(status::text = 'finalized'::text) = (finalized_at IS NOT NULL)", name: "ck_consultations_finalization"
-    t.check_constraint "status::text = 'draft'::text OR care_type IS NOT NULL", name: "ck_consultations_finalized_care_type"
+    t.check_constraint "status::text <> 'finalized'::text OR care_type IS NOT NULL", name: "ck_consultations_finalized_care_type"
     t.check_constraint "(capillary_glucose IS NULL AND glucose_moment IS NULL) OR (capillary_glucose BETWEEN 10 AND 800 AND glucose_moment::text = ANY (ARRAY['fasting'::text, 'postprandial'::text, 'random'::text]))", name: "ck_consultations_glucose"
     t.check_constraint "heart_rate IS NULL OR heart_rate BETWEEN 20 AND 250", name: "ck_consultations_heart_rate"
     t.check_constraint "height_cm IS NULL OR height_cm BETWEEN 30 AND 250", name: "ck_consultations_height"
     t.check_constraint "pain_score IS NULL OR pain_score BETWEEN 0 AND 10", name: "ck_consultations_pain_score"
     t.check_constraint "respiratory_rate IS NULL OR respiratory_rate BETWEEN 4 AND 80", name: "ck_consultations_respiratory_rate"
     t.check_constraint "spo2 IS NULL OR spo2 BETWEEN 50 AND 100", name: "ck_consultations_spo2"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::text, 'finalized'::text])", name: "ck_consultations_status"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::text, 'finalized'::text, 'discarded'::text])", name: "ck_consultations_status"
     t.check_constraint "systolic IS NULL OR systolic BETWEEN 50 AND 300", name: "ck_consultations_systolic"
     t.check_constraint "temperature_c IS NULL OR temperature_c BETWEEN 30 AND 45", name: "ck_consultations_temperature"
     t.check_constraint "weight_kg IS NULL OR weight_kg BETWEEN 0.5 AND 400", name: "ck_consultations_weight"
@@ -1746,6 +1764,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
   add_foreign_key "consultation_addenda", "users", column: "author_user_id"
   add_foreign_key "consultation_conducts", "consultation_addenda", column: "addendum_id"
   add_foreign_key "consultation_conducts", "consultations"
+  add_foreign_key "consultation_draft_actions", "attendances"
+  add_foreign_key "consultation_draft_actions", "consultations"
+  add_foreign_key "consultation_draft_actions", "users", column: "by_user_id"
+  add_foreign_key "consultation_draft_actions", "users", column: "new_author_user_id"
+  add_foreign_key "consultation_draft_actions", "users", column: "previous_author_user_id"
   add_foreign_key "consultation_exam_requests", "consultation_addenda", column: "addendum_id"
   add_foreign_key "consultation_exam_requests", "consultations"
   add_foreign_key "consultation_problems", "consultation_addenda", column: "addendum_id"

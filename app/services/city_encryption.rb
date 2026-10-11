@@ -76,6 +76,8 @@ module CityEncryption
     [ Consultation,   :plan ],
     [ ConsultationAddendum, :text ],
     [ ClinicalRecordOpening, :reason_note ],
+    # Card api#51: motivo do descarte/designação do rascunho órfão.
+    [ ConsultationDraftAction, :reason ],
     # ADR 0032: assinatura digital.
     [ SignerCertificate, :subject_cpf ],
     [ SignerCertificate, :certificate_der ],

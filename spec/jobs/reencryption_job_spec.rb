@@ -59,9 +59,9 @@ RSpec.describe ReencryptionJob do
 
     expect(stats.keys).to match_array(%w[User Conversation InboundMessage OutboundMessage Consent Author Citizen CitizenErasureRequest
                                          CitizenSession OtpChallenge Professional IntegrationCredential LediOutboxEntry Patient
-                                         Consultation ConsultationAddendum ClinicalRecordOpening SignerCertificate SignatureSession
-                                         SignatureOauthState SignatureRequest Signature ClinicalDocument PrescriptionItem
-                                         PatientMedication PatientMedicationEvent])
+                                         Consultation ConsultationAddendum ClinicalRecordOpening ConsultationDraftAction
+                                         SignerCertificate SignatureSession SignatureOauthState SignatureRequest Signature
+                                         ClinicalDocument PrescriptionItem PatientMedication PatientMedicationEvent])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end
