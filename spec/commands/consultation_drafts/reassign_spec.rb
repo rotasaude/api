@@ -115,6 +115,16 @@ RSpec.describe ConsultationDrafts::Reassign do
       expect(consultation.reload.status).to eq("draft")
     end
 
+    it "pedido de exame com justificativa CID-10 do médico, designado à enfermeira → cid10_not_allowed_for_cbo" do
+      body.merge!("exam_requests" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "E119" } ])
+      expect(consultation.draft_items["exam_requests"].sole).to include("cid10_justification" => "E119")
+      expect(reassign(to: nurse)).to be_ok
+      result = Consultations::Finalize.call(consultation: consultation.reload, outcome_params: { "outcome" => "discharged" }, by: nurse)
+      expect([ result.reason, result.details ]).to eq([ :cid10_not_allowed_for_cbo, { index: 0 } ])
+      expect(consultation.reload.status).to eq("draft")
+      expect(ConsultationExamRequest.where(consultation_id: consultation.id)).to be_empty
+    end
+
     context "com problema CID-10 já na lista do paciente" do
       # Uma consulta anterior do médico deixa E119 (CID-10) na lista.
       let!(:prior) do
