@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_11_800001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_11_800002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -227,6 +227,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800001) do
     t.index ["called_by_user_id"], name: "index_attendances_on_called_by_user_id"
     t.index ["checked_in_by_user_id"], name: "index_attendances_on_checked_in_by_user_id"
     t.index ["citizen_id"], name: "index_attendances_on_citizen_id"
+    t.index ["citizen_id", "checked_in_at"], name: "idx_attendances_citizen_checked_in"
     t.index ["closed_by_user_id"], name: "index_attendances_on_closed_by_user_id"
     t.index ["health_unit_id"], name: "index_attendances_on_health_unit_id"
     t.index ["referral_unit_id"], name: "index_attendances_on_referral_unit_id"
@@ -261,6 +262,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800001) do
     t.string "sms_status", null: false
     t.index ["campaign_id", "citizen_id"], name: "idx_campaign_recipients_pair", unique: true
     t.index ["campaign_id", "sms_status"], name: "idx_campaign_recipients_sms"
+    t.index ["citizen_id", "created_at"], name: "idx_campaign_recipients_citizen_created"
     t.index ["citizen_id"], name: "index_campaign_recipients_on_citizen_id"
     t.check_constraint "sms_status::text = ANY (ARRAY['not_opted_in', 'duplicate_phone', 'pending', 'deferred', 'sent', 'failed', 'unavailable']::text[])", name: "ck_campaign_recipients_sms_status"
   end
@@ -452,6 +454,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800001) do
     t.index ["attendance_id"], name: "index_clinical_documents_on_attendance_id"
     t.index ["author_user_id"], name: "index_clinical_documents_on_author_user_id"
     t.index ["cancelled_by_user_id"], name: "index_clinical_documents_on_cancelled_by_user_id"
+    t.index ["citizen_id", "issued_at"], name: "idx_clinical_documents_citizen_issued"
     t.index ["citizen_id"], name: "index_clinical_documents_on_citizen_id"
     t.index ["consultation_id"], name: "index_clinical_documents_on_consultation_id"
     t.index ["patient_id"], name: "index_clinical_documents_on_patient_id"
@@ -485,17 +488,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800001) do
   end
 
   create_table "clinical_record_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "citizen_id"
     t.datetime "created_at", null: false
     t.datetime "expires_at", null: false
-    t.uuid "patient_id", null: false
+    t.uuid "patient_id"
     t.string "reason_code", null: false
     t.text "reason_note"
     t.uuid "user_id", null: false
     t.index ["created_at"], name: "index_clinical_record_openings_on_created_at"
     t.index ["patient_id"], name: "index_clinical_record_openings_on_patient_id"
+    t.index ["user_id", "citizen_id", "expires_at"], name: "idx_clinical_record_openings_valid_citizen"
     t.index ["user_id", "patient_id", "expires_at"], name: "idx_clinical_record_openings_valid"
     t.check_constraint "expires_at > created_at", name: "ck_clinical_record_openings_expiry"
     t.check_constraint "(reason_code::text = 'other'::text) = (reason_note IS NOT NULL)", name: "ck_clinical_record_openings_note"
+    t.check_constraint "(patient_id IS NULL) <> (citizen_id IS NULL)", name: "ck_clinical_record_openings_person"
     t.check_constraint "reason_code::text = ANY (ARRAY['case_review'::text, 'active_search'::text, 'continuity_of_care'::text, 'other'::text])", name: "ck_clinical_record_openings_reason"
   end
 
@@ -635,6 +641,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800001) do
     t.decimal "weight_kg", precision: 5, scale: 2
     t.index ["attendance_id"], name: "index_consultations_on_attendance_id", unique: true
     t.index ["author_user_id"], name: "index_consultations_on_author_user_id"
+    t.index ["patient_id", "finalized_at"], name: "idx_consultations_patient_finalized", where: "((status)::text = 'finalized'::text)"
     t.index ["patient_id"], name: "index_consultations_on_patient_id"
     t.index ["professional_link_id"], name: "index_consultations_on_professional_link_id"
     t.check_constraint "(systolic IS NULL AND diastolic IS NULL) OR (systolic IS NOT NULL AND diastolic IS NOT NULL AND diastolic < systolic)", name: "ck_consultations_bp"
@@ -1073,6 +1080,28 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800001) do
     t.text "social_name"
     t.datetime "updated_at", null: false
     t.index ["cpf"], name: "index_patients_on_cpf", unique: true
+  end
+
+  create_table "pec_settings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "hmac_key"
+    t.datetime "hmac_key_updated_at"
+    t.string "pec_origin", limit: 255
+    t.datetime "pec_origin_updated_at"
+    t.boolean "singleton", default: true, null: false
+    t.datetime "updated_at", null: false
+    t.index ["singleton"], name: "index_pec_settings_singleton", unique: true
+    t.check_constraint "(hmac_key IS NULL) = (hmac_key_updated_at IS NULL)", name: "ck_pec_settings_key_updated"
+    t.check_constraint "pec_origin IS NULL OR pec_origin::text ~ '^https?://[^/?#@ ]+$'::text", name: "ck_pec_settings_origin"
+    t.check_constraint "singleton", name: "ck_pec_settings_singleton"
+  end
+
+  create_table "pec_signature_uses", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.string "signature_digest", limit: 64, null: false
+    t.index ["expires_at"], name: "index_pec_signature_uses_on_expires_at"
+    t.index ["signature_digest"], name: "index_pec_signature_uses_on_signature_digest", unique: true
   end
 
   create_table "prescription_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1756,6 +1785,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800001) do
   add_foreign_key "clinical_record_administrative_reads", "consultations"
   add_foreign_key "clinical_record_administrative_reads", "patients"
   add_foreign_key "clinical_record_administrative_reads", "users"
+  add_foreign_key "clinical_record_openings", "citizens"
   add_foreign_key "clinical_record_openings", "patients"
   add_foreign_key "clinical_record_openings", "users"
   add_foreign_key "consents", "conversations"

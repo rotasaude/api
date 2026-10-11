@@ -145,6 +145,9 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "consultation.addendum_added", to: [ Signatures::RequestJob ]
   DomainEvents.bind "clinical_record.viewed", to: []
   DomainEvents.bind "clinical_record.opened", to: []
+  # ADR 0035: página do PEC, só trilha (ids e código do motivo).
+  DomainEvents.bind "pec.external_view_opened", to: []
+  DomainEvents.bind "pec.external_view_denied", to: []
   # Rascunho órfão (card api#51): descarte e designação pelo admin municipal;
   # só ids, nunca o motivo nem texto clínico.
   DomainEvents.bind "consultation.draft_discarded", to: []

@@ -36,7 +36,11 @@ Rails.application.config.filter_parameters += [
   # O medicamento informado de fora vai pelo id do catálogo, na URL da consulta.
   /\Acatalog_item_id\z/,
   # ADR 0034: endereço, telefone e identificação do paciente/prescritor e o número SNCR.
-  /\A(session_id|access_token|street|zip|address|phone|paper_number|sncr|patient_identification|prescriber_contact)\z/
+  /\A(session_id|access_token|street|zip|address|phone|paper_number|sncr|patient_identification|prescriber_contact)\z/,
+  # ADR 0035: a chamada dos "sistemas externos" do PEC traz CPF/CNS do
+  # cidadão e do profissional e a assinatura na query (a linha "Started GET"
+  # usa request.filtered_path, que aplica esta lista à query).
+  /\A(documento-cidadao|documento-profissional|pec_sign)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

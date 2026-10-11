@@ -9,7 +9,10 @@ class ClinicalRecordOpening < ApplicationRecord
 
   encrypts :reason_note
 
-  belongs_to :patient
+  # ADR 0035: a abertura é de um paciente (19a) ou, sem paciente, de um par
+  # validado do CPF (exatamente um dos dois; CHECK no banco).
+  belongs_to :patient, optional: true
+  belongs_to :citizen, optional: true
   belongs_to :user
 
   scope :valid_for, ->(user_id:, patient_id:, now: Time.current) {

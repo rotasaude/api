@@ -145,3 +145,12 @@ RSpec.describe "controlled prescription event bindings (ADR 0034)" do
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
 end
+
+# Módulo 20 (ADR 0035): página do PEC, só trilha.
+RSpec.describe "patient timeline event bindings (ADR 0035)" do
+  it "declares every module 20 city event with no consumer" do
+    names = %w[clinical_record.viewed pec.external_view_opened pec.external_view_denied]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end

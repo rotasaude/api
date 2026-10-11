@@ -98,7 +98,9 @@ module CityEncryption
     [ PatientMedication, :free_text ],
     [ PatientMedication, :label ],
     [ PatientMedication, :dosage_summary ],
-    [ PatientMedicationEvent, :dosage_summary ]
+    [ PatientMedicationEvent, :dosage_summary ],
+    # ADR 0035: chave HMAC dos "sistemas externos" do PEC.
+    [ PecSetting, :hmac_key ]
   ].freeze
 
   module_function
