@@ -83,6 +83,30 @@ RSpec.describe "Histórico do cidadão", type: :request do
     expect(status_and_error).to eq([ 403, "not_verified" ])
   end
 
+  it "PDF: registro da Notificação e clinical_documents desligado dão 404; anexo; teto de 30 por 10 min dá 429" do
+    paper = raw_document!(consultation: consultation, kind: "sick_note", issue_mode: "paper")
+    notification = raw_document!(consultation: consultation, kind: "controlled_notification_record", issue_mode: "paper")
+    sign_in_citizen(mother.phone)
+    get "/citizen/documents/#{notification.id}/pdf", params: { citizen_id: mother.id }
+    expect(status_and_error).to eq([ 404, "not_found" ])
+
+    get "/citizen/documents/#{paper.id}/pdf", params: { citizen_id: mother.id }
+    expect(response).to have_http_status(:ok)
+    expect(response.headers["Content-Disposition"]).to start_with("attachment")
+
+    Platform::Features.set!(city: Current.city, key: "clinical_documents", enabled: false, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    get "/citizen/documents/#{paper.id}/pdf", params: { citizen_id: mother.id }
+    expect(status_and_error).to eq([ 404, "not_found" ])
+
+    # O cache de teste é :null_store, que nunca conta; um real só aqui.
+    allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+    30.times { get "/citizen/documents/#{SecureRandom.uuid}/pdf", params: { citizen_id: mother.id } }
+    expect(response).to have_http_status(:not_found)
+    get "/citizen/documents/#{SecureRandom.uuid}/pdf", params: { citizen_id: mother.id }
+    expect(status_and_error).to eq([ 429, "too_many_requests" ])
+  end
+
   it "cursor e kinds inválidos: 422; kinds recorta só dentro do que a pessoa pode ver" do
     consultation
     completed_web_triage_for(child)

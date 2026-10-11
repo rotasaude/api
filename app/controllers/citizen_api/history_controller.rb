@@ -21,7 +21,8 @@ module CitizenApi
       return render_error("invalid_kinds", :unprocessable_entity) unless requested
 
       person = Timeline::Person.for_citizen(citizen)
-      # Nunca trilha de pessoa vazia.
+      # Defesa: for_citizen hoje não devolve pessoa vazia, mas a regra "nunca trilha
+      # de pessoa vazia" não deve depender disso.
       return render_error("not_found", :not_found) if person.empty?
 
       kinds = Timeline::Query.citizen_kinds(verified: person.verified, documents: ClinicalDocuments::Gate.usable?(Current.city)) & requested
