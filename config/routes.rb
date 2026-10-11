@@ -151,6 +151,9 @@ Rails.application.routes.draw do
     get  "consultations/:id/documents",    to: "clinical_documents#index"
     post "consultations/:id/documents",    to: "clinical_documents#create"
     post "attendances/:id/declarations",   to: "clinical_documents#declaration"
+    # Contato do prescritor (ADR 0034; contrato §5).
+    get "professional_profile/contact", to: "professional_contacts#show"
+    put "professional_profile/contact", to: "professional_contacts#update"
     get  "documents/:id",                  to: "clinical_documents#show"
     get  "documents/:id/print",            to: "clinical_documents#print"
     post "documents/:id/cancel",           to: "clinical_documents#cancel"
