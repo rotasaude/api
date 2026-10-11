@@ -21,7 +21,10 @@ module ClinicalDocuments
         next Result.fail(:already_cancelled) if document.cancelled?
 
         document.update!(status: "cancelled", cancel_reason: note, cancelled_at: now, cancelled_by_user_id: by.id)
-        DomainEvents.publish("clinical_document.cancelled", document_id: document.id, kind: document.kind)
+        Sncr::Stock.void!(document: document, now: now) # ADR 0034: número de receita cancelada não volta
+        payload = { document_id: document.id, kind: document.kind }
+        payload[:category] = document.content_data["category"] if document.prescription? && document.content_data["category"]
+        DomainEvents.publish("clinical_document.cancelled", **payload)
         Result.ok(document: document)
       end
       retire(result.payload[:document], now) if result.ok?

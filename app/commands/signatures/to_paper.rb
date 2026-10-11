@@ -12,7 +12,10 @@ module Signatures
       # (o trigger só aceita sem assinatura gravada); o cancelamento tira o
       # pedido da fila sem mudar o modo.
       if request.document_type == "ClinicalDocument" && reason_code != "document_cancelled"
-        ClinicalDocument.where(id: request.document_id, issue_mode: "digital").find_each { |document| document.update!(issue_mode: "paper") }
+        ClinicalDocument.where(id: request.document_id, issue_mode: "digital").find_each do |document|
+          document.update!(issue_mode: "paper")
+          Sncr::Stock.void!(document: document, now: now) # ADR 0034, Desvio 11
+        end
       end
       DomainEvents.publish("signature.returned_to_paper", request_id: request.id, reason_code: reason_code)
       request
