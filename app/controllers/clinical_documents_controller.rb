@@ -61,7 +61,8 @@ class ClinicalDocumentsController < ApplicationController
   end
 
   # "Reaproveitar o último" (19d spec §5; contrato §12): a identificação do
-  # paciente da última receita emitida dele que a tenha. Só a autora da
+  # paciente da última receita emitida dele que a tenha — só o endereço; o CPF
+  # é sempre o do cadastro (§12), nunca o gravado na receita. Só a autora da
   # consulta (é ela quem emite a próxima receita), pela regra do prontuário
   # (ClinicalRecord::Access via Read.consultation_grant), com trilha.
   def patient_identification
@@ -73,10 +74,11 @@ class ClinicalDocumentsController < ApplicationController
     return forbid(grant.reason.to_s) unless grant.allowed?
 
     ClinicalRecord::Trail.viewed!(patient: consultation.patient, user: Current.user, grant: grant)
-    last = ClinicalDocument.where(patient_id: consultation.patient_id, kind: "prescription", status: "issued")
-                           .order(issued_at: :desc, id: :desc).limit(IDENTIFICATION_LOOKBACK)
-                           .lazy.map { |document| document.content_data["patient_identification"] }.find(&:present?)
-    render json: { patient_identification: last }
+    address = ClinicalDocument.where(patient_id: consultation.patient_id, kind: "prescription", status: "issued")
+                              .order(issued_at: :desc, id: :desc).limit(IDENTIFICATION_LOOKBACK)
+                              .lazy.map { |document| document.content_data.dig("patient_identification", "address") }.find(&:present?)
+    cpf = CitizenIdentity::Cpf.normalize(consultation.patient.cpf.to_s)
+    render json: { patient_identification: address && { cpf: cpf, address: address } }
   end
 
   # Contrato §3 (Desvio 7): o PDF do modo do documento, na hora, sem cache.

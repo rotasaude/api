@@ -109,6 +109,24 @@ RSpec.describe "Emissão de receita controlada" do
     expect([ result[:document].issue_mode, result[:paper_reason] ]).to eq([ "paper", "no_sncr_number" ])
   end
 
+  it "modo real (sncr_mock desligado): número real sai com simulated false" do
+    linked_certificate!(doctor)
+    sncr_stock!(doctor, kind: "rce", count: 1, simulated: false)
+    Platform::Features.set!(city: Current.city, key: "sncr_mock", enabled: false, maintainer: ledi_maintainer!)
+    document = issue!.payload[:document]
+    expect([ document.issue_mode, document.paper_reason ]).to eq([ "digital", nil ])
+    expect(document.content_data["sncr"]).to eq("kind" => "rce", "number" => "2610.1-41.0000001", "simulated" => false)
+    expect(SncrNumber.find_by(document_id: document.id)).to have_attributes(status: "used", simulated: false)
+  end
+
+  it "número real não serve com o sncr_mock ligado: papel no_sncr_number e o número fica livre" do
+    linked_certificate!(doctor)
+    sncr_stock!(doctor, kind: "rce", count: 1, simulated: false)
+    result = issue!.payload
+    expect([ result[:document].issue_mode, result[:paper_reason] ]).to eq([ "paper", "no_sncr_number" ])
+    expect(SncrNumber.where(user_id: doctor.id).pluck(:status, :simulated)).to eq([ [ "free", false ] ])
+  end
+
   it "RET digital: número ret; sem contato → 422 e o número volta" do
     linked_certificate!(doctor)
     sncr_stock!(doctor, kind: "ret", count: 1)
@@ -175,5 +193,8 @@ RSpec.describe "Emissão de receita controlada" do
     expect(ClinicalDocuments::Issue.decide(kind: "controlled_notification_record", category: nil, role: :physician, ctx: ctx.(), certificate: true))
       .to eq([ :paper, nil ])
     expect(ctx.().inspect).not_to include("contact")
+    secret = ClinicalDocuments::Issue::Context.new(signing: true, controlled: true, simulated: false, platform: nil,
+                                                   contact: { "address" => ControlledPrescriptionHelpers::ADDRESS, "phone" => "41999990000" })
+    [ secret.inspect, secret.to_s, secret.pretty_inspect ].each { |text| expect(text).not_to include("Araucárias", "41999990000") }
   end
 end

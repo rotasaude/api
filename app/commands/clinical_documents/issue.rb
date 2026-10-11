@@ -24,6 +24,7 @@ module ClinicalDocuments
     Context = Data.define(:signing, :controlled, :simulated, :platform, :contact) do
       def inspect = "#<ClinicalDocuments::Issue::Context signing=#{signing} controlled=#{controlled} simulated=#{simulated}>"
       alias_method :to_s, :inspect
+      def pretty_print(pp) = pp.text(inspect)
     end
 
     module_function

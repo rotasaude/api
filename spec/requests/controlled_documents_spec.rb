@@ -44,6 +44,18 @@ RSpec.describe "Receita controlada pela API", type: :request do
     expect(log).not_to include(consultation.patient.cpf, "Araucárias")
   end
 
+  it "a identificação reaproveitada traz o CPF do cadastro de agora, não o gravado na receita (§12)" do
+    sign_in_as(doctor)
+    post_document(rce)
+    expect(response).to have_http_status(:created)
+    # O CPF do paciente é imutável no banco: simula a receita gravada com outro CPF.
+    allow_any_instance_of(ClinicalDocument).to receive(:content_data)
+      .and_wrap_original { |original| original.call.deep_merge("patient_identification" => { "cpf" => "11144477735" }) }
+    get "/attendance/consultations/#{consultation.id}/patient_identification"
+    expect(body["patient_identification"]).to eq("cpf" => consultation.patient.cpf, "address" => ControlledPrescriptionHelpers::ADDRESS)
+    expect(consultation.patient.cpf).not_to eq("11144477735")
+  end
+
   it "erros com status e campo; nada do paciente no log" do
     sign_in_as(doctor)
     log = capture_log do
