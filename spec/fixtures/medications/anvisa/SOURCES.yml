@@ -8,3 +8,8 @@ controlled:
   read_at: "2026-10-09"
   source: "spec/fixtures"
   counts: { A1: 2, A2: 1, B1: 2, C1: 1 }
+anticonvulsants:
+  label: "Fixture de teste (recorte ATC N03A)"
+  read_at: "2026-10-10"
+  source: "spec/fixtures"
+  count: 2

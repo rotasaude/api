@@ -19,7 +19,7 @@ module ClinicalDocuments
       medications.each_with_index.map do |medication, index|
         item = catalog[medication.catalog_item_id]
         prior = medication.catalog_item_id && last[medication.catalog_item_id]
-        { position: index + 1, catalog_item: item && Json.catalog_ref(item), free_text: medication.free_text,
+        { position: index + 1, catalog_item: item && Json.catalog_ref(item).merge(Json.catalog_marks(item)), free_text: medication.free_text,
           printed_description: medication.label, quantity: prior && Json.number(prior.quantity), quantity_unit: prior&.quantity_unit,
           route: prior&.route, dosage_instructions: prior&.dosage_instructions || medication.dosage_summary,
           duration_days: prior&.duration_days, continuous: true, antimicrobial: item&.antimicrobial || false,

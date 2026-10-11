@@ -16,7 +16,8 @@ RSpec.describe "REMUME", type: :request do
     expect(response).to have_http_status(:created)
     expect(json_body).to eq("catalog_item" => { "id" => losartana.id, "catmat_code" => 268_856, "label" => "LOSARTANA POTÁSSICA 50 MG",
                                                 "active_ingredient" => "LOSARTANA POTÁSSICA", "strength" => "50 MG",
-                                                "dosage_form" => nil, "antimicrobial" => false, "controlled" => false },
+                                                "dosage_form" => nil, "antimicrobial" => false, "controlled" => false,
+                                                   "controlled_list" => nil, "anticonvulsant" => false },
                             "unit_ids" => [])
     json_post "/clinical_documents/remume", catalog_item_id: losartana.id, unit_ids: [ unit.id ]
     expect([ response.status, json_body["unit_ids"] ]).to eq([ 200, [ unit.id ] ])

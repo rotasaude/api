@@ -53,7 +53,7 @@ RSpec.describe "Medicamentos em uso", type: :request do
     consultation = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
     sign_in_as(doctor)
     get "/attendance/consultations/#{consultation.id}/renewal"
-    expect(json_body["items"]).to eq([ { "position" => 1, "catalog_item" => ClinicalDocuments::Json.catalog_ref(catalog_item(268_856)).as_json,
+    expect(json_body["items"]).to eq([ { "position" => 1, "catalog_item" => ClinicalDocuments::Json.catalog_ref(catalog_item(268_856)).as_json.merge("controlled_list" => nil, "anticonvulsant" => false),
                                          "printed_description" => "LOSARTANA POTÁSSICA 50 MG", "quantity" => 30,
                                          "quantity_unit" => "comprimido", "route" => "oral",
                                          "dosage_instructions" => "1 comprimido pela manhã", "duration_days" => 30,

@@ -7,9 +7,14 @@ module ClinicalDocuments
 
     # <item> da busca (contrato §5) e da REMUME (§6).
     def catalog_item(item, in_network: nil)
-      json = catalog_ref(item).merge(antimicrobial: item.antimicrobial, controlled: item.controlled)
+      json = catalog_ref(item).merge(antimicrobial: item.antimicrobial, controlled: item.controlled,
+                                     **catalog_marks(item))
       in_network.nil? ? json : json.merge(in_network: in_network)
     end
+
+    # As marcas de controle (§12) saem em todo catalog_item HTTP, mas FORA do
+    # `catalog_ref`, que vai ao JSON canônico assinado.
+    def catalog_marks(item) = { controlled_list: item.controlled_list, anticonvulsant: item.anticonvulsant }
 
     # `catalog_item` dentro do <item> da receita e do <medication> (§2).
     def catalog_ref(item)
@@ -66,7 +71,7 @@ module ClinicalDocuments
     # <medication> (contrato §2); `catalog` = { id => MedicationCatalogItem }.
     def medication(medication, catalog:)
       item = medication.catalog_item_id && catalog[medication.catalog_item_id]
-      { id: medication.id, catalog_item: item && catalog_ref(item), free_text: medication.free_text, label: medication.label,
+      { id: medication.id, catalog_item: item && catalog_ref(item).merge(catalog_marks(item)), free_text: medication.free_text, label: medication.label,
         dosage_summary: medication.dosage_summary, continuous: medication.continuous, status: medication.status,
         origin: medication.origin, started_on: medication.started_on&.iso8601, updated_at: medication.updated_at.iso8601 }
     end

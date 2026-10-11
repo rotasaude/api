@@ -27,4 +27,12 @@ RSpec.describe "config/medications/anvisa" do
                              "METADONA" => "A1", "CODEINA" => "A2", "TRAMADOL" => "A2", "FLUOXETINA" => "C1",
                              "AMITRIPTILINA" => "C1", "CARBAMAZEPINA" => "C1")
   end
+
+  it "os anticonvulsivantes batem com a fonte declarada e cobrem os da APS" do
+    names = CSV.read(dir.join("anticonvulsants.csv"), headers: true).map { |row| row["substance"] }
+    expect(names.size).to eq(sources.dig("anticonvulsants", "count"))
+    expect(names).to eq(names.uniq)
+    keys = names.map { |name| Medications::Substances.key(name) }
+    expect(keys).to include("CARBAMAZEPINA", "ACIDO VALPROICO", "FENITOINA", "LAMOTRIGINA", "TOPIRAMATO", "OXCARBAZEPINA")
+  end
 end
