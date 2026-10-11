@@ -145,6 +145,10 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "consultation.addendum_added", to: [ Signatures::RequestJob ]
   DomainEvents.bind "clinical_record.viewed", to: []
   DomainEvents.bind "clinical_record.opened", to: []
+  # Rascunho órfão (card api#51): descarte e designação pelo admin municipal;
+  # só ids, nunca o motivo nem texto clínico.
+  DomainEvents.bind "consultation.draft_discarded", to: []
+  DomainEvents.bind "consultation.draft_reassigned", to: []
 
   # Módulo 19b (ADR 0032; contrato §11): assinatura digital; trilha, só ids.
   # Nenhum token, CPF, nome ou conteúdo assinado entra em evento.
