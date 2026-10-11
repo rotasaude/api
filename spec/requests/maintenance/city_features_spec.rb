@@ -100,7 +100,7 @@ RSpec.describe "Interruptores na API de manutenção", type: :request do
     GQL
     data = json.dig("data", "city")
     expect(data["recordMode"]).to eq("integrated")
-    expect(data["features"].map { |f| f["key"] }).to eq(%w[ledi_export cadsus_lookup clinical_record digital_signature signature_psc_mock clinical_documents controlled_prescriptions sncr_mock])
+    expect(data["features"].map { |f| f["key"] }).to eq(%w[ledi_export cadsus_lookup clinical_record digital_signature signature_psc_mock clinical_documents controlled_prescriptions sncr_mock patient_timeline pec_external_view])
     expect(data["features"].first["missing"]).to eq(%w[pec_url_missing ibge_code_missing credential_missing:ledi])
   end
 end

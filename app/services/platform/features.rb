@@ -52,7 +52,19 @@ module Platform
       Entry.new(key: "sncr_mock",
                 description: "SNCR simulado (desenvolvimento) — numeração simulada, sem validade",
                 requires: %w[feature:controlled_prescriptions],
-                environments: SIMULATION_ENVS)
+                environments: SIMULATION_ENVS),
+      # ADR 0035: linha do tempo do paciente (módulo 20), para o profissional
+      # (dashboard) e para o cidadão (wpda). Sem pré-requisito: no modo
+      # integrado mostra o que passou pelo Rota Saúde (histórico parcial).
+      Entry.new(key: "patient_timeline",
+                description: "Linha do tempo do paciente (profissional no dashboard e cidadão no wpda)",
+                requires: []),
+      # ADR 0035: página para a tela de "sistemas externos" do e-SUS PEC, só no
+      # modo integrado. Sem pec_origin e chave HMAC (pec_settings), a página
+      # responde pec_disabled.
+      Entry.new(key: "pec_external_view",
+                description: "Página da linha do tempo para a tela de sistemas externos do e-SUS PEC",
+                requires: %w[feature:patient_timeline record_mode:integrated pec_origin pec_hmac_key])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
@@ -110,8 +122,9 @@ module Platform
       return nil unless city.servable?
 
       CityConnection.with(city) do
+        pec = PecConfigState.read
         { credentials: IntegrationCredential.pluck(:kind, :last_check_status).to_h,
-          ibge_code: CityProfile.current&.ibge_code }
+          ibge_code: CityProfile.current&.ibge_code, pec_origin: pec[:origin], pec_hmac_key: pec[:key] }
       end
     rescue *Maintenance::CityConnectionErrors::CLASSES, ActiveRecord::StatementInvalid
       nil
@@ -165,6 +178,9 @@ module Platform
       case requirement
       when "record_mode" then "record_mode_off" if platform[:record_mode] == "off"
       when "record_mode:record" then "record_mode_not_record" unless platform[:record_mode] == "record"
+      when "record_mode:integrated" then "record_mode_not_integrated" unless platform[:record_mode] == "integrated"
+      when "pec_origin" then "pec_origin_missing" unless state[:pec_origin]
+      when "pec_hmac_key" then "pec_hmac_key_missing" unless state[:pec_hmac_key]
       when "pec_url" then "pec_url_missing" if platform[:pec_url].blank?
       when "ibge_code" then "ibge_code_missing" if state[:ibge_code].blank?
       when /\Acredential:(\w+)\z/
@@ -179,6 +195,19 @@ module Platform
         "#{dependency}_disabled" unless usable?(city, dependency, state: state, env: env)
       else
         raise ArgumentError, "pré-requisito desconhecido no catálogo: #{requirement}"
+      end
+    end
+
+    # ADR 0035: só se há origem e chave do PEC — nunca o valor da chave.
+    module PecConfigState
+      module_function
+
+      def read
+        return { origin: false, key: false } unless ApplicationRecord.connection.data_source_exists?("pec_settings")
+
+        row = ApplicationRecord.connection.select_one("SELECT pec_origin IS NOT NULL AS origin, hmac_key IS NOT NULL AS key FROM pec_settings LIMIT 1")
+        cast = ActiveModel::Type::Boolean.new
+        { origin: cast.cast(row&.fetch("origin")) == true, key: cast.cast(row&.fetch("key")) == true }
       end
     end
   end
