@@ -40,7 +40,19 @@ module Platform
       # seguem legíveis e a página de conferência segue respondendo.
       Entry.new(key: "clinical_documents",
                 description: "Documentos clínicos (atestado, declaração, receita, requisição) e lista de medicamentos",
-                requires: %w[feature:clinical_record])
+                requires: %w[feature:clinical_record]),
+      # ADR 0034: receita de controle especial e de antimicrobiano digitais
+      # (números do SNCR) e registro da Notificação de papel; só com os
+      # documentos clínicos utilizáveis. Desligado: comportamento do 19c.
+      Entry.new(key: "controlled_prescriptions",
+                description: "Receita de controle especial e de antimicrobiano digitais (SNCR) e registro da Notificação de papel",
+                requires: %w[feature:clinical_documents]),
+      # ADR 0034: SNCR simulado, só fora de produção. Ligado, os números vêm do
+      # SNCR simulado (numeração simulada — sem validade).
+      Entry.new(key: "sncr_mock",
+                description: "SNCR simulado (desenvolvimento) — numeração simulada, sem validade",
+                requires: %w[feature:controlled_prescriptions],
+                environments: SIMULATION_ENVS)
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
