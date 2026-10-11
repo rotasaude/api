@@ -10,12 +10,13 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
   create_table "anvisa_list_releases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "activated_at"
+    t.integer "anticonvulsants_count", default: 0, null: false
     t.integer "antimicrobials_count", default: 0, null: false
     t.integer "controlled_count", default: 0, null: false
     t.datetime "created_at", null: false
@@ -39,7 +40,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
     t.index ["release_id", "kind", "substance_key"], name: "idx_anvisa_list_substances_unique", unique: true
     t.check_constraint "(kind::text = 'controlled'::text) = (controlled_list IS NOT NULL)", name: "ck_anvisa_list_substances_list"
     t.check_constraint "controlled_list IS NULL OR controlled_list::text ~ '^[A-F][0-9]?$'::text", name: "ck_anvisa_list_substances_list_code"
-    t.check_constraint "kind::text = ANY (ARRAY['antimicrobial'::text, 'controlled'::text])", name: "ck_anvisa_list_substances_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['antimicrobial'::text, 'controlled'::text, 'anticonvulsant'::text])", name: "ck_anvisa_list_substances_kind"
   end
 
   create_table "ciap2_codes", force: :cascade do |t|
@@ -241,6 +242,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
 
   create_table "medication_catalog_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "active_ingredient", null: false
+    t.boolean "anticonvulsant", default: false, null: false
     t.boolean "antimicrobial", default: false, null: false
     t.integer "catmat_code", null: false
     t.boolean "controlled", default: false, null: false
@@ -369,6 +371,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_600001) do
     t.uuid "release_id", null: false
     t.string "sex", limit: 1
     t.index ["release_id", "code"], name: "index_sigtap_procedures_on_release_id_and_code", unique: true
+  end
+
+  create_table "sncr_checks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "last_check_at", null: false
+    t.boolean "last_check_ok", null: false
+    t.string "target", null: false
+    t.index ["target"], name: "index_sncr_checks_on_target", unique: true
+    t.check_constraint "target::text = ANY (ARRAY['real'::text, 'simulated'::text])", name: "ck_sncr_checks_target"
   end
 
   create_table "solid_cache_entries", force: :cascade do |t|
