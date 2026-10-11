@@ -33,6 +33,15 @@ servers:
 
 proxy:
   ssl: true
+  # Card api#62. GATE DE GO-LIVE (dono: usuário): com `ssl: true` o kamal-proxy do
+  # Kamal 2 NÃO repassa os cabeçalhos X-Forwarded-* por padrão (forward_headers
+  # false) e descarta o X-Forwarded-For do proxy de borda, entregando ao Rails só
+  # o IP do par (a borda) — todo cidadão cairia no mesmo balde de rate_limit mesmo
+  # com TRUSTED_PROXIES. Com true, ele repassa o cabeçalho e ACRESCENTA o par; é
+  # seguro mesmo sem borda, pois o Rails escolhe o primeiro IP não confiável a
+  # partir da direita. CONFIRMAR o nome da chave na versão real do Kamal (não está
+  # instalado aqui) e descomentar junto com TRUSTED_PROXIES.
+  # forward_headers: true
   # Plano 6: um host por papel do domínio. O curinga atende qualquer cidade
   # provisionada sem novo deploy — a aplicação resolve o slug pelo Host
   # (CityCatalog). `admin.` é o console e `auth.` é o callback único do gov.br.

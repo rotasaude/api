@@ -6,10 +6,10 @@ set -euo pipefail
 cd "$(dirname "$0")"
 IMG=mirror.gcr.io/library/nginx:alpine   # Docker Hub anônimo falha; usar o espelho
 NET=fix62-net; BE=fix62-backend; PX=fix62-proxy
-T=$(mktemp -d)
-cleanup() { docker rm -f $PX $BE >/dev/null 2>&1 || true; docker network rm $NET >/dev/null 2>&1 || true; rm -rf "$T"; }
+T=""
+cleanup() { docker rm -f $PX $BE >/dev/null 2>&1 || true; docker network rm $NET >/dev/null 2>&1 || true; rm -rf "${T:-}"; }
 trap cleanup EXIT
-cleanup; T=$(mktemp -d)
+cleanup; T=$(mktemp -d)   # limpa sobras de execução anterior e só então cria o temporário
 
 # Backend fake: ecoa XFF e X-Real-IP na resposta.
 cat > "$T/backend.conf" <<'CONF'

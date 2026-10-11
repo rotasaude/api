@@ -42,9 +42,17 @@ log_format city_masked '$remote_addr - [$time_local] '
                        '$status $body_bytes_sent "$http_user_agent"';
 
 # --- 3. Upstream (api) -----------------------------------------------------
-# Em produção, o kamal-proxy do host do api. Ajuste.
+# Em produção, o kamal-proxy do host do api. Ajuste. Duas formas válidas:
+#  a) kamal-proxy com `ssl: true` (deploy/production/deploy.yml): ele REDIRECIONA
+#     HTTP -> HTTPS, então o upstream tem de ser o kamal-proxy por HTTPS (443),
+#     com `proxy_pass https://api_cidade;`, `proxy_ssl_server_name on;` e
+#     `proxy_ssl_name $host;` (SNI do host da cidade) na server abaixo;
+#  b) kamal-proxy configurado com `ssl: false` atrás desta borda, que termina o TLS
+#     (upstream HTTP na porta 80, como no exemplo).
+# Nos dois casos o kamal-proxy precisa de `forward_headers: true` (ver deploy.yml),
+# senão ele descarta o X-Forwarded-For enviado por este proxy.
 upstream api_cidade {
-    server kamal-proxy.interno:80;
+    server kamal-proxy.interno:80;   # forma (b); na forma (a): :443
 }
 
 server {
@@ -72,14 +80,8 @@ server {
     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
 
-    location /v {
-        proxy_pass http://api_cidade;
-    }
-
-    location /r {
-        proxy_pass http://api_cidade;
-    }
-
+    # /v/<token> e /r/<token> (tokens de portador) usam o mesmo repasse das demais
+    # rotas; o que os protege é o log mascarado acima, não a location.
     location / {
         proxy_pass http://api_cidade;
     }

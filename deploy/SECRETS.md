@@ -111,9 +111,16 @@ produção `CITY_DATABASE_HOST` é obrigatório (sem ele, `POST /cities` respond
 `TRUSTED_PROXIES` fica em `env.clear` do `deploy.yml` (não no cofre; hoje comentada, gate de go-live). Lista os CIDRs
 dos proxies de borda das cidades, separados por vírgula e/ou espaço (IP único ou CIDR, IPv4 ou IPv6), ex.:
 `203.0.113.10/32,2001:db8::/32`. Os `rate_limit` do api contam por `request.remote_ip`; sem a lista o Rails vê o IP do
-proxy e todos os cidadãos dividem um balde (ou um cliente forja `X-Forwarded-For`). Os valores somam-se aos padrões
+proxy de borda e todos os cidadãos dividem um único balde de limite. Os valores somam-se aos padrões
 do Rails (loopback e redes privadas, por onde o kamal-proxy alcança o container). Ausente em production/staging, o
 boot **avisa** no log e segue; com entrada inválida o boot **falha** (`Rota::InvalidTrustedProxies`).
+
+Dois requisitos da cadeia, além da lista: (1) todo salto (borda -> kamal-proxy -> Rails) precisa **acrescentar** o par
+que o contactou ao `X-Forwarded-For` (o Rails lê da direita e usa o primeiro IP não confiável); (2) no Kamal 2 o
+`kamal-proxy` com `ssl: true` tem `forward_headers` desligado por padrão e **descarta** o `X-Forwarded-For` vindo da
+borda, enviando só o IP do par — o Rails veria o IP da borda para todo cidadão mesmo com `TRUSTED_PROXIES`. Por isso o
+`proxy:` do `deploy.yml` tem a linha `forward_headers: true` (comentada, gate de go-live; confirmar a chave na versão
+real do Kamal).
 
 ## Papel `rota_provisioner` (uma vez por cluster)
 

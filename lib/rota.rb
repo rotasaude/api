@@ -73,7 +73,7 @@ module Rota
     return unless value.to_s.strip.empty?
 
     logger.warn "TRUSTED_PROXIES não está definida em #{env}: o limite por IP (rate_limit) vê o IP do proxy de " \
-                "borda, não o do cidadão — todos dividem um balde e X-Forwarded-For pode ser forjado. " \
+                "borda, não o do cidadão — todos os cidadãos dividem um único balde de limite. " \
                 "Defina os CIDRs dos proxies (deploy/SECRETS.md)."
   end
 end
