@@ -11,6 +11,12 @@ RSpec.describe RequestLogPathMask do
     Rails::Rack::Logger.new(->(_env) { [ 200, {}, [] ] }).send(:started_request_message, request)
   end
 
+  def logged_raw(path)
+    info, query = path.b.split("?", 2)
+    env = Rack::MockRequest.env_for("/").merge("PATH_INFO" => info, "QUERY_STRING" => query.to_s)
+    Rails::Rack::Logger.new(->(_env) { [ 200, {}, [] ] }).send(:started_request_message, ActionDispatch::Request.new(env))
+  end
+
   {
     "/v/abc123token" => "/v/[FILTERED]",
     "/v//abc123token" => "/v/[FILTERED]",
@@ -44,5 +50,49 @@ RSpec.describe RequestLogPathMask do
 
   it "não toca em outros caminhos" do
     %w[/ /up /vx/abc /attendance//x].each { |raw| expect(described_class.mask(raw)).to eq(raw) }
+  end
+
+  describe "bytes inválidos ou codificação mista" do
+    [ "/v/é%FF", "/ação/%C3%A9", "/v/\xFF", "/v/\xC3(abc", "/x\xFF/y", "/v/abc123token\xFF", "/%76/\xC3\x28abc123token" ].each do |raw|
+      it "nunca levanta com #{raw.inspect}" do
+        expect { described_class.mask(raw) }.not_to raise_error
+        expect { logged_raw(raw) }.not_to raise_error
+      end
+    end
+
+    it "mascara o token mesmo com byte inválido ao redor" do
+      %W[/v/abc123token\xFF /v/\xC3(abc123token /%76/abc123token%FF].each do |raw|
+        expect(described_class.mask(raw)).not_to include("abc123token")
+        expect(logged_raw(raw)).not_to include("abc123token")
+      end
+    end
+
+    it "caminho ASCII sem token segue intacto" do
+      expect(described_class.mask("/up")).to eq("/up")
+      expect(described_class.mask("/x\xFF/y".b)).to eq("/x\xFF/y".b)
+    end
+
+    it "na falha inesperada devolve valor totalmente mascarado, nunca o original" do
+      allow(described_class).to receive(:normalize).and_raise(RuntimeError)
+      expect(described_class.mask("/v/abc123token")).to eq("/[FILTERED]")
+    end
+  end
+
+  describe "RoutingError no log de exceções" do
+    def composed(message)
+      wrapper = instance_double(ActionDispatch::ExceptionWrapper, has_cause?: false, exception_class_name: "ActionController::RoutingError",
+                                message: message, annotated_source_code: [], exception_trace: [])
+      middleware = ActionDispatch::DebugExceptions.new(->(_e) { [ 200, {}, [] ] })
+      middleware.send(:compose_exception_message, wrapper).join("\n")
+    end
+
+    it "mascara o caminho citado e preserva o resto da mensagem" do
+      %w[/%76/abc123token /%72/abc123token /v/abc123token/signed.pdf].each do |raw|
+        out = composed(%(No route matches [GET] #{raw.inspect}))
+        expect(out).not_to include("abc123token")
+        expect(out).to include("No route matches [GET]", "[FILTERED]")
+      end
+      expect(composed(%(No route matches [GET] "/nada"))).to include('"/nada"')
+    end
   end
 end

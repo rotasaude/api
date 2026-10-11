@@ -135,11 +135,20 @@ RSpec.describe "Conferência pública de documento", type: :request do
       get "/v//#{token}//signed.pdf"
       get "//v//lookup"
     end
-    # Só a linha de requisição é mascarada aqui; o RoutingError de caminho sem
-    # rota (ex. /%76/...) é outra linha de log, fora deste escopo (ver rollout).
-    expect(log.lines.grep(/Started/).join).not_to include(token)
+    expect(log).not_to include(token) # log inteiro, inclusive o RoutingError
+    expect(log).to include("No route matches")
     expect(log).to include('Started GET "/v/[FILTERED]"', 'Started GET "/r/[FILTERED]"', 'Started GET "/v/[FILTERED]/signed.pdf"')
     expect(log).to include('Started GET "//v//lookup"')
+  end
+
+  it "RoutingError de /%76/token e /v//token//signed.pdf não grava o token (log completo)" do
+    token = "abc123token"
+    log = capture_log do
+      get "/%76/#{token}"
+      get "/v//#{token}//signed.pdf"
+    end
+    expect(log).to include("No route matches")
+    expect(log).not_to include(token)
   end
 
   it "digital assinado e depois cancelado: cancelled, sem signed_pdf_url, PDF 404" do
