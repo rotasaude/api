@@ -15,7 +15,7 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog],
+    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus],
     "SignatureProvider" => %w[key configured lastCheckAt lastCheckOk],
     "MedicationCatalog" => %w[currentRelease reviewItems],
     "MedicationCatalogRelease" => %w[id importedAt itemsCount hiddenCount],
@@ -23,6 +23,7 @@ RSpec.describe "Maintenance GraphQL schema" do
     "ImportMedicationCatalogPayload" => %w[ok errors releaseId added changed removed],
     "ImportAnvisaListsPayload" => %w[ok errors antimicrobials controlled],
     "SignerStatus" => %w[reachable version crlUpdatedAt],
+    "SncrStatus" => %w[configured reachable lastCheckAt simulatedAvailable],
     "Maintainer" => %w[id emailAddress active enrolled createdAt],
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
                      saveProtocolDraft submitProtocolForReview publishProtocol
@@ -550,7 +551,7 @@ RSpec.describe "Maintenance GraphQL schema" do
       # aqui quebra `root_query_field_names` abaixo, de propósito.
       def field_selections
         { "me" => "{ id }", "maintainers" => "{ id }", "maintenanceTokens" => "{ id }", "auditEvents" => "{ name }",
-          "cities" => "{ slug }", "signatureProviders" => "{ key }", "signerStatus" => "{ reachable }",
+          "cities" => "{ slug }", "signatureProviders" => "{ key }", "signerStatus" => "{ reachable }", "sncrStatus" => "{ configured }",
           "medicationCatalog" => "{ currentRelease { id } }" }
       end
 

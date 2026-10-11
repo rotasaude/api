@@ -32,6 +32,9 @@ module Maintenance
             description: "PSC de assinatura do ambiente: credencial presente e última checagem"
       field :signer_status, Types::SignerStatusType, null: false,
             description: "Estado do serviço interno de assinatura (signer)"
+      # ADR 0034 (contrato §8): plataforma, sem abrir cidade, sem segredo.
+      field :sncr_status, Types::SncrStatusType, null: false,
+            description: "SNCR do ambiente: configurado, alcançável e simulado disponível"
       # ADR 0033 (contrato §8): catálogo de medicamentos da plataforma.
       field :medication_catalog, Types::MedicationCatalogType, null: false,
             description: "Release ativa do CATMAT e itens em revisão"
@@ -55,6 +58,8 @@ module Maintenance
       end
 
       def signer_status = Signatures::SignerStatus.call
+
+      def sncr_status = Sncr::Checks.status
 
       def medication_catalog = {}
 

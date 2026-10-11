@@ -12,7 +12,7 @@ module Maintenance
         saveProtocolDraft submitProtocolForReview publishProtocol
         activateProtocol retireProtocol revertProtocolActivation
         setCityFeature
-        signatureProviders signerStatus
+        signatureProviders signerStatus sncrStatus
         medicationCatalog importMedicationCatalog importAnvisaLists
       ].freeze
 
