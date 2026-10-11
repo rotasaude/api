@@ -6,8 +6,6 @@
 # da cidade do host: o código de outra cidade simplesmente não existe aqui.
 module ClinicalDocuments
   module Verification
-    PARTICLES = %w[da das de do dos e].freeze
-
     module_function
 
     def by_token(token)
@@ -39,7 +37,7 @@ module ClinicalDocuments
                # nunca o e-mail da conta.
                professional: { name: professional&.professional_name.presence, council: Json.council(professional) },
                unit: document.attendance.health_unit.name,
-               patient: { initials: initials(person(document).display_name), birth_year: birth_year_of(document) },
+               patient: { initials: Patients::Initials.call(person(document).display_name), birth_year: birth_year_of(document) },
                status: status, mode: document.issue_mode, simulated: signature&.simulated? || false }
       add_prescription_fields(json, document) if document.prescription?
       json[:cancelled_at] = document.cancelled_at.iso8601 if document.cancelled?
@@ -69,10 +67,6 @@ module ClinicalDocuments
       value = person(document).birth_date.to_s
       value.match?(/\A\d{4}-/) ? value[0, 4].to_i : nil
     end
-
-    def initials(name)
-      name.to_s.split.reject { |word| PARTICLES.include?(word.downcase) }.map { |word| "#{word[0].upcase}." }.join
-    end
-    private_class_method :add_prescription_fields, :trail!, :person, :birth_year_of, :initials
+    private_class_method :add_prescription_fields, :trail!, :person, :birth_year_of
   end
 end
