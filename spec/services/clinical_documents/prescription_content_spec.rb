@@ -39,7 +39,9 @@ RSpec.describe ClinicalDocuments::Content::Prescription do
                      "printed_description" => "LOSARTANA POTÁSSICA 50 MG", "quantity" => 30, "quantity_unit" => "comprimido",
                      "route" => "oral", "dosage_instructions" => "1 comprimido pela manhã", "duration_days" => 30,
                      "continuous" => true, "antimicrobial" => false } ],
-      "catalog_release" => losartana.last_release_id, "antimicrobial" => false, "copies" => 1
+      "catalog_release" => losartana.last_release_id, "antimicrobial" => false, "copies" => 1,
+      # Contrato §2 do 19d: a categoria e os nulos da receita comum.
+      "category" => "common", "sncr" => nil, "patient_identification" => nil, "prescriber_contact" => nil
     )
     expect(call([ item ], valid_until: (today + 60).iso8601).payload[:content]["valid_until"]).to eq((today + 60).iso8601)
     expect(call([ item ], valid_until: (today - 1).iso8601).details).to eq(field: "valid_until")

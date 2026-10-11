@@ -1,15 +1,16 @@
 require "rails_helper"
 
 # ADR 0033 (spec §6; contrato §9, §12): o JSON canônico do documento clínico na
-# forma EXATA do esquema da tag clinical-v1.1.0 (cópia em config/clinical/),
+# forma EXATA do esquema da tag clinical-v1.2.0 (cópia em config/clinical/;
+# ADR 0034: receita comum na forma da 1.1.0, RCE/RET com category),
 # provado byte a byte contra os vetores do contracts; o construtor produz JSON
 # válido para os quatro tipos e é determinístico.
 RSpec.describe "JSON canônico rotasaude.clinical_document.v1" do
   dir = Rails.root.join("spec/fixtures/clinical")
-  examples = "clinical-document" # clinical/examples/clinical-document/ da tag clinical-v1.1.0
+  examples = "clinical-document" # clinical/examples/clinical-document/ da tag clinical-v1.2.0
   sums = File.read(dir.join("canonical/SHA256SUMS")).lines.to_h { |line| line.split.then { |sha, name| [ name, sha ] } }
   schema = Signatures::Canonical::DOCUMENT_SCHEMA
-  vectors = %w[prescription-doctor sick-note-leave prescription-dosage-form-null]
+  vectors = %w[prescription-doctor sick-note-leave prescription-dosage-form-null prescription-special-control prescription-ret]
 
   JSON.parse(File.read(dir.join(examples, "manifest.json"))).fetch("cases").each do |c|
     it "#{examples}/#{c['file']}: #{c['expect']}" do
@@ -29,7 +30,12 @@ RSpec.describe "JSON canônico rotasaude.clinical_document.v1" do
     end
   end
 
-  it "os vetores do documento clínico são os publicados na tag clinical-v1.1.0" do
+  it "os vetores do documento clínico são os publicados nas tags clinical-v1.1.0 e clinical-v1.2.0" do
+    expect(Digest::SHA256.file(Rails.root.join("config/clinical/clinical-document-v1.json")).hexdigest)
+      .to eq("e195e85fcf4468ff2a071ed8e05bb1afc3d0490420a92557b0561fbd292c6c29")
+    expect(JSON.parse(File.read(dir.join(examples, "manifest.json"))).fetch("cases").size).to eq(85)
+    expect(sums).to include("prescription-special-control.jcs" => "25538e7fb3c406a8a84a785069307297097b338c460d15ed2599cf7df2bb2e0a",
+                            "prescription-ret.jcs" => "e4397d409d2e9bc5a625e6e8bce4ab0d1539e4f1d7f4c2256c7812a95f170464")
     expect(sums).to include("prescription-doctor.jcs" => "62bd59faef736229bfc314adb643a128fa557f4434c6277085f031efa1c170f5",
                             "sick-note-leave.jcs" => "171c46109f960cdebb7c78dba67a29d2d6e548cb84bd29961145a8cb3bc77afc",
                             "prescription-dosage-form-null.jcs" =>
@@ -77,6 +83,32 @@ RSpec.describe "JSON canônico rotasaude.clinical_document.v1" do
       expect(result).to include("catalog_release" => nil)
       expect(result["items"].sole.keys).not_to include("catalog_item", "duration_days")
     end
+
+    # clinical-v1.2.0 (ADR 0034; contrato §12): a comum do 19d grava category
+    # e os nulos, mas o canônico é o da 1.1.0 — uma só representação.
+    it "receita comum do 19d: sem category e sem as chaves nulas (forma da 1.1.0)" do
+      stored = controlled_content("common")
+      expect(stored).to include("category" => "common", "sncr" => nil, "patient_identification" => nil, "prescriber_contact" => nil)
+      result = content("prescription", stored)
+      expect(result.keys).not_to include("category", "sncr", "patient_identification", "prescriber_contact")
+      expect(result).to eq(content("prescription", stored.except("category", "sncr", "patient_identification", "prescriber_contact")))
+    end
+
+    it "RCE e RET: category presente; nulos, complemento vazio, paper_reason e marcas do catálogo fora; válido no esquema" do
+      { "special_control" => "prescription-special-control", "antimicrobial" => "prescription-ret" }.each do |category, name|
+        stored = controlled_content(category, "paper_reason" => nil)
+        stored["items"].first["catalog_item"].merge!("controlled_list" => category == "special_control" ? "C1" : nil, "anticonvulsant" => false)
+        stored["prescriber_contact"] = stored["prescriber_contact"].merge("address" => ControlledPrescriptionHelpers::ADDRESS.merge("complement" => nil))
+        result = content("prescription", stored)
+        expect(result).to include("category" => category)
+        expect(result).not_to have_key("paper_reason")
+        expect(result["items"].sole["catalog_item"].keys).not_to include("controlled_list", "anticonvulsant")
+        expect(result["prescriber_contact"]["address"]).not_to have_key("complement")
+        expect(result.key?("patient_identification")).to eq(category == "special_control")
+        example = JSON.parse(File.read(dir.join(examples, "#{name}.json")))
+        expect { Signatures::Canonical.validate!(schema, example.merge("content" => result)) }.not_to raise_error
+      end
+    end
   end
 
   describe "construtor" do
@@ -110,6 +142,8 @@ RSpec.describe "JSON canônico rotasaude.clinical_document.v1" do
       end
       prescription = Signatures::Canonical.clinical_document(documents[2]).document["content"]
       expect(prescription["catalog_release"]).to eq(catalog_item(267_778).last_release_id)
+      expect(prescription.keys).not_to include("category", "sncr", "patient_identification", "prescriber_contact")
+      expect(documents[2].content_data).to include("category" => "common")
       expect(prescription["items"].first).to include("catalog_item" => include("catmat_code" => 267_778, "dosage_form" => "comprimido"),
                                                      "quantity" => 30, "continuous" => true)
       expect(prescription["items"].first).not_to have_key("free_text")

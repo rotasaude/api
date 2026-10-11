@@ -68,6 +68,28 @@ module ControlledPrescriptionHelpers
     user
   end
 
+  # Conteúdo de receita como a emissão grava (contrato §2 do 19d): RCE com
+  # número rce, RET com número ret, comum com a categoria e os nulos. `over`
+  # troca chaves do topo (ex.: "sncr" => nil para a de papel).
+  def controlled_content(category = "special_control", **over)
+    antimicrobial = category == "antimicrobial"
+    code, ingredient, strength = { "special_control" => [ 9_900_001, "FLUOXETINA", "20 mg" ], "antimicrobial" => [ 271_089, "AMOXICILINA", "500 mg" ],
+                                   "common" => [ 268_856, "LOSARTANA POTÁSSICA", "50 mg" ] }.fetch(category)
+    catalog = { "id" => "3f0e1d2c-3b4a-4596-8877-665544332214", "catmat_code" => code, "label" => "#{ingredient} #{strength.upcase}",
+                "active_ingredient" => ingredient, "strength" => strength, "dosage_form" => "cápsula" }
+    item = { "position" => 1, "catalog_item" => catalog, "printed_description" => catalog["label"], "quantity" => 30,
+             "quantity_unit" => "cápsula", "route" => "oral", "dosage_instructions" => "1 cápsula ao dia",
+             "duration_days" => antimicrobial ? 7 : 30, "continuous" => false, "antimicrobial" => antimicrobial }
+    special = category == "special_control"
+    { "items" => [ item ], "antimicrobial" => antimicrobial, "copies" => category == "common" ? 1 : 2,
+      "valid_until" => ({ "special_control" => "2026-11-09", "antimicrobial" => "2026-10-20" }[category]),
+      "category" => category,
+      "sncr" => (category == "common" ? nil : { "kind" => special ? "rce" : "ret", "number" => "2610.#{special ? 1 : 2}-41.0000001", "simulated" => true }),
+      "patient_identification" => (special ? { "cpf" => PATIENT_CPF, "address" => ADDRESS } : nil),
+      "prescriber_contact" => (category == "common" ? nil : { "address" => ADDRESS, "phone" => "41999990000" }),
+      "catalog_release" => "2026-10-09" }.reject { |key, value| key == "valid_until" && value.nil? }.merge(over.stringify_keys)
+  end
+
   def patient_identification(**over)
     # Entrada (contrato §2 do 19d): só o endereço; o CPF é o do cadastro, preenchido pelo api.
     { "address" => ADDRESS }.merge(over.stringify_keys)

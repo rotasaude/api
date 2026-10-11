@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rota-saude/schemas/clinical/clinical-document-v1.json",
   "title": "rotasaude.clinical_document.v1",
-  "description": "JSON canônico do documento clínico emitido na consulta (ADR 0033; módulo 19c): atestado, declaração de comparecimento, receita comum e requisição de exames. É o conteúdo assinado em CAdES destacado AD-RB, serializado em RFC 8785 (JCS), quando o documento sai em modo digital; o PAdES vai sobre o PDF. Mesmo cabeçalho e mesmas convenções de consultation-v1.json (UTC com segundos e 'Z', CPF/CNES/IBGE/CBO só dígitos, texto vazio null, inteiros onde for código). O conteúdo é escolhido por document.kind. Fechado (additionalProperties: false) porque o que não está no esquema não pode entrar no que se assina.",
+  "description": "JSON canônico do documento clínico emitido na consulta (ADR 0033; módulo 19c): atestado, declaração de comparecimento, receita (comum; de controle especial e de antimicrobiano com número SNCR desde clinical-v1.2.0, ADR 0034) e requisição de exames. É o conteúdo assinado em CAdES destacado AD-RB, serializado em RFC 8785 (JCS), quando o documento sai em modo digital; o PAdES vai sobre o PDF. Mesmo cabeçalho e mesmas convenções de consultation-v1.json (UTC com segundos e 'Z', CPF/CNES/IBGE/CBO só dígitos, texto vazio null, inteiros onde for código). O conteúdo é escolhido por document.kind. Fechado (additionalProperties: false) porque o que não está no esquema não pode entrar no que se assina.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "city", "unit", "professional", "patient", "document", "content"],
@@ -216,7 +216,7 @@
     "prescription": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Receita comum. catalog_release é a versão do catálogo de medicamentos vigente na emissão (null quando todos os itens são texto livre). Receita de enfermagem (nursing_protocol) leva o CNPJ da cidade e só itens do catálogo. Antimicrobiano: 2 vias e validade; senão 1 via.",
+      "description": "Receita. catalog_release é a versão do catálogo de medicamentos vigente na emissão (null quando todos os itens são texto livre). Receita de enfermagem (nursing_protocol) leva o CNPJ da cidade e só itens do catálogo. Antimicrobiano ou controle especial: 2 vias e validade; senão 1 via. Desde clinical-v1.2.0 (ADR 0034): category, calculada pelos itens, só na receita de controle especial (special_control, listas C1/C5: número SNCR rce, identificação do paciente, contato do prescritor, 2 vias e validade) e na de antimicrobiano digital (antimicrobial: número SNCR ret e contato do prescritor). Sem category = receita comum, antes ou depois do 19d (forma da clinical-v1.1.0, uma só representação).",
       "required": ["items", "catalog_release", "antimicrobial", "copies"],
       "properties": {
         "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/prescription_item" } },
@@ -236,11 +236,20 @@
         "city_cnpj": { "type": "string", "pattern": "^[0-9A-Z]{12}[0-9]{2}$", "description": "CNPJ sem máscara: 12 caracteres [0-9A-Z] e 2 dígitos verificadores (IN RFB 2.229/2024; o numérico é o caso particular)." },
         "antimicrobial": { "type": "boolean" },
         "copies": { "enum": [1, 2] },
-        "valid_until": { "$ref": "#/$defs/date" }
+        "valid_until": { "$ref": "#/$defs/date" },
+        "category": { "enum": ["special_control", "antimicrobial"], "description": "Ausente na receita comum (o api não grava category: common no canônico)." },
+        "sncr": { "$ref": "#/$defs/sncr" },
+        "patient_identification": { "$ref": "#/$defs/patient_identification" },
+        "prescriber_contact": { "$ref": "#/$defs/prescriber_contact" }
       },
       "allOf": [
         {
-          "if": { "properties": { "antimicrobial": { "const": true } } },
+          "if": {
+            "anyOf": [
+              { "required": ["antimicrobial"], "properties": { "antimicrobial": { "const": true } } },
+              { "required": ["category"], "properties": { "category": { "const": "special_control" } } }
+            ]
+          },
           "then": { "required": ["valid_until"], "properties": { "copies": { "const": 2 } } },
           "else": { "properties": { "copies": { "const": 1 } } }
         },
@@ -250,8 +259,82 @@
             "required": ["city_cnpj"],
             "properties": { "items": { "items": { "required": ["catalog_item"] } } }
           }
+        },
+        {
+          "if": { "not": { "required": ["category"] } },
+          "then": { "properties": { "sncr": false, "patient_identification": false, "prescriber_contact": false } }
+        },
+        {
+          "if": { "required": ["category"], "properties": { "category": { "const": "special_control" } } },
+          "then": {
+            "required": ["sncr", "patient_identification", "prescriber_contact"],
+            "properties": {
+              "antimicrobial": { "const": false },
+              "nursing_protocol": false,
+              "sncr": { "properties": { "kind": { "const": "rce" } } },
+              "items": { "items": { "required": ["catalog_item", "duration_days"], "properties": { "antimicrobial": { "const": false } } } }
+            }
+          }
+        },
+        {
+          "if": { "required": ["category"], "properties": { "category": { "const": "antimicrobial" } } },
+          "then": {
+            "required": ["sncr", "prescriber_contact"],
+            "properties": {
+              "antimicrobial": { "const": true },
+              "nursing_protocol": false,
+              "sncr": { "properties": { "kind": { "const": "ret" } } },
+              "items": { "items": { "properties": { "antimicrobial": { "const": true } } } }
+            }
+          }
         }
       ]
+    },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Endereço completo (Lei 5.991/1973, art. 35; RDC 1.000/2025): logradouro, número (texto; quando não há número, grafia fixa 's/n', minúsculas, com barra), complemento (ausente quando não há), bairro, cidade, UF e CEP só com dígitos.",
+      "required": ["street", "number", "district", "city", "uf", "zip"],
+      "properties": {
+        "street": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "number": { "type": "string", "minLength": 1, "maxLength": 10 },
+        "complement": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "district": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "city": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "uf": { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "zip": { "type": "string", "pattern": "^[0-9]{8}$" }
+      }
+    },
+    "sncr": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Número do SNCR (Anvisa) consumido na emissão: rce na receita de controle especial, ret na de antimicrobiano. number no formato do SNCR AAMM.T-UF.NNNNNNN (ano e mês, tipo, código IBGE da UF, sequência; ex.: 2610.1-41.0001234). simulated: true quando veio do SNCR simulado (fora de produção, sem validade).",
+      "required": ["kind", "number", "simulated"],
+      "properties": {
+        "kind": { "enum": ["rce", "ret"] },
+        "number": { "type": "string", "pattern": "^[0-9]{4}\\.[0-9]-[0-9]{2}\\.[0-9]{7}$" },
+        "simulated": { "type": "boolean" }
+      }
+    },
+    "patient_identification": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Identificação do paciente na receita de controle especial (e, se o prescritor quiser, na de antimicrobiano): o CPF do cadastro do paciente (sempre existe, regra do 19a) e o endereço completo.",
+      "required": ["cpf", "address"],
+      "properties": {
+        "cpf": { "$ref": "#/$defs/cpf" },
+        "address": { "$ref": "#/$defs/address" }
+      }
+    },
+    "prescriber_contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Endereço completo e telefone do prescritor (perfil do profissional), impressos na receita de controle especial e na de antimicrobiano.",
+      "required": ["address", "phone"],
+      "properties": {
+        "address": { "$ref": "#/$defs/address" },
+        "phone": { "type": "string", "pattern": "^[0-9]{10,11}$", "description": "DDD e número, só dígitos." }
+      }
     },
     "exam_requisition": {
       "type": "object",

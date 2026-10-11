@@ -1,8 +1,12 @@
 # app/services/clinical_documents/content/prescription.rb
 # Receita comum (ADR 0033; spec §5; Lei 5.991 art. 35; Lei 9.787 — DCB):
 # itens do catálogo (código CATMAT e release da emissão) ou texto livre
-# (marcado e varrido nas listas Anvisa). Nenhum controlado (19d). Antimicrobiano
-# força papel no comando, 2 vias e validade de 10 dias (RDC 471/2021).
+# (marcado e varrido nas listas Anvisa). Controlado pela categoria (ADR 0034;
+# Content::Controlled) quando `controlled_prescriptions` está utilizável;
+# desligado, nenhum controlado. Antimicrobiano e controle especial: 2 vias e
+# validade fixa (10 e 30 dias; RDC 471/2021, Portaria 344/1998). Ordem das
+# checagens: forma dos itens → categoria → regras da categoria → enfermagem →
+# validade.
 # Enfermeiro (COFEN 801/2026): só itens da versão VIGENTE do protocolo
 # escolhido, dentro da dose máxima (quantidade por item, mesma unidade), sem
 # texto livre, com o CNPJ da cidade.
@@ -10,12 +14,12 @@ module ClinicalDocuments
   module Content
     module Prescription
       MAX_ITEMS = 20
-      ANTIMICROBIAL_DAYS = 10
       MAX_VALIDITY_DAYS = 365
 
       module_function
 
-      def call(input, role:, patient:, catalog:, matcher:, today: Time.zone.today, city_cnpj: nil)
+      def call(input, role:, patient:, catalog:, matcher:, today: Time.zone.today, city_cnpj: nil, controlled: false,
+               prescriber_contact: nil)
         input = Input.object(input)
         raw = input["items"]
         return Input.invalid("items") unless raw.is_a?(Array) && raw.size.between?(1, MAX_ITEMS)
@@ -28,7 +32,13 @@ module ClinicalDocuments
 
           items << parsed
         end
-        items.each_with_index { |it, index| return Result.fail(:controlled_not_allowed, details: { index: index }) if it[:controlled] }
+        classified = controlled ? Controlled.classify(items) : Controlled.legacy(items)
+        return classified if classified.failure?
+
+        category = classified.payload[:category]
+        rules = Controlled.check(category, items, role: role, identification: (input["patient_identification"] if controlled),
+                                                  prescriber_contact: (prescriber_contact if controlled), patient: patient)
+        return rules if rules.failure?
 
         version = nil
         if role == :nurse
@@ -36,17 +46,20 @@ module ClinicalDocuments
           return version if version.is_a?(Result)
         end
         antimicrobial = items.any? { |it| it[:antimicrobial] }
-        valid_until = validity(input, antimicrobial, today)
+        valid_until = Controlled.validity(category, today) || validity(input, today)
         return valid_until if valid_until.is_a?(Result)
 
         rows = rows(items)
         content = { "items" => rows.zip(items).map { |row, it| content_item(row, it) },
                     "nursing_protocol" => version && protocol_json(version),
                     "city_cnpj" => (city_cnpj if version), "antimicrobial" => antimicrobial,
-                    "copies" => antimicrobial ? 2 : 1, "valid_until" => valid_until&.iso8601 }.compact
+                    "copies" => category == "common" ? 1 : 2, "valid_until" => valid_until&.iso8601 }.compact
+        # Nulos do contrato §2 do 19d (não compactados; o canônico omite os nulos e a categoria comum).
+        content.merge!("category" => category, "sncr" => nil, "patient_identification" => rules.payload[:patient_identification],
+                       "prescriber_contact" => rules.payload[:prescriber_contact])
         # Uma vez por receita (esquema clinical-v1.1.0): a release do catálogo na emissão; null se só texto livre.
         content["catalog_release"] = rows.filter_map { |row| row[:catalog_release_id] }.first
-        Result.ok(content: content, items: rows, antimicrobial: antimicrobial)
+        Result.ok(content: content, items: rows, antimicrobial: antimicrobial, category: category)
       end
 
       def item(entry, index, catalog, matcher, problems)
@@ -83,7 +96,8 @@ module ClinicalDocuments
         flags = catalog_entry ? catalog_entry : matcher.scan(free)
         { catalog: catalog_entry, free_text: free, quantity: quantity, quantity_unit: unit, route: entry["route"],
           dosage_instructions: dosage, duration_days: duration, continuous: entry["continuous"] == true,
-          reason_problem_id: reason, antimicrobial: flags.antimicrobial, controlled: flags.controlled }
+          reason_problem_id: reason, antimicrobial: flags.antimicrobial, controlled: flags.controlled,
+          controlled_list: flags.controlled_list, anticonvulsant: flags.anticonvulsant == true }
       end
 
       def nursing(input, items, today, city_cnpj)
@@ -112,8 +126,8 @@ module ClinicalDocuments
         unit.present? && item[:quantity_unit].present? && unit.casecmp?(item[:quantity_unit]) && item[:quantity] <= entry.max_quantity
       end
 
-      def validity(input, antimicrobial, today)
-        return today + ANTIMICROBIAL_DAYS if antimicrobial
+      # Validade escolhida pelo prescritor só na receita comum (as outras têm validade fixa).
+      def validity(input, today)
         return nil if input["valid_until"].nil?
 
         date = Input.date(input["valid_until"])
