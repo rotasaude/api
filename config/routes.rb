@@ -229,6 +229,7 @@ Rails.application.routes.draw do
     get  "stock",           to: "stock#show"
     post "requests",        to: "requests#create"
     post "oauth/callback",  to: "oauth#callback"
+    get  "admin/overview",  to: "admin#overview"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
