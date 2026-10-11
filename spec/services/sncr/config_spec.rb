@@ -34,10 +34,7 @@ RSpec.describe Sncr::Config do
   end
 
   it "simulado só com o interruptor no catálogo do ambiente e FAKE_SNCR_URL; a cidade com sncr_mock usa só ele" do
-    # Sem stub_sncr_mock!: ele monta o FakeSncr::App (Task 6); aqui só as variáveis importam.
-    allow(ENV).to receive(:[]).and_call_original
-    allow(ENV).to receive(:[]).with("FAKE_SNCR_URL").and_return(ControlledPrescriptionHelpers::FAKE_SNCR_BASE)
-    allow(ENV).to receive(:[]).with("FAKE_SNCR_PUBLIC_URL").and_return("http://localhost:8092/api/v1")
+    stub_sncr_mock!
     expect(described_class.simulated).to have_attributes(base_url: ControlledPrescriptionHelpers::FAKE_SNCR_BASE,
                                                          public_auth_url: "http://localhost:8092/api/v1",
                                                          cnpj: described_class::SIMULATED_CNPJ, simulated: true)
