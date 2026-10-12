@@ -25,7 +25,7 @@ RSpec.describe Timeline::Gate do
 
     set(city, "patient_timeline", true)
     city.update!(record_mode: "integrated")
-    # pec_settings nasce na Task 2: sem a tabela, a configuração conta como ausente.
+    # Sem linha em pec_settings, a origem e a chave contam como ausentes.
     expect(Platform::Features.missing(city, "pec_external_view")).to eq(%w[pec_origin_missing pec_hmac_key_missing])
     expect(described_class.pec_usable?(city)).to be(false)
     expect(described_class.pec_usable?(nil)).to be(false)
