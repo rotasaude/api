@@ -90,4 +90,54 @@ RSpec.describe "Configuração do PEC na API de manutenção", type: :request do
     expect(PecSetting.current).to be_nil
     expect(PlatformEvent.where(name: "city.pec_config_changed")).to be_empty
   end
+
+  def read_pec_config!(slug)
+    gql!(<<~GQL, citySlug: slug)
+      query($citySlug: String!) { cityPecConfig(citySlug: $citySlug) { pecOrigin hmacKeyConfigured hmacKeyUpdatedAt } }
+    GQL
+  end
+
+  it "cityPecConfig de cidade inexistente: null, sem erro" do
+    read_pec_config!("cidade-que-nao-existe")
+    expect(json["errors"]).to be_nil
+    expect(json["data"]).to eq("cityPecConfig" => nil)
+  end
+
+  it "cityPecConfig de cidade inalcançável: erro GraphQL com CITY_UNREACHABLE" do
+    allow(Maintenance::CityReader).to receive(:call).and_raise(Maintenance::CityReader::Unreachable, "PG::ConnectionBad: x")
+    read_pec_config!(city.slug)
+    expect(json.dig("data", "cityPecConfig")).to be_nil
+    expect(json["errors"].map { |e| e.dig("extensions", "code") }.uniq).to eq([ "CITY_UNREACHABLE" ])
+  end
+
+  describe "token de serviço" do
+    def token_execute(query, variables)
+      token, = MaintenanceToken.issue!(maintainer: maintainer, name: "ci", access: "read_write",
+                                       city_slugs: [ city.slug ], expires_at: 10.days.from_now)
+      credential = Maintenance::Credential.token(token)
+      Maintenance::Schema.execute(query, variables: variables,
+                                         context: { maintainer: maintainer, credential: credential,
+                                                    request_id: SecureRandom.uuid }).to_h
+    end
+
+    it "é recusado em cityPecConfig, setCityPecOrigin e rotateCityPecHmacKey, sem abrir a cidade nem gravar" do
+      allow(Maintenance::CityReader).to receive(:call).and_call_original
+      allow(Maintenance::CityWriter).to receive(:call).and_call_original
+      operations = {
+        "query($citySlug: String!) { cityPecConfig(citySlug: $citySlug) { hmacKeyConfigured } }" => {},
+        "mutation($citySlug: String!, $pecOrigin: String) { setCityPecOrigin(citySlug: $citySlug, pecOrigin: $pecOrigin) { ok } }" =>
+          { "pecOrigin" => "https://pec.cidade.gov.br" },
+        "mutation($citySlug: String!, $key: String!, $code: String!) { rotateCityPecHmacKey(citySlug: $citySlug, key: $key, code: $code) { ok } }" =>
+          { "key" => "chave-do-pec-0123456789", "code" => "000000" }
+      }
+      operations.each do |query, extra|
+        result = token_execute(query, { "citySlug" => city.slug }.merge(extra))
+        expect(result["data"]).to be_nil
+        expect(result["errors"].map { |e| e["message"] }).to include(a_string_matching(/token de serviço não alcança/))
+      end
+      expect(Maintenance::CityReader).not_to have_received(:call)
+      expect(Maintenance::CityWriter).not_to have_received(:call)
+      expect(PecSetting.current).to be_nil
+    end
+  end
 end

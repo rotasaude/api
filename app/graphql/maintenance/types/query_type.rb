@@ -38,7 +38,8 @@ module Maintenance
       # ADR 0033 (contrato §8): catálogo de medicamentos da plataforma.
       field :medication_catalog, Types::MedicationCatalogType, null: false,
             description: "Release ativa do CATMAT e itens em revisão"
-      # ADR 0035 (contrato §6): abre a cidade; só sessão humana (HumanOnly).
+      # ADR 0035 (contrato §6): configuração do PEC da cidade (o tipo abre o
+      # banco dela); só sessão humana (HumanOnly).
       field :city_pec_config, Types::CityPecConfigType, null: true,
             description: "Configuração do PEC da cidade, sem a chave" do
         argument :city_slug, String, required: true
@@ -68,30 +69,22 @@ module Maintenance
 
       def medication_catalog = {}
 
+      # Mesma forma de `city`: aqui só o escopo do token e a escolha da
+      # cidade; quem abre o banco dela é CityPecConfigType (via CityReader).
       def city_pec_config(city_slug:)
         unless context.fetch(:credential).allows_city?(city_slug)
           raise GraphQL::ExecutionError.new("cidade fora do escopo do token",
                                             extensions: { "code" => Analyzers::Refusal::CITY_OUT_OF_SCOPE,
                                                           Analyzers::Refusal::FIELDS => [ "cityPecConfig" ] })
         end
-        city = City.find_by(slug: city_slug)
-        return nil unless city
 
-        CityReader.call(city) do
-          setting = PecSetting.current
-          { pec_origin: setting&.pec_origin, hmac_key_configured: setting&.hmac_key_configured? || false,
-            hmac_key_updated_at: setting&.hmac_key_updated_at }
-        end
-      rescue CityReader::Archived => e
-        raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_ARCHIVED" })
-      rescue CityReader::Unreachable => e
-        raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_UNREACHABLE" })
-      rescue CityReader::Failed => e
-        raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_READ_FAILED" })
+        City.find_by(slug: city_slug)
       end
 
-      # O escopo do token é aplicado AQUI (spec §7): é um dos dois pontos em que
-      # uma cidade é escolhida, e o único que abre conexão. Slug inexistente
+      # O escopo do token é aplicado AQUI (spec §7): é um dos pontos em que uma
+      # cidade é escolhida (com `cities` e, no ADR 0035, `cityPecConfig`); a
+      # conexão é aberta pelo tipo devolvido (CityType; CityPecConfigType só
+      # para a configuração do PEC), nunca pelo resolver de raiz. Slug inexistente
       # responde nulo sem erro; slug fora do escopo responde erro explícito —
       # são coisas diferentes, e confundi-las esconderia a recusa.
       #

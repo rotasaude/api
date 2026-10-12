@@ -427,9 +427,11 @@ RSpec.describe "Maintenance GraphQL schema" do
     def allowed_call_sites
       {
         "CityConnection.with" => %w[app/queries/maintenance/city_reader.rb app/queries/maintenance/city_writer.rb],
-        # ADR 0035: cityPecConfig(citySlug:) é a segunda leitura de cidade da
-        # superfície (a primeira é CityType); escopo do token no próprio resolver.
-        "CityReader.call" => %w[app/graphql/maintenance/types/city_type.rb app/graphql/maintenance/types/query_type.rb],
+        # ADR 0035: cityPecConfig(citySlug:) segue a forma de city(slug:) — o
+        # resolver de raiz só aplica o escopo e escolhe a cidade; quem a abre é
+        # CityPecConfigType, o segundo dono de CityReader.call.
+        "CityReader.call" => %w[app/graphql/maintenance/types/city_type.rb
+                                app/graphql/maintenance/types/city_pec_config_type.rb],
         "CityWriter.call" => %w[app/graphql/maintenance/mutations/city_mutation.rb]
       }
     end
