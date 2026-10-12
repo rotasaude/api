@@ -6,6 +6,8 @@
 # configuração), sem X-Frame-Options, no-store e no-referrer (a URL tem CPF).
 class PecTimelinesController < ApplicationController
   PAGE_LIMIT = 50
+  # Defesa em profundidade: só uma origem simples entra na CSP.
+  ORIGIN_FORMAT = %r{\Ahttps?://[a-z0-9.-]+(:\d+)?\z}
 
   before_action { @nonce = SecureRandom.base64(16) }
 
@@ -39,6 +41,7 @@ class PecTimelinesController < ApplicationController
 
   def html(body, status: :ok)
     origin = PecSetting.current&.pec_origin
+    origin = nil unless origin.to_s.match?(ORIGIN_FORMAT)
     response.headers.delete("X-Frame-Options")
     response.headers["Content-Security-Policy"] =
       "default-src 'none'; style-src 'nonce-#{@nonce}'; script-src 'nonce-#{@nonce}'; connect-src 'self'; " \

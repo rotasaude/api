@@ -4,6 +4,8 @@ require "rails_helper"
 # frame-ancestors do PEC da cidade, sem X-Frame-Options; recusa genérica com
 # código; uso único; sessão curta; CPF/CNS mascarados no log.
 RSpec.describe "Página do PEC", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:unit) { create_unit("UBS Norte").tap { |u| u.update!(cnes: "1234567") } }
   let(:nurse) { screener!(unit).tap { |u| u.professional.update!(cpf: "52998224725") } }
   let(:citizen) { verified_citizen!(151, social_name: "Seu Zé") }
@@ -72,10 +74,53 @@ RSpec.describe "Página do PEC", type: :request do
     expect(response).to have_http_status(:unauthorized)
   end
 
+  it "carregar mais com o interruptor desligado depois da abertura: 401 pec_session_expired" do
+    stub_const("PecTimelinesController::PAGE_LIMIT", 1)
+    open_page
+    headers = { "X-Pec-View-Session" => CGI.unescapeHTML(response.body[/data-session="([^"]+)"/, 1]) }
+    before = response.body[/data-before="([^"]+)"/, 1]
+    get "/pec/timeline/more", params: { before: before }, headers: headers
+    expect(response).to have_http_status(:ok)
+
+    Platform::Features.set!(city: Current.city, key: "pec_external_view", enabled: false, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    get "/pec/timeline/more", params: { before: before }, headers: headers
+    expect([ response.status, response.body ]).to match([ 401, a_string_including("pec_session_expired") ])
+  end
+
+  it "carregar mais: cursor inválido 422; última página com X-Next-Before vazio; fragmento com no-store e frame-ancestors" do
+    open_page
+    headers = { "X-Pec-View-Session" => CGI.unescapeHTML(response.body[/data-session="([^"]+)"/, 1]) }
+    get "/pec/timeline/more", params: { before: "lixo" }, headers: headers
+    expect([ response.status, response.body ]).to match([ 422, a_string_including("invalid_cursor") ])
+    cursor = Timeline::Cursor.encode(Timeline::Query.call(person: Timeline::Person.for_cpf(citizen.cpf), limit: 1).entries.last)
+    get "/pec/timeline/more", params: { before: cursor }, headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(response.headers["X-Next-Before"]).to eq("")
+    expect(response.headers["Cache-Control"]).to include("no-store")
+    expect(response.headers["Content-Security-Policy"]).to include("frame-ancestors https://pec.cidade.gov.br")
+  end
+
+  it "origem gravada direto no banco com ';': a CSP cai para frame-ancestors 'none'" do
+    PecSetting.current.update_columns(pec_origin: "https://pec.cidade.gov.br;script-src")
+    open_page
+    csp = response.headers["Content-Security-Policy"]
+    expect(csp).to include("frame-ancestors 'none'")
+    expect(csp).not_to include("pec.cidade.gov.br;script-src")
+  end
+
   it "CPF, CNS e assinatura mascarados no log de requisições" do
     log = capture_log { open_page }
     expect(log).to include("/pec/timeline")
     expect(log).not_to include(citizen.cpf, "52998224725")
+    expect(log).to include("[FILTERED]")
+  end
+
+  it "CNS em documento-cidadao e o valor de pec_sign também ficam fora do log" do
+    path = signed_pec_path(professional: "52998224725", citizen: "898001160660001", cnes: "1234567")
+    sign = path[/pec_sign=(\h+)/, 1]
+    log = capture_log { get path }
+    expect(log).not_to include("898001160660001", sign)
     expect(log).to include("[FILTERED]")
   end
 
@@ -97,13 +142,15 @@ RSpec.describe "Página do PEC", type: :request do
     south = create_unit("UBS Sul")
     twin = verified_citizen!(152, social_name: "Seu Zé")
     twin.update_columns(cpf: citizen.cpf)
-    walk_in_attendance!(south, citizen: twin)
+    travel_to(2.hours.ago) { walk_in_attendance!(south, citizen: twin) }
     stub_const("PecTimelinesController::PAGE_LIMIT", 1)
     open_page
     token = CGI.unescapeHTML(response.body[/data-session="([^"]+)"/, 1])
     before = response.body[/data-before="([^"]+)"/, 1]
+    stub_const("PecTimelinesController::PAGE_LIMIT", 50)
     get "/pec/timeline/more", params: { before: before }, headers: { "X-Pec-View-Session" => token }
     expect(response).to have_http_status(:ok)
+    expect(response.body).to include("UBS Sul") # controle positivo: o par ainda vale
 
     twin.update_columns(erased_at: Time.current)
     get "/pec/timeline/more", params: { before: before }, headers: { "X-Pec-View-Session" => token }
