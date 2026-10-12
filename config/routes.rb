@@ -376,8 +376,8 @@ Rails.application.routes.draw do
     put "contact_preferences/:citizen_id", to: "contact_preferences#update"
 
     # Linha do tempo do cidadão (ADR 0035; contrato §4, Divergência D2: citizen_id).
-    # health_summary entra na Task 10, com a ação.
     get "history",           to: "history#index"
+    get "health_summary",    to: "history#health_summary"
     get "documents/:id/pdf", to: "history#document_pdf"
   end
 

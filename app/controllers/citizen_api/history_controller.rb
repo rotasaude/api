@@ -1,4 +1,5 @@
 #   GET /citizen/history?citizen_id=&before=&limit=
+#   GET /citizen/health_summary?citizen_id=
 #   GET /citizen/documents/:id/pdf?citizen_id=
 # Linha do tempo do cidadão (ADR 0035; contrato §4). Só pares do celular da
 # sessão (senão 404). Par validado: a pessoa inteira, sem texto clínico
@@ -33,6 +34,19 @@ module CitizenApi
                      entries: page.entries.map { |entry| Timeline::Json.citizen(entry) }, next_before: page.next_before }
     rescue Timeline::Cursor::Invalid
       render_error("invalid_cursor", :unprocessable_entity)
+    end
+
+    def health_summary
+      citizen = own_citizen
+      return unless citizen
+      return render_error("not_verified", :forbidden) unless citizen.verification_level_verified?
+
+      person = Timeline::Person.for_citizen(citizen)
+      patient = person.patient_id && ClinicalRecord::Gate.usable?(Current.city) ? Patient.find_by(id: person.patient_id) : nil
+      return render_error("not_available", :not_found) unless patient
+
+      Timeline::Trail.viewed!(person: person, access: "citizen")
+      render json: Timeline::CitizenSummary.call(patient: patient, person: person)
     end
 
     def document_pdf
