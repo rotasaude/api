@@ -454,6 +454,13 @@ Rails.application.routes.draw do
     constraints(PlatformConsoleHost) do
       get "/dev/impersonate_operator", to: "dev/operator_impersonations#create"
     end
+
+    # Simulador do e-SUS PEC (ADR 0035): host próprio, para o iframe da
+    # cidade ser de outra origem como no PEC real. Assina URL com a chave da
+    # cidade, por isso só existe aqui; spec/architecture/pec_simulator_route_spec.rb.
+    constraints(->(request) { request.host == "pec-sim.localhost" }) do
+      get "/pec-simulator", to: "dev/pec_simulators#show"
+    end
   end
 
   # Admin Console — namespace read-only (ADR-0002, brief §6).
