@@ -8,23 +8,27 @@ RSpec.describe "Invariantes da linha do tempo (ADR 0035)", type: :request do
   let(:citizen) { verified_citizen!(161) }
   def body = JSON.parse(response.body)
 
-  def viewed_accesses = DomainEvent.where(name: "clinical_record.viewed").order(:id).map { |e| e.payload["access"] }
+  def viewed_accesses = DomainEvent.where(name: "clinical_record.viewed").map { |e| e.payload["access"] }
 
   context "modo record com documentos" do
     before { timeline_city!(documents: true); ciap2_release!; cid10_release!; sigtap_release! }
 
-    # Três leituras, dois eventos: o resumo do cidadão (/citizen/health_summary) não grava
-    # trilha; só a linha do tempo do profissional (timeline) e o histórico do cidadão (citizen).
+    # Cada leitura que responde 200 grava uma trilha: timeline (profissional) e
+    # citizen (histórico e resumo do cidadão). O resumo exige consulta finalizada.
     it "toda leitura gera trilha: timeline e citizen" do
       attendance = consulting_attendance!(unit, citizen: citizen, doctor: doctor)
+      finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
       sign_in_as(doctor)
       get "/attendance/timeline", params: { attendance_id: attendance.id }
+      expect(response).to have_http_status(:ok)
       expect(viewed_accesses).to eq(%w[timeline])
       sign_in_citizen(citizen.phone)
       get "/citizen/history", params: { citizen_id: citizen.id }
+      expect(response).to have_http_status(:ok)
       expect(viewed_accesses).to match_array(%w[timeline citizen])
       get "/citizen/health_summary", params: { citizen_id: citizen.id }
-      expect(viewed_accesses).to match_array(%w[timeline citizen])
+      expect(response).to have_http_status(:ok)
+      expect(viewed_accesses).to match_array(%w[timeline citizen citizen])
     end
 
     it "o cidadão nunca vê texto clínico livre, CID sem nome, número SNCR, talão nem dado de outra pessoa" do
