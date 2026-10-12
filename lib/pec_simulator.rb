@@ -27,9 +27,18 @@ module PecSimulator
     CityConnection.with(city) do
       nurse = User.find_by(email_address: "enfermeira@#{city.slug}.demo")&.professional
       unit = nurse&.links&.active&.order(:started_at)&.first&.health_unit
-      citizen = Citizen.not_erased.verification_level_verified.order(:created_at).first
+      citizen = seeded_citizen(unit) || Citizen.not_erased.verification_level_verified.order(:created_at).first
       { professional: nurse&.cpf.to_s, citizen: citizen&.cpf.to_s, cnes: unit&.cnes.to_s, minutes_ago: "0" }
     end
+  end
+
+  # O par validado com o atendimento mais recente na unidade da enfermeira
+  # (a TimelineCrew cria esse atendimento). Só lê: um GET nunca chama a crew.
+  def seeded_citizen(unit)
+    return nil unless unit
+
+    verified = Citizen.not_erased.verification_level_verified.select(:id)
+    Attendance.where(health_unit_id: unit.id, citizen_id: verified).order(checked_in_at: :desc, id: :desc).first&.citizen
   end
 
   def page(city:, form:, url:)

@@ -24,4 +24,23 @@ RSpec.describe PecSimulator do
                                 url: "http://x.localhost/pec/timeline?a=1&pec_sign=f")
     expect(html).to include("<form", %(<iframe src="http://x.localhost/pec/timeline?a=1&amp;pec_sign=f"))
   end
+
+  it "defaults: a cidadã da semente é o par validado com atendimento na unidade da enfermeira, não o mais antigo" do
+    city
+    unit = create_unit("UBS Semente").tap { |u| u.update!(cnes: "7654321") }
+    screener!(unit).update!(email_address: "enfermeira@#{city.slug}.demo")
+    verified_citizen!(171).update_columns(created_at: 1.year.ago) # validado antigo, sem histórico
+    seeded = verified_citizen!(172)
+    walk_in_attendance!(unit, citizen: seeded)
+    walk_in_attendance!(create_unit("UBS Outra"), citizen: verified_citizen!(173))
+
+    expect(described_class.defaults(city)).to include(citizen: seeded.cpf, cnes: "7654321")
+  end
+
+  it "defaults: sem atendimento na unidade, cai no validado mais antigo" do
+    city
+    oldest = verified_citizen!(174).tap { |c| c.update_columns(created_at: 1.year.ago) }
+    verified_citizen!(175)
+    expect(described_class.defaults(city)[:citizen]).to eq(oldest.cpf)
+  end
 end
