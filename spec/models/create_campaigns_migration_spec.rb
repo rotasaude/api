@@ -43,6 +43,13 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
     models.each(&:reset_column_information)
   end
 
+  # 20261011800002 (módulo 20) acrescenta idx_campaign_recipients_citizen_created
+  # a campaign_recipients, que o down de CreateCampaigns derruba com a tabela.
+  # A migração do módulo 20 é irreversível: o índice volta à mão, igual a ela.
+  def restore_timeline_index
+    conn.add_index :campaign_recipients, %i[citizen_id created_at], name: "idx_campaign_recipients_citizen_created"
+  end
+
   def rows(sql) = conn.select_rows(sql)
 
   def fingerprint
@@ -136,6 +143,7 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
       migrate(:up)
       migrate_analytics(:up)
       migrate_reminders(:up)
+      restore_timeline_index
 
       expect(fingerprint).to eq(before)
       # O trigger restaurado segue recusando apagar campanha que não é rascunho.
