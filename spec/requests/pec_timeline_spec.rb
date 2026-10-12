@@ -180,4 +180,17 @@ RSpec.describe "Página do PEC", type: :request do
     expect([ response.status, response.body ]).to match([ 429, a_string_including("too_many_requests") ])
   end
 
+  it "carregar mais: paciente cujo único par perde a validação na sessão curta → 401 pec_session_expired" do
+    Patients::Resolve.call(citizen)
+    stub_const("PecTimelinesController::PAGE_LIMIT", 1)
+    open_page
+    headers = { "X-Pec-View-Session" => CGI.unescapeHTML(response.body[/data-session="([^"]+)"/, 1]) }
+    before = response.body[/data-before="([^"]+)"/, 1]
+    get "/pec/timeline/more", params: { before: before }, headers: headers
+    expect(response).to have_http_status(:ok) # controle positivo
+
+    citizen.update_columns(verification_level: "declared")
+    get "/pec/timeline/more", params: { before: before }, headers: headers
+    expect([ response.status, response.body ]).to match([ 401, a_string_including("pec_session_expired") ])
+  end
 end

@@ -28,11 +28,13 @@ module PecExternal
       return nil unless user && unit && Timeline::Gate.pec_usable?(city) && Authorize.linked?(user, unit)
 
       # Os pares congelados no token são relidos: exclusão LGPD ou revogação da
-      # validação depois da abertura tira o par; sem par e sem paciente, a
-      # sessão acaba (pec_session_expired).
+      # validação depois da abertura tira o par. Sem nenhum par validado a
+      # sessão acaba (pec_session_expired), mesmo com paciente — como na
+      # abertura (Authorize: pec_citizen_not_verified).
       ids = Timeline::Person.verified_pairs.where(id: Array(payload["i"])).order(:created_at, :id).pluck(:id)
+      return nil if ids.empty?
+
       person = Timeline::Person.new(citizen_ids: ids, patient_id: payload["p"], verified: true)
-      return nil if person.empty?
 
       Authorize::Grant.new(user: user, unit: unit, person: person)
     rescue ActiveSupport::MessageEncryptor::InvalidMessage, ActiveSupport::MessageVerifier::InvalidSignature
