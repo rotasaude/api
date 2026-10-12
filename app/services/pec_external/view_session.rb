@@ -2,7 +2,7 @@
 # cifrado e assinado (MessageEncryptor, 15 min, propósito próprio) com a
 # cidade, o usuário, a unidade e a pessoa. Vai no DOM da página e volta no
 # cabeçalho X-Pec-View-Session do "carregar mais" — sem cookie de terceiro.
-# A cada uso relê o usuário, a unidade, o vínculo e o interruptor.
+# A cada uso relê o usuário, a unidade, o vínculo, o interruptor e os pares.
 module PecExternal
   module ViewSession
     HEADER = "X-Pec-View-Session".freeze
@@ -27,7 +27,13 @@ module PecExternal
       unit = HealthUnit.find_by(id: payload["h"], active: true)
       return nil unless user && unit && Timeline::Gate.pec_usable?(city) && Authorize.linked?(user, unit)
 
-      person = Timeline::Person.new(citizen_ids: Array(payload["i"]), patient_id: payload["p"], verified: true)
+      # Os pares congelados no token são relidos: exclusão LGPD ou revogação da
+      # validação depois da abertura tira o par; sem par e sem paciente, a
+      # sessão acaba (pec_session_expired).
+      ids = Timeline::Person.verified_pairs.where(id: Array(payload["i"])).order(:created_at, :id).pluck(:id)
+      person = Timeline::Person.new(citizen_ids: ids, patient_id: payload["p"], verified: true)
+      return nil if person.empty?
+
       Authorize::Grant.new(user: user, unit: unit, person: person)
     rescue ActiveSupport::MessageEncryptor::InvalidMessage, ActiveSupport::MessageVerifier::InvalidSignature
       nil

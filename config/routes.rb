@@ -339,6 +339,12 @@ Rails.application.routes.draw do
   get  "/v/:token/signed.pdf",   to: "document_verifications#signed_pdf", format: false, constraints: { token: /[A-Za-z0-9_-]{22}/ }
   get  "/v/:token",              to: "document_verifications#show", constraints: { token: /[A-Za-z0-9_-]+/ }
 
+  # Página para a tela de "sistemas externos" do e-SUS PEC (ADR 0035;
+  # contrato §5). Host da cidade; sem sessão do Rota Saúde: assinatura HMAC
+  # da URL, uso único e sessão curta em cabeçalho.
+  get "/pec/timeline",      to: "pec_timelines#show"
+  get "/pec/timeline/more", to: "pec_timelines#more"
+
   # Canal web do cidadão (spec 2026-09-22-web-citizen-channel). Servido no host
   # da cidade, como o relatório; sessão própria por cookie `citizen_session`.
   scope "/citizen", module: "citizen_api", as: "citizen" do
