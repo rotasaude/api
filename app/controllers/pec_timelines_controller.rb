@@ -9,7 +9,20 @@ class PecTimelinesController < ApplicationController
   # Defesa em profundidade: só uma origem simples entra na CSP.
   ORIGIN_FORMAT = %r{\Ahttps?://[a-z0-9.-]+(:\d+)?\z}
 
+  # Delegador que resolve Rails.cache a cada requisição (como
+  # CitizenApi::BaseController::RateLimitStore): o teto fica exercitável em spec.
+  module RateLimitStore
+    def self.increment(...) = Rails.cache.increment(...)
+  end
+
   before_action { @nonce = SecureRandom.base64(16) }
+  # Por IP, com teto generoso: os profissionais de uma UBS saem pelo mesmo IP
+  # de NAT. Declarado depois do nonce (a recusa do show é a página HTML). A
+  # recusa por limite não grava pec.external_view_denied.
+  rate_limit to: 120, within: 1.minute, only: :show, name: "pec_timeline_show", by: -> { request.remote_ip },
+             store: RateLimitStore, with: -> { failure("too_many_requests", status: :too_many_requests) }
+  rate_limit to: 300, within: 1.minute, only: :more, name: "pec_timeline_more", by: -> { request.remote_ip },
+             store: RateLimitStore, with: -> { failure("too_many_requests", status: :too_many_requests) }
 
   def show
     url = "#{request.base_url}#{request.original_fullpath}"

@@ -157,4 +157,27 @@ RSpec.describe "Página do PEC", type: :request do
     expect(response).to have_http_status(:ok)
     expect(response.body).not_to include("UBS Sul")
   end
+
+  it "rate limit por IP: show 120/min vira a página de recusa 429 too_many_requests, sem pec.external_view_denied" do
+    # O cache de teste é :null_store, que nunca conta; um real só aqui.
+    allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+    120.times { get "/pec/timeline" }
+    expect(response).to have_http_status(:forbidden)
+    denied = DomainEvent.where(name: "pec.external_view_denied").count
+    get "/pec/timeline"
+    expect([ response.status, response.media_type ]).to eq([ 429, "text/html" ])
+    expect(response.body).to include("too_many_requests")
+    expect(response.headers["Cache-Control"]).to include("no-store")
+    expect(response.headers).not_to have_key("X-Frame-Options")
+    expect(DomainEvent.where(name: "pec.external_view_denied").count).to eq(denied)
+  end
+
+  it "rate limit por IP: carregar mais 300/min vira 429 too_many_requests" do
+    allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+    300.times { get "/pec/timeline/more" }
+    expect(response).to have_http_status(:unauthorized)
+    get "/pec/timeline/more"
+    expect([ response.status, response.body ]).to match([ 429, a_string_including("too_many_requests") ])
+  end
+
 end
