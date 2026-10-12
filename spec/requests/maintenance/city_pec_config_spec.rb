@@ -110,6 +110,27 @@ RSpec.describe "Configuração do PEC na API de manutenção", type: :request do
     expect(json["errors"].map { |e| e.dig("extensions", "code") }.uniq).to eq([ "CITY_UNREACHABLE" ])
   end
 
+  it "setCityPecOrigin: omitir pecOrigin é erro de validação; null apaga" do
+    gql!(<<~GQL, citySlug: city.slug, pecOrigin: "https://pec.cidade.gov.br")
+      mutation($citySlug: String!, $pecOrigin: String) { setCityPecOrigin(citySlug: $citySlug, pecOrigin: $pecOrigin) { ok errors { path message } } }
+    GQL
+    expect(json.dig("data", "setCityPecOrigin", "ok")).to be(true)
+
+    gql!(<<~GQL, citySlug: city.slug)
+      mutation($citySlug: String!) { setCityPecOrigin(citySlug: $citySlug) { ok errors { path message } } }
+    GQL
+    # required: :nullable valida na execução do campo: o campo sai nulo com erro.
+    expect(json["data"]).to eq("setCityPecOrigin" => nil)
+    expect(json["errors"].map { |e| e["message"] }).to eq([ "setCityPecOrigin must include the following argument: pecOrigin." ])
+    expect(PecSetting.current.pec_origin).to eq("https://pec.cidade.gov.br")
+
+    gql!(<<~GQL, citySlug: city.slug, pecOrigin: nil)
+      mutation($citySlug: String!, $pecOrigin: String) { setCityPecOrigin(citySlug: $citySlug, pecOrigin: $pecOrigin) { ok errors { path message } } }
+    GQL
+    expect(json.dig("data", "setCityPecOrigin")).to eq("ok" => true, "errors" => [])
+    expect(PecSetting.current.pec_origin).to be_nil
+  end
+
   describe "token de serviço" do
     def token_execute(query, variables)
       token, = MaintenanceToken.issue!(maintainer: maintainer, name: "ci", access: "read_write",
