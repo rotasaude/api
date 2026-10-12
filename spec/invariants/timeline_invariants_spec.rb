@@ -8,19 +8,23 @@ RSpec.describe "Invariantes da linha do tempo (ADR 0035)", type: :request do
   let(:citizen) { verified_citizen!(161) }
   def body = JSON.parse(response.body)
 
-  def viewed_accesses = DomainEvent.where(name: "clinical_record.viewed").map { |e| e.payload["access"] }
+  def viewed_accesses = DomainEvent.where(name: "clinical_record.viewed").order(:id).map { |e| e.payload["access"] }
 
   context "modo record com documentos" do
     before { timeline_city!(documents: true); ciap2_release!; cid10_release!; sigtap_release! }
 
+    # Três leituras, dois eventos: o resumo do cidadão (/citizen/health_summary) não grava
+    # trilha; só a linha do tempo do profissional (timeline) e o histórico do cidadão (citizen).
     it "toda leitura gera trilha: timeline e citizen" do
       attendance = consulting_attendance!(unit, citizen: citizen, doctor: doctor)
       sign_in_as(doctor)
       get "/attendance/timeline", params: { attendance_id: attendance.id }
+      expect(viewed_accesses).to eq(%w[timeline])
       sign_in_citizen(citizen.phone)
       get "/citizen/history", params: { citizen_id: citizen.id }
+      expect(viewed_accesses).to match_array(%w[timeline citizen])
       get "/citizen/health_summary", params: { citizen_id: citizen.id }
-      expect(viewed_accesses).to eq(%w[timeline citizen])
+      expect(viewed_accesses).to match_array(%w[timeline citizen])
     end
 
     it "o cidadão nunca vê texto clínico livre, CID sem nome, número SNCR, talão nem dado de outra pessoa" do
@@ -28,18 +32,28 @@ RSpec.describe "Invariantes da linha do tempo (ADR 0035)", type: :request do
       allow(ClinicalTerms).to receive(:label).with("cid10", "N390", anything).and_return(nil)
       consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen,
                                              subjective: "MARCADOR-SOAP queixa", plan: "MARCADOR-PLANO",
-                                             evaluated_problems: [ { "terminology" => "cid10", "code" => "N390", "action" => "add" } ])
+                                             evaluated_problems: [ { "terminology" => "cid10", "code" => "N390", "action" => "add" },
+                                                   { "terminology" => "cid10", "code" => "I10", "action" => "add" } ])
       raw_document!(consultation: consultation, kind: "prescription", issue_mode: "paper",
                     content: { "items" => [ { "printed_description" => "MARCADOR-ITEM" } ],
                                "sncr" => { "number" => "2602.6-53.0000001" } })
       raw_document!(consultation: consultation, kind: "controlled_notification_record", issue_mode: "paper",
                     content: { "notification_type" => "B", "paper_number" => "TALAO-MARCADOR", "item" => {} })
       other = verified_citizen!(162, social_name: "OUTRA-PESSOA")
-      finalized_consultation!(unit: unit, doctor: doctor, citizen: other)
+      other_consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: other)
+      # controle: a outra pessoa existe no banco, com consulta própria, e mesmo assim não aparece
+      expect(Citizen.where(id: other.id)).to exist
+      expect(Consultation.where(id: other_consultation.id)).to exist
       sign_in_citizen(citizen.phone)
       get "/citizen/history", params: { citizen_id: citizen.id }
+      expect(response).to have_http_status(:ok)
       history = response.body
+      # controles positivos: o histórico tem as entradas, só sem o conteúdo clínico
+      expect(body["entries"].map { |e| e["kind"] }).to include("consultation", "clinical_document", "controlled_notification")
       get "/citizen/health_summary", params: { citizen_id: citizen.id }
+      expect(response).to have_http_status(:ok)
+      # controle: o problema com rótulo real aparece pelo nome; o sem nome (N390) não aparece nem como código
+      expect(response.body).to include("Hipertensão essencial (primária)")
       [ history, response.body ].each do |text|
         expect(text).not_to include("MARCADOR-SOAP", "MARCADOR-PLANO", "MARCADOR-ITEM", "N390", "2602.6-53", "TALAO-MARCADOR",
                                     "OUTRA-PESSOA")
@@ -51,6 +65,7 @@ RSpec.describe "Invariantes da linha do tempo (ADR 0035)", type: :request do
       document = raw_document!(consultation: consultation, kind: "sick_note", issue_mode: "paper")
       declared = Citizen.create!(cpf: citizen.cpf, phone: "+5541966660001", verification_level: "declared")
       completed_web_triage_for(declared)
+      expect(Timeline::Person.for_patient(consultation.patient).citizen_ids).to include(citizen.id)
       expect(Timeline::Person.for_patient(consultation.patient).citizen_ids).not_to include(declared.id)
       sign_in_citizen(declared.phone)
       get "/citizen/history", params: { citizen_id: declared.id }
