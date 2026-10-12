@@ -15,14 +15,19 @@ module Timeline
                               .includes(:problem_items, :conducts, :addenda, attendance: :health_unit, author_user: :professional)
         Window.apply(scope, kind: KIND, column: "consultations.finalized_at", id_column: "consultations.id",
                             before: before, from: from, to: to)
-              .limit(limit).map { |consultation| entry(consultation) }
+              .limit(limit).then do |page|
+                labels = {} # memo da chamada: um rótulo por (terminologia, release, código)
+                page.map { |consultation| entry(consultation, labels: labels) }
+              end
       end
 
-      def entry(consultation)
+      def entry(consultation, labels: {})
         unit = consultation.attendance.health_unit
         name = Labels.professional_name(consultation.author_user)
         problems = consultation.problem_items.select { |p| p.addendum_id.nil? }.sort_by { |p| [ p.created_at, p.id ] }.map do |p|
-          "#{p.code} #{ClinicalTerms.label(p.terminology, p.code, p.terminology_release_id)}".strip
+          key = [ p.terminology, p.terminology_release_id, p.code ]
+          label = labels.fetch(key) { labels[key] = ClinicalTerms.label(p.terminology, p.code, p.terminology_release_id) }
+          "#{p.code} #{label}".strip
         end
         conducts = consultation.conducts.count { |c| c.addendum_id.nil? }
         summary = [ problems.join("; ").presence, "condutas: #{conducts}", "adendos: #{consultation.addenda.size}" ].compact.join(" · ")

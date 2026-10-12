@@ -13,14 +13,19 @@ module Timeline
                            .includes(:current_revision, attendance: :health_unit, professional_link: :professional)
         Window.apply(scope, kind: KIND, column: "screenings.completed_at", id_column: "screenings.id",
                             before: before, from: from, to: to)
-              .limit(limit).map { |screening| entry(screening) }
+              .limit(limit).then do |page|
+                labels = {} # memo da chamada: um rótulo por (release, código)
+                page.map { |screening| entry(screening, labels: labels) }
+              end
       end
 
-      def entry(screening)
+      def entry(screening, labels: {})
         revision = screening.current_revision
         unit = screening.attendance.health_unit
         name = screening.professional_link.professional.professional_name
-        ciap = "#{revision.ciap2_code} #{Screenings::Ciap2.label(revision.ciap2_code, revision.ciap2_release_id)}".strip
+        key = [ revision.ciap2_release_id, revision.ciap2_code ]
+        label = labels.fetch(key) { labels[key] = Screenings::Ciap2.label(revision.ciap2_code, revision.ciap2_release_id) }
+        ciap = "#{revision.ciap2_code} #{label}".strip
         Entry.new(kind: KIND, source_id: screening.id, occurred_at: screening.completed_at,
                   unit: { id: unit.id, name: unit.name }, professional: { name: name, cbo_code: screening.cbo_code },
                   title: "Escuta inicial — #{Labels::COLORS.fetch(revision.final_color, revision.final_color)}",

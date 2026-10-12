@@ -15,10 +15,24 @@ module Timeline
                                   .includes(attendance: :health_unit, author_user: :professional)
         Window.apply(scope, kind: KIND, column: "clinical_documents.issued_at", id_column: "clinical_documents.id",
                             before: before, from: from, to: to)
-              .limit(limit).map { |document| entry(document) }
+              .limit(limit).to_a.then do |page|
+                signed = signed_ids(page)
+                page.map { |document| entry(document, signed_ids: signed) }
+              end
       end
 
-      def entry(document)
+      # Ids dos documentos digitais da página que já têm assinatura assinada —
+      # uma consulta só, em vez de signed_signature por documento.
+      def signed_ids(documents)
+        ids = documents.select(&:digital?).map(&:id)
+        return Set.new if ids.empty?
+
+        ::SignatureRequest.joins(:signature)
+                          .where(document_type: "ClinicalDocument", document_id: ids, status: "signed")
+                          .distinct.pluck(:document_id).to_set
+      end
+
+      def entry(document, signed_ids:)
         unit = document.attendance.health_unit
         name = Labels.professional_name(document.author_user)
         title = title(document)
@@ -28,7 +42,7 @@ module Timeline
                   title: title, summary: "#{Labels::MODES[document.issue_mode]} · #{Labels::DOCUMENT_STATUS[document.status]}",
                   status: document.status, detail_ref: { type: "clinical_document", id: document.id },
                   citizen: { title: title, summary: nil, status: document.status, professional_name: name },
-                  document: document_block(document))
+                  document: document_block(document, signed_ids))
       end
 
       def title(document)
@@ -36,15 +50,15 @@ module Timeline
         Labels::CATEGORIES[category] || Labels::DOCUMENT_KINDS.fetch(document.kind, document.kind)
       end
 
-      def document_block(document)
+      def document_block(document, signed_ids)
         { id: document.id, short_code: document.short_code, verification_url: document.verification_url,
-          downloadable: downloadable?(document) }
+          downloadable: downloadable?(document, signed_ids) }
       end
 
-      def downloadable?(document)
+      def downloadable?(document, signed_ids)
         return false if document.cancelled?
 
-        document.digital? ? document.signed_signature.present? : true
+        document.digital? ? signed_ids.include?(document.id) : true
       end
     end
   end
