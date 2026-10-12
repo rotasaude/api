@@ -162,10 +162,10 @@ RSpec.describe "Maintenance analyzers" do
     city_argument = ->(field) { (field.arguments.keys & %w[slug citySlug]).any? }
 
     query_scoped = Maintenance::Schema.query.fields.select { |_name, field| city_argument.call(field) }
-    expect(query_scoped.keys).to contain_exactly("city")
+    expect(query_scoped.keys).to contain_exactly("city", "cityPecConfig")
     query_scoped.each_key do |name|
       source = File.read(Rails.root.join("app/graphql/maintenance/types/query_type.rb"))
-      expect(source).to match(/def #{name}\b.*?allows_city\?/m),
+      expect(source).to match(/def #{name.underscore}\b.*?allows_city\?/m),
                         "#{name} aceita argumento de cidade e não consulta allows_city?"
     end
 
@@ -314,8 +314,8 @@ RSpec.describe "Maintenance analyzers" do
   # spec/requests/maintenance/protocol_mutations_spec.rb (código errado não
   # abre a cidade).
   describe "step-up on the acts that approve or put a version in use" do
-    def step_up_required = %w[publishProtocol activateProtocol retireProtocol revertProtocolActivation]
-    def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview setCityFeature]
+    def step_up_required = %w[publishProtocol activateProtocol retireProtocol revertProtocolActivation rotateCityPecHmacKey]
+    def step_up_exempt = %w[saveProtocolDraft submitProtocolForReview setCityFeature setCityPecOrigin]
 
     include MaintenanceCityMutationSpecHelpers
 

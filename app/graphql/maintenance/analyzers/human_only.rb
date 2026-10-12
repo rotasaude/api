@@ -11,7 +11,7 @@ module Maintenance
         inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
         saveProtocolDraft submitProtocolForReview publishProtocol
         activateProtocol retireProtocol revertProtocolActivation
-        setCityFeature
+        setCityFeature cityPecConfig setCityPecOrigin rotateCityPecHmacKey
         signatureProviders signerStatus sncrStatus
         medicationCatalog importMedicationCatalog importAnvisaLists
       ].freeze

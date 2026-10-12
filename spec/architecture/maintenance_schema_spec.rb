@@ -15,7 +15,7 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus],
+    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus cityPecConfig],
     "SignatureProvider" => %w[key configured lastCheckAt lastCheckOk],
     "MedicationCatalog" => %w[currentRelease reviewItems],
     "MedicationCatalogRelease" => %w[id importedAt itemsCount hiddenCount],
@@ -28,7 +28,10 @@ RSpec.describe "Maintenance GraphQL schema" do
     "Mutation" => %w[inviteMaintainer deactivateMaintainer createMaintenanceToken revokeMaintenanceToken
                      saveProtocolDraft submitProtocolForReview publishProtocol
                      activateProtocol retireProtocol revertProtocolActivation setCityFeature
-                     importMedicationCatalog importAnvisaLists],
+                     importMedicationCatalog importAnvisaLists setCityPecOrigin rotateCityPecHmacKey],
+    "CityPecConfig" => %w[pecOrigin hmacKeyConfigured hmacKeyUpdatedAt],
+    "SetCityPecOriginPayload" => %w[ok errors],
+    "RotateCityPecHmacKeyPayload" => %w[ok errors],
     "InviteMaintainerPayload" => %w[ok errors],
     "DeactivateMaintainerPayload" => %w[ok errors],
     "MaintenanceToken" => %w[id maintainerId name access citySlugs expiresAt revokedAt lastUsedAt],
@@ -78,6 +81,7 @@ RSpec.describe "Maintenance GraphQL schema" do
   ALLOWED_NAMES = %w[
     MaintenanceToken maintenanceTokens createMaintenanceToken revokeMaintenanceToken
     CreateMaintenanceTokenPayload RevokeMaintenanceTokenPayload secretOnce
+    RotateCityPecHmacKeyPayload
   ].freeze
 
   # Task 5: strip_comments/code_only/city_mutation_fields vêm de
@@ -106,9 +110,12 @@ RSpec.describe "Maintenance GraphQL schema" do
   # ("ledi_export"), não uma chave criptográfica — o par exato, nunca o nome.
   # ADR 0032: `key` do prestador é a chave do catálogo em código ("vidaas"),
   # não uma chave criptográfica — o par exato, nunca o nome.
+  # ADR 0035: escreve a chave e diz SE há chave; o valor nunca sai.
   def forbidden_name_exempt_fields
     %w[CityChannel.phoneNumberId CityChannel.displayPhoneNumber CityFeature.key Mutation.setCityFeature.key
-       SignatureProvider.key]
+       SignatureProvider.key
+       Mutation.rotateCityPecHmacKey Mutation.rotateCityPecHmacKey.key
+       CityPecConfig.hmacKeyConfigured CityPecConfig.hmacKeyUpdatedAt]
   end
 
   # Argumentos são julgados pelo PRÓPRIO nome (o do campo já foi julgado ao
@@ -420,7 +427,9 @@ RSpec.describe "Maintenance GraphQL schema" do
     def allowed_call_sites
       {
         "CityConnection.with" => %w[app/queries/maintenance/city_reader.rb app/queries/maintenance/city_writer.rb],
-        "CityReader.call" => %w[app/graphql/maintenance/types/city_type.rb],
+        # ADR 0035: cityPecConfig(citySlug:) é a segunda leitura de cidade da
+        # superfície (a primeira é CityType); escopo do token no próprio resolver.
+        "CityReader.call" => %w[app/graphql/maintenance/types/city_type.rb app/graphql/maintenance/types/query_type.rb],
         "CityWriter.call" => %w[app/graphql/maintenance/mutations/city_mutation.rb]
       }
     end
@@ -552,7 +561,8 @@ RSpec.describe "Maintenance GraphQL schema" do
       def field_selections
         { "me" => "{ id }", "maintainers" => "{ id }", "maintenanceTokens" => "{ id }", "auditEvents" => "{ name }",
           "cities" => "{ slug }", "signatureProviders" => "{ key }", "signerStatus" => "{ reachable }", "sncrStatus" => "{ configured }",
-          "medicationCatalog" => "{ currentRelease { id } }" }
+          "medicationCatalog" => "{ currentRelease { id } }",
+          "cityPecConfig" => "(citySlug: \"sem-cidade\") { hmacKeyConfigured }" }
       end
 
       def root_query_field_names

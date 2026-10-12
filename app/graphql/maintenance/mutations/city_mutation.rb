@@ -72,6 +72,10 @@ module Maintenance
         end,
         enabled: lambda do |value|
           "enabled inválido" unless value == true || value == false
+        end,
+        # ADR 0035: qual campo da configuração do PEC mudou — nunca o valor.
+        pec_field: lambda do |value|
+          "pec_field inválido" unless %w[pec_origin hmac_key].include?(value)
         end
       }.freeze
 

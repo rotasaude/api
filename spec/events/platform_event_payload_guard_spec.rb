@@ -16,6 +16,7 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
                                 city.archived
                                 city.admin_reinvited city.key_rotated city.consent_term_published
                                 city.feature_changed city.record_settings_changed
+                                city.pec_config_changed
                                 terminology.release_activated cnes.snapshot_imported anvisa_lists.imported
                                 medication_catalog.imported
                                 channel.registered channel.token_rotated channel.unknown_seen
@@ -30,7 +31,7 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
                                 maintenance.protocol.draft_saved maintenance.protocol.submitted
                                 maintenance.protocol.published maintenance.protocol.activated
                                 maintenance.protocol.retired maintenance.protocol.reverted
-                                maintenance.city.feature_changed
+                                maintenance.city.feature_changed maintenance.city.pec_config_changed
                                 maintenance.medication_catalog.imported maintenance.anvisa_lists.imported].freeze
 
   # Independent restatement of the rule (not PlatformEvent's own method), so the

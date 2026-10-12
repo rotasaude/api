@@ -16,6 +16,8 @@ module Maintenance
       field :set_city_feature, mutation: Mutations::SetCityFeature
       field :import_medication_catalog, mutation: Mutations::ImportMedicationCatalog
       field :import_anvisa_lists, mutation: Mutations::ImportAnvisaLists
+      field :set_city_pec_origin, mutation: Mutations::SetCityPecOrigin
+      field :rotate_city_pec_hmac_key, mutation: Mutations::RotateCityPecHmacKey
     end
   end
 end

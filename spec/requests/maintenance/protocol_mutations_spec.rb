@@ -859,7 +859,10 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
           "retireProtocol" => [ Protocols::Retire, :call ],
           "revertProtocolActivation" => [ Protocols::RevertActivation, :call ],
           # ADR 0028: escreve na plataforma, não por um Command de cidade.
-          "setCityFeature" => [ Platform::Features, :set! ]
+          "setCityFeature" => [ Platform::Features, :set! ],
+          # ADR 0035: configuração do PEC da cidade.
+          "setCityPecOrigin" => [ PecExternal::Configure, :set_origin ],
+          "rotateCityPecHmacKey" => [ PecExternal::Configure, :rotate_key ]
         }
       end
 
@@ -875,6 +878,18 @@ RSpec.describe "Maintenance protocol mutations", type: :request do
           gql!(<<~GQL, citySlug: city.slug, key: "cadsus_lookup", enabled: true)
             mutation($citySlug: String!, $key: String!, $enabled: Boolean!) {
               setCityFeature(citySlug: $citySlug, key: $key, enabled: $enabled) { ok errors { path message } }
+            }
+          GQL
+        when "setCityPecOrigin"
+          gql!(<<~GQL, citySlug: city.slug, pecOrigin: "https://pec.cidade.gov.br")
+            mutation($citySlug: String!, $pecOrigin: String) {
+              setCityPecOrigin(citySlug: $citySlug, pecOrigin: $pecOrigin) { ok errors { path message } }
+            }
+          GQL
+        when "rotateCityPecHmacKey"
+          gql!(<<~GQL, citySlug: city.slug, key: "chave-qualquer-0123456789", code: code)
+            mutation($citySlug: String!, $key: String!, $code: String!) {
+              rotateCityPecHmacKey(citySlug: $citySlug, key: $key, code: $code) { ok errors { path message } }
             }
           GQL
         else raise "no call defined for #{name} — add one to call_mutation above"

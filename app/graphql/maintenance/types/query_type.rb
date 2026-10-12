@@ -38,6 +38,11 @@ module Maintenance
       # ADR 0033 (contrato §8): catálogo de medicamentos da plataforma.
       field :medication_catalog, Types::MedicationCatalogType, null: false,
             description: "Release ativa do CATMAT e itens em revisão"
+      # ADR 0035 (contrato §6): abre a cidade; só sessão humana (HumanOnly).
+      field :city_pec_config, Types::CityPecConfigType, null: true,
+            description: "Configuração do PEC da cidade, sem a chave" do
+        argument :city_slug, String, required: true
+      end
 
       ProviderRow = Data.define(:key, :configured, :last_check_at, :last_check_ok)
 
@@ -62,6 +67,28 @@ module Maintenance
       def sncr_status = Sncr::Checks.status
 
       def medication_catalog = {}
+
+      def city_pec_config(city_slug:)
+        unless context.fetch(:credential).allows_city?(city_slug)
+          raise GraphQL::ExecutionError.new("cidade fora do escopo do token",
+                                            extensions: { "code" => Analyzers::Refusal::CITY_OUT_OF_SCOPE,
+                                                          Analyzers::Refusal::FIELDS => [ "cityPecConfig" ] })
+        end
+        city = City.find_by(slug: city_slug)
+        return nil unless city
+
+        CityReader.call(city) do
+          setting = PecSetting.current
+          { pec_origin: setting&.pec_origin, hmac_key_configured: setting&.hmac_key_configured? || false,
+            hmac_key_updated_at: setting&.hmac_key_updated_at }
+        end
+      rescue CityReader::Archived => e
+        raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_ARCHIVED" })
+      rescue CityReader::Unreachable => e
+        raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_UNREACHABLE" })
+      rescue CityReader::Failed => e
+        raise GraphQL::ExecutionError.new(e.message, extensions: { "code" => "CITY_READ_FAILED" })
+      end
 
       # O escopo do token é aplicado AQUI (spec §7): é um dos dois pontos em que
       # uma cidade é escolhida, e o único que abre conexão. Slug inexistente
