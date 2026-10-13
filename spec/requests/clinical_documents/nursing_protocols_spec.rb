@@ -88,4 +88,49 @@ RSpec.describe "Protocolos de enfermagem", type: :request do
     get "/clinical_documents/nursing_protocols"
     expect(json_body).to eq("error" => "missing_role")
   end
+
+  # api#61 (rodada especial do 19): todas as versões, com a situação de hoje.
+  describe "GET /clinical_documents/nursing_protocols/:id/versions" do
+    def build_history!
+      stepped_up!(admin)
+      json_post "/clinical_documents/nursing_protocols", protocol_body(valid_from: "2026-01-01")
+      id = json_body["id"]
+      json_post "/clinical_documents/nursing_protocols/#{id}/versions",
+                valid_from: (Time.zone.today - 5).iso8601, items: [ { catalog_item_id: catalog_item(267_778).id } ]
+      json_post "/clinical_documents/nursing_protocols/#{id}/versions",
+                valid_from: (Time.zone.today + 10).iso8601, items: [ { catalog_item_id: catalog_item(267_203).id } ]
+      id
+    end
+
+    it "lista em ordem decrescente com a situação, vigência e itens" do
+      id = build_history!
+      get "/clinical_documents/nursing_protocols/#{id}/versions"
+      expect(response).to have_http_status(:ok)
+      rows = json_body["items"]
+      expect(rows.map { |row| [ row["version"], row["situation"] ] }).to eq([ [ 3, "agendada" ], [ 2, "vigente" ], [ 1, "encerrada" ] ])
+      expect(rows.last["items"].first["max_dose"]).to eq("quantity" => 30, "unit" => "comprimido")
+      expect(rows.first["valid_from"]).to eq((Time.zone.today + 10).iso8601)
+    end
+
+    it "profissional lê; recepção recusada; id inexistente 404" do
+      id = build_history!
+      sign_in_as(doctor!(create_unit))
+      get "/clinical_documents/nursing_protocols/#{id}/versions"
+      expect(response).to have_http_status(:ok)
+      sign_in_as(verifier!)
+      get "/clinical_documents/nursing_protocols/#{id}/versions"
+      expect(response).to have_http_status(:forbidden)
+      sign_in_as(admin)
+      get "/clinical_documents/nursing_protocols/#{SecureRandom.uuid}/versions"
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "o índice continua só com a versão vigente" do
+      build_history!
+      get "/clinical_documents/nursing_protocols"
+      expect(json_body["items"].first.keys).to include("current_version")
+      expect(json_body["items"].first["current_version"]).not_to have_key("situation")
+    end
+  end
 end
+

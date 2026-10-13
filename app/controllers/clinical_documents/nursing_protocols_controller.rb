@@ -6,15 +6,28 @@ module ClinicalDocuments
   class NursingProtocolsController < BaseController
     ERRORS = { already_exists: :conflict }.freeze
 
-    before_action :require_reader_role, only: :index
-    before_action :require_admin_role, except: :index
-    before_action :require_step_up!, except: :index
+    before_action :require_reader_role, only: %i[index versions]
+    before_action :require_admin_role, except: %i[index versions]
+    before_action :require_step_up!, except: %i[index versions]
 
     def index
       protocols = NursingProtocol.includes(versions: :items).order(:year, :number).to_a
       ids = protocols.flat_map { |p| p.versions.flat_map { |v| v.items.map(&:catalog_item_id) } }
       catalog = MedicationCatalogItem.where(id: ids.uniq).index_by(&:id)
       render json: { items: protocols.map { |protocol| Json.protocol(protocol, catalog: catalog) } }
+    end
+
+    # api#61: todas as versões, da mais nova para a mais antiga, com a situação de
+    # hoje (agendada, vigente ou encerrada): auditoria e a versão agendada à vista.
+    def versions
+      protocol = uuid?(params[:id]) && NursingProtocol.find_by(id: params[:id])
+      return not_found unless protocol
+
+      versions = protocol.versions.includes(:items).order(version: :desc).to_a
+      catalog = MedicationCatalogItem.where(id: versions.flat_map { |v| v.items.map(&:catalog_item_id) }.uniq).index_by(&:id)
+      today = Time.zone.today
+      current = protocol.current_version(on: today)
+      render json: { items: versions.map { |v| Json.protocol_version(v, catalog: catalog, situation: Json.version_situation(v, current, today)) } }
     end
 
     def create

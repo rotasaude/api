@@ -34,15 +34,26 @@ module ClinicalDocuments
     def protocol(protocol, catalog:, on: Time.zone.today)
       version = protocol.current_version(on: on)
       { id: protocol.id, title: protocol.title, number: protocol.number, year: protocol.year,
-        current_version: version && {
-          id: version.id, version: version.version, valid_from: version.valid_from.iso8601,
-          valid_until: version.valid_until&.iso8601,
-          items: version.items.order(:created_at, :id).filter_map do |item|
-            entry = catalog[item.catalog_item_id]
-            entry && { catalog_item: catalog_item(entry),
-                       max_dose: item.max_quantity && { quantity: number(item.max_quantity), unit: item.max_quantity_unit } }
-          end
-        } }
+        current_version: version && protocol_version(version, catalog: catalog) }
+    end
+
+    # Uma versão do protocolo; com `situation` no histórico (api#61).
+    def protocol_version(version, catalog:, situation: nil)
+      row = { id: version.id, version: version.version, valid_from: version.valid_from.iso8601,
+              valid_until: version.valid_until&.iso8601,
+              items: version.items.sort_by { |item| [ item.created_at, item.id ] }.filter_map do |item|
+                entry = catalog[item.catalog_item_id]
+                entry && { catalog_item: catalog_item(entry),
+                           max_dose: item.max_quantity && { quantity: number(item.max_quantity), unit: item.max_quantity_unit } }
+              end }
+      situation ? row.merge(situation: situation) : row
+    end
+
+    # api#61: "vigente" é a que vale hoje; início no futuro = "agendada"; o resto, "encerrada".
+    def version_situation(version, current, today)
+      return "vigente" if current && version.id == current.id
+
+      version.valid_from > today ? "agendada" : "encerrada"
     end
 
     # Texto do conselho ("CRM-PR 12345"), o mesmo no JSON, no PDF e na página
