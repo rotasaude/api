@@ -18,6 +18,9 @@ class CityConnection
   # pendurada, só a execução depois que ela abre. Mesmo valor de
   # config/database.yml para os pools de plataforma.
   CONNECT_TIMEOUT_SECONDS = 5
+  # api#74: o web guarda 2 pools por cidade atendida (domínio e fila); ociosos por
+  # 60 s, devolvem as conexões em vez de segurá-las para sempre.
+  IDLE_TIMEOUT_SECONDS = 60
 
   class << self
     # Domínio, fila, CIFRA e FUSO da cidade (Planos 5 e 7; api#27).
@@ -118,6 +121,7 @@ class CityConnection
       url = city.database_url.to_s
       url += (url.include?("?") ? "&" : "?") + "pool=#{pool_size}"
       url += "&connect_timeout=#{CONNECT_TIMEOUT_SECONDS}" unless url.match?(/[?&]connect_timeout=/)
+      url += "&idle_timeout=#{IDLE_TIMEOUT_SECONDS}" unless url.match?(/[?&]idle_timeout=/)
 
       resolved = ActiveRecord::Base.configurations.resolve(url)
       if resolved.database.blank?

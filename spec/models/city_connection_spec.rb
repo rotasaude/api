@@ -92,4 +92,18 @@ RSpec.describe CityConnection do
 
     expect(resolved.configuration_hash[:connect_timeout]).to eq("30")
   end
+
+  # api#74: o web guarda 2 pools por cidade atendida; ociosos por 60 s, devolvem as conexões.
+  it "frees idle city connections after 60 seconds" do
+    resolved = described_class.database_config(build_city)
+
+    expect(resolved.configuration_hash[:idle_timeout].to_i).to eq(60)
+  end
+
+  it "keeps an idle_timeout the database_url already carries" do
+    city = build_city(database_url: "#{ENV.fetch('TEST_CITY_A_URL', city_database_url(TEST_CITY_A_DATABASE))}?idle_timeout=5")
+    resolved = described_class.database_config(city)
+
+    expect(resolved.configuration_hash[:idle_timeout].to_i).to eq(5)
+  end
 end
