@@ -198,4 +198,53 @@ RSpec.describe "Leitura da consulta finalizada", type: :request do
     get "/clinical_record/openings"
     expect(body["items"]).to eq([ administrative ])
   end
+
+  # ---- rodada especial do 19 (dashboard#12): problemas do paciente para o adendo da autora ----
+
+  describe "GET /attendance/consultations/:id/problems" do
+    let(:citizen) { verified_citizen!(1) }
+    let(:other) { doctor!(unit) }
+
+    def problems_path(consultation) = "/attendance/consultations/#{consultation.id}/problems"
+
+    it "a autora recebe a lista completa do paciente, ativos primeiro, com trilha author e o id da consulta" do
+      finalized_consultation!(unit: unit, doctor: other, citizen: citizen,
+                              evaluated_problems: [ { "terminology" => "ciap2", "code" => "K86", "action" => "add",
+                                                      "onset_on" => "2024-01-01", "onset_precision" => "year" } ])
+      consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+      sign_in_as(doctor)
+
+      expect { get problems_path(consultation) }.to change { viewed.count }.by(1)
+      expect(response.status).to eq(200)
+      expect(body["problems"].map { |p| p["code"] }).to match_array(%w[K86 T90])
+      expect(body["problems"]).to all(include("id", "terminology", "code", "label", "status"))
+      expect(viewed.last.payload).to include("access" => "author", "consultation_id" => consultation.id,
+                                             "patient_id" => consultation.patient_id, "user_id" => doctor.id)
+    end
+
+    it "quem não é a autora recebe 403 e não deixa trilha" do
+      consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+      ClinicalRecordOpening.create!(patient: consultation.patient, user: other, reason_code: "case_review",
+                                    created_at: Time.current, expires_at: Time.current + 30.minutes)
+      sign_in_as(other)
+
+      expect { get problems_path(consultation) }.not_to(change { viewed.count })
+      expect(status_and_error).to eq([ 403, "not_author" ])
+    end
+
+    it "fora de contexto e sem abertura, quem não é a autora recebe 403" do
+      consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+      sign_in_as(other)
+      get problems_path(consultation)
+      expect(response.status).to eq(403)
+    end
+
+    it "rascunho, mesmo da autora, recebe 403" do
+      consultation = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+      sign_in_as(doctor)
+      get problems_path(consultation)
+      expect(status_and_error).to eq([ 403, "not_author" ])
+    end
+  end
 end
+

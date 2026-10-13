@@ -67,6 +67,22 @@ class ConsultationsController < ApplicationController
     render json: Consultations::Json.consultation(@consultation)
   end
 
+  # Adendo da própria consulta (dashboard#12; decisão do usuário 2026-10-13): só a
+  # lista de problemas do paciente, só para a autora da consulta finalizada, com
+  # trilha author. Quem está em contexto já lê o prontuário pela rota do atendimento.
+  def problems
+    return forbid("not_author") if @consultation.draft?
+
+    grant = read_grant
+    return forbid(grant.reason.to_s) unless grant.allowed?
+    return forbid("not_author") unless grant.kind == :author
+
+    patient = @consultation.patient
+    ClinicalRecord::Trail.viewed!(patient: patient, user: Current.user, grant: grant, consultation_id: @consultation.id)
+    problems = patient.problems.order(Arel.sql("status = 'active' DESC"), :code).map { |p| ClinicalRecord::Json.problem(p) }
+    render json: { problems: problems }
+  end
+
   def update
     result = Consultations::SaveDraft.call(consultation: @consultation, params: body.slice(*DRAFT_KEYS), by: Current.user)
     respond(result)

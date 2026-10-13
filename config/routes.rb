@@ -148,6 +148,8 @@ Rails.application.routes.draw do
     patch "consultations/:id",               to: "consultations#update"
     post  "consultations/:id/finalize",      to: "consultations#finalize"
     post  "consultations/:id/addenda",       to: "consultations#addenda"
+    # Adendo da própria consulta (dashboard#12): a lista de problemas do paciente, só para a autora.
+    get   "consultations/:id/problems",      to: "consultations#problems"
     get   "consultations/:id/print",         to: "consultations#print"
     # Documentos clínicos e medicamentos em uso (ADR 0033; contrato §3–§4).
     get  "consultations/:id/documents",    to: "clinical_documents#index"
