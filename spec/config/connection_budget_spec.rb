@@ -29,6 +29,10 @@ RSpec.describe "Postgres connection budget for the go-live" do
                      "pico de uma cidade #{budget.role_per_city}; CITY_ROLE_CONNECTION_LIMIT=#{limit}"
   end
 
+  it "keeps the code default role limit above one city's peak, for environments without the variable" do
+    expect(CityDatabase.role_connection_limit_default * headroom).to be >= budget.role_per_city
+  end
+
   it "sizes the worker pool for the largest worker plus Solid Queue's two" do
     threads = deploy.dig("servers", "worker", "env", "clear", "RAILS_MAX_THREADS").to_i
     expect(threads).to be >= budget.city_workers.max + Ops::ConnectionBudget::SOLID_QUEUE_EXTRA

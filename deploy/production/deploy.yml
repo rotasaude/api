@@ -91,7 +91,8 @@ env:
     WEB_CONCURRENCY: "2"
     RAILS_MAX_THREADS: "5"
     # Teto de conexões de cada role rota_city_<slug> (api#74): o pico de uma cidade é 117
-    # (web 40 + worker 77, ops:connection_budget); 150 deixa 20% de folga.
+    # (web 40 + worker 77, ops:connection_budget); 150 deixa 20% de folga. Cidade já
+    # provisionada: bin/rails ops:align_city_role_limits no host de worker.
     CITY_ROLE_CONNECTION_LIMIT: "150"
     CITY_PUBLIC_BASE_TEMPLATE: "https://%{slug}.rota-saude.example"
     GOVBR_REDIRECT_URI: "https://auth.rota-saude.example/auth/govbr/callback"
@@ -135,7 +136,7 @@ env:
 accessories:
   postgres:
     image: postgres:16
-    # Orçamento de conexões (api#74): `bin/rails 'ops:connection_budget[5]'` dá 777 conexões
+    # Orçamento de conexões (api#74): `bin/rails 'ops:connection_budget[5]'` dá 798 conexões
     # de pico para 5 cidades; 1000 deixa 20% de folga. A spec
     # spec/config/connection_budget_spec.rb trava a conta; o runbook é
     # docs/operacao/conexoes-postgres.md (repo docs). O teto por role de cidade é

@@ -415,9 +415,10 @@ ativa, mais o da plataforma**:
   12). Um host de worker roda todas as cidades; mais de um host duplica supervisores por cidade (seguro, mas dobra
   processos).
   - **Orçamento de conexões** — `bin/rails 'ops:connection_budget[N]'` dá o pico por parte (web, worker por cidade,
-    plataforma, reserva) para N cidades; com a configuração de produção, `72 + 141 × cidades` (777 para 5) e 117 de
+    plataforma, reserva) para N cidades; com a configuração de produção, `93 + 141 × cidades` (798 para 5) e 117 de
     pico de uma cidade no banco dela. Produção usa `max_connections=1000` e `CITY_ROLE_CONNECTION_LIMIT=150`
-    (`deploy/production/deploy.yml`); o pool de cada cidade solta conexões ociosas em 60 s (`idle_timeout`).
+    (`deploy/production/deploy.yml`); o pool de cada cidade solta conexões ociosas em 60 s (`idle_timeout`). Cidade
+    provisionada antes de subir o teto: `bin/rails ops:align_city_role_limits` no host de worker.
     `spec/config/connection_budget_spec.rb` reprova a CI quando a conta para 5 cidades não cabe com 20% de folga.
     Fórmula, tabela até 20 cidades, quando revisar e o gate de carga em staging: `docs/operacao/conexoes-postgres.md`
     (repo docs).

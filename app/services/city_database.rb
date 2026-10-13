@@ -132,16 +132,34 @@ class CityDatabase
     # ou realinhamento de senha). Por isso a validação exige um inteiro
     # positivo por regex antes de converter, em vez de confiar em `to_i`.
     #
-    # O orçamento do README dá ~80 conexões de worker + a fatia de web por
-    # cidade; 100 deixa folga para uma rake de manutenção sem permitir que UMA
-    # cidade esgote o servidor e derrube as vizinhas.
+    # O pico de uma cidade no banco dela é 117 (web 40 + worker 77, rake
+    # ops:connection_budget, api#74); 150 deixa 20% de folga para rakes de
+    # manutenção sem permitir que UMA cidade esgote o servidor e derrube as vizinhas.
     def role_connection_limit
       raw = ENV["CITY_ROLE_CONNECTION_LIMIT"]
-      return 100 if raw.nil?
+      return role_connection_limit_default if raw.nil?
 
       raise ConfigMissing, "CITY_ROLE_CONNECTION_LIMIT não é inteiro positivo" unless raw.match?(/\A[1-9]\d*\z/)
 
       raw.to_i
+    end
+
+    def role_connection_limit_default = 150
+
+    # Só o teto de conexões de um role que já existe (api#74): subir o
+    # CITY_ROLE_CONNECTION_LIMIT não alcança cidade já provisionada, porque
+    # ensure! só roda no provisionamento. Não toca senha nem banco. Devolve o
+    # teto aplicado, ou nil se o role não existe (nada é criado aqui).
+    def align_connection_limit!(slug:)
+      role = role_name(slug)
+      limit = role_connection_limit
+
+      with_provisioner do |conn|
+        return nil unless role_exists?(conn, role)
+
+        conn.exec("ALTER ROLE #{quote(role)} CONNECTION LIMIT #{limit}")
+      end
+      limit
     end
 
     private

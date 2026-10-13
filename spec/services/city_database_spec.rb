@@ -119,11 +119,11 @@ RSpec.describe CityDatabase do
     expect(limit.to_i).to eq(described_class.role_connection_limit)
   end
 
-  it "defaults the role connection limit to 100 when CITY_ROLE_CONNECTION_LIMIT is absent" do
+  it "defaults the role connection limit to 150 when CITY_ROLE_CONNECTION_LIMIT is absent" do
     allow(ENV).to receive(:[]).and_call_original
     allow(ENV).to receive(:[]).with("CITY_ROLE_CONNECTION_LIMIT").and_return(nil)
 
-    expect(described_class.role_connection_limit).to eq(100)
+    expect(described_class.role_connection_limit).to eq(150)
   end
 
   # Fix round 1 (review): confirma que um override válido chega de fato à
@@ -265,6 +265,24 @@ RSpec.describe CityDatabase do
 
       expect { described_class.provisioner_url }.to raise_error(CityDatabase::ProvisionerMissing)
     end
+  end
+
+  # api#74: subir o CITY_ROLE_CONNECTION_LIMIT não muda o teto de cidade já provisionada
+  # (ensure! só roda no provisionamento); a rake ops:align_city_role_limits chama isto.
+  it "realigns only the connection limit of an existing city role" do
+    described_class.ensure!(slug: slug_a, password: pwd_a)
+    role = described_class.role_name(slug_a)
+    ScratchDatabases.superuser { |conn| conn.exec("ALTER ROLE #{PG::Connection.quote_ident(role)} CONNECTION LIMIT 100") }
+    password_before = superuser_value("SELECT rolpassword FROM pg_authid WHERE rolname = $1", role)
+
+    expect(described_class.align_connection_limit!(slug: slug_a)).to eq(described_class.role_connection_limit)
+
+    expect(superuser_value("SELECT rolconnlimit FROM pg_roles WHERE rolname = $1", role).to_i).to eq(described_class.role_connection_limit)
+    expect(superuser_value("SELECT rolpassword FROM pg_authid WHERE rolname = $1", role)).to eq(password_before)
+  end
+
+  it "does not create a role that does not exist when aligning the limit" do
+    expect(described_class.align_connection_limit!(slug: "naoexiste#{SecureRandom.hex(3)}")).to be_nil
   end
 end
 
