@@ -54,4 +54,40 @@ RSpec.describe "Busca de medicamentos", type: :request do
     search("losartana")
     expect(json_body["items"].map { |item| item["catmat_code"] }).to eq([ 268_856 ])
   end
+
+  # api#60 (rodada especial do 19): o admin monta a REMUME e os protocolos antes de
+  # ligar os documentos clínicos; o profissional segue exigindo o interruptor.
+  describe "interruptor por papel" do
+    before { import_test_catalog! }
+
+    it "admin busca com clinical_documents desligado (só clinical_record)" do
+      documents_city!(enabled: false)
+      sign_in_as(municipal_admin!)
+      search("losartana")
+      expect([ response.status, json_body["items"].map { |item| item["catmat_code"] } ]).to eq([ 200, [ 268_856 ] ])
+    end
+
+    it "profissional com clinical_documents desligado segue recusado" do
+      documents_city!(enabled: false)
+      sign_in_as(doctor)
+      search("losartana")
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "clinical_documents" } ])
+    end
+
+    it "admin com clinical_record desligado é recusado pelo prontuário" do
+      clinical_city!(enabled: false)
+      sign_in_as(municipal_admin!)
+      search("losartana")
+      expect([ response.status, json_body["feature"] ]).to eq([ 403, "clinical_record" ])
+    end
+
+    it "quem tem os dois papéis segue a regra do admin" do
+      documents_city!(enabled: false)
+      both = doctor.tap { |u| Membership.create!(user: u, role: "municipal_admin", granted_at: Time.current) }
+      sign_in_as(both)
+      search("losartana")
+      expect(response.status).to eq(200)
+    end
+  end
 end
+
