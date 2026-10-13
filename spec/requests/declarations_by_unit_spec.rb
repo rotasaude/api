@@ -40,11 +40,13 @@ RSpec.describe "Declarações por unidade", type: :request do
   end
 
   describe "listas" do
-    it "do atendimento: as da autora e das colegas, só metadados, sem trilha" do
+    it "do atendimento: as da autora e das colegas, só metadados; a lista registra a leitura (spec §7)" do
       mine = declare!
       theirs = declare!(by: colleague)
-      sign_in_as(verifier!)
-      expect { get "/attendance/attendances/#{attendance.id}/declarations", params: { health_unit_id: unit.id } }.not_to(change { viewed.count })
+      reader = verifier!
+      sign_in_as(reader)
+      expect { get "/attendance/attendances/#{attendance.id}/declarations", params: { health_unit_id: unit.id } }.to(change { viewed.count }.by(2))
+      expect(viewed.last.payload).to include("access" => "declaration_list", "user_id" => reader.id, "patient_id" => consultation.patient.id)
       expect(response).to have_http_status(:ok)
       rows = json_body["items"]
       expect(rows.map { |row| row["id"] }).to contain_exactly(mine["id"], theirs["id"])
@@ -60,7 +62,7 @@ RSpec.describe "Declarações por unidade", type: :request do
       other_consultation = finalized_consultation!(unit: other_unit, doctor: doctor!(other_unit), citizen: verified_citizen!(2))
       sign_in_as(verifier!)
       json_post "/attendance/attendances/#{other_consultation.attendance_id}/declarations", content: {}, health_unit_id: other_unit.id
-      get "/attendance/declarations", params: { health_unit_id: unit.id }
+      expect { get "/attendance/declarations", params: { health_unit_id: unit.id } }.to(change { viewed.count }.by(1))
       expect(json_body["items"].size).to eq(1)
       get "/attendance/declarations", params: { health_unit_id: unit.id, date: (Time.zone.today - 1).iso8601 }
       expect(json_body["items"]).to eq([])

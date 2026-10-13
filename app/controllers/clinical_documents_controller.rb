@@ -59,7 +59,7 @@ class ClinicalDocumentsController < ApplicationController
   end
 
   # api#59: as declarações do atendimento, para a recepção reimprimir e cancelar.
-  # Só metadados (o que a fila já mostra): sem trilha de leitura.
+  # Só metadados (o que a fila já mostra); a leitura fica na trilha.
   def attendance_declarations
     attendance = find(Attendance, params[:id])
     return not_found unless attendance
@@ -190,9 +190,15 @@ class ClinicalDocumentsController < ApplicationController
 
   def outside_unit = render_failure(Result.fail(:attendance_outside_unit), ERROR_STATUS)
 
+  # A listagem registra leitura (spec da rodada §7): uma trilha por declaração
+  # com paciente, com o acesso declaration_list.
+  LIST_GRANT = ClinicalRecord::Access::Grant.new(kind: :declaration_list, opening: nil, reason: nil)
+
   def declaration_rows(scope)
-    scope.where(kind: "attendance_declaration").includes(:patient, :author_user, attendance: :citizen)
-         .order(issued_at: :desc, id: :desc).map { |document| ClinicalDocuments::Json.declaration_row(document) }
+    documents = scope.where(kind: "attendance_declaration").includes(:patient, :author_user, attendance: :citizen)
+                     .order(issued_at: :desc, id: :desc).to_a
+    documents.each { |document| ClinicalRecord::Trail.viewed!(patient: document.patient, user: Current.user, grant: LIST_GRANT) }
+    documents.map { |document| ClinicalDocuments::Json.declaration_row(document) }
   end
 
   def find(model, id) = ClinicalDocuments::Uuid.valid?(id) ? model.find_by(id: id) : nil
