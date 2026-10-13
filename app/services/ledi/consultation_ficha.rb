@@ -48,10 +48,13 @@ module Ledi
                   when "pending", "failed"
                     latest.update!(bytes: Ledi::Transport.wrap(ficha, city: city, uuid: latest.uuid))
                     :rewritten
-                  when "rejected" then Ledi::Enqueue.call(ficha, city: city, replaces: latest) ? :regenerated : :unusable
+                  when "rejected"
+                    # api#52: reenvio recusado vira "não gerada" (com "gerar de novo"), nunca some.
+                    Ledi::Enqueue.call(ficha, city: city, replaces: latest) ? :regenerated : record_failure!(consultation, [ "regeneration_refused" ])
                   when "accepted" then correction!(latest, ficha, city)
+                  else record_failure!(consultation, [ "regeneration_refused" ])
                   end
-        resolve_failure!(consultation) unless outcome == :unusable
+        resolve_failure!(consultation) unless %i[unusable failed].include?(outcome)
         outcome
       end
     end
@@ -112,6 +115,10 @@ module Ledi
     rescue ActiveRecord::RecordNotUnique
       :failed
     end
+
+    # api#52: o job desistiu com a ficha em envio; o adendo ainda não chegou a
+    # ela. Vira "não gerada" com "gerar de novo", que leva o adendo à ficha.
+    def still_sending!(consultation) = record_failure!(consultation, [ "still_sending" ])
 
     def resolve_failure!(consultation)
       LediGenerationFailure.unresolved.where(source_type: SOURCE_TYPE, source_id: consultation.id)

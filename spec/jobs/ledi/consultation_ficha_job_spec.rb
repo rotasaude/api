@@ -36,4 +36,17 @@ RSpec.describe Ledi::ConsultationFichaJob do
     finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1, full_name: "Nome MARCADOR"))
     expect(enqueued.to_json).not_to include("MARCADOR", "Diabetes")
   end
+
+  it "depois da 10ª tentativa com a ficha em envio, registra a falha 'seguia em envio' (api#52)" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(1))
+    allow(Ledi::ConsultationFicha).to receive(:refresh!).and_raise(Ledi::ConsultationFicha::InFlight)
+    job = described_class.new(city_slug: city.slug, consultation_id: consultation.id, reason: "addendum")
+    # O retry_on conta as tentativas por exceção (exception_executions), não pelo executions.
+    job.exception_executions = { [ Ledi::ConsultationFicha::InFlight ].to_s => 9 } # a próxima é a 10ª
+
+    job.perform_now
+
+    expect(LediGenerationFailure.unresolved.find_by(source_id: consultation.id)&.reason_codes).to eq([ "still_sending" ])
+  end
 end
+

@@ -259,4 +259,33 @@ RSpec.describe Ledi::ConsultationFicha do
     expect(problem.situacao).to eq(2)
     expect(problem.dataFimProblema).to eq((consultation.started_at.in_time_zone.to_date.in_time_zone.to_f * 1000).to_i)
   end
+
+  # ---- rodada especial do 19 (api#52): o adendo nunca some da ficha sem aviso ----
+
+  it "ficha recusada cujo reenvio não é aceito vira 'não gerada', não some" do
+    consultation = finalized!
+    described_class.generate(consultation)
+    entry = LediOutboxEntry.sole
+    entry.reject!([ { "field" => "condutas", "code" => "invalid" } ])
+    addendum!(consultation, "conducts" => [ 9 ])
+    allow(Ledi::Enqueue).to receive(:call).and_return(nil)
+
+    expect(described_class.refresh!(consultation.reload)).to eq(:failed)
+    failure = LediGenerationFailure.unresolved.sole
+    expect(failure).to have_attributes(source_type: "Consultation", source_id: consultation.id,
+                                       reason_codes: [ "regeneration_refused" ])
+  end
+
+  it "falha 'seguia em envio': gerar de novo leva o adendo à ficha e resolve" do
+    consultation = finalized!
+    described_class.generate(consultation)
+    addendum!(consultation, "conducts" => [ 1, 9 ])
+    described_class.still_sending!(consultation)
+    failure = LediGenerationFailure.unresolved.sole
+    expect(failure.reason_codes).to eq([ "still_sending" ])
+
+    expect(described_class.retry!(failure, by: ledi_admin!).resolved_at).to be_present
+    expect(ficha_of(LediOutboxEntry.sole).atendimentosIndividuais.sole.condutas).to eq([ 1, 9 ])
+  end
 end
+

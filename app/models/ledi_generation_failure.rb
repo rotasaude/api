@@ -2,7 +2,7 @@
 # Uma aberta por fonte; "gerar de novo" tenta e resolve.
 class LediGenerationFailure < ApplicationRecord
   REASONS = %w[unit_without_cnes professional_without_team professional_without_cns citizen_without_birth_date
-               citizen_without_sex unknown_ciap2].freeze
+               citizen_without_sex unknown_ciap2 regeneration_refused still_sending].freeze
 
   scope :unresolved, -> { where(resolved_at: nil) }
 
