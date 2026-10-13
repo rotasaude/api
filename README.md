@@ -410,34 +410,17 @@ ativa, mais o da plataforma**:
   `kamal app logs` (produção).
 - **Parada** — TERM/INT repassa TERM aos supervisores, espera `SolidQueue.shutdown_timeout` + 5 s e mata o grupo de
   processo de quem sobrar.
-- **Dimensionamento** — ~6 processos por cidade (supervisor, dispatcher, scheduler e os 3 workers de
+- **Dimensionamento** — 7 processos por cidade (supervisor, dispatcher, scheduler e os 4 workers de
   `config/queue.yml`). `RAILS_MAX_THREADS` do worker precisa ser ≥ maior `threads` de `config/queue.yml` + 2 (Kamal:
   12). Um host de worker roda todas as cidades; mais de um host duplica supervisores por cidade (seguro, mas dobra
   processos).
-  - **Orçamento de conexões por cidade** (aproximado, derivado de `config/queue.yml`, `config/puma.rb` e
-    `deploy/production/deploy.yml` — não confunda com os `deploy/*/deploy.yml` em si, que este runbook não altera):
-    - **Web** — cada host roda `WEB_CONCURRENCY` processos Puma (Kamal: `2`), cada um com `RAILS_MAX_THREADS` threads
-      (Kamal: `5`) e pools para plataforma + cache + 2 por cidade servida (domínio e fila, via
-      `CityConnection.with`): `hosts × WEB_CONCURRENCY × RAILS_MAX_THREADS × (2 + 2 × cidades)`. Com 2 hosts e as 2
-      cidades ativas de hoje: `2 × 2 × 5 × (2 + 4) ≈ 120` conexões, pico.
-    - **Worker por cidade** — cada um dos ~6 processos do supervisor segura, no pico, 4 pools: o padrão do
-      `SolidQueue::Record` e o pool do shard do Solid Queue (os dois no banco DA CIDADE, um trocado pelo
-      `CityWorkers::Child`, o outro registrado por `CityConnection.ensure_pool`), o pool do `CityRecord` (banco da
-      cidade) e o pool do `PlatformRecord` (catálogo/canais). Somando as threads de produção de `config/queue.yml`
-      (`urgent` 5 + `realtime,default` 10 + `reports,housekeeping` 3, mais dispatcher e scheduler) dá ~20 threads por
-      cidade: `4 pools × ~20 ≈ 80` conexões por cidade ativa, pico.
-    - Com as 2 cidades ativas de hoje isso já soma **~280 conexões** (web + worker) contra o `max_connections`
-      DEFAULT do Postgres, que é **100**.
-    - **Teto por role de cidade (aplicado):** `CityDatabase.ensure!` aplica `CONNECTION LIMIT` a cada
-      `rota_city_<slug>` — `CityDatabase.role_connection_limit`, configurável por `CITY_ROLE_CONNECTION_LIMIT`
-      (default `100`, validado a cada chamada como inteiro positivo — um valor vazio ou inválido levanta
-      `CityDatabase::ConfigMissing` em vez de silenciosamente virar `0`, que no Postgres significa "nenhuma
-      conexão", não "sem limite") — na criação e realinhado em toda chamada idempotente, para que uma cidade não
-      esgote o servidor e derrube as vizinhas. Isso não protege sozinho: com `max_connections` no default de 100,
-      o teto por role ainda permite que UMA cidade consuma o servidor inteiro sozinha.
-    - **Gate de go-live (o que resta):** antes de ir para produção, dimensione o `max_connections` do acessório
-      Postgres para o número de cidades planejado (com folga sobre a soma dos tetos por role acima). Isso exige
-      reboot do acessório.
+  - **Orçamento de conexões** — `bin/rails 'ops:connection_budget[N]'` dá o pico por parte (web, worker por cidade,
+    plataforma, reserva) para N cidades; com a configuração de produção, `72 + 141 × cidades` (777 para 5) e 117 de
+    pico de uma cidade no banco dela. Produção usa `max_connections=1000` e `CITY_ROLE_CONNECTION_LIMIT=150`
+    (`deploy/production/deploy.yml`); o pool de cada cidade solta conexões ociosas em 60 s (`idle_timeout`).
+    `spec/config/connection_budget_spec.rb` reprova a CI quando a conta para 5 cidades não cabe com 20% de folga.
+    Fórmula, tabela até 20 cidades, quando revisar e o gate de carga em staging: `docs/operacao/conexoes-postgres.md`
+    (repo docs).
 - **Painéis** — `/admin/api/queues` e `/admin/api/overview` leem a fila da cidade do host.
 - `SOLID_QUEUE_IN_PUMA` não existe mais: o worker é sempre `bin/city_workers`.
 
