@@ -9,7 +9,9 @@ module ClinicalDocuments
   module Cancel
     module_function
 
-    def call(document_id:, by:, reason:, now: Time.current)
+    # health_unit_id (api#59): a unidade do seletor; com ela, a recepção cancela a
+    # declaração de comparecimento de um atendimento da unidade, mesmo de colega.
+    def call(document_id:, by:, reason:, health_unit_id: nil, now: Time.current)
       note = reason.is_a?(String) ? reason.squish : ""
       return Result.fail(:invalid_reason) unless ClinicalDocument::CANCEL_REASON.cover?(note.size)
       return Result.fail(:not_found) unless Uuid.valid?(document_id)
@@ -17,7 +19,10 @@ module ClinicalDocuments
       result = ApplicationRecord.transaction do
         document = ClinicalDocument.lock.find_by(id: document_id)
         next Result.fail(:not_found) unless document
-        next Result.fail(:not_author) unless document.author_user_id == by.id
+        unless document.author_user_id == by.id
+          next Result.fail(:not_author) unless document.kind == "attendance_declaration" && by.has_role?("citizen_verifier")
+          next Result.fail(:attendance_outside_unit) unless health_unit_id.present? && document.attendance.health_unit_id == health_unit_id
+        end
         next Result.fail(:already_cancelled) if document.cancelled?
 
         document.update!(status: "cancelled", cancel_reason: note, cancelled_at: now, cancelled_by_user_id: by.id)

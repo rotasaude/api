@@ -66,16 +66,16 @@ RSpec.describe "Documentos clínicos", type: :request do
   it "declaração pela recepção: 201 em papel; ela lê a própria; atendimento inexistente 404" do
     reception = verifier!
     sign_in_as(reception)
-    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: { issuer_registration: "4471" }
+    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: { issuer_registration: "4471" }, health_unit_id: consultation.attendance.health_unit_id
     expect(response).to have_http_status(:created)
     expect(json_body).to include("kind" => "attendance_declaration", "issue_mode" => "paper", "consultation_id" => nil,
                                  "author" => include("id" => reception.id, "cbo_code" => nil))
     get "/attendance/documents/#{json_body['id']}"
     expect(response).to have_http_status(:ok)
-    json_post "/attendance/attendances/#{SecureRandom.uuid}/declarations", content: {}
+    json_post "/attendance/attendances/#{SecureRandom.uuid}/declarations", content: {}, health_unit_id: unit.id
     expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
     sign_in_as(municipal_admin!)
-    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}
+    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}, health_unit_id: consultation.attendance.health_unit_id
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
   end
 
@@ -86,21 +86,21 @@ RSpec.describe "Documentos clínicos", type: :request do
   # check-in e a fila também não restringem a unidade).
   it "declaração pelo atendimento: profissional de outra unidade 403 missing_role; o da unidade emite com o CBO do vínculo" do
     sign_in_as(doctor!(create_unit("UBS Norte")))
-    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}
+    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}, health_unit_id: consultation.attendance.health_unit_id
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
     nurse = nurse!(unit)
     sign_in_as(nurse)
-    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}
+    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}, health_unit_id: consultation.attendance.health_unit_id
     expect(response).to have_http_status(:created)
     expect(json_body).to include("author" => include("id" => nurse.id, "cbo_code" => "223505"), "signature" => nil)
   end
 
   it "declaração com o interruptor desligado: 403 feature_disabled; leitura do documento segue" do
     sign_in_as(verifier!)
-    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}
+    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}, health_unit_id: consultation.attendance.health_unit_id
     id = json_body["id"]
     documents_city!(enabled: false)
-    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}
+    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}, health_unit_id: consultation.attendance.health_unit_id
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "clinical_documents" } ])
     get "/attendance/documents/#{id}"
     expect(response).to have_http_status(:ok)
@@ -135,7 +135,7 @@ RSpec.describe "Documentos clínicos", type: :request do
     digital = json_body
     expect(digital["issue_mode"]).to eq("digital")
     request = SignatureRequest.find_by!(document_type: "ClinicalDocument", document_id: digital["id"])
-    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}
+    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}, health_unit_id: consultation.attendance.health_unit_id
     paper = json_body
     get "/attendance/consultations/#{consultation.id}/documents"
     signatures = json_body["items"].to_h { |item| [ item["id"], item["signature"] ] }

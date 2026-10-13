@@ -62,6 +62,17 @@ module ClinicalDocuments
       professional && "#{professional.council}-#{professional.council_state} #{professional.registration_number}"
     end
 
+    # Linha das listas de declarações (api#59): só metadados — nada do conteúdo
+    # nem o motivo do cancelamento; o nome é o que a fila já mostra.
+    def declaration_row(document)
+      person = document.patient || document.attendance.citizen
+      { id: document.id, status: document.status, issued_at: document.issued_at.iso8601,
+        cancelled_at: document.cancelled_at&.iso8601, short_code: Codes.display(document.short_code),
+        attendance_id: document.attendance_id,
+        author: { id: document.author_user_id, name: Screenings::Json.staff_name(document.author_user) },
+        patient: person && { display_name: person.display_name } }
+    end
+
     # <document> (contrato §2; 19d §12: `paper_reason` gravado e devolvido em
     # toda leitura, null no digital e na volta ao papel). `signature` = o bloco do 19b quando há pedido
     # (documento digital, ou que voltou ao papel); nil no papel puro. O `sncr`

@@ -14,7 +14,8 @@ class ClinicalDocumentsController < ApplicationController
   ERROR_STATUS = {
     not_author: :forbidden, cbo_not_allowed: :forbidden, missing_role: :forbidden, out_of_context: :forbidden,
     feature_disabled: :forbidden, not_found: :not_found, already_cancelled: :conflict, awaiting_signature: :conflict,
-    attendance_not_found_or_closed_long_ago: :conflict, catalog_unavailable: :service_unavailable
+    attendance_not_found_or_closed_long_ago: :conflict, catalog_unavailable: :service_unavailable,
+    attendance_outside_unit: :unprocessable_entity
   }.freeze
   IDENTIFICATION_LOOKBACK = 50
 
@@ -49,10 +50,36 @@ class ClinicalDocumentsController < ApplicationController
   def declaration
     attendance = find(Attendance, params[:id])
     return not_found unless attendance
+    # api#59: só atendimento da unidade escolhida no seletor (guarda contra engano).
+    return outside_unit unless unit_param == attendance.health_unit_id
 
     result = ClinicalDocuments::Issue.call(kind: "attendance_declaration", content: body["content"], by: Current.user,
                                            attendance: attendance)
     respond_created(result)
+  end
+
+  # api#59: as declarações do atendimento, para a recepção reimprimir e cancelar.
+  # Só metadados (o que a fila já mostra): sem trilha de leitura.
+  def attendance_declarations
+    attendance = find(Attendance, params[:id])
+    return not_found unless attendance
+    return outside_unit unless unit_param == attendance.health_unit_id
+
+    render json: { items: declaration_rows(ClinicalDocument.where(attendance_id: attendance.id)) }
+  end
+
+  # api#59: as declarações do dia (fuso da cidade) nos atendimentos da unidade.
+  def declarations
+    unit_id = unit_param
+    return outside_unit unless unit_id && HealthUnit.exists?(id: unit_id)
+
+    day = begin
+      Date.iso8601(params[:date].to_s)
+    rescue Date::Error
+      Time.zone.today
+    end
+    scope = ClinicalDocument.joins(:attendance).where(attendances: { health_unit_id: unit_id }).where(issued_at: day.in_time_zone.all_day)
+    render json: { items: declaration_rows(scope) }
   end
 
   def show
@@ -108,7 +135,8 @@ class ClinicalDocumentsController < ApplicationController
   # Contrato §3 (Desvio 13): só a autora, com step-up; segue com o interruptor
   # desligado (protege o paciente).
   def cancel
-    result = ClinicalDocuments::Cancel.call(document_id: params[:id], by: Current.user, reason: body["reason"])
+    result = ClinicalDocuments::Cancel.call(document_id: params[:id], by: Current.user, reason: body["reason"],
+                                            health_unit_id: unit_param)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: ClinicalDocuments::Json.document(result.payload[:document].reload)
@@ -116,11 +144,13 @@ class ClinicalDocumentsController < ApplicationController
 
   private
 
-  # Recepção (citizen_verifier) só na declaração e na leitura/impresso do
-  # documento; o resto é do profissional.
+  # Recepção (citizen_verifier) só na declaração, nas listas dela, na leitura/
+  # impresso e no cancelamento (o comando restringe à declaração; api#59); o
+  # resto é do profissional.
+  RECEPTION_ACTIONS = %w[declaration attendance_declarations declarations show print cancel].freeze
   def require_staff
     policy = CitizenVerificationPolicy.new(Current.user, nil)
-    allowed = %w[declaration show print].include?(action_name) ? policy.care? || policy.verify? : policy.care?
+    allowed = RECEPTION_ACTIONS.include?(action_name) ? policy.care? || policy.verify? : policy.care?
     forbid("missing_role") unless allowed
   end
 
@@ -139,7 +169,7 @@ class ClinicalDocumentsController < ApplicationController
     document = find(ClinicalDocument, params[:id])
     return not_found.then { nil } unless document
 
-    grant = ClinicalDocuments::Read.document_grant(user: Current.user, document: document)
+    grant = ClinicalDocuments::Read.document_grant(user: Current.user, document: document, health_unit_id: unit_param)
     return forbid(grant.reason.to_s).then { nil } unless grant.allowed?
 
     ClinicalRecord::Trail.viewed!(patient: document.patient, user: Current.user, grant: grant)
@@ -150,6 +180,19 @@ class ClinicalDocumentsController < ApplicationController
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: ClinicalDocuments::Json.document(result.payload[:document]), status: :created
+  end
+
+  # A unidade do seletor da tela (api#59): na query ou no corpo; só UUID.
+  def unit_param
+    raw = params[:health_unit_id].presence || body["health_unit_id"]
+    raw.is_a?(String) && ClinicalDocuments::Uuid.valid?(raw) ? raw : nil
+  end
+
+  def outside_unit = render_failure(Result.fail(:attendance_outside_unit), ERROR_STATUS)
+
+  def declaration_rows(scope)
+    scope.where(kind: "attendance_declaration").includes(:patient, :author_user, attendance: :citizen)
+         .order(issued_at: :desc, id: :desc).map { |document| ClinicalDocuments::Json.declaration_row(document) }
   end
 
   def find(model, id) = ClinicalDocuments::Uuid.valid?(id) ? model.find_by(id: id) : nil

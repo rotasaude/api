@@ -156,6 +156,9 @@ Rails.application.routes.draw do
     post "consultations/:id/documents",    to: "clinical_documents#create"
     get  "consultations/:id/patient_identification", to: "clinical_documents#patient_identification"
     post "attendances/:id/declarations",   to: "clinical_documents#declaration"
+    # api#59: as declarações do atendimento e as do dia na unidade (só metadados).
+    get  "attendances/:id/declarations",   to: "clinical_documents#attendance_declarations"
+    get  "declarations",                   to: "clinical_documents#declarations"
     # Contato do prescritor (ADR 0034; contrato §5).
     get "professional_profile/contact", to: "professional_contacts#show"
     put "professional_profile/contact", to: "professional_contacts#update"

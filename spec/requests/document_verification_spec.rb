@@ -171,7 +171,7 @@ RSpec.describe "Conferência pública de documento", type: :request do
   it "declaração da recepção: sem perfil profissional, professional.name null; o e-mail nunca aparece" do
     reception = verifier!
     sign_in_as(reception)
-    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}
+    json_post "/attendance/attendances/#{consultation.attendance_id}/declarations", content: {}, health_unit_id: consultation.attendance.health_unit_id
     expect(response).to have_http_status(:created)
     document = ClinicalDocument.find(JSON.parse(response.body)["id"])
     get "/v/#{document.verification_token}", headers: json_headers
