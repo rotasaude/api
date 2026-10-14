@@ -33,7 +33,9 @@ class PecTimelinesController < ApplicationController
     page = Timeline::Query.call(person: grant.person, limit: self.class::PAGE_LIMIT)
     Timeline::Trail.viewed!(person: grant.person, access: "pec_external", user: grant.user)
     token = PecExternal::ViewSession.issue(city: Current.city, grant: grant)
-    html(PecExternal::Page.timeline(display_name: grant.person.display_name, page: page, token: token, nonce: @nonce))
+    exams = Exams::Gate.pec_usable?(Current.city)
+    html(PecExternal::Page.timeline(display_name: grant.person.display_name, page: page, token: token, nonce: @nonce, exams: exams),
+         form_action: exams ? "'self'" : "'none'")
   end
 
   def more
@@ -52,13 +54,15 @@ class PecTimelinesController < ApplicationController
 
   def failure(code, status: :forbidden) = html(PecExternal::Page.failure(code, nonce: @nonce), status: status)
 
-  def html(body, status: :ok)
+  # form_action: 'self' só nas páginas com formulário do Rota Saúde (botão e
+  # formulário de exames, POST para a mesma origem); o resto fica 'none'.
+  def html(body, status: :ok, form_action: "'none'")
     origin = PecSetting.current&.pec_origin
     origin = nil unless origin.to_s.match?(ORIGIN_FORMAT)
     response.headers.delete("X-Frame-Options")
     response.headers["Content-Security-Policy"] =
       "default-src 'none'; style-src 'nonce-#{@nonce}'; script-src 'nonce-#{@nonce}'; connect-src 'self'; " \
-      "base-uri 'none'; form-action 'none'; frame-ancestors #{origin.presence || "'none'"}"
+      "base-uri 'none'; form-action #{form_action}; frame-ancestors #{origin.presence || "'none'"}"
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
     render body: body, content_type: "text/html; charset=utf-8", status: status

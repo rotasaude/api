@@ -25,11 +25,15 @@ module PecExternal
 
     def h(text) = ERB::Util.html_escape(text.to_s)
 
-    def timeline(display_name:, page:, token:, nonce:)
+    # exams: botão "Solicitar exames" (ADR 0036; contrato §8 com A8/D8) — só
+    # com exam_pec_bridge utilizável; o token da sessão curta vai num campo
+    # oculto do formulário (sem cookie de terceiro, nunca na URL).
+    def timeline(display_name:, page:, token:, nonce:, exams: false)
       more = page.next_before ? %(<button id="more" type="button" data-before="#{h(page.next_before)}">Carregar mais</button>) : ""
       layout(<<~HTML, nonce: nonce)
         <p class="notice">#{h(NOTICE)}</p>
         <h1>Linha do tempo — #{h(display_name)}</h1>
+        #{exams ? %(<form method="post" action="/pec/exams/form"><input type="hidden" name="token" value="#{h(token)}"><button type="submit">Solicitar exames</button></form>) : ""}
         <ol id="t" data-session="#{h(token)}">#{items(page.entries)}</ol>
         #{more}
         <script nonce="#{h(nonce)}">#{SCRIPT}</script>

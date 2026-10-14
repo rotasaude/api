@@ -398,6 +398,9 @@ Rails.application.routes.draw do
   # da URL, uso único e sessão curta em cabeçalho.
   get "/pec/timeline",      to: "pec_timelines#show"
   get "/pec/timeline/more", to: "pec_timelines#more"
+  # "Solicitar exames" (ADR 0036; contrato §8 com A8/D8): formulário com o token da sessão curta.
+  post "/pec/exams/form", to: "pec_exams#form"
+  post "/pec/exams",      to: "pec_exams#create"
 
   # Entrada FHIR do laudo (ADR 0036; contrato §7, A7). Host da cidade, sem
   # cookie: token Bearer do prestador.
