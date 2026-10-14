@@ -1,5 +1,5 @@
 # Ciência e filas (contrato §3, A20): pendentes do solicitante (com os negados
-# dos últimos 30 dias, dashboard D7); fila da equipe (escalados das unidades
+# dos últimos 30 dias na primeira página, dashboard D7 e A48); fila da equipe (escalados das unidades
 # onde o usuário é médico/enfermeiro de equipe ativa, A10). Leitura clínica:
 # cada exame listado deixa clinical_record.viewed (só ids).
 module Exams
@@ -56,8 +56,9 @@ module Exams
       page[:orders].each { |order| Exams::Trail.viewed!(order: order, user: Current.user, grant: grant) }
       body = { orders: page[:orders].map { |o| Exams::Json.order(o, view: :clinical, user: Current.user, events: false) },
                next_before: page[:next_before] }
+      # A48: os negados só na primeira página; com before, lista vazia e sem trilha.
       if block_given?
-        denied = yield.includes(:patient, :unit, :exam_provider, :requester_user, :consultation_exam_request, :events).to_a
+        denied = params[:before].present? ? [] : yield.includes(:patient, :unit, :exam_provider, :requester_user, :consultation_exam_request, :events).to_a
         denied.each { |order| Exams::Trail.viewed!(order: order, user: Current.user, grant: grant) }
         body[:denied] = denied.map { |o| Exams::Json.order(o, view: :clinical, user: Current.user, events: false, denied_reason: true) }
       end

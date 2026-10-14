@@ -120,6 +120,22 @@ RSpec.describe "Exames — ciência e fila da equipe", type: :request do
     expect(viewed_events(resulted_order).map { |e| e.payload["access"] }).to eq([ "author" ])
   end
 
+  # A48: os negados vão só na primeira página; "Carregar mais" não os relê nem grava trilha de novo.
+  it "A48: com before, denied vem vazio e os negados não ganham trilha nova" do
+    2.times { resulted! }
+    denied = exam_order!(patient: exam_patient!(exam_seq!).first, unit: unit, requester: doctor)
+    denied.update_columns(status: "denied", status_changed_at: 1.day.ago)
+    sign_in_as(doctor)
+    get "/exams/acknowledgements/pending", params: { limit: 1 }
+    expect(json_body["denied"].map { |o| o["id"] }).to eq([ denied.id ])
+    cursor = json_body["next_before"]
+    expect(cursor).to be_present
+    expect { get "/exams/acknowledgements/pending", params: { limit: 1, before: cursor } }.not_to change { viewed_events(denied).size }
+    expect(response).to have_http_status(:ok)
+    expect(json_body["orders"].size).to eq(1)
+    expect(json_body["denied"]).to eq([])
+  end
+
   def denied!(requester: doctor, reason: "Sem indicação clínica descrita", at: 1.day.ago)
     order = exam_order!(patient: exam_patient!(exam_seq!).first, unit: unit, requester: requester)
     order.update_columns(status: "awaiting_authorization")
