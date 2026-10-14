@@ -389,6 +389,11 @@ Rails.application.routes.draw do
   get "/pec/timeline",      to: "pec_timelines#show"
   get "/pec/timeline/more", to: "pec_timelines#more"
 
+  # Entrada FHIR do laudo (ADR 0036; contrato §7, A7). Host da cidade, sem
+  # cookie: token Bearer do prestador.
+  post "/fhir/DiagnosticReport", to: "fhir/diagnostic_reports#create"
+  get  "/fhir/ServiceRequest",   to: "fhir/service_requests#index"
+
   # Canal web do cidadão (spec 2026-09-22-web-citizen-channel). Servido no host
   # da cidade, como o relatório; sessão própria por cookie `citizen_session`.
   scope "/citizen", module: "citizen_api", as: "citizen" do

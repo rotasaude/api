@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rota-saude/schemas/exams/fhir-diagnostic-report-inbound.json",
+  "title": "rotasaude.fhir.diagnostic_report_inbound.v1",
+  "description": "Perfil mínimo do DiagnosticReport FHIR R4 que um prestador envia ao Rota Saúde (POST /fhir/DiagnosticReport; ADR 0036). Aberto (additionalProperties livre): o laboratório pode mandar mais do que isto; o Rota Saúde lê só o que está aqui. Observations vão em contained e são referenciadas em result (invariante dom-3). Sistemas de CPF e CNS = uniqueId da RNDS.",
+  "type": "object",
+  "required": [
+    "resourceType",
+    "identifier",
+    "status",
+    "code",
+    "basedOn",
+    "subject",
+    "issued",
+    "performer",
+    "presentedForm",
+    "result",
+    "contained"
+  ],
+  "properties": {
+    "resourceType": {
+      "const": "DiagnosticReport"
+    },
+    "identifier": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "system": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "final",
+        "amended"
+      ]
+    },
+    "code": {
+      "type": "object",
+      "required": [
+        "coding"
+      ],
+      "properties": {
+        "coding": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "code"
+            ],
+            "properties": {
+              "system": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "basedOn": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "identifier"
+        ],
+        "properties": {
+          "identifier": {
+            "type": "object",
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "string",
+                "pattern": "^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{10}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "identifier"
+      ],
+      "properties": {
+        "identifier": {
+          "type": "object",
+          "required": [
+            "system",
+            "value"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "system": {
+                  "const": "http://rnds.saude.gov.br/fhir/r4/NamingSystem/cpf"
+                },
+                "value": {
+                  "type": "string",
+                  "pattern": "^[0-9]{11}$"
+                }
+              }
+            },
+            {
+              "properties": {
+                "system": {
+                  "const": "http://rnds.saude.gov.br/fhir/r4/NamingSystem/cns"
+                },
+                "value": {
+                  "type": "string",
+                  "pattern": "^[0-9]{15}$"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "issued": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "performer": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "display"
+        ],
+        "properties": {
+          "display": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        }
+      }
+    },
+    "presentedForm": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "contentType",
+          "data"
+        ],
+        "properties": {
+          "contentType": {
+            "const": "application/pdf"
+          },
+          "data": {
+            "type": "string",
+            "minLength": 8,
+            "contentEncoding": "base64"
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "reference"
+        ],
+        "properties": {
+          "reference": {
+            "type": "string",
+            "pattern": "^#[A-Za-z0-9.-]{1,64}$"
+          }
+        }
+      }
+    },
+    "contained": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/observation"
+      }
+    }
+  },
+  "$defs": {
+    "observation": {
+      "type": "object",
+      "required": [
+        "resourceType",
+        "id",
+        "status",
+        "code"
+      ],
+      "properties": {
+        "resourceType": {
+          "const": "Observation"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9.-]{1,64}$"
+        },
+        "status": {
+          "enum": [
+            "final",
+            "amended",
+            "corrected",
+            "preliminary"
+          ]
+        },
+        "code": {
+          "type": "object",
+          "required": [
+            "coding"
+          ],
+          "properties": {
+            "coding": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "system",
+                  "code"
+                ],
+                "properties": {
+                  "system": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "display": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "valueQuantity": {
+          "type": "object",
+          "required": [
+            "value"
+          ],
+          "properties": {
+            "value": {
+              "type": "number"
+            },
+            "unit": {
+              "type": "string"
+            }
+          }
+        },
+        "valueString": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "interpretation": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "coding": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "valueQuantity"
+          ]
+        },
+        {
+          "required": [
+            "valueString"
+          ]
+        }
+      ]
+    }
+  }
+}
