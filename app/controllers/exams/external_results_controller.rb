@@ -22,14 +22,19 @@ module Exams
     end
 
     def index
+      # Papel antes de achar o paciente: sem ele, 403 igual para paciente que existe ou não.
+      return forbid("missing_role") unless Current.user.has_role?("health_professional")
+
       patient = uuid?(params[:patient_id]) && Patient.find_by(id: params[:patient_id])
       return not_found unless patient
 
       grant = ClinicalRecord::Access.call(user: Current.user, patient: patient)
       return forbid(grant.reason.to_s) unless grant.allowed?
 
-      ClinicalRecord::Trail.viewed!(patient: patient, user: Current.user, grant: grant)
-      results = ExamResult.where(patient_id: patient.id, origin: "external").order(created_at: :desc).limit(100).map do |result|
+      rows = ExamResult.where(patient_id: patient.id, origin: "external").includes(:pdf_file, exam_order: :events)
+                       .order(created_at: :desc, id: :desc).limit(100).to_a
+      ClinicalRecord::Trail.viewed!(patient: patient, user: Current.user, grant: grant, extra: { exam_result_ids: rows.map(&:id) })
+      results = rows.map do |result|
         Exams::Json.result(result, view: :clinical, user: Current.user)
                    .merge(sigtap_code: result.sigtap_code, label: Exams::Labels.exam(result.sigtap_code, result.released_on.strftime("%Y%m")))
       end

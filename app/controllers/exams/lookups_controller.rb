@@ -1,6 +1,11 @@
 # Rotas de apoio das telas (pedido do dashboard D2–D5): achar o paciente pelo
 # CPF (no corpo, nunca na URL), o catálogo legível, os prestadores de um
 # exame e os solicitantes de uma unidade.
+#
+# O patient_lookup MANTÉM Patients::Resolve (plano, Desvio 3; idempotente, o
+# mesmo caminho da guia): para um par validado sem paciente, cria/liga o
+# Patient (eventos patient.created/patient.linked). Par declarado ou CPF
+# desconhecido não criam nada.
 module Exams
   class LookupsController < BaseController
     LOOKUP_ROLES = %w[citizen_verifier health_professional municipal_admin].freeze
