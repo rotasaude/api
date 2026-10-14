@@ -49,7 +49,11 @@ RSpec.describe "Solicitar exames pelo PEC", type: :request do
     open_page
     token = token_in(response.body)
     post "/pec/exams", params: { token: token, sigtap_code: "0202020380", priority: "routine" }
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(response.body).to include("sigtap_not_in_catalog")
+    post "/pec/exams", params: { token: token, sigtap_code: "0202010503", priority: "whenever" }
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response.body).to include("invalid_priority")
     expect(ExamOrder.count).to eq(0)
     # Tudo numa transação: a recusa do catálogo desfaz o paciente criado pelo Resolve.
     expect(citizen.reload.patient_id).to be_nil
@@ -78,5 +82,33 @@ RSpec.describe "Solicitar exames pelo PEC", type: :request do
     expect(response.body).to include("&lt;b&gt;Zé&lt;/b&gt;")
     expect(response.body).not_to include("<b>Zé</b>")
     expect(logged.string).not_to include(token)
+  end
+
+  it "envio repetido na janela da sessão curta não duplica; outro exame na mesma janela nasce" do
+    exam_catalog_item!(sigtap_code: "0202020380")
+    open_page
+    token = token_in(response.body)
+    body = { token: token, sigtap_code: "0202010503", priority: "routine" }
+    post "/pec/exams", params: body
+    first = ExamOrder.sole
+    post "/pec/exams", params: body
+    expect(response).to have_http_status(:ok)
+    expect(ExamOrder.count).to eq(1)
+    expect(response.body).to include("Este exame já foi registrado (guia #{first.short_code})")
+    expect(response.body).not_to include("Pedido registrado")
+    post "/pec/exams", params: body.merge(sigtap_code: "0202020380")
+    expect(response.body).to include("Pedido registrado")
+    expect(ExamOrder.count).to eq(2)
+  end
+
+  it "limite por IP nas rotas novas: 429 too_many_requests" do
+    open_page
+    token = token_in(response.body)
+    allow(PecTimelinesController::RateLimitStore).to receive(:increment).and_return(121)
+    post "/pec/exams/form", params: { token: token }
+    expect([ response.status, response.body ]).to match([ 429, a_string_including("too_many_requests") ])
+    post "/pec/exams", params: { token: token, sigtap_code: "0202010503", priority: "routine" }
+    expect([ response.status, response.body ]).to match([ 429, a_string_including("too_many_requests") ])
+    expect(ExamOrder.count).to eq(0)
   end
 end

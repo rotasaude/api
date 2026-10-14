@@ -17,9 +17,11 @@ class PecExamsController < PecTimelinesController
     opened = nil
     ApplicationRecord.transaction do
       citizen = Citizen.not_erased.where(id: @grant.person.citizen_ids).order(:created_at, :id).first
-      resolved = citizen ? Patients::Resolve.call(citizen) : Result.fail(:citizen_not_verified)
-      opened = if resolved.failure?
+      resolved = citizen && Patients::Resolve.call(citizen)
+      opened = if !resolved&.ok?
                  Result.fail(:pec_citizen_not_verified)
+               elsif (existing = recent_duplicate(resolved.payload[:patient]))
+                 Result.ok(order: existing, duplicate: true)
                else
                  Exams::Open.call(patient: resolved.payload[:patient], sigtap_code: params[:sigtap_code].to_s,
                                   priority: priority, unit: @grant.unit,
@@ -30,10 +32,21 @@ class PecExamsController < PecTimelinesController
     return render_form(error: opened.reason.to_s, status: :unprocessable_entity) if opened.failure?
 
     order = opened.payload[:order]
+    return render_form(notice: "Este exame já foi registrado (guia #{order.short_code})") if opened.payload[:duplicate]
+
     render_form(notice: "Pedido registrado: #{Exams::Labels.exam(order.sigtap_code, order.sigtap_competence)} — guia #{order.short_code}")
   end
 
   private
+
+  # Envio repetido (duplo clique, reenvio do formulário) dentro da janela da
+  # sessão curta: o mesmo exame do mesmo paciente pelo mesmo profissional não
+  # nasce de novo. Roda depois do Patients::Resolve, que segura o lock
+  # consultivo por CPF até o commit — a conferência não corre contra outra.
+  def recent_duplicate(patient)
+    ExamOrder.where(patient: patient, sigtap_code: params[:sigtap_code].to_s, requester_user: @grant.user, origin: "pec")
+             .where(created_at: PecExternal::ViewSession::TTL.ago..).order(:created_at, :id).last
+  end
 
   def priority = params[:priority].is_a?(String) && params[:priority].present? ? params[:priority] : "routine"
 
