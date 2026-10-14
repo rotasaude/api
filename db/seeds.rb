@@ -288,7 +288,7 @@ else
         # ── Rastreamento de exames (módulo 21a, ADR 0036) ─────────────────────
         # Depois da linha do tempo: Maringá já é integrada (exam_pec_bridge).
         exams = ExamCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
-        puts "[seeds] exames ...... #{exams[:switch]}; #{exams[:orders]} guias novas"
+        puts "[seeds] exames ...... #{exams[:switch]}; #{exams[:orders]} guias novas#{"; equipe #{exams[:team]}" if exams[:team]}"
         Array(exams[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"

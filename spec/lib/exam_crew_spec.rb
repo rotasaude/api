@@ -47,6 +47,16 @@ RSpec.describe ExamCrew do
     expect(ExamOrder.find_by(external_reference: "SEED-1").exam_provider).to eq(simulated)
   end
 
+  it "equipe de referência de dev na unidade das guias, com a enfermeira: a fila da equipe tem a quem chegar" do
+    described_class.seed_platform!
+    2.times { described_class.seed_current_city(slug: slug, ddd: "41", password: "dev-password") }
+    unit = HealthUnit.find_by!(name: ClinicalRecordCrew::UNIT)
+    nurse = User.find_by!(email_address: "enfermeira@#{slug}.demo")
+    expect(HealthTeam.where(health_unit: unit, active: true).count).to eq(1)
+    expect(Exams::Access.team_unit_ids(nurse)).to eq([ unit.id ])
+    expect(HealthTeamMember.active.where(professional: nurse.professional).count).to eq(1)
+  end
+
   it "idempotente: a segunda rodada não cria nada; a competência da guia antiga é a corrente, mesmo sem release para 40 dias atrás" do
     described_class.seed_platform!
     described_class.seed_current_city(slug: slug, ddd: "41", password: "dev-password")

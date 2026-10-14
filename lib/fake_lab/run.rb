@@ -4,6 +4,9 @@ abort "fake-lab só roda em ambiente de simulação (development, test, staging)
   %w[development test staging].include?((ENV["RAILS_ENV"] || ENV["RACK_ENV"] || "development").to_s)
 
 require "logger"
+
+# Sem TTY (container) o $stdout é bufferizado e o log do ciclo não aparece.
+$stdout.sync = true
 require_relative "runner"
 
 client = FakeLab::Client.new(api_url: ENV.fetch("FAKE_LAB_API_URL", "http://api:3000"),

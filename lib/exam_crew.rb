@@ -39,6 +39,7 @@ class ExamCrew
     { name: "Clínica Diagnóstica Credenciada", kind: "accredited", codes: %w[0203020030], result_days: 40 },
     { name: "Laboratório Simulado", kind: "accredited", codes: %w[0202020380 0202010503], result_days: 2, simulated: true }
   ].freeze
+  TEAM_NURSE = "enfermeira"
   USERS = [
     { prefix: "laboratorio", role: "exam_provider", provider: "Laboratório Municipal Central",
       secret_env: "DEV_LAB_OTP_SECRET", default_secret: "NRQWE33SMF2G64TJN4WXE33UMEWXGYLV" },
@@ -84,7 +85,8 @@ class ExamCrew
       providers!
       users = USERS.map { |spec| ensure_user(spec, slug: slug, password: password) }
       orders = city.record_mode == "record" ? sample_orders!(slug, ddd) : 0
-      { switch: switches.join(", "), users: users, orders: orders }
+      team = city.record_mode == "record" ? team!(slug) : nil
+      { switch: switches.join(", "), users: users, orders: orders, team: team }
     end
 
     private
@@ -146,6 +148,26 @@ class ExamCrew
     # (atrasada na coleta). Datas passadas pelo `now:` dos comandos; a
     # competência SIGTAP é a corrente, explícita (a de 40 dias atrás pode
     # ser anterior à release ativa do dev).
+    # Equipe de referência de dev na unidade das guias de exemplo, com a
+    # enfermeira (CBO do vínculo): o resultado crítico e a ciência vencida
+    # (fila da equipe, A10) têm a quem chegar. Em produção a equipe vem do
+    # CNES (Cnes::Apply); aqui o INE é fictício e fixo por unidade.
+    def team!(slug)
+      unit = HealthUnit.find_by(name: ClinicalRecordCrew::UNIT)
+      nurse = User.find_by(email_address: "#{TEAM_NURSE}@#{slug}.demo")
+      link = nurse&.professional&.links&.active&.find_by(health_unit: unit)
+      return nil unless unit && link
+
+      team = HealthTeam.find_by(health_unit: unit, active: true) ||
+             HealthTeam.create!(health_unit: unit, kind: "70", name: "ESF #{unit.name} (dev)",
+                                ine: format("%010d", Zlib.crc32(unit.id) % 10**10))
+      unless HealthTeamMember.active.exists?(professional: nurse.professional, health_team: team)
+        HealthTeamMember.create!(professional: nurse.professional, health_team: team, cbo_code: link.cbo_code,
+                                 started_on: Time.zone.today - 30)
+      end
+      team.name
+    end
+
     def sample_orders!(slug, ddd)
       competence = Time.zone.today.strftime("%Y%m")
       citizen = ClinicalRecordCrew.send(:ensure_citizen, slug, ddd)
