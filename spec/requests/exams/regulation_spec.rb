@@ -84,4 +84,19 @@ RSpec.describe "Exames — regulação", type: :request do
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "invalid_transition", "status" => "denied" } ])
     expect(order.reload.events.where(kind: %w[authorized denied]).count).to eq(1)
   end
+
+  # A34: prestador simulado com fake_lab desligado não é autorizado (como em Steps).
+  it "autorizar com prestador simulado sem fake_lab utilizável: 422 provider_not_enabled_for_exam" do
+    item
+    order = order!(priority: "routine", at: 1.hour.ago)
+    simulated = exam_provider!(name: "Laboratório Simulado", simulated: true)
+    sign_in_as(regulator)
+    json_post "/exams/orders/#{order.id}/authorize", provider_id: simulated.id
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "provider_not_enabled_for_exam" ])
+    expect(order.reload.status).to eq("awaiting_authorization")
+    Platform::Features.set!(city: Current.city, key: "exam_fhir_inbound", enabled: true, maintainer: ledi_maintainer!)
+    Platform::Features.set!(city: Current.city, key: "fake_lab", enabled: true, maintainer: ledi_maintainer!)
+    json_post "/exams/orders/#{order.id}/authorize", provider_id: simulated.id
+    expect(json_body["status"]).to eq("awaiting_schedule")
+  end
 end

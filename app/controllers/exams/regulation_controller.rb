@@ -25,6 +25,8 @@ module Exams
     def authorize
       provider = params[:provider_id].is_a?(String) && ExamProvider.find_by(id: params[:provider_id], active: true)
       return render_failure(Result.fail(:provider_not_enabled_for_exam)) unless provider && Exams::Steps.enabled?(provider, @order)
+      # A34: o laboratório simulado só recebe com fake_lab utilizável (como em Steps.schedule).
+      return render_failure(Result.fail(:provider_not_enabled_for_exam)) if provider.simulated && !Exams::Gate.fake_lab_usable?(Current.city)
 
       respond(step("authorized", changes: { exam_provider_id: provider.id }))
     end
