@@ -31,6 +31,7 @@ RSpec.describe "Meus exames (cidadão)", type: :request do
   it "lista andamento e laudo por política; nunca crítico nem motivo; trilha citizen" do
     immediate = resulted("0202020380", "immediate", critical: true)
     hiv = resulted("0202030300", "never_citizen")
+    Exams::Acknowledge.call(order: hiv, by: doctor) # A37: retire na unidade só depois da ciência
     exam_catalog_item!(sigtap_code: "0202010503", requires_authorization: true, release_policy: "after_acknowledgement", result_fields: [])
     denied = exam_order!(patient: patient, unit: unit, requester: doctor, sigtap_code: "0202010503")
     ApplicationRecord.transaction do
@@ -52,7 +53,7 @@ RSpec.describe "Meus exames (cidadão)", type: :request do
     expect(exams[denied.id]).to include("status_label" => "Pedido não autorizado — procure sua unidade", "result" => nil)
     expect(exams[immediate.id].keys).to match_array(%w[id kind label status_label requested_at scheduled_at scheduled_place result])
     expect(response.body).not_to include("critical", "Sem indicação", doctor.email_address, "reason", "Lab\"", "values")
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload).to include("access" => "citizen", "user_id" => nil)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload).to include("access" => "citizen", "user_id" => nil)
 
     before_pdf = viewed_count
     get "/citizen/exams/#{immediate.id}/pdf", params: { citizen_id: citizen.id }
@@ -62,7 +63,7 @@ RSpec.describe "Meus exames (cidadão)", type: :request do
     expect(response.headers["Cache-Control"]).to include("no-store")
     expect(response.body.b).to eq(ExamHelpers::PDF_BYTES)
     expect(viewed_count).to eq(before_pdf + 1)
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
       .to include("access" => "citizen", "user_id" => nil, "exam_result_id" => immediate.result.id, "patient_id" => patient.id)
   end
 
@@ -81,6 +82,18 @@ RSpec.describe "Meus exames (cidadão)", type: :request do
     expect(entry["result"]).to include("available" => true, "pdf_available" => true)
     get "/citizen/exams/#{pending_ack.id}/pdf", params: { citizen_id: citizen.id }
     expect(response).to have_http_status(:ok)
+  end
+
+  it "never_citizen antes da ciência: etapa anterior e result null (A37); catálogo lido uma vez por exame da página" do
+    hiv = resulted("0202030300", "never_citizen")
+    2.times { resulted("0202020380", "immediate") }
+    sign_in_citizen(citizen.phone)
+    count = 0
+    counter = ->(*, payload) { count += 1 if payload[:sql].include?("exam_catalog_items") }
+    ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { get "/citizen/exams", params: { citizen_id: citizen.id } }
+    expect(json_body["exams"].find { |e| e["id"] == hiv.id }).to include("status_label" => "Agendado", "result" => nil)
+    expect(response.body).not_to include("Retire")
+    expect(count).to be <= 2
   end
 
   it "política contornada: never_citizen, sem ciência, de outro telefone, sem resultado, id qualquer — 404 igual e sem trilha (Review Focus 3)" do

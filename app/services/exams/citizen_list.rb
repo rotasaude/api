@@ -20,7 +20,8 @@ module Exams
               externals.order(created_at: :desc, id: :desc).limit(limit + 1).to_a)
              .sort { |a, b| [ b.created_at, b.id ] <=> [ a.created_at, a.id ] }
       page = rows.first(limit)
-      { exams: page.map { |row| row.is_a?(ExamOrder) ? order(row) : external(row) },
+      exams = Release.cached { page.map { |row| row.is_a?(ExamOrder) ? order(row) : external(row) } }
+      { exams: exams,
         next_before: rows.size > limit ? Cursor.encode(page.last) : nil }
     end
 

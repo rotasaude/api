@@ -17,7 +17,23 @@ module Exams
 
     module_function
 
-    def policy(sigtap_code) = ExamCatalogItem.find_by(sigtap_code: sigtap_code)&.release_policy || DEFAULT
+    # Política do exame, memorizada por sigtap_code dentro de `cached` (uma
+    # leitura do catálogo por exame da página, não por linha).
+    def policy(sigtap_code)
+      cache = ActiveSupport::IsolatedExecutionState[:exam_release_policies]
+      return lookup(sigtap_code) unless cache
+
+      cache.fetch(sigtap_code) { cache[sigtap_code] = lookup(sigtap_code) }
+    end
+
+    def cached
+      outer = ActiveSupport::IsolatedExecutionState[:exam_release_policies]
+      ActiveSupport::IsolatedExecutionState[:exam_release_policies] = outer || {}
+      yield
+    ensure
+      ActiveSupport::IsolatedExecutionState[:exam_release_policies] = outer
+    end
+
     def pickup_at_unit?(sigtap_code) = policy(sigtap_code) == "never_citizen"
 
     # O cidadão pode ver o laudo (PDF e data). Externo nasce com ciência (A9).
@@ -34,18 +50,31 @@ module Exams
       rule == "immediate" || status == "acknowledged"
     end
 
-    # subject: ExamOrder, ou ExamResult externo.
+    # subject: ExamOrder, ExamResult externo, ou ExamResult de pedido (vale
+    # como o pedido dele).
     def citizen_label(subject)
+      subject = normalize(subject)
       result = result_of(subject)
       return PICKUP if known?(result) && pickup_at_unit?(result.sigtap_code)
       return AVAILABLE if known?(result)
-      return previous_stage(subject) if result
+      return STATUS_LABELS.fetch(previous_stage(subject)) if result
 
       STATUS_LABELS.fetch(subject.status)
     end
 
-    def citizen_result(subject)
+    # Código da situação que o cidadão pode ver (linha do tempo): antes de
+    # poder saber do resultado, a etapa anterior; externo = "external".
+    def citizen_status(subject)
+      subject = normalize(subject)
       result = result_of(subject)
+      return result.external? ? "external" : subject.status if known?(result)
+      return previous_stage(subject) if result
+
+      subject.status
+    end
+
+    def citizen_result(subject)
+      result = result_of(normalize(subject))
       return nil unless known?(result)
 
       available = available?(result)
@@ -53,14 +82,27 @@ module Exams
         released_on: available ? result.released_on.iso8601 : nil, pdf_available: available }
     end
 
-    # O cidadão pode saber que há resultado: liberado, ou never_citizen
-    # (só "retire na unidade", sem data nem PDF).
+    # O cidadão pode saber que há resultado: liberado, ou never_citizen depois
+    # da ciência (A37: só "retire na unidade", sem data nem PDF). Externo
+    # nasce com ciência.
     def known?(result)
       return false unless result
       return true if result.external?
-      return false unless %w[resulted acknowledged].include?(result.exam_order.status)
 
-      available?(result) || pickup_at_unit?(result.sigtap_code)
+      status = result.exam_order.status
+      return false unless %w[resulted acknowledged].include?(status)
+
+      available?(result) || (pickup_at_unit?(result.sigtap_code) && status == "acknowledged")
+    end
+
+    def lookup(sigtap_code) = ExamCatalogItem.find_by(sigtap_code: sigtap_code)&.release_policy || DEFAULT
+
+    def normalize(subject)
+      case subject
+      when ExamOrder then subject
+      when ExamResult then subject.external? ? subject : subject.exam_order
+      else raise ArgumentError, "esperado ExamOrder ou ExamResult, veio #{subject.class}"
+      end
     end
 
     def result_of(subject) = subject.is_a?(ExamResult) ? subject : subject.result
@@ -68,8 +110,8 @@ module Exams
     # Resultado registrado mas ainda não liberado: a etapa de antes (o
     # resultado só nasce de agendado ou coletado — Transition).
     def previous_stage(order)
-      STATUS_LABELS.fetch(order.events.any? { |event| event.kind == "collected" } ? "collected" : "scheduled")
+      order.events.any? { |event| event.kind == "collected" } ? "collected" : "scheduled"
     end
-    private_class_method :result_of, :previous_stage
+    private_class_method :lookup, :normalize, :result_of, :previous_stage
   end
 end
