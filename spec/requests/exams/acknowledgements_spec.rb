@@ -27,7 +27,7 @@ RSpec.describe "Exames — ciência e fila da equipe", type: :request do
     expect(json_body["orders"].first["result"]).to include("critical" => false)
     json_post "/exams/orders/#{order.id}/acknowledge"
     expect(json_body["status"]).to eq("acknowledged")
-    expect(DomainEvent.where(name: "exam_order.acknowledged").last.payload).to eq("exam_order_id" => order.id, "by_team" => false)
+    expect(DomainEvent.where(name: "exam_order.acknowledged").order(:occurred_at, :created_at).last.payload).to eq("exam_order_id" => order.id, "by_team" => false)
     json_post "/exams/orders/#{order.id}/acknowledge"
     expect([ response.status, json_body["status"] ]).to eq([ 409, "acknowledged" ])
   end
@@ -42,7 +42,7 @@ RSpec.describe "Exames — ciência e fila da equipe", type: :request do
     expect(json_body["orders"].map { |o| o["id"] }).to eq([ critical.id ])
     expect(json_body["orders"].first).to include("escalated" => true)
     expect(json_body["orders"].first["result"]).to include("critical" => true) # A31: a fila mostra que é crítico
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload).to include("access" => "team", "exam_order_id" => critical.id)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload).to include("access" => "team", "exam_order_id" => critical.id)
     json_post "/exams/orders/#{critical.id}/acknowledge"
     expect(json_body["error"]).to eq("reason_required")
     far = doctor!(create_unit("UBS Distante")).tap { |d| exam_team!(d.professional.links.active.first.health_unit, d) }
@@ -55,7 +55,7 @@ RSpec.describe "Exames — ciência e fila da equipe", type: :request do
     sign_in_as(nurse)
     json_post "/exams/orders/#{critical.id}/acknowledge", reason: "Paciente contatada; retorno amanhã"
     expect(json_body["status"]).to eq("acknowledged")
-    expect(DomainEvent.where(name: "exam_order.acknowledged").last.payload["by_team"]).to be(true)
+    expect(DomainEvent.where(name: "exam_order.acknowledged").order(:occurred_at, :created_at).last.payload["by_team"]).to be(true)
     expect(critical.reload.events.last).to have_attributes(kind: "acknowledged", reason: "Paciente contatada; retorno amanhã", actor_user_id: nurse.id)
   end
 

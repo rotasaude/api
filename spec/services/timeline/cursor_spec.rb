@@ -18,7 +18,7 @@ RSpec.describe Timeline::Cursor do
   it "vazio é nil; lixo, kind desconhecido e id que não é uuid levantam Invalid" do
     expect(described_class.decode(nil)).to be_nil
     expect(described_class.decode("")).to be_nil
-    bad = [ "%%%", Base64.urlsafe_encode64("2026-10-11T12:00:00.000000Z|vaccine|#{entry.source_id}", padding: false),
+    bad = [ "%%%", Base64.urlsafe_encode64("2026-10-11T12:00:00.000000Z|nope|#{entry.source_id}", padding: false),
             Base64.urlsafe_encode64("2026-10-11T12:00:00.000000Z|triage|1; DROP", padding: false),
             Base64.urlsafe_encode64("ontem|triage|#{entry.source_id}", padding: false), [ "x" ] ]
     bad.each { |raw| expect { described_class.decode(raw) }.to raise_error(Timeline::Cursor::Invalid), raw.inspect }

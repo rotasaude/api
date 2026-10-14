@@ -35,8 +35,8 @@ RSpec.describe "Exames — resultado externo", type: :request do
                                       patient_id: patient.id, consultation_id: nil)
     expect(result.pdf_file).to be_consumed
     expect(json_body).to include("origin" => "external", "acknowledged_at" => be_present, "values" => [ hash_including("value" => "8.2") ])
-    expect(DomainEvent.where(name: "exam_result.external_recorded").last.payload).to eq("exam_result_id" => result.id)
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+    expect(DomainEvent.where(name: "exam_result.external_recorded").order(:occurred_at, :created_at).last.payload).to eq("exam_result_id" => result.id)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
       .to include("patient_id" => patient.id, "user_id" => doctor.id, "access" => "in_context", "exam_result_id" => result.id)
   end
 

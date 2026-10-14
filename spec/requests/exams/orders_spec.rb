@@ -68,12 +68,12 @@ RSpec.describe "Exames — pedidos", type: :request do
     expect(json_body["orders"].first).not_to have_key("events")
     expect(json_body["orders"]).to all(satisfy { |o| schema.valid?(o) })
     # A lista do solicitante é clínica: trilha por exame, como no detalhe.
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
       .to include("access" => "author", "exam_order_id" => order.id, "user_id" => doctor.id)
     get "/exams/orders/#{order.id}"
     expect(json_body["events"].map { |e| e["kind"] }).to eq(%w[requested])
     expect(schema.valid?(json_body)).to be(true)
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
       .to include("access" => "author", "exam_order_id" => order.id, "user_id" => doctor.id)
     sign_in_as(reception)
     get "/exams/orders", params: { unit_id: unit.id }

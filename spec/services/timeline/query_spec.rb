@@ -84,7 +84,7 @@ RSpec.describe Timeline::Query do
 
   it "trilha só com ids, acesso da lista e person_ref" do
     Timeline::Trail.viewed!(person: person, access: "citizen")
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
       .to eq("patient_id" => nil, "user_id" => nil, "access" => "citizen", "reason_code" => nil,
              "person_ref" => "citizen:#{citizen.id}")
     expect { Timeline::Trail.viewed!(person: person, access: "outro") }.to raise_error(ArgumentError)

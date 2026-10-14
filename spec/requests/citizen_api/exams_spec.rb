@@ -93,7 +93,7 @@ RSpec.describe "Meus exames (cidadão)", type: :request do
     ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { get "/citizen/exams", params: { citizen_id: citizen.id } }
     expect(json_body["exams"].find { |e| e["id"] == hiv.id }).to include("status_label" => "Agendado", "result" => nil)
     expect(response.body).not_to include("Retire")
-    expect(count).to be <= 2
+    expect(count).to eq(2)
   end
 
   it "política contornada: never_citizen, sem ciência, de outro telefone, sem resultado, id qualquer — 404 igual e sem trilha (Review Focus 3)" do

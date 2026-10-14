@@ -19,7 +19,7 @@ RSpec.describe "Resumo clínico do cidadão", type: :request do
     get "/citizen/health_summary", params: { citizen_id: citizen.id }
     expect(response).to have_http_status(:ok)
     expect(body.keys).to match_array(%w[problems medications exam_requests vitals])
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload["access"]).to eq("citizen")
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload["access"]).to eq("citizen")
     get "/citizen/health_summary", params: { citizen_id: declared.id }
     expect(status_and_error).to eq([ 403, "not_verified" ])
     sign_in_citizen(fresh.phone)

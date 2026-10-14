@@ -47,7 +47,7 @@ RSpec.describe "Exames — etapas pela unidade", type: :request do
     sign_in_as(doctor)
     expect { json_post "/exams/orders/#{order.id}/cancel", reason: "Pedido em duplicidade" }
       .to change { DomainEvent.where(name: "clinical_record.viewed").count }.by(1)
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
       .to include("access" => "author", "exam_order_id" => order.id, "user_id" => doctor.id)
     other = exam_order!(patient: exam_patient!(61).first, unit: unit, requester: doctor)
     sign_in_as(reception)

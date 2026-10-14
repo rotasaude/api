@@ -42,7 +42,7 @@ RSpec.describe "Histórico do cidadão", type: :request do
     expect(body["entries"].first.keys).to include("professional_name")
     expect(body["entries"].first.keys).not_to include("detail_ref", "professional")
     expect(response.body).not_to include("Refere sede", "Metformina", "T90", "Diabetes")
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
       .to include("access" => "citizen", "user_id" => nil, "person_ref" => "patient:#{consultation.patient_id}")
   end
 
@@ -54,7 +54,7 @@ RSpec.describe "Histórico do cidadão", type: :request do
     get "/citizen/history", params: { citizen_id: child.id }
     expect(body["verified"]).to be(false)
     expect(body["entries"].map { |e| e["kind"] }.uniq).to eq(%w[triage])
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload["person_ref"]).to eq("citizen:#{child.id}")
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload["person_ref"]).to eq("citizen:#{child.id}")
     get "/citizen/history", params: { citizen_id: stranger.id }
     expect(status_and_error).to eq([ 404, "not_found" ])
     get "/citizen/history"
@@ -113,7 +113,7 @@ RSpec.describe "Histórico do cidadão", type: :request do
     sign_in_citizen(mother.phone)
     get "/citizen/history", params: { citizen_id: mother.id, before: "lixo" }
     expect(status_and_error).to eq([ 422, "invalid_cursor" ])
-    get "/citizen/history", params: { citizen_id: mother.id, kinds: %w[vaccine] }
+    get "/citizen/history", params: { citizen_id: mother.id, kinds: %w[nope] }
     expect(status_and_error).to eq([ 422, "invalid_kinds" ])
     get "/citizen/history", params: { citizen_id: mother.id, kinds: %w[consultation], limit: 1 }
     expect(body["entries"].map { |e| e["kind"] }).to eq(%w[consultation])

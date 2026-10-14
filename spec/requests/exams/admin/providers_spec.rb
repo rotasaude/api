@@ -25,8 +25,8 @@ RSpec.describe "Prestadores de exames (admin)", type: :request do
     expect(token.length).to be >= 40
     expect(provider.reload.fhir_token_digest).to eq(Digest::SHA256.hexdigest(token))
     expect(ExamProvider.by_token(token)).to eq(provider)
-    expect(DomainEvent.where(name: "exam_provider.fhir_token_rotated").last.payload).to eq("exam_provider_id" => provider.id)
-    expect(DomainEvent.last(3).map { |e| e.payload.to_json }.join).not_to include(token)
+    expect(DomainEvent.where(name: "exam_provider.fhir_token_rotated").order(:occurred_at, :created_at).last.payload).to eq("exam_provider_id" => provider.id)
+    expect(DomainEvent.all.map { |e| e.payload.to_json }.join).not_to include(token)
 
     json_post "/exams/admin/providers/#{provider.id}/fhir_token"
     expect(ExamProvider.by_token(token)).to be_nil

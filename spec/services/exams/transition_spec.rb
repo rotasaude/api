@@ -31,7 +31,7 @@ RSpec.describe Exams::Transition do
       expect(order).to have_attributes(status: "awaiting_schedule", stage: "schedule", stage_due_on: Date.new(2026, 10, 28))
       expect(order.short_code).to match(/\A[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{10}\z/)
       expect(order.events.map(&:kind)).to eq(%w[requested])
-      expect(DomainEvent.where(name: "exam_order.requested").last.payload)
+      expect(DomainEvent.where(name: "exam_order.requested").order(:occurred_at, :created_at).last.payload)
         .to eq("exam_order_id" => order.id, "origin" => "pec", "priority" => "routine")
       urgent = open(sigtap: "0202020380", priority: "urgent", requires_authorization: true)
       expect(urgent).to have_attributes(status: "awaiting_authorization", stage: "authorize", stage_due_on: Date.new(2026, 10, 21))
@@ -51,7 +51,7 @@ RSpec.describe Exams::Transition do
     expect(order.stage).to be_nil
     expect(order.events.map(&:kind)).to eq(%w[requested authorized scheduled scheduled collected resulted acknowledged])
     expect(order.events.second.closed_stage_due_on).to eq(Time.zone.today + 15)
-    expect(DomainEvent.where(name: "exam_order.resulted").last.payload)
+    expect(DomainEvent.where(name: "exam_order.resulted").order(:occurred_at, :created_at).last.payload)
       .to eq("exam_order_id" => order.id, "source" => "unit", "critical" => false)
   end
 
@@ -63,7 +63,7 @@ RSpec.describe Exams::Transition do
     expect(step(order, "cancelled", reason: "Paciente fez em outro serviço")).to be_ok
     expect(step(order, "scheduled").reason).to eq(:invalid_transition)
     expect(order.reload.events.last.reason).to eq("Paciente fez em outro serviço")
-    expect(DomainEvent.where(name: "exam_order.cancelled").last.payload).to eq("exam_order_id" => order.id)
+    expect(DomainEvent.where(name: "exam_order.cancelled").order(:occurred_at, :created_at).last.payload).to eq("exam_order_id" => order.id)
   end
 
   it "escalar é idempotente por motivo (A31), não muda o status e guarda a primeira data" do

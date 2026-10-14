@@ -24,7 +24,7 @@ RSpec.describe "Linha do tempo do profissional", type: :request do
       expect(body["entries"].map { |e| e["kind"] }).to include("consultation", "attendance", "triage")
       expect(body["entries"].first.keys).to eq(%w[id kind occurred_at unit professional title summary status detail_ref])
       expect(response.body).not_to include("Refere sede", "Metformina")
-      expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+      expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
         .to eq("patient_id" => consultation.patient_id, "user_id" => doctor.id, "access" => "timeline", "reason_code" => nil,
                "person_ref" => "patient:#{consultation.patient_id}")
     end
@@ -40,7 +40,7 @@ RSpec.describe "Linha do tempo do profissional", type: :request do
                                               created_at: now, expires_at: now + 30.minutes)
       get "/attendance/timeline", params: { opening_id: opening.id }
       expect(response).to have_http_status(:ok)
-      expect(DomainEvent.where(name: "clinical_record.viewed").last.payload["reason_code"]).to eq("case_review")
+      expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload["reason_code"]).to eq("case_review")
       get "/attendance/timeline", params: { patient_id: consultation.patient_id }
       expect(response).to have_http_status(:ok)
       sign_in_as(doctor!(unit, cbo: "223505"))
@@ -82,7 +82,7 @@ RSpec.describe "Linha do tempo do profissional", type: :request do
       get "/attendance/timeline", params: { attendance_id: attendance.id, from: Time.zone.tomorrow.iso8601 }
       expect(body["entries"]).to eq([])
       [ [ { from: "ontem" }, "invalid_period" ], [ { from: Time.zone.today.iso8601, to: Time.zone.yesterday.iso8601 }, "invalid_period" ],
-        [ { kinds: %w[vaccine] }, "invalid_kinds" ], [ { kinds: "attendance" }, "invalid_kinds" ], [ { before: "lixo" }, "invalid_cursor" ] ]
+        [ { kinds: %w[nope] }, "invalid_kinds" ], [ { kinds: "attendance" }, "invalid_kinds" ], [ { before: "lixo" }, "invalid_cursor" ] ]
         .each do |extra, error|
           get "/attendance/timeline", params: { attendance_id: attendance.id }.merge(extra)
           expect(status_and_error).to eq([ 422, error ]), extra.inspect
@@ -117,7 +117,7 @@ RSpec.describe "Linha do tempo do profissional", type: :request do
       sign_in_as(doctor)
       get "/attendance/timeline", params: { attendance_id: attendance.id }
       expect(body["person"]).to eq("display_name" => "Bia", "partial" => true, "patient_id" => nil)
-      expect(DomainEvent.where(name: "clinical_record.viewed").last.payload["person_ref"]).to eq("citizen:#{citizen.id}")
+      expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload["person_ref"]).to eq("citizen:#{citizen.id}")
       Platform::Features.set!(city: Current.city, key: "patient_timeline", enabled: false, maintainer: ledi_maintainer!)
       get "/attendance/timeline", params: { attendance_id: attendance.id }
       expect([ response.status, body["error"], body["feature"] ]).to eq([ 403, "feature_disabled", "patient_timeline" ])
