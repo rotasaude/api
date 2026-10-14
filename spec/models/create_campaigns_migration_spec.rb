@@ -2,6 +2,7 @@ require "rails_helper"
 require Rails.root.join("db/city_migrate/20260929100001_create_campaigns.rb").to_s
 require Rails.root.join("db/city_migrate/20260930200001_create_analytics.rb").to_s
 require Rails.root.join("db/city_migrate/20261002300001_create_appointment_reminders.rb").to_s
+require Rails.root.join("db/city_migrate/20261013900001_add_exam_tracking.rb").to_s
 
 # F-12.1/F-12.3: o down() da migração de cidade 20260929100001 desfaz tudo o que
 # o up() cria (três tabelas, a coluna da chave de SMS, as duas funções de guarda
@@ -13,7 +14,6 @@ require Rails.root.join("db/city_migrate/20261002300001_create_appointment_remin
 # Postgres é transacional, então down e up rodam num savepoint desfeito no fim
 # (além da transação de fixture) e o banco de teste compartilhado nunca fica
 # alterado. O retrato do schema é lido pela MESMA conexão.
-require Rails.root.join("db/city_migrate/20261013900001_add_exam_tracking.rb").to_s
 RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up" do
   let(:new_tables) { %w[campaigns campaign_recipients citizen_contact_preferences] }
   let(:new_column) { %w[city_profile campaigns_sms_enabled] }
