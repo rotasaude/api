@@ -260,6 +260,11 @@ Rails.application.routes.draw do
     get  "regulation/queue",      to: "regulation#queue"
     post "orders/:id/authorize",  to: "regulation#authorize"
     post "orders/:id/deny",       to: "regulation#deny"
+    scope "provider", module: :provider, as: :provider do
+      get  "orders",              to: "orders#index"
+      post "orders/:id/schedule", to: "orders#schedule"
+      post "orders/:id/collect",  to: "orders#collect"
+    end
     scope "admin", module: :admin, as: :admin do
       get   "catalog_items",     to: "catalog_items#index"
       post  "catalog_items",     to: "catalog_items#create"
