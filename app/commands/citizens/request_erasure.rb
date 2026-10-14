@@ -1,6 +1,8 @@
 # ADR 0026: o citizen_verifier registra no posto, com documento conferido, o
 # pedido de exclusão de TODOS os pares do CPF. CPF com par atendido nasce
-# retido por base legal; o mesmo vale para CPF com documento clínico emitido.
+# retido por base legal; o mesmo vale para CPF com documento clínico emitido
+# e para CPF com exame (ADR 0036, A49). `retained?` é a regra única: o pedido
+# e a reconferência do Citizens::Erase usam a mesma.
 module Citizens
   module RequestErasure
     module_function
@@ -16,7 +18,7 @@ module Citizens
 
       request = nil
       ApplicationRecord.transaction do
-        retained = attended?(pairs) || documented?(pairs)
+        retained = retained?(pairs)
         request = CitizenErasureRequest.create!(
           cpf: digits, presented_citizen: pairs.order(:created_at).first, requested_by_user: by,
           document_checked: true, status: retained ? "retained" : "pending", decided_at: (Time.current if retained)
@@ -32,9 +34,18 @@ module Citizens
 
     def pairs_of(digits) = Citizen.not_erased.where(cpf: digits)
 
+    def retained?(pairs) = attended?(pairs) || documented?(pairs) || examined?(pairs)
+
     def attended?(pairs) = Attendance.where(citizen_id: pairs.select(:id)).exists?
 
     # ADR 0033 (spec §8): documento clínico emitido é registro retido.
     def documented?(pairs) = ClinicalDocument.where(citizen_id: pairs.select(:id)).exists?
+
+    # ADR 0036 (A49): exame é registro clínico — pedido em qualquer situação,
+    # cancelado inclusive, ou resultado externo do paciente dos pares.
+    def examined?(pairs)
+      patients = pairs.where.not(patient_id: nil).select(:patient_id)
+      ExamOrder.where(patient_id: patients).exists? || ExamResult.where(patient_id: patients).exists?
+    end
   end
 end

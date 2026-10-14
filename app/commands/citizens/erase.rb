@@ -1,7 +1,7 @@
 # ADR 0026 (spec §4.4): o municipal_admin confirma a exclusão (o step-up fica
 # no controller). Numa transação só, com trava no pedido e nos pares do CPF:
-# reconfere a retenção (atendimento chegado depois do pedido vira `retained`,
-# nada mais muda); senão, para cada par, revoga, anonimiza, apaga o apagável e
+# reconfere a retenção pela mesma regra do pedido (atendimento, documento ou
+# exame chegado depois do pedido vira `retained`, nada mais muda); senão, para cada par, revoga, anonimiza, apaga o apagável e
 # troca CPF e telefone por um marcador que não identifica ninguém.
 # ADR 0028: também o CNS do CADSUS e a consulta pendente.
 # ADR 0031: também o nome completo, o social e o da mãe.
@@ -48,7 +48,7 @@ module Citizens
         # entrou noutra unidade antes da trava, recomeça com ela na frente.
         raise UnitsChanged unless (unit_ids_of(pairs) - locked_units).empty?
         # O banco não exige decided_by_user: quem decide é gravado aqui, sempre.
-        if RequestErasure.attended?(Citizen.where(id: pairs.map(&:id)))
+        if RequestErasure.retained?(Citizen.where(id: pairs.map(&:id)))
           request.update!(status: "retained", decided_by_user: by, decided_at: Time.current)
           DomainEvents.publish("citizen.erasure_retained", request_id: request.id)
           next result = Result.ok(request: request)

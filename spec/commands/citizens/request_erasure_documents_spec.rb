@@ -13,4 +13,17 @@ RSpec.describe Citizens::RequestErasure do
     result = described_class.call(cpf: citizen.cpf, document_checked: true, by: verifier!)
     expect(result.payload[:request].status).to eq("retained")
   end
+
+  it "Erase reconfere: documento emitido depois do pedido retém na confirmação" do
+    unit = create_unit
+    citizen = verified_citizen!(2)
+    allow(described_class).to receive(:attended?).and_return(false) # isola a regra do documento
+    request = described_class.call(cpf: citizen.cpf, document_checked: true, by: verifier!).payload[:request]
+    expect(request.status).to eq("pending")
+    consultation = finalized_consultation!(unit: unit, doctor: doctor!(unit), citizen: citizen)
+    ClinicalDocuments::Issue.call(kind: "attendance_declaration", content: {}, by: verifier!, attendance: consultation.attendance)
+    admin = staff_with("adm-#{SecureRandom.hex(2)}@cidade.gov.br", "municipal_admin")
+    result = Citizens::Erase.call(request: request, by: admin)
+    expect(result.payload[:request].status).to eq("retained")
+  end
 end
