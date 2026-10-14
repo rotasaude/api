@@ -1,7 +1,7 @@
 require "rails_helper"
 
-# O api valida contra a CÓPIA do esquema publicado no contracts (tag
-# exams-v1.0.0, contracts d7f8ce7). Mudou o esquema lá: copie e troque os
+# O api valida contra a CÓPIA do esquema publicado no contracts (contracts
+# d7f8ce7, antes da tag exams-v1.0.0). Mudou o esquema lá: copie e troque os
 # hashes aqui.
 RSpec.describe "Cópias dos esquemas do contracts (exams-v1.0.0)" do
   it "as cópias são as publicadas" do

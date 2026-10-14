@@ -32,9 +32,9 @@ module Exams
         ProfessionalLink.active.joins(:professional).where(professionals: { user_id: user.id }, health_unit_id: unit_id).exists?
     end
 
-    # A42: quem lê o detalhe como regulador (exam_regulator) recebe o CID; o
-    # municipal_admin só o recebe pela fila de regulação.
-    def cid10_reader?(user, grant) = grant&.kind == :regulator && user.has_role?("exam_regulator")
+    # A42/A44: o papel decide, não o vínculo: exam_regulator e municipal_admin
+    # recebem o CID na fila e no detalhe, mesmo sendo também equipe da unidade.
+    def cid10_reader?(user) = regulator?(user)
 
     def regulator?(user) = user.has_role?("exam_regulator") || user.has_role?("municipal_admin")
 

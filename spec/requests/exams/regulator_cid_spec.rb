@@ -61,4 +61,60 @@ RSpec.describe "Exames — CID para o regulador (A42)", type: :request do
     expect(json_body["cid10_justification"]).to be_nil
     expect(json_body["requester"]["cns"]).to be_nil
   end
+
+  it "municipal_admin: o detalhe também traz o CID (o papel decide)" do
+    order
+    sign_in_as(staff_with("adm-#{SecureRandom.hex(2)}@cidade.gov.br", "municipal_admin"))
+    get "/exams/orders/#{order.id}"
+    expect(json_body).to include("cid10_justification" => "D649")
+    expect(json_body["requester"]["cns"]).to be_nil
+  end
+
+  it "regulador que também é recepção ou profissional vinculado à unidade: CID no detalhe" do
+    order
+    both = staff_with("rec-#{SecureRandom.hex(2)}@cidade.gov.br", "exam_regulator", "citizen_verifier")
+    sign_in_as(both)
+    get "/exams/orders/#{order.id}"
+    expect(json_body).to include("cid10_justification" => "D649")
+    expect(json_body["requester"]["cns"]).to be_nil
+
+    linked = doctor!(unit)
+    Membership.create!(user: linked, role: "exam_regulator", granted_at: Time.current)
+    sign_in_as(linked)
+    get "/exams/orders/#{order.id}"
+    expect(json_body).to include("cid10_justification" => "D649")
+    expect(json_body["requester"]["cns"]).to be_nil
+  end
+
+  it "a lista de atrasados da cidade segue sem CID, para regulador e admin" do
+    order
+    %w[exam_regulator municipal_admin].each do |role|
+      sign_in_as(staff_with("#{role[0, 3]}-#{SecureRandom.hex(2)}@cidade.gov.br", role))
+      get "/exams/orders", params: { overdue: "true" }
+      expect(response).to have_http_status(:ok)
+      json_body["orders"].each do |o|
+        expect(o["cid10_justification"]).to be_nil
+        expect(o["requester"]["cns"]).to be_nil
+      end
+    end
+  end
+
+  it "autorizar e negar respondem com o CID" do
+    order
+    provider = exam_provider!.tap { |p| ExamProviderItem.find_or_create_by!(exam_provider: p, exam_catalog_item: ExamCatalogItem.first) }
+    sign_in_as(staff_with("reg-#{SecureRandom.hex(2)}@cidade.gov.br", "exam_regulator"))
+    json_post "/exams/orders/#{order.id}/authorize", provider_id: provider.id
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to include("cid10_justification" => "D649")
+    expect(json_body["requester"]["cns"]).to be_nil
+  end
+
+  it "o portal do prestador nunca traz o CID" do
+    order
+    lab = exam_provider!(name: "Lab CID")
+    ExamProviderItem.find_or_create_by!(exam_provider: lab, exam_catalog_item: ExamCatalogItem.first)
+    sign_in_as(staff_with("lab-#{SecureRandom.hex(2)}@lab.com.br", "exam_provider"))
+    get "/exams/provider/orders"
+    expect(response.body).not_to include("D649")
+  end
 end
