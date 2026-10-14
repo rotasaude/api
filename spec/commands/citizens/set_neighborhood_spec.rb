@@ -5,7 +5,7 @@ RSpec.describe Citizens::SetNeighborhood do
   let!(:centro) { Neighborhood.create!(name: "Centro", source: "seed") }
   let!(:batel) { Neighborhood.create!(name: "Batel", source: "seed") }
 
-  def payloads = DomainEvent.where(name: "citizen.neighborhood_changed").map(&:payload)
+  def payloads = DomainEvent.where(name: "citizen.neighborhood_changed").order(:occurred_at, :created_at).map(&:payload)
 
   it "grava, troca e apaga, com um evento por mudança, só ids" do
     described_class.call(citizen: citizen, neighborhood_id: centro.id)

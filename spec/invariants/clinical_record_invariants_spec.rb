@@ -69,7 +69,7 @@ RSpec.describe "Invariantes do prontuário (ADR 0031)", type: :request do
       sign_in_as(user).tap { |session| session.update!(mfa_verified_at: Time.current) if user == admin }
       expect { get path }.to change { DomainEvent.where(name: "clinical_record.viewed").count }.by(1), path
       expect(response).to have_http_status(:ok), path
-      expect(DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).last["access"]).to eq(access), path
+      expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).pluck(:payload).last["access"]).to eq(access), path
     end
   end
 

@@ -120,12 +120,12 @@ RSpec.describe "Consulta", type: :request do
     ClinicalRecordOpening.create!(patient_id: patient_id, user: nurse, reason_code: "case_review", created_at: now, expires_at: now + 30.minutes)
     get "/attendance/consultations/#{id}"
     expect(response).to have_http_status(:ok)
-    expect(DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).last)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).pluck(:payload).last)
       .to eq("patient_id" => patient_id, "user_id" => nurse.id, "access" => "justified", "reason_code" => "case_review")
     sign_in_as(doctor)
     get "/attendance/consultations/#{id}"
     expect(response).to have_http_status(:ok)
-    expect(DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).last)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).pluck(:payload).last)
       .to eq("patient_id" => patient_id, "user_id" => doctor.id, "access" => "author", "reason_code" => nil)
   end
 
@@ -138,7 +138,7 @@ RSpec.describe "Consulta", type: :request do
     sign_in_as(nurse)
     get "/attendance/consultations/#{consultation.id}"
     expect(response).to have_http_status(:ok)
-    expect(DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).last).to include("access" => "in_context")
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).pluck(:payload).last).to include("access" => "in_context")
     now = Time.current
     opening = ClinicalRecordOpening.create!(patient: consultation.patient, user: nurse, reason_code: "case_review",
                                             created_at: now, expires_at: now + 30.minutes)

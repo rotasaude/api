@@ -73,9 +73,9 @@ RSpec.describe Citizens::Erase do
     # O consentimento fica (só acréscimo), revogado, com origem "erasure".
     expect(Consent.find(consent_id).revoked_at).to be_present
     expect(Consent.where(conversation_id: triage.conversation_id, revoked_at: nil)).to be_empty
-    expect(DomainEvent.where(name: "consent.revoked").last.payload).to include("origin" => "erasure")
+    expect(DomainEvent.where(name: "consent.revoked").order(:occurred_at, :created_at).last.payload).to include("origin" => "erasure")
     expect(result.payload[:request].reload.cpf).to start_with("erased:")
-    expect(DomainEvent.where(name: "citizen.erased").last.payload).to eq("request_id" => request.id)
+    expect(DomainEvent.where(name: "citizen.erased").order(:occurred_at, :created_at).last.payload).to eq("request_id" => request.id)
   end
 
   it "o pedido confirmado não guarda o CPF: o cifrado gravado muda (achado a; o banco não exige)" do
@@ -187,7 +187,7 @@ RSpec.describe Citizens::Erase do
     expect(triage.reload).to have_attributes(anonymized_at: nil, tier: be_present)
     expect(Consent.where(conversation_id: triage.conversation_id, revoked_at: nil)).to exist
     expect(CitizenSession.exists?(session.id)).to be(true)
-    expect(DomainEvent.where(name: "citizen.erasure_retained").last.payload).to eq("request_id" => request.id)
+    expect(DomainEvent.where(name: "citizen.erasure_retained").order(:occurred_at, :created_at).last.payload).to eq("request_id" => request.id)
     expect(DomainEvent.where(name: "citizen.erased")).to be_empty
   end
 
@@ -334,7 +334,7 @@ RSpec.describe Citizens::Erase do
         .to eq(skipped: :not_due)
       expect(AppointmentNotice.where(appointment_id: appointment.id)).to be_empty
       expect(Appointment.live.where(citizen_id: pair.id)).to be_empty
-      expect(DomainEvent.where(name: "appointment.cancelled").last.payload)
+      expect(DomainEvent.where(name: "appointment.cancelled").order(:occurred_at, :created_at).last.payload)
         .to eq("appointment_id" => appointment.id, "by" => "erasure")
       expect(DomainEvent.where(name: "appointment_request.closed").pluck(:payload))
         .to include("appointment_request_id" => booked.id, "closed_reason" => "consent_revoked")

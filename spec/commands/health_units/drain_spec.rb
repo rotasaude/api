@@ -84,7 +84,7 @@ RSpec.describe HealthUnits::Drain do
       schedule(new_request, now + 5.days)
       expect(drain).to be_ok
     end
-    payload = DomainEvent.where(name: "appointment.moved").last.payload
+    payload = DomainEvent.where(name: "appointment.moved").order(:occurred_at, :created_at).last.payload
     expect(payload).to include("fit_in" => true)
   end
 

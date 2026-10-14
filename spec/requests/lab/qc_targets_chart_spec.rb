@@ -61,7 +61,7 @@ RSpec.describe "CIQ — referência do laboratório e Levey-Jennings", type: :re
     expect(response).to have_http_status(:not_found) # nenhuma corrida depois da nova referência
     get "/lab/qc/targets/suggestions", params: { provider_id: s.provider.id }
     expect(json_body["suggestions"].map { |x| x["level"] }).to eq([ "Nível 2" ])
-    expect(DomainEvent.where(name: "lab_qc_target.accepted").map(&:payload).last).to include("source" => "laboratory")
+    expect(DomainEvent.where(name: "lab_qc_target.accepted").order(:occurred_at, :created_at).map(&:payload).last).to include("source" => "laboratory")
     stepped_up!(staff)
     json_post "/lab/qc/targets/suggestions/accept", body.merge(level: "Nível 2")
     expect(response).to have_http_status(:forbidden)

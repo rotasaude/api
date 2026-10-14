@@ -45,7 +45,7 @@ RSpec.describe "gov.br login through the single auth callback", type: :request d
     expect(response).to have_http_status(:found)
     expect(response.location).to start_with("http://#{TEST_CITY_A.slug}.localhost:5175/dashboard/?grant=")
     user = User.find_by!(email_address: "fulano@gov.br")
-    expect(DomainEvent.where(name: "identity.govbr_login").last.payload).to include("user_id" => user.id)
+    expect(DomainEvent.where(name: "identity.govbr_login").order(:occurred_at, :created_at).last.payload).to include("user_id" => user.id)
 
     post "/session/grant", params: { token: query_of(response.location).fetch("grant") }, headers: { "HOST" => test_city_host }
     expect(response).to have_http_status(:created)

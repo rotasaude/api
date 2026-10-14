@@ -168,7 +168,7 @@ RSpec.describe "Medicamentos em uso", type: :request do
     expect { get "/attendance/consultations/#{draft.id}/renewal" }
       .to change { DomainEvent.where(name: "clinical_record.viewed").count }.by(1)
     expect([ response.status, json_body ]).to eq([ 200, { "items" => [] } ])
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
       .to include("access" => "in_context", "user_id" => doctor.id, "patient_id" => draft.patient_id)
   end
 
@@ -197,7 +197,7 @@ RSpec.describe "Medicamentos em uso", type: :request do
     sign_in_as(doctor)
     get "/attendance/patients/#{draft.patient_id}/medications"
     expect(response).to have_http_status(:ok)
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
       .to include("access" => "in_context", "user_id" => doctor.id, "patient_id" => draft.patient_id)
   end
 end

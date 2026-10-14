@@ -33,7 +33,7 @@ RSpec.describe Patients::ApplyMedicationEvent do
     expect([ reactivated.payload[:event].kind, reactivated.payload[:medication].id ]).to eq([ "reactivated", medication.id ])
     expect(medication.events.order(:created_at).pluck(:kind)).to eq(%w[added changed suspended reactivated])
     expect(PatientMedication.where(patient: patient).count).to eq(1)
-    payloads = DomainEvent.where(name: "patient_medication.changed").pluck(:payload)
+    payloads = DomainEvent.where(name: "patient_medication.changed").order(:occurred_at, :created_at).pluck(:payload)
     expect(payloads.last).to eq("patient_medication_id" => medication.id, "kind" => "reactivated", "consultation_id" => consultation.id)
     expect(payloads.to_json).not_to include("LOSARTANA", "12/12h")
   end

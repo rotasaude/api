@@ -12,7 +12,7 @@ RSpec.describe Scheduling::SaveAppointmentType do
   it "cria tipo da cidade, com evento só de key e usuário" do
     type = described_class.create(attrs: valid, by: admin).payload[:type]
     expect(type).to have_attributes(key: "acupuntura", origin: "city", active: true, cbo_prefixes: ["2251", "2236"])
-    expect(DomainEvent.where(name: "appointment_type.changed").last.payload).to eq("key" => "acupuntura", "user_id" => admin.id)
+    expect(DomainEvent.where(name: "appointment_type.changed").order(:occurred_at, :created_at).last.payload).to eq("key" => "acupuntura", "user_id" => admin.id)
   end
 
   {
@@ -40,7 +40,7 @@ RSpec.describe Scheduling::SaveAppointmentType do
     medica = AppointmentType.find_by!(key: "consulta_medica")
     result = described_class.update(type: medica, attrs: { "duration_minutes" => 30, "active" => false, "name" => "Consulta" }, by: admin)
     expect(result.payload[:type]).to have_attributes(duration_minutes: 30, active: false, name: "Consulta", origin: "platform")
-    expect(DomainEvent.where(name: "appointment_type.changed").last.payload).to eq("key" => "consulta_medica", "user_id" => admin.id)
+    expect(DomainEvent.where(name: "appointment_type.changed").order(:occurred_at, :created_at).last.payload).to eq("key" => "consulta_medica", "user_id" => admin.id)
     expect(described_class.update(type: medica, attrs: { "cbo_prefixes" => ["2251"] }, by: admin).reason).to eq(:platform_type_locked)
     expect(medica.reload.cbo_prefixes).to eq(["2251", "2252", "2253"])
   end

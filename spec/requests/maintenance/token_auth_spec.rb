@@ -238,7 +238,8 @@ RSpec.describe "Maintenance token authentication", type: :request do
     it "never puts a secret in the refusal payload" do
       post "/graphql", params: { query: "{ auditEvents { name } }" }, headers: bearer
 
-      payload = PlatformEvent.where(name: "maintenance.token.refused").last.payload.to_json
+      expect(PlatformEvent.where(name: "maintenance.token.refused")).to exist
+      payload = PlatformEvent.all.map { |e| e.payload.to_json }.join
       expect(payload).not_to include(secret)
       expect(payload).not_to include(token.token_digest)
     end

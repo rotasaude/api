@@ -32,7 +32,7 @@ RSpec.describe "Laboratório — mapa e digitação", type: :request do
     entry = json_body["items"].sole
     expect(entry["analytes"].sole).to include("key" => "glicose", "reference" => { "low" => 70.0, "high" => 99.0, "text" => nil },
                                               "entry_max" => 1500.0, "critical_high" => 400.0, "formula" => nil)
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload).to include("access" => "lab_report", "lab_requisition_id" => req.id)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload).to include("access" => "lab_report", "lab_requisition_id" => req.id)
     json_post "/lab/results", item_id: item.id, values: [ { analyte_key: "glicose", value: "450" } ]
     expect(json_body["results"].sole).to include("value" => "450", "flag" => "critical_high", "source" => "typed", "chosen" => false)
     json_post "/lab/results", barcode: req.samples.first.barcode, sigtap_code: "0202010473", values: [ { analyte_key: "glicose", value: "98" } ]

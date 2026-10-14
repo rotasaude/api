@@ -128,7 +128,7 @@ RSpec.describe "Maintenance city", type: :request do
 
     event = refused.last.payload
     expect(event).to include("outcome" => "rejected", "module" => "token", "refused_fields" => [ "city" ])
-    expect(event.to_json).not_to include(other.slug)
+    expect(PlatformEvent.all.map { |e| e.payload.to_json }.join).not_to include(other.slug)
   end
 
   it "writes no refusal for an in-scope city, or for a human session" do

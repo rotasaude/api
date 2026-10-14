@@ -33,7 +33,7 @@ RSpec.describe Citizens::RejectErasure do
     expect(result.payload[:request].reload.cpf).to start_with(Citizens::Erase::TOMBSTONE_PREFIX)
     expect(result.payload[:request].presented_citizen_id).to eq(pair.id)
     expect(pair.reload).to have_attributes(cpf: "52998224725", erased_at: nil)
-    expect(DomainEvent.where(name: "citizen.erasure_rejected").last.payload).to eq("request_id" => request.id)
+    expect(DomainEvent.where(name: "citizen.erasure_rejected").order(:occurred_at, :created_at).last.payload).to eq("request_id" => request.id)
   end
 
   it "não decide de novo um pedido já decidido" do

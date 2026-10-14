@@ -12,7 +12,7 @@ RSpec.describe Citizens::RequestErasure do
   it "cria pedido pendente para o CPF, apresentando um par" do
     result = request!
     expect(result.payload[:request]).to have_attributes(status: "pending", requested_by_user_id: verifier.id)
-    expect(DomainEvent.where(name: "citizen.erasure_requested").last.payload.keys).to contain_exactly("request_id")
+    expect(DomainEvent.where(name: "citizen.erasure_requested").order(:occurred_at, :created_at).last.payload.keys).to contain_exactly("request_id")
   end
 
   it "nasce retido quando algum par do CPF tem atendimento" do
@@ -20,7 +20,7 @@ RSpec.describe Citizens::RequestErasure do
     Attendance.create!(triage: triage, citizen: pair_b, health_unit: create_unit, checked_in_by_user: verifier,
                        checked_in_at: Time.current, check_in_method: "code")
     expect(request!.payload[:request]).to have_attributes(status: "retained", decided_at: be_present)
-    expect(DomainEvent.where(name: "citizen.erasure_retained").last.payload.keys).to contain_exactly("request_id")
+    expect(DomainEvent.where(name: "citizen.erasure_retained").order(:occurred_at, :created_at).last.payload.keys).to contain_exactly("request_id")
   end
 
   it "recusa sem documento conferido, CPF inválido, CPF sem cadastro e pedido já pendente" do

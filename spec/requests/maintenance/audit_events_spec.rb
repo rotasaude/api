@@ -67,8 +67,8 @@ RSpec.describe "Maintenance audit events", type: :request do
     expect(events.map { |e| e["occurredAt"] }).to eq(events.map { |e| e["occurredAt"] }.sort.reverse)
 
     # O evento em si continua sem e-mail: a Ruling R18 vale para o que é gravado.
-    expect(PlatformEvent.where(name: "maintenance.session.failed").last.payload.to_json)
-      .not_to include(maintainer.email_address)
+    expect(PlatformEvent.where(name: "maintenance.session.failed")).to exist
+    expect(PlatformEvent.all.map { |e| e.payload.to_json }.join).not_to include(maintainer.email_address)
   end
 
   it "keeps an attempt and its outcome together on one correlation id" do

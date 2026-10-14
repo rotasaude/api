@@ -66,7 +66,7 @@ RSpec.describe "Laboratório — valores críticos", type: :request do
     release!(item)
     sign_in_as(releaser)
     expect { get "/lab/criticals/unnotified" }.to change { DomainEvent.where(name: "clinical_record.viewed").count }.by(1)
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload).to include("access" => "lab_report", "lab_requisition_id" => req.id)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload).to include("access" => "lab_report", "lab_requisition_id" => req.id)
     get "/lab/criticals/unnotified/count"
     expect(json_body.keys).to eq([ "count" ])
   end

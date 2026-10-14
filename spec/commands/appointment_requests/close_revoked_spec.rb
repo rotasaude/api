@@ -22,7 +22,7 @@ RSpec.describe AppointmentRequests::CloseRevoked do
     RevokeConsent.call(conversation: triage.conversation, origin: "web")
     request = AppointmentRequest.find_by!(origin_triage_id: triage.id)
     expect(request).to have_attributes(status: "closed", closed_reason: "consent_revoked", closed_at: be_present)
-    expect(DomainEvent.where(name: "appointment_request.closed").last.payload)
+    expect(DomainEvent.where(name: "appointment_request.closed").order(:occurred_at, :created_at).last.payload)
       .to eq("appointment_request_id" => request.id, "closed_reason" => "consent_revoked")
   end
 

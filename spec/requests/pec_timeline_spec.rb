@@ -30,7 +30,7 @@ RSpec.describe "Página do PEC", type: :request do
     expect(response.headers["Cache-Control"]).to include("no-store")
     expect(response.headers["Referrer-Policy"]).to eq("no-referrer")
     expect(response.body).not_to include(citizen.cpf, "52998224725")
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
       .to include("access" => "pec_external", "user_id" => nurse.id, "person_ref" => "citizen:#{citizen.id}")
   end
 

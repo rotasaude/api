@@ -25,7 +25,7 @@ RSpec.describe "Impresso da consulta", type: :request do
     expect(response.headers["Cache-Control"]).to include("no-store")
     expect(response.headers["Content-Disposition"]).to include("consulta.pdf")
     expect(response.headers["Content-Disposition"]).not_to include("Maria")
-    expect(DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).last)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).pluck(:payload).last)
       .to include("patient_id" => consultation.patient_id, "access" => "author")
 
     consultation.patient.update_columns(full_name: nil)

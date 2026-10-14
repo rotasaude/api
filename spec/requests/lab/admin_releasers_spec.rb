@@ -53,7 +53,7 @@ RSpec.describe "Laboratório — liberadores e token", type: :request do
     expect(LabMiddlewareToken.pluck(:token_digest)).not_to include(first)
     json_delete "/lab/admin/providers/#{provider.id}/middleware_token"
     expect(LabMiddlewareToken.active.where(exam_provider: provider)).to be_empty
-    expect(DomainEvent.where(name: "lab_middleware.token_rotated").map(&:payload).first.keys).to contain_exactly("exam_provider_id")
+    expect(DomainEvent.where(name: "lab_middleware.token_rotated").order(:occurred_at, :created_at).map(&:payload).first.keys).to contain_exactly("exam_provider_id")
   end
 
   it "B33: /professionals/pending lista quem só tem lab_releaser e some depois do perfil" do

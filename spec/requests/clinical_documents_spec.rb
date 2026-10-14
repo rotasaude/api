@@ -21,7 +21,7 @@ RSpec.describe "Documentos clínicos", type: :request do
     expect(json_body["items"].map { |item| item["id"] }).to eq([ document["id"] ])
     get "/attendance/documents/#{document['id']}"
     expect(json_body["id"]).to eq(document["id"])
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload).to include("access" => "author")
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload).to include("access" => "author")
   end
 
   # A46 aplicado aos documentos: o polling da tela (assinatura pendente) lê só
@@ -79,7 +79,7 @@ RSpec.describe "Documentos clínicos", type: :request do
     walk_in_attendance!(unit, citizen: consultation.attendance.citizen)
     get "/attendance/documents/#{id}"
     expect(response).to have_http_status(:ok)
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload).to include("access" => "in_context", "user_id" => nurse.id)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload).to include("access" => "in_context", "user_id" => nurse.id)
     sign_in_as(verifier!)
     get "/attendance/documents/#{id}"
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])

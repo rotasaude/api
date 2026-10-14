@@ -32,7 +32,7 @@ RSpec.describe "Console: modo de prontuário da cidade", type: :request do
                                                       "missing" => [ "credential_missing:ledi" ])
     expect(CityProfile.current.ibge_code).to eq("4106902")
     expect(audits.map(&:payload)).to eq([ { "city_id" => city.id, "fields" => %w[ibge_code pec_url record_mode] } ])
-    expect(audits.first.payload.to_s).not_to include("pec.cidade")
+    expect(PlatformEvent.all.map { |e| e.payload.to_s }.join).not_to include("pec.cidade")
   end
 
   it "null e \"\" limpam PEC e IBGE; nada mudou não audita" do

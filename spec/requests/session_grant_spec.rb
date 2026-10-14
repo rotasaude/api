@@ -34,7 +34,7 @@ RSpec.describe "POST /session/grant", type: :request do
     expect(session).to have_attributes(operator_id: operator.id, user_id: nil)
     expect(PlatformEvent.where(name: "operator.city_access").last.payload)
       .to eq("city_id" => city.id, "operator_id" => operator.id)
-    expect(DomainEvent.where(name: "operator.city_access").last.payload)
+    expect(DomainEvent.where(name: "operator.city_access").order(:occurred_at, :created_at).last.payload)
       .to include("operator_id" => operator.id, "session_id" => session.id)
     expect(set_cookie_header).to match(/session_id=/)
     expect(set_cookie_header).not_to match(/domain=/i)

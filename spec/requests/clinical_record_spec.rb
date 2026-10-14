@@ -29,7 +29,7 @@ RSpec.describe "Prontuário", type: :request do
     expect(body.dig("patient", "display_name")).to eq("Mariana")
     expect(body["access"]).to eq("in_context")
     expect(body["consultations"].sole["id"]).to eq(consultation.id)
-    expect(DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).last)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).pluck(:payload).last)
       .to eq("patient_id" => consultation.patient_id, "user_id" => doctor.id, "access" => "in_context", "reason_code" => nil)
     sign_in_as(doctor!(unit, cbo: "225142"))
     get "/attendance/attendances/#{attendance.id}/record"

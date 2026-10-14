@@ -85,7 +85,7 @@ RSpec.describe "Leitura da assinatura", type: :request do
     json_post "/signature/signatures/#{signature.id}/verify", {}
     expect(body.keys).to include("provider", "simulated")
     expect(body.values_at("verification", "verification_reasons")).to eq([ "invalid", [ "certificate_revoked" ] ])
-    expect(DomainEvent.where(name: "signature.verified").pluck(:payload).last)
+    expect(DomainEvent.where(name: "signature.verified").order(:occurred_at, :created_at).pluck(:payload).last)
       .to eq("signature_id" => signature.id, "verification" => "invalid")
     expect(signature.reload.canonical_sha256).to eq(Digest::SHA256.hexdigest(signature.canonical_json)) # o registro não muda
 

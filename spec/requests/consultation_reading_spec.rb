@@ -18,7 +18,7 @@ RSpec.describe "Leitura da consulta finalizada", type: :request do
   end
   def body = JSON.parse(response.body)
   def status_and_error = [ response.status, body["error"] ]
-  def viewed = DomainEvent.where(name: "clinical_record.viewed")
+  def viewed = DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at)
   def admin_reads = ClinicalRecordAdministrativeRead.all
   def step_up!(user) = sign_in_as(user).update!(mfa_verified_at: Time.current)
   def json_patch(path, params) = patch(path, params: params.to_json, headers: { "CONTENT_TYPE" => "application/json" })

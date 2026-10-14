@@ -19,7 +19,7 @@ RSpec.describe "Leitura administrativa dos documentos", type: :request do
     stepped_up!(admin)
     expect { get "/clinical_record/consultations/#{consultation.id}/documents" }.to change(ClinicalRecordAdministrativeRead, :count).by(1)
     expect(json_body["items"].map { |item| item["id"] }).to eq([ document.id ])
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload).to include("access" => "administrative", "consultation_id" => consultation.id)
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload).to include("access" => "administrative", "consultation_id" => consultation.id)
     get "/clinical_record/consultations/#{SecureRandom.uuid}/documents"
     expect(response).to have_http_status(:not_found)
     sign_in_as(doctor)

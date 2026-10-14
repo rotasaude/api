@@ -21,7 +21,7 @@ RSpec.describe "Declarações por unidade", type: :request do
     json_body
   end
 
-  def viewed = DomainEvent.where(name: "clinical_record.viewed")
+  def viewed = DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at)
 
   describe "emissão" do
     it "com a unidade do atendimento emite; sem unidade ou com outra, 422 attendance_outside_unit" do

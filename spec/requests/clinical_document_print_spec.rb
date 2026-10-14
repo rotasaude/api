@@ -22,7 +22,7 @@ RSpec.describe "Impresso do documento clínico", type: :request do
     expect(response.body).to start_with("%PDF")
     expect(response.headers["Cache-Control"]).to include("no-store")
     expect(response.headers["Content-Disposition"]).to include("documento.pdf")
-    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload).to include("access" => "author")
+    expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload).to include("access" => "author")
     document.update!(status: "cancelled", cancel_reason: "Emitido por engano aqui", cancelled_at: Time.current, cancelled_by_user_id: doctor.id)
     get "/attendance/documents/#{document.id}/print"
     expect([ response.status, JSON.parse(response.body) ]).to eq([ 409, { "error" => "already_cancelled" } ])

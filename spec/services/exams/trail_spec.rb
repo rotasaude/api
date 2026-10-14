@@ -10,7 +10,7 @@ RSpec.describe Exams::Trail do
   let(:doctor) { doctor!(unit) }
   let(:order) { exam_order!(patient: exam_patient!(40).first, unit: unit, requester: doctor) }
 
-  def viewed = DomainEvent.where(name: "clinical_record.viewed")
+  def viewed = DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at)
 
   it "leitura clínica grava access e exam_order_id; a administrativa não grava" do
     grant = Exams::Access.for_order(user: doctor, order: order)

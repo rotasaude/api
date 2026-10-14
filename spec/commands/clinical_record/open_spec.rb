@@ -64,7 +64,7 @@ RSpec.describe ClinicalRecord::Open do
       expect(result).to be_ok
       opening = result.payload[:opening]
       expect([ opening.patient_id, opening.citizen_id ]).to eq([ nil, citizen.id ])
-      expect(DomainEvent.where(name: "clinical_record.opened").last.payload)
+      expect(DomainEvent.where(name: "clinical_record.opened").order(:occurred_at, :created_at).last.payload)
         .to include("opening_id" => opening.id, "patient_id" => nil, "citizen_id" => citizen.id)
       declared = screening_citizen!(45)
       expect(ClinicalRecord::Open.call(user: nurse, cpf: declared.cpf, reason_code: "active_search").reason)

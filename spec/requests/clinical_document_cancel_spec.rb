@@ -24,7 +24,7 @@ RSpec.describe "Cancelamento de documento clínico", type: :request do
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_reason" } ])
     json_post "/attendance/documents/#{document.id}/cancel", reason: "Dias errados no atestado"
     expect(json_body).to include("status" => "cancelled", "cancel_reason" => "Dias errados no atestado")
-    expect(DomainEvent.where(name: "clinical_document.cancelled").last.payload).to eq("document_id" => document.id, "kind" => "sick_note")
+    expect(DomainEvent.where(name: "clinical_document.cancelled").order(:occurred_at, :created_at).last.payload).to eq("document_id" => document.id, "kind" => "sick_note")
     json_post "/attendance/documents/#{document.id}/cancel", reason: "Dias errados no atestado"
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "already_cancelled" } ])
     stepped_up!(doctor!(unit))

@@ -20,14 +20,14 @@ RSpec.describe PecExternal::Authorize do
     described_class.call(city: city, url: url, params: params)
   end
 
-  def denied_codes = DomainEvent.where(name: "pec.external_view_denied").map { |e| e.payload["reason_code"] }
+  def denied_codes = DomainEvent.where(name: "pec.external_view_denied").order(:occurred_at, :created_at).map { |e| e.payload["reason_code"] }
 
   it "válida: o profissional, a unidade e a pessoa; evento de abertura só com ids" do
     result = call
     expect(result).to be_ok
     grant = result.payload[:grant]
     expect([ grant.user, grant.unit, grant.person.citizen_ids ]).to eq([ nurse, unit, [ citizen.id ] ])
-    expect(DomainEvent.where(name: "pec.external_view_opened").last.payload)
+    expect(DomainEvent.where(name: "pec.external_view_opened").order(:occurred_at, :created_at).last.payload)
       .to eq("user_id" => nurse.id, "unit_id" => unit.id, "patient_id" => nil)
   end
 

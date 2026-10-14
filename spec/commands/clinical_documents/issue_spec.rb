@@ -26,7 +26,7 @@ RSpec.describe ClinicalDocuments::Issue do
     # SQL cru: pluck/pick com o nome da coluna passaria pelo tipo cifrado e devolveria o texto claro.
     raw = ApplicationRecord.connection.select_value("SELECT content FROM clinical_documents WHERE id = #{ApplicationRecord.connection.quote(document.id)}")
     expect(raw).not_to include("leave")
-    expect(DomainEvent.where(name: "clinical_document.issued").last.payload)
+    expect(DomainEvent.where(name: "clinical_document.issued").order(:occurred_at, :created_at).last.payload)
       .to eq("document_id" => document.id, "kind" => "sick_note", "consultation_id" => consultation.id, "issue_mode" => "paper")
   end
 
@@ -110,7 +110,7 @@ RSpec.describe ClinicalDocuments::Issue do
                                     by: verifier!, attendance: attendance).payload[:document]
     expect(document).to have_attributes(issue_mode: "paper", consultation_id: nil, cbo_code: nil,
                                         patient_id: consultation.patient_id, citizen_id: attendance.citizen_id)
-    expect(DomainEvent.where(name: "clinical_document.issued").last.payload).to include("attendance_id" => attendance.id)
+    expect(DomainEvent.where(name: "clinical_document.issued").order(:occurred_at, :created_at).last.payload).to include("attendance_id" => attendance.id)
     expect(described_class.call(kind: "sick_note", content: leave, by: verifier!, attendance: attendance).details).to eq(field: "kind")
     old_visit = walk_in_attendance!(unit, citizen: verified_citizen!(3, full_name: "Ivo Lima"), checked_in_at: 31.days.ago)
     expect(described_class.call(kind: "attendance_declaration", content: {}, by: verifier!, attendance: old_visit).reason)
