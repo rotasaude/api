@@ -17,21 +17,26 @@ module Exams
 
     module_function
 
-    # Política do exame, memorizada por sigtap_code dentro de `cached` (uma
+    # Política do exame, memorizada por [cidade, sigtap_code] dentro de `cached` (uma
     # leitura do catálogo por exame da página, não por linha).
     def policy(sigtap_code)
       cache = ActiveSupport::IsolatedExecutionState[:exam_release_policies]
       return lookup(sigtap_code) unless cache
 
-      cache.fetch(sigtap_code) { cache[sigtap_code] = lookup(sigtap_code) }
+      key = [ Current.city&.id, sigtap_code ]
+      cache.fetch(key) { cache[key] = lookup(sigtap_code) }
     end
 
     def cached
-      outer = ActiveSupport::IsolatedExecutionState[:exam_release_policies]
-      ActiveSupport::IsolatedExecutionState[:exam_release_policies] = outer || {}
+      state = ActiveSupport::IsolatedExecutionState
+      outer = state[:exam_release_policies]
+      outer_labels = state[:exam_label_memo]
+      state[:exam_release_policies] = outer || {}
+      state[:exam_label_memo] = outer_labels || {}
       yield
     ensure
-      ActiveSupport::IsolatedExecutionState[:exam_release_policies] = outer
+      state[:exam_release_policies] = outer
+      state[:exam_label_memo] = outer_labels
     end
 
     def pickup_at_unit?(sigtap_code) = policy(sigtap_code) == "never_citizen"

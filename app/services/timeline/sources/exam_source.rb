@@ -10,6 +10,7 @@ module Timeline
     module ExamSource
       KIND = "exam".freeze
       CLOSED = { "denied" => "Pedido negado", "cancelled" => "Pedido cancelado" }.freeze
+      GENERIC_CLOSED = "Pedido encerrado".freeze
       RESULTED = "Resultado registrado".freeze
 
       module_function
@@ -21,9 +22,12 @@ module Timeline
                             .includes(:unit, :events, result: :exam_order, requester_user: :professional)
         externals = ::ExamResult.where(patient_id: person.patient_id, origin: "external").includes(registered_by_user: :professional)
         rows = window(orders, "exam_orders", before, from, to, limit) + window(externals, "exam_results", before, from, to, limit)
+        # Mesma ordem total das entradas (created_at decrescente, id crescente;
+        # kind é "exam" nos dois): corta ANTES de montar as entradas.
+        page = rows.sort_by { |row| [ -row.created_at.to_r, row.id ] }.first(limit)
         Exams::Release.cached do
-          rows.map { |row| row.is_a?(::ExamOrder) ? order_entry(row) : external_entry(row) }
-        end.sort_by(&:sort_key).first(limit)
+          page.map { |row| row.is_a?(::ExamOrder) ? order_entry(row) : external_entry(row) }
+        end
       end
 
       def window(scope, table, before, from, to, limit)
@@ -35,16 +39,17 @@ module Timeline
         title = Exams::Labels.exam(order.sigtap_code, order.sigtap_competence)
         name = Labels.professional_name(order.requester_user)
         Entry.new(kind: KIND, source_id: order.id, occurred_at: order.created_at, unit: { id: order.unit_id, name: order.unit.name },
-                  professional: { name: name, cbo_code: nil }, title: title, summary: professional_summary(order),
+                  professional: { name: order.requester_display_name, cbo_code: nil }, title: title, summary: professional_summary(order),
                   status: order.status, detail_ref: { type: "exam_order", id: order.id },
                   citizen: citizen(order, title, name), document: document(order, order.id))
       end
 
       def external_entry(result)
         title = Exams::Labels.exam(result.sigtap_code, result.released_on.strftime("%Y%m"))
-        name = Labels.professional_name(result.registered_by_user)
+        user = result.registered_by_user
+        name = Labels.professional_name(user)
         Entry.new(kind: KIND, source_id: result.id, occurred_at: result.created_at, unit: nil,
-                  professional: name && { name: name, cbo_code: nil }, title: title, summary: "Resultado externo — #{result.laboratory_name}",
+                  professional: user && { name: Screenings::Json.staff_name(user), cbo_code: nil }, title: title, summary: "Resultado externo — #{result.laboratory_name}",
                   status: "external", detail_ref: { type: "exam_result", id: result.id },
                   citizen: citizen(result, title, nil), document: document(result, result.id))
       end
@@ -53,7 +58,7 @@ module Timeline
         return RESULTED if order.result
         return "#{Exams::Labels::STAGE.fetch(order.stage)} pendente" if order.stage
 
-        CLOSED.fetch(order.status, order.status)
+        CLOSED.fetch(order.status, GENERIC_CLOSED)
       end
 
       def citizen(subject, title, professional_name)

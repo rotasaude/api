@@ -140,6 +140,14 @@ RSpec.describe Timeline::Sources::ExamSource do
     count = 0
     counter = ->(*, payload) { count += 1 if payload[:sql].include?("exam_catalog_items") }
     ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { entries }
-    expect(count).to be <= 2
+    expect(count).to eq(2)
+  end
+
+  it "o nome do exame é resolvido uma vez por (código, competência) da página, não por linha" do
+    3.times { resulted(sigtap: "0202020380", policy: "immediate") }
+    calls = 0
+    allow(ClinicalTerms::SigtapExams).to receive(:label).and_wrap_original { |m, *a| calls += 1; m.call(*a) }
+    expect(entries.size).to eq(3)
+    expect(calls).to eq(1)
   end
 end
