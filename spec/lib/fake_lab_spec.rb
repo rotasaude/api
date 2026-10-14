@@ -89,9 +89,22 @@ RSpec.describe "FakeLab" do
     expect(log.string).to include("fake_lab desligado")
   end
 
-  it "nunca em produção" do
-    env = { "RAILS_ENV" => "production" }
-    out = IO.popen(env, [ "ruby", Rails.root.join("lib/fake_lab/run.rb").to_s ], err: [ :child, :out ], &:read)
-    expect(out).to include("fake-lab nunca sobe em produção")
+  # Só roda nos ambientes de simulação (dev, test, staging). Sem FAKE_LAB_TOKEN,
+  # quem passou do guarda morre no ENV.fetch (KeyError) em vez de entrar no laço.
+  def run_fake_lab(rails_env)
+    env = { "RAILS_ENV" => rails_env, "RACK_ENV" => nil, "FAKE_LAB_TOKEN" => nil }
+    IO.popen(env, [ "ruby", Rails.root.join("lib/fake_lab/run.rb").to_s ], err: [ :child, :out ], &:read)
+  end
+
+  it "aborta fora dos ambientes de simulação (produção e desconhecidos)" do
+    %w[production qa].each do |name|
+      expect(run_fake_lab(name)).to include("fake-lab só roda em ambiente de simulação")
+    end
+  end
+
+  it "roda em staging (passa do guarda)" do
+    out = run_fake_lab("staging")
+    expect(out).not_to include("fake-lab só roda em ambiente de simulação")
+    expect(out).to include("FAKE_LAB_TOKEN")
   end
 end

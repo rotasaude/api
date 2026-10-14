@@ -1,5 +1,7 @@
-# Laboratório simulado do compose de dev (ADR 0036). Nunca em produção.
-abort "fake-lab nunca sobe em produção" if (ENV["RAILS_ENV"] || ENV["RACK_ENV"]).to_s == "production"
+# Laboratório simulado do compose de dev/staging (ADR 0036). Só nos ambientes de
+# simulação — a mesma lista de Platform::Features::SIMULATION_ENVS (sem carregar o Rails).
+abort "fake-lab só roda em ambiente de simulação (development, test, staging)" unless
+  %w[development test staging].include?((ENV["RAILS_ENV"] || ENV["RACK_ENV"] || "development").to_s)
 
 require "logger"
 require_relative "runner"
