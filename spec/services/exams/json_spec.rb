@@ -51,8 +51,16 @@ RSpec.describe Exams::Json do
                             reason: "overdue")
     expect(clinical[:events].find { |e| e[:kind] == "requested" }[:actor]).to eq(type: "user", name: Screenings::Json.staff_name(doctor))
     expect(clinical[:events].find { |e| e[:kind] == "cancelled" }[:reason]).to eq("Paciente fez em outro serviço")
-    expect(admin[:events].find { |e| e[:kind] == "cancelled" }[:reason]).to be_nil
-    expect(admin[:events].find { |e| e[:kind] == "escalated" }[:reason]).to eq("overdue")
+    # A32: negar e cancelar mostram o motivo nas duas visões; o escalonamento
+    # e a ciência pela equipe, só na clínica.
+    expect(admin[:events].find { |e| e[:kind] == "cancelled" }[:reason]).to eq("Paciente fez em outro serviço")
+    expect(admin[:events].find { |e| e[:kind] == "escalated" }[:reason]).to be_nil
+    denied = ExamOrderEvent.new(kind: "denied", reason: "Fora do protocolo", occurred_at: Time.current)
+    team_ack = ExamOrderEvent.new(kind: "acknowledged", reason: "Solicitante de férias", occurred_at: Time.current)
+    expect(%i[clinical administrative].map { |view| described_class.event(denied, view: view)[:reason] })
+      .to eq([ "Fora do protocolo", "Fora do protocolo" ])
+    expect(%i[clinical administrative].map { |view| described_class.event(team_ack, view: view)[:reason] })
+      .to eq([ "Solicitante de férias", nil ])
     instant = /\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})\z/
     expect([ clinical[:status_changed_at], *clinical[:events].map { |e| e[:occurred_at] } ]).to all(match(instant))
   end

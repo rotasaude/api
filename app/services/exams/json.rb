@@ -1,6 +1,10 @@
 # Formas do contrato §2 (com as Divergências D4, D5 e D16).
 module Exams
   module Json
+    # A32: o motivo de negar e cancelar vai também à visão administrativa; o
+    # do escalonamento e o da ciência pela equipe, só à clínica.
+    ADMINISTRATIVE_REASON_KINDS = %w[denied cancelled].freeze
+
     module_function
 
     def order(order, view:, user:, events: true)
@@ -52,7 +56,8 @@ module Exams
               elsif event.actor_user then { type: "user", name: Screenings::Json.staff_name(event.actor_user) }
               else { type: "system", name: nil }
               end
-      reason = event.kind == "escalated" ? event.escalation_reason : (view == :clinical ? event.reason : nil)
+      reason = event.kind == "escalated" ? event.escalation_reason : event.reason
+      reason = nil unless view == :clinical || ADMINISTRATIVE_REASON_KINDS.include?(event.kind)
       { kind: event.kind, occurred_at: event.occurred_at.iso8601, actor: actor, reason: reason }
     end
 
