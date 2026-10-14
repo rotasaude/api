@@ -70,4 +70,38 @@ RSpec.describe ExamCrew do
     expect(described_class.seed_current_city(slug: slug, ddd: "41", password: "dev-password")[:switch]).to start_with("desligado")
     expect(ExamCatalogItem.count).to eq(0)
   end
+
+  describe "seed_platform! guards" do
+    let(:competence) { Time.zone.today.strftime("%Y%m") }
+
+    def active_release_without_exams!(procedures:)
+      TerminologyRelease.where(kind: "sigtap").update_all(status: "superseded")
+      release = TerminologyRelease.create!(kind: "sigtap", version: competence, source_sha256: "a" * 64, imported_by: "db:seed",
+                                           imported_at: Time.current, status: "importing")
+      procedures.times do |n|
+        SigtapProcedure.create!(release_id: release.id, code: format("03%08d", n), name: "PROC #{n}", complexity: "1", sex: "I",
+                                age_min_months: 0, age_max_months: 9999)
+      end
+      release.update!(status: "active", activated_at: Time.current)
+      release
+    end
+
+    it "release de dev (recorte) sem os quatro exames: republica" do
+      active_release_without_exams!(procedures: SigtapSample::PROCEDURES.size - 4)
+      expect(described_class.seed_platform!).to eq(sigtap: competence, republished: true)
+    end
+
+    it "release real (grande) sem os quatro exames: não toca em nada" do
+      release = active_release_without_exams!(procedures: SigtapSample::PROCEDURES.size + 1)
+      expect(described_class.seed_platform!).to eq(sigtap: competence, republished: false)
+      expect(release.reload.status).to eq("active")
+      expect(TerminologyRelease.where(kind: "sigtap", version: competence).count).to eq(1)
+    end
+
+    it "em ambiente implantado recusa as duas entradas" do
+      allow(Rota).to receive(:deployed?).and_return(true)
+      expect { described_class.seed_platform! }.to raise_error(/implantado/)
+      expect { described_class.seed_current_city(slug: slug, ddd: "41", password: "x") }.to raise_error(/implantado/)
+    end
+  end
 end

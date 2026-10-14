@@ -82,7 +82,8 @@ else
   puts "[seeds] SIGTAP ....... #{sigtap[:sigtap]} #{sigtap[:imported] ? 'importada (recorte de dev)' : 'já ativa'}"
 
   # Exames do módulo 21a (ADR 0036): garante os quatro procedimentos do grupo 02
-  # na competência corrente (republica o recorte se a release ativa não os tem).
+  # na competência corrente. Republica o recorte de dev se a release ativa é o
+  # recorte e não os tem; uma SIGTAP real ativa nunca é tocada (só avisa no log).
   exams_sigtap = ExamCrew.seed_platform!
   puts "[seeds] SIGTAP exames . #{exams_sigtap[:sigtap]} #{exams_sigtap[:republished] ? 'republicada (recorte de dev)' : 'já completa'}"
 

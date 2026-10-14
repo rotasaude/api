@@ -47,11 +47,19 @@ class ExamCrew
   ].freeze
 
   class << self
+    # Só republica o recorte de dev: se a release ativa da competência é maior
+    # que o recorte (SIGTAP real), não toca em nada e avisa.
     def seed_platform!
+      guard_environment!
       competence = Time.zone.today.strftime("%Y%m")
       release = Terminology::Sigtap.release_for(competence)
       have = release ? SigtapProcedure.where(release_id: release.id, code: EXAM_CODES).count : 0
       return { sigtap: competence, republished: false } if release&.version == competence && have == EXAM_CODES.size
+
+      if release&.version == competence && SigtapProcedure.where(release_id: release.id).count > SigtapSample::PROCEDURES.size
+        Rails.logger.warn("[exam_crew] SIGTAP real ativa; exames do 21a não verificados")
+        return { sigtap: competence, republished: false }
+      end
 
       Dir.mktmpdir do |dir|
         result = Terminology::Import.call(kind: "sigtap", version: competence,
@@ -62,7 +70,7 @@ class ExamCrew
     end
 
     def seed_current_city(slug:, ddd:, password:)
-      raise "semente de exames: não roda em produção" if Rota.deployed? && !Platform::Features::SIMULATION_ENVS.include?(Rails.env)
+      guard_environment!
 
       maintainer = Maintainer.find_by(email_address: DEV_MAINTAINER)
       return { switch: "desligado (sem mantenedor #{DEV_MAINTAINER})", users: [], orders: 0 } unless maintainer
@@ -79,6 +87,11 @@ class ExamCrew
 
     private
 
+    def guard_environment!
+      raise "semente de exames: ambiente implantado (#{Rota::DEPLOYED_ENVS.join(' ou ')}); a semente é só de dev" if Rota.deployed?
+    end
+
+    # Semente de dev: itens existentes não são atualizados (intencional).
     def catalog!
       CATALOG.each do |attrs|
         item = ExamCatalogItem.find_or_initialize_by(sigtap_code: attrs[:sigtap_code])
@@ -137,20 +150,22 @@ class ExamCrew
         [ "SEED-3", "0202010503", "Laboratório Municipal Central", 40.days.ago ] ].count do |reference, code, provider_name, at|
         next false if ExamOrder.exists?(external_reference: reference)
 
-        guide = Exams::Files.store(bytes: guide_pdf(reference), content_type: "application/pdf", user: reception).payload.fetch(:file)
-        guide.update!(consumed_at: at)
-        opened = Exams::Open.call(patient: patient, sigtap_code: code, priority: "routine", unit: unit, origin: "reception_guide",
-                                  requester_user: doctor, guide_file: guide, external_reference: reference, created_by: reception,
-                                  sigtap_competence: competence, now: at)
-        raise "semente de exames: guia #{reference} recusada (#{opened.reason})" if opened.failure?
+        ApplicationRecord.transaction do
+          guide = Exams::Files.store(bytes: guide_pdf(reference), content_type: "application/pdf", user: reception).payload.fetch(:file)
+          guide.update!(consumed_at: at)
+          opened = Exams::Open.call(patient: patient, sigtap_code: code, priority: "routine", unit: unit, origin: "reception_guide",
+                                    requester_user: doctor, guide_file: guide, external_reference: reference, created_by: reception,
+                                    sigtap_competence: competence, now: at)
+          raise "semente de exames: guia #{reference} recusada (#{opened.reason})" if opened.failure?
 
-        order = opened.payload.fetch(:order)
-        if provider_name
-          provider = ExamProvider.find_by!(name: provider_name)
-          scheduled = Exams::Transition.call(order: order, kind: "scheduled", actor_user: reception, now: at,
-                                             changes: { exam_provider_id: provider.id, scheduled_at: at + 1.day,
-                                                        scheduled_place: "#{provider_name} — recepção" })
-          raise "semente de exames: agendamento de #{reference} recusado (#{scheduled.reason})" if scheduled.failure?
+          order = opened.payload.fetch(:order)
+          if provider_name
+            provider = ExamProvider.find_by!(name: provider_name)
+            scheduled = Exams::Transition.call(order: order, kind: "scheduled", actor_user: reception, now: at,
+                                               changes: { exam_provider_id: provider.id, scheduled_at: at + 1.day,
+                                                          scheduled_place: "#{provider_name} — recepção" })
+            raise "semente de exames: agendamento de #{reference} recusado (#{scheduled.reason})" if scheduled.failure?
+          end
         end
         true
       end
