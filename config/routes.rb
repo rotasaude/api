@@ -271,6 +271,10 @@ Rails.application.routes.draw do
       post "orders/:id/collect",  to: "orders#collect"
       post "orders/:id/result",   to: "orders#result"
     end
+    # O csv vem ANTES: `admin/report` aceita (.:format) e engoliria
+    # `admin/report.csv` como JSON.
+    get "admin/report.csv", to: "reports#csv", format: false
+    get "admin/report",     to: "reports#show", format: false
     scope "admin", module: :admin, as: :admin do
       get   "catalog_items",     to: "catalog_items#index"
       post  "catalog_items",     to: "catalog_items#create"
