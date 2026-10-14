@@ -5,6 +5,8 @@ require "json_schemer"
 # cid10_justification na fila e no detalhe; requester.cns fica fora da visão
 # administrativa; recepção, unidade e prestador seguem sem CID e sem CNS.
 RSpec.describe "Exames — CID para o regulador (A42)", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   before { exam_city! }
 
   let(:unit) { create_unit("UBS CID") }
@@ -87,15 +89,15 @@ RSpec.describe "Exames — CID para o regulador (A42)", type: :request do
   end
 
   it "a lista de atrasados da cidade segue sem CID, para regulador e admin" do
-    order
+    late = travel_to(20.days.ago) { order }
     %w[exam_regulator municipal_admin].each do |role|
       sign_in_as(staff_with("#{role[0, 3]}-#{SecureRandom.hex(2)}@cidade.gov.br", role))
       get "/exams/orders", params: { overdue: "true" }
       expect(response).to have_http_status(:ok)
-      json_body["orders"].each do |o|
-        expect(o["cid10_justification"]).to be_nil
-        expect(o["requester"]["cns"]).to be_nil
-      end
+      expect(json_body["orders"].map { |o| o["id"] }).to eq([ late.id ])
+      expect(json_body["orders"].first["overdue"]).to be_present
+      expect(json_body["orders"].first["cid10_justification"]).to be_nil
+      expect(json_body["orders"].first["requester"]["cns"]).to be_nil
     end
   end
 
@@ -109,12 +111,31 @@ RSpec.describe "Exames — CID para o regulador (A42)", type: :request do
     expect(json_body["requester"]["cns"]).to be_nil
   end
 
-  it "o portal do prestador nunca traz o CID" do
+  it "negar responde com o CID" do
+    order
+    sign_in_as(staff_with("reg-#{SecureRandom.hex(2)}@cidade.gov.br", "exam_regulator"))
+    json_post "/exams/orders/#{order.id}/deny", reason: "Sem indicação clínica"
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to include("cid10_justification" => "D649", "status" => "denied")
+    expect(json_body["requester"]["cns"]).to be_nil
+  end
+
+  it "o portal do prestador (lista) nunca traz o CID nem o CNS" do
     order
     lab = exam_provider!(name: "Lab CID")
+    lab_user = staff_with("lab-#{SecureRandom.hex(2)}@lab.com.br", "exam_provider").tap { |u| ExamProviderUser.create!(exam_provider: lab, user: u) }
     ExamProviderItem.find_or_create_by!(exam_provider: lab, exam_catalog_item: ExamCatalogItem.first)
-    sign_in_as(staff_with("lab-#{SecureRandom.hex(2)}@lab.com.br", "exam_provider"))
+    sign_in_as(staff_with("reg-#{SecureRandom.hex(2)}@cidade.gov.br", "exam_regulator"))
+    json_post "/exams/orders/#{order.id}/authorize", provider_id: lab.id
+    expect(response).to have_http_status(:ok)
+    sign_in_as(lab_user)
+    json_post "/exams/provider/orders/#{order.id}/schedule", scheduled_at: 2.days.from_now.iso8601, scheduled_place: "Lab CID"
+    expect(response).to have_http_status(:ok)
     get "/exams/provider/orders"
+    expect(response).to have_http_status(:ok)
+    expect(json_body["orders"].map { |o| o["id"] }).to eq([ order.id ])
+    expect(json_body["orders"].first).not_to have_key("cid10_justification")
     expect(response.body).not_to include("D649")
+    expect(response.body).not_to include(order.requester_cns)
   end
 end
