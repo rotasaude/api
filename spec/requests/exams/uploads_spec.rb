@@ -45,7 +45,7 @@ RSpec.describe "Arquivos de exame", type: :request do
     sign_in_as(user)
     expect { get Exams::Files.url_for(file, user: user) }.to change { DomainEvent.where(name: "clinical_record.viewed").count }.by(1)
     payload = DomainEvent.where(name: "clinical_record.viewed").last.payload
-    expect(payload).to include("access" => "exam_result", "exam_result_id" => result.id, "patient_id" => patient.id, "user_id" => user.id)
+    expect(payload).to include("access" => "exam_result", "exam_result_id" => result.id, "exam_order_id" => result.exam_order_id, "patient_id" => patient.id, "user_id" => user.id)
     expect(payload.to_s).not_to include("JVBER")
   end
 end

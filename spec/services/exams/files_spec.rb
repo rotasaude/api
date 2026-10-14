@@ -36,4 +36,12 @@ RSpec.describe Exams::Files do
       expect(described_class.resolve(token, user: user)).to eq(:expired)
     end
   end
+
+  it "recusa token assinado para outra cidade" do
+    file = pdf_file!(user: user)
+    verifier = Rails.application.message_verifier(described_class::PURPOSE)
+    token = verifier.generate({ "c" => SecureRandom.uuid, "f" => file.id, "u" => user.id, "x" => 5.minutes.from_now.to_i },
+                              purpose: described_class::PURPOSE)
+    expect(described_class.resolve(token, user: user)).to be_nil
+  end
 end

@@ -12,7 +12,7 @@ module ClinicalRecord
 
       payload = { patient_id: patient.id, user_id: user.id, access: grant.kind.to_s, reason_code: grant.opening&.reason_code }
       payload[:consultation_id] = consultation_id if consultation_id
-      payload.merge!(extra)
+      payload = extra.merge(payload) # as chaves centrais da trilha sempre vencem
       DomainEvents.publish("clinical_record.viewed", **payload)
     end
   end
