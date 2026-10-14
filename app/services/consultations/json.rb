@@ -80,7 +80,7 @@ module Consultations
                  e.values_at("sigtap_code", "sigtap_competence", "cid10_justification") << (e["priority"] || "routine")
                end
              else
-               c.exam_requests.where(addendum_id: nil).order(:created_at, :id).pluck(:sigtap_code, :sigtap_competence, :cid10_justification, :priority)
+               c.exam_requests.where(addendum_id: nil).order(:created_at, :id).pluck(:sigtap_code, :sigtap_competence, :cid10_justification, :priority, :id)
              end
       exam_list(rows)
     end
@@ -93,8 +93,9 @@ module Consultations
     end
 
     def exam_list(rows)
-      rows.map do |code, competence, cid, priority|
-        { sigtap_code: code, label: ClinicalTerms::SigtapExams.label(code, competence), cid10_justification: cid,
+      rows.map do |code, competence, cid, priority, id|
+        # A45: `id` é o do pedido gravado; rascunho e `changes` não têm linha.
+        { id: id, sigtap_code: code, label: ClinicalTerms::SigtapExams.label(code, competence), cid10_justification: cid,
           priority: priority }.compact
       end
     end

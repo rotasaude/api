@@ -18,6 +18,7 @@ module Exams
         label: Labels.exam(order.sigtap_code, order.sigtap_competence), priority: order.priority,
         cid10_justification: clinical || cid10 ? order.cid10_justification : nil, origin: order.origin,
         consultation_id: order.consultation_exam_request&.consultation_id,
+        consultation_exam_request_id: order.consultation_exam_request_id, # A45
         requester: { user_id: order.requester_user_id, name: order.requester_display_name, cns: clinical ? order.requester_cns : nil },
         unit: { id: order.unit_id, name: order.unit.name },
         provider: order.exam_provider && { id: order.exam_provider_id, name: order.exam_provider.name },

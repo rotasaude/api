@@ -25,6 +25,7 @@ RSpec.describe Consultations::Json do
                                                  "label" => "Diabetes não insulino-dependente", "action" => "add",
                                                  "onset_on" => "2025-08-01", "onset_precision" => "month" } ])
     expect(json["exam_requests"]).to eq([ { "sigtap_code" => "0202010503", "label" => "DOSAGEM DE HEMOGLOBINA GLICOSILADA", "priority" => "routine" } ])
+    expect(json["exam_requests"].sole).not_to have_key("id") # rascunho: ainda sem linha
     expect(json.values_at("status", "conducts", "finalized_at", "addenda")).to eq([ "draft", [ "1" ], nil, [] ])
     expect(json["care_type"]).to eq("5")
   end
@@ -61,6 +62,8 @@ RSpec.describe Consultations::Json do
     json = described_class.consultation(consultation.reload).deep_stringify_keys
     expect(json["evaluated_problems"].sole).to include("problem_id" => PatientProblem.sole.id, "code" => "T90", "action" => "add")
     expect(json["exam_requests"].map { |e| e["sigtap_code"] }).to eq([ "0202010503" ])
+    # A45: o id do pedido gravado (o dashboard liga ao exame por ele).
+    expect(json["exam_requests"].sole["id"]).to eq(consultation.exam_requests.where(addendum_id: nil).sole.id)
     addendum = json["addenda"].sole
     expect(addendum.keys).to match_array(%w[id author_name created_at reason text changes signature])
     expect(addendum.values_at("author_name", "reason", "text")).to eq([ doctor.professional.professional_name, "exame adicional pedido", "Pedido creatinina" ])

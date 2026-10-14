@@ -16,6 +16,7 @@
     "cid10_justification",
     "origin",
     "consultation_id",
+    "consultation_exam_request_id",
     "requester",
     "unit",
     "provider",
@@ -89,6 +90,17 @@
       ]
     },
     "consultation_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "consultation_exam_request_id": {
+      "description": "Id do pedido de exame da consulta que originou este exame (A45); null fora de origin=consultation. O dashboard liga pedido e exame por ele.",
       "anyOf": [
         {
           "$ref": "#/$defs/uuid"

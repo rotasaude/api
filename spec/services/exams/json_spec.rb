@@ -30,6 +30,20 @@ RSpec.describe Exams::Json do
     expect(clinical[:result_fields]).to eq([ { "key" => "hba1c", "label" => "Hemoglobina glicada", "unit" => "%", "loinc" => "4548-4" } ])
   end
 
+  # A45: o id do pedido da consulta, nas duas visões (null fora da consulta).
+  it "consultation_exam_request_id: o id do pedido da consulta, nas duas visões; null na guia" do
+    unit = create_unit("UBS Json A45")
+    doctor = doctor!(unit)
+    guide = exam_order!(patient: exam_patient!(32).first, unit: unit, requester: doctor)
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(41))
+    request = consultation.exam_requests.first
+    linked = ExamOrder.find_by!(consultation_exam_request_id: request.id)
+    %i[clinical administrative].each do |view|
+      expect(described_class.order(linked, view: view, user: doctor)[:consultation_exam_request_id]).to eq(request.id)
+      expect(described_class.order(guide, view: view, user: doctor)).to include(consultation_exam_request_id: nil)
+    end
+  end
+
   # A16/A28: o evento do job diário vem com ator system (name null);
   # instantes ISO 8601 sem fração de segundo ($defs/instant do contrato).
   it "ator system, motivo por visão e instantes sem fração" do
