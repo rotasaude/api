@@ -16,7 +16,7 @@ RSpec.describe "Exames — atrasos", type: :request do
     sign_in_as(staff_with("rec-#{SecureRandom.hex(2)}@cidade.gov.br", "citizen_verifier"))
     get "/exams/orders", params: { unit_id: unit.id, overdue: "true", stage: "schedule", sigtap_code: "0202010503" }
     expect(json_body["orders"].map { |o| o["id"] }).to eq([ late.id ])
-    expect(json_body["orders"].first["overdue"]).to eq("stage" => "schedule", "due_on" => late.stage_due_on.iso8601, "days_late" => 5)
+    expect(json_body["orders"].first["overdue"]).to eq("stage" => "schedule", "due_on" => late.stage_due_on.iso8601, "days_late" => (Time.zone.today - late.stage_due_on).to_i)
     get "/exams/orders", params: { unit_id: unit.id, overdue: "true", stage: "result" }
     expect(json_body["orders"]).to eq([])
   end

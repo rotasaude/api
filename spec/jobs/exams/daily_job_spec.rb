@@ -5,32 +5,46 @@ require "rails_helper"
 RSpec.describe Exams::DailyJob do
   include ActiveSupport::Testing::TimeHelpers
 
-  before { exam_city! }
-  # O job roda no fuso da cidade (CityConnection.with); o arranjo também.
-  around { |example| Time.use_zone("America/Sao_Paulo") { example.run } }
+  let(:city_zone) { "America/Sao_Paulo" }
+  # A cidade nasce com o fuso do exemplo (o fuso é imutável depois: trigger).
+  before do
+    unless city_zone == "America/Sao_Paulo"
+      City.create!(slug: TEST_CITY_A.slug, name: TEST_CITY_A.name, status: "active", time_zone: city_zone,
+                   database_url: TEST_CITY_A.database_url, encryption_key: TEST_CITY_A.encryption_key,
+                   schema_version: CitySchema.expected_version.to_s)
+    end
+    exam_city!
+  end
+  # O arranjo roda no fuso da cidade; o job acha o dele sozinho
+  # (CityConnection.with). Exemplos de outro fuso rodam o job SEM use_zone.
+  around { |example| Time.use_zone(city_zone) { example.run } }
 
   let(:unit) { create_unit("UBS Prazo") }
   let(:doctor) { doctor!(unit) }
-  let(:zone) { ActiveSupport::TimeZone["America/Sao_Paulo"] }
-  # Âncora fixa: as datas do spec são relativas a ela, não ao calendário real.
-  let(:anchor) { zone.local(2026, 10, 1, 23, 59) }
+  let(:zone) { ActiveSupport::TimeZone[city_zone] }
+  # Âncora relativa ao relógio (lida antes de qualquer travel_to), não a uma
+  # data fixa do calendário.
+  let(:anchor) { zone.now.change(hour: 23, min: 59) }
 
-  def resulted_order(at:)
+  def resulted_order(at:, priority: "routine", provider: nil)
     travel_to(at) do
-      order = exam_order!(patient: exam_patient!(exam_seq!).first, unit: unit, requester: doctor)
+      order = exam_order!(patient: exam_patient!(exam_seq!).first, unit: unit, requester: doctor, priority: priority)
       ApplicationRecord.transaction do
         order.lock!
         %w[scheduled collected resulted].each do |kind|
-          Exams::Transition.call(order: order, kind: kind, actor_user: doctor, event_payload: kind == "resulted" ? { source: "unit", critical: false } : {})
+          Exams::Transition.call(order: order, kind: kind, actor_user: doctor,
+                                 changes: kind == "scheduled" && provider ? { exam_provider_id: provider.id } : {},
+                                 event_payload: kind == "resulted" ? { source: "unit", critical: false } : {})
         end
       end
       order.reload
     end
   end
 
-  it "escala a ciência vencida no dia seguinte ao prazo, uma vez só, mesmo rodando duas vezes" do
-    order = resulted_order(at: anchor)
-    expect(order.stage_due_on).to eq(anchor.to_date + 15)
+  # Não escala no dia do prazo; escala às 6h30 do dia seguinte, uma vez só,
+  # mesmo rodando duas vezes — o job usa o stage_due_on gravado.
+  def expect_escalation_day_after(order, days:)
+    expect(order.stage_due_on).to eq(order.status_changed_at.in_time_zone(zone).to_date + days)
     due = order.stage_due_on.in_time_zone(zone)
     described_class.perform_now(now: due.change(hour: 23))
     expect(order.reload.escalated?).to be(false)
@@ -39,6 +53,36 @@ RSpec.describe Exams::DailyJob do
     events = order.reload.events.where(kind: "escalated")
     expect(events.pluck(:escalation_reason)).to eq(%w[overdue])
     expect(events.first.actor_user_id).to be_nil
+    expect(events.first.actor_provider_id).to be_nil
+  end
+
+  it "escala a ciência vencida no dia seguinte ao prazo, uma vez só, mesmo rodando duas vezes" do
+    expect_escalation_day_after(resulted_order(at: anchor), days: 15)
+  end
+
+  it "urgente: o prazo de ciência cai de 15 para 8 dias e o job respeita o gravado" do
+    expect_escalation_day_after(resulted_order(at: anchor, priority: "urgent"), days: 8)
+  end
+
+  it "prazo próprio do prestador para o exame vale no job" do
+    item = exam_catalog_item!
+    provider = exam_provider!
+    ExamProviderItem.find_by!(exam_provider: provider, exam_catalog_item: item).update!(acknowledge_days: 5)
+    expect_escalation_day_after(resulted_order(at: anchor, provider: provider), days: 5)
+  end
+
+  context "cidade em outro fuso (America/Manaus, UTC-4)" do
+    let(:city_zone) { "America/Manaus" }
+
+    it "conta o dia no fuso da cidade, não no de São Paulo nem no UTC" do
+      order = resulted_order(at: zone.now.change(hour: 21, min: 30))
+      due = order.stage_due_on.in_time_zone(zone)
+      # 23h30 de Manaus do dia do prazo já é dia seguinte em UTC e em São Paulo.
+      Time.use_zone("UTC") { described_class.perform_now(now: due.change(hour: 23, min: 30)) }
+      expect(order.reload.escalated?).to be(false)
+      Time.use_zone("UTC") { described_class.perform_now(now: (due + 1.day).change(hour: 0, min: 30)) }
+      expect(order.reload.events.where(kind: "escalated").count).to eq(1)
+    end
   end
 
   it "apaga só os arquivos órfãos com mais de 24 h" do
