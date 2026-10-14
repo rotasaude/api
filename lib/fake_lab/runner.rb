@@ -13,10 +13,14 @@ module FakeLab
         logger.info("[fake-lab] fake_lab desligado (ou exam_fhir_inbound) nesta cidade: nada a fazer")
         return []
       end
+      if client.last_status != 200
+        logger.warn("[fake-lab] ServiceRequest: #{client.last_status}")
+        return []
+      end
       requests.map do |sr|
         code = sr.dig("identifier", 0, "value")
         status = client.send_report(Report.build(sr))
-        logger.info("[fake-lab] guia #{code}: #{status}")
+        (200..299).cover?(status) ? logger.info("[fake-lab] guia #{code}: #{status}") : logger.warn("[fake-lab] guia #{code}: #{status}")
         [ code, status ]
       end
     end

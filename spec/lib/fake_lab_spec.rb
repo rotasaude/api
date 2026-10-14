@@ -38,6 +38,8 @@ RSpec.describe "FakeLab" do
            "subject" => { "identifier" => { "system" => "http://rnds.saude.gov.br/fhir/r4/NamingSystem/cpf", "value" => "52998224725" } } }
     report = FakeLab::Report.build(sr)
     expect(schema.validate(report).to_a).to eq([])
+    expect(report["status"]).to eq("final")
+    expect(report.dig("code", "coding", 0, "code")).to eq("0202010503")
     expect(Base64.strict_decode64(report.dig("presentedForm", 0, "data"))).to start_with("%PDF-")
     expect(report.to_json).not_to include("Luiz", "Maria")
   end
@@ -61,6 +63,22 @@ RSpec.describe "FakeLab" do
     expect(order.result).to have_attributes(source: "fhir", laboratory_name: "Laboratório Simulado")
     expect(log.string).not_to include(ExamHelpers::FAKE_TOKEN, order.patient.cpf)
     expect(FakeLab::Runner.tick(client: client, logger: logger)).to eq([])
+
+    # reenvio real do mesmo laudo (corrida): idempotência pelo identifier
+    result_id = order.result.id
+    sr = { "identifier" => [ { "value" => order.short_code } ], "code" => { "coding" => [ { "code" => item.sigtap_code } ] },
+           "subject" => { "identifier" => { "system" => "http://rnds.saude.gov.br/fhir/r4/NamingSystem/cpf", "value" => order.patient.cpf } } }
+    expect(client.send_report(FakeLab::Report.build(sr))).to eq(200)
+    expect(ExamResult.where(exam_order_id: order.id).pluck(:id)).to eq([ result_id ])
+  end
+
+  it "ServiceRequest não 200 (token inválido) é logado só com o status" do
+    provider
+    bad = FakeLab::Client.new(api_url: "http://#{host}", city_host: host, token: "token-invalido-0123456789abcdef0123456789")
+    log = StringIO.new
+    expect(FakeLab::Runner.tick(client: bad, logger: Logger.new(log))).to eq([])
+    expect(log.string).to include("[fake-lab] ServiceRequest: 401")
+    expect(log.string).not_to include("token-invalido")
   end
 
   it "fake_lab desligado: 403 e só log" do
