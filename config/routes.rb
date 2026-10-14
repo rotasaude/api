@@ -435,6 +435,10 @@ Rails.application.routes.draw do
     get "history",           to: "history#index"
     get "health_summary",    to: "history#health_summary"
     get "documents/:id/pdf", to: "history#document_pdf"
+
+    # Meus exames (ADR 0036; contrato §9, A22: citizen_id).
+    get "exams",         to: "exams#index"
+    get "exams/:id/pdf", to: "exams#pdf"
   end
 
   # Autoria/preview de protocolos (ADR-0009)

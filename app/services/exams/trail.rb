@@ -20,5 +20,13 @@ module Exams
       ClinicalRecord::Trail.viewed!(patient: result.patient, user: user, grant: RESULT_GRANT,
                                     extra: { exam_result_id: result.id, exam_order_id: result.exam_order_id })
     end
+
+    # O download do laudo pelo cidadão (wpda, contrato §9): access citizen,
+    # sem usuário, com a referência da pessoa (como Timeline::Trail).
+    def citizen_viewed!(person:, result:)
+      DomainEvents.publish("clinical_record.viewed", patient_id: result.patient_id, user_id: nil, access: "citizen",
+                                                     reason_code: nil, person_ref: person.ref, exam_result_id: result.id,
+                                                     exam_order_id: result.exam_order_id)
+    end
   end
 end

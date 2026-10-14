@@ -1,11 +1,7 @@
-# Nome do exame (SIGTAP da competência gravada) e rótulos de situação.
+# Nome do exame (SIGTAP da competência gravada) e rótulos de etapa. O que o
+# cidadão vê mora em Exams::Release (um lugar só).
 module Exams
   module Labels
-    CITIZEN_STATUS = {
-      "awaiting_authorization" => "Aguardando autorização", "denied" => "Pedido não autorizado — procure sua unidade",
-      "awaiting_schedule" => "Pedido registrado", "scheduled" => "Agendado", "collected" => "Coletado",
-      "resulted" => "Resultado registrado", "acknowledged" => "Resultado registrado", "cancelled" => "Cancelado"
-    }.freeze
     STAGE = { "authorize" => "Autorização", "schedule" => "Agendamento", "collect" => "Coleta", "result" => "Resultado",
               "acknowledge" => "Ciência" }.freeze
 
