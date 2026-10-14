@@ -159,7 +159,7 @@ end
 RSpec.describe "exam event bindings (ADR 0036)" do
   it "declares every exam event with no consumer" do
     names = %w[requested authorized denied scheduled collected resulted acknowledged escalated cancelled].map { |k| "exam_order.#{k}" } +
-            %w[exam_result.external_recorded exam_provider.fhir_token_rotated exam_provider.fhir_token_revoked]
+            %w[exam_result.external_recorded exam_provider.fhir_token_rotated exam_provider.fhir_token_revoked exam.patient_looked_up]
     expect(DomainEvents.registry.keys).to include(*names)
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end

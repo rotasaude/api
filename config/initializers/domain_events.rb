@@ -180,6 +180,7 @@ Rails.application.config.to_prepare do
     DomainEvents.bind "exam_order.#{kind}", to: []
   end
   DomainEvents.bind "exam_result.external_recorded", to: []
+  DomainEvents.bind "exam.patient_looked_up", to: []
   DomainEvents.bind "exam_provider.fhir_token_rotated", to: []
   DomainEvents.bind "exam_provider.fhir_token_revoked", to: []
 end

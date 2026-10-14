@@ -21,6 +21,21 @@ module Exams
       render json: Exams::Json.result(outcome[:result], view: outcome[:view], user: Current.user), status: :created
     end
 
+    def index
+      patient = uuid?(params[:patient_id]) && Patient.find_by(id: params[:patient_id])
+      return not_found unless patient
+
+      grant = ClinicalRecord::Access.call(user: Current.user, patient: patient)
+      return forbid(grant.reason.to_s) unless grant.allowed?
+
+      ClinicalRecord::Trail.viewed!(patient: patient, user: Current.user, grant: grant)
+      results = ExamResult.where(patient_id: patient.id, origin: "external").order(created_at: :desc).limit(100).map do |result|
+        Exams::Json.result(result, view: :clinical, user: Current.user)
+                   .merge(sigtap_code: result.sigtap_code, label: Exams::Labels.exam(result.sigtap_code, result.released_on.strftime("%Y%m")))
+      end
+      render json: { results: results }
+    end
+
     private
 
     # Hash em caso de sucesso; senão um lambda que desenha a recusa (depois do rollback).
