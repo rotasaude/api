@@ -1,0 +1,507 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rota-saude/schemas/exams/exam-order-v1.json",
+  "title": "rotasaude.exam_order.v1",
+  "description": "O exame como o api devolve ao dashboard (ADR 0036; contrato §2). Duas visões: clínica (result com valores, crítico e PDF) e administrativa (result reduzido; cid10_justification e requester.cns nulos). events e result_fields só no detalhe (GET /exams/orders/:id).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "short_code",
+    "patient",
+    "sigtap_code",
+    "sigtap_competence",
+    "label",
+    "priority",
+    "cid10_justification",
+    "origin",
+    "consultation_id",
+    "requester",
+    "unit",
+    "provider",
+    "scheduled_at",
+    "scheduled_place",
+    "external_reference",
+    "status",
+    "status_changed_at",
+    "overdue",
+    "escalated",
+    "guide_url",
+    "result"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "short_code": {
+      "type": "string",
+      "pattern": "^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{10}$"
+    },
+    "patient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "display_name"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "sigtap_code": {
+      "type": "string",
+      "pattern": "^02[0-9]{8}$"
+    },
+    "sigtap_competence": {
+      "type": "string",
+      "pattern": "^[0-9]{4}(0[1-9]|1[0-2])$"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1
+    },
+    "priority": {
+      "enum": [
+        "routine",
+        "urgent"
+      ]
+    },
+    "cid10_justification": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[A-Z][0-9]{2}[0-9X]?$"
+    },
+    "origin": {
+      "enum": [
+        "consultation",
+        "reception_guide",
+        "pec"
+      ]
+    },
+    "consultation_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "result_fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "loinc"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "loinc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "requester": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user_id",
+        "name",
+        "cns"
+      ],
+      "properties": {
+        "user_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cns": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]{15}$"
+        }
+      }
+    },
+    "unit": {
+      "$ref": "#/$defs/ref"
+    },
+    "provider": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ref"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "scheduled_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/instant"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "scheduled_place": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200
+    },
+    "external_reference": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 60
+    },
+    "status": {
+      "enum": [
+        "awaiting_authorization",
+        "denied",
+        "awaiting_schedule",
+        "scheduled",
+        "collected",
+        "resulted",
+        "acknowledged",
+        "cancelled"
+      ]
+    },
+    "status_changed_at": {
+      "$ref": "#/$defs/instant"
+    },
+    "overdue": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "stage",
+            "due_on",
+            "days_late"
+          ],
+          "properties": {
+            "stage": {
+              "$ref": "#/$defs/stage"
+            },
+            "due_on": {
+              "$ref": "#/$defs/date"
+            },
+            "days_late": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ]
+    },
+    "escalated": {
+      "type": "boolean"
+    },
+    "guide_url": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^/exams/files/"
+    },
+    "result": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/result_clinical"
+        },
+        {
+          "$ref": "#/$defs/result_administrative"
+        }
+      ]
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "instant": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "stage": {
+      "enum": [
+        "authorize",
+        "schedule",
+        "collect",
+        "result",
+        "acknowledge"
+      ]
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "result_administrative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "origin",
+        "source",
+        "released_on",
+        "laboratory_name"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "origin": {
+          "enum": [
+            "order",
+            "external"
+          ]
+        },
+        "source": {
+          "enum": [
+            "unit",
+            "provider",
+            "fhir",
+            "consultation"
+          ]
+        },
+        "released_on": {
+          "$ref": "#/$defs/date"
+        },
+        "laboratory_name": {
+          "type": "string"
+        }
+      }
+    },
+    "result_clinical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "origin",
+        "source",
+        "released_on",
+        "laboratory_name",
+        "critical",
+        "values",
+        "pdf_url",
+        "acknowledged_at"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "origin": {
+          "enum": [
+            "order",
+            "external"
+          ]
+        },
+        "source": {
+          "enum": [
+            "unit",
+            "provider",
+            "fhir",
+            "consultation"
+          ]
+        },
+        "released_on": {
+          "$ref": "#/$defs/date"
+        },
+        "laboratory_name": {
+          "type": "string"
+        },
+        "critical": {
+          "type": "boolean"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "key",
+              "label",
+              "value",
+              "unit",
+              "loinc"
+            ],
+            "properties": {
+              "key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              },
+              "unit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "loinc": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "pdf_url": {
+          "type": "string",
+          "pattern": "^/exams/files/"
+        },
+        "acknowledged_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/instant"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "occurred_at",
+        "actor",
+        "reason"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "requested",
+            "authorized",
+            "denied",
+            "scheduled",
+            "collected",
+            "resulted",
+            "acknowledged",
+            "escalated",
+            "cancelled"
+          ]
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/instant"
+        },
+        "actor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "name"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "user",
+                "provider",
+                "system"
+              ]
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

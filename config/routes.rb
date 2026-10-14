@@ -251,6 +251,12 @@ Rails.application.routes.draw do
   scope "/exams", module: :exams, as: :exams do
     post "uploads",      to: "uploads#create"
     get  "files/:token", to: "files#show", format: false, constraints: { token: %r{[^/]+} }
+    get  "orders",              to: "orders#index"
+    post "orders",              to: "orders#create"
+    get  "orders/:id",          to: "orders#show"
+    post "orders/:id/schedule", to: "order_steps#schedule"
+    post "orders/:id/collect",  to: "order_steps#collect"
+    post "orders/:id/cancel",   to: "order_steps#cancel"
     scope "admin", module: :admin, as: :admin do
       get   "catalog_items",     to: "catalog_items#index"
       post  "catalog_items",     to: "catalog_items#create"
