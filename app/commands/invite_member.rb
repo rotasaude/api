@@ -2,14 +2,15 @@
 # e-mail do convidado — vai para o domain_events DA CIDADE, que guarda quem
 # acessa os dados dela; nunca para a plataforma (Ruling R18).
 class InviteMember
-  def self.call(email:, role:, invited_by:, expires_in: 7.days)
-    new(email: email, role: role, invited_by: invited_by, expires_in: expires_in).call
+  def self.call(email:, role:, invited_by:, expires_in: 7.days, exam_provider: nil)
+    new(email: email, role: role, invited_by: invited_by, expires_in: expires_in, exam_provider: exam_provider).call
   end
 
-  def initialize(email:, role:, invited_by:, expires_in:)
+  def initialize(email:, role:, invited_by:, expires_in:, exam_provider: nil)
     # Normalizado UMA vez: checagens, convite gravado e evento usam o mesmo valor.
     @email = email.to_s.strip.downcase
     @role, @invited_by, @expires_in = role, invited_by, expires_in
+    @exam_provider = exam_provider
   end
 
   def call
@@ -32,6 +33,11 @@ class InviteMember
       end
     end
 
+    # ADR 0036: o papel exam_provider exige o prestador, e só ele o aceita.
+    if (@role.to_s == "exam_provider") != !@exam_provider.nil?
+      return Result.fail(:invalid, message: "exam_provider exige prestador")
+    end
+
     # F-06.9: quem já tem conta na cidade não é convidado (o aceite criaria
     # usuário duplicado).
     if User.exists?(email_address: @email)
@@ -49,6 +55,7 @@ class InviteMember
         role: @role,
         token: SecureRandom.urlsafe_base64(32),
         invited_by: @invited_by,
+        exam_provider: @exam_provider,
         expires_at: @expires_in.from_now
       )
       DomainEvents.publish("user.invited", email: @email, role: @role, invitation_id: inv.id)

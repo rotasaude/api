@@ -42,6 +42,7 @@ class AcceptInvitation
         granted_by: inv.invited_by,
         granted_at: Time.current
       )
+      ExamProviderUser.create!(exam_provider_id: inv.exam_provider_id, user: user) if inv.exam_provider_id
       inv.update!(accepted_at: Time.current)
       DomainEvents.publish("membership.granted", user_id: user.id, role: inv.role)
     end

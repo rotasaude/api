@@ -253,6 +253,12 @@ Rails.application.routes.draw do
       get   "catalog_items",     to: "catalog_items#index"
       post  "catalog_items",     to: "catalog_items#create"
       patch "catalog_items/:id", to: "catalog_items#update"
+      get    "providers",                to: "providers#index"
+      post   "providers",                to: "providers#create"
+      patch  "providers/:id",            to: "providers#update"
+      post   "providers/:id/fhir_token", to: "providers#rotate_token"
+      delete "providers/:id/fhir_token", to: "providers#revoke_token"
+      post   "providers/:id/users",      to: "providers#invite_user"
     end
   end
 
