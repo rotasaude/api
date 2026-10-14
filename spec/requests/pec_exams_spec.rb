@@ -33,13 +33,13 @@ RSpec.describe "Solicitar exames pelo PEC", type: :request do
     expect(response.headers["Content-Security-Policy"]).to include("frame-ancestors https://pec.cidade.gov.br", "form-action 'self'")
     expect(response.headers).not_to have_key("Set-Cookie")
     post "/pec/exams", params: { token: token, sigtap_code: "0202010503", priority: "urgent" }
-    order = ExamOrder.last
+    order = ExamOrder.where(requester_user_id: nurse.id).order(:created_at, :id).last
     expect(order).to have_attributes(origin: "pec", priority: "urgent", requester_user_id: nurse.id, unit_id: unit.id,
                                      patient_id: citizen.reload.patient_id)
     expect(response.body).to include("Pedido registrado", order.short_code)
     expect(response.body).not_to include(citizen.cpf)
     # Evento só com ids (leitura determinística).
-    expect(DomainEvent.where(name: "exam_order.requested").order(:id).last.payload)
+    expect(DomainEvent.where(name: "exam_order.requested").order(:occurred_at, :created_at).last.payload)
       .to eq("exam_order_id" => order.id, "origin" => "pec", "priority" => "urgent")
   end
 

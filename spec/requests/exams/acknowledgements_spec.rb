@@ -90,6 +90,53 @@ RSpec.describe "Exames — ciência e fila da equipe", type: :request do
     expect(json_body["status"]).to eq("acknowledged")
   end
 
+  def viewed_events(order)
+    DomainEvent.where(name: "clinical_record.viewed").select { |e| e.payload["exam_order_id"] == order.id }
+  end
+
+  it "ciência pelo solicitante responde na visão clínica e grava a trilha author" do
+    order = resulted!
+    sign_in_as(doctor)
+    expect { json_post "/exams/orders/#{order.id}/acknowledge" }.to change { viewed_events(order).size }.by(1)
+    expect(viewed_events(order).map { |e| e.payload.slice("access", "user_id") }).to eq([ { "access" => "author", "user_id" => doctor.id } ])
+  end
+
+  it "ciência pela equipe grava a trilha team" do
+    critical = resulted!(critical: true)
+    sign_in_as(nurse)
+    expect { json_post "/exams/orders/#{critical.id}/acknowledge", reason: "Paciente contatada" }.to change { viewed_events(critical).size }.by(1)
+    expect(viewed_events(critical).map { |e| e.payload["access"] }).to eq([ "team" ])
+  end
+
+  it "pending: os negados (visão clínica) também deixam trilha, além dos da página" do
+    resulted_order = resulted!
+    denied = exam_order!(patient: exam_patient!(exam_seq!).first, unit: unit, requester: doctor)
+    denied.update_columns(status: "denied", status_changed_at: 1.day.ago)
+    sign_in_as(doctor)
+    get "/exams/acknowledgements/pending"
+    expect(json_body["denied"].map { |o| o["id"] }).to eq([ denied.id ])
+    expect(viewed_events(denied).map { |e| e.payload["access"] }).to eq([ "author" ])
+    expect(viewed_events(resulted_order).map { |e| e.payload["access"] }).to eq([ "author" ])
+  end
+
+  it "filtro inválido responde invalid_filter; cursor inválido, invalid_cursor" do
+    sign_in_as(doctor)
+    get "/exams/acknowledgements/pending", params: { status: [ "bogus" ] }
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_filter" ])
+    get "/exams/acknowledgements/pending", params: { before: "não-é-cursor" }
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_cursor" ])
+  end
+
+  it "a lista clínica não faz N+1 nos eventos" do
+    3.times { resulted! }
+    sign_in_as(doctor)
+    queries = []
+    callback = ->(*, payload) { queries << payload[:sql] if payload[:sql].include?("exam_order_events") }
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { get "/exams/acknowledgements/pending" }
+    expect(json_body["orders"].size).to eq(3)
+    expect(queries.size).to be <= 1
+  end
+
   it "A27: baixar o laudo de um resultado de PEDIDO grava exam_result com o exam_order_id real" do
     order = resulted!
     sign_in_as(doctor)

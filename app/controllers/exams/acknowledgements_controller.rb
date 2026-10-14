@@ -13,7 +13,9 @@ module Exams
       result = Exams::Acknowledge.call(order: order, by: Current.user, reason: params[:reason])
       return render_failure(result) if result.failure?
 
-      render json: Exams::Json.order(order.reload, view: :clinical, user: Current.user)
+      order.reload
+      Exams::Trail.viewed!(order: order, user: Current.user, grant: Exams::Access.for_order(user: Current.user, order: order))
+      render json: Exams::Json.order(order, view: :clinical, user: Current.user)
     end
 
     def pending
@@ -40,10 +42,16 @@ module Exams
       page[:orders].each { |order| Exams::Trail.viewed!(order: order, user: Current.user, grant: grant) }
       body = { orders: page[:orders].map { |o| Exams::Json.order(o, view: :clinical, user: Current.user, events: false) },
                next_before: page[:next_before] }
-      body[:denied] = yield.map { |o| Exams::Json.order(o, view: :clinical, user: Current.user, events: false) } if block_given?
+      if block_given?
+        denied = yield.includes(:patient, :unit, :exam_provider, :requester_user, :consultation_exam_request).to_a
+        denied.each { |order| Exams::Trail.viewed!(order: order, user: Current.user, grant: grant) }
+        body[:denied] = denied.map { |o| Exams::Json.order(o, view: :clinical, user: Current.user, events: false) }
+      end
       render json: body
-    rescue Exams::Cursor::Invalid, Exams::OrderQuery::InvalidFilter
+    rescue Exams::Cursor::Invalid
       render json: { error: "invalid_cursor" }, status: :unprocessable_entity
+    rescue Exams::OrderQuery::InvalidFilter
+      render json: { error: "invalid_filter" }, status: :unprocessable_entity
     end
   end
 end

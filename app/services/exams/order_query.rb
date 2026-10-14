@@ -10,7 +10,7 @@ module Exams
       at, id = Cursor.decode(params[:before])
       scope = scope.where("(exam_orders.created_at, exam_orders.id) < (?, ?)", at, id) if at
       limit = Timeline::Query.limit(params[:limit])
-      rows = scope.includes(:patient, :unit, :exam_provider, :requester_user, :consultation_exam_request, result: :pdf_file)
+      rows = scope.includes(:patient, :unit, :exam_provider, :requester_user, :consultation_exam_request, :events, result: :pdf_file)
                   .order(created_at: :desc, id: :desc).limit(limit + 1).to_a
       page = rows.first(limit)
       { orders: page, next_before: rows.size > limit ? Cursor.encode(page.last) : nil }
