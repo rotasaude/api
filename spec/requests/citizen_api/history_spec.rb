@@ -113,7 +113,7 @@ RSpec.describe "Histórico do cidadão", type: :request do
     sign_in_citizen(mother.phone)
     get "/citizen/history", params: { citizen_id: mother.id, before: "lixo" }
     expect(status_and_error).to eq([ 422, "invalid_cursor" ])
-    get "/citizen/history", params: { citizen_id: mother.id, kinds: %w[exam] }
+    get "/citizen/history", params: { citizen_id: mother.id, kinds: %w[vaccine] }
     expect(status_and_error).to eq([ 422, "invalid_kinds" ])
     get "/citizen/history", params: { citizen_id: mother.id, kinds: %w[consultation], limit: 1 }
     expect(body["entries"].map { |e| e["kind"] }).to eq(%w[consultation])

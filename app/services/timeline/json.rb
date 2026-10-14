@@ -1,5 +1,6 @@
 # Formas do contrato §2: <entry> do profissional e <citizen_entry> do cidadão
-# (`document` sempre presente, null fora dos documentos — pedido W4 do wpda).
+# (`document` sempre presente, null fora dos documentos — pedido W4 do wpda;
+# `status_label` opcional, hoje só do exame — A24 do módulo 21a).
 module Timeline
   module Json
     module_function
@@ -15,6 +16,7 @@ module Timeline
       { id: "#{entry.kind}:#{entry.source_id}", kind: entry.kind, occurred_at: entry.occurred_at.iso8601,
         unit: entry.unit && { name: entry.unit[:name] }, professional_name: view[:professional_name],
         title: view[:title], summary: view[:summary], status: view[:status], document: entry.document }
+        .tap { |body| body[:status_label] = view[:status_label] if view[:status_label] } # A24: só quando presente
     end
   end
 end

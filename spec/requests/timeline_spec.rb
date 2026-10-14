@@ -82,7 +82,7 @@ RSpec.describe "Linha do tempo do profissional", type: :request do
       get "/attendance/timeline", params: { attendance_id: attendance.id, from: Time.zone.tomorrow.iso8601 }
       expect(body["entries"]).to eq([])
       [ [ { from: "ontem" }, "invalid_period" ], [ { from: Time.zone.today.iso8601, to: Time.zone.yesterday.iso8601 }, "invalid_period" ],
-        [ { kinds: %w[exam] }, "invalid_kinds" ], [ { kinds: "attendance" }, "invalid_kinds" ], [ { before: "lixo" }, "invalid_cursor" ] ]
+        [ { kinds: %w[vaccine] }, "invalid_kinds" ], [ { kinds: "attendance" }, "invalid_kinds" ], [ { before: "lixo" }, "invalid_cursor" ] ]
         .each do |extra, error|
           get "/attendance/timeline", params: { attendance_id: attendance.id }.merge(extra)
           expect(status_and_error).to eq([ 422, error ]), extra.inspect
