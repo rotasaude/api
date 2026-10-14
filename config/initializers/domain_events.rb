@@ -173,4 +173,13 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "sncr.number_used", to: []
   DomainEvents.bind "sncr.number_voided", to: []
   DomainEvents.bind "controlled_notification.recorded", to: []
+
+  # Módulo 21a (ADR 0036; contrato §12): só ids — nunca valor de resultado,
+  # nome do exame com o paciente, CPF, motivo ou token.
+  %w[requested authorized denied scheduled collected resulted acknowledged escalated cancelled].each do |kind|
+    DomainEvents.bind "exam_order.#{kind}", to: []
+  end
+  DomainEvents.bind "exam_result.external_recorded", to: []
+  DomainEvents.bind "exam_provider.fhir_token_rotated", to: []
+  DomainEvents.bind "exam_provider.fhir_token_revoked", to: []
 end

@@ -40,7 +40,10 @@ Rails.application.config.filter_parameters += [
   # ADR 0035: a chamada dos "sistemas externos" do PEC traz CPF/CNS do
   # cidadão e do profissional e a assinatura na query (a linha "Started GET"
   # usa request.filtered_path, que aplica esta lista à query).
-  /\A(documento-cidadao|documento-profissional|pec_sign)\z/
+  /\A(documento-cidadao|documento-profissional|pec_sign)\z/,
+  # ADR 0036: o arquivo em Base64, os valores do resultado, o solicitante
+  # digitado (nome, CNS), o local da coleta e a referência externa da guia.
+  /\A(data|values|requester|requester_name|requester_cns|scheduled_place|external_reference)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

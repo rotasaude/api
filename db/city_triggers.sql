@@ -1576,3 +1576,89 @@ BEGIN
   END IF;
 END
 $$;
+
+-- Módulo 21a (ADR 0036, Invariantes; Desvio 6): o pedido de exame. Nasce
+-- aguardando; identidade fixa; o cache da situação (status, etapa, prazo,
+-- prestador, agenda, escalonamento) só muda com um evento do MESMO pedido
+-- gravado na MESMA transação; nunca some. Re-cifra: só as colunas cifradas.
+CREATE OR REPLACE FUNCTION rota_exam_order_guard() RETURNS trigger AS $fn$
+DECLARE
+  encrypted text[] := ARRAY['requester_name', 'requester_cns'];
+  identity text[] := ARRAY['id', 'patient_id', 'sigtap_code', 'sigtap_competence', 'priority', 'cid10_justification',
+                           'requester_user_id', 'requester_name', 'requester_cns', 'unit_id', 'origin',
+                           'consultation_exam_request_id', 'guide_file_id', 'short_code', 'created_by_user_id', 'created_at'];
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status NOT IN ('awaiting_authorization', 'awaiting_schedule') THEN
+      RAISE EXCEPTION 'exam_orders: an order is born awaiting authorization or schedule';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'exam_orders is append-only: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
+    RETURN NEW;
+  END IF;
+  IF (SELECT jsonb_object_agg(k, v) FROM jsonb_each(to_jsonb(NEW)) AS e(k, v) WHERE k = ANY(identity))
+     IS DISTINCT FROM (SELECT jsonb_object_agg(k, v) FROM jsonb_each(to_jsonb(OLD)) AS e(k, v) WHERE k = ANY(identity)) THEN
+    RAISE EXCEPTION 'exam_orders: identity never changes';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM exam_order_events e WHERE e.exam_order_id = NEW.id AND e.txid = txid_current()) THEN
+    RAISE EXCEPTION 'exam_orders: status changes only with an event of the same transaction';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Arquivo do exame (guia, laudo): bytes cifrados nunca mudam (salvo a
+-- re-cifra); consumed_at só nasce uma vez; só o arquivo nunca usado pode
+-- ser apagado (purga dos órfãos de 24 h).
+CREATE OR REPLACE FUNCTION rota_exam_file_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.consumed_at IS NOT NULL THEN
+      RAISE EXCEPTION 'exam_files: a consumed file is never deleted';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - 'data') = (to_jsonb(OLD) - 'data') THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.consumed_at IS NULL AND NEW.consumed_at IS NOT NULL
+     AND (to_jsonb(NEW) - 'consumed_at') = (to_jsonb(OLD) - 'consumed_at') THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'exam_files: a file never changes (only consumed once)';
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.exam_orders') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS exam_orders_guard ON exam_orders';
+    EXECUTE 'CREATE TRIGGER exam_orders_guard
+      BEFORE INSERT OR UPDATE OR DELETE ON exam_orders
+      FOR EACH ROW EXECUTE FUNCTION rota_exam_order_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS exam_files_guard ON exam_files';
+    EXECUTE 'CREATE TRIGGER exam_files_guard
+      BEFORE UPDATE OR DELETE ON exam_files
+      FOR EACH ROW EXECUTE FUNCTION rota_exam_file_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS exam_order_events_reencryption_only ON exam_order_events';
+    EXECUTE 'CREATE TRIGGER exam_order_events_reencryption_only
+      BEFORE UPDATE OR DELETE ON exam_order_events
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS exam_results_reencryption_only ON exam_results';
+    EXECUTE 'CREATE TRIGGER exam_results_reencryption_only
+      BEFORE UPDATE OR DELETE ON exam_results
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''values'')';
+    FOREACH item IN ARRAY ARRAY['exam_orders', 'exam_order_events', 'exam_results', 'exam_files'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

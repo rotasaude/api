@@ -100,7 +100,13 @@ module CityEncryption
     [ PatientMedication, :dosage_summary ],
     [ PatientMedicationEvent, :dosage_summary ],
     # ADR 0035: chave HMAC dos "sistemas externos" do PEC.
-    [ PecSetting, :hmac_key ]
+    [ PecSetting, :hmac_key ],
+    # ADR 0036: rastreamento do exame.
+    [ ExamOrder,      :requester_name ],
+    [ ExamOrder,      :requester_cns ],
+    [ ExamOrderEvent, :reason ],
+    [ ExamResult,     :values ],
+    [ ExamFile,       :data ]
   ].freeze
 
   module_function

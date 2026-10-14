@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_11_800002) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -577,6 +577,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800002) do
     t.string "cid10_justification", limit: 4
     t.uuid "consultation_id", null: false
     t.datetime "created_at", null: false
+    t.string "priority", default: "routine", null: false
     t.string "sigtap_code", limit: 10, null: false
     t.string "sigtap_competence", limit: 6, null: false
     t.string "status", default: "requested", null: false
@@ -584,6 +585,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800002) do
     t.index ["consultation_id"], name: "index_consultation_exam_requests_on_consultation_id"
     t.check_constraint "status::text = 'requested'::text OR addendum_id IS NOT NULL", name: "ck_consultation_exam_requests_cancel"
     t.check_constraint "cid10_justification IS NULL OR cid10_justification::text ~ '^[A-Z][0-9]{2}[0-9X]?$'::text", name: "ck_consultation_exam_requests_cid10"
+    t.check_constraint "priority::text = ANY (ARRAY['routine'::text, 'urgent'::text])", name: "ck_consultation_exam_requests_priority"
     t.check_constraint "sigtap_competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text", name: "ck_consultation_exam_requests_competence"
     t.check_constraint "sigtap_code::text ~ '^02[0-9]{8}$'::text", name: "ck_consultation_exam_requests_sigtap"
     t.check_constraint "status::text = ANY (ARRAY['requested'::text, 'cancelled'::text])", name: "ck_consultation_exam_requests_status"
@@ -715,6 +717,177 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800002) do
     t.index ["occurred_at"], name: "index_domain_events_on_occurred_at"
   end
 
+  create_table "exam_catalog_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "acknowledge_days"
+    t.boolean "active", default: true, null: false
+    t.integer "authorize_days"
+    t.integer "collect_days"
+    t.datetime "created_at", null: false
+    t.string "release_policy", default: "after_acknowledgement", null: false
+    t.boolean "requires_authorization", default: false, null: false
+    t.integer "result_days"
+    t.jsonb "result_fields", default: [], null: false
+    t.integer "schedule_days"
+    t.string "sigtap_code", limit: 10, null: false
+    t.datetime "updated_at", null: false
+    t.index ["sigtap_code"], name: "index_exam_catalog_items_on_sigtap_code", unique: true
+    t.check_constraint "(authorize_days IS NULL OR authorize_days >= 1 AND authorize_days <= 365) AND (schedule_days IS NULL OR schedule_days >= 1 AND schedule_days <= 365) AND (collect_days IS NULL OR collect_days >= 1 AND collect_days <= 365) AND (result_days IS NULL OR result_days >= 1 AND result_days <= 365) AND (acknowledge_days IS NULL OR acknowledge_days >= 1 AND acknowledge_days <= 365)", name: "ck_exam_catalog_items_days"
+    t.check_constraint "release_policy::text = ANY (ARRAY['immediate'::text, 'after_acknowledgement'::text, 'never_citizen'::text])", name: "ck_exam_catalog_items_policy"
+    t.check_constraint "sigtap_code::text ~ '^02[0-9]{8}$'::text", name: "ck_exam_catalog_items_sigtap"
+  end
+
+  create_table "exam_files", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "byte_size", null: false
+    t.datetime "consumed_at"
+    t.string "content_type", null: false
+    t.datetime "created_at", null: false
+    t.text "data", null: false
+    t.uuid "exam_provider_id"
+    t.string "sha256", limit: 64, null: false
+    t.uuid "uploaded_by_user_id"
+    t.index ["created_at"], name: "idx_exam_files_orphans", where: "(consumed_at IS NULL)"
+    t.index ["exam_provider_id"], name: "index_exam_files_on_exam_provider_id"
+    t.index ["uploaded_by_user_id"], name: "index_exam_files_on_uploaded_by_user_id"
+    t.check_constraint "byte_size > 0 AND byte_size <= 10485760", name: "ck_exam_files_size"
+    t.check_constraint "content_type::text = ANY (ARRAY['application/pdf'::text, 'image/jpeg'::text, 'image/png'::text])", name: "ck_exam_files_content_type"
+  end
+
+  create_table "exam_order_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "actor_provider_id"
+    t.uuid "actor_user_id"
+    t.date "closed_stage_due_on"
+    t.datetime "created_at", null: false
+    t.string "escalation_reason"
+    t.uuid "exam_order_id", null: false
+    t.string "kind", null: false
+    t.datetime "occurred_at", null: false
+    t.text "reason"
+    t.bigint "txid", default: -> { "txid_current()" }, null: false
+    t.index ["exam_order_id", "occurred_at"], name: "idx_exam_order_events_order"
+    t.index ["kind", "occurred_at"], name: "idx_exam_order_events_kind"
+    t.check_constraint "(kind::text <> ALL (ARRAY['denied'::text, 'cancelled'::text])) OR reason IS NOT NULL", name: "ck_exam_order_events_reason"
+    t.check_constraint "(kind::text = 'escalated'::text) = (escalation_reason IS NOT NULL)", name: "ck_exam_order_events_escalation"
+    t.check_constraint "actor_user_id IS NULL OR actor_provider_id IS NULL", name: "ck_exam_order_events_actor"
+    t.check_constraint "escalation_reason IS NULL OR (escalation_reason::text = ANY (ARRAY['overdue'::text, 'critical'::text, 'unlinked_requester'::text]))", name: "ck_exam_order_events_escalation_reason"
+    t.check_constraint "kind::text = ANY (ARRAY['requested'::text, 'authorized'::text, 'denied'::text, 'scheduled'::text, 'collected'::text, 'resulted'::text, 'acknowledged'::text, 'escalated'::text, 'cancelled'::text])", name: "ck_exam_order_events_kind"
+  end
+
+  create_table "exam_orders", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cid10_justification", limit: 4
+    t.uuid "consultation_exam_request_id"
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id"
+    t.datetime "escalated_at"
+    t.uuid "exam_provider_id"
+    t.string "external_reference", limit: 60
+    t.uuid "guide_file_id"
+    t.string "origin", null: false
+    t.uuid "patient_id", null: false
+    t.string "priority", default: "routine", null: false
+    t.text "requester_cns"
+    t.text "requester_name"
+    t.uuid "requester_user_id"
+    t.datetime "scheduled_at"
+    t.string "scheduled_place", limit: 200
+    t.string "short_code", limit: 10, null: false
+    t.string "sigtap_code", limit: 10, null: false
+    t.string "sigtap_competence", limit: 6, null: false
+    t.string "stage"
+    t.date "stage_due_on"
+    t.datetime "stage_opened_at"
+    t.string "status", null: false
+    t.datetime "status_changed_at", null: false
+    t.uuid "unit_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["consultation_exam_request_id"], name: "index_exam_orders_on_consultation_exam_request_id", unique: true
+    t.index ["exam_provider_id", "status"], name: "idx_exam_orders_provider_status"
+    t.index ["guide_file_id"], name: "index_exam_orders_on_guide_file_id", unique: true
+    t.index ["patient_id", "created_at"], name: "idx_exam_orders_patient_created"
+    t.index ["requester_user_id", "status"], name: "idx_exam_orders_requester_status"
+    t.index ["short_code"], name: "index_exam_orders_on_short_code", unique: true
+    t.index ["status", "stage_due_on"], name: "idx_exam_orders_status_due"
+    t.index ["unit_id", "status"], name: "idx_exam_orders_unit_status"
+    t.check_constraint "(origin::text = 'consultation'::text) = (consultation_exam_request_id IS NOT NULL)", name: "ck_exam_orders_consultation"
+    t.check_constraint "cid10_justification IS NULL OR cid10_justification::text ~ '^[A-Z][0-9]{2}[0-9X]?$'::text", name: "ck_exam_orders_cid10"
+    t.check_constraint "origin::text <> 'reception_guide'::text OR guide_file_id IS NOT NULL", name: "ck_exam_orders_guide"
+    t.check_constraint "origin::text = ANY (ARRAY['consultation'::text, 'reception_guide'::text, 'pec'::text])", name: "ck_exam_orders_origin"
+    t.check_constraint "priority::text = ANY (ARRAY['routine'::text, 'urgent'::text])", name: "ck_exam_orders_priority"
+    t.check_constraint "requester_user_id IS NOT NULL OR requester_name IS NOT NULL", name: "ck_exam_orders_requester"
+    t.check_constraint "short_code::text ~ '^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{10}$'::text", name: "ck_exam_orders_short_code"
+    t.check_constraint "sigtap_code::text ~ '^02[0-9]{8}$'::text", name: "ck_exam_orders_sigtap"
+    t.check_constraint "sigtap_competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text", name: "ck_exam_orders_competence"
+    t.check_constraint "stage IS NULL OR (stage::text = ANY (ARRAY['authorize'::text, 'schedule'::text, 'collect'::text, 'result'::text, 'acknowledge'::text]))", name: "ck_exam_orders_stage"
+    t.check_constraint "status::text = ANY (ARRAY['awaiting_authorization'::text, 'denied'::text, 'awaiting_schedule'::text, 'scheduled'::text, 'collected'::text, 'resulted'::text, 'acknowledged'::text, 'cancelled'::text])", name: "ck_exam_orders_status"
+  end
+
+  create_table "exam_provider_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "acknowledge_days"
+    t.integer "authorize_days"
+    t.integer "collect_days"
+    t.datetime "created_at", null: false
+    t.uuid "exam_catalog_item_id", null: false
+    t.uuid "exam_provider_id", null: false
+    t.integer "result_days"
+    t.integer "schedule_days"
+    t.datetime "updated_at", null: false
+    t.index ["exam_catalog_item_id"], name: "index_exam_provider_items_on_exam_catalog_item_id"
+    t.index ["exam_provider_id", "exam_catalog_item_id"], name: "idx_exam_provider_items_pair", unique: true
+    t.check_constraint "(authorize_days IS NULL OR authorize_days >= 1 AND authorize_days <= 365) AND (schedule_days IS NULL OR schedule_days >= 1 AND schedule_days <= 365) AND (collect_days IS NULL OR collect_days >= 1 AND collect_days <= 365) AND (result_days IS NULL OR result_days >= 1 AND result_days <= 365) AND (acknowledge_days IS NULL OR acknowledge_days >= 1 AND acknowledge_days <= 365)", name: "ck_exam_provider_items_days"
+  end
+
+  create_table "exam_provider_users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "exam_provider_id", null: false
+    t.uuid "user_id", null: false
+    t.index ["exam_provider_id"], name: "index_exam_provider_users_on_exam_provider_id"
+    t.index ["user_id"], name: "index_exam_provider_users_on_user_id", unique: true
+  end
+
+  create_table "exam_providers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "cnes", limit: 7
+    t.datetime "created_at", null: false
+    t.string "fhir_token_digest", limit: 64
+    t.datetime "fhir_token_revoked_at"
+    t.datetime "fhir_token_rotated_at"
+    t.string "kind", null: false
+    t.string "name", limit: 120, null: false
+    t.boolean "simulated", default: false, null: false
+    t.datetime "updated_at", null: false
+    t.index "lower((name)::text)", name: "idx_exam_providers_name_ci", unique: true
+    t.index ["fhir_token_digest"], name: "idx_exam_providers_token", unique: true, where: "(fhir_token_digest IS NOT NULL)"
+    t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_exam_providers_cnes"
+    t.check_constraint "kind::text = ANY (ARRAY['municipal'::text, 'accredited'::text, 'consortium'::text, 'lacen'::text, 'imaging'::text])", name: "ck_exam_providers_kind"
+  end
+
+  create_table "exam_results", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "consultation_id"
+    t.datetime "created_at", null: false
+    t.boolean "critical", default: false, null: false
+    t.uuid "exam_order_id"
+    t.uuid "exam_provider_id"
+    t.string "fhir_identifier", limit: 128
+    t.string "laboratory_name", limit: 160, null: false
+    t.string "origin", null: false
+    t.uuid "patient_id", null: false
+    t.uuid "pdf_file_id", null: false
+    t.uuid "registered_by_provider_id"
+    t.uuid "registered_by_user_id"
+    t.date "released_on", null: false
+    t.string "sigtap_code", limit: 10, null: false
+    t.string "source", null: false
+    t.text "values", null: false
+    t.index ["exam_order_id"], name: "index_exam_results_on_exam_order_id", unique: true
+    t.index ["exam_provider_id", "fhir_identifier"], name: "idx_exam_results_fhir_identifier", unique: true, where: "(fhir_identifier IS NOT NULL)"
+    t.index ["patient_id", "created_at"], name: "idx_exam_results_patient_created"
+    t.index ["pdf_file_id"], name: "index_exam_results_on_pdf_file_id", unique: true
+    t.check_constraint "(fhir_identifier IS NULL) = (source::text <> 'fhir'::text)", name: "ck_exam_results_fhir"
+    t.check_constraint "(origin::text = 'order'::text) = (exam_order_id IS NOT NULL)", name: "ck_exam_results_order"
+    t.check_constraint "origin::text = ANY (ARRAY['order'::text, 'external'::text])", name: "ck_exam_results_origin"
+    t.check_constraint "registered_by_user_id IS NULL OR registered_by_provider_id IS NULL", name: "ck_exam_results_registrant"
+    t.check_constraint "source::text = ANY (ARRAY['unit'::text, 'provider'::text, 'fhir'::text, 'consultation'::text])", name: "ck_exam_results_source"
+  end
+
   create_table "health_team_members", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "cbo_code", null: false
     t.datetime "created_at", null: false
@@ -824,11 +997,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800002) do
     t.datetime "accepted_at"
     t.datetime "created_at", null: false
     t.string "email", null: false
+    t.uuid "exam_provider_id"
     t.datetime "expires_at", null: false
     t.uuid "invited_by_id"
     t.string "role", null: false
     t.string "token", null: false
     t.datetime "updated_at", null: false
+    t.index ["exam_provider_id"], name: "index_invitations_on_exam_provider_id"
     t.index ["invited_by_id"], name: "index_invitations_on_invited_by_id"
     t.index ["token"], name: "index_invitations_on_token", unique: true
   end
@@ -890,7 +1065,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800002) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'campaign_manager'::text, 'citizen_verifier'::text, 'health_professional'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'campaign_manager'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "neighborhood_coverages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1810,6 +1985,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800002) do
   add_foreign_key "consultations", "users", column: "author_user_id"
   add_foreign_key "conversations", "citizens"
   add_foreign_key "document_verification_lookups", "clinical_documents"
+  add_foreign_key "exam_files", "exam_providers"
+  add_foreign_key "exam_files", "users", column: "uploaded_by_user_id"
+  add_foreign_key "exam_order_events", "exam_orders"
+  add_foreign_key "exam_order_events", "exam_providers", column: "actor_provider_id"
+  add_foreign_key "exam_order_events", "users", column: "actor_user_id"
+  add_foreign_key "exam_orders", "consultation_exam_requests"
+  add_foreign_key "exam_orders", "exam_files", column: "guide_file_id"
+  add_foreign_key "exam_orders", "exam_providers"
+  add_foreign_key "exam_orders", "health_units", column: "unit_id"
+  add_foreign_key "exam_orders", "patients"
+  add_foreign_key "exam_orders", "users", column: "created_by_user_id"
+  add_foreign_key "exam_orders", "users", column: "requester_user_id"
+  add_foreign_key "exam_provider_items", "exam_catalog_items"
+  add_foreign_key "exam_provider_items", "exam_providers"
+  add_foreign_key "exam_provider_users", "exam_providers"
+  add_foreign_key "exam_provider_users", "users"
+  add_foreign_key "exam_results", "consultations"
+  add_foreign_key "exam_results", "exam_files", column: "pdf_file_id"
+  add_foreign_key "exam_results", "exam_orders"
+  add_foreign_key "exam_results", "exam_providers"
+  add_foreign_key "exam_results", "exam_providers", column: "registered_by_provider_id"
+  add_foreign_key "exam_results", "patients"
+  add_foreign_key "exam_results", "users", column: "registered_by_user_id"
   add_foreign_key "health_team_members", "health_teams"
   add_foreign_key "health_team_members", "professionals"
   add_foreign_key "health_teams", "health_units"
@@ -1819,6 +2017,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_11_800002) do
   add_foreign_key "health_units", "neighborhoods"
   add_foreign_key "identities", "users"
   add_foreign_key "integration_credentials", "users", column: "set_by_user_id"
+  add_foreign_key "invitations", "exam_providers"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "ledi_outbox", "ledi_outbox", column: "replaces_outbox_id"
   add_foreign_key "memberships", "users"
