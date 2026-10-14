@@ -7,6 +7,8 @@ module Exams
     def schedule(order:, params:, actor_user: nil, actor_provider: nil)
       provider = actor_provider || (params[:provider_id].is_a?(String) && ExamProvider.find_by(id: params[:provider_id], active: true))
       return Result.fail(:provider_not_enabled_for_exam) unless provider && enabled?(provider, order)
+      # A15: o laboratório simulado só recebe com fake_lab utilizável.
+      return Result.fail(:provider_not_enabled_for_exam) if provider.simulated && !Gate.fake_lab_usable?(Current.city)
 
       at = parse_time(params[:scheduled_at])
       place = params[:scheduled_place].is_a?(String) ? params[:scheduled_place].strip : ""

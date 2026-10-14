@@ -1,5 +1,8 @@
 # Corpo da guia da recepção (contrato §3; Divergência D2) → atributos de
 # Exams::Open. Paciente pelo par validado (Patients::Resolve) ou pelo id.
+# O paciente sai por último (Resolve cria e liga): unidade, solicitante e
+# justificativa primeiro; quem chama roda tudo na transação da guia, para
+# que uma recusa depois (catálogo, guia) desfaça o Resolve.
 module Exams
   module GuideInput
     NAME = (3..120)
@@ -7,9 +10,6 @@ module Exams
     module_function
 
     def call(params, user:)
-      patient = patient_from(params)
-      return patient if patient.is_a?(Result)
-
       unit = params[:unit_id].is_a?(String) && HealthUnit.find_by(id: params[:unit_id], active: true)
       return Result.fail(:not_found) unless unit
       return Result.fail(:not_unit_staff) unless Access.unit_staff?(user, unit.id)
@@ -24,6 +24,9 @@ module Exams
       end
       reference = params[:external_reference]
       return Result.fail(:invalid_external_reference) unless reference.nil? || (reference.is_a?(String) && reference.length <= 60)
+
+      patient = patient_from(params)
+      return patient if patient.is_a?(Result)
 
       Result.ok(attrs: { patient: patient, unit: unit, sigtap_code: params[:sigtap_code].to_s, priority: params[:priority].presence || "routine",
                          cid10: cid10, external_reference: reference.presence, **requester })

@@ -8,6 +8,8 @@ module Exams
       return if performed?
 
       page = Exams::OrderQuery.call(scope, params)
+      # A trilha só depois de a consulta valer: 422 de filtro/cursor não grava.
+      @trail&.call
       page[:orders].each { |o| Exams::Trail.viewed!(order: o, user: Current.user, grant: AUTHOR_GRANT) } if @trail_each_order
       render json: { orders: page[:orders].map { |o| Exams::Json.order(o, view: view, user: Current.user, events: false) },
                      next_before: page[:next_before] }
@@ -28,16 +30,13 @@ module Exams
       render json: Exams::Json.order(order, view: grant.view, user: Current.user)
     end
 
+    # Tudo numa transação: a recusa depois do Patients::Resolve (catálogo,
+    # guia) desfaz o paciente criado/ligado e os eventos dele.
     def create
-      input = Exams::GuideInput.call(params, user: Current.user)
-      return render_failure(input) if input.failure?
-
       result = nil
       ApplicationRecord.transaction do
-        file = Exams::Files.claim!(file_id: params[:guide_upload_id], user: Current.user)
-        next result = Result.fail(:guide_missing) unless file
-
-        result = Exams::Open.call(**input.payload[:attrs], origin: "reception_guide", guide_file: file, created_by: Current.user)
+        input = Exams::GuideInput.call(params, user: Current.user)
+        result = input.failure? ? input : open_guide(input.payload[:attrs])
         raise ActiveRecord::Rollback if result.failure?
       end
       return render_failure(result) if result.failure?
@@ -46,6 +45,13 @@ module Exams
     end
 
     private
+
+    def open_guide(attrs)
+      file = Exams::Files.claim!(file_id: params[:guide_upload_id], user: Current.user)
+      return Result.fail(:guide_missing) unless file
+
+      Exams::Open.call(**attrs, origin: "reception_guide", guide_file: file, created_by: Current.user)
+    end
 
     # [scope, view]; senão a resposta de erro já saiu. Recortes: consulta
     # (dashboard D6), paciente, requester=me, unidade, ou — só admin e
@@ -58,7 +64,7 @@ module Exams
         grant = ClinicalRecord::Access.for_consultation(user: Current.user, consultation: consultation)
         return forbid(grant.reason.to_s) unless grant.allowed?
 
-        ClinicalRecord::Trail.viewed!(patient: consultation.patient, user: Current.user, grant: grant, consultation_id: consultation.id)
+        @trail = -> { ClinicalRecord::Trail.viewed!(patient: consultation.patient, user: Current.user, grant: grant, consultation_id: consultation.id) }
         [ ExamOrder.joins(:consultation_exam_request).where(consultation_exam_requests: { consultation_id: consultation.id }), :clinical ]
       elsif params[:patient_id].present?
         patient = uuid?(params[:patient_id]) && Patient.find_by(id: params[:patient_id])
@@ -67,7 +73,7 @@ module Exams
         grant = ClinicalRecord::Access.call(user: Current.user, patient: patient)
         return forbid(grant.reason.to_s) unless grant.allowed?
 
-        ClinicalRecord::Trail.viewed!(patient: patient, user: Current.user, grant: grant)
+        @trail = -> { ClinicalRecord::Trail.viewed!(patient: patient, user: Current.user, grant: grant) }
         [ ExamOrder.where(patient_id: patient.id), :clinical ]
       elsif params[:requester] == "me"
         return forbid("missing_role") unless Current.user.has_role?("health_professional")

@@ -35,6 +35,7 @@ module Exams
       return render_failure(result) if result.failure?
 
       grant = Exams::Access.for_order(user: Current.user, order: @order.reload)
+      Exams::Trail.viewed!(order: @order, user: Current.user, grant: grant) # só a visão clínica grava
       render json: Exams::Json.order(@order, view: grant&.view || :administrative, user: Current.user)
     end
   end

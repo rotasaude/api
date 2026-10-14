@@ -66,16 +66,19 @@ RSpec.describe "Exames — pedidos", type: :request do
     get "/exams/orders", params: { requester: "me" }
     expect(json_body["orders"].map { |o| o["id"] }).to eq([ order.id ])
     expect(json_body["orders"].first).not_to have_key("events")
+    expect(json_body["orders"]).to all(satisfy { |o| schema.valid?(o) })
     # A lista do solicitante é clínica: trilha por exame, como no detalhe.
     expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
       .to include("access" => "author", "exam_order_id" => order.id, "user_id" => doctor.id)
     get "/exams/orders/#{order.id}"
     expect(json_body["events"].map { |e| e["kind"] }).to eq(%w[requested])
+    expect(schema.valid?(json_body)).to be(true)
     expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
       .to include("access" => "author", "exam_order_id" => order.id, "user_id" => doctor.id)
     sign_in_as(reception)
     get "/exams/orders", params: { unit_id: unit.id }
     expect(json_body["orders"].first["result"]).to be_nil
+    expect(json_body["orders"]).to all(satisfy { |o| schema.valid?(o) })
     get "/exams/orders"
     expect([ response.status, json_body["error"] ]).to eq([ 422, "filter_required" ])
     get "/exams/orders", params: { unit_id: unit.id, status: [ "bogus" ] }
@@ -92,6 +95,30 @@ RSpec.describe "Exames — pedidos", type: :request do
     sign_in_as(doctor!(create_unit("UBS Alheia")))
     get "/exams/orders", params: { consultation_id: consultation.id }
     expect([ response.status, json_body["error"] ]).to eq([ 403, "out_of_context" ])
+  end
+
+  it "filtro ou cursor inválido no recorte clínico não deixa trilha" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(exam_seq!))
+    sign_in_as(doctor)
+    expect do
+      get "/exams/orders", params: { consultation_id: consultation.id, status: [ "bogus" ] }
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_filter" ])
+      get "/exams/orders", params: { consultation_id: consultation.id, before: "não-é-cursor" }
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_cursor" ])
+    end.not_to(change { DomainEvent.where(name: "clinical_record.viewed").count })
+  end
+
+  it "guia recusada não cria nem liga paciente (unidade alheia, catálogo)" do
+    fresh = verified_citizen!(exam_seq!)
+    sign_in_as(doctor)
+    expect do
+      json_post "/exams/orders", guide(citizen_id: fresh.id, unit_id: create_unit("UBS Outra").id, guide_upload_id: upload!(doctor).id)
+      expect([ response.status, json_body["error"] ]).to eq([ 403, "not_unit_staff" ])
+      sign_in_as(reception)
+      json_post "/exams/orders", guide(citizen_id: fresh.id, sigtap_code: "0202020380")
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "sigtap_not_in_catalog" ])
+    end.not_to(change { [ Patient.count, DomainEvent.where(name: %w[patient.created patient.linked]).count ] })
+    expect(fresh.reload.patient_id).to be_nil
   end
 
   it "pagina por cursor sem repetir nem perder" do
