@@ -28,6 +28,13 @@ module Exams
 
       def collect = respond(Exams::Steps.collect(order: @order, actor_provider: @provider))
 
+      # Contrato §6/A17: mesmo corpo do §3; quem registra é o usuário do portal.
+      def result
+        respond(Exams::RegisterResult.call(order: @order, source: "provider", file_id: params[:upload_id],
+                                           released_on: params[:released_on], laboratory_name: params[:laboratory_name],
+                                           critical: params[:critical], values: params[:values], by_user: Current.user))
+      end
+
       private
 
       def load_provider

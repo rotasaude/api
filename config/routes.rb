@@ -257,6 +257,10 @@ Rails.application.routes.draw do
     post "orders/:id/schedule", to: "order_steps#schedule"
     post "orders/:id/collect",  to: "order_steps#collect"
     post "orders/:id/cancel",   to: "order_steps#cancel"
+    post "orders/:id/result",   to: "results#create"
+    post "orders/:id/acknowledge", to: "acknowledgements#create"
+    get  "acknowledgements/pending", to: "acknowledgements#pending"
+    get  "acknowledgements/team",    to: "acknowledgements#team"
     get  "regulation/queue",      to: "regulation#queue"
     post "orders/:id/authorize",  to: "regulation#authorize"
     post "orders/:id/deny",       to: "regulation#deny"
@@ -264,6 +268,7 @@ Rails.application.routes.draw do
       get  "orders",              to: "orders#index"
       post "orders/:id/schedule", to: "orders#schedule"
       post "orders/:id/collect",  to: "orders#collect"
+      post "orders/:id/result",   to: "orders#result"
     end
     scope "admin", module: :admin, as: :admin do
       get   "catalog_items",     to: "catalog_items#index"

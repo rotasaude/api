@@ -13,5 +13,6 @@ class ExamResult < ApplicationRecord
 
   def values_list = JSON.parse(values)
   def external? = origin == "external"
-  def inspect = "#<ExamResult id=#{id} origin=#{origin} source=#{source} critical=#{critical}>"
+  # Sem valores nem o crítico (dispatch da Task 13: nunca em log nem erro).
+  def inspect = "#<ExamResult id=#{id} origin=#{origin} source=#{source}>"
 end
