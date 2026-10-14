@@ -1,5 +1,6 @@
 # Fila de regulação (ADR 0036; contrato §4): exam_regulator ou municipal_admin.
-# Sempre a visão administrativa (A32: o motivo de negar/cancelar aparece nela).
+# Sempre a visão administrativa (A32: o motivo de negar/cancelar aparece nela;
+# A42: com o CID da justificativa, sem o CNS).
 module Exams
   class RegulationController < BaseController
     RANK = Arel.sql("CASE exam_orders.priority WHEN 'urgent' THEN 0 ELSE 1 END")
@@ -16,7 +17,7 @@ module Exams
       rows = scope.includes(:patient, :unit, :requester_user, :exam_provider, :consultation_exam_request)
                   .order(RANK, :created_at, :id).limit(limit + 1).to_a
       page = rows.first(limit)
-      render json: { orders: page.map { |o| Exams::Json.order(o, view: :administrative, user: Current.user, events: false) },
+      render json: { orders: page.map { |o| Exams::Json.order(o, view: :administrative, user: Current.user, events: false, cid10: true) },
                      next_before: rows.size > limit ? encode(page.last) : nil }
     rescue ArgumentError
       render json: { error: "invalid_cursor" }, status: :unprocessable_entity
@@ -46,7 +47,7 @@ module Exams
     def respond(result)
       return render_failure(result) if result.failure?
 
-      render json: Exams::Json.order(@order.reload, view: :administrative, user: Current.user)
+      render json: Exams::Json.order(@order.reload, view: :administrative, user: Current.user, cid10: true)
     end
 
     def load_order

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rota-saude/schemas/exams/exam-order-v1.json",
   "title": "rotasaude.exam_order.v1",
-  "description": "O exame como o api devolve ao dashboard (ADR 0036; contrato §2). Duas visões: clínica (result com valores, crítico e PDF) e administrativa (result reduzido; cid10_justification e requester.cns nulos). events e result_fields só no detalhe (GET /exams/orders/:id).",
+  "description": "O exame como o api devolve ao dashboard (ADR 0036; contrato §2). Duas visões: clínica (result com valores, crítico e PDF) e administrativa (result reduzido; requester.cns sempre nulo; cid10_justification nulo, salvo para o regulador, A42). events e result_fields só no detalhe (GET /exams/orders/:id).",
   "type": "object",
   "additionalProperties": false,
   "required": [

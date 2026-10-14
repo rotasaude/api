@@ -7,14 +7,16 @@ module Exams
 
     module_function
 
-    def order(order, view:, user:, events: true)
+    # A42: `cid10: true` leva o CID à visão administrativa do regulador (fila e
+    # detalhe); o CNS do solicitante nunca sai dela.
+    def order(order, view:, user:, events: true, cid10: false)
       clinical = view == :clinical
       body = {
         id: order.id, short_code: order.short_code,
         patient: { id: order.patient_id, display_name: order.patient.display_name },
         sigtap_code: order.sigtap_code, sigtap_competence: order.sigtap_competence,
         label: Labels.exam(order.sigtap_code, order.sigtap_competence), priority: order.priority,
-        cid10_justification: clinical ? order.cid10_justification : nil, origin: order.origin,
+        cid10_justification: clinical || cid10 ? order.cid10_justification : nil, origin: order.origin,
         consultation_id: order.consultation_exam_request&.consultation_id,
         requester: { user_id: order.requester_user_id, name: order.requester_display_name, cns: clinical ? order.requester_cns : nil },
         unit: { id: order.unit_id, name: order.unit.name },

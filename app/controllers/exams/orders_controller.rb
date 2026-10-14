@@ -27,7 +27,7 @@ module Exams
       return not_found unless grant
 
       Exams::Trail.viewed!(order: order, user: Current.user, grant: grant)
-      render json: Exams::Json.order(order, view: grant.view, user: Current.user)
+      render json: Exams::Json.order(order, view: grant.view, user: Current.user, cid10: Exams::Access.cid10_reader?(Current.user, grant))
     end
 
     # Tudo numa transação: a recusa depois do Patients::Resolve (catálogo,

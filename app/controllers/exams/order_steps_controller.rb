@@ -36,7 +36,8 @@ module Exams
 
       grant = Exams::Access.for_order(user: Current.user, order: @order.reload)
       Exams::Trail.viewed!(order: @order, user: Current.user, grant: grant) # só a visão clínica grava
-      render json: Exams::Json.order(@order, view: grant&.view || :administrative, user: Current.user)
+      render json: Exams::Json.order(@order, view: grant&.view || :administrative, user: Current.user,
+                                         cid10: Exams::Access.cid10_reader?(Current.user, grant))
     end
   end
 end
