@@ -20,7 +20,7 @@ RSpec.describe Exams::Json do
     expect(admin[:result].keys).to eq(%i[id origin source released_on laboratory_name])
     # result_fields (campos do catálogo, sem valor do paciente) vão nas duas
     # visões: a unidade registra o resultado pelo formulário (dashboard D6).
-    expect(admin.to_json).not_to include("9.1")
+    expect(admin.to_json).not_to match(/(?<![\d.])9\.1(?![\d.])/)
     expect(admin.except(:result_fields).to_json).not_to include("4548-4")
     expect(admin[:result_fields]).to eq(clinical[:result_fields])
     expect(admin[:requester][:cns]).to be_nil

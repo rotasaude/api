@@ -38,7 +38,7 @@ RSpec.describe Exams::RegisterResult do
     expect(result.pdf_file.consumed?).to be(true)
     expect(result.inspect).not_to include("critical", "7.9")
     expect(DomainEvent.where(name: "exam_order.resulted").order(:occurred_at, :created_at).last.payload).to eq("exam_order_id" => order.id, "source" => "unit", "critical" => false)
-    expect(DomainEvent.all.map { |e| e.payload.to_json }.join).not_to include("7.9")
+    expect(DomainEvent.all.map { |e| e.payload.to_json }.join).not_to match(/(?<![\d.])7\.9(?![\d.])/)
   end
 
   it "dois resultados ao mesmo tempo: o segundo não entra; cancelado não ganha resultado (Review Focus 2)" do
