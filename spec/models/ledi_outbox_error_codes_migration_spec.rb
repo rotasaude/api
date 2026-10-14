@@ -92,7 +92,13 @@ RSpec.describe "Migração de cidade 20261007300002 (LediOutboxErrorCodes): dado
         fresh: [], accepted: [], accepted_with_text: []
       )
       expect(codes.values).to all(satisfy { |c| Ledi::ErrorCodes.valid?(c) })
-      dump = rows.values.to_json
+      # Toda coluna menos as geradas (UUIDs aleatórios e timestamps com
+      # microssegundos podem conter "1980" por acaso): o texto antigo não
+      # sobrevive em nenhuma das que guardam conteúdo.
+      generated = /\A(id|uuid|source_id|replaces_outbox_id)\z|_at\z/
+      contents = rows.values.map { |r| r.reject { |column, _| column.match?(generated) } }
+      expect(contents.first.keys).to include("last_error_codes", "payload", "status", "ficha_type")
+      dump = contents.to_json
       expect(dump).not_to include("MARIA", "CPF", "1980", "inacess", "HTTP 503", "Erro de valida")
 
       # last_attempted_at: updated_at onde houve tentativa; accepted não é tocada.
