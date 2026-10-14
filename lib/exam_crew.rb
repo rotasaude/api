@@ -47,18 +47,20 @@ class ExamCrew
   ].freeze
 
   class << self
-    # Só republica o recorte de dev: se a release ativa da competência é maior
-    # que o recorte (SIGTAP real), não toca em nada e avisa.
+    # Só republica o recorte de dev. Se QUALQUER release SIGTAP ativa é maior
+    # que o recorte (SIGTAP real, de qualquer competência), não importa nada
+    # (o recorte da competência corrente a sombrearia) e avisa. `status`:
+    # :complete, :republished ou :real_sigtap.
     def seed_platform!
       guard_environment!
       competence = Time.zone.today.strftime("%Y%m")
       release = Terminology::Sigtap.release_for(competence)
       have = release ? SigtapProcedure.where(release_id: release.id, code: EXAM_CODES).count : 0
-      return { sigtap: competence, republished: false } if release&.version == competence && have == EXAM_CODES.size
+      return { sigtap: competence, republished: false, status: :complete } if release&.version == competence && have == EXAM_CODES.size
 
-      if release&.version == competence && SigtapProcedure.where(release_id: release.id).count > SigtapSample::PROCEDURES.size
+      if real_sigtap_active?
         Rails.logger.warn("[exam_crew] SIGTAP real ativa; exames do 21a não verificados")
-        return { sigtap: competence, republished: false }
+        return { sigtap: competence, republished: false, status: :real_sigtap }
       end
 
       Dir.mktmpdir do |dir|
@@ -66,7 +68,7 @@ class ExamCrew
                                           path: SigtapSample.write_to(dir, competence: competence), by: "db:seed")
         raise "semente de exames: SIGTAP recusada (#{result.reason} #{result.message})" if result.failure?
       end
-      { sigtap: competence, republished: true }
+      { sigtap: competence, republished: true, status: :republished }
     end
 
     def seed_current_city(slug:, ddd:, password:)
@@ -86,6 +88,12 @@ class ExamCrew
     end
 
     private
+
+    def real_sigtap_active?
+      TerminologyRelease.active.where(kind: "sigtap").pluck(:id).any? do |id|
+        SigtapProcedure.where(release_id: id).count > SigtapSample::PROCEDURES.size
+      end
+    end
 
     def guard_environment!
       raise "semente de exames: ambiente implantado (#{Rota::DEPLOYED_ENVS.join(' ou ')}); a semente é só de dev" if Rota.deployed?

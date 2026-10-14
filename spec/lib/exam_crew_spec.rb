@@ -55,7 +55,7 @@ RSpec.describe ExamCrew do
     again = described_class.seed_current_city(slug: slug, ddd: "41", password: "dev-password")
     expect(again[:orders]).to eq(0)
     expect(counts.call).to eq(before_counts)
-    expect(described_class.seed_platform!).to eq(sigtap: Time.zone.today.strftime("%Y%m"), republished: false)
+    expect(described_class.seed_platform!).to eq(sigtap: Time.zone.today.strftime("%Y%m"), republished: false, status: :complete)
     expect(ExamOrder.find_by(external_reference: "SEED-3").sigtap_competence).to eq(Time.zone.today.strftime("%Y%m"))
   end
 
@@ -88,14 +88,29 @@ RSpec.describe ExamCrew do
 
     it "release de dev (recorte) sem os quatro exames: republica" do
       active_release_without_exams!(procedures: SigtapSample::PROCEDURES.size - 4)
-      expect(described_class.seed_platform!).to eq(sigtap: competence, republished: true)
+      expect(described_class.seed_platform!).to eq(sigtap: competence, republished: true, status: :republished)
     end
 
     it "release real (grande) sem os quatro exames: não toca em nada" do
       release = active_release_without_exams!(procedures: SigtapSample::PROCEDURES.size + 1)
-      expect(described_class.seed_platform!).to eq(sigtap: competence, republished: false)
+      expect(described_class.seed_platform!).to eq(sigtap: competence, republished: false, status: :real_sigtap)
       expect(release.reload.status).to eq("active")
       expect(TerminologyRelease.where(kind: "sigtap", version: competence).count).to eq(1)
+    end
+
+    it "release real de competência ANTERIOR ativa: não importa o recorte, não cria release, devolve o motivo" do
+      previous = (Time.zone.today.beginning_of_month - 1.day).strftime("%Y%m")
+      TerminologyRelease.where(kind: "sigtap").update_all(status: "superseded")
+      real = TerminologyRelease.create!(kind: "sigtap", version: previous, source_sha256: "b" * 64, imported_by: "terminology:import",
+                                        imported_at: Time.current, status: "importing")
+      (SigtapSample::PROCEDURES.size + 1).times do |n|
+        SigtapProcedure.create!(release_id: real.id, code: format("03%08d", n), name: "PROC #{n}", complexity: "1", sex: "I",
+                                age_min_months: 0, age_max_months: 9999)
+      end
+      real.update!(status: "active", activated_at: Time.current)
+      expect { @result = described_class.seed_platform! }.not_to change(TerminologyRelease, :count)
+      expect(@result).to eq(sigtap: competence, republished: false, status: :real_sigtap)
+      expect(real.reload.status).to eq("active")
     end
 
     it "em ambiente implantado recusa as duas entradas" do

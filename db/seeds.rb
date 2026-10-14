@@ -85,7 +85,7 @@ else
   # na competência corrente. Republica o recorte de dev se a release ativa é o
   # recorte e não os tem; uma SIGTAP real ativa nunca é tocada (só avisa no log).
   exams_sigtap = ExamCrew.seed_platform!
-  puts "[seeds] SIGTAP exames . #{exams_sigtap[:sigtap]} #{exams_sigtap[:republished] ? 'republicada (recorte de dev)' : 'já completa'}"
+  puts "[seeds] SIGTAP exames . #{exams_sigtap[:sigtap]} #{{ republished: 'republicada (recorte de dev)', real_sigtap: 'SIGTAP real ativa; exames do 21a não verificados', complete: 'já completa' }.fetch(exams_sigtap[:status])}"
 
   ciap2 = ScreeningCrew.seed_platform!
   puts "[seeds] CIAP-2 ....... #{ciap2[:ciap2]} #{ciap2[:imported] ? 'importada (recorte de dev)' : 'já ativa'}"
