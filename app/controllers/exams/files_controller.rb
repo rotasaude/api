@@ -19,11 +19,7 @@ module Exams
     # Ponto único da A27: a trilha do laudo.
     def record_result_view(file)
       result = ExamResult.find_by(pdf_file_id: file.id)
-      return unless result
-
-      grant = ClinicalRecord::Access::Grant.new(kind: :exam_result, opening: nil, reason: nil)
-      ClinicalRecord::Trail.viewed!(patient: result.patient, user: Current.user, grant: grant,
-                                    extra: { exam_result_id: result.id, exam_order_id: result.exam_order_id })
+      Exams::Trail.result_viewed!(result: result, user: Current.user) if result
     end
   end
 end
