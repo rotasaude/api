@@ -1,5 +1,6 @@
 # Tradução do DiagnosticReport (ADR 0036, "FHIR só na borda"; contrato §7
-# com D7 e A7). Valida contra a cópia do esquema (só caminhos no erro, nunca
+# com D7, A7 e A36: amended recusado, reenvio na mesma guia = 200, mesmo
+# identifier em outra guia = identifier_conflict, coding SIGTAP = da guia). Valida contra a cópia do esquema (só caminhos no erro, nunca
 # valores), confere dom-3 (o esquema não o expressa), o PDF pelos bytes
 # (contentEncoding é só anotação), idempotência por (prestador, identifier),
 # guia do prestador (de outro = inexistente), paciente por CPF/CNS; chama a
@@ -20,6 +21,15 @@ module Exams
         paths = schema_paths(resource)
         return Result.fail(:missing_pdf) if paths.include?("/presentedForm")
         return invalid(paths) if paths.any?
+        # A36: sem retificação no 21a; recusado antes de qualquer arquivo.
+        return Result.fail(:amendment_not_supported) if resource["status"] == "amended"
+
+        # A36: reenvio (mesmo prestador, identifier e guia) é a mesma entrega,
+        # mesmo que o resto do recurso não passe mais; outra guia é conflito.
+        identifier = resource.dig("identifier", 0, "value")
+        short_code = resource.dig("basedOn", 0, "identifier", "value")
+        existing = ExamResult.find_by(exam_provider_id: provider.id, fhir_identifier: identifier)
+        return resend(existing, short_code) if existing
 
         observations = resource["contained"]
         refs = resource["result"].map { |r| r["reference"].delete_prefix("#") }
@@ -31,13 +41,10 @@ module Exams
         pdf = decode_pdf(resource.dig("presentedForm", 0, "data"))
         return Result.fail(:missing_pdf) unless pdf
 
-        identifier = resource.dig("identifier", 0, "value")
-        existing = ExamResult.find_by(exam_provider_id: provider.id, fhir_identifier: identifier)
-        return Result.ok(result: existing, created: false) if existing
-
-        order = ExamOrder.find_by(short_code: resource.dig("basedOn", 0, "identifier", "value"), exam_provider_id: provider.id)
+        order = ExamOrder.find_by(short_code: short_code, exam_provider_id: provider.id)
         return Result.fail(:order_not_found) unless order
         return Result.fail(:patient_mismatch) unless Identifiers.matches?(order.patient, resource.dig("subject", "identifier"))
+        return invalid([ "/code" ]) unless sigtap_matches?(resource["code"], order)
 
         stored = Files.store(bytes: pdf, content_type: "application/pdf", provider: provider)
         return Result.fail(:missing_pdf) if stored.failure?
@@ -50,21 +57,33 @@ module Exams
         )
         return Result.ok(result: registered.payload[:result], created: true) if registered.ok?
 
-        translate(registered, provider, identifier)
+        translate(registered, provider, identifier, short_code)
       rescue ActiveRecord::RecordNotUnique
         again = ExamResult.find_by(exam_provider_id: provider.id, fhir_identifier: identifier)
-        again ? Result.ok(result: again, created: false) : raise
+        again ? resend(again, short_code) : raise
+      end
+
+      # Mesma guia → 200 com o resultado existente; outra → 409.
+      def resend(existing, short_code)
+        return Result.fail(:identifier_conflict) unless existing.exam_order&.short_code == short_code
+
+        Result.ok(result: existing, created: false)
+      end
+
+      # A36: só o coding do sistema SIGTAP é conferido; sem ele, passa.
+      def sigtap_matches?(code, order)
+        Array(code["coding"]).select { |c| c["system"] == ServiceRequests::SIGTAP_SYSTEM }.all? { |c| c["code"] == order.sigtap_code }
       end
 
       # Corrida: a segunda entrega do MESMO identifier serializa em
-      # order.lock! e encontra o resultado da primeira — é a mesma entrega.
-      # Outro identifier numa guia que já tem resultado: a guia já não está
-      # em agendado/coletado (409).
-      def translate(failure, provider, identifier)
+      # order.lock! e encontra o resultado da primeira — é a mesma entrega
+      # (ou conflito, se de outra guia: A36). Outro identifier numa guia que
+      # já tem resultado: a guia já não está em agendado/coletado (409).
+      def translate(failure, provider, identifier, short_code)
         case failure.reason
         when :result_already_registered
           existing = ExamResult.find_by(exam_provider_id: provider.id, fhir_identifier: identifier)
-          existing ? Result.ok(result: existing, created: false) : Result.fail(:invalid_transition)
+          existing ? resend(existing, short_code) : Result.fail(:invalid_transition)
         when *RESOURCE_PATHS.keys then invalid([ RESOURCE_PATHS.fetch(failure.reason) ])
         else failure
         end
@@ -104,7 +123,7 @@ module Exams
       def invalid(paths) = Result.fail(:invalid_resource, details: { paths: paths })
 
       def schema = (@schema ||= JSONSchemer.schema(JSON.parse(File.read(SCHEMA_PATH))))
-      private_class_method :translate, :schema_paths, :critical?, :decode_pdf, :issued_at, :invalid, :schema
+      private_class_method :translate, :resend, :sigtap_matches?, :schema_paths, :critical?, :decode_pdf, :issued_at, :invalid, :schema
     end
   end
 end

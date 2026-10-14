@@ -158,6 +158,52 @@ RSpec.describe "FHIR — DiagnosticReport de entrada", type: :request do
     expect([ response.status, json_body["error"] ]).to eq([ 409, "invalid_transition" ])
   end
 
+  describe "A36: reenvio, correção e código" do
+    it "reenvio do mesmo identifier na mesma guia → 200 mesmo com PDF quebrado; em outra guia → 409 identifier_conflict" do
+      provider
+      send_report(report)
+      first_id = json_body["result_id"]
+      send_report(report(presentedForm: [ { contentType: "application/pdf", data: Base64.strict_encode64("GIF89a") } ]))
+      expect([ response.status, json_body["result_id"] ]).to eq([ 200, first_id ])
+      second = exam_order!(patient: patient, unit: unit, requester: doctor, sigtap_code: item.sigtap_code)
+      Exams::Steps.schedule(order: second, actor_user: doctor, params: { provider_id: provider.id, scheduled_at: 1.day.from_now.iso8601, scheduled_place: "Lab" })
+      body = report
+      body["basedOn"][0]["identifier"]["value"] = second.short_code
+      files = ExamFile.count
+      send_report(body)
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "identifier_conflict" } ])
+      expect([ second.reload.status, ExamFile.count ]).to eq([ "scheduled", files ])
+    end
+
+    it "status amended → 422 amendment_not_supported, no primeiro envio e no reenvio, sem guardar arquivo" do
+      provider
+      send_report(report(status: "amended"))
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "amendment_not_supported" } ])
+      expect([ order.reload.status, ExamFile.count ]).to eq([ "scheduled", 0 ])
+      send_report(report)
+      expect(response).to have_http_status(:created)
+      send_report(report(status: "amended"))
+      expect(json_body["error"]).to eq("amendment_not_supported")
+    end
+
+    it "coding SIGTAP diferente do da guia → invalid_resource /code; sem coding SIGTAP passa" do
+      provider
+      send_report(report(code: { coding: [ { system: Exams::Fhir::ServiceRequests::SIGTAP_SYSTEM, code: "0202010503" } ] }))
+      expect([ response.status, json_body["error"], json_body["details"] ]).to eq([ 422, "invalid_resource", [ "/code" ] ])
+      expect([ order.reload.status, ExamFile.count ]).to eq([ "scheduled", 0 ])
+      send_report(report(code: { coding: [ { system: "http://loinc.org", code: "58410-2" } ] }))
+      expect(response).to have_http_status(:created)
+    end
+
+    it "PDF acima de 10 MB → missing_pdf" do
+      provider
+      big = ExamHelpers::PDF_BYTES + ("0" * (Exams::Files::MAX_BYTES + 1 - ExamHelpers::PDF_BYTES.bytesize))
+      send_report(report(presentedForm: [ { contentType: "application/pdf", data: Base64.strict_encode64(big) } ]))
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "missing_pdf" ])
+      expect(ExamFile.count).to eq(0)
+    end
+  end
+
   it "limite de 60 por minuto por token" do
     provider
     allow(Fhir::BaseController::RateLimitStore).to receive(:increment).and_return(61)

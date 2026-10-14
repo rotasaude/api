@@ -48,4 +48,15 @@ RSpec.describe "Exams::Fhir::Inbound — corrida" do
     other = Exams::Fhir::Inbound.call(provider: provider, resource: resource.merge("identifier" => [ { "value" => "LS-OUTRO" } ]))
     expect([ other.failure?, other.reason ]).to eq([ true, :invalid_transition ])
   end
+
+  it "A36: corrida do mesmo identifier em duas guias (índice único) → identifier_conflict" do
+    Exams::Fhir::Inbound.call(provider: provider, resource: resource)
+    second = exam_order!(patient: patient, unit: unit, requester: doctor, sigtap_code: "0202020380")
+    Exams::Steps.schedule(order: second, actor_user: doctor, params: { provider_id: provider.id, scheduled_at: 1.day.from_now.iso8601, scheduled_place: "Lab" })
+    other = resource.deep_dup.tap { |r| r["basedOn"][0]["identifier"]["value"] = second.short_code }
+    blind_precheck!
+    conflict = Exams::Fhir::Inbound.call(provider: provider, resource: other)
+    expect([ conflict.failure?, conflict.reason ]).to eq([ true, :identifier_conflict ])
+    expect([ second.reload.status, ExamResult.count ]).to eq([ "scheduled", 1 ])
+  end
 end

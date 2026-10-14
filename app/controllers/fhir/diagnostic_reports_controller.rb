@@ -3,7 +3,7 @@
 module Fhir
   class DiagnosticReportsController < BaseController
     MAX_BODY = 15 * 1024 * 1024
-    STATUS = { order_not_found: :not_found, invalid_transition: :conflict }.freeze
+    STATUS = { order_not_found: :not_found, invalid_transition: :conflict, identifier_conflict: :conflict }.freeze
 
     def create
       return fhir_error("unsupported_media_type", :unsupported_media_type) unless request.media_type == MEDIA_TYPE
