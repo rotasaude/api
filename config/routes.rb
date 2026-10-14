@@ -257,6 +257,9 @@ Rails.application.routes.draw do
     post "orders/:id/schedule", to: "order_steps#schedule"
     post "orders/:id/collect",  to: "order_steps#collect"
     post "orders/:id/cancel",   to: "order_steps#cancel"
+    get  "regulation/queue",      to: "regulation#queue"
+    post "orders/:id/authorize",  to: "regulation#authorize"
+    post "orders/:id/deny",       to: "regulation#deny"
     scope "admin", module: :admin, as: :admin do
       get   "catalog_items",     to: "catalog_items#index"
       post  "catalog_items",     to: "catalog_items#create"
