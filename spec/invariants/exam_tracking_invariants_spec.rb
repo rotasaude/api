@@ -17,10 +17,12 @@ RSpec.describe "Invariantes do rastreamento de exames (ADR 0036)", type: :reques
   end
 
   def result!(order, critical: false)
-    Exams::RegisterResult.call(order: order.reload, source: "unit", file: pdf_file!(user: doctor), released_on: Time.zone.today.iso8601,
+    Exams::RegisterResult.call(order: order.reload, source: "unit", file: pdf_file!(user: doctor), released_on: released_on,
                                laboratory_name: "Lab", critical: critical, values: [ { "key" => "hba1c", "value" => "7.7" } ], by_user: doctor)
     order.reload
   end
+
+  def released_on = @released_on ||= Time.zone.today.iso8601
 
   def full_cycle(patient: pair.first, acknowledge: true, critical: false)
     order = exam_order!(patient: patient, unit: unit, requester: doctor)
@@ -98,17 +100,38 @@ RSpec.describe "Invariantes do rastreamento de exames (ADR 0036)", type: :reques
   # cifrada aceita sob a marca).
   it "re-cifra: só as colunas cifradas, e só em exam_orders/exam_files (e nos eventos/resultados)" do
     order = full_cycle
-    event = order.events.where.not(reason: nil).first || order.events.first
+    cancelled = exam_order!(patient: exam_patient!(exam_seq!).first, unit: unit, requester: doctor)
+    Exams::Steps.cancel(order: cancelled, reason: "motivo livre da re-cifra", actor_user: doctor)
+    event = cancelled.events.find_by!(kind: "cancelled")
     result = order.result
     file = result.pdf_file
-    expect { reencrypting { order.encrypt } }.not_to raise_error
-    expect { reencrypting { file.encrypt } }.not_to raise_error
-    expect { reencrypting { event.encrypt } }.not_to raise_error
-    expect { reencrypting { result.encrypt } }.not_to raise_error
+    raw = lambda do |table, column, id|
+      c = ApplicationRecord.connection
+      c.select_value("SELECT #{column} FROM #{table} WHERE id = #{c.quote(id)}")
+    end
+    # Positivo: a coluna cifrada é regravada de fato (texto cifrado novo) e continua legível.
+    { [ "exam_order_events", "reason", event ] => "motivo livre da re-cifra", [ "exam_results", "values", result ] => nil,
+      [ "exam_files", "data", file ] => nil }.each do |(table, column, record), plain|
+      before = raw.call(table, column, record.id)
+      rolled_back do
+        CityEncryption.allowing_reencryption { record.encrypt }
+        expect(raw.call(table, column, record.id)).not_to eq(before), "#{table}.#{column}"
+      end
+      expect(raw.call(table, column, record.id)).to eq(before)
+      expect(record.reload.public_send(column)).to eq(plain) if plain
+    end
+    before = raw.call("exam_orders", "requester_name", order.id)
+    rolled_back do
+      CityEncryption.allowing_reencryption { order.update_columns(requester_name: "Dr. Re-cifra") }
+      expect(raw.call("exam_orders", "requester_name", order.id)).not_to eq(before)
+    end
+    # Negativo: nada além das colunas cifradas muda, mesmo sob a marca.
     expect { reencrypting { order.update_columns(priority: "urgent") } }.to raise_error(ActiveRecord::StatementInvalid, /identity never changes/)
     expect { reencrypting { file.update_columns(sha256: "1" * 64) } }.to raise_error(ActiveRecord::StatementInvalid, /a file never changes/)
-    expect { reencrypting { result.update_columns(critical: true) } }.to raise_error(ActiveRecord::StatementInvalid, /append-only|reencryption/)
-    expect { reencrypting { event.update_columns(kind: "cancelled") } }.to raise_error(ActiveRecord::StatementInvalid, /append-only|reencryption/)
+    expect { reencrypting { result.update_columns(critical: true) } }
+      .to raise_error(ActiveRecord::StatementInvalid, /exam_results is append-only: UPDATE refused/)
+    expect { reencrypting { event.update_columns(kind: "authorized") } }
+      .to raise_error(ActiveRecord::StatementInvalid, /exam_order_events is append-only: UPDATE refused/)
     # Sem a marca, regravar o cifrado também é recusado.
     expect { attempt { file.update_columns(data: ExamFile.find(file.id).data) } }.to raise_error(ActiveRecord::StatementInvalid, /a file never changes/)
     expect(ExamFile.find(file.id).bytes).to eq(ExamHelpers::PDF_BYTES)
@@ -125,9 +148,14 @@ RSpec.describe "Invariantes do rastreamento de exames (ADR 0036)", type: :reques
     get "/exams/orders/#{order.id}"
     expect(response).to have_http_status(:not_found)
     get "/clinical_record/patients/#{order.patient_id}"
-    expect(response.status).to be_in([ 403, 404 ])
+    expect(response).to have_http_status(:forbidden)
     get "/exams/provider/orders"
     expect(json_body["orders"]).to eq([])
+    # Controle positivo: o usuário do prestador certo vê a própria guia.
+    mine = staff_with("lab-#{SecureRandom.hex(2)}@lab.com.br", "exam_provider").tap { |u| ExamProviderUser.create!(exam_provider: provider, user: u) }
+    sign_in_as(mine)
+    get "/exams/provider/orders"
+    expect(json_body["orders"].map { |o| o["id"] }).to eq([ order.id ])
   end
 
   # Mutação: devolver o PDF sem Exams::Release, ou aceitar par declarado.
@@ -147,7 +175,8 @@ RSpec.describe "Invariantes do rastreamento de exames (ADR 0036)", type: :reques
     patient, citizen = exam_patient!(exam_seq!)
     item.update!(release_policy: "immediate")
     order = full_cycle(patient: patient)
-    declared = Citizen.create!(cpf: "39053344705", phone: citizen.phone, verification_level: "declared")
+    declared = screening_citizen!(exam_seq!).tap { |c| c.update_columns(phone: citizen.phone) }
+    expect(declared.verification_level).to eq("declared")
     sign_in_citizen(citizen.phone)
     get "/citizen/exams/#{order.id}/pdf", params: { citizen_id: declared.id }
     expect([ response.status, response.body ]).to eq([ 403, { error: "not_verified" }.to_json ])
@@ -184,7 +213,7 @@ RSpec.describe "Invariantes do rastreamento de exames (ADR 0036)", type: :reques
   # Mutação: tirar `environments:` do fake_lab no catálogo (Platform::Features), ou a checagem
   # de simulated no FHIR. (O abort de lib/fake_lab/run.rb é guardado pelo spec da Task 15,
   # não por este invariante.)
-  it "nenhum fake_lab em produção" do
+  it "nenhum fake_lab fora dos ambientes de simulação (catálogo e gate em production; FHIR com fake_lab desligado)" do
     expect(Platform::Features::SIMULATION_ENVS).not_to include("production")
     expect(Platform::Features.catalog(env: "production").map(&:key)).not_to include("fake_lab")
     expect(Platform::Features.catalog(env: "development").map(&:key)).to include("fake_lab")
@@ -201,11 +230,15 @@ RSpec.describe "Invariantes do rastreamento de exames (ADR 0036)", type: :reques
   it "eventos só com ids e códigos; token FHIR só como hash" do
     token = Exams::RotateFhirToken.call(provider: provider).payload[:token]
     order = full_cycle(critical: true)
+    free_text = "Paciente relatou segredo-de-justica-xyz"
+    Exams::Steps.cancel(order: exam_order!(patient: exam_patient!(exam_seq!).first, unit: unit, requester: doctor),
+                        reason: free_text, actor_user: doctor)
+    expect(DomainEvent.where(name: "exam_order.cancelled").count).to eq(1)
     allowed = %w[exam_order_id exam_result_id exam_provider_id origin priority source critical by_team reason patient_id user_id]
     expect(exam_events.count).to be > 3
     exam_events.each do |event|
       expect(event.payload.keys - allowed).to eq([]), event.name
-      expect(event.payload.to_json).not_to include("7.7", order.patient.cpf, token)
+      expect(event.payload.to_json).not_to include("7.7", order.patient.cpf, order.patient.display_name, free_text, token)
     end
     escalation = DomainEvent.where(name: "exam_order.escalated").pluck(:payload).map { |p| p["reason"] }
     expect(escalation).to eq(%w[critical])
