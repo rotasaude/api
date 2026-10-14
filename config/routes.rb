@@ -249,6 +249,8 @@ Rails.application.routes.draw do
   # Rastreamento do exame (ADR 0036; contrato §3–§6). Prefixo único no proxy
   # de dev do dashboard. As rotas das Tasks 6, 9–13, 16 e 18 entram aqui.
   scope "/exams", module: :exams, as: :exams do
+    post "uploads",      to: "uploads#create"
+    get  "files/:token", to: "files#show", format: false, constraints: { token: %r{[^/]+} }
     scope "admin", module: :admin, as: :admin do
       get   "catalog_items",     to: "catalog_items#index"
       post  "catalog_items",     to: "catalog_items#create"

@@ -7,11 +7,12 @@ module ClinicalRecord
   module Trail
     module_function
 
-    def viewed!(patient:, user:, grant:, consultation_id: nil)
+    def viewed!(patient:, user:, grant:, consultation_id: nil, extra: {})
       return unless patient
 
       payload = { patient_id: patient.id, user_id: user.id, access: grant.kind.to_s, reason_code: grant.opening&.reason_code }
       payload[:consultation_id] = consultation_id if consultation_id
+      payload.merge!(extra)
       DomainEvents.publish("clinical_record.viewed", **payload)
     end
   end
