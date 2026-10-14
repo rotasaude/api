@@ -66,6 +66,7 @@ module Consultations
       (changes.keys - CHANGE_KEYS).empty? ? changes : nil
     end
 
+    # Prioridade do exame é fixa na criação (sem mudança por adendo); para mudar, retire o exame e acrescente de novo. Um adendo que só muda `priority` não gera mudança.
     # Valida tudo antes de gravar; devolve as diferenças a gravar e o que fica em `changes`.
     def self.prepare(consultation, patient, cbo, changes)
       today = Time.zone.today

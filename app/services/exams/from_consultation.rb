@@ -1,9 +1,13 @@
 # Ligação com o 19a (spec §4): o pedido `requested` da consulta vira
 # exam_order (origem consultation, solicitante = autora, unidade do
 # atendimento), sem exigir o catálogo (Desvio 8). Dentro do savepoint da
-# finalização/adendo: falha levanta e desfaz tudo.
+# finalização/adendo: falha levanta e desfaz tudo. A exceção (OpenFailed, ou
+# RuntimeError no cancelamento) PROPAGA por Consultations::Finalize.call e
+# Consultations::AddAddendum.call: aparece como 500, não como Result de falha.
 module Exams
   module FromConsultation
+    class OpenFailed < StandardError; end
+
     module_function
 
     def open!(consultation:, requests:)
@@ -14,7 +18,7 @@ module Exams
                            created_by: consultation.author_user, cid10: request.cid10_justification,
                            consultation_exam_request: request, sigtap_competence: request.sigtap_competence,
                            require_catalog: false)
-        raise ActiveRecord::RecordInvalid, request if result.failure?
+        raise OpenFailed, "abertura do exame recusada: #{result.reason}" if result.failure?
       end
     end
 

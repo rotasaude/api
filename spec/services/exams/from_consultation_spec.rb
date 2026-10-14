@@ -66,6 +66,7 @@ RSpec.describe Exams::FromConsultation do
     Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "exame já feito em outro serviço",
                                     text: "Exame retirado", changes: { "exam_requests" => [] })
     expect(order.reload.status).to eq("resulted")
+    expect(order.events.pluck(:kind)).not_to include("cancelled")
   end
 
   it "o adendo que acrescenta exame abre um exam_order novo" do
@@ -83,5 +84,37 @@ RSpec.describe Exams::FromConsultation do
     Platform::Features.set!(city: Current.city, key: "exam_tracking", enabled: false, maintainer: ledi_maintainer!)
     finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
     expect(ExamOrder.count).to eq(0)
+  end
+
+  it "falha ao abrir o exame desfaz a finalização inteira (propaga o motivo)" do
+    consultation = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    Consultations::SaveDraft.call(consultation: consultation, by: doctor, params: draft_body)
+    allow(Exams::Open).to receive(:call).and_return(Result.fail(:invalid_priority))
+    expect { Consultations::Finalize.call(consultation: consultation.reload, outcome_params: { "outcome" => "discharged" }, by: doctor) }
+      .to raise_error(Exams::FromConsultation::OpenFailed, /invalid_priority/)
+    expect(consultation.reload).to be_draft
+    expect(ConsultationExamRequest.count).to eq(0)
+    expect(ExamOrder.count).to eq(0)
+  end
+
+  it "falha ao cancelar o exame desfaz o adendo" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    allow(Exams::Transition).to receive(:call).and_return(Result.fail(:invalid_transition))
+    expect do
+      Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "exame já feito em outro serviço",
+                                      text: "Exame retirado", changes: { "exam_requests" => [] })
+    end.to raise_error(RuntimeError, /invalid_transition/)
+    expect(ConsultationAddendum.count).to eq(0)
+    expect(consultation.exam_requests.where(status: "cancelled").count).to eq(0)
+  end
+
+  it "adendo que só muda a prioridade não altera o exame (prioridade fixa na criação)" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    order = ExamOrder.find_by!(patient_id: consultation.patient_id)
+    Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "mudar prioridade", text: "Urgente",
+                                    changes: { "exam_requests" => [ { "sigtap_code" => "0202010503", "priority" => "urgent" } ] })
+    expect(ExamOrder.where(patient_id: consultation.patient_id).count).to eq(1)
+    expect(order.reload).to have_attributes(priority: "routine", status: "awaiting_schedule")
+    expect(order.events.pluck(:kind)).not_to include("cancelled")
   end
 end

@@ -98,6 +98,7 @@ module Consultations
 
     # `kept`: pares [sigtap_code, cid10] já vigentes (adendo) — o não médico
     # mantém a justificativa CID-10 que já existe, só não põe nova.
+    # Prioridade do exame é fixa na criação (sem mudança por adendo); para mudar, retire o exame e acrescente de novo.
     def exams(list, cbo:, on:, kept: [])
       return fail_index(:invalid_exam, nil) unless list.is_a?(Array) && list.size <= Ledi::ConsultationMapping.max_exams
 
