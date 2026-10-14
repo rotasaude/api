@@ -64,7 +64,25 @@ module Platform
       # responde pec_disabled.
       Entry.new(key: "pec_external_view",
                 description: "Página da linha do tempo para a tela de sistemas externos do e-SUS PEC",
-                requires: %w[feature:patient_timeline record_mode:integrated pec_origin pec_hmac_key])
+                requires: %w[feature:patient_timeline record_mode:integrated pec_origin pec_hmac_key]),
+      # ADR 0036 (Divergência D1): rastreamento do exame (módulo 21a). Vale no
+      # modo record e no integrado (guia da recepção e botão no PEC); off não.
+      Entry.new(key: "exam_tracking",
+                description: "Rastreamento do exame (pedido, regulação, prazos, resultado e ciência)",
+                requires: %w[record_mode]),
+      # ADR 0036: entrada FHIR do laudo (POST /fhir/DiagnosticReport) por token do prestador.
+      Entry.new(key: "exam_fhir_inbound",
+                description: "Entrada FHIR do laudo do prestador (DiagnosticReport)",
+                requires: %w[feature:exam_tracking]),
+      # ADR 0036: "Solicitar exames" dentro da página do PEC (módulo 20).
+      Entry.new(key: "exam_pec_bridge",
+                description: "Solicitar exames pela tela de sistemas externos do e-SUS PEC",
+                requires: %w[feature:exam_tracking feature:pec_external_view]),
+      # ADR 0036: laboratório simulado, só fora de produção.
+      Entry.new(key: "fake_lab",
+                description: "Laboratório simulado (desenvolvimento) — laudos de exemplo, sem validade",
+                requires: %w[feature:exam_fhir_inbound],
+                environments: SIMULATION_ENVS)
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze

@@ -43,7 +43,7 @@ RSpec.describe "Modo de prontuário e interruptores da cidade" do
   end
 
   it "catálogo em código, com todas as chaves" do
-    expect(Platform::Features::KEYS).to eq(%w[ledi_export cadsus_lookup clinical_record digital_signature signature_psc_mock clinical_documents controlled_prescriptions sncr_mock patient_timeline pec_external_view])
+    expect(Platform::Features::KEYS).to eq(%w[ledi_export cadsus_lookup clinical_record digital_signature signature_psc_mock clinical_documents controlled_prescriptions sncr_mock patient_timeline pec_external_view exam_tracking exam_fhir_inbound exam_pec_bridge fake_lab])
     expect(Platform::Features.find("cadsus_lookup").requires).to eq(%w[credential:cadsus])
     expect(Platform::Features.find("nada")).to be_nil
   end
