@@ -118,6 +118,12 @@ default: &default
     queue: housekeeping
     schedule: every 10 minutes
 
+  # ADR 0036 (spec §5): ciência vencida → fila da equipe; purga de arquivos órfãos.
+  exams_daily:
+    class: Exams::DailyJob
+    queue: housekeeping
+    schedule: "every day at 6:30am America/Sao_Paulo"
+
   discard_old_failed_jobs:
     command: "SolidQueueRetention.discard_failed"
     queue: housekeeping
