@@ -1,8 +1,9 @@
 # ADR 0026 (spec §4.4): o municipal_admin confirma a exclusão (o step-up fica
 # no controller). Numa transação só, com trava no pedido e nos pares do CPF:
 # reconfere a retenção pela mesma regra do pedido (atendimento, documento ou
-# exame chegado depois do pedido vira `retained`, nada mais muda); senão, para cada par, revoga, anonimiza, apaga o apagável e
-# troca CPF e telefone por um marcador que não identifica ninguém.
+# exame chegado depois do pedido vira `retained`, nada mais muda); senão,
+# para cada par, revoga, anonimiza, apaga o apagável e troca CPF e telefone
+# por um marcador que não identifica ninguém.
 # ADR 0028: também o CNS do CADSUS e a consulta pendente.
 # ADR 0031: também o nome completo, o social e o da mãe.
 # Reasons: :not_pending, :own_request.
@@ -47,8 +48,13 @@ module Citizens
         # Pares travados: nenhum pedido novo nasce para eles (FK). Se um pedido
         # entrou noutra unidade antes da trava, recomeça com ela na frente.
         raise UnitsChanged unless (unit_ids_of(pairs) - locked_units).empty?
+        # O exame aponta para o paciente, não para o par: o paciente travado
+        # (cidadão → paciente, a ordem do Patients::Resolve) segura a FK de um
+        # exame novo enquanto a retenção é reconferida.
+        pair_scope = Citizen.where(id: pairs.map(&:id))
+        Patient.where(id: RequestErasure.patient_ids(pair_scope, cpf: request.cpf)).order(:id).lock.to_a
         # O banco não exige decided_by_user: quem decide é gravado aqui, sempre.
-        if RequestErasure.retained?(Citizen.where(id: pairs.map(&:id)))
+        if RequestErasure.retained?(pair_scope, cpf: request.cpf)
           request.update!(status: "retained", decided_by_user: by, decided_at: Time.current)
           DomainEvents.publish("citizen.erasure_retained", request_id: request.id)
           next result = Result.ok(request: request)

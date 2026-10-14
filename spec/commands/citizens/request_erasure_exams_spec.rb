@@ -47,6 +47,29 @@ RSpec.describe Citizens::RequestErasure do
     expect(citizen.reload.cpf).to be_present
   end
 
+  it "o paciente do CPF conta mesmo sem par ligado a ele (par antigo já excluído)" do
+    patient, old_pair = exam_patient!(exam_seq!)
+    exam_order!(patient: patient, unit: unit, requester: doctor!(unit))
+    old_pair.update_columns(erased_at: Time.current) # rubocop:disable Rails/SkipsModelValidations -- simula o par já excluído
+    Citizen.create!(cpf: old_pair.cpf, phone: "+5541990000#{format('%03d', exam_seq! % 1000)}")
+    result = described_class.call(cpf: old_pair.cpf, document_checked: true, by: reception)
+    expect(result.payload[:request].status).to eq("retained")
+  end
+
+  it "Erase trava o paciente antes de reconferir (segura a FK de um exame novo)" do
+    patient, citizen = exam_patient!(exam_seq!)
+    request = described_class.call(cpf: citizen.cpf, document_checked: true, by: reception).payload[:request]
+    admin = staff_with("adm-#{SecureRandom.hex(2)}@cidade.gov.br", "municipal_admin")
+    sqls = []
+    callback = ->(*, payload) { sqls << payload[:sql] }
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { Citizens::Erase.call(request: request, by: admin) }
+    locked = sqls.find { |sql| sql.include?('FROM "patients"') && sql.include?("FOR UPDATE") }
+    expect(locked).to be_present
+    retention = sqls.index { |sql| sql.include?('FROM "exam_orders"') }
+    expect(sqls.index(locked)).to be < retention
+    expect(patient.reload).to be_present
+  end
+
   it "par sem exame segue pendente" do
     _patient, citizen = exam_patient!(exam_seq!)
     result = described_class.call(cpf: citizen.cpf, document_checked: true, by: reception)

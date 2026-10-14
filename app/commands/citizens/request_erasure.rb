@@ -18,7 +18,7 @@ module Citizens
 
       request = nil
       ApplicationRecord.transaction do
-        retained = retained?(pairs)
+        retained = retained?(pairs, cpf: digits)
         request = CitizenErasureRequest.create!(
           cpf: digits, presented_citizen: pairs.order(:created_at).first, requested_by_user: by,
           document_checked: true, status: retained ? "retained" : "pending", decided_at: (Time.current if retained)
@@ -34,7 +34,7 @@ module Citizens
 
     def pairs_of(digits) = Citizen.not_erased.where(cpf: digits)
 
-    def retained?(pairs) = attended?(pairs) || documented?(pairs) || examined?(pairs)
+    def retained?(pairs, cpf:) = attended?(pairs) || documented?(pairs) || examined?(pairs, cpf: cpf)
 
     def attended?(pairs) = Attendance.where(citizen_id: pairs.select(:id)).exists?
 
@@ -42,10 +42,17 @@ module Citizens
     def documented?(pairs) = ClinicalDocument.where(citizen_id: pairs.select(:id)).exists?
 
     # ADR 0036 (A49): exame é registro clínico — pedido em qualquer situação,
-    # cancelado inclusive, ou resultado externo do paciente dos pares.
-    def examined?(pairs)
-      patients = pairs.where.not(patient_id: nil).select(:patient_id)
-      ExamOrder.where(patient_id: patients).exists? || ExamResult.where(patient_id: patients).exists?
+    # cancelado inclusive, ou resultado externo do paciente da pessoa.
+    def examined?(pairs, cpf:)
+      ids = patient_ids(pairs, cpf: cpf)
+      ExamOrder.where(patient_id: ids).exists? || ExamResult.where(patient_id: ids).exists?
+    end
+
+    # O paciente dos pares e o do CPF: o exame aponta para o paciente, que
+    # pode ter ficado de um par já excluído (o CPF do paciente é cifrado de
+    # forma determinística, como no ClinicalRecord::Open).
+    def patient_ids(pairs, cpf:)
+      (pairs.where.not(patient_id: nil).pluck(:patient_id) + Patient.where(cpf: cpf).pluck(:id)).uniq
     end
   end
 end
