@@ -29,6 +29,7 @@ module Consultations
 
       # Fora da transação: nenhuma leitura de interruptor dentro do savepoint (OpenRequest).
       signing = Signatures::Gate.usable?(Current.city)
+      tracking = Exams::Gate.usable?(Current.city)
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
         consultation.lock!
@@ -37,6 +38,8 @@ module Consultations
         patient = Patient.lock.find(consultation.patient_id)
         plan = prepare(consultation, patient, consultation.cbo_code, changes)
         next result = plan if plan.failure?
+
+        plan.payload[:tracking] = tracking
 
         addendum = ConsultationAddendum.create!(consultation: consultation, author_user: by, text: text, reason: reason,
                                                 item_changes: plan.payload[:stored])
@@ -124,13 +127,17 @@ module Consultations
       plan[:exams_removed].each do |code|
         previous = consultation.exam_requests.where(sigtap_code: code, status: "requested").order(:created_at, :id).last
         ConsultationExamRequest.create!(consultation: consultation, addendum: addendum, sigtap_code: code,
-                                        sigtap_competence: previous.sigtap_competence, status: "cancelled")
+                                        sigtap_competence: previous.sigtap_competence, status: "cancelled",
+                                        priority: previous.priority)
       end
-      plan[:exams_added].each do |exam|
+      plan[:exams_removed].each { |code| Exams::FromConsultation.cancel!(consultation: consultation, sigtap_code: code, by: by) }
+      created = plan[:exams_added].map do |exam|
         ConsultationExamRequest.create!(consultation: consultation, addendum: addendum, sigtap_code: exam["sigtap_code"],
                                         sigtap_competence: exam["sigtap_competence"],
-                                        cid10_justification: exam["cid10_justification"], status: "requested")
+                                        cid10_justification: exam["cid10_justification"], status: "requested",
+                                        priority: exam["priority"] || "routine")
       end
+      Exams::FromConsultation.open!(consultation: consultation, requests: created) if plan[:tracking]
       nil
     end
     private_class_method :normalize, :prepare, :apply!

@@ -24,7 +24,7 @@ RSpec.describe Consultations::Json do
     expect(json["evaluated_problems"]).to eq([ { "problem_id" => nil, "terminology" => "ciap2", "code" => "T90",
                                                  "label" => "Diabetes não insulino-dependente", "action" => "add",
                                                  "onset_on" => "2025-08-01", "onset_precision" => "month" } ])
-    expect(json["exam_requests"]).to eq([ { "sigtap_code" => "0202010503", "label" => "DOSAGEM DE HEMOGLOBINA GLICOSILADA" } ])
+    expect(json["exam_requests"]).to eq([ { "sigtap_code" => "0202010503", "label" => "DOSAGEM DE HEMOGLOBINA GLICOSILADA", "priority" => "routine" } ])
     expect(json.values_at("status", "conducts", "finalized_at", "addenda")).to eq([ "draft", [ "1" ], nil, [] ])
     expect(json["care_type"]).to eq("5")
   end

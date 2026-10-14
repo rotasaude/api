@@ -17,6 +17,7 @@ module Consultations
       outcome = normalize(outcome_params)
       # Fora da transação: nenhuma leitura de interruptor dentro do savepoint (OpenRequest).
       signing = Signatures::Gate.usable?(Current.city)
+      tracking = Exams::Gate.usable?(Current.city)
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
         attendance = Attendance.lock.find(consultation.attendance_id)
@@ -28,7 +29,7 @@ module Consultations
         ready = requirements(consultation, patient)
         next result = ready if ready.failure?
 
-        failure = materialize!(consultation, patient, by)
+        failure = materialize!(consultation, patient, by, tracking: tracking)
         if failure
           result = failure
           raise ActiveRecord::Rollback
@@ -83,7 +84,7 @@ module Consultations
     end
 
     # Devolve nil, ou o Result de falha (com o índice do problema).
-    def self.materialize!(consultation, patient, by)
+    def self.materialize!(consultation, patient, by, tracking: false)
       today = Time.zone.today
       items = consultation.draft_items
       Array(items["evaluated_problems"]).each_with_index do |item, index|
@@ -101,7 +102,11 @@ module Consultations
       Array(items["exam_requests"]).each do |exam|
         ConsultationExamRequest.create!(consultation: consultation, sigtap_code: exam["sigtap_code"],
                                         sigtap_competence: exam["sigtap_competence"],
-                                        cid10_justification: exam["cid10_justification"], status: "requested")
+                                        cid10_justification: exam["cid10_justification"], status: "requested",
+                                        priority: exam["priority"] || "routine")
+      end
+      if tracking
+        Exams::FromConsultation.open!(consultation: consultation, requests: consultation.exam_requests.where(status: "requested").order(:created_at, :id).to_a)
       end
       nil
     end

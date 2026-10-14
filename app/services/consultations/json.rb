@@ -76,9 +76,11 @@ module Consultations
 
     def exam_requests(c)
       rows = if !c.finalized?
-               Array(c.draft_items["exam_requests"]).map { |e| e.values_at("sigtap_code", "sigtap_competence", "cid10_justification") }
+               Array(c.draft_items["exam_requests"]).map do |e|
+                 e.values_at("sigtap_code", "sigtap_competence", "cid10_justification") << (e["priority"] || "routine")
+               end
              else
-               c.exam_requests.where(addendum_id: nil).order(:created_at, :id).pluck(:sigtap_code, :sigtap_competence, :cid10_justification)
+               c.exam_requests.where(addendum_id: nil).order(:created_at, :id).pluck(:sigtap_code, :sigtap_competence, :cid10_justification, :priority)
              end
       exam_list(rows)
     end
@@ -91,8 +93,9 @@ module Consultations
     end
 
     def exam_list(rows)
-      rows.map do |code, competence, cid|
-        { sigtap_code: code, label: ClinicalTerms::SigtapExams.label(code, competence), cid10_justification: cid }.compact
+      rows.map do |code, competence, cid, priority|
+        { sigtap_code: code, label: ClinicalTerms::SigtapExams.label(code, competence), cid10_justification: cid,
+          priority: priority }.compact
       end
     end
 

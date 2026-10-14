@@ -118,7 +118,11 @@ module Consultations
 
           justification = cid.code
         end
-        { "sigtap_code" => exam.code, "sigtap_competence" => exam.competence, "cid10_justification" => justification }
+        priority = raw.key?("priority") ? raw["priority"] : "routine"
+        return fail_index(:invalid_exam, index) unless ConsultationExamRequest::PRIORITIES.include?(priority)
+
+        { "sigtap_code" => exam.code, "sigtap_competence" => exam.competence, "cid10_justification" => justification,
+          "priority" => priority }
       end
       Result.ok(items: items)
     end

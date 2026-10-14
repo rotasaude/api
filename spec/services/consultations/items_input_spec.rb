@@ -40,7 +40,7 @@ RSpec.describe Consultations::ItemsInput do
                                   "release_id" => TerminologyRelease.active.find_by!(kind: "cid10").id, "action" => "add",
                                   "onset_on" => "2025-08-01", "onset_precision" => "month" } ],
       "exam_requests" => [ { "sigtap_code" => "0202010503", "sigtap_competence" => today.strftime("%Y%m"),
-                             "cid10_justification" => "E119" } ]
+                             "cid10_justification" => "E119", "priority" => "routine" } ]
     )
   end
 
