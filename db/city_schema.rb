@@ -763,11 +763,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.datetime "occurred_at", null: false
     t.text "reason"
     t.bigint "txid", default: -> { "txid_current()" }, null: false
+    t.index ["exam_order_id", "escalation_reason"], name: "idx_exam_order_events_escalation_once", unique: true, where: "((kind)::text = 'escalated'::text)"
     t.index ["exam_order_id", "occurred_at"], name: "idx_exam_order_events_order"
     t.index ["kind", "occurred_at"], name: "idx_exam_order_events_kind"
     t.check_constraint "(kind::text <> ALL (ARRAY['denied'::text, 'cancelled'::text])) OR reason IS NOT NULL", name: "ck_exam_order_events_reason"
     t.check_constraint "(kind::text = 'escalated'::text) = (escalation_reason IS NOT NULL)", name: "ck_exam_order_events_escalation"
-    t.check_constraint "actor_user_id IS NULL OR actor_provider_id IS NULL", name: "ck_exam_order_events_actor"
+    t.check_constraint "actor_user_id IS NOT NULL OR actor_provider_id IS NOT NULL OR kind::text = 'escalated'::text", name: "ck_exam_order_events_actor"
     t.check_constraint "escalation_reason IS NULL OR (escalation_reason::text = ANY (ARRAY['overdue'::text, 'critical'::text, 'unlinked_requester'::text]))", name: "ck_exam_order_events_escalation_reason"
     t.check_constraint "kind::text = ANY (ARRAY['requested'::text, 'authorized'::text, 'denied'::text, 'scheduled'::text, 'collected'::text, 'resulted'::text, 'acknowledged'::text, 'escalated'::text, 'cancelled'::text])", name: "ck_exam_order_events_kind"
   end
@@ -884,7 +885,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.check_constraint "(fhir_identifier IS NULL) = (source::text <> 'fhir'::text)", name: "ck_exam_results_fhir"
     t.check_constraint "(origin::text = 'order'::text) = (exam_order_id IS NOT NULL)", name: "ck_exam_results_order"
     t.check_constraint "origin::text = ANY (ARRAY['order'::text, 'external'::text])", name: "ck_exam_results_origin"
-    t.check_constraint "registered_by_user_id IS NULL OR registered_by_provider_id IS NULL", name: "ck_exam_results_registrant"
+    t.check_constraint "registered_by_user_id IS NOT NULL OR registered_by_provider_id IS NOT NULL", name: "ck_exam_results_registrant"
     t.check_constraint "source::text = ANY (ARRAY['unit'::text, 'provider'::text, 'fhir'::text, 'consultation'::text])", name: "ck_exam_results_source"
   end
 

@@ -142,9 +142,14 @@ class AddExamTracking < ActiveRecord::Migration[8.1]
     end
     add_index :exam_order_events, %i[exam_order_id occurred_at], name: "idx_exam_order_events_order"
     add_index :exam_order_events, %i[kind occurred_at], name: "idx_exam_order_events_kind"
+    # A31: no máximo um escalonamento por motivo.
+    add_index :exam_order_events, %i[exam_order_id escalation_reason], unique: true, where: "kind::text = 'escalated'",
+                                                                       name: "idx_exam_order_events_escalation_once"
     add_check_constraint :exam_order_events, "kind::text = ANY (ARRAY['requested'::text, 'authorized'::text, 'denied'::text, 'scheduled'::text, 'collected'::text, 'resulted'::text, 'acknowledged'::text, 'escalated'::text, 'cancelled'::text])",
                          name: "ck_exam_order_events_kind"
-    add_check_constraint :exam_order_events, "actor_user_id IS NULL OR actor_provider_id IS NULL", name: "ck_exam_order_events_actor"
+    # A35: portal grava prestador E funcionário; FHIR só o prestador; sem ator só o system (escalated).
+    add_check_constraint :exam_order_events, "actor_user_id IS NOT NULL OR actor_provider_id IS NOT NULL OR kind::text = 'escalated'",
+                         name: "ck_exam_order_events_actor"
     add_check_constraint :exam_order_events, "kind::text NOT IN ('denied', 'cancelled') OR reason IS NOT NULL", name: "ck_exam_order_events_reason"
     add_check_constraint :exam_order_events, "(kind::text = 'escalated') = (escalation_reason IS NOT NULL)", name: "ck_exam_order_events_escalation"
     add_check_constraint :exam_order_events, "escalation_reason IS NULL OR escalation_reason::text = ANY (ARRAY['overdue'::text, 'critical'::text, 'unlinked_requester'::text])",
@@ -175,7 +180,9 @@ class AddExamTracking < ActiveRecord::Migration[8.1]
     add_check_constraint :exam_results, "source::text = ANY (ARRAY['unit'::text, 'provider'::text, 'fhir'::text, 'consultation'::text])", name: "ck_exam_results_source"
     add_check_constraint :exam_results, "(origin::text = 'order') = (exam_order_id IS NOT NULL)", name: "ck_exam_results_order"
     add_check_constraint :exam_results, "(fhir_identifier IS NULL) = (source::text <> 'fhir')", name: "ck_exam_results_fhir"
-    add_check_constraint :exam_results, "registered_by_user_id IS NULL OR registered_by_provider_id IS NULL", name: "ck_exam_results_registrant"
+    # A35: unidade = usuário; FHIR = prestador; portal = os dois.
+    add_check_constraint :exam_results, "registered_by_user_id IS NOT NULL OR registered_by_provider_id IS NOT NULL",
+                         name: "ck_exam_results_registrant"
 
     execute File.read(Rails.root.join("db/city_triggers.sql"))
   end

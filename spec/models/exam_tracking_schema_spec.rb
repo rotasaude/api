@@ -60,6 +60,24 @@ RSpec.describe "Banco do rastreamento de exames" do
       .not_to include(Base64.strict_encode64(ExamHelpers::PDF_BYTES))
   end
 
+  # A35: portal grava prestador E funcionário; sem ator só o system (escalated).
+  # A31: um escalated por (pedido, motivo) também no banco.
+  it "atores do evento e do resultado (A35); escalonamento único por motivo (A31)" do
+    provider = exam_provider!(name: "Lab Atores")
+    both = ExamOrderEvent.create!(exam_order: order, kind: "requested", actor_user: doctor, actor_provider: provider, occurred_at: Time.current)
+    expect(both).to be_persisted
+    expect { ExamOrderEvent.create!(exam_order: order, kind: "requested", occurred_at: Time.current) }
+      .to raise_error(ActiveRecord::StatementInvalid, /ck_exam_order_events_actor/)
+    ExamOrderEvent.create!(exam_order: order, kind: "escalated", escalation_reason: "overdue", occurred_at: Time.current)
+    ExamOrderEvent.create!(exam_order: order, kind: "escalated", escalation_reason: "critical", occurred_at: Time.current)
+    expect { ExamOrderEvent.create!(exam_order: order, kind: "escalated", escalation_reason: "overdue", occurred_at: Time.current) }
+      .to raise_error(ActiveRecord::RecordNotUnique, /idx_exam_order_events_escalation_once/)
+    attrs = { exam_order: order, patient: order.patient, sigtap_code: order.sigtap_code, origin: "order", source: "provider",
+              values: "[]", released_on: Time.zone.today, laboratory_name: "Lab", critical: false }
+    expect { ExamResult.create!(attrs.merge(pdf_file: pdf_file!)) }.to raise_error(ActiveRecord::StatementInvalid, /ck_exam_results_registrant/)
+    expect(ExamResult.create!(attrs.merge(pdf_file: pdf_file!, registered_by_user: doctor, registered_by_provider: provider))).to be_persisted
+  end
+
   it "papéis novos no banco e privilegiados" do
     user = staff_with("regulacao-#{SecureRandom.hex(3)}@cidade.gov.br", "exam_regulator", "exam_provider")
     expect(user.has_role?("exam_regulator")).to be(true)
@@ -92,7 +110,7 @@ RSpec.describe "exam_orders: evento de outra transação não basta (ADR 0036)" 
   end
 
   before do
-    as_replica(<<~SQL, "INSERT INTO exam_order_events (exam_order_id, kind, occurred_at, created_at) VALUES ('#{order_id}', 'requested', now(), now())")
+    as_replica(<<~SQL, "INSERT INTO exam_order_events (exam_order_id, kind, actor_user_id, occurred_at, created_at) VALUES ('#{order_id}', 'requested', gen_random_uuid(), now(), now())")
       INSERT INTO exam_orders (id, patient_id, sigtap_code, sigtap_competence, priority, requester_name, unit_id, origin, short_code,
                                status, status_changed_at, created_at, updated_at)
       VALUES ('#{order_id}', gen_random_uuid(), '0202010503', '202610', 'routine', 'x', gen_random_uuid(), 'pec', 'ABCDEFGH23',
@@ -114,7 +132,9 @@ RSpec.describe "exam_orders: evento de outra transação não basta (ADR 0036)" 
   it "aceita o mesmo UPDATE com evento da mesma transação (controle)" do
     CityConnection.with(TEST_CITY_A) do
       ApplicationRecord.transaction do
-        conn.execute("INSERT INTO exam_order_events (exam_order_id, kind, occurred_at, created_at) VALUES ('#{order_id}', 'scheduled', now(), now())")
+        # Evento do system (sem ator, A35) para não depender de FK de usuário real.
+        conn.execute("INSERT INTO exam_order_events (exam_order_id, kind, escalation_reason, occurred_at, created_at) " \
+                     "VALUES ('#{order_id}', 'escalated', 'overdue', now(), now())")
         conn.execute("UPDATE exam_orders SET status = 'scheduled' WHERE id = '#{order_id}'")
         expect(conn.select_value("SELECT status FROM exam_orders WHERE id = '#{order_id}'")).to eq("scheduled")
         raise ActiveRecord::Rollback
