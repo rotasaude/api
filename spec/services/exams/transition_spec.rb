@@ -66,13 +66,33 @@ RSpec.describe Exams::Transition do
     expect(DomainEvent.where(name: "exam_order.cancelled").last.payload).to eq("exam_order_id" => order.id)
   end
 
-  it "escalar é idempotente e não muda o status" do
+  it "escalar é idempotente por motivo (A31), não muda o status e guarda a primeira data" do
     order = open
     step(order, "scheduled"); step(order, "collected"); step(order, "resulted", event_payload: { source: "unit", critical: true })
-    first = ApplicationRecord.transaction { order.lock!; Exams::Escalate.call(order: order, reason: "critical") }
-    again = ApplicationRecord.transaction { order.lock!; Exams::Escalate.call(order: order, reason: "overdue") }
-    expect([ first.payload[:escalated], again.payload[:escalated] ]).to eq([ true, false ])
-    expect(order.reload).to have_attributes(status: "resulted", escalated_at: be_present)
-    expect(order.events.where(kind: "escalated").pluck(:escalation_reason)).to eq(%w[critical])
+    first_at = Time.zone.local(2026, 10, 13, 10)
+    escalate = ->(reason, now) { ApplicationRecord.transaction { order.lock!; Exams::Escalate.call(order: order, reason: reason, now: now) } }
+    outcomes = [ escalate.("overdue", first_at), escalate.("critical", first_at + 1.hour), escalate.("overdue", first_at + 2.hours),
+                 escalate.("critical", first_at + 3.hours) ]
+    expect(outcomes.map { |r| r.payload[:escalated] }).to eq([ true, true, false, false ])
+    expect(order.reload).to have_attributes(status: "resulted", escalated_at: first_at)
+    expect(order.events.where(kind: "escalated").pluck(:escalation_reason)).to eq(%w[overdue critical])
+    expect(DomainEvent.where(name: "exam_order.escalated").map(&:payload))
+      .to contain_exactly(*[ { "exam_order_id" => order.id, "reason" => "overdue" }, { "exam_order_id" => order.id, "reason" => "critical" } ])
+  end
+
+  it "trava o pedido por dentro: objeto velho sem trava do chamador não passa por cima do status real (ruling)" do
+    order = open
+    stale = ExamOrder.find(order.id)
+    step(order, "cancelled", reason: "Paciente fez em outro serviço")
+    expect(stale.status).to eq("awaiting_schedule")
+    expect(described_class.call(order: stale, kind: "scheduled", actor_user: doctor).then { |r| [ r.reason, r.details ] })
+      .to eq([ :invalid_transition, { status: "cancelled" } ])
+    other = open(sigtap: "0202020380")
+    fresh, old = ExamOrder.find(other.id), ExamOrder.find(other.id)
+    first_at = Time.zone.local(2026, 10, 13, 10)
+    Exams::Escalate.call(order: fresh, reason: "overdue", now: first_at)
+    expect(old.escalated_at).to be_nil
+    expect(Exams::Escalate.call(order: old, reason: "critical", now: first_at + 1.hour).payload[:escalated]).to be(true)
+    expect(other.reload.escalated_at).to eq(first_at)
   end
 end
