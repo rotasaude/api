@@ -8,7 +8,11 @@ class ExamCatalogItem < ApplicationRecord
   validates :release_policy, inclusion: { in: POLICIES }
   validates :sigtap_code, format: { with: /\A02\d{8}\z/ }
 
-  def days_for(stage) = public_send(:"#{stage}_days")
+  def days_for(stage)
+    raise ArgumentError, "unknown stage" unless STAGES.include?(stage.to_s)
+
+    public_send(:"#{stage}_days")
+  end
   def result_field(key) = result_fields.find { |field| field["key"] == key }
   def result_field_by_loinc(code) = result_fields.find { |field| field["loinc"].present? && field["loinc"] == code }
 end

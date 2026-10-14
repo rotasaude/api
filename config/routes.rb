@@ -246,6 +246,16 @@ Rails.application.routes.draw do
     get  "admin/overview",  to: "admin#overview"
   end
 
+  # Rastreamento do exame (ADR 0036; contrato §3–§6). Prefixo único no proxy
+  # de dev do dashboard. As rotas das Tasks 6, 9–13, 16 e 18 entram aqui.
+  scope "/exams", module: :exams, as: :exams do
+    scope "admin", module: :admin, as: :admin do
+      get   "catalog_items",     to: "catalog_items#index"
+      post  "catalog_items",     to: "catalog_items#create"
+      patch "catalog_items/:id", to: "catalog_items#update"
+    end
+  end
+
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
   # Prefixo único: uma entrada só no proxy de dev do dashboard. As rotas
   # literais (me, pending, cbo, links, shifts) PRECISAM vir antes de `:id`.
