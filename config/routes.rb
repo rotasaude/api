@@ -266,6 +266,7 @@ Rails.application.routes.draw do
     get  "providers",             to: "lookups#providers"
     get  "requesters",            to: "lookups#requesters"
     get  "acknowledgements/pending", to: "acknowledgements#pending"
+    get  "acknowledgements/pending/count", to: "acknowledgements#pending_count" # A46
     get  "acknowledgements/team",    to: "acknowledgements#team"
     get  "regulation/queue",      to: "regulation#queue"
     post "orders/:id/authorize",  to: "regulation#authorize"

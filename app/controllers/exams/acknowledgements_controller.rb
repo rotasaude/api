@@ -5,6 +5,7 @@
 module Exams
   class AcknowledgementsController < BaseController
     DENIED_WINDOW = 30.days
+    PAGE = 50 # tamanho da página (padrão de Timeline::Query.limit) e teto dos negados
 
     def create
       order = uuid?(params[:id]) && ExamOrder.find_by(id: params[:id])
@@ -22,9 +23,18 @@ module Exams
       return forbid("missing_role") unless Current.user.has_role?("health_professional")
 
       list(ExamOrder.where(requester_user_id: Current.user.id, status: "resulted"), :author) do
-        ExamOrder.where(requester_user_id: Current.user.id, status: "denied")
-                 .where("status_changed_at >= ?", DENIED_WINDOW.ago).order(status_changed_at: :desc).limit(50)
+        denied_scope.order(status_changed_at: :desc).limit(PAGE)
       end
+    end
+
+    # A46: o contador do Início. Só números; nada de dado clínico e nenhum
+    # clinical_record.viewed (ninguém leu prontuário). A lista completa, com
+    # trilha, só quando a tela de ciência abre.
+    def pending_count
+      return forbid("missing_role") unless Current.user.has_role?("health_professional")
+
+      pending = ExamOrder.where(requester_user_id: Current.user.id, status: "resulted").count
+      render json: { pending: pending, has_more: pending > PAGE, denied: [ denied_scope.count, PAGE ].min }
     end
 
     def team
@@ -36,6 +46,10 @@ module Exams
 
     private
 
+    def denied_scope
+      ExamOrder.where(requester_user_id: Current.user.id, status: "denied").where("status_changed_at >= ?", DENIED_WINDOW.ago)
+    end
+
     def list(scope, kind)
       page = Exams::OrderQuery.call(scope, params)
       grant = Exams::Access::Grant.new(view: :clinical, kind: kind, opening: nil)
@@ -43,9 +57,9 @@ module Exams
       body = { orders: page[:orders].map { |o| Exams::Json.order(o, view: :clinical, user: Current.user, events: false) },
                next_before: page[:next_before] }
       if block_given?
-        denied = yield.includes(:patient, :unit, :exam_provider, :requester_user, :consultation_exam_request).to_a
+        denied = yield.includes(:patient, :unit, :exam_provider, :requester_user, :consultation_exam_request, :events).to_a
         denied.each { |order| Exams::Trail.viewed!(order: order, user: Current.user, grant: grant) }
-        body[:denied] = denied.map { |o| Exams::Json.order(o, view: :clinical, user: Current.user, events: false) }
+        body[:denied] = denied.map { |o| Exams::Json.order(o, view: :clinical, user: Current.user, events: false, denied_reason: true) }
       end
       render json: body
     rescue Exams::Cursor::Invalid

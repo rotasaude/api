@@ -1,4 +1,5 @@
 require "rails_helper"
+require "json_schemer"
 
 # Spec §5 etapa 6 (F-21.8) — Review Focus 4: ciência por quem não pode.
 RSpec.describe "Exames — ciência e fila da equipe", type: :request do
@@ -117,6 +118,97 @@ RSpec.describe "Exames — ciência e fila da equipe", type: :request do
     expect(json_body["denied"].map { |o| o["id"] }).to eq([ denied.id ])
     expect(viewed_events(denied).map { |e| e.payload["access"] }).to eq([ "author" ])
     expect(viewed_events(resulted_order).map { |e| e.payload["access"] }).to eq([ "author" ])
+  end
+
+  def denied!(requester: doctor, reason: "Sem indicação clínica descrita", at: 1.day.ago)
+    order = exam_order!(patient: exam_patient!(exam_seq!).first, unit: unit, requester: requester)
+    order.update_columns(status: "awaiting_authorization")
+    Exams::Transition.call(order: order.reload, kind: "denied", actor_user: reception, reason: reason, now: at)
+    order.reload
+  end
+
+  # A47: o motivo da negativa vai ao próprio solicitante, nos itens de `denied`.
+  it "A47: os itens de denied trazem denied_reason; os de orders não têm a chave; o esquema aceita" do
+    resulted!
+    denied = denied!(reason: "Exame já realizado no mês passado")
+    sign_in_as(doctor)
+    get "/exams/acknowledgements/pending"
+    expect(json_body["denied"].map { |o| o["id"] }).to eq([ denied.id ])
+    expect(json_body["denied"].first).to include("denied_reason" => "Exame já realizado no mês passado")
+    expect(json_body["orders"].first.keys).not_to include("denied_reason")
+    schema = JSONSchemer.schema(Rails.root.join("spec/fixtures/exams/exam-order-v1.json"))
+    (json_body["orders"] + json_body["denied"]).each { |o| expect(schema.validate(o).to_a).to eq([]) }
+  end
+
+  it "A47: o cidadão nunca recebe denied_reason" do
+    denied = denied!
+    expect(Exams::Json.order(denied, view: :administrative, user: reception)).not_to have_key(:denied_reason)
+    expect(Exams::Json.order(denied, view: :clinical, user: doctor)).not_to have_key(:denied_reason)
+    expect(Exams::Json.order(denied, view: :clinical, user: doctor, denied_reason: true)[:denied_reason]).to eq("Sem indicação clínica descrita")
+  end
+
+  # A46: contador sem trilha.
+  describe "GET /exams/acknowledgements/pending/count (A46)" do
+    def event_names = DomainEvent.group(:name).count
+
+    it "devolve só números iguais aos da lista e não deixa nenhuma trilha" do
+      2.times { resulted! }
+      denied!
+      denied!(at: 40.days.ago) # fora da janela de 30 dias
+      denied!(requester: doctor!(unit)) # de outro solicitante
+      sign_in_as(doctor)
+      before_events = event_names
+      get "/exams/acknowledgements/pending/count"
+      expect(response).to have_http_status(:ok)
+      expect(json_body).to eq("pending" => 2, "has_more" => false, "denied" => 1)
+      expect(event_names).to eq(before_events)
+      expect(DomainEvent.where(name: "clinical_record.viewed").count).to eq(before_events.fetch("clinical_record.viewed", 0))
+      get "/exams/acknowledgements/pending"
+      expect([ json_body["orders"].size, json_body["denied"].size ]).to eq([ 2, 1 ])
+    end
+
+    it "has_more quando há mais pendentes que a página (PAGE); denied limitado ao teto da lista" do
+      stub_const("Exams::AcknowledgementsController::PAGE", 1)
+      2.times { resulted! }
+      2.times { denied! }
+      sign_in_as(doctor)
+      get "/exams/acknowledgements/pending/count"
+      expect(json_body).to eq("pending" => 2, "has_more" => true, "denied" => 1)
+    end
+
+    it "não carrega pedidos: só COUNT" do
+      resulted!
+      sign_in_as(doctor)
+      selects = []
+      callback = ->(*, payload) { selects << payload[:sql] if payload[:sql].match?(/\bFROM "?exam_orders"?/) }
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { get "/exams/acknowledgements/pending/count" }
+      expect(selects).not_to be_empty
+      expect(selects).to all(match(/COUNT/i))
+    end
+
+    it "exam_tracking desligado: 403 feature_disabled" do
+      sign_in_as(doctor)
+      Platform::Features.set!(city: Current.city, key: "exam_tracking", enabled: false, maintainer: ledi_maintainer!)
+      get "/exams/acknowledgements/pending/count"
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "exam_tracking" } ])
+    end
+
+    it "quem não é profissional: 403 missing_role; sem sessão: 401" do
+      get "/exams/acknowledgements/pending/count"
+      expect(response).to have_http_status(:unauthorized)
+      sign_in_as(reception)
+      get "/exams/acknowledgements/pending/count"
+      expect([ response.status, json_body["error"] ]).to eq([ 403, "missing_role" ])
+    end
+
+    it "não muda a lista, que segue deixando trilha" do
+      order = resulted!
+      sign_in_as(doctor)
+      get "/exams/acknowledgements/pending/count"
+      expect(viewed_events(order)).to be_empty
+      get "/exams/acknowledgements/pending"
+      expect(viewed_events(order).size).to eq(1)
+    end
   end
 
   it "filtro inválido responde invalid_filter; cursor inválido, invalid_cursor" do

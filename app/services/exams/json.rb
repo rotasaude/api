@@ -8,8 +8,10 @@ module Exams
     module_function
 
     # A42: `cid10: true` leva o CID à visão administrativa do regulador (fila e
-    # detalhe); o CNS do solicitante nunca sai dela.
-    def order(order, view:, user:, events: true, cid10: false)
+    # detalhe); o CNS do solicitante nunca sai dela. A47: `denied_reason: true`
+    # (só os itens de `denied` da lista do solicitante, visão clínica) leva o
+    # motivo do evento denied; nunca ao cidadão.
+    def order(order, view:, user:, events: true, cid10: false, denied_reason: false)
       clinical = view == :clinical
       body = {
         id: order.id, short_code: order.short_code,
@@ -28,6 +30,7 @@ module Exams
         guide_url: order.guide_file && Files.url_for(order.guide_file, user: user),
         result: order.result && result(order.result, view: view, user: user)
       }
+      body[:denied_reason] = order.events.select { |e| e.kind == "denied" }.last&.reason if denied_reason && clinical
       if events
         body[:events] = order.events.includes(:actor_user, :actor_provider).map { |e| event(e, view: view) }
         body[:result_fields] = result_fields(order) # dashboard D6: o formulário de resultado
