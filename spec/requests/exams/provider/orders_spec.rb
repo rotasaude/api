@@ -45,7 +45,7 @@ RSpec.describe "Portal do prestador", type: :request do
     expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
     json_post "/exams/provider/orders/#{own.id}/collect"
     expect(json_body["status"]).to eq("collected")
-    expect(own.reload.events.last).to have_attributes(kind: "collected", actor_user_id: nil, actor_provider_id: mine.id)
+    expect(own.reload.events.last).to have_attributes(kind: "collected", actor_user_id: lab_user.id, actor_provider_id: mine.id) # A35
   end
 
   it "agenda a guia autorizada para ele; nunca lê pedido pelas rotas da unidade" do
@@ -58,7 +58,7 @@ RSpec.describe "Portal do prestador", type: :request do
     sign_in_as(lab_user)
     json_post "/exams/provider/orders/#{authorized.id}/schedule", scheduled_at: 2.days.from_now.iso8601, scheduled_place: "Lab A, sala 2"
     expect(json_body).to include("status" => "scheduled", "scheduled_place" => "Lab A, sala 2")
-    expect(authorized.reload.events.last).to have_attributes(kind: "scheduled", actor_provider_id: mine.id)
+    expect(authorized.reload.events.last).to have_attributes(kind: "scheduled", actor_user_id: lab_user.id, actor_provider_id: mine.id) # A35
     get "/exams/orders/#{authorized.id}"
     expect(response).to have_http_status(:not_found)
     get "/exams/orders", params: { unit_id: unit.id }
@@ -80,5 +80,17 @@ RSpec.describe "Portal do prestador", type: :request do
     json_post "/exams/provider/orders/#{own.id}/collect"
     expect(response).to have_http_status(:forbidden)
     expect(own.reload.status).to eq("scheduled")
+  end
+
+  # A35: a unidade vê o prestador como ator; o funcionário do laboratório só na trilha (banco).
+  it "a visão da unidade mostra o ator prestador, nunca o funcionário" do
+    own = scheduled_for(mine, 85)
+    sign_in_as(lab_user)
+    json_post "/exams/provider/orders/#{own.id}/collect"
+    expect(own.reload.events.last).to have_attributes(actor_user_id: lab_user.id, actor_provider_id: mine.id)
+    sign_in_as(doctor)
+    get "/exams/orders/#{own.id}"
+    expect(json_body["events"].last).to include("kind" => "collected", "actor" => { "type" => "provider", "name" => "Lab A" })
+    expect(response.body).not_to include(lab_user.email_address)
   end
 end

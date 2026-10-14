@@ -86,17 +86,34 @@ RSpec.describe Exams::RegisterResult do
     refused = register(third, values: [ { "key" => "hba1c", "value" => "x" * 201 } ])
     expect([ refused.reason, refused.details ]).to eq([ :invalid_values, {} ])
     expect(third.reload.status).to eq("scheduled")
-    expect(ExamFile.where(consumed_at: nil).count).to be >= 6 # os PDFs recusados voltam a ser órfãos
   end
 
-  it "por upload_id: só o arquivo do mesmo autor, nunca consumido; o prestador como registrante" do
+  # Desvio (c): recusa DEPOIS do claim! desfaz o consumo (o upload volta a ser órfão).
+  it "upload JPEG do mesmo autor: missing_pdf e o arquivo continua não consumido" do
+    jpeg = pdf_file!(user: reception, bytes: "\xFF\xD8\xFF\xE0jpeg".b, content_type: "image/jpeg")
+    expect(register(order, file: nil, file_id: jpeg.id).reason).to eq(:missing_pdf)
+    expect(jpeg.reload.consumed_at).to be_nil
+    expect(order.reload.status).to eq("scheduled")
+  end
+
+  it "upload PDF em pedido cancelado: invalid_transition e o arquivo continua não consumido" do
+    other = exam_order!(patient: exam_patient!(96).first, unit: unit, requester: doctor)
+    Exams::Steps.cancel(order: other, reason: "Feito em outro serviço", actor_user: doctor)
+    upload = pdf_file!(user: reception)
+    expect(register(other, file: nil, file_id: upload.id).then { |r| [ r.reason, r.details ] }).to eq([ :invalid_transition, { status: "cancelled" } ])
+    expect(upload.reload.consumed_at).to be_nil
+    expect(ExamResult.where(exam_order_id: other.id)).to be_empty
+  end
+
+  it "por upload_id: só o arquivo do mesmo autor, nunca consumido; no portal, prestador e funcionário registram (A35)" do
     lab_user = staff_with("lab-#{SecureRandom.hex(2)}@lab.com.br", "exam_provider")
+    provider = order.exam_provider
     alien = pdf_file!(user: doctor)
     expect(register(order, file: nil, file_id: alien.id).reason).to eq(:missing_pdf)
     mine = pdf_file!(user: lab_user)
-    result = register(order, file: nil, file_id: mine.id, source: "provider", by_user: lab_user).payload[:result]
-    expect(result).to have_attributes(source: "provider", registered_by_user_id: lab_user.id, pdf_file_id: mine.id,
-                                      exam_provider_id: order.reload.exam_provider_id)
-    expect(order.events.last).to have_attributes(kind: "resulted", actor_user_id: lab_user.id)
+    result = register(order, file: nil, file_id: mine.id, source: "provider", by_user: lab_user, by_provider: provider).payload[:result]
+    expect(result).to have_attributes(source: "provider", registered_by_user_id: lab_user.id, registered_by_provider_id: provider.id,
+                                      pdf_file_id: mine.id, exam_provider_id: provider.id)
+    expect(order.reload.events.last).to have_attributes(kind: "resulted", actor_user_id: lab_user.id, actor_provider_id: provider.id)
   end
 end

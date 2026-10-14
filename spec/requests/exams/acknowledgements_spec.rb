@@ -115,7 +115,9 @@ RSpec.describe "Exames — ciência e fila da equipe", type: :request do
     end
     expect(json_body["status"]).to eq("resulted")
     expect(json_body.keys).not_to include("result")
-    expect(ExamResult.find_by(exam_order_id: order.id)).to have_attributes(source: "provider", registered_by_user_id: lab.id)
+    expect(ExamResult.find_by(exam_order_id: order.id))
+      .to have_attributes(source: "provider", registered_by_user_id: lab.id, registered_by_provider_id: provider.id) # A35
+    expect(order.reload.events.last).to have_attributes(kind: "resulted", actor_user_id: lab.id, actor_provider_id: provider.id)
     expect(log).not_to include("6.1")
     json_post "/exams/provider/orders/#{order.id}/result", upload_id: upload, released_on: Time.zone.today.iso8601,
                                                            laboratory_name: "Lab Portal", critical: false, values: []

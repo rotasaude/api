@@ -1,5 +1,6 @@
 # Portal do prestador (ADR 0036; contrato §6): só as guias do prestador do
 # usuário (isolamento no servidor; 404 para a de outro). Nunca prontuário.
+# A35: todo passo grava o prestador E o funcionário (actor_provider + actor_user).
 module Exams
   module Provider
     class OrdersController < Exams::BaseController
@@ -22,17 +23,19 @@ module Exams
       end
 
       def schedule
-        respond(Exams::Steps.schedule(order: @order, actor_provider: @provider,
+        respond(Exams::Steps.schedule(order: @order, actor_provider: @provider, actor_user: Current.user,
                                       params: { scheduled_at: params[:scheduled_at], scheduled_place: params[:scheduled_place] }))
       end
 
-      def collect = respond(Exams::Steps.collect(order: @order, actor_provider: @provider))
+      def collect = respond(Exams::Steps.collect(order: @order, actor_provider: @provider, actor_user: Current.user))
 
-      # Contrato §6/A17: mesmo corpo do §3; quem registra é o usuário do portal.
+      # Contrato §6/A17: mesmo corpo do §3. A35: prestador E funcionário na trilha
+      # (a unidade vê só o prestador como ator).
       def result
         respond(Exams::RegisterResult.call(order: @order, source: "provider", file_id: params[:upload_id],
                                            released_on: params[:released_on], laboratory_name: params[:laboratory_name],
-                                           critical: params[:critical], values: params[:values], by_user: Current.user))
+                                           critical: params[:critical], values: params[:values], by_user: Current.user,
+                                           by_provider: @provider))
       end
 
       private

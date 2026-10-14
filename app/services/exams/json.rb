@@ -52,6 +52,8 @@ module Exams
     end
 
     def event(event, view:)
+      # A35: com prestador, o ator visível é o prestador (o funcionário do
+      # laboratório, também gravado, fica só na trilha do banco).
       actor = if event.actor_provider then { type: "provider", name: event.actor_provider.name }
               elsif event.actor_user then { type: "user", name: Screenings::Json.staff_name(event.actor_user) }
               else { type: "system", name: nil }
