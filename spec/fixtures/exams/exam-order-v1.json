@@ -110,6 +110,17 @@
         }
       ]
     },
+    "denied_reason": {
+      "description": "Motivo da negativa (A47). Opcional: só os itens de `denied` de GET /exams/acknowledgements/pending o trazem (visão clínica, ao próprio solicitante; regra da A32). Valor = reason do evento denied. Nunca vai ao cidadão.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "result_fields": {
       "type": "array",
       "items": {
