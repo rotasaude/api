@@ -6,6 +6,7 @@ module Exams
   class ReportsController < BaseController
     before_action { forbid("missing_role") unless Exams::Access.regulator?(Current.user) }
     before_action :load_month
+    before_action :check_provider_id
 
     def show
       render json: { rows: Exams::Report.rows(month: @month, provider_id: provider_id) }
@@ -28,7 +29,13 @@ module Exams
 
     private
 
-    def provider_id = uuid?(params[:provider_id]) ? params[:provider_id] : nil
+    def provider_id = params[:provider_id].presence
+
+    def check_provider_id
+      return if provider_id.nil? || uuid?(provider_id)
+
+      render json: { error: "invalid_filter" }, status: :unprocessable_entity
+    end
 
     def load_month
       @month = Exams::Report.month_range(params[:month])

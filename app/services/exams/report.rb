@@ -15,28 +15,37 @@ module Exams
       match && Time.zone.local(match[1].to_i, match[2].to_i).all_month
     end
 
+    # Pedidos DISTINTOS por tipo de evento (o último de cada tipo por pedido,
+    # a mesma regra do detalhe): reagendar ou repetir um evento não conta de
+    # novo. Mês e datas no fuso da cidade (Time.zone, posto por CityConnection.with).
+    # `pending` NÃO é do mês: é o retrato de agora (agendados e coletados sem
+    # resultado), do prestador do pedido.
     def rows(month:, provider_id: nil)
       providers = ExamProvider.order(:name)
       providers = providers.where(id: provider_id) if provider_id
-      events = events(month, provider_id).group_by { |e| e.exam_order.exam_provider_id }
+      by_provider = latest_by_order(month, provider_id).group_by { |order, _| order.exam_provider_id }
       pending = ExamOrder.where(status: %w[scheduled collected]).group(:exam_provider_id).count
       providers.filter_map do |provider|
-        own = events.fetch(provider.id, [])
+        own = by_provider.fetch(provider.id, [])
         next if own.empty? && pending[provider.id].to_i.zero?
 
-        resulted = own.select { |e| e.kind == "resulted" }
-        { provider: { id: provider.id, name: provider.name }, authorized: own.count { |e| e.kind == "authorized" },
-          collected: own.count { |e| e.kind == "collected" }, resulted_on_time: resulted.count { |e| on_time?(e) },
+        resulted = own.filter_map { |_, latest| latest["resulted"] }
+        { provider: { id: provider.id, name: provider.name }, authorized: own.count { |_, l| l["authorized"] },
+          collected: own.count { |_, l| l["collected"] }, resulted_on_time: resulted.count { |e| on_time?(e) },
           resulted_late: resulted.count { |e| !on_time?(e) }, pending: pending[provider.id].to_i }
       end
     end
 
     def detail(month:, provider_id: nil)
+      latest_by_order(month, provider_id).sort_by { |order, _| order.short_code }.map do |order, latest|
+        [ order.short_code, order.sigtap_code, *%w[authorized scheduled collected resulted].map { |k| latest[k]&.occurred_at&.in_time_zone&.to_date&.iso8601 },
+          latest["resulted"] ? on_time?(latest["resulted"]).to_s : nil ]
+      end
+    end
+
+    def latest_by_order(month, provider_id)
       events(month, provider_id).group_by(&:exam_order).map do |order, list|
-        last = ->(kind) { list.select { |e| e.kind == kind }.max_by(&:occurred_at) }
-        resulted = last.("resulted")
-        [ order.short_code, order.sigtap_code, *%w[authorized scheduled collected resulted].map { |k| last.(k)&.occurred_at&.to_date&.iso8601 },
-          resulted ? on_time?(resulted).to_s : nil ]
+        [ order, list.group_by(&:kind).transform_values { |same| same.max_by(&:occurred_at) } ]
       end
     end
 
@@ -56,6 +65,6 @@ module Exams
     end
 
     def on_time?(event) = event.closed_stage_due_on.nil? || event.occurred_at.in_time_zone.to_date <= event.closed_stage_due_on
-    private_class_method :events, :on_time?
+    private_class_method :events, :on_time?, :latest_by_order
   end
 end
