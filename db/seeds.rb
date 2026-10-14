@@ -47,6 +47,7 @@ else
   require Rails.root.join("lib/clinical_documents_crew").to_s
   require Rails.root.join("lib/controlled_prescriptions_crew").to_s
   require Rails.root.join("lib/timeline_crew").to_s
+  require Rails.root.join("lib/exam_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -79,6 +80,11 @@ else
   # ── Terminologias (módulo 16, spec 2026-10-05 §10) ──────────────────────────
   sigtap = RecordModeCrew.seed_platform!
   puts "[seeds] SIGTAP ....... #{sigtap[:sigtap]} #{sigtap[:imported] ? 'importada (recorte de dev)' : 'já ativa'}"
+
+  # Exames do módulo 21a (ADR 0036): garante os quatro procedimentos do grupo 02
+  # na competência corrente (republica o recorte se a release ativa não os tem).
+  exams_sigtap = ExamCrew.seed_platform!
+  puts "[seeds] SIGTAP exames . #{exams_sigtap[:sigtap]} #{exams_sigtap[:republished] ? 'republicada (recorte de dev)' : 'já completa'}"
 
   ciap2 = ScreeningCrew.seed_platform!
   puts "[seeds] CIAP-2 ....... #{ciap2[:ciap2]} #{ciap2[:imported] ? 'importada (recorte de dev)' : 'já ativa'}"
@@ -277,6 +283,12 @@ else
         # Por último: Maringá vira a cidade integrada com o PEC simulado.
         timeline = TimelineCrew.seed_current_city(slug: slug, ddd: ddd)
         puts "[seeds] linha do tempo .. #{timeline[:switch]}#{timeline[:simulator] ? " — simulador: #{timeline[:simulator]} (CNES #{timeline[:cnes]})" : ''}"
+
+        # ── Rastreamento de exames (módulo 21a, ADR 0036) ─────────────────────
+        # Depois da linha do tempo: Maringá já é integrada (exam_pec_bridge).
+        exams = ExamCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        puts "[seeds] exames ...... #{exams[:switch]}; #{exams[:orders]} guias novas"
+        Array(exams[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
