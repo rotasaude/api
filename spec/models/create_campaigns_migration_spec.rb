@@ -13,6 +13,7 @@ require Rails.root.join("db/city_migrate/20261002300001_create_appointment_remin
 # Postgres é transacional, então down e up rodam num savepoint desfeito no fim
 # (além da transação de fixture) e o banco de teste compartilhado nunca fica
 # alterado. O retrato do schema é lido pela MESMA conexão.
+require Rails.root.join("db/city_migrate/20261013900001_add_exam_tracking.rb").to_s
 RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up" do
   let(:new_tables) { %w[campaigns campaign_recipients citizen_contact_preferences] }
   let(:new_column) { %w[city_profile campaigns_sms_enabled] }
@@ -48,6 +49,15 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
   # A migração do módulo 20 é irreversível: o índice volta à mão, igual a ela.
   def restore_timeline_index
     conn.add_index :campaign_recipients, %i[citizen_id created_at], name: "idx_campaign_recipients_citizen_created"
+  end
+
+  # 20261013900001 (módulo 21a) reescreve ck_memberships_role com os papéis
+  # exam_regulator/exam_provider; o up de CreateCampaigns volta a lista fixa sem eles.
+  # A migração do 21a é irreversível: a lista volta à mão, igual a ela.
+  def restore_exam_roles
+    quoted = AddExamTracking::ROLES.map { |role| "'#{role}'" }.join(", ")
+    conn.remove_check_constraint :memberships, name: "ck_memberships_role"
+    conn.add_check_constraint :memberships, "role::text = ANY (ARRAY[#{quoted}]::text[])", name: "ck_memberships_role"
   end
 
   def rows(sql) = conn.select_rows(sql)
@@ -144,6 +154,7 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
       migrate_analytics(:up)
       migrate_reminders(:up)
       restore_timeline_index
+      restore_exam_roles
 
       expect(fingerprint).to eq(before)
       # O trigger restaurado segue recusando apagar campanha que não é rascunho.

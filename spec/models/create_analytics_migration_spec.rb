@@ -1,6 +1,6 @@
 require "rails_helper"
 require Rails.root.join("db/city_migrate/20260930200001_create_analytics.rb").to_s
-
+require Rails.root.join("db/city_migrate/20261013900001_add_exam_tracking.rb").to_s
 # F-14.1: o down() da migração de cidade 20260930200001 desfaz o que o up()
 # cria (duas tabelas e o papel analyst no CHECK de memberships), e o up()
 # seguinte restaura o schema idêntico. O down recusa quando já existe
@@ -18,6 +18,15 @@ RSpec.describe "Migração de cidade 20260930200001 (CreateAnalytics): down e up
   def migrate(direction)
     ActiveRecord::Migration.suppress_messages { CreateAnalytics.new.exec_migration(conn, direction) }
     models.each(&:reset_column_information)
+  end
+
+  # 20261013900001 (módulo 21a) reescreve ck_memberships_role com os papéis
+  # exam_regulator/exam_provider; o up de CreateAnalytics volta a lista fixa sem eles.
+  # A migração do 21a é irreversível: a lista volta à mão, igual a ela.
+  def restore_exam_roles
+    quoted = AddExamTracking::ROLES.map { |role| "'#{role}'" }.join(", ")
+    conn.remove_check_constraint :memberships, name: "ck_memberships_role"
+    conn.add_check_constraint :memberships, "role::text = ANY (ARRAY[#{quoted}]::text[])", name: "ck_memberships_role"
   end
 
   def rows(sql) = conn.select_rows(sql)
@@ -80,6 +89,7 @@ RSpec.describe "Migração de cidade 20260930200001 (CreateAnalytics): down e up
       expect(untouched.call(down)).to eq(untouched.call(before))
 
       migrate(:up)
+      restore_exam_roles
 
       expect(fingerprint).to eq(before)
     end

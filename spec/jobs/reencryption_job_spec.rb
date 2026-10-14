@@ -62,7 +62,7 @@ RSpec.describe ReencryptionJob do
                                          Consultation ConsultationAddendum ClinicalRecordOpening ConsultationDraftAction
                                          SignerCertificate SignatureSession SignatureOauthState SignatureRequest Signature
                                          ClinicalDocument PrescriptionItem PatientMedication PatientMedicationEvent
-                                         PecSetting])
+                                         PecSetting ExamOrder ExamOrderEvent ExamResult ExamFile])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end
