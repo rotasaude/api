@@ -259,6 +259,7 @@ Rails.application.routes.draw do
     post "orders/:id/cancel",   to: "order_steps#cancel"
     post "orders/:id/result",   to: "results#create"
     post "orders/:id/acknowledge", to: "acknowledgements#create"
+    post "external_results",      to: "external_results#create"
     get  "acknowledgements/pending", to: "acknowledgements#pending"
     get  "acknowledgements/team",    to: "acknowledgements#team"
     get  "regulation/queue",      to: "regulation#queue"

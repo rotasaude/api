@@ -13,7 +13,7 @@ module Exams
 
     def call(order:, source:, released_on:, laboratory_name:, critical:, values:, file: nil, file_id: nil, by_user: nil,
              by_provider: nil, fhir_identifier: nil, now: Time.current)
-      released = parse_date(released_on)
+      released = Dates.parse(released_on)
       return Result.fail(:invalid_released_on) unless released && released <= now.in_time_zone.to_date
       return Result.fail(:invalid_laboratory) unless laboratory_name.is_a?(String) && laboratory_name.strip.length.between?(1, 160)
       return Result.fail(:invalid_critical) unless [ true, false ].include?(critical)
@@ -58,11 +58,6 @@ module Exams
       [ ("critical" if critical), ("unlinked_requester" if order.requester_user_id.nil?) ].compact
     end
 
-    def parse_date(raw)
-      raw.is_a?(Date) ? raw : (raw.is_a?(String) && raw.match?(/\A\d{4}-\d{2}-\d{2}\z/) ? Date.iso8601(raw) : nil)
-    rescue Date::Error
-      nil
-    end
-    private_class_method :parse_date, :escalation_reasons
+    private_class_method :escalation_reasons
   end
 end
