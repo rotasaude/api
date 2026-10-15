@@ -59,6 +59,22 @@ module LabHelpers
 
   def totp_for(user) = ROTP::TOTP.new(user.reload.otp_secret).now
 
+  # Requisição pelo caminho real (posto do laboratório por padrão).
+  def open_requisition!(provider:, exams:, unit: nil, place: "lab", by: nil, patient: nil)
+    unit ||= create_unit("UBS #{SecureRandom.hex(2)}").tap { |u| u.update!(collects_samples: true) }
+    patient ||= exam_patient!(exam_seq!).first
+    requester = doctor!(unit)
+    orders = exams.map { |exam| exam_order!(patient: patient, unit: unit, requester: requester, sigtap_code: exam.sigtap_code) }
+    by ||= place == "lab" ? lab_staff! : requester
+    result = Lab::OpenRequisition.call({ patient_id: patient.id, provider_id: provider.id, origin_unit_id: unit.id, collection_place: place,
+                                         biological_sex: "female", mother_name: "Joana da Silva", urgent: false,
+                                         exam_order_ids: orders.map(&:id) }, by: by)
+    raise "requisição recusada: #{result.reason}" if result.failure?
+
+    result.payload[:requisition]
+  end
+
+
   # Requisição gravada direto (antes da Task 8): uma amostra, um item.
   def lab_requisition_row!(provider:, version:, unit: create_unit("UBS #{SecureRandom.hex(2)}"))
     patient = exam_patient!(exam_seq!).first

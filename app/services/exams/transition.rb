@@ -9,7 +9,9 @@ module Exams
     FLOW = {
       "authorized" => { from: %w[awaiting_authorization], to: "awaiting_schedule" },
       "denied" => { from: %w[awaiting_authorization], to: "denied" },
-      "scheduled" => { from: %w[awaiting_schedule scheduled], to: "scheduled" },
+      # ADR 0037: a recoleta do laboratório reabre a coleta; as rotas da unidade e do portal
+      # recusam `collected` em Steps.schedule.
+      "scheduled" => { from: %w[awaiting_schedule scheduled collected], to: "scheduled" },
       "collected" => { from: %w[scheduled], to: "collected" },
       "resulted" => { from: %w[scheduled collected], to: "resulted" },
       "acknowledged" => { from: %w[resulted], to: "acknowledged" },

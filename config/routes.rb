@@ -298,6 +298,11 @@ Rails.application.routes.draw do
   scope "/lab", module: :lab, as: :lab do
     get "context",           to: "context#show"
     get "rejection_reasons", to: "lookups#rejection_reasons"
+    get  "candidate_orders",  to: "lookups#candidate_orders"
+    get  "exams",             to: "lookups#exams"
+    get  "requisitions",      to: "requisitions#index"
+    post "requisitions",      to: "requisitions#create"
+    get  "requisitions/:id",  to: "requisitions#show"
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"
       get   "exams",                     to: "exams#index"

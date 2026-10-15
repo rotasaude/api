@@ -39,7 +39,8 @@ module Lab
       @provider = uuid?(params[key]) && Lab::Access.labs.find_by(id: params[key])
       return not_found unless @provider
 
-      forbid unless Lab::Access.member?(Current.user, @provider.id) || Lab::Access.admin?(Current.user)
+      forbid unless Lab::Access.member?(Current.user, @provider.id) || Lab::Access.admin?(Current.user) ||
+                    Lab::Access.collecting_unit_ids(Current.user).any?
     end
   end
 end

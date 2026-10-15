@@ -8,7 +8,7 @@
 # desconhecido não criam nada.
 module Exams
   class LookupsController < BaseController
-    LOOKUP_ROLES = %w[citizen_verifier health_professional municipal_admin].freeze
+    LOOKUP_ROLES = %w[citizen_verifier health_professional municipal_admin lab_staff].freeze
     STAFF_ROLES = %w[citizen_verifier health_professional municipal_admin exam_regulator].freeze
 
     # `store:` de `rate_limit` é avaliado no carregamento da classe; o
@@ -65,7 +65,8 @@ module Exams
     def requesters
       unit_id = params[:unit_id]
       return not_found unless uuid?(unit_id) && HealthUnit.exists?(id: unit_id)
-      return forbid("not_unit_staff") unless Exams::Access.unit_staff?(Current.user, unit_id) || Exams::Access.regulator?(Current.user)
+      return forbid("not_unit_staff") unless Exams::Access.unit_staff?(Current.user, unit_id) || Exams::Access.regulator?(Current.user) ||
+                                              Lab::Access.staff?(Current.user)
 
       users = User.where(deactivated_at: nil)
                   .where(id: Membership.active.where(role: "health_professional").select(:user_id))
