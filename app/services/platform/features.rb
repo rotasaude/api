@@ -82,6 +82,19 @@ module Platform
       Entry.new(key: "fake_lab",
                 description: "Laboratório simulado (desenvolvimento) — laudos de exemplo, sem validade",
                 requires: %w[feature:exam_fhir_inbound],
+                environments: SIMULATION_ENVS),
+      # ADR 0037: laboratório municipal (módulo 21b) sobre o rastreamento do 21a.
+      Entry.new(key: "municipal_lab",
+                description: "Laboratório municipal: requisição, amostra, mapa, resultado, liberação e laudo",
+                requires: %w[feature:exam_tracking]),
+      # ADR 0037: entrada HL7 v2.5.1 (POST /hl7/v2) para o middleware do fornecedor.
+      Entry.new(key: "lab_hl7_inbound",
+                description: "Entrada HL7 v2.5.1 dos resultados de aparelhos (middleware do laboratório)",
+                requires: %w[feature:municipal_lab]),
+      # ADR 0037: middleware simulado, só fora de produção.
+      Entry.new(key: "fake_middleware",
+                description: "Middleware de aparelhos simulado (desenvolvimento) — resultados de exemplo, sem validade",
+                requires: %w[feature:lab_hl7_inbound],
                 environments: SIMULATION_ENVS)
     ].freeze
 
