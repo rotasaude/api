@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -696,11 +696,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
   create_table "document_verification_lookups", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "clinical_document_id"
     t.datetime "created_at", null: false
+    t.uuid "lab_report_id"
     t.string "outcome", null: false
     t.string "via", null: false
     t.index ["clinical_document_id"], name: "index_document_verification_lookups_on_clinical_document_id"
     t.index ["created_at"], name: "index_document_verification_lookups_on_created_at"
-    t.check_constraint "(outcome::text = 'found'::text) = (clinical_document_id IS NOT NULL)", name: "ck_document_verification_lookups_document"
+    t.index ["lab_report_id"], name: "index_document_verification_lookups_on_lab_report_id"
+    t.check_constraint "(outcome::text = 'found'::text) = (clinical_document_id IS NOT NULL OR lab_report_id IS NOT NULL) AND (clinical_document_id IS NULL OR lab_report_id IS NULL)", name: "ck_document_verification_lookups_document"
     t.check_constraint "outcome::text = ANY (ARRAY['found'::text, 'not_found'::text])", name: "ck_document_verification_lookups_outcome"
     t.check_constraint "via::text = ANY (ARRAY['token'::text, 'short_code'::text])", name: "ck_document_verification_lookups_via"
   end
@@ -770,7 +772,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.check_constraint "(kind::text = 'escalated'::text) = (escalation_reason IS NOT NULL)", name: "ck_exam_order_events_escalation"
     t.check_constraint "actor_user_id IS NOT NULL OR actor_provider_id IS NOT NULL OR kind::text = 'escalated'::text", name: "ck_exam_order_events_actor"
     t.check_constraint "escalation_reason IS NULL OR (escalation_reason::text = ANY (ARRAY['overdue'::text, 'critical'::text, 'unlinked_requester'::text]))", name: "ck_exam_order_events_escalation_reason"
-    t.check_constraint "kind::text = ANY (ARRAY['requested'::text, 'authorized'::text, 'denied'::text, 'scheduled'::text, 'collected'::text, 'resulted'::text, 'acknowledged'::text, 'escalated'::text, 'cancelled'::text])", name: "ck_exam_order_events_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['requested'::text, 'authorized'::text, 'denied'::text, 'scheduled'::text, 'collected'::text, 'resulted'::text, 'acknowledged'::text, 'escalated'::text, 'cancelled'::text, 'result_rectified'::text])", name: "ck_exam_order_events_kind"
   end
 
   create_table "exam_orders", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -781,6 +783,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.datetime "escalated_at"
     t.uuid "exam_provider_id"
     t.string "external_reference", limit: 60
+    t.string "gal_requisition", limit: 30
     t.uuid "guide_file_id"
     t.string "origin", null: false
     t.uuid "patient_id", null: false
@@ -810,8 +813,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.index ["unit_id", "status"], name: "idx_exam_orders_unit_status"
     t.check_constraint "(origin::text = 'consultation'::text) = (consultation_exam_request_id IS NOT NULL)", name: "ck_exam_orders_consultation"
     t.check_constraint "cid10_justification IS NULL OR cid10_justification::text ~ '^[A-Z][0-9]{2}[0-9X]?$'::text", name: "ck_exam_orders_cid10"
+    t.check_constraint "gal_requisition IS NULL OR gal_requisition::text ~ '^[0-9A-Za-z-]{1,30}$'::text", name: "ck_exam_orders_gal"
     t.check_constraint "origin::text <> 'reception_guide'::text OR guide_file_id IS NOT NULL", name: "ck_exam_orders_guide"
-    t.check_constraint "origin::text = ANY (ARRAY['consultation'::text, 'reception_guide'::text, 'pec'::text])", name: "ck_exam_orders_origin"
+    t.check_constraint "origin::text = ANY (ARRAY['consultation'::text, 'reception_guide'::text, 'pec'::text, 'lab_reception'::text])", name: "ck_exam_orders_origin"
     t.check_constraint "priority::text = ANY (ARRAY['routine'::text, 'urgent'::text])", name: "ck_exam_orders_priority"
     t.check_constraint "requester_user_id IS NOT NULL OR requester_name IS NOT NULL", name: "ck_exam_orders_requester"
     t.check_constraint "short_code::text ~ '^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{10}$'::text", name: "ck_exam_orders_short_code"
@@ -846,6 +850,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
 
   create_table "exam_providers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
+    t.string "address", limit: 200
     t.string "cnes", limit: 7
     t.datetime "created_at", null: false
     t.string "fhir_token_digest", limit: 64
@@ -853,12 +858,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.datetime "fhir_token_rotated_at"
     t.string "kind", null: false
     t.string "name", limit: 120, null: false
+    t.string "phone", limit: 11
     t.boolean "simulated", default: false, null: false
     t.datetime "updated_at", null: false
+    t.boolean "uses_municipal_lab", default: false, null: false
     t.index "lower((name)::text)", name: "idx_exam_providers_name_ci", unique: true
     t.index ["fhir_token_digest"], name: "idx_exam_providers_token", unique: true, where: "(fhir_token_digest IS NOT NULL)"
     t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_exam_providers_cnes"
     t.check_constraint "kind::text = ANY (ARRAY['municipal'::text, 'accredited'::text, 'consortium'::text, 'lacen'::text, 'imaging'::text])", name: "ck_exam_providers_kind"
+    t.check_constraint "phone IS NULL OR phone::text ~ '^[0-9]{10,11}$'::text", name: "ck_exam_providers_phone"
   end
 
   create_table "exam_results", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -875,18 +883,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.uuid "registered_by_provider_id"
     t.uuid "registered_by_user_id"
     t.date "released_on", null: false
+    t.uuid "replaces_result_id"
     t.string "sigtap_code", limit: 10, null: false
     t.string "source", null: false
     t.text "values", null: false
-    t.index ["exam_order_id"], name: "index_exam_results_on_exam_order_id", unique: true
+    t.index ["exam_order_id"], name: "idx_exam_results_order"
+    t.index ["exam_order_id"], name: "idx_exam_results_order_original", unique: true, where: "(replaces_result_id IS NULL)"
     t.index ["exam_provider_id", "fhir_identifier"], name: "idx_exam_results_fhir_identifier", unique: true, where: "(fhir_identifier IS NOT NULL)"
     t.index ["patient_id", "created_at"], name: "idx_exam_results_patient_created"
     t.index ["pdf_file_id"], name: "index_exam_results_on_pdf_file_id", unique: true
+    t.index ["replaces_result_id"], name: "index_exam_results_on_replaces_result_id", unique: true
     t.check_constraint "(fhir_identifier IS NULL) = (source::text <> 'fhir'::text)", name: "ck_exam_results_fhir"
     t.check_constraint "(origin::text = 'order'::text) = (exam_order_id IS NOT NULL)", name: "ck_exam_results_order"
     t.check_constraint "origin::text = ANY (ARRAY['order'::text, 'external'::text])", name: "ck_exam_results_origin"
     t.check_constraint "registered_by_user_id IS NOT NULL OR registered_by_provider_id IS NOT NULL", name: "ck_exam_results_registrant"
-    t.check_constraint "source::text = ANY (ARRAY['unit'::text, 'provider'::text, 'fhir'::text, 'consultation'::text])", name: "ck_exam_results_source"
+    t.check_constraint "replaces_result_id IS NULL OR origin::text = 'order'::text", name: "ck_exam_results_replaces"
+    t.check_constraint "source::text = ANY (ARRAY['unit'::text, 'provider'::text, 'fhir'::text, 'consultation'::text, 'lab'::text])", name: "ck_exam_results_source"
   end
 
   create_table "health_team_members", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -939,6 +951,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.string "address_street", limit: 160
     t.string "address_zip", limit: 8
     t.string "cnes", limit: 7
+    t.boolean "collects_samples", default: false, null: false
     t.datetime "created_at", null: false
     t.string "kind", null: false
     t.string "name", null: false
@@ -1009,6 +1022,251 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.index ["token"], name: "index_invitations_on_token", unique: true
   end
 
+  create_table "lab_critical_notices", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "channel", null: false
+    t.datetime "created_at", null: false
+    t.uuid "lab_result_id", null: false
+    t.datetime "notified_at", null: false
+    t.text "notified_person", null: false
+    t.string "notified_role", limit: 60, null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.index ["lab_result_id"], name: "index_lab_critical_notices_on_lab_result_id"
+    t.check_constraint "channel::text = ANY (ARRAY['telefone'::text, 'presencial'::text, 'sistema'::text])", name: "ck_lab_critical_notices_channel"
+  end
+
+  create_table "lab_exam_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "analysis_method", limit: 160, null: false
+    t.jsonb "analytes", null: false
+    t.string "container", limit: 60, null: false
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.string "instrument_test_code", limit: 30
+    t.uuid "lab_exam_id", null: false
+    t.string "material", limit: 60, null: false
+    t.integer "version", null: false
+    t.index ["lab_exam_id", "version"], name: "idx_lab_exam_versions_number", unique: true
+    t.check_constraint "instrument_test_code IS NULL OR instrument_test_code::text ~ '^[A-Za-z0-9._-]{1,30}$'::text", name: "ck_lab_exam_versions_instrument"
+    t.check_constraint "jsonb_typeof(analytes) = 'array'::text AND (jsonb_array_length(analytes) >= 1 AND jsonb_array_length(analytes) <= 60)", name: "ck_lab_exam_versions_analytes"
+    t.check_constraint "version >= 1", name: "ck_lab_exam_versions_version"
+  end
+
+  create_table "lab_exams", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "bench", limit: 60
+    t.datetime "created_at", null: false
+    t.uuid "current_version_id"
+    t.integer "delivery_days", null: false
+    t.uuid "exam_provider_id", null: false
+    t.uuid "lab_exam_template_id"
+    t.string "name", limit: 120, null: false
+    t.string "sector", null: false
+    t.string "sigtap_code", limit: 10, null: false
+    t.datetime "updated_at", null: false
+    t.index ["exam_provider_id", "sigtap_code"], name: "idx_lab_exams_provider_sigtap", unique: true
+    t.check_constraint "delivery_days >= 1 AND delivery_days <= 90", name: "ck_lab_exams_delivery_days"
+    t.check_constraint "sector::text = ANY (ARRAY['biochemistry'::text, 'hematology'::text, 'immunology'::text, 'urinalysis'::text, 'parasitology'::text, 'microbiology'::text])", name: "ck_lab_exams_sector"
+    t.check_constraint "sigtap_code::text ~ '^02[0-9]{8}$'::text", name: "ck_lab_exams_sigtap"
+  end
+
+  create_table "lab_hl7_receipts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "control_id", limit: 64, null: false
+    t.datetime "created_at", null: false
+    t.uuid "lab_middleware_token_id", null: false
+    t.string "message_type", limit: 20, null: false
+    t.text "raw", null: false
+    t.index ["lab_middleware_token_id", "control_id"], name: "idx_lab_hl7_receipts_control", unique: true
+  end
+
+  create_table "lab_middleware_tokens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id"
+    t.uuid "exam_provider_id", null: false
+    t.datetime "revoked_at"
+    t.boolean "simulated", default: false, null: false
+    t.string "token_digest", limit: 64, null: false
+    t.index ["exam_provider_id"], name: "idx_lab_middleware_tokens_active", unique: true, where: "(revoked_at IS NULL)"
+    t.index ["token_digest"], name: "index_lab_middleware_tokens_on_token_digest", unique: true
+  end
+
+  create_table "lab_rejection_reasons", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "exam_provider_id", null: false
+    t.string "name", limit: 80, null: false
+    t.datetime "updated_at", null: false
+    t.index "exam_provider_id, lower((name)::text)", name: "idx_lab_rejection_reasons_name", unique: true
+  end
+
+  create_table "lab_releasers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id"
+    t.datetime "ended_at"
+    t.uuid "ended_by_user_id"
+    t.uuid "exam_provider_id", null: false
+    t.boolean "technical_deputy", default: false, null: false
+    t.boolean "technical_lead", default: false, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "user_id", null: false
+    t.index ["exam_provider_id"], name: "idx_lab_releasers_deputy", unique: true, where: "((ended_at IS NULL) AND technical_deputy)"
+    t.index ["exam_provider_id"], name: "idx_lab_releasers_lead", unique: true, where: "((ended_at IS NULL) AND technical_lead)"
+    t.index ["user_id", "exam_provider_id"], name: "idx_lab_releasers_active", unique: true, where: "(ended_at IS NULL)"
+    t.check_constraint "NOT (technical_lead AND technical_deputy)", name: "ck_lab_releasers_marks"
+  end
+
+  create_table "lab_report_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "lab_report_id", null: false
+    t.uuid "lab_requisition_item_id", null: false
+    t.index ["lab_report_id", "lab_requisition_item_id"], name: "idx_lab_report_items_pair", unique: true
+    t.index ["lab_requisition_item_id"], name: "index_lab_report_items_on_lab_requisition_item_id"
+  end
+
+  create_table "lab_reports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "content", null: false
+    t.string "content_sha256", limit: 64, null: false
+    t.datetime "created_at", null: false
+    t.uuid "exam_provider_id", null: false
+    t.uuid "lab_requisition_id", null: false
+    t.boolean "partial", default: false, null: false
+    t.uuid "pdf_file_id"
+    t.string "pdf_sha256", limit: 64
+    t.text "rectification_contacts"
+    t.text "rectification_reason"
+    t.datetime "released_at"
+    t.uuid "released_by_user_id", null: false
+    t.uuid "replaces_report_id"
+    t.string "short_code", limit: 10, null: false
+    t.string "signature_kind", null: false
+    t.string "status", null: false
+    t.datetime "updated_at", null: false
+    t.string "verification_token", limit: 22, null: false
+    t.integer "version", null: false
+    t.index ["exam_provider_id", "released_at"], name: "idx_lab_reports_provider_released"
+    t.index ["lab_requisition_id", "version"], name: "idx_lab_reports_version", unique: true
+    t.index ["lab_requisition_id"], name: "index_lab_reports_on_lab_requisition_id"
+    t.index ["pdf_file_id"], name: "index_lab_reports_on_pdf_file_id", unique: true
+    t.index ["replaces_report_id"], name: "index_lab_reports_on_replaces_report_id", unique: true
+    t.index ["short_code"], name: "index_lab_reports_on_short_code", unique: true
+    t.index ["verification_token"], name: "index_lab_reports_on_verification_token", unique: true
+    t.check_constraint "(replaces_report_id IS NULL) = (rectification_reason IS NULL)", name: "ck_lab_reports_rectification"
+    t.check_constraint "(status::text = ANY (ARRAY['pending_signature'::text, 'withdrawn'::text])) OR released_at IS NOT NULL AND pdf_file_id IS NOT NULL AND pdf_sha256 IS NOT NULL", name: "ck_lab_reports_released"
+    t.check_constraint "short_code::text ~ '^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{10}$'::text", name: "ck_lab_reports_short_code"
+    t.check_constraint "signature_kind::text = ANY (ARRAY['icp'::text, 'advanced'::text])", name: "ck_lab_reports_signature"
+    t.check_constraint "status::text = ANY (ARRAY['pending_signature'::text, 'released'::text, 'rectified'::text, 'withdrawn'::text])", name: "ck_lab_reports_status"
+  end
+
+  create_table "lab_requisition_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "exam_order_id", null: false
+    t.uuid "lab_exam_version_id", null: false
+    t.uuid "lab_requisition_id", null: false
+    t.uuid "lab_sample_id", null: false
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exam_order_id"], name: "index_lab_requisition_items_on_exam_order_id", unique: true
+    t.index ["lab_requisition_id"], name: "index_lab_requisition_items_on_lab_requisition_id"
+    t.index ["lab_sample_id"], name: "index_lab_requisition_items_on_lab_sample_id"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'typed'::text, 'released'::text, 'cancelled'::text])", name: "ck_lab_requisition_items_status"
+  end
+
+  create_table "lab_requisitions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "biological_sex", null: false
+    t.text "clinical_info"
+    t.string "collection_place", null: false
+    t.datetime "created_at", null: false
+    t.datetime "delivered_at"
+    t.uuid "delivered_by_user_id"
+    t.text "delivered_to"
+    t.uuid "exam_provider_id", null: false
+    t.date "expected_delivery_on", null: false
+    t.text "mother_name", null: false
+    t.string "number", limit: 8, null: false
+    t.uuid "opened_by_user_id", null: false
+    t.uuid "origin_unit_id", null: false
+    t.uuid "patient_id", null: false
+    t.string "status", default: "open", null: false
+    t.datetime "updated_at", null: false
+    t.boolean "urgent", default: false, null: false
+    t.index ["exam_provider_id", "status", "created_at"], name: "idx_lab_requisitions_provider_status"
+    t.index ["number"], name: "index_lab_requisitions_on_number", unique: true
+    t.index ["origin_unit_id", "created_at"], name: "idx_lab_requisitions_origin"
+    t.index ["patient_id", "created_at"], name: "idx_lab_requisitions_patient"
+    t.check_constraint "(status::text = 'delivered'::text) = (delivered_at IS NOT NULL AND delivered_to IS NOT NULL)", name: "ck_lab_requisitions_delivery"
+    t.check_constraint "biological_sex::text = ANY (ARRAY['male'::text, 'female'::text])", name: "ck_lab_requisitions_sex"
+    t.check_constraint "collection_place::text = ANY (ARRAY['ubs'::text, 'lab'::text])", name: "ck_lab_requisitions_place"
+    t.check_constraint "number::text ~ '^[0-9]{8}$'::text", name: "ck_lab_requisitions_number"
+    t.check_constraint "status::text = ANY (ARRAY['open'::text, 'in_analysis'::text, 'typed'::text, 'released'::text, 'delivered'::text])", name: "ck_lab_requisitions_status"
+  end
+
+  create_table "lab_results", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "analyte_key", limit: 40, null: false
+    t.boolean "chosen", default: false, null: false
+    t.uuid "chosen_from_id"
+    t.datetime "created_at", null: false
+    t.datetime "entered_at", null: false
+    t.uuid "entered_by_user_id"
+    t.string "flag", null: false
+    t.uuid "lab_hl7_receipt_id"
+    t.uuid "lab_requisition_item_id", null: false
+    t.string "source", null: false
+    t.string "unit", limit: 30
+    t.text "value", null: false
+    t.index ["lab_hl7_receipt_id"], name: "index_lab_results_on_lab_hl7_receipt_id"
+    t.index ["lab_requisition_item_id", "analyte_key", "created_at"], name: "idx_lab_results_item_analyte"
+    t.check_constraint "chosen = (chosen_from_id IS NOT NULL)", name: "ck_lab_results_choice"
+    t.check_constraint "entered_by_user_id IS NOT NULL OR lab_hl7_receipt_id IS NOT NULL", name: "ck_lab_results_actor"
+    t.check_constraint "flag::text = ANY (ARRAY['normal'::text, 'low'::text, 'high'::text, 'critical_low'::text, 'critical_high'::text])", name: "ck_lab_results_flag"
+    t.check_constraint "source::text = 'typed'::text OR lab_hl7_receipt_id IS NOT NULL", name: "ck_lab_results_hl7"
+    t.check_constraint "source::text = ANY (ARRAY['typed'::text, 'hl7'::text])", name: "ck_lab_results_source"
+  end
+
+  create_table "lab_samples", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "barcode", limit: 10, null: false
+    t.datetime "collected_at"
+    t.uuid "collected_by_user_id"
+    t.string "container", limit: 60, null: false
+    t.datetime "created_at", null: false
+    t.uuid "lab_rejection_reason_id"
+    t.uuid "lab_requisition_id", null: false
+    t.uuid "lab_shipment_id"
+    t.string "material", limit: 60, null: false
+    t.datetime "received_at"
+    t.uuid "received_by_user_id"
+    t.uuid "recollection_of_id"
+    t.string "restriction_note", limit: 300
+    t.string "status", default: "awaiting", null: false
+    t.datetime "updated_at", null: false
+    t.index ["barcode"], name: "index_lab_samples_on_barcode", unique: true
+    t.index ["lab_requisition_id"], name: "index_lab_samples_on_lab_requisition_id"
+    t.index ["lab_shipment_id"], name: "index_lab_samples_on_lab_shipment_id"
+    t.index ["recollection_of_id"], name: "index_lab_samples_on_recollection_of_id", unique: true
+    t.index ["status", "received_at"], name: "idx_lab_samples_status_received"
+    t.check_constraint "(status::text <> ALL (ARRAY['received'::text, 'rejected'::text, 'accepted_with_restriction'::text])) OR received_at IS NOT NULL", name: "ck_lab_samples_received"
+    t.check_constraint "(status::text = 'accepted_with_restriction'::text) = (restriction_note IS NOT NULL)", name: "ck_lab_samples_restriction"
+    t.check_constraint "(status::text = 'rejected'::text) = (lab_rejection_reason_id IS NOT NULL)", name: "ck_lab_samples_rejection"
+    t.check_constraint "barcode::text ~ '^[0-9]{10}$'::text", name: "ck_lab_samples_barcode"
+    t.check_constraint "status::text = 'awaiting'::text OR collected_at IS NOT NULL", name: "ck_lab_samples_collected"
+    t.check_constraint "status::text = ANY (ARRAY['awaiting'::text, 'in_transit'::text, 'received'::text, 'rejected'::text, 'accepted_with_restriction'::text, 'not_received'::text])", name: "ck_lab_samples_status"
+  end
+
+  create_table "lab_shipments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.uuid "exam_provider_id", null: false
+    t.uuid "origin_unit_id", null: false
+    t.datetime "received_at"
+    t.uuid "received_by_user_id"
+    t.datetime "sent_at"
+    t.uuid "sent_by_user_id"
+    t.string "status", default: "open", null: false
+    t.decimal "temperature_celsius", precision: 4, scale: 1, null: false
+    t.datetime "updated_at", null: false
+    t.index ["exam_provider_id", "status"], name: "idx_lab_shipments_provider_status"
+    t.index ["origin_unit_id", "status"], name: "idx_lab_shipments_origin_status"
+    t.check_constraint "status::text = ANY (ARRAY['open'::text, 'sent'::text, 'received'::text])", name: "ck_lab_shipments_status"
+    t.check_constraint "temperature_celsius >= '-30'::integer::numeric AND temperature_celsius <= 60::numeric", name: "ck_lab_shipments_temperature"
+  end
+
   create_table "ledi_generation_failures", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.jsonb "reason_codes", default: [], null: false
@@ -1066,7 +1324,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'campaign_manager'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'campaign_manager'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "neighborhood_coverages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1567,7 +1825,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
   create_table "signature_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.integer "attempts", default: 0, null: false
     t.uuid "author_user_id", null: false
-    t.uuid "consultation_id", null: false
+    t.uuid "consultation_id"
     t.datetime "created_at", null: false
     t.uuid "document_id", null: false
     t.string "document_type", null: false
@@ -1579,8 +1837,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.index ["author_user_id", "status", "created_at"], name: "idx_signature_requests_queue"
     t.index ["consultation_id"], name: "index_signature_requests_on_consultation_id"
     t.index ["document_type", "document_id"], name: "idx_signature_requests_document", unique: true
+    t.check_constraint "(document_type::text = 'LabReport'::text) = (consultation_id IS NULL)", name: "ck_signature_requests_consultation"
     t.check_constraint "attempts >= 0", name: "ck_signature_requests_attempts"
-    t.check_constraint "document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text, 'ClinicalDocument'::text])", name: "ck_signature_requests_document_type"
+    t.check_constraint "document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text, 'ClinicalDocument'::text, 'LabReport'::text])", name: "ck_signature_requests_document_type"
     t.check_constraint "reason_code IS NULL OR reason_code::text = ANY (ARRAY['no_session'::text, 'session_expired'::text, 'provider_unavailable'::text, 'provider_rejected'::text, 'signer_unavailable'::text, 'verification_failed'::text, 'certificate_expired'::text, 'certificate_revoked'::text, 'certificate_cpf_mismatch'::text, 'feature_disabled'::text, 'user_request'::text, 'document_cancelled'::text])", name: "ck_signature_requests_reason"
     t.check_constraint "(status::text = ANY (ARRAY['signed'::text, 'returned_to_paper'::text])) = (resolved_at IS NOT NULL)", name: "ck_signature_requests_resolution"
     t.check_constraint "(status)::text = 'returned_to_paper'::text OR return_note IS NULL", name: "ck_signature_requests_return_note"
@@ -1630,7 +1889,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
     t.index ["last_verification"], name: "index_signatures_on_last_verification"
     t.index ["signature_request_id"], name: "index_signatures_on_signature_request_id", unique: true
     t.index ["signer_certificate_id"], name: "index_signatures_on_signer_certificate_id"
-    t.check_constraint "document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text, 'ClinicalDocument'::text])", name: "ck_signatures_document_type"
+    t.check_constraint "document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text, 'ClinicalDocument'::text, 'LabReport'::text])", name: "ck_signatures_document_type"
     t.check_constraint "last_verification::text = ANY (ARRAY['valid'::text, 'invalid'::text, 'indeterminate'::text])", name: "ck_signatures_verification"
     t.check_constraint "policy::text = ANY (ARRAY['AD-RB'::text, 'AD-RT'::text])", name: "ck_signatures_policy"
     t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text])", name: "ck_signatures_provider"
@@ -1986,6 +2245,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
   add_foreign_key "consultations", "users", column: "author_user_id"
   add_foreign_key "conversations", "citizens"
   add_foreign_key "document_verification_lookups", "clinical_documents"
+  add_foreign_key "document_verification_lookups", "lab_reports"
   add_foreign_key "exam_files", "exam_providers"
   add_foreign_key "exam_files", "users", column: "uploaded_by_user_id"
   add_foreign_key "exam_order_events", "exam_orders"
@@ -2007,6 +2267,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
   add_foreign_key "exam_results", "exam_orders"
   add_foreign_key "exam_results", "exam_providers"
   add_foreign_key "exam_results", "exam_providers", column: "registered_by_provider_id"
+  add_foreign_key "exam_results", "exam_results", column: "replaces_result_id"
   add_foreign_key "exam_results", "patients"
   add_foreign_key "exam_results", "users", column: "registered_by_user_id"
   add_foreign_key "health_team_members", "health_teams"
@@ -2020,6 +2281,51 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_13_900001) do
   add_foreign_key "integration_credentials", "users", column: "set_by_user_id"
   add_foreign_key "invitations", "exam_providers"
   add_foreign_key "invitations", "users", column: "invited_by_id"
+  add_foreign_key "lab_critical_notices", "lab_results"
+  add_foreign_key "lab_critical_notices", "users", column: "recorded_by_user_id"
+  add_foreign_key "lab_exam_versions", "lab_exams"
+  add_foreign_key "lab_exam_versions", "users", column: "created_by_user_id"
+  add_foreign_key "lab_exams", "exam_providers"
+  add_foreign_key "lab_exams", "lab_exam_versions", column: "current_version_id"
+  add_foreign_key "lab_hl7_receipts", "lab_middleware_tokens"
+  add_foreign_key "lab_middleware_tokens", "exam_providers"
+  add_foreign_key "lab_middleware_tokens", "users", column: "created_by_user_id"
+  add_foreign_key "lab_rejection_reasons", "exam_providers"
+  add_foreign_key "lab_releasers", "exam_providers"
+  add_foreign_key "lab_releasers", "users"
+  add_foreign_key "lab_releasers", "users", column: "created_by_user_id"
+  add_foreign_key "lab_releasers", "users", column: "ended_by_user_id"
+  add_foreign_key "lab_report_items", "lab_reports"
+  add_foreign_key "lab_report_items", "lab_requisition_items"
+  add_foreign_key "lab_reports", "exam_files", column: "pdf_file_id"
+  add_foreign_key "lab_reports", "exam_providers"
+  add_foreign_key "lab_reports", "lab_reports", column: "replaces_report_id"
+  add_foreign_key "lab_reports", "lab_requisitions"
+  add_foreign_key "lab_reports", "users", column: "released_by_user_id"
+  add_foreign_key "lab_requisition_items", "exam_orders"
+  add_foreign_key "lab_requisition_items", "lab_exam_versions"
+  add_foreign_key "lab_requisition_items", "lab_requisitions"
+  add_foreign_key "lab_requisition_items", "lab_samples"
+  add_foreign_key "lab_requisitions", "exam_providers"
+  add_foreign_key "lab_requisitions", "health_units", column: "origin_unit_id"
+  add_foreign_key "lab_requisitions", "patients"
+  add_foreign_key "lab_requisitions", "users", column: "delivered_by_user_id"
+  add_foreign_key "lab_requisitions", "users", column: "opened_by_user_id"
+  add_foreign_key "lab_results", "lab_hl7_receipts"
+  add_foreign_key "lab_results", "lab_requisition_items"
+  add_foreign_key "lab_results", "lab_results", column: "chosen_from_id"
+  add_foreign_key "lab_results", "users", column: "entered_by_user_id"
+  add_foreign_key "lab_samples", "lab_rejection_reasons"
+  add_foreign_key "lab_samples", "lab_requisitions"
+  add_foreign_key "lab_samples", "lab_samples", column: "recollection_of_id"
+  add_foreign_key "lab_samples", "lab_shipments"
+  add_foreign_key "lab_samples", "users", column: "collected_by_user_id"
+  add_foreign_key "lab_samples", "users", column: "received_by_user_id"
+  add_foreign_key "lab_shipments", "exam_providers"
+  add_foreign_key "lab_shipments", "health_units", column: "origin_unit_id"
+  add_foreign_key "lab_shipments", "users", column: "created_by_user_id"
+  add_foreign_key "lab_shipments", "users", column: "received_by_user_id"
+  add_foreign_key "lab_shipments", "users", column: "sent_by_user_id"
   add_foreign_key "ledi_outbox", "ledi_outbox", column: "replaces_outbox_id"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"

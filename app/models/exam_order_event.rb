@@ -1,7 +1,7 @@
 # Trilha do exame (ADR 0036): só acréscimo (trigger). O motivo é cifrado e
 # nunca sai em evento de domínio nem em log.
 class ExamOrderEvent < ApplicationRecord
-  KINDS = %w[requested authorized denied scheduled collected resulted acknowledged escalated cancelled].freeze
+  KINDS = %w[requested authorized denied scheduled collected resulted acknowledged escalated cancelled result_rectified].freeze
   ESCALATION_REASONS = %w[overdue critical unlinked_requester].freeze
 
   encrypts :reason

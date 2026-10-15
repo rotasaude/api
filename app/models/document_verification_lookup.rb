@@ -3,4 +3,5 @@
 # nenhum), a via e o resultado — nunca IP, código digitado ou ano.
 class DocumentVerificationLookup < ApplicationRecord
   belongs_to :clinical_document, optional: true
+  belongs_to :lab_report, optional: true
 end

@@ -43,7 +43,11 @@ Rails.application.config.filter_parameters += [
   /\A(documento-cidadao|documento-profissional|pec_sign)\z/,
   # ADR 0036: o arquivo em Base64, os valores do resultado, o solicitante
   # digitado (nome, CNS), o local da coleta e a referência externa da guia.
-  /\A(data|values|critical|requester|requester_name|requester_cns|scheduled_place|external_reference)\z/
+  /\A(data|values|critical|requester|requester_name|requester_cns|scheduled_place|external_reference)\z/,
+  # ADR 0037: nome da mãe, informação clínica, quem retirou, quem foi avisado,
+  # contatos da retificação, o TOTP da assinatura avançada, a restrição da
+  # amostra, o número do GAL e o código de barras da amostra (pseudônimo do paciente).
+  /\A(mother_name|clinical_info|delivered_to|notified_person|contacts|totp|restriction_note|gal_requisition|barcode|barcodes)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

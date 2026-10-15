@@ -106,7 +106,17 @@ module CityEncryption
     [ ExamOrder,      :requester_cns ],
     [ ExamOrderEvent, :reason ],
     [ ExamResult,     :values ],
-    [ ExamFile,       :data ]
+    [ ExamFile,       :data ],
+    # ADR 0037: laboratório municipal.
+    [ LabRequisition, :mother_name ],
+    [ LabRequisition, :clinical_info ],
+    [ LabRequisition, :delivered_to ],
+    [ LabResult, :value ],
+    [ LabHl7Receipt, :raw ],
+    [ LabReport, :content ],
+    [ LabReport, :rectification_reason ],
+    [ LabReport, :rectification_contacts ],
+    [ LabCriticalNotice, :notified_person ]
   ].freeze
 
   module_function

@@ -62,9 +62,42 @@ RSpec.describe ReencryptionJob do
                                          Consultation ConsultationAddendum ClinicalRecordOpening ConsultationDraftAction
                                          SignerCertificate SignatureSession SignatureOauthState SignatureRequest Signature
                                          ClinicalDocument PrescriptionItem PatientMedication PatientMedicationEvent
-                                         PecSetting ExamOrder ExamOrderEvent ExamResult ExamFile])
+                                         PecSetting ExamOrder ExamOrderEvent ExamResult ExamFile
+                                         LabRequisition LabResult LabHl7Receipt LabReport LabCriticalNotice])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
+  end
+
+  # ADR 0037: as linhas do laboratório municipal só crescem (triggers), mas
+  # aceitam a regravação do texto cifrado sob a marca da re-cifra.
+  it "re-cifra as linhas do laboratório municipal sem esbarrar nos triggers de imutabilidade" do
+    lab_city!
+    provider = lab_provider!
+    version = lab_exam!(provider: provider).current_version
+    req = lab_requisition_row!(provider: provider, version: version)
+    req.update!(clinical_info: "gestante")
+    result = LabResult.create!(lab_requisition_item: req.items.first, analyte_key: "glicose", value: "450", unit: "mg/dL",
+                               flag: "critical_high", source: "typed", entered_by_user: lab_staff!, entered_at: Time.current)
+    token = LabMiddlewareToken.create!(exam_provider: provider, token_digest: LabMiddlewareToken.digest(SecureRandom.hex(20)))
+    receipt = LabHl7Receipt.create!(lab_middleware_token: token, control_id: "C1", message_type: "OUL^R22", raw: "MSH|^~\\&|")
+    report = LabReport.create!(lab_requisition: req, exam_provider: provider, version: 1, partial: false, status: "pending_signature",
+                               signature_kind: "icp", released_by_user: lab_releaser!(provider), content: { "a" => 1 }.to_json,
+                               content_sha256: "a" * 64, verification_token: ClinicalDocuments::Codes.token,
+                               short_code: ClinicalDocuments::Codes.short_code)
+    notice = LabCriticalNotice.create!(lab_result: result, notified_person: "Dra. Ana", notified_role: "médica", channel: "telefone",
+                                       notified_at: Time.current, recorded_by_user: lab_staff!)
+    raw = ->(table, column, id) { ApplicationRecord.connection.select_value("SELECT #{column} FROM #{table} WHERE id = #{ApplicationRecord.connection.quote(id)}") }
+    cells = [ [ "lab_requisitions", "mother_name", req.id ], [ "lab_results", "value", result.id ], [ "lab_hl7_receipts", "raw", receipt.id ],
+              [ "lab_reports", "content", report.id ], [ "lab_critical_notices", "notified_person", notice.id ] ]
+    before = cells.map { |cell| raw.call(*cell) }
+
+    stats = call_body(only: %i[lab_requisition lab_result lab_hl7_receipt lab_report lab_critical_notice])
+
+    expect(stats).to eq("LabRequisition" => 1, "LabResult" => 1, "LabHl7Receipt" => 1, "LabReport" => 1, "LabCriticalNotice" => 1)
+    expect(cells.map { |cell| raw.call(*cell) }).to all(be_present)
+    expect(cells.map { |cell| raw.call(*cell) }).not_to eq(before)
+    expect([ req.reload.mother_name, result.reload.value, receipt.reload.raw, report.reload.content_data, notice.reload.notified_person ])
+      .to eq([ "Joana", "450", "MSH|^~\\&|", { "a" => 1 }, "Dra. Ana" ])
   end
 
   # Módulo 16: a fila LEDI guarda o payload cifrado com a chave da cidade

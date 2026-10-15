@@ -20,11 +20,12 @@ RSpec.describe "Migração de cidade 20260930200001 (CreateAnalytics): down e up
     models.each(&:reset_column_information)
   end
 
-  # 20261013900001 (módulo 21a) reescreve ck_memberships_role com os papéis
-  # exam_regulator/exam_provider; o up de CreateAnalytics volta a lista fixa sem eles.
-  # A migração do 21a é irreversível: a lista volta à mão, igual a ela.
+  # 20261015900002 (módulo 21b) reescreve ck_memberships_role com os papéis
+  # exam_regulator/exam_provider (21a) e lab_staff/lab_releaser (21b); o up de
+  # CreateAnalytics volta a lista fixa sem eles. As migrações do 21a e do 21b são
+  # irreversíveis: a lista volta à mão, igual à da última.
   def restore_exam_roles
-    quoted = AddExamTracking::ROLES.map { |role| "'#{role}'" }.join(", ")
+    quoted = AddMunicipalLab::ROLES.map { |role| "'#{role}'" }.join(", ")
     conn.remove_check_constraint :memberships, name: "ck_memberships_role"
     conn.add_check_constraint :memberships, "role::text = ANY (ARRAY[#{quoted}]::text[])", name: "ck_memberships_role"
   end

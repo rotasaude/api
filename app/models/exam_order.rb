@@ -3,7 +3,7 @@
 # Exams::Transition/Exams::Escalate — nunca update! direto.
 class ExamOrder < ApplicationRecord
   STATUSES = %w[awaiting_authorization denied awaiting_schedule scheduled collected resulted acknowledged cancelled].freeze
-  ORIGINS = %w[consultation reception_guide pec].freeze
+  ORIGINS = %w[consultation reception_guide pec lab_reception].freeze
   PRIORITIES = %w[routine urgent].freeze
   OPEN_STATUSES = %w[awaiting_authorization awaiting_schedule scheduled collected resulted].freeze
 
@@ -21,6 +21,7 @@ class ExamOrder < ApplicationRecord
   # (exam_orders_guard), não um callback que o update_all/delete_all pularia.
   has_many :events, -> { order(:occurred_at, :created_at, :id) }, class_name: "ExamOrderEvent", inverse_of: :exam_order
   has_one :result, class_name: "ExamResult", inverse_of: :exam_order
+  has_one :lab_item, class_name: "LabRequisitionItem", inverse_of: :exam_order
 
   def catalog_item = ExamCatalogItem.find_by(sigtap_code: sigtap_code)
   def escalated? = escalated_at.present?

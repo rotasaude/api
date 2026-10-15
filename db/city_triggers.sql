@@ -1600,6 +1600,14 @@ BEGIN
   IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
     RETURN NEW;
   END IF;
+  -- ADR 0037 (F-21.24): o número do GAL é registrado UMA vez, sem evento.
+  IF OLD.gal_requisition IS NOT NULL AND NEW.gal_requisition IS DISTINCT FROM OLD.gal_requisition THEN
+    RAISE EXCEPTION 'exam_orders: gal_requisition is recorded once';
+  END IF;
+  IF OLD.gal_requisition IS NULL AND NEW.gal_requisition IS NOT NULL
+     AND (to_jsonb(NEW) - 'gal_requisition' - 'updated_at') = (to_jsonb(OLD) - 'gal_requisition' - 'updated_at') THEN
+    RETURN NEW;
+  END IF;
   IF (SELECT jsonb_object_agg(k, v) FROM jsonb_each(to_jsonb(NEW)) AS e(k, v) WHERE k = ANY(identity))
      IS DISTINCT FROM (SELECT jsonb_object_agg(k, v) FROM jsonb_each(to_jsonb(OLD)) AS e(k, v) WHERE k = ANY(identity)) THEN
     RAISE EXCEPTION 'exam_orders: identity never changes';
@@ -1655,6 +1663,74 @@ BEGIN
       BEFORE UPDATE OR DELETE ON exam_results
       FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''values'')';
     FOREACH item IN ARRAY ARRAY['exam_orders', 'exam_order_events', 'exam_results', 'exam_files'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;
+
+-- Módulo 21b (ADR 0037, Invariantes): versão do exame, resultados, recibos
+-- HL7, itens do laudo e avisos de crítico só crescem; o laudo só anda para a
+-- frente (pending_signature → released|withdrawn; released → rectified) e o
+-- conteúdo nunca muda; requisição, item, amostra e remessa nunca somem. A
+-- sequência do número da requisição mora aqui (o dump não a representa).
+CREATE OR REPLACE FUNCTION rota_lab_report_guard() RETURNS trigger AS $fn$
+DECLARE
+  encrypted text[] := ARRAY['content', 'rectification_reason', 'rectification_contacts'];
+  moving text[] := ARRAY['status', 'released_at', 'pdf_file_id', 'pdf_sha256', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'lab_reports is append-only: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'lab_reports: a report never changes (only its status moves forward)';
+  END IF;
+  IF OLD.status = 'pending_signature' AND NEW.status IN ('released', 'withdrawn') THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.status = 'released' AND NEW.status = 'rectified'
+     AND (NEW.released_at, NEW.pdf_file_id, NEW.pdf_sha256) IS NOT DISTINCT FROM (OLD.released_at, OLD.pdf_file_id, OLD.pdf_sha256) THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'lab_reports: status % -> % refused', OLD.status, NEW.status;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.lab_requisitions') IS NOT NULL THEN
+    CREATE SEQUENCE IF NOT EXISTS lab_requisition_number_seq START 1 MAXVALUE 99999999;
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_reports_guard ON lab_reports';
+    EXECUTE 'CREATE TRIGGER lab_reports_guard BEFORE UPDATE OR DELETE ON lab_reports
+      FOR EACH ROW EXECUTE FUNCTION rota_lab_report_guard()';
+    FOREACH item IN ARRAY ARRAY['lab_exam_versions', 'lab_report_items'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only', item);
+    END LOOP;
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_results_reencryption_only ON lab_results';
+    EXECUTE 'CREATE TRIGGER lab_results_reencryption_only BEFORE UPDATE OR DELETE ON lab_results
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''value'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_hl7_receipts_reencryption_only ON lab_hl7_receipts';
+    EXECUTE 'CREATE TRIGGER lab_hl7_receipts_reencryption_only BEFORE UPDATE OR DELETE ON lab_hl7_receipts
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''raw'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_critical_notices_reencryption_only ON lab_critical_notices';
+    EXECUTE 'CREATE TRIGGER lab_critical_notices_reencryption_only BEFORE UPDATE OR DELETE ON lab_critical_notices
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''notified_person'')';
+    FOREACH item IN ARRAY ARRAY['lab_requisitions', 'lab_requisition_items', 'lab_samples', 'lab_shipments'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_no_delete', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['lab_exam_versions', 'lab_results', 'lab_hl7_receipts', 'lab_reports', 'lab_report_items',
+                                'lab_critical_notices', 'lab_requisitions', 'lab_requisition_items', 'lab_samples', 'lab_shipments'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
                      item || '_append_only_truncate', item);

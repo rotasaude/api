@@ -183,4 +183,12 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "exam.patient_looked_up", to: []
   DomainEvents.bind "exam_provider.fhir_token_rotated", to: []
   DomainEvents.bind "exam_provider.fhir_token_revoked", to: []
+
+  # Módulo 21b (ADR 0037): laboratório municipal, só trilha, só ids. Nunca
+  # valor, nome, CPF, mensagem HL7 ou token.
+  %w[lab_requisition.opened lab_requisition.delivered lab_sample.collected lab_sample.received lab_sample.rejected
+     lab_sample.label_printed lab_shipment.sent lab_shipment.received lab_result.entered lab_report.released
+     lab_report.rectified lab_report.withdrawn lab_critical.notified lab_exam.version_created lab_releaser.assigned
+     lab_releaser.ended lab_middleware.token_rotated lab_middleware.token_revoked exam_order.result_rectified
+     exam_order.gal_registered].each { |name| DomainEvents.bind name, to: [] }
 end
