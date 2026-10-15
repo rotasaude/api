@@ -18,6 +18,8 @@ module Maintenance
       field :import_anvisa_lists, mutation: Mutations::ImportAnvisaLists
       field :set_city_pec_origin, mutation: Mutations::SetCityPecOrigin
       field :rotate_city_pec_hmac_key, mutation: Mutations::RotateCityPecHmacKey
+      field :upsert_lab_exam_template, mutation: Mutations::UpsertLabExamTemplate
+      field :upsert_lab_analyte_template, mutation: Mutations::UpsertLabAnalyteTemplate
     end
   end
 end

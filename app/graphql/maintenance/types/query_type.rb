@@ -3,6 +3,9 @@ module Maintenance
     class QueryType < BaseObject
       description "Consultas da API de manutenção"
 
+      # ADR 0037 (contrato §10, M1): catálogo-base do laboratório, plataforma.
+      field :lab_exam_templates, [ Types::LabExamTemplateType ], null: false,
+            description: "Catálogo-base de exames de laboratório (ativos e inativos, por nome)"
       field :me, MaintainerType, null: false, description: "O mantenedor da sessão corrente"
       field :maintainers, [ Types::MaintainerType ], null: false,
             description: "Todos os mantenedores, por e-mail. Só sessão humana."
@@ -47,6 +50,7 @@ module Maintenance
 
       ProviderRow = Data.define(:key, :configured, :last_check_at, :last_check_ok)
 
+      def lab_exam_templates = LabExamTemplate.includes(:analytes).order(:name)
       def me = context.fetch(:maintainer)
       def maintainers = Maintainer.order(:email_address)
       def maintenance_tokens = MaintenanceToken.order(created_at: :desc)
