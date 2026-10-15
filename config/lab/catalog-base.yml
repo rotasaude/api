@@ -1,0 +1,160 @@
+# Catálogo-base de exames da APS (ADR 0037; spec §4). Referências de PARTIDA:
+# o laboratório ajusta ao seu método ao adotar. Faixa: [sexo, baixo, alto, texto?].
+- sigtap_code: "0202020380"
+  name: Hemograma completo
+  sector: hematology
+  material: Sangue total
+  container: Tubo roxo (EDTA)
+  suggested_method: Contagem automatizada (impedância e citometria de fluxo)
+  preparation: Não exige jejum.
+  analytes:
+    - { key: hemacias, name: Hemácias, loinc: "789-8", unit: "10*6/uL", value_type: numeric, decimals: 2, ranges: [[male, 4.5, 5.9], [female, 4.0, 5.2]] }
+    - { key: hemoglobina, name: Hemoglobina, loinc: "718-7", unit: g/dL, value_type: numeric, decimals: 1, ranges: [[male, 13.5, 17.5], [female, 12.0, 15.5]] }
+    - { key: hematocrito, name: Hematócrito, loinc: "4544-3", unit: "%", value_type: numeric, decimals: 1, ranges: [[male, 41.0, 53.0], [female, 36.0, 46.0]] }
+    - { key: vcm, name: VCM, loinc: "787-2", unit: fL, value_type: numeric, decimals: 1, ranges: [[any, 80.0, 100.0]] }
+    - { key: hcm, name: HCM, loinc: "785-6", unit: pg, value_type: numeric, decimals: 1, ranges: [[any, 27.0, 32.0]] }
+    - { key: chcm, name: CHCM, loinc: "786-4", unit: g/dL, value_type: numeric, decimals: 1, ranges: [[any, 32.0, 36.0]] }
+    - { key: rdw, name: RDW, loinc: "788-0", unit: "%", value_type: numeric, decimals: 1, ranges: [[any, 11.5, 14.5]] }
+    - { key: leucocitos, name: Leucócitos, loinc: "6690-2", unit: "10*3/uL", value_type: numeric, decimals: 1, ranges: [[any, 4.0, 11.0]] }
+    - { key: plaquetas, name: Plaquetas, loinc: "777-3", unit: "10*3/uL", value_type: numeric, decimals: 0, ranges: [[any, 150, 450]] }
+- sigtap_code: "0202010473"
+  name: Glicose
+  sector: biochemistry
+  material: Plasma
+  container: Tubo cinza (fluoreto)
+  suggested_method: Enzimático (glicose oxidase)
+  preparation: Jejum de 8 horas.
+  analytes:
+    - { key: glicose, name: Glicose, loinc: "2345-7", unit: mg/dL, value_type: numeric, decimals: 0, ranges: [[any, 70, 99]] }
+- sigtap_code: "0202010503"
+  name: Hemoglobina glicada (HbA1c)
+  sector: biochemistry
+  material: Sangue total
+  container: Tubo roxo (EDTA)
+  suggested_method: Cromatografia líquida (HPLC)
+  preparation: Não exige jejum.
+  analytes:
+    - { key: hba1c, name: Hemoglobina glicada, loinc: "4548-4", unit: "%", value_type: numeric, decimals: 1, ranges: [[any, 4.0, 5.6]] }
+- sigtap_code: "0202010295"
+  name: Colesterol total
+  sector: biochemistry
+  material: Soro
+  container: Tubo amarelo (gel)
+  suggested_method: Enzimático colorimétrico
+  preparation: Jejum não obrigatório; siga a orientação do pedido.
+  analytes:
+    - { key: colesterol_total, name: Colesterol total, loinc: "2093-3", unit: mg/dL, value_type: numeric, decimals: 0, ranges: [[any, null, 190, "Desejável: inferior a 190 mg/dL"]] }
+- sigtap_code: "0202010279"
+  name: Colesterol HDL
+  sector: biochemistry
+  material: Soro
+  container: Tubo amarelo (gel)
+  suggested_method: Enzimático colorimétrico direto
+  preparation: Jejum não obrigatório.
+  analytes:
+    - { key: hdl, name: Colesterol HDL, loinc: "2085-9", unit: mg/dL, value_type: numeric, decimals: 0, ranges: [[any, 40, null, "Desejável: superior a 40 mg/dL"]] }
+- sigtap_code: "0202010287"
+  name: Colesterol LDL
+  sector: biochemistry
+  material: Soro
+  container: Tubo amarelo (gel)
+  suggested_method: Enzimático colorimétrico direto
+  preparation: Jejum não obrigatório.
+  analytes:
+    - { key: ldl, name: Colesterol LDL, loinc: "13457-7", unit: mg/dL, value_type: numeric, decimals: 0, ranges: [[any, null, 130, "Conforme a categoria de risco"]] }
+- sigtap_code: "0202010678"
+  name: Triglicerídeos
+  sector: biochemistry
+  material: Soro
+  container: Tubo amarelo (gel)
+  suggested_method: Enzimático colorimétrico
+  preparation: Jejum não obrigatório.
+  analytes:
+    - { key: triglicerideos, name: Triglicerídeos, loinc: "2571-8", unit: mg/dL, value_type: numeric, decimals: 0, ranges: [[any, null, 150, "Desejável: inferior a 150 mg/dL"]] }
+- sigtap_code: "0202010317"
+  name: Creatinina
+  sector: biochemistry
+  material: Soro
+  container: Tubo amarelo (gel)
+  suggested_method: Jaffé cinético
+  preparation: Não exige jejum.
+  analytes:
+    - { key: creatinina, name: Creatinina, loinc: "2160-0", unit: mg/dL, value_type: numeric, decimals: 2, ranges: [[male, 0.70, 1.30], [female, 0.60, 1.10]] }
+- sigtap_code: "0202010694"
+  name: Ureia
+  sector: biochemistry
+  material: Soro
+  container: Tubo amarelo (gel)
+  suggested_method: Enzimático (urease)
+  preparation: Não exige jejum.
+  analytes:
+    - { key: ureia, name: Ureia, loinc: "3091-6", unit: mg/dL, value_type: numeric, decimals: 0, ranges: [[any, 15, 45]] }
+- sigtap_code: "0202010643"
+  name: TGO (AST)
+  sector: biochemistry
+  material: Soro
+  container: Tubo amarelo (gel)
+  suggested_method: Cinético UV (IFCC)
+  preparation: Não exige jejum.
+  analytes:
+    - { key: tgo, name: TGO (AST), loinc: "1920-8", unit: U/L, value_type: numeric, decimals: 0, ranges: [[any, 5, 40]] }
+- sigtap_code: "0202010651"
+  name: TGP (ALT)
+  sector: biochemistry
+  material: Soro
+  container: Tubo amarelo (gel)
+  suggested_method: Cinético UV (IFCC)
+  preparation: Não exige jejum.
+  analytes:
+    - { key: tgp, name: TGP (ALT), loinc: "1742-6", unit: U/L, value_type: numeric, decimals: 0, ranges: [[any, 7, 56]] }
+- sigtap_code: "0202060250"
+  name: TSH
+  sector: immunology
+  material: Soro
+  container: Tubo amarelo (gel)
+  suggested_method: Quimioluminescência
+  preparation: Não exige jejum.
+  analytes:
+    - { key: tsh, name: TSH, loinc: "3016-3", unit: "m[IU]/L", value_type: numeric, decimals: 2, ranges: [[any, 0.40, 4.00]] }
+- sigtap_code: "0202060381"
+  name: T4 livre
+  sector: immunology
+  material: Soro
+  container: Tubo amarelo (gel)
+  suggested_method: Quimioluminescência
+  preparation: Não exige jejum.
+  analytes:
+    - { key: t4_livre, name: T4 livre, loinc: "3024-7", unit: ng/dL, value_type: numeric, decimals: 2, ranges: [[any, 0.80, 1.80]] }
+- sigtap_code: "0202060217"
+  name: Beta-hCG
+  sector: immunology
+  material: Soro
+  container: Tubo amarelo (gel)
+  suggested_method: Quimioluminescência
+  preparation: Não exige jejum.
+  analytes:
+    - { key: beta_hcg, name: Beta-hCG, loinc: "21198-7", unit: "m[IU]/mL", value_type: numeric, decimals: 1, ranges: [[any, null, 5.0, "Não gestante: inferior a 5 mUI/mL"]] }
+- sigtap_code: "0202050017"
+  name: Urina tipo 1
+  sector: urinalysis
+  material: Urina
+  container: Frasco coletor estéril
+  suggested_method: Tira reativa e sedimentoscopia
+  preparation: Primeira urina da manhã, jato médio, após higiene.
+  analytes:
+    - { key: densidade, name: Densidade, loinc: "5811-5", unit: null, value_type: numeric, decimals: 3, ranges: [[any, 1.005, 1.030]] }
+    - { key: ph, name: pH, loinc: "5803-2", unit: null, value_type: numeric, decimals: 1, ranges: [[any, 5.0, 8.0]] }
+    - { key: proteinas, name: Proteínas, loinc: null, unit: null, value_type: choice, choices: [Negativo, Traços, "+", "++", "+++"], ranges: [[any, null, null, Negativo]] }
+    - { key: glicose_urina, name: Glicose, loinc: null, unit: null, value_type: choice, choices: [Negativo, Traços, "+", "++", "+++"], ranges: [[any, null, null, Negativo]] }
+    - { key: nitrito, name: Nitrito, loinc: null, unit: null, value_type: choice, choices: [Negativo, Positivo], ranges: [[any, null, null, Negativo]] }
+    - { key: leucocitos_sedimento, name: Leucócitos (sedimento), loinc: null, unit: por campo, value_type: text, ranges: [[any, null, null, "Até 5 por campo"]] }
+    - { key: hemacias_sedimento, name: Hemácias (sedimento), loinc: null, unit: por campo, value_type: text, ranges: [[any, null, null, "Até 3 por campo"]] }
+- sigtap_code: "0202040127"
+  name: Parasitológico de fezes
+  sector: parasitology
+  material: Fezes
+  container: Coletor universal
+  suggested_method: Sedimentação espontânea (Hoffman)
+  preparation: Amostra recente, sem laxante.
+  analytes:
+    - { key: resultado, name: Resultado, loinc: null, unit: null, value_type: text, ranges: [[any, null, null, Negativo]] }

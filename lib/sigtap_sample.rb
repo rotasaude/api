@@ -13,7 +13,8 @@ module SigtapSample
                            [ "TP_COMPLEXIDADE", 1, "VARCHAR2" ], [ "TP_SEXO", 1, "VARCHAR2" ],
                            [ "QT_MAXIMA_EXECUCAO", 4, "NUMBER" ], [ "QT_DIAS_PERMANENCIA", 4, "NUMBER" ],
                            [ "QT_PONTOS", 4, "NUMBER" ], [ "VL_IDADE_MINIMA", 4, "NUMBER" ],
-                           [ "VL_IDADE_MAXIMA", 4, "NUMBER" ], [ "DT_COMPETENCIA", 6, "VARCHAR2" ] ],
+                           [ "VL_IDADE_MAXIMA", 4, "NUMBER" ], [ "VL_SH", 12, "NUMBER" ], [ "VL_SA", 12, "NUMBER" ],
+                           [ "VL_SP", 12, "NUMBER" ], [ "DT_COMPETENCIA", 6, "VARCHAR2" ] ],
     "rl_procedimento_ocupacao" => [ [ "CO_PROCEDIMENTO", 10, "VARCHAR2" ], [ "CO_OCUPACAO", 6, "VARCHAR2" ],
                                     [ "DT_COMPETENCIA", 6, "VARCHAR2" ] ],
     "rl_procedimento_cid" => [ [ "CO_PROCEDIMENTO", 10, "VARCHAR2" ], [ "CO_CID", 4, "VARCHAR2" ],
@@ -34,8 +35,28 @@ module SigtapSample
     [ "0202020380", "HEMOGRAMA COMPLETO", "2", "I", 0, 9999 ],
     [ "0202010503", "DOSAGEM DE HEMOGLOBINA GLICOSILADA", "2", "I", 0, 9999 ],
     [ "0202030300", "PESQUISA DE ANTICORPOS ANTI-HIV-1 + HIV-2 (ELISA)", "2", "I", 0, 9999 ],
-    [ "0203020030", "EXAME ANATOMO-PATOLOGICO PARA CONGELAMENTO / PARAFINA POR PECA CIRURGICA OU POR BIOPSIA (EXCETO COLO UTERINO E MAMA)", "2", "I", 0, 9999 ]
+    [ "0203020030", "EXAME ANATOMO-PATOLOGICO PARA CONGELAMENTO / PARAFINA POR PECA CIRURGICA OU POR BIOPSIA (EXCETO COLO UTERINO E MAMA)", "2", "I", 0, 9999 ],
+    [ "0202010473", "DOSAGEM DE GLICOSE", "2", "I", 0, 9999 ],
+    [ "0202010317", "DOSAGEM DE CREATININA", "2", "I", 0, 9999 ],
+    [ "0202010295", "DOSAGEM DE COLESTEROL TOTAL", "2", "I", 0, 9999 ],
+    [ "0202010279", "DOSAGEM DE COLESTEROL HDL", "2", "I", 0, 9999 ],
+    [ "0202010287", "DOSAGEM DE COLESTEROL LDL", "2", "I", 0, 9999 ],
+    [ "0202010678", "DOSAGEM DE TRIGLICERIDEOS", "2", "I", 0, 9999 ],
+    [ "0202010694", "DOSAGEM DE UREIA", "2", "I", 0, 9999 ],
+    [ "0202010643", "DOSAGEM DE TRANSAMINASE GLUTAMICO-OXALACETICA (TGO)", "2", "I", 0, 9999 ],
+    [ "0202010651", "DOSAGEM DE TRANSAMINASE GLUTAMICO-PIRUVICA (TGP)", "2", "I", 0, 9999 ],
+    [ "0202060250", "DOSAGEM DE HORMONIO TIREOESTIMULANTE (TSH)", "2", "I", 0, 9999 ],
+    [ "0202060381", "DOSAGEM DE TIROXINA LIVRE (T4 LIVRE)", "2", "I", 0, 9999 ],
+    [ "0202060217", "DOSAGEM DE GONADOTROFINA CORIONICA HUMANA (HCG, BETA HCG)", "2", "I", 0, 9999 ],
+    [ "0202050017", "ANALISE DE CARACTERES FISICOS, ELEMENTOS E SEDIMENTO DA URINA", "2", "I", 0, 9999 ],
+    [ "0202040127", "PESQUISA DE OVOS E CISTOS DE PARASITAS", "2", "I", 0, 9999 ]
   ].freeze
+
+  # Desvio 14: VL_SA de dev, em centavos (aproximação da tabela vigente).
+  AMOUNTS = { "0202020380" => 411, "0202010473" => 185, "0202010503" => 763, "0202010295" => 185, "0202010279" => 351,
+              "0202010287" => 351, "0202010678" => 351, "0202010317" => 185, "0202010694" => 185, "0202010643" => 201,
+              "0202010651" => 201, "0202060250" => 896, "0202060381" => 1152, "0202060217" => 785, "0202050017" => 370,
+              "0202040127" => 165 }.freeze
 
   CBOS = {
     "0301010064" => %w[225125 225142 225130 225170],
@@ -83,7 +104,7 @@ module SigtapSample
   def rows_for(file, competence)
     case file
     when "tb_procedimento"
-      PROCEDURES.map { |code, name, cx, sex, min, max| [ code, name, cx, sex, 9999, 0, 0, min, max, competence ] }
+      PROCEDURES.map { |code, name, cx, sex, min, max| [ code, name, cx, sex, 9999, 0, 0, min, max, 0, AMOUNTS.fetch(code, 0), 0, competence ] }
     when "rl_procedimento_ocupacao" then CBOS.flat_map { |code, cbos| cbos.map { |cbo| [ code, cbo, competence ] } }
     when "rl_procedimento_cid" then CIDS.flat_map { |code, cids| cids.map { |cid, principal| [ code, cid, principal, competence ] } }
     when "rl_procedimento_registro" then INSTRUMENTS.flat_map { |code, regs| regs.map { |reg| [ code, reg, competence ] } }

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_15_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -183,6 +183,41 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
     t.index ["snapshot_id", "ine"], name: "index_cnes_teams_on_snapshot_id_and_ine", unique: true
   end
 
+  create_table "lab_analyte_templates", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.jsonb "choices", default: [], null: false
+    t.datetime "created_at", null: false
+    t.integer "decimals", default: 0, null: false
+    t.string "key", limit: 40, null: false
+    t.uuid "lab_exam_template_id", null: false
+    t.string "loinc", limit: 10
+    t.string "name", limit: 120, null: false
+    t.integer "position", default: 0, null: false
+    t.jsonb "reference_ranges", default: [], null: false
+    t.string "unit", limit: 30
+    t.datetime "updated_at", null: false
+    t.string "value_type", null: false
+    t.index ["lab_exam_template_id", "key"], name: "idx_lab_analyte_templates_key", unique: true
+    t.check_constraint "decimals >= 0 AND decimals <= 4", name: "ck_lab_analyte_templates_decimals"
+    t.check_constraint "key::text ~ '^[a-z][a-z0-9_]{0,39}$'::text", name: "ck_lab_analyte_templates_key"
+    t.check_constraint "value_type::text = ANY (ARRAY['numeric'::text, 'text'::text, 'choice'::text])", name: "ck_lab_analyte_templates_type"
+  end
+
+  create_table "lab_exam_templates", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "container", limit: 60, null: false
+    t.datetime "created_at", null: false
+    t.string "material", limit: 60, null: false
+    t.string "name", limit: 120, null: false
+    t.text "preparation"
+    t.string "sector", null: false
+    t.string "sigtap_code", limit: 10, null: false
+    t.string "suggested_method", limit: 160
+    t.datetime "updated_at", null: false
+    t.index ["sigtap_code"], name: "index_lab_exam_templates_on_sigtap_code", unique: true
+    t.check_constraint "sector::text = ANY (ARRAY['biochemistry'::text, 'hematology'::text, 'immunology'::text, 'urinalysis'::text, 'parasitology'::text, 'microbiology'::text])", name: "ck_lab_exam_templates_sector"
+    t.check_constraint "sigtap_code::text ~ '^02[0-9]{8}$'::text", name: "ck_lab_exam_templates_sigtap"
+  end
+
   create_table "maintainer_invitations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "expires_at", null: false
@@ -266,11 +301,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
     t.index ["catmat_code"], name: "index_medication_catalog_items_on_catmat_code", unique: true
     t.index ["parse_status"], name: "index_medication_catalog_items_on_parse_status"
     t.index ["status", "hidden"], name: "idx_medication_catalog_items_prescribable"
-    t.check_constraint "(parse_status::text = 'review'::text) OR strength IS NOT NULL", name: "ck_medication_catalog_items_strength"
     t.check_constraint "catmat_code > 0", name: "ck_medication_catalog_items_catmat_code"
     t.check_constraint "controlled = (controlled_list IS NOT NULL)", name: "ck_medication_catalog_items_controlled_list"
     t.check_constraint "obm_code IS NULL", name: "ck_medication_catalog_items_obm_reserved"
     t.check_constraint "parse_status::text = 'ok'::text OR hidden", name: "ck_medication_catalog_items_review_hidden"
+    t.check_constraint "(parse_status::text = 'review'::text) OR strength IS NOT NULL", name: "ck_medication_catalog_items_strength"
     t.check_constraint "parse_status::text = ANY (ARRAY['ok'::text, 'review'::text])", name: "ck_medication_catalog_items_parse_status"
     t.check_constraint "status::text = ANY (ARRAY['active'::text, 'removed'::text])", name: "ck_medication_catalog_items_status"
   end
@@ -365,6 +400,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
   create_table "sigtap_procedures", force: :cascade do |t|
     t.integer "age_max_months"
     t.integer "age_min_months"
+    t.integer "amount_sa_cents"
     t.string "code", limit: 10, null: false
     t.string "complexity", limit: 1
     t.text "name", null: false
@@ -553,6 +589,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_700001) do
   add_foreign_key "cnes_establishments", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
   add_foreign_key "cnes_professional_bonds", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
   add_foreign_key "cnes_teams", "cnes_snapshots", column: "snapshot_id", on_delete: :cascade
+  add_foreign_key "lab_analyte_templates", "lab_exam_templates"
   add_foreign_key "medication_catalog_items", "medication_catalog_releases", column: "first_release_id"
   add_foreign_key "medication_catalog_items", "medication_catalog_releases", column: "last_release_id"
   add_foreign_key "operator_sessions", "operators"

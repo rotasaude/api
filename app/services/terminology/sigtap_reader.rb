@@ -77,7 +77,16 @@ module Terminology
 
       { release_id: release.id, code: code, name: r["NO_PROCEDIMENTO"], sex: sex,
         age_min_months: age(r["VL_IDADE_MINIMA"], code), age_max_months: age(r["VL_IDADE_MAXIMA"], code),
-        complexity: r["TP_COMPLEXIDADE"].presence }
+        complexity: r["TP_COMPLEXIDADE"].presence, amount_sa_cents: amount_cents(r["VL_SA"], code) }
+    end
+
+    # Desvio 14: VL_SA em centavos (sem separador) quando o layout traz a coluna.
+    def amount_cents(value, code)
+      return nil if value.nil? || value.strip.empty?
+
+      Integer(value.strip, 10).then { |cents| cents.positive? ? cents : nil }
+    rescue ArgumentError
+      raise Import::Invalid, "valor inválido em #{code}: #{value.inspect}"
     end
 
     def age(value, code)

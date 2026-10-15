@@ -17,7 +17,7 @@ RSpec.describe Terminology::SigtapReader do
     result = import("202610")
 
     expect(result).to be_ok
-    expect(result.payload[:counts]).to eq(sigtap_procedures: 9, sigtap_procedure_cbos: 14, sigtap_procedure_cids: 1,
+    expect(result.payload[:counts]).to eq(sigtap_procedures: 23, sigtap_procedure_cbos: 14, sigtap_procedure_cids: 1,
                                           sigtap_procedure_instruments: 6)
     release = result.payload[:release]
     coleta = SigtapProcedure.find_by!(release: release, code: "0201020033")
