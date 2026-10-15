@@ -8,10 +8,16 @@ module Lab
 
     module_function
 
-    def normalize(raw) = Array(raw).map { |c| c.to_s.strip }
+    # nil = lista vazia; o que não é lista (texto, objeto) = nil (recusado).
+    def normalize(raw)
+      return [] if raw.nil?
+      return nil unless raw.is_a?(Array)
+
+      raw.map { |c| c.to_s.strip }
+    end
 
     def valid?(choices)
-      choices.size.between?(1, MAX) && choices.uniq.size == choices.size &&
+      choices.is_a?(Array) && choices.size.between?(1, MAX) && choices.uniq.size == choices.size &&
         choices.all? { |c| c.length.between?(1, MAX_LENGTH) }
     end
   end

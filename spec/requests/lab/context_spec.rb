@@ -36,4 +36,27 @@ RSpec.describe "Laboratório — contexto da sessão", type: :request do
       expect(json_body).to include("labs" => [], "releaser_of" => [])
     end
   end
+
+  it "B32: admin sem laboratório municipal → 200 com labs vazio" do
+    [ lab, other ].each { |p| p.update!(active: false) }
+    sign_in_as(lab_admin!)
+    get "/lab/context"
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to eq("labs" => [], "releaser_of" => [], "council" => nil)
+  end
+
+  it "admin ou UBS que coleta que também é liberador: todos os laboratórios ∪ os do liberador" do
+    admin_releaser = lab_releaser!(lab).tap { |u| Membership.create!(user: u, role: "municipal_admin", granted_at: Time.current) }
+    unit = create_unit("UBS Coletora Liberadora").tap { |u| u.update!(collects_samples: true) }
+    doctor_releaser = doctor!(unit).tap do |u|
+      Membership.create!(user: u, role: "lab_releaser", granted_at: Time.current)
+      LabReleaser.create!(user: u, exam_provider: lab)
+    end
+    [ admin_releaser, doctor_releaser ].each do |user|
+      sign_in_as(user)
+      get "/lab/context"
+      expect(json_body["labs"].map { |l| l["id"] }).to eq([ lab.id, other.id ])
+      expect(json_body["releaser_of"]).to eq([ lab.id ])
+    end
+  end
 end

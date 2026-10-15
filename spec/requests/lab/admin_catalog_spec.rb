@@ -91,4 +91,36 @@ RSpec.describe "Laboratório — admin do catálogo", type: :request do
     json_post "/attendance/units/#{unit.id}", name: unit.name, kind: "ubs", collects_samples: "sim"
     expect(json_body["error"]).to eq("invalid_collects_samples")
   end
+
+  it "código do aparelho sem diferença de caixa, só entre exames ATIVOS; PATCH do exame recusa entrada inválida" do
+    stepped_up!(admin)
+    glucose = lab_exam!(provider: provider, instrument_test_code: "GLI")
+    creat = lab_exam!(provider: provider, sigtap_code: "0202010317", name: "Creatinina", instrument_test_code: "CRE")
+    body = { method: "Jaffé", material: "Soro", container: "Tubo amarelo", instrument_test_code: " gli ", analytes: LabHelpers::GLUCOSE }
+    json_post "/lab/admin/exams/#{creat.id}/versions", **body
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "duplicate_instrument_code" ])
+    glucose.update!(active: false)
+    json_post "/lab/admin/exams/#{creat.id}/versions", **body
+    expect(response).to have_http_status(:created)
+    expect(json_body["instrument_test_code"]).to eq("GLI")
+
+    valid = { sector: "biochemistry", bench: nil, delivery_days: 3, active: true }
+    { { sector: "x" } => "invalid_sector", { delivery_days: 0 } => "invalid_delivery_days", { delivery_days: "3" } => "invalid_delivery_days",
+      { active: "sim" } => "invalid_active", { bench: "b" * 61 } => "invalid_bench" }.each do |change, code|
+      json_patch "/lab/admin/exams/#{creat.id}", valid.merge(change)
+      expect([ response.status, json_body["error"] ]).to eq([ 422, code ]), change.inspect
+    end
+    expect(creat.reload).to have_attributes(delivery_days: 3, active: true)
+  end
+
+  it "D20: marcar uses_municipal_lab com o interruptor desligado → municipal_lab_disabled" do
+    stepped_up!(admin)
+    lab = exam_provider!(name: "Lab Desligado", items: [])
+    Platform::Features.set!(city: City.find(Current.city.id), key: "municipal_lab", enabled: false, maintainer: ledi_maintainer!)
+    json_patch "/exams/admin/providers/#{lab.id}", uses_municipal_lab: true
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "municipal_lab_disabled" ])
+    expect(lab.reload.uses_municipal_lab).to be(false)
+    json_patch "/exams/admin/providers/#{lab.id}", uses_municipal_lab: false
+    expect(response).to have_http_status(:ok)
+  end
 end

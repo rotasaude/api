@@ -10,7 +10,8 @@ module Lab
       return forbid unless lab_role?(user) || collects
 
       ids = Lab::Access.provider_ids(user)
-      ids = Lab::Access.labs.pluck(:id) if ids.empty? && (collects || Lab::Access.admin?(user))
+      # Admin ou UBS que coleta: todos os laboratórios ativos, somados aos do liberador.
+      ids |= Lab::Access.labs.pluck(:id) if collects || Lab::Access.admin?(user)
 
       render json: { labs: Lab::Access.labs.where(id: ids).map { |p| { id: p.id, name: p.name } },
                      releaser_of: Lab::Access.releaser_provider_ids(user), council: Lab::Access.council(user) }

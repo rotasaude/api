@@ -30,4 +30,15 @@ RSpec.describe Lab::Analytes do
       expect(described_class.parse([ choice.merge("choices" => choices) ]).reason).to eq(:choices_required), choices.inspect[0, 60]
     end
   end
+
+  it "mais de 60 componentes → invalid_analytes; choices que não é lista → choices_required" do
+    many = (1..61).map { |i| base.first.merge("key" => "c#{i}") }
+    expect(described_class.parse(many).reason).to eq(:invalid_analytes)
+    expect(described_class.parse(many.first(60))).to be_ok
+    choice = base.first.merge("value_type" => "choice")
+    [ "Positivo", { "a" => "Positivo" } ].each do |raw|
+      expect(described_class.parse([ choice.merge("choices" => raw) ]).reason).to eq(:choices_required), raw.inspect
+      expect(Lab::Choices.valid?(Lab::Choices.normalize(raw))).to be(false)
+    end
+  end
 end
