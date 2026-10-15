@@ -94,8 +94,11 @@ RSpec.describe ReencryptionJob do
     stats = call_body(only: %i[lab_requisition lab_result lab_hl7_receipt lab_report lab_critical_notice])
 
     expect(stats).to eq("LabRequisition" => 1, "LabResult" => 1, "LabHl7Receipt" => 1, "LabReport" => 1, "LabCriticalNotice" => 1)
-    expect(cells.map { |cell| raw.call(*cell) }).to all(be_present)
-    expect(cells.map { |cell| raw.call(*cell) }).not_to eq(before)
+    cells.zip(before).each do |cell, old|
+      now = raw.call(*cell)
+      expect(now).to be_present
+      expect(now).not_to eq(old), "#{cell[0]}.#{cell[1]} não foi re-cifrado"
+    end
     expect([ req.reload.mother_name, result.reload.value, receipt.reload.raw, report.reload.content_data, notice.reload.notified_person ])
       .to eq([ "Joana", "450", "MSH|^~\\&|", { "a" => 1 }, "Dra. Ana" ])
   end

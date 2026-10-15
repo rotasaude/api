@@ -1701,6 +1701,26 @@ BEGIN
 END;
 $fn$ LANGUAGE plpgsql;
 
+-- Recibo HL7 (ADR 0037; B10): o bruto cifrado só aceita a re-cifra ou a
+-- purga (raw → NULL; política de retenção a decidir); nada mais muda e a
+-- linha nunca some.
+CREATE OR REPLACE FUNCTION rota_lab_hl7_receipt_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'lab_hl7_receipts is append-only: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - 'raw') = (to_jsonb(OLD) - 'raw') THEN
+    IF current_setting('rota.reencrypting', true) = 'on' AND OLD.raw IS NOT NULL AND NEW.raw IS NOT NULL THEN
+      RETURN NEW;
+    END IF;
+    IF OLD.raw IS NOT NULL AND NEW.raw IS NULL THEN
+      RETURN NEW;
+    END IF;
+  END IF;
+  RAISE EXCEPTION 'lab_hl7_receipts is append-only: UPDATE refused';
+END;
+$fn$ LANGUAGE plpgsql;
+
 DO $do$
 DECLARE
   item text;
@@ -1718,9 +1738,9 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS lab_results_reencryption_only ON lab_results';
     EXECUTE 'CREATE TRIGGER lab_results_reencryption_only BEFORE UPDATE OR DELETE ON lab_results
       FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''value'')';
-    EXECUTE 'DROP TRIGGER IF EXISTS lab_hl7_receipts_reencryption_only ON lab_hl7_receipts';
-    EXECUTE 'CREATE TRIGGER lab_hl7_receipts_reencryption_only BEFORE UPDATE OR DELETE ON lab_hl7_receipts
-      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''raw'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_hl7_receipts_guard ON lab_hl7_receipts';
+    EXECUTE 'CREATE TRIGGER lab_hl7_receipts_guard BEFORE UPDATE OR DELETE ON lab_hl7_receipts
+      FOR EACH ROW EXECUTE FUNCTION rota_lab_hl7_receipt_guard()';
     EXECUTE 'DROP TRIGGER IF EXISTS lab_critical_notices_reencryption_only ON lab_critical_notices';
     EXECUTE 'CREATE TRIGGER lab_critical_notices_reencryption_only BEFORE UPDATE OR DELETE ON lab_critical_notices
       FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''notified_person'')';

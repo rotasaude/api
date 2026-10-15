@@ -1073,7 +1073,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
     t.datetime "created_at", null: false
     t.uuid "lab_middleware_token_id", null: false
     t.string "message_type", limit: 20, null: false
-    t.text "raw", null: false
+    t.text "raw"
     t.index ["lab_middleware_token_id", "control_id"], name: "idx_lab_hl7_receipts_control", unique: true
   end
 
@@ -1143,9 +1143,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
     t.integer "version", null: false
     t.index ["exam_provider_id", "released_at"], name: "idx_lab_reports_provider_released"
     t.index ["lab_requisition_id", "version"], name: "idx_lab_reports_version", unique: true
-    t.index ["lab_requisition_id"], name: "index_lab_reports_on_lab_requisition_id"
     t.index ["pdf_file_id"], name: "index_lab_reports_on_pdf_file_id", unique: true
-    t.index ["replaces_report_id"], name: "index_lab_reports_on_replaces_report_id", unique: true
+    t.index ["replaces_report_id"], name: "idx_lab_reports_replaces", unique: true, where: "((status)::text <> 'withdrawn'::text)"
     t.index ["short_code"], name: "index_lab_reports_on_short_code", unique: true
     t.index ["verification_token"], name: "index_lab_reports_on_verification_token", unique: true
     t.check_constraint "(replaces_report_id IS NULL) = (rectification_reason IS NULL)", name: "ck_lab_reports_rectification"
@@ -1153,6 +1152,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
     t.check_constraint "short_code::text ~ '^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{10}$'::text", name: "ck_lab_reports_short_code"
     t.check_constraint "signature_kind::text = ANY (ARRAY['icp'::text, 'advanced'::text])", name: "ck_lab_reports_signature"
     t.check_constraint "status::text = ANY (ARRAY['pending_signature'::text, 'released'::text, 'rectified'::text, 'withdrawn'::text])", name: "ck_lab_reports_status"
+    t.check_constraint "verification_token::text ~ '^[A-Za-z0-9_-]{22}$'::text", name: "ck_lab_reports_token"
   end
 
   create_table "lab_requisition_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

@@ -193,7 +193,8 @@ class AddMunicipalLab < ActiveRecord::Migration[8.1]
       t.references :lab_middleware_token, type: :uuid, null: false, foreign_key: true, index: false
       t.string :control_id, limit: 64, null: false
       t.string :message_type, limit: 20, null: false
-      t.text :raw, null: false
+      # Nulo = bruto purgado (retenção a decidir); o trigger só aceita re-cifra ou purga.
+      t.text :raw
       t.datetime :created_at, null: false
     end
     add_index :lab_hl7_receipts, %i[lab_middleware_token_id control_id], unique: true, name: "idx_lab_hl7_receipts_control"
@@ -220,10 +221,11 @@ class AddMunicipalLab < ActiveRecord::Migration[8.1]
     add_check_constraint :lab_results, "source::text = 'typed'::text OR lab_hl7_receipt_id IS NOT NULL", name: "ck_lab_results_hl7"
 
     create_table :lab_reports, id: :uuid do |t|
-      t.references :lab_requisition, type: :uuid, null: false, foreign_key: true, index: true
+      # Sem índice próprio: idx_lab_reports_version (lab_requisition_id, version) o cobre.
+      t.references :lab_requisition, type: :uuid, null: false, foreign_key: true, index: false
       t.references :exam_provider, type: :uuid, null: false, foreign_key: true, index: false
       t.integer :version, null: false
-      t.references :replaces_report, type: :uuid, foreign_key: { to_table: :lab_reports }, index: { unique: true }
+      t.references :replaces_report, type: :uuid, foreign_key: { to_table: :lab_reports }, index: false
       t.boolean :partial, null: false, default: false
       t.string :status, null: false
       t.string :signature_kind, null: false
@@ -243,6 +245,9 @@ class AddMunicipalLab < ActiveRecord::Migration[8.1]
     add_index :lab_reports, :verification_token, unique: true
     add_index :lab_reports, :short_code, unique: true
     add_index :lab_reports, %i[exam_provider_id released_at], name: "idx_lab_reports_provider_released"
+    # Uma retificação viva por laudo; a retirada (ICP devolvido) não bloqueia a próxima.
+    add_index :lab_reports, :replaces_report_id, unique: true, where: "status::text <> 'withdrawn'::text", name: "idx_lab_reports_replaces"
+    add_check_constraint :lab_reports, "verification_token::text ~ '^[A-Za-z0-9_-]{22}$'::text", name: "ck_lab_reports_token"
     add_check_constraint :lab_reports, "status::text = ANY (ARRAY['pending_signature'::text, 'released'::text, 'rectified'::text, 'withdrawn'::text])", name: "ck_lab_reports_status"
     add_check_constraint :lab_reports, "signature_kind::text = ANY (ARRAY['icp'::text, 'advanced'::text])", name: "ck_lab_reports_signature"
     add_check_constraint :lab_reports, "status::text IN ('pending_signature', 'withdrawn') OR (released_at IS NOT NULL AND pdf_file_id IS NOT NULL AND pdf_sha256 IS NOT NULL)", name: "ck_lab_reports_released"
