@@ -57,7 +57,7 @@ RSpec.describe Citizens::RequestErasure do
   end
 
   it "Erase trava o paciente antes de reconferir (segura a FK de um exame novo)" do
-    patient, citizen = exam_patient!(exam_seq!)
+    _patient, citizen = exam_patient!(exam_seq!)
     request = described_class.call(cpf: citizen.cpf, document_checked: true, by: reception).payload[:request]
     admin = staff_with("adm-#{SecureRandom.hex(2)}@cidade.gov.br", "municipal_admin")
     sqls = []
@@ -67,7 +67,19 @@ RSpec.describe Citizens::RequestErasure do
     expect(locked).to be_present
     retention = sqls.index { |sql| sql.include?('FROM "exam_orders"') }
     expect(sqls.index(locked)).to be < retention
-    expect(patient.reload).to be_present
+    expect(request.reload.status).to eq("confirmed")
+  end
+
+  it "Erase com atendimento retém sem travar o paciente (sem impasse com documento e consulta)" do
+    _patient, citizen = exam_patient!(exam_seq!)
+    request = described_class.call(cpf: citizen.cpf, document_checked: true, by: reception).payload[:request]
+    allow(described_class).to receive(:attended?).and_return(true) # atendimento chegou depois do pedido
+    admin = staff_with("adm-#{SecureRandom.hex(2)}@cidade.gov.br", "municipal_admin")
+    sqls = []
+    callback = ->(*, payload) { sqls << payload[:sql] }
+    result = ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { Citizens::Erase.call(request: request, by: admin) }
+    expect(result.payload[:request].status).to eq("retained")
+    expect(sqls.none? { |sql| sql.include?('FROM "patients"') && sql.include?("FOR UPDATE") }).to be(true)
   end
 
   it "par sem exame segue pendente" do

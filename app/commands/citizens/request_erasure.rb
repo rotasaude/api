@@ -34,7 +34,12 @@ module Citizens
 
     def pairs_of(digits) = Citizen.not_erased.where(cpf: digits)
 
-    def retained?(pairs, cpf:) = attended?(pairs) || documented?(pairs) || examined?(pairs, cpf: cpf)
+    # A regra única de retenção. O Citizens::Erase a aplica em dois passos
+    # (os pares, depois o paciente travado), sem mudar a regra.
+    def retained?(pairs, cpf:) = clinical_on_pairs?(pairs) || examined?(pairs, cpf: cpf)
+
+    # Registros com FK para o par: a trava do par já os protege.
+    def clinical_on_pairs?(pairs) = attended?(pairs) || documented?(pairs)
 
     def attended?(pairs) = Attendance.where(citizen_id: pairs.select(:id)).exists?
 
@@ -43,10 +48,9 @@ module Citizens
 
     # ADR 0036 (A49): exame é registro clínico — pedido em qualquer situação,
     # cancelado inclusive, ou resultado externo do paciente da pessoa.
-    def examined?(pairs, cpf:)
-      ids = patient_ids(pairs, cpf: cpf)
-      ExamOrder.where(patient_id: ids).exists? || ExamResult.where(patient_id: ids).exists?
-    end
+    def examined?(pairs, cpf:) = examined_patients?(patient_ids(pairs, cpf: cpf))
+
+    def examined_patients?(ids) = ExamOrder.where(patient_id: ids).exists? || ExamResult.where(patient_id: ids).exists?
 
     # O paciente dos pares e o do CPF: o exame aponta para o paciente, que
     # pode ter ficado de um par já excluído (o CPF do paciente é cifrado de

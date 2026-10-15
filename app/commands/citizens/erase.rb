@@ -48,13 +48,21 @@ module Citizens
         # Pares travados: nenhum pedido novo nasce para eles (FK). Se um pedido
         # entrou noutra unidade antes da trava, recomeça com ela na frente.
         raise UnitsChanged unless (unit_ids_of(pairs) - locked_units).empty?
-        # O exame aponta para o paciente, não para o par: o paciente travado
-        # (cidadão → paciente, a ordem do Patients::Resolve) segura a FK de um
-        # exame novo enquanto a retenção é reconferida.
+        # A regra do RequestErasure.retained?, em dois passos. Primeiro o que
+        # tem FK para o par (atendimento, documento), protegido pela trava do
+        # par. Só sem eles trava o paciente: quem trava o paciente antes do
+        # cidadão (documento, consulta, adendo) exige atendimento, que já reteve
+        # no primeiro passo — a ordem fica sempre cidadão → paciente. O paciente
+        # travado segura a FK de um exame novo enquanto o exame é conferido.
         pair_scope = Citizen.where(id: pairs.map(&:id))
-        Patient.where(id: RequestErasure.patient_ids(pair_scope, cpf: request.cpf)).order(:id).lock.to_a
+        retained = RequestErasure.clinical_on_pairs?(pair_scope)
+        unless retained
+          patient_ids = RequestErasure.patient_ids(pair_scope, cpf: request.cpf)
+          Patient.where(id: patient_ids).order(:id).lock.to_a
+          retained = RequestErasure.examined_patients?(patient_ids)
+        end
         # O banco não exige decided_by_user: quem decide é gravado aqui, sempre.
-        if RequestErasure.retained?(pair_scope, cpf: request.cpf)
+        if retained
           request.update!(status: "retained", decided_by_user: by, decided_at: Time.current)
           DomainEvents.publish("citizen.erasure_retained", request_id: request.id)
           next result = Result.ok(request: request)
