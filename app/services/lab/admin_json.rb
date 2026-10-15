@@ -29,6 +29,13 @@ module Lab
       body
     end
 
+    def releaser(r)
+      professional = r.user.professional
+      { id: r.id, user_id: r.user_id, name: Screenings::Json.staff_name(r.user), email: r.user.email_address,
+        provider_id: r.exam_provider_id, council: professional&.council, council_uf: professional&.council_state,
+        council_number: professional&.registration_number, technical_lead: r.technical_lead, technical_deputy: r.technical_deputy }
+    end
+
     def reason(r) = { id: r.id, provider_id: r.exam_provider_id, name: r.name, active: r.active }
   end
 end

@@ -308,6 +308,11 @@ Rails.application.routes.draw do
       get   "rejection_reasons",         to: "rejection_reasons#index"
       post  "rejection_reasons",         to: "rejection_reasons#create"
       patch "rejection_reasons/:id",     to: "rejection_reasons#update"
+      get    "releasers",                        to: "releasers#index"
+      post   "releasers",                        to: "releasers#create"
+      delete "releasers/:id",                    to: "releasers#destroy"
+      post   "providers/:id/middleware_token",   to: "middleware_tokens#create"
+      delete "providers/:id/middleware_token",   to: "middleware_tokens#destroy"
     end
   end
 

@@ -28,11 +28,13 @@ class ProfessionalsController < ApplicationController
   end
 
   def pending
-    users = User.joins(:memberships).merge(Membership.active.where(role: "health_professional"))
+    users = User.joins(:memberships).merge(Membership.active.where(role: %w[health_professional lab_releaser]))
                 .where(deactivated_at: nil).distinct.order(:email_address).to_a
     status = Professionals::Status.for_users(users.map(&:id))
-    rows = users.reject { |u| status[u.id] == "ok" }
-                .map { |u| { user_id: u.id, email_address: u.email_address, status: status[u.id] } }
+    # B33: quem só tem lab_releaser precisa apenas do perfil (sem vínculo de unidade).
+    clinical = Membership.active.where(role: "health_professional", user_id: users.map(&:id)).pluck(:user_id).to_set
+    rows = users.map { |u| { user_id: u.id, email_address: u.email_address, status: pending_status(status[u.id], clinical.include?(u.id)) } }
+                .reject { |row| row[:status] == "ok" }
     render json: { users: rows }
   end
 
@@ -80,6 +82,12 @@ class ProfessionalsController < ApplicationController
   end
 
   private
+
+  def pending_status(status, clinical)
+    return status if clinical
+
+    status == "missing_profile" ? status : "ok"
+  end
 
   def set_professional
     @professional = Professional.find_by(id: params[:id])
