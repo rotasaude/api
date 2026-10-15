@@ -117,4 +117,43 @@ RSpec.describe Exams::FromConsultation do
     expect(order.reload).to have_attributes(priority: "routine", status: "awaiting_schedule")
     expect(order.events.pluck(:kind)).not_to include("cancelled")
   end
+
+  context "com o exame numa requisição do laboratório" do
+    before { lab_city! }
+
+    let(:provider) { lab_provider! }
+    let(:consultation) do
+      lab_exam!(provider: provider)
+      finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen,
+                              exam_requests: [ { "sigtap_code" => "0202010473", "priority" => "routine" } ])
+    end
+    let(:order) { ExamOrder.find_by!(patient_id: consultation.patient_id) }
+
+    def open_for(order)
+      result = Lab::OpenRequisition.call({ patient_id: order.patient_id, provider_id: provider.id, origin_unit_id: unit.id,
+                                           collection_place: "lab", biological_sex: "female", mother_name: "Joana",
+                                           exam_order_ids: [ order.id ] }, by: lab_staff!)
+      result.payload[:requisition]
+    end
+
+    def retract
+      Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "exame retirado do plano",
+                                      text: "Exame retirado", changes: { "exam_requests" => [] })
+    end
+
+    it "o adendo cancela o item pendente junto com o exame" do
+      req = open_for(order)
+      expect(retract).to be_ok
+      expect(order.reload.status).to eq("cancelled")
+      expect(req.items.first.reload.status).to eq("cancelled")
+    end
+
+    it "item digitado: o exame fica como está e o adendo segue" do
+      req = open_for(order)
+      req.items.first.update!(status: "typed")
+      expect(retract).to be_ok
+      expect(order.reload.status).to eq("scheduled")
+      expect(req.items.first.reload.status).to eq("typed")
+    end
+  end
 end

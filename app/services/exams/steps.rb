@@ -37,11 +37,23 @@ module Exams
     # é cancelado junto; digitado ou liberado, o laboratório já trabalhou: 409.
     # Ordem de trava (E2), a mesma de Lab::Release: requisição → itens → pedido.
     def cancel(order:, reason:, actor_user:)
-      item = LabRequisitionItem.find_by(exam_order_id: order.id)
+      2.times do
+        result = cancel_once(order, reason, actor_user)
+        return result unless result == :retry
+      end
+      # Um item apareceu entre a leitura e a trava nas duas tentativas.
+      Result.fail(:conflict)
+    end
+
+    # :retry quando um item da requisição surgiu depois da leitura sem trava (a
+    # requisição teria de ser travada ANTES do pedido); nada foi gravado.
+    def cancel_once(order, reason, actor_user)
+      seen = LabRequisitionItem.find_by(exam_order_id: order.id)
       ApplicationRecord.transaction do
-        requisition = item && LabRequisition.lock.find(item.lab_requisition_id)
-        item = LabRequisitionItem.lock.find_by(exam_order_id: order.id) if item
+        requisition = seen && LabRequisition.lock.find(seen.lab_requisition_id)
+        item = seen && LabRequisitionItem.lock.find_by(exam_order_id: order.id)
         order.lock!
+        next :retry if item.nil? && LabRequisitionItem.exists?(exam_order_id: order.id)
         next Result.fail(:invalid_transition, details: { status: order.status }) if item && %w[typed released].include?(item.status)
 
         moved = Transition.call(order: order, kind: "cancelled", actor_user: actor_user, reason: reason)
@@ -71,6 +83,6 @@ module Exams
     rescue ArgumentError
       nil
     end
-    private_class_method :locked, :parse_time
+    private_class_method :locked, :parse_time, :cancel_once
   end
 end

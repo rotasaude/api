@@ -1,5 +1,4 @@
 require "rails_helper"
-require "json_schemer"
 
 # Contrato §4 (F-21.16): a requisição junta exames do 21a do paciente; papel
 # vira lab_reception; uma amostra por material/recipiente; no 21a o exame vai

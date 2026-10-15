@@ -49,7 +49,7 @@ module Lab
 
       result = nil
       ApplicationRecord.transaction do
-        orders = ExamOrder.lock.where(id: ids, patient_id: patient.id).to_a
+        orders = ExamOrder.lock.where(id: ids, patient_id: patient.id).order(:id).to_a
         next result = Result.fail(:order_not_eligible) unless orders.size == ids.uniq.size && orders.all? { |o| eligible?(o) }
         next result = Result.fail(:exam_not_in_lab_catalog) unless orders.all? { |o| exams.key?(o.sigtap_code) }
 

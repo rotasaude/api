@@ -24,12 +24,19 @@ module Exams
 
     # Cancela o exame vivo do pedido retirado, se ainda sem resultado
     # (resulted/acknowledged/denied/cancelled ficam como estão).
+    # Passa por Steps.cancel (ordem de trava requisição → item → pedido, E2): item
+    # pendente da requisição do laboratório é cancelado junto; item digitado ou
+    # liberado deixa o exame como está (o adendo segue).
     def cancel!(consultation:, sigtap_code:, by:)
-      ExamOrder.joins(:consultation_exam_request)
-               .where(consultation_exam_requests: { consultation_id: consultation.id, sigtap_code: sigtap_code })
-               .where(status: Transition::FLOW["cancelled"][:from]).lock.to_a.each do |order|
-        result = Transition.call(order: order, kind: "cancelled", actor_user: by, reason: "Cancelado por adendo da consulta")
-        raise "cancelamento do exame recusado: #{result.reason}" if result.failure?
+      ids = ExamOrder.joins(:consultation_exam_request)
+                     .where(consultation_exam_requests: { consultation_id: consultation.id, sigtap_code: sigtap_code })
+                     .where(status: Transition::FLOW["cancelled"][:from]).order(:id).pluck(:id)
+      ids.each do |id|
+        result = Steps.cancel(order: ExamOrder.find(id), reason: "Cancelado por adendo da consulta", actor_user: by)
+        next if result.ok?
+        next if result.reason == :invalid_transition && LabRequisitionItem.exists?(exam_order_id: id, status: %w[typed released])
+
+        raise "cancelamento do exame recusado: #{result.reason}"
       end
     end
   end

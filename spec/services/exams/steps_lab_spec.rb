@@ -27,5 +27,23 @@ RSpec.describe Exams::Steps do
     other.update!(status: "typed")
     expect(described_class.cancel(order: other.exam_order, reason: "Desistência", actor_user: doctor).reason).to eq(:invalid_transition)
   end
-end
 
+  # I1: o item surge entre a leitura sem trava e a trava do pedido.
+  it "item que aparece depois da leitura: repete uma vez e cancela o item junto" do
+    calls = 0
+    allow(LabRequisitionItem).to receive(:find_by).and_wrap_original do |original, *args, **kw|
+      calls += 1
+      calls == 1 ? nil : original.call(*args, **kw)
+    end
+    expect(described_class.cancel(order: order, reason: "Desistência", actor_user: doctor)).to be_ok
+    expect(order.reload.status).to eq("cancelled")
+    expect(item.reload.status).to eq("cancelled")
+  end
+
+  it "item que continua aparecendo depois da repetição: conflito" do
+    item
+    allow(LabRequisitionItem).to receive(:find_by).and_return(nil)
+    expect(described_class.cancel(order: order, reason: "Desistência", actor_user: doctor).reason).to eq(:conflict)
+    expect(order.reload.status).to eq("scheduled")
+  end
+end

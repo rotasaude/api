@@ -74,7 +74,6 @@ module LabHelpers
     result.payload[:requisition]
   end
 
-
   # Requisição gravada direto (antes da Task 8): uma amostra, um item.
   def lab_requisition_row!(provider:, version:, unit: create_unit("UBS #{SecureRandom.hex(2)}"))
     patient = exam_patient!(exam_seq!).first
