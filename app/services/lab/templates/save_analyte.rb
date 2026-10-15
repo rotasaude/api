@@ -18,8 +18,10 @@ module Lab
         return fail(:blank, "name") if attrs[:name].to_s.strip.empty?
         return fail(:invalid_value_type, "valueType") unless LabAnalyteTemplate::VALUE_TYPES.include?(attrs[:value_type])
 
-        choices = Array(attrs[:choices]).map { |c| c.to_s.strip }.reject(&:empty?).uniq
-        return fail(:choices_required, "choices") if attrs[:value_type] == "choice" && choices.empty?
+        choices = Array(attrs[:choices]).map { |c| c.to_s.strip }
+        if attrs[:value_type] == "choice" && !valid_choices?(choices)
+          return fail(:choices_required, "choices")
+        end
 
         loinc = attrs[:loinc].to_s.strip.presence
         return fail(:invalid_loinc, "loinc") if loinc && !loinc.match?(LabAnalyteTemplate::LOINC)
@@ -39,8 +41,17 @@ module Lab
         fail(:duplicate_analyte_key, "key")
       end
 
+      MAX_CHOICES = 20
+      MAX_CHOICE_LENGTH = 60
+
+      # Lista de opções: 1 a 20, cada uma de 1 a 60 caracteres, sem repetição.
+      def valid_choices?(choices)
+        choices.size.between?(1, MAX_CHOICES) && choices.uniq.size == choices.size &&
+          choices.all? { |c| c.length.between?(1, MAX_CHOICE_LENGTH) }
+      end
+
       def fail(code, path) = Result.fail(code, details: { path: path })
-      private_class_method :fail
+      private_class_method :fail, :valid_choices?
     end
   end
 end

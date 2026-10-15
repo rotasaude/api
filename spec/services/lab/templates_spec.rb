@@ -42,6 +42,27 @@ RSpec.describe "Lab::Templates" do
     end
   end
 
+  it "componente: lista de opções com limites (até 20, até 60 caracteres, sem vazias nem repetidas)" do
+    template = Lab::Templates::SaveExam.call(exam_attrs).payload[:template]
+    base = { id: nil, lab_exam_template_id: template.id, key: "nitrito", name: "Nitrito", loinc: nil, unit: nil,
+             value_type: "choice", choices: %w[Negativo Positivo], decimals: 0, position: 1, reference_ranges: [] }
+    [ Array.new(21) { |i| "op#{i}" }, [ "x" * 61 ], [ "Negativo", " " ], %w[Negativo Negativo] ].each do |bad|
+      result = Lab::Templates::SaveAnalyte.call(base.merge(choices: bad))
+      expect([ result.reason, result.details[:path] ]).to eq([ :choices_required, "choices" ]), bad.inspect
+    end
+    expect(Lab::Templates::SaveAnalyte.call(base.merge(choices: Array.new(20) { |i| "op#{i}" })).payload[:analyte].choices.size).to eq(20)
+  end
+
+  it "carrega: código fora da SIGTAP ativa é pulado e devolvido, sem criar" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "catalog.yml")
+      File.write(path, [ { "sigtap_code" => "0202999999", "name" => "Fantasma", "sector" => "biochemistry", "material" => "Soro",
+                           "container" => "Tubo", "analytes" => [] } ].to_yaml)
+      expect(Lab::Templates::Load.call(path)).to eq(created: 0, skipped: [ "0202999999" ])
+      expect(LabExamTemplate.where(sigtap_code: "0202999999")).to be_empty
+    end
+  end
+
   it "carrega o catálogo-base do YAML uma vez (idempotente, nunca sobrescreve)" do
     sigtap_release!.tap { |r| Lab::Templates::Load.sigtap_codes.each { |c| SigtapProcedure.find_or_create_by!(release: r, code: c) { |p| p.name = "EXAME #{c}" } } }
     expect(Lab::Templates::Load.call[:created]).to eq(16)
