@@ -7,6 +7,8 @@ module Exams
       order = uuid?(params[:id]) && ExamOrder.find_by(id: params[:id])
       return not_found unless order
       return forbid("not_unit_staff") unless Exams::Access.unit_staff?(Current.user, order.unit_id)
+      # Contrato §9/B12: resultado do laboratório municipal só pela liberação.
+      return render(json: { error: "provider_uses_municipal_lab" }, status: :unprocessable_entity) if order.exam_provider&.uses_municipal_lab
 
       result = Exams::RegisterResult.call(order: order, source: "unit", file_id: params[:upload_id], released_on: params[:released_on],
                                           laboratory_name: params[:laboratory_name], critical: params[:critical],

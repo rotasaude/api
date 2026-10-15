@@ -41,7 +41,8 @@ class HealthUnitsController < ApplicationController
 
   def create
     unit = HealthUnit.new(name: params[:name], kind: params[:kind])
-    error = assign_address(unit) || assign_cnes(unit) || assign_screening_scope(unit)
+    error = assign_address(unit) || assign_cnes(unit) || assign_screening_scope(unit) ||
+            assign_collects_samples(unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
     return render_invalid(unit) unless unit.save
 
@@ -55,7 +56,8 @@ class HealthUnitsController < ApplicationController
     return render json: { error: "not_found" }, status: :not_found unless @unit
 
     @unit.assign_attributes(name: params[:name], kind: params[:kind])
-    error = assign_address(@unit) || assign_cnes(@unit) || assign_screening_scope(@unit)
+    error = assign_address(@unit) || assign_cnes(@unit) || assign_screening_scope(@unit) ||
+            assign_collects_samples(@unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
     return render_invalid(@unit) unless @unit.save
 
@@ -146,6 +148,15 @@ class HealthUnitsController < ApplicationController
     nil
   end
 
+  # ADR 0037: a unidade coleta amostras para o laboratório municipal.
+  def assign_collects_samples(unit)
+    return nil unless params.key?("collects_samples")
+    return "invalid_collects_samples" unless [ true, false ].include?(params["collects_samples"])
+
+    unit.collects_samples = params["collects_samples"]
+    nil
+  end
+
   def address_error(field)
     { "address_zip" => "invalid_zip", "neighborhood_id" => "invalid_neighborhood" }.fetch(field, "invalid_unit")
   end
@@ -167,7 +178,8 @@ class HealthUnitsController < ApplicationController
   end
 
   def unit_json(unit, include_active: false)
-    json = { id: unit.id, name: unit.name, kind: unit.kind, cnes: unit.cnes, screening_scope: unit.screening_scope }
+    json = { id: unit.id, name: unit.name, kind: unit.kind, cnes: unit.cnes, screening_scope: unit.screening_scope,
+             collects_samples: unit.collects_samples }
            .merge(unit.slice(*ADDRESS_FIELDS).symbolize_keys)
     json[:active] = unit.active if include_active
     json

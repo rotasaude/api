@@ -32,6 +32,9 @@ module Exams
       # Contrato §6/A17: mesmo corpo do §3. A35: prestador E funcionário na trilha
       # (a unidade vê só o prestador como ator).
       def result
+        # Contrato §9/B12: resultado do laboratório municipal só pela liberação.
+        return render(json: { error: "provider_uses_municipal_lab" }, status: :unprocessable_entity) if @provider.uses_municipal_lab
+
         respond(Exams::RegisterResult.call(order: @order, source: "provider", file_id: params[:upload_id],
                                            released_on: params[:released_on], laboratory_name: params[:laboratory_name],
                                            critical: params[:critical], values: params[:values], by_user: Current.user,

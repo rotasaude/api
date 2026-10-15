@@ -294,6 +294,23 @@ Rails.application.routes.draw do
     end
   end
 
+  # Módulo 21b (ADR 0037): laboratório municipal. As literais antes de `:id`.
+  scope "/lab", module: :lab, as: :lab do
+    get "context",           to: "context#show"
+    get "rejection_reasons", to: "lookups#rejection_reasons"
+    scope "admin", module: :admin, as: :admin do
+      get   "templates",                 to: "templates#index"
+      get   "exams",                     to: "exams#index"
+      post  "exams",                     to: "exams#create"
+      get   "exams/:id",                 to: "exams#show"
+      patch "exams/:id",                 to: "exams#update"
+      post  "exams/:id/versions",        to: "exams#create_version"
+      get   "rejection_reasons",         to: "rejection_reasons#index"
+      post  "rejection_reasons",         to: "rejection_reasons#create"
+      patch "rejection_reasons/:id",     to: "rejection_reasons#update"
+    end
+  end
+
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
   # Prefixo único: uma entrada só no proxy de dev do dashboard. As rotas
   # literais (me, pending, cbo, links, shifts) PRECISAM vir antes de `:id`.

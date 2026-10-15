@@ -30,6 +30,26 @@ module Exams
 
         attrs[:active] = params["active"]
       end
+      # ADR 0037 (Desvio 13): laboratório municipal, endereço e telefone (art. 167, II).
+      if params.key?("uses_municipal_lab")
+        return Result.fail(:invalid_uses_municipal_lab) unless [ true, false ].include?(params["uses_municipal_lab"])
+        # Dashboard D20: marcar só com municipal_lab utilizável (lido fora da transação).
+        return Result.fail(:municipal_lab_disabled) if params["uses_municipal_lab"] && !Lab::Gate.usable?(Current.city)
+
+        attrs[:uses_municipal_lab] = params["uses_municipal_lab"]
+      end
+      if params.key?("address")
+        address = params["address"]
+        return Result.fail(:invalid_address) unless address.nil? || (address.is_a?(String) && address.strip.length.between?(1, 200))
+
+        attrs[:address] = address&.strip
+      end
+      if params.key?("phone")
+        phone = params["phone"]
+        return Result.fail(:invalid_phone) unless phone.nil? || (phone.is_a?(String) && phone.match?(/\A\d{10,11}\z/))
+
+        attrs[:phone] = phone
+      end
       items = params.key?("items") ? items(params["items"]) : nil
       return items if items.is_a?(Result)
 

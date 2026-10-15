@@ -15,6 +15,9 @@ module Exams
       { id: provider.id, name: provider.name, cnes: provider.cnes, kind: provider.kind, active: provider.active,
         simulated: provider.simulated, has_fhir_token: provider.fhir_token_active?,
         fhir_token_rotated_at: provider.fhir_token_rotated_at&.iso8601,
+        # ADR 0037: laboratório municipal (contrato §3, B9).
+        uses_municipal_lab: provider.uses_municipal_lab, address: provider.address, phone: provider.phone,
+        has_middleware_token: LabMiddlewareToken.active.exists?(exam_provider_id: provider.id),
         items: provider.items.includes(:exam_catalog_item).map do |pi|
           { catalog_item_id: pi.exam_catalog_item_id, sigtap_code: pi.exam_catalog_item.sigtap_code, deadlines: deadlines(pi) }
         end,

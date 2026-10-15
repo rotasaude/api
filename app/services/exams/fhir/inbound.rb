@@ -16,6 +16,9 @@ module Exams
       module_function
 
       def call(provider:, resource:, now: Time.current)
+        # Contrato §9: laboratório municipal entrega só pela liberação (antes de ler o recurso).
+        return Result.fail(:provider_uses_municipal_lab) if provider.uses_municipal_lab
+
         return invalid([ "" ]) unless resource.is_a?(Hash)
 
         paths = schema_paths(resource)
