@@ -12,9 +12,12 @@ module Lab
       return Result.fail(:invalid_marks) unless [ true, false ].include?(technical_lead) && [ true, false ].include?(technical_deputy)
       return Result.fail(:invalid_marks) if technical_lead && technical_deputy
 
-      releaser = LabReleaser.create!(user: user, exam_provider: provider, technical_lead: technical_lead,
-                                     technical_deputy: technical_deputy, created_by_user: by)
-      DomainEvents.publish("lab_releaser.assigned", lab_releaser_id: releaser.id, exam_provider_id: provider.id)
+      releaser = ApplicationRecord.transaction do
+        LabReleaser.create!(user: user, exam_provider: provider, technical_lead: technical_lead,
+                            technical_deputy: technical_deputy, created_by_user: by).tap do |created|
+          DomainEvents.publish("lab_releaser.assigned", lab_releaser_id: created.id, exam_provider_id: provider.id)
+        end
+      end
       Result.ok(releaser: releaser)
     rescue ActiveRecord::RecordNotUnique => e
       Result.fail({ "idx_lab_releasers_lead" => :lead_taken, "idx_lab_releasers_deputy" => :deputy_taken }
@@ -22,8 +25,10 @@ module Lab
     end
 
     def end!(releaser:, by:)
-      releaser.update!(ended_at: Time.current, ended_by_user: by)
-      DomainEvents.publish("lab_releaser.ended", lab_releaser_id: releaser.id, exam_provider_id: releaser.exam_provider_id)
+      ApplicationRecord.transaction do
+        releaser.update!(ended_at: Time.current, ended_by_user: by)
+        DomainEvents.publish("lab_releaser.ended", lab_releaser_id: releaser.id, exam_provider_id: releaser.exam_provider_id)
+      end
       Result.ok(releaser: releaser)
     end
   end

@@ -66,4 +66,70 @@ RSpec.describe "Laboratório — liberadores e token", type: :request do
     get "/professionals/pending"
     expect(JSON.parse(response.body)["users"].map { |u| u["user_id"] }).not_to include(bio.id)
   end
+
+  it "recusa marcas inválidas, substituto repetido, vínculo repetido e usuário inexistente; DELETE do token publica uma vez" do
+    stepped_up!(admin)
+    a = releaser_user(council: "CRF")
+    b = releaser_user(council: "CRM")
+    json_post "/lab/admin/releasers", user_id: a.id, provider_id: provider.id, technical_lead: true, technical_deputy: true
+    expect(json_body["error"]).to eq("invalid_marks")
+    json_post "/lab/admin/releasers", user_id: a.id, provider_id: provider.id, technical_lead: "yes", technical_deputy: false
+    expect(json_body["error"]).to eq("invalid_marks")
+    json_post "/lab/admin/releasers", user_id: a.id, provider_id: provider.id, technical_lead: false, technical_deputy: true
+    expect(response).to have_http_status(:created)
+    json_post "/lab/admin/releasers", user_id: b.id, provider_id: provider.id, technical_lead: false, technical_deputy: true
+    expect(json_body["error"]).to eq("deputy_taken")
+    json_post "/lab/admin/releasers", user_id: a.id, provider_id: provider.id, technical_lead: false, technical_deputy: false
+    expect(json_body["error"]).to eq("already_assigned")
+    json_post "/lab/admin/releasers", user_id: SecureRandom.uuid, provider_id: provider.id, technical_lead: false, technical_deputy: false
+    expect(json_body["error"]).to eq("not_found")
+    json_post "/lab/admin/providers/#{provider.id}/middleware_token"
+    json_delete "/lab/admin/providers/#{provider.id}/middleware_token"
+    json_delete "/lab/admin/providers/#{provider.id}/middleware_token"
+    expect(DomainEvent.where(name: "lab_middleware.token_revoked").count).to eq(1)
+  end
+
+  describe "autorização" do
+    let(:external) { ExamProvider.create!(name: "Sem laboratório", kind: "municipal", uses_municipal_lab: false) }
+
+    it "não-admin 403; sem step-up 401; laboratório não municipal ou inexistente invalid_provider" do
+      bio = releaser_user(council: "CRBM")
+      sign_in_as(lab_staff!)
+      get "/lab/admin/releasers"
+      expect(response).to have_http_status(:forbidden)
+      json_post "/lab/admin/providers/#{provider.id}/middleware_token"
+      expect(response).to have_http_status(:forbidden)
+
+      sign_in_as(admin)
+      json_post "/lab/admin/releasers", user_id: bio.id, provider_id: provider.id, technical_lead: false, technical_deputy: false
+      expect(response).to have_http_status(:unauthorized)
+      json_post "/lab/admin/providers/#{provider.id}/middleware_token"
+      expect(response).to have_http_status(:unauthorized)
+      json_delete "/lab/admin/providers/#{provider.id}/middleware_token"
+      expect(response).to have_http_status(:unauthorized)
+      expect(LabReleaser.count + LabMiddlewareToken.count).to eq(0)
+
+      stepped_up!(admin)
+      [ external.id, SecureRandom.uuid, "x" ].each do |id|
+        json_post "/lab/admin/releasers", user_id: bio.id, provider_id: id, technical_lead: false, technical_deputy: false
+        expect(json_body["error"]).to eq("invalid_provider")
+        json_post "/lab/admin/providers/#{id}/middleware_token"
+        expect(json_body["error"]).to eq("invalid_provider")
+        json_delete "/lab/admin/providers/#{id}/middleware_token"
+        expect(json_body["error"]).to eq("invalid_provider")
+      end
+    end
+  end
+
+  it "B33: mantém missing_link para health_professional e lista quem tem os dois papéis, com perfil e sem vínculo" do
+    sign_in_as(admin)
+    doctor = staff_with("med-#{SecureRandom.hex(3)}@cidade.gov.br", "health_professional")
+    both = staff_with("ambos-#{SecureRandom.hex(3)}@cidade.gov.br", "health_professional", "lab_releaser")
+    Professional.create!(user: both, professional_name: "Ambos", council: "CRM", council_state: "PR", registration_number: "77777",
+                         cns: Professionals::Cns.generate(both.id))
+    get "/professionals/pending"
+    rows = JSON.parse(response.body)["users"].index_by { |u| u["user_id"] }
+    expect(rows[doctor.id]["status"]).to eq("missing_profile")
+    expect(rows[both.id]["status"]).to eq("missing_link")
+  end
 end
