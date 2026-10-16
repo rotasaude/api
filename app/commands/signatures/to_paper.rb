@@ -4,19 +4,18 @@
 # (feature_disabled). Quem chama já travou o pedido e conferiu que está pending.
 module Signatures
   module ToPaper
+    LAB_REPORT_REASONS = %w[feature_disabled document_cancelled].freeze
+
     module_function
 
     def call(request, reason_code:, note: nil, now: Time.current)
-      # ADR 0037 (B13): laudo não vai ao papel. Só o sistema (interruptor
-      # desligado) devolve o pedido: o laudo sai (withdrawn, sem data nem PDF —
-      # trigger) e os itens voltam à fila de liberação.
+      # ADR 0037 (B13, B56): laudo não vai ao papel. Só o sistema devolve o
+      # pedido — interruptor desligado (feature_disabled) ou laudo que não pode
+      # mais valer (document_cancelled): o laudo sai (Lab::WithdrawReport).
       if request.document_type == "LabReport"
-        raise ArgumentError, "laudo só sai do pedido pelo sistema" unless reason_code == "feature_disabled"
+        raise ArgumentError, "laudo só sai do pedido pelo sistema" unless LAB_REPORT_REASONS.include?(reason_code)
 
-        LabReport.where(id: request.document_id, status: "pending_signature").lock.each do |report|
-          report.update!(status: "withdrawn")
-          DomainEvents.publish("lab_report.withdrawn", lab_report_id: report.id)
-        end
+        Lab::WithdrawReport.call(request.document_id)
       end
       request.update!(status: "returned_to_paper", reason_code: reason_code, return_note: note, resolved_at: now)
       # ADR 0033 (spec §4): a volta ao papel passa o documento clínico a paper

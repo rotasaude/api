@@ -18,6 +18,9 @@ module Signatures
         ToPaper.call(request, reason_code: "feature_disabled", now: now)
         return :returned_to_paper
       end
+      # ADR 0037 (I1-b): o liberador só do laboratório só assina laudo, nem em
+      # segundo plano com a sessão aberta.
+      return :skipped unless SignatureRequest.signable_by(request.author_user).exists?(id: request.id)
 
       certificate = SignerCertificate.active.find_by(user_id: request.author_user_id)
       return park(request, "no_session", now) unless certificate
@@ -51,6 +54,8 @@ module Signatures
     end
 
     def settle(request, reason, final, now)
+      return :returned_to_paper unless request.pending? # B56: o laudo saiu na própria assinatura
+
       !final && SignatureRequest::TRANSIENT_REASONS.include?(reason) ? retry_later(request, reason, now) : park(request, reason, now)
     end
 

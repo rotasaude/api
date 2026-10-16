@@ -52,6 +52,8 @@ module Signatures
     # Como o SignPending#settle: passageira e não definitiva soma tentativa.
     def report(outcome, now)
       outcome.failed.each do |request, reason|
+        next unless request.pending? # B56: laudo retirado na própria assinatura (já resolvido)
+
         transient = SignatureRequest::TRANSIENT_REASONS.include?(reason) && !outcome.final.include?(request.id)
         Park.call(request, reason, transient: transient, now: now)
       end

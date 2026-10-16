@@ -82,4 +82,16 @@ RSpec.describe "Conferência pública do laudo", type: :request do
     expect(DocumentVerificationLookup.order(:created_at).last).to have_attributes(outcome: "not_found", clinical_document_id: nil,
                                                                                   lab_report_id: nil)
   end
+
+  it "B58: o código curto gerado é único entre documentos clínicos e laudos" do
+    unit = create_unit("UBS #{SecureRandom.hex(2)}")
+    consultation = finalized_consultation!(unit: unit, doctor: doctor!(unit), citizen: verified_citizen!(1))
+    taken = raw_document!(consultation: consultation).short_code
+    allow(ClinicalDocuments::Codes).to receive(:short_code).and_return(taken, "BBBBBBBBBB")
+    report = release!
+    expect(report.short_code).to eq("BBBBBBBBBB")
+
+    allow(ClinicalDocuments::Codes).to receive(:short_code).and_return(report.short_code, taken, "CCCCCCCCCC")
+    expect(ClinicalDocuments::Codes.public_short_code).to eq("CCCCCCCCCC")
+  end
 end

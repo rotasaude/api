@@ -110,7 +110,7 @@ module Lab
                             version: requisition.reports.maximum(:version).to_i + 1,
                             replaces_report: rectifies, partial: partial, status: "pending_signature", signature_kind: signature,
                             released_by_user: by, content: built.json, content_sha256: built.sha256,
-                            verification_token: ClinicalDocuments::Codes.token, short_code: ClinicalDocuments::Codes.short_code,
+                            verification_token: ClinicalDocuments::Codes.token, short_code: ClinicalDocuments::Codes.public_short_code,
                             rectification_reason: reason, rectification_contacts: contacts&.to_json)
         end
       rescue ActiveRecord::RecordNotUnique => e

@@ -188,12 +188,15 @@ module Signatures
     rescue Signer::Rejected
       "verification_failed"
     rescue Lab::FinalizeReport::Failed
-      # Task 18: definitivo — o laudo não pode mais valer (ex.: pedido do 21a
-      # cancelado no meio). Motivo terminal, fora de TRANSIENT_REASONS (o
-      # verification_failed seria tentado de novo); o pedido fica pendente com ele.
-      # A assinatura desfeita continua na associação (inverse_of) como registro
-      # novo: sem o reset, o Park (request.update!) a gravaria de novo (autosave).
-      request.association(:signature).reset
+      # B56: definitivo — o laudo não pode mais valer (pedido do 21a cancelado
+      # no meio, liberador desligado do laboratório). O laudo sai (withdrawn,
+      # itens de volta à fila) e o pedido se resolve com o motivo terminal
+      # document_cancelled (fora de TRANSIENT_REASONS; quem chama não o
+      # estaciona). O reload descarta o estado desfeito em memória (signed) e a
+      # assinatura desfeita da associação (inverse_of): sem ele, um update!
+      # seguinte a gravaria de novo (autosave).
+      request.reload
+      ToPaper.call(request, reason_code: LAB_REPORT_UNSIGNABLE, now: now)
       LAB_REPORT_UNSIGNABLE
     rescue Signer::Unavailable
       "signer_unavailable" # depois do PSC: o lote não perde os já gravados; o job tenta de novo

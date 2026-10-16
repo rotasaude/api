@@ -19,6 +19,9 @@ module Lab
         report.lab_requisition.lock!
         report.lock!
         raise Failed, "invalid_transition" unless report.status == "pending_signature"
+        # I1/B11: quem liberou ainda liberador ativo deste laboratório. FOR
+        # SHARE: o AssignReleaser.end! (FOR UPDATE na linha) espera ou é esperado.
+        raise Failed, "releaser_not_assigned" unless releaser_assigned?(report)
 
         file = store!(pdf_bytes, report, now)
         report.update!(status: "released", released_at: now, pdf_file_id: file.id, pdf_sha256: file.sha256)
@@ -82,12 +85,18 @@ module Lab
       entries[siblings.index { |i| i.id == item.id }]
     end
 
+    def releaser_assigned?(report)
+      user = report.released_by_user
+      user.has_role?("lab_releaser") &&
+        LabReleaser.active.where(user_id: user.id, exam_provider_id: report.exam_provider_id).lock("FOR SHARE").pick(:id).present?
+    end
+
     def store!(bytes, report, now)
       stored = Exams::Files.store(bytes: bytes, content_type: "application/pdf", user: report.released_by_user)
       raise Failed, "missing_pdf" if stored.failure?
 
       stored.payload[:file].tap { |file| file.update!(consumed_at: now) }
     end
-    private_class_method :store!, :frozen_exam
+    private_class_method :store!, :frozen_exam, :releaser_assigned?
   end
 end

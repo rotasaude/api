@@ -24,10 +24,22 @@ module Lab
                     .find { |index, _| e.message.include?(index) }&.last || :already_assigned)
     end
 
-    def end!(releaser:, by:)
+    # I1: os laudos ICP ainda pendentes deste liberador neste laboratório saem
+    # junto (B56: withdrawn, pedido resolvido com document_cancelled). Trava a
+    # linha do liberador primeiro (o FinalizeReport a lê FOR SHARE); o pedido
+    # que o job/lote está assinando agora fica de fora (SKIP LOCKED) — esse
+    # cai na conferência do FinalizeReport e segue o mesmo caminho.
+    def end!(releaser:, by:, now: Time.current)
       ApplicationRecord.transaction do
-        releaser.update!(ended_at: Time.current, ended_by_user: by)
+        releaser.lock!
+        releaser.update!(ended_at: now, ended_by_user: by)
         DomainEvents.publish("lab_releaser.ended", lab_releaser_id: releaser.id, exam_provider_id: releaser.exam_provider_id)
+        pending = LabReport.where(released_by_user_id: releaser.user_id, exam_provider_id: releaser.exam_provider_id,
+                                  status: "pending_signature", signature_kind: "icp").select(:id)
+        SignatureRequest.pending.where(document_type: "LabReport", document_id: pending).order(:created_at, :id)
+                        .lock("FOR UPDATE SKIP LOCKED").each do |request|
+          Signatures::ToPaper.call(request, reason_code: "document_cancelled", now: now)
+        end
       end
       Result.ok(releaser: releaser)
     end

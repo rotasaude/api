@@ -71,16 +71,90 @@ RSpec.describe "Laboratório — liberação com ICP", type: :request do
       .to raise_error(ArgumentError)
   end
 
-  it "falha definitiva ao finalizar: nada gravado, pedido pendente com motivo terminal (document_cancelled)" do
-    report = pending_report!
-    allow(Lab::FinalizeReport).to receive(:call).and_return(Result.fail(:invalid_transition))
-    expect { sign_document!(report, author: doctor, provider: "simulated") }.to raise_error(/document_cancelled/)
+  # B56: o laudo sai (withdrawn), os itens voltam à fila e o pedido se
+  # resolve com o motivo terminal document_cancelled.
+  def expect_withdrawn!(report)
     request = report.signature_request
-    expect(request).to have_attributes(status: "pending", reason_code: "document_cancelled", attempts: 0)
+    expect(request).to have_attributes(status: "returned_to_paper", reason_code: "document_cancelled", attempts: 0)
+    expect(request.resolved_at).to be_present
     expect(SignatureRequest::TRANSIENT_REASONS).not_to include("document_cancelled")
     expect(Signature.where(document_type: "LabReport").count).to eq(0)
-    expect(report.reload.status).to eq("pending_signature")
+    expect(report.reload).to have_attributes(status: "withdrawn", released_at: nil, pdf_file_id: nil, pdf_sha256: nil)
+    expect(DomainEvent.where(name: "lab_report.withdrawn").sole.payload).to eq("lab_report_id" => report.id)
     expect(DomainEvent.where(name: "signature.signed").count).to eq(0)
+    expect(Lab::Frozen.item?([ item.id ])).to be(false)
+    expect(item.exam_order.reload.result).to be_nil
+    sign_in_as(lab_releaser!(provider))
+    get "/lab/releases", params: { provider_id: provider.id }
+    expect(json_body["requisitions"].map { |r| r["id"] }).to eq([ req.id ])
+  end
+
+  def open_session!
+    signature_session!(doctor, certificate: SignerCertificate.active.find_by!(user_id: doctor.id),
+                               token: fake_psc("simulated").token_for!(cpf: doctor.professional.cpf))
+  end
+
+  def sign_in_background!(report)
+    Signatures::SignJob.perform_now(city_slug: Current.city.slug, request_id: report.signature_request.id)
+  end
+
+  it "falha definitiva ao finalizar (B56): nada gravado, laudo withdrawn, pedido document_cancelled" do
+    report = pending_report!
+    allow(Lab::FinalizeReport).to receive(:call).and_return(Result.fail(:invalid_transition))
+    expect { sign_document!(report, author: doctor, provider: "simulated") }.to raise_error(/returned_to_paper document_cancelled/)
+    expect_withdrawn!(report)
+  end
+
+  it "o lote (RunBatch) com falha definitiva: o pedido sai resolvido e aparece em failed, sem Park" do
+    report = pending_report!
+    open_session!
+    allow(Lab::FinalizeReport).to receive(:call).and_return(Result.fail(:invalid_transition))
+    token = Struct.new(:access_token).new(SignatureSession.usable_for(doctor.id).access_token)
+    result = Signatures::RunBatch.call(user: doctor, request_ids: [ report.signature_request.id ], token: token, provider: "simulated")
+    expect(result.payload[:record]).to eq(signed: 0, failed: [ { request_id: report.signature_request.id, reason_code: "document_cancelled" } ])
+    expect(DomainEvent.where(name: "signature.failed").count).to eq(0)
+    expect_withdrawn!(report)
+  end
+
+  it "I1: encerrar o liberador retira os laudos ICP pendentes dele naquele laboratório" do
+    report = pending_report!
+    link = LabReleaser.active.find_by!(user_id: doctor.id, exam_provider_id: provider.id)
+    other_lab = lab_provider!
+    LabReleaser.create!(user: doctor, exam_provider: other_lab, technical_lead: true, technical_deputy: false)
+    other_req = received_requisition!(provider: other_lab, exams: [ lab_exam!(provider: other_lab) ])
+    other_item = type!(other_req.items.first, { glicose: "90" })
+    elsewhere = Lab::Release.call(requisition: other_req, item_ids: [ other_item.id ], signature: "icp", totp: nil, by: doctor).payload.fetch(:report)
+
+    expect(Lab::AssignReleaser.end!(releaser: link, by: lab_admin!)).to be_ok
+    expect_withdrawn!(report)
+    expect(elsewhere.reload.status).to eq("pending_signature")
+    expect(elsewhere.signature_request.status).to eq("pending")
+  end
+
+  it "I1: liberador desligado do laboratório (sem o end!) — a assinatura em segundo plano cai no B56" do
+    report = pending_report!
+    open_session!
+    LabReleaser.active.find_by!(user_id: doctor.id, exam_provider_id: provider.id).update!(ended_at: Time.current)
+    sign_in_background!(report)
+    expect_withdrawn!(report)
+  end
+
+  it "I1: sem o papel lab_releaser na cidade — a assinatura em segundo plano cai no B56" do
+    report = pending_report!
+    open_session!
+    doctor.memberships.active.where(role: "lab_releaser").update_all(revoked_at: Time.current)
+    sign_in_background!(report)
+    expect_withdrawn!(report)
+  end
+
+  it "I1-b: sessão aberta de liberador só do laboratório nunca assina pedido de consulta em segundo plano" do
+    pending_report!
+    open_session!
+    other = signature_request!(author: doctor) # pedido de consulta do mesmo usuário (ex.: papel antigo)
+    Signatures::SignJob.perform_now(city_slug: Current.city.slug, request_id: other.id)
+    expect(ApplicationRecord.transaction { Signatures::SignPending.call(request_id: other.id) }).to eq(:skipped)
+    expect(other.reload).to have_attributes(status: "pending", reason_code: nil, attempts: 0)
+    expect(Signature.count).to eq(0)
   end
 
   it "liberador só do laboratório: o 19b mostra e assina só pedidos de laudo" do

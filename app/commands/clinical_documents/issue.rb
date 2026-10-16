@@ -209,7 +209,7 @@ module ClinicalDocuments
       begin
         attempts += 1
         ApplicationRecord.transaction(requires_new: true) do
-          ClinicalDocument.create!(attrs.merge(verification_token: Codes.token, short_code: Codes.short_code))
+          ClinicalDocument.create!(attrs.merge(verification_token: Codes.token, short_code: Codes.public_short_code))
         end
       rescue ActiveRecord::RecordNotUnique => e
         return invalid("replaces_document_id") if e.message.include?("index_clinical_documents_on_replaces_document_id")

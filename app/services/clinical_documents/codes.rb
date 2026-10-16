@@ -11,6 +11,15 @@ module ClinicalDocuments
 
     def token = SecureRandom.urlsafe_base64(16)
     def short_code = Array.new(LENGTH) { ALPHABET[SecureRandom.random_number(ALPHABET.size)] }.join
+    # B58: o código curto da conferência pública (/v) é único entre documentos
+    # clínicos e laudos (o desempate pelo ano no /v fica como defesa).
+    def public_short_code
+      loop do
+        code = short_code
+        return code unless ClinicalDocument.exists?(short_code: code) || LabReport.exists?(short_code: code)
+      end
+    end
+
     def display(code) = "#{code[0, 5]}-#{code[5, 5]}"
 
     def normalize(input)
