@@ -21,13 +21,17 @@ RSpec.describe "Laboratório — liberação", type: :request do
                                                           "decimals" => 2, "critical_high" => nil, "entry_min" => nil, "entry_max" => nil) ])
   end
   let(:req) { received_requisition!(provider: provider, exams: [ glucose, creat ]) }
-  let(:items) { req.items.to_a }
+  # items[0] = glicose, items[1] = creatinina (os itens nascem no mesmo instante: a ordem por id é aleatória).
+  let(:items) { req.items.includes(:exam_order).sort_by { |i| [ glucose.sigtap_code, creat.sigtap_code ].index(i.exam_order.sigtap_code) } }
 
   def release(item_ids, signature: "advanced", user: lead, totp: totp_for(user))
     json_post "/lab/requisitions/#{req.id}/release", item_ids: item_ids, signature: signature, totp: totp
   end
 
   it "parcial com avançada: laudo liberado, 21a com resultado lab, crítico na fila; depois o resto" do
+    # Relógio parado no início do PRÓXIMO passo de 30 s (nunca antes do que o before criou): os códigos
+    # gerados abaixo caem todos no mesmo passo.
+    travel_to(Time.zone.at(((Time.current.to_i / 30) + 1) * 30 + 1))
     type!(items[0], { glicose: "450" })
     sign_in_as(lead)
     release([ items[0].id ], totp: "000000")
