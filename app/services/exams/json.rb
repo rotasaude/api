@@ -77,7 +77,8 @@ module Exams
       order = result.exam_order
       return nil unless order
 
-      index = order.results.index { |r| r.id == result.id } || 0
+      # L3: o original é sempre o 1º (sem consulta a mais nas listas).
+      index = result.replaces_result_id ? (order.results.index { |r| r.id == result.id } || 0) : 0
       seen = -1
       order.events.each do |e|
         if %w[resulted result_rectified].include?(e.kind)

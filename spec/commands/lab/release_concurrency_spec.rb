@@ -133,4 +133,33 @@ RSpec.describe "Liberação sob disputa" do
       expect(Lab::Criticals.unnotified(provider_ids: [ @rows[:provider_id] ]).pluck(:id)).to eq([ @rows[:critical_id] ])
     end
   end
+
+  # L2 (Task 19): duas retificações do mesmo laudo ao mesmo tempo — a segunda
+  # relê o laudo sob a trava da requisição e leva invalid_transition (409),
+  # nunca o índice único (500).
+  it "duas retificações simultâneas do mesmo laudo: uma passa, a outra 409" do
+    v1_id = in_city do
+      c = lab_releaser!(ExamProvider.find(@rows[:provider_id]))
+      report = Lab::Release.call(requisition: LabRequisition.find(@rows[:req_id]), item_ids: [ @rows[:item_id] ], signature: "advanced",
+                                 totp: ROTP::TOTP.new(c.otp_secret).now, by: c).payload.fetch(:report)
+      Lab::EnterResults.call(item: LabRequisitionItem.find(@rows[:item_id]), values: [ { "analyte_key" => "glicose", "value" => "98" } ],
+                             by: User.find(@rows[:staff]))
+      report.id
+    end
+    rectify_by = lambda do |user_id|
+      lambda do
+        user = User.find(user_id)
+        Lab::Release.call(requisition: LabRequisition.find(@rows[:req_id]), item_ids: [ @rows[:item_id] ], signature: "advanced",
+                          totp: ROTP::TOTP.new(user.otp_secret).now, by: user, rectifies: LabReport.find(v1_id),
+                          reason: "Erro de digitação", contacts: [ { "person" => "X", "channel" => "telefone", "at" => Time.current.iso8601 } ])
+      end
+    end
+    first, second = race(rectify_by.call(@rows[:a]), rectify_by.call(@rows[:b]))
+    expect(first).to be_ok
+    expect([ second.reason, second.details ]).to eq([ :invalid_transition, { status: "rectified" } ])
+    in_city do
+      expect(LabReport.where(replaces_report_id: v1_id).count).to eq(1)
+      expect(ExamResult.where(exam_order_id: @rows[:order_id]).count).to eq(2)
+    end
+  end
 end

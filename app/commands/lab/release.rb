@@ -10,6 +10,12 @@
 # sob a trava, os itens, o RT e o laboratório; o TOTP só é consumido no fim,
 # então uma recusa nunca queima o código. Travas na ordem única E2/B38:
 # requisição → itens (por id) → pedidos (no Exams::RegisterResult).
+#
+# Retificação (rectifies:, ruling I1 da Task 19): o laudo novo SUBSTITUI o
+# anterior inteiro — cobre todos os itens dele, os que não mudaram congelados
+# de novo com os mesmos valores; `item_ids` são os itens que MUDARAM (só esses
+# ganham resultado novo no 21a, no FinalizeReport). Item listado sem mudança
+# ou item não listado que mudou desde o laudo anterior: invalid_transition.
 module Lab
   module Release
     SIGNATURES = %w[icp advanced].freeze
@@ -35,9 +41,10 @@ module Lab
       # o laudo e os itens em vez de ser engolido.
       ApplicationRecord.transaction(requires_new: true) do
         requisition.lock!
-        items = LabRequisitionItem.where(lab_requisition_id: requisition.id, id: ids).order(:id).lock
+        covered = rectifies ? (rectifies.report_items.pluck(:lab_requisition_item_id) | ids) : ids
+        items = LabRequisitionItem.where(lab_requisition_id: requisition.id, id: covered).order(:id).lock
                                   .includes(:lab_sample, :results, lab_exam_version: :lab_exam).to_a
-        refusal = item_refusal(items, ids, rectifies)
+        refusal = item_refusal(items, covered, ids, rectifies)
         next result = refusal if refusal
 
         lead = technical_lead(provider)
@@ -51,8 +58,8 @@ module Lab
           next result = Result.fail(:mfa_required) unless by.consume_totp_step!(step)
         end
 
-        others = requisition.items.reload.select(&:active?).reject { |i| ids.include?(i.id) }
-        partial = rectifies ? rectifies.partial : others.any? { |i| i.status != "released" }
+        others = requisition.items.reload.select(&:active?).reject { |i| covered.include?(i.id) }
+        partial = others.any? { |i| i.status != "released" }
         built = ReportContent.build(requisition: requisition, items: items, released_by: by, lead: lead, partial: partial,
                                     signature_kind: signature, issued_at: now, replaces: rectifies, reason: reason)
         report = create_report!(requisition, provider, built, by, signature, partial, rectifies, reason, contacts)
@@ -81,17 +88,30 @@ module Lab
 
     # Itens desta requisição, todos na situação certa, com amostra aceita, com
     # cada componente valendo (B30) e fora de laudo pending_signature (B54).
-    def item_refusal(items, ids, rectifies)
+    # Na retificação: o laudo anterior ainda `released` (relido sob a trava da
+    # requisição — duas retificações simultâneas: a segunda é 409, não 500),
+    # `ids` dentro dele (B42) e só os listados mudaram (I1).
+    def item_refusal(items, covered, ids, rectifies)
+      if rectifies
+        rectifies.reload
+        return Result.fail(:invalid_transition, details: { status: rectifies.status }) unless rectifies.status == "released"
+        return Result.fail(:invalid_transition, details: { status: rectifies.status }) unless (ids - rectifies.report_items.pluck(:lab_requisition_item_id)).empty?
+      end
       expected = rectifies ? "released" : "typed"
       bad = items.find { |i| i.status != expected || !i.lab_sample.accepted? }
-      return Result.fail(:invalid_transition, details: { status: bad&.status }) if items.size != ids.size || bad
-      if rectifies && !(ids - rectifies.report_items.pluck(:lab_requisition_item_id)).empty?
-        return Result.fail(:invalid_transition, details: { status: rectifies.status })
-      end
-      return Result.fail(:invalid_transition, details: { status: "pending_signature" }) if Frozen.item?(ids)
+      return Result.fail(:invalid_transition, details: { status: bad&.status }) if items.size != covered.size || bad
+      return Result.fail(:invalid_transition, details: { status: "pending_signature" }) if Frozen.item?(covered)
 
       incomplete = items.find { |i| !Effective.complete?(i) }
-      Result.fail(:invalid_transition, details: { status: incomplete.status }) if incomplete
+      return Result.fail(:invalid_transition, details: { status: incomplete.status }) if incomplete
+
+      mismatch = rectifies && items.find { |i| changed?(i, rectifies) != ids.include?(i.id) }
+      Result.fail(:invalid_transition, details: { status: mismatch.status }) if mismatch
+    end
+
+    # O exame do item como sairia agora × como está congelado no laudo anterior.
+    def changed?(item, report)
+      JSON.parse(ReportContent.exam(item).to_json) != FinalizeReport.frozen_exam(report, item)
     end
 
     # RT ativo do laboratório, com conselho do laboratório no perfil (B46: sem
@@ -119,6 +139,6 @@ module Lab
         retry
       end
     end
-    private_class_method :icp_available?, :item_refusal, :technical_lead, :create_report!
+    private_class_method :icp_available?, :item_refusal, :changed?, :technical_lead, :create_report!
   end
 end

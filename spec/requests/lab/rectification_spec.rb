@@ -37,6 +37,11 @@ RSpec.describe "Laboratório — retificação", type: :request do
       expect(json_body["error"]).to eq("contacts_required")
       json_post "/lab/reports/#{first.id}/rectify", body.merge(contacts: [ { person: "X", channel: "pombo", at: Time.current.iso8601 } ], totp: totp_for(lead))
       expect(json_body["error"]).to eq("contacts_required")
+      # L1: contato entre a liberação do laudo retificado e agora + 1 min.
+      [ first.released_at - 1.hour, Time.current + 2.minutes ].each do |at|
+        json_post "/lab/reports/#{first.id}/rectify", body.merge(contacts: [ { person: "X", channel: "telefone", at: at.iso8601 } ], totp: totp_for(lead))
+        expect(json_body["error"]).to eq("contacts_required")
+      end
     end
     travel 62.seconds do
       json_post "/lab/reports/#{first.id}/rectify", body.merge(totp: totp_for(lead))
@@ -91,6 +96,7 @@ RSpec.describe "Laboratório — retificação", type: :request do
     json_post "/lab/reports/#{report.id}/rectify", item_ids: [ item.id ], reason: "Erro de digitação", signature: "advanced",
                                                    contacts: [ { person: "X", channel: "telefone", at: Time.current.iso8601 } ]
     expect([ response.status, json_body["error"] ]).to eq([ 403, "missing_role" ])
+    type!(item, { glicose: "99" })
     sign_in_as(lead)
     travel 31.seconds do
       json_post "/lab/reports/#{report.id}/rectify", item_ids: [ SecureRandom.uuid ], reason: "Erro de digitação", signature: "advanced",
@@ -102,5 +108,57 @@ RSpec.describe "Laboratório — retificação", type: :request do
     end
     expect(response).to have_http_status(:created)
     expect(report.reload.status).to eq("rectified")
+  end
+
+  # Ruling I1: o laudo novo substitui o anterior inteiro; item_ids = os que mudaram.
+  it "retificação parcial: o v2 cobre todos os itens; só o que mudou ganha resultado novo no 21a" do
+    creat = lab_exam!(provider: provider, sigtap_code: "0202010317", name: "Creatinina", instrument_test_code: "CRE",
+                      analytes: [ LabHelpers::GLUCOSE.first.merge("key" => "creatinina", "name" => "Creatinina", "loinc" => "2160-0",
+                                                                  "decimals" => 2, "critical_high" => nil, "entry_min" => nil, "entry_max" => nil) ])
+    two = received_requisition!(provider: provider, exams: [ lab_exam!(provider: provider), creat ], patient: patient_and_citizen.first)
+    a, b = two.items.sort_by { |i| i.lab_exam_version.lab_exam.name == "Glicose" ? 0 : 1 }
+    type!(a, { glicose: "98" })
+    type!(b, { creatinina: "1.1" })
+    v1 = Lab::Release.call(requisition: two, item_ids: [ a.id, b.id ], signature: "advanced", totp: totp_for(lead), by: lead).payload[:report]
+    [ a, b ].each { |i| Exams::Acknowledge.call(order: i.exam_order.reload, by: i.exam_order.requester_user) }
+    b_result = b.exam_order.reload.result
+    type!(a, { glicose: "99" })
+    sign_in_as(lead)
+    rectify = lambda do |report, ids|
+      json_post "/lab/reports/#{report.id}/rectify", item_ids: ids, reason: "Erro de digitação", signature: "advanced",
+                                                     contacts: [ { person: "Dra. Helena", channel: "telefone", at: Time.current.iso8601 } ], totp: totp_for(lead)
+    end
+
+    travel 31.seconds do
+      rectify.call(v1, [ a.id, b.id ]) # B listado sem mudar
+      expect([ response.status, json_body["error"] ]).to eq([ 409, "invalid_transition" ])
+      rectify.call(v1, [ a.id ])
+    end
+    expect(response).to have_http_status(:created)
+    expect(json_body).to include("version" => 2, "partial" => false, "item_ids" => [ a.id, b.id ].sort)
+    v2 = LabReport.find(json_body["id"])
+    expect(v1.reload.status).to eq("rectified")
+    exams = v2.content_data["exams"].to_h { |e| [ e["name"], e["components"].sole["value"] ] }
+    expect(exams).to eq("Glicose" => "99", "Creatinina" => "1.10")
+
+    expect(a.exam_order.reload).to have_attributes(status: "resulted")
+    expect(a.exam_order.results.count).to eq(2)
+    expect(a.exam_order.result.values_list.sole["value"]).to eq("99")
+    expect(b.exam_order.reload).to have_attributes(status: "acknowledged")
+    expect(b.exam_order.results.to_a).to eq([ b_result ])
+
+    # B pode ser retificado pelo v2; A não listado e sem mudança fica igual.
+    type!(b, { creatinina: "1.4" })
+    travel 62.seconds do
+      rectify.call(v2, [ a.id ]) # B mudou e não foi listado
+      expect([ response.status, json_body["error"] ]).to eq([ 409, "invalid_transition" ])
+      rectify.call(v2, [ b.id ])
+    end
+    expect(response).to have_http_status(:created)
+    expect(json_body).to include("version" => 3, "replaces_report_id" => v2.id, "item_ids" => [ a.id, b.id ].sort)
+    expect(v2.reload.status).to eq("rectified")
+    expect(b.exam_order.reload.results.count).to eq(2)
+    expect(b.exam_order.result.values_list.sole["value"]).to eq("1.40")
+    expect(a.exam_order.reload.results.count).to eq(2)
   end
 end

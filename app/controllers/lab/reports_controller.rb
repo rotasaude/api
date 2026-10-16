@@ -36,7 +36,8 @@ module Lab
 
     private
 
-    # 1 a 10 contatos { person, channel, at }; qualquer um fora da forma → nil.
+    # 1 a 10 contatos { person, channel, at }; qualquer um fora da forma ou do
+    # intervalo → nil.
     def rectification_contacts
       raw = params[:contacts]
       raw = raw.map { |c| c.respond_to?(:to_unsafe_h) ? c.to_unsafe_h : c } if raw.is_a?(Array)
@@ -52,6 +53,8 @@ module Lab
           nil
         end
         return nil unless person.length.between?(1, 120) && CHANNELS.include?(c["channel"]) && at
+        # L1: o contato é entre a liberação do laudo retificado e agora (+ 1 min de folga, como na B51).
+        return nil unless at.between?(@report.released_at.change(usec: 0), Time.current + 1.minute)
 
         { "person" => person, "channel" => c["channel"], "at" => at.iso8601 }
       end

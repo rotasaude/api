@@ -95,6 +95,7 @@ module Lab
     end
 
     def schema = (@schema ||= JSONSchemer.schema(JSON.parse(File.read(SCHEMA_PATH))))
-    private_class_method :pointer, :professional, :exam, :component, :display_value, :schema
+    # `exam` é público: a retificação compara o exame de agora com o congelado (I1).
+    private_class_method :pointer, :professional, :component, :display_value, :schema
   end
 end

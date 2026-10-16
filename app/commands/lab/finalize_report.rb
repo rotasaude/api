@@ -25,12 +25,19 @@ module Lab
 
         file = store!(pdf_bytes, report, now)
         report.update!(status: "released", released_at: now, pdf_file_id: file.id, pdf_sha256: file.sha256)
-        previous = report.replaces_report
-        previous&.lock!&.update!(status: "rectified")
+        previous = report.replaces_report&.lock!
+        if previous
+          raise Failed, "invalid_transition" unless previous.status == "released"
+
+          previous.update!(status: "rectified")
+        end
         provider = report.exam_provider
         # Itens por id; o pedido de cada um é travado pelo RegisterResult/RectifyResult.
         LabRequisitionItem.where(id: report.report_items.select(:lab_requisition_item_id)).order(:id).lock.each do |item|
           item.update!(status: "released") unless item.status == "released"
+          # I1: o laudo novo reemite o anterior inteiro; o 21a só muda onde o exame mudou.
+          next if previous && frozen_exam(report, item) == frozen_exam(previous, item)
+
           values = values_for(report, item)
           flags = values.map { |v| v.delete("flag") }
           critical = flags.any? { |flag| LabResult::CRITICAL.include?(flag) }
@@ -97,6 +104,6 @@ module Lab
 
       stored.payload[:file].tap { |file| file.update!(consumed_at: now) }
     end
-    private_class_method :store!, :frozen_exam, :releaser_assigned?
+    private_class_method :store!, :releaser_assigned?
   end
 end
