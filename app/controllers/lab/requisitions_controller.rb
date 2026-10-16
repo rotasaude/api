@@ -47,18 +47,23 @@ module Lab
     # E8: `reprint` lê o payload de `domain_events` (log de trilha usado como
     # estado); uma purga de eventos faz a reimpressão voltar a sair como primeira.
     def labels
-      samples = @requisition.samples.where.not(status: %w[rejected not_received])
+      printable = @requisition.samples.where.not(status: %w[rejected not_received])
       if params[:sample_ids].present?
-        ids = Array(params[:sample_ids])
-        samples = @requisition.samples.where(id: ids.select { |id| uuid?(id) })
-        return not_found unless samples.size == ids.size
+        ids = Array(params[:sample_ids]).uniq
+        return not_found unless ids.all? { |id| uuid?(id) } && @requisition.samples.where(id: ids).count == ids.size
+
+        samples = printable.where(id: ids).sort_by { |sample| ids.index(sample.id) }
+      else
+        samples = printable.to_a
       end
+      return render(json: { error: "invalid_samples" }, status: :unprocessable_entity) if samples.empty?
+
       samples.each do |sample|
         reprint = DomainEvent.where(name: "lab_sample.label_printed").where("payload->>'lab_sample_id' = ?", sample.id).exists?
         DomainEvents.publish("lab_sample.label_printed", lab_sample_id: sample.id, lab_requisition_id: @requisition.id, reprint: reprint)
       end
       response.headers["Cache-Control"] = "no-store"
-      send_data Lab::LabelsPdf.call(samples.to_a), type: "application/pdf", disposition: "inline", filename: "etiquetas-#{@requisition.number}.pdf"
+      send_data Lab::LabelsPdf.call(samples), type: "application/pdf", disposition: "inline", filename: "etiquetas-#{@requisition.number}.pdf"
     end
 
     def create

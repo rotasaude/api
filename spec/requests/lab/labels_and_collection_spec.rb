@@ -42,4 +42,31 @@ RSpec.describe "Laboratório — etiqueta, comprovante e coleta", type: :request
     json_post "/lab/samples/#{other.samples.first.id}/collect"
     expect(json_body["error"]).to eq("missing_role")
   end
+
+    it "etiquetas por id: ids repetidos saem uma vez; amostra não recebida não reimprime; lista vazia é 422" do
+      sign_in_as(staff)
+      sample = req.samples.first
+      get "/lab/requisitions/#{req.id}/labels.pdf", params: { sample_ids: [ sample.id, sample.id ] }
+      expect(response).to have_http_status(:ok)
+      expect(PDF::Reader.new(StringIO.new(response.body)).page_count).to eq(1)
+      sample.update_columns(status: "not_received", collected_at: Time.current)
+      get "/lab/requisitions/#{req.id}/labels.pdf", params: { sample_ids: [ sample.id ] }
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_samples" ])
+      get "/lab/requisitions/#{req.id}/labels.pdf"
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_samples" ])
+    end
+
+    it "coleta na UBS pelo profissional da unidade que coleta; collected_at inválido é 422" do
+      ubs = open_requisition!(provider: provider, exams: [ exam ], place: "ubs")
+      collector = ubs.opened_by_user
+      sign_in_as(collector)
+      json_post "/lab/samples/#{ubs.samples.first.id}/collect", collected_at: (Time.current + 1.day).iso8601
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_collected_at" ])
+      json_post "/lab/samples/#{ubs.samples.first.id}/collect", collected_at: "ontem"
+      expect(json_body["error"]).to eq("invalid_collected_at")
+      json_post "/lab/samples/#{ubs.samples.first.id}/collect"
+      expect(response).to have_http_status(:ok)
+      expect(json_body["collected_at"]).to be_present
+      expect(ubs.samples.first.reload.collected_by_user_id).to eq(collector.id)
+    end
 end
