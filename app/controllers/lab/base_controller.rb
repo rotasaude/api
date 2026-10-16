@@ -26,6 +26,7 @@ module Lab
       payload[:status] = result.details[:status] if result.reason == :invalid_transition && result.details[:status]
       payload[:analyte_key] = result.details[:analyte_key] if result.details[:analyte_key]
       payload[:barcode] = result.details[:barcode] if result.details[:barcode]
+      payload.merge!(result.details.slice(:unchanged, :unlisted)) if result.reason == :rectify_items_mismatch
       render json: payload, status: FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
     end
 

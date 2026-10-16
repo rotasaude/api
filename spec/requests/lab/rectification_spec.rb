@@ -96,8 +96,12 @@ RSpec.describe "Laboratório — retificação", type: :request do
     json_post "/lab/reports/#{report.id}/rectify", item_ids: [ item.id ], reason: "Erro de digitação", signature: "advanced",
                                                    contacts: [ { person: "X", channel: "telefone", at: Time.current.iso8601 } ]
     expect([ response.status, json_body["error"] ]).to eq([ 403, "missing_role" ])
-    type!(item, { glicose: "99" })
     sign_in_as(lead)
+    # Nada mudou no item listado: 422 com os ids (não 409).
+    json_post "/lab/reports/#{report.id}/rectify", item_ids: [ item.id ], reason: "Erro de digitação", signature: "advanced",
+                                                   contacts: [ { person: "X", channel: "telefone", at: Time.current.iso8601 } ], totp: totp_for(lead)
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "rectify_items_mismatch", "unchanged" => [ item.id ], "unlisted" => [] } ])
+    type!(item, { glicose: "99" })
     travel 31.seconds do
       json_post "/lab/reports/#{report.id}/rectify", item_ids: [ SecureRandom.uuid ], reason: "Erro de digitação", signature: "advanced",
                                                      contacts: [ { person: "X", channel: "telefone", at: Time.current.iso8601 } ], totp: totp_for(lead)
@@ -131,7 +135,7 @@ RSpec.describe "Laboratório — retificação", type: :request do
 
     travel 31.seconds do
       rectify.call(v1, [ a.id, b.id ]) # B listado sem mudar
-      expect([ response.status, json_body["error"] ]).to eq([ 409, "invalid_transition" ])
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "rectify_items_mismatch", "unchanged" => [ b.id ], "unlisted" => [] } ])
       rectify.call(v1, [ a.id ])
     end
     expect(response).to have_http_status(:created)
@@ -150,8 +154,8 @@ RSpec.describe "Laboratório — retificação", type: :request do
     # B pode ser retificado pelo v2; A não listado e sem mudança fica igual.
     type!(b, { creatinina: "1.4" })
     travel 62.seconds do
-      rectify.call(v2, [ a.id ]) # B mudou e não foi listado
-      expect([ response.status, json_body["error"] ]).to eq([ 409, "invalid_transition" ])
+      rectify.call(v2, [ a.id ]) # B mudou e não foi listado; A listado sem mudar
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "rectify_items_mismatch", "unchanged" => [ a.id ], "unlisted" => [ b.id ] } ])
       rectify.call(v2, [ b.id ])
     end
     expect(response).to have_http_status(:created)

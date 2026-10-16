@@ -15,7 +15,8 @@
 # anterior inteiro — cobre todos os itens dele, os que não mudaram congelados
 # de novo com os mesmos valores; `item_ids` são os itens que MUDARAM (só esses
 # ganham resultado novo no 21a, no FinalizeReport). Item listado sem mudança
-# ou item não listado que mudou desde o laudo anterior: invalid_transition.
+# ou item não listado que mudou desde o laudo anterior: 422
+# rectify_items_mismatch { unchanged:, unlisted: }.
 module Lab
   module Release
     SIGNATURES = %w[icp advanced].freeze
@@ -105,8 +106,16 @@ module Lab
       incomplete = items.find { |i| !Effective.complete?(i) }
       return Result.fail(:invalid_transition, details: { status: incomplete.status }) if incomplete
 
-      mismatch = rectifies && items.find { |i| changed?(i, rectifies) != ids.include?(i.id) }
-      Result.fail(:invalid_transition, details: { status: mismatch.status }) if mismatch
+      return nil unless rectifies
+
+      # Fix round 2: listado sem mudança e não listado que mudou → um código só,
+      # com os ids, para o dashboard explicar e marcar os itens.
+      changed = items.select { |i| changed?(i, rectifies) }.map(&:id)
+      unchanged = (ids - changed).sort
+      unlisted = (changed - ids).sort
+      return nil if unchanged.empty? && unlisted.empty?
+
+      Result.fail(:rectify_items_mismatch, details: { unchanged: unchanged, unlisted: unlisted })
     end
 
     # O exame do item como sairia agora × como está congelado no laudo anterior.
