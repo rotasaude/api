@@ -11,7 +11,7 @@ module Lab
 
         shipment.update!(status: "sent", sent_by_user: by, sent_at: now)
         shipment.samples.order(:id).lock.pluck(:id)
-        shipment.samples.update_all(status: "in_transit", updated_at: now)
+        shipment.samples.where(status: "awaiting").update_all(status: "in_transit", updated_at: now)
         DomainEvents.publish("lab_shipment.sent", lab_shipment_id: shipment.id)
         Result.ok(shipment: shipment)
       end

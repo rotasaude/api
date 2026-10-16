@@ -10,6 +10,7 @@ module Lab
       p = params.to_h.stringify_keys
       unit = p["origin_unit_id"].is_a?(String) && HealthUnit.find_by(id: p["origin_unit_id"])
       return Result.fail(:not_found) unless unit
+      return Result.fail(:unit_does_not_collect) unless unit.collects_samples
       return Result.fail(:missing_role) unless Access.collecting_unit_ids(by).include?(unit.id)
 
       provider = p["provider_id"].is_a?(String) && Access.labs.find_by(id: p["provider_id"])
@@ -17,8 +18,6 @@ module Lab
 
       temperature = p["temperature_celsius"]
       return Result.fail(:invalid_temperature) unless temperature.is_a?(Numeric) && temperature.between?(-30, 60)
-
-      return Result.fail(:unit_does_not_collect) unless unit.collects_samples
 
       barcodes = Array(p["barcodes"]).map(&:to_s).uniq
       return Result.fail(:shipment_empty) if barcodes.empty?

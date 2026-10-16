@@ -21,10 +21,10 @@ module Lab
     def pending
       unit_id = params[:origin_unit_id]
       return render(json: { error: "filter_required" }, status: :unprocessable_entity) unless uuid?(unit_id)
-      return forbid("not_unit_staff") unless Lab::Access.collecting_unit_ids(Current.user).include?(unit_id) || Lab::Access.provider_ids(Current.user).any?
+      return forbid("not_unit_staff") unless Lab::Access.collecting_unit_ids(Current.user).include?(unit_id) || Lab::Access.staff?(Current.user) || Lab::Access.admin?(Current.user)
 
       base = LabSample.joins(:lab_requisition).where(lab_requisitions: { origin_unit_id: unit_id }).includes(lab_requisition: :patient)
-      render json: { recollections: base.where(status: "awaiting").where.not(recollection_of_id: nil).map { |s| Lab::ShipmentJson.pending(s) },
+      render json: { recollections: base.where(status: "awaiting", collected_at: nil, lab_requisitions: { collection_place: "ubs" }).where.not(recollection_of_id: nil).map { |s| Lab::ShipmentJson.pending(s) },
                      not_received: base.where(status: "not_received").map { |s| Lab::ShipmentJson.pending(s) } }
     end
 

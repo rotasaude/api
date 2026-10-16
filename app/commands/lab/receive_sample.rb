@@ -53,10 +53,13 @@ module Lab
     end
 
     def recollect!(sample, req, by, now)
+      pending = sample.items.where(status: "pending").order(:id).lock.to_a
+      return nil if pending.empty?
+
       fresh = LabSample.create!(lab_requisition: req, barcode: LabSample.barcode_for(req.number, next_index(req)), material: sample.material,
                                 container: sample.container, recollection_of: sample)
       place = req.collection_place == "lab" ? "#{req.exam_provider.name} — recoleta no laboratório" : "#{req.origin_unit.name} — recoleta na unidade"
-      sample.items.where(status: "pending").order(:id).lock.each do |item|
+      pending.each do |item|
         item.update!(lab_sample: fresh)
         order = item.exam_order
         next unless order.status == "collected"

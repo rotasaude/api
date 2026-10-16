@@ -3,7 +3,7 @@ module Lab
     before_action :load_shipment, only: %i[send_out receive]
 
     def index
-      scope = LabShipment.includes(:origin_unit, :exam_provider, :sent_by_user, :received_by_user).order(created_at: :desc).limit(100)
+      scope = LabShipment.includes(:origin_unit, :exam_provider, :sent_by_user, :received_by_user, samples: :lab_requisition).order(created_at: :desc).limit(100)
       ids = Lab::Access.provider_ids(Current.user)
       if ids.any?
         scope = scope.where(exam_provider_id: params[:provider_id].presence || ids).where(exam_provider_id: ids)

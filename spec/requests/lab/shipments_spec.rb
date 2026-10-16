@@ -55,4 +55,23 @@ RSpec.describe "Laboratório — remessa", type: :request do
     json_post "/lab/shipments", origin_unit_id: unit.id, provider_id: provider.id, barcodes: barcodes, temperature_celsius: 4
     expect(json_body["error"]).to eq("missing_role")
   end
+
+    it "outra unidade não envia; quem não é do laboratório não confere; unidade que não coleta" do
+      sign_in_as(nurse)
+      json_post "/lab/shipments", origin_unit_id: unit.id, provider_id: provider.id, barcodes: barcodes, temperature_celsius: 4
+      shipment = json_body
+      other_nurse = doctor!(create_unit("UBS Outra 2").tap { |u| u.update!(collects_samples: true) })
+      sign_in_as(other_nurse)
+      json_post "/lab/shipments/#{shipment['id']}/send"
+      expect(response).to have_http_status(:forbidden)
+      sign_in_as(nurse)
+      json_post "/lab/shipments/#{shipment['id']}/send"
+      json_post "/lab/shipments/#{shipment['id']}/receive", barcodes: barcodes
+      expect(response).to have_http_status(:forbidden)
+      expect(LabShipment.find(shipment["id"]).status).to eq("sent")
+      closed = create_unit("UBS Fechada")
+      closed.update_columns(collects_samples: false)
+      json_post "/lab/shipments", origin_unit_id: closed.id, provider_id: provider.id, barcodes: barcodes, temperature_celsius: 4
+      expect(json_body["error"]).to eq("unit_does_not_collect")
+    end
 end
