@@ -63,7 +63,10 @@ RSpec.describe FakeMiddleware::Runner, type: :request do
     log = log_io.string
     expect(log).to match(/MSA AA/)
     expect(log).to match(/MSH-10 M[0-9a-f]+/)
-    [ sample.barcode, "450", "98", token, "glicose", "Bearer" ].each { |secret| expect(log).not_to include(secret) }
+    # Só a mensagem de cada linha, sem o prefixo do Logger (hora, pid) e sem os ids de controle (hex
+    # aleatório): "98" e "450" casariam com eles por acaso.
+    text = log.lines.map { |line| line.split(" -- : ", 2).last }.join.gsub(/MSH-10 M[0-9a-f]+/, "MSH-10 M")
+    [ sample.barcode, "450", "98", token, "glicose", "Bearer" ].each { |secret| expect(text).not_to include(secret) }
   end
 
   it "com fake_middleware desligado, só registra no log" do
