@@ -14,6 +14,7 @@ module Lab
         "out_of_entry_range" => [ "207", "Application internal error", "Valor fora da faixa de digitacao" ],
         "unit_mismatch" => [ "207", "Application internal error", "Unidade diferente" ],
         "invalid_value" => [ "102", "Data type error", "Valor invalido" ],
+        "item_not_open" => [ "207", "Application internal error", "Exame ja liberado ou cancelado" ],
         "invalid_message" => [ "100", "Segment sequence error", "Mensagem invalida" ],
         "unsupported_message_type" => [ "200", "Unsupported message type", "Tipo de mensagem nao suportado" ],
         "unsupported_version" => [ "203", "Unsupported version id", "Versao nao suportada" ],

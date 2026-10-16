@@ -106,6 +106,16 @@ module LabHelpers
     LabRequisitionItem.create!(lab_requisition: req, exam_order: order, lab_exam_version: version, lab_sample: sample)
     req
   end
+
+  def middleware_token!(provider, simulated: false)
+    Lab::RotateMiddlewareToken.call(provider: provider, by: nil, simulated: simulated).payload[:token]
+  end
+
+  def hl7_post(body, token:)
+    headers = { "CONTENT_TYPE" => "application/hl7-v2" }
+    headers["Authorization"] = "Bearer #{token}" if token
+    post "/hl7/v2", params: body, headers: headers
+  end
 end
 
 RSpec.configure { |c| c.include LabHelpers }

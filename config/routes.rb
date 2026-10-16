@@ -450,6 +450,10 @@ Rails.application.routes.draw do
   post "/fhir/DiagnosticReport", to: "fhir/diagnostic_reports#create"
   get  "/fhir/ServiceRequest",   to: "fhir/service_requests#index"
 
+  # Módulo 21b (ADR 0037): entrada HL7 do middleware do laboratório (token, sem cookie).
+  post "/hl7/v2",                   to: "hl7/v2#create"
+  get  "/lab/hl7/pending_barcodes", to: "hl7/pending_barcodes#index"
+
   # Canal web do cidadão (spec 2026-09-22-web-citizen-channel). Servido no host
   # da cidade, como o relatório; sessão própria por cookie `citizen_session`.
   scope "/citizen", module: "citizen_api", as: "citizen" do
