@@ -21,7 +21,8 @@ module Lab
 
           PlatformRecord.transaction do
             exam = SaveExam.call(entry.slice(*%w[sigtap_code name sector material container suggested_method preparation]).merge("active" => true))
-            next skipped << entry["sigtap_code"] if exam.failure?
+            next skipped << entry["sigtap_code"] if exam.failure? && exam.reason == :sigtap_unknown
+            raise ArgumentError, "catálogo-base: #{entry['sigtap_code']} #{exam.reason}" if exam.failure?
 
             entry.fetch("analytes").each_with_index do |analyte, index|
               saved = SaveAnalyte.call(analyte.except("ranges").merge(

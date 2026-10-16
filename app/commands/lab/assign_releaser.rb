@@ -36,9 +36,12 @@ module Lab
     # passou primeiro, este não sobrescreve ended_at/ended_by nem publica de novo.
     def end!(releaser:, by:, now: Time.current)
       ApplicationRecord.transaction do
+        # Os ids são lidos UMA vez: um laudo ICP que nasça depois desta leitura não é retirado aqui (a requisição
+        # dele não foi travada) — o FinalizeReport recusa esse, porque o liberador já estará encerrado.
         pending = LabReport.where(released_by_user_id: releaser.user_id, exam_provider_id: releaser.exam_provider_id,
-                                  status: "pending_signature", signature_kind: "icp").select(:id)
-        LabRequisition.where(id: LabReport.where(id: pending).select(:lab_requisition_id)).order(:id).lock.pluck(:id)
+                                  status: "pending_signature", signature_kind: "icp").pluck(:id, :lab_requisition_id)
+        LabRequisition.where(id: pending.map(&:last).uniq).order(:id).lock.pluck(:id)
+        pending = pending.map(&:first)
         releaser.lock!
         next if releaser.ended_at
 
