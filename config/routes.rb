@@ -318,6 +318,9 @@ Rails.application.routes.draw do
     get  "entry",                        to: "results#entry"
     post "results",                      to: "results#create"
     post "results/:id/choose",           to: "results#choose"
+    get  "criticals/unnotified/count",   to: "criticals#count"
+    get  "criticals/unnotified",         to: "criticals#index"
+    post "criticals",                    to: "criticals#create"
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"
       get   "exams",                     to: "exams#index"
