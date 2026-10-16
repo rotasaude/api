@@ -25,17 +25,25 @@ module Lab
     end
 
     # I1: os laudos ICP ainda pendentes deste liberador neste laboratório saem
-    # junto (B56: withdrawn, pedido resolvido com document_cancelled). Trava a
-    # linha do liberador primeiro (o FinalizeReport a lê FOR SHARE); o pedido
-    # que o job/lote está assinando agora fica de fora (SKIP LOCKED) — esse
-    # cai na conferência do FinalizeReport e segue o mesmo caminho.
+    # junto (B56: withdrawn, pedido resolvido com document_cancelled). Ordem de
+    # trava única, a do FinalizeReport (ICP e avançada): requisição → ... →
+    # liberador (FOR SHARE). Por isso as requisições desses laudos são travadas
+    # (por id) ANTES da linha do liberador; travar o liberador primeiro fechava
+    # um ciclo com a assinatura/liberação da mesma requisição (deadlock, 500).
+    # O pedido que o job/lote está assinando agora fica de fora (SKIP LOCKED) —
+    # esse cai na conferência do FinalizeReport e segue o mesmo caminho.
+    # L6: idempotente — o liberador é relido sob a trava; se outro encerramento
+    # passou primeiro, este não sobrescreve ended_at/ended_by nem publica de novo.
     def end!(releaser:, by:, now: Time.current)
       ApplicationRecord.transaction do
-        releaser.lock!
-        releaser.update!(ended_at: now, ended_by_user: by)
-        DomainEvents.publish("lab_releaser.ended", lab_releaser_id: releaser.id, exam_provider_id: releaser.exam_provider_id)
         pending = LabReport.where(released_by_user_id: releaser.user_id, exam_provider_id: releaser.exam_provider_id,
                                   status: "pending_signature", signature_kind: "icp").select(:id)
+        LabRequisition.where(id: LabReport.where(id: pending).select(:lab_requisition_id)).order(:id).lock.pluck(:id)
+        releaser.lock!
+        next if releaser.ended_at
+
+        releaser.update!(ended_at: now, ended_by_user: by)
+        DomainEvents.publish("lab_releaser.ended", lab_releaser_id: releaser.id, exam_provider_id: releaser.exam_provider_id)
         SignatureRequest.pending.where(document_type: "LabReport", document_id: pending).order(:created_at, :id)
                         .lock("FOR UPDATE SKIP LOCKED").each do |request|
           Signatures::ToPaper.call(request, reason_code: "document_cancelled", now: now)
