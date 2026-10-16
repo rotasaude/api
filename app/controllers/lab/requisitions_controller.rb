@@ -5,7 +5,7 @@ module Lab
     before_action :load_requisition, only: %i[show receipt labels deliver]
 
     def index
-      scope = LabRequisition.includes(:patient, :origin_unit, reports: [ :released_by_user, :pdf_file ])
+      scope = LabRequisition.includes(:patient, :origin_unit, reports: [ { released_by_user: :professional }, :pdf_file, :report_items ])
       ids = Lab::Access.provider_ids(Current.user)
       if ids.any?
         scope = scope.where(exam_provider_id: ids)
@@ -29,7 +29,7 @@ module Lab
       limit = Timeline::Query.limit(params[:limit])
       rows = scope.order(created_at: :desc, id: :desc).limit(limit + 1).to_a
       page = rows.first(limit)
-      render json: { requisitions: page.map { |r| Lab::Json.requisition(r, viewer: Current.user, full: false) },
+      render json: { requisitions: page.map { |r| Lab::Json.requisition(r, viewer: Current.user, full: false, provider_ids: ids) },
                      next_before: rows.size > limit ? Exams::Cursor.encode(page.last) : nil }
     rescue Exams::Cursor::Invalid
       render json: { error: "invalid_cursor" }, status: :unprocessable_entity

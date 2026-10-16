@@ -6,13 +6,13 @@ module Lab
 
     def lab_member?(viewer, req) = Access.member?(viewer, req.exam_provider_id)
 
-    def requisition(req, viewer:, full: true)
+    def requisition(req, viewer:, full: true, provider_ids: nil)
       patient = req.patient
       body = { id: req.id, number: req.number,
                patient: { id: patient.id, display_name: patient.display_name, birth_date: patient.birth_date, biological_sex: req.biological_sex },
                origin_unit: { id: req.origin_unit_id, name: req.origin_unit.name }, collection_place: req.collection_place,
                urgent: req.urgent, status: req.status, expected_delivery_on: req.expected_delivery_on&.iso8601,
-               reports: req.reports.map { |r| report_summary(r, viewer: viewer) },
+               reports: req.reports.map { |r| report_summary(r, viewer: viewer, provider_ids: provider_ids) },
                delivered_to: req.delivered_to, delivered_at: req.delivered_at&.iso8601 }
       return body unless full
 
@@ -35,8 +35,10 @@ module Lab
 
     # pdf_url (A4 do 21a) só para quem é do laboratório e só com PDF.
     # item_ids (B42): os itens da requisição que o laudo cobre (lab_report_items).
-    def report_summary(report, viewer:)
-      url = report.pdf_file && Access.member?(viewer, report.exam_provider_id) ? Exams::Files.url_for(report.pdf_file, user: viewer) : nil
+    def report_summary(report, viewer:, provider_ids: nil)
+      # L2: a lista passa os laboratórios do leitor uma vez (sem consulta por laudo).
+      member = report.pdf_file && (provider_ids || Access.provider_ids(viewer)).include?(report.exam_provider_id)
+      url = member ? Exams::Files.url_for(report.pdf_file, user: viewer) : nil
       { id: report.id, version: report.version, partial: report.partial, status: report.status, signature_kind: report.signature_kind,
         released_at: report.released_at&.iso8601, released_by: Screenings::Json.staff_name(report.released_by_user),
         short_code: report.released_at ? report.short_code : nil, pdf_url: url, replaces_report_id: report.replaces_report_id,

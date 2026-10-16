@@ -4,6 +4,10 @@ require "rails_helper"
 # vira lab_reception; uma amostra por material/recipiente; no 21a o exame vai
 # a `scheduled` no laboratório; previsão = maior prazo de entrega.
 RSpec.describe "Laboratório — requisição", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
+  after { travel_back }
+
   before { lab_city! }
 
   let(:provider) { lab_provider!(name: "Laboratório Municipal Central") }
@@ -103,6 +107,48 @@ RSpec.describe "Laboratório — requisição", type: :request do
     sign_in_as(doctor!(create_unit("UBS Longe")))
     get "/lab/requisitions/#{req.id}"
     expect(response).to have_http_status(:forbidden)
+  end
+
+  # L4 (B37): candidate_orders é de quem coleta — lab_staff e profissional/equipe de UBS que coleta.
+  it "candidate_orders: municipal_admin e lab_releaser (sem papel de coleta) → 403; profissional de UBS que coleta lê" do
+    [ lab_admin!, lab_releaser!(provider) ].each do |user|
+      sign_in_as(user)
+      get "/lab/candidate_orders", params: { patient_id: patient.id, provider_id: provider.id }
+      expect([ response.status, json_body["error"] ]).to eq([ 403, "missing_role" ]), user.email_address
+    end
+    expect(DomainEvent.where(name: "clinical_record.viewed")).to be_empty
+    sign_in_as(doctor)
+    get "/lab/candidate_orders", params: { patient_id: patient.id, provider_id: provider.id }
+    expect(response).to have_http_status(:ok)
+  end
+
+  # L2: o custo da lista não cresce com o número de requisições/laudos.
+  it "GET /lab/requisitions não faz consulta por requisição (sem N+1)" do
+    releaser = lab_releaser!(provider, lead: true)
+    sign_in_as(staff)
+    queries = lambda do
+      count = 0
+      counter = ->(*, payload) { count += 1 unless %w[SCHEMA TRANSACTION].include?(payload[:name]) || payload[:sql].match?(/\A(BEGIN|COMMIT|SAVEPOINT|RELEASE)/) }
+      ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { get "/lab/requisitions", params: { provider_id: provider.id } }
+      count
+    end
+    release = lambda do
+      travel(31.seconds) # um passo de TOTP por liberação (sem repetição)
+      req = received_requisition!(provider: provider, exams: [ glucose ], unit: unit)
+      item = type!(req.items.first, { glicose: "98" })
+      result = Lab::Release.call(requisition: req, item_ids: [ item.id ], signature: "advanced", totp: totp_for(releaser), by: releaser)
+      expect(result.failure?).to be(false)
+    end
+    release.call
+    queries.call # aquece caches (cidade, schema)
+    one = queries.call
+    expect(json_body["requisitions"].size).to eq(1)
+    3.times { release.call }
+    queries.call
+    many = queries.call
+    expect(json_body["requisitions"].size).to eq(4)
+    expect(json_body["requisitions"].flat_map { |r| r["reports"] }.map { |r| r["released_by"] }.compact.size).to eq(4)
+    expect(many).to eq(one)
   end
 
   it "cancelar com desencontro persistente de item: 409 conflict" do
