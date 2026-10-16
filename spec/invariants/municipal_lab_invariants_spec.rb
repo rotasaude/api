@@ -66,7 +66,6 @@ RSpec.describe "Invariantes do laboratório municipal (ADR 0037)", type: :reques
       sql = "UPDATE lab_reports SET released_at = NULL WHERE id = '#{released.id}'"
       expect { LabReport.transaction(requires_new: true) { LabReport.connection.execute(sql) } }
         .to raise_error(ActiveRecord::StatementInvalid, /refused|never changes/)
-      expect(LabReport.where(status: "withdrawn").where.not(released_at: nil).or(LabReport.where(status: "withdrawn").where.not(pdf_file_id: nil))).to be_empty
     end
 
     it "um aviso por resultado crítico (índice único)" do
@@ -85,6 +84,27 @@ RSpec.describe "Invariantes do laboratório municipal (ADR 0037)", type: :reques
       raw_mother = LabRequisition.connection.select_value("SELECT mother_name FROM lab_requisitions LIMIT 1")
       expect(raw_mother).not_to include(req.mother_name)
     end
+  end
+
+  # B56: o laudo ICP devolvido pelo sistema nunca ganha data nem PDF.
+  it "laudo withdrawn não tem data nem PDF e o banco não deixa ganhar nem voltar a released" do
+    stub_psc_mock!(City.find(Current.city.id))
+    stub_signer!
+    doctor = lab_releaser!(provider, council: "CRM", lead: true).tap { |u| u.professional.update!(cpf: SignatureHelpers::DOCTOR_CPF) }
+    linked_certificate!(doctor, provider: "simulated", leaf: fake_psc("simulated").leaf(doctor.professional.cpf))
+    item = type!(req.items.first, { glicose: "98" })
+    pending = Lab::Release.call(requisition: req, item_ids: [ item.id ], signature: "icp", totp: nil, by: doctor).payload.fetch(:report)
+    expect(pending.status).to eq("pending_signature")
+
+    withdrawn = ApplicationRecord.transaction { Lab::WithdrawReport.call(pending.id) }
+    expect(withdrawn).to have_attributes(status: "withdrawn", released_at: nil, pdf_file_id: nil, pdf_sha256: nil)
+
+    file = pdf_file!(user: doctor).tap { |f| f.update!(consumed_at: Time.current) }
+    expect { LabReport.find(pending.id).update!(released_at: Time.current) }.to raise_error(ActiveRecord::StatementInvalid, /refused|never changes/)
+    expect { LabReport.find(pending.id).update!(pdf_file_id: file.id, pdf_sha256: "b" * 64) }.to raise_error(ActiveRecord::StatementInvalid, /refused|never changes/)
+    expect { LabReport.find(pending.id).update!(status: "released", released_at: Time.current, pdf_file_id: file.id, pdf_sha256: "b" * 64) }
+      .to raise_error(ActiveRecord::StatementInvalid, /refused/)
+    expect(LabReport.find(pending.id)).to have_attributes(status: "withdrawn", released_at: nil, pdf_file_id: nil)
   end
 
   it "um exame (exam_order) não entra em dois itens" do
