@@ -1,0 +1,56 @@
+{
+  "schema": "rotasaude.lab_report.v1",
+  "laboratory": {
+    "name": "Laboratório Municipal Central",
+    "cnes": "2385123",
+    "address": "Rua Doutor Faivre, 1200 — Centro — Curitiba/PR",
+    "phone": "4133501200"
+  },
+  "technical_lead": {
+    "name": "Mariana Albuquerque Teles",
+    "council": "CRBM",
+    "council_uf": "PR",
+    "council_number": "12345"
+  },
+  "released_by": {
+    "name": "Ricardo Menezes Prado",
+    "council": "CRM",
+    "council_uf": "PR",
+    "council_number": "45678"
+  },
+  "patient": {
+    "name": "João Batista Ferreira",
+    "birth_date": null,
+    "biological_sex": "male",
+    "record_number": "00000124"
+  },
+  "requisition_number": "00000124",
+  "exams": [
+    {
+      "sigtap_code": "0202010473",
+      "name": "Glicose",
+      "material": "Soro",
+      "method": "Enzimático (GOD-PAP)",
+      "version": 2,
+      "collected_at": "2026-10-15T11:40:00Z",
+      "restriction_note": "Amostra levemente hemolisada",
+      "components": [
+        {
+          "key": "glicose",
+          "name": "Glicose",
+          "value": "38",
+          "unit": "mg/dL",
+          "flag": "critical_low",
+          "reference_text": "70 a 99 mg/dL",
+          "loinc": "2345-7"
+        }
+      ]
+    }
+  ],
+  "partial": true,
+  "issued_at": "2026-10-15T19:10:00Z",
+  "signature_kind": "icp",
+  "replaces_report_id": null,
+  "rectification_reason": null,
+  "support_laboratory": null
+}

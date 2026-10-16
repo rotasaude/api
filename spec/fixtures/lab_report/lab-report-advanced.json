@@ -1,0 +1,22 @@
+{
+  "schema": "rotasaude.lab_report.v1",
+  "laboratory": { "name": "Laboratório Municipal Central", "cnes": "2385123", "address": "Rua Doutor Faivre, 1200 — Centro — Curitiba/PR", "phone": "4133501200" },
+  "technical_lead": { "name": "Mariana Albuquerque Teles", "council": "CRBM", "council_uf": "PR", "council_number": "12345" },
+  "released_by": { "name": "Mariana Albuquerque Teles", "council": "CRBM", "council_uf": "PR", "council_number": "12345" },
+  "patient": { "name": "Maria Aparecida da Silva", "birth_date": "1961-03-12", "biological_sex": "female", "record_number": "00000123" },
+  "requisition_number": "00000123",
+  "exams": [
+    { "sigtap_code": "0202010473", "name": "Glicose", "material": "Soro", "method": "Enzimático (GOD-PAP)", "version": 1,
+      "collected_at": "2026-10-15T12:00:00Z", "restriction_note": null,
+      "components": [
+        { "key": "glicose", "name": "Glicose", "value": "98", "unit": "mg/dL", "flag": "normal",
+          "reference_text": "70 a 99 mg/dL", "loinc": "2345-7" }
+      ] }
+  ],
+  "partial": false,
+  "issued_at": "2026-10-15T18:30:00Z",
+  "signature_kind": "advanced",
+  "replaces_report_id": null,
+  "rectification_reason": null,
+  "support_laboratory": null
+}
