@@ -50,6 +50,8 @@ module Lab
       result = nil
       ApplicationRecord.transaction do
         orders = ExamOrder.lock.where(id: ids, patient_id: patient.id).order(:id).to_a
+        # Amostras numeradas na ordem do pedido (ids são UUID: o order(:id) é só da trava).
+        orders.sort_by! { |o| ids.index(o.id) }
         next result = Result.fail(:order_not_eligible) unless orders.size == ids.uniq.size && orders.all? { |o| eligible?(o) }
         next result = Result.fail(:exam_not_in_lab_catalog) unless orders.all? { |o| exams.key?(o.sigtap_code) }
 

@@ -46,4 +46,17 @@ RSpec.describe Exams::Steps do
     expect(described_class.cancel(order: order, reason: "Desistência", actor_user: doctor).reason).to eq(:conflict)
     expect(order.reload.status).to eq("scheduled")
   end
+
+  it "dentro de transação externa não repete: desencontro vira conflito direto" do
+    item
+    calls = 0
+    allow(LabRequisitionItem).to receive(:find_by).and_wrap_original do |original, *args, **kw|
+      calls += 1
+      calls == 1 ? nil : original.call(*args, **kw)
+    end
+    result = ApplicationRecord.transaction { described_class.cancel(order: order, reason: "Desistência", actor_user: doctor) }
+    expect(result.reason).to eq(:conflict)
+    expect(calls).to eq(1)
+    expect(item.reload.status).to eq("pending")
+  end
 end

@@ -47,6 +47,17 @@ RSpec.describe "Laboratório — requisição", type: :request do
     expect(json_body["error"]).to eq("order_not_eligible")
   end
 
+  it "candidate_orders exige patient_id (422) e cada leitura deixa uma trilha lab_candidates (B37)" do
+    sign_in_as(staff)
+    get "/lab/candidate_orders", params: { provider_id: provider.id }
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body["error"]).to eq("filter_required")
+    expect(DomainEvent.where(name: "clinical_record.viewed")).to be_empty
+    get "/lab/candidate_orders", params: { patient_id: patient.id, provider_id: provider.id }
+    event = DomainEvent.where(name: "clinical_record.viewed").sole
+    expect(event.payload).to include("access" => "lab_candidates", "patient_id" => patient.id, "user_id" => staff.id, "reason_code" => nil)
+  end
+
   it "na UBS que coleta, pela enfermagem com vínculo; UBS que não coleta recusa" do
     sign_in_as(doctor)
     json_post "/lab/requisitions", body(collection_place: "ubs")
@@ -93,5 +104,13 @@ RSpec.describe "Laboratório — requisição", type: :request do
     get "/lab/requisitions/#{req.id}"
     expect(response).to have_http_status(:forbidden)
   end
-end
 
+  it "cancelar com desencontro persistente de item: 409 conflict" do
+    req = open_requisition!(provider: provider, exams: [ glucose ], unit: unit, by: staff)
+    order = req.items.first.exam_order
+    sign_in_as(order.requester_user)
+    allow(LabRequisitionItem).to receive(:find_by).and_return(nil)
+    json_post "/exams/orders/#{order.id}/cancel", reason: "Engano"
+    expect([ response.status, json_body["error"] ]).to eq([ 409, "conflict" ])
+  end
+end

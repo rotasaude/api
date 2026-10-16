@@ -36,8 +36,13 @@ module Exams
     # ADR 0037 (Desvio 16): exame na requisição do laboratório — item pendente
     # é cancelado junto; digitado ou liberado, o laboratório já trabalhou: 409.
     # Ordem de trava (E2), a mesma de Lab::Release: requisição → itens → pedido.
+    #
+    # Dentro de uma transação externa (joinable: o adendo da consulta) NÃO se repete:
+    # savepoint não solta trava de linha no Postgres, e a segunda volta travaria
+    # pedido → requisição, invertendo a ordem. Aí o desencontro vira :conflict direto.
     def cancel(order:, reason:, actor_user:)
-      2.times do
+      attempts = ApplicationRecord.connection.current_transaction.joinable? ? 1 : 2
+      attempts.times do
         result = cancel_once(order, reason, actor_user)
         return result unless result == :retry
       end

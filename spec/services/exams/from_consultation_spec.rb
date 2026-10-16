@@ -99,11 +99,11 @@ RSpec.describe Exams::FromConsultation do
 
   it "falha ao cancelar o exame desfaz o adendo" do
     consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
-    allow(Exams::Transition).to receive(:call).and_return(Result.fail(:invalid_transition))
+    allow(Exams::Transition).to receive(:call).and_return(Result.fail(:provider_not_enabled_for_exam))
     expect do
       Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "exame já feito em outro serviço",
                                       text: "Exame retirado", changes: { "exam_requests" => [] })
-    end.to raise_error(RuntimeError, /invalid_transition/)
+    end.to raise_error(RuntimeError, /provider_not_enabled_for_exam/)
     expect(ConsultationAddendum.count).to eq(0)
     expect(consultation.exam_requests.where(status: "cancelled").count).to eq(0)
   end
@@ -154,6 +154,38 @@ RSpec.describe Exams::FromConsultation do
       expect(retract).to be_ok
       expect(order.reload.status).to eq("scheduled")
       expect(req.items.first.reload.status).to eq("typed")
+    end
+  end
+
+  context "casos de corrida no cancelamento" do
+    before { lab_city! }
+
+    let(:provider) { lab_provider! }
+    let(:consultation) do
+      lab_exam!(provider: provider)
+      finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen,
+                              exam_requests: [ { "sigtap_code" => "0202010473", "priority" => "routine" } ])
+    end
+    let(:order) { ExamOrder.find_by!(patient_id: consultation.patient_id) }
+
+    def retract
+      Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "exame retirado do plano",
+                                      text: "Exame retirado", changes: { "exam_requests" => [] })
+    end
+
+    it "o exame mudou de situação antes da trava: fica como está e o adendo segue" do
+      order
+      allow(Exams::Steps).to receive(:cancel).and_return(Result.fail(:invalid_transition, details: { status: "resulted" }))
+      expect(retract).to be_ok
+      expect(order.reload.status).to eq("awaiting_schedule")
+    end
+
+    it "item novo sob a transação do adendo: falha conflict (nunca 500) e nada do adendo fica" do
+      order
+      allow(Exams::Steps).to receive(:cancel).and_return(Result.fail(:conflict))
+      result = retract
+      expect(result.reason).to eq(:conflict)
+      expect(ConsultationAddendum.count).to eq(0)
     end
   end
 end

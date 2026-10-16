@@ -15,7 +15,7 @@ class ConsultationsController < ApplicationController
     missing_role: :forbidden, missing_link: :forbidden, cbo_not_allowed: :forbidden, not_author: :forbidden,
     out_of_context: :forbidden, feature_disabled: :forbidden,
     not_in_care: :conflict, not_caller: :conflict, already_exists: :conflict, citizen_not_verified: :conflict,
-    not_draft: :conflict, not_finalized: :conflict, already_closed: :conflict, consultation_in_progress: :conflict
+    not_draft: :conflict, not_finalized: :conflict, already_closed: :conflict, consultation_in_progress: :conflict, conflict: :conflict
   }.freeze
   DRAFT_KEYS = (Consultation::TEXT_FIELDS + %w[vitals care_type evaluated_problems conducts exam_requests]).freeze
 

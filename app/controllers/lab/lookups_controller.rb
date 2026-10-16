@@ -19,7 +19,8 @@ module Lab
       codes = LabExam.where(exam_provider_id: @provider.id, active: true).where.not(current_version_id: nil).pluck(:sigtap_code)
       orders = ExamOrder.where(patient_id: patient.id, status: %w[awaiting_schedule scheduled], sigtap_code: codes)
                         .where.not(id: LabRequisitionItem.select(:exam_order_id)).includes(:requester_user).order(:created_at)
-      DomainEvents.publish("clinical_record.viewed", patient_id: patient.id, user_id: Current.user.id, access: "lab_candidates")
+      grant = ClinicalRecord::Access::Grant.new(kind: :lab_candidates, opening: nil, reason: nil)
+      ClinicalRecord::Trail.viewed!(patient: patient, user: Current.user, grant: grant)
       render json: { orders: orders.map do |o|
         { id: o.id, short_code: o.short_code, sigtap_code: o.sigtap_code, label: Exams::Labels.exam(o.sigtap_code, o.sigtap_competence),
           priority: o.priority, status: o.status, requester_name: o.requester_display_name }

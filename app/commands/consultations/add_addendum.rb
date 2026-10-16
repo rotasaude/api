@@ -131,7 +131,10 @@ module Consultations
                                         sigtap_competence: previous.sigtap_competence, status: "cancelled",
                                         priority: previous.priority)
       end
-      plan[:exams_removed].each { |code| Exams::FromConsultation.cancel!(consultation: consultation, sigtap_code: code, by: by) }
+      plan[:exams_removed].each do |code|
+        conflict = Exams::FromConsultation.cancel!(consultation: consultation, sigtap_code: code, by: by)
+        return conflict if conflict
+      end
       created = plan[:exams_added].map do |exam|
         ConsultationExamRequest.create!(consultation: consultation, addendum: addendum, sigtap_code: exam["sigtap_code"],
                                         sigtap_competence: exam["sigtap_competence"],

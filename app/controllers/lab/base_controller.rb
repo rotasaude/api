@@ -7,7 +7,7 @@ module Lab
 
     UUID = Exams::BaseController::UUID
     FAILURE_STATUS = {
-      invalid_transition: :conflict, gal_already_registered: :conflict, not_found: :not_found,
+      invalid_transition: :conflict, conflict: :conflict, gal_already_registered: :conflict, not_found: :not_found,
       missing_role: :forbidden, not_unit_staff: :forbidden, mfa_required: :unauthorized
     }.freeze
 
