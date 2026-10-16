@@ -299,7 +299,7 @@ else
         # ── Laboratório municipal (módulo 21b, ADR 0037) ──────────────────────
         # Depois do ExamCrew (o prestador) e do ProfessionalCrew (as UBS).
         lab = LabCrew.seed_current_city(slug: slug, password: password, admin: muni_admin)
-        puts "[seeds] laboratório .. #{lab[:switch]}; #{lab[:exams]} exames adotados"
+        puts "[seeds] laboratório .. #{lab[:switch]}; #{lab[:exams]} exames novos adotados"
         Array(lab[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"

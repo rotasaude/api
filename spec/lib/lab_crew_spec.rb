@@ -68,9 +68,40 @@ RSpec.describe LabCrew do
     require Rails.root.join("lib/exam_crew").to_s
     ExamCrew.send(:catalog!)
     ExamCrew.send(:providers!)
+    # Dev já semeado antes do E18: o usuário começa ligado ao municipal.
+    old = User.create!(email_address: "laboratorio@curitiba.demo", password: "dev-password")
+    ExamProviderUser.create!(user: old, exam_provider: ExamProvider.find_by!(name: LabCrew::LAB))
     ExamCrew.send(:ensure_user, ExamCrew::USERS.first, slug: "curitiba", password: "dev-password")
     portal = ExamProviderUser.find_by!(user: User.find_by!(email_address: "laboratorio@curitiba.demo"))
     expect(portal.exam_provider.name).to eq("Clínica Diagnóstica Credenciada")
     expect(portal.exam_provider.uses_municipal_lab).to be(false)
+  end
+
+  it "rerodada converge depois de falha no meio do exame, repara o CPF e liga o CBO real do biomédico" do
+    described_class.seed_platform!
+    calls = 0
+    allow(Lab::CreateVersion).to receive(:call).and_wrap_original do |original, **kwargs|
+      (calls += 1) == 3 ? Result.fail(:invalid_version) : original.call(**kwargs)
+    end
+    expect { described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!) }.to raise_error(/versão de/)
+    lab = ExamProvider.find_by!(name: LabCrew::LAB)
+    expect(LabExam.where(exam_provider: lab).count).to eq(2)
+    result = described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!)
+    bio = User.find_by!(email_address: "biomedica@curitiba.demo")
+    bio.professional.update!(cpf: nil)
+    described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!)
+    expect(LabExam.where(exam_provider: lab).map { |e| e.current_version.version }.uniq).to eq([ 2 ])
+    expect(LabExam.where(exam_provider: lab).count).to eq(16)
+    expect(bio.reload.professional.cpf).to be_present
+    expect(bio.professional.links.active.pluck(:cbo_code)).to eq([ "221205" ])
+    expect(result[:switch]).not_to include("nada a fazer")
+    expect(described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!)[:switch]).to include("nada a fazer")
+  end
+
+  it "FAKE_MIDDLEWARE_TOKEN vazio cai no padrão" do
+    described_class.seed_platform!
+    stub_const("ENV", ENV.to_h.merge("FAKE_MIDDLEWARE_TOKEN" => ""))
+    described_class.seed_current_city(slug: "curitiba", password: "dev-password", admin: lab_admin!)
+    expect(LabMiddlewareToken.active.pick(:token_digest)).to eq(LabMiddlewareToken.digest(LabCrew::DEFAULT_FAKE_MIDDLEWARE_TOKEN))
   end
 end

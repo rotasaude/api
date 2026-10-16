@@ -38,7 +38,7 @@ class LabCrew
   USERS = [
     { prefix: "tecnica-lab", role: "lab_staff", secret_env: "DEV_LAB_STAFF_OTP_SECRET", default_secret: "ORSWG3TJMNQS23DBMIWWIZLWEEQSCIJB" },
     { prefix: "biomedica", role: "lab_releaser", secret_env: "DEV_LAB_BIOMEDICAL_OTP_SECRET", default_secret: "MJUW63LFMRUWGYJNMRSXMIJBEEQSCIJB",
-      profile: { professional_name: "Mariana Albuquerque Teles", council: "CRBM" }, lead: true },
+      profile: { professional_name: "Mariana Albuquerque Teles", council: "CRBM" }, cbo: "221205", lead: true },
     { prefix: "patologista", role: "lab_releaser", secret_env: "DEV_LAB_PATHOLOGIST_OTP_SECRET", default_secret: "OBQXI33MN5TWS43UMEWWIZLWEEQSCIJB",
       profile: { professional_name: "Otávio Lacerda Pires", council: "CRM" }, deputy: true }
   ].freeze
@@ -77,7 +77,9 @@ class LabCrew
       users = USERS.map { |spec| ensure_user(spec, slug: slug, password: password, admin: admin, lab: lab) }
       token!(lab)
       missing = SWITCHES.flat_map { |key| Platform::Features.missing(city, key) }
-      { switch: missing.empty? ? "ligado (#{SWITCHES.join(', ')})" : "ligado, falta: #{missing.join(', ')}", exams: exams, users: users }
+      status = missing.empty? ? "ligado (#{SWITCHES.join(', ')})" : "ligado, falta: #{missing.join(', ')}"
+      status += "; nada a fazer (já semeado)" if exams.zero?
+      { switch: status, exams: exams, users: users }
     end
 
     private
@@ -103,27 +105,29 @@ class LabCrew
       HealthUnit.find_by!(name: OTHER_UNIT).then { |u| u.update!(collects_samples: false) if u.collects_samples }
     end
 
-    # Adota os 16 e cria a versão 2 com código de aparelho e limites (uma vez).
+    # Adota os 16 e cria a versão 2 com código de aparelho e limites. Cada exame
+    # é atômico (adoção + versão 2): falha no meio desfaz, e a rerodada converge.
     def catalog!(lab, admin)
       LabExamTemplate.where(active: true).includes(:analytes).order(:name).count do |template|
         next false if LabExam.exists?(exam_provider_id: lab.id, sigtap_code: template.sigtap_code)
 
-        adopted = Lab::AdoptExam.call(provider: lab, template_id: template.id, sector: template.sector, bench: BENCHES[template.sector],
-                                      delivery_days: DELIVERY_DAYS.fetch(template.sector, 3), by: admin)
-        raise "semente do laboratório: adoção de #{template.sigtap_code} recusada (#{adopted.reason})" if adopted.failure?
+        ApplicationRecord.transaction do
+          adopted = Lab::AdoptExam.call(provider: lab, template_id: template.id, sector: template.sector, bench: BENCHES[template.sector],
+                                        delivery_days: DELIVERY_DAYS.fetch(template.sector, 3), by: admin)
+          raise "semente do laboratório: adoção de #{template.sigtap_code} recusada (#{adopted.reason})" if adopted.failure?
 
-        exam = adopted.payload[:exam]
-        v1 = exam.current_version
-        analytes = v1.analytes.map do |a|
-          min, max, low, high = LIMITS[a["key"]]
-          a.merge("entry_min" => min, "entry_max" => max, "critical_low" => low, "critical_high" => high)
+          exam = adopted.payload[:exam]
+          v1 = exam.current_version
+          analytes = v1.analytes.map do |a|
+            min, max, low, high = LIMITS[a["key"]]
+            a.merge("entry_min" => min, "entry_max" => max, "critical_low" => low, "critical_high" => high)
+          end
+          version = Lab::CreateVersion.call(exam: exam, by: admin, params: { "method" => v1.analysis_method, "material" => v1.material,
+                                                                             "container" => v1.container,
+                                                                             "instrument_test_code" => INSTRUMENT_CODES[template.sigtap_code],
+                                                                             "analytes" => analytes })
+          raise "semente do laboratório: versão de #{template.sigtap_code} recusada (#{version.reason})" if version.failure?
         end
-        version = Lab::CreateVersion.call(exam: exam, by: admin, params: { "method" => v1.analysis_method, "material" => v1.material,
-                                                                           "container" => v1.container,
-                                                                           "instrument_test_code" => INSTRUMENT_CODES[template.sigtap_code],
-                                                                           "analytes" => analytes })
-        raise "semente do laboratório: versão de #{template.sigtap_code} recusada (#{version.reason})" if version.failure?
-
         true
       end
     end
@@ -154,25 +158,40 @@ class LabCrew
     end
 
     def profile!(user, spec, slug, admin)
-      return user.professional if user.professional
+      professional = user.professional || create_profile!(user, spec, slug, admin)
+      professional.update!(cpf: DigitalSignatureCrew.free_cpf_for(slug, professional)) if professional.cpf.blank?
+      link_cbo!(professional, spec, admin)
+      professional
+    end
 
+    def create_profile!(user, spec, slug, admin)
       seed = "#{slug}:#{spec[:prefix]}"
       attrs = spec[:profile].merge(council_state: CityProfile.current&.uf.presence || "PR", cns: Professionals::Cns.generate(seed),
                                    registration_number: (Zlib.crc32(seed) % 90_000 + 10_000).to_s)
       created = Professionals::Create.call(user_id: user.id, attrs: attrs, by: admin)
       raise "semente do laboratório: perfil de #{spec[:prefix]} recusado (#{created.reason})" if created.failure?
 
-      professional = created.payload[:professional]
-      professional.update!(cpf: DigitalSignatureCrew.free_cpf_for(slug, professional))
-      professional
+      created.payload[:professional]
+    end
+
+    # Só CBO que existe em config/professionals/cbo_saude.yml (o do patologista
+    # clínico não está lá; sem CBO inventado).
+    def link_cbo!(professional, spec, admin)
+      cbo = spec[:cbo]
+      return unless cbo
+
+      unit = HealthUnit.find_by!(name: COLLECTING_UNIT)
+      return if professional.links.active.exists?(health_unit_id: unit.id, cbo_code: cbo)
+
+      linked = Professionals::OpenLink.call(professional: professional, health_unit_id: unit.id, cbo_code: cbo, by: admin)
+      raise "semente do laboratório: vínculo #{cbo} recusado (#{linked.reason})" if linked.failure?
     end
 
     def token!(lab)
-      digest = LabMiddlewareToken.digest(ENV.fetch(FAKE_MIDDLEWARE_TOKEN_ENV, DEFAULT_FAKE_MIDDLEWARE_TOKEN))
-      return if LabMiddlewareToken.active.exists?(exam_provider_id: lab.id, token_digest: digest)
+      token = ENV[FAKE_MIDDLEWARE_TOKEN_ENV].presence || DEFAULT_FAKE_MIDDLEWARE_TOKEN
+      return if LabMiddlewareToken.active.exists?(exam_provider_id: lab.id, token_digest: LabMiddlewareToken.digest(token))
 
-      Lab::RotateMiddlewareToken.call(provider: lab, by: nil, simulated: true,
-                                      token: ENV.fetch(FAKE_MIDDLEWARE_TOKEN_ENV, DEFAULT_FAKE_MIDDLEWARE_TOKEN))
+      Lab::RotateMiddlewareToken.call(provider: lab, by: nil, simulated: true, token: token)
     end
   end
 end
