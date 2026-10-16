@@ -78,7 +78,7 @@ module Lab
       # Problemas de forma do OUL^R22, TODOS (B26): um Builder::Error por recusa, na ordem
       # dos segmentos. Só a forma; o que depende do banco (faixa, unidade) é da Inbound.
       def structure_errors
-        specimens.flat_map do |specimen|
+        orphans + specimens.flat_map do |specimen|
           found = []
           found << refusal("unknown_barcode", "SPM", specimen.index, 2) if barcode(specimen).blank?
           specimen.orders.each do |order|
@@ -93,6 +93,20 @@ module Lab
       end
 
       private
+
+      # OBR/OBX antes do 1º SPM: nada numa mensagem é ignorado em silêncio (B26).
+      def orphans
+        counts = Hash.new(0)
+        found = []
+        segments.each do |segment|
+          name = segment.first
+          counts[name] += 1
+          break if name == "SPM"
+
+          found << refusal("invalid_message", name, counts[name], 1) if %w[OBR OBX].include?(name)
+        end
+        found
+      end
 
       def refusal(code, segment, index, field) = Builder::Error.new(code: code, location: "#{segment}^#{index}^#{field}")
 

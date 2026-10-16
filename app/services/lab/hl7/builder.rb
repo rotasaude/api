@@ -20,6 +20,7 @@ module Lab
         "token_revoked" => [ "207", "Application internal error", "Token revogado" ],
         "feature_disabled" => [ "207", "Application internal error", "Entrada desligada" ]
       }.freeze
+      GENERIC_ERROR = [ "207", "Application internal error", "Erro da aplicacao" ].freeze
       QUERY_NAME = "LabWorklist^Lista de trabalho^99RSL".freeze
 
       module_function
@@ -41,10 +42,11 @@ module Lab
 
       def rsp(request:, code:, city_slug:, query_tag:, barcode:, now:, sample: nil, items: [], errors: [])
         lines = [ msh(request, "RSP^K11^RSP_K11", city_slug, now), msa(request, code), *errors.map { |e| err(e) } ]
-        status = errors.any? ? "AE" : (items.empty? ? "NF" : "OK")
+        with_group = sample && items.any? && errors.empty?
+        status = errors.any? ? "AE" : (with_group ? "OK" : "NF")
         lines << [ "QAK", escape(query_tag), status, QUERY_NAME ]
         lines << [ "QPD", QUERY_NAME, escape(query_tag), escape(barcode) ]
-        if sample && items.any? && errors.empty?
+        if with_group
           lines << [ "SPM", "1", escape(sample.barcode), "",
                      "#{material_key(sample.material)}^#{escape(sample.material)}^99RSL", *Array.new(12, ""),
                      sample.collected_at&.in_time_zone&.strftime("%Y%m%d%H%M%S").to_s ]
@@ -65,8 +67,13 @@ module Lab
       def msa(request, code) = [ "MSA", code, escape(request&.control_id) ]
 
       def err(error)
-        hl7, name, text = ERRORS.fetch(error.code)
-        [ "ERR", "", error.location.to_s, "#{hl7}^#{name}^HL70357", "E", "#{error.code}^#{text}^99RSL" ]
+        hl7, name, text = ERRORS[error.code]
+        unless hl7
+          # Nunca levanta no meio de uma resposta; só o nome do código vai ao log.
+          Rails.logger.error("lab.hl7.unknown_error_code=#{error.code.to_s[/\A[a-z0-9_]{1,40}\z/] || 'invalid'}")
+          hl7, name, text = GENERIC_ERROR
+        end
+        [ "ERR", "", error.location.to_s, "#{hl7}^#{name}^HL70357", "E", "#{ERRORS.key?(error.code) ? error.code : 'application_error'}^#{text}^99RSL" ]
       end
 
       def render(lines) = lines.map { |fields| fields.join("|") }.join("\r") + "\r"

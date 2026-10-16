@@ -150,4 +150,29 @@ RSpec.describe "Lab::Hl7" do
       expect { Lab::Hl7::Message.parse(oul + "BHS|^~\\&|x\r") }.to raise_error(Lab::Hl7::Invalid)
     end
   end
+
+  describe "fix round 2" do
+    it "L2: código desconhecido não levanta; todo código que a Task 13 emite existe" do
+      out = Lab::Hl7::Builder.ack(request: nil, code: "AE", city_slug: "c", now: now, errors: [ error("nao_existe", "OBX^1^3") ])
+      expect(segments(out).last[3..]).to eq([ "207^Application internal error^HL70357", "E", "application_error^Erro da aplicacao^99RSL" ])
+      emitted = %w[unknown_barcode sample_not_received exam_not_in_version unknown_analyte out_of_entry_range unit_mismatch
+                   invalid_value invalid_message unsupported_message_type unsupported_version token_revoked feature_disabled]
+      expect(emitted - Lab::Hl7::Builder::ERRORS.keys).to be_empty
+    end
+
+    it "L3: OBR/OBX antes do primeiro SPM são recusa com localização" do
+      raw = fixture("oul-r22.hl7").sub("SPM|") { "OBR|1|||X^y^99RSL\rOBX|1|NM|a^b^99RSL||1\rSPM|" }
+      errors = Lab::Hl7::Message.parse(raw).structure_errors
+      expect(errors.map { |e| [ e.code, e.location ] }).to eq([ [ "invalid_message", "OBR^1^1" ], [ "invalid_message", "OBX^1^1" ] ])
+    end
+
+    it "L6: QAK-2 OK só com SPM; sem amostra é NF" do
+      version = Struct.new(:instrument_test_code, :lab_exam)
+      item = Struct.new(:id, :lab_exam_version)
+      one = item.new("i", version.new("GLI", Struct.new(:name).new("Glicose")))
+      out = Lab::Hl7::Builder.rsp(request: parse("qbp-q11.hl7"), code: "AA", city_slug: "c", query_tag: "T", barcode: "1", now: now, items: [ one ])
+      expect(segments(out).map(&:first)).to eq(%w[MSH MSA QAK QPD])
+      expect(segments(out)[2][2]).to eq("NF")
+    end
+  end
 end
