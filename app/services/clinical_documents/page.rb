@@ -4,9 +4,12 @@
 module ClinicalDocuments
   module Page
     KINDS = { "sick_note" => "Atestado", "attendance_declaration" => "Declaração de comparecimento",
-              "prescription" => "Receita", "exam_requisition" => "Requisição de exames" }.freeze
+              "prescription" => "Receita", "exam_requisition" => "Requisição de exames",
+              "lab_report" => "Laudo laboratorial" }.freeze
     CATEGORIES = { "special_control" => "Receita de controle especial", "antimicrobial" => "Receita de antimicrobiano" }.freeze
-    STATUS = { "valid" => "Válido", "cancelled" => "Cancelado", "awaiting_signature" => "Aguardando assinatura digital" }.freeze
+    STATUS = { "valid" => "Válido", "cancelled" => "Cancelado", "awaiting_signature" => "Aguardando assinatura digital",
+               "rectified" => "Retificado — substituído por um laudo novo" }.freeze
+    MODES = { "advanced" => "Assinatura eletrônica avançada (Lei 14.063/2020)", "paper" => "Papel (assinatura à mão)" }.freeze
 
     module_function
 
@@ -20,7 +23,8 @@ module ClinicalDocuments
                [ "Unidade", data[:unit] ],
                [ "Paciente", "#{data.dig(:patient, :initials)} (nascido(a) em #{data.dig(:patient, :birth_year) || '—'})" ],
                [ "Situação", STATUS.fetch(data[:status]) + (data[:cancelled_at] ? " em #{Time.iso8601(data[:cancelled_at]).in_time_zone.strftime('%d/%m/%Y %H:%M')}" : "") ],
-               [ "Modo", data[:mode] == "digital" ? "Assinado digitalmente#{' (simulada — sem validade jurídica)' if data[:simulated]}" : "Papel (assinatura à mão)" ] ].compact
+               [ "Modo", data[:mode] == "digital" ? "Assinado digitalmente#{' (simulada — sem validade jurídica)' if data[:simulated]}" : MODES.fetch(data[:mode], MODES["paper"]) ],
+               ([ "SHA-256 do PDF", data[:pdf_sha256] ] if data[:pdf_sha256]) ].compact
       if data[:sncr]
         rows << [ "Numeração SNCR", "#{data.dig(:sncr, :number)}#{' (simulada — sem validade)' if data.dig(:sncr, :simulated)}" ]
         if data[:status] == "cancelled"
@@ -47,7 +51,7 @@ module ClinicalDocuments
           if (r.status === 429) { out.textContent = "Muitas tentativas. Tente de novo em alguns minutos."; return; }
           if (!r.ok) { out.textContent = "Documento não encontrado. Confira o código e o ano."; return; }
           const j = await r.json();
-          const status = j.status === "valid" ? "Válido" : j.status === "cancelled" ? "Cancelado" : "Aguardando assinatura digital";
+          const status = { valid: "Válido", cancelled: "Cancelado", rectified: "Retificado", awaiting_signature: "Aguardando assinatura digital" }[j.status] || j.status;
           out.textContent = [ status, j.professional.name, j.unit ].filter(Boolean).join(" — ");
         });
         </script>

@@ -6,7 +6,7 @@ module Signatures
     LIMIT = 200
 
     def index
-      rows = SignatureRequest.pending.where(author_user_id: Current.user.id).order(:created_at, :id).limit(LIMIT).to_a
+      rows = SignatureRequest.signable_by(Current.user).pending.order(:created_at, :id).limit(LIMIT).to_a
       render json: { items: Json.requests(rows) }
     end
 

@@ -76,11 +76,8 @@ module Lab
       Result.fail(:invalid_content)
     end
 
-    # O 19b só assina tipos do seu catálogo: o laudo entra nele na Task 18;
-    # até lá o caminho ICP fica fechado (signature_unavailable), nunca um 500.
-    def icp_available?
-      Signatures::DocumentTypes::MODELS.key?(LabReport.name) && Signatures::Gate.usable?(Current.city)
-    end
+    # B14: ICP só com digital_signature utilizável na cidade.
+    def icp_available? = Signatures::Gate.usable?(Current.city)
 
     # Itens desta requisição, todos na situação certa, com amostra aceita, com
     # cada componente valendo (B30) e fora de laudo pending_signature (B54).

@@ -19,7 +19,7 @@ module Signatures
       cpf = user.professional&.cpf
       return Result.fail(:professional_cpf_missing) if cpf.blank?
 
-      scope = SignatureRequest.pending.where(author_user_id: user.id)
+      scope = SignatureRequest.signable_by(user).pending
       scope = scope.where(id: Array(request_ids).grep(String).grep(UUID)) unless request_ids.nil?
       ids = scope.order(:created_at, :id).limit(LIMIT).pluck(:id)
       return Result.fail(:nothing_pending) if ids.empty?

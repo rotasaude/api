@@ -12,7 +12,7 @@ module Signatures
 
     def call(user:, request_ids:, token:, provider:, now: Time.current, signer: Signer.client)
       ApplicationRecord.transaction do
-        requests = SignatureRequest.where(id: Array(request_ids), author_user_id: user.id, status: "pending")
+        requests = SignatureRequest.signable_by(user).where(id: Array(request_ids), status: "pending")
                                    .order(:created_at, :id).lock("FOR UPDATE SKIP LOCKED").to_a
         requests = CancelledDocuments.retire!(requests, now: now)
         next Result.ok(record: { signed: 0, failed: [] }) if requests.empty?

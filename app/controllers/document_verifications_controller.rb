@@ -36,7 +36,8 @@ class DocumentVerificationsController < ApplicationController
 
   def signed_pdf
     document = ClinicalDocuments::Verification.by_token(params[:token])
-    signature = document && !document.cancelled? && ClinicalDocuments::Verification.signature(document)
+    # ADR 0037 (B18): o laudo não tem PDF público (a trilha fica, D3).
+    signature = document.is_a?(ClinicalDocument) && !document.cancelled? && ClinicalDocuments::Verification.signature(document)
     return render(json: { error: "not_found" }, status: :not_found) unless signature
 
     response.headers["Cache-Control"] = "no-store"

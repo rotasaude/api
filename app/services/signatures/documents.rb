@@ -30,6 +30,8 @@ module Signatures
       when ClinicalDocument
         Prepared.new(request: request, canonical: Canonical.clinical_document(document),
                      pdf: ClinicalDocuments::Pdf.call(document, footer: footer))
+      when LabReport
+        Prepared.new(request: request, canonical: Canonical.lab_report(document), pdf: Lab::ReportPdf.call(document, footer: footer))
       end
     end
   end

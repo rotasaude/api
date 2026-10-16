@@ -23,7 +23,11 @@ module Signatures
         request = SignatureRequest.lock.find_by(id: request_id)
         next Result.fail(:not_found) unless request
         next Result.fail(:not_author) unless request.author_user_id == by.id
+        # ADR 0037: o liberador só do laboratório não alcança pedido de consulta.
+        next Result.fail(:not_found) unless SignatureRequest.signable_by(by).exists?(id: request.id)
         next Result.fail(:not_pending) unless request.pending?
+        # ADR 0037 (dashboard D19): laudo não tem papel.
+        next Result.fail(:not_applicable) if request.document_type == "LabReport"
 
         Result.ok(request: ToPaper.call(request, reason_code: "user_request", note: note, now: now))
       end

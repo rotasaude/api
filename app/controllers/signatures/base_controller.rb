@@ -18,7 +18,7 @@ module Signatures
       certificate_expired: :unprocessable_entity, certificate_revoked: :unprocessable_entity,
       certificate_not_found: :unprocessable_entity, certificate_untrusted: :unprocessable_entity,
       authorization_expired: :conflict, certificate_not_linked: :conflict, nothing_pending: :conflict,
-      not_pending: :conflict, professional_cpf_missing: :conflict,
+      not_pending: :conflict, professional_cpf_missing: :conflict, not_applicable: :unprocessable_entity,
       provider_unavailable: :service_unavailable, signer_unavailable: :service_unavailable
     }.freeze
 
@@ -33,6 +33,15 @@ module Signatures
       end
 
       render_failure(result, ERROR_STATUS.merge(overrides))
+    end
+
+    # ADR 0037 (dashboard D19): o liberador do laboratório assina laudo. Só
+    # laudo: as listas, o lote e a volta ao papel passam por
+    # SignatureRequest.signable_by (sem care?, só LabReport).
+    def require_professional
+      return if Current.user.has_role?("lab_releaser")
+
+      super
     end
 
     def body = params.to_unsafe_h.except("controller", "action", "id")

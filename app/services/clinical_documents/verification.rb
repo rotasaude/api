@@ -8,23 +8,34 @@ module ClinicalDocuments
   module Verification
     module_function
 
+    # ADR 0037 (B18): o laudo do laboratório entra pela mesma página.
     def by_token(token)
-      document = token.is_a?(String) && token.match?(/\A[A-Za-z0-9_-]{22}\z/) ? ClinicalDocument.where.not(kind: "controlled_notification_record").find_by(verification_token: token) : nil
-      trail!(document, "token")
+      return trail!(nil, "token") unless token.is_a?(String) && token.match?(/\A[A-Za-z0-9_-]{22}\z/)
+
+      record = public_documents.find_by(verification_token: token) || public_lab_reports.find_by(verification_token: token)
+      trail!(record, "token")
     end
 
+    # Nota #6: o código curto é único em cada tabela, não entre elas — o ano
+    # desempata; se os dois baterem, nenhum (nunca mostrar o documento errado).
     def lookup(short_code:, birth_year:)
       code = Codes.normalize(short_code)
       year = birth_year.to_s.match?(/\A\d{4}\z/) ? birth_year.to_s.to_i : nil
-      document = code && year ? ClinicalDocument.where.not(kind: "controlled_notification_record").find_by(short_code: code) : nil
-      document = nil if document && birth_year_of(document) != year
-      trail!(document, "short_code")
+      candidates = code && year ? [ public_documents.find_by(short_code: code), public_lab_reports.find_by(short_code: code) ].compact : []
+      matching = candidates.select { |record| birth_year_of(record) == year }
+      trail!(matching.one? ? matching.first : nil, "short_code")
     end
 
-    # A assinatura gravada (só no modo digital), ou nil.
-    def signature(document) = document.digital? ? document.signed_signature : nil
+    # A assinatura gravada (só no modo digital), ou nil. O laudo não expõe PDF.
+    def signature(document)
+      return nil if document.is_a?(LabReport)
+
+      document.digital? ? document.signed_signature : nil
+    end
 
     def public_json(document)
+      return lab_json(document) if document.is_a?(LabReport)
+
       signature = signature(document)
       author = document.author_user
       professional = author.professional
@@ -56,17 +67,39 @@ module ClinicalDocuments
                       simulated: content.dig("sncr", "simulated") == true }
     end
 
-    def trail!(document, via)
-      DocumentVerificationLookup.create!(clinical_document_id: document&.id, via: via, outcome: document ? "found" : "not_found")
-      document
+    def public_documents = ClinicalDocument.where.not(kind: "controlled_notification_record")
+
+    # ADR 0037: laudo pendente, liberado ou retificado (o retirado não existe para fora).
+    def public_lab_reports = LabReport.where(status: %w[pending_signature released rectified])
+
+    # B18: tipo, data, quem liberou e conselho, o laboratório, INICIAIS e ANO
+    # de nascimento, situação, modo e o hash do PDF. Nunca valor, nome, CPF ou PDF.
+    def lab_json(report)
+      content = report.content_data
+      signer = content["released_by"]
+      icp = report.signature_kind == "icp"
+      signature = icp ? report.signature_request&.signature : nil
+      status = { "pending_signature" => "awaiting_signature", "released" => "valid", "rectified" => "rectified" }.fetch(report.status)
+      { kind: "lab_report", issued_at: (report.released_at || report.created_at).iso8601,
+        professional: { name: signer["name"], council: "#{signer['council']}-#{signer['council_uf']} #{signer['council_number']}" },
+        unit: content.dig("laboratory", "name"),
+        patient: { initials: Patients::Initials.call(content.dig("patient", "name")), birth_year: birth_year_of(report) },
+        status: status, mode: icp ? "digital" : "advanced", simulated: signature&.simulated? || false, pdf_sha256: report.pdf_sha256 }
     end
 
-    def person(document) = document.patient || document.citizen
+    def trail!(record, via)
+      DocumentVerificationLookup.create!(clinical_document_id: (record.id if record.is_a?(ClinicalDocument)),
+                                         lab_report_id: (record.id if record.is_a?(LabReport)),
+                                         via: via, outcome: record ? "found" : "not_found")
+      record
+    end
+
+    def person(record) = record.is_a?(LabReport) ? record.lab_requisition.patient : (record.patient || record.citizen)
 
     def birth_year_of(document)
       value = person(document).birth_date.to_s
       value.match?(/\A\d{4}-/) ? value[0, 4].to_i : nil
     end
-    private_class_method :add_prescription_fields, :trail!, :person, :birth_year_of
+    private_class_method :add_prescription_fields, :trail!, :person, :birth_year_of, :public_documents, :public_lab_reports, :lab_json
   end
 end

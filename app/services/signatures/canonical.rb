@@ -20,9 +20,11 @@ module Signatures
     CONSULTATION_SCHEMA = "rotasaude.consultation.v1".freeze
     ADDENDUM_SCHEMA = "rotasaude.consultation_addendum.v1".freeze
     DOCUMENT_SCHEMA = "rotasaude.clinical_document.v1".freeze
+    LAB_REPORT_SCHEMA = Lab::ReportContent::SCHEMA
     SCHEMA_FILES = { CONSULTATION_SCHEMA => Rails.root.join("config/clinical/consultation-v1.json"),
                      ADDENDUM_SCHEMA => Rails.root.join("config/clinical/consultation-addendum-v1.json"),
-                     DOCUMENT_SCHEMA => Rails.root.join("config/clinical/clinical-document-v1.json") }.freeze
+                     DOCUMENT_SCHEMA => Rails.root.join("config/clinical/clinical-document-v1.json"),
+                     LAB_REPORT_SCHEMA => Lab::ReportContent::SCHEMA_PATH }.freeze
 
     class Invalid < StandardError; end
 
@@ -38,6 +40,7 @@ module Signatures
       when Consultation then consultation(document)
       when ConsultationAddendum then addendum(document)
       when ClinicalDocument then clinical_document(document)
+      when LabReport then lab_report(document)
       else raise ArgumentError, "documento fora do catálogo"
       end
     end
@@ -86,6 +89,17 @@ module Signatures
                "replaces_document_id" => document.replaces_document_id }
       built(DOCUMENT_SCHEMA, head.merge("schema" => DOCUMENT_SCHEMA, "document" => body,
                                         "content" => ClinicalDocuments::Canonical.content(document)))
+    end
+
+    # ADR 0037: o laudo assina o JSON CONGELADO na liberação (lab_reports.content);
+    # o sha256 é o content_sha256 (mesma serialização RFC 8785).
+    def lab_report(report)
+      raise Invalid, "not_signable" unless report.status == "pending_signature"
+
+      built(LAB_REPORT_SCHEMA, report.content_data).tap do |canonical|
+        # O que se assina é exatamente o que foi congelado (nunca um laudo regerado).
+        raise Invalid, "content_mismatch" unless canonical.sha256 == report.content_sha256
+      end
     end
 
     # Desvio 1 (esquema do contracts): o canonical_sha256 do documento ASSINADO

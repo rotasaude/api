@@ -4,7 +4,9 @@
 module Signatures
   module DocumentTypes
     MODELS = { "Consultation" => "consultation", "ConsultationAddendum" => "consultation_addendum",
-               "ClinicalDocument" => "clinical_document" }.freeze
+               "ClinicalDocument" => "clinical_document",
+               # ADR 0037: laudo do laboratório municipal, sem consulta.
+               "LabReport" => "lab_report" }.freeze
 
     module_function
 

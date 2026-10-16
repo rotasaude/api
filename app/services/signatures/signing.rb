@@ -19,6 +19,7 @@ module Signatures
   module Signing
     KINDS = Signer::KINDS
     SIMULATED = "simulated".freeze
+    LAB_REPORT_UNSIGNABLE = "document_cancelled".freeze
 
     # failed: [[SignatureRequest, reason]]. final: ids dos pedidos cuja falha
     # não deve ser tentada de novo, mesmo com motivo passageiro.
@@ -116,14 +117,17 @@ module Signatures
                when Consultation then document.finalized_at
                when ConsultationAddendum then document.created_at
                when ClinicalDocument then document.issued_at
+               when LabReport then document.created_at
                end
         [ time || request.created_at, request.id ]
       end
     end
 
     # A cadeia (ADR 0032) é da consulta e dos adendos dela; o documento clínico
-    # não encadeia — a falha de um não segura os outros pedidos da consulta.
-    def chain_key(request) = request.document_type == "ClinicalDocument" ? [ "ClinicalDocument", request.document_id ] : request.consultation_id
+    # e o laudo (ADR 0037, sem consulta) não encadeiam — a falha de um não
+    # segura os outros pedidos.
+    UNCHAINED = %w[ClinicalDocument LabReport].freeze
+    def chain_key(request) = UNCHAINED.include?(request.document_type) ? [ request.document_type, request.document_id ] : request.consultation_id
 
     def block(request, reason, definitive, failed, final)
       failed << [ request, reason ]
@@ -171,12 +175,26 @@ module Signatures
           last_verification: "valid", last_verification_at: now, last_verification_reasons: []
         )
         request.update!(status: "signed", reason_code: nil, resolved_at: now)
+        # ADR 0037: o laudo passa a valer com a assinatura, na mesma transação
+        # (o PDF assinado vai ao 21a); recusa desfaz a assinatura junto.
+        if request.document_type == "LabReport"
+          finalized = Lab::FinalizeReport.call(report: request.document, pdf_bytes: pades.signature, now: now)
+          raise Lab::FinalizeReport::Failed if finalized.failure?
+        end
         DomainEvents.publish("signature.signed", signature_id: signature.id, request_id: request.id,
                                                  document_type: DocumentTypes.api(request.document_type), document_id: request.document_id)
         signature
       end
     rescue Signer::Rejected
       "verification_failed"
+    rescue Lab::FinalizeReport::Failed
+      # Task 18: definitivo — o laudo não pode mais valer (ex.: pedido do 21a
+      # cancelado no meio). Motivo terminal, fora de TRANSIENT_REASONS (o
+      # verification_failed seria tentado de novo); o pedido fica pendente com ele.
+      # A assinatura desfeita continua na associação (inverse_of) como registro
+      # novo: sem o reset, o Park (request.update!) a gravaria de novo (autosave).
+      request.association(:signature).reset
+      LAB_REPORT_UNSIGNABLE
     rescue Signer::Unavailable
       "signer_unavailable" # depois do PSC: o lote não perde os já gravados; o job tenta de novo
     end

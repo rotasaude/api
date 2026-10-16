@@ -262,16 +262,10 @@ RSpec.describe "Laboratório — liberação", type: :request do
       type!(items[0], { glicose: "98" })
     end
 
-    it "sem LabReport no catálogo do 19b (até a Task 18) o caminho ICP fica fechado: signature_unavailable" do
-      linked_certificate!(doctor)
-      sign_in_as(doctor)
-      release([ items[0].id ], user: doctor, signature: "icp", totp: nil)
-      expect(json_body["error"]).to eq("signature_unavailable")
-      expect(LabReport.count).to eq(0)
-    end
-
-    context "com LabReport no catálogo" do
-      before { stub_const("Signatures::DocumentTypes::MODELS", Signatures::DocumentTypes::MODELS.merge("LabReport" => "lab_report")) }
+    context "com LabReport no catálogo do 19b (Task 18)" do
+      it "o tipo está no catálogo" do
+        expect(Signatures::DocumentTypes::MODELS).to include("LabReport" => "lab_report")
+      end
 
       it "sem certificado ativo: no_active_certificate, nada gravado" do
         sign_in_as(doctor)

@@ -47,6 +47,8 @@ module Signatures
     def set_signature
       @signature = Signature.find_by(id: params[:id])
       return render(json: { error: "not_found" }, status: :not_found) unless @signature
+      # ADR 0037: a assinatura do laudo (sem consulta) se lê por /lab.
+      return render(json: { error: "not_found" }, status: :not_found) unless @signature.signature_request.consultation_id
 
       @consultation = Consultation.find(@signature.signature_request.consultation_id)
     end
