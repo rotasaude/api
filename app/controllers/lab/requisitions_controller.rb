@@ -2,7 +2,7 @@
 # da unidade dela; o laboratório, as dele.
 module Lab
   class RequisitionsController < BaseController
-    before_action :load_requisition, only: %i[show]
+    before_action :load_requisition, only: %i[show receipt labels]
 
     def index
       scope = LabRequisition.includes(:patient, :origin_unit, reports: [ :released_by_user, :pdf_file ])
@@ -36,6 +36,30 @@ module Lab
     end
 
     def show = render(json: Lab::Json.requisition(@requisition, viewer: Current.user))
+
+    def receipt
+      response.headers["Cache-Control"] = "no-store"
+      send_data Lab::ReceiptPdf.call(@requisition), type: "application/pdf", disposition: "inline",
+                                                    filename: "comprovante-#{@requisition.number}.pdf"
+    end
+
+    # Etiquetas (todas, ou as pedidas); toda impressão deixa trilha, com `reprint`.
+    # E8: `reprint` lê o payload de `domain_events` (log de trilha usado como
+    # estado); uma purga de eventos faz a reimpressão voltar a sair como primeira.
+    def labels
+      samples = @requisition.samples.where.not(status: %w[rejected not_received])
+      if params[:sample_ids].present?
+        ids = Array(params[:sample_ids])
+        samples = @requisition.samples.where(id: ids.select { |id| uuid?(id) })
+        return not_found unless samples.size == ids.size
+      end
+      samples.each do |sample|
+        reprint = DomainEvent.where(name: "lab_sample.label_printed").where("payload->>'lab_sample_id' = ?", sample.id).exists?
+        DomainEvents.publish("lab_sample.label_printed", lab_sample_id: sample.id, lab_requisition_id: @requisition.id, reprint: reprint)
+      end
+      response.headers["Cache-Control"] = "no-store"
+      send_data Lab::LabelsPdf.call(samples.to_a), type: "application/pdf", disposition: "inline", filename: "etiquetas-#{@requisition.number}.pdf"
+    end
 
     def create
       result = Lab::OpenRequisition.call(body_params, by: Current.user)

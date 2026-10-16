@@ -302,7 +302,11 @@ Rails.application.routes.draw do
     get  "exams",             to: "lookups#exams"
     get  "requisitions",      to: "requisitions#index"
     post "requisitions",      to: "requisitions#create"
+    get  "requisitions/:id/receipt.pdf", to: "requisitions#receipt", format: false
+    get  "requisitions/:id/labels.pdf",  to: "requisitions#labels", format: false
     get  "requisitions/:id",  to: "requisitions#show"
+    post "samples/collect",              to: "samples#collect"
+    post "samples/:id/collect",          to: "samples#collect"
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"
       get   "exams",                     to: "exams#index"

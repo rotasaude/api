@@ -48,3 +48,4 @@ gem "graphql", "~> 2.3"
 gem "thrift", "~> 0.22"   # LEDI APS (ADR 0028): TBinaryProtocol das fichas para o PEC
 gem "prawn", "~> 2.5"     # ADR 0031: impresso da consulta, gerado na hora (Ruby puro, sem binário)
 gem "rqrcode_core", "~> 2.1" # ADR 0033: QR code da conferência do documento clínico (Ruby puro, desenhado em vetor no Prawn)
+gem "barby", "~> 0.7" # ADR 0037: só o codificador Code 128 da etiqueta de tubo (desenhado em vetor no Prawn)
