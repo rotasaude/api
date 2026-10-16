@@ -90,6 +90,35 @@ RSpec.describe "Laboratório — retificação", type: :request do
     expect(json_body["exams"].size).to eq(1)
   end
 
+  # B63: o motivo do escalonamento é o gravado; retificar para normal não o apaga.
+  it "crítico retificado para normal continua mostrando crítico" do
+    critical_item = type!(req.items.first, { glicose: "450" })
+    first = Lab::Release.call(requisition: req, item_ids: [ critical_item.id ], signature: "advanced", totp: totp_for(lead), by: lead).payload[:report]
+    critical_order = critical_item.exam_order.reload
+    expect(critical_order.result).to be_critical
+    sign_in_as(lead)
+    travel 31.seconds do
+      json_post "/lab/results", item_id: critical_item.id, values: [ { analyte_key: "glicose", value: "98" } ]
+      expect(response).to have_http_status(:created)
+      json_post "/lab/reports/#{first.id}/rectify", item_ids: [ critical_item.id ], reason: "Erro de digitação do valor", signature: "advanced",
+                                                  contacts: [ { person: "Dra. Helena", channel: "telefone", at: Time.current.iso8601 } ], totp: totp_for(lead)
+      expect(response).to have_http_status(:created)
+    end
+    expect(critical_order.reload.result).not_to be_critical
+
+    sign_in_as(nurse!(critical_order.unit).tap { |n| exam_team!(critical_order.unit, n) })
+    get "/exams/acknowledgements/team"
+    row = json_body["orders"].find { |o| o["id"] == critical_order.id }
+    expect(row).to include("escalated" => true, "escalation_reasons" => [ "critical" ])
+    expect(row["result"]["critical"]).to be(false)
+    expect(schema.validate(row).to_a).to be_empty
+
+    sign_in_as(critical_order.requester_user)
+    get "/exams/orders/#{critical_order.id}"
+    expect(json_body["escalation_reasons"]).to eq([ "critical" ])
+    expect(schema.validate(json_body).to_a).to be_empty
+  end
+
   it "só de laudo liberado; itens do laudo; quem não libera 403" do
     report = Lab::Release.call(requisition: req, item_ids: [ item.id ], signature: "advanced", totp: totp_for(lead), by: lead).payload[:report]
     sign_in_as(lab_staff!)

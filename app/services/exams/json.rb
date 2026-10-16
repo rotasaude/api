@@ -28,6 +28,7 @@ module Exams
         external_reference: order.external_reference, gal_requisition: order.gal_requisition, # v1.1 (B24): chave sempre presente
         status: order.status, status_changed_at: order.status_changed_at.iso8601,
         overdue: overdue(order), escalated: order.escalated?,
+        escalation_reasons: clinical ? escalation_reasons(order) : nil, # B63: o gravado, sem deduzir
         guide_url: order.guide_file && Files.url_for(order.guide_file, user: user),
         result: order.result && result(order.result, view: view, user: user)
       }
@@ -39,6 +40,11 @@ module Exams
         body[:superseded_results] = superseded_results(order, view: view, user: user) if clinical
       end
       body
+    end
+
+    # A31: no máximo um escalonamento por motivo, na ordem em que ocorreram.
+    def escalation_reasons(order)
+      order.events.select { |e| e.kind == "escalated" }.sort_by(&:occurred_at).map(&:escalation_reason)
     end
 
     def result_fields(order)

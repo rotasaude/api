@@ -280,6 +280,21 @@
     "escalated": {
       "type": "boolean"
     },
+    "escalation_reasons": {
+      "description": "B63: motivos gravados do escalonamento (A31), um por motivo, na ordem em que ocorreram; só na visão clínica. Escalonamento é permanente: um exame escalado por critical continua com critical mesmo se a retificação tornar normal o resultado vigente.",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "enum": [
+          "overdue",
+          "critical",
+          "unlinked_requester"
+        ]
+      },
+      "uniqueItems": true
+    },
     "guide_url": {
       "type": [
         "string",
