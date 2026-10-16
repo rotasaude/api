@@ -40,7 +40,7 @@ RSpec.describe ExamCrew do
     expect(ExamProvider.where(simulated: false).count).to eq(2)
     lab = User.find_by!(email_address: "laboratorio@#{slug}.demo")
     expect(lab.has_role?("exam_provider")).to be(true)
-    expect(ExamProviderUser.find_by(user: lab).exam_provider.name).to eq("Laboratório Municipal Central")
+    expect(ExamProviderUser.find_by(user: lab).exam_provider.name).to eq("Clínica Diagnóstica Credenciada")
     expect(User.find_by!(email_address: "regulacao@#{slug}.demo").has_role?("exam_regulator")).to be(true)
     expect(ExamOrder.where("external_reference LIKE 'SEED-%'").pluck(:status)).to contain_exactly("scheduled", "awaiting_authorization", "scheduled")
     expect(ExamOrder.find_by(external_reference: "SEED-3").overdue).to include(stage: "collect")

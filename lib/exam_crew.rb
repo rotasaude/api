@@ -41,7 +41,7 @@ class ExamCrew
   ].freeze
   TEAM_NURSE = "enfermeira"
   USERS = [
-    { prefix: "laboratorio", role: "exam_provider", provider: "Laboratório Municipal Central",
+    { prefix: "laboratorio", role: "exam_provider", provider: "Clínica Diagnóstica Credenciada",
       secret_env: "DEV_LAB_OTP_SECRET", default_secret: "NRQWE33SMF2G64TJN4WXE33UMEWXGYLV" },
     { prefix: "regulacao", role: "exam_regulator", provider: nil,
       secret_env: "DEV_REGULATOR_OTP_SECRET", default_secret: "OJSWO5LMMFRWC3ZNOJXXIYJNONQXKZDF" }
@@ -135,7 +135,11 @@ class ExamCrew
       user.save!
       Membership.find_or_create_by!(user: user, role: spec[:role], revoked_at: nil) { |m| m.granted_at = Time.current }
       if spec[:provider]
-        ExamProviderUser.find_or_create_by!(user: user) { |pu| pu.exam_provider = ExamProvider.find_by!(name: spec[:provider]) }
+        # O portal do 21a é de prestador externo (E18): o laboratório municipal é
+        # do 21b e usa a bancada, não o portal. Move quem já estava no municipal.
+        link = ExamProviderUser.find_or_initialize_by(user: user)
+        provider = ExamProvider.find_by!(name: spec[:provider])
+        link.update!(exam_provider: provider) unless link.exam_provider_id == provider.id
       end
       SignatureCrew.ensure_totp(user, secret_env: spec[:secret_env], default_secret: spec[:default_secret])
       { email: user.email_address, role: spec[:role], otpauth_uri: SignatureCrew.otpauth_uri(user) }

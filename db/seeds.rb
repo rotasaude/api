@@ -48,6 +48,7 @@ else
   require Rails.root.join("lib/controlled_prescriptions_crew").to_s
   require Rails.root.join("lib/timeline_crew").to_s
   require Rails.root.join("lib/exam_crew").to_s
+  require Rails.root.join("lib/lab_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -86,6 +87,10 @@ else
   # recorte e não os tem; uma SIGTAP real ativa nunca é tocada (só avisa no log).
   exams_sigtap = ExamCrew.seed_platform!
   puts "[seeds] SIGTAP exames . #{exams_sigtap[:sigtap]} #{{ republished: 'republicada (recorte de dev)', real_sigtap: 'SIGTAP real ativa; exames do 21a não verificados', complete: 'já completa' }.fetch(exams_sigtap[:status])}"
+
+  # Catálogo-base do laboratório (módulo 21b, ADR 0037).
+  lab_templates = LabCrew.seed_platform!
+  puts "[seeds] catálogo-base laboratório . #{lab_templates[:created]} exames novos; fora da SIGTAP: #{lab_templates[:skipped].join(', ').presence || 'nenhum'}"
 
   ciap2 = ScreeningCrew.seed_platform!
   puts "[seeds] CIAP-2 ....... #{ciap2[:ciap2]} #{ciap2[:imported] ? 'importada (recorte de dev)' : 'já ativa'}"
@@ -290,6 +295,12 @@ else
         exams = ExamCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
         puts "[seeds] exames ...... #{exams[:switch]}; #{exams[:orders]} guias novas#{"; equipe #{exams[:team]}" if exams[:team]}"
         Array(exams[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
+
+        # ── Laboratório municipal (módulo 21b, ADR 0037) ──────────────────────
+        # Depois do ExamCrew (o prestador) e do ProfessionalCrew (as UBS).
+        lab = LabCrew.seed_current_city(slug: slug, password: password, admin: muni_admin)
+        puts "[seeds] laboratório .. #{lab[:switch]}; #{lab[:exams]} exames adotados"
+        Array(lab[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
