@@ -261,8 +261,11 @@ class AddMunicipalLab < ActiveRecord::Migration[8.1]
     end
     add_index :lab_report_items, %i[lab_report_id lab_requisition_item_id], unique: true, name: "idx_lab_report_items_pair"
 
+    # Fila de críticos sem aviso (B52): só as linhas críticas, poucas.
+    add_index :lab_results, :lab_requisition_item_id, where: "flag::text = ANY (ARRAY['critical_low'::text, 'critical_high'::text])", name: "idx_lab_results_critical"
+
     create_table :lab_critical_notices, id: :uuid do |t|
-      t.references :lab_result, type: :uuid, null: false, foreign_key: true, index: true
+      t.references :lab_result, type: :uuid, null: false, foreign_key: true, index: { unique: true }
       t.text :notified_person, null: false
       t.string :notified_role, limit: 60, null: false
       t.string :channel, null: false

@@ -1030,7 +1030,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
     t.text "notified_person", null: false
     t.string "notified_role", limit: 60, null: false
     t.uuid "recorded_by_user_id", null: false
-    t.index ["lab_result_id"], name: "index_lab_critical_notices_on_lab_result_id"
+    t.index ["lab_result_id"], name: "index_lab_critical_notices_on_lab_result_id", unique: true
     t.check_constraint "channel::text = ANY (ARRAY['telefone'::text, 'presencial'::text, 'sistema'::text])", name: "ck_lab_critical_notices_channel"
   end
 
@@ -1212,6 +1212,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
     t.string "unit", limit: 30
     t.text "value", null: false
     t.index ["lab_hl7_receipt_id"], name: "index_lab_results_on_lab_hl7_receipt_id"
+    t.index ["lab_requisition_item_id"], name: "idx_lab_results_critical", where: "flag::text = ANY (ARRAY['critical_low'::text, 'critical_high'::text])"
     t.index ["lab_requisition_item_id", "analyte_key", "created_at"], name: "idx_lab_results_item_analyte"
     t.check_constraint "chosen = (chosen_from_id IS NOT NULL)", name: "ck_lab_results_choice"
     t.check_constraint "entered_by_user_id IS NOT NULL OR lab_hl7_receipt_id IS NOT NULL", name: "ck_lab_results_actor"

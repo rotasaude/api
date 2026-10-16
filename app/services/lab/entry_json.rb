@@ -50,6 +50,7 @@ module Lab
     end
 
     # Ids das linhas avisadas: com aviso próprio ou numa linha de origem.
+    # A fila de críticos repete esta regra em SQL (Lab::Criticals::UNNOTIFIED): mexa nas duas juntas.
     def notified_ids(rows)
       noticed = LabCriticalNotice.where(lab_result_id: rows.map(&:id)).distinct.pluck(:lab_result_id).to_set
       by_id = rows.index_by(&:id)

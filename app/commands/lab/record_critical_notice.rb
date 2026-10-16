@@ -1,6 +1,8 @@
 # Registro da comunicação do valor crítico (spec §5.7; RDC 978 art. 154, III
 # e 165): quem foi avisado, papel, canal, quando; quem registrou. Antes ou
 # depois da liberação. Nome de quem foi avisado cifrado; evento só com ids.
+# notified_at: entre o recebimento da amostra (ou coleta) e agora + 1 min — o
+# aviso pode vir antes da digitação ou da escolha da cópia.
 # Um aviso por resultado: o segundo é `conflict` (409), sem duplicar a história.
 module Lab
   module RecordCriticalNotice
@@ -19,8 +21,10 @@ module Lab
       person = notified_person.is_a?(String) ? notified_person.strip : ""
       role = notified_role.is_a?(String) ? notified_role.strip : ""
       at = (Time.iso8601(notified_at.to_s) rescue nil)
+      sample = result.lab_requisition_item.lab_sample
+      floor = sample.received_at || sample.collected_at
       valid = person.length.between?(1, PERSON_MAX) && role.length.between?(1, ROLE_MAX) && LabCriticalNotice::CHANNELS.include?(channel) &&
-              at && at <= now + FUTURE_TOLERANCE && at.to_i >= result.entered_at.to_i
+              at && at <= now + FUTURE_TOLERANCE && (floor.nil? || at.to_i >= floor.to_i)
       return Result.fail(:invalid_notice) unless valid
 
       ApplicationRecord.transaction do
@@ -32,6 +36,8 @@ module Lab
         DomainEvents.publish("lab_critical.notified", lab_critical_notice_id: notice.id, lab_result_id: result.id)
         Result.ok(notice: notice)
       end
+    rescue ActiveRecord::RecordNotUnique
+      Result.fail(:conflict)
     end
   end
 end
