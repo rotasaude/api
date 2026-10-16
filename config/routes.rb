@@ -325,6 +325,7 @@ Rails.application.routes.draw do
     get  "releases/:id",                 to: "releases#show"
     post "requisitions/:id/release",     to: "releases#create"
     get  "reports/:id/pdf",              to: "reports#pdf", format: false
+    post "reports/:id/rectify",          to: "reports#rectify"
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"
       get   "exams",                     to: "exams#index"

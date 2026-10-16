@@ -15,6 +15,8 @@ module Exams
       "collected" => { from: %w[scheduled], to: "collected" },
       "resulted" => { from: %w[scheduled collected], to: "resulted" },
       "acknowledged" => { from: %w[resulted], to: "acknowledged" },
+      # ADR 0037: laudo retificado volta à ciência.
+      "result_rectified" => { from: %w[resulted acknowledged], to: "resulted" },
       "cancelled" => { from: %w[awaiting_authorization awaiting_schedule scheduled collected], to: "cancelled" }
     }.freeze
     NEXT_STAGE = { "awaiting_authorization" => "authorize", "awaiting_schedule" => "schedule", "scheduled" => "collect",

@@ -20,7 +20,9 @@ class ExamOrder < ApplicationRecord
   # Sem `dependent:`: o pedido nunca some, e quem recusa o DELETE é o banco
   # (exam_orders_guard), não um callback que o update_all/delete_all pularia.
   has_many :events, -> { order(:occurred_at, :created_at, :id) }, class_name: "ExamOrderEvent", inverse_of: :exam_order
-  has_one :result, class_name: "ExamResult", inverse_of: :exam_order
+  # ADR 0037 (B8): `result` é o vigente (o não substituído); `results`, todos.
+  has_one :result, -> { current }, class_name: "ExamResult", inverse_of: :exam_order
+  has_many :results, -> { order(:created_at, :id) }, class_name: "ExamResult", inverse_of: :exam_order
   has_one :lab_item, class_name: "LabRequisitionItem", inverse_of: :exam_order
 
   def catalog_item = ExamCatalogItem.find_by(sigtap_code: sigtap_code)

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rota-saude/schemas/exams/exam-order-v1.json",
   "title": "rotasaude.exam_order.v1",
-  "description": "O exame como o api devolve ao dashboard (ADR 0036; contrato §2). Duas visões: clínica (result com valores, crítico e PDF) e administrativa (result reduzido; requester.cns sempre nulo; cid10_justification nulo, salvo para o regulador, A42). events e result_fields só no detalhe (GET /exams/orders/:id).",
+  "description": "O exame como o api devolve ao dashboard (ADR 0036; contrato §2). Duas visões: clínica (result com valores, crítico e PDF) e administrativa (result reduzido; requester.cns sempre nulo; cid10_justification nulo, salvo para o regulador, A42). events e result_fields só no detalhe (GET /exams/orders/:id). v1.1 (ADR 0037): origem lab_reception, fonte lab, gal_requisition, substituição do resultado (replaces_result_id, superseded_results, superseded_at) e evento result_rectified. Todos os campos novos da v1.1 são opcionais no esquema (B24, MINOR); o api sempre envia as chaves.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -86,7 +86,8 @@
       "enum": [
         "consultation",
         "reception_guide",
-        "pec"
+        "pec",
+        "lab_reception"
       ]
     },
     "consultation_id": {
@@ -225,6 +226,14 @@
       ],
       "maxLength": 60
     },
+    "gal_requisition": {
+      "description": "Número da requisição no GAL (Gerenciador de Ambiente Laboratorial), registrado pelo laboratório (POST /exams/orders/:id/gal_requisition); null quando não registrado. v1.1, opcional no esquema (B24): o api sempre envia a chave; documento v1.0 sem ela continua válido.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 30
+    },
     "status": {
       "enum": [
         "awaiting_authorization",
@@ -290,6 +299,13 @@
           "$ref": "#/$defs/result_administrative"
         }
       ]
+    },
+    "superseded_results": {
+      "description": "Resultados substituídos por retificação (ADR 0037, B8), do mais novo ao mais antigo. v1.1, opcional (B24): só na visão clínica do detalhe (com events). Nunca ao cidadão.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/result_clinical"
+      }
     },
     "events": {
       "type": "array",
@@ -361,7 +377,8 @@
             "unit",
             "provider",
             "fhir",
-            "consultation"
+            "consultation",
+            "lab"
           ]
         },
         "released_on": {
@@ -401,7 +418,8 @@
             "unit",
             "provider",
             "fhir",
-            "consultation"
+            "consultation",
+            "lab"
           ]
         },
         "released_on": {
@@ -466,6 +484,28 @@
               "type": "null"
             }
           ]
+        },
+        "replaces_result_id": {
+          "description": "Resultado que este substitui (retificação, B8); opcional.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "superseded_at": {
+          "description": "Quando foi substituído (= criação do resultado que o substituiu); só nos itens de superseded_results; opcional.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/instant"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -489,7 +529,8 @@
             "resulted",
             "acknowledged",
             "escalated",
-            "cancelled"
+            "cancelled",
+            "result_rectified"
           ]
         },
         "occurred_at": {
