@@ -16,13 +16,19 @@ RSpec.describe "Laboratório — valores críticos", type: :request do
   let(:critical) { item.results.last }
 
   # Laudo liberado cobrindo o item (Task 17 ainda não existe: gravado direto).
-  def release!(item, at: Time.current, replaces: nil)
+  def release!(item, at: Time.current, replaces: nil, sign: true)
     report = LabReport.create!(lab_requisition: item.lab_requisition, exam_provider: provider, status: "pending_signature",
                                version: (item.lab_requisition.reports.maximum(:version) || 0) + 1, partial: false,
                                signature_kind: "icp", released_by_user: releaser, content: "{}", content_sha256: "a" * 64,
                                verification_token: ClinicalDocuments::Codes.token, short_code: ClinicalDocuments::Codes.short_code,
                                replaces_report: replaces, rectification_reason: replaces && "erro de digitação")
     LabReportItem.create!(lab_report: report, lab_requisition_item: item)
+    return report unless sign
+
+    sign!(report, item, replaces: replaces, at: at)
+  end
+
+  def sign!(report, item, replaces:, at: Time.current)
     replaces&.update!(status: "rectified")
     file = pdf_file!(user: releaser).tap { |f| f.update!(consumed_at: Time.current) }
     report.update!(status: "released", released_at: at, pdf_file_id: file.id, pdf_sha256: "b" * 64)
@@ -157,12 +163,40 @@ RSpec.describe "Laboratório — valores críticos", type: :request do
     expect(count).to eq(0)
   end
 
-  it "retificação para valor normal tira o crítico da fila só ao liberar" do
-    first = release!(item)
+  it "usa a linha congelada no laudo, não a digitada entre a criação e a assinatura (N1)" do
+    crit = critical
+    report = release!(item, sign: false)
+    type!(req.items.first, { glicose: "90" }) # depois do congelamento, antes da assinatura
+    sign!(report, req.items.first.reload, replaces: nil)
     sign_in_as(releaser)
+    get "/lab/criticals/unnotified"
+    expect(json_body["criticals"].sole["result_id"]).to eq(crit.id)
+  end
+
+  it "o 409 dentro de transação externa não aborta a de fora (N3)" do
+    crit = critical
+    LabCriticalNotice.create!(lab_result: crit, notified_person: "A", notified_role: "R", channel: "sistema", notified_at: Time.current,
+                              recorded_by_user: releaser, created_at: Time.current)
+    ApplicationRecord.transaction do
+      allow(LabCriticalNotice).to receive(:exists?).and_return(false) # força o índice único a decidir
+      result = Lab::RecordCriticalNotice.call(result_id: crit.id, notified_person: "B", notified_role: "R", channel: "sistema",
+                                              notified_at: Time.current.iso8601, by: releaser)
+      expect(result.reason).to eq(:conflict)
+      expect(LabCriticalNotice.count).to eq(1) # a transação de fora segue usável
+    end
+  end
+
+  it "retificar para valor normal não tira o crítico liberado: segue na fila e no contador até ter aviso (B53)" do
+    crit = critical
+    first = release!(item)
     type!(req.items.first, { glicose: "90" })
-    expect(count).to eq(1)
     release!(req.items.first.reload, replaces: first)
+    sign_in_as(releaser)
+    expect(count).to eq(1)
+    get "/lab/criticals/unnotified"
+    expect(json_body["criticals"].sole["result_id"]).to eq(crit.id) # uma vez, mesmo coberta por vários laudos
+    json_post "/lab/criticals", notice(crit)
+    expect(response).to have_http_status(:created)
     expect(count).to eq(0)
   end
 

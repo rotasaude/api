@@ -27,7 +27,7 @@ module Lab
               at && at <= now + FUTURE_TOLERANCE && (floor.nil? || at.to_i >= floor.to_i)
       return Result.fail(:invalid_notice) unless valid
 
-      ApplicationRecord.transaction do
+      ApplicationRecord.transaction(requires_new: true) do
         result.lock!
         next Result.fail(:conflict) if LabCriticalNotice.exists?(lab_result_id: result.id)
 
@@ -37,7 +37,7 @@ module Lab
         Result.ok(notice: notice)
       end
     rescue ActiveRecord::RecordNotUnique
-      Result.fail(:conflict)
+      Result.fail(:conflict) # savepoint desfeito: a transação de fora segue viva
     end
   end
 end
