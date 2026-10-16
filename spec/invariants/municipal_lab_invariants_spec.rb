@@ -23,8 +23,9 @@ RSpec.describe "Invariantes do laboratório municipal (ADR 0037)", type: :reques
     report = release!(item).payload[:report]
     expect(report.status).to eq("released")
     payloads = DomainEvent.where("name LIKE 'lab_%' OR name LIKE 'exam_order.%'").pluck(:payload).to_json
-    [ "123", req.patient.cpf, req.mother_name, req.samples.first.barcode ].each { |secret| expect(payloads).not_to include(secret) }
-    expect(log).not_to include("123", req.samples.first.barcode)
+    [ "\"123\"", req.patient.cpf, req.mother_name, req.samples.first.barcode ].each { |secret| expect(payloads).not_to include(secret) }
+    # Valor buscado como trecho do OBX e como string JSON: "123" solto casa com UUIDs e tempos do log.
+    expect(log).not_to include("|123|mg/dL", "OBX|", req.samples.first.barcode)
   end
 
   it "médico só com ICP; um exame num item só; nenhum middleware simulado em produção" do
