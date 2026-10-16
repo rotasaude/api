@@ -15,6 +15,11 @@ module Lab
         item.lock!
         next Result.fail(:invalid_transition, details: { status: item.status }) unless EnterResults::OPEN.include?(item.status)
 
+        # Calculado é função dos insumos que valem, não uma medida repetida.
+        if item.lab_exam_version.analyte(result.analyte_key)&.dig("formula").present?
+          next Result.fail(:unknown_analyte, details: { analyte_key: result.analyte_key })
+        end
+
         last = item.results.where(analyte_key: result.analyte_key).maximum(:created_at)
         at = now.round(6)
         at = last + Rational(1, 1_000_000) if last && at <= last
@@ -24,6 +29,8 @@ module Lab
         EnterResults.recalculate!(item, source: result.source, by: by, receipt: result.lab_hl7_receipt, now: now)
         Result.ok(result: copy)
       end
+    rescue EnterResults::Incomputable => e
+      Result.fail(:invalid_values, details: { analyte_key: e.analyte_key })
     end
   end
 end

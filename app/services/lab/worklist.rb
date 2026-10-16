@@ -14,7 +14,7 @@ module Lab
       scope = scope.where(lab_exams: { bench: filters[:bench] }) if filters[:bench]
       scope = scope.where(lab_requisitions: { urgent: true }) if filters[:urgent]
       scope = scope.where(lab_samples: { received_at: filters[:date].in_time_zone.all_day }) if filters[:date]
-      scope.order("lab_requisitions.urgent DESC, lab_samples.received_at ASC").limit(500).to_a
+      scope.order("lab_requisitions.urgent DESC, lab_samples.received_at ASC").limit(500) # corte silencioso (Ciclo 1): o dashboard filtra por setor/bancada/data.to_a
            .group_by { |i| [ i.lab_exam_version.lab_exam.sector, i.lab_exam_version.lab_exam.bench ] }
            .sort_by { |(sector, bench), _| [ sector, bench.to_s ] }
            .map do |(sector, bench), items|

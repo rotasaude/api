@@ -1,6 +1,7 @@
 module Lab
   class WorklistsController < BaseController
     before_action :provider_param!
+    before_action :lab_member!
     before_action :load_filters
 
     def show = render(json: { groups: Lab::Worklist.groups(provider: @provider, filters: @filters) })
@@ -12,6 +13,9 @@ module Lab
     end
 
     private
+
+    # Tem nome de paciente: só a equipe daquele laboratório (não admin, não UBS).
+    def lab_member! = (forbid unless Lab::Access.member?(Current.user, @provider.id))
 
     def load_filters
       date = params[:date].present? ? (Date.iso8601(params[:date].to_s) rescue :invalid) : nil

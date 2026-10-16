@@ -46,7 +46,7 @@ module Lab
       bounds = [ range["low"], range["high"] ]
       # Casas do componente; sem elas, as da faixa (12,0 a 15,5).
       decimals = analyte["decimals"] || bounds.compact.map { |n| (n % 1).zero? ? 0 : n.to_s.split(".").last.size }.max.to_i
-      low, high = bounds.map { |n| n && format("%.#{decimals}f", n).tr(".", ",") }
+      low, high = bounds.map { |n| n && Values.fixed(BigDecimal(n.to_s), decimals).tr(".", ",") }
       if low && high then "#{low} a #{high}#{unit}"
       elsif high then "até #{high}#{unit}"
       elsif low then "a partir de #{low}#{unit}"

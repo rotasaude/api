@@ -12,6 +12,17 @@ module Lab
     # da digitação. A Task 13 restringe no Hl7::Inbound; aqui fica como o plano.
     OPEN = %w[pending typed released].freeze
 
+    # Um calculado que já valia ficaria velho se um insumo o tornasse
+    # incalculável (divisão por zero, insumo não numérico): a entrada é recusada.
+    Incomputable = Class.new(StandardError) do
+      attr_reader :analyte_key
+
+      def initialize(analyte_key)
+        @analyte_key = analyte_key
+        super("incomputable")
+      end
+    end
+
     module_function
 
     def call(item:, values:, source: "typed", by: nil, receipt: nil, now: Time.current)
@@ -52,6 +63,8 @@ module Lab
         result = Result.ok(results: rows)
       end
       result
+    rescue Incomputable => e
+      Result.fail(:invalid_values, details: { analyte_key: e.analyte_key })
     end
 
     def context(item)
@@ -68,17 +81,22 @@ module Lab
       numbers = effective.transform_values { |row| row.value.match?(Values::NUMBER) ? BigDecimal(row.value.tr(",", ".")) : nil }.compact
       allowed = version.analytes.select { |a| a["value_type"] == "numeric" && a["formula"].nil? }.map { |a| a["key"] }
       created = version.calculated_analytes.filter_map do |analyte|
+        current = effective[analyte["key"]]
         number = Formula.evaluate(Formula.compile(analyte["formula"], allowed: allowed), values: numbers)
-        next unless number
+        unless number
+          raise Incomputable, analyte["key"] if current
+          next
+        end
 
         value = number.round(analyte["decimals"].to_i, BigDecimal::ROUND_HALF_UP)
-        current = effective[analyte["key"]]
         next if current && BigDecimal(current.value.tr(",", ".")) == value
 
         text = Values.normalize(analyte.merge("entry_min" => nil, "entry_max" => nil), value.to_s("F")).payload
         create_row(item, analyte, text, ctx, source, by, receipt, now)
       end
-      item.update!(status: "typed") if item.status == "pending" && Effective.complete?(item.reload)
+      # Linhas novas valem já na resposta: a associação não pode ficar velha.
+      item.results.reset
+      item.update!(status: "typed") if item.status == "pending" && Effective.complete?(item)
       RequisitionStatus.refresh!(item.lab_requisition)
       created
     end

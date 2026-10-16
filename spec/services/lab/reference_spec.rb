@@ -36,5 +36,7 @@ RSpec.describe Lab::Reference do
     only_adult = analyte.merge("reference_ranges" => [ analyte["reference_ranges"][1] ])
     expect(described_class.range_for(only_adult, sex: "female", age_days: nil)).to be_nil
     expect(described_class.flag(only_adult, BigDecimal("10"), sex: "female", age_days: nil)).to eq("normal")
+    # crítico vale mesmo sem faixa aplicável (1 < critical_low 7)
+    expect(described_class.flag(only_adult, BigDecimal("1"), sex: "female", age_days: nil)).to eq("critical_low")
   end
 end

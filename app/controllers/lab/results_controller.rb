@@ -24,6 +24,9 @@ module Lab
     end
 
     def create
+      # B16: por etiqueta, o sigtap_code é obrigatório.
+      return render_failure(Result.fail(:invalid_values)) if !uuid?(params[:item_id]) && !params[:sigtap_code].is_a?(String)
+
       item = find_item
       return not_found unless item
       return forbid unless Lab::Access.member?(Current.user, item.lab_requisition.exam_provider_id)
@@ -45,7 +48,12 @@ module Lab
       result = Lab::ChooseResult.call(result: row, by: Current.user)
       return render_failure(result) if result.failure?
 
-      render json: Lab::EntryJson.result_row(result.payload[:result]), status: :created
+      # Linhas recarregadas: `effective` e `notified` nunca saem de cache velho.
+      copy = result.payload[:result]
+      item = copy.lab_requisition_item
+      rows = item.results.reload.to_a
+      body = Lab::EntryJson.result_row(rows.find { |r| r.id == copy.id }, item.lab_exam_version, Lab::EntryJson.notified_ids(rows), Lab::Effective.ids(item))
+      render json: body, status: :created
     end
 
     private
