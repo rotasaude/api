@@ -321,6 +321,10 @@ Rails.application.routes.draw do
     get  "criticals/unnotified/count",   to: "criticals#count"
     get  "criticals/unnotified",         to: "criticals#index"
     post "criticals",                    to: "criticals#create"
+    get  "releases",                     to: "releases#index"
+    get  "releases/:id",                 to: "releases#show"
+    post "requisitions/:id/release",     to: "releases#create"
+    get  "reports/:id/pdf",              to: "reports#pdf", format: false
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"
       get   "exams",                     to: "exams#index"

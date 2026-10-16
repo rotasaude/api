@@ -166,7 +166,12 @@ RSpec.describe "Laboratório — valores críticos", type: :request do
   it "usa a linha congelada no laudo, não a digitada entre a criação e a assinatura (N1)" do
     crit = critical
     report = release!(item, sign: false)
-    type!(req.items.first, { glicose: "90" }) # depois do congelamento, antes da assinatura
+    # B54 (Task 17): a digitação já recusa item de laudo à espera da assinatura;
+    # a linha posterior ao congelamento é gravada direto (defesa da fila).
+    values = [ { "analyte_key" => "glicose", "value" => "90" } ]
+    expect(Lab::EnterResults.call(item: req.items.first, values: values, by: lab_staff!).reason).to eq(:item_frozen)
+    LabResult.create!(lab_requisition_item: item, analyte_key: "glicose", value: "90", unit: "mg/dL", flag: "normal", source: "typed",
+                      entered_by_user: lab_staff!, entered_at: Time.current, created_at: report.created_at + 1.second)
     sign!(report, req.items.first.reload, replaces: nil)
     sign_in_as(releaser)
     get "/lab/criticals/unnotified"

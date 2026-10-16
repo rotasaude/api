@@ -95,6 +95,24 @@ RSpec.describe "Banco do laboratório municipal" do
       end
     end
 
+    # Notas #5 (Tasks 17/18): toque sem mudar a situação é recusado; withdrawn
+    # nunca ganha liberação nem PDF; released nasce com os três.
+    it "pending_signature: toque recusado; withdrawn sem liberação nem PDF; released com data, PDF e hash" do
+      report = report!(1)
+      expect { report.touch }.to raise_error(ActiveRecord::StatementInvalid, /refused/)
+      report.reload
+      file = pdf_file!(user: releaser).tap { |f| f.update!(consumed_at: Time.current) }
+      expect { report.update!(status: "withdrawn", released_at: Time.current) }.to raise_error(ActiveRecord::StatementInvalid, /refused/)
+      report.reload
+      expect { report.update!(status: "withdrawn", pdf_file_id: file.id, pdf_sha256: "b" * 64) }
+        .to raise_error(ActiveRecord::StatementInvalid, /refused/)
+      report.reload
+      expect { report.update!(status: "released", released_at: Time.current) }.to raise_error(ActiveRecord::StatementInvalid, /refused/)
+      report.reload
+      report.update!(status: "withdrawn")
+      expect(report.reload).to have_attributes(status: "withdrawn", released_at: nil, pdf_file_id: nil, pdf_sha256: nil)
+    end
+
     it "released → rectified não troca o PDF" do
       report = report!(1)
       release!(report)

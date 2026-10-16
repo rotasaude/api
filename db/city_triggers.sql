@@ -1690,7 +1690,14 @@ BEGIN
   IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
     RAISE EXCEPTION 'lab_reports: a report never changes (only its status moves forward)';
   END IF;
-  IF OLD.status = 'pending_signature' AND NEW.status IN ('released', 'withdrawn') THEN
+  -- Notas #5: liberar grava data, PDF e hash juntos; devolver (withdrawn)
+  -- nunca ganha liberação nem PDF; toque sem mudar a situação cai no RAISE.
+  IF OLD.status = 'pending_signature' AND NEW.status = 'released'
+     AND NEW.released_at IS NOT NULL AND NEW.pdf_file_id IS NOT NULL AND NEW.pdf_sha256 IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.status = 'pending_signature' AND NEW.status = 'withdrawn'
+     AND NEW.released_at IS NULL AND NEW.pdf_file_id IS NULL AND NEW.pdf_sha256 IS NULL THEN
     RETURN NEW;
   END IF;
   IF OLD.status = 'released' AND NEW.status = 'rectified'

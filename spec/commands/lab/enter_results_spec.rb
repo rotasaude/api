@@ -91,4 +91,20 @@ RSpec.describe Lab::EnterResults do
     expect(described_class.call(item: item, values: [ { "analyte_key" => "ct", "value" => "1234567890123456" } ], by: staff).reason).to eq(:invalid_value)
     expect(described_class.call(item: item, values: [ { "analyte_key" => "ct", "value" => "123456789012345" } ], by: staff)).to be_ok
   end
+  # B54: o laudo ICP congela o conteúdo na criação; enquanto espera a
+  # assinatura, o item não recebe valor nem escolha (nem pela HL7).
+  it "item coberto por laudo pending_signature: entrada e escolha recusadas (item_frozen)" do
+    item = type!(received_requisition!(provider: provider, exams: [ glucose ]).items.first, { glicose: "98" })
+    releaser = lab_releaser!(provider, lead: true)
+    report = LabReport.create!(lab_requisition: item.lab_requisition, exam_provider: provider, version: 1, partial: false,
+                               status: "pending_signature", signature_kind: "icp", released_by_user: releaser, content: "{}",
+                               content_sha256: "a" * 64, verification_token: ClinicalDocuments::Codes.token,
+                               short_code: ClinicalDocuments::Codes.short_code)
+    LabReportItem.create!(lab_report: report, lab_requisition_item: item)
+    expect(described_class.call(item: item, values: [ { "analyte_key" => "glicose", "value" => "120" } ], by: staff).reason).to eq(:item_frozen)
+    expect(Lab::ChooseResult.call(result: item.results.first, by: releaser).reason).to eq(:item_frozen)
+    expect(item.results.reload.count).to eq(1)
+    report.update!(status: "withdrawn")
+    expect(described_class.call(item: item, values: [ { "analyte_key" => "glicose", "value" => "120" } ], by: staff)).to be_ok
+  end
 end

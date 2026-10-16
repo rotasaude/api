@@ -152,7 +152,8 @@ module Lab
         def apply(step, item)
           order = step[:order]
           where = "OBR^#{order.index}^4"
-          return @errors << error("item_not_open", where) unless OPEN_STATUSES.include?(item.status)
+          # B54: item de laudo ICP à espera da assinatura também está fechado.
+          return @errors << error("item_not_open", where) unless OPEN_STATUSES.include?(item.status) && !Frozen.item?(item)
 
           entries, found = check(order, item.lab_exam_version)
           @errors.concat(found)
@@ -195,7 +196,7 @@ module Lab
           index = entries.find { |e| e["analyte_key"] == entered.details&.dig(:analyte_key) }&.fetch("_index") || entries.last["_index"]
           return error(reason, "OBX^#{index}^#{reason == 'unknown_analyte' ? 3 : 5}") if %w[out_of_entry_range invalid_value unknown_analyte].include?(reason)
           return error("invalid_value", "OBX^#{index}^5") if reason == "invalid_values"
-          return error("item_not_open", "OBR^#{order.index}^4") if reason == "invalid_transition"
+          return error("item_not_open", "OBR^#{order.index}^4") if %w[invalid_transition item_frozen].include?(reason)
           return error("sample_not_received", "OBR^#{order.index}^4") if reason == "sample_not_received"
 
           error("invalid_message", "OBR^#{order.index}^1")

@@ -34,11 +34,13 @@ module Lab
     end
 
     # pdf_url (A4 do 21a) só para quem é do laboratório e só com PDF.
+    # item_ids (B42): os itens da requisição que o laudo cobre (lab_report_items).
     def report_summary(report, viewer:)
       url = report.pdf_file && Access.member?(viewer, report.exam_provider_id) ? Exams::Files.url_for(report.pdf_file, user: viewer) : nil
       { id: report.id, version: report.version, partial: report.partial, status: report.status, signature_kind: report.signature_kind,
         released_at: report.released_at&.iso8601, released_by: Screenings::Json.staff_name(report.released_by_user),
-        short_code: report.released_at ? report.short_code : nil, pdf_url: url, replaces_report_id: report.replaces_report_id }
+        short_code: report.released_at ? report.short_code : nil, pdf_url: url, replaces_report_id: report.replaces_report_id,
+        item_ids: report.report_items.map(&:lab_requisition_item_id).sort }
     end
   end
 end

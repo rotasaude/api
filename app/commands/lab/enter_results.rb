@@ -39,6 +39,8 @@ module Lab
         item.lab_requisition.lock!
         item.lock!
         next result = Result.fail(:invalid_transition, details: { status: item.status }) unless OPEN.include?(item.status)
+        # B54: o laudo ICP à espera da assinatura já tem o valor congelado.
+        next result = Result.fail(:item_frozen) if Frozen.item?(item)
         next result = Result.fail(:sample_not_received) unless item.lab_sample.accepted?
 
         version = item.lab_exam_version

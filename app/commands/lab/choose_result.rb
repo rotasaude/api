@@ -14,6 +14,7 @@ module Lab
         item.lab_requisition.lock!
         item.lock!
         next Result.fail(:invalid_transition, details: { status: item.status }) unless EnterResults::OPEN.include?(item.status)
+        next Result.fail(:item_frozen) if Frozen.item?(item) # B54
 
         # Calculado é função dos insumos que valem, não uma medida repetida.
         if item.lab_exam_version.analyte(result.analyte_key)&.dig("formula").present?

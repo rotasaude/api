@@ -110,6 +110,18 @@ RSpec.describe "HL7 v2 — entrada do middleware", type: :request do
     expect([ LabResult.count, LabHl7Receipt.count ]).to eq([ 0, 0 ])
   end
 
+  it "B54: item de laudo ICP à espera da assinatura não aceita resultado pela HL7 (item_not_open)" do
+    item = type!(req.items.first, { glicose: 98 })
+    report = LabReport.create!(lab_requisition: req, exam_provider: provider, version: 1, partial: false, status: "pending_signature",
+                               signature_kind: "icp", released_by_user: lab_releaser!(provider, council: "CRM"), content: "{}",
+                               content_sha256: "a" * 64, verification_token: ClinicalDocuments::Codes.token,
+                               short_code: ClinicalDocuments::Codes.short_code)
+    LabReportItem.create!(lab_report: report, lab_requisition_item: item)
+    hl7_post(oul(barcode: barcode), token: token)
+    expect([ msa, err5 ]).to eq([ "AE", "item_not_open" ])
+    expect([ LabResult.count, LabHl7Receipt.count ]).to eq([ 1, 0 ])
+  end
+
   it "E6: item liberado ou cancelado não aceita resultado pela HL7 (item_not_open)" do
     item = req.items.first
     type!(item, { glicose: 98 })
