@@ -113,6 +113,35 @@ RSpec.describe "Laboratório — admin do catálogo", type: :request do
     expect(creat.reload).to have_attributes(delivery_days: 3, active: true)
   end
 
+  it "B45: prestador marcado exige endereço e telefone (resultado final do registro)" do
+    stepped_up!(admin)
+    lab = exam_provider!(name: "Lab B45", items: [])
+    json_patch "/exams/admin/providers/#{lab.id}", uses_municipal_lab: true, phone: "4133334444"
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_address" ])
+    json_patch "/exams/admin/providers/#{lab.id}", uses_municipal_lab: true, address: "Rua A, 1"
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_phone" ])
+    json_patch "/exams/admin/providers/#{lab.id}", uses_municipal_lab: true
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_address" ])
+    expect(lab.reload.uses_municipal_lab).to be(false)
+    json_patch "/exams/admin/providers/#{lab.id}", uses_municipal_lab: true, address: "Rua A, 1", phone: "4133334444"
+    expect(response).to have_http_status(:ok)
+    json_patch "/exams/admin/providers/#{lab.id}", phone: nil
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_phone" ])
+    json_patch "/exams/admin/providers/#{lab.id}", address: nil
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_address" ])
+    expect(lab.reload).to have_attributes(phone: "4133334444", address: "Rua A, 1")
+    json_patch "/exams/admin/providers/#{lab.id}", uses_municipal_lab: false, phone: nil, address: nil
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "B45: prestador sem a marca não precisa de endereço nem telefone" do
+    stepped_up!(admin)
+    json_post "/exams/admin/providers", name: "Sem marca", kind: "municipal", active: true, items: []
+    expect(response).to have_http_status(:created)
+    json_patch "/exams/admin/providers/#{json_body['id']}", name: "Sem marca 2"
+    expect(response).to have_http_status(:ok)
+  end
+
   it "D20: marcar uses_municipal_lab com o interruptor desligado → municipal_lab_disabled" do
     stepped_up!(admin)
     lab = exam_provider!(name: "Lab Desligado", items: [])

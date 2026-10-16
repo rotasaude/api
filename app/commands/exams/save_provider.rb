@@ -50,6 +50,12 @@ module Exams
 
         attrs[:phone] = phone
       end
+      # B45: o registro final marcado exige endereço e telefone (a liberação do
+      # laudo segue checando `laboratory_incomplete` como segunda defesa).
+      if attrs.fetch(:uses_municipal_lab) { provider&.uses_municipal_lab }
+        return Result.fail(:invalid_address) if attrs.fetch(:address) { provider&.address }.blank?
+        return Result.fail(:invalid_phone) if attrs.fetch(:phone) { provider&.phone }.blank?
+      end
       items = params.key?("items") ? items(params["items"]) : nil
       return items if items.is_a?(Result)
 
