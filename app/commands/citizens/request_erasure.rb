@@ -50,7 +50,12 @@ module Citizens
     # cancelado inclusive, ou resultado externo do paciente da pessoa.
     def examined?(pairs, cpf:) = examined_patients?(patient_ids(pairs, cpf: cpf))
 
-    def examined_patients?(ids) = ExamOrder.where(patient_id: ids).exists? || ExamResult.where(patient_id: ids).exists?
+    # ADR 0037: a requisição do laboratório municipal (com amostras, resultados
+    # e laudos que pendem dela) também é registro clínico retido.
+    def examined_patients?(ids)
+      ExamOrder.where(patient_id: ids).exists? || ExamResult.where(patient_id: ids).exists? ||
+        LabRequisition.where(patient_id: ids).exists?
+    end
 
     # O paciente dos pares e o do CPF: o exame aponta para o paciente, que
     # pode ter ficado de um par já excluído (o CPF do paciente é cifrado de
