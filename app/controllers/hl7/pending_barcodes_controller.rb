@@ -8,6 +8,8 @@ module Hl7
         return render(json: { error: "feature_disabled", feature: Lab::Gate::FAKE_KEY }, status: :forbidden)
       end
 
+      # Teto de 200 códigos por chamada, em ordem de código: o middleware repete a consulta
+      # (runbook). Passar do teto não é erro, só a lista seguinte.
       barcodes = LabSample.joins(:lab_requisition, :items)
                           .where(lab_requisitions: { exam_provider_id: @token.exam_provider_id }, status: LabSample::ACCEPTED,
                                  lab_requisition_items: { status: "pending" })

@@ -66,8 +66,13 @@ module Lab
           errors.concat(Application.new(message, token, receipt, now, write: structural.empty?).run)
           raise ActiveRecord::Rollback if errors.any?
         end
-        errors.empty? ? ack.call("AA") : ack.call("AE", ordered(message, errors))
-      rescue ActiveRecord::RecordNotUnique
+        return ack.call("AA") if errors.empty?
+
+        # B50: erro de estrutura (invalid_message) é sempre AR; AE só para recusa de conteúdo.
+        ack.call(errors.any? { |e| e.code == "invalid_message" } ? "AR" : "AE", ordered(message, errors))
+      rescue ActiveRecord::RecordNotUnique => e
+        raise unless e.message.include?("idx_lab_hl7_receipts_control")
+
         ack.call("AA") # a mesma mensagem chegou duas vezes ao mesmo tempo: a outra gravou
       end
 
@@ -113,6 +118,7 @@ module Lab
         # Amostra e exame de cada pedido (leitura); recusas de amostra/exame.
         def resolve
           plan = []
+          claimed = Set.new
           @message.specimens.each do |specimen|
             where = "SPM^#{specimen.index}^2"
             sample = Inbound.send(:find_sample, @token, @message.barcode(specimen))
@@ -122,9 +128,12 @@ module Lab
             items = sample.items.includes(:lab_exam_version).to_a
             specimen.orders.each do |order|
               code = @message.field(order.obr, 4, 1).to_s
-              found = items.select { |i| i.lab_exam_version.instrument_test_code.present? && i.lab_exam_version.instrument_test_code == code }
+              found = items.select { |i| i.lab_exam_version.instrument_test_code.present? && i.lab_exam_version.instrument_test_code.casecmp?(code) }
               item = found.find { |i| OPEN_STATUSES.include?(i.status) } || found.first
               next @errors << error("exam_not_in_version", "OBR^#{order.index}^4") unless item
+
+              # Dois OBR do mesmo exame na mensagem: a ordem não decide qual vale (E5/B26).
+              next @errors << error("invalid_value", "OBR^#{order.index}^4") unless claimed.add?(item.id)
 
               plan << { order: order, item: item }
             end

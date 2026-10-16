@@ -18,7 +18,7 @@ module Hl7
 
     def bearer_token
       header = request.authorization.to_s
-      header.start_with?("Bearer ") ? header.delete_prefix("Bearer ").strip.presence : nil
+      header.match?(/\ABearer /i) ? header.sub(/\ABearer /i, "").strip.presence : nil
     end
 
     def require_hl7_inbound!

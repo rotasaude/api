@@ -150,4 +150,47 @@ RSpec.describe "HL7 v2 — entrada do middleware", type: :request do
     expect(log).not_to include("MSH|")
     expect(log).not_to include(token)
   end
+
+  it "I1: corpo com outro Content-Type nunca chega ao log (info e debug)" do
+    msg = oul(barcode: barcode, obx: [ "OBX|1|NM|glicose^Glicose^99RSL||1234.5|mg/dL^^UCUM|||||F" ])
+    [ "application/x-www-form-urlencoded", "application/json" ].each do |type|
+      [ Logger::INFO, Logger::DEBUG ].each do |level|
+        old = Rails.logger.level
+        Rails.logger.level = level
+        log = capture_log { post "/hl7/v2", params: msg, headers: { "CONTENT_TYPE" => type, "Authorization" => "Bearer #{token}" } }
+        Rails.logger.level = old
+        expect(response).to have_http_status(:unsupported_media_type)
+        [ barcode, "1234.5", "MSH|", "OBX|", token ].each { |leak| expect(log).not_to include(leak), "#{type} #{level}" }
+      end
+    end
+  end
+
+  it "B50: estrutura inválida é sempre AR, mesmo com SPM e com recusas de conteúdo" do
+    orphan = "MSH|^~\\&|MW|LAB|ROTA-SAUDE|test|20261015150000||OUL^R22^OUL_R22|MO1|P|2.5.1\rOBR|1|||GLI^Glicose^99RSL\r" +
+             oul(barcode: barcode).split("\r").drop(1).join("\r") + "\r"
+    hl7_post(orphan, token: token)
+    expect([ msa, err5 ]).to eq([ "AR", "invalid_message" ])
+    expect(response.body).to include("ERR||OBR^1^1|")
+    expect(LabResult.count).to eq(0)
+  end
+
+  it "I2: SPM 1 válido e SPM 2 recusado: nada gravado, item pendente, sem evento" do
+    other = received_requisition!(provider: provider, exams: [ glucose ])
+    second = other.samples.first.barcode
+    body = oul(barcode: barcode, control: "M7").chomp("\r") + "\r" +
+           "SPM|2|#{second}||Plasma^^99RSL\rOBR|2|||GLI^Glicose^99RSL\rOBX|1|NM|glicose^Glicose^99RSL||1600|mg/dL^^UCUM|||||F\r"
+    events = DomainEvent.count
+    hl7_post(body, token: token)
+    expect([ msa, err5 ]).to eq([ "AE", "out_of_entry_range" ])
+    expect([ LabResult.count, LabHl7Receipt.count, DomainEvent.count ]).to eq([ 0, 0, events ])
+    expect(req.items.first.reload.status).to eq("pending")
+  end
+
+  it "dois OBR do mesmo exame na mensagem: invalid_value no segundo" do
+    body = oul(barcode: barcode).chomp("\r") + "\rOBR|2|||GLI^Glicose^99RSL\rOBX|1|NM|glicose^Glicose^99RSL||99|mg/dL^^UCUM|||||F\r"
+    hl7_post(body, token: token)
+    expect([ msa, err5 ]).to eq([ "AE", "invalid_value" ])
+    expect(response.body).to include("ERR||OBR^2^4|")
+    expect(LabResult.count).to eq(0)
+  end
 end
