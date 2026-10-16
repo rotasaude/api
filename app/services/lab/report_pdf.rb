@@ -47,16 +47,33 @@ module Lab
       value.to_s.match?(Values::NUMBER) ? value.tr(".", ",") : value
     end
 
+    # Laboratório de apoio (RDC 978: o que o apoio executou é dito no laudo).
+    def support_laboratory(pdf, support)
+      return unless support
+
+      pdf.text s("Exames de apoio realizados por: #{support['name']} — CNES #{support['cnes']}"), size: 9
+    end
+
+    # O laudo substituído: versão, liberação e código de conferência.
+    def replaced(id)
+      old = LabReport.find_by(id: id)
+      return "o laudo anterior" unless old
+
+      released = (old.released_at || old.created_at).in_time_zone.strftime("%d/%m/%Y")
+      "o laudo anterior (versão #{old.version}, liberado em #{released}, código #{ClinicalDocuments::Codes.display(old.short_code)})"
+    end
+
     def header(pdf, c, report)
       lab = c["laboratory"]
       pdf.text s(lab["name"]), style: :bold, size: 12
       pdf.text s("CNES #{lab['cnes']} — #{lab['address']} — Telefone #{phone(lab['phone'])}"), size: 9
+      support_laboratory(pdf, c["support_laboratory"])
       pdf.move_down 8
       title = "LAUDO DE EXAMES LABORATORIAIS"
       title += " — LAUDO PARCIAL" if c["partial"]
       pdf.text s(title), style: :bold, size: 13
       if c["replaces_report_id"]
-        pdf.text s("RETIFICAÇÃO — substitui o laudo anterior. Motivo: #{c['rectification_reason']}"), style: :bold
+        pdf.text s("RETIFICAÇÃO — substitui #{replaced(c['replaces_report_id'])}. Motivo: #{c['rectification_reason']}"), style: :bold
       end
       pdf.text s("Laudo versão #{report.version} — Emitido em #{time(c['issued_at'])}"), size: 9
     end
@@ -72,25 +89,35 @@ module Lab
 
     def exam(pdf, exam)
       pdf.move_down 10
-      pdf.start_new_page if pdf.cursor < 60
-      pdf.text s(exam["name"]), style: :bold, size: 11
-      pdf.text s("Material: #{exam['material']} — Método: #{exam['method']} — Coleta: #{time(exam['collected_at'])} — Versão do exame #{exam['version']}"), size: 9
-      pdf.text s("Amostra aceita com restrição: #{exam['restriction_note']}"), size: 9, style: :italic if exam["restriction_note"]
+      head = [ [ s(exam["name"]), 11, :bold ],
+               [ s("Material: #{exam['material']} — Método: #{exam['method']} — Coleta: #{time(exam['collected_at'])} — Versão do exame #{exam['version']}"), 9, :normal ] ]
+      head << [ s("Amostra aceita com restrição: #{exam['restriction_note']}"), 9, :italic ] if exam["restriction_note"]
+      head_h = head.sum { |text, size, style| pdf.height_of(text, size: size, style: style) } + 2
+      # O título não fica sozinho no fim da página: cabe com a 1ª linha de componente.
+      pdf.start_new_page if pdf.cursor < head_h + row_height(pdf, exam["components"].first) + 4
+      head.each { |text, size, style| pdf.text text, size: size, style: style }
       pdf.move_down 2
       exam["components"].each { |comp| component(pdf, comp) }
     end
 
-    def component(pdf, comp)
+    def cells(pdf, comp)
       value = [ pt_value(comp["value"]), comp["unit"] ].compact.join(" ")
       mark = FLAGS[comp["flag"]]
-      cells = [ [ s(comp["name"]), NAME_W, 10, :normal ],
-                [ s("#{value}#{mark ? "  (#{mark})" : ''}"), VALUE_W, 10, mark ? :bold : :normal ],
-                [ s(comp["reference_text"] ? "Referência: #{comp['reference_text']}" : ""), pdf.bounds.width - NAME_W - VALUE_W, 8, :normal ] ]
-      height = cells.map { |text, width, size, style| pdf.height_of(text, width: width - 4, size: size, style: style) }.max
+      [ [ s(comp["name"]), NAME_W, 10, :normal ],
+        [ s("#{value}#{mark ? "  (#{mark})" : ''}"), VALUE_W, 10, mark ? :bold : :normal ],
+        [ s(comp["reference_text"] ? "Referência: #{comp['reference_text']}" : ""), pdf.bounds.width - NAME_W - VALUE_W, 8, :normal ] ]
+    end
+
+    def row_height(pdf, comp)
+      cells(pdf, comp).map { |text, width, size, style| pdf.height_of(text, width: width - 4, size: size, style: style) }.max
+    end
+
+    def component(pdf, comp)
+      height = row_height(pdf, comp)
       pdf.start_new_page if pdf.cursor < height + 4
       top = pdf.cursor
       x = 0
-      cells.each do |text, width, size, style|
+      cells(pdf, comp).each do |text, width, size, style|
         pdf.text_box text, at: [ x, top ], width: width - 4, height: height, size: size, style: style
         x += width
       end
@@ -124,6 +151,6 @@ module Lab
         pdf.text s("ou em #{CityPublicUrl.base(Current.city)}/v com o código #{ClinicalDocuments::Codes.display(report.short_code)} e o ano de nascimento do paciente."), size: 9
       end
     end
-    private_class_method :s, :date, :time, :phone, :council, :running_line, :pt_value, :header, :patient, :exam, :component, :signers, :verification
+    private_class_method :s, :date, :time, :phone, :council, :running_line, :pt_value, :support_laboratory, :replaced, :cells, :row_height, :header, :patient, :exam, :component, :signers, :verification
   end
 end
