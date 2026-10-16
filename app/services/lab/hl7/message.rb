@@ -18,6 +18,7 @@ module Lab
 
     class Message
       DELIMITERS = "|^~\\&".freeze
+      CONTROL = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/
       SEGMENT = /\A[A-Z][A-Z0-9]{2}\|/
       UNESCAPE = { "\\F\\" => "|", "\\S\\" => "^", "\\T\\" => "&", "\\R\\" => "~", "\\E\\" => "\\" }.freeze
 
@@ -30,6 +31,8 @@ module Lab
         lines = text.split(/\r\n|\r|\n/).reject(&:empty?)
         raise Invalid unless lines.first&.start_with?("MSH") && lines.first[3, 5] == DELIMITERS
         raise Invalid unless lines.all? { |line| line.match?(SEGMENT) }
+        # Uma mensagem por corpo; sem NUL/controles (o banco recusaria com 500).
+        raise Invalid if text.match?(CONTROL) || lines.drop(1).any? { |line| line.start_with?("MSH|", "FHS|", "BHS|", "BTS|", "FTS|") }
 
         new(lines.map { |line| line.split("|", -1) })
       end
@@ -45,7 +48,11 @@ module Lab
       def type = [ msh(9, 1), msh(9, 2), msh(9, 3) ].join("^")
       def control_id = msh(10, 1).to_s
       def version = msh(12, 1).to_s
-      def processing_id = msh(11, 1).presence || "P"
+      # Tabela 0103: só P, D, T; o perfil só usa P, que é o padrão para o resto.
+      def processing_id = %w[P D T].include?(msh(11, 1)) ? msh(11, 1) : "P"
+      # Campo do MSH como veio (HD com componentes); já passou pelo split por "|".
+      def raw_msh(n) = segments.first[n - 1].to_s
+      def inspect = "#<Lab::Hl7::Message type=#{type} segments=#{segments.size}>"
       def first(name) = segments.find { |s| s.first == name }
       def field(segment, n, component = nil) = segment && pick(segment[n], component)
 

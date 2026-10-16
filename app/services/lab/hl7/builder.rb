@@ -25,7 +25,8 @@ module Lab
       module_function
 
       def escape(text)
-        text.to_s.gsub("\\") { "\\E\\" }.gsub("|") { "\\F\\" }.gsub("^") { "\\S\\" }
+        # O perfil só admite os 5 escapes: CR/LF e demais controles viram espaço (nunca segmento novo).
+        text.to_s.gsub(/[\x00-\x1F\x7F]+/, " ").gsub("\\") { "\\E\\" }.gsub("|") { "\\F\\" }.gsub("^") { "\\S\\" }
             .gsub("&") { "\\T\\" }.gsub("~") { "\\R\\" }
       end
 
@@ -57,7 +58,7 @@ module Lab
       end
 
       def msh(request, type, city_slug, now)
-        [ "MSH", "^~\\&", "ROTA-SAUDE", escape(city_slug), escape(request&.msh(3)), escape(request&.msh(4)),
+        [ "MSH", "^~\\&", "ROTA-SAUDE", escape(city_slug), request&.raw_msh(3).to_s, request&.raw_msh(4).to_s,
           now.in_time_zone.strftime("%Y%m%d%H%M%S"), "", type, SecureRandom.hex(10), request&.processing_id || "P", "2.5.1" ]
       end
 

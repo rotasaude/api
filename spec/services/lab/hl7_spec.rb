@@ -113,4 +113,41 @@ RSpec.describe "Lab::Hl7" do
     expect(Lab::Hl7::Builder.material_key("Urina de 24 h / Açúcar")).to eq("urina_de_24_h_acucar")
     expect(Lab::Hl7::Builder.escape("a|b^c&d~e\\f")).to eq("a\\F\\b\\S\\c\\T\\d\\R\\e\\E\\f")
   end
+
+  describe "injection (fix round 1)" do
+    let(:oul) { fixture("oul-r22.hl7") }
+
+    it "I1: MSH-11 vem de lista (P, D, T), nunca do remetente" do
+      request = Lab::Hl7::Message.parse(oul.sub("|P|2.5.1") { "|P\\F\\INJ|2.5.1" })
+      out = Lab::Hl7::Builder.ack(request: request, code: "AA", city_slug: "curitiba", now: now)
+      expect(segments(out)[0].size).to eq(12)
+      expect(segments(out)[0][10]).to eq("P")
+      t = Lab::Hl7::Message.parse(oul.sub("|P|2.5.1") { "|T|2.5.1" })
+      expect(segments(Lab::Hl7::Builder.ack(request: t, code: "AA", city_slug: "c", now: now))[0][10]).to eq("T")
+    end
+
+    it "I2: CR/LF em texto nosso nunca abre segmento" do
+      version = Struct.new(:instrument_test_code, :lab_exam)
+      item = Struct.new(:id, :lab_exam_version)
+      sample = Struct.new(:barcode, :material, :collected_at)
+      out = Lab::Hl7::Builder.rsp(request: parse("qbp-q11.hl7"), code: "AA", city_slug: "curitiba", query_tag: "T0001", barcode: "1", now: now,
+                                  sample: sample.new("1", "So\nro\rPID|1", nil),
+                                  items: [ item.new("i", version.new("GLI", Struct.new(:name).new("Gli\r\nPID|1"))) ])
+      expect(segments(out).map(&:first)).to eq(%w[MSH MSA QAK QPD SPM ORC OBR])
+      expect(Lab::Hl7::Builder.escape("a\nb\r\nc")).to eq("a b c")
+    end
+
+    it "I3: MSH-3/MSH-4 voltam como vieram (HD com componentes)" do
+      request = Lab::Hl7::Message.parse(oul.sub("|MW-SIM|LAB-MUNICIPAL|") { "|MW^1.2.3^ISO|LAB^9.8^ISO|" })
+      out = segments(Lab::Hl7::Builder.ack(request: request, code: "AA", city_slug: "curitiba", now: now))[0]
+      expect(out.values_at(4, 5)).to eq([ "MW^1.2.3^ISO", "LAB^9.8^ISO" ])
+    end
+
+    it "I4: recusa NUL/controles e segunda mensagem no corpo" do
+      expect { Lab::Hl7::Message.parse(oul.sub("98") { "9\x008" }) }.to raise_error(Lab::Hl7::Invalid)
+      expect { Lab::Hl7::Message.parse(oul.sub("98") { "9\x078" }) }.to raise_error(Lab::Hl7::Invalid)
+      expect { Lab::Hl7::Message.parse(oul + oul) }.to raise_error(Lab::Hl7::Invalid)
+      expect { Lab::Hl7::Message.parse(oul + "BHS|^~\\&|x\r") }.to raise_error(Lab::Hl7::Invalid)
+    end
+  end
 end
