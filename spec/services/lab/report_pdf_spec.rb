@@ -1,7 +1,7 @@
 require "rails_helper"
 require "pdf/reader"
 
-# RDC 978 art. 167 (I–XIV, menos XI que não se aplica): o PDF traz cada item.
+# RDC 978 art. 167: o PDF traz cada item.
 RSpec.describe Lab::ReportPdf do
   before { lab_city! }
 
@@ -51,5 +51,28 @@ RSpec.describe Lab::ReportPdf do
   it "assinatura ICP sem rodapé avisa que está pendente" do
     item = type!(req.items.first, { glicose: "98" })
     expect(text_of(described_class.call(report_for(item, kind: "icp")))).to include("ICP-Brasil pendente")
+  end
+
+  it "valor numérico com vírgula decimal, como as referências" do
+    analytes = LabHelpers::GLUCOSE.map { |a| a.merge("decimals" => 3, "reference_ranges" => [ a["reference_ranges"].first.merge("low" => 0.4, "high" => 4.0) ]) }
+    exam = lab_exam!(provider: provider, sigtap_code: "0202010503", name: "TSH", analytes: analytes, instrument_test_code: "TSH")
+    item = type!(received_requisition!(provider: provider, exams: [ exam ]).items.first, { glicose: "15" })
+    report = report_for(item)
+    text = text_of(described_class.call(report))
+    expect(text).to include("15,000 mg/dL", "0,400 a 4,000 mg/dL")
+    expect(text).not_to include("15.000")
+    expect(JSON.parse(report.content)["exams"].sole["components"].sole["value"]).to eq("15.000")
+  end
+
+  it "toda página traz paciente, requisição e Página n de N" do
+    analytes = (1..55).map { |n| LabHelpers::GLUCOSE.first.merge("key" => "c#{n}", "name" => "Componente #{n}", "reference_ranges" => [], "critical_low" => nil, "critical_high" => nil) }
+    exam = lab_exam!(provider: provider, sigtap_code: "0202010503", name: "Painel", analytes: analytes, instrument_test_code: "PNL")
+    item = type!(received_requisition!(provider: provider, exams: [ exam ]).items.first, analytes.to_h { |a| [ a["key"], "50" ] })
+    reader = PDF::Reader.new(StringIO.new(described_class.call(report_for(item))))
+    expect(reader.page_count).to be >= 2
+    reader.pages.each_with_index do |page, i|
+      text = page.text.gsub(/\s+/, " ")
+      expect(text).to include(item.lab_requisition.patient.display_name, "Requisição #{item.lab_requisition.number}", "Página #{i + 1} de #{reader.page_count}")
+    end
   end
 end

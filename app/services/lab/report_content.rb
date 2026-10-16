@@ -5,8 +5,9 @@
 #
 # Só entram as linhas que valem (Lab::Effective; B30): `chosen` é história.
 # Valor com as casas do componente (Values.fixed, BigDecimal); marca vinda da
-# linha (Reference, crítico inclusivo B27). Calculado sem linha fica ausente
-# (o item admitiu entrada parcial); componente digitável sem linha é recusa.
+# linha (Reference, crítico inclusivo B27). Componente sem linha que vale
+# (digitável ou calculado) é recusa: nunca um laudo com componente faltando.
+# As linhas são relidas do banco (nada de cache de associação).
 require "json_schemer"
 
 module Lab
@@ -24,7 +25,7 @@ module Lab
     module_function
 
     def laboratory_ready?(provider)
-      provider.cnes.present? && provider.address.present? && provider.phone.present?
+      provider.cnes.to_s.match?(/\A\d{7}\z/) && provider.address.present? && provider.phone.to_s.match?(/\A\d{10,11}\z/)
     end
 
     def build(requisition:, items:, released_by:, lead:, partial:, signature_kind:, issued_at:, replaces: nil, reason: nil)
@@ -69,17 +70,15 @@ module Lab
       version = item.lab_exam_version
       sample = item.lab_sample
       ctx = EnterResults.context(item)
-      effective = Effective.rows(item)
+      effective = Effective.rows(item.tap { |i| i.results.reload })
       { "sigtap_code" => version.lab_exam.sigtap_code, "name" => version.lab_exam.name, "material" => version.material,
         "method" => version.analysis_method, "version" => version.version,
-        "collected_at" => (sample.collected_at || sample.received_at).utc.iso8601, "restriction_note" => sample.restriction_note,
-        "components" => version.analytes.filter_map { |analyte| component(analyte, effective[analyte["key"]], ctx) } }
+        "collected_at" => sample.collected_at.utc.iso8601, "restriction_note" => sample.restriction_note,
+        "components" => version.analytes.map { |analyte| component(analyte, effective[analyte["key"]], ctx) } }
     end
 
     def component(analyte, row, ctx)
       if row.nil?
-        return nil if analyte["formula"].present?
-
         raise Invalid, "laudo fora do esquema: componente sem valor (#{analyte['key']})"
       end
 

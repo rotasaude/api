@@ -23,6 +23,7 @@ module Lab
       c["exams"].each { |exam| exam(pdf, exam) }
       signers(pdf, c, footer)
       verification(pdf, report)
+      running_line(pdf, c)
       pdf.render
     end
 
@@ -31,6 +32,20 @@ module Lab
     def time(iso) = Time.iso8601(iso).in_time_zone.strftime("%d/%m/%Y %H:%M")
     def phone(value) = value.to_s.sub(/\A(\d{2})(\d{4,5})(\d{4})\z/, '(\1) \2-\3')
     def council(p) = "#{p['council']}-#{p['council_uf']} #{p['council_number']}"
+
+    # Em toda página: paciente, requisição e "Página n de N" (folha solta se identifica).
+    def running_line(pdf, c)
+      name = s(c.dig("patient", "name"))
+      name = "#{name[0, 47].rstrip}…" if name.length > 48
+      pdf.number_pages "#{name} — Requisição #{c['requisition_number']} — Página <page> de <total>",
+                       at: [ 0, pdf.bounds.top + 20 ], width: pdf.bounds.width, height: 10, size: 8, align: :right
+    end
+
+    # Valor numérico com vírgula decimal (pt-BR), como as referências; sem
+    # agrupamento de milhar. O JSON canônico segue com ponto.
+    def pt_value(value)
+      value.to_s.match?(Values::NUMBER) ? value.tr(".", ",") : value
+    end
 
     def header(pdf, c, report)
       lab = c["laboratory"]
@@ -66,7 +81,7 @@ module Lab
     end
 
     def component(pdf, comp)
-      value = [ comp["value"], comp["unit"] ].compact.join(" ")
+      value = [ pt_value(comp["value"]), comp["unit"] ].compact.join(" ")
       mark = FLAGS[comp["flag"]]
       cells = [ [ s(comp["name"]), NAME_W, 10, :normal ],
                 [ s("#{value}#{mark ? "  (#{mark})" : ''}"), VALUE_W, 10, mark ? :bold : :normal ],
@@ -88,7 +103,7 @@ module Lab
       pdf.text s("Responsável técnico: #{c.dig('technical_lead', 'name')} — #{council(c['technical_lead'])}"), size: 9
       pdf.text s("Liberado por: #{c.dig('released_by', 'name')} — #{council(c['released_by'])}"), size: 9
       if c["signature_kind"] == "advanced"
-        pdf.text s("Assinado com assinatura eletrônica avançada (Lei 14.063/2020; RDC 978/2025, art. 5º, III) por " \
+        pdf.text s("Assinado com assinatura eletrônica avançada por " \
                    "#{c.dig('released_by', 'name')}, #{council(c['released_by'])}, em #{time(c['issued_at'])}."), size: 9
       elsif footer.nil?
         pdf.text s("Assinatura digital ICP-Brasil pendente."), size: 9
@@ -101,7 +116,7 @@ module Lab
       pdf.start_new_page if pdf.cursor < QR_SIZE + 20
       pdf.move_down 12
       top = pdf.cursor
-      url = "#{CityPublicUrl.base(Current.city)}/v/#{report.verification_token}"
+      url = report.verification_url
       ClinicalDocuments::Qr.draw(pdf, url, at: [ 0, top ], size: QR_SIZE)
       pdf.bounding_box([ QR_SIZE + 10, top - 10 ], width: pdf.bounds.width - QR_SIZE - 10) do
         pdf.text s("Confira a autenticidade deste laudo:"), size: 9
@@ -109,6 +124,6 @@ module Lab
         pdf.text s("ou em #{CityPublicUrl.base(Current.city)}/v com o código #{ClinicalDocuments::Codes.display(report.short_code)} e o ano de nascimento do paciente."), size: 9
       end
     end
-    private_class_method :s, :date, :time, :phone, :council, :header, :patient, :exam, :component, :signers, :verification
+    private_class_method :s, :date, :time, :phone, :council, :running_line, :pt_value, :header, :patient, :exam, :component, :signers, :verification
   end
 end

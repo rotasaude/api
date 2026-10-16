@@ -58,16 +58,18 @@ RSpec.describe Lab::ReportContent do
     expect(build(item).document["exams"].sole["components"].sole["value"]).to eq("98.00")
   end
 
-  it "calculado vem como calculado; sem valor, fica ausente; nunca valor velho" do
+  it "calculado vem como calculado; sem a linha que vale, o laudo é recusado (só ponteiros)" do
     exam = lab_exam!(provider: provider, sigtap_code: "0202010295", name: "Lipidograma", analytes: LabHelpers::LIPIDS, instrument_test_code: "LIP")
     item = received_requisition!(provider: provider, exams: [ exam ]).items.first
     item = type!(item, { ct: "200", hdl: "50", tg: "100" })
-    keys = build(item).document["exams"].sole["components"].map { |c| c["key"] }
-    expect(keys).to eq(%w[ct hdl tg ldl])
-    expect(build(item).document["exams"].sole["components"].last["value"]).to eq("130")
-    # linhas são append-only: sem a linha do calculado (entrada parcial admitida)
+    components = build(item).document["exams"].sole["components"]
+    expect(components.map { |c| c["key"] }).to eq(%w[ct hdl tg ldl])
+    expect(components.last["value"]).to eq("130")
     allow(Lab::Effective).to receive(:rows).and_wrap_original { |m, i| m.call(i).except("ldl") }
-    expect(build(item.reload).document["exams"].sole["components"].map { |c| c["key"] }).to eq(%w[ct hdl tg])
+    expect { build(item) }.to raise_error(described_class::Invalid) { |e|
+      expect(e.message).to include("ldl")
+      expect(e.message).not_to include("130")
+    }
   end
 
   it "componente digitável sem valor não vira laudo (só ponteiros)" do
@@ -75,6 +77,20 @@ RSpec.describe Lab::ReportContent do
     item = received_requisition!(provider: provider, exams: [ exam ]).items.first
     item = type!(item, { ct: "200" })
     expect { build(item) }.to raise_error(described_class::Invalid) { |e| expect(e.message).not_to include("200") }
+  end
+
+  it "lê as linhas do banco, não do cache da associação" do
+    item = type!(req.items.first, { glicose: "98" })
+    item.results.load
+    Lab::EnterResults.call(item: LabRequisitionItem.find(item.id), values: [ { "analyte_key" => "glicose", "value" => "120" } ], by: lab_staff!)
+    expect(build(item).document["exams"].sole["components"].sole["value"]).to eq("120")
+  end
+
+  it "laboratório pronto confere o formato do CNES e do telefone (como o esquema)" do
+    lab = Struct.new(:cnes, :address, :phone)
+    expect(described_class.laboratory_ready?(lab.new("1234567", "Rua A", "4133501200"))).to be(true)
+    expect(described_class.laboratory_ready?(lab.new("12", "Rua A", "4133501200"))).to be(false)
+    expect(described_class.laboratory_ready?(lab.new("1234567", "Rua A", "(41) 3350"))).to be(false)
   end
 
   it "os exemplos do contrato valem no esquema; o inválido falha só com ponteiros" do
