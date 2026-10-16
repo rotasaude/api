@@ -259,6 +259,7 @@ Rails.application.routes.draw do
     post "orders/:id/cancel",   to: "order_steps#cancel"
     post "orders/:id/result",   to: "results#create"
     post "orders/:id/acknowledge", to: "acknowledgements#create"
+    post "orders/:id/gal_requisition", to: "gal#create"
     post "external_results",      to: "external_results#create"
     get  "external_results",      to: "external_results#index"
     post "patient_lookup",        to: "lookups#patient"
@@ -305,6 +306,7 @@ Rails.application.routes.draw do
     get  "requisitions/:id/receipt.pdf", to: "requisitions#receipt", format: false
     get  "requisitions/:id/labels.pdf",  to: "requisitions#labels", format: false
     get  "requisitions/:id",  to: "requisitions#show"
+    post "requisitions/:id/deliver", to: "requisitions#deliver"
     post "samples/collect",              to: "samples#collect"
     post "samples/:id/collect",          to: "samples#collect"
     post "samples/receive",              to: "samples#receive"

@@ -7,7 +7,7 @@ module Exams
 
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     FAILURE_STATUS = {
-      invalid_transition: :conflict, conflict: :conflict, citizen_not_verified: :conflict, already_acknowledged: :conflict,
+      invalid_transition: :conflict, conflict: :conflict, gal_already_registered: :conflict, citizen_not_verified: :conflict, already_acknowledged: :conflict,
       not_found: :not_found,
       missing_role: :forbidden, not_requester: :forbidden, not_in_team: :forbidden, not_unit_staff: :forbidden,
       out_of_context: :forbidden, opening_required: :forbidden

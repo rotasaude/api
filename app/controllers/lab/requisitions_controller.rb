@@ -2,7 +2,7 @@
 # da unidade dela; o laboratório, as dele.
 module Lab
   class RequisitionsController < BaseController
-    before_action :load_requisition, only: %i[show receipt labels]
+    before_action :load_requisition, only: %i[show receipt labels deliver]
 
     def index
       scope = LabRequisition.includes(:patient, :origin_unit, reports: [ :released_by_user, :pdf_file ])
@@ -71,6 +71,13 @@ module Lab
       return render_failure(result) if result.failure?
 
       render json: Lab::Json.requisition(result.payload[:requisition].reload, viewer: Current.user), status: :created
+    end
+
+    def deliver
+      result = Lab::Deliver.call(requisition: @requisition, delivered_to: params[:delivered_to], by: Current.user)
+      return render_failure(result) if result.failure?
+
+      render json: Lab::Json.requisition(@requisition.reload, viewer: Current.user)
     end
 
     private
