@@ -307,6 +307,12 @@ Rails.application.routes.draw do
     get  "requisitions/:id",  to: "requisitions#show"
     post "samples/collect",              to: "samples#collect"
     post "samples/:id/collect",          to: "samples#collect"
+    post "samples/receive",              to: "samples#receive"
+    get  "recollections",                to: "samples#pending"
+    get  "shipments",                    to: "shipments#index"
+    post "shipments",                    to: "shipments#create"
+    post "shipments/:id/send",           to: "shipments#send_out"
+    post "shipments/:id/receive",        to: "shipments#receive"
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"
       get   "exams",                     to: "exams#index"
