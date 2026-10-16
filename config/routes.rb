@@ -313,6 +313,11 @@ Rails.application.routes.draw do
     post "shipments",                    to: "shipments#create"
     post "shipments/:id/send",           to: "shipments#send_out"
     post "shipments/:id/receive",        to: "shipments#receive"
+    get  "worklists.pdf",                to: "worklists#pdf", format: false
+    get  "worklists",                    to: "worklists#show"
+    get  "entry",                        to: "results#entry"
+    post "results",                      to: "results#create"
+    post "results/:id/choose",           to: "results#choose"
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"
       get   "exams",                     to: "exams#index"

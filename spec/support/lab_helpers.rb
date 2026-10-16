@@ -74,6 +74,26 @@ module LabHelpers
     result.payload[:requisition]
   end
 
+  # Requisição coletada e aceita no posto do laboratório.
+  def received_requisition!(provider:, exams:, sex: "female", **opts)
+    req = open_requisition!(provider: provider, exams: exams, **opts)
+    req.update!(biological_sex: sex)
+    staff = lab_staff!
+    req.samples.each do |sample|
+      Lab::CollectSample.call(sample: sample, by: staff)
+      result = Lab::ReceiveSample.call(barcode: sample.barcode, decision: "accept", by: staff)
+      raise "recebimento recusado: #{result.reason}" if result.failure?
+    end
+    req.reload
+  end
+
+  def type!(item, values, by: lab_staff!)
+    result = Lab::EnterResults.call(item: item, values: values.map { |k, v| { "analyte_key" => k.to_s, "value" => v.to_s } }, by: by)
+    raise "digitação recusada: #{result.reason}" if result.failure?
+
+    item.reload
+  end
+
   # Requisição gravada direto (antes da Task 8): uma amostra, um item.
   def lab_requisition_row!(provider:, version:, unit: create_unit("UBS #{SecureRandom.hex(2)}"))
     patient = exam_patient!(exam_seq!).first
