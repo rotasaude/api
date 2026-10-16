@@ -326,6 +326,8 @@ Rails.application.routes.draw do
     get  "releases",                     to: "releases#index"
     get  "releases/:id",                 to: "releases#show"
     post "requisitions/:id/release",     to: "releases#create"
+    get  "reports/:kind.csv",            to: "production_reports#csv", format: false, constraints: { kind: /production|rejections|turnaround/ }
+    get  "reports/:kind",                to: "production_reports#show", constraints: { kind: /production|rejections|turnaround/ }
     get  "reports/:id/pdf",              to: "reports#pdf", format: false
     post "reports/:id/rectify",          to: "reports#rectify"
     scope "admin", module: :admin, as: :admin do
