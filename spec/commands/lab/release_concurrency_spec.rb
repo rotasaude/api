@@ -29,8 +29,10 @@ RSpec.describe "Liberação sob disputa" do
       a = lab_releaser!(provider, lead: true)
       b = lab_releaser!(provider)
       req = received_requisition!(provider: provider, exams: [ lab_exam!(provider: provider) ])
-      item = type!(req.items.first, { glicose: "98" })
-      { req_id: req.id, item_id: item.id, a: a.id, b: b.id, order_id: item.exam_order_id, doctor: item.exam_order.requester_user_id }
+      staff = lab_staff!
+      item = type!(req.items.first, { glicose: "450" }, by: staff) # crítico
+      { req_id: req.id, item_id: item.id, a: a.id, b: b.id, order_id: item.exam_order_id, doctor: item.exam_order.requester_user_id,
+        staff: staff.id, provider_id: provider.id, critical_id: item.results.last.id }
     end
   end
 
@@ -108,6 +110,27 @@ RSpec.describe "Liberação sob disputa" do
       order = ExamOrder.find(@rows[:order_id])
       expect(order.status).to eq("resulted")
       expect(LabRequisitionItem.find(@rows[:item_id]).status).to eq("released")
+    end
+  end
+
+  # I1 (revisão): a digitação que esperava a trava durante a liberação
+  # avançada carimba a linha DEPOIS do laudo (relógio lido após a trava). O
+  # crítico liberado segue na fila sem aviso; a repetição normal não o esconde.
+  it "liberação × digitação na espera: a linha nova fica depois do laudo; o crítico liberado segue na fila" do
+    stale_now = Time.current # capturado antes de esperar a trava
+    entry = lambda do
+      Lab::EnterResults.call(item: LabRequisitionItem.find(@rows[:item_id]), values: [ { "analyte_key" => "glicose", "value" => "98" } ],
+                             by: User.find(@rows[:staff]), now: stale_now)
+    end
+    first, second = race(-> { release_by(@rows[:a]) }, entry)
+    expect(first).to be_ok
+    expect(second).to be_ok # item liberado aceita valor (B6, para retificação)
+    in_city do
+      report = LabReport.sole
+      newest = LabResult.where(lab_requisition_item_id: @rows[:item_id]).order(:created_at).last
+      expect(newest.value).to eq("98")
+      expect(newest.created_at).to be > report.created_at
+      expect(Lab::Criticals.unnotified(provider_ids: [ @rows[:provider_id] ]).pluck(:id)).to eq([ @rows[:critical_id] ])
     end
   end
 end

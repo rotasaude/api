@@ -41,7 +41,8 @@ module Lab
     end
 
     def load_requisition
-      @requisition = uuid?(params[:id]) && LabRequisition.includes(*PRELOAD).find_by(id: params[:id])
+      scope = action_name == "show" ? LabRequisition.includes(*PRELOAD) : LabRequisition
+      @requisition = uuid?(params[:id]) && scope.find_by(id: params[:id])
       return not_found unless @requisition
 
       forbid unless Lab::Access.member?(Current.user, @requisition.exam_provider_id)

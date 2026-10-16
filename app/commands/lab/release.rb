@@ -27,11 +27,13 @@ module Lab
       return Result.fail(:icp_required) if council == "CRM" && signature == "advanced"
       return Result.fail(:signature_unavailable) if signature == "icp" && !icp_available?
 
-      ids = Array(item_ids).map(&:to_s).uniq
+      ids = Array(item_ids).map { |id| id.to_s.downcase }.uniq
       return Result.fail(:invalid_transition) unless ids.size.between?(1, MAX_ITEMS)
 
       result = nil
-      ApplicationRecord.transaction do
+      # Savepoint próprio: dentro da transação de quem chama, o Rollback desfaz
+      # o laudo e os itens em vez de ser engolido.
+      ApplicationRecord.transaction(requires_new: true) do
         requisition.lock!
         items = LabRequisitionItem.where(lab_requisition_id: requisition.id, id: ids).order(:id).lock
                                   .includes(:lab_sample, :results, lab_exam_version: :lab_exam).to_a
@@ -107,7 +109,8 @@ module Lab
       begin
         attempts += 1
         ApplicationRecord.transaction(requires_new: true) do
-          LabReport.create!(lab_requisition: requisition, exam_provider: provider, version: requisition.reports.maximum(:version).to_i + 1,
+          LabReport.create!(lab_requisition: requisition, exam_provider: provider,
+                            version: requisition.reports.maximum(:version).to_i + 1,
                             replaces_report: rectifies, partial: partial, status: "pending_signature", signature_kind: signature,
                             released_by_user: by, content: built.json, content_sha256: built.sha256,
                             verification_token: ClinicalDocuments::Codes.token, short_code: ClinicalDocuments::Codes.short_code,

@@ -22,7 +22,7 @@ module Lab
         end
 
         last = item.results.where(analyte_key: result.analyte_key).maximum(:created_at)
-        at = now.round(6)
+        at = Clock.stamp(now, requisition_id: item.lab_requisition_id) # depois da trava (I1)
         at = last + Rational(1, 1_000_000) if last && at <= last
         copy = LabResult.create!(lab_requisition_item: item, analyte_key: result.analyte_key, value: result.value, unit: result.unit,
                                  flag: result.flag, source: result.source, lab_hl7_receipt_id: result.lab_hl7_receipt_id,

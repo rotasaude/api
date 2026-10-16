@@ -57,14 +57,29 @@ module Lab
 
     # A forma `values` do 21a (+ "flag", tirado por quem chama), do JSON
     # congelado: o 21a recebe exatamente o que o laudo diz.
+    #
+    # C1: dois exames iguais (mesmo SIGTAP e versão) na mesma requisição. O
+    # conteúdo não guarda o id do item; o ReportContent.build ordena os exames
+    # por [nome, item.id], então, entre as entradas do mesmo SIGTAP+versão
+    # (mesmo exame, mesmo nome), a k-ésima é do k-ésimo item do laudo
+    # (lab_report_items) com esse SIGTAP+versão, em ordem de id.
     def values_for(report, item)
-      version = item.lab_exam_version
-      exam = report.content_data["exams"].find { |e| e["sigtap_code"] == version.lab_exam.sigtap_code && e["version"] == version.version }
+      exam = frozen_exam(report, item)
       raise Failed, "invalid_content" unless exam
 
       exam["components"].map do |c|
         { "key" => c["key"], "label" => c["name"], "value" => c["value"], "unit" => c["unit"], "loinc" => c["loinc"], "flag" => c["flag"] }
       end
+    end
+
+    def frozen_exam(report, item)
+      key = ->(version) { [ version.lab_exam.sigtap_code, version.version ] }
+      wanted = key.call(item.lab_exam_version)
+      siblings = report.items.includes(lab_exam_version: :lab_exam).select { |i| key.call(i.lab_exam_version) == wanted }.sort_by(&:id)
+      entries = report.content_data["exams"].select { |e| [ e["sigtap_code"], e["version"] ] == wanted }
+      return nil unless entries.size == siblings.size
+
+      entries[siblings.index { |i| i.id == item.id }]
     end
 
     def store!(bytes, report, now)
@@ -73,6 +88,6 @@ module Lab
 
       stored.payload[:file].tap { |file| file.update!(consumed_at: now) }
     end
-    private_class_method :store!
+    private_class_method :store!, :frozen_exam
   end
 end

@@ -105,8 +105,9 @@ module Lab
 
     # created_at estritamente crescente por item+componente (E5): a "última
     # linha" é a última inserida, mesmo com `now` igual (item travado).
+    # Carimbo lido aqui, com a trava já tomada (Lab::Clock; I1).
     def create_row(item, analyte, normalized, ctx, source, by, receipt, now)
-      at = now.round(6)
+      at = Clock.stamp(now, requisition_id: item.lab_requisition_id)
       last = item.results.where(analyte_key: analyte["key"]).maximum(:created_at)
       at = last + Rational(1, 1_000_000) if last && at <= last
       LabResult.create!(lab_requisition_item: item, analyte_key: analyte["key"], value: normalized[:value], unit: analyte["unit"],

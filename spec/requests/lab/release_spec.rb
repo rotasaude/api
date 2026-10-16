@@ -153,6 +153,90 @@ RSpec.describe "Laboratório — liberação", type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
+  # C1 (revisão): dois pedidos do mesmo exame na mesma requisição; cada
+  # resultado do 21a leva o valor e a marca do SEU item.
+  it "dois exames iguais na mesma requisição: cada resultado do 21a com o próprio valor e crítico" do
+    twin = received_requisition!(provider: provider, exams: [ glucose, glucose ])
+    first, second = twin.items.sort_by(&:id)
+    type!(first, { glicose: "450" })
+    type!(second, { glicose: "98" })
+    sign_in_as(lead)
+    json_post "/lab/requisitions/#{twin.id}/release", item_ids: [ second.id, first.id ], signature: "advanced", totp: totp_for(lead)
+    expect(response).to have_http_status(:created)
+    critical = first.exam_order.reload.result
+    normal = second.exam_order.reload.result
+    expect([ critical.critical, critical.values_list.sole["value"] ]).to eq([ true, "450" ])
+    expect([ normal.critical, normal.values_list.sole["value"] ]).to eq([ false, "98" ])
+    expect(first.exam_order).to be_escalated
+    expect(second.exam_order.reload).not_to be_escalated
+  end
+
+  # I2 (revisão): o caminho avançado é tudo ou nada.
+  describe "recusas e reversão do caminho avançado" do
+    before do
+      type!(items[0], { glicose: "450" })
+      type!(items[1], { creatinina: "0,9" })
+      sign_in_as(lead)
+    end
+
+    def nothing_persisted!
+      expect([ LabReport.count, LabReportItem.count, ExamResult.count ]).to eq([ 0, 0, 0 ])
+      expect(items.map { |i| i.reload.status }).to eq(%w[typed typed])
+      expect(items.map { |i| i.exam_order.reload.status }.uniq).not_to include("resulted")
+      expect(DomainEvent.where(name: "lab_report.released").count).to eq(0)
+    end
+
+    it "RegisterResult recusando o 2º item desfaz o 1º, o laudo e o consumo do TOTP" do
+      calls = 0
+      allow(Exams::RegisterResult).to receive(:call).and_wrap_original do |original, **kwargs|
+        calls += 1
+        calls == 2 ? Result.fail(:result_already_registered) : original.call(**kwargs)
+      end
+      files = ExamFile.count
+      code = totp_for(lead)
+      release(items.map(&:id), totp: code)
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "result_already_registered" ])
+      expect(calls).to eq(2)
+      nothing_persisted!
+      expect(ExamFile.count).to eq(files)
+      # O consumo do passo está na mesma transação: volta junto, e o mesmo código serve.
+      expect(lead.reload.last_otp_step).to be_nil
+      allow(Exams::RegisterResult).to receive(:call).and_call_original
+      release(items.map(&:id), totp: code)
+      expect(response).to have_http_status(:created)
+    end
+
+    it "mais de 50 itens: 409" do
+      release(Array.new(51) { SecureRandom.uuid })
+      expect([ response.status, json_body["error"] ]).to eq([ 409, "invalid_transition" ])
+      nothing_persisted!
+    end
+
+    it "item digitado sem todos os componentes valendo: 409" do
+      pending_item = received_requisition!(provider: provider, exams: [ glucose ]).items.first
+      pending_item.update_columns(status: "typed")
+      json_post "/lab/requisitions/#{pending_item.lab_requisition_id}/release", item_ids: [ pending_item.id ], signature: "advanced",
+                                                                                totp: totp_for(lead)
+      expect(json_body).to include("error" => "invalid_transition", "status" => "typed")
+      expect(LabReport.count).to eq(0)
+      expect(lead.reload.last_otp_step).to be_nil
+    end
+
+    it "conteúdo fora do esquema: 422 invalid_content, nada gravado, TOTP de volta" do
+      allow(Lab::ReportContent).to receive(:build).and_raise(Lab::ReportContent::Invalid, "laudo fora do esquema")
+      release(items.map(&:id))
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_content" ])
+      nothing_persisted!
+      expect(lead.reload.last_otp_step).to be_nil
+    end
+
+    it "ids em maiúsculas contam como os mesmos itens (partial certo)" do
+      release(items.map { |i| i.id.upcase })
+      expect(response).to have_http_status(:created)
+      expect(json_body["partial"]).to be(false)
+    end
+  end
+
   it "não liberado é invisível fora do laboratório" do
     type!(items[0], { glicose: "98" })
     order = items[0].exam_order
