@@ -16,6 +16,9 @@ module Lab
         return fail(:invalid_analyte_key, "key") unless key.match?(LabAnalyteTemplate::KEY)
         return fail(:duplicate_analyte_key, "key") if template.analytes.where(key: key).where.not(id: analyte.id).exists?
         return fail(:blank, "name") if attrs[:name].to_s.strip.empty?
+        # D6: texto além do limite é recusado (nunca cortado em silêncio).
+        return fail(:invalid_name, "name") if attrs[:name].to_s.strip.length > 120
+        return fail(:invalid_unit, "unit") if attrs[:unit].to_s.strip.length > 30
         return fail(:invalid_value_type, "valueType") unless LabAnalyteTemplate::VALUE_TYPES.include?(attrs[:value_type])
 
         choices = Choices.normalize(attrs[:choices])
@@ -31,7 +34,7 @@ module Lab
         return fail(:invalid_reference_ranges, "referenceRanges") if ranges.failure?
 
         created = analyte.new_record?
-        analyte.update!(key: key, name: attrs[:name].strip[0, 120], loinc: loinc, unit: attrs[:unit].to_s.strip.presence&.slice(0, 30),
+        analyte.update!(key: key, name: attrs[:name].strip, loinc: loinc, unit: attrs[:unit].to_s.strip.presence,
                         value_type: attrs[:value_type], choices: attrs[:value_type] == "choice" ? choices : [],
                         decimals: attrs[:decimals], reference_ranges: ranges.payload[:ranges], position: attrs[:position].to_i)
         Platform.audit("lab.template_changed", lab_exam_template_id: template.id,

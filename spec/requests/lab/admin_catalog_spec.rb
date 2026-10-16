@@ -92,6 +92,24 @@ RSpec.describe "Laboratório — admin do catálogo", type: :request do
     expect(json_body["error"]).to eq("invalid_collects_samples")
   end
 
+  # D6: a versão da cidade recusa texto longo (nunca corta em silêncio).
+  it "versão com método/material/recipiente/nome/unidade além do limite → 422 e nada gravado" do
+    stepped_up!(admin)
+    exam = lab_exam!(provider: provider, instrument_test_code: "GLI")
+    base = { method: "Enzimático", material: "Plasma", container: "Tubo", analytes: LabHelpers::GLUCOSE }
+    long_analyte = ->(over) { [ LabHelpers::GLUCOSE.first.merge(over) ] }
+    { base.merge(method: "m" * 161) => "invalid_version", base.merge(material: "m" * 61) => "invalid_version",
+      base.merge(container: "c" * 61) => "invalid_version",
+      base.merge(analytes: long_analyte.call("name" => "n" * 121)) => "invalid_analytes",
+      base.merge(analytes: long_analyte.call("unit" => "u" * 31)) => "invalid_analytes" }.each do |body, code|
+      expect { json_post "/lab/admin/exams/#{exam.id}/versions", **body }.not_to change(LabExamVersion, :count)
+      expect([ response.status, json_body["error"] ]).to eq([ 422, code ]), body.inspect
+    end
+    range = { "sex" => "any", "age_min_days" => 0, "age_max_days" => 43_800, "low" => nil, "high" => nil, "text" => "t" * 121 }
+    json_post "/lab/admin/exams/#{exam.id}/versions", **base.merge(analytes: long_analyte.call("reference_ranges" => [ range ]))
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_reference_ranges" ])
+  end
+
   it "código do aparelho sem diferença de caixa, só entre exames ATIVOS; PATCH do exame recusa entrada inválida" do
     stepped_up!(admin)
     glucose = lab_exam!(provider: provider, instrument_test_code: "GLI")

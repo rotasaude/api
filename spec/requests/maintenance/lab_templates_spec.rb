@@ -36,6 +36,21 @@ RSpec.describe "Maintenance: catálogo-base do laboratório", type: :request do
     post "/session/challenge", params: { session_id: json["session_id"], code: ROTP::TOTP.new(maintainer.otp_secret).now }, headers: browser
   end
 
+  # D6: texto além do limite é recusado, nunca cortado em silêncio.
+  it "recusa nome longo demais do exame (invalid_name) e unidade longa do componente (invalid_unit), sem gravar" do
+    vars = { sigtapCode: "0202010473", name: "G" * 121, sector: "biochemistry", material: "Plasma", container: "Tubo cinza", active: true }
+    gql!(LAB_EXAM, vars)
+    expect(json.dig("data", "upsertLabExamTemplate")).to eq("ok" => false, "errors" => [ { "path" => "name", "message" => "invalid_name" } ])
+    expect(LabExamTemplate.where(sigtap_code: "0202010473")).not_to exist
+    gql!(LAB_EXAM, vars.merge(name: "G" * 120))
+    expect(LabExamTemplate.find_by!(sigtap_code: "0202010473").name.length).to eq(120)
+    template = LabExamTemplate.find_by!(sigtap_code: "0202010473")
+    long_unit = LAB_ANALYTE.sub('unit: "mg/dL"', %(unit: "#{'u' * 31}"))
+    gql!(long_unit, templateId: template.id, key: "glicose", ranges: [])
+    expect(json.dig("data", "upsertLabAnalyteTemplate", "errors")).to eq([ { "path" => "unit", "message" => "invalid_unit" } ])
+    expect(template.analytes.count).to eq(0)
+  end
+
   it "cria exame e componente, lista com faixas, recusa com path, desativa; audita sem abrir cidade" do
     expect(Maintenance::CityReader).not_to receive(:call)
     vars = { sigtapCode: "0202010473", name: "Glicose", sector: "biochemistry", material: "Plasma", container: "Tubo cinza", active: true }
