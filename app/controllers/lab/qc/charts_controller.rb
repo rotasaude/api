@@ -15,8 +15,8 @@ module Lab
         return render_failure(Result.fail(:filter_required)) unless lot && instrument && level.is_a?(String) && level.present? &&
                                                                     analyte_key.is_a?(String) && analyte_key.present?
         provider_id = lot.lab_qc_material.exam_provider_id
-        return not_found unless instrument.exam_provider_id == provider_id
         return forbid unless releaser?(provider_id)
+        return not_found unless instrument.exam_provider_id == provider_id
 
         from = date_param(:from)
         to = date_param(:to)

@@ -115,3 +115,186 @@ RSpec.describe "CIQ — referência do laboratório e Levey-Jennings", type: :re
     expect(response).to have_http_status(:forbidden)
   end
 end
+
+# Rodada de correção 1: contagem de corridas, limites do gráfico e recusas.
+RSpec.describe "CIQ — sugestão e gráfico: bordas e recusas", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
+  before do
+    travel_to(Time.zone.now.change(hour: 12))
+    qc_city!
+  end
+
+  after { travel_back }
+
+  let(:s) { qc_scenario! }
+  let(:lead) { lab_releaser!(s.provider, lead: true) }
+  let(:staff) { lab_staff! }
+  let(:offsets) { [ 0.3, -0.5, 0.8, -0.2, 0.6, -0.9, 0.4, -0.3, 1.1, -0.6, 0.2, -0.4, 0.7, -0.8, 0.5, -0.1, 0.9, -0.7, 0.3, -0.2 ] }
+  let(:chart) { { lot_id: s.lot.id, level: "Nível 1", analyte_key: "glicose", instrument_id: s.instrument.id } }
+  let(:key) { { lot_id: s.lot.id, level: "Nível 1", analyte_key: "glicose", instrument_id: s.instrument.id } }
+
+  # Uma corrida por dia, só no Nível 1, terminando ontem.
+  def runs!(scenario, count, from: 0)
+    count.times.map do |i|
+      qc_value!(scenario, "Nível 1", offsets[(from + i) % offsets.size], by: staff, now: Time.current - (count + 1 - i).days)
+    end
+  end
+
+  def suggestion(scenario = s) = Lab::Qc::Suggestions.find(lot_id: scenario.lot.id, level: "Nível 1", analyte_key: "glicose", instrument_id: scenario.instrument.id)
+
+  def other_instrument_scenario
+    instrument = qc_instrument!(s.provider, name: "Outro", hl7_equipment_id: "BIO-09")
+    qc_target!(s.lot, level: "Nível 1", analyte_key: "glicose", instrument: instrument, mean: 100, sd: 5)
+    qc_target!(s.lot, level: "Nível 2", analyte_key: "glicose", instrument: instrument, mean: 250, sd: 10)
+    QcScenarioProxy.new(s, instrument: instrument)
+  end
+
+  QcScenarioProxy = Struct.new(:base, :overrides) do
+    def initialize(base, overrides) = super(base, overrides)
+    def provider = base.provider
+    def instrument = overrides[:instrument] || base.instrument
+    def lot = overrides[:lot] || base.lot
+    def exam = base.exam
+    def material = base.material
+  end
+
+  describe "gráfico" do
+    it "limita a 200 pontos: os mais recentes, em ordem cronológica" do
+      201.times { |i| qc_value!(s, "Nível 1", i.even? ? 0.3 : -0.3, by: staff, now: Time.current - (201 - i).minutes) }
+      stepped_up!(lead)
+      get "/lab/qc/chart", params: chart
+      expect(response).to have_http_status(:ok)
+      ats = json_body["points"].map { |p| Time.zone.parse(p["at"]) }
+      expect(ats.size).to eq(200)
+      expect(ats).to eq(ats.sort)
+      newest = LabQcValue.order(:entered_at).pluck(:entered_at).last(200)
+      expect(ats).to eq(newest.map { |t| Time.zone.parse(t.iso8601) })
+    end
+
+    it "aparelho de outro laboratório: 404; quem não é do laboratório: 403 (nunca 404)" do
+      foreign = qc_instrument!(lab_provider!, name: "Alheio", hl7_equipment_id: "BIO-77")
+      stepped_up!(lead)
+      get "/lab/qc/chart", params: chart.merge(instrument_id: foreign.id)
+      expect(response).to have_http_status(:not_found)
+      expect(json_body["error"]).to eq("not_found")
+      third = lab_releaser!(lab_provider!, lead: true)
+      stepped_up!(third)
+      get "/lab/qc/chart", params: chart.merge(instrument_id: foreign.id)
+      expect(response).to have_http_status(:forbidden)
+      get "/lab/qc/chart", params: chart
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "data que não é data (from ou to): 422 invalid_date" do
+      stepped_up!(lead)
+      [ { from: "abc" }, { to: "abc" }, { to: "2026-13-01" }, { from: "2026-1-1" } ].each do |period|
+        get "/lab/qc/chart", params: chart.merge(period)
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json_body["error"]).to eq("invalid_date")
+      end
+    end
+
+    it "pontos sem referência vigente: target null e os pontos continuam listados" do
+      qc_value!(s, "Nível 1", 0.4, by: staff)
+      stepped_up!(lead)
+      # Sem referência vigente (a chave de busca não acha nada): os pontos já gravados seguem com a versão deles.
+      allow(LabQcTarget).to receive(:current).and_return(nil)
+      get "/lab/qc/chart", params: chart
+      expect(response).to have_http_status(:ok)
+      expect(json_body["target"]).to be_nil
+      expect(json_body["points"].map { |p| p["target_version"] }).to eq([ 1 ])
+    end
+  end
+
+  describe "contagem de corridas da sugestão" do
+    it "corrida em alerta (warning) conta; só o último valor de cada corrida entra" do
+      runs!(s, 19)
+      # a 20ª corrida: primeiro valor perto da média, o último em alerta (z 2,3)
+      qc_value!(s, "Nível 1", 0.1, by: staff, now: Time.current - 1.hour)
+      last = qc_value!(s, "Nível 1", 2.3, by: staff, now: Time.current - 30.minutes)
+      expect(last[:value].outcome).to eq("warning")
+      expect(last[:run].status).to eq("warning")
+      found = suggestion
+      expect(found.runs).to eq(20)
+      values = LabQcValue.joins(:lab_qc_run).order(:entered_at).group_by(&:lab_qc_run_id).values.map { |rows| rows.last.value }
+      mean = values.sum / 20
+      expect(found.mean).to eq(mean.round(4))
+    end
+
+    it "valores de outro aparelho ou de outro lote não entram" do
+      runs!(s, 19)
+      other = other_instrument_scenario
+      runs!(other, 5)
+      expect(suggestion).to be_nil
+      lot2 = qc_lot!(s.material)
+      qc_target!(lot2, level: "Nível 1", analyte_key: "glicose", instrument: s.instrument, mean: 100, sd: 5)
+      qc_target!(lot2, level: "Nível 2", analyte_key: "glicose", instrument: s.instrument, mean: 250, sd: 10)
+      runs!(QcScenarioProxy.new(s, lot: lot2), 5)
+      expect(suggestion).to be_nil
+      expect(suggestion(other)).to be_nil
+    end
+
+    it "valor sem variação (dp 0): nenhuma sugestão" do
+      20.times { |i| qc_value!(s, "Nível 1", 0, by: staff, now: Time.current - (21 - i).days) }
+      expect(LabQcRun.where(status: LabQcRun::ACCEPTED).count).to eq(20)
+      expect(suggestion).to be_nil
+    end
+
+    it "lote encerrado some da lista; aceitar nele: 422 lot_closed e nada gravado" do
+      runs!(s, 20)
+      stepped_up!(lead)
+      get "/lab/qc/targets/suggestions", params: { provider_id: s.provider.id }
+      expect(json_body["suggestions"].size).to eq(1)
+      s.lot.update_columns(status: "closed", closed_on: Time.zone.today)
+      get "/lab/qc/targets/suggestions", params: { provider_id: s.provider.id }
+      expect(json_body["suggestions"]).to eq([])
+      targets = LabQcTarget.count
+      json_post "/lab/qc/targets/suggestions/accept", key.merge(reason: "motivo")
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body["error"]).to eq("lot_closed")
+      expect(LabQcTarget.count).to eq(targets)
+    end
+  end
+
+  describe "recusas" do
+    before { runs!(s, 20) }
+
+    def refused_without_writing(status, error)
+      targets = LabQcTarget.count
+      events = DomainEvent.where(name: "lab_qc_target.accepted").count
+      yield
+      expect(response).to have_http_status(status)
+      expect(json_body["error"]).to eq(error)
+      expect(LabQcTarget.count).to eq(targets)
+      expect(DomainEvent.where(name: "lab_qc_target.accepted").count).to eq(events)
+    end
+
+    it "RT sem step-up: 401 mfa_required" do
+      sign_in_as(lead)
+      refused_without_writing(:unauthorized, "mfa_required") { json_post "/lab/qc/targets/suggestions/accept", key.merge(reason: "motivo") }
+    end
+
+    it "liberador que não é RT nem substituto: 403 missing_role" do
+      plain = lab_releaser!(s.provider)
+      stepped_up!(plain)
+      refused_without_writing(:forbidden, "missing_role") { json_post "/lab/qc/targets/suggestions/accept", key.merge(reason: "motivo") }
+    end
+
+    it "motivo só com espaços: 422 reason_required" do
+      stepped_up!(lead)
+      refused_without_writing(:unprocessable_content, "reason_required") { json_post "/lab/qc/targets/suggestions/accept", key.merge(reason: "   ") }
+    end
+
+    it "lista de outro laboratório: 403; provider_id ausente ou inválido: 404" do
+      stepped_up!(lead)
+      get "/lab/qc/targets/suggestions", params: { provider_id: lab_provider!.id }
+      expect(response).to have_http_status(:forbidden)
+      get "/lab/qc/targets/suggestions"
+      expect(response).to have_http_status(:not_found)
+      expect(json_body["error"]).to eq("not_found")
+      get "/lab/qc/targets/suggestions", params: { provider_id: "abc" }
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+end
