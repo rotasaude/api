@@ -67,8 +67,10 @@ module Lab
           receipt = LabHl7Receipt.create!(lab_middleware_token: token, control_id: message.control_id, message_type: message.type,
                                           raw: raw.to_s.dup.force_encoding(Encoding::UTF_8), created_at: now)
           qc = Lab::Qc::Hl7Inbound.new(message, token, receipt, now, enabled: qc_allowed, write: structural.empty?)
-          errors.concat(qc.run) # aparelho antes da requisição (Desvio 10; C-E23)
-          errors.concat(Application.new(message, token, receipt, now, write: structural.empty?, skip: qc.claimed).run)
+          qc_errors = qc.run # aparelho antes da requisição (Desvio 10; C-E23)
+          errors.concat(qc_errors)
+          # Controle recusado: o paciente só é conferido (sem travar nem gravar); a mensagem cai inteira.
+          errors.concat(Application.new(message, token, receipt, now, write: structural.empty? && qc_errors.empty?, skip: qc.claimed).run)
           raise ActiveRecord::Rollback if errors.any?
         end
         return ack.call("AA") if errors.empty?
@@ -112,7 +114,8 @@ module Lab
 
         def run
           plan = resolve
-          items = lock(plan)
+          # Sem gravação (a mensagem já cai): confere sem travar requisição nem itens.
+          items = @write ? lock(plan) : plan.to_h { |step| [ step[:item].id, step[:item] ] }
           plan.each { |step| apply(step, items.fetch(step[:item].id)) }
           @errors
         end

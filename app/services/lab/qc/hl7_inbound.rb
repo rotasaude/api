@@ -10,6 +10,7 @@ module Lab
     class Hl7Inbound
       FAILURES = { lot_closed: "qc_lot_closed", expired_lot: "qc_lot_expired", no_target: "qc_no_target",
                    invalid_instrument: "unknown_instrument" }.freeze
+      SAMPLE_SPACE = LabQcLotBarcode::SAMPLE_SPACE
 
       attr_reader :claimed
 
@@ -21,6 +22,7 @@ module Lab
         @enabled = enabled
         @write = write
         @claimed = Set.new
+        @seen = Set.new
         @errors = []
       end
 
@@ -48,9 +50,7 @@ module Lab
 
       def plan_for(specimen)
         where = "SPM^#{specimen.index}^2"
-        entry = LabQcLotBarcode.joins(lab_qc_lot: :lab_qc_material).where(lab_qc_materials: { exam_provider_id: @token.exam_provider_id })
-                               .includes(lab_qc_lot: :lab_qc_material)
-                               .merge(LabQcLotBarcode.matching(@message.barcode(specimen))).first # C-E13: sem caixa
+        entry = control_barcode(@message.barcode(specimen))
         unless entry
           if @message.specimen_role(specimen) == "Q"
             @claimed << specimen.index
@@ -72,6 +72,15 @@ module Lab
         specimen.orders.flat_map { |order| order_plan(order, lot, entry.level) }
       end
 
+      # C-E10: código de controle nunca tem só 10 dígitos (check do banco): amostra de
+      # paciente (ou código vazio) nem consulta a tabela. C-E13: sem diferenciar caixa.
+      def control_barcode(code)
+        return nil if code.blank? || code.match?(SAMPLE_SPACE)
+
+        LabQcLotBarcode.joins(lab_qc_lot: :lab_qc_material).where(lab_qc_materials: { exam_provider_id: @token.exam_provider_id })
+                       .includes(lab_qc_lot: :lab_qc_material).merge(LabQcLotBarcode.matching(code)).first
+      end
+
       def order_plan(order, lot, level)
         material = lot.lab_qc_material
         code = @message.field(order.obr, 4, 1).to_s
@@ -81,16 +90,15 @@ module Lab
           return []
         end
 
-        seen = Set.new
         steps = []
         order.results.each do |obx|
-          step = obx_step(obx, exam, material, lot, level, seen)
+          step = obx_step(obx, exam, material, lot, level)
           steps << step if step
         end
         steps
       end
 
-      def obx_step(obx, exam, material, lot, level, seen)
+      def obx_step(obx, exam, material, lot, level)
         segment = obx.segment
         at = ->(field) { "OBX^#{obx.index}^#{field}" }
         key = @message.field(segment, 3, 1).to_s
@@ -120,28 +128,31 @@ module Lab
           @errors << error("qc_no_target", at.call(3))
           return nil
         end
-        # Dois OBX do mesmo analito no mesmo OBR: a ordem não decide qual vale (como E5/B26).
-        unless seen.add?(key)
+        # O mesmo lote, nível, analito e aparelho duas vezes NA MENSAGEM (outro OBX, OBR ou SPM):
+        # a ordem não decide qual vale (como E5/B26 do paciente, que deduplica a mensagem inteira).
+        unless @seen.add?([ lot.id, level, key, instrument.id ])
           @errors << error("invalid_value", at.call(5))
           return nil
         end
         { instrument: instrument, lot: lot, level: level, analyte_key: key, value: value, where: at.call(5) }
       end
 
+      # Comparado em Ruby: nada da mensagem (OBR-4, OBX-18) vai ao texto do SQL nem ao log.
       def exam_for(material, code)
         return nil if code.blank?
 
-        LabExam.where(id: material.analytes.map { |a| a["lab_exam_id"] }, exam_provider_id: @token.exam_provider_id, active: true)
-               .joins(:current_version).includes(:current_version)
-               .find_by("upper(lab_exam_versions.instrument_test_code) = ?", code.upcase)
+        @exams ||= {}
+        exams = @exams[material.id] ||= LabExam.where(id: material.analytes.map { |a| a["lab_exam_id"] }, exam_provider_id: @token.exam_provider_id,
+                                                      active: true).joins(:current_version).includes(:current_version).to_a
+        exams.find { |exam| exam.current_version.instrument_test_code.to_s.casecmp?(code) }
       end
 
       # A repetição de OBX-18 que casa com UM aparelho ativo do laboratório (sem diferenciar caixa).
       def instrument_for(ids)
         return nil if ids.empty?
 
-        found = LabInstrument.active.where(exam_provider_id: @token.exam_provider_id)
-                             .where("upper(hl7_equipment_id) IN (?)", ids.map(&:upcase)).to_a
+        @instruments ||= LabInstrument.active.where(exam_provider_id: @token.exam_provider_id).to_a
+        found = @instruments.select { |instrument| ids.any? { |id| instrument.hl7_equipment_id.to_s.casecmp?(id) } }
         found.size == 1 ? found.first : nil
       end
     end

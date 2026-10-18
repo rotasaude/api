@@ -92,14 +92,59 @@ RSpec.describe "HL7 — controle de qualidade", type: :request do
     expect(LabQcValue.sole).to have_attributes(level: "Nível 1", source: "hl7", lab_hl7_receipt_id: LabHl7Receipt.sole.id)
   end
 
-  it "nada do controle (código de barras, valor, aparelho, token) vai ao log" do
+  it "nada do controle (código de barras, valor, aparelho, código do exame, token) vai ao log" do
     log = capture_log do
-      hl7_post(oul(spm(1, "CQB2611N1"), obr(1), obx(1, "93.7")), token: token)
-      hl7_post(oul(spm(1, "CQB2611N2"), obr(1), obx(1, "271.3", equipment: "XX")), token: token)
+      hl7_post(oul(spm(1, "CQB2611N1"), obr(1), obx(1, "93.7", equipment: "bio-01")), token: token)
+      hl7_post(oul(spm(1, "CQB2611N2"), obr(1), obx(1, "271.3", equipment: "ZQ-UNKNOWN-77")), token: token)
+      hl7_post(oul(spm(1, "CQB2611N2"), obr(1, "XQZ9"), obx(1, "271.3")), token: token)
     end
-    [ "CQB2611N1", "cqb2611n1", "CQB2611N2", "cqb2611n2", "93.7", "271.3", "OBX|", "MSH|", token ].each do |leak|
+    expect(err5).to eq([ [ "OBR^1^4", "exam_not_in_version" ] ])
+    [ "CQB2611N1", "cqb2611n1", "CQB2611N2", "cqb2611n2", "93.7", "271.3", "BIO-01", "bio-01", "ZQ-UNKNOWN-77", "XQZ9", "GLI",
+      "OBX|", "MSH|", token ].each do |leak|
       expect(log).not_to include(leak)
     end
+  end
+
+  it "código de 10 dígitos (amostra de paciente) nem consulta os códigos de controle; com Q, unknown_barcode" do
+    req = received_requisition!(provider: provider, exams: [ exam ])
+    patient_barcode = req.samples.first.barcode
+    expect(LabQcLotBarcode).not_to receive(:matching)
+    hl7_post(oul(spm(1, patient_barcode, role: "Q"), obr(1), "OBX|1|NM|glicose^G^99RSL||98|mg/dL|||||F"), token: token)
+    expect([ msa, err5 ]).to eq([ "AE", [ [ "SPM^1^2", "unknown_barcode" ] ] ])
+    hl7_post(oul("SPM|1|#{patient_barcode}", obr(1), "OBX|1|NM|glicose^G^99RSL||98|mg/dL|||||F"), token: token)
+    expect(msa).to eq("AA")
+    expect([ LabResult.count, LabQcValue.count ]).to eq([ 1, 0 ])
+  end
+
+  # Como o paciente (E5/B26), que deduplica a mensagem inteira: a ordem não decide qual vale.
+  it "o mesmo nível, analito e aparelho duas vezes na mensagem (outro OBR ou outro SPM): invalid_value" do
+    hl7_post(oul(spm(1, "CQB2611N1"), obr(1), obx(1, "90.0"), obr(2), obx(2, "91.0")), token: token)
+    expect([ msa, err5 ]).to eq([ "AE", [ [ "OBX^2^5", "invalid_value" ] ] ])
+    hl7_post(oul(spm(1, "CQB2611N1"), obr(1), obx(1, "90.0"), spm(2, "cqb2611n1"), obr(2), obx(2, "91.0")), token: token)
+    expect([ msa, err5 ]).to eq([ "AE", [ [ "OBX^2^5", "invalid_value" ] ] ])
+    hl7_post(oul(spm(1, "CQB2611N1"), obr(1), obx(1, "90.0"), obx(2, "90.5")), token: token)
+    expect([ msa, err5 ]).to eq([ "AE", [ [ "OBX^2^5", "invalid_value" ] ] ])
+    expect(LabQcValue.count).to eq(0)
+    # Níveis diferentes do mesmo analito na mesma mensagem continuam valendo.
+    hl7_post(oul(spm(1, "CQB2611N1"), obr(1), obx(1, "90.0"), spm(2, "CQB2611N2"), obr(2), obx(2, "270.0")), token: token)
+    expect(msa).to eq("AA")
+    expect(LabQcValue.count).to eq(2)
+  end
+
+  it "INV (CO, validade, lote) e SPM-4 do controle são ignorados; o valor é gravado" do
+    inv = [ "INV", "GLI^Glicose^99RSL", "OK^Ok^HL70383", "CO^Control^HL70384", "", "", "", "", "", "", "", "", "20270101", "", "", "", "CQB-2611" ].join("|")
+    hl7_post(oul("SPM|1|CQB2611N1||SER^Soro^HL70487|||||||Q", inv, obr(1), obx(1, "91.8")), token: token)
+    expect(msa).to eq("AA")
+    expect(LabQcValue.sole).to have_attributes(level: "Nível 1", value: BigDecimal("91.8"), z_score: BigDecimal("0.4"), lab_qc_lot_id: lot.id)
+    expect(LabResult.count).to eq(0)
+  end
+
+  it "controle recusado: o paciente da mesma mensagem é só conferido (sem gravar resultado)" do
+    req = received_requisition!(provider: provider, exams: [ exam ])
+    expect(Lab::EnterResults).not_to receive(:call)
+    hl7_post(oul(spm(1, "CQB2611N1"), obr(1), obx(1, "91.8", equipment: "XX"), "SPM|2|#{req.samples.first.barcode}", obr(1),
+                 "OBX|1|NM|glicose^G^99RSL||98|mg/dL|||||F|||"), token: token)
+    expect([ msa, err5 ]).to eq([ "AE", [ [ "OBX^1^18", "unknown_instrument" ] ] ])
   end
 
   it "todas as recusas de uma vez, como o exemplo ack-ae-qc do contracts" do
