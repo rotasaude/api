@@ -63,7 +63,8 @@ RSpec.describe ReencryptionJob do
                                          SignerCertificate SignatureSession SignatureOauthState SignatureRequest Signature
                                          ClinicalDocument PrescriptionItem PatientMedication PatientMedicationEvent
                                          PecSetting ExamOrder ExamOrderEvent ExamResult ExamFile
-                                         LabRequisition LabResult LabHl7Receipt LabReport LabCriticalNotice])
+                                         LabRequisition LabResult LabHl7Receipt LabReport LabCriticalNotice
+                                         LabQcException LabQcReviewItem])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end
