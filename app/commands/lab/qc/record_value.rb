@@ -1,9 +1,11 @@
 # Valor de controle, digitado ou pela HL7 (spec §5.2–§5.7; ADR 0038; C-E14):
-# trava o APARELHO (FOR UPDATE) e depois o lote de controle (FOR SHARE) —
-# ordem aparelho → lote → requisição → itens → pedido (D11) —, acha a corrida
-# (a dada, a do dia não reprovada ou uma nova), a referência vigente, calcula
+# trava o APARELHO (FOR UPDATE), a corrida dada (FOR UPDATE, relida) e o lote
+# de controle (FOR SHARE) — ordem aparelho → corrida/lote → requisição → itens
+# → pedido (D11) —, acha a corrida (a dada; run_id; a mais recente do dia se
+# não reprovada; senão uma nova), a referência vigente, calcula
 # z (3 casas, ROUND_HALF_UP, ANTES de avaliar) e roda Westgard sobre a série
-# do nível, os outros níveis da corrida e a série entre níveis; grava o valor
+# do nível, os outros níveis da corrida e a série entre níveis do mesmo lote
+# (C-E15); grava o valor
 # (só acréscimo) com o lote de reagente em uso; piora a situação da corrida;
 # reprovação abre o bloqueio (e enfileira a revisão); corrida aceita completa
 # depois da ação corretiva fecha. Valor nunca em log/evento.
@@ -19,7 +21,7 @@ module Lab
         raise ArgumentError, "RecordValue takes a BigDecimal value" unless value.is_a?(BigDecimal)
 
         material = lot.lab_qc_material
-        return Result.fail(:invalid_instrument) unless instrument.active && instrument.exam_provider_id == material.exam_provider_id
+        return Result.fail(:invalid_instrument) unless instrument.exam_provider_id == material.exam_provider_id
         return Result.fail(:invalid_levels) unless material.levels.include?(level)
 
         entry = material.analyte_entry(analyte_key) # C-E12: a chave é única dentro do material
@@ -29,6 +31,13 @@ module Lab
         # Savepoint próprio: dentro da transação da HL7, a recusa desfaz só o que é dela.
         ApplicationRecord.transaction(requires_new: true) do
           instrument.lock!
+          next result = Result.fail(:invalid_instrument) unless instrument.active
+
+          # A corrida dada (HL7) é relida e travada sob a trava do aparelho: nada de situação velha.
+          if run
+            run = LabQcRun.lock.find_by(id: run.id, lab_instrument_id: instrument.id)
+            next result = Result.fail(:not_found) unless run
+          end
           lot = LabQcLot.lock("FOR SHARE").find(lot.id)
           next result = Result.fail(:lot_closed) if lot.status == "closed"
           next result = Result.fail(:expired_lot) if lot.expired?(now.in_time_zone.to_date)
@@ -41,7 +50,7 @@ module Lab
 
           z = ((value - target.mean) / target.sd).round(3, BigDecimal::ROUND_HALF_UP)
           evaluation = Westgard.evaluate(z: z, series: series(instrument, run, lot, level, analyte_key), peers: peers(run, lot, level, analyte_key),
-                                         cross: cross(instrument, run, level, analyte_key), enabled: LabQcRule.enabled_for(instrument.id, analyte_key))
+                                         cross: cross(instrument, run, lot, level, analyte_key), enabled: LabQcRule.enabled_for(instrument.id, analyte_key))
           row = LabQcValue.create!(lab_qc_run: run, lab_qc_lot: lot, level: level, analyte_key: analyte_key, value: value, source: source,
                                    lab_hl7_receipt: receipt, z_score: z, lab_qc_target: target, rules_fired: evaluation.rules_fired,
                                    outcome: evaluation.outcome, entered_by_user: by, entered_at: now,
@@ -60,7 +69,8 @@ module Lab
         result
       end
 
-      # A corrida dada (HL7: mesmo reprovada); run_id (não reprovada); a do dia não reprovada; ou nova.
+      # A corrida dada (HL7: mesmo reprovada); run_id (não reprovada); a mais
+      # recente do dia, se não reprovada; senão (reprovada ou nenhuma) uma nova.
       def resolve_run(instrument, run, run_id, by, now)
         return run if run
 
@@ -72,9 +82,10 @@ module Lab
           return found
         end
         day = now.in_time_zone.to_date
-        LabQcRun.where(lab_instrument_id: instrument.id, started_at: day.beginning_of_day..day.end_of_day).where.not(status: "rejected")
-                .order(:started_at, :created_at).last ||
-          LabQcRun.create!(lab_instrument: instrument, sector: instrument.sector, status: "open", started_at: now, opened_by_user: by)
+        latest = LabQcRun.where(lab_instrument_id: instrument.id, started_at: day.beginning_of_day..day.end_of_day).order(:started_at, :created_at).last
+        return latest if latest && latest.status != "rejected"
+
+        LabQcRun.create!(lab_instrument: instrument, sector: instrument.sector, status: "open", started_at: now, opened_by_user: by)
       end
 
       # Desvio 5: até 9 z anteriores do mesmo lote, nível, analito e aparelho,
@@ -90,11 +101,12 @@ module Lab
                   .order(:entered_at, :created_at).to_a.group_by(&:level).values.map { |rows| rows.last.z_score }
       end
 
-      # C-E14: até 9 z anteriores do analito no aparelho somando os níveis, em
-      # ordem cronológica: corridas não reprovadas anteriores e, desta, os outros níveis.
-      def cross(instrument, run, level, analyte_key)
+      # C-E14/C-E15: até 9 z anteriores do analito no aparelho somando os níveis
+      # do MESMO lote de controle (troca de lote reinicia), em ordem cronológica:
+      # corridas não reprovadas anteriores e, desta, os outros níveis.
+      def cross(instrument, run, lot, level, analyte_key)
         others = LabQcValue.where(lab_qc_run_id: run.id, analyte_key: analyte_key).where.not(level: level)
-        accepted_values(instrument, analyte_key).where.not(lab_qc_run_id: run.id).or(others)
+        accepted_values(instrument, analyte_key).where.not(lab_qc_run_id: run.id).or(others).where(lab_qc_lot_id: lot.id)
                                                 .order(entered_at: :desc, created_at: :desc).limit(SERIES).pluck(:z_score).reverse
       end
 

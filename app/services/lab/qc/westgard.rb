@@ -1,8 +1,9 @@
 # Regras de Westgard sobre z-scores (spec §5.3; Desvio 5; C-E14). Função pura:
 # quem chama monta a série (mesmo lote, nível, analito e aparelho, corridas
 # não reprovadas, mais antigo primeiro), os pares (outros níveis do mesmo
-# analito na mesma corrida) e a série entre níveis (o analito no aparelho,
-# todos os níveis, corridas não reprovadas, em ordem cronológica, sem o valor
+# analito na mesma corrida) e a série entre níveis (C-E14/C-E15: o analito
+# no aparelho, todos os níveis do MESMO lote de controle — troca de lote
+# reinicia —, corridas não reprovadas, em ordem cronológica, sem o valor
 # atual). 2-2s e R-4s olham os pares; 4-1s e 10x olham a série do nível E a
 # série entre níveis. 1-2s é aviso; o resto reprova. Limites estritos. Só BigDecimal.
 module Lab
