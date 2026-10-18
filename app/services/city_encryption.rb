@@ -116,7 +116,9 @@ module CityEncryption
     [ LabReport, :content ],
     [ LabReport, :rectification_reason ],
     [ LabReport, :rectification_contacts ],
-    [ LabCriticalNotice, :notified_person ]
+    [ LabCriticalNotice, :notified_person ],
+    [ LabQcException, :justification ],
+    [ LabQcReviewItem, :note ]
   ].freeze
 
   module_function

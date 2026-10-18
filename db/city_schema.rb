@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -1034,6 +1034,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
     t.check_constraint "channel::text = ANY (ARRAY['telefone'::text, 'presencial'::text, 'sistema'::text])", name: "ck_lab_critical_notices_channel"
   end
 
+  create_table "lab_eqa_rounds", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "annual_report_file_id"
+    t.datetime "created_at", null: false
+    t.uuid "exam_provider_id", null: false
+    t.jsonb "items", null: false
+    t.string "program", limit: 60, null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.string "round_code", limit: 40, null: false
+    t.date "round_date", null: false
+    t.index ["annual_report_file_id"], name: "index_lab_eqa_rounds_on_annual_report_file_id", unique: true
+    t.index ["exam_provider_id", "program", "round_code"], name: "idx_lab_eqa_rounds_code", unique: true
+    t.index ["exam_provider_id", "round_date"], name: "idx_lab_eqa_rounds_date"
+    t.check_constraint "jsonb_typeof(items) = 'array'::text AND jsonb_array_length(items) BETWEEN 1 AND 60", name: "ck_lab_eqa_rounds_items"
+  end
+
   create_table "lab_exam_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "analysis_method", limit: 160, null: false
     t.jsonb "analytes", null: false
@@ -1044,9 +1059,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
     t.uuid "lab_exam_id", null: false
     t.string "material", limit: 60, null: false
     t.integer "version", null: false
+    t.uuid "lab_instrument_id"
     t.index ["lab_exam_id", "version"], name: "idx_lab_exam_versions_number", unique: true
+    t.index ["lab_instrument_id"], name: "index_lab_exam_versions_on_lab_instrument_id"
     t.check_constraint "instrument_test_code IS NULL OR instrument_test_code::text ~ '^[A-Za-z0-9._-]{1,30}$'::text", name: "ck_lab_exam_versions_instrument"
-    t.check_constraint "jsonb_typeof(analytes) = 'array'::text AND (jsonb_array_length(analytes) >= 1 AND jsonb_array_length(analytes) <= 60)", name: "ck_lab_exam_versions_analytes"
+    t.check_constraint "jsonb_typeof(analytes) = 'array'::text AND (jsonb_array_length(analytes) BETWEEN 1 AND 60)", name: "ck_lab_exam_versions_analytes"
     t.check_constraint "version >= 1", name: "ck_lab_exam_versions_version"
   end
 
@@ -1077,6 +1094,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
     t.index ["lab_middleware_token_id", "control_id"], name: "idx_lab_hl7_receipts_control", unique: true
   end
 
+  create_table "lab_instruments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "exam_provider_id", null: false
+    t.string "hl7_equipment_id", limit: 50
+    t.string "manufacturer", limit: 80
+    t.string "model", limit: 80
+    t.string "name", limit: 80, null: false
+    t.string "sector", null: false
+    t.string "serial_number", limit: 60
+    t.datetime "updated_at", null: false
+    t.index "exam_provider_id, lower((name)::text)", name: "idx_lab_instruments_name", unique: true
+    t.index "exam_provider_id, upper((hl7_equipment_id)::text)", name: "idx_lab_instruments_hl7", unique: true, where: "(hl7_equipment_id IS NOT NULL)"
+    t.check_constraint "hl7_equipment_id IS NULL OR hl7_equipment_id::text ~ '^[A-Za-z0-9._-]{1,50}$'::text", name: "ck_lab_instruments_hl7"
+    t.check_constraint "sector::text = ANY (ARRAY['biochemistry'::text, 'hematology'::text, 'immunology'::text, 'urinalysis'::text, 'parasitology'::text, 'microbiology'::text])", name: "ck_lab_instruments_sector"
+  end
+
   create_table "lab_middleware_tokens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.uuid "created_by_user_id"
@@ -1086,6 +1120,164 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
     t.string "token_digest", limit: 64, null: false
     t.index ["exam_provider_id"], name: "idx_lab_middleware_tokens_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["token_digest"], name: "index_lab_middleware_tokens_on_token_digest", unique: true
+  end
+
+  create_table "lab_qc_blocks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "analyte_key", limit: 40, null: false
+    t.datetime "closed_at"
+    t.uuid "closed_by_run_id"
+    t.uuid "closed_by_user_id"
+    t.text "corrective_action"
+    t.datetime "corrective_action_at"
+    t.uuid "corrective_action_by_user_id"
+    t.datetime "created_at", null: false
+    t.uuid "lab_instrument_id", null: false
+    t.datetime "opened_at", null: false
+    t.uuid "opened_by_run_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["lab_instrument_id", "analyte_key"], name: "idx_lab_qc_blocks_active", unique: true, where: "(closed_at IS NULL)"
+    t.index ["lab_instrument_id", "opened_at"], name: "idx_lab_qc_blocks_instrument"
+    t.check_constraint "(corrective_action IS NULL) = (corrective_action_at IS NULL)", name: "ck_lab_qc_blocks_action"
+    t.check_constraint "closed_at IS NULL OR corrective_action IS NOT NULL AND closed_by_run_id IS NOT NULL", name: "ck_lab_qc_blocks_closed"
+  end
+
+  create_table "lab_qc_exceptions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "granted_at", null: false
+    t.uuid "granted_by_user_id", null: false
+    t.text "justification", null: false
+    t.uuid "lab_qc_block_id", null: false
+    t.uuid "lab_requisition_item_id", null: false
+    t.index ["lab_qc_block_id", "lab_requisition_item_id"], name: "idx_lab_qc_exceptions_pair", unique: true
+    t.index ["lab_requisition_item_id"], name: "index_lab_qc_exceptions_on_lab_requisition_item_id"
+  end
+
+  create_table "lab_qc_lot_barcodes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "barcode", limit: 30, null: false
+    t.datetime "created_at", null: false
+    t.uuid "lab_qc_lot_id", null: false
+    t.string "level", limit: 40, null: false
+    t.index ["barcode"], name: "index_lab_qc_lot_barcodes_on_barcode", unique: true
+    t.index ["lab_qc_lot_id", "level"], name: "idx_lab_qc_lot_barcodes_level", unique: true
+    t.check_constraint "barcode::text ~ '^[A-Za-z0-9._-]{3,30}$'::text AND barcode::text !~ '^[0-9]{10}$'::text", name: "ck_lab_qc_lot_barcodes_barcode"
+  end
+
+  create_table "lab_qc_lots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.date "closed_on"
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id"
+    t.date "expires_on", null: false
+    t.uuid "lab_qc_material_id", null: false
+    t.string "lot_number", limit: 40, null: false
+    t.date "opened_on", null: false
+    t.string "status", default: "in_use", null: false
+    t.datetime "updated_at", null: false
+    t.index ["lab_qc_material_id", "lot_number"], name: "idx_lab_qc_lots_number", unique: true
+    t.check_constraint "(status::text = 'closed'::text) = (closed_on IS NOT NULL)", name: "ck_lab_qc_lots_closed"
+    t.check_constraint "status::text = ANY (ARRAY['in_use'::text, 'closed'::text])", name: "ck_lab_qc_lots_status"
+  end
+
+  create_table "lab_qc_materials", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.jsonb "analytes", null: false
+    t.datetime "created_at", null: false
+    t.uuid "exam_provider_id", null: false
+    t.jsonb "levels", null: false
+    t.string "manufacturer", limit: 80
+    t.string "name", limit: 80, null: false
+    t.datetime "updated_at", null: false
+    t.index ["exam_provider_id"], name: "index_lab_qc_materials_on_exam_provider_id"
+    t.check_constraint "jsonb_typeof(analytes) = 'array'::text AND jsonb_array_length(analytes) BETWEEN 1 AND 60", name: "ck_lab_qc_materials_analytes"
+    t.check_constraint "jsonb_typeof(levels) = 'array'::text AND jsonb_array_length(levels) BETWEEN 1 AND 6", name: "ck_lab_qc_materials_levels"
+  end
+
+  create_table "lab_qc_review_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "decided_at"
+    t.uuid "decided_by_user_id"
+    t.string "decision", default: "pending", null: false
+    t.uuid "lab_qc_block_id", null: false
+    t.uuid "lab_requisition_item_id", null: false
+    t.text "note"
+    t.datetime "updated_at", null: false
+    t.index ["decision"], name: "idx_lab_qc_review_items_pending", where: "((decision)::text = 'pending'::text)"
+    t.index ["lab_qc_block_id", "lab_requisition_item_id"], name: "idx_lab_qc_review_items_pair", unique: true
+    t.index ["lab_requisition_item_id"], name: "index_lab_qc_review_items_on_lab_requisition_item_id"
+    t.check_constraint "(decision::text = 'pending'::text) = (decided_at IS NULL)", name: "ck_lab_qc_review_items_decided"
+    t.check_constraint "decision::text = ANY (ARRAY['pending'::text, 'kept'::text, 'rectify'::text])", name: "ck_lab_qc_review_items_decision"
+  end
+
+  create_table "lab_qc_rules", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "analyte_key", limit: 40, null: false
+    t.uuid "changed_by_user_id", null: false
+    t.datetime "created_at", null: false
+    t.text "justification"
+    t.uuid "lab_instrument_id", null: false
+    t.jsonb "rules", null: false
+    t.index ["lab_instrument_id", "analyte_key", "created_at"], name: "idx_lab_qc_rules_pair"
+    t.check_constraint "jsonb_typeof(rules) = 'object'::text", name: "ck_lab_qc_rules_rules"
+  end
+
+  create_table "lab_qc_runs", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "evaluated_at"
+    t.uuid "lab_instrument_id", null: false
+    t.uuid "opened_by_user_id"
+    t.string "sector", null: false
+    t.datetime "started_at", null: false
+    t.string "status", default: "open", null: false
+    t.datetime "updated_at", null: false
+    t.index ["lab_instrument_id", "started_at"], name: "idx_lab_qc_runs_instrument"
+    t.check_constraint "status::text = 'open'::text OR evaluated_at IS NOT NULL", name: "ck_lab_qc_runs_evaluated"
+    t.check_constraint "status::text = ANY (ARRAY['open'::text, 'approved'::text, 'warning'::text, 'rejected'::text])", name: "ck_lab_qc_runs_status"
+  end
+
+  create_table "lab_qc_targets", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "accepted_at", null: false
+    t.uuid "accepted_by_user_id", null: false
+    t.string "analyte_key", limit: 40, null: false
+    t.integer "based_on_runs"
+    t.datetime "created_at", null: false
+    t.uuid "lab_instrument_id", null: false
+    t.uuid "lab_qc_lot_id", null: false
+    t.string "level", limit: 40, null: false
+    t.decimal "mean", precision: 14, scale: 4, null: false
+    t.text "reason"
+    t.decimal "sd", precision: 14, scale: 4, null: false
+    t.string "source", null: false
+    t.integer "version", null: false
+    t.index ["lab_instrument_id"], name: "index_lab_qc_targets_on_lab_instrument_id"
+    t.index ["lab_qc_lot_id", "level", "analyte_key", "lab_instrument_id", "version"], name: "idx_lab_qc_targets_version", unique: true
+    t.check_constraint "(source::text = 'laboratory'::text) = (based_on_runs IS NOT NULL)", name: "ck_lab_qc_targets_runs"
+    t.check_constraint "sd > 0::numeric AND version >= 1", name: "ck_lab_qc_targets_numbers"
+    t.check_constraint "source::text = ANY (ARRAY['package_insert'::text, 'laboratory'::text])", name: "ck_lab_qc_targets_source"
+  end
+
+  create_table "lab_qc_values", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "analyte_key", limit: 40, null: false
+    t.datetime "created_at", null: false
+    t.datetime "entered_at", null: false
+    t.uuid "entered_by_user_id"
+    t.uuid "lab_hl7_receipt_id"
+    t.uuid "lab_qc_lot_id", null: false
+    t.uuid "lab_qc_run_id", null: false
+    t.uuid "lab_qc_target_id", null: false
+    t.string "level", limit: 40, null: false
+    t.string "outcome", null: false
+    t.uuid "reagent_lot_id"
+    t.jsonb "rules_fired", default: [], null: false
+    t.string "source", null: false
+    t.decimal "value", precision: 14, scale: 4, null: false
+    t.decimal "z_score", precision: 8, scale: 3, null: false
+    t.index ["lab_hl7_receipt_id"], name: "index_lab_qc_values_on_lab_hl7_receipt_id"
+    t.index ["lab_qc_lot_id", "level", "analyte_key", "entered_at"], name: "idx_lab_qc_values_series"
+    t.index ["lab_qc_run_id"], name: "index_lab_qc_values_on_lab_qc_run_id"
+    t.index ["reagent_lot_id"], name: "index_lab_qc_values_on_reagent_lot_id"
+    t.check_constraint "entered_by_user_id IS NOT NULL OR lab_hl7_receipt_id IS NOT NULL", name: "ck_lab_qc_values_actor"
+    t.check_constraint "jsonb_typeof(rules_fired) = 'array'::text", name: "ck_lab_qc_values_rules"
+    t.check_constraint "outcome::text = ANY (ARRAY['ok'::text, 'warning'::text, 'reject'::text])", name: "ck_lab_qc_values_outcome"
+    t.check_constraint "source::text = 'typed'::text OR lab_hl7_receipt_id IS NOT NULL", name: "ck_lab_qc_values_hl7"
+    t.check_constraint "source::text = ANY (ARRAY['typed'::text, 'hl7'::text])", name: "ck_lab_qc_values_source"
   end
 
   create_table "lab_rejection_reasons", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1211,9 +1403,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
     t.string "source", null: false
     t.string "unit", limit: 30
     t.text "value", null: false
+    t.uuid "reagent_lot_id"
     t.index ["lab_hl7_receipt_id"], name: "index_lab_results_on_lab_hl7_receipt_id"
     t.index ["lab_requisition_item_id"], name: "idx_lab_results_critical", where: "flag::text = ANY (ARRAY['critical_low'::text, 'critical_high'::text])"
     t.index ["lab_requisition_item_id", "analyte_key", "created_at"], name: "idx_lab_results_item_analyte"
+    t.index ["reagent_lot_id"], name: "index_lab_results_on_reagent_lot_id"
     t.check_constraint "chosen = (chosen_from_id IS NOT NULL)", name: "ck_lab_results_choice"
     t.check_constraint "entered_by_user_id IS NOT NULL OR lab_hl7_receipt_id IS NOT NULL", name: "ck_lab_results_actor"
     t.check_constraint "flag::text = ANY (ARRAY['normal'::text, 'low'::text, 'high'::text, 'critical_low'::text, 'critical_high'::text])", name: "ck_lab_results_flag"
@@ -1266,6 +1460,67 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
     t.index ["origin_unit_id", "status"], name: "idx_lab_shipments_origin_status"
     t.check_constraint "status::text = ANY (ARRAY['open'::text, 'sent'::text, 'received'::text])", name: "ck_lab_shipments_status"
     t.check_constraint "temperature_celsius >= '-30'::integer::numeric AND temperature_celsius <= 60::numeric", name: "ck_lab_shipments_temperature"
+  end
+
+  create_table "lab_supplies", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "exam_provider_id", null: false
+    t.integer "expiry_alert_days", default: 30, null: false
+    t.string "kind", null: false
+    t.jsonb "lab_exam_ids", default: [], null: false
+    t.integer "minimum_stock", default: 0, null: false
+    t.string "name", limit: 120, null: false
+    t.integer "tests_per_package"
+    t.string "unit", limit: 20, null: false
+    t.datetime "updated_at", null: false
+    t.index "exam_provider_id, lower((name)::text)", name: "idx_lab_supplies_name", unique: true
+    t.check_constraint "(kind::text = 'reagent'::text) = (tests_per_package IS NOT NULL) AND (tests_per_package IS NULL OR tests_per_package >= 1 AND tests_per_package <= 100000)", name: "ck_lab_supplies_tests"
+    t.check_constraint "kind::text = ANY (ARRAY['reagent'::text, 'calibrator'::text, 'control'::text, 'consumable'::text])", name: "ck_lab_supplies_kind"
+    t.check_constraint "minimum_stock BETWEEN 0 AND 100000 AND expiry_alert_days BETWEEN 1 AND 365 AND jsonb_typeof(lab_exam_ids) = 'array'::text", name: "ck_lab_supplies_numbers"
+  end
+
+  create_table "lab_supply_in_use", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "ended_at"
+    t.uuid "ended_by_user_id"
+    t.uuid "lab_exam_id", null: false
+    t.uuid "lab_instrument_id", null: false
+    t.uuid "lab_supply_lot_id", null: false
+    t.datetime "started_at", null: false
+    t.uuid "started_by_user_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["lab_instrument_id", "lab_exam_id"], name: "idx_lab_supply_in_use_current", unique: true, where: "(ended_at IS NULL)"
+    t.index ["lab_instrument_id", "started_at"], name: "idx_lab_supply_in_use_instrument"
+    t.index ["lab_supply_lot_id"], name: "index_lab_supply_in_use_on_lab_supply_lot_id"
+  end
+
+  create_table "lab_supply_lots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.date "expires_on", null: false
+    t.uuid "lab_supply_id", null: false
+    t.string "lot_number", limit: 40, null: false
+    t.string "origin", null: false
+    t.string "supplier", limit: 120, null: false
+    t.index ["lab_supply_id", "lot_number"], name: "idx_lab_supply_lots_number", unique: true
+    t.check_constraint "origin::text = ANY (ARRAY['purchase'::text, 'donation'::text, 'loan'::text])", name: "ck_lab_supply_lots_origin"
+  end
+
+  create_table "lab_supply_movements", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "document", limit: 60
+    t.string "kind", null: false
+    t.uuid "lab_supply_lot_id", null: false
+    t.integer "quantity", null: false
+    t.text "reason"
+    t.datetime "recorded_at", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.index ["kind", "recorded_at"], name: "idx_lab_supply_movements_kind"
+    t.index ["lab_supply_lot_id"], name: "index_lab_supply_movements_on_lab_supply_lot_id"
+    t.check_constraint "(kind::text = ANY (ARRAY['receipt'::text, 'opening'::text])) OR reason IS NOT NULL", name: "ck_lab_supply_movements_reason"
+    t.check_constraint "kind::text = ANY (ARRAY['receipt'::text, 'opening'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text])", name: "ck_lab_supply_movements_kind"
+    t.check_constraint "quantity <> 0 AND abs(quantity) <= 100000 AND (kind::text <> 'receipt'::text OR quantity > 0) AND ((kind::text <> ALL (ARRAY['opening'::text, 'loss'::text, 'expiry'::text])) OR quantity < 0)", name: "ck_lab_supply_movements_sign"
   end
 
   create_table "ledi_generation_failures", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2284,13 +2539,46 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "lab_critical_notices", "lab_results"
   add_foreign_key "lab_critical_notices", "users", column: "recorded_by_user_id"
+  add_foreign_key "lab_eqa_rounds", "exam_files", column: "annual_report_file_id"
+  add_foreign_key "lab_eqa_rounds", "exam_providers"
+  add_foreign_key "lab_eqa_rounds", "users", column: "recorded_by_user_id"
   add_foreign_key "lab_exam_versions", "lab_exams"
   add_foreign_key "lab_exam_versions", "users", column: "created_by_user_id"
+  add_foreign_key "lab_exam_versions", "lab_instruments"
   add_foreign_key "lab_exams", "exam_providers"
   add_foreign_key "lab_exams", "lab_exam_versions", column: "current_version_id"
   add_foreign_key "lab_hl7_receipts", "lab_middleware_tokens"
+  add_foreign_key "lab_instruments", "exam_providers"
   add_foreign_key "lab_middleware_tokens", "exam_providers"
   add_foreign_key "lab_middleware_tokens", "users", column: "created_by_user_id"
+  add_foreign_key "lab_qc_blocks", "lab_instruments"
+  add_foreign_key "lab_qc_blocks", "lab_qc_runs", column: "closed_by_run_id"
+  add_foreign_key "lab_qc_blocks", "lab_qc_runs", column: "opened_by_run_id"
+  add_foreign_key "lab_qc_blocks", "users", column: "closed_by_user_id"
+  add_foreign_key "lab_qc_blocks", "users", column: "corrective_action_by_user_id"
+  add_foreign_key "lab_qc_exceptions", "lab_qc_blocks"
+  add_foreign_key "lab_qc_exceptions", "lab_requisition_items"
+  add_foreign_key "lab_qc_exceptions", "users", column: "granted_by_user_id"
+  add_foreign_key "lab_qc_lot_barcodes", "lab_qc_lots"
+  add_foreign_key "lab_qc_lots", "lab_qc_materials"
+  add_foreign_key "lab_qc_lots", "users", column: "created_by_user_id"
+  add_foreign_key "lab_qc_materials", "exam_providers"
+  add_foreign_key "lab_qc_review_items", "lab_qc_blocks"
+  add_foreign_key "lab_qc_review_items", "lab_requisition_items"
+  add_foreign_key "lab_qc_review_items", "users", column: "decided_by_user_id"
+  add_foreign_key "lab_qc_rules", "lab_instruments"
+  add_foreign_key "lab_qc_rules", "users", column: "changed_by_user_id"
+  add_foreign_key "lab_qc_runs", "lab_instruments"
+  add_foreign_key "lab_qc_runs", "users", column: "opened_by_user_id"
+  add_foreign_key "lab_qc_targets", "lab_instruments"
+  add_foreign_key "lab_qc_targets", "lab_qc_lots"
+  add_foreign_key "lab_qc_targets", "users", column: "accepted_by_user_id"
+  add_foreign_key "lab_qc_values", "lab_hl7_receipts"
+  add_foreign_key "lab_qc_values", "lab_qc_lots"
+  add_foreign_key "lab_qc_values", "lab_qc_runs"
+  add_foreign_key "lab_qc_values", "lab_qc_targets"
+  add_foreign_key "lab_qc_values", "lab_supply_lots", column: "reagent_lot_id"
+  add_foreign_key "lab_qc_values", "users", column: "entered_by_user_id"
   add_foreign_key "lab_rejection_reasons", "exam_providers"
   add_foreign_key "lab_releasers", "exam_providers"
   add_foreign_key "lab_releasers", "users"
@@ -2316,6 +2604,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
   add_foreign_key "lab_results", "lab_requisition_items"
   add_foreign_key "lab_results", "lab_results", column: "chosen_from_id"
   add_foreign_key "lab_results", "users", column: "entered_by_user_id"
+  add_foreign_key "lab_results", "lab_supply_lots", column: "reagent_lot_id"
   add_foreign_key "lab_samples", "lab_rejection_reasons"
   add_foreign_key "lab_samples", "lab_requisitions"
   add_foreign_key "lab_samples", "lab_samples", column: "recollection_of_id"
@@ -2327,6 +2616,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_900002) do
   add_foreign_key "lab_shipments", "users", column: "created_by_user_id"
   add_foreign_key "lab_shipments", "users", column: "received_by_user_id"
   add_foreign_key "lab_shipments", "users", column: "sent_by_user_id"
+  add_foreign_key "lab_supplies", "exam_providers"
+  add_foreign_key "lab_supply_in_use", "lab_exams"
+  add_foreign_key "lab_supply_in_use", "lab_instruments"
+  add_foreign_key "lab_supply_in_use", "lab_supply_lots"
+  add_foreign_key "lab_supply_in_use", "users", column: "ended_by_user_id"
+  add_foreign_key "lab_supply_in_use", "users", column: "started_by_user_id"
+  add_foreign_key "lab_supply_lots", "lab_supplies"
+  add_foreign_key "lab_supply_lots", "users", column: "created_by_user_id"
+  add_foreign_key "lab_supply_movements", "lab_supply_lots"
+  add_foreign_key "lab_supply_movements", "users", column: "recorded_by_user_id"
   add_foreign_key "ledi_outbox", "ledi_outbox", column: "replaces_outbox_id"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"

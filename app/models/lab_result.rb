@@ -10,6 +10,7 @@ class LabResult < ApplicationRecord
   belongs_to :lab_hl7_receipt, optional: true
   belongs_to :entered_by_user, class_name: "User", optional: true
   belongs_to :chosen_from, class_name: "LabResult", optional: true
+  belongs_to :reagent_lot, class_name: "LabSupplyLot", optional: true
   has_many :critical_notices, class_name: "LabCriticalNotice", inverse_of: :lab_result
 
   def critical? = CRITICAL.include?(flag)

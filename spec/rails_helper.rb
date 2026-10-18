@@ -47,6 +47,7 @@ require_relative "support/timeline_helpers"
 require_relative "support/exam_helpers"
 require_relative "support/controlled_prescription_helpers"
 require_relative "support/lab_helpers"
+require_relative "support/lab_qc_helpers"
 # Add additional requires below this line. Rails is not loaded until this point!
 
 # Requires supporting ruby files with custom matchers and macros, etc, in

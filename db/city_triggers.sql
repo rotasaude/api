@@ -1765,3 +1765,151 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 21c (ADR 0038, Invariantes): referências, valores, códigos de
+-- barras, regras, rodadas do CEQ, lotes e movimentos de estoque só crescem;
+-- exceção só cresce (justificativa cifrada aceita re-cifra); a corrida só
+-- piora; o lote de controle só encerra; o bloqueio ganha UMA ação corretiva
+-- e fecha UMA vez, com ação; a revisão decide uma vez; o lote em uso só
+-- termina; aparelho, material e item de estoque nunca somem; saldo de lote
+-- nunca negativo.
+CREATE OR REPLACE FUNCTION rota_lab_qc_run_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['status', 'evaluated_at', 'updated_at'];
+  severity jsonb := '{"open": 0, "approved": 1, "warning": 2, "rejected": 3}';
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'lab_qc_runs is append-only: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'lab_qc_runs: a run never changes (only its status worsens)';
+  END IF;
+  IF (severity ->> NEW.status::text)::int < (severity ->> OLD.status::text)::int THEN
+    RAISE EXCEPTION 'lab_qc_runs: status % -> % refused', OLD.status, NEW.status;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_lab_qc_lot_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['status', 'closed_on', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'lab_qc_lots is append-only: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS NOT DISTINCT FROM (to_jsonb(OLD) - moving)
+     AND OLD.status = 'in_use' AND NEW.status = 'closed' AND NEW.closed_on IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'lab_qc_lots: only in_use -> closed is allowed';
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_lab_qc_block_guard() RETURNS trigger AS $fn$
+DECLARE
+  action_cols text[] := ARRAY['corrective_action', 'corrective_action_by_user_id', 'corrective_action_at'];
+  close_cols text[] := ARRAY['closed_by_run_id', 'closed_by_user_id', 'closed_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'lab_qc_blocks is append-only: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - action_cols - close_cols - 'updated_at') IS DISTINCT FROM (to_jsonb(OLD) - action_cols - close_cols - 'updated_at')
+     OR OLD.closed_at IS NOT NULL
+     OR (OLD.corrective_action IS NOT NULL
+         AND (NEW.corrective_action, NEW.corrective_action_by_user_id, NEW.corrective_action_at)
+             IS DISTINCT FROM (OLD.corrective_action, OLD.corrective_action_by_user_id, OLD.corrective_action_at))
+     OR (NEW.closed_at IS NOT NULL AND NEW.corrective_action IS NULL) THEN
+    RAISE EXCEPTION 'lab_qc_blocks: one corrective action, closed once and only with it';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_lab_qc_review_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['decision', 'decided_by_user_id', 'decided_at', 'note', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'lab_qc_review_items is append-only: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - 'note') = (to_jsonb(OLD) - 'note') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS NOT DISTINCT FROM (to_jsonb(OLD) - moving)
+     AND OLD.decision = 'pending' AND NEW.decision IN ('kept', 'rectify')
+     AND NEW.decided_by_user_id IS NOT NULL AND NEW.decided_at IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'lab_qc_review_items: a review is decided once';
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_lab_supply_in_use_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['ended_at', 'ended_by_user_id', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'lab_supply_in_use is append-only: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS NOT DISTINCT FROM (to_jsonb(OLD) - moving)
+     AND OLD.ended_at IS NULL AND NEW.ended_at IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'lab_supply_in_use: a lot in use only ends, once';
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Saldo do lote (soma dos movimentos) nunca negativo. A aplicação já trava o
+-- lote antes de gravar; este é o cinto de segurança.
+CREATE OR REPLACE FUNCTION rota_lab_supply_balance_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF (SELECT COALESCE(SUM(quantity), 0) FROM lab_supply_movements WHERE lab_supply_lot_id = NEW.lab_supply_lot_id) < 0 THEN
+    RAISE EXCEPTION 'lab_supply_movements: negative balance refused';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.lab_qc_runs') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_qc_runs_guard ON lab_qc_runs';
+    EXECUTE 'CREATE TRIGGER lab_qc_runs_guard BEFORE UPDATE OR DELETE ON lab_qc_runs FOR EACH ROW EXECUTE FUNCTION rota_lab_qc_run_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_qc_lots_guard ON lab_qc_lots';
+    EXECUTE 'CREATE TRIGGER lab_qc_lots_guard BEFORE UPDATE OR DELETE ON lab_qc_lots FOR EACH ROW EXECUTE FUNCTION rota_lab_qc_lot_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_qc_blocks_guard ON lab_qc_blocks';
+    EXECUTE 'CREATE TRIGGER lab_qc_blocks_guard BEFORE UPDATE OR DELETE ON lab_qc_blocks FOR EACH ROW EXECUTE FUNCTION rota_lab_qc_block_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_qc_review_items_guard ON lab_qc_review_items';
+    EXECUTE 'CREATE TRIGGER lab_qc_review_items_guard BEFORE UPDATE OR DELETE ON lab_qc_review_items FOR EACH ROW EXECUTE FUNCTION rota_lab_qc_review_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_supply_in_use_guard ON lab_supply_in_use';
+    EXECUTE 'CREATE TRIGGER lab_supply_in_use_guard BEFORE UPDATE OR DELETE ON lab_supply_in_use FOR EACH ROW EXECUTE FUNCTION rota_lab_supply_in_use_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_supply_movements_balance ON lab_supply_movements';
+    EXECUTE 'CREATE TRIGGER lab_supply_movements_balance AFTER INSERT ON lab_supply_movements FOR EACH ROW EXECUTE FUNCTION rota_lab_supply_balance_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS lab_qc_exceptions_reencryption_only ON lab_qc_exceptions';
+    EXECUTE 'CREATE TRIGGER lab_qc_exceptions_reencryption_only BEFORE UPDATE OR DELETE ON lab_qc_exceptions
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''justification'')';
+    FOREACH item IN ARRAY ARRAY['lab_qc_lot_barcodes', 'lab_qc_targets', 'lab_qc_values', 'lab_qc_rules', 'lab_eqa_rounds',
+                                'lab_supply_lots', 'lab_supply_movements'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['lab_instruments', 'lab_qc_materials', 'lab_supplies'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_no_delete', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['lab_instruments', 'lab_qc_materials', 'lab_qc_lots', 'lab_qc_lot_barcodes', 'lab_qc_targets',
+                                'lab_qc_runs', 'lab_qc_values', 'lab_qc_rules', 'lab_qc_blocks', 'lab_qc_exceptions',
+                                'lab_qc_review_items', 'lab_eqa_rounds', 'lab_supplies', 'lab_supply_lots',
+                                'lab_supply_movements', 'lab_supply_in_use'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

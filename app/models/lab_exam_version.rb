@@ -8,6 +8,7 @@
 class LabExamVersion < ApplicationRecord
   belongs_to :lab_exam
   belongs_to :created_by_user, class_name: "User"
+  belongs_to :lab_instrument, optional: true
 
   def analyte(key) = analytes.find { |a| a["key"] == key.to_s }
   def entered_analytes = analytes.reject { |a| a["formula"].present? }

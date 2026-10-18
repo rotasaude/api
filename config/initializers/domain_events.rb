@@ -191,4 +191,10 @@ Rails.application.config.to_prepare do
      lab_report.rectified lab_report.withdrawn lab_critical.notified lab_exam.version_created lab_releaser.assigned
      lab_releaser.ended lab_middleware.token_rotated lab_middleware.token_revoked exam_order.result_rectified
      exam_order.gal_registered].each { |name| DomainEvents.bind name, to: [] }
+
+  # Módulo 21c (ADR 0038): qualidade e insumos, só trilha, só ids. Nunca
+  # valor de controle, valor de resultado, justificativa ou nome.
+  %w[lab_qc_run.evaluated lab_qc_block.opened lab_qc_block.closed lab_qc_block.action_recorded lab_qc_exception.granted
+     lab_qc_review.decided lab_qc_target.accepted lab_qc_rule.changed lab_eqa_round.recorded lab_supply_lot.received
+     lab_supply_lot.traced lab_supply_movement.recorded lab_supply_in_use.changed].each { |name| DomainEvents.bind name, to: [] }
 end
