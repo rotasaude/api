@@ -1,6 +1,8 @@
 # Nova versão do exame (contrato §3): nunca edita a vigente. O código do
 # aparelho é único (sem diferença de caixa) entre as versões VIGENTES dos exames
-# ATIVOS do laboratório (trava do prestador).
+# ATIVOS do laboratório (trava do prestador). Com aparelho (C-E35), trava o
+# APARELHO (FOR SHARE) antes do exame: a FK da versão toma FOR KEY SHARE no
+# aparelho, e o lote em uso trava aparelho → exame. Sem aparelho, como no 21b.
 module Lab
   module CreateVersion
     module_function
@@ -35,6 +37,11 @@ module Lab
         if code && LabExam.where(exam_provider_id: exam.exam_provider_id, active: true).where.not(id: exam.id)
                           .joins(:current_version).where("upper(lab_exam_versions.instrument_test_code) = ?", code).exists?
           next Result.fail(:duplicate_instrument_code)
+        end
+
+        if raw_instrument
+          instrument = LabInstrument.lock("FOR SHARE").find_by(id: raw_instrument, exam_provider_id: exam.exam_provider_id)
+          next Result.fail(:invalid_version) unless instrument&.active
         end
 
         exam.lock!

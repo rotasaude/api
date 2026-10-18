@@ -1,6 +1,7 @@
 # Aceite do RT/substituto (spec §5.8): a sugestão é recalculada no servidor
 # com o lote travado (nunca vem do cliente); vira nova versão `laboratory`
-# com based_on_runs. Sem sugestão → not_found.
+# com based_on_runs. Sem sugestão → not_found. Ordem de travas (C-E35): o
+# APARELHO (FOR SHARE) antes do lote, como no valor de controle.
 module Lab
   module Qc
     module AcceptSuggestion
@@ -16,6 +17,8 @@ module Lab
         return Result.fail(:not_found) unless instrument_id.to_s.match?(Exams::BaseController::UUID)
 
         ApplicationRecord.transaction(requires_new: true) do
+          next Result.fail(:not_found) unless LabInstrument.lock("FOR SHARE").find_by(id: instrument_id)
+
           lot.lock!
           next Result.fail(:lot_closed) if lot.status == "closed"
 

@@ -1,7 +1,9 @@
 # Referência da bula (contrato §3): por lote, nível, analito do material e
 # aparelho ativo do laboratório; média e dp como string com ponto (C-E9) (dp > 0); nova
 # versão a cada gravação (nunca edita), com motivo quando troca a vigente
-# (C6). Lote travado: versões sem buraco.
+# (C6). Lote travado: versões sem buraco. Ordem de travas (C-E35): o
+# APARELHO (FOR SHARE) antes do lote — a FK da referência toma FOR KEY SHARE
+# no aparelho, e o valor de controle trava aparelho → lote.
 module Lab
   module Qc
     module CreateTarget
@@ -27,6 +29,9 @@ module Lab
         return Result.fail(:invalid_reason) if reason && reason.length > 1000
 
         ApplicationRecord.transaction(requires_new: true) do
+          instrument = LabInstrument.lock("FOR SHARE").find(instrument.id)
+          next Result.fail(:invalid_instrument) unless instrument.active
+
           lot.lock!
           next Result.fail(:lot_closed) if lot.status == "closed"
           next Result.fail(:expired_lot) if lot.expired?(now.in_time_zone.to_date)
