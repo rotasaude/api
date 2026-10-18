@@ -15,7 +15,7 @@ module Lab
         number = params["lot_number"].is_a?(String) ? params["lot_number"].strip : ""
         return Result.fail(:invalid_lot_number) unless number.length.between?(1, 40)
 
-        expires_on = Lab::IsoDate.parse(params["expires_on"])
+        expires_on = ClinicalDocuments::IsoDate.parse(params["expires_on"])
         return Result.fail(:invalid_expires_on) unless expires_on
         return Result.fail(:expired_lot) if expires_on < now.in_time_zone.to_date
 

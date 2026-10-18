@@ -237,6 +237,139 @@ RSpec.describe "Estoque do laboratório", type: :request do
     expect(json_body["untraced_results"]).to eq(1)
   end
 
+  describe "alertas: bordas (payload exato)" do
+    let(:today) { Time.zone.today }
+
+    def supply!(name: "Glicose GOD-PAP", minimum_stock: 0, active: true, alert_days: 30)
+      LabSupply.create!(exam_provider: provider, name: name, kind: "reagent", unit: "kit", tests_per_package: 500, minimum_stock: minimum_stock,
+                        expiry_alert_days: alert_days, lab_exam_ids: [], active: active)
+    end
+
+    # Gravado direto (um lote vencido não entra pela API).
+    def lot!(supply, number, expires_on, quantity)
+      lot = LabSupplyLot.create!(lab_supply: supply, lot_number: number, expires_on: expires_on, supplier: "Distribuidora", origin: "purchase",
+                                 created_by_user: admin)
+      LabSupplyMovement.create!(lab_supply_lot: lot, kind: "receipt", quantity: quantity, recorded_by_user: admin, recorded_at: Time.current)
+      lot
+    end
+
+    def alerts!
+      sign_in_as(staff)
+      before = counts
+      get "/lab/inventory/alerts", params: { provider_id: provider.id }
+      expect(response).to have_http_status(:ok)
+      expect(counts).to eq(before) # sem trilha
+      json_body
+    end
+
+    def lot_alert(lot, balance)
+      { "id" => lot.id, "lot_id" => lot.id, "supply_id" => lot.lab_supply_id, "supply_name" => lot.lab_supply.name, "lot_number" => lot.lot_number,
+        "expires_on" => lot.expires_on.iso8601, "supplier" => "Distribuidora", "origin" => "purchase", "balance" => balance,
+        "expired" => lot.expires_on < today, "in_use" => [] }
+    end
+
+    def supply_alert(supply, balance)
+      { "id" => supply.id, "supply_id" => supply.id, "provider_id" => provider.id, "name" => supply.name, "kind" => "reagent", "unit" => "kit",
+        "tests_per_package" => 500, "minimum_stock" => supply.minimum_stock, "expiry_alert_days" => supply.expiry_alert_days,
+        "lab_exam_ids" => [], "active" => supply.active, "balance" => balance, "below_minimum" => true }
+    end
+
+    it "janela de validade: vence no dia N = expiry_alert_days entra; N+1 não" do
+      supply = supply!
+      inside = lot!(supply, "N30", today + 30, 2)
+      lot!(supply, "N31", today + 31, 2)
+      expect(alerts!).to eq("expiring" => [ lot_alert(inside, 2) ], "below_minimum" => [], "untraced_results" => 0)
+    end
+
+    it "lote vencido com saldo: aparece como vencido e não conta para o mínimo" do
+      supply = supply!(minimum_stock: 3)
+      expired = lot!(supply, "V1", today - 1, 5)
+      expect(alerts!).to eq("expiring" => [ lot_alert(expired, 5).merge("expired" => true) ], "below_minimum" => [ supply_alert(supply, 0) ],
+                            "untraced_results" => 0)
+    end
+
+    it "C-E28: lote vencido que levaria o item acima do mínimo não conta — lista e alerta dizem abaixo do mínimo" do
+      supply = supply!(minimum_stock: 3)
+      expired = lot!(supply, "V2", today - 1, 10)
+      valid = lot!(supply, "V3", today + 200, 2)
+      body = alerts!
+      expect(body).to eq("expiring" => [ lot_alert(expired, 10).merge("expired" => true) ], "below_minimum" => [ supply_alert(supply, 2) ],
+                         "untraced_results" => 0)
+      get "/lab/inventory/supplies", params: { provider_id: provider.id }
+      expect(json_body["supplies"]).to eq([ supply_alert(supply, 12).except("supply_id") ]) # saldo total 12, abaixo do mínimo pelo saldo válido 2
+      expect(valid.balance).to eq(2)
+    end
+
+    it "lote sem saldo não é alertado como vencendo" do
+      supply = supply!
+      lot = lot!(supply, "Z1", today + 5, 2)
+      LabSupplyMovement.create!(lab_supply_lot: lot, kind: "opening", quantity: -2, recorded_by_user: admin, recorded_at: Time.current)
+      expect(alerts!).to eq("expiring" => [], "below_minimum" => [], "untraced_results" => 0)
+    end
+
+    it "item inativo fica fora do abaixo do mínimo" do
+      supply = supply!(minimum_stock: 5, active: false)
+      lot!(supply, "I1", today + 200, 1)
+      expect(alerts!).to eq("expiring" => [], "below_minimum" => [], "untraced_results" => 0)
+    end
+
+    it "mínimo 0 nunca fica abaixo do mínimo" do
+      supply!(minimum_stock: 0)
+      expect(alerts!).to eq("expiring" => [], "below_minimum" => [], "untraced_results" => 0)
+    end
+
+    context "resultados sem rastreio" do
+      let(:tracked) do
+        qc_exam!(provider: provider, instrument: qc_instrument!(provider), sigtap_code: "0202010317", name: "Creatinina", instrument_test_code: "CRE",
+                 analytes: [ LabHelpers::GLUCOSE.first.merge("key" => "creatinina", "name" => "Creatinina", "decimals" => 2, "entry_min" => nil,
+                                                            "entry_max" => nil, "critical_low" => nil, "critical_high" => nil) ])
+      end
+
+      def typed_result(exam)
+        req = received_requisition!(provider: provider, exams: [ exam ])
+        type!(req.items.first, exam == tracked ? { creatinina: "0,9" } : { glicose: "98" }).results.sole
+      end
+
+      # Linha a mais do mesmo componente (o resultado é só acréscimo).
+      def extra_row!(base, **over)
+        LabResult.create!({ lab_requisition_item: base.lab_requisition_item, analyte_key: base.analyte_key, value: base.value, unit: base.unit,
+                            flag: base.flag, source: base.source, entered_by_user: base.entered_by_user, entered_at: Time.current,
+                            created_at: Time.current }.merge(over))
+      end
+
+      def untraced = alerts!.fetch("untraced_results")
+
+      it "conta o resultado de exame com aparelho sem lote de reagente" do
+        typed_result(tracked)
+        expect(alerts!).to eq("expiring" => [], "below_minimum" => [], "untraced_results" => 1)
+      end
+
+      it "não conta o resultado com lote de reagente" do
+        base = typed_result(tracked)
+        extra_row!(base, reagent_lot: lot!(supply!, "R1", today + 200, 1))
+        expect(untraced).to eq(1) # só a linha sem lote
+      end
+
+      it "não conta exame sem aparelho" do
+        typed_result(exam)
+        expect(alerts!).to eq("expiring" => [], "below_minimum" => [], "untraced_results" => 0)
+      end
+
+      it "não conta a cópia escolhida" do
+        base = typed_result(tracked)
+        extra_row!(base, chosen: true, chosen_from: base)
+        expect(untraced).to eq(1)
+      end
+
+      it "não conta resultado com mais de 30 dias" do
+        base = typed_result(tracked)
+        extra_row!(base, created_at: 31.days.ago)
+        extra_row!(base, created_at: 29.days.ago)
+        expect(untraced).to eq(2) # a de hoje e a de 29 dias
+      end
+    end
+  end
+
   it "estoque desligado: 403" do
     Platform::Features.set!(city: City.find(Current.city.id), key: "lab_inventory", enabled: false, maintainer: ledi_maintainer!)
     sign_in_as(staff)

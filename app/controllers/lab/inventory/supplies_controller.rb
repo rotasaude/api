@@ -9,7 +9,8 @@ module Lab
         supplies = LabSupply.where(exam_provider_id: @provider.id).order(:name).to_a
         balances = LabSupplyMovement.joins(:lab_supply_lot).where(lab_supply_lots: { lab_supply_id: supplies.map(&:id) })
                                     .group("lab_supply_lots.lab_supply_id").sum(:quantity)
-        render json: { supplies: supplies.map { |s| Json.supply(s, balance: balances.fetch(s.id, 0)) } }
+        available = Json.available_balances(supplies.map(&:id))
+        render json: { supplies: supplies.map { |s| Json.supply(s, balance: balances.fetch(s.id, 0), available: available.fetch(s.id, 0)) } }
       end
 
       def create

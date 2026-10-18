@@ -20,7 +20,7 @@ module Lab
         return Result.fail(:invalid_program) unless program.length.between?(1, 60)
         return Result.fail(:invalid_round_code) unless code.length.between?(1, 40)
 
-        date = Lab::IsoDate.parse(params["round_date"])
+        date = ClinicalDocuments::IsoDate.parse(params["round_date"])
         return Result.fail(:invalid_round_date) unless date && date <= now.in_time_zone.to_date
 
         items = parse_items(params["items"], provider)

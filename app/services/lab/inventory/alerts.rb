@@ -22,7 +22,7 @@ module Lab
                             .where.not(lab_exam_versions: { lab_instrument_id: nil })
                             .where("lab_results.created_at >= ?", now - UNTRACED_WINDOW).count
         { expiring: expiring.map { |l| Json.lot(l, balance: balances[l.id]).merge(lot_id: l.id) }, # forma C3: lot_id
-          below_minimum: below.map { |s| Json.supply(s, balance: available.fetch(s.id, 0)).merge(supply_id: s.id) },
+          below_minimum: below.map { |s| Json.supply(s, balance: available.fetch(s.id, 0), available: available.fetch(s.id, 0)).merge(supply_id: s.id) },
           untraced_results: untraced }
       end
     end

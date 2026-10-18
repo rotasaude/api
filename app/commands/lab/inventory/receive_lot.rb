@@ -22,7 +22,7 @@ module Lab
         return Result.fail(:invalid_quantity) unless params["quantity"].is_a?(Integer) && params["quantity"].between?(1, 100_000)
         return Result.fail(:invalid_document) if document && document.length > 60
 
-        expires_on = Lab::IsoDate.parse(params["expires_on"])
+        expires_on = ClinicalDocuments::IsoDate.parse(params["expires_on"])
         return Result.fail(:invalid_expires_on) unless expires_on
         return Result.fail(:expired_lot) if expires_on < now.in_time_zone.to_date
 
