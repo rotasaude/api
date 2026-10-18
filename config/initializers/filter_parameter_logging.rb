@@ -52,7 +52,7 @@ Rails.application.config.filter_parameters += [
   # ADR 0038: o valor do controle, os códigos por nível e a justificativa da
   # exceção do CIQ (fala do paciente: urgência, quadro). (`:text` — ação
   # corretiva —, `:note`, `:reason`, `values` e `barcode` já estão.)
-  /\A(value|level_barcodes|justification)\z/
+  /\A(value|values|level_barcodes|justification)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
