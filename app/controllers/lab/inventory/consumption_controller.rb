@@ -16,7 +16,8 @@ module Lab
         body = CSV.generate do |out|
           out << Consumption::HEADERS
           Consumption.call(provider_id: @provider.id, month: @month).each do |r|
-            out << [ Exams::Report.safe_cell(r[:name]), r[:instrument_id] ? Exams::Report.safe_cell(names[r[:instrument_id]]) : "total",
+            aparelho = { "total" => "total", "no_instrument" => "sem aparelho" }[r[:line]] || Exams::Report.safe_cell(names[r[:instrument_id]])
+            out << [ r[:line], Exams::Report.safe_cell(r[:name]), aparelho,
                      r[:tests_performed], r[:tests_opened], r[:deviation_pct]&.to_s&.tr(".", ",") ]
           end
         end

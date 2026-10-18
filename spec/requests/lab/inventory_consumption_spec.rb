@@ -49,17 +49,17 @@ RSpec.describe "Estoque — consumo estimado", type: :request do
     events = DomainEvent.count
     get "/lab/inventory/consumption", params: { provider_id: s.provider.id, month: month }
     expect(json_body["rows"]).to eq([
-      { "supply_id" => supply.id, "name" => "Glicose GOD-PAP", "instrument_id" => nil, "tests_performed" => 5, "tests_opened" => 100,
+      { "line" => "total", "supply_id" => supply.id, "name" => "Glicose GOD-PAP", "instrument_id" => nil, "tests_performed" => 5, "tests_opened" => 100,
         "deviation_pct" => -95.0 },
-      { "supply_id" => supply.id, "name" => "Glicose GOD-PAP", "instrument_id" => s.instrument.id, "tests_performed" => 5,
+      { "line" => "instrument", "supply_id" => supply.id, "name" => "Glicose GOD-PAP", "instrument_id" => s.instrument.id, "tests_performed" => 5,
         "tests_opened" => nil, "deviation_pct" => nil }
     ])
     expect(lot.reload.balance).to eq(4) # nada baixado pelo consumo
     expect(DomainEvent.count).to eq(events) # leitura sem trilha
     get "/lab/inventory/consumption.csv", params: { provider_id: s.provider.id, month: month }
-    expect(response.body.lines.first.strip).to eq("item,aparelho,testes_realizados,testes_das_aberturas,desvio_pct")
-    expect(response.body.lines[1].strip).to eq("Glicose GOD-PAP,total,5,100,\"-95,0\"")
-    expect(response.body.lines[2].strip).to eq("Glicose GOD-PAP,#{s.instrument.name},5,,")
+    expect(response.body.lines.first.strip).to eq("linha,item,aparelho,testes_realizados,testes_das_aberturas,desvio_pct")
+    expect(response.body.lines[1].strip).to eq("total,Glicose GOD-PAP,total,5,100,\"-95,0\"")
+    expect(response.body.lines[2].strip).to eq("instrument,Glicose GOD-PAP,#{s.instrument.name},5,,")
     get "/lab/inventory/consumption", params: { provider_id: s.provider.id, month: "2026-13" }
     expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_month" ])
   end
@@ -69,6 +69,29 @@ RSpec.describe "Estoque — consumo estimado", type: :request do
     type!(received_requisition!(provider: s.provider, exams: [ s.exam ]).items.first, { glicose: "98" })
     sign_in_as(staff)
     expect(total(rows)).to include("tests_performed" => 1, "tests_opened" => nil, "deviation_pct" => nil)
+    expect(rows.map { |r| r["line"] }).to eq(%w[total instrument]) # sem teste sem aparelho: sem a linha
+  end
+
+  it "testes de versão sem aparelho têm linha própria; a soma das linhas é o total; sem eles, sem a linha" do
+    second = qc_instrument!(s.provider, name: "Analisador 2", hl7_equipment_id: "BIO-02")
+    on_second = qc_exam!(provider: s.provider, instrument: second, sigtap_code: "0202010295", name: "Glicose 2", instrument_test_code: "GL2")
+    free = lab_exam!(provider: s.provider, sigtap_code: "0202010317", name: "Glicose manual", instrument_test_code: nil)
+    expect(free.current_version.lab_instrument_id).to be_nil
+    shared = LabSupply.create!(exam_provider: s.provider, name: "Reagente comum", kind: "reagent", unit: "kit", tests_per_package: 100,
+                               minimum_stock: 0, expiry_alert_days: 30, lab_exam_ids: [ s.exam.id, on_second.id, free.id ])
+    open!(lot!(supply: shared, number: "C1"))
+    [ s.exam, s.exam, on_second, free, free, free ].each do |exam|
+      type!(received_requisition!(provider: s.provider, exams: [ exam ]).items.first, { glicose: "98" })
+    end
+    sign_in_as(staff)
+    mine = rows.select { |r| r["supply_id"] == shared.id }
+    expect(mine.map { |r| [ r["line"], r["instrument_id"], r["tests_performed"] ] }).to eq(
+      [ [ "total", nil, 6 ], *[ [ "instrument", s.instrument.id, 2 ], [ "instrument", second.id, 1 ] ].sort_by { |l| l[1] }, [ "no_instrument", nil, 3 ] ]
+    )
+    expect(total(mine)).to include("tests_opened" => 100, "deviation_pct" => -94.0)
+    expect(mine.reject { |r| r["line"] == "total" }.sum { |r| r["tests_performed"] }).to eq(total(mine)["tests_performed"])
+    get "/lab/inventory/consumption.csv", params: { provider_id: s.provider.id, month: month_of(Time.zone.today) }
+    expect(response.body).to include("no_instrument,Reagente comum,sem aparelho,3,,")
   end
 
   it "o desvio é positivo quando se realiza mais do que as aberturas rendem" do

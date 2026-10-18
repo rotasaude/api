@@ -9,7 +9,7 @@
 module Lab
   module Inventory
     module Consumption
-      HEADERS = %w[item aparelho testes_realizados testes_das_aberturas desvio_pct].freeze
+      HEADERS = %w[linha item aparelho testes_realizados testes_das_aberturas desvio_pct].freeze
 
       module_function
 
@@ -20,8 +20,9 @@ module Lab
           total = performed.values.sum
           opened = opened(supply, range)
           deviation = opened&.positive? ? BigDecimal(((total - opened) * 100).to_s).div(opened, 10).round(1).to_f : nil
-          [ row(supply, nil, total, opened, deviation) ] +
-            performed.reject { |id, _| id.nil? }.sort_by { |id, _| id }.map { |id, count| row(supply, id, count, nil, nil) }
+          lines = performed.reject { |id, _| id.nil? }.sort_by { |id, _| id }.map { |id, count| row(supply, id, count, nil, nil, "instrument") }
+          lines << row(supply, nil, performed[nil], nil, nil, "no_instrument") if performed[nil].positive?
+          [ row(supply, nil, total, opened, deviation, "total") ] + lines
         end
       end
 
@@ -59,8 +60,8 @@ module Lab
                   .map { |instrument_id, run_id, level, at, *| [ instrument_id, run_id, level, at ] }.uniq.map(&:first)
       end
 
-      def row(supply, instrument_id, performed, opened, deviation)
-        { supply_id: supply.id, name: supply.name, instrument_id: instrument_id, tests_performed: performed, tests_opened: opened,
+      def row(supply, instrument_id, performed, opened, deviation, line)
+        { line: line, supply_id: supply.id, name: supply.name, instrument_id: instrument_id, tests_performed: performed, tests_opened: opened,
           deviation_pct: deviation }
       end
       private_class_method :opened, :performed, :results, :controls, :row
