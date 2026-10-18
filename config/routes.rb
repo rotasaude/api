@@ -380,6 +380,8 @@ Rails.application.routes.draw do
       get   "alerts",        to: "alerts#show"
       get   "in_use",               to: "in_use#index"
       post  "in_use",               to: "in_use#create"
+      get   "consumption.csv",      to: "consumption#csv", format: false
+      get   "consumption",          to: "consumption#show"
       get   "lots/:id/trace.csv",   to: "traces#csv", format: false
       get   "lots/:id/trace",       to: "traces#show"
     end
