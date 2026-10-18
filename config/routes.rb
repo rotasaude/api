@@ -378,6 +378,10 @@ Rails.application.routes.draw do
       get   "movements",     to: "movements#index"
       post  "movements",     to: "movements#create"
       get   "alerts",        to: "alerts#show"
+      get   "in_use",               to: "in_use#index"
+      post  "in_use",               to: "in_use#create"
+      get   "lots/:id/trace.csv",   to: "traces#csv", format: false
+      get   "lots/:id/trace",       to: "traces#show"
     end
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"

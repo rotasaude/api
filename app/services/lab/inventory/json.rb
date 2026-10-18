@@ -26,6 +26,13 @@ module Lab
           in_use: LabSupplyInUse.current.where(lab_supply_lot_id: l.id).map { |u| { instrument_id: u.lab_instrument_id, lab_exam_id: u.lab_exam_id } } }
       end
 
+      # Forma C3 do lote em uso (preload: lab_exam, lab_supply_lot: :lab_supply).
+      def in_use(u)
+        { id: u.id, lot_id: u.lab_supply_lot_id, lot_number: u.lab_supply_lot.lot_number, supply_name: u.lab_supply_lot.lab_supply.name,
+          instrument_id: u.lab_instrument_id, lab_exam_id: u.lab_exam_id, exam_name: u.lab_exam.name, started_at: u.started_at.iso8601,
+          ended_at: u.ended_at&.iso8601 }
+      end
+
       def movement(m, balance: nil)
         body = { id: m.id, lot_id: m.lab_supply_lot_id, kind: m.kind, quantity: m.quantity, reason: m.reason, document: m.document,
                  recorded_at: m.recorded_at.iso8601, recorded_by: Screenings::Json.staff_name(m.recorded_by_user) }

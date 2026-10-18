@@ -5,7 +5,7 @@ module Lab
   class ReleasesController < BaseController
     GRANT = ClinicalRecord::Access::Grant.new(kind: :lab_report, opening: nil, reason: nil)
     PRELOAD = [ :patient, { reports: %i[released_by_user pdf_file report_items] },
-                { items: [ :lab_sample, { results: :entered_by_user }, { lab_exam_version: :lab_exam } ] } ].freeze
+                { items: [ :lab_sample, { results: %i[entered_by_user reagent_lot] }, { lab_exam_version: :lab_exam } ] } ].freeze
 
     before_action :provider_param!, only: :index
     before_action :member_of_provider!, only: :index

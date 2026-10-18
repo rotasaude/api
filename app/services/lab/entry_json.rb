@@ -15,7 +15,7 @@ module Lab
       req = item.lab_requisition
       ctx = EnterResults.context(item)
       version = item.lab_exam_version
-      rows = item.results.includes(:entered_by_user).to_a
+      rows = item.results.includes(:entered_by_user, :reagent_lot).to_a
       notified = notified_ids(rows)
       effective = Effective.ids(item)
       { item_id: item.id, requisition_id: req.id, requisition_number: req.number, barcode: item.lab_sample.barcode,
@@ -44,7 +44,8 @@ module Lab
       effective ||= Effective.ids(item)
       body = { id: row.id, item_id: row.lab_requisition_item_id, analyte_key: row.analyte_key, name: version.analyte(row.analyte_key)&.fetch("name"),
                value: row.value, unit: row.unit, flag: row.flag, source: row.source, entered_at: row.entered_at.iso8601,
-               entered_by: Screenings::Json.staff_name(row.entered_by_user), chosen: row.chosen, effective: effective.include?(row.id) }
+               entered_by: Screenings::Json.staff_name(row.entered_by_user), chosen: row.chosen, effective: effective.include?(row.id),
+               reagent_lot: row.reagent_lot && { id: row.reagent_lot.id, lot_number: row.reagent_lot.lot_number } }
       body[:notified] = (notified || notified_ids(item.results.to_a)).include?(row.id) if row.critical?
       body
     end

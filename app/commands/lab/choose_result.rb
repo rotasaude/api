@@ -26,7 +26,8 @@ module Lab
         at = last + Rational(1, 1_000_000) if last && at <= last
         copy = LabResult.create!(lab_requisition_item: item, analyte_key: result.analyte_key, value: result.value, unit: result.unit,
                                  flag: result.flag, source: result.source, lab_hl7_receipt_id: result.lab_hl7_receipt_id,
-                                 entered_by_user: by, entered_at: now, chosen: true, chosen_from: result, created_at: at)
+                                 entered_by_user: by, entered_at: now, chosen: true, chosen_from: result, created_at: at,
+                                 reagent_lot_id: result.reagent_lot_id) # não é medida nova: o lote da medida escolhida
         EnterResults.recalculate!(item, source: result.source, by: by, receipt: result.lab_hl7_receipt, now: now)
         Result.ok(result: copy)
       end

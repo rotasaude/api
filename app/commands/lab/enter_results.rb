@@ -5,6 +5,10 @@
 # valor. Tudo ou nada. Nunca sobrescreve (só acrescenta). Componente repetido
 # na mesma entrada é recusado (E5): a ordem de dois valores do mesmo
 # componente na mesma mensagem não decide qual vale.
+# Lote de reagente (ADR 0038): cada linha guarda o lote em uso do par
+# aparelho × exame no momento em que entra (nulo = sem rastreio). Leitura
+# simples, sem trava e sem interruptor (Desvio 9): a ordem de travas do 21b
+# (requisição → itens) não muda.
 module Lab
   module EnterResults
     # Dashboard D7: item já liberado aceita valor novo (só vale numa retificação).
@@ -112,7 +116,9 @@ module Lab
       at = last + Rational(1, 1_000_000) if last && at <= last
       LabResult.create!(lab_requisition_item: item, analyte_key: analyte["key"], value: normalized[:value], unit: analyte["unit"],
                         flag: Reference.flag(analyte, normalized[:number], **ctx), source: source, lab_hl7_receipt: receipt,
-                        entered_by_user: by, entered_at: now, created_at: at)
+                        entered_by_user: by, entered_at: now, created_at: at,
+                        reagent_lot_id: LabSupplyInUse.current_lot_id(instrument_id: item.lab_exam_version.lab_instrument_id,
+                                                                      lab_exam_id: item.lab_exam_version.lab_exam_id))
     end
     private_class_method :create_row
   end
