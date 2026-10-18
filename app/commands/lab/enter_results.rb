@@ -5,10 +5,12 @@
 # valor. Tudo ou nada. Nunca sobrescreve (só acrescenta). Componente repetido
 # na mesma entrada é recusado (E5): a ordem de dois valores do mesmo
 # componente na mesma mensagem não decide qual vale.
-# Lote de reagente (ADR 0038): cada linha guarda o lote em uso do par
-# aparelho × exame no momento em que entra (nulo = sem rastreio). Leitura
+# Lote de reagente (ADR 0038): cada linha MEDIDA guarda o lote em uso do par
+# aparelho × exame, lido UMA vez por chamada (a entrada inteira com o mesmo
+# lote, mesmo que o lote troque no meio); nulo = sem rastreio. Leitura
 # simples, sem trava e sem interruptor (Desvio 9): a ordem de travas do 21b
-# (requisição → itens) não muda.
+# (requisição → itens) não muda. O CALCULADO herda o lote comum dos insumos
+# que valem (C-E30); insumos com lotes diferentes ou algum sem lote → nulo.
 module Lab
   module EnterResults
     # Dashboard D7: item já liberado aceita valor novo (só vale numa retificação).
@@ -49,6 +51,7 @@ module Lab
 
         version = item.lab_exam_version
         ctx = context(item)
+        lot_id = LabSupplyInUse.current_lot_id(instrument_id: version.lab_instrument_id, lab_exam_id: version.lab_exam_id)
         rows = []
         entries.each do |entry|
           entry = entry.stringify_keys
@@ -62,7 +65,7 @@ module Lab
             result = normalized
             raise ActiveRecord::Rollback
           end
-          rows << create_row(item, analyte, normalized.payload, ctx, source, by, receipt, now)
+          rows << create_row(item, analyte, normalized.payload, ctx, source, by, receipt, now, reagent_lot_id: lot_id)
         end
         rows.concat(recalculate!(item, source: source, by: by, receipt: receipt, now: now))
         DomainEvents.publish("lab_result.entered", lab_requisition_item_id: item.id, source: source)
@@ -88,7 +91,8 @@ module Lab
       allowed = version.analytes.select { |a| a["value_type"] == "numeric" && a["formula"].nil? }.map { |a| a["key"] }
       created = version.calculated_analytes.filter_map do |analyte|
         current = effective[analyte["key"]]
-        number = Formula.evaluate(Formula.compile(analyte["formula"], allowed: allowed), values: numbers)
+        rpn = Formula.compile(analyte["formula"], allowed: allowed)
+        number = Formula.evaluate(rpn, values: numbers)
         unless number
           raise Incomputable, analyte["key"] if current
           next
@@ -98,7 +102,7 @@ module Lab
         next if current && BigDecimal(current.value.tr(",", ".")) == value
 
         text = Values.normalize(analyte.merge("entry_min" => nil, "entry_max" => nil), value.to_s("F")).payload
-        create_row(item, analyte, text, ctx, source, by, receipt, now)
+        create_row(item, analyte, text, ctx, source, by, receipt, now, reagent_lot_id: inputs_lot_id(rpn, effective))
       end
       # Linhas novas valem já na resposta: a associação não pode ficar velha.
       item.results.reset
@@ -107,18 +111,23 @@ module Lab
       created
     end
 
+    # C-E30: o lote comum dos insumos que valem; divergentes ou algum sem lote → nil.
+    def inputs_lot_id(rpn, effective)
+      lots = rpn.filter_map { |kind, v| v if kind == :var }.uniq.map { |key| effective[key]&.reagent_lot_id }
+      lots.uniq.size == 1 ? lots.first : nil
+    end
+    private_class_method :inputs_lot_id
+
     # created_at estritamente crescente por item+componente (E5): a "última
     # linha" é a última inserida, mesmo com `now` igual (item travado).
     # Carimbo lido aqui, com a trava já tomada (Lab::Clock; I1).
-    def create_row(item, analyte, normalized, ctx, source, by, receipt, now)
+    def create_row(item, analyte, normalized, ctx, source, by, receipt, now, reagent_lot_id:)
       at = Clock.stamp(now, requisition_id: item.lab_requisition_id)
       last = item.results.where(analyte_key: analyte["key"]).maximum(:created_at)
       at = last + Rational(1, 1_000_000) if last && at <= last
       LabResult.create!(lab_requisition_item: item, analyte_key: analyte["key"], value: normalized[:value], unit: analyte["unit"],
                         flag: Reference.flag(analyte, normalized[:number], **ctx), source: source, lab_hl7_receipt: receipt,
-                        entered_by_user: by, entered_at: now, created_at: at,
-                        reagent_lot_id: LabSupplyInUse.current_lot_id(instrument_id: item.lab_exam_version.lab_instrument_id,
-                                                                      lab_exam_id: item.lab_exam_version.lab_exam_id))
+                        entered_by_user: by, entered_at: now, created_at: at, reagent_lot_id: reagent_lot_id)
     end
     private_class_method :create_row
   end

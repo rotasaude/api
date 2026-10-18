@@ -8,7 +8,7 @@ require "rails_helper"
 # Aparelho ou lote de outro laboratório: 404 (C-E27). O lote em uso é lido
 # sem interruptor (Desvio 9). Toda recusa: status + código + nada gravado.
 RSpec.describe "Estoque — lote em uso e rastreio", type: :request do
-  before { qc_city!(inventory: true) }
+  before { qc_city!(inventory: true, hl7: true) }
 
   let(:s) { qc_scenario! }
   let(:staff) { lab_staff! }
@@ -181,5 +181,75 @@ RSpec.describe "Estoque — lote em uso e rastreio", type: :request do
     req = received_requisition!(provider: s.provider, exams: [ loose ])
     item = type!(req.items.first, { glicose: "50" })
     expect(item.results.last.reagent_lot_id).to be_nil
+  end
+  # C-E30: o calculado herda o lote comum dos insumos que valem; lotes
+  # diferentes ou algum insumo sem lote → nulo; calculado sem lote não conta
+  # como "sem rastreio" no alerta.
+  describe "calculado (C-E30)" do
+    let(:lipids) do
+      qc_exam!(provider: s.provider, instrument: s.instrument, sigtap_code: "0202010295", name: "Lipidograma", analytes: LabHelpers::LIPIDS,
+               instrument_test_code: "LIP")
+    end
+    let(:lipid_supply) do
+      LabSupply.create!(exam_provider: s.provider, name: "Kit lipídico", kind: "reagent", unit: "kit", tests_per_package: 300, minimum_stock: 1,
+                        expiry_alert_days: 30, lab_exam_ids: [ lipids.id ])
+    end
+    let(:item) { received_requisition!(provider: s.provider, exams: [ lipids ]).items.first }
+
+    def last_row(key) = item.results.reload.where(analyte_key: key).order(:created_at).last
+    def untraced = Lab::Inventory::Alerts.call(provider_id: s.provider.id)[:untraced_results]
+
+    before { sign_in_as(staff) }
+
+    it "mesmo lote nos insumos: herda; lotes diferentes: nulo" do
+      first = receive!("LP1", supply: lipid_supply)
+      use!(first, exam: lipids)
+      type!(item, { ct: "200", hdl: "50", tg: "100" })
+      expect([ last_row("ldl").value, last_row("ldl").reagent_lot_id ]).to eq([ "130", first.id ])
+      second = receive!("LP2", supply: lipid_supply)
+      use!(second, exam: lipids)
+      type!(item, { hdl: "60" })
+      expect(last_row("hdl").reagent_lot_id).to eq(second.id)
+      expect([ last_row("ldl").value, last_row("ldl").reagent_lot_id ]).to eq([ "120", nil ])
+    end
+
+    it "um insumo sem lote: nulo; o calculado sem lote não conta no alerta" do
+      type!(item, { ct: "200", hdl: "50" }) # sem lote em uso
+      lot = receive!("LP1", supply: lipid_supply)
+      use!(lot, exam: lipids)
+      type!(item, { tg: "100" })
+      expect(last_row("tg").reagent_lot_id).to eq(lot.id)
+      expect([ last_row("ldl").value, last_row("ldl").reagent_lot_id ]).to eq([ "130", nil ])
+      expect(untraced).to eq(2) # ct e hdl; o ldl não é medida
+    end
+
+    it "escolha depois da troca de lote: o recalculado herda o lote dos insumos, não o novo" do
+      first = receive!("LP1", supply: lipid_supply)
+      use!(first, exam: lipids)
+      type!(item, { ct: "200", hdl: "50", tg: "100" })
+      original = last_row("hdl")
+      type!(item, { hdl: "60" })
+      expect(last_row("ldl").value).to eq("120")
+      use!(receive!("LP2", supply: lipid_supply), exam: lipids)
+      copy = Lab::ChooseResult.call(result: original, by: lab_releaser!(s.provider, lead: true)).payload[:result]
+      expect(copy.reagent_lot_id).to eq(first.id)
+      expect([ last_row("ldl").value, last_row("ldl").reagent_lot_id ]).to eq([ "130", first.id ])
+    end
+  end
+
+  it "HL7: o resultado do paciente e o valor de controle guardam o lote em uso" do
+    lot = receive!("GL1")
+    sign_in_as(staff)
+    use!(lot)
+    req = received_requisition!(provider: s.provider, exams: [ s.exam ])
+    control = LabQcLotBarcode.find_by!(lab_qc_lot: s.lot, level: "Nível 1").barcode
+    message = [ "MSH|^~\\&|MW|LAB|ROTA-SAUDE|t|20261018073000||OUL^R22^OUL_R22|C#{SecureRandom.hex(4)}|P|2.5.1",
+                "SPM|1|#{control}||||||||||Q", "OBR|1|||GLI^GLI^99RSL",
+                "OBX|1|NM|glicose^G^99RSL||100.5|mg/dL^^UCUM|||||F|||20261018072500||||BIO-01",
+                "SPM|2|#{req.samples.first.barcode}", "OBR|1|||GLI^GLI^99RSL", "OBX|1|NM|glicose^G^99RSL||98|mg/dL|||||F" ].join("\r") + "\r"
+    hl7_post(message, token: middleware_token!(s.provider))
+    expect(response.body.split("\r").find { |seg| seg.start_with?("MSA|") }.split("|")[1]).to eq("AA")
+    expect(LabResult.where(source: "hl7").pluck(:reagent_lot_id)).to eq([ lot.id ])
+    expect(LabQcValue.where(source: "hl7").pluck(:reagent_lot_id)).to eq([ lot.id ])
   end
 end

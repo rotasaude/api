@@ -35,7 +35,7 @@ module Lab
       return render_failure(result) if result.failure?
 
       version = item.lab_exam_version
-      rows = item.results.reload.to_a
+      rows = item.results.reload.includes(:entered_by_user, :reagent_lot).to_a
       effective = Lab::Effective.ids(item)
       notified = Lab::EntryJson.notified_ids(rows)
       render json: { results: rows.map { |row| Lab::EntryJson.result_row(row, version, notified, effective) } }, status: :created
@@ -51,7 +51,7 @@ module Lab
       # Linhas recarregadas: `effective` e `notified` nunca saem de cache velho.
       copy = result.payload[:result]
       item = copy.lab_requisition_item
-      rows = item.results.reload.to_a
+      rows = item.results.reload.includes(:entered_by_user, :reagent_lot).to_a
       body = Lab::EntryJson.result_row(rows.find { |r| r.id == copy.id }, item.lab_exam_version, Lab::EntryJson.notified_ids(rows), Lab::Effective.ids(item))
       render json: body, status: :created
     end

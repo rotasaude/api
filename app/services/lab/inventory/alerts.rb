@@ -1,11 +1,17 @@
 # Alertas do estoque (spec §6.6; contrato §5), sem trilha: lotes com saldo
 # vencendo dentro do expiry_alert_days do item (ou já vencidos); itens
 # ativos abaixo do mínimo (saldo dos lotes não vencidos); resultados dos
-# últimos 30 dias de exame com aparelho sem lote de reagente (sem rastreio).
+# últimos 30 dias de exame com aparelho sem lote de reagente (sem rastreio);
+# calculado não é medida e não conta (C-E30).
 module Lab
   module Inventory
     module Alerts
       UNTRACED_WINDOW = 30.days
+      # Linha de componente sem fórmula na versão do item.
+      MEASURED = <<~SQL.squish.freeze
+        NOT EXISTS (SELECT 1 FROM jsonb_array_elements(lab_exam_versions.analytes) AS a
+                    WHERE a->>'key' = lab_results.analyte_key AND COALESCE(a->>'formula', '') <> '')
+      SQL
 
       module_function
 
@@ -20,6 +26,7 @@ module Lab
         untraced = LabResult.joins(lab_requisition_item: [ :lab_requisition, :lab_exam_version ])
                             .where(lab_requisitions: { exam_provider_id: provider_id }, reagent_lot_id: nil, chosen: false)
                             .where.not(lab_exam_versions: { lab_instrument_id: nil })
+                            .where(MEASURED)
                             .where("lab_results.created_at >= ?", now - UNTRACED_WINDOW).count
         { expiring: expiring.map { |l| Json.lot(l, balance: balances[l.id]).merge(lot_id: l.id) }, # forma C3: lot_id
           below_minimum: below.map { |s| Json.supply(s, balance: available.fetch(s.id, 0), available: available.fetch(s.id, 0)).merge(supply_id: s.id) },
