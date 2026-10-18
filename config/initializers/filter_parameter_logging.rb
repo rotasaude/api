@@ -50,9 +50,10 @@ Rails.application.config.filter_parameters += [
   # pseudônimos do paciente. O TOTP da assinatura avançada (`totp`) já cai em `:otp`.
   /\A(mother_name|clinical_info|delivered_to|notified_person|contacts|restriction_note|gal_requisition|barcode|barcodes|number)\z/,
   # ADR 0038: o valor do controle, os códigos por nível e a justificativa da
-  # exceção do CIQ (fala do paciente: urgência, quadro). (`:text` — ação
-  # corretiva —, `:note`, `:reason`, `values` e `barcode` já estão.)
-  /\A(value|values|level_barcodes|justification)\z/
+  # exceção do CIQ (fala do paciente: urgência, quadro) e a coluna da ação
+  # corretiva (texto livre; o bind do SQL usa o nome da coluna, não o `:text`
+  # do parâmetro). (`:text`, `:note`, `:reason`, `values` e `barcode` já estão.)
+  /\A(value|values|level_barcodes|justification|corrective_action)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

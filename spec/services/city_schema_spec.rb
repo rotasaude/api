@@ -69,6 +69,22 @@ RSpec.describe CitySchema do
                              "attendances_born_waiting")
   end
 
+  # Módulo 21c (ADR 0038): o dump não representa trigger; um banco de cidade novo
+  # (dump + city_triggers.sql) tem de nascer com todos os do 21c.
+  it "loads the 21c lab quality triggers into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+    append_only = %w[lab_qc_lot_barcodes lab_qc_targets lab_qc_values lab_qc_rules lab_eqa_rounds lab_eqa_annual_reports
+                     lab_supply_lots lab_supply_movements].map { |t| "#{t}_append_only" }
+    no_delete = %w[lab_instruments lab_qc_materials lab_supplies].map { |t| "#{t}_no_delete" }
+    truncate = %w[lab_instruments lab_qc_materials lab_qc_lots lab_qc_lot_barcodes lab_qc_targets lab_qc_runs lab_qc_values lab_qc_rules
+                  lab_qc_blocks lab_qc_exceptions lab_qc_review_items lab_eqa_rounds lab_eqa_annual_reports lab_supplies lab_supply_lots
+                  lab_supply_movements lab_supply_in_use].map { |t| "#{t}_append_only_truncate" }
+
+    expect(names).to include("lab_qc_runs_guard", "lab_qc_lots_guard", "lab_qc_blocks_guard", "lab_qc_review_items_guard",
+                             "lab_supply_in_use_guard", "lab_supply_movements_balance", "lab_qc_exceptions_reencryption_only",
+                             *append_only, *no_delete, *truncate)
+  end
+
   it "backfills versions below the highest recorded one and never records a higher one" do
     ScratchDatabases.create!(scratch)
     url = ScratchDatabases.url(scratch)
