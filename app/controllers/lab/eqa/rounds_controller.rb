@@ -7,20 +7,20 @@ module Lab
     class RoundsController < Lab::Qc::BaseController
       before_action :require_step_up!, only: %i[create upload create_annual_report]
       before_action -> { provider!(allow: :releaser?) }, only: %i[index summary annual_reports]
+      before_action :parse_year, only: %i[index summary annual_reports]
       before_action :load_round, only: %i[show]
 
       def index
         rounds = LabEqaRound.where(exam_provider_id: @provider.id)
-        rounds = rounds.where(round_date: Date.new(params[:year].to_i, 1, 1)..Date.new(params[:year].to_i, 12, 31)) if params[:year].to_s.match?(/\A\d{4}\z/)
+        rounds = rounds.where(round_date: Date.new(@year, 1, 1)..Date.new(@year, 12, 31)) if @year
         render json: { rounds: rounds.includes(:recorded_by_user).order(round_date: :desc, created_at: :desc).limit(200).map { |r| Json.round(r) } }
       end
 
       def show = render(json: Json.round(@round))
 
       def annual_reports
-        year = params[:year].to_s.match?(/\A\d{4}\z/) ? params[:year].to_i : nil
         reports = LabEqaAnnualReport.where(exam_provider_id: @provider.id)
-        reports = reports.where(year: year) if year
+        reports = reports.where(year: @year) if @year
         render json: { annual_reports: reports.includes(:recorded_by_user).order(year: :desc, program: :asc).limit(200).map { |r| Json.annual_report(r) } }
       end
 
@@ -66,11 +66,22 @@ module Lab
       end
 
       def summary
-        year = params[:year].to_s.match?(/\A\d{4}\z/) ? params[:year].to_i : Time.zone.today.year
-        render json: Summary.call(provider_id: @provider.id, year: year)
+        render json: Summary.call(provider_id: @provider.id, year: @year || Time.zone.today.year)
       end
 
       private
+
+      # C-E40: `year` malformado nas LEITURAS (mesma regra do POST do relatório
+      # anual) → 422 invalid_year; ausente segue o padrão de cada rota.
+      def parse_year
+        raw = params[:year]
+        return if raw.nil?
+
+        year = raw.is_a?(String) && raw.match?(/\A\d{4}\z/) ? raw.to_i : nil
+        return render_failure(Result.fail(:invalid_year)) unless year&.between?(2000, [ Time.zone.today.year, 2100 ].min)
+
+        @year = year
+      end
 
       def load_round
         @round = uuid?(params[:id]) && LabEqaRound.find_by(id: params[:id])

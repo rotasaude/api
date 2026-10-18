@@ -97,6 +97,24 @@ RSpec.describe "CEQ — rodadas e relatório anual", type: :request do
     expect(json_body["rows"].sole).to include("lab_exam_id" => exam.id, "rounds" => 1)
   end
 
+  # C-E40: year malformado nas LEITURAS → 422 invalid_year (mesma regra do POST).
+  %w[/lab/eqa/summary /lab/eqa/rounds /lab/eqa/annual_reports].each do |path|
+    it "#{path}: year malformado ou fora da faixa é 422 invalid_year; ausente segue o padrão" do
+      stepped_up!(lead)
+      [ "abc", "20x6", "26", "1999", "2101", (Time.zone.today.year + 1).to_s, "", "2026.5", " 2026" ].each do |bad|
+        get path, params: { provider_id: provider.id, year: bad }
+        expect(response).to have_http_status(422), "year=#{bad.inspect}"
+        expect(json_body["error"]).to eq("invalid_year")
+      end
+      get path, params: { provider_id: provider.id, year: [ "2026" ] }
+      expect(json_body["error"]).to eq("invalid_year")
+      get path, params: { provider_id: provider.id }
+      expect(response).to have_http_status(:ok)
+      get path, params: { provider_id: provider.id, year: Time.zone.today.year }
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
   it "recusas da rodada: nada gravado, em cada uma" do
     stepped_up!(lead)
     refuses(422, "action_required") { round("R1", [ item(adequacy: "inadequate") ]) }
