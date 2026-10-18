@@ -17,6 +17,12 @@
 # ganham resultado novo no 21a, no FinalizeReport). Item listado sem mudança
 # ou item não listado que mudou desde o laudo anterior: 422
 # rectify_items_mismatch { unchanged:, unlisted: }.
+#
+# CIQ (ADR 0038): com `lab_quality_control` utilizável (lido fora da
+# transação), os aparelhos dos itens são travados FOR SHARE antes da
+# requisição e o item com bloqueio ativo sem exceção é recusado
+# (`qc_blocked`, com os itens) depois da conferência dos itens e antes do RT;
+# na retificação só os itens que mudaram (`item_ids`) são conferidos.
 module Lab
   module Release
     SIGNATURES = %w[icp advanced].freeze
@@ -37,16 +43,24 @@ module Lab
       ids = Array(item_ids).map { |id| id.to_s.downcase }.uniq
       return Result.fail(:invalid_transition) unless ids.size.between?(1, MAX_ITEMS)
 
+      qc = Lab::Gate.qc_usable?(Current.city) # fora da transação (Platform::Features)
+
       result = nil
       # Savepoint próprio: dentro da transação de quem chama, o Rollback desfaz
       # o laudo e os itens em vez de ser engolido.
       ApplicationRecord.transaction(requires_new: true) do
+        Qc::ReleaseCheck.lock_instruments!(ids) if qc # aparelho → requisição → itens (Desvio 10)
         requisition.lock!
         covered = rectifies ? (rectifies.report_items.pluck(:lab_requisition_item_id) | ids) : ids
         items = LabRequisitionItem.where(lab_requisition_id: requisition.id, id: covered).order(:id).lock
                                   .includes(:lab_sample, :results, lab_exam_version: :lab_exam).to_a
         refusal = item_refusal(items, covered, ids, rectifies)
         next result = refusal if refusal
+
+        if qc
+          blocked = Qc::ReleaseCheck.blocked(items.select { |item| ids.include?(item.id) })
+          next result = Result.fail(:qc_blocked, details: { items: blocked }) if blocked.any?
+        end
 
         lead = technical_lead(provider)
         next result = Result.fail(:technical_lead_missing) unless lead

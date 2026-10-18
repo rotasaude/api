@@ -349,6 +349,10 @@ Rails.application.routes.draw do
       get   "blocks/active/count",  to: "blocks#count"
       get   "blocks",               to: "blocks#index"
       post  "blocks/:id/corrective_action", to: "blocks#corrective_action"
+      get   "exceptions",           to: "exceptions#index"
+      post  "exceptions",           to: "exceptions#create"
+      get   "reviews",              to: "reviews#index"
+      post  "reviews/:id",          to: "reviews#decide"
     end
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"

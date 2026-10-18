@@ -7,7 +7,7 @@ module Lab
 
     UUID = Exams::BaseController::UUID
     FAILURE_STATUS = {
-      invalid_transition: :conflict, conflict: :conflict, gal_already_registered: :conflict, not_found: :not_found,
+      invalid_transition: :conflict, conflict: :conflict, qc_blocked: :conflict, gal_already_registered: :conflict, not_found: :not_found,
       missing_role: :forbidden, not_unit_staff: :forbidden, mfa_required: :unauthorized
     }.freeze
 
@@ -27,6 +27,7 @@ module Lab
       payload[:analyte_key] = result.details[:analyte_key] if result.details[:analyte_key]
       payload[:barcode] = result.details[:barcode] if result.details[:barcode]
       payload.merge!(result.details.slice(:unchanged, :unlisted)) if result.reason == :rectify_items_mismatch
+      payload[:items] = result.details[:items] if result.reason == :qc_blocked
       render json: payload, status: FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
     end
 

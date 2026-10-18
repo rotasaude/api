@@ -48,6 +48,31 @@ module Lab
           rules: LabQcRule::RULES.index_with { |r| row ? row.rules[r] == true : true },
           justification: row&.justification, changed_by: row && Screenings::Json.staff_name(row.changed_by_user), changed_at: at(row&.created_at) }
       end
+
+      def item_ref(item)
+        exam = item.lab_exam_version.lab_exam
+        { item_id: item.id, requisition_id: item.lab_requisition_id, requisition_number: item.lab_requisition.number,
+          sigtap_code: exam.sigtap_code, exam_label: exam.name } # C3
+      end
+
+      def exception(e)
+        block = e.lab_qc_block
+        { id: e.id, block_id: block.id, analyte_key: block.analyte_key, instrument_id: block.lab_instrument_id,
+          justification: e.justification, granted_by: Screenings::Json.staff_name(e.granted_by_user), granted_at: at(e.granted_at) }
+          .merge(item_ref(e.lab_requisition_item))
+      end
+
+      # released_at: a liberação mais recente do item (laudo liberado ou já retificado).
+      def review(r, report_id: nil)
+        block = r.lab_qc_block
+        released_at = LabReport.joins(:report_items).where(status: %w[released rectified], lab_report_items: { lab_requisition_item_id: r.lab_requisition_item_id })
+                               .maximum(:released_at)
+        body = { id: r.id, block_id: block.id, analyte_key: block.analyte_key, instrument_id: block.lab_instrument_id, released_at: at(released_at),
+                 decision: r.decision, decided_by: r.decided_by_user && Screenings::Json.staff_name(r.decided_by_user),
+                 decided_at: at(r.decided_at), note: r.note }.merge(item_ref(r.lab_requisition_item))
+        body[:report_id] = report_id if r.decision == "rectify"
+        body
+      end
     end
   end
 end
