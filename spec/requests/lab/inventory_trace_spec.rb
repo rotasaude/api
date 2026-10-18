@@ -121,8 +121,34 @@ RSpec.describe "Estoque — lote em uso e rastreio", type: :request do
     expect(response.headers["Content-Disposition"]).to include("attachment", "rastreio-lote-gl1.csv")
     expect(response.body.lines.first.strip).to eq("tipo,requisicao_ou_corrida,exame_ou_analito,data")
     expect(response.body).to include(req.number, "resultado", "controle", value.lab_qc_run_id)
+    expect(response.body.lines.last(2).map(&:strip)).to eq([ "results_truncated,false,,", "qc_values_truncated,false,," ])
     expect(response.body).not_to include(req.patient.display_name)
     expect(DomainEvent.where(name: "lab_supply_lot.traced").count).to eq(2)
+  end
+
+  # C-E37: MAX + 1 linhas → corta em MAX e avisa, no JSON e no CSV (MAX reduzido para o spec ser rápido).
+  it "rastreio acima do limite: corta em MAX e marca results_truncated e qc_values_truncated" do
+    stub_const("Lab::Inventory::Trace::MAX", 2)
+    lot = receive!("GL1")
+    sign_in_as(staff)
+    use!(lot)
+    items = Array.new(3) { received_requisition!(provider: s.provider, exams: [ s.exam ]).items.first }
+    items.each { |item| type!(item, { glicose: "98" }) }
+    3.times { |i| qc_value!(s, "Nível 1", 0.1, by: staff, now: Time.current + i) }
+    get "/lab/inventory/lots/#{lot.id}/trace"
+    expect(json_body["results"].size).to eq(2)
+    expect(json_body["qc_values"].size).to eq(2)
+    expect(json_body).to include("results_truncated" => true, "qc_values_truncated" => true)
+    get "/lab/inventory/lots/#{lot.id}/trace.csv"
+    rows = CSV.parse(response.body)
+    expect(rows.count { |r| r.first == "resultado" }).to eq(2)
+    expect(rows.count { |r| r.first == "controle" }).to eq(2)
+    expect(rows.last(2)).to eq([ [ "results_truncated", "true", nil, nil ], [ "qc_values_truncated", "true", nil, nil ] ])
+
+    stub_const("Lab::Inventory::Trace::MAX", 3) # exatamente MAX: nada cortado
+    get "/lab/inventory/lots/#{lot.id}/trace"
+    expect(json_body).to include("results_truncated" => false, "qc_values_truncated" => false)
+    expect(json_body["results"].size).to eq(3)
   end
 
   it "liberação mostra o lote da linha" do

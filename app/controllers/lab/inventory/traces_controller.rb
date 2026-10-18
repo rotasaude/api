@@ -1,6 +1,7 @@
 # Rastreio por lote (contrato §5): membros do laboratório e admin; sem nome
 # de paciente; cada leitura grava lab_supply_lot.traced (só ids; Desvio 14).
-# Lote de outro laboratório: 404 (C-E27).
+# Lote de outro laboratório: 404 (C-E27). O CSV termina com as linhas
+# results_truncated e qc_values_truncated (true/false; C-E37).
 require "csv"
 
 module Lab
@@ -18,6 +19,8 @@ module Lab
           out << Trace::CSV_HEADERS
           data[:results].each { |r| out << [ "resultado", r[:requisition_number], r[:sigtap_code], r[:entered_at] ] }
           data[:qc_values].each { |v| out << [ "controle", v[:run_id], v[:analyte_key], v[:entered_at] ] }
+          # C-E37: o corte de cada lista, sempre nas duas últimas linhas.
+          %i[results_truncated qc_values_truncated].each { |key| out << [ key.to_s, data[key].to_s, nil, nil ] }
         end
         send_data body, type: "text/csv; charset=utf-8", disposition: "attachment", filename: "rastreio-lote-#{@lot.lot_number.parameterize}.csv"
       end
