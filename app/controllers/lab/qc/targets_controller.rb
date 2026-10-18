@@ -3,7 +3,7 @@
 module Lab
   module Qc
     class TargetsController < BaseController
-      before_action :require_step_up!, only: %i[create]
+      before_action :require_step_up!, only: %i[create accept]
 
       def index
         lot = uuid?(params[:lot_id]) && LabQcLot.find_by(id: params[:lot_id])
@@ -24,6 +24,33 @@ module Lab
         return render_failure(result) if result.failure?
 
         render json: Json.target(result.payload[:target]), status: :created
+      end
+
+      def suggestions
+        provider = lab_param
+        return not_found unless provider
+        return forbid unless releaser?(provider.id)
+
+        render json: { suggestions: Suggestions.list(provider_id: provider.id).map { |x| suggestion_json(x) } }
+      end
+
+      def accept
+        lot = uuid?(params[:lot_id]) && LabQcLot.find_by(id: params[:lot_id])
+        return not_found unless lot
+        return forbid unless technical?(lot.lab_qc_material.exam_provider_id)
+
+        result = AcceptSuggestion.call(lot_id: lot.id, level: params[:level], analyte_key: params[:analyte_key], instrument_id: params[:instrument_id],
+                                       reason: params[:reason], by: Current.user)
+        return render_failure(result) if result.failure?
+
+        render json: Json.target(result.payload[:target]), status: :created
+      end
+
+      private
+
+      def suggestion_json(x)
+        { lot_id: x.lot_id, level: x.level, analyte_key: x.analyte_key, instrument_id: x.instrument_id, mean: Json.out(x.mean), sd: Json.out(x.sd),
+          runs: x.runs, current_version: x.current_version, current_source: x.current_source }
       end
     end
   end
