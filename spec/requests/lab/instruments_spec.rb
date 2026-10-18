@@ -103,4 +103,25 @@ RSpec.describe "Laboratório — aparelhos", type: :request do
     json_post "/lab/admin/exams/#{exam.id}/versions", base.merge(lab_instrument_id: nil)
     expect(json_body["lab_instrument_id"]).to be_nil
   end
+
+  it "C-E44: sem a chave, a versão nova herda o aparelho da vigente; null explícito desvincula" do
+    instrument = qc_instrument!(provider)
+    exam = lab_exam!(provider: provider)
+    base = { method: "Enzimático", material: "Plasma", container: "Tubo cinza", instrument_test_code: "GLI", analytes: LabHelpers::GLUCOSE }
+    stepped_up!(admin)
+    json_post "/lab/admin/exams/#{exam.id}/versions", base.merge(lab_instrument_id: instrument.id)
+    expect(response).to have_http_status(:created)
+    json_post "/lab/admin/exams/#{exam.id}/versions", base
+    expect(response).to have_http_status(:created)
+    expect(json_body).to include("version" => 3, "lab_instrument_id" => instrument.id)
+    expect(exam.reload.current_version.lab_instrument_id).to eq(instrument.id)
+    # Aparelho desativado depois do vínculo: herdar não solta o vínculo.
+    instrument.update!(active: false)
+    json_post "/lab/admin/exams/#{exam.id}/versions", base
+    expect(json_body).to include("version" => 4, "lab_instrument_id" => instrument.id)
+    json_post "/lab/admin/exams/#{exam.id}/versions", base.merge(lab_instrument_id: nil)
+    expect(json_body).to include("version" => 5, "lab_instrument_id" => nil)
+    json_post "/lab/admin/exams/#{exam.id}/versions", base
+    expect(json_body).to include("version" => 6, "lab_instrument_id" => nil)
+  end
 end

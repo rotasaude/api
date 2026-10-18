@@ -20,9 +20,13 @@ module Lab
       code = raw_code&.strip&.upcase.presence
       return Result.fail(:invalid_version) unless code.nil? || code.match?(/\A[A-Z0-9._-]{1,30}\z/)
 
-      # ADR 0038: aparelho do mesmo laboratório, ativo (ou nenhum).
-      raw_instrument = params["lab_instrument_id"]
-      unless raw_instrument.nil?
+      # ADR 0038: aparelho do mesmo laboratório, ativo (ou nenhum). C-E44: chave
+      # AUSENTE herda o aparelho da versão vigente (desligar o CIQ não pode soltar
+      # o vínculo em silêncio); `null` explícito desvincula.
+      inherit = !params.key?("lab_instrument_id")
+      base_version_id = exam.current_version_id
+      raw_instrument = inherit ? exam.current_version&.lab_instrument_id : params["lab_instrument_id"]
+      unless inherit || raw_instrument.nil?
         valid = raw_instrument.is_a?(String) && raw_instrument.match?(Exams::BaseController::UUID) &&
                 LabInstrument.active.exists?(id: raw_instrument, exam_provider_id: exam.exam_provider_id)
         return Result.fail(:invalid_version) unless valid
@@ -41,10 +45,14 @@ module Lab
 
         if raw_instrument
           instrument = LabInstrument.lock("FOR SHARE").find_by(id: raw_instrument, exam_provider_id: exam.exam_provider_id)
-          next Result.fail(:invalid_version) unless instrument&.active
+          # O herdado fica como está (mesmo inativo); o enviado precisa estar ativo.
+          next Result.fail(:invalid_version) unless instrument && (inherit || instrument.active)
         end
 
         exam.lock!
+        # Herdou de uma vigente que mudou entre a leitura e a trava: recusa em vez de
+        # travar o aparelho depois do exame (ordem aparelho → exame, C-E35).
+        next Result.fail(:conflict) if inherit && exam.current_version_id != base_version_id
         number = exam.versions.maximum(:version).to_i + 1
         version = LabExamVersion.create!(lab_exam: exam, version: number, analysis_method: analysis_method, material: material, container: container,
                                          instrument_test_code: code, lab_instrument_id: raw_instrument, analytes: analytes.payload[:analytes], created_by_user: by)
