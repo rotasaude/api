@@ -14,7 +14,7 @@ module Lab
 
       def create
         material = uuid?(params[:material_id]) && LabQcMaterial.find_by(id: params[:material_id])
-        return render_failure(Result.fail(:not_found)) unless material
+        return not_found unless material && reader?(material.exam_provider_id) # C-E36
         return forbid unless configurer?(material.exam_provider_id)
 
         result = CreateLot.call(body_params, by: Current.user)
@@ -25,7 +25,7 @@ module Lab
 
       def close
         lot = uuid?(params[:id]) && LabQcLot.find_by(id: params[:id])
-        return not_found unless lot
+        return not_found unless lot && reader?(lot.lab_qc_material.exam_provider_id) # C-E36
         return forbid unless configurer?(lot.lab_qc_material.exam_provider_id)
 
         result = CloseLot.call(lot: lot)

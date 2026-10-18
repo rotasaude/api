@@ -8,8 +8,6 @@ module Lab
       before_action :load_instrument
 
       def index
-        return forbid unless reader?(@instrument.exam_provider_id)
-
         day = day_param
         return render_failure(Result.fail(:invalid_date)) unless day
 
@@ -27,7 +25,7 @@ module Lab
 
       def load_instrument
         @instrument = uuid?(params[:instrument_id]) && LabInstrument.find_by(id: params[:instrument_id])
-        not_found unless @instrument
+        not_found unless @instrument && reader?(@instrument.exam_provider_id) # C-E36
       end
 
       # Sem data: hoje. Data fora do formato ou inexistente: nil (invalid_date).

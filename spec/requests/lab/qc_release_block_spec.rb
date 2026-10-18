@@ -99,6 +99,23 @@ RSpec.describe "CIQ — liberação bloqueada, exceção e revisão", type: :req
     expect(DomainEvent.where(name: "lab_qc_review.decided").map(&:payload).sole.keys.sort).to eq(%w[decision lab_qc_review_item_id])
   end
 
+  it "RT de outro laboratório: 404 na exceção, na revisão e na ação corretiva por id, sem gravar (C-E36)" do
+    item = typed_item!
+    qc!("Nível 1", 3.6)
+    block = LabQcBlock.active.sole
+    review = LabQcReviewItem.create!(lab_qc_block: block, lab_requisition_item_id: item.id)
+    stepped_up!(lab_releaser!(lab_provider!, lead: true))
+    json_post "/lab/qc/exceptions", block_id: block.id, item_id: item.id, justification: "Gestante em trabalho de parto"
+    expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+    json_post "/lab/qc/reviews/#{review.id}", decision: "kept"
+    expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+    json_post "/lab/qc/blocks/#{block.id}/corrective_action", text: "Calibração refeita"
+    expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+    expect(LabQcException.count).to eq(0)
+    expect(review.reload.decision).to eq("pending")
+    expect(block.reload.corrective_action).to be_nil
+  end
+
   it "exceção não atravessa bloqueio: fechado e reaberto, o item volta a ser recusado com o bloqueio novo" do
     qc!("Nível 1", 3.6)
     old_block = LabQcBlock.active.sole

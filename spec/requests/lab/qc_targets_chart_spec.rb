@@ -172,18 +172,27 @@ RSpec.describe "CIQ — sugestão e gráfico: bordas e recusas", type: :request 
       expect(ats).to eq(newest.map { |t| Time.zone.parse(t.iso8601) })
     end
 
-    it "aparelho de outro laboratório: 404; quem não é do laboratório: 403 (nunca 404)" do
+    # C-E36: lote ou aparelho desconhecido ou de outro laboratório → 404; no próprio laboratório, sem papel de liberação → 403.
+    it "aparelho de outro laboratório ou UUID desconhecido: 404; quem não é do laboratório: 404; técnica do laboratório: 403" do
       foreign = qc_instrument!(lab_provider!, name: "Alheio", hl7_equipment_id: "BIO-77")
       stepped_up!(lead)
       get "/lab/qc/chart", params: chart.merge(instrument_id: foreign.id)
-      expect(response).to have_http_status(:not_found)
-      expect(json_body["error"]).to eq("not_found")
+      expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+      [ { lot_id: SecureRandom.uuid }, { instrument_id: SecureRandom.uuid } ].each do |unknown|
+        get "/lab/qc/chart", params: chart.merge(unknown)
+        expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+      end
+      get "/lab/qc/chart", params: chart.merge(lot_id: "x")
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "filter_required" ])
       third = lab_releaser!(lab_provider!, lead: true)
       stepped_up!(third)
       get "/lab/qc/chart", params: chart.merge(instrument_id: foreign.id)
-      expect(response).to have_http_status(:forbidden)
+      expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
       get "/lab/qc/chart", params: chart
-      expect(response).to have_http_status(:forbidden)
+      expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+      sign_in_as(staff)
+      get "/lab/qc/chart", params: chart
+      expect([ response.status, json_body["error"] ]).to eq([ 403, "missing_role" ])
     end
 
     it "data que não é data (from ou to): 422 invalid_date" do
@@ -279,6 +288,11 @@ RSpec.describe "CIQ — sugestão e gráfico: bordas e recusas", type: :request 
       plain = lab_releaser!(s.provider)
       stepped_up!(plain)
       refused_without_writing(:forbidden, "missing_role") { json_post "/lab/qc/targets/suggestions/accept", key.merge(reason: "motivo") }
+    end
+
+    it "RT de outro laboratório: 404 not_found (C-E36)" do
+      stepped_up!(lab_releaser!(lab_provider!, lead: true))
+      refused_without_writing(:not_found, "not_found") { json_post "/lab/qc/targets/suggestions/accept", key.merge(reason: "motivo") }
     end
 
     it "motivo só com espaços: 422 reason_required" do

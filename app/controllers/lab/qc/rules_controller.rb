@@ -7,8 +7,6 @@ module Lab
       before_action :load_instrument
 
       def show
-        return forbid unless reader?(@instrument.exam_provider_id)
-
         key = params[:analyte_key].to_s
         render json: Json.rule(@instrument.id, key, LabQcRule.current_for(@instrument.id, key))
       end
@@ -28,7 +26,7 @@ module Lab
 
       def load_instrument
         @instrument = uuid?(params[:instrument_id]) && LabInstrument.find_by(id: params[:instrument_id])
-        not_found unless @instrument
+        not_found unless @instrument && reader?(@instrument.exam_provider_id) # C-E36
       end
     end
   end

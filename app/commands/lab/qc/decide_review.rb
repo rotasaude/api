@@ -10,7 +10,10 @@ module Lab
       module_function
 
       def call(review:, decision:, note:, by:, now: Time.current)
-        return Result.fail(:missing_role) unless Lab::Access.technical?(by, review.lab_qc_block.lab_instrument.exam_provider_id)
+        provider_id = review.lab_qc_block.lab_instrument.exam_provider_id
+        # C-E36: revisão de outro laboratório → 404; no próprio, sem RT/substituto → 403.
+        return Result.fail(:not_found) unless Lab::Access.member?(by, provider_id) || Lab::Access.admin?(by)
+        return Result.fail(:missing_role) unless Lab::Access.technical?(by, provider_id)
         return Result.fail(:invalid_decision) unless DECISIONS.include?(decision)
         return Result.fail(:invalid_note) unless note.nil? || note.is_a?(String)
 

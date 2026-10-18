@@ -19,7 +19,7 @@ module Lab
 
       def update
         material = uuid?(params[:id]) && LabQcMaterial.find_by(id: params[:id])
-        return not_found unless material
+        return not_found unless material && reader?(material.exam_provider_id) # C-E36
         return forbid unless configurer?(material.exam_provider_id)
 
         respond(SaveMaterial.call(body_params, material: material), :ok)

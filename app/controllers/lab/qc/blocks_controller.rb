@@ -20,7 +20,7 @@ module Lab
 
       def corrective_action
         block = uuid?(params[:id]) && LabQcBlock.find_by(id: params[:id])
-        return not_found unless block
+        return not_found unless block && reader?(block.lab_instrument.exam_provider_id) # C-E36
         return forbid unless Lab::Access.member?(Current.user, block.lab_instrument.exam_provider_id)
 
         result = RecordCorrectiveAction.call(block: block, text: params[:text], by: Current.user)

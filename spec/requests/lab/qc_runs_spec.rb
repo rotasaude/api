@@ -88,7 +88,7 @@ RSpec.describe "CIQ — corridas e bloqueios", type: :request do
 
     stepped_up!(lab_releaser!(lab_provider!))
     json_post "/lab/qc/blocks/#{block['id']}/corrective_action", text: "Calibração refeita"
-    expect(response).to have_http_status(:forbidden) # liberador de outro laboratório
+    expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ]) # liberador de outro laboratório (C-E36)
     get "/lab/qc/blocks/active/count"
     expect(json_body).to eq("count" => 0)
     sign_in_as(staff) # técnica do laboratório registra, sem step-up
@@ -116,6 +116,15 @@ RSpec.describe "CIQ — corridas e bloqueios", type: :request do
     sign_in_as(staff)
     expect { get "/lab/qc/blocks/active/count" }.not_to(change { DomainEvent.count })
     expect(json_body).to eq("count" => 1)
+  end
+
+  it "regras de aparelho de outro laboratório: 404 na leitura e na mudança (C-E36)" do
+    stepped_up!(lab_releaser!(lab_provider!, lead: true))
+    get "/lab/qc/rules", params: { instrument_id: s.instrument.id, analyte_key: "glicose" }
+    expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+    json_put "/lab/qc/rules", instrument_id: s.instrument.id, analyte_key: "glicose", rules: LabQcRule::RULES.index_with(true), justification: nil
+    expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+    expect(LabQcRule.count).to eq(0)
   end
 
   it "regras: padrão todas ligadas; só o RT muda; desligar exige justificativa" do
@@ -150,12 +159,29 @@ RSpec.describe "CIQ — corridas e bloqueios", type: :request do
     expect(LabQcRule.count).to eq(3)
   end
 
-  it "quem não é do laboratório não grava valor nem abre corrida" do
+  it "quem não é do laboratório não grava valor nem abre corrida: 404 (C-E36); admin lê mas não opera: 403" do
     stepped_up!(lab_releaser!(lab_provider!))
     post_value("Nível 1", "100")
-    expect(response).to have_http_status(:forbidden)
+    expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
     json_post "/lab/qc/runs", instrument_id: s.instrument.id
-    expect(response).to have_http_status(:forbidden)
+    expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+    get "/lab/qc/runs", params: { instrument_id: s.instrument.id }
+    expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+
+    stepped_up!(lab_admin!)
+    post_value("Nível 1", "100")
+    expect([ response.status, json_body["error"] ]).to eq([ 403, "missing_role" ])
+    json_post "/lab/qc/runs", instrument_id: s.instrument.id
+    expect([ response.status, json_body["error"] ]).to eq([ 403, "missing_role" ])
     expect(LabQcRun.count).to eq(0)
+    expect(LabQcValue.count).to eq(0)
+  end
+
+  it "valor com lote de controle de outro laboratório: 404, sem revelar o lote (C-E36)" do
+    other = qc_scenario!(provider: lab_provider!)
+    sign_in_as(lab_releaser!(s.provider)) # liberador ligado só ao laboratório do aparelho (lab_staff lê todos)
+    json_post "/lab/qc/values", instrument_id: s.instrument.id, lot_id: other.lot.id, level: "Nível 1", analyte_key: "glicose", value: "100"
+    expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+    expect(LabQcValue.count).to eq(0)
   end
 end

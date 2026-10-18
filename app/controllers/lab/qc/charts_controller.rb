@@ -8,15 +8,19 @@ module Lab
       MAX_DAYS = 366
 
       def show
-        lot = uuid?(params[:lot_id]) && LabQcLot.find_by(id: params[:lot_id])
-        instrument = uuid?(params[:instrument_id]) && LabInstrument.find_by(id: params[:instrument_id])
         level = params[:level]
         analyte_key = params[:analyte_key]
-        return render_failure(Result.fail(:filter_required)) unless lot && instrument && level.is_a?(String) && level.present? &&
+        return render_failure(Result.fail(:filter_required)) unless uuid?(params[:lot_id]) && uuid?(params[:instrument_id]) &&
+                                                                    level.is_a?(String) && level.present? &&
                                                                     analyte_key.is_a?(String) && analyte_key.present?
+        # C-E36: UUID desconhecido ou de outro laboratório → 404; papel insuficiente no próprio → 403.
+        lot = LabQcLot.find_by(id: params[:lot_id])
+        instrument = LabInstrument.find_by(id: params[:instrument_id])
+        return not_found unless lot && instrument && reader?(lot.lab_qc_material.exam_provider_id)
+
         provider_id = lot.lab_qc_material.exam_provider_id
-        return forbid unless releaser?(provider_id)
         return not_found unless instrument.exam_provider_id == provider_id
+        return forbid unless releaser?(provider_id)
 
         from = date_param(:from)
         to = date_param(:to)

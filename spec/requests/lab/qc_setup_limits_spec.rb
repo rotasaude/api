@@ -117,9 +117,9 @@ RSpec.describe "CIQ — cadastro: limites, papéis e regras", type: :request do
 
     def send_write(verb, path, body) = verb == :post ? json_post(path, body) : json_patch(path, body)
 
-    it "liberador comum, técnica e RT de outro laboratório: 403 em toda escrita, sem gravar" do
+    it "liberador comum e técnica do laboratório: 403 em toda escrita, sem gravar" do
       lot
-      [ lab_releaser!(provider), lab_staff!, other_lead ].each do |user|
+      [ lab_releaser!(provider), lab_staff! ].each do |user|
         stepped_up!(user)
         expect do
           writes.each do |verb, path, body|
@@ -128,6 +128,18 @@ RSpec.describe "CIQ — cadastro: limites, papéis e regras", type: :request do
           end
         end.not_to change { [ LabQcMaterial.count, LabQcLot.count, LabQcTarget.count, lot.reload.status, material.reload.name ] }
       end
+    end
+
+    # C-E36: criar com provider_id alheio → 403; registro de outro laboratório por id → 404.
+    it "RT de outro laboratório: 403 ao criar material com o provider_id; 404 em material, lote e referência por id, sem gravar" do
+      lot
+      stepped_up!(other_lead)
+      expect do
+        writes.each_with_index do |(verb, path, body), i|
+          send_write(verb, path, body)
+          i.zero? ? refused(:forbidden, "missing_role") : refused(:not_found, "not_found")
+        end
+      end.not_to change { [ LabQcMaterial.count, LabQcLot.count, LabQcTarget.count, lot.reload.status, material.reload.name ] }
     end
 
     it "sem step-up: 401 mfa_required em lotes, referências, PATCH e encerramento" do
@@ -141,7 +153,7 @@ RSpec.describe "CIQ — cadastro: limites, papéis e regras", type: :request do
       end.not_to change { [ LabQcMaterial.count, LabQcLot.count, LabQcTarget.count, lot.reload.status ] }
     end
 
-    it "leitura: técnica 200, RT de outro laboratório e sem papel 403, admin 200" do
+    it "leitura: técnica 200, admin 200; RT de outro laboratório e sem papel: 403 na lista por provider_id, 404 por id (C-E36)" do
       lot
       reads = [ [ "/lab/qc/materials", { provider_id: provider.id } ], [ "/lab/qc/lots", { provider_id: provider.id } ],
                 [ "/lab/qc/targets", { lot_id: lot.id } ] ]
@@ -151,7 +163,10 @@ RSpec.describe "CIQ — cadastro: limites, papéis e regras", type: :request do
       end
       [ other_lead, staff_with("sem-papel-#{SecureRandom.hex(3)}@cidade.gov.br", "viewer") ].each do |user|
         stepped_up!(user)
-        reads.each { |path, params| get path, params: params; refused(:forbidden, "missing_role") }
+        reads.each do |path, params|
+          get path, params: params
+          params.key?(:provider_id) ? refused(:forbidden, "missing_role") : refused(:not_found, "not_found")
+        end
       end
     end
 

@@ -17,6 +17,8 @@ module Lab
         return Result.fail(:not_found) unless block
 
         provider_id = block.lab_instrument.exam_provider_id
+        # C-E36: bloqueio de outro laboratório → 404; no próprio, sem RT/substituto → 403.
+        return Result.fail(:not_found) unless Lab::Access.member?(by, provider_id) || Lab::Access.admin?(by)
         return Result.fail(:missing_role) unless Lab::Access.technical?(by, provider_id)
 
         text = justification.is_a?(String) ? justification.strip : ""

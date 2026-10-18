@@ -5,11 +5,12 @@ module Lab
     class ValuesController < BaseController
       def create
         instrument = uuid?(params[:instrument_id]) && LabInstrument.find_by(id: params[:instrument_id])
-        return not_found unless instrument
+        return not_found unless instrument && reader?(instrument.exam_provider_id) # C-E36
         return forbid unless Lab::Access.member?(Current.user, instrument.exam_provider_id)
 
+        # Lote de outro laboratório: 404, sem revelar o lote (C-E36).
         lot = uuid?(params[:lot_id]) && LabQcLot.find_by(id: params[:lot_id])
-        return render_failure(Result.fail(:not_found)) unless lot
+        return not_found unless lot && reader?(lot.lab_qc_material.exam_provider_id)
 
         value = Decimal.json(params[:value])
         return render_failure(Result.fail(:invalid_value)) unless value
