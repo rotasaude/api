@@ -1,15 +1,15 @@
 require "rails_helper"
 
-# Desvio 11: digitação com vírgula (ponto recusado); HL7 com ponto; saída com ponto, sem zeros à direita.
+# C-E9: JSON e HL7 com ponto; saída com ponto, sem zeros à direita.
 RSpec.describe Lab::Qc::Decimal do
-  it "digitado: só vírgula, até 9 inteiros e 4 casas" do
-    expect(described_class.typed("98,5")).to eq(BigDecimal("98.5"))
-    expect(described_class.typed(" -0,0125 ")).to eq(BigDecimal("-0.0125"))
-    expect(described_class.typed("100")).to eq(BigDecimal("100"))
-    [ "98.5", "1.234", "1,23456", "1234567890", "", "abc", nil, 98.5 ].each { |raw| expect(described_class.typed(raw)).to be_nil }
+  it "JSON: string com ponto, até 9 inteiros e 4 casas" do
+    expect(described_class.json("98.5")).to eq(BigDecimal("98.5"))
+    expect(described_class.json("-2.0")).to eq(BigDecimal("-2.0"))
+    expect(described_class.json("100")).to eq(BigDecimal("100"))
+    [ "98,5", " 98.5", "1234567890", "1.12345", "abc", "", nil, 98.5 ].each { |raw| expect(described_class.json(raw)).to be_nil }
   end
 
-  it "HL7: só ponto" do
+  it "HL7: mesma regra do JSON" do
     expect(described_class.hl7("98.5")).to eq(BigDecimal("98.5"))
     [ "98,5", "1e3", "" ].each { |raw| expect(described_class.hl7(raw)).to be_nil }
   end
