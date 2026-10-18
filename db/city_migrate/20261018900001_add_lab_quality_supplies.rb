@@ -59,7 +59,8 @@ class AddLabQualitySupplies < ActiveRecord::Migration[8.1]
       t.string :barcode, limit: 30, null: false
       t.datetime :created_at, null: false
     end
-    add_index :lab_qc_lot_barcodes, :barcode, unique: true
+    # C-E13: o código de barras do controle é único sem diferenciar caixa.
+    add_index :lab_qc_lot_barcodes, "lower(barcode::text)", unique: true, name: "idx_lab_qc_lot_barcodes_barcode_ci"
     add_index :lab_qc_lot_barcodes, %i[lab_qc_lot_id level], unique: true, name: "idx_lab_qc_lot_barcodes_level"
     add_check_constraint :lab_qc_lot_barcodes, "barcode::text ~ '^[A-Za-z0-9._-]{3,30}$'::text AND barcode::text !~ '^[0-9]{10}$'::text",
                          name: "ck_lab_qc_lot_barcodes_barcode"

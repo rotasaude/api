@@ -205,7 +205,7 @@ RSpec.describe "CIQ — cadastro: limites, papéis e regras", type: :request do
       refused(:unprocessable_content, "invalid_instrument")
       instrument.update!(active: true)
       expect { json_post "/lab/qc/targets", body.merge(mean: "91", reason: "r" * 1001) }.not_to change(LabQcTarget, :count)
-      refused(:unprocessable_content, "reason_required") # o contrato só tem este código para o motivo
+      refused(:unprocessable_content, "invalid_reason") # C-E11
       json_post "/lab/qc/targets", body.merge(mean: "91", reason: "r" * 1000)
       expect(response).to have_http_status(:created)
     end
@@ -254,6 +254,36 @@ RSpec.describe "CIQ — cadastro: limites, papéis e regras", type: :request do
       json_patch "/lab/qc/materials/#{material.id}", body.merge(analytes: body[:analytes] + [ { lab_exam_id: lipids.id, analyte_key: "ct" } ])
       expect(response).to have_http_status(:ok)
       expect(json_body["analytes"].size).to eq(2)
+    end
+  end
+
+  describe "C-E12 e C-E13" do
+    before { stepped_up!(lead) }
+
+    let(:glucose_two) do
+      qc_exam!(provider: provider, instrument: instrument, sigtap_code: "0202010999", name: "Glicose 2", instrument_test_code: "GL2")
+    end
+
+    it "mesma chave de analito em dois exames: duplicate_analyte_key ao criar e ao atualizar, sem gravar" do
+      two = material_body[:analytes] + [ { lab_exam_id: glucose_two.id, analyte_key: "glicose" } ]
+      expect { post_material(material_body.merge(analytes: two)) }.not_to change(LabQcMaterial, :count)
+      refused(:unprocessable_content, "duplicate_analyte_key")
+      material = make_material!
+      expect { json_patch "/lab/qc/materials/#{material.id}", material_body.except(:provider_id).merge(analytes: two) }.not_to change { material.reload.analytes }
+      refused(:unprocessable_content, "duplicate_analyte_key")
+    end
+
+    it "código de barras sem diferenciar caixa: outro lote e o mesmo payload" do
+      material = make_material!
+      post_lot(material.id, { "Nível 1" => "CQB2611N1", "Nível 2" => "CQB2611N2" }, number: "L-1")
+      expect(response).to have_http_status(:created)
+      expect { post_lot(material.id, { "Nível 1" => "cqb2611n1", "Nível 2" => "OTHER02" }, number: "L-2") }.not_to change(LabQcLotBarcode, :count)
+      refused(:unprocessable_content, "barcode_taken")
+      expect { post_lot(material.id, { "Nível 1" => "SameCase1", "Nível 2" => "samecase1" }, number: "L-3") }.not_to change(LabQcLot, :count)
+      refused(:unprocessable_content, "barcode_taken")
+      expect(LabQcLotBarcode.find_ci("cqb2611n1").barcode).to eq("CQB2611N1")
+      expect { LabQcLotBarcode.create!(lab_qc_lot: LabQcLot.first, level: "Nível 9", barcode: "cqb2611n2", created_at: Time.current) }
+        .to raise_error(ActiveRecord::RecordNotUnique)
     end
   end
 

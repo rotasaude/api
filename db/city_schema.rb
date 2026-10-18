@@ -1157,7 +1157,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
     t.datetime "created_at", null: false
     t.uuid "lab_qc_lot_id", null: false
     t.string "level", limit: 40, null: false
-    t.index ["barcode"], name: "index_lab_qc_lot_barcodes_on_barcode", unique: true
+    t.index "lower((barcode)::text)", name: "idx_lab_qc_lot_barcodes_barcode_ci", unique: true
     t.index ["lab_qc_lot_id", "level"], name: "idx_lab_qc_lot_barcodes_level", unique: true
     t.check_constraint "barcode::text ~ '^[A-Za-z0-9._-]{3,30}$'::text AND barcode::text !~ '^[0-9]{10}$'::text", name: "ck_lab_qc_lot_barcodes_barcode"
   end

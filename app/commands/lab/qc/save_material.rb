@@ -19,6 +19,8 @@ module Lab
 
         analytes = parse_analytes(params["analytes"], provider)
         return Result.fail(:invalid_analytes) unless analytes
+        # C-E12: a mesma chave de analito em dois exames deixaria referência e valor ambíguos.
+        return Result.fail(:duplicate_analyte_key) unless analytes.map { |a| a["analyte_key"] }.uniq.size == analytes.size
         return Result.fail(:invalid_active) unless [ true, false ].include?(params["active"])
 
         ApplicationRecord.transaction(requires_new: true) do

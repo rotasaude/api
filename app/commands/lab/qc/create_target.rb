@@ -24,7 +24,7 @@ module Lab
         return Result.fail(:invalid_value) unless mean && sd && sd.positive?
 
         reason = params["reason"].is_a?(String) ? params["reason"].strip.presence : nil
-        return Result.fail(:reason_required) if reason && reason.length > 1000
+        return Result.fail(:invalid_reason) if reason && reason.length > 1000
 
         ApplicationRecord.transaction(requires_new: true) do
           lot.lock!

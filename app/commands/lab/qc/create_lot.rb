@@ -26,12 +26,12 @@ module Lab
         codes = codes.to_h { |level, code| [ level.to_s, code.is_a?(String) ? code.strip : code ] }
         return Result.fail(:barcode_taken) if codes.values.any? { |c| c.is_a?(String) && c.match?(LabQcLotBarcode::SAMPLE_SPACE) }
         return Result.fail(:invalid_barcode) unless codes.values.all? { |c| LabQcLotBarcode.valid_code?(c) }
-        return Result.fail(:barcode_taken) unless codes.values.uniq.size == codes.size
+        return Result.fail(:barcode_taken) unless codes.values.map(&:downcase).uniq.size == codes.size
 
         ApplicationRecord.transaction(requires_new: true) do
           material.lock!
           next Result.fail(:duplicate_lot) if material.lots.exists?(lot_number: number)
-          next Result.fail(:barcode_taken) if LabQcLotBarcode.exists?(barcode: codes.values)
+          next Result.fail(:barcode_taken) if LabQcLotBarcode.exists?([ "lower(barcode) IN (?)", codes.values.map(&:downcase) ])
 
           lot = LabQcLot.create!(lab_qc_material: material, lot_number: number, expires_on: expires_on, status: "in_use",
                                  opened_on: now.in_time_zone.to_date, created_by_user: by)
