@@ -1,9 +1,11 @@
 require "securerandom"
 require "time"
+require_relative "qc_plan"
 
 # Mensagens de exemplo do middleware simulado (ADR 0037; contrato §12):
 # valores fixos por código de aparelho da semente, com um crítico (GLI 450)
-# e uma repetição (GLI 98). Nunca dado do paciente.
+# e uma repetição (GLI 98), e corridas de controle (ADR 0038: SPM-11 = Q,
+# aparelho em OBX-18). Nunca dado do paciente.
 module FakeMiddleware
   module Messages
     VALUES = {
@@ -40,6 +42,21 @@ module FakeMiddleware
       obx = values.each_with_index.map { |(key, value, unit), i| "OBX|#{i + 1}|NM|#{key}^#{key}^99RSL||#{value}|#{unit}^^UCUM|||||F" }
       spm = [ "SPM", "1", barcode, "", spm4.to_s ].join("|").sub(/\|+\z/, "")
       ([ header("OUL^R22^OUL_R22", control), spm, "OBR|1|||#{code}^#{code}^99RSL" ] + obx).join("\r") + "\r"
+    end
+
+    # Uma corrida de controle: um SPM por nível (SPM-2 = código do nível, SPM-11 = Q), um OBR por exame, aparelho em OBX-18.
+    def qc(scenario:, on:, control: control_id)
+      stamp = Time.now.utc.strftime("%Y%m%d%H%M%S")
+      segments = [ header("OUL^R22^OUL_R22", control) ]
+      QcPlan::BARCODES.each_with_index do |(level, barcode), i|
+        segments << [ "SPM", (i + 1).to_s, barcode, *Array.new(8, ""), "Q" ].join("|")
+        QcPlan::ANALYTES.each_with_index do |(code, (key, unit)), j|
+          value = QcPlan.value(level, code, QcPlan.z(scenario, level, code, on))
+          segments << "OBR|#{j + 1}|||#{code}^#{code}^99RSL"
+          segments << "OBX|1|NM|#{key}^#{key}^99RSL||#{value}|#{unit}^^UCUM|||||F|||#{stamp}||||#{QcPlan::INSTRUMENT}"
+        end
+      end
+      segments.join("\r") + "\r"
     end
 
     # OBR-4.1 de cada exame do RSP^K11.

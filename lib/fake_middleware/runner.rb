@@ -1,4 +1,5 @@
 require_relative "client"
+require "date"
 require_relative "messages"
 
 module FakeMiddleware
@@ -30,6 +31,17 @@ module FakeMiddleware
           end
         end
       end
+    end
+
+    # Uma corrida de controle (ADR 0038). Log só com cenário, MSH-10 e MSA.
+    def qc(client:, logger:, scenario:, on: Date.today)
+      raise ArgumentError, "cenário desconhecido" unless QcPlan::SCENARIOS.include?(scenario)
+
+      control = Messages.control_id
+      _status, reply = client.post(Messages.qc(scenario: scenario, on: on, control: control))
+      msa = Messages.msa(reply)
+      logger.info("[fake-middleware] controle #{scenario} MSH-10 #{control} MSA #{msa}")
+      msa
     end
   end
 end
