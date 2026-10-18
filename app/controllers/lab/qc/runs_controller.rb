@@ -18,7 +18,10 @@ module Lab
       def create
         return forbid unless Lab::Access.member?(Current.user, @instrument.exam_provider_id)
 
-        render json: Json.run(OpenRun.call(instrument: @instrument, by: Current.user).payload[:run]), status: :created
+        result = OpenRun.call(instrument: @instrument, by: Current.user)
+        return render_failure(result) if result.failure?
+
+        render json: Json.run(result.payload[:run]), status: :created
       end
 
       private

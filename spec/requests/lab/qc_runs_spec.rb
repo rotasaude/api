@@ -177,6 +177,16 @@ RSpec.describe "CIQ — corridas e bloqueios", type: :request do
     expect(LabQcValue.count).to eq(0)
   end
 
+  it "abrir corrida em aparelho inativo: 422 invalid_instrument, nada criado (C-E38)" do
+    s.instrument.update!(active: false)
+    sign_in_as(staff)
+    json_post "/lab/qc/runs", instrument_id: s.instrument.id
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_instrument" ])
+    expect(LabQcRun.count).to eq(0)
+    expect(Lab::Qc::OpenRun.call(instrument: s.instrument, by: staff).reason).to eq(:invalid_instrument)
+    expect(LabQcRun.count).to eq(0)
+  end
+
   it "valor com lote de controle de outro laboratório: 404, sem revelar o lote (C-E36)" do
     other = qc_scenario!(provider: lab_provider!)
     sign_in_as(lab_releaser!(s.provider)) # liberador ligado só ao laboratório do aparelho (lab_staff lê todos)
