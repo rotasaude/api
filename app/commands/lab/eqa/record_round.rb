@@ -20,7 +20,7 @@ module Lab
         return Result.fail(:invalid_program) unless program.length.between?(1, 60)
         return Result.fail(:invalid_round_code) unless code.length.between?(1, 40)
 
-        date = parse_date(params["round_date"])
+        date = Lab::IsoDate.parse(params["round_date"])
         return Result.fail(:invalid_round_date) unless date && date <= now.in_time_zone.to_date
 
         items = parse_items(params["items"], provider)
@@ -72,12 +72,7 @@ module Lab
         pairs.uniq.size == pairs.size ? items : Result.fail(:invalid_items)
       end
 
-      def parse_date(raw)
-        raw.is_a?(String) && raw.match?(/\A\d{4}-\d{2}-\d{2}\z/) ? Date.iso8601(raw) : nil
-      rescue Date::Error
-        nil
-      end
-      private_class_method :parse_items, :parse_date
+      private_class_method :parse_items
     end
   end
 end

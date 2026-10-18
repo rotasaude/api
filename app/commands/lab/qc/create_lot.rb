@@ -15,7 +15,7 @@ module Lab
         number = params["lot_number"].is_a?(String) ? params["lot_number"].strip : ""
         return Result.fail(:invalid_lot_number) unless number.length.between?(1, 40)
 
-        expires_on = parse_date(params["expires_on"])
+        expires_on = Lab::IsoDate.parse(params["expires_on"])
         return Result.fail(:invalid_expires_on) unless expires_on
         return Result.fail(:expired_lot) if expires_on < now.in_time_zone.to_date
 
@@ -40,12 +40,6 @@ module Lab
         end
       rescue ActiveRecord::RecordNotUnique
         Result.fail(:barcode_taken) # o mesmo código gravado por outro lote ao mesmo tempo
-      end
-
-      def parse_date(raw)
-        raw.is_a?(String) && raw.match?(/\A\d{4}-\d{2}-\d{2}\z/) ? Date.iso8601(raw) : nil
-      rescue Date::Error
-        nil
       end
     end
   end

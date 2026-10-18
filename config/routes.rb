@@ -368,6 +368,17 @@ Rails.application.routes.draw do
       get  "annual_reports/:id/pdf",       to: "rounds#annual_report_pdf", format: false
       get  "rounds/:id",                   to: "rounds#show"
     end
+    # Módulo 21c (ADR 0038): estoque. As literais antes de `:id`.
+    scope "inventory", module: :inventory, as: :inventory do
+      get   "supplies",      to: "supplies#index"
+      post  "supplies",      to: "supplies#create"
+      patch "supplies/:id",  to: "supplies#update"
+      get   "lots",          to: "lots#index"
+      post  "lots",          to: "lots#create"
+      get   "movements",     to: "movements#index"
+      post  "movements",     to: "movements#create"
+      get   "alerts",        to: "alerts#show"
+    end
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"
       get   "exams",                     to: "exams#index"
