@@ -6,6 +6,12 @@ class LabQcLotBarcode < ApplicationRecord
   belongs_to :lab_qc_lot
 
   # C-E13: o código é único e procurado sem diferenciar caixa; guardado como digitado.
-  def self.find_ci(code) = code.is_a?(String) ? find_by("lower(barcode) = ?", code.downcase) : nil
+  # O valor vai como bind chamado "barcode" (filtrado no log), nunca no texto do SQL.
+  def self.matching(code)
+    bind = Arel::Nodes::BindParam.new(ActiveRecord::Relation::QueryAttribute.new("barcode", code.to_s.downcase, ActiveModel::Type::String.new))
+    where(arel_table[:barcode].lower.eq(bind))
+  end
+
+  def self.find_ci(code) = code.is_a?(String) ? matching(code).first : nil
   def self.valid_code?(code) = code.is_a?(String) && code.match?(FORMAT) && !code.match?(SAMPLE_SPACE)
 end

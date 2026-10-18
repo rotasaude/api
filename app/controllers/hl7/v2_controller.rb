@@ -14,7 +14,8 @@ module Hl7
       body = request.env[Hl7RawBody::BODY_KEY].to_s
       return render(json: { error: "payload_too_large" }, status: :payload_too_large) if body.bytesize > MAX_BODY
 
-      reply = Lab::Hl7::Inbound.call(raw: body, token: @token, city_slug: Current.city.slug, fake_allowed: fake_allowed?)
+      reply = Lab::Hl7::Inbound.call(raw: body, token: @token, city_slug: Current.city.slug, fake_allowed: fake_allowed?,
+                                     qc_allowed: Lab::Gate.qc_usable?(Current.city))
       render plain: reply, content_type: "#{MEDIA_TYPE}; charset=utf-8"
     end
   end

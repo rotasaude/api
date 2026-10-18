@@ -59,6 +59,16 @@ module Lab
       # Código de barras do SPM: SPM-2.1, ou SPM-2.2 se o primeiro vier vazio.
       def barcode(specimen) = field(specimen.spm, 2, 1).presence || field(specimen.spm, 2, 2).to_s
 
+      # SPM-11 (Specimen Role, tabela 0369): "Q" = controle (Task 0).
+      def specimen_role(specimen) = field(specimen.spm, 11, 1).to_s
+
+      # Componente 1 de cada repetição do campo (OBX-18 é repetível; Task 0).
+      def repetitions(segment, n)
+        return [] unless segment
+
+        segment[n].to_s.split("~", -1).map { |rep| self.class.unescape(rep.split("^", -1).first.to_s) }.reject(&:empty?)
+      end
+
       # Grupos do OUL^R22: SPM → OBR → OBX (OBX antes do 1º OBR é da amostra e é ignorado).
       def specimens
         counts = Hash.new(0)

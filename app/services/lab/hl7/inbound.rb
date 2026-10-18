@@ -7,6 +7,9 @@
 # só item pending/typed recebe resultado (item_not_open); liberado só pela
 # digitação. MSH-10 já aceito = AA sem efeito. Bruto cifrado em
 # lab_hl7_receipts. Nada da mensagem em log.
+# Controle (ADR 0038): tratado antes das amostras de paciente por
+# `Lab::Qc::Hl7Inbound`, na mesma transação; o SPM de controle nunca chega ao
+# caminho do paciente.
 module Lab
   module Hl7
     module Inbound
@@ -16,7 +19,7 @@ module Lab
 
       module_function
 
-      def call(raw:, token:, city_slug:, fake_allowed:, now: Time.current)
+      def call(raw:, token:, city_slug:, fake_allowed:, qc_allowed: false, now: Time.current)
         message = begin
           Message.parse(raw)
         rescue Invalid
@@ -29,7 +32,7 @@ module Lab
         return ar.call("unsupported_message_type", "MSH^1^9") unless TYPES.include?(message.type)
         return ar.call("invalid_message", "MSH^1^10") unless message.control_id.length.between?(1, 64)
 
-        message.type.start_with?("QBP") ? worklist(message, token, city_slug, now) : results(message, raw, token, city_slug, now)
+        message.type.start_with?("QBP") ? worklist(message, token, city_slug, now) : results(message, raw, token, city_slug, now, qc_allowed)
       end
 
       def error(code, location) = Builder::Error.new(code: code, location: location)
@@ -51,7 +54,7 @@ module Lab
         reply.call("AA", sample: sample, items: items)
       end
 
-      def results(message, raw, token, city_slug, now)
+      def results(message, raw, token, city_slug, now, qc_allowed)
         ack = ->(code, errors = []) { Builder.ack(request: message, code: code, city_slug: city_slug, now: now, errors: errors) }
         return ack.call("AA") if LabHl7Receipt.exists?(lab_middleware_token_id: token.id, control_id: message.control_id)
 
@@ -63,7 +66,9 @@ module Lab
         ApplicationRecord.transaction(requires_new: true) do
           receipt = LabHl7Receipt.create!(lab_middleware_token: token, control_id: message.control_id, message_type: message.type,
                                           raw: raw.to_s.dup.force_encoding(Encoding::UTF_8), created_at: now)
-          errors.concat(Application.new(message, token, receipt, now, write: structural.empty?).run)
+          qc = Lab::Qc::Hl7Inbound.new(message, token, receipt, now, enabled: qc_allowed, write: structural.empty?)
+          errors.concat(qc.run) # aparelho antes da requisição (Desvio 10; C-E23)
+          errors.concat(Application.new(message, token, receipt, now, write: structural.empty?, skip: qc.claimed).run)
           raise ActiveRecord::Rollback if errors.any?
         end
         return ack.call("AA") if errors.empty?
@@ -95,12 +100,13 @@ module Lab
 
       # Confere (e, sem recusa, grava) cada SPM/OBR/OBX do OUL^R22 dentro da transação do chamador.
       class Application
-        def initialize(message, token, receipt, now, write:)
+        def initialize(message, token, receipt, now, write:, skip: Set.new)
           @message = message
           @token = token
           @receipt = receipt
           @now = now
           @write = write
+          @skip = skip
           @errors = []
         end
 
@@ -120,6 +126,8 @@ module Lab
           plan = []
           claimed = Set.new
           @message.specimens.each do |specimen|
+            next if @skip.include?(specimen.index)
+
             where = "SPM^#{specimen.index}^2"
             sample = Inbound.send(:find_sample, @token, @message.barcode(specimen))
             next @errors << error("unknown_barcode", where) unless sample
