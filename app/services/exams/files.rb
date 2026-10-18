@@ -11,29 +11,30 @@ module Exams
 
     module_function
 
-    def store(bytes:, content_type:, user: nil, provider: nil)
+    def store(bytes:, content_type:, user: nil, provider: nil, purpose: nil)
       bytes = bytes.to_s.b
       magic = MAGIC[content_type]
       return Result.fail(:invalid_file) unless magic && bytes.bytesize.between?(1, MAX_BYTES) && bytes.start_with?(magic)
 
       file = ExamFile.create!(content_type: content_type, byte_size: bytes.bytesize, sha256: Digest::SHA256.hexdigest(bytes),
-                              data: Base64.strict_encode64(bytes), uploaded_by_user: user, exam_provider: provider)
+                              data: Base64.strict_encode64(bytes), uploaded_by_user: user, exam_provider: provider, purpose: purpose)
       Result.ok(file: file)
     end
 
-    def store_base64(data:, content_type:, user: nil, provider: nil)
+    def store_base64(data:, content_type:, user: nil, provider: nil, purpose: nil)
       return Result.fail(:invalid_file) unless data.is_a?(String) && data.length <= (MAX_BYTES * 4 / 3) + 8
 
-      store(bytes: Base64.strict_decode64(data), content_type: content_type, user: user, provider: provider)
+      store(bytes: Base64.strict_decode64(data), content_type: content_type, user: user, provider: provider, purpose: purpose)
     rescue ArgumentError
       Result.fail(:invalid_file)
     end
 
-    # Liga o arquivo a um pedido/resultado: só o não consumido do mesmo autor.
-    def claim!(file_id:, user: nil, provider: nil)
+    # Liga o arquivo a um pedido/resultado: só o não consumido do mesmo autor e da
+    # mesma finalidade (nil = 21a; o upload do CEQ só serve ao relatório anual).
+    def claim!(file_id:, user: nil, provider: nil, purpose: nil)
       return nil unless file_id.is_a?(String) && file_id.match?(Exams::BaseController::UUID)
 
-      file = ExamFile.lock.find_by(id: file_id, consumed_at: nil)
+      file = ExamFile.lock.find_by(id: file_id, consumed_at: nil, purpose: purpose)
       return nil unless file
       return nil unless (user && file.uploaded_by_user_id == user.id) || (provider && file.exam_provider_id == provider.id)
 

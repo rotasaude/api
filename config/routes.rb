@@ -363,7 +363,9 @@ Rails.application.routes.draw do
       post "uploads",                      to: "rounds#upload"
       get  "rounds",                       to: "rounds#index"
       post "rounds",                       to: "rounds#create"
-      get  "rounds/:id/annual_report.pdf", to: "rounds#annual_report", format: false
+      get  "annual_reports",               to: "rounds#annual_reports"
+      post "annual_reports",               to: "rounds#create_annual_report"
+      get  "annual_reports/:id/pdf",       to: "rounds#annual_report_pdf", format: false
       get  "rounds/:id",                   to: "rounds#show"
     end
     scope "admin", module: :admin, as: :admin do

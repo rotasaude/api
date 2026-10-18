@@ -747,11 +747,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
     t.uuid "exam_provider_id"
     t.string "sha256", limit: 64, null: false
     t.uuid "uploaded_by_user_id"
+    t.string "purpose", limit: 30
     t.index ["created_at"], name: "idx_exam_files_orphans", where: "(consumed_at IS NULL)"
     t.index ["exam_provider_id"], name: "index_exam_files_on_exam_provider_id"
     t.index ["uploaded_by_user_id"], name: "index_exam_files_on_uploaded_by_user_id"
     t.check_constraint "byte_size > 0 AND byte_size <= 10485760", name: "ck_exam_files_size"
     t.check_constraint "content_type::text = ANY (ARRAY['application/pdf'::text, 'image/jpeg'::text, 'image/png'::text])", name: "ck_exam_files_content_type"
+    t.check_constraint "purpose IS NULL OR purpose::text = 'eqa_annual_report'::text", name: "ck_exam_files_purpose"
   end
 
   create_table "exam_order_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1034,8 +1036,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
     t.check_constraint "channel::text = ANY (ARRAY['telefone'::text, 'presencial'::text, 'sistema'::text])", name: "ck_lab_critical_notices_channel"
   end
 
+  create_table "lab_eqa_annual_reports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "exam_provider_id", null: false
+    t.uuid "file_id", null: false
+    t.string "program", limit: 60, null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.integer "year", null: false
+    t.index ["exam_provider_id", "program", "year"], name: "idx_lab_eqa_annual_reports_year", unique: true
+    t.index ["file_id"], name: "index_lab_eqa_annual_reports_on_file_id", unique: true
+    t.check_constraint "year >= 2000 AND year <= 2100", name: "ck_lab_eqa_annual_reports_year"
+  end
+
   create_table "lab_eqa_rounds", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "annual_report_file_id"
     t.datetime "created_at", null: false
     t.uuid "exam_provider_id", null: false
     t.jsonb "items", null: false
@@ -1043,7 +1056,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
     t.uuid "recorded_by_user_id", null: false
     t.string "round_code", limit: 40, null: false
     t.date "round_date", null: false
-    t.index ["annual_report_file_id"], name: "index_lab_eqa_rounds_on_annual_report_file_id", unique: true
     t.index ["exam_provider_id", "program", "round_code"], name: "idx_lab_eqa_rounds_code", unique: true
     t.index ["exam_provider_id", "round_date"], name: "idx_lab_eqa_rounds_date"
     t.check_constraint "jsonb_typeof(items) = 'array'::text AND jsonb_array_length(items) BETWEEN 1 AND 60", name: "ck_lab_eqa_rounds_items"
@@ -2539,7 +2551,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "lab_critical_notices", "lab_results"
   add_foreign_key "lab_critical_notices", "users", column: "recorded_by_user_id"
-  add_foreign_key "lab_eqa_rounds", "exam_files", column: "annual_report_file_id"
+  add_foreign_key "lab_eqa_annual_reports", "exam_files", column: "file_id"
+  add_foreign_key "lab_eqa_annual_reports", "exam_providers"
+  add_foreign_key "lab_eqa_annual_reports", "users", column: "recorded_by_user_id"
   add_foreign_key "lab_eqa_rounds", "exam_providers"
   add_foreign_key "lab_eqa_rounds", "users", column: "recorded_by_user_id"
   add_foreign_key "lab_exam_versions", "lab_exams"

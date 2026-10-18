@@ -1891,7 +1891,7 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS lab_qc_exceptions_reencryption_only ON lab_qc_exceptions';
     EXECUTE 'CREATE TRIGGER lab_qc_exceptions_reencryption_only BEFORE UPDATE OR DELETE ON lab_qc_exceptions
       FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''justification'')';
-    FOREACH item IN ARRAY ARRAY['lab_qc_lot_barcodes', 'lab_qc_targets', 'lab_qc_values', 'lab_qc_rules', 'lab_eqa_rounds',
+    FOREACH item IN ARRAY ARRAY['lab_qc_lot_barcodes', 'lab_qc_targets', 'lab_qc_values', 'lab_qc_rules', 'lab_eqa_rounds', 'lab_eqa_annual_reports',
                                 'lab_supply_lots', 'lab_supply_movements'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
@@ -1904,7 +1904,7 @@ BEGIN
     END LOOP;
     FOREACH item IN ARRAY ARRAY['lab_instruments', 'lab_qc_materials', 'lab_qc_lots', 'lab_qc_lot_barcodes', 'lab_qc_targets',
                                 'lab_qc_runs', 'lab_qc_values', 'lab_qc_rules', 'lab_qc_blocks', 'lab_qc_exceptions',
-                                'lab_qc_review_items', 'lab_eqa_rounds', 'lab_supplies', 'lab_supply_lots',
+                                'lab_qc_review_items', 'lab_eqa_rounds', 'lab_eqa_annual_reports', 'lab_supplies', 'lab_supply_lots',
                                 'lab_supply_movements', 'lab_supply_in_use'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',

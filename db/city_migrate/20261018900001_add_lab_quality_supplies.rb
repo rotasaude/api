@@ -247,13 +247,27 @@ class AddLabQualitySupplies < ActiveRecord::Migration[8.1]
       t.string :round_code, limit: 40, null: false
       t.date :round_date, null: false
       t.jsonb :items, null: false
-      t.references :annual_report_file, type: :uuid, foreign_key: { to_table: :exam_files }, index: { unique: true }
       t.references :recorded_by_user, type: :uuid, null: false, foreign_key: { to_table: :users }, index: false
       t.datetime :created_at, null: false
     end
     add_index :lab_eqa_rounds, %i[exam_provider_id program round_code], unique: true, name: "idx_lab_eqa_rounds_code"
     add_index :lab_eqa_rounds, %i[exam_provider_id round_date], name: "idx_lab_eqa_rounds_date"
     add_check_constraint :lab_eqa_rounds, "jsonb_typeof(items) = 'array' AND jsonb_array_length(items) BETWEEN 1 AND 60", name: "ck_lab_eqa_rounds_items"
+
+    # Relatório anual do CEQ (C-E24): do programa no ano, não da rodada. O PDF
+    # fica em exam_files (cifrado), marcado com a finalidade do CEQ no envio.
+    add_column :exam_files, :purpose, :string, limit: 30
+    add_check_constraint :exam_files, "purpose IS NULL OR purpose::text = 'eqa_annual_report'::text", name: "ck_exam_files_purpose"
+    create_table :lab_eqa_annual_reports, id: :uuid do |t|
+      t.references :exam_provider, type: :uuid, null: false, foreign_key: true, index: false
+      t.string :program, limit: 60, null: false
+      t.integer :year, null: false
+      t.references :file, type: :uuid, null: false, foreign_key: { to_table: :exam_files }, index: { unique: true }
+      t.references :recorded_by_user, type: :uuid, null: false, foreign_key: { to_table: :users }, index: false
+      t.datetime :created_at, null: false
+    end
+    add_index :lab_eqa_annual_reports, %i[exam_provider_id program year], unique: true, name: "idx_lab_eqa_annual_reports_year"
+    add_check_constraint :lab_eqa_annual_reports, "year BETWEEN 2000 AND 2100", name: "ck_lab_eqa_annual_reports_year"
 
     execute File.read(Rails.root.join("db/city_triggers.sql"))
   end

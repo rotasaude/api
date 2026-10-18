@@ -3,7 +3,7 @@
 # itens de analitos numéricos de exames do laboratório (um item por
 # analito); números como string com ponto (C-E9); inadequado exige ação;
 # relatório anual opcional (PDF enviado por /lab/eqa/uploads, consumido aqui —
-# a recusa desfaz o consumo). Só acréscimo: a rodada nasce com o arquivo e
+# ). Só acréscimo: a rodada nasce com o arquivo e
 # nunca é alterada (o gatilho de só-acréscimo não permite UPDATE).
 module Lab
   module Eqa
@@ -31,16 +31,8 @@ module Lab
           provider.lock!
           next result = Result.fail(:duplicate_round) if LabEqaRound.exists?(exam_provider_id: provider.id, program: program, round_code: code)
 
-          file = nil
-          if params["annual_report_upload_id"].present?
-            file = Exams::Files.claim!(file_id: params["annual_report_upload_id"], user: by)
-            unless file&.content_type == "application/pdf"
-              result = Result.fail(:invalid_file)
-              raise ActiveRecord::Rollback # desfaz o consumo do upload que não serve
-            end
-          end
           round = LabEqaRound.create!(exam_provider: provider, program: program, round_code: code, round_date: date, items: items,
-                                      annual_report_file: file, recorded_by_user: by, created_at: now)
+                                      recorded_by_user: by, created_at: now)
           DomainEvents.publish("lab_eqa_round.recorded", lab_eqa_round_id: round.id)
           result = Result.ok(round: round)
         end

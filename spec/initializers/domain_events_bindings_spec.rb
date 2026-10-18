@@ -182,7 +182,7 @@ end
 RSpec.describe "lab quality and supplies event bindings (ADR 0038)" do
   it "declares every quality and supplies event with no consumer" do
     names = %w[lab_qc_run.evaluated lab_qc_block.opened lab_qc_block.closed lab_qc_block.action_recorded lab_qc_exception.granted
-               lab_qc_review.decided lab_qc_target.accepted lab_qc_rule.changed lab_eqa_round.recorded lab_supply_lot.received
+               lab_qc_review.decided lab_qc_target.accepted lab_qc_rule.changed lab_eqa_round.recorded lab_eqa_annual_report.recorded lab_supply_lot.received
                lab_supply_lot.traced lab_supply_movement.recorded lab_supply_in_use.changed]
     expect(DomainEvents.registry.keys).to include(*names)
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
