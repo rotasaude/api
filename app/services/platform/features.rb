@@ -95,7 +95,15 @@ module Platform
       Entry.new(key: "fake_middleware",
                 description: "Middleware de aparelhos simulado (desenvolvimento) — resultados de exemplo, sem validade",
                 requires: %w[feature:lab_hl7_inbound],
-                environments: SIMULATION_ENVS)
+                environments: SIMULATION_ENVS),
+      # ADR 0038: controle de qualidade do laboratório municipal (módulo 21c).
+      Entry.new(key: "lab_quality_control",
+                description: "Controle de qualidade do laboratório: CIQ (Westgard, Levey-Jennings, bloqueio da liberação) e CEQ",
+                requires: %w[feature:municipal_lab]),
+      # ADR 0038: estoque de reagentes e insumos do laboratório municipal.
+      Entry.new(key: "lab_inventory",
+                description: "Estoque do laboratório: reagentes e insumos com lotes, lote em uso e consumo estimado",
+                requires: %w[feature:municipal_lab])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze

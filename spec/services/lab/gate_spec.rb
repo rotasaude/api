@@ -32,4 +32,21 @@ RSpec.describe Lab::Gate do
     expect(described_class.usable?(nil)).to be(false)
     expect(described_class.hl7_usable?(City.new)).to be(false)
   end
+
+  # ADR 0038: qualidade e estoque, independentes entre si, ambos sobre municipal_lab.
+  it "lab_quality_control e lab_inventory dependem de municipal_lab e não um do outro" do
+    set("municipal_lab", true)
+    set("lab_quality_control", true)
+    expect(described_class.qc_usable?(city)).to be(true)
+    expect(described_class.inventory_usable?(city)).to be(false)
+    set("lab_inventory", true)
+    expect(described_class.inventory_usable?(city)).to be(true)
+    set("lab_quality_control", false)
+    expect(described_class.inventory_usable?(city)).to be(true)
+    set("municipal_lab", false)
+    expect(described_class.inventory_usable?(city)).to be(false)
+    expect(Platform::Features.missing(city, "lab_quality_control")).to eq([ "municipal_lab_disabled" ])
+    expect(Platform::Features.missing(city, "lab_inventory")).to eq([ "municipal_lab_disabled" ])
+    expect(described_class.qc_usable?(nil)).to be(false)
+  end
 end
