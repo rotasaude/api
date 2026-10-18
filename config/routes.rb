@@ -331,6 +331,17 @@ Rails.application.routes.draw do
     get  "reports/:kind",                to: "production_reports#show", constraints: { kind: /production|rejections|turnaround/ }
     get  "reports/:id/pdf",              to: "reports#pdf", format: false
     post "reports/:id/rectify",          to: "reports#rectify"
+    # Módulo 21c (ADR 0038): CIQ. As literais antes de `:id`.
+    scope "qc", module: :qc, as: :qc do
+      get   "materials",            to: "materials#index"
+      post  "materials",            to: "materials#create"
+      patch "materials/:id",        to: "materials#update"
+      get   "lots",                 to: "lots#index"
+      post  "lots",                 to: "lots#create"
+      post  "lots/:id/close",       to: "lots#close"
+      get   "targets",              to: "targets#index"
+      post  "targets",              to: "targets#create"
+    end
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"
       get   "exams",                     to: "exams#index"

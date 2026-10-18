@@ -1,0 +1,38 @@
+# /lab/qc/lots (contrato §3): lista por laboratório (ou material); criar e encerrar: admin ou RT/substituto, com step-up.
+module Lab
+  module Qc
+    class LotsController < BaseController
+      before_action :require_step_up!, only: %i[create close]
+      before_action -> { provider! }, only: :index
+
+      def index
+        lots = LabQcLot.joins(:lab_qc_material).where(lab_qc_materials: { exam_provider_id: @provider.id })
+        lots = lots.where(lab_qc_material_id: params[:material_id]) if uuid?(params[:material_id])
+        lots = lots.where(status: params[:status]) if LabQcLot::STATUSES.include?(params[:status]) # C2
+        render json: { lots: lots.includes(:barcodes, :lab_qc_material).order(:status, :expires_on, :lot_number).map { |l| Json.lot(l) } }
+      end
+
+      def create
+        material = uuid?(params[:material_id]) && LabQcMaterial.find_by(id: params[:material_id])
+        return render_failure(Result.fail(:not_found)) unless material
+        return forbid unless configurer?(material.exam_provider_id)
+
+        result = CreateLot.call(body_params, by: Current.user)
+        return render_failure(result) if result.failure?
+
+        render json: Json.lot(result.payload[:lot]), status: :created
+      end
+
+      def close
+        lot = uuid?(params[:id]) && LabQcLot.find_by(id: params[:id])
+        return not_found unless lot
+        return forbid unless configurer?(lot.lab_qc_material.exam_provider_id)
+
+        result = CloseLot.call(lot: lot)
+        return render_failure(result) if result.failure?
+
+        render json: Json.lot(result.payload[:lot])
+      end
+    end
+  end
+end
