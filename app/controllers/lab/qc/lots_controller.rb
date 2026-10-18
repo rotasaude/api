@@ -9,7 +9,7 @@ module Lab
         lots = LabQcLot.joins(:lab_qc_material).where(lab_qc_materials: { exam_provider_id: @provider.id })
         lots = lots.where(lab_qc_material_id: params[:material_id]) if uuid?(params[:material_id])
         lots = lots.where(status: params[:status]) if LabQcLot::STATUSES.include?(params[:status]) # C2
-        render json: { lots: lots.includes(:barcodes, :lab_qc_material).order(:status, :expires_on, :lot_number).map { |l| Json.lot(l) } }
+        render json: { lots: lots.includes(:barcodes, :lab_qc_material).order(Arel.sql("CASE lab_qc_lots.status WHEN 'in_use' THEN 0 ELSE 1 END"), "lab_qc_lots.created_at DESC", "lab_qc_lots.id").map { |l| Json.lot(l) } }
       end
 
       def create

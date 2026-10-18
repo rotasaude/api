@@ -151,7 +151,7 @@ RSpec.describe "CIQ — cadastro: limites, papéis e regras", type: :request do
       end
       [ other_lead, staff_with("sem-papel-#{SecureRandom.hex(3)}@cidade.gov.br", "viewer") ].each do |user|
         stepped_up!(user)
-        reads.each { |path, params| get path, params: params; expect(response).to have_http_status(:forbidden) }
+        reads.each { |path, params| get path, params: params; refused(:forbidden, "missing_role") }
       end
     end
 
@@ -205,7 +205,7 @@ RSpec.describe "CIQ — cadastro: limites, papéis e regras", type: :request do
       refused(:unprocessable_content, "invalid_instrument")
       instrument.update!(active: true)
       expect { json_post "/lab/qc/targets", body.merge(mean: "91", reason: "r" * 1001) }.not_to change(LabQcTarget, :count)
-      expect(response).to have_http_status(:unprocessable_content)
+      refused(:unprocessable_content, "reason_required") # o contrato só tem este código para o motivo
       json_post "/lab/qc/targets", body.merge(mean: "91", reason: "r" * 1000)
       expect(response).to have_http_status(:created)
     end
@@ -213,8 +213,8 @@ RSpec.describe "CIQ — cadastro: limites, papéis e regras", type: :request do
     it "listagem de lotes filtra por status e por material; ordena em uso antes de encerrado" do
       material = make_material!
       other = qc_material!(provider, exams: [ exam ], name: "Outro")
-      a = qc_lot!(material, lot_number: "A")
-      b = qc_lot!(material, lot_number: "B")
+      a = travel_to(3.days.ago) { qc_lot!(material, lot_number: "A") }
+      b = travel_to(2.days.ago) { qc_lot!(material, lot_number: "B") }
       c = qc_lot!(other, lot_number: "C")
       json_post "/lab/qc/lots/#{a.id}/close", {}
       get "/lab/qc/lots", params: { provider_id: provider.id, status: "closed" }
@@ -225,19 +225,32 @@ RSpec.describe "CIQ — cadastro: limites, papéis e regras", type: :request do
       get "/lab/qc/lots", params: { provider_id: provider.id, material_id: material.id }
       expect(json_body["lots"].map { |l| l["id"] }).to match_array([ a.id, b.id ])
       get "/lab/qc/lots", params: { provider_id: provider.id, status: "bogus" }
-      expect(json_body["lots"].size).to eq(3)
+      expect(json_body["lots"].map { |l| l["lot_number"] }).to eq(%w[C B A]) # em uso (mais novo primeiro), depois encerrado
     end
 
-    it "material com lote: tirar analito é recusado, acrescentar é aceito" do
+    it "material com lote: tirar um de dois analitos é recusado, acrescentar é aceito" do
+      lipids = qc_exam!(provider: provider, instrument: instrument, sigtap_code: "0202010295", name: "Lipidograma", analytes: LabHelpers::LIPIDS,
+                        instrument_test_code: "LIP")
+      material = qc_material!(provider, exams: [ exam, lipids ]) # glicose, ct, hdl, tg
+      qc_lot!(material)
+      body = { name: material.name, manufacturer: "Bio-Rad", levels: material.levels, active: true }
+      before = material.analytes
+      expect(before.size).to be > 1
+      expect do
+        json_patch "/lab/qc/materials/#{material.id}", body.merge(analytes: before.drop(1))
+        refused(:unprocessable_content, "invalid_analytes")
+      end.not_to change { material.reload.analytes }
+      expect(material.analytes).to eq(before)
+      json_patch "/lab/qc/materials/#{material.id}", body.merge(analytes: before.map(&:symbolize_keys))
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "material com lote: acrescentar analito é aceito" do
       material = make_material!
       qc_lot!(material)
       lipids = qc_exam!(provider: provider, instrument: instrument, sigtap_code: "0202010295", name: "Lipidograma", analytes: LabHelpers::LIPIDS,
                         instrument_test_code: "LIP")
       body = material_body.except(:provider_id)
-      expect do
-        json_patch "/lab/qc/materials/#{material.id}", body.merge(analytes: [])
-        refused(:unprocessable_content, "invalid_analytes")
-      end.not_to change { material.reload.analytes }
       json_patch "/lab/qc/materials/#{material.id}", body.merge(analytes: body[:analytes] + [ { lab_exam_id: lipids.id, analyte_key: "ct" } ])
       expect(response).to have_http_status(:ok)
       expect(json_body["analytes"].size).to eq(2)
