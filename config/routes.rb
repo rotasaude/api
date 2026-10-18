@@ -357,6 +357,15 @@ Rails.application.routes.draw do
       get   "reviews",              to: "reviews#index"
       post  "reviews/:id",          to: "reviews#decide"
     end
+    # Módulo 21c (ADR 0038): CEQ. As literais antes de `:id`.
+    scope "eqa", module: :eqa, as: :eqa do
+      get  "summary",                      to: "rounds#summary"
+      post "uploads",                      to: "rounds#upload"
+      get  "rounds",                       to: "rounds#index"
+      post "rounds",                       to: "rounds#create"
+      get  "rounds/:id/annual_report.pdf", to: "rounds#annual_report", format: false
+      get  "rounds/:id",                   to: "rounds#show"
+    end
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"
       get   "exams",                     to: "exams#index"
