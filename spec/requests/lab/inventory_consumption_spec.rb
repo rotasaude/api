@@ -165,4 +165,17 @@ RSpec.describe "Estoque — consumo estimado", type: :request do
     get "/lab/inventory/consumption.csv", params: { provider_id: s.provider.id, month: month_of(Time.zone.today) }
     expect(response).to have_http_status(:forbidden)
   end
+
+  # C-E41: consumo (JSON e CSV) lido por qualquer membro do laboratório e pelo admin da cidade.
+  it "papéis: lab_staff, liberador do laboratório e admin leem (200)" do
+    month = month_of(Time.zone.today)
+    { "lab_staff" => staff, "liberador" => lab_releaser!(s.provider), "RT" => lab_releaser!(s.provider, lead: true),
+      "admin" => lab_admin! }.each do |label, user|
+      sign_in_as(user)
+      %w[consumption consumption.csv].each do |path|
+        get "/lab/inventory/#{path}", params: { provider_id: s.provider.id, month: month }
+        expect([ label, path, response.status ]).to eq([ label, path, 200 ])
+      end
+    end
+  end
 end

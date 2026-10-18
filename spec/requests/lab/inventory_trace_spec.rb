@@ -278,4 +278,17 @@ RSpec.describe "Estoque — lote em uso e rastreio", type: :request do
     expect(LabResult.where(source: "hl7").pluck(:reagent_lot_id)).to eq([ lot.id ])
     expect(LabQcValue.where(source: "hl7").pluck(:reagent_lot_id)).to eq([ lot.id ])
   end
+
+  # C-E41: rastreio (JSON e CSV) lido por qualquer membro do laboratório e pelo admin da cidade.
+  it "papéis: lab_staff, liberador do laboratório e admin leem o rastreio (200)" do
+    lot = receive!("GL1")
+    { "lab_staff" => staff, "liberador" => lab_releaser!(s.provider), "RT" => lab_releaser!(s.provider, lead: true),
+      "admin" => lab_admin! }.each do |label, user|
+      sign_in_as(user)
+      %w[trace trace.csv].each do |suffix|
+        get "/lab/inventory/lots/#{lot.id}/#{suffix}"
+        expect([ label, suffix, response.status ]).to eq([ label, suffix, 200 ])
+      end
+    end
+  end
 end

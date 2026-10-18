@@ -310,5 +310,18 @@ RSpec.describe "CIQ — sugestão e gráfico: bordas e recusas", type: :request 
       get "/lab/qc/targets/suggestions", params: { provider_id: "abc" }
       expect(response).to have_http_status(:not_found)
     end
+
+    # C-E41: o gráfico de Levey-Jennings é do RT/liberador do laboratório e do admin; a técnica (lab_staff) não lê.
+    it "papéis: admin e liberador do laboratório leem (200); lab_staff é 403 missing_role" do
+      plain = lab_releaser!(s.provider)
+      { "admin" => lab_admin!, "RT" => lead, "liberador" => plain }.each do |label, user|
+        sign_in_as(user)
+        get "/lab/qc/chart", params: chart
+        expect([ label, response.status ]).to eq([ label, 200 ])
+      end
+      sign_in_as(staff)
+      get "/lab/qc/chart", params: chart
+      expect([ response.status, json_body["error"] ]).to eq([ 403, "missing_role" ])
+    end
   end
 end
