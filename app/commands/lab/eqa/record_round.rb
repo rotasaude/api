@@ -1,10 +1,10 @@
 # Rodada do CEQ (contrato §4; spec §5.10): programa (PNCQ, Controllab ou
 # texto), código único por laboratório e programa, data não futura, 1..60
 # itens de analitos numéricos de exames do laboratório (um item por
-# analito); números como string com ponto (C-E9); inadequado exige ação;
-# relatório anual opcional (PDF enviado por /lab/eqa/uploads, consumido aqui —
-# ). Só acréscimo: a rodada nasce com o arquivo e
-# nunca é alterada (o gatilho de só-acréscimo não permite UPDATE).
+# analito); números como string com ponto (C-E9); inadequado exige ação.
+# A rodada não tem arquivo: o relatório anual é registro próprio por
+# laboratório, programa e ano (C-E24, lab_eqa_annual_reports). Só acréscimo:
+# a rodada nunca é alterada (o gatilho de só-acréscimo não permite UPDATE).
 module Lab
   module Eqa
     module RecordRound
