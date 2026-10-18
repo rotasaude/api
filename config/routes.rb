@@ -341,6 +341,14 @@ Rails.application.routes.draw do
       post  "lots/:id/close",       to: "lots#close"
       get   "targets",              to: "targets#index"
       post  "targets",              to: "targets#create"
+      get   "runs",                 to: "runs#index"
+      post  "runs",                 to: "runs#create"
+      post  "values",               to: "values#create"
+      get   "rules",                to: "rules#show"
+      put   "rules",                to: "rules#update"
+      get   "blocks/active/count",  to: "blocks#count"
+      get   "blocks",               to: "blocks#index"
+      post  "blocks/:id/corrective_action", to: "blocks#corrective_action"
     end
     scope "admin", module: :admin, as: :admin do
       get   "templates",                 to: "templates#index"

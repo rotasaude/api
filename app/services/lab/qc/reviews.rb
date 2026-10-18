@@ -1,0 +1,30 @@
+# Revisão (spec §5.6; Desvio 8): na abertura do bloqueio, os itens do aparelho
+# cujo exame tem o analito e cujo laudo foi liberado depois da última corrida
+# aceita com o analito (ou, sem ela, da primeira referência aceita) entram
+# pendentes. Só leitura do 21b; cria linhas de revisão.
+module Lab
+  module Qc
+    module Reviews
+      module_function
+
+      def enqueue!(block, run:)
+        since = since_for(block, run)
+        versions = LabExamVersion.where(lab_instrument_id: block.lab_instrument_id)
+                                 .where("analytes @> ?::jsonb", [ { key: block.analyte_key } ].to_json).select(:id)
+        item_ids = LabReportItem.joins(:lab_report).where(lab_reports: { status: %w[released rectified] })
+                                .where("lab_reports.released_at > ?", since)
+                                .where(lab_requisition_item_id: LabRequisitionItem.where(lab_exam_version_id: versions).select(:id))
+                                .distinct.pluck(:lab_requisition_item_id).sort
+        item_ids.each { |id| LabQcReviewItem.create!(lab_qc_block: block, lab_requisition_item_id: id) }
+        item_ids.size
+      end
+
+      def since_for(block, run)
+        accepted = LabQcRun.where(lab_instrument_id: block.lab_instrument_id, status: LabQcRun::ACCEPTED).where.not(id: run.id)
+                           .where(id: LabQcValue.where(analyte_key: block.analyte_key).select(:lab_qc_run_id)).maximum(:evaluated_at)
+        accepted || LabQcTarget.where(lab_instrument_id: block.lab_instrument_id, analyte_key: block.analyte_key).minimum(:accepted_at) || run.started_at
+      end
+      private_class_method :since_for
+    end
+  end
+end

@@ -1,7 +1,10 @@
-# Regras de Westgard sobre z-scores (spec §5.3; Desvio 5). Função pura:
+# Regras de Westgard sobre z-scores (spec §5.3; Desvio 5; C-E14). Função pura:
 # quem chama monta a série (mesmo lote, nível, analito e aparelho, corridas
-# não reprovadas, mais antigo primeiro) e os pares (outros níveis do mesmo
-# analito na mesma corrida). 1-2s é aviso; o resto reprova. Limites estritos.
+# não reprovadas, mais antigo primeiro), os pares (outros níveis do mesmo
+# analito na mesma corrida) e a série entre níveis (o analito no aparelho,
+# todos os níveis, corridas não reprovadas, em ordem cronológica, sem o valor
+# atual). 2-2s e R-4s olham os pares; 4-1s e 10x olham a série do nível E a
+# série entre níveis. 1-2s é aviso; o resto reprova. Limites estritos. Só BigDecimal.
 module Lab
   module Qc
     module Westgard
@@ -14,17 +17,22 @@ module Lab
 
       module_function
 
-      def evaluate(z:, series:, peers:, enabled: RULES)
+      def evaluate(z:, series:, peers:, cross: [], enabled: RULES)
+        raise ArgumentError, "Westgard takes BigDecimal only" unless [ z, *series, *peers, *cross ].all?(BigDecimal)
+
         checks = {
           "1_2s" => -> { z.abs > TWO },
           "1_3s" => -> { z.abs > THREE },
           "2_2s" => -> { same_side?(z, series.last, TWO) || peers.any? { |p| same_side?(z, p, TWO) } },
           "R_4s" => -> { peers.any? { |p| (z > TWO && p < -TWO) || (z < -TWO && p > TWO) } },
-          "4_1s" => -> { streak?([ *series.last(3), z ], 4, ONE) },
-          "10x" => -> { streak?([ *series.last(9), z ], 10, 0) }
+          "4_1s" => -> { streak?([ *series.last(3), z ], 4, ONE) || streak?([ *cross.last(3), z ], 4, ONE) },
+          "10x" => -> { streak?([ *series.last(9), z ], 10, 0) || streak?([ *cross.last(9), z ], 10, 0) }
         }
         fired = RULES.select { |rule| enabled.include?(rule) && checks.fetch(rule).call }
-        outcome = fired.intersect?(REJECT) ? "reject" : (fired.include?("1_2s") ? "warning" : "ok")
+        outcome = if fired.intersect?(REJECT) then "reject"
+        elsif fired.include?("1_2s") then "warning"
+        else "ok"
+        end
         Evaluation.new(rules_fired: fired, outcome: outcome)
       end
 

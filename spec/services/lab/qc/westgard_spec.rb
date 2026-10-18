@@ -2,11 +2,13 @@ require "rails_helper"
 
 # Spec §5.3 e §10: cada regra com série conhecida (dispara e não dispara);
 # R-4s e 2-2s também entre níveis da mesma corrida; limites estritos
-# (Desvio 5); regra desligada não dispara; rules_fired em ordem fixa.
+# (Desvio 5); regra desligada não dispara; rules_fired em ordem fixa;
+# 4-1s e 10x também entre níveis (C-E14).
 RSpec.describe Lab::Qc::Westgard do
-  def ev(z, series: [], peers: [], enabled: LabQcRule::RULES)
-    described_class.evaluate(z: BigDecimal(z.to_s), series: series.map { |v| BigDecimal(v.to_s) },
-                             peers: peers.map { |v| BigDecimal(v.to_s) }, enabled: enabled)
+  def dec(list) = list.map { |v| BigDecimal(v.to_s) }
+
+  def ev(z, series: [], peers: [], cross: [], enabled: LabQcRule::RULES)
+    described_class.evaluate(z: BigDecimal(z.to_s), series: dec(series), peers: dec(peers), cross: dec(cross), enabled: enabled)
   end
 
   def fired(...) = ev(...).rules_fired
@@ -59,6 +61,36 @@ RSpec.describe Lab::Qc::Westgard do
     expect(fired(0.3, series: [ 0.1 ] * 8 + [ 0.0 ])).to eq([]) # zero quebra a sequência
     expect(fired(0.3, series: [ 0.1 ] * 8)).to eq([])           # só nove valores
     expect(fired(-0.3, series: [ 0.1 ] * 9)).to eq([])
+    expect(fired(0.3, series: [ -0.1 ] + ([ 0.1 ] * 9))).to eq([ "10x" ]) # só os nove mais recentes contam
+  end
+
+  it "fronteiras dos pares: 2,0 exato não forma 2-2s nem R-4s; par do lado oposto é R-4s, não 2-2s" do
+    expect(fired(2.4, peers: [ 2.0 ])).to eq([ "1_2s" ])
+    expect(fired(2.4, peers: [ -2.0 ])).to eq([ "1_2s" ])
+    expect(fired(2.4, peers: [ -2.6 ])).to eq(%w[1_2s R_4s])
+  end
+
+  # C-E14: entre níveis, a série do analito no aparelho somando os níveis em ordem cronológica.
+  it "4-1s entre níveis: 2 níveis × 2 corridas além de 1 dp do mesmo lado" do
+    expect(ev(1.1, series: [ 1.3 ], cross: [ 1.2, 1.3, 1.4 ])).to have_attributes(rules_fired: [ "4_1s" ], outcome: "reject")
+    expect(fired(-1.1, cross: [ 0.4, -1.2, -1.3, -1.4 ])).to eq([ "4_1s" ])
+    expect(fired(1.1, series: [ 1.3 ], cross: [ 1.2, -1.3, 1.4 ])).to eq([])  # um do outro lado
+    expect(fired(1.1, series: [ 1.3 ], cross: [ 1.2, 0.8, 1.4 ])).to eq([])   # um dentro de 1 dp
+    expect(fired(1.1, cross: [ 1.3, 1.4 ])).to eq([])                          # só três valores
+    expect(fired(1.1, cross: [ 1.2, 1.3, 1.4 ], enabled: LabQcRule::RULES - [ "4_1s" ])).to eq([])
+  end
+
+  it "10x entre níveis: 2 níveis × 5 corridas do mesmo lado da média" do
+    expect(ev(0.4, series: [ 0.5 ] * 4, cross: [ 0.3, 0.5 ] * 4 + [ 0.3 ])).to have_attributes(rules_fired: [ "10x" ], outcome: "reject")
+    expect(fired(-0.4, cross: [ -0.3 ] * 9)).to eq([ "10x" ])
+    expect(fired(0.4, series: [ 0.5 ] * 4, cross: [ 0.3, -0.5 ] + [ 0.3, 0.5 ] * 3 + [ 0.3 ])).to eq([]) # um do outro lado
+    expect(fired(0.4, cross: [ 0.3 ] * 8)).to eq([])                                                     # só nove
+    expect(fired(0.4, cross: [ -0.2 ] + [ 0.3 ] * 9)).to eq([ "10x" ])                                   # só os nove mais recentes
+  end
+
+  it "recusa número que não é BigDecimal" do
+    expect { described_class.evaluate(z: 2.1, series: [], peers: []) }.to raise_error(ArgumentError)
+    expect { described_class.evaluate(z: BigDecimal("1"), series: [], peers: [], cross: [ 1.5 ]) }.to raise_error(ArgumentError)
   end
 
   it "regra desligada não dispara; ordem fixa" do
