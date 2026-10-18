@@ -22,6 +22,41 @@ RSpec.describe "Invariantes da qualidade e dos insumos (ADR 0038)", type: :reque
     expect { rolled_back(&block) }.to raise_error(ActiveRecord::StatementInvalid, pattern)
   end
 
+  # Corpo inteiro (multilinha) das chamadas `opening`...`)`, por balanceamento de parênteses.
+  def balanced_calls(opening, files)
+    files.flat_map do |file|
+      src = File.read(file)
+      src.enum_for(:scan, opening).map do
+        i = start = Regexp.last_match.end(0)
+        depth = 1
+        while depth.positive? && i < src.length
+          depth += 1 if src[i] == "("
+          depth -= 1 if src[i] == ")"
+          i += 1
+        end
+        [ file, src[start...(i - 1)] ]
+      end
+    end
+  end
+
+  # Divide nos vírgulas de nível zero.
+  def top_level_args(body)
+    args = [ +"" ]
+    depth = 0
+    body.each_char do |c|
+      depth += 1 if "([{".include?(c)
+      depth -= 1 if ")]}".include?(c)
+      if c == "," && depth.zero?
+        args << +""
+      else
+        args.last << c
+      end
+    end
+    args.map(&:strip).reject(&:empty?)
+  end
+
+  def code_lines(path) = File.readlines(path).reject { |l| l.strip.start_with?("#") }.join
+
   def release!(req, item) = Lab::Release.call(requisition: req, item_ids: [ item.id ], signature: "advanced", totp: totp_for(lead), by: lead)
 
   # Bloqueio ativo com um item digitado, uma exceção, uma revisão pendente,
@@ -122,6 +157,9 @@ RSpec.describe "Invariantes da qualidade e dos insumos (ADR 0038)", type: :reque
       refused(/lab_qc_targets is append-only: DELETE refused/) { LabQcTarget.first.destroy! }
       refused(/lab_qc_lot_barcodes is append-only: UPDATE refused/) { LabQcLotBarcode.first.update!(level: "Nível 9") }
       refused(/lab_qc_lot_barcodes is append-only: DELETE refused/) { LabQcLotBarcode.first.destroy! }
+      rule = LabQcRule.create!(lab_instrument: s.instrument, analyte_key: "glicose", rules: { "1_3s" => true }, changed_by_user: lead, created_at: Time.current)
+      refused(/lab_qc_rules is append-only: UPDATE refused/) { rule.update!(rules: { "1_3s" => false }) }
+      refused(/lab_qc_rules is append-only: DELETE refused/) { rule.destroy! }
       refused(/lab_supply_lots is append-only: UPDATE refused/) { w[:lot].update!(lot_number: "L2") }
       refused(/lab_supply_lots is append-only: DELETE refused/) { w[:lot].destroy! }
       refused(/lab_supply_movements is append-only: DELETE refused/) { LabSupplyMovement.first.destroy! }
@@ -143,6 +181,24 @@ RSpec.describe "Invariantes da qualidade e dos insumos (ADR 0038)", type: :reque
       refused(/lab_qc_blocks is append-only: DELETE refused/) { w[:block].destroy! }
       refused(/one corrective action, closed once and only with it/) { w[:block].update!(closed_at: Time.current) }
       refused(/status rejected -> approved refused/) { LabQcRun.first.update!(status: "approved") }
+    end
+
+    it "ação corretiva não se reescreve; bloqueio fechado não fecha de novo; lote em uso termina uma vez" do
+      block = w[:block]
+      Lab::Qc::RecordCorrectiveAction.call(block: block, text: "Recalibrado", by: staff)
+      block.reload
+      refused(/one corrective action, closed once and only with it/) { block.update_columns(corrective_action: "Outra ação") }
+      rolled_back do
+        block.update_columns(closed_at: Time.current, closed_by_user_id: lead.id, closed_by_run_id: LabQcRun.first.id)
+        expect(block.reload.closed_at).to be_present
+        expect { ApplicationRecord.transaction(requires_new: true) { block.update_columns(closed_at: Time.current + 1.hour) } }
+          .to raise_error(ActiveRecord::StatementInvalid, /one corrective action, closed once and only with it/)
+      end
+      rolled_back do
+        w[:in_use].update_columns(ended_at: Time.current, ended_by_user_id: staff.id)
+        expect { ApplicationRecord.transaction(requires_new: true) { w[:in_use].update_columns(ended_at: Time.current + 1.hour) } }
+          .to raise_error(ActiveRecord::StatementInvalid, /a lot in use only ends, once/)
+      end
     end
 
     it "TRUNCATE recusado em toda tabela só-acréscimo do 21c" do
@@ -218,44 +274,39 @@ RSpec.describe "Invariantes da qualidade e dos insumos (ADR 0038)", type: :reque
   describe "eventos do 21c no código" do
     ALLOWED_NON_ID_KEYS = %w[status decision source kind].freeze
 
-    def publish_calls
-      Dir[Rails.root.join("{app,lib}/**/*.rb").to_s].flat_map do |file|
-        src = File.read(file)
-        src.enum_for(:scan, /DomainEvents\.publish\(/).map do
-          start = Regexp.last_match.end(0)
-          depth = 1
-          i = start
-          while depth.positive? && i < src.length
-            depth += 1 if src[i] == "("
-            depth -= 1 if src[i] == ")"
-            i += 1
-          end
-          [ file, src[start...(i - 1)] ]
-        end
-      end
-    end
-
     let(:calls) do
-      publish_calls.select { |_f, body| body =~ /\A\s*"lab_(qc|eqa|supply)/ }
-                   .map { |file, body| [ file, body[/"([^"]+)"/, 1], body.sub(/\A\s*"[^"]+"\s*,?/, "") ] }
+      all = balanced_calls(/DomainEvents\.publish\(/, Dir[Rails.root.join("{app,lib}/**/*.rb").to_s])
+      all.select { |_f, body| body =~ /\A\s*"lab_(qc|eqa|supply)/ }
+         .map { |file, body| args = top_level_args(body); [ file, args.first[/"([^"]+)"/, 1], args.drop(1) ] }
     end
 
     it "encontra os eventos do 21c (a varredura não está vazia)" do
       expect(calls.map { |_f, name, _p| name }.uniq.size).to eq(14)
     end
 
-    it "todo nome publicado está declarado no initializer" do
-      declared = File.read(Rails.root.join("config/initializers/domain_events.rb"))
-      calls.each { |_f, name, _p| expect(declared).to include(name), "evento #{name} sem bind" }
+    it "todo nome publicado está declarado no código do initializer e na spec de bindings" do
+      declared = code_lines(Rails.root.join("config/initializers/domain_events.rb"))
+      bindings = code_lines(Rails.root.join("spec/initializers/domain_events_bindings_spec.rb"))
+      calls.map { |_f, name, _p| name }.uniq.each do |name|
+        expect(declared).to match(/%w\[[^\]]*(?<![\w.])#{Regexp.escape(name)}(?![\w.])[^\]]*\]/), "evento #{name} sem bind no initializer"
+        expect(bindings).to match(/(?<![\w.])#{Regexp.escape(name)}(?![\w.])/), "evento #{name} fora da spec de bindings"
+      end
     end
 
-    it "o payload só tem ids e os campos do contrato" do
-      calls.each do |file, name, payload|
-        keys = payload.scan(/\b([a-z_]+):/).flatten
-        keys.each do |key|
+    it "o payload é literal (chave: valor), só com ids e os campos do contrato" do
+      calls.each do |file, name, args|
+        expect(args).not_to be_empty, "#{name} (#{file}) sem payload"
+        args.each do |arg|
+          key = arg[/\A([a-z_]+):\s/, 1]
+          expect(key).not_to be_nil, "#{name} (#{file}) tem payload não literal: #{arg}"
           expect(key.end_with?("_id") || ALLOWED_NON_ID_KEYS.include?(key)).to be(true), "#{name} (#{file}) publica #{key}"
         end
       end
+    end
+
+    it "a varredura recusa payload não literal (variável ou splat)" do
+      expect(top_level_args(%("x.y", **payload)).drop(1).map { |a| a[/\A([a-z_]+):\s/, 1] }).to eq([ nil ])
+      expect(top_level_args(%("x.y", payload)).drop(1).map { |a| a[/\A([a-z_]+):\s/, 1] }).to eq([ nil ])
     end
   end
 
@@ -273,14 +324,24 @@ RSpec.describe "Invariantes da qualidade e dos insumos (ADR 0038)", type: :reque
       end
     end
 
-    it "log do 21c só com códigos, ids de controle e cenário (nunca valor, código de barras, justificativa ou HL7)" do
+    it "log do 21c (chamada inteira, multilinha) só com códigos, ids de controle e cenário" do
       files = sources("app/commands/lab/{qc,eqa,inventory}/**/*.rb", "app/services/lab/qc/**/*.rb", "app/services/lab/hl7/**/*.rb",
                       "app/controllers/lab/**/*.rb", "app/controllers/hl7/**/*.rb", "lib/fake_middleware/**/*.rb")
-      lines = files.flat_map { |f| File.readlines(f).grep(/logger\.|Rails\.logger/).map { |l| [ f, l ] } }
-      lines.each do |f, l|
-        l.scan(/#\{([^}]*)\}/).flatten.reject { |expr| expr.end_with?(".size", ".count") }.each do |expr|
-          expect(expr).not_to match(/value|barcode|justification|note|raw|body|message|token|text/i), "#{f}: #{l}"
+      logs = balanced_calls(/(?:Rails\.logger|\blogger)\.(?:debug|info|warn|error|fatal)\(/, files)
+      expect(logs).not_to be_empty
+      logs.each do |f, body|
+        body.scan(/#\{([^}]*)\}/).flatten.reject { |expr| expr.end_with?(".size", ".count") }.each do |expr|
+          expect(expr).not_to match(/value|barcode|justification|note|raw|body|message|token|text/i), "#{f}: #{body}"
         end
+      end
+    end
+
+    it "a varredura de log lê a chamada multilinha inteira" do
+      Tempfile.create([ "multi", ".rb" ]) do |tmp|
+        tmp.write("logger.info(\n  \"a\#{x.value}\"\n)\n")
+        tmp.flush
+        body = balanced_calls(/\blogger\.info\(/, [ tmp.path ]).sole.last
+        expect(body).to include("x.value")
       end
     end
   end
