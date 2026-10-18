@@ -31,7 +31,8 @@ module Lab
     # Dashboard D3: exames ativos do laboratório (pedido em papel).
     def exams
       exams = LabExam.where(exam_provider_id: @provider.id, active: true).where.not(current_version_id: nil).includes(:current_version).order(:name)
-      render json: { exams: exams.map { |e| { sigtap_code: e.sigtap_code, name: e.name, material: e.current_version.material, delivery_days: e.delivery_days } } }
+      render json: { exams: exams.map { |e| { id: e.id, sigtap_code: e.sigtap_code, name: e.name, material: e.current_version.material, delivery_days: e.delivery_days,
+                                       analytes: e.current_version.analytes.map { |a| { key: a["key"], name: a["name"] } } } } }
     end
 
     private

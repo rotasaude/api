@@ -18,6 +18,14 @@ module Lab
       code = raw_code&.strip&.upcase.presence
       return Result.fail(:invalid_version) unless code.nil? || code.match?(/\A[A-Z0-9._-]{1,30}\z/)
 
+      # ADR 0038: aparelho do mesmo laboratório, ativo (ou nenhum).
+      raw_instrument = params["lab_instrument_id"]
+      unless raw_instrument.nil?
+        valid = raw_instrument.is_a?(String) && raw_instrument.match?(Exams::BaseController::UUID) &&
+                LabInstrument.active.exists?(id: raw_instrument, exam_provider_id: exam.exam_provider_id)
+        return Result.fail(:invalid_version) unless valid
+      end
+
       analytes = Analytes.parse(params["analytes"])
       return analytes if analytes.failure?
 
@@ -32,7 +40,7 @@ module Lab
         exam.lock!
         number = exam.versions.maximum(:version).to_i + 1
         version = LabExamVersion.create!(lab_exam: exam, version: number, analysis_method: analysis_method, material: material, container: container,
-                                         instrument_test_code: code, analytes: analytes.payload[:analytes], created_by_user: by)
+                                         instrument_test_code: code, lab_instrument_id: raw_instrument, analytes: analytes.payload[:analytes], created_by_user: by)
         exam.update!(current_version: version)
         DomainEvents.publish("lab_exam.version_created", lab_exam_id: exam.id, version: number)
         Result.ok(version: version)

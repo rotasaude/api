@@ -11,11 +11,12 @@ RSpec.describe "Laboratório — contexto da sessão", type: :request do
     sign_in_as(lab_staff!)
     get "/lab/context"
     expect(json_body).to eq("labs" => [ { "id" => lab.id, "name" => "Laboratório A" }, { "id" => other.id, "name" => "Laboratório B" } ],
-                            "releaser_of" => [], "council" => nil)
+                            "releaser_of" => [], "council" => nil, "technical_lead_of" => [])
+    expect(json_body["technical_lead_of"]).to eq([])
     releaser = lab_releaser!(lab, council: "CRBM")
     sign_in_as(releaser)
     get "/lab/context"
-    expect(json_body).to eq("labs" => [ { "id" => lab.id, "name" => "Laboratório A" } ], "releaser_of" => [ lab.id ], "council" => "CRBM")
+    expect(json_body).to eq("labs" => [ { "id" => lab.id, "name" => "Laboratório A" } ], "releaser_of" => [ lab.id ], "council" => "CRBM", "technical_lead_of" => [])
     unit = create_unit("UBS Coletora").tap { |u| u.update!(collects_samples: true) }
     sign_in_as(doctor!(unit))
     get "/lab/context"
@@ -42,7 +43,7 @@ RSpec.describe "Laboratório — contexto da sessão", type: :request do
     sign_in_as(lab_admin!)
     get "/lab/context"
     expect(response).to have_http_status(:ok)
-    expect(json_body).to eq("labs" => [], "releaser_of" => [], "council" => nil)
+    expect(json_body).to eq("labs" => [], "releaser_of" => [], "council" => nil, "technical_lead_of" => [])
   end
 
   it "admin ou UBS que coleta que também é liberador: todos os laboratórios ∪ os do liberador" do

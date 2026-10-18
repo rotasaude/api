@@ -298,6 +298,7 @@ Rails.application.routes.draw do
   # Módulo 21b (ADR 0037): laboratório municipal. As literais antes de `:id`.
   scope "/lab", module: :lab, as: :lab do
     get "context",           to: "context#show"
+    get "instruments",       to: "instruments#index"
     get "rejection_reasons", to: "lookups#rejection_reasons"
     get  "candidate_orders",  to: "lookups#candidate_orders"
     get  "exams",             to: "lookups#exams"
@@ -340,6 +341,9 @@ Rails.application.routes.draw do
       get   "rejection_reasons",         to: "rejection_reasons#index"
       post  "rejection_reasons",         to: "rejection_reasons#create"
       patch "rejection_reasons/:id",     to: "rejection_reasons#update"
+      get   "instruments",               to: "instruments#index"
+      post  "instruments",               to: "instruments#create"
+      patch "instruments/:id",           to: "instruments#update"
       get    "releasers",                        to: "releasers#index"
       post   "releasers",                        to: "releasers#create"
       delete "releasers/:id",                    to: "releasers#destroy"

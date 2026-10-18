@@ -17,6 +17,14 @@ module Lab
       LabReleaser.active.find_by(user_id: user.id, exam_provider_id: provider_id)
     end
 
+    # RT ou substituto com ligação ativa ao laboratório (ADR 0038 §8: aceitar
+    # referência, exceção, revisão, regras, ação corretiva).
+    def technical?(user, provider_id)
+      return false unless user.has_role?("lab_releaser")
+
+      LabReleaser.active.where(user_id: user.id, exam_provider_id: provider_id).where("technical_lead OR technical_deputy").exists?
+    end
+
     def releaser_provider_ids(user)
       user.has_role?("lab_releaser") ? LabReleaser.active.where(user_id: user.id).pluck(:exam_provider_id) : []
     end
