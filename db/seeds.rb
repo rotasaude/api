@@ -49,6 +49,7 @@ else
   require Rails.root.join("lib/timeline_crew").to_s
   require Rails.root.join("lib/exam_crew").to_s
   require Rails.root.join("lib/lab_crew").to_s
+  require Rails.root.join("lib/lab_qc_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -301,6 +302,11 @@ else
         lab = LabCrew.seed_current_city(slug: slug, password: password, admin: muni_admin)
         puts "[seeds] laboratório .. #{lab[:switch]}; #{lab[:exams]} exames novos adotados"
         Array(lab[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
+
+        # ── Qualidade e insumos do laboratório (módulo 21c, ADR 0038) ─────────
+        # Depois do LabCrew (laboratório, exames e as contas que operam o 21c).
+        qc = LabQcCrew.seed_current_city(slug: slug, admin: muni_admin)
+        puts "[seeds] qualidade ... #{qc[:switch]}#{"; #{qc[:created].join(', ')}" if qc[:created].any?}"
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
