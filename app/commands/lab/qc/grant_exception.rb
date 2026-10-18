@@ -1,7 +1,8 @@
 # Exceção do RT ou substituto (spec §5.5; contrato §3; C-E4): justificativa
 # 1..1000, cifrada (em branco → justification_required; longa → invalid_reason,
-# C-E11); o item é do laboratório, ainda não liberado, do aparelho e de um
-# exame com o analito do bloqueio ATIVO (senão not_blocked) — a exceção é
+# C-E11); o item é do laboratório, ativo (pendente, digitado ou já liberado,
+# para a retificação — C-E19), do aparelho e de um exame com o analito do
+# bloqueio ATIVO (senão not_blocked) — a exceção é
 # daquele bloqueio e não atravessa para o próximo. Uma por bloqueio e item
 # (409). A liberação segue normal.
 module Lab
@@ -29,7 +30,7 @@ module Lab
           block.lock!
           version = item.lab_exam_version
           covered = block.closed_at.nil? && version.lab_instrument_id == block.lab_instrument_id && version.analyte(block.analyte_key) &&
-                    %w[pending typed].include?(item.reload.status)
+                    %w[pending typed released].include?(item.reload.status)
           next Result.fail(:not_blocked) unless covered
           next Result.fail(:conflict) if LabQcException.exists?(lab_qc_block_id: block.id, lab_requisition_item_id: item.id)
 

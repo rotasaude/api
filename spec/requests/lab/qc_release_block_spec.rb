@@ -83,6 +83,13 @@ RSpec.describe "CIQ — liberação bloqueada, exceção e revisão", type: :req
                               "requisition_id" => first.lab_requisition_id, "exam_label" => "Glicose")
     json_post "/lab/qc/reviews/#{review['id']}", decision: "maybe"
     expect(json_body["error"]).to eq("invalid_decision")
+    json_post "/lab/qc/reviews/#{review['id']}", decision: "kept", note: "x" * 1001 # C-E20
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body["error"]).to eq("invalid_note")
+    stepped_up!(lab_releaser!(s.provider)) # liberador sem ser RT nem substituto (C-E4)
+    json_post "/lab/qc/reviews/#{review['id']}", decision: "kept"
+    expect(response).to have_http_status(:forbidden)
+    stepped_up!(lead)
     json_post "/lab/qc/reviews/#{review['id']}", decision: "rectify", note: "Repetir a dosagem"
     expect(json_body).to include("decision" => "rectify", "note" => "Repetir a dosagem", "report_id" => report_id)
     json_post "/lab/qc/reviews/#{review['id']}", decision: "kept"
@@ -102,6 +109,7 @@ RSpec.describe "CIQ — liberação bloqueada, exceção e revisão", type: :req
     qc!("Nível 1", 0.1)
     qc!("Nível 2", 0.2)
     expect(old_block.reload.closed_at).to be_present
+    expect(Lab::Qc::GrantException.call(block_id: old_block.id, item_id: item.id, justification: "Urgência", by: lead).reason).to eq(:not_blocked)
     Lab::Qc::OpenRun.call(instrument: s.instrument, by: staff)
     qc!("Nível 2", -3.4)
     new_block = LabQcBlock.active.sole
@@ -110,7 +118,7 @@ RSpec.describe "CIQ — liberação bloqueada, exceção e revisão", type: :req
     expect(json_body["items"].map { |i| i["block_id"] }).to eq([ new_block.id ])
   end
 
-  it "exceção só para item do aparelho e do analito, ainda não liberado" do
+  it "exceção só para item do aparelho e do analito do bloqueio ativo" do
     qc!("Nível 1", 3.6)
     block = LabQcBlock.active.sole
     untracked = lab_exam!(provider: s.provider, sigtap_code: "0202010317", name: "Creatinina", instrument_test_code: "CRE",
@@ -129,5 +137,42 @@ RSpec.describe "CIQ — liberação bloqueada, exceção e revisão", type: :req
     Platform::Features.set!(city: City.find(Current.city.id), key: "lab_quality_control", enabled: false, maintainer: ledi_maintainer!)
     release(item)
     expect(response).to have_http_status(:created)
+  end
+
+  it "retificação com bloqueio ativo: sem exceção 409 qc_blocked; com a exceção do item e do bloqueio, sai (C-E19)" do
+    qc!("Nível 1", 0.2)
+    qc!("Nível 2", -0.3)
+    item = typed_item!
+    release(item)
+    report_id = json_body["id"]
+    Lab::Qc::OpenRun.call(instrument: s.instrument, by: staff)
+    qc!("Nível 1", 3.6)
+    block = LabQcBlock.active.sole
+    expect(item.reload.status).to eq("released")
+    sign_in_as(lead)
+    json_post "/lab/results", item_id: item.id, values: [ { analyte_key: "glicose", value: "105" } ]
+    expect(response).to have_http_status(:created)
+    rectify = lambda do
+      travel 31.seconds
+      sign_in_as(lead)
+      json_post "/lab/reports/#{report_id}/rectify", item_ids: [ item.id ], reason: "Erro de digitação do valor", signature: "advanced",
+                                                     contacts: [ { person: "Dra. Helena", channel: "telefone", at: Time.current.iso8601 } ],
+                                                     totp: totp_for(lead)
+    end
+
+    rectify.call
+    expect(response).to have_http_status(:conflict)
+    expect(json_body).to eq("error" => "qc_blocked",
+                            "items" => [ { "item_id" => item.id, "block_id" => block.id, "analyte_key" => "glicose", "instrument_id" => s.instrument.id,
+                                           "instrument_name" => "Analisador bioquímico 1" } ])
+    expect(LabReport.find(report_id).status).to eq("released")
+
+    stepped_up!(lead)
+    json_post "/lab/qc/exceptions", block_id: block.id, item_id: item.id, justification: "Retificação pedida pela unidade"
+    expect(response).to have_http_status(:created)
+    rectify.call
+    expect(response).to have_http_status(:created)
+    expect(json_body).to include("version" => 2, "replaces_report_id" => report_id)
+    expect(LabReport.find(report_id).status).to eq("rectified")
   end
 end

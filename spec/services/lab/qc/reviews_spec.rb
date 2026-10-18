@@ -99,4 +99,41 @@ RSpec.describe Lab::Qc::Reviews do
     expect(queued(block)).to eq([ [ recent.id, "pending" ] ])
     expect(queued(block).map(&:first)).not_to include(old.id)
   end
+
+  it "C-E21: o marco é o início da corrida aceita — o liberado entre os valores dela entra na revisão" do
+    travel_to(Time.zone.now.change(hour: 8))
+    qc_value!(s, "Nível 1", 0.1, by: staff)
+    travel_to(Time.zone.now.change(hour: 9))
+    between = released!
+    travel_to(Time.zone.now.change(hour: 10))
+    accepted = qc_value!(s, "Nível 2", 0.2, by: staff)[:run]
+    expect(accepted.reload).to have_attributes(status: "approved", started_at: Time.zone.now.change(hour: 8))
+    travel_to(Time.zone.now.change(hour: 11))
+    Lab::Qc::OpenRun.call(instrument: s.instrument, by: staff)
+    block = qc_value!(s, "Nível 1", 3.6, by: staff)[:block]
+    expect(queued(block)).to eq([ [ between.id, "pending" ] ])
+  end
+
+  it "laudo ICP pendente de assinatura antes do bloqueio entra na revisão; assinado depois, a revisão continua nele" do
+    stub_psc_mock!(City.find(Current.city.id))
+    stub_signer!
+    lead
+    doctor = lab_releaser!(s.provider, council: "CRM").tap { |u| u.professional.update!(cpf: SignatureHelpers::DOCTOR_CPF) }
+    linked_certificate!(doctor, provider: "simulated", leaf: fake_psc("simulated").leaf(doctor.professional.cpf))
+    accepted_run!
+    req = received_requisition!(provider: s.provider, exams: [ s.exam ])
+    item = type!(req.items.first, { glicose: "98" })
+    travel 1.second
+    report = Lab::Release.call(requisition: req, item_ids: [ item.id ], signature: "icp", totp: nil, by: doctor).payload.fetch(:report)
+    expect(report.status).to eq("pending_signature")
+
+    travel 1.second
+    Lab::Qc::OpenRun.call(instrument: s.instrument, by: staff)
+    block = qc_value!(s, "Nível 1", 3.6, by: staff)[:block]
+    expect(queued(block)).to eq([ [ item.id, "pending" ] ])
+
+    sign_document!(report, author: doctor, provider: "simulated") # a finalização do ICP não consulta o CIQ
+    expect(report.reload.status).to eq("released")
+    expect(queued(block)).to eq([ [ item.id, "pending" ] ])
+  end
 end
