@@ -42,7 +42,7 @@ class City < PlatformRecord
 
   # Brasão (spec identidade da cidade): Active Storage na plataforma. Nunca
   # trocar/remover por purge_later: UpdateCityIdentity faz purge síncrono.
-  has_one_attached :coat_of_arms
+  has_one_attached :coat_of_arms, dependent: false
 
   has_many :features, class_name: "CityFeature", dependent: :restrict_with_error
 

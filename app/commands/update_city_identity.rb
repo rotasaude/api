@@ -30,24 +30,50 @@ class UpdateCityIdentity
     old_blob = (city.coat_of_arms.blob if city.coat_of_arms.attached? && (blob || remove_coat_of_arms))
 
     changed = []
-    ActiveRecord::Base.transaction do
-      if name != :keep && name != city.health_department_name
-        city.health_department_name = name
+    previous_name = city.health_department_name
+    begin
+      if name != :keep && name != previous_name
+        city.update!(health_department_name: name) # plataforma
         changed << "health_department_name"
       end
-      city.coat_of_arms.detach if old_blob
-      city.coat_of_arms.attach(blob) if blob
-      changed << "coat_of_arms" if blob || old_blob
-      city.save!
+      if blob || old_blob
+        # O Active Storage tem pool próprio (ActiveStorage::Record): a troca
+        # do anexo só é atômica dentro da transação DELE.
+        ActiveStorage::Record.transaction do
+          city.coat_of_arms.detach if old_blob
+          city.coat_of_arms.attach(blob) if blob
+        end
+        changed << "coat_of_arms"
+      end
+    rescue StandardError
+      discard_blob(blob)
+      city.update_columns(health_department_name: previous_name) if changed.include?("health_department_name")
+      raise
     end
-    old_blob&.purge
+
+    purge_old(old_blob)
     changed.sort!
 
     if changed.any?
-      Platform.audit("city.identity_updated", city_id: city.id, fields: changed,
-                                             coat_of_arms_checksum: city.coat_of_arms.attached? ? city.coat_of_arms.blob.checksum : nil)
+      fields = { city_id: city.id, fields: changed }
+      fields[:coat_of_arms_checksum] = city.coat_of_arms.attached? ? city.coat_of_arms.blob.checksum : nil if changed.include?("coat_of_arms")
+      Platform.audit("city.identity_updated", **fields)
     end
     Result.ok(city: city, changed: changed)
+  end
+
+  # Blob novo de uma escrita que falhou: purge síncrono, sem esconder o erro original.
+  def self.discard_blob(blob)
+    blob&.purge
+  rescue StandardError => e
+    Rails.logger.warn("UpdateCityIdentity: blob novo órfão após falha (#{e.class})")
+  end
+
+  # Blob antigo só sai depois do sucesso; se o storage falhar, fica órfão em vez de dar 500.
+  def self.purge_old(blob)
+    blob&.purge
+  rescue StandardError => e
+    Rails.logger.warn("UpdateCityIdentity: blob antigo não purgado (#{e.class})")
   end
 
   def self.build_blob(io, payload)
@@ -58,5 +84,5 @@ class UpdateCityIdentity
     )
   end
 
-  private_class_method :build_blob
+  private_class_method :build_blob, :discard_blob, :purge_old
 end
