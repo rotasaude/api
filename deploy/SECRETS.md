@@ -30,6 +30,7 @@ cidade depois do primeiro deploy com o arquivo novo.
 - `WHATSAPP_APP_SECRET` — HMAC de webhook.
 - `ROTA_APP_PASSWORD` — senha do papel `rota_app` (banco vazio `rota_saude_no_city_selected`).
 - `ROTA_PLATFORM_PASSWORD` — senha do papel `rota_platform` (banco de plataforma).
+- `MINIO_ENDPOINT` / `MINIO_BUCKET` / `MINIO_ACCESS_KEY_ID` / `MINIO_SECRET_ACCESS_KEY` — object storage (MinIO) do brasão da cidade (Active Storage). Em produção e staging o boot falha se faltar qualquer uma (`ObjectStorage.check!`): configure ANTES do primeiro deploy com este código.
 - `PROVISIONER_DATABASE_URL` — `postgres://rota_provisioner:<senha>@<host>:5432/postgres`. Só o papel **worker** recebe:
   cria e apaga banco e role de cada cidade (Plano 4). Cada cidade provisionada ganha o role `rota_city_<slug>`, dono do
   banco `rota_saude_city_<slug>`, com senha gerada no provisionamento e guardada cifrada em `cities.database_url` —
