@@ -1,4 +1,5 @@
 require "rails_helper"
+require "aws-sdk-s3"
 
 RSpec.describe "City identity", type: :request do
   include CoatOfArmsHelpers
@@ -78,6 +79,35 @@ RSpec.describe "City identity", type: :request do
       expect(response.headers["Cache-Control"]).to include("max-age=31536000")
       expect(response.headers["X-Content-Type-Options"]).to eq("nosniff")
       expect(response.body.b).to eq(coat_png(512, 512))
+    end
+
+    it "v= igual ao checksum atual é servido; v= velho ou arbitrário dá 404 sem cache imutável" do
+      attach(coat_png(512, 512))
+      checksum = City.find(city.id).coat_of_arms.blob.checksum
+      get "/city_identity/coat_of_arms", params: { v: checksum }
+      expect(response).to have_http_status(:ok)
+
+      get "/city_identity/coat_of_arms", params: { v: "velho" }
+      expect(response).to have_http_status(:not_found)
+      expect(response.headers["Cache-Control"].to_s).not_to include("immutable")
+    end
+
+    it "arquivo sumido do storage: 404" do
+      attach(coat_png(512, 512))
+      allow_any_instance_of(ActiveStorage::Blob).to receive(:download).and_raise(ActiveStorage::FileNotFoundError)
+      get "/city_identity/coat_of_arms"
+      expect(response).to have_http_status(:not_found)
+    end
+
+    [Aws::S3::Errors::ServiceUnavailable.new(nil, "x"), Seahorse::Client::NetworkingError.new(StandardError.new("x")),
+     Errno::ECONNREFUSED.new].each do |error|
+      it "storage fora do ar (#{error.class}): 503 com no-store" do
+        attach(coat_png(512, 512))
+        allow_any_instance_of(ActiveStorage::Blob).to receive(:download).and_raise(error)
+        get "/city_identity/coat_of_arms"
+        expect(response).to have_http_status(:service_unavailable)
+        expect(response.headers["Cache-Control"]).to include("no-store")
+      end
     end
 
     it "dá 404 sem brasão e para cidade não ativa" do

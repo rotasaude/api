@@ -73,12 +73,17 @@ module Operators
       return head(:not_found) unless city&.coat_of_arms&.attached?
 
       blob = city.coat_of_arms.blob
-      data = blob.download
+      data = begin
+        blob.download
+      rescue ActiveStorage::FileNotFoundError
+        return head(:not_found)
+      rescue *CityIdentitiesController::STORAGE_ERRORS
+        response.headers["Cache-Control"] = "no-store"
+        return head(:service_unavailable)
+      end
       response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
       response.headers["X-Content-Type-Options"] = "nosniff"
       send_data data, type: blob.content_type, disposition: "inline"
-    rescue ActiveStorage::FileNotFoundError
-      head :not_found
     end
 
     private

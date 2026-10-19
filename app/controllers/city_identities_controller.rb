@@ -1,3 +1,5 @@
+require "aws-sdk-s3" # require: false no Gemfile; as classes de erro precisam existir ao carregar
+
 # Identidade pública da cidade (nome, UF, fuso, órgão de saúde, brasão), lida
 # pelo login do dashboard e pelo wpda ANTES de qualquer sessão.
 #
@@ -13,6 +15,8 @@ class CityIdentitiesController < ApplicationController
   module RateLimitStore
     def self.increment(...) = Rails.cache.increment(...)
   end
+
+  STORAGE_ERRORS = [Aws::Errors::ServiceError, Seahorse::Client::NetworkingError, SystemCallError, IOError, Timeout::Error].freeze
 
   before_action :resolve_city
 
@@ -33,9 +37,18 @@ class CityIdentitiesController < ApplicationController
     return head(:not_found) unless @city.coat_of_arms.attached?
 
     blob = @city.coat_of_arms.blob
+    # v velho/arbitrário não pode ganhar resposta imutável de 1 ano.
+    return head(:not_found) if params[:v].present? && params[:v].to_s != blob.checksum
+
+    data = blob.download
     response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     response.headers["X-Content-Type-Options"] = "nosniff"
-    send_data blob.download, type: blob.content_type, disposition: "inline"
+    send_data data, type: blob.content_type, disposition: "inline"
+  rescue ActiveStorage::FileNotFoundError
+    head :not_found
+  rescue *STORAGE_ERRORS
+    response.headers["Cache-Control"] = "no-store"
+    head :service_unavailable
   end
 
   private

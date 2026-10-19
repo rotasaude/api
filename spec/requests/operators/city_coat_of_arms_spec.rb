@@ -68,5 +68,13 @@ RSpec.describe "Console: brasão da cidade", type: :request do
       get "/cities/#{city.id}/coat_of_arms"
       expect(response).to have_http_status(:not_found)
     end
+
+    it "storage fora do ar: 503 com no-store" do
+      attach_coat
+      allow_any_instance_of(ActiveStorage::Blob).to receive(:download).and_raise(Errno::ECONNREFUSED)
+      get "/cities/#{city.id}/coat_of_arms"
+      expect(response).to have_http_status(:service_unavailable)
+      expect(response.headers["Cache-Control"]).to include("no-store")
+    end
   end
 end
