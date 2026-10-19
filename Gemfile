@@ -9,6 +9,7 @@ gem "puma", ">= 6.0"
 # Backend modulo "Solid" do Rails 8.
 gem "solid_queue"   # ADR-0001 — fila
 gem "solid_cache"   # cache de Protocols.current (ADR-0016)
+gem "aws-sdk-s3", require: false   # Active Storage -> MinIO (identidade da cidade)
 
 gem "bootsnap", require: false
 gem "tzinfo-data", platforms: %i[mingw mswin x64_mingw jruby]

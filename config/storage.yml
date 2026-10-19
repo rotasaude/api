@@ -5,3 +5,12 @@ test:
 local:
   service: Disk
   root: <%= Rails.root.join("storage") %>
+
+minio:
+  service: S3
+  endpoint: <%= ENV.fetch("MINIO_ENDPOINT", nil) %>
+  bucket: <%= ENV.fetch("MINIO_BUCKET", nil) %>
+  access_key_id: <%= ENV.fetch("MINIO_ACCESS_KEY_ID", nil) %>
+  secret_access_key: <%= ENV.fetch("MINIO_SECRET_ACCESS_KEY", nil) %>
+  region: us-east-1
+  force_path_style: true

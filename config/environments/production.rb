@@ -45,4 +45,7 @@ Rails.application.configure do
   # staging herda este arquivo e fica na homologação (default de SoapPdq.default_url).
   # Literal = Cadsus::SoapPdq::PRODUCTION_URL (constante não carrega em tempo de config).
   config.x.cadsus_pdq_url = "https://servicos.saude.gov.br/cadsus/PDQSupplier" if Rails.env.production?
+
+  # Active Storage (identidade da cidade): MinIO fora de test.
+  config.active_storage.service = :minio
 end

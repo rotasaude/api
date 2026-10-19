@@ -13,4 +13,7 @@ Rails.application.configure do
   # "passaria" com credentials vazias (secret_key_base, AR Encryption,
   # report_signing_key todos nil). Staging precisa falhar fechado.
   config.require_master_key = true
+
+  # Active Storage (identidade da cidade): MinIO fora de test.
+  config.active_storage.service = :minio
 end

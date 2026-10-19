@@ -129,6 +129,10 @@ jobs:
       CITY_PUBLIC_BASE_TEMPLATE: "https://%{slug}.ci.rota-saude.example"
       CITY_UNSET_DATABASE_URL: "postgres://inert:inert@127.0.0.1:1/inert"
       PLATFORM_DATABASE_URL: "postgres://inert:inert@127.0.0.1:1/inert"
+      MINIO_ENDPOINT: "http://127.0.0.1:1"
+      MINIO_BUCKET: inert
+      MINIO_ACCESS_KEY_ID: inert
+      MINIO_SECRET_ACCESS_KEY: inert
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
@@ -160,6 +164,10 @@ jobs:
       CITY_PUBLIC_BASE_TEMPLATE: "https://%{slug}.ci.rota-saude.example"
       CITY_UNSET_DATABASE_URL: "postgres://inert:inert@127.0.0.1:1/inert"
       PLATFORM_DATABASE_URL: "postgres://inert:inert@127.0.0.1:1/inert"
+      MINIO_ENDPOINT: "http://127.0.0.1:1"
+      MINIO_BUCKET: inert
+      MINIO_ACCESS_KEY_ID: inert
+      MINIO_SECRET_ACCESS_KEY: inert
       CITY_DATABASE_HOST: db.ci.rota-saude.example
     steps:
       - uses: actions/checkout@v4

@@ -30,6 +30,10 @@ module RotaSaude
 
     config.api_only = true
 
+    # Identidade da cidade: o brasão é servido por controller próprio; as rotas
+    # públicas /rails/active_storage não existem.
+    config.active_storage.draw_routes = false
+
     # ADR-0011: auth via cookie de sessão. API mode não habilita cookies
     # nem o session_store por default — re-adicionamos só esses dois.
     config.middleware.use ActionDispatch::Cookies

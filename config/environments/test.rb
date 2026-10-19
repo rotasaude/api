@@ -21,4 +21,7 @@ Rails.application.configure do
   config.x.sms_gateway = :test
   # CADSUS (ADR 0028): simulado, sem rede. Ausente (staging, production) → PDQv3.
   config.x.cadsus_backend = :simulated
+
+  # Active Storage (identidade da cidade): MinIO fora de test.
+  config.active_storage.service = :test
 end

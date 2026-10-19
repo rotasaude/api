@@ -42,6 +42,11 @@ RSpec.describe "Connection invariants" do
         if path == "config/application.rb"
           real_connects_to = real_connects_to.reject { |l, _| l.match?(/\bconfig\.solid_queue\.connects_to\s*=/) }
         end
+        # Active Storage: ActiveStorage::Record pertence ao Rails (não dá para torná-lo
+        # abstrato aqui); o initializer o prende ao banco da plataforma, nada mais.
+        if path == "config/initializers/active_storage_platform.rb"
+          real_connects_to = real_connects_to.select { |l, _| !l.match?(/connects_to\s+database:\s*\{\s*writing:\s*:platform,\s*reading:\s*:platform\s*\}/) }
+        end
         next [] if real_connects_to.empty?
         next [] if code_lines(lines).any? { |l, _| l.match?(/self\.abstract_class\s*=\s*true/) }
 
