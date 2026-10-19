@@ -13,6 +13,11 @@ class UpdateCityIdentity
       return Result.fail(:invalid_health_department_name)
     end
 
+    # Parte multipart vazia (nenhum arquivo escolhido) = sem mudança; valor que
+    # não é arquivo (string, hash) = formato inválido, nunca 500.
+    coat_of_arms = nil if coat_of_arms.respond_to?(:blank?) && coat_of_arms.blank? && !coat_of_arms.respond_to?(:read)
+    return Result.fail(:invalid_format) if coat_of_arms && !coat_of_arms.respond_to?(:read)
+
     check = nil
     if coat_of_arms
       check = CityIdentity::CoatOfArmsCheck.call(coat_of_arms)

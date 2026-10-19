@@ -93,6 +93,24 @@ RSpec.describe "Console: identidade da cidade", type: :request do
     expect(city.reload.coat_of_arms).not_to be_attached
   end
 
+  it "coat_of_arms vazio (nenhum arquivo escolhido) não mexe no brasão e grava o nome" do
+    patch_identity(coat_of_arms: coat_upload(coat_png(512, 512)))
+    patch_identity(health_department_name: "Secretaria W", coat_of_arms: "")
+    expect(response).to have_http_status(:ok)
+    expect(json["city"]["health_department_name"]).to eq("Secretaria W")
+    expect(json["city"]["coat_of_arms_url"]).to be_present
+  end
+
+  it "coat_of_arms que não é arquivo (texto ou hash) dá 422 invalid_format e não grava nada" do
+    patch_identity(health_department_name: "Secretaria V", coat_of_arms: "foo")
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json).to eq("error" => "invalid_format")
+    patch_identity(health_department_name: "Secretaria V", coat_of_arms: { a: "b" })
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(city.reload.health_department_name).to be_nil
+    expect(audits).to be_empty
+  end
+
   it "grande demais e dimensões fora dão 422 com a razão" do
     patch_identity(coat_of_arms: coat_upload(coat_png(512, 512, pad_to: 262_145)))
     expect(json).to eq("error" => "too_large")
