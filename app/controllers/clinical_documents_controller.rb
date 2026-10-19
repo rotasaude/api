@@ -38,6 +38,21 @@ class ClinicalDocumentsController < ApplicationController
     render json: { items: with_signatures(documents) }
   end
 
+  # Estado da lista para o polling da tela enquanto há assinatura pendente
+  # (A46): só id, status e modo, sem conteúdo e sem trilha — ninguém leu o
+  # prontuário. A tela relê a lista (com trilha) quando algo aqui muda.
+  def status
+    consultation = find_consultation
+    return not_found unless consultation
+
+    grant = ClinicalDocuments::Read.consultation_grant(user: Current.user, consultation: consultation)
+    return forbid(grant.reason.to_s) unless grant.allowed?
+
+    documents = ClinicalDocument.where(consultation_id: consultation.id).order(issued_at: :desc, id: :desc).to_a
+    blocks = Signatures::Mode.blocks(documents)
+    render json: { items: documents.map { |document| status_row(document, blocks[[ "ClinicalDocument", document.id ]]) } }
+  end
+
   def create
     consultation = find_consultation
     return not_found unless consultation
@@ -162,6 +177,11 @@ class ClinicalDocumentsController < ApplicationController
       block = blocks[[ "ClinicalDocument", document.id ]]
       ClinicalDocuments::Json.document(document, signature: block&.key?(:request_id) ? block : nil)
     end
+  end
+
+  # Mesma regra de with_signatures: sem pedido (papel puro), modo nulo.
+  def status_row(document, block)
+    { id: document.id, status: document.status, signature_mode: block&.key?(:request_id) ? block[:mode] : nil }
   end
 
   # O documento com a trilha da leitura, ou nil (a resposta de erro já saiu).

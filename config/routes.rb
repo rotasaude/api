@@ -160,6 +160,8 @@ Rails.application.routes.draw do
     get   "consultations/:id/print",         to: "consultations#print"
     # Documentos clínicos e medicamentos em uso (ADR 0033; contrato §3–§4).
     get  "consultations/:id/documents",    to: "clinical_documents#index"
+    # A46 nos documentos: o polling da assinatura pendente lê só o estado, sem trilha.
+    get  "consultations/:id/documents/status", to: "clinical_documents#status"
     post "consultations/:id/documents",    to: "clinical_documents#create"
     get  "consultations/:id/patient_identification", to: "clinical_documents#patient_identification"
     post "attendances/:id/declarations",   to: "clinical_documents#declaration"

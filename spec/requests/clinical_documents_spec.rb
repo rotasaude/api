@@ -24,6 +24,28 @@ RSpec.describe "Documentos clínicos", type: :request do
     expect(DomainEvent.where(name: "clinical_record.viewed").last.payload).to include("access" => "author")
   end
 
+  # A46 aplicado aos documentos: o polling da tela (assinatura pendente) lê só
+  # o estado, sem conteúdo e sem trilha; a lista completa segue com trilha.
+  it "status: só id, status e modo da assinatura, sem trilha; mesma regra de acesso da lista" do
+    sign_in_as(doctor)
+    json_post "/attendance/consultations/#{consultation.id}/documents", kind: "sick_note", content: { type: "leave", days: 3 }
+    id = json_body["id"]
+    expect { get "/attendance/consultations/#{consultation.id}/documents/status" }
+      .not_to(change { DomainEvent.where(name: "clinical_record.viewed").count })
+    expect([ response.status, json_body ]).to eq([ 200, { "items" => [ { "id" => id, "status" => "issued", "signature_mode" => nil } ] } ])
+    expect { get "/attendance/consultations/#{consultation.id}/documents" }
+      .to change { DomainEvent.where(name: "clinical_record.viewed").count }.by(1)
+    sign_in_as(nurse!(unit))
+    get "/attendance/consultations/#{consultation.id}/documents/status"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "out_of_context" } ])
+    sign_in_as(verifier!)
+    get "/attendance/consultations/#{consultation.id}/documents/status"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    sign_in_as(doctor)
+    get "/attendance/consultations/#{SecureRandom.uuid}/documents/status"
+    expect(response).to have_http_status(:not_found)
+  end
+
   it "erros do contrato: 403 not_author/cbo_not_allowed, 422 com field/index, 503 sem catálogo, 403 interruptor" do
     sign_in_as(doctor!(unit))
     json_post "/attendance/consultations/#{consultation.id}/documents", kind: "sick_note", content: { type: "leave", days: 3 }
@@ -140,6 +162,8 @@ RSpec.describe "Documentos clínicos", type: :request do
     get "/attendance/consultations/#{consultation.id}/documents"
     signatures = json_body["items"].to_h { |item| [ item["id"], item["signature"] ] }
     expect(signatures).to eq(digital["id"] => { "mode" => "pending", "request_id" => request.id })
+    get "/attendance/consultations/#{consultation.id}/documents/status"
+    expect(json_body["items"]).to eq([ { "id" => digital["id"], "status" => "issued", "signature_mode" => "pending" } ])
     expect(paper).to include("consultation_id" => nil, "signature" => nil) # a declaração do atendimento não é da consulta
   end
 
