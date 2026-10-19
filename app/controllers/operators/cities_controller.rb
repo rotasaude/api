@@ -4,6 +4,7 @@
 #   GET  /cities/:id                                                     → 200 { id, slug, status, schema_version, ... }
 #   PATCH /cities/:id/record_settings { record_mode?, ibge_code?, pec_url? } → 200 { city }
 #   PATCH /cities/:id/identity (multipart) { health_department_name?, coat_of_arms?, remove_coat_of_arms? } → 200 { city }
+#   GET  /cities/:id/coat_of_arms                                        → 200 imagem (404 sem brasão)
 #   GET  /cities                                                        → 200 { data: [...] }
 #
 # O POST só registra e enfileira (ProvisionCity): quem cria o banco é o worker. A
@@ -63,6 +64,21 @@ module Operators
       return render(json: { error: result.reason.to_s }, status: :unprocessable_entity) if result.failure?
 
       render json: { city: city_json(city.reload) }
+    end
+
+    # Brasão salvo, para a prévia do console (gêmeo privado de CityIdentitiesController#coat_of_arms).
+    # Vale para qualquer status: o operador vê também cidade em provisionamento ou suspensa.
+    def coat_of_arms
+      city = City.find_by(id: params[:id].to_s)
+      return head(:not_found) unless city&.coat_of_arms&.attached?
+
+      blob = city.coat_of_arms.blob
+      data = blob.download
+      response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+      response.headers["X-Content-Type-Options"] = "nosniff"
+      send_data data, type: blob.content_type, disposition: "inline"
+    rescue ActiveStorage::FileNotFoundError
+      head :not_found
     end
 
     private
