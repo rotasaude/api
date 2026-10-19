@@ -70,6 +70,10 @@ Rails.application.routes.draw do
   # Reset de senha (F-06.2, ADR-0011). JSON-only, sem autenticação.
   resources :passwords, only: %i[create update], param: :token
 
+  # Identidade pública da cidade, sem sessão (login do dashboard e wpda).
+  get "/city_identity",              to: "city_identities#show"
+  get "/city_identity/coat_of_arms", to: "city_identities#coat_of_arms"
+
   # MFA — ADR-0011
   post "/mfa/enroll",  to: "mfa#enroll"
   post "/mfa/confirm",   to: "mfa#confirm"

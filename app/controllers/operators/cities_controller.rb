@@ -73,18 +73,11 @@ module Operators
       {
         id: city.id, slug: city.slug, name: city.name, uf: city.uf, status: city.status,
         schema_version: city.schema_version, time_zone: city.time_zone, created_at: city.created_at.iso8601,
-        health_department_name: city.health_department_name, coat_of_arms_url: coat_of_arms_url(city),
+        health_department_name: city.health_department_name, coat_of_arms_url: city.coat_of_arms_path,
         record_mode: city.record_mode, pec_url: city.pec_url, ibge_code: state&.dig(:ibge_code),
         city_reachable: !state.nil?,
         features: Platform::Features.summary(city, state: state).map { |f| f.slice(:key, :enabled, :usable, :missing) }
       }
-    end
-
-    # Mesmo formato da rota pública; ?v=checksum quebra o cache quando troca.
-    def coat_of_arms_url(city)
-      return unless city.coat_of_arms.attached?
-
-      "/city_identity/coat_of_arms?v=#{city.coat_of_arms.blob.checksum}"
     end
   end
 end

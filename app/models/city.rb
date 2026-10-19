@@ -60,4 +60,11 @@ class City < PlatformRecord
   def shard = slug.to_sym
 
   def servable? = status == "active"
+
+  # Caminho público do brasão; ?v=checksum quebra o cache quando ele troca.
+  def coat_of_arms_path
+    return unless coat_of_arms.attached?
+
+    "/city_identity/coat_of_arms?v=#{coat_of_arms.blob.checksum}"
+  end
 end
