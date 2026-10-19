@@ -17,6 +17,7 @@ class City < PlatformRecord
   # no console. Toda cidade nasce off.
   RECORD_MODES = %w[off integrated record].freeze
   PEC_URL_MAX = 255
+  HEALTH_DEPARTMENT_NAME_MAX = 120
 
   # key_provider: fixo na chave da plataforma (PlatformKeyProvider) — sem
   # isso, ler/escrever estes atributos de dentro de CityConnection.with usaria
@@ -36,6 +37,12 @@ class City < PlatformRecord
   validates :time_zone, inclusion: { in: TIME_ZONES }
   validates :record_mode, inclusion: { in: RECORD_MODES }
   validate { errors.add(:pec_url, :invalid) unless pec_url.nil? || self.class.valid_pec_url?(pec_url) }
+
+  validates :health_department_name, length: { maximum: HEALTH_DEPARTMENT_NAME_MAX }, allow_nil: true
+
+  # Brasão (spec identidade da cidade): Active Storage na plataforma. Nunca
+  # trocar/remover por purge_later: UpdateCityIdentity faz purge síncrono.
+  has_one_attached :coat_of_arms
 
   has_many :features, class_name: "CityFeature", dependent: :restrict_with_error
 

@@ -3,6 +3,7 @@
 #   POST /cities { slug, name, uf, ibge_code, admin_email, alert_email, time_zone? } → 202 { id }
 #   GET  /cities/:id                                                     → 200 { id, slug, status, schema_version, ... }
 #   PATCH /cities/:id/record_settings { record_mode?, ibge_code?, pec_url? } → 200 { city }
+#   PATCH /cities/:id/identity (multipart) { health_department_name?, coat_of_arms?, remove_coat_of_arms? } → 200 { city }
 #   GET  /cities                                                        → 200 { data: [...] }
 #
 # O POST só registra e enfileira (ProvisionCity): quem cria o banco é o worker. A
@@ -49,6 +50,21 @@ module Operators
       render json: { city: city_json(city.reload) }
     end
 
+    # Nome do órgão e brasão (multipart). A chave ausente mantém; "" limpa o nome.
+    def identity
+      city = City.find_by(id: params[:id].to_s)
+      return render(json: { error: "not_found" }, status: :not_found) unless city
+
+      result = UpdateCityIdentity.call(
+        city: city,
+        health_department_name: params.key?(:health_department_name) ? params[:health_department_name] : :keep,
+        coat_of_arms: params[:coat_of_arms], remove_coat_of_arms: params[:remove_coat_of_arms] == "true"
+      )
+      return render(json: { error: result.reason.to_s }, status: :unprocessable_entity) if result.failure?
+
+      render json: { city: city_json(city.reload) }
+    end
+
     private
 
     # Mesmo formato na lista, na ficha e no PATCH (contratos §4.2).
@@ -57,10 +73,18 @@ module Operators
       {
         id: city.id, slug: city.slug, name: city.name, uf: city.uf, status: city.status,
         schema_version: city.schema_version, time_zone: city.time_zone, created_at: city.created_at.iso8601,
+        health_department_name: city.health_department_name, coat_of_arms_url: coat_of_arms_url(city),
         record_mode: city.record_mode, pec_url: city.pec_url, ibge_code: state&.dig(:ibge_code),
         city_reachable: !state.nil?,
         features: Platform::Features.summary(city, state: state).map { |f| f.slice(:key, :enabled, :usable, :missing) }
       }
+    end
+
+    # Mesmo formato da rota pública; ?v=checksum quebra o cache quando troca.
+    def coat_of_arms_url(city)
+      return unless city.coat_of_arms.attached?
+
+      "/city_identity/coat_of_arms?v=#{city.coat_of_arms.blob.checksum}"
     end
   end
 end

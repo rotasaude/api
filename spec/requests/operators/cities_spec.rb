@@ -56,7 +56,7 @@ RSpec.describe "City provisioning on the platform console", type: :request do
                             "time_zone" => "America/Sao_Paulo", "record_mode" => "off", "pec_url" => nil,
                             "ibge_code" => nil, "city_reachable" => false)
     expect(json.keys).to match_array(%w[id slug name uf status schema_version time_zone created_at record_mode pec_url
-                                        ibge_code city_reachable features])
+                                        ibge_code city_reachable features health_department_name coat_of_arms_url])
     expect(json["features"].first["missing"]).to eq([ "city_unreachable" ])
 
     get "/cities/#{SecureRandom.uuid}"
@@ -116,7 +116,7 @@ RSpec.describe "City provisioning on the platform console", type: :request do
     rows = json["data"]
     expect(rows.first["slug"]).to eq("novacidade")
     expect(rows.first.keys).to match_array(%w[id slug name uf status schema_version time_zone created_at record_mode pec_url
-                                                  ibge_code city_reachable features])
+                                                  ibge_code city_reachable features health_department_name coat_of_arms_url])
     expect(response.body).not_to include("postgres://")
   end
 
