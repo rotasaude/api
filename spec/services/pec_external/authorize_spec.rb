@@ -38,9 +38,12 @@ RSpec.describe PecExternal::Authorize do
   it "cada recusa na ordem, com o código e o evento" do
     expect(call(key: "outra-chave-0123456789").reason).to eq(:pec_signature_invalid)
     expect(call(at: 6.minutes.ago).reason).to eq(:pec_expired)
-    expect(call(cnes: "7654321").reason).to eq(:pec_unit_unknown)
+    # Instantes explícitos: com "agora" e "1 segundo atrás", virar o segundo entre
+    # as duas chamadas repetia a mesma URL assinada e caía em pec_replayed.
+    first_at = Time.current
+    expect(call(cnes: "7654321", at: first_at).reason).to eq(:pec_unit_unknown)
     other_unit = create_unit("UBS Sul").tap { |u| u.update!(cnes: "7654321") }
-    expect(call(cnes: other_unit.cnes, at: 1.second.ago).reason).to eq(:pec_professional_not_linked)
+    expect(call(cnes: other_unit.cnes, at: first_at - 1.second).reason).to eq(:pec_professional_not_linked)
     expect(call(professional: "11144477735").reason).to eq(:pec_professional_not_linked)
     expect(call(citizen_doc: screening_citizen!(142).cpf).reason).to eq(:pec_citizen_not_verified)
     expect(call(citizen_doc: "898001160660003").reason).to eq(:pec_citizen_not_verified)

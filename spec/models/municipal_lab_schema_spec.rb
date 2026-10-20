@@ -18,11 +18,12 @@ RSpec.describe "Banco do laboratório municipal" do
   it "resultado imutável e cifrado; inspect sem valor" do
     req = lab_requisition_row!(provider: provider, version: version)
     item = req.items.first
-    result = LabResult.create!(lab_requisition_item: item, analyte_key: "glicose", value: "123", unit: "mg/dL", flag: "high",
+    result = LabResult.create!(lab_requisition_item: item, analyte_key: "glicose", value: "123.4", unit: "mg/dL", flag: "high",
                                source: "typed", entered_by_user: lab_staff!, entered_at: Time.current)
     raw = ApplicationRecord.connection.select_value("SELECT value FROM lab_results WHERE id = #{ApplicationRecord.connection.quote(result.id)}")
-    expect(raw).not_to include("123")
-    expect(result.inspect).not_to include("123")
+    # "123.4" e não "123": um UUID em hex pode conter "123", nunca um ponto.
+    expect(raw).not_to include("123.4")
+    expect(result.inspect).not_to include("123.4")
     expect { result.update!(flag: "normal") }.to raise_error(ActiveRecord::StatementInvalid, /append-only/)
     expect { LabRequisitionItem.create!(lab_requisition: req, exam_order_id: item.exam_order_id, lab_exam_version: version, lab_sample: item.lab_sample) }
       .to raise_error(ActiveRecord::RecordNotUnique)
