@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Prepara o servidor de teste para a suíte: a MESMA receita na CI e no bin/test
+# local (postgres-test). Uso: bin/test-db-bootstrap [--reset]
+#
+# --reset apaga, antes, todo banco que não seja postgres/template* e todo role
+# que não seja o superusuário de bootstrap (nem pg_*). Só faz sentido num
+# servidor descartável — e o bin/test só o chama dentro do container que segura
+# a trava da fila, para não derrubar o banco de uma execução em curso.
+set -euo pipefail
+
+su="${BOOTSTRAP_SUPERUSER:-rota_saude}"
+export PGPASSWORD="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD ausente}"
+: "${ROTA_APP_PASSWORD:?ROTA_APP_PASSWORD ausente}"
+psql_su=(psql -h "${DATABASE_HOST:-127.0.0.1}" -p "${DATABASE_PORT:-5432}" -U "$su" -d postgres -v ON_ERROR_STOP=1 -qtA)
+
+step() { echo "[test-db-bootstrap] $(date +%H:%M:%S) $1"; }
+fail() { echo "[test-db-bootstrap] FALHOU: $1" >&2; exit 1; }
+
+if [ "${1:-}" = "--reset" ]; then
+  step "reset"
+  "${psql_su[@]}" <<'SQL' || fail "reset"
+SELECT format('DROP DATABASE %I WITH (FORCE)', datname) FROM pg_database
+ WHERE datname NOT IN ('postgres', 'template0', 'template1')\gexec
+SELECT format('DROP OWNED BY %I', rolname) FROM pg_roles
+ WHERE rolname <> current_user AND rolname NOT LIKE 'pg\_%'\gexec
+SELECT format('DROP ROLE %I', rolname) FROM pg_roles
+ WHERE rolname <> current_user AND rolname NOT LIKE 'pg\_%'\gexec
+SQL
+fi
+
+# rota_app: nem platform:bootstrap nem city:test_databases o criam. Duas
+# armadilhas do psql: `-c` não interpola :'variavel' (por isso o heredoc), e a
+# interpolação não acontece dentro de aspas-dólar (por isso nada de DO $$ $$ —
+# format(%L) cita a senha). \gexec não roda nada se o role já existe.
+step "role rota_app"
+"${psql_su[@]}" -v app_password="$ROTA_APP_PASSWORD" <<'SQL' || fail "role rota_app"
+SELECT format('CREATE ROLE rota_app LOGIN PASSWORD %L', :'app_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='rota_app')\gexec
+SQL
+
+# `db:migrate`, não `db:migrate:platform`: em test só o `platform` tem
+# database_tasks, e com um banco só o Rails não gera a task com namespace.
+for task in platform:bootstrap db:migrate platform:triggers city:test_databases; do
+  step "$task"
+  bin/rails "$task" || fail "$task"
+done
+step "ok"
