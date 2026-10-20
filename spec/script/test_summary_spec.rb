@@ -70,6 +70,18 @@ RSpec.describe TestSummary do
     expect(out).to include("suíte não rodou (exit 1)")
   end
 
+  it "lê JSON e log em UTF-8 mesmo com locale US-ASCII (shell do host sem LANG)" do
+    File.write(log_path, "falhou: não encontrado\n")
+    json = json_file(summary: summary(failures: 1, outside: 1), examples: [failed("./spec/x_spec.rb", 1, "esperava não nulo")])
+    previous = Encoding.default_external
+    Encoding.default_external = Encoding::US_ASCII
+    out = described_class.render(json_path: json, log_path: log_path, exit_code: 1)
+
+    expect(out).to include("esperava não nulo").and include("falhou: não encontrado")
+  ensure
+    Encoding.default_external = previous
+  end
+
   it "mostra erros fora de exemplo com o fim do log" do
     out = described_class.render(json_path: json_file(summary: summary(examples: 0, outside: 1)),
                                  log_path: log_path, exit_code: 1)

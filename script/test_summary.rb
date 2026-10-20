@@ -28,7 +28,7 @@ module TestSummary
   def read_json(path)
     return unless File.exist?(path)
 
-    body = File.read(path)
+    body = File.read(path, encoding: "UTF-8")
     body.strip.empty? ? nil : JSON.parse(body)
   rescue JSON::ParserError
     nil
@@ -49,7 +49,7 @@ module TestSummary
   end
 
   def log_tail(path)
-    File.exist?(path) ? File.readlines(path, chomp: true).last(LOG_TAIL) : ["(log ausente)"]
+    File.exist?(path) ? File.readlines(path, chomp: true, encoding: "UTF-8").last(LOG_TAIL) : ["(log ausente)"]
   end
 end
 
