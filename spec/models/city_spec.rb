@@ -17,4 +17,20 @@ RSpec.describe City do
 
     expect(city).to be_valid
   end
+
+  describe "#coat_of_arms_path" do
+    include CoatOfArmsHelpers
+
+    it "round-trips a checksum with +, / and = through the query string" do
+      city = create(:city, slug: "brasao")
+      city.coat_of_arms.attach(io: StringIO.new(coat_png(64, 64)), filename: "b.png", content_type: "image/png")
+      checksum = "ab+cd/ef0="
+      allow_any_instance_of(ActiveStorage::Blob).to receive(:checksum).and_return(checksum)
+
+      path = city.coat_of_arms_path
+
+      expect(path).to include("v=ab%2Bcd%2Fef0%3D")
+      expect(Rack::Utils.parse_query(URI(path).query)["v"]).to eq(checksum)
+    end
+  end
 end

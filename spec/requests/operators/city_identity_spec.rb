@@ -31,7 +31,7 @@ RSpec.describe "Console: identidade da cidade", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(json["city"]["health_department_name"]).to eq("Secretaria Municipal da Saúde")
-    expect(json["city"]["coat_of_arms_url"]).to eq("/city_identity/coat_of_arms?v=#{city.reload.coat_of_arms.blob.checksum}")
+    expect(json["city"]["coat_of_arms_url"]).to eq("/city_identity/coat_of_arms?v=#{CGI.escape(city.reload.coat_of_arms.blob.checksum)}")
     ev = audits.sole
     expect(ev.payload).to include("city_id" => city.id, "fields" => %w[coat_of_arms health_department_name])
     expect(ev.payload.to_s.bytesize).to be < 300

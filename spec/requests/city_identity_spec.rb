@@ -42,7 +42,19 @@ RSpec.describe "City identity", type: :request do
     get "/city_identity"
     body = JSON.parse(response.body)
     expect(body["health_department_name"]).to eq("Secretaria de Saúde")
-    expect(body["coat_of_arms_url"]).to eq("/city_identity/coat_of_arms?v=#{City.find(city.id).coat_of_arms.blob.checksum}")
+    expect(body["coat_of_arms_url"]).to eq("/city_identity/coat_of_arms?v=#{CGI.escape(City.find(city.id).coat_of_arms.blob.checksum)}")
+  end
+
+  it "checksum com +, / e =: a URL vai escapada e, seguida como está, devolve a imagem" do
+    bytes = coat_png(512, 512)
+    attach(bytes)
+    allow_any_instance_of(ActiveStorage::Blob).to receive(:checksum).and_return("ab+cd/ef0=")
+    get "/city_identity"
+    url = JSON.parse(response.body)["coat_of_arms_url"]
+    expect(url).to eq("/city_identity/coat_of_arms?v=ab%2Bcd%2Fef0%3D")
+    get url
+    expect(response).to have_http_status(:ok)
+    expect(response.body.b).to eq(bytes.b)
   end
 
   it "suspended, archived e provisioning dão 404 unknown_city (não 403)" do

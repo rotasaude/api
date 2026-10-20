@@ -65,6 +65,6 @@ class City < PlatformRecord
   def coat_of_arms_path
     return unless coat_of_arms.attached?
 
-    "/city_identity/coat_of_arms?v=#{coat_of_arms.blob.checksum}"
+    "/city_identity/coat_of_arms?v=#{CGI.escape(coat_of_arms.blob.checksum)}"
   end
 end
