@@ -13,6 +13,10 @@ abort("Specs must run in the test environment, got #{Rails.env}") unless Rails.e
 # return unless Rails.env.test?
 require 'rspec/rails'
 require 'factory_bot_rails'
+# Antes de qualquer outro suporte (e de qualquer before(:suite) que escreva em
+# banco): aborta se o servidor não for o postgres-test.
+require_relative "support/test_server_guard"
+TestServerGuard.check!
 require_relative "support/city_probe_controller"
 require_relative "support/city_database_urls"
 require_relative "support/scratch_databases"
