@@ -82,8 +82,17 @@ RSpec.describe TestSummary do
     Encoding.default_external = previous
   end
 
+  it "trata erro de carga (0 exemplos + erro fora de exemplo) como suíte que não rodou" do
+    out = described_class.render(json_path: json_file(summary: summary(examples: 0, pending: 0, outside: 1)),
+                                 log_path: log_path, exit_code: 1)
+
+    expect(out).to include("suíte não rodou (erro ao carregar, exit 1)")
+    expect(out).to include("linha 30")
+    expect(out).not_to include("0 falhas")
+  end
+
   it "mostra erros fora de exemplo com o fim do log" do
-    out = described_class.render(json_path: json_file(summary: summary(examples: 0, outside: 1)),
+    out = described_class.render(json_path: json_file(summary: summary(examples: 5, outside: 1)),
                                  log_path: log_path, exit_code: 1)
 
     expect(out).to include("erros fora de exemplo: 1")

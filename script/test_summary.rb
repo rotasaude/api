@@ -13,9 +13,15 @@ module TestSummary
 
   def render(json_path:, log_path:, exit_code:)
     data = read_json(json_path)
-    return not_run(log_path, exit_code) unless data
+    return not_run(log_path, "exit #{exit_code}") unless data
 
     s = data.fetch("summary")
+    # Erro de carga (spec com erro de sintaxe, support quebrado, TestServerGuard):
+    # o rspec ainda grava o JSON, com 0 exemplos — não pode sair como "0 falhas".
+    if s["example_count"].to_i.zero? && s["errors_outside_of_examples_count"].to_i.positive?
+      return not_run(log_path, "erro ao carregar, exit #{exit_code}")
+    end
+
     lines = ["#{s['example_count']} exemplos, #{s['failure_count']} falhas, " \
              "#{s['pending_count']} pendentes em #{s['duration'].round(1)}s"]
     lines.concat(failure_lines(data.fetch("examples", [])))
@@ -44,8 +50,8 @@ module TestSummary
     extra.positive? ? lines << "… +#{extra} (ver log)" : lines
   end
 
-  def not_run(log_path, exit_code)
-    ["suíte não rodou (exit #{exit_code})", *log_tail(log_path), "log: #{log_path}"].join("\n")
+  def not_run(log_path, reason)
+    ["suíte não rodou (#{reason})", *log_tail(log_path), "log: #{log_path}"].join("\n")
   end
 
   def log_tail(path)
