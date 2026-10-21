@@ -169,12 +169,17 @@ end
 RSpec.describe "municipal lab event bindings (ADR 0037)" do
   it "declares every lab event with no consumer" do
     names = %w[lab_requisition.opened lab_requisition.delivered lab_sample.collected lab_sample.received lab_sample.rejected
-               lab_sample.label_printed lab_shipment.sent lab_shipment.received lab_result.entered lab_report.released
+               lab_sample.label_printed lab_shipment.sent lab_shipment.received lab_result.entered
                lab_report.rectified lab_report.withdrawn lab_critical.notified lab_exam.version_created lab_releaser.assigned
                lab_releaser.ended lab_middleware.token_rotated lab_middleware.token_revoked exam_order.result_rectified
                exam_order.gal_registered]
     expect(DomainEvents.registry.keys).to include(*names)
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+
+  # ADR 0039: a liberação do laudo vira produção do laboratório municipal.
+  it "binds lab_report.released only to the billing consumer" do
+    expect(DomainEvents.registry["lab_report.released"].map(&:job)).to eq([ "Billing::LabProductionJob" ])
   end
 end
 

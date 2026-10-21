@@ -187,10 +187,14 @@ Rails.application.config.to_prepare do
   # Módulo 21b (ADR 0037): laboratório municipal, só trilha, só ids. Nunca
   # valor, nome, CPF, mensagem HL7 ou token.
   %w[lab_requisition.opened lab_requisition.delivered lab_sample.collected lab_sample.received lab_sample.rejected
-     lab_sample.label_printed lab_shipment.sent lab_shipment.received lab_result.entered lab_report.released
+     lab_sample.label_printed lab_shipment.sent lab_shipment.received lab_result.entered
      lab_report.rectified lab_report.withdrawn lab_critical.notified lab_exam.version_created lab_releaser.assigned
      lab_releaser.ended lab_middleware.token_rotated lab_middleware.token_revoked exam_order.result_rectified
      exam_order.gal_registered].each { |name| DomainEvents.bind name, to: [] }
+
+  # ADR 0039 (contrato §4): a liberação do PRIMEIRO laudo vira produção do
+  # laboratório municipal (Billing::FromLab; idempotente por item).
+  DomainEvents.bind "lab_report.released", to: [ Billing::LabProductionJob ]
 
   # Módulo 21c (ADR 0038): qualidade e insumos, só trilha, só ids. Nunca
   # valor de controle, valor de resultado, justificativa ou nome.
