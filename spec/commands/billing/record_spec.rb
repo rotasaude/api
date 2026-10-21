@@ -85,7 +85,36 @@ RSpec.describe Billing::Record do
     expect(procedure).to have_attributes(billing_competence: today.strftime("%Y%m"), late: true)
   end
 
-  # §13 E18: competência ≤ última fechada, mesmo sem período próprio, é
+  def m(back) = (today << back).strftime("%Y%m")
+  def closed_period!(back) = BillingPeriod.create!(health_unit: unit, competence: m(back), status: "closed", version: 1,
+                                                   closed_at: Time.current, closed_by_user: doctor)
+
+  # Ruling E18: a competência própria aberta (reaberta ou nunca fechada) vale, sem atraso.
+  it "competência própria reaberta (M-3) com M-1 fechada: fica em M-3, sem atraso" do
+    closed_period!(1)
+    own = closed_period!(3)
+    own.update!(status: "open", reopened_reason: "CNS do médico corrigido no CNES", reopened_at: Time.current, reopened_by_user: doctor)
+    procedure = record({ "performed_on" => (today << 3).iso8601 }).payload[:procedure]
+    expect(procedure).to have_attributes(billing_period_id: own.id, billing_competence: m(3), late: false)
+  end
+
+  it "competência própria nunca fechada (M-2) com M-1 fechada: fica em M-2, sem atraso" do
+    closed_period!(1)
+    own = BillingPeriod.create!(health_unit: unit, competence: m(2))
+    procedure = record({ "performed_on" => (today << 2).iso8601 }).payload[:procedure]
+    expect(procedure).to have_attributes(billing_period_id: own.id, billing_competence: m(2), late: false)
+  end
+
+  it "atrasado vai para a aberta MAIS ANTIGA depois da última fechada, sem criar mês no passado" do
+    closed_period!(3)
+    oldest_open = BillingPeriod.create!(health_unit: unit, competence: m(1))
+    BillingPeriod.create!(health_unit: unit, competence: m(0))
+    period, late = Billing::Periods.assign!(establishment, m(5))
+    expect([ period.id, late ]).to eq([ oldest_open.id, true ])
+    expect(BillingPeriod.where(health_unit_id: unit.id).pluck(:competence)).to contain_exactly(m(3), m(1), m(0))
+  end
+
+  # §13 E18: competência ≤ última fechada, sem competência própria aberta, é
   # atrasada e vai para a primeira aberta depois da última fechada; nunca
   # nasce período no passado.
   it "competência antiga sem período próprio (M-1 fechada, M-2 sem período) cai em M, atrasada" do
