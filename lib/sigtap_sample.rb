@@ -7,6 +7,8 @@ require "fileutils"
 # Inicio, Fim, Tipo). Idade em meses (9999 = sem limite). Os atributos do
 # recorte (CBOs, CIDs, idades) servem para teste e para a semente de dev; a
 # verdade é a competência importada do DATASUS.
+# Módulo 22: códigos e atributos de faturamento de dev (instrumento, CBO, CID) —
+# a verdade é a competência importada do DATASUS.
 module SigtapSample
   LAYOUTS = {
     "tb_procedimento" => [ [ "CO_PROCEDIMENTO", 10, "VARCHAR2" ], [ "NO_PROCEDIMENTO", 250, "VARCHAR2" ],
@@ -49,7 +51,13 @@ module SigtapSample
     [ "0202060381", "DOSAGEM DE TIROXINA LIVRE (T4 LIVRE)", "2", "I", 0, 9999 ],
     [ "0202060217", "DOSAGEM DE GONADOTROFINA CORIONICA HUMANA (HCG, BETA HCG)", "2", "I", 0, 9999 ],
     [ "0202050017", "ANALISE DE CARACTERES FISICOS, ELEMENTOS E SEDIMENTO DA URINA", "2", "I", 0, 9999 ],
-    [ "0202040127", "PESQUISA DE OVOS E CISTOS DE PARASITAS", "2", "I", 0, 9999 ]
+    [ "0202040127", "PESQUISA DE OVOS E CISTOS DE PARASITAS", "2", "I", 0, 9999 ],
+    # Módulo 22 (ADR 0039): procedimentos da atenção especializada da UPA.
+    [ "0301060029", "ATENDIMENTO DE URGENCIA C/ OBSERVACAO ATE 24 HORAS EM ATENCAO ESPECIALIZADA", "2", "I", 0, 9999 ],
+    [ "0301060096", "ATENDIMENTO MEDICO EM UNIDADE DE PRONTO ATENDIMENTO", "2", "I", 0, 9999 ],
+    [ "0301100012", "ADMINISTRACAO DE MEDICAMENTOS NA ATENCAO ESPECIALIZADA.", "2", "I", 0, 9999 ],
+    [ "0301060118", "ACOLHIMENTO COM CLASSIFICACAO DE RISCO", "2", "I", 0, 9999 ],
+    [ "0214010015", "GLICEMIA CAPILAR", "2", "I", 0, 9999 ]
   ].freeze
 
   # Desvio 14: VL_SA de dev, em centavos (aproximação da tabela vigente).
@@ -58,20 +66,31 @@ module SigtapSample
               "0202010651" => 201, "0202060250" => 896, "0202060381" => 1160, "0202060217" => 785, "0202050017" => 370,
               "0202040127" => 165 }.freeze
 
+  LAB_CBOS = %w[221205 223415].freeze
+
   CBOS = {
     "0301010064" => %w[225125 225142 225130 225170],
     "0301010030" => %w[223505 251510],
     "0201020033" => %w[223505 225125],
     "0301100039" => %w[223505 322205 225125],
-    "0301040079" => %w[223505 322205 225125]
-  }.freeze
+    "0301040079" => %w[223505 322205 225125],
+    # Módulo 22: UPA e exames do laboratório municipal.
+    "0301060029" => %w[225125 225124 225142],
+    "0301060096" => %w[225125 225124 225142],
+    "0301100012" => %w[223505 322205 225125],
+    "0301060118" => %w[223505 225125],
+    "0214010015" => %w[223505 322205]
+  }.merge(AMOUNTS.keys.to_h { |code| [ code, LAB_CBOS ] }).freeze
 
-  CIDS = { "0201020033" => [ %w[Z014 S] ] }.freeze
+  CIDS = { "0201020033" => [ %w[Z014 S] ], "0301060029" => [ %w[I10 S], %w[E119 S], %w[J069 S] ] }.freeze
 
   INSTRUMENTS = {
     "0301010064" => %w[02], "0301010030" => %w[02], "0201020033" => %w[01 02], "0301100039" => %w[01],
-    "0301040079" => %w[01]
-  }.freeze
+    "0301040079" => %w[01],
+    # Módulo 22: BPA-I na consulta/urgência; BPA-C no consolidado e nos exames.
+    "0301060029" => %w[02], "0301060096" => %w[02], "0301100012" => %w[01], "0301060118" => %w[01], "0214010015" => %w[01],
+    "0203020030" => %w[02]
+  }.merge(AMOUNTS.keys.to_h { |code| [ code, %w[01] ] }).freeze
 
   REGISTRIES = { "01" => "BPA (CONSOLIDADO)", "02" => "BPA (INDIVIDUALIZADO)" }.freeze
 

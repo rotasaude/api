@@ -50,6 +50,7 @@ else
   require Rails.root.join("lib/exam_crew").to_s
   require Rails.root.join("lib/lab_crew").to_s
   require Rails.root.join("lib/lab_qc_crew").to_s
+  require Rails.root.join("lib/billing_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -92,6 +93,11 @@ else
   # Catálogo-base do laboratório (módulo 21b, ADR 0037).
   lab_templates = LabCrew.seed_platform!
   puts "[seeds] catálogo-base laboratório . #{lab_templates[:created]} exames novos; fora da SIGTAP: #{lab_templates[:skipped].join(', ').presence || 'nenhum'}"
+
+  # Faturamento (módulo 22, ADR 0039): recorte SIGTAP de dev com instrumento,
+  # CBO e CID no mês e no anterior; SIGTAP real ativa nunca é tocada.
+  billing_sigtap = BillingCrew.seed_platform!
+  puts "[seeds] SIGTAP faturamento . #{billing_sigtap[:competences].join(', ')} #{{ republished: 'republicada (recorte de dev)', real_sigtap: 'SIGTAP real ativa; não verificada', complete: 'já completa' }.fetch(billing_sigtap[:status])}"
 
   ciap2 = ScreeningCrew.seed_platform!
   puts "[seeds] CIAP-2 ....... #{ciap2[:ciap2]} #{ciap2[:imported] ? 'importada (recorte de dev)' : 'já ativa'}"
@@ -307,6 +313,12 @@ else
         # Depois do LabCrew (laboratório, exames e as contas que operam o 21c).
         qc = LabQcCrew.seed_current_city(slug: slug, admin: muni_admin)
         puts "[seeds] qualidade ... #{qc[:switch]}#{"; #{qc[:created].join(', ')}" if qc[:created].any?}"
+
+        # ── Procedimentos e faturamento BPA (módulo 22, ADR 0039) ─────────────
+        # Depois do LabCrew (laboratório e liberadores) e do ProfessionalCrew (UPA e vínculos).
+        billing = BillingCrew.seed_current_city(slug: slug, password: password, admin: muni_admin)
+        puts "[seeds] faturamento . #{billing[:switch]}#{"; #{billing[:created].join(', ')}" if billing[:created].any?}"
+        Array(billing[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
