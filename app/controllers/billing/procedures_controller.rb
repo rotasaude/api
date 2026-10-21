@@ -95,8 +95,8 @@ module Billing
     def consultation_context
       consultation = uuid?(params[:consultation_id]) ? Consultation.find_by(id: params[:consultation_id]) : nil
       return not_found unless consultation
+      return forbid("not_author") unless consultation.author_user_id == Current.user.id # antes do paciente (M1)
       return render_error(:invalid_patient) unless patient_matches?(consultation.patient_id)
-      return forbid("not_author") unless consultation.author_user_id == Current.user.id
 
       unit = consultation.attendance.health_unit
       return invalid_establishment unless same_unit?(unit)

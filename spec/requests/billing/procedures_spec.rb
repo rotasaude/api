@@ -144,6 +144,16 @@ RSpec.describe "Faturamento — procedimentos", type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
+  # Revisão final, M1: a autoria vem antes do paciente (quem não é o autor não sonda o paciente da consulta).
+  it "pela consulta: não-autor com patient_id errado recebe 403 not_author, não 422" do
+    consultation = started_consultation!(unit: unit, doctor: doctor, citizen: pair.last)
+    post_procedure(doctor!(unit), patient_id: SecureRandom.uuid, consultation_id: consultation.id, establishment: nil)
+    expect(response).to have_http_status(:forbidden)
+    expect(json_body).to eq("error" => "not_author")
+    post_procedure(doctor, patient_id: SecureRandom.uuid, consultation_id: consultation.id, establishment: nil)
+    expect(json_body).to eq("error" => "invalid_patient")
+  end
+
   it "lista: faturista vê tudo com filtros e envelope; profissional os próprios do paciente ou os do atendimento (B2)" do
     ok = recorded_procedure!(unit: unit, professional: doctor, patient: patient)
     bad = recorded_procedure!(unit: unit, professional: doctor, patient: patient, cid10: nil)
