@@ -14,6 +14,8 @@ module Billing
     end
 
     def linked?(user, unit_id)
+      return false unless user
+
       ProfessionalLink.active.joins(:professional).where(professionals: { user_id: user.id }, health_unit_id: unit_id).exists?
     end
 
@@ -21,6 +23,8 @@ module Billing
 
     # CBOs dos vínculos ativos que valem no estabelecimento (B5).
     def cbos_for(user, establishment)
+      return [] unless user
+
       links = ProfessionalLink.active.joins(:professional).where(professionals: { user_id: user.id })
       links = links.where(health_unit_id: establishment.id) if establishment.type == "health_unit"
       links.order(:started_at, :id).pluck(:cbo_code).uniq
@@ -28,6 +32,8 @@ module Billing
 
     # Pode ser o "quem fez" do lançamento manual: vínculo ativo na unidade, ou liberador ativo do laboratório (B5).
     def eligible?(user, establishment)
+      return false unless user
+
       return linked?(user, establishment.id) if establishment.type == "health_unit"
 
       LabReleaser.active.exists?(user_id: user.id, exam_provider_id: establishment.id)
@@ -35,6 +41,8 @@ module Billing
 
     # Unidades não-APS em que o usuário tem vínculo ativo (busca de paciente, B3).
     def non_aps_units(user)
+      return HealthUnit.none unless user
+
       HealthUnit.where(active: true).where.not(kind: "ubs")
                 .where(id: ProfessionalLink.active.joins(:professional).where(professionals: { user_id: user.id }).select(:health_unit_id))
     end
