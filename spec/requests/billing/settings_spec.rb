@@ -53,4 +53,22 @@ RSpec.describe "Faturamento — configuração", type: :request do
     end
     expect(BillingSetting.count).to eq(0)
   end
+
+  # §13 E20: o tamanho vale depois de transliterar para ASCII maiúsculo, como no cabeçalho do arquivo.
+  it "larguras medidas no ASCII do arquivo: cabe em UTF-8 mas estoura transliterado" do
+    stepped_up!(admin)
+    expect("Æ" * 16).to have_attributes(length: 16)
+    {
+      { origin_name: "Æ" * 16 } => "origin_name",
+      { origin_acronym: "ÆÆÆÆ" } => "origin_acronym",
+      { destination_body: "Æ" * 21 } => "destination_body"
+    }.each do |over, field|
+      json_put "/billing/settings", valid.merge(over)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body).to eq("error" => "too_long", "field" => field)
+    end
+    expect(BillingSetting.count).to eq(0)
+    json_put "/billing/settings", valid.merge(origin_name: "Æ" * 15)
+    expect(response).to have_http_status(:ok)
+  end
 end

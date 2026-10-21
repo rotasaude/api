@@ -101,11 +101,12 @@ module Billing
       value.to_s.ljust(size)
     end
 
-    # Maiúsculas ASCII, só letras e espaço, espaços colapsados, cortado no tamanho do campo (Desvio 6).
-    def text(value, size)
-      plain = ActiveSupport::Inflector.transliterate(value.to_s, " ").upcase.gsub(/[^A-Z ]/, " ").squish
-      plain[0, size].ljust(size)
-    end
+    # Maiúsculas ASCII, só letras e espaço, espaços colapsados (Desvio 6). Pública:
+    # Billing::SaveSettings mede as larguras do cabeçalho com ela (§13 E20).
+    def plain_text(value) = ActiveSupport::Inflector.transliterate(value.to_s, " ").upcase.gsub(/[^A-Z ]/, " ").squish
+
+    # plain_text cortado no tamanho do campo.
+    def text(value, size) = plain_text(value)[0, size].ljust(size)
 
     # Endereço (D-U1): como `text`, mas com dígitos ("RUA 7 DE SETEMBRO", "APTO 12", "1200", "SN").
     def address(value, size)

@@ -1,6 +1,7 @@
 # Configuração do cabeçalho do arquivo (contrato §6 com B10): admin municipal,
 # step-up no controlador. Larguras do layout (cbc-rsp 30, cbc-sgl 6, cbc-dst
-# 40) recusadas, nunca cortadas, com o campo; CNPJ com DV válido e só
+# 40) medidas no texto já transliterado como no arquivo (BpaFile.plain_text,
+# §13 E20) e recusadas, nunca cortadas, com o campo; CNPJ com DV válido e só
 # numérico (cbc-cgccpf é NUM: o CNPJ alfanumérico da Receita não cabe);
 # indicador M/E. Linha única (singleton).
 module Billing
@@ -15,7 +16,7 @@ module Billing
       texts = LIMITS.keys.to_h { |field| [ field, params[field].is_a?(String) ? params[field].squish : "" ] }
       LIMITS.each do |field, limit|
         return Result.fail(:field_required, details: { field: field }) if REQUIRED.include?(field) && texts[field].empty?
-        return Result.fail(:too_long, details: { field: field }) if texts[field].length > limit
+        return Result.fail(:too_long, details: { field: field }) if BpaFile.plain_text(texts[field]).length > limit
       end
       cnpj = params["origin_cnpj"].is_a?(String) ? Cnpj.normalize(params["origin_cnpj"]) : nil
       return Result.fail(:invalid_cnpj) unless cnpj&.match?(/\A\d{14}\z/)
