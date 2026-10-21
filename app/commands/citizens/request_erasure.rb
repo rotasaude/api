@@ -52,9 +52,11 @@ module Citizens
 
     # ADR 0037: a requisição do laboratório municipal (com amostras, resultados
     # e laudos que pendem dela) também é registro clínico retido.
+    # ADR 0039: o procedimento realizado (e o arquivo BPA que o leva) também,
+    # cancelado inclusive (o arquivo pode já tê-lo levado).
     def examined_patients?(ids)
       ExamOrder.where(patient_id: ids).exists? || ExamResult.where(patient_id: ids).exists? ||
-        LabRequisition.where(patient_id: ids).exists?
+        LabRequisition.where(patient_id: ids).exists? || PerformedProcedure.where(patient_id: ids).exists?
     end
 
     # O paciente dos pares e o do CPF: o exame aponta para o paciente, que
