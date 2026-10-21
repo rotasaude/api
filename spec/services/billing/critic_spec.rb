@@ -17,6 +17,15 @@ RSpec.describe Billing::Critic do
                                                         professional_cns: "798312812760829", cid10: "I10", patient: patient }.merge(over)))
   end
 
+  it "LGPD: inspect e to_s dos fatos não expõem CNS, CPF nem nome" do
+    facts = Billing::Critic::Facts.new(establishment: upa, sigtap_code: "0301060029", performed_on: today, cbo_code: "225125",
+                                       professional_cns: "798312812760829", cid10: "I10", patient: patient)
+    [ facts.inspect, facts.to_s, "#{facts}" ].each do |text|
+      expect(text).not_to include("798312812760829", "29136237191", "Maria Aparecida")
+      expect(text).to include("0301060029")
+    end
+  end
+
   it "faturável: BPA-I na UPA com CBO, CNS, CID e paciente completos" do
     expect(check).to have_attributes(instrument: "bpa_i", billable: true, reasons: [], sigtap_competence: today.strftime("%Y%m"),
                                      fallback: false, label: "ATENDIMENTO DE URGENCIA C/ OBSERVACAO ATE 24 HORAS EM ATENCAO ESPECIALIZADA")

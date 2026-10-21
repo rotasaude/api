@@ -13,7 +13,11 @@ module Billing
                  missing_patient_id missing_required_patient_field missing_race_color missing_address].freeze
     SEX = { "female" => "F", "male" => "M" }.freeze
 
-    Facts = Data.define(:establishment, :sigtap_code, :performed_on, :cbo_code, :professional_cns, :cid10, :patient)
+    Facts = Data.define(:establishment, :sigtap_code, :performed_on, :cbo_code, :professional_cns, :cid10, :patient) do
+      # LGPD: o inspect padrão do Data imprimiria CNS e paciente (CPF, nome).
+      def inspect = "#<#{self.class.name} sigtap_code=#{sigtap_code} performed_on=#{performed_on}>"
+      alias_method :to_s, :inspect
+    end
     Outcome = Data.define(:instrument, :billable, :reasons, :sigtap_competence, :fallback, :label)
 
     module_function
