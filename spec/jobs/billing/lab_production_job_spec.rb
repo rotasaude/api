@@ -25,8 +25,10 @@ RSpec.describe Billing::LabProductionJob, type: :job do
   it "cria a produção; o mesmo evento de novo não duplica" do
     report = report!
     payload = args(report)
+    expect(Billing::FromLab).to receive(:call).once.and_call_original
     described_class.new.perform(**payload)
     described_class.new.perform(**payload)
+    expect(ProcessedEvent.where(event_id: payload[:event_id], consumer: "Billing::LabProductionJob").count).to eq(1)
     expect(PerformedProcedure.where(exam_provider_id: provider.id, source: "lab_report").count).to eq(1)
   end
 

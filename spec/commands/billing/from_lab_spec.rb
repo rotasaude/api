@@ -7,6 +7,8 @@ require "rails_helper"
 # liberador sem vínculo = pendência de CBO. §13 E10: o original já
 # retificado (replaces_report_id nulo) ainda vale.
 RSpec.describe Billing::FromLab do
+  include ActiveSupport::Testing::TimeHelpers
+
   before { billing_city!(lab: true) }
 
   let(:provider) { lab_provider! }
@@ -33,16 +35,57 @@ RSpec.describe Billing::FromLab do
     expect(procedure.billing_period).to have_attributes(exam_provider_id: provider.id, status: "open")
   end
 
-  it "idempotente por item; laudo que retifica outro, retirado ou pendente de assinatura não cria" do
+  it "idempotente por item" do
     req = received_requisition!(provider: provider, exams: [ glucose ])
     report = released_report(req)
-    described_class.call(report)
+    expect(described_class.call(report)).to eq(1)
     expect(described_class.call(report)).to eq(0)
-    # O caminho real da retificação é o do 21b (rectification_spec); aqui basta a forma do laudo novo.
-    expect(described_class.call(report.dup.tap { |r| r.replaces_report_id = report.id })).to eq(0)
-    expect(described_class.call(report.dup.tap { |r| r.status = "withdrawn" })).to eq(0)
-    expect(described_class.call(report.dup.tap { |r| r.status = "pending_signature" })).to eq(0)
     expect(PerformedProcedure.where(exam_provider_id: provider.id).count).to eq(1)
+  end
+
+  # Linhas persistidas, com itens próprios: cada guarda de FromLab é exercida.
+  def pending_report!(req, status: "pending_signature")
+    item = type!(req.items.first, { glicose: "98" })
+    report = LabReport.create!(lab_requisition: req, exam_provider: provider, version: 1, partial: false, status: "pending_signature",
+                               signature_kind: "icp", released_by_user: lead, content: "{}", content_sha256: "a" * 64,
+                               verification_token: ClinicalDocuments::Codes.token, short_code: ClinicalDocuments::Codes.short_code)
+    LabReportItem.create!(lab_report: report, lab_requisition_item: item)
+    status == "withdrawn" ? Lab::WithdrawReport.call(report.id) : report
+  end
+
+  it "laudo retificador (replaces_report_id presente, pelo caminho real) não cria" do
+    req = received_requisition!(provider: provider, exams: [ glucose ])
+    original = released_report(req)
+    item = req.items.first
+    type!(item, { glicose: "99" })
+    rectifier = nil
+    travel 31.seconds do
+      result = Lab::Release.call(requisition: req, item_ids: [ item.id ], signature: "advanced", totp: totp_for(lead), by: lead,
+                                 rectifies: original, reason: "Erro de digitação",
+                                 contacts: [ { person: "Dra. Helena", channel: "telefone", at: Time.current.iso8601 } ])
+      raise "retificação recusada: #{result.reason}" if result.failure?
+
+      rectifier = result.payload[:report]
+    end
+    expect(rectifier).to have_attributes(status: "released", replaces_report_id: original.id)
+    expect(rectifier.report_items).not_to be_empty
+    expect(described_class.call(rectifier)).to eq(0)
+    expect(PerformedProcedure.where(exam_provider_id: provider.id).count).to eq(0)
+  end
+
+  it "laudo retirado (withdrawn) com itens não cria" do
+    report = pending_report!(received_requisition!(provider: provider, exams: [ glucose ]), status: "withdrawn")
+    expect(report.status).to eq("withdrawn")
+    expect(report.report_items).not_to be_empty
+    expect(described_class.call(report)).to eq(0)
+    expect(PerformedProcedure.where(exam_provider_id: provider.id).count).to eq(0)
+  end
+
+  it "laudo pendente de assinatura com itens não cria" do
+    report = pending_report!(received_requisition!(provider: provider, exams: [ glucose ]))
+    expect(report.report_items).not_to be_empty
+    expect(described_class.call(report)).to eq(0)
+    expect(PerformedProcedure.where(exam_provider_id: provider.id).count).to eq(0)
   end
 
   it "E10: original já retificado antes do consumidor rodar ainda gera a produção, uma vez" do
