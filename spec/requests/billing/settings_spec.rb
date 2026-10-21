@@ -85,4 +85,22 @@ RSpec.describe "Faturamento — configuração", type: :request do
     json_put "/billing/settings", valid.merge(origin_name: "Æ" * 15)
     expect(response).to have_http_status(:ok)
   end
+
+  # Re-revisão: a largura vale pelo MAIOR entre o texto cru (coluna do banco) e o
+  # transliterado (arquivo); obrigatório sem nenhuma letra no arquivo é ausente.
+  it "dígitos e pontuação contam na largura crua; obrigatório sem letra é field_required" do
+    stepped_up!(admin)
+    {
+      { origin_acronym: "SMS-001" } => { "error" => "too_long", "field" => "origin_acronym" },
+      { origin_name: "SMS #{'1' * 30}" } => { "error" => "too_long", "field" => "origin_name" },
+      { destination_body: "Secretaria #{'9' * 35}" } => { "error" => "too_long", "field" => "destination_body" },
+      { origin_name: "123" } => { "error" => "field_required", "field" => "origin_name" },
+      { destination_body: "2ª - 3º" } => { "error" => "field_required", "field" => "destination_body" }
+    }.each do |over, error|
+      json_put "/billing/settings", valid.merge(over)
+      expect(response).to have_http_status(:unprocessable_entity), over.inspect
+      expect(json_body).to eq(error), over.inspect
+    end
+    expect(BillingSetting.count).to eq(0)
+  end
 end
