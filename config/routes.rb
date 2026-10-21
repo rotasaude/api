@@ -425,6 +425,14 @@ Rails.application.routes.draw do
     get  "procedures",            to: "procedures#index"
     post "procedures",            to: "procedures#create"
     post "procedures/:id/cancel", to: "procedures#cancel"
+    get  "periods",              to: "periods#index"
+    get  "periods/:id/pending",  to: "periods#pending"
+    post "periods/:id/close",    to: "periods#close"
+    post "periods/:id/reopen",   to: "periods#reopen"
+    get  "periods/:id/exports",  to: "exports#index"
+    get  "exports/:id/file",     to: "exports#file"
+    get  "settings",             to: "settings#show"
+    put  "settings",             to: "settings#update"
     patch "patients/:id/demographics", to: "patients#demographics"
   end
 

@@ -38,6 +38,25 @@ module Billing
     end
 
     def label(p, labels) = labels[[ p.sigtap_code, p.sigtap_competence ]] ||= Labels.procedure(p.sigtap_code, p.sigtap_competence)
+    # <billing_period> (contrato §2 com B11): id sempre; versão 0 antes do primeiro fechamento.
+    def period(period)
+      { id: period.id, establishment: Establishment.of(period).json, competence: period.competence, status: period.status,
+        version: period.version, closed_at: period.closed_at&.iso8601, closed_by: Screenings::Json.staff_name(period.closed_by_user),
+        reopened_reason: period.reopened_reason, summary: Summary.call(period) }
+    end
+
+    # Versão do arquivo (B9): `generated_by` é o nome.
+    def export(export)
+      { id: export.id, version: export.version, sha256: export.sha256, lines_bpa_i: export.lines_bpa_i, lines_bpa_c: export.lines_bpa_c,
+        generated_at: export.generated_at.iso8601, generated_by: Screenings::Json.staff_name(export.generated_by_user) }
+    end
+
+    # Configuração (contrato §6 com B10): sem linha, nulls.
+    def settings(setting)
+      { origin_name: setting&.origin_name, origin_acronym: setting&.origin_acronym, origin_cnpj: setting&.origin_cnpj,
+        destination_body: setting&.destination_body, management: setting&.management, updated_at: setting&.updated_at&.iso8601 }
+    end
+
     private_class_method :source_ref, :label
   end
 end
