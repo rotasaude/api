@@ -50,6 +50,8 @@ class AddProcedureBilling < ActiveRecord::Migration[8.1]
     add_check_constraint :billing_periods, "status::text = ANY (ARRAY['open'::text, 'closed'::text]) AND version >= 0", name: "ck_billing_periods_status"
     add_check_constraint :billing_periods, "status::text <> 'closed'::text OR (closed_at IS NOT NULL AND closed_by_user_id IS NOT NULL AND version >= 1)",
                          name: "ck_billing_periods_closed"
+    add_check_constraint :billing_periods, "num_nulls(reopened_reason, reopened_at, reopened_by_user_id) IN (0, 3)",
+                         name: "ck_billing_periods_reopened"
 
     create_table :billing_exports, id: :uuid do |t|
       t.references :billing_period, type: :uuid, null: false, foreign_key: true, index: false
@@ -119,7 +121,8 @@ class AddProcedureBilling < ActiveRecord::Migration[8.1]
                                                 "AND character::text = ANY (ARRAY[#{quoted(CHARACTERS)}]::text[]) " \
                                                 "AND status::text = ANY (ARRAY['recorded'::text, 'cancelled'::text])",
                          name: "ck_performed_procedures_domains"
-    add_check_constraint :performed_procedures, "(status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL AND cancel_reason IS NOT NULL)",
+    add_check_constraint :performed_procedures, "(status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL AND cancel_reason IS NOT NULL " \
+                                               "AND cancelled_by_user_id IS NOT NULL)",
                          name: "ck_performed_procedures_cancelled"
     add_check_constraint :performed_procedures, "(source::text <> 'attendance'::text OR attendance_id IS NOT NULL) " \
                                                 "AND (source::text <> 'consultation'::text OR consultation_id IS NOT NULL) " \

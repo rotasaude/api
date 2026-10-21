@@ -289,6 +289,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_900001) do
     t.index ["health_unit_id", "competence"], name: "idx_billing_periods_unit", unique: true, where: "(health_unit_id IS NOT NULL)"
     t.check_constraint "competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text", name: "ck_billing_periods_competence"
     t.check_constraint "num_nonnulls(health_unit_id, exam_provider_id) = 1", name: "ck_billing_periods_establishment"
+    t.check_constraint "num_nulls(reopened_reason, reopened_at, reopened_by_user_id) = ANY (ARRAY[0, 3])", name: "ck_billing_periods_reopened"
     t.check_constraint "status::text <> 'closed'::text OR closed_at IS NOT NULL AND closed_by_user_id IS NOT NULL AND version >= 1", name: "ck_billing_periods_closed"
     t.check_constraint "status::text = ANY (ARRAY['open'::text, 'closed'::text]) AND version >= 0", name: "ck_billing_periods_status"
   end
@@ -1910,7 +1911,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_900001) do
     t.index ["professional_user_id"], name: "index_performed_procedures_on_professional_user_id"
     t.check_constraint "(billing_period_id IS NULL) = (billing_competence IS NULL) AND (billing_competence IS NULL OR billing_competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text) AND (sigtap_competence IS NULL OR sigtap_competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text) AND (billing_export_id IS NULL OR billing_period_id IS NOT NULL)", name: "ck_performed_procedures_competences"
     t.check_constraint "(source::text <> 'attendance'::text OR attendance_id IS NOT NULL) AND (source::text <> 'consultation'::text OR consultation_id IS NOT NULL) AND (source::text <> 'lab_report'::text OR lab_report_item_id IS NOT NULL AND exam_provider_id IS NOT NULL)", name: "ck_performed_procedures_source_ref"
-    t.check_constraint "(status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL AND cancel_reason IS NOT NULL)", name: "ck_performed_procedures_cancelled"
+    t.check_constraint "(status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL AND cancel_reason IS NOT NULL AND cancelled_by_user_id IS NOT NULL)", name: "ck_performed_procedures_cancelled"
     t.check_constraint "NOT billable OR cardinality(blocking_reasons) = 0 AND instrument::text <> 'not_bpa'::text", name: "ck_performed_procedures_billable"
     t.check_constraint "num_nonnulls(health_unit_id, exam_provider_id) = 1", name: "ck_performed_procedures_establishment"
     t.check_constraint "quantity >= 1 AND quantity <= 999", name: "ck_performed_procedures_quantity"

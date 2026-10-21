@@ -41,6 +41,11 @@ RSpec.describe "Tabelas do faturamento (ADR 0039)" do
     refused(/ck_performed_procedures_establishment/) { raw_procedure!(unit: unit, patient: patient, professional: doctor, exam_provider: lab_provider!) }
     refused(/ck_performed_procedures_billable/) { procedure.update_columns(billable: true, blocking_reasons: %w[cid_required]) }
     refused(/ck_performed_procedures_cancelled/) { procedure.update_columns(status: "cancelled") }
+    # T3: cancelado sempre diz quem cancelou
+    fresh = raw_procedure!(unit: unit, patient: patient, professional: doctor)
+    refused(/ck_performed_procedures_cancelled/) do
+      conn.execute("UPDATE performed_procedures SET status = 'cancelled', cancel_reason = 'x', cancelled_at = now() WHERE id = '#{fresh.id}'")
+    end
     refused(/ck_performed_procedures_quantity/) { raw_procedure!(unit: unit, patient: patient, professional: doctor, quantity: 1000) }
   end
 
@@ -51,6 +56,10 @@ RSpec.describe "Tabelas do faturamento (ADR 0039)" do
     refused(/version only grows/) { period.update_columns(version: 0) }
     refused(/append-only/) { conn.execute("DELETE FROM billing_periods WHERE id = '#{period.id}'") }
     refused(/ck_billing_periods_establishment/) { BillingPeriod.create!(competence: "202609") }
+    # T3: reabertura com motivo, data e quem reabriu — os três ou nenhum.
+    refused(/ck_billing_periods_reopened/) { period.update_columns(reopened_at: Time.current) }
+    refused(/ck_billing_periods_reopened/) { period.update!(status: "open", reopened_reason: "CNS do médico corrigido no CNES", reopened_at: Time.current) }
+    period.update!(status: "open", reopened_reason: "CNS do médico corrigido no CNES", reopened_at: Time.current, reopened_by_user: doctor)
   end
 
   it "arquivo: nunca alterado nem apagado; conteúdo e motivos cifrados" do
