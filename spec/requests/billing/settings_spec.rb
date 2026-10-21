@@ -36,6 +36,20 @@ RSpec.describe "Faturamento — configuração", type: :request do
     expect(BillingSetting.current).to have_attributes(management: "E", origin_acronym: nil)
   end
 
+  it "PUT: faturista 403; procedure_billing desligado 403 feature_disabled; nada gravado" do
+    clerk = billing_clerk!
+    stepped_up!(clerk)
+    json_put "/billing/settings", valid
+    expect(response).to have_http_status(:forbidden)
+    expect(json_body).to eq("error" => "missing_role")
+    Platform::Features.set!(city: Current.city, key: "procedure_billing", enabled: false, maintainer: ledi_maintainer!)
+    stepped_up!(admin)
+    json_put "/billing/settings", valid
+    expect(response).to have_http_status(:forbidden)
+    expect(json_body).to eq("error" => "feature_disabled", "feature" => "procedure_billing")
+    expect(BillingSetting.count).to eq(0)
+  end
+
   it "recusas: campos, larguras, CNPJ alfanumérico e indicador; nada gravado" do
     stepped_up!(admin)
     {

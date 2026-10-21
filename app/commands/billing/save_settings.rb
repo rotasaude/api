@@ -3,7 +3,8 @@
 # 40) medidas no texto já transliterado como no arquivo (BpaFile.plain_text,
 # §13 E20) e recusadas, nunca cortadas, com o campo; CNPJ com DV válido e só
 # numérico (cbc-cgccpf é NUM: o CNPJ alfanumérico da Receita não cabe);
-# indicador M/E. Linha única (singleton).
+# indicador M/E. Linha única (singleton); a corrida de criação tenta de novo
+# uma vez só (T10).
 module Billing
   module SaveSettings
     LIMITS = { "origin_name" => 30, "origin_acronym" => 6, "destination_body" => 40 }.freeze
@@ -22,16 +23,27 @@ module Billing
       return Result.fail(:invalid_cnpj) unless cnpj&.match?(/\A\d{14}\z/)
       return Result.fail(:invalid_management) unless MANAGEMENT.include?(params["management"])
 
-      settings = nil
+      retried = false
+      begin
+        settings = save!(texts, cnpj, params["management"], by)
+      rescue ActiveRecord::RecordNotUnique
+        raise if retried # duas criações simultâneas da linha única: a segunda tentativa acha a linha; mais que isso não é corrida
+
+        retried = true
+        retry
+      end
+      Result.ok(settings: settings)
+    end
+
+    def save!(texts, cnpj, management, by)
       ApplicationRecord.transaction do
         settings = BillingSetting.lock.find_by(singleton: true) || BillingSetting.new(singleton: true)
         settings.update!(origin_name: texts["origin_name"], origin_acronym: texts["origin_acronym"].presence, origin_cnpj: cnpj,
-                         destination_body: texts["destination_body"], management: params["management"], updated_by_user: by)
+                         destination_body: texts["destination_body"], management: management, updated_by_user: by)
         DomainEvents.publish("billing_settings.changed", billing_setting_id: settings.id, user_id: by.id)
+        settings
       end
-      Result.ok(settings: settings)
-    rescue ActiveRecord::RecordNotUnique
-      retry
     end
+    private_class_method :save!
   end
 end
