@@ -84,7 +84,11 @@ RSpec.describe "Conferência pública de documento", type: :request do
       json_post "/v/lookup", short_code: "AAAAA-AAAAA", birth_year: 1980
     end
     expect([ response.status, JSON.parse(response.body) ]).to eq([ 429, { "error" => "rate_limited" } ])
-    expect(log).not_to include("AAAAA", "1980")
+    # O ano vai pelo nome do parâmetro: "1980" solto colide com duração,
+    # alocação ou horário do log (flaky na suíte completa de 2026-10-20).
+    expect(log).not_to include("AAAAA")
+    expect(log).not_to match(/birth_year\W{0,6}1980/)
+    expect(log).to match(/"birth_year"\s*=>\s*"\[FILTERED\]"/)
   end
 
   it "digital assinado: status valid, simulated, PDF assinado baixável; aguardando assinatura antes" do
