@@ -32,7 +32,7 @@ class CheckInsController < ApplicationController
         id: citizen.id, cpf_masked: citizen.cpf_masked, phone_masked: CitizenIdentity::Phone.mask(citizen.phone),
         verification_level: citizen.verification_level, names: Citizens::NamesJson.call(citizen),
         verification_id: citizen.active_verification&.id,
-        # D-U3 (contrato §13 E2): só se o paciente tem raça/cor e endereço, nunca o dado.
+        # D-U4 (contrato §13 E2): só se o paciente tem raça/cor e endereço, nunca o dado.
         **Patients::Demographics.flags(citizen.patient_id && Patient.find_by(id: citizen.patient_id))
       },
       triage: (triage && triage_json(triage)),
@@ -68,7 +68,7 @@ class CheckInsController < ApplicationController
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     attendance = result.payload[:attendance]
-    # D-U4 (contrato §13 E2): a validação ativa, para o balcão completar o cadastro; null no par só declarado.
+    # D-U3 (contrato §13 E2): a validação ativa, para o balcão completar o cadastro; null no par só declarado.
     render json: { attendance: attendance_json(attendance), verification_id: attendance.citizen.active_verification&.id },
            status: :created
   end
