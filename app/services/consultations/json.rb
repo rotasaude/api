@@ -20,6 +20,8 @@ module Consultations
                care_type: c.care_type&.to_s, evaluated_problems: evaluated_problems(c), conducts: conducts(c),
                exam_requests: exam_requests(c), started_at: c.started_at.iso8601, finalized_at: c.finalized_at&.iso8601,
                addenda: addenda_rows.map { |a| addendum(a, signature: blocks[[ "ConsultationAddendum", a.id ]]) } }
+      # ADR 0039 (contrato §3): procedimentos da consulta, só com procedure_billing ligado.
+      json[:procedures] = Billing::Json.attached(PerformedProcedure.where(consultation_id: c.id)) if Billing::Gate.enabled?(Current.city)
       json[:signature] = blocks[[ "Consultation", c.id ]] if c.finalized?
       json
     end

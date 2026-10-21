@@ -415,6 +415,18 @@ Rails.application.routes.draw do
     end
   end
 
+  # Módulo 22 (ADR 0039; contrato §3–§6): procedimentos e faturamento BPA.
+  # Prefixo único (uma entrada no proxy de dev do dashboard). Literais antes de `:id`.
+  scope "/billing", module: :billing, as: :billing do
+    get  "sigtap/search",         to: "sigtap#search"
+    post "patient_lookup",        to: "lookups#patient"
+    get  "establishments",        to: "lookups#establishments"
+    get  "professionals",         to: "lookups#professionals"
+    get  "procedures",            to: "procedures#index"
+    post "procedures",            to: "procedures#create"
+    post "procedures/:id/cancel", to: "procedures#cancel"
+  end
+
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
   # Prefixo único: uma entrada só no proxy de dev do dashboard. As rotas
   # literais (me, pending, cbo, links, shifts) PRECISAM vir antes de `:id`.

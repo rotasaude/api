@@ -89,13 +89,20 @@ class AttendancesController < ApplicationController
   end
 
   def attendance_json(a)
-    {
+    json = {
       id: a.id, triage_id: a.triage_id, appointment_id: a.appointment_id, health_unit_id: a.health_unit_id,
       unit_name: a.health_unit.name, status: a.status, checked_in_at: a.checked_in_at&.iso8601,
       check_in_method: a.check_in_method, called_at: a.called_at&.iso8601, outcome: a.outcome,
       referral_unit_name: a.referral_unit&.name, referral_note: a.referral_note, closed_at: a.closed_at&.iso8601,
       called_by_name: Screenings::Json.staff_name(a.called_by_user), closed_by_name: Screenings::Json.staff_name(a.closed_by_user)
     }
+    # ADR 0039 (contrato §3, E8): procedimentos do atendimento, só com procedure_billing ligado e só para
+    # profissional ou leitor do faturamento (a recepção não recebe a chave).
+    if Billing::Gate.enabled?(Current.city) && Current.user &&
+       (Current.user.has_role?("health_professional") || Billing::Access.reader?(Current.user))
+      json[:procedures] = Billing::Json.attached(PerformedProcedure.where(attendance_id: a.id))
+    end
+    json
   end
 
   def request_json(r)
