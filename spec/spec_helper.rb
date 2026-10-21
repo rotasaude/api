@@ -13,6 +13,23 @@
 # it.
 #
 # See https://rubydoc.info/gems/rspec-core/RSpec/Core/Configuration
+
+# Cobertura de código: precisa iniciar antes de carregar a app. O relatório
+# HTML sai em coverage/index.html (rodada parcial gera cobertura parcial).
+require "simplecov"
+SimpleCov.start do
+  add_filter %w[/spec/ /config/ /db/ /vendor/]
+  add_group "Controllers", "app/controllers"
+  add_group "Models", "app/models"
+  add_group "Commands", "app/commands"
+  add_group "Services", "app/services"
+  add_group "Policies", "app/policies"
+  add_group "Queries", "app/queries"
+  add_group "Jobs", "app/jobs"
+  add_group "GraphQL", "app/graphql"
+  add_group "Lib", "lib"
+end
+
 RSpec.configure do |config|
   # rspec-expectations config goes here. You can use an alternate
   # assertion/expectation library such as wrong or the stdlib/minitest

@@ -342,6 +342,7 @@ GEM
     ruby-progressbar (1.13.0)
     rubyzip (2.4.1)
     securerandom (0.4.1)
+    simplecov (1.3.2)
     simpleidn (0.2.3)
     solid_cache (1.0.10)
       activejob (>= 7.2)
@@ -418,6 +419,7 @@ DEPENDENCIES
   rspec-rails
   rubocop-rails-omakase
   rubyzip (~> 2.4)
+  simplecov
   solid_cache
   solid_queue
   thrift (~> 0.22)

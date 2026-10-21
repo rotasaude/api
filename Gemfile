@@ -33,6 +33,7 @@ group :test do
   gem "webmock"
   gem "vcr"
   gem "pdf-reader", "~> 2.12"   # ADR 0031: lê o impresso nas specs
+  gem "simplecov", require: false   # cobertura de código das specs
 end
 
 # JSON Schema (draft 2020-12) validation for the protocol definition gate (F-03.9).
