@@ -18,6 +18,8 @@
 # HTML sai em coverage/index.html (rodada parcial gera cobertura parcial).
 require "simplecov"
 SimpleCov.start do
+  # Sem eager_load em teste, arquivo que nenhum spec carrega sumiria da conta.
+  track_files "{app,lib}/**/*.rb"
   add_filter %w[/spec/ /config/ /db/ /vendor/]
   add_group "Controllers", "app/controllers"
   add_group "Models", "app/models"
