@@ -32,4 +32,28 @@ RSpec.describe Billing::Reopen do
     expect([ first, second ].map { |p| p.reload.billing_export_id }.uniq).to eq([ v2.id ])
     expect(period.reload).to have_attributes(status: "closed", version: 2)
   end
+
+  # Ruling do controlador (fix round 1): billing_export_id = "entrou no arquivo
+  # VIGENTE da competência". O que saiu do faturável no novo fechamento perde a
+  # ligação com a versão anterior (senão parece exportado e o cancelamento
+  # responderia already_exported).
+  it "re-fechamento: o que deixou de ser faturável perde a ligação com a versão anterior" do
+    dropped_patient = billing_patient!
+    dropped = recorded_procedure!(unit: unit, professional: doctor, patient: dropped_patient)
+    kept = recorded_procedure!(unit: unit, professional: doctor)
+    period = dropped.billing_period
+    v1 = Billing::Close.call(period: period, by: clerk).payload[:export]
+    sha = v1.sha256
+    expect(dropped.reload.billing_export_id).to eq(v1.id)
+    Billing::Reopen.call(period: period, reason: "Raça/cor do paciente estava errada", by: clerk)
+    dropped_patient.update!(race_color: nil)
+    v2 = Billing::Close.call(period: period.reload, by: clerk).payload[:export]
+    expect(v2).to have_attributes(version: 2, lines_bpa_i: 1)
+    expect(dropped.reload).to have_attributes(billing_export_id: nil, billable: false, blocking_reasons: %w[missing_race_color])
+    expect(kept.reload.billing_export_id).to eq(v2.id)
+    expect(v1.reload).to have_attributes(sha256: sha, lines_bpa_i: 2, version: 1)
+    expect(Billing::Pending.call(period).map { |item| item[:procedure_id] }).to eq([ dropped.id ])
+    expect(Billing::Summary.call(period.reload)).to include(pending: 1, bpa_i_lines: 1)
+    expect(Billing::Cancel.call(procedure: dropped, reason: "Lançado em duplicidade", by: clerk)).to be_ok
+  end
 end

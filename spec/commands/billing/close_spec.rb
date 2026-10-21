@@ -151,4 +151,40 @@ RSpec.describe Billing::Close do
     expect(line[247, 30]).to eq("BATEL".ljust(30))                         # 248–277 bairro
     expect(line[338, 11]).to eq(bare.cpf)
   end
+
+  it "mais de 999 folhas: too_many_sheets, competência aberta, nenhum arquivo e a crítica recalculada desfeita" do
+    newcomer = staff_with("novato-#{SecureRandom.hex(3)}@cidade.gov.br", "health_professional")
+    procedure = Billing::Record.call(patient: patient, establishment: Billing::Establishment.for_unit(unit), professional: newcomer, source: "manual",
+                                     recorded_by: clerk, params: { "performed_on" => today.iso8601, "sigtap_code" => "0301060029",
+                                                                   "quantity" => 1, "cid10" => "I10" }).payload[:procedure]
+    link_professional!(newcomer, unit, cbo: "225125")
+    allow(Billing::BpaFile).to receive(:build).and_raise(Billing::BpaFile::TooManySheets)
+    expect(described_class.call(period: period, by: clerk).reason).to eq(:too_many_sheets)
+    expect(period).to have_attributes(status: "open", version: 0)
+    expect(BillingExport.count).to eq(0)
+    expect(procedure.reload).to have_attributes(billable: false, cbo_code: nil, blocking_reasons: %w[missing_professional_cbo missing_professional_cns])
+    expect(DomainEvent.where(name: %w[billing_export.generated billing_period.closed])).to be_empty
+  end
+
+  # Telefone do par validado do wpda (sem o 55) nas posições 278–288.
+  it "o telefone do par do wpda entra no BPA-I" do
+    recorded_procedure!(unit: unit, professional: doctor, patient: patient)
+    phone = Citizen.find_by!(patient_id: patient.id).phone.delete_prefix("+55")
+    line = lines(described_class.call(period: period, by: clerk).payload[:export]).last
+    expect(line[277, 11]).to eq(phone.ljust(11))
+    expect(phone).to match(/\A\d{10,11}\z/)
+  end
+
+  # O bairro do par do wpda só completa a linha quando o paciente não tem
+  # bairro. No fechamento isso não acontece (D-U1: sem bairro = missing_address,
+  # fora do arquivo), então a prova é no Billing::Lines direto.
+  it "Lines: sem bairro no paciente, usa o bairro do par do wpda (248–277)" do
+    bare, citizen = exam_patient!(exam_seq!)
+    bare.update!(BillingHelpers::DEMOGRAPHICS.merge(address_district: nil))
+    citizen.update!(neighborhood: Neighborhood.create!(name: "Boqueirão", source: "manual"))
+    procedure = recorded_procedure!(unit: unit, professional: doctor, patient: bare)
+    built = Billing::Lines.build(period: period, establishment: Billing::Establishment.for_unit(unit), procedures: [ procedure.reload ],
+                                 settings: BillingSetting.current)
+    expect(built.bytes.split("\r\n").last[247, 30]).to eq("BOQUEIRAO".ljust(30))
+  end
 end
