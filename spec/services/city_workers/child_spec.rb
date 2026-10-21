@@ -99,6 +99,81 @@ RSpec.describe CityWorkers::Child do
     expect(prepare_in_fork(CityWorkers::Unit.city(slug))).to eq("error" => "CityWorkers::Child::CityUnavailable")
   end
 
+  # Os exemplos de fork acima provam o comportamento, mas um fork que sai com
+  # exit! não devolve cobertura. Estes repetem os ramos no próprio processo, com
+  # dublês para o que mexeria no processo do teste (grupo e conexão do Solid Queue).
+  describe ".prepare (in process)" do
+    before do
+      allow(Process).to receive(:setpgid)
+      allow(CityConnection).to receive(:ensure_pool)
+      allow(SolidQueue::Record).to receive(:establish_connection)
+    end
+
+    after { CityWorkers::Context.city_slug = nil }
+
+    it "points Solid Queue at the city's database and marks the process's city" do
+      options = described_class.prepare(CityWorkers::Unit.city(slug))
+
+      expect(Process).to have_received(:setpgid).with(0, 0)
+      expect(CityConnection).to have_received(:ensure_pool).with(city)
+      expect(SolidQueue::Record).to have_received(:establish_connection)
+        .with(having_attributes(database: TEST_CITY_B_DATABASE))
+      expect(CityWorkers::Context.city_slug).to eq(slug)
+      expect(options).to eq(mode: :fork, config_file: Rails.root.join("config/queue.yml"),
+                            recurring_schedule_file: Rails.root.join("config/recurring.yml"))
+    end
+
+    it "refuses an unknown or unavailable city before touching any connection" do
+      city.update!(status: "suspended")
+
+      expect { described_class.prepare(CityWorkers::Unit.city(slug)) }.to raise_error(described_class::CityUnavailable)
+      expect { described_class.prepare(CityWorkers::Unit.city("naoexiste")) }
+        .to raise_error(described_class::CityUnavailable)
+      expect(SolidQueue::Record).not_to have_received(:establish_connection)
+      expect(CityWorkers::Context.city_slug).to be_nil
+    end
+  end
+
+  describe ".run" do
+    let(:unit) { CityWorkers::Unit.city(slug) }
+
+    before { allow(described_class).to receive(:start_watchdog) }
+
+    it "starts the watchdog for the manager and enters the supervisor with the prepared options" do
+      allow(described_class).to receive(:prepare).with(unit).and_return(mode: :fork)
+      allow(SolidQueue::Supervisor).to receive(:start)
+
+      described_class.run(unit, manager_pid: 777)
+
+      expect(described_class).to have_received(:start_watchdog).with(777)
+      expect(SolidQueue::Supervisor).to have_received(:start).with(mode: :fork)
+    end
+
+    it "exits with one redacted line, no backtrace, when the boot fails" do
+      allow(described_class).to receive(:prepare)
+        .and_raise(described_class::CityUnavailable, "postgres://rota:segredo@db/x fora do ar")
+      allow(described_class).to receive(:exit!)
+
+      expect { described_class.run(unit, manager_pid: 777) }
+        .to output("[city_workers] city:#{slug}: não subiu (CityWorkers::Child::CityUnavailable): " \
+                   "postgres://***@db/x fora do ar\n").to_stderr
+      expect(described_class).to have_received(:exit!).with(1)
+    end
+  end
+
+  describe ".start_watchdog" do
+    before { stub_const("CityWorkers::Child::WATCHDOG_INTERVAL", 0.01) }
+
+    it "sends TERM to its own process once the manager is no longer the parent" do
+      allow(described_class).to receive(:orphaned?).with(777).and_return(false, true)
+      allow(Process).to receive(:kill)
+
+      expect(described_class.start_watchdog(777).join(2)).to be_truthy
+      expect(described_class).to have_received(:orphaned?).twice
+      expect(Process).to have_received(:kill).with("TERM", Process.pid).once
+    end
+  end
+
   # Important 2 (fix round 1): o watchdog em si roda numa thread com sleep(1) —
   # não vale a pena forkar uma árvore só para testar isso. O que importa testar
   # é a checagem pura que ele faz a cada volta.
