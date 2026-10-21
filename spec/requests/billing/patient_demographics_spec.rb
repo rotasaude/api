@@ -52,4 +52,21 @@ RSpec.describe "Faturamento — dados do paciente para o BPA-I", type: :request 
     expect(DomainEvent.where(name: "billing_patient.demographics_updated").sole.payload).to eq("patient_id" => patient.id, "user_id" => clerk.id)
     expect(closing_reasons(procedure)).to eq([])
   end
+
+  it "corpo sem nenhuma chave de dados do paciente: 422, nada gravado e nenhum evento" do
+    sign_in_as(clerk)
+    [ {}, { foo: "bar", name: "x" } ].each do |body|
+      json_patch "/billing/patients/#{patient.id}/demographics", body
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body).to eq("error" => "invalid_demographics")
+    end
+    expect(patient.reload).to have_attributes(race_color: nil, address_zip: nil, address_street: nil)
+    expect(DomainEvent.where(name: "billing_patient.demographics_updated")).to be_empty
+    sign_in_as(lab_admin!)
+    json_patch "/billing/patients/#{patient.id}/demographics", {}
+    expect(response).to have_http_status(:forbidden)
+    sign_in_as(clerk)
+    json_patch "/billing/patients/#{SecureRandom.uuid}/demographics", {}
+    expect(response).to have_http_status(:not_found)
+  end
 end

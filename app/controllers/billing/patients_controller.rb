@@ -9,7 +9,10 @@ module Billing
       patient = uuid?(params[:id]) ? Patient.find_by(id: params[:id]) : nil
       return not_found unless patient
 
-      parsed = Patients::Demographics.parse(params.to_unsafe_h.slice(*Patient::DEMOGRAPHICS))
+      attrs = params.to_unsafe_h.slice(*Patient::DEMOGRAPHICS)
+      return render_error("invalid_demographics") if attrs.empty? # sem chave: nada a gravar, nada a auditar
+
+      parsed = Patients::Demographics.parse(attrs)
       return render_failure(parsed) if parsed.failure?
 
       result = ApplicationRecord.transaction do
