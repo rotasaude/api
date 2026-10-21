@@ -17,15 +17,23 @@ module Billing
     LENGTHS = { "01" => 130, "02" => 48, "03" => 351 }.freeze
 
     class TooManySheets < StandardError
-        def initialize(message = "excede 999 folhas") = super
-      end
+      def initialize(message = "excede 999 folhas") = super
+    end
 
     Header = Data.define(:competence, :origin_name, :origin_acronym, :origin_cnpj, :destination_body, :management)
     CLine = Data.define(:cnes, :competence, :cbo, :procedure, :age, :quantity)
     ILine = Data.define(:key, :cnes, :competence, :professional_cns, :cbo, :performed_on, :procedure, :sex, :ibge, :cid10, :age, :quantity,
                         :character, :name, :birth_date, :race_color, :ethnicity, :zip, :street, :number, :complement, :district, :phone,
-                        :cpf)
-    Built = Data.define(:bytes, :control, :lines_bpa_c, :lines_bpa_i, :sheets)
+                        :cpf) do
+      # LGPD: nunca CPF, CNS, nome ou endereço em inspect/log.
+      def inspect = "#<Billing::BpaFile::ILine key=#{key} competence=#{competence} procedure=#{procedure}>"
+      alias_method :to_s, :inspect
+    end
+    Built = Data.define(:bytes, :control, :lines_bpa_c, :lines_bpa_i, :sheets) do
+      # LGPD: o conteúdo do arquivo nunca aparece em inspect/log.
+      def inspect = "#<Billing::BpaFile::Built lines_bpa_c=#{lines_bpa_c} lines_bpa_i=#{lines_bpa_i} sheets=#{sheets} control=#{control} size=#{bytes.bytesize}>"
+      alias_method :to_s, :inspect
+    end
 
     module_function
 
