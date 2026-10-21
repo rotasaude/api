@@ -118,7 +118,13 @@ module CityEncryption
     [ LabReport, :rectification_contacts ],
     [ LabCriticalNotice, :notified_person ],
     [ LabQcException, :justification ],
-    [ LabQcReviewItem, :note ]
+    [ LabQcReviewItem, :note ],
+    # ADR 0039: faturamento e dados do paciente para o BPA-I.
+    [ PerformedProcedure, :cancel_reason ],
+    [ BillingPeriod, :reopened_reason ],
+    [ BillingExport, :file ],
+    [ Patient, :race_color ], [ Patient, :ethnicity ], [ Patient, :address_zip ], [ Patient, :address_street ],
+    [ Patient, :address_number ], [ Patient, :address_complement ], [ Patient, :address_district ]
   ].freeze
 
   module_function

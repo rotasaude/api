@@ -1022,7 +1022,8 @@ $do$;
 -- (nomes, nascimento, sexo) mudam livremente (Patients::Resolve).
 CREATE OR REPLACE FUNCTION rota_patient_guard() RETURNS trigger AS $fn$
 DECLARE
-  encrypted text[] := ARRAY['cpf', 'full_name', 'social_name', 'mother_name', 'birth_date', 'sex'];
+  encrypted text[] := ARRAY['cpf', 'full_name', 'social_name', 'mother_name', 'birth_date', 'sex', 'race_color', 'ethnicity',
+                            'address_zip', 'address_street', 'address_number', 'address_complement', 'address_district'];
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'patients is append-only: DELETE refused';
@@ -1906,6 +1907,76 @@ BEGIN
                                 'lab_qc_runs', 'lab_qc_values', 'lab_qc_rules', 'lab_qc_blocks', 'lab_qc_exceptions',
                                 'lab_qc_review_items', 'lab_eqa_rounds', 'lab_eqa_annual_reports', 'lab_supplies', 'lab_supply_lots',
                                 'lab_supply_movements', 'lab_supply_in_use'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;
+
+-- Módulo 22 (ADR 0039): o procedimento realizado só anda na crítica
+-- (recalculada no fechamento), no cancelamento (uma vez) e no arquivo que o
+-- incluiu; o CBO só nasce de NULL; a re-cifra regrava só o motivo.
+CREATE OR REPLACE FUNCTION rota_performed_procedure_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['instrument', 'billable', 'blocking_reasons', 'sigtap_competence', 'sigtap_fallback', 'cbo_code',
+                         'status', 'cancel_reason', 'cancelled_at', 'cancelled_by_user_id', 'billing_export_id', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'performed_procedures is append-only: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - 'cancel_reason') = (to_jsonb(OLD) - 'cancel_reason') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'performed_procedures: clinical content is immutable';
+  END IF;
+  IF OLD.cbo_code IS NOT NULL AND NEW.cbo_code IS DISTINCT FROM OLD.cbo_code THEN
+    RAISE EXCEPTION 'performed_procedures: cbo_code only fills once';
+  END IF;
+  IF OLD.status = 'cancelled' AND ROW(NEW.status, NEW.cancel_reason, NEW.cancelled_at, NEW.cancelled_by_user_id)
+       IS DISTINCT FROM ROW(OLD.status, OLD.cancel_reason, OLD.cancelled_at, OLD.cancelled_by_user_id) THEN
+    RAISE EXCEPTION 'performed_procedures: a cancellation is final';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Competência: estabelecimento e competência imutáveis; a versão só cresce.
+CREATE OR REPLACE FUNCTION rota_billing_period_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['status', 'version', 'closed_at', 'closed_by_user_id', 'reopened_reason', 'reopened_at',
+                         'reopened_by_user_id', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'billing_periods is append-only: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'billing_periods: establishment and competence are immutable';
+  END IF;
+  IF NEW.version < OLD.version THEN
+    RAISE EXCEPTION 'billing_periods: version only grows';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.performed_procedures') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS performed_procedures_guard ON performed_procedures';
+    EXECUTE 'CREATE TRIGGER performed_procedures_guard BEFORE UPDATE OR DELETE ON performed_procedures
+      FOR EACH ROW EXECUTE FUNCTION rota_performed_procedure_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS billing_periods_guard ON billing_periods';
+    EXECUTE 'CREATE TRIGGER billing_periods_guard BEFORE UPDATE OR DELETE ON billing_periods
+      FOR EACH ROW EXECUTE FUNCTION rota_billing_period_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS billing_exports_reencryption_only ON billing_exports';
+    EXECUTE 'CREATE TRIGGER billing_exports_reencryption_only BEFORE UPDATE OR DELETE ON billing_exports
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''file'')';
+    FOREACH item IN ARRAY ARRAY['performed_procedures', 'billing_periods', 'billing_exports'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
                      item || '_append_only_truncate', item);

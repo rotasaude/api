@@ -85,6 +85,15 @@ RSpec.describe CitySchema do
                              *append_only, *no_delete, *truncate)
   end
 
+  # Módulo 22 (ADR 0039): o dump não representa trigger; um banco de cidade novo
+  # (dump + city_triggers.sql) tem de nascer com as guardas do faturamento.
+  it "loads the 22 billing triggers into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+    truncate = %w[performed_procedures billing_periods billing_exports].map { |t| "#{t}_append_only_truncate" }
+
+    expect(names).to include("performed_procedures_guard", "billing_periods_guard", "billing_exports_reencryption_only", *truncate)
+  end
+
   it "backfills versions below the highest recorded one and never records a higher one" do
     ScratchDatabases.create!(scratch)
     url = ScratchDatabases.url(scratch)

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_21_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -250,6 +250,62 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
     t.datetime "updated_at", null: false
     t.index ["email"], name: "index_authors_on_email", unique: true
     t.index ["token"], name: "index_authors_on_token", unique: true
+  end
+
+  create_table "billing_exports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "billing_period_id", null: false
+    t.string "cnes", limit: 7, null: false
+    t.string "competence", limit: 6, null: false
+    t.integer "control_field", null: false
+    t.datetime "created_at", null: false
+    t.text "file", null: false
+    t.datetime "generated_at", null: false
+    t.uuid "generated_by_user_id", null: false
+    t.integer "lines_bpa_c", null: false
+    t.integer "lines_bpa_i", null: false
+    t.string "sha256", limit: 64, null: false
+    t.integer "sheets", null: false
+    t.integer "version", null: false
+    t.index ["billing_period_id", "version"], name: "idx_billing_exports_version", unique: true
+    t.check_constraint "cnes::text ~ '^[0-9]{7}$'::text AND competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text AND sha256::text ~ '^[0-9a-f]{64}$'::text", name: "ck_billing_exports_format"
+    t.check_constraint "version >= 1 AND lines_bpa_c >= 0 AND lines_bpa_i >= 0 AND (lines_bpa_c + lines_bpa_i) >= 1 AND sheets >= 1 AND sheets <= 999 AND control_field >= 1111 AND control_field <= 2221", name: "ck_billing_exports_numbers"
+  end
+
+  create_table "billing_periods", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "closed_at"
+    t.uuid "closed_by_user_id"
+    t.string "competence", limit: 6, null: false
+    t.datetime "created_at", null: false
+    t.uuid "exam_provider_id"
+    t.uuid "health_unit_id"
+    t.datetime "reopened_at"
+    t.uuid "reopened_by_user_id"
+    t.text "reopened_reason"
+    t.string "status", default: "open", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 0, null: false
+    t.index ["competence"], name: "idx_billing_periods_competence"
+    t.index ["exam_provider_id", "competence"], name: "idx_billing_periods_lab", unique: true, where: "(exam_provider_id IS NOT NULL)"
+    t.index ["health_unit_id", "competence"], name: "idx_billing_periods_unit", unique: true, where: "(health_unit_id IS NOT NULL)"
+    t.check_constraint "competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text", name: "ck_billing_periods_competence"
+    t.check_constraint "num_nonnulls(health_unit_id, exam_provider_id) = 1", name: "ck_billing_periods_establishment"
+    t.check_constraint "status::text <> 'closed'::text OR closed_at IS NOT NULL AND closed_by_user_id IS NOT NULL AND version >= 1", name: "ck_billing_periods_closed"
+    t.check_constraint "status::text = ANY (ARRAY['open'::text, 'closed'::text]) AND version >= 0", name: "ck_billing_periods_status"
+  end
+
+  create_table "billing_settings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "destination_body", limit: 40, null: false
+    t.string "management", limit: 1, null: false
+    t.string "origin_acronym", limit: 6
+    t.string "origin_cnpj", limit: 14, null: false
+    t.string "origin_name", limit: 30, null: false
+    t.boolean "singleton", default: true, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["singleton"], name: "idx_billing_settings_singleton", unique: true
+    t.check_constraint "origin_cnpj::text ~ '^[0-9]{14}$'::text AND (management::text = ANY (ARRAY['M'::text, 'E'::text]))", name: "ck_billing_settings_values"
+    t.check_constraint "singleton", name: "ck_billing_settings_singleton"
   end
 
   create_table "campaign_recipients", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1592,7 +1648,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'campaign_manager'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "neighborhood_coverages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1773,11 +1829,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
   end
 
   create_table "patients", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "address_complement"
+    t.text "address_district"
+    t.text "address_number"
+    t.text "address_street"
+    t.text "address_zip"
     t.text "birth_date"
     t.string "cpf", null: false
     t.datetime "created_at", null: false
+    t.text "ethnicity"
     t.text "full_name"
     t.text "mother_name"
+    t.text "race_color"
     t.text "sex"
     t.text "social_name"
     t.datetime "updated_at", null: false
@@ -1804,6 +1867,55 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
     t.string "signature_digest", limit: 64, null: false
     t.index ["expires_at"], name: "index_pec_signature_uses_on_expires_at"
     t.index ["signature_digest"], name: "index_pec_signature_uses_on_signature_digest", unique: true
+  end
+
+  create_table "performed_procedures", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "attendance_id"
+    t.string "authorization_number", limit: 13
+    t.boolean "billable", null: false
+    t.string "billing_competence", limit: 6
+    t.uuid "billing_export_id"
+    t.uuid "billing_period_id"
+    t.string "blocking_reasons", default: [], null: false, array: true
+    t.text "cancel_reason"
+    t.datetime "cancelled_at"
+    t.uuid "cancelled_by_user_id"
+    t.string "cbo_code", limit: 6
+    t.string "character", default: "elective", null: false
+    t.string "cid10", limit: 4
+    t.uuid "consultation_id"
+    t.datetime "created_at", null: false
+    t.uuid "exam_provider_id"
+    t.uuid "health_unit_id"
+    t.string "instrument", null: false
+    t.uuid "lab_report_item_id"
+    t.boolean "late", default: false, null: false
+    t.uuid "patient_id", null: false
+    t.date "performed_on", null: false
+    t.uuid "professional_user_id", null: false
+    t.integer "quantity", null: false
+    t.uuid "recorded_by_user_id"
+    t.string "sigtap_code", limit: 10, null: false
+    t.string "sigtap_competence", limit: 6
+    t.boolean "sigtap_fallback", default: false, null: false
+    t.string "source", null: false
+    t.string "status", default: "recorded", null: false
+    t.datetime "updated_at", null: false
+    t.index ["attendance_id"], name: "index_performed_procedures_on_attendance_id"
+    t.index ["billing_export_id"], name: "index_performed_procedures_on_billing_export_id"
+    t.index ["billing_period_id", "status"], name: "idx_performed_procedures_period"
+    t.index ["consultation_id"], name: "index_performed_procedures_on_consultation_id"
+    t.index ["lab_report_item_id"], name: "idx_performed_procedures_lab_item", unique: true, where: "(lab_report_item_id IS NOT NULL)"
+    t.index ["patient_id", "created_at"], name: "idx_performed_procedures_patient"
+    t.index ["professional_user_id"], name: "index_performed_procedures_on_professional_user_id"
+    t.check_constraint "(billing_period_id IS NULL) = (billing_competence IS NULL) AND (billing_competence IS NULL OR billing_competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text) AND (sigtap_competence IS NULL OR sigtap_competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text) AND (billing_export_id IS NULL OR billing_period_id IS NOT NULL)", name: "ck_performed_procedures_competences"
+    t.check_constraint "(source::text <> 'attendance'::text OR attendance_id IS NOT NULL) AND (source::text <> 'consultation'::text OR consultation_id IS NOT NULL) AND (source::text <> 'lab_report'::text OR lab_report_item_id IS NOT NULL AND exam_provider_id IS NOT NULL)", name: "ck_performed_procedures_source_ref"
+    t.check_constraint "(status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL AND cancel_reason IS NOT NULL)", name: "ck_performed_procedures_cancelled"
+    t.check_constraint "NOT billable OR cardinality(blocking_reasons) = 0 AND instrument::text <> 'not_bpa'::text", name: "ck_performed_procedures_billable"
+    t.check_constraint "num_nonnulls(health_unit_id, exam_provider_id) = 1", name: "ck_performed_procedures_establishment"
+    t.check_constraint "quantity >= 1 AND quantity <= 999", name: "ck_performed_procedures_quantity"
+    t.check_constraint "sigtap_code::text ~ '^[0-9]{10}$'::text AND (cid10 IS NULL OR cid10::text ~ '^[A-Z][0-9]{2}[0-9X]?$'::text) AND (cbo_code IS NULL OR cbo_code::text ~ '^[0-9]{6}$'::text)", name: "ck_performed_procedures_codes"
+    t.check_constraint "source::text = ANY (ARRAY['attendance'::text, 'consultation'::text, 'lab_report'::text, 'manual'::text]) AND (instrument::text = ANY (ARRAY['bpa_i'::text, 'bpa_c'::text, 'not_bpa'::text])) AND (character::text = ANY (ARRAY['elective'::text, 'urgent'::text])) AND (status::text = ANY (ARRAY['recorded'::text, 'cancelled'::text]))", name: "ck_performed_procedures_domains"
   end
 
   create_table "prescription_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2460,6 +2572,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
   add_foreign_key "attendances", "users", column: "called_by_user_id"
   add_foreign_key "attendances", "users", column: "checked_in_by_user_id"
   add_foreign_key "attendances", "users", column: "closed_by_user_id"
+  add_foreign_key "billing_exports", "billing_periods"
+  add_foreign_key "billing_exports", "users", column: "generated_by_user_id"
+  add_foreign_key "billing_periods", "exam_providers"
+  add_foreign_key "billing_periods", "health_units"
+  add_foreign_key "billing_periods", "users", column: "closed_by_user_id"
+  add_foreign_key "billing_periods", "users", column: "reopened_by_user_id"
+  add_foreign_key "billing_settings", "users", column: "updated_by_user_id"
   add_foreign_key "campaign_recipients", "campaigns"
   add_foreign_key "campaign_recipients", "citizens"
   add_foreign_key "campaigns", "users", column: "cancelled_by_user_id"
@@ -2662,6 +2781,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_900001) do
   add_foreign_key "patient_problems", "patients"
   add_foreign_key "patient_profile_divergences", "citizens"
   add_foreign_key "patient_profile_divergences", "patients"
+  add_foreign_key "performed_procedures", "attendances"
+  add_foreign_key "performed_procedures", "billing_exports"
+  add_foreign_key "performed_procedures", "billing_periods"
+  add_foreign_key "performed_procedures", "consultations"
+  add_foreign_key "performed_procedures", "exam_providers"
+  add_foreign_key "performed_procedures", "health_units"
+  add_foreign_key "performed_procedures", "lab_report_items"
+  add_foreign_key "performed_procedures", "patients"
+  add_foreign_key "performed_procedures", "users", column: "cancelled_by_user_id"
+  add_foreign_key "performed_procedures", "users", column: "professional_user_id"
+  add_foreign_key "performed_procedures", "users", column: "recorded_by_user_id"
   add_foreign_key "prescription_items", "clinical_documents"
   add_foreign_key "prescription_items", "nursing_protocol_version_items"
   add_foreign_key "prescription_items", "patient_problems", column: "reason_problem_id"

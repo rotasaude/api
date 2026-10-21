@@ -9,6 +9,12 @@ class Patient < ApplicationRecord
   encrypts :mother_name
   encrypts :birth_date
   encrypts :sex
+  # D-U1 (ADR 0039; contrato §12): raça/cor (01..05, sem 99), etnia (só
+  # indígena) e endereço do paciente para o BPA-I. Escritos pela recepção e
+  # pelo faturista (Patients::Demographics); apagados na exclusão do cadastro.
+  RACE_COLORS = %w[01 02 03 04 05].freeze
+  DEMOGRAPHICS = %w[race_color ethnicity address_zip address_street address_number address_complement address_district].freeze
+  encrypts :race_color, :ethnicity, :address_zip, :address_street, :address_number, :address_complement, :address_district
 
   has_many :citizens, dependent: :restrict_with_error
   has_many :problems, class_name: "PatientProblem", dependent: :restrict_with_error

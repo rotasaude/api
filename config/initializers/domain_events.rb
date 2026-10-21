@@ -197,4 +197,10 @@ Rails.application.config.to_prepare do
   %w[lab_qc_run.evaluated lab_qc_block.opened lab_qc_block.closed lab_qc_block.action_recorded lab_qc_exception.granted
      lab_qc_review.decided lab_qc_target.accepted lab_qc_rule.changed lab_eqa_round.recorded lab_eqa_annual_report.recorded lab_supply_lot.received
      lab_supply_lot.traced lab_supply_movement.recorded lab_supply_in_use.changed].each { |name| DomainEvents.bind name, to: [] }
+
+  # Módulo 22 (ADR 0039): procedimentos e faturamento, só trilha, só ids (e
+  # source/billable/version). Nunca CPF, CNS, nome, motivo ou arquivo.
+  %w[performed_procedure.recorded performed_procedure.cancelled billing_period.closed billing_period.reopened
+     billing_period.pending_viewed billing_export.generated billing_export.downloaded billing_settings.changed
+     billing_patient.looked_up].each { |name| DomainEvents.bind name, to: [] }
 end

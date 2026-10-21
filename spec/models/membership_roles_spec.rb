@@ -31,4 +31,11 @@ RSpec.describe Membership do
     user = User.create!(email_address: "analise@cidade.gov.br", password: "senha-segura-123")
     expect { described_class.create!(user: user, role: "analyst", granted_at: Time.current) }.not_to raise_error
   end
+
+  # ADR 0039: o faturista baixa arquivo com dado de paciente — step-up para
+  # conceder; o mantenedor não concede.
+  it "billing_clerk é papel privilegiado" do
+    expect(described_class::ROLES).to include("billing_clerk")
+    expect(described_class::PRIVILEGED_ROLES).to include("billing_clerk")
+  end
 end
