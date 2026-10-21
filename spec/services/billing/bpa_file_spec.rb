@@ -81,7 +81,7 @@ RSpec.describe Billing::BpaFile do
   it "999 folhas cabem; 1000 recusam (nunca corta)" do
     many = ->(n) { Array.new(n) { |i| described_class::CLine.new(cnes: "1234567", competence: "202609", cbo: "221205", procedure: "0202010473", age: i % 131, quantity: 1) } }
     expect(described_class.build(header: HEADER, c_lines: many.call(999 * 20), i_lines: []).sheets).to eq(999)
-    expect { described_class.build(header: HEADER, c_lines: many.call(999 * 20 + 1), i_lines: []) }.to raise_error(described_class::TooManySheets)
+    expect { described_class.build(header: HEADER, c_lines: many.call(999 * 20 + 1), i_lines: []) }.to raise_error(described_class::TooManySheets, "excede 999 folhas")
   end
 
   it "campo que não cabe levanta ArgumentError sem o valor na mensagem" do
@@ -92,7 +92,7 @@ RSpec.describe Billing::BpaFile do
   it "inspect/to_s de ILine e Built não vazam CPF, nome, CNS nem o conteúdo do arquivo" do
     line = i_lines.first
     built = described_class.build(header: HEADER, c_lines: [], i_lines: [ line ])
-    texts = [ line.inspect, line.to_s, "#{line}", built.inspect, built.to_s ]
+    texts = [ line.inspect, line.to_s, "#{line}", built.inspect, built.to_s, PP.pp(line, +""), PP.pp(built, +"") ]
     secrets = CPFS + NAMES + PROFESSIONALS.map(&:first) + [ "RUA XV", "Rua XV" ]
     texts.each { |t| secrets.each { |v| expect(t).not_to include(v) } }
     expect(built.inspect).to include("size=#{built.bytes.bytesize}")

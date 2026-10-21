@@ -28,11 +28,13 @@ module Billing
       # LGPD: nunca CPF, CNS, nome ou endereço em inspect/log.
       def inspect = "#<Billing::BpaFile::ILine key=#{key} competence=#{competence} procedure=#{procedure}>"
       alias_method :to_s, :inspect
+      def pretty_print(q) = q.text(inspect) # Data#pretty_print ignora o inspect
     end
     Built = Data.define(:bytes, :control, :lines_bpa_c, :lines_bpa_i, :sheets) do
       # LGPD: o conteúdo do arquivo nunca aparece em inspect/log.
       def inspect = "#<Billing::BpaFile::Built lines_bpa_c=#{lines_bpa_c} lines_bpa_i=#{lines_bpa_i} sheets=#{sheets} control=#{control} size=#{bytes.bytesize}>"
       alias_method :to_s, :inspect
+      def pretty_print(q) = q.text(inspect) # Data#pretty_print ignora o inspect
     end
 
     module_function

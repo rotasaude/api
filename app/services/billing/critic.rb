@@ -17,6 +17,7 @@ module Billing
       # LGPD: o inspect padrão do Data imprimiria CNS e paciente (CPF, nome).
       def inspect = "#<#{self.class.name} sigtap_code=#{sigtap_code} performed_on=#{performed_on}>"
       alias_method :to_s, :inspect
+      def pretty_print(q) = q.text(inspect) # Data#pretty_print ignora o inspect
     end
     Outcome = Data.define(:instrument, :billable, :reasons, :sigtap_competence, :fallback, :label)
 
