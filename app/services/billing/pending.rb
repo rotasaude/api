@@ -1,7 +1,8 @@
 # Pendências da competência (contrato §5 com B6; plano, Desvio 8): crítica
 # recalculada na hora (sem gravar); entra o procedimento gravado, BPA, não
 # faturável e de estabelecimento não-APS; `fix` pelo primeiro motivo
-# corrigível. A trilha (tem paciente) é do controlador.
+# corrigível. A trilha (tem paciente) é do controlador. `outcomes` é o mesmo
+# recálculo que o resumo da competência aberta usa (§13 E17).
 module Billing
   module Pending
     FIX = { "missing_professional_cns" => "professional", "missing_professional_cbo" => "professional", "missing_patient_id" => "patient",
@@ -11,12 +12,9 @@ module Billing
     module_function
 
     def call(period)
-      establishment = Establishment.of(BillingPeriod.find(period.id)) # cadastro de agora, nunca a associação em cache
       labels = {}
-      PerformedProcedure.recorded.where(billing_period_id: period.id).includes(:patient, professional_user: :professional)
-                        .order(:performed_on, :id).filter_map do |procedure|
-        outcome = Recalculate.outcome(procedure, establishment: establishment)
-        next if outcome.billable || outcome.instrument == "not_bpa" || outcome.reasons.include?("establishment_is_aps")
+      outcomes(period).filter_map do |procedure, outcome|
+        next unless listed?(outcome)
 
         label = labels[[ procedure.sigtap_code, outcome.sigtap_competence ]] ||= Labels.procedure(procedure.sigtap_code, outcome.sigtap_competence)
         { procedure_id: procedure.id, reasons: outcome.reasons, fix: outcome.reasons.filter_map { |r| FIX[r] }.first || "procedure",
@@ -25,5 +23,14 @@ module Billing
           professional: { user_id: procedure.professional_user_id, name: Screenings::Json.staff_name(procedure.professional_user) } }
       end
     end
+
+    # [procedimento, crítica recalculada] dos procedimentos gravados da competência, sem gravar.
+    def outcomes(period)
+      establishment = Establishment.of(BillingPeriod.find(period.id)) # cadastro de agora, nunca a associação em cache
+      PerformedProcedure.recorded.where(billing_period_id: period.id).includes(:patient, professional_user: :professional)
+                        .order(:performed_on, :id).map { |procedure| [ procedure, Recalculate.outcome(procedure, establishment: establishment) ] }
+    end
+
+    def listed?(outcome) = !outcome.billable && outcome.instrument != "not_bpa" && !outcome.reasons.include?("establishment_is_aps")
   end
 end
