@@ -169,6 +169,20 @@ RSpec.describe "Faturamento — procedimentos", type: :request do
     expect(json_body["procedures"]).to eq([])
   end
 
+  # §13 E19: a lista mostra nome de paciente; uma trilha de leitura por requisição com resultado, só ids.
+  it "lista grava uma trilha por requisição com os ids da página; lista vazia não grava" do
+    first = recorded_procedure!(unit: unit, professional: doctor, patient: patient)
+    second = recorded_procedure!(unit: unit, professional: doctor, patient: patient)
+    sign_in_as(clerk)
+    expect { get "/billing/procedures" }.to change { DomainEvent.where(name: "billing_procedures.listed").count }.by(1)
+    event = DomainEvent.where(name: "billing_procedures.listed").sole
+    expect(event.payload.keys).to match_array(%w[user_id procedure_ids])
+    expect(event.payload).to include("user_id" => clerk.id)
+    expect(event.payload["procedure_ids"]).to eq([ second.id, first.id ])
+    expect { get "/billing/procedures", params: { competence: "200001" } }.not_to(change { DomainEvent.where(name: "billing_procedures.listed").count })
+    expect(json_body["procedures"]).to eq([])
+  end
+
   it "lista por atendimento: quem tem vínculo na unidade vê todos os do atendimento; sem vínculo 403" do
     attendance = walk_in_attendance!(unit, citizen: pair.last)
     sign_in_as(doctor)

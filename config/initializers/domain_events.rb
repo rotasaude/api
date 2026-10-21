@@ -203,8 +203,10 @@ Rails.application.config.to_prepare do
      lab_supply_lot.traced lab_supply_movement.recorded lab_supply_in_use.changed].each { |name| DomainEvents.bind name, to: [] }
 
   # Módulo 22 (ADR 0039): procedimentos e faturamento, só trilha, só ids (e
-  # source/billable/version). Nunca CPF, CNS, nome, motivo ou arquivo.
+  # source/billable/version; procedure_ids na leitura da lista, §13 E19).
+  # Nunca CPF, CNS, nome, motivo ou arquivo.
   %w[performed_procedure.recorded performed_procedure.cancelled billing_period.closed billing_period.reopened
      billing_period.pending_viewed billing_export.generated billing_export.downloaded billing_settings.changed
-     billing_patient.looked_up billing_patient.demographics_updated patient.demographics_updated].each { |name| DomainEvents.bind name, to: [] }
+     billing_patient.looked_up billing_patient.demographics_updated patient.demographics_updated
+     billing_procedures.listed].each { |name| DomainEvents.bind name, to: [] }
 end

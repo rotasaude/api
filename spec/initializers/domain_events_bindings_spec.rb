@@ -199,7 +199,7 @@ RSpec.describe "billing event bindings (ADR 0039)" do
   it "declares every billing event with no consumer" do
     names = %w[performed_procedure.recorded performed_procedure.cancelled billing_period.closed billing_period.reopened
                billing_period.pending_viewed billing_export.generated billing_export.downloaded billing_settings.changed
-               billing_patient.looked_up billing_patient.demographics_updated patient.demographics_updated]
+               billing_patient.looked_up billing_patient.demographics_updated patient.demographics_updated billing_procedures.listed]
     expect(DomainEvents.registry.keys).to include(*names)
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end

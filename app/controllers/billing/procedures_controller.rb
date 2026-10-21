@@ -3,8 +3,8 @@
 # patient_id, se vier, tem de bater), avulso do profissional na própria
 # unidade ou lançamento do faturista (professional_user_id e cbo_code só
 # dele); listar (faturista e admin tudo; profissional os próprios por
-# paciente, ou os do atendimento da unidade em que tem vínculo); cancelar
-# (o profissional os próprios; o faturista qualquer um).
+# paciente, ou os do atendimento da unidade em que tem vínculo; com trilha,
+# §13 E19); cancelar (o profissional os próprios; o faturista qualquer um).
 module Billing
   class ProceduresController < BaseController
     RECORD_KEYS = %w[performed_on sigtap_code quantity cid10 character].freeze
@@ -50,6 +50,8 @@ module Billing
       limit = Timeline::Query.limit(params[:limit])
       rows = scope.order(created_at: :desc, id: :desc).limit(limit + 1).to_a
       page = rows.first(limit)
+      # §13 E19: a lista tem nome de paciente — uma trilha por requisição com resultado, só ids.
+      DomainEvents.publish("billing_procedures.listed", user_id: Current.user.id, procedure_ids: page.map(&:id)) if page.any?
       render json: { procedures: Json.procedures(page), next_before: rows.size > limit ? Exams::Cursor.encode(page.last) : nil }
     rescue Exams::Cursor::Invalid
       render json: { error: "invalid_cursor" }, status: :unprocessable_entity

@@ -144,7 +144,7 @@ RSpec.describe "Invariantes do faturamento (ADR 0039)", type: :request do
 
   describe "eventos do faturamento" do
     it "em tempo de execução: só ids e os campos do contrato" do
-      allowed = %w[performed_procedure_id billing_period_id billing_export_id billing_setting_id patient_id user_id source billable version]
+      allowed = %w[performed_procedure_id billing_period_id billing_export_id billing_setting_id patient_id user_id source billable version procedure_ids]
       procedure = recorded_procedure!(unit: upa, professional: doctor, patient: patient)
       Billing::Close.call(period: procedure.billing_period, by: clerk)
       payload_keys = DomainEvent.where("name LIKE 'billing%' OR name LIKE 'performed_procedure%'").flat_map { |event| event.payload.keys }
@@ -161,7 +161,7 @@ RSpec.describe "Invariantes do faturamento (ADR 0039)", type: :request do
       expect(calls.map { |_f, name, _p| name }.uniq).to match_array(
         %w[performed_procedure.recorded performed_procedure.cancelled billing_period.closed billing_period.reopened
            billing_period.pending_viewed billing_export.generated billing_export.downloaded billing_settings.changed
-           billing_patient.looked_up billing_patient.demographics_updated patient.demographics_updated]
+           billing_patient.looked_up billing_patient.demographics_updated patient.demographics_updated billing_procedures.listed]
       )
     end
 
@@ -175,7 +175,7 @@ RSpec.describe "Invariantes do faturamento (ADR 0039)", type: :request do
     end
 
     it "o payload é literal (chave: valor) só com ids e os campos do contrato, sem dado pessoal" do
-      allowed_extra = %w[source billable version]
+      allowed_extra = %w[source billable version procedure_ids]
       calls.each do |file, name, args|
         expect(args).not_to be_empty, "#{name} (#{file}) sem payload"
         args.each do |arg|
