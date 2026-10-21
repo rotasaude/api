@@ -16,7 +16,9 @@ module Billing
     CHARACTER = { "elective" => "01", "urgent" => "02" }.freeze
     LENGTHS = { "01" => 130, "02" => 48, "03" => 351 }.freeze
 
-    class TooManySheets < StandardError; end
+    class TooManySheets < StandardError
+        def initialize(message = "excede 999 folhas") = super
+      end
 
     Header = Data.define(:competence, :origin_name, :origin_acronym, :origin_cnpj, :destination_body, :management)
     CLine = Data.define(:cnes, :competence, :cbo, :procedure, :age, :quantity)

@@ -88,4 +88,13 @@ RSpec.describe Billing::BpaFile do
     bad = c_lines.first.with(cnes: "12345678")
     expect { described_class.build(header: HEADER, c_lines: [ bad ], i_lines: []) }.to raise_error(ArgumentError) { |e| expect(e.message).not_to include("12345678") }
   end
+
+  it "inspect/to_s de ILine e Built não vazam CPF, nome, CNS nem o conteúdo do arquivo" do
+    line = i_lines.first
+    built = described_class.build(header: HEADER, c_lines: [], i_lines: [ line ])
+    texts = [ line.inspect, line.to_s, "#{line}", built.inspect, built.to_s ]
+    secrets = CPFS + NAMES + PROFESSIONALS.map(&:first) + [ "RUA XV", "Rua XV" ]
+    texts.each { |t| secrets.each { |v| expect(t).not_to include(v) } }
+    expect(built.inspect).to include("size=#{built.bytes.bytesize}")
+  end
 end
