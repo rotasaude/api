@@ -425,6 +425,7 @@ Rails.application.routes.draw do
     get  "procedures",            to: "procedures#index"
     post "procedures",            to: "procedures#create"
     post "procedures/:id/cancel", to: "procedures#cancel"
+    patch "patients/:id/demographics", to: "patients#demographics"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).

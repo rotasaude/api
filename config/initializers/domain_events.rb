@@ -206,5 +206,5 @@ Rails.application.config.to_prepare do
   # source/billable/version). Nunca CPF, CNS, nome, motivo ou arquivo.
   %w[performed_procedure.recorded performed_procedure.cancelled billing_period.closed billing_period.reopened
      billing_period.pending_viewed billing_export.generated billing_export.downloaded billing_settings.changed
-     billing_patient.looked_up].each { |name| DomainEvents.bind name, to: [] }
+     billing_patient.looked_up billing_patient.demographics_updated patient.demographics_updated].each { |name| DomainEvents.bind name, to: [] }
 end

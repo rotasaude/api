@@ -184,6 +184,44 @@ RSpec.describe "Check-ins", type: :request do
     expect(body).to have_key("appointments")
   end
 
+  # D-U4 (contrato §13 E2): a exceção devolve a validação ativa (o balcão completa
+  # nomes, raça/cor e endereço); par só declarado → null.
+  it "exceção: verification_id na raiz — a validação ativa do par, null quando só declarado" do
+    triage = completed_web_triage_for(citizen)
+    sign_in_as(verifier)
+
+    json_post "/attendance/check_ins/exception", cpf: citizen.cpf, triage_id: triage.id, health_unit_id: unit.id,
+                                                 reason: "cidadão sem celular"
+    expect(response).to have_http_status(:created)
+    expect(body).to have_key("verification_id")
+    expect(body["verification_id"]).to be_nil
+
+    other = Citizen.create!(cpf: "11144477735", phone: "+5541998760001")
+    verification = CitizenVerification.create!(citizen: other, verified_by_user: verifier, verified_at: Time.current)
+    other.update!(verification_level: "verified")
+    json_post "/attendance/check_ins/exception", cpf: other.cpf, triage_id: completed_web_triage_for(other).id, health_unit_id: unit.id,
+                                                 reason: "cidadão sem celular"
+    expect(response).to have_http_status(:created)
+    expect(body["verification_id"]).to eq(verification.id)
+  end
+
+  # D-U3 (contrato §13 E2): o lookup diz se o paciente já tem raça/cor e endereço, sem o dado.
+  it "lookup: race_color_set/address_set no citizen — sem paciente false/false, com paciente completo true/true" do
+    triage = completed_web_triage_for(citizen)
+    sign_in_as(verifier)
+
+    json_post "/attendance/check_ins/lookup", cpf: citizen.cpf, code: check_in_code_for(triage)
+    expect(body["citizen"]).to include("race_color_set" => false, "address_set" => false)
+
+    CitizenVerification.create!(citizen: citizen, verified_by_user: verifier, verified_at: Time.current)
+    citizen.update!(verification_level: "verified")
+    Patients::Resolve.call(citizen).payload.fetch(:patient).update!(BillingHelpers::DEMOGRAPHICS)
+    json_post "/attendance/check_ins/lookup", cpf: citizen.cpf, code: check_in_code_for(triage)
+    expect(response).to have_http_status(:ok)
+    expect(body["citizen"]).to include("race_color_set" => true, "address_set" => true)
+    expect(response.body).not_to include("Novembro", "80010000")
+  end
+
   it "exceção com appointment_id: 201" do
     link_professional!(doctor, unit)
     a = in_care!(waiting_attendance(citizen, unit: unit, by: verifier), by: verifier)

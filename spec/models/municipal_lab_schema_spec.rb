@@ -67,8 +67,8 @@ RSpec.describe "Banco do laboratório municipal" do
     filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
     keys = %w[mother_name clinical_info delivered_to notified_person contacts totp restriction_note gal_requisition barcode barcodes number]
     expect(filter.filter(keys.index_with { "x" })).to eq(keys.index_with { "[FILTERED]" })
-    expect(filter.filter("address_number" => "12", "sigtap_code" => "0202010473"))
-      .to eq("address_number" => "12", "sigtap_code" => "0202010473")
+    expect(filter.filter("house_count" => "12", "sigtap_code" => "0202010473"))
+      .to eq("house_count" => "12", "sigtap_code" => "0202010473")
   end
 
   describe "laudo: transições e retificação" do

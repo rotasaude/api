@@ -6,6 +6,7 @@
 # por um marcador que não identifica ninguém.
 # ADR 0028: também o CNS do CADSUS e a consulta pendente.
 # ADR 0031: também o nome completo, o social e o da mãe.
+# ADR 0039 (D-U1): e raça/cor, etnia e endereço do paciente do CPF.
 # Reasons: :not_pending, :own_request.
 module Citizens
   module Erase
@@ -55,10 +56,11 @@ module Citizens
         # no primeiro passo — a ordem fica sempre cidadão → paciente. O paciente
         # travado segura a FK de um exame novo enquanto o exame é conferido.
         pair_scope = Citizen.where(id: pairs.map(&:id))
+        locked_patients = []
         retained = RequestErasure.clinical_on_pairs?(pair_scope)
         unless retained
           patient_ids = RequestErasure.patient_ids(pair_scope, cpf: request.cpf)
-          Patient.where(id: patient_ids).order(:id).lock.to_a
+          locked_patients = Patient.where(id: patient_ids).order(:id).lock.to_a
           retained = RequestErasure.examined_patients?(patient_ids)
         end
         # O banco não exige decided_by_user: quem decide é gravado aqui, sempre.
@@ -74,6 +76,8 @@ module Citizens
         # Remind) trava o cidadão ANTES do horário, e espera esta exclusão.
         live = Appointment.live.where(citizen_id: pairs.map(&:id)).order(:id).lock.to_a
         pairs.each { |citizen| erase_pair(citizen, live.select { |a| a.citizen_id == citizen.id }) }
+        # D-U1 (ADR 0039): o paciente não retido perde raça/cor, etnia e endereço junto com o par.
+        locked_patients.each { |patient| patient.update!(Patient::DEMOGRAPHICS.index_with(nil)) }
         # O trigger aceita a troca do cpf só nesta mesma UPDATE, mas não a
         # exige: o pedido confirmado deixa de guardar o CPF por causa daqui.
         request.update!(status: "confirmed", decided_by_user: by, decided_at: Time.current, cpf: tombstone)

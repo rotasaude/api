@@ -5,6 +5,9 @@
 #   POST /attendance/verifications/search      {cpf}                          municipal_admin
 #   POST /attendance/verifications/:id/revoke {reason}                       municipal_admin
 #   POST /attendance/verifications/:id/names  {full_name, social_name?, mother_name?}  citizen_verifier
+# ADR 0039 (D-U1): verifications e names aceitam também race_color, ethnicity
+# e address_* (opcionais), gravados no paciente do par; a resposta só traz
+# race_color_set/address_set, nunca os valores.
 # O CPF do histórico vai no corpo, não na URL (LGPD: URLs acabam em logs de
 # acesso e no histórico do navegador).
 class AttendanceController < ApplicationController
@@ -19,7 +22,9 @@ class AttendanceController < ApplicationController
     invalid_gender_identity: :unprocessable_entity, invalid_full_name: :unprocessable_entity,
     invalid_social_name: :unprocessable_entity, invalid_mother_name: :unprocessable_entity,
     reason_too_short: :unprocessable_entity, already_verified: :conflict, already_revoked: :conflict,
-    own_verification: :forbidden, cadsus_lookup_missing: :conflict
+    own_verification: :forbidden, cadsus_lookup_missing: :conflict,
+    invalid_race_color: :unprocessable_entity, invalid_ethnicity: :unprocessable_entity, ethnicity_required: :unprocessable_entity,
+    invalid_zip: :unprocessable_entity, too_long: :unprocessable_entity, invalid_demographics: :unprocessable_entity
   }.freeze
 
   before_action :require_verifier, only: %i[lookup verify cadsus_lookup names]
@@ -46,6 +51,13 @@ class AttendanceController < ApplicationController
   end
 
   def verify
+    # §13 E12: tudo conferido (inclusive raça × etnia com o paciente do CPF) antes de gastar o código.
+    demographics = parse_demographics do
+      digits = CitizenIdentity::Cpf.normalize(params[:cpf])
+      digits && Patient.find_by(cpf: digits)
+    end
+    return render_failure(demographics, ERROR_STATUS) if demographics.failure?
+
     result = Citizens::Verify.call(
       cpf: params[:cpf], code: params[:code], document_checked: params[:document_checked] == true, by: Current.user,
       birth_date: params[:birth_date], sex: params[:sex],
@@ -57,8 +69,14 @@ class AttendanceController < ApplicationController
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     v = result.payload[:verification]
-    render json: { verification: { id: v.id, citizen_id: v.citizen_id, verified_at: v.verified_at.iso8601 } },
-           status: :created
+    json = { verification: { id: v.id, citizen_id: v.citizen_id, verified_at: v.verified_at.iso8601 } }
+    if demographics.payload[:values].any?
+      saved = save_demographics(v.citizen, demographics.payload[:values])
+      return render_failure(saved, ERROR_STATUS) if saved.failure?
+
+      json.merge!(Patients::Demographics.flags(saved.payload[:patient]))
+    end
+    render json: json, status: :created
   end
 
   # ADR 0028 (contratos §5.4): o par sai do mesmo CPF + código do lookup, sem
@@ -81,14 +99,30 @@ class AttendanceController < ApplicationController
     verification = CitizenVerification.find_by(id: params[:id])
     return render json: { error: "not_found" }, status: :not_found unless verification
 
-    result = Citizens::CompleteNames.call(verification: verification, full_name: params[:full_name],
-                                          social_name: params[:social_name], mother_name: params[:mother_name],
-                                          by: Current.user)
-    return render_failure(result, ERROR_STATUS) if result.failure?
+    citizen = verification.citizen
+    # §13 E12: os campos do BPA-I conferidos antes de gravar os nomes.
+    demographics = parse_demographics do
+      citizen.patient_id ? Patient.find_by(id: citizen.patient_id) : Patient.find_by(cpf: citizen.cpf)
+    end
+    return render_failure(demographics, ERROR_STATUS) if demographics.failure?
 
-    citizen = result.payload[:citizen]
+    values = demographics.payload[:values]
+    if values.empty? || %w[full_name social_name mother_name].any? { |key| params.key?(key) }
+      result = Citizens::CompleteNames.call(verification: verification, full_name: params[:full_name],
+                                            social_name: params[:social_name], mother_name: params[:mother_name],
+                                            by: Current.user)
+      return render_failure(result, ERROR_STATUS) if result.failure?
+    end
+    return render(json: { error: "already_revoked" }, status: :conflict) unless verification.reload.active?
+
+    citizen.reload
+    if values.any?
+      saved = save_demographics(citizen, values)
+      return render_failure(saved, ERROR_STATUS) if saved.failure?
+    end
+    patient = citizen.reload.patient_id && Patient.find_by(id: citizen.patient_id)
     render json: { citizen: { id: citizen.id, cpf_masked: citizen.cpf_masked, verification_level: citizen.verification_level,
-                              names: Citizens::NamesJson.call(citizen) } }
+                              names: Citizens::NamesJson.call(citizen) } }.merge(Patients::Demographics.flags(patient))
   end
 
   def search
@@ -111,6 +145,32 @@ class AttendanceController < ApplicationController
   end
 
   private
+
+  # D-U1: os campos presentes, validados um a um e na combinação final com o
+  # que o paciente (se já existe; o bloco o acha) tem gravado — antes do comando (§13 E12).
+  def parse_demographics
+    parsed = Patients::Demographics.parse(params.to_unsafe_h.slice(*Patient::DEMOGRAPHICS))
+    return parsed if parsed.failure? || parsed.payload[:values].empty?
+
+    checked = Patients::Demographics.check(Patients::Demographics.current(yield).merge(parsed.payload[:values]))
+    checked.failure? ? checked : parsed
+  end
+
+  # D-U1: grava no paciente do par validado (Patients::Resolve cria se faltar),
+  # numa transação própria depois da do comando (a do Resolve trava CPF → par;
+  # juntar com o Verify inverteria a ordem). save! reconfere sob a trava.
+  def save_demographics(citizen, values)
+    resolved = Patients::Resolve.call(citizen)
+    return resolved if resolved.failure?
+
+    patient = resolved.payload[:patient]
+    ApplicationRecord.transaction do
+      patient.lock!
+      saved = Patients::Demographics.save!(patient, values)
+      DomainEvents.publish("patient.demographics_updated", patient_id: patient.id, user_id: Current.user.id) if saved.ok?
+      saved
+    end
+  end
 
   def verification_json(v)
     {

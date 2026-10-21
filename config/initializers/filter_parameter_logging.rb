@@ -53,7 +53,10 @@ Rails.application.config.filter_parameters += [
   # exceção do CIQ (fala do paciente: urgência, quadro) e a coluna da ação
   # corretiva (texto livre; o bind do SQL usa o nome da coluna, não o `:text`
   # do parâmetro). (`:text`, `:note`, `:reason`, `values` e `barcode` já estão.)
-  /\A(value|values|level_barcodes|justification|corrective_action)\z/
+  /\A(value|values|level_barcodes|justification|corrective_action)\z/,
+  # ADR 0039 (D-U1): raça/cor, etnia e endereço do paciente para o BPA-I
+  # (`zip`, `street` e `address` já estavam; aqui as chaves inteiras).
+  /\A(race_color|ethnicity|address_zip|address_street|address_number|address_complement|address_district)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
