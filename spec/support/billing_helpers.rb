@@ -90,6 +90,19 @@ module BillingHelpers
                                  source: "manual", recorded_by_user: professional, instrument: "bpa_i", billable: true,
                                  blocking_reasons: [] }.merge(over))
   end
+
+  # Procedimento pelo caminho real (avulso do profissional, Billing::Record).
+  def recorded_procedure!(unit:, professional:, patient: nil, sigtap_code: "0301060029", performed_on: Time.zone.today, cid10: "I10",
+                          quantity: 1, character: "elective")
+    establishment = unit.is_a?(ExamProvider) ? Billing::Establishment.for_lab(unit) : Billing::Establishment.for_unit(unit)
+    result = Billing::Record.call(patient: patient || billing_patient!, establishment: establishment, professional: professional,
+                                  source: "manual", recorded_by: professional,
+                                  params: { "performed_on" => performed_on.iso8601, "sigtap_code" => sigtap_code, "quantity" => quantity,
+                                            "cid10" => cid10, "character" => character })
+    raise "procedimento recusado: #{result.reason}" if result.failure?
+
+    result.payload[:procedure]
+  end
 end
 
 RSpec.configure { |c| c.include BillingHelpers }
