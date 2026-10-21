@@ -113,6 +113,28 @@ RSpec.describe "city:rekey and city:rotate_key rake tasks" do
     expect(Digest::SHA256.hexdigest(city.reload.encryption_key)).to eq(before_digest)
   end
 
+  # O pior caso do ramo acima: o rewrite falha E a própria restauração do
+  # catálogo falha. A mensagem tem de dizer que o catálogo ficou com o
+  # material NOVO e mandar corrigir à mão — só a classe da exceção, nunca
+  # e.message (pode citar o valor do atributo).
+  it "city:rotate_key aborts telling the operator to fix the catalog when the restore also fails" do
+    allow(CityRekey).to receive(:call).and_return(Result.fail(:unreadable, message: "linha ilegível"))
+    updates = 0
+    allow_any_instance_of(City).to receive(:update!).and_wrap_original do |original, *args, **kwargs|
+      updates += 1
+      raise ActiveRecord::ConnectionNotEstablished, "material secreto" if updates == 2
+      original.call(*args, **kwargs)
+    end
+
+    out = capture_stderr { expect { Rake::Task["city:rotate_key"].invoke(city.slug) }.to raise_error(SystemExit) }
+
+    expect(updates).to eq(2)
+    expect(out).to include("rewrite falhou (unreadable) E a restauração do catálogo também falhou (ActiveRecord::ConnectionNotEstablished)")
+    expect(out).to include("Corrija o encryption_key de #{city.slug} manualmente")
+    expect(out).not_to include("material secreto")
+    expect(out).not_to include("material anterior restaurado")
+  end
+
   # Fix F1 (o Critical desta rodada): suspensão sozinha não basta — outros
   # processos web ainda servem a cidade como ativa, com o material antigo, por
   # até CityLifecycle::SuspensionGuard::QUIET_PERIOD depois do city.suspended
