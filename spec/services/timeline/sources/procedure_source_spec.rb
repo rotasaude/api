@@ -35,6 +35,15 @@ RSpec.describe Timeline::Sources::ProcedureSource do
     expect(list.map { |e| [ e.to_h, Timeline::Json.citizen(e) ] }.to_s).not_to include("cid_required", "billable", "bpa_")
   end
 
+  it "o cidadão vê a data de realização (performed_on), sem mudar a ordem por created_at" do
+    recorded_procedure!(unit: unit, professional: doctor, patient: patient, performed_on: 10.days.ago.to_date)
+    entry = entries.sole
+    citizen = Timeline::Json.citizen(entry)
+    expect(citizen[:summary]).to eq("Realizado em #{10.days.ago.to_date.strftime('%d/%m/%Y')}")
+    expect(entry.occurred_at.to_date).to eq(Time.zone.today)
+    expect(citizen.keys).not_to include(:blocking_reasons, :billable, :instrument, :cid10)
+  end
+
   it "cancelado some; desligado ou sem paciente, vazio" do
     procedure = recorded_procedure!(unit: unit, professional: doctor, patient: patient)
     Billing::Cancel.call(procedure: procedure, reason: "Lançado em duplicidade", by: doctor)

@@ -31,7 +31,7 @@ module Timeline
                   professional: { name: Labels.professional_name(procedure.professional_user), cbo_code: procedure.cbo_code },
                   title: title, summary: "Realizado em #{procedure.performed_on.strftime('%d/%m/%Y')}", status: "recorded",
                   detail_ref: { type: "performed_procedure", id: procedure.id },
-                  citizen: { title: title, summary: nil, status: "recorded", status_label: CITIZEN_STATUS, professional_name: nil },
+                  citizen: { title: title, summary: "Realizado em #{procedure.performed_on.strftime('%d/%m/%Y')}", status: "recorded", status_label: CITIZEN_STATUS, professional_name: nil },
                   document: nil)
       end
       private_class_method :entry
