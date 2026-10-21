@@ -103,7 +103,14 @@ module Platform
       # ADR 0038: estoque de reagentes e insumos do laboratório municipal.
       Entry.new(key: "lab_inventory",
                 description: "Estoque do laboratório: reagentes e insumos com lotes, lote em uso e consumo estimado",
-                requires: %w[feature:municipal_lab])
+                requires: %w[feature:municipal_lab]),
+      # ADR 0039: procedimentos realizados com crítica SIGTAP e faturamento
+      # ambulatorial em BPA (módulo 22). Sem pré-requisito de modo (vale nos
+      # dois modos de prontuário); o IBGE da cidade vai no BPA-I (M1). Todos os
+      # ambientes, sem simulado (M2).
+      Entry.new(key: "procedure_billing",
+                description: "Faturamento de procedimentos (BPA): procedimentos realizados com crítica SIGTAP e arquivo BPA-I/BPA-C",
+                requires: %w[ibge_code])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
