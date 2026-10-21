@@ -23,7 +23,8 @@ module Billing
 
         procedures = PerformedProcedure.recorded.where(billing_period_id: period.id).order(:id).lock
                                        .includes(:patient, professional_user: :professional).to_a
-        procedures.each { |procedure| Recalculate.call(procedure, establishment: establishment) }
+        cache = SigtapCache.new # SIGTAP lida uma vez por release e código sob a trava (I2)
+        procedures.each { |procedure| Recalculate.call(procedure, establishment: establishment, cache: cache) }
         billable = procedures.select(&:billable)
         next Result.fail(:nothing_to_export) if billable.empty?
 

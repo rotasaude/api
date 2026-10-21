@@ -27,8 +27,9 @@ module Billing
     # [procedimento, crítica recalculada] dos procedimentos gravados da competência, sem gravar.
     def outcomes(period)
       establishment = Establishment.of(BillingPeriod.find(period.id)) # cadastro de agora, nunca a associação em cache
+      cache = SigtapCache.new
       PerformedProcedure.recorded.where(billing_period_id: period.id).includes(:patient, professional_user: :professional)
-                        .order(:performed_on, :id).map { |procedure| [ procedure, Recalculate.outcome(procedure, establishment: establishment) ] }
+                        .order(:performed_on, :id).map { |procedure| [ procedure, Recalculate.outcome(procedure, establishment: establishment, cache: cache) ] }
     end
 
     def listed?(outcome) = !outcome.billable && outcome.instrument != "not_bpa" && !outcome.reasons.include?("establishment_is_aps")

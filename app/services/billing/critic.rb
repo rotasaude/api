@@ -24,42 +24,42 @@ module Billing
     module_function
 
     # closing: true no fechamento e nas pendências (Billing::Recalculate): só
-    # ali entram raça/cor e endereço do paciente (D-U1, contrato §12).
-    def call(facts, closing: false)
+    # ali entram raça/cor e endereço do paciente (D-U1, contrato §12). cache:
+    # um Billing::SigtapCache por chamada de fechamento/recálculo (I2).
+    def call(facts, closing: false, cache: SigtapCache.new)
       competence = facts.performed_on.strftime("%Y%m")
-      release = Terminology::Sigtap.release_for(competence)
+      release = cache.release(competence)
       reasons = []
       reasons << "establishment_is_aps" if facts.establishment.aps?
       reasons << "missing_establishment_cnes" if facts.establishment.cnes.blank?
-      procedure = release && SigtapProcedure.find_by(release_id: release.id, code: facts.sigtap_code)
+      procedure = release && cache.procedure(release, facts.sigtap_code)
       return outcome("not_bpa", reasons + %w[not_in_sigtap], release, competence, nil) unless procedure
 
-      instrument = instrument(release, facts.sigtap_code)
+      instrument = instrument(cache.instruments(release, facts.sigtap_code))
       reasons << "not_bpa_instrument" if instrument == "not_bpa"
-      reasons.concat(professional_reasons(facts, release, instrument))
-      reasons.concat(patient_reasons(facts, procedure, release, instrument, closing))
+      reasons.concat(professional_reasons(facts, cache.cbos(release, facts.sigtap_code), instrument))
+      reasons.concat(patient_reasons(facts, procedure, -> { cache.cids(release, facts.sigtap_code) }, instrument, closing))
       outcome(instrument, reasons, release, competence, procedure.name)
     end
 
-    def instrument(release, code)
-      codes = SigtapProcedureInstrument.where(release_id: release.id, procedure_code: code).pluck(:instrument_code)
+    def instrument(codes)
       return "bpa_i" if codes.include?("02")
 
       codes.include?("01") ? "bpa_c" : "not_bpa"
     end
 
-    def professional_reasons(facts, release, instrument)
+    def professional_reasons(facts, cbos, instrument)
       reasons = []
       if facts.cbo_code.blank?
         reasons << "missing_professional_cbo"
-      elsif !listed?(SigtapProcedureCbo, release, facts.sigtap_code, cbo_code: facts.cbo_code)
+      elsif !listed?(cbos, facts.cbo_code)
         reasons << "cbo_not_allowed"
       end
       reasons << "missing_professional_cns" if instrument == "bpa_i" && facts.professional_cns.blank?
       reasons
     end
 
-    def patient_reasons(facts, procedure, release, instrument, closing)
+    def patient_reasons(facts, procedure, cids, instrument, closing) # cids: lido só no BPA-I
       patient = facts.patient
       reasons = []
       months = age_months(patient&.birth_date, facts.performed_on)
@@ -73,7 +73,7 @@ module Billing
       reasons << "missing_required_patient_field" if patient.nil? || patient.birth_date.blank?
       return reasons unless instrument == "bpa_i"
 
-      reasons.concat(cid_reasons(facts, release))
+      reasons.concat(cid_reasons(facts, cids.call))
       reasons << "missing_patient_id" if patient.nil? || patient.cpf.blank?
       reasons << "missing_required_patient_field" if patient && (patient.full_name.blank? || !SEX.key?(patient.sex))
       reasons.concat(demographic_reasons(patient)) if closing && patient
@@ -92,19 +92,15 @@ module Billing
       reasons
     end
 
-    def cid_reasons(facts, release)
-      cids = SigtapProcedureCid.where(release_id: release.id, procedure_code: facts.sigtap_code)
-      return [] unless cids.exists?
+    def cid_reasons(facts, cids)
+      return [] if cids.empty?
       return %w[cid_required] if facts.cid10.blank?
 
-      cids.exists?(cid_code: facts.cid10) ? [] : %w[cid_not_allowed]
+      cids.include?(facts.cid10) ? [] : %w[cid_not_allowed]
     end
 
     # Sem relação nenhuma para o procedimento = sem restrição (como Terminology::Sigtap).
-    def listed?(model, release, code, **value)
-      scope = model.where(release_id: release.id, procedure_code: code)
-      !scope.exists? || scope.exists?(value)
-    end
+    def listed?(values, value) = values.empty? || values.include?(value)
 
     def age_months(birth_date, on)
       born = Date.iso8601(birth_date.to_s)
