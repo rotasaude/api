@@ -1,27 +1,28 @@
 # Competência por estabelecimento faturante (ADR 0039; plano do módulo 22,
-# Desvios 3 e 4). Nasce aberta na primeira produção; a UBS nunca ganha uma.
-# Quem grava procedimento trava a competência FOR SHARE; o fechamento a trava
-# FOR UPDATE (Billing::Close): um espera o outro. Ordem de travas:
-# competência → procedimento. Fechada, o procedimento vai para a próxima
-# competência aberta do estabelecimento, atrasado.
+# Desvios 3 e 4; contrato §13 E18). Nasce aberta na primeira produção; a UBS
+# nunca ganha uma. Quem grava procedimento trava a competência FOR SHARE; o
+# fechamento a trava FOR UPDATE (Billing::Close): um espera o outro. Ordem de
+# travas: competência → procedimento. Competência igual ou anterior à ÚLTIMA
+# fechada do estabelecimento (com ou sem período próprio) vai, atrasada, para
+# a primeira aberta depois da última fechada; nunca nasce período no passado.
 module Billing
   module Periods
     COMPETENCE = /\A\d{4}(0[1-9]|1[0-2])\z/
-    MAX_AHEAD = 24
+    MAX_ATTEMPTS = 24
 
     module_function
 
     def assign!(establishment, competence)
       return [ nil, false ] if establishment.aps?
 
-      current = competence
-      MAX_AHEAD.times do
-        period = BillingPeriod.lock("FOR SHARE").find(find_or_create!(establishment, current).id)
-        return [ period, current != competence ] if period.status == "open"
-
-        current = following(current)
+      MAX_ATTEMPTS.times do
+        last_closed = BillingPeriod.where(**establishment.key, status: "closed").maximum(:competence)
+        target = last_closed && competence <= last_closed ? following(last_closed) : competence
+        period = BillingPeriod.lock("FOR SHARE").find(find_or_create!(establishment, target).id)
+        return [ period, target != competence ] if period.status == "open"
+        # fechada entre a leitura e a trava (Billing::Close): relê a última fechada
       end
-      raise ActiveRecord::RecordNotFound, "nenhuma competência aberta em #{MAX_AHEAD} meses"
+      raise ActiveRecord::RecordNotFound, "nenhuma competência aberta em #{MAX_ATTEMPTS} tentativas"
     end
 
     def find_or_create!(establishment, competence)

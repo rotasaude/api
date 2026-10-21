@@ -85,6 +85,26 @@ RSpec.describe Billing::Record do
     expect(procedure).to have_attributes(billing_competence: today.strftime("%Y%m"), late: true)
   end
 
+  # §13 E18: competência ≤ última fechada, mesmo sem período próprio, é
+  # atrasada e vai para a primeira aberta depois da última fechada; nunca
+  # nasce período no passado.
+  it "competência antiga sem período próprio (M-1 fechada, M-2 sem período) cai em M, atrasada" do
+    BillingPeriod.create!(health_unit: unit, competence: (today << 1).strftime("%Y%m"), status: "closed", version: 1,
+                          closed_at: Time.current, closed_by_user: doctor)
+    procedure = record({ "performed_on" => (today << 2).iso8601 }).payload[:procedure]
+    expect(procedure).to have_attributes(billing_competence: today.strftime("%Y%m"), late: true, performed_on: today << 2)
+    expect(procedure.billing_period).to have_attributes(status: "open", competence: today.strftime("%Y%m"))
+    expect(BillingPeriod.where(health_unit_id: unit.id).pluck(:competence))
+      .to contain_exactly((today << 1).strftime("%Y%m"), today.strftime("%Y%m"))
+  end
+
+  it "competência posterior à última fechada segue na própria, sem atraso" do
+    BillingPeriod.create!(health_unit: unit, competence: (today << 2).strftime("%Y%m"), status: "closed", version: 1,
+                          closed_at: Time.current, closed_by_user: doctor)
+    procedure = record({ "performed_on" => (today << 1).iso8601 }).payload[:procedure]
+    expect(procedure).to have_attributes(billing_competence: (today << 1).strftime("%Y%m"), late: false)
+  end
+
   it "laboratório municipal tem competência própria" do
     lab = lab_provider!
     procedure = record({ "sigtap_code" => "0202010473", "cid10" => nil }, establishment: Billing::Establishment.for_lab(lab)).payload[:procedure]

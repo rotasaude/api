@@ -25,7 +25,8 @@ module Billing
       pending = rows.where(billable: false).where.not(instrument: "not_bpa")
                     .where.not("'establishment_is_aps' = ANY (performed_procedures.blocking_reasons)").count
       export = period.exports.order(version: :desc).first
-      { bpa_i_lines: export.lines_bpa_i, bpa_c_lines: export.lines_bpa_c, not_billable: not_billable, pending: pending }
+      { bpa_i_lines: export&.lines_bpa_i.to_i, bpa_c_lines: export&.lines_bpa_c.to_i, # fechada sem arquivo: só em dado semeado à mão
+        not_billable: not_billable, pending: pending }
     end
     private_class_method :recalculated, :from_export
   end

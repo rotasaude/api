@@ -35,6 +35,24 @@ RSpec.describe "Faturamento — competências e arquivos", type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
+  # §13 E18: o filtro "abertas" lista todas as competências abertas, com ou sem competence.
+  it "?status=open lista as abertas de todas as competências; status inválido 422" do
+    previous = (Time.zone.today << 1).strftime("%Y%m")
+    older = BillingPeriod.create!(health_unit: upa!, competence: previous)
+    closed = BillingPeriod.create!(health_unit: upa!, competence: previous, status: "closed", version: 1, closed_at: Time.current,
+                                   closed_by_user: doctor)
+    sign_in_as(clerk)
+    get "/billing/periods", params: { status: "open" }
+    expect(json_body["periods"].map { |p| p["id"] }).to contain_exactly(period.id, older.id)
+    get "/billing/periods", params: { status: "open", competence: previous }
+    expect(json_body["periods"].map { |p| p["id"] }).to eq([ older.id ])
+    get "/billing/periods", params: { competence: previous }
+    expect(json_body["periods"].map { |p| p["id"] }).to contain_exactly(older.id, closed.id)
+    get "/billing/periods", params: { status: "abertas" }
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to eq("error" => "invalid_filter")
+  end
+
   it "pendências: faturista e admin; trilha só com ids" do
     recorded_procedure!(unit: unit, professional: doctor, cid10: nil)
     sign_in_as(lab_admin!)

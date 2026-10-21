@@ -6,12 +6,19 @@ module Billing
     before_action :require_reader
     before_action :load_period, except: :index
 
+    # §13 E18: status=open lista as abertas de todas as competências (ou só da
+    # competence, se vier); sem status, a competência pedida (padrão: a atual).
     def index
-      competence = params[:competence].presence || Time.zone.today.strftime("%Y%m")
-      return invalid_filter unless competence.is_a?(String) && competence.match?(Periods::COMPETENCE)
+      status = params[:status].presence
+      return invalid_filter unless status.nil? || status == "open"
 
-      periods = BillingPeriod.where(competence: competence).includes(:health_unit, :exam_provider, closed_by_user: :professional).to_a
-      render json: { periods: periods.sort_by { |p| [ Establishment.of(p).name.to_s, p.id ] }.map { |p| Json.period(p) } }
+      competence = params[:competence].presence || (status ? nil : Time.zone.today.strftime("%Y%m"))
+      return invalid_filter unless competence.nil? || (competence.is_a?(String) && competence.match?(Periods::COMPETENCE))
+
+      scope = BillingPeriod.includes(:health_unit, :exam_provider, closed_by_user: :professional)
+      scope = scope.where(competence: competence) if competence
+      scope = scope.where(status: status) if status
+      render json: { periods: scope.to_a.sort_by { |p| [ p.competence, Establishment.of(p).name.to_s, p.id ] }.map { |p| Json.period(p) } }
     end
 
     def pending

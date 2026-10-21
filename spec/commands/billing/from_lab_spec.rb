@@ -35,6 +35,20 @@ RSpec.describe Billing::FromLab do
     expect(procedure.billing_period).to have_attributes(exam_provider_id: provider.id, status: "open")
   end
 
+  it "§13 E18: coleta em competência antiga (M-1 fechada, M-2 sem período) cai em M, atrasada" do
+    today = Time.zone.today
+    BillingPeriod.create!(exam_provider: provider, competence: (today << 1).strftime("%Y%m"), status: "closed", version: 1,
+                          closed_at: Time.current, closed_by_user: lead)
+    req = received_requisition!(provider: provider, exams: [ glucose ])
+    req.samples.first.update_columns(collected_at: (today << 2).beginning_of_month.in_time_zone.change(hour: 10))
+    report = released_report(req)
+    expect(described_class.call(report)).to eq(1)
+    procedure = PerformedProcedure.find_by!(lab_report_item_id: report.report_items.first.id)
+    expect(procedure).to have_attributes(performed_on: (today << 2).beginning_of_month, billing_competence: today.strftime("%Y%m"), late: true)
+    expect(BillingPeriod.where(exam_provider_id: provider.id).pluck(:competence))
+      .to contain_exactly((today << 1).strftime("%Y%m"), today.strftime("%Y%m"))
+  end
+
   it "idempotente por item" do
     req = received_requisition!(provider: provider, exams: [ glucose ])
     report = released_report(req)
