@@ -106,6 +106,23 @@ RSpec.describe "Faturamento — competências e arquivos", type: :request do
     expect(response).to have_http_status(:not_found)
   end
 
+  # Revisão final, M3: o arquivo só sai se o conteúdo decifrado bate com o sha256 gravado.
+  it "arquivo divergente do sha256: 409 integrity_mismatch, sem conteúdo, sem trilha de download e fora do log" do
+    export = Billing::Close.call(period: period, by: clerk).payload[:export]
+    tampered = "01#BPA#ADULTERADO-#{SecureRandom.hex(4)}\r\n"
+    allow(BillingExport).to receive(:find_by).and_wrap_original do |original, *args, **kwargs|
+      original.call(*args, **kwargs)&.tap { |loaded| allow(loaded).to receive(:file).and_return(tampered) }
+    end
+    sign_in_as(clerk)
+    log = capture_log { get "/billing/exports/#{export.id}/file" }
+    expect(response).to have_http_status(:conflict)
+    expect(json_body).to eq("error" => "integrity_mismatch")
+    expect(response.body).not_to include("#BPA#")
+    expect(response.headers["Content-Disposition"]).to be_nil
+    expect(DomainEvent.where(name: "billing_export.downloaded")).to be_empty
+    expect(log).not_to include("ADULTERADO", "#BPA#")
+  end
+
   it "desligado: 403 em toda rota de competência" do
     Platform::Features.set!(city: Current.city, key: "procedure_billing", enabled: false, maintainer: ledi_maintainer!)
     sign_in_as(clerk)
