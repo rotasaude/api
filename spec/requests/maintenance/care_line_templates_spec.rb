@@ -71,4 +71,16 @@ RSpec.describe "Maintenance: catálogo-base das linhas de cuidado", type: :reque
     saved = CareLineTemplate.current("child_c2")
     expect([ saved.version, saved.eligibility, saved.practices ]).to eq([ 2, { "age_max_days" => 730 }, t.practices ])
   end
+
+  it "token de serviço não alcança os dois campos (HumanOnly)" do
+    _record, secret = MaintenanceToken.issue!(maintainer: maintainer, name: "ci", access: "read_write", city_slugs: [], expires_at: 10.days.from_now)
+    t = CareLineTemplate.current("diabetes_c4")
+    upsert = "mutation { upsertCareLineTemplate(key: \"diabetes_c4\", name: \"x\", indicator: \"#{t.indicator}\", " \
+             "eligibility: {}, practices: []) { ok } }"
+    [ CARE_LINE_LIST, upsert ].each do |query|
+      post "/graphql", params: { query: query, variables: "{}" }, headers: { "Authorization" => "Bearer #{secret}", "Cookie" => "" }
+      expect(json["errors"]).to be_present
+    end
+    expect(CareLineTemplate.where(key: "diabetes_c4").count).to eq(1)
+  end
 end
