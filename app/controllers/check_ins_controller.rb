@@ -80,9 +80,10 @@ class CheckInsController < ApplicationController
   end
 
   def appointment_json(a)
+    # Sem triagem raiz (pedido da linha de cuidado, módulo 23): protocolo e prioridade nulos.
     root = a.request.root_triage
     { id: a.id, scheduled_at: a.scheduled_at.iso8601, kind: a.request.kind, unit_name: a.health_unit.name,
-      protocol_name: root.protocol_name, priority: root.priority }
+      protocol_name: root&.protocol_name, priority: root&.priority }
   end
 
   def attendance_json(a)

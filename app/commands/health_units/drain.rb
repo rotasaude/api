@@ -77,7 +77,8 @@ module HealthUnits
         root_triage_id: request.root_triage_id, origin_unit_id: request.origin_unit_id, target_unit: target,
         kind: request.kind, note: request.note, reopened_reason: request.reopened_reason,
         moved_from_request: request, status: live ? "scheduled" : "open", created_at: request.created_at,
-        origin_triage_id: request.origin_triage_id, appointment_type_key: request.appointment_type_key,
+        origin_triage_id: request.origin_triage_id, origin_care_line_enrollment_id: request.origin_care_line_enrollment_id,
+        appointment_type_key: request.appointment_type_key,
         priority: request.priority, due_on: request.due_on, reschedule_reason_code: request.reschedule_reason_code,
         reschedule_note: reschedule_note, preferred_period: request.preferred_period,
         reschedule_count: request.reschedule_count

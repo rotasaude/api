@@ -1,5 +1,6 @@
 # Item da fila de pedidos (contratos §4.1, §9, §10). `priority` é a do pedido
-# (routine|priority); a prioridade numérica da triagem é `triage_priority`.
+# (routine|priority); a prioridade numérica da triagem é `triage_priority`
+# (null sem triagem raiz: o pedido da linha de cuidado e a cadeia dele).
 # A nota livre do cidadão só no detalhe. `reopened_reason` mostra só
 # expired/no_show: a remarcação pedida aparece em `reschedule_requested`.
 # `needs_reschedule` (spec §4.3, derivado): o horário vivo caiu num turno
@@ -40,7 +41,7 @@ module Scheduling
         target_unit_id: request.target_unit_id, created_at: request.created_at.iso8601,
         cpf_masked: request.citizen.cpf_masked, note: request.note,
         reopened_reason: request.reopened_reason == "citizen_reschedule" ? nil : request.reopened_reason,
-        triage_priority: request.root_triage.priority, appointment_type_key: request.appointment_type_key,
+        triage_priority: request.root_triage&.priority, appointment_type_key: request.appointment_type_key,
         appointment_type_name: @catalog.name_for(request.appointment_type_key), priority: request.priority,
         due_on: request.due_on.iso8601, overdue: overdue,
         reschedule_requested: request.status == "open" && request.reopened_reason == "citizen_reschedule",

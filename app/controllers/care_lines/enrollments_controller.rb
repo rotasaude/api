@@ -6,7 +6,7 @@
 # transação externa (o Resolve fecha a sua antes; ordem de travas do Desvio 8).
 module CareLines
   class EnrollmentsController < BaseController
-    before_action :load_enrollment, only: %i[show end_enrollment contacts]
+    before_action :load_enrollment, only: %i[show end_enrollment contacts appointment_request]
 
     def index
       team = scoped_team or return
@@ -69,6 +69,23 @@ module CareLines
       return render_failure(result) if result.failure?
 
       render json: { contact: Json.contact(result.payload[:contact]) }, status: :created
+    end
+
+    # §11 T4: o pedido do módulo 17 na unidade da equipe (201 criado, 200
+    # reaproveitado). Sem trilha: o item da fila só traz o CPF mascarado.
+    # can_book: quem pode marcar pelo BookPanel (as rotas de marcação exigem
+    # citizen_verifier).
+    def appointment_request
+      result = OpenAppointmentRequest.call(enrollment: @enrollment, by: Current.user)
+      return render_failure(result) if result.failure?
+
+      row = AppointmentRequest.includes(*Scheduling::RequestJson::INCLUDES).find(result.payload[:request].id)
+      unit = result.payload[:unit]
+      render json: {
+        request: Scheduling::RequestJson.new(presenter: Scheduling::AppointmentPresenter.new(show_reason: false)).call(row),
+        unit: { id: unit.id, name: unit.name, kind: unit.kind, screening_scope: unit.screening_scope },
+        can_book: CitizenVerificationPolicy.new(Current.user, nil).verify?
+      }, status: result.payload[:created] ? :created : :ok
     end
 
     private

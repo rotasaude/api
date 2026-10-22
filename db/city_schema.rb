@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_22_900002) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -102,6 +102,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900002) do
     t.uuid "moved_from_request_id"
     t.text "note"
     t.uuid "origin_attendance_id"
+    t.uuid "origin_care_line_enrollment_id"
     t.uuid "origin_screening_id"
     t.uuid "origin_triage_id"
     t.uuid "origin_unit_id"
@@ -111,7 +112,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900002) do
     t.integer "reschedule_count", default: 0, null: false
     t.text "reschedule_note"
     t.string "reschedule_reason_code"
-    t.uuid "root_triage_id", null: false
+    t.uuid "root_triage_id"
     t.string "status", default: "open", null: false
     t.uuid "target_unit_id"
     t.datetime "updated_at", null: false
@@ -120,6 +121,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900002) do
     t.index ["closed_by_user_id"], name: "index_appointment_requests_on_closed_by_user_id"
     t.index ["moved_from_request_id"], name: "index_appointment_requests_on_moved_from_request_id", unique: true
     t.index ["origin_attendance_id"], name: "index_appointment_requests_on_origin_attendance_id", unique: true, where: "((closed_reason)::text IS DISTINCT FROM 'moved'::text)"
+    t.index ["origin_care_line_enrollment_id"], name: "idx_appointment_requests_one_live_care_line", unique: true, where: "origin_care_line_enrollment_id IS NOT NULL AND status::text = ANY (ARRAY['open'::text, 'scheduled'::text])"
     t.index ["origin_screening_id"], name: "index_appointment_requests_on_origin_screening_id", unique: true, where: "((closed_reason)::text IS DISTINCT FROM 'moved'::text)"
     t.index ["origin_triage_id"], name: "index_appointment_requests_on_origin_triage_id"
     t.index ["origin_unit_id"], name: "index_appointment_requests_on_origin_unit_id"
@@ -129,11 +131,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900002) do
     t.check_constraint "(closed_reason IS DISTINCT FROM 'dismissed' AND dismiss_reason IS NULL) OR (closed_reason = 'dismissed' AND dismiss_reason IS NOT NULL AND length(btrim(dismiss_reason)) >= 10)", name: "ck_appointment_requests_dismiss_reason"
     t.check_constraint "closed_reason IS NULL OR closed_reason::text = ANY (ARRAY['fulfilled', 'citizen_cancelled', 'dismissed', 'moved', 'consent_revoked']::text[])", name: "ck_appointment_requests_closed_reason"
     t.check_constraint "(status::text <> 'closed'::text AND closed_reason IS NULL AND closed_at IS NULL) OR (status::text = 'closed'::text AND closed_reason IS NOT NULL AND closed_at IS NOT NULL)", name: "ck_appointment_requests_closing"
-    t.check_constraint "kind::text = ANY (ARRAY['return'::text, 'referral'::text, 'triage'::text, 'screening'::text])", name: "ck_appointment_requests_kind"
+    t.check_constraint "((kind)::text = 'care_line'::text) = (origin_care_line_enrollment_id IS NOT NULL) AND ((kind)::text = 'care_line'::text OR origin_attendance_id IS NOT NULL OR root_triage_id IS NOT NULL) AND ((kind)::text <> 'care_line'::text OR (origin_unit_id IS NOT NULL AND target_unit_id IS NOT NULL))", name: "ck_appointment_requests_care_line"
+    t.check_constraint "kind::text = ANY (ARRAY['return'::text, 'referral'::text, 'triage'::text, 'screening'::text, 'care_line'::text])", name: "ck_appointment_requests_kind"
     t.check_constraint "(kind::text = 'screening'::text) = (origin_screening_id IS NOT NULL)", name: "ck_appointment_requests_screening_kind"
     t.check_constraint "origin_screening_id IS NULL OR origin_attendance_id IS NOT NULL", name: "ck_appointment_requests_screening_origin"
     t.check_constraint "(kind::text = 'triage'::text) = (origin_triage_id IS NOT NULL)", name: "ck_appointment_requests_triage_kind"
-    t.check_constraint "(origin_attendance_id IS NULL) <> (origin_triage_id IS NULL)", name: "ck_appointment_requests_origin"
+    t.check_constraint "num_nonnulls(origin_attendance_id, origin_triage_id, origin_care_line_enrollment_id) = 1", name: "ck_appointment_requests_origin"
     t.check_constraint "origin_attendance_id IS NULL OR (origin_unit_id IS NOT NULL AND target_unit_id IS NOT NULL)", name: "ck_appointment_requests_attendance_units"
     t.check_constraint "preferred_period IS NULL OR preferred_period::text = ANY (ARRAY['morning', 'afternoon', 'any']::text[])", name: "ck_appointment_requests_preferred_period"
     t.check_constraint "priority::text = ANY (ARRAY['routine', 'priority']::text[])", name: "ck_appointment_requests_priority"
@@ -2633,6 +2636,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900002) do
   add_foreign_key "appointment_request_triages", "triages"
   add_foreign_key "appointment_requests", "appointment_requests", column: "moved_from_request_id"
   add_foreign_key "appointment_requests", "attendances", column: "origin_attendance_id"
+  add_foreign_key "appointment_requests", "care_line_enrollments", column: "origin_care_line_enrollment_id"
   add_foreign_key "appointment_requests", "citizens"
   add_foreign_key "appointment_requests", "health_units", column: "origin_unit_id"
   add_foreign_key "appointment_requests", "health_units", column: "target_unit_id"

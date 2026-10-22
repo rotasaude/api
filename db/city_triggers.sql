@@ -192,6 +192,7 @@ $do$;
 -- Mover para outra unidade (api#29) encerra este como `moved` e cria outro com
 -- moved_from_request_id; a ligação também nunca muda.
 -- Módulo 17 (ADR 0029): a unidade de destino nula (fila "sem unidade") recebe uma unidade UMA vez; depois nunca muda.
+-- Módulo 23 (ADR 0040): a inscrição de origem do pedido da linha (kind care_line) também nunca muda.
 CREATE OR REPLACE FUNCTION rota_appointment_request_guard() RETURNS trigger AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
@@ -220,6 +221,7 @@ BEGIN
      OR NEW.note IS DISTINCT FROM OLD.note
      OR NEW.moved_from_request_id IS DISTINCT FROM OLD.moved_from_request_id
      OR NEW.origin_screening_id IS DISTINCT FROM OLD.origin_screening_id
+     OR NEW.origin_care_line_enrollment_id IS DISTINCT FROM OLD.origin_care_line_enrollment_id
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'appointment_requests: the origin columns never change';
   END IF;

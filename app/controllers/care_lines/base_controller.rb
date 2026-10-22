@@ -9,7 +9,8 @@ module CareLines
 
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     FAILURE_STATUS = { invalid_transition: :conflict, already_enrolled: :conflict, citizen_not_verified: :conflict,
-                       line_inactive: :conflict, cbo_not_allowed: :forbidden, not_found: :not_found }.freeze
+                       line_inactive: :conflict, already_scheduled: :conflict, cbo_not_allowed: :forbidden,
+                       not_found: :not_found }.freeze
 
     before_action :require_care_lines!
 
