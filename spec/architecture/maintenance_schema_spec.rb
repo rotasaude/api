@@ -15,7 +15,7 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus cityPecConfig labExamTemplates],
+    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus cityPecConfig labExamTemplates careLineTemplates],
     "SignatureProvider" => %w[key configured lastCheckAt lastCheckOk],
     "MedicationCatalog" => %w[currentRelease reviewItems],
     "MedicationCatalogRelease" => %w[id importedAt itemsCount hiddenCount],
@@ -29,12 +29,14 @@ RSpec.describe "Maintenance GraphQL schema" do
                      saveProtocolDraft submitProtocolForReview publishProtocol
                      activateProtocol retireProtocol revertProtocolActivation setCityFeature
                      importMedicationCatalog importAnvisaLists setCityPecOrigin rotateCityPecHmacKey
-                     upsertLabExamTemplate upsertLabAnalyteTemplate],
+                     upsertLabExamTemplate upsertLabAnalyteTemplate upsertCareLineTemplate],
     "LabExamTemplate" => %w[id sigtapCode name sector material container suggestedMethod preparation active analytes],
     "LabAnalyteTemplate" => %w[id key name loinc unit valueType choices decimals position referenceRanges],
     "LabReferenceRange" => %w[sex ageMinDays ageMaxDays low high text],
     "UpsertLabExamTemplatePayload" => %w[ok errors],
     "UpsertLabAnalyteTemplatePayload" => %w[ok errors],
+    "CareLineTemplate" => %w[key version current name indicator declaredCondition eligibility practices createdAt createdBy],
+    "UpsertCareLineTemplatePayload" => %w[ok errors],
     "CityPecConfig" => %w[pecOrigin hmacKeyConfigured hmacKeyUpdatedAt],
     "SetCityPecOriginPayload" => %w[ok errors],
     "RotateCityPecHmacKeyPayload" => %w[ok errors],
@@ -117,12 +119,15 @@ RSpec.describe "Maintenance GraphQL schema" do
   # ADR 0032: `key` do prestador é a chave do catálogo em código ("vidaas"),
   # não uma chave criptográfica — o par exato, nunca o nome.
   # ADR 0035: escreve a chave e diz SE há chave; o valor nunca sai.
+  # ADR 0040: `key` do catálogo-base das linhas de cuidado é o identificador em
+  # código ("diabetes_c4"), não chave criptográfica — o par exato, nunca o nome.
   def forbidden_name_exempt_fields
     %w[CityChannel.phoneNumberId CityChannel.displayPhoneNumber CityFeature.key Mutation.setCityFeature.key
        SignatureProvider.key
        Mutation.rotateCityPecHmacKey Mutation.rotateCityPecHmacKey.key
        CityPecConfig.hmacKeyConfigured CityPecConfig.hmacKeyUpdatedAt
-       LabAnalyteTemplate.key Mutation.upsertLabAnalyteTemplate.key]
+       LabAnalyteTemplate.key Mutation.upsertLabAnalyteTemplate.key
+       CareLineTemplate.key Query.careLineTemplates.key Mutation.upsertCareLineTemplate.key]
   end
 
   # Argumentos são julgados pelo PRÓPRIO nome (o do campo já foi julgado ao
@@ -572,7 +577,7 @@ RSpec.describe "Maintenance GraphQL schema" do
       def field_selections
         { "me" => "{ id }", "maintainers" => "{ id }", "maintenanceTokens" => "{ id }", "auditEvents" => "{ name }",
           "cities" => "{ slug }", "signatureProviders" => "{ key }", "signerStatus" => "{ reachable }", "sncrStatus" => "{ configured }",
-          "medicationCatalog" => "{ currentRelease { id } }", "labExamTemplates" => "{ id }",
+          "medicationCatalog" => "{ currentRelease { id } }", "labExamTemplates" => "{ id }", "careLineTemplates" => "{ key }",
           "cityPecConfig" => "(citySlug: \"sem-cidade\") { hmacKeyConfigured }" }
       end
 

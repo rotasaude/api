@@ -6,6 +6,11 @@ module Maintenance
       # ADR 0037 (contrato §10, M1): catálogo-base do laboratório, plataforma.
       field :lab_exam_templates, [ Types::LabExamTemplateType ], null: false,
             description: "Catálogo-base de exames de laboratório (ativos e inativos, por nome)"
+      # ADR 0040 (contrato §8): catálogo-base das linhas de cuidado, plataforma.
+      field :care_line_templates, [ Types::CareLineTemplateType ], null: false,
+            description: "Versões do catálogo-base das linhas de cuidado (por chave, da mais nova)" do
+        argument :key, String, required: false
+      end
       field :me, MaintainerType, null: false, description: "O mantenedor da sessão corrente"
       field :maintainers, [ Types::MaintainerType ], null: false,
             description: "Todos os mantenedores, por e-mail. Só sessão humana."
@@ -51,6 +56,18 @@ module Maintenance
       ProviderRow = Data.define(:key, :configured, :last_check_at, :last_check_ok)
 
       def lab_exam_templates = LabExamTemplate.includes(:analytes).order(:name)
+
+      def care_line_templates(key: nil)
+        scope = CareLineTemplate.all
+        scope = scope.where(key: key) if key
+        rows = scope.to_a
+        context[:care_line_current_versions] = rows.group_by(&:key).transform_values { |list| list.map(&:version).max }
+        context[:care_line_template_authors] = Maintainer.where(id: rows.filter_map(&:created_by_maintainer_id).uniq)
+                                                         .pluck(:id, :email_address).to_h
+        order = CareLines::Catalog::TEMPLATE_KEYS
+        rows.sort_by { |t| [ order.index(t.key) || order.size, -t.version ] }
+      end
+
       def me = context.fetch(:maintainer)
       def maintainers = Maintainer.order(:email_address)
       def maintenance_tokens = MaintenanceToken.order(created_at: :desc)

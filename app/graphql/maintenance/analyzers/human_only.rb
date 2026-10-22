@@ -15,6 +15,7 @@ module Maintenance
         signatureProviders signerStatus sncrStatus
         medicationCatalog importMedicationCatalog importAnvisaLists
         labExamTemplates upsertLabExamTemplate upsertLabAnalyteTemplate
+        careLineTemplates upsertCareLineTemplate
       ].freeze
 
       # Campos de raiz que um token PODE usar. Existe para a guarda de
