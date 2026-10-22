@@ -57,7 +57,7 @@ RSpec.describe CareLines::Preview do
   it "devolve a forma do contrato: equipe, versão, práticas com rótulo e pontos, nota como string" do
     care_patient!(age: 70, sex: "female", problems: [ %w[ciap2 K86] ], unit: unit, doctor: doctor)
     result = described_class.call(team: team, indicator: "C6", today: today)
-    expect(result.keys).to eq(%i[indicator team template_version denominator score max_score concept practices excluded estimate])
+    expect(result.keys).to eq(%i[indicator team template_version denominator score max_score concept practices excluded excluded_practices estimate])
     expect(result[:team]).to eq(id: team.id, ine: team.ine, name: team.name)
     expect(result[:practices].first.keys).to eq(%i[key label tracked points weight achieved denominator])
     expect(result[:score]).to match(/\A\d+\.\d\z/)
@@ -109,6 +109,67 @@ RSpec.describe CareLines::Preview do
     tracked = result[:practices].select { |p| p[:tracked] }
     expect(tracked).not_to be_empty
     expect(tracked.map { |p| p[:achieved] }).to all(eq(0))
+  end
+
+  it "C7 com a faixa da mamografia vazia: peso redistribuído, nota chega a 100 e a prática sai como no_eligible" do
+    patient = care_patient!(age: 30, sex: "female", problems: [ %w[ciap2 W14] ], unit: unit, doctor: doctor)
+    exam_order!(patient: patient, unit: unit, requester: doctor, sigtap_code: "0203010086", status: :awaiting_authorization)
+    result = described_class.call(team: team, indicator: "C7", today: today)
+    expect(result[:practices].map { |p| p.values_at(:key, :weight, :achieved, :denominator) }).to eq([
+      [ "c7_a", "40.0", 1, 1 ], [ "c7_b", "0.0", 0, 0 ], [ "c7_c", "60.0", 1, 1 ], [ "c7_d", "0.0", 0, 0 ]
+    ])
+    expect(result).to include(score: "100.0", concept: "optimal", excluded: %w[vaccine])
+    expect(result[:excluded_practices]).to eq([ { key: "c7_b", reason: "untracked" }, { key: "c7_d", reason: "no_eligible" } ])
+  end
+
+  it "todas as práticas rastreadas sem denominador: sem dados (nil), nunca 0" do
+    result = described_class.call(team: team, indicator: "C7", today: today)
+    expect(result).to include(denominator: 0, score: nil, concept: nil)
+    expect(result[:excluded_practices].map { |p| p[:reason] }.uniq).to eq(%w[no_eligible untracked])
+    expect(result[:practices].select { |p| p[:tracked] }.map { |p| p[:weight] }).to all(eq("0.0"))
+  end
+
+  def baby_patient!(days, unit:, doctor:)
+    patient = care_patient!(age: 1, sex: "female", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+    Citizen.find_by!(patient_id: patient.id).update!(birth_date: (today - days).iso8601)
+    Patients::Resolve.refresh!(patient)
+    patient
+  end
+
+  def c2_practice(result, key) = result[:practices].find { |p| p[:key] == key }
+
+  it "end_of_window com a janela aberta: bebê de 10 dias sem consulta sai do denominador de c2_a" do
+    care_citizen!(age: 1, sex: "female", neighborhood: care_neighborhood!(unit)).update!(birth_date: (today - 10).iso8601)
+    result = described_class.call(team: team, indicator: "C2", today: today)
+    expect(result[:denominator]).to eq(1)
+    expect(c2_practice(result, "c2_a")).to include(achieved: 0, denominator: 0, weight: "0.0")
+    expect(result[:excluded_practices]).to include({ key: "c2_a", reason: "no_eligible" })
+    # c2_b e c2_c (proportional) seguem na conta, com o peso redistribuído (50/50); esperado 1 em 10 dias, feito 0
+    expect(result[:practices].select { |p| p[:tracked] }.map { |p| p.values_at(:key, :weight, :achieved, :denominator) }).to eq([
+      [ "c2_a", "0.0", 0, 0 ], [ "c2_b", "50.0", 0, 1 ], [ "c2_c", "50.0", 0, 1 ]
+    ])
+    expect(result).to include(score: "0.0", concept: "regular")
+  end
+
+  it "end_of_window com a janela aberta: bebê de 10 dias com consulta cumpriu e fica no denominador" do
+    baby_patient!(10, unit: unit, doctor: doctor)
+    result = described_class.call(team: team, indicator: "C2", today: today)
+    expect(result[:denominator]).to eq(1)
+    expect(c2_practice(result, "c2_a")).to include(achieved: 1, denominator: 1, weight: "33.3")
+    expect(result[:excluded_practices]).not_to include({ key: "c2_a", reason: "no_eligible" })
+    expect(result).to include(score: "100.0", concept: "optimal")
+  end
+
+  it "end_of_window com a janela vencida e não cumprida: segue no denominador, sem cumprir" do
+    care_citizen!(age: 1, sex: "female", neighborhood: care_neighborhood!(unit)).update!(birth_date: (today - 40).iso8601)
+    result = described_class.call(team: team, indicator: "C2", today: today)
+    expect(c2_practice(result, "c2_a")).to include(achieved: 0, denominator: 1, weight: "33.3")
+  end
+
+  it "proportional não muda: pessoa que ainda não cumpriu o esperado segue no denominador" do
+    care_citizen!(age: 1, sex: "female", neighborhood: care_neighborhood!(unit)).update!(birth_date: (today - 10).iso8601)
+    result = described_class.call(team: team, indicator: "C2", today: today)
+    expect(c2_practice(result, "c2_b")).to include(achieved: 0, denominator: 1)
   end
 
   it "gestante INSCRITA entra pela DUM: aborto registrado antes da DUM não a exclui; sem inscrição, exclui" do

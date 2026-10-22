@@ -2,6 +2,9 @@
 # 13). ESTIMATIVA: regras da versão mais recente do template; população
 # elegível da equipe, inscrita ou não; práticas não rastreadas fora, com os
 # pesos restantes redistribuídos; denominador por prática (faixa da C7).
+# Também saem da conta (e do peso): a prática rastreada sem ninguém no
+# denominador (`no_eligible`) e, em `end_of_window`, quem ainda não cumpriu
+# enquanto a janela está aberta (ainda dá tempo).
 # Agregado, sem nome e sem trilha (não há leitura nominal): a resposta traz
 # só contagens, a nota e a equipe. O oficial é do SIAPS.
 module CareLines
@@ -28,27 +31,47 @@ module CareLines
       rows = Evaluation.items(items, today: today).values
 
       per_practice = per_practice(practices, rows)
-      score = rows.empty? ? nil : per_practice.sum { |p| p[:denominator].zero? ? 0r : p[:weight_value] * p[:achieved] / p[:denominator] }
+      # Sem nenhuma prática rastreada com denominador: "sem dados" (nil), nunca 0.
+      counted = per_practice.select { |p| p[:tracked] && p[:denominator].positive? }
+      score = counted.empty? ? nil : counted.sum { |p| p[:weight_value] * p[:achieved] / p[:denominator] }
 
       grade = score && grade(score)
       { indicator: indicator, team: { id: team.id, ine: team.ine, name: team.name }, template_version: template.version,
         denominator: rows.size, score: grade&.first, max_score: 100, concept: grade&.last,
         practices: per_practice.map { |p| p.except(:weight_value) },
         excluded: practices.select { |p| Catalog.untracked?(p["source"]) }.map { |p| p["source"].split(":").first }.uniq,
-        estimate: true }
+        excluded_practices: per_practice.filter_map { |p| exclusion(p) }, estimate: true }
     end
 
-    # Pesos das práticas rastreadas redistribuídos para somar 100 (Rational:
-    # sem erro de ponto flutuante na borda dos conceitos).
+    # Pesos das práticas rastreadas COM denominador redistribuídos para somar
+    # 100 (Rational: sem erro de ponto flutuante na borda dos conceitos).
     def per_practice(practices, rows)
-      tracked_points = practices.reject { |p| Catalog.untracked?(p["source"]) }.sum { |p| p["points"].to_i }
-      practices.map do |practice|
+      rows_by_practice = practices.map do |practice|
         statuses = rows.filter_map { |row| row.practices.find { |s| s.key == practice["key"] } }
         tracked = !Catalog.untracked?(practice["source"])
-        weight = tracked && tracked_points.positive? ? Rational(practice["points"].to_i * 100, tracked_points) : 0r
-        { key: practice["key"], label: practice["label"], tracked: tracked, points: practice["points"], weight_value: weight,
-          weight: one_decimal(weight), achieved: statuses.count(&:met), denominator: statuses.size }
+        [ practice, tracked, tracked ? statuses.reject { |s| open_window?(practice, s) } : statuses ]
       end
+      base = rows_by_practice.sum { |practice, tracked, list| tracked && list.any? ? practice["points"].to_i : 0 }
+      rows_by_practice.map do |practice, tracked, list|
+        weight = tracked && list.any? && base.positive? ? Rational(practice["points"].to_i * 100, base) : 0r
+        { key: practice["key"], label: practice["label"], tracked: tracked, points: practice["points"], weight_value: weight,
+          weight: one_decimal(weight), achieved: list.count(&:met), denominator: list.size }
+      end
+    end
+
+    # `end_of_window` com a janela ainda aberta e não cumprida: ainda dá tempo,
+    # a pessoa sai do denominador da prática (quem cumpriu fica). Usa o
+    # PracticeStatus do Evaluate (status ≠ overdue = prazo não venceu); janela
+    # móvel (`rolling`) e `proportional` ficam como estão.
+    def open_window?(practice, status)
+      practice["schedule"] == "end_of_window" && practice["anchor"] != "rolling" && !status.met && status.status != "overdue"
+    end
+
+    # Motivo de a prática ficar fora da conta (`excluded_practices`).
+    def exclusion(practice)
+      return { key: practice[:key], reason: "untracked" } unless practice[:tracked]
+
+      { key: practice[:key], reason: "no_eligible" } if practice[:denominator].zero?
     end
 
     # Nota e conceito saem do MESMO valor arredondado (uma casa, half-up): o
@@ -61,6 +84,6 @@ module CareLines
     def one_decimal(value) = format("%.1f", value.round(1, half: :up).to_f)
 
     def concept(score) = CONCEPTS.find { |limit, _| score > limit }&.last || "regular"
-    private_class_method :per_practice, :one_decimal, :concept
+    private_class_method :per_practice, :open_window?, :exclusion, :one_decimal, :concept
   end
 end
