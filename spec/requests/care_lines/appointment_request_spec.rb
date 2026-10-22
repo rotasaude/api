@@ -113,21 +113,40 @@ RSpec.describe "Linhas de cuidado — agendar pela linha", type: :request do
 
   it "com dois pares validados, o pedido da linha nasce com o mais antigo e é reaproveitado depois que esse par é rebaixado" do
     enrollment
-    second = profiled_citizen!(age: 70, sex: "female", phone: "+5541977776666", cpf: pair.cpf)
-    CitizenVerification.create!(citizen: second, verified_by_user: verifier!, verified_at: Time.current)
-    second.update!(verification_level: "verified", profile_source: "verified", full_name: "Maria Aparecida da Silva",
+    # Determinístico: o par mais antigo tem o MAIOR id possível (order(:id) o
+    # deixaria por último; pairs.first escolheria o outro sempre).
+    oldest = Citizen.create!(id: "ffffffff-ffff-4fff-bfff-ffffffffffff", cpf: pair.cpf, phone: "+5541977776666",
+                             birth_date: birth_date_for(70), sex: "female", profile_source: "declared",
+                             created_at: pair.created_at - 1.year)
+    CitizenVerification.create!(citizen: oldest, verified_by_user: verifier!, verified_at: Time.current)
+    oldest.update!(verification_level: "verified", profile_source: "verified", full_name: "Maria Aparecida da Silva",
                    mother_name: "Joana da Silva")
-    second.update_columns(patient_id: patient.id)
+    oldest.update_columns(patient_id: patient.id)
+    expect(oldest.id).to be > pair.id
+    expect(oldest.created_at).to be < pair.created_at
     sign_in_as(doctor)
     json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
     expect(response).to have_http_status(:created)
     request = AppointmentRequest.sole
-    expect(request.citizen_id).to eq(pair.id) # o par mais antigo, não o menor UUID
+    expect(request.citizen_id).to eq(oldest.id) # o par mais antigo, não o menor UUID
 
-    pair.update!(verification_level: "declared")
+    oldest.update!(verification_level: "declared")
     json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
     expect([ response.status, json_body["request"]["id"], json_body["unit"]["id"] ]).to eq([ 200, request.id, unit.id ])
     expect(AppointmentRequest.count).to eq(1)
+  end
+
+  it "pedido da linha marcado na unidade da equipe e outro aberto ali: 409 already_scheduled, sem reaproveitar nem criar" do
+    sign_in_as(doctor)
+    json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
+    own = AppointmentRequest.find(json_body["request"]["id"])
+    Appointments::Schedule.call(request: own, scheduled_at: 5.days.from_now.change(hour: 10).iso8601, health_unit_id: unit.id,
+                                by: reception!).payload.fetch(:appointment)
+    expect(own.reload.status).to eq("scheduled")
+    triage_request!(pair, unit: unit)
+    expect { json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {} }
+      .not_to change(AppointmentRequest, :count)
+    expect([ response.status, json_body ]).to eq([ 409, { "error" => "already_scheduled" } ])
   end
 
   it "reaproveitando um encaminhamento com nota, a resposta não traz a nota livre" do
@@ -257,6 +276,18 @@ RSpec.describe "Linhas de cuidado — agendar pela linha", type: :request do
       expect(DomainEvent.where(name: "appointment.cancelled").sole.payload).to eq("appointment_id" => appointment.id, "by" => "care_line")
       expect(DomainEvent.where(name: "appointment_request.closed").sole.payload)
         .to eq("appointment_request_id" => request.id, "closed_reason" => "dismissed")
+    end
+
+    it "pedido fechado entre a releitura e a trava (Dismiss): o óbito encerra a inscrição sem erro" do
+      request = open_by_line!
+      stale = AppointmentRequest.find(request.id) # ainda "open" em memória
+      expect(AppointmentRequests::Dismiss.call(request: request, reason: "cidadão não quer remarcar", health_unit_id: unit.id,
+                                               by: reception!)).to be_ok
+      allow(CareLines::EndEnrollment).to receive(:own_live_request).and_return(stale)
+      end_enrollment!("death")
+      expect(enrollment.reload).to have_attributes(status: "ended", ended_reason: "death")
+      expect(request.reload).to have_attributes(status: "closed", closed_reason: "dismissed", dismiss_reason: "cidadão não quer remarcar")
+      expect(DomainEvent.where(name: "appointment_request.closed").count).to eq(1)
     end
 
     it "alta (e os outros motivos) não fecha o pedido" do

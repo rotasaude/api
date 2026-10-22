@@ -87,6 +87,10 @@ module CareLines
         DomainEvents.publish("appointment.cancelled", appointment_id: appointment.id, by: "care_line")
       end
       request.lock!
+      # Fechado entre a releitura e a trava (CancelByCitizen, CheckIn, Dismiss):
+      # nada a fechar, como no AppointmentRequests::Dismiss.
+      return unless %w[open scheduled].include?(request.status)
+
       AppointmentRequests::Lifecycle.close!(request, reason: "dismissed", by: by, dismiss_reason: REQUEST_DISMISS_REASONS.fetch(reason))
     end
     private_class_method :own_live_request, :close_request!
