@@ -1,8 +1,10 @@
 # "Agendar" pela linha de cuidado (contrato §11 T4): o pedido de agendamento
 # do módulo 17 da pessoa na unidade da equipe da inscrição. O pedido vivo da
-# própria inscrição vem primeiro: depois de um Drain ele vive noutra unidade
-# (aberto → reaproveita com a unidade de destino dele; marcado →
-# already_scheduled). Senão, reaproveita o pedido ABERTO da pessoa na unidade
+# própria inscrição vem primeiro, em qualquer unidade e com qualquer par
+# (depois de um Drain ele vive noutra unidade; o par dele pode ter sido
+# rebaixado ou excluído com outro par validado restando): aberto →
+# reaproveita com a unidade de destino dele; marcado → already_scheduled.
+# Senão, reaproveita o pedido ABERTO da pessoa na unidade
 # da equipe (qualquer origem); com só um pedido marcado ali, recusa
 # (already_scheduled); senão abre um (kind care_line, origem a inscrição,
 # tipo retorno, prazo padrão).
@@ -27,7 +29,7 @@ module CareLines
         next Result.fail(:citizen_not_verified) if pairs.empty?
 
         own = AppointmentRequest.live_requests.where(origin_care_line_enrollment_id: enrollment.id).includes(:target_unit).first
-        if own && own.target_unit_id != unit.id
+        if own
           next own.status == "open" ? Result.ok(request: own, unit: own.target_unit, created: false) : Result.fail(:already_scheduled)
         end
         next Result.fail(:invalid_unit) unless unit.active
@@ -37,7 +39,9 @@ module CareLines
         next Result.ok(request: open, unit: unit, created: false) if open
         next Result.fail(:already_scheduled) if live.any?
 
-        request = AppointmentRequest.create!(kind: "care_line", origin_care_line_enrollment: enrollment, citizen: pairs.first,
+        # O par mais antigo (pairs vem em order(:id) só para travar).
+        oldest = pairs.min_by { |pair| [ pair.created_at, pair.id ] }
+        request = AppointmentRequest.create!(kind: "care_line", origin_care_line_enrollment: enrollment, citizen: oldest,
                                              origin_unit: unit, target_unit: unit, appointment_type_key: "retorno", priority: "routine",
                                              due_on: Time.zone.today + AppointmentRequest::DUE_IN_DAYS)
         DomainEvents.publish("appointment_request.created", appointment_request_id: request.id, care_line_enrollment_id: enrollment.id,

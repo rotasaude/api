@@ -42,6 +42,7 @@ RSpec.describe "Linhas de cuidado — agendar pela linha", type: :request do
     sign_in_as(doctor)
     json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
     expect([ response.status, json_body["request"]["id"] ]).to eq([ 200, existing.id ])
+    expect(json_body["request"]).to include("kind" => "triage", "origin" => "triage") # o tipo real do reaproveitado
     existing.update!(status: "scheduled")
     json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "already_scheduled" } ])
@@ -108,6 +109,25 @@ RSpec.describe "Linhas de cuidado — agendar pela linha", type: :request do
     json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
     expect([ response.status, json_body ]).to eq([ 409, { "error" => "citizen_not_verified" } ])
     expect(AppointmentRequest.count).to eq(0)
+  end
+
+  it "com dois pares validados, o pedido da linha nasce com o mais antigo e é reaproveitado depois que esse par é rebaixado" do
+    enrollment
+    second = profiled_citizen!(age: 70, sex: "female", phone: "+5541977776666", cpf: pair.cpf)
+    CitizenVerification.create!(citizen: second, verified_by_user: verifier!, verified_at: Time.current)
+    second.update!(verification_level: "verified", profile_source: "verified", full_name: "Maria Aparecida da Silva",
+                   mother_name: "Joana da Silva")
+    second.update_columns(patient_id: patient.id)
+    sign_in_as(doctor)
+    json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
+    expect(response).to have_http_status(:created)
+    request = AppointmentRequest.sole
+    expect(request.citizen_id).to eq(pair.id) # o par mais antigo, não o menor UUID
+
+    pair.update!(verification_level: "declared")
+    json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
+    expect([ response.status, json_body["request"]["id"], json_body["unit"]["id"] ]).to eq([ 200, request.id, unit.id ])
+    expect(AppointmentRequest.count).to eq(1)
   end
 
   it "reaproveitando um encaminhamento com nota, a resposta não traz a nota livre" do
@@ -198,5 +218,69 @@ RSpec.describe "Linhas de cuidado — agendar pela linha", type: :request do
     other = care_enrollment!(patient: care_patient!(age: 72, sex: "female"), line: adopted_line!("elderly_c6"), team: team, by: doctor)
     expect { attempt { AppointmentRequest.where(id: request.id).update_all(origin_care_line_enrollment_id: other.id) } }
       .to raise_error(ActiveRecord::StatementInvalid, /origin columns never change/)
+  end
+
+  # M4: encerrar por óbito ou mudança fecha o pedido care_line vivo da própria
+  # inscrição (dismissed, texto fixo), cancelando o horário vivo como a
+  # exclusão LGPD faz; os outros motivos e o pedido reaproveitado ficam.
+  describe "encerrar a inscrição" do
+    def open_by_line!
+      sign_in_as(doctor)
+      json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
+      AppointmentRequest.find(json_body["request"]["id"])
+    end
+
+    def end_enrollment!(reason)
+      result = CareLines::EndEnrollment.call(enrollment: enrollment, reason: reason, note: nil, by: doctor)
+      expect(result).to be_ok
+    end
+
+    it "óbito fecha o pedido aberto como dismissed, com o texto do motivo; o evento do 17 só com ids" do
+      request = open_by_line!
+      end_enrollment!("death")
+      expect(request.reload).to have_attributes(status: "closed", closed_reason: "dismissed", closed_by_user_id: doctor.id,
+                                                dismiss_reason: CareLines::EndEnrollment::REQUEST_DISMISS_REASONS.fetch("death"))
+      expect(DomainEvent.where(name: "appointment_request.closed").sole.payload)
+        .to eq("appointment_request_id" => request.id, "closed_reason" => "dismissed")
+    end
+
+    it "mudança fecha o pedido marcado e cancela o horário vivo pelo caminho do 17" do
+      request = open_by_line!
+      appointment = Appointments::Schedule.call(request: request, scheduled_at: 5.days.from_now.change(hour: 10).iso8601,
+                                                health_unit_id: unit.id, by: reception!).payload.fetch(:appointment)
+      expect(request.reload.status).to eq("scheduled")
+      end_enrollment!("moved")
+      expect(appointment.reload).to have_attributes(status: "cancelled_by_citizen", cancel_reason: CareLines::EndEnrollment::APPOINTMENT_CANCEL_REASON)
+      expect(appointment.ended_at).to be_present
+      expect(request.reload).to have_attributes(status: "closed", closed_reason: "dismissed",
+                                                dismiss_reason: CareLines::EndEnrollment::REQUEST_DISMISS_REASONS.fetch("moved"))
+      expect(DomainEvent.where(name: "appointment.cancelled").sole.payload).to eq("appointment_id" => appointment.id, "by" => "care_line")
+      expect(DomainEvent.where(name: "appointment_request.closed").sole.payload)
+        .to eq("appointment_request_id" => request.id, "closed_reason" => "dismissed")
+    end
+
+    it "alta (e os outros motivos) não fecha o pedido" do
+      request = open_by_line!
+      end_enrollment!("discharge")
+      expect(request.reload.status).to eq("open")
+      expect(DomainEvent.where(name: "appointment_request.closed")).to be_empty
+    end
+
+    it "óbito não fecha o pedido reaproveitado de outro tipo" do
+      existing = triage_request!(pair, unit: unit)
+      expect(open_by_line!.id).to eq(existing.id)
+      end_enrollment!("death")
+      expect(existing.reload.status).to eq("open")
+      expect(AppointmentRequest.where(kind: "care_line")).to be_empty
+    end
+
+    it "óbito fecha também o pedido da inscrição movido por um Drain" do
+      open_by_line!
+      dest = care_unit!
+      expect(HealthUnits::Drain.call(unit: unit, target_unit_id: dest.id, reason: "unidade fechada para reforma", by: care_admin!)).to be_ok
+      end_enrollment!("death")
+      expect(AppointmentRequest.where(origin_care_line_enrollment_id: enrollment.id).live_requests).to be_empty
+      expect(AppointmentRequest.find_by!(target_unit_id: dest.id)).to have_attributes(status: "closed", closed_reason: "dismissed")
+    end
   end
 end
