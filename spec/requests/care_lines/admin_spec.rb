@@ -43,6 +43,22 @@ RSpec.describe "Linhas de cuidado — linhas da cidade", type: :request do
     expect(json_body).to eq("error" => "template_not_found")
   end
 
+  it "corrida de adoção: o perdedor passa na pré-checagem e ainda recebe duplicate_template, não duplicate_declared_condition" do
+    stepped_up!(admin)
+    json_post "/care_lines/admin/lines", template_key: "diabetes_c4", template_version: 1
+    expect(response).to have_http_status(:created)
+    calls = 0
+    allow(CareLine).to receive(:exists?).and_call_original
+    allow(CareLine).to receive(:exists?).with(template_key: "diabetes_c4") do
+      calls += 1
+      calls == 1 ? false : CareLine.where(template_key: "diabetes_c4").exists? # 1ª: a pré-checagem do perdedor; 2ª: a consulta do rescue
+    end
+    json_post "/care_lines/admin/lines", template_key: "diabetes_c4", template_version: 1
+    expect(calls).to eq(2)
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to eq("error" => "duplicate_template")
+  end
+
   it "versão nova do template só vale quando a cidade adota (PATCH template_version)" do
     stepped_up!(admin)
     json_post "/care_lines/admin/lines", template_key: "hypertension_c5", template_version: 1

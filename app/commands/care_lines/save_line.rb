@@ -15,8 +15,9 @@ module CareLines
       elsif line.template? then readopt(line, params, by)
       else custom(line, params, by)
       end
-    rescue ActiveRecord::RecordNotUnique => e
-      Result.fail(e.message.include?("idx_care_lines_one_adoption") ? :duplicate_template : :duplicate_declared_condition)
+    rescue ActiveRecord::RecordNotUnique
+      # Só a condição declarada chega aqui (adopt trata o seu): linha própria e readoção.
+      Result.fail(:duplicate_declared_condition)
     end
 
     def adopt(params, by)
@@ -33,6 +34,10 @@ module CareLines
         DomainEvents.publish("care_line.adopted", care_line_id: line.id, user_id: by.id)
       end
       Result.ok(line: line, created: true)
+    rescue ActiveRecord::RecordNotUnique
+      # Corrida: o perdedor fere os dois índices únicos e o Postgres cita o primeiro na ordem
+      # de OID (depende de dump x migração). Depois do commit do vencedor, a consulta decide.
+      Result.fail(CareLine.exists?(template_key: template.key) ? :duplicate_template : :duplicate_declared_condition)
     end
 
     def readopt(line, params, by)
