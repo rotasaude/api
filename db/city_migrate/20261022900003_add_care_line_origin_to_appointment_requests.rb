@@ -4,7 +4,9 @@
 # um pedido vivo por inscrição. A raiz só falta no pedido da linha ou no que
 # nasce de um atendimento (o atendimento do horário da linha não tem raiz, e
 # o retorno/encaminhamento/escuta dele herda isso); o pedido da triagem
-# segue com raiz. Trigger em db/city_triggers.sql. Irreversível.
+# segue com raiz. Triggers em db/city_triggers.sql: a guarda congela a origem
+# nova e rota_appointment_request_root_guard (INSERT) só aceita a raiz nula
+# com origem num atendimento cuja cadeia também não tem raiz. Irreversível.
 class AddCareLineOriginToAppointmentRequests < ActiveRecord::Migration[8.1]
   def up
     add_reference :appointment_requests, :origin_care_line_enrollment, type: :uuid, index: false,

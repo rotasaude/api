@@ -229,6 +229,26 @@ BEGIN
 END;
 $fn$ LANGUAGE plpgsql;
 
+-- Módulo 23 (ADR 0040): a raiz da triagem só falta no pedido com origem num
+-- atendimento quando a cadeia desse atendimento também não tem raiz (o do
+-- horário de um pedido da linha de cuidado). Atendimento de triagem, ou de
+-- horário de pedido com raiz, exige a raiz (ck_appointment_requests_care_line
+-- cobre o resto). A cópia do Drain leva a raiz do pedido de origem.
+CREATE OR REPLACE FUNCTION rota_appointment_request_root_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.root_triage_id IS NULL AND NEW.origin_attendance_id IS NOT NULL THEN
+    IF EXISTS (SELECT 1 FROM attendances a
+                 LEFT JOIN appointments ap ON ap.id = a.appointment_id
+                 LEFT JOIN appointment_requests r ON r.id = ap.request_id
+                WHERE a.id = NEW.origin_attendance_id
+                  AND (a.triage_id IS NOT NULL OR r.root_triage_id IS NOT NULL)) THEN
+      RAISE EXCEPTION 'appointment_requests: the attendance chain has a root triage';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
 -- Horário (ADR 0019): só acréscimo e as transições previstas; o que foi marcado nunca muda.
 -- `moved` (api#29): o horário foi para outra unidade, num horário novo ligado a este.
 CREATE OR REPLACE FUNCTION rota_appointment_guard() RETURNS trigger AS $fn$
@@ -276,6 +296,10 @@ BEGIN
     EXECUTE 'CREATE TRIGGER appointment_requests_append_only_truncate
       BEFORE TRUNCATE ON appointment_requests
       FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS appointment_requests_root_guard ON appointment_requests';
+    EXECUTE 'CREATE TRIGGER appointment_requests_root_guard
+      BEFORE INSERT ON appointment_requests
+      FOR EACH ROW EXECUTE FUNCTION rota_appointment_request_root_guard()';
   END IF;
   IF to_regclass('public.appointments') IS NOT NULL THEN
     EXECUTE 'DROP TRIGGER IF EXISTS appointments_guard ON appointments';

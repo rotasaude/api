@@ -86,6 +86,41 @@ RSpec.describe "Linhas de cuidado — agendar pela linha", type: :request do
     moved = AppointmentRequest.find_by!(target_unit_id: dest.id)
     expect(moved).to have_attributes(kind: "care_line", origin_care_line_enrollment_id: enrollment.id, status: "open",
                                      root_triage_id: nil)
+
+    # "Agendar" de novo: o pedido da inscrição vive na unidade de destino (nunca 500).
+    unit.update!(active: false)
+    json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
+    expect([ response.status, json_body["request"]["id"], json_body["unit"]["id"] ]).to eq([ 200, moved.id, dest.id ])
+    moved.update!(status: "scheduled")
+    json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
+    expect([ response.status, json_body ]).to eq([ 409, { "error" => "already_scheduled" } ])
+    expect(AppointmentRequest.where(kind: "care_line").live_requests.count).to eq(1)
+  end
+
+  it "par excluído ou rebaixado → 409 citizen_not_verified, sem pedido" do
+    enrollment
+    sign_in_as(doctor)
+    pair.update!(verification_level: "declared")
+    json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
+    expect([ response.status, json_body ]).to eq([ 409, { "error" => "citizen_not_verified" } ])
+    pair.update!(verification_level: "verified")
+    pair.update_columns(erased_at: Time.current)
+    json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
+    expect([ response.status, json_body ]).to eq([ 409, { "error" => "citizen_not_verified" } ])
+    expect(AppointmentRequest.count).to eq(0)
+  end
+
+  it "reaproveitando um encaminhamento com nota, a resposta não traz a nota livre" do
+    other_unit = care_unit!
+    attendance = walk_in_attendance!(other_unit, citizen: pair)
+    referral = AppointmentRequest.create!(origin_attendance: attendance, citizen: pair, root_triage: attendance.root_triage,
+                                          origin_unit: other_unit, target_unit: unit, kind: "referral",
+                                          note: "nota livre do encaminhamento")
+    sign_in_as(doctor)
+    json_post "/care_lines/enrollments/#{enrollment.id}/appointment_request", {}
+    expect([ response.status, json_body["request"]["id"] ]).to eq([ 200, referral.id ])
+    expect(json_body["request"]).not_to have_key("note")
+    expect(response.body).not_to include("nota livre")
   end
 
   # A cadeia sem triagem raiz: o atendimento do horário da linha não tem raiz;
@@ -119,7 +154,28 @@ RSpec.describe "Linhas de cuidado — agendar pela linha", type: :request do
       get "/attendance/units/#{unit.id}/requests"
       expect(response).to have_http_status(:ok)
       expect(json_body["requests"].find { |r| r["id"] == back.id }).to include("origin" => "attendance", "triage_priority" => nil)
+
+      # A cópia do Drain do retorno sem raiz passa pela guarda da cadeia.
+      dest = care_unit!
+      expect(HealthUnits::Drain.call(unit: unit, target_unit_id: dest.id, reason: "unidade fechada para reforma", by: care_admin!)).to be_ok
+      expect(AppointmentRequest.live_requests.find_by!(moved_from_request_id: back.id))
+        .to have_attributes(kind: "return", root_triage_id: nil, origin_attendance_id: attendance.id, target_unit_id: dest.id)
     end
+  end
+
+  # rota_appointment_request_root_guard: raiz nula com origem num atendimento
+  # só quando a cadeia do atendimento também não tem raiz.
+  it "o banco recusa pedido sem raiz de atendimento que tem raiz (triagem ou horário de pedido com raiz)" do
+    from_triage = walk_in_attendance!(unit, citizen: pair)
+    expect do
+      attempt { AppointmentRequest.create!(origin_attendance: from_triage, citizen: pair, root_triage: nil, origin_unit: unit, target_unit: unit, kind: "return") }
+    end.to raise_error(ActiveRecord::StatementInvalid, /the attendance chain has a root triage/)
+    from_appointment = scheduled_attendance!(unit, citizen: pair)
+    expect do
+      attempt { AppointmentRequest.create!(origin_attendance: from_appointment, citizen: pair, root_triage: nil, origin_unit: unit, target_unit: unit, kind: "return") }
+    end.to raise_error(ActiveRecord::StatementInvalid, /the attendance chain has a root triage/)
+    expect { AppointmentRequest.create!(origin_attendance: from_triage, citizen: pair, root_triage: from_triage.root_triage, origin_unit: unit, target_unit: unit, kind: "return") }
+      .not_to raise_error
   end
 
   it "o banco: care_line exige a inscrição e as unidades; a raiz só falta em care_line ou com origem no atendimento; a origem não muda" do
