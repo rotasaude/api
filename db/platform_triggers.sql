@@ -224,3 +224,21 @@ BEGIN
       FOR EACH ROW EXECUTE FUNCTION anvisa_list_substances_guard();
   END IF;
 END $$;
+
+-- care_line_templates (ADR 0040; plano 2026-10-22 Desvio 12): versão nova é
+-- linha nova; nenhuma versão muda nem some.
+CREATE OR REPLACE FUNCTION rota_care_line_templates_immutable() RETURNS trigger AS $fn$
+BEGIN
+  RAISE EXCEPTION 'care_line_templates: immutable (% refused)', TG_OP;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.care_line_templates') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS care_line_templates_immutable ON care_line_templates';
+    EXECUTE 'CREATE TRIGGER care_line_templates_immutable BEFORE UPDATE OR DELETE ON care_line_templates
+      FOR EACH ROW EXECUTE FUNCTION rota_care_line_templates_immutable()';
+  END IF;
+END
+$do$;

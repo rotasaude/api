@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_19_100002) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_22_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -69,6 +69,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_19_100002) do
     t.check_constraint "(kind::text = 'controlled'::text) = (controlled_list IS NOT NULL)", name: "ck_anvisa_list_substances_list"
     t.check_constraint "controlled_list IS NULL OR controlled_list::text ~ '^[A-F][0-9]?$'::text", name: "ck_anvisa_list_substances_list_code"
     t.check_constraint "kind::text = ANY (ARRAY['antimicrobial'::text, 'controlled'::text, 'anticonvulsant'::text])", name: "ck_anvisa_list_substances_kind"
+  end
+
+  create_table "care_line_templates", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_maintainer_id"
+    t.string "declared_condition"
+    t.jsonb "eligibility", null: false
+    t.string "indicator", limit: 2, null: false
+    t.string "key", null: false
+    t.string "name", limit: 120, null: false
+    t.jsonb "practices", null: false
+    t.integer "version", null: false
+    t.index ["key", "version"], name: "idx_care_line_templates_version", unique: true
+    t.check_constraint "key::text = ANY (ARRAY['child_c2'::text, 'pregnancy_c3'::text, 'diabetes_c4'::text, 'hypertension_c5'::text, 'elderly_c6'::text, 'women_c7'::text])", name: "ck_care_line_templates_key"
+    t.check_constraint "version >= 1 AND indicator::text ~ '^C[2-7]$'::text AND jsonb_typeof(practices) = 'array'::text AND jsonb_typeof(eligibility) = 'object'::text", name: "ck_care_line_templates_values"
   end
 
   create_table "ciap2_codes", force: :cascade do |t|

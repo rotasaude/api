@@ -1,0 +1,208 @@
+# Catálogo-base das linhas de cuidado (ADR 0040). Fonte: notas metodológicas
+# C2–C7 da SAPS/MS assinadas em 19/06/2026 e NT 8/2026 (prova técnica em
+# docs/pesquisa/2026-10-22-linhas-de-cuidado-prova-tecnica.md). Janelas em
+# dias (6 meses = 183, 12 = 365, 24 = 730, 36 = 1095, 60 = 1826). Carga:
+# bin/rails care_lines:templates:load. Mudança depois da carga: só pelo
+# maintenance (nova versão).
+- key: child_c2
+  indicator: C2
+  name: "Criança até 2 anos (desenvolvimento infantil)"
+  declared_condition: null
+  eligibility:
+    age_max_days: 730
+  practices:
+    - { key: c2_a, label: "1ª consulta com médico(a) ou enfermeiro(a) até o 30º dia de vida", citizen_label: "Primeira consulta do bebê",
+        source: consultation, anchor: birth, window_days: 30, min_count: 1, schedule: end_of_window,
+        cbo_filter: &md_nurse ["2231", "2251", "2252", "2253", "2235"], points: 20 }
+    - { key: c2_b, label: "9 consultas com médico(a) ou enfermeiro(a) até os 2 anos", citizen_label: "Consultas de acompanhamento da criança",
+        source: consultation, anchor: birth, window_days: 730, min_count: 9, schedule: proportional, cbo_filter: *md_nurse, points: 20 }
+    - { key: c2_c, label: "9 registros de peso e altura até os 2 anos", citizen_label: "Medir peso e altura da criança",
+        source: weight_height, anchor: birth, window_days: 730, min_count: 9, schedule: proportional, points: 20 }
+    - { key: c2_d, label: "2 visitas do ACS (até 30 dias e até 6 meses de vida)", source: acs_visit, anchor: birth, window_days: 180,
+        min_count: 2, schedule: end_of_window, points: 20 }
+    - { key: c2_e, label: "Vacinas penta, VIP, SCR e pneumocócica com todas as doses", source: "vaccine:c2_schedule", anchor: birth,
+        window_days: 730, min_count: 1, schedule: end_of_window, points: 20 }
+- key: pregnancy_c3
+  indicator: C3
+  name: "Gestante e puérpera"
+  declared_condition: pregnancy
+  eligibility:
+    problems:
+      ciap2: [W03, W78, W79, W81, W84, W85]
+      cid10: [O10, O11, O12, O13, O14, O15, O16, O20, O21, O22, O23, O24, O25, O26, O28, O29, O30, O31, O32, O33, O34, O35, O36,
+              O40, O41, O43, O44, O46, O47, O48, O752, O753, O98, O990, O991, O992, O993, O994, O995, O996, O997, Z321, Z33, Z34,
+              Z35, Z36, Z640]
+    exclude_problems:
+      ciap2: [W82, W83]
+      cid10: [O02, O03, O04, O05, O06, Z303]
+    declared: [pregnancy]
+    requires_anchor: lmp
+  practices:
+    - { key: c3_a, label: "1ª consulta de pré-natal até a 12ª semana", citizen_label: "Primeira consulta do pré-natal",
+        source: consultation, anchor: lmp, window_days: 84, min_count: 1, schedule: end_of_window, cbo_filter: *md_nurse, points: 10 }
+    - { key: c3_b, label: "7 consultas de pré-natal na gestação", citizen_label: "Consultas do pré-natal",
+        source: consultation, anchor: lmp, window_days: 294, min_count: 7, schedule: proportional, cbo_filter: *md_nurse, points: 9 }
+    - { key: c3_c, label: "7 aferições de pressão arterial na gestação", citizen_label: "Medir a pressão",
+        source: blood_pressure, anchor: lmp, window_days: 294, min_count: 7, schedule: proportional, points: 9 }
+    - { key: c3_d, label: "7 registros de peso e altura na gestação", citizen_label: "Medir peso e altura",
+        source: weight_height, anchor: lmp, window_days: 294, min_count: 7, schedule: proportional, points: 9 }
+    - { key: c3_e, label: "3 visitas do ACS após a 1ª consulta", source: acs_visit, anchor: lmp, window_days: 294, min_count: 3,
+        schedule: end_of_window, points: 9 }
+    - { key: c3_f, label: "Vacina dTpa a partir da 20ª semana", source: "vaccine:57", anchor: lmp, window_start_days: 140,
+        window_days: 294, min_count: 1, schedule: end_of_window, points: 9 }
+    - key: c3_g
+      label: "Testes de sífilis, HIV e hepatites B e C no 1º trimestre"
+      citizen_label: "Exames do primeiro trimestre"
+      source: "procedure:0214010074"
+      anchor: lmp
+      window_days: 97
+      min_count: 1
+      schedule: end_of_window
+      points: 9
+      all_of:
+        - &syphilis [{ source: "procedure:0214010074" }, { source: "procedure:0214010082" }, { source: "procedure:0214010252" },
+                     { source: "exam:0202031098" }, { source: "exam:0202031110" }, { source: "exam:0202031179" }]
+        - &hiv [{ source: "procedure:0214010040" }, { source: "procedure:0214010279" }, { source: "procedure:0214010058" },
+                { source: "exam:0213010780" }, { source: "exam:0213010500" }, { source: "exam:0202030300" }]
+        - [{ source: "procedure:0214010104" }, { source: "procedure:0214010236" }, { source: "exam:0202030784" },
+           { source: "exam:0202030970" }, { source: "exam:0213010208" }]
+        - [{ source: "procedure:0214010090" }, { source: "procedure:0214010309" }, { source: "exam:0202030059" },
+           { source: "exam:0202030679" }]
+    - key: c3_h
+      label: "Testes de sífilis e HIV no 3º trimestre"
+      citizen_label: "Exames do terceiro trimestre"
+      source: "procedure:0214010074"
+      anchor: lmp
+      window_start_days: 196
+      window_days: 294
+      min_count: 1
+      schedule: end_of_window
+      points: 9
+      all_of: [*syphilis, *hiv]
+    - key: c3_i
+      label: "Consulta no puerpério"
+      citizen_label: "Consulta depois do parto"
+      source: consultation
+      anchor: lmp
+      window_start_days: 154
+      window_days: 336
+      min_count: 1
+      schedule: end_of_window
+      cbo_filter: *md_nurse
+      code_filter:
+        ciap2: [P29, W18, W19, W70, W90, W91, W92, W93, W94, W95, W96]
+        cid10: [F53, M830, O10, O152, O266, O722, O723, O85, O86, O87, O90, O91, O92, O94, O98, O99, Z37, Z38, Z39]
+      points: 9
+      # Consulta com código de puerpério (cbo_filter e code_filter acima valem
+      # para a alternativa consultation) OU o procedimento 0301010129.
+      all_of:
+        - [{ source: consultation }, { source: "procedure:0301010129" }]
+    - { key: c3_j, label: "Visita do ACS no puerpério", source: acs_visit, anchor: lmp, window_start_days: 294, window_days: 336,
+        min_count: 1, schedule: end_of_window, points: 9 }
+    - { key: c3_k, label: "Atividade de saúde bucal na gestação", source: oral_health, anchor: lmp, window_days: 294, min_count: 1,
+        schedule: end_of_window, points: 9 }
+- key: diabetes_c4
+  indicator: C4
+  name: "Pessoa com diabetes"
+  declared_condition: diabetes
+  eligibility:
+    problems: { ciap2: [T89, T90], cid10: [E10, E11, E14] }
+    declared: [diabetes]
+  practices:
+    - { key: c4_a, label: "Consulta com médico(a) ou enfermeiro(a) nos últimos 6 meses", citizen_label: "Consulta de acompanhamento",
+        source: consultation, anchor: rolling, window_days: 183, min_count: 1, schedule: end_of_window, cbo_filter: *md_nurse, points: 20 }
+    - { key: c4_b, label: "Pressão arterial aferida nos últimos 6 meses", citizen_label: "Medir a pressão",
+        source: blood_pressure, anchor: rolling, window_days: 183, min_count: 1, schedule: end_of_window, points: 15 }
+    - { key: c4_c, label: "Peso e altura nos últimos 12 meses", citizen_label: "Medir peso e altura",
+        source: weight_height, anchor: rolling, window_days: 365, min_count: 1, schedule: end_of_window, points: 15 }
+    - { key: c4_d, label: "2 visitas do ACS nos últimos 12 meses", source: acs_visit, anchor: rolling, window_days: 365, min_count: 2,
+        schedule: end_of_window, points: 20 }
+    - { key: c4_e, label: "Hemoglobina glicada solicitada ou avaliada nos últimos 12 meses", citizen_label: "Exame de hemoglobina glicada",
+        source: "exam:0202010503", anchor: rolling, window_days: 365, min_count: 1, schedule: end_of_window, points: 15 }
+    - { key: c4_f, label: "Avaliação dos pés nos últimos 12 meses", citizen_label: "Avaliação dos pés",
+        source: "procedure:0301040095", anchor: rolling, window_days: 365, min_count: 1, schedule: end_of_window, points: 15 }
+- key: hypertension_c5
+  indicator: C5
+  name: "Pessoa com hipertensão"
+  declared_condition: hypertension
+  eligibility:
+    problems: { ciap2: [K86, K87], cid10: [I10, I11, I12, I13, I15, O10, O11] }
+    declared: [hypertension]
+  practices:
+    - { key: c5_a, label: "Consulta com médico(a) ou enfermeiro(a) nos últimos 6 meses", citizen_label: "Consulta de acompanhamento",
+        source: consultation, anchor: rolling, window_days: 183, min_count: 1, schedule: end_of_window, cbo_filter: *md_nurse, points: 25 }
+    - { key: c5_b, label: "Pressão arterial aferida nos últimos 6 meses", citizen_label: "Medir a pressão",
+        source: blood_pressure, anchor: rolling, window_days: 183, min_count: 1, schedule: end_of_window, points: 25 }
+    - { key: c5_c, label: "Peso e altura nos últimos 12 meses", citizen_label: "Medir peso e altura",
+        source: weight_height, anchor: rolling, window_days: 365, min_count: 1, schedule: end_of_window, points: 25 }
+    - { key: c5_d, label: "2 visitas do ACS nos últimos 12 meses", source: acs_visit, anchor: rolling, window_days: 365, min_count: 2,
+        schedule: end_of_window, points: 25 }
+- key: elderly_c6
+  indicator: C6
+  name: "Pessoa idosa"
+  declared_condition: null
+  eligibility:
+    age_min_years: 60
+  practices:
+    - { key: c6_a, label: "Consulta com médico(a) ou enfermeiro(a) nos últimos 12 meses", citizen_label: "Consulta de acompanhamento",
+        source: consultation, anchor: rolling, window_days: 365, min_count: 1, schedule: end_of_window, cbo_filter: *md_nurse, points: 25 }
+    - { key: c6_b, label: "Peso e altura no mesmo dia nos últimos 12 meses", citizen_label: "Medir peso e altura",
+        source: weight_height, anchor: rolling, window_days: 365, min_count: 1, schedule: end_of_window, points: 25 }
+    - { key: c6_c, label: "2 visitas do ACS nos últimos 12 meses", source: acs_visit, anchor: rolling, window_days: 365, min_count: 2,
+        schedule: end_of_window, points: 25 }
+    - { key: c6_d, label: "Vacina contra influenza nos últimos 12 meses", source: "vaccine:33", anchor: rolling, window_days: 365,
+        min_count: 1, schedule: end_of_window, points: 25 }
+- key: women_c7
+  indicator: C7
+  name: "Mulher e prevenção do câncer"
+  declared_condition: null
+  eligibility:
+    age_min_years: 9
+    age_max_years: 69
+    sex: female
+    gender_identities_included: [trans_man]
+    gender_identities_excluded: [trans_woman]
+  practices:
+    - key: c7_a
+      label: "Rastreamento do câncer do colo do útero (36 meses; HPV molecular 60 meses)"
+      citizen_label: "Exame preventivo do colo do útero"
+      source: "exam:0203010086"
+      anchor: rolling
+      window_days: 1095
+      min_count: 1
+      schedule: end_of_window
+      applies_to: { age_min_years: 25, age_max_years: 64 }
+      points: 20
+      all_of:
+        - [{ source: "exam:0203010086" }, { source: "exam:0203010019" }, { source: "procedure:0201020033" },
+           { source: "procedure:0201020076" }, { source: "procedure:0201020084" }, { source: "exam:0202100251", window_days: 1826 }]
+    - { key: c7_b, label: "1 dose da vacina HPV entre 9 e 14 anos", source: "vaccine:67", anchor: birth, window_start_days: 3287,
+        window_days: 5478, min_count: 1, schedule: end_of_window, applies_to: { age_min_years: 9, age_max_years: 14, sex: female }, points: 30 }
+    - key: c7_c
+      label: "Atendimento de saúde sexual e reprodutiva nos últimos 12 meses"
+      citizen_label: "Consulta de saúde da mulher"
+      source: consultation
+      anchor: rolling
+      window_days: 365
+      min_count: 1
+      schedule: end_of_window
+      cbo_filter: ["2231", "2251", "2252", "2253", "2235", "251605", "223445", "223605", "223810", "223710", "251510", "223905", "3222"]
+      code_filter:
+        ciap2: [B25, W02, W10, W11, W12, W13, W14, W15, W79, W82, X01, X02, X03, X04, X05, X06, X07, X08, X09, X10, X11, X12, X13, X23,
+                X24, X82, X89, Y14]
+        cid10: [N80, N91, N92, N93, N94, N95, N96, N97, O03, O04, R102, T742, Y05, Z123, Z124, Z205, Z206, Z30, Z31, Z32, Z600, Z630,
+                Z640, Z70, Z717, Z725]
+      applies_to: { age_min_years: 14, age_max_years: 69 }
+      points: 30
+    - key: c7_d
+      label: "Mamografia solicitada ou avaliada nos últimos 24 meses"
+      citizen_label: "Mamografia"
+      source: "exam:0204030030"
+      anchor: rolling
+      window_days: 730
+      min_count: 1
+      schedule: end_of_window
+      applies_to: { age_min_years: 50, age_max_years: 69 }
+      points: 20
+      all_of:
+        - [{ source: "exam:0204030030" }, { source: "exam:0204030188" }]
