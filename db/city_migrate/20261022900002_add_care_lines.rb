@@ -43,10 +43,16 @@ class AddCareLines < ActiveRecord::Migration[8.1]
       t.datetime :created_at, null: false, default: -> { "CURRENT_TIMESTAMP" }
     end
     add_index :care_line_suggestions, %i[team_id status created_at], name: "idx_care_line_suggestions_team"
-    add_index :care_line_suggestions, %i[care_line_id patient_id], unique: true, where: "status = 'pending' AND patient_id IS NOT NULL",
+    # Uma pendente de INSCRIÇÃO por pessoa e linha; a de encerramento
+    # (resolved_problem) é de outro assunto e tem o próprio índice, por inscrição.
+    add_index :care_line_suggestions, %i[care_line_id patient_id], unique: true,
+                                                                   where: "status = 'pending' AND patient_id IS NOT NULL AND reason <> 'resolved_problem'",
                                                                    name: "idx_care_line_suggestions_one_patient"
-    add_index :care_line_suggestions, %i[care_line_id citizen_id], unique: true, where: "status = 'pending' AND citizen_id IS NOT NULL",
+    add_index :care_line_suggestions, %i[care_line_id citizen_id], unique: true,
+                                                                   where: "status = 'pending' AND citizen_id IS NOT NULL AND reason <> 'resolved_problem'",
                                                                    name: "idx_care_line_suggestions_one_citizen"
+    add_index :care_line_suggestions, :enrollment_id, unique: true, where: "status = 'pending' AND reason = 'resolved_problem'",
+                                                      name: "idx_care_line_suggestions_one_closure"
     add_index :care_line_suggestions, :citizen_id, name: "idx_care_line_suggestions_citizen"
     add_index :care_line_suggestions, :patient_id, name: "idx_care_line_suggestions_patient"
     add_check_constraint :care_line_suggestions, "num_nonnulls(patient_id, citizen_id) = 1 AND " \

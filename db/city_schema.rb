@@ -390,9 +390,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900002) do
     t.string "reason", null: false
     t.string "status", default: "pending", null: false
     t.uuid "team_id", null: false
-    t.index ["care_line_id", "citizen_id"], name: "idx_care_line_suggestions_one_citizen", unique: true, where: "(((status)::text = 'pending'::text) AND (citizen_id IS NOT NULL))"
-    t.index ["care_line_id", "patient_id"], name: "idx_care_line_suggestions_one_patient", unique: true, where: "(((status)::text = 'pending'::text) AND (patient_id IS NOT NULL))"
+    t.index ["care_line_id", "citizen_id"], name: "idx_care_line_suggestions_one_citizen", unique: true, where: "(((status)::text = 'pending'::text) AND (citizen_id IS NOT NULL) AND ((reason)::text <> 'resolved_problem'::text))"
+    t.index ["care_line_id", "patient_id"], name: "idx_care_line_suggestions_one_patient", unique: true, where: "(((status)::text = 'pending'::text) AND (patient_id IS NOT NULL) AND ((reason)::text <> 'resolved_problem'::text))"
     t.index ["citizen_id"], name: "idx_care_line_suggestions_citizen"
+    t.index ["enrollment_id"], name: "idx_care_line_suggestions_one_closure", unique: true, where: "(((status)::text = 'pending'::text) AND ((reason)::text = 'resolved_problem'::text))"
     t.index ["patient_id"], name: "idx_care_line_suggestions_patient"
     t.index ["team_id", "status", "created_at"], name: "idx_care_line_suggestions_team"
     t.check_constraint "num_nonnulls(patient_id, citizen_id) = 1 AND reason::text = ANY (ARRAY['problem'::text, 'age_sex'::text, 'declared'::text, 'resolved_problem'::text]) AND ((reason::text = 'resolved_problem') = (enrollment_id IS NOT NULL)) AND (reason::text <> 'resolved_problem' OR patient_id IS NOT NULL) AND status::text = ANY (ARRAY['pending'::text, 'accepted'::text, 'dismissed'::text]) AND ((status::text = 'pending') = (decided_at IS NULL AND decided_by_user_id IS NULL)) AND ((status::text = 'dismissed') = (dismiss_reason IS NOT NULL))", name: "ck_care_line_suggestions_values"

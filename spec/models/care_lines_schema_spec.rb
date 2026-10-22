@@ -21,12 +21,14 @@ RSpec.describe "Linhas de cuidado — banco da cidade" do
 
   it "inscrição: só a saída muda, uma vez; nada se apaga" do
     enrollment = care_enrollment!(patient: patient, line: line, team: team, by: doctor)
-    expect { sql("UPDATE care_line_enrollments SET team_id = gen_random_uuid() WHERE id = '#{enrollment.id}'") }
-      .to raise_error(ActiveRecord::StatementInvalid, /care_line_enrollments/)
+    other_team = care_team!(unit)
+    expect { sql("UPDATE care_line_enrollments SET team_id = '#{other_team.id}' WHERE id = '#{enrollment.id}'") }
+      .to raise_error(ActiveRecord::StatementInvalid, /only the ending columns change/)
     enrollment.update!(status: "ended", ended_reason: "moved", ended_at: Time.current, ended_by_user: doctor)
     expect { sql("UPDATE care_line_enrollments SET ended_reason = 'death' WHERE id = '#{enrollment.id}'") }
-      .to raise_error(ActiveRecord::StatementInvalid, /care_line_enrollments/)
-    expect { sql("DELETE FROM care_line_enrollments WHERE id = '#{enrollment.id}'") }.to raise_error(ActiveRecord::StatementInvalid)
+      .to raise_error(ActiveRecord::StatementInvalid, /an ended enrollment is frozen/)
+    expect { sql("DELETE FROM care_line_enrollments WHERE id = '#{enrollment.id}'") }
+      .to raise_error(ActiveRecord::StatementInvalid, /rows are never deleted/)
   end
 
   it "contato só acréscimo e nota cifrada" do
@@ -57,8 +59,27 @@ RSpec.describe "Linhas de cuidado — banco da cidade" do
     expect { CareLineSuggestion.create!(care_line: line, team: team, citizen: citizen, reason: "declared") }
       .to raise_error(ActiveRecord::RecordNotUnique)
     one.update!(status: "dismissed", decided_by_user: doctor, decided_at: Time.current, dismiss_reason: "Já acompanhada no CAPS")
-    expect { sql("UPDATE care_line_suggestions SET status = 'accepted' WHERE id = '#{one.id}'") }.to raise_error(ActiveRecord::StatementInvalid)
+    expect { sql("UPDATE care_line_suggestions SET decided_at = decided_at + interval '1 day' WHERE id = '#{one.id}'") }
+      .to raise_error(ActiveRecord::StatementInvalid, /a decided suggestion is frozen/)
     expect { sql("DELETE FROM care_line_suggestions WHERE id = '#{one.id}'") }.not_to raise_error
+  end
+
+  # Revisão da Task 5: a sugestão de encerramento (resolved_problem) é de outro
+  # assunto que a de inscrição da mesma pessoa e linha, e é uma por inscrição.
+  it "sugestão de encerramento pendente convive com a de inscrição pendente da mesma pessoa e linha" do
+    enrollment = care_enrollment!(patient: patient, line: line, team: team, by: doctor)
+    enroll_one = CareLineSuggestion.create!(patient: patient, care_line: line, team: team, reason: "problem")
+    closure = CareLineSuggestion.create!(patient: patient, care_line: line, team: team, reason: "resolved_problem", enrollment: enrollment)
+    expect([ enroll_one, closure ]).to all(be_persisted)
+    expect { CareLineSuggestion.create!(patient: patient, care_line: line, team: team, reason: "problem") }
+      .to raise_error(ActiveRecord::RecordNotUnique, /idx_care_line_suggestions_one_patient/)
+  end
+
+  it "não há duas sugestões de encerramento pendentes para a mesma inscrição" do
+    enrollment = care_enrollment!(patient: patient, line: line, team: team, by: doctor)
+    CareLineSuggestion.create!(patient: patient, care_line: line, team: team, reason: "resolved_problem", enrollment: enrollment)
+    expect { CareLineSuggestion.create!(patient: patient, care_line: line, team: team, reason: "resolved_problem", enrollment: enrollment) }
+      .to raise_error(ActiveRecord::RecordNotUnique, /idx_care_line_suggestions_one_closure/)
   end
 
   # CityRekey e ReencryptionJob regravam o texto cifrado de toda linha de
@@ -70,6 +91,7 @@ RSpec.describe "Linhas de cuidado — banco da cidade" do
                                           recorded_by_user: doctor, recorded_at: Time.current)
     citizen = verified_citizen!(exam_seq!)
     condition = CitizenDeclaredCondition.create!(citizen: citizen, condition: "diabetes", declared_at: Time.current)
+    condition.update!(withdrawn_at: Time.current)
     suggestion = CareLineSuggestion.create!(care_line: line, team: team, citizen: citizen, reason: "declared")
     suggestion.update!(status: "dismissed", decided_by_user: doctor, decided_at: Time.current, dismiss_reason: "Já acompanhada")
     enrollment.update!(status: "ended", ended_reason: "other", ended_note: "Mudou de cidade", ended_at: Time.current, ended_by_user: doctor)
@@ -82,6 +104,22 @@ RSpec.describe "Linhas de cuidado — banco da cidade" do
         .to raise_error(ActiveRecord::StatementInvalid, /#{record.class.table_name}/)
       expect { CityEncryption.allowing_reencryption { record.encrypt } }.not_to raise_error
     end
+    # Terceira direção: sob a marca, coluna NÃO cifrada continua recusada (a
+    # exceção é só do texto cifrado). Mensagem do guard de cada tabela.
+    other_team = care_team!(unit)
+    later = Time.current + 1.day
+    {
+      "only the ending columns change" => [ enrollment, { team_id: other_team.id } ],
+      "an ended enrollment is frozen" => [ enrollment, { ended_reason: "death" } ],
+      "append-only" => [ contact, { outcome: "reached" } ],
+      "only withdrawn_at, once" => [ condition, { withdrawn_at: later } ],
+      "only the decision columns change" => [ suggestion, { team_id: other_team.id } ],
+      "a decided suggestion is frozen" => [ suggestion, { decided_at: later } ]
+    }.each do |message, (record, columns)|
+      expect { ApplicationRecord.transaction(requires_new: true) { CityEncryption.allowing_reencryption { record.update_columns(columns) } } }
+        .to raise_error(ActiveRecord::StatementInvalid, /#{message}/)
+    end
+
     expect(enrollment.reload.anchor_date).to eq((Time.zone.today - 40).iso8601)
     expect(enrollment.ended_note).to eq("Mudou de cidade")
     expect(contact.reload.note).to eq("Sem sinal")
