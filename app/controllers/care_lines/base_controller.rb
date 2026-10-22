@@ -4,6 +4,7 @@ module CareLines
   class BaseController < ApplicationController
     include Authentication
     include MfaStepUp
+    include ::CareLinesGate
 
     wrap_parameters false
 
@@ -15,12 +16,6 @@ module CareLines
     before_action :require_care_lines!
 
     private
-
-    def require_care_lines!
-      return if Gate.usable?(Current.city)
-
-      render json: { error: "feature_disabled", feature: Gate::KEY }, status: :forbidden
-    end
 
     def render_failure(result)
       payload = { error: result.reason.to_s }

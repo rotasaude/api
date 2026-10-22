@@ -108,4 +108,12 @@ RSpec.describe "Cidadão — condição declarada", type: :request do
     get "/citizen/declared_conditions", params: { citizen_id: declared.id }
     expect(json_body).to eq("error" => "feature_disabled", "feature" => "care_lines")
   end
+
+  it "declarar: a condição só no corpo; na query string é ignorada (422) e nada é gravado" do
+    sign_in_citizen(citizen.phone)
+    post "/citizen/declared_conditions?condition=diabetes", params: { citizen_id: citizen.id }.to_json, headers: json_headers
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to eq("error" => "invalid_condition")
+    expect(CitizenDeclaredCondition.count).to eq(0)
+  end
 end

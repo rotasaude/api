@@ -4,7 +4,9 @@
 # com trilha citizen, uma vez por requisição, quando há paciente.
 module CitizenApi
   class CareController < BaseController
-    include RequireCareLines
+    include CareLinesGate
+
+    before_action :require_care_lines!
 
     def show
       citizen = current_citizen_session.citizens.find_by(id: params[:citizen_id])

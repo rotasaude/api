@@ -15,10 +15,21 @@ module CareLines
         end
         { name: enrollment.care_line.name, items: items }
       end
-      overdue = Triages::Offer.for(citizen: citizen, on: today).select(&:overdue?).map do |item|
-        { protocol_name: item.protocol_name, title: item.title, last_done_at: item.last_completed_on.iso8601 }
-      end
-      { lines: lines, overdue_triages: overdue }
+      { lines: lines, overdue_triages: overdue_triages(citizen, today) }
+    end
+
+    # Só o que o cidadão consegue começar: o mesmo critério do catálogo (sem
+    # expirar sugestão nem contar oferta, ao contrário de Triages::Catalog.for):
+    # "só por sugestão" exige sugestão pendente e a triagem em andamento do
+    # protocolo não conta.
+    def overdue_triages(citizen, today)
+      items = Triages::Offer.for(citizen: citizen, on: today).select(&:overdue?)
+      return [] if items.empty?
+
+      in_progress = Triages::Catalog.in_progress_triage(citizen)&.protocol_name
+      pending = TriageSuggestion.status_pending.where(citizen_id: citizen.id).pluck(:protocol_name).to_set
+      items.reject { |item| item.protocol_name == in_progress || (item.suggestion_only && !pending.include?(item.protocol_name)) }
+           .map { |item| { protocol_name: item.protocol_name, title: item.title, last_done_at: item.last_completed_on.iso8601 } }
     end
   end
 end

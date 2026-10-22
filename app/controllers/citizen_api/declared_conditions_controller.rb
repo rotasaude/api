@@ -1,19 +1,20 @@
 #   GET    /citizen/declared_conditions?citizen_id=
-#   POST   /citizen/declared_conditions   { citizen_id, condition }
+#   POST   /citizen/declared_conditions   { citizen_id, condition } no CORPO
 #   DELETE /citizen/declared_conditions?citizen_id=   { condition } no CORPO
 # Condição declarada (ADR 0040; contrato §7 e §11 T1): só par validado do
 # celular da sessão; care_lines ligado e utilizável. A condição (dado de
 # saúde) nunca é lida da URL.
 module CitizenApi
   class DeclaredConditionsController < BaseController
-    include RequireCareLines
+    include CareLinesGate
 
+    before_action :require_care_lines!
     before_action :load_citizen
 
     def index = render(json: payload)
 
     def create
-      result = CareLines::DeclareCondition.call(citizen: @citizen, condition: params[:condition])
+      result = CareLines::DeclareCondition.call(citizen: @citizen, condition: request.request_parameters["condition"])
       return render_error(result.reason, :unprocessable_entity) if result.failure?
 
       render json: payload, status: :created

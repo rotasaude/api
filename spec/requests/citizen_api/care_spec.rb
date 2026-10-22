@@ -50,4 +50,21 @@ RSpec.describe "Cidadão — meu acompanhamento", type: :request do
     get "/citizen/care", params: { citizen_id: declared.id }
     expect(json_body).to eq("error" => "feature_disabled", "feature" => "care_lines")
   end
+
+  # Só anuncia o que o cidadão consegue começar (mesmo critério do catálogo).
+  it "triagem vencida: só por sugestão sem sugestão pendente e a em andamento ficam fora" do
+    citizen = care_citizen!(age: 40, sex: "female")
+    %w[periodica so-sugestao em-andamento].each do |name|
+      active_protocol!(name, offer: { "title" => name, "retake_after_days" => 180 })
+      completed_triage!(citizen, name, at: 200.days.ago)
+    end
+    TriageOffer.create!(protocol_name: "so-sugestao", suggestion_only: true, updated_by_user: care_admin!)
+    start_for!(citizen, "em-andamento")
+    sign_in_citizen(citizen.phone)
+    get "/citizen/care", params: { citizen_id: citizen.id }
+    expect(json_body["overdue_triages"].map { |t| t["protocol_name"] }).to eq(%w[periodica])
+    TriageSuggestion.create!(citizen: citizen, source_triage: completed_triage!(citizen, "em-andamento", at: 2.days.ago), protocol_name: "so-sugestao")
+    get "/citizen/care", params: { citizen_id: citizen.id }
+    expect(json_body["overdue_triages"].map { |t| t["protocol_name"] }).to contain_exactly("periodica", "so-sugestao")
+  end
 end
