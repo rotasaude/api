@@ -2,7 +2,9 @@
 # decisões 8 e 9; plano, Desvio 5). Inscrito → equipe da inscrição;
 # paciente → equipe ativa do profissional da consulta finalizada mais
 # recente (24 meses), na unidade do vínculo; par validado sem paciente → a
-# única equipe ativa das unidades de referência do bairro.
+# única equipe ativa das unidades de referência do bairro. P18 (contrato
+# §12): o paciente SEM consulta finalizada nos 24 meses segue a regra do
+# par sem paciente, pelo bairro do par validado mais antigo dele.
 module CareLines
   module TeamPopulation
     LOOKBACK = 24.months
@@ -10,14 +12,16 @@ module CareLines
     module_function
 
     # `involving_team:` pré-filtra os pacientes que tiveram consulta finalizada
-    # (24 meses) de membro ativo daquela equipe, na unidade dela: quem é da
-    # equipe só pode estar aí. O filtro só escolhe QUEM entra; a equipe de cada
-    # um segue sendo a da consulta mais recente (o resultado não muda).
+    # (24 meses) de membro ativo daquela equipe, na unidade dela, e os ausentes
+    # (P18) cujo par validado mais antigo mora num bairro coberto pela unidade
+    # dela: quem é da equipe só pode estar aí. O filtro só escolhe QUEM entra; a
+    # equipe de cada um não muda.
     def patient_teams(patient_ids = nil, involving_team: nil)
       return {} if patient_ids&.empty?
 
       filter = patient_ids ? ApplicationRecord.sanitize_sql([ "AND c.patient_id IN (?)", patient_ids ]) : ""
       cutoff = LOOKBACK.ago
+      absent = absent_neighborhoods(patient_ids, involving_team, cutoff)
       filter += involving(involving_team, cutoff) if involving_team
       # A equipe vem da consulta finalizada mais recente cujo profissional tem
       # equipe ativa na unidade do vínculo: o plantonista sem equipe (o JOIN o
@@ -31,8 +35,33 @@ module CareLines
          WHERE c.status = 'finalized' AND c.finalized_at >= ? #{filter}
          ORDER BY c.patient_id, c.finalized_at DESC, ht.ine
       SQL
+      # Os ausentes não têm consulta finalizada no corte: nunca colidem com as
+      # chaves da consulta.
+      ApplicationRecord.connection.select_rows(sql).to_h.merge(territory_teams(absent))
+    end
+
+    # P18: paciente sem NENHUMA consulta finalizada no corte (a do plantonista
+    # sem equipe conta como consulta: ele não está ausente) → bairro do par
+    # validado mais antigo (created_at, id), como no "Agendar". Bairro nulo ou
+    # sem par validado → sem equipe (territory_teams descarta).
+    def absent_neighborhoods(patient_ids, team, cutoff)
+      pairs = patient_ids ? ApplicationRecord.sanitize_sql([ "AND ci.patient_id IN (?)", patient_ids ]) : ""
+      covered = team ? ApplicationRecord.sanitize_sql([ <<~SQL, team.health_unit_id ]) : ""
+        AND p.neighborhood_id IN (SELECT nc.neighborhood_id FROM neighborhood_coverages nc WHERE nc.health_unit_id = ?)
+      SQL
+      sql = ApplicationRecord.sanitize_sql([ <<~SQL, cutoff ])
+        SELECT p.patient_id, p.neighborhood_id
+          FROM (SELECT DISTINCT ON (ci.patient_id) ci.patient_id, ci.neighborhood_id
+                  FROM citizens ci
+                 WHERE ci.patient_id IS NOT NULL AND ci.erased_at IS NULL AND ci.verification_level = 'verified' #{pairs}
+                 ORDER BY ci.patient_id, ci.created_at, ci.id) p
+         WHERE NOT EXISTS (SELECT 1 FROM consultations c
+                            WHERE c.patient_id = p.patient_id AND c.status = 'finalized' AND c.finalized_at >= ?)
+               #{covered}
+      SQL
       ApplicationRecord.connection.select_rows(sql).to_h
     end
+    private_class_method :absent_neighborhoods
 
     def involving(team, cutoff)
       ApplicationRecord.sanitize_sql([ <<~SQL, team.id, team.health_unit_id, cutoff ])
@@ -46,15 +75,22 @@ module CareLines
     end
     private_class_method :involving
 
-    def citizen_teams(citizens)
-      units = Territory::ReferenceUnits.ids_by_neighborhood(citizens.map(&:neighborhood_id))
+    def citizen_teams(citizens) = territory_teams(citizens.to_h { |citizen| [ citizen.id, citizen.neighborhood_id ] })
+
+    # { id => bairro } → { id => a única equipe ativa das unidades de
+    # referência do bairro }; zero ou mais de uma (ou bairro nulo) → fora.
+    def territory_teams(neighborhood_by_id)
+      return {} if neighborhood_by_id.empty?
+
+      units = Territory::ReferenceUnits.ids_by_neighborhood(neighborhood_by_id.values)
       teams = HealthTeam.where(active: true, health_unit_id: units.values.flatten.uniq).pluck(:id, :health_unit_id)
-      citizens.each_with_object({}) do |citizen, out|
-        unit_ids = units.fetch(citizen.neighborhood_id, [])
+      neighborhood_by_id.each_with_object({}) do |(id, neighborhood_id), out|
+        unit_ids = units.fetch(neighborhood_id, [])
         candidates = teams.select { |_, unit_id| unit_ids.include?(unit_id) }.map(&:first)
-        out[citizen.id] = candidates.first if candidates.size == 1
+        out[id] = candidates.first if candidates.size == 1
       end
     end
+    private_class_method :territory_teams
 
     # Pessoas da equipe, elegíveis para o denominador das regras, com a
     # inscrição ativa delas na linha (ou nil). A inscrita é avaliada com a DUM

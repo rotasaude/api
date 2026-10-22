@@ -119,9 +119,12 @@ module CareLines
     # FK do INSERT tomaria; a ordem de travas não muda). Apagado pela
     # exclusão LGPD ou rebaixado depois da leitura dos fatos → 0; a exclusão
     # em curso (FOR UPDATE no par) termina antes e a releitura a vê.
+    # Sugestão de paciente: os pares dele, pela mesma trava e em ordem de id
+    # (a do Erase); anonimizado depois da leitura → 0.
     def create!(**attrs)
       ApplicationRecord.transaction(requires_new: true) do
         next 0 if attrs[:citizen_id] && !live_pair?(attrs[:citizen_id])
+        next 0 if attrs[:citizen_id].nil? && anonymized_patient?(attrs[:patient_id])
 
         suggestion = CareLineSuggestion.create!(attrs)
         DomainEvents.publish("care_line_suggestion.created", care_line_suggestion_id: suggestion.id)
@@ -132,6 +135,16 @@ module CareLines
     end
 
     def live_pair?(citizen_id) = Citizen.not_erased.verification_level_verified.where(id: citizen_id).lock("FOR KEY SHARE").exists?
-    private_class_method :every_patient?, :candidate_patient_ids, :for_people, :closures!, :closure_batch, :problem_ref, :create!, :live_pair?
+
+    # O paciente não tem marca própria: o Erase apaga os pares (erased_at,
+    # patient_id mantido) e anula só os DEMOGRAPHICS, que podem ser nulos em
+    # qualquer paciente. Anonimizado = tem par apagado e nenhum par validado
+    # vivo; sem par apagado (nunca excluído), segue.
+    def anonymized_patient?(patient_id)
+      pairs = Citizen.where(patient_id: patient_id).order(:id).lock("FOR KEY SHARE").pluck(:erased_at, :verification_level)
+      pairs.any? { |erased_at, _| erased_at } && pairs.none? { |erased_at, level| erased_at.nil? && level == "verified" }
+    end
+    private_class_method :every_patient?, :candidate_patient_ids, :for_people, :closures!, :closure_batch, :problem_ref, :create!, :live_pair?,
+                         :anonymized_patient?
   end
 end

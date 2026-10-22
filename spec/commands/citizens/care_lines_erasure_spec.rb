@@ -166,4 +166,57 @@ RSpec.describe "Exclusão LGPD — linhas de cuidado" do
     expect(CareLineSuggestion.where(citizen_id: citizen.id)).not_to exist
     expect(queries.grep(/FROM "citizens".*FOR KEY SHARE/m)).not_to be_empty
   end
+
+  # Task 14b (achado da revisão da Task 15): o paciente anonimizado por uma
+  # exclusão confirmada depois da leitura dos fatos e da equipe não recebe
+  # sugestão (nem `declared`, pelo consumidor de citizen_condition.declared).
+  it "paciente anonimizado depois da leitura dos fatos não recebe sugestão; com outro par vivo, recebe" do
+    adopted_line!("elderly_c6")
+    adopted_line!("hypertension_c5")
+    neighborhood = care_neighborhood!(unit)
+    control = care_patient!(age: 72, sex: "female")
+    Citizen.find_by!(patient_id: control.id).update!(neighborhood: neighborhood)
+    declare!(Citizen.find_by!(patient_id: control.id), "hypertension")
+    expect(CareLines::Suggest.for_citizen(Citizen.find_by!(patient_id: control.id).id)).to eq(2)
+
+    patient = care_patient!(age: 72, sex: "female")
+    pair = Citizen.find_by!(patient_id: patient.id)
+    pair.update!(neighborhood: neighborhood)
+    declare!(pair, "hypertension")
+    request = Citizens::RequestErasure.call(cpf: pair.cpf, document_checked: true, by: verifier!).payload[:request]
+    expect(request.status).to eq("pending")
+    allow(CareLines::TeamPopulation).to receive(:patient_teams).and_wrap_original do |original, *args, **kwargs|
+      original.call(*args, **kwargs).tap do
+        expect(Citizens::Erase.call(request: request, by: care_admin!).payload[:request].status).to eq("confirmed")
+      end
+    end
+    queries = []
+    callback = ->(*, payload) { queries << payload[:sql] }
+    count = ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { CareLines::Suggest.for_citizen(pair.id) }
+    expect(count).to eq(0)
+    expect(CareLineSuggestion.where(patient_id: patient.id)).not_to exist
+    expect(queries.grep(/FROM "citizens".*"citizens"."patient_id".*FOR KEY SHARE/m)).not_to be_empty
+  end
+
+  # Critério: ao menos um par validado vivo OU nenhum par apagado (o
+  # paciente não tem coluna própria de anonimização; o Erase mantém o
+  # patient_id do par apagado).
+  it "par apagado com outro par validado vivo recebe; sem par vivo, não; par só rebaixado (nunca apagado) recebe" do
+    line = adopted_line!("elderly_c6")
+    patient = care_patient!(age: 72, sex: "female", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+    old_pair = Citizen.find_by!(patient_id: patient.id)
+    new_pair = care_citizen!(age: 72, sex: "female")
+    new_pair.update_columns(patient_id: patient.id)
+    old_pair.update_columns(cpf: Citizens::Erase.tombstone, erased_at: Time.current)
+    expect(CareLines::Suggest.for_patient(patient.id)).to eq(1)
+    expect(CareLineSuggestion.sole).to have_attributes(patient_id: patient.id, care_line_id: line.id, team_id: team.id)
+
+    CareLineSuggestion.delete_all
+    new_pair.update_columns(verification_level: "declared")
+    expect(CareLines::Suggest.for_patient(patient.id)).to eq(0)
+
+    downgraded = care_patient!(age: 72, sex: "female", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+    Citizen.where(patient_id: downgraded.id).update_all(verification_level: "declared")
+    expect(CareLines::Suggest.for_patient(downgraded.id)).to eq(1)
+  end
 end
