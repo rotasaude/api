@@ -7,6 +7,7 @@
 # ADR 0028: também o CNS do CADSUS e a consulta pendente.
 # ADR 0031: também o nome completo, o social e o da mãe.
 # ADR 0039 (D-U1): e raça/cor, etnia e endereço do paciente do CPF.
+# ADR 0040: e a condição declarada e as sugestões de linha de cuidado.
 # Reasons: :not_pending, :own_request.
 module Citizens
   module Erase
@@ -56,10 +57,17 @@ module Citizens
         # no primeiro passo — a ordem fica sempre cidadão → paciente. O paciente
         # travado segura a FK de um exame novo enquanto o exame é conferido.
         pair_scope = Citizen.where(id: pairs.map(&:id))
+        patient_ids = RequestErasure.patient_ids(pair_scope, cpf: request.cpf)
+        # ADR 0040: as sugestões de linha de cuidado que a exclusão apaga (dos
+        # pares e do paciente), travadas por id ANTES do paciente — a ordem do
+        # CareLines::Enroll (cidadão → sugestão → paciente). O aceite que trava
+        # antes termina e a inscrição dele retém abaixo; o que chega depois
+        # acha a sugestão apagada.
+        CareLineSuggestion.where(citizen_id: pairs.map(&:id)).or(CareLineSuggestion.where(patient_id: patient_ids))
+                          .order(:id).lock.to_a
         locked_patients = []
         retained = RequestErasure.clinical_on_pairs?(pair_scope)
         unless retained
-          patient_ids = RequestErasure.patient_ids(pair_scope, cpf: request.cpf)
           locked_patients = Patient.where(id: patient_ids).order(:id).lock.to_a
           retained = RequestErasure.examined_patients?(patient_ids)
         end
@@ -78,6 +86,8 @@ module Citizens
         pairs.each { |citizen| erase_pair(citizen, live.select { |a| a.citizen_id == citizen.id }) }
         # D-U1 (ADR 0039): o paciente não retido perde raça/cor, etnia e endereço junto com o par.
         locked_patients.each { |patient| patient.update!(Patient::DEMOGRAPHICS.index_with(nil)) }
+        # ADR 0040: sugestões do paciente não retido (sem inscrição, por definição).
+        CareLineSuggestion.where(patient_id: locked_patients.map(&:id)).delete_all
         # O trigger aceita a troca do cpf só nesta mesma UPDATE, mas não a
         # exige: o pedido confirmado deixa de guardar o CPF por causa daqui.
         request.update!(status: "confirmed", decided_by_user: by, decided_at: Time.current, cpf: tombstone)
@@ -123,6 +133,11 @@ module Citizens
       # ADR 0027 (spec 2026-10-05 §5.5): as sugestões do par (o trigger deixa o
       # DELETE passar de propósito).
       TriageSuggestion.where(citizen_id: citizen.id).delete_all
+      # ADR 0040: a condição declarada (dado pessoal, nunca diagnóstico) e as
+      # sugestões de linha de cuidado do par (os triggers deixam o DELETE
+      # passar). A inscrição retém e nunca chega aqui.
+      CitizenDeclaredCondition.where(citizen_id: citizen.id).delete_all
+      CareLineSuggestion.where(citizen_id: citizen.id).delete_all
       # ADR 0029: os avisos de lembrete do par (o trigger deixa o DELETE passar).
       AppointmentNotice.where(citizen_id: citizen.id).delete_all
       # ADR 0030 (api#43): conteúdo e códigos da fila LEDI das fontes do par.

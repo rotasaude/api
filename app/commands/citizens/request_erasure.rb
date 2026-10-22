@@ -1,7 +1,8 @@
 # ADR 0026: o citizen_verifier registra no posto, com documento conferido, o
 # pedido de exclusão de TODOS os pares do CPF. CPF com par atendido nasce
 # retido por base legal; o mesmo vale para CPF com documento clínico emitido
-# e para CPF com exame (ADR 0036, A49). `retained?` é a regra única: o pedido
+# e para CPF com exame (ADR 0036, A49) ou inscrição em linha de cuidado
+# (ADR 0040). `retained?` é a regra única: o pedido
 # e a reconferência do Citizens::Erase usam a mesma.
 module Citizens
   module RequestErasure
@@ -54,9 +55,13 @@ module Citizens
     # e laudos que pendem dela) também é registro clínico retido.
     # ADR 0039: o procedimento realizado (e o arquivo BPA que o leva) também,
     # cancelado inclusive (o arquivo pode já tê-lo levado).
+    # ADR 0040: a inscrição em linha de cuidado (e os contatos de busca
+    # ativa, que pendem dela) também é registro clínico retido. A condição
+    # declarada pelo cidadão não retém (é apagada na exclusão).
     def examined_patients?(ids)
       ExamOrder.where(patient_id: ids).exists? || ExamResult.where(patient_id: ids).exists? ||
-        LabRequisition.where(patient_id: ids).exists? || PerformedProcedure.where(patient_id: ids).exists?
+        LabRequisition.where(patient_id: ids).exists? || PerformedProcedure.where(patient_id: ids).exists? ||
+        CareLineEnrollment.where(patient_id: ids).exists?
     end
 
     # O paciente dos pares e o do CPF: o exame aponta para o paciente, que

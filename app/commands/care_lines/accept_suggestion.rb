@@ -25,7 +25,7 @@ module CareLines
       return anchor if anchor.is_a?(Result)
       return Result.fail(:invalid_transition) unless suggestion.reload.pending?
 
-      known_patient_id = suggestion.patient_id || suggestion.citizen&.patient_id
+      known_patient_id = suggestion.patient_id || known_patient_of(suggestion.citizen)
       enrolled_already = known_patient_id && CareLineEnrollment.active_enrollments.exists?(patient_id: known_patient_id, care_line_id: line.id)
       return Result.fail(:already_enrolled) if enrolled_already
 
@@ -40,6 +40,14 @@ module CareLines
       enrolled = Enroll.call(patient: patient, line: line, team: team, by: by, anchor_date: anchor_date, suggestion: suggestion, today: today)
       suggestion.reload if enrolled.ok?
       enrolled
+    end
+
+    # O paciente do par: o ligado ou, sem vínculo, o do CPF (o Resolve o
+    # ligaria) — a recusa barata não liga o par antes de recusar.
+    def known_patient_of(citizen)
+      return nil unless citizen
+
+      citizen.patient_id || Patient.where(cpf: citizen.cpf).pick(:id)
     end
 
     # Quem chama trava a sugestão e confere que está pendente (Enroll e EndEnrollment).
@@ -61,6 +69,6 @@ module CareLines
         Result.ok(ended: enrollment)
       end
     end
-    private_class_method :close
+    private_class_method :close, :known_patient_of
   end
 end

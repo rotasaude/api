@@ -51,9 +51,13 @@ module CareLines
     # Sugestões de inscrição pendentes da pessoa (o paciente, os pares ligados
     # a ele ou os de mesmo CPF ainda sem paciente) nesta linha, travadas por
     # id: dois aceites concorrentes travam o mesmo conjunto na mesma ordem.
+    # Só pares validados e não apagados: o par apagado pela exclusão LGPD (ou
+    # rebaixado) nunca tem sugestão decidida nem pesa no aceite.
     def lock_pending(patient, line)
       base = CareLineSuggestion.pending_suggestions.where(care_line_id: line.id).where.not(reason: "resolved_problem")
-      base.where(patient_id: patient.id).or(base.where(citizen_id: Citizen.where(patient_id: patient.id).or(Citizen.where(cpf: patient.cpf)).select(:id))).order(:id).lock.to_a
+      pairs = Citizen.not_erased.verification_level_verified
+      pair_ids = pairs.where(patient_id: patient.id).or(pairs.where(cpf: patient.cpf)).select(:id)
+      base.where(patient_id: patient.id).or(base.where(citizen_id: pair_ids)).order(:id).lock.to_a
     end
     private_class_method :lock_pending
   end
