@@ -128,9 +128,13 @@ RSpec.describe "Inscrição confirmada e saída" do
   it "a sugestão de encerramento pendente não é aceita pela inscrição à mão" do
     line = adopted_line!("diabetes_c4")
     patient = care_patient!(age: 58, sex: "male")
-    expect(CareLines::Enroll.call(patient: patient, line: line, team: team, by: doctor)).to be_ok
+    first = CareLines::Enroll.call(patient: patient, line: line, team: team, by: doctor).payload[:enrollment]
+    closure = CareLineSuggestion.create!(care_line: line, team: team, patient: patient, reason: "resolved_problem", enrollment: first)
+    first.update!(status: "ended", ended_reason: "moved", ended_at: Time.current, ended_by_user: doctor)
+    again = CareLines::Enroll.call(patient: patient, line: line, team: team, by: doctor).payload[:enrollment]
+    expect(again).to have_attributes(source: "manual", suggestion_id: nil)
+    expect(closure.reload).to be_pending
     expect(CareLines::Enroll.call(patient: patient, line: line, team: team, by: doctor).reason).to eq(:already_enrolled)
-    expect(CareLineEnrollment.last).to have_attributes(source: "manual", suggestion_id: nil)
   end
 
   # Errata P-api-01 / L3: 223115 (família 2231) confirma; o catálogo ganha a entrada só neste exemplo.
@@ -195,7 +199,7 @@ RSpec.describe "Inscrição confirmada e saída" do
       sql = payload[:sql]
       next unless sql.include?("FOR UPDATE")
 
-      tables << sql[/FROM "(care_line_suggestions|care_line_enrollments)"/, 1]
+      tables << sql[/FROM "(care_line_suggestions|care_line_enrollments|patients)"/, 1]
     end
     ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { yield }
     tables.compact
@@ -214,5 +218,68 @@ RSpec.describe "Inscrição confirmada e saída" do
                                         by: doctor).payload[:enrollment]
     tables = for_update_tables { CareLines::RecordContact.call(enrollment: enrollment, channel: "phone", outcome: "reached", note: nil, by: tech) }
     expect(tables).to include("care_line_enrollments")
+  end
+
+  it "Enroll à mão trava as sugestões antes do paciente" do
+    line = adopted_line!("diabetes_c4")
+    patient = care_patient!(age: 58, sex: "male")
+    pending_for(line, patient: patient)
+    tables = for_update_tables { CareLines::Enroll.call(patient: patient, line: line, team: team, by: doctor) }
+    expect(tables.index("care_line_suggestions")).to be < tables.index("patients")
+  end
+
+  it "aceitar a sugestão de encerramento trava a sugestão antes da inscrição" do
+    line = adopted_line!("diabetes_c4")
+    enrollment = CareLines::Enroll.call(patient: care_patient!(age: 58, sex: "male"), line: line, team: team, by: doctor).payload[:enrollment]
+    closure = CareLineSuggestion.create!(care_line: line, team: team, patient: enrollment.patient, reason: "resolved_problem", enrollment: enrollment)
+    tables = for_update_tables { CareLines::AcceptSuggestion.call(suggestion: closure, by: nurse, today: today) }
+    expect(tables.index("care_line_suggestions")).to be < tables.index("care_line_enrollments")
+  end
+
+  # Review Focus 4: recusa pura não grava nada, nem o paciente que o Resolve criaria.
+  it "sugestão declared de par sem paciente: DUM ausente ou inválida não cria paciente, vínculo nem evento" do
+    line = adopted_line!("pregnancy_c3")
+    citizen = care_citizen!(age: 27, sex: "female")
+    suggestion = CareLineSuggestion.create!(care_line: line, team: team, reason: "declared", citizen: citizen)
+    [ [ nil, :anchor_required ], [ (today + 1).iso8601, :invalid_anchor ], [ "ontem", :invalid_anchor ] ].each do |dum, reason|
+      patients = Patient.count
+      created = DomainEvent.where(name: %w[patient.created patient.linked]).count
+      result = CareLines::AcceptSuggestion.call(suggestion: suggestion, team: team, by: doctor, anchor_date: dum, today: today)
+      expect(result.reason).to eq(reason)
+      expect(Patient.count).to eq(patients)
+      expect(citizen.reload.patient_id).to be_nil
+      expect(DomainEvent.where(name: %w[patient.created patient.linked]).count).to eq(created)
+      expect(suggestion.reload).to be_pending
+    end
+    line.update!(active: false)
+    patients = Patient.count
+    expect(CareLines::AcceptSuggestion.call(suggestion: suggestion, team: team, by: doctor, anchor_date: today.iso8601, today: today).reason)
+      .to eq(:line_inactive)
+    expect(Patient.count).to eq(patients)
+  end
+
+  it "sugestão já decidida ou inscrito já ativo recusa antes de criar o paciente" do
+    line = adopted_line!("elderly_c6")
+    citizen = care_citizen!(age: 72, sex: "female")
+    suggestion = pending_for(line, citizen: citizen)
+    suggestion.update_columns(status: "dismissed", decided_at: Time.current, decided_by_user_id: doctor.id, dismiss_reason: "x")
+    patients = Patient.count
+    expect(CareLines::AcceptSuggestion.call(suggestion: suggestion, team: team, by: doctor, today: today).reason).to eq(:invalid_transition)
+    expect(Patient.count).to eq(patients)
+  end
+
+  # Dois pares validados do mesmo CPF, cada um com a sua sugestão: aceitar uma decide as duas.
+  it "aceitar uma sugestão aceita todas as pendentes da pessoa e linha, inclusive a de outro par do mesmo CPF" do
+    line = adopted_line!("elderly_c6")
+    first = care_citizen!(age: 72, sex: "female")
+    second = care_citizen!(age: 72, sex: "female")
+    second.update!(cpf: first.cpf)
+    mine = pending_for(line, citizen: first)
+    other = pending_for(line, citizen: second)
+    result = CareLines::AcceptSuggestion.call(suggestion: mine, team: team, by: doctor, today: today)
+    expect(result.payload[:enrollment]).to have_attributes(suggestion_id: mine.id, source: "suggestion")
+    expect([ mine, other ].map { |s| s.reload.status }).to eq(%w[accepted accepted])
+    expect(other.decided_by_user_id).to eq(doctor.id)
+    expect(CareLineSuggestion.pending_suggestions).to be_empty
   end
 end

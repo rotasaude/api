@@ -1,9 +1,13 @@
-# Aceitar sugestão (contrato §4). De inscrição: o paciente nasce por
-# Patients::Resolve quando a sugestão é de par validado (antes de travar a
-# sugestão: ordem cidadão → sugestão → paciente; Desvio 8) e a inscrição
-# sai pelo Enroll (que confere quem confirma). De encerramento: encerra com
-# discharge (quem tem o painel da equipe). Se a inscrição falha depois do
-# Resolve, o paciente criado fica (é o mesmo que a primeira consulta criaria).
+# Aceitar sugestão (contrato §4). De inscrição: as recusas puras
+# (line_inactive, âncora, sugestão já decidida, já inscrito) vêm ANTES do
+# Patients::Resolve e sem trava, para a recusa não gravar nada (paciente,
+# vínculo do par, evento); o Enroll as refaz sob trava. Depois o paciente
+# nasce por Resolve quando a sugestão é de par validado (ordem cidadão →
+# sugestão → paciente; Desvio 8) e a inscrição sai pelo Enroll, que confere
+# quem confirma, trava TODAS as sugestões pendentes da pessoa e linha e as
+# aceita. De encerramento: encerra com discharge (quem tem o painel da
+# equipe). Se o Enroll falha depois do Resolve (corrida), o paciente criado
+# fica (é o mesmo que a primeira consulta criaria).
 module CareLines
   module AcceptSuggestion
     module_function
@@ -14,6 +18,17 @@ module CareLines
       team ||= suggestion.team
       return Result.fail(:cbo_not_allowed) unless Access.confirmer?(by, team)
 
+      line = suggestion.care_line
+      return Result.fail(:line_inactive) unless line.active
+
+      anchor = Enroll.validate_anchor(line, anchor_date, today)
+      return anchor if anchor.is_a?(Result)
+      return Result.fail(:invalid_transition) unless suggestion.reload.pending?
+
+      known_patient_id = suggestion.patient_id || suggestion.citizen&.patient_id
+      enrolled_already = known_patient_id && CareLineEnrollment.active_enrollments.exists?(patient_id: known_patient_id, care_line_id: line.id)
+      return Result.fail(:already_enrolled) if enrolled_already
+
       patient = suggestion.patient
       if patient.nil?
         resolved = Patients::Resolve.call(suggestion.citizen)
@@ -22,20 +37,12 @@ module CareLines
         patient = resolved.payload[:patient]
       end
 
-      ApplicationRecord.transaction do
-        suggestion.lock!
-        next Result.fail(:invalid_transition) unless suggestion.pending?
-
-        enrolled = Enroll.call(patient: patient, line: suggestion.care_line, team: team, by: by, anchor_date: anchor_date,
-                               suggestion: suggestion, today: today)
-        next enrolled if enrolled.failure?
-
-        decide!(suggestion, by)
-        enrolled
-      end
+      enrolled = Enroll.call(patient: patient, line: line, team: team, by: by, anchor_date: anchor_date, suggestion: suggestion, today: today)
+      suggestion.reload if enrolled.ok?
+      enrolled
     end
 
-    # Quem chama trava a sugestão e confere que está pendente.
+    # Quem chama trava a sugestão e confere que está pendente (Enroll e EndEnrollment).
     def decide!(suggestion, by)
       suggestion.update!(status: "accepted", decided_by_user: by, decided_at: Time.current)
       DomainEvents.publish("care_line_suggestion.accepted", care_line_suggestion_id: suggestion.id, user_id: by.id)
