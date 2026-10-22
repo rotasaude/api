@@ -30,8 +30,9 @@ module CareLines
       per_practice = per_practice(practices, rows)
       score = rows.empty? ? nil : per_practice.sum { |p| p[:denominator].zero? ? 0r : p[:weight_value] * p[:achieved] / p[:denominator] }
 
+      grade = score && grade(score)
       { indicator: indicator, team: { id: team.id, ine: team.ine, name: team.name }, template_version: template.version,
-        denominator: rows.size, score: score && one_decimal(score), max_score: 100, concept: score && concept(score),
+        denominator: rows.size, score: grade&.first, max_score: 100, concept: grade&.last,
         practices: per_practice.map { |p| p.except(:weight_value) },
         excluded: practices.select { |p| Catalog.untracked?(p["source"]) }.map { |p| p["source"].split(":").first }.uniq,
         estimate: true }
@@ -48,6 +49,13 @@ module CareLines
         { key: practice["key"], label: practice["label"], tracked: tracked, points: practice["points"], weight_value: weight,
           weight: one_decimal(weight), achieved: statuses.count(&:met), denominator: statuses.size }
       end
+    end
+
+    # Nota e conceito saem do MESMO valor arredondado (uma casa, half-up): o
+    # "75,0" da tela nunca vem com "Ótimo" (> 75). Recebe Rational.
+    def grade(score)
+      rounded = score.round(1, half: :up)
+      [ format("%.1f", rounded.to_f), concept(rounded) ]
     end
 
     def one_decimal(value) = format("%.1f", value.round(1, half: :up).to_f)

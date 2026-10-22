@@ -84,6 +84,33 @@ RSpec.describe CareLines::Preview do
     expect(described_class.call(team: team, indicator: "C6", today: today)).to be_nil
   end
 
+  it "nota e conceito saem do mesmo valor arredondado (tabela de bordas)" do
+    table = { Rational(75) => %w[75.0 good], Rational(7504, 100) => %w[75.0 good], Rational(7505, 100) => %w[75.1 optimal],
+              Rational(2504, 100) => %w[25.0 regular], Rational(2505, 100) => %w[25.1 sufficient], Rational(50) => %w[50.0 sufficient],
+              Rational(5004, 100) => %w[50.0 sufficient], Rational(5005, 100) => %w[50.1 good], Rational(100) => %w[100.0 optimal],
+              Rational(0) => %w[0.0 regular] }
+    table.each { |score, expected| expect(described_class.grade(score)).to eq(expected), "#{score.to_f}: esperado #{expected}" }
+  end
+
+  it "C6, borda real sem stub: um paciente cumpre as duas práticas rastreadas, um cidadão nenhuma → 50.0, sufficient" do
+    care_patient!(age: 70, sex: "female", problems: [ %w[ciap2 K86] ], unit: unit, doctor: doctor)
+    care_citizen!(age: 70, sex: "male", neighborhood: care_neighborhood!(unit))
+    result = described_class.call(team: team, indicator: "C6", today: today)
+    expect(result).to include(denominator: 2, score: "50.0", concept: "sufficient")
+    expect(result[:practices].select { |p| p[:tracked] }.map { |p| p.values_at(:key, :weight, :achieved, :denominator) }).to eq([
+      [ "c6_a", "50.0", 1, 2 ], [ "c6_b", "50.0", 1, 2 ]
+    ])
+  end
+
+  it "gestante NÃO inscrita, sem DUM, sem aborto: entra no denominador com zero nas práticas rastreadas (Desvio 13)" do
+    care_patient!(age: 27, sex: "female", problems: [ %w[ciap2 W78] ], unit: unit, doctor: doctor)
+    result = described_class.call(team: team, indicator: "C3", today: today)
+    expect(result).to include(denominator: 1, score: "0.0", concept: "regular")
+    tracked = result[:practices].select { |p| p[:tracked] }
+    expect(tracked).not_to be_empty
+    expect(tracked.map { |p| p[:achieved] }).to all(eq(0))
+  end
+
   it "gestante INSCRITA entra pela DUM: aborto registrado antes da DUM não a exclui; sem inscrição, exclui" do
     mom = travel_to(100.days.ago) { care_patient!(age: 28, sex: "female", problems: [ %w[ciap2 W78], %w[ciap2 W82] ], unit: unit, doctor: doctor) }
     travel_to(100.days.ago) { care_patient!(age: 29, sex: "female", problems: [ %w[ciap2 W78], %w[ciap2 W82] ], unit: unit, doctor: doctor) }

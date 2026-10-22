@@ -17,11 +17,12 @@ module CareLines
       return {} if patient_ids&.empty?
 
       filter = patient_ids ? ApplicationRecord.sanitize_sql([ "AND c.patient_id IN (?)", patient_ids ]) : ""
-      filter += involving(involving_team) if involving_team
+      cutoff = LOOKBACK.ago
+      filter += involving(involving_team, cutoff) if involving_team
       # A equipe vem da consulta finalizada mais recente cujo profissional tem
       # equipe ativa na unidade do vínculo: o plantonista sem equipe (o JOIN o
       # descarta) não tira a pessoa da equipe dela.
-      sql = ApplicationRecord.sanitize_sql([ <<~SQL, LOOKBACK.ago ])
+      sql = ApplicationRecord.sanitize_sql([ <<~SQL, cutoff ])
         SELECT DISTINCT ON (c.patient_id) c.patient_id, ht.id
           FROM consultations c
           JOIN professional_links pl ON pl.id = c.professional_link_id
@@ -33,8 +34,8 @@ module CareLines
       ApplicationRecord.connection.select_rows(sql).to_h
     end
 
-    def involving(team)
-      ApplicationRecord.sanitize_sql([ <<~SQL, team.id, team.health_unit_id, LOOKBACK.ago ])
+    def involving(team, cutoff)
+      ApplicationRecord.sanitize_sql([ <<~SQL, team.id, team.health_unit_id, cutoff ])
         AND c.patient_id IN (
           SELECT tc.patient_id
             FROM consultations tc
