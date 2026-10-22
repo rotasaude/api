@@ -68,9 +68,12 @@ module CareLines
     # "Solicitado ou avaliado", UM evento por exame (chave = pedido da consulta,
     # senão a ordem, senão o resultado) com a data mais recente dele: pedido e
     # resultado em dias diferentes, ou resultado substituto, não contam em dobro.
-    # Três ramos num SQL só: (A) pedido registrado na consulta finalizada (vale
-    # também com exam_tracking desligado, quando não nasce exam_orders), salvo se
-    # a ordem ligada a ele foi cancelada/negada; (B) ordem não cancelada nem negada;
+    # Três ramos num SQL só: (A) pedido EFETIVO da consulta finalizada (vale também
+    # com exam_tracking desligado, quando não nasce exam_orders): o adendo só
+    # acrescenta linhas, então vale a última por (consulta, SIGTAP) em
+    # (created_at, id) — a mesma regra de Consultations::Effective — se estiver
+    # `requested`; data = dia local de created_at (adendo tem a data própria);
+    # salvo se a ordem ligada a ele foi cancelada/negada; (B) ordem não cancelada nem negada;
     # (C) resultado (a ordem dá a chave do pedido da consulta).
     def exams!(result, ids, since, codes)
       return if codes.empty?
@@ -81,11 +84,14 @@ module CareLines
         SELECT patient_id, sigtap_code, MAX(on_date) AS on_date
           FROM (
             SELECT c.patient_id, r.sigtap_code, r.id AS exam_key,
-                   (c.finalized_at AT TIME ZONE 'UTC' AT TIME ZONE ?)::date AS on_date
+                   (r.created_at AT TIME ZONE 'UTC' AT TIME ZONE ?)::date AS on_date
               FROM consultation_exam_requests r
               JOIN consultations c ON c.id = r.consultation_id
              WHERE c.patient_id IN (?) AND r.sigtap_code IN (?) AND r.status = 'requested'
-               AND c.status = 'finalized' AND c.finalized_at >= ?
+               AND c.status = 'finalized' AND r.created_at >= ?
+               AND NOT EXISTS (SELECT 1 FROM consultation_exam_requests n
+                                WHERE n.consultation_id = r.consultation_id AND n.sigtap_code = r.sigtap_code
+                                  AND (n.created_at, n.id) > (r.created_at, r.id))
                AND NOT EXISTS (SELECT 1 FROM exam_orders x
                                 WHERE x.consultation_exam_request_id = r.id AND x.status IN ('cancelled', 'denied'))
             UNION ALL

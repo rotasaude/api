@@ -217,6 +217,48 @@ RSpec.describe CareLines::Sources do
       expect(exam_dates(patient)).to eq([ today - 5, today - 2 ])
     end
 
+    describe "adendo (exam_tracking desligado): vale o pedido efetivo, como Consultations::Effective" do
+      let(:request) { { "sigtap_code" => exam } }
+      let(:consultation) do
+        finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen_of(patient), exam_requests: [ request ])
+      end
+
+      def amend!(consultation, exam_requests)
+        result = Consultations::AddAddendum.call(consultation: consultation, by: doctor, reason: "ajuste do pedido de exame",
+                                                 text: "Adendo", changes: { "exam_requests" => exam_requests })
+        raise "adendo recusado: #{result.reason} #{result.details}" if result.failure?
+      end
+
+      it "pedido normal: a data do pedido é o dia da finalização" do
+        expect(consultation.exam_requests.sole.created_at.in_time_zone.to_date).to eq(consultation.finalized_at.in_time_zone.to_date)
+        expect(exam_dates(patient)).to eq([ today ])
+      end
+
+      it "adendo que remove o exame: o pedido deixa de contar" do
+        consultation
+        amend!(consultation, [])
+
+        expect(consultation.exam_requests.order(:created_at, :id).map(&:status)).to eq(%w[requested cancelled])
+        expect(exam_dates(patient)).to eq([])
+      end
+
+      it "adendo que troca a justificativa (remove e acrescenta o mesmo código): um evento" do
+        consultation
+        amend!(consultation, [ { "sigtap_code" => exam, "cid10_justification" => "I10" } ]) # sem travel_to: o relógio congelado empata created_at
+
+        expect(consultation.exam_requests.order(:created_at, :id).map(&:status)).to eq(%w[requested cancelled requested])
+        expect(exam_dates(patient)).to eq([ today ])
+      end
+
+      it "pedido acrescentado só por adendo conta, com a data do adendo" do
+        empty = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen_of(patient), exam_requests: [])
+        expect(exam_dates(patient)).to eq([])
+        travel_to(Time.zone.now + 4.days) { amend!(empty, [ request ]) }
+
+        expect(exam_dates(patient)).to eq([ today + 4 ])
+      end
+    end
+
     it "ordem negada não conta" do
       order = exam_order!(patient: patient, unit: unit, requester: doctor, sigtap_code: exam, status: :awaiting_authorization)
       cancel!(order, kind: "denied")
