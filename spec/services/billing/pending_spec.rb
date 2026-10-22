@@ -15,13 +15,21 @@ RSpec.describe Billing::Pending do
     apac = recorded_procedure!(unit: unit, professional: doctor, patient: patient, sigtap_code: "0604320124", cid10: nil)
     cid = recorded_procedure!(unit: unit, professional: doctor, patient: patient, cid10: nil)
     items = described_class.call(cid.billing_period)
-    expect(items).to eq([ { procedure_id: cid.id, reasons: %w[cid_required], fix: "procedure", performed_on: cid.performed_on.iso8601,
+    expect(items).to eq([ { procedure_id: cid.id, reasons: %w[cid_required], fix: "procedure", late: false, performed_on: cid.performed_on.iso8601,
                             sigtap_code: "0301060029", label: "ATENDIMENTO DE URGENCIA C/ OBSERVACAO ATE 24 HORAS EM ATENCAO ESPECIALIZADA",
                             patient: { id: patient.id, display_name: "Maria Aparecida da Silva" },
                             professional: { user_id: doctor.id, name: doctor.professional.professional_name } } ])
     expect(items.map { |i| i[:procedure_id] }).not_to include(apac.id)
     expect(described_class::FIX).to include("missing_professional_cns" => "professional", "missing_required_patient_field" => "patient",
                                             "missing_establishment_cnes" => "establishment")
+  end
+
+  it "mostra late: true para o procedimento de competência tardia" do
+    today = Time.zone.today
+    BillingPeriod.create!(health_unit: unit, competence: (today << 1).strftime("%Y%m"), status: "closed", version: 1, closed_at: Time.current, closed_by_user: doctor)
+    procedure = recorded_procedure!(unit: unit, professional: doctor, patient: patient, cid10: nil, performed_on: today << 1)
+    expect(procedure.late).to be(true)
+    expect(described_class.call(procedure.billing_period).sole).to include(late: true)
   end
 
   it "recalcula sem gravar: o cadastro corrigido some da lista antes do fechamento" do
