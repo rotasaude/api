@@ -5,7 +5,8 @@
 #      com linha: enabled e dentro de available_from..available_until;
 #   2. offer.eligibility verdadeira no contexto do par;
 #   3. restriction verdadeira (ausente = verdadeira) — soma com E, nunca amplia;
-#   4. intervalo: recent enquanto hoje < última conclusão + retake_after_days.
+#   4. intervalo: recent enquanto hoje < última conclusão + retake_after_days;
+#      depois disso, available e overdue? (triagem periódica vencida, F-23.8).
 # `suggestion_only` (linha da cidade) não muda a oferta: a sugestão nasce e
 # fica pendente. Só tira de "Disponíveis" (Catalog) e exige a sugestão para
 # começar (startable?).
@@ -17,9 +18,13 @@ module Triages
       def initialize(suggestion_only: false, **rest) = super
     end
     Item = Data.define(:protocol_name, :title, :summary, :state, :position, :last_completed_on, :next_available_on,
-                       :suggestion_only) do
+                       :suggestion_only, :retake_after_days) do
+      def initialize(retake_after_days: nil, **rest) = super
       def available? = state == "available"
       def recent? = state == "recent"
+      # ADR 0040 (F-23.8): com intervalo de repetição, já feita e de novo em
+      # oferta = vencida (available só depois de última + intervalo).
+      def overdue? = available? && !last_completed_on.nil? && !retake_after_days.nil?
     end
 
     module_function
@@ -51,7 +56,8 @@ module Triages
       recent = next_on.present? && on < next_on
       Item.new(protocol_name: name, title: offer["title"].presence || name, summary: offer["summary"].presence,
                state: recent ? "recent" : "available", position: row&.position, last_completed_on: last_on,
-               next_available_on: recent ? next_on : nil, suggestion_only: row&.suggestion_only || false)
+               next_available_on: recent ? next_on : nil, suggestion_only: row&.suggestion_only || false,
+               retake_after_days: days.is_a?(Integer) && days.positive? ? days : nil)
     end
 
     def title_for(definition, name)

@@ -30,4 +30,16 @@ RSpec.describe "Sessão do cidadão com os interruptores", type: :request do
       expect(open_session.call).not_to include("patient_timeline")
     end
   end
+
+  # Módulo 23 (contrato §11 T6): care_lines chega pelo mecanismo genérico.
+  it "GET /citizen/session traz care_lines só quando utilizável (modo record com o prontuário)" do
+    care_city!
+    sign_in_citizen
+    get "/citizen/session"
+    expect(JSON.parse(response.body)["features"]).to include("clinical_record", "care_lines")
+    Current.city.update!(record_mode: "integrated")
+    CityCatalog.reset_cache!
+    get "/citizen/session"
+    expect(JSON.parse(response.body)["features"]).not_to include("care_lines")
+  end
 end

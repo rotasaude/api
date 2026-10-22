@@ -623,6 +623,12 @@ Rails.application.routes.draw do
     # Meus exames (ADR 0036; contrato §9, A22: citizen_id).
     get "exams",         to: "exams#index"
     get "exams/:id/pdf", to: "exams#pdf"
+
+    # Linhas de cuidado (ADR 0040; contrato §7). A condição só no corpo (§11 T1).
+    get    "declared_conditions", to: "declared_conditions#index"
+    post   "declared_conditions", to: "declared_conditions#create"
+    delete "declared_conditions", to: "declared_conditions#destroy"
+    get    "care",                to: "care#show"
   end
 
   # Autoria/preview de protocolos (ADR-0009)

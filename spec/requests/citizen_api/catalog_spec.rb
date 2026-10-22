@@ -44,4 +44,19 @@ RSpec.describe "Catálogo do cidadão", type: :request do
     catalog_of(citizen)
     expect(status_and_error).to eq([ 409, "profile_required" ])
   end
+
+  # Módulo 23 (F-23.8; contrato §12 L9): sem interruptor, o intervalo de repetição
+  # basta para a oferta trazer overdue e last_done_at.
+  it "oferta com intervalo de repetição traz overdue e last_done_at; sem intervalo, não" do
+    active_protocol!("saude-adulto", offer: { "title" => "Saúde do adulto", "retake_after_days" => 180 })
+    adulto = profiled_citizen!(age: 40)
+    catalog_of(adulto)
+    item = body["available"].find { |i| i["protocol_name"] == "saude-adulto" }
+    expect(item).to include("overdue" => false, "last_done_at" => nil)
+    completed_triage!(adulto, "saude-adulto", at: 200.days.ago)
+    catalog_of(adulto)
+    expect(body["available"].find { |i| i["protocol_name"] == "saude-adulto" })
+      .to include("overdue" => true, "last_done_at" => 200.days.ago.to_date.iso8601)
+    expect(body["available"].find { |i| i["protocol_name"] == "saude-mental" }.keys).to match_array(%w[protocol_name title summary])
+  end
 end

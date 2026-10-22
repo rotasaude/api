@@ -58,7 +58,14 @@ module Triages
       end
     end
 
-    def item_json(item) = { protocol_name: item.protocol_name, title: item.title, summary: item.summary }
+    # Com intervalo de repetição, a oferta traz overdue e last_done_at (módulo
+    # 23, F-23.8; contrato §12 L9: sem interruptor, o módulo 15 não tem).
+    def item_json(item)
+      json = { protocol_name: item.protocol_name, title: item.title, summary: item.summary }
+      return json if item.retake_after_days.nil?
+
+      json.merge(overdue: item.overdue?, last_done_at: item.last_completed_on&.iso8601)
+    end
 
     def recent_json(item)
       item_json(item).merge(last_completed_on: item.last_completed_on.iso8601,

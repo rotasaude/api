@@ -45,7 +45,8 @@ RSpec.describe Triages::Catalog do
     recent = described_class.for(citizen: avo)[:recent].sole
     last_on = 10.days.ago.to_date
     expect(recent).to eq(protocol_name: "saude-do-idoso", title: "Saúde do idoso", summary: nil,
-                         last_completed_on: last_on.iso8601, next_available_on: (last_on + 365).iso8601)
+                         last_completed_on: last_on.iso8601, next_available_on: (last_on + 365).iso8601,
+                         overdue: false, last_done_at: last_on.iso8601) # F-23.8: tem intervalo de repetição
   end
 
   it "pausa expira a sugestão na leitura" do
