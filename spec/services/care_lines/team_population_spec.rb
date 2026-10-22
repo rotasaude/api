@@ -49,12 +49,41 @@ RSpec.describe CareLines::TeamPopulation do
     expect(described_class.patient_teams([ old.id ])).to eq({})
   end
 
-  it "desempata pelo INE quando o profissional está em duas equipes da unidade" do
+  it "desempata pelo INE quando o profissional está em duas equipes da unidade: trocar os INEs troca o vencedor" do
     other = HealthTeam.create!(health_unit: unit_a, ine: "0000000001", kind: "70", name: "ESF B")
     team_a.update!(ine: "0000000002")
     HealthTeamMember.create!(professional: doctor_a.professional, health_team: other, cbo_code: "225125", started_on: Time.zone.today - 30)
     patient = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
     expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => other.id)
+    other.update!(ine: "0000000003")
+    expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_a.id)
+  end
+
+  def second_consultation!(patient, unit:, doctor:)
+    problem = PatientProblem.find_by!(patient_id: patient.id)
+    finalized_consultation!(unit: unit, doctor: doctor, citizen: Citizen.find_by!(patient_id: patient.id),
+                            evaluated_problems: [ { "problem_id" => problem.id, "action" => "evaluate" } ], exam_requests: [])
+  end
+
+  it "duas consultas finalizadas: vale a equipe da MAIS RECENTE" do
+    patient = travel_to(3.months.ago) { care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a) }
+    expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_a.id)
+    travel_to(1.month.ago) { second_consultation!(patient, unit: unit_b, doctor: doctor_b) }
+    expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_b.id)
+  end
+
+  it "profissional de equipe da unidade B que consulta pelo vínculo da unidade A não dá equipe" do
+    link_professional!(doctor_b, unit_a)
+    patient = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_b)
+    expect(Consultation.find_by!(patient_id: patient.id).professional_link.health_unit_id).to eq(unit_a.id)
+    expect(described_class.patient_teams([ patient.id ])).to eq({})
+  end
+
+  it "consulta mais recente com profissional sem equipe não tira a pessoa da equipe anterior" do
+    patient = travel_to(3.months.ago) { care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a) }
+    on_duty = care_doctor!(unit_a)
+    travel_to(1.month.ago) { second_consultation!(patient, unit: unit_a, doctor: on_duty) }
+    expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_a.id)
   end
 
   it "equipe inativa e membro desligado não atribuem" do

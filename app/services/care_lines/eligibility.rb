@@ -10,7 +10,7 @@ module CareLines
       return nil if rules["exclude_problems"] && codes_match?(rules["exclude_problems"], person.problems)
       return nil unless demographics?(rules, person, on)
       return "problem" if rules["problems"] && codes_match?(rules["problems"], person.problems)
-      return "age_sex" if rules["problems"].nil? && demographic_rule?(rules)
+      return "age_sex" if rules["problems"].nil? && rules["declared"].nil? && demographic_rule?(rules)
       return "declared" if (Array(rules["declared"]) & person.declared).any?
 
       nil

@@ -43,6 +43,28 @@ RSpec.describe CareLines::Eligibility do
     expect(described_class.closure?(rules("elderly_c6"), resolved)).to be(false)
   end
 
+  describe "linha própria só com declaração e idade (a demografia é filtro, a origem é a declaração)" do
+    let(:own_line) { { "declared" => %w[mental_health], "age_min_years" => 18 } }
+
+    it "adulto sem declaração → nil" do
+      adult = person(age: 30)
+      expect(described_class.match(own_line, adult, on: on)).to be_nil
+      expect(described_class.denominator?(own_line, adult, on: on)).to be(false)
+    end
+
+    it "adulto com declaração → declared, fora do denominador" do
+      adult = person(age: 30, declared: %w[mental_health])
+      expect(described_class.match(own_line, adult, on: on)).to eq("declared")
+      expect(described_class.denominator?(own_line, adult, on: on)).to be(false)
+    end
+
+    it "menor com declaração → nil" do
+      minor = person(age: 15, declared: %w[mental_health])
+      expect(described_class.match(own_line, minor, on: on)).to be_nil
+      expect(described_class.denominator?(own_line, minor, on: on)).to be(false)
+    end
+  end
+
   it "o código casa só na terminologia dele" do
     expect(described_class.codes_match?({ "cid10" => %w[E11] }, [ %w[ciap2 E11] ])).to be(false)
     expect(described_class.codes_match?({ "cid10" => %w[E11] }, [ %w[cid10 E119] ])).to be(true)
