@@ -124,7 +124,13 @@ module CityEncryption
     [ BillingPeriod, :reopened_reason ],
     [ BillingExport, :file ],
     [ Patient, :race_color ], [ Patient, :ethnicity ], [ Patient, :address_zip ], [ Patient, :address_street ],
-    [ Patient, :address_number ], [ Patient, :address_complement ], [ Patient, :address_district ]
+    [ Patient, :address_number ], [ Patient, :address_complement ], [ Patient, :address_district ],
+    # ADR 0040: DUM, notas e motivos das linhas de cuidado; condição declarada.
+    [ CareLineEnrollment, :anchor_date ],
+    [ CareLineEnrollment, :ended_note ],
+    [ CareLineSuggestion, :dismiss_reason ],
+    [ CareOutreachContact, :note ],
+    [ CitizenDeclaredCondition, :condition ]
   ].freeze
 
   module_function

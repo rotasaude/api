@@ -1984,3 +1984,96 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- care_line_enrollments (ADR 0040; spec §4): a inscrição é ato clínico. Só a
+-- saída muda, uma vez (active -> ended com motivo, data, quem e nota
+-- opcional); nada se apaga (retém na exclusão LGPD).
+CREATE OR REPLACE FUNCTION rota_care_line_enrollment_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'care_line_enrollments: rows are never deleted';
+  END IF;
+  -- Re-cifra (CityEncryption.allowing_reencryption): só o texto cifrado muda.
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - ARRAY['anchor_date', 'ended_note']) = (to_jsonb(OLD) - ARRAY['anchor_date', 'ended_note']) THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.patient_id IS DISTINCT FROM OLD.patient_id
+     OR NEW.care_line_id IS DISTINCT FROM OLD.care_line_id OR NEW.team_id IS DISTINCT FROM OLD.team_id
+     OR NEW.enrolled_by_user_id IS DISTINCT FROM OLD.enrolled_by_user_id OR NEW.suggestion_id IS DISTINCT FROM OLD.suggestion_id
+     OR NEW.enrolled_at IS DISTINCT FROM OLD.enrolled_at OR NEW.source IS DISTINCT FROM OLD.source
+     OR NEW.anchor_date IS DISTINCT FROM OLD.anchor_date OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'care_line_enrollments: only the ending columns change';
+  END IF;
+  IF OLD.status = 'ended' AND (NEW.status, NEW.ended_reason, NEW.ended_note, NEW.ended_at, NEW.ended_by_user_id)
+     IS DISTINCT FROM (OLD.status, OLD.ended_reason, OLD.ended_note, OLD.ended_at, OLD.ended_by_user_id) THEN
+    RAISE EXCEPTION 'care_line_enrollments: an ended enrollment is frozen';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- care_line_suggestions: pending -> accepted | dismissed, uma vez; decidida
+-- congela. DELETE passa (exclusão LGPD do par).
+CREATE OR REPLACE FUNCTION rota_care_line_suggestion_guard() RETURNS trigger AS $fn$
+BEGIN
+  -- Re-cifra (CityEncryption.allowing_reencryption): só o texto cifrado muda.
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - 'dismiss_reason') = (to_jsonb(OLD) - 'dismiss_reason') THEN
+    RETURN NEW;
+  END IF;
+  IF (NEW.id, NEW.patient_id, NEW.citizen_id, NEW.care_line_id, NEW.team_id, NEW.enrollment_id, NEW.reason, NEW.evidence_ref, NEW.created_at)
+     IS DISTINCT FROM (OLD.id, OLD.patient_id, OLD.citizen_id, OLD.care_line_id, OLD.team_id, OLD.enrollment_id, OLD.reason, OLD.evidence_ref, OLD.created_at) THEN
+    RAISE EXCEPTION 'care_line_suggestions: only the decision columns change';
+  END IF;
+  IF OLD.status <> 'pending' THEN
+    RAISE EXCEPTION 'care_line_suggestions: a decided suggestion is frozen';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- care_outreach_contacts: só acréscimo.
+CREATE OR REPLACE FUNCTION rota_care_outreach_contact_append_only() RETURNS trigger AS $fn$
+BEGIN
+  -- Re-cifra (CityEncryption.allowing_reencryption): só a nota cifrada muda.
+  IF TG_OP = 'UPDATE' AND current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - 'note') = (to_jsonb(OLD) - 'note') THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'care_outreach_contacts: append-only (% refused)', TG_OP;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- citizen_declared_conditions: só acréscimo; retirar grava withdrawn_at uma
+-- vez. DELETE passa (a exclusão LGPD apaga e não retém).
+CREATE OR REPLACE FUNCTION rota_citizen_declared_condition_guard() RETURNS trigger AS $fn$
+BEGIN
+  -- Re-cifra (CityEncryption.allowing_reencryption): só o texto cifrado muda.
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - 'condition') = (to_jsonb(OLD) - 'condition') THEN
+    RETURN NEW;
+  END IF;
+  IF (NEW.id, NEW.citizen_id, NEW.condition, NEW.declared_at) IS DISTINCT FROM (OLD.id, OLD.citizen_id, OLD.condition, OLD.declared_at)
+     OR OLD.withdrawn_at IS NOT NULL OR NEW.withdrawn_at IS NULL THEN
+    RAISE EXCEPTION 'citizen_declared_conditions: only withdrawn_at, once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.care_line_enrollments') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS care_line_enrollments_guard ON care_line_enrollments';
+    EXECUTE 'CREATE TRIGGER care_line_enrollments_guard BEFORE UPDATE OR DELETE ON care_line_enrollments
+      FOR EACH ROW EXECUTE FUNCTION rota_care_line_enrollment_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS care_line_suggestions_guard ON care_line_suggestions';
+    EXECUTE 'CREATE TRIGGER care_line_suggestions_guard BEFORE UPDATE ON care_line_suggestions
+      FOR EACH ROW EXECUTE FUNCTION rota_care_line_suggestion_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS care_outreach_contacts_append_only ON care_outreach_contacts';
+    EXECUTE 'CREATE TRIGGER care_outreach_contacts_append_only BEFORE UPDATE OR DELETE ON care_outreach_contacts
+      FOR EACH ROW EXECUTE FUNCTION rota_care_outreach_contact_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS citizen_declared_conditions_guard ON citizen_declared_conditions';
+    EXECUTE 'CREATE TRIGGER citizen_declared_conditions_guard BEFORE UPDATE ON citizen_declared_conditions
+      FOR EACH ROW EXECUTE FUNCTION rota_citizen_declared_condition_guard()';
+  END IF;
+END
+$do$;

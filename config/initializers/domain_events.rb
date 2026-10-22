@@ -209,4 +209,15 @@ Rails.application.config.to_prepare do
      billing_period.pending_viewed billing_export.generated billing_export.downloaded billing_settings.changed
      billing_patient.looked_up billing_patient.demographics_updated patient.demographics_updated
      billing_procedures.listed].each { |name| DomainEvents.bind name, to: [] }
+
+  # ADR 0040 (contrato §9): linhas de cuidado, só ids. O problema que muda e a
+  # condição declarada disparam a sugestão daquela pessoa (Task 10).
+  DomainEvents.bind "care_line.adopted", to: []
+  DomainEvents.bind "care_line_suggestion.created", to: []
+  DomainEvents.bind "care_line_suggestion.accepted", to: []
+  DomainEvents.bind "care_line_suggestion.dismissed", to: []
+  DomainEvents.bind "care_line_enrollment.created", to: []
+  DomainEvents.bind "care_line_enrollment.ended", to: []
+  DomainEvents.bind "care_outreach.recorded", to: []
+  DomainEvents.bind "citizen_condition.withdrawn", to: []
 end

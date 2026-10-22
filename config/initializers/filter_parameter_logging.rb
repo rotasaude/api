@@ -56,7 +56,10 @@ Rails.application.config.filter_parameters += [
   /\A(value|values|level_barcodes|justification|corrective_action)\z/,
   # ADR 0039 (D-U1): raça/cor, etnia e endereço do paciente para o BPA-I
   # (`zip`, `street` e `address` já estavam; aqui as chaves inteiras).
-  /\A(race_color|ethnicity|address_zip|address_street|address_number|address_complement|address_district)\z/
+  /\A(race_color|ethnicity|address_zip|address_street|address_number|address_complement|address_district)\z/,
+  # ADR 0040: condição declarada pelo cidadão, DUM e motivo da recusa da sugestão
+  # (`:note` e `:reason` já cobrem a nota do contato e o motivo do encerramento).
+  /\A(condition|anchor_date|dismiss_reason)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

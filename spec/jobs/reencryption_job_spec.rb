@@ -65,7 +65,8 @@ RSpec.describe ReencryptionJob do
                                          PecSetting ExamOrder ExamOrderEvent ExamResult ExamFile
                                          LabRequisition LabResult LabHl7Receipt LabReport LabCriticalNotice
                                          LabQcException LabQcReviewItem
-                                         PerformedProcedure BillingPeriod BillingExport])
+                                         PerformedProcedure BillingPeriod BillingExport
+                                         CareLineEnrollment CareLineSuggestion CareOutreachContact CitizenDeclaredCondition])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end

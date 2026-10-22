@@ -204,3 +204,13 @@ RSpec.describe "billing event bindings (ADR 0039)" do
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
 end
+
+# Módulo 23 (ADR 0040; contrato §9): trilha das linhas de cuidado, só ids.
+RSpec.describe "care lines bindings (F-23.3, F-23.5, F-23.7)" do
+  it "declara os eventos das linhas de cuidado" do
+    %w[care_line.adopted care_line_suggestion.created care_line_suggestion.accepted care_line_suggestion.dismissed
+       care_line_enrollment.created care_line_enrollment.ended care_outreach.recorded citizen_condition.withdrawn].each do |name|
+      expect(DomainEvents.registry.key?(name)).to be(true), name
+    end
+  end
+end

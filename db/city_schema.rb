@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_21_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_22_900002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -354,6 +354,79 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_900001) do
     t.check_constraint "(cancelled_by_user_id IS NULL) = (cancelled_at IS NULL) AND (status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL)", name: "ck_campaigns_cancelled"
   end
 
+  create_table "care_line_enrollments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "anchor_date"
+    t.uuid "care_line_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "ended_at"
+    t.uuid "ended_by_user_id"
+    t.text "ended_note"
+    t.string "ended_reason"
+    t.datetime "enrolled_at", null: false
+    t.uuid "enrolled_by_user_id", null: false
+    t.uuid "patient_id", null: false
+    t.string "source", null: false
+    t.string "status", default: "active", null: false
+    t.uuid "suggestion_id"
+    t.uuid "team_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["patient_id", "care_line_id"], name: "idx_care_line_enrollments_one_active", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["patient_id"], name: "idx_care_line_enrollments_patient"
+    t.index ["suggestion_id"], name: "index_care_line_enrollments_on_suggestion_id", unique: true
+    t.index ["team_id", "status", "enrolled_at"], name: "idx_care_line_enrollments_team"
+    t.check_constraint "source::text = ANY (ARRAY['suggestion'::text, 'manual'::text]) AND ((source::text = 'suggestion') = (suggestion_id IS NOT NULL)) AND status::text = ANY (ARRAY['active'::text, 'ended'::text]) AND ((status::text = 'ended') = (ended_reason IS NOT NULL AND ended_at IS NOT NULL AND ended_by_user_id IS NOT NULL)) AND (status::text = 'ended' OR ended_note IS NULL) AND (ended_reason IS NULL OR ended_reason::text = ANY (ARRAY['discharge'::text, 'death'::text, 'moved'::text, 'pregnancy_ended'::text, 'other'::text]))", name: "ck_care_line_enrollments_values"
+  end
+
+  create_table "care_line_suggestions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "care_line_id", null: false
+    t.uuid "citizen_id"
+    t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.datetime "decided_at"
+    t.uuid "decided_by_user_id"
+    t.text "dismiss_reason"
+    t.uuid "enrollment_id"
+    t.string "evidence_ref", limit: 60
+    t.uuid "patient_id"
+    t.string "reason", null: false
+    t.string "status", default: "pending", null: false
+    t.uuid "team_id", null: false
+    t.index ["care_line_id", "citizen_id"], name: "idx_care_line_suggestions_one_citizen", unique: true, where: "(((status)::text = 'pending'::text) AND (citizen_id IS NOT NULL))"
+    t.index ["care_line_id", "patient_id"], name: "idx_care_line_suggestions_one_patient", unique: true, where: "(((status)::text = 'pending'::text) AND (patient_id IS NOT NULL))"
+    t.index ["citizen_id"], name: "idx_care_line_suggestions_citizen"
+    t.index ["patient_id"], name: "idx_care_line_suggestions_patient"
+    t.index ["team_id", "status", "created_at"], name: "idx_care_line_suggestions_team"
+    t.check_constraint "num_nonnulls(patient_id, citizen_id) = 1 AND reason::text = ANY (ARRAY['problem'::text, 'age_sex'::text, 'declared'::text, 'resolved_problem'::text]) AND ((reason::text = 'resolved_problem') = (enrollment_id IS NOT NULL)) AND (reason::text <> 'resolved_problem' OR patient_id IS NOT NULL) AND status::text = ANY (ARRAY['pending'::text, 'accepted'::text, 'dismissed'::text]) AND ((status::text = 'pending') = (decided_at IS NULL AND decided_by_user_id IS NULL)) AND ((status::text = 'dismissed') = (dismiss_reason IS NOT NULL))", name: "ck_care_line_suggestions_values"
+  end
+
+  create_table "care_lines", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.string "declared_condition"
+    t.jsonb "eligibility", null: false
+    t.string "indicator", limit: 2
+    t.string "name", limit: 120, null: false
+    t.jsonb "practices", null: false
+    t.string "source", null: false
+    t.string "template_key"
+    t.integer "template_version"
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["declared_condition"], name: "idx_care_lines_one_declared", unique: true, where: "(active AND (declared_condition IS NOT NULL))"
+    t.index ["template_key"], name: "idx_care_lines_one_adoption", unique: true, where: "((source)::text = 'template'::text)"
+    t.check_constraint "source::text = ANY (ARRAY['template'::text, 'custom'::text]) AND ((source::text = 'template') = (template_key IS NOT NULL AND template_version IS NOT NULL AND indicator IS NOT NULL)) AND (declared_condition IS NULL OR declared_condition::text = ANY (ARRAY['diabetes'::text, 'hypertension'::text, 'pregnancy'::text, 'mental_health'::text])) AND jsonb_typeof(practices) = 'array'::text AND jsonb_typeof(eligibility) = 'object'::text", name: "ck_care_lines_values"
+  end
+
+  create_table "care_outreach_contacts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "channel", null: false
+    t.uuid "enrollment_id", null: false
+    t.text "note"
+    t.string "outcome", null: false
+    t.datetime "recorded_at", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.index ["enrollment_id", "recorded_at"], name: "idx_care_outreach_contacts_enrollment"
+    t.check_constraint "channel::text = ANY (ARRAY['phone'::text, 'home_visit'::text, 'wpda_message'::text, 'in_person'::text]) AND outcome::text = ANY (ARRAY['reached'::text, 'no_answer'::text, 'scheduled'::text, 'refused'::text])", name: "ck_care_outreach_contacts_values"
+  end
+
   create_table "city_medication_list", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "added_by_user_id", null: false
     t.uuid "catalog_item_id", null: false
@@ -388,6 +461,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_900001) do
     t.boolean "sms_opt_in", default: false, null: false
     t.datetime "sms_opt_in_changed_at"
     t.datetime "updated_at", null: false
+  end
+
+  create_table "citizen_declared_conditions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "citizen_id", null: false
+    t.text "condition", null: false
+    t.datetime "declared_at", null: false
+    t.datetime "withdrawn_at"
+    t.index ["citizen_id"], name: "index_citizen_declared_conditions_on_citizen_id"
   end
 
   create_table "citizen_erasure_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2585,7 +2666,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_21_900001) do
   add_foreign_key "campaigns", "users", column: "cancelled_by_user_id"
   add_foreign_key "campaigns", "users", column: "created_by_user_id"
   add_foreign_key "campaigns", "users", column: "dispatched_by_user_id"
+  add_foreign_key "care_line_enrollments", "care_line_suggestions", column: "suggestion_id"
+  add_foreign_key "care_line_enrollments", "care_lines"
+  add_foreign_key "care_line_enrollments", "health_teams", column: "team_id"
+  add_foreign_key "care_line_enrollments", "patients"
+  add_foreign_key "care_line_enrollments", "users", column: "enrolled_by_user_id"
+  add_foreign_key "care_line_enrollments", "users", column: "ended_by_user_id"
+  add_foreign_key "care_line_suggestions", "care_line_enrollments", column: "enrollment_id"
+  add_foreign_key "care_line_suggestions", "care_lines"
+  add_foreign_key "care_line_suggestions", "citizens"
+  add_foreign_key "care_line_suggestions", "health_teams", column: "team_id"
+  add_foreign_key "care_line_suggestions", "patients"
+  add_foreign_key "care_line_suggestions", "users", column: "decided_by_user_id"
+  add_foreign_key "care_lines", "users", column: "updated_by_user_id"
+  add_foreign_key "care_outreach_contacts", "care_line_enrollments", column: "enrollment_id"
+  add_foreign_key "care_outreach_contacts", "users", column: "recorded_by_user_id"
   add_foreign_key "citizen_contact_preferences", "citizens"
+  add_foreign_key "citizen_declared_conditions", "citizens"
   add_foreign_key "citizen_erasure_requests", "citizens", column: "presented_citizen_id"
   add_foreign_key "citizen_erasure_requests", "users", column: "decided_by_user_id"
   add_foreign_key "citizen_erasure_requests", "users", column: "requested_by_user_id"
