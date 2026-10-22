@@ -63,6 +63,17 @@ module CareLineHelpers
     CareLineEnrollment.create!(patient: patient, care_line: line, team: team, enrolled_by_user: by, enrolled_at: enrolled_at,
                                source: "manual", anchor_date: anchor_date&.iso8601)
   end
+
+  # Escuta concluída (caminho real: Screenings::Start/Complete) com os sinais dados.
+  def care_screening!(unit:, citizen:, by:, vitals:)
+    attendance = walk_in_attendance!(unit, citizen: citizen)
+    started = Screenings::Start.call(attendance: attendance, by: by).payload[:screening]
+    result = Screenings::Complete.call(screening: started, revision_params: revision_params("vitals" => vitals), destination: "oriented",
+                                       destination_params: { "orientation_note" => "retorno" }, by: by)
+    raise "escuta recusada: #{result.reason}" if result.failure?
+
+    started.reload
+  end
 end
 
 RSpec.configure { |c| c.include CareLineHelpers }
