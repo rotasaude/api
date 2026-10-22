@@ -47,4 +47,24 @@ RSpec.describe CareLines::Evaluation do
     end
     expect(count.call(enrollments.first(1))).to eq(count.call(enrollments))
   end
+
+  it "Row e PracticeStatus não revelam datas pessoais (DUM + janela) em inspect, to_s nem pretty_print" do
+    mom = care_patient!(age: 27, sex: "female", problems: [ %w[ciap2 W78] ], unit: unit, doctor: doctor)
+    lmp = Time.zone.today - 70
+    enrollment = care_enrollment!(patient: mom, line: adopted_line!("pregnancy_c3"), team: team, by: doctor, anchor_date: lmp)
+    row = described_class.enrollments([ enrollment ], today: Time.zone.today).fetch(enrollment.id)
+    practice = row.practices.find { |p| p.key == "c3_h" }
+    expect(practice.due_on).to eq(lmp + 294)
+    dates = [ lmp, lmp + 294 ].map(&:iso8601)
+
+    [ row, practice ].each do |value|
+      [ value.inspect, value.to_s, value.pretty_inspect, "#{value}" ].each do |text|
+        dates.each { |date| expect(text).not_to include(date) }
+      end
+    end
+    expect(row.inspect).to eq("#<CareLines::Evaluation::Row key=#{enrollment.id.inspect} worst=#{row.worst}>")
+    expect(practice.inspect).to eq("#<CareLines::PracticeStatus key=\"c3_h\" status=#{practice.status}>")
+    expect(row.pretty_inspect.strip).to eq(row.inspect)
+    expect(practice.pretty_inspect.strip).to eq(practice.inspect)
+  end
 end

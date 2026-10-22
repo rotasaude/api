@@ -3,7 +3,12 @@
 # uma (CareLines::Evaluate). Nada é gravado.
 module CareLines
   module Evaluation
-    Row = Data.define(:key, :practices, :worst)
+    # inspect só com a chave: as práticas trazem due_on (DUM + janela), que revela a DUM.
+    Row = Data.define(:key, :practices, :worst) do
+      def inspect = "#<CareLines::Evaluation::Row key=#{key.inspect} worst=#{worst}>"
+      alias_method :to_s, :inspect
+      def pretty_print(q) = q.text(inspect)
+    end
 
     module_function
 
