@@ -77,6 +77,20 @@ module CareLineHelpers
     citizen
   end
 
+  # Resolve um problema ativo pelo caminho único (Patients::ApplyProblemEvent),
+  # com a consulta finalizada do paciente como origem.
+  def resolve_problem!(patient, code, by:)
+    problem = patient.problems.active_problems.find_by!(code: code)
+    consultation = patient.consultations.finalized_consultations.order(:finalized_at).last
+    ApplicationRecord.transaction do
+      patient.lock!
+      result = Patients::ApplyProblemEvent.call(patient: patient, action: "resolve", by: by, source: { consultation: consultation }, problem: problem)
+      raise "resolução recusada: #{result.reason}" if result.failure?
+    end
+  end
+
+  def declare!(citizen, condition) = CitizenDeclaredCondition.create!(citizen: citizen, condition: condition, declared_at: Time.current)
+
   # Escuta concluída (caminho real: Screenings::Start/Complete) com os sinais dados.
   def care_screening!(unit:, citizen:, by:, vitals:)
     attendance = walk_in_attendance!(unit, citizen: citizen)

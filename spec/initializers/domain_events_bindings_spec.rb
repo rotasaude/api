@@ -101,9 +101,9 @@ end
 
 # Módulo 19 (ADR 0031): prontuário, só trilha.
 RSpec.describe "clinical record event bindings (ADR 0031)" do
-  it "declares every module 19 city event with no consumer" do
-    names = %w[patient.created patient.linked patient_problem.changed consultation.started
-               clinical_record.viewed clinical_record.opened]
+  it "declares every module 19 city event, with no consumer except patient_problem.changed (ADR 0040)" do
+    names = %w[patient.created patient.linked consultation.started clinical_record.viewed clinical_record.opened]
+    expect(DomainEvents.registry.keys).to include("patient_problem.changed")
     expect(DomainEvents.registry.keys).to include(*names)
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end
@@ -209,8 +209,13 @@ end
 RSpec.describe "care lines bindings (F-23.3, F-23.5, F-23.7)" do
   it "declara os eventos das linhas de cuidado" do
     %w[care_line.adopted care_line_suggestion.created care_line_suggestion.accepted care_line_suggestion.dismissed
-       care_line_enrollment.created care_line_enrollment.ended care_outreach.recorded citizen_condition.withdrawn].each do |name|
+       care_line_enrollment.created care_line_enrollment.ended care_outreach.recorded citizen_condition.withdrawn citizen_condition.declared].each do |name|
       expect(DomainEvents.registry.key?(name)).to be(true), name
     end
+  end
+
+  it "liga o problema que muda e a condição declarada às sugestões (Task 10)" do
+    expect(DomainEvents.registry["patient_problem.changed"].map(&:job)).to eq([ "CareLines::ProblemChangedJob" ])
+    expect(DomainEvents.registry["citizen_condition.declared"].map(&:job)).to eq([ "CareLines::ConditionDeclaredJob" ])
   end
 end

@@ -137,7 +137,8 @@ Rails.application.config.to_prepare do
   # texto clínico, nota de abertura ou nome entra em evento.
   DomainEvents.bind "patient.created", to: []
   DomainEvents.bind "patient.linked", to: []
-  DomainEvents.bind "patient_problem.changed", to: []
+  # ADR 0040: o problema que muda dispara a sugestão (e o encerramento) daquele paciente.
+  DomainEvents.bind "patient_problem.changed", to: [ CareLines::ProblemChangedJob ]
   DomainEvents.bind "consultation.started", to: []
   # ADR 0032 (19b): a finalização e o adendo abrem o pedido de assinatura
   # (Signatures::RequestJob só abre o pedido e enfileira; o 19a não muda).
@@ -220,4 +221,5 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "care_line_enrollment.ended", to: []
   DomainEvents.bind "care_outreach.recorded", to: []
   DomainEvents.bind "citizen_condition.withdrawn", to: []
+  DomainEvents.bind "citizen_condition.declared", to: [ CareLines::ConditionDeclaredJob ]
 end
