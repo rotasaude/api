@@ -110,7 +110,13 @@ module Platform
       # ambientes, sem simulado (M2).
       Entry.new(key: "procedure_billing",
                 description: "Faturamento de procedimentos (BPA): procedimentos realizados com crítica SIGTAP e arquivo BPA-I/BPA-C",
-                requires: %w[ibge_code])
+                requires: %w[ibge_code]),
+      # ADR 0040: linhas de cuidado (módulo 23) — catálogo C2–C7, inscrição
+      # confirmada, busca ativa e prévia dos indicadores. Só no modo record
+      # (pelo prontuário utilizável).
+      Entry.new(key: "care_lines",
+                description: "Linhas de cuidado: catálogo C2–C7, inscrição confirmada, busca ativa e prévia dos indicadores",
+                requires: %w[feature:clinical_record])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
