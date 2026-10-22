@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe CareLines::Facts do
+  include ActiveSupport::Testing::TimeHelpers
+
   before { care_city! }
 
   let(:unit) { care_unit! }
@@ -15,6 +17,52 @@ RSpec.describe CareLines::Facts do
     expect(person.problems).to eq([ %w[ciap2 T90] ])
     expect(person.resolved_problems).to eq([])
     expect([ person.inspect, person.to_s, person.as_json.to_json ].join).not_to include("male", "T90", person.birth_date.to_s)
+    expect(person.problem_since).to eq({ %w[ciap2 T90] => Time.zone.today })
+    shown = [ person.inspect, person.to_s, PP.pp(person, +""), person.to_json, person.as_json.to_s ].join
+    expect(shown).not_to include("problem_since", "T90", Time.zone.today.iso8601)
+  end
+
+  describe "problem_since: dia em que o problema passou a estar ativo pela última vez" do
+    def active_problem_event!(patient, kind:)
+      PatientProblem.find_by!(patient_id: patient.id, status: "active").then do |problem|
+        PatientProblemEvent.where(patient_problem_id: problem.id, kind: kind).maximum(:created_at)
+      end
+    end
+
+    it "é o dia do evento added, no fuso da cidade" do
+      travel_to(Time.zone.local(2026, 3, 10, 22, 30)) do
+        patient = care_patient!(age: 30, sex: "female", problems: [ %w[ciap2 W82] ], unit: unit, doctor: doctor)
+        since = described_class.patients([ patient.id ]).fetch(patient.id).problem_since
+        expect(since).to eq({ %w[ciap2 W82] => Time.zone.today })
+        expect(since.values.first).to eq(active_problem_event!(patient, kind: "added").in_time_zone.to_date)
+      end
+    end
+
+    it "problema reativado conta a reativação, não o primeiro registro" do
+      patient = nil
+      travel_to(Time.zone.local(2026, 1, 5, 10)) do
+        patient = care_patient!(age: 30, sex: "female", problems: [ %w[ciap2 W82] ], unit: unit, doctor: doctor)
+        resolve_problem!(patient, "W82", by: doctor)
+      end
+      travel_to(Time.zone.local(2026, 6, 20, 10)) do
+        consultation = patient.consultations.finalized_consultations.order(:finalized_at).last
+        release = PatientProblem.find_by!(patient_id: patient.id).terminology_release_id
+        ApplicationRecord.transaction do
+          patient.lock!
+          result = Patients::ApplyProblemEvent.call(patient: patient, action: "add", by: doctor, source: { consultation: consultation },
+                                                    terminology: "ciap2", code: "W82", release_id: release)
+          expect(result).to be_ok
+          expect(result.payload[:event].kind).to eq("reactivated")
+        end
+        person = described_class.patients([ patient.id ]).fetch(patient.id)
+        expect(person.problem_since).to eq({ %w[ciap2 W82] => Date.new(2026, 6, 20) })
+      end
+    end
+
+    it "problema resolvido não entra, e quem não tem problema recebe hash vazio" do
+      healthy = care_patient!(age: 30, sex: "female")
+      expect(described_class.patients([ healthy.id ]).fetch(healthy.id).problem_since).to eq({})
+    end
   end
 
   it "separa problema resolvido do ativo" do

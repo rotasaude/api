@@ -6,8 +6,12 @@ module CareLines
   module Eligibility
     module_function
 
-    def match(rules, person, on:)
-      return nil if rules["exclude_problems"] && codes_match?(rules["exclude_problems"], person.problems)
+    # Gestação atual: a partir da DUM (`lmp:`, inscrita) ou, sem DUM, nos 294
+    # dias até `on`.
+    PREGNANCY_WINDOW_DAYS = 294
+
+    def match(rules, person, on:, lmp: nil)
+      return nil if rules["exclude_problems"] && excluded?(rules["exclude_problems"], person, on, lmp)
       return nil unless demographics?(rules, person, on)
       return "problem" if rules["problems"] && codes_match?(rules["problems"], person.problems)
       return "age_sex" if rules["problems"].nil? && rules["declared"].nil? && demographic_rule?(rules)
@@ -16,12 +20,24 @@ module CareLines
       nil
     end
 
-    def denominator?(rules, person, on:) = %w[problem age_sex].include?(match(rules, person, on: on))
+    def denominator?(rules, person, on:, lmp: nil) = %w[problem age_sex].include?(match(rules, person, on: on, lmp: lmp))
 
     def closure?(rules, person)
       return false unless rules["problems"]
 
       !codes_match?(rules["problems"], person.problems) && codes_match?(rules["problems"], person.resolved_problems)
+    end
+
+    # O problema excludente só vale se foi registrado na gestação atual. Sem
+    # data em problem_since a data é desconhecida: não dá para afirmar que é
+    # da gestação atual, então não exclui (ruling do controlador).
+    def excluded?(rules, person, on, lmp)
+      from = lmp || on - PREGNANCY_WINDOW_DAYS
+      current = person.problems.select do |pair|
+        since = person.problem_since[pair]
+        since && since >= from && since <= on
+      end
+      codes_match?(rules, current)
     end
 
     def codes_match?(rules, pairs)
@@ -48,6 +64,6 @@ module CareLines
 
       person.sex == rules["sex"] || Array(rules["gender_identities_included"]).include?(person.gender_identity)
     end
-    private_class_method :demographic_rule?, :demographics?
+    private_class_method :excluded?, :demographic_rule?, :demographics?
   end
 end

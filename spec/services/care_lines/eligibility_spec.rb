@@ -13,7 +13,6 @@ RSpec.describe CareLines::Eligibility do
     [ "diabetes_c4", { problems: [ %w[ciap2 K86] ] } ] => nil,
     [ "hypertension_c5", { problems: [ %w[cid10 I150] ] } ] => "problem",
     [ "pregnancy_c3", { problems: [ %w[ciap2 W78] ] } ] => "problem",
-    [ "pregnancy_c3", { problems: [ %w[ciap2 W78], %w[ciap2 W82] ] } ] => nil, # aborto exclui
     [ "elderly_c6", { age: 60 } ] => "age_sex",
     [ "elderly_c6", { age: 59 } ] => nil,
     [ "women_c7", { age: 9 } ] => "age_sex",
@@ -24,6 +23,56 @@ RSpec.describe CareLines::Eligibility do
   }.each do |(key, attrs), expected|
     it "#{key} #{attrs} → #{expected.inspect}" do
       expect(described_class.match(rules(key), person(**attrs), on: on)).to eq(expected)
+    end
+  end
+
+  describe "pregnancy_c3: aborto exclui só se registrado na gestação atual" do
+    let(:rules) { entries.fetch("pregnancy_c3")["eligibility"] }
+
+    def pregnant(abortion: %w[ciap2 W82], since: nil, **extra)
+      since_map = since ? { abortion => since } : {}
+      person(problems: [ %w[ciap2 W78], abortion ], problem_since: { %w[ciap2 W78] => on - 5 }.merge(since_map), **extra)
+    end
+
+    it "aborto ativo registrado há 400 dias + W78 → elegível" do
+      expect(described_class.match(rules, pregnant(since: on - 400), on: on)).to eq("problem")
+    end
+
+    it "aborto registrado há 30 dias + W78 → excluído" do
+      expect(described_class.match(rules, pregnant(since: on - 30), on: on)).to be_nil
+      expect(described_class.denominator?(rules, pregnant(since: on - 30), on: on)).to be(false)
+    end
+
+    it "borda dos 294 dias: em on - 294 exclui, em on - 295 não" do
+      expect(described_class.match(rules, pregnant(since: on - 294), on: on)).to be_nil
+      expect(described_class.match(rules, pregnant(since: on - 295), on: on)).to eq("problem")
+    end
+
+    it "hoje conta; data futura não é da gestação corrente" do
+      expect(described_class.match(rules, pregnant(since: on), on: on)).to be_nil
+      expect(described_class.match(rules, pregnant(since: on + 1), on: on)).to eq("problem")
+    end
+
+    it "com DUM: antes da DUM é elegível, depois exclui, e o dia da DUM conta" do
+      expect(described_class.match(rules, pregnant(since: on - 90), on: on, lmp: on - 60)).to eq("problem")
+      expect(described_class.match(rules, pregnant(since: on - 10), on: on, lmp: on - 60)).to be_nil
+      expect(described_class.match(rules, pregnant(since: on - 60), on: on, lmp: on - 60)).to be_nil
+      expect(described_class.denominator?(rules, pregnant(since: on - 90), on: on, lmp: on - 60)).to be(true)
+    end
+
+    it "com DUM, a janela de 294 dias não vale" do
+      expect(described_class.match(rules, pregnant(since: on - 400), on: on, lmp: on - 500)).to be_nil
+    end
+
+    it "CID O03 segue a mesma regra" do
+      old = pregnant(abortion: %w[cid10 O03], since: on - 400)
+      recent = pregnant(abortion: %w[cid10 O03], since: on - 30)
+      expect(described_class.match(rules, old, on: on)).to eq("problem")
+      expect(described_class.match(rules, recent, on: on)).to be_nil
+    end
+
+    it "sem data em problem_since a data é desconhecida: não exclui" do
+      expect(described_class.match(rules, pregnant, on: on)).to eq("problem")
     end
   end
 

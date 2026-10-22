@@ -1,10 +1,11 @@
 # A pessoa avaliada (paciente ou par validado), com o que a elegibilidade e
 # as faixas precisam, decifrado na leitura. inspect só com ids (contrato,
-# convenção: Data com dado pessoal nunca mostra o dado).
+# convenção: Data com dado pessoal nunca mostra o dado). problem_since: [terminologia, código]
+# → Date em que o problema ativo passou a estar ativo pela última vez.
 module CareLines
-  Person = Data.define(:patient_id, :citizen_id, :birth_date, :sex, :gender_identity, :problems, :resolved_problems, :declared, :team_id) do
+  Person = Data.define(:patient_id, :citizen_id, :birth_date, :sex, :gender_identity, :problems, :resolved_problems, :declared, :team_id, :problem_since) do
     def initialize(patient_id: nil, citizen_id: nil, birth_date: nil, sex: nil, gender_identity: nil, problems: [],
-                   resolved_problems: [], declared: [], team_id: nil) = super
+                   resolved_problems: [], declared: [], team_id: nil, problem_since: {}) = super
 
     def age_years(on) = birth_date && Citizen.age_between(birth_date, on)
     def age_days(on) = birth_date && (on - birth_date).to_i
