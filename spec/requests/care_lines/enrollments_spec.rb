@@ -126,6 +126,25 @@ RSpec.describe "Linhas de cuidado — painel e busca ativa", type: :request do
     expect(CareLineEnrollment.count).to eq(0)
   end
 
+  it "inscrição manual por citizen_id: DUM ausente/inválida ou linha inativa recusa sem criar paciente, vínculo nem evento" do
+    pregnancy = adopted_line!("pregnancy_c3")
+    citizen = care_citizen!(age: 27, sex: "female")
+    sign_in_as(doctor)
+    attempts = [ [ nil, 422, "anchor_required" ], [ (Time.zone.today + 1).iso8601, 422, "invalid_anchor" ], [ "ontem", 422, "invalid_anchor" ] ]
+    attempts.each do |dum, status, error|
+      expect { json_post "/care_lines/enrollments", { citizen_id: citizen.id, care_line_id: pregnancy.id, team_id: team.id, anchor_date: dum }.compact }
+        .not_to change(Patient, :count)
+      expect([ response.status, json_body ]).to eq([ status, { "error" => error } ])
+    end
+    pregnancy.update!(active: false)
+    expect { json_post "/care_lines/enrollments", citizen_id: citizen.id, care_line_id: pregnancy.id, team_id: team.id, anchor_date: Time.zone.today.iso8601 }
+      .not_to change(Patient, :count)
+    expect([ response.status, json_body ]).to eq([ 409, { "error" => "line_inactive" } ])
+    expect(citizen.reload.patient_id).to be_nil
+    expect(DomainEvent.where(name: %w[patient.created patient.linked])).to be_empty
+    expect(CareLineEnrollment.count).to eq(0)
+  end
+
   it "escrita por cookie exige Content-Type JSON" do
     enrollment = enrolled!(ok: false, at: 1.day.ago)
     sign_in_as(nurse)

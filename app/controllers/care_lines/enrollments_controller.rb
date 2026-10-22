@@ -42,6 +42,12 @@ module CareLines
 
       line = uuid?(params[:care_line_id]) && CareLine.find_by(id: params[:care_line_id])
       return render_error(:invalid_care_line) unless line
+      # Recusas puras do Enroll ANTES do Patients::Resolve (como o AcceptSuggestion):
+      # um 4xx não cria paciente, não liga o par nem publica evento.
+      return render_failure(Result.fail(:line_inactive)) unless line.active
+
+      anchor = Enroll.validate_anchor(line, params[:anchor_date], Time.zone.today)
+      return render_failure(anchor) if anchor.is_a?(Result)
 
       patient = person_patient or return
       result = Enroll.call(patient: patient, line: line, team: team, by: Current.user, anchor_date: params[:anchor_date])

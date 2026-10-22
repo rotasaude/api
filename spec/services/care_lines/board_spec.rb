@@ -49,6 +49,31 @@ RSpec.describe CareLines::Board do
       .not_to(change { DomainEvent.where(name: "clinical_record.viewed").count })
   end
 
+  context "com cache de verdade (o de teste é :null_store)" do
+    include ActiveSupport::Testing::TimeHelpers
+
+    around do |example|
+      original = Rails.cache
+      Rails.cache = ActiveSupport::Cache::MemoryStore.new
+      example.run
+    ensure
+      Rails.cache = original
+    end
+
+    it "contador de vencidas fica 60 s no cache por equipe; depois reavalia" do
+      enroll!(1.day.ago)
+      allow(CareLines::Evaluation).to receive(:enrollments).and_call_original
+      expect(described_class.overdue_count(team, today: today)).to eq(1)
+      enroll!(2.days.ago)
+      expect(described_class.overdue_count(team, today: today)).to eq(1)
+      expect(CareLines::Evaluation).to have_received(:enrollments).once
+      travel 61.seconds do
+        expect(described_class.overdue_count(team, today: today)).to eq(2)
+      end
+      expect(CareLines::Evaluation).to have_received(:enrollments).twice
+    end
+  end
+
   describe CareLines::Cursor do
     it "ida e volta com microssegundos; lixo vira Invalid" do
       at = Time.utc(2026, 10, 22, 12, 0, 0, 123_456)

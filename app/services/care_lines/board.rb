@@ -6,6 +6,7 @@ module CareLines
   module Board
     MAX_CHUNKS = 5
     COUNT_CHUNK = 200
+    COUNT_TTL = 60.seconds
     FILTERS = %w[all overdue due_soon].freeze
 
     module_function
@@ -32,10 +33,15 @@ module CareLines
       { rows: rows, next_before: Cursor.encode(last.enrolled_at, last.id) }
     end
 
-    # Contador sem trilha (nada nominal sai daqui).
+    # Contador sem trilha (nada nominal sai daqui). O dashboard o relê a cada
+    # 60 s por aba: o valor (agregado, sem dado pessoal) fica 60 s no cache
+    # compartilhado (solid_cache no banco de plataforma, por isso a cidade na chave).
     def overdue_count(team, today:)
-      CareLineEnrollment.active_enrollments.where(team_id: team.id).in_batches(of: COUNT_CHUNK).sum do |batch|
-        Evaluation.enrollments(batch.to_a, today: today).count { |_, row| row.worst == "overdue" }
+      key = [ "care_lines/overdue_count", Current.city&.slug, team.id, today.iso8601 ]
+      Rails.cache.fetch(key, expires_in: COUNT_TTL) do
+        CareLineEnrollment.active_enrollments.where(team_id: team.id).in_batches(of: COUNT_CHUNK).sum do |batch|
+          Evaluation.enrollments(batch.to_a, today: today).count { |_, row| row.worst == "overdue" }
+        end
       end
     end
 
