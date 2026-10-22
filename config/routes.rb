@@ -458,6 +458,7 @@ Rails.application.routes.draw do
     post  "enrollments/:id/contacts",  to: "enrollments#contacts"
     post  "enrollments/:id/appointment_request", to: "enrollments#appointment_request"
     post  "person_lookup",             to: "person_lookups#create"
+    get   "preview",                   to: "previews#show"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).

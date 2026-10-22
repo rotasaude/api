@@ -95,6 +95,28 @@ RSpec.describe CareLines::TeamPopulation do
     expect(described_class.patient_teams([ patient.id ])).to eq({})
   end
 
+  it "pré-filtro por equipe: só quem teve consulta de membro da equipe na unidade dela; a equipe atribuída não muda" do
+    mine = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+    theirs = care_patient!(age: 61, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_b, doctor: doctor_b)
+    moved = travel_to(3.months.ago) { care_patient!(age: 62, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a) }
+    travel_to(1.month.ago) { second_consultation!(moved, unit: unit_b, doctor: doctor_b) }
+    expect(described_class.patient_teams(nil, involving_team: team_a)).to eq(mine.id => team_a.id, moved.id => team_b.id)
+    expect(described_class.patient_teams(nil, involving_team: team_b)).to eq(theirs.id => team_b.id, moved.id => team_b.id)
+    expect(described_class.patient_teams([ mine.id ], involving_team: team_b)).to eq({})
+    population = described_class.call(team: team_a, line: diabetes, rules: diabetes.eligibility).map { |person, _| person.patient_id }
+    expect(population).to eq([ mine.id ])
+  end
+
+  it "inscrita em pregnancy_c3 é avaliada com a DUM: problema excludente anterior à DUM não a tira do denominador" do
+    pregnancy = adopted_line!("pregnancy_c3")
+    attrs = { age: 28, sex: "female", problems: [ %w[ciap2 W78], %w[ciap2 W82] ], unit: unit_a, doctor: doctor_a }
+    enrolled = travel_to(100.days.ago) { care_patient!(**attrs) }
+    travel_to(100.days.ago) { care_patient!(**attrs) }
+    care_enrollment!(patient: enrolled, line: pregnancy, team: team_a, by: doctor_a, anchor_date: Time.zone.today - 60)
+    people = described_class.call(team: team_a, line: pregnancy, rules: pregnancy.eligibility).map { |person, enrollment| [ person.patient_id, enrollment.present? ] }
+    expect(people).to eq([ [ enrolled.id, true ] ])
+  end
+
   it "o número de consultas ao banco não cresce com o número de pessoas" do
     neighborhood = care_neighborhood!(unit_a)
     elderly = adopted_line!("elderly_c6")
