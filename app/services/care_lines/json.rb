@@ -59,5 +59,11 @@ module CareLines
         care_line: line_ref(suggestion.care_line), team_id: suggestion.team_id, reason: suggestion.reason,
         created_at: suggestion.created_at.iso8601, enrollment_id: suggestion.enrollment_id }
     end
+
+    # §11 T3 / §12 P1: o que a busca pelo CPF mostra (o CPF só mascarado).
+    def lookup(patient:, citizen:)
+      { patient_id: patient&.id, citizen_id: citizen.id, display_name: patient&.display_name.presence || citizen.display_name,
+        cpf_masked: citizen.cpf_masked, verified: true }
+    end
   end
 end

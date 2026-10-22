@@ -444,7 +444,7 @@ Rails.application.routes.draw do
     patch "admin/lines/:id", to: "admin#update"
     get   "lines",           to: "lookups#lines"
     get   "teams",           to: "lookups#teams"
-    # Painel, sugestões e busca ativa (contrato §4–§5). As rotas
+    # Painel, sugestões e busca ativa (contrato §4–§5; §11 T3). As rotas
     # literais (count, overdue/count) vêm antes de `:id`.
     get   "suggestions",               to: "suggestions#index"
     get   "suggestions/count",         to: "suggestions#count"
@@ -456,6 +456,7 @@ Rails.application.routes.draw do
     get   "enrollments/:id",           to: "enrollments#show"
     post  "enrollments/:id/end",       to: "enrollments#end_enrollment"
     post  "enrollments/:id/contacts",  to: "enrollments#contacts"
+    post  "person_lookup",             to: "person_lookups#create"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
