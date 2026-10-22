@@ -11,22 +11,26 @@ module CareLines
     module_function
 
     def run(today: Time.zone.today)
-      lines = CareLine.active_lines.to_a
+      lines = CareLine.active_lines.order(:id).to_a
       return { created: 0, closures: 0 } if lines.empty?
 
-      created = candidate_patient_ids(lines).each_slice(BATCH).sum { |ids| for_people(lines, Facts.patients(ids).values, today) }
+      created = if every_patient?(lines)
+                  Patient.in_batches(of: BATCH).sum { |batch| for_people(lines, Facts.patients(batch.pluck(:id)).values, today) }
+                else
+                  candidate_patient_ids(lines).each_slice(BATCH).sum { |ids| for_people(lines, Facts.patients(ids).values, today) }
+                end
       created += Citizen.not_erased.verification_level_verified.where(patient_id: nil).in_batches(of: BATCH)
                         .sum { |batch| for_people(lines, Facts.citizens(batch.pluck(:id)).values, today) }
       { created: created, closures: closures!(lines, today) }
     end
 
     def for_patient(patient_id, today: Time.zone.today)
-      lines = CareLine.active_lines.to_a
+      lines = CareLine.active_lines.order(:id).to_a
       for_people(lines, Facts.patients([ patient_id ]).values, today) + closures!(lines, today, patient_ids: [ patient_id ])
     end
 
     def for_citizen(citizen_id, today: Time.zone.today)
-      lines = CareLine.active_lines.to_a
+      lines = CareLine.active_lines.order(:id).to_a
       citizen = Citizen.find_by(id: citizen_id)
       return 0 unless citizen
 
@@ -34,11 +38,12 @@ module CareLines
       for_people(lines, people, today)
     end
 
-    # Linha por idade e sexo olha todos os pacientes; por problema, só quem
-    # tem problema que casa; declaração, os pacientes dos pares que declararam.
-    def candidate_patient_ids(lines)
-      return Patient.pluck(:id) if lines.any? { |line| line.eligibility["problems"].nil? && line.eligibility["declared"].nil? }
+    # Linha só por idade e sexo olha todos os pacientes (em lotes, sem carregar a cidade).
+    def every_patient?(lines) = lines.any? { |line| line.eligibility["problems"].nil? && line.eligibility["declared"].nil? }
 
+    # Por problema, só quem tem problema que casa; declaração, os pacientes
+    # dos pares que declararam.
+    def candidate_patient_ids(lines)
       ids = lines.filter_map { |line| line.eligibility["problems"] }.flat_map { |rules| Facts.problem_candidates(rules) }
       declared = CitizenDeclaredCondition.current.joins(:citizen).where.not(citizens: { patient_id: nil }).distinct.pluck("citizens.patient_id")
       (ids + declared).uniq
@@ -55,7 +60,7 @@ module CareLines
       # Sugestão feita ao par antes de virar paciente vale para o paciente (365 dias).
       pair_patient = Citizen.where(patient_id: patient_ids).pluck(:id, :patient_id).to_h
       recent = CareLineSuggestion.where(patient_id: patient_ids).or(CareLineSuggestion.where(citizen_id: citizen_ids + pair_patient.keys))
-                                 .where("status = 'pending' OR created_at >= ?", COOLDOWN.ago)
+                                 .where("status = 'pending' OR COALESCE(decided_at, created_at) >= ?", COOLDOWN.ago)
                                  .where.not(reason: "resolved_problem")
                                  .pluck(:patient_id, :citizen_id, :care_line_id).to_set { |p, c, l| [ p || pair_patient[c] || c, l ] }
       evidence = PatientProblem.active_problems.where(patient_id: patient_ids).pluck(:id, :patient_id, :terminology, :code)
@@ -83,13 +88,15 @@ module CareLines
 
       scope = CareLineEnrollment.active_enrollments.where(care_line_id: problem_lines.map(&:id))
       scope = scope.where(patient_id: patient_ids) if patient_ids
-      enrollments = scope.to_a
-      return 0 if enrollments.empty?
+      by_line = problem_lines.index_by(&:id)
+      scope.in_batches(of: BATCH).sum { |batch| closure_batch(batch.to_a, by_line) }
+    end
 
+    def closure_batch(enrollments, by_line)
       people = Facts.patients(enrollments.map(&:patient_id))
       recent = CareLineSuggestion.where(enrollment_id: enrollments.map(&:id))
-                                 .where("status = 'pending' OR created_at >= ?", COOLDOWN.ago).pluck(:enrollment_id).to_set
-      by_line = problem_lines.index_by(&:id)
+                                 .where("status = 'pending' OR COALESCE(decided_at, created_at) >= ?", COOLDOWN.ago)
+                                 .pluck(:enrollment_id).to_set
       enrollments.sum do |enrollment|
         person = people[enrollment.patient_id]
         next 0 if person.nil? || recent.include?(enrollment.id)
@@ -117,6 +124,6 @@ module CareLines
     rescue ActiveRecord::RecordNotUnique
       0
     end
-    private_class_method :candidate_patient_ids, :for_people, :closures!, :problem_ref, :create!
+    private_class_method :every_patient?, :candidate_patient_ids, :for_people, :closures!, :closure_batch, :problem_ref, :create!
   end
 end

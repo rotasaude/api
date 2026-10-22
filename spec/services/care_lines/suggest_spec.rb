@@ -95,4 +95,35 @@ RSpec.describe CareLines::Suggest do
     expect(CareLineSuggestion.where(patient_id: patient.id).pluck(:reason)).to contain_exactly("resolved_problem", "problem")
     expect(described_class.run(today: today)).to eq(created: 0, closures: 0)
   end
+
+  it "a quarentena de 365 dias conta da decisão, não da criação da sugestão" do
+    patient = care_patient!(age: 58, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+    CareLineSuggestion.create!(patient: patient, care_line: diabetes, team: team, reason: "problem", created_at: 300.days.ago)
+    CareLineSuggestion.sole.update!(status: "dismissed", decided_by_user: doctor, decided_at: Time.current, dismiss_reason: "Acompanha no ambulatório")
+    travel_to(100.days.from_now) { expect(described_class.run(today: Time.zone.today)[:created]).to eq(0) }
+    travel_to(366.days.from_now) { expect(described_class.run(today: Time.zone.today)[:created]).to eq(1) }
+  end
+
+  it "sugestão aceita dentro de 365 dias não volta" do
+    patient = care_patient!(age: 58, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+    CareLineSuggestion.create!(patient: patient, care_line: diabetes, team: team, reason: "problem", status: "accepted",
+                               decided_by_user: doctor, decided_at: Time.current, created_at: 300.days.ago)
+    travel_to(100.days.from_now) { expect(described_class.run(today: Time.zone.today)[:created]).to eq(0) }
+    travel_to(366.days.from_now) { expect(described_class.run(today: Time.zone.today)[:created]).to eq(1) }
+  end
+
+  it "fronteira de lote: com BATCH 1 as duas pessoas são processadas (idade e sexo, e encerramento)" do
+    stub_const("CareLines::Suggest::BATCH", 1)
+    elderly = adopted_line!("elderly_c6")
+    two = Array.new(2) { care_patient!(age: 72, sex: "female", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor) }
+    described_class.run(today: today)
+    expect(CareLineSuggestion.where(care_line: elderly).pluck(:patient_id)).to match_array(two.map(&:id))
+    CareLineSuggestion.delete_all
+    two.each do |patient|
+      care_enrollment!(patient: patient, line: diabetes, team: team, by: doctor)
+      resolve_problem!(patient, "T90", by: doctor)
+    end
+    expect(described_class.run(today: today)[:closures]).to eq(2)
+    expect(CareLineSuggestion.where(reason: "resolved_problem").pluck(:patient_id)).to match_array(two.map(&:id))
+  end
 end
