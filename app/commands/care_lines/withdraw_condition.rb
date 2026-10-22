@@ -1,5 +1,6 @@
 # Retira uma condição declarada vigente (contrato §7, §11 T1). Fora do
-# domínio → invalid_condition; não vigente → not_found.
+# domínio → invalid_condition; não vigente → not_found; par apagado ou
+# rebaixado (reconferido sob a trava) → not_found.
 module CareLines
   module WithdrawCondition
     module_function
@@ -9,6 +10,8 @@ module CareLines
 
       ApplicationRecord.transaction do
         citizen.lock!
+        next Result.fail(:not_found) unless DeclareCondition.live?(citizen)
+
         row = CitizenDeclaredCondition.current.where(citizen_id: citizen.id).to_a.find { |c| c.condition == condition }
         next Result.fail(:not_found) unless row
 

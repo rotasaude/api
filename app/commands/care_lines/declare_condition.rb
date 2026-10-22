@@ -2,7 +2,9 @@
 # é diagnóstico. Repetir a mesma não grava de novo; "none" retira as
 # outras; uma condição retira o "none". Só acréscimo (retirar grava
 # withdrawn_at). Eventos só com ids (citizen_id é a chave que o consumidor
-# exige); o consumidor sugere a linha.
+# exige); o consumidor sugere a linha. O par lido antes da trava pode ter
+# sido apagado (exclusão LGPD) ou rebaixado: reconferido sob a trava →
+# not_found, sem gravar nada.
 module CareLines
   module DeclareCondition
     module_function
@@ -12,6 +14,8 @@ module CareLines
 
       ApplicationRecord.transaction do
         citizen.lock!
+        next Result.fail(:not_found) unless live?(citizen)
+
         current = CitizenDeclaredCondition.current.where(citizen_id: citizen.id).to_a
         next Result.ok(condition: current.find { |c| c.condition == condition }) if current.any? { |c| c.condition == condition }
 
@@ -22,5 +26,8 @@ module CareLines
         Result.ok(condition: row)
       end
     end
+
+    # Par que ainda vale (lido sob a trava): validado e não apagado.
+    def live?(citizen) = citizen.erased_at.nil? && citizen.verification_level_verified?
   end
 end

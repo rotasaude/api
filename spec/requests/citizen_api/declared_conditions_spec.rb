@@ -116,4 +116,14 @@ RSpec.describe "Cidadão — condição declarada", type: :request do
     expect(json_body).to eq("error" => "invalid_condition")
     expect(CitizenDeclaredCondition.count).to eq(0)
   end
+
+  # Task 15 (I1): par apagado ou rebaixado entre o load_citizen e a trava do
+  # comando → 404 not_found, como na retirada.
+  it "declarar: par que deixou de valer sob a trava → 404 not_found" do
+    sign_in_citizen(citizen.phone)
+    allow(CareLines::DeclareCondition).to receive(:call).and_return(Result.fail(:not_found))
+    json_post "/citizen/declared_conditions", citizen_id: citizen.id, condition: "diabetes"
+    expect(response).to have_http_status(:not_found)
+    expect(json_body).to eq("error" => "not_found")
+  end
 end

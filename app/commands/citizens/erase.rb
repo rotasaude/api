@@ -39,7 +39,8 @@ module Citizens
         next result = Result.fail(:not_pending) unless request.status == "pending"
         next result = Result.fail(:own_request) if request.requested_by_user_id == by.id
 
-        # Ordem global de travas: unidade FOR SHARE → cidadão → horários → pedido.
+        # Ordem global de travas: unidade FOR SHARE → cidadão → sugestões de
+        # linha de cuidado → paciente → horários → pedido.
         # A exclusão escreve pedidos do par (nota do remarque, CloseRevoked) e
         # trava o cidadão em FOR UPDATE (segura a FK de um atendimento novo
         # enquanto reconfere a retenção). Sem a unidade na frente, cruzava com o
@@ -60,7 +61,8 @@ module Citizens
         patient_ids = RequestErasure.patient_ids(pair_scope, cpf: request.cpf)
         # ADR 0040: as sugestões de linha de cuidado que a exclusão apaga (dos
         # pares e do paciente), travadas por id ANTES do paciente — a ordem do
-        # CareLines::Enroll (cidadão → sugestão → paciente). O aceite que trava
+        # CareLines::Enroll (sugestão → paciente; ele não trava o cidadão, que
+        # o Patients::Resolve trava e solta antes). O aceite que trava
         # antes termina e a inscrição dele retém abaixo; o que chega depois
         # acha a sugestão apagada.
         CareLineSuggestion.where(citizen_id: pairs.map(&:id)).or(CareLineSuggestion.where(patient_id: patient_ids))

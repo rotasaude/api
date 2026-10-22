@@ -115,15 +115,23 @@ module CareLines
 
     # Cada sugestão no próprio savepoint: a corrida com o consumidor de
     # evento (mesma pessoa, mesma linha) cai no índice único e vira 0.
+    # Sugestão de par: o par é relido sob FOR KEY SHARE (a mesma trava que a
+    # FK do INSERT tomaria; a ordem de travas não muda). Apagado pela
+    # exclusão LGPD ou rebaixado depois da leitura dos fatos → 0; a exclusão
+    # em curso (FOR UPDATE no par) termina antes e a releitura a vê.
     def create!(**attrs)
       ApplicationRecord.transaction(requires_new: true) do
+        next 0 if attrs[:citizen_id] && !live_pair?(attrs[:citizen_id])
+
         suggestion = CareLineSuggestion.create!(attrs)
         DomainEvents.publish("care_line_suggestion.created", care_line_suggestion_id: suggestion.id)
+        1
       end
-      1
     rescue ActiveRecord::RecordNotUnique
       0
     end
-    private_class_method :every_patient?, :candidate_patient_ids, :for_people, :closures!, :closure_batch, :problem_ref, :create!
+
+    def live_pair?(citizen_id) = Citizen.not_erased.verification_level_verified.where(id: citizen_id).lock("FOR KEY SHARE").exists?
+    private_class_method :every_patient?, :candidate_patient_ids, :for_people, :closures!, :closure_batch, :problem_ref, :create!, :live_pair?
   end
 end

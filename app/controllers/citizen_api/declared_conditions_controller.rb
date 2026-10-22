@@ -15,7 +15,8 @@ module CitizenApi
 
     def create
       result = CareLines::DeclareCondition.call(citizen: @citizen, condition: request.request_parameters["condition"])
-      return render_error(result.reason, :unprocessable_entity) if result.failure?
+      # not_found: o par foi apagado ou rebaixado depois do load_citizen.
+      return render_error(result.reason, result.reason == :not_found ? :not_found : :unprocessable_entity) if result.failure?
 
       render json: payload, status: :created
     end
