@@ -64,6 +64,19 @@ module CareLineHelpers
                                source: "manual", anchor_date: anchor_date&.iso8601)
   end
 
+  def care_neighborhood!(*units)
+    neighborhood = Neighborhood.create!(name: "Bairro #{SecureRandom.hex(3)}", source: "manual")
+    units.each { |unit| NeighborhoodCoverage.create!(neighborhood: neighborhood, health_unit: unit) }
+    neighborhood
+  end
+
+  # Par validado que nunca consultou (sem paciente).
+  def care_citizen!(age:, sex:, neighborhood: nil, gender_identity: nil)
+    citizen = verified_citizen!(exam_seq!, age: age, sex: sex)
+    citizen.update!(neighborhood: neighborhood, gender_identity: gender_identity)
+    citizen
+  end
+
   # Escuta concluída (caminho real: Screenings::Start/Complete) com os sinais dados.
   def care_screening!(unit:, citizen:, by:, vitals:)
     attendance = walk_in_attendance!(unit, citizen: citizen)
