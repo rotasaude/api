@@ -86,6 +86,8 @@ module CareLines
       all_of = groups(raw["all_of"], "#{path}.all_of")
       min_count = int(raw["min_count"], 1..50, "#{path}.min_count") || 1
       raise Invalid, "#{path}.min_count" if all_of && all_of.size > 1 && min_count != 1
+      # O marco proporcional é de um grupo só; com vários grupos a avaliação ignoraria os demais.
+      raise Invalid, "#{path}.schedule" if schedule == "proportional" && all_of && all_of.size > 1
 
       consultation = source == "consultation"
       cbo = raw["cbo_filter"]

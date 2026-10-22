@@ -32,6 +32,12 @@ RSpec.describe CareLines::Rules do
     expect(result.payload[:practices].first["all_of"]).to eq([ [ { "source" => "consultation" }, { "source" => "procedure:0301010129" } ] ])
   end
 
+  it "aceita proportional com all_of de um grupo só" do
+    one = consult.merge("anchor" => "lmp", "schedule" => "proportional", "min_count" => 2,
+                        "all_of" => [ [ { "source" => "exam:0202010503" }, { "source" => "exam:0202010473" } ] ])
+    expect(described_class.practices([ one ])).to be_ok
+  end
+
   {
     [ { "source" => "lab:123" } ] => "practices[0].source",
     [ { "window_days" => 0 } ] => "practices[0].window_days",
@@ -44,7 +50,10 @@ RSpec.describe CareLines::Rules do
     [ { "code_filter" => { "icd" => %w[E11] } } ] => "practices[0].code_filter",
     [ { "applies_to" => { "sex" => "x" } } ] => "practices[0].applies_to",
     [ { "all_of" => [ [ { "source" => "acs_visit" } ] ] } ] => "practices[0].all_of",
-    [ { "all_of" => [ [ { "source" => "exam:0202010503" } ], [ { "source" => "exam:0202010473" } ] ], "min_count" => 2 } ] => "practices[0].min_count"
+    [ { "all_of" => [ [ { "source" => "exam:0202010503" } ], [ { "source" => "exam:0202010473" } ] ], "min_count" => 2 } ] => "practices[0].min_count",
+    # proportional avalia um grupo só: com vários grupos o 2º seria ignorado em silêncio
+    [ { "anchor" => "lmp", "schedule" => "proportional", "min_count" => 1,
+        "all_of" => [ [ { "source" => "exam:0202010503" } ], [ { "source" => "exam:0202010473" } ] ] } ] => "practices[0].schedule"
   }.each do |overrides, field|
     it "recusa #{field} (#{overrides.first.keys.join(',')})" do
       result = described_class.practices([ consult.merge(overrides.first) ])

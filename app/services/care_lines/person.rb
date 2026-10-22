@@ -12,5 +12,7 @@ module CareLines
     def inspect = "#<CareLines::Person patient_id=#{patient_id.inspect} citizen_id=#{citizen_id.inspect}>"
     alias_method :to_s, :inspect
     def pretty_print(q) = q.text(inspect)
+    # ActiveSupport faz Data#as_json = to_h.as_json: sem isto o to_json/render json vazaria nascimento, sexo, problemas e condição.
+    def as_json(*) = { "patient_id" => patient_id, "citizen_id" => citizen_id }
   end
 end
