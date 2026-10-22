@@ -436,6 +436,16 @@ Rails.application.routes.draw do
     patch "patients/:id/demographics", to: "patients#demographics"
   end
 
+  # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.
+  scope "/care_lines", module: "care_lines", as: "care_lines" do
+    get   "admin/templates", to: "admin#templates"
+    get   "admin/lines",     to: "admin#index"
+    post  "admin/lines",     to: "admin#create"
+    patch "admin/lines/:id", to: "admin#update"
+    get   "lines",           to: "lookups#lines"
+    get   "teams",           to: "lookups#teams"
+  end
+
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
   # Prefixo único: uma entrada só no proxy de dev do dashboard. As rotas
   # literais (me, pending, cbo, links, shifts) PRECISAM vir antes de `:id`.
