@@ -27,6 +27,26 @@ RSpec.describe "Faturamento — buscas de apoio", type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
+  it "paciente pelo CPF: par validado sem Patient é resolvido (idempotente); declarado 409; desconhecido 404" do
+    citizen = verified_citizen!(exam_seq!)
+    expect(Patient.where(cpf: citizen.cpf)).to be_empty
+    sign_in_as(billing_clerk!)
+    json_post "/billing/patient_lookup", cpf: citizen.cpf
+    expect(response).to have_http_status(:ok)
+    patient = Patient.find_by!(cpf: citizen.cpf)
+    expect(json_body["patient"]).to include("id" => patient.id, "cpf_masked" => patient.cpf_masked)
+    json_post "/billing/patient_lookup", cpf: citizen.cpf
+    expect(json_body["patient"]["id"]).to eq(patient.id)
+    expect(Patient.where(cpf: citizen.cpf).count).to eq(1)
+
+    Citizen.create!(cpf: "39053344705", phone: "+5541999990002", verification_level: "declared")
+    json_post "/billing/patient_lookup", cpf: "390.533.447-05"
+    expect([ response.status, json_body["error"] ]).to eq([ 409, "citizen_not_verified" ])
+    expect(Patient.where(cpf: "39053344705")).to be_empty
+    json_post "/billing/patient_lookup", cpf: "52998224725"
+    expect([ response.status, json_body["error"] ]).to eq([ 404, "patient_not_found" ])
+  end
+
   it "estabelecimentos faturantes: unidades não-APS ativas e laboratórios municipais; faturista e admin" do
     create_unit("UBS #{SecureRandom.hex(2)}")
     lab = lab_provider!
