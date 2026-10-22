@@ -1,6 +1,7 @@
 require "rails_helper"
 require Rails.root.join("db/city_migrate/20260930200001_create_analytics.rb").to_s
 require Rails.root.join("db/city_migrate/20261013900001_add_exam_tracking.rb").to_s
+require Rails.root.join("db/city_migrate/20261021900001_add_procedure_billing.rb").to_s
 # F-14.1: o down() da migração de cidade 20260930200001 desfaz o que o up()
 # cria (duas tabelas e o papel analyst no CHECK de memberships), e o up()
 # seguinte restaura o schema idêntico. O down recusa quando já existe
@@ -20,12 +21,13 @@ RSpec.describe "Migração de cidade 20260930200001 (CreateAnalytics): down e up
     models.each(&:reset_column_information)
   end
 
-  # 20261015900002 (módulo 21b) reescreve ck_memberships_role com os papéis
-  # exam_regulator/exam_provider (21a) e lab_staff/lab_releaser (21b); o up de
-  # CreateAnalytics volta a lista fixa sem eles. As migrações do 21a e do 21b são
-  # irreversíveis: a lista volta à mão, igual à da última.
+  # 20261021900001 (módulo 22) reescreve ck_memberships_role com os papéis
+  # exam_regulator/exam_provider (21a), lab_staff/lab_releaser (21b) e
+  # billing_clerk (22); o up de CreateAnalytics volta a lista fixa sem eles. As
+  # migrações do 21a, do 21b e do 22 são irreversíveis: a lista volta à mão,
+  # igual à da última.
   def restore_exam_roles
-    quoted = AddMunicipalLab::ROLES.map { |role| "'#{role}'" }.join(", ")
+    quoted = AddProcedureBilling::ROLES.map { |role| "'#{role}'" }.join(", ")
     conn.remove_check_constraint :memberships, name: "ck_memberships_role"
     conn.add_check_constraint :memberships, "role::text = ANY (ARRAY[#{quoted}]::text[])", name: "ck_memberships_role"
   end
