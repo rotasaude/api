@@ -72,11 +72,15 @@ RSpec.describe CareLines::TeamPopulation do
     expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_b.id)
   end
 
-  it "profissional de equipe da unidade B que consulta pelo vínculo da unidade A não dá equipe" do
+  it "profissional de equipe da unidade B que consulta pelo vínculo da unidade A não dá equipe; vale o território (P18)" do
     link_professional!(doctor_b, unit_a)
     patient = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_b)
     expect(Consultation.find_by!(patient_id: patient.id).professional_link.health_unit_id).to eq(unit_a.id)
     expect(described_class.patient_teams([ patient.id ])).to eq({})
+    Citizen.find_by!(patient_id: patient.id).update!(neighborhood: care_neighborhood!(unit_a))
+    expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_a.id)
+    expect(described_class.patient_teams(nil, involving_team: team_a)).to eq(patient.id => team_a.id)
+    expect(described_class.patient_teams(nil, involving_team: team_b)).to eq({})
   end
 
   it "consulta mais recente com profissional sem equipe não tira a pessoa da equipe anterior" do
@@ -86,13 +90,18 @@ RSpec.describe CareLines::TeamPopulation do
     expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_a.id)
   end
 
-  it "equipe inativa e membro desligado não atribuem" do
+  it "equipe inativa e membro desligado não atribuem pela consulta; vale o território (P18)" do
     patient = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
     HealthTeamMember.where(health_team: team_a).update_all(ended_on: Time.zone.today)
     expect(described_class.patient_teams([ patient.id ])).to eq({})
+    Citizen.find_by!(patient_id: patient.id).update!(neighborhood: care_neighborhood!(unit_a))
+    expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_a.id)
     HealthTeamMember.where(health_team: team_a).update_all(ended_on: nil)
     team_a.update!(active: false)
-    expect(described_class.patient_teams([ patient.id ])).to eq({})
+    expect(described_class.patient_teams([ patient.id ])).to eq({}) # território: a única equipe da unidade está inativa
+    other = HealthTeam.create!(health_unit: unit_a, ine: "0000000009", kind: "70", name: "ESF A2")
+    expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => other.id)
+    expect(described_class.patient_teams(nil, involving_team: other)).to eq(patient.id => other.id)
   end
 
   it "pré-filtro por equipe: só quem teve consulta de membro da equipe na unidade dela; a equipe atribuída não muda" do
@@ -219,11 +228,12 @@ RSpec.describe CareLines::TeamPopulation do
       expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => expected.id)
     end
 
-    it "consulta recente só com plantonista sem equipe: não está ausente, não ganha equipe pelo território" do
+    it "consulta recente só com plantonista sem equipe: a consulta não dá equipe, vale o território" do
       on_duty = care_doctor!(unit_a)
       patient = live_in!(care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: on_duty), only_a)
-      expect(described_class.patient_teams([ patient.id ])).to eq({})
-      expect(described_class.patient_teams(nil, involving_team: team_a)).to eq({})
+      expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_a.id)
+      expect(described_class.patient_teams(nil, involving_team: team_a)).to eq(patient.id => team_a.id)
+      expect(described_class.patient_teams(nil, involving_team: team_b)).to eq({})
     end
 
     it "pré-filtro por equipe: entra quem é do território da equipe; quem consultou com outra equipe continua fora" do

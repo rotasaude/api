@@ -3,48 +3,57 @@
 # paciente → equipe ativa do profissional da consulta finalizada mais
 # recente (24 meses), na unidade do vínculo; par validado sem paciente → a
 # única equipe ativa das unidades de referência do bairro. P18 (contrato
-# §12): o paciente SEM consulta finalizada nos 24 meses segue a regra do
-# par sem paciente, pelo bairro do par validado mais antigo dele.
+# §12): o paciente cuja consulta finalizada nos 24 meses NÃO dá equipe
+# (nenhuma, ou só com plantonista sem equipe) segue a regra do par sem
+# paciente, pelo bairro do par validado mais antigo dele.
 module CareLines
   module TeamPopulation
     LOOKBACK = 24.months
+    # Consultas finalizadas no corte (bind: o corte) cujo profissional tem
+    # equipe ativa na unidade do vínculo: a mesma cadeia dá a equipe da
+    # consulta e decide quem segue o território.
+    TEAMED_CONSULTATIONS = <<~SQL.freeze
+      FROM consultations c
+      JOIN professional_links pl ON pl.id = c.professional_link_id
+      JOIN health_team_members m ON m.professional_id = pl.professional_id AND m.ended_on IS NULL
+      JOIN health_teams ht ON ht.id = m.health_team_id AND ht.active AND ht.health_unit_id = pl.health_unit_id
+     WHERE c.status = 'finalized' AND c.finalized_at >= ?
+    SQL
 
     module_function
 
     # `involving_team:` pré-filtra os pacientes que tiveram consulta finalizada
-    # (24 meses) de membro ativo daquela equipe, na unidade dela, e os ausentes
-    # (P18) cujo par validado mais antigo mora num bairro coberto pela unidade
-    # dela: quem é da equipe só pode estar aí. O filtro só escolhe QUEM entra; a
-    # equipe de cada um não muda.
+    # (24 meses) de membro ativo daquela equipe, na unidade dela, e os sem
+    # equipe pela consulta (P18) cujo par validado mais antigo mora num bairro
+    # coberto pela unidade dela: quem é da equipe só pode estar aí. O filtro só
+    # escolhe QUEM entra; a equipe de cada um não muda.
     def patient_teams(patient_ids = nil, involving_team: nil)
       return {} if patient_ids&.empty?
 
       filter = patient_ids ? ApplicationRecord.sanitize_sql([ "AND c.patient_id IN (?)", patient_ids ]) : ""
       cutoff = LOOKBACK.ago
-      absent = absent_neighborhoods(patient_ids, involving_team, cutoff)
+      territorial = territory_neighborhoods(patient_ids, involving_team, cutoff)
       filter += involving(involving_team, cutoff) if involving_team
       # A equipe vem da consulta finalizada mais recente cujo profissional tem
       # equipe ativa na unidade do vínculo: o plantonista sem equipe (o JOIN o
       # descarta) não tira a pessoa da equipe dela.
       sql = ApplicationRecord.sanitize_sql([ <<~SQL, cutoff ])
         SELECT DISTINCT ON (c.patient_id) c.patient_id, ht.id
-          FROM consultations c
-          JOIN professional_links pl ON pl.id = c.professional_link_id
-          JOIN health_team_members m ON m.professional_id = pl.professional_id AND m.ended_on IS NULL
-          JOIN health_teams ht ON ht.id = m.health_team_id AND ht.active AND ht.health_unit_id = pl.health_unit_id
-         WHERE c.status = 'finalized' AND c.finalized_at >= ? #{filter}
+        #{TEAMED_CONSULTATIONS} #{filter}
          ORDER BY c.patient_id, c.finalized_at DESC, ht.ine
       SQL
-      # Os ausentes não têm consulta finalizada no corte: nunca colidem com as
-      # chaves da consulta.
-      ApplicationRecord.connection.select_rows(sql).to_h.merge(territory_teams(absent))
+      # Os do território não têm consulta que dê equipe no corte (mesma cadeia,
+      # mesmo corte): nunca colidem com as chaves da consulta.
+      ApplicationRecord.connection.select_rows(sql).to_h.merge(territory_teams(territorial))
     end
 
-    # P18: paciente sem NENHUMA consulta finalizada no corte (a do plantonista
-    # sem equipe conta como consulta: ele não está ausente) → bairro do par
-    # validado mais antigo (created_at, id), como no "Agendar". Bairro nulo ou
-    # sem par validado → sem equipe (territory_teams descarta).
-    def absent_neighborhoods(patient_ids, team, cutoff)
+    # P18: paciente sem consulta finalizada no corte que dê equipe (nenhuma
+    # consulta, ou só com plantonista sem equipe, membro desligado, equipe
+    # inativa ou de outra unidade) → bairro do par validado mais antigo
+    # (created_at, id), como no "Agendar". Bairro nulo ou sem par validado →
+    # sem equipe (territory_teams descarta). Não depende do `involving`: quem
+    # tem equipe pela consulta, de qualquer equipe, nunca entra aqui.
+    def territory_neighborhoods(patient_ids, team, cutoff)
       pairs = patient_ids ? ApplicationRecord.sanitize_sql([ "AND ci.patient_id IN (?)", patient_ids ]) : ""
       covered = team ? ApplicationRecord.sanitize_sql([ <<~SQL, team.health_unit_id ]) : ""
         AND p.neighborhood_id IN (SELECT nc.neighborhood_id FROM neighborhood_coverages nc WHERE nc.health_unit_id = ?)
@@ -55,13 +64,12 @@ module CareLines
                   FROM citizens ci
                  WHERE ci.patient_id IS NOT NULL AND ci.erased_at IS NULL AND ci.verification_level = 'verified' #{pairs}
                  ORDER BY ci.patient_id, ci.created_at, ci.id) p
-         WHERE NOT EXISTS (SELECT 1 FROM consultations c
-                            WHERE c.patient_id = p.patient_id AND c.status = 'finalized' AND c.finalized_at >= ?)
+         WHERE NOT EXISTS (SELECT 1 #{TEAMED_CONSULTATIONS} AND c.patient_id = p.patient_id)
                #{covered}
       SQL
       ApplicationRecord.connection.select_rows(sql).to_h
     end
-    private_class_method :absent_neighborhoods
+    private_class_method :territory_neighborhoods
 
     def involving(team, cutoff)
       ApplicationRecord.sanitize_sql([ <<~SQL, team.id, team.health_unit_id, cutoff ])
