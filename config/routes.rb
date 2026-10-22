@@ -444,6 +444,18 @@ Rails.application.routes.draw do
     patch "admin/lines/:id", to: "admin#update"
     get   "lines",           to: "lookups#lines"
     get   "teams",           to: "lookups#teams"
+    # Painel, sugestões e busca ativa (contrato §4–§5). As rotas
+    # literais (count, overdue/count) vêm antes de `:id`.
+    get   "suggestions",               to: "suggestions#index"
+    get   "suggestions/count",         to: "suggestions#count"
+    post  "suggestions/:id/accept",    to: "suggestions#accept"
+    post  "suggestions/:id/dismiss",   to: "suggestions#dismiss"
+    get   "enrollments",               to: "enrollments#index"
+    get   "enrollments/overdue/count", to: "enrollments#overdue_count"
+    post  "enrollments",               to: "enrollments#create"
+    get   "enrollments/:id",           to: "enrollments#show"
+    post  "enrollments/:id/end",       to: "enrollments#end_enrollment"
+    post  "enrollments/:id/contacts",  to: "enrollments#contacts"
   end
 
   # Profissionais (ADR 0021; spec 2026-09-27-module-10-professionals §4.1).
