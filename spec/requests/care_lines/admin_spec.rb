@@ -138,6 +138,24 @@ RSpec.describe "Linhas de cuidado — linhas da cidade", type: :request do
     expect(json_body["teams"].map { |t| [ t["id"], t["can_confirm"] ] }).to contain_exactly([ mine.id, false ], [ other.id, false ])
   end
 
+  it "equipes trazem panel pela regra do painel nominal: secretário médico (profissional e admin) só no vínculo dele (P22)" do
+    unit = care_unit!
+    doctor = care_doctor!(unit)
+    Membership.create!(user: doctor, role: "municipal_admin", granted_at: Time.current)
+    mine = care_team!(unit, doctor)
+    other = care_team!(care_unit!)
+    sign_in_as(doctor)
+    get "/care_lines/teams"
+    expect(json_body["teams"].map { |t| [ t["id"], t["panel"], t["can_confirm"] ] })
+      .to contain_exactly([ mine.id, true, true ], [ other.id, false, false ])
+    sign_in_as(admin)
+    get "/care_lines/teams"
+    expect(json_body["teams"].map { |t| [ t["id"], t["panel"] ] }).to contain_exactly([ mine.id, false ], [ other.id, false ])
+    sign_in_as(care_nurse!(unit))
+    get "/care_lines/teams"
+    expect(json_body["teams"].map { |t| [ t["id"], t["panel"] ] }).to eq([ [ mine.id, true ] ])
+  end
+
   it "profissional sem vínculo ativo não lê as listas de apoio: 403 missing_role (P5f)" do
     sign_in_as(staff_with("sem-vinculo-#{SecureRandom.hex(3)}@cidade.gov.br", "health_professional"))
     get "/care_lines/teams"

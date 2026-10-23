@@ -1,5 +1,7 @@
 # Listas de apoio do dashboard (Divergência L10): linhas ativas (nome e se
-# pede DUM) e equipes visíveis para os filtros, com can_confirm (§11 T2).
+# pede DUM) e equipes visíveis para os filtros, com can_confirm (§11 T2) e
+# panel (P22): a mesma regra de escopo do painel nominal (Access.panel?), para
+# quem também é admin ou analista não abrir no painel equipe fora do vínculo.
 # Profissional sem vínculo ativo: 403 missing_role (P5f).
 module CareLines
   class LookupsController < BaseController
@@ -9,7 +11,10 @@ module CareLines
 
     def teams
       confirm = Access.confirm_unit_ids(Current.user)
-      render json: { teams: Access.visible_teams(Current.user).map { |t| Json.team(t).merge(can_confirm: confirm.include?(t.health_unit_id)) } }
+      panel = Access.professional_unit_ids(Current.user)
+      render json: { teams: Access.visible_teams(Current.user).map { |t|
+        Json.team(t).merge(can_confirm: confirm.include?(t.health_unit_id), panel: panel.include?(t.health_unit_id))
+      } }
     end
   end
 end
