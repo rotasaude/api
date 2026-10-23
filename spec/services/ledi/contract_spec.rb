@@ -40,7 +40,19 @@ RSpec.describe "Contrato LEDI 8.7.0" do
     [ "ras/common.thrift", "VariasLotacoesHeaderThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::VariasLotacoesHeaderThrift",
     [ "ras/common.thrift", "LotacaoHeaderThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::LotacaoHeaderThrift",
     [ "ras/common.thrift", "MedicoesThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::MedicoesThrift",
-    [ "ras/common.thrift", "ProblemaCondicaoThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::ProblemaCondicaoThrift"
+    [ "ras/common.thrift", "ProblemaCondicaoThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::ProblemaCondicaoThrift",
+    [ "ras/cadastro_individual.thrift", "CadastroIndividualThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastroindividual::CadastroIndividualThrift",
+    [ "ras/cadastro_individual.thrift", "IdentificacaoUsuarioCidadaoThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastroindividual::IdentificacaoUsuarioCidadaoThrift",
+    [ "ras/cadastro_individual.thrift", "InformacoesSocioDemograficasThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastroindividual::InformacoesSocioDemograficasThrift",
+    [ "ras/cadastro_individual.thrift", "InformacoesSocioEconomicasThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastroindividual::InformacoesSocioEconomicasThrift",
+    [ "ras/cadastro_individual.thrift", "CondicoesDeSaudeThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastroindividual::CondicoesDeSaudeThrift",
+    [ "ras/cadastro_individual.thrift", "EmSituacaoDeRuaThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastroindividual::EmSituacaoDeRuaThrift",
+    [ "ras/cadastro_individual.thrift", "SaidaCidadaoCadastroThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastroindividual::SaidaCidadaoCadastroThrift",
+    [ "ras/cadastro_domiciliar.thrift", "CadastroDomiciliarThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastrodomiciliar::CadastroDomiciliarThrift",
+    [ "ras/cadastro_domiciliar.thrift", "CondicaoMoradiaThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastrodomiciliar::CondicaoMoradiaThrift",
+    [ "ras/cadastro_domiciliar.thrift", "FamiliaRowThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastrodomiciliar::FamiliaRowThrift",
+    [ "ras/cadastro_domiciliar.thrift", "InstituicaoPermanenciaThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastrodomiciliar::InstituicaoPermanenciaThrift",
+    [ "ras/common.thrift", "EnderecoLocalPermanenciaThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::EnderecoLocalPermanenciaThrift"
   }.each do |(file, struct), class_name|
     it "#{class_name.demodulize} tem os mesmos ids e nomes de campo do IDL" do
       expected = idl_fields(file, struct)
