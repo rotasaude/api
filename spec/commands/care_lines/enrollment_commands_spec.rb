@@ -140,7 +140,7 @@ RSpec.describe "Inscrição confirmada e saída" do
   # Errata P-api-01 / L3: 223115 (família 2231) confirma; o catálogo ganha a entrada só neste exemplo.
   it "médico de CBO 223115 confirma; técnica de enfermagem não" do
     family_cbo = Professionals::Cbo::Entry.new(code: "223115", title: "Médico (família 2231)", council: "CRM", deprecated: false)
-    allow(Professionals::Cbo).to receive(:all).and_wrap_original { |original| original.call + [ family_cbo ] }
+    allow(Professionals::Cbo).to(receive(:all).and_wrap_original { |original| original.call + [ family_cbo ] })
     family = screener!(unit, cbo: "223115")
     line = adopted_line!("diabetes_c4")
     expect(CareLines::Enroll.call(patient: care_patient!(age: 58, sex: "male"), line: line, team: team, by: family)).to be_ok

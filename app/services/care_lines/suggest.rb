@@ -82,7 +82,7 @@ module CareLines
       end
     end
 
-    def closures!(lines, today, patient_ids: nil)
+    def closures!(lines, _today, patient_ids: nil)
       problem_lines = lines.select { |line| line.eligibility["problems"] }
       return 0 if problem_lines.empty?
 

@@ -123,7 +123,7 @@ RSpec.describe "Linhas de cuidado — linhas da cidade", type: :request do
     # 223115 (família 2231, L3) ainda não está em config/professionals/cbo_saude.yml; o vínculo novo
     # exigiria o código no catálogo, então o catálogo ganha a entrada só neste exemplo.
     family_cbo = Professionals::Cbo::Entry.new(code: "223115", title: "Médico (família 2231)", council: "CRM", deprecated: false)
-    allow(Professionals::Cbo).to receive(:all).and_wrap_original { |original| original.call + [ family_cbo ] }
+    allow(Professionals::Cbo).to(receive(:all).and_wrap_original { |original| original.call + [ family_cbo ] })
     family = screener!(unit, cbo: "223115")
     tech = screener!(unit, cbo: "322205")
     mine = care_team!(unit, doctor)

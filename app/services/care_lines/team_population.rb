@@ -28,7 +28,7 @@ module CareLines
     # coberto pela unidade dela: quem é da equipe só pode estar aí. O filtro só
     # escolhe QUEM entra; a equipe de cada um não muda.
     def patient_teams(patient_ids = nil, involving_team: nil)
-      return {} if patient_ids&.empty?
+      return {} if patient_ids && patient_ids.empty?
 
       filter = patient_ids ? ApplicationRecord.sanitize_sql([ "AND c.patient_id IN (?)", patient_ids ]) : ""
       cutoff = LOOKBACK.ago
