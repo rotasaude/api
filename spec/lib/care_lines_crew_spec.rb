@@ -110,7 +110,9 @@ RSpec.describe CareLinesCrew, type: :request do
         expect(CareLines::AcceptSuggestion.call(suggestion: pregnancy, by: doctor).reason).to eq(:anchor_required)
         expect(enrollment_of(ana, line("pregnancy_c3")).anchor_on).to eq(today - 70)
         expect(pending_for(ana, line("women_c7"))&.reason).to eq("age_sex")
-        expect(enrollment_of(miguel, line("child_c2"))).to be_present
+        baby = enrollment_of(miguel, line("child_c2"))
+        baby_statuses = CareLines::Evaluation.enrollments([ baby ], today: today).fetch(baby.id).practices.index_by(&:key).transform_values(&:status)
+        expect(baby_statuses).to include("c2_a" => "overdue")
 
         # 6: idosa validada que nunca consultou, num bairro coberto só pela UBS, com age_sex pendente.
         expect(maria).to be_verification_level_verified
@@ -169,6 +171,13 @@ RSpec.describe CareLinesCrew, type: :request do
         expect(result[:pending]).to eq(CareLineSuggestion.pending_suggestions.where(team_id: team.id).count)
       end
 
+      # 5: aceitar a sugestão da gestante COM a DUM cria o paciente e a inscrição.
+      lmp = (today - 56).iso8601
+      pregnant = CareLines::AcceptSuggestion.call(suggestion: pending_for(juliana, line("pregnancy_c3")), by: doctor, anchor_date: lmp)
+      expect(pregnant).to be_ok
+      expect(juliana.reload.patient_id).to be_present
+      expect(enrollment_of(juliana, line("pregnancy_c3")).anchor_on).to eq(today - 56)
+
       # 6: aceitar a sugestão da idosa cria o paciente (Patients::Resolve).
       accepted = CareLines::AcceptSuggestion.call(suggestion: pending_for(maria, line("elderly_c6")), by: nurse)
       expect(accepted).to be_ok
@@ -184,6 +193,8 @@ RSpec.describe CareLinesCrew, type: :request do
       # 2 e 4: técnica pela senha de dev.
       json_post "/session", email_address: "tecnica@curitiba.demo", password: "dev-password"
       expect(response).to have_http_status(:created)
+      get "/care_lines/teams"
+      expect(json_body["teams"].find { |t| t["id"] == team.id }&.fetch("can_confirm")).to be(false)
       get "/care_lines/suggestions", params: { team_id: team.id }
       expect(json_body["suggestions"].map { |s| s["id"] }).to include(hypertension.id)
       json_post "/care_lines/suggestions/#{hypertension.id}/accept", team_id: team.id
@@ -203,6 +214,8 @@ RSpec.describe CareLinesCrew, type: :request do
 
       # 1: a médica entra e confirma a hipertensão.
       json_post "/session", email_address: "profissional@curitiba.demo", password: "dev-password"
+      get "/care_lines/teams"
+      expect(json_body["teams"].find { |t| t["id"] == team.id }&.fetch("can_confirm")).to be(true)
       json_post "/care_lines/suggestions/#{hypertension.id}/accept", team_id: team.id
       expect(response).to have_http_status(:created)
 
@@ -225,7 +238,8 @@ RSpec.describe CareLinesCrew, type: :request do
       first = seed
       tables = [ User, Membership, Professional, ProfessionalLink, HealthTeam, HealthTeamMember, Neighborhood, Citizen,
                  CitizenVerification, Patient, Attendance, Triage, Consultation, CareLine, CareLineEnrollment, CareLineSuggestion,
-                 CitizenDeclaredCondition, CityFeature, CareLineTemplate, AppointmentRequest, DomainEvent ]
+                 CitizenDeclaredCondition, CityFeature, CareLineTemplate, AppointmentRequest, DomainEvent, Conversation, PatientProblem,
+                 NeighborhoodCoverage, PlatformEvent, Consent, ConsultationProblem, CitizenVerificationCode ]
       expect { expect(seed).to eq(first) }.not_to(change { tables.map(&:count) })
     end
 
@@ -235,6 +249,26 @@ RSpec.describe CareLinesCrew, type: :request do
       expect { result = seed }.to output(/sem mantenedor de dev/).to_stderr
       expect(result).to include(switch: "desligado (sem mantenedor dev@local)", people: [])
       expect(CareLine.count).to eq(0)
+    end
+
+    it "sem o catálogo-base carregado falha antes de ligar, dizendo o que rodar" do
+      allow(CareLineTemplate).to receive(:latest).and_return(CareLineTemplate.none)
+      expect { seed }.to raise_error(/catálogo-base não carregado — rode bin\/rails care_lines:templates:load/)
+      expect(CareLines::Gate.enabled?(Current.city)).to be(false)
+    end
+
+    it "sem o protocolo saude-mental ativo falha antes de ligar, dizendo o que rodar" do
+      allow(ProtocolDefinition).to receive(:exists?).and_call_original
+      allow(ProtocolDefinition).to receive(:exists?).with(name: "saude-mental", status: "active").and_return(false)
+      expect { seed }.to raise_error(/protocolo saude-mental sem versão ativa — rode o TriageCatalogCrew/)
+      expect(CareLines::Gate.enabled?(Current.city)).to be(false)
+    end
+
+    it "rotula o interruptor ligado mas não utilizável (prontuário desligado)" do
+      maintainer = Maintainer.find_by!(email_address: "dev@local")
+      Platform::Features.set!(city: Current.city, key: "care_lines", enabled: true, maintainer: maintainer)
+      Platform::Features.set!(city: Current.city, key: "clinical_record", enabled: false, maintainer: maintainer)
+      expect(described_class.send(:switch_label, City.find(city.id))).to start_with("ligado, não utilizável (falta: ")
     end
 
     it "fora de Curitiba não liga nada" do

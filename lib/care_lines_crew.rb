@@ -91,7 +91,17 @@ class CareLinesCrew
         return off("desligado (sem mantenedor #{DEV_MAINTAINER})")
       end
 
-      Platform::Features.set!(city: City.find(Current.city.id), key: CareLines::Gate::KEY, enabled: true, maintainer: maintainer)
+      # Pré-requisitos, antes de ligar: sem catálogo-base não há o que adotar.
+      if CareLineTemplate.latest.empty?
+        raise "semente das linhas: catálogo-base não carregado — rode bin/rails care_lines:templates:load (ou o db:seed inteiro)"
+      end
+      # A triagem periódica vencida (prova 10) usa o protocolo do TriageCatalogCrew.
+      unless ProtocolDefinition.exists?(name: TriageCatalogCrew::MENTAL, status: "active")
+        raise "semente das linhas: protocolo #{TriageCatalogCrew::MENTAL} sem versão ativa — rode o TriageCatalogCrew (db:seed) antes"
+      end
+
+      city = City.find(Current.city.id)
+      Platform::Features.set!(city: city, key: CareLines::Gate::KEY, enabled: true, maintainer: maintainer)
       admin = User.find_by!(email_address: "admin@#{slug}.demo")
       adopt!(admin)
       unit = HealthUnit.find_by!(name: UNIT)
@@ -114,7 +124,7 @@ class CareLinesCrew
       %i[maria rafael juliana osvaldo sebastiao].each { |key| CareLines::Suggest.for_citizen(people[key].id) }
       overdue_triage!(people[:jose])
 
-      { switch: "ligado (care_lines)", team: team.name, people: PEOPLE.values.map { |p| p[:name] },
+      { switch: switch_label(city), team: team.name, people: PEOPLE.values.map { |p| p[:name] },
         pending: CareLineSuggestion.pending_suggestions.where(team_id: team.id).count,
         users: [ { email: technician.email_address, role: TECHNICIAN_ROLES.join(" + "), otpauth_uri: SignatureCrew.otpauth_uri(technician) } ] }
     end
@@ -134,6 +144,13 @@ class CareLinesCrew
     end
 
     def off(switch) = { switch: switch, team: nil, people: [], pending: 0, users: [] }
+
+    # Ligado não basta: o interruptor exige o prontuário utilizável (record_mode e clinical_record).
+    def switch_label(city)
+      return "ligado (care_lines)" if CareLines::Gate.usable?(city)
+
+      "ligado, não utilizável (falta: #{Platform::Features.missing(city, CareLines::Gate::KEY).join(', ')})"
+    end
 
     def guard_environment!
       raise "semente das linhas de cuidado: ambiente implantado; a semente é só de dev" if Rota.deployed?
@@ -302,11 +319,7 @@ class CareLinesCrew
     # em "Meu acompanhamento". Gravada direto com a data passada.
     def overdue_triage!(citizen)
       name = TriageCatalogCrew::MENTAL
-      protocol = ProtocolDefinition.find_by(name: name, status: "active")
-      unless protocol
-        warn "[seeds] linhas de cuidado: protocolo #{name} sem versão ativa — sem triagem vencida"
-        return
-      end
+      protocol = ProtocolDefinition.find_by!(name: name, status: "active")
       return if Triage.joins(:conversation).where(conversations: { citizen_id: citizen.id }, protocol_name: name).exists?
 
       at = (Time.zone.today - OVERDUE_TRIAGE_DAYS_AGO).in_time_zone.change(hour: 10)
