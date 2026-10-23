@@ -17,6 +17,12 @@ module CareLines
       return anchor if anchor.is_a?(Result)
 
       ApplicationRecord.transaction(requires_new: true) do
+        # Paciente anonimizado pela exclusão LGPD não se inscreve (a mesma
+        # conferência do Suggest). Ela trava os pares (FOR KEY SHARE): vem
+        # antes das sugestões e do paciente, na ordem do Desvio 8 e do Erase
+        # (pares → paciente).
+        next Result.fail(:citizen_not_verified) if Suggest.anonymized_patient?(patient.id)
+
         pending = lock_pending(patient, line)
         linked = suggestion ? pending.find { |candidate| candidate.id == suggestion.id } : pending.first
         next Result.fail(:invalid_transition) if suggestion && linked.nil?

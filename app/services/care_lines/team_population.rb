@@ -53,16 +53,26 @@ module CareLines
     # (created_at, id), como no "Agendar". Bairro nulo ou sem par validado →
     # sem equipe (territory_teams descarta). Não depende do `involving`: quem
     # tem equipe pela consulta, de qualquer equipe, nunca entra aqui.
+    #
+    # Com equipe, o semi-join por bairro coberto entra ANTES do DISTINCT ON
+    # (revisão final, I3): só os pacientes com ALGUM par validado num bairro
+    # coberto pela unidade são ordenados, em vez de todos os pares da cidade.
+    # Não muda qual par é o mais antigo (o DISTINCT ON segue vendo todos os
+    # pares do paciente); o filtro de fora confere o bairro DESSE par.
     def territory_neighborhoods(patient_ids, team, cutoff)
       pairs = patient_ids ? ApplicationRecord.sanitize_sql([ "AND ci.patient_id IN (?)", patient_ids ]) : ""
-      covered = team ? ApplicationRecord.sanitize_sql([ <<~SQL, team.health_unit_id ]) : ""
-        AND p.neighborhood_id IN (SELECT nc.neighborhood_id FROM neighborhood_coverages nc WHERE nc.health_unit_id = ?)
+      covered_ids = "SELECT nc.neighborhood_id FROM neighborhood_coverages nc WHERE nc.health_unit_id = ?"
+      covered = team ? ApplicationRecord.sanitize_sql([ "AND p.neighborhood_id IN (#{covered_ids})", team.health_unit_id ]) : ""
+      near = team ? ApplicationRecord.sanitize_sql([ <<~SQL, team.health_unit_id ]) : ""
+        AND ci.patient_id IN (SELECT cc.patient_id FROM citizens cc
+                               WHERE cc.patient_id IS NOT NULL AND cc.erased_at IS NULL AND cc.verification_level = 'verified'
+                                 AND cc.neighborhood_id IN (#{covered_ids}))
       SQL
       sql = ApplicationRecord.sanitize_sql([ <<~SQL, cutoff ])
         SELECT p.patient_id, p.neighborhood_id
           FROM (SELECT DISTINCT ON (ci.patient_id) ci.patient_id, ci.neighborhood_id
                   FROM citizens ci
-                 WHERE ci.patient_id IS NOT NULL AND ci.erased_at IS NULL AND ci.verification_level = 'verified' #{pairs}
+                 WHERE ci.patient_id IS NOT NULL AND ci.erased_at IS NULL AND ci.verification_level = 'verified' #{pairs} #{near}
                  ORDER BY ci.patient_id, ci.created_at, ci.id) p
          WHERE NOT EXISTS (SELECT 1 #{TEAMED_CONSULTATIONS} AND c.patient_id = p.patient_id)
                #{covered}
@@ -103,12 +113,23 @@ module CareLines
     # Pessoas da equipe, elegíveis para o denominador das regras, com a
     # inscrição ativa delas na linha (ou nil). A inscrita é avaliada com a DUM
     # decifrada (Eligibility: o excludente só vale na gestação da DUM).
+    # Revisão final (I3): só as inscrições DA EQUIPE viram objeto (a DUM); das
+    # outras equipes, só os ids, restritos aos candidatos da equipe (a
+    # inscrição em outra equipe tira a pessoa daqui); o filtro por problema
+    # cruza com os ids no SQL.
     def call(team:, line:, rules:, on: Time.zone.today)
-      enrolled = line ? CareLineEnrollment.active_enrollments.where(care_line: line).to_a.index_by(&:patient_id) : {}
-      patient_ids = enrolled.select { |_, e| e.team_id == team.id }.keys
-      patient_ids += patient_teams(involving_team: team).select { |id, team_id| team_id == team.id && !enrolled.key?(id) }.keys
+      enrolled = line ? CareLineEnrollment.active_enrollments.where(care_line: line, team_id: team.id).to_a.index_by(&:patient_id) : {}
+      prospects = patient_teams(involving_team: team).select { |id, team_id| team_id == team.id && !enrolled.key?(id) }.keys
+      if line
+        elsewhere = CareLineEnrollment.active_enrollments.where(care_line: line, patient_id: prospects).pluck(:patient_id, :team_id)
+        prospects -= elsewhere.map(&:first)
+      end
+      patient_ids = enrolled.keys + prospects
       # Regra por problema: só quem tem problema ativo casando entra no denominador.
-      patient_ids &= Facts.problem_candidates(rules["problems"]) if rules["problems"]
+      if rules["problems"]
+        matching = Facts.problem_candidates(rules["problems"], among: patient_ids).to_set
+        patient_ids = patient_ids.select { |id| matching.include?(id) }
+      end
       neighborhoods = NeighborhoodCoverage.where(health_unit_id: team.health_unit_id).pluck(:neighborhood_id)
       candidates = Citizen.not_erased.verification_level_verified.where(patient_id: nil, neighborhood_id: neighborhoods).to_a
       citizen_ids = citizen_teams(candidates).select { |_, team_id| team_id == team.id }.keys

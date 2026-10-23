@@ -26,25 +26,44 @@ module CareLines
       end
     end
 
+    # Pares validados sem paciente, uma pessoa por CPF (revisão final, Minor
+    # 1): o par cujo CPF já tem paciente fica de fora (a pessoa é o paciente;
+    # o Resolve os ligaria); entre pares sem paciente do mesmo CPF, só o mais
+    # antigo (created_at, id) — o mesmo critério do território (P18). Duas
+    # consultas a mais por lote, contra a cidade toda (o mais antigo pode
+    # estar em outro lote).
     def citizens(ids)
       ids = ids.uniq
       return {} if ids.empty?
 
       declared = declared_by_citizen(ids)
-      Citizen.not_erased.verification_level_verified.where(id: ids, patient_id: nil).to_a.to_h do |citizen|
+      rows = Citizen.not_erased.verification_level_verified.where(id: ids, patient_id: nil).to_a
+      kept = one_per_cpf(rows)
+      rows.select { |citizen| kept.include?(citizen.id) }.to_h do |citizen|
         [ citizen.id, Person.new(citizen_id: citizen.id, birth_date: date(citizen.birth_date), sex: citizen.sex,
                                  gender_identity: citizen.gender_identity, declared: declared.fetch(citizen.id, [])) ]
       end
     end
 
     # Pacientes com problema ativo que casa por prefixo (uma consulta).
-    def problem_candidates(rules)
+    # `among:` cruza no SQL com os ids já escolhidos (a prévia: só a equipe).
+    def problem_candidates(rules, among: nil)
       clauses = rules.flat_map do |terminology, prefixes|
         prefixes.map { |prefix| PatientProblem.sanitize_sql([ "(terminology = ? AND code LIKE ?)", terminology, "#{prefix}%" ]) }
       end
       return [] if clauses.empty?
 
-      PatientProblem.active_problems.where(clauses.join(" OR ")).distinct.pluck(:patient_id)
+      scope = PatientProblem.active_problems.where(clauses.join(" OR "))
+      scope = scope.where(patient_id: among) if among
+      scope.distinct.pluck(:patient_id)
+    end
+
+    def one_per_cpf(citizens)
+      cpfs = citizens.map(&:cpf).uniq
+      with_patient = Patient.where(cpf: cpfs).pluck(:cpf).to_set
+      oldest = Citizen.not_erased.verification_level_verified.where(patient_id: nil, cpf: cpfs).order(:created_at, :id)
+                      .pluck(:cpf, :id).each_with_object({}) { |(cpf, id), out| out[cpf] ||= id }
+      citizens.filter_map { |citizen| citizen.id if !with_patient.include?(citizen.cpf) && oldest[citizen.cpf] == citizen.id }.to_set
     end
 
     def declared_by_citizen(citizen_ids)
@@ -71,6 +90,6 @@ module CareLines
     rescue Date::Error
       nil
     end
-    private_class_method :declared_by_citizen, :last_activation, :date
+    private_class_method :declared_by_citizen, :one_per_cpf, :last_activation, :date
   end
 end

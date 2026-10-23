@@ -112,6 +112,82 @@ RSpec.describe CareLines::Suggest do
     travel_to(366.days.from_now) { expect(described_class.run(today: Time.zone.today)[:created]).to eq(1) }
   end
 
+  # Revisão final, I2 (extensão do Desvio 6): a inscrição encerrada também
+  # segura a sugestão de inscrição por 365 dias (de ended_at); o óbito, para
+  # sempre e em qualquer linha. Só a SUGESTÃO: a inscrição manual segue possível.
+  def end_enrollment!(enrollment, reason, at)
+    enrollment.update!(status: "ended", ended_reason: reason, ended_at: at, ended_by_user: doctor)
+  end
+
+  it "inscrição encerrada há menos de 365 dias não gera sugestão nova (run e for_patient); a inscrição manual segue possível" do
+    patient = care_patient!(age: 58, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+    end_enrollment!(care_enrollment!(patient: patient, line: diabetes, team: team, by: doctor, enrolled_at: 2.years.ago), "other", 364.days.ago)
+    expect(described_class.run(today: today)).to eq(created: 0, closures: 0)
+    expect(described_class.for_patient(patient.id, today: today)).to eq(0)
+    expect(CareLineSuggestion.where(patient_id: patient.id)).not_to exist
+    manual = CareLines::Enroll.call(patient: patient, line: diabetes, team: team, by: doctor, today: today)
+    expect(manual.payload[:enrollment]).to have_attributes(source: "manual", status: "active")
+  end
+
+  it "encerrada há 366 dias por discharge volta a sugerir" do
+    patient = care_patient!(age: 58, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+    end_enrollment!(care_enrollment!(patient: patient, line: diabetes, team: team, by: doctor, enrolled_at: 2.years.ago), "discharge", 366.days.ago)
+    expect(described_class.run(today: today)).to eq(created: 1, closures: 0)
+    expect(CareLineSuggestion.sole).to have_attributes(patient_id: patient.id, care_line: diabetes, reason: "problem")
+  end
+
+  it "óbito em qualquer linha, mesmo há anos: nunca mais sugestão, nem de inscrição nem de encerramento; a inscrição manual segue possível" do
+    hypertension = adopted_line!("hypertension_c5")
+    adopted_line!("elderly_c6")
+    patient = care_patient!(age: 72, sex: "male", problems: [ %w[ciap2 T90], %w[ciap2 K86] ], unit: unit, doctor: doctor)
+    end_enrollment!(care_enrollment!(patient: patient, line: diabetes, team: team, by: doctor, enrolled_at: 3.years.ago), "death", 2.years.ago)
+    care_enrollment!(patient: patient, line: hypertension, team: team, by: doctor)
+    resolve_problem!(patient, "K86", by: doctor)
+    expect(described_class.run(today: today)).to eq(created: 0, closures: 0)
+    expect(described_class.for_patient(patient.id, today: today)).to eq(0)
+    expect(CareLineSuggestion.where(patient_id: patient.id)).not_to exist
+    manual = CareLines::Enroll.call(patient: patient, line: diabetes, team: team, by: doctor, today: today)
+    expect(manual.payload[:enrollment]).to have_attributes(source: "manual", status: "active")
+  end
+
+  it "a consulta das inscrições encerradas é em lote: o número de SQL do run não cresce com o número de pacientes" do
+    queries = lambda do
+      count = 0
+      counter = ->(*, payload) { count += 1 unless %w[SCHEMA TRANSACTION].include?(payload[:name]) || payload[:cached] }
+      ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { described_class.run(today: today) }
+      count
+    end
+    ended = lambda do
+      patient = care_patient!(age: 58, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+      end_enrollment!(care_enrollment!(patient: patient, line: diabetes, team: team, by: doctor, enrolled_at: 2.years.ago), "moved", 10.days.ago)
+    end
+    ended.call
+    small = queries.call
+    4.times { ended.call }
+    expect(queries.call).to eq(small)
+    expect(CareLineSuggestion.count).to eq(0)
+  end
+
+  # Revisão final, Minor 1: a mesma pessoa uma vez só, por CPF.
+  it "par validado sem paciente com o CPF de um paciente não recebe; dois pares sem paciente do mesmo CPF, só o mais antigo" do
+    elderly = adopted_line!("elderly_c6")
+    neighborhood = care_neighborhood!(unit)
+    patient = care_patient!(age: 72, sex: "female")
+    Citizen.find_by!(patient_id: patient.id).update!(neighborhood: neighborhood)
+    twin = care_citizen!(age: 72, sex: "female", neighborhood: neighborhood)
+    twin.update!(cpf: patient.cpf)
+    older = care_citizen!(age: 75, sex: "male", neighborhood: neighborhood)
+    newer = care_citizen!(age: 75, sex: "male", neighborhood: neighborhood)
+    newer.update!(cpf: older.cpf)
+    older.update_columns(created_at: 2.days.ago)
+
+    described_class.run(today: today)
+    expect(CareLineSuggestion.where(care_line: elderly).pluck(:patient_id, :citizen_id)).to contain_exactly([ patient.id, nil ], [ nil, older.id ])
+    expect(described_class.for_citizen(twin.id, today: today) + described_class.for_citizen(newer.id, today: today)).to eq(0)
+    population = CareLines::TeamPopulation.call(team: team, line: elderly, rules: elderly.eligibility)
+    expect(population.map { |person, _| person.patient_id || person.citizen_id }).to contain_exactly(patient.id, older.id)
+  end
+
   it "fronteira de lote: com BATCH 1 as duas pessoas são processadas (idade e sexo, e encerramento)" do
     stub_const("CareLines::Suggest::BATCH", 1)
     elderly = adopted_line!("elderly_c6")

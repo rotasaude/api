@@ -2,7 +2,11 @@
 # sistema sugere, um médico ou enfermeiro confirma (Task 11). Pacientes e
 # pares validados sem paciente; só quem tem equipe atribuída recebe; nada
 # repete por 365 dias; inscrito não recebe. Encerramento por problema
-# resolvido vira SUGESTÃO, nunca encerramento.
+# resolvido vira SUGESTÃO, nunca encerramento. Extensão do Desvio 6
+# (revisão final da branch): a inscrição ENCERRADA também segura a sugestão
+# de inscrição da pessoa e da linha por 365 dias, contados de ended_at; o
+# óbito, em qualquer linha, para sempre (nem inscrição nem encerramento).
+# Só a sugestão: a inscrição manual (Enroll) segue possível.
 module CareLines
   module Suggest
     BATCH = 500
@@ -57,6 +61,7 @@ module CareLines
       teams = TeamPopulation.patient_teams(patient_ids)
                             .merge(TeamPopulation.citizen_teams(Citizen.where(id: citizen_ids).select(:id, :neighborhood_id).to_a))
       enrolled = CareLineEnrollment.active_enrollments.where(patient_id: patient_ids).pluck(:patient_id, :care_line_id).to_set
+      deceased, recently_ended = ended_holds(patient_ids)
       # Sugestão feita ao par antes de virar paciente vale para o paciente (365 dias).
       pair_patient = Citizen.where(patient_id: patient_ids).pluck(:id, :patient_id).to_h
       recent = CareLineSuggestion.where(patient_id: patient_ids).or(CareLineSuggestion.where(citizen_id: citizen_ids + pair_patient.keys))
@@ -70,16 +75,30 @@ module CareLines
         id = person.patient_id || person.citizen_id
         team_id = teams[id]
         next 0 unless team_id
+        next 0 if deceased.include?(person.patient_id)
 
         lines.sum do |line|
           reason = Eligibility.match(line.eligibility, person, on: today)
           next 0 if reason.nil? || enrolled.include?([ person.patient_id, line.id ]) || recent.include?([ id, line.id ])
+          next 0 if recently_ended.include?([ person.patient_id, line.id ])
 
           ref = reason == "problem" ? problem_ref(line, evidence.fetch(person.patient_id, [])) : nil
           create!(patient_id: person.patient_id, citizen_id: person.patient_id ? nil : person.citizen_id, care_line_id: line.id,
                   team_id: team_id, reason: reason, evidence_ref: ref)
         end
       end
+    end
+
+    # Extensão do Desvio 6 (uma consulta por lote): [pacientes com óbito em
+    # qualquer linha, a qualquer tempo; pares [paciente, linha] com inscrição
+    # encerrada nos últimos 365 dias, contados de ended_at].
+    def ended_holds(patient_ids)
+      cutoff = COOLDOWN.ago # uma leitura do relógio para o SQL e o Ruby
+      rows = CareLineEnrollment.where(patient_id: patient_ids, status: "ended")
+                               .where("ended_reason = 'death' OR ended_at >= ?", cutoff)
+                               .pluck(:patient_id, :care_line_id, :ended_reason, :ended_at)
+      [ rows.filter_map { |patient_id, _, reason, _| patient_id if reason == "death" }.to_set,
+        rows.filter_map { |patient_id, line_id, _, ended_at| [ patient_id, line_id ] if ended_at >= cutoff }.to_set ]
     end
 
     def closures!(lines, _today, patient_ids: nil)
@@ -97,9 +116,12 @@ module CareLines
       recent = CareLineSuggestion.where(enrollment_id: enrollments.map(&:id))
                                  .where("status = 'pending' OR COALESCE(decided_at, created_at) >= ?", COOLDOWN.ago)
                                  .pluck(:enrollment_id).to_set
+      # Extensão do Desvio 6: óbito em qualquer linha também cala o encerramento.
+      deceased = CareLineEnrollment.where(patient_id: enrollments.map(&:patient_id), status: "ended", ended_reason: "death")
+                                   .distinct.pluck(:patient_id).to_set
       enrollments.sum do |enrollment|
         person = people[enrollment.patient_id]
-        next 0 if person.nil? || recent.include?(enrollment.id)
+        next 0 if person.nil? || recent.include?(enrollment.id) || deceased.include?(enrollment.patient_id)
         next 0 unless Eligibility.closure?(by_line.fetch(enrollment.care_line_id).eligibility, person)
 
         create!(patient_id: enrollment.patient_id, citizen_id: nil, care_line_id: enrollment.care_line_id, team_id: enrollment.team_id,
@@ -139,12 +161,13 @@ module CareLines
     # O paciente não tem marca própria: o Erase apaga os pares (erased_at,
     # patient_id mantido) e anula só os DEMOGRAPHICS, que podem ser nulos em
     # qualquer paciente. Anonimizado = tem par apagado e nenhum par validado
-    # vivo; sem par apagado (nunca excluído), segue.
+    # vivo; sem par apagado (nunca excluído), segue. Pública: o Enroll faz a
+    # mesma conferência (trava os pares: chame antes de travar o paciente).
     def anonymized_patient?(patient_id)
       pairs = Citizen.where(patient_id: patient_id).order(:id).lock("FOR KEY SHARE").pluck(:erased_at, :verification_level)
       pairs.any? { |erased_at, _| erased_at } && pairs.none? { |erased_at, level| erased_at.nil? && level == "verified" }
     end
-    private_class_method :every_patient?, :candidate_patient_ids, :for_people, :closures!, :closure_batch, :problem_ref, :create!, :live_pair?,
-                         :anonymized_patient?
+    private_class_method :every_patient?, :candidate_patient_ids, :for_people, :ended_holds, :closures!, :closure_batch, :problem_ref, :create!,
+                         :live_pair?
   end
 end

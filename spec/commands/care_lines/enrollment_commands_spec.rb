@@ -268,6 +268,19 @@ RSpec.describe "Inscrição confirmada e saída" do
     expect(Patient.count).to eq(patients)
   end
 
+  # Revisão final, Minor 2: a mesma conferência do Suggest (anonymized_patient?).
+  it "paciente anonimizado pela exclusão LGPD (pares apagados, nenhum validado vivo) não se inscreve: citizen_not_verified" do
+    line = adopted_line!("elderly_c6")
+    patient = care_patient!(age: 72, sex: "female")
+    Citizen.where(patient_id: patient.id).update_all(erased_at: Time.current)
+    result = CareLines::Enroll.call(patient: patient, line: line, team: team, by: doctor, today: today)
+    expect(result.reason).to eq(:citizen_not_verified)
+    expect(CareLineEnrollment.count).to eq(0)
+    expect(DomainEvent.where(name: "care_line_enrollment.created")).to be_empty
+    care_citizen!(age: 72, sex: "female").update!(cpf: Patient.find(patient.id).cpf, patient_id: patient.id)
+    expect(CareLines::Enroll.call(patient: patient, line: line, team: team, by: doctor, today: today)).to be_ok
+  end
+
   # Dois pares validados do mesmo CPF, cada um com a sua sugestão: aceitar uma decide as duas.
   it "aceitar uma sugestão aceita todas as pendentes da pessoa e linha, inclusive a de outro par do mesmo CPF" do
     line = adopted_line!("elderly_c6")
