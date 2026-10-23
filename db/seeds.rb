@@ -18,6 +18,7 @@
 #     Linha do tempo (módulo 20): patient_timeline ligado; Maringá em modo integrado com o PEC simulado — ver lib/timeline_crew.rb.
 #     Os protocolos do catálogo (saúde do idoso, saúde mental e aprofundamento), a família avó+neto no mesmo celular e o idoso restrito a dois bairros em Curitiba vêm de `lib/triage_catalog_crew.rb` (módulo 15).
 #     A base de tipos de atendimento, o modelo "Manhã" nos turnos da médica (Curitiba), os turnos da semana da médica e da enfermeira e o idoso com regra de agendamento vêm de `lib/scheduling_crew.rb` (módulo 17).
+#     Linhas de cuidado (módulo 23): care_lines ligado em Curitiba, linhas adotadas e a própria de saúde mental, a técnica de enfermagem (tecnica@<slug>.demo, também na recepção) e as pessoas das provas na UBS Jardim das Flores — ver lib/care_lines_crew.rb.
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -51,6 +52,7 @@ else
   require Rails.root.join("lib/lab_crew").to_s
   require Rails.root.join("lib/lab_qc_crew").to_s
   require Rails.root.join("lib/billing_crew").to_s
+  require Rails.root.join("lib/care_lines_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -107,6 +109,10 @@ else
   # fica ativo; aqui só entra a CID-10 (e a CIAP-2 só se ainda faltar).
   terms = ClinicalRecordCrew.seed_platform!
   puts "[seeds] CIAP-2/CID-10 #{terms.map { |kind, imported| "#{kind} #{imported ? 'importada (recorte de dev)' : 'já ativa'}" }.join('; ')}"
+
+  # Linhas de cuidado (módulo 23, ADR 0040): catálogo-base C2–C7, só a v1
+  # (carga idempotente; a v2 é publicada na prova do maintenance).
+  puts "[seeds] linhas de cuidado (catálogo-base) . #{CareLinesCrew.seed_platform![:created]} versões novas"
 
   # ── Medicamentos (módulo 19c, ADR 0033) ───────────────────────────────────────
   # Recorte real do CATMAT (sem rede) e listas Anvisa do repositório.
@@ -319,6 +325,14 @@ else
         billing = BillingCrew.seed_current_city(slug: slug, password: password, admin: muni_admin)
         puts "[seeds] faturamento . #{billing[:switch]}#{"; #{billing[:created].join(', ')}" if billing[:created].any?}"
         Array(billing[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
+
+        # ── Linhas de cuidado (módulo 23, ADR 0040) ───────────────────────────
+        # Depois do ClinicalRecordCrew (UBS, médica, enfermeira, recepção, CIAP/CID),
+        # do TriageCatalogCrew (saude-mental) e do ExamCrew (equipe da UBS, reaproveitada).
+        care = CareLinesCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        puts "[seeds] linhas de cuidado . #{care[:switch]}" \
+             "#{"; equipe #{care[:team]}; #{care[:people].size} pessoas, #{care[:pending]} sugestões pendentes" if care[:people].any?}"
+        Array(care[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
