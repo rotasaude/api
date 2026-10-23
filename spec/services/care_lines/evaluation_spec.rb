@@ -67,4 +67,21 @@ RSpec.describe CareLines::Evaluation do
     expect(row.pretty_inspect.strip).to eq(row.inspect)
     expect(practice.pretty_inspect.strip).to eq(practice.inspect)
   end
+
+  # Revisão final, Minor 7: o ActiveSupport faz Data#as_json = to_h.as_json;
+  # sem a proteção, to_json/render json vazariam due_on e done_at (DUM + janela).
+  it "Row e PracticeStatus não revelam datas pessoais em as_json nem to_json" do
+    mom = care_patient!(age: 27, sex: "female", problems: [ %w[ciap2 W78] ], unit: unit, doctor: doctor)
+    lmp = Time.zone.today - 70
+    enrollment = care_enrollment!(patient: mom, line: adopted_line!("pregnancy_c3"), team: team, by: doctor, anchor_date: lmp)
+    row = described_class.enrollments([ enrollment ], today: Time.zone.today).fetch(enrollment.id)
+    practice = row.practices.find { |p| p.key == "c3_h" }
+    done = practice.with(done_at: lmp + 10)
+
+    expect(done.as_json).to eq("key" => "c3_h", "status" => done.status)
+    expect(row.as_json).to eq("key" => enrollment.id, "worst" => row.worst)
+    [ row.to_json, done.to_json, { rows: [ row ] }.to_json ].each do |text|
+      [ lmp, lmp + 10, lmp + 294 ].map(&:iso8601).each { |date| expect(text).not_to include(date) }
+    end
+  end
 end

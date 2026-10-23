@@ -5,5 +5,7 @@ module CareLines
     def inspect = "#<CareLines::PracticeStatus key=#{key.inspect} status=#{status}>"
     alias_method :to_s, :inspect
     def pretty_print(q) = q.text(inspect)
+    # ActiveSupport faz Data#as_json = to_h.as_json: sem isto o to_json/render json vazaria due_on e done_at.
+    def as_json(*) = { "key" => key, "status" => status }
   end
 end

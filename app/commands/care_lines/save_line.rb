@@ -20,8 +20,17 @@ module CareLines
       Result.fail(:duplicate_declared_condition)
     end
 
+    # Versão do catálogo: Integer (ou texto só de dígitos) no intervalo de um
+    # integer do Postgres; o resto é nil (template_not_found). Hash virava
+    # StatementInvalid (500); array, uma versão qualquer (revisão final, Minor 4).
+    def version_of(raw)
+      value = raw.is_a?(String) && raw.match?(/\A\d{1,10}\z/) ? raw.to_i : raw
+      value if value.is_a?(Integer) && value.between?(1, 2_147_483_647)
+    end
+
     def adopt(params, by)
-      template = CareLineTemplate.find_by(key: params["template_key"].to_s, version: params["template_version"])
+      version = version_of(params["template_version"])
+      template = version && CareLineTemplate.find_by(key: params["template_key"].to_s, version: version)
       return Result.fail(:template_not_found) unless template
 
       # Antes do INSERT: a adoção repetida também fere o índice da condição declarada,
@@ -45,7 +54,8 @@ module CareLines
 
       template = nil
       if params.key?("template_version")
-        template = CareLineTemplate.find_by(key: line.template_key, version: params["template_version"])
+        version = version_of(params["template_version"])
+        template = version && CareLineTemplate.find_by(key: line.template_key, version: version)
         return Result.fail(:template_not_found) unless template
       end
 
@@ -80,6 +90,13 @@ module CareLines
       condition = attrs["declared_condition"]
       return Result.fail(:invalid_declared_condition) unless condition.nil? || (Catalog::CONDITIONS - %w[none]).include?(condition)
 
+      # Revisão final, Minor 8: o Suggest só olha eligibility.declared; a
+      # condição fora dali nunca sugeriria. Recusa (como o Rules: nada se
+      # conserta em silêncio), também na edição de um lado só.
+      condition = line.declared_condition unless attrs.key?("declared_condition")
+      declared = Array((attrs["eligibility"] || line.eligibility || {})["declared"])
+      return Result.fail(:invalid_eligibility, details: { field: "eligibility.declared" }) if condition && !declared.include?(condition)
+
       attrs["active"] = attrs["active"] == true if attrs.key?("active")
       created = line.new_record?
       line.assign_attributes(attrs.merge("updated_by_user" => by))
@@ -93,6 +110,6 @@ module CareLines
                              declared_condition: template.declared_condition, updated_by_user: by)
       line.save!
     end
-    private_class_method :adopt, :readopt, :custom, :copy!
+    private_class_method :version_of, :adopt, :readopt, :custom, :copy!
   end
 end

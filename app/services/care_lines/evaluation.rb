@@ -8,6 +8,8 @@ module CareLines
       def inspect = "#<CareLines::Evaluation::Row key=#{key.inspect} worst=#{worst}>"
       alias_method :to_s, :inspect
       def pretty_print(q) = q.text(inspect)
+      # ActiveSupport faz Data#as_json = to_h.as_json: sem isto o to_json levaria as práticas (due_on, done_at).
+      def as_json(*) = { "key" => key, "worst" => worst }
     end
 
     module_function

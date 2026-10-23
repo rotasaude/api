@@ -83,7 +83,7 @@ module CareLines
       schedule = enum(raw["schedule"], Catalog::SCHEDULES, "#{path}.schedule") || "end_of_window"
       raise Invalid, "#{path}.schedule" if schedule == "proportional" && anchor == "rolling"
 
-      all_of = groups(raw["all_of"], "#{path}.all_of")
+      all_of = groups(raw["all_of"], "#{path}.all_of", anchor)
       min_count = int(raw["min_count"], 1..50, "#{path}.min_count") || 1
       raise Invalid, "#{path}.min_count" if all_of && all_of.size > 1 && min_count != 1
       # O marco proporcional é de um grupo só; com vários grupos a avaliação ignoraria os demais.
@@ -109,7 +109,9 @@ module CareLines
       }
     end
 
-    def groups(raw, path)
+    # window_days numa alternativa só vale com âncora rolling: o Evaluate o
+    # ignora na âncora fixa (revisão final, Minor 5) — recusa em vez de calar.
+    def groups(raw, path, anchor)
       return nil if raw.nil?
       raise Invalid, path unless raw.is_a?(Array) && raw.size.between?(1, 6)
 
@@ -123,6 +125,7 @@ module CareLines
           source = alt["source"].to_s
           raise Invalid, path unless (alt.keys - %w[source window_days]).empty? && source.match?(Catalog::SOURCE_FORMAT) &&
                                      !Catalog.untracked?(source)
+          raise Invalid, path if alt.key?("window_days") && anchor != "rolling"
 
           { "source" => source, "window_days" => int(alt["window_days"], 1..7300, path) }.compact
         end

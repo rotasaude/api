@@ -16,7 +16,7 @@ RSpec.describe CareLines::Rules do
   it "aceita all_of, code_filter, applies_to e window_start_days" do
     tests = consult.merge("key" => "c3_g", "source" => "exam:0202031098", "anchor" => "lmp", "window_days" => 97, "cbo_filter" => nil,
                           "all_of" => [ [ { "source" => "procedure:0214010074" }, { "source" => "exam:0202031098" } ],
-                                        [ { "source" => "exam:0202100251", "window_days" => 1826 } ] ])
+                                        [ { "source" => "exam:0202100251" } ] ])
     sexual = consult.merge("key" => "c7_c", "code_filter" => { "ciap2" => %w[W10], "cid10" => %w[Z30] },
                            "applies_to" => { "age_min_years" => 14, "age_max_years" => 69 })
     late = consult.merge("key" => "c3_f", "source" => "vaccine:57", "anchor" => "lmp", "window_start_days" => 140, "window_days" => 294,
@@ -30,6 +30,18 @@ RSpec.describe CareLines::Rules do
     result = described_class.practices([ puerperal ])
     expect(result).to be_ok
     expect(result.payload[:practices].first["all_of"]).to eq([ [ { "source" => "consultation" }, { "source" => "procedure:0301010129" } ] ])
+  end
+
+  # Revisão final, Minor 5: o Evaluate só usa a janela da alternativa na âncora
+  # rolling; na fixa ela seria ignorada em silêncio.
+  it "window_days numa alternativa de all_of: aceito só com âncora rolling" do
+    alternatives = [ [ { "source" => "exam:0203010086" }, { "source" => "exam:0202100251", "window_days" => 1826 } ] ]
+    rolling = consult.merge("key" => "c7_a", "source" => "exam:0203010086", "cbo_filter" => nil, "all_of" => alternatives)
+    expect(described_class.practices([ rolling ])).to be_ok
+    %w[lmp birth enrollment].each do |anchor|
+      result = described_class.practices([ rolling.merge("anchor" => anchor) ])
+      expect([ result.reason, result.details[:field] ]).to eq([ :invalid_practices, "practices[0].all_of" ])
+    end
   end
 
   it "aceita proportional com all_of de um grupo só" do
