@@ -39,6 +39,26 @@ RSpec.describe "Linhas de cuidado — sugestões", type: :request do
     expect(response).to have_http_status(:created)
     expect(json_body).to include("anchor_date" => (Time.zone.today - 70).iso8601, "status" => "active")
     expect(json_body["care_line"]).to include("requires_anchor" => "lmp")
+    # Trilha (revisão final): a lista mostrou 1; o aceite mostra a inscrição (+1); as recusas não gravam.
+    expect(viewed.size).to eq(2)
+    expect(viewed.last.payload).to include("user_id" => doctor.id, "care_line_enrollment_id" => json_body["id"], "patient_id" => patient.id)
+  end
+
+  # P20 (coordenadora): DUM e motivo de recusa só do corpo JSON; na query é o mesmo que ausente.
+  it "DUM do aceite e motivo da recusa na query: anchor_required / reason_required, sem gravar nada" do
+    patient = care_patient!(age: 27, sex: "female", problems: [ %w[ciap2 W78] ], unit: unit, doctor: doctor)
+    accept = CareLineSuggestion.create!(care_line: pregnancy, team: team, patient: patient, reason: "problem")
+    dismiss = CareLineSuggestion.create!(care_line: pregnancy, team: team, citizen: care_citizen!(age: 25, sex: "female"), reason: "declared")
+    headers = { "CONTENT_TYPE" => "application/json" }
+    sign_in_as(doctor)
+    post "/care_lines/suggestions/#{accept.id}/accept?#{{ anchor_date: (Time.zone.today - 70).iso8601 }.to_query}",
+         params: { team_id: team.id }.to_json, headers: headers
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "anchor_required" } ])
+    post "/care_lines/suggestions/#{dismiss.id}/dismiss?#{{ reason: "Gestação já acompanhada" }.to_query}", params: {}.to_json, headers: headers
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "reason_required", "field" => "reason" } ])
+    expect([ accept, dismiss ].map { |s| s.reload.status }).to eq(%w[pending pending])
+    expect(CareLineEnrollment.count).to eq(0)
+    expect(viewed).to be_empty
   end
 
   it "recusa com motivo; sugestão de outra equipe por id → 404" do
@@ -94,6 +114,7 @@ RSpec.describe "Linhas de cuidado — sugestões", type: :request do
     expect(response).to have_http_status(:ok)
     expect(json_body).to include("id" => enrollment.id, "status" => "ended", "ended_reason" => "discharge")
     expect(closure.reload.status).to eq("accepted")
+    expect(viewed.map { |e| e.payload.values_at("user_id", "care_line_enrollment_id") }).to eq([ [ tech.id, enrollment.id ] ])
   end
 
   it "filtro de linha mal formado → 422; cursor inválido → 422; pagina com next_before" do

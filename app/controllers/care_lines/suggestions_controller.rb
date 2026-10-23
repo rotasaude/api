@@ -39,7 +39,7 @@ module CareLines
       unless @suggestion.closure?
         team = scoped_team or return
       end
-      result = AcceptSuggestion.call(suggestion: @suggestion, by: Current.user, team: team, anchor_date: params[:anchor_date])
+      result = AcceptSuggestion.call(suggestion: @suggestion, by: Current.user, team: team, anchor_date: body_param("anchor_date"))
       return render_failure(result) if result.failure?
 
       enrollment = result.payload[:enrollment] || result.payload[:ended]
@@ -50,7 +50,7 @@ module CareLines
     end
 
     def dismiss
-      result = DismissSuggestion.call(suggestion: @suggestion, reason: params[:reason], by: Current.user)
+      result = DismissSuggestion.call(suggestion: @suggestion, reason: body_param("reason"), by: Current.user)
       return render_failure(result) if result.failure?
 
       render json: { id: @suggestion.id, status: "dismissed" }

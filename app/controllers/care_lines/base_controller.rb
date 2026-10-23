@@ -28,6 +28,10 @@ module CareLines
     def not_found = render(json: { error: "not_found" }, status: :not_found)
     def uuid?(value) = value.is_a?(String) && value.match?(UUID)
     def body = params.to_unsafe_h.except("controller", "action", "id")
+    # Dado de saúde e texto livre (DUM, nota, motivo) só do corpo JSON, nunca
+    # da query string (URL vai para log de proxy e histórico): na query vale
+    # como ausente. O padrão do declared_conditions_controller.
+    def body_param(key) = request.request_parameters[key]
 
     # Equipe do pedido (team_id) dentro do escopo do profissional; fora dele,
     # 403 out_of_scope. Compartilhado pelos controllers de sugestões e inscrições.

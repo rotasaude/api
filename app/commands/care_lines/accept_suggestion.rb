@@ -43,7 +43,8 @@ module CareLines
     end
 
     # O paciente do par: o ligado ou, sem vínculo, o do CPF (o Resolve o
-    # ligaria) — a recusa barata não liga o par antes de recusar.
+    # ligaria) — a recusa barata não liga o par antes de recusar. Pública: a
+    # inscrição manual (EnrollmentsController#create) usa a mesma regra.
     def known_patient_of(citizen)
       return nil unless citizen
 
@@ -69,6 +70,6 @@ module CareLines
         Result.ok(ended: enrollment)
       end
     end
-    private_class_method :close, :known_patient_of
+    private_class_method :close
   end
 end

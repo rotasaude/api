@@ -46,25 +46,34 @@ module CareLines
       # um 4xx não cria paciente, não liga o par nem publica evento.
       return render_failure(Result.fail(:line_inactive)) unless line.active
 
-      anchor = Enroll.validate_anchor(line, params[:anchor_date], Time.zone.today)
+      anchor_date = body_param("anchor_date")
+      anchor = Enroll.validate_anchor(line, anchor_date, Time.zone.today)
       return render_failure(anchor) if anchor.is_a?(Result)
 
-      patient = person_patient or return
-      result = Enroll.call(patient: patient, line: line, team: team, by: Current.user, anchor_date: params[:anchor_date])
+      record = person_record or return
+      # Revisão final, Minor 3: já inscrito recusa antes do Resolve, pela regra
+      # do aceite (known_patient_of) — o 409 não liga o par.
+      known = record.is_a?(Patient) ? record.id : AcceptSuggestion.known_patient_of(record)
+      if known && CareLineEnrollment.active_enrollments.exists?(patient_id: known, care_line_id: line.id)
+        return render_failure(Result.fail(:already_enrolled))
+      end
+
+      patient = resolve_patient(record) or return
+      result = Enroll.call(patient: patient, line: line, team: team, by: Current.user, anchor_date: anchor_date)
       return render_failure(result) if result.failure?
 
       render json: detail(result.payload[:enrollment]), status: :created
     end
 
     def end_enrollment
-      result = EndEnrollment.call(enrollment: @enrollment, reason: params[:reason], note: params[:note], by: Current.user)
+      result = EndEnrollment.call(enrollment: @enrollment, reason: body_param("reason"), note: body_param("note"), by: Current.user)
       return render_failure(result) if result.failure?
 
       render json: detail(@enrollment.reload)
     end
 
     def contacts
-      result = RecordContact.call(enrollment: @enrollment, channel: params[:channel], outcome: params[:outcome], note: params[:note],
+      result = RecordContact.call(enrollment: @enrollment, channel: params[:channel], outcome: params[:outcome], note: body_param("note"),
                                   by: Current.user)
       return render_failure(result) if result.failure?
 
@@ -96,9 +105,9 @@ module CareLines
       not_found unless @enrollment && Access.panel?(Current.user, @enrollment.team)
     end
 
-    # patient_id XOR citizen_id; o par precisa ser validado (o paciente
-    # nasce por Patients::Resolve, como no aceite da sugestão).
-    def person_patient
+    # patient_id XOR citizen_id: o Patient ou o Citizen (não apagado), sem
+    # resolver; nil depois de renderizar a recusa.
+    def person_record
       patient_id, citizen_id = params.values_at(:patient_id, :citizen_id)
       unless patient_id.present? ^ citizen_id.present?
         render_error(:invalid_person)
@@ -109,10 +118,15 @@ module CareLines
                else
                  uuid?(citizen_id) && Citizen.not_erased.find_by(id: citizen_id)
                end
-      unless record
-        not_found
-        return nil
-      end
+      return record if record
+
+      not_found
+      nil
+    end
+
+    # O par precisa ser validado (o paciente nasce por Patients::Resolve, como
+    # no aceite da sugestão).
+    def resolve_patient(record)
       return record if record.is_a?(Patient)
 
       resolved = Patients::Resolve.call(record)
