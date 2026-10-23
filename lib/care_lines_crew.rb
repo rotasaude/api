@@ -66,7 +66,9 @@ class CareLinesCrew
             vitals: { "systolic" => 148, "diastolic" => 92, "weight_kg" => "86.0", "height_cm" => 171 } },
     ana: { by: "enfermeira", problems: [ %w[ciap2 W78] ], outcome: "return",
            vitals: { "systolic" => 110, "diastolic" => 70, "weight_kg" => "62.5", "height_cm" => 163 } },
-    sebastiao: { by: "profissional", problems: [ %w[ciap2 R05] ], outcome: "discharged",
+    # Problema sem linha (só para a consulta de hoje contar na C6). A CIAP-2 de dev é um
+    # recorte (A01 K86 T90 W78) e a de teste não tem A01: vale o primeiro que existir.
+    sebastiao: { by: "profissional", problems: [ [ "ciap2", %w[R05 A01] ] ], outcome: "discharged",
                  vitals: { "systolic" => 132, "diastolic" => 80, "weight_kg" => "71.0", "height_cm" => 166 } }
   }.freeze
   # P18: última consulta finalizada há 25 meses (fora dos 24): equipe pelo território.
@@ -245,6 +247,11 @@ class CareLinesCrew
       citizen.reload
     end
 
+    # Código fixo, ou o primeiro de uma lista que exista na terminologia ativa.
+    def problem_code(terminology, code)
+      Array(code).find { |c| ClinicalTerms.find(terminology, c) } || Array(code).first
+    end
+
     # Consulta de hoje com os problemas (caminho real do 19a), só se a pessoa
     # ainda não tem consulta finalizada.
     def consult!(slug, unit, by, citizen, visit)
@@ -260,7 +267,7 @@ class CareLinesCrew
 
       consultation = started.payload.fetch(:consultation)
       draft = DRAFT.merge("vitals" => visit[:vitals],
-                          "evaluated_problems" => visit[:problems].map { |t, code| { "terminology" => t, "code" => code, "action" => "add" } })
+                          "evaluated_problems" => visit[:problems].map { |t, code| { "terminology" => t, "code" => problem_code(t, code), "action" => "add" } })
       saved = Consultations::SaveDraft.call(consultation: consultation, params: draft, by: by)
       raise "semente das linhas: rascunho recusado (#{saved.reason} #{saved.details})" if saved.failure?
 
