@@ -6,7 +6,9 @@
 # o retorno/encaminhamento/escuta dele herda isso); o pedido da triagem
 # segue com raiz. Triggers em db/city_triggers.sql: a guarda congela a origem
 # nova e rota_appointment_request_root_guard (INSERT) só aceita a raiz nula
-# com origem num atendimento cuja cadeia também não tem raiz. Irreversível.
+# com origem num atendimento cuja cadeia também não tem raiz. O arquivo
+# inteiro roda aqui (e não na 900002): instala também os triggers das tabelas
+# das linhas de cuidado, depois de a coluna nova existir. Irreversível.
 class AddCareLineOriginToAppointmentRequests < ActiveRecord::Migration[8.1]
   def up
     add_reference :appointment_requests, :origin_care_line_enrollment, type: :uuid, index: false,

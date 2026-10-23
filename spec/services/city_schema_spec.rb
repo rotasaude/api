@@ -94,6 +94,37 @@ RSpec.describe CitySchema do
     expect(names).to include("performed_procedures_guard", "billing_periods_guard", "billing_exports_reencryption_only", *truncate)
   end
 
+  # Módulo 23 (revisão final, I1): o db/city_triggers.sql do HEAD recria a
+  # guarda dos pedidos do módulo 17 lendo origin_care_line_enrollment_id, que
+  # só nasce na 900003. Se a 900002 executasse o arquivo e a 900003 falhasse
+  # depois do commit dela, todo UPDATE de pedido quebraria. Uma marca posta na
+  # guarda antes da 900002 sobrevive a ela; a 900003 instala o arquivo inteiro.
+  it "installs db/city_triggers.sql in the care lines rollout only at 900003, never at 900002" do
+    ScratchDatabases.create!(scratch)
+    url = ScratchDatabases.url(scratch)
+    migrate_to = ->(version) { described_class.send(:with_city_connection, url) { |c| c.pool.migration_context.migrate(version) } }
+    guard_source = -> { ScratchDatabases.superuser(scratch) { |c| c.exec("SELECT prosrc FROM pg_proc WHERE proname = 'rota_appointment_request_guard'").getvalue(0, 0) } }
+    care_triggers = lambda do
+      ScratchDatabases.superuser(scratch) do |c|
+        c.exec("SELECT tgname FROM pg_trigger WHERE tgname LIKE 'care_line_enrollments_%' AND NOT tgisinternal").column_values(0)
+      end
+    end
+
+    migrate_to.call(versions_on_disk.select { |v| v < 20_261_022_900_002 }.max)
+    ScratchDatabases.superuser(scratch) do |c|
+      c.exec("CREATE OR REPLACE FUNCTION rota_appointment_request_guard() RETURNS trigger AS $fn$ BEGIN /* i1-marker */ RETURN COALESCE(NEW, OLD); END; $fn$ LANGUAGE plpgsql")
+    end
+
+    migrate_to.call(20_261_022_900_002)
+    expect(guard_source.call).to include("i1-marker")
+    expect(care_triggers.call).to be_empty
+
+    migrate_to.call(20_261_022_900_003)
+    expect(guard_source.call).not_to include("i1-marker")
+    expect(guard_source.call).to include("origin_care_line_enrollment_id")
+    expect(care_triggers.call).to include("care_line_enrollments_guard")
+  end
+
   it "backfills versions below the highest recorded one and never records a higher one" do
     ScratchDatabases.create!(scratch)
     url = ScratchDatabases.url(scratch)

@@ -3,7 +3,8 @@
 # apaga), sugestões (decididas congelam; a exclusão LGPD apaga), contatos de
 # busca ativa (só acréscimo, nota cifrada) e condições declaradas pelo
 # cidadão (só acréscimo; retirar grava withdrawn_at; cifradas; a exclusão
-# apaga). Triggers em db/city_triggers.sql. Irreversível.
+# apaga). Triggers em db/city_triggers.sql, instalados pela 900003 (ver o
+# fim do up). Irreversível.
 class AddCareLines < ActiveRecord::Migration[8.1]
   def up
     create_table :care_lines, id: :uuid do |t|
@@ -112,8 +113,11 @@ class AddCareLines < ActiveRecord::Migration[8.1]
       t.datetime :declared_at, null: false
       t.datetime :withdrawn_at
     end
-
-    execute File.read(Rails.root.join("db/city_triggers.sql"))
+    # Os triggers destas tabelas (db/city_triggers.sql) entram pela 900003,
+    # no mesmo deploy: o arquivo do HEAD já recria a guarda dos pedidos do
+    # módulo 17 lendo origin_care_line_enrollment_id, que só nasce na 900003.
+    # Executado aqui, uma 900003 que falhasse depois do commit desta deixaria
+    # todo UPDATE de pedido quebrado.
   end
 
   def down
