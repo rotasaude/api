@@ -2,10 +2,11 @@ require "rails_helper"
 
 # ADR 0040 (spec §3): care_lines exige clinical_record utilizável (modo record).
 RSpec.describe CareLines::Gate do
-  it "está no catálogo depois de procedure_billing, com o pré-requisito do prontuário" do
+  it "está no catálogo logo depois de procedure_billing, com o pré-requisito do prontuário" do
     entry = Platform::Features.find!("care_lines")
     expect(entry.requires).to eq(%w[feature:clinical_record])
-    expect(Platform::Features::KEYS.last(2)).to eq(%w[procedure_billing care_lines])
+    keys = Platform::Features::KEYS
+    expect(keys.index("care_lines")).to eq(keys.index("procedure_billing") + 1)
   end
 
   it "usable? só com clinical_record utilizável; enabled? só olha a chave" do

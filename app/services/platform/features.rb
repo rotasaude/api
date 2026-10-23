@@ -116,6 +116,12 @@ module Platform
       # (pelo prontuário utilizável).
       Entry.new(key: "care_lines",
                 description: "Linhas de cuidado: catálogo C2–C7, inscrição confirmada, busca ativa e prévia dos indicadores",
+                requires: %w[feature:clinical_record]),
+      # ADR 0042: cadastro territorial (módulo 24a) — microáreas, domicílios,
+      # famílias e cadastro individual com as fichas LEDI de cadastro. Só no
+      # modo record (pelo prontuário utilizável).
+      Entry.new(key: "territory_registry",
+                description: "Cadastro territorial: microáreas, domicílios, famílias e cadastro individual com fichas LEDI de cadastro",
                 requires: %w[feature:clinical_record])
     ].freeze
 

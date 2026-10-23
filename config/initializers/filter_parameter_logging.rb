@@ -59,7 +59,13 @@ Rails.application.config.filter_parameters += [
   /\A(race_color|ethnicity|address_zip|address_street|address_number|address_complement|address_district)\z/,
   # ADR 0040: condição declarada pelo cidadão, DUM e motivo da recusa da sugestão
   # (`:note` e `:reason` já cobrem a nota do contato e o motivo do encerramento).
-  /\A(condition|anchor_date|dismiss_reason)\z/
+  /\A(condition|anchor_date|dismiss_reason)\z/,
+  # ADR 0042: cadastro territorial — só entram as chaves que ainda não eram
+  # filtradas (`full_name`, `social_name`, `mother_name`, `address`, `phone`,
+  # `cpf`, `cns`, `race_color`, `ethnicity` e `birth_date` já estão acima).
+  :no_cpf_reason, :sociodemographic, :health_conditions, :street_situation,
+  :living_conditions, :identification, :refused, :income_band, :living_since,
+  :patient_demographics, :death_on
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
