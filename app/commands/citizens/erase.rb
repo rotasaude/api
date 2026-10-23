@@ -61,10 +61,11 @@ module Citizens
         patient_ids = RequestErasure.patient_ids(pair_scope, cpf: request.cpf)
         # ADR 0040: as sugestões de linha de cuidado que a exclusão apaga (dos
         # pares e do paciente), travadas por id ANTES do paciente — a ordem do
-        # CareLines::Enroll (sugestão → paciente; ele não trava o cidadão, que
-        # o Patients::Resolve trava e solta antes). O aceite que trava
-        # antes termina e a inscrição dele retém abaixo; o que chega depois
-        # acha a sugestão apagada.
+        # CareLines::Enroll (pares em FOR KEY SHARE → sugestões → paciente: o
+        # Enroll trava os pares antes de tudo, pela conferência de paciente
+        # anonimizado, e o Erase já os tem travados acima). O aceite que
+        # trava antes termina e a inscrição dele retém abaixo; o que chega
+        # depois acha a sugestão apagada.
         CareLineSuggestion.where(citizen_id: pairs.map(&:id)).or(CareLineSuggestion.where(patient_id: patient_ids))
                           .order(:id).lock.to_a
         locked_patients = []

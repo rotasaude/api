@@ -61,6 +61,14 @@ RSpec.describe "Maintenance: catálogo-base das linhas de cuidado", type: :reque
     expect(CareLineTemplate.where(key: "diabetes_c4").count).to eq(1)
   end
 
+  it "recusa declaredCondition fora de eligibility.declared com path declaredCondition e não grava" do
+    t = CareLineTemplate.current("diabetes_c4")
+    gql!(CARE_LINE_UPSERT, diabetes_vars(eligibility: t.eligibility.merge("declared" => [ "hypertension" ])))
+    expect(json.dig("data", "upsertCareLineTemplate"))
+      .to eq("ok" => false, "errors" => [ { "path" => "declaredCondition", "message" => "invalid_declared_condition" } ])
+    expect(CareLineTemplate.where(key: "diabetes_c4").count).to eq(1)
+  end
+
   it "a ida e volta da C2 (sem problems, listas vazias) grava a versão 2 sem step-up e devolve os avançados iguais" do
     t = CareLineTemplate.current("child_c2")
     vars = { key: t.key, name: t.name, indicator: t.indicator, declaredCondition: nil,

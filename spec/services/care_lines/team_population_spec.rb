@@ -142,6 +142,49 @@ RSpec.describe CareLines::TeamPopulation do
     expect(big).to eq(small)
   end
 
+  # P21: o óbito, em qualquer linha, tira a pessoa do denominador da prévia de
+  # todas (a mesma marca da P19, que cala as sugestões).
+  describe "óbito fora do denominador (P21)" do
+    let(:hypertension) { adopted_line!("hypertension_c5") }
+
+    def ended!(patient, line, reason)
+      care_enrollment!(patient: patient, line: line, team: team_a, by: doctor_a, enrolled_at: 3.years.ago)
+        .update!(status: "ended", ended_reason: reason, ended_at: 1.year.ago, ended_by_user: doctor_a)
+    end
+
+    def ids = described_class.call(team: team_a, line: diabetes, rules: diabetes.eligibility).map { |person, _| person.patient_id }
+
+    it "paciente elegível com inscrição encerrada por death em OUTRA linha sai do denominador; por discharge continua" do
+      dead = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+      alive = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+      expect(ids).to match_array([ dead.id, alive.id ])
+      ended!(dead, hypertension, "death")
+      ended!(alive, hypertension, "discharge")
+      expect(ids).to eq([ alive.id ])
+    end
+
+    it "o inscrito na linha com óbito em outra também sai" do
+      patient = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+      care_enrollment!(patient: patient, line: diabetes, team: team_a, by: doctor_a)
+      ended!(patient, hypertension, "death")
+      expect(ids).to eq([])
+    end
+
+    it "o número de consultas ao banco não cresce com o número de óbitos" do
+      alive = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+      patient = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+      ended!(patient, hypertension, "death")
+      ids # aquece
+      small = count_queries { ids }
+      3.times do
+        other = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+        ended!(other, hypertension, "death")
+      end
+      expect(count_queries { ids }).to eq(small)
+      expect(ids).to eq([ alive.id ])
+    end
+  end
+
   # P18 (contrato §12): o paciente sem consulta finalizada nos últimos 24
   # meses segue a regra de território do par sem paciente, nos três lugares.
   describe "paciente sem consulta finalizada há 24 meses: equipe pelo território (P18)" do

@@ -45,6 +45,16 @@ module CareLines
       end
     end
 
+    # Pacientes com QUALQUER inscrição encerrada por óbito, em qualquer linha
+    # e a qualquer tempo (P19/P21; uma consulta). A marca única do óbito: o
+    # Suggest a usa para calar sugestões, a população da prévia para tirar a
+    # pessoa do denominador. `ended_reason` fica em claro (enum com CHECK).
+    def deceased(patient_ids)
+      return Set.new if patient_ids.empty?
+
+      CareLineEnrollment.where(patient_id: patient_ids, status: "ended", ended_reason: "death").distinct.pluck(:patient_id).to_set
+    end
+
     # Pacientes com problema ativo que casa por prefixo (uma consulta).
     # `among:` cruza no SQL com os ids já escolhidos (a prévia: só a equipe).
     def problem_candidates(rules, among: nil)

@@ -94,11 +94,8 @@ module CareLines
     # encerrada nos últimos 365 dias, contados de ended_at].
     def ended_holds(patient_ids)
       cutoff = COOLDOWN.ago # uma leitura do relógio para o SQL e o Ruby
-      rows = CareLineEnrollment.where(patient_id: patient_ids, status: "ended")
-                               .where("ended_reason = 'death' OR ended_at >= ?", cutoff)
-                               .pluck(:patient_id, :care_line_id, :ended_reason, :ended_at)
-      [ rows.filter_map { |patient_id, _, reason, _| patient_id if reason == "death" }.to_set,
-        rows.filter_map { |patient_id, line_id, _, ended_at| [ patient_id, line_id ] if ended_at >= cutoff }.to_set ]
+      recent = CareLineEnrollment.where(patient_id: patient_ids, status: "ended").where("ended_at >= ?", cutoff).pluck(:patient_id, :care_line_id)
+      [ Facts.deceased(patient_ids), recent.to_set ]
     end
 
     def closures!(lines, _today, patient_ids: nil)
@@ -117,8 +114,7 @@ module CareLines
                                  .where("status = 'pending' OR COALESCE(decided_at, created_at) >= ?", COOLDOWN.ago)
                                  .pluck(:enrollment_id).to_set
       # Extensão do Desvio 6: óbito em qualquer linha também cala o encerramento.
-      deceased = CareLineEnrollment.where(patient_id: enrollments.map(&:patient_id), status: "ended", ended_reason: "death")
-                                   .distinct.pluck(:patient_id).to_set
+      deceased = Facts.deceased(enrollments.map(&:patient_id))
       enrollments.sum do |enrollment|
         person = people[enrollment.patient_id]
         next 0 if person.nil? || recent.include?(enrollment.id) || deceased.include?(enrollment.patient_id)

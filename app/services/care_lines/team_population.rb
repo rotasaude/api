@@ -124,7 +124,9 @@ module CareLines
         elsewhere = CareLineEnrollment.active_enrollments.where(care_line: line, patient_id: prospects).pluck(:patient_id, :team_id)
         prospects -= elsewhere.map(&:first)
       end
+      # P21: óbito em qualquer linha tira a pessoa do denominador de todas.
       patient_ids = enrolled.keys + prospects
+      patient_ids -= Facts.deceased(patient_ids).to_a
       # Regra por problema: só quem tem problema ativo casando entra no denominador.
       if rules["problems"]
         matching = Facts.problem_candidates(rules["problems"], among: patient_ids).to_set

@@ -42,6 +42,19 @@ RSpec.describe "Linhas de cuidado — busca de pessoa pelo CPF", type: :request 
     expect([ response.status, json_body["error"] ]).to eq([ 403, "missing_role" ])
   end
 
+  it "CPF só na query string vale como ausente (invalid_cpf, sem trilha); no corpo continua funcionando" do
+    patient = care_patient!(age: 58, sex: "male")
+    pair = Citizen.find_by!(patient_id: patient.id)
+    sign_in_as(doctor)
+    post "/care_lines/person_lookup?cpf=#{pair.cpf}", params: {}.to_json, headers: { "CONTENT_TYPE" => "application/json" }
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_cpf" ])
+    expect(viewed).to be_empty
+    json_post "/care_lines/person_lookup", cpf: pair.cpf
+    expect(response.status).to eq(200)
+    expect(json_body.dig("person", "patient_id")).to eq(patient.id)
+    expect(viewed.size).to eq(1)
+  end
+
   it "limite de 30 por minuto por usuário" do
     allow(CareLines::PersonLookupsController::RateLimitStore).to receive(:increment).and_return(31)
     sign_in_as(doctor)

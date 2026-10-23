@@ -18,7 +18,8 @@ module CareLines
     def create
       return forbid unless Access.professional_unit_ids(Current.user).any?
 
-      cpf = params[:cpf].is_a?(String) ? CitizenIdentity::Cpf.normalize(params[:cpf]) : nil
+      raw = body_param("cpf")
+      cpf = raw.is_a?(String) ? CitizenIdentity::Cpf.normalize(raw) : nil
       return render_error(:invalid_cpf) unless cpf
 
       pairs = Citizen.not_erased.where(cpf: cpf)

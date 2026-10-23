@@ -30,4 +30,21 @@ RSpec.describe CareLines::Templates::Save do
     expect(described_class.call(attrs(declared_condition: "none")).reason).to eq(:invalid_declared_condition)
     expect(CareLineTemplate.count).to eq(0)
   end
+
+  it "recusa declared_condition fora de eligibility.declared (como a linha própria); sem condição, grava" do
+    entry = CareLines::Templates::Load.entries.find { |e| e["key"] == "diabetes_c4" }
+    outside = entry["eligibility"].merge("declared" => [ "hypertension" ])
+    result = described_class.call(attrs(eligibility: outside))
+    expect([ result.reason, result.details ]).to eq([ :invalid_declared_condition, { field: "declaredCondition" } ])
+    expect(described_class.call(attrs(eligibility: entry["eligibility"].except("declared"))).reason).to eq(:invalid_declared_condition)
+    expect(CareLineTemplate.count).to eq(0)
+    expect(described_class.call(attrs(declared_condition: nil, eligibility: outside))).to be_ok
+  end
+
+  it "os templates do catalog-base.yml carregam: a condição de cada um está em eligibility.declared" do
+    entries = CareLines::Templates::Load.entries
+    expect(entries.size).to eq(6)
+    expect(entries.select { |e| e["declared_condition"] }.map { |e| e["eligibility"]["declared"].include?(e["declared_condition"]) }).to all(be(true))
+    expect(CareLines::Templates::Load.call).to eq(created: 6)
+  end
 end

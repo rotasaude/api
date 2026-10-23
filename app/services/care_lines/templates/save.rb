@@ -24,6 +24,11 @@ module CareLines
         eligibility = Rules.eligibility(attrs["eligibility"])
         return eligibility if eligibility.failure?
 
+        # Mesma regra do Minor 8 da linha própria (SaveLine): o Suggest só olha
+        # eligibility.declared; a condição fora dali nunca sugeriria.
+        declared = Array(eligibility.payload[:eligibility]["declared"])
+        return fail(:invalid_declared_condition, "declaredCondition") if condition && !declared.include?(condition)
+
         template = PlatformRecord.transaction do
           PlatformRecord.connection.execute("SELECT pg_advisory_xact_lock(#{Zlib.crc32("care_line_templates:#{key}")})")
           version = CareLineTemplate.where(key: key).maximum(:version).to_i + 1
