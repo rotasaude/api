@@ -26,7 +26,8 @@ RSpec.describe "Linhas de cuidado — painel e busca ativa", type: :request do
     get "/care_lines/enrollments", params: { team_id: team.id }
     expect(json_body["enrollments"].map { |e| [ e["id"], e["worst_status"] ] }).to eq([ [ fine.id, "ok" ], [ late.id, "overdue" ] ])
     row = json_body["enrollments"].last
-    expect(row["person"].keys).to match_array(%w[patient_id citizen_id display_name age])
+    expect(row["person"].keys).to match_array(%w[patient_id citizen_id display_name age has_cpf cns_masked])
+    expect(row["person"].values_at("has_cpf", "cns_masked")).to eq([ true, nil ])
     expect(row["team"]).to eq("id" => team.id, "ine" => team.ine, "name" => team.name)
     expect(row["care_line"]).to eq("id" => elderly.id, "name" => elderly.name, "requires_anchor" => nil)
     expect(row).to include("ended_reason" => nil, "ended_at" => nil)

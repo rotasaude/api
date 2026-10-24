@@ -5,7 +5,7 @@ require "rails_helper"
 # do faturamento estão nos specs do próprio módulo (consultation_ficha_spec,
 # print_spec, close_spec); as formas JSON, em clinical_record_spec.
 RSpec.describe "Leitores de patients.cpf com paciente sem CPF" do
-  before { clinical_city! }
+  before { care_city! } # clinical_city! + linhas de cuidado
 
   let(:no_cpf) do
     Patients::CreateTyped.call(attrs: { "full_name" => "Lia Santos", "birth_date" => "2026-08-01", "sex" => "female",
@@ -61,13 +61,30 @@ RSpec.describe "Leitores de patients.cpf com paciente sem CPF" do
     expect(Exams::Fhir::Identifiers.for_patient(no_cpf.reload)).to be_nil
   end
 
-  it "linha do tempo, inscrição em linha de cuidado e acesso ao prontuário não quebram com cpf nulo" do
+  it "linha do tempo e acesso ao prontuário não quebram com cpf nulo" do
     verified_citizen!(2) # um par qualquer, com CPF
     expect(Timeline::Person.for_patient(no_cpf).citizen_ids).to eq([])
     unit = create_unit
     grant = ClinicalRecord::Access.call(user: doctor!(unit), patient: no_cpf)
     expect([ grant.kind, grant.reason ]).to eq([ :denied, :out_of_context ])
     expect(no_cpf.cpf.to_s[-3, 3]).to be_nil # Exams::Json#cpf_last3 (inventário #15)
+  end
+
+  # O 23 é a tela que o paciente sem CPF alcança hoje (Task 11): a inscrição
+  # nunca aceita sugestão de um par alheio por CPF nulo, e a linha da pessoa
+  # traz has_cpf e o CNS mascarado (L8).
+  it "inscrição em linha de cuidado: só as sugestões do próprio paciente; pessoa com has_cpf e cns_masked" do
+    unit = care_unit!
+    doctor = care_doctor!(unit)
+    team = care_team!(unit, doctor)
+    line = adopted_line!("elderly_c6")
+    stranger = CareLineSuggestion.create!(care_line: line, team: team, reason: "age_sex", citizen: verified_citizen!(4))
+    own = CareLineSuggestion.create!(care_line: line, team: team, reason: "problem", patient: no_cpf)
+    result = CareLines::Enroll.call(patient: no_cpf, line: line, team: team, by: doctor)
+    expect(result.payload[:enrollment]).to have_attributes(patient_id: no_cpf.id, suggestion_id: own.id, source: "suggestion")
+    expect([ own.reload.status, stranger.reload.status ]).to eq(%w[accepted pending])
+    expect(CareLines::Json.person(patient: no_cpf))
+      .to include(patient_id: no_cpf.id, display_name: "Lia Santos", has_cpf: false, cns_masked: no_cpf.cns_masked)
   end
 
   it "documento clínico sem CPF continua recusado (inalcançável hoje: exige consulta)" do

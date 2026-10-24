@@ -22,10 +22,12 @@ module CareLines
       { id: team.id, ine: team.ine, name: team.name, unit: { id: team.health_unit_id, name: team.health_unit.name } }
     end
 
-    # Painel e sugestões (contrato §2, §4, §5; §11 L5, L12; §12 P3).
+    # Painel e sugestões (contrato §2, §4, §5; §11 L5, L12; §12 P3). L8 do 24a:
+    # has_cpf e o CNS mascarado (o paciente sem CPF do cadastro chega aqui).
     def person(patient: nil, citizen: nil, today: Time.zone.today)
       who = patient || citizen
-      { patient_id: patient&.id, citizen_id: patient ? nil : citizen&.id, display_name: who&.display_name, age: who&.age(on: today) }
+      { patient_id: patient&.id, citizen_id: patient ? nil : citizen&.id, display_name: who&.display_name, age: who&.age(on: today),
+        **Patients::IdentifierJson.call(who) }
     end
 
     # §12 P3: a tela sabe, pela linha, se o aceite pede DUM.
