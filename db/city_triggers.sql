@@ -1073,7 +1073,11 @@ BEGIN
   IF OLD.cpf IS NOT NULL AND NEW.cpf IS DISTINCT FROM OLD.cpf THEN
     RAISE EXCEPTION 'patients: identity columns never change';
   END IF;
-  IF OLD.cpf IS NULL AND NEW.cpf IS NOT NULL AND NEW.no_cpf_reason IS NOT NULL THEN
+  -- no_cpf_reason lido por to_jsonb: as migrações anteriores à 20261023900001
+  -- reexecutam este arquivo e recriam o guarda antes de a coluna existir;
+  -- NEW.no_cpf_reason direto quebraria todo UPDATE de paciente nesse
+  -- intervalo (o PL/pgSQL resolve o campo ao planejar o IF).
+  IF OLD.cpf IS NULL AND NEW.cpf IS NOT NULL AND (to_jsonb(NEW) ->> 'no_cpf_reason') IS NOT NULL THEN
     RAISE EXCEPTION 'patients: the CPF arrives taking the no-CPF reason away';
   END IF;
   RETURN NEW;
