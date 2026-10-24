@@ -226,4 +226,5 @@ Rails.application.config.to_prepare do
   # Módulo 24a (ADR 0042): cadastro territorial, só trilha, só ids. Nunca CPF,
   # CNS, nome, nascimento ou justificativa sem CPF.
   DomainEvents.bind "patient.cpf_added", to: []
+  DomainEvents.bind "micro_area.changed", to: []
 end

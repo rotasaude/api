@@ -6,6 +6,9 @@ module TerritoryRegistry
     ACS_CBO = "515105"
     ENDEMIC_AGENT_CBO = "515140"
     REGISTRAR_CBO_PREFIXES = %w[2235 2251 2252 2253].freeze
+    # Equipes que têm microárea (contrato §3): eSF (70) e eAP (76). Fixo aqui,
+    # não HealthTeam::KINDS: um tipo novo vindo do CNES não ganha microárea.
+    TEAM_KINDS = %w[70 76].freeze
     VALIDITY_MONTHS = 24
     DUE_SOON_DAYS = 60
     EXIT_REASONS = %w[moved death].freeze

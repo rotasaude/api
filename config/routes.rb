@@ -491,6 +491,15 @@ Rails.application.routes.draw do
     get  ":id/shifts",        to: "professional_shifts#index"
   end
 
+  # Módulo 24a (ADR 0042; contrato §3, §14 L2): cadastro territorial, sessão do
+  # dashboard. As rotas do 11 (/territory/neighborhoods) seguem no TerritoryController.
+  scope "/territory", module: "territory_registry", as: "territory_registry" do
+    get   "admin/teams",           to: "admin_teams#index"
+    get   "admin/micro_areas",     to: "micro_areas#index"
+    post  "admin/micro_areas",     to: "micro_areas#create"
+    patch "admin/micro_areas/:id", to: "micro_areas#update"
+  end
+
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo
   # único: uma entrada só no proxy de dev do dashboard.
   scope "/territory" do
