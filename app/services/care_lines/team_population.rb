@@ -6,6 +6,13 @@
 # §12): o paciente cuja consulta finalizada nos 24 meses NÃO dá equipe
 # (nenhuma, ou só com plantonista sem equipe) segue a regra do par sem
 # paciente, pelo bairro do par validado mais antigo dele.
+# Cadastro individual ativo (24a, ADR 0042) → equipe da microárea; P18/P22
+# para quem não tem. Com o interruptor territory_registry ligado (Gate, só a
+# plataforma), o cadastro sem saída de equipe ativa vence a consulta e o
+# território (contrato §9): a equipe da microárea do domicílio ou, fora de
+# área, a do cadastro (TerritoryRegistry::Teams); vale desde a gravação, sem
+# esperar o SIAPS. Saída por mudança devolve as regras de antes; desligado, a
+# regra de antes, sem ler o cadastro.
 module CareLines
   module TeamPopulation
     LOOKBACK = 24.months
@@ -27,9 +34,33 @@ module CareLines
     # equipe pela consulta (P18) cujo par validado mais antigo mora num bairro
     # coberto pela unidade dela: quem é da equipe só pode estar aí. O filtro só
     # escolhe QUEM entra; a equipe de cada um não muda.
+    #
+    # Cadastro ligado: `involving_team:` também traz os cadastrados da equipe
+    # (o paciente sem CPF, sem consulta nem par, só entra assim), e quem a
+    # consulta ou o território trouxe mas tem cadastro em outra equipe sai
+    # com a equipe do cadastro. O interruptor e até duas consultas a mais,
+    # constantes.
     def patient_teams(patient_ids = nil, involving_team: nil)
       return {} if patient_ids && patient_ids.empty?
 
+      teams = consultation_teams(patient_ids, involving_team)
+      return teams unless TerritoryRegistry::Gate.enabled?(Current.city)
+
+      registry_teams(teams, patient_ids, involving_team)
+    end
+
+    # consulta.merge(território).merge(cadastro): o cadastro vence. Com
+    # equipe, os cadastrados dela e o cadastro de quem já veio.
+    def registry_teams(teams, patient_ids, team)
+      return teams.merge(TerritoryRegistry::Teams.for_patients(patient_ids)) unless team
+
+      registered = TerritoryRegistry::Teams.for_patients(patient_ids, team: team)
+      teams.merge(TerritoryRegistry::Teams.for_patients(teams.keys - registered.keys)).merge(registered)
+    end
+    private_class_method :registry_teams
+
+    # A regra do módulo 23 (consulta e território), sem o cadastro.
+    def consultation_teams(patient_ids, involving_team)
       filter = patient_ids ? ApplicationRecord.sanitize_sql([ "AND c.patient_id IN (?)", patient_ids ]) : ""
       cutoff = LOOKBACK.ago
       territorial = territory_neighborhoods(patient_ids, involving_team, cutoff)
@@ -46,6 +77,7 @@ module CareLines
       # mesmo corte): nunca colidem com as chaves da consulta.
       ApplicationRecord.connection.select_rows(sql).to_h.merge(territory_teams(territorial))
     end
+    private_class_method :consultation_teams
 
     # P18: paciente sem consulta finalizada no corte que dê equipe (nenhuma
     # consulta, ou só com plantonista sem equipe, membro desligado, equipe

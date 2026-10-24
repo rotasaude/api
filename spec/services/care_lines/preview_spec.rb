@@ -179,4 +179,16 @@ RSpec.describe CareLines::Preview do
     care_enrollment!(patient: mom, line: adopted_line!("pregnancy_c3"), team: team, by: doctor, anchor_date: today - 60)
     expect(described_class.call(team: team, indicator: "C3", today: today)).to include(denominator: 1)
   end
+
+  # Módulo 24a (contrato §9; F-24.8): o paciente sem CPF, sem consulta e sem
+  # par validado só tem equipe pelo cadastro individual — e entra no
+  # denominador da prévia dela.
+  it "paciente sem CPF de 65 anos com cadastro na equipe entra no denominador de elderly_c6" do
+    registry_city!
+    patient = registry_patient_without_cpf!
+    patient.update!(birth_date: (today - 65.years).iso8601)
+    expect(described_class.call(team: team, indicator: "C6", today: today)).to include(denominator: 0)
+    registry_registration!(patient: patient, household: registry_household!(micro_area: registry_micro_area!(code: "01", team: team)))
+    expect(described_class.call(team: team, indicator: "C6", today: today)).to include(denominator: 1)
+  end
 end

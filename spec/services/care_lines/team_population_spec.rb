@@ -302,4 +302,96 @@ RSpec.describe CareLines::TeamPopulation do
       expect(count_queries { described_class.call(team: team_a, line: elderly, rules: elderly.eligibility) }).to eq(small_call)
     end
   end
+
+  # Módulo 24a (ADR 0042; contrato §9; F-24.8): com o interruptor
+  # territory_registry ligado, o cadastro individual ativo vence a consulta e
+  # o território — equipe da microárea do domicílio, ou a do cadastro fora de
+  # área. Saída por mudança devolve a regra antiga; desligado, nada muda.
+  describe "cadastro individual (módulo 24a, contrato §9)" do
+    before { registry_city! }
+
+    def exit!(registration, reason)
+      params = { "reason" => reason, "on" => Time.zone.today.iso8601 }
+      params["death_on"] = Time.zone.today.iso8601 if reason == "death"
+      result = TerritoryRegistry::ExitRegistration.call(registration: registration, params: params, by: registry_acs_of(registration.household))
+      raise "saída recusada: #{result.reason}" if result.failure?
+    end
+
+    def switch!(enabled)
+      Platform::Features.set!(city: City.find(Current.city.id), key: "territory_registry", enabled: enabled, maintainer: ledi_maintainer!)
+    end
+
+    it "cadastro ativo vence a consulta: equipe da microárea do domicílio" do
+      patient = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+      registry_registration!(patient: patient, household: registry_household!(micro_area: registry_micro_area!(code: "01", team: team_b)))
+      expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_b.id)
+      expect(described_class.patient_teams(nil, involving_team: team_b)).to include(patient.id => team_b.id)
+      expect(described_class.patient_teams(nil, involving_team: team_a)).not_to include(patient.id => team_a.id)
+      expect(described_class.patient_teams([ patient.id ], involving_team: team_a)).not_to include(patient.id => team_a.id)
+      expect(described_class.call(team: team_a, line: diabetes, rules: diabetes.eligibility)).to eq([])
+      expect(described_class.call(team: team_b, line: diabetes, rules: diabetes.eligibility).map { |person, _| person.patient_id }).to eq([ patient.id ])
+    end
+
+    it "cadastro vence o território (P18); fora de área (sem domicílio): a equipe do cadastro" do
+      patient = care_patient!(age: 72, sex: "female")
+      Citizen.find_by!(patient_id: patient.id).update!(neighborhood: care_neighborhood!(unit_a))
+      expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_a.id)
+      result = TerritoryRegistry::SaveRegistration.call(params: registry_registration_params(team_b, patient: patient), by: registry_acs_of(team_b))
+      expect(result.payload[:registration]).to have_attributes(household_id: nil, team_id: team_b.id)
+      expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_b.id)
+      # O filtro por equipe escolhe quem entra; a equipe de cada um é a do cadastro.
+      expect(described_class.patient_teams(nil, involving_team: team_a)).to eq(patient.id => team_b.id)
+      expect(described_class.patient_teams(nil, involving_team: team_b)).to eq(patient.id => team_b.id)
+    end
+
+    it "paciente sem CPF só entra pelo cadastro" do
+      patient = registry_patient_without_cpf!(cns: valid_cns(8))
+      expect(described_class.patient_teams(nil, involving_team: team_a)).not_to have_key(patient.id)
+      registry_registration!(patient: patient, household: registry_household!(micro_area: registry_micro_area!(code: "01", team: team_a)))
+      expect(described_class.patient_teams(nil, involving_team: team_a)).to include(patient.id => team_a.id)
+      expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_a.id)
+    end
+
+    it "saída por mudança devolve a regra antiga; interruptor desligado ignora o cadastro" do
+      patient = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+      registration = registry_registration!(patient: patient, household: registry_household!(micro_area: registry_micro_area!(code: "01", team: team_b)))
+      exit!(registration, "moved")
+      expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_a.id)
+      other = care_patient!(age: 61, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+      registry_registration!(patient: other, household: registry_household!(micro_area: registry_micro_area!(code: "02", team: team_b)))
+      expect(described_class.patient_teams([ other.id ])).to eq(other.id => team_b.id)
+      switch!(false)
+      expect(TerritoryRegistry::Teams).not_to receive(:for_patients)
+      expect(described_class.patient_teams([ other.id ])).to eq(other.id => team_a.id)
+      expect(described_class.patient_teams(nil, involving_team: team_a)).to eq(patient.id => team_a.id, other.id => team_a.id)
+      expect(described_class.patient_teams(nil, involving_team: team_b)).to eq({})
+    end
+
+    it "cadastro em equipe inativa não conta: a regra antiga" do
+      patient = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+      registry_registration!(patient: patient, household: registry_household!(micro_area: registry_micro_area!(code: "01", team: team_b)))
+      team_b.update!(active: false)
+      expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_a.id)
+    end
+
+    it "o número de consultas continua constante com o cadastro ligado" do
+      area_a = registry_micro_area!(code: "03", team: team_a)
+      area_b = registry_micro_area!(code: "04", team: team_b)
+      enroll = lambda do
+        registry_registration!(household: registry_household!(micro_area: area_a))
+        mine = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+        registry_registration!(patient: mine, household: registry_household!(micro_area: area_b))
+      end
+      enroll.call
+      small = count_queries { described_class.patient_teams(nil, involving_team: team_a) }
+      ids = Patient.pluck(:id)
+      small_ids = count_queries { described_class.patient_teams(ids) }
+      3.times { enroll.call }
+      teams = described_class.patient_teams(nil, involving_team: team_a)
+      expect(teams.values.tally).to eq(team_a.id => 4, team_b.id => 4)
+      expect(count_queries { described_class.patient_teams(nil, involving_team: team_a) }).to eq(small)
+      ids = Patient.pluck(:id)
+      expect(count_queries { described_class.patient_teams(ids) }).to eq(small_ids)
+    end
+  end
 end

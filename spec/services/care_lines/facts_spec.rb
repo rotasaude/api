@@ -105,4 +105,30 @@ RSpec.describe CareLines::Facts do
     expect(described_class.patients([])).to eq({})
     expect(described_class.citizens([])).to eq({})
   end
+
+  # Módulo 24a (contrato §9; F-24.8): a saída do cadastro individual por óbito
+  # também é a marca do óbito, junto da inscrição encerrada por death.
+  it "deceased: saída do cadastro por óbito também marca, junto da inscrição encerrada por óbito, numa consulta" do
+    registry_city!
+    exit = lambda do |registration, reason|
+      params = { "reason" => reason, "on" => Time.zone.today.iso8601 }
+      params["death_on"] = Time.zone.today.iso8601 if reason == "death"
+      expect(TerritoryRegistry::ExitRegistration.call(registration: registration, params: params,
+                                                       by: registry_acs_of(registration.household))).to be_ok
+    end
+    dead = registry_registration!
+    exit.call(dead, "death")
+    moved = registry_registration!
+    exit.call(moved, "moved")
+    alive = registry_registration!
+    enrolled = care_patient!(age: 60, sex: "male")
+    care_enrollment!(patient: enrolled, line: adopted_line!("diabetes_c4"), team: care_team!(unit, doctor), by: doctor)
+      .update!(status: "ended", ended_reason: "death", ended_at: 1.day.ago, ended_by_user: doctor)
+    ids = [ dead.patient_id, moved.patient_id, alive.patient_id, enrolled.id ]
+    count = 0
+    counter = ->(*, payload) { count += 1 unless %w[SCHEMA TRANSACTION].include?(payload[:name]) || payload[:cached] }
+    result = ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { described_class.deceased(ids) }
+    expect(result).to eq(Set[dead.patient_id, enrolled.id])
+    expect(count).to eq(1)
+  end
 end

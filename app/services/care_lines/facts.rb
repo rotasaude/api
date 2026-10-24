@@ -46,13 +46,21 @@ module CareLines
     end
 
     # Pacientes com QUALQUER inscrição encerrada por óbito, em qualquer linha
-    # e a qualquer tempo (P19/P21; uma consulta). A marca única do óbito: o
-    # Suggest a usa para calar sugestões, a população da prévia para tirar a
-    # pessoa do denominador. `ended_reason` fica em claro (enum com CHECK).
+    # e a qualquer tempo (P19/P21), OU com o cadastro individual saído por
+    # óbito (módulo 24a, contrato §9) — uma consulta (UNION). A marca única do
+    # óbito: o Suggest a usa para calar sugestões, a população da prévia para
+    # tirar a pessoa do denominador. `ended_reason` e `exit_reason` ficam em
+    # claro (enums com CHECK). Não depende do interruptor: o óbito gravado
+    # continua óbito se o cadastro for desligado depois.
     def deceased(patient_ids)
       return Set.new if patient_ids.empty?
 
-      CareLineEnrollment.where(patient_id: patient_ids, status: "ended", ended_reason: "death").distinct.pluck(:patient_id).to_set
+      sql = ApplicationRecord.sanitize_sql([ <<~SQL, patient_ids, patient_ids ])
+        SELECT patient_id FROM care_line_enrollments WHERE patient_id IN (?) AND status = 'ended' AND ended_reason = 'death'
+        UNION
+        SELECT patient_id FROM individual_registrations WHERE patient_id IN (?) AND exit_reason = 'death'
+      SQL
+      ApplicationRecord.connection.select_values(sql).to_set
     end
 
     # Pacientes com problema ativo que casa por prefixo (uma consulta).

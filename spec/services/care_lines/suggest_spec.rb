@@ -202,4 +202,21 @@ RSpec.describe CareLines::Suggest do
     expect(described_class.run(today: today)[:closures]).to eq(2)
     expect(CareLineSuggestion.where(reason: "resolved_problem").pluck(:patient_id)).to match_array(two.map(&:id))
   end
+
+  # Módulo 24a (contrato §9; F-24.8): a saída do cadastro por óbito cala as
+  # sugestões como a inscrição encerrada por óbito.
+  it "saída do cadastro individual por óbito: nem sugestão de inscrição nem de encerramento" do
+    registry_city!
+    hypertension = adopted_line!("hypertension_c5")
+    area = registry_micro_area!(code: "01", team: team)
+    patient = care_patient!(age: 58, sex: "male", problems: [ %w[ciap2 T90], %w[ciap2 K86] ], unit: unit, doctor: doctor)
+    care_enrollment!(patient: patient, line: hypertension, team: team, by: doctor)
+    resolve_problem!(patient, "K86", by: doctor)
+    registration = registry_registration!(patient: patient, household: registry_household!(micro_area: area))
+    params = { "reason" => "death", "on" => today.iso8601, "death_on" => today.iso8601 }
+    expect(TerritoryRegistry::ExitRegistration.call(registration: registration, params: params, by: registry_acs_of(area))).to be_ok
+    expect(described_class.run(today: today)).to eq(created: 0, closures: 0)
+    expect(described_class.for_patient(patient.id, today: today)).to eq(0)
+    expect(CareLineSuggestion.where(patient_id: patient.id)).not_to exist
+  end
 end
