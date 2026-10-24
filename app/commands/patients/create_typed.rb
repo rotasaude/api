@@ -23,7 +23,10 @@ module Patients
       cpf = parsed.payload[:cpf]
       return Result.fail(:cns_taken) if values["cns"] && Patient.exists?(cns: values["cns"])
 
-      ApplicationRecord.transaction do
+      # Savepoint próprio: dentro da transação de quem chama (SaveRegistration),
+      # a violação do idx_patients_cns desfaz só este trecho e o rescue
+      # devolve cns_taken — sem savepoint, a transação de fora ficaria abortada.
+      ApplicationRecord.transaction(requires_new: true) do
         patient = Patient.new(values)
         if cpf
           added = AddCpf.call(patient: patient, cpf: cpf, by: by)

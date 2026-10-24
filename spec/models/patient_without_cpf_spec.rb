@@ -69,6 +69,18 @@ RSpec.describe "Paciente sem CPF" do
     expect(Patient.count).to eq(1)
   end
 
+  it "dentro da transação de quem chama, a corrida do CNS vira cns_taken e a transação segue usável" do
+    expect(typed(cns: valid_cns(5))).to be_ok
+    allow(Patient).to receive(:exists?).and_wrap_original do |original, *args, **kw|
+      conditions = args.first || kw
+      conditions.is_a?(Hash) && conditions.key?(:cns) ? false : original.call(*args, **kw)
+    end
+    ApplicationRecord.transaction do
+      expect(typed(cns: valid_cns(5), full_name: "Ana Maria Souza").reason).to eq(:cns_taken)
+      expect(Patient.count).to eq(1)
+    end
+  end
+
   it "com CPF delega ao AddCpf: grava o CPF, sem justificativa, e liga o par validado" do
     citizen = verified_citizen!(9, full_name: "João Pedro da Silva", sex: "male")
     result = typed(no_cpf_reason: nil, cpf: citizen.cpf)
