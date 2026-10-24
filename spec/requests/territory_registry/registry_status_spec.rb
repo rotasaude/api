@@ -87,7 +87,7 @@ RSpec.describe "Território — validade e quem falta cadastrar", type: :request
     get "/territory/registry_status", params: { team_id: team.id }
     expect(json_body["people"]).to eq([ { "patient_id" => patient.id, "citizen_id" => nil, "display_name" => patient.display_name,
                                           "age" => 60, "micro_area_code" => nil, "status" => "missing", "registered_at" => nil,
-                                          "registration_id" => nil } ])
+                                          "registration_id" => nil, "identity_review_pending" => false } ])
   end
 
   it "validade conta da ÚLTIMA gravação: atualizar ontem um cadastro de 25 meses o torna válido" do
@@ -149,7 +149,7 @@ RSpec.describe "Território — validade e quem falta cadastrar", type: :request
     get "/territory/registry_status", params: { team_id: team.id }
     expect(json_body["people"]).to eq([ { "patient_id" => nil, "citizen_id" => citizen.id, "display_name" => citizen.display_name,
                                           "age" => 30, "micro_area_code" => nil, "status" => "missing", "registered_at" => nil,
-                                          "registration_id" => nil } ])
+                                          "registration_id" => nil, "identity_review_pending" => false } ])
     expect(viewed.last.payload).to include("person_ref" => "citizen:#{citizen.id}", "patient_id" => nil, "access" => "territory_registry")
   end
 

@@ -1,11 +1,11 @@
-# Validação no posto depois do cadastro (contrato §14 L4; plano, Desvio 5):
-# quando Patients::Resolve.refresh! troca nome, nome social, mãe, nascimento
-# ou sexo de um paciente com cadastro individual ativo, os dados validados
-# substituem os digitados — nova versão `identity_refresh` (mesmas seções) e
-# a ficha, em nome de quem gravou a versão anterior (o LEDI pede o
-# profissional do cadastro; ninguém digitou nada agora) —, e o cadastro
-# marca identity_changed_at (a tela mostra o que mudou). Sem o interruptor
-# (Gate.enabled?, só a plataforma) só marca.
+# Validação no posto depois do cadastro (contrato §14 L4, L24): quando
+# Patients::Resolve.refresh! troca nome, nome social, mãe, nascimento ou sexo
+# de um paciente com cadastro individual ativo, os dados validados já estão
+# no PACIENTE; o cadastro só ganha a marca identity_changed_at (com o
+# interruptor ligado ou não). L24: nunca versão nem ficha em nome de quem
+# não agiu — a próxima gravação de quem cadastra leva a identidade validada
+# (SaveRegistration lê a identidade atual do paciente), em nome dela; até
+# lá, identity_review_pending (IndividualRegistration) avisa a equipe.
 #
 # Roda na transação de quem chamou, com o paciente já travado (Resolve e
 # AddCpf travam): trava o cadastro depois (ordem do Desvio 12).
@@ -18,7 +18,7 @@ module TerritoryRegistry
 
     module_function
 
-    # :versioned | :marked | :none
+    # :marked | :none
     def call(patient)
       collector = ActiveSupport::IsolatedExecutionState[SUPPRESSED]
       if collector
@@ -34,17 +34,8 @@ module TerritoryRegistry
       changed = Identity.changed_fields(latest.identity, Identity.snapshot(patient)) & WATCHED
       return :none if changed.empty?
 
-      now = Time.current
-      unless Gate.enabled?(Current.city)
-        registration.update!(identity_changed_at: now)
-        return :marked
-      end
-
-      SaveRegistration.append!(registration, origin: "identity_refresh", saved_by_user_id: latest.saved_by_user_id,
-                                             saved_by_professional_id: latest.saved_by_professional_id, saved_cbo: latest.saved_cbo,
-                                             header: { identity_changed_at: now, registered_at: now,
-                                                       registered_by_user_id: latest.saved_by_user_id }, at: now)
-      :versioned
+      registration.update!(identity_changed_at: Time.current)
+      :marked
     end
 
     # Dentro do bloco, call só anota em `collector` o id do paciente.

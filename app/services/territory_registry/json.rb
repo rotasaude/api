@@ -64,7 +64,8 @@ module TerritoryRegistry
         refused: registration.refused?, exit: registration_exit(registration), status: registration_status(registration, patient),
         version: registration.version, registered_at: registration.registered_at.iso8601,
         registered_by: { name: registration.registered_by_user.professional&.professional_name },
-        identity_changed_at: registration.identity_changed_at&.iso8601 }
+        identity_changed_at: registration.identity_changed_at&.iso8601,
+        identity_review_pending: registration.identity_review_pending? }
     end
 
     def registration_exit(registration)
@@ -83,7 +84,8 @@ module TerritoryRegistry
     def person_row(person, status:, registration:, today:)
       { patient_id: person.is_a?(Patient) ? person.id : nil, citizen_id: person.is_a?(Citizen) ? person.id : nil,
         display_name: person.display_name, age: person.age(on: today), micro_area_code: registration&.micro_area&.code,
-        status: status, registered_at: registration&.registered_at&.iso8601, registration_id: registration&.id }
+        status: status, registered_at: registration&.registered_at&.iso8601, registration_id: registration&.id,
+        identity_review_pending: registration&.identity_review_pending? || false }
     end
 
     # Candidato a duplicado (contrato §5): sem CPF, CNS nem mãe.

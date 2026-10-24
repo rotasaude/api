@@ -38,7 +38,7 @@
 #   - Evento territory_registration.saved só com ids.
 #
 # `append!` grava uma versão derivada da última (troca de microárea do
-# domicílio, IdentityRefresh, ExitRegistration), com a ficha.
+# domicílio, ExitRegistration), com a ficha.
 module TerritoryRegistry
   module SaveRegistration
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/

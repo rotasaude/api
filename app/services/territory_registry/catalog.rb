@@ -39,6 +39,8 @@ module TerritoryRegistry
     # Situação do cadastro (contrato §1; §14 L5: missing_identifier = cadastro
     # gravado sem CPF e sem CNS; TerritoryRegistry::Validity decide).
     STATUSES = %w[valid due_soon expired missing missing_identifier refused exited].freeze
+    # identity_refresh: nada mais grava (L24 — a validação no posto só marca
+    # identity_changed_at); fica aqui e no CHECK da migração (irreversível).
     VERSION_ORIGINS = %w[save identity_refresh exit].freeze
 
     module_function

@@ -164,6 +164,45 @@ RSpec.describe "Território — cadastro individual", type: :request do
     expect(json_body).to eq("error" => "identity_locked", "path" => "patient.full_name")
   end
 
+  # Contrato §14 L24 (coordenadora; substitui o I2 da onda final): a validação
+  # no posto depois do cadastro NUNCA grava versão nem ficha em nome de quem
+  # não agiu — só marca identity_changed_at; identity_review_pending avisa a
+  # equipe. A próxima gravação leva a identidade validada, em nome de quem gravou.
+  it "validação no posto depois do cadastro: só a marca; a próxima gravação leva a identidade validada em nome de quem gravou" do
+    nurse = registry_nurse!(unit, team: team)
+    patient, citizen = exam_patient!(61, age: 40, sex: "female")
+    saved = TerritoryRegistry::SaveRegistration.call(params: registry_registration_params(household, patient: patient), by: nurse)
+    expect(saved).to be_ok
+    registration = saved.payload[:registration]
+    outbox = LediOutboxEntry.count
+    citizen.update!(full_name: "Maria Aparecida Validada")
+    Patients::Resolve.refresh!(patient.reload)
+    registration.reload
+    expect([ registration.version, registration.versions.count, LediOutboxEntry.count ]).to eq([ 1, 1, outbox ])
+    expect(registration.identity_changed_at).to be > registration.registered_at
+
+    sign_in_as(nurse)
+    get "/territory/registrations/#{registration.id}"
+    expect(json_body).to include("version" => 1, "identity_review_pending" => true)
+    get "/territory/registry_status", params: { team_id: team.id }
+    expect(json_body["people"].sole).to include("registration_id" => registration.id, "status" => "valid", "identity_review_pending" => true)
+
+    sign_in_as(acs)
+    json_patch "/territory/registrations/#{registration.id}", registry_registration_params(household, patient: patient).merge("version" => 1)
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to include("version" => 2, "identity_review_pending" => false)
+    version = registration.reload.latest_version
+    expect(version).to have_attributes(origin: "save", saved_by_user_id: acs.id)
+    expect(version.identity).to include("full_name" => "Maria Aparecida Validada")
+    entry = LediOutboxEntry.find_by!(source_id: version.id)
+    header = Ledi::Version.deserialize(Ledi::FichaTypes.klass("cadastro_individual"), Ledi::Transport.read(entry.bytes).dadoSerializado)
+                          .headerTransport
+    expect(header.profissionalCNS).to eq(acs.professional.cns)
+    sign_in_as(nurse)
+    get "/territory/registry_status", params: { team_id: team.id }
+    expect(json_body["people"].sole).to include("identity_review_pending" => false)
+  end
+
   it "leitura nominal com trilha por pessoa; enfermeiro da equipe lê; profissional de fora → 404" do
     registration = registry_registration!(household: household)
     sign_in_as(registry_nurse!(unit, team: team))

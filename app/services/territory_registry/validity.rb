@@ -1,7 +1,7 @@
 # Situação de um cadastro individual (módulo 24a, F-24.6; contrato §1, §6;
 # §14 L5, L19). Ordem: saída → recusa → sem CPF e sem CNS
 # (missing_identifier: a equipe precisa obter o CNS, a ficha não nasce) →
-# vencido (24 meses contados do DIA da última gravação save/identity_refresh,
+# vencido (24 meses contados do DIA da última gravação save,
 # o registered_at do cabeçalho; nunca a saída) → a vencer (até 60 dias antes)
 # → válido. O dia é o da cidade (Time.zone). `identified:` vem de quem chama
 # (CPF ou CNS presente) para a lista e a contagem decidirem em lote, sem

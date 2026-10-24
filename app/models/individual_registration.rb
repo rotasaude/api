@@ -1,8 +1,8 @@
 # Cadastro individual (módulo 24a, ADR 0042): cabeçalho da última versão. Um
 # ativo por paciente (índice único parcial); a saída (moved | death) acontece
 # uma vez e congela o cadastro (trigger). registered_at/registered_by_user =
-# instante e autor da última versão `save` ou `identity_refresh` (nunca a
-# `exit`). Recusa ("true"/"false") e número da DO cifrados.
+# instante e autor da última versão `save` (nunca a `exit`; `identity_refresh`
+# não é mais gravada — L24). Recusa ("true"/"false") e número da DO cifrados.
 class IndividualRegistration < ApplicationRecord
   encrypts :refused, :death_certificate
 
@@ -21,6 +21,11 @@ class IndividualRegistration < ApplicationRecord
   validates :exit_reason, inclusion: { in: TerritoryRegistry::Catalog::EXIT_REASONS }, allow_nil: true
 
   def refused? = refused == "true"
+
+  # L24: a validação no posto mudou a identidade do paciente depois da última
+  # versão (registered_at = o instante dela no cadastro ativo); a próxima
+  # gravação a leva. Cadastro que saiu não espera revisão.
+  def identity_review_pending? = exit_reason.nil? && identity_changed_at.present? && identity_changed_at > registered_at
   def exited? = exit_reason.present?
 
   def latest_version = versions.reorder(version: :desc).first
