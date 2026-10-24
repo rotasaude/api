@@ -150,18 +150,15 @@ module CareLines
     # validade do cadastro): pacientes cuja equipe é ela (patient_teams, com o
     # cadastro quando ligado) e pares validados sem paciente cuja única equipe
     # do bairro é ela. Sem óbito nem elegibilidade (quem chama decide); o par
-    # cujo CPF já tem paciente ainda está aqui (Facts.citizens/one_per_cpf o
-    # tiram). Os pares em tuplas (pluck), nunca objetos: `citizens:` são os
-    # [id, cpf] da equipe, para a validade não ler os pares de novo.
+    # cujo CPF já tem paciente e o par repetido do mesmo CPF ficam de fora no
+    # SQL (Facts.one_per_cpf). Os pares em tuplas (pluck), nunca objetos.
     def members(team:)
       patient_ids = patient_teams(involving_team: team).select { |_, team_id| team_id == team.id }.keys
-      candidates = Citizen.not_erased.verification_level_verified.where(patient_id: nil)
-                          .where(neighborhood_id: NeighborhoodCoverage.where(health_unit_id: team.health_unit_id).select(:neighborhood_id))
-                          .pluck(:id, :neighborhood_id, :cpf)
-      ids = territory_teams(candidates.to_h { |id, neighborhood_id, _| [ id, neighborhood_id ] })
-              .select { |_, team_id| team_id == team.id }.keys.to_set
-      citizens = candidates.filter_map { |id, _, cpf| [ id, cpf ] if ids.include?(id) }
-      { patient_ids: patient_ids, citizen_ids: citizens.map(&:first), citizens: citizens }
+      covered = NeighborhoodCoverage.where(health_unit_id: team.health_unit_id).select(:neighborhood_id)
+      candidates = Facts.one_per_cpf(Citizen.not_erased.verification_level_verified.where(patient_id: nil, neighborhood_id: covered))
+                        .pluck(:id, :neighborhood_id).to_h
+      citizen_ids = territory_teams(candidates).select { |_, team_id| team_id == team.id }.keys
+      { patient_ids: patient_ids, citizen_ids: citizen_ids }
     end
 
     # Pessoas da equipe, elegíveis para o denominador das regras, com a
@@ -176,7 +173,8 @@ module CareLines
       population = members(team: team)
       prospects = population[:patient_ids] - enrolled.keys
       if line
-        elsewhere = CareLineEnrollment.active_enrollments.where(care_line: line, patient_id: prospects).pluck(:patient_id, :team_id)
+        elsewhere = CareLineEnrollment.active_enrollments.where(care_line: line)
+                                      .where(Facts.any_uuid(CareLineEnrollment.arel_table[:patient_id], prospects)).pluck(:patient_id, :team_id)
         prospects -= elsewhere.map(&:first)
       end
       # P21: óbito em qualquer linha tira a pessoa do denominador de todas.

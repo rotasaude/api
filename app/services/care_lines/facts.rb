@@ -1,7 +1,9 @@
 # O que a elegibilidade precisa de cada pessoa, decifrado em lote (consultas
 # constantes por lote): nascimento e sexo (paciente ou par), identidade de
 # gênero e condições declaradas (pares validados), problemas ativos e
-# resolvidos. Nada é gravado.
+# resolvidos. Nada é gravado. Listas de ids vão ao banco num bind só
+# (`any_uuid`: = ANY(CAST($1 AS uuid[]))), nunca como IN no texto do SQL — o
+# SQL não cresce com a equipe (revisão final do 24a, M2: ESF até 4.000).
 module CareLines
   module Facts
     module_function
@@ -10,11 +12,12 @@ module CareLines
       ids = ids.uniq
       return {} if ids.empty?
 
-      problems = PatientProblem.where(patient_id: ids).pluck(:patient_id, :terminology, :code, :status, :id, :created_at).group_by(&:first)
+      problems = PatientProblem.where(any_uuid(PatientProblem.arel_table[:patient_id], ids)).pluck(:patient_id, :terminology, :code, :status, :id, :created_at).group_by(&:first)
       activated = last_activation(problems.values.flatten(1).select { |r| r[3] == "active" })
-      pairs = Citizen.not_erased.verification_level_verified.where(patient_id: ids).order(updated_at: :desc).to_a.group_by(&:patient_id)
+      pairs = Citizen.not_erased.verification_level_verified.where(any_uuid(Citizen.arel_table[:patient_id], ids))
+                     .order(updated_at: :desc).to_a.group_by(&:patient_id)
       declared = declared_by_citizen(pairs.values.flatten.map(&:id))
-      Patient.where(id: ids).to_a.to_h do |patient|
+      Patient.where(any_uuid(Patient.arel_table[:id], ids)).to_a.to_h do |patient|
         linked = pairs.fetch(patient.id, [])
         rows = problems.fetch(patient.id, [])
         [ patient.id, Person.new(patient_id: patient.id, birth_date: date(patient.birth_date), sex: patient.sex,
@@ -29,17 +32,16 @@ module CareLines
     # Pares validados sem paciente, uma pessoa por CPF (revisão final, Minor
     # 1): o par cujo CPF já tem paciente fica de fora (a pessoa é o paciente;
     # o Resolve os ligaria); entre pares sem paciente do mesmo CPF, só o mais
-    # antigo (created_at, id) — o mesmo critério do território (P18). Duas
-    # consultas a mais por lote, contra a cidade toda (o mais antigo pode
-    # estar em outro lote).
+    # antigo (created_at, id) — o mesmo critério do território (P18). No SQL
+    # (one_per_cpf), contra a cidade toda (o mais antigo pode estar em outro lote).
     def citizens(ids)
       ids = ids.uniq
       return {} if ids.empty?
 
       declared = declared_by_citizen(ids)
-      rows = Citizen.not_erased.verification_level_verified.where(id: ids, patient_id: nil).to_a
-      kept = one_per_cpf(rows.map { |citizen| [ citizen.id, citizen.cpf ] })
-      rows.select { |citizen| kept.include?(citizen.id) }.to_h do |citizen|
+      rows = one_per_cpf(Citizen.not_erased.verification_level_verified.where(patient_id: nil)
+                                .where(any_uuid(Citizen.arel_table[:id], ids))).to_a
+      rows.to_h do |citizen|
         [ citizen.id, Person.new(citizen_id: citizen.id, birth_date: date(citizen.birth_date), sex: citizen.sex,
                                  gender_identity: citizen.gender_identity, declared: declared.fetch(citizen.id, [])) ]
       end
@@ -70,6 +72,13 @@ module CareLines
       ActiveRecord::Relation::QueryAttribute.new("ids", "{#{ids.join(',')}}", ActiveRecord::Type::String.new)
     end
 
+    # `column = ANY(CAST($n AS uuid[]))` com a lista num bind só (Arel
+    # BindParam — nunca sanitize_sql, que poria a lista no texto do SQL).
+    def any_uuid(column, ids)
+      array = Arel::Nodes::NamedFunction.new("CAST", [ Arel::Nodes::As.new(Arel::Nodes::BindParam.new(uuid_array(ids)), Arel.sql("uuid[]")) ])
+      Arel::Nodes::InfixOperation.new("=", column, Arel::Nodes::NamedFunction.new("ANY", [ array ]))
+    end
+
     # Pacientes com problema ativo que casa por prefixo (uma consulta).
     # `among:` cruza no SQL com os ids já escolhidos (a prévia: só a equipe).
     def problem_candidates(rules, among: nil)
@@ -79,28 +88,28 @@ module CareLines
       return [] if clauses.empty?
 
       scope = PatientProblem.active_problems.where(clauses.join(" OR "))
-      scope = scope.where(patient_id: among) if among
+      scope = scope.where(any_uuid(PatientProblem.arel_table[:patient_id], among)) if among
       scope.distinct.pluck(:patient_id)
     end
 
-    # Ids dos pares (Citizen) que representam a pessoa: sem paciente com o
-    # mesmo CPF e o mais antigo do CPF. Recebe tuplas [id, cpf] (pluck).
-    # Público para a validade do cadastro (TerritoryRegistry::RegistryStatus),
-    # que não decifra o resto do par.
-    def one_per_cpf(pairs)
-      return Set.new if pairs.empty?
-
-      cpfs = pairs.map(&:last).uniq
-      with_patient = Patient.where(cpf: cpfs).pluck(:cpf).to_set
-      oldest = Citizen.not_erased.verification_level_verified.where(patient_id: nil, cpf: cpfs).order(:created_at, :id)
-                      .pluck(:cpf, :id).each_with_object({}) { |(cpf, id), out| out[cpf] ||= id }
-      pairs.filter_map { |id, cpf| id if !with_patient.include?(cpf) && oldest[cpf] == id }.to_set
+    # Os pares (Citizen) de `scope` que representam a pessoa, no SQL: sem
+    # paciente com o mesmo CPF e o mais antigo (created_at, id) entre os
+    # validados sem paciente do CPF, na cidade toda. CPF é cifra determinística
+    # com a mesma chave (CityDeterministicKeyProvider) em Citizen e Patient e
+    # extend_queries está desligado: igualdade de cifra = de CPF, o mesmo que
+    # o where(cpf:) faria. Público para TeamPopulation.members.
+    def one_per_cpf(scope)
+      scope.where.not(cpf: Patient.where.not(cpf: nil).select(:cpf)).where(<<~SQL.squish)
+        NOT EXISTS (SELECT 1 FROM citizens o
+                     WHERE o.cpf = citizens.cpf AND o.patient_id IS NULL AND o.erased_at IS NULL
+                       AND o.verification_level = 'verified' AND (o.created_at, o.id) < (citizens.created_at, citizens.id))
+      SQL
     end
 
     def declared_by_citizen(citizen_ids)
       return {} if citizen_ids.empty?
 
-      CitizenDeclaredCondition.current.where(citizen_id: citizen_ids).to_a.group_by(&:citizen_id)
+      CitizenDeclaredCondition.current.where(any_uuid(CitizenDeclaredCondition.arel_table[:citizen_id], citizen_ids)).to_a.group_by(&:citizen_id)
                               .transform_values { |rows| rows.map(&:condition).uniq - %w[none] }
     end
 
@@ -111,7 +120,8 @@ module CareLines
     def last_activation(active_rows)
       return {} if active_rows.empty?
 
-      events = PatientProblemEvent.where(patient_problem_id: active_rows.map { |r| r[4] }, kind: %w[added reactivated], status_after: "active")
+      events = PatientProblemEvent.where(any_uuid(PatientProblemEvent.arel_table[:patient_problem_id], active_rows.map { |r| r[4] }))
+                                  .where(kind: %w[added reactivated], status_after: "active")
                                   .group(:patient_problem_id).maximum(:created_at)
       active_rows.to_h { |r| [ r[4], (events[r[4]] || r[5]).in_time_zone.to_date ] }
     end

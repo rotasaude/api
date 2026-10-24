@@ -4,8 +4,9 @@ require "rails_helper"
 # validade e a população da equipe não mandam ao banco listas de ids que
 # crescem com a equipe (IN de ids saído do Ruby): o número de consultas e o
 # tamanho de cada SQL ficam iguais entre uma equipe de 3 pessoas e uma de
-# 2.000+. Lista de ids que ainda precisa ir ao banco vai num bind só
-# (= ANY($1::uuid[])), fora do texto do SQL.
+# 3.000+ — na validade (24a) e na prévia das linhas de cuidado (23). Lista de
+# ids que ainda precisa ir ao banco vai num bind só (= ANY(CAST($1 AS
+# uuid[]))), fora do texto do SQL; um por CPF dos pares é SQL (NOT EXISTS).
 RSpec.describe TerritoryRegistry::RegistryStatus do
   before { registry_city! }
 
@@ -55,8 +56,24 @@ RSpec.describe TerritoryRegistry::RegistryStatus do
     end)
   end
 
+  # n pares validados SEM paciente num bairro coberto pela unidade (a única
+  # equipe do bairro: entram na população como citizen:), em lote.
+  def bulk_pairs!(count, offset:, neighborhood:)
+    now = Time.current
+    Citizen.insert_all!(Array.new(count) do |i|
+      { cpf: valid_cpf(90_000 + offset + i), phone: format("4198%07d", offset + i), verification_level: "verified",
+        neighborhood_id: neighborhood.id, created_at: now, updated_at: now }
+    end)
+  end
+
+  # A prévia das linhas de cuidado (módulo 23) sobre a mesma população: uma
+  # linha sem regra de problema (todos os pacientes passam por Facts.patients)
+  # e uma com (Facts.problem_candidates cruza com os ids).
+  def lines = @lines ||= [ adopted_line!("elderly_c6"), adopted_line!("diabetes_c4") ]
+
   def profiles
     {
+      preview: lines.map { |line| sql_profile { CareLines::TeamPopulation.call(team: team, line: line, rules: line.eligibility) } },
       count: sql_profile { described_class.count(team: team, today: Time.zone.today) },
       # status fixo: a página mostra sempre cadastrados (o tipo de quem cai na
       # página muda as consultas da página, não o tamanho da equipe).
@@ -65,20 +82,22 @@ RSpec.describe TerritoryRegistry::RegistryStatus do
     }
   end
 
-  it "equipe com 2.000+ pessoas (cadastro e território): consultas e tamanho do SQL constantes; a contagem confere" do
+  it "equipe com 3.000+ pessoas (cadastro, território e pares sem paciente): validade e prévia com consultas e SQL constantes" do
     registry_registration!(household: registry_household!(micro_area: area))
     care_patient!(age: 50, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
     neighborhood = care_neighborhood!(unit)
     bulk_registrations!(2, offset: 0)
     bulk_territorial!(2, offset: 0, neighborhood: neighborhood)
+    bulk_pairs!(2, offset: 0, neighborhood: neighborhood)
     small = profiles
     bulk_registrations!(1_000, offset: 2)
     bulk_territorial!(1_000, offset: 2, neighborhood: neighborhood)
+    bulk_pairs!(1_000, offset: 2, neighborhood: neighborhood)
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     big = profiles
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
     expect(big).to eq(small)
-    expect(described_class.count(team: team, today: Time.zone.today)).to include(valid: 1_003, missing: 1_003)
+    expect(described_class.count(team: team, today: Time.zone.today)).to include(valid: 1_003, missing: 2_005)
     expect(Patient.where(cns: valid_cns(10_500)).sole.full_name).to eq("Pessoa 500") # cifra no insert_all
     expect(elapsed).to be < 30
   end

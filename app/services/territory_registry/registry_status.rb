@@ -6,9 +6,9 @@
 # (quem não tem cadastro não tem microárea). Situação: a do cadastro ativo na
 # equipe (Validity) ou missing. Em tuplas (pluck), sem objeto por pessoa e
 # sem lista de ids no texto do SQL (revisão final, M2: ESF até 4.000): sem
-# identificador = IS NULL no banco; decifra só a recusa do cadastro (cifra
-# não determinística) e o CPF dos pares (um por CPF); nome e idade só da
-# página. Ordem por person_ref decrescente, paginada em Ruby sobre as
+# identificador = IS NULL no banco; um par por CPF no SQL; decifra só a
+# recusa do cadastro (cifra não determinística); nome e idade só da página.
+# Ordem por person_ref decrescente, paginada em Ruby sobre as
 # tuplas; o cursor é o person_ref da última pessoa (R9). Sem trilha aqui: a
 # lista nominal grava a sua no controller, a contagem não grava.
 module TerritoryRegistry
@@ -65,7 +65,7 @@ module TerritoryRegistry
       return [ registered_ids, [] ] if micro_area
 
       members = CareLines::TeamPopulation.members(team: team)
-      [ members[:patient_ids] | registered_ids, CareLines::Facts.one_per_cpf(members[:citizens]).to_a ]
+      [ members[:patient_ids] | registered_ids, members[:citizen_ids] ]
     end
     private_class_method :population
 
