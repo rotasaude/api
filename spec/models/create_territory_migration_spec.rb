@@ -75,7 +75,9 @@ RSpec.describe "Migração de cidade 20260928100001 (CreateTerritory): down e up
     }
   end
 
-  # FKs do módulo 11: as duas de neighborhood_coverages e as três *.neighborhood_id.
+  # FKs que apontam para os bairros: as do módulo 11 (as duas de
+  # neighborhood_coverages e as três *.neighborhood_id) e, desde o 24a
+  # (20261023900001), household_versions→neighborhoods.
   def territory_fks(fp)
     fp[:constraints].select do |(table, _name, defn)|
       defn.start_with?("FOREIGN KEY") && "#{table} #{defn}".include?("neighborhood")
@@ -98,10 +100,17 @@ RSpec.describe "Migração de cidade 20260928100001 (CreateTerritory): down e up
       expect(before[:columns].map { _1.first(2) }).to include(*new_columns)
       expect(before[:indexes].map(&:second)).to include(*new_indexes)
       expect(before[:constraints].map(&:second)).to include(*new_checks)
-      expect(territory_fks(before).size).to eq(5) # coverages→neighborhoods, coverages→health_units, 3 *.neighborhood_id
+      # coverages→neighborhoods, coverages→health_units, 3 *.neighborhood_id e household_versions→neighborhoods (24a)
+      expect(territory_fks(before).size).to eq(6)
+      later = territory_fks(before).select { |(table, _name, _defn)| table == "household_versions" }
+      expect(later.map { |(table, _name, defn)| "#{table} #{defn}" })
+        .to eq([ "household_versions FOREIGN KEY (neighborhood_id) REFERENCES neighborhoods(id)" ])
       expect(before[:triggers].map(&:second)).to include("triages_neighborhood_immutable")
       expect(before[:functions].map(&:first)).to include("rota_triage_neighborhood_guard")
 
+      # Migração posterior que depende dos bairros sai antes (a ordem de um
+      # rollback de verdade: 24a desce antes do 11) e volta depois do up.
+      later.each { |(table, name, _defn)| conn.remove_foreign_key table, name: name }
       migrate(:down)
       down = fingerprint
 
@@ -123,6 +132,7 @@ RSpec.describe "Migração de cidade 20260928100001 (CreateTerritory): down e up
       expect(untouched.call(down)).to eq(untouched.call(before))
 
       migrate(:up)
+      later.each { |(table, name, _defn)| conn.add_foreign_key table, :neighborhoods, name: name }
 
       expect(fingerprint).to eq(before)
 
