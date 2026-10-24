@@ -94,6 +94,19 @@ RSpec.describe CitySchema do
     expect(names).to include("performed_procedures_guard", "billing_periods_guard", "billing_exports_reencryption_only", *truncate)
   end
 
+  # Módulo 24a (ADR 0042; revisão final, I4): o dump não representa trigger;
+  # um banco de cidade novo (dump + city_triggers.sql) tem de nascer com as
+  # guardas do cadastro territorial, as duas re-cifras das versões, o
+  # no-delete de domicílio e família e o truncate das seis tabelas.
+  it "loads the 24a territory registry triggers into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+    tables = %w[micro_areas households household_versions families individual_registrations individual_registration_versions]
+
+    expect(names).to include("individual_registrations_guard", "micro_areas_guard", "families_guard",
+                             "household_versions_reencryption_only", "individual_registration_versions_reencryption_only",
+                             "households_no_delete", "families_no_delete", *tables.map { |t| "#{t}_append_only_truncate" })
+  end
+
   # Módulo 23 (revisão final, I1): o db/city_triggers.sql do HEAD recria a
   # guarda dos pedidos do módulo 17 lendo origin_care_line_enrollment_id, que
   # só nasce na 900003. Se a 900002 executasse o arquivo e a 900003 falhasse
