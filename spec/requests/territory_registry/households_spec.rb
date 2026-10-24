@@ -159,6 +159,13 @@ RSpec.describe "Território — domicílios e famílias", type: :request do
     get "/territory/households", params: { micro_area_id: area.id, limit: 101 }
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to eq("error" => "invalid_limit")
+    get "/territory/households"
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to eq("error" => "invalid_request")
+    get "/territory/households", params: { micro_area_id: "01" }
+    expect(json_body).to eq("error" => "invalid_request")
+    get "/territory/households", params: { micro_area_id: SecureRandom.uuid }
+    expect(response).to have_http_status(:not_found)
   end
 
   it "enfermeiro da equipe grava em qualquer microárea dela; profissional com CBO fora da tabela → 403 cbo_not_allowed" do

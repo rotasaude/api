@@ -50,4 +50,42 @@ RSpec.describe TerritoryRegistry::SaveHousehold do
     expect(result.details).to eq(path: "families")
     expect(household.reload.version).to eq(2)
   end
+
+  # Desvio 12 (fix round 1): os moradores são relidos depois das travas; o
+  # endereço só vai para quem ainda mora (quem saiu entre a leitura e a trava
+  # pode já ter o endereço do domicílio novo); conjunto que cresce recomeça.
+  context "moradores mudam entre a leitura e a trava" do
+    let(:household) { registry_household! }
+    let(:stay) { registry_registration!(household: household).patient }
+    let(:other) { registry_registration!(household: household).patient }
+
+    def save!
+      params = registry_household_params(household).deep_merge("address" => { "street" => "Rua Nova" }, "version" => household.version)
+      described_class.call(params: params, by: registry_acs_of(household), household: household)
+    end
+
+    it "quem saiu depois da leitura não recebe o endereço" do
+      allow(described_class).to receive(:resident_ids).and_return([ stay.id, other.id ], [ stay.id ])
+      expect(save!).to be_ok
+      expect(stay.reload.address_street).to eq("Rua Nova")
+      expect(other.reload.address_street).to be_nil
+    end
+
+    it "conjunto que cresceu uma vez: recomeça e grava para todos" do
+      allow(described_class).to receive(:resident_ids).and_return([ stay.id ], [ stay.id, other.id ], [ stay.id, other.id ])
+      result = save!
+      expect(result).to be_ok
+      expect(described_class).to have_received(:resident_ids).exactly(4).times
+      expect([ stay.reload.address_street, other.reload.address_street ]).to eq([ "Rua Nova", "Rua Nova" ])
+      expect(household.reload.version).to eq(2)
+      expect(HouseholdVersion.where(household_id: household.id).count).to eq(2)
+    end
+
+    it "conjunto que cresce sempre: desiste na terceira tentativa, nada gravado" do
+      allow(described_class).to receive(:resident_ids).and_return([], [ stay.id ], [], [ stay.id ], [], [ stay.id ])
+      expect { save! }.to raise_error(described_class::ResidentsChanged)
+      expect(household.reload.version).to eq(1)
+      expect(stay.reload.address_street).to be_nil
+    end
+  end
 end

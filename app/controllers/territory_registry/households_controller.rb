@@ -6,7 +6,10 @@
 module TerritoryRegistry
   class HouseholdsController < BaseController
     def index
-      area = uuid?(params[:micro_area_id]) && MicroArea.find_by(id: params[:micro_area_id])
+      # Sem microárea (ou não-UUID) → 422 invalid_request (L12); desconhecida → 404.
+      return render_error("invalid_request") unless uuid?(params[:micro_area_id])
+
+      area = MicroArea.find_by(id: params[:micro_area_id])
       return not_found unless area
       return forbid("out_of_scope") unless visible?(area.id, area.team)
 

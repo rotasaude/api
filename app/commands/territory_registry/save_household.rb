@@ -146,17 +146,20 @@ module TerritoryRegistry
     end
 
     # Pacientes moradores (cadastro ativo no domicílio) + os pedidos, por id;
-    # depois o domicílio (FOR UPDATE, relido). Moradores novos entre a
-    # leitura e a trava → recomeça.
+    # depois o domicílio (FOR UPDATE), e os moradores relidos. Morador novo
+    # entre a leitura e a trava (sem trava) → recomeça. Quem saiu nesse meio
+    # (mudou de domicílio — o SaveRegistration já lhe copiou o endereço novo
+    # — ou teve saída) não recebe o endereço: só os que ainda moram.
     def lock!(household, extra_ids)
       return [] unless household # domicílio novo: sem moradores nem família
 
       ids = resident_ids(household)
       locked = Patient.where(id: (ids + extra_ids).uniq).order(:id).lock.to_a
       household.lock!
-      raise ResidentsChanged unless (resident_ids(household) - ids).empty?
+      current = resident_ids(household)
+      raise ResidentsChanged unless (current - ids).empty?
 
-      locked.select { |patient| ids.include?(patient.id) }
+      locked.select { |patient| current.include?(patient.id) }
     end
 
     def resident_ids(household)
