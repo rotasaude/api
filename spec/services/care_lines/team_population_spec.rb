@@ -32,6 +32,17 @@ RSpec.describe CareLines::TeamPopulation do
     expect(population_b.map { |person, enrollment| [ person.patient_id, enrollment.present? ] }).to eq([ [ p2.id, true ] ])
   end
 
+  it "members: a população da equipe sem regra de linha (pacientes e pares sem paciente); call parte dela" do
+    diabetic = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit_a, doctor: doctor_a)
+    hypertensive = care_patient!(age: 62, sex: "female", problems: [ %w[ciap2 K87] ], unit: unit_a, doctor: doctor_a)
+    care_patient!(age: 63, sex: "female", problems: [ %w[ciap2 T90] ], unit: unit_b, doctor: doctor_b)
+    citizen = care_citizen!(age: 70, sex: "female", neighborhood: care_neighborhood!(unit_a))
+    members = described_class.members(team: team_a)
+    expect(members[:patient_ids]).to match_array([ diabetic.id, hypertensive.id ])
+    expect(members[:citizen_ids]).to eq([ citizen.id ])
+    expect(described_class.call(team: team_a, line: diabetes, rules: diabetes.eligibility).map { |person, _| person.patient_id }).to eq([ diabetic.id ])
+  end
+
   it "par validado sem paciente: a única equipe das unidades de referência do bairro; com duas, ninguém" do
     single = care_neighborhood!(unit_a)
     shared = care_neighborhood!(unit_a, unit_b)

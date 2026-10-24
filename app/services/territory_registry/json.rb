@@ -43,7 +43,7 @@ module TerritoryRegistry
     end
 
     # <registration> (contrato §2, §14 L4, L7, L9) da versão `version` (a
-    # última). Status direto até a Task 12 (TerritoryRegistry::Validity).
+    # última). Status pela TerritoryRegistry::Validity (no dia da cidade).
     # identity_locked: o paciente tem par validado pela regra da gravação
     # (Patients::Pairs.of; nome, nascimento, sexo e mãe só leitura). full_name
     # e mother_name para o formulário preencher o paciente digitado (leitura
@@ -61,7 +61,7 @@ module TerritoryRegistry
         team: team_ref(registration.team), micro_area: area && { id: area.id, code: area.code },
         identification: version.identification.to_h, sociodemographic: version.sociodemographic.to_h,
         health_conditions: version.health_conditions.to_h, street_situation: version.street_situation,
-        refused: registration.refused?, exit: registration_exit(registration), status: registration_status(registration),
+        refused: registration.refused?, exit: registration_exit(registration), status: registration_status(registration, patient),
         version: registration.version, registered_at: registration.registered_at.iso8601,
         registered_by: { name: registration.registered_by_user.professional&.professional_name },
         identity_changed_at: registration.identity_changed_at&.iso8601 }
@@ -74,10 +74,16 @@ module TerritoryRegistry
         death_certificate: registration.death_certificate }
     end
 
-    def registration_status(registration)
-      return "exited" if registration.exited?
+    def registration_status(registration, patient)
+      Validity.status(registration, today: Time.zone.today, identified: patient.cpf.present? || patient.cns.present?)
+    end
 
-      registration.refused? ? "refused" : "valid"
+    # <person_row> (contrato §2): a pessoa da validade. registration nil =
+    # sem cadastro ativo na equipe (missing); age no dia da cidade.
+    def person_row(person, status:, registration:, today:)
+      { patient_id: person.is_a?(Patient) ? person.id : nil, citizen_id: person.is_a?(Citizen) ? person.id : nil,
+        display_name: person.display_name, age: person.age(on: today), micro_area_code: registration&.micro_area&.code,
+        status: status, registered_at: registration&.registered_at&.iso8601, registration_id: registration&.id }
     end
 
     # Candidato a duplicado (contrato §5): sem CPF, CNS nem mãe.

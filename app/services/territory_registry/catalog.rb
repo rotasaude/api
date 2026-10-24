@@ -36,7 +36,9 @@ module TerritoryRegistry
       "SE" => "SERGIPE"
     }.freeze
     UF_TO_DNE = UF_NAMES.transform_values { |name| Dictionary.string_domain("uf").key(name) || raise(KeyError, name) }.freeze
-    STATUSES = %w[valid due_soon expired missing refused exited].freeze
+    # Situação do cadastro (contrato §1; §14 L5: missing_identifier = cadastro
+    # gravado sem CPF e sem CNS; TerritoryRegistry::Validity decide).
+    STATUSES = %w[valid due_soon expired missing missing_identifier refused exited].freeze
     VERSION_ORIGINS = %w[save identity_refresh exit].freeze
 
     module_function

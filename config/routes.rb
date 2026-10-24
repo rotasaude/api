@@ -512,6 +512,8 @@ Rails.application.routes.draw do
     get   "registrations/:id",       to: "registrations#show"
     patch "registrations/:id",       to: "registrations#update"
     post  "registrations/:id/exit",  to: "registrations#exit"
+    get   "registry_status",         to: "registry_status#index"
+    get   "registry_status/count",   to: "registry_status#count"
   end
 
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo

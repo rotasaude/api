@@ -52,6 +52,20 @@ module TerritoryRegistry
       end
     end
 
+    # Gestão que lê a contagem da validade sem ser da equipe (L10).
+    def manager?(user) = admin?(user) || user.has_role?("analyst")
+
+    # Quem lê a validade da equipe (F-24.6, L10): :team (enfermeiro/médico,
+    # qualquer microárea), :acs (só a microárea em que é o responsável) ou nil.
+    # Leitura: não exige o CBO da tabela do LEDI, só o papel de cadastro.
+    def status_reader(user, team)
+      member = membership(user, team)
+      case member && role(member.cbo_code)
+      when :registrar then :team
+      when :acs then :acs
+      end
+    end
+
     def role(cbo)
       return :acs if cbo == Catalog::ACS_CBO
 

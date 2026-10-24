@@ -76,6 +76,9 @@ module CareLines
       scope.distinct.pluck(:patient_id)
     end
 
+    # Ids dos pares (Citizen) que representam a pessoa: sem paciente com o
+    # mesmo CPF e o mais antigo do CPF. Público para a validade do cadastro
+    # (TerritoryRegistry::RegistryStatus), que não decifra o resto do par.
     def one_per_cpf(citizens)
       cpfs = citizens.map(&:cpf).uniq
       with_patient = Patient.where(cpf: cpfs).pluck(:cpf).to_set
@@ -108,6 +111,6 @@ module CareLines
     rescue Date::Error
       nil
     end
-    private_class_method :declared_by_citizen, :one_per_cpf, :last_activation, :date
+    private_class_method :declared_by_citizen, :last_activation, :date
   end
 end

@@ -142,6 +142,19 @@ module CareLines
     end
     private_class_method :territory_teams
 
+    # A população da equipe sem regra de linha (módulo 24a, F-24.6: a
+    # validade do cadastro): pacientes cuja equipe é ela (patient_teams, com o
+    # cadastro quando ligado) e pares validados sem paciente cuja única equipe
+    # do bairro é ela. Sem óbito nem elegibilidade (quem chama decide); o par
+    # cujo CPF já tem paciente ainda está aqui (Facts.citizens o tira).
+    def members(team:)
+      patient_ids = patient_teams(involving_team: team).select { |_, team_id| team_id == team.id }.keys
+      neighborhoods = NeighborhoodCoverage.where(health_unit_id: team.health_unit_id).pluck(:neighborhood_id)
+      candidates = Citizen.not_erased.verification_level_verified.where(patient_id: nil, neighborhood_id: neighborhoods).to_a
+      citizen_ids = citizen_teams(candidates).select { |_, team_id| team_id == team.id }.keys
+      { patient_ids: patient_ids, citizen_ids: citizen_ids }
+    end
+
     # Pessoas da equipe, elegíveis para o denominador das regras, com a
     # inscrição ativa delas na linha (ou nil). A inscrita é avaliada com a DUM
     # decifrada (Eligibility: o excludente só vale na gestação da DUM).
@@ -151,7 +164,8 @@ module CareLines
     # cruza com os ids no SQL.
     def call(team:, line:, rules:, on: Time.zone.today)
       enrolled = line ? CareLineEnrollment.active_enrollments.where(care_line: line, team_id: team.id).to_a.index_by(&:patient_id) : {}
-      prospects = patient_teams(involving_team: team).select { |id, team_id| team_id == team.id && !enrolled.key?(id) }.keys
+      population = members(team: team)
+      prospects = population[:patient_ids] - enrolled.keys
       if line
         elsewhere = CareLineEnrollment.active_enrollments.where(care_line: line, patient_id: prospects).pluck(:patient_id, :team_id)
         prospects -= elsewhere.map(&:first)
@@ -164,11 +178,7 @@ module CareLines
         matching = Facts.problem_candidates(rules["problems"], among: patient_ids).to_set
         patient_ids = patient_ids.select { |id| matching.include?(id) }
       end
-      neighborhoods = NeighborhoodCoverage.where(health_unit_id: team.health_unit_id).pluck(:neighborhood_id)
-      candidates = Citizen.not_erased.verification_level_verified.where(patient_id: nil, neighborhood_id: neighborhoods).to_a
-      citizen_ids = citizen_teams(candidates).select { |_, team_id| team_id == team.id }.keys
-
-      people = Facts.patients(patient_ids).values + Facts.citizens(citizen_ids).values
+      people = Facts.patients(patient_ids).values + Facts.citizens(population[:citizen_ids]).values
       people.select { |person| Eligibility.denominator?(rules, person, on: on, lmp: enrolled[person.patient_id]&.anchor_on) }
             .map { |person| [ person.with(team_id: team.id), person.patient_id && enrolled[person.patient_id] ] }
     end
