@@ -14,11 +14,17 @@ module Patients
       name && date ? "#{name}|#{date}" : nil
     end
 
-    # Sem acento, minúsculas, só [a-z ], espaços colapsados.
+    # Hífen e apóstrofo (reto e tipográfico ’ ‘) viram espaço — "Ana-Maria" =
+    # "Ana Maria", "D'Ávila" = "D Ávila" (decisão da coordenadora, 2026-10-24);
+    # depois sem acento, minúsculas, só [a-z ], espaços colapsados. Mudou a
+    # regra: patients:backfill_match_keys regrava as chaves que mudaram.
+    SEPARATORS = /[-'\u2018\u2019]/
+
     def normalize(text)
       return nil if text.blank?
 
-      I18n.transliterate(text.to_s, locale: :en).downcase.gsub(/[^a-z ]/, "").squish.presence
+      spaced = text.to_s.gsub(SEPARATORS, " ")
+      I18n.transliterate(spaced, locale: :en).downcase.gsub(/[^a-z ]/, "").squish.presence
     end
 
     def iso_date(value)

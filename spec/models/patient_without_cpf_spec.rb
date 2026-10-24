@@ -132,5 +132,15 @@ RSpec.describe "Paciente sem CPF" do
       Rake::Task["patients:backfill_match_keys"].reenable
       expect(invoke).to include("0 preenchidas")
     end
+
+    # Chave gravada pela regra antiga (hífen e apóstrofo apagados) é regravada.
+    it "regrava a chave antiga de quem tem hífen ou apóstrofo no nome" do
+      patient = typed(full_name: "Joao D'Avila Silva").payload[:patient]
+      patient.update_columns(match_key: "joao davila silva|1990-02-03")
+
+      out = invoke
+      expect(patient.reload.match_key).to eq("joao d avila silva|1990-02-03")
+      expect(out).to include("1 preenchidas")
+    end
   end
 end
