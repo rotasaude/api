@@ -160,5 +160,25 @@ RSpec.describe "Re-cifra do prontuário" do
         expect(Patient.where(cpf: rows[:cpf]).count).to eq(0)
       end
     end
+
+    # Módulo 24a (Desvio 1): a chave cega de duplicados é cifra determinística
+    # da cidade — a rotação regrava a própria match_key (não a recalcula do
+    # nome, que o CityRekey nem carrega) e a busca segue achando o paciente.
+    it "regrava a match_key: a busca de duplicados acha o paciente com a chave nova e não com a antiga" do
+      name = "Ana Clara Souza"
+      patient = with_material(old_material) do
+        Patient.create!(full_name: name, birth_date: "1990-05-10", sex: "female", no_cpf_reason: "3", cns: valid_cns(81))
+      end
+      key = Patients::MatchKey.for(name, "1990-05-10")
+
+      expect(CityRekey.call(city: city, from_key: old_material)).to be_ok
+
+      in_city do
+        expect(Patient.where(match_key: key).pluck(:id)).to eq([ patient.id ])
+        expect(Patient.find(patient.id)).to have_attributes(full_name: name, birth_date: "1990-05-10")
+        expect(Patients::Duplicates.call(full_name: name, birth_date: "1990-05-10").map(&:id)).to eq([ patient.id ])
+      end
+      with_material(old_material) { expect(Patient.where(match_key: key)).to be_empty }
+    end
   end
 end

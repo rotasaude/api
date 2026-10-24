@@ -27,9 +27,16 @@ class Patient < ApplicationRecord
 
   validate { errors.add(:cpf, :blank) unless cpf.present? ^ no_cpf_reason.present? }
 
-  # Chave cega de duplicados (Desvio 1): sempre recalculada do nome e do
-  # nascimento gravados — quem muda um muda a chave.
-  before_save { self.match_key = Patients::MatchKey.for(full_name, birth_date) }
+  # Chave cega de duplicados (Desvio 1): recalculada do nome e do nascimento
+  # quando o paciente nasce ou um dos dois muda — quem muda um muda a chave.
+  # Registro sem os dois carregados (o CityRekey regrava coluna a coluna com
+  # `select(:id)`) não recalcula: a rotação regrava a própria match_key.
+  before_save do
+    next unless has_attribute?(:full_name) && has_attribute?(:birth_date)
+    next unless new_record? || will_save_change_to_full_name? || will_save_change_to_birth_date?
+
+    self.match_key = Patients::MatchKey.for(full_name, birth_date)
+  end
 
   def display_name = social_name.presence || full_name
 

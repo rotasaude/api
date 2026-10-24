@@ -13,6 +13,18 @@ RSpec.describe "Paciente sem CPF" do
                                         "no_cpf_reason" => "8" }.merge(over.transform_keys(&:to_s)), by: by)
   end
 
+  it "a chave cega acompanha o nome e o nascimento; registro parcial (select) grava sem recalcular" do
+    patient = typed(full_name: "Joao Pedro Silva", cns: valid_cns(2)).payload[:patient]
+    patient.update!(full_name: "Joao Pedro Souza")
+    expect(patient.reload.match_key).to eq(Patients::MatchKey.for("Joao Pedro Souza", "1990-02-03"))
+    patient.update!(birth_date: "1990-02-04")
+    expect(patient.reload.match_key).to eq(Patients::MatchKey.for("Joao Pedro Souza", "1990-02-04"))
+    partial = Patient.select(:id).find(patient.id)
+    partial.race_color = "01"
+    partial.save!(validate: false)
+    expect(patient.reload).to have_attributes(race_color: "01", match_key: Patients::MatchKey.for("Joao Pedro Souza", "1990-02-04"))
+  end
+
   it "grava sem CPF com a justificativa, nome sem espaços sobrando, chave cega e evento só com ids" do
     result = typed(full_name: "  Joao   Pedro  Silva ", cns: valid_cns(1))
     expect(result).to be_ok
