@@ -19,6 +19,7 @@
 #     Os protocolos do catálogo (saúde do idoso, saúde mental e aprofundamento), a família avó+neto no mesmo celular e o idoso restrito a dois bairros em Curitiba vêm de `lib/triage_catalog_crew.rb` (módulo 15).
 #     A base de tipos de atendimento, o modelo "Manhã" nos turnos da médica (Curitiba), os turnos da semana da médica e da enfermeira e o idoso com regra de agendamento vêm de `lib/scheduling_crew.rb` (módulo 17).
 #     Linhas de cuidado (módulo 23): care_lines ligado em Curitiba, linhas adotadas e a própria de saúde mental, a técnica de enfermagem (tecnica@<slug>.demo, também na recepção) e as pessoas das provas na UBS Jardim das Flores — ver lib/care_lines_crew.rb.
+#     Cadastro territorial (módulo 24a): territory_registry ligado em Curitiba, a ACS (acs@<slug>.demo), as microáreas 01 e 02 da equipe da UBS Jardim das Flores, quatro domicílios e os cadastros da prova (válido, a vencer, vencido, sem identificador, recusa, óbito, mudança) — ver lib/territory_registry_crew.rb.
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -53,6 +54,7 @@ else
   require Rails.root.join("lib/lab_qc_crew").to_s
   require Rails.root.join("lib/billing_crew").to_s
   require Rails.root.join("lib/care_lines_crew").to_s
+  require Rails.root.join("lib/territory_registry_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -333,6 +335,15 @@ else
         puts "[seeds] linhas de cuidado . #{care[:switch]}" \
              "#{"; equipe #{care[:team]}; #{care[:people].size} pessoas, #{care[:pending]} sugestões pendentes" if care[:people].any?}"
         Array(care[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
+
+        # ── Cadastro territorial (módulo 24a, ADR 0042) ───────────────────────
+        # Depois do CareLinesCrew: usa a UBS, a equipe, a enfermeira e as pessoas dele.
+        registry = TerritoryRegistryCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        puts "[seeds] cadastro territorial . #{registry[:switch]}" \
+             "#{"; equipe #{registry[:team]}; #{registry[:households]} domicílios, #{registry[:registrations]} cadastros" if registry[:team]}"
+        Array(registry[:micro_areas]).each { |area| puts "[seeds]               microárea #{area}" }
+        puts "[seeds]               validade #{registry[:status].map { |k, v| "#{k} #{v}" }.join(', ')}; fichas #{registry[:fichas]}" if registry[:status]
+        Array(registry[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
