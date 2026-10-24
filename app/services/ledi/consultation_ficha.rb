@@ -2,7 +2,8 @@
 # a exportação utilizável (a regra do módulo 18), uma vez por consulta. Sem
 # identificação completa: "não gerada" com motivos de lista fechada.
 # Identificação como no 18: o CPF; nascimento e sexo do PACIENTE. Paciente sem
-# CPF (módulo 24a): o CNS no lugar; sem os dois, "não gerada"
+# CPF (módulo 24a): o CNS no lugar, com a justificativa (campo 48 da FAI;
+# Ledi::Fichas::CitizenDocument); sem os dois, "não gerada"
 # patient_without_identifier (nunca CPF inventado). Adendo
 # com mudança estruturada (refresh!): pendente/falhou → regrava o conteúdo
 # com o mesmo uuid; recusada → linha nova com replaces_outbox_id; em envio →
@@ -82,7 +83,8 @@ module Ledi
       reasons << "professional_without_cns" unless Professionals::Cns.valid?(professional.cns)
       reasons << "citizen_without_birth_date" if birth.nil?
       reasons << "citizen_without_sex" unless Citizen::SEXES.include?(patient.sex)
-      reasons << "patient_without_identifier" if patient.cpf.blank? && patient.cns.blank?
+      document = Ledi::Fichas::CitizenDocument.for(patient)
+      reasons << "patient_without_identifier" if document[:cpf].nil? && document[:cns].nil?
       unknown = effective[:problems].any? do |row|
         row.terminology == "ciap2" && !Ciap2Code.exists?(release_id: row.terminology_release_id, code: row.code)
       end
@@ -92,7 +94,8 @@ module Ledi
       started = consultation.started_at
       identity = Ledi::Fichas::ScreeningIdentity.new(
         cnes: unit.cnes, ine: ine, professional_cns: professional.cns, cbo: consultation.cbo_code,
-        citizen_cpf: patient.cpf.presence, citizen_cns: (patient.cns if patient.cpf.blank?), birth_date: birth, sex: patient.sex,
+        citizen_cpf: document[:cpf], citizen_cns: document[:cns], citizen_no_cpf_reason: document[:justification],
+        birth_date: birth, sex: patient.sex,
         started_at: started,
         ended_at: [ consultation.finalized_at, started ].max, ibge_code: CityProfile.current&.ibge_code
       )

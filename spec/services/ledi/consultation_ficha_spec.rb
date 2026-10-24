@@ -82,7 +82,9 @@ RSpec.describe Ledi::ConsultationFicha do
   # Módulo 24a (L5, §8): paciente sem CPF vai pelo CNS; sem CPF e sem CNS,
   # "não gerada" patient_without_identifier — nunca CPF inventado. Inalcançável
   # hoje (consulta exige par validado, que tem CPF): stub do paciente da consulta.
-  it "paciente sem CPF: CNS na ficha; sem CPF e sem CNS, 'não gerada' patient_without_identifier" do
+  # Campo 48 do IDL (justificativaCidadaoNaoPossuiCpf): obrigatório com
+  # stCidadaoNaoPossuiCpf true (dicionario-fai.html; domínio JustificativaNaoPossuiCpf).
+  it "paciente sem CPF: CNS e justificativa na ficha; sem CPF e sem CNS, 'não gerada' patient_without_identifier" do
     no_cpf = registry_no_cpf_patient!(cns: nil)
     consultation = finalized!
     allow(consultation).to receive(:patient).and_return(no_cpf)
@@ -91,7 +93,8 @@ RSpec.describe Ledi::ConsultationFicha do
     no_cpf.update!(cns: valid_cns(41))
     expect(described_class.generate(consultation)).to eq(:enqueued)
     child = ficha_of(LediOutboxEntry.sole).atendimentosIndividuais.sole
-    expect([ child.cpfCidadao, child.cns, child.stCidadaoNaoPossuiCpf ]).to eq([ nil, no_cpf.cns, true ])
+    expect([ child.cpfCidadao, child.cns, child.stCidadaoNaoPossuiCpf, child.justificativaCidadaoNaoPossuiCpf ])
+      .to eq([ nil, no_cpf.cns, true, 3 ])
     expect(LediGenerationFailure.sole.resolved_at).to be_present
   end
 

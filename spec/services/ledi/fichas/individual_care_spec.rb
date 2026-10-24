@@ -36,6 +36,7 @@ RSpec.describe Ledi::Fichas::IndividualCare do
     child = master.atendimentosIndividuais.sole
     expect([ child.tipoAtendimento, child.localDeAtendimento, child.turno, child.sexo, child.condutas ]).to eq([ 5, 1, 1, 1, [ 1, 9 ] ])
     expect([ child.cpfCidadao, child.cns, child.stCidadaoNaoPossuiCpf, child.medicamentos ]).to eq([ "52998224725", nil, false, nil ])
+    expect(child.justificativaCidadaoNaoPossuiCpf).to be_nil
     expect([ child.dataHoraInicialAtendimento, child.dataHoraFinalAtendimento ]).to eq([ ms(started), ms(started + 20.minutes) ])
     first, second = child.problemasCondicoes
     expect([ first.uuidProblema, first.uuidEvolucaoProblema, first.coSequencialEvolucao, first.ciap, first.cid10, first.situacao,
@@ -51,11 +52,13 @@ RSpec.describe Ledi::Fichas::IndividualCare do
   end
 
   # Módulo 24a: paciente sem CPF vai pelo CNS, com stCidadaoNaoPossuiCpf; nunca os dois.
-  it "paciente sem CPF: o CNS no lugar do CPF e stCidadaoNaoPossuiCpf" do
-    no_cpf = identity.with(citizen_cpf: nil, citizen_cns: "700000000000013")
+  # Campo 48 (justificativaCidadaoNaoPossuiCpf) só com stCidadaoNaoPossuiCpf true.
+  it "paciente sem CPF: o CNS no lugar do CPF, stCidadaoNaoPossuiCpf e a justificativa" do
+    no_cpf = identity.with(citizen_cpf: nil, citizen_cns: "700000000000013", citizen_no_cpf_reason: 3)
     master = described_class.new(identity: no_cpf, care: care, source_id: SecureRandom.uuid).to_thrift(uuid: "1234567-s")
     child = master.atendimentosIndividuais.sole
     expect([ child.cpfCidadao, child.cns, child.stCidadaoNaoPossuiCpf ]).to eq([ nil, "700000000000013", true ])
+    expect(child.justificativaCidadaoNaoPossuiCpf).to eq(3)
     expect { master.validate }.not_to raise_error
   end
 

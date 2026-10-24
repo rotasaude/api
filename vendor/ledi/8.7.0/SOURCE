@@ -19,12 +19,13 @@ idl_sha256:
   ./ras/ficha_visita_domiciliar.thrift: 81bea4d5eeb255d0c294dda5b479ac9e359ce1c8e3cfb23234a53888ae0b71c1
   ./ras/solicitacao_oci.thrift: ec623268379906f1dbf244fe80f1f5dd4ee0918a3f6be026426eeaa765f03479
   ./transport/dado_transporte.thrift: 07f0319b1a3dc3d7ecff7a55c775854e7f1b885f4f913f23e430584ad7766af0
-docs_fetched_on: 2026-10-23
+docs_fetched_on: 2026-10-23 (dicionario-fai.html: 2026-10-24)
 docs_source: https://integracao.esusaps.bridge.ufsc.tech/ledi/documentacao/
 docs_sha256:
   docs/algoritmo_CNS.html: 0c7fd4714f3947caf0b7b96f9a4ca55f557bb79dfce24f886211e4af2155b236
   docs/cbo.html: cdec0aaed9e7266ac10be5d394f5735f3c0d76686d4511f5e188753d7c2fc10a
   docs/cbo_disponiveis.html: c4eabc31c2087584a3750551d8467299b21dd85b000d071d3ec78760f9fb6d34
+  docs/dicionario-fai.html: fbea3ac99502d2377c0dd2007bee2abd9c65e5e66acbfd7f283373dd3cea71d7
   docs/dicionario-fcd.html: 1ad0a616a9a65b4b3a7a11de1b9a125b9a728139271923e4b38b5f821adf73b7
   docs/dicionario-fci.html: 8a51b5bf96d4da391d6e3db408dbff5d43f4c4cc28593d13e6b11d671942b98c
   docs/dicionario.html: 07cecb51003ba4352f56a885b330ac4576dbc997926ff7ec3ee054c739e12544
