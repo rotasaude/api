@@ -107,6 +107,16 @@ RSpec.describe Ledi::IndividualRegistrationFicha do
     expect { described_class.retry!(failure, by: care_admin!) }.to raise_error(Ledi::ScreeningFicha::AlreadyResolved)
   end
 
+  # Revisão final (m7): o motivo do profissional na ficha individual.
+  it "profissional sem CNS válido na gravação: não gerada professional_without_cns; nada no outbox" do
+    household = registry_household!
+    registry_acs_of(household).professional.update_columns(cns: "123456789012345") # dígito errado
+    version = registry_registration!(household: household).versions.first
+    failure = LediGenerationFailure.find_by!(source_type: "IndividualRegistrationVersion", source_id: version.id)
+    expect(failure.reason_codes).to eq(%w[professional_without_cns])
+    expect(LediOutboxEntry.where(source_id: version.id)).to be_empty
+  end
+
   it "saída por óbito: versão exit leva 135, death_on e o número da DO" do
     registration = registry_registration!
     version = registry_new_version!(registration, origin: "exit", exit_reason: "death", exited_on: Date.new(2026, 10, 21),
@@ -162,6 +172,20 @@ RSpec.describe Ledi::HouseholdRegistrationFicha do
     failure = LediGenerationFailure.find_by!(source_type: "HouseholdVersion", source_id: version.id)
     expect(failure.reason_codes).to eq(%w[responsible_without_identifier])
     expect(LediOutboxEntry.where(source_id: version.id)).to be_empty
+  end
+
+  # Revisão final (m7): os motivos da unidade e do profissional na ficha domiciliar.
+  it "unidade sem CNES ou profissional sem CNS válido: não gerada unit_without_cnes / professional_without_cns" do
+    area = registry_micro_area!(code: "01")
+    area.team.health_unit.update!(cnes: nil)
+    household = registry_household!(micro_area: area)
+    failure = LediGenerationFailure.find_by!(source_type: "HouseholdVersion", source_id: household.versions.first.id)
+    expect(failure.reason_codes).to eq(%w[unit_without_cnes])
+    other = registry_micro_area!(code: "02")
+    registry_acs_of(other).professional.update_columns(cns: "123456789012345") # dígito errado
+    version = registry_household!(micro_area: other).versions.first
+    expect(LediGenerationFailure.find_by!(source_type: "HouseholdVersion", source_id: version.id).reason_codes).to eq(%w[professional_without_cns])
+    expect(LediOutboxEntry.where(source_id: [ household.versions.first.id, version.id ])).to be_empty
   end
 
   it "CBO fora da Tabela 2 (domiciliar): cbo_not_in_ledi_table" do
