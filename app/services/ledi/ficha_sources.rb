@@ -2,7 +2,10 @@
 # "Reenviar" despacham por source_type.
 module Ledi
   module FichaSources
-    REGISTRY = { "Screening" => "Ledi::ScreeningFicha", "Consultation" => "Ledi::ConsultationFicha" }.freeze
+    # Módulo 24a: as versões imutáveis do cadastro individual e do domicílio.
+    REGISTRY = { "Screening" => "Ledi::ScreeningFicha", "Consultation" => "Ledi::ConsultationFicha",
+                 "IndividualRegistrationVersion" => "Ledi::IndividualRegistrationFicha",
+                 "HouseholdVersion" => "Ledi::HouseholdRegistrationFicha" }.freeze
 
     module_function
 

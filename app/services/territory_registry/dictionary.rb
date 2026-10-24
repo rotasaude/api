@@ -24,6 +24,10 @@ module TerritoryRegistry
     NAME_MAX = 70
     NAME_MARKS = "̧́̂̃̈".freeze
     NAME_TERM = /\A(?:[A-Za-z'’][#{NAME_MARKS}]*)+\z/
+    # O conjunto oficial, sem a cedilha, em maiúsculas e com o apóstrofo reto:
+    # é o que a ficha leva (Ledi::Fichas::LediName converte).
+    STRICT_NAME_MARKS = "\u0301\u0302\u0303\u0308".freeze
+    STRICT_NAME_TERM = /\A(?:[A-Z'][#{STRICT_NAME_MARKS}]*)+\z/
 
     module_function
 
@@ -33,13 +37,16 @@ module TerritoryRegistry
 
     # Regras 1, 2, 3, 5, 6 e 7 do "Validar nome"; a 4 (maiúsculas) é
     # normalização, feita por quem monta a ficha. Quem chama faz squish antes:
-    # espaço nas pontas ou duplicado é recusado aqui.
-    def valid_name?(value, max: NAME_MAX)
+    # espaço nas pontas ou duplicado é recusado aqui. strict: as regras 4 e 5
+    # ao pé da letra (maiúsculas; sem cedilha nem apóstrofo tipográfico) — o
+    # que a ficha LEDI leva; o paciente guarda o nome como digitado.
+    def valid_name?(value, max: NAME_MAX, strict: false)
       return false unless value.is_a?(String) && value.length.between?(NAME_MIN, max)
 
       terms = value.split(/ /, -1) # regex: split(" ") juntaria espaços duplicados
+      term_rule = strict ? STRICT_NAME_TERM : NAME_TERM
       return false if terms.size < 2 || terms.any?(&:empty?)
-      return false unless terms.all? { |term| term.unicode_normalize(:nfd).match?(NAME_TERM) }
+      return false unless terms.all? { |term| term.unicode_normalize(:nfd).match?(term_rule) }
       return false if term_size(terms[0]) == 1 && term_size(terms[1]) == 1
       return false if terms.size == 2 && terms.all? { |term| term_size(term) == 2 }
 

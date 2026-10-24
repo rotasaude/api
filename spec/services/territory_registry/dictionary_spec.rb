@@ -134,6 +134,14 @@ RSpec.describe TerritoryRegistry::Dictionary do
         expect(described_class.valid_name?(name)).to be(false), rule
       end
     end
+
+    it "strict: o conjunto oficial da ficha — maiúsculas, sem cedilha, apóstrofo reto; as outras regras iguais" do
+      expect(described_class.valid_name?("MARIA GONCALVES D'ÁVILA SOUZA", strict: true)).to be(true)
+      { "GONÇALVES DIAS" => "cedilha", "Maria da Paz" => "minúscula", "JOÃO D’ÁVILA" => "apóstrofo tipográfico",
+        "JOAQUIM" => "um termo só", "A A DA SILVA" => "dois primeiros termos de uma letra" }.each do |name, rule|
+        expect(described_class.valid_name?(name, strict: true)).to be(false), rule
+      end
+    end
   end
 end
 

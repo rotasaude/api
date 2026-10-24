@@ -1,0 +1,20 @@
+{
+  "_fonte": "Montado à mão a partir do contrato §15 (15.2, 15.3 e a tabela de identification) e de vendor/ledi/8.7.0/docs/dicionario-fci.html e validar_nome.html, para os values do spec/services/ledi/fichas/individual_registration_spec.rb. Um campo do IDL por chave; nulos omitidos. dataNascimentoCidadao = 1953-08-20 00:00 America/Sao_Paulo em epoch ms. Nome: Validar nome regra 4 (maiúsculas) e regra 5 (Ç fora do conjunto oficial → C).",
+  "identificacaoUsuarioCidadao": {
+    "codigoIbgeMunicipioNascimento": "4106902",
+    "dataNascimentoCidadao": -516488400000,
+    "nacionalidadeCidadao": 1,
+    "nomeCidadao": "MARIA DAS GRACAS LIMA",
+    "nomeMaeCidadao": "BENEDITA LIMA",
+    "telefoneCelular": "41999990000",
+    "paisNascimento": 31,
+    "racaCorCidadao": 4,
+    "sexoCidadao": 1,
+    "statusEhResponsavel": true,
+    "desconheceNomePai": true,
+    "microArea": "01",
+    "stForaArea": false,
+    "cpfCidadao": "52998224725",
+    "stNaoPossuiCpf": false
+  }
+}

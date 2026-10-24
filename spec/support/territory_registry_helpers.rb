@@ -11,6 +11,7 @@ module TerritoryRegistryHelpers
     stub_pec!
     ledi_ready!(city, pec_url: "https://pec.a.test", record_mode: "record")
     Platform::Features.set!(city: city, key: "territory_registry", enabled: true, maintainer: ledi_maintainer!)
+    CityConnection.with(city) { CityProfile.current.update!(uf: "PR") }
     CityCatalog.reset_cache!
     city
   end
@@ -61,7 +62,24 @@ module TerritoryRegistryHelpers
                                property_type: "1", address: registry_address, living_conditions: registry_living_conditions,
                                contact_phone: "4133334444", refused: "false", families_snapshot: [], status: "active",
                                origin: "save", **registry_saved_by(author, micro_area.team), created_at: now }.merge(over))
+                  .tap { |version| Ledi::HouseholdRegistrationFicha.generate(version) }
     household
+  end
+
+  # Nova versão do domicílio (a seguinte), com o retrato das famílias atuais
+  # e a ficha domiciliar. Cenário direto até a Task 9 (SaveHousehold).
+  def registry_new_household_version!(household, **over)
+    latest = household.latest_version
+    snapshot = household.families.order(:created_at, :id).map do |family|
+      { "family_id" => family.id, "responsible_patient_id" => family.responsible_patient_id, "income_band" => family.income_band,
+        "members_count" => family.members_count, "living_since" => family.living_since, "moved_out" => family.moved_out }
+    end
+    attrs = latest.attributes.except("id", "created_at").merge("version" => latest.version + 1, "families_snapshot" => snapshot,
+                                                              "created_at" => Time.current)
+    version = HouseholdVersion.create!(attrs.merge(over.stringify_keys))
+    household.update!(version: version.version)
+    Ledi::HouseholdRegistrationFicha.generate(version)
+    version
   end
 
   # Cadastro individual ativo, versão 1, no domicílio (novo, se não vier).
@@ -81,13 +99,25 @@ module TerritoryRegistryHelpers
                                             sociodemographic: registry_sociodemographic, health_conditions: registry_health_conditions,
                                             refused: registration.refused, origin: "save", **registry_saved_by(author, area.team),
                                             created_at: now }.merge(over.slice(*IndividualRegistrationVersion.column_names.map(&:to_sym))))
+                                 .tap { |version| Ledi::IndividualRegistrationFicha.generate(version) }
     registration
+  end
+
+  # Nova versão do cadastro (a seguinte), cópia da última com `over`, e a
+  # ficha. Cenário direto até a Task 10 (SaveRegistration/ExitRegistration).
+  def registry_new_version!(registration, **over)
+    latest = registration.latest_version
+    attrs = latest.attributes.except("id", "created_at").merge("version" => latest.version + 1, "created_at" => Time.current)
+    version = IndividualRegistrationVersion.create!(attrs.merge(over.stringify_keys))
+    registration.update!(version: version.version)
+    Ledi::IndividualRegistrationFicha.generate(version)
+    version
   end
 
   def registry_patient!
     n = registry_seq!
     Patient.create!(cpf: valid_cpf(n), full_name: "Joana Ribeiro Lima", mother_name: "Rita Ribeiro Lima",
-                    birth_date: (Time.zone.today - 40.years - n.days).iso8601, sex: "female")
+                    birth_date: (Time.zone.today - 40.years - n.days).iso8601, sex: "female", race_color: "03")
   end
 
   # Paciente digitado sem CPF (justificativa 3), com CNS (ou sem, com cns: nil),
@@ -98,6 +128,23 @@ module TerritoryRegistryHelpers
     raise "paciente sem CPF recusado: #{result.reason}" if result.failure?
 
     result.payload[:patient].tap { |patient| patient.update!(BillingHelpers::DEMOGRAPHICS) if demographics }
+  end
+
+  def registry_patient_without_cpf!(cns: valid_cns(registry_seq!)) = registry_no_cpf_patient!(cns: cns)
+
+  # Struct Thrift → { "<campo do IDL>" => valor } sem os nulos (structs
+  # aninhadas e listas delas também viram Hash). Para comparar com fixture.
+  def to_h_for_spec(struct)
+    struct.class::FIELDS.values.each_with_object({}) do |field, hash|
+      value = struct.public_send(field[:name])
+      next if value.nil?
+
+      hash[field[:name]] = case value
+                           when ::Thrift::Struct then to_h_for_spec(value)
+                           when Array then value.map { |item| item.is_a?(::Thrift::Struct) ? to_h_for_spec(item) : item }
+                           else value
+                           end
+    end
   end
 
   # Identidade de ficha LEDI (Ledi::Fichas::ScreeningIdentity) com valores fixos.
@@ -133,10 +180,7 @@ module TerritoryRegistryHelpers
     { "localizacao" => 83, "situacao_moradia_posse_terra" => 75, "abastecimento_agua" => 117, "nu_moradores" => 3 }
   end
 
-  def registry_identity(patient)
-    { "full_name" => patient.full_name, "birth_date" => patient.birth_date, "sex" => patient.sex,
-      "mother_name" => patient.mother_name, "cpf" => patient.cpf, "cns" => patient.cns }
-  end
+  def registry_identity(patient) = TerritoryRegistry::Identity.snapshot(patient)
 
   def registry_identification = { "nacionalidade_cidadao" => 1, "codigo_ibge_municipio_nascimento" => "4106902" }
 
