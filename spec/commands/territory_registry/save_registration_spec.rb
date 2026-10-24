@@ -62,9 +62,21 @@ RSpec.describe TerritoryRegistry::SaveRegistration do
     result = save(params(citizen_id: citizen.id))
     expect(result).to be_ok
     expect(citizen.reload.patient_id).to eq(result.payload[:registration].patient_id)
+    # L4: a marca é de validação POSTERIOR ao cadastro; nascer do par validado não marca
+    expect(result.payload[:registration].identity_changed_at).to be_nil
     pending_pair = screening_citizen!(32, age: 30, sex: "male")
     expect(save(params(citizen_id: pending_pair.id)).reason).to eq(:citizen_not_verified)
     expect(save(params(citizen_id: "nada")).details).to eq(path: "citizen_id")
+  end
+
+  it "patient_id digitado + cpf de par validado na criação: a identidade validada entra, sem a marca identity_changed_at" do
+    patient = registry_no_cpf_patient!
+    citizen = verified_citizen!(35, full_name: "Lia Santos Moreira", sex: "female")
+    # a mãe vem do par validado (sem desconhece_nome_mae)
+    result = save(registry_registration_params(household, patient: patient).merge("cpf" => citizen.cpf, "identification" => registry_identification))
+    expect(result).to be_ok
+    expect(result.payload[:version].identity).to include("full_name" => "Lia Santos Moreira", "cpf" => citizen.cpf)
+    expect(result.payload[:registration].identity_changed_at).to be_nil
   end
 
   it "família: precisa ser do domicílio e ativa; is_responsible bate com o responsável" do

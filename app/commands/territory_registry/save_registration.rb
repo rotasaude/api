@@ -30,7 +30,7 @@
 #     trava do paciente — o mesmo motivo do SaveHousehold).
 #   - Validação no posto durante a gravação (AddCpf/Resolve → refresh!): a
 #     IdentityRefresh fica suspensa — esta versão já leva a identidade
-#     validada — e o cadastro ganha identity_changed_at.
+#     validada — e o cadastro que já existia ganha identity_changed_at.
 #   - Ficha: Ledi::IndividualRegistrationFicha.generate dentro da transação
 #     (sem identificador → "não gerada" patient_without_identifier, L5).
 #   - Evento territory_registration.saved só com ids.
@@ -296,7 +296,10 @@ module TerritoryRegistry
       save_demographics!(patient, demographics) if demographics
 
       moved_in = household && registration&.household_id != household.id
-      registration, version = persist!(attrs, registration, patient, household, family, by, refreshed.include?(patient.id))
+      # L4: a marca é da validação POSTERIOR — só quando o cadastro já existia
+      # (o paciente que nasce do par validado, ou o CPF ligado na criação, não marca).
+      identity_changed = registration.present? && refreshed.include?(patient.id)
+      registration, version = persist!(attrs, registration, patient, household, family, by, identity_changed)
       copy_address!(patient, household) if moved_in
       Ledi::IndividualRegistrationFicha.generate(version)
       DomainEvents.publish("territory_registration.saved", registration_id: registration.id, registration_version_id: version.id,
