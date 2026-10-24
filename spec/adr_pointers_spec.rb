@@ -1,7 +1,14 @@
 require "rails_helper"
 
-# Guarda de numeração do corpus de ADRs. O v2 vai de 0001 a 0029 (0020 banco
-# por cidade, 0021 profissionais, 0022 painéis ao vivo, 0023 território, 0024 campanhas, 0025 analytics, 0026 exclusão do cadastro e revogação, 0027 catálogo de triagens por perfil, 0028 modo de prontuário e exportação LEDI, 0029 agenda dos profissionais); qualquer outro número
+# Guarda de numeração do corpus de ADRs. O v2 vai de 0001 a 0042 (0020 banco
+# por cidade, 0021 profissionais, 0022 painéis ao vivo, 0023 território, 0024
+# campanhas, 0025 analytics, 0026 exclusão do cadastro e revogação, 0027
+# catálogo de triagens por perfil, 0028 modo de prontuário e exportação LEDI,
+# 0029 agenda dos profissionais, 0030 acolhimento, 0031 prontuário, 0032
+# assinatura ICP, 0033 documentos clínicos, 0034 controlados/SNCR, 0035 linha
+# do tempo, 0036 exames, 0037 laboratório, 0038 qualidade do laboratório, 0039
+# faturamento BPA, 0040 linhas de cuidado, 0041 app de campo e teleconsulta,
+# 0042 cadastro territorial); qualquer outro número
 # é da numeração v1, que foi aposentada. ADR novo no docs: suba o fim da faixa.
 #
 # Escopo desta guarda: ela pega ponteiro FORA da faixa. Ela NÃO pega um

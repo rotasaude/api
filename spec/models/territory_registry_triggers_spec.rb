@@ -23,7 +23,9 @@ RSpec.describe "Cadastro territorial — imutabilidade e constraints" do
     expect { attempt { IndividualRegistrationVersion.where(id: version.id).delete_all } }
       .to raise_error(ActiveRecord::StatementInvalid, /append-only/)
     CityEncryption.allowing_reencryption { version.update_columns(health_conditions: version.health_conditions) }
-    expect { CityEncryption.allowing_reencryption { version.update_columns(origin: "exit") } }.to raise_error(ActiveRecord::StatementInvalid)
+    # O trigger (BEFORE UPDATE) recusa antes do CHECK que origin exit também violaria.
+    expect { CityEncryption.allowing_reencryption { version.update_columns(origin: "exit") } }
+      .to raise_error(ActiveRecord::StatementInvalid, /append-only/)
     expect(version.reload.health_conditions).to include("status_tem_diabetes" => true)
   end
 
