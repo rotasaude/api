@@ -222,4 +222,8 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "care_outreach.recorded", to: []
   DomainEvents.bind "citizen_condition.withdrawn", to: []
   DomainEvents.bind "citizen_condition.declared", to: [ CareLines::ConditionDeclaredJob ]
+
+  # Módulo 24a (ADR 0042): cadastro territorial, só trilha, só ids. Nunca CPF,
+  # CNS, nome, nascimento ou justificativa sem CPF.
+  DomainEvents.bind "patient.cpf_added", to: []
 end

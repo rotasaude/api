@@ -219,3 +219,13 @@ RSpec.describe "care lines bindings (F-23.3, F-23.5, F-23.7)" do
     expect(DomainEvents.registry["citizen_condition.declared"].map(&:job)).to eq([ "CareLines::ConditionDeclaredJob" ])
   end
 end
+
+# Módulo 24a (ADR 0042): cadastro territorial, só trilha, só ids. Nunca CPF,
+# CNS, nome, nascimento ou justificativa sem CPF.
+RSpec.describe "territory registry bindings (ADR 0042)" do
+  it "declares every territory registry event with no consumer" do
+    names = %w[patient.cpf_added]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
+  end
+end

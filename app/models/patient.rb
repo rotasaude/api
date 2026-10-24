@@ -27,6 +27,10 @@ class Patient < ApplicationRecord
 
   validate { errors.add(:cpf, :blank) unless cpf.present? ^ no_cpf_reason.present? }
 
+  # Chave cega de duplicados (Desvio 1): sempre recalculada do nome e do
+  # nascimento gravados — quem muda um muda a chave.
+  before_save { self.match_key = Patients::MatchKey.for(full_name, birth_date) }
+
   def display_name = social_name.presence || full_name
 
   def cpf_masked = cpf && CitizenIdentity::Cpf.mask(cpf)
