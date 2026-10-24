@@ -59,6 +59,16 @@ RSpec.describe Ledi::IndividualRegistrationFicha do
     expect(Ledi::FichaSources.for("IndividualRegistrationVersion")).to eq(described_class)
   end
 
+  it "ficha failed (a fila desistiu; o PEC nunca recebeu) não é originadora: v2 sai como cadastro novo; v3 aponta a v2" do
+    registration = registry_registration!
+    first = LediOutboxEntry.find_by!(source_id: registration.versions.first.id)
+    first.update!(status: "failed")
+    second = LediOutboxEntry.find_by!(source_id: registry_new_version!(registration).id)
+    expect([ inner(second).uuidFichaOriginadora, inner(second).fichaAtualizada ]).to eq([ second.uuid, false ])
+    third = LediOutboxEntry.find_by!(source_id: registry_new_version!(registration).id)
+    expect([ inner(third).uuidFichaOriginadora, inner(third).fichaAtualizada ]).to eq([ second.uuid, true ])
+  end
+
   it "paciente sem CPF e sem CNS: não gerada, patient_without_identifier; nada no outbox" do
     registration = registry_registration!(patient: registry_patient_without_cpf!(cns: nil))
     failure = LediGenerationFailure.find_by!(source_type: "IndividualRegistrationVersion", source_id: registration.versions.first.id)

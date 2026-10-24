@@ -107,6 +107,16 @@ RSpec.describe Ledi::Fichas::IndividualRegistration do
     expect([ refused.emSituacaoDeRua, refused.saidaCidadaoCadastro, refused.identificacaoUsuarioCidadao.nomeCidadao ])
       .to eq([ nil, nil, "MARIA DAS GRACAS LIMA" ])
     expect(thrift.statusTermoRecusaCadastroIndividualAtencaoBasica).to be(false)
+    # Recusa com seções preenchidas e saída: as cinco proibidas não vão (§15.3).
+    filled = thrift("refused" => true, "health_conditions" => { "status_tem_diabetes" => true },
+                    "street_situation" => { "status_situacao_rua" => false },
+                    "sociodemographic" => { "status_deseja_informar_orientacao_sexual" => false,
+                                            "alimentos_acabaram_antes_ter_dinheiro_comprar_mais" => true,
+                                            "comeu_alguns_alimentos_que_tinha_dinheiro_acabou" => true },
+                    "exit" => { "reason" => "death", "on" => "2026-10-20" })
+    expect([ filled.condicoesDeSaude, filled.emSituacaoDeRua, filled.informacoesSocioDemograficas, filled.informacoesSocioEconomicas,
+             filled.saidaCidadaoCadastro ]).to eq([ nil, nil, nil, nil, nil ])
+    expect([ filled.statusTermoRecusaCadastroIndividualAtencaoBasica, filled.identificacaoUsuarioCidadao.cpfCidadao ]).to eq([ true, "52998224725" ])
     death = thrift("exit" => { "reason" => "death", "on" => "2026-10-20" })
     expect(death.saidaCidadaoCadastro.motivoSaidaCidadao).to eq(135)
     expect(death.saidaCidadaoCadastro.dataObito).to eq(Time.zone.parse("2026-10-20").to_i * 1000)

@@ -9,7 +9,7 @@
 #   - Cabeçalho = quem gravou a versão (CNS, CBO do vínculo na equipe), INE da
 #     equipe, CNES da unidade da equipe, instante da versão.
 #   - Originadora (Desvio 6): a ficha mais antiga do mesmo cadastro/domicílio
-#     (qualquer versão) que não está rejected nem correction_pending; sem
+#     (qualquer versão) que não está rejected, failed nem correction_pending; sem
 #     nenhuma, a ficha sai como cadastro novo (uuidFichaOriginadora = uuid).
 #     Reenvio de recusada regera da versão (regenerate): ficha nova recusada →
 #     uuid novo e originadora = ele; a atualização seguinte aponta a nova.
@@ -18,7 +18,8 @@
 module Ledi
   module RegistrationFicha
     AlreadyResolved = Ledi::ScreeningFicha::AlreadyResolved
-    NOT_ORIGINATING = %w[rejected correction_pending].freeze
+    # failed: a fila desistiu, o PEC nunca recebeu — não pode ser originadora.
+    NOT_ORIGINATING = %w[rejected failed correction_pending].freeze
 
     def exportable?(city) = Ledi::ScreeningFicha.exportable?(city)
 
