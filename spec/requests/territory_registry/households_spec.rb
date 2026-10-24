@@ -14,7 +14,7 @@ RSpec.describe "Território — domicílios e famílias", type: :request do
   let(:neighborhood) { care_neighborhood!(unit) }
   let(:body) do
     { micro_area_id: area.id, property_type: "1", refused: false, contact_phone: "41999990000",
-      address: { zip: "81000000", street_type: "081", street: "Rua das Acácias", number: "120", no_number: false, complement: "casa 2",
+      address: { zip: "81000000", street_type: "081", street: "das Acácias", number: "120", no_number: false, complement: "casa 2",
                  neighborhood_id: neighborhood.id, reference: "perto da escola" },
       living_conditions: { localizacao: 83, situacao_moradia_posse_terra: 75 } }
   end
@@ -25,7 +25,7 @@ RSpec.describe "Território — domicílios e famílias", type: :request do
     expect(response).to have_http_status(:created)
     expect(json_body).to include("version" => 1, "status" => "active", "property_type" => "1", "families" => [], "refused" => false,
                                  "micro_area" => { "id" => area.id, "code" => "01" })
-    expect(json_body["address"]).to include("street" => "Rua das Acácias", "neighborhood_id" => neighborhood.id)
+    expect(json_body["address"]).to include("street" => "das Acácias", "neighborhood_id" => neighborhood.id)
     id = json_body["id"]
     expect(LediOutboxEntry.where(ficha_type: "cadastro_domiciliar").count).to eq(1)
     json_patch "/territory/households/#{id}", body.merge(version: 1, contact_phone: "41988880000")
@@ -50,6 +50,9 @@ RSpec.describe "Território — domicílios e famílias", type: :request do
     expect(json_body).to eq("error" => "invalid_household", "path" => "address.number")
     json_post "/territory/households", body.deep_merge(address: { complement: "C" * 11 })
     expect(json_body).to eq("error" => "invalid_household", "path" => "address.complement")
+    json_post "/territory/households", body.deep_merge(address: { street: "Rua das Acácias" }) # tipo 081 RUA repetido
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to eq("error" => "invalid_household", "path" => "address.street")
     expect(Household.count).to eq(0)
     expect(HouseholdVersion.count).to eq(0)
   end

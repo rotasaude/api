@@ -109,7 +109,7 @@ RSpec.describe "Cadastro individual — concorrência" do
     holding.pop(timeout: 5) or raise "o cadastro não segurou a transação"
 
     rewritten = Queue.new
-    household_params = in_city { registry_household_params(household).deep_merge("address" => { "street" => "Rua Nova" }, "version" => 1) }
+    household_params = in_city { registry_household_params(household).deep_merge("address" => { "street" => "Nova" }, "version" => 1) }
     threads << Thread.new do
       rewritten << in_city { TerritoryRegistry::SaveHousehold.call(params: household_params, by: acs, household: household) }
     end
@@ -118,13 +118,13 @@ RSpec.describe "Cadastro individual — concorrência" do
 
     expect(outcome(saved.pop(timeout: 10))).to eq(:ok)
     expect(outcome(rewritten.pop(timeout: 10))).to eq(:ok)
-    in_city { expect(Patient.find(@ids[:patient]).address_street).to eq("Rua Nova") }
+    in_city { expect(Patient.find(@ids[:patient]).address_street).to eq("Nova") }
   end
 
   it "o domicílio grava primeiro: o cadastro espera a trava do domicílio e entra depois, com o endereço novo" do
     holder, holding = hold_after("household.saved")
     rewritten = Queue.new
-    household_params = in_city { registry_household_params(household).deep_merge("address" => { "street" => "Rua Nova" }, "version" => 1) }
+    household_params = in_city { registry_household_params(household).deep_merge("address" => { "street" => "Nova" }, "version" => 1) }
     threads << (holder[0] = Thread.new do
       go.pop(timeout: 5) && rewritten << in_city { TerritoryRegistry::SaveHousehold.call(params: household_params, by: acs, household: household) }
     end)
@@ -139,6 +139,6 @@ RSpec.describe "Cadastro individual — concorrência" do
 
     expect(outcome(rewritten.pop(timeout: 10))).to eq(:ok)
     expect(outcome(saved.pop(timeout: 10))).to eq(:ok)
-    in_city { expect(Patient.find(@ids[:patient]).address_street).to eq("Rua Nova") }
+    in_city { expect(Patient.find(@ids[:patient]).address_street).to eq("Nova") }
   end
 end

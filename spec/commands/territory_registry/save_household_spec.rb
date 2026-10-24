@@ -11,18 +11,18 @@ RSpec.describe TerritoryRegistry::SaveHousehold do
     registration = registry_registration!(household: household)
     patient = registration.patient
     outsider = registry_patient!
-    result = described_class.call(params: registry_household_params(household).deep_merge("address" => { "street" => "Rua Nova", "number" => "", "no_number" => true },
+    result = described_class.call(params: registry_household_params(household).deep_merge("address" => { "street" => "Nova", "number" => "", "no_number" => true },
                                                                                           "version" => household.version),
                                   by: registry_acs_of(household), household: household)
     expect(result).to be_ok
     expect(result.payload[:version].version).to eq(2)
-    expect(patient.reload.address_street).to eq("Rua Nova")
+    expect(patient.reload.address_street).to eq("Nova")
     expect(patient).to have_attributes(address_number: "SN", address_zip: "80010000", address_district: "Centro", address_complement: nil)
     expect(outsider.reload.address_street).to be_nil
     result = ApplicationRecord.transaction { patient.lock!; Patients::Demographics.save!(patient, "address_street" => "Outra") }
     expect(result.reason).to eq(:address_from_household)
     expect(result.details).to eq(field: "address_street")
-    expect(patient.reload.address_street).to eq("Rua Nova")
+    expect(patient.reload.address_street).to eq("Nova")
     expect(Patients::Demographics.flags(patient)).to include(address_from_household: true)
     expect(Patients::Demographics.flags(outsider)).to include(address_from_household: false)
     expect(Patients::Demographics.save!(patient, "race_color" => "02")).to be_ok
@@ -100,16 +100,16 @@ RSpec.describe TerritoryRegistry::SaveHousehold do
     let(:other) { registry_registration!(household: household).patient }
 
     def save!
-      params = registry_household_params(household).deep_merge("address" => { "street" => "Rua Nova" }, "version" => household.version)
+      params = registry_household_params(household).deep_merge("address" => { "street" => "Nova" }, "version" => household.version)
       described_class.call(params: params, by: registry_acs_of(household), household: household)
     end
 
     it "quem saiu depois da leitura não recebe o endereço" do
       allow(described_class).to receive(:resident_ids).and_return([ stay.id, other.id ], [ stay.id ])
       expect(save!).to be_ok
-      expect(stay.reload.address_street).to eq("Rua Nova")
+      expect(stay.reload.address_street).to eq("Nova")
       # o endereço que recebeu ao entrar (SaveRegistration), não o novo
-      expect(other.reload.address_street).to eq("Rua das Flores")
+      expect(other.reload.address_street).to eq("das Flores")
     end
 
     it "conjunto que cresceu uma vez: recomeça e grava para todos" do
@@ -117,7 +117,7 @@ RSpec.describe TerritoryRegistry::SaveHousehold do
       result = save!
       expect(result).to be_ok
       expect(described_class).to have_received(:resident_ids).exactly(4).times
-      expect([ stay.reload.address_street, other.reload.address_street ]).to eq([ "Rua Nova", "Rua Nova" ])
+      expect([ stay.reload.address_street, other.reload.address_street ]).to eq([ "Nova", "Nova" ])
       expect(household.reload.version).to eq(2)
       expect(HouseholdVersion.where(household_id: household.id).count).to eq(2)
     end
@@ -126,7 +126,7 @@ RSpec.describe TerritoryRegistry::SaveHousehold do
       allow(described_class).to receive(:resident_ids).and_return([], [ stay.id ], [], [ stay.id ], [], [ stay.id ])
       expect(save!.reason).to eq(:stale_version)
       expect(household.reload.version).to eq(1)
-      expect(stay.reload.address_street).to eq("Rua das Flores")
+      expect(stay.reload.address_street).to eq("das Flores")
     end
   end
 end

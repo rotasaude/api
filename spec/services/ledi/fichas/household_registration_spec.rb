@@ -15,7 +15,7 @@ RSpec.describe Ledi::Fichas::HouseholdRegistration do
   let(:values) do
     { "property_type" => "1", "refused" => false, "status" => "active", "micro_area_code" => "01", "uf" => "PR",
       "contact_phone" => "4133334444",
-      "address" => { "zip" => "80010000", "street_type" => "081", "street" => "Rua das Flores", "number" => "120", "no_number" => false,
+      "address" => { "zip" => "80010000", "street_type" => "081", "street" => "das Flores", "number" => "120", "no_number" => false,
                      "complement" => "casa 2", "district" => "Centro", "reference" => "perto da escola" },
       "living_conditions" => { "localizacao" => 83, "situacao_moradia_posse_terra" => 75, "nu_moradores" => 3, "nu_comodos" => 4,
                                "st_animais_no_domicilio" => true, "animais_no_domicilio" => [ 128, 129 ], "quantos_animais_no_domicilio" => 2 },
@@ -42,7 +42,7 @@ RSpec.describe Ledi::Fichas::HouseholdRegistration do
   it "endereço: codigoIbgeMunicipio do perfil, numeroDneUf PR → 17, tipo de logradouro DNE, telefoneContato, microárea" do
     a = thrift.enderecoLocalPermanencia
     expect([ a.codigoIbgeMunicipio, a.numeroDneUf, a.tipoLogradouroNumeroDne, a.cep, a.nomeLogradouro, a.numero, a.stSemNumero ])
-      .to eq([ "4106902", "17", "081", "80010000", "Rua das Flores", "120", false ])
+      .to eq([ "4106902", "17", "081", "80010000", "das Flores", "120", false ])
     expect([ a.complemento, a.bairro, a.pontoReferencia, a.telefoneContato, a.telefoneResidencia, a.microArea, a.stForaArea ])
       .to eq([ "casa 2", "Centro", "perto da escola", "4133334444", nil, "01", false ])
     no_number = thrift("address" => values["address"].merge("number" => nil, "no_number" => true)).enderecoLocalPermanencia

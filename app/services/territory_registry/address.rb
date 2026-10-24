@@ -3,6 +3,7 @@
 # o BPA-I do módulo 22 — logradouro 30, número 5, complemento 10, bairro 30 —
 # porque o endereço do domicílio é regravado nos pacientes moradores e vai no
 # BPA-I deles. Mais longo → 422 invalid_household com o caminho, nunca cortado.
+# O nome do logradouro não repete o tipo DNE escolhido (address.street).
 module TerritoryRegistry
   module Address
     KEYS = %w[zip street_type street number no_number complement neighborhood_id district reference].freeze
@@ -55,8 +56,9 @@ module TerritoryRegistry
       ("address.zip" unless text["zip"]&.match?(ZIP)) ||
         # tipoLogradouroNumeroDne: domínio texto tipo_logradouro (DNE)
         ("address.street_type" unless Dictionary.string_domain("tipo_logradouro").key?(text["street_type"])) ||
-        # nomeLogradouro: obrigatório, até 30 (BPA)
+        # nomeLogradouro: obrigatório, até 30 (BPA), sem repetir o tipo
         ("address.street" if text["street"].nil? || text["street"].length > STREET_MAX) ||
+        ("address.street" if repeats_type?(text["street"], text["street_type"])) ||
         # numero: 1–5 letras e dígitos (BPA); proibido com stSemNumero, obrigatório sem
         ("address.number" if no_number ? text["number"] : !text["number"]&.match?(NUMBER)) ||
         # complemento: até 10 (BPA)
@@ -70,6 +72,18 @@ module TerritoryRegistry
         ("address.district" if text["district"] && text["district"].length > DISTRICT_MAX)
     end
 
+    # O nome do logradouro começa com o nome do tipo DNE escolhido (palavra
+    # inteira, sem acento nem caixa): "Rua das Acácias" com tipo RUA (revisão
+    # final, M4) — o tipo vai em tipoLogradouroNumeroDne, o nome sem ele.
+    def repeats_type?(street, street_type)
+      type = Dictionary.string_domain("tipo_logradouro")[street_type]
+      return false if type.nil?
+
+      fold(street).match?(/\A#{Regexp.escape(fold(type))}(?![[:alnum:]])/)
+    end
+
+    def fold(text) = ActiveSupport::Inflector.transliterate(text.unicode_normalize(:nfc)).upcase
+
     def usable_neighborhood?(id)
       return false unless id.match?(UUID)
 
@@ -78,6 +92,6 @@ module TerritoryRegistry
     end
 
     def invalid(path) = Result.fail(:invalid_household, details: { path: path })
-    private_class_method :check, :usable_neighborhood?, :invalid
+    private_class_method :check, :repeats_type?, :fold, :usable_neighborhood?, :invalid
   end
 end

@@ -148,7 +148,7 @@ end
 RSpec.describe TerritoryRegistry::Address do
   let(:neighborhood) { Neighborhood.create!(name: "Jardim das Flores", source: "manual") }
   let(:raw) do
-    { "zip" => "81000000", "street_type" => "081", "street" => "Rua das Acácias", "number" => "120", "no_number" => false,
+    { "zip" => "81000000", "street_type" => "081", "street" => "das Acácias", "number" => "120", "no_number" => false,
       "complement" => "casa 2", "neighborhood_id" => neighborhood.id, "reference" => "perto da escola" }
   end
 
@@ -174,6 +174,19 @@ RSpec.describe TerritoryRegistry::Address do
     expect(described_class.parse("Rua X").details[:path]).to eq("address")
   end
 
+  # O tipo (DNE) vai em tipoLogradouroNumeroDne; o nome sem ele (revisão
+  # final, M4): "Rua das Acácias" com tipo RUA viraria "Rua Rua das Acácias".
+  it "logradouro que começa com o nome do tipo escolhido → invalid_household address.street (sem acento nem caixa)" do
+    expect(described_class.parse(raw.merge("street" => "Rua das Acácias")).to_h)
+      .to include(reason: :invalid_household, details: { path: "address.street" })
+    expect(path("street" => "rua das acacias")).to eq("address.street")
+    expect(path("street" => "RUA")).to eq("address.street")
+    expect(path("street_type" => "008", "street" => "Avenida Brasil")).to eq("address.street")
+    expect(path("street_type" => "009", "street" => "Balneario Sul")).to eq("address.street")
+    expect(described_class.parse(raw.merge("street" => "Ruano Silva"))).to be_ok # palavra inteira
+    expect(described_class.parse(raw.merge("street_type" => "008", "street" => "Rua Nova"))).to be_ok # outro tipo
+  end
+
   it "número vazio exige no_number true, e vice-versa" do
     expect(path("number" => "")).to eq("address.number")
     expect(path("number" => "120", "no_number" => true)).to eq("address.number")
@@ -196,7 +209,7 @@ RSpec.describe TerritoryRegistry::Address do
   it "to_patient: chaves de endereço do paciente, bairro pelo nome, SN sem número" do
     values = described_class.parse(raw).payload[:values]
     expect(described_class.to_patient(values, neighborhood: neighborhood))
-      .to eq("address_zip" => "81000000", "address_street" => "Rua das Acácias", "address_number" => "120",
+      .to eq("address_zip" => "81000000", "address_street" => "das Acácias", "address_number" => "120",
              "address_complement" => "casa 2", "address_district" => "Jardim das Flores")
     no_number = described_class.parse(raw.merge("number" => "", "no_number" => true, "neighborhood_id" => nil, "district" => "Vila Nova")).payload[:values]
     expect(described_class.to_patient(no_number, neighborhood: nil)).to include("address_number" => "SN", "address_district" => "Vila Nova")

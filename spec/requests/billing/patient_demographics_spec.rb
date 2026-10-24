@@ -78,7 +78,7 @@ RSpec.describe "Faturamento — dados do paciente para o BPA-I", type: :request 
     json_patch "/billing/patients/#{patient.id}/demographics", race_color: "03", address_street: "Rua XV de Novembro"
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to eq("error" => "address_from_household", "field" => "address_street")
-    expect(patient.reload).to have_attributes(race_color: "01", address_street: "Rua das Flores")
+    expect(patient.reload).to have_attributes(race_color: "01", address_street: "das Flores")
     json_patch "/billing/patients/#{patient.id}/demographics", race_color: "03"
     expect(response).to have_http_status(:ok)
     expect(json_body).to include("race_color_set" => true, "address_from_household" => true)

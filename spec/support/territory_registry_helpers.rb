@@ -194,7 +194,7 @@ module TerritoryRegistryHelpers
   end
 
   def registry_address
-    { "zip" => "80010000", "street_type" => "081", "street" => "Rua das Flores", "number" => "120", "no_number" => false,
+    { "zip" => "80010000", "street_type" => "081", "street" => "das Flores", "number" => "120", "no_number" => false,
       "complement" => nil, "district" => "Centro", "neighborhood_id" => nil, "reference" => nil }
   end
 

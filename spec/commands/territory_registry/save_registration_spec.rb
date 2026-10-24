@@ -30,7 +30,7 @@ RSpec.describe TerritoryRegistry::SaveRegistration do
     expect(version).to have_attributes(origin: "save", saved_by_user_id: acs.id, saved_cbo: "515105", version: 1)
     expect(version.identity).to include("full_name" => "Lia Santos", "race_color" => "03", "cpf" => nil, "no_cpf_reason" => "3")
     expect(version.street_situation).to eq("status_situacao_rua" => false)
-    expect(patient).to have_attributes(race_color: "03", address_street: "Rua das Flores", address_zip: "80010000", address_number: "120")
+    expect(patient).to have_attributes(race_color: "03", address_street: "das Flores", address_zip: "80010000", address_number: "120")
     expect(LediOutboxEntry.where(source_id: version.id, ficha_type: "cadastro_individual")).to exist
     expect(DomainEvent.where(name: "territory_registration.saved").last.payload)
       .to eq("registration_id" => registration.id, "registration_version_id" => version.id, "patient_id" => patient.id, "user_id" => acs.id)
@@ -215,13 +215,13 @@ RSpec.describe TerritoryRegistry::SaveRegistration do
 
     it "troca de domicílio copia o endereço do novo domicílio para o paciente" do
       other = registry_household!(micro_area: household.micro_area)
-      address = { "street" => "Rua Outra", "number" => "9" }
+      address = { "street" => "Outra", "number" => "9" }
       TerritoryRegistry::SaveHousehold.call(params: registry_household_params(other).deep_merge("address" => address,
                                                                                                 "version" => other.version),
                                             by: acs, household: other)
       result = save(params("version" => 1, "household_id" => other.id), registration: registration)
       expect(result).to be_ok
-      expect(registration.reload.patient).to have_attributes(address_street: "Rua Outra", address_number: "9")
+      expect(registration.reload.patient).to have_attributes(address_street: "Outra", address_number: "9")
     end
   end
 end
