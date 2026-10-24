@@ -78,7 +78,8 @@ module TerritoryRegistry
       versions = IndividualRegistrationVersion.joins(:registration).where(registration_id: ids)
                                               .where("individual_registration_versions.version = individual_registrations.version")
                                               .index_by(&:registration_id)
-      locked = Citizen.not_erased.verification_level_verified.where(patient_id: registrations.map(&:patient_id)).distinct.pluck(:patient_id)
+      # A mesma regra que a gravação aplica (identity_locked): Patients::Pairs.of.
+      locked = Patients::Pairs.patient_ids_with_pairs(registrations.map(&:patient).uniq)
       registrations.map do |registration|
         Json.registration(registration, versions.fetch(registration.id), identity_locked: locked.include?(registration.patient_id))
       end

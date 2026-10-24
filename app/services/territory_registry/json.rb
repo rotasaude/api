@@ -44,13 +44,16 @@ module TerritoryRegistry
 
     # <registration> (contrato §2, §14 L4, L7, L9) da versão `version` (a
     # última). Status direto até a Task 12 (TerritoryRegistry::Validity).
-    # identity_locked: o paciente tem par validado (nome, nascimento, sexo e
-    # mãe só leitura). CNS só mascarado (L8).
+    # identity_locked: o paciente tem par validado pela regra da gravação
+    # (Patients::Pairs.of; nome, nascimento, sexo e mãe só leitura). full_name
+    # e mother_name para o formulário preencher o paciente digitado (leitura
+    # nominal, com trilha). CNS só mascarado (L8).
     def registration(registration, version, identity_locked:)
       patient = registration.patient
       area = registration.micro_area
       { id: registration.id,
-        patient: { id: patient.id, display_name: patient.display_name, birth_date: patient.birth_date, sex: patient.sex,
+        patient: { id: patient.id, display_name: patient.display_name, full_name: patient.full_name, mother_name: patient.mother_name,
+                   birth_date: patient.birth_date, sex: patient.sex,
                    has_cpf: patient.cpf.present?, no_cpf_reason: patient.no_cpf_reason, cns_masked: patient.cns_masked,
                    identity_locked: identity_locked },
         patient_demographics: { race_color: patient.race_color, ethnicity: patient.ethnicity },

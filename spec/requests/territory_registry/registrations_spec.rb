@@ -23,7 +23,8 @@ RSpec.describe "Território — cadastro individual", type: :request do
                                                               mother_name: "Carla Santos", no_cpf_reason: "3", cns: valid_cns(41) })
     expect(response).to have_http_status(:created)
     expect(json_body["patient"]).to include("has_cpf" => false, "no_cpf_reason" => "3", "display_name" => "Lia Santos",
-                                            "birth_date" => "2026-08-01", "sex" => "female")
+                                            "full_name" => "Lia Santos", "mother_name" => "Carla Santos",
+                                            "birth_date" => "2026-08-01", "sex" => "female", "identity_locked" => false)
     expect(json_body).to include("version" => 1, "status" => "valid", "exit" => nil, "refused" => false, "household_id" => household.id,
                                  "team" => { "id" => team.id, "ine" => team.ine, "name" => team.name },
                                  "micro_area" => { "id" => area.id, "code" => "01" }, "identity_changed_at" => nil)
@@ -146,6 +147,21 @@ RSpec.describe "Território — cadastro individual", type: :request do
     expect(response).to have_http_status(:not_found)
     expect(TerritoryRegistry::ExitRegistration.call(registration: registration, params: { "reason" => "moved", "on" => Time.zone.today.iso8601 },
                                                     by: care_admin!).reason).to eq(:out_of_scope)
+  end
+
+  # identity_locked do JSON segue a MESMA regra da gravação (Patients::Pairs.of):
+  # par validado do CPF ainda não ligado ao paciente também trava.
+  it "par validado do mesmo CPF ainda não ligado: identity_locked true no JSON e 422 identity_locked no PATCH" do
+    citizen = verified_citizen!(41)
+    patient = Patient.create!(cpf: citizen.cpf, full_name: "Maria Aparecida da Silva", mother_name: "Joana da Silva",
+                              birth_date: "1980-05-10", sex: "female", race_color: "03")
+    expect(citizen.reload.patient_id).to be_nil
+    registration = registry_registration!(patient: patient, household: household)
+    sign_in_as(acs)
+    get "/territory/registrations/#{registration.id}"
+    expect(json_body["patient"]).to include("identity_locked" => true, "has_cpf" => true)
+    json_patch "/territory/registrations/#{registration.id}", body(version: 1, patient: { full_name: "Maria Aparecida Souza" })
+    expect(json_body).to eq("error" => "identity_locked", "path" => "patient.full_name")
   end
 
   it "leitura nominal com trilha por pessoa; enfermeiro da equipe lê; profissional de fora → 404" do
