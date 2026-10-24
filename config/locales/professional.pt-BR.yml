@@ -1,0 +1,8 @@
+pt-BR:
+  activerecord:
+    errors:
+      models:
+        professional:
+          attributes:
+            council:
+              incomplete: "exige conselho, UF e registro juntos (ou nenhum dos três)"

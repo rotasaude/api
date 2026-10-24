@@ -100,7 +100,8 @@ module Consultations
       professional = c.author_user.professional
       title(pdf, "Profissional")
       line(pdf, "Nome", professional&.professional_name || c.author_user.email_address)
-      line(pdf, "Conselho", professional && "#{professional.council}-#{professional.council_state} #{professional.registration_number}")
+      council = ClinicalDocuments::Json.council(professional)
+      line(pdf, "Conselho", council) if council
       line(pdf, "CBO", "#{c.cbo_code} #{Professionals::Cbo.find(c.cbo_code)&.title}")
     end
 

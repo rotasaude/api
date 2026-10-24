@@ -36,8 +36,12 @@ class Professional < ApplicationRecord
   has_many :links, class_name: "ProfessionalLink", dependent: :restrict_with_error
 
   normalizes :professional_name, with: ->(v) { v.to_s.squish }
-  normalizes :council_state, with: ->(v) { v.to_s.strip.upcase }
-  normalizes :registration_number, :cns, with: ->(v) { v.to_s.gsub(/\D/, "") }
+  # Conselho, UF e registro em branco valem como ausentes (nil): o CHECK do
+  # banco recusa "" e o perfil de campo (ACS, 515105/515140) não tem nenhum dos três.
+  normalizes :council, with: ->(v) { v.to_s.strip.presence }, apply_to_nil: true
+  normalizes :council_state, with: ->(v) { v.to_s.strip.upcase.presence }, apply_to_nil: true
+  normalizes :registration_number, with: ->(v) { v.to_s.gsub(/\D/, "").presence }, apply_to_nil: true
+  normalizes :cns, with: ->(v) { v.to_s.gsub(/\D/, "") }
   normalizes :cpf, with: ->(v) { v.to_s.gsub(/\D/, "").presence }, apply_to_nil: true
   normalizes :phone, with: ->(v) { v.to_s.gsub(/\D/, "").presence }, apply_to_nil: true
   normalizes :contact_email, with: ->(v) { v.to_s.strip.downcase.presence }, apply_to_nil: true

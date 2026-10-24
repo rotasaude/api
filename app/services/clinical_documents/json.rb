@@ -57,9 +57,12 @@ module ClinicalDocuments
     end
 
     # Texto do conselho ("CRM-PR 12345"), o mesmo no JSON, no PDF e na página
-    # pública; nil sem perfil profissional (a recepção).
+    # pública; nil sem perfil profissional (a recepção) e sem conselho (ACS e
+    # agente de endemias, módulo 24a).
     def council(professional)
-      professional && "#{professional.council}-#{professional.council_state} #{professional.registration_number}"
+      return unless professional&.council
+
+      "#{professional.council}-#{professional.council_state} #{professional.registration_number}"
     end
 
     # Linha das listas de declarações (api#59): só metadados — nada do conteúdo

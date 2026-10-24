@@ -38,6 +38,14 @@ RSpec.describe Consultations::Print do
     expect(described_class.safe("ç ã é ≥ 🙂")).to eq("ç ã é ? ?")
   end
 
+  it "profissional de campo sem conselho (módulo 24a): imprime sem a linha de conselho, sem quebrar" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    doctor.professional.update_columns(council: nil, council_state: nil, registration_number: nil)
+    text = text_of(described_class.call(consultation.reload))
+    expect(text).to include(doctor.professional.professional_name, "225125")
+    expect(text).not_to match(/Conselho: *-/)
+  end
+
   it "rascunho ou paciente sem nome não imprime" do
     draft = started_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(2))
     expect { described_class.call(draft) }.to raise_error(described_class::NotPrintable)
