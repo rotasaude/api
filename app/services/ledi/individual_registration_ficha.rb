@@ -9,6 +9,7 @@ module Ledi
 
     SOURCE_TYPE = Ledi::Fichas::IndividualRegistration::SOURCE_TYPE
     LEDI_TABLE = :individual
+    PROFILE_FIELDS = %i[ibge_code].freeze # contrato §14 L20
 
     class << self
       def version_class = IndividualRegistrationVersion

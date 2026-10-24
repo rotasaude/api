@@ -173,4 +173,21 @@ RSpec.describe "Território — domicílios e famílias", type: :request do
     expect(response).to have_http_status(:forbidden)
     expect(json_body).to eq("error" => "cbo_not_allowed")
   end
+
+  # Contrato §14 L20 (rulings, adendo T9): sem IBGE ou sem UF no perfil da
+  # cidade a gravação nunca dá 500 nem desfaz — a ficha fica "não gerada".
+  it "sem IBGE: 201 e nenhuma ficha (não gerada city_profile_incomplete); sem UF, o mesmo" do
+    sign_in_as(acs)
+    CityProfile.current.update!(ibge_code: nil)
+    json_post "/territory/households", body
+    expect(response).to have_http_status(:created)
+    version = HouseholdVersion.find_by!(household_id: json_body["id"])
+    expect(LediOutboxEntry.where(ficha_type: "cadastro_domiciliar")).to be_empty
+    expect(LediGenerationFailure.find_by!(source_id: version.id).reason_codes).to eq(%w[city_profile_incomplete])
+    CityProfile.current.update!(ibge_code: "4115200", uf: nil)
+    json_patch "/territory/households/#{json_body['id']}", body.merge(version: 1)
+    expect(response).to have_http_status(:ok)
+    expect(LediOutboxEntry.where(ficha_type: "cadastro_domiciliar")).to be_empty
+    expect(LediGenerationFailure.where(source_type: "HouseholdVersion").pluck(:reason_codes)).to all(eq(%w[city_profile_incomplete]))
+  end
 end

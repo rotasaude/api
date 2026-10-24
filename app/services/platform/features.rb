@@ -119,10 +119,13 @@ module Platform
                 requires: %w[feature:clinical_record]),
       # ADR 0042: cadastro territorial (módulo 24a) — microáreas, domicílios,
       # famílias e cadastro individual com as fichas LEDI de cadastro. Só no
-      # modo record (pelo prontuário utilizável).
+      # modo record (pelo prontuário utilizável). IBGE e UF da cidade (contrato
+      # §14 L20) vão no cabeçalho e no endereço das fichas: como no
+      # procedure_billing, só informam o maintenance (TerritoryRegistry::Gate);
+      # sem eles a ficha fica "não gerada" (city_profile_incomplete).
       Entry.new(key: "territory_registry",
                 description: "Cadastro territorial: microáreas, domicílios, famílias e cadastro individual com fichas LEDI de cadastro",
-                requires: %w[feature:clinical_record])
+                requires: %w[feature:clinical_record ibge_code uf])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
@@ -182,7 +185,7 @@ module Platform
       CityConnection.with(city) do
         pec = PecConfigState.read
         { credentials: IntegrationCredential.pluck(:kind, :last_check_status).to_h,
-          ibge_code: CityProfile.current&.ibge_code, pec_origin: pec[:origin], pec_hmac_key: pec[:key] }
+          ibge_code: CityProfile.current&.ibge_code, uf: CityProfile.current&.uf, pec_origin: pec[:origin], pec_hmac_key: pec[:key] }
       end
     rescue *Maintenance::CityConnectionErrors::CLASSES, ActiveRecord::StatementInvalid
       nil
@@ -241,6 +244,7 @@ module Platform
       when "pec_hmac_key" then "pec_hmac_key_missing" unless state[:pec_hmac_key]
       when "pec_url" then "pec_url_missing" if platform[:pec_url].blank?
       when "ibge_code" then "ibge_code_missing" if state[:ibge_code].blank?
+      when "uf" then "uf_missing" if state[:uf].blank?
       when /\Acredential:(\w+)\z/
         kind = Regexp.last_match(1)
         if !state[:credentials].key?(kind) then "credential_missing:#{kind}"

@@ -11,6 +11,7 @@ module Ledi
 
     SOURCE_TYPE = Ledi::Fichas::HouseholdRegistration::SOURCE_TYPE
     LEDI_TABLE = :household
+    PROFILE_FIELDS = %i[ibge_code uf].freeze # contrato §14 L20
 
     class << self
       def version_class = HouseholdVersion

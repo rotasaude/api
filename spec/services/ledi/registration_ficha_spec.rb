@@ -169,4 +169,41 @@ RSpec.describe Ledi::HouseholdRegistrationFicha do
     failure = LediGenerationFailure.find_by!(source_type: "HouseholdVersion", source_id: household.versions.first.id)
     expect(failure.reason_codes).to eq(%w[cbo_not_in_ledi_table])
   end
+
+  # Contrato §14 L20: cidade que perde IBGE ou UF com o interruptor ligado —
+  # a versão grava, a ficha fica "não gerada" (city_profile_incomplete) sem
+  # passar pelo Transport, e gerar de novo depois do perfil completo resolve.
+  it "sem IBGE no perfil: não gerada city_profile_incomplete, nenhuma ficha; gerar de novo com o perfil completo resolve" do
+    CityProfile.current.update!(ibge_code: nil)
+    registration = registry_registration!
+    version = registration.versions.first
+    failure = LediGenerationFailure.find_by!(source_type: "IndividualRegistrationVersion", source_id: version.id)
+    expect(failure.reason_codes).to eq(%w[city_profile_incomplete])
+    expect(LediOutboxEntry.where(source_id: version.id)).to be_empty
+    CityProfile.current.update!(ibge_code: "4115200")
+    expect(Ledi::IndividualRegistrationFicha.retry!(failure, by: registry_acs!)).to be_resolved
+    expect(LediOutboxEntry.where(source_id: version.id).count).to eq(1)
+  end
+
+  it "sem UF no perfil: a ficha domiciliar (numeroDneUf) fica não gerada; a individual não depende da UF" do
+    CityProfile.current.update!(uf: nil)
+    household = registry_household!
+    version = household.versions.first
+    failure = LediGenerationFailure.find_by!(source_type: "HouseholdVersion", source_id: version.id)
+    expect(failure.reason_codes).to eq(%w[city_profile_incomplete])
+    expect(LediOutboxEntry.where(source_id: version.id)).to be_empty
+    registration = registry_registration!(household: household)
+    expect(LediOutboxEntry.where(source_id: registration.versions.first.id).count).to eq(1)
+    CityProfile.current.update!(uf: "PR")
+    expect(Ledi::HouseholdRegistrationFicha.retry!(failure, by: registry_acs!)).to be_resolved
+    expect(Ledi::Transport.read(LediOutboxEntry.find_by!(source_id: version.id).bytes).tipoDadoSerializado).to eq(3)
+  end
+
+  it "sem a exportação ligada, perfil incompleto não vira pendência (L14: a ficha só não nasce)" do
+    ledi_off!(Current.city)
+    CityProfile.current.update!(ibge_code: nil, uf: nil)
+    household = registry_household!
+    expect(LediGenerationFailure.where(source_id: household.versions.first.id)).to be_empty
+    expect(LediOutboxEntry.where(source_id: household.versions.first.id)).to be_empty
+  end
 end

@@ -1,6 +1,6 @@
 # Comportamento comum das fichas de cadastro (módulo 24a, ADR 0042; plano,
 # Desvios 4, 6 e 7), estendido por Ledi::IndividualRegistrationFicha e
-# Ledi::HouseholdRegistrationFicha (cada um define SOURCE_TYPE, LEDI_TABLE,
+# Ledi::HouseholdRegistrationFicha (cada um define SOURCE_TYPE, LEDI_TABLE, PROFILE_FIELDS,
 # version_class, sibling_ids(version), values(version) e ficha_class).
 # Mesmo contrato do Ledi::ConsultationFicha, sem refresh!/correção: a fonte é
 # uma versão imutável, que nunca muda depois de gravada.
@@ -23,9 +23,12 @@ module Ledi
 
     def exportable?(city) = Ledi::ScreeningFicha.exportable?(city)
 
-    # :enqueued | :failed | :unusable | :exists
+    # :enqueued | :failed | :unusable | :exists. Com a exportação ligada
+    # (Enqueue.accepting?) e o perfil da cidade incompleto, a exportação não é
+    # utilizável (o ledi_export exige o IBGE), mas a ficha vira "não gerada"
+    # (city_profile_incomplete, L20) em vez de sumir: gerar de novo resolve.
     def generate(version, city: Current.city)
-      return :unusable unless exportable?(city)
+      return :unusable unless exportable?(city) || (Ledi::Enqueue.accepting?(city) && profile_incomplete?)
       return :exists if LediOutboxEntry.exists?(source_type: self::SOURCE_TYPE, source_id: version.id)
 
       ficha, reasons = build(version)
@@ -44,6 +47,9 @@ module Ledi
       reasons << "professional_without_cns" unless Professionals::Cns.valid?(professional.cns)
       # Defesa: o TerritoryRegistry::Access já recusa a gravação (403 cbo_not_allowed).
       reasons << "cbo_not_in_ledi_table" unless TerritoryRegistry::Access.registrar_cbo?(version.saved_cbo, ficha: self::LEDI_TABLE)
+      # Contrato §14 L20: o IBGE (cabeçalho, endereço) e, na domiciliar, a UF
+      # (numeroDneUf) vêm do perfil; sem eles nunca chega ao Ledi::Transport.
+      reasons << "city_profile_incomplete" if profile_incomplete?
       values, more = values(version)
       reasons.concat(more)
       return [ nil, reasons ] if reasons.any?
@@ -53,6 +59,14 @@ module Ledi
         saved_at: version.created_at, ibge_code: CityProfile.current&.ibge_code
       )
       [ ficha_class.new(header: header, values: values, originating_uuid: originating_uuid(version), source_id: version.id), [] ]
+    end
+
+    # PROFILE_FIELDS de quem estende: os campos do CityProfile que a ficha usa.
+    def profile_incomplete?
+      profile = CityProfile.current
+      return true unless profile && profile.ibge_code.present?
+
+      self::PROFILE_FIELDS.include?(:uf) && !TerritoryRegistry::Catalog::UF_TO_DNE.key?(profile.uf)
     end
 
     def originating_uuid(version)
