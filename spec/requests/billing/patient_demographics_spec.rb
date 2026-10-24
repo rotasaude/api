@@ -73,12 +73,12 @@ RSpec.describe "Faturamento — dados do paciente para o BPA-I", type: :request 
   # Módulo 24a (Desvio 8; contrato §14 L6): com cadastro ativo em domicílio o
   # endereço é do cadastro domiciliar — só leitura aqui; raça/cor segue livre.
   it "paciente com cadastro ativo em domicílio: endereço 422 address_from_household, raça/cor grava" do
-    registry_registration!(patient: patient)
+    registry_registration!(patient: patient) # raça/cor 01 e o endereço do domicílio no paciente
     sign_in_as(clerk)
     json_patch "/billing/patients/#{patient.id}/demographics", race_color: "03", address_street: "Rua XV de Novembro"
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to eq("error" => "address_from_household", "field" => "address_street")
-    expect(patient.reload).to have_attributes(race_color: nil, address_street: nil)
+    expect(patient.reload).to have_attributes(race_color: "01", address_street: "Rua das Flores")
     json_patch "/billing/patients/#{patient.id}/demographics", race_color: "03"
     expect(response).to have_http_status(:ok)
     expect(json_body).to include("race_color_set" => true, "address_from_household" => true)

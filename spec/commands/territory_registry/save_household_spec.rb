@@ -108,7 +108,8 @@ RSpec.describe TerritoryRegistry::SaveHousehold do
       allow(described_class).to receive(:resident_ids).and_return([ stay.id, other.id ], [ stay.id ])
       expect(save!).to be_ok
       expect(stay.reload.address_street).to eq("Rua Nova")
-      expect(other.reload.address_street).to be_nil
+      # o endereço que recebeu ao entrar (SaveRegistration), não o novo
+      expect(other.reload.address_street).to eq("Rua das Flores")
     end
 
     it "conjunto que cresceu uma vez: recomeça e grava para todos" do
@@ -125,7 +126,7 @@ RSpec.describe TerritoryRegistry::SaveHousehold do
       allow(described_class).to receive(:resident_ids).and_return([], [ stay.id ], [], [ stay.id ], [], [ stay.id ])
       expect(save!.reason).to eq(:stale_version)
       expect(household.reload.version).to eq(1)
-      expect(stay.reload.address_street).to be_nil
+      expect(stay.reload.address_street).to eq("Rua das Flores")
     end
   end
 end

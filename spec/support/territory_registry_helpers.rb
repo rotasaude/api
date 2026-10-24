@@ -1,10 +1,11 @@
 # Módulo 24a (ADR 0042): cidade com o prontuário, care_lines,
 # territory_registry e o LEDI prontos (PEC falso), equipes, ACS sem conselho,
 # enfermeiro, microáreas, domicílios e cadastros individuais.
-# Cenário de teste: domicílio e cadastro gravam as LINHAS direto (cabeçalho +
-# versão 1); os caminhos reais são TerritoryRegistry::SaveHousehold e
-# SaveRegistration (Tasks 9/10), e estes helpers passam a chamá-los depois
-# delas (Step 6 da Task 10).
+# Domicílio e cadastro passam pelos caminhos reais (TerritoryRegistry::
+# SaveHousehold e SaveRegistration, em nome do ACS da microárea; Step 6 da
+# Task 10). Só o que o comando recusaria de propósito — colunas da versão
+# passadas em `over` (ex.: saved_cbo fora da tabela do LEDI, para provar a
+# defesa da ficha) — grava as LINHAS direto (cabeçalho + versão 1).
 module TerritoryRegistryHelpers
   def registry_city!
     city = care_city!
@@ -51,23 +52,24 @@ module TerritoryRegistryHelpers
     MicroArea.create!(team: team, code: code, name: "Microárea #{code}", acs_professional: acs&.professional)
   end
 
-  # Domicílio ativo, versão 1, gravado pelo ACS da microárea (ou um da equipe).
+  # Domicílio ativo, versão 1, gravado pelo ACS da microárea (que vira o
+  # responsável dela, se não houver) pelo SaveHousehold. Com `over` (colunas
+  # da versão), as linhas direto.
   def registry_household!(micro_area: nil, **over)
     micro_area ||= registry_micro_area!(code: "01")
-    author = registry_author_of(micro_area)
-    now = Time.current
-    household = Household.create!(micro_area: micro_area, status: "active", version: 1, registered_at: now,
-                                  registered_by_user: author)
-    HouseholdVersion.create!({ household: household, version: 1, micro_area: micro_area, team: micro_area.team,
-                               property_type: "1", address: registry_address, living_conditions: registry_living_conditions,
-                               contact_phone: "4133334444", refused: "false", families_snapshot: [], status: "active",
-                               origin: "save", **registry_saved_by(author, micro_area.team), created_at: now }.merge(over))
-                  .tap { |version| Ledi::HouseholdRegistrationFicha.generate(version) }
-    household
+    return registry_household_rows!(micro_area, **over) if over.any?
+
+    params = { "micro_area_id" => micro_area.id, "property_type" => "1", "refused" => false, "contact_phone" => "4133334444",
+               "address" => registry_address, "living_conditions" => registry_living_conditions }
+    result = TerritoryRegistry::SaveHousehold.call(params: params, by: registry_acs_of(micro_area))
+    raise "domicílio recusado: #{result.reason} #{result.details}" if result.failure?
+
+    result.payload[:household]
   end
 
   # Nova versão do domicílio (a seguinte), com o retrato das famílias atuais
-  # e a ficha domiciliar. Cenário direto até a Task 9 (SaveHousehold).
+  # e a ficha domiciliar — linhas direto (famílias gravadas sem o SaveFamily,
+  # para as specs da ficha).
   def registry_new_household_version!(household, **over)
     latest = household.latest_version
     snapshot = household.families.order(:created_at, :id).map do |family|
@@ -107,29 +109,24 @@ module TerritoryRegistryHelpers
     result.payload[:family]
   end
 
-  # Cadastro individual ativo, versão 1, no domicílio (novo, se não vier).
+  # Cadastro individual ativo, versão 1, no domicílio (novo, se não vier),
+  # pelo SaveRegistration em nome do ACS da microárea. Com `over` (colunas do
+  # cabeçalho ou da versão), as linhas direto.
   def registry_registration!(patient: nil, household: nil, **over)
     household ||= registry_household!
     patient ||= registry_patient!
-    area = household.micro_area
-    author = registry_author_of(area)
-    now = Time.current
-    header_columns = IndividualRegistration.column_names
-    registration = IndividualRegistration.create!({ patient: patient, team: area.team, micro_area: area, household: household,
-                                                    is_responsible: false, version: 1, refused: "false", registered_at: now,
-                                                    registered_by_user: author }.merge(over.slice(*header_columns.map(&:to_sym))))
-    IndividualRegistrationVersion.create!({ registration: registration, version: 1, patient: patient, team: area.team,
-                                            micro_area: area, household: household, is_responsible: registration.is_responsible,
-                                            identity: registry_identity(patient), identification: registry_identification,
-                                            sociodemographic: registry_sociodemographic, health_conditions: registry_health_conditions,
-                                            refused: registration.refused, origin: "save", **registry_saved_by(author, area.team),
-                                            created_at: now }.merge(over.slice(*IndividualRegistrationVersion.column_names.map(&:to_sym))))
-                                 .tap { |version| Ledi::IndividualRegistrationFicha.generate(version) }
-    registration
+    return registry_registration_rows!(patient, household, **over) if over.any?
+
+    result = TerritoryRegistry::SaveRegistration.call(params: registry_registration_params(household, patient: patient),
+                                                      by: registry_acs_of(household))
+    raise "cadastro recusado: #{result.reason} #{result.details}" if result.failure?
+
+    result.payload[:registration]
   end
 
   # Nova versão do cadastro (a seguinte), cópia da última com `over`, e a
-  # ficha. Cenário direto até a Task 10 (SaveRegistration/ExitRegistration).
+  # ficha — linhas direto (versões que nenhum comando grava assim, para as
+  # specs da ficha).
   def registry_new_version!(registration, **over)
     latest = registration.latest_version
     attrs = latest.attributes.except("id", "created_at").merge("version" => latest.version + 1, "created_at" => Time.current)
@@ -236,7 +233,7 @@ module TerritoryRegistryHelpers
     return params unless patient
 
     params["patient_id"] = patient.id
-    params["patient_demographics"] = { "race_color" => patient.race_color || "03", "ethnicity" => patient.ethnicity }
+    params["patient_demographics"] = { "race_color" => patient.race_color || "01", "ethnicity" => patient.ethnicity }
     params["identification"] = params["identification"].merge("desconhece_nome_mae" => true) if patient.mother_name.blank?
     params
   end
@@ -248,6 +245,37 @@ module TerritoryRegistryHelpers
   def registry_health_conditions = { "status_tem_diabetes" => true, "status_tem_hipertensao_arterial" => false }
 
   private
+
+  def registry_household_rows!(micro_area, **over)
+    author = registry_author_of(micro_area)
+    now = Time.current
+    household = Household.create!(micro_area: micro_area, status: "active", version: 1, registered_at: now,
+                                  registered_by_user: author)
+    HouseholdVersion.create!({ household: household, version: 1, micro_area: micro_area, team: micro_area.team,
+                               property_type: "1", address: registry_address, living_conditions: registry_living_conditions,
+                               contact_phone: "4133334444", refused: "false", families_snapshot: [], status: "active",
+                               origin: "save", **registry_saved_by(author, micro_area.team), created_at: now }.merge(over))
+                  .tap { |version| Ledi::HouseholdRegistrationFicha.generate(version) }
+    household
+  end
+
+  def registry_registration_rows!(patient, household, **over)
+    area = household.micro_area
+    author = registry_author_of(area)
+    now = Time.current
+    header_columns = IndividualRegistration.column_names
+    registration = IndividualRegistration.create!({ patient: patient, team: area.team, micro_area: area, household: household,
+                                                    is_responsible: false, version: 1, refused: "false", registered_at: now,
+                                                    registered_by_user: author }.merge(over.slice(*header_columns.map(&:to_sym))))
+    IndividualRegistrationVersion.create!({ registration: registration, version: 1, patient: patient, team: area.team,
+                                            micro_area: area, household: household, is_responsible: registration.is_responsible,
+                                            identity: registry_identity(patient), identification: registry_identification,
+                                            sociodemographic: registry_sociodemographic, health_conditions: registry_health_conditions,
+                                            refused: registration.refused, origin: "save", **registry_saved_by(author, area.team),
+                                            created_at: now }.merge(over.slice(*IndividualRegistrationVersion.column_names.map(&:to_sym))))
+                                 .tap { |version| Ledi::IndividualRegistrationFicha.generate(version) }
+    registration
+  end
 
   def registry_field_professional!(unit, team:, cbo:, council:)
     unit ||= team&.health_unit || care_unit!
