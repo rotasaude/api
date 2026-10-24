@@ -26,6 +26,7 @@ module TerritoryRegistry
     MAX_AGE_YEARS = 130
     EMAIL = /\A[^@\s]+@[^@\s.]+(\.[^@\s.]+)+\z/
     PHONE = /\A\d{10,11}\z/
+    CBO = /\A[0-9A-Z]{6}\z/                # ocupacaoCodigoCbo2002: só o formato (o SIAPS confere a tabela)
     MEMBERS = (1..999)
 
     module_function
@@ -163,6 +164,8 @@ module TerritoryRegistry
         (at["orientacao_sexual_cidadao"] if list_rule(s, "orientacao_sexual_cidadao", s["status_deseja_informar_orientacao_sexual"])) ||
         # identidadeGeneroCidadao: obrigatório com statusDesejaInformarIdentidadeGenero = true; proibido com false
         (at["identidade_genero_cidadao"] if list_rule(s, "identidade_genero_cidadao", s["status_deseja_informar_identidade_genero"])) ||
+        # ocupacaoCodigoCbo2002: código CBO 2002 de seis caracteres (dígitos ou letras maiúsculas)
+        (at["ocupacao_codigo_cbo2002"] if present?(s["ocupacao_codigo_cbo2002"]) && !s["ocupacao_codigo_cbo2002"].to_s.match?(CBO)) ||
         # relacaoParentescoCidadao: só com statusEhResponsavel = false
         (at["relacao_parentesco_cidadao"] if present?(s["relacao_parentesco_cidadao"]) && is_responsible != false) ||
         # responsavelPorCrianca: proibido a partir de 10 anos na data do atendimento

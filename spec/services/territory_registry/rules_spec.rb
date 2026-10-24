@@ -153,6 +153,15 @@ RSpec.describe TerritoryRegistry::Rules do
         expect(path(sociodemographic: { "identidade_genero_cidadao" => 201 })).to eq("sociodemographic.identidade_genero_cidadao")
       end
 
+      # Revisão final (m6): só o formato (a tabela CBO é grande; o SIAPS valida).
+      it "ocupação CBO 2002: seis dígitos ou letras maiúsculas" do
+        %w[51510 5151055 5151-0 2231f8 ABCDE!].each do |code|
+          expect(path(sociodemographic: { "ocupacao_codigo_cbo2002" => code })).to eq("sociodemographic.ocupacao_codigo_cbo2002")
+        end
+        expect(check(sociodemographic: { "ocupacao_codigo_cbo2002" => "515105" })).to be_ok
+        expect(check(sociodemographic: { "ocupacao_codigo_cbo2002" => "2231F8" })).to be_ok
+      end
+
       it "deficiências: lista obrigatória com o status true e proibida com false" do
         expect(path(sociodemographic: { "status_tem_alguma_deficiencia" => true })).to eq("sociodemographic.deficiencias_cidadao")
         expect(path(sociodemographic: { "status_tem_alguma_deficiencia" => false, "deficiencias_cidadao" => [ 12 ] })).to eq("sociodemographic.deficiencias_cidadao")
