@@ -121,6 +121,9 @@ class AddTerritoryRegistry < ActiveRecord::Migration[8.1]
     end
     add_index :individual_registrations, :patient_id, unique: true, where: "exit_reason IS NULL",
                                                       name: "idx_individual_registrations_one_active"
+    # CareLines::Facts.deceased: o único índice por paciente é parcial em NULL.
+    add_index :individual_registrations, :patient_id, where: "exit_reason = 'death'",
+                                                      name: "idx_individual_registrations_deaths"
     add_index :individual_registrations, %i[team_id registered_at], name: "idx_individual_registrations_team"
     add_index :individual_registrations, :household_id, name: "idx_individual_registrations_household"
     add_check_constraint :individual_registrations, registration_exit_check("version >= 1 AND (household_id IS NULL OR micro_area_id IS NOT NULL)"),

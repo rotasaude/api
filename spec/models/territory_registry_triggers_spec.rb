@@ -46,6 +46,26 @@ RSpec.describe "Cadastro territorial — imutabilidade e constraints" do
     expect(IndividualRegistration.active_registrations.where(patient_id: registration.patient_id)).to be_empty
   end
 
+  # CareLines::Facts.deceased consulta `exit_reason = 'death'` por paciente; o
+  # único índice por paciente é parcial em `exit_reason IS NULL`, então sem este
+  # a consulta varre a tabela.
+  it "índice parcial de óbitos por paciente existe e a consulta de Facts.deceased pode usá-lo" do
+    definition = ApplicationRecord.connection.select_value(
+      "SELECT indexdef FROM pg_indexes WHERE tablename = 'individual_registrations' AND indexname = 'idx_individual_registrations_deaths'"
+    )
+    expect(definition).to match(/\(patient_id\)/)
+    expect(definition).to match(/WHERE \(+\(?exit_reason\)?(::text)? = 'death'/)
+    registration
+    plan = ApplicationRecord.transaction(requires_new: true) do
+      ApplicationRecord.connection.execute("SET LOCAL enable_seqscan = off")
+      ApplicationRecord.connection.select_values(
+        ApplicationRecord.sanitize_sql([ "EXPLAIN SELECT patient_id FROM individual_registrations WHERE patient_id IN (?) AND exit_reason = 'death'", [ registration.patient_id ] ])
+      ).join("\n")
+    end
+    expect(plan).to include("idx_individual_registrations_deaths")
+    expect(plan).not_to match(/Seq Scan on individual_registrations/)
+  end
+
   it "óbito: data obrigatória; data e número da DO só com death" do
     registration
     expect { attempt { registration.update_columns(exit_reason: "death", exited_on: Time.zone.today) } }

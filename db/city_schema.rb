@@ -1230,6 +1230,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_23_900001) do
     t.uuid "team_id", null: false
     t.datetime "updated_at", null: false
     t.integer "version", null: false
+    t.index ["patient_id"], name: "idx_individual_registrations_deaths", where: "((exit_reason)::text = 'death'::text)"
     t.index ["household_id"], name: "idx_individual_registrations_household"
     t.index ["patient_id"], name: "idx_individual_registrations_one_active", unique: true, where: "(exit_reason IS NULL)"
     t.index ["team_id", "registered_at"], name: "idx_individual_registrations_team"
