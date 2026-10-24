@@ -24,7 +24,8 @@ class AttendanceController < ApplicationController
     reason_too_short: :unprocessable_entity, already_verified: :conflict, already_revoked: :conflict,
     own_verification: :forbidden, cadsus_lookup_missing: :conflict,
     invalid_race_color: :unprocessable_entity, invalid_ethnicity: :unprocessable_entity, ethnicity_required: :unprocessable_entity,
-    invalid_zip: :unprocessable_entity, too_long: :unprocessable_entity, invalid_demographics: :unprocessable_entity
+    invalid_zip: :unprocessable_entity, too_long: :unprocessable_entity, invalid_demographics: :unprocessable_entity,
+    address_from_household: :unprocessable_entity
   }.freeze
 
   before_action :require_verifier, only: %i[lookup verify cadsus_lookup names]
@@ -148,11 +149,17 @@ class AttendanceController < ApplicationController
 
   # D-U1: os campos presentes, validados um a um e na combinação final com o
   # que o paciente (se já existe; o bloco o acha) tem gravado — antes do comando (§13 E12).
+  # Módulo 24a (Desvio 8): endereço de paciente com cadastro ativo em domicílio
+  # também recusado aqui (address_from_household), antes de gastar o código.
   def parse_demographics
     parsed = Patients::Demographics.parse(params.to_unsafe_h.slice(*Patient::DEMOGRAPHICS))
     return parsed if parsed.failure? || parsed.payload[:values].empty?
 
-    checked = Patients::Demographics.check(Patients::Demographics.current(yield).merge(parsed.payload[:values]))
+    patient = yield
+    locked = Patients::Demographics.address_lock(patient, parsed.payload[:values])
+    return locked if locked.failure?
+
+    checked = Patients::Demographics.check(Patients::Demographics.current(patient).merge(parsed.payload[:values]))
     checked.failure? ? checked : parsed
   end
 

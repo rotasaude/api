@@ -498,6 +498,12 @@ Rails.application.routes.draw do
     get   "admin/micro_areas",     to: "micro_areas#index"
     post  "admin/micro_areas",     to: "micro_areas#create"
     patch "admin/micro_areas/:id", to: "micro_areas#update"
+    get   "households",              to: "households#index"
+    post  "households",              to: "households#create"
+    get   "households/:id",          to: "households#show"
+    patch "households/:id",          to: "households#update"
+    post  "households/:id/families", to: "families#create"
+    patch "families/:id",            to: "families#update"
   end
 
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo

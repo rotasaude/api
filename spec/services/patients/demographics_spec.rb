@@ -16,9 +16,9 @@ RSpec.describe Patients::Demographics do
     described_class.save!(patient, parsed.payload[:values])
     described_class.save!(patient, described_class.parse("address_district" => "Centro").payload[:values])
     expect(patient.reload).to have_attributes(race_color: "03", address_zip: "80010000", address_district: "Centro")
-    expect(described_class.flags(patient)).to eq(race_color_set: true, address_set: true)
+    expect(described_class.flags(patient)).to eq(race_color_set: true, address_set: true, address_from_household: false)
     described_class.save!(patient, described_class.parse("address_district" => "").payload[:values])
-    expect(described_class.flags(patient.reload)).to eq(race_color_set: true, address_set: false)
+    expect(described_class.flags(patient.reload)).to eq(race_color_set: true, address_set: false, address_from_household: false)
   end
 
   it "recusa com o campo: 99, CEP, larguras, tipo; etnia × raça" do
@@ -68,6 +68,6 @@ RSpec.describe Patients::Demographics do
   end
 
   it "flags sem paciente: nada preenchido" do
-    expect(described_class.flags(nil)).to eq(race_color_set: false, address_set: false)
+    expect(described_class.flags(nil)).to eq(race_color_set: false, address_set: false, address_from_household: false)
   end
 end

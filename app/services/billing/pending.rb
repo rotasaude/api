@@ -11,16 +11,21 @@ module Billing
 
     module_function
 
+    # address_from_household (módulo 24a, contrato §14 L6): o endereço do
+    # paciente vem do cadastro domiciliar e a tela o mostra só leitura.
     def call(period)
       labels = {}
-      outcomes(period).filter_map do |procedure, outcome|
+      rows = outcomes(period)
+      from_household = IndividualRegistration.active_registrations.where.not(household_id: nil)
+                                             .where(patient_id: rows.map { |procedure, _| procedure.patient_id }).distinct.pluck(:patient_id).to_set
+      rows.filter_map do |procedure, outcome|
         next unless listed?(outcome)
 
         label = labels[[ procedure.sigtap_code, outcome.sigtap_competence ]] ||= Labels.procedure(procedure.sigtap_code, outcome.sigtap_competence)
         { procedure_id: procedure.id, reasons: outcome.reasons, fix: outcome.reasons.filter_map { |r| FIX[r] }.first || "procedure", late: procedure.late == true,
           performed_on: procedure.performed_on.iso8601, sigtap_code: procedure.sigtap_code, label: label,
           patient: { id: procedure.patient_id, display_name: procedure.patient.display_name,
-                     **Patients::IdentifierJson.call(procedure.patient) },
+                     **Patients::IdentifierJson.call(procedure.patient), address_from_household: from_household.include?(procedure.patient_id) },
           professional: { user_id: procedure.professional_user_id, name: Screenings::Json.staff_name(procedure.professional_user) } }
       end
     end

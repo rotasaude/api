@@ -224,7 +224,7 @@ end
 # CNS, nome, nascimento ou justificativa sem CPF.
 RSpec.describe "territory registry bindings (ADR 0042)" do
   it "declares every territory registry event with no consumer" do
-    names = %w[patient.cpf_added micro_area.changed]
+    names = %w[patient.cpf_added micro_area.changed household.saved]
     expect(DomainEvents.registry.keys).to include(*names)
     expect(names.flat_map { |n| DomainEvents.registry[n] }).to be_empty
   end

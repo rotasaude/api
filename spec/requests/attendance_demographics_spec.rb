@@ -110,4 +110,19 @@ RSpec.describe "Recepção — raça/cor e endereço do paciente", type: :reques
     expect(response).to have_http_status(:conflict)
     expect(citizen.reload.patient_id).to be_nil
   end
+
+  # Módulo 24a (Desvio 8; contrato §14 L6): endereço de paciente com cadastro
+  # ativo em domicílio recusado ANTES de gravar os nomes (§13 E12).
+  it "no cadastro, paciente com cadastro ativo em domicílio: endereço 422 address_from_household, nomes intactos" do
+    verification = verified_pair!
+    patient = Patients::Resolve.call(citizen).payload[:patient]
+    registry_registration!(patient: patient)
+    json_post "/attendance/verifications/#{verification.id}/names", full_name: "Maria Aparecida Souza", address_zip: "80010000"
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to eq("error" => "address_from_household", "field" => "address_zip")
+    expect(citizen.reload.full_name).to eq("Maria Aparecida da Silva")
+    json_post "/attendance/verifications/#{verification.id}/names", race_color: "03"
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to include("race_color_set" => true, "address_from_household" => true)
+  end
 end

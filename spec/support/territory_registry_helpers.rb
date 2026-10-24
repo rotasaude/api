@@ -82,6 +82,31 @@ module TerritoryRegistryHelpers
     version
   end
 
+  # Corpo do POST/PATCH de domicílio (chaves texto) com o conteúdo da última
+  # versão; quem chama acrescenta "version" (e o que mudar).
+  def registry_household_params(household) = TerritoryRegistry::SaveHousehold.params_of(household.reload)
+
+  # Quem grava pela microárea (ou a do domicílio): o ACS responsável — se a
+  # microárea não tem, um ACS novo da equipe vira o responsável. Com uma
+  # equipe: um ACS novo dela (cadastro sem domicílio).
+  def registry_acs_of(target)
+    area = target.is_a?(Household) ? target.micro_area : target
+    return registry_acs!(area.health_unit, team: area) if area.is_a?(HealthTeam)
+    return area.acs_professional.user if area.acs_professional
+
+    registry_acs!(area.team.health_unit, team: area.team).tap { |acs| area.update!(acs_professional: acs.professional) }
+  end
+
+  # Família ativa pelo caminho real (TerritoryRegistry::SaveFamily): nova
+  # versão do domicílio e ficha.
+  def registry_family!(household, responsible: registry_patient!, **over)
+    params = { "responsible" => { "patient_id" => responsible.id }, "members_count" => 1, "version" => household.reload.version }
+    result = TerritoryRegistry::SaveFamily.call(household: household, params: params.merge(over.stringify_keys), by: registry_acs_of(household))
+    raise "família recusada: #{result.reason} #{result.details}" if result.failure?
+
+    result.payload[:family]
+  end
+
   # Cadastro individual ativo, versão 1, no domicílio (novo, se não vier).
   def registry_registration!(patient: nil, household: nil, **over)
     household ||= registry_household!

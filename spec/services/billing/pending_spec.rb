@@ -17,7 +17,8 @@ RSpec.describe Billing::Pending do
     items = described_class.call(cid.billing_period)
     expect(items).to eq([ { procedure_id: cid.id, reasons: %w[cid_required], fix: "procedure", late: false, performed_on: cid.performed_on.iso8601,
                             sigtap_code: "0301060029", label: "ATENDIMENTO DE URGENCIA C/ OBSERVACAO ATE 24 HORAS EM ATENCAO ESPECIALIZADA",
-                            patient: { id: patient.id, display_name: "Maria Aparecida da Silva", has_cpf: true, cns_masked: nil },
+                            patient: { id: patient.id, display_name: "Maria Aparecida da Silva", has_cpf: true, cns_masked: nil,
+                                       address_from_household: false },
                             professional: { user_id: doctor.id, name: doctor.professional.professional_name } } ])
     expect(items.map { |i| i[:procedure_id] }).not_to include(apac.id)
     expect(described_class::FIX).to include("missing_professional_cns" => "professional", "missing_required_patient_field" => "patient",

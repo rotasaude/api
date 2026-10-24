@@ -227,4 +227,5 @@ Rails.application.config.to_prepare do
   # CNS, nome, nascimento ou justificativa sem CPF.
   DomainEvents.bind "patient.cpf_added", to: []
   DomainEvents.bind "micro_area.changed", to: []
+  DomainEvents.bind "household.saved", to: []
 end

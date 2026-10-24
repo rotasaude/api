@@ -58,6 +58,7 @@ RSpec.describe "Faturamento — competências e arquivos", type: :request do
     sign_in_as(lab_admin!)
     get "/billing/periods/#{period.id}/pending"
     expect(json_body["items"].sole).to include("reasons" => %w[cid_required], "fix" => "procedure", "sigtap_code" => "0301060029", "late" => false)
+    expect(json_body["items"].sole["patient"]).to include("address_from_household" => false)
     expect(DomainEvent.where(name: "billing_period.pending_viewed").last.payload.keys).to match_array(%w[billing_period_id user_id])
     get "/billing/periods/#{SecureRandom.uuid}/pending"
     expect(response).to have_http_status(:not_found)

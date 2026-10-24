@@ -4,12 +4,17 @@
 # final (chamado antes de validar o par, §13 E12, e de novo em `save!`, sob
 # trava). Larguras do layout do BPA recusadas, nunca cortadas. Nada daqui vai
 # a log, evento ou mensagem de erro (só o nome do campo).
+# Módulo 24a (plano, Desvio 8; contrato §14 L6): o endereço de quem tem
+# cadastro individual ativo em domicílio vem do cadastro domiciliar
+# (TerritoryRegistry::SaveHousehold o regrava) — aqui fica só leitura:
+# address_from_household (422); raça/cor e etnia continuam livres.
 module Patients
   module Demographics
     LIMITS = { "address_street" => 30, "address_number" => 5, "address_complement" => 10, "address_district" => 30 }.freeze
     # O que faz falta no BPA-I (Billing::Critic#demographic_reasons): o número vazio é SN.
     ADDRESS = %w[address_zip address_street address_district].freeze
     NO_NUMBER = "SN".freeze
+    ADDRESS_KEYS = Patient::DEMOGRAPHICS.select { |key| key.start_with?("address_") }.freeze
 
     module_function
 
@@ -47,8 +52,26 @@ module Patients
       Result.ok
     end
 
+    # Endereço do cadastro domiciliar: recusa a primeira chave de endereço
+    # presente quando o paciente tem cadastro ativo em domicílio.
+    def address_lock(patient, values)
+      key = ADDRESS_KEYS.find { |candidate| values.key?(candidate) }
+      return Result.ok unless key && from_household?(patient)
+
+      Result.fail(:address_from_household, details: { field: key })
+    end
+
+    def from_household?(patient)
+      return false unless patient&.id
+
+      IndividualRegistration.active_registrations.where(patient_id: patient.id).where.not(household_id: nil).exists?
+    end
+
     # O chamador trava o paciente.
     def save!(patient, values)
+      locked = address_lock(patient, values)
+      return locked if locked.failure?
+
       checked = check(current(patient).merge(values))
       return checked if checked.failure?
 
@@ -60,9 +83,10 @@ module Patients
 
     # O que a tela pode ver sem o dado.
     def flags(patient)
-      return { race_color_set: false, address_set: false } unless patient
+      return { race_color_set: false, address_set: false, address_from_household: false } unless patient
 
-      { race_color_set: patient.race_color.present?, address_set: ADDRESS.all? { |key| patient.public_send(key).present? } }
+      { race_color_set: patient.race_color.present?, address_set: ADDRESS.all? { |key| patient.public_send(key).present? },
+        address_from_household: from_household?(patient) }
     end
   end
 end

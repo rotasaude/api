@@ -45,7 +45,7 @@ RSpec.describe "Faturamento — dados do paciente para o BPA-I", type: :request 
                                                                  address_number: "1200", address_district: "Centro"
     expect(response).to have_http_status(:ok)
     expect(json_body).to eq("patient" => { "id" => patient.id, "display_name" => patient.display_name, "has_cpf" => true, "cns_masked" => nil },
-                            "race_color_set" => true, "address_set" => true)
+                            "race_color_set" => true, "address_set" => true, "address_from_household" => false)
     expect(response.body).not_to include("Novembro", "80010000", "Centro")
     expect(patient.reload).to have_attributes(race_color: "03", ethnicity: nil, address_zip: "80010000", address_street: "Rua XV de Novembro",
                                               address_number: "1200", address_complement: nil, address_district: "Centro")
@@ -68,5 +68,19 @@ RSpec.describe "Faturamento — dados do paciente para o BPA-I", type: :request 
     sign_in_as(clerk)
     json_patch "/billing/patients/#{SecureRandom.uuid}/demographics", {}
     expect(response).to have_http_status(:not_found)
+  end
+
+  # Módulo 24a (Desvio 8; contrato §14 L6): com cadastro ativo em domicílio o
+  # endereço é do cadastro domiciliar — só leitura aqui; raça/cor segue livre.
+  it "paciente com cadastro ativo em domicílio: endereço 422 address_from_household, raça/cor grava" do
+    registry_registration!(patient: patient)
+    sign_in_as(clerk)
+    json_patch "/billing/patients/#{patient.id}/demographics", race_color: "03", address_street: "Rua XV de Novembro"
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to eq("error" => "address_from_household", "field" => "address_street")
+    expect(patient.reload).to have_attributes(race_color: nil, address_street: nil)
+    json_patch "/billing/patients/#{patient.id}/demographics", race_color: "03"
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to include("race_color_set" => true, "address_from_household" => true)
   end
 end
