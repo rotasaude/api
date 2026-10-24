@@ -197,4 +197,15 @@ RSpec.describe "Território — domicílios e famílias", type: :request do
     expect(LediOutboxEntry.where(ficha_type: "cadastro_domiciliar")).to be_empty
     expect(LediGenerationFailure.where(source_type: "HouseholdVersion").pluck(:reason_codes)).to all(eq(%w[city_profile_incomplete]))
   end
+
+  # Ruling da Task 9: ResidentsChanged esgotado vira 409 stale_version na rota.
+  it "moradores que mudam a cada tentativa → 409 stale_version, nunca 500" do
+    household = registry_household!(micro_area: area)
+    moving = registry_patient!.id
+    allow(TerritoryRegistry::SaveHousehold).to receive(:resident_ids).and_return([], [ moving ], [], [ moving ], [], [ moving ])
+    sign_in_as(acs)
+    json_patch "/territory/households/#{household.id}", registry_household_params(household).merge("version" => household.version)
+    expect(response).to have_http_status(:conflict)
+    expect(json_body).to eq("error" => "stale_version")
+  end
 end

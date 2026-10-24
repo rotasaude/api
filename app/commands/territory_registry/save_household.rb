@@ -16,6 +16,9 @@
 #     moradores e recomeça (até 3 vezes) se o conjunto cresceu.
 #   - Ficha: Ledi::HouseholdRegistrationFicha.generate dentro da transação
 #     (sem exportação utilizável a versão grava e a ficha não nasce, L14).
+#   - Troca de microárea (ruling da Task 9): os cadastros individuais ativos
+#     dos moradores mudam junto, com versão e ficha (move_registrations!).
+#   - Moradores que mudam sempre (ResidentsChanged 3 vezes) → stale_version.
 #   - Evento household.saved só com ids.
 #
 # SaveFamily usa `call` com `lock_patient_ids:` (o responsável, travado com
@@ -54,7 +57,8 @@ module TerritoryRegistry
         e.result
       rescue ResidentsChanged
         attempts += 1
-        raise if attempts >= MAX_ATTEMPTS
+        # Ruling da Task 9: esgotado, a rota responde 409 stale_version (nunca 500).
+        return Result.fail(:stale_version) if attempts >= MAX_ATTEMPTS
 
         retry
       end
@@ -138,8 +142,10 @@ module TerritoryRegistry
       # Domicílio inativo (Desvio 9): só com todas as famílias em mudança.
       refuse!(invalid("status")) if attrs[:status] == "inactive" && active.any?
 
+      previous_area_id = household&.micro_area_id
       household, version = persist!(attrs, household, by, families)
       copy_address!(residents, attrs[:address], version.neighborhood) if attrs[:address].any?
+      move_registrations!(household, attrs, by, version.created_at) if previous_area_id && previous_area_id != attrs[:area].id
       Ledi::HouseholdRegistrationFicha.generate(version)
       DomainEvents.publish("household.saved", household_id: household.id, household_version_id: version.id, user_id: by.id)
       Result.ok(household: household, version: version)
@@ -197,10 +203,33 @@ module TerritoryRegistry
       residents.each { |patient| patient.update!(values) }
     end
 
+    # Ruling da Task 9: o domicílio mudou de microárea → os cadastros
+    # individuais ATIVOS dos moradores vão junto (microárea e equipe), cada um
+    # com versão nova (origin save, em nome de quem gravou o domicílio, com o
+    # CBO dele — que precisa estar na Tabela 1, ficha individual) e ficha.
+    # Travas: os moradores (lock!) → domicílio → cadastros (Desvio 12).
+    def move_registrations!(household, attrs, by, at)
+      registrations = IndividualRegistration.active_registrations.where(household_id: household.id).order(:id).lock.to_a
+      return if registrations.empty?
+
+      area = attrs[:area]
+      scope = Access.registrar?(by, area.team, ficha: :individual, micro_area: area)
+      refuse!(Result.fail(scope)) unless scope == :ok
+
+      moved = { micro_area_id: area.id, team_id: area.team_id }
+      registrations.each do |registration|
+        version = SaveRegistration.append!(registration, origin: "save", saved_by_user_id: by.id, saved_by_professional_id: by.professional.id,
+                                                         saved_cbo: attrs[:cbo], changes: moved, at: at,
+                                                         header: moved.merge(registered_at: at, registered_by_user_id: by.id))
+        DomainEvents.publish("territory_registration.saved", registration_id: registration.id, registration_version_id: version.id,
+                                                             patient_id: registration.patient_id, user_id: by.id)
+      end
+    end
+
     def refuse!(result) = raise(Refused, result)
     def invalid(path) = Result.fail(:invalid_household, details: { path: path })
     def uuid?(value) = value.is_a?(String) && value.match?(UUID)
-    private_class_method :parse, :parse_fields, :write, :lock!, :resident_ids, :persist!, :snapshot, :copy_address!,
+    private_class_method :parse, :parse_fields, :write, :lock!, :resident_ids, :persist!, :snapshot, :copy_address!, :move_registrations!,
                          :refuse!, :invalid, :uuid?
   end
 end

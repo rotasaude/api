@@ -51,6 +51,46 @@ RSpec.describe TerritoryRegistry::SaveHousehold do
     expect(household.reload.version).to eq(2)
   end
 
+  # Ruling da Task 9 (aplicado na Task 10): o domicílio que muda de
+  # microárea leva junto os cadastros individuais ATIVOS dos moradores —
+  # versão nova (origin save, em nome de quem gravou o domicílio, com o CBO
+  # dele) e ficha individual; quem saiu (ou cuja família mudou e saiu) não.
+  it "troca de microárea: os 2 moradores ativos ganham versão e ficha com a microárea e a equipe novas; quem saiu, nada" do
+    household = registry_household!
+    original_area_id = household.micro_area_id
+    stay = registry_registration!(household: household)
+    also = registry_registration!(household: household)
+    gone = registry_registration!(household: household)
+    acs = registry_acs_of(household)
+    TerritoryRegistry::ExitRegistration.call(registration: gone, params: { "reason" => "moved", "on" => Time.zone.today.iso8601 }, by: acs)
+    other_team = registry_team!(care_unit!)
+    target = registry_micro_area!(code: "07", team: other_team)
+    nurse = registry_nurse!(other_team.health_unit, team: other_team)
+    result = described_class.call(params: registry_household_params(household).merge("micro_area_id" => target.id, "version" => household.version),
+                                  by: nurse, household: household)
+    expect(result).to be_ok
+    [ stay, also ].each do |registration|
+      registration.reload
+      latest = registration.latest_version
+      expect(registration).to have_attributes(version: 2, micro_area_id: target.id, team_id: other_team.id, registered_by_user_id: nurse.id)
+      expect(latest).to have_attributes(origin: "save", micro_area_id: target.id, team_id: other_team.id, saved_by_user_id: nurse.id,
+                                        saved_cbo: "223505", household_id: household.id)
+      expect(latest.health_conditions).to eq(registration.versions.first.health_conditions)
+      expect(LediOutboxEntry.where(source_id: latest.id, ficha_type: "cadastro_individual")).to exist
+    end
+    expect(gone.reload).to have_attributes(version: 2, micro_area_id: original_area_id)
+    expect(gone.versions.count).to eq(2)
+    expect(DomainEvent.where(name: "territory_registration.saved").where("payload->>'user_id' = ?", nurse.id).count).to eq(2)
+  end
+
+  it "mesma microárea: os cadastros dos moradores não mudam" do
+    household = registry_household!
+    registration = registry_registration!(household: household)
+    described_class.call(params: registry_household_params(household).merge("contact_phone" => "4133335555", "version" => household.version),
+                         by: registry_acs_of(household), household: household)
+    expect(registration.reload.version).to eq(1)
+  end
+
   # Desvio 12 (fix round 1): os moradores são relidos depois das travas; o
   # endereço só vai para quem ainda mora (quem saiu entre a leitura e a trava
   # pode já ter o endereço do domicílio novo); conjunto que cresce recomeça.
@@ -81,9 +121,9 @@ RSpec.describe TerritoryRegistry::SaveHousehold do
       expect(HouseholdVersion.where(household_id: household.id).count).to eq(2)
     end
 
-    it "conjunto que cresce sempre: desiste na terceira tentativa, nada gravado" do
+    it "conjunto que cresce sempre: desiste na terceira tentativa com stale_version (nunca 500), nada gravado" do
       allow(described_class).to receive(:resident_ids).and_return([], [ stay.id ], [], [ stay.id ], [], [ stay.id ])
-      expect { save! }.to raise_error(described_class::ResidentsChanged)
+      expect(save!.reason).to eq(:stale_version)
       expect(household.reload.version).to eq(1)
       expect(stay.reload.address_street).to be_nil
     end
