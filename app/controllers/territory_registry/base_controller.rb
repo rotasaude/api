@@ -22,11 +22,11 @@ module TerritoryRegistry
 
     private
 
-    # `{ error, path?, field? }`: path/field só quando o resultado traz.
+    # `{ error, path?, field?, registration_id? }`: só quando o resultado traz
+    # (registration_id: o cadastro ativo do already_registered, L4).
     def render_failure(result)
       payload = { error: result.reason.to_s }
-      payload[:path] = result.details[:path] if result.details[:path]
-      payload[:field] = result.details[:field] if result.details[:field]
+      %i[path field registration_id].each { |key| payload[key] = result.details[key] if result.details[key] }
       render json: payload, status: FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
     end
 
@@ -40,6 +40,15 @@ module TerritoryRegistry
     # query vale como ausente. O padrão do CareLines::BaseController.
     def body_param(key) = request.request_parameters[key]
     def body = request.request_parameters.except("controller", "action", "id")
+
+    # Rotas cujo dado sensível só vem no corpo: query com chave fora de
+    # `allowed` (cpf, nome...) → 422 invalid_request, nada lido da URL.
+    def query_only!(*allowed)
+      return true if (request.query_parameters.keys - allowed.map(&:to_s)).empty?
+
+      render_error("invalid_request")
+      false
+    end
 
     # Tamanho da página das listas: padrão 50, máximo 100; inválido → 422.
     # Devolve nil depois de responder.

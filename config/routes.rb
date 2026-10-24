@@ -504,6 +504,14 @@ Rails.application.routes.draw do
     patch "households/:id",          to: "households#update"
     post  "households/:id/families", to: "families#create"
     patch "families/:id",            to: "families#update"
+    get   "teams",                   to: "teams#index"
+    post  "person_lookup",           to: "person_lookups#create"
+    post  "patients/duplicates",     to: "duplicates#create"
+    get   "registrations",           to: "registrations#index"
+    post  "registrations",           to: "registrations#create"
+    get   "registrations/:id",       to: "registrations#show"
+    patch "registrations/:id",       to: "registrations#update"
+    post  "registrations/:id/exit",  to: "registrations#exit"
   end
 
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo
