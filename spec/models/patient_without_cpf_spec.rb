@@ -48,6 +48,14 @@ RSpec.describe "Paciente sem CPF" do
     expect(typed(birth_date: (Time.zone.today + 1).iso8601).details).to eq(path: "new_patient.birth_date")
   end
 
+  it "nome e nome da mãe pela regra Validar nome do LEDI (Dictionary.valid_name?)" do
+    { full_name: "Joaquim", mother_name: "A A da Silva" }.each do |field, value|
+      expect(typed(field => value).details).to eq(path: "new_patient.#{field}"), field.to_s
+    end
+    expect(typed(full_name: "Li Wu").details).to eq(path: "new_patient.full_name")
+    expect(typed(full_name: "João D’Ávila Gonçalves", mother_name: "Maria da Paz")).to be_ok
+  end
+
   it "CNS com dígito inválido → invalid_cns" do
     cns = valid_cns(2)
     wrong = cns[0..13] + ((cns[14].to_i + 1) % 10).to_s

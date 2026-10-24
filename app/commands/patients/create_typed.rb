@@ -7,9 +7,6 @@
 module Patients
   module CreateTyped
     CNS_INDEX = "idx_patients_cns".freeze
-    # Regra "validar nome" até a Task 7 (TerritoryRegistry::Dictionary.valid_name?,
-    # que passa a ser a fonte): 3..70 letras, espaço e apóstrofo.
-    NAME = /\A[\p{L}' ]{3,70}\z/
     SOCIAL_NAME_MAX = 70
     STRINGS = %w[full_name social_name birth_date sex mother_name cpf no_cpf_reason cns].freeze
 
@@ -49,13 +46,14 @@ module Patients
       end
       raw = STRINGS.to_h { |key| [ key, attrs[key].to_s.squish.presence ] }
 
-      return invalid("full_name") unless raw["full_name"]&.match?(NAME)
+      # Regra "Validar nome" do LEDI (contrato §15.3), a mesma das fichas.
+      return invalid("full_name") unless TerritoryRegistry::Dictionary.valid_name?(raw["full_name"])
       return invalid("social_name") if raw["social_name"] && raw["social_name"].length > SOCIAL_NAME_MAX
 
       birth_date = MatchKey.iso_date(raw["birth_date"])
       return invalid("birth_date") if birth_date.nil? || Date.iso8601(birth_date) > Time.zone.today
       return invalid("sex") unless Citizen::SEXES.include?(raw["sex"])
-      return invalid("mother_name") if raw["mother_name"] && !raw["mother_name"].match?(NAME)
+      return invalid("mother_name") if raw["mother_name"] && !TerritoryRegistry::Dictionary.valid_name?(raw["mother_name"])
 
       return Result.fail(:cpf_or_reason_required) if raw["cpf"].nil? && raw["no_cpf_reason"].nil?
       return invalid("no_cpf_reason") if raw["cpf"] && raw["no_cpf_reason"]
