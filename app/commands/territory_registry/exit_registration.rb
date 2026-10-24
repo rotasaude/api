@@ -5,9 +5,11 @@
 # opcional, só com death. Uma vez: cadastro que saiu, ou recusado (o LEDI
 # proíbe saída com termo de recusa), → invalid_transition (422, L9).
 # Escopo como a gravação: Access.registrar?(ficha: :individual) — o admin
-# nunca (out_of_scope | cbo_not_allowed). Nova versão `exit` (as seções da
-# última) + ficha; o cabeçalho congela (trigger); registered_at fica o da
-# última gravação (a saída não conta). Evento territory_registration.exited.
+# nunca (out_of_scope | cbo_not_allowed); cadastro que mudou de equipe ou
+# microárea enquanto a saída esperava a trava → stale_version (409). Nova
+# versão `exit` (as seções da última) + ficha; o cabeçalho congela (trigger);
+# registered_at fica o da última gravação (a saída não conta). Evento
+# territory_registration.exited.
 module TerritoryRegistry
   module ExitRegistration
     DATE = /\A\d{4}-\d{2}-\d{2}\z/
@@ -23,7 +25,8 @@ module TerritoryRegistry
       parsed = parse(params, registration.patient)
       return parsed if parsed.failure?
 
-      ApplicationRecord.transaction(requires_new: true) { write(registration, parsed.payload, by) }
+      checked = [ registration.team_id, registration.micro_area_id ]
+      ApplicationRecord.transaction(requires_new: true) { write(registration, parsed.payload, by, checked) }
     end
 
     def parse(params, patient)
@@ -44,12 +47,15 @@ module TerritoryRegistry
       Result.ok(exit_reason: reason, exited_on: on, death_on: death_on, death_certificate: certificate)
     end
 
-    # Travas do Desvio 12: paciente → domicílio → família → cadastro.
-    def write(registration, values, by)
+    # Travas do Desvio 12: paciente → domicílio → família → cadastro. O escopo
+    # foi checado sem trava: se o cadastro mudou de equipe ou microárea
+    # enquanto esperava (a cascata do SaveHousehold), stale_version.
+    def write(registration, values, by, checked)
       Patient.lock.find(registration.patient_id)
       Household.lock("FOR SHARE").find_by(id: registration.household_id) if registration.household_id
       Family.lock("FOR SHARE").find_by(id: registration.family_id) if registration.family_id
       registration.lock!
+      return Result.fail(:stale_version) if [ registration.team_id, registration.micro_area_id ] != checked
       return Result.fail(:invalid_transition) if registration.exited? || registration.refused?
 
       member = Access.membership(by, registration.team)
