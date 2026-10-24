@@ -229,6 +229,17 @@ class TerritoryRegistryCrew
     # Celular sem +55 (como na ficha): <ddd>96666NNNN.
     def phone_for(ddd, index) = format("%s#{PHONE_PREFIX}%04d", ddd, PHONE_BASE + index)
 
+    # Instante "N meses/dias atrás" no fuso da cidade. expires_in: o dia em
+    # que o cadastro gravado vence em N dias (24 meses depois). Público para
+    # o spec das datas. Vencimento = Date#>> (Validity.expires_on), que não é
+    # o inverso de <<: hoje + N = 29/02 grava 28/02 dois anos antes e vence
+    # em 28/02 (N − 1 dias) — continua due_soon.
+    def moment(at, hour:)
+      today = Time.zone.today
+      day = at[:expires_in] ? (today + at[:expires_in]) << TerritoryRegistry::Validity::MONTHS : today << at.fetch(:months, 0)
+      (day - at.fetch(:days, 0)).in_time_zone.change(hour: hour) + at.fetch(:minutes, 0).minutes
+    end
+
     private
 
     def guard_environment!
@@ -264,14 +275,6 @@ class TerritoryRegistryCrew
         status: TerritoryRegistry::RegistryStatus.count(team: team, today: Time.zone.today),
         fichas: exportable ? "geradas (ledi_export utilizável)" : "não geradas (ledi_export desligado ou não utilizável)",
         users: [ { email: acs.email_address, role: "health_professional (ACS #{ACS[:cbo]})", otpauth_uri: SignatureCrew.otpauth_uri(acs) } ] }
-    end
-
-    # Instante "N meses/dias atrás" no fuso da cidade. expires_in: o dia em
-    # que o cadastro gravado vence em N dias (24 meses depois).
-    def moment(at, hour:)
-      today = Time.zone.today
-      day = at[:expires_in] ? (today + at[:expires_in]) << TerritoryRegistry::Validity::MONTHS : today << at.fetch(:months, 0)
-      (day - at.fetch(:days, 0)).in_time_zone.change(hour: hour) + at.fetch(:minutes, 0).minutes
     end
 
     # Grava no instante `time` (a versão, o cabeçalho e a ficha), pelo comando.

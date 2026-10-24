@@ -140,7 +140,10 @@ RSpec.describe TerritoryRegistryCrew, type: :request do
         expect(registration.registered_at).to eq(last_save.created_at)
       end
       expect(registration_of(:sebastiao).registered_at.to_date).to eq(today << 25)
-      expect(registration_of(:ana).registered_at.to_date >> 24).to eq(today + 40)
+      # Situação e vencimento pela mesma conta da semente (29/02: ver "datas da semente").
+      ana = registration_of(:ana)
+      expect(TerritoryRegistry::Validity.status(ana, today: today, identified: true)).to eq("due_soon")
+      expect(TerritoryRegistry::Validity.expires_on(ana.registered_at)).to eq(((today + 40) << 24) >> 24)
 
       # As fichas das outras versões nasceram (só a da situação de rua não).
       sources = IndividualRegistrationVersion.where(registration_id: IndividualRegistration.select(:id)).pluck(:id)
@@ -202,5 +205,26 @@ RSpec.describe TerritoryRegistryCrew, type: :request do
     expect(described_class.seed_current_city(slug: "maringa", ddd: "44")).to include(switch: "desligado (só Curitiba liga)")
     expect(MicroArea.count).to eq(0)
     expect(TerritoryRegistry::Gate.enabled?(Current.city)).to be(false)
+  end
+end
+
+# Datas da semente (revisão final, M3): a Ana "vence em 40 dias" com
+# moment({ expires_in: 40 }) = (hoje + 40) << 24. Date#>> não é o inverso de
+# <<: com hoje + 40 = 29/02 o cadastro vence em 28/02. A prova é a situação
+# (due_soon) e o vencimento pela mesma conta, nunca "registrado >> 24 = hoje + 40".
+RSpec.describe TerritoryRegistryCrew, "datas da semente" do
+  include ActiveSupport::Testing::TimeHelpers
+
+  # 2028 é bissexto: hoje + 40 = 29/02; hoje = 29/02; hoje = 28/02.
+  [ "2028-01-20", "2028-02-29", "2028-02-28" ].each do |day|
+    it "Ana em #{day}: due_soon, vencimento = ((hoje + 40) << 24) >> 24" do
+      travel_to(Time.zone.parse("#{day} 10:00")) do
+        today = Time.zone.today
+        registered_at = described_class.moment({ expires_in: 40 }, hour: 9)
+        registration = IndividualRegistration.new(registered_at: registered_at, refused: "false")
+        expect(TerritoryRegistry::Validity.status(registration, today: today, identified: true)).to eq("due_soon")
+        expect(TerritoryRegistry::Validity.expires_on(registered_at)).to eq(((today + 40) << 24) >> 24)
+      end
+    end
   end
 end
