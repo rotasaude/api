@@ -178,10 +178,10 @@ RSpec.describe "Leitura da consulta finalizada", type: :request do
 
     get "/clinical_record/openings"
     administrative = { "kind" => "administrative_read", "id" => read.id, "user_name" => admin.email_address,
-                       "cpf_masked" => patient.cpf_masked, "reason_code" => nil, "consultation_id" => consultation.id,
+                       "cpf_masked" => patient.cpf_masked, "has_cpf" => true, "cns_masked" => nil, "reason_code" => nil, "consultation_id" => consultation.id,
                        "created_at" => read.created_at.iso8601, "expires_at" => nil }
     justified = { "kind" => "justified_opening", "id" => opening.id, "user_name" => nurse.professional.professional_name,
-                  "cpf_masked" => patient.cpf_masked, "reason_code" => "case_review", "consultation_id" => nil,
+                  "cpf_masked" => patient.cpf_masked, "has_cpf" => true, "cns_masked" => nil, "reason_code" => "case_review", "consultation_id" => nil,
                   "created_at" => opening.created_at.iso8601, "expires_at" => opening.expires_at.iso8601 }
     expect(body["items"]).to eq([ administrative, justified ])
     get "/clinical_record/openings", params: { user_id: admin.id }
