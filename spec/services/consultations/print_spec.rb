@@ -46,6 +46,15 @@ RSpec.describe Consultations::Print do
     expect(text).not_to match(/Conselho: *-/)
   end
 
+  # Módulo 24a: paciente sem CPF não tem consulta hoje (exige par validado);
+  # o impresso não quebra e diz "sem CPF" (stub do paciente da consulta).
+  it "paciente sem CPF (24a): imprime 'sem CPF', sem quebrar" do
+    consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    allow(consultation).to receive(:patient).and_return(registry_no_cpf_patient!)
+    text = text_of(described_class.call(consultation))
+    expect(text).to include("Lia Santos", "CPF: sem CPF")
+  end
+
   it "rascunho ou paciente sem nome não imprime" do
     draft = started_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(2))
     expect { described_class.call(draft) }.to raise_error(described_class::NotPrintable)

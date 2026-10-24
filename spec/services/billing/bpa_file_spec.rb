@@ -34,7 +34,8 @@ RSpec.describe Billing::BpaFile do
                                  race_color: %w[01 02 03 04 05][j % 5], ethnicity: j % 5 == 4 ? "0001" : nil,
                                  zip: j.even? ? "80010000" : "81020130", street: j.even? ? "Rua XV de Novembro" : "Av. Sete de Setembro, 2.775",
                                  number: (j % 3).zero? ? "SN" : "1200", complement: j % 4 == 1 ? "Apto 12" : nil,
-                                 district: j.even? ? "Centro" : "Rebouças", phone: (j % 3).zero? ? nil : format("4199%07d", j), cpf: CPFS[j])
+                                 district: j.even? ? "Centro" : "Rebouças", phone: (j % 3).zero? ? nil : format("4199%07d", j), cpf: CPFS[j],
+                                 cns: nil)
     end
   end
 

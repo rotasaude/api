@@ -90,6 +90,40 @@ module TerritoryRegistryHelpers
                     birth_date: (Time.zone.today - 40.years - n.days).iso8601, sex: "female")
   end
 
+  # Paciente digitado sem CPF (justificativa 3), com CNS (ou sem, com cns: nil),
+  # pelo caminho real (Patients::CreateTyped). Demografia do BPA-I opcional.
+  def registry_no_cpf_patient!(cns: valid_cns(registry_seq!), demographics: false)
+    attrs = { "full_name" => "Lia Santos", "birth_date" => "2026-08-01", "sex" => "female", "no_cpf_reason" => "3", "cns" => cns }
+    result = Patients::CreateTyped.call(attrs: attrs, by: verifier!)
+    raise "paciente sem CPF recusado: #{result.reason}" if result.failure?
+
+    result.payload[:patient].tap { |patient| patient.update!(BillingHelpers::DEMOGRAPHICS) if demographics }
+  end
+
+  # Identidade de ficha LEDI (Ledi::Fichas::ScreeningIdentity) com valores fixos.
+  def ledi_identity(citizen_cpf:, citizen_cns:)
+    started = Time.zone.parse("2026-10-07 09:10")
+    Ledi::Fichas::ScreeningIdentity.new(cnes: "1234567", ine: "0000123456", professional_cns: "700000000000005", cbo: "225125",
+                                        citizen_cpf: citizen_cpf, citizen_cns: citizen_cns, birth_date: Date.new(2026, 8, 1),
+                                        sex: "female", started_at: started, ended_at: started + 20.minutes, ibge_code: "4106902")
+  end
+
+  def ledi_care = Ledi::Fichas::IndividualCare::Care.new(care_type: 5, problems: [], conducts: [ 1 ], exams: [], measurements: nil)
+
+  def bpa_header
+    Billing::BpaFile::Header.new(competence: "202610", origin_name: "SMS Curitiba", origin_acronym: nil, origin_cnpj: "11222333000181",
+                                 destination_body: "Secretaria Municipal de Saude", management: "M")
+  end
+
+  # Linha BPA-I com valores fixos; o paciente identificado por cpf: ou cns:.
+  def bpa_i_line(cpf:, cns:)
+    Billing::BpaFile::ILine.new(key: "i01", cnes: "7654321", competence: "202610", professional_cns: "798312812760829", cbo: "225125",
+                                performed_on: Date.new(2026, 10, 7), procedure: "0301010072", sex: "F", ibge: "410690", cid10: nil,
+                                age: 0, quantity: 1, character: "01", name: "Lia Santos", birth_date: Date.new(2026, 8, 1),
+                                race_color: "03", ethnicity: nil, zip: "80010000", street: "Rua XV de Novembro", number: "1200",
+                                complement: nil, district: "Centro", phone: nil, cpf: cpf, cns: cns)
+  end
+
   def registry_address
     { "zip" => "80010000", "street_type" => "081", "street" => "Rua das Flores", "number" => "120", "no_number" => false,
       "complement" => nil, "district" => "Centro", "neighborhood_id" => nil, "reference" => nil }

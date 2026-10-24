@@ -61,8 +61,7 @@ module CareLines
     # rebaixado) nunca tem sugestão decidida nem pesa no aceite.
     def lock_pending(patient, line)
       base = CareLineSuggestion.pending_suggestions.where(care_line_id: line.id).where.not(reason: "resolved_problem")
-      pairs = Citizen.not_erased.verification_level_verified
-      pair_ids = pairs.where(patient_id: patient.id).or(pairs.where(cpf: patient.cpf)).select(:id)
+      pair_ids = Patients::Pairs.of(patient).select(:id)
       base.where(patient_id: patient.id).or(base.where(citizen_id: pair_ids)).order(:id).lock.to_a
     end
     private_class_method :lock_pending

@@ -34,7 +34,8 @@ module Billing
       found = resolved.payload[:patient]
 
       DomainEvents.publish("billing_patient.looked_up", patient_id: found.id, user_id: Current.user.id)
-      render json: { patient: { id: found.id, display_name: found.display_name, cpf_masked: found.cpf_masked } }
+      render json: { patient: { id: found.id, display_name: found.display_name, cpf_masked: found.cpf_masked,
+                                **Patients::IdentifierJson.call(found) } }
     end
 
     def establishments

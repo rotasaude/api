@@ -8,7 +8,7 @@ RSpec.describe Ledi::Fichas::IndividualCare do
   let(:started) { Time.zone.parse("2026-10-07 09:10") }
   let(:identity) do
     Ledi::Fichas::ScreeningIdentity.new(cnes: "1234567", ine: "0000123456", professional_cns: "700000000000005",
-                                        cbo: "225125", citizen_cpf: "52998224725", birth_date: Date.new(1980, 5, 10),
+                                        cbo: "225125", citizen_cpf: "52998224725", citizen_cns: nil, birth_date: Date.new(1980, 5, 10),
                                         sex: "female", started_at: started, ended_at: started + 20.minutes, ibge_code: "4106902")
   end
   let(:problems) do
@@ -48,6 +48,15 @@ RSpec.describe Ledi::Fichas::IndividualCare do
     expect([ child.medicoes.pressaoArterialSistolica, child.medicoes.peso ]).to eq([ 130, 82.5 ])
     expect { master.validate }.not_to raise_error
     expect(Ledi::Version.deserialize(master.class, Ledi::Version.serialize(master))).to eq(master)
+  end
+
+  # Módulo 24a: paciente sem CPF vai pelo CNS, com stCidadaoNaoPossuiCpf; nunca os dois.
+  it "paciente sem CPF: o CNS no lugar do CPF e stCidadaoNaoPossuiCpf" do
+    no_cpf = identity.with(citizen_cpf: nil, citizen_cns: "700000000000013")
+    master = described_class.new(identity: no_cpf, care: care, source_id: SecureRandom.uuid).to_thrift(uuid: "1234567-s")
+    child = master.atendimentosIndividuais.sole
+    expect([ child.cpfCidadao, child.cns, child.stCidadaoNaoPossuiCpf ]).to eq([ nil, "700000000000013", true ])
+    expect { master.validate }.not_to raise_error
   end
 
   it "sem exame nem medição: os campos ficam fora" do

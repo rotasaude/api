@@ -18,7 +18,8 @@ RSpec.describe ClinicalRecord::Json do
     expect(json.keys).to match_array(%w[patient access problems today_screening consultations])
     expect(json["patient"]).to eq("id" => consultation.patient_id, "display_name" => "Mariana",
                                   "full_name" => "Maria Aparecida da Silva", "social_name" => "Mariana",
-                                  "age" => 46, "sex" => "female", "cpf_masked" => citizen.cpf_masked)
+                                  "age" => 46, "sex" => "female", "cpf_masked" => citizen.cpf_masked, "has_cpf" => true,
+                                  "cns_masked" => nil)
     expect(json["access"]).to eq("in_context")
     expect(json["problems"].sole).to eq("id" => PatientProblem.sole.id, "terminology" => "ciap2", "code" => "T90",
                                         "label" => "Diabetes não insulino-dependente", "status" => "active",

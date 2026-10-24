@@ -91,7 +91,8 @@ module Consultations
     def patient_block(pdf, patient)
       title(pdf, "Paciente")
       line(pdf, "Nome", patient.display_name)
-      line(pdf, "CPF", patient.cpf.to_s.sub(/\A(\d{3})(\d{3})(\d{3})(\d{2})\z/, '\1.\2.\3-\4'))
+      cpf = patient.cpf.presence&.sub(/\A(\d{3})(\d{3})(\d{3})(\d{2})\z/, '\1.\2.\3-\4')
+      line(pdf, "CPF", cpf || "sem CPF") # paciente sem CPF (24a): inalcançável hoje (exige consulta)
       birth = patient.birth_date.present? ? Date.iso8601(patient.birth_date).strftime("%d/%m/%Y") : "não informado"
       line(pdf, "Nascimento", birth)
     end

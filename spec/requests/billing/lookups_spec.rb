@@ -12,7 +12,7 @@ RSpec.describe "Faturamento — buscas de apoio", type: :request do
     sign_in_as(billing_clerk!)
     json_post "/billing/patient_lookup", cpf: pair.first.cpf
     expect(json_body).to eq("patient" => { "id" => pair.first.id, "display_name" => "Maria Aparecida da Silva",
-                                           "cpf_masked" => pair.first.cpf_masked })
+                                           "cpf_masked" => pair.first.cpf_masked, "has_cpf" => true, "cns_masked" => nil })
     expect(DomainEvent.where(name: "billing_patient.looked_up").last.payload.keys).to match_array(%w[patient_id user_id])
     json_post "/billing/patient_lookup", cpf: "52998224725"
     expect(response).to have_http_status(:not_found)

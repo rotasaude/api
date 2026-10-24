@@ -8,7 +8,7 @@ RSpec.describe Ledi::Fichas::ScreeningProcedures do
   let(:started) { Time.zone.parse("2026-10-07 19:30") }
   let(:identity) do
     Ledi::Fichas::ScreeningIdentity.new(cnes: "1234567", ine: nil, professional_cns: "700000000000005", cbo: "322205",
-                                        citizen_cpf: "52998224725", birth_date: Date.new(1950, 1, 2), sex: "male",
+                                        citizen_cpf: "52998224725", citizen_cns: nil, birth_date: Date.new(1950, 1, 2), sex: "male",
                                         started_at: started, ended_at: started + 8.minutes, ibge_code: "4106902")
   end
 

@@ -36,7 +36,8 @@ module Exams
 
       patient = resolved.payload[:patient]
       DomainEvents.publish("exam.patient_looked_up", patient_id: patient.id, user_id: Current.user.id)
-      render json: { patient: { id: patient.id, display_name: patient.display_name, cpf_masked: patient.cpf_masked } }
+      render json: { patient: { id: patient.id, display_name: patient.display_name, cpf_masked: patient.cpf_masked,
+                                **Patients::IdentifierJson.call(patient) } }
     end
 
     def catalog

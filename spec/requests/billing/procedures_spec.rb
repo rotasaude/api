@@ -40,7 +40,8 @@ RSpec.describe "Faturamento — procedimentos", type: :request do
     expect(json_body.keys).to match_array(%w[id patient establishment professional performed_on sigtap_code label sigtap_competence quantity
                                              cid10 character source source_ref instrument billable blocking_reasons status cancel_reason
                                              billing_competence late sigtap_fallback])
-    expect(json_body).to include("patient" => { "id" => patient.id, "display_name" => "Maria Aparecida da Silva" },
+    expect(json_body).to include("patient" => { "id" => patient.id, "display_name" => "Maria Aparecida da Silva", "has_cpf" => true,
+                                                "cns_masked" => nil },
                                  "establishment" => { "type" => "health_unit", "id" => unit.id, "cnes" => unit.cnes, "name" => unit.name },
                                  "performed_on" => today, "sigtap_code" => "0301060029", "quantity" => 1, "cid10" => "I10",
                                  "character" => "elective", "source" => "manual", "source_ref" => nil, "instrument" => "bpa_i",

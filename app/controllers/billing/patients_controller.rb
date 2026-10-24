@@ -23,7 +23,8 @@ module Billing
       end
       return render_failure(result) if result.failure?
 
-      render json: { patient: { id: patient.id, display_name: patient.display_name } }.merge(Patients::Demographics.flags(patient))
+      render json: { patient: { id: patient.id, display_name: patient.display_name, **Patients::IdentifierJson.call(patient) } }
+        .merge(Patients::Demographics.flags(patient))
     end
   end
 end

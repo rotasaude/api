@@ -44,7 +44,7 @@ RSpec.describe "Faturamento — dados do paciente para o BPA-I", type: :request 
     json_patch "/billing/patients/#{patient.id}/demographics", race_color: "03", address_zip: "80010000", address_street: "Rua XV de Novembro",
                                                                  address_number: "1200", address_district: "Centro"
     expect(response).to have_http_status(:ok)
-    expect(json_body).to eq("patient" => { "id" => patient.id, "display_name" => patient.display_name },
+    expect(json_body).to eq("patient" => { "id" => patient.id, "display_name" => patient.display_name, "has_cpf" => true, "cns_masked" => nil },
                             "race_color_set" => true, "address_set" => true)
     expect(response.body).not_to include("Novembro", "80010000", "Centro")
     expect(patient.reload).to have_attributes(race_color: "03", ethnicity: nil, address_zip: "80010000", address_street: "Rua XV de Novembro",

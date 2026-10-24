@@ -79,7 +79,7 @@ RSpec.describe "Prontuário", type: :request do
     sign_in_as(staff_with("adm-rel@cidade.gov.br", "municipal_admin"))
     get "/clinical_record/openings", params: { from: Time.zone.today.iso8601, to: Time.zone.today.iso8601, user_id: nurse.id }
     item = body["items"].sole
-    expect(item.keys).to match_array(%w[kind id user_name cpf_masked reason_code consultation_id created_at expires_at])
+    expect(item.keys).to match_array(%w[kind id user_name cpf_masked has_cpf cns_masked reason_code consultation_id created_at expires_at])
     expect(item.values_at("kind", "consultation_id")).to eq([ "justified_opening", nil ])
     expect(item.values_at("user_name", "cpf_masked", "reason_code")).to eq([ nurse.professional.professional_name, patient.cpf_masked, "other" ])
     expect(response.body).not_to include("MARCADOR")
@@ -90,6 +90,23 @@ RSpec.describe "Prontuário", type: :request do
     sign_in_as(doctor)
     get "/clinical_record/openings"
     expect(status_and_error).to eq([ 403, "missing_role" ])
+  end
+
+  # Módulo 24a (contrato §10 e L8): paciente sem CPF (do cadastro territorial)
+  # aparece com has_cpf false e o CNS mascarado; nada quebra com cpf nulo.
+  it "paciente sem CPF: leitura justificada e relatório com has_cpf false e o CNS mascarado" do
+    no_cpf = registry_no_cpf_patient!
+    now = Time.current
+    ClinicalRecordOpening.create!(patient: no_cpf, user: nurse, reason_code: "case_review", created_at: now, expires_at: now + 30.minutes)
+    step_up!(nurse)
+    get "/clinical_record/patients/#{no_cpf.id}"
+    expect([ response.status, body["access"] ]).to eq([ 200, "justified" ])
+    expect(body["patient"]).to include("id" => no_cpf.id, "cpf_masked" => nil, "has_cpf" => false,
+                                       "cns_masked" => "*** **** **** #{no_cpf.cns[-4..]}")
+    expect(response.body).not_to include(no_cpf.cns)
+    sign_in_as(staff_with("adm-semcpf@cidade.gov.br", "municipal_admin"))
+    get "/clinical_record/openings"
+    expect(body["items"].sole).to include("cpf_masked" => nil, "has_cpf" => false, "cns_masked" => no_cpf.cns_masked)
   end
 
   it "a recepção recebe 403 em toda rota do prontuário" do

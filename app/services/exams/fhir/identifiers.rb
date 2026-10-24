@@ -1,7 +1,8 @@
 # Identificação do paciente no FHIR (Divergência D7; contrato A7): sistemas
 # da RNDS. CPF compara com o do paciente; CNS com o de um par validado da
 # pessoa (citizens.cns é cifrado não determinístico: lido por par, nunca
-# buscado). Qualquer outro sistema não identifica ninguém.
+# buscado) ou com o do próprio paciente (módulo 24a). Qualquer outro sistema
+# não identifica ninguém. O paciente sem CPF sai pelo CNS; sem os dois, nil.
 module Exams
   module Fhir
     module Identifiers
@@ -17,16 +18,19 @@ module Exams
         return false if value.empty?
 
         case identifier["system"]
-        when CPF_SYSTEM then ActiveSupport::SecurityUtils.secure_compare(value, patient.cpf.to_s)
+        when CPF_SYSTEM then patient.cpf.present? && ActiveSupport::SecurityUtils.secure_compare(value, patient.cpf.to_s)
         when CNS_SYSTEM
-          pairs = Citizen.not_erased.verification_level_verified
-          pairs.where(patient_id: patient.id).or(pairs.where(cpf: patient.cpf))
-               .any? { |c| c.cns.present? && ActiveSupport::SecurityUtils.secure_compare(c.cns.to_s, value) }
+          [ patient.cns, *Patients::Pairs.of(patient).map(&:cns) ]
+            .any? { |cns| cns.present? && ActiveSupport::SecurityUtils.secure_compare(cns.to_s, value) }
         else false
         end
       end
 
-      def for_patient(patient) = { system: CPF_SYSTEM, value: patient.cpf }
+      def for_patient(patient)
+        return { system: CPF_SYSTEM, value: patient.cpf } if patient.cpf.present?
+
+        patient.cns.present? ? { system: CNS_SYSTEM, value: patient.cns } : nil
+      end
     end
   end
 end

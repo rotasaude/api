@@ -35,6 +35,9 @@ class Patient < ApplicationRecord
 
   def cpf_masked = cpf && CitizenIdentity::Cpf.mask(cpf)
 
+  # L8 do contrato do 24a: só os 4 últimos dígitos (nulo sem CNS).
+  def cns_masked = Professionals::Cns.mask(cns)
+
   def age(on: Time.zone.today)
     return nil if birth_date.blank?
 

@@ -36,7 +36,7 @@ class ClinicalRecordsController < ApplicationController
 
     grant = ClinicalRecord::Access::Grant.new(kind: :justified, opening: opening, reason: nil)
     ClinicalRecord::Trail.viewed!(patient: patient, user: Current.user, grant: grant)
-    citizen = Citizen.not_erased.where(cpf: patient.cpf).order(:created_at).first
+    citizen = Patients::Pairs.of(patient).order(:created_at).first
     render json: ClinicalRecord::Json.record(patient: patient, citizen: citizen, grant: grant)
   end
 

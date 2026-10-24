@@ -74,11 +74,15 @@ module Billing
       return reasons unless instrument == "bpa_i"
 
       reasons.concat(cid_reasons(facts, cids.call))
-      reasons << "missing_patient_id" if patient.nil? || patient.cpf.blank?
+      reasons << "missing_patient_id" if patient_identifier_missing?(patient)
       reasons << "missing_required_patient_field" if patient && (patient.full_name.blank? || !SEX.key?(patient.sex))
       reasons.concat(demographic_reasons(patient)) if closing && patient
       reasons
     end
+
+    # O BPA-I identifica o paciente pelo CPF ou, sem CPF, pelo CNS (prd_sem_cpf
+    # "S", módulo 24a): só falta identificação sem os dois.
+    def patient_identifier_missing?(patient) = patient.nil? || (patient.cpf.blank? && patient.cns.blank?)
 
     # D-U1: raça/cor 01..05 (sem 99) e etnia de 4 dígitos quando indígena (05);
     # endereço com CEP, logradouro e bairro (número vazio vira SN na entrada, §13 E4).

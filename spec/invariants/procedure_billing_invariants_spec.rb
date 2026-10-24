@@ -233,8 +233,10 @@ RSpec.describe "Invariantes do faturamento (ADR 0039)", type: :request do
                                          performed_on: Date.current, procedure: "0301060029", sex: "F", ibge: "410690", cid10: "I10", age: 33,
                                          quantity: 1, character: "01", name: "MARIA SEGREDO DA SILVA", birth_date: Date.new(1990, 1, 2),
                                          race_color: "03", ethnicity: nil, zip: "80010000", street: "RUA SECRETA", number: "9988",
-                                         complement: "APTO 77", district: "BAIRRO SECRETO", phone: "41999887766", cpf: "52998224725")
-      shows_nothing_of(line, %w[MARIA SEGREDO RUA\ SECRETA 9988 APTO BAIRRO 41999887766 52998224725 700000000000001 80010000 19900102])
+                                         complement: "APTO 77", district: "BAIRRO SECRETO", phone: "41999887766", cpf: "52998224725",
+                                         cns: "898001160660004")
+      shows_nothing_of(line, %w[MARIA SEGREDO RUA\ SECRETA 9988 APTO BAIRRO 41999887766 52998224725 898001160660004 700000000000001 80010000
+                                19900102])
 
       built = Billing::BpaFile::Built.new(bytes: "01#BPA#202610CONTEUDO-SECRETO".b, control: 1234, lines_bpa_c: 1, lines_bpa_i: 2, sheets: 1)
       shows_nothing_of(built, %w[#BPA# CONTEUDO-SECRETO])

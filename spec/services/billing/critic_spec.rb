@@ -97,6 +97,8 @@ RSpec.describe Billing::Critic do
 
   it "paciente: identificação e campos obrigatórios no BPA-I; no BPA-C só o nascimento (idade)" do
     expect(check(patient: patient.dup.tap { |p| p.cpf = "" }).reasons).to eq(%w[missing_patient_id])
+    # Módulo 24a: sem CPF, o CNS identifica no BPA-I (prd_sem_cpf "S").
+    expect(check(patient: patient.dup.tap { |p| p.cpf = ""; p.cns = "700000000000013" }).reasons).to eq([])
     expect(check(patient: patient.dup.tap { |p| p.full_name = nil }).reasons).to eq(%w[missing_required_patient_field])
     expect(check(patient: patient.dup.tap { |p| p.sex = nil }).reasons).to eq(%w[missing_required_patient_field])
     no_birth = patient.dup.tap { |p| p.birth_date = nil }

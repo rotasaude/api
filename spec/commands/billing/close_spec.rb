@@ -175,6 +175,19 @@ RSpec.describe Billing::Close do
     expect(phone).to match(/\A\d{10,11}\z/)
   end
 
+  # Módulo 24a (L12; Layout 05.00): paciente sem CPF entra no BPA-I pelo CNS
+  # (60–74), CPF em brancos (339–349), situação de rua em branco (350, L18) e
+  # prd_sem_cpf S (351); sem CPF e sem CNS fica fora (missing_patient_id).
+  it "paciente sem CPF: BPA-I com o CNS, CPF em brancos e prd_sem_cpf S; sem os dois, crítica" do
+    no_cpf = registry_no_cpf_patient!(demographics: true)
+    procedure = recorded_procedure!(unit: unit, professional: doctor, patient: no_cpf)
+    expect(procedure.billable).to be(true)
+    line = lines(described_class.call(period: period, by: clerk).payload[:export]).last
+    expect([ line[59, 15], line[338, 11], line[349], line[350] ]).to eq([ no_cpf.cns, " " * 11, " ", "S" ])
+    bare = registry_no_cpf_patient!(cns: nil, demographics: true)
+    expect(recorded_procedure!(unit: unit, professional: doctor, patient: bare).blocking_reasons).to eq(%w[missing_patient_id])
+  end
+
   # O bairro do par do wpda só completa a linha quando o paciente não tem
   # bairro. No fechamento isso não acontece (D-U1: sem bairro = missing_address,
   # fora do arquivo), então a prova é no Billing::Lines direto.

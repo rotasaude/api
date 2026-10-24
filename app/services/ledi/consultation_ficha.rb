@@ -1,7 +1,9 @@
 # A ficha da consulta (ADR 0031; spec §6). Nasce da consulta finalizada, só com
 # a exportação utilizável (a regra do módulo 18), uma vez por consulta. Sem
 # identificação completa: "não gerada" com motivos de lista fechada.
-# Identificação como no 18: só o CPF; nascimento e sexo do PACIENTE. Adendo
+# Identificação como no 18: o CPF; nascimento e sexo do PACIENTE. Paciente sem
+# CPF (módulo 24a): o CNS no lugar; sem os dois, "não gerada"
+# patient_without_identifier (nunca CPF inventado). Adendo
 # com mudança estruturada (refresh!): pendente/falhou → regrava o conteúdo
 # com o mesmo uuid; recusada → linha nova com replaces_outbox_id; em envio →
 # InFlight (o job tenta de novo); aceita → uma correction_pending por aceita,
@@ -80,6 +82,7 @@ module Ledi
       reasons << "professional_without_cns" unless Professionals::Cns.valid?(professional.cns)
       reasons << "citizen_without_birth_date" if birth.nil?
       reasons << "citizen_without_sex" unless Citizen::SEXES.include?(patient.sex)
+      reasons << "patient_without_identifier" if patient.cpf.blank? && patient.cns.blank?
       unknown = effective[:problems].any? do |row|
         row.terminology == "ciap2" && !Ciap2Code.exists?(release_id: row.terminology_release_id, code: row.code)
       end
@@ -89,7 +92,8 @@ module Ledi
       started = consultation.started_at
       identity = Ledi::Fichas::ScreeningIdentity.new(
         cnes: unit.cnes, ine: ine, professional_cns: professional.cns, cbo: consultation.cbo_code,
-        citizen_cpf: patient.cpf, birth_date: birth, sex: patient.sex, started_at: started,
+        citizen_cpf: patient.cpf.presence, citizen_cns: (patient.cns if patient.cpf.blank?), birth_date: birth, sex: patient.sex,
+        started_at: started,
         ended_at: [ consultation.finalized_at, started ].max, ibge_code: CityProfile.current&.ibge_code
       )
       care = Ledi::Fichas::IndividualCare::Care.new(

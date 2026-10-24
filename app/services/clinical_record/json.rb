@@ -18,7 +18,7 @@ module ClinicalRecord
     def patient_block(patient, citizen)
       source = patient || citizen
       { id: patient&.id, display_name: source.display_name, full_name: source.full_name, social_name: source.social_name,
-        age: source.age, sex: source.sex, cpf_masked: source.cpf_masked }
+        age: source.age, sex: source.sex, cpf_masked: source.cpf_masked }.merge(Patients::IdentifierJson.call(source))
     end
 
     def problem(p)

@@ -10,7 +10,8 @@ module Billing
     end
 
     def procedure(p, labels: {})
-      { id: p.id, patient: { id: p.patient_id, display_name: p.patient.display_name }, establishment: Establishment.of(p).json,
+      { id: p.id, patient: { id: p.patient_id, display_name: p.patient.display_name, **Patients::IdentifierJson.call(p.patient) },
+        establishment: Establishment.of(p).json,
         professional: { user_id: p.professional_user_id, name: Screenings::Json.staff_name(p.professional_user), cbo_code: p.cbo_code },
         performed_on: p.performed_on.iso8601, sigtap_code: p.sigtap_code, label: label(p, labels), sigtap_competence: p.sigtap_competence,
         quantity: p.quantity, cid10: p.cid10, character: p.character, source: p.source, source_ref: source_ref(p),

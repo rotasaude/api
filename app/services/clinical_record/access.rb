@@ -1,7 +1,7 @@
 # app/services/clinical_record/access.rb
 # Quem lê o prontuário (ADR 0031; spec §5): em contexto — atendimento in_care
 # chamado pelo usuário, ou waiting na unidade de um vínculo ativo dele com CBO
-# permitido, de um par VALIDADO do mesmo CPF —, com abertura justificada
+# permitido, de um par VALIDADO do paciente (Patients::Pairs) —, com abertura justificada
 # válida, ou ninguém. A recepção (sem health_professional) nunca lê. Toda
 # leitura permitida deixa trilha (ClinicalRecord::Trail).
 # A autora da consulta FINALIZADA lê a própria consulta a qualquer momento
@@ -52,14 +52,13 @@ module ClinicalRecord
     def open_attendances_of(patient)
       return [] unless patient
 
-      pairs = Citizen.not_erased.verification_level_verified.where(cpf: patient.cpf).select(:id)
-      Attendance.open_attendances.where(citizen_id: pairs).includes(:citizen).to_a
+      Attendance.open_attendances.where(citizen_id: Patients::Pairs.of(patient).select(:id)).includes(:citizen).to_a
     end
 
     def in_context?(user, attendance, patient)
       citizen = attendance.citizen
       return false unless citizen.verification_level_verified?
-      return false if patient && citizen.cpf != patient.cpf
+      return false if patient && !pair_of?(citizen, patient)
 
       case attendance.status
       when "in_care" then attendance.called_by_user_id == user.id
@@ -71,7 +70,13 @@ module ClinicalRecord
       end
     end
 
+    # O par do paciente (como Patients::Pairs.of): ligado a ele ou, só quando
+    # ele tem CPF, do mesmo CPF — paciente sem CPF (24a) nunca casa por CPF nulo.
+    def pair_of?(citizen, patient)
+      citizen.patient_id == patient.id || (patient.cpf.present? && citizen.cpf == patient.cpf)
+    end
+
     def deny(reason) = Grant.new(kind: :denied, opening: nil, reason: reason)
-    private_class_method :open_attendances_of, :in_context?, :deny
+    private_class_method :open_attendances_of, :in_context?, :pair_of?, :deny
   end
 end

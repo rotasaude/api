@@ -2,7 +2,8 @@
 # Consulta da APS como Atendimento Individual (ADR 0031; spec §6; Task 1):
 # tipo de atendimento, problemas avaliados com situação (uuid do problema,
 # da evolução e sequência), condutas, exames solicitados (SIGTAP grupo 02,
-# "S"), medições, início e fim; só o CPF do cidadão. Sem medicamento nem texto
+# "S"), medições, início e fim; o CPF do cidadão ou, sem CPF, o CNS (nunca os
+# dois; stCidadaoNaoPossuiCpf = sem CPF — módulo 24a). Sem medicamento nem texto
 # SOAP. Pura: recebe valores (Ledi::ConsultationFicha monta). Implementa
 # Ledi::Ficha. Consulta de não médico: o problema em CID-10 fica fora da ficha
 # (só CIAP-2, como no PEC); o prontuário não muda.
@@ -42,7 +43,8 @@ module Ledi
           dataNascimento: ms(identity.birth_date.in_time_zone), localDeAtendimento: CM.local_de_atendimento,
           sexo: SM.sex_code(identity.sex), turno: SM.turno(identity.started_at), tipoAtendimento: care.care_type,
           condutas: care.conducts, dataHoraInicialAtendimento: ms(identity.started_at),
-          dataHoraFinalAtendimento: ms(identity.ended_at), cpfCidadao: identity.citizen_cpf, stCidadaoNaoPossuiCpf: false,
+          dataHoraFinalAtendimento: ms(identity.ended_at), cpfCidadao: identity.citizen_cpf, cns: identity.citizen_cns,
+          stCidadaoNaoPossuiCpf: identity.citizen_cpf.nil?,
           ficouEmObservacao: false, medicoes: care.measurements && Medicoes.build(care.measurements),
           problemasCondicoes: sent_problems.map { |p| problem(common, p) },
           exame: care.exams.empty? ? nil : care.exams.map { |code| common::ExameThrift.new(codigoExame: code, solicitadoAvaliado: [ CM.exam_requested ]) }

@@ -19,7 +19,8 @@ module Billing
         label = labels[[ procedure.sigtap_code, outcome.sigtap_competence ]] ||= Labels.procedure(procedure.sigtap_code, outcome.sigtap_competence)
         { procedure_id: procedure.id, reasons: outcome.reasons, fix: outcome.reasons.filter_map { |r| FIX[r] }.first || "procedure", late: procedure.late == true,
           performed_on: procedure.performed_on.iso8601, sigtap_code: procedure.sigtap_code, label: label,
-          patient: { id: procedure.patient_id, display_name: procedure.patient.display_name },
+          patient: { id: procedure.patient_id, display_name: procedure.patient.display_name,
+                     **Patients::IdentifierJson.call(procedure.patient) },
           professional: { user_id: procedure.professional_user_id, name: Screenings::Json.staff_name(procedure.professional_user) } }
       end
     end

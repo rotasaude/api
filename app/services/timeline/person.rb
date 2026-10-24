@@ -7,8 +7,7 @@ module Timeline
     def self.verified_pairs = Citizen.not_erased.verification_level_verified
 
     def self.for_patient(patient)
-      ids = verified_pairs.where(patient_id: patient.id).or(verified_pairs.where(cpf: patient.cpf))
-                          .order(:created_at, :id).pluck(:id)
+      ids = Patients::Pairs.of(patient).order(:created_at, :id).pluck(:id)
       new(citizen_ids: ids, patient_id: patient.id, verified: true)
     end
 

@@ -64,9 +64,10 @@ class ClinicalRecordOpeningsController < ApplicationController
   end
 
   def item(opening)
+    person = opening.patient || opening.citizen
     { kind: "justified_opening", id: opening.id, user_name: Screenings::Json.staff_name(opening.user),
-      cpf_masked: (opening.patient || opening.citizen)&.cpf_masked, reason_code: opening.reason_code, consultation_id: nil,
-      created_at: opening.created_at.iso8601, expires_at: opening.expires_at.iso8601 }
+      cpf_masked: person&.cpf_masked, reason_code: opening.reason_code, consultation_id: nil,
+      created_at: opening.created_at.iso8601, expires_at: opening.expires_at.iso8601 }.merge(Patients::IdentifierJson.call(person))
   end
 
   # Lidas de clinical_record_administrative_reads (Task 23), guardadas para
@@ -84,6 +85,6 @@ class ClinicalRecordOpeningsController < ApplicationController
   def administrative_item(read)
     { kind: "administrative_read", id: read.id, user_name: Screenings::Json.staff_name(read.user),
       cpf_masked: read.patient.cpf_masked, reason_code: nil, consultation_id: read.consultation_id,
-      created_at: read.created_at.iso8601, expires_at: nil }
+      created_at: read.created_at.iso8601, expires_at: nil }.merge(Patients::IdentifierJson.call(read.patient))
   end
 end

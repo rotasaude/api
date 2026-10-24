@@ -28,7 +28,8 @@ module Billing
                            ethnicity: p.patient.race_color == "05" ? p.patient.ethnicity : nil, zip: p.patient.address_zip,
                            street: p.patient.address_street, number: p.patient.address_number.presence || Patients::Demographics::NO_NUMBER,
                            complement: p.patient.address_complement,
-                           district: p.patient.address_district.presence || contact&.district, phone: contact&.phone, cpf: p.patient.cpf)
+                           district: p.patient.address_district.presence || contact&.district, phone: contact&.phone,
+                           cpf: p.patient.cpf.presence, cns: p.patient.cns.presence)
       end
       header = BpaFile::Header.new(competence: period.competence, origin_name: settings.origin_name, origin_acronym: settings.origin_acronym,
                                    origin_cnpj: settings.origin_cnpj, destination_body: settings.destination_body,

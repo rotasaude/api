@@ -5,13 +5,19 @@
 # competência), depois BPA-I com folha nova a cada profissional (CNS + CBO),
 # 20 linhas por folha, até 999. Campo de controle: Σ(procedimento +
 # quantidade) mod 1111 + 1111. Mensagem de erro nunca cita o valor do campo.
+# Paciente: CPF (339–349, prd_sem_cpf "N") ou, sem CPF, CNS (60–74, prd_sem_cpf
+# "S"; módulo 24a); sem os dois a linha não nasce (ArgumentError — a crítica
+# missing_patient_id já a deixa fora do arquivo).
 module Billing
   module BpaFile
     SHEET_LINES = 20
     MAX_SHEETS = 999
     ORIGIN = "BPA".freeze
     VERSION = "ROTASAUDE".freeze
-    WITHOUT_CPF = "N".freeze
+    # prd_sem_cpf (351; Layout_Exportacao_BPA.pdf 05.00): "N" com CPF; "S" =
+    # "Pessoa sem CPF/Registro Civil" (módulo 24a) — o paciente vai pelo CNS.
+    WITH_CPF = "N".freeze
+    WITHOUT_CPF_FLAG = "S".freeze
     CRLF = "\r\n".freeze
     CHARACTER = { "elective" => "01", "urgent" => "02" }.freeze
     LENGTHS = { "01" => 130, "02" => 48, "03" => 351 }.freeze
@@ -24,7 +30,7 @@ module Billing
     CLine = Data.define(:cnes, :competence, :cbo, :procedure, :age, :quantity)
     ILine = Data.define(:key, :cnes, :competence, :professional_cns, :cbo, :performed_on, :procedure, :sex, :ibge, :cid10, :age, :quantity,
                         :character, :name, :birth_date, :race_color, :ethnicity, :zip, :street, :number, :complement, :district, :phone,
-                        :cpf) do
+                        :cpf, :cns) do
       # LGPD: nunca CPF, CNS, nome ou endereço em inspect/log.
       def inspect = "#<Billing::BpaFile::ILine key=#{key} competence=#{competence} procedure=#{procedure}>"
       alias_method :to_s, :inspect
@@ -68,14 +74,15 @@ module Billing
     def i_row(l, sheet, seq)
       fixed("03", "03" + num(l.cnes, 7) + num(l.competence, 6) + num(l.professional_cns, 15) + alfa(l.cbo, 6) +
                   l.performed_on.strftime("%Y%m%d") + num(sheet, 3) + num(seq, 2) + num(l.procedure, 10) +
-                  blank(15) +                                              # CNS do paciente: nunca junto do CPF
+                  (l.cpf ? blank(15) : num(l.cns, 15)) +                   # CNS do paciente: só sem CPF, nunca os dois
                   alfa(l.sex, 1) + opt_num(l.ibge, 6) + alfa(l.cid10, 4) + num(l.age, 3) + num(l.quantity, 6) +
                   num(l.character, 2) + blank(13) + alfa(ORIGIN, 3) +       # caráter, autorização, origem
                   text(l.name, 30) + l.birth_date.strftime("%Y%m%d") + num(l.race_color, 2) + opt_num(l.ethnicity, 4) +
                   blank(3) + blank(3) + blank(3) + blank(8) + blank(4) + blank(14) +   # nac., serviço, classif., equipe, CNPJ OPM
                   num(l.zip, 8) + blank(3) + address(l.street, 30) + address(l.complement, 10) + address(l.number, 5) +
                   address(l.district, 30) + opt_alfa_digits(l.phone, 11) + blank(40) + # bairro, telefone, e-mail
-                  blank(10) + num(l.cpf, 11) + blank(1) + WITHOUT_CPF)                  # INE, CPF, situação de rua, sem CPF
+                  blank(10) + opt_num(l.cpf, 11) + blank(1) +                           # INE, CPF, situação de rua (L18: branco)
+                  (l.cpf ? WITH_CPF : WITHOUT_CPF_FLAG))                                 # sem CPF
     end
 
     def num(value, size)

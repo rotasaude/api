@@ -6,7 +6,7 @@ RSpec.describe Ledi::Fichas::InitialListening do
   let(:started) { Time.zone.parse("2026-10-07 09:10") }
   let(:identity) do
     Ledi::Fichas::ScreeningIdentity.new(cnes: "1234567", ine: "0000123456", professional_cns: "700000000000005",
-                                        cbo: "223505", citizen_cpf: "52998224725", birth_date: Date.new(1980, 5, 10),
+                                        cbo: "223505", citizen_cpf: "52998224725", citizen_cns: nil, birth_date: Date.new(1980, 5, 10),
                                         sex: "female", started_at: started, ended_at: started + 12.minutes,
                                         ibge_code: "4106902")
   end

@@ -59,7 +59,7 @@ module Ledi
 
       identity = Ledi::Fichas::ScreeningIdentity.new(
         cnes: unit.cnes, ine: ine, professional_cns: professional.cns, cbo: screening.cbo_code,
-        citizen_cpf: citizen.cpf, birth_date: birth, sex: citizen.sex, started_at: screening.started_at,
+        citizen_cpf: citizen.cpf, citizen_cns: nil, birth_date: birth, sex: citizen.sex, started_at: screening.started_at,
         ended_at: [ revision.created_at, screening.started_at ].max, ibge_code: CityProfile.current&.ibge_code
       )
       ficha = if kind == :initial_listening
