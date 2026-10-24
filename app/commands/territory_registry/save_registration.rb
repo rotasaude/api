@@ -272,6 +272,10 @@ module TerritoryRegistry
       add_cpf!(patient, attrs[:cpf], by)
       patient.lock!
       household = attrs[:household] && Household.lock("FOR SHARE").find(attrs[:household].id)
+      # O domicílio mudou de microárea (ou foi inativado) depois da leitura: o
+      # destino lido já não vale — a tela relê e grava de novo.
+      moved = household && (household.micro_area_id != attrs[:area].id || household.status != attrs[:household].status)
+      refuse!(Result.fail(:stale_version)) if moved
       family = attrs[:family_id] && Family.lock("FOR SHARE").find_by(id: attrs[:family_id])
       if registration
         registration.lock!

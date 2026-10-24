@@ -106,6 +106,16 @@ RSpec.describe TerritoryRegistry::SaveRegistration do
     expect(result.details).to eq(path: "micro_area_id")
   end
 
+  it "domicílio que muda de microárea entre a leitura e a trava → stale_version, nada gravado" do
+    other_area = registry_micro_area!(code: "09", team: household.micro_area.team)
+    allow(TerritoryRegistry::Access).to receive(:registrar?).and_wrap_original do |original, *args, **kwargs|
+      original.call(*args, **kwargs).tap { Household.where(id: household.id).update_all(micro_area_id: other_area.id) }
+    end
+    result = save(registry_registration_params(household, patient: registry_patient!))
+    expect(result.reason).to eq(:stale_version)
+    expect(IndividualRegistration.count).to eq(0)
+  end
+
   context "etnia (L17)" do
     it "raça/cor 05 com etnia sem código LEDI → invalid_ethnicity, nada gravado" do
       result = save(params(new_patient: new_patient, patient_demographics: { "race_color" => "05", "ethnicity" => "0300" }))
