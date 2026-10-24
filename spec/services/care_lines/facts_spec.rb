@@ -93,6 +93,27 @@ RSpec.describe CareLines::Facts do
     expect(people[free.id].citizen_id).to eq(free.id)
   end
 
+  # Revisão final do 24a (M2): um par por CPF no SQL. "Já tem paciente" é um
+  # NOT EXISTS correlacionado (anti-join pelo índice de patients.cpf) — NOT IN
+  # (subconsulta) não vira anti-join no Postgres e varreria os CPFs da cidade.
+  it "one_per_cpf: sem paciente do CPF e o par mais antigo do CPF, por anti-join no índice de patients.cpf" do
+    oldest = care_citizen!(age: 30, sex: "female")
+    twin = travel_to(1.minute.from_now) { Citizen.create!(cpf: oldest.cpf, phone: "+5541990000001", verification_level: "verified") }
+    taken = care_citizen!(age: 31, sex: "male")
+    Patient.create!(cpf: taken.cpf, full_name: "Paciente Digitado", birth_date: "1990-01-01", sex: "male")
+    scope = Citizen.where(id: [ oldest.id, twin.id, taken.id ])
+    expect(described_class.one_per_cpf(scope).pluck(:id)).to eq([ oldest.id ])
+
+    sql = described_class.one_per_cpf(Citizen.where(patient_id: nil)).to_sql
+    expect(sql).not_to match(/NOT IN/i)
+    plan = ApplicationRecord.transaction(requires_new: true) do
+      ApplicationRecord.connection.execute("SET LOCAL enable_seqscan = off")
+      ApplicationRecord.connection.select_values("EXPLAIN #{sql}").join("\n")
+    end
+    expect(plan).to include("Anti Join", "index_patients_on_cpf")
+    expect(plan).not_to include("SubPlan")
+  end
+
   it "problem_candidates acha por prefixo do código ativo, na terminologia certa" do
     hit = care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
     care_patient!(age: 60, sex: "male", problems: [ %w[ciap2 K86] ], unit: unit, doctor: doctor)

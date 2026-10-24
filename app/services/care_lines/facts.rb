@@ -97,12 +97,17 @@ module CareLines
     # validados sem paciente do CPF, na cidade toda. CPF é cifra determinística
     # com a mesma chave (CityDeterministicKeyProvider) em Citizen e Patient e
     # extend_queries está desligado: igualdade de cifra = de CPF, o mesmo que
-    # o where(cpf:) faria. Público para TeamPopulation.members.
+    # o where(cpf:) faria. Os dois filtros são NOT EXISTS correlacionados
+    # (anti-join pelos índices de cpf); NOT IN (subconsulta) não vira anti-join
+    # no Postgres e varreria os CPFs da cidade por candidato (citizens.cpf é
+    # NOT NULL: os dois são equivalentes). Público para TeamPopulation.members.
     def one_per_cpf(scope)
-      scope.where.not(cpf: Patient.where.not(cpf: nil).select(:cpf)).where(<<~SQL.squish)
-        NOT EXISTS (SELECT 1 FROM citizens o
-                     WHERE o.cpf = citizens.cpf AND o.patient_id IS NULL AND o.erased_at IS NULL
-                       AND o.verification_level = 'verified' AND (o.created_at, o.id) < (citizens.created_at, citizens.id))
+      outer = scope.klass.quoted_table_name
+      scope.where(<<~SQL.squish)
+        NOT EXISTS (SELECT 1 FROM patients p WHERE p.cpf = #{outer}.cpf)
+        AND NOT EXISTS (SELECT 1 FROM citizens o
+                         WHERE o.cpf = #{outer}.cpf AND o.patient_id IS NULL AND o.erased_at IS NULL
+                           AND o.verification_level = 'verified' AND (o.created_at, o.id) < (#{outer}.created_at, #{outer}.id))
       SQL
     end
 
