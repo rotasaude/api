@@ -16,16 +16,19 @@ module TerritoryRegistry
       limit = page_limit
       return unless limit
 
-      scope = Household.where(micro_area_id: area.id).order(id: :desc)
+      # Mais recente primeiro (registered_at DESC, id DESC); o cursor opaco
+      # leva os dois (revisão final, m5).
+      scope = Household.where(micro_area_id: area.id).order(registered_at: :desc, id: :desc)
       if params[:before].present?
-        return render_error("invalid_cursor") unless uuid?(params[:before])
+        cursor = decode_cursor(params[:before])
+        return render_error("invalid_cursor") unless cursor
 
-        scope = scope.where("households.id < ?", params[:before])
+        scope = scope.where("(households.registered_at, households.id) < (?, ?)", *cursor)
       end
       rows = scope.limit(limit + 1).includes(:micro_area, registered_by_user: :professional).to_a
       page = rows.first(limit)
       Trail.households_listed!(user: Current.user, micro_area_id: area.id, household_ids: page.map(&:id))
-      render json: { households: rendered(page, full: false), next_before: rows.size > limit ? page.last.id : nil }
+      render json: { households: rendered(page, full: false), next_before: rows.size > limit ? encode_cursor(page.last) : nil }
     end
 
     def show
@@ -54,6 +57,17 @@ module TerritoryRegistry
     end
 
     private
+
+    def encode_cursor(household) = Base64.urlsafe_encode64("#{household.registered_at.utc.iso8601(6)}|#{household.id}", padding: false)
+
+    # [registered_at, id] ou nil (cursor que não veio daqui).
+    def decode_cursor(raw)
+      at, id = Base64.urlsafe_decode64(raw.to_s).split("|", 2)
+      time = Time.iso8601(at.to_s)
+      uuid?(id) ? [ time, id ] : nil
+    rescue ArgumentError
+      nil
+    end
 
     def find_household
       household = uuid?(params[:id]) && Household.includes(micro_area: :team).find_by(id: params[:id])

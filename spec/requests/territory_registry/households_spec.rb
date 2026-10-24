@@ -5,6 +5,7 @@ require "rails_helper"
 # cadastro domiciliar; leitura com trilha clinical_record.viewed
 # (access territory_registry), uma por consulta, só ids.
 RSpec.describe "Território — domicílios e famílias", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
   before { registry_city! }
 
   let(:unit) { care_unit! }
@@ -169,6 +170,34 @@ RSpec.describe "Território — domicílios e famílias", type: :request do
     expect(json_body).to eq("error" => "invalid_request")
     get "/territory/households", params: { micro_area_id: SecureRandom.uuid }
     expect(response).to have_http_status(:not_found)
+  end
+
+  # Revisão final (m5): ordem pela gravação mais recente (registered_at DESC,
+  # id DESC) e cursor opaco com os dois — páginas sem pular nem repetir, mesmo
+  # com dois domicílios gravados no mesmo instante.
+  it "lista do mais recente para o mais antigo, cursor opaco; páginas sem pular nem repetir; cursor inválido → 422" do
+    sign_in_as(acs)
+    base = Time.zone.parse("2026-10-20 09:00")
+    at = [ base, base + 1.hour, base + 1.hour, base + 2.hours, base - 1.day ]
+    ids = at.map { |time| travel_to(time) { json_post("/territory/households", body) && json_body["id"] } }
+    expected = ids.zip(at).sort_by { |id, time| [ time, id ] }.reverse.map(&:first)
+    seen = []
+    cursor = nil
+    3.times do
+      get "/territory/households", params: { micro_area_id: area.id, limit: 2, before: cursor }.compact
+      seen += json_body["households"].map { |row| row["id"] }
+      cursor = json_body["next_before"]
+      break unless cursor
+
+      expect(cursor).not_to match(/\A\h{8}-/) # opaco: não é o id
+    end
+    expect(cursor).to be_nil
+    expect(seen).to eq(expected)
+    get "/territory/households", params: { micro_area_id: area.id, before: "x" }
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to eq("error" => "invalid_cursor")
+    get "/territory/households", params: { micro_area_id: area.id, before: Base64.urlsafe_encode64("ontem|#{ids.first}") }
+    expect(json_body).to eq("error" => "invalid_cursor")
   end
 
   it "enfermeiro da equipe grava em qualquer microárea dela; profissional com CBO fora da tabela → 403 cbo_not_allowed" do
