@@ -93,7 +93,8 @@ RSpec.describe "Território — cadastro individual", type: :request do
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to eq("error" => "invalid_transition")
 
-    id = registry_registration!(household: household).id
+    saved = registry_registration!(household: household)
+    id = saved.id
     today = Time.zone.today.iso8601
     json_post "/territory/registrations/#{id}/exit", reason: "death", on: today
     expect(json_body).to eq("error" => "invalid_registration", "path" => "death_on")
@@ -104,7 +105,8 @@ RSpec.describe "Território — cadastro individual", type: :request do
     expect(response).to have_http_status(:ok)
     expect(json_body["exit"]).to eq("reason" => "death", "on" => today, "death_on" => (Time.zone.today - 1).iso8601,
                                     "death_certificate" => "123456789")
-    expect(json_body).to include("status" => "exited", "version" => 2)
+    # registered_at é o da última gravação (save/identity_refresh), nunca o da saída
+    expect(json_body).to include("status" => "exited", "version" => 2, "registered_at" => saved.registered_at.iso8601)
     expect(DomainEvent.where(name: "territory_registration.exited").last.payload.keys)
       .to match_array(%w[registration_id registration_version_id patient_id user_id])
     json_post "/territory/registrations/#{id}/exit", reason: "moved", on: today
