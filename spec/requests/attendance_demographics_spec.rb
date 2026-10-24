@@ -111,6 +111,21 @@ RSpec.describe "Recepção — raça/cor e endereço do paciente", type: :reques
     expect(citizen.reload.patient_id).to be_nil
   end
 
+  # Módulo 24a (Desvio 8; revisão final, m4): na validação, o paciente do CPF
+  # com cadastro ativo em domicílio tem o endereço recusado ANTES do Verify —
+  # o par continua declarado e o código não é consumido (§13 E12).
+  it "na validação, paciente do CPF com cadastro ativo em domicílio: endereço 422 address_from_household, código intacto" do
+    patient = Patient.create!(cpf: citizen.cpf, full_name: "Maria Aparecida da Silva", birth_date: "1980-05-10", sex: "female")
+    registry_registration!(patient: patient)
+    code = issue_code_for(citizen)
+    json_post "/attendance/verifications", cpf: citizen.cpf, code: code, document_checked: true, birth_date: "1980-05-10", sex: "female",
+                                           full_name: "Maria Aparecida da Silva", address_zip: "80010000"
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to eq("error" => "address_from_household", "field" => "address_zip")
+    expect(citizen.reload.verification_level).to eq("declared")
+    expect(CitizenVerificationCode.where(citizen_id: citizen.id, consumed_at: nil)).to exist
+  end
+
   # Módulo 24a (Desvio 8; contrato §14 L6): endereço de paciente com cadastro
   # ativo em domicílio recusado ANTES de gravar os nomes (§13 E12).
   it "no cadastro, paciente com cadastro ativo em domicílio: endereço 422 address_from_household, nomes intactos" do
