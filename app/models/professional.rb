@@ -43,9 +43,13 @@ class Professional < ApplicationRecord
   normalizes :contact_email, with: ->(v) { v.to_s.strip.downcase.presence }, apply_to_nil: true
 
   validates :professional_name, presence: true
-  validates :council, inclusion: { in: COUNCILS }
-  validates :council_state, inclusion: { in: UFS }
-  validates :registration_number, format: { with: /\A\d{1,10}\z/ }
+  # Profissionais de campo (ACS 515105, agente de endemias 515140; módulo
+  # 24a) não têm conselho: conselho, UF e registro todos ou nenhum (CHECK
+  # ck_professionals_council_all_or_none).
+  validates :council, inclusion: { in: COUNCILS }, allow_nil: true
+  validates :council_state, inclusion: { in: UFS }, allow_nil: true
+  validates :registration_number, format: { with: /\A\d{1,10}\z/ }, allow_nil: true
+  validate { errors.add(:council, :incomplete) unless [ council, council_state, registration_number ].compact.size.in?([ 0, 3 ]) }
   validates :phone, format: { with: /\A\d{10,11}\z/ }, allow_nil: true
   validates :contact_email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_nil: true
   validate { errors.add(:cns, :invalid) unless Professionals::Cns.valid?(cns) }

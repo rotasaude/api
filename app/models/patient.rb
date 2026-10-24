@@ -15,16 +15,21 @@ class Patient < ApplicationRecord
   RACE_COLORS = %w[01 02 03 04 05].freeze
   DEMOGRAPHICS = %w[race_color ethnicity address_zip address_street address_number address_complement address_district].freeze
   encrypts :race_color, :ethnicity, :address_zip, :address_street, :address_number, :address_complement, :address_district
+  # Módulo 24a (ADR 0042): paciente sem CPF tem a justificativa da ficha
+  # (um dos dois, nunca ambos — CHECK ck_patients_cpf_or_reason); CNS e a
+  # chave de duplicados cifrados determinísticos (são chave de busca).
+  encrypts :no_cpf_reason
+  encrypts :cns, :match_key, deterministic: true, key_provider: CityDeterministicKeyProvider.new
 
   has_many :citizens, dependent: :restrict_with_error
   has_many :problems, class_name: "PatientProblem", dependent: :restrict_with_error
   has_many :consultations, dependent: :restrict_with_error
 
-  validates :cpf, presence: true
+  validate { errors.add(:cpf, :blank) unless cpf.present? ^ no_cpf_reason.present? }
 
   def display_name = social_name.presence || full_name
 
-  def cpf_masked = CitizenIdentity::Cpf.mask(cpf)
+  def cpf_masked = cpf && CitizenIdentity::Cpf.mask(cpf)
 
   def age(on: Time.zone.today)
     return nil if birth_date.blank?

@@ -1046,10 +1046,17 @@ $do$;
 -- SÓ as colunas cifradas mudam (o mesmo critério das consultas, abaixo); id
 -- e created_at não mudam nem assim. Fora da marca, os demais campos cifrados
 -- (nomes, nascimento, sexo) mudam livremente (Patients::Resolve).
+-- Módulo 24a (ADR 0042): paciente sem CPF tem a justificativa
+-- (no_cpf_reason). O CPF só chega de nulo para valor, levando a
+-- justificativa; com valor, nunca muda nem some. A justificativa só vai a
+-- nulo junto com o CPF chegando — quem garante é o CHECK
+-- ck_patients_cpf_or_reason (um dos dois, sempre), não este trigger. CNS e
+-- match_key são cifrados determinísticos como o CPF e entram na re-cifra.
 CREATE OR REPLACE FUNCTION rota_patient_guard() RETURNS trigger AS $fn$
 DECLARE
   encrypted text[] := ARRAY['cpf', 'full_name', 'social_name', 'mother_name', 'birth_date', 'sex', 'race_color', 'ethnicity',
-                            'address_zip', 'address_street', 'address_number', 'address_complement', 'address_district'];
+                            'address_zip', 'address_street', 'address_number', 'address_complement', 'address_district',
+                            'cns', 'no_cpf_reason', 'match_key'];
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'patients is append-only: DELETE refused';
@@ -1063,8 +1070,11 @@ BEGIN
     END IF;
     RETURN NEW;
   END IF;
-  IF NEW.cpf IS DISTINCT FROM OLD.cpf THEN
+  IF OLD.cpf IS NOT NULL AND NEW.cpf IS DISTINCT FROM OLD.cpf THEN
     RAISE EXCEPTION 'patients: identity columns never change';
+  END IF;
+  IF OLD.cpf IS NULL AND NEW.cpf IS NOT NULL AND NEW.no_cpf_reason IS NOT NULL THEN
+    RAISE EXCEPTION 'patients: the CPF arrives taking the no-CPF reason away';
   END IF;
   RETURN NEW;
 END;
@@ -2100,6 +2110,97 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS citizen_declared_conditions_guard ON citizen_declared_conditions';
     EXECUTE 'CREATE TRIGGER citizen_declared_conditions_guard BEFORE UPDATE ON citizen_declared_conditions
       FOR EACH ROW EXECUTE FUNCTION rota_citizen_declared_condition_guard()';
+  END IF;
+END
+$do$;
+
+-- Módulo 24a (ADR 0042): cadastro territorial. As versões de domicílio e de
+-- cadastro individual são a fonte imutável da ficha LEDI: só acréscimo, e a
+-- re-cifra regrava só as colunas cifradas. Microárea, domicílio, família e
+-- cadastro nunca somem; a microárea não troca de equipe nem de código; a
+-- família não troca de domicílio nem de responsável; o cadastro sai uma vez
+-- (mudança ou óbito) e, saído, congela (só a re-cifra do cifrado passa).
+CREATE OR REPLACE FUNCTION rota_no_delete() RETURNS trigger AS $fn$
+BEGIN
+  RAISE EXCEPTION '% : DELETE refused', TG_TABLE_NAME;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_micro_area_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'micro_areas : DELETE refused';
+  END IF;
+  IF (NEW.id, NEW.team_id, NEW.code) IS DISTINCT FROM (OLD.id, OLD.team_id, OLD.code) THEN
+    RAISE EXCEPTION 'micro_areas: id, team and code never change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_family_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF (NEW.id, NEW.household_id, NEW.responsible_patient_id, NEW.created_at)
+     IS DISTINCT FROM (OLD.id, OLD.household_id, OLD.responsible_patient_id, OLD.created_at) THEN
+    RAISE EXCEPTION 'families: household and responsible never change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_individual_registration_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'individual_registrations: rows are never deleted';
+  END IF;
+  IF (NEW.id, NEW.patient_id, NEW.created_at) IS DISTINCT FROM (OLD.id, OLD.patient_id, OLD.created_at) THEN
+    RAISE EXCEPTION 'individual_registrations: id, patient and created_at never change';
+  END IF;
+  -- Saída uma vez: com OLD.exit_reason preenchido nada muda (nem o motivo
+  -- volta a nulo); só a re-cifra do texto cifrado passa.
+  IF OLD.exit_reason IS NOT NULL THEN
+    IF current_setting('rota.reencrypting', true) = 'on'
+       AND (to_jsonb(NEW) - ARRAY['refused', 'death_certificate']) = (to_jsonb(OLD) - ARRAY['refused', 'death_certificate']) THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'individual_registrations: an exited registration is frozen';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.individual_registrations') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS household_versions_reencryption_only ON household_versions';
+    EXECUTE 'CREATE TRIGGER household_versions_reencryption_only BEFORE UPDATE OR DELETE ON household_versions
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''address'', ''living_conditions'', ''contact_phone'', ''refused'', ''families_snapshot'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS individual_registration_versions_reencryption_only ON individual_registration_versions';
+    EXECUTE 'CREATE TRIGGER individual_registration_versions_reencryption_only BEFORE UPDATE OR DELETE ON individual_registration_versions
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''identity'', ''identification'', ''sociodemographic'', ''health_conditions'',
+                                                           ''street_situation'', ''refused'', ''death_certificate'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS individual_registrations_guard ON individual_registrations';
+    EXECUTE 'CREATE TRIGGER individual_registrations_guard BEFORE UPDATE OR DELETE ON individual_registrations
+      FOR EACH ROW EXECUTE FUNCTION rota_individual_registration_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS micro_areas_guard ON micro_areas';
+    EXECUTE 'CREATE TRIGGER micro_areas_guard BEFORE UPDATE OR DELETE ON micro_areas
+      FOR EACH ROW EXECUTE FUNCTION rota_micro_area_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS families_guard ON families';
+    EXECUTE 'CREATE TRIGGER families_guard BEFORE UPDATE ON families
+      FOR EACH ROW EXECUTE FUNCTION rota_family_guard()';
+    FOREACH item IN ARRAY ARRAY['households', 'families'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
+                     item || '_no_delete', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['micro_areas', 'households', 'household_versions', 'families', 'individual_registrations',
+                                'individual_registration_versions'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
   END IF;
 END
 $do$;

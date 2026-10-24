@@ -130,7 +130,18 @@ module CityEncryption
     [ CareLineEnrollment, :ended_note ],
     [ CareLineSuggestion, :dismiss_reason ],
     [ CareOutreachContact, :note ],
-    [ CitizenDeclaredCondition, :condition ]
+    [ CitizenDeclaredCondition, :condition ],
+    # ADR 0042: cadastro territorial (paciente sem CPF, CNS, chave de
+    # duplicados; versões de domicílio e de cadastro; família; recusa e DO).
+    [ Patient, :no_cpf_reason ], [ Patient, :cns ], [ Patient, :match_key ],
+    [ HouseholdVersion, :address ], [ HouseholdVersion, :living_conditions ], [ HouseholdVersion, :contact_phone ],
+    [ HouseholdVersion, :refused ], [ HouseholdVersion, :families_snapshot ],
+    [ Family, :income_band ], [ Family, :living_since ],
+    [ IndividualRegistration, :refused ], [ IndividualRegistration, :death_certificate ],
+    [ IndividualRegistrationVersion, :identity ], [ IndividualRegistrationVersion, :identification ],
+    [ IndividualRegistrationVersion, :sociodemographic ], [ IndividualRegistrationVersion, :health_conditions ],
+    [ IndividualRegistrationVersion, :street_situation ], [ IndividualRegistrationVersion, :refused ],
+    [ IndividualRegistrationVersion, :death_certificate ]
   ].freeze
 
   module_function

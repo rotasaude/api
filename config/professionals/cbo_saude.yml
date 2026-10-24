@@ -35,4 +35,7 @@
 - { code: "251605", title: "Assistente social", council: CRESS }
 - { code: "221205", title: "Biomédico", council: CRBM }
 - { code: "224140", title: "Profissional de educação física na saúde", council: CREF }
-# Ocupações sem conselho (ACS/ACE) voltam com o CNES (ADR 0021, em aberto): o perfil hoje exige conselho e registro, que esses agentes não têm.
+# Profissionais de campo sem conselho (módulo 24a, ADR 0042): o perfil deles
+# não tem conselho, UF nem registro (Professional: todo ou nenhum).
+- { code: "515105", title: "Agente comunitário de saúde", council: null }
+- { code: "515140", title: "Agente de combate às endemias", council: null }

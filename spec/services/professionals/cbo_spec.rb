@@ -14,8 +14,8 @@ RSpec.describe Professionals::Cbo do
     expect(described_class.find("999999")).to be_nil
   end
 
-  it "toda entrada exige conselho (ACS/ACE voltam com CNES, ADR 0021 em aberto)" do
-    expect(described_class.all.map(&:council)).to all(be_present)
+  it "só os profissionais de campo (ACS 515105 e agente de endemias 515140) não exigem conselho (módulo 24a)" do
+    expect(described_class.all.reject(&:council).map(&:code)).to contain_exactly("515105", "515140")
   end
 
   it "active deixa de fora os deprecated" do

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_23_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -1045,6 +1045,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
     t.check_constraint "source::text = ANY (ARRAY['unit'::text, 'provider'::text, 'fhir'::text, 'consultation'::text, 'lab'::text])", name: "ck_exam_results_source"
   end
 
+  create_table "families", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "household_id", null: false
+    t.text "income_band"
+    t.text "living_since"
+    t.integer "members_count"
+    t.boolean "moved_out", default: false, null: false
+    t.uuid "responsible_patient_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["household_id", "responsible_patient_id"], name: "idx_families_one_responsible", unique: true, where: "(NOT moved_out)"
+    t.index ["responsible_patient_id"], name: "idx_families_responsible_patient"
+    t.check_constraint "members_count IS NULL OR (members_count >= 1 AND members_count <= 999)", name: "ck_families_members_count"
+  end
+
   create_table "health_team_members", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "cbo_code", null: false
     t.datetime "created_at", null: false
@@ -1111,6 +1125,40 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
     t.check_constraint "screening_scope::text = ANY (ARRAY['walk_in'::text, 'all'::text])", name: "ck_health_units_screening_scope"
   end
 
+  create_table "household_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "address", null: false
+    t.text "contact_phone"
+    t.datetime "created_at", null: false
+    t.text "families_snapshot", null: false
+    t.uuid "household_id", null: false
+    t.text "living_conditions", null: false
+    t.uuid "micro_area_id", null: false
+    t.uuid "neighborhood_id"
+    t.string "origin", null: false
+    t.string "property_type", null: false
+    t.text "refused", null: false
+    t.uuid "saved_by_professional_id", null: false
+    t.uuid "saved_by_user_id", null: false
+    t.string "saved_cbo", limit: 6, null: false
+    t.string "status", null: false
+    t.uuid "team_id", null: false
+    t.integer "version", null: false
+    t.index ["household_id", "version"], name: "idx_household_versions_household_version", unique: true
+    t.check_constraint "property_type::text = ANY (ARRAY['1'::text, '2'::text, '3'::text, '4'::text, '5'::text, '6'::text, '7'::text, '8'::text, '9'::text, '10'::text, '11'::text, '12'::text, '13'::text, '99'::text]) AND status::text = ANY (ARRAY['active'::text, 'inactive'::text]) AND origin::text = 'save'::text AND version >= 1", name: "ck_household_versions_values"
+  end
+
+  create_table "households", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "micro_area_id", null: false
+    t.datetime "registered_at", null: false
+    t.uuid "registered_by_user_id", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", null: false
+    t.index ["micro_area_id", "id"], name: "idx_households_micro_area"
+    t.check_constraint "status::text = ANY (ARRAY['active'::text, 'inactive'::text]) AND version >= 1", name: "ck_households_values"
+  end
+
   create_table "identities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "provider", null: false
@@ -1133,6 +1181,59 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
     t.index ["created_at"], name: "index_inbound_messages_on_created_at"
     t.index ["from"], name: "index_inbound_messages_on_from"
     t.index ["message_id"], name: "index_inbound_messages_on_message_id", unique: true
+  end
+
+  create_table "individual_registration_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "death_certificate"
+    t.date "death_on"
+    t.string "exit_reason"
+    t.date "exited_on"
+    t.uuid "family_id"
+    t.text "health_conditions"
+    t.uuid "household_id"
+    t.text "identification", null: false
+    t.text "identity", null: false
+    t.boolean "is_responsible", null: false
+    t.uuid "micro_area_id"
+    t.string "origin", null: false
+    t.uuid "patient_id", null: false
+    t.text "refused", null: false
+    t.uuid "registration_id", null: false
+    t.uuid "saved_by_professional_id", null: false
+    t.uuid "saved_by_user_id", null: false
+    t.string "saved_cbo", limit: 6, null: false
+    t.text "sociodemographic"
+    t.text "street_situation"
+    t.uuid "team_id", null: false
+    t.integer "version", null: false
+    t.index ["patient_id"], name: "index_individual_registration_versions_on_patient_id"
+    t.index ["registration_id", "version"], name: "idx_individual_registration_versions_version", unique: true
+    t.check_constraint "version >= 1 AND origin::text = ANY (ARRAY['save'::text, 'identity_refresh'::text, 'exit'::text]) AND ((origin::text = 'exit'::text) = (exit_reason IS NOT NULL)) AND (exit_reason IS NULL OR exit_reason::text = ANY (ARRAY['moved'::text, 'death'::text])) AND ((exit_reason IS NULL) = (exited_on IS NULL)) AND ((exit_reason IS NOT NULL AND exit_reason::text = 'death'::text) = (death_on IS NOT NULL)) AND (death_certificate IS NULL OR death_on IS NOT NULL)", name: "ck_individual_registration_versions_values"
+  end
+
+  create_table "individual_registrations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "death_certificate"
+    t.date "death_on"
+    t.string "exit_reason"
+    t.date "exited_on"
+    t.uuid "family_id"
+    t.uuid "household_id"
+    t.datetime "identity_changed_at"
+    t.boolean "is_responsible", default: false, null: false
+    t.uuid "micro_area_id"
+    t.uuid "patient_id", null: false
+    t.text "refused", null: false
+    t.datetime "registered_at", null: false
+    t.uuid "registered_by_user_id", null: false
+    t.uuid "team_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", null: false
+    t.index ["household_id"], name: "idx_individual_registrations_household"
+    t.index ["patient_id"], name: "idx_individual_registrations_one_active", unique: true, where: "(exit_reason IS NULL)"
+    t.index ["team_id", "registered_at"], name: "idx_individual_registrations_team"
+    t.check_constraint "version >= 1 AND (household_id IS NULL OR micro_area_id IS NOT NULL) AND (exit_reason IS NULL OR exit_reason::text = ANY (ARRAY['moved'::text, 'death'::text])) AND ((exit_reason IS NULL) = (exited_on IS NULL)) AND ((exit_reason IS NOT NULL AND exit_reason::text = 'death'::text) = (death_on IS NOT NULL)) AND (death_certificate IS NULL OR death_on IS NOT NULL)", name: "ck_individual_registrations_values"
   end
 
   create_table "integration_credentials", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1737,6 +1838,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
     t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
+  create_table "micro_areas", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "acs_professional_id"
+    t.boolean "active", default: true, null: false
+    t.string "code", limit: 2, null: false
+    t.datetime "created_at", null: false
+    t.string "name", limit: 60, null: false
+    t.uuid "team_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["team_id", "code"], name: "idx_micro_areas_team_code", unique: true
+    t.check_constraint "code::text ~ '^(0[1-9]|[1-9][0-9])$'::text AND length(btrim(name::text)) > 0", name: "ck_micro_areas_values"
+  end
+
   create_table "neighborhood_coverages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.uuid "health_unit_id", null: false
@@ -1921,16 +2034,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
     t.text "address_street"
     t.text "address_zip"
     t.text "birth_date"
-    t.string "cpf", null: false
+    t.string "cns"
+    t.string "cpf"
     t.datetime "created_at", null: false
     t.text "ethnicity"
     t.text "full_name"
+    t.string "match_key"
     t.text "mother_name"
+    t.text "no_cpf_reason"
     t.text "race_color"
     t.text "sex"
     t.text "social_name"
     t.datetime "updated_at", null: false
+    t.index ["cns"], name: "idx_patients_cns", unique: true, where: "(cns IS NOT NULL)"
     t.index ["cpf"], name: "index_patients_on_cpf", unique: true
+    t.index ["match_key"], name: "idx_patients_match_key"
+    t.check_constraint "num_nonnulls(cpf, no_cpf_reason) = 1", name: "ck_patients_cpf_or_reason"
   end
 
   create_table "pec_settings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2089,14 +2208,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
   create_table "professionals", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "cns", null: false
     t.string "contact_email"
-    t.string "council", null: false
-    t.string "council_state", null: false
+    t.string "council"
+    t.string "council_state"
     t.string "cpf"
     t.datetime "created_at", null: false
     t.string "phone"
     t.text "prescriber_address"
     t.string "professional_name", null: false
-    t.string "registration_number", null: false
+    t.string "registration_number"
     t.datetime "updated_at", null: false
     t.uuid "user_id", null: false
     t.index ["cns"], name: "idx_professionals_cns", unique: true
@@ -2104,6 +2223,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
     t.index ["council", "council_state", "registration_number"], name: "idx_professionals_registration", unique: true
     t.index ["user_id"], name: "index_professionals_on_user_id", unique: true
     t.check_constraint "council_state::text ~ '^[A-Z]{2}$'::text", name: "ck_professionals_council_state"
+    t.check_constraint "num_nonnulls(council, council_state, registration_number) = ANY (ARRAY[0, 3])", name: "ck_professionals_council_all_or_none"
     t.check_constraint "length(btrim(professional_name::text)) > 0", name: "ck_professionals_name"
     t.check_constraint "registration_number::text ~ '^[0-9]{1,10}$'::text", name: "ck_professionals_registration_number"
   end
@@ -2760,6 +2880,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
   add_foreign_key "exam_results", "exam_results", column: "replaces_result_id"
   add_foreign_key "exam_results", "patients"
   add_foreign_key "exam_results", "users", column: "registered_by_user_id"
+  add_foreign_key "families", "households"
+  add_foreign_key "families", "patients", column: "responsible_patient_id"
   add_foreign_key "health_team_members", "health_teams"
   add_foreign_key "health_team_members", "professionals"
   add_foreign_key "health_teams", "health_units"
@@ -2767,7 +2889,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
   add_foreign_key "health_unit_drains", "health_units", column: "target_unit_id"
   add_foreign_key "health_unit_drains", "users", column: "drained_by_user_id"
   add_foreign_key "health_units", "neighborhoods"
+  add_foreign_key "household_versions", "health_teams", column: "team_id"
+  add_foreign_key "household_versions", "households"
+  add_foreign_key "household_versions", "micro_areas"
+  add_foreign_key "household_versions", "neighborhoods"
+  add_foreign_key "household_versions", "professionals", column: "saved_by_professional_id"
+  add_foreign_key "household_versions", "users", column: "saved_by_user_id"
+  add_foreign_key "households", "micro_areas"
+  add_foreign_key "households", "users", column: "registered_by_user_id"
   add_foreign_key "identities", "users"
+  add_foreign_key "individual_registration_versions", "families"
+  add_foreign_key "individual_registration_versions", "health_teams", column: "team_id"
+  add_foreign_key "individual_registration_versions", "households"
+  add_foreign_key "individual_registration_versions", "individual_registrations", column: "registration_id"
+  add_foreign_key "individual_registration_versions", "micro_areas"
+  add_foreign_key "individual_registration_versions", "patients"
+  add_foreign_key "individual_registration_versions", "professionals", column: "saved_by_professional_id"
+  add_foreign_key "individual_registration_versions", "users", column: "saved_by_user_id"
+  add_foreign_key "individual_registrations", "families"
+  add_foreign_key "individual_registrations", "health_teams", column: "team_id"
+  add_foreign_key "individual_registrations", "households"
+  add_foreign_key "individual_registrations", "micro_areas"
+  add_foreign_key "individual_registrations", "patients"
+  add_foreign_key "individual_registrations", "users", column: "registered_by_user_id"
   add_foreign_key "integration_credentials", "users", column: "set_by_user_id"
   add_foreign_key "invitations", "exam_providers"
   add_foreign_key "invitations", "users", column: "invited_by_id"
@@ -2865,6 +3009,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900003) do
   add_foreign_key "ledi_outbox", "ledi_outbox", column: "replaces_outbox_id"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"
+  add_foreign_key "micro_areas", "health_teams", column: "team_id"
+  add_foreign_key "micro_areas", "professionals", column: "acs_professional_id"
   add_foreign_key "neighborhood_coverages", "health_units"
   add_foreign_key "neighborhood_coverages", "neighborhoods"
   add_foreign_key "nursing_protocol_version_items", "nursing_protocol_versions"

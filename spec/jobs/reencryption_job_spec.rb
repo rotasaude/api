@@ -66,7 +66,8 @@ RSpec.describe ReencryptionJob do
                                          LabRequisition LabResult LabHl7Receipt LabReport LabCriticalNotice
                                          LabQcException LabQcReviewItem
                                          PerformedProcedure BillingPeriod BillingExport
-                                         CareLineEnrollment CareLineSuggestion CareOutreachContact CitizenDeclaredCondition])
+                                         CareLineEnrollment CareLineSuggestion CareOutreachContact CitizenDeclaredCondition
+                                         HouseholdVersion Family IndividualRegistration IndividualRegistrationVersion])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end
@@ -104,6 +105,31 @@ RSpec.describe ReencryptionJob do
     end
     expect([ req.reload.mother_name, result.reload.value, receipt.reload.raw, report.reload.content_data, notice.reload.notified_person ])
       .to eq([ "Joana", "450", "MSH|^~\\&|", { "a" => 1 }, "Dra. Ana" ])
+  end
+
+  # Módulo 24a (ADR 0042): versões só acréscimo e cadastro saído congelado
+  # (triggers) aceitam a regravação do texto cifrado sob a marca da re-cifra;
+  # o paciente sem CPF re-cifra a justificativa e o CNS.
+  it "re-cifra o cadastro territorial (versões, cadastro saído, família e paciente sem CPF) sem esbarrar nos triggers" do
+    registry_city!
+    household = registry_household!
+    registration = registry_registration!(household: household)
+    registration.update_columns(exit_reason: "death", exited_on: Time.zone.today, death_on: Time.zone.today, death_certificate: "123456789")
+    family = Family.create!(household: household, responsible_patient: registration.patient, income_band: "2", living_since: "2020-03")
+    patient = Patient.create!(full_name: "Ana Clara Souza", no_cpf_reason: "3", cns: valid_cns(7))
+    raw = ->(table, column, id) { ApplicationRecord.connection.select_value("SELECT #{column} FROM #{table} WHERE id = #{ApplicationRecord.connection.quote(id)}") }
+    cells = [ [ "household_versions", "address", household.versions.first.id ], [ "families", "income_band", family.id ],
+              [ "individual_registrations", "death_certificate", registration.id ],
+              [ "individual_registration_versions", "health_conditions", registration.versions.first.id ],
+              [ "patients", "no_cpf_reason", patient.id ] ]
+    before = cells.map { |cell| raw.call(*cell) }
+
+    expect { call_body(only: %i[household_version family individual_registration individual_registration_version patient]) }.not_to raise_error
+
+    cells.zip(before).each { |cell, old| expect(raw.call(*cell)).not_to eq(old), "#{cell[0]}.#{cell[1]} não foi re-cifrado" }
+    expect([ registration.reload.death_certificate, family.reload.living_since, patient.reload.no_cpf_reason, Patient.find_by(cns: valid_cns(7)) ])
+      .to eq([ "123456789", "2020-03", "3", patient ])
+    expect(registration.versions.first.health_conditions).to include("status_tem_diabetes" => true)
   end
 
   # Módulo 16: a fila LEDI guarda o payload cifrado com a chave da cidade
