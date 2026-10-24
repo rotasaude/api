@@ -56,4 +56,17 @@ RSpec.describe "Território — possíveis duplicados", type: :request do
     json_post "/territory/patients/duplicates", full_name: "José Souza Lima", birth_date: "1960-02-01"
     expect(response).to have_http_status(:forbidden)
   end
+
+  # Revisão final (m3): o mesmo limite da busca por CPF (30 por minuto por usuário).
+  it "limite de 30 por minuto por usuário" do
+    calls = []
+    allow(TerritoryRegistry::PersonLookupsController::RateLimitStore).to receive(:increment) do |key, *|
+      calls << key
+      31
+    end
+    sign_in_as(acs)
+    json_post "/territory/patients/duplicates", full_name: "José Souza Lima", birth_date: "1960-02-01"
+    expect([ response.status, json_body["error"] ]).to eq([ 429, "too_many_requests" ])
+    expect(calls.sole).to include("territory_duplicates", acs.id)
+  end
 end
