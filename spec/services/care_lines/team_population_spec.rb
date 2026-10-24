@@ -350,8 +350,9 @@ RSpec.describe CareLines::TeamPopulation do
       result = TerritoryRegistry::SaveRegistration.call(params: registry_registration_params(team_b, patient: patient), by: registry_acs_of(team_b))
       expect(result.payload[:registration]).to have_attributes(household_id: nil, team_id: team_b.id)
       expect(described_class.patient_teams([ patient.id ])).to eq(patient.id => team_b.id)
-      # O filtro por equipe escolhe quem entra; a equipe de cada um é a do cadastro.
-      expect(described_class.patient_teams(nil, involving_team: team_a)).to eq(patient.id => team_b.id)
+      # O filtro por equipe escolhe quem entra; quem tem cadastro em outra
+      # equipe não é desta e fica de fora (precedência no SQL, revisão final M2).
+      expect(described_class.patient_teams(nil, involving_team: team_a)).to eq({})
       expect(described_class.patient_teams(nil, involving_team: team_b)).to eq(patient.id => team_b.id)
     end
 
@@ -399,7 +400,7 @@ RSpec.describe CareLines::TeamPopulation do
       small_ids = count_queries { described_class.patient_teams(ids) }
       3.times { enroll.call }
       teams = described_class.patient_teams(nil, involving_team: team_a)
-      expect(teams.values.tally).to eq(team_a.id => 4, team_b.id => 4)
+      expect(teams.values.tally).to eq(team_a.id => 4) # os 4 cadastrados na B, com consulta na A, ficam de fora
       expect(count_queries { described_class.patient_teams(nil, involving_team: team_a) }).to eq(small)
       ids = Patient.pluck(:id)
       expect(count_queries { described_class.patient_teams(ids) }).to eq(small_ids)

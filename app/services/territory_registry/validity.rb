@@ -15,13 +15,23 @@ module TerritoryRegistry
 
     def status(registration, today:, identified:)
       return "exited" if registration.exit_reason.present?
-      return "refused" if registration.refused?
+
+      status_of(registered_at: registration.registered_at, refused: registration.refused?, identified: identified, today: today)
+    end
+
+    # O mesmo, para cadastro ativo lido em tuplas (RegistryStatus, sem objeto).
+    def status_of(registered_at:, refused:, identified:, today:)
+      return "refused" if refused
       return "missing_identifier" unless identified
 
-      expires_on = registration.registered_at.in_time_zone.to_date >> MONTHS
-      return "expired" if expires_on <= today
+      ends = expires_on(registered_at)
+      return "expired" if ends <= today
 
-      (expires_on - today) <= DUE_SOON_DAYS ? "due_soon" : "valid"
+      (ends - today) <= DUE_SOON_DAYS ? "due_soon" : "valid"
     end
+
+    # Dia do vencimento: o dia da última gravação + 24 meses (Date#>>; 29/02
+    # + 24 meses = 28/02 ou 29/02, como o calendário manda).
+    def expires_on(registered_at) = registered_at.in_time_zone.to_date >> MONTHS
   end
 end

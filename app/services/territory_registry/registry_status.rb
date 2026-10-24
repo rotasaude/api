@@ -4,11 +4,13 @@
 # validados sem paciente, um por CPF) ∪ cadastros ativos da equipe, menos os
 # óbitos (CareLines::Facts.deceased). Com microárea, só os cadastros dela
 # (quem não tem cadastro não tem microárea). Situação: a do cadastro ativo na
-# equipe (Validity) ou missing. A situação de todos sai sem decifrar nome,
-# CPF nem CNS (sem identificador = IS NULL no banco; só a recusa, cifrada, é
-# lida); nome e idade só da página. Ordem por person_ref decrescente; o
-# cursor é o person_ref da última pessoa (R9). Sem trilha aqui: a lista
-# nominal grava a sua no controller, a contagem não grava.
+# equipe (Validity) ou missing. Em tuplas (pluck), sem objeto por pessoa e
+# sem lista de ids no texto do SQL (revisão final, M2: ESF até 4.000): sem
+# identificador = IS NULL no banco; decifra só a recusa do cadastro (cifra
+# não determinística) e o CPF dos pares (um por CPF); nome e idade só da
+# página. Ordem por person_ref decrescente, paginada em Ruby sobre as
+# tuplas; o cursor é o person_ref da última pessoa (R9). Sem trilha aqui: a
+# lista nominal grava a sua no controller, a contagem não grava.
 module TerritoryRegistry
   module RegistryStatus
     COUNTED = %w[valid due_soon expired missing missing_identifier].freeze
@@ -16,7 +18,7 @@ module TerritoryRegistry
     LISTED = (COUNTED + %w[refused]).freeze
     PERSON_REF = /\A(?:patient|citizen):\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
 
-    Entry = Data.define(:ref, :id, :kind, :registration, :status)
+    Entry = Data.define(:ref, :id, :kind, :registration_id, :status)
 
     module_function
 
@@ -36,19 +38,26 @@ module TerritoryRegistry
       { people: person_rows(shown, today), next_before: rows.size > limit ? shown.last.ref : nil }
     end
 
+    # Cadastros ativos da equipe em tuplas: [paciente, cadastro, gravação,
+    # recusa (decifrada), identificado (CPF ou CNS, IS NOT NULL no banco)].
     def entries(team, micro_area, today)
-      scope = IndividualRegistration.active_registrations.where(team_id: team.id)
+      scope = IndividualRegistration.active_registrations.where(team_id: team.id).joins(:patient)
       scope = scope.where(micro_area_id: micro_area.id) if micro_area
-      registrations = scope.to_a.index_by(&:patient_id)
+      registrations = scope.pluck(:patient_id, :id, :registered_at, :refused,
+                                  Arel.sql("patients.cpf IS NOT NULL OR patients.cns IS NOT NULL"))
+                           .to_h { |patient_id, *rest| [ patient_id, rest ] }
       patient_ids, citizen_ids = population(team, micro_area, registrations.keys)
       patient_ids -= CareLines::Facts.deceased(patient_ids).to_a
-      unidentified = unidentified_ids(registrations.keys)
       patients = patient_ids.map do |id|
-        registration = registrations[id]
-        status = registration ? Validity.status(registration, today: today, identified: !unidentified.include?(id)) : "missing"
-        Entry.new(ref: "patient:#{id}", id: id, kind: :patient, registration: registration, status: status)
+        registration_id, registered_at, refused, identified = registrations[id]
+        status = if registration_id
+                   Validity.status_of(registered_at: registered_at, refused: refused == "true", identified: identified, today: today)
+                 else
+                   "missing"
+                 end
+        Entry.new(ref: "patient:#{id}", id: id, kind: :patient, registration_id: registration_id, status: status)
       end
-      patients + citizen_ids.map { |id| Entry.new(ref: "citizen:#{id}", id: id, kind: :citizen, registration: nil, status: "missing") }
+      patients + citizen_ids.map { |id| Entry.new(ref: "citizen:#{id}", id: id, kind: :citizen, registration_id: nil, status: "missing") }
     end
     private_class_method :entries
 
@@ -56,27 +65,17 @@ module TerritoryRegistry
       return [ registered_ids, [] ] if micro_area
 
       members = CareLines::TeamPopulation.members(team: team)
-      citizens = members[:citizen_ids].empty? ? [] : Citizen.where(id: members[:citizen_ids]).to_a
-      [ members[:patient_ids] | registered_ids, CareLines::Facts.one_per_cpf(citizens).to_a ]
+      [ members[:patient_ids] | registered_ids, CareLines::Facts.one_per_cpf(members[:citizens]).to_a ]
     end
     private_class_method :population
-
-    # Pacientes sem CPF e sem CNS (L5), sem decifrar: nulo continua nulo na cifra.
-    def unidentified_ids(patient_ids)
-      return Set.new if patient_ids.empty?
-
-      Patient.where(id: patient_ids).where("patients.cpf IS NULL AND patients.cns IS NULL").pluck(:id).to_set
-    end
-    private_class_method :unidentified_ids
 
     def person_rows(entries, today)
       patients = Patient.where(id: entries.select { |e| e.kind == :patient }.map(&:id)).index_by(&:id)
       citizens = Citizen.where(id: entries.select { |e| e.kind == :citizen }.map(&:id)).index_by(&:id)
-      registrations = entries.filter_map(&:registration)
-      ActiveRecord::Associations::Preloader.new(records: registrations, associations: :micro_area).call
+      registrations = IndividualRegistration.includes(:micro_area).where(id: entries.filter_map(&:registration_id)).index_by(&:id)
       entries.map do |entry|
         person = entry.kind == :patient ? patients.fetch(entry.id) : citizens.fetch(entry.id)
-        Json.person_row(person, status: entry.status, registration: entry.registration, today: today)
+        Json.person_row(person, status: entry.status, registration: registrations[entry.registration_id], today: today)
       end
     end
     private_class_method :person_rows

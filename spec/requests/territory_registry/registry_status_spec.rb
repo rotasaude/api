@@ -37,7 +37,15 @@ RSpec.describe "Território — validade e quem falta cadastrar", type: :request
 
   it "óbito pelo cadastro sai da população; paginação com next_before; equipe alheia → 403" do
     area = registry_micro_area!(code: "01", team: team)
-    3.times { registry_registration!(household: registry_household!(micro_area: area)) }
+    living = Array.new(3) { registry_registration!(household: registry_household!(micro_area: area)) }
+    # A consulta põe o falecido na equipe; a saída por óbito do cadastro o tira.
+    dead = care_patient!(age: 70, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+    household = registry_household!(micro_area: area)
+    today = Time.zone.today.iso8601
+    death = TerritoryRegistry::ExitRegistration.call(registration: registry_registration!(patient: dead, household: household),
+                                                     params: { "reason" => "death", "on" => today, "death_on" => today },
+                                                     by: registry_acs_of(household))
+    expect(death).to be_ok
     sign_in_as(nurse)
     get "/territory/registry_status", params: { team_id: team.id, limit: 2 }
     first = json_body
@@ -45,6 +53,9 @@ RSpec.describe "Território — validade e quem falta cadastrar", type: :request
     get "/territory/registry_status", params: { team_id: team.id, limit: 2, before: first["next_before"] }
     expect(json_body["people"].size).to eq(1)
     expect(json_body["next_before"]).to be_nil
+    shown = (first["people"] + json_body["people"]).map { |p| p["patient_id"] }
+    expect(shown).to match_array(living.map(&:patient_id))
+    expect(shown).not_to include(dead.id)
     get "/territory/registry_status", params: { team_id: registry_team!(care_unit!).id }
     expect(response).to have_http_status(:forbidden)
     expect(json_body).to eq("error" => "out_of_scope")
@@ -142,6 +153,32 @@ RSpec.describe "Território — validade e quem falta cadastrar", type: :request
     expect(viewed.last.payload).to include("person_ref" => "citizen:#{citizen.id}", "patient_id" => nil, "access" => "territory_registry")
   end
 
+  it "paciente com consulta e cadastro na mesma equipe aparece uma vez" do
+    patient = care_patient!(age: 60, sex: "female", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+    registration = registry_registration!(patient: patient, household: registry_household!(micro_area: registry_micro_area!(code: "01", team: team)))
+    sign_in_as(nurse)
+    get "/territory/registry_status/count", params: { team_id: team.id }
+    expect(json_body).to eq("valid" => 1, "due_soon" => 0, "expired" => 0, "missing" => 0, "missing_identifier" => 0)
+    get "/territory/registry_status", params: { team_id: team.id }
+    expect(json_body["people"].map { |p| [ p["patient_id"], p["registration_id"] ] }).to eq([ [ patient.id, registration.id ] ])
+  end
+
+  it "página que cruza de patient: para citizen: sem pular nem repetir" do
+    area = registry_micro_area!(code: "01", team: team)
+    patients = Array.new(2) { registry_registration!(household: registry_household!(micro_area: area)).patient_id }
+    neighborhood = care_neighborhood!(unit)
+    citizens = Array.new(2) { |i| care_citizen!(age: 30 + i, sex: "female", neighborhood: neighborhood).id }
+    sign_in_as(nurse)
+    get "/territory/registry_status", params: { team_id: team.id, limit: 3 }
+    first = json_body
+    expect(first["people"].first(2).map { |p| p["patient_id"] }).to eq(patients.sort.reverse)
+    expect(first["next_before"]).to start_with("citizen:")
+    get "/territory/registry_status", params: { team_id: team.id, limit: 3, before: first["next_before"] }
+    expect(json_body["next_before"]).to be_nil
+    shown = (first["people"] + json_body["people"]).map { |p| p["citizen_id"] }.compact
+    expect(shown).to eq(citizens.sort.reverse)
+  end
+
   it "uma trilha por pessoa mostrada (person_ref), nenhuma na contagem nem em página vazia; ordem por person_ref decrescente" do
     area = registry_micro_area!(code: "01", team: team)
     registrations = Array.new(3) { registry_registration!(household: registry_household!(micro_area: area)) }
@@ -190,6 +227,8 @@ RSpec.describe "Território — validade e quem falta cadastrar", type: :request
     end
     get "/territory/registry_status", params: { team_id: team.id, micro_area_id: own.id }
     expect(json_body["people"].map { |p| p["registration_id"] }).to eq([ mine.id ])
+    get "/territory/registry_status/count", params: { team_id: team.id, micro_area_id: own.id }
+    expect(json_body).to eq("valid" => 1, "due_soon" => 0, "expired" => 0, "missing" => 0, "missing_identifier" => 0)
   end
 
   it "contagem também para municipal_admin e analyst, sem trilha; lista nominal só para membro da equipe (L10)" do

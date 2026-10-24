@@ -38,7 +38,7 @@ module CareLines
 
       declared = declared_by_citizen(ids)
       rows = Citizen.not_erased.verification_level_verified.where(id: ids, patient_id: nil).to_a
-      kept = one_per_cpf(rows)
+      kept = one_per_cpf(rows.map { |citizen| [ citizen.id, citizen.cpf ] })
       rows.select { |citizen| kept.include?(citizen.id) }.to_h do |citizen|
         [ citizen.id, Person.new(citizen_id: citizen.id, birth_date: date(citizen.birth_date), sex: citizen.sex,
                                  gender_identity: citizen.gender_identity, declared: declared.fetch(citizen.id, [])) ]
@@ -52,15 +52,22 @@ module CareLines
     # tirar a pessoa do denominador. `ended_reason` e `exit_reason` ficam em
     # claro (enums com CHECK). Não depende do interruptor: o óbito gravado
     # continua óbito se o cadastro for desligado depois.
+    # Os ids vão num bind só (= ANY($1::uuid[])), fora do texto do SQL: o
+    # SQL não cresce com a equipe (revisão final do 24a, M2).
     def deceased(patient_ids)
       return Set.new if patient_ids.empty?
 
-      sql = ApplicationRecord.sanitize_sql([ <<~SQL, patient_ids, patient_ids ])
-        SELECT patient_id FROM care_line_enrollments WHERE patient_id IN (?) AND status = 'ended' AND ended_reason = 'death'
+      sql = <<~SQL
+        SELECT patient_id FROM care_line_enrollments WHERE patient_id = ANY($1::uuid[]) AND status = 'ended' AND ended_reason = 'death'
         UNION
-        SELECT patient_id FROM individual_registrations WHERE patient_id IN (?) AND exit_reason = 'death'
+        SELECT patient_id FROM individual_registrations WHERE patient_id = ANY($1::uuid[]) AND exit_reason = 'death'
       SQL
-      ApplicationRecord.connection.select_values(sql).to_set
+      ApplicationRecord.connection.select_values(sql, "CareLines::Facts.deceased", [ uuid_array(patient_ids) ]).to_set
+    end
+
+    # Bind de uma lista de uuids como um array do Postgres ($n::uuid[]).
+    def uuid_array(ids)
+      ActiveRecord::Relation::QueryAttribute.new("ids", "{#{ids.join(',')}}", ActiveRecord::Type::String.new)
     end
 
     # Pacientes com problema ativo que casa por prefixo (uma consulta).
@@ -77,14 +84,17 @@ module CareLines
     end
 
     # Ids dos pares (Citizen) que representam a pessoa: sem paciente com o
-    # mesmo CPF e o mais antigo do CPF. Público para a validade do cadastro
-    # (TerritoryRegistry::RegistryStatus), que não decifra o resto do par.
-    def one_per_cpf(citizens)
-      cpfs = citizens.map(&:cpf).uniq
+    # mesmo CPF e o mais antigo do CPF. Recebe tuplas [id, cpf] (pluck).
+    # Público para a validade do cadastro (TerritoryRegistry::RegistryStatus),
+    # que não decifra o resto do par.
+    def one_per_cpf(pairs)
+      return Set.new if pairs.empty?
+
+      cpfs = pairs.map(&:last).uniq
       with_patient = Patient.where(cpf: cpfs).pluck(:cpf).to_set
       oldest = Citizen.not_erased.verification_level_verified.where(patient_id: nil, cpf: cpfs).order(:created_at, :id)
                       .pluck(:cpf, :id).each_with_object({}) { |(cpf, id), out| out[cpf] ||= id }
-      citizens.filter_map { |citizen| citizen.id if !with_patient.include?(citizen.cpf) && oldest[citizen.cpf] == citizen.id }.to_set
+      pairs.filter_map { |id, cpf| id if !with_patient.include?(cpf) && oldest[cpf] == id }.to_set
     end
 
     def declared_by_citizen(citizen_ids)

@@ -35,36 +35,40 @@ module CareLines
     # coberto pela unidade dela: quem é da equipe só pode estar aí. O filtro só
     # escolhe QUEM entra; a equipe de cada um não muda.
     #
-    # Cadastro ligado: `involving_team:` também traz os cadastrados da equipe
-    # (o paciente sem CPF, sem consulta nem par, só entra assim), e quem a
-    # consulta ou o território trouxe mas tem cadastro em outra equipe sai
-    # com a equipe do cadastro. O interruptor e até duas consultas a mais,
-    # constantes.
+    # Cadastro ligado: a precedência do cadastro fica no SQL (revisão final,
+    # M2 — nenhuma lista de ids sai do Ruby para o banco): a consulta e o
+    # território só olham quem NÃO tem cadastro ativo em equipe ativa
+    # (UNREGISTERED), e o cadastro entra por Teams.for_patients. Com
+    # `involving_team:`, os cadastrados da equipe (o paciente sem CPF, sem
+    # consulta nem par, só entra assim); quem tem cadastro em outra equipe
+    # fica de fora (não é desta equipe). O interruptor e uma consulta a
+    # mais, constantes.
     def patient_teams(patient_ids = nil, involving_team: nil)
       return {} if patient_ids && patient_ids.empty?
 
-      teams = consultation_teams(patient_ids, involving_team)
-      return teams unless TerritoryRegistry::Gate.enabled?(Current.city)
+      registry = TerritoryRegistry::Gate.enabled?(Current.city)
+      teams = consultation_teams(patient_ids, involving_team, registry: registry)
+      return teams unless registry
 
-      registry_teams(teams, patient_ids, involving_team)
+      teams.merge(TerritoryRegistry::Teams.for_patients(patient_ids, team: involving_team))
     end
 
-    # consulta.merge(território).merge(cadastro): o cadastro vence. Com
-    # equipe, os cadastrados dela e o cadastro de quem já veio.
-    def registry_teams(teams, patient_ids, team)
-      return teams.merge(TerritoryRegistry::Teams.for_patients(patient_ids)) unless team
+    # Sem cadastro ativo (sem saída) em equipe ativa — o mesmo critério de
+    # TerritoryRegistry::Teams. %s = a coluna do paciente na consulta de fora.
+    UNREGISTERED = <<~SQL.freeze
+      AND NOT EXISTS (SELECT 1 FROM individual_registrations ir
+                        JOIN health_teams irt ON irt.id = ir.team_id AND irt.active
+                       WHERE ir.patient_id = %s AND ir.exit_reason IS NULL)
+    SQL
 
-      registered = TerritoryRegistry::Teams.for_patients(patient_ids, team: team)
-      teams.merge(TerritoryRegistry::Teams.for_patients(teams.keys - registered.keys)).merge(registered)
-    end
-    private_class_method :registry_teams
-
-    # A regra do módulo 23 (consulta e território), sem o cadastro.
-    def consultation_teams(patient_ids, involving_team)
+    # A regra do módulo 23 (consulta e território); com `registry:`, só para
+    # quem não tem cadastro ativo.
+    def consultation_teams(patient_ids, involving_team, registry: false)
       filter = patient_ids ? ApplicationRecord.sanitize_sql([ "AND c.patient_id IN (?)", patient_ids ]) : ""
       cutoff = LOOKBACK.ago
-      territorial = territory_neighborhoods(patient_ids, involving_team, cutoff)
+      territorial = territory_neighborhoods(patient_ids, involving_team, cutoff, registry: registry)
       filter += involving(involving_team, cutoff) if involving_team
+      filter += format(UNREGISTERED, "c.patient_id") if registry
       # A equipe vem da consulta finalizada mais recente cujo profissional tem
       # equipe ativa na unidade do vínculo: o plantonista sem equipe (o JOIN o
       # descarta) não tira a pessoa da equipe dela.
@@ -91,7 +95,7 @@ module CareLines
     # coberto pela unidade são ordenados, em vez de todos os pares da cidade.
     # Não muda qual par é o mais antigo (o DISTINCT ON segue vendo todos os
     # pares do paciente); o filtro de fora confere o bairro DESSE par.
-    def territory_neighborhoods(patient_ids, team, cutoff)
+    def territory_neighborhoods(patient_ids, team, cutoff, registry: false)
       pairs = patient_ids ? ApplicationRecord.sanitize_sql([ "AND ci.patient_id IN (?)", patient_ids ]) : ""
       covered_ids = "SELECT nc.neighborhood_id FROM neighborhood_coverages nc WHERE nc.health_unit_id = ?"
       covered = team ? ApplicationRecord.sanitize_sql([ "AND p.neighborhood_id IN (#{covered_ids})", team.health_unit_id ]) : ""
@@ -107,7 +111,7 @@ module CareLines
                  WHERE ci.patient_id IS NOT NULL AND ci.erased_at IS NULL AND ci.verification_level = 'verified' #{pairs} #{near}
                  ORDER BY ci.patient_id, ci.created_at, ci.id) p
          WHERE NOT EXISTS (SELECT 1 #{TEAMED_CONSULTATIONS} AND c.patient_id = p.patient_id)
-               #{covered}
+               #{covered} #{format(UNREGISTERED, 'p.patient_id') if registry}
       SQL
       ApplicationRecord.connection.select_rows(sql).to_h
     end
@@ -146,13 +150,18 @@ module CareLines
     # validade do cadastro): pacientes cuja equipe é ela (patient_teams, com o
     # cadastro quando ligado) e pares validados sem paciente cuja única equipe
     # do bairro é ela. Sem óbito nem elegibilidade (quem chama decide); o par
-    # cujo CPF já tem paciente ainda está aqui (Facts.citizens o tira).
+    # cujo CPF já tem paciente ainda está aqui (Facts.citizens/one_per_cpf o
+    # tiram). Os pares em tuplas (pluck), nunca objetos: `citizens:` são os
+    # [id, cpf] da equipe, para a validade não ler os pares de novo.
     def members(team:)
       patient_ids = patient_teams(involving_team: team).select { |_, team_id| team_id == team.id }.keys
-      neighborhoods = NeighborhoodCoverage.where(health_unit_id: team.health_unit_id).pluck(:neighborhood_id)
-      candidates = Citizen.not_erased.verification_level_verified.where(patient_id: nil, neighborhood_id: neighborhoods).to_a
-      citizen_ids = citizen_teams(candidates).select { |_, team_id| team_id == team.id }.keys
-      { patient_ids: patient_ids, citizen_ids: citizen_ids }
+      candidates = Citizen.not_erased.verification_level_verified.where(patient_id: nil)
+                          .where(neighborhood_id: NeighborhoodCoverage.where(health_unit_id: team.health_unit_id).select(:neighborhood_id))
+                          .pluck(:id, :neighborhood_id, :cpf)
+      ids = territory_teams(candidates.to_h { |id, neighborhood_id, _| [ id, neighborhood_id ] })
+              .select { |_, team_id| team_id == team.id }.keys.to_set
+      citizens = candidates.filter_map { |id, _, cpf| [ id, cpf ] if ids.include?(id) }
+      { patient_ids: patient_ids, citizen_ids: citizens.map(&:first), citizens: citizens }
     end
 
     # Pessoas da equipe, elegíveis para o denominador das regras, com a
