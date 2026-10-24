@@ -207,7 +207,39 @@ module TerritoryRegistryHelpers
 
   def registry_identity(patient) = TerritoryRegistry::Identity.snapshot(patient)
 
-  def registry_identification = { "nacionalidade_cidadao" => 1, "codigo_ibge_municipio_nascimento" => "4106902" }
+  # Identificação mínima válida (Rules.individual, sem recusa): brasileiro,
+  # município de nascimento, celular e pai desconhecido.
+  def registry_identification
+    { "nacionalidade_cidadao" => 1, "codigo_ibge_municipio_nascimento" => "4106902", "telefone_celular" => "41999990000",
+      "desconhece_nome_pai" => true }
+  end
+
+  def registry_street_situation = { "status_situacao_rua" => false }
+
+  # As seções do corpo do cadastro individual (contrato §5, §15), mínimas e
+  # válidas, com chaves símbolo (corpo de requisição: `sections.merge(...)`).
+  def registry_registration_sections
+    { identification: registry_identification, sociodemographic: registry_sociodemographic,
+      health_conditions: registry_health_conditions, street_situation: registry_street_situation }
+  end
+
+  # Corpo do SaveRegistration (chaves texto) no domicílio, ou sem domicílio
+  # com a equipe (fora de área). Com `patient:`, completa raça/cor e o nome
+  # da mãe que faltarem para a ficha valer (patient_demographics e
+  # desconhece_nome_mae).
+  def registry_registration_params(household_or_team = nil, patient: nil)
+    params = registry_registration_sections.deep_stringify_keys.merge("is_responsible" => false)
+    case household_or_team
+    when Household then params["household_id"] = household_or_team.id
+    when HealthTeam then params["team_id"] = household_or_team.id
+    end
+    return params unless patient
+
+    params["patient_id"] = patient.id
+    params["patient_demographics"] = { "race_color" => patient.race_color || "03", "ethnicity" => patient.ethnicity }
+    params["identification"] = params["identification"].merge("desconhece_nome_mae" => true) if patient.mother_name.blank?
+    params
+  end
 
   def registry_sociodemographic
     { "status_deseja_informar_orientacao_sexual" => false, "status_deseja_informar_identidade_genero" => false }

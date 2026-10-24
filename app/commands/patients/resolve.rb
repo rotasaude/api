@@ -39,7 +39,11 @@ module Patients
       named = linked.select { |c| c.full_name.present? }.max_by { |c| recency(c) }
       values = { birth_date: latest.birth_date, sex: latest.sex }
       values.merge!(full_name: named.full_name, social_name: named.social_name, mother_name: named.mother_name) if named
-      patient.update!(values) if values.any? { |key, value| patient.public_send(key) != value }
+      changed = values.select { |key, value| patient.public_send(key) != value }
+      patient.update!(values) if changed.any?
+      # Módulo 24a (Desvio 5): identidade validada nova → o cadastro individual
+      # ativo ganha versão (ou só a marca), na mesma transação.
+      TerritoryRegistry::IdentityRefresh.call(patient) if changed.any?
       (linked - [ latest ]).each { |other| record_divergence!(patient, other, latest) }
       patient
     end

@@ -228,4 +228,6 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "patient.cpf_added", to: []
   DomainEvents.bind "micro_area.changed", to: []
   DomainEvents.bind "household.saved", to: []
+  DomainEvents.bind "territory_registration.saved", to: []
+  DomainEvents.bind "territory_registration.exited", to: []
 end
