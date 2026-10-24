@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe Patients::Duplicates do
+  include ActiveSupport::Testing::TimeHelpers
+
   before { clinical_city! }
 
   it "acha pelo nome normalizado + nascimento, filtra pela mãe, nunca pelo texto claro no banco" do
@@ -13,6 +15,25 @@ RSpec.describe Patients::Duplicates do
     expect(described_class.call(full_name: "Jose Antonio Pereira", birth_date: "1960-05-02")).to eq([])
     raw = ApplicationRecord.connection.select_value("SELECT match_key FROM patients WHERE id = '#{a.id}'")
     expect(raw).not_to include("jose")
+  end
+
+  # Revisão final (I3): com a mãe digitada, o candidato SEM mãe gravada não
+  # some (pode ser a mesma pessoa) — vem depois dos que batem; só o de mãe
+  # diferente sai.
+  it "com a mãe digitada: os que batem primeiro, depois os sem mãe; mãe diferente fica de fora" do
+    by = verifier!
+    typed = ->(mother, n) do
+      attrs = { "full_name" => "Rita de Cassia Lima", "birth_date" => "1975-03-04", "sex" => "female", "no_cpf_reason" => "8" }
+      attrs["mother_name"] = mother if mother
+      travel_to(n.minutes.ago) { Patients::CreateTyped.call(attrs: attrs, by: by).payload[:patient] }
+    end
+    unknown = typed.(nil, 30) # o mais antigo, mas sem mãe: depois do que bate
+    other = typed.("Ana Lima", 20)
+    same = typed.("Maria Lima", 10)
+    expect(other).to be_present
+    found = described_class.call(full_name: "Rita de Cassia Lima", birth_date: "1975-03-04", mother_name: "MARIA LIMA")
+    expect(found).to eq([ same, unknown ])
+    expect(described_class.call(full_name: "Rita de Cassia Lima", birth_date: "1975-03-04", mother_name: "Maria Lima", limit: 1)).to eq([ same ])
   end
 
   # Decisão da coordenadora (2026-10-24): hífen e apóstrofo (também ’ e ‘)
