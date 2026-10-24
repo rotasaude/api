@@ -213,6 +213,18 @@ RSpec.describe TerritoryRegistry::SaveRegistration do
       expect(registration.versions.pluck(:origin)).to eq(%w[save save])
     end
 
+    # Revisão final (I1): a identidade digitada é conferida contra os pares
+    # que existiam ANTES desta requisição; o CPF adicionado agora traz o par
+    # validado, cujos dados substituem os digitados (decisão 13), sem recusar.
+    it "CPF novo de par validado junto com `patient` digitado com outro nome → ok e o nome validado no paciente" do
+      citizen = verified_citizen!(35, full_name: "Lia Santos Pereira", sex: "female")
+      typed = { "full_name" => "Lia Santos Digitada", "mother_name" => "Carla Santos" }
+      result = save(params("version" => 1, "cpf" => citizen.cpf, "patient" => typed), registration: registration)
+      expect(result).to be_ok
+      expect(registration.reload.patient).to have_attributes(full_name: "Lia Santos Pereira", cpf: citizen.cpf)
+      expect(result.payload[:version].identity).to include("full_name" => "Lia Santos Pereira", "cpf" => citizen.cpf)
+    end
+
     it "troca de domicílio copia o endereço do novo domicílio para o paciente" do
       other = registry_household!(micro_area: household.micro_area)
       address = { "street" => "Outra", "number" => "9" }

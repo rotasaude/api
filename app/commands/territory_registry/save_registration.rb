@@ -11,7 +11,9 @@
 #     (Patients::CreateTyped). No PATCH a pessoa é a do cadastro.
 #   - Identidade (L4): `patient: { full_name, social_name, birth_date, sex,
 #     mother_name }` só para paciente SEM par validado; com par validado,
-#     valor diferente → identity_locked (os dados validados mandam). `cpf`
+#     valor diferente → identity_locked (os dados validados mandam; conferido
+#     contra os pares de antes da requisição — par que chega com o `cpf`
+#     desta requisição substitui o digitado sem recusar). `cpf`
 #     (paciente sem CPF) → Patients::AddCpf (cpf_taken); `cns` → no paciente
 #     (cns_taken). `patient_demographics: { race_color, ethnicity }` →
 #     Patients::Demographics, códigos do BPA (uma fonte por dado: o paciente);
@@ -269,6 +271,9 @@ module TerritoryRegistry
 
     def write(attrs, registration, by, refreshed)
       patient = person!(attrs, registration, by)
+      # I1: a identidade digitada é conferida contra os pares de ANTES desta
+      # requisição (o CPF adicionado agora traz o par validado).
+      paired_before = Patients::Pairs.of(patient).exists?
       add_cpf!(patient, attrs[:cpf], by)
       patient.lock!
       household = attrs[:household] && Household.lock("FOR SHARE").find(attrs[:household].id)
@@ -287,7 +292,7 @@ module TerritoryRegistry
       end
 
       check_family!(family, household, patient, attrs) if attrs[:family_id]
-      identity!(patient, attrs[:identity])
+      identity!(patient, attrs[:identity], paired_before: paired_before)
       cns!(patient, attrs[:cns])
       demographics = final_demographics(patient, attrs[:demographics])
       ruled = Rules.individual(attrs[:sections].merge(refused: attrs[:refused], is_responsible: attrs[:is_responsible]),
@@ -339,16 +344,18 @@ module TerritoryRegistry
     end
 
     # L4: com par validado os dados validados mandam (só leitura); sem par, a
-    # identidade digitada vai para o paciente (sob a trava dele).
-    def identity!(patient, identity)
+    # identidade digitada vai para o paciente (sob a trava dele). Par que
+    # chegou NESTA requisição (o CPF adicionado agora): os dados validados
+    # substituem os digitados (decisão 13), sem recusar nem gravar o digitado.
+    def identity!(patient, identity, paired_before:)
       return if identity.empty?
 
-      if Patients::Pairs.of(patient).exists?
+      if paired_before
         key = identity.keys.find { |field| identity[field] != current_identity(patient, field) }
         refuse!(Result.fail(:identity_locked, details: { path: "patient.#{key}" })) if key
         return
       end
-      patient.update!(identity)
+      patient.update!(identity) unless Patients::Pairs.of(patient).exists?
     end
 
     def current_identity(patient, field)
