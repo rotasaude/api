@@ -12,7 +12,7 @@ module TerritoryRegistry
     # O resto das recusas é 422. `invalid_transition` fica 422 (L9) e
     # `citizen_not_verified` é 409 (R8).
     FAILURE_STATUS = { duplicate_code: :conflict, stale_version: :conflict, already_registered: :conflict,
-                       cpf_taken: :conflict, cns_taken: :conflict, citizen_not_verified: :conflict,
+                       cpf_taken: :conflict, cns_taken: :conflict, citizen_not_verified: :conflict, duplicate_suspected: :conflict,
                        cbo_not_allowed: :forbidden, out_of_scope: :forbidden,
                        not_found: :not_found }.freeze
     DEFAULT_LIMIT = 50

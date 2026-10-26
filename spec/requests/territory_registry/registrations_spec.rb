@@ -36,6 +36,44 @@ RSpec.describe "Território — cadastro individual", type: :request do
       .to match_array(%w[registration_id registration_version_id patient_id user_id])
   end
 
+  # Contrato §14 L28: paciente digitado com nome + nascimento de outro já
+  # gravado (a mesma regra da busca de duplicados) → 409 duplicate_suspected,
+  # nada gravado; com duplicates_reviewed true (só no corpo; o dashboard manda
+  # depois de mostrar a busca e a pessoa escolher "é outra pessoa") → 201.
+  it "paciente digitado igual a outro: 409 duplicate_suspected sem nomes e nada gravado; revisado → 201; mãe diferente → 201" do
+    existing = Patient.create!(full_name: "Lia Santos", birth_date: "2026-08-01", sex: "female", no_cpf_reason: "3", cns: valid_cns(42))
+    typed = { full_name: "Lía Santos", birth_date: "2026-08-01", sex: "female", mother_name: "Carla Santos", no_cpf_reason: "3",
+              cns: valid_cns(43) }
+    sign_in_as(acs)
+    expect { json_post "/territory/registrations", body(new_patient: typed) }.not_to change(Patient, :count)
+    expect(response).to have_http_status(:conflict)
+    expect(json_body).to eq("error" => "duplicate_suspected")
+    expect(IndividualRegistration.count).to eq(0)
+    expect(LediOutboxEntry.where(ficha_type: "cadastro_individual")).to be_empty
+    json_post "/territory/registrations", body(new_patient: typed, duplicates_reviewed: "true")
+    expect(json_body).to eq("error" => "invalid_registration", "path" => "duplicates_reviewed")
+    json_post "/territory/registrations", body(new_patient: typed, duplicates_reviewed: true)
+    expect(response).to have_http_status(:created)
+    expect(json_body["patient"]["id"]).not_to eq(existing.id)
+    # Mãe gravada diferente: a busca de duplicados não o mostra, então não é suspeito.
+    Patient.create!(full_name: "Rui Alves Lima", birth_date: "1970-01-01", sex: "male", mother_name: "Maria Lima", no_cpf_reason: "3",
+                    cns: valid_cns(47))
+    json_post "/territory/registrations", body(new_patient: { full_name: "Rui Alves Lima", birth_date: "1970-01-01", sex: "male",
+                                                              mother_name: "Ana Alves", no_cpf_reason: "3", cns: valid_cns(44) })
+    expect(response).to have_http_status(:created)
+  end
+
+  it "duplicates_reviewed só no corpo: na URL não vale" do
+    Patient.create!(full_name: "Lia Santos", birth_date: "2026-08-01", sex: "female", no_cpf_reason: "3", cns: valid_cns(45))
+    sign_in_as(acs)
+    post "/territory/registrations?duplicates_reviewed=true",
+         params: body(new_patient: { full_name: "Lia Santos", birth_date: "2026-08-01", sex: "female", no_cpf_reason: "3", cns: valid_cns(46) }).to_json,
+         headers: { "CONTENT_TYPE" => "application/json" }
+    expect(response).to have_http_status(:conflict)
+    expect(json_body).to eq("error" => "duplicate_suspected")
+    expect(IndividualRegistration.count).to eq(0)
+  end
+
   # Review Focus 4: sem CPF e sem CNS grava (201), a ficha fica "não gerada"
   # (patient_without_identifier) e o PATCH com o CNS gera a da nova versão.
   it "sem CPF e sem CNS: grava, ficha não gerada; informar o CNS gera a ficha da nova versão" do

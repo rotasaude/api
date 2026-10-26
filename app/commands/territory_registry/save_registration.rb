@@ -9,6 +9,10 @@
 #   - Pessoa (só no POST): patient_id | citizen_id (par validado →
 #     Patients::Resolve; não validado → citizen_not_verified) | new_patient
 #     (Patients::CreateTyped). No PATCH a pessoa é a do cadastro.
+#   - Duplicado (§14 L28): new_patient com nome + nascimento de paciente já
+#     gravado (a regra da busca, Patients::Duplicates) → duplicate_suspected
+#     (409, sem nome), salvo `duplicates_reviewed: true` (só no corpo: o
+#     dashboard manda depois de mostrar a busca e a pessoa dizer "é outra").
 #   - Identidade (L4): `patient: { full_name, social_name, birth_date, sex,
 #     mother_name }` só para paciente SEM par validado; com par validado,
 #     valor diferente → identity_locked (os dados validados mandam; conferido
@@ -131,6 +135,9 @@ module TerritoryRegistry
       demographics = parse_demographics(params["patient_demographics"])
       return demographics if demographics.failure?
 
+      duplicate = check_duplicates(params, person.payload)
+      return duplicate if duplicate.failure?
+
       Result.ok(person.payload.merge(flags.payload, place.payload, sections.payload, identity.payload, demographics.payload,
                                      cbo: Access.membership(by, team).cbo_code, expected: expected))
     end
@@ -252,6 +259,19 @@ module TerritoryRegistry
       return at["mother_name"] if identity["mother_name"] && !Dictionary.valid_name?(identity["mother_name"])
 
       Result.ok
+    end
+
+    def check_duplicates(params, person)
+      reviewed = params.fetch("duplicates_reviewed", false)
+      return invalid("duplicates_reviewed") unless [ true, false ].include?(reviewed)
+      return Result.ok if reviewed || person[:person] != :new
+
+      typed = person[:new_patient].to_h.stringify_keys
+      strings = %w[full_name birth_date mother_name].map { |key| typed[key] }
+      return Result.ok unless strings.all? { |value| value.nil? || value.is_a?(String) }
+
+      found = Patients::Duplicates.call(full_name: strings[0], birth_date: strings[1], mother_name: strings[2], limit: 1)
+      found.any? ? Result.fail(:duplicate_suspected) : Result.ok
     end
 
     def parse_demographics(raw)
@@ -463,7 +483,7 @@ module TerritoryRegistry
     def invalid(path) = Result.fail(:invalid_registration, details: { path: path })
     def uuid?(value) = value.is_a?(String) && value.match?(UUID)
     private_class_method :parse, :parse_person, :parse_flags, :parse_place, :parse_sections, :parse_identity, :check_identity,
-                         :parse_demographics, :write, :person!, :add_cpf!, :check_family!, :identity!, :current_identity, :cns!,
+                         :parse_demographics, :check_duplicates, :write, :person!, :add_cpf!, :check_family!, :identity!, :current_identity, :cns!,
                          :final_demographics, :save_demographics!, :person_facts, :persist!, :copy_address!, :typed_failure, :demographics_failure,
                          :request_path, :active_id, :refuse!, :invalid, :uuid?
   end
