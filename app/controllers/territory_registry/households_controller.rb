@@ -81,9 +81,11 @@ module TerritoryRegistry
       ids = households.map(&:id)
       versions = HouseholdVersion.joins(:household).where(household_id: ids).where("household_versions.version = households.version")
                                  .index_by(&:household_id)
-      families = Family.where(household_id: ids).includes(:responsible_patient).order(:created_at, :id).group_by(&:household_id)
+      rows = Family.where(household_id: ids).includes(:responsible_patient).order(:created_at, :id).to_a
+      exited = Families.responsible_exited_ids(rows)
+      families = rows.group_by(&:household_id)
       households.map do |household|
-        Json.household(household, versions.fetch(household.id), families: families[household.id] || [], full: full)
+        Json.household(household, versions.fetch(household.id), families: families[household.id] || [], exited: exited, full: full)
       end
     end
   end

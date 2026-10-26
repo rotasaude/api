@@ -230,4 +230,6 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "household.saved", to: []
   DomainEvents.bind "territory_registration.saved", to: []
   DomainEvents.bind "territory_registration.exited", to: []
+  # §14 L29: troca do responsável = família nova; só ids.
+  DomainEvents.bind "family.responsible_replaced", to: []
 end

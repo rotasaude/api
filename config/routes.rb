@@ -504,6 +504,7 @@ Rails.application.routes.draw do
     patch "households/:id",          to: "households#update"
     post  "households/:id/families", to: "families#create"
     patch "families/:id",            to: "families#update"
+    post  "families/:id/replace_responsible", to: "families#replace_responsible"
     get   "teams",                   to: "teams#index"
     post  "person_lookup",           to: "person_lookups#create"
     post  "patients/duplicates",     to: "duplicates#create"

@@ -240,4 +240,47 @@ RSpec.describe "Território — domicílios e famílias", type: :request do
     expect(response).to have_http_status(:conflict)
     expect(json_body).to eq("error" => "stale_version")
   end
+
+  # Contrato §14 L29 (PROVA-2): responsible_exited em cada <family>; a troca
+  # pelo POST /territory/families/:id/replace_responsible (corpo
+  # { responsible: { patient_id }, version }) devolve o <household> (201).
+  it "responsável que morreu: responsible_exited true; a troca devolve o domicílio com a família nova; fora do alcance → 404" do
+    household = registry_household!(micro_area: area)
+    dead = registry_patient!
+    dead_registration = registry_registration!(patient: dead, household: household)
+    family = registry_family!(household, responsible: dead, "members_count" => 2)
+    heir = registry_patient!
+    params = registry_registration_params(household, patient: heir).merge("family_id" => family.id)
+    expect(TerritoryRegistry::SaveRegistration.call(params: params, by: acs)).to be_ok
+    sign_in_as(acs)
+    get "/territory/households/#{household.id}"
+    expect(json_body["families"].sole).to include("id" => family.id, "responsible_exited" => false)
+    json_post "/territory/registrations/#{dead_registration.id}/exit", reason: "death", on: Time.zone.today.iso8601,
+                                                                       death_on: Time.zone.today.iso8601
+    expect(response).to have_http_status(:ok)
+    get "/territory/households/#{household.id}"
+    expect(json_body["families"].sole).to include("id" => family.id, "moved_out" => false, "responsible_exited" => true)
+    get "/territory/households", params: { micro_area_id: area.id }
+    expect(json_body["households"].sole["families"].sole).to include("responsible_exited" => true)
+
+    other_acs = registry_acs!(unit, team: team)
+    registry_micro_area!(code: "02", team: team, acs: other_acs)
+    sign_in_as(other_acs)
+    json_post "/territory/families/#{family.id}/replace_responsible", responsible: { patient_id: heir.id }, version: household.reload.version
+    expect(response).to have_http_status(:not_found)
+
+    sign_in_as(acs)
+    json_post "/territory/families/#{family.id}/replace_responsible", responsible: { patient_id: heir.id }, version: household.version - 1
+    expect([ response.status, json_body ]).to eq([ 409, { "error" => "stale_version" } ])
+    json_post "/territory/families/#{family.id}/replace_responsible", responsible: { patient_id: heir.id }, version: household.version
+    expect(response).to have_http_status(:created)
+    expect(json_body["version"]).to eq(household.version + 1)
+    expect(json_body["families"]).to match([
+      include("id" => family.id, "moved_out" => true, "responsible_exited" => false),
+      include("responsible" => { "patient_id" => heir.id, "display_name" => heir.display_name }, "members_count" => 2,
+              "moved_out" => false, "responsible_exited" => false)
+    ])
+    json_post "/territory/families/#{family.id}/replace_responsible", responsible: { patient_id: heir.id }, version: household.reload.version
+    expect(json_body).to eq("error" => "invalid_family", "path" => "moved_out")
+  end
 end

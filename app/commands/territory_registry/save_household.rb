@@ -20,6 +20,8 @@
 #     dos moradores mudam junto, com versão e ficha (move_registrations!).
 #   - Moradores que mudam sempre (ResidentsChanged 3 vezes) → stale_version.
 #   - Evento household.saved só com ids.
+#   - Retrato (§14 L29): cada família com responsible_exited (Families); a
+#     família ativa cujo responsável saiu fica fora da ficha.
 #
 # SaveFamily usa `call` com `lock_patient_ids:` (o responsável, travado com
 # os moradores) e `before_version:` (grava a família depois das travas, antes
@@ -175,6 +177,7 @@ module TerritoryRegistry
     def persist!(attrs, household, by, families)
       now = Time.current
       area = attrs[:area]
+      exited = Families.responsible_exited_ids(families)
       household ||= Household.new(version: 0)
       household.assign_attributes(micro_area: area, status: attrs[:status], version: household.version + 1, registered_at: now,
                                   registered_by_user: by)
@@ -182,16 +185,19 @@ module TerritoryRegistry
       version = HouseholdVersion.create!(
         household: household, version: household.version, micro_area: area, team: area.team, property_type: attrs[:property_type],
         address: attrs[:address], living_conditions: attrs[:living_conditions], contact_phone: attrs[:contact_phone],
-        refused: attrs[:refused].to_s, families_snapshot: families.map { |family| snapshot(family) }, status: attrs[:status],
+        refused: attrs[:refused].to_s, families_snapshot: families.map { |family| snapshot(family, exited) }, status: attrs[:status],
         neighborhood_id: attrs[:address]["neighborhood_id"], origin: "save", saved_by_user: by,
         saved_by_professional: by.professional, saved_cbo: attrs[:cbo], created_at: now
       )
       [ household, version ]
     end
 
-    def snapshot(family)
+    # responsible_exited (§14 L29): a família ativa cujo responsável saiu fica
+    # fora da ficha desta versão (Ledi::HouseholdRegistrationFicha).
+    def snapshot(family, exited)
       { "family_id" => family.id, "responsible_patient_id" => family.responsible_patient_id, "income_band" => family.income_band,
-        "members_count" => family.members_count, "living_since" => family.living_since, "moved_out" => family.moved_out }
+        "members_count" => family.members_count, "living_since" => family.living_since, "moved_out" => family.moved_out,
+        "responsible_exited" => exited.include?(family.id) }
     end
 
     # Desvio 8: update! direto, sob a trava do paciente (lock!), e NÃO

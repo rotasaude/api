@@ -19,13 +19,15 @@ module TerritoryRegistry
     end
 
     # <household> da versão `version` (a última). full: false (lista) sem
-    # living_conditions. families: as Family do domicílio (com o responsável).
-    def household(household, version, families:, full: true)
+    # living_conditions. families: as Family do domicílio (com o responsável);
+    # exited: ids das famílias com responsible_exited (§14 L29,
+    # Families.responsible_exited_ids — quem chama calcula, uma vez por lista).
+    def household(household, version, families:, exited:, full: true)
       json = { id: household.id, micro_area: { id: household.micro_area.id, code: household.micro_area.code },
                address: address(version.address), property_type: version.property_type, contact_phone: version.contact_phone,
                refused: version.refused?, status: household.status, version: household.version,
                registered_at: household.registered_at.iso8601, registered_by: { name: household.registered_by_user.professional&.professional_name },
-               families: families.map { |row| family(row) } }
+               families: families.map { |row| family(row, responsible_exited: exited.include?(row.id)) } }
       json[:living_conditions] = version.living_conditions.to_h if full
       json
     end
@@ -36,10 +38,11 @@ module TerritoryRegistry
       values.empty? ? {} : Address::KEYS.to_h { |key| [ key, values[key] ] }
     end
 
-    def family(family)
+    def family(family, responsible_exited:)
       patient = family.responsible_patient
       { id: family.id, responsible: { patient_id: patient.id, display_name: patient.display_name }, income_band: family.income_band,
-        members_count: family.members_count, living_since: family.living_since, moved_out: family.moved_out }
+        members_count: family.members_count, living_since: family.living_since, moved_out: family.moved_out,
+        responsible_exited: responsible_exited }
     end
 
     # <registration> (contrato §2, §14 L4, L7, L9) da versão `version` (a

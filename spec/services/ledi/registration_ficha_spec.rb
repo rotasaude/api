@@ -165,6 +165,31 @@ RSpec.describe Ledi::HouseholdRegistrationFicha do
     expect(Ledi::FichaSources.for("HouseholdVersion")).to eq(described_class)
   end
 
+  # Contrato §14 L29 (PROVA-2): o FamiliaRow não exige responsável vivo nem
+  # com cadastro (dicionário FCD), então a família ATIVA cujo responsável saiu
+  # (óbito ou mudança) sai da ficha seguinte — a ficha nunca manda o falecido
+  # como responsável de família ativa; a família em mudança segue (stMudanca).
+  it "família ativa com responsável que saiu: fica fora da ficha seguinte; as outras seguem" do
+    household = registry_household!
+    acs = registry_acs_of(household)
+    gone = registry_patient!
+    gone_registration = registry_registration!(patient: gone, household: household)
+    registry_family!(household, responsible: gone)
+    stays = registry_family!(household, responsible: registry_patient!)
+    left = TerritoryRegistry::ExitRegistration.call(registration: gone_registration.reload, by: acs,
+                                                    params: { "reason" => "death", "on" => Time.zone.today.iso8601,
+                                                              "death_on" => Time.zone.today.iso8601 })
+    expect(left).to be_ok
+    saved = TerritoryRegistry::SaveHousehold.call(params: registry_household_params(household).merge("version" => household.version),
+                                                  by: acs, household: household)
+    expect(saved).to be_ok
+    version = household.reload.latest_version
+    expect(version.families_snapshot.map { |row| row["responsible_exited"] }).to eq([ true, false ])
+    rows = inner(LediOutboxEntry.find_by!(source_type: "HouseholdVersion", source_id: version.id)).familias
+    expect(rows.map(&:cpfResponsavel)).to eq([ stays.responsible_patient.cpf ])
+    expect(LediGenerationFailure.where(source_type: "HouseholdVersion", source_id: version.id)).to be_empty
+  end
+
   it "responsável sem CPF e sem CNS: não gerada, responsible_without_identifier" do
     household = registry_household!
     Family.create!(household: household, responsible_patient: registry_patient_without_cpf!(cns: nil), members_count: 1)

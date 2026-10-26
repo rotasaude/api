@@ -44,7 +44,8 @@ RSpec.describe TerritoryRegistry::SaveHousehold do
     version = household.reload.latest_version
     expect(version.version).to eq(2)
     expect(version.families_snapshot).to eq([ { "family_id" => family.id, "responsible_patient_id" => family.responsible_patient_id,
-                                                "income_band" => nil, "members_count" => 1, "living_since" => nil, "moved_out" => false } ])
+                                                "income_band" => nil, "members_count" => 1, "living_since" => nil, "moved_out" => false,
+                                                "responsible_exited" => false } ])
     params = registry_household_params(household).merge("property_type" => "2", "living_conditions" => nil, "version" => 2)
     result = described_class.call(params: params, by: registry_acs_of(household), household: household)
     expect(result.details).to eq(path: "families")

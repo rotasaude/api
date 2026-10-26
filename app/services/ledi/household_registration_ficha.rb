@@ -4,7 +4,11 @@
 # responsible_without_identifier (Desvio 7; FamiliaRow exige um dos dois).
 # families_snapshot (gravado pelo SaveHousehold, Task 9): [{ "family_id",
 # "responsible_patient_id", "income_band", "members_count", "living_since",
-# "moved_out" }]; o CPF/CNS e o nascimento do responsável vêm do paciente.
+# "moved_out", "responsible_exited" }]; o CPF/CNS e o nascimento do responsável
+# vêm do paciente. Família ativa com responsible_exited (§14 L29: o
+# responsável saiu por óbito ou mudança) fica fora da ficha — o FamiliaRow
+# não exige responsável vivo, e a ficha nunca manda o falecido como
+# responsável de família ativa; a família em mudança segue (stMudanca).
 module Ledi
   module HouseholdRegistrationFicha
     extend Ledi::RegistrationFicha
@@ -37,7 +41,7 @@ module Ledi
       private
 
       def families(version)
-        rows = Array(version.families_snapshot)
+        rows = Array(version.families_snapshot).reject { |row| row["responsible_exited"] == true && row["moved_out"] != true }
         patients = Patient.where(id: rows.map { |row| row["responsible_patient_id"] }).index_by(&:id)
         rows.map do |row|
           patient = patients[row["responsible_patient_id"]]
