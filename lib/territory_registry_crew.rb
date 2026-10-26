@@ -379,6 +379,10 @@ class TerritoryRegistryCrew
 
       data = HOUSEHOLDS.fetch(person[:household])
       family!(household, data, registration.patient, by, time + 15.minutes)
+      # §14 L28: a família nova já leva o cadastro ativo do responsável neste
+      # domicílio (versão nova); o PATCH só sobra se ela não o levou.
+      return if registration.reload.family_id
+
       params = registration_params(slug, ddd, key, person, registration.patient, household: household.reload)
                  .merge("version" => registration.version).except("patient_id")
       saved = at(time + 20.minutes) { TerritoryRegistry::SaveRegistration.call(params: params, by: by, registration: registration) }
