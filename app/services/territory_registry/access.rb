@@ -66,6 +66,11 @@ module TerritoryRegistry
       end
     end
 
+    # Lê a validade da equipe inteira, sem micro_area_id (registry_status; a
+    # tela de equipes como reads_whole_team, §14 L27). O ACS nunca, mesmo
+    # responsável por todas as microáreas: manda a sua.
+    def reads_whole_team?(user, team) = status_reader(user, team) == :team
+
     def role(cbo)
       return :acs if cbo == Catalog::ACS_CBO
 

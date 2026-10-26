@@ -95,8 +95,8 @@ module TerritoryRegistry
 
     # Equipe do profissional (L2) com as microáreas ativas; can_register por
     # microárea (ids do Access.registrar? :ok).
-    def professional_team(team, areas, can_register:)
-      team_ref(team).merge(unit: { id: team.health_unit.id, name: team.health_unit.name },
+    def professional_team(team, areas, can_register:, reads_whole_team:)
+      team_ref(team).merge(unit: { id: team.health_unit.id, name: team.health_unit.name }, reads_whole_team: reads_whole_team,
                            micro_areas: areas.map { |area| micro_area(area).merge(can_register: can_register.include?(area.id)) })
     end
 

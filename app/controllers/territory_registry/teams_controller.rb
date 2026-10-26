@@ -2,6 +2,7 @@
 # do profissional, com as microáreas ATIVAS e can_register — a mesma regra
 # da gravação (Access.registrar?, nas fichas individual e domiciliar). Sem
 # trilha (nenhum dado de cidadão); quem não tem vínculo recebe lista vazia.
+# reads_whole_team (§14 L27): a regra do registry_status sem micro_area_id.
 module TerritoryRegistry
   class TeamsController < BaseController
     def index
@@ -12,7 +13,7 @@ module TerritoryRegistry
       render json: { teams: teams.map { |team|
         rows = areas[team.id] || []
         allowed = rows.select { |area| registrar?(team, area) }.map(&:id)
-        Json.professional_team(team, rows, can_register: allowed)
+        Json.professional_team(team, rows, can_register: allowed, reads_whole_team: Access.reads_whole_team?(Current.user, team))
       } }
     end
 

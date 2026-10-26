@@ -29,6 +29,29 @@ RSpec.describe "Território — equipes do profissional e pessoa pelo CPF", type
     expect(json_body).to eq("teams" => [])
   end
 
+  # Contrato §14 L27: reads_whole_team pela regra que o registry_status usa
+  # para a lista/contagem sem micro_area_id (o ACS manda a sua microárea, mesmo
+  # sendo o responsável de todas).
+  it "GET /territory/teams: reads_whole_team pela regra do registry_status sem microárea" do
+    single = registry_team!(unit)
+    registry_micro_area!(code: "01", team: single)
+    reads = lambda do |user, target|
+      sign_in_as(user)
+      get "/territory/teams"
+      flag = json_body["teams"].find { _1["id"] == target.id }.fetch("reads_whole_team")
+      get "/territory/registry_status/count", params: { team_id: target.id }
+      expect(response).to have_http_status(flag ? :ok : :forbidden)
+      flag
+    end
+    expect(reads.call(registry_nurse!(unit, team: single), single)).to be(true)
+    expect(reads.call(registry_acs!(unit, team: single).tap { |all| MicroArea.where(team: single).update_all(acs_professional_id: all.professional.id) }, single))
+      .to be(false)
+    registry_micro_area!(code: "01", team: team, acs: acs)
+    registry_micro_area!(code: "02", team: team)
+    expect(reads.call(acs, team)).to be(false)
+    expect(reads.call(registry_nurse!(unit, team: team), team)).to be(true)
+  end
+
   it "POST /territory/person_lookup: paciente, par validado sem paciente, ninguém; CPF só no corpo; trilha" do
     registration = registry_registration!
     patient = registration.patient

@@ -59,11 +59,9 @@ module TerritoryRegistry
     def allowed?(team, area, nominal:)
       return true if !nominal && Access.manager?(Current.user)
 
-      case Access.status_reader(Current.user, team)
-      when :team then true
-      when :acs then area.present? && area.acs_professional_id == Current.user.professional.id
-      else false
-      end
+      return true if Access.reads_whole_team?(Current.user, team)
+
+      area.present? && Access.status_reader(Current.user, team) == :acs && area.acs_professional_id == Current.user.professional.id
     end
   end
 end
