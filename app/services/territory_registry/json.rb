@@ -88,9 +88,11 @@ module TerritoryRegistry
         identity_review_pending: registration&.identity_review_pending? || false }
     end
 
-    # Candidato a duplicado (contrato §5): sem CPF, CNS nem mãe.
-    def duplicate(patient)
-      { patient_id: patient.id, display_name: patient.display_name, birth_date: patient.birth_date, has_cpf: patient.cpf.present? }
+    # Candidato a duplicado (contrato §5): sem CPF, CNS nem mãe;
+    # registration_id = o cadastro ativo que o usuário lê, ou nil (§14 L29).
+    def duplicate(patient, registration_id: nil)
+      { patient_id: patient.id, display_name: patient.display_name, birth_date: patient.birth_date, has_cpf: patient.cpf.present?,
+        registration_id: registration_id }
     end
 
     # Equipe do profissional (L2) com as microáreas ativas; can_register por

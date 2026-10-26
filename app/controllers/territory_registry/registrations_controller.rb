@@ -61,9 +61,7 @@ module TerritoryRegistry
     end
 
     # Lê quem poderia gravar o cadastro onde ele está (equipe e microárea).
-    def readable?(registration)
-      Access.registrar?(Current.user, registration.team, ficha: :individual, micro_area: registration.micro_area) == :ok
-    end
+    def readable?(registration) = Access.reads_registration?(Current.user, registration)
 
     # A resposta da escrita mostra o que o autor gravou (sem trilha, como o domicílio).
     def respond(result, status)

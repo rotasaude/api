@@ -22,8 +22,10 @@ RSpec.describe "Território — possíveis duplicados", type: :request do
       .to change { DomainEvent.where(name: "clinical_record.viewed").count }.by(2)
     expect(response).to have_http_status(:ok)
     expect(json_body["candidates"]).to contain_exactly(
-      { "patient_id" => match.id, "display_name" => "José Souza Lima", "birth_date" => "1960-02-01", "has_cpf" => true },
-      { "patient_id" => other_mother.id, "display_name" => "José Souza Lima", "birth_date" => "1960-02-01", "has_cpf" => true }
+      { "patient_id" => match.id, "display_name" => "José Souza Lima", "birth_date" => "1960-02-01", "has_cpf" => true,
+        "registration_id" => nil },
+      { "patient_id" => other_mother.id, "display_name" => "José Souza Lima", "birth_date" => "1960-02-01", "has_cpf" => true,
+        "registration_id" => nil }
     )
     expect(DomainEvent.where(name: "clinical_record.viewed").last.payload).to include("access" => "territory_registry")
     json_post "/territory/patients/duplicates", full_name: "José Souza Lima", birth_date: "1960-02-01", mother_name: "rita souza lima"
@@ -31,6 +33,38 @@ RSpec.describe "Território — possíveis duplicados", type: :request do
     # mãe que normaliza para nada conta como ausente
     json_post "/territory/patients/duplicates", full_name: "José Souza Lima", birth_date: "1960-02-01", mother_name: "--"
     expect(json_body["candidates"].size).to eq(2)
+  end
+
+  # §14 L29 (PROVA-1): cada candidato leva o id do cadastro individual ATIVO
+  # (o mesmo do 409 already_registered; recusado conta) quando o usuário lê
+  # esse cadastro pelo GET (equipe e microárea, Access.registrar?); fora do
+  # alcance, saído ou sem cadastro → null. Nada novo além do id.
+  it "registration_id do cadastro ativo que o usuário lê; fora do alcance, saído ou sem cadastro → null" do
+    team = registry_team!(unit)
+    me = registry_acs!(unit, team: team)
+    mine_area = registry_micro_area!(code: "01", team: team, acs: me)
+    other_area = registry_micro_area!(code: "02", team: team, acs: registry_acs!(unit, team: team))
+    home = registry_household!(micro_area: mine_area)
+    visible = twin!
+    refused = twin!
+    exited = twin!
+    neighbor_area = twin!
+    other_team = twin!
+    nothing = twin!
+    visible_registration = registry_registration!(patient: visible, household: home)
+    refused_registration = registry_registration!(patient: refused, household: home, refused: "true")
+    gone = registry_registration!(patient: exited, household: home)
+    expect(TerritoryRegistry::ExitRegistration.call(registration: gone, params: { "reason" => "moved", "on" => Time.zone.today.iso8601 },
+                                                    by: me)).to be_ok
+    registry_registration!(patient: neighbor_area, household: registry_household!(micro_area: other_area))
+    registry_registration!(patient: other_team)
+    sign_in_as(me)
+    json_post "/territory/patients/duplicates", full_name: "José Souza Lima", birth_date: "1960-02-01"
+    expect(response).to have_http_status(:ok)
+    ids = json_body["candidates"].to_h { |candidate| [ candidate["patient_id"], candidate["registration_id"] ] }
+    expect(ids).to eq(visible.id => visible_registration.id, refused.id => refused_registration.id, exited.id => nil,
+                      neighbor_area.id => nil, other_team.id => nil, nothing.id => nil)
+    expect(json_body["candidates"].first.keys).to contain_exactly("patient_id", "display_name", "birth_date", "has_cpf", "registration_id")
   end
 
   it "no máximo 10 candidatos" do

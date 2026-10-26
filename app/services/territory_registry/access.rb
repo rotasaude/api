@@ -41,6 +41,13 @@ module TerritoryRegistry
       registrar_cbo?(member.cbo_code, ficha: ficha) ? :ok : :cbo_not_allowed
     end
 
+    # Lê o cadastro individual por id (GET /territory/registrations/:id; e o
+    # registration_id dos duplicados, §14 L29): quem poderia gravá-lo onde ele
+    # está (equipe e microárea).
+    def reads_registration?(user, registration)
+      registrar?(user, registration.team, ficha: :individual, micro_area: registration.micro_area) == :ok
+    end
+
     # Microáreas da equipe que o usuário enxerga para cadastrar: todas para
     # enfermeiro/médico, as suas para o ACS, nenhuma para os demais.
     def visible_micro_area_ids(user, team)
