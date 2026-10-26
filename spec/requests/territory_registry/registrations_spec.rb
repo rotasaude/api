@@ -63,6 +63,20 @@ RSpec.describe "Território — cadastro individual", type: :request do
     expect(response).to have_http_status(:created)
   end
 
+  # Revisão do L28: CPF digitado × candidato com OUTRO CPF = pessoas diferentes
+  # (201 sem a marca); o mesmo CPF continua cpf_taken, não duplicate_suspected.
+  it "paciente digitado com CPF: candidato de outro CPF não é suspeito; o mesmo CPF é cpf_taken" do
+    other = Patient.create!(cpf: valid_cpf(61), full_name: "Lia Santos", birth_date: "2026-08-01", sex: "female")
+    sign_in_as(acs)
+    typed = { full_name: "Lia Santos", birth_date: "2026-08-01", sex: "female", mother_name: "Carla Santos" }
+    json_post "/territory/registrations", body(new_patient: typed.merge(cpf: valid_cpf(62)))
+    expect(response).to have_http_status(:created)
+    expect(json_body["patient"]["id"]).not_to eq(other.id)
+    json_post "/territory/registrations", body(new_patient: typed.merge(cpf: valid_cpf(61)))
+    expect(response).to have_http_status(:conflict)
+    expect(json_body).to eq("error" => "cpf_taken")
+  end
+
   it "duplicates_reviewed só no corpo: na URL não vale" do
     Patient.create!(full_name: "Lia Santos", birth_date: "2026-08-01", sex: "female", no_cpf_reason: "3", cns: valid_cns(45))
     sign_in_as(acs)

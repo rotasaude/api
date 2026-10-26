@@ -13,6 +13,10 @@
 #     gravado (a regra da busca, Patients::Duplicates) → duplicate_suspected
 #     (409, sem nome), salvo `duplicates_reviewed: true` (só no corpo: o
 #     dashboard manda depois de mostrar a busca e a pessoa dizer "é outra").
+#     Com CPF digitado, candidato de outro CPF não conta (o mesmo é cpf_taken).
+#     Conferido no parse e de novo na transação, sob pg_advisory_xact_lock do
+#     hash da match_key (antes do CreateTyped): duas criações simultâneas da
+#     mesma pessoa digitada nunca passam as duas.
 #   - Identidade (L4): `patient: { full_name, social_name, birth_date, sex,
 #     mother_name }` só para paciente SEM par validado; com par validado,
 #     valor diferente → identity_locked (os dados validados mandam; conferido
@@ -138,7 +142,7 @@ module TerritoryRegistry
       duplicate = check_duplicates(params, person.payload)
       return duplicate if duplicate.failure?
 
-      Result.ok(person.payload.merge(flags.payload, place.payload, sections.payload, identity.payload, demographics.payload,
+      Result.ok(person.payload.merge(flags.payload, place.payload, sections.payload, identity.payload, demographics.payload, duplicate.payload,
                                      cbo: Access.membership(by, team).cbo_code, expected: expected))
     end
 
@@ -264,15 +268,35 @@ module TerritoryRegistry
     def check_duplicates(params, person)
       reviewed = params.fetch("duplicates_reviewed", false)
       return invalid("duplicates_reviewed") unless [ true, false ].include?(reviewed)
-      return Result.ok if reviewed || person[:person] != :new
+      return Result.ok(duplicates_reviewed: reviewed) if reviewed || person[:person] != :new
+      return Result.fail(:duplicate_suspected) if duplicate?(person[:new_patient])
 
-      typed = person[:new_patient].to_h.stringify_keys
-      strings = %w[full_name birth_date mother_name].map { |key| typed[key] }
-      return Result.ok unless strings.all? { |value| value.nil? || value.is_a?(String) }
-
-      found = Patients::Duplicates.call(full_name: strings[0], birth_date: strings[1], mother_name: strings[2], limit: 1)
-      found.any? ? Result.fail(:duplicate_suspected) : Result.ok
+      Result.ok(duplicates_reviewed: false)
     end
+
+    # Possível duplicado pela regra da busca (Patients::Duplicates); com CPF
+    # digitado, só candidatos sem CPF.
+    def duplicate?(new_patient)
+      typed = new_patient.to_h.stringify_keys
+      strings = %w[full_name birth_date mother_name cpf].map { |key| typed[key] }
+      return false unless strings.all? { |value| value.nil? || value.is_a?(String) }
+
+      Patients::Duplicates.call(full_name: strings[0], birth_date: strings[1], mother_name: strings[2], limit: 1,
+                                only_without_cpf: strings[3].present?).any?
+    end
+
+    # Serializa as criações da mesma pessoa digitada (a chave é um hash —
+    # nunca nome nem nascimento no SQL ou no log) e confere de novo sob a trava.
+    def lock_typed!(new_patient, reviewed)
+      typed = new_patient.to_h.stringify_keys
+      key = typed.values_at("full_name", "birth_date").all?(String) && Patients::MatchKey.for(typed["full_name"], typed["birth_date"])
+      return unless key
+
+      ApplicationRecord.connection.execute("SELECT pg_advisory_xact_lock(#{match_lock_key(key)})")
+      refuse!(Result.fail(:duplicate_suspected)) if !reviewed && duplicate?(new_patient)
+    end
+
+    def match_lock_key(key) = Digest::SHA256.hexdigest("patients:match_key:#{key}")[0, 15].to_i(16)
 
     def parse_demographics(raw)
       return Result.ok(demographics: {}) if raw.nil?
@@ -342,6 +366,7 @@ module TerritoryRegistry
         refuse!(resolved) if resolved.failure?
         resolved.payload[:patient]
       else
+        lock_typed!(attrs[:new_patient], attrs[:duplicates_reviewed])
         created = Patients::CreateTyped.call(attrs: attrs[:new_patient].to_h, by: by)
         refuse!(typed_failure(created)) if created.failure?
         created.payload[:patient]
@@ -483,7 +508,7 @@ module TerritoryRegistry
     def invalid(path) = Result.fail(:invalid_registration, details: { path: path })
     def uuid?(value) = value.is_a?(String) && value.match?(UUID)
     private_class_method :parse, :parse_person, :parse_flags, :parse_place, :parse_sections, :parse_identity, :check_identity,
-                         :parse_demographics, :check_duplicates, :write, :person!, :add_cpf!, :check_family!, :identity!, :current_identity, :cns!,
+                         :parse_demographics, :check_duplicates, :duplicate?, :lock_typed!, :match_lock_key, :write, :person!, :add_cpf!, :check_family!, :identity!, :current_identity, :cns!,
                          :final_demographics, :save_demographics!, :person_facts, :persist!, :copy_address!, :typed_failure, :demographics_failure,
                          :request_path, :active_id, :refuse!, :invalid, :uuid?
   end

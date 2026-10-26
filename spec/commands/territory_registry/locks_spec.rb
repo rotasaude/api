@@ -100,6 +100,33 @@ RSpec.describe "Cadastro individual — concorrência" do
     in_city { expect(IndividualRegistration.active_registrations.where(patient_id: @ids[:patient]).count).to eq(1) }
   end
 
+  # Revisão do L28: dois cadastros do mesmo paciente DIGITADO ao mesmo tempo —
+  # a trava consultiva da match_key segura o segundo, que confere de novo
+  # depois do commit do primeiro: duplicate_suspected, nunca dois pacientes.
+  it "mesmo paciente digitado ao mesmo tempo: o segundo espera a trava da match_key e sai duplicate_suspected" do
+    holder, holding = hold_after("territory_registration.saved")
+    params = in_city do
+      base = registry_registration_params(household).merge("patient_demographics" => { "race_color" => "03" })
+      typed = { "full_name" => "Lia Santos Ramos", "birth_date" => "2001-02-03", "sex" => "female", "mother_name" => "Carla Ramos",
+                "no_cpf_reason" => "3" }
+      [ base.merge("new_patient" => typed.merge("cns" => valid_cns(71))), base.merge("new_patient" => typed.merge("cns" => valid_cns(72))) ]
+    end
+    first = Queue.new
+    threads << (holder[0] = Thread.new { go.pop(timeout: 5) && first << in_city { TerritoryRegistry::SaveRegistration.call(params: params[0], by: acs) } })
+    go << true
+    holding.pop(timeout: 5) or raise "o primeiro não segurou a transação"
+
+    second = Queue.new
+    threads << Thread.new { second << in_city { TerritoryRegistry::SaveRegistration.call(params: params[1], by: acs) } }
+    expect(wait_for_lock_wait).to be(true)
+    release << true
+
+    a = first.pop(timeout: 10)
+    b = second.pop(timeout: 10)
+    expect([ outcome(a), outcome(b) ]).to eq([ :ok, :duplicate_suspected ])
+    in_city { expect(Patient.where(match_key: Patients::MatchKey.for("Lia Santos Ramos", "2001-02-03")).count).to eq(1) }
+  end
+
   it "gravar o domicílio enquanto um cadastro entra nele: sem deadlock; o domicílio recomeça e leva o morador novo" do
     holder, holding = hold_after("territory_registration.saved")
     saved = Queue.new
