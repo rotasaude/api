@@ -229,7 +229,8 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "micro_area.changed", to: []
   DomainEvents.bind "household.saved", to: []
   DomainEvents.bind "territory_registration.saved", to: []
-  DomainEvents.bind "territory_registration.exited", to: []
+  # §14 L30: o óbito encerra as inscrições e dispensa as sugestões pendentes da pessoa.
+  DomainEvents.bind "territory_registration.exited", to: [ CareLines::RegistrationExitedJob ]
   # §14 L29: troca do responsável = família nova; só ids.
   DomainEvents.bind "family.responsible_replaced", to: []
 end
