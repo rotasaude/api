@@ -140,4 +140,43 @@ RSpec.describe "Recepção — raça/cor e endereço do paciente", type: :reques
     expect(response).to have_http_status(:ok)
     expect(json_body).to include("race_color_set" => true, "address_from_household" => true)
   end
+
+  # Contrato §14 L26: o paciente cadastrado pelo ACS com o CPF do par, ainda
+  # sem vínculo, é o que a gravação acha (vínculo ou CPF) — as flags do
+  # check-in, do lookup da recepção e da exceção acham o mesmo, antes do formulário.
+  describe "flags pelo paciente que a gravação acha (L26)" do
+    let(:unit) { create_unit }
+    let(:acs_patient) { Patient.create!(cpf: citizen.cpf, full_name: "Maria Aparecida da Silva", birth_date: "1980-05-10", sex: "female") }
+
+    def flags_from_every_lookup
+      triage = completed_web_triage_for(citizen)
+      json_post "/attendance/check_ins/lookup", cpf: citizen.cpf, code: Citizens::IssueCheckInCode.call(citizen: citizen, triage: triage).payload.fetch(:code)
+      expect(response).to have_http_status(:ok)
+      check_in = json_body["citizen"]
+      json_post "/attendance/lookup", cpf: citizen.cpf, code: issue_code_for(citizen)
+      expect(response).to have_http_status(:ok)
+      lookup = json_body["citizen"]
+      json_post "/attendance/check_ins/exception", cpf: citizen.cpf, triage_id: triage.id, health_unit_id: unit.id, reason: "cidadão sem celular"
+      expect(response).to have_http_status(:created)
+      [ check_in, lookup, json_body["citizen"] ].map { |json| json.slice("race_color_set", "address_set", "address_from_household") }
+    end
+
+    it "paciente do ACS com o CPF e sem vínculo: address_from_household true no check-in, no lookup e na exceção" do
+      registry_registration!(patient: acs_patient)
+      expect(citizen.reload.patient_id).to be_nil
+      flags = flags_from_every_lookup
+      expect(flags).to all(include("address_from_household" => true, "address_set" => true))
+      expect(citizen.reload.patient_id).to be_nil
+      expect(response.body).not_to include("80010000", acs_patient.cpf)
+    end
+
+    it "paciente do CPF sem cadastro ativo em domicílio: address_from_household false nos três" do
+      acs_patient.update!(race_color: "03")
+      expect(flags_from_every_lookup).to all(eq("race_color_set" => true, "address_set" => false, "address_from_household" => false))
+    end
+
+    it "sem paciente: as três flags false nos três" do
+      expect(flags_from_every_lookup).to all(eq("race_color_set" => false, "address_set" => false, "address_from_household" => false))
+    end
+  end
 end

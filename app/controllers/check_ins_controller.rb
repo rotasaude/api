@@ -33,7 +33,8 @@ class CheckInsController < ApplicationController
         verification_level: citizen.verification_level, names: Citizens::NamesJson.call(citizen),
         verification_id: citizen.active_verification&.id,
         # D-U4 (contrato §13 E2): só se o paciente tem raça/cor e endereço, nunca o dado.
-        **Patients::Demographics.flags(citizen.patient_id && Patient.find_by(id: citizen.patient_id))
+        # §14 L26: o paciente que a gravação acha (vínculo ou CPF).
+        **Patients::Demographics.flags(Patients::Demographics.patient_of(citizen))
       },
       triage: (triage && triage_json(triage)),
       appointment: (appointment && appointment_json(appointment))
@@ -69,7 +70,10 @@ class CheckInsController < ApplicationController
 
     attendance = result.payload[:attendance]
     # D-U3 (contrato §13 E2): a validação ativa, para o balcão completar o cadastro; null no par só declarado.
-    render json: { attendance: attendance_json(attendance), verification_id: attendance.citizen.active_verification&.id },
+    # §14 L26: as flags do paciente que a gravação acha, no mesmo formato do lookup, antes do formulário.
+    citizen = attendance.citizen
+    render json: { attendance: attendance_json(attendance), verification_id: citizen.active_verification&.id,
+                   citizen: { id: citizen.id, **Patients::Demographics.flags(Patients::Demographics.patient_of(citizen)) } },
            status: :created
   end
 

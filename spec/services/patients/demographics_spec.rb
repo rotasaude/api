@@ -67,6 +67,18 @@ RSpec.describe Patients::Demographics do
     expect(filter.filter("race_colors_count" => "1")).to eq("race_colors_count" => "1")
   end
 
+  # Contrato §14 L26: o paciente do par como a gravação o acha.
+  it "patient_of: o do vínculo; sem vínculo, o do CPF; sem nenhum, nil" do
+    citizen = Citizen.create!(cpf: "11144477735", phone: "+5541998760001")
+    expect(described_class.patient_of(citizen)).to be_nil
+    by_cpf = Patient.create!(cpf: citizen.cpf)
+    expect(described_class.patient_of(citizen)).to eq(by_cpf)
+    CitizenVerification.create!(citizen: citizen, verified_by_user: verifier!, verified_at: Time.current)
+    citizen.update!(verification_level: "verified", patient_id: patient.id)
+    expect(described_class.patient_of(citizen)).to eq(patient)
+    expect(described_class.patient_of(nil)).to be_nil
+  end
+
   it "flags sem paciente: nada preenchido" do
     expect(described_class.flags(nil)).to eq(race_color_set: false, address_set: false, address_from_household: false)
   end

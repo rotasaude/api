@@ -45,7 +45,9 @@ class AttendanceController < ApplicationController
       citizen: {
         id: citizen.id, cpf_masked: citizen.cpf_masked, phone_masked: CitizenIdentity::Phone.mask(citizen.phone),
         created_at: citizen.created_at.iso8601, verification_level: citizen.verification_level,
-        profile: Citizens::ProfileJson.call(citizen), names: Citizens::NamesJson.call(citizen)
+        profile: Citizens::ProfileJson.call(citizen), names: Citizens::NamesJson.call(citizen),
+        # §14 L26: as flags do check-in, do paciente que a gravação acha, antes do formulário.
+        **Patients::Demographics.flags(Patients::Demographics.patient_of(citizen))
       },
       triages: result.payload[:triages].map { |t| { date: t[:date].iso8601, protocol_name: t[:protocol_name] } }
     }
@@ -102,9 +104,7 @@ class AttendanceController < ApplicationController
 
     citizen = verification.citizen
     # §13 E12: os campos do BPA-I conferidos antes de gravar os nomes.
-    demographics = parse_demographics do
-      citizen.patient_id ? Patient.find_by(id: citizen.patient_id) : Patient.find_by(cpf: citizen.cpf)
-    end
+    demographics = parse_demographics { Patients::Demographics.patient_of(citizen) }
     return render_failure(demographics, ERROR_STATUS) if demographics.failure?
 
     values = demographics.payload[:values]
@@ -121,7 +121,7 @@ class AttendanceController < ApplicationController
       saved = save_demographics(citizen, values)
       return render_failure(saved, ERROR_STATUS) if saved.failure?
     end
-    patient = citizen.reload.patient_id && Patient.find_by(id: citizen.patient_id)
+    patient = Patients::Demographics.patient_of(citizen.reload)
     render json: { citizen: { id: citizen.id, cpf_masked: citizen.cpf_masked, verification_level: citizen.verification_level,
                               names: Citizens::NamesJson.call(citizen) } }.merge(Patients::Demographics.flags(patient))
   end

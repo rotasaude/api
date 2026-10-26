@@ -79,9 +79,18 @@ module Patients
       Result.ok(patient: patient)
     end
 
+    # O paciente do par como a gravação o acha (Patients::Resolve; a recepção
+    # em names): o do vínculo ou, sem vínculo, o do CPF — o paciente que o ACS
+    # cadastrou com o CPF antes do par ser ligado (contrato §14 L26).
+    def patient_of(citizen)
+      return nil unless citizen
+
+      citizen.patient_id ? Patient.find_by(id: citizen.patient_id) : Patient.find_by(cpf: citizen.cpf)
+    end
+
     def current(patient) = patient ? Patient::DEMOGRAPHICS.to_h { |key| [ key, patient.public_send(key) ] } : {}
 
-    # O que a tela pode ver sem o dado.
+    # O que a tela pode ver sem o dado (do par: flags(patient_of(citizen))).
     def flags(patient)
       return { race_color_set: false, address_set: false, address_from_household: false } unless patient
 
