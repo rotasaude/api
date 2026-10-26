@@ -57,7 +57,8 @@ RSpec.describe TerritoryRegistry::ReplaceResponsible do
     expect { result = replace(s[:family], s[:b]) }.to change(domiciliar, :count).by(1).and change(individual, :count).by(2)
     expect(result).to be_ok
     fresh = result.payload[:family]
-    expect(fresh).to have_attributes(household_id: household.id, responsible_patient_id: s[:b].id, moved_out: false, members_count: 3,
+    # Revisão m3: quem saiu (A, óbito) não conta na família nova: 3 − 1.
+    expect(fresh).to have_attributes(household_id: household.id, responsible_patient_id: s[:b].id, moved_out: false, members_count: 2,
                                      income_band: "2", living_since: "2019-03")
     expect(s[:family].reload.moved_out).to be(true)
     expect(household.reload.version).to eq(before_version + 1)
@@ -91,7 +92,7 @@ RSpec.describe TerritoryRegistry::ReplaceResponsible do
     expect(TerritoryRegistry::Families.responsible_exited_ids(Family.where(household: household).to_a)).to be_empty
   end
 
-  it "troca com o responsável vivo: ele vira membro da família nova (sem parentesco)" do
+  it "troca com o responsável vivo: ele vira membro da família nova (sem parentesco); ninguém saiu, os membros ficam" do
     a = registry_patient!
     a_registration = registry_registration!(patient: a, household: household)
     family = registry_family!(household, responsible: a, "members_count" => 2)
@@ -99,7 +100,28 @@ RSpec.describe TerritoryRegistry::ReplaceResponsible do
     join_family!(b, family)
     result = replace(family, b)
     expect(result).to be_ok
+    expect(result.payload[:family].members_count).to eq(2)
     expect(a_registration.reload).to have_attributes(family_id: result.payload[:family].id, is_responsible: false)
+  end
+
+  # Revisão m3: members_count da nova = o da antiga menos os membros cujo
+  # cadastro na família saiu (óbito ou mudança), com piso 1; sem o campo, sem.
+  it "família nova: desconta quem saiu, com piso 1; antiga sem members_count → nova sem" do
+    s = scenario!
+    death!(s[:c_registration].reload)
+    s[:family].update_columns(members_count: 2)
+    expect(replace(s[:family], s[:b]).payload[:family].members_count).to eq(1) # 2 − 2 (A e C) → piso 1
+
+    other = registry_household!(micro_area: household.micro_area)
+    x = registry_patient!
+    registry_registration!(patient: x, household: other)
+    family = registry_family!(other, responsible: x)
+    family.update_columns(members_count: nil)
+    y = registry_patient!
+    params = registry_registration_params(other, patient: y).merge("family_id" => family.id)
+    expect(TerritoryRegistry::SaveRegistration.call(params: params, by: acs)).to be_ok
+    result = described_class.call(family: family, by: acs, params: { "responsible" => { "patient_id" => y.id }, "version" => other.reload.version })
+    expect(result.payload[:family].members_count).to be_nil
   end
 
   it "recusas: quem não é membro ativo da família, o próprio responsável, família em mudança, versão velha; nada muda" do
@@ -125,6 +147,20 @@ RSpec.describe TerritoryRegistry::ReplaceResponsible do
     registry_micro_area!(code: "02", team: household.micro_area.team, acs: other)
     expect(replace(s[:family], s[:b], by: other).reason).to eq(:out_of_scope)
     expect(s[:family].reload.moved_out).to be(false)
+    expect(Family.count).to eq(1)
+  end
+
+  # Revisão m6: o CBO de quem grava precisa estar também na Tabela 1 (a
+  # cascata gera fichas individuais). Nas tabelas atuais todo CBO de cadastro
+  # da Tabela 2 está na 1; a Tabela 1 sem o CBO do ACS prova o ramo.
+  it "CBO fora da Tabela 1 (ficha individual da cascata) → cbo_not_allowed; nada muda" do
+    s = scenario!
+    tables = TerritoryRegistry::Access::REGISTRATION_CBOS
+    stub_const("TerritoryRegistry::Access::REGISTRATION_CBOS",
+               tables.merge(individual: (tables[:individual] - [ TerritoryRegistry::Catalog::ACS_CBO ]).freeze))
+    expect(replace(s[:family], s[:b]).reason).to eq(:cbo_not_allowed)
+    expect(s[:family].reload.moved_out).to be(false)
+    expect(s[:b_registration].reload.version).to eq(1)
     expect(Family.count).to eq(1)
   end
 

@@ -7,7 +7,9 @@
 #
 #   - A família antiga fica em mudança (moved_out: definitiva; stMudanca na
 #     ficha — o jeito do LEDI de encerrar a família); a nova nasce ativa com o
-#     novo responsável e copia membros, renda e "reside desde" da antiga.
+#     novo responsável e copia renda e "reside desde" da antiga; membros = os
+#     da antiga menos quem teve o cadastro nela encerrado (óbito ou mudança,
+#     sem cadastro ativo nela), piso 1; sem o campo na antiga, sem na nova.
 #   - Os cadastros ATIVOS da família antiga passam para a nova: versão nova
 #     (origin save, em nome de quem gravou, com o CBO dele, que precisa estar
 #     na Tabela 1 — como a cascata da L28) + ficha individual; is_responsible
@@ -65,11 +67,22 @@ module TerritoryRegistry
 
       family.update!(moved_out: true)
       fresh = Family.create!(household: household, moved_out: false, responsible_patient_id: patient_id,
-                             members_count: family.members_count, income_band: family.income_band, living_since: family.living_since)
+                             members_count: remaining_members(family, registrations), income_band: family.income_band,
+                             living_since: family.living_since)
       move!(registrations, fresh, by, Access.membership(by, area.team).cbo_code)
       DomainEvents.publish("family.responsible_replaced", household_id: household.id, family_id: family.id, new_family_id: fresh.id,
                                                           user_id: by.id)
       fresh
+    end
+
+    # Revisão m3: quem saiu da família não conta na nova.
+    def remaining_members(family, active)
+      return nil if family.members_count.nil?
+
+      staying = active.map(&:patient_id)
+      gone = IndividualRegistration.where(family_id: family.id).where.not(exit_reason: nil).where.not(patient_id: staying)
+                                   .distinct.count(:patient_id)
+      [ family.members_count - gone, 1 ].max
     end
 
     def move!(registrations, fresh, by, cbo)
@@ -87,6 +100,6 @@ module TerritoryRegistry
     end
 
     def invalid(path) = Result.fail(:invalid_family, details: { path: path })
-    private_class_method :replace!, :move!, :invalid
+    private_class_method :replace!, :remaining_members, :move!, :invalid
   end
 end

@@ -277,7 +277,7 @@ RSpec.describe "Território — domicílios e famílias", type: :request do
     expect(json_body["version"]).to eq(household.version + 1)
     expect(json_body["families"]).to match([
       include("id" => family.id, "moved_out" => true, "responsible_exited" => false),
-      include("responsible" => { "patient_id" => heir.id, "display_name" => heir.display_name }, "members_count" => 2,
+      include("responsible" => { "patient_id" => heir.id, "display_name" => heir.display_name }, "members_count" => 1,
               "moved_out" => false, "responsible_exited" => false)
     ])
     json_post "/territory/families/#{family.id}/replace_responsible", responsible: { patient_id: heir.id }, version: household.reload.version
