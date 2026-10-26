@@ -63,6 +63,31 @@ RSpec.describe CareLines::RegistrationExitedJob, type: :job do
       .to contain_exactly(s[:pending].id, s[:pair].id)
   end
 
+  # Revisão I1: "a pessoa" do 23 é Patients::Pairs.of (ligado OU com o CPF
+  # dele) — o par validado do wpda com o mesmo CPF e sem patient_id também.
+  it "óbito: a sugestão do par validado com o mesmo CPF, ainda sem patient_id, também é dispensada" do
+    citizen = verified_citizen!(exam_seq!)
+    patient = Patient.create!(cpf: citizen.cpf, full_name: "Joana Ribeiro Lima", mother_name: "Rita Ribeiro Lima",
+                              birth_date: "1950-03-01", sex: "female", race_color: "03")
+    expect(citizen.reload.patient_id).to be_nil
+    suggestion = CareLineSuggestion.create!(citizen: citizen, care_line: elderly, team: team, reason: "declared")
+    registration = registry_registration!(patient: patient, household: household)
+    deliver(exit!(registration, "death"))
+    expect(suggestion.reload).to have_attributes(status: "dismissed", dismiss_reason: CareLines::RegistrationExitedJob::DISMISS_REASON)
+  end
+
+  # Revisão m1: com pedido vivo, as travas seguem unidade → cidadão →
+  # sugestões → inscrição; o pedido da inscrição fecha como no 23.
+  it "óbito com pedido vivo da inscrição: o pedido fecha (dismissed) e a sugestão é dispensada" do
+    s = person!
+    opened = CareLines::OpenAppointmentRequest.call(enrollment: s[:enrollment], by: doctor)
+    expect(opened).to be_ok
+    deliver(exit!(s[:registration], "death"))
+    expect(opened.payload[:request].reload).to have_attributes(status: "closed", closed_reason: "dismissed")
+    expect(s[:pending].reload.status).to eq("dismissed")
+    expect(s[:enrollment].reload.ended_reason).to eq("death")
+  end
+
   it "reentrega (mesmo evento ou outro com o mesmo cadastro): nada duplica" do
     s = person!
     event = exit!(s[:registration], "death")
