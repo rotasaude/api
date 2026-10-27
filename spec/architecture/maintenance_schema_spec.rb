@@ -15,7 +15,7 @@ require "rails_helper"
 RSpec.describe "Maintenance GraphQL schema" do
   # tipo => campos, em camelCase, exatamente como o schema publica.
   EXPECTED_TYPES = {
-    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus cityPecConfig labExamTemplates careLineTemplates],
+    "Query" => %w[me maintainers maintenanceTokens auditEvents cities city signatureProviders signerStatus medicationCatalog sncrStatus cityPecConfig labExamTemplates careLineTemplates notifiableDiseases],
     "SignatureProvider" => %w[key configured lastCheckAt lastCheckOk],
     "MedicationCatalog" => %w[currentRelease reviewItems],
     "MedicationCatalogRelease" => %w[id importedAt itemsCount hiddenCount],
@@ -29,7 +29,7 @@ RSpec.describe "Maintenance GraphQL schema" do
                      saveProtocolDraft submitProtocolForReview publishProtocol
                      activateProtocol retireProtocol revertProtocolActivation setCityFeature
                      importMedicationCatalog importAnvisaLists setCityPecOrigin rotateCityPecHmacKey
-                     upsertLabExamTemplate upsertLabAnalyteTemplate upsertCareLineTemplate],
+                     upsertLabExamTemplate upsertLabAnalyteTemplate upsertCareLineTemplate publishNotifiableDiseaseList],
     "LabExamTemplate" => %w[id sigtapCode name sector material container suggestedMethod preparation active analytes],
     "LabAnalyteTemplate" => %w[id key name loinc unit valueType choices decimals position referenceRanges],
     "LabReferenceRange" => %w[sex ageMinDays ageMaxDays low high text],
@@ -37,6 +37,9 @@ RSpec.describe "Maintenance GraphQL schema" do
     "UpsertLabAnalyteTemplatePayload" => %w[ok errors],
     "CareLineTemplate" => %w[key version current name indicator declaredCondition eligibility practices createdAt createdBy],
     "UpsertCareLineTemplatePayload" => %w[ok errors],
+    "NotifiableDiseaseVersion" => %w[version ordinance effectiveFrom current notes sources createdAt publishedBy diseases],
+    "NotifiableDisease" => %w[code name deadline cid10 ciap2 repeatAfterDays sinanForm notes sources],
+    "PublishNotifiableDiseaseListPayload" => %w[ok errors version],
     "CityPecConfig" => %w[pecOrigin hmacKeyConfigured hmacKeyUpdatedAt],
     "SetCityPecOriginPayload" => %w[ok errors],
     "RotateCityPecHmacKeyPayload" => %w[ok errors],
@@ -577,7 +580,7 @@ RSpec.describe "Maintenance GraphQL schema" do
       def field_selections
         { "me" => "{ id }", "maintainers" => "{ id }", "maintenanceTokens" => "{ id }", "auditEvents" => "{ name }",
           "cities" => "{ slug }", "signatureProviders" => "{ key }", "signerStatus" => "{ reachable }", "sncrStatus" => "{ configured }",
-          "medicationCatalog" => "{ currentRelease { id } }", "labExamTemplates" => "{ id }", "careLineTemplates" => "{ key }",
+          "medicationCatalog" => "{ currentRelease { id } }", "labExamTemplates" => "{ id }", "careLineTemplates" => "{ key }", "notifiableDiseases" => "{ version }",
           "cityPecConfig" => "(citySlug: \"sem-cidade\") { hmacKeyConfigured }" }
       end
 

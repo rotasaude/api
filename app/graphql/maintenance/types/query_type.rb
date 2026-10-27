@@ -11,6 +11,9 @@ module Maintenance
             description: "Versões do catálogo-base das linhas de cuidado (por chave, da mais nova)" do
         argument :key, String, required: false
       end
+      # ADR 0043 (módulo 25): lista nacional de notificação compulsória, plataforma.
+      field :notifiable_diseases, [ Types::NotifiableDiseaseVersionType ], null: false,
+            description: "Versões da lista nacional de notificação compulsória (da mais nova)"
       field :me, MaintainerType, null: false, description: "O mantenedor da sessão corrente"
       field :maintainers, [ Types::MaintainerType ], null: false,
             description: "Todos os mantenedores, por e-mail. Só sessão humana."
@@ -66,6 +69,14 @@ module Maintenance
                                                          .pluck(:id, :email_address).to_h
         order = CareLines::Catalog::TEMPLATE_KEYS
         rows.sort_by { |t| [ order.index(t.key) || order.size, -t.version ] }
+      end
+
+      def notifiable_diseases
+        rows = NotifiableDiseaseVersion.includes(:diseases).order(version: :desc).to_a
+        context[:notifiable_current_version] = Surveillance::DiseaseList.current(today: Time.zone.today)&.version
+        context[:notifiable_list_authors] = Maintainer.where(id: rows.filter_map(&:published_by_maintainer_id).uniq)
+                                                      .pluck(:id, :email_address).to_h
+        rows
       end
 
       def me = context.fetch(:maintainer)

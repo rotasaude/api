@@ -21,6 +21,7 @@ module Maintenance
       field :upsert_lab_exam_template, mutation: Mutations::UpsertLabExamTemplate
       field :upsert_lab_analyte_template, mutation: Mutations::UpsertLabAnalyteTemplate
       field :upsert_care_line_template, mutation: Mutations::UpsertCareLineTemplate
+      field :publish_notifiable_disease_list, mutation: Mutations::PublishNotifiableDiseaseList
     end
   end
 end

@@ -36,6 +36,7 @@ module MaintenanceAudit
     maintenance.anvisa_lists.imported
     maintenance.lab_template.changed
     maintenance.care_line_template.changed
+    maintenance.notifiable_disease_list.published
   ].freeze
 
   OUTCOMES = %w[attempted ok rejected error].freeze
@@ -85,6 +86,7 @@ module MaintenanceAudit
     when "maintenance.anvisa_lists.imported" then Platform.audit("maintenance.anvisa_lists.imported", **payload)
     when "maintenance.lab_template.changed" then Platform.audit("maintenance.lab_template.changed", **payload)
     when "maintenance.care_line_template.changed" then Platform.audit("maintenance.care_line_template.changed", **payload)
+    when "maintenance.notifiable_disease_list.published" then Platform.audit("maintenance.notifiable_disease_list.published", **payload)
     else
       # Sem isto, um nome novo em NAMES sem branch correspondente passaria na
       # validação acima, não escreveria nada, e ainda devolveria um

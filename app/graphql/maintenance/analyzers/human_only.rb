@@ -16,6 +16,7 @@ module Maintenance
         medicationCatalog importMedicationCatalog importAnvisaLists
         labExamTemplates upsertLabExamTemplate upsertLabAnalyteTemplate
         careLineTemplates upsertCareLineTemplate
+        notifiableDiseases publishNotifiableDiseaseList
       ].freeze
 
       # Campos de raiz que um token PODE usar. Existe para a guarda de

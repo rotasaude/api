@@ -20,6 +20,7 @@ RSpec.describe "PlatformEvent payload guard (Ruling R18)" do
                                 terminology.release_activated cnes.snapshot_imported anvisa_lists.imported
                                 medication_catalog.imported lab.template_changed care_line.template_changed notifiable_disease_list.published
                                 maintenance.lab_template.changed maintenance.care_line_template.changed
+                                maintenance.notifiable_disease_list.published
                                 channel.registered channel.token_rotated channel.unknown_seen
                                 operator.login operator.city_access operator.created
                                 operator.impersonated
