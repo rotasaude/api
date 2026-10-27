@@ -15,6 +15,10 @@ class HealthUnit < ApplicationRecord
   belongs_to :neighborhood, optional: true
 
   before_validation { self.name = name&.strip }
+  # ADR 0043 (R7, contrato K11): a unidade de atenção primária nasce
+  # notificadora quando ninguém disse o contrário. Vale para toda criação
+  # (controller, Cnes::Apply, seed), por isso mora aqui e não só no controller.
+  before_validation :default_notifying, on: :create
 
   # Endereço em texto (ADR 0023; módulo 11 entrega o que o ADR 0018 deixou em
   # aberto). Tudo opcional. O CEP vem do navegador do dashboard; o api só
@@ -45,5 +49,11 @@ class HealthUnit < ApplicationRecord
   # ou o comando relê a unidade já inativa e levanta Inactive.
   def self.lock_active!(id)
     where(active: true).lock("FOR SHARE").find_by(id: id) || raise(Inactive)
+  end
+
+  private
+
+  def default_notifying
+    self.notifying = (kind == "ubs") unless attribute_came_from_user?("notifying")
   end
 end

@@ -51,6 +51,35 @@ RSpec.describe "Health units", type: :request do
     expect(body["error"]).to eq("invalid_kind")
   end
 
+  # ADR 0043 (R7): a unidade de atenção primária nasce notificadora.
+  it "notifying: UBS nasce true, UPA false; o corpo decide; só booleano; update só muda com a chave" do
+    sign_in_as(admin)
+
+    json_post "/attendance/units", name: "UBS Vigia", kind: "ubs"
+    expect(response).to have_http_status(:created)
+    expect(body["unit"]["notifying"]).to be(true)
+    ubs_id = body.dig("unit", "id")
+
+    json_post "/attendance/units", name: "UPA Vigia", kind: "upa"
+    expect(body["unit"]["notifying"]).to be(false)
+    upa_id = body.dig("unit", "id")
+
+    json_post "/attendance/units", name: "UBS Fora", kind: "ubs", notifying: false
+    expect(body["unit"]["notifying"]).to be(false)
+
+    json_post "/attendance/units/#{upa_id}", name: "UPA Vigia", kind: "upa", notifying: true
+    expect(response).to have_http_status(:ok)
+    expect(body["unit"]["notifying"]).to be(true)
+
+    json_post "/attendance/units/#{ubs_id}", name: "UBS Vigia Renomeada", kind: "ubs"
+    expect(body["unit"]["notifying"]).to be(true)
+
+    json_post "/attendance/units/#{ubs_id}", name: "UBS Vigia", kind: "ubs", notifying: "sim"
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(body["error"]).to eq("invalid_notifying")
+    expect(HealthUnit.find(ubs_id).notifying).to be(true)
+  end
+
   it "desativar com atendimento aberto: 409 unit_has_open_attendances; depois de encerrado, 200" do
     citizen = Citizen.create!(cpf: "52998224725", phone: "+5541998765432")
     unit = create_unit

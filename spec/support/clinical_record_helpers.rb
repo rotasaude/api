@@ -7,7 +7,12 @@ module ClinicalRecordHelpers
     "E119" => [ "Diabetes mellitus não-insulino-dependente - sem complicações", nil ],
     "I10" => [ "Hipertensão essencial (primária)", nil ],
     "N390" => [ "Infecção do trato urinário de localização não especificada", nil ],
-    "C61" => [ "Neoplasia maligna da próstata", "M" ]
+    "C61" => [ "Neoplasia maligna da próstata", "M" ],
+    # Módulo 25 (ADR 0043): códigos da lista de notificação compulsória.
+    "A90" => [ "Dengue [dengue clássico]", nil ],
+    "A920" => [ "Febre de Chikungunya", nil ],
+    "A169" => [ "Tuberculose das vias respiratórias, não especificada, sem menção de confirmação bacteriológica ou histológica", nil ],
+    "B24" => [ "Doença pelo vírus da imunodeficiência humana [HIV], não especificada", nil ]
   }.freeze
   SIGTAP = {
     "0202010503" => "DOSAGEM DE HEMOGLOBINA GLICOSILADA",

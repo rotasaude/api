@@ -141,7 +141,10 @@ module CityEncryption
     [ IndividualRegistrationVersion, :identity ], [ IndividualRegistrationVersion, :identification ],
     [ IndividualRegistrationVersion, :sociodemographic ], [ IndividualRegistrationVersion, :health_conditions ],
     [ IndividualRegistrationVersion, :street_situation ], [ IndividualRegistrationVersion, :refused ],
-    [ IndividualRegistrationVersion, :death_certificate ]
+    [ IndividualRegistrationVersion, :death_certificate ],
+    # ADR 0043: ficha da notificação compulsória e motivo do andamento.
+    [ DiseaseNotification, :form ],
+    [ DiseaseNotificationEvent, :reason ]
   ].freeze
 
   module_function

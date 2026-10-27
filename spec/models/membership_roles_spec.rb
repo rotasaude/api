@@ -38,4 +38,13 @@ RSpec.describe Membership do
     expect(described_class::ROLES).to include("billing_clerk")
     expect(described_class::PRIVILEGED_ROLES).to include("billing_clerk")
   end
+
+  # ADR 0043: o vigilante lê nome e doença de notificação compulsória — step-up
+  # para conceder; o mantenedor não concede.
+  it "surveillance é papel privilegiado e o banco o aceita" do
+    expect(described_class::ROLES).to include("surveillance")
+    expect(described_class::PRIVILEGED_ROLES).to include("surveillance")
+    user = User.create!(email_address: "vigilancia@cidade.gov.br", password: "senha-segura-123")
+    expect { described_class.create!(user: user, role: "surveillance", granted_at: Time.current) }.not_to raise_error
+  end
 end

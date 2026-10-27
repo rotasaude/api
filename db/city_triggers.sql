@@ -2208,3 +2208,54 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 25 (ADR 0043): vigilância epidemiológica. A notificação nunca some
+-- nem troca de paciente, doença, versão da lista, origem, consulta, adendo,
+-- unidade ou data de criação; digitada (entered) e descartada (dismissed) são
+-- terminais. As demais transições (ordem, versão otimista) ficam no código.
+-- O andamento só recebe a re-cifra do motivo; a negativa semanal é só
+-- acréscimo; a doença local nunca é apagada (desativa-se); TRUNCATE recusado.
+CREATE OR REPLACE FUNCTION rota_disease_notification_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'disease_notifications: DELETE refused';
+  END IF;
+  IF (NEW.id, NEW.patient_id, NEW.disease_code, NEW.disease_list_version, NEW.origin, NEW.consultation_id, NEW.addendum_id,
+      NEW.health_unit_id, NEW.created_at)
+     IS DISTINCT FROM (OLD.id, OLD.patient_id, OLD.disease_code, OLD.disease_list_version, OLD.origin, OLD.consultation_id, OLD.addendum_id,
+                       OLD.health_unit_id, OLD.created_at) THEN
+    RAISE EXCEPTION 'disease_notifications: patient, disease, list version, origin, consultation, addendum, unit and created_at never change';
+  END IF;
+  IF OLD.status IN ('entered', 'dismissed') AND NEW.status IS DISTINCT FROM OLD.status THEN
+    RAISE EXCEPTION 'disease_notifications: a % notification never changes status', OLD.status;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.disease_notifications') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS disease_notifications_guard ON disease_notifications';
+    EXECUTE 'CREATE TRIGGER disease_notifications_guard BEFORE UPDATE OR DELETE ON disease_notifications
+      FOR EACH ROW EXECUTE FUNCTION rota_disease_notification_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS disease_notification_events_reencryption_only ON disease_notification_events';
+    EXECUTE 'CREATE TRIGGER disease_notification_events_reencryption_only BEFORE UPDATE OR DELETE ON disease_notification_events
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS weekly_negative_reports_append_only ON weekly_negative_reports';
+    EXECUTE 'CREATE TRIGGER weekly_negative_reports_append_only BEFORE UPDATE OR DELETE ON weekly_negative_reports
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS local_notifiable_diseases_no_delete ON local_notifiable_diseases';
+    EXECUTE 'CREATE TRIGGER local_notifiable_diseases_no_delete BEFORE DELETE ON local_notifiable_diseases
+      FOR EACH ROW EXECUTE FUNCTION rota_no_delete()';
+    FOREACH item IN ARRAY ARRAY['disease_notifications', 'disease_notification_events', 'weekly_negative_reports',
+                                'local_notifiable_diseases'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

@@ -67,7 +67,8 @@ RSpec.describe ReencryptionJob do
                                          LabQcException LabQcReviewItem
                                          PerformedProcedure BillingPeriod BillingExport
                                          CareLineEnrollment CareLineSuggestion CareOutreachContact CitizenDeclaredCondition
-                                         HouseholdVersion Family IndividualRegistration IndividualRegistrationVersion])
+                                         HouseholdVersion Family IndividualRegistration IndividualRegistrationVersion
+                                         DiseaseNotification DiseaseNotificationEvent])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end

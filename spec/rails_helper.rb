@@ -56,6 +56,7 @@ require_relative "support/coat_of_arms_helpers"
 require_relative "support/billing_helpers"
 require_relative "support/care_line_helpers"
 require_relative "support/territory_registry_helpers"
+require_relative "support/surveillance_helpers"
 # Add additional requires below this line. Rails is not loaded until this point!
 
 # Requires supporting ruby files with custom matchers and macros, etc, in

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_23_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -835,6 +835,61 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_23_900001) do
     t.index ["dimension", "period"], name: "index_dashboard_metrics_on_dimension_and_period"
   end
 
+  create_table "disease_notification_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "by_user_id"
+    t.string "classification"
+    t.datetime "created_at", null: false
+    t.uuid "notification_id", null: false
+    t.text "reason"
+    t.string "status", null: false
+    t.index ["notification_id"], name: "index_disease_notification_events_on_notification_id"
+    t.check_constraint "classification IS NULL OR (classification::text = ANY (ARRAY['confirmed'::text, 'discarded'::text, 'inconclusive'::text]))", name: "ck_disease_notification_events_classification"
+    t.check_constraint "status::text = ANY (ARRAY['possible'::text, 'notified'::text, 'investigating'::text, 'closed'::text, 'entered'::text, 'dismissed'::text])", name: "ck_disease_notification_events_status"
+  end
+
+  create_table "disease_notifications", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "addendum_id"
+    t.string "classification"
+    t.datetime "closed_at"
+    t.uuid "consultation_id"
+    t.datetime "created_at", null: false
+    t.string "deadline", null: false
+    t.string "disease_code", limit: 48, null: false
+    t.integer "disease_list_version"
+    t.datetime "dismissed_at"
+    t.datetime "due_at", null: false
+    t.datetime "entered_at"
+    t.text "form", null: false
+    t.uuid "health_unit_id", null: false
+    t.uuid "neighborhood_id"
+    t.uuid "notifier_user_id"
+    t.string "official_number", limit: 30
+    t.string "origin", null: false
+    t.uuid "patient_id", null: false
+    t.string "residence_ibge", limit: 7
+    t.boolean "resident_elsewhere", default: false, null: false
+    t.string "status", null: false
+    t.date "suspected_on", null: false
+    t.date "symptoms_on"
+    t.string "unit_cnes", limit: 7
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["consultation_id"], name: "index_disease_notifications_on_consultation_id"
+    t.index ["health_unit_id", "suspected_on"], name: "idx_disease_notifications_unit_suspected"
+    t.index ["patient_id", "disease_code"], name: "idx_disease_notifications_one_open", unique: true, where: "((status)::text = ANY (ARRAY['possible'::text, 'notified'::text, 'investigating'::text]))"
+    t.index ["patient_id"], name: "index_disease_notifications_on_patient_id"
+    t.index ["status", "due_at"], name: "idx_disease_notifications_status_due"
+    t.index ["suspected_on"], name: "idx_disease_notifications_suspected_on"
+    t.check_constraint "(classification IS NULL OR (classification::text = ANY (ARRAY['confirmed'::text, 'discarded'::text, 'inconclusive'::text]))) AND ((classification IS NOT NULL) = (status::text = ANY (ARRAY['closed'::text, 'entered'::text])))", name: "ck_disease_notifications_classification"
+    t.check_constraint "(official_number IS NOT NULL) = (status::text = 'entered'::text)", name: "ck_disease_notifications_official_number"
+    t.check_constraint "deadline::text = ANY (ARRAY['immediate'::text, 'weekly'::text])", name: "ck_disease_notifications_deadline"
+    t.check_constraint "origin::text = ANY (ARRAY['consultation'::text, 'manual'::text, 'safety_net'::text])", name: "ck_disease_notifications_origin"
+    t.check_constraint "resident_elsewhere = (residence_ibge IS NOT NULL) AND (residence_ibge IS NULL OR residence_ibge::text ~ '^[0-9]{7}$'::text)", name: "ck_disease_notifications_residence"
+    t.check_constraint "status::text = ANY (ARRAY['possible'::text, 'notified'::text, 'investigating'::text, 'closed'::text, 'entered'::text, 'dismissed'::text])", name: "ck_disease_notifications_status"
+    t.check_constraint "symptoms_on IS NULL OR symptoms_on <= suspected_on", name: "ck_disease_notifications_symptoms_on"
+    t.check_constraint "version >= 1", name: "ck_disease_notifications_version"
+  end
+
   create_table "document_verification_lookups", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "clinical_document_id"
     t.datetime "created_at", null: false
@@ -1114,6 +1169,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_23_900001) do
     t.string "kind", null: false
     t.string "name", null: false
     t.uuid "neighborhood_id"
+    t.boolean "notifying", default: false, null: false
     t.string "screening_scope", default: "walk_in", null: false
     t.datetime "updated_at", null: false
     t.index ["cnes"], name: "idx_health_units_cnes", unique: true, where: "(cnes IS NOT NULL)"
@@ -1825,6 +1881,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_23_900001) do
     t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'sending'::text, 'accepted'::text, 'rejected'::text, 'failed'::text, 'correction_pending'::text])", name: "ck_ledi_outbox_status"
   end
 
+  create_table "local_notifiable_diseases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.jsonb "ciap2", default: [], null: false
+    t.jsonb "cid10", default: [], null: false
+    t.string "code", limit: 46, null: false
+    t.datetime "created_at", null: false
+    t.string "deadline", null: false
+    t.string "name", limit: 120, null: false
+    t.integer "repeat_after_days", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["code"], name: "idx_local_notifiable_diseases_code", unique: true
+    t.check_constraint "code::text ~ '^local_[a-z0-9_]{1,40}$'::text", name: "ck_local_notifiable_diseases_code"
+    t.check_constraint "deadline::text = ANY (ARRAY['immediate'::text, 'weekly'::text])", name: "ck_local_notifiable_diseases_deadline"
+    t.check_constraint "repeat_after_days >= 1 AND repeat_after_days <= 36500", name: "ck_local_notifiable_diseases_repeat"
+  end
+
   create_table "memberships", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "granted_at", null: false
@@ -1836,7 +1909,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_23_900001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'surveillance'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "micro_areas", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2750,6 +2823,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_23_900001) do
     t.index "lower((email_address)::text)", name: "index_users_on_lower_email", unique: true
   end
 
+  create_table "weekly_negative_reports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.string "week", limit: 7, null: false
+    t.index ["health_unit_id", "week"], name: "idx_weekly_negative_reports_unit_week", unique: true
+    t.check_constraint "week::text ~ '^[0-9]{4}-[0-9]{2}$'::text", name: "ck_weekly_negative_reports_week"
+  end
+
   add_foreign_key "appointment_notices", "appointments"
   add_foreign_key "appointment_notices", "citizens"
   add_foreign_key "appointment_reminders", "appointments"
@@ -2855,6 +2937,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_23_900001) do
   add_foreign_key "consultations", "professional_links"
   add_foreign_key "consultations", "users", column: "author_user_id"
   add_foreign_key "conversations", "citizens"
+  add_foreign_key "disease_notification_events", "disease_notifications", column: "notification_id"
+  add_foreign_key "disease_notification_events", "users", column: "by_user_id"
+  add_foreign_key "disease_notifications", "consultation_addenda", column: "addendum_id"
+  add_foreign_key "disease_notifications", "consultations"
+  add_foreign_key "disease_notifications", "health_units"
+  add_foreign_key "disease_notifications", "neighborhoods"
+  add_foreign_key "disease_notifications", "patients"
+  add_foreign_key "disease_notifications", "users", column: "notifier_user_id"
   add_foreign_key "document_verification_lookups", "clinical_documents"
   add_foreign_key "document_verification_lookups", "lab_reports"
   add_foreign_key "exam_files", "exam_providers"
@@ -3008,6 +3098,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_23_900001) do
   add_foreign_key "lab_supply_movements", "lab_supply_lots"
   add_foreign_key "lab_supply_movements", "users", column: "recorded_by_user_id"
   add_foreign_key "ledi_outbox", "ledi_outbox", column: "replaces_outbox_id"
+  add_foreign_key "local_notifiable_diseases", "users", column: "updated_by_user_id"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"
   add_foreign_key "micro_areas", "health_teams", column: "team_id"
@@ -3094,4 +3185,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_23_900001) do
   add_foreign_key "triages", "conversations"
   add_foreign_key "triages", "neighborhoods"
   add_foreign_key "triages", "protocol_definitions"
+  add_foreign_key "weekly_negative_reports", "health_units"
+  add_foreign_key "weekly_negative_reports", "users", column: "recorded_by_user_id"
 end
