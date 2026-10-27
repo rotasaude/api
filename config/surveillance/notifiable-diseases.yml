@@ -1,0 +1,1016 @@
+# Lista Nacional de Notificação Compulsória — carga inicial da plataforma (módulo 25, Task 0).
+# Lida por Surveillance::DiseaseList::Load. Uma entrada por doença; `sources` em toda linha.
+#
+# Regras (plano 25, "Leitura preliminar" e "Desvios e precisões"):
+# - Os 66 itens do Anexo I da Portaria 11.211/2026 estão aqui: cada um como doença própria ou, quando
+#   divide a ficha e o CID com outro item, nas `notes` da doença que o cobre (sources.deadline diz o item).
+# - Prazo: o da forma "casos"; forma imediata com CID própria vira doença própria; sem CID própria, vai
+#   para `notes` (a vigilância notifica à mão).
+# - CID-10 sem ponto. 4 caracteres casa exato; 3 caracteres casa a categoria. Nenhum código cobre outro
+#   entre doenças. `cid10: []` = sem CID que identifique só esta doença nas fontes: só notificação manual.
+# - CIAP-2 só quando o código da CIAP-2 (edição brasileira, SBMFC 2009, com a tabela de CID-10 de cada
+#   rubrica) corresponde a uma única doença desta lista.
+# - repeat_after_days: proposta do plano 25 (a portaria não fixa) — confirmar com a vigilância.
+#
+# Fontes (arquivos em vendor/surveillance/2026-10-27/, URLs e SHA-256 em SOURCE):
+#   prt11211.html (Portaria GM/MS 11.211/2026), fichas de investigação do Sinan (<sinan_form>.pdf),
+#   notificacao_conclusao.pdf, gvs_6ed_v{1,2,3}.pdf (Guia de Vigilância em Saúde, 6ª ed., MS 2023),
+#   nt117_2024_oropouche.pdf (NT 117/2024-CGARB/DEDT/SVSA/MS), cid10_datasus_csv.zip (tabela CID-10 do
+#   DATASUS), ciap2_sbmfc.pdf (CIAP-2, 2ª ed., SBMFC 2009).
+ordinance: "Portaria GM/MS nº 11.211, de 13/05/2026 (Anexo 1 do Anexo V da PRC 4/2017)"
+effective_from: "2026-05-14"
+sources_dir: "vendor/surveillance/2026-10-27"
+diseases:
+  - code: acidente_trabalho_material_biologico
+    name: "Acidente de trabalho com exposição a material biológico"
+    deadline: weekly
+    cid10: [Z209]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: drt_material_biologico
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 1a — semanal (prt11211.html)"
+      cid10: "Ficha DRT Acidente de trabalho com exposição a material biológico, cabeçalho 'Z20.9' (drt_material_biologico.pdf); GVS 6ª ed. v3, 'CID-10: Z20.9'"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: acidente_trabalho
+    name: "Acidente de trabalho"
+    deadline: immediate
+    cid10: [Y96]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: drt_acidente_trabalho_grave
+    notes: "A ficha do Sinan é a de acidente de trabalho grave."
+    sources:
+      deadline: "prt11211 Anexo I, item 1b — imediata para SMS (prt11211.html)"
+      cid10: "Ficha DRT Acidente de trabalho grave, cabeçalho 'Y96' (drt_acidente_trabalho_grave.pdf); GVS 6ª ed. v3, 'CID-10: Y96'"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença (A80 'lesão traumática/acidente NE' é genérica)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: acidente_animal_peconhento
+    name: "Acidente por animal peçonhento"
+    deadline: immediate
+    cid10: [X29, X20, X21, X22, X23, X25, T630, T632, T633, T634]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: animais_peconhentos
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 2 — imediata para SMS (prt11211.html)"
+      cid10: "Ficha Acidentes por animais peçonhentos, cabeçalho 'X29' (animais_peconhentos.pdf); GVS 6ª ed. v3: acidente ofídico 'X20 e T63.0', escorpionismo 'X22 e T63.2', araneísmo 'X21 e T63.3', lonomia 'X25 e T63.4', himenópteros 'X23 e T63.4'"
+      ciap2: "A86 (efeito tóxico de substância não medicinal, T51–T65) cobre também intoxicação exógena — ambíguo, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: acidente_animal_raiva
+    name: "Acidente por animal potencialmente transmissor da raiva"
+    deadline: immediate
+    cid10: [W64]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: atendimento_antirrabico
+    notes: "Notificado na ficha de atendimento antirrábico humano."
+    sources:
+      deadline: "prt11211 Anexo I, item 3 — imediata para SMS (prt11211.html)"
+      cid10: "Ficha Atendimento antirrábico humano, cabeçalho 'W64' (atendimento_antirrabico.pdf)"
+      ciap2: "S13 (mordedura animal/humana) inclui mordedura humana — ambíguo, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: anomalias_congenitas
+    name: "Anomalias congênitas"
+    deadline: weekly
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Notificadas na Declaração de Nascido Vivo (Sinasc): todo o Capítulo XVII da CID-10 (Q00–Q99) e D18.0. Fora da correspondência automática: na APS o código aparece em consultas de rotina, não no nascimento."
+    sources:
+      deadline: "prt11211 Anexo I, item 4 — semanal (prt11211.html)"
+      cid10: "sem ficha no Sinan; GVS 6ª ed. v1, 'Vigilância de Anomalias Congênitas ao Nascimento': Cap. XVII e D18.0 'de notificação compulsória no Sinasc' — fora da correspondência (ver notes)"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: botulismo
+    name: "Botulismo"
+    deadline: immediate
+    cid10: [A051]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: botulismo
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 5 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Botulismo, cabeçalho 'A05.1' (botulismo.pdf); GVS 6ª ed. v1, 'CID-10: A05.1'"
+      ciap2: "D70 (infecção gastrointestinal, A00–A08) cobre também cólera e febre tifoide — ambíguo, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: cancer_trabalho
+    name: "Câncer relacionado ao trabalho"
+    deadline: weekly
+    cid10: [C80]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: drt_cancer
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 6 — semanal (prt11211.html)"
+      cid10: "Ficha DRT Câncer relacionado ao trabalho, cabeçalho 'C80' (drt_cancer.pdf)"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: colera
+    name: "Cólera"
+    deadline: immediate
+    cid10: [A00]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: colera
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 7 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Cólera, cabeçalho 'A00.9' (colera.pdf); GVS 6ª ed. v1, 'CID-10: A00' (categoria, cobre A00.9)"
+      ciap2: "D70 (infecção gastrointestinal, A00–A08) cobre também botulismo e febre tifoide — ambíguo, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: coqueluche
+    name: "Coqueluche"
+    deadline: immediate
+    cid10: [A37]
+    ciap2: [R71]
+    repeat_after_days: 30
+    sinan_form: coqueluche
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 8 — imediata para SES e SMS (prt11211.html)"
+      cid10: "Ficha Coqueluche, cabeçalho 'A37.9' (coqueluche.pdf); GVS 6ª ed. v1, 'CID-10: A37' (categoria)"
+      ciap2: "CIAP-2 R71 'Tosse convulsa/pertussis' → A37 (ciap2_sbmfc.pdf)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: dengue
+    name: "Dengue (casos)"
+    deadline: weekly
+    cid10: [A90]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: dengue_chikungunya
+    notes: "Óbito por dengue é imediata para MS, SES e SMS e não tem CID própria na ficha (notificar à mão)."
+    sources:
+      deadline: "prt11211 Anexo I, item 9a 'Dengue - Casos' — semanal; 9b 'Dengue - Óbitos' — imediata (prt11211.html)"
+      cid10: "Ficha Dengue e febre de chikungunya, cabeçalho 'A90' (dengue_chikungunya.pdf); GVS 6ª ed. v2, 'CID-10: A90, A92.0, A92.8'"
+      ciap2: "sem código CIAP-2 específico (A77 'dengue e outras doenças virais NE' é ambíguo)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: dermatoses_ocupacionais
+    name: "Dermatoses ocupacionais"
+    deadline: weekly
+    cid10: [L989]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: drt_dermatoses
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 10 — semanal (prt11211.html)"
+      cid10: "Ficha DRT Dermatoses ocupacionais, cabeçalho 'L98.9' (drt_dermatoses.pdf); GVS 6ª ed. v3, 'CID-10: L98.9'"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: difteria
+    name: "Difteria"
+    deadline: immediate
+    cid10: [A36]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: difteria
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 11 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Difteria, cabeçalho 'A36.9' (difteria.pdf); GVS 6ª ed. v1, 'CID-10: A36' (categoria)"
+      ciap2: "sem rubrica CIAP-2 própria (A78 'hanseníase e outras doenças infecciosas NE' é ambígua)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: disturbio_voz_trabalho
+    name: "Distúrbio de voz relacionado ao trabalho"
+    deadline: weekly
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Sem ficha nacional no portal do Sinan: notificação manual pela vigilância."
+    sources:
+      deadline: "prt11211 Anexo I, item 12 — semanal (prt11211.html)"
+      cid10: "sem ficha no portal do Sinan nem CID nas fontes baixadas — só notificação manual"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: doenca_chagas_aguda
+    name: "Doença de Chagas aguda"
+    deadline: immediate
+    cid10: [B571]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: chagas_aguda
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 13a — imediata para SES e SMS (prt11211.html)"
+      cid10: "Ficha Doença de Chagas aguda, cabeçalho 'B57.1' (chagas_aguda.pdf)"
+      ciap2: "A78 cobre B57 junto com outras doenças — ambíguo, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: doenca_chagas_cronica
+    name: "Doença de Chagas crônica"
+    deadline: weekly
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Sem ficha no portal do Sinan; a GVS dá B57 para as formas aguda e crônica juntas, que cobriria a aguda (B57.1): notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 13b — semanal (prt11211.html)"
+      cid10: "sem ficha no portal do Sinan; GVS 6ª ed. v2 'Doenças de Chagas', 'CID-10: B57' cobre a forma aguda — sem código só da crônica nas fontes"
+      ciap2: "A78 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: doenca_creutzfeldt_jakob
+    name: "Doença de Creutzfeldt-Jakob (DCJ)"
+    deadline: weekly
+    cid10: [A810]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Sem ficha no portal do Sinan."
+    sources:
+      deadline: "prt11211 Anexo I, item 14 — semanal (prt11211.html)"
+      cid10: "Tabela CID-10 do DATASUS, subcategoria A81.0 'Doença de Creutzfeldt-Jakob' (cid10_datasus_csv.zip, CID-10-SUBCATEGORIAS.CSV) — mesmo nome da portaria"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: doenca_falciforme
+    name: "Doença falciforme"
+    deadline: weekly
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Sem ficha no portal do Sinan; a categoria D57 inclui o traço falciforme (D57.3), que não é a doença: notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 15 — semanal (prt11211.html)"
+      cid10: "sem ficha no portal do Sinan nem CID da doença nas fontes baixadas (D57 da tabela do DATASUS inclui o traço) — só notificação manual"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: doenca_invasiva_haemophilus
+    name: "Doença invasiva por Haemophilus influenzae"
+    deadline: immediate
+    cid10: [G000]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: meningite
+    notes: "Notificada na ficha de meningite. Formas invasivas sem meningite não têm CID própria nas fontes (notificar à mão)."
+    sources:
+      deadline: "prt11211 Anexo I, item 16a — imediata para SES e SMS (prt11211.html)"
+      cid10: "GVS 6ª ed. v1, 'Meningites bacterianas', 'CID-10: G00.0 – meningite por Haemophilus influenzae'"
+      ciap2: "N71 (meningite/encefalite) cobre também as outras meningites — ambíguo, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: doenca_meningococica_outras_meningites
+    name: "Doença meningocócica e outras meningites"
+    deadline: immediate
+    cid10: [G039, A390, A392, A87, G02]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: meningite
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 16b — imediata para SES e SMS (prt11211.html)"
+      cid10: "Ficha Meningite ('1 - doença meningocócica, 2 - outras meningites'), cabeçalho 'G03.9' (meningite.pdf); GVS 6ª ed. v1: doença meningocócica 'A39.0, A39.2', meningites virais 'A87', meningite por outras etiologias 'G02'"
+      ciap2: "N71 (meningite/encefalite) cobre também a doença invasiva por Haemophilus — ambíguo, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: disseminacao_intencional
+    name: "Doenças com suspeita de disseminação intencional: antraz pneumônico, tularemia, varíola"
+    deadline: immediate
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Evento comunicado ao CIEVS: notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 17 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "sem ficha no portal do Sinan; o item é a suspeita de disseminação intencional, não um diagnóstico — só notificação manual"
+      ciap2: "A76 (B03, B04) e A78 são ambíguas — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: febres_hemorragicas_emergentes
+    name: "Doenças febris hemorrágicas emergentes/reemergentes: arenavírus, Ebola, Marburg, Lassa, febre purpúrica brasileira"
+    deadline: immediate
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Evento comunicado ao CIEVS: notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 18 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "sem ficha no portal do Sinan nem CID nas fontes baixadas — só notificação manual"
+      ciap2: "A77 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: zika
+    name: "Doença aguda pelo vírus Zika"
+    deadline: weekly
+    cid10: [A928]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: notificacao_conclusao
+    notes: "Zika em gestante (imediata para SES e SMS) e óbito com suspeita de Zika (imediata para MS, SES e SMS) não têm CID própria: notificar à mão. A92.8 é 'outras febres virais especificadas transmitidas por mosquitos'."
+    sources:
+      deadline: "prt11211 Anexo I, item 19a — semanal; 19b gestante e 19c óbito — imediata (prt11211.html)"
+      cid10: "GVS 6ª ed. v2, 'Dengue, chikungunya e Zika', 'CID-10: A90, A92.0, A92.8'; ficha de notificação/conclusão indicada na página do agravo Zika do portal Sinan (notificacao_conclusao.pdf)"
+      ciap2: "A77 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: sindrome_congenita_zika
+    name: "Síndrome congênita associada à infecção pelo vírus Zika"
+    deadline: weekly
+    cid10: [P354]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 19d — semanal (prt11211.html)"
+      cid10: "GVS 6ª ed. v2, 'Síndrome congênita associada à infecção pelo vírus Zika', 'CID-10: P35.4'"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: esporotricose_humana
+    name: "Esporotricose humana"
+    deadline: weekly
+    cid10: [B42]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Sem ficha no portal do Sinan."
+    sources:
+      deadline: "prt11211 Anexo I, item 20 — semanal (prt11211.html)"
+      cid10: "GVS 6ª ed. v2, 'Esporotricose', 'CID-10: B42'"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: esquistossomose
+    name: "Esquistossomose"
+    deadline: weekly
+    cid10: [B659, B651]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: esquistossomose
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 21 — semanal (prt11211.html)"
+      cid10: "Ficha Esquistossomose, cabeçalho 'B65.9' (esquistossomose.pdf); GVS 6ª ed. v2, 'Esquistossomose mansoni', 'CID-10: B65.1'"
+      ciap2: "D96 (lombrigas/outros parasitas, B65–B83) é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: evento_saude_publica
+    name: "Evento de Saúde Pública (ESP) que se constitua ameaça à saúde pública"
+    deadline: immediate
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Evento comunicado ao CIEVS: notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 22 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "evento, não diagnóstico: sem CID — só notificação manual"
+      ciap2: "sem rubrica CIAP-2"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: esavi
+    name: "Evento supostamente atribuível à vacinação ou imunização (ESAVI)"
+    deadline: immediate
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Sem ficha no portal do Sinan: notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 23 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "sem ficha no portal do Sinan nem CID nas fontes baixadas — só notificação manual"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: febre_amarela
+    name: "Febre amarela"
+    deadline: immediate
+    cid10: [A95]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: febre_amarela
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 24 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Febre amarela, cabeçalho 'A95.9' (febre_amarela.pdf); GVS 6ª ed. v2, 'CID-10: A95' (categoria)"
+      ciap2: "A77 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: chikungunya
+    name: "Febre de chikungunya (casos)"
+    deadline: weekly
+    cid10: [A920]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: dengue_chikungunya
+    notes: "Chikungunya em áreas sem transmissão e óbito com suspeita de chikungunya são imediatas para MS, SES e SMS e não têm CID própria: notificar à mão."
+    sources:
+      deadline: "prt11211 Anexo I, item 25a — semanal; 25b áreas sem transmissão e 25c óbito — imediata (prt11211.html)"
+      cid10: "Ficha Dengue e febre de chikungunya imprime 'A92' (categoria, cobriria A92.3 e A92.8) (dengue_chikungunya.pdf); GVS 6ª ed. v2, 'CID-10: A90, A92.0, A92.8' — fica A92.0 ('Febre de Chikungunya' na tabela do DATASUS)"
+      ciap2: "A77 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: febre_nilo_ocidental
+    name: "Febre do Nilo Ocidental e outras arboviroses de importância em saúde pública"
+    deadline: immediate
+    cid10: [A923]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: febre_nilo
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 26 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Febre do Nilo e outras arboviroses, cabeçalho 'A92.3' (febre_nilo.pdf); GVS 6ª ed. v2, 'CID-10: A92.3'"
+      ciap2: "A77 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: febre_oropouche
+    name: "Febre do Oropouche (casos)"
+    deadline: weekly
+    cid10: [A930]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: notificacao_conclusao
+    notes: "Óbitos e óbitos fetais, gestante e anomalias congênitas por Oropouche são imediatas para MS, SES e SMS e não têm CID própria: notificar à mão."
+    sources:
+      deadline: "prt11211 Anexo I, item 27a — semanal; 27b, 27c e 27d — imediata (prt11211.html)"
+      cid10: "NT 117/2024-CGARB/DEDT/SVSA/MS: 'notificação/conclusão ... utilizando o CID A93.0 específico para a Oropouche' (nt117_2024_oropouche.pdf, cópia publicada pela SES-MG)"
+      ciap2: "A77 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: febre_maculosa
+    name: "Febre maculosa e outras riquetsioses"
+    deadline: immediate
+    cid10: [A77]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: febre_maculosa
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 28 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Febre maculosa/rickettsioses, cabeçalho 'A77.9' (febre_maculosa.pdf); GVS 6ª ed. v3, 'CID-10: A77 – rickettsioses transmitidas por carrapatos' (categoria)"
+      ciap2: "A78 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: febre_tifoide
+    name: "Febre tifoide"
+    deadline: immediate
+    cid10: [A010]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: febre_tifoide
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 29 — imediata para SES e SMS (prt11211.html)"
+      cid10: "Ficha Febre tifoide, cabeçalho 'A01.0' (febre_tifoide.pdf); GVS 6ª ed. v1, 'CID-10: A01.0'"
+      ciap2: "D70 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: hanseniase
+    name: "Hanseníase"
+    deadline: weekly
+    cid10: [A30]
+    ciap2: []
+    repeat_after_days: 365
+    sinan_form: hanseniase
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 30 — semanal (prt11211.html)"
+      cid10: "Ficha Hanseníase, cabeçalho 'A30.9' (hanseniase.pdf); GVS 6ª ed. v2, 'CID-10: A30' (categoria)"
+      ciap2: "A78 na edição brasileira é 'Hanseníase e outras doenças infecciosas NE' (A20–A28, A30, A77, B55, B57…) — ambígua, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: hantavirose
+    name: "Hantavirose"
+    deadline: immediate
+    cid10: [A988, B334]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: hantavirose
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 31 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Hantavirose, cabeçalho 'A98.8' (hantavirose.pdf); GVS 6ª ed. v3, 'CID-10: B33.4'"
+      ciap2: "A77 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: hepatites_virais
+    name: "Hepatites virais"
+    deadline: weekly
+    cid10: [B15, B16, B17, B18, B19]
+    ciap2: [D72]
+    repeat_after_days: 36500
+    sinan_form: hepatites_virais
+    notes: "Inclui o item 33 da portaria (hepatite B em gestante, parturiente ou puérpera e criança exposta), semanal, na mesma ficha e com os mesmos códigos: a gestante já notificada é notificada à mão."
+    sources:
+      deadline: "prt11211 Anexo I, itens 32 e 33 — semanal (prt11211.html)"
+      cid10: "Ficha Hepatites virais, cabeçalho 'B19' (hepatites_virais.pdf); GVS 6ª ed. v2, 'CID-10: B15 – B19.9'"
+      ciap2: "CIAP-2 D72 'Hepatite viral' → B15 a B19, K77.0 (ciap2_sbmfc.pdf)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: hiv_aids
+    name: "HIV/AIDS - Infecção pelo Vírus da Imunodeficiência Humana ou Síndrome da Imunodeficiência Adquirida"
+    deadline: weekly
+    cid10: [B20, B21, B22, B23, B24, Z21]
+    ciap2: [B90]
+    repeat_after_days: 36500
+    sinan_form: aids_adulto
+    notes: "Inclui o item 36 da portaria (infecção pelo HIV), semanal, com o mesmo código Z21. Menores de 13 anos: ficha aids_crianca."
+    sources:
+      deadline: "prt11211 Anexo I, itens 34 e 36 — semanal (prt11211.html)"
+      cid10: "Fichas Aids adulto e Aids criança, cabeçalho 'B24' (aids_adulto.pdf, aids_crianca.pdf); GVS 6ª ed. v2, 'CID-10: infecção pelo HIV – Z21; aids – B20-B24'"
+      ciap2: "CIAP-2 B90 'Infecção pelo HIV/aids' → B20 a B24, R75, Z21 (ciap2_sbmfc.pdf)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: hiv_gestante_crianca_exposta
+    name: "Infecção pelo HIV em gestante, parturiente ou puérpera e criança exposta ao risco de transmissão vertical do HIV"
+    deadline: weekly
+    cid10: [Z206]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: gestante_hiv
+    notes: "A ficha de gestante HIV imprime Z21, o mesmo código da infecção pelo HIV (linha hiv_aids): a gestante é notificada à mão; Z20.6 é a criança exposta."
+    sources:
+      deadline: "prt11211 Anexo I, item 35 — semanal (prt11211.html)"
+      cid10: "GVS 6ª ed. v2, 'criança exposta ao HIV – Z20.6'; ficha Gestante HIV, cabeçalho 'Z21' (gestante_hiv.pdf) — Z21 fica em hiv_aids"
+      ciap2: "B90 fica em hiv_aids — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: htlv
+    name: "Infecção pelo Vírus Linfotrópico de Células T Humanas (HTLV)"
+    deadline: weekly
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Inclui o item 38 da portaria (HTLV em gestante, parturiente ou puérpera e criança exposta), semanal. Sem ficha no portal do Sinan: notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, itens 37 e 38 — semanal (prt11211.html)"
+      cid10: "sem ficha no portal do Sinan nem CID própria nas fontes baixadas — só notificação manual"
+      ciap2: "A77 (inclui B33.3, retrovírus) é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: influenza_novo_subtipo
+    name: "Influenza humana produzida por novo subtipo viral"
+    deadline: immediate
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Sem CID própria nas fontes (a GVS dá J11 à influenza sazonal): notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 39 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "sem ficha própria no portal do Sinan (a da página de influenza é a de SRAG, srag.pdf); GVS 6ª ed. v1 dá 'J11' à influenza sazonal — sem CID do novo subtipo nas fontes"
+      ciap2: "R80 (gripe) é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: intoxicacao_exogena
+    name: "Intoxicação exógena (por substâncias químicas, incluindo agrotóxicos, gases tóxicos e metais pesados)"
+    deadline: weekly
+    cid10: [T659]
+    ciap2: [A84]
+    repeat_after_days: 30
+    sinan_form: intoxicacao_exogena
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 40 — semanal (prt11211.html)"
+      cid10: "Ficha Intoxicação exógena, cabeçalho 'T65.9' (intoxicacao_exogena.pdf); GVS 6ª ed. v3, 'CID-10: T65.9'"
+      ciap2: "CIAP-2 A84 'Intoxicação por medicamento' → T36 a T50 (ciap2_sbmfc.pdf); A86 (T51–T65) cobre também animais peçonhentos — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: leishmaniose_tegumentar_americana
+    name: "Leishmaniose tegumentar americana"
+    deadline: weekly
+    cid10: [B551]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: leishmaniose_tegumentar
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 41 — semanal (prt11211.html)"
+      cid10: "Ficha LTA, cabeçalho 'B55.1' (leishmaniose_tegumentar.pdf); GVS 6ª ed. v2, 'CID-10: B55.1'"
+      ciap2: "A78 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: leishmaniose_visceral
+    name: "Leishmaniose visceral"
+    deadline: weekly
+    cid10: [B550]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: leishmaniose_visceral
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 42 — semanal (prt11211.html)"
+      cid10: "Ficha LV, cabeçalho 'B55.0' (leishmaniose_visceral.pdf); GVS 6ª ed. v2, 'CID-10: B55.0'"
+      ciap2: "A78 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: leptospirose
+    name: "Leptospirose"
+    deadline: immediate
+    cid10: [A27]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: leptospirose
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 43 — imediata para SMS (prt11211.html)"
+      cid10: "Ficha Leptospirose, cabeçalho 'A27.9' (leptospirose.pdf); GVS 6ª ed. v3, 'CID-10: A27' (categoria)"
+      ciap2: "A78 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: ler_dort
+    name: "Lesões por esforços repetitivos/distúrbios osteomusculares relacionados ao trabalho (LER/DORT)"
+    deadline: weekly
+    cid10: [Z579]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: drt_ler_dort
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 44 — semanal (prt11211.html)"
+      cid10: "Ficha DRT LER/DORT, cabeçalho 'Z57.9' (drt_ler_dort.pdf); GVS 6ª ed. v3, 'CID-10: Z57.9'"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: malaria
+    name: "Malária"
+    deadline: immediate
+    cid10: [B50, B51, B52, B53, B54, P373, P374]
+    ciap2: [A73]
+    repeat_after_days: 30
+    sinan_form: malaria
+    notes: "Na região amazônica a notificação é semanal; fora dela (região extra-amazônica), imediata para MS, SES e SMS. A carga usa o prazo mais curto."
+    sources:
+      deadline: "prt11211 Anexo I, item 45a região amazônica — semanal; 45b região extra-amazônica — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Malária, cabeçalho 'B54' (malaria.pdf); GVS 6ª ed. v2, 'CID-10: B50 a B54 / P37.3 e P37.4'"
+      ciap2: "CIAP-2 A73 'Malária' → B50 a B54 (ciap2_sbmfc.pdf)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: mpox
+    name: "Monkeypox (varíola dos macacos)"
+    deadline: immediate
+    cid10: [B04]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Sem ficha no portal do Sinan."
+    sources:
+      deadline: "prt11211 Anexo I, item 46 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Tabela CID-10 do DATASUS, categoria B04 'Varíola dos macacos [Monkeypox]' (cid10_datasus_csv.zip, CID-10-CATEGORIAS.CSV) — mesmo nome da portaria"
+      ciap2: "A76 (B03, B04…) é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: obito_infantil_materno
+    name: "Óbito infantil e materno"
+    deadline: weekly
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Óbito registrado na Declaração de Óbito (SIM): notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 47 — semanal (prt11211.html)"
+      cid10: "evento (óbito), não diagnóstico: sem CID — só notificação manual"
+      ciap2: "sem rubrica CIAP-2"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: caxumba
+    name: "Parotidite (caxumba)"
+    deadline: weekly
+    cid10: [B26]
+    ciap2: [D71]
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "O art. 2º da Portaria 11.211 diz notificação imediata, o Anexo I diz semanal; vale o anexo (resposta do MS no Fala.BR, 13/08/2026)."
+    sources:
+      deadline: "prt11211 Anexo I, item 48 — semanal; art. 2º, I diz imediata (prt11211.html); resposta do MS no Fala.BR de 13/08/2026 (pesquisa frente 5)"
+      cid10: "GVS 6ª ed. v1, 'Caxumba/parotidite epidêmica', 'CID-10: B26'"
+      ciap2: "CIAP-2 D71 'Caxumba/parotidite epidêmica' → B26 (ciap2_sbmfc.pdf)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: perda_auditiva_trabalho
+    name: "Perda auditiva relacionada ao trabalho"
+    deadline: weekly
+    cid10: [H833]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: drt_pair
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 49 — semanal (prt11211.html)"
+      cid10: "Ficha DRT PAIR, cabeçalho 'H83.3' (drt_pair.pdf); GVS 6ª ed. v3, 'CID-10: H83.3'"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: pneumoconioses_trabalho
+    name: "Pneumoconioses relacionadas ao trabalho"
+    deadline: weekly
+    cid10: [J60, J61, J62, J63, J64, J65, J92]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: drt_pneumoconiose
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 50 — semanal (prt11211.html)"
+      cid10: "Ficha DRT Pneumoconioses, cabeçalho 'J64' (drt_pneumoconiose.pdf); GVS 6ª ed. v3: 'Para a notificação, orienta-se utilizar os CID-10' J60, J61, J62, J63, J64, J65 e placas pleurais J92"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: peste
+    name: "Peste"
+    deadline: immediate
+    cid10: [A20]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: peste
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 51 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Peste, cabeçalho 'A20.9' (peste.pdf); GVS 6ª ed. v3, 'CID-10: A20' (categoria)"
+      ciap2: "A78 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: poliomielite_pfa
+    name: "Poliomielite/paralisia flácida aguda (PFA)"
+    deadline: immediate
+    cid10: [A80]
+    ciap2: [N70]
+    repeat_after_days: 30
+    sinan_form: pfa_poliomielite
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 52 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha PFA/Poliomielite, cabeçalho 'A80.9' (pfa_poliomielite.pdf); GVS 6ª ed. v1, 'CID-10: A80' (categoria)"
+      ciap2: "CIAP-2 N70 'Poliomielite' → A80, A85.0, B91 (ciap2_sbmfc.pdf)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: raiva_humana
+    name: "Raiva humana"
+    deadline: immediate
+    cid10: [A82]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: raiva_humana
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 53 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Raiva humana, cabeçalho 'A82.9' (raiva_humana.pdf); GVS 6ª ed. v3, 'CID-10: A82' (categoria)"
+      ciap2: "A77 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: sindrome_rubeola_congenita
+    name: "Síndrome da rubéola congênita"
+    deadline: immediate
+    cid10: [P350]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: rubeola_congenita
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 54 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Síndrome da rubéola congênita, cabeçalho 'P35.0' (rubeola_congenita.pdf); GVS 6ª ed. v1, 'CID-10: P35.0'"
+      ciap2: "A74 (rubéola) inclui rubéola congênita — ambígua, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: sarampo
+    name: "Sarampo"
+    deadline: immediate
+    cid10: [B05]
+    ciap2: [A71]
+    repeat_after_days: 30
+    sinan_form: exantematica
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 55a (doenças exantemáticas) — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "GVS 6ª ed. v1, 'Sarampo', 'CID-10: B05'; a ficha Doenças exantemáticas imprime 'B09' para sarampo e rubéola juntos (exantematica.pdf) — fora"
+      ciap2: "CIAP-2 A71 'Sarampo' → B05 (ciap2_sbmfc.pdf)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: rubeola
+    name: "Rubéola"
+    deadline: immediate
+    cid10: [B06]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: exantematica
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 55b (doenças exantemáticas) — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "GVS 6ª ed. v1, 'Rubéola', 'CID-10: B06'; a ficha Doenças exantemáticas imprime 'B09' para sarampo e rubéola juntos (exantematica.pdf) — fora"
+      ciap2: "A74 'Rubéola' inclui rubéola congênita (outra doença da lista) — ambígua, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: sifilis_adquirida
+    name: "Sífilis adquirida"
+    deadline: weekly
+    cid10: [A539]
+    ciap2: []
+    repeat_after_days: 90
+    sinan_form: null
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 56a — semanal (prt11211.html)"
+      cid10: "GVS 6ª ed. v2, 'Sífilis adquirida e em gestante', 'CID-10: sífilis adquirida – A53.9'"
+      ciap2: "X70 (A51–A53) também é a gestante (notificada como sífilis em gestante) e Y70 (A50–A53) também é a congênita — ambíguas, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: sifilis_congenita
+    name: "Sífilis congênita"
+    deadline: weekly
+    cid10: [A50]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: sifilis_congenita
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 56b — semanal (prt11211.html)"
+      cid10: "Ficha Sífilis congênita, cabeçalho 'A50.9' (sifilis_congenita.pdf); GVS 6ª ed. v2, 'CID-10: sífilis congênita – A50' (categoria)"
+      ciap2: "Y70 (A50–A53) também é a adquirida — ambígua, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: sifilis_gestante
+    name: "Sífilis em gestante"
+    deadline: weekly
+    cid10: [O981]
+    ciap2: []
+    repeat_after_days: 90
+    sinan_form: sifilis_gestante
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 56c — semanal (prt11211.html)"
+      cid10: "Ficha Sífilis em gestante, cabeçalho 'O98.1' (sifilis_gestante.pdf); GVS 6ª ed. v2, 'sífilis em gestante – 098.1'"
+      ciap2: "X70 também é a adquirida — ambígua, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: sim_a_covid
+    name: "Síndrome inflamatória multissistêmica em adultos (SIM-A) associada à covid-19"
+    deadline: immediate
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Sem ficha no portal do Sinan: notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 57 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "sem ficha no portal do Sinan nem CID nas fontes baixadas — só notificação manual"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: sim_p_covid
+    name: "Síndrome inflamatória multissistêmica pediátrica (SIM-P) associada à covid-19"
+    deadline: immediate
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Sem ficha no portal do Sinan: notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 58 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "sem ficha no portal do Sinan nem CID nas fontes baixadas — só notificação manual"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: srag
+    name: "Síndrome respiratória aguda grave (SRAG) associada a coronavírus e SRAG hospitalizado ou óbito por SRAG"
+    deadline: immediate
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: srag
+    notes: "A ficha de SRAG imprime J11, que a GVS dá à influenza sazonal (gripe comum na APS); SRAG exige internação ou óbito. Fora da correspondência automática: notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 59 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha SRAG internada ou óbito por SRAG, 'CID - J11' (srag.pdf); GVS 6ª ed. v1, 'Influenza sazonal — CID-10: J11' — fora da correspondência (ver notes)"
+      ciap2: "R80 (gripe) é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: sindrome_gripal_covid
+    name: "Síndrome gripal por covid-19 confirmada"
+    deadline: immediate
+    cid10: []
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "Sem ficha no portal do Sinan: notificação manual."
+    sources:
+      deadline: "prt11211 Anexo I, item 60 — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "sem ficha no portal do Sinan nem CID nas fontes baixadas — só notificação manual"
+      ciap2: "R80 (gripe) é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: tetano_acidental
+    name: "Tétano acidental"
+    deadline: immediate
+    cid10: [A35]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: tetano_acidental
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 61a — imediata para SES e SMS (prt11211.html)"
+      cid10: "Ficha Tétano acidental, cabeçalho 'A35' (tetano_acidental.pdf); GVS 6ª ed. v1, 'CID-10: A35'"
+      ciap2: "N72 'Tétano' → A33 a A35 cobre também o neonatal — ambígua, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: tetano_neonatal
+    name: "Tétano neonatal"
+    deadline: immediate
+    cid10: [A33]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: tetano_neonatal
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 61b — imediata para MS, SES e SMS (prt11211.html)"
+      cid10: "Ficha Tétano neonatal, cabeçalho 'A33' (tetano_neonatal.pdf); GVS 6ª ed. v1, 'CID-10: A33'"
+      ciap2: "N72 cobre também o acidental — ambígua, fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: toxoplasmose_gestacional_congenita
+    name: "Toxoplasmose gestacional e congênita"
+    deadline: weekly
+    cid10: [O986, P371]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: null
+    notes: "O98.6 é 'doenças causadas por protozoários complicando a gravidez' (não só toxoplasmose)."
+    sources:
+      deadline: "prt11211 Anexo I, item 62 — semanal (prt11211.html)"
+      cid10: "GVS 6ª ed. v1, 'Toxoplasmose adquirida na gestação e toxoplasmose congênita', 'CID-10: O98.6 ...; P37.1 – toxoplasmose congênita'"
+      ciap2: "A78 é ambígua — fora"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: transtornos_mentais_trabalho
+    name: "Transtornos mentais relacionados ao trabalho"
+    deadline: weekly
+    cid10: [F99]
+    ciap2: []
+    repeat_after_days: 30
+    sinan_form: drt_transtorno_mental
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 63 — semanal (prt11211.html)"
+      cid10: "Ficha DRT Transtornos mentais relacionados ao trabalho, cabeçalho 'F99' (drt_transtorno_mental.pdf); GVS 6ª ed. v3, 'CID-10: F99'"
+      ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: tuberculose
+    name: "Tuberculose"
+    deadline: weekly
+    cid10: [A15, A16, A17, A18, A19]
+    ciap2: [A70]
+    repeat_after_days: 270
+    sinan_form: tuberculose
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 64 — semanal (prt11211.html)"
+      cid10: "Ficha Tuberculose, cabeçalho 'A16.9' (tuberculose.pdf, coberto por A16); GVS 6ª ed. v2, 'CID-10: A15 a A19; ...'"
+      ciap2: "CIAP-2 A70 'Tuberculose' → A15 a A19, B90, N33.0 (ciap2_sbmfc.pdf)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: varicela
+    name: "Varicela"
+    deadline: immediate
+    cid10: [B01]
+    ciap2: [A72]
+    repeat_after_days: 30
+    sinan_form: null
+    notes: null
+    sources:
+      deadline: "prt11211 Anexo I, item 65 — imediata para SES e SMS (prt11211.html)"
+      cid10: "GVS 6ª ed. v1, 'Varicela/herpes-zóster', 'CID: B01/B02' — só B01 (herpes-zóster não está na lista)"
+      ciap2: "CIAP-2 A72 'Varicela' → B01 (ciap2_sbmfc.pdf)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+
+  - code: violencia
+    name: "Violência doméstica e/ou outras violências"
+    deadline: weekly
+    cid10: [Y09]
+    ciap2: [Z25]
+    repeat_after_days: 30
+    sinan_form: violencia
+    notes: "Violência sexual e tentativa de suicídio são imediatas para SMS, na mesma ficha e com o mesmo CID: notificar à mão."
+    sources:
+      deadline: "prt11211 Anexo I, item 66a — semanal; 66b violência sexual e tentativa de suicídio — imediata para SMS (prt11211.html)"
+      cid10: "Ficha Violência interpessoal/autoprovocada, cabeçalho 'Y09' (violencia.pdf); GVS 6ª ed. v3, 'CID-10: Y09'"
+      ciap2: "CIAP-2 Z25 'Ato/acontecimento violento' → T74.1, T74.2, T74.8, T74.9, Z65.4, Z65.5 (ciap2_sbmfc.pdf)"
+      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"

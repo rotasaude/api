@@ -1,0 +1,47 @@
+# Campos da notificação individual do Sinan que a ficha (`disease_notifications.form`) guarda (módulo 25,
+# Task 0). Lido por Surveillance::Form. Chave = nome em snake_case inglês; `field` = número do campo no
+# bloco de notificação individual (campos 1–30) da Ficha de Notificação/Conclusão e das fichas de
+# investigação do Sinan NET v5 — a mesma numeração do dicionário de dados da notificação individual.
+#
+# Ficam de fora (vêm do paciente ou da notificação, só leitura): 1 tipo (2 individual), 2 agravo + CID,
+# 3 data da notificação, 4–6 UF, município e unidade notificadora, 7 primeiros sintomas, 8 nome,
+# 9 nascimento, 10 idade, 11 sexo, 15 Cartão SUS, 16 nome da mãe, 18 município de residência + IBGE.
+#
+# Fontes (vendor/surveillance/2026-10-27/): notificacao_conclusao.pdf (numeração 17–30 da residência),
+# nindiv_dic_dados.pdf (domínios e tamanhos de digitação), nindiv_v5.pdf e nindiv_v5_instr.pdf (a ficha
+# genérica numera a residência 20–33 porque 17–19 são de surto: não é a numeração usada aqui), fichas de
+# investigação (campo 32 'Ocupação').
+version: "Sinan NET v5 — notificação individual (campos 1–30)"
+fields:
+  pregnancy: { field: 12, type: code, domain: { "1": "1º trimestre", "2": "2º trimestre", "3": "3º trimestre", "4": "Idade gestacional ignorada", "5": "Não", "6": "Não se aplica", "9": "Ignorado" } }
+  race_color: { field: 13, type: code, domain: { "1": "Branca", "2": "Preta", "3": "Amarela", "4": "Parda", "5": "Indígena", "9": "Ignorado" } }
+  schooling:
+    field: 14
+    type: code
+    domain:
+      "0": "Analfabeto"
+      "1": "1ª a 4ª série incompleta do EF (antigo primário ou 1º grau)"
+      "2": "4ª série completa do EF (antigo primário ou 1º grau)"
+      "3": "5ª à 8ª série incompleta do EF (antigo ginásio ou 1º grau)"
+      "4": "Ensino fundamental completo (antigo ginásio ou 1º grau)"
+      "5": "Ensino médio incompleto (antigo colegial ou 2º grau)"
+      "6": "Ensino médio completo (antigo colegial ou 2º grau)"
+      "7": "Educação superior incompleta"
+      "8": "Educação superior completa"
+      "9": "Ignorado"
+      "10": "Não se aplica"
+  residence_uf: { field: 17, type: uf }
+  residence_district: { field: 19, type: text, max: 60, source: "o Sinan grava o código do distrito da tabela municipal (varchar 9); no papel é o nome — 60 = limite do bairro (proposta)" }
+  residence_neighborhood: { field: 20, type: text, max: 60 }
+  residence_street: { field: 21, type: text, max: 60 }
+  residence_number: { field: 22, type: text, max: 6 }
+  residence_complement: { field: 23, type: text, max: 30 }
+  residence_geo1: { field: 24, type: digits, min: 1, max: 8, source: "código da tabela georreferenciada do município (number 8)" }
+  residence_geo2: { field: 25, type: digits, min: 1, max: 8, source: "código da tabela georreferenciada do município (number 8)" }
+  residence_reference: { field: 26, type: text, max: 70 }
+  residence_zip: { field: 27, type: digits, length: 8 }
+  phone: { field: 28, type: digits, min: 10, max: 11, source: "DDD varchar 2 + telefone varchar 9" }
+  residence_zone: { field: 29, type: code, domain: { "1": "Urbana", "2": "Rural", "3": "Periurbana", "9": "Ignorado" } }
+  residence_country: { field: 30, type: text, max: 40, source: "o Sinan grava o código da tabela de países (varchar 4); no papel é o nome — 40 é proposta do plano" }
+  occupation_cbo: { field: null, type: cbo, source: "fichas de investigação, campo 32 'Ocupação' (ex.: dengue_chikungunya.pdf, meningite.pdf, exantematica.pdf); a Ficha de Notificação/Conclusão e a NINDIV v5 não têm" }
+types: [code, text, digits, uf, cbo]

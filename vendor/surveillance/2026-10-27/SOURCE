@@ -1,0 +1,178 @@
+# Fontes oficiais da prova técnica do módulo 25 (Task 0). Dados não confiáveis: nunca executar.
+fetched_on: 2026-10-27
+files:
+  prt11211.html:
+    url: https://bvsms.saude.gov.br/bvs/saudelegis/gm/2026/prt11211_14_05_2026.html
+    sha256: f55d931a166882974443a003ad16ce8b95bbbca8c1abd841c17dcf94ce52856e
+  aids_adulto.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/AidsAdulto/Aids_adulto_v5.pdf
+    sha256: e3e3c6869185588c693d5742d7885d6e653aeebc0c71968bc470f2cd373b0f50
+  aids_crianca.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/AidsCrianca/Aids_crianca_v5.pdf
+    sha256: ce5d65ecca8ae961abd897b6ac79693321854bbdeac44d8176da866c2cdc291f
+  animais_peconhentos.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/AAP/Animais_Peconhentos_v5.pdf
+    sha256: 14da06726487fe4f4bbaaf83f152c565a801d4a306be2f255a0662b21b64bb86
+  atendimento_antirrabico.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Atendimento%20Anti-rabico/anti_rabico_v5.pdf
+    sha256: 65c5abd9d647987fec6273708f36950c6fee3dd5fd304a44fda8ae4ca5a7b2ed
+  botulismo.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Botulismo/Botulismo_v5.pdf
+    sha256: f8c9e86cf98a4dd2d7b3a22fa8926308e49b164251036d37d9ba9a213fe96e3a
+  calendario_2025.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Calendario/2025.pdf
+    sha256: b72e5110249997b63c467ef35c48349b5cdfd2da8ad1852f68c868e67037979a
+  calendario_2026.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Calendario/2026.pdf
+    sha256: 3f93e3ed81f200bdc4e118d5a88a2e667c869975789c0b34296be6e57a722ac5
+  chagas_aguda.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Chagas/Chagas_v5.pdf
+    sha256: 07a9d0351e7b61b33c8590e5616e12a4c959e9d0bfdc28bd884c79f6cfc65599
+  ciap2_sbmfc.pdf:
+    url: https://www.sbmfc.org.br/wp-content/uploads/media/file/CIAP%202/CIAP%20Brasil_atualizado.pdf
+    sha256: ce29b436a8758ca460cc7a38f0882d8d24b0683b0fc93118c5f446f626044936
+  colera.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Colera/Colera_v5.pdf
+    sha256: 50329a399a4517f2d13b989c7fe5e8d1e5b4e2ddd4d926cc6af51bcfd93e6fb8
+  coqueluche.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Coqueluche/Coqueluche_v5.pdf
+    sha256: eb9c70266cc3ec747b0344f5ccacd8d10ee835f75eb445c6ef66f28b47074795
+  dengue_chikungunya.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Dengue/Ficha_DENGCHIK_FINAL.pdf
+    sha256: aaf0972abf2003984af78798e8a70e2641a6673e1de5d330110d6dc09dbda637
+  difteria.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Difteria/Difteria_v5.pdf
+    sha256: 68927391b1bb92384a62690014b7a3bd90a96caba0324d15d211a4084bec9d19
+  drt_acidente_trabalho_grave.pdf:
+    url: https://portalsinan.saude.gov.br/images/DRT/DRT_Acidente_Trabalho_Grave.pdf
+    sha256: 84a11a6dbe60842b958be8c15edd18eb4805d118f5b368688ec0f5850543749e
+  drt_cancer.pdf:
+    url: https://portalsinan.saude.gov.br/images/DRT/DRT_CANCER.pdf
+    sha256: 046645f859862488b43a873fd999f8221e5848c2f28cbe18ddf6c73c30cc6d9d
+  drt_dermatoses.pdf:
+    url: https://portalsinan.saude.gov.br/images/DRT/DRT_DERMATOSES.pdf
+    sha256: 9c81eba0cdf2a15adcd890283a30c25600abc8061d81573d8ce4b8866b509552
+  drt_ler_dort.pdf:
+    url: https://portalsinan.saude.gov.br/images/DRT/DRT_LERDORT.pdf
+    sha256: 34937b048c5b3e9c8ed1eaef3d5548865db2e8be3b4e2ed3680b705680550024
+  drt_material_biologico.pdf:
+    url: https://portalsinan.saude.gov.br/images/DRT/DRT_Acidente_Trabalho_Biologico.pdf
+    sha256: 32c714b19bffffd54c9662befa210fb18737f87ef0de134b973384f4af5cd210
+  drt_pair.pdf:
+    url: https://portalsinan.saude.gov.br/images/DRT/DRT_PAIR.pdf
+    sha256: 243edf68c52994490aa7140bbbc380d578b047d9f269c24a362790f32bae1b62
+  drt_pneumoconiose.pdf:
+    url: https://portalsinan.saude.gov.br/images/DRT/DRT_Pneumoconioses.pdf
+    sha256: f1b228c8a1222a039ee8e32a8aaf4e2c95607b4097af5d970ea234336ce30f5b
+  drt_transtorno_mental.pdf:
+    url: https://portalsinan.saude.gov.br/images/DRT/DRT_TranstornosMentais.pdf
+    sha256: e424023c900ff58e11a61d99669a39670fb65c597a4ed946b1e596decad0f931
+  esquistossomose.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Esquistossomose/Esquistossomose_v5.pdf
+    sha256: 036c159e89e22ee85be761839a48c148bc7e65f64d59192fde18fe8cd1bab6e5
+  exantematica.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Exantematicas/Exantematica_v5.pdf
+    sha256: 550153e6046dca2e3ebe453177d36fb215710b11f263ce118725a6d4c53931e7
+  febre_amarela.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Febre%20Amarela/Febre_Amarela_v5.pdf
+    sha256: 27d8072c06d3d6785b8ab592914d08ab785a81208bd584df86d8a9d2e8e27c6e
+  febre_maculosa.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Febre%20Maculosa/Febre_Maculosa_v5.pdf
+    sha256: 9f7cb61dbd51292a30fb8964c64e488e23870bb8d21a942ef124b37b0f2a65bb
+  febre_nilo.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Febre_do_Nilo/FEBRE_DO_NILO.pdf
+    sha256: e9da40358d2d73f1850fa8e4008de9862d5febd557438a15c290fd6c37de4c79
+  febre_tifoide.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Febre-Tifoide/Febre_Tifoide_v5.pdf
+    sha256: 435e293612bc42ed94616041469ba84c97e3e36e170738a6d07a7dd84eefcc72
+  gestante_hiv.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/GestanteHIV/Gestante_HIV_v5.pdf
+    sha256: e627ff36908589b9a70bce13cb3a7f89243c9f8783dc12c3530e0d4f6231bf84
+  gvs_6ed_v1.pdf:
+    url: https://bvsms.saude.gov.br/bvs/publicacoes/guia_vigilancia_saude_6ed_v1.pdf
+    sha256: 7061eb407bae2f5a9a0c8eb4d819ce4f926191bac3a35db9e79509fd5519bbe4
+  gvs_6ed_v2.pdf:
+    url: https://bvsms.saude.gov.br/bvs/publicacoes/guia_vigilancia_saude_v2_6ed.pdf
+    sha256: 15ccc7b4ee9019478b3f398d678481474e614ed0a3766ee3d5be391e3ae5d28b
+  gvs_6ed_v3.pdf:
+    url: https://bvsms.saude.gov.br/bvs/publicacoes/guia_vigilancia_saude_6ed_v3.pdf
+    sha256: 737a9e6c586d443d1d6879d8ec90a8ba15977d6abeacbbe2eecbc8d7991735a0
+  hanseniase.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Hanseniase/Hanseniase_v5.pdf
+    sha256: 0c688177cb2fd763cbbb13b5a1a7d7f48639d615b202e7a2847809dd3fbf90a4
+  hantavirose.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Hantavirose/Hantavirose_v5.pdf
+    sha256: bb822885697aa4a637e22ea5279672dcc510ed8185cc762ab120159a410a4b68
+  hepatites_virais.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Hepatites_Virais/Ficha_Hepatites_Virais.pdf
+    sha256: 497a44cd01f2601071adcca6554eb8e62090298565fede51edcf5e32d10af12d
+  intoxicacao_exogena.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/iexog/Intoxicacao_Exogena_v5.pdf
+    sha256: 2c25f802936c2001e317a92fd47d1740fe8bde80cc02860440d3f06769dada08
+  leishmaniose_tegumentar.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Leishmaniose%20Tegumentar%20Americana/LTA_v5.pdf
+    sha256: 8fe4af0f1c424c4a80b691026eebce6750afe76a3113128b21ade322664f9708
+  leishmaniose_visceral.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Leishmaniose%20Visceral/LV_v5.pdf
+    sha256: dfe6257241d6d8deb48dbce20f8cb7739a49559b83eca2749f801d5b85c8e79c
+  leptospirose.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Leptospirose/Ficha_Leptospirose.pdf
+    sha256: 581b4dab1400497ba0f80d73e718793fd493fc27db740be5fa244ca597aaa27d
+  malaria.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Malaria/Malaria_v5.pdf
+    sha256: 3ad600bc38ecb7da260da774ba9b541e7cba3cb016569f2da48a15845025a6b0
+  meningite.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Meningite/Meningite_v5.pdf
+    sha256: a536f6900ac5a438726ad6e9f1dc15b7617635b2d0e01b5e67fd51749948d0f3
+  nindiv_dic_dados.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Notificacao_Individual/DIC_DADOS_NET---Notificao-Individual_rev.pdf
+    sha256: 357388895aeafb474b3544a5fedcb6b1244a01d4fcc65c984511733dd6661757
+  nindiv_v5.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/NINDIV/Notificacao_Individual_v5.pdf
+    sha256: 2e29e9f931ed8fd9941f4cbd5f298296047d26d84ac96b16821e40cd2d223376
+  nindiv_v5_instr.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/NINDIV/Notificacao_Individual_v5_instr.pdf
+    sha256: 82abb3aea9cc8869812d7e36c150701a043376e2f4e33da172b0914e5f0f7429
+  notificacao_conclusao.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/NINDIV/Ficha_conclusao_v5.pdf
+    sha256: b87ebfd414502c21eb0e7e269b2329eaa66fd6fe1086913b9b46dbfb7f9a93e1
+  nt117_2024_oropouche.pdf:
+    url: https://www.saude.mg.gov.br/wp-content/uploads/2025/01/Nota-Tecnica-No-117-2024-Atualizacao-das-orientacoes-para-a-vigilancia-do-Oropouche.pdf
+    sha256: b00bffb4bf198c66758d10cf04370f5439915ad2f9a444709a0997a9bbc2ee18
+  peste.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Peste/Peste_v5.pdf
+    sha256: b3ac4ced064c3eecd791b5c886e1b15628f255ec04252745902e77c6ff5fc381
+  pfa_poliomielite.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/PFA-Poliomielite/PFA_v5.pdf
+    sha256: aea005e586df5873546a524576db425e1de8dda53a0d3e3f0b6e13a01f02b8cb
+  raiva_humana.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Raiva%20Humana/Raiva_v5.pdf
+    sha256: 96c453d7789b759502ec532fa1b2fcab6ff90374401f83cd3f0953947313c45b
+  rubeola_congenita.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/SRC/SRC_v5.pdf
+    sha256: 47dda732e4da893e3e5ce6067f33bfb95c70676db4f72f5fc9b0e8701b7444e5
+  sifilis_congenita.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Sifilis-Con/Sifilis_Congenita.pdf
+    sha256: c86c2e68a41a2f0f556a5287f74ac641a9e2796cb429cd7f1e6b440a1066d052
+  sifilis_gestante.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Sifilis-Ges/Sifilis_Gestante.pdf
+    sha256: c8c457f355df20f4d8025c5ef2ad03fc0c66f2fe1db544ca7b34e3781dbdaca8
+  srag.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Influenza/Influenza_v5.pdf
+    sha256: 5ab573bca9096fefb536c86b80676932e48a96af6c51203d9793b0da2f68a68c
+  tetano_acidental.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/tetanoacidental/Tetano_Acidental_v5.pdf
+    sha256: 1a98f14d9a7c69e1ebddb86e2a9f79904aed6409b5757813dfe36d929d3f1d91
+  tetano_neonatal.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/tetanoneonatal/Tetano_NeoNatal_v5.pdf
+    sha256: c4240c9cbb6186354443c1a1cf20c2f102e69b083592be3b5f24869bd7761d1f
+  tuberculose.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/Tuberculose/Tuberculose_v5.pdf
+    sha256: 77b19f9d41d458bac7c749d25a0b5b6b90c542b0fd7377e371b401abf019ed23
+  violencia.pdf:
+    url: https://portalsinan.saude.gov.br/images/documentos/Agravos/via/violencia_v5.pdf
+    sha256: 2d5cfe89d62ed26b5128166ba9ad1a16ce7e1d50463f49520268fb108c2d416b
+  cid10_datasus_csv.zip:
+    url: http://www2.datasus.gov.br/cid10/V2008/downloads/CID10CSV.zip
+    sha256: 84f23809275575f751255048064bbb244b0de33fd5987ab98df0f98e5f5d2c95
+unavailable: []
