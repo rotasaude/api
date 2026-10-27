@@ -753,14 +753,14 @@ diseases:
     name: "Poliomielite/paralisia flácida aguda (PFA)"
     deadline: immediate
     cid10: [A80]
-    ciap2: [N70]
+    ciap2: []
     repeat_after_days: 30
     sinan_form: pfa_poliomielite
     notes: null
     sources:
       deadline: "prt11211 Anexo I, item 52 — imediata para MS, SES e SMS (prt11211.html)"
       cid10: "Ficha PFA/Poliomielite, cabeçalho 'A80.9' (pfa_poliomielite.pdf); GVS 6ª ed. v1, 'CID-10: A80' (categoria)"
-      ciap2: "CIAP-2 N70 'Poliomielite' → A80, A85.0, B91 (ciap2_sbmfc.pdf)"
+      ciap2: "N70 'Poliomielite' → A80, A85.0, B91 inclui efeitos tardios, síndrome pós-poliomielite e outras infecções enterovirais (ciap2_sbmfc.pdf) — ambígua, fora"
       repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
 
   - code: raiva_humana
@@ -977,14 +977,14 @@ diseases:
     name: "Tuberculose"
     deadline: weekly
     cid10: [A15, A16, A17, A18, A19]
-    ciap2: [A70]
+    ciap2: []
     repeat_after_days: 270
     sinan_form: tuberculose
     notes: null
     sources:
       deadline: "prt11211 Anexo I, item 64 — semanal (prt11211.html)"
       cid10: "Ficha Tuberculose, cabeçalho 'A16.9' (tuberculose.pdf, coberto por A16); GVS 6ª ed. v2, 'CID-10: A15 a A19; ...'"
-      ciap2: "CIAP-2 A70 'Tuberculose' → A15 a A19, B90, N33.0 (ciap2_sbmfc.pdf)"
+      ciap2: "A70 'Tuberculose' → A15 a A19, B90 (sequelas), N33.0 inclui efeitos tardios (ciap2_sbmfc.pdf) — ambígua, fora"
       repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
 
   - code: varicela

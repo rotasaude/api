@@ -43,5 +43,5 @@ fields:
   phone: { field: 28, type: digits, min: 10, max: 11, source: "DDD varchar 2 + telefone varchar 9" }
   residence_zone: { field: 29, type: code, domain: { "1": "Urbana", "2": "Rural", "3": "Periurbana", "9": "Ignorado" } }
   residence_country: { field: 30, type: text, max: 40, source: "o Sinan grava o código da tabela de países (varchar 4); no papel é o nome — 40 é proposta do plano" }
-  occupation_cbo: { field: null, type: cbo, source: "fichas de investigação, campo 32 'Ocupação' (ex.: dengue_chikungunya.pdf, meningite.pdf, exantematica.pdf); a Ficha de Notificação/Conclusão e a NINDIV v5 não têm" }
+  occupation_cbo: { field: null, type: cbo, source: "fichas de investigação, campo 'Ocupação' com número variável (31 a 34: ex. 32 em dengue_chikungunya.pdf, 31 nas DRT, 34 em violencia.pdf; ausente em tuberculose.pdf e pfa_poliomielite.pdf); a Ficha de Notificação/Conclusão, a NINDIV v5 e o dicionário de dados da notificação individual não têm o campo nem o tamanho" }
 types: [code, text, digits, uf, cbo]

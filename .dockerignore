@@ -12,3 +12,4 @@ test/
 spec/
 .rspec
 README.md
+vendor/surveillance/
