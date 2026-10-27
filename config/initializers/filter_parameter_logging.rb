@@ -65,7 +65,11 @@ Rails.application.config.filter_parameters += [
   # `cpf`, `cns`, `race_color`, `ethnicity` e `birth_date` já estão acima).
   :no_cpf_reason, :sociodemographic, :health_conditions, :street_situation,
   :living_conditions, :identification, :refused, :income_band, :living_since,
-  :patient_demographics, :death_on
+  :patient_demographics, :death_on,
+  # ADR 0043: notificação compulsória — a ficha (agravo e campos do Sinan), o
+  # número oficial, o motivo, a data de início dos sintomas, o código do agravo,
+  # a marca de paciente novo e o IBGE de residência (`reason` já estava).
+  /\A(form|official_number|reason|symptoms_on|disease_code|new_patient|residence_ibge)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

@@ -5,7 +5,8 @@ RSpec.describe TerritoryRegistry::Gate do
   it "está no catálogo depois de care_lines e exige o prontuário utilizável" do
     entry = Platform::Features::CATALOG.find { |e| e.key == "territory_registry" }
     expect(entry.requires).to eq(%w[feature:clinical_record ibge_code uf])
-    expect(Platform::Features::KEYS.last(2)).to eq(%w[care_lines territory_registry])
+    keys = Platform::Features::KEYS
+    expect(keys.index("territory_registry")).to eq(keys.index("care_lines") + 1)
   end
 
   it "usable? só com o interruptor ligado e o modo record; enabled? só o interruptor" do

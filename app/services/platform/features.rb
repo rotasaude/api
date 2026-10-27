@@ -125,7 +125,14 @@ module Platform
       # sem eles a ficha fica "não gerada" (city_profile_incomplete).
       Entry.new(key: "territory_registry",
                 description: "Cadastro territorial: microáreas, domicílios, famílias e cadastro individual com fichas LEDI de cadastro",
-                requires: %w[feature:clinical_record ibge_code uf])
+                requires: %w[feature:clinical_record ibge_code uf]),
+      # ADR 0043: vigilância epidemiológica (módulo 25). Sem pré-requisito: a
+      # notificação, a fila e o painel valem nos dois modos de prontuário; só
+      # as rotas de consulta ao prontuário exigem o clinical_record utilizável
+      # (Surveillance::Gate.consultation_usable?).
+      Entry.new(key: "surveillance",
+                description: "Vigilância epidemiológica: notificação compulsória, fila da vigilância, notificação negativa e painel por semana epidemiológica",
+                requires: [])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
