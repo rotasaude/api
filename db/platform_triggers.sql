@@ -242,3 +242,26 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- notifiable_disease_versions / notifiable_diseases (módulo 25; ADR 0043): a
+-- lista é versionada; versão nova é linha nova, nenhuma versão muda nem some.
+CREATE OR REPLACE FUNCTION rota_notifiable_diseases_immutable() RETURNS trigger AS $fn$
+BEGIN
+  RAISE EXCEPTION '%: immutable (% refused)', TG_TABLE_NAME, TG_OP;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.notifiable_disease_versions') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS notifiable_disease_versions_immutable ON notifiable_disease_versions';
+    EXECUTE 'CREATE TRIGGER notifiable_disease_versions_immutable BEFORE UPDATE OR DELETE ON notifiable_disease_versions
+      FOR EACH ROW EXECUTE FUNCTION rota_notifiable_diseases_immutable()';
+  END IF;
+  IF to_regclass('public.notifiable_diseases') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS notifiable_diseases_immutable ON notifiable_diseases';
+    EXECUTE 'CREATE TRIGGER notifiable_diseases_immutable BEFORE UPDATE OR DELETE ON notifiable_diseases
+      FOR EACH ROW EXECUTE FUNCTION rota_notifiable_diseases_immutable()';
+  END IF;
+END
+$do$;

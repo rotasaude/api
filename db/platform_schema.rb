@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_22_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_27_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -373,6 +373,36 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900001) do
     t.check_constraint "status::text = ANY (ARRAY['importing'::text, 'active'::text, 'superseded'::text, 'failed'::text])", name: "ck_medication_catalog_releases_status"
   end
 
+  create_table "notifiable_disease_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "effective_from", null: false
+    t.string "notes", limit: 500
+    t.string "ordinance", limit: 200, null: false
+    t.uuid "published_by_maintainer_id"
+    t.jsonb "sources"
+    t.integer "version", null: false
+    t.index ["version"], name: "idx_notifiable_disease_versions_version", unique: true
+    t.check_constraint "version >= 1", name: "ck_notifiable_disease_versions_version"
+  end
+
+  create_table "notifiable_diseases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.jsonb "ciap2", null: false
+    t.jsonb "cid10", null: false
+    t.string "code", limit: 48, null: false
+    t.string "deadline", null: false
+    t.uuid "list_version_id", null: false
+    t.string "name", limit: 120, null: false
+    t.string "notes", limit: 300
+    t.integer "repeat_after_days", null: false
+    t.string "sinan_form", limit: 60
+    t.jsonb "sources", null: false
+    t.index ["list_version_id", "code"], name: "idx_notifiable_diseases_version_code", unique: true
+    t.check_constraint "code::text ~ '^[a-z][a-z0-9_]{1,47}$'::text AND code::text !~ '^local_'::text", name: "ck_notifiable_diseases_code"
+    t.check_constraint "deadline::text = ANY (ARRAY['immediate'::text, 'weekly'::text])", name: "ck_notifiable_diseases_deadline"
+    t.check_constraint "jsonb_typeof(cid10) = 'array'::text AND jsonb_typeof(ciap2) = 'array'::text", name: "ck_notifiable_diseases_codes"
+    t.check_constraint "repeat_after_days >= 1 AND repeat_after_days <= 36500", name: "ck_notifiable_diseases_repeat"
+  end
+
   create_table "operator_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "ip_address"
@@ -638,6 +668,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_22_900001) do
   add_foreign_key "lab_analyte_templates", "lab_exam_templates"
   add_foreign_key "medication_catalog_items", "medication_catalog_releases", column: "first_release_id"
   add_foreign_key "medication_catalog_items", "medication_catalog_releases", column: "last_release_id"
+  add_foreign_key "notifiable_diseases", "notifiable_disease_versions", column: "list_version_id"
   add_foreign_key "operator_sessions", "operators"
   add_foreign_key "sigtap_procedure_cbos", "terminology_releases", column: "release_id"
   add_foreign_key "sigtap_procedure_cids", "terminology_releases", column: "release_id"
