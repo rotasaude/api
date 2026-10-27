@@ -24,14 +24,14 @@ diseases:
   - code: acidente_trabalho_material_biologico
     name: "Acidente de trabalho com exposição a material biológico"
     deadline: weekly
-    cid10: [Z209]
+    cid10: []
     ciap2: []
     repeat_after_days: 30
     sinan_form: drt_material_biologico
-    notes: null
+    notes: "Z20.9: código genérico impresso na ficha — não dispara sugestão (K13); notificar à mão; validar com a vigilância piloto."
     sources:
       deadline: "prt11211 Anexo I, item 1a — semanal (prt11211.html)"
-      cid10: "Ficha DRT Acidente de trabalho com exposição a material biológico, cabeçalho 'Z20.9' (drt_material_biologico.pdf); GVS 6ª ed. v3, 'CID-10: Z20.9'"
+      cid10: "Ficha DRT Acidente de trabalho com exposição a material biológico, cabeçalho 'Z20.9' (drt_material_biologico.pdf); GVS 6ª ed. v3, 'CID-10: Z20.9' — código genérico impresso na ficha — não dispara sugestão (K13); notificar à mão; validar com a vigilância piloto"
       ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
       repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
 
@@ -108,14 +108,14 @@ diseases:
   - code: cancer_trabalho
     name: "Câncer relacionado ao trabalho"
     deadline: weekly
-    cid10: [C80]
+    cid10: []
     ciap2: []
     repeat_after_days: 30
     sinan_form: drt_cancer
-    notes: null
+    notes: "C80: código genérico impresso na ficha — não dispara sugestão (K13); notificar à mão; validar com a vigilância piloto."
     sources:
       deadline: "prt11211 Anexo I, item 6 — semanal (prt11211.html)"
-      cid10: "Ficha DRT Câncer relacionado ao trabalho, cabeçalho 'C80' (drt_cancer.pdf)"
+      cid10: "Ficha DRT Câncer relacionado ao trabalho, cabeçalho 'C80' (drt_cancer.pdf) — código genérico impresso na ficha — não dispara sugestão (K13); notificar à mão; validar com a vigilância piloto"
       ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
       repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
 
@@ -164,14 +164,14 @@ diseases:
   - code: dermatoses_ocupacionais
     name: "Dermatoses ocupacionais"
     deadline: weekly
-    cid10: [L989]
+    cid10: []
     ciap2: []
     repeat_after_days: 30
     sinan_form: drt_dermatoses
-    notes: null
+    notes: "L98.9: código genérico impresso na ficha — não dispara sugestão (K13); notificar à mão; validar com a vigilância piloto."
     sources:
       deadline: "prt11211 Anexo I, item 10 — semanal (prt11211.html)"
-      cid10: "Ficha DRT Dermatoses ocupacionais, cabeçalho 'L98.9' (drt_dermatoses.pdf); GVS 6ª ed. v3, 'CID-10: L98.9'"
+      cid10: "Ficha DRT Dermatoses ocupacionais, cabeçalho 'L98.9' (drt_dermatoses.pdf); GVS 6ª ed. v3, 'CID-10: L98.9' — código genérico impresso na ficha — não dispara sugestão (K13); notificar à mão; validar com a vigilância piloto"
       ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
       repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
 
@@ -962,28 +962,28 @@ diseases:
   - code: transtornos_mentais_trabalho
     name: "Transtornos mentais relacionados ao trabalho"
     deadline: weekly
-    cid10: [F99]
+    cid10: []
     ciap2: []
     repeat_after_days: 30
     sinan_form: drt_transtorno_mental
-    notes: null
+    notes: "F99: código genérico impresso na ficha — não dispara sugestão (K13); notificar à mão; validar com a vigilância piloto."
     sources:
       deadline: "prt11211 Anexo I, item 63 — semanal (prt11211.html)"
-      cid10: "Ficha DRT Transtornos mentais relacionados ao trabalho, cabeçalho 'F99' (drt_transtorno_mental.pdf); GVS 6ª ed. v3, 'CID-10: F99'"
+      cid10: "Ficha DRT Transtornos mentais relacionados ao trabalho, cabeçalho 'F99' (drt_transtorno_mental.pdf); GVS 6ª ed. v3, 'CID-10: F99' — código genérico impresso na ficha — não dispara sugestão (K13); notificar à mão; validar com a vigilância piloto"
       ciap2: "sem rubrica CIAP-2 que corresponda só a esta doença"
       repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
 
   - code: tuberculose
     name: "Tuberculose"
     deadline: weekly
-    cid10: [A15, A16, A17, A18, A19]
+    cid10: [A15, A16, A17, A18, A19, K930, M490, M900, N740, N741, O980, P370]
     ciap2: []
     repeat_after_days: 270
     sinan_form: tuberculose
-    notes: null
+    notes: "Inclui as formas extrapulmonares listadas pelo GVS (K93.0, M49.0, M90.0, N74.0, N74.1, O98.0, P37.0); J65 (silicotuberculose) fica com as pneumoconioses."
     sources:
       deadline: "prt11211 Anexo I, item 64 — semanal (prt11211.html)"
-      cid10: "Ficha Tuberculose, cabeçalho 'A16.9' (tuberculose.pdf, coberto por A16); GVS 6ª ed. v2, 'CID-10: A15 a A19; ...'"
+      cid10: "Ficha Tuberculose, cabeçalho 'A16.9' (tuberculose.pdf, coberto por A16); GVS 6ª ed. v2, 'CID-10: A15 a A19; J65; K93.0; M49.0; M90.0; N74.0; N74.1; O98.0; P37.0'. K13 (e): acrescentados K93.0, M49.0, M90.0, N74.0, N74.1, O98.0, P37.0 (sem colisão, nem por prefixo, com outra doença da lista); deixado de fora J65, que já é da doença pneumoconioses_trabalho (J60–J65)"
       ciap2: "A70 'Tuberculose' → A15 a A19, B90 (sequelas), N33.0 inclui efeitos tardios (ciap2_sbmfc.pdf) — ambígua, fora"
       repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
 

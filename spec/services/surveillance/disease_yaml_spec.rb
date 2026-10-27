@@ -40,6 +40,18 @@ RSpec.describe "Lista de notificação compulsória e ficha do Sinan (prova téc
     expect(by_code.fetch("caxumba")["deadline"]).to eq("weekly")
     expect(by_code.values.select { |d| d["deadline"] == "immediate" }.map { |d| d["code"] }).to include("botulismo", "colera", "sarampo", "raiva_humana")
     expect(by_code.fetch("tuberculose")["cid10"]).to include("A15", "A16", "A17", "A18", "A19")
+    # K13 (e): extrapulmonares do GVS que não colidem (J65 fica com as pneumoconioses)
+    expect(by_code.fetch("tuberculose")["cid10"]).to include("K930", "M490", "M900", "N740", "N741", "O980", "P370")
+    expect(by_code.fetch("tuberculose")["cid10"]).not_to include("J65")
+    # K13 (c): códigos genéricos impressos nas fichas não disparam sugestão
+    all_cid10 = diseases.flat_map { |d| d["cid10"] }
+    expect(all_cid10 & %w[F99 L989 C80 Z209]).to be_empty
+    %w[cancer_trabalho dermatoses_ocupacionais transtornos_mentais_trabalho acidente_trabalho_material_biologico].each do |code|
+      expect(by_code.fetch(code)["cid10"]).to eq([])
+      expect(by_code.fetch(code)["notes"]).to include("K13")
+    end
+    # K13 (a): SRAG só manual
+    expect(by_code.fetch("srag")["cid10"]).to eq([])
   end
 
   it "ficha: campos da NINDIV com domínio de raça/cor do Sinan (≠ BPA)" do
