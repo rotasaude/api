@@ -14,8 +14,8 @@ module Maintenance
       # Anulável no schema pelo mesmo motivo de revertProtocolActivation: a
       # ausência vira recusa com path expectedVersion, não erro de validação.
       argument :expected_version, Integer, required: false,
-               description: "A versão vigente de onde o rascunho partiu (nula só para a primeira). " \
-                            "Divergente, a publicação é recusada."
+               description: "Obrigatório: o número da versão mais recente publicada (vigente ou agendada) de onde o rascunho partiu; " \
+                            "0 se ainda não há lista. Ausente ou divergente, a publicação é recusada (path expectedVersion)."
       argument :code, String, required: true, description: "TOTP do momento"
 
       field :ok, Boolean, null: false

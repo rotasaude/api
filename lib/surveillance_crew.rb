@@ -14,6 +14,8 @@ require_relative "territory_registry_crew"
 # RecordNegative), com as mesmas validações da tela. As datas passadas vêm de
 # travel_to em volta do comando (o instante da notificação e do andamento é o
 # do dia, como teria nascido), sempre até um segundo antes de agora.
+# Para a prova no navegador, resete e re-semeie no dia (o cenário é relativo à data da semeadura).
+# A tuberculose de Benedito e a hepatite de Londrina são suspeitas hoje (semanais, vencem em 7 dias).
 # Idempotente (a notificação existente de paciente × doença é retomada do
 # estado em que está, nunca duplicada). Roda depois do CareLinesCrew e do
 # TerritoryRegistryCrew (de quem vêm a UBS, a médica, a recepção, as pessoas e
@@ -194,9 +196,9 @@ class SurveillanceCrew
                    to: "entered", steps: { "closed" => 40.days, "entered" => 45.days } }
       entries << { who: :ana, disease: "sifilis_gestante", unit: UNIT, at: day_at(today - 25), suspected_on: today - 25, symptoms_on: nil,
                    to: "closed", steps: { "closed" => 12.days } }
-      entries << { who: :benedito, disease: "tuberculose", unit: UNIT, at: day_at(today - 4), suspected_on: today - 4, symptoms_on: today - 15,
+      entries << { who: :benedito, disease: "tuberculose", unit: UNIT, at: day_at(today), suspected_on: today, symptoms_on: today - 11,
                    to: nil }
-      entries << { who: :londrina, disease: "hepatites_virais", unit: UNIT, at: day_at(today - 1), suspected_on: today - 1, symptoms_on: today - 6,
+      entries << { who: :londrina, disease: "hepatites_virais", unit: UNIT, at: day_at(today), suspected_on: today, symptoms_on: today - 5,
                    to: nil, ibge: LONDRINA, new_patient: LONDRINA_PERSON }
       entries
     end
@@ -349,6 +351,7 @@ class SurveillanceCrew
       return unless entry[:form]
 
       notification.reload
+      return unless notification.status == "investigating"
       return if entry[:form].all? { |key, value| notification.form.to_h[key] == value }
 
       saved = at(entry[:at] + 2.days, clock) do

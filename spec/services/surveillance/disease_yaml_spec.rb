@@ -38,6 +38,8 @@ RSpec.describe "Lista de notificação compulsória e ficha do Sinan (prova téc
     by_code = diseases.index_by { |d| d["code"] }
     expect(by_code.fetch("dengue")).to include("deadline" => "weekly", "cid10" => [ "A90" ])
     expect(by_code.fetch("caxumba")["deadline"]).to eq("weekly")
+    # K3 (contrato 25): sífilis repete após 90 dias (proposta, validar com a vigilância)
+    expect(by_code.values_at("sifilis_adquirida", "sifilis_gestante", "sifilis_congenita").map { |d| d["repeat_after_days"] }).to eq([ 90, 90, 90 ])
     expect(by_code.values.select { |d| d["deadline"] == "immediate" }.map { |d| d["code"] }).to include("botulismo", "colera", "sarampo", "raiva_humana")
     expect(by_code.fetch("tuberculose")["cid10"]).to include("A15", "A16", "A17", "A18", "A19")
     # K13 (e): extrapulmonares do GVS que não colidem (J65 fica com as pneumoconioses)

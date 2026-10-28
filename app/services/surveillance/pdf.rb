@@ -16,6 +16,7 @@ module Surveillance
     Footer = Data.define(:text)
     SEX = { "M" => "Masculino", "F" => "Feminino", "I" => "Ignorado" }.freeze
     NONE = "—".freeze
+    CLASSIFICATION = { "confirmed" => "Confirmado", "discarded" => "Descartado", "inconclusive" => "Inconclusivo" }.freeze
 
     module_function
 
@@ -77,6 +78,20 @@ module Surveillance
       field(pdf, 5, "Município de notificação", municipality(profile))
       field(pdf, 6, "Unidade de saúde (notificadora)", [ n.health_unit.name, (n.unit_cnes ? "CNES #{n.unit_cnes}" : nil) ].compact.join(" — "))
       field(pdf, 7, "Data dos primeiros sintomas", date(n.symptoms_on))
+      field(pdf, nil, "Situação", situation(n))
+    end
+
+    # Situação da notificação no Rota Saúde, em português (não é campo do Sinan).
+    def situation(n)
+      case n.status
+      when "possible" then "Possível notificação não feita — confirmar antes de digitar"
+      when "notified" then "Notificada"
+      when "investigating" then "Em investigação"
+      when "closed" then "Encerrada (#{CLASSIFICATION.fetch(n.classification.to_s, n.classification)})"
+      when "entered" then "Digitada no Sinan (nº #{n.official_number})"
+      when "dismissed" then "Descartada pela vigilância — NÃO digitar no Sinan"
+      else n.status
+      end
     end
 
     def person(pdf, n, form)

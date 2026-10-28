@@ -103,4 +103,12 @@ RSpec.describe Surveillance::Pdf do
       expect(pages.map(&:text).join.delete(" \n")).to include(name.delete(" ")[0, 70])
     end
   end
+
+  it "a situação da notificação sai em português; a descartada avisa para não digitar no Sinan" do
+    text = text_of(described_class.call(notification))
+    expect(text).to include("Situação", "Notificada")
+
+    dismissed = panel_case!(neighborhood: nil, symptoms_on: Date.new(2026, 10, 18), suspected_on: Date.new(2026, 10, 20), status: "dismissed")
+    expect(text_of(described_class.call(dismissed))).to include("Situação", "Descartada pela vigilância", "NÃO digitar no Sinan")
+  end
 end
