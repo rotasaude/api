@@ -37,6 +37,34 @@ module SurveillanceHelpers
 
     result.payload.fetch(:notification)
   end
+
+  # Caso do painel (módulo 25, Task 16): paciente novo e notificação pelo
+  # CreateNotification (manual, por um vigilante; safety_net quando
+  # status: "possible"), com o bairro posto por update_columns (o trigger
+  # de guarda deixa; o bairro vem do domicílio do paciente, que o cenário não
+  # monta) e os demais estados pelo Transition / Dismiss.
+  # Cobre: possible, notified, investigating, closed (classification:
+  # confirmed por padrão; "discarded" para o descarte) e dismissed.
+  def panel_case!(neighborhood:, symptoms_on:, suspected_on:, status: "notified", classification: nil, disease_code: "dengue")
+    @panel_seq = (@panel_seq || 1000) + 1
+    safety_net = %w[possible dismissed].include?(status)
+    officer = (@panel_officer ||= surveillance_officer!)
+    notification = notification!(patient: surveillance_patient!(@panel_seq), disease_code: disease_code,
+                                 origin: safety_net ? "safety_net" : "manual", suspected_at: suspected_on.in_time_zone,
+                                 symptoms_on: symptoms_on, by: officer)
+    notification.update_columns(neighborhood_id: neighborhood&.id)
+    steps = { "investigating" => %w[investigating], "closed" => %w[investigating closed] }.fetch(status, [])
+    steps.each do |to|
+      result = Surveillance::Transition.call(notification: notification, to: to, version: notification.reload.version, by: officer,
+                                             classification: to == "closed" ? (classification || "confirmed") : nil)
+      raise "transição recusada: #{result.reason}" if result.failure?
+    end
+    if status == "dismissed"
+      result = Surveillance::Dismiss.call(notification: notification, reason: "Não é caso", version: notification.version, by: officer)
+      raise "descarte recusado: #{result.reason}" if result.failure?
+    end
+    notification.reload
+  end
 end
 
 RSpec.configure { |c| c.include SurveillanceHelpers }

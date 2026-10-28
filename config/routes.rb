@@ -455,6 +455,8 @@ Rails.application.routes.draw do
     # Saídas (contrato §7): a ficha no formato do Sinan e o CSV da semana.
     get   "notifications/:id/form.pdf", to: "exports#form", format: false
     get   "exports/week.csv",          to: "exports#week", format: false
+    # Painel por bairro × semana epidemiológica (contrato §8, K7).
+    get   "panel",                     to: "panel#index"
     # Negativa semanal por unidade (contrato K7).
     get   "weekly_negatives",          to: "weekly_negatives#index"
     post  "weekly_negatives",          to: "weekly_negatives#create"
