@@ -34,17 +34,21 @@ module Surveillance
       raise ArgumentError, "unknown kind" unless KINDS.include?(kind)
 
       with_city(city_slug) do
-        next if duplicate?("#{kind}:#{ref}")
         # immediate não relê o portão: o AlertJob já o conferiu ao enfileirar, e
-        # um alerta aceito não some porque o interruptor virou no intervalo.
+        # um alerta aceito não some porque o interruptor virou no intervalo. O
+        # portão vem ANTES do dedup: portão fechado não consome a linha do dia
+        # (ou da semana), e o envio reaberto depois ainda sai.
         next if kind != "immediate" && !Gate.usable?(Current.city)
+        next if duplicate?("#{kind}:#{ref}")
 
         mails = send("#{kind}_mails", ref)
         next if mails.nil? # nada a dizer agora (notificação sumiu, contagem zerou, ninguém pendente)
 
         recipients = Recipients.emails
         delivered, failed = deliver_each(recipients, mails)
-        Rails.logger.info("[#{self.class.name}] kind=#{kind} recipients=#{recipients.size} delivered=#{delivered} failed=#{failed}")
+        # Recusa permanente sobe para warn (só contagens, nunca o endereço).
+        level = failed.positive? ? :warn : :info
+        Rails.logger.public_send(level, "[#{self.class.name}] kind=#{kind} recipients=#{recipients.size} delivered=#{delivered} failed=#{failed}")
       end
     end
 

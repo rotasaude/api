@@ -108,7 +108,7 @@ RSpec.describe Surveillance::MailJob do
     it "recusa permanente de um endereço não cala os demais: pula, conta e segue" do
       notification, = sarampo!(n: 9)
       deliveries.clear
-      allow(Rails.logger).to receive(:info).and_call_original
+      allow(Rails.logger).to receive(:warn).and_call_original
       calls = 0
       allow_any_instance_of(Mail::Message).to receive(:deliver).and_wrap_original do |original, *args|
         calls += 1
@@ -120,7 +120,7 @@ RSpec.describe Surveillance::MailJob do
       expect { deliver!("immediate", notification.id) }.not_to raise_error
 
       expect(deliveries.size).to eq(1)
-      expect(Rails.logger).to have_received(:info).with("[Surveillance::MailJob] kind=immediate recipients=2 delivered=1 failed=1")
+      expect(Rails.logger).to have_received(:warn).with("[Surveillance::MailJob] kind=immediate recipients=2 delivered=1 failed=1")
     end
 
     it "erro transitório de SMTP é retentado e o dedup é desfeito" do
@@ -175,6 +175,22 @@ RSpec.describe Surveillance::MailJob do
 
       deliver!("immediate", notification.id)
       expect(deliveries.size).to eq(2)
+    end
+
+    it "portão fechado não consome a linha de dedup; reaberto, o envio da mesma chave sai" do
+      create_unit("UBS Sem Negativa")
+      week = Surveillance::EpiWeek.current(Time.zone.today).pred
+      Platform::Features.set!(city: Current.city, key: "surveillance", enabled: false, maintainer: ledi_maintainer!)
+      deliveries.clear
+
+      deliver!("negatives", week.to_s)
+      expect(deliveries).to be_empty
+      expect(ProcessedEvent.where(consumer: "surveillance_mail", event_id: "negatives:#{week}")).to be_empty
+
+      Platform::Features.set!(city: Current.city, key: "surveillance", enabled: true, maintainer: ledi_maintainer!)
+      deliver!("negatives", week.to_s)
+      expect(deliveries.size).to eq(2)
+      expect(ProcessedEvent.where(consumer: "surveillance_mail", event_id: "negatives:#{week}").count).to eq(1)
     end
   end
 
