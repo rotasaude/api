@@ -55,6 +55,7 @@ else
   require Rails.root.join("lib/billing_crew").to_s
   require Rails.root.join("lib/care_lines_crew").to_s
   require Rails.root.join("lib/territory_registry_crew").to_s
+  require Rails.root.join("lib/surveillance_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -115,6 +116,10 @@ else
   # Linhas de cuidado (módulo 23, ADR 0040): catálogo-base C2–C7, só a v1
   # (carga idempotente; a v2 é publicada na prova do maintenance).
   puts "[seeds] linhas de cuidado (catálogo-base) . #{CareLinesCrew.seed_platform![:created]} versões novas"
+
+  # Lista nacional de notificação compulsória (módulo 25, ADR 0043): a versão 1
+  # do YAML versionado (idempotente; nunca sobrescreve a curadoria do maintenance).
+  puts "[seeds] lista de notificação compulsória . #{Surveillance::DiseaseList::Load.call[:created]} versões novas"
 
   # ── Medicamentos (módulo 19c, ADR 0033) ───────────────────────────────────────
   # Recorte real do CATMAT (sem rede) e listas Anvisa do repositório.
@@ -344,6 +349,15 @@ else
         Array(registry[:micro_areas]).each { |area| puts "[seeds]               microárea #{area}" }
         puts "[seeds]               validade #{registry[:status].map { |k, v| "#{k} #{v}" }.join(', ')}; fichas #{registry[:fichas]}" if registry[:status]
         Array(registry[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
+
+        # ── Vigilância epidemiológica (módulo 25, ADR 0043) ───────────────────
+        # Depois do TerritoryRegistryCrew: usa a UBS, a médica, a recepção e as pessoas
+        # do 23 e do 24a. Só e-mail, papel e otpauth: nunca dado de paciente.
+        surveillance = SurveillanceCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        puts "[seeds] vigilância .. #{surveillance[:switch]}" \
+             "#{"; semana #{surveillance[:week]}; #{surveillance[:notifications]} notificações, #{surveillance[:negatives]} negativa(s); #{surveillance[:safety_net]}" if surveillance[:week]}"
+        puts "[seeds]               fila #{surveillance[:queue].map { |k, v| "#{k} #{v}" }.join(', ')}" if surveillance[:queue]
+        Array(surveillance[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
