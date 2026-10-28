@@ -448,6 +448,9 @@ Rails.application.routes.draw do
     get   "notifications/count",       to: "notifications#count"
     get   "notifications/:id",         to: "notifications#show"
     patch "notifications/:id",         to: "notifications#update"
+    # Andamento (contrato §5, K6): transição linear e descarte da `possible`.
+    post  "notifications/:id/transition", to: "transitions#transition"
+    post  "notifications/:id/dismiss",    to: "transitions#dismiss"
     get   "units",                     to: "units#index"
     post  "person_lookup",             to: "person_lookups#create"
     post  "patients/duplicates",       to: "duplicates#create"

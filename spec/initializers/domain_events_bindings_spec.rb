@@ -254,4 +254,13 @@ RSpec.describe "disease surveillance bindings (ADR 0043)" do
     expect(DomainEvents.registry.keys).to include("disease_notification.updated")
     expect(DomainEvents.registry["disease_notification.updated"]).to be_empty
   end
+
+  # Só notification_id e user_id (Surveillance::Transition / Dismiss): nunca o
+  # motivo, a classificação nem o número oficial.
+  %w[disease_notification.transitioned disease_notification.dismissed].each do |name|
+    it "declares #{name} (no consumer)" do
+      expect(DomainEvents.registry.keys).to include(name)
+      expect(DomainEvents.registry[name]).to be_empty
+    end
+  end
 end

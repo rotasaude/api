@@ -70,7 +70,9 @@ Rails.application.config.filter_parameters += [
   # número oficial, o motivo, a data de início dos sintomas, o código do agravo,
   # a marca de paciente novo e o IBGE de residência (`reason` já estava);
   # `disease` é o filtro da fila (GET /surveillance/notifications?disease=).
-  /\A(form|official_number|reason|symptoms_on|disease_code|disease|new_patient|residence_ibge)\z/
+  # A classificação final do caso (confirmed/discarded/inconclusive) do
+  # andamento (POST …/transition) é dado de saúde.
+  /\A(form|official_number|reason|symptoms_on|disease_code|disease|new_patient|residence_ibge|classification)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

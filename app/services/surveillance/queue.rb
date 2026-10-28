@@ -22,7 +22,7 @@ module Surveillance
     # filters: Hash de texto (a query); before: o cursor da página anterior.
     # -> Result.ok(rows:, next_before:) | fail(:invalid_filter, details: { field: }) | fail(:invalid_cursor).
     def call(filters:, limit:, before: nil, now: Time.current)
-      scope = filtered(filters.to_h.stringify_keys)
+      scope = filtered(filters.to_h.stringify_keys, now)
       return scope if scope.is_a?(Result)
 
       cursor = nil
@@ -55,7 +55,7 @@ module Surveillance
     end
 
     # -> Relation | Result.fail(:invalid_filter, field:).
-    def filtered(filters)
+    def filtered(filters, now)
       values = filters.slice(*FILTERS).transform_values { |value| value == "" ? nil : value }.compact
       field = values.find { |_key, value| !value.is_a?(String) }&.first
       return invalid(field) if field
@@ -72,7 +72,7 @@ module Surveillance
       scope = scope.where(status: status || (Catalog::STATUSES - HIDDEN_BY_DEFAULT))
       scope = scope.where(disease_code: disease) if disease
       scope = scope.where(health_unit_id: unit_id) if unit_id
-      scope = scope.where(overdue_sql(Time.current)) if overdue
+      scope = scope.where(overdue_sql(now)) if overdue
       scope
     end
 

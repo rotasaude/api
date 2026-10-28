@@ -247,4 +247,9 @@ Rails.application.config.to_prepare do
   # Ficha da notificação gravada (Surveillance::SaveForm): só notification_id —
   # nunca a ficha nem dado do paciente; sem consumidor.
   DomainEvents.bind "disease_notification.updated", to: []
+  # Andamento (Surveillance::Transition) e descarte da possível
+  # (Surveillance::Dismiss): só notification_id e user_id — nunca o motivo, a
+  # classificação nem o número oficial; sem consumidor.
+  DomainEvents.bind "disease_notification.transitioned", to: []
+  DomainEvents.bind "disease_notification.dismissed", to: []
 end
