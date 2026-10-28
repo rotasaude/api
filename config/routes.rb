@@ -443,6 +443,9 @@ Rails.application.routes.draw do
   scope "/surveillance", module: :surveillance, as: :surveillance do
     get   "diseases",                  to: "diseases#index"
     post  "notifications",             to: "notifications#create"
+    get   "units",                     to: "units#index"
+    post  "person_lookup",             to: "person_lookups#create"
+    post  "patients/duplicates",       to: "duplicates#create"
     get   "admin/local_diseases",      to: "local_diseases#index"
     post  "admin/local_diseases",      to: "local_diseases#create"
     patch "admin/local_diseases/:id",  to: "local_diseases#update"

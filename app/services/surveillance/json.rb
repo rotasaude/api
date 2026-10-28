@@ -39,6 +39,11 @@ module Surveillance
       { code: n.disease_code, name: name, deadline: n.deadline }
     end
 
+    # Candidato a duplicado (a forma do 24a sem o cadastro territorial).
+    def duplicate(patient)
+      { patient_id: patient.id, display_name: patient.display_name, birth_date: patient.birth_date, has_cpf: patient.cpf.present? }
+    end
+
     def event(e)
       { status: e.status, at: e.created_at.iso8601, by: e.by_user && { name: Screenings::Json.staff_name(e.by_user) },
         reason: e.reason }

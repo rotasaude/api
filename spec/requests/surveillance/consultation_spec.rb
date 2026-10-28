@@ -202,10 +202,14 @@ RSpec.describe "Vigilância na consulta", type: :request do
     expect(DiseaseNotification.count).to eq(0)
   end
 
-  it "corpo inválido: sem consultation_id → 422 invalid_request; id desconhecido ou descartado → 404; dado na query não vale" do
+  it "corpo inválido: sem consultation_id é o ramo manual (403 sem o papel); id inválido → 422/404; dado na query não vale" do
     c = draft!(dengue_add)
     sign_in_as(doctor)
+    # Task 10: sem consultation_id é a notificação manual, só do papel surveillance.
     post "/surveillance/notifications", params: { disease_code: "dengue" }.to_json, headers: json_headers
+    expect(response).to have_http_status(:forbidden)
+    expect(json_body).to eq("error" => "missing_role")
+    post "/surveillance/notifications", params: { consultation_id: 7, disease_code: "dengue" }.to_json, headers: json_headers
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to eq("error" => "invalid_request")
     post "/surveillance/notifications", params: { consultation_id: SecureRandom.uuid, disease_code: "dengue" }.to_json, headers: json_headers
@@ -213,10 +217,10 @@ RSpec.describe "Vigilância na consulta", type: :request do
     post "/surveillance/notifications", params: { consultation_id: "nao-e-uuid", disease_code: "dengue" }.to_json, headers: json_headers
     expect(response).to have_http_status(:not_found)
 
-    # consulta e doença só do corpo: na query contam como ausentes
+    # consulta e doença só do corpo: na query contam como ausentes (cai no ramo manual: 403 sem o papel)
     post "/surveillance/notifications?consultation_id=#{c.id}&disease_code=dengue", params: {}.to_json, headers: json_headers
-    expect(response).to have_http_status(:unprocessable_entity)
-    expect(json_body).to eq("error" => "invalid_request")
+    expect(response).to have_http_status(:forbidden)
+    expect(json_body).to eq("error" => "missing_role")
     post "/surveillance/notifications?disease_code=dengue", params: { consultation_id: c.id }.to_json, headers: json_headers
     expect(json_body).to eq("error" => "invalid_disease")
     expect(DiseaseNotification.count).to eq(0)
