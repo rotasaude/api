@@ -37,6 +37,10 @@ RSpec.describe "Esquema da regulação (ADR 0044)" do
     refused(/only a draft is deleted/) { live.delete }
     refused(/never change/) { live.update_columns(target_code: "225265") }
     refused(/never change/) { live.update_columns(patient_id: regulation_patient!(exam_seq!).first.id) }
+    # A autoria do pedido enviado (usuário, CBO e unidade) também nunca muda.
+    refused(/never change/) { live.update_columns(requester_user_id: care_regulator!.id) }
+    refused(/never change/) { live.update_columns(requester_cbo: "223505") }
+    refused(/never change/) { live.update_columns(requester_unit_id: HealthUnit.create!(name: "UBS Outra #{SecureRandom.hex(2)}", kind: "ubs").id) }
     # O diagnóstico muda fora do rascunho (complemento).
     expect { live.update!(cid10: "E119", ciap2: "K86") }.not_to raise_error
     live.update!(status: "denied")

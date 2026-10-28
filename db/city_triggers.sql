@@ -2264,8 +2264,9 @@ $do$;
 
 -- Módulo 26a (ADR 0044): regulação municipal. O rascunho na consulta (draft)
 -- muda à vontade e pode ser apagado (consulta descartada); fora do rascunho o
--- pedido nunca some nem troca de paciente, consulta, unidade solicitante,
--- alvo, data do pedido ou data de criação, e encerrado (completed, denied,
+-- pedido nunca some nem troca de paciente, consulta, solicitante (usuário,
+-- CBO e unidade: o complemento não muda a autoria), alvo, data do pedido ou
+-- data de criação, e encerrado (completed, denied,
 -- cancelled, closed) não muda de situação. As demais transições (ordem,
 -- versão otimista) ficam em CareRegulation::Transition. O diagnóstico (cid10,
 -- ciap2) pode mudar fora do rascunho, pelo complemento.
@@ -2281,10 +2282,11 @@ BEGIN
     RAISE EXCEPTION 'regulation_requests: id never changes';
   END IF;
   IF OLD.status <> 'draft'
-     AND (NEW.patient_id, NEW.consultation_id, NEW.requester_unit_id, NEW.target_type, NEW.target_code, NEW.requested_at, NEW.created_at)
-         IS DISTINCT FROM (OLD.patient_id, OLD.consultation_id, OLD.requester_unit_id, OLD.target_type, OLD.target_code, OLD.requested_at,
-                           OLD.created_at) THEN
-    RAISE EXCEPTION 'regulation_requests: patient, consultation, unit, target, requested_at and created_at never change';
+     AND (NEW.patient_id, NEW.consultation_id, NEW.requester_user_id, NEW.requester_cbo, NEW.requester_unit_id, NEW.target_type,
+          NEW.target_code, NEW.requested_at, NEW.created_at)
+         IS DISTINCT FROM (OLD.patient_id, OLD.consultation_id, OLD.requester_user_id, OLD.requester_cbo, OLD.requester_unit_id,
+                           OLD.target_type, OLD.target_code, OLD.requested_at, OLD.created_at) THEN
+    RAISE EXCEPTION 'regulation_requests: patient, consultation, requester, unit, target, requested_at and created_at never change';
   END IF;
   IF OLD.status IN ('completed', 'denied', 'cancelled', 'closed') AND NEW.status IS DISTINCT FROM OLD.status THEN
     RAISE EXCEPTION 'regulation_requests: a % request never changes status', OLD.status;
