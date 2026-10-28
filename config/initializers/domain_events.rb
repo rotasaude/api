@@ -142,8 +142,10 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "consultation.started", to: []
   # ADR 0032 (19b): a finalização e o adendo abrem o pedido de assinatura
   # (Signatures::RequestJob só abre o pedido e enfileira; o 19a não muda).
-  DomainEvents.bind "consultation.finalized", to: [ Signatures::RequestJob ]
-  DomainEvents.bind "consultation.addendum_added", to: [ Signatures::RequestJob ]
+  # ADR 0043 (módulo 25): e passam pela rede de segurança da vigilância
+  # (Surveillance::SafetyNetJob: "possível notificação não feita").
+  DomainEvents.bind "consultation.finalized", to: [ Signatures::RequestJob, Surveillance::SafetyNetJob ]
+  DomainEvents.bind "consultation.addendum_added", to: [ Signatures::RequestJob, Surveillance::SafetyNetJob ]
   DomainEvents.bind "clinical_record.viewed", to: []
   DomainEvents.bind "clinical_record.opened", to: []
   # ADR 0035: página do PEC, só trilha (ids e código do motivo).

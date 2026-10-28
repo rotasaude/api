@@ -109,11 +109,12 @@ RSpec.describe "clinical record event bindings (ADR 0031)" do
   end
 end
 
-# Módulo 19b (ADR 0032): a finalização e o adendo abrem o pedido de assinatura.
-RSpec.describe "consultation signature bindings (ADR 0032)" do
-  it "binds consultation.finalized and consultation.addendum_added to Signatures::RequestJob" do
+# Módulo 19b (ADR 0032): a finalização e o adendo abrem o pedido de assinatura;
+# módulo 25 (ADR 0043): e passam pela rede de segurança da vigilância.
+RSpec.describe "consultation signature and surveillance bindings (ADR 0032, ADR 0043)" do
+  it "binds consultation.finalized and consultation.addendum_added to Signatures::RequestJob and Surveillance::SafetyNetJob" do
     %w[consultation.finalized consultation.addendum_added].each do |name|
-      expect(DomainEvents.registry[name].map(&:job)).to eq([ "Signatures::RequestJob" ])
+      expect(DomainEvents.registry[name].map(&:job)).to eq([ "Signatures::RequestJob", "Surveillance::SafetyNetJob" ])
     end
   end
 end
