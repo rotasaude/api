@@ -72,7 +72,13 @@ Rails.application.config.filter_parameters += [
   # `disease` é o filtro da fila (GET /surveillance/notifications?disease=).
   # A classificação final do caso (confirmed/discarded/inconclusive) do
   # andamento (POST …/transition) é dado de saúde.
-  /\A(form|official_number|reason|symptoms_on|disease_code|disease|new_patient|residence_ibge|classification)\z/
+  /\A(form|official_number|reason|symptoms_on|disease_code|disease|new_patient|residence_ibge|classification)\z/,
+  # ADR 0044: regulação municipal — a justificativa do pedido, o CID-10 e o
+  # CIAP-2 da indicação, o número da autorização do sistema do estado, as
+  # observações do agendamento e o local do atendimento (`reason` cobre
+  # color_reason e skip_reason; `note` cobre notes). `target_code` não entra:
+  # é o único alvo em query (contrato §4) e não leva o paciente.
+  :justification, /\Acid10\z/, /\Aciap2\z/, :external_number, :schedule_notes, :place
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

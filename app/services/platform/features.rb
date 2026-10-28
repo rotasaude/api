@@ -132,7 +132,13 @@ module Platform
       # (Surveillance::Gate.consultation_usable?).
       Entry.new(key: "surveillance",
                 description: "Vigilância epidemiológica: notificação compulsória, fila da vigilância, notificação negativa e painel por semana epidemiológica",
-                requires: [])
+                requires: []),
+      # ADR 0044: regulação municipal (módulo 26a). Só com o prontuário
+      # utilizável (o pedido nasce na consulta). Desligado: a fila e as ofertas
+      # ficam como estão; o desfecho "encaminhado" volta à regra do 17.
+      Entry.new(key: "care_regulation",
+                description: "Regulação municipal: pedido de regulação na consulta, fila por cor e espera, ofertas e cotas por prestador e convivência com o sistema do estado",
+                requires: %w[feature:clinical_record])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze

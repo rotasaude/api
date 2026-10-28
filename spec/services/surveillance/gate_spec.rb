@@ -5,7 +5,8 @@ RSpec.describe Surveillance::Gate do
   it "está no catálogo depois de territory_registry, sem pré-requisito" do
     entry = Platform::Features::CATALOG.find { |e| e.key == "surveillance" }
     expect(entry.requires).to eq([])
-    expect(Platform::Features::KEYS.last(2)).to eq(%w[territory_registry surveillance])
+    keys = Platform::Features::KEYS
+    expect(keys.index("surveillance")).to eq(keys.index("territory_registry") + 1)
   end
 
   it "usable? com o interruptor; consultation_usable? exige também o prontuário" do
