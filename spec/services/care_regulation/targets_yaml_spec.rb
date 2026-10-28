@@ -18,7 +18,8 @@ RSpec.describe "Catálogo de alvos reguláveis (Task 0)" do
     codes = rows.map { |r| r["code"] }
     expect(codes.uniq.size).to eq(codes.size)
     expect(codes).to include("225120", "225265", "225270", "225133", "225250", "225124", "223212", "223248")
-    expect(codes).not_to include("225125", "225142", "225170", "225130", "223208", "223293", "225106", "223204", "225325", "225320")
+    expect(codes).not_to include("225125", "225142", "225170", "225130", "223208", "223293", "225106", "223204", "225325", "225320",
+                                 "223244", "225310")
     expect(specialties.fetch("excluded")).to all(include("code", "reason"))
   end
 

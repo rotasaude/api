@@ -6,7 +6,6 @@ specialties:
   - { code: "223228", name: "Cirurgião-dentista - odontogeriatra", label: "Odontogeriatria", group: dental }
   - { code: "223236", name: "Cirurgião-dentista - odontopediatra", label: "Odontopediatria", group: dental }
   - { code: "223240", name: "Cirurgião-dentista - ortopedista e ortodontista", label: "Ortodontia e ortopedia facial", group: dental }
-  - { code: "223244", name: "Cirurgião-dentista - patologista bucal", label: "Patologia bucal", group: dental }
   - { code: "223248", name: "Cirurgião-dentista - periodontista", label: "Periodontia", group: dental }
   - { code: "223252", name: "Cirurgião-dentista - protesiólogo bucomaxilofacial", label: "Prótese bucomaxilofacial", group: dental }
   - { code: "223256", name: "Cirurgião-dentista - protesista", label: "Prótese dentária", group: dental }
@@ -56,7 +55,6 @@ specialties:
   - { code: "225285", name: "Médico urologista", label: "Urologia", group: medical }
   - { code: "225290", name: "Médico cancerologista cirúrgico", label: "Oncologia cirúrgica", group: medical }
   - { code: "225295", name: "Médico cirurgião da mão", label: "Cirurgia da mão", group: medical }
-  - { code: "225310", name: "Médico em endoscopia", label: "Endoscopia", group: medical }
   - { code: "225330", name: "Médico radioterapeuta", label: "Radioterapia", group: medical }
   - { code: "225340", name: "Médico hemoterapeuta", label: "Hemoterapia", group: medical }
   - { code: "225345", name: "Médico hiperbarista", label: "Medicina hiperbárica", group: medical }
@@ -66,6 +64,7 @@ excluded:
   - { code: "223208", reason: "atenção primária (clínico geral)" }
   - { code: "223216", reason: "não assistencial (epidemiologista)" }
   - { code: "223232", reason: "não assistencial (odontologia legal)" }
+  - { code: "223244", reason: "diagnóstico anatomopatológico bucal (não assistencial)" }
   - { code: "223260", reason: "diagnóstico por imagem/medicina nuclear: o ato vai como procedimento SIGTAP, não como consulta" }
   - { code: "223272", reason: "não assistencial (saúde coletiva)" }
   - { code: "223276", reason: "não assistencial (odontologia do trabalho)" }
@@ -82,6 +81,7 @@ excluded:
   - { code: "225151", reason: "hospitalar (anestesiologista)" }
   - { code: "225170", reason: "atenção primária (generalista)" }
   - { code: "225305", reason: "diagnóstico laboratorial/anatomopatológico (não assistencial)" }
+  - { code: "225310", reason: "o ato vai como procedimento SIGTAP, não como consulta" }
   - { code: "225315", reason: "diagnóstico por imagem/medicina nuclear: o ato vai como procedimento SIGTAP, não como consulta" }
   - { code: "225320", reason: "diagnóstico por imagem/medicina nuclear: o ato vai como procedimento SIGTAP, não como consulta" }
   - { code: "225325", reason: "diagnóstico laboratorial/anatomopatológico (não assistencial)" }
