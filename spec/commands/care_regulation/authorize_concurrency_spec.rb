@@ -83,6 +83,7 @@ RSpec.describe "Autorização da regulação sob disputa" do
     holding = Queue.new
     first = Queue.new
     threads << holder = Thread.new do
+      Thread.current.report_on_exception = false
       first << in_city do
         ApplicationRecord.transaction do
           CareOffer.lock.find(@rows[:offer])
@@ -96,6 +97,7 @@ RSpec.describe "Autorização da regulação sob disputa" do
 
     second = Queue.new
     threads << other = Thread.new do
+      Thread.current.report_on_exception = false
       second << in_city { authorize!(@rows[:newer], skip_reason: "Paciente com cirurgia já marcada no prestador") }
     end
     expect(other.join(0.5)).to be_nil # bloqueada pelo FOR UPDATE da oferta

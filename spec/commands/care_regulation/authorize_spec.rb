@@ -79,6 +79,15 @@ RSpec.describe CareRegulation::Authorize do
       expect(request.reload).to have_attributes(color: "yellow", due_on: due, color_reason: nil)
     end
 
+    it "cor sem mudança: o color_reason enviado é ignorado (nem gravado nem devolvido)" do
+      request = aged!(3, "yellow")
+      expect(authorize(request, offer: offer, color: "yellow", color_reason: "Motivo enviado sem mudança de cor")).to be_ok
+      expect(request.reload).to have_attributes(color: "yellow", color_reason: nil)
+      expect(authorize(aged!(2, "red", target_code: "225250"), offer: offer!(provider: contracted, target_code: "225250"),
+                       color_reason: "Motivo sem cor nenhuma enviada")).to be_ok
+      expect(RegulationRequest.where(target_code: "225250").sole.color_reason).to be_nil
+    end
+
     it "o prazo recalculado lê a tabela de prazos da hora e conta da data original do pedido" do
       request = aged!(40, "green")
       RegulationRiskDeadline.find("yellow").update!(days: 20)
@@ -101,6 +110,19 @@ RSpec.describe CareRegulation::Authorize do
       expect(authorization.reload.skip_reason).to eq("Paciente com cirurgia já marcada no prestador")
       expect(raw_skip_reason(authorization)).to be_present
       expect(raw_skip_reason(authorization)).not_to include("cirurgia")
+    end
+
+    it "sem ninguém à frente, o skip_reason enviado é ignorado: a autorização não diz 'fora da ordem'" do
+      older = aged!(10, "yellow")
+      request = aged!(3, "yellow")
+      expect(authorize(request, offer: offer).reason).to eq(:skip_reason_required)
+      # Outro regulador autoriza o mais antigo entre o 422 e o reenvio.
+      expect(authorize(older, offer: offer)).to be_ok
+      result = authorize(request.reload, offer: offer, skip_reason: "Paciente com cirurgia já marcada no prestador")
+      expect(result).to be_ok
+      authorization = result.payload.fetch(:authorization).reload
+      expect(authorization.skip_reason).to be_nil
+      expect(raw_skip_reason(authorization)).to be_nil
     end
 
     it "o mais antigo mais grave (vermelho) também exige; o menos grave (verde) não" do

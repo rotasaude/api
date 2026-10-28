@@ -102,6 +102,16 @@ RSpec.describe "Regulação — decisões do regulador", type: :request do
       expect([ response.status, json_body ]).to eq([ 409, { "error" => "invalid_transition" } ])
     end
 
+    it "motivos enviados sem necessidade não voltam na resposta nem ficam gravados" do
+      request = aged!(3, "yellow")
+      json_post "/regulation/requests/#{request.id}/authorize", offer_id: offer.id, version: request.version, color: "yellow",
+                                                                 color_reason: "Motivo enviado sem mudança de cor",
+                                                                 skip_reason: "Motivo de pular sem ninguém à frente"
+      expect(response).to have_http_status(:ok)
+      expect(json_body).to include("color" => "yellow", "color_reason" => nil)
+      expect(json_body.dig("authorization", "skip_reason")).to be_nil
+    end
+
     it "409 citizen_not_verified na oferta própria sem par validado" do
       request = aged!(3, "yellow")
       citizen = Citizen.find_by!(patient_id: request.patient_id)
@@ -146,7 +156,7 @@ RSpec.describe "Regulação — decisões do regulador", type: :request do
     end
 
     it "o log não contém o skip_reason nem o color_reason" do
-      aged!(10, "yellow")
+      aged!(10, "red") # à frente da cor resultante (vermelho): o skip_reason vale
       request = aged!(3, "yellow")
       log = capture_log do
         json_post "/regulation/requests/#{request.id}/authorize", offer_id: offer.id, version: request.version, color: "red",

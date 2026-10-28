@@ -13,6 +13,7 @@
 #   6. motivo de pular (Desvio 4): outro `pending` do mesmo alvo, mais antigo,
 #      de cor efetiva igual ou mais grave que a resultante, sem skip_reason →
 #      skip_reason_required, SEM detalhe nenhum dos outros pedidos (G5);
+#      motivo (de pular ou da cor) enviado sem necessidade é ignorado;
 #   7. cota (Quota.used < quantity) → quota_exhausted;
 #   8. RegulationAuthorization (month = mês da oferta) → OwnNetwork.open! se
 #      `own` (sem par validado: citizen_not_verified, tudo desfeito) →
@@ -53,7 +54,16 @@ module CareRegulation
         resulting = color || current
         changed = resulting != current
         next Result.fail(:color_reason_required) if changed && color_reason.nil?
-        next Result.fail(:skip_reason_required) if skip_reason.nil? && ahead?(request, resulting)
+
+        # Motivo enviado sem necessidade é ignorado (nem gravado nem devolvido):
+        # o mais antigo pode ter sido autorizado por outro regulador entre o
+        # 422 e o reenvio, e o registro não pode dizer "fora da ordem" sem ter
+        # sido; cor confirmada igual à efetiva não tem motivo de mudança.
+        color_reason = nil unless changed
+        ahead = ahead?(request, resulting)
+        next Result.fail(:skip_reason_required) if ahead && skip_reason.nil?
+
+        skip_reason = nil unless ahead
 
         used = Quota.used([ offer.id ]).fetch(offer.id)
         next Result.fail(:quota_exhausted) unless used < offer.quantity
