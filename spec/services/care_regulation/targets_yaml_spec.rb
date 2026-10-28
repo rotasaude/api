@@ -11,6 +11,7 @@ RSpec.describe "Catálogo de alvos reguláveis (Task 0)" do
     rows.each do |row|
       expect(row["code"]).to match(CareRegulation::Catalog::SPECIALTY_CODE)
       expect(row["name"].length).to be_between(3, CareRegulation::Catalog::NAME_MAX)
+      expect(row["label"].to_s.length).to be_between(3, CareRegulation::Catalog::NAME_MAX)
       prefix = row["group"] == "dental" ? CareRegulation::Catalog::DENTIST_PREFIX : CareRegulation::Catalog::PHYSICIAN_PREFIX
       expect(row["code"]).to start_with(prefix)
     end
@@ -19,6 +20,19 @@ RSpec.describe "Catálogo de alvos reguláveis (Task 0)" do
     expect(codes).to include("225120", "225265", "225270", "225133", "225250", "225124", "223212", "223248")
     expect(codes).not_to include("225125", "225142", "225170", "225130", "223208", "223293", "225106", "223204", "225325", "225320")
     expect(specialties.fetch("excluded")).to all(include("code", "reason"))
+  end
+
+  it "especialidades: label de exibição único, sem o título da ocupação (G12 #6)" do
+    rows = specialties.fetch("specialties")
+    labels = rows.map { |r| r["label"] }
+    expect(labels.uniq.size).to eq(labels.size)
+    expect(labels.grep(/\A(Médico|Cirurgião-dentista)/)).to be_empty
+    expect(rows.find { |r| r["code"] == "225120" }["label"]).to eq("Cardiologia")
+    expect(rows.find { |r| r["code"] == "223212" }["label"]).to eq("Endodontia")
+  end
+
+  it "nome do prestador de 3 a 120 caracteres (G5)" do
+    expect(CareRegulation::Catalog::PROVIDER_NAME).to eq(3..120)
   end
 
   it "procedimentos: grupos 02–04, BPA sim (APAC principal não exclui, G11), com exemplos conferidos" do

@@ -22,6 +22,7 @@ module CareRegulation
     PLACE_MAX = 200
     NOTES_MAX = 500
     NAME_MAX = 120
+    PROVIDER_NAME = (3..120)
     QUANTITY = (0..9999)
     MAX_MISSES = 2
     MAX_PER_CONSULTATION = 10
