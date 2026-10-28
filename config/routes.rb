@@ -160,6 +160,11 @@ Rails.application.routes.draw do
     get   "consultations/:id/print",         to: "consultations#print"
     # Módulo 25 (contrato §4, K4): sugestão de notificação da consulta (autora, sem trilha).
     get   "consultations/:id/notification_suggestions", to: "surveillance/consultation_suggestions#index"
+    # Módulo 26a (ADR 0044; contrato §3): pedido de regulação em rascunho na consulta (autora; promovido na finalização).
+    get    "consultations/:id/regulation_requests",      to: "care_regulation/consultation_requests#index"
+    post   "consultations/:id/regulation_requests",      to: "care_regulation/consultation_requests#create"
+    patch  "consultations/:id/regulation_requests/:rid", to: "care_regulation/consultation_requests#update"
+    delete "consultations/:id/regulation_requests/:rid", to: "care_regulation/consultation_requests#destroy"
     # Documentos clínicos e medicamentos em uso (ADR 0033; contrato §3–§4).
     get  "consultations/:id/documents",    to: "clinical_documents#index"
     # A46 nos documentos: o polling da assinatura pendente lê só o estado, sem trilha.
