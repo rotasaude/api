@@ -9,13 +9,20 @@ RSpec.describe "Regulação — fila do regulador", type: :request do
   let(:regulator) { care_regulator! }
   let(:unit_a) { create_unit("UBS Fila A") }
   let(:unit_b) { create_unit("UBS Fila B") }
-  let(:today) { Time.zone.today }
+  # O dia é fixo (fuso da cidade): a rodada não depende de cruzar a meia-noite.
+  let(:today) { Date.new(2026, 10, 28) }
+
+  before { travel_to Time.zone.local(2026, 10, 28, 10, 0) }
 
   # Ordenado pelo instante: `.last` sem ordem seria por uuid (flaky).
   def viewed = DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at)
 
   def aged!(days, color, unit: unit_a, **over)
-    travel_to((today - days).in_time_zone.change(hour: 12)) { regulation_request!(unit: unit, suggested_color: color, **over) }
+    # travel_to sem bloco: o bloco aninhado devolveria o relógio real.
+    travel_to((today - days).in_time_zone.change(hour: 12))
+    regulation_request!(unit: unit, suggested_color: color, **over)
+  ensure
+    travel_to Time.zone.local(2026, 10, 28, 10, 0)
   end
 
   def ids = json_body["requests"].map { |r| r["id"] }
@@ -74,14 +81,29 @@ RSpec.describe "Regulação — fila do regulador", type: :request do
       expect(ids).to eq([ fresh.id ])
     end
 
+    it "a página 2 pedida depois da meia-noite: o overdue do item segue o today da requisição, não o dia do cursor" do
+      green_late = aged!(100, "green")
+      blue_late = aged!(200, "blue")
+      edges = [ aged!(7, "red"), aged!(7, "red") ].sort_by(&:id) # due_on = hoje: no prazo hoje, vencido amanhã
+      get "/regulation/requests", params: { limit: 3 }
+      expect(ids).to eq([ green_late.id, blue_late.id, edges.first.id ])
+      expect(json_body["requests"].map { |r| r["overdue"] }).to eq([ true, true, false ])
+      cursor = json_body["next_before"]
+
+      travel_to Time.zone.local(2026, 10, 29, 0, 1)
+      get "/regulation/requests", params: { limit: 3, before: cursor }
+      expect(response).to have_http_status(:ok)
+      expect(ids).to eq([ edges.last.id ]) # o dia do cursor decidiu a posição: nada pulado
+      expect(json_body["requests"].first["overdue"]).to be(true) # o item mostra o hoje da requisição
+    end
+
     it "filtro inválido → 422 invalid_request com path" do
       { status: "draft", type: "exam", color: "purple", overdue: "yes" }.each do |field, value|
         get "/regulation/requests", params: { field => value }
         expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => field.to_s } ])
       end
-      get "/regulation/requests", params: { sort: "x" }
-      expect(response).to have_http_status(:unprocessable_entity)
-      expect(json_body["error"]).to eq("invalid_request")
+      get "/regulation/requests", params: { limit: "10", sort: "x", other: "y" }
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "sort" } ])
     end
 
     it "limit 101, 0 ou texto → 422 invalid_limit; 100 vale" do

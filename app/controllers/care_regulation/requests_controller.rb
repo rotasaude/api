@@ -12,7 +12,8 @@ module CareRegulation
     before_action { forbid unless regulator? }
 
     def index
-      return unless query_only!(*QUEUE_PARAMS)
+      unknown = request.query_parameters.keys.find { |key| QUEUE_PARAMS.exclude?(key) }
+      return render(json: { error: "invalid_request", path: unknown }, status: :unprocessable_entity) if unknown
 
       limit = page_limit
       return unless limit

@@ -54,7 +54,8 @@ module CareRegulation
     def counts(today: Time.zone.today)
       overdue = RegulationRequest.overdue_sql(today)
       selects = %w[pending returned authorized external].map { |status| "COUNT(*) FILTER (WHERE regulation_requests.status = '#{status}')" }
-      pending, returned, authorized, external, overdue_count = RegulationRequest.pick(*selects.map { |sql| Arel.sql(sql) },
+      pending, returned, authorized, external, overdue_count = RegulationRequest.where(status: Catalog::WAITING_STATUSES)
+                                                                                     .pick(*selects.map { |sql| Arel.sql(sql) },
                                                                                      Arel.sql("COUNT(*) FILTER (WHERE #{overdue})"))
       { pending: pending, overdue: overdue_count, returned: returned, authorized: authorized, external: external }
     end
@@ -85,7 +86,7 @@ module CareRegulation
     # O filtro `overdue` conta com o mesmo dia da ordenação (o do cursor, se houver).
     def filtered_by_day(scope, overdue, day)
       case overdue.presence
-      when "true" then scope.where(RegulationRequest.overdue_sql(day))
+      when "true" then scope.overdue_at(day)
       when "false" then scope.where.not(RegulationRequest.overdue_sql(day))
       else scope
       end

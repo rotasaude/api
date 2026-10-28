@@ -7,15 +7,20 @@ RSpec.describe CareRegulation::Queue do
   include ActiveSupport::Testing::TimeHelpers
 
   let!(:city) { regulation_city! }
-  let(:today) { Time.zone.today }
+  # O dia é fixo (fuso da cidade): a rodada não depende de cruzar a meia-noite.
+  let(:today) { Date.new(2026, 10, 28) }
   let(:unit) { create_unit("UBS Fila") }
   let(:doctor) { doctor!(unit) }
 
+  before { travel_to Time.zone.local(2026, 10, 28, 10, 0) }
+
   # Pedido feito `days` dias atrás (o prazo da cor entra pela data do pedido).
+  # travel_to sem bloco: o bloco aninhado devolveria o relógio real.
   def request_aged!(days, color, **over)
-    travel_to((today - days).in_time_zone.change(hour: 12)) do
-      regulation_request!(unit: unit, doctor: doctor, suggested_color: color, **over)
-    end
+    travel_to((today - days).in_time_zone.change(hour: 12))
+    regulation_request!(unit: unit, doctor: doctor, suggested_color: color, **over)
+  ensure
+    travel_to Time.zone.local(2026, 10, 28, 10, 0)
   end
 
   def page(limit: 50, before: nil, today: self.today, **filters)
