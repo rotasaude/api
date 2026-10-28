@@ -1,4 +1,5 @@
 require "active_support/testing/time_helpers"
+require "tmpdir"
 require_relative "signature_crew"
 require_relative "screening_crew"
 require_relative "clinical_record_crew"
@@ -127,6 +128,12 @@ class SurveillanceCrew
     "evaluated_problems" => [ { "terminology" => "cid10", "code" => "A90", "action" => "add" } ]
   }.freeze
 
+  # Necessário para a prova do módulo 25: a rede de segurança da dengue lê o
+  # CID-10 A90, que o recorte de dev do prontuário (ClinicalRecordCrew) não tem.
+  DENGUE_CID10 = { "A90" => [ "Dengue [dengue clássico]", nil ] }.freeze
+  # A release de dev que a traz (derivada da ativa, que ganha o A90 e fica como estava).
+  DENGUE_TERMS_VERSION = "dev-a90".freeze
+
   class << self
     include ActiveSupport::Testing::TimeHelpers
 
@@ -156,6 +163,7 @@ class SurveillanceCrew
       clock = Time.current
       today = Time.zone.today
       last_week = Surveillance::EpiWeek.current(today).pred
+      dengue_terms!
       safety_net = !ClinicalTerms.find("cid10", "A90").nil?
       warn "[seeds] vigilância: CID-10 A90 ausente na terminologia ativa — a possível da rede de segurança não foi semeada" unless safety_net
 
@@ -207,6 +215,32 @@ class SurveillanceCrew
 
     def guard_environment!
       raise "semente da vigilância: ambiente implantado; a semente é só de dev" if Rota.deployed?
+    end
+
+    # Necessário para a prova do módulo 25: A90 na CID-10 ativa de dev. Só
+    # republica o recorte de dev (versão "dev-*") com os códigos que ele já tem
+    # mais o A90; uma release real ativa nunca é tocada (a ausência só avisa).
+    # O CIAP-2 da dengue é vazio na lista (ciap2: []), então nada entra nele.
+    def dengue_terms!
+      return if ClinicalTerms.find("cid10", "A90")
+
+      active = ClinicalTerms.release("cid10")
+      return unless active&.version.to_s.start_with?("dev-")
+
+      codes = Cid10Code.where(release_id: active.id).pluck(:code, :description, :sex_restriction)
+                       .to_h { |code, description, sex| [ code, [ description, sex ] ] }.merge(DENGUE_CID10)
+      Dir.mktmpdir do |dir|
+        write_cid10(Pathname(dir), codes)
+        result = Terminology::Import.call(kind: "cid10", version: DENGUE_TERMS_VERSION, path: dir, by: "db:seed")
+        raise "semente da vigilância: CID-10 com A90 recusada (#{result.reason} #{result.message})" if result.failure?
+      end
+    end
+
+    def write_cid10(dir, codes)
+      categories, subcategories = codes.partition { |code, _| code.length == 3 }
+      dir.join("CID-10-CATEGORIAS.CSV").binwrite(("CAT;DESCRICAO\n" + categories.map { |c, (d, _)| "#{c};#{d}" }.join("\n") + "\n").encode("ISO-8859-1"))
+      dir.join("CID-10-SUBCATEGORIAS.CSV").binwrite(("SUBCAT;DESCRICAO;RESTRSEXO\n" +
+        subcategories.map { |c, (d, sex)| "#{c};#{d};#{sex}" }.join("\n") + "\n").encode("ISO-8859-1"))
     end
 
     def off(switch) = { switch: switch, notifications: 0, negatives: 0, users: [] }
@@ -398,7 +432,7 @@ class SurveillanceCrew
       { switch: Surveillance::Gate.usable?(city) ? "ligado (surveillance)" : "ligado, não utilizável",
         week: last_week.to_s, notifications: DiseaseNotification.count, negatives: WeeklyNegativeReport.count,
         queue: Surveillance::Queue.counts, local_disease: LOCAL_DISEASE.fetch("code"),
-        safety_net: safety_net ? "possível pela consulta com A90" : "sem A90 na CID-10 de dev: não semeada",
+        safety_net: safety_net ? "possível pela consulta com A90" : "sem A90 na CID-10 ativa (release real): não semeada",
         users: [ { email: officer.email_address, role: OFFICER[:role], otpauth_uri: SignatureCrew.otpauth_uri(officer) } ] }
     end
   end

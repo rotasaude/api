@@ -53,14 +53,6 @@ RSpec.describe SurveillanceCrew, type: :request do
 
   def seed = described_class.seed_current_city(slug: "curitiba", ddd: "41", password: "dev-password")
 
-  # A CID-10 de dev (recorte do prontuário) não tem A90: uma versão mais nova a traz.
-  def a90_release!
-    release = TerminologyRelease.create!(kind: "cid10", version: "dev-a90", source_sha256: "d" * 64, imported_by: "rspec",
-                                         imported_at: Time.current, status: "importing")
-    Cid10Code.create!(release: release, code: "A90", description: "Dengue [dengue clássico]", sex_restriction: nil)
-    release.update!(status: "active", activated_at: 1.minute.from_now)
-  end
-
   def panel(disease: "dengue") = Surveillance::Panel.call(from: last_week - 4, to: last_week, disease: disease)
 
   def notification_of(patient, disease) = DiseaseNotification.where(patient_id: patient.id, disease_code: disease).order(:created_at).last
@@ -76,11 +68,11 @@ RSpec.describe SurveillanceCrew, type: :request do
       expect(rows.fetch("Santa Felicidade")).to include(counts: [ nil, nil, nil, nil, 6 ], signal: [ false, false, false, false, true ])
       expect(rows.fetch("Boqueirão")).to include(counts: [ 0, 0, 0, 0, nil ], signal: [ false ] * 5)
       expect(rows.fetch("Batel")).to include(counts: [ 0, 0, 0, 0, nil ], signal: [ false ] * 5)
-      # 11 + 3 + 2 casos de dengue, e nenhum deles em possible/notified (venceria).
+      # 11 + 3 + 2 casos de dengue, nenhum deles em notified (venceria), mais a possível da rede de segurança (A90, na UBS).
       dengue = DiseaseNotification.where(disease_code: "dengue")
-      expect(dengue.count).to eq(16)
-      expect(dengue.group(:status).count).to eq("entered" => 7, "investigating" => 9)
-      expect(dengue.group(:health_unit_id).count).to eq(ubs.id => 11, vila.id => 5)
+      expect(dengue.count).to eq(17)
+      expect(dengue.group(:status).count).to eq("entered" => 7, "investigating" => 9, "possible" => 1)
+      expect(dengue.group(:health_unit_id).count).to eq(ubs.id => 12, vila.id => 5)
     end
   end
 
@@ -133,19 +125,41 @@ RSpec.describe SurveillanceCrew, type: :request do
     end
   end
 
-  it "sem A90 na CID-10 de dev: avisa, não semeia a possível e segue" do
+  it "o recorte de dev ganha o A90 (e só ele) pela própria semente; a segunda rodada não publica outra release" do
+    dev = ClinicalTerms.release("cid10")
+    before_codes = Cid10Code.where(release_id: dev.id).pluck(:code, :description, :sex_restriction).sort
+    expect(before_codes.map(&:first)).not_to include("A90")
+
+    seed
+    current = ClinicalTerms.release("cid10")
+    aggregate_failures do
+      expect([ current.version, current.status ]).to eq([ "dev-a90", "active" ])
+      expect(Cid10Code.where(release_id: current.id).pluck(:code, :description, :sex_restriction).sort)
+        .to eq((before_codes + [ [ "A90", "Dengue [dengue clássico]", nil ] ]).sort)
+      expect(dev.reload.status).to eq("superseded")
+    end
+    expect { seed }.not_to(change { TerminologyRelease.where(kind: "cid10").count })
+  end
+
+  it "release real ativa sem A90: não é tocada; avisa, não semeia a possível e segue" do
+    # Uma release real (não "dev-*") e sem A90 no lugar do recorte de dev.
+    ClinicalTerms.release("cid10").update!(status: "superseded")
+    real = TerminologyRelease.create!(kind: "cid10", version: "2026-real", source_sha256: "e" * 64, imported_by: "rspec",
+                                      imported_at: Time.current, status: "importing")
+    Cid10Code.create!(release: real, code: "I10", description: "Hipertensão essencial (primária)", sex_restriction: nil)
+    real.update!(status: "active", activated_at: Time.current)
     result = nil
     expect { result = seed }.to output(/CID-10 A90 ausente/).to_stderr
 
-    expect(result).to include(safety_net: "sem A90 na CID-10 de dev: não semeada")
+    expect(TerminologyRelease.active.where(kind: "cid10").pluck(:version)).to eq([ "2026-real" ])
+    expect(result).to include(safety_net: "sem A90 na CID-10 ativa (release real): não semeada")
     expect(DiseaseNotification.where(origin: "safety_net")).to be_empty
     expect(Consultation.where(author_user: User.find_by!(email_address: "profissional@curitiba.demo"))
                        .joins(:problem_items).where(problem_items: { code: "A90" })).to be_empty
     expect(Surveillance::Queue.counts).to include(possible: 0)
   end
 
-  it "com A90 na CID-10: a possível nasce da consulta finalizada da médica da UBS, sem notificador, e não entra no painel" do
-    a90_release!
+  it "com o A90 semeado no recorte de dev: a possível nasce da consulta finalizada da médica da UBS, sem notificador, e não entra no painel" do
     result = seed
     possible = DiseaseNotification.find_by!(origin: "safety_net")
 
@@ -197,7 +211,6 @@ RSpec.describe SurveillanceCrew, type: :request do
   end
 
   it "telefones: toda pessoa nova da semente tem celular +55 41 96666-NNNN a partir de 2600" do
-    a90_release!
     seed
     citizens = (0..described_class::SAFETY_NET_INDEX).map { |index| Citizen.find_by!(cpf: described_class.cpf_for("curitiba", index)) }
 
@@ -219,7 +232,6 @@ RSpec.describe SurveillanceCrew, type: :request do
   end
 
   it "a segunda rodada não muda nada (com a possível da rede de segurança)" do
-    a90_release!
     first = seed
     tables = [ User, Membership, Citizen, Patient, DiseaseNotification, DiseaseNotificationEvent, WeeklyNegativeReport, LocalNotifiableDisease,
                Consultation, Attendance, HealthUnit, DomainEvent, CityFeature, PlatformEvent ]
@@ -228,7 +240,6 @@ RSpec.describe SurveillanceCrew, type: :request do
   end
 
   it "a possível descartada não é recriada por uma nova rodada" do
-    a90_release!
     seed
     possible = DiseaseNotification.find_by!(origin: "safety_net")
     dismissed = Surveillance::Dismiss.call(notification: possible, reason: "Não é caso", version: possible.version, by: officer)
