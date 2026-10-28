@@ -240,4 +240,11 @@ RSpec.describe "disease surveillance bindings (ADR 0043)" do
     expect(DomainEvents.registry.keys).to include("local_disease.changed")
     expect(DomainEvents.registry["local_disease.changed"]).to be_empty
   end
+
+  # Só ids e booleanos (notification_id, immediate): nunca a doença, a origem
+  # nem dado do paciente. O consumidor (Surveillance::AlertJob) chega na Task 13.
+  it "declares disease_notification.created (no consumer yet)" do
+    expect(DomainEvents.registry.keys).to include("disease_notification.created")
+    expect(DomainEvents.registry["disease_notification.created"]).to be_empty
+  end
 end

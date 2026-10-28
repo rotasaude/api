@@ -25,7 +25,7 @@ module SurveillanceHelpers
   # avaliado só na chamada: o comando não existe antes da Task 7, e o primeiro
   # uso é da Task 11. status: ajusta o estado inicial quando difere do que a
   # origem produz (safety_net nasce possible; os outros, notified).
-  def notification!(patient:, disease_code: "dengue", status: "notified", **over)
+  def notification!(patient:, disease_code: "dengue", status: nil, **over)
     disease = Surveillance::Diseases.find(disease_code) || raise("doença desconhecida: #{disease_code}")
     unit = over.delete(:unit) || create_unit("UBS Vigia #{SecureRandom.hex(2)}")
     attrs = { patient: patient, disease: disease, origin: "manual", unit: unit, suspected_at: Time.current }.merge(over)
