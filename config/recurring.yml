@@ -130,6 +130,18 @@ default: &default
     queue: housekeeping
     schedule: "every day at 6:45am America/Sao_Paulo"
 
+  # ADR 0043 (módulo 25): resumo diário das vencidas e lembrete semanal da
+  # negativa, por e-mail, só com contagens e nomes de unidade.
+  surveillance_overdue:
+    class: Surveillance::OverdueJob
+    queue: housekeeping
+    schedule: "every day at 7:15am America/Sao_Paulo"
+
+  surveillance_negatives:
+    class: Surveillance::NegativesReminderJob
+    queue: housekeeping
+    schedule: "every monday at 7:30am America/Sao_Paulo"
+
   discard_old_failed_jobs:
     command: "SolidQueueRetention.discard_failed"
     queue: housekeeping

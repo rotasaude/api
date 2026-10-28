@@ -241,9 +241,9 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "local_disease.changed", to: []
   # Notificação nascida (Surveillance::CreateNotification): só ids e booleanos
   # (notification_id, immediate) — nunca a doença, a origem nem dado do
-  # paciente; o job relê a linha. O alerta (Surveillance::AlertJob) chega na
-  # Task 13.
-  DomainEvents.bind "disease_notification.created", to: []
+  # paciente; o job relê a linha. O consumidor só enfileira o e-mail da equipe
+  # (Surveillance::AlertJob → MailJob).
+  DomainEvents.bind "disease_notification.created", to: [ Surveillance::AlertJob ]
   # Ficha da notificação gravada (Surveillance::SaveForm): só notification_id —
   # nunca a ficha nem dado do paciente; sem consumidor.
   DomainEvents.bind "disease_notification.updated", to: []

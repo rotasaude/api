@@ -1,0 +1,9 @@
+Olá,
+
+A negativa semanal da semana epidemiológica <%= @week %> ainda não foi registrada pelas unidades abaixo, que também não tiveram caso na semana:
+
+<% @units.each do |unit| %>
+- <%= unit %>
+<% end %>
+
+Abra a vigilância no painel da cidade para registrar.

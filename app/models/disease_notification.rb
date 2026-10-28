@@ -16,6 +16,9 @@ class DiseaseNotification < ApplicationRecord
                                                     inverse_of: :notification, dependent: :restrict_with_error
 
   scope :open_notifications, -> { where(status: Surveillance::Catalog::OPEN_STATUSES) }
+  # Vencida: prazo passado e situação possible/notified (a regra de #overdue? e
+  # da fila, Surveillance::Queue). Os alertas diários contam por aqui.
+  scope :overdue_at, ->(now) { where(status: Surveillance::Catalog::OVERDUE_STATUSES).where("disease_notifications.due_at < ?", now) }
 
   # Só `possible` e `notified` atrasam: a investigação já começou.
   def overdue?(now = Time.current)

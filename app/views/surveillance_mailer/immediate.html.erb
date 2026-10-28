@@ -1,0 +1,10 @@
+<p>Olá,</p>
+<p>Uma notificação imediata foi registrada no Rota Saúde.</p>
+<p>
+  Doença: <%= @disease %><br>
+  Unidade: <%= @unit %>
+</p>
+<% if @possible %>
+  <p><strong>Atenção: possível notificação não feita — confirmar na fila.</strong></p>
+<% end %>
+<p>Abra a fila da vigilância no painel da cidade.</p>

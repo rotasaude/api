@@ -243,10 +243,10 @@ RSpec.describe "disease surveillance bindings (ADR 0043)" do
   end
 
   # Só ids e booleanos (notification_id, immediate): nunca a doença, a origem
-  # nem dado do paciente. O consumidor (Surveillance::AlertJob) chega na Task 13.
-  it "declares disease_notification.created (no consumer yet)" do
+  # nem dado do paciente. O consumidor (Surveillance::AlertJob) só enfileira o e-mail.
+  it "declares disease_notification.created consumed by the surveillance alert" do
     expect(DomainEvents.registry.keys).to include("disease_notification.created")
-    expect(DomainEvents.registry["disease_notification.created"]).to be_empty
+    expect(DomainEvents.registry["disease_notification.created"].map(&:job)).to eq([ "Surveillance::AlertJob" ])
   end
 
   # Só notification_id (Surveillance::SaveForm): nunca a ficha.

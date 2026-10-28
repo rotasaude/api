@@ -1,0 +1,11 @@
+Olá,
+
+Uma notificação imediata foi registrada no Rota Saúde.
+
+Doença: <%= @disease %>
+Unidade: <%= @unit %>
+<% if @possible %>
+Atenção: possível notificação não feita — confirmar na fila.
+<% end %>
+
+Abra a fila da vigilância no painel da cidade.
