@@ -19,6 +19,7 @@ RSpec.describe Surveillance::MailJob do
 
   def sarampo!(n: 1, **over)
     patient, citizen = exam_patient!(n, full_name: "Maria Aparecida da Silva")
+    patient.update!(cns: Professionals::Cns.generate("paciente-#{n}"))
     centro = Neighborhood.create!(name: "Bairro Sigiloso #{SecureRandom.hex(2)}", source: "manual")
     Citizen.where(patient_id: patient.id).update_all(neighborhood_id: centro.id)
     notification = notification!(patient: patient, disease_code: "sarampo", unit: unit, by: officers.first, symptoms_on: Time.zone.today - 3, **over)
@@ -42,11 +43,15 @@ RSpec.describe Surveillance::MailJob do
       expect(mail.subject).to eq("[rota-saúde] Nova notificação imediata: Sarampo, UBS Vigia Norte")
       text = full_text(mail)
       expect(text).to include("Sarampo", "UBS Vigia Norte", "painel da cidade")
+      # Os valores proibidos existem de fato na fixture (nada de teste vazio).
       expect(citizen.cpf).to be_present
-      forbidden = [ "Maria", "Aparecida", citizen.cpf, citizen.cpf.to_s.gsub(/\D/, ""), patient.cns, centro.name,
+      expect(patient.reload.cns).to match(/\A\d{15}\z/)
+      expect(notification.neighborhood_id).to eq(centro.id)
+      expect(notification.symptoms_on).to be_present
+      forbidden = [ "Maria", "Aparecida", citizen.cpf, citizen.cpf.gsub(/\D/, ""), patient.cns, centro.name,
                     notification.id, notification.symptoms_on.to_s, notification.symptoms_on.strftime("%d/%m/%Y"),
-                    notification.suspected_on.to_s, "http" ].compact.reject { |v| v.to_s.empty? }
-      forbidden.each { |value| expect(text).not_to include(value.to_s) }
+                    notification.suspected_on.to_s, "http" ]
+      forbidden.each { |value| expect(text).not_to include(value) }
       expect(text).not_to include("possível notificação não feita")
     end
 
@@ -71,14 +76,14 @@ RSpec.describe Surveillance::MailJob do
       expect(full_text(deliveries.last)).not_to include("possível notificação não feita")
     end
 
-    it "rodar duas vezes entrega uma vez" do
+    it "entrega uma rodada" do
       notification, = sarampo!(n: 4)
       deliveries.clear
 
       deliver!("immediate", notification.id)
       deliver!("immediate", notification.id)
 
-      expect(deliveries.size).to eq(2) # um por membro, uma rodada
+      expect(deliveries.size).to eq(2) # rodar duas vezes: um e-mail por membro, uma rodada só
       expect(ProcessedEvent.where(consumer: "surveillance_mail", event_id: "immediate:#{notification.id}").count).to eq(1)
     end
 
@@ -91,13 +96,31 @@ RSpec.describe Surveillance::MailJob do
       expect { deliver!("immediate", notification.id) }.not_to raise_error
 
       expect(deliveries).to be_empty
-      expect(Rails.logger).to have_received(:info).with("[Surveillance::MailJob] kind=immediate recipients=0")
+      expect(Rails.logger).to have_received(:info).with("[Surveillance::MailJob] kind=immediate recipients=0 delivered=0 failed=0")
     end
 
     it "notificação inexistente: nada a enviar, sem erro" do
       deliveries.clear
       expect { deliver!("immediate", SecureRandom.uuid) }.not_to raise_error
       expect(deliveries).to be_empty
+    end
+
+    it "recusa permanente de um endereço não cala os demais: pula, conta e segue" do
+      notification, = sarampo!(n: 9)
+      deliveries.clear
+      allow(Rails.logger).to receive(:info).and_call_original
+      calls = 0
+      allow_any_instance_of(Mail::Message).to receive(:deliver).and_wrap_original do |original, *args|
+        calls += 1
+        raise Net::SMTPFatalError, "550 mailbox unavailable" if calls == 1
+
+        original.call(*args)
+      end
+
+      expect { deliver!("immediate", notification.id) }.not_to raise_error
+
+      expect(deliveries.size).to eq(1)
+      expect(Rails.logger).to have_received(:info).with("[Surveillance::MailJob] kind=immediate recipients=2 delivered=1 failed=1")
     end
 
     it "erro transitório de SMTP é retentado e o dedup é desfeito" do
@@ -137,9 +160,27 @@ RSpec.describe Surveillance::MailJob do
     end
   end
 
+  describe "portão" do
+    it "overdue e negatives conferem o interruptor ao enviar; immediate não" do
+      notification, = sarampo!(n: 10)
+      notification.update_columns(due_at: 1.hour.ago)
+      create_unit("UBS Sem Negativa")
+      week = Surveillance::EpiWeek.current(Time.zone.today).pred
+      Platform::Features.set!(city: Current.city, key: "surveillance", enabled: false, maintainer: ledi_maintainer!)
+      deliveries.clear
+
+      deliver!("overdue", Time.zone.today.iso8601)
+      deliver!("negatives", week.to_s)
+      expect(deliveries).to be_empty
+
+      deliver!("immediate", notification.id)
+      expect(deliveries.size).to eq(2)
+    end
+  end
+
   describe "negatives" do
     it "lista os nomes das unidades pendentes da semana" do
-      pending_unit = create_unit("UBS Sem Negativa")
+      create_unit("UBS Sem Negativa")
       reported = create_unit("UBS Com Negativa")
       week = Surveillance::EpiWeek.current(Time.zone.today).pred
       WeeklyNegativeReport.create!(health_unit: reported, week: week.to_s, recorded_by_user: officers.first)
@@ -152,7 +193,6 @@ RSpec.describe Surveillance::MailJob do
       text = full_text(mail)
       expect(text).to include(week.to_s, "UBS Sem Negativa")
       expect(text).not_to include("UBS Com Negativa")
-      expect(pending_unit).to be_persisted
     end
   end
 

@@ -14,5 +14,13 @@ module Surveillance
     def unit_ids_with_cases(week)
       DiseaseNotification.where(suspected_on: week.range).where.not(status: NOT_A_CASE).distinct.pluck(:health_unit_id).to_set
     end
+
+    # Unidades notificadoras ativas sem negativa da semana e sem caso nela (as
+    # que o lembrete cobra e o painel de pendências lista), por nome.
+    def pending_units(week)
+      reported = WeeklyNegativeReport.where(week: week.to_s).select(:health_unit_id)
+      HealthUnit.where(active: true, notifying: true).where.not(id: reported)
+                .where.not(id: unit_ids_with_cases(week).to_a).order(:name)
+    end
   end
 end

@@ -23,7 +23,7 @@ RSpec.describe Surveillance::NegativesReminderJob do
     end
   end
 
-  def pending_names = described_class.pending_units(week).map(&:name)
+  def pending_names = Surveillance::WeekCases.pending_units(week).map(&:name)
 
   it "a unidade notificadora sem nada na semana anterior aparece; o e-mail a nomeia" do
     create_unit("UBS Esquecida")
@@ -46,14 +46,13 @@ RSpec.describe Surveillance::NegativesReminderJob do
     reported = create_unit("UBS Negativou")
     cased = create_unit("UBS Com Caso")
     create_unit("Hospital Fora", kind: "hospital") # nasce notifying: false
-    silent = create_unit("UBS Silenciosa")
+    create_unit("UBS Silenciosa")
     inactive = create_unit("UBS Inativa", active: false)
     WeeklyNegativeReport.create!(health_unit: reported, week: "2026-41", recorded_by_user: officer)
     notification!(patient: surveillance_patient!(1), unit: cased, suspected_at: Time.zone.local(2026, 10, 14, 10), status: "notified", by: officer)
 
     expect(pending_names).to eq([ "UBS Silenciosa" ])
     expect(pending_names).not_to include(inactive.name, "UBS Negativou", "UBS Com Caso", "Hospital Fora")
-    expect(silent).to be_persisted
   end
 
   it "negativa de outra semana não vale; possível na semana não tira a pendência" do

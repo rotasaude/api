@@ -9,8 +9,11 @@
 # Dedup como o DispatchMunicipalityAlertJob: ProcessedEvent
 # (consumer "surveillance_mail", event_id "<kind>:<ref>") ANTES da entrega; a
 # transação do with_city o desfaz se a entrega levantar, e o retry reentrega.
-# Um e-mail por destinatário (ninguém vê o endereço do outro). Sem
-# destinatário: log com a contagem 0 e sem erro — o painel segue mostrando o
+# Um e-mail por destinatário (ninguém vê o endereço do outro). Endereço que o
+# servidor recusa de vez (Net::SMTPFatalError/SMTPSyntaxError) é pulado e
+# contado, sem calar os demais; erro transitório levanta e o retry reenvia
+# também aos que já receberam (duplicata aceita: melhor repetir que perder).
+# Sem destinatário: log com a contagem 0 e sem erro — o painel segue mostrando o
 # alerta. O e-mail nunca leva paciente, bairro, data de sintomas nem id; o log
 # só tem kind e contagens (nunca doença, unidade ou paciente).
 module Surveillance
@@ -32,17 +35,32 @@ module Surveillance
 
       with_city(city_slug) do
         next if duplicate?("#{kind}:#{ref}")
+        # immediate não relê o portão: o AlertJob já o conferiu ao enfileirar, e
+        # um alerta aceito não some porque o interruptor virou no intervalo.
+        next if kind != "immediate" && !Gate.usable?(Current.city)
 
         mails = send("#{kind}_mails", ref)
         next if mails.nil? # nada a dizer agora (notificação sumiu, contagem zerou, ninguém pendente)
 
         recipients = Recipients.emails
-        Rails.logger.info("[#{self.class.name}] kind=#{kind} recipients=#{recipients.size}")
-        recipients.each { |to| mails.call(to).deliver_now }
+        delivered, failed = deliver_each(recipients, mails)
+        Rails.logger.info("[#{self.class.name}] kind=#{kind} recipients=#{recipients.size} delivered=#{delivered} failed=#{failed}")
       end
     end
 
     private
+
+    # -> [entregues, recusados]. Só recusa permanente pula o endereço; o log
+    # nunca leva o endereço.
+    def deliver_each(recipients, mails)
+      failed = 0
+      recipients.each do |to|
+        mails.call(to).deliver_now
+      rescue Net::SMTPFatalError, Net::SMTPSyntaxError
+        failed += 1
+      end
+      [ recipients.size - failed, failed ]
+    end
 
     # requires_new (SAVEPOINT): ver DispatchMunicipalityAlertJob.
     def duplicate?(event_id)
@@ -77,7 +95,7 @@ module Surveillance
 
     def negatives_mails(week_string)
       week = EpiWeek.parse(week_string) || raise(ArgumentError, "invalid week")
-      labels = NegativesReminderJob.pending_units(week).map(&:name)
+      labels = WeekCases.pending_units(week).map(&:name)
       return nil if labels.empty?
 
       ->(to) { SurveillanceMailer.negatives(to: to, week: week.to_s, unit_labels: labels) }

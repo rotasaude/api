@@ -16,9 +16,14 @@ class DiseaseNotification < ApplicationRecord
                                                     inverse_of: :notification, dependent: :restrict_with_error
 
   scope :open_notifications, -> { where(status: Surveillance::Catalog::OPEN_STATUSES) }
-  # Vencida: prazo passado e situação possible/notified (a regra de #overdue? e
-  # da fila, Surveillance::Queue). Os alertas diários contam por aqui.
-  scope :overdue_at, ->(now) { where(status: Surveillance::Catalog::OVERDUE_STATUSES).where("disease_notifications.due_at < ?", now) }
+  # Vencida: prazo passado e situação possible/notified. A ÚNICA definição em
+  # SQL: a fila (Surveillance::Queue: contadores, filtro e a coluna q_overdue) e
+  # os alertas diários usam este fragmento; #overdue? é o espelho em Ruby.
+  def self.overdue_sql(now)
+    sanitize_sql_array([ "(disease_notifications.due_at < ? AND disease_notifications.status IN (?))",
+                         now, Surveillance::Catalog::OVERDUE_STATUSES ])
+  end
+  scope :overdue_at, ->(now) { where(overdue_sql(now)) }
 
   # Só `possible` e `notified` atrasam: a investigação já começou.
   def overdue?(now = Time.current)

@@ -3,8 +3,8 @@
 # o id — `overdue DESC, deadline = 'immediate' DESC, due_at ASC, id ASC` —,
 # paginada por cursor (Surveillance::Cursor), porque a ordem não é por id.
 #
-# "Vencida" em SQL é a mesma regra de DiseaseNotification#overdue?: prazo
-# passado e situação possible/notified (Catalog::OVERDUE_STATUSES).
+# "Vencida" em SQL é DiseaseNotification.overdue_sql (a única definição; o
+# espelho em Ruby é #overdue?).
 # Filtros (valor vazio = ausente): status (um de STATUSES; padrão: todos
 # menos entered e dismissed), disease (código), overdue ("true"), unit_id
 # (uuid) e without_official_number ("true" = status closed, o relatório "sem
@@ -31,7 +31,7 @@ module Surveillance
         return Result.fail(:invalid_cursor) unless cursor
       end
 
-      overdue = overdue_sql(now)
+      overdue = DiseaseNotification.overdue_sql(now)
       scope = after(scope, cursor, overdue) if cursor
       fetched = scope.includes(*INCLUDES)
                      .select("disease_notifications.*, #{overdue} AS q_overdue, #{IMMEDIATE} AS q_immediate")
@@ -49,7 +49,7 @@ module Surveillance
       by_status = DiseaseNotification.group(:status).count
       { possible: by_status.fetch("possible", 0), notified: by_status.fetch("notified", 0),
         investigating: by_status.fetch("investigating", 0),
-        overdue: DiseaseNotification.where(overdue_sql(now)).count,
+        overdue: DiseaseNotification.overdue_at(now).count,
         immediate_open: DiseaseNotification.where(deadline: "immediate", status: Catalog::OPEN_STATUSES).count,
         without_official_number: by_status.fetch("closed", 0) }
     end
@@ -72,7 +72,7 @@ module Surveillance
       scope = scope.where(status: status || (Catalog::STATUSES - HIDDEN_BY_DEFAULT))
       scope = scope.where(disease_code: disease) if disease
       scope = scope.where(health_unit_id: unit_id) if unit_id
-      scope = scope.where(overdue_sql(now)) if overdue
+      scope = scope.overdue_at(now) if overdue
       scope
     end
 
@@ -86,12 +86,7 @@ module Surveillance
       )
     end
 
-    def overdue_sql(now)
-      DiseaseNotification.sanitize_sql_array([ "(disease_notifications.due_at < ? AND disease_notifications.status IN (?))",
-                                               now, Catalog::OVERDUE_STATUSES ])
-    end
-
     def invalid(field) = Result.fail(:invalid_filter, details: { field: field })
-    private_class_method :filtered, :after, :overdue_sql, :invalid
+    private_class_method :filtered, :after, :invalid
   end
 end
