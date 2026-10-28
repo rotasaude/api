@@ -11,9 +11,13 @@
 #   - supressão (Admin::SmallCount.small?) DEPOIS de agregar: 1–4 vira nil, 0
 #     continua 0; sem linha nem coluna de total, para a soma não devolver a
 #     célula suprimida;
-#   - sinal: contagem crua da semana ≥ SIGNAL_MIN e > SIGNAL_FACTOR × média das
-#     SIGNAL_BASELINE semanas anteriores (contagem crua; as anteriores a `from`
-#     são lidas só para isso e nunca devolvidas). Nunca verdadeiro em célula nil.
+#   - sinal: contagem da semana ≥ SIGNAL_MIN e > SIGNAL_FACTOR × média das
+#     SIGNAL_BASELINE semanas anteriores (as anteriores a `from` são lidas só
+#     para isso e nunca devolvidas). Nunca verdadeiro em célula nil.
+#     K14: a linha de base usa só valores publicáveis. Célula de 0 ou ≥ 5
+#     entra como é; célula suprimida (1–4) entra como SUPPRESSED_BASELINE
+#     (ponto médio), nunca o valor cru: com o cru, o sinal de uma semana
+#     visível revelaria a célula suprimida da base (e as semanas fora do painel).
 # Só ids e nomes de bairro e contagens: nada de pessoa, sem trilha.
 module Surveillance
   module Panel
@@ -22,6 +26,7 @@ module Surveillance
     SIGNAL_BASELINE_WEEKS = 4
     SIGNAL_FACTOR = 2
     SIGNAL_MIN = 5
+    SUPPRESSED_BASELINE = 2.5
     NOT_COUNTED = %w[possible dismissed].freeze
     UNKNOWN = "Não informado".freeze
     # `symptoms_on <= suspected_on` (CHECK): a data de referência nunca passa da suspeita.
@@ -67,8 +72,12 @@ module Surveillance
     def signal?(count, by_week, week)
       return false if count < SIGNAL_MIN
 
-      previous = (1..SIGNAL_BASELINE_WEEKS).sum { |back| by_week[(week - back).to_s] }
-      count > SIGNAL_FACTOR * (previous.to_f / SIGNAL_BASELINE_WEEKS)
+      # K14: a linha de base usa só valores publicáveis.
+      previous = (1..SIGNAL_BASELINE_WEEKS).sum do |back|
+        raw = by_week[(week - back).to_s]
+        Admin::SmallCount.small?(raw) ? SUPPRESSED_BASELINE : raw
+      end
+      count > SIGNAL_FACTOR * (previous / SIGNAL_BASELINE_WEEKS.to_f)
     end
 
     def sort_key(name) = [ I18n.transliterate(name).downcase, name ]

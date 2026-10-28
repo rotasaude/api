@@ -43,9 +43,19 @@ module SurveillanceHelpers
   # status: "possible"), com o bairro posto por update_columns (o trigger
   # de guarda deixa; o bairro vem do domicílio do paciente, que o cenário não
   # monta) e os demais estados pelo Transition / Dismiss.
-  # Cobre: possible, notified, investigating, closed (classification:
-  # confirmed por padrão; "discarded" para o descarte) e dismissed.
+  # Cobre: possible, notified, investigating, closed, entered (closed e
+  # entered levam classification, confirmed por padrão) e dismissed. Status
+  # desconhecido, ou classification fora de closed/entered, é ArgumentError:
+  # nada de cair em notified em silêncio.
+  PANEL_CASE_STEPS = { "possible" => [], "notified" => [], "dismissed" => [], "investigating" => %w[investigating],
+                       "closed" => %w[investigating closed], "entered" => %w[investigating closed entered] }.freeze
+
   def panel_case!(neighborhood:, symptoms_on:, suspected_on:, status: "notified", classification: nil, disease_code: "dengue")
+    raise ArgumentError, "unknown status: #{status.inspect}" unless PANEL_CASE_STEPS.key?(status)
+    if classification && !%w[closed entered].include?(status)
+      raise ArgumentError, "classification only with closed/entered, got #{status}"
+    end
+
     @panel_seq = (@panel_seq || 1000) + 1
     safety_net = %w[possible dismissed].include?(status)
     officer = (@panel_officer ||= surveillance_officer!)
@@ -53,10 +63,13 @@ module SurveillanceHelpers
                                  origin: safety_net ? "safety_net" : "manual", suspected_at: suspected_on.in_time_zone,
                                  symptoms_on: symptoms_on, by: officer)
     notification.update_columns(neighborhood_id: neighborhood&.id)
-    steps = { "investigating" => %w[investigating], "closed" => %w[investigating closed] }.fetch(status, [])
-    steps.each do |to|
-      result = Surveillance::Transition.call(notification: notification, to: to, version: notification.reload.version, by: officer,
-                                             classification: to == "closed" ? (classification || "confirmed") : nil)
+    PANEL_CASE_STEPS.fetch(status).each do |to|
+      extra = case to
+              when "closed" then { classification: classification || "confirmed" }
+              when "entered" then { official_number: "SINAN-#{@panel_seq}" }
+              else {}
+              end
+      result = Surveillance::Transition.call(notification: notification, to: to, version: notification.reload.version, by: officer, **extra)
       raise "transição recusada: #{result.reason}" if result.failure?
     end
     if status == "dismissed"

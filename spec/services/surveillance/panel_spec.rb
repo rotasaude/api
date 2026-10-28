@@ -62,17 +62,49 @@ RSpec.describe Surveillance::Panel do
     expect(out[:rows].first).to include(counts: [ 0, 5 ], signal: [ false, true ])
   end
 
-  it "o sinal exige 5 casos e mais que o dobro da média crua das 4 anteriores (as suprimidas entram cruas)" do
+  it "o sinal exige 5 casos e mais que o dobro da média das 4 anteriores (K14: a suprimida entra como 2,5)" do
     centro = hood("Centro")
-    cases!(1, neighborhood: centro, on: week_start(36))
-    cases!(1, neighborhood: centro, on: week_start(37))
-    cases!(1, neighborhood: centro, on: week_start(38))
-    cases!(1, neighborhood: centro, on: week_start(39))
+    [ 36, 37, 38, 39 ].each { |w| cases!(1, neighborhood: centro, on: week_start(w)) }
     cases!(4, neighborhood: centro, on: week_start(40))
-    cases!(5, neighborhood: centro, on: week_start(41))
-    out = described_class.call(from: Surveillance::EpiWeek.parse("2026-36"), to: Surveillance::EpiWeek.parse("2026-41"))
-    # 36–39 = 1 (nil); 40 = 4 (nil, mesmo acima do dobro); 41 = 5 > 2 × média(1,1,1,4)=2,5.
-    expect(out[:rows].first).to include(counts: [ nil, nil, nil, nil, nil, 5 ], signal: [ false, false, false, false, false, true ])
+    cases!(6, neighborhood: centro, on: week_start(41))
+    cases!(5, neighborhood: centro, on: week_start(42))
+    out = described_class.call(from: Surveillance::EpiWeek.parse("2026-36"), to: Surveillance::EpiWeek.parse("2026-42"))
+    # 36–40 suprimidas (nil, sem sinal mesmo a de 4 acima do dobro da base crua).
+    # 41 = 6 > 2 × média(2,5 ×4) = 5; 42 = 5 não passa de 2 × média(2,5 ×3 e 6) = 6,75.
+    expect(out[:rows].first).to include(counts: [ nil, nil, nil, nil, nil, 6, 5 ],
+                                        signal: [ false, false, false, false, false, true, false ])
+  end
+
+  it "K14: o painel não muda com o valor da célula suprimida da base (1, 2, 3 ou 4), nem a semana fora do painel" do
+    # Um bairro por valor de x, no mesmo banco: a saída de cada linha tem de ser igual.
+    (1..4).each do |x|
+      bairro = hood("Bairro #{x}")
+      # Base visível somando 10 (5, 5, 0) e uma célula suprimida x; a semana do painel tem 6 casos.
+      cases!(5, neighborhood: bairro, on: week_start(36))
+      cases!(x, neighborhood: bairro, on: week_start(37))
+      cases!(5, neighborhood: bairro, on: week_start(38))
+      cases!(6, neighborhood: bairro, on: week_start(40))
+    end
+    out = described_class.call(from: week, to: week)
+    outputs = out[:rows].map { |r| r.except(:neighborhood) }
+    expect(out[:rows].size).to eq(4)
+    expect(outputs.first).to eq(counts: [ 6 ], signal: [ false ])
+    expect(outputs.uniq.size).to eq(1)
+  end
+
+  it "panel_case! recusa status desconhecido e classification fora de closed/entered" do
+    args = { neighborhood: nil, symptoms_on: week.starts_on, suspected_on: week.starts_on }
+    expect { panel_case!(**args, status: "closeed") }.to raise_error(ArgumentError, /unknown status/)
+    expect { panel_case!(**args, status: "notified", classification: "confirmed") }.to raise_error(ArgumentError, /classification/)
+  end
+
+  it "closed (inconclusiva) e entered contam; closed descartada fica fora" do
+    centro = hood("Centro")
+    cases!(2, neighborhood: centro, on: week.starts_on, status: "closed", classification: "inconclusive")
+    cases!(2, neighborhood: centro, on: week.starts_on, status: "entered")
+    cases!(1, neighborhood: centro, on: week.starts_on, status: "entered", classification: "confirmed")
+    cases!(3, neighborhood: centro, on: week.starts_on, status: "closed", classification: "discarded")
+    expect(described_class.call(from: week, to: week).dig(:rows, 0, :counts)).to eq([ 5 ])
   end
 
   it "5 casos sem passar do dobro da média não dão sinal" do
