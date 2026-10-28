@@ -233,3 +233,11 @@ RSpec.describe "territory registry bindings (ADR 0042)" do
     expect(DomainEvents.registry["territory_registration.exited"].map(&:job)).to eq([ "CareLines::RegistrationExitedJob" ])
   end
 end
+
+# Módulo 25 (ADR 0043): doenças locais de notificação, só trilha, só ids.
+RSpec.describe "disease surveillance bindings (ADR 0043)" do
+  it "declares local_disease.changed with no consumer" do
+    expect(DomainEvents.registry.keys).to include("local_disease.changed")
+    expect(DomainEvents.registry["local_disease.changed"]).to be_empty
+  end
+end

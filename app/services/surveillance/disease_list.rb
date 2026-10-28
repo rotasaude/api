@@ -23,7 +23,8 @@ module Surveillance
 
     # -> Result.ok | Result.fail(:invalid_list, details: { path: "diseases.3.cid10.0" }).
     # Primeira recusa vence: doença a doença, campo a campo.
-    def validate(diseases, code_rule: Catalog::PLATFORM_CODE)
+    # `require_sources: false` é da doença local, que não tem fontes (contrato §2).
+    def validate(diseases, code_rule: Catalog::PLATFORM_CODE, require_sources: true)
       return refuse("diseases") unless diseases.is_a?(Array) && diseases.any?
 
       codes = {}
@@ -33,7 +34,7 @@ module Surveillance
         return refuse("diseases.#{i}") unless raw.is_a?(Hash)
 
         d = raw.stringify_keys
-        path = field_error(d, code_rule)
+        path = field_error(d, code_rule, require_sources)
         return refuse("diseases.#{i}.#{path}") if path
 
         return refuse("diseases.#{i}.code") if codes.key?(d["code"])
@@ -53,7 +54,7 @@ module Surveillance
     end
 
     # Caminho (relativo à doença) do primeiro campo inválido, ou nil.
-    def field_error(d, code_rule)
+    def field_error(d, code_rule, require_sources = true)
       return "code" unless d["code"].is_a?(String) && code_rule.match?(d["code"])
       return "name" unless d["name"].is_a?(String) && d["name"].strip == d["name"] && d["name"].length.between?(1, Catalog::NAME_MAX)
       return "deadline" unless Catalog::DEADLINES.key?(d["deadline"])
@@ -73,10 +74,10 @@ module Surveillance
       return "sinan_form" unless d["sinan_form"].nil? || (d["sinan_form"].is_a?(String) && d["sinan_form"].length.between?(1, SINAN_FORM_MAX))
       return "notes" unless d["notes"].nil? || (d["notes"].is_a?(String) && d["notes"].length <= DISEASE_NOTES_MAX)
 
-      sources = d["sources"]
-      return "sources" unless sources.is_a?(Hash) && sources.any? && sources.values.all? { |v| v.is_a?(String) }
+      return nil unless require_sources
 
-      nil
+      sources = d["sources"]
+      "sources" unless sources.is_a?(Hash) && sources.any? && sources.values.all? { |v| v.is_a?(String) }
     end
 
     def refuse(path) = Result.fail(:invalid_list, details: { path: path })

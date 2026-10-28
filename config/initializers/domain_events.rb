@@ -233,4 +233,8 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "territory_registration.exited", to: [ CareLines::RegistrationExitedJob ]
   # §14 L29: troca do responsável = família nova; só ids.
   DomainEvents.bind "family.responsible_replaced", to: []
+
+  # Módulo 25 (ADR 0043): doença de notificação local; trilha, só ids
+  # (local_disease_id, user_id), sem consumidor.
+  DomainEvents.bind "local_disease.changed", to: []
 end
