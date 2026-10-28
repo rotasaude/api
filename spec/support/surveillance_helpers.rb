@@ -27,7 +27,8 @@ module SurveillanceHelpers
   # origem produz (safety_net nasce possible; os outros, notified).
   def notification!(patient:, disease_code: "dengue", status: nil, **over)
     disease = Surveillance::Diseases.find(disease_code) || raise("doença desconhecida: #{disease_code}")
-    unit = over.delete(:unit) || create_unit("UBS Vigia #{SecureRandom.hex(2)}")
+    # Sequência, não sorteio: hex(2) repetido no mesmo exemplo é nome de unidade duplicado.
+    unit = over.delete(:unit) || create_unit("UBS Vigia #{@notification_unit_seq = (@notification_unit_seq || 0) + 1}")
     attrs = { patient: patient, disease: disease, origin: "manual", unit: unit, suspected_at: Time.current }.merge(over)
     attrs[:status] = status if status
     # Desvio 6: consulta e manual exigem quem grava.

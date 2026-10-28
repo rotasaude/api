@@ -121,4 +121,15 @@ RSpec.describe Surveillance::CreateNotification do
   it "helper notification!: safety_net sem status nasce possible" do
     expect(notification!(patient: patient, origin: "safety_net").status).to eq("possible")
   end
+
+  # Suíte do módulo 25 (2026-10-27): o nome da unidade de cada notificação
+  # vinha de SecureRandom.hex(2) (65 536 nomes, únicos sem caixa); dois sorteios
+  # iguais no mesmo exemplo davam RecordInvalid no create_unit.
+  it "helper notification!: cada notificação ganha uma unidade de nome único, sem depender de sorteio" do
+    allow(SecureRandom).to receive(:hex).and_call_original
+    allow(SecureRandom).to receive(:hex).with(2).and_return("abcd")
+    first = notification!(patient: patient)
+    second = notification!(patient: surveillance_patient!(4))
+    expect(first.health_unit_id).not_to eq(second.health_unit_id)
+  end
 end
