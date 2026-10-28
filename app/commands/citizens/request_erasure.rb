@@ -2,7 +2,8 @@
 # pedido de exclusão de TODOS os pares do CPF. CPF com par atendido nasce
 # retido por base legal; o mesmo vale para CPF com documento clínico emitido
 # e para CPF com exame (ADR 0036, A49) ou inscrição em linha de cuidado
-# (ADR 0040) e para CPF com cadastro territorial (ADR 0042). `retained?` é a regra única: o pedido
+# (ADR 0040), para CPF com cadastro territorial (ADR 0042) e para CPF com
+# notificação de vigilância (ADR 0043). `retained?` é a regra única: o pedido
 # e a reconferência do Citizens::Erase usam a mesma.
 module Citizens
   module RequestErasure
@@ -61,11 +62,16 @@ module Citizens
     # ADR 0042: o cadastro territorial também é registro retido — quem tem
     # QUALQUER versão de cadastro individual (ativo ou não) ou é o responsável
     # de uma família (contrato §14 L13).
+    # ADR 0043: a notificação de doença compulsória também é registro retido —
+    # qualquer situação, descartada inclusive (obrigação legal).
     def examined_patients?(ids)
       ExamOrder.where(patient_id: ids).exists? || ExamResult.where(patient_id: ids).exists? ||
         LabRequisition.where(patient_id: ids).exists? || PerformedProcedure.where(patient_id: ids).exists? ||
-        CareLineEnrollment.where(patient_id: ids).exists? || territory_registered?(ids)
+        CareLineEnrollment.where(patient_id: ids).exists? || territory_registered?(ids) || notified?(ids)
     end
+
+    # ADR 0043: obrigação legal — notificação em qualquer situação, descartada inclusive.
+    def notified?(ids) = DiseaseNotification.where(patient_id: ids).exists?
 
     # ADR 0042: versão de cadastro individual (a imutável, não só o cabeçalho
     # ativo) ou responsável de família.
