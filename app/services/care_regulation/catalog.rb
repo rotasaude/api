@@ -41,5 +41,12 @@ module CareRegulation
       "scheduled" => "scheduled", "completed" => "completed", "denied" => "denied",
       "cancelled" => "closed", "closed" => "closed"
     }.freeze
+
+    # "AAAA-MM" -> primeiro dia do mês (Date); nil para texto fora do formato.
+    def self.parse_month(value)
+      return nil unless value.is_a?(String) && value.match?(MONTH)
+
+      Date.new(value[0, 4].to_i, value[5, 2].to_i, 1)
+    end
   end
 end

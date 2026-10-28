@@ -68,19 +68,21 @@ module CareRegulation
     end
 
     # <provider> (contrato §6): a unidade só no prestador próprio.
-    def provider(p)
-      unit = p.health_unit
-      { id: p.id, name: p.name, cnes: p.cnes, kind: p.kind, health_unit: unit && { id: unit.id, name: unit.name }, active: p.active }
+    def provider(record)
+      unit = record.health_unit
+      { id: record.id, name: record.name, cnes: record.cnes, kind: record.kind,
+        health_unit: unit && { id: unit.id, name: unit.name }, active: record.active }
     end
 
     # <offer> (contrato §2): used vem da Quota (contagem das autorizações não
     # liberadas), available = quantity - used. `name` do alvo quando quem
     # chama já o resolveu em lote (Targets.names_for).
-    def offer(o, used:, name: nil)
-      name ||= Targets.name_for(type: o.target_type, code: o.target_code) || o.target_code
-      p = o.care_provider
-      { id: o.id, provider: { id: p.id, name: p.name, kind: p.kind }, target: { type: o.target_type, code: o.target_code, name: name },
-        month: o.month_label, quantity: o.quantity, used: used, available: Quota.available(o, used: used) }
+    def offer(record, used:, name: nil)
+      name ||= Targets.name_for(type: record.target_type, code: record.target_code) || record.target_code
+      owner = record.care_provider
+      { id: record.id, provider: { id: owner.id, name: owner.name, kind: owner.kind },
+        target: { type: record.target_type, code: record.target_code, name: name },
+        month: record.month_label, quantity: record.quantity, used: used, available: Quota.available(record, used: used) }
     end
 
     # `by` nulo quando o evento é do sistema (by_user_id nulo).

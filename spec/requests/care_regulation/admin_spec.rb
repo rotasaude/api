@@ -248,6 +248,14 @@ RSpec.describe "Regulação — prestadores e ofertas", type: :request do
       expect(CareProvider.count).to eq(0)
     end
 
+    it "own cuja unidade não tem CNES → 422 invalid_request com path health_unit_id" do
+      stepped_up!(admin)
+      no_cnes = HealthUnit.create!(name: "UBS Sem CNES", kind: "ubs")
+      json_post "/regulation/admin/providers", name: "UBS Sem CNES", kind: "own", health_unit_id: no_cnes.id
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "health_unit_id" } ])
+      expect(CareProvider.count).to eq(0)
+    end
+
     it "own com CNES diferente do da unidade → 422 path cnes; igual vale; externo com unidade → 422 path health_unit_id" do
       stepped_up!(admin)
       json_post "/regulation/admin/providers", name: "UBS Vila Hauer", kind: "own", health_unit_id: unit.id, cnes: "9999999"
@@ -445,7 +453,7 @@ RSpec.describe "Regulação — prestadores e ofertas", type: :request do
       authorize_directly!(offer, count: 2, released: 1)
       stepped_up!(admin)
       json_patch "/regulation/admin/offers/#{offer.id}", quantity: 1
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "quantity_below_used" } ])
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "quantity_below_used", "used" => 2 } ])
       expect(offer.reload.quantity).to eq(5)
       expect(offer_events).to be_empty
 
@@ -470,6 +478,19 @@ RSpec.describe "Regulação — prestadores e ofertas", type: :request do
       expect(json_body).to eq("error" => "invalid_request", "path" => "quantity")
       json_patch "/regulation/admin/offers/#{offer.id}", {}
       expect(json_body).to eq("error" => "invalid_request", "path" => "quantity")
+    end
+
+    it "prestador inativo não recebe oferta nova (422 path provider_id); a quantidade de oferta já existente segue editável" do
+      offer = offer!(provider: provider, quantity: 5)
+      provider.update!(active: false)
+      stepped_up!(admin)
+      json_post "/regulation/admin/offers", offer_body(target_code: "225250")
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "provider_id" } ])
+      expect(CareOffer.count).to eq(1)
+
+      json_patch "/regulation/admin/offers/#{offer.id}", quantity: 8
+      expect(response).to have_http_status(:ok)
+      expect(json_body).to include("quantity" => 8, "available" => 8)
     end
 
     it "PATCH sem mudança não publica evento; id inexistente → 404" do

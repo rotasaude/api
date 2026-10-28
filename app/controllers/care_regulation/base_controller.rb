@@ -25,10 +25,10 @@ module CareRegulation
 
     private
 
-    # `{ error, path?, hint? }`: só quando o resultado traz.
+    # `{ error, path?, hint?, used? }`: só quando o resultado traz.
     def render_failure(result)
       payload = { error: result.reason.to_s }
-      %i[path hint].each { |key| payload[key] = result.details[key] if result.details[key] }
+      %i[path hint used].each { |key| payload[key] = result.details[key] if result.details[key] }
       render json: payload, status: FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
     end
 

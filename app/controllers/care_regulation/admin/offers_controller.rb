@@ -47,9 +47,8 @@ module CareRegulation
       def month_filter
         raw = params[:month]
         return Time.zone.today.beginning_of_month if raw.blank?
-        return nil unless raw.is_a?(String) && raw.match?(Catalog::MONTH)
 
-        Date.new(raw[0, 4].to_i, raw[5, 2].to_i, 1)
+        Catalog.parse_month(raw)
       end
 
       def render_path_error(path) = render(json: { error: "invalid_request", path: path }, status: :unprocessable_entity)

@@ -15,7 +15,7 @@ module CareRegulation
       attrs = attrs.to_h.stringify_keys
       provider ? update(provider, attrs, by) : create(attrs, by)
     rescue ActiveRecord::RecordNotUnique => e
-      Result.fail(e.message.include?("idx_care_providers_unit") ? :unit_taken : :cnes_taken)
+      Result.fail(unit_violation?(e, attrs) ? :unit_taken : :cnes_taken)
     end
 
     def create(attrs, by)
@@ -80,6 +80,8 @@ module CareRegulation
       id = attrs["health_unit_id"]
       unit = id.is_a?(String) ? HealthUnit.lock_active!(id) : nil
       return [ refuse("health_unit_id"), nil ] unless unit
+      # O front tipa `cnes` como texto: unidade sem CNES não vira prestador.
+      return [ refuse("health_unit_id"), nil ] if unit.cnes.nil?
       return [ refuse("cnes"), nil ] if attrs.key?("cnes") && attrs["cnes"] != unit.cnes
 
       [ unit.id, unit.cnes ]
@@ -110,9 +112,18 @@ module CareRegulation
       :cnes_taken if cnes && scope.exists?(cnes: cnes)
     end
 
+    # O banco acusa o primeiro índice que viu; o `own` repetido fere os dois
+    # (unidade e CNES herdado) e a unidade tem precedência, como na pré-checagem.
+    def unit_violation?(error, attrs)
+      return true if error.message.include?("idx_care_providers_unit")
+
+      unit_id = attrs["health_unit_id"]
+      unit_id.is_a?(String) && CareProvider.exists?(health_unit_id: unit_id)
+    end
+
     def publish(provider, by) = DomainEvents.publish("care_provider.changed", care_provider_id: provider.id, user_id: by.id)
     def refuse(path) = Result.fail(:invalid_request, details: { path: path })
 
-    private_class_method :create, :update, :own_unit_and_cnes, :external_cnes, :valid_name, :valid_cnes?, :taken_reason, :publish, :refuse
+    private_class_method :create, :update, :own_unit_and_cnes, :external_cnes, :valid_name, :valid_cnes?, :taken_reason, :unit_violation?, :publish, :refuse
   end
 end
