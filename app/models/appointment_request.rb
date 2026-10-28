@@ -3,9 +3,11 @@
 # unidade de destino marca o horário. Só acréscimo (trigger); a origem nunca
 # muda; a unidade de destino nula recebe uma unidade uma vez. Módulo 23
 # (ADR 0040, contrato §11 T4): também nasce da inscrição numa linha de
-# cuidado (kind care_line), sem triagem raiz.
+# cuidado (kind care_line), sem triagem raiz. Módulo 26a (ADR 0044): e da
+# autorização da regulação numa oferta da rede própria (kind regulated, origem
+# no pedido de regulação), também sem triagem raiz.
 class AppointmentRequest < ApplicationRecord
-  KINDS = %w[return referral triage screening care_line].freeze
+  KINDS = %w[return referral triage screening care_line regulated].freeze
   STATUSES = %w[open scheduled closed].freeze
   CLOSED_REASONS = %w[fulfilled citizen_cancelled dismissed moved consent_revoked].freeze
   PRIORITIES = %w[routine priority].freeze
@@ -22,6 +24,7 @@ class AppointmentRequest < ApplicationRecord
   # exige a raiz em todos os outros (o da triagem sempre a tem).
   belongs_to :root_triage, class_name: "Triage", optional: true
   belongs_to :origin_care_line_enrollment, class_name: "CareLineEnrollment", optional: true
+  belongs_to :origin_regulation_request, class_name: "RegulationRequest", optional: true
   belongs_to :origin_unit, class_name: "HealthUnit", optional: true
   belongs_to :target_unit, class_name: "HealthUnit", optional: true
   belongs_to :closed_by_user, class_name: "User", optional: true
@@ -43,6 +46,7 @@ class AppointmentRequest < ApplicationRecord
   def origin
     return "triage" if origin_triage_id
     return "care_line" if origin_care_line_enrollment_id
+    return "regulation" if origin_regulation_request_id
 
     "attendance"
   end

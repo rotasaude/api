@@ -5,6 +5,7 @@ require Rails.root.join("db/city_migrate/20261002300001_create_appointment_remin
 require Rails.root.join("db/city_migrate/20261013900001_add_exam_tracking.rb").to_s
 require Rails.root.join("db/city_migrate/20261021900001_add_procedure_billing.rb").to_s
 require Rails.root.join("db/city_migrate/20261027900002_add_disease_surveillance.rb").to_s
+require Rails.root.join("db/city_migrate/20261028900001_add_care_regulation.rb").to_s
 
 # F-12.1/F-12.3: o down() da migração de cidade 20260929100001 desfaz tudo o que
 # o up() cria (três tabelas, a coluna da chave de SMS, as duas funções de guarda
@@ -53,13 +54,14 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
     conn.add_index :campaign_recipients, %i[citizen_id created_at], name: "idx_campaign_recipients_citizen_created"
   end
 
-  # 20261027900002 (módulo 25) reescreve ck_memberships_role com os papéis
+  # 20261028900001 (módulo 26a) reescreve ck_memberships_role com os papéis
   # exam_regulator/exam_provider (21a), lab_staff/lab_releaser (21b),
-  # billing_clerk (22) e surveillance (25); o up de CreateCampaigns volta a
-  # lista fixa sem eles. As migrações do 21a, do 21b, do 22 e do 25 são
-  # irreversíveis: a lista volta à mão, igual à da última.
+  # billing_clerk (22), surveillance (25) e care_regulator (26a); o up de
+  # CreateCampaigns volta a lista fixa sem eles. As migrações do 21a, do 21b,
+  # do 22, do 25 e do 26a são irreversíveis: a lista volta à mão, igual à da
+  # última.
   def restore_exam_roles
-    quoted = AddDiseaseSurveillance::ROLES.map { |role| "'#{role}'" }.join(", ")
+    quoted = AddCareRegulation::ROLES.map { |role| "'#{role}'" }.join(", ")
     conn.remove_check_constraint :memberships, name: "ck_memberships_role"
     conn.add_check_constraint :memberships, "role::text = ANY (ARRAY[#{quoted}]::text[])", name: "ck_memberships_role"
   end

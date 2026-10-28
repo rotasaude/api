@@ -1,4 +1,6 @@
 require "rails_helper"
+require Rails.root.join("db/city_migrate/20261027900002_add_disease_surveillance.rb").to_s
+require Rails.root.join("db/city_migrate/20261028900001_add_care_regulation.rb").to_s
 
 RSpec.describe Membership do
   it "conhece o papel citizen_verifier e o trata como privilegiado" do
@@ -46,5 +48,21 @@ RSpec.describe Membership do
     expect(described_class::PRIVILEGED_ROLES).to include("surveillance")
     user = User.create!(email_address: "vigilancia@cidade.gov.br", password: "senha-segura-123")
     expect { described_class.create!(user: user, role: "surveillance", granted_at: Time.current) }.not_to raise_error
+  end
+
+  # ADR 0044: o regulador lê nome, CID e justificativa do pedido de regulação e
+  # autoriza vaga — step-up para conceder; o mantenedor não concede.
+  it "care_regulator é papel privilegiado e o banco o aceita" do
+    expect(described_class::ROLES).to include("care_regulator")
+    expect(described_class::PRIVILEGED_ROLES).to include("care_regulator")
+    user = User.create!(email_address: "regulacao@cidade.gov.br", password: "senha-segura-123")
+    expect { described_class.create!(user: user, role: "care_regulator", granted_at: Time.current) }.not_to raise_error
+  end
+
+  # ROLES espelha ck_memberships_role: a lista da última migração que o
+  # reescreve (26a) é a do 25 mais care_regulator, em ordem.
+  it "ROLES é a lista da migração do 26a" do
+    expect(AddCareRegulation::ROLES).to eq((AddDiseaseSurveillance::ROLES + %w[care_regulator]).sort)
+    expect(described_class::ROLES).to eq(AddCareRegulation::ROLES)
   end
 end

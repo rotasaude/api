@@ -144,7 +144,12 @@ module CityEncryption
     [ IndividualRegistrationVersion, :death_certificate ],
     # ADR 0043: ficha da notificação compulsória e motivo do andamento.
     [ DiseaseNotification, :form ],
-    [ DiseaseNotificationEvent, :reason ]
+    [ DiseaseNotificationEvent, :reason ],
+    # ADR 0044: diagnóstico, justificativa, motivos e observação da regulação.
+    [ RegulationRequest, :cid10 ], [ RegulationRequest, :ciap2 ], [ RegulationRequest, :justification ],
+    [ RegulationRequest, :color_reason ], [ RegulationRequest, :schedule_notes ],
+    [ RegulationRequestEvent, :reason ],
+    [ RegulationAuthorization, :skip_reason ]
   ].freeze
 
   module_function

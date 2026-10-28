@@ -17,9 +17,9 @@
 # UPDATE na que esvazia, FOR SHARE no destino), depois os horários e só então
 # os pedidos — a mesma ordem de Cancel e Lapse (horário, depois pedido).
 #
-# Módulo 17: o pedido novo leva tipo, prioridade, prazo, origem (atendimento ou
-# triagem) e as triagens ligadas; o horário vai como legacy (o profissional não
-# atende no destino).
+# Módulo 17: o pedido novo leva tipo, prioridade, prazo, origem (atendimento,
+# triagem, linha de cuidado ou pedido de regulação) e as triagens ligadas; o
+# horário vai como legacy (o profissional não atende no destino).
 # Reasons: :invalid_target, :reason_too_short.
 module HealthUnits
   class Drain
@@ -78,6 +78,7 @@ module HealthUnits
         kind: request.kind, note: request.note, reopened_reason: request.reopened_reason,
         moved_from_request: request, status: live ? "scheduled" : "open", created_at: request.created_at,
         origin_triage_id: request.origin_triage_id, origin_care_line_enrollment_id: request.origin_care_line_enrollment_id,
+        origin_regulation_request_id: request.origin_regulation_request_id,
         appointment_type_key: request.appointment_type_key,
         priority: request.priority, due_on: request.due_on, reschedule_reason_code: request.reschedule_reason_code,
         reschedule_note: reschedule_note, preferred_period: request.preferred_period,

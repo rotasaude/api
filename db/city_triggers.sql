@@ -193,6 +193,7 @@ $do$;
 -- moved_from_request_id; a ligação também nunca muda.
 -- Módulo 17 (ADR 0029): a unidade de destino nula (fila "sem unidade") recebe uma unidade UMA vez; depois nunca muda.
 -- Módulo 23 (ADR 0040): a inscrição de origem do pedido da linha (kind care_line) também nunca muda.
+-- Módulo 26a (ADR 0044): o pedido de regulação de origem (kind regulated) também nunca muda.
 CREATE OR REPLACE FUNCTION rota_appointment_request_guard() RETURNS trigger AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
@@ -222,6 +223,7 @@ BEGIN
      OR NEW.moved_from_request_id IS DISTINCT FROM OLD.moved_from_request_id
      OR NEW.origin_screening_id IS DISTINCT FROM OLD.origin_screening_id
      OR NEW.origin_care_line_enrollment_id IS DISTINCT FROM OLD.origin_care_line_enrollment_id
+     OR NEW.origin_regulation_request_id IS DISTINCT FROM OLD.origin_regulation_request_id
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'appointment_requests: the origin columns never change';
   END IF;
@@ -2252,6 +2254,91 @@ BEGIN
       FOR EACH ROW EXECUTE FUNCTION rota_no_delete()';
     FOREACH item IN ARRAY ARRAY['disease_notifications', 'disease_notification_events', 'weekly_negative_reports',
                                 'local_notifiable_diseases'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;
+
+-- Módulo 26a (ADR 0044): regulação municipal. O rascunho na consulta (draft)
+-- muda à vontade e pode ser apagado (consulta descartada); fora do rascunho o
+-- pedido nunca some nem troca de paciente, consulta, unidade solicitante,
+-- alvo, data do pedido ou data de criação, e encerrado (completed, denied,
+-- cancelled, closed) não muda de situação. As demais transições (ordem,
+-- versão otimista) ficam em CareRegulation::Transition. O diagnóstico (cid10,
+-- ciap2) pode mudar fora do rascunho, pelo complemento.
+CREATE OR REPLACE FUNCTION rota_regulation_request_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.status = 'draft' THEN
+      RETURN OLD;
+    END IF;
+    RAISE EXCEPTION 'regulation_requests: only a draft is deleted';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id THEN
+    RAISE EXCEPTION 'regulation_requests: id never changes';
+  END IF;
+  IF OLD.status <> 'draft'
+     AND (NEW.patient_id, NEW.consultation_id, NEW.requester_unit_id, NEW.target_type, NEW.target_code, NEW.requested_at, NEW.created_at)
+         IS DISTINCT FROM (OLD.patient_id, OLD.consultation_id, OLD.requester_unit_id, OLD.target_type, OLD.target_code, OLD.requested_at,
+                           OLD.created_at) THEN
+    RAISE EXCEPTION 'regulation_requests: patient, consultation, unit, target, requested_at and created_at never change';
+  END IF;
+  IF OLD.status IN ('completed', 'denied', 'cancelled', 'closed') AND NEW.status IS DISTINCT FROM OLD.status THEN
+    RAISE EXCEPTION 'regulation_requests: a % request never changes status', OLD.status;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- Autorização: nunca some; só a liberação (released_at e release_reason),
+-- uma vez, de nulo para preenchido — falta e atendimento não liberam, e uma
+-- autorização liberada nunca volta a contar na cota. Sob rota.reencrypting
+-- (CityEncryption.allowing_reencryption) só o motivo de pular é regravado.
+CREATE OR REPLACE FUNCTION rota_regulation_authorization_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'regulation_authorizations: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - 'skip_reason') = (to_jsonb(OLD) - 'skip_reason') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - ARRAY['released_at', 'release_reason']) IS DISTINCT FROM (to_jsonb(OLD) - ARRAY['released_at', 'release_reason']) THEN
+    RAISE EXCEPTION 'regulation_authorizations: only released_at and release_reason change';
+  END IF;
+  IF OLD.released_at IS NOT NULL
+     AND (NEW.released_at, NEW.release_reason) IS DISTINCT FROM (OLD.released_at, OLD.release_reason) THEN
+    RAISE EXCEPTION 'regulation_authorizations: already released';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.regulation_requests') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS regulation_requests_guard ON regulation_requests';
+    EXECUTE 'CREATE TRIGGER regulation_requests_guard BEFORE UPDATE OR DELETE ON regulation_requests
+      FOR EACH ROW EXECUTE FUNCTION rota_regulation_request_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS regulation_request_events_reencryption_only ON regulation_request_events';
+    EXECUTE 'CREATE TRIGGER regulation_request_events_reencryption_only BEFORE UPDATE OR DELETE ON regulation_request_events
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS regulation_authorizations_guard ON regulation_authorizations';
+    EXECUTE 'CREATE TRIGGER regulation_authorizations_guard BEFORE UPDATE OR DELETE ON regulation_authorizations
+      FOR EACH ROW EXECUTE FUNCTION rota_regulation_authorization_guard()';
+    FOREACH item IN ARRAY ARRAY['care_providers', 'care_offers', 'regulation_risk_deadlines'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
+                     item || '_no_delete', item);
+    END LOOP;
+    -- nurse_requestable_items é configuração (a lista do enfermeiro): sai e
+    -- volta, sem trigger.
+    FOREACH item IN ARRAY ARRAY['regulation_requests', 'regulation_request_events', 'regulation_authorizations', 'care_providers',
+                                'care_offers', 'regulation_risk_deadlines'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
                      item || '_append_only_truncate', item);

@@ -180,6 +180,26 @@ RSpec.describe HealthUnits::Drain do
     expect(fresh.request_triages.pluck(:triage_id)).to eq([ extra.id ])
   end
 
+  # Módulo 26a (ADR 0044): o pedido regulated da rede própria leva a origem no
+  # pedido de regulação (o acompanhamento da Task 10 segue moved_from_request_id).
+  it "pedido regulated aberto movido leva o tipo e a origem no pedido de regulação" do
+    regulation_city!
+    consultation = started_consultation!(unit: closing, doctor: doctor, citizen: verified_citizen!(31))
+    regulation = RegulationRequest.create!(patient: consultation.patient, consultation: consultation, requester_user: doctor,
+                                           requester_cbo: "225125", requester_unit: closing, target_type: "specialty",
+                                           target_code: "225120", target_name: "Cardiologia", cid10: "I10",
+                                           justification: "Hipertensão resistente a três fármacos", suggested_color: "yellow",
+                                           status: "authorized", requested_at: Time.current, due_on: Time.zone.today + 30)
+    req = AppointmentRequest.create!(kind: "regulated", origin_regulation_request_id: regulation.id, citizen: consultation.attendance.citizen,
+                                     origin_unit: closing, target_unit: closing, appointment_type_key: "consulta_medica",
+                                     priority: "routine", due_on: Time.zone.today + 30)
+    expect(drain).to be_ok
+    expect(req.reload).to have_attributes(status: "closed", closed_reason: "moved")
+    fresh = AppointmentRequest.find_by!(moved_from_request_id: req.id)
+    expect(fresh).to have_attributes(kind: "regulated", origin_regulation_request_id: regulation.id, status: "open",
+                                     target_unit_id: dest.id, origin_unit_id: closing.id, root_triage_id: nil)
+  end
+
   it "pedido de retorno movido leva tipo, prioridade, prazo e os dados da remarcação" do
     req = travel_to(now) { new_request }
     req.update_columns(priority: "priority", due_on: Date.new(2026, 10, 20), preferred_period: "morning",

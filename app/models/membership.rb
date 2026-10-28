@@ -4,8 +4,8 @@
 # plataforma — spec banco-por-cidade §5), e com ele a coluna de município e o
 # CHECK de operador global. ROLES espelha ck_memberships_role do db/city_schema.rb.
 class Membership < ApplicationRecord
-  ROLES = %w[analyst billing_clerk campaign_manager citizen_verifier exam_provider exam_regulator health_professional lab_releaser
-             lab_staff municipal_admin protocol_author protocol_publisher protocol_reviewer surveillance viewer].freeze
+  ROLES = %w[analyst billing_clerk campaign_manager care_regulator citizen_verifier exam_provider exam_regulator health_professional
+             lab_releaser lab_staff municipal_admin protocol_author protocol_publisher protocol_reviewer surveillance viewer].freeze
 
   # Papéis que o mantenedor da API de manutenção nunca concede nem convida
   # (spec de assinaturas §7): quem aprova protocolo e quem concede aprovação.
@@ -26,8 +26,11 @@ class Membership < ApplicationRecord
   # nome, CPF e nascimento do paciente — step-up; o mantenedor não concede.
   # surveillance (ADR 0043): lê nome e doença de notificação compulsória —
   # step-up; o mantenedor não concede.
+  # care_regulator (ADR 0044): lê nome, CID e justificativa do pedido de
+  # regulação e autoriza vaga — step-up; o mantenedor não concede.
   PRIVILEGED_ROLES = %w[municipal_admin protocol_reviewer citizen_verifier health_professional
-                        campaign_manager exam_regulator exam_provider lab_staff lab_releaser billing_clerk surveillance].freeze
+                        campaign_manager exam_regulator exam_provider lab_staff lab_releaser billing_clerk surveillance
+                        care_regulator].freeze
 
   belongs_to :user
   belongs_to :granted_by, class_name: "User", optional: true

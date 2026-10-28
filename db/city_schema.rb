@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -103,6 +103,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
     t.text "note"
     t.uuid "origin_attendance_id"
     t.uuid "origin_care_line_enrollment_id"
+    t.uuid "origin_regulation_request_id"
     t.uuid "origin_screening_id"
     t.uuid "origin_triage_id"
     t.uuid "origin_unit_id"
@@ -122,6 +123,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
     t.index ["moved_from_request_id"], name: "index_appointment_requests_on_moved_from_request_id", unique: true
     t.index ["origin_attendance_id"], name: "index_appointment_requests_on_origin_attendance_id", unique: true, where: "((closed_reason)::text IS DISTINCT FROM 'moved'::text)"
     t.index ["origin_care_line_enrollment_id"], name: "idx_appointment_requests_one_live_care_line", unique: true, where: "origin_care_line_enrollment_id IS NOT NULL AND status::text = ANY (ARRAY['open'::text, 'scheduled'::text])"
+    t.index ["origin_regulation_request_id"], name: "idx_appointment_requests_one_live_regulated", unique: true, where: "origin_regulation_request_id IS NOT NULL AND status::text = ANY (ARRAY['open'::text, 'scheduled'::text])"
     t.index ["origin_screening_id"], name: "index_appointment_requests_on_origin_screening_id", unique: true, where: "((closed_reason)::text IS DISTINCT FROM 'moved'::text)"
     t.index ["origin_triage_id"], name: "index_appointment_requests_on_origin_triage_id"
     t.index ["origin_unit_id"], name: "index_appointment_requests_on_origin_unit_id"
@@ -131,12 +133,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
     t.check_constraint "(closed_reason IS DISTINCT FROM 'dismissed' AND dismiss_reason IS NULL) OR (closed_reason = 'dismissed' AND dismiss_reason IS NOT NULL AND length(btrim(dismiss_reason)) >= 10)", name: "ck_appointment_requests_dismiss_reason"
     t.check_constraint "closed_reason IS NULL OR closed_reason::text = ANY (ARRAY['fulfilled', 'citizen_cancelled', 'dismissed', 'moved', 'consent_revoked']::text[])", name: "ck_appointment_requests_closed_reason"
     t.check_constraint "(status::text <> 'closed'::text AND closed_reason IS NULL AND closed_at IS NULL) OR (status::text = 'closed'::text AND closed_reason IS NOT NULL AND closed_at IS NOT NULL)", name: "ck_appointment_requests_closing"
-    t.check_constraint "((kind)::text = 'care_line'::text) = (origin_care_line_enrollment_id IS NOT NULL) AND ((kind)::text = 'care_line'::text OR origin_attendance_id IS NOT NULL OR root_triage_id IS NOT NULL) AND ((kind)::text <> 'care_line'::text OR (origin_unit_id IS NOT NULL AND target_unit_id IS NOT NULL))", name: "ck_appointment_requests_care_line"
-    t.check_constraint "kind::text = ANY (ARRAY['return'::text, 'referral'::text, 'triage'::text, 'screening'::text, 'care_line'::text])", name: "ck_appointment_requests_kind"
+    t.check_constraint "((kind)::text = 'care_line'::text) = (origin_care_line_enrollment_id IS NOT NULL) AND ((kind)::text = ANY (ARRAY['care_line'::text, 'regulated'::text]) OR origin_attendance_id IS NOT NULL OR root_triage_id IS NOT NULL) AND ((kind)::text <> ALL (ARRAY['care_line'::text, 'regulated'::text]) OR (origin_unit_id IS NOT NULL AND target_unit_id IS NOT NULL))", name: "ck_appointment_requests_care_line"
+    t.check_constraint "kind::text = ANY (ARRAY['return'::text, 'referral'::text, 'triage'::text, 'screening'::text, 'care_line'::text, 'regulated'::text])", name: "ck_appointment_requests_kind"
+    t.check_constraint "((kind)::text = 'regulated'::text) = (origin_regulation_request_id IS NOT NULL)", name: "ck_appointment_requests_regulated"
     t.check_constraint "(kind::text = 'screening'::text) = (origin_screening_id IS NOT NULL)", name: "ck_appointment_requests_screening_kind"
     t.check_constraint "origin_screening_id IS NULL OR origin_attendance_id IS NOT NULL", name: "ck_appointment_requests_screening_origin"
     t.check_constraint "(kind::text = 'triage'::text) = (origin_triage_id IS NOT NULL)", name: "ck_appointment_requests_triage_kind"
-    t.check_constraint "num_nonnulls(origin_attendance_id, origin_triage_id, origin_care_line_enrollment_id) = 1", name: "ck_appointment_requests_origin"
+    t.check_constraint "num_nonnulls(origin_attendance_id, origin_triage_id, origin_care_line_enrollment_id, origin_regulation_request_id) = 1", name: "ck_appointment_requests_origin"
     t.check_constraint "origin_attendance_id IS NULL OR (origin_unit_id IS NOT NULL AND target_unit_id IS NOT NULL)", name: "ck_appointment_requests_attendance_units"
     t.check_constraint "preferred_period IS NULL OR preferred_period::text = ANY (ARRAY['morning', 'afternoon', 'any']::text[])", name: "ck_appointment_requests_preferred_period"
     t.check_constraint "priority::text = ANY (ARRAY['routine', 'priority']::text[])", name: "ck_appointment_requests_priority"
@@ -420,6 +423,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
     t.check_constraint "source::text = ANY (ARRAY['template'::text, 'custom'::text]) AND ((source::text = 'template') = (template_key IS NOT NULL AND template_version IS NOT NULL AND indicator IS NOT NULL)) AND (declared_condition IS NULL OR declared_condition::text = ANY (ARRAY['diabetes'::text, 'hypertension'::text, 'pregnancy'::text, 'mental_health'::text])) AND jsonb_typeof(practices) = 'array'::text AND jsonb_typeof(eligibility) = 'object'::text", name: "ck_care_lines_values"
   end
 
+  create_table "care_offers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "care_provider_id", null: false
+    t.datetime "created_at", null: false
+    t.date "month", null: false
+    t.integer "quantity", null: false
+    t.string "target_code", limit: 10, null: false
+    t.string "target_type", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["care_provider_id", "target_type", "target_code", "month"], name: "idx_care_offers_unique", unique: true
+    t.index ["target_type", "target_code", "month"], name: "idx_care_offers_target_month"
+    t.check_constraint "month = date_trunc('month'::text, month::timestamp without time zone)::date", name: "ck_care_offers_month"
+    t.check_constraint "quantity >= 0 AND quantity <= 9999", name: "ck_care_offers_quantity"
+    t.check_constraint "target_type::text = ANY (ARRAY['specialty'::text, 'procedure'::text])", name: "ck_care_offers_target_type"
+  end
+
   create_table "care_outreach_contacts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "channel", null: false
     t.uuid "enrollment_id", null: false
@@ -429,6 +448,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
     t.uuid "recorded_by_user_id", null: false
     t.index ["enrollment_id", "recorded_at"], name: "idx_care_outreach_contacts_enrollment"
     t.check_constraint "channel::text = ANY (ARRAY['phone'::text, 'home_visit'::text, 'wpda_message'::text, 'in_person'::text]) AND outcome::text = ANY (ARRAY['reached'::text, 'no_answer'::text, 'scheduled'::text, 'refused'::text])", name: "ck_care_outreach_contacts_values"
+  end
+
+  create_table "care_providers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "cnes", limit: 7
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id"
+    t.string "kind", null: false
+    t.string "name", limit: 120, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["cnes"], name: "idx_care_providers_cnes", unique: true, where: "(cnes IS NOT NULL)"
+    t.index ["health_unit_id"], name: "idx_care_providers_unit", unique: true, where: "(health_unit_id IS NOT NULL)"
+    t.check_constraint "(kind::text = 'own'::text) = (health_unit_id IS NOT NULL)", name: "ck_care_providers_unit"
+    t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_care_providers_cnes"
+    t.check_constraint "kind::text = 'own'::text OR cnes IS NOT NULL", name: "ck_care_providers_cnes_required"
+    t.check_constraint "kind::text = ANY (ARRAY['own'::text, 'contracted'::text, 'consortium'::text, 'ppi'::text])", name: "ck_care_providers_kind"
   end
 
   create_table "city_medication_list", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1909,7 +1945,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'surveillance'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'surveillance'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "micro_areas", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1943,6 +1979,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
     t.index ["seed_key"], name: "idx_neighborhoods_seed_key", unique: true, where: "(seed_key IS NOT NULL)"
     t.check_constraint "length(btrim(name::text)) > 0 AND name::text = btrim(name::text)", name: "ck_neighborhoods_name"
     t.check_constraint "source::text = ANY (ARRAY['seed'::text, 'manual'::text])", name: "ck_neighborhoods_source"
+  end
+
+  create_table "nurse_requestable_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.string "target_code", limit: 10, null: false
+    t.string "target_type", null: false
+    t.index ["target_type", "target_code"], name: "idx_nurse_requestable_items_target", unique: true
+    t.check_constraint "target_type::text = ANY (ARRAY['specialty'::text, 'procedure'::text])", name: "ck_nurse_requestable_items_target_type"
   end
 
   create_table "nursing_protocol_version_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2350,6 +2395,86 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
     t.index ["protocol_definition_id"], name: "index_protocol_signatures_on_protocol_definition_id"
     t.index ["signer_user_id"], name: "index_protocol_signatures_on_signer_user_id"
     t.check_constraint "purpose::text = ANY (ARRAY['publication'::text, 'activation'::text])", name: "ck_protocol_signatures_purpose"
+  end
+
+  create_table "regulation_authorizations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "authorized_by_user_id", null: false
+    t.uuid "care_offer_id", null: false
+    t.datetime "created_at", null: false
+    t.date "month", null: false
+    t.uuid "regulation_request_id", null: false
+    t.string "release_reason"
+    t.datetime "released_at"
+    t.text "skip_reason"
+    t.index ["care_offer_id"], name: "idx_regulation_authorizations_used", where: "(released_at IS NULL)"
+    t.index ["regulation_request_id"], name: "index_regulation_authorizations_on_regulation_request_id"
+    t.check_constraint "(released_at IS NULL) = (release_reason IS NULL)", name: "ck_regulation_authorizations_released"
+    t.check_constraint "release_reason IS NULL OR release_reason::text = ANY (ARRAY['cancelled'::text, 'citizen_cancelled'::text, 'unit_dismissed'::text, 'consent_revoked'::text])", name: "ck_regulation_authorizations_release_reason"
+  end
+
+  create_table "regulation_request_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "by_user_id"
+    t.datetime "created_at", null: false
+    t.text "reason"
+    t.uuid "regulation_request_id", null: false
+    t.string "status", null: false
+    t.index ["regulation_request_id"], name: "index_regulation_request_events_on_regulation_request_id"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'returned'::text, 'authorized'::text, 'scheduled'::text, 'completed'::text, 'missed'::text, 'denied'::text, 'cancelled'::text, 'closed'::text, 'external'::text])", name: "ck_regulation_request_events_status"
+  end
+
+  create_table "regulation_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "addendum_id"
+    t.uuid "appointment_request_id"
+    t.text "ciap2"
+    t.text "cid10"
+    t.string "color"
+    t.text "color_reason"
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", null: false
+    t.date "due_on"
+    t.string "external_number", limit: 30
+    t.string "external_system"
+    t.text "justification", null: false
+    t.integer "misses", default: 0, null: false
+    t.uuid "patient_id", null: false
+    t.timestamptz "requested_at"
+    t.string "requester_cbo", limit: 6, null: false
+    t.uuid "requester_unit_id", null: false
+    t.uuid "requester_user_id", null: false
+    t.text "schedule_notes"
+    t.string "schedule_place", limit: 200
+    t.timestamptz "scheduled_at"
+    t.boolean "state_regulated", default: false, null: false
+    t.string "status", null: false
+    t.string "suggested_color", null: false
+    t.string "target_code", limit: 10, null: false
+    t.string "target_name", limit: 250, null: false
+    t.string "target_type", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["appointment_request_id"], name: "idx_regulation_requests_appointment_request", unique: true, where: "(appointment_request_id IS NOT NULL)"
+    t.index ["consultation_id"], name: "index_regulation_requests_on_consultation_id"
+    t.index ["patient_id"], name: "index_regulation_requests_on_patient_id"
+    t.index ["requester_unit_id", "status"], name: "idx_regulation_requests_unit_status"
+    t.index ["status", "target_type", "target_code", "requested_at"], name: "idx_regulation_requests_queue"
+    t.check_constraint "(external_system IS NULL) = (external_number IS NULL)", name: "ck_regulation_requests_external_number"
+    t.check_constraint "(status::text = 'draft'::text) = (due_on IS NULL)", name: "ck_regulation_requests_due_on"
+    t.check_constraint "(status::text = 'draft'::text) = (requested_at IS NULL)", name: "ck_regulation_requests_requested_at"
+    t.check_constraint "color IS NULL OR color::text = ANY (ARRAY['red'::text, 'yellow'::text, 'green'::text, 'blue'::text])", name: "ck_regulation_requests_color"
+    t.check_constraint "external_system IS NULL OR external_system::text = ANY (ARRAY['sisreg'::text, 'care'::text, 'cross'::text, 'other'::text])", name: "ck_regulation_requests_external_system"
+    t.check_constraint "misses >= 0 AND misses <= 2", name: "ck_regulation_requests_misses"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::text, 'pending'::text, 'returned'::text, 'authorized'::text, 'scheduled'::text, 'completed'::text, 'denied'::text, 'cancelled'::text, 'closed'::text, 'external'::text])", name: "ck_regulation_requests_status"
+    t.check_constraint "suggested_color::text = ANY (ARRAY['red'::text, 'yellow'::text, 'green'::text, 'blue'::text])", name: "ck_regulation_requests_suggested_color"
+    t.check_constraint "target_type::text = ANY (ARRAY['specialty'::text, 'procedure'::text])", name: "ck_regulation_requests_target_type"
+    t.check_constraint "version >= 1", name: "ck_regulation_requests_version"
+  end
+
+  create_table "regulation_risk_deadlines", primary_key: "color", id: :string, force: :cascade do |t|
+    t.integer "days", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id"
+    t.check_constraint "color::text = ANY (ARRAY['red'::text, 'yellow'::text, 'green'::text, 'blue'::text])", name: "ck_regulation_risk_deadlines_color"
+    t.check_constraint "days >= 1 AND days <= 365", name: "ck_regulation_risk_deadlines_days"
   end
 
   create_table "report_snapshots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2843,6 +2968,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
   add_foreign_key "appointment_requests", "citizens"
   add_foreign_key "appointment_requests", "health_units", column: "origin_unit_id"
   add_foreign_key "appointment_requests", "health_units", column: "target_unit_id"
+  add_foreign_key "appointment_requests", "regulation_requests", column: "origin_regulation_request_id"
   add_foreign_key "appointment_requests", "screenings", column: "origin_screening_id"
   add_foreign_key "appointment_requests", "triages", column: "origin_triage_id"
   add_foreign_key "appointment_requests", "triages", column: "root_triage_id"
@@ -2888,7 +3014,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
   add_foreign_key "care_line_suggestions", "users", column: "decided_by_user_id"
   add_foreign_key "care_lines", "users", column: "updated_by_user_id"
   add_foreign_key "care_outreach_contacts", "care_line_enrollments", column: "enrollment_id"
+  add_foreign_key "care_offers", "care_providers"
+  add_foreign_key "care_offers", "users", column: "updated_by_user_id"
   add_foreign_key "care_outreach_contacts", "users", column: "recorded_by_user_id"
+  add_foreign_key "care_providers", "health_units"
+  add_foreign_key "care_providers", "users", column: "updated_by_user_id"
   add_foreign_key "citizen_contact_preferences", "citizens"
   add_foreign_key "citizen_declared_conditions", "citizens"
   add_foreign_key "citizen_erasure_requests", "citizens", column: "presented_citizen_id"
@@ -3105,6 +3235,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
   add_foreign_key "micro_areas", "professionals", column: "acs_professional_id"
   add_foreign_key "neighborhood_coverages", "health_units"
   add_foreign_key "neighborhood_coverages", "neighborhoods"
+  add_foreign_key "nurse_requestable_items", "users", column: "created_by_user_id"
   add_foreign_key "nursing_protocol_version_items", "nursing_protocol_versions"
   add_foreign_key "nursing_protocol_versions", "nursing_protocols"
   add_foreign_key "nursing_protocol_versions", "users", column: "created_by_user_id"
@@ -3150,6 +3281,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900002) do
   add_foreign_key "protocol_contributions", "protocol_definitions"
   add_foreign_key "protocol_signatures", "protocol_definitions"
   add_foreign_key "protocol_signatures", "users", column: "signer_user_id"
+  add_foreign_key "regulation_authorizations", "care_offers"
+  add_foreign_key "regulation_authorizations", "regulation_requests"
+  add_foreign_key "regulation_authorizations", "users", column: "authorized_by_user_id"
+  add_foreign_key "regulation_request_events", "regulation_requests"
+  add_foreign_key "regulation_request_events", "users", column: "by_user_id"
+  add_foreign_key "regulation_requests", "appointment_requests"
+  add_foreign_key "regulation_requests", "consultation_addenda", column: "addendum_id"
+  add_foreign_key "regulation_requests", "consultations"
+  add_foreign_key "regulation_requests", "health_units", column: "requester_unit_id"
+  add_foreign_key "regulation_requests", "patients"
+  add_foreign_key "regulation_requests", "users", column: "requester_user_id"
+  add_foreign_key "regulation_risk_deadlines", "users", column: "updated_by_user_id"
   add_foreign_key "report_snapshots", "protocol_definitions"
   add_foreign_key "report_snapshots", "triages"
   add_foreign_key "screening_revisions", "protocol_definitions", column: "rule_protocol_definition_id"
