@@ -476,6 +476,10 @@ Rails.application.routes.draw do
   # dashboard. Prefixo único (uma entrada no proxy de dev do dashboard).
   scope "/regulation", module: :care_regulation, as: :regulation do
     get    "targets",              to: "targets#index"
+    # A fila do regulador (contrato §4): a rota literal `count` vem antes de `:id`.
+    get    "requests",             to: "requests#index"
+    get    "requests/count",       to: "requests#count"
+    get    "requests/:id",         to: "requests#show"
     get    "admin/deadlines",      to: "admin/deadlines#show"
     patch  "admin/deadlines",      to: "admin/deadlines#update"
     get    "admin/nurse_items",    to: "admin/nurse_items#index"

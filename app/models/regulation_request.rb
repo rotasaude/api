@@ -20,13 +20,21 @@ class RegulationRequest < ApplicationRecord
   has_many :authorizations, -> { order(:created_at, :id) }, class_name: "RegulationAuthorization", inverse_of: :regulation_request,
                                                             dependent: :restrict_with_error
 
+  # Vencido: prazo passado e ainda esperando (Desvio 5). A ÚNICA definição em
+  # SQL: a fila (CareRegulation::Queue: ordem, filtro e contadores) usa este
+  # fragmento; #overdue? é o espelho em Ruby.
+  def self.overdue_sql(today)
+    sanitize_sql_array([ "(regulation_requests.due_on < ? AND regulation_requests.status IN (?))",
+                         today, CareRegulation::Catalog::WAITING_STATUSES ])
+  end
+  scope :overdue_at, ->(today) { where(overdue_sql(today)) }
+
   def effective_color = color || suggested_color
 
   # A autorização vigente: a última ainda não liberada (lê o que já estiver
   # carregado, para servir à lista com preload).
   def current_authorization = authorizations.reject(&:released_at).last
 
-  # Vencido: prazo passado e ainda esperando (Desvio 5).
   def overdue?(today = Time.zone.today)
     CareRegulation::Catalog::WAITING_STATUSES.include?(status) && due_on.present? && due_on < today
   end
