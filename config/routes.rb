@@ -480,6 +480,7 @@ Rails.application.routes.draw do
     get    "requests",             to: "requests#index"
     get    "requests/count",       to: "requests#count"
     get    "requests/:id",         to: "requests#show"
+    post   "requests/:id/authorize", to: "decisions#authorize"
     get    "admin/deadlines",      to: "admin/deadlines#show"
     patch  "admin/deadlines",      to: "admin/deadlines#update"
     get    "admin/nurse_items",    to: "admin/nurse_items#index"
