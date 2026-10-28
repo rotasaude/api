@@ -452,6 +452,9 @@ Rails.application.routes.draw do
     post  "notifications/:id/transition", to: "transitions#transition"
     post  "notifications/:id/dismiss",    to: "transitions#dismiss"
     get   "units",                     to: "units#index"
+    # Saídas (contrato §7): a ficha no formato do Sinan e o CSV da semana.
+    get   "notifications/:id/form.pdf", to: "exports#form", format: false
+    get   "exports/week.csv",          to: "exports#week", format: false
     # Negativa semanal por unidade (contrato K7).
     get   "weekly_negatives",          to: "weekly_negatives#index"
     post  "weekly_negatives",          to: "weekly_negatives#create"
