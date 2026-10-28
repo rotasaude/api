@@ -158,6 +158,8 @@ Rails.application.routes.draw do
     # Adendo da própria consulta (dashboard#12): a lista de problemas do paciente, só para a autora.
     get   "consultations/:id/problems",      to: "consultations#problems"
     get   "consultations/:id/print",         to: "consultations#print"
+    # Módulo 25 (contrato §4, K4): sugestão de notificação da consulta (autora, sem trilha).
+    get   "consultations/:id/notification_suggestions", to: "surveillance/consultation_suggestions#index"
     # Documentos clínicos e medicamentos em uso (ADR 0033; contrato §3–§4).
     get  "consultations/:id/documents",    to: "clinical_documents#index"
     # A46 nos documentos: o polling da assinatura pendente lê só o estado, sem trilha.
@@ -440,6 +442,7 @@ Rails.application.routes.draw do
   # dashboard. Prefixo único (uma entrada no proxy de dev do dashboard).
   scope "/surveillance", module: :surveillance, as: :surveillance do
     get   "diseases",                  to: "diseases#index"
+    post  "notifications",             to: "notifications#create"
     get   "admin/local_diseases",      to: "local_diseases#index"
     post  "admin/local_diseases",      to: "local_diseases#create"
     patch "admin/local_diseases/:id",  to: "local_diseases#update"
