@@ -2,8 +2,9 @@
 # nesta semana epidemiológica". Recusas, na ordem:
 #
 #   invalid_week            texto fora de AAAA-SS (EpiWeek.parse nil; não-texto);
-#   future_week             o sábado da semana depois de hoje no fuso da cidade
-#                           (a semana corrente conta como futura);
+#   future_week             a semana corrente ou posterior, pela data de hoje no
+#                           fuso da cidade (K7: a corrente é futura até o seu
+#                           último dia; vale a partir do domingo seguinte);
 #   invalid_unit            inexistente, inativa ou não notificadora;
 #   unit_has_notifications  caso da unidade na semana (Surveillance::WeekCases,
 #                           a mesma regra do lembrete): 409;
@@ -26,7 +27,7 @@ module Surveillance
 
       parsed = EpiWeek.parse(week)
       return Result.fail(:invalid_week) if parsed.nil?
-      return Result.fail(:future_week) if parsed.ends_on > today
+      return Result.fail(:future_week) if parsed >= EpiWeek.current(today)
 
       ApplicationRecord.transaction(requires_new: true) do
         # A trava da unidade serializa as negativas concorrentes dela.

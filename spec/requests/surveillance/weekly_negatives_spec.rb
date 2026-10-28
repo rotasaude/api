@@ -68,7 +68,7 @@ RSpec.describe "Vigilância — negativa semanal", type: :request do
     expect(WeeklyNegativeReport.where(health_unit: ubs_a).count).to eq(1)
   end
 
-  it "a semana corrente (sábado 10/01 no futuro) é 422 future_week; uma posterior também" do
+  it "a semana corrente é 422 future_week; uma posterior também" do
     monday!
     record(ubs_a.id, "2026-01")
     expect(response).to have_http_status(:unprocessable_entity)
@@ -79,12 +79,18 @@ RSpec.describe "Vigilância — negativa semanal", type: :request do
     expect(WeeklyNegativeReport.count).to eq(0)
   end
 
-  it "a corrente vale como futura até a sexta; só depois do sábado deixa de ser futura" do
+  it "a corrente é futura em todos os dias dela, inclusive o sábado; só a partir do domingo deixa de ser" do
     travel_to Time.zone.local(2026, 1, 9, 23, 30)
     record(ubs_a.id, "2026-01")
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to eq("error" => "future_week")
 
     travel_to Time.zone.local(2026, 1, 10, 0, 30)
+    record(ubs_a.id, "2026-01")
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to eq("error" => "future_week")
+
+    travel_to Time.zone.local(2026, 1, 11, 0, 30)
     record(ubs_a.id, "2026-01")
     expect(response).to have_http_status(:created)
   end
