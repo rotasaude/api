@@ -5,7 +5,8 @@ RSpec.describe CareRegulation::Gate do
   it "está no catálogo depois de surveillance, exigindo o prontuário" do
     entry = Platform::Features.find("care_regulation")
     expect(entry.requires).to eq(%w[feature:clinical_record])
-    expect(Platform::Features::KEYS.last(2)).to eq(%w[surveillance care_regulation])
+    keys = Platform::Features::KEYS
+    expect(keys.index("care_regulation")).to eq(keys.index("surveillance") + 1)
   end
 
   it "sem a linha da cidade: falso nos dois" do
