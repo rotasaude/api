@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe Surveillance::Neighborhood do
+RSpec.describe Surveillance::PatientNeighborhood do
   include ActiveSupport::Testing::TimeHelpers
   before { registry_city! }
   let(:patient) { surveillance_patient!(21) }

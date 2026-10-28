@@ -30,6 +30,8 @@ module SurveillanceHelpers
     unit = over.delete(:unit) || create_unit("UBS Vigia #{SecureRandom.hex(2)}")
     attrs = { patient: patient, disease: disease, origin: "manual", unit: unit, suspected_at: Time.current }.merge(over)
     attrs[:status] = status if status
+    # Desvio 6: consulta e manual exigem quem grava.
+    attrs[:by] = surveillance_officer! if attrs[:origin] != "safety_net" && !attrs.key?(:by)
     result = Surveillance::CreateNotification.call(**attrs)
     raise "notificação recusada: #{result.reason} #{result.details}" if result.failure?
 

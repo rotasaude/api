@@ -21,6 +21,7 @@ RSpec.describe Surveillance::FormPrefill do
       "race_color" => "9", "residence_uf" => "PR", "residence_zip" => "81020000", "residence_street" => "Rua das Acácias",
       "residence_number" => "SN", "residence_complement" => "casa 2", "residence_neighborhood" => "Boqueirão", "phone" => phone
     )
+    expect(described_class.for(patient, resident_elsewhere: true)).not_to have_key("residence_uf")
   end
 
   it "sem endereço: nem UF" do

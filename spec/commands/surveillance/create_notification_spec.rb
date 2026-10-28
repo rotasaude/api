@@ -97,6 +97,27 @@ RSpec.describe Surveillance::CreateNotification do
     expect(result.details[:notification_id]).to eq(first.id)
   end
 
+  it "Desvio 6: consulta e manual sem quem grava, ou rede de segurança fora de possible → ArgumentError, sem gravar" do
+    expect { create(by: nil) }.to raise_error(ArgumentError)
+    expect { create(origin: "consultation", by: nil) }.to raise_error(ArgumentError)
+    expect { create(origin: "safety_net", status: "notified") }.to raise_error(ArgumentError)
+    expect(DiseaseNotification.count).to eq(0)
+    expect(create(origin: "safety_net", status: "possible", by: nil)).to be_ok
+  end
+
+  it "suspeita como Date: 00:00 no fuso da cidade, due_at continua instante" do
+    n = create(suspected_at: Time.zone.today).payload[:notification]
+    expect([ n.suspected_on, n.due_at ]).to eq([ Time.zone.today, Time.zone.today.in_time_zone + 7.days ])
+  end
+
+  it "residente fora: a ficha não leva a UF da cidade" do
+    city_profile!.update!(uf: "PR")
+    patient.update!(address_street: "Rua das Acácias")
+    away = create(resident_elsewhere: true, residence_ibge: "3550308").payload[:notification]
+    expect(away.form).not_to have_key("residence_uf")
+    expect(create(disease: Surveillance::Diseases.find("tuberculose")).payload[:notification].form["residence_uf"]).to eq("PR")
+  end
+
   it "helper notification!: safety_net sem status nasce possible" do
     expect(notification!(patient: patient, origin: "safety_net").status).to eq("possible")
   end

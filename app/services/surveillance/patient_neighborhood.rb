@@ -2,7 +2,7 @@
 # domicílio do cadastro individual ativo (24a) → o do par validado mais
 # recente → nil ("não informado"). Só o id; nunca em log.
 module Surveillance
-  module Neighborhood
+  module PatientNeighborhood
     module_function
 
     def for(patient) = from_household(patient) || latest_pair(patient)&.neighborhood_id

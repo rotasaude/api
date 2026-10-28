@@ -7,7 +7,13 @@
 #   - due_at = instante da suspeita + prazo da doença (congelado em deadline,
 #     como a versão da lista); suspected_on = o dia desse instante na cidade;
 #   - notificador: quem grava (consulta/manual); a rede de segurança nasce sem;
-#   - bairro congelado (Neighborhood.for) e ficha pré-preenchida (FormPrefill).
+#   - bairro congelado (PatientNeighborhood.for) e ficha pré-preenchida (FormPrefill).
+# Ordem de travas (Desvio 13): consulta (se quem chama a trava) → paciente
+# (FOR UPDATE, aqui; nada muda para quem já o trava) → lock consultivo
+# paciente×doença → notificação. O paciente vem antes do consultivo porque as
+# FKs do INSERT tomam FOR KEY SHARE no paciente: quem segura o paciente e
+# espera o consultivo, contra quem segura o consultivo e espera o KEY SHARE,
+# seria deadlock.
 # Entradas conferidas ANTES de gravar: o texto de erro do Postgres (CHECK,
 # índice único) carrega valores da linha. Paciente, doença, data de sintomas e
 # ficha nunca em log, evento, erro ou Result.
@@ -27,25 +33,34 @@ module Surveillance
              status: nil, resident_elsewhere: false, residence_ibge: nil)
       raise ArgumentError, "unknown origin" unless Catalog::ORIGINS.include?(origin)
 
-      status ||= origin == "safety_net" ? "possible" : "notified"
+      safety_net = origin == "safety_net"
+      # Desvio 6: consulta e manual sempre com quem grava; a rede de segurança
+      # nasce possible, sem notificador.
+      raise ArgumentError, "by required for #{origin}" if !safety_net && by.nil?
+      raise ArgumentError, "safety_net starts possible" if safety_net && !status.nil? && status != "possible"
+
+      status ||= safety_net ? "possible" : "notified"
       raise ArgumentError, "unknown initial status" unless INITIAL_STATUSES.include?(status)
 
-      suspected_on = suspected_at.in_time_zone.to_date
+      suspected_at = suspected_at.in_time_zone
+      suspected_on = suspected_at.to_date
       return Result.fail(:invalid_symptoms_on) unless symptoms_on.nil? || (symptoms_on.is_a?(Date) && symptoms_on <= suspected_on)
       return Result.fail(:invalid_residence) unless valid_residence?(resident_elsewhere, residence_ibge)
 
       ApplicationRecord.transaction do
+        patient = Patient.lock.find(patient.id)
         ApplicationRecord.connection.execute("SELECT pg_advisory_xact_lock(#{lock_key(patient.id, disease.code)})")
         blocking = Duplicates.blocking(patient_id: patient.id, disease: disease, today: Time.zone.today)
         next already_notified(blocking.id) if blocking
 
-        notifier = origin == "safety_net" ? nil : by
+        notifier = safety_net ? nil : by
         notification = insert(patient: patient, disease_code: disease.code, disease_list_version: disease.list_version,
                               deadline: disease.deadline, origin: origin, status: status, suspected_on: suspected_on,
                               symptoms_on: symptoms_on, due_at: suspected_at + Catalog::DEADLINES.fetch(disease.deadline),
                               health_unit: unit, unit_cnes: unit.cnes, notifier_user: notifier, consultation: consultation,
-                              addendum: addendum, form: FormPrefill.for(patient), resident_elsewhere: resident_elsewhere,
-                              residence_ibge: residence_ibge, neighborhood_id: Neighborhood.for(patient))
+                              addendum: addendum, form: FormPrefill.for(patient, resident_elsewhere: resident_elsewhere),
+                              resident_elsewhere: resident_elsewhere,
+                              residence_ibge: residence_ibge, neighborhood_id: PatientNeighborhood.for(patient))
         next already_notified(open_id(patient.id, disease.code)) if notification.nil?
 
         DiseaseNotificationEvent.create!(notification: notification, status: status, by_user: notifier)

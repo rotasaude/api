@@ -1,6 +1,7 @@
 # A ficha nasce pré-preenchida (módulo 25, Desvio 8; contrato §14): raça/cor
 # do paciente convertida para o Sinan ("9" sem raça), endereço do paciente
-# (o 24a o regrava do domicílio; a UF é a da cidade), telefone do par
+# (o 24a o regrava do domicílio; a UF é a da cidade, só para quem mora nela:
+# residente fora, a vigilância digita), telefone do par
 # validado mais recente (só dígitos, sem o 55) e a ocupação da última versão
 # do cadastro individual ativo. Zona, país e o resto ficam vazios (chave
 # ausente). Só chaves de Surveillance::Form. Nunca em log.
@@ -13,10 +14,10 @@ module Surveillance
 
     module_function
 
-    def for(patient)
+    def for(patient, resident_elsewhere: false)
       address = ADDRESS.transform_values { |column| patient.public_send(column).presence }.compact
       values = { "race_color" => Catalog::RACE_TO_SINAN.fetch(patient.race_color.to_s, "9"),
-                 "residence_uf" => (CityProfile.current&.uf if address.any?),
+                 "residence_uf" => (CityProfile.current&.uf if address.any? && !resident_elsewhere),
                  "phone" => Billing::PatientContact.for([ patient.id ])[patient.id]&.phone,
                  "occupation_cbo" => occupation(patient) }.merge(address)
       values.compact.slice(*Form.keys)
