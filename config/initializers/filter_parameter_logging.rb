@@ -68,8 +68,9 @@ Rails.application.config.filter_parameters += [
   :patient_demographics, :death_on,
   # ADR 0043: notificação compulsória — a ficha (agravo e campos do Sinan), o
   # número oficial, o motivo, a data de início dos sintomas, o código do agravo,
-  # a marca de paciente novo e o IBGE de residência (`reason` já estava).
-  /\A(form|official_number|reason|symptoms_on|disease_code|new_patient|residence_ibge)\z/
+  # a marca de paciente novo e o IBGE de residência (`reason` já estava);
+  # `disease` é o filtro da fila (GET /surveillance/notifications?disease=).
+  /\A(form|official_number|reason|symptoms_on|disease_code|disease|new_patient|residence_ibge)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

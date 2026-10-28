@@ -1,4 +1,9 @@
-# POST /surveillance/notifications. Dois ramos, escolhidos por `consultation_id`
+# A fila da vigilância (contrato §5; papel `surveillance`):
+#   GET   /surveillance/notifications        a fila, com cursor (uma trilha por consulta)
+#   GET   /surveillance/notifications/count   contadores (sem trilha)
+#   GET   /surveillance/notifications/:id     o detalhe (trilha por pessoa)
+#   PATCH /surveillance/notifications/:id     a ficha inteira, { form, version }
+# E POST /surveillance/notifications. Dois ramos, escolhidos por `consultation_id`
 # no corpo:
 #   - com ele (contrato §4): a consulta ({ consultation_id, disease_code,
 #     symptoms_on? }, health_professional);
@@ -10,15 +15,67 @@
 # papel `surveillance` (no ramo manual, sempre).
 module Surveillance
   class NotificationsController < BaseController
+    QUEUE_PARAMS = (Queue::FILTERS + %w[before limit]).freeze
+
+    before_action(only: %i[index show update count]) { forbid unless surveillance? }
     before_action :require_surveillance_consultation!, only: :create, if: :consultation_branch?
     before_action(only: :create, if: :consultation_branch?) { forbid unless Current.user.has_role?("health_professional") }
     before_action(only: :create, unless: :consultation_branch?) { forbid unless surveillance? }
+
+    def index
+      return unless query_only!(*QUEUE_PARAMS)
+
+      limit = page_limit
+      return unless limit
+
+      query = request.query_parameters
+      result = Queue.call(filters: query.slice(*Queue::FILTERS), limit: limit, before: query["before"])
+      return render_failure(result) if result.failure?
+
+      rows = result.payload.fetch(:rows)
+      Trail.listed!(user: Current.user, notification_ids: rows.map(&:id)) if rows.any?
+      diseases = Diseases.all.index_by(&:code)
+      render json: { notifications: rows.map { |n| Json.notification(n, full: false, diseases: diseases) },
+                     next_before: result.payload.fetch(:next_before) }
+    end
+
+    def count
+      render json: Queue.counts
+    end
+
+    def show
+      notification = find_notification
+      return not_found unless notification
+
+      Trail.person_viewed!(user: Current.user, patient_id: notification.patient_id)
+      render json: Json.notification(notification)
+    end
+
+    # A ficha inteira e a versão que o cliente leu, só do corpo.
+    def update
+      return unless query_only!
+
+      notification = find_notification
+      return not_found unless notification
+
+      version = body_param("version")
+      return render_error("invalid_request") unless version.is_a?(Integer)
+
+      result = SaveForm.call(notification: notification, form: body_param("form"), version: version, by: Current.user)
+      return render_failure(result) if result.failure?
+
+      saved = result.payload.fetch(:notification)
+      Trail.person_viewed!(user: Current.user, patient_id: saved.patient_id)
+      render json: Json.notification(saved)
+    end
 
     def create
       consultation_branch? ? create_from_consultation : create_manual
     end
 
     private
+
+    def find_notification = uuid?(params[:id]) ? DiseaseNotification.find_by(id: params[:id]) : nil
 
     def consultation_branch? = !body_param("consultation_id").nil?
 

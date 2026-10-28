@@ -244,4 +244,7 @@ Rails.application.config.to_prepare do
   # paciente; o job relê a linha. O alerta (Surveillance::AlertJob) chega na
   # Task 13.
   DomainEvents.bind "disease_notification.created", to: []
+  # Ficha da notificação gravada (Surveillance::SaveForm): só notification_id —
+  # nunca a ficha nem dado do paciente; sem consumidor.
+  DomainEvents.bind "disease_notification.updated", to: []
 end

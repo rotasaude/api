@@ -443,6 +443,11 @@ Rails.application.routes.draw do
   scope "/surveillance", module: :surveillance, as: :surveillance do
     get   "diseases",                  to: "diseases#index"
     post  "notifications",             to: "notifications#create"
+    # Fila, detalhe, ficha e contadores (contrato §5): `count` (literal) antes de `:id`.
+    get   "notifications",             to: "notifications#index"
+    get   "notifications/count",       to: "notifications#count"
+    get   "notifications/:id",         to: "notifications#show"
+    patch "notifications/:id",         to: "notifications#update"
     get   "units",                     to: "units#index"
     post  "person_lookup",             to: "person_lookups#create"
     post  "patients/duplicates",       to: "duplicates#create"

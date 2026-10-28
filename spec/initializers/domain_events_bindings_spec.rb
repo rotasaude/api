@@ -248,4 +248,10 @@ RSpec.describe "disease surveillance bindings (ADR 0043)" do
     expect(DomainEvents.registry.keys).to include("disease_notification.created")
     expect(DomainEvents.registry["disease_notification.created"]).to be_empty
   end
+
+  # Só notification_id (Surveillance::SaveForm): nunca a ficha.
+  it "declares disease_notification.updated (no consumer)" do
+    expect(DomainEvents.registry.keys).to include("disease_notification.updated")
+    expect(DomainEvents.registry["disease_notification.updated"]).to be_empty
+  end
 end

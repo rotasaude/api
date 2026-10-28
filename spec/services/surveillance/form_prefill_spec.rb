@@ -24,6 +24,21 @@ RSpec.describe Surveillance::FormPrefill do
     expect(described_class.for(patient, resident_elsewhere: true)).not_to have_key("residence_uf")
   end
 
+  it "omite o valor que a validação da ficha recusaria, em vez de cortá-lo (ficha intocada sempre passa)" do
+    patient.update!(address_street: "R" * 70, address_number: "1234567", address_zip: "8102000", address_complement: "casa 2")
+    prefill = described_class.for(patient)
+    expect(prefill).not_to include("residence_street", "residence_number", "residence_zip")
+    expect(prefill).to include("residence_complement" => "casa 2", "residence_uf" => "PR")
+    expect(Surveillance::Form.validate(prefill)).to be_ok
+  end
+
+  it "telefone que não tem 10 a 11 dígitos não entra" do
+    Citizen.find_by!(patient_id: patient.id).update_columns(phone: "+55419999")
+    prefill = described_class.for(patient)
+    expect(prefill).not_to have_key("phone")
+    expect(Surveillance::Form.validate(prefill)).to be_ok
+  end
+
   it "sem endereço: nem UF" do
     expect(described_class.for(patient).keys).not_to include("residence_uf", "residence_street")
   end
