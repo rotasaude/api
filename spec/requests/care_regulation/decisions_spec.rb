@@ -172,6 +172,104 @@ RSpec.describe "Regulação — decisões do regulador", type: :request do
     end
   end
 
+  # Task 9 (Desvio 9; §13 G1, G7): devolver, negar e cancelar, `{ reason, version }`.
+  describe "POST /regulation/requests/:id/{return,deny,cancel}" do
+    before { sign_in_as(regulator) }
+
+    let(:reason) { "Motivo-da-decisao-sigiloso" }
+
+    it "os três: 200 com a forma do contrato, o motivo no último evento, a trilha por pessoa e o evento só com ids" do
+      { "return" => "returned", "deny" => "denied", "cancel" => "cancelled" }.each do |decision, status|
+        request = aged!(3, "yellow")
+        json_post "/regulation/requests/#{request.id}/#{decision}", reason: reason, version: request.version
+        expect(response).to have_http_status(:ok)
+        expect(json_body.keys).to match_array(contract_keys)
+        expect(json_body).to include("id" => request.id, "status" => status, "version" => 3)
+        expect(json_body["events"].last).to include("status" => status, "reason" => reason, "by" => { "name" => be_present })
+        expect(viewed.map(&:payload)).to include(include("access" => "regulation", "patient_id" => request.patient_id,
+                                                         "user_id" => regulator.id, "person_ref" => "patient:#{request.patient_id}"))
+        expect(DomainEvent.where(name: "regulation_request.#{status}").sole.payload)
+          .to eq("regulation_request_id" => request.id, "user_id" => regulator.id)
+      end
+    end
+
+    it "cancelar depois de autorizar devolve a vaga: outra autorização na mesma oferta passa" do
+      single = offer!(provider: external_provider!, quantity: 1)
+      request = aged!(3, "yellow")
+      json_post "/regulation/requests/#{request.id}/authorize", offer_id: single.id, version: request.version
+      expect(response).to have_http_status(:ok)
+      json_post "/regulation/requests/#{request.id}/cancel", reason: reason, version: 3
+      expect(response).to have_http_status(:ok)
+      expect(json_body["authorization"]).to be_nil
+      other = aged!(2, "yellow")
+      json_post "/regulation/requests/#{other.id}/authorize", offer_id: single.id, version: other.version
+      expect([ response.status, json_body["status"] ]).to eq([ 200, "authorized" ])
+    end
+
+    it "409 stale_version; 409 invalid_transition; 422 appointment_scheduled (G1)" do
+      request = aged!(3, "yellow")
+      json_post "/regulation/requests/#{request.id}/return", reason: reason, version: 1
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "stale_version" } ])
+      json_post "/regulation/requests/#{request.id}/deny", reason: reason, version: request.version
+      expect(response).to have_http_status(:ok)
+      json_post "/regulation/requests/#{request.id}/cancel", reason: reason, version: 3
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "invalid_transition" } ])
+
+      unit = create_unit("Centro de Especialidades Cancelamento")
+      own = offer!(provider: own_provider!(unit))
+      booked = aged!(3, "yellow")
+      json_post "/regulation/requests/#{booked.id}/authorize", offer_id: own.id, version: booked.version
+      appointment = AppointmentRequest.find_by!(origin_regulation_request_id: booked.id)
+      expect(Appointments::Schedule.call(request: appointment, scheduled_at: (now + 5.days).change(hour: 9).iso8601,
+                                         health_unit_id: unit.id, by: reception!)).to be_ok
+      json_post "/regulation/requests/#{booked.id}/cancel", reason: reason, version: 3
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "appointment_scheduled" } ])
+      expect(booked.reload.status).to eq("authorized")
+    end
+
+    it "422 invalid_request: motivo curto (path reason), versão não inteira, chave desconhecida" do
+      request = aged!(3, "yellow")
+      json_post "/regulation/requests/#{request.id}/return", reason: "curto", version: request.version
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "reason" } ])
+      json_post "/regulation/requests/#{request.id}/return", reason: reason, version: "2"
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "version" } ])
+      json_post "/regulation/requests/#{request.id}/return", reason: reason, version: 2, color: "red"
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "color" } ])
+      expect(request.reload.status).to eq("pending")
+    end
+
+    it "motivo na query → 422 invalid_request, nada lido da URL" do
+      request = aged!(3, "yellow")
+      post "/regulation/requests/#{request.id}/deny?reason=Motivo-na-url-sigiloso",
+           params: { reason: reason, version: request.version }.to_json, headers: { "CONTENT_TYPE" => "application/json" }
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+      expect(request.reload.status).to eq("pending")
+    end
+
+    it "o log não contém o motivo; nenhum evento de domínio o leva" do
+      request = aged!(3, "yellow")
+      log = capture_log { json_post "/regulation/requests/#{request.id}/return", reason: reason, version: request.version }
+      expect(response).to have_http_status(:ok)
+      expect(log).to include("return")
+      expect(log).not_to include(reason)
+      expect(DomainEvent.where("payload::text LIKE ?", "%sigiloso%")).to be_empty
+    end
+
+    it "health_professional e municipal_admin → 403 missing_role; id de rascunho → 404" do
+      request = aged!(3, "yellow")
+      [ doctor!(create_unit("UBS Decisões Devolução")), regulation_admin! ].each do |user|
+        sign_in_as(user)
+        json_post "/regulation/requests/#{request.id}/return", reason: reason, version: request.version
+        expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+      end
+      sign_in_as(regulator)
+      draft = regulation_request!(status: "draft")
+      json_post "/regulation/requests/#{draft.id}/cancel", reason: reason, version: 1
+      expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
+      expect(request.reload.status).to eq("pending")
+    end
+  end
+
   describe "outros papéis e interruptor" do
     it "health_professional → 403 missing_role; municipal_admin também" do
       request = aged!(3, "yellow")

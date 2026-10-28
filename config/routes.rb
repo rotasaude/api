@@ -481,6 +481,12 @@ Rails.application.routes.draw do
     get    "requests/count",       to: "requests#count"
     get    "requests/:id",         to: "requests#show"
     post   "requests/:id/authorize", to: "decisions#authorize"
+    post   "requests/:id/return",  to: "decisions#return_request"
+    post   "requests/:id/deny",    to: "decisions#deny"
+    post   "requests/:id/cancel",  to: "decisions#cancel"
+    # A unidade solicitante (contrato §5): devolvidos e complemento.
+    post   "requests/:id/complement", to: "decisions#complement"
+    get    "returned",             to: "returned#index"
     get    "admin/deadlines",      to: "admin/deadlines#show"
     patch  "admin/deadlines",      to: "admin/deadlines#update"
     get    "admin/nurse_items",    to: "admin/nurse_items#index"
