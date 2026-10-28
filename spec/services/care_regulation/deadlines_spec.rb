@@ -80,7 +80,7 @@ RSpec.describe CareRegulation::Deadlines do
     expect(events.map(&:payload)).to eq([ { "user_id" => admin.id } ])
   end
 
-  it "due_on lê a tabela na hora da conta (o que já foi calculado não muda)" do
+  it "due_on usa o prazo vigente da tabela na hora da conta" do
     rows!
     before = described_class.due_on(requested_at: Time.zone.parse("2026-10-10 10:00"), color: "red")
     save("red" => 3, "yellow" => 20, "green" => 60, "blue" => 120)

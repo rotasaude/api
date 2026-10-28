@@ -2,6 +2,8 @@ require "rails_helper"
 
 # Módulo 26a (ADR 0044; contrato §13 G3): GET /regulation/targets.
 RSpec.describe "Regulação — alvos", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city) { regulation_city! }
   let(:unit) { create_unit("UBS Alvos") }
   let(:doctor) { doctor!(unit) }
@@ -61,14 +63,27 @@ RSpec.describe "Regulação — alvos", type: :request do
       expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_limit" } ])
     end
     get "/regulation/targets", params: { type: "specialty", q: [ "a" ] }
-    expect(json_body).to eq("error" => "invalid_request")
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "q" } ])
   end
 
-  it "o procedimento nunca passa de 20 itens" do
-    sign_in_as(doctor)
-    get "/regulation/targets", params: { type: "procedure", q: "040", limit: "100" }
-    expect(response).to have_http_status(:ok)
-    expect(json_body["targets"].size).to be <= 20
+  it "procedimento: 20 por padrão e no máximo; de 21 a 100 → 422 invalid_limit; a especialidade segue até 100" do
+    travel_to(Time.zone.local(2027, 3, 15, 12)) do
+      regulation_bulk_sigtap!("202703", count: 25)
+      sign_in_as(doctor)
+      get "/regulation/targets", params: { type: "procedure", q: "regulavel de teste" }
+      expect(response).to have_http_status(:ok)
+      expect(json_body["targets"].size).to eq(20)
+      get "/regulation/targets", params: { type: "procedure", q: "regulavel de teste", limit: "20" }
+      expect(json_body["targets"].size).to eq(20)
+      get "/regulation/targets", params: { type: "procedure", q: "regulavel de teste", limit: "4" }
+      expect(json_body["targets"].size).to eq(4)
+      %w[21 100].each do |limit|
+        get "/regulation/targets", params: { type: "procedure", q: "regulavel de teste", limit: limit }
+        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_limit" } ])
+      end
+      get "/regulation/targets", params: { type: "specialty", limit: "100" }
+      expect(response).to have_http_status(:ok)
+    end
   end
 
   it "regulador e administrador também leem" do

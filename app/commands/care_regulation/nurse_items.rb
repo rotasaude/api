@@ -6,8 +6,10 @@ module CareRegulation
 
     # -> [{ target_type:, target_code:, name: }], por tipo e nome.
     def list(on: Time.zone.today)
-      NurseRequestableItem.pluck(:target_type, :target_code).map do |type, code|
-        { target_type: type, target_code: code, name: Targets.name_for(type: type, code: code, on: on) }
+      pairs = NurseRequestableItem.pluck(:target_type, :target_code)
+      names = Targets.names_for(pairs, on: on)
+      pairs.map do |type, code|
+        { target_type: type, target_code: code, name: names.fetch([ type, code ]) }
       end.sort_by { |item| [ item[:target_type], item[:name].to_s.downcase, item[:target_code] ] }
     end
 

@@ -75,6 +75,12 @@ RSpec.describe CareRegulation::Requesters do
       expect(NurseRequestableItem.count).to eq(0)
     end
 
+    it "list: resolve a release SIGTAP uma vez só, com vários procedimentos" do
+      %w[0209010037 0301010072 0401010074].each { |code| described_class.add(target_type: "procedure", target_code: code, by: admin) }
+      expect(Terminology::Sigtap).to receive(:release_for).once.and_call_original
+      expect(described_class.list.map { |item| item[:name] }).to all(be_present)
+    end
+
     it "list: com o nome do alvo, por tipo e nome" do
       described_class.add(target_type: "procedure", target_code: "0209010037", by: admin)
       described_class.add(target_type: "specialty", target_code: "225250", by: admin)

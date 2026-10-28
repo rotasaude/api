@@ -41,11 +41,19 @@ module CareRegulation
     # Nome do alvo para listar a configuração (lista do enfermeiro), mesmo
     # que ele não seja mais regulável; nil quando não existe.
     def name_for(type:, code:, on: Time.zone.today)
-      return specialty(code)&.name if type == "specialty"
-      return nil unless type == "procedure"
+      names_for([ [ type, code ] ], on: on).fetch([ type, code ])
+    end
 
-      release = Terminology::Sigtap.release_for(on.strftime("%Y%m"))
-      release && SigtapProcedure.find_by(release_id: release.id, code: code)&.name
+    # { [type, code] => nome | nil } para vários alvos, com a release SIGTAP
+    # resolvida uma vez e os nomes dos procedimentos numa consulta só.
+    def names_for(pairs, on: Time.zone.today)
+      procedure_codes = pairs.select { |type, _| type == "procedure" }.map(&:last)
+      release = procedure_codes.any? ? Terminology::Sigtap.release_for(on.strftime("%Y%m")) : nil
+      procedures = release ? SigtapProcedure.where(release_id: release.id, code: procedure_codes).pluck(:code, :name).to_h : {}
+      pairs.to_h do |type, code|
+        name = type == "specialty" ? specialty(code)&.name : (type == "procedure" ? procedures[code] : nil)
+        [ [ type, code ], name ]
+      end
     end
 
     def specialties

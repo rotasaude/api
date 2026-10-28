@@ -62,6 +62,21 @@ module RegulationHelpers
     end
   end
 
+  # Release SIGTAP ativa de competência própria com `count` procedimentos
+  # reguláveis (grupo 04, BPA individualizado) de nome "<prefix> NN", para
+  # provar o corte das buscas. Use `on:` na competência (ou travel_to).
+  def regulation_bulk_sigtap!(competence, count: 25, prefix: "PROCEDIMENTO REGULAVEL DE TESTE")
+    release = TerminologyRelease.create!(kind: "sigtap", version: competence, source_sha256: "a" * 64, imported_by: "rspec",
+                                         imported_at: Time.current, status: "importing")
+    count.times do |i|
+      code = format("04019%05d", i + 1)
+      SigtapProcedure.create!(release: release, code: code, name: format("%s %02d", prefix, i + 1))
+      SigtapProcedureInstrument.create!(release: release, procedure_code: code, instrument_code: "02", instrument_name: REGISTRIES.fetch("02"))
+    end
+    release.update!(status: "active", activated_at: Time.current)
+    release
+  end
+
   def care_regulator!(email = "regulacao-#{SecureRandom.hex(3)}@cidade.gov.br") = staff_with(email, "care_regulator")
   def regulation_admin! = (@regulation_admin ||= staff_with("adm-regulacao-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin"))
 

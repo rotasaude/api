@@ -107,7 +107,18 @@ RSpec.describe CareRegulation::Targets do
       expect(described_class.search(type: "procedure", query: "es")).to be_empty
       expect(described_class.search(type: "procedure", query: nil)).to be_empty
       expect(described_class.search(type: "procedure", query: "0", limit: 20)).to be_empty
-      expect(described_class.search(type: "procedure", query: "040", limit: 1).size).to eq(1)
+    end
+
+    it "o corte do limit (e o padrão de 20) vale com mais reguláveis do que o limite" do
+      on = Date.new(2027, 3, 15)
+      regulation_bulk_sigtap!("202703", count: 25)
+      all = described_class.search(type: "procedure", query: "regulavel de teste", on: on, limit: 100)
+      expect(all.size).to eq(25)
+      expect(all.map(&:name)).to eq(all.map(&:name).sort)
+
+      expect(described_class.search(type: "procedure", query: "regulavel de teste", on: on).size).to eq(20)
+      expect(described_class.search(type: "procedure", query: "regulavel de teste", on: on, limit: 1).map(&:name)).to eq([ all.first.name ])
+      expect(described_class.search(type: "procedure", query: "04019", on: on, limit: 7).size).to eq(7)
     end
 
     it "tipo desconhecido → vazio" do
@@ -122,6 +133,14 @@ RSpec.describe CareRegulation::Targets do
       expect(described_class.name_for(type: "procedure", code: "0000000000")).to be_nil
       expect(described_class.name_for(type: "specialty", code: "225125")).to be_nil
       expect(described_class.name_for(type: "x", code: "1")).to be_nil
+    end
+
+    it "names_for resolve a release uma vez só para vários alvos" do
+      expect(Terminology::Sigtap).to receive(:release_for).once.and_call_original
+      names = described_class.names_for([ %w[procedure 0209010037], %w[procedure 0305010107], %w[specialty 225120], %w[procedure 0000000000] ])
+      expect(names).to eq([ "procedure", "0209010037" ] => "ESOFAGOGASTRODUODENOSCOPIA",
+                          [ "procedure", "0305010107" ] => "HEMODIÁLISE (MÁXIMO 3 SESSÕES POR SEMANA)",
+                          [ "specialty", "225120" ] => "Cardiologia", [ "procedure", "0000000000" ] => nil)
     end
   end
 end

@@ -13,20 +13,32 @@ module CareRegulation
       return render_failure(Result.fail(:invalid_request, details: { path: "type" })) unless Catalog::TYPES.include?(type)
 
       query = params[:q]
-      return render_error("invalid_request") unless query.nil? || query.is_a?(String)
+      return render_failure(Result.fail(:invalid_request, details: { path: "q" })) unless query.nil? || query.is_a?(String)
       return render_error("invalid_query") if type == "procedure" && query.to_s.strip.length < Targets::MIN_QUERY
 
-      # Sem `limit`, a especialidade vem inteira (a lista cabe em MAX_LIMIT).
-      limit = params[:limit].blank? ? MAX_LIMIT : page_limit
+      limit = target_limit(type)
       return unless limit
 
-      limit = [ limit, PROCEDURE_LIMIT ].min if type == "procedure"
       found = Targets.search(type: type, query: query, limit: limit)
       nurse_codes = NurseRequestableItem.where(target_type: type).pluck(:target_code).to_set
       render json: { targets: found.map { |target| entry(target, nurse_codes.include?(target.code)) } }
     end
 
     private
+
+    # Especialidade: 1..MAX_LIMIT e, sem `limit`, a lista inteira (cabe em
+    # MAX_LIMIT; o targets_yaml_spec garante). Procedimento: 1..20 e, sem
+    # `limit`, 20. Fora disso → 422 invalid_limit (nada é cortado em silêncio).
+    def target_limit(type)
+      max = type == "procedure" ? PROCEDURE_LIMIT : MAX_LIMIT
+      return max if params[:limit].blank?
+
+      value = Integer(params[:limit].to_s, 10, exception: false)
+      return value if value&.between?(1, max)
+
+      render_error("invalid_limit")
+      nil
+    end
 
     def entry(target, nurse_allowed)
       { type: target.type, code: target.code, name: target.name, group: target.group, nurse_allowed: nurse_allowed }

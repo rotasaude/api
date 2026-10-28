@@ -71,6 +71,32 @@ RSpec.describe CareRegulation::Diagnosis do
     end
   end
 
+  describe "médico no complemento" do
+    it "só com o kept_cid10 do pedido: ok, com o cid10 do pedido" do
+      result = check("225125", kept_cid10: "i10")
+      expect(result).to be_ok
+      expect(result.payload).to eq(cid10: "I10", ciap2: nil)
+    end
+  end
+
+  describe "CBO não médico que pode registrar CID-10 (stub de cid10_allowed?)" do
+    before { allow(Ledi::ConsultationMapping).to receive(:cid10_allowed?).and_return(true) }
+
+    it "aceita o cid10 sem ciap2" do
+      expect(check("223505", cid10: "i10").payload).to eq(cid10: "I10", ciap2: nil)
+      expect(check("223208", cid10: "I10", ciap2: "K86").payload).to eq(cid10: "I10", ciap2: "K86")
+    end
+
+    it "sem nenhum diagnóstico → diagnosis_required com path cid10" do
+      expect(refusal(check("223505"))).to eq([ :diagnosis_required, { path: "cid10" } ])
+      expect(refusal(check("223208", cid10: ""))).to eq([ :diagnosis_required, { path: "cid10" } ])
+    end
+
+    it "só ciap2 também basta" do
+      expect(check("223505", ciap2: "K86").payload).to eq(cid10: nil, ciap2: "K86")
+    end
+  end
+
   describe "ordem das recusas" do
     it "tipo errado vem primeiro, com o path da chave" do
       expect(refusal(check("225125", cid10: 10))).to eq([ :invalid_request, { path: "cid10" } ])

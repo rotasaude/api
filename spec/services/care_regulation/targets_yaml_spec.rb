@@ -32,6 +32,10 @@ RSpec.describe "Catálogo de alvos reguláveis (Task 0)" do
     expect(rows.find { |r| r["code"] == "223212" }["label"]).to eq("Endodontia")
   end
 
+  it "a lista inteira de especialidades cabe no limite da rota targets (nunca trunca sem aviso)" do
+    expect(specialties.fetch("specialties").size).to be <= CareRegulation::BaseController::MAX_LIMIT
+  end
+
   it "nome do prestador de 3 a 120 caracteres (G5)" do
     expect(CareRegulation::Catalog::PROVIDER_NAME).to eq(3..120)
   end
