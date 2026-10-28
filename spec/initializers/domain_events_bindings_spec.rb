@@ -263,4 +263,10 @@ RSpec.describe "disease surveillance bindings (ADR 0043)" do
       expect(DomainEvents.registry[name]).to be_empty
     end
   end
+
+  # Só weekly_negative_report_id e user_id (Surveillance::RecordNegative).
+  it "declares weekly_negative.recorded (no consumer)" do
+    expect(DomainEvents.registry.keys).to include("weekly_negative.recorded")
+    expect(DomainEvents.registry["weekly_negative.recorded"]).to be_empty
+  end
 end

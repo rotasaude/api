@@ -452,6 +452,9 @@ Rails.application.routes.draw do
     post  "notifications/:id/transition", to: "transitions#transition"
     post  "notifications/:id/dismiss",    to: "transitions#dismiss"
     get   "units",                     to: "units#index"
+    # Negativa semanal por unidade (contrato K7).
+    get   "weekly_negatives",          to: "weekly_negatives#index"
+    post  "weekly_negatives",          to: "weekly_negatives#create"
     post  "person_lookup",             to: "person_lookups#create"
     post  "patients/duplicates",       to: "duplicates#create"
     get   "admin/local_diseases",      to: "local_diseases#index"

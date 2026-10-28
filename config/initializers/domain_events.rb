@@ -252,4 +252,7 @@ Rails.application.config.to_prepare do
   # classificação nem o número oficial; sem consumidor.
   DomainEvents.bind "disease_notification.transitioned", to: []
   DomainEvents.bind "disease_notification.dismissed", to: []
+  # Negativa semanal da unidade (Surveillance::RecordNegative): só
+  # weekly_negative_report_id e user_id; sem consumidor.
+  DomainEvents.bind "weekly_negative.recorded", to: []
 end
