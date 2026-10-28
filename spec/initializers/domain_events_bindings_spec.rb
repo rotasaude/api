@@ -277,4 +277,17 @@ RSpec.describe "care regulation bindings (ADR 0044)" do
     expect(DomainEvents.registry.keys).to include("care_regulation.settings_changed")
     expect(DomainEvents.registry["care_regulation.settings_changed"]).to be_empty
   end
+
+  it "declares the regulation request, provider and offer events with no consumer" do
+    names = %w[regulation_request.created regulation_request.complemented regulation_request.external
+               regulation_request.authorized regulation_request.returned regulation_request.denied
+               regulation_request.cancelled regulation_request.scheduled regulation_request.completed
+               regulation_request.missed regulation_request.closed care_offer.changed care_provider.changed]
+    names.each do |name|
+      expect(DomainEvents.registry.keys).to include(name)
+      expect(DomainEvents.registry[name]).to be_empty
+    end
+    transition_names = CareRegulation::Transition::EVENTS.map { |event| "regulation_request.#{event}" }
+    expect(transition_names - names).to be_empty
+  end
 end

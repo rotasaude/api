@@ -391,6 +391,31 @@ RSpec.describe "Invariantes do atendimento (ADR 0018, 0019)" do
       expect { attempt { Attendance.insert_all!([ left ]) } }
         .to raise_error(ActiveRecord::StatementInvalid, /attendances: born waiting/)
     end
+
+    it "o banco recusa nascer com a marca de encaminhado pela regulação" do
+      expect { attempt { Attendance.insert_all!([ fresh_row(referral_regulated: true) ]) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /attendances: born waiting/)
+    end
+  end
+
+  # Módulo 26a (ADR 0044; plano do api, Desvio 2; contrato §13 G12 #4): sem
+  # unidade nem nota, referred só com a marca referral_regulated.
+  describe "encaminhado tem unidade, nota ou a marca da regulação (ck_attendances_referral)" do
+    def close_referred!(attendance, **columns)
+      attempt do
+        Attendance.where(id: attendance.id).update_all({ status: "closed", outcome: "referred", closed_by_user_id: doctor.id,
+                                                         closed_at: Time.current }.merge(columns))
+      end
+    end
+
+    it "o banco recusa referred sem unidade, sem nota e sem a marca; com a marca, aceita" do
+      attendance = in_care!(waiting_attendance(citizen, unit: unit, by: reception), by: doctor)
+      expect { close_referred!(attendance) }.to raise_error(ActiveRecord::StatementInvalid, /ck_attendances_referral/)
+      expect { close_referred!(attendance, referral_note: "   ") }.to raise_error(ActiveRecord::StatementInvalid, /ck_attendances_referral/)
+      close_referred!(attendance, referral_regulated: true)
+      expect(attendance.reload).to have_attributes(status: "closed", outcome: "referred", referral_regulated: true,
+                                                   referral_unit_id: nil, referral_note: nil)
+    end
   end
 end
 

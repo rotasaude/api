@@ -9,6 +9,12 @@
 # autor com certificado ativo, o pedido de assinatura nasce AQUI, na mesma
 # transação, já pending; o SignJob (fila signatures) só entra depois do commit.
 # Só uma linha local: finalizar nunca depende do PSC nem do signer.
+# Módulo 26a (ADR 0044; contrato §3, §13 G4, G12 #3/#4): com o interruptor
+# care_regulation utilizável (lido aqui fora), os rascunhos de regulação valem
+# depois do finalized e antes do Close (CareRegulation::Promote, na mesma
+# transação); o que deixou de valer fica em draft e volta em
+# `regulation_not_sent` (a chave só existe com o interruptor utilizável). O
+# "encaminhado" sem unidade conta os rascunhos presentes, enviados ou não.
 module Consultations
   class Finalize
     OUTCOME_KEYS = %w[outcome referral_unit_id referral_note].freeze
@@ -18,6 +24,7 @@ module Consultations
       # Fora da transação: nenhuma leitura de interruptor dentro do savepoint (OpenRequest).
       signing = Signatures::Gate.usable?(Current.city)
       tracking = Exams::Gate.usable?(Current.city)
+      regulating = CareRegulation::Gate.usable?(Current.city)
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
         attendance = Attendance.lock.find(consultation.attendance_id)
@@ -35,9 +42,11 @@ module Consultations
           raise ActiveRecord::Rollback
         end
         consultation.update!(status: "finalized", finalized_at: Time.current, draft_items: {})
+        promoted = CareRegulation::Promote.call(consultation: consultation, by: by) if regulating
+        regulation = promoted && (promoted.payload[:count] + promoted.payload[:not_sent].size)
         closed = Attendances::Close.call(attendance: attendance, outcome: outcome["outcome"],
                                          referral_unit_id: outcome["referral_unit_id"],
-                                         referral_note: outcome["referral_note"], by: by)
+                                         referral_note: outcome["referral_note"], by: by, regulation: regulation)
         if closed.failure?
           result = closed
           raise ActiveRecord::Rollback
@@ -46,8 +55,10 @@ module Consultations
         DomainEvents.publish("consultation.finalized", consultation_id: consultation.id, attendance_id: attendance.id)
         # ADR 0031 (spec §6): a ficha nasce na finalização (o job relê tudo).
         Ledi::ConsultationFichaJob.enqueue_for(consultation)
-        result = Result.ok(consultation: consultation, attendance: closed.payload[:attendance],
-                           appointment_request: closed.payload[:appointment_request])
+        payload = { consultation: consultation, attendance: closed.payload[:attendance],
+                    appointment_request: closed.payload[:appointment_request] }
+        payload[:regulation_not_sent] = promoted.payload[:not_sent] if promoted
+        result = Result.ok(payload)
       end
       consultation.reload if result.failure?
       result

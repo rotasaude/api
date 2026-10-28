@@ -8,7 +8,8 @@ class AttendancesController < ApplicationController
     invalid_outcome: :unprocessable_entity, referral_required: :unprocessable_entity,
     invalid_unit: :unprocessable_entity, already_closed: :conflict, already_called: :conflict,
     wrong_unit: :unprocessable_entity, invalid_transition: :unprocessable_entity, queue_empty: :not_found,
-    missing_role: :forbidden, missing_link: :forbidden, consultation_in_progress: :conflict
+    missing_role: :forbidden, missing_link: :forbidden, consultation_in_progress: :conflict,
+    regulation_request_required: :unprocessable_entity
   }.freeze
 
   before_action :require_attendance_staff, only: %i[queue close]
@@ -52,9 +53,13 @@ class AttendancesController < ApplicationController
     return render json: { error: "not_found" }, status: :not_found unless attendance
     return forbid("missing_role") unless params[:outcome].to_s == "left" || CitizenVerificationPolicy.new(Current.user, nil).care?
 
+    # Módulo 26a (Desvio 2): sem consulta não há pedido de regulação; com o
+    # interruptor utilizável (lido aqui, fora do savepoint), "encaminhado" sem
+    # unidade é 422 regulation_request_required.
+    regulation = CareRegulation::Gate.usable?(Current.city) ? 0 : nil
     result = Attendances::Close.call(attendance: attendance, outcome: params[:outcome],
                                      referral_unit_id: params[:referral_unit_id],
-                                     referral_note: params[:referral_note], by: Current.user)
+                                     referral_note: params[:referral_note], by: Current.user, regulation: regulation)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: { attendance: attendance_json(result.payload[:attendance]),

@@ -266,3 +266,84 @@ RSpec.describe "Consulta", type: :request do
     expect(nursing.reload.status).to eq("draft")
   end
 end
+
+# Módulo 26a, Task 5 (ADR 0044; contrato §13 G4, G12 #3–#5; plano do api,
+# Desvio 2): regulation_not_sent na finalização e no adendo (só com o
+# interruptor utilizável) e o "encaminhado" sem unidade pela regulação.
+RSpec.describe "Consulta — pedidos de regulação na finalização e no adendo", type: :request do
+  let!(:city) { regulation_city! }
+  let(:unit) { create_unit("UBS Regulação na consulta") }
+  let(:doctor) { doctor!(unit) }
+  let(:citizen) { regulation_patient!(exam_seq!).last }
+  def body = JSON.parse(response.body)
+  def status_and_error = [ response.status, body["error"] ]
+
+  def draft!(consultation)
+    CareRegulation::SaveDraft.call(consultation: consultation, attrs: RegulationHelpers::REGULATION_DEFAULTS.dup, by: doctor)
+                             .payload.fetch(:request)
+  end
+
+  def prepared_consultation!
+    consultation = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    Consultations::SaveDraft.call(consultation: consultation, params: draft_body, by: doctor)
+    consultation
+  end
+
+  it "interruptor ligado: finalize devolve regulation_not_sent vazio quando tudo foi" do
+    consultation = prepared_consultation!
+    request = draft!(consultation)
+    sign_in_as(doctor)
+    json_post "/attendance/consultations/#{consultation.id}/finalize", outcome: { outcome: "referred" }
+    expect(response).to have_http_status(:ok)
+    expect(body).to include("status" => "finalized", "regulation_not_sent" => [])
+    expect(request.reload.status).to eq("pending")
+  end
+
+  it "interruptor desligado: finalize sem a chave regulation_not_sent, e o rascunho fica" do
+    consultation = prepared_consultation!
+    request = draft!(consultation)
+    regulation_city!(enabled: false)
+    sign_in_as(doctor)
+    json_post "/attendance/consultations/#{consultation.id}/finalize", outcome: { outcome: "discharged" }
+    expect(response).to have_http_status(:ok)
+    expect(body).not_to have_key("regulation_not_sent")
+    expect(request.reload.status).to eq("draft")
+  end
+
+  it "finalize 'encaminhado' sem unidade e sem pedido → 422 regulation_request_required, consulta em rascunho" do
+    consultation = prepared_consultation!
+    sign_in_as(doctor)
+    json_post "/attendance/consultations/#{consultation.id}/finalize", outcome: { outcome: "referred", referral_note: "Cardiologia" }
+    expect(status_and_error).to eq([ 422, "regulation_request_required" ])
+    expect(consultation.reload.status).to eq("draft")
+  end
+
+  it "adendo (201) devolve regulation_not_sent com o rascunho que não vale mais, sem dado pessoal" do
+    admin = staff_with("adm-#{SecureRandom.hex(2)}@cidade.gov.br", "municipal_admin")
+    nurse = screener!(unit, cbo: "223505")
+    consultation = finalized_consultation!(unit: unit, doctor: nurse, citizen: citizen)
+    CareRegulation::NurseItems.add(target_type: "specialty", target_code: "225120", by: admin)
+    request = CareRegulation::SaveDraft.call(consultation: consultation, by: nurse,
+                                             attrs: RegulationHelpers::REGULATION_DEFAULTS.merge("cid10" => nil, "ciap2" => "K86"))
+                                       .payload.fetch(:request)
+    CareRegulation::NurseItems.remove(target_type: "specialty", target_code: "225120", by: admin)
+    sign_in_as(nurse)
+    json_post "/attendance/consultations/#{consultation.id}/addenda", reason: "Pedido de cardiologia esquecido",
+                                                                      text: "Acrescento encaminhamento à cardiologia."
+    expect(response).to have_http_status(:created)
+    expect(body["regulation_not_sent"]).to eq([ { "index" => 0, "id" => request.id, "error" => "cbo_not_allowed", "path" => "target_code" } ])
+    expect(request.reload.status).to eq("draft")
+  end
+
+  it "close do atendimento: 'encaminhado' só com nota → 422 regulation_request_required ligado; desligado → 200 como hoje" do
+    attendance = consulting_attendance!(unit, citizen: citizen, doctor: doctor)
+    sign_in_as(doctor)
+    json_post "/attendance/attendances/#{attendance.id}/close", outcome: "referred", referral_note: "Cardiologia"
+    expect(status_and_error).to eq([ 422, "regulation_request_required" ])
+    expect(attendance.reload.status).to eq("in_care")
+    regulation_city!(enabled: false)
+    json_post "/attendance/attendances/#{attendance.id}/close", outcome: "referred", referral_note: "Cardiologia"
+    expect(response).to have_http_status(:ok)
+    expect(attendance.reload.outcome).to eq("referred")
+  end
+end

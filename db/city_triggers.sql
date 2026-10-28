@@ -170,7 +170,7 @@ BEGIN
   IF NEW.status IS DISTINCT FROM 'waiting'
      OR NEW.called_at IS NOT NULL OR NEW.called_by_user_id IS NOT NULL
      OR NEW.outcome IS NOT NULL OR NEW.closed_at IS NOT NULL OR NEW.closed_by_user_id IS NOT NULL
-     OR NEW.referral_unit_id IS NOT NULL OR NEW.referral_note IS NOT NULL THEN
+     OR NEW.referral_unit_id IS NOT NULL OR NEW.referral_note IS NOT NULL OR NEW.referral_regulated THEN
     RAISE EXCEPTION 'attendances: born waiting, without call or outcome';
   END IF;
   RETURN NEW;

@@ -9,6 +9,10 @@
 # cancelled); a conduta efetiva nunca fica vazia. Tudo num savepoint.
 # ADR 0032 (decisão do usuário 2026-10-09): o pedido de assinatura do adendo
 # nasce aqui, na mesma transação (como na finalização; Signatures::OpenRequest).
+# Módulo 26a (contrato §13 G4, G12 #3/#5): com o interruptor care_regulation
+# utilizável (lido aqui fora), os rascunhos de regulação da consulta valem no
+# adendo (CareRegulation::Promote, addendum_id); rascunho inválido nunca trava
+# o adendo — fica em draft e volta em `regulation_not_sent`.
 module Consultations
   class AddAddendum
     CHANGE_KEYS = %w[evaluated_problems conducts exam_requests].freeze
@@ -30,6 +34,7 @@ module Consultations
       # Fora da transação: nenhuma leitura de interruptor dentro do savepoint (OpenRequest).
       signing = Signatures::Gate.usable?(Current.city)
       tracking = Exams::Gate.usable?(Current.city)
+      regulating = CareRegulation::Gate.usable?(Current.city)
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
         consultation.lock!
@@ -48,11 +53,14 @@ module Consultations
           result = failure
           raise ActiveRecord::Rollback
         end
+        promoted = CareRegulation::Promote.call(consultation: consultation, by: by, addendum: addendum) if regulating
         Signatures::OpenRequest.call(addendum, usable: signing)
         DomainEvents.publish("consultation.addendum_added", consultation_id: consultation.id, addendum_id: addendum.id)
         # ADR 0031 (spec §6): mudança estruturada regera (ou vira correção pendente).
         Ledi::ConsultationFichaJob.enqueue_for(consultation, reason: "addendum") if plan.payload[:stored].any?
-        result = Result.ok(addendum: addendum, structured: plan.payload[:stored].any?)
+        payload = { addendum: addendum, structured: plan.payload[:stored].any? }
+        payload[:regulation_not_sent] = promoted.payload[:not_sent] if promoted
+        result = Result.ok(payload)
       end
       result
     end

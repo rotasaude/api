@@ -6,7 +6,9 @@
 # como situação atual, contrato §13 G1) e as autorizações (uma por
 # autorização; a cota usada é a contagem das não liberadas). O pedido de
 # agendamento do 17 ganha a origem no pedido de regulação (kind regulated, sem
-# triagem raiz, como o da linha de cuidado). Triggers em db/city_triggers.sql
+# triagem raiz, como o da linha de cuidado). O atendimento ganha a marca
+# referral_regulated ("encaminhado" pela regulação, sem unidade nem nota).
+# Triggers em db/city_triggers.sql
 # (o dump não representa trigger). Irreversível.
 class AddCareRegulation < ActiveRecord::Migration[8.1]
   ROLES = %w[analyst billing_clerk campaign_manager care_regulator citizen_verifier exam_provider exam_regulator health_professional
@@ -179,6 +181,19 @@ class AddCareRegulation < ActiveRecord::Migration[8.1]
                   "((kind)::text <> ALL (ARRAY['care_line'::text, 'regulated'::text]) OR (origin_unit_id IS NOT NULL AND target_unit_id IS NOT NULL))"
     add_check_constraint :appointment_requests, "((kind)::text = 'regulated'::text) = (origin_regulation_request_id IS NOT NULL)",
                          name: "ck_appointment_requests_regulated"
+
+    # "Encaminhado" pela regulação (Task 5; plano do api, Desvio 2; contrato
+    # §13 G12 #4): sem unidade e sem nota, o atendimento só fecha referred com
+    # a marca referral_regulated (gravada por Attendances::Close quando a
+    # finalização tinha pedido de regulação). Sem regulação, "unidade ou nota"
+    # segue no banco como antes.
+    add_column :attendances, :referral_regulated, :boolean, null: false, default: false
+    replace_check :attendances, "ck_attendances_referral",
+                  "((outcome IS NULL OR outcome::text = ANY (ARRAY['discharged'::text, 'left'::text, 'scheduled_from_screening'::text, 'oriented'::text])) " \
+                  "AND referral_unit_id IS NULL AND referral_note IS NULL) OR " \
+                  "(outcome = 'referred' AND (referral_unit_id IS NOT NULL OR (referral_note IS NOT NULL AND length(btrim(referral_note)) > 0) " \
+                  "OR referral_regulated)) OR " \
+                  "(outcome = 'return' AND referral_unit_id IS NULL)"
 
     execute File.read(Rails.root.join("db/city_triggers.sql"))
   end

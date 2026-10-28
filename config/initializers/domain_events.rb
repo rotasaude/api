@@ -242,6 +242,15 @@ Rails.application.config.to_prepare do
   # Módulo 26a (ADR 0044): prazos por cor e lista do enfermeiro alterados; só
   # trilha, só ids (user_id), sem consumidor.
   DomainEvents.bind "care_regulation.settings_changed", to: []
+  # Andamento do pedido de regulação (CareRegulation::Transition; contrato §11,
+  # §13 G6) e prestadores/ofertas (R12): só ids (regulation_request_id e
+  # user_id; care_provider_id/care_offer_id e user_id) — nunca alvo, cor,
+  # diagnóstico, justificativa nem motivo; sem consumidor.
+  %w[regulation_request.created regulation_request.complemented regulation_request.external
+     regulation_request.authorized regulation_request.returned regulation_request.denied
+     regulation_request.cancelled regulation_request.scheduled regulation_request.completed
+     regulation_request.missed regulation_request.closed care_offer.changed care_provider.changed]
+    .each { |name| DomainEvents.bind name, to: [] }
   # Notificação nascida (Surveillance::CreateNotification): só ids e booleanos
   # (notification_id, immediate) — nunca a doença, a origem nem dado do
   # paciente; o job relê a linha. O consumidor só enfileira o e-mail da equipe

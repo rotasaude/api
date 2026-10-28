@@ -7,6 +7,9 @@
 # rota normal (Attendances::Close). Ordem de travas: atendimento → consulta
 # (como Consultations::Finalize). O papel (municipal_admin) e o step-up são do
 # controlador.
+# Módulo 26a (ADR 0044; plano do api, Desvio 1): os rascunhos de regulação da
+# consulta descartada somem na mesma transação (o trigger só deixa apagar
+# `draft`; promovido nunca some).
 module ConsultationDrafts
   module Discard
     module_function
@@ -33,6 +36,7 @@ module ConsultationDrafts
                                           action: "discarded", previous_author_user_id: author_id,
                                           by_user_id: by.id, reason: note)
         end
+        RegulationRequest.where(consultation_id: consultation.id, status: "draft").delete_all
         DomainEvents.publish("consultation.draft_discarded", consultation_id: consultation.id,
                                                              attendance_id: attendance.id,
                                                              author_user_id: author_id, by_user_id: by.id)

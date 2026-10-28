@@ -1,20 +1,35 @@
 # Desfecho (spec 2026-09-25 §2.1, §2.3): left só de waiting; desfecho
 # clínico só de in_care. return e referred com unidade abrem o pedido na
 # mesma transação.
+# Módulo 26a (ADR 0044; plano do api, Desvio 2; contrato §13 G12 #4):
+# `regulation` nil = regra de hoje. Inteiro (o chamador leu o interruptor
+# utilizável, fora do savepoint) = quantos pedidos de regulação a finalização
+# tinha (enviados ou não): referred SEM unidade exige pelo menos um (0 → 422
+# regulation_request_required) e a nota fica opcional, com a marca
+# referral_regulated (é ela que satisfaz ck_attendances_referral sem unidade
+# nem nota); referred COM unidade segue sendo o referral do 17.
 module Attendances
   class Close
-    def self.call(attendance:, outcome:, referral_unit_id:, referral_note:, by:)
+    def self.call(attendance:, outcome:, referral_unit_id:, referral_note:, by:, regulation: nil)
       outcome = outcome.to_s
       return Result.fail(:invalid_outcome) unless Attendance::CLOSE_OUTCOMES.include?(outcome)
+      raise ArgumentError, "regulation: inteiro >= 0 ou nil" unless regulation.nil? || (regulation.is_a?(Integer) && regulation >= 0)
 
       note = referral_note.to_s.strip.presence
       unit = nil
+      regulated = false
       if outcome == "referred"
         if referral_unit_id.present?
           unit = HealthUnit.active_units.find_by(id: referral_unit_id)
           return Result.fail(:invalid_unit) unless unit
         end
-        return Result.fail(:referral_required) if unit.nil? && note.nil?
+        if unit.nil? && regulation
+          return Result.fail(:regulation_request_required) if regulation.zero?
+
+          regulated = true
+        elsif unit.nil? && note.nil?
+          return Result.fail(:referral_required)
+        end
       end
 
       ApplicationRecord.transaction do
@@ -35,7 +50,8 @@ module Attendances
         # não deixa a escuta pendurada.
         Screenings::Abandon.release!(attendance, by: by)
         attendance.update!(status: "closed", outcome: outcome, closed_by_user: by, closed_at: Time.current,
-                           referral_unit: unit, referral_note: (%w[referred return].include?(outcome) ? note : nil))
+                           referral_unit: unit, referral_note: (%w[referred return].include?(outcome) ? note : nil),
+                           referral_regulated: regulated)
         request = AppointmentRequests::Lifecycle.open_for!(attendance, outcome: outcome, unit: unit)
         DomainEvents.publish("attendance.closed", attendance_id: attendance.id, outcome: outcome,
                                                   closed_by_user_id: by.id)

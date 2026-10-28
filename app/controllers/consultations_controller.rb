@@ -88,9 +88,14 @@ class ConsultationsController < ApplicationController
     respond(result)
   end
 
+  # Módulo 26a (contrato §13 G12 #3): com o interruptor care_regulation
+  # utilizável, `regulation_not_sent` (index, id, error, path; sem dado pessoal).
   def finalize
     outcome = body["outcome"].is_a?(Hash) ? body["outcome"] : {}
-    respond(Consultations::Finalize.call(consultation: @consultation, outcome_params: outcome, by: Current.user))
+    result = Consultations::Finalize.call(consultation: @consultation, outcome_params: outcome, by: Current.user)
+    return failure(result) if result.failure?
+
+    render json: with_regulation(Consultations::Json.consultation(result.payload[:consultation].reload), result)
   end
 
   def addenda
@@ -99,7 +104,7 @@ class ConsultationsController < ApplicationController
                                              text: body["text"], changes: body["changes"])
     return failure(result) if result.failure?
 
-    render json: Consultations::Json.addendum(result.payload[:addendum]), status: :created
+    render json: with_regulation(Consultations::Json.addendum(result.payload[:addendum]), result), status: :created
   end
 
   # Spec §4: PDF na hora, nunca gravado nem em cache; o nome do arquivo não
@@ -149,6 +154,12 @@ class ConsultationsController < ApplicationController
     return failure(result) if result.failure?
 
     render json: Consultations::Json.consultation(result.payload[:consultation].reload)
+  end
+
+  def with_regulation(json, result)
+    return json unless result.payload.key?(:regulation_not_sent)
+
+    json.merge(regulation_not_sent: result.payload[:regulation_not_sent].map { |item| item.slice(:index, :id, :error, :path) })
   end
 
   def failure(result)

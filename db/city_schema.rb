@@ -226,6 +226,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
     t.uuid "health_unit_id", null: false
     t.string "outcome"
     t.text "referral_note"
+    t.boolean "referral_regulated", default: false, null: false
     t.uuid "referral_unit_id"
     t.string "status", default: "waiting", null: false
     t.uuid "triage_id"
@@ -244,7 +245,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
     t.check_constraint "(status::text = 'waiting'::text AND called_at IS NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'in_care'::text AND called_at IS NOT NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'closed'::text AND outcome IS NOT NULL AND closed_by_user_id IS NOT NULL AND closed_at IS NOT NULL AND (called_at IS NULL OR outcome::text <> ALL (ARRAY['scheduled_from_screening'::text, 'oriented'::text])))", name: "ck_attendances_closing"
     t.check_constraint "(triage_id IS NULL) <> (appointment_id IS NULL)", name: "ck_attendances_origin"
     t.check_constraint "outcome IS NULL OR outcome::text = ANY (ARRAY['discharged'::text, 'referred'::text, 'return'::text, 'left'::text, 'scheduled_from_screening'::text, 'oriented'::text])", name: "ck_attendances_outcome"
-    t.check_constraint "((outcome IS NULL OR outcome::text = ANY (ARRAY['discharged'::text, 'left'::text, 'scheduled_from_screening'::text, 'oriented'::text])) AND referral_unit_id IS NULL AND referral_note IS NULL) OR (outcome = 'referred' AND (referral_unit_id IS NOT NULL OR (referral_note IS NOT NULL AND length(btrim(referral_note)) > 0))) OR (outcome = 'return' AND referral_unit_id IS NULL)", name: "ck_attendances_referral"
+    t.check_constraint "((outcome IS NULL OR outcome::text = ANY (ARRAY['discharged'::text, 'left'::text, 'scheduled_from_screening'::text, 'oriented'::text])) AND referral_unit_id IS NULL AND referral_note IS NULL) OR (outcome = 'referred' AND (referral_unit_id IS NOT NULL OR (referral_note IS NOT NULL AND length(btrim(referral_note)) > 0) OR referral_regulated)) OR (outcome = 'return' AND referral_unit_id IS NULL)", name: "ck_attendances_referral"
     t.check_constraint "status::text = ANY (ARRAY['waiting', 'in_care', 'closed']::text[])", name: "ck_attendances_status"
   end
 
