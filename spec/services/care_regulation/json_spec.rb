@@ -82,14 +82,14 @@ RSpec.describe CareRegulation::Json do
       expect(described_class.request(late, events: false)).not_to have_key(:events)
     end
 
-    it "events: sem by quando o evento é do sistema; by com o nome quando é de uma pessoa" do
+    it "events: by nulo quando o evento é do sistema; by com o nome quando é de uma pessoa" do
       row = sent!(draft!)
       RegulationRequestEvent.create!(regulation_request: row, status: "pending", by_user: doctor)
       RegulationRequestEvent.create!(regulation_request: row, status: "cancelled", by_user: nil, reason: "Pedido de agendamento encerrado")
       events = described_class.request(RegulationRequest.find(row.id))[:events]
       expect(events.map { |e| e[:status] }).to eq(%w[pending cancelled])
       expect(events.first).to include(by: { name: Screenings::Json.staff_name(doctor) }, reason: nil)
-      expect(events.last).not_to have_key(:by)
+      expect(events.last).to include(by: nil)
       expect(events.last[:reason]).to eq("Pedido de agendamento encerrado")
     end
 

@@ -370,6 +370,22 @@ RSpec.describe "Regulação — pedido na consulta", type: :request do
       expect(RegulationRequest.where(id: id)).to exist
     end
 
+    it "consulta finalizada: apaga o rascunho não enviado (pedido não enviado, G4); o promovido segue 409" do
+      finalized = finalized_consultation!(unit: unit, doctor: doctor, citizen: regulation_patient!(exam_seq!).last)
+      base = "/attendance/consultations/#{finalized.id}/regulation_requests"
+      sign_in_as(doctor)
+      post_draft(body, to: base)
+      unsent = json_body.fetch("id")
+      post_draft(body, to: base)
+      sent = json_body.fetch("id")
+      RegulationRequest.where(id: sent).update_all(status: "pending", requested_at: Time.current, due_on: Time.zone.today + 30)
+      json_delete("#{base}/#{unsent}")
+      expect(response).to have_http_status(:no_content)
+      expect(RegulationRequest.where(id: unsent)).to be_empty
+      json_delete("#{base}/#{sent}")
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "invalid_transition" } ])
+    end
+
     it "id inexistente → 404" do
       created
       json_delete("#{path}/#{SecureRandom.uuid}")
@@ -386,17 +402,30 @@ RSpec.describe "Regulação — pedido na consulta", type: :request do
       second = json_body.fetch("id")
       other = started_consultation!(unit: unit, doctor: doctor, citizen: regulation_patient!(exam_seq!).last)
       post_draft(body, to: "/attendance/consultations/#{other.id}/regulation_requests")
+      # created_at fixo e invertido em relação aos ids: o mais antigo tem o maior id.
+      older, newer = [ first, second ].sort.reverse
+      RegulationRequest.where(id: older).update_all(created_at: 2.hours.ago)
+      RegulationRequest.where(id: newer).update_all(created_at: 1.hour.ago)
       RegulationRequest.where(id: first).update_all(status: "pending", requested_at: Time.current, due_on: Time.zone.today + 30)
 
       trail = viewed_events.count
       get path
       expect(response).to have_http_status(:ok)
       expect(json_body.keys).to eq([ "requests" ])
-      expect(json_body["requests"].map { |r| r["id"] }).to eq(RegulationRequest.where(id: [ first, second ]).order(:created_at, :id).pluck(:id))
+      expect(json_body["requests"].map { |r| r["id"] }).to eq([ older, newer ])
       expect(json_body["requests"].map { |r| r["status"] }).to match_array(%w[pending draft])
       promoted = json_body["requests"].find { |r| r["id"] == first }
       expect(promoted).to include("requested_at" => a_string_matching(/\A\d{4}-\d\d-\d\dT/), "due_on" => (Time.zone.today + 30).iso8601, "events" => [])
       expect(viewed_events.count).to eq(trail)
+    end
+
+    it "empate em created_at desempata por id" do
+      sign_in_as(doctor)
+      2.times { post_draft }
+      ids = RegulationRequest.where(consultation_id: consultation.id).pluck(:id)
+      RegulationRequest.where(id: ids).update_all(created_at: Time.zone.parse("2026-10-01 12:00"))
+      get path
+      expect(json_body["requests"].map { |r| r["id"] }).to eq(ids.sort)
     end
 
     it "consulta sem pedido → lista vazia" do
@@ -426,7 +455,7 @@ RSpec.describe "Regulação — pedido na consulta", type: :request do
       expect(item).to include("status" => "external", "overdue" => true, "external" => { "system" => "sisreg", "number" => "SIS-123" })
       expect(item["events"].map { |e| e["status"] }).to eq(%w[pending external])
       expect(item["events"].first["by"]).to eq("name" => Screenings::Json.staff_name(doctor))
-      expect(item["events"].last).not_to have_key("by")
+      expect(item["events"].last).to include("by" => nil)
       expect(item["events"].last["reason"]).to eq("Regulado pelo estado")
     end
   end

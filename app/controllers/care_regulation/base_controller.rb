@@ -16,7 +16,7 @@ module CareRegulation
                        quota_exhausted: :conflict, citizen_not_verified: :conflict,
                        duplicate_offer: :conflict, cnes_taken: :conflict, unit_taken: :conflict,
                        duplicate_item: :conflict,
-                       cbo_not_allowed: :forbidden, not_author: :forbidden,
+                       cbo_not_allowed: :forbidden, not_author: :forbidden, missing_role: :forbidden,
                        not_found: :not_found }.freeze
     DEFAULT_LIMIT = 50
     MAX_LIMIT = 100

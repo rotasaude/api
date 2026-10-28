@@ -67,11 +67,10 @@ module CareRegulation
       r.external_number && { system: r.external_system, number: r.external_number }
     end
 
-    # `by` ausente quando o evento é do sistema (by_user_id nulo).
+    # `by` nulo quando o evento é do sistema (by_user_id nulo).
     def event(e)
-      json = { status: e.status, at: e.created_at.iso8601 }
-      json[:by] = { name: Screenings::Json.staff_name(e.by_user) } if e.by_user_id
-      json.merge(reason: e.reason)
+      { status: e.status, at: e.created_at.iso8601, by: e.by_user_id ? { name: Screenings::Json.staff_name(e.by_user) } : nil,
+        reason: e.reason }
     end
   end
 end
