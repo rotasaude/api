@@ -270,3 +270,11 @@ RSpec.describe "disease surveillance bindings (ADR 0043)" do
     expect(DomainEvents.registry["weekly_negative.recorded"]).to be_empty
   end
 end
+
+# Módulo 26a (ADR 0044): configuração da regulação (prazos e lista do enfermeiro).
+RSpec.describe "care regulation bindings (ADR 0044)" do
+  it "declares care_regulation.settings_changed with no consumer" do
+    expect(DomainEvents.registry.keys).to include("care_regulation.settings_changed")
+    expect(DomainEvents.registry["care_regulation.settings_changed"]).to be_empty
+  end
+end

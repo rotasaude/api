@@ -239,6 +239,9 @@ Rails.application.config.to_prepare do
   # Módulo 25 (ADR 0043): doença de notificação local; trilha, só ids
   # (local_disease_id, user_id), sem consumidor.
   DomainEvents.bind "local_disease.changed", to: []
+  # Módulo 26a (ADR 0044): prazos por cor e lista do enfermeiro alterados; só
+  # trilha, só ids (user_id), sem consumidor.
+  DomainEvents.bind "care_regulation.settings_changed", to: []
   # Notificação nascida (Surveillance::CreateNotification): só ids e booleanos
   # (notification_id, immediate) — nunca a doença, a origem nem dado do
   # paciente; o job relê a linha. O consumidor só enfileira o e-mail da equipe

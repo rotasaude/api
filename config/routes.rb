@@ -467,6 +467,17 @@ Rails.application.routes.draw do
     patch "admin/local_diseases/:id",  to: "local_diseases#update"
   end
 
+  # Módulo 26a (ADR 0044; contrato §3–§8): regulação municipal, sessão do
+  # dashboard. Prefixo único (uma entrada no proxy de dev do dashboard).
+  scope "/regulation", module: :care_regulation, as: :regulation do
+    get    "targets",              to: "targets#index"
+    get    "admin/deadlines",      to: "admin/deadlines#show"
+    patch  "admin/deadlines",      to: "admin/deadlines#update"
+    get    "admin/nurse_items",    to: "admin/nurse_items#index"
+    post   "admin/nurse_items",    to: "admin/nurse_items#create"
+    delete "admin/nurse_items",    to: "admin/nurse_items#destroy"
+  end
+
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.
   scope "/care_lines", module: "care_lines", as: "care_lines" do
     get   "admin/templates", to: "admin#templates"
