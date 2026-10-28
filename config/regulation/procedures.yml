@@ -1,0 +1,17 @@
+source: "SIGTAP competência 202610 — vendor/regulation/2026-10-28/ (tb_registro, tb_grupo, rl_procedimento_registro)"
+# Regra (contrato §13 G11): regulável ⇔ grupo em `groups` E algum instrumento em `bpa_instruments`.
+# Sai só quem não tem BPA (vai apenas por APAC, OCI ou AIH).
+groups: ["02", "03", "04"]
+bpa_instruments: ["01", "02"]        # BPA consolidado e individualizado
+apac_principal_instruments: ["06"]   # só referência (26b): não exclui quando há BPA (G11)
+examples:
+  # código — nome (instrumentos de registro, competência 202610)
+  regulable:
+    - "0301010072"   # Consulta médica em atenção especializada (01 02 07)
+    - "0209010037"   # Esofagogastroduodenoscopia (02 04 06 07: BPA + APAC principal, entra por G11)
+    - "0401010074"   # Exérese de tumor de pele e anexos / cisto sebáceo / lipoma (01 02)
+  not_regulable:
+    - "0305010107"   # Hemodiálise (máximo 3 sessões por semana) (06: só APAC)
+    - "0101010010"   # Atividade educativa / orientação em grupo na atenção primária (grupo 01)
+    - "0407030026"   # Colecistectomia (03: só AIH)
+    - "0409050083"   # Postectomia (03 06: AIH + APAC, sem BPA)

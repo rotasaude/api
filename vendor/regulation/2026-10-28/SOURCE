@@ -1,0 +1,21 @@
+# Tabela Unificada SIGTAP (DATASUS) — base da regra de procedimentos reguláveis do módulo 26a.
+# Arquivos de largura fixa, ISO-8859-1, tal como vieram no ZIP (cada um com o seu *_layout.txt).
+fetched_on: 2026-10-28
+competence: 202610
+url: ftp://ftp2.datasus.gov.br/pub/sistemas/tup/downloads/TabelaUnificada_202610_v2610271043.zip
+note: "A página app/download.jsp estava indisponível e o competencias.rss ainda apontava para v2610261600 (inexistente no FTP); o ZIP acima é o da competência 202610 listado no diretório do FTP."
+sha256:
+  zip: 525e5ef197da5133ed3177f42b56cb341057668af8da2fdc7f6674bcc25af5cd
+  tb_registro.txt: 2c5c9ee324a852cf490c0c9c2dccb33695c26c9ca5c8dba9baf0c3bb44f50e2b
+  tb_registro_layout.txt: a4cb851b0cfc363ab67818f1dbc472f8419bfbdedd6efbb2e2761d396daf6af8
+  tb_grupo.txt: f9b5399d0156cafc2fc3480b8ee0c53061e2d3e4353d0d0a4d3d93ca9b095376
+  tb_grupo_layout.txt: 3bf6a61194eedbb404b091ba966e6f6c97fe0c88b78c59b9a867177289e16c07
+  rl_procedimento_registro.txt: b8485c58138ac5bd9cf0f0a1e886097212820c6810e1f418291bbc62c212f646
+  rl_procedimento_registro_layout.txt: 29c08160c821cb2971a15655249342f0b2a1c86d441f90f07375c5c24debdc3d
+# Conferência da regra G11 (grupo 02–04 e BPA 01/02; APAC principal 06 não exclui), procedimentos reguláveis / total por grupo:
+regulable_by_group:
+  "02": "1051/1114"
+  "03": "365/866"
+  "04": "222/1697"
+  total_groups_02_04: "1638/3677"
+instruments: "01 BPA (Consolidado), 02 BPA (Individualizado), 06 APAC (Proc. Principal), 07 APAC (Proc. Secundário) — conferidos em tb_registro.txt"

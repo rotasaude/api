@@ -1,0 +1,88 @@
+source: "CBO 2002 — vendor/ledi/8.7.0/docs/cbo.html (Layout e-SUS APS 8.7.0, 'Grupos de CBOs por Modelo de Informação')"
+specialties:
+  - { code: "223212", name: "Cirurgião-dentista - endodontista", group: dental }
+  - { code: "223220", name: "Cirurgião-dentista - estomatologista", group: dental }
+  - { code: "223224", name: "Cirurgião-dentista - implantodontista", group: dental }
+  - { code: "223228", name: "Cirurgião-dentista - odontogeriatra", group: dental }
+  - { code: "223236", name: "Cirurgião-dentista - odontopediatra", group: dental }
+  - { code: "223240", name: "Cirurgião-dentista - ortopedista e ortodontista", group: dental }
+  - { code: "223244", name: "Cirurgião-dentista - patologista bucal", group: dental }
+  - { code: "223248", name: "Cirurgião-dentista - periodontista", group: dental }
+  - { code: "223252", name: "Cirurgião-dentista - protesiólogo bucomaxilofacial", group: dental }
+  - { code: "223256", name: "Cirurgião-dentista - protesista", group: dental }
+  - { code: "223264", name: "Cirurgião-dentista - reabilitador oral", group: dental }
+  - { code: "223268", name: "Cirurgião-dentista - traumatologista bucomaxilofacial", group: dental }
+  - { code: "223280", name: "Cirurgião-dentista - dentística", group: dental }
+  - { code: "223284", name: "Cirurgião-dentista - disfunção temporomandibular e dor orofacial", group: dental }
+  - { code: "223288", name: "Cirurgião-dentista - odontologia para pacientes com necessidades especiais", group: dental }
+  - { code: "225103", name: "Médico infectologista", group: medical }
+  - { code: "225105", name: "Médico acupunturista", group: medical }
+  - { code: "225109", name: "Médico nefrologista", group: medical }
+  - { code: "225110", name: "Médico alergista e imunologista", group: medical }
+  - { code: "225112", name: "Médico neurologista", group: medical }
+  - { code: "225115", name: "Médico angiologista", group: medical }
+  - { code: "225118", name: "Médico nutrologista", group: medical }
+  - { code: "225120", name: "Médico cardiologista", group: medical }
+  - { code: "225121", name: "Médico oncologista clínico", group: medical }
+  - { code: "225122", name: "Médico cancerologista pediátrico", group: medical }
+  - { code: "225124", name: "Médico pediatra", group: medical }
+  - { code: "225127", name: "Médico pneumologista", group: medical }
+  - { code: "225133", name: "Médico psiquiatra", group: medical }
+  - { code: "225135", name: "Médico dermatologista", group: medical }
+  - { code: "225136", name: "Médico reumatologista", group: medical }
+  - { code: "225154", name: "Médico antroposófico", group: medical }
+  - { code: "225155", name: "Médico endocrinologista e metabologista", group: medical }
+  - { code: "225160", name: "Médico fisiatra", group: medical }
+  - { code: "225165", name: "Médico gastroenterologista", group: medical }
+  - { code: "225175", name: "Médico geneticista", group: medical }
+  - { code: "225180", name: "Médico geriatra", group: medical }
+  - { code: "225185", name: "Médico hematologista", group: medical }
+  - { code: "225195", name: "Médico homeopata", group: medical }
+  - { code: "225203", name: "Médico em cirurgia vascular", group: medical }
+  - { code: "225210", name: "Médico cirurgião cardiovascular", group: medical }
+  - { code: "225215", name: "Médico cirurgião de cabeça e pescoço", group: medical }
+  - { code: "225220", name: "Médico cirurgião do aparelho digestivo", group: medical }
+  - { code: "225225", name: "Médico cirurgião geral", group: medical }
+  - { code: "225230", name: "Médico cirurgião pediátrico", group: medical }
+  - { code: "225235", name: "Médico cirurgião plástico", group: medical }
+  - { code: "225240", name: "Médico cirurgião torácico", group: medical }
+  - { code: "225250", name: "Médico ginecologista e obstetra", group: medical }
+  - { code: "225255", name: "Médico mastologista", group: medical }
+  - { code: "225260", name: "Médico neurocirurgião", group: medical }
+  - { code: "225265", name: "Médico oftalmologista", group: medical }
+  - { code: "225270", name: "Médico ortopedista e traumatologista", group: medical }
+  - { code: "225275", name: "Médico otorrinolaringologista", group: medical }
+  - { code: "225280", name: "Médico coloproctologista", group: medical }
+  - { code: "225285", name: "Médico urologista", group: medical }
+  - { code: "225290", name: "Médico cancerologista cirúrgico", group: medical }
+  - { code: "225295", name: "Médico cirurgião da mão", group: medical }
+  - { code: "225310", name: "Médico em endoscopia", group: medical }
+  - { code: "225330", name: "Médico radioterapeuta", group: medical }
+  - { code: "225340", name: "Médico hemoterapeuta", group: medical }
+  - { code: "225345", name: "Médico hiperbarista", group: medical }
+  - { code: "225350", name: "Médico neurofisiologista clínico", group: medical }
+excluded:
+  - { code: "223204", reason: "não assistencial (auditor)" }
+  - { code: "223208", reason: "atenção primária (clínico geral)" }
+  - { code: "223216", reason: "não assistencial (epidemiologista)" }
+  - { code: "223232", reason: "não assistencial (odontologia legal)" }
+  - { code: "223260", reason: "diagnóstico por imagem/medicina nuclear: o ato vai como procedimento SIGTAP, não como consulta" }
+  - { code: "223272", reason: "não assistencial (saúde coletiva)" }
+  - { code: "223276", reason: "não assistencial (odontologia do trabalho)" }
+  - { code: "223293", reason: "atenção primária (estratégia de saúde da família)" }
+  - { code: "225106", reason: "não assistencial (legista)" }
+  - { code: "225125", reason: "atenção primária (clínico)" }
+  - { code: "225130", reason: "atenção primária (medicina de família e comunidade)" }
+  - { code: "225139", reason: "não assistencial (sanitarista)" }
+  - { code: "225140", reason: "não assistencial (medicina do trabalho)" }
+  - { code: "225142", reason: "atenção primária (estratégia de saúde da família)" }
+  - { code: "225145", reason: "não assistencial (medicina de tráfego)" }
+  - { code: "225148", reason: "não assistencial ao paciente (anatomopatologista)" }
+  - { code: "225150", reason: "hospitalar (medicina intensiva)" }
+  - { code: "225151", reason: "hospitalar (anestesiologista)" }
+  - { code: "225170", reason: "atenção primária (generalista)" }
+  - { code: "225305", reason: "diagnóstico laboratorial/anatomopatológico (não assistencial)" }
+  - { code: "225315", reason: "diagnóstico por imagem/medicina nuclear: o ato vai como procedimento SIGTAP, não como consulta" }
+  - { code: "225320", reason: "diagnóstico por imagem/medicina nuclear: o ato vai como procedimento SIGTAP, não como consulta" }
+  - { code: "225325", reason: "diagnóstico laboratorial/anatomopatológico (não assistencial)" }
+  - { code: "225335", reason: "diagnóstico laboratorial/anatomopatológico (não assistencial)" }
