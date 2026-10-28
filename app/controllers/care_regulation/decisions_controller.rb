@@ -18,7 +18,8 @@ module CareRegulation
     KEY_PATH_MAX = 64
 
     # O complemento é da unidade solicitante: o Complement confere o vínculo
-    # na unidade e o CBO (403 missing_role / cbo_not_allowed).
+    # na unidade (outra unidade: 404 not_found, registro de outro escopo) e o
+    # CBO (403 cbo_not_allowed).
     before_action(except: :complement) { forbid unless regulator? }
     before_action(only: :complement) { forbid unless Current.user.has_role?("health_professional") }
     before_action :load_request

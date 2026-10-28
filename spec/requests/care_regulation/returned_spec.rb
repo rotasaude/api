@@ -152,21 +152,28 @@ RSpec.describe "Regulação — devolvidos e complemento", type: :request do
     it "G14: cor sugerida nova muda o prazo contando da data original; a mesma cor não mexe" do
       request = returned!
       requested_on = request.requested_at.in_time_zone.to_date
+      original_due = request.due_on
+      # Tabela mudada: um recálculo indevido com a mesma cor daria +20, não o prazo original.
+      RegulationRiskDeadline.find("yellow").update!(days: 20)
       sign_in_as(physician)
       complement(request, justification: justification, suggested_color: "yellow")
-      expect(json_body["due_on"]).to eq((requested_on + 30).iso8601)
+      expect(original_due).to eq(requested_on + 30)
+      expect(json_body["due_on"]).to eq(original_due.iso8601)
       request.reload
       returned!(request)
       complement(request.reload, justification: justification, suggested_color: "red")
       expect(json_body).to include("suggested_color" => "red", "due_on" => (requested_on + 7).iso8601)
     end
 
-    it "enfermeira da unidade com alvo fora da lista → 403 cbo_not_allowed; profissional de outra unidade → 403 missing_role" do
+    it "enfermeira da unidade com alvo fora da lista → 403 cbo_not_allowed; profissional de outra unidade → 404 not_found" do
       request = returned!
       sign_in_as(nurse)
       complement(request, justification: justification)
       expect([ response.status, json_body ]).to eq([ 403, { "error" => "cbo_not_allowed" } ])
       sign_in_as(doctor!(create_unit("UBS Outra Complemento")))
+      complement(request, justification: justification)
+      expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
+      sign_in_as(regulator) # sem health_professional: o papel continua 403
       complement(request, justification: justification)
       expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
       expect(request.reload).to have_attributes(status: "returned", version: 3)

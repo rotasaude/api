@@ -1,8 +1,9 @@
 # Complementar um pedido devolvido (ADR 0044; contrato §5, §13 G10, G12, G14;
 # plano do api, Desvios 5 e 10): `returned` → `pending`, pela unidade que pediu.
 #
-# - quem: health_professional com vínculo ativo (ProfessionalLink.active) na
-#   unidade solicitante (senão missing_role); "o CBO do vínculo" é o do
+# - quem: health_professional (senão missing_role) com vínculo ativo
+#   (ProfessionalLink.active) na unidade solicitante — pedido de outra unidade
+#   é registro de outro escopo por id: not_found (404); "o CBO do vínculo" é o do
 #   primeiro vínculo ativo ali, por started_at, cujo CBO passa no
 #   Requesters.check do alvo (nenhum passa → cbo_not_allowed);
 # - corpo `{ justification, cid10?, ciap2?, suggested_color? }` (+ version):
@@ -23,7 +24,7 @@ module CareRegulation
     module_function
 
     # -> Result.ok(request:) | fail(:invalid_request, details: { path: }) |
-    # fail(:missing_role | :cbo_not_allowed | :stale_version | :invalid_transition |
+    # fail(:missing_role | :not_found | :cbo_not_allowed | :stale_version | :invalid_transition |
     # :invalid_cid10 | :invalid_ciap2 | :diagnosis_required | :cid10_not_allowed_for_cbo)
     def call(request:, attrs:, version:, by:)
       attrs = shape(attrs)
@@ -35,7 +36,7 @@ module CareRegulation
       links = ProfessionalLink.active.joins(:professional)
                               .where(professionals: { user_id: by.id }, health_unit_id: request.requester_unit_id)
                               .order(:started_at, :id).to_a
-      return Result.fail(:missing_role) if links.empty?
+      return Result.fail(:not_found) if links.empty?
 
       target = target_of(request)
       cbo = links.map(&:cbo_code).find { |code| Requesters.check(cbo: code, target: target) == :ok }

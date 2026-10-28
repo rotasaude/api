@@ -138,11 +138,19 @@ RSpec.describe CareRegulation::Decide do
     expect(RegulationAuthorization.count).to eq(0)
   end
 
-  it "cancelado, negado ou devolvido-e-negado não cancela de novo: invalid_transition" do
-    request = aged!(3)
-    expect(decide(request, "cancel")).to be_ok
-    expect(decide(request.reload, "cancel").reason).to eq(:invalid_transition)
-    expect(decide(request, "deny").reason).to eq(:invalid_transition)
+  it "cancelado, negado ou devolvido-e-negado não muda de novo: invalid_transition" do
+    cancelled = aged!(3)
+    expect(decide(cancelled, "cancel")).to be_ok
+    denied = aged!(3)
+    expect(decide(denied, "deny")).to be_ok
+    returned_denied = aged!(3)
+    expect(decide(returned_denied, "return")).to be_ok
+    expect(decide(returned_denied.reload, "deny")).to be_ok
+    [ cancelled, denied, returned_denied ].each do |request|
+      request.reload
+      %w[return deny cancel].each { |decision| expect(decide(request, decision).reason).to eq(:invalid_transition) }
+      expect(request.reload.status).to eq(request.status)
+    end
   end
 
   it "versão velha → stale_version e nada muda" do
