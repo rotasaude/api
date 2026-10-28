@@ -34,6 +34,17 @@ RSpec.describe "Vigilância — doenças da cidade", type: :request do
     expect(dengue.keys).to match_array(%w[code name deadline cid10 ciap2 repeat_after_days sinan_form local list_version notes id active])
   end
 
+  it "K16: o analyst lê a lista (200); papel fora de vigilância, profissional e analyst → 403 missing_role" do
+    sign_in_as(staff_with("analista-#{SecureRandom.hex(2)}@cidade.gov.br", "analyst"))
+    get "/surveillance/diseases"
+    expect(response).to have_http_status(:ok)
+    expect(json_body["diseases"].map { |d| d["code"] }).to include("dengue")
+
+    sign_in_as(staff_with("viewer-#{SecureRandom.hex(2)}@cidade.gov.br", "viewer"))
+    get "/surveillance/diseases"
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+  end
+
   it "publica local_disease.changed só com ids" do
     create_local!
     event = DomainEvent.where(name: "local_disease.changed").last
