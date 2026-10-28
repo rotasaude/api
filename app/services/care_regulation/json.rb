@@ -67,6 +67,22 @@ module CareRegulation
       r.external_number && { system: r.external_system, number: r.external_number }
     end
 
+    # <provider> (contrato §6): a unidade só no prestador próprio.
+    def provider(p)
+      unit = p.health_unit
+      { id: p.id, name: p.name, cnes: p.cnes, kind: p.kind, health_unit: unit && { id: unit.id, name: unit.name }, active: p.active }
+    end
+
+    # <offer> (contrato §2): used vem da Quota (contagem das autorizações não
+    # liberadas), available = quantity - used. `name` do alvo quando quem
+    # chama já o resolveu em lote (Targets.names_for).
+    def offer(o, used:, name: nil)
+      name ||= Targets.name_for(type: o.target_type, code: o.target_code) || o.target_code
+      p = o.care_provider
+      { id: o.id, provider: { id: p.id, name: p.name, kind: p.kind }, target: { type: o.target_type, code: o.target_code, name: name },
+        month: o.month_label, quantity: o.quantity, used: used, available: Quota.available(o, used: used) }
+    end
+
     # `by` nulo quando o evento é do sistema (by_user_id nulo).
     def event(e)
       { status: e.status, at: e.created_at.iso8601, by: e.by_user_id ? { name: Screenings::Json.staff_name(e.by_user) } : nil,

@@ -481,6 +481,12 @@ Rails.application.routes.draw do
     get    "admin/nurse_items",    to: "admin/nurse_items#index"
     post   "admin/nurse_items",    to: "admin/nurse_items#create"
     delete "admin/nurse_items",    to: "admin/nurse_items#destroy"
+    get    "admin/providers",      to: "admin/providers#index"
+    post   "admin/providers",      to: "admin/providers#create"
+    patch  "admin/providers/:id",  to: "admin/providers#update"
+    get    "admin/offers",         to: "admin/offers#index"
+    post   "admin/offers",         to: "admin/offers#create"
+    patch  "admin/offers/:id",     to: "admin/offers#update"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.
