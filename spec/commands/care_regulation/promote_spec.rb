@@ -61,6 +61,17 @@ RSpec.describe "Promoção dos pedidos de regulação (consulta e adendo)" do
     expect(result.payload[:attendance]).to have_attributes(referral_unit_id: other.id, referral_regulated: false)
   end
 
+  it "falha do Close desfaz a promoção junto com a finalização (unidade de encaminhamento inexistente)" do
+    consultation = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+    request = draft!(consultation)
+    result = finalize!(consultation, outcome: { "outcome" => "referred", "referral_unit_id" => SecureRandom.uuid })
+    expect(result.reason).to eq(:invalid_unit)
+    expect(consultation.reload.status).to eq("draft")
+    expect(request.reload).to have_attributes(status: "draft", version: 1, requested_at: nil)
+    expect(request.events).to be_empty
+    expect(DomainEvent.where(name: "regulation_request.created")).to be_empty
+  end
+
   it "regulado pelo estado nasce external, fora da fila" do
     consultation = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
     request = draft!(consultation, state_regulated: true)

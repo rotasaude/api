@@ -54,7 +54,9 @@ module CareRegulation
       changes = { requested_at: now, due_on: Deadlines.due_on(requested_at: now, color: draft.suggested_color),
                   target_name: target.name, requester_user_id: by.id, requester_cbo: consultation.cbo_code,
                   addendum_id: addendum&.id }
-      Transition.call(request: draft, to: to, by: by, changes: changes, event: "created")
+      promoted = Transition.call(request: draft, to: to, by: by, changes: changes, event: "created")
+      # Sem versão esperada, Transition só falha por erro de programação: nunca conta.
+      raise ArgumentError, "promoção recusada: #{promoted.reason}" unless promoted.ok?
     end
     private_class_method :revalidate, :promote!
   end

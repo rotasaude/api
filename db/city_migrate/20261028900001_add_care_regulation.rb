@@ -188,12 +188,13 @@ class AddCareRegulation < ActiveRecord::Migration[8.1]
     # finalização tinha pedido de regulação). Sem regulação, "unidade ou nota"
     # segue no banco como antes.
     add_column :attendances, :referral_regulated, :boolean, null: false, default: false
+    # A marca só vale em referred sem unidade (nos outros ramos, NOT).
     replace_check :attendances, "ck_attendances_referral",
                   "((outcome IS NULL OR outcome::text = ANY (ARRAY['discharged'::text, 'left'::text, 'scheduled_from_screening'::text, 'oriented'::text])) " \
-                  "AND referral_unit_id IS NULL AND referral_note IS NULL) OR " \
+                  "AND referral_unit_id IS NULL AND referral_note IS NULL AND NOT referral_regulated) OR " \
                   "(outcome = 'referred' AND (referral_unit_id IS NOT NULL OR (referral_note IS NOT NULL AND length(btrim(referral_note)) > 0) " \
-                  "OR referral_regulated)) OR " \
-                  "(outcome = 'return' AND referral_unit_id IS NULL)"
+                  "OR referral_regulated) AND NOT (referral_regulated AND referral_unit_id IS NOT NULL)) OR " \
+                  "(outcome = 'return' AND referral_unit_id IS NULL AND NOT referral_regulated)"
 
     execute File.read(Rails.root.join("db/city_triggers.sql"))
   end

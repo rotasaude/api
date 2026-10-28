@@ -416,6 +416,17 @@ RSpec.describe "Invariantes do atendimento (ADR 0018, 0019)" do
       expect(attendance.reload).to have_attributes(status: "closed", outcome: "referred", referral_regulated: true,
                                                    referral_unit_id: nil, referral_note: nil)
     end
+
+    it "o banco recusa a marca fora de referred sem unidade (discharged, return, referred com unidade)" do
+      attendance = in_care!(waiting_attendance(citizen, unit: unit, by: reception), by: doctor)
+      { { outcome: "discharged" } => "discharged", { outcome: "return" } => "return",
+        { outcome: "referred", referral_unit_id: other_unit.id } => "referred com unidade" }.each do |columns, label|
+        expect { close_referred!(attendance, **columns, referral_regulated: true) }
+          .to raise_error(ActiveRecord::StatementInvalid, /ck_attendances_referral/), label
+      end
+      close_referred!(attendance, referral_unit_id: other_unit.id)
+      expect(attendance.reload).to have_attributes(outcome: "referred", referral_unit_id: other_unit.id, referral_regulated: false)
+    end
   end
 end
 
