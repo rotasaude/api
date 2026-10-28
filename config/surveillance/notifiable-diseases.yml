@@ -544,14 +544,14 @@ diseases:
     deadline: weekly
     cid10: [Z206]
     ciap2: []
-    repeat_after_days: 30
+    repeat_after_days: 270
     sinan_form: gestante_hiv
     notes: "A ficha de gestante HIV imprime Z21, o mesmo código da infecção pelo HIV (linha hiv_aids): a gestante é notificada à mão; Z20.6 é a criança exposta."
     sources:
       deadline: "prt11211 Anexo I, item 35 — semanal (prt11211.html)"
       cid10: "GVS 6ª ed. v2, 'criança exposta ao HIV – Z20.6'; ficha Gestante HIV, cabeçalho 'Z21' (gestante_hiv.pdf) — Z21 fica em hiv_aids"
       ciap2: "B90 fica em hiv_aids — fora"
-      repeat_after_days: "proposta do plano 25 — confirmar com a vigilância"
+      repeat_after_days: "K15 (contrato 25): uma por gestação (270 dias) — validar com a vigilância piloto"
 
   - code: htlv
     name: "Infecção pelo Vírus Linfotrópico de Células T Humanas (HTLV)"
@@ -838,14 +838,14 @@ diseases:
     deadline: weekly
     cid10: [A50]
     ciap2: []
-    repeat_after_days: 90
+    repeat_after_days: 36500
     sinan_form: sifilis_congenita
     notes: null
     sources:
       deadline: "prt11211 Anexo I, item 56b — semanal (prt11211.html)"
       cid10: "Ficha Sífilis congênita, cabeçalho 'A50.9' (sifilis_congenita.pdf); GVS 6ª ed. v2, 'CID-10: sífilis congênita – A50' (categoria)"
       ciap2: "Y70 (A50–A53) também é a adquirida — ambígua, fora"
-      repeat_after_days: "K3 (contrato 25): sífilis 90 — proposta, validar com a vigilância (alternativa: 36500, uma por criança)"
+      repeat_after_days: "K15 (contrato 25): uma por criança (36500 dias) — validar com a vigilância piloto"
 
   - code: sifilis_gestante
     name: "Sífilis em gestante"
