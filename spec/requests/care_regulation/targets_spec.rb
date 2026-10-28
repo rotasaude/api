@@ -67,8 +67,8 @@ RSpec.describe "Regulação — alvos", type: :request do
   end
 
   it "procedimento: 20 por padrão e no máximo; de 21 a 100 → 422 invalid_limit; a especialidade segue até 100" do
-    travel_to(Time.zone.local(2027, 3, 15, 12)) do
-      regulation_bulk_sigtap!("202703", count: 25)
+    travel_to(Time.zone.local(2099, 1, 15, 12)) do
+      regulation_bulk_sigtap!("209901", count: 25)
       sign_in_as(doctor)
       get "/regulation/targets", params: { type: "procedure", q: "regulavel de teste" }
       expect(response).to have_http_status(:ok)

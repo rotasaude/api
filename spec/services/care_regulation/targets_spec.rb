@@ -110,8 +110,8 @@ RSpec.describe CareRegulation::Targets do
     end
 
     it "o corte do limit (e o padrão de 20) vale com mais reguláveis do que o limite" do
-      on = Date.new(2027, 3, 15)
-      regulation_bulk_sigtap!("202703", count: 25)
+      on = Date.new(2099, 1, 15)
+      regulation_bulk_sigtap!("209901", count: 25)
       all = described_class.search(type: "procedure", query: "regulavel de teste", on: on, limit: 100)
       expect(all.size).to eq(25)
       expect(all.map(&:name)).to eq(all.map(&:name).sort)
