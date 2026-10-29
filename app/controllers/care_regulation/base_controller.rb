@@ -20,6 +20,7 @@ module CareRegulation
                        not_found: :not_found }.freeze
     DEFAULT_LIMIT = 50
     MAX_LIMIT = 100
+    KEY_PATH_MAX = 64
 
     before_action :require_care_regulation!
 
@@ -47,11 +48,14 @@ module CareRegulation
     def body = request.request_parameters.except("controller", "action", "id")
 
     # Rotas cujo dado sensível só vem no corpo: query com chave fora de
-    # `allowed` → 422 invalid_request, nada lido da URL.
+    # `allowed` → 422 invalid_request com o path (a primeira chave
+    # desconhecida, truncada; só o NOME da chave, nunca o valor), nada lido da
+    # URL.
     def query_only!(*allowed)
-      return true if (request.query_parameters.keys - allowed.map(&:to_s)).empty?
+      unknown = (request.query_parameters.keys - allowed.map(&:to_s)).first
+      return true unless unknown
 
-      render_error("invalid_request")
+      render json: { error: "invalid_request", path: unknown.to_s[0, KEY_PATH_MAX] }, status: :unprocessable_entity
       false
     end
 

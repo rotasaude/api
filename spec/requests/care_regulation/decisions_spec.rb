@@ -137,7 +137,7 @@ RSpec.describe "Regulação — decisões do regulador", type: :request do
       request = aged!(3, "yellow")
       post "/regulation/requests/#{request.id}/authorize?skip_reason=Motivo-na-url-sigiloso",
            params: { offer_id: offer.id, version: request.version }.to_json, headers: { "CONTENT_TYPE" => "application/json" }
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "skip_reason" } ])
       expect(request.reload.status).to eq("pending")
     end
 
@@ -242,7 +242,7 @@ RSpec.describe "Regulação — decisões do regulador", type: :request do
       request = aged!(3, "yellow")
       post "/regulation/requests/#{request.id}/deny?reason=Motivo-na-url-sigiloso",
            params: { reason: reason, version: request.version }.to_json, headers: { "CONTENT_TYPE" => "application/json" }
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "reason" } ])
       expect(request.reload.status).to eq("pending")
     end
 
