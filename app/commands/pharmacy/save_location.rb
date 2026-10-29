@@ -122,11 +122,9 @@ module Pharmacy
     end
 
     # Transferência enviada e ainda não recebida (de ou para o local) ou ajuste
-    # por decidir num lote do local; lido com o local já travado.
-    def pending_work?(location)
-      StockTransfer.where(status: "sent").where("from_location_id = :id OR to_location_id = :id", id: location.id).exists? ||
-        StockAdjustment.where(stock_location_id: location.id, status: "pending").exists?
-    end
+    # por decidir num lote do local; lido com o local já travado. A regra é
+    # compartilhada com a desativação da unidade de saúde (H14).
+    def pending_work?(location) = PendingWork.any?(location)
 
     def valid_name(value)
       return nil unless value.is_a?(String)

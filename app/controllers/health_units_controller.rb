@@ -94,7 +94,22 @@ class HealthUnitsController < ApplicationController
   def deactivation_conflict
     return "unit_has_open_attendances" if Attendance.open_attendances.where(health_unit: @unit).exists?
 
-    "unit_has_open_requests" if AppointmentRequest.live_requests.where(target_unit: @unit).exists?
+    return "unit_has_open_requests" if AppointmentRequest.live_requests.where(target_unit: @unit).exists?
+
+    "pharmacy_pending" if pharmacy_pending?
+  end
+
+  # H14 (módulo 27a): a farmácia da unidade com transferência `sent` (origem
+  # ou destino) ou ajuste `pending` prende a unidade ativa, senão o recebimento
+  # ficaria em location_inactive para sempre. Só com o interruptor `pharmacy`
+  # utilizável. Roda sob o FOR UPDATE da unidade: quem grava `sent`/`pending`
+  # toma FOR SHARE nela (Pharmacy::Ledger.lock_location!), então uma leitura
+  # simples basta e nenhum lote é travado depois da unidade.
+  def pharmacy_pending?
+    return false unless Pharmacy::Gate.usable?(Current.city)
+
+    location = StockLocation.find_by(kind: "unit", health_unit_id: @unit.id)
+    location.present? && Pharmacy::PendingWork.any?(location)
   end
 
   def require_unit_reader
