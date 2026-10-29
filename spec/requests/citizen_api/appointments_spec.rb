@@ -38,6 +38,7 @@ RSpec.describe "Citizen appointments", type: :request do
     get "/citizen/appointments", params: { citizen_id: citizen.id }
     item = body["appointments"].first
     expect(item["request"]).to include("kind" => "return", "target_unit_name" => unit.name, "status" => "scheduled")
+    expect(item["request"]["due_on"]).to eq(AppointmentRequest.find(item["request"]["id"]).due_on.iso8601) # G15.1: só o regulado perde o prazo
     expect(item["appointment"]).to include("id" => appt.id, "status" => "scheduled", "check_in_available" => false)
     expect(item["appointment"]["confirmation_deadline_at"]).to be_present
 

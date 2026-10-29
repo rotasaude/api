@@ -200,7 +200,10 @@ RSpec.describe "Cidadão — situação do pedido de regulação", type: :reques
     expect(response).to have_http_status(:ok)
     item = json_body["appointments"].find { |a| a["request"]["kind"] == "regulated" }
     expect(item["request"]).to include("kind" => "regulated", "status" => "open")
-    expect(item["request"]["due_on"]).to eq(own[:appointment_request].due_on.iso8601)
+    # G15.1: o prazo da cor não chega ao cidadão (chave ausente, não nula).
+    expect(item["request"]).not_to have_key("due_on")
+    expect(own[:appointment_request].due_on).to be_present
+    expect(response.body).not_to include(own[:appointment_request].due_on.iso8601)
 
     get "/citizen/regulation_requests", params: { citizen_id: citizen.id }
     expect(row(own[:regulation_request].id)["status"]).to eq("waiting")

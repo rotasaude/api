@@ -74,15 +74,22 @@ module CitizenApi
     def item_json(request)
       latest = request.latest_appointment
       {
-        request: { id: request.id, kind: request.kind, target_unit_name: request.target_unit&.name,
-                   status: request.status, closed_reason: request.closed_reason,
-                   # A remarcação pedida pelo próprio cidadão não é "reaberto" para ele.
-                   reopened_reason: request.reopened_reason == "citizen_reschedule" ? nil : request.reopened_reason,
-                   moved_from_unit_name: request.moved_from_request&.target_unit&.name,
-                   appointment_type_name: catalog.name_for(request.appointment_type_key),
-                   due_on: request.due_on.iso8601 },
+        request: request_json(request),
         appointment: latest && appointment_json(latest)
       }
+    end
+
+    def request_json(request)
+      json = { id: request.id, kind: request.kind, target_unit_name: request.target_unit&.name,
+               status: request.status, closed_reason: request.closed_reason,
+               # A remarcação pedida pelo próprio cidadão não é "reaberto" para ele.
+               reopened_reason: request.reopened_reason == "citizen_reschedule" ? nil : request.reopened_reason,
+               moved_from_unit_name: request.moved_from_request&.target_unit&.name,
+               appointment_type_name: catalog.name_for(request.appointment_type_key) }
+      # O prazo do pedido regulado é o da cor de risco (7/30/90/180 dias): não
+      # sai para o cidadão (G15.1), nem como nulo. Chave ausente.
+      json[:due_on] = request.due_on.iso8601 unless request.kind == "regulated"
+      json
     end
 
     # Horário legado (antes do módulo 17) não tem tipo, profissional nem fim.
