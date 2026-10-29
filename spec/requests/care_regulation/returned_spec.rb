@@ -64,6 +64,7 @@ RSpec.describe "Regulação — devolvidos e complemento", type: :request do
       log = capture_log { get "/regulation/returned", params: { unit_id: unit.id } }
       expect(response).to have_http_status(:ok)
       expect(json_body["requests"].map { |r| r["id"] }).to eq([ request.id ])
+      expect(json_body["next_before"]).to be_nil
       expect(json_body["requests"][0]["events"].last).to include("status" => "returned", "reason" => return_reason)
       expect(viewed.last.payload).to eq("access" => "regulation", "regulation_request_ids" => [ request.id ], "user_id" => nurse.id)
       expect(log).not_to include(return_reason)
@@ -72,7 +73,7 @@ RSpec.describe "Regulação — devolvidos e complemento", type: :request do
     it "sem devolvidos: lista vazia e nenhuma trilha" do
       sign_in_as(physician)
       get "/regulation/returned", params: { unit_id: unit.id }
-      expect([ response.status, json_body ]).to eq([ 200, { "requests" => [] } ])
+      expect([ response.status, json_body ]).to eq([ 200, { "requests" => [], "next_before" => nil } ])
       expect(viewed).to be_empty
     end
 
@@ -88,10 +89,65 @@ RSpec.describe "Regulação — devolvidos e complemento", type: :request do
 
     it "unit_id ausente, não uuid ou chave desconhecida → 422 invalid_request" do
       sign_in_as(nurse)
-      [ {}, { unit_id: "abc" }, { unit_id: unit.id, status: "returned" } ].each do |params|
+      [ {}, { unit_id: "abc" }, { unit_id: unit.id, status: "returned" }, { unit_id: unit.id, foo: "1" } ].each do |params|
         get "/regulation/returned", params: params
         expect(response).to have_http_status(:unprocessable_entity)
         expect(json_body["error"]).to eq("invalid_request")
+      end
+    end
+
+    describe "paginação (before, limit, next_before)" do
+      let!(:oldest) { returned!(aged!(9)) }
+      let!(:middle) { returned!(aged!(8)) }
+      let!(:newest) { returned!(aged!(7)) }
+
+      before { sign_in_as(nurse) }
+
+      def page(**params) = get("/regulation/returned", params: { unit_id: unit.id }.merge(params))
+      def ids = json_body["requests"].map { |r| r["id"] }
+
+      it "duas páginas na ordem requested_at, id; next_before nulo no fim; uma trilha por página com os ids da página" do
+        page(limit: 2)
+        expect(response).to have_http_status(:ok)
+        expect(ids).to eq([ oldest.id, middle.id ])
+        expect(json_body["next_before"]).to be_a(String)
+        expect(json_body["requests"].first["events"].last).to include("status" => "returned")
+        first_cursor = json_body["next_before"]
+        page(limit: 2, before: first_cursor)
+        expect(response).to have_http_status(:ok)
+        expect(ids).to eq([ newest.id ])
+        expect(json_body["next_before"]).to be_nil
+        expect(viewed.map { |e| e.payload["regulation_request_ids"] }).to eq([ [ oldest.id, middle.id ], [ newest.id ] ])
+      end
+
+      it "página exata no fim (limit igual ao total): next_before nulo; sem limit usa 50" do
+        page(limit: 3)
+        expect([ ids, json_body["next_before"] ]).to eq([ [ oldest.id, middle.id, newest.id ], nil ])
+        page
+        expect([ ids.size, json_body["next_before"] ]).to eq([ 3, nil ])
+      end
+
+      it "limit fora de 1..100 ou não numérico → 422 invalid_limit, sem trilha" do
+        [ "0", "101", "-1", "abc", "1.5" ].each do |limit|
+          page(limit: limit)
+          expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_limit" } ])
+        end
+        expect(viewed).to be_empty
+      end
+
+      it "cursor inválido (lixo, tupla da fila, outro tamanho) → 422 invalid_cursor, sem trilha" do
+        queue_cursor = CareRegulation::Cursor.encode([ now.to_date, 0, 0, now, SecureRandom.uuid ])
+        [ "lixo", "%%%", queue_cursor, Base64.urlsafe_encode64("[1]", padding: false), "a" * 600 ].each do |before|
+          page(limit: 2, before: before)
+          expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_cursor" } ])
+        end
+        expect(viewed).to be_empty
+      end
+
+      it "parâmetro desconhecido → 422 invalid_request com path" do
+        page(limit: 2, cursor: "x")
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json_body).to include("error" => "invalid_request", "path" => "cursor")
       end
     end
   end
