@@ -1,5 +1,6 @@
 # Cadastra e edita prestadores da regulação (contrato §6; G5, G7). Prestador
-# `own` é a unidade da rede: exige unidade ativa, herda o CNES dela e não muda
+# `own` é a unidade da rede: exige unidade ativa com CNES, usa o CNES dela (lido
+# da unidade na hora, nunca copiado para o prestador) e não muda
 # de tipo nem de unidade; externo (contracted, consortium, ppi) exige CNES.
 # CNES e unidade são únicos entre prestadores. Nome de 3 a 120 caracteres,
 # recusado, nunca cortado. Evento `care_provider.changed` só com ids, e só
@@ -35,7 +36,9 @@ module CareRegulation
         taken = taken_reason(unit_id: unit_id, cnes: cnes)
         next Result.fail(taken) if taken
 
-        provider = CareProvider.create!(name: name, kind: kind, health_unit_id: unit_id, cnes: cnes, active: active, updated_by_user: by)
+        # `own` não grava o CNES: ele é lido da unidade (CareProvider#cnes).
+        stored_cnes = kind == "own" ? nil : cnes
+        provider = CareProvider.create!(name: name, kind: kind, health_unit_id: unit_id, cnes: stored_cnes, active: active, updated_by_user: by)
         publish(provider, by)
         Result.ok(provider: provider)
       end
@@ -61,7 +64,7 @@ module CareRegulation
         if attrs.key?("cnes")
           next refuse("cnes") unless provider.kind == "own" ? attrs["cnes"] == provider.cnes : valid_cnes?(attrs["cnes"])
 
-          provider.cnes = attrs["cnes"]
+          provider.cnes = attrs["cnes"] unless provider.kind == "own"
         end
         next Result.ok(provider: provider) unless provider.changed?
 
@@ -109,7 +112,14 @@ module CareRegulation
       scope = except ? CareProvider.where.not(id: except) : CareProvider
       return :unit_taken if unit_id && scope.exists?(health_unit_id: unit_id)
 
-      :cnes_taken if cnes && scope.exists?(cnes: cnes)
+      :cnes_taken if cnes && cnes_in_use?(scope, cnes)
+    end
+
+    # O CNES dos externos está na coluna; o dos `own` está na unidade (a coluna
+    # deles, se sobrou cópia antiga, não conta).
+    def cnes_in_use?(scope, cnes)
+      scope.where.not(kind: "own").exists?(cnes: cnes) ||
+        scope.where(kind: "own").joins(:health_unit).exists?(health_units: { cnes: cnes })
     end
 
     # O banco acusa o primeiro índice que viu; o `own` repetido fere os dois
@@ -124,6 +134,6 @@ module CareRegulation
     def publish(provider, by) = DomainEvents.publish("care_provider.changed", care_provider_id: provider.id, user_id: by.id)
     def refuse(path) = Result.fail(:invalid_request, details: { path: path })
 
-    private_class_method :create, :update, :own_unit_and_cnes, :external_cnes, :valid_name, :valid_cnes?, :taken_reason, :unit_violation?, :publish, :refuse
+    private_class_method :create, :update, :own_unit_and_cnes, :external_cnes, :valid_name, :valid_cnes?, :taken_reason, :cnes_in_use?, :unit_violation?, :publish, :refuse
   end
 end

@@ -108,7 +108,7 @@ module CareRegulation
       found = Json.authorization(r)
       if found
         provider = found.fetch(:provider)
-        cnes = CareProvider.find_by(id: provider.fetch(:id))&.cnes
+        cnes = CareProvider.includes(:health_unit).find_by(id: provider.fetch(:id))&.cnes
         field(pdf, "Prestador", [ provider.fetch(:name), (cnes ? "CNES #{cnes}" : nil), PROVIDER_KINDS[provider.fetch(:kind)] ].compact.join(" — "))
         field(pdf, "Mês autorizado", found.fetch(:month).split("-").reverse.join("/"))
       else

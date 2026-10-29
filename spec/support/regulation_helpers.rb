@@ -87,7 +87,8 @@ module RegulationHelpers
 
   # Prestador próprio: a unidade da rede, com o CNES dela (G7).
   def own_provider!(unit, name: unit.name)
-    CareProvider.create!(name: name, kind: "own", health_unit: unit, cnes: unit.cnes, updated_by_user: regulation_admin!)
+    # Sem CNES próprio: o do prestador `own` é lido da unidade na hora.
+    CareProvider.create!(name: name, kind: "own", health_unit: unit, updated_by_user: regulation_admin!)
   end
 
   def external_provider!(kind: "contracted", cnes: regulation_cnes, name: "Prestador #{kind} #{cnes}")

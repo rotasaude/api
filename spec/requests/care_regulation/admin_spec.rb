@@ -215,6 +215,33 @@ RSpec.describe "Regulação — prestadores e ofertas", type: :request do
       expect(provider_events).to eq([ { "care_provider_id" => CareProvider.last.id, "user_id" => admin.id } ])
     end
 
+    it "o CNES do próprio é lido da unidade na hora: trocar o da unidade reflete no prestador sem salvá-lo de novo" do
+      own = own_provider!(unit)
+      stepped_up!(admin)
+      get "/regulation/admin/providers"
+      expect(json_body["providers"].sole).to include("id" => own.id, "cnes" => "2384299")
+      expect(own.read_attribute(:cnes)).to be_nil
+
+      unit.update!(cnes: "7654321")
+      expect { get "/regulation/admin/providers" }.not_to(change { own.reload.updated_at })
+      expect(json_body["providers"].sole).to include("cnes" => "7654321")
+      expect(own.reload.cnes).to eq("7654321")
+
+      unit.update!(cnes: nil)
+      get "/regulation/admin/providers"
+      expect(json_body["providers"].sole).to include("cnes" => nil)
+    end
+
+    it "o CNES novo da unidade vale para a trava de duplicidade: o externo não pode usá-lo" do
+      own_provider!(unit)
+      unit.update!(cnes: "7654321")
+      stepped_up!(admin)
+      json_post "/regulation/admin/providers", name: "Clínica J", kind: "contracted", cnes: "7654321"
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "cnes_taken" } ])
+      json_post "/regulation/admin/providers", name: "Clínica J", kind: "contracted", cnes: "2384299"
+      expect(response).to have_http_status(:created)
+    end
+
     it "POST cria o contratado com CNES (201), sem unidade" do
       stepped_up!(admin)
       json_post "/regulation/admin/providers", name: "Clínica de Olhos Araucária", kind: "contracted", cnes: "3456781"

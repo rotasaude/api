@@ -122,6 +122,17 @@ RSpec.describe CareRegulation::GuidePdf do
     expect(text).not_to include("Aguardando regulação")
   end
 
+  it "prestador próprio: o CNES da guia é o da unidade na hora (trocado depois da criação do prestador)" do
+    unit = create_unit("UBS Própria Guia")
+    unit.update!(cnes: "2384299")
+    provider = own_provider!(unit)
+    request = reauthorize!(regulation_request!, offer: offer!(provider: provider))
+    unit.update!(cnes: "7654321")
+    text = flat(request.reload)
+    expect(text).to include("CNES 7654321")
+    expect(text).not_to include("CNES 2384299")
+  end
+
   it "agendado: data (horário) e local" do
     provider = external_provider!(kind: "contracted", name: "Clínica de Olhos Araucária")
     request = reauthorize!(regulation_request!, offer: offer!(provider: provider))
