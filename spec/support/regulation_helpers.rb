@@ -137,6 +137,104 @@ module RegulationHelpers
     request
   end
 
+  # --- Rede própria acompanhada pelo 17 (Task 10) -------------------------
+  # Tudo pelos comandos reais: Authorize (Task 8), Appointments::Schedule
+  # (dia sem turno), Confirm, Attendances::CheckIn, Appointments::Lapse (com
+  # travel_to, sem bloco: o relógio fica no instante do comando) e
+  # HealthUnits::Drain. Nenhum chama o AppointmentSync: o spec decide quando
+  # o consumidor roda (a ordem e o redespacho são o que se prova).
+  def regulation_regulator! = (@regulation_regulator ||= care_regulator!)
+
+  # Com o relógio parado (travel_to), duas linhas de andamento gravadas no
+  # mesmo instante empatam em created_at e a ordem (created_at, id) cairia no
+  # uuid. Aqui cada linha nova anda 1 s antes: a ordem lida é a da gravação
+  # (memória "Flakies de UUID e relógio"). Exige TimeHelpers no spec.
+  def tick_regulation_events!
+    allow(RegulationRequestEvent).to receive(:create!).and_wrap_original do |original, *args, **kwargs, &block|
+      travel(1.second)
+      original.call(*args, **kwargs, &block)
+    end
+  end
+
+  # Pedido autorizado numa oferta própria: { regulation_request:,
+  # appointment_request:, offer:, unit: }.
+  def own_authorized_request!(color: "yellow", quantity: 5, **over)
+    unit = create_unit("Centro de Especialidades #{SecureRandom.hex(3)}")
+    offer = offer!(provider: own_provider!(unit), quantity: quantity)
+    request = reauthorize!(regulation_request!(suggested_color: color, **over), offer: offer)
+    { regulation_request: request, appointment_request: AppointmentRequest.find(request.appointment_request_id), offer: offer,
+      unit: unit }
+  end
+
+  def reauthorize!(request, offer:)
+    result = CareRegulation::Authorize.call(request: request, offer_id: offer.id, version: request.version, by: regulation_regulator!)
+    raise "autorização recusada: #{result.reason}" if result.failure?
+
+    request.reload
+  end
+
+  # Horário livre (legacy) pela recepção da unidade de destino.
+  def schedule_regulated!(appointment_request, at:)
+    result = Appointments::Schedule.call(request: appointment_request.reload, scheduled_at: at.iso8601,
+                                         health_unit_id: appointment_request.target_unit_id, by: reception!)
+    raise "marcação recusada: #{result.reason}" if result.failure?
+
+    result.payload.fetch(:appointment)
+  end
+
+  # Confirma (se ainda não nasceu confirmado) antes do prazo de confirmação.
+  def confirm_regulated!(appointment)
+    appointment.reload
+    return appointment if appointment.status == "confirmed"
+
+    travel_to(appointment.confirmation_deadline_at - 1.hour) if Time.current >= appointment.confirmation_deadline_at
+    result = Appointments::Confirm.call(appointment: appointment)
+    raise "confirmação recusada: #{result.reason}" if result.failure?
+
+    appointment.reload
+  end
+
+  # Check-in por código no dia do horário: o pedido de agendamento fecha como
+  # fulfilled.
+  def check_in_regulated!(appointment)
+    confirm_regulated!(appointment)
+    travel_to(appointment.scheduled_at - 1.hour)
+    citizen = appointment.citizen
+    code = Citizens::IssueAppointmentCheckInCode.call(citizen: citizen, appointment: appointment.reload).payload.fetch(:code)
+    result = Attendances::CheckIn.call(cpf: citizen.cpf, code: code, health_unit_id: appointment.health_unit_id,
+                                       document_checked: false, by: reception!)
+    raise "check-in recusado: #{result.reason}" if result.failure?
+
+    result.payload.fetch(:attendance)
+  end
+
+  # Confirmado e o dia terminou: no_show (o Lapse reabre o pedido).
+  def no_show!(appointment)
+    confirm_regulated!(appointment)
+    travel_to(appointment.scheduled_at.in_time_zone.tomorrow.beginning_of_day + 1.hour)
+    lapsed = Appointments::Lapse.call(appointment: appointment.reload, to: "no_show")
+    raise "falta não registrada" if lapsed.failure? || lapsed.payload[:skipped]
+
+    appointment.reload
+  end
+
+  # Sem confirmação até o prazo: expired (o Lapse reabre o pedido).
+  def expire!(appointment)
+    travel_to(appointment.confirmation_deadline_at + 1.minute)
+    lapsed = Appointments::Lapse.call(appointment: appointment.reload, to: "expired")
+    raise "expiração não registrada" if lapsed.failure? || lapsed.payload[:skipped]
+
+    appointment.reload
+  end
+
+  def drain!(unit, to:)
+    result = HealthUnits::Drain.call(unit: unit, target_unit_id: to.id, reason: "Unidade fechada para reforma",
+                                     by: regulation_admin!)
+    raise "esvaziamento recusado: #{result.reason}" if result.failure?
+
+    result
+  end
+
   # Escrita por cookie exige Content-Type JSON (também no DELETE). Mesmas
   # assinaturas de LabHelpers#json_patch e ClinicalDocumentHelpers#json_delete
   # (este com corpo opcional; sem corpo, o mesmo "{}").

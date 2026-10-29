@@ -80,7 +80,7 @@ end
 # Módulo 17 (ADR 0029): eventos da agenda declarados, só trilha.
 RSpec.describe "scheduling event bindings (ADR 0029)" do
   it "declares every scheduling event with no consumer" do
-    names = %w[appointment.booked appointment.fit_in_created appointment.reschedule_requested appointment.reminded
+    names = %w[appointment.fit_in_created appointment.reschedule_requested appointment.reminded
                appointment_request.created_from_triage appointment_request.merged_triage
                appointment_request.unit_assigned appointment_type.changed schedule_template.changed
                professional.shift_template_set professional.link_default_type_set]
@@ -289,5 +289,19 @@ RSpec.describe "care regulation bindings (ADR 0044)" do
     end
     transition_names = CareRegulation::Transition::EVENTS.map { |event| "regulation_request.#{event}" }
     expect(transition_names - names).to be_empty
+  end
+
+  # Task 10 (contrato §7, §13 G1, G6): a rede própria acompanha o 17 pelos
+  # nove eventos do pedido de agendamento e do horário, mais o nascimento do
+  # pedido (rede de segurança da corrida Cancelar × Drain).
+  it "binds the scheduling events the own network follows to CareRegulation::AppointmentSyncJob only" do
+    names = %w[appointment.scheduled appointment.checked_in appointment.no_show appointment.expired appointment.booked
+               appointment.moved appointment.cancelled appointment_request.closed appointment_request.moved
+               appointment_request.created]
+    names.each do |name|
+      expect(DomainEvents.registry[name].map(&:job)).to eq([ "CareRegulation::AppointmentSyncJob" ]), name
+    end
+    expect(CareRegulation::AppointmentSyncJob::EVENTS).to match_array(names)
+    expect(DomainEvents.registry["appointment.confirmed"]).to be_empty
   end
 end

@@ -33,11 +33,20 @@ module CareRegulation
         unit: { id: r.requester_unit_id, name: r.requester_unit.name } }
     end
 
-    # A autorização vigente; encerrado ou realizado mostra a última, mesmo
-    # liberada.
+    # A autorização vigente só em authorized/scheduled; realizado ou encerrado
+    # pela segunda falta mostra a última, mesmo liberada; nas demais situações
+    # nula — a autorização consumida por uma falta não é liberada (a falta não
+    # devolve a vaga), mas o pedido de volta em pending (e o que vier dele:
+    # returned, denied, cancelled) não a tem mais (acréscimo do controlador,
+    # Task 10).
+    VIGENTE_STATUSES = %w[authorized scheduled].freeze
+    LAST_STATUSES = %w[completed closed].freeze
+
     def authorization(r)
-      found = r.current_authorization
-      found ||= r.authorizations.last if %w[completed closed].include?(r.status)
+      found = case r.status
+              when *VIGENTE_STATUSES then r.current_authorization
+              when *LAST_STATUSES then r.authorizations.last
+              end
       return nil unless found
 
       offer = found.care_offer

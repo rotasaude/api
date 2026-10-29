@@ -46,20 +46,19 @@ Rails.application.config.to_prepare do
   # Chamada e pedido de agendamento (spec 2026-09-25): trilha; sem
   # consumidor, de propósito.
   DomainEvents.bind "attendance.called", to: []
-  DomainEvents.bind "appointment_request.created", to: []
-  DomainEvents.bind "appointment_request.closed", to: []
-  DomainEvents.bind "appointment.scheduled", to: []
-  DomainEvents.bind "appointment.checked_in", to: []
   DomainEvents.bind "appointment.confirmed", to: []
-  DomainEvents.bind "appointment.cancelled", to: []
-  DomainEvents.bind "appointment.expired", to: []
-  DomainEvents.bind "appointment.no_show", to: []
   DomainEvents.bind "appointment.reminder_recorded", to: []
-  DomainEvents.bind "appointment.moved", to: []
-  DomainEvents.bind "appointment_request.moved", to: []
   DomainEvents.bind "health_unit.drained", to: []
+  # Módulo 26a (ADR 0044; contrato §7, §13 G1, G6): a rede própria da
+  # regulação acompanha o pedido de agendamento `regulated` pelos eventos do
+  # 17 (CareRegulation::AppointmentSyncJob reconcilia pelo estado atual; a
+  # ordem e o redespacho não importam). O nascimento do pedido também, pela
+  # rede de segurança da corrida Cancelar × Drain. Só ids nos payloads.
+  %w[appointment.scheduled appointment.checked_in appointment.no_show appointment.expired appointment.booked
+     appointment.moved appointment.cancelled appointment_request.closed appointment_request.moved
+     appointment_request.created]
+    .each { |name| DomainEvents.bind name, to: [ CareRegulation::AppointmentSyncJob ] }
   # Agenda dos profissionais (ADR 0029; contratos §6): trilha, só ids, sem consumidor.
-  DomainEvents.bind "appointment.booked", to: []
   DomainEvents.bind "appointment.fit_in_created", to: []
   DomainEvents.bind "appointment.reschedule_requested", to: []
   DomainEvents.bind "appointment.reminded", to: []

@@ -50,6 +50,20 @@ RSpec.describe CareRegulation::Json do
       expect(auth).to be_persisted
     end
 
+    # Acréscimo do controlador (Task 10): a autorização consumida por uma falta
+    # não é liberada, mas o pedido de volta em pending (e o que vem dele) não
+    # a tem mais.
+    it "autorização não liberada só aparece em authorized/scheduled (pending, returned, denied, cancelled: nula)" do
+      %w[pending returned denied cancelled external].each do |status|
+        row = sent!(draft!, status: status)
+        authorize!(row)
+        expect(described_class.request(RegulationRequest.find(row.id))[:authorization]).to be_nil, status
+      end
+      row = sent!(draft!, status: "scheduled")
+      live = authorize!(row)
+      expect(described_class.request(RegulationRequest.find(row.id))[:authorization]).to include(offer_id: live.care_offer_id)
+    end
+
     it "completed e closed mostram a última autorização, mesmo liberada" do
       row = sent!(draft!, status: "completed")
       authorize!(row, release: true)
