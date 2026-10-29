@@ -126,19 +126,42 @@ RSpec.describe "Transferência do central para a unidade" do
       expect(written).to eq([ 0, 0, 1 ])
     end
 
-    it "lista vazia, com mais de 100 itens ou que não é lista → invalid_request path items, sem problems; linha que não é objeto → path da linha" do
+    it "lista vazia, com mais de 100 itens ou que não é lista → invalid_request path items, com problems; linha que não é objeto → path da linha" do
       [ [], nil, "x", Array.new(101) { line } ].each do |bad|
-        result = send!(bad)
-        expect([ result.reason, result.details ]).to eq([ :invalid_request, { path: "items" } ])
+        expect(refused(send!(bad))).to eq(refusal(:invalid_request, "items"))
       end
+      expect(problems_of(send!("x", to: nil))).to eq([ { path: "to_location_id", error: "invalid_request" }, { path: "items", error: "invalid_request" } ])
       expect(refused(send!([ "x" ]))).to eq(refusal(:invalid_request, "items[0]"))
     end
 
     it "origem que não é o central → invalid_request path from; destino que não é unidade → path to_location_id junto das linhas inválidas" do
-      expect(refused(send!([ line ], from: farmacia, to: central)).first(2)).to eq([ :invalid_request, "from" ])
+      expect(refused(send!([ line ], from: farmacia, to: central))).to eq(refusal(:invalid_request, "from"))
       expect(refused(send!([ line ], to: central))).to eq(refusal(:invalid_request, "to_location_id"))
       result = send!([ line(lot, "x") ], to: central)
       expect(problems_of(result)).to eq([ { path: "to_location_id", error: "invalid_request" }, { path: "items[0].quantity", error: "invalid_quantity" } ])
+    end
+
+    it "destino nil (inexistente) entra como problema to_location_id junto das linhas, sem gravar" do
+      result = send!([ line(lot, "x") ], to: nil)
+      expect(problems_of(result)).to eq([ { path: "to_location_id", error: "invalid_request" }, { path: "items[0].quantity", error: "invalid_quantity" } ])
+      expect(refused(send!([ line ], to: nil))).to eq(refusal(:invalid_request, "to_location_id"))
+      expect(written).to eq([ 0, 0, 1 ])
+    end
+
+    it "lote vencido → lot_expired em items[i].lot_id (junto das outras recusas); o dia da validade ainda vale; nada gravado" do
+      expired = stocked_lot!(central, item: paracetamol, quantity: "10", lot_number: "TR-VENC", expires_on: now.to_date - 1)
+      lastday = stocked_lot!(central, item: paracetamol, quantity: "10", lot_number: "TR-HOJE", expires_on: now.to_date)
+      before = written
+      result = send!([ line(expired, "5"), line(lot, "1,5") ])
+      expect(problems_of(result)).to eq([ { path: "items[0].lot_id", error: "lot_expired" }, { path: "items[1].quantity", error: "invalid_quantity" } ])
+      expect(result.reason).to eq(:lot_expired)
+      expect(written).to eq(before)
+      expect(send!([ line(lastday, "5") ])).to be_ok
+    end
+
+    it "sem linha para o lote do livro (inconsistência) o erro aparece: KeyError, não items[0] em silêncio" do
+      allow(Pharmacy::Ledger).to receive(:record!).and_raise(Pharmacy::Ledger::Insufficient, SecureRandom.uuid)
+      expect { send!([ line ]) }.to raise_error(KeyError)
     end
 
     it "destino ou origem inativos → location_inactive (409 no controlador), nada gravado" do
@@ -242,10 +265,9 @@ RSpec.describe "Transferência do central para a unidade" do
                                           { path: "items", error: "invalid_items" } ])
     end
 
-    it "lista vazia, grande demais ou que não é lista → invalid_request path items; linha que não é objeto → path da linha" do
+    it "lista vazia, grande demais ou que não é lista → invalid_request path items, com problems; linha que não é objeto → path da linha" do
       [ [], nil, "x", Array.new(101) { got(lot, "1") } ].each do |bad|
-        result = receive!(transfer, bad)
-        expect([ result.reason, result.details ]).to eq([ :invalid_request, { path: "items" } ])
+        expect(refused(receive!(transfer, bad))).to eq(refusal(:invalid_request, "items"))
       end
       expect(problems_of(receive!(transfer, [ "x" ]))).to eq([ { path: "items[0]", error: "invalid_request" }, { path: "items", error: "invalid_items" } ])
     end
@@ -282,6 +304,11 @@ RSpec.describe "Transferência do central para a unidade" do
       expect(written).to eq(before)
       expect(transfer.reload.status).to eq("sent")
       expect(transfer.items.sole.quantity_received).to be_nil
+    end
+
+    it "sem linha para o lote do livro (inconsistência) o erro aparece: KeyError, não items[0] em silêncio" do
+      allow(Pharmacy::Ledger).to receive(:record!).and_raise(Pharmacy::Ledger::Insufficient, SecureRandom.uuid)
+      expect { receive!(transfer, [ got(lot, "100") ]) }.to raise_error(KeyError)
     end
 
     it "publica stock_transfer.received com os ids e o booleano da diferença" do

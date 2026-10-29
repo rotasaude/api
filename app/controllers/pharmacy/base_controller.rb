@@ -36,6 +36,12 @@ module Pharmacy
     # 422 invalid_request com o path do campo recusado (nunca o valor).
     def render_invalid(path) = render(json: { error: "invalid_request", path: path }, status: :unprocessable_entity)
 
+    # 422 no formato uniforme das escritas e listas de transferência e entrada:
+    # `error`/`path` no topo e `problems` com pelo menos esse problema.
+    def render_refusal(path, error = "invalid_request")
+      render json: { error: error.to_s, path: path, problems: [ { path: path, error: error.to_s } ] }, status: :unprocessable_entity
+    end
+
     def render_error(reason, status = :unprocessable_entity) = render(json: { error: reason.to_s }, status: status)
     def forbid(reason = "missing_role") = render(json: { error: reason }, status: :forbidden)
     def not_found = render(json: { error: "not_found" }, status: :not_found)
@@ -63,7 +69,7 @@ module Pharmacy
       unknown = (request.query_parameters.keys - allowed.map(&:to_s)).first
       return true unless unknown
 
-      render json: { error: "invalid_request", path: unknown.to_s[0, KEY_PATH_MAX] }, status: :unprocessable_entity
+      render_refusal(unknown.to_s[0, KEY_PATH_MAX])
       false
     end
 
@@ -76,7 +82,7 @@ module Pharmacy
       value = Integer(raw.to_s, 10, exception: false)
       return value if value && value.between?(1, MAX_LIMIT)
 
-      render_error("invalid_limit")
+      render_refusal("limit", "invalid_limit")
       nil
     end
   end

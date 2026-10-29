@@ -139,10 +139,10 @@ RSpec.describe "Farmácia — entradas e inventário de abertura", type: :reques
       sign_in_as(keeper)
       [ "opening", "gift", nil ].each do |kind|
         json_post "/pharmacy/receipts", receipt([ line ], kind: kind)
-        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "document.kind" } ]), kind.inspect
+        expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "document.kind") ]), kind.inspect
       end
       json_post "/pharmacy/receipts", { location_id: central.id, items: [ line ] }
-      expect(json_body).to include("error" => "invalid_request", "path" => "document")
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "document") ])
       expect(written).to eq([ 0, 0, 0, 0 ])
     end
 
@@ -168,7 +168,7 @@ RSpec.describe "Farmácia — entradas e inventário de abertura", type: :reques
       sign_in_as(keeper)
       [ nil, "abc", SecureRandom.uuid ].each do |id|
         json_post "/pharmacy/receipts", receipt([ line ]).merge(location_id: id)
-        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "location_id" } ]), id.inspect
+        expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "location_id") ]), id.inspect
       end
       central.update!(active: false)
       json_post "/pharmacy/receipts", receipt([ line ])
@@ -197,7 +197,29 @@ RSpec.describe "Farmácia — entradas e inventário de abertura", type: :reques
     it "items que não é lista → 422 invalid_request em items" do
       sign_in_as(keeper)
       json_post "/pharmacy/receipts", receipt("x")
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "items" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "items") ])
+    end
+
+    it "document.kind inválido junto de itens inválidos e número de nota ruim: tudo volta de uma vez, na ordem do documento e das linhas" do
+      sign_in_as(keeper)
+      json_post "/pharmacy/receipts", receipt([ line(quantity: "1,5", package: nil), "x" ], kind: "opening", number: "NF 1")
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body).to eq("error" => "invalid_request", "path" => "document.kind",
+                              "problems" => [ { "path" => "document.kind", "error" => "invalid_request" },
+                                              { "path" => "document.number", "error" => "invalid_request" },
+                                              { "path" => "items[0].quantity", "error" => "invalid_quantity" },
+                                              { "path" => "items[1]", "error" => "invalid_request" } ])
+      expect(written).to eq([ 0, 0, 0, 0 ])
+    end
+
+    it "items vazio, grande demais ou ausente na abertura e na nota → 422 invalid_request em items, com problems" do
+      sign_in_as(keeper)
+      [ [], nil, Array.new(101) { |i| line(lot_number: "L#{i}") } ].each do |bad|
+        json_post "/pharmacy/receipts", receipt(bad)
+        expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "items") ])
+        json_post "/pharmacy/openings", opening(bad, location: central)
+        expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "items") ])
+      end
     end
 
     it "evento stock_receipt.recorded com payload exatamente stock_entry_id e user_id" do

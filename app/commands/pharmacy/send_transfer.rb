@@ -8,7 +8,9 @@
 # (`invalid_items`, path `items[i].lot_id`); `quantity` String positiva do papel
 # (`invalid_quantity`, path `items[i].quantity`). `from` precisa ser o central
 # (senão `invalid_request`, path `from`); `to`, uma farmácia de unidade
-# (`invalid_request`, path `to_location_id`, junto das recusas das linhas).
+# (`invalid_request`, path `to_location_id`, junto das recusas das linhas);
+# lote vencido (`expires_on` antes de hoje na cidade; o dia da validade ainda
+# vale) → `lot_expired`, path `items[i].lot_id`. Todo 422 traz `problems`.
 #
 # Todas as recusas voltam de uma vez: `error`/`path` do primeiro e `problems:
 # [ { path, error } ]` com todas (H8/H12), inclusive `insufficient_balance`,
@@ -46,23 +48,25 @@ module Pharmacy
 
     module_function
 
-    # -> Result.ok(transfer:, items:, movements:) | fail(:invalid_request, details: { path: }) |
-    # fail(:location_inactive, details: { path: }) |
+    # `to` nil (destino que o corpo não nomeou ou que não existe) entra como
+    # problema `to_location_id`, junto das linhas.
+    #
+    # -> Result.ok(transfer:, items:, movements:) | fail(:location_inactive, details: { path: }) |
     # fail(<primeiro erro>, details: { path:, problems: [ { path:, error: } ] })
     def call(from:, to:, items:, by:, now: Time.current)
-      return refuse("from") unless from.central?
+      return failure([ problem("from", :invalid_request) ]) unless from.central?
 
       problems = []
-      problems << problem("to_location_id", :invalid_request) unless to.unit?
+      problems << problem("to_location_id", :invalid_request) unless to&.unit?
       return Result.fail(:location_inactive, details: { path: "from" }) unless from.active
-      return Result.fail(:location_inactive, details: { path: "to_location_id" }) if to.unit? && !to.active
+      return Result.fail(:location_inactive, details: { path: "to_location_id" }) if to&.unit? && !to.active
 
       unless items.is_a?(Array) && items.size.between?(1, Catalog::MAX_TRANSFER_ITEMS)
         problems << problem("items", :invalid_request)
-        return problems.one? ? refuse("items") : failure(problems)
+        return failure(problems)
       end
 
-      rows, row_problems = validate_rows(items)
+      rows, row_problems = validate_rows(items, now.in_time_zone.to_date)
       problems += merge_by_line(row_problems, problems.any? || row_problems.any? ? balance_problems(from, rows) : [])
       return failure(problems) if problems.any?
 
@@ -95,8 +99,8 @@ module Pharmacy
       Result.ok(transfer: transfer, items: items, movements: movements)
     rescue Ledger::Insufficient => e
       # O trigger do banco, o cinto: só com o livro fora da trava.
-      row = rows.find { |candidate| candidate.lot.id == e.lot_id }
-      failure([ problem("items[#{row&.index.to_i}].quantity", :insufficient_balance) ])
+      row = rows.find { |candidate| candidate.lot.id == e.lot_id } or raise KeyError, "insufficient balance on a lot outside the transfer"
+      failure([ problem("items[#{row.index}].quantity", :insufficient_balance) ])
     rescue LocationInactive => e
       Result.fail(:location_inactive, details: { path: e.path })
     end
@@ -104,7 +108,7 @@ module Pharmacy
     # ---- validação (sem trava) ---------------------------------------------
 
     # -> [ [ Row ], [ problem ] ]. As linhas só valem sem problema algum.
-    def validate_rows(items)
+    def validate_rows(items, today)
       candidates = items.filter_map { |raw| raw["lot_id"] if raw.is_a?(Hash) && raw["lot_id"].is_a?(String) && raw["lot_id"].match?(UUID) }
       lots = StockLot.where(id: candidates.uniq).index_by(&:id)
       seen = Set.new
@@ -113,19 +117,23 @@ module Pharmacy
       items.each_with_index do |raw, index|
         next problems << problem("items[#{index}]", :invalid_request) unless raw.is_a?(Hash)
 
-        row, found = validate_row(raw, index, lots, seen)
+        row, found = validate_row(raw, index, lots, seen, today)
         problems.concat(found)
         rows << row if row
       end
       [ rows, problems ]
     end
 
-    def validate_row(raw, index, lots, seen)
+    def validate_row(raw, index, lots, seen, today)
       prefix = "items[#{index}]"
       problems = []
       lot = raw["lot_id"].is_a?(String) ? lots[raw["lot_id"]] : nil
       if lot.nil? || !seen.add?(lot.id)
         problems << problem("#{prefix}.lot_id", :invalid_items)
+        lot = nil
+      elsif lot.expires_on < today
+        # O dia da validade ainda vale; o lote imutável não precisa de trava.
+        problems << problem("#{prefix}.lot_id", :lot_expired)
         lot = nil
       end
       quantity = Quantity.parse(raw["quantity"])
@@ -167,14 +175,12 @@ module Pharmacy
 
     def problem(path, error) = { path: path, error: error.to_s }
 
-    def refuse(path) = Result.fail(:invalid_request, details: { path: path })
-
     def failure(problems)
       first = problems.first
       Result.fail(first[:error], details: { path: first[:path], problems: problems })
     end
 
     private_class_method :persist, :write, :validate_rows, :validate_row, :balance_problems, :merge_by_line, :lock_location, :short_problems,
-                         :problem, :refuse, :failure
+                         :problem, :failure
   end
 end

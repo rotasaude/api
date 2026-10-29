@@ -5,8 +5,8 @@
 #
 # Ordem: o local (422 se não existir), o papel (403 sozinho, antes de validar
 # qualquer coisa), local ativo (409 cedo, como os mínimos; o comando confere de
-# novo sob trava), `document.kind` e então o comando, que junta todas as recusas
-# em `problems`. O catálogo da plataforma é lido AQUI, fora da transação.
+# novo sob trava) e então o comando, que junta todas as recusas em `problems`
+# (inclusive `document`, `document.kind` e `items`). Todo 422 traz `problems`. O catálogo da plataforma é lido AQUI, fora da transação.
 module Pharmacy
   class EntriesController < BaseController
     RECEIPT_KINDS = %w[invoice donation].freeze
@@ -18,10 +18,9 @@ module Pharmacy
       return render_error(:location_inactive, :conflict) unless @location.active
 
       document = body_param("document")
-      return render_invalid("document") unless document.is_a?(Hash)
-      return render_invalid("document.kind") unless RECEIPT_KINDS.include?(document["kind"])
-
-      record(document["kind"])
+      # `document.kind` fora de invoice/donation (inclusive opening) segue como
+      # nil: o comando recusa junto com o resto (`problems`).
+      record(document.is_a?(Hash) && RECEIPT_KINDS.include?(document["kind"]) ? document["kind"] : nil)
     end
 
     def opening
@@ -36,7 +35,7 @@ module Pharmacy
     def load_location
       id = body_param("location_id")
       @location = uuid?(id) ? StockLocation.find_by(id: id) : nil
-      render_invalid("location_id") unless @location
+      render_refusal("location_id") unless @location
     end
 
     def allowed?(roles) = Access.allowed?(user: Current.user, location: @location, roles: roles)

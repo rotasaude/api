@@ -179,7 +179,7 @@ RSpec.describe Pharmacy::RecordEntry do
     it "items fora de 1..100 ou fora de lista é invalid_request em items" do
       [ [], nil, "x", { "a" => 1 }, Array.new(101) { |i| line(lot_number: "L#{i}") } ].each do |items|
         result = entry!(items)
-        expect([ result.reason, result.details[:path] ]).to eq([ :invalid_request, "items" ]), items.inspect[0, 30]
+        expect([ result.reason, result.details[:path], result.details[:problems] ]).to eq([ :invalid_request, "items", [ { path: "items", error: "invalid_request" } ] ]), items.inspect[0, 30]
       end
       expect(entry!(Array.new(100) { |i| line(lot_number: "L#{i}") })).to be_ok
     end
@@ -260,7 +260,10 @@ RSpec.describe Pharmacy::RecordEntry do
 
     it "kind desconhecido → invalid_request em document.kind" do
       result = entry!([ line ], kind: "gift")
-      expect([ result.reason, result.details[:path] ]).to eq([ :invalid_request, "document.kind" ])
+      expect([ result.reason, result.details[:path], result.details[:problems] ]).to eq([ :invalid_request, "document.kind", [ { path: "document.kind", error: "invalid_request" } ] ])
+      nil_kind = entry!([ line(quantity: "x", package: nil) ], kind: nil)
+      expect(nil_kind.details[:problems].map { |p| [ p[:path], p[:error] ] }).to eq([ [ "document.kind", "invalid_request" ], [ "items[0].quantity", "invalid_quantity" ] ])
+      expect(written).to eq([ 0, 0, 0, 0 ])
     end
   end
 

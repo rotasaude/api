@@ -42,12 +42,11 @@ module Pharmacy
 
     module_function
 
-    # -> Result.ok(transfer:, with_difference:) | fail(:already_received) |
-    # fail(:invalid_request, details: { path: }) | fail(:location_inactive) |
+    # -> Result.ok(transfer:, with_difference:) | fail(:already_received) | fail(:location_inactive) |
     # fail(<primeiro erro>, details: { path:, problems: [ { path:, error: } ] })
     def call(transfer:, items:, by:, now: Time.current)
       return Result.fail(:already_received) unless transfer.status == "sent"
-      return Result.fail(:invalid_request, details: { path: "items" }) unless items.is_a?(Array) && items.size.between?(1, Catalog::MAX_TRANSFER_ITEMS)
+      return failure([ problem("items", :invalid_request) ]) unless items.is_a?(Array) && items.size.between?(1, Catalog::MAX_TRANSFER_ITEMS)
 
       sent = transfer.items.includes(:stock_lot).to_a
       rows, problems = validate_rows(items, sent)
@@ -80,8 +79,8 @@ module Pharmacy
       Result.fail(:location_inactive)
     rescue Ledger::Insufficient => e
       # Só com o livro fora da trava (o destino nunca fica abaixo do que entrou).
-      row = rows.find { |candidate| candidate.item.stock_lot_id == e.lot_id }
-      failure([ problem("items[#{row&.index.to_i}].quantity_received", :insufficient_balance) ])
+      row = rows.find { |candidate| candidate.item.stock_lot_id == e.lot_id } or raise KeyError, "insufficient balance on a lot outside the transfer"
+      failure([ problem("items[#{row.index}].quantity_received", :insufficient_balance) ])
     end
 
     def receive_row(transfer, to, lot, row, by, now)

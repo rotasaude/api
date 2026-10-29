@@ -15,7 +15,10 @@
 # arredonda.
 #
 # Todas as recusas voltam de uma vez: `error`/`path` do primeiro e `problems:
-# [ { path, error } ]` com todos (H8/H12). Nada é gravado se houver recusa,
+# [ { path, error } ]` com todos (H8/H12), também as estruturais (`items`,
+# `document.kind`, `document`): todo 422 traz `problems` com pelo menos um.
+# `kind` é o do endpoint; o controlador manda nil quando `document.kind` do
+# corpo não é invoice/donation. Nada é gravado se houver recusa,
 # inclusive o lote que a tentativa criou: tudo numa transação que volta.
 #
 # Ordem de travas (a do módulo, veja Pharmacy::Ledger): lotes → local.
@@ -46,16 +49,14 @@ module Pharmacy
 
     module_function
 
-    # -> Result.ok(entry:, movements:) | fail(:invalid_request, details: { path: }) |
+    # -> Result.ok(entry:, movements:) |
     # fail(<primeiro erro>, details: { path:, problems: [ { path:, error: } ] })
     def call(location:, kind:, document:, items:, by:, catalog:, now: Time.current)
-      return Result.fail(:invalid_request, details: { path: "document.kind" }) unless Catalog::ENTRY_KINDS.include?(kind)
-
       today = now.in_time_zone.to_date
-      problems = kind == "opening" ? [] : document_problems(document)
+      problems = kind == "opening" ? [] : document_problems(document, kind)
       unless items.is_a?(Array) && items.size.between?(1, Catalog::MAX_ENTRY_ITEMS)
         problems << problem("items", :invalid_request)
-        return problems.one? ? structure_failure("items") : failure(problems)
+        return failure(problems)
       end
 
       rows, row_problems = validate_rows(items, catalog, today)
@@ -112,10 +113,11 @@ module Pharmacy
     # ---- validação (sem banco, fora da transação) --------------------------
 
     # -> [ { path:, error: } ]
-    def document_problems(document)
+    def document_problems(document, kind)
       return [ problem("document", :invalid_request) ] unless document.is_a?(Hash)
 
       found = []
+      found << problem("document.kind", :invalid_request) unless Catalog::ENTRY_KINDS.include?(kind)
       number = document["number"]
       found << problem("document.number", :invalid_request) unless number.is_a?(String) && number.match?(Catalog::DOCUMENT_NUMBER)
       supplier = document["supplier"]
@@ -304,8 +306,6 @@ module Pharmacy
 
     def problem(path, error) = { path: path, error: error.to_s }
 
-    def structure_failure(path) = Result.fail(:invalid_request, details: { path: path })
-
     def failure(problems)
       first = problems.first
       Result.fail(first[:error], details: { path: first[:path], problems: problems })
@@ -313,6 +313,6 @@ module Pharmacy
 
     private_class_method :persist, :write, :document_problems, :validate_rows, :validate_row, :quantity_and_package, :package_product,
                          :parse_date, :repeated_lot_problems, :stored_lot_problems, :merge_by_line, :ensure_lots, :find_lots, :mismatch_problems, :opening_problems,
-                         :mark_openings, :problem, :structure_failure, :failure
+                         :mark_openings, :problem, :failure
   end
 end

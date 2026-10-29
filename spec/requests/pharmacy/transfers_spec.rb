@@ -14,6 +14,7 @@ RSpec.describe "Farmácia — transferências", type: :request do
   let(:assistant) { pharmacy_staff!(farmacia, "pharmacy_assistant") }
   let!(:lot) { stocked_lot!(central, item: paracetamol, quantity: "120", lot_number: "TR-A") }
   let(:reason) { "Duas caixas chegaram molhadas e foram descartadas" }
+  let(:today) { Time.zone.today }
 
   def line(lot_record = lot, quantity = "100") = { lot_id: lot_record.id, quantity: quantity }
   def send_body(items = [ line ], to: farmacia) = { to_location_id: to.id, items: items }
@@ -90,12 +91,45 @@ RSpec.describe "Farmácia — transferências", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
-    it "to_location_id inexistente, ausente ou que não é uuid → 422 invalid_request com o path (nunca 404)" do
+    it "to_location_id inexistente, ausente ou que não é uuid → 422 invalid_request com o path e problems (nunca 404)" do
       sign_in_as(keeper)
       [ SecureRandom.uuid, nil, "lixo", 12 ].each do |bad|
         json_post "/pharmacy/transfers", { to_location_id: bad, items: [ line ] }
-        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "to_location_id" } ])
+        expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "to_location_id") ])
       end
+    end
+
+    it "to_location_id inválido junto de itens inválidos: as duas recusas voltam juntas, na ordem destino, linhas" do
+      sign_in_as(keeper)
+      json_post "/pharmacy/transfers", { to_location_id: SecureRandom.uuid, items: [ line(lot, "1,5"), { lot_id: SecureRandom.uuid, quantity: "1" } ] }
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body).to eq("error" => "invalid_request", "path" => "to_location_id",
+                              "problems" => [ { "path" => "to_location_id", "error" => "invalid_request" },
+                                              { "path" => "items[0].quantity", "error" => "invalid_quantity" },
+                                              { "path" => "items[1].lot_id", "error" => "invalid_items" } ])
+      json_post "/pharmacy/transfers", { to_location_id: nil, items: "x" }
+      expect(json_body["problems"]).to eq([ { "path" => "to_location_id", "error" => "invalid_request" }, { "path" => "items", "error" => "invalid_request" } ])
+      expect(written).to eq([ 0, 0, 1 ])
+    end
+
+    it "lote vencido → 422 lot_expired em items[i].lot_id, junto das outras; o dia da validade ainda vale" do
+      expired = stocked_lot!(central, item: paracetamol, quantity: "10", lot_number: "TR-VENC", expires_on: today - 1)
+      lastday = stocked_lot!(central, item: paracetamol, quantity: "10", lot_number: "TR-HOJE", expires_on: today)
+      sign_in_as(keeper)
+      json_post "/pharmacy/transfers", send_body([ line(expired, "5"), line(lot, "1,5") ])
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "lot_expired", "path" => "items[0].lot_id",
+                                                            "problems" => [ { "path" => "items[0].lot_id", "error" => "lot_expired" },
+                                                                            { "path" => "items[1].quantity", "error" => "invalid_quantity" } ] } ])
+      json_post "/pharmacy/transfers", send_body([ line(lastday, "5") ])
+      expect(response).to have_http_status(:created)
+    end
+
+    it "central inativo → 409 location_inactive com path from" do
+      central.update_columns(active: false)
+      sign_in_as(keeper)
+      json_post "/pharmacy/transfers", send_body
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "location_inactive", "path" => "from" } ])
+      expect(written).to eq([ 0, 0, 1 ])
     end
 
     it "destino que é o central → 422 com problems; destino inativo → 409 location_inactive com o path" do
@@ -132,7 +166,7 @@ RSpec.describe "Farmácia — transferências", type: :request do
       sign_in_as(keeper)
       [ [], Array.new(101) { line } ].each do |bad|
         json_post "/pharmacy/transfers", send_body(bad)
-        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "items" } ])
+        expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "items") ])
       end
     end
 
@@ -228,7 +262,7 @@ RSpec.describe "Farmácia — transferências", type: :request do
     it "faltando um lote → 422 invalid_items com path items" do
       sign_in_as(assistant)
       json_post "/pharmacy/transfers/#{transfer.id}/receive", { items: [] }
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "items" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "items") ])
       other = stocked_lot!(central, item: paracetamol, quantity: "10", lot_number: "TR-B")
       two = sent_transfer!([ lot, "10" ], [ other, "10" ])
       json_post "/pharmacy/transfers/#{two.id}/receive", { items: [ got(lot, "10") ] }
@@ -341,7 +375,7 @@ RSpec.describe "Farmácia — transferências", type: :request do
       expect(response).to have_http_status(:forbidden)
       [ {}, { location_id: "lixo" }, { location_id: SecureRandom.uuid } ].each do |params|
         get "/pharmacy/transfers", params: params
-        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "location_id" } ])
+        expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "location_id") ])
       end
     end
 
@@ -354,7 +388,7 @@ RSpec.describe "Farmácia — transferências", type: :request do
       get "/pharmacy/transfers", params: { location_id: farmacia.id, status: "received_with_difference" }
       expect(ids).to eq([])
       get "/pharmacy/transfers", params: { location_id: farmacia.id, status: "lost" }
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "status" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "status") ])
     end
 
     it "pagina por limit e before, sem repetir nem pular; limit e cursor inválidos → 422; chave desconhecida → 422 com o nome" do
@@ -369,11 +403,11 @@ RSpec.describe "Farmácia — transferências", type: :request do
       expect(json_body["next_before"]).to be_nil
       expect((page_one + ids)).to match_array([ older.id, newer.id, third.id ])
       get "/pharmacy/transfers", params: { location_id: farmacia.id, limit: 0 }
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_limit" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_limit", "limit") ])
       get "/pharmacy/transfers", params: { location_id: farmacia.id, before: "lixo" }
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_cursor" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_cursor", "before") ])
       get "/pharmacy/transfers", params: { location_id: farmacia.id, short_code: "ABC" }
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "short_code" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "short_code") ])
     end
 
     it "interruptor desligado → 403 feature_disabled" do

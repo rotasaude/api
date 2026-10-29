@@ -6,8 +6,9 @@
 # tem algum papel na origem ou no destino.
 #
 # Ordem (como as entradas): papel (403 sozinho, antes de validar o corpo) → o
-# que o corpo nomeia (`to_location_id` inexistente → 422 invalid_request com o
-# path) → o comando, que junta todas as recusas em `problems`. Recurso da URL
+# que o corpo nomeia → o comando, que junta todas as recusas em `problems`
+# (inclusive `to_location_id` inexistente e as estruturais). Todo 422 traz
+# `problems` com pelo menos um problema. Recurso da URL
 # (`transfers/:id`) de outro escopo → 404. O catálogo da plataforma é lido
 # AQUI, fora da transação.
 module Pharmacy
@@ -22,11 +23,12 @@ module Pharmacy
       central = StockLocation.find_by(kind: "central")
       return forbid unless central && Access.allowed?(user: Current.user, location: central, roles: SENDER_ROLES)
 
+      # Destino que o corpo não nomeia, não é uuid ou não existe segue como nil:
+      # o comando recusa (`to_location_id`) junto das linhas.
       id = body_param("to_location_id")
       to = uuid?(id) ? StockLocation.find_by(id: id) : nil
-      return render_invalid("to_location_id") unless to
-      return render_error(:location_inactive, :conflict) unless central.active
-      return render_failure(Result.fail(:location_inactive, details: { path: "to_location_id" })) if to.unit? && !to.active
+      return render_failure(Result.fail(:location_inactive, details: { path: "from" })) unless central.active
+      return render_failure(Result.fail(:location_inactive, details: { path: "to_location_id" })) if to&.unit? && !to.active
 
       result = SendTransfer.call(from: central, to: to, items: body_param("items"), by: Current.user)
       return render_failure(result) if result.failure?
@@ -53,15 +55,15 @@ module Pharmacy
       return unless query_only!(:location_id, :status, :before, :limit)
 
       location = listed_location
-      return render_invalid("location_id") unless location
+      return render_refusal("location_id") unless location
       return forbid if Access.roles_at(user: Current.user, location: location).empty?
 
       status = params[:status]
-      return render_invalid("status") if params.key?(:status) && !Catalog::TRANSFER_STATUSES.include?(status)
+      return render_refusal("status") if params.key?(:status) && !Catalog::TRANSFER_STATUSES.include?(status)
 
       limit = page_limit or return
       cursor = params.key?(:before) ? Cursor.decode(params[:before]) : nil
-      return render_error("invalid_cursor") if params.key?(:before) && !valid_cursor?(cursor)
+      return render_refusal("before", "invalid_cursor") if params.key?(:before) && !valid_cursor?(cursor)
 
       scope = StockTransfer.where("from_location_id = :id OR to_location_id = :id", id: location.id)
       scope = scope.where(status: status) if status
