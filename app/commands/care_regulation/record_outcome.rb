@@ -7,6 +7,11 @@
 #   missed    → Misses.apply! (Task 10): `missed` nunca é situação atual; a 1ª
 #               falta volta a `pending` (`external`, se state_regulated), a 2ª
 #               fecha o pedido (`closed`). A cota não é liberada.
+#
+# G15.2 (contrato §13): `completed` e `missed` só a partir do dia do
+# agendamento (fuso da cidade); antes → Result.fail(:outcome_before_schedule)
+# (422 no controller), conferido sob a trava depois de stale_version e
+# invalid_transition. No próprio dia vale.
 module CareRegulation
   module RecordOutcome
     RESULTS = %w[completed missed].freeze
@@ -14,7 +19,7 @@ module CareRegulation
     module_function
 
     # -> Result.ok(request:) | fail(:invalid_request, details: { path: }) |
-    # fail(:stale_version | :invalid_transition)
+    # fail(:stale_version | :invalid_transition | :outcome_before_schedule)
     def call(request:, result:, version:, by:)
       return invalid("result") unless result.is_a?(String) && RESULTS.include?(result)
       return invalid("version") unless version.is_a?(Integer)
@@ -23,6 +28,7 @@ module CareRegulation
         request.lock!(Decide::LOCK)
         next Result.fail(:stale_version) if version != request.version
         next Result.fail(:invalid_transition) unless request.status == "scheduled" && ScheduleExternal.external_network?(request)
+        next Result.fail(:outcome_before_schedule) if before_schedule_day?(request)
 
         if result == "missed"
           Misses.apply!(request: request, by: by)
@@ -35,7 +41,11 @@ module CareRegulation
       end
     end
 
+    # G15.2: o desfecho só vale a partir do DIA do agendamento. Os dois dias
+    # são os do fuso da cidade (Time.zone, dentro de CityConnection.with).
+    def before_schedule_day?(request) = !request.scheduled_at.nil? && Time.zone.today < request.scheduled_at.in_time_zone.to_date
+
     def invalid(path) = Result.fail(:invalid_request, details: { path: path })
-    private_class_method :invalid
+    private_class_method :invalid, :before_schedule_day?
   end
 end

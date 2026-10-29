@@ -16,7 +16,9 @@ RSpec.describe "Regulação — prestador externo e estado", type: :request do
   let(:regulator) { care_regulator! }
   let(:offer) { offer!(provider: external_provider!) }
   let(:place) { "Hospital Regional — ambulatório 3" }
-  let(:at) { (now + 10.days).change(hour: 14).iso8601 }
+  # G15.2: o desfecho só vale a partir do dia do agendamento; o horário padrão é
+  # do próprio dia do `now`, para os specs de desfecho não viajarem no tempo.
+  let(:at) { now.change(hour: 14).iso8601 }
 
   before do
     tick_regulation_events!
@@ -321,6 +323,23 @@ RSpec.describe "Regulação — prestador externo e estado", type: :request do
       json_post "/regulation/requests/#{request.id}/outcome", result: "completed", version: request.version - 1
       expect([ response.status, json_body ]).to eq([ 409, { "error" => "stale_version" } ])
       expect(request.reload.status).to eq("scheduled")
+    end
+
+    it "antes do dia do agendamento → 422 outcome_before_schedule; nada muda; no dia, 200" do
+      request = external_request!
+      schedule!(request, at: (now + 2.days).change(hour: 14).iso8601)
+      version = request.reload.version
+      %w[completed missed].each do |result|
+        json_post "/regulation/requests/#{request.id}/outcome", result: result, version: version
+        expect([ response.status, json_body ]).to eq([ 422, { "error" => "outcome_before_schedule" } ])
+      end
+      expect(request.reload).to have_attributes(status: "scheduled", version: version, misses: 0)
+      expect(published("completed").count + published("missed").count).to eq(0)
+
+      travel_to (now + 2.days).change(hour: 8)
+      outcome!(request, "completed")
+      expect(response).to have_http_status(:ok)
+      expect(json_body).to include("status" => "completed")
     end
 
     it "só o regulador → 403" do
