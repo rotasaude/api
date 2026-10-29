@@ -242,6 +242,17 @@ RSpec.describe "Farmácia — meus locais, mínimos e busca de item", type: :req
                                             { "path" => "minimums[1]", "error" => "invalid_request" } ])
     end
 
+    it "mais de 500 linhas → 422 invalid_request path minimums, sem gravar; 500 passa pelo teto" do
+      sign_in_as(keeper)
+      row = { catalog_item_id: losartana.id, minimum: "1" }
+      json_put "/pharmacy/locations/#{farmacia.id}/minimums", minimums: Array.new(501) { row }
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "minimums" } ])
+      json_put "/pharmacy/locations/#{farmacia.id}/minimums", minimums: Array.new(500) { row }
+      expect(json_body["path"]).to eq("minimums[1].catalog_item_id") # passou do teto; os repetidos é que são recusados
+      expect(json_body["problems"].size).to eq(499)
+      expect(minimums_of(farmacia)).to be_empty
+    end
+
     it "corpo sem a lista `minimums` (ou com outro tipo) → 422 invalid_request path minimums; query não vale como corpo" do
       sign_in_as(keeper)
       json_put "/pharmacy/locations/#{farmacia.id}/minimums", {}
@@ -329,6 +340,14 @@ RSpec.describe "Farmácia — meus locais, mínimos e busca de item", type: :req
       end
       post "/pharmacy/items/search?q=losart", params: "{}", headers: { "CONTENT_TYPE" => "application/json" }
       expect(json_body).to eq("error" => "invalid_request", "path" => "q")
+    end
+
+    it "q com mais de 60 caracteres → 422 invalid_request path q; 60 passa" do
+      sign_in_as(pharmacist)
+      json_post "/pharmacy/items/search", q: "a" * 61
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "q" } ])
+      json_post "/pharmacy/items/search", q: "a" * 60
+      expect([ response.status, json_body ]).to eq([ 200, { "items" => [] } ])
     end
 
     it "catálogo indisponível → 503 catalog_unavailable" do

@@ -1,5 +1,5 @@
 # POST /pharmacy/items/search (contrato §13 H2, P3): busca no catálogo CATMAT
-# para quem não é profissional de saúde. `{ q }` só no CORPO; qualquer papel
+# para quem não é profissional de saúde. `{ q }` só no CORPO, até 60 caracteres; qualquer papel
 # da farmácia ou o municipal_admin. Sem filtro de REMUME. Catálogo ou listas
 # Anvisa ausentes → 503 catalog_unavailable. Resposta `{ items: [ <item> ] }`,
 # sem dado de paciente.
@@ -9,7 +9,7 @@ module Pharmacy
 
     def search
       q = body_param("q")
-      return render_invalid("q") unless q.is_a?(String)
+      return render_invalid("q") unless q.is_a?(String) && q.length <= Catalog::SEARCH_QUERY_MAX
 
       ids = Medications::Search.call(q: q).map { |hit| hit.fetch(:id) }
       catalog = Json.catalog_for(ids)

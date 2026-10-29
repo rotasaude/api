@@ -1,5 +1,6 @@
 # Substitui a lista de estoque mínimo de um local (ADR 0045; contrato §3).
-# `rows`: lista de `{ "catalog_item_id", "minimum" }`; o item precisa estar ATIVO
+# `rows`: lista de até `MAX_MINIMUM_ROWS` (500) `{ "catalog_item_id", "minimum" }`
+# (mais que isso → `invalid_request` `path: "minimums"`); o item precisa estar ATIVO
 # no catálogo da plataforma e não pode se repetir; `minimum` é a quantidade como
 # no papel (String com ponto, até 2 casas; "0" vale e desliga o alerta).
 #
@@ -18,7 +19,7 @@ module Pharmacy
     # -> Result.ok(changed:) | fail(:invalid_request, details: { path: "minimums" }) |
     # fail(<primeiro erro>, details: { path:, problems: [ { path:, error: } ] }).
     def call(location:, rows:, by:)
-      return Result.fail(:invalid_request, details: { path: "minimums" }) unless rows.is_a?(Array)
+      return Result.fail(:invalid_request, details: { path: "minimums" }) unless rows.is_a?(Array) && rows.size <= Catalog::MAX_MINIMUM_ROWS
 
       wanted, problems = validate(rows)
       if problems.any?

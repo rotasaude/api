@@ -154,6 +154,75 @@ RSpec.describe "Farmácia — administração", type: :request do
       expect(unit.reload.dispenses).to be(true)
     end
 
+    # Pendência além do saldo: transferência enviada e ajuste por decidir.
+    def sent_transfer!(from:, to:, lot:)
+      transfer = StockTransfer.create!(from_location: from, to_location: to, sent_by_user: admin, status: "sent", sent_at: Time.current)
+      StockTransferItem.create!(stock_transfer: transfer, stock_lot: lot, quantity_sent: 5)
+      transfer
+    end
+
+    it "transferência enviada PARA o local (em trânsito) → 409 location_has_stock; recebida, desativa" do
+      location = unit_location!(unit)
+      lot = stocked_lot!(central_location!, item: losartana, quantity: "30")
+      transfer = sent_transfer!(from: central_location!, to: location, lot: lot)
+      stepped_up!(admin)
+      json_patch "/pharmacy/admin/locations/#{location.id}", active: false
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "location_has_stock" } ])
+      expect(location.reload.active).to be(true)
+      expect(unit.reload.dispenses).to be(true)
+      expect(events).to be_empty
+
+      transfer.update!(status: "received", received_at: Time.current, received_by_user: admin)
+      json_patch "/pharmacy/admin/locations/#{location.id}", active: false
+      expect(response).to have_http_status(:ok)
+      expect(unit.reload.dispenses).to be(false)
+    end
+
+    it "transferência enviada DO local (origem) → 409 location_has_stock; o central só desativa sem saída em trânsito" do
+      central = central_location!
+      lot = stocked_lot!(central, item: losartana, quantity: "30")
+      zero_out!(central, lot)
+      transfer = sent_transfer!(from: central, to: unit_location!(unit), lot: lot)
+      stepped_up!(admin)
+      json_patch "/pharmacy/admin/locations/#{central.id}", active: false
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "location_has_stock" } ])
+      expect(central.reload.active).to be(true)
+
+      transfer.update!(status: "received", received_at: Time.current, received_by_user: admin)
+      json_patch "/pharmacy/admin/locations/#{central.id}", active: false
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "transferência já recebida, ou entre outros locais, não impede" do
+      location = unit_location!(unit)
+      lot = stocked_lot!(central_location!, item: losartana, quantity: "30")
+      other = sent_transfer!(from: central_location!, to: unit_location!, lot: lot)
+      done = sent_transfer!(from: central_location!, to: location, lot: lot)
+      done.update!(status: "received", received_at: Time.current, received_by_user: admin)
+      stepped_up!(admin)
+      json_patch "/pharmacy/admin/locations/#{location.id}", active: false
+      expect(response).to have_http_status(:ok)
+      expect(other.reload.status).to eq("sent")
+    end
+
+    it "ajuste pendente em lote do local → 409 location_has_stock; decidido, desativa" do
+      location = unit_location!(unit)
+      lot = stocked_lot!(location, item: losartana, quantity: "30")
+      zero_out!(location, lot)
+      adjustment = StockAdjustment.create!(stock_location: location, stock_lot: lot, kind: "adjustment", status: "pending", quantity: 5,
+                                           counted_quantity: 5, balance_at_request: 0, reason: "Contagem do inventário de outubro",
+                                           requested_by_user: admin)
+      stepped_up!(admin)
+      json_patch "/pharmacy/admin/locations/#{location.id}", active: false
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "location_has_stock" } ])
+      expect(location.reload.active).to be(true)
+      expect(events).to be_empty
+
+      adjustment.update!(status: "rejected", decided_by_user: pharmacy_staff!(location, "stock_keeper"), decided_at: Time.current, decision_reason: "Contagem errada")
+      json_patch "/pharmacy/admin/locations/#{location.id}", active: false
+      expect(response).to have_http_status(:ok)
+    end
+
     it "saldo em lote de outro local não impede a desativação" do
       location = unit_location!(unit)
       stocked_lot!(unit_location!, item: losartana, quantity: "30")

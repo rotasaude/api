@@ -4,7 +4,9 @@
 # e único sem diferenciar caixa. Criar ou ativar um local de unidade grava
 # `health_units.dispenses = true`; desativar grava `false` (mesma transação).
 #
-# Desativar com saldo > 0 em algum lote → `location_has_stock`. A ordem de
+# Desativar com saldo > 0 em algum lote, com transferência `sent` (origem OU
+# destino no local) ou com ajuste `pending` em lote do local → `location_has_stock`
+# (um código só: o local ainda tem o que resolver). A ordem de
 # travas do módulo vale aqui: LOTES → LOCAL (a dispensação trava os lotes, depois
 # o local com FOR SHARE; travar o local primeiro, com FOR UPDATE, cruzaria com
 # ela). Por isso a desativação trava os lotes do local ANTES do local e só então
@@ -72,7 +74,7 @@ module Pharmacy
         locked = StockLocation.lock.find(location.id)
         active = attrs.key?("active") ? attrs["active"] : locked.active
         next refuse("name") if name && name != locked.name && name_taken?(name, except: locked.id)
-        next Result.fail(:location_has_stock) if locked.active && !active && stocked?(locked)
+        next Result.fail(:location_has_stock) if locked.active && !active && (stocked?(locked) || pending_work?(locked))
 
         outcome = apply(locked, name: name, active: active, by: by)
         outcome.is_a?(Result) ? outcome : Result.ok(location: outcome)
@@ -119,6 +121,13 @@ module Pharmacy
       Ledger.balances(location_id: location.id, lot_ids: lot_ids_of(location)).values.any?(&:positive?)
     end
 
+    # Transferência enviada e ainda não recebida (de ou para o local) ou ajuste
+    # por decidir num lote do local; lido com o local já travado.
+    def pending_work?(location)
+      StockTransfer.where(status: "sent").where("from_location_id = :id OR to_location_id = :id", id: location.id).exists? ||
+        StockAdjustment.where(stock_location_id: location.id, status: "pending").exists?
+    end
+
     def valid_name(value)
       return nil unless value.is_a?(String)
 
@@ -146,7 +155,7 @@ module Pharmacy
 
     def refuse(path) = Result.fail(:invalid_request, details: { path: path })
 
-    private_class_method :create, :update, :apply, :lock_unit, :mark_dispenses, :lot_ids_of, :lock_lots_of, :stocked?, :valid_name,
+    private_class_method :create, :update, :apply, :lock_unit, :mark_dispenses, :lot_ids_of, :lock_lots_of, :stocked?, :pending_work?, :valid_name,
                          :name_taken?, :conflict, :publish, :refuse
   end
 end
