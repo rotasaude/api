@@ -245,6 +245,9 @@ Rails.application.config.to_prepare do
   # alterados (`subject`: location, staff, settings ou minimums); só trilha, só
   # ids (stock_location_id, staff_user_id, user_id), sem consumidor.
   DomainEvents.bind "pharmacy.settings_changed", to: []
+  # Entrada de estoque gravada (nota, doação ou inventário de abertura); só
+  # trilha, só ids (stock_entry_id, user_id), sem consumidor.
+  DomainEvents.bind "stock_receipt.recorded", to: []
   # Andamento do pedido de regulação (CareRegulation::Transition; contrato §11,
   # §13 G6) e prestadores/ofertas (R12): só ids (regulation_request_id e
   # user_id; care_provider_id/care_offer_id e user_id) — nunca alvo, cor,

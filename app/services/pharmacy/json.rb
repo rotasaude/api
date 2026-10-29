@@ -46,6 +46,15 @@ module Pharmacy
         lot_number: lot.lot_number, expires_on: lot.expires_on.iso8601, manufacturer: lot.manufacturer }
     end
 
+    # Entrada gravada (nota, doação ou abertura): `{ id, kind, location, items, at }`,
+    # sem envelope. Um item por movimento, na ordem do pedido, com a quantidade
+    # em duas casas. `movements` carrega o lote (`stock_lot`).
+    def entry(entry, movements:, catalog:)
+      { id: entry.id, kind: entry.kind, location: location(entry.stock_location),
+        items: movements.map { |movement| { lot: lot(movement.stock_lot, catalog: catalog), quantity: Quantity.dump(movement.quantity) } },
+        at: entry.created_at.iso8601 }
+    end
+
     # Os cinco parâmetros da cidade, como o contrato §3.
     def settings(setting) = Catalog::SETTING_RANGES.keys.index_with { |key| setting.public_send(key) }
 

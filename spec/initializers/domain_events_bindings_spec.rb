@@ -314,4 +314,11 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include("pharmacy.settings_changed")
     expect(DomainEvents.registry["pharmacy.settings_changed"]).to be_empty
   end
+
+  # Entrada de estoque (nota, doação, abertura); só ids (stock_entry_id,
+  # user_id), sem consumidor.
+  it "declares stock_receipt.recorded with no consumer" do
+    expect(DomainEvents.registry.keys).to include("stock_receipt.recorded")
+    expect(DomainEvents.registry["stock_receipt.recorded"]).to be_empty
+  end
 end

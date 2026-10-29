@@ -48,28 +48,30 @@ module PharmacyHelpers
   def fluoxetina = controlled_item!(code: 9_900_001, ingredient: "FLUOXETINA", list: "C1")
   def diazepam = controlled_item!(code: 9_900_002, ingredient: "DIAZEPAM", list: "B1", strength: "10 mg")
 
-  # Lote com saldo no local: pela abertura quando o item ainda não tem
-  # abertura no local, senão por nota. Grava as linhas cruas (entrada,
-  # abertura, movimento), sem o comando da Task 5 (Pharmacy::RecordEntry), que
-  # pode passar a ser o caminho daqui quando existir.
+  # Lote com saldo no local, pelo caminho real (Pharmacy::RecordEntry): a
+  # abertura quando o item ainda não tem abertura no local, senão uma nota. O
+  # LOTE nasce aqui, com a unidade "comprimido" (a que os specs das Tasks 3 e 4
+  # esperam, qualquer que seja a regra do YAML do item); o comando só o
+  # reaproveita. Lote já vencido (testes de vencimento) entra com o relógio do
+  # comando no dia da validade, que ainda vale: o movimento fica datado nele.
   def stocked_lot!(location, item:, quantity: "30", lot_number: "L#{SecureRandom.hex(3).upcase}", expires_on: Time.zone.today + 180, by: nil)
     by ||= pharmacy_admin!
+    expires_on = expires_on.to_date
     lot = StockLot.find_by(catalog_item_id: item.id, lot_number: lot_number)
-    if lot && lot.expires_on != expires_on.to_date
+    if lot && lot.expires_on != expires_on
       raise ArgumentError, "stocked_lot!: lote #{lot_number} já gravado com outro expires_on (#{lot.expires_on})"
     end
     lot ||= StockLot.create!(catalog_item_id: item.id, catmat_code: item.catmat_code, lot_number: lot_number, expires_on: expires_on,
                              dispensing_unit: "comprimido", created_by_user: by)
     opening = !StockOpening.exists?(stock_location_id: location.id, catalog_item_id: item.id)
-    entry = if opening
-              StockEntry.create!(stock_location: location, kind: "opening", recorded_by_user: by)
-            else
-              StockEntry.create!(stock_location: location, kind: "invoice", document_number: "NF-#{SecureRandom.hex(3)}",
-                                 supplier: "Distribuidora de Teste", recorded_by_user: by)
-            end
-    StockOpening.create!(stock_location: location, catalog_item_id: item.id, stock_entry: entry) if opening
-    StockMovement.create!(stock_location: location, stock_lot: lot, catalog_item_id: item.id, kind: Pharmacy::Catalog::ENTRY_MOVEMENT.fetch(entry.kind),
-                          quantity: BigDecimal(quantity), stock_entry: entry, recorded_by_user: by, recorded_at: Time.current)
+    result = Pharmacy::RecordEntry.call(
+      location: location, kind: opening ? "opening" : "invoice",
+      document: { "number" => "NF-#{SecureRandom.hex(3)}", "supplier" => "Distribuidora de Teste" },
+      items: [ { "catalog_item_id" => item.id, "lot_number" => lot_number, "expires_on" => expires_on.iso8601, "quantity" => quantity.to_s } ],
+      by: by, catalog: { item.id => item }, now: [ Time.current, expires_on.in_time_zone ].min
+    )
+    raise ArgumentError, "stocked_lot!: #{result.reason} #{result.details.inspect}" if result.failure?
+
     lot
   end
 

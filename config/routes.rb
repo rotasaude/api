@@ -524,6 +524,9 @@ Rails.application.routes.draw do
     get    "locations/:id/minimums",    to: "minimums#show"
     put    "locations/:id/minimums",    to: "minimums#update"
     post   "items/search",              to: "items#search"
+    # Entradas por nota ou doação e inventário de abertura (Task 5).
+    post   "receipts",                  to: "entries#receipt"
+    post   "openings",                  to: "entries#opening"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.
