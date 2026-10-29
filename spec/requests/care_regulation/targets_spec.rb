@@ -108,4 +108,11 @@ RSpec.describe "Regulação — alvos", type: :request do
     get "/regulation/targets", params: { type: "specialty" }
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "care_regulation" } ])
   end
+
+  it "regulação ligada e prontuário desligado → 403 feature_disabled apontando clinical_record" do
+    Platform::Features.set!(city: city, key: "clinical_record", enabled: false, maintainer: ledi_maintainer!)
+    sign_in_as(doctor)
+    get "/regulation/targets", params: { type: "specialty" }
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "clinical_record" } ])
+  end
 end

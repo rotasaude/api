@@ -105,9 +105,18 @@ module CareRegulation
                   terms = ClinicalTerms.fold(text).split
                   rows.select { |_code, _name, folded| terms.all? { |term| folded.include?(term) } }
                 end
+      matched = without_exam_catalog(matched)
       matched.first(limit).map do |code, name, _folded|
         Target.new(type: "procedure", code: code, name: name, group: "procedure", label: name)
       end
+    end
+
+    # Exame ativo no catálogo do 21a (grupo 02) o `resolve` recusa com
+    # hint "exam_order": a busca não o oferece. Lido a cada busca (o catálogo
+    # muda; o índice abaixo é imutável).
+    def without_exam_catalog(rows)
+      exam_codes = ExamCatalogItem.where(active: true).pluck(:sigtap_code).to_set
+      rows.reject { |code, _name, _folded| code[0, 2] == EXAM_GROUP && exam_codes.include?(code) }
     end
 
     # [código, nome, nome dobrado] dos procedimentos reguláveis da release
@@ -128,6 +137,6 @@ module CareRegulation
       Result.fail(:invalid_target, details: { path: "target_code", hint: hint }.compact)
     end
     private_class_method :specialty, :resolve_procedure, :exam_catalog?, :search_specialties, :search_procedures,
-                         :procedure_index, :invalid, :rules
+                         :procedure_index, :without_exam_catalog, :invalid, :rules
   end
 end

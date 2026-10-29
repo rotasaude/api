@@ -3,6 +3,8 @@
 # iguais valem). Upsert das quatro linhas; evento só quando algum prazo muda.
 module CareRegulation
   module SaveDeadlines
+    KEY_PATH_MAX = 64
+
     module_function
 
     # attrs: corpo JSON (chaves texto). -> Result.ok(deadlines: { "red" => 7, … }) |
@@ -10,6 +12,9 @@ module CareRegulation
     # fail(:invalid_deadlines, details: { path: "<cor menos grave>" }).
     def call(attrs:, by:)
       attrs = attrs.to_h.stringify_keys
+      unknown = attrs.keys.find { |key| Catalog::COLORS.exclude?(key) }
+      return refuse(:invalid_request, unknown.to_s[0, KEY_PATH_MAX]) if unknown
+
       Catalog::COLORS.each do |color|
         value = attrs[color]
         return refuse(:invalid_request, color) unless value.is_a?(Integer) && Catalog::DEADLINE_DAYS.cover?(value)

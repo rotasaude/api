@@ -45,7 +45,7 @@ module CareRegulation
       today = now.in_time_zone.to_date
       ApplicationRecord.transaction(requires_new: true) do
         offer = CareOffer.lock.find_by(id: offer_id)
-        request.lock!
+        request.lock!(Decide::LOCK)
         next Result.fail(:stale_version) if version != request.version
         next Result.fail(:invalid_transition) unless request.status == "pending" && !request.state_regulated
         next Result.fail(:invalid_offer) unless offer && authorizable?(offer, request, today)

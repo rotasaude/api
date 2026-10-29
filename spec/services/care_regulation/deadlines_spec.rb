@@ -46,6 +46,15 @@ RSpec.describe CareRegulation::Deadlines do
     expect(RegulationRiskDeadline.pluck(:color, :days).to_h).to eq("red" => 1, "yellow" => 2, "green" => 3, "blue" => 4)
   end
 
+  it "chave desconhecida (ex.: orange) → invalid_request com path, sem gravar nada" do
+    rows!
+    base = { "red" => 7, "yellow" => 30, "green" => 90, "blue" => 180 }
+    result = save(base.merge("orange" => 10, "red" => 1))
+    expect([ result.reason, result.details ]).to eq([ :invalid_request, { path: "orange" } ])
+    expect(described_class.all).to eq(base)
+    expect(save(base.merge("x" * 200 => 1)).details.fetch(:path).length).to eq(CareRegulation::SaveDeadlines::KEY_PATH_MAX)
+  end
+
   it "os quatro são obrigatórios, inteiros de 1 a 365" do
     rows!
     base = { "red" => 7, "yellow" => 30, "green" => 90, "blue" => 180 }

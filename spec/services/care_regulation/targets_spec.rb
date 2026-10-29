@@ -121,6 +121,19 @@ RSpec.describe CareRegulation::Targets do
       expect(described_class.search(type: "procedure", query: "04019", on: on, limit: 7).size).to eq(7)
     end
 
+    it "exame ativo no catálogo do 21a não aparece na busca (o resolve o recusaria); inativo volta" do
+      expect(described_class.search(type: "procedure", query: "esofago").map(&:code)).to include("0209010037")
+      expect(described_class.search(type: "procedure", query: "0209").map(&:code)).to include("0209010037")
+
+      exam_catalog_item!(sigtap_code: "0209010037")
+      expect(described_class.search(type: "procedure", query: "esofago").map(&:code)).not_to include("0209010037")
+      expect(described_class.search(type: "procedure", query: "0209").map(&:code)).not_to include("0209010037")
+      expect(resolve("procedure", "0209010037").details).to include(hint: "exam_order")
+
+      ExamCatalogItem.find_by!(sigtap_code: "0209010037").update!(active: false)
+      expect(described_class.search(type: "procedure", query: "esofago").map(&:code)).to include("0209010037")
+    end
+
     it "tipo desconhecido → vazio" do
       expect(described_class.search(type: "exam", query: "cardio")).to eq([])
     end

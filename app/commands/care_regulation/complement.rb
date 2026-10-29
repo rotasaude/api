@@ -43,7 +43,7 @@ module CareRegulation
       return Result.fail(:cbo_not_allowed) unless cbo
 
       ApplicationRecord.transaction(requires_new: true) do
-        request.lock!
+        request.lock!(Decide::LOCK)
         next Result.fail(:stale_version) if version != request.version
         next Result.fail(:invalid_transition) unless request.status == "returned"
 
