@@ -116,6 +116,22 @@ RSpec.describe "Regulação — prestador externo e estado", type: :request do
       expect(payload.to_s + last.reason.to_s).not_to include("987654321", "care")
     end
 
+    it "external → external com os mesmos valores (versão atual): versão sobe, mas sem andamento nem evento novo" do
+      request = external_request!
+      expect { mark!(request) }.not_to change { [ request.events.count, published("external").count ] }
+      expect(response).to have_http_status(:ok)
+      expect(json_body).to include("status" => "external", "version" => request.version + 1,
+                                   "external" => { "system" => "sisreg", "number" => "123456789" })
+      expect(json_body["events"].map { |e| e["status"] }).to eq(%w[pending external])
+    end
+
+    it "external → external trocando só o sistema, ou só o número: cada um deixa rastro" do
+      request = external_request!
+      expect { mark!(request, system: "care") }.to change { request.events.count }.by(1).and change { published("external").count }.by(1)
+      request.reload
+      expect { mark!(request, system: "care", number: "555666777") }.to change { request.events.count }.by(1).and change { published("external").count }.by(1)
+    end
+
     it "só o care_regulator: profissional e administrador → 403; id desconhecido ou de rascunho → 404" do
       request = regulation_request!
       [ doctor!(create_unit("UBS Externo")), regulation_admin! ].each do |user|
