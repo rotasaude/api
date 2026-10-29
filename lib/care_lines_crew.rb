@@ -132,7 +132,7 @@ class CareLinesCrew
       %i[maria rafael juliana osvaldo sebastiao].each { |key| CareLines::Suggest.for_citizen(people[key].id) if people.key?(key) }
       overdue_triage!(people[:jose]) if people.key?(:jose)
 
-      { switch: switch_label(city), team: team.name, people: PEOPLE.values.map { |p| p[:name] },
+      { switch: switch_label(city), team: team.name, people: people.keys.map { |key| PEOPLE.fetch(key)[:name] },
         pending: CareLineSuggestion.pending_suggestions.where(team_id: team.id).count,
         users: [ { email: technician.email_address, role: TECHNICIAN_ROLES.join(" + "), otpauth_uri: SignatureCrew.otpauth_uri(technician) } ] }
     end

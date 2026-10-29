@@ -256,6 +256,9 @@ RSpec.describe CareLinesCrew, type: :request do
       expect { result = seed }.to output(/linhas de cuidado: jose com óbito registrado/).to_stderr
       aggregate_failures do
         expect(result).to include(switch: "ligado (care_lines)", team: team.name)
+        expect(result[:people]).not_to include(described_class::PEOPLE.fetch(:jose)[:name])
+        expect(result[:people]).to include(described_class::PEOPLE.fetch(:ana)[:name])
+        expect(result[:people].size).to eq(described_class::PEOPLE.size - 1)
         expect(enrollment_of(jose, line("diabetes_c4"))).to be_nil
         expect(CareLineEnrollment.where(patient_id: jose.patient_id).pluck(:status, :ended_reason)).to eq([ %w[ended death] ])
         expect(enrollment_of(person(:ana), line("pregnancy_c3"))).to be_present
