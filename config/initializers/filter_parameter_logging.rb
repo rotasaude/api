@@ -81,7 +81,12 @@ Rails.application.config.filter_parameters += [
   # paciente procura e quão grave é: filtrados. O `filtered_path` só mascara o
   # valor na linha "Started GET"; a fila (query) segue funcionando.
   :justification, /\Acid10\z/, /\Aciap2\z/, :external_number, :schedule_notes, :place,
-  /\A(target_code|suggested_color|color|result)\z/
+  /\A(target_code|suggested_color|color|result)\z/,
+  # ADR 0045: farmácia — o prescritor e o número da notificação da receita
+  # externa, a retenção do controlado/antimicrobiano e as quantidades contadas
+  # e recebidas (`reason`, `short_code`, `items`, `new_patient`, `cpf`, `cns` e
+  # `dosage_instructions` já estavam acima).
+  /\A(prescriber|retention|notification_number|counted_quantity|quantity_received)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

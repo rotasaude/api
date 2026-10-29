@@ -138,7 +138,14 @@ module Platform
       # ficam como estão; o desfecho "encaminhado" volta à regra do 17.
       Entry.new(key: "care_regulation",
                 description: "Regulação municipal: pedido de regulação na consulta, fila por cor e espera, ofertas e cotas por prestador e convivência com o sistema do estado",
-                requires: %w[feature:clinical_record])
+                requires: %w[feature:clinical_record]),
+      # ADR 0045: farmácia e almoxarifado (módulo 27a). Sem pré-requisito: o
+      # estoque e a dispensação pela receita externa não dependem do prontuário.
+      # Desligado: as rotas /pharmacy/* respondem feature_disabled; a linha do
+      # tempo e a última retirada seguem mostrando o que já existe.
+      Entry.new(key: "pharmacy",
+                description: "Farmácia e almoxarifado: estoque por local com lotes e validade, transferências, inventário e dispensação pela receita",
+                requires: [])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
