@@ -59,7 +59,7 @@ module Pharmacy
       end
 
       rows, row_problems = validate_rows(items, catalog, today)
-      problems += row_problems
+      problems += merge_by_line(row_problems, stored_lot_problems(rows))
       return failure(problems) if problems.any?
 
       persist(location: location, kind: kind, document: document, rows: rows, by: by, now: now)
@@ -232,6 +232,21 @@ module Pharmacy
       clash ? [ problem("items[#{row.index}].lot_number", :lot_mismatch) ] : []
     end
 
+    # O lote gravado é imutável: a divergência com ele vale sem trava, sobre as
+    # linhas válidas, mesmo quando outra linha já falhou (todas as recusas de
+    # uma vez). Dentro da transação o `write` confere de novo (a corrida).
+    def stored_lot_problems(rows)
+      return [] if rows.empty?
+
+      mismatch_problems(rows, find_lots(rows.map(&:key).uniq))
+    end
+
+    # Recusas na ordem das linhas (as de campo e as do lote gravado; uma linha
+    # só tem as do lote quando é válida), sem repetir path + erro.
+    def merge_by_line(row_problems, stored)
+      (row_problems + stored).uniq.each_with_index.sort_by { |found, position| [ found[:path][/\Aitems\[(\d+)\]/, 1].to_i, position ] }.map(&:first)
+    end
+
     # ---- lotes e abertura (com banco, dentro da transação) -----------------
 
     # Lotes por (item, número): os que já existem, e os que faltam criados em
@@ -297,7 +312,7 @@ module Pharmacy
     end
 
     private_class_method :persist, :write, :document_problems, :validate_rows, :validate_row, :quantity_and_package, :package_product,
-                         :parse_date, :repeated_lot_problems, :ensure_lots, :find_lots, :mismatch_problems, :opening_problems,
+                         :parse_date, :repeated_lot_problems, :stored_lot_problems, :merge_by_line, :ensure_lots, :find_lots, :mismatch_problems, :opening_problems,
                          :mark_openings, :problem, :structure_failure, :failure
   end
 end

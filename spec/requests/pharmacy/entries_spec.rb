@@ -115,6 +115,18 @@ RSpec.describe "Farmácia — entradas e inventário de abertura", type: :reques
       expect([ response.status, json_body ]).to eq([ 422, refusal("lot_mismatch", "items[0].lot_number") ])
     end
 
+    it "H8: invalid_quantity numa linha e lot_mismatch contra lote existente noutra → as duas em problems, na ordem das linhas" do
+      sign_in_as(keeper)
+      json_post "/pharmacy/receipts", receipt([ line ])
+      before = written
+      json_post "/pharmacy/receipts", receipt([ line(lot_number: "NOVO-1", package: nil, quantity: "1,5"), line(expires_on: (today + 366).iso8601) ])
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to eq("error" => "invalid_quantity", "path" => "items[0].quantity",
+                              "problems" => [ { "path" => "items[0].quantity", "error" => "invalid_quantity" },
+                                              { "path" => "items[1].lot_number", "error" => "lot_mismatch" } ])
+      expect(written).to eq(before)
+    end
+
     it "o dia da validade ainda vale: expires_on de hoje é aceito, o de ontem não" do
       sign_in_as(keeper)
       json_post "/pharmacy/receipts", receipt([ line(expires_on: today.iso8601) ])
@@ -161,6 +173,25 @@ RSpec.describe "Farmácia — entradas e inventário de abertura", type: :reques
       central.update!(active: false)
       json_post "/pharmacy/receipts", receipt([ line ])
       expect([ response.status, json_body ]).to eq([ 409, { "error" => "location_inactive" } ])
+    end
+
+    it "local desativado → 409 location_inactive ANTES de validar o corpo (receipts e openings), mas depois do papel (403 sozinho)" do
+      assistant = pharmacy_staff!(farmacia, "pharmacy_assistant")
+      pharmacist = pharmacy_staff!(farmacia, "pharmacist")
+      farmacia.update!(active: false)
+      sign_in_as(assistant)
+      json_post "/pharmacy/openings", opening([ line(package: nil, quantity: "1,5") ])
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+
+      sign_in_as(pharmacist)
+      json_post "/pharmacy/openings", opening([ line(package: nil, quantity: "1,5") ])
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "location_inactive" } ])
+
+      central.update!(active: false)
+      sign_in_as(keeper)
+      json_post "/pharmacy/receipts", receipt([ line(package: nil, quantity: "1,5") ], kind: "gift")
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "location_inactive" } ])
+      expect(written).to eq([ 0, 0, 0, 0 ])
     end
 
     it "items que não é lista → 422 invalid_request em items" do

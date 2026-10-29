@@ -84,9 +84,11 @@ Rails.application.config.filter_parameters += [
   /\A(target_code|suggested_color|color|result)\z/,
   # ADR 0045: farmácia — o prescritor e o número da notificação da receita
   # externa, a retenção do controlado/antimicrobiano e as quantidades contadas
-  # e recebidas (`reason`, `short_code`, `items`, `new_patient`, `cpf`, `cns` e
+  # e recebidas, e o fornecedor da entrada (numa doação de pessoa física é o
+  # nome dela; `document.supplier`) (`reason`, `short_code`, `items` — que já
+  # leva `lot_number` e `manufacturer` —, `new_patient`, `cpf`, `cns` e
   # `dosage_instructions` já estavam acima).
-  /\A(prescriber|retention|notification_number|counted_quantity|quantity_received)\z/
+  /\A(prescriber|retention|notification_number|counted_quantity|quantity_received|supplier)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

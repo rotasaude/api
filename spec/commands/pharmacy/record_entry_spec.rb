@@ -221,6 +221,35 @@ RSpec.describe Pharmacy::RecordEntry do
       expect(written).to eq([ 0, 0, 0, 0 ])
     end
 
+    it "H8/H12: lot_mismatch contra o lote gravado entra junto das outras recusas, na ordem das linhas (nas duas ordens)" do
+      entry!([ line ])
+      before = written
+      bad = line(lot_number: "NOVO-1", package: nil, quantity: "1,5")
+      clash = line(expires_on: (today + 400).iso8601)
+      first = entry!([ bad, clash ])
+      expect(first.reason).to eq(:invalid_quantity)
+      expect(first.details[:problems]).to eq([ { path: "items[0].quantity", error: "invalid_quantity" },
+                                               { path: "items[1].lot_number", error: "lot_mismatch" } ])
+      second = entry!([ clash, bad ])
+      expect([ second.reason, second.details[:path] ]).to eq([ :lot_mismatch, "items[0].lot_number" ])
+      expect(second.details[:problems].map { |p| [ p[:path], p[:error] ] })
+        .to eq([ [ "items[0].lot_number", "lot_mismatch" ], [ "items[1].quantity", "invalid_quantity" ] ])
+      expect(written).to eq(before)
+    end
+
+    it "documento inválido, item inválido e lote divergente vêm juntos: documento primeiro, depois as linhas" do
+      entry!([ line(manufacturer: "EMS") ])
+      result = entry!([ line(manufacturer: "Medley", lot_number: "LOTE-A1"), line(lot_number: "X Y") ], doc: { "number" => "NF 1", "supplier" => "S" })
+      expect(result.details[:problems].map { |p| [ p[:path], p[:error] ] })
+        .to eq([ [ "document.number", "invalid_request" ], [ "items[0].lot_number", "lot_mismatch" ], [ "items[1].lot_number", "invalid_request" ] ])
+    end
+
+    it "linha repetida no pedido e divergente do lote gravado não duplica a recusa" do
+      entry!([ line ])
+      result = entry!([ line(expires_on: (today + 400).iso8601), line(lot_number: "X Y") ])
+      expect(result.details[:problems].map { |p| [ p[:path], p[:error] ] }).to eq([ [ "items[0].lot_number", "lot_mismatch" ], [ "items[1].lot_number", "invalid_request" ] ])
+    end
+
     it "um item com vários defeitos soma todos, na ordem dos campos" do
       result = entry!([ { "catalog_item_id" => paracetamol.id, "lot_number" => "!!", "expires_on" => "ontem", "manufacturer" => 1, "quantity" => "x" } ])
       expect(result.details[:problems].map { |p| [ p[:path], p[:error] ] }).to eq(

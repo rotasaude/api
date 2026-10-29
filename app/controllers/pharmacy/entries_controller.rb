@@ -4,7 +4,8 @@
 # envelope. Sem step-up: ele só existe no admin e nos ajustes.
 #
 # Ordem: o local (422 se não existir), o papel (403 sozinho, antes de validar
-# qualquer coisa), `document.kind` e então o comando, que junta todas as recusas
+# qualquer coisa), local ativo (409 cedo, como os mínimos; o comando confere de
+# novo sob trava), `document.kind` e então o comando, que junta todas as recusas
 # em `problems`. O catálogo da plataforma é lido AQUI, fora da transação.
 module Pharmacy
   class EntriesController < BaseController
@@ -14,6 +15,7 @@ module Pharmacy
 
     def receipt
       return forbid unless allowed?(%w[stock_keeper])
+      return render_error(:location_inactive, :conflict) unless @location.active
 
       document = body_param("document")
       return render_invalid("document") unless document.is_a?(Hash)
@@ -24,6 +26,7 @@ module Pharmacy
 
     def opening
       return forbid unless allowed?(%w[stock_keeper pharmacist])
+      return render_error(:location_inactive, :conflict) unless @location.active
 
       record("opening")
     end
