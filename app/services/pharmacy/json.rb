@@ -55,6 +55,25 @@ module Pharmacy
         at: entry.created_at.iso8601 }
     end
 
+    # Transferência (contrato §5/H2): `{ id, from, to, status, sent_at, received_at,
+    # items: [ { lot, quantity_sent, quantity_received|null, difference|null } ] }`,
+    # sem envelope. `difference` = enviado - recebido (duas casas), nulo enquanto
+    # não foi recebida. O motivo da diferença só vai com `reasons: true` (o
+    # detalhe, para quem pode receber no destino): é texto livre, nunca na lista.
+    # `transfer` carrega itens (com o lote) e os dois locais (com a unidade).
+    # Itens em ordem estável: número do lote, id.
+    def transfer(transfer, catalog:, reasons: false)
+      items = transfer.items.sort_by { |item| [ item.stock_lot.lot_number, item.stock_lot_id ] }.map do |item|
+        received = item.quantity_received
+        row = { lot: lot(item.stock_lot, catalog: catalog), quantity_sent: Quantity.dump(item.quantity_sent),
+                quantity_received: received && Quantity.dump(received),
+                difference: received && Quantity.dump(item.quantity_sent - received) }
+        reasons ? row.merge(reason: item.difference_reason) : row
+      end
+      { id: transfer.id, from: location(transfer.from_location), to: location(transfer.to_location), status: transfer.status,
+        sent_at: transfer.sent_at.iso8601, received_at: transfer.received_at&.iso8601, items: items }
+    end
+
     # Os cinco parâmetros da cidade, como o contrato §3.
     def settings(setting) = Catalog::SETTING_RANGES.keys.index_with { |key| setting.public_send(key) }
 

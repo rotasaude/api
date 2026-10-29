@@ -527,6 +527,11 @@ Rails.application.routes.draw do
     # Entradas por nota ou doação e inventário de abertura (Task 5).
     post   "receipts",                  to: "entries#receipt"
     post   "openings",                  to: "entries#opening"
+    # Transferência do central para a unidade, em dois passos (Task 6).
+    post   "transfers",                 to: "transfers#create"
+    get    "transfers",                 to: "transfers#index"
+    get    "transfers/:id",             to: "transfers#show"
+    post   "transfers/:id/receive",     to: "transfers#receive"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.

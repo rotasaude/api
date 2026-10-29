@@ -321,4 +321,13 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include("stock_receipt.recorded")
     expect(DomainEvents.registry["stock_receipt.recorded"]).to be_empty
   end
+
+  # Transferência do central para a unidade (enviada e recebida); só ids
+  # (stock_transfer_id, user_id; o recebimento leva também with_difference),
+  # sem consumidor.
+  it "declares stock_transfer.sent and stock_transfer.received with no consumer" do
+    expect(DomainEvents.registry.keys).to include("stock_transfer.sent", "stock_transfer.received")
+    expect(DomainEvents.registry["stock_transfer.sent"]).to be_empty
+    expect(DomainEvents.registry["stock_transfer.received"]).to be_empty
+  end
 end
