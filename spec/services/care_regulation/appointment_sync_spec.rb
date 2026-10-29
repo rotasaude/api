@@ -111,6 +111,61 @@ RSpec.describe CareRegulation::AppointmentSync do
     expect(regulation_events("missed").size).to eq(2)
   end
 
+  # Fix round 2: a segunda falta com o horário já remarcado encerra; o horário
+  # vivo fica com o 17 (R4) e o check-in dele segue funcionando.
+  it "segunda falta com horário remarcado → closed (outcome missed), horário vivo no 17, cota não devolvida" do
+    first = schedule_regulated!(appointment_request, at: 2.days.from_now.change(hour: 9))
+    no_show!(first)
+    expect(sync!).to eq("pending")
+    reauthorize!(request.reload, offer: setup.fetch(:offer))
+    expect(request.reload.misses).to eq(1)
+    second_request = AppointmentRequest.find(request.appointment_request_id)
+
+    missed = schedule_regulated!(second_request, at: 2.days.from_now.change(hour: 9))
+    no_show!(missed)
+    rescheduled = schedule_regulated!(second_request, at: 3.days.from_now.change(hour: 9))
+    expect(described_class.call(appointment_request_id: second_request.id)).to eq("closed")
+    expect(request.reload).to have_attributes(status: "closed", misses: 2, appointment_request_id: nil, scheduled_at: nil)
+    expect(request.events.map(&:status).last(2)).to eq(%w[missed closed])
+    expect(CareRegulation::Json.request(request)[:outcome]).to eq("missed")
+    expect(second_request.reload.status).to eq("scheduled")
+    expect(rescheduled.reload.status).to eq("scheduled")
+    expect(request.authorizations.map(&:released_at)).to eq([ nil, nil ])
+    expect(used).to eq(2)
+
+    check_in_regulated!(rescheduled)
+    expect(second_request.reload).to have_attributes(status: "closed", closed_reason: "fulfilled")
+    expect(described_class.call(appointment_request_id: second_request.id)).to eq(:ignored)
+    expect(request.reload).to have_attributes(status: "closed", misses: 2)
+  end
+
+  # Ruling (fix round 2): a vaga da autorização com falta já está consumida —
+  # cancelar depois não a devolve, rode o job antes ou depois da remarcação.
+  it "falta + remarcação + cancelamento pelo cidadão → cancelled sem liberar a cota" do
+    first = schedule_regulated!(appointment_request, at: 2.days.from_now.change(hour: 9))
+    no_show!(first)
+    second = schedule_regulated!(appointment_request, at: 3.days.from_now.change(hour: 9))
+    expect(sync!).to eq("scheduled")
+    expect(Appointments::CancelByCitizen.call(appointment: second.reload, reason: "Não consigo ir nesse dia")).to be_ok
+    expect(described_class.call(appointment_request_id: appointment_request.id)).to eq("cancelled")
+    expect(request.reload).to have_attributes(status: "cancelled", misses: 1)
+    expect(request.events.map(&:status).last(3)).to eq(%w[missed scheduled cancelled])
+    expect(request.authorizations.sole).to have_attributes(released_at: nil, release_reason: nil)
+    expect(used).to eq(1)
+  end
+
+  it "o mesmo com o job atrasado: a falta contada no mesmo sync do cancelamento → cancelled sem liberar a cota" do
+    first = schedule_regulated!(appointment_request, at: 2.days.from_now.change(hour: 9))
+    no_show!(first)
+    second = schedule_regulated!(appointment_request, at: 3.days.from_now.change(hour: 9))
+    expect(Appointments::CancelByCitizen.call(appointment: second.reload, reason: "Não consigo ir nesse dia")).to be_ok
+    expect(sync!).to eq("cancelled")
+    expect(request.reload).to have_attributes(status: "cancelled", misses: 1)
+    expect(request.events.map(&:status).last(2)).to eq(%w[missed cancelled])
+    expect(request.authorizations.sole).to have_attributes(released_at: nil, release_reason: nil)
+    expect(used).to eq(1)
+  end
+
   it "falta + dispensa pela unidade antes do job → falta (pending, a vaga não volta), não cancelamento" do
     appointment = schedule_regulated!(appointment_request, at: 2.days.from_now.change(hour: 9))
     sync!

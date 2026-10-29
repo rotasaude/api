@@ -28,10 +28,14 @@
 #                                     SYNC_NOTES[:missed] na mesma transação
 #   open sem falta (expired, remarque, sem horário) → authorized, sem a data
 #   closed fulfilled                → completed (com a falta não contada junto)
-#   closed citizen_cancelled | consent_revoked → cancelled, cota liberada, sem
-#                                     autor (R5; a falta não contada junto)
+#   closed citizen_cancelled | consent_revoked → cancelled, sem autor (R5; a
+#                                     falta não contada junto)
 #   closed dismissed fora de SYNC_NOTES → falta, se houver não contada (a vaga
-#                                     não volta); senão cancelled, cota liberada
+#                                     não volta); senão cancelled
+#   Cota no cancelled (Ruling, fix round 2): liberada só se a autorização
+#   vigente não teve falta (nem contada antes, nem contada agora) — a falta
+#   consome a vaga (Desvio 3), então o resultado não depende de o job rodar
+#   antes ou depois da remarcação.
 #   closed moved                    → segue para o pedido novo
 #
 # Rede de segurança (corrida Cancelar × Drain): pedido de regulação já
@@ -61,8 +65,9 @@ module CareRegulation
     class Stale < StandardError; end
 
     # O que a cadeia diz: ids (para trás e para a frente), o pedido mais novo,
-    # a situação-alvo (com detalhe) e as faltas ainda não contadas.
-    Plan = Struct.new(:chain_ids, :current, :target, :detail, :uncounted, keyword_init: true)
+    # a situação-alvo (com detalhe), as faltas ainda não contadas e se o
+    # caminho libera a cota (cancelled sem falta nenhuma da autorização vigente).
+    Plan = Struct.new(:chain_ids, :current, :target, :detail, :uncounted, :release, keyword_init: true)
 
     module_function
 
@@ -118,9 +123,12 @@ module CareRegulation
     def plan(request, lock:)
       forward = walk(request.appointment_request_id, lock: lock)
       ids = backward_ids(request.appointment_request_id) | forward.map(&:id)
-      uncounted = uncounted_misses(request, ids)
+      authorization = vigente(request)
+      counted = authorization ? counted_misses(request, authorization) : 0
+      uncounted = uncounted_misses(ids, counted)
       target, detail = target_for(forward.last, missed: uncounted.positive?)
-      Plan.new(chain_ids: ids, current: forward.last, target: target, detail: detail, uncounted: uncounted)
+      release = target == :cancelled && authorization.present? && counted.zero? && uncounted.zero?
+      Plan.new(chain_ids: ids, current: forward.last, target: target, detail: detail, uncounted: uncounted, release: release)
     end
 
     # [situação-alvo, detalhe] pelo estado do pedido de agendamento mais novo.
@@ -149,12 +157,8 @@ module CareRegulation
 
     # Horários no_show da cadeia menos as faltas já contadas desde a
     # autorização vigente (as linhas `missed` gravadas depois dela).
-    def uncounted_misses(request, chain_ids)
+    def uncounted_misses(chain_ids, counted)
       no_shows = Appointment.where(request_id: chain_ids, status: "no_show").count
-      return 0 if no_shows.zero?
-
-      authorization = vigente(request)
-      counted = authorization ? counted_misses(request, authorization) : 0
       [ no_shows - counted, 0 ].max
     end
 
@@ -203,14 +207,17 @@ module CareRegulation
       request.status
     end
 
-    # Encerramento do 17 fora da regulação: cota liberada (só UPDATE na
-    # autorização) e cancelled sem autor. A autorização relida sob a trava do
-    # pedido precisa ser a que a leitura sem trava viu (e cuja oferta travou).
+    # Encerramento do 17 fora da regulação: cancelled sem autor; a cota é
+    # liberada (só UPDATE na autorização) quando a autorização vigente não teve
+    # falta. Liberando, a autorização relida sob a trava do pedido precisa ser
+    # a que a leitura sem trava viu (e cuja oferta travou).
     def cancel!(request, plan, seen, now)
-      authorization = vigente(request)
-      raise Stale if authorization&.id != seen&.id
+      if plan.release
+        authorization = vigente(request)
+        raise Stale if authorization.id != seen&.id
 
-      authorization&.update!(released_at: now, release_reason: plan.detail)
+        authorization.update!(released_at: now, release_reason: plan.detail)
+      end
       transition!(request, "cancelled", plan, appointment_request_id: plan.current.id)
     end
 
@@ -260,7 +267,7 @@ module CareRegulation
     def releasing_preview?(request)
       return false unless ACTIVE.include?(request.status) && request.appointment_request_id
 
-      plan(request, lock: false).target == :cancelled
+      plan(request, lock: false).release
     end
 
     def chain_ids(request)
