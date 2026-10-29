@@ -484,6 +484,11 @@ Rails.application.routes.draw do
     post   "requests/:id/return",  to: "decisions#return_request"
     post   "requests/:id/deny",    to: "decisions#deny"
     post   "requests/:id/cancel",  to: "decisions#cancel"
+    # Prestador externo e sistema do estado (contrato §7, §8).
+    post   "requests/:id/external", to: "decisions#external"
+    post   "requests/:id/schedule", to: "decisions#schedule"
+    post   "requests/:id/outcome", to: "decisions#outcome"
+    get    "exports/state.csv",    to: "exports#state"
     # A unidade solicitante (contrato §5): devolvidos e complemento.
     post   "requests/:id/complement", to: "decisions#complement"
     get    "returned",             to: "returned#index"

@@ -15,7 +15,9 @@ module CareRegulation
     AUTHORIZE_KEYS = %w[offer_id color color_reason skip_reason version].freeze
     DECISION_KEYS = %w[reason version].freeze
     COMPLEMENT_KEYS = (Complement::KEYS + %w[version]).freeze
-    KEY_PATH_MAX = 64
+    EXTERNAL_KEYS = %w[system number version].freeze
+    SCHEDULE_KEYS = %w[at place notes version].freeze
+    OUTCOME_KEYS = %w[result version].freeze
 
     # O complemento é da unidade solicitante: o Complement confere o vínculo
     # na unidade (outra unidade: 404 not_found, registro de outro escopo) e o
@@ -35,6 +37,28 @@ module CareRegulation
     def return_request = decide("return")
     def deny = decide("deny")
     def cancel = decide("cancel")
+
+    # Prestador externo e sistema do estado (contrato §7, §8; só o regulador).
+    def external
+      return if unknown_key!(EXTERNAL_KEYS)
+
+      respond MarkExternal.call(request: @regulation_request, system: body_param("system"), number: body_param("number"),
+                                version: body_param("version"), by: Current.user)
+    end
+
+    def schedule
+      return if unknown_key!(SCHEDULE_KEYS)
+
+      respond ScheduleExternal.call(request: @regulation_request, at: body_param("at"), place: body_param("place"),
+                                    notes: body_param("notes"), version: body_param("version"), by: Current.user)
+    end
+
+    def outcome
+      return if unknown_key!(OUTCOME_KEYS)
+
+      respond RecordOutcome.call(request: @regulation_request, result: body_param("result"), version: body_param("version"),
+                                 by: Current.user)
+    end
 
     def complement
       return if unknown_key!(COMPLEMENT_KEYS)
