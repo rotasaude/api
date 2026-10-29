@@ -2360,9 +2360,23 @@ $do$;
 -- parâmetros nunca somem. TRUNCATE recusado nas 15 tabelas.
 CREATE OR REPLACE FUNCTION rota_stock_balance_guard() RETURNS trigger AS $fn$
 BEGIN
+  -- catalog_item_id é cópia do lote (para somar por item sem junção): nunca diverge.
+  IF NEW.catalog_item_id IS DISTINCT FROM (SELECT catalog_item_id FROM stock_lots WHERE id = NEW.stock_lot_id) THEN
+    RAISE EXCEPTION 'stock_movements: catalog_item_id differs from the lot';
+  END IF;
   IF (SELECT COALESCE(SUM(quantity), 0) FROM stock_movements
       WHERE stock_location_id = NEW.stock_location_id AND stock_lot_id = NEW.stock_lot_id) < 0 THEN
     RAISE EXCEPTION 'stock_movements: negative balance refused';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+-- O item dispensado copia o item do catálogo do lote: nunca diverge.
+CREATE OR REPLACE FUNCTION rota_dispensation_item_insert_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.catalog_item_id IS DISTINCT FROM (SELECT catalog_item_id FROM stock_lots WHERE id = NEW.stock_lot_id) THEN
+    RAISE EXCEPTION 'dispensation_items: catalog_item_id differs from the lot';
   END IF;
   RETURN NEW;
 END;
@@ -2452,6 +2466,9 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS stock_movements_balance ON stock_movements';
     EXECUTE 'CREATE TRIGGER stock_movements_balance AFTER INSERT ON stock_movements
       FOR EACH ROW EXECUTE FUNCTION rota_stock_balance_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS dispensation_items_lot_item ON dispensation_items';
+    EXECUTE 'CREATE TRIGGER dispensation_items_lot_item BEFORE INSERT ON dispensation_items
+      FOR EACH ROW EXECUTE FUNCTION rota_dispensation_item_insert_guard()';
     EXECUTE 'DROP TRIGGER IF EXISTS stock_movements_reencryption_only ON stock_movements';
     EXECUTE 'CREATE TRIGGER stock_movements_reencryption_only BEFORE UPDATE OR DELETE ON stock_movements
       FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')';

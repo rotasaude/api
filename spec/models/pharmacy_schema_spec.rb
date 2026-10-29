@@ -173,6 +173,48 @@ RSpec.describe "Esquema da farmácia (ADR 0045)" do
     )
   end
 
+  # Revisão da Task 2 (rodada 1): decisor junto com a decisão; o teto de
+  # 99999.99 vale para o delta, não para contagem e saldo; perda e vencimento
+  # sempre negativos.
+  it "ajuste: decisão sem decisor recusada; contagem e saldo sem teto, delta com teto; perda e vencimento negativos" do
+    base = { stock_location: central, stock_lot: lot, reason: "Contagem do inventário de outubro", requested_by_user: keeper }
+    pending = StockAdjustment.create!(base.merge(kind: "adjustment", status: "pending", quantity: -5, counted_quantity: 5, balance_at_request: 10))
+    refused(/ck_stock_adjustments_decided_by/) { pending.update_columns(status: "approved", decided_at: Time.current) }
+
+    big = base.merge(kind: "adjustment", status: "applied", counted_quantity: BigDecimal("150000.50"), balance_at_request: BigDecimal("200000"))
+    expect { StockAdjustment.create!(big.merge(quantity: BigDecimal("-49999.50"))) }.not_to raise_error
+    expect { StockAdjustment.create!(big.merge(quantity: BigDecimal("-100000"))) }
+      .to raise_error(ActiveRecord::StatementInvalid, /ck_stock_adjustments_quantity/)
+    %w[loss expiry].each do |kind|
+      expect { StockAdjustment.create!(base.merge(kind: kind, status: "applied", quantity: 1, balance_at_request: 10)) }
+        .to raise_error(ActiveRecord::StatementInvalid, /ck_stock_adjustments_sign/)
+    end
+    expect { StockAdjustment.create!(base.merge(kind: "adjustment", status: "applied", quantity: 2, counted_quantity: 12, balance_at_request: 10)) }
+      .not_to raise_error
+  end
+
+  it "o item do catálogo do movimento e do item dispensado é o do lote" do
+    expect { movement(catalog_item_id: amoxicilina.id) }.to raise_error(ActiveRecord::StatementInvalid, /catalog_item_id differs from the lot/)
+    unit = unit_location!
+    external = ExternalPrescription.create!(patient: registry_patient!, stock_location: unit, prescriber_name: "Dra. Beltrana", council: "CRM",
+                                            council_state: "PR", council_number: "12345", issued_on: Date.current, recorded_by_user: keeper)
+    item = ExternalPrescriptionItem.create!(external_prescription: external, position: 1, catalog_item_id: losartana.id, catmat_code: 268_856,
+                                            quantity: 30, quantity_unit: "comprimido", dosage_instructions: "1 comprimido ao dia")
+    dispensation = Dispensation.create!(stock_location: unit, patient: external.patient, external_prescription: external, dispensed_by_user: keeper,
+                                        dispensed_by_role: "pharmacist", dispensed_at: Time.current)
+    line = { dispensation: dispensation, external_prescription_item: item, stock_lot: lot, quantity: 1 }
+    expect { DispensationItem.create!(line.merge(catalog_item_id: amoxicilina.id)) }
+      .to raise_error(ActiveRecord::StatementInvalid, /catalog_item_id differs from the lot/)
+    expect { DispensationItem.create!(line.merge(catalog_item_id: losartana.id)) }.not_to raise_error
+  end
+
+  it "stocked_lot! recusa reaproveitar o lote com outra validade" do
+    stocked_lot!(central, item: losartana, lot_number: "LS03", expires_on: Time.zone.today + 180)
+    expect { stocked_lot!(central, item: losartana, lot_number: "LS03", expires_on: Time.zone.today + 90) }
+      .to raise_error(ArgumentError, /expires_on/)
+    expect { stocked_lot!(central, item: losartana, lot_number: "LS03", expires_on: Time.zone.today + 180) }.not_to raise_error
+  end
+
   # A migração espelha Pharmacy::Catalog (não lê código da aplicação): as
   # listas do banco e as do código nascem iguais.
   it "a migração espelha as listas de Pharmacy::Catalog" do

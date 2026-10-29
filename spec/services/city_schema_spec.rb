@@ -120,6 +120,7 @@ RSpec.describe CitySchema do
     expect(names).to include("stock_movements_balance", "stock_movements_reencryption_only", "dispensations_reencryption_only",
                              "external_prescriptions_reencryption_only", "external_prescription_items_reencryption_only",
                              "stock_transfers_guard", "stock_transfer_items_guard", "stock_adjustments_guard", "stock_location_staff_guard",
+                             "dispensation_items_lot_item",
                              *%w[stock_lots stock_entries stock_openings dispensation_items].map { |t| "#{t}_append_only" },
                              *%w[stock_locations stock_minimums pharmacy_settings].map { |t| "#{t}_no_delete" },
                              *tables.map { |t| "#{t}_append_only_truncate" })

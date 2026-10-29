@@ -54,9 +54,12 @@ module PharmacyHelpers
   # pode passar a ser o caminho daqui quando existir.
   def stocked_lot!(location, item:, quantity: "30", lot_number: "L#{SecureRandom.hex(3).upcase}", expires_on: Time.zone.today + 180, by: nil)
     by ||= pharmacy_admin!
-    lot = StockLot.find_by(catalog_item_id: item.id, lot_number: lot_number) ||
-          StockLot.create!(catalog_item_id: item.id, catmat_code: item.catmat_code, lot_number: lot_number, expires_on: expires_on,
-                           dispensing_unit: "comprimido", created_by_user: by)
+    lot = StockLot.find_by(catalog_item_id: item.id, lot_number: lot_number)
+    if lot && lot.expires_on != expires_on.to_date
+      raise ArgumentError, "stocked_lot!: lote #{lot_number} já gravado com outro expires_on (#{lot.expires_on})"
+    end
+    lot ||= StockLot.create!(catalog_item_id: item.id, catmat_code: item.catmat_code, lot_number: lot_number, expires_on: expires_on,
+                             dispensing_unit: "comprimido", created_by_user: by)
     opening = !StockOpening.exists?(stock_location_id: location.id, catalog_item_id: item.id)
     entry = if opening
               StockEntry.create!(stock_location: location, kind: "opening", recorded_by_user: by)

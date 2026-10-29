@@ -163,8 +163,10 @@ class AddPharmacyStock < ActiveRecord::Migration[8.1]
       t.string :kind, null: false
       t.string :status, null: false
       t.decimal :quantity, precision: 12, scale: 2, null: false
-      t.decimal :counted_quantity, precision: 12, scale: 2
-      t.decimal :balance_at_request, precision: 12, scale: 2, null: false
+      # Contagem e saldo não têm o teto do H1 (99999.99 vale para o digitado e
+      # para o movimento): num lote do central o saldo passa de 100 mil.
+      t.decimal :counted_quantity, precision: 14, scale: 2
+      t.decimal :balance_at_request, precision: 14, scale: 2, null: false
       # reason e decision_reason cifrados com a chave da cidade.
       t.text :reason, null: false
       t.references :requested_by_user, type: :uuid, null: false, foreign_key: { to_table: :users }, index: false
@@ -180,17 +182,19 @@ class AddPharmacyStock < ActiveRecord::Migration[8.1]
     add_check_constraint :stock_adjustments, "kind::text = 'adjustment'::text OR status::text = 'applied'::text",
                          name: "ck_stock_adjustments_approval"
     add_check_constraint :stock_adjustments, "quantity <> 0::numeric AND abs(quantity) <= #{MAX_QUANTITY}", name: "ck_stock_adjustments_quantity"
+    # Perda e vencimento só tiram do estoque; o ajuste tem o sinal da contagem.
+    add_check_constraint :stock_adjustments, "kind::text = 'adjustment'::text OR quantity < 0::numeric", name: "ck_stock_adjustments_sign"
     add_check_constraint :stock_adjustments,
                          "(kind::text = 'adjustment'::text) = (counted_quantity IS NOT NULL) AND " \
-                         "(counted_quantity IS NULL OR (counted_quantity >= 0::numeric AND counted_quantity <= #{MAX_QUANTITY}))",
+                         "(counted_quantity IS NULL OR counted_quantity >= 0::numeric)",
                          name: "ck_stock_adjustments_counted"
-    add_check_constraint :stock_adjustments, "balance_at_request >= 0::numeric AND balance_at_request <= #{MAX_QUANTITY}",
-                         name: "ck_stock_adjustments_balance"
+    add_check_constraint :stock_adjustments, "balance_at_request >= 0::numeric", name: "ck_stock_adjustments_balance"
     add_check_constraint :stock_adjustments, "decided_by_user_id IS NULL OR decided_by_user_id <> requested_by_user_id",
                          name: "ck_stock_adjustments_decider"
     add_check_constraint :stock_adjustments,
                          "(status::text = ANY (ARRAY['approved'::text, 'rejected'::text])) = (decided_at IS NOT NULL)",
                          name: "ck_stock_adjustments_decided"
+    add_check_constraint :stock_adjustments, "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name: "ck_stock_adjustments_decided_by"
 
     create_table :external_prescriptions, id: :uuid do |t|
       t.references :patient, type: :uuid, null: false, foreign_key: true, index: false

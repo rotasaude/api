@@ -2952,8 +2952,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
   end
 
   create_table "stock_adjustments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.decimal "balance_at_request", precision: 12, scale: 2, null: false
-    t.decimal "counted_quantity", precision: 12, scale: 2
+    t.decimal "balance_at_request", precision: 14, scale: 2, null: false
+    t.decimal "counted_quantity", precision: 14, scale: 2
     t.datetime "created_at", null: false
     t.datetime "decided_at"
     t.uuid "decided_by_user_id"
@@ -2966,11 +2966,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
     t.uuid "stock_location_id", null: false
     t.uuid "stock_lot_id", null: false
     t.index ["stock_location_id", "status"], name: "idx_stock_adjustments_location_status"
-    t.check_constraint "(kind::text = 'adjustment'::text) = (counted_quantity IS NOT NULL) AND (counted_quantity IS NULL OR counted_quantity >= 0::numeric AND counted_quantity <= 99999.99)", name: "ck_stock_adjustments_counted"
+    t.check_constraint "(kind::text = 'adjustment'::text) = (counted_quantity IS NOT NULL) AND (counted_quantity IS NULL OR counted_quantity >= 0::numeric)", name: "ck_stock_adjustments_counted"
     t.check_constraint "(status::text = ANY (ARRAY['approved'::text, 'rejected'::text])) = (decided_at IS NOT NULL)", name: "ck_stock_adjustments_decided"
-    t.check_constraint "balance_at_request >= 0::numeric AND balance_at_request <= 99999.99", name: "ck_stock_adjustments_balance"
+    t.check_constraint "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name: "ck_stock_adjustments_decided_by"
+    t.check_constraint "balance_at_request >= 0::numeric", name: "ck_stock_adjustments_balance"
     t.check_constraint "decided_by_user_id IS NULL OR decided_by_user_id <> requested_by_user_id", name: "ck_stock_adjustments_decider"
     t.check_constraint "kind::text = 'adjustment'::text OR status::text = 'applied'::text", name: "ck_stock_adjustments_approval"
+    t.check_constraint "kind::text = 'adjustment'::text OR quantity < 0::numeric", name: "ck_stock_adjustments_sign"
     t.check_constraint "kind::text = ANY (ARRAY['adjustment'::text, 'loss'::text, 'expiry'::text])", name: "ck_stock_adjustments_kind"
     t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99", name: "ck_stock_adjustments_quantity"
     t.check_constraint "status::text = ANY (ARRAY['applied'::text, 'pending'::text, 'approved'::text, 'rejected'::text])", name: "ck_stock_adjustments_status"
