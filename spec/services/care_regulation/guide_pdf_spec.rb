@@ -3,7 +3,7 @@ require "pdf/reader"
 
 # Módulo 26a, Task 12 (ADR 0044; contrato §3, §13 G8, G10, G12, G14): a guia de
 # encaminhamento em PDF. Texto extraído com PDF::Reader; o paciente aparece sem
-# o CPF (CNS só mascarado), o diagnóstico é o código presente (CID-10 ou CIAP-2)
+# o CPF (o CNS sai inteiro), o diagnóstico é o código presente (CID-10 ou CIAP-2)
 # com a descrição da release ativa, a cor é a efetiva (sugerida enquanto não
 # confirmada) e o autorizado traz prestador, mês e agendamento.
 RSpec.describe CareRegulation::GuidePdf do
@@ -56,7 +56,7 @@ RSpec.describe CareRegulation::GuidePdf do
     expect(upto - from).to be >= 3
   end
 
-  it "nunca imprime o CPF (nem formatado), e o CNS só mascarado" do
+  it "nunca imprime o CPF (cru, formatado nem em dígitos soltos); o CNS sai inteiro" do
     request = regulation_request!
     patient = request.patient
     patient.update!(cns: "700000000000005")
@@ -65,15 +65,22 @@ RSpec.describe CareRegulation::GuidePdf do
     cpf = patient.cpf
     formatted = cpf.sub(/\A(\d{3})(\d{3})(\d{3})(\d{2})\z/, '\1.\2.\3-\4')
     expect([ text, text.gsub(/\D/, "") ]).to all(satisfy { |t| !t.include?(cpf) && !t.include?(formatted) })
-    expect(text).to include("*** **** **** 0005")
-    expect(text.gsub(/\D/, "")).not_to include("700000000000005")
+    expect(text.gsub(/\D/, "")).to include("700000000000005")
   end
 
-  it "paciente sem CPF: 'sem CPF' e o CNS mascarado" do
+  it "paciente sem CPF: o CNS inteiro e nenhuma linha de CPF" do
     request = regulation_request!
     allow(request).to receive(:patient).and_return(registry_no_cpf_patient!(cns: "700000000000005"))
     text = flat(request)
-    expect(text).to include("sem CPF", "*** **** **** 0005")
+    expect(text.gsub(/\D/, "")).to include("700000000000005")
+    expect(text).not_to include("CPF")
+  end
+
+  it "órgão de saúde abaixo da cidade quando a plataforma tem o valor; sem ele, nenhuma linha extra" do
+    request = regulation_request!
+    expect(flat(request)).to include("#{profile.name} Guia de encaminhamento")
+    expect(UpdateCityIdentity.call(city: Current.city, health_department_name: "Secretaria Municipal da Saúde")).to be_ok
+    expect(flat(request)).to include("#{profile.name} Secretaria Municipal da Saúde Guia de encaminhamento")
   end
 
   it "pedido de enfermeira só com CIAP-2: mostra CIAP-2, K86 e a descrição, e não mostra CID-10" do

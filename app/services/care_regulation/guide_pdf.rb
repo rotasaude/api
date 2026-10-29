@@ -3,8 +3,8 @@
 # nunca gravada. A folha, a fonte e o rodapé em toda página são os de
 # Consultations::Print.document; o texto passa por Print.safe (a fonte
 # embutida não tem todo símbolo). Blocos: cabeçalho (cidade, número curto = 8
-# primeiros do id, data do pedido), paciente (nome, nascimento, sexo, CNS
-# mascarado; NUNCA o CPF, só "sem CPF" quando não há), pedido (tipo, alvo pelo
+# primeiros do id, data do pedido), paciente (nome, nascimento, sexo e o CNS
+# inteiro, que o prestador usa para identificar; NUNCA o CPF), pedido (tipo, alvo pelo
 # `target_name`, o código presente — CID-10 e/ou CIAP-2 — com a descrição da
 # release ativa, justificativa, cor efetiva, prazo, número do estado),
 # solicitante (nome profissional, CBO, unidade) e autorização (prestador, mês,
@@ -60,6 +60,8 @@ module CareRegulation
 
     def header(pdf, request)
       pdf.text s(CityProfile.current&.name.to_s), style: :bold, size: 12
+      department = Current.city&.health_department_name.presence
+      pdf.text s(department) if department
       pdf.text s(TITLE), style: :bold, size: 14
       pdf.text s(DRAFT_MARK), style: :bold, size: 12 if request.status == "draft"
       pdf.text s("Nº #{request.id[0, 8]}"), style: :bold
@@ -72,8 +74,7 @@ module CareRegulation
       birth = patient.birth_date.present? ? Date.iso8601(patient.birth_date).strftime("%d/%m/%Y") : nil
       field(pdf, "Nascimento", birth || "não informado")
       field(pdf, "Sexo", SEX.fetch(patient.sex.to_s, "não informado"))
-      field(pdf, "CNS", patient.cns_masked) if patient.cns.present?
-      field(pdf, "CPF", "sem CPF") unless patient.cpf.present?
+      field(pdf, "CNS", patient.cns) if patient.cns.present?
     end
 
     def order(pdf, r)
