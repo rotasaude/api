@@ -42,7 +42,11 @@ module CareRegulation
     VIGENTE_STATUSES = %w[authorized scheduled].freeze
     LAST_STATUSES = %w[completed closed].freeze
 
+    # Regulado pelo estado (state_regulated) não usa a cota municipal: nunca
+    # mostra autorização, mesmo a antiga e consumida de antes da falta.
     def authorization(r)
+      return nil if r.state_regulated
+
       found = case r.status
               when *VIGENTE_STATUSES then r.current_authorization
               when *LAST_STATUSES then r.authorizations.last

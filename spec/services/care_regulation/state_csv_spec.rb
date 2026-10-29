@@ -78,6 +78,18 @@ RSpec.describe CareRegulation::StateCsv do
     expect(csv).not_to include("70000000000")
   end
 
+  it "CNS malformado sai só com dígitos: curto, com espaço ou pontuação" do
+    cases = { "12" => "12", "123.456.789 0123" => "0123", "70-00 00x12" => "0012", "ab" => "" }
+    cases.each_with_index do |(cns, tail), i|
+      patient, citizen = regulation_patient!(exam_seq!)
+      patient.cns = cns
+      patient.save!(validate: false)
+      request = regulation_request!(citizen: citizen, unit: create_unit("UBS Cns #{i}"))
+      CareRegulation::MarkExternal.call(request: request, system: "sisreg", number: "1", version: request.version, by: care_regulator!)
+      expect(parse(described_class.build.fetch(:csv)).find { |r| r["pedido_id"] == request.id }["cns_final"]).to eq(tail)
+    end
+  end
+
   it "pedido de enfermeira só com ciap2: cid10 vazio e ciap2 K86 (overlay G10)" do
     request, = external!
     request.update!(cid10: nil, ciap2: "K86")

@@ -32,7 +32,7 @@ module CareRegulation
     def row(r)
       patient = r.patient
       [ r.id, date(r.requested_at&.in_time_zone), r.status, r.target_type, r.target_code, r.target_name, r.effective_color,
-        date(r.due_on), r.cid10, r.ciap2, r.justification, patient.display_name, patient.cns.to_s.last(4),
+        date(r.due_on), r.cid10, r.ciap2, r.justification, patient.display_name, patient.cns.to_s.gsub(/\D/, "").last(4),
         birth(patient), SEX.fetch(patient.sex.to_s, "I"), r.requester_unit.name, r.requester_unit.cnes,
         Screenings::Json.staff_name(r.requester_user), r.requester_cbo, r.external_system, r.external_number ]
     end

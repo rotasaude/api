@@ -210,6 +210,22 @@ RSpec.describe "Regulação — prestador externo e estado", type: :request do
       expect(authorization.reload.released_at).to be_nil
     end
 
+    it "falta em oferta contratada e depois external: scheduled e completed vêm com authorization nula; a vaga continua consumida" do
+      request = reauthorize!(regulation_request!, offer: offer)
+      schedule!(request)
+      outcome!(request, "missed")
+      expect(json_body).to include("status" => "pending", "misses" => 1)
+      stale = request.reload.authorizations.sole
+      mark!(request)
+      expect(json_body).to include("status" => "external", "state_regulated" => true, "authorization" => nil)
+      schedule!(request)
+      expect(json_body).to include("status" => "scheduled", "state_regulated" => true, "authorization" => nil)
+      outcome!(request, "completed")
+      expect(json_body).to include("status" => "completed", "state_regulated" => true, "authorization" => nil)
+      expect(stale.reload.released_at).to be_nil
+      expect(CareRegulation::Quota.used([ offer.id ]).fetch(offer.id)).to eq(1)
+    end
+
     it "autorizado em oferta própria → 409 invalid_transition; scheduled próprio também" do
       setup = own_authorized_request!
       request = setup.fetch(:regulation_request)
