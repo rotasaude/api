@@ -171,6 +171,8 @@ class RegulationCrew
       unit = HealthUnit.find_by!(name: UNIT)
       doctor = User.find_by!(email_address: "profissional@#{slug}.demo")
       REQUESTS.each do |spec|
+        next if deceased_requester?(slug, spec)
+
         request = request!(slug, ddd, spec, unit, doctor, clock)
         advance!(request, spec, regulator, offers, clock)
       end
@@ -306,6 +308,15 @@ class RegulationCrew
     end
 
     # --- pessoas e pedidos ------------------------------------------------
+
+    # Pessoa do CareLinesCrew com óbito registrado (teste manual): o pedido dela
+    # é pulado, o que já existe fica como está, e o db:seed segue.
+    def deceased_requester?(slug, spec)
+      return false unless spec[:care_lines] && CareLinesCrew.deceased?(citizen_of(slug, spec))
+
+      warn "[seeds] regulação: #{spec[:who]} com óbito registrado — pedido #{spec[:n]} pulado"
+      true
+    end
 
     def citizen_of(slug, spec)
       cpf = spec[:care_lines] ? CareLinesCrew.cpf_for(slug, spec[:who]) : cpf_for(slug, spec[:who])

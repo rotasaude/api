@@ -243,6 +243,27 @@ RSpec.describe CareLinesCrew, type: :request do
       expect { expect(seed).to eq(first) }.not_to(change { tables.map(&:count) })
     end
 
+    # O óbito de uma pessoa da semente (teste manual) não derruba o db:seed:
+    # a crew pula quem tem óbito (inscrição encerrada por óbito) e segue com as outras.
+    it "pessoa da semente com óbito registrado: a segunda rodada pula a pessoa e não quebra" do
+      seed
+      jose = person(:jose)
+      diabetic = enrollment_of(jose, line("diabetes_c4"))
+      ended = CareLines::EndEnrollment.call(enrollment: diabetic, reason: "death", note: nil, by: user("enfermeira"))
+      expect(ended).to be_ok
+
+      result = nil
+      expect { result = seed }.to output(/linhas de cuidado: jose com óbito registrado/).to_stderr
+      aggregate_failures do
+        expect(result).to include(switch: "ligado (care_lines)", team: team.name)
+        expect(enrollment_of(jose, line("diabetes_c4"))).to be_nil
+        expect(CareLineEnrollment.where(patient_id: jose.patient_id).pluck(:status, :ended_reason)).to eq([ %w[ended death] ])
+        expect(enrollment_of(person(:ana), line("pregnancy_c3"))).to be_present
+        expect(enrollment_of(person(:miguel), line("child_c2"))).to be_present
+        expect(pending_for(person(:maria), line("elderly_c6"))).to be_present
+      end
+    end
+
     it "sem o mantenedor de dev não liga nada" do
       allow(Maintainer).to receive(:find_by).with(email_address: "dev@local").and_return(nil)
       result = nil

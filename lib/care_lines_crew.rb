@@ -17,6 +17,11 @@ require_relative "clinical_record_crew"
 # 45 dias) é gravado direto, como lib/campaign_history.rb. Idempotente. Roda
 # depois do ClinicalRecordCrew (UBS, médica, enfermeira, recepção, CIAP/CID)
 # e do TriageCatalogCrew (protocolo saude-mental, repetição em 30 dias).
+#
+# Óbito: quem tem óbito registrado (inscrição encerrada por óbito ou saída do
+# cadastro individual por óbito; CareLines::Facts.deceased) é PULADO, com aviso
+# no stderr — o Suggest cala as sugestões dele e a confirmação da semente
+# quebraria o db:seed inteiro. As outras pessoas seguem.
 class CareLinesCrew
   UNIT = "UBS Jardim das Flores".freeze
   # Prefixo do telefone dos cidadãos da semente: único entre os lib/*_crew.rb.
@@ -113,18 +118,19 @@ class CareLinesCrew
       team = team!(slug, unit, doctor, nurse, technician)
       neighborhood = neighborhood!(unit)
       people = PEOPLE.keys.to_h { |key| [ key, citizen!(slug, ddd, key, neighborhood) ] }
+      people = living(people)
 
       staff = { "profissional" => doctor, "enfermeira" => nurse }
-      CONSULTATIONS.each { |key, visit| consult!(slug, unit, staff.fetch(visit[:by]), people[key], visit) }
-      past_consultation!(slug, unit, doctor, people[:osvaldo])
+      CONSULTATIONS.each { |key, visit| consult!(slug, unit, staff.fetch(visit[:by]), people[key], visit) if people.key?(key) }
+      past_consultation!(slug, unit, doctor, people[:osvaldo]) if people.key?(:osvaldo)
 
-      accept!(people[:jose], "diabetes_c4", team, nurse)
-      accept!(people[:ana], "pregnancy_c3", team, doctor, anchor_date: (Time.zone.today - PREGNANCY_LMP_DAYS_AGO).iso8601)
-      accept!(people[:miguel], "child_c2", team, nurse)
-      declare!(people[:rafael], "mental_health")
-      declare!(people[:juliana], "pregnancy")
-      %i[maria rafael juliana osvaldo sebastiao].each { |key| CareLines::Suggest.for_citizen(people[key].id) }
-      overdue_triage!(people[:jose])
+      accept!(people[:jose], "diabetes_c4", team, nurse) if people.key?(:jose)
+      accept!(people[:ana], "pregnancy_c3", team, doctor, anchor_date: (Time.zone.today - PREGNANCY_LMP_DAYS_AGO).iso8601) if people.key?(:ana)
+      accept!(people[:miguel], "child_c2", team, nurse) if people.key?(:miguel)
+      declare!(people[:rafael], "mental_health") if people.key?(:rafael)
+      declare!(people[:juliana], "pregnancy") if people.key?(:juliana)
+      %i[maria rafael juliana osvaldo sebastiao].each { |key| CareLines::Suggest.for_citizen(people[key].id) if people.key?(key) }
+      overdue_triage!(people[:jose]) if people.key?(:jose)
 
       { switch: switch_label(city), team: team.name, people: PEOPLE.values.map { |p| p[:name] },
         pending: CareLineSuggestion.pending_suggestions.where(team_id: team.id).count,
@@ -136,7 +142,18 @@ class CareLinesCrew
 
     def phone_for(ddd, key) = format("+55%s#{PHONE_PREFIX}%04d", ddd, PEOPLE.fetch(key)[:phone])
 
+    # Óbito registrado (a mesma marca do Suggest: CareLines::Facts.deceased).
+    # Pessoa sem paciente ainda não tem óbito. Usado também pelo RegulationCrew.
+    def deceased?(citizen) = citizen&.patient_id.present? && CareLines::Facts.deceased([ citizen.patient_id ]).any?
+
     private
+
+    # Tira do elenco quem tem óbito registrado, avisando (só a chave da pessoa da semente).
+    def living(people)
+      dead = people.select { |_key, citizen| deceased?(citizen) }.keys
+      dead.each { |key| warn "[seeds] linhas de cuidado: #{key} com óbito registrado — pulado" }
+      people.except(*dead)
+    end
 
     def birth_of(person)
       return person[:birth] if person[:birth]

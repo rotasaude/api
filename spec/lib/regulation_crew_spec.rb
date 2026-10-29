@@ -150,6 +150,36 @@ RSpec.describe RegulationCrew, type: :request do
     expect(cpfs.select { |cpf| text.include?(cpf) }).to eq([])
   end
 
+  # O óbito de uma pessoa do CareLinesCrew (teste manual) não derruba o db:seed:
+  # o pedido dela é pulado (e o que já existe fica como está).
+  it "o José com óbito registrado: o pedido 6 é pulado e os outros nove seguem, sem quebrar" do
+    nurse = User.find_by!(email_address: "enfermeira@curitiba.demo")
+    jose = Citizen.find_by!(cpf: CareLinesCrew.cpf_for("curitiba", :jose))
+    enrollment = CareLineEnrollment.active_enrollments.find_by!(patient_id: jose.patient_id)
+    expect(CareLines::EndEnrollment.call(enrollment: enrollment, reason: "death", note: nil, by: nurse)).to be_ok
+
+    result = nil
+    expect { result = seed }.to output(/regulação: jose com óbito registrado/).to_stderr
+    aggregate_failures do
+      expect(result[:switch]).to eq("ligado (care_regulation)")
+      expect(request(6)).to be_nil
+      expect(((1..10).to_a - [ 6 ]).map { |n| request(n)&.status }).to eq(%w[pending pending pending pending authorized scheduled returned external completed][0, 9])
+      expect(RegulationRequest.where.not(status: "draft").count).to eq(9)
+    end
+  end
+
+  it "o José com óbito depois da primeira rodada: o pedido dele fica como está e a segunda rodada não quebra" do
+    seed
+    before = request(6).attributes.slice("status", "version")
+    nurse = User.find_by!(email_address: "enfermeira@curitiba.demo")
+    jose = Citizen.find_by!(cpf: CareLinesCrew.cpf_for("curitiba", :jose))
+    enrollment = CareLineEnrollment.active_enrollments.find_by!(patient_id: jose.patient_id)
+    expect(CareLines::EndEnrollment.call(enrollment: enrollment, reason: "death", note: nil, by: nurse)).to be_ok
+
+    expect { expect { seed }.to output(/jose com óbito/).to_stderr }.not_to(change { RegulationRequest.count })
+    expect(request(6).attributes.slice("status", "version")).to eq(before)
+  end
+
   it "sem o mantenedor de dev não liga nada" do
     allow(Maintainer).to receive(:find_by).with(email_address: "dev@local").and_return(nil)
     result = nil
