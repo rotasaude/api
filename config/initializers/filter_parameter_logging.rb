@@ -76,9 +76,12 @@ Rails.application.config.filter_parameters += [
   # ADR 0044: regulação municipal — a justificativa do pedido, o CID-10 e o
   # CIAP-2 da indicação, o número da autorização do sistema do estado, as
   # observações do agendamento e o local do atendimento (`reason` cobre
-  # color_reason e skip_reason; `note` cobre notes). `target_code` não entra:
-  # é o único alvo em query (contrato §4) e não leva o paciente.
-  :justification, /\Acid10\z/, /\Aciap2\z/, :external_number, :schedule_notes, :place
+  # color_reason e skip_reason; `note` cobre notes). O alvo (`target_code`), a
+  # cor sugerida/decidida e o resultado do acompanhamento dizem o que o
+  # paciente procura e quão grave é: filtrados. O `filtered_path` só mascara o
+  # valor na linha "Started GET"; a fila (query) segue funcionando.
+  :justification, /\Acid10\z/, /\Aciap2\z/, :external_number, :schedule_notes, :place,
+  /\A(target_code|suggested_color|color|result)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
