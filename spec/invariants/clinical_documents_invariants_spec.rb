@@ -292,7 +292,10 @@ RSpec.describe "prescription_items: só acréscimo e re-cifra (ADR 0033)" do
     expect { refused { CityEncryption.allowing_reencryption { item.reload.update_columns(quantity: 2) } } }
       .to raise_error(ActiveRecord::StatementInvalid, /prescription_items is append-only: UPDATE refused/)
     expect { refused { item.reload.delete } }.to raise_error(ActiveRecord::StatementInvalid, /DELETE refused/)
+    # Recusado de qualquer jeito: pelo trigger de estatuto (append-only) ou, desde o
+    # módulo 27a, antes dele, pela FK de dispensation_items (Postgres não deixa
+    # truncar tabela referenciada). O invariante é "TRUNCATE recusado".
     expect { refused { ApplicationRecord.connection.execute("TRUNCATE prescription_items") } }
-      .to raise_error(ActiveRecord::StatementInvalid, /append-only/)
+      .to raise_error(ActiveRecord::StatementInvalid, /append-only|cannot truncate a table referenced in a foreign key constraint/)
   end
 end
