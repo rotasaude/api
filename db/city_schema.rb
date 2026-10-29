@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -927,6 +927,43 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
     t.check_constraint "version >= 1", name: "ck_disease_notifications_version"
   end
 
+  create_table "dispensation_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "catalog_item_id", null: false
+    t.boolean "completes_item", default: false, null: false
+    t.datetime "created_at", null: false
+    t.uuid "dispensation_id", null: false
+    t.uuid "external_prescription_item_id"
+    t.boolean "mapped_from_free_text", default: false, null: false
+    t.uuid "prescription_item_id"
+    t.decimal "quantity", precision: 12, scale: 2, null: false
+    t.uuid "stock_lot_id", null: false
+    t.index ["dispensation_id"], name: "idx_dispensation_items_dispensation"
+    t.index ["external_prescription_item_id"], name: "idx_dispensation_items_external_item"
+    t.index ["prescription_item_id"], name: "idx_dispensation_items_prescription_item"
+    t.check_constraint "NOT mapped_from_free_text OR prescription_item_id IS NOT NULL", name: "ck_dispensation_items_free_text"
+    t.check_constraint "num_nonnulls(prescription_item_id, external_prescription_item_id) = 1", name: "ck_dispensation_items_source"
+    t.check_constraint "quantity > 0::numeric AND quantity <= 99999.99", name: "ck_dispensation_items_quantity"
+  end
+
+  create_table "dispensations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "clinical_document_id"
+    t.datetime "created_at", null: false
+    t.datetime "dispensed_at", null: false
+    t.string "dispensed_by_role", null: false
+    t.uuid "dispensed_by_user_id", null: false
+    t.uuid "external_prescription_id"
+    t.text "notification_number"
+    t.uuid "patient_id", null: false
+    t.boolean "retained", default: false, null: false
+    t.uuid "stock_location_id", null: false
+    t.index ["clinical_document_id"], name: "idx_dispensations_clinical_document"
+    t.index ["external_prescription_id"], name: "idx_dispensations_external_prescription"
+    t.index ["patient_id", "dispensed_at"], name: "idx_dispensations_patient"
+    t.check_constraint "dispensed_by_role::text = ANY (ARRAY['pharmacist'::text, 'pharmacy_assistant'::text])", name: "ck_dispensations_role"
+    t.check_constraint "notification_number IS NULL OR retained", name: "ck_dispensations_retention"
+    t.check_constraint "num_nonnulls(clinical_document_id, external_prescription_id) = 1", name: "ck_dispensations_prescription"
+  end
+
   create_table "document_verification_lookups", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "clinical_document_id"
     t.datetime "created_at", null: false
@@ -1137,6 +1174,38 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
     t.check_constraint "source::text = ANY (ARRAY['unit'::text, 'provider'::text, 'fhir'::text, 'consultation'::text, 'lab'::text])", name: "ck_exam_results_source"
   end
 
+  create_table "external_prescription_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "catalog_item_id", null: false
+    t.integer "catmat_code", null: false
+    t.boolean "continuous", default: false, null: false
+    t.string "controlled_list", limit: 3
+    t.text "dosage_instructions", null: false
+    t.uuid "external_prescription_id", null: false
+    t.integer "position", null: false
+    t.decimal "quantity", precision: 12, scale: 2, null: false
+    t.string "quantity_unit", limit: 30, null: false
+    t.index ["external_prescription_id", "position"], name: "idx_external_prescription_items_position", unique: true
+    t.check_constraint "position >= 1", name: "ck_external_prescription_items_position"
+    t.check_constraint "quantity > 0::numeric AND quantity <= 99999.99", name: "ck_external_prescription_items_quantity"
+  end
+
+  create_table "external_prescriptions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "council", null: false
+    t.string "council_number", limit: 10, null: false
+    t.string "council_state", limit: 2, null: false
+    t.datetime "created_at", null: false
+    t.date "issued_on", null: false
+    t.text "notification_number"
+    t.uuid "patient_id", null: false
+    t.string "prescriber_name", limit: 120, null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.uuid "stock_location_id", null: false
+    t.index ["patient_id"], name: "idx_external_prescriptions_patient"
+    t.check_constraint "council::text = ANY (ARRAY['CRM'::text, 'CRO'::text, 'COREN'::text])", name: "ck_external_prescriptions_council"
+    t.check_constraint "council_number::text ~ '^[0-9]{1,10}$'::text", name: "ck_external_prescriptions_council_number"
+    t.check_constraint "council_state::text ~ '^[A-Z]{2}$'::text", name: "ck_external_prescriptions_council_state"
+  end
+
   create_table "families", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.uuid "household_id", null: false
@@ -1203,6 +1272,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
     t.string "cnes", limit: 7
     t.boolean "collects_samples", default: false, null: false
     t.datetime "created_at", null: false
+    t.boolean "dispenses", default: false, null: false
     t.string "kind", null: false
     t.string "name", null: false
     t.uuid "neighborhood_id"
@@ -1946,7 +2016,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'surveillance'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'stock_keeper'::text, 'surveillance'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "micro_areas", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2241,6 +2311,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
     t.check_constraint "quantity >= 1 AND quantity <= 999", name: "ck_performed_procedures_quantity"
     t.check_constraint "sigtap_code::text ~ '^[0-9]{10}$'::text AND (cid10 IS NULL OR cid10::text ~ '^[A-Z][0-9]{2}[0-9X]?$'::text) AND (cbo_code IS NULL OR cbo_code::text ~ '^[0-9]{6}$'::text)", name: "ck_performed_procedures_codes"
     t.check_constraint "source::text = ANY (ARRAY['attendance'::text, 'consultation'::text, 'lab_report'::text, 'manual'::text]) AND (instrument::text = ANY (ARRAY['bpa_i'::text, 'bpa_c'::text, 'not_bpa'::text])) AND (character::text = ANY (ARRAY['elective'::text, 'urgent'::text])) AND (status::text = ANY (ARRAY['recorded'::text, 'cancelled'::text]))", name: "ck_performed_procedures_domains"
+  end
+
+  create_table "pharmacy_settings", id: :smallint, default: nil, force: :cascade do |t|
+    t.integer "adjustment_approval_percent", null: false
+    t.integer "common_validity_days", null: false
+    t.integer "continuous_interval_days", null: false
+    t.integer "continuous_validity_days", null: false
+    t.integer "expiry_alert_days", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id"
+    t.check_constraint "adjustment_approval_percent >= 0 AND adjustment_approval_percent <= 100", name: "ck_pharmacy_settings_adjustment_approval_percent"
+    t.check_constraint "common_validity_days >= 1 AND common_validity_days <= 365", name: "ck_pharmacy_settings_common_validity_days"
+    t.check_constraint "continuous_interval_days >= 1 AND continuous_interval_days <= 90", name: "ck_pharmacy_settings_continuous_interval_days"
+    t.check_constraint "continuous_validity_days >= 1 AND continuous_validity_days <= 365", name: "ck_pharmacy_settings_continuous_validity_days"
+    t.check_constraint "expiry_alert_days >= 1 AND expiry_alert_days <= 365", name: "ck_pharmacy_settings_expiry_alert_days"
+    t.check_constraint "id = 1", name: "ck_pharmacy_settings_singleton"
   end
 
   create_table "prescription_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2865,6 +2951,157 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
+  create_table "stock_adjustments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.decimal "balance_at_request", precision: 12, scale: 2, null: false
+    t.decimal "counted_quantity", precision: 12, scale: 2
+    t.datetime "created_at", null: false
+    t.datetime "decided_at"
+    t.uuid "decided_by_user_id"
+    t.text "decision_reason"
+    t.string "kind", null: false
+    t.decimal "quantity", precision: 12, scale: 2, null: false
+    t.text "reason", null: false
+    t.uuid "requested_by_user_id", null: false
+    t.string "status", null: false
+    t.uuid "stock_location_id", null: false
+    t.uuid "stock_lot_id", null: false
+    t.index ["stock_location_id", "status"], name: "idx_stock_adjustments_location_status"
+    t.check_constraint "(kind::text = 'adjustment'::text) = (counted_quantity IS NOT NULL) AND (counted_quantity IS NULL OR counted_quantity >= 0::numeric AND counted_quantity <= 99999.99)", name: "ck_stock_adjustments_counted"
+    t.check_constraint "(status::text = ANY (ARRAY['approved'::text, 'rejected'::text])) = (decided_at IS NOT NULL)", name: "ck_stock_adjustments_decided"
+    t.check_constraint "balance_at_request >= 0::numeric AND balance_at_request <= 99999.99", name: "ck_stock_adjustments_balance"
+    t.check_constraint "decided_by_user_id IS NULL OR decided_by_user_id <> requested_by_user_id", name: "ck_stock_adjustments_decider"
+    t.check_constraint "kind::text = 'adjustment'::text OR status::text = 'applied'::text", name: "ck_stock_adjustments_approval"
+    t.check_constraint "kind::text = ANY (ARRAY['adjustment'::text, 'loss'::text, 'expiry'::text])", name: "ck_stock_adjustments_kind"
+    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99", name: "ck_stock_adjustments_quantity"
+    t.check_constraint "status::text = ANY (ARRAY['applied'::text, 'pending'::text, 'approved'::text, 'rejected'::text])", name: "ck_stock_adjustments_status"
+  end
+
+  create_table "stock_entries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "document_number", limit: 60
+    t.string "kind", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.uuid "stock_location_id", null: false
+    t.string "supplier", limit: 120
+    t.check_constraint "kind::text = 'opening'::text OR document_number IS NOT NULL AND supplier IS NOT NULL", name: "ck_stock_entries_document"
+    t.check_constraint "kind::text = ANY (ARRAY['invoice'::text, 'donation'::text, 'opening'::text])", name: "ck_stock_entries_kind"
+  end
+
+  create_table "stock_location_staff", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "granted_at", null: false
+    t.uuid "granted_by_user_id", null: false
+    t.datetime "revoked_at"
+    t.uuid "revoked_by_user_id"
+    t.string "role", null: false
+    t.uuid "stock_location_id", null: false
+    t.uuid "user_id", null: false
+    t.index ["stock_location_id", "user_id", "role"], name: "idx_stock_location_staff_active", unique: true, where: "(revoked_at IS NULL)"
+    t.index ["user_id"], name: "idx_stock_location_staff_user"
+    t.check_constraint "(revoked_at IS NULL) = (revoked_by_user_id IS NULL)", name: "ck_stock_location_staff_revoked"
+    t.check_constraint "role::text = ANY (ARRAY['pharmacist'::text, 'pharmacy_assistant'::text, 'stock_keeper'::text])", name: "ck_stock_location_staff_role"
+  end
+
+  create_table "stock_locations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id"
+    t.string "kind", null: false
+    t.string "name", limit: 120, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index "lower((name)::text)", name: "idx_stock_locations_name_ci", unique: true
+    t.index ["health_unit_id"], name: "idx_stock_locations_unit", unique: true, where: "(health_unit_id IS NOT NULL)"
+    t.index ["kind"], name: "idx_stock_locations_one_central", unique: true, where: "((kind)::text = 'central'::text)"
+    t.check_constraint "(kind::text = 'unit'::text) = (health_unit_id IS NOT NULL)", name: "ck_stock_locations_unit"
+    t.check_constraint "kind::text = ANY (ARRAY['central'::text, 'unit'::text])", name: "ck_stock_locations_kind"
+  end
+
+  create_table "stock_lots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "catalog_item_id", null: false
+    t.integer "catmat_code", null: false
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.string "dispensing_unit", limit: 20, null: false
+    t.date "expires_on", null: false
+    t.string "lot_number", limit: 40, null: false
+    t.string "manufacturer", limit: 120
+    t.index ["catalog_item_id", "lot_number"], name: "idx_stock_lots_number", unique: true
+    t.index ["expires_on"], name: "idx_stock_lots_expires_on"
+  end
+
+  create_table "stock_minimums", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "catalog_item_id", null: false
+    t.datetime "created_at", null: false
+    t.decimal "minimum", precision: 12, scale: 2, null: false
+    t.uuid "stock_location_id", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["stock_location_id", "catalog_item_id"], name: "idx_stock_minimums_item", unique: true
+    t.check_constraint "minimum >= 0::numeric AND minimum <= 99999.99", name: "ck_stock_minimums_minimum"
+  end
+
+  create_table "stock_movements", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "catalog_item_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "dispensation_item_id"
+    t.string "kind", null: false
+    t.integer "package_units"
+    t.integer "packages"
+    t.decimal "quantity", precision: 12, scale: 2, null: false
+    t.text "reason"
+    t.datetime "recorded_at", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.uuid "stock_adjustment_id"
+    t.uuid "stock_entry_id"
+    t.uuid "stock_location_id", null: false
+    t.uuid "stock_lot_id", null: false
+    t.uuid "stock_transfer_id"
+    t.index ["dispensation_item_id"], name: "idx_stock_movements_dispensation_item"
+    t.index ["stock_location_id", "stock_lot_id"], name: "idx_stock_movements_balance"
+    t.index ["stock_lot_id", "recorded_at", "id"], name: "idx_stock_movements_lot_time"
+    t.check_constraint "(package_units IS NULL) = (packages IS NULL) AND (package_units IS NULL OR package_units >= 1 AND package_units <= 10000 AND packages >= 1 AND packages <= 10000)", name: "ck_stock_movements_package"
+    t.check_constraint "kind::text <> ALL (ARRAY['loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text]) OR reason IS NOT NULL", name: "ck_stock_movements_reason"
+    t.check_constraint "kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_out'::text, 'transfer_in'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text])", name: "ck_stock_movements_kind"
+    t.check_constraint "num_nonnulls(stock_entry_id, stock_transfer_id, dispensation_item_id, stock_adjustment_id) = 1 AND (stock_entry_id IS NOT NULL) = (kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text])) AND (dispensation_item_id IS NOT NULL) = (kind::text = ANY (ARRAY['dispensing'::text, 'return'::text])) AND (stock_transfer_id IS NULL OR kind::text = ANY (ARRAY['transfer_out'::text, 'transfer_in'::text, 'loss'::text])) AND (stock_adjustment_id IS NULL OR kind::text = ANY (ARRAY['adjustment'::text, 'expiry'::text, 'loss'::text])) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'transfer_in'::text]) OR stock_transfer_id IS NOT NULL) AND (kind::text <> ALL (ARRAY['adjustment'::text, 'expiry'::text]) OR stock_adjustment_id IS NOT NULL)", name: "ck_stock_movements_document"
+    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99 AND (kind::text <> ALL (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_in'::text, 'return'::text]) OR quantity > 0::numeric) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text]) OR quantity < 0::numeric)", name: "ck_stock_movements_sign"
+  end
+
+  create_table "stock_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "catalog_item_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "stock_entry_id", null: false
+    t.uuid "stock_location_id", null: false
+    t.index ["stock_location_id", "catalog_item_id"], name: "idx_stock_openings_once", unique: true
+  end
+
+  create_table "stock_transfer_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "difference_reason"
+    t.decimal "quantity_received", precision: 12, scale: 2
+    t.decimal "quantity_sent", precision: 12, scale: 2, null: false
+    t.uuid "stock_lot_id", null: false
+    t.uuid "stock_transfer_id", null: false
+    t.index ["stock_transfer_id", "stock_lot_id"], name: "idx_stock_transfer_items_lot", unique: true
+    t.check_constraint "quantity_received IS NULL OR quantity_received >= 0::numeric AND quantity_received <= quantity_sent", name: "ck_stock_transfer_items_received"
+    t.check_constraint "quantity_sent > 0::numeric AND quantity_sent <= 99999.99", name: "ck_stock_transfer_items_sent"
+  end
+
+  create_table "stock_transfers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "from_location_id", null: false
+    t.datetime "received_at"
+    t.uuid "received_by_user_id"
+    t.datetime "sent_at", null: false
+    t.uuid "sent_by_user_id", null: false
+    t.string "status", null: false
+    t.uuid "to_location_id", null: false
+    t.index ["from_location_id", "created_at"], name: "idx_stock_transfers_from_created"
+    t.index ["to_location_id", "status"], name: "idx_stock_transfers_to_status"
+    t.check_constraint "(received_at IS NULL) = (received_by_user_id IS NULL)", name: "ck_stock_transfers_receiver"
+    t.check_constraint "(status::text = 'sent'::text) = (received_at IS NULL)", name: "ck_stock_transfers_received"
+    t.check_constraint "from_location_id <> to_location_id", name: "ck_stock_transfers_locations"
+    t.check_constraint "status::text = ANY (ARRAY['sent'::text, 'received'::text, 'received_with_difference'::text])", name: "ck_stock_transfers_status"
+  end
+
   create_table "triage_offer_daily_counts", force: :cascade do |t|
     t.date "day", null: false
     t.integer "offered", null: false
@@ -3076,6 +3313,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
   add_foreign_key "disease_notifications", "neighborhoods"
   add_foreign_key "disease_notifications", "patients"
   add_foreign_key "disease_notifications", "users", column: "notifier_user_id"
+  add_foreign_key "dispensation_items", "dispensations"
+  add_foreign_key "dispensation_items", "external_prescription_items"
+  add_foreign_key "dispensation_items", "prescription_items"
+  add_foreign_key "dispensation_items", "stock_lots"
+  add_foreign_key "dispensations", "clinical_documents"
+  add_foreign_key "dispensations", "external_prescriptions"
+  add_foreign_key "dispensations", "patients"
+  add_foreign_key "dispensations", "stock_locations"
+  add_foreign_key "dispensations", "users", column: "dispensed_by_user_id"
   add_foreign_key "document_verification_lookups", "clinical_documents"
   add_foreign_key "document_verification_lookups", "lab_reports"
   add_foreign_key "exam_files", "exam_providers"
@@ -3102,6 +3348,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
   add_foreign_key "exam_results", "exam_results", column: "replaces_result_id"
   add_foreign_key "exam_results", "patients"
   add_foreign_key "exam_results", "users", column: "registered_by_user_id"
+  add_foreign_key "external_prescription_items", "external_prescriptions"
+  add_foreign_key "external_prescriptions", "patients"
+  add_foreign_key "external_prescriptions", "stock_locations"
+  add_foreign_key "external_prescriptions", "users", column: "recorded_by_user_id"
   add_foreign_key "families", "households"
   add_foreign_key "families", "patients", column: "responsible_patient_id"
   add_foreign_key "health_team_members", "health_teams"
@@ -3265,6 +3515,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
   add_foreign_key "performed_procedures", "users", column: "cancelled_by_user_id"
   add_foreign_key "performed_procedures", "users", column: "professional_user_id"
   add_foreign_key "performed_procedures", "users", column: "recorded_by_user_id"
+  add_foreign_key "pharmacy_settings", "users", column: "updated_by_user_id"
   add_foreign_key "prescription_items", "clinical_documents"
   add_foreign_key "prescription_items", "nursing_protocol_version_items"
   add_foreign_key "prescription_items", "patient_problems", column: "reason_problem_id"
@@ -3322,6 +3573,36 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_900001) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
+  add_foreign_key "stock_adjustments", "stock_locations"
+  add_foreign_key "stock_adjustments", "stock_lots"
+  add_foreign_key "stock_adjustments", "users", column: "decided_by_user_id"
+  add_foreign_key "stock_adjustments", "users", column: "requested_by_user_id"
+  add_foreign_key "stock_entries", "stock_locations"
+  add_foreign_key "stock_entries", "users", column: "recorded_by_user_id"
+  add_foreign_key "stock_location_staff", "stock_locations"
+  add_foreign_key "stock_location_staff", "users"
+  add_foreign_key "stock_location_staff", "users", column: "granted_by_user_id"
+  add_foreign_key "stock_location_staff", "users", column: "revoked_by_user_id"
+  add_foreign_key "stock_locations", "health_units"
+  add_foreign_key "stock_locations", "users", column: "updated_by_user_id"
+  add_foreign_key "stock_lots", "users", column: "created_by_user_id"
+  add_foreign_key "stock_minimums", "stock_locations"
+  add_foreign_key "stock_minimums", "users", column: "updated_by_user_id"
+  add_foreign_key "stock_movements", "dispensation_items"
+  add_foreign_key "stock_movements", "stock_adjustments"
+  add_foreign_key "stock_movements", "stock_entries"
+  add_foreign_key "stock_movements", "stock_locations"
+  add_foreign_key "stock_movements", "stock_lots"
+  add_foreign_key "stock_movements", "stock_transfers"
+  add_foreign_key "stock_movements", "users", column: "recorded_by_user_id"
+  add_foreign_key "stock_openings", "stock_entries"
+  add_foreign_key "stock_openings", "stock_locations"
+  add_foreign_key "stock_transfer_items", "stock_lots"
+  add_foreign_key "stock_transfer_items", "stock_transfers"
+  add_foreign_key "stock_transfers", "stock_locations", column: "from_location_id"
+  add_foreign_key "stock_transfers", "stock_locations", column: "to_location_id"
+  add_foreign_key "stock_transfers", "users", column: "received_by_user_id"
+  add_foreign_key "stock_transfers", "users", column: "sent_by_user_id"
   add_foreign_key "triage_offers", "users", column: "updated_by_user_id"
   add_foreign_key "triage_suggestions", "citizens"
   add_foreign_key "triage_suggestions", "triages", column: "source_triage_id"

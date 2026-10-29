@@ -11,6 +11,9 @@ class HealthUnit < ApplicationRecord
 
   has_many :attendances, dependent: :restrict_with_error
 
+  # ADR 0045: `dispenses` marca a unidade com farmácia (local de estoque
+  # `unit`, Pharmacy::SaveLocation). Padrão falso.
+
   # ADR 0023: onde a unidade FICA (pode não estar entre os bairros que atende).
   belongs_to :neighborhood, optional: true
 

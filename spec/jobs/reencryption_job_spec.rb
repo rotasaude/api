@@ -69,7 +69,9 @@ RSpec.describe ReencryptionJob do
                                          CareLineEnrollment CareLineSuggestion CareOutreachContact CitizenDeclaredCondition
                                          HouseholdVersion Family IndividualRegistration IndividualRegistrationVersion
                                          DiseaseNotification DiseaseNotificationEvent
-                                         RegulationRequest RegulationRequestEvent RegulationAuthorization])
+                                         RegulationRequest RegulationRequestEvent RegulationAuthorization
+                                         StockMovement StockTransferItem StockAdjustment ExternalPrescription
+                                         ExternalPrescriptionItem Dispensation])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end

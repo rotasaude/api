@@ -1,6 +1,7 @@
 require "rails_helper"
 require Rails.root.join("db/city_migrate/20261027900002_add_disease_surveillance.rb").to_s
 require Rails.root.join("db/city_migrate/20261028900001_add_care_regulation.rb").to_s
+require Rails.root.join("db/city_migrate/20261029900001_add_pharmacy_stock.rb").to_s
 
 RSpec.describe Membership do
   it "conhece o papel citizen_verifier e o trata como privilegiado" do
@@ -59,10 +60,21 @@ RSpec.describe Membership do
     expect { described_class.create!(user: user, role: "care_regulator", granted_at: Time.current) }.not_to raise_error
   end
 
+  it "pharmacist e pharmacy_assistant são privilegiados, stock_keeper não, e o banco aceita os três" do
+    expect(described_class::ROLES).to include("pharmacist", "pharmacy_assistant", "stock_keeper")
+    expect(described_class::PRIVILEGED_ROLES).to include("pharmacist", "pharmacy_assistant")
+    expect(described_class::PRIVILEGED_ROLES).not_to include("stock_keeper")
+    user = User.create!(email_address: "farmacia@cidade.gov.br", password: "senha-segura-123")
+    %w[pharmacist pharmacy_assistant stock_keeper].each do |role|
+      expect { described_class.create!(user: user, role: role, granted_at: Time.current) }.not_to raise_error
+    end
+  end
+
   # ROLES espelha ck_memberships_role: a lista da última migração que o
-  # reescreve (26a) é a do 25 mais care_regulator, em ordem.
-  it "ROLES é a lista da migração do 26a" do
+  # reescreve (27a) é a do 26a mais os três papéis da farmácia, em ordem.
+  it "ROLES é a lista da migração do 27a" do
     expect(AddCareRegulation::ROLES).to eq((AddDiseaseSurveillance::ROLES + %w[care_regulator]).sort)
-    expect(described_class::ROLES).to eq(AddCareRegulation::ROLES)
+    expect(AddPharmacyStock::ROLES).to eq((AddCareRegulation::ROLES + %w[pharmacist pharmacy_assistant stock_keeper]).sort)
+    expect(described_class::ROLES).to eq(AddPharmacyStock::ROLES)
   end
 end

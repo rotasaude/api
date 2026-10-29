@@ -149,7 +149,13 @@ module CityEncryption
     [ RegulationRequest, :cid10 ], [ RegulationRequest, :ciap2 ], [ RegulationRequest, :justification ],
     [ RegulationRequest, :color_reason ], [ RegulationRequest, :schedule_notes ],
     [ RegulationRequestEvent, :reason ],
-    [ RegulationAuthorization, :skip_reason ]
+    [ RegulationAuthorization, :skip_reason ],
+    # ADR 0045: motivos de estoque, número da notificação retida e posologia
+    # da receita externa.
+    [ StockMovement, :reason ], [ StockTransferItem, :difference_reason ],
+    [ StockAdjustment, :reason ], [ StockAdjustment, :decision_reason ],
+    [ ExternalPrescription, :notification_number ], [ ExternalPrescriptionItem, :dosage_instructions ],
+    [ Dispensation, :notification_number ]
   ].freeze
 
   module_function

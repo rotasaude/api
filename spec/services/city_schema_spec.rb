@@ -107,6 +107,24 @@ RSpec.describe CitySchema do
                              "households_no_delete", "families_no_delete", *tables.map { |t| "#{t}_append_only_truncate" })
   end
 
+  # Módulo 27a (ADR 0045): o dump não representa trigger; um banco de cidade
+  # novo (dump + city_triggers.sql) tem de nascer com a guarda de saldo, as
+  # re-cifras, as guardas de transferência, ajuste e vínculo, os só-acréscimo,
+  # os no-delete e o truncate das 15 tabelas.
+  it "loads the 27a pharmacy triggers into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+    tables = %w[stock_locations stock_location_staff pharmacy_settings stock_minimums stock_lots stock_entries stock_openings stock_transfers
+                stock_transfer_items stock_adjustments external_prescriptions external_prescription_items dispensations dispensation_items
+                stock_movements]
+
+    expect(names).to include("stock_movements_balance", "stock_movements_reencryption_only", "dispensations_reencryption_only",
+                             "external_prescriptions_reencryption_only", "external_prescription_items_reencryption_only",
+                             "stock_transfers_guard", "stock_transfer_items_guard", "stock_adjustments_guard", "stock_location_staff_guard",
+                             *%w[stock_lots stock_entries stock_openings dispensation_items].map { |t| "#{t}_append_only" },
+                             *%w[stock_locations stock_minimums pharmacy_settings].map { |t| "#{t}_no_delete" },
+                             *tables.map { |t| "#{t}_append_only_truncate" })
+  end
+
   # Módulo 23 (revisão final, I1): o db/city_triggers.sql do HEAD recria a
   # guarda dos pedidos do módulo 17 lendo origin_care_line_enrollment_id, que
   # só nasce na 900003. Se a 900002 executasse o arquivo e a 900003 falhasse

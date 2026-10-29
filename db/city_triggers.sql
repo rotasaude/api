@@ -2348,3 +2348,152 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 27a (ADR 0045): farmácia e almoxarifado. O saldo é a soma dos
+-- movimentos por (local, lote), só acréscimo, e nunca fica negativo (a
+-- aplicação trava os lotes antes de gravar; este é o cinto de segurança, como
+-- o do 21c). Lote, entrada, abertura e item de dispensação: só acréscimo.
+-- Movimento, dispensação e receita externa: só a re-cifra do cifrado. A
+-- transferência só é recebida (uma vez, de sent); o item dela só ganha o
+-- recebido e o motivo da diferença (uma vez); o ajuste só é decidido (uma vez,
+-- de pending); o vínculo do local só é revogado (uma vez). Local, mínimo e
+-- parâmetros nunca somem. TRUNCATE recusado nas 15 tabelas.
+CREATE OR REPLACE FUNCTION rota_stock_balance_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF (SELECT COALESCE(SUM(quantity), 0) FROM stock_movements
+      WHERE stock_location_id = NEW.stock_location_id AND stock_lot_id = NEW.stock_lot_id) < 0 THEN
+    RAISE EXCEPTION 'stock_movements: negative balance refused';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_stock_transfer_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['status', 'received_by_user_id', 'received_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'stock_transfers: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'stock_transfers: only status, received_by_user_id and received_at change';
+  END IF;
+  IF OLD.status <> 'sent' OR NEW.status = 'sent' THEN
+    RAISE EXCEPTION 'stock_transfers: a transfer is received once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_stock_transfer_item_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['quantity_received', 'difference_reason'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'stock_transfer_items: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'difference_reason') = (to_jsonb(OLD) - 'difference_reason') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'stock_transfer_items: only quantity_received and difference_reason change';
+  END IF;
+  IF OLD.quantity_received IS NOT NULL OR OLD.difference_reason IS NOT NULL OR NEW.quantity_received IS NULL THEN
+    RAISE EXCEPTION 'stock_transfer_items: an item is received once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_stock_adjustment_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['status', 'decided_by_user_id', 'decided_at', 'decision_reason'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'stock_adjustments: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - ARRAY['reason', 'decision_reason']) = (to_jsonb(OLD) - ARRAY['reason', 'decision_reason']) THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'stock_adjustments: only status, decided_by_user_id, decided_at and decision_reason change';
+  END IF;
+  IF OLD.status <> 'pending' OR NEW.status NOT IN ('approved', 'rejected') THEN
+    RAISE EXCEPTION 'stock_adjustments: a pending adjustment is decided once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_stock_location_staff_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['revoked_at', 'revoked_by_user_id'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'stock_location_staff: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'stock_location_staff: only revoked_at and revoked_by_user_id change';
+  END IF;
+  IF OLD.revoked_at IS NOT NULL OR NEW.revoked_at IS NULL THEN
+    RAISE EXCEPTION 'stock_location_staff: a link is revoked once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.stock_movements') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_movements_balance ON stock_movements';
+    EXECUTE 'CREATE TRIGGER stock_movements_balance AFTER INSERT ON stock_movements
+      FOR EACH ROW EXECUTE FUNCTION rota_stock_balance_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_movements_reencryption_only ON stock_movements';
+    EXECUTE 'CREATE TRIGGER stock_movements_reencryption_only BEFORE UPDATE OR DELETE ON stock_movements
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS dispensations_reencryption_only ON dispensations';
+    EXECUTE 'CREATE TRIGGER dispensations_reencryption_only BEFORE UPDATE OR DELETE ON dispensations
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''notification_number'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS external_prescriptions_reencryption_only ON external_prescriptions';
+    EXECUTE 'CREATE TRIGGER external_prescriptions_reencryption_only BEFORE UPDATE OR DELETE ON external_prescriptions
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''notification_number'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS external_prescription_items_reencryption_only ON external_prescription_items';
+    EXECUTE 'CREATE TRIGGER external_prescription_items_reencryption_only BEFORE UPDATE OR DELETE ON external_prescription_items
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''dosage_instructions'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_transfers_guard ON stock_transfers';
+    EXECUTE 'CREATE TRIGGER stock_transfers_guard BEFORE UPDATE OR DELETE ON stock_transfers
+      FOR EACH ROW EXECUTE FUNCTION rota_stock_transfer_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_transfer_items_guard ON stock_transfer_items';
+    EXECUTE 'CREATE TRIGGER stock_transfer_items_guard BEFORE UPDATE OR DELETE ON stock_transfer_items
+      FOR EACH ROW EXECUTE FUNCTION rota_stock_transfer_item_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_adjustments_guard ON stock_adjustments';
+    EXECUTE 'CREATE TRIGGER stock_adjustments_guard BEFORE UPDATE OR DELETE ON stock_adjustments
+      FOR EACH ROW EXECUTE FUNCTION rota_stock_adjustment_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_location_staff_guard ON stock_location_staff';
+    EXECUTE 'CREATE TRIGGER stock_location_staff_guard BEFORE UPDATE OR DELETE ON stock_location_staff
+      FOR EACH ROW EXECUTE FUNCTION rota_stock_location_staff_guard()';
+    FOREACH item IN ARRAY ARRAY['stock_lots', 'stock_entries', 'stock_openings', 'dispensation_items'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['stock_locations', 'stock_minimums', 'pharmacy_settings'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
+                     item || '_no_delete', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['stock_locations', 'stock_location_staff', 'pharmacy_settings', 'stock_minimums', 'stock_lots',
+                                'stock_entries', 'stock_openings', 'stock_transfers', 'stock_transfer_items', 'stock_adjustments',
+                                'external_prescriptions', 'external_prescription_items', 'dispensations', 'dispensation_items',
+                                'stock_movements'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;
