@@ -120,6 +120,26 @@ RSpec.describe "Regulação — devolvidos e complemento", type: :request do
         expect(viewed.map { |e| e.payload["regulation_request_ids"] }).to eq([ [ oldest.id, middle.id ], [ newest.id ] ])
       end
 
+      it "pedidos com o mesmo requested_at e limit 1: o id desempata e as páginas não repetem nem perdem linha" do
+        tied = [ returned!(aged!(10)), returned!(aged!(10)) ]
+        expect(tied.map(&:requested_at).uniq.size).to eq(1)
+        expected = RegulationRequest.where(status: "returned", requester_unit_id: unit.id).order(:requested_at, :id).pluck(:id)
+        expect(expected.first(2)).to eq(tied.map(&:id).sort)
+
+        seen = []
+        before = nil
+        10.times do
+          page(limit: 1, **{ before: before }.compact)
+          expect(response).to have_http_status(:ok)
+          seen.concat(ids)
+          before = json_body["next_before"]
+          break unless before
+        end
+        expect(before).to be_nil
+        expect(seen).to eq(expected)
+        expect(seen.size).to eq(5)
+      end
+
       it "página exata no fim (limit igual ao total): next_before nulo; sem limit usa 50" do
         page(limit: 3)
         expect([ ids, json_body["next_before"] ]).to eq([ [ oldest.id, middle.id, newest.id ], nil ])
