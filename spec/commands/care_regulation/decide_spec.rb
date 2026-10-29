@@ -112,6 +112,27 @@ RSpec.describe CareRegulation::Decide do
     expect(used(own_offer)).to eq(0)
   end
 
+  # Ruling (fix round 3): a vaga da autorização com falta contada está
+  # consumida, cancele quem cancelar (Misses.consumed?, a regra do AppointmentSync).
+  it "falta contada no caminho remarcado → horário expira → authorized → cancelar não devolve a cota" do
+    tick_regulation_events!
+    request = authorize!(aged!(3), offer: own_offer)
+    appointment_request = AppointmentRequest.find(request.appointment_request_id)
+    no_show!(schedule_regulated!(appointment_request, at: Time.current + 2.days))
+    rescheduled = schedule_regulated!(appointment_request, at: Time.current + 5.days)
+    expect(CareRegulation::AppointmentSync.call(appointment_request_id: appointment_request.id)).to eq("scheduled")
+    expire!(rescheduled)
+    expect(CareRegulation::AppointmentSync.call(appointment_request_id: appointment_request.id)).to eq("authorized")
+    expect(request.reload).to have_attributes(status: "authorized", misses: 1)
+
+    expect(decide(request, "cancel")).to be_ok
+    expect(request.reload.status).to eq("cancelled")
+    expect(request.authorizations.sole).to have_attributes(released_at: nil, release_reason: nil)
+    expect(used(own_offer)).to eq(1)
+    expect(appointment_request.reload).to have_attributes(status: "closed", closed_reason: "dismissed",
+                                                          dismiss_reason: CareRegulation::Catalog::SYNC_NOTES[:cancelled])
+  end
+
   it "com horário marcado (Appointments::Schedule) → appointment_scheduled e nada muda" do
     request = authorize!(aged!(3), offer: own_offer)
     appointment = AppointmentRequest.find(request.appointment_request_id)

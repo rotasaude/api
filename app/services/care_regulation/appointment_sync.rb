@@ -124,7 +124,7 @@ module CareRegulation
       forward = walk(request.appointment_request_id, lock: lock)
       ids = backward_ids(request.appointment_request_id) | forward.map(&:id)
       authorization = vigente(request)
-      counted = authorization ? counted_misses(request, authorization) : 0
+      counted = authorization ? Misses.counted(request: request, authorization: authorization) : 0
       uncounted = uncounted_misses(ids, counted)
       target, detail = target_for(forward.last, missed: uncounted.positive?)
       release = target == :cancelled && authorization.present? && counted.zero? && uncounted.zero?
@@ -160,11 +160,6 @@ module CareRegulation
     def uncounted_misses(chain_ids, counted)
       no_shows = Appointment.where(request_id: chain_ids, status: "no_show").count
       [ no_shows - counted, 0 ].max
-    end
-
-    def counted_misses(request, authorization)
-      RegulationRequestEvent.where(regulation_request_id: request.id, status: "missed")
-                            .where(created_at: authorization.created_at..).count
     end
 
     def schedule!(request, plan)
@@ -302,7 +297,7 @@ module CareRegulation
       room = Catalog::PLACE_MAX - unit.name.length - " — ".length
       room.positive? ? "#{unit.name} — #{address[0, room].rstrip}" : unit.name
     end
-    private_class_method :reconcile, :apply!, :plan, :target_for, :closed_target, :uncounted_misses, :counted_misses,
+    private_class_method :reconcile, :apply!, :plan, :target_for, :closed_target, :uncounted_misses,
                          :schedule!, :back_to_authorized!, :miss!, :cancel!, :transition!, :point!, :dismiss_orphans!,
                          :walk, :releasing_preview?, :chain_ids, :backward_ids, :vigente, :place_for
   end

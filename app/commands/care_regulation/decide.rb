@@ -17,7 +17,9 @@
 #
 # Autorização não liberada de um pedido que voltou a `pending` depois da falta
 # não é vigente: a falta consome a vaga (Desvio 8) e o cancelamento não a
-# devolve.
+# devolve. O mesmo vale para a autorização vigente que já teve falta contada
+# (remarcada antes do job e depois expirada, de volta a `authorized`):
+# Misses.consumed? — a mesma regra do AppointmentSync (Ruling, fix round 3).
 #
 # Motivo nunca em log, evento nem Result de recusa.
 module CareRegulation
@@ -65,7 +67,9 @@ module CareRegulation
             AppointmentRequests::Lifecycle.close!(appointment, reason: "dismissed", by: by,
                                                                dismiss_reason: Catalog::SYNC_NOTES.fetch(:cancelled))
           end
-          current.update!(released_at: now, release_reason: "cancelled") if current && RELEASING.include?(request.status)
+          if current && RELEASING.include?(request.status) && !Misses.consumed?(request: request, authorization: current)
+            current.update!(released_at: now, release_reason: "cancelled")
+          end
         end
 
         transitioned = Transition.call(request: request, to: rule.fetch(:to), by: by, reason: text, version: version)

@@ -49,6 +49,19 @@ module CareRegulation
       request
     end
 
+    # Faltas já contadas na autorização: as linhas `missed` do andamento
+    # gravadas desde ela (cada autorização abre uma cadeia nova). Fonte única
+    # da regra para o AppointmentSync e o Decide.
+    def counted(request:, authorization:)
+      RegulationRequestEvent.where(regulation_request_id: request.id, status: "missed")
+                            .where(created_at: authorization.created_at..).count
+    end
+
+    # A vaga da autorização está consumida por falta (Desvio 3; Ruling do
+    # controlador, fix rounds 2 e 3): cancelar depois, por quem for, não a
+    # devolve.
+    def consumed?(request:, authorization:) = counted(request: request, authorization: authorization).positive?
+
     # Grava `count` faltas no andamento (cortadas em MAX_MISSES) e devolve o
     # novo `misses`, ainda NÃO gravado: vai nas mudanças da transição seguinte.
     def record!(request:, by:, count: 1)
