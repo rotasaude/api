@@ -6,11 +6,11 @@ require "rails_helper"
 RSpec.describe "Cidadão — situação do pedido de regulação", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
-  KEYS = %w[id label status scheduled_at place updated_at].freeze
-  NOW = Time.zone.parse("2026-10-28 10:00:00")
+  let(:keys) { %w[id label status scheduled_at place updated_at] }
+  let(:now) { Time.zone.parse("2026-10-28 10:00:00") }
 
   before do
-    travel_to(NOW)
+    travel_to(now)
     regulation_city!
   end
 
@@ -41,7 +41,7 @@ RSpec.describe "Cidadão — situação do pedido de regulação", type: :reques
     scheduled = authorize!(mine(target_code: "225105"))
     when_at = Time.zone.parse("2026-11-10 09:30:00")
     scheduled_result = CareRegulation::ScheduleExternal.call(request: scheduled, at: when_at.iso8601, place: "Clínica de Olhos Araucária, sala 3",
-                                                             notes: nil, version: scheduled.version, by: regulator)
+                                                             notes: "Levar exames anteriores", version: scheduled.version, by: regulator)
     raise "agendamento recusado: #{scheduled_result.reason}" if scheduled_result.failure?
 
     returned = decide!(mine(target_code: "225109"), "return")
@@ -58,11 +58,15 @@ RSpec.describe "Cidadão — situação do pedido de regulação", type: :reques
     expect(response).to have_http_status(:ok)
     expect(json_body.keys).to eq([ "requests" ])
     expect(json_body["requests"].map { |r| r["id"] }).not_to include(draft.id)
-    expect(json_body["requests"]).to all(satisfy { |r| r.keys.sort == KEYS.sort })
+    expect(json_body["requests"]).to all(satisfy { |r| r.keys.sort == keys.sort })
     expect({ pending_r => "waiting", authorized => "waiting", external => "waiting", scheduled => "scheduled", returned => "returned",
              denied => "denied", cancelled => "closed", closed => "closed" }.transform_keys(&:id))
       .to eq(json_body["requests"].to_h { |r| [ r["id"], r["status"] ] })
     expect(row(scheduled.id)).to include("scheduled_at" => when_at.iso8601, "place" => "Clínica de Olhos Araucária, sala 3")
+    # A observação do agendamento (schedule_notes) é do regulador: nem no local, nem em parte alguma do corpo.
+    expect(scheduled.reload.schedule_notes).to eq("Levar exames anteriores")
+    expect(row(scheduled.id)["place"]).not_to include("Levar exames")
+    expect(response.body).not_to include("Levar exames")
     expect(row(pending_r.id)).to include("scheduled_at" => nil, "place" => nil)
     expect(row(authorized.id)).to include("scheduled_at" => nil, "place" => nil)
   end
@@ -113,7 +117,7 @@ RSpec.describe "Cidadão — situação do pedido de regulação", type: :reques
     get "/citizen/regulation_requests", params: { citizen_id: citizen.id }
 
     item = json_body["requests"].first
-    expect(item.keys).to match_array(KEYS)
+    expect(item.keys).to match_array(keys)
     expect(item.keys & forbidden.keys).to be_empty
     expect(response.body).not_to include("I10", "K86", justification, "Risco de vida", "Levar exames", "123456", "225120", "red", "yellow",
                                          request.due_on.iso8601, "Prestador")
