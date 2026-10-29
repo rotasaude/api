@@ -57,7 +57,12 @@ module SigtapSample
     [ "0301060096", "ATENDIMENTO MEDICO EM UNIDADE DE PRONTO ATENDIMENTO", "2", "I", 0, 9999 ],
     [ "0301100012", "ADMINISTRACAO DE MEDICAMENTOS NA ATENCAO ESPECIALIZADA.", "2", "I", 0, 9999 ],
     [ "0301060118", "ACOLHIMENTO COM CLASSIFICACAO DE RISCO", "2", "I", 0, 9999 ],
-    [ "0214010015", "GLICEMIA CAPILAR", "2", "I", 0, 9999 ]
+    [ "0214010015", "GLICEMIA CAPILAR", "2", "I", 0, 9999 ],
+    # Módulo 26a (ADR 0044): procedimentos reguláveis da semente de dev
+    # (instrumentos conferidos em vendor/regulation/2026-10-28).
+    [ "0301010072", "CONSULTA MEDICA EM ATENCAO ESPECIALIZADA", "2", "I", 0, 9999 ],
+    [ "0209010037", "ESOFAGOGASTRODUODENOSCOPIA", "2", "I", 0, 9999 ],
+    [ "0401010074", "EXERESE DE TUMOR DE PELE E ANEXOS / CISTO SEBACEO / LIPOMA", "2", "I", 0, 9999 ]
   ].freeze
 
   # Desvio 14: VL_SA de dev, em centavos (aproximação da tabela vigente).
@@ -89,10 +94,16 @@ module SigtapSample
     "0301040079" => %w[01],
     # Módulo 22: BPA-I na consulta/urgência; BPA-C no consolidado e nos exames.
     "0301060029" => %w[02], "0301060096" => %w[02], "0301100012" => %w[01], "0301060118" => %w[01], "0214010015" => %w[01],
-    "0203020030" => %w[02]
+    "0203020030" => %w[02],
+    # Módulo 26a: BPA (01/02) e, na EGD, AIH especial e APAC (G11: a APAC principal não exclui).
+    "0301010072" => %w[01 02 07], "0209010037" => %w[02 04 06 07], "0401010074" => %w[01 02]
   }.merge(AMOUNTS.keys.to_h { |code| [ code, %w[01] ] }).freeze
 
-  REGISTRIES = { "01" => "BPA (CONSOLIDADO)", "02" => "BPA (INDIVIDUALIZADO)" }.freeze
+  REGISTRIES = { "01" => "BPA (CONSOLIDADO)", "02" => "BPA (INDIVIDUALIZADO)", "04" => "AIH (PROC. ESPECIAL)",
+                 "06" => "APAC (PROC. PRINCIPAL)", "07" => "APAC (PROC. SECUNDARIO)" }.freeze
+
+  # Módulo 26a: os procedimentos reguláveis do recorte (RegulationCrew).
+  REGULATION_CODES = %w[0301010072 0209010037 0401010074].freeze
 
   module_function
 
