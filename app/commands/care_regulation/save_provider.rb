@@ -68,7 +68,9 @@ module CareRegulation
         end
         next Result.ok(provider: provider) unless provider.changed?
 
-        taken = taken_reason(unit_id: nil, cnes: provider.cnes, except: provider.id)
+        # Só o externo grava a coluna: a duplicidade de CNES só se checa quando ela mudou
+        # (o `own` herda o da unidade e renomear ou desativar nunca depende dele).
+        taken = provider.cnes_changed? ? taken_reason(unit_id: nil, cnes: provider.cnes, except: provider.id) : nil
         next Result.fail(taken) if taken
 
         provider.updated_by_user = by

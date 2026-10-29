@@ -232,6 +232,17 @@ RSpec.describe "Regulação — prestadores e ofertas", type: :request do
       expect(json_body["providers"].sole).to include("cnes" => nil)
     end
 
+    it "unidade com o CNES de um externo (troca posterior): renomear e desativar o próprio continua 200, sem checar CNES" do
+      own = own_provider!(unit)
+      external_provider!(cnes: "3456781")
+      unit.update!(cnes: "3456781")
+      stepped_up!(admin)
+      json_patch "/regulation/admin/providers/#{own.id}", active: false
+      expect([ response.status, json_body["active"] ]).to eq([ 200, false ])
+      json_patch "/regulation/admin/providers/#{own.id}", name: "UBS Vila Hauer Renomeada"
+      expect([ response.status, json_body["name"] ]).to eq([ 200, "UBS Vila Hauer Renomeada" ])
+    end
+
     it "o CNES novo da unidade vale para a trava de duplicidade: o externo não pode usá-lo" do
       own_provider!(unit)
       unit.update!(cnes: "7654321")
