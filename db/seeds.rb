@@ -20,6 +20,7 @@
 #     A base de tipos de atendimento, o modelo "Manhã" nos turnos da médica (Curitiba), os turnos da semana da médica e da enfermeira e o idoso com regra de agendamento vêm de `lib/scheduling_crew.rb` (módulo 17).
 #     Linhas de cuidado (módulo 23): care_lines ligado em Curitiba, linhas adotadas e a própria de saúde mental, a técnica de enfermagem (tecnica@<slug>.demo, também na recepção) e as pessoas das provas na UBS Jardim das Flores — ver lib/care_lines_crew.rb.
 #     Cadastro territorial (módulo 24a): territory_registry ligado em Curitiba, a ACS (acs@<slug>.demo), as microáreas 01 e 02 da equipe da UBS Jardim das Flores, quatro domicílios e os cadastros da prova (válido, a vencer, vencido, sem identificador, recusa, óbito, mudança) — ver lib/territory_registry_crew.rb.
+#     Regulação municipal (módulo 26a): care_regulation ligado em Curitiba, a reguladora (regulacao.municipal@<slug>.demo), o Centro Municipal de Especialidades Vila Hauer e três prestadores, as ofertas do mês e os dez pedidos da prova — ver lib/regulation_crew.rb.
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -56,6 +57,7 @@ else
   require Rails.root.join("lib/care_lines_crew").to_s
   require Rails.root.join("lib/territory_registry_crew").to_s
   require Rails.root.join("lib/surveillance_crew").to_s
+  require Rails.root.join("lib/regulation_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -120,6 +122,13 @@ else
   # Lista nacional de notificação compulsória (módulo 25, ADR 0043): a versão 1
   # do YAML versionado (idempotente; nunca sobrescreve a curadoria do maintenance).
   puts "[seeds] lista de notificação compulsória . #{Surveillance::DiseaseList::Load.call[:created]} versões novas"
+
+  # Regulação municipal (módulo 26a, ADR 0044): os procedimentos reguláveis no
+  # recorte SIGTAP de dev (mês e anterior) e os diagnósticos dos pedidos no
+  # recorte de CID-10. Depois do BillingCrew e do ClinicalRecordCrew; uma
+  # release real ativa nunca é tocada.
+  regulation_terms = RegulationCrew.seed_platform!
+  puts "[seeds] regulação (terminologias) . SIGTAP #{regulation_terms[:sigtap][:competences].join(', ')} #{regulation_terms[:sigtap][:status]}; CID-10 #{regulation_terms[:cid10]}"
 
   # ── Medicamentos (módulo 19c, ADR 0033) ───────────────────────────────────────
   # Recorte real do CATMAT (sem rede) e listas Anvisa do repositório.
@@ -358,6 +367,12 @@ else
              "#{"; semana #{surveillance[:week]}; #{surveillance[:notifications]} notificações, #{surveillance[:negatives]} negativa(s); #{surveillance[:safety_net]}" if surveillance[:week]}"
         puts "[seeds]               fila #{surveillance[:queue].map { |k, v| "#{k} #{v}" }.join(', ')}" if surveillance[:queue]
         Array(surveillance[:users]).each { |u| puts "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
+
+        # ── Regulação municipal (módulo 26a, ADR 0044) ────────────────────────
+        # Depois do SurveillanceCrew: usa a UBS, a médica, a recepção, o José e o
+        # Sebastião do 23. Só e-mail, papel e otpauth: nunca dado de paciente.
+        regulation = RegulationCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        RegulationCrew.summary_lines(regulation, password: password).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
