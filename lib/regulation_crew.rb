@@ -1,7 +1,6 @@
 require "active_support/testing/time_helpers"
-require "tmpdir"
 require "zlib"
-require Rails.root.join("lib/sigtap_sample").to_s
+require_relative "dev_terminology"
 require_relative "signature_crew"
 require_relative "screening_crew"
 require_relative "clinical_record_crew"
@@ -215,58 +214,21 @@ class RegulationCrew
 
     # --- plataforma -----------------------------------------------------
 
-    def real_sigtap_active?
-      TerminologyRelease.active.where(kind: "sigtap").pluck(:id).any? do |id|
-        SigtapProcedure.where(release_id: id).count > SigtapSample::PROCEDURES.size
-      end
-    end
-
     def sigtap!
       today = Time.zone.today
       competences = [ (today << 1).strftime("%Y%m"), today.strftime("%Y%m") ]
-      return { competences: competences, status: :real_sigtap } if real_sigtap_active?
-
-      codes = SigtapSample::REGULATION_CODES
-      imported = competences.select do |competence|
-        release = TerminologyRelease.active.find_by(kind: "sigtap", version: competence)
-        next false if release && SigtapProcedureInstrument.where(release_id: release.id, procedure_code: codes).distinct.count(:procedure_code) == codes.size
-
-        Dir.mktmpdir do |dir|
-          result = Terminology::Import.call(kind: "sigtap", version: competence, path: SigtapSample.write_to(dir, competence: competence), by: "db:seed")
-          raise "semente da regulação: SIGTAP recusada (#{result.reason} #{result.message})" if result.failure?
-        end
-        true
-      end
-      { competences: competences, status: imported.any? ? :republished : :complete }
+      status = DevTerminology.ensure_sigtap!(codes: SigtapSample::REGULATION_CODES, competences: competences,
+                                             label: "semente da regulação: SIGTAP")
+      { competences: competences, status: status }
     end
 
-    # Republica o recorte "dev-*" ativo com os códigos que ele já tem mais os
-    # diagnósticos dos pedidos; uma release real ativa nunca é tocada.
+    # O recorte "dev-*" ativo ganha os diagnósticos dos pedidos; uma release
+    # real ativa nunca é tocada (só avisa).
     def cid10!
-      return :complete if CID10.keys.all? { |code| ClinicalTerms.find("cid10", code) }
-
-      active = ClinicalTerms.release("cid10")
-      unless active&.version.to_s.start_with?("dev-")
-        warn "[seeds] regulação: CID-10 ativa não é o recorte de dev — diagnósticos dos pedidos não republicados"
-        return :real_cid10
-      end
-
-      codes = Cid10Code.where(release_id: active.id).pluck(:code, :description, :sex_restriction)
-                       .to_h { |code, description, sex| [ code, [ description, sex ] ] }
-                       .merge(CID10.transform_values { |description| [ description, nil ] }) { |_code, old, _new| old }
-      Dir.mktmpdir do |dir|
-        write_cid10(Pathname(dir), codes)
-        result = Terminology::Import.call(kind: "cid10", version: CID10_VERSION, path: dir, by: "db:seed")
-        raise "semente da regulação: CID-10 recusada (#{result.reason} #{result.message})" if result.failure?
-      end
-      :republished
-    end
-
-    def write_cid10(dir, codes)
-      categories, subcategories = codes.partition { |code, _| code.length == 3 }
-      dir.join("CID-10-CATEGORIAS.CSV").binwrite(("CAT;DESCRICAO\n" + categories.map { |c, (d, _)| "#{c};#{d}" }.join("\n") + "\n").encode("ISO-8859-1"))
-      dir.join("CID-10-SUBCATEGORIAS.CSV").binwrite(("SUBCAT;DESCRICAO;RESTRSEXO\n" +
-        subcategories.map { |c, (d, sex)| "#{c};#{d};#{sex}" }.join("\n") + "\n").encode("ISO-8859-1"))
+      status = DevTerminology.add_cid10!(codes: CID10.transform_values { |description| [ description, nil ] }, version: CID10_VERSION,
+                                         label: "semente da regulação: CID-10")
+      warn "[seeds] regulação: CID-10 ativa não é o recorte de dev — diagnósticos dos pedidos não republicados" if status == :real_cid10
+      status
     end
 
     # --- configuração da cidade -------------------------------------------

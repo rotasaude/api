@@ -1,10 +1,10 @@
 require "active_support/testing/time_helpers"
-require "tmpdir"
 require_relative "signature_crew"
 require_relative "screening_crew"
 require_relative "clinical_record_crew"
 require_relative "care_lines_crew"
 require_relative "territory_registry_crew"
+require_relative "dev_terminology"
 
 # Semente de dev do módulo 25 (ADR 0043), para a prova no navegador. Dev é
 # fictício mas imita o real: em Curitiba, surveillance LIGADO pelo mantenedor
@@ -222,25 +222,7 @@ class SurveillanceCrew
     # mais o A90; uma release real ativa nunca é tocada (a ausência só avisa).
     # O CIAP-2 da dengue é vazio na lista (ciap2: []), então nada entra nele.
     def dengue_terms!
-      return if ClinicalTerms.find("cid10", "A90")
-
-      active = ClinicalTerms.release("cid10")
-      return unless active&.version.to_s.start_with?("dev-")
-
-      codes = Cid10Code.where(release_id: active.id).pluck(:code, :description, :sex_restriction)
-                       .to_h { |code, description, sex| [ code, [ description, sex ] ] }.merge(DENGUE_CID10)
-      Dir.mktmpdir do |dir|
-        write_cid10(Pathname(dir), codes)
-        result = Terminology::Import.call(kind: "cid10", version: DENGUE_TERMS_VERSION, path: dir, by: "db:seed")
-        raise "semente da vigilância: CID-10 com A90 recusada (#{result.reason} #{result.message})" if result.failure?
-      end
-    end
-
-    def write_cid10(dir, codes)
-      categories, subcategories = codes.partition { |code, _| code.length == 3 }
-      dir.join("CID-10-CATEGORIAS.CSV").binwrite(("CAT;DESCRICAO\n" + categories.map { |c, (d, _)| "#{c};#{d}" }.join("\n") + "\n").encode("ISO-8859-1"))
-      dir.join("CID-10-SUBCATEGORIAS.CSV").binwrite(("SUBCAT;DESCRICAO;RESTRSEXO\n" +
-        subcategories.map { |c, (d, sex)| "#{c};#{d};#{sex}" }.join("\n") + "\n").encode("ISO-8859-1"))
+      DevTerminology.add_cid10!(codes: DENGUE_CID10, version: DENGUE_TERMS_VERSION, label: "semente da vigilância: CID-10 com A90")
     end
 
     def off(switch) = { switch: switch, notifications: 0, negatives: 0, users: [] }

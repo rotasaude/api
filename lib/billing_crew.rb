@@ -1,7 +1,6 @@
-require "tmpdir"
 require "zlib"
-require Rails.root.join("lib/sigtap_sample").to_s
 require_relative "signature_crew"
+require_relative "dev_terminology"
 
 # Semente de dev do módulo 22 (ADR 0039). Dev é fictício mas imita o real:
 # recorte SIGTAP de dev com instrumento, CBO e CID; a "UPA 24h Centro" ganha
@@ -48,19 +47,8 @@ class BillingCrew
       guard_environment!
       today = Time.zone.today
       competences = [ (today << 1).strftime("%Y%m"), today.strftime("%Y%m") ]
-      return { competences: competences, status: :real_sigtap } if real_sigtap_active?
-
-      imported = competences.select do |competence|
-        release = TerminologyRelease.active.find_by(kind: "sigtap", version: competence)
-        next false if release && SigtapProcedureInstrument.where(release_id: release.id, procedure_code: BILLING_CODES).count == BILLING_CODES.size
-
-        Dir.mktmpdir do |dir|
-          result = Terminology::Import.call(kind: "sigtap", version: competence, path: SigtapSample.write_to(dir, competence: competence), by: "db:seed")
-          raise "semente do faturamento: SIGTAP recusada (#{result.reason})" if result.failure?
-        end
-        true
-      end
-      { competences: competences, status: imported.any? ? :republished : :complete }
+      status = DevTerminology.ensure_sigtap!(codes: BILLING_CODES, competences: competences, label: "semente do faturamento: SIGTAP")
+      { competences: competences, status: status }
     end
 
     def seed_current_city(slug:, password:, admin:)
@@ -82,12 +70,6 @@ class BillingCrew
 
     def guard_environment!
       raise "semente do faturamento: ambiente implantado; a semente é só de dev" if Rota.deployed?
-    end
-
-    def real_sigtap_active?
-      TerminologyRelease.active.where(kind: "sigtap").pluck(:id).any? do |id|
-        SigtapProcedure.where(release_id: id).count > SigtapSample::PROCEDURES.size
-      end
     end
 
     def upa!(slug)
