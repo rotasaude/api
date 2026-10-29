@@ -37,7 +37,7 @@ module CareRegulation
       cancelled: "Pedido de regulação cancelado pela regulação"
     }.freeze
     CITIZEN_STATUS = {
-      "pending" => "waiting", "returned" => "returned", "authorized" => "waiting", "external" => "waiting",
+      "pending" => "waiting", "returned" => "returned", "authorized" => "authorized", "external" => "waiting",
       "scheduled" => "scheduled", "completed" => "completed", "denied" => "denied",
       "cancelled" => "closed", "closed" => "closed"
     }.freeze

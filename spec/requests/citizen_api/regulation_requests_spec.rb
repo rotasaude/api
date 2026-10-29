@@ -59,7 +59,7 @@ RSpec.describe "Cidadão — situação do pedido de regulação", type: :reques
     expect(json_body.keys).to eq([ "requests" ])
     expect(json_body["requests"].map { |r| r["id"] }).not_to include(draft.id)
     expect(json_body["requests"]).to all(satisfy { |r| r.keys.sort == keys.sort })
-    expect({ pending_r => "waiting", authorized => "waiting", external => "waiting", scheduled => "scheduled", returned => "returned",
+    expect({ pending_r => "waiting", authorized => "authorized", external => "waiting", scheduled => "scheduled", returned => "returned",
              denied => "denied", cancelled => "closed", closed => "closed" }.transform_keys(&:id))
       .to eq(json_body["requests"].to_h { |r| [ r["id"], r["status"] ] })
     expect(row(scheduled.id)).to include("scheduled_at" => when_at.iso8601, "place" => "Clínica de Olhos Araucária, sala 3")
@@ -121,7 +121,10 @@ RSpec.describe "Cidadão — situação do pedido de regulação", type: :reques
     expect(item.keys & forbidden.keys).to be_empty
     expect(response.body).not_to include("I10", "K86", justification, "Risco de vida", "Levar exames", "123456", "225120", "red", "yellow",
                                          request.due_on.iso8601, "Prestador")
-    expect(response.body).not_to match(/color|position|cid10|ciap|justif|due_on|overdue|reason|authoriz|provider|target_code|patient|cpf|cns/i)
+    # G16: `authorized` é situação do contrato §9; fora esse valor, nada de autorização no corpo.
+    expect(item["status"]).to eq("authorized")
+    expect(response.body.sub('"status":"authorized"', '"status":"_"'))
+      .not_to match(/color|position|cid10|ciap|justif|due_on|overdue|reason|authoriz|provider|target_code|patient|cpf|cns/i)
   end
 
   it "trilha citizen com o paciente; sem paciente, nenhuma" do
@@ -206,6 +209,6 @@ RSpec.describe "Cidadão — situação do pedido de regulação", type: :reques
     expect(response.body).not_to include(own[:appointment_request].due_on.iso8601)
 
     get "/citizen/regulation_requests", params: { citizen_id: citizen.id }
-    expect(row(own[:regulation_request].id)["status"]).to eq("waiting")
+    expect(row(own[:regulation_request].id)["status"]).to eq("authorized") # G16
   end
 end
