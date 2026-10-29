@@ -18,7 +18,7 @@ RSpec.describe Pharmacy::DispensingUnit do
     expect(unit_for("solução oral")).to eq("frasco")
     expect(unit_for("SUSPENSÃO")).to eq("frasco")
     expect(unit_for("colírio")).to eq("frasco")
-    expect(unit_for("solução injetável")).to eq("frasco")
+    expect(unit_for("solução injetável")).to eq("ampola")
     expect(unit_for("injetável")).to eq("ampola")
     expect(unit_for("ampola")).to eq("ampola")
     expect(unit_for("sachê")).to eq("envelope")
@@ -26,6 +26,9 @@ RSpec.describe Pharmacy::DispensingUnit do
   end
 
   it "a primeira regra do YAML vence quando duas casam" do
+    expect(unit_for("solução injetável")).to eq("ampola")
+    expect(unit_for("suspensão injetável")).to eq("ampola")
+    expect(unit_for("solução oral")).to eq("frasco")
     expect(unit_for("comprimido para solução oral")).to eq("comprimido")
     expect(unit_for("cápsula em gel")).to eq("cápsula")
   end

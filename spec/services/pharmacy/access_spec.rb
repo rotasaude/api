@@ -77,6 +77,13 @@ RSpec.describe Pharmacy::Access do
       expect(described_class.central_keeper?(pharmacy_staff!(unit, "pharmacist"))).to be(false)
     end
 
+    it "central desativado: o vínculo dele não faz ninguém almoxarife do central" do
+      keeper = pharmacy_staff!(central, "stock_keeper")
+      expect(described_class.central_keeper?(keeper)).to be(true)
+      central.update!(active: false)
+      expect(described_class.central_keeper?(keeper)).to be(false)
+    end
+
     it "o vínculo de outro papel no central não basta" do
       central_pharmacist = pharmacy_staff!(central, "pharmacist")
       expect(described_class.central_keeper?(central_pharmacist)).to be(false)
@@ -89,6 +96,30 @@ RSpec.describe Pharmacy::Access do
       revoke_link!(by_link, central, "stock_keeper")
       expect(described_class.central_keeper?(by_membership)).to be(false)
       expect(described_class.central_keeper?(by_link)).to be(false)
+    end
+  end
+
+  describe ".roles_by_location" do
+    it "papéis válidos por local numa leva só: Membership ativa E vínculo ativo" do
+      keeper = pharmacy_staff!(unit, "stock_keeper")
+      Membership.create!(user: keeper, role: "pharmacist", granted_at: Time.current)
+      StockLocationStaff.create!(stock_location: unit, user: keeper, role: "pharmacist", granted_by_user: pharmacy_admin!, granted_at: Time.current)
+      StockLocationStaff.create!(stock_location: central, user: keeper, role: "stock_keeper", granted_by_user: pharmacy_admin!, granted_at: Time.current)
+      expect(described_class.roles_by_location(keeper)).to eq(unit.id => Set["stock_keeper", "pharmacist"], central.id => Set["stock_keeper"])
+    end
+
+    it "Membership revogada ou vínculo revogado: o papel some; sem papel, hash vazio" do
+      by_membership = pharmacy_staff!(unit, "pharmacist")
+      by_link = pharmacy_staff!(unit, "pharmacy_assistant")
+      by_membership.memberships.active.find_by!(role: "pharmacist").revoke!
+      revoke_link!(by_link, unit, "pharmacy_assistant")
+      expect(described_class.roles_by_location(by_membership)).to eq({})
+      expect(described_class.roles_by_location(by_link)).to eq({})
+    end
+
+    it "concorda com roles_at em cada local" do
+      user = pharmacy_staff!(unit, "pharmacist")
+      expect(described_class.roles_by_location(user).fetch(unit.id)).to eq(described_class.roles_at(user: user, location: unit))
     end
   end
 

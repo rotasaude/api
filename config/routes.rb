@@ -508,6 +508,24 @@ Rails.application.routes.draw do
     patch  "admin/offers/:id",     to: "admin/offers#update"
   end
 
+  # Módulo 27a (ADR 0045; contrato §3, §13): farmácia e almoxarifado, sessão do
+  # dashboard. Prefixo único (uma entrada no proxy de dev do dashboard).
+  scope "/pharmacy", module: :pharmacy, as: :pharmacy do
+    # Administração (municipal_admin; escrita com step-up): locais, equipe e parâmetros.
+    get    "admin/locations",           to: "admin/locations#index"
+    post   "admin/locations",           to: "admin/locations#create"
+    patch  "admin/locations/:id",       to: "admin/locations#update"
+    post   "admin/locations/:id/staff", to: "admin/staff#create"
+    delete "admin/locations/:id/staff", to: "admin/staff#destroy"
+    get    "admin/settings",            to: "admin/settings#show"
+    patch  "admin/settings",            to: "admin/settings#update"
+    # Meus locais, mínimos por local e busca de item no catálogo.
+    get    "locations",                 to: "locations#index"
+    get    "locations/:id/minimums",    to: "minimums#show"
+    put    "locations/:id/minimums",    to: "minimums#update"
+    post   "items/search",              to: "items#search"
+  end
+
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.
   scope "/care_lines", module: "care_lines", as: "care_lines" do
     get   "admin/templates", to: "admin#templates"

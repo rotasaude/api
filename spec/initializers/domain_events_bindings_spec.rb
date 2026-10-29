@@ -305,3 +305,13 @@ RSpec.describe "care regulation bindings (ADR 0044)" do
     expect(DomainEvents.registry["appointment.confirmed"]).to be_empty
   end
 end
+
+# Módulo 27a (ADR 0045): configuração da farmácia (locais, equipe, parâmetros e
+# mínimos); só trilha, só ids (subject, stock_location_id, staff_user_id,
+# user_id), sem consumidor.
+RSpec.describe "pharmacy bindings (ADR 0045)" do
+  it "declares pharmacy.settings_changed with no consumer" do
+    expect(DomainEvents.registry.keys).to include("pharmacy.settings_changed")
+    expect(DomainEvents.registry["pharmacy.settings_changed"]).to be_empty
+  end
+end

@@ -1,8 +1,9 @@
 # Unidade de dispensação por forma farmacêutica (módulo 27a, ADR 0045,
 # Desvio 1). Ordem importa: a primeira regra cuja palavra aparece no
-# dosage_form (sem acento, minúsculo) vence. "po " e "pó " levam espaço de
-# propósito: casam a palavra "pó" inteira e não o fim de outra ("grupo",
-# "composto"); as demais palavras casam em qualquer pedaço do texto
+# dosage_form (sem acento, minúsculo) vence. "ampola" e "injetável" vêm ANTES
+# de "solução": "solução injetável" é ampola, não frasco. "po " e "pó " levam
+# espaço de propósito: casam a palavra "pó" inteira e não o fim de outra
+# ("grupo", "composto"); as demais palavras casam em qualquer pedaço do texto
 # ("comprimidos", "comprimido revestido").
 source: "dosage_form do catálogo CATMAT da plataforma (Medications::Catmat::DescriptionParser)"
 rules:
@@ -10,7 +11,7 @@ rules:
   - { match: ["capsula", "cápsula"], unit: "cápsula" }
   - { match: ["creme", "pomada", "gel"], unit: "bisnaga" }
   - { match: ["aerosol", "spray"], unit: "frasco" }
-  - { match: ["solucao", "solução", "suspensao", "suspensão", "xarope", "elixir", "colirio", "colírio"], unit: "frasco" }
   - { match: ["ampola", "injetavel", "injetável"], unit: "ampola" }
+  - { match: ["solucao", "solução", "suspensao", "suspensão", "xarope", "elixir", "colirio", "colírio"], unit: "frasco" }
   - { match: ["envelope", "sache", "sachê", "po ", "pó "], unit: "envelope" }
 fallback: "unidade"

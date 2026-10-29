@@ -29,6 +29,16 @@ RSpec.describe Pharmacy::Ledger do
 
   def entry! = StockEntry.create!(stock_location: unit, kind: "invoice", document_number: "NF-#{SecureRandom.hex(2)}", supplier: "Distribuidora", recorded_by_user: keeper)
 
+  # SQL emitido pelo bloco; o subscriber sai mesmo se o bloco falhar.
+  def sql_of
+    statements = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") { |*, payload| statements << payload[:sql] }
+    yield
+    statements
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber)
+  end
+
   def record!(kind:, quantity:, document:, **over)
     described_class.record!(**{ location: unit, lot: lot, kind: kind, quantity: BigDecimal(quantity), by: keeper, document: document }.merge(over))
   end
@@ -49,6 +59,14 @@ RSpec.describe Pharmacy::Ledger do
       expect(movement.catalog_item_id).to eq(lot.catalog_item_id)
       expect(movement.recorded_by_user).to eq(keeper)
       expect(movement.recorded_at).to eq(at)
+    end
+
+    it "recorded_at é a hora do negócio; created_at é do Rails (a hora da gravação)" do
+      at = Time.zone.parse("2026-10-20 10:30")
+      movement = record!(kind: "receipt", quantity: "5", document: entry!, at: at)
+      expect(movement.recorded_at).to eq(at)
+      expect(movement.created_at).to be_within(1.minute).of(Time.current)
+      expect(movement.created_at).not_to eq(at)
     end
 
     it "tipos positivos somam e os negativos subtraem" do
@@ -95,7 +113,7 @@ RSpec.describe Pharmacy::Ledger do
     end
 
     it "ajuste leva o sinal que vem; nos demais tipos o sinal vem do tipo" do
-      record!(kind: "adjustment", quantity: BigDecimal("-3").to_s, document: adjustment!(lot, kind: "adjustment", quantity: -3, status: "applied", counted: 7),
+      record!(kind: "adjustment", quantity: "-3", document: adjustment!(lot, kind: "adjustment", quantity: -3, status: "applied", counted: 7),
               reason: "Contagem do inventário de outubro")
       expect(described_class.balance(location_id: unit.id, lot_id: lot.id)).to eq(7)
       record!(kind: "adjustment", quantity: "2", document: adjustment!(lot, kind: "adjustment", quantity: 2, status: "applied", counted: 9),
@@ -150,15 +168,6 @@ RSpec.describe Pharmacy::Ledger do
   end
 
   describe ".lock_lots!" do
-    def sql_of
-      statements = []
-      subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") { |*, payload| statements << payload[:sql] }
-      yield
-      statements
-    ensure
-      ActiveSupport::Notifications.unsubscribe(subscriber)
-    end
-
     it "trava por id, em ordem, qualquer que seja a ordem pedida, e devolve { id => lote }" do
       lots = Array.new(3) { |i| stocked_lot!(unit, item: losartana, quantity: "1", lot_number: "ORD#{i}", by: keeper) }
       requested = lots.map(&:id).sort.reverse + [ lots.first.id ]
@@ -179,10 +188,9 @@ RSpec.describe Pharmacy::Ledger do
 
   describe ".lock_location!" do
     it "local ativo: devolve o local, com FOR SHARE" do
-      statements = []
-      subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") { |*, payload| statements << payload[:sql] }
-      expect(described_class.lock_location!(unit.id)).to eq(unit)
-      ActiveSupport::Notifications.unsubscribe(subscriber)
+      locked = nil
+      statements = sql_of { locked = described_class.lock_location!(unit.id) }
+      expect(locked).to eq(unit)
       expect(statements.grep(/FROM "stock_locations".*FOR SHARE/)).not_to be_empty
       expect(statements.grep(/FROM "health_units".*FOR SHARE/)).not_to be_empty
     end

@@ -13,7 +13,7 @@ module Pharmacy
     # O resto das recusas é 422.
     FAILURE_STATUS = { already_received: :conflict, opening_exists: :conflict, location_has_stock: :conflict,
                        location_inactive: :conflict, not_pending: :conflict, central_exists: :conflict,
-                       unit_taken: :conflict,
+                       unit_taken: :conflict, already_linked: :conflict,
                        same_user: :forbidden, missing_role: :forbidden,
                        controlled_requires_pharmacist: :forbidden, free_text_requires_pharmacist: :forbidden,
                        not_found: :not_found, prescription_not_found: :not_found,
@@ -32,6 +32,9 @@ module Pharmacy
       %i[path next_allowed_on problems].each { |key| payload[key] = result.details[key] if result.details[key] }
       render json: payload, status: FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
     end
+
+    # 422 invalid_request com o path do campo recusado (nunca o valor).
+    def render_invalid(path) = render(json: { error: "invalid_request", path: path }, status: :unprocessable_entity)
 
     def render_error(reason, status = :unprocessable_entity) = render(json: { error: reason.to_s }, status: status)
     def forbid(reason = "missing_role") = render(json: { error: reason }, status: :forbidden)

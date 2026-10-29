@@ -87,7 +87,7 @@ module Pharmacy
       # do chamador ficaria inutilizável (a dispensação junta todas as recusas).
       StockMovement.transaction(requires_new: true) do
         StockMovement.create!(stock_location: location, stock_lot: lot, catalog_item_id: lot.catalog_item_id, kind: kind, quantity: signed,
-                              reference => document, reason: reason, recorded_by_user: by, recorded_at: at, created_at: at,
+                              reference => document, reason: reason, recorded_by_user: by, recorded_at: at,
                               package_units: units&.fetch(:units_per_package), packages: units&.fetch(:packages))
       end
     rescue ActiveRecord::StatementInvalid => e

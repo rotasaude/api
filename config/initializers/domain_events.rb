@@ -241,6 +241,10 @@ Rails.application.config.to_prepare do
   # Módulo 26a (ADR 0044): prazos por cor e lista do enfermeiro alterados; só
   # trilha, só ids (user_id), sem consumidor.
   DomainEvents.bind "care_regulation.settings_changed", to: []
+  # Módulo 27a (ADR 0045): locais, equipe, parâmetros e mínimos da farmácia
+  # alterados (`subject`: location, staff, settings ou minimums); só trilha, só
+  # ids (stock_location_id, staff_user_id, user_id), sem consumidor.
+  DomainEvents.bind "pharmacy.settings_changed", to: []
   # Andamento do pedido de regulação (CareRegulation::Transition; contrato §11,
   # §13 G6) e prestadores/ofertas (R12): só ids (regulation_request_id e
   # user_id; care_provider_id/care_offer_id e user_id) — nunca alvo, cor,
