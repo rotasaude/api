@@ -727,6 +727,9 @@ Rails.application.routes.draw do
     post   "declared_conditions", to: "declared_conditions#create"
     delete "declared_conditions", to: "declared_conditions#destroy"
     get    "care",                to: "care#show"
+
+    # Meus encaminhamentos (ADR 0044; contrato §9, G3): citizen_id, par validado.
+    get "regulation_requests", to: "regulation_requests#index"
   end
 
   # Autoria/preview de protocolos (ADR-0009)
