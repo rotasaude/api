@@ -76,6 +76,8 @@ class RegulationCrew
             "M17" => "Gonartrose [artrose do joelho]", "M54" => "Dorsalgia", "K21" => "Doença de refluxo gastroesofágico",
             "I10" => "Hipertensão essencial (primária)" }.freeze
   CID10_VERSION = "dev-regulacao".freeze
+  # Antes disso, no dia 1º, o pedido 10 não tem como ser autorizado no mês.
+  MONTH_START_GRACE = 5.minutes
 
   # Pessoas novas (par validado + paciente).
   PEOPLE = {
@@ -149,6 +151,7 @@ class RegulationCrew
       guard_environment!
       return off("fora") unless slug == "curitiba"
 
+      guard_month_start!
       maintainer = Maintainer.find_by(email_address: DEV_MAINTAINER)
       unless maintainer
         warn "[seeds] regulação: sem mantenedor de dev (#{DEV_MAINTAINER}) — interruptor não ligado"
@@ -202,6 +205,16 @@ class RegulationCrew
 
     def guard_environment!
       raise "semente da regulação: ambiente implantado; a semente é só de dev" if Rota.deployed?
+    end
+
+    # O pedido 10 é autorizado dentro do mês corrente (a oferta é a do mês),
+    # minutos antes de agora: nos primeiros minutos do dia 1º não cabe, e a
+    # recusa do Authorize derrubaria o db:seed inteiro sem dizer por quê.
+    def guard_month_start!
+      now = Time.zone.now
+      return unless now.day == 1 && now < now.beginning_of_day + MONTH_START_GRACE
+
+      raise "semente da regulação: o cenário autoriza dentro do mês corrente — semeie depois de 00:05 do dia 1º"
     end
 
     def off(switch) = { switch: switch, providers: 0, offers: 0, requests: {}, users: [] }

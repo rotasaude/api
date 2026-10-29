@@ -14,6 +14,8 @@ require Rails.root.join("lib/regulation_crew").to_s
 # ortopedia esgotada, o motivo de pular e a reguladora com OTP fixo.
 # Idempotente; a saída nunca leva dado de paciente.
 RSpec.describe RegulationCrew, type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city) { clinical_city!(record_mode: "off", enabled: false) }
   let(:regulator) { User.find_by!(email_address: "regulacao.municipal@curitiba.demo") }
 
@@ -154,6 +156,16 @@ RSpec.describe RegulationCrew, type: :request do
     expect { result = seed }.to output(/sem mantenedor de dev/).to_stderr
     expect(result).to include(switch: "desligado (sem mantenedor dev@local)", users: [])
     expect(RegulationRequest.count).to eq(0)
+  end
+
+  it "nos primeiros minutos do dia 1º para antes de ligar, dizendo quando semear; às 00:05 já não para" do
+    first_day = Time.zone.today.next_month.beginning_of_month.in_time_zone
+    travel_to(first_day + 4.minutes + 59.seconds) do
+      expect { seed }.to raise_error(/semeie depois de 00:05 do dia 1º/)
+    end
+    expect([ CareRegulation::Gate.enabled?(Current.city), RegulationRequest.count, User.exists?(email_address: "regulacao.municipal@curitiba.demo") ])
+      .to eq([ false, 0, false ])
+    travel_to(first_day + 5.minutes) { expect { described_class.send(:guard_month_start!) }.not_to raise_error }
   end
 
   it "fora de Curitiba não liga nada" do
