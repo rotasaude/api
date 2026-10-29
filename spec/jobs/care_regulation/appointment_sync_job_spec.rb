@@ -146,6 +146,20 @@ RSpec.describe CareRegulation::AppointmentSyncJob, type: :job do
     expect(request.reload.status).to eq("cancelled")
   end
 
+  it "rede de segurança no appointment_request.created: pedido cancelado com pedido regulado open → dismissed" do
+    expect(CareRegulation::Decide.call(request: request.reload, decision: "cancel", reason: "Paciente operado em outro serviço",
+                                       version: request.version, by: regulation_regulator!)).to be_ok
+    orphan = AppointmentRequest.create!(kind: "regulated", origin_regulation_request_id: request.id, citizen_id: appointment_request.citizen_id,
+                                        origin_unit_id: appointment_request.origin_unit_id, target_unit: appointment_request.target_unit,
+                                        appointment_type_key: appointment_request.appointment_type_key,
+                                        priority: appointment_request.priority, due_on: appointment_request.due_on)
+    deliver_payload("appointment_request.created", appointment_request_id: orphan.id, regulation_request_id: request.id,
+                                                   target_unit_id: orphan.target_unit_id, kind: "regulated")
+    expect(orphan.reload).to have_attributes(status: "closed", closed_reason: "dismissed",
+                                             dismiss_reason: CareRegulation::Catalog::SYNC_NOTES[:cancelled])
+    expect(request.reload).to have_attributes(status: "cancelled", appointment_request_id: appointment_request.id)
+  end
+
   it "não atribui Current.city: a cidade do chamador volta intacta" do
     city = Current.city
     deliver_payload("appointment_request.created", appointment_request_id: appointment_request.id)

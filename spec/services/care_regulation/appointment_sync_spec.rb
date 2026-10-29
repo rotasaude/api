@@ -83,6 +83,92 @@ RSpec.describe CareRegulation::AppointmentSync do
     expect(used).to eq(2)
   end
 
+  # Fix round 1 (Ruling do controlador): a falta é o horário no_show da
+  # cadeia ainda não contado, não o motivo da reabertura do pedido.
+  it "falta + remarcação pela recepção antes do job → a falta conta uma vez e o pedido segue o horário novo" do
+    first = schedule_regulated!(appointment_request, at: 2.days.from_now.change(hour: 9))
+    sync!
+    no_show!(first)
+    second = schedule_regulated!(appointment_request, at: 3.days.from_now.change(hour: 9))
+    expect(appointment_request.reload).to have_attributes(status: "scheduled", reopened_reason: nil)
+
+    expect(sync!).to eq("scheduled")
+    expect(request.reload).to have_attributes(status: "scheduled", misses: 1, scheduled_at: second.scheduled_at,
+                                              appointment_request_id: appointment_request.id)
+    expect(request.events.map(&:status).last(2)).to eq(%w[missed scheduled])
+    expect(regulation_events("missed").size).to eq(1)
+    expect(sync!).to eq(:unchanged)
+    expect(described_class.call(appointment_request_id: appointment_request.id)).to eq(:unchanged)
+    expect(request.reload.misses).to eq(1)
+    expect(used).to eq(1)
+
+    # A segunda falta (horário novo) conta: encerra.
+    no_show!(second)
+    expect(sync!).to eq("closed")
+    expect(request.reload).to have_attributes(misses: 2, appointment_request_id: nil)
+    expect(appointment_request.reload).to have_attributes(status: "closed", closed_reason: "dismissed",
+                                                          dismiss_reason: CareRegulation::Catalog::SYNC_NOTES[:missed])
+    expect(regulation_events("missed").size).to eq(2)
+  end
+
+  it "falta + dispensa pela unidade antes do job → falta (pending, a vaga não volta), não cancelamento" do
+    appointment = schedule_regulated!(appointment_request, at: 2.days.from_now.change(hour: 9))
+    sync!
+    no_show!(appointment)
+    expect(AppointmentRequests::Dismiss.call(request: appointment_request.reload, reason: "Paciente não compareceu ao horário",
+                                             health_unit_id: appointment_request.target_unit_id, by: reception!)).to be_ok
+    expect(sync!).to eq("pending")
+    expect(request.reload).to have_attributes(misses: 1, appointment_request_id: nil, scheduled_at: nil)
+    expect(request.authorizations.sole.released_at).to be_nil
+    expect(used).to eq(1)
+    expect(regulation_events("cancelled")).to be_empty
+    expect(appointment_request.reload).to have_attributes(closed_reason: "dismissed", dismiss_reason: "Paciente não compareceu ao horário")
+  end
+
+  it "falta + atendimento no horário remarcado antes do job → a falta conta e o pedido é completed" do
+    first = schedule_regulated!(appointment_request, at: 2.days.from_now.change(hour: 9))
+    no_show!(first)
+    second = schedule_regulated!(appointment_request, at: 3.days.from_now.change(hour: 9))
+    check_in_regulated!(second)
+    expect(sync!).to eq("completed")
+    expect(request.reload).to have_attributes(status: "completed", misses: 1)
+    expect(request.events.map(&:status).last(2)).to eq(%w[missed completed])
+    expect(used).to eq(1)
+  end
+
+  it "encerrado por consent_revoked (o fechamento do Citizens::Erase) → cancelled com release_reason consent_revoked" do
+    AppointmentRequests::Lifecycle.close!(appointment_request.reload, reason: "consent_revoked")
+    expect(sync!).to eq("cancelled")
+    expect(request.reload.events.last).to have_attributes(status: "cancelled", by_user_id: nil)
+    expect(request.authorizations.sole.release_reason).to eq("consent_revoked")
+    expect(used).to eq(0)
+  end
+
+  it "Stale: a leitura sem trava diz 'não libera' e, sob as travas, libera → refaz travando a oferta" do
+    appointment = schedule_regulated!(appointment_request, at: 5.days.from_now.change(hour: 9))
+    expect(Appointments::CancelByCitizen.call(appointment: appointment, reason: "Não consigo ir nesse dia")).to be_ok
+    previews = []
+    allow(described_class).to receive(:releasing_preview?).and_wrap_original do |original, *args|
+      previews << (previews.empty? ? false : original.call(*args))
+      previews.last
+    end
+    expect(CareOffer).to receive(:lock).once.and_call_original
+    expect(sync!).to eq("cancelled")
+    expect(previews).to eq([ false, true ])
+    expect(request.reload.events.map(&:status).count("cancelled")).to eq(1)
+    expect(request.authorizations.sole.release_reason).to eq("citizen_cancelled")
+    expect(used).to eq(0)
+  end
+
+  it "Stale persistente: desiste depois de ATTEMPTS tentativas, sem gravar nada" do
+    appointment = schedule_regulated!(appointment_request, at: 5.days.from_now.change(hour: 9))
+    expect(Appointments::CancelByCitizen.call(appointment: appointment, reason: "Não consigo ir nesse dia")).to be_ok
+    allow(described_class).to receive(:releasing_preview?).and_return(false)
+    expect { sync! }.to raise_error(CareRegulation::AppointmentSync::Stale)
+    expect(request.reload.status).to eq("authorized")
+    expect(used).to eq(1)
+  end
+
   it "horário expirado (sem confirmação) volta a authorized sem contar falta" do
     appointment = schedule_regulated!(appointment_request, at: 5.days.from_now.change(hour: 9))
     sync!
@@ -177,6 +263,22 @@ RSpec.describe CareRegulation::AppointmentSync do
     expect(request.reload).to have_attributes(status: "cancelled", version: version)
     expect(request.authorizations.sole.released_at).to eq(released)
     expect(used).to eq(0)
+  end
+
+  it "rede de segurança não encerra o pedido com horário vivo: só o 17 encerra horário (R4) e o check-in segue funcionando" do
+    expect(CareRegulation::Decide.call(request: request.reload, decision: "cancel", reason: "Paciente operado em outro serviço",
+                                       version: request.version, by: regulation_regulator!)).to be_ok
+    orphan = AppointmentRequest.create!(kind: "regulated", origin_regulation_request_id: request.id, citizen_id: appointment_request.citizen_id,
+                                        origin_unit_id: appointment_request.origin_unit_id, target_unit: appointment_request.target_unit,
+                                        appointment_type_key: appointment_request.appointment_type_key,
+                                        priority: appointment_request.priority, due_on: appointment_request.due_on)
+    appointment = schedule_regulated!(orphan, at: 3.days.from_now.change(hour: 9))
+    expect(described_class.call(appointment_request_id: orphan.id)).to eq(:ignored)
+    expect(orphan.reload.status).to eq("scheduled")
+    check_in_regulated!(appointment)
+    expect(orphan.reload).to have_attributes(status: "closed", closed_reason: "fulfilled")
+    expect(described_class.call(appointment_request_id: orphan.id)).to eq(:ignored)
+    expect(request.reload.status).to eq("cancelled")
   end
 
   it "ignora: pedido não regulated, pedido inexistente e pedido de regulação fora de authorized/scheduled sem cadeia" do

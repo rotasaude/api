@@ -1,31 +1,44 @@
 # Rede própria acompanhada pelo módulo 17 (ADR 0044; contrato §7, §13 G1, G6;
 # plano do api, Desvios 7 e 8, Review Focus 2 e 3). Reconcilia o pedido de
-# regulação pelo ESTADO ATUAL do pedido de agendamento mais novo da cadeia —
-# nunca pelo evento que chegou: a ordem de chegada e o redespacho não
-# importam (nunca uma segunda falta por redespacho, nunca regressão de
-# `completed`).
+# regulação pelo ESTADO ATUAL da cadeia de pedidos de agendamento — nunca pelo
+# evento que chegou: a ordem de chegada e o redespacho não importam (nunca uma
+# segunda falta por redespacho, nunca regressão de `completed`).
 #
 # Cadeia = o pedido de agendamento do pedido de regulação
 # (`appointment_request_id`) e os ligados a ele por `moved_from_request_id`,
 # para trás e para a frente (o Drain copia `created_at`: nunca ordenar por
-# data). Evento de pedido fora da cadeia (ex.: o no_show redespachado depois
+# data). Cada autorização abre uma cadeia nova: a cadeia é a da autorização
+# vigente. Evento de pedido fora da cadeia (ex.: o no_show redespachado depois
 # da falta e da reautorização) → :ignored.
 #
-# Só com o pedido de regulação em `authorized`/`scheduled`; estado atual do
-# pedido de agendamento mais novo (seguindo os `moved`) → situação:
-#   scheduled com horário vivo      → scheduled (data e local da unidade)
-#   open reaberto por no_show       → falta (Misses) e o pedido de agendamento
-#                                     encerrado `dismissed`/SYNC_NOTES[:missed]
-#   open (expired, remarque, sem horário) → authorized, sem a data, sem falta
-#   closed fulfilled                → completed
-#   closed citizen_cancelled | consent_revoked | dismissed (fora de
-#     SYNC_NOTES)                   → cancelled, cota liberada, sem autor (R5)
+# Falta (Ruling do controlador, fix round 1): conta quando a cadeia tem um
+# horário `no_show` ainda não contado — horários no_show da cadeia menos as
+# linhas `missed` do andamento gravadas desde a autorização vigente (a linha é
+# a marca; idempotente sem coluna nova). Assim a falta não se perde se a
+# recepção remarcar ou a unidade dispensar o pedido reaberto antes do job.
+#
+# Só com o pedido de regulação em `authorized`/`scheduled`; pelo pedido de
+# agendamento mais novo da cadeia (seguindo os `moved`):
+#   scheduled com horário vivo      → scheduled (data e local da unidade); com
+#                                     falta não contada, ela conta junto
+#                                     (remarcado antes do job; na segunda,
+#                                     closed — o horário vivo fica com o 17)
+#   open com falta não contada      → falta (Misses.apply!) e o pedido de
+#                                     agendamento encerrado `dismissed`/
+#                                     SYNC_NOTES[:missed] na mesma transação
+#   open sem falta (expired, remarque, sem horário) → authorized, sem a data
+#   closed fulfilled                → completed (com a falta não contada junto)
+#   closed citizen_cancelled | consent_revoked → cancelled, cota liberada, sem
+#                                     autor (R5; a falta não contada junto)
+#   closed dismissed fora de SYNC_NOTES → falta, se houver não contada (a vaga
+#                                     não volta); senão cancelled, cota liberada
 #   closed moved                    → segue para o pedido novo
 #
 # Rede de segurança (corrida Cancelar × Drain): pedido de regulação já
-# encerrado (TERMINAL_STATUSES) com pedido de agendamento regulado vivo dele
-# → o vivo é encerrado `dismissed`/SYNC_NOTES[:cancelled], sem mexer na cota
-# nem na situação.
+# encerrado (TERMINAL_STATUSES) com pedido de agendamento regulado vivo e
+# `open` dele → encerrado `dismissed`/SYNC_NOTES[:cancelled], sem mexer na
+# cota nem na situação. O `scheduled` (com horário vivo) fica: só o 17 encerra
+# horário (R4), e fechar o pedido com o horário vivo quebraria o check-in.
 #
 # Travas (as do Decide): oferta da autorização vigente FOR UPDATE (só quando o
 # caminho é liberar a cota; decidido antes numa leitura sem trava e conferido
@@ -46,6 +59,10 @@ module CareRegulation
     # A leitura sem trava disse "não libera" e, sob as travas, o caminho é
     # liberar (ou a autorização vigente mudou): refaz com a oferta travada.
     class Stale < StandardError; end
+
+    # O que a cadeia diz: ids (para trás e para a frente), o pedido mais novo,
+    # a situação-alvo (com detalhe) e as faltas ainda não contadas.
+    Plan = Struct.new(:chain_ids, :current, :target, :detail, :uncounted, keyword_init: true)
 
     module_function
 
@@ -73,59 +90,97 @@ module CareRegulation
       request.lock!(Decide::LOCK)
 
       if Catalog::TERMINAL_STATUSES.include?(request.status)
-        dismiss_orphans!(request)
-        return chain_ids(request).include?(event_request_id) ? :unchanged : :ignored
+        return :unchanged if dismiss_orphans!(request).positive? || chain_ids(request).include?(event_request_id)
+
+        return :ignored
       end
       return :ignored unless ACTIVE.include?(request.status) && request.appointment_request_id
 
-      visited = follow!(request.appointment_request_id)
-      return :ignored unless (backward_ids(request.appointment_request_id) | visited.map(&:id)).include?(event_request_id)
+      plan = plan(request, lock: true)
+      return :ignored unless plan.chain_ids.include?(event_request_id)
 
-      apply!(request, visited.last, seen, now)
+      apply!(request, plan, seen, now)
     end
 
-    def apply!(request, current, seen, now)
-      target, detail = target_for(current)
-      case target
-      when :scheduled then schedule!(request, current, detail)
+    def apply!(request, plan, seen, now)
+      current = plan.current
+      case plan.target
+      when :scheduled then schedule!(request, plan)
       when :authorized then back_to_authorized!(request, current)
-      when :missed then miss!(request, current)
-      when :completed then transition!(request, "completed", appointment_request_id: current.id)
-      when :cancelled then cancel!(request, current, seen, detail, now)
+      when :missed then miss!(request, plan)
+      when :completed then transition!(request, "completed", plan, appointment_request_id: current.id)
+      when :cancelled then cancel!(request, plan, seen, now)
       else point!(request, current)
       end
     end
 
-    # [situação-alvo, detalhe] pelo estado do pedido de agendamento.
-    def target_for(current)
+    # A cadeia lida (lock: true trava os pedidos de agendamento, na ordem).
+    def plan(request, lock:)
+      forward = walk(request.appointment_request_id, lock: lock)
+      ids = backward_ids(request.appointment_request_id) | forward.map(&:id)
+      uncounted = uncounted_misses(request, ids)
+      target, detail = target_for(forward.last, missed: uncounted.positive?)
+      Plan.new(chain_ids: ids, current: forward.last, target: target, detail: detail, uncounted: uncounted)
+    end
+
+    # [situação-alvo, detalhe] pelo estado do pedido de agendamento mais novo.
+    def target_for(current, missed:)
       case current.status
       when "scheduled"
         live = current.appointments.live.order(:id).last
         live ? [ :scheduled, live ] : [ :none ]
-      when "open" then current.reopened_reason == "no_show" ? [ :missed ] : [ :authorized ]
-      else closed_target(current)
+      when "open" then missed ? [ :missed ] : [ :authorized ]
+      else closed_target(current, missed: missed)
       end
     end
 
-    def closed_target(current)
+    def closed_target(current, missed:)
       case current.closed_reason
       when "fulfilled" then [ :completed ]
       when "citizen_cancelled", "consent_revoked" then [ :cancelled, RELEASE_REASON.fetch(current.closed_reason) ]
       when "dismissed"
         # Encerrado pela própria regulação (falta, cancelamento): já refletido.
-        Catalog::SYNC_NOTES.value?(current.dismiss_reason) ? [ :none ] : [ :cancelled, RELEASE_REASON.fetch("dismissed") ]
+        return [ :none ] if Catalog::SYNC_NOTES.value?(current.dismiss_reason)
+
+        missed ? [ :missed ] : [ :cancelled, RELEASE_REASON.fetch("dismissed") ]
       else [ :none ]
       end
     end
 
-    def schedule!(request, current, appointment)
+    # Horários no_show da cadeia menos as faltas já contadas desde a
+    # autorização vigente (as linhas `missed` gravadas depois dela).
+    def uncounted_misses(request, chain_ids)
+      no_shows = Appointment.where(request_id: chain_ids, status: "no_show").count
+      return 0 if no_shows.zero?
+
+      authorization = vigente(request)
+      counted = authorization ? counted_misses(request, authorization) : 0
+      [ no_shows - counted, 0 ].max
+    end
+
+    def counted_misses(request, authorization)
+      RegulationRequestEvent.where(regulation_request_id: request.id, status: "missed")
+                            .where(created_at: authorization.created_at..).count
+    end
+
+    def schedule!(request, plan)
+      appointment = plan.detail
       place = place_for(appointment.health_unit)
-      if request.status == "scheduled" && request.scheduled_at == appointment.scheduled_at && request.schedule_place == place
-        return point!(request, current)
+      if plan.uncounted.zero? && request.status == "scheduled" && request.scheduled_at == appointment.scheduled_at &&
+         request.schedule_place == place
+        return point!(request, plan.current)
       end
 
-      transition!(request, "scheduled", scheduled_at: appointment.scheduled_at, schedule_place: place, schedule_notes: nil,
-                                        appointment_request_id: current.id)
+      # Falta remarcada antes do job que chega à segunda: encerra como o
+      # Misses.apply! (sem data nem ponteiro); o horário vivo fica com o 17
+      # (R4) e, se o pedido dele reabrir, a rede de segurança o encerra.
+      if request.misses + plan.uncounted >= Catalog::MAX_MISSES
+        return transition!(request, "closed", plan, scheduled_at: nil, schedule_place: nil, schedule_notes: nil,
+                                                    appointment_request_id: nil)
+      end
+
+      transition!(request, "scheduled", plan, scheduled_at: appointment.scheduled_at, schedule_place: place,
+                                              schedule_notes: nil, appointment_request_id: plan.current.id)
     end
 
     # Horário expirado (sem confirmação), remarque pedido pelo cidadão ou
@@ -133,30 +188,36 @@ module CareRegulation
     def back_to_authorized!(request, current)
       return point!(request, current) if request.status == "authorized" && request.scheduled_at.nil?
 
-      transition!(request, "authorized", scheduled_at: nil, schedule_place: nil, schedule_notes: nil,
-                                         appointment_request_id: current.id)
+      transition!(request, "authorized", nil, scheduled_at: nil, schedule_place: nil, schedule_notes: nil,
+                                              appointment_request_id: current.id)
     end
 
     # A falta e, na MESMA transação, o pedido de agendamento reaberto pelo
-    # Lapse encerrado (já travado no follow!, depois do pedido de regulação).
-    def miss!(request, current)
-      Misses.apply!(request: request, by: nil)
-      AppointmentRequests::Lifecycle.close!(current, reason: "dismissed", dismiss_reason: Catalog::SYNC_NOTES.fetch(:missed))
+    # Lapse encerrado (já travado no walk, depois do pedido de regulação). O
+    # dispensado pela unidade já está encerrado.
+    def miss!(request, plan)
+      Misses.apply!(request: request, by: nil, count: plan.uncounted)
+      if plan.current.status == "open"
+        AppointmentRequests::Lifecycle.close!(plan.current, reason: "dismissed", dismiss_reason: Catalog::SYNC_NOTES.fetch(:missed))
+      end
       request.status
     end
 
     # Encerramento do 17 fora da regulação: cota liberada (só UPDATE na
     # autorização) e cancelled sem autor. A autorização relida sob a trava do
     # pedido precisa ser a que a leitura sem trava viu (e cuja oferta travou).
-    def cancel!(request, current, seen, release_reason, now)
+    def cancel!(request, plan, seen, now)
       authorization = vigente(request)
       raise Stale if authorization&.id != seen&.id
 
-      authorization&.update!(released_at: now, release_reason: release_reason)
-      transition!(request, "cancelled", appointment_request_id: current.id)
+      authorization&.update!(released_at: now, release_reason: plan.detail)
+      transition!(request, "cancelled", plan, appointment_request_id: plan.current.id)
     end
 
-    def transition!(request, to, changes)
+    # A falta ainda não contada (se houver) entra antes, no andamento, e o
+    # `misses` vai nas mudanças da mesma transição.
+    def transition!(request, to, plan, changes)
+      changes = changes.merge(misses: Misses.record!(request: request, by: nil, count: plan.uncounted)) if plan&.uncounted&.positive?
       transitioned = Transition.call(request: request, to: to, by: nil, changes: changes)
       # Sem versão a conferir: só falha por erro de programação.
       raise ArgumentError, "sincronização recusada: #{transitioned.reason}" unless transitioned.ok?
@@ -170,19 +231,24 @@ module CareRegulation
       :unchanged
     end
 
-    # Rede de segurança: o vivo de um pedido de regulação encerrado.
+    # Rede de segurança: o vivo `open` de um pedido de regulação encerrado.
+    # -> quantos encerrou.
     def dismiss_orphans!(request)
-      AppointmentRequest.live_requests.where(origin_regulation_request_id: request.id).order(:id).lock.each do |orphan|
+      orphans = AppointmentRequest.where(status: "open", origin_regulation_request_id: request.id).order(:id).lock.to_a
+      orphans.each do |orphan|
         AppointmentRequests::Lifecycle.close!(orphan, reason: "dismissed", dismiss_reason: Catalog::SYNC_NOTES.fetch(:cancelled))
       end
+      orphans.size
     end
 
-    # O pedido de agendamento e, para a frente, os que o Drain criou a partir
-    # dele (encerrado como `moved`), travados na ordem da cadeia.
-    def follow!(start_id)
-      visited = [ AppointmentRequest.lock.find(start_id) ]
+    # O caminhador da cadeia para a frente: o pedido de agendamento e os que o
+    # Drain criou a partir dele (encerrado como `moved`). lock: true trava cada
+    # um (FOR UPDATE), na ordem da cadeia.
+    def walk(start_id, lock: false)
+      scope = lock ? AppointmentRequest.lock : AppointmentRequest.all
+      visited = [ scope.find(start_id) ]
       while visited.last.status == "closed" && visited.last.closed_reason == "moved"
-        fresh = AppointmentRequest.lock.find_by(moved_from_request_id: visited.last.id)
+        fresh = scope.find_by(moved_from_request_id: visited.last.id)
         break unless fresh
 
         visited << fresh
@@ -194,26 +260,13 @@ module CareRegulation
     def releasing_preview?(request)
       return false unless ACTIVE.include?(request.status) && request.appointment_request_id
 
-      current = AppointmentRequest.find(request.appointment_request_id)
-      while current.status == "closed" && current.closed_reason == "moved"
-        fresh = AppointmentRequest.find_by(moved_from_request_id: current.id)
-        break unless fresh
-
-        current = fresh
-      end
-      target_for(current).first == :cancelled
+      plan(request, lock: false).target == :cancelled
     end
 
     def chain_ids(request)
       return [] unless request.appointment_request_id
 
-      ids = backward_ids(request.appointment_request_id)
-      current = ids.first
-      while (fresh = AppointmentRequest.where(moved_from_request_id: current).pick(:id))
-        ids << fresh
-        current = fresh
-      end
-      ids
+      backward_ids(request.appointment_request_id) | walk(request.appointment_request_id).map(&:id)
     end
 
     # O pedido e os anteriores a ele (moved_from_request_id), sem data.
@@ -242,8 +295,8 @@ module CareRegulation
       room = Catalog::PLACE_MAX - unit.name.length - " — ".length
       room.positive? ? "#{unit.name} — #{address[0, room].rstrip}" : unit.name
     end
-    private_class_method :reconcile, :apply!, :target_for, :closed_target, :schedule!, :back_to_authorized!, :miss!, :cancel!,
-                         :transition!, :point!, :dismiss_orphans!, :follow!, :releasing_preview?, :chain_ids, :backward_ids,
-                         :vigente, :place_for
+    private_class_method :reconcile, :apply!, :plan, :target_for, :closed_target, :uncounted_misses, :counted_misses,
+                         :schedule!, :back_to_authorized!, :miss!, :cancel!, :transition!, :point!, :dismiss_orphans!,
+                         :walk, :releasing_preview?, :chain_ids, :backward_ids, :vigente, :place_for
   end
 end
