@@ -480,6 +480,9 @@ Rails.application.routes.draw do
     get    "requests",             to: "requests#index"
     get    "requests/count",       to: "requests#count"
     get    "requests/:id",         to: "requests#show"
+    # A guia de encaminhamento em PDF (contrato §3): `format: false` para o
+    # `.pdf` ficar no segmento literal e `:id` receber só o id.
+    get    "requests/:id/guide.pdf", to: "guides#show", format: false
     post   "requests/:id/authorize", to: "decisions#authorize"
     post   "requests/:id/return",  to: "decisions#return_request"
     post   "requests/:id/deny",    to: "decisions#deny"
