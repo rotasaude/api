@@ -6,8 +6,10 @@
 # - grava state_regulated: true, o sistema e o número (os dois ou nenhum: CHECK);
 # - pending/returned → external: Transition (andamento e evento
 #   regulation_request.external, só ids);
-# - external → external: corrige só o número (e o sistema), version +1, sem
-#   andamento nem evento novo (a situação não mudou).
+# - external → external: corrige o número (e o sistema), version +1, e deixa
+#   rastro: uma linha de andamento `external` (com quem fez) e o evento
+#   regulation_request.external, só ids. O andamento não leva número, sistema
+#   nem motivo.
 #
 # O número do estado nunca em log, evento nem Result de recusa.
 module CareRegulation
@@ -31,6 +33,7 @@ module CareRegulation
         changes = { state_regulated: true, external_system: system, external_number: number }
         if request.status == "external"
           request.update!(changes.merge(version: request.version + 1))
+          Transition.record_event!(request: request, status: "external", by: by)
         else
           transitioned = Transition.call(request: request, to: "external", by: by, version: version, changes: changes)
           # A versão já foi conferida sob a trava: só falha por erro de programação.

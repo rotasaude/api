@@ -99,13 +99,21 @@ RSpec.describe "Regulação — prestador externo e estado", type: :request do
       expect(json_body["events"].map { |e| e["status"] }).to eq(%w[pending returned external])
     end
 
-    it "external → external corrige só o número e a versão: sem andamento nem evento novo" do
+    it "external → external corrige o número e deixa rastro: andamento external e evento só com ids (sem número nem sistema)" do
       request = external_request!
-      expect { mark!(request, number: "987654321", system: "care") }.not_to change { [ request.events.count, published("external").count ] }
+      other = care_regulator!
+      sign_in_as(other)
+      expect { mark!(request, number: "987654321", system: "care") }
+        .to change { request.events.count }.by(1).and change { published("external").count }.by(1)
       expect(response).to have_http_status(:ok)
       expect(json_body).to include("status" => "external", "external" => { "system" => "care", "number" => "987654321" },
                                    "version" => request.version + 1)
-      expect(json_body["events"].map { |e| e["status"] }).to eq(%w[pending external])
+      expect(json_body["events"].map { |e| e["status"] }).to eq(%w[pending external external])
+      last = request.events.reorder(:created_at, :id).last
+      expect(last).to have_attributes(status: "external", by_user_id: other.id, reason: nil)
+      payload = published("external").order(:occurred_at).last.payload
+      expect(payload).to eq("regulation_request_id" => request.id, "user_id" => other.id)
+      expect(payload.to_s + last.reason.to_s).not_to include("987654321", "care")
     end
 
     it "só o care_regulator: profissional e administrador → 403; id desconhecido ou de rascunho → 404" do
