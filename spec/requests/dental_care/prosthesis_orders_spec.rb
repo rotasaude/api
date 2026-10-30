@@ -119,6 +119,20 @@ RSpec.describe "Saúde bucal — prótese e laboratório", type: :request do
                                                               { "order_id" => order.id, "stage" => "received", "user_id" => dentist.id } ])
     end
 
+    it "cada resposta de etapa deixa uma trilha: dental para o vínculo, administrative para o admin; sem dado clínico" do
+      base = viewed.count
+      json_post "/dental/prosthesis_orders/#{order.id}/stages", stage: "sent"
+      expect(viewed.count - base).to eq(1)
+      expect(viewed.last.payload).to include("patient_id" => patient_id, "user_id" => dentist.id, "access" => "prosthesis_unit_list", "access_scope" => "dental")
+      sign_in_as(dental_admin!)
+      json_post "/dental/prosthesis_orders/#{order.id}/stages", stage: "received"
+      expect(viewed.count - base).to eq(2)
+      expect(viewed.last.payload).to include("patient_id" => patient_id, "access" => "administrative")
+      json_post "/dental/prosthesis_orders/#{order.id}/stages", stage: "sent"
+      expect(viewed.count - base).to eq(2)
+      expect(viewed.offset(base).map { |e| e.payload.to_s }.join).not_to match(/Sorriso|0701070145|impression|received/)
+    end
+
     it "fora de ordem: 409 invalid_transition" do
       json_post "/dental/prosthesis_orders/#{order.id}/stages", stage: "received"
       expect([ response.status, json_body["error"] ]).to eq([ 409, "invalid_transition" ])
@@ -230,7 +244,7 @@ RSpec.describe "Saúde bucal — prótese e laboratório", type: :request do
       second = order!
       advance!(second, "sent")
       sign_in_as(dentist)
-      viewed.delete_all
+      base = viewed.count
       get "/dental/prosthesis_orders", params: { health_unit_id: unit.id, limit: 1 }
       expect(response).to have_http_status(:ok)
       expect(json_body["orders"].map { |o| o["id"] }).to eq([ second.id ])
@@ -242,7 +256,7 @@ RSpec.describe "Saúde bucal — prótese e laboratório", type: :request do
       get "/dental/prosthesis_orders", params: { health_unit_id: unit.id, stage: "sent" }
       expect(json_body["orders"].map { |o| o["id"] }).to eq([ second.id ])
       expect(json_body["orders"].first["patient"]).to include("id" => patient_id, "display_name" => "Mariana")
-      expect(viewed.count).to eq(3)
+      expect(viewed.count - base).to eq(3)
       expect(viewed.last.payload).to include("patient_id" => patient_id, "user_id" => dentist.id, "access_scope" => "dental")
       expect(viewed.last.payload.to_s).not_to match(/Sorriso|0701070145|impression/)
     end

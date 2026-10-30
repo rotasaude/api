@@ -13,18 +13,21 @@ module DentalCare
       link = Consultations::Authorization.any_allowed_link(user: by, kind: "dental", role: :dentist)
       return Result.fail(:missing_role) unless link.first == :ok
 
-      consultation = find_consultation(params["consultation_id"])
-      return refuse("consultation_id") if consultation == :invalid
-      return Result.fail(:not_found) unless consultation
-      return Result.fail(:not_author) unless consultation.author_user_id == by.id
-      return refuse("consultation_id") unless consultation.dental? && !consultation.discarded?
-      return refuse("patient_id") unless params["patient_id"] == consultation.patient_id
+      id = params["consultation_id"]
+      return refuse("consultation_id") unless id.is_a?(String) && id.match?(BaseController::UUID)
+      return refuse("patient_id") unless params["patient_id"].is_a?(String)
       return refuse("sigtap") unless Catalog::PROSTHESIS_CODES.include?(params["sigtap"])
 
       laboratory = laboratory(params["laboratory"])
       return laboratory if laboratory.is_a?(Result)
 
       ApplicationRecord.transaction(requires_new: true) do
+        consultation = Consultation.lock.find_by(id: id)
+        next Result.fail(:not_found) unless consultation
+        next Result.fail(:not_author) unless consultation.author_user_id == by.id
+        next refuse("consultation_id") unless consultation.dental? && !consultation.discarded?
+        next refuse("patient_id") unless params["patient_id"] == consultation.patient_id
+
         order = DentalProsthesisOrder.create!(patient_id: consultation.patient_id, health_unit_id: consultation.attendance.health_unit_id,
                                               consultation: consultation, procedure_code: params["sigtap"], stage: "impression",
                                               created_by_user: by, **laboratory)
@@ -32,12 +35,6 @@ module DentalCare
         DomainEvents.publish("prosthesis_order.created", order_id: order.id, user_id: by.id)
         Result.ok(order: order)
       end
-    end
-
-    def find_consultation(id)
-      return :invalid unless id.is_a?(String) && id.match?(BaseController::UUID)
-
-      Consultation.find_by(id: id)
     end
 
     # -> { care_provider_id: } | { laboratory_name: } | Result de recusa.
@@ -58,6 +55,6 @@ module DentalCare
     end
 
     def refuse(path) = Result.fail(:invalid_request, details: { path: path, problems: [ { path: path, error: "invalid_request" } ] })
-    private_class_method :find_consultation, :laboratory, :refuse
+    private_class_method :laboratory, :refuse
   end
 end

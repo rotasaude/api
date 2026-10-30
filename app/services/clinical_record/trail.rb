@@ -1,6 +1,6 @@
 # app/services/clinical_record/trail.rb
 # Toda leitura de prontuário deixa trilha (ADR 0031, Invariantes): ids, o
-# acesso (in_context | justified | author | administrative) e o código do
+# acesso (in_context | justified | author | administrative | prosthesis_unit_list) e o código do
 # motivo — nunca a nota. A leitura administrativa leva também o id da consulta
 # (o relatório das aberturas a lista da tabela clinical_record_administrative_reads).
 module ClinicalRecord

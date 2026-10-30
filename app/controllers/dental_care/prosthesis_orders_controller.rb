@@ -5,6 +5,7 @@
 module DentalCare
   class ProsthesisOrdersController < BaseController
     LIST_GRANT = ClinicalRecord::Access::Grant.new(kind: :prosthesis_unit_list, opening: nil, reason: nil)
+    ADMIN_GRANT = ClinicalRecord::Access::Grant.new(kind: :administrative, opening: nil, reason: nil)
     PRELOAD = [ :patient, :health_unit, :care_provider, { stages: { by_user: :professional } } ].freeze
 
     def create
@@ -21,7 +22,9 @@ module DentalCare
       result = ChangeProsthesisStage.call(order: order, stage: body["stage"], reason: body["reason"], by: Current.user)
       return render_failure(result) if result.failure?
 
-      render json: present(result.payload.fetch(:order))
+      shown = result.payload.fetch(:order)
+      Trail.viewed!(patient: shown.patient, user: Current.user, grant: Current.user.has_role?("municipal_admin") ? ADMIN_GRANT : LIST_GRANT)
+      render json: present(shown)
     end
 
     def index
@@ -48,7 +51,7 @@ module DentalCare
       scope = scope.where("(dental_prosthesis_orders.created_at, dental_prosthesis_orders.id) < (?, ?)", Time.iso8601(cursor.first), cursor.last) if cursor
       rows = scope.includes(*PRELOAD).order(created_at: :desc, id: :desc).limit(limit + 1).to_a
       page = rows.first(limit)
-      page.map(&:patient).uniq.each { |patient| ClinicalRecord::Trail.viewed!(patient: patient, user: Current.user, grant: grant, extra: { access_scope: Catalog::TRAIL_SCOPE }) }
+      page.map(&:patient).uniq.each { |patient| Trail.viewed!(patient: patient, user: Current.user, grant: grant) }
       names = Json.procedure_names(page.map(&:procedure_code))
       render json: { orders: page.map { |order| Json.prosthesis_order(order, names: names) },
                      next_before: rows.size > limit ? Pharmacy::Cursor.encode([ page.last.created_at.utc.iso8601(6), page.last.id ]) : nil }
