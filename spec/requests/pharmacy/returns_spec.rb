@@ -129,4 +129,50 @@ RSpec.describe "Farmácia — devolução", type: :request do
     expect(log).not_to include("trocou de medicamento")
     expect(DomainEvent.where(name: "dispensation.returned").pluck(:payload).to_json).not_to include("trocou")
   end
+
+  # Ruling da revisão final: devolver item CONTROLADO é do farmacêutico, com o
+  # mesmo critério da dispensação (retenção com número, ou o catálogo/retrato
+  # que a dispensação usou). 403 de papel sozinho, antes das recusas do corpo.
+  describe "item controlado: só o farmacêutico devolve" do
+    def dispense_controlled!(content:, retention:)
+      document = pharmacy_prescription!(consultation: consultation, items: [ { catalog: fluoxetina } ], content: content)
+      flx = stocked_lot!(farmacia, item: fluoxetina, quantity: "50", lot_number: "FLX-RET-#{SecureRandom.hex(2).upcase}")
+      prescription = Pharmacy::Prescription.find(kind: "digital", id: document.id, settings: Pharmacy::Settings.current)
+      result = Pharmacy::Dispense.call(location: farmacia, prescription: prescription, retention: retention, by: pharmacist, role: "pharmacist",
+                                       items: [ { "prescription_item_id" => document.prescription_items.first.id, "lot_id" => flx.id, "quantity" => "10" } ],
+                                       catalog: Pharmacy::Json.catalog_for([ fluoxetina.id ]), settings: Pharmacy::Settings.current)
+      raise result.inspect if result.failure?
+
+      result.payload.fetch(:dispensation).items.sole
+    end
+
+    it "retenção com número (controle especial): auxiliar → 403 controlled_requires_pharmacist sozinho; farmacêutico → 201" do
+      item = dispense_controlled!(content: { "category" => "special_control", "sncr" => { "kind" => "rce", "number" => "2610.1-41.0000077", "simulated" => true } },
+                                  retention: { "notification_number" => "2610.1-41.0000077" })
+      expect(item.dispensation.notification_number).to eq("2610.1-41.0000077")
+      sign_in_as(assistant)
+      give_back("1,5", item_id: item.id, why: "curto")
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "controlled_requires_pharmacist" } ])
+      give_back("2", item_id: item.id)
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "controlled_requires_pharmacist" } ])
+      expect(StockMovement.where(kind: "return").count).to eq(0)
+
+      sign_in_as(pharmacist)
+      give_back("2", item_id: item.id)
+      expect(response).to have_http_status(:created)
+      expect(json_body["items"].sole["returned_total"]).to eq("2.00")
+    end
+
+    it "sem número na retenção, pelo catálogo que a dispensação usou: auxiliar → 403; farmacêutico → 201" do
+      item = dispense_controlled!(content: {}, retention: {})
+      expect(item.dispensation).to have_attributes(retained: true, notification_number: nil)
+      sign_in_as(assistant)
+      give_back("2", item_id: item.id)
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "controlled_requires_pharmacist" } ])
+
+      sign_in_as(pharmacist)
+      give_back("2", item_id: item.id)
+      expect(response).to have_http_status(:created)
+    end
+  end
 end

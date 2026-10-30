@@ -9,8 +9,8 @@
 # motivo de 10 a 500 (invalid_reason `reason`), lote vencido (lot_expired
 # `dispensation_item_id`: vencido não volta à prateleira) e mais que o
 # dispensado menos o já devolvido (return_exceeds `quantity`, relido sob a
-# trava). Quem pode (farmacêutico ou auxiliar do local da dispensação) é do
-# controlador.
+# trava). Quem pode (farmacêutico ou auxiliar do local da dispensação; item
+# CONTROLADO só o farmacêutico, `controlled?`) é do controlador.
 #
 # Ordem de travas (a do módulo): lote → local → a dispensação (FOR UPDATE:
 # duas devoluções do mesmo item se enfileiram). Evento `dispensation.returned`
@@ -60,6 +60,21 @@ module Pharmacy
       Result.ok(dispensation: dispensation, movement: movement)
     rescue Ledger::Inactive
       raise Refused, Result.fail(:location_inactive, details: { path: "location_id" })
+    end
+
+    # Item dispensado CONTROLADO (ruling da revisão final), o critério da
+    # dispensação: a retenção guardou o número (só há número com item
+    # controlado), a receita do 19c é de controle especial, o retrato da lista
+    # gravado no item da externa, ou o catálogo do item dispensado (o da
+    # receita ou o escolhido para o texto livre) o marca `controlled`. Lê o
+    # catálogo da plataforma: chamar FORA da transação.
+    def controlled?(dispensation_item)
+      dispensation = dispensation_item.dispensation
+      return true if dispensation.retained && dispensation.notification_number.present?
+      return true if dispensation_item.external_prescription_item&.controlled_list.present?
+      return true if dispensation.clinical_document&.content_data&.dig("category") == "special_control"
+
+      MedicationCatalogItem.find_by(id: dispensation_item.catalog_item_id)&.controlled == true
     end
 
     # Já devolvido + o pedido acima do dispensado.
