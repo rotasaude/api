@@ -194,8 +194,10 @@ class AddOralHealth < ActiveRecord::Migration[8.1]
       t.string :cbo_code, limit: 6, null: false
       t.datetime :recorded_at, null: false
       t.datetime :created_at, null: false
+      # Ordem de gravação: desempate da dobra (recorded_at, seq) — o id é uuid aleatório.
+      t.column :seq, "bigint GENERATED ALWAYS AS IDENTITY", null: false
     end
-    add_index :dental_chart_events, %i[patient_id tooth recorded_at id], name: "idx_dental_chart_events_patient_tooth"
+    add_index :dental_chart_events, %i[patient_id tooth recorded_at seq], name: "idx_dental_chart_events_patient_tooth"
     add_index :dental_chart_events, :consultation_id, name: "idx_dental_chart_events_consultation"
     tooth_check :dental_chart_events, nullable: false
     add_check_constraint :dental_chart_events, "part::text = ANY (ARRAY[#{quoted(PARTS)}]::text[])", name: "ck_dental_chart_events_part"

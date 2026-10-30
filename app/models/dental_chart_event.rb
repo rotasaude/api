@@ -4,6 +4,10 @@
 # com adendo desta consulta e nunca muda nem some (trigger). Dado clínico fora
 # de inspect, to_s, pretty_print e as_json.
 class DentalChartEvent < ApplicationRecord
+  # `seq` (identidade GENERATED ALWAYS, ordem de gravação) é do banco: fora dos
+  # atributos para o INSERT não mandar NULL; ordene por `order(:recorded_at, :seq)`.
+  self.ignored_columns += %w[seq]
+
   belongs_to :patient
   belongs_to :consultation
   belongs_to :addendum, class_name: "ConsultationAddendum", optional: true

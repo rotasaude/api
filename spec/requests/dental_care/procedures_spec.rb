@@ -32,6 +32,16 @@ RSpec.describe "Saúde bucal — busca de procedimento", type: :request do
     expect(found("0101020074")).to include("locations" => %w[mouth], "max_quantity" => 1, "auxiliary_allowed" => true, "prosthesis" => false)
   end
 
+  it "código só quando o termo não tem letra: com pontuação vale; misturado com texto, não" do
+    sign_in_as(dentist)
+    search("07.01.07.012-9")
+    expect(body["procedures"].map { |p| p["sigtap"] }).to eq(%w[0701070129])
+    search("restauração 3")
+    expect(body).to eq("procedures" => [])
+    search("0307 resina")
+    expect(body).to eq("procedures" => [])
+  end
+
   it "nunca devolve o procedimento proibido na FAO" do
     sign_in_as(dentist)
     search("0301040079")

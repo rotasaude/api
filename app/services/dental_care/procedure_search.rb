@@ -10,6 +10,8 @@ module DentalCare
     GROUPS = %w[01 02 03 04].freeze
     SUBGROUPS = %w[0804].freeze
     LIMIT = 20
+    # Busca por código só quando o termo não tem letra (ex.: "07.01.07.012-9").
+    CODE_QUERY = /\A[\d.\-\s]+\z/
 
     module_function
 
@@ -31,7 +33,7 @@ module DentalCare
       return [] if text.empty?
 
       folded = ClinicalTerms.fold(text)
-      digits = text.delete("^0-9")
+      digits = text.match?(CODE_QUERY) ? text.delete("^0-9") : ""
       found = index(current).select { |code, _, plain| (digits.present? && code.start_with?(digits)) || plain.include?(folded) }.first(LIMIT)
       auxiliary = DentalAuxiliaryProcedure.where(procedure_code: found.map(&:first)).pluck(:procedure_code)
       found.map { |code, name, _| item(code, name, auxiliary.include?(code)) }

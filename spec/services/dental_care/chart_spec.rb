@@ -58,15 +58,19 @@ RSpec.describe DentalCare::Chart do
     expect(tooth(described_class.call(current.patient, as_of: t0 + 1.hour), 26)[:situation]).to eq("caries")
   end
 
-  it "mesmo recorded_at: desempata pelo id" do
-    a = event!(tooth: 12, situation: "caries", at: t0)
-    b = event!(tooth: 12, situation: "restored", at: t0)
-    last = [ a, b ].max_by(&:id)
-    expect(tooth(described_class.call(patient), 12)[:situation]).to eq(last.situation)
+  it "mesmo recorded_at: dobra na ordem de gravação (seq), não pelo uuid" do
+    5.times do |i|
+      event!(tooth: 12, situation: i.even? ? "caries" : "restored", at: t0)
+      event!(tooth: 13, situation: i.even? ? "restored" : "caries", at: t0)
+    end
+    chart = described_class.call(patient)
+    expect([ tooth(chart, 12)[:situation], tooth(chart, 13)[:situation] ]).to eq(%w[caries restored])
+    seqs = DentalChartEvent.where(patient_id: patient.id).order(:seq).pluck(:seq)
+    expect(seqs).to eq(seqs.sort).and(all(be_a(Integer)))
   end
 
-  it "complete_denture na arcada superior → todos os dentes superiores, até um evento posterior" do
-    upper = DentalCare::Location.teeth(DentalCare::Location.parse(kind: "arch", arch: "upper").payload[:location])
+  it "complete_denture na arcada superior → todos os dentes permanentes superiores, até um evento posterior" do
+    upper = [ *11..18, *21..28 ]
     upper.each { |number| event!(tooth: number, situation: "complete_denture", at: t0) }
     event!(tooth: 11, situation: "sound", at: t0 + 1.hour)
     chart = described_class.call(patient)
@@ -89,6 +93,19 @@ RSpec.describe DentalCare::Chart do
       toddler = dental_draft_row!(unit: unit, by: dentist, citizen: verified_citizen!(3, age: 4))
       expect(described_class.call(toddler.patient)[:dentition]).to eq("deciduous")
       expect(described_class.call(patient)[:dentition]).to eq("permanent")
+    end
+
+    it "adulto desdentado com prótese total superior e inferior → permanent (prótese nunca conta como decídua)" do
+      effects = %w[0701070137 0701070129].zip(%w[upper lower]).flat_map do |code, arch|
+        DentalCare::SigtapSituations.effects(code, DentalCare::Location.parse(kind: "arch", arch: arch).payload[:location])
+      end
+      expect(effects.map { |e| e[:tooth] }).to match_array(DentalCare::Catalog::PERMANENT_TEETH)
+      effects.each { |e| event!(tooth: e[:tooth], situation: e[:situation], at: t0) }
+      expect(described_class.call(patient)[:dentition]).to eq("permanent")
+      child = dental_draft_row!(unit: unit, by: dentist, citizen: verified_citizen!(2, age: 8))
+      event!(tooth: 54, situation: "sound", at: t0, consultation: child)
+      event!(tooth: 16, situation: "removable_partial_denture", at: t0, consultation: child)
+      expect(described_class.call(child.patient)[:dentition]).to eq("mixed")
     end
 
     it "pelos dentes presentes: só decíduo → deciduous; os dois → mixed; decíduo extraído não conta" do

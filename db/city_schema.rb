@@ -920,10 +920,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.uuid "patient_id", null: false
     t.string "procedure_code", limit: 10
     t.datetime "recorded_at", null: false
+    t.column "seq", "bigint GENERATED ALWAYS AS IDENTITY", null: false
     t.string "situation", limit: 40
     t.integer "tooth", limit: 2, null: false
     t.index ["consultation_id"], name: "idx_dental_chart_events_consultation"
-    t.index ["patient_id", "tooth", "recorded_at", "id"], name: "idx_dental_chart_events_patient_tooth"
+    t.index ["patient_id", "tooth", "recorded_at", "seq"], name: "idx_dental_chart_events_patient_tooth"
     t.check_constraint "cbo_code::text ~ '^[0-9A-Z]{6}$'::text", name: "ck_dental_chart_events_cbo_code"
     t.check_constraint "face IS NULL OR (face::text = ANY (ARRAY['M'::text, 'D'::text, 'O'::text, 'V'::text, 'L'::text]::text[]) AND part::text = 'crown'::text)", name: "ck_dental_chart_events_face"
     t.check_constraint "num_nonnulls(situation, procedure_code) >= 1", name: "ck_dental_chart_events_finding"

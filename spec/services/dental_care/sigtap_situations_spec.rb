@@ -34,9 +34,9 @@ RSpec.describe DentalCare::SigtapSituations do
                { tooth: 46, part: "crown", face: nil, situation: "crown_unit_prosthesis" } ])
   end
 
-  it "prótese total na arcada: complete_denture em cada dente da arcada" do
+  it "prótese total na arcada: complete_denture em cada dente permanente da arcada (nunca no decíduo)" do
     effects = described_class.effects("0701070137", loc(kind: "arch", arch: "upper"))
-    expect(effects.map { |e| e[:tooth] }).to match_array([ *11..18, *21..28, *51..55, *61..65 ])
+    expect(effects.map { |e| e[:tooth] }).to match_array([ *11..18, *21..28 ])
     expect(effects.map { |e| e.except(:tooth) }.uniq).to eq([ { part: "crown", face: nil, situation: "complete_denture" } ])
   end
 

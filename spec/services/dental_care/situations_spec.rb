@@ -63,6 +63,7 @@ RSpec.describe DentalCare::Situations do
   it "dente inexistente → situation_not_allowed_for_tooth; arcada dispensa o dente" do
     expect(described_class.reason("caries", part: "crown", tooth: 19)).to eq(:situation_not_allowed_for_tooth)
     expect(described_class.reason("complete_denture", part: "arch", tooth: nil)).to be_nil
+    expect(described_class.reason("complete_denture", part: "arch", tooth: 51)).to eq(:situation_not_allowed_for_tooth)
     expect(described_class.reason("complete_denture", part: "arch", tooth: nil, face: "M")).to eq(:invalid_situation)
   end
 end

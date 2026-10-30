@@ -199,6 +199,6 @@ situations:
     label: "Prótese total"
     abbr: null
     part: arch
-    deciduous: true
+    deciduous: false
     face: false
     source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, caixas prótese total superior/inferior (imagem 534)"

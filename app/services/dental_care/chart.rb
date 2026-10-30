@@ -1,16 +1,19 @@
 # Odontograma calculado (ADR 0046; contrato §16 O3): a dobra dos
-# dental_chart_events do paciente em (recorded_at, id), até `as_of`. Por dente:
+# dental_chart_events do paciente em (recorded_at, seq), até `as_of`. Por dente:
 # a coroa é o último evento de coroa sem face com situação; a raiz, o último de
 # raiz com situação; cada face, o último evento daquela face — uma situação de
 # coroa que não vale na face (extracted, missing, crown, complete_denture…)
 # zera as faces. Evento só com procedimento não muda situação, mas conta em
 # notes_count (eventos do dente) e em last_event_at. Dentição pelos dentes
-# presentes (com evento e coroa que não é ausência); sem nenhum, pela idade
+# presentes (com evento e coroa que não é ausência; prótese conta como
+# permanente); sem nenhum, pela idade
 # (< 6 decídua, 6..12 mista). Dado clínico: só para o corpo JSON.
 module DentalCare
   module Chart
     TEETH = (Catalog::PERMANENT_TEETH + Catalog::DECIDUOUS_TEETH).freeze
     ABSENT = %w[missing extracted unerupted].freeze
+    # Substituição protética: conta como dentição permanente, nunca decídua.
+    PROSTHETIC = %w[complete_denture removable_partial_denture temporary_prosthesis].freeze
 
     module_function
 
@@ -18,7 +21,7 @@ module DentalCare
       scope = DentalChartEvent.where(patient_id: patient.id)
       scope = scope.where(recorded_at: ..as_of) if as_of
       teeth = TEETH.index_with { |tooth| blank(tooth) }
-      scope.order(:recorded_at, :id).pluck(:tooth, :part, :face, :situation, :recorded_at).each do |row|
+      scope.order(:recorded_at, :seq).pluck(:tooth, :part, :face, :situation, :recorded_at).each do |row|
         fold!(teeth.fetch(row.first), *row.drop(1))
       end
       { dentition: dentition(teeth.values, patient), teeth: teeth.values }
@@ -44,11 +47,13 @@ module DentalCare
     end
 
     def dentition(teeth, patient)
-      present = teeth.select { |t| t[:notes_count].positive? && !ABSENT.include?(t[:situation]) }.map { |t| t[:tooth] }
+      present = teeth.select { |t| t[:notes_count].positive? && !ABSENT.include?(t[:situation]) }
       return by_age(patient.age) if present.empty?
 
-      permanent = present.intersect?(Catalog::PERMANENT_TEETH)
-      deciduous = present.intersect?(Catalog::DECIDUOUS_TEETH)
+      prosthetic, natural = present.partition { |t| PROSTHETIC.include?(t[:situation]) }
+      numbers = natural.map { |t| t[:tooth] }
+      permanent = prosthetic.any? || numbers.intersect?(Catalog::PERMANENT_TEETH)
+      deciduous = numbers.intersect?(Catalog::DECIDUOUS_TEETH)
       return "mixed" if permanent && deciduous
 
       deciduous ? "deciduous" : "permanent"
