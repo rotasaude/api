@@ -27,6 +27,9 @@ class ConsultationsController < ApplicationController
   # cid10_allowed_for_cbo: QUALQUER vínculo ativo permitido do usuário com CBO
   # de médico (contrato §9; physicians_only), não só o primeiro. Quem só é admin
   # municipal (sem health_professional) lê os rótulos, com cid10 false.
+  # Módulo 28 (contrato §16 O4, O20): `kinds` e `dental_role` pelos CBOs dos
+  # vínculos ativos e pelo interruptor dental_care; o vocabulário `dental`
+  # vai sempre (a consulta retida segue legível com o interruptor desligado).
   def options
     cid10 = CitizenVerificationPolicy.new(Current.user, nil).care? &&
             Consultations::Authorization.allowed_links(user: Current.user)
@@ -34,7 +37,8 @@ class ConsultationsController < ApplicationController
     # Contrato §4: o código vai como string.
     as_strings = ->(rows) { rows.map { |row| row.merge(code: row[:code].to_s) } }
     render json: { care_types: as_strings.(Ledi::ConsultationMapping.care_types),
-                   conducts: as_strings.(Ledi::ConsultationMapping.conducts), cid10_allowed_for_cbo: cid10 }
+                   conducts: as_strings.(Ledi::ConsultationMapping.conducts), cid10_allowed_for_cbo: cid10,
+                   **kinds_and_role, dental: DentalCare::Vocabulary.options }
   end
 
   # Minhas consultas: as finalizadas da autora, sem conteúdo clínico e sem
@@ -51,7 +55,9 @@ class ConsultationsController < ApplicationController
     attendance = Attendance.find_by(id: params[:id])
     return not_found unless attendance
 
-    result = Consultations::Start.call(attendance: attendance, by: Current.user)
+    # Sem `kind` (ou nulo) → general, o contrato de antes do módulo 28.
+    result = Consultations::Start.call(attendance: attendance, by: Current.user, kind: body["kind"] || "general",
+                                       baseline: body["baseline"].nil? ? false : body["baseline"])
     return failure(result) if result.failure?
 
     render json: Consultations::Json.consultation(result.payload[:consultation]), status: :created
@@ -156,6 +162,15 @@ class ConsultationsController < ApplicationController
     render json: Consultations::Json.consultation(result.payload[:consultation].reload)
   end
 
+  def kinds_and_role
+    cbos = Consultations::Authorization.allowed_links(user: Current.user, kind: :any).map(&:cbo_code)
+    cbos = cbos.reject { |cbo| Consultations::Cbos.role(cbo) } unless DentalCare::Gate.usable?(Current.city)
+    roles = cbos.map { |cbo| Consultations::Cbos.role(cbo) }
+    role = %i[dentist auxiliary].find { |r| roles.include?(r) }
+    { kinds: DentalCare::Catalog::KINDS.select { |kind| cbos.any? { |cbo| Consultations::Cbos.allowed?(cbo, kind: kind) } },
+      dental_role: role&.to_s }
+  end
+
   def with_regulation(json, result)
     return json unless result.payload.key?(:regulation_not_sent)
 
@@ -163,7 +178,9 @@ class ConsultationsController < ApplicationController
   end
 
   def failure(result)
-    return render(json: { error: "feature_disabled", feature: ClinicalRecord::Gate::KEY }, status: :forbidden) if result.reason == :feature_disabled
+    if result.reason == :feature_disabled
+      return render(json: { error: "feature_disabled", feature: result.details[:feature] || ClinicalRecord::Gate::KEY }, status: :forbidden)
+    end
 
     render_failure(result, ERROR_STATUS)
   end

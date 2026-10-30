@@ -1,7 +1,8 @@
 # app/services/clinical_record/access.rb
 # Quem lê o prontuário (ADR 0031; spec §5): em contexto — atendimento in_care
 # chamado pelo usuário, ou waiting na unidade de um vínculo ativo dele com CBO
-# permitido, de um par VALIDADO do paciente (Patients::Pairs) —, com abertura justificada
+# permitido para algum tipo de consulta (geral ou odontológica, módulo 28), de
+# um par VALIDADO do paciente (Patients::Pairs) —, com abertura justificada
 # válida, ou ninguém. A recepção (sem health_professional) nunca lê. Toda
 # leitura permitida deixa trilha (ClinicalRecord::Trail).
 # A autora da consulta FINALIZADA lê a própria consulta a qualquer momento
@@ -64,7 +65,7 @@ module ClinicalRecord
       when "in_care" then attendance.called_by_user_id == user.id
       when "waiting"
         ApplicationRecord.transaction do
-          Consultations::Authorization.link_for(user: user, health_unit_id: attendance.health_unit_id).first == :ok
+          Consultations::Authorization.link_for(user: user, health_unit_id: attendance.health_unit_id, kind: :any).first == :ok
         end
       else false
       end

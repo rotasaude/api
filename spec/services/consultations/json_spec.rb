@@ -10,7 +10,7 @@ RSpec.describe Consultations::Json do
   let(:unit) { create_unit }
   let(:doctor) { doctor!(unit) }
   let(:keys) do
-    %w[id attendance_id patient_id status author cbo_code subjective objective assessment plan vitals care_type
+    %w[id attendance_id patient_id status kind baseline author cbo_code subjective objective assessment plan vitals care_type
        evaluated_problems conducts exam_requests started_at finalized_at addenda]
   end
 
@@ -28,6 +28,7 @@ RSpec.describe Consultations::Json do
     expect(json["exam_requests"].sole).not_to have_key("id") # rascunho: ainda sem linha
     expect(json.values_at("status", "conducts", "finalized_at", "addenda")).to eq([ "draft", [ "1" ], nil, [] ])
     expect(json["care_type"]).to eq("5")
+    expect(json.values_at("kind", "baseline")).to eq([ "general", false ])
   end
 
   # Revisão final: `changes` na MESMA forma dos itens da consulta (rótulo,

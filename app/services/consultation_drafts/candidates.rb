@@ -1,9 +1,11 @@
 # Quem pode receber o rascunho órfão (card rotasaude/api#51): os usuários
 # ativos para quem Consultations::Authorization.link_for daria :ok na unidade
-# do atendimento (papel health_professional, vínculo ativo, CBO do 19a — MIAI
-# sem 2232 e 3222), menos a autora atual; ordem por nome. O vínculo escolhido
-# é o mesmo do link_for (o primeiro permitido por started_at, id). Leitura sem
-# trava: ConsultationDrafts::Reassign confere de novo sob trava.
+# do atendimento (papel health_professional, vínculo ativo, CBO permitido para
+# o tipo da consulta — geral: MIAI sem 2232 e 3222; odontológica: dentista e
+# TSB/ASB; registro inicial: só dentista, módulo 28), menos a autora atual;
+# ordem por nome. O vínculo escolhido é o mesmo do link_for (o primeiro
+# permitido por started_at, id). Leitura sem trava:
+# ConsultationDrafts::Reassign confere de novo sob trava.
 module ConsultationDrafts
   module Candidates
     module_function
@@ -22,8 +24,13 @@ module ConsultationDrafts
                               .where.not(professionals: { user_id: consultation.author_user_id })
                               .where(professionals: { user_id: Membership.active.where(role: "health_professional").select(:user_id) })
                               .includes(:professional).order(:started_at, :id).to_a
-      chosen = links.select { |link| Consultations::Cbos.allowed?(link.cbo_code) }.uniq { |link| link.professional.user_id }
+      role = consultation.baseline ? :dentist : nil
+      chosen = links.select { |link| eligible?(link, consultation.kind, role) }.uniq { |link| link.professional.user_id }
       chosen.map { |link| candidate(link) }.sort_by { |row| [ row[:name].to_s.downcase, row[:user_id] ] }
+    end
+
+    def eligible?(link, kind, role)
+      Consultations::Cbos.allowed?(link.cbo_code, kind: kind) && (role.nil? || Consultations::Cbos.role(link.cbo_code) == role)
     end
 
     def candidate(link)
@@ -32,6 +39,6 @@ module ConsultationDrafts
         cbo_title: Professionals::Cbo.find(link.cbo_code)&.title, council: professional.council,
         council_state: professional.council_state, registration_number: professional.registration_number }
     end
-    private_class_method :list, :candidate
+    private_class_method :list, :eligible?, :candidate
   end
 end

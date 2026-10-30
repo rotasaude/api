@@ -14,7 +14,7 @@ module Consultations
     def consultation(c)
       addenda_rows = c.addenda.order(:created_at, :id).to_a
       blocks = c.finalized? ? Signatures::Mode.blocks([ c, *addenda_rows ]) : {}
-      json = { id: c.id, attendance_id: c.attendance_id, patient_id: c.patient_id, status: c.status,
+      json = { id: c.id, attendance_id: c.attendance_id, patient_id: c.patient_id, status: c.status, kind: c.kind, baseline: c.baseline,
                author: { id: c.author_user_id, name: Screenings::Json.staff_name(c.author_user) }, cbo_code: c.cbo_code,
                subjective: c.subjective, objective: c.objective, assessment: c.assessment, plan: c.plan, vitals: vitals(c),
                care_type: c.care_type&.to_s, evaluated_problems: evaluated_problems(c), conducts: conducts(c),

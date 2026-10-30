@@ -1,8 +1,9 @@
 # app/commands/consultation_drafts/reassign.rb
 # Designar o rascunho de consulta órfão a outro profissional da unidade (card
 # rotasaude/api#51; módulo 19a, ADR 0031): quem pode registrar consulta ali
-# (Consultations::Authorization.link_for == :ok — papel, vínculo ativo, CBO do
-# 19a) e com a conta ativa. Troca autora, vínculo e CBO da consulta e quem
+# (Consultations::Authorization.link_for == :ok — papel, vínculo ativo, CBO
+# permitido para o tipo da consulta; o registro inicial odontológico só para
+# dentista, módulo 28) e com a conta ativa. Troca autora, vínculo e CBO da consulta e quem
 # chamou o atendimento in_care (é o que Start, Access.in_context? e a fila
 # usam); texto e draft_items ficam. As regras de CID-10 seguem na finalização
 # pelo CBO novo. Só sob Consultation.with_draft_admin (trigger). Ordem de
@@ -32,7 +33,8 @@ module ConsultationDrafts
         user = ClinicalDocuments::Uuid.valid?(user_id) ? User.find_by(id: user_id) : nil
         next Result.fail(:invalid_professional) unless user&.active?
 
-        status, link = Consultations::Authorization.link_for(user: user, health_unit_id: attendance.health_unit_id)
+        status, link = Consultations::Authorization.link_for(user: user, health_unit_id: attendance.health_unit_id,
+                                                             kind: consultation.kind, role: consultation.baseline ? :dentist : nil)
         next Result.fail(:invalid_professional) unless status == :ok
 
         Consultation.with_draft_admin do
