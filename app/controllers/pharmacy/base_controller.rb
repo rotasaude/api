@@ -33,9 +33,6 @@ module Pharmacy
       render json: payload, status: FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
     end
 
-    # 422 invalid_request com o path do campo recusado (nunca o valor).
-    def render_invalid(path) = render(json: { error: "invalid_request", path: path }, status: :unprocessable_entity)
-
     # 422 no formato uniforme das escritas e listas de transferência e entrada:
     # `error`/`path` no topo e `problems` com pelo menos esse problema.
     def render_refusal(path, error = "invalid_request")
@@ -46,6 +43,17 @@ module Pharmacy
     def forbid(reason = "missing_role") = render(json: { error: reason }, status: :forbidden)
     def not_found = render(json: { error: "not_found" }, status: :not_found)
     def uuid?(value) = value.is_a?(String) && value.match?(UUID)
+
+    # Cursor [iso8601(6), id] das listas por (created_at DESC, id DESC): a data
+    # legível e o id uuid.
+    def valid_cursor?(cursor)
+      return false unless cursor && cursor.size == 2 && uuid?(cursor.last)
+
+      Time.iso8601(cursor.first)
+      true
+    rescue ArgumentError
+      false
+    end
 
     def admin? = Current.user.has_role?("municipal_admin")
 

@@ -32,6 +32,10 @@ module Pharmacy
                        "adjustment_approval_percent" => 0..100 }.freeze
 
     QUANTITY = /\A\d{1,5}(\.\d{1,2})?\z/
+    # Saldo contado (counted_quantity): numeric(14,2), não uma quantidade de
+    # movimento; o teto de 99999.99 vale para o DELTA, não para o saldo.
+    BALANCE_QUANTITY = /\A\d{1,12}(\.\d{1,2})?\z/
+    MAX_QUANTITY = BigDecimal("99999.99")
     REASON = (10..500)
     NAME_MAX = 120
     LOT_NUMBER = %r{\A[0-9A-Za-z./-]{1,40}\z}

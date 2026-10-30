@@ -1,7 +1,7 @@
 # Parâmetros da farmácia da cidade (ADR 0045; contrato §3): as cinco chaves,
 # todas obrigatórias, inteiros dentro de `SETTING_RANGES`. Qualquer chave fora
 # da lista, ausente, que não seja inteiro JSON ou fora da faixa → `invalid_request`
-# com `path` da chave (nada é gravado). Evento `pharmacy.settings_changed`
+# com `path` da chave e `problems` (nada é gravado). Evento `pharmacy.settings_changed`
 # (subject `settings`) só com ids, e só quando algum valor muda.
 module Pharmacy
   module SaveSettings
@@ -35,7 +35,8 @@ module Pharmacy
       end
     end
 
-    def refuse(path) = Result.fail(:invalid_request, details: { path: path })
+    # Todo 422 traz `problems` com ao menos um problema (regra do módulo).
+    def refuse(path) = Result.fail(:invalid_request, details: { path: path, problems: [ { path: path, error: "invalid_request" } ] })
     private_class_method :refuse
   end
 end

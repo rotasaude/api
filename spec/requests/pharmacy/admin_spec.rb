@@ -9,6 +9,8 @@ RSpec.describe "Farmácia — administração", type: :request do
   let(:unit) { create_unit("UBS Jardim das Flores") }
 
   def json_delete(path, params = {}) = delete(path, params: params.to_json, headers: { "CONTENT_TYPE" => "application/json" })
+  # 422 uniforme do módulo: error/path no topo e `problems` com ao menos um problema.
+  def refusal(error, path) = { "error" => error, "path" => path, "problems" => [ { "path" => path, "error" => error } ] }
   def events = DomainEvent.where(name: "pharmacy.settings_changed").order(:occurred_at, :id).map(&:payload)
 
   # Saldo zerado por perda crua (documento de ajuste + movimento), sem o livro.
@@ -86,7 +88,7 @@ RSpec.describe "Farmácia — administração", type: :request do
       }
       cases.each do |body, path|
         json_post "/pharmacy/admin/locations", body
-        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => path } ]), "esperava path #{path} para #{body}"
+        expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", path) ]), "esperava path #{path} para #{body}"
       end
       expect(StockLocation.count).to eq(0)
       expect(events).to be_empty
@@ -97,7 +99,7 @@ RSpec.describe "Farmácia — administração", type: :request do
       other_unit = create_unit("UBS Boa Vista")
       stepped_up!(admin)
       json_post "/pharmacy/admin/locations", kind: "unit", health_unit_id: other_unit.id, name: "FARMACIA JARDIM"
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "name" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "name") ])
       expect(other_unit.reload.dispenses).to be(false)
     end
 
@@ -114,11 +116,11 @@ RSpec.describe "Farmácia — administração", type: :request do
       expect(events.size).to eq(1)
 
       json_patch "/pharmacy/admin/locations/#{location.id}", kind: "central"
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "kind" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "kind") ])
       json_patch "/pharmacy/admin/locations/#{location.id}", health_unit_id: create_unit("UBS Outra").id
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "health_unit_id" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "health_unit_id") ])
       json_patch "/pharmacy/admin/locations/#{location.id}", name: "x"
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "name" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "name") ])
       expect(location.reload.name).to eq("Farmácia Jardim das Flores")
     end
 
@@ -237,7 +239,7 @@ RSpec.describe "Farmácia — administração", type: :request do
       unit.update!(active: false, dispenses: false)
       stepped_up!(admin)
       json_patch "/pharmacy/admin/locations/#{location.id}", active: true
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "active" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "active") ])
       expect(location.reload.active).to be(false)
     end
 
@@ -310,7 +312,7 @@ RSpec.describe "Farmácia — administração", type: :request do
       user = pharmacist_candidate!(cbo: "225125")
       stepped_up!(admin)
       json_post "/pharmacy/admin/locations/#{location.id}/staff", user_id: user.id, role: "pharmacist"
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "cbo_not_allowed" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("cbo_not_allowed", "user_id") ])
       expect(StockLocationStaff.where(user: user)).to be_empty
     end
 
@@ -319,20 +321,20 @@ RSpec.describe "Farmácia — administração", type: :request do
       ProfessionalLink.where(professional: user.professional).update_all(ended_at: Time.current, ended_by_user_id: admin.id)
       stepped_up!(admin)
       json_post "/pharmacy/admin/locations/#{location.id}/staff", user_id: user.id, role: "pharmacist"
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "cbo_not_allowed" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("cbo_not_allowed", "user_id") ])
     end
 
     it "sem a Membership do papel → 422 role_not_granted; Membership revogada também" do
       user = screener!(unit, cbo: "223405")
       stepped_up!(admin)
       json_post "/pharmacy/admin/locations/#{location.id}/staff", user_id: user.id, role: "pharmacist"
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "role_not_granted" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("role_not_granted", "role") ])
       json_post "/pharmacy/admin/locations/#{location.id}/staff", user_id: user.id, role: "stock_keeper"
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "role_not_granted" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("role_not_granted", "role") ])
 
       Membership.create!(user: user, role: "stock_keeper", granted_at: Time.current).revoke!
       json_post "/pharmacy/admin/locations/#{location.id}/staff", user_id: user.id, role: "stock_keeper"
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "role_not_granted" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("role_not_granted", "role") ])
       expect(StockLocationStaff.count).to eq(0)
     end
 
@@ -360,9 +362,9 @@ RSpec.describe "Farmácia — administração", type: :request do
     it "recusas de corpo: papel desconhecido e usuário mal formado → 422 com path; usuário inexistente ou local inexistente → 404" do
       stepped_up!(admin)
       json_post "/pharmacy/admin/locations/#{location.id}/staff", user_id: SecureRandom.uuid, role: "janitor"
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "role" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "role") ])
       json_post "/pharmacy/admin/locations/#{location.id}/staff", user_id: 42, role: "stock_keeper"
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "user_id" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "user_id") ])
       json_post "/pharmacy/admin/locations/#{location.id}/staff", user_id: SecureRandom.uuid, role: "stock_keeper"
       expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
       user = staff_with("almoxarife-#{SecureRandom.hex(3)}@cidade.gov.br", "stock_keeper")
@@ -435,7 +437,7 @@ RSpec.describe "Farmácia — administração", type: :request do
     it "adjustment_approval_percent: 101 → 422 invalid_request path adjustment_approval_percent; nada muda" do
       stepped_up!(admin)
       json_patch "/pharmacy/admin/settings", full.merge(adjustment_approval_percent: 101)
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "adjustment_approval_percent" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "adjustment_approval_percent") ])
       expect(PharmacySetting.find(1).common_validity_days).to eq(30)
       expect(events).to be_empty
     end
@@ -455,7 +457,7 @@ RSpec.describe "Farmácia — administração", type: :request do
         {} => "common_validity_days"
       }.each do |body, path|
         json_patch "/pharmacy/admin/settings", body
-        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => path } ]), "esperava path #{path} para #{body}"
+        expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", path) ]), "esperava path #{path} para #{body}"
       end
       expect(PharmacySetting.find(1).expiry_alert_days).to eq(90)
     end

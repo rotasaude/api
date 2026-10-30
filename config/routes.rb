@@ -532,6 +532,12 @@ Rails.application.routes.draw do
     get    "transfers",                 to: "transfers#index"
     get    "transfers/:id",             to: "transfers#show"
     post   "transfers/:id/receive",     to: "transfers#receive"
+    # Inventário, perdas e vencimentos, com step-up e aprovação por outro (Task 7).
+    post   "adjustments",               to: "adjustments#create"
+    get    "adjustments",               to: "adjustments#index"
+    get    "adjustments/:id",           to: "adjustments#show"
+    post   "adjustments/:id/approve",   to: "adjustments#approve"
+    post   "adjustments/:id/reject",    to: "adjustments#reject"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.

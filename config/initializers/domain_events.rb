@@ -253,6 +253,12 @@ Rails.application.config.to_prepare do
   # booleano), sem consumidor.
   DomainEvents.bind "stock_transfer.sent", to: []
   DomainEvents.bind "stock_transfer.received", to: []
+  # Ajuste, perda ou vencimento de lote: pedido (`pending`, booleano, quando
+  # aguarda o segundo responsável), aprovado e rejeitado; só trilha, só ids
+  # (stock_adjustment_id, user_id), sem consumidor.
+  DomainEvents.bind "stock_adjustment.recorded", to: []
+  DomainEvents.bind "stock_adjustment.approved", to: []
+  DomainEvents.bind "stock_adjustment.rejected", to: []
   # Andamento do pedido de regulação (CareRegulation::Transition; contrato §11,
   # §13 G6) e prestadores/ofertas (R12): só ids (regulation_request_id e
   # user_id; care_provider_id/care_offer_id e user_id) — nunca alvo, cor,

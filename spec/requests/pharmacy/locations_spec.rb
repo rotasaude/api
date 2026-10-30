@@ -11,6 +11,8 @@ RSpec.describe "Farmácia — meus locais, mínimos e busca de item", type: :req
   let(:paracetamol) { catalog_item(267_778) }
 
   def json_put(path, params = {}) = put(path, params: params.to_json, headers: { "CONTENT_TYPE" => "application/json" })
+  # 422 uniforme do módulo: error/path no topo e `problems` com ao menos um problema.
+  def refusal(error, path) = { "error" => error, "path" => path, "problems" => [ { "path" => path, "error" => error } ] }
   def minimums_of(location) = StockMinimum.where(stock_location_id: location.id).pluck(:catalog_item_id, :minimum).to_h
   def events = DomainEvent.where(name: "pharmacy.settings_changed").order(:occurred_at, :id).map(&:payload)
   def disable_pharmacy! = Platform::Features.set!(city: city, key: "pharmacy", enabled: false, maintainer: ledi_maintainer!)
@@ -246,7 +248,7 @@ RSpec.describe "Farmácia — meus locais, mínimos e busca de item", type: :req
       sign_in_as(keeper)
       row = { catalog_item_id: losartana.id, minimum: "1" }
       json_put "/pharmacy/locations/#{farmacia.id}/minimums", minimums: Array.new(501) { row }
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "minimums" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "minimums") ])
       json_put "/pharmacy/locations/#{farmacia.id}/minimums", minimums: Array.new(500) { row }
       expect(json_body["path"]).to eq("minimums[1].catalog_item_id") # passou do teto; os repetidos é que são recusados
       expect(json_body["problems"].size).to eq(499)
@@ -256,12 +258,12 @@ RSpec.describe "Farmácia — meus locais, mínimos e busca de item", type: :req
     it "corpo sem a lista `minimums` (ou com outro tipo) → 422 invalid_request path minimums; query não vale como corpo" do
       sign_in_as(keeper)
       json_put "/pharmacy/locations/#{farmacia.id}/minimums", {}
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "minimums" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "minimums") ])
       json_put "/pharmacy/locations/#{farmacia.id}/minimums", minimums: { catalog_item_id: losartana.id }
-      expect(json_body).to eq("error" => "invalid_request", "path" => "minimums")
+      expect(json_body).to eq(refusal("invalid_request", "minimums"))
       put "/pharmacy/locations/#{farmacia.id}/minimums?minimums[][catalog_item_id]=#{losartana.id}&minimums[][minimum]=1",
           params: "{}", headers: { "CONTENT_TYPE" => "application/json" }
-      expect(json_body).to eq("error" => "invalid_request", "path" => "minimums")
+      expect(json_body).to eq(refusal("invalid_request", "minimums"))
       expect(minimums_of(farmacia)).to be_empty
     end
 
@@ -336,16 +338,16 @@ RSpec.describe "Farmácia — meus locais, mínimos e busca de item", type: :req
       sign_in_as(pharmacist)
       [ {}, { q: 5 }, { q: [ "losart" ] } ].each do |body|
         json_post "/pharmacy/items/search", body
-        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "q" } ])
+        expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "q") ])
       end
       post "/pharmacy/items/search?q=losart", params: "{}", headers: { "CONTENT_TYPE" => "application/json" }
-      expect(json_body).to eq("error" => "invalid_request", "path" => "q")
+      expect(json_body).to eq(refusal("invalid_request", "q"))
     end
 
     it "q com mais de 60 caracteres → 422 invalid_request path q; 60 passa" do
       sign_in_as(pharmacist)
       json_post "/pharmacy/items/search", q: "a" * 61
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "q" } ])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "q") ])
       json_post "/pharmacy/items/search", q: "a" * 60
       expect([ response.status, json_body ]).to eq([ 200, { "items" => [] } ])
     end

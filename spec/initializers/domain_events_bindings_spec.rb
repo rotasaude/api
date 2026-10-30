@@ -330,4 +330,12 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry["stock_transfer.sent"]).to be_empty
     expect(DomainEvents.registry["stock_transfer.received"]).to be_empty
   end
+
+  # Ajuste, perda e vencimento (pedido, aprovação, rejeição); só ids
+  # (stock_adjustment_id, user_id; o pedido leva também `pending`), sem consumidor.
+  it "declares stock_adjustment.recorded, .approved and .rejected with no consumer" do
+    names = %w[stock_adjustment.recorded stock_adjustment.approved stock_adjustment.rejected]
+    expect(DomainEvents.registry.keys).to include(*names)
+    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  end
 end

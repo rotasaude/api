@@ -6,8 +6,10 @@ module Pharmacy
     module_function
 
     # -> BigDecimal | nil. Zero só com allow_zero (contagem e recebido).
-    def parse(raw, allow_zero: false)
-      return nil unless raw.is_a?(String) && raw.match?(Catalog::QUANTITY)
+    # `pattern` mais largo só para SALDO digitado (counted_quantity, até
+    # numeric(14,2)): quantidade de movimento fica em QUANTITY.
+    def parse(raw, allow_zero: false, pattern: Catalog::QUANTITY)
+      return nil unless raw.is_a?(String) && raw.match?(pattern)
 
       value = BigDecimal(raw)
       return nil if value.zero? && !allow_zero

@@ -151,7 +151,8 @@ module Pharmacy
       DomainEvents.publish("pharmacy.settings_changed", subject: "location", stock_location_id: location.id, user_id: by.id)
     end
 
-    def refuse(path) = Result.fail(:invalid_request, details: { path: path })
+    # Todo 422 traz `problems` com ao menos um problema (regra do módulo).
+    def refuse(path) = Result.fail(:invalid_request, details: { path: path, problems: [ { path: path, error: "invalid_request" } ] })
 
     private_class_method :create, :update, :apply, :lock_unit, :mark_dispenses, :lot_ids_of, :lock_lots_of, :stocked?, :pending_work?, :valid_name,
                          :name_taken?, :conflict, :publish, :refuse

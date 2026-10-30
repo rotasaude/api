@@ -91,16 +91,6 @@ module Pharmacy
       uuid?(raw) ? StockLocation.find_by(id: raw) : nil
     end
 
-    # Cursor [iso8601(6), id] com a data legível e o id uuid.
-    def valid_cursor?(cursor)
-      return false unless cursor && cursor.size == 2 && uuid?(cursor.last)
-
-      Time.iso8601(cursor.first)
-      true
-    rescue ArgumentError
-      false
-    end
-
     # A transferência recém-gravada, relida com os locais e os lotes.
     def present_one(transfer, reasons: false)
       present_many([ StockTransfer.includes(*PRELOAD).find(transfer.id) ], reasons: reasons).sole

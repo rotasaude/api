@@ -16,10 +16,12 @@ module Pharmacy
   module SaveMinimums
     module_function
 
-    # -> Result.ok(changed:) | fail(:invalid_request, details: { path: "minimums" }) |
+    # -> Result.ok(changed:) | fail(:invalid_request, details: { path: "minimums", problems: [ … ] }) |
     # fail(<primeiro erro>, details: { path:, problems: [ { path:, error: } ] }).
     def call(location:, rows:, by:)
-      return Result.fail(:invalid_request, details: { path: "minimums" }) unless rows.is_a?(Array) && rows.size <= Catalog::MAX_MINIMUM_ROWS
+      unless rows.is_a?(Array) && rows.size <= Catalog::MAX_MINIMUM_ROWS
+        return Result.fail(:invalid_request, details: { path: "minimums", problems: [ problem("minimums", :invalid_request) ] })
+      end
 
       wanted, problems = validate(rows)
       if problems.any?

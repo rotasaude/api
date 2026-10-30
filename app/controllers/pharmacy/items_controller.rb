@@ -9,7 +9,7 @@ module Pharmacy
 
     def search
       q = body_param("q")
-      return render_invalid("q") unless q.is_a?(String) && q.length <= Catalog::SEARCH_QUERY_MAX
+      return render_refusal("q") unless q.is_a?(String) && q.length <= Catalog::SEARCH_QUERY_MAX
 
       ids = Medications::Search.call(q: q).map { |hit| hit.fetch(:id) }
       catalog = Json.catalog_for(ids)

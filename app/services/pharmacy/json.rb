@@ -74,6 +74,26 @@ module Pharmacy
         sent_at: transfer.sent_at.iso8601, received_at: transfer.received_at&.iso8601, items: items }
     end
 
+    # Ajuste (contrato §6/H2/H12): `{ id, location, lot, kind, status, quantity,
+    # counted_quantity|null, balance_at_request, reason, requested_by: { user_id,
+    # name }, decided_by: { user_id, name }|null, decision_reason|null, created_at }`,
+    # sem envelope. `quantity` é o EFEITO no estoque, com sinal (o delta da
+    # contagem; perda e vencimento saem negativos, como o movimento). O motivo é
+    # texto livre: só no corpo. `adjustment` carrega o local (com a unidade), o
+    # lote e os dois usuários (com o perfil, para o nome).
+    def adjustment(adjustment, catalog:)
+      decider = adjustment.decided_by_user
+      { id: adjustment.id, location: location(adjustment.stock_location), lot: lot(adjustment.stock_lot, catalog: catalog),
+        kind: adjustment.kind, status: adjustment.status, quantity: Quantity.dump(adjustment.quantity),
+        counted_quantity: adjustment.counted_quantity && Quantity.dump(adjustment.counted_quantity),
+        balance_at_request: Quantity.dump(adjustment.balance_at_request), reason: adjustment.reason,
+        requested_by: person(adjustment.requested_by_user), decided_by: decider && person(decider),
+        decision_reason: adjustment.decision_reason, created_at: adjustment.created_at.iso8601 }
+    end
+
+    # { user_id, name } (o nome é o do perfil profissional; sem perfil, null).
+    def person(user) = { user_id: user.id, name: user.professional&.professional_name }
+
     # Os cinco parâmetros da cidade, como o contrato §3.
     def settings(setting) = Catalog::SETTING_RANGES.keys.index_with { |key| setting.public_send(key) }
 
