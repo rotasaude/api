@@ -538,6 +538,10 @@ Rails.application.routes.draw do
     get    "adjustments/:id",           to: "adjustments#show"
     post   "adjustments/:id/approve",   to: "adjustments#approve"
     post   "adjustments/:id/reject",    to: "adjustments#reject"
+    # Posição, extrato do lote e alertas: leitura sem trilha e sem dado pessoal (Task 8).
+    get    "positions",                 to: "positions#index"
+    get    "lots/:id/movements",        to: "statements#index"
+    get    "alerts",                    to: "alerts#show"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.

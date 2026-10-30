@@ -1,8 +1,8 @@
 # Cursor opaco das listas da farmácia (ADR 0045): lista de textos (ids, datas
 # ISO) em JSON base64 url-safe. Posições: [location_id, catalog_item_id];
-# transferências, ajustes, extrato e dispensações: [iso8601(6), id]. Só ids e
-# datas: nunca dado do paciente. Inválido → nil (o controlador responde
-# invalid_cursor).
+# transferências, ajustes e dispensações: [iso8601(6), id]; extrato:
+# [recorded_at, created_at, id]. Só ids e datas: nunca dado do paciente.
+# Inválido → nil (o controlador responde invalid_cursor).
 module Pharmacy
   module Cursor
     MAX_LENGTH = 512
