@@ -523,6 +523,11 @@ Rails.application.routes.draw do
     get "patients/:id/dental_chart/events",     to: "charts#events"
     get "patients/:id/dental_plans",            to: "plans#index"
     get "patients/:id/endodontic_treatments",   to: "endodontics#index"
+    # Prótese e laboratório (Desvio 12; O10, O27).
+    get  "laboratories",                        to: "prosthesis_orders#laboratories"
+    get  "prosthesis_orders",                   to: "prosthesis_orders#index"
+    post "prosthesis_orders",                   to: "prosthesis_orders#create"
+    post "prosthesis_orders/:id/stages",        to: "prosthesis_orders#stage"
   end
 
   # Módulo 27a (ADR 0045; contrato §3, §13): farmácia e almoxarifado, sessão do

@@ -26,6 +26,7 @@ module DentalCare
       auxiliary(consultation, dental, add) if Consultations::Cbos.role(consultation.cbo_code) == :auxiliary
       limits(dental, add)
       taken(dental, add)
+      prosthesis(dental, patient, add)
       plan(consultation, dental, add)
       problems.concat(Referrals.missing(consultation)) if regulating
       problems
@@ -116,6 +117,27 @@ module DentalCare
       ids.each_with_index { |id, index| add.("dental.procedures[#{index}].id", "invalid_request") if used.include?(id) }
     end
 
+    # Desvio 12 (D6): o procedimento com `prosthesis_order_id` instala o pedido
+    # (trancado por quem chama): mesmo SIGTAP e paciente, e cada pedido uma vez
+    # só (senão `prosthesis_order_mismatch`); só `received` instala
+    # (senão `prosthesis_order_not_received`).
+    def prosthesis(dental, patient, add)
+      used = []
+      Array(dental["procedures"]).each_with_index do |procedure, index|
+        id = procedure["prosthesis_order_id"]
+        next unless id
+
+        path = "dental.procedures[#{index}].prosthesis_order_id"
+        order = DentalProsthesisOrder.find_by(id: id)
+        if order.nil? || order.patient_id != patient.id || order.procedure_code != procedure["sigtap"] || used.include?(id)
+          add.(path, "prosthesis_order_mismatch")
+        elsif order.stage != "received"
+          add.(path, "prosthesis_order_not_received")
+        end
+        used << id
+      end
+    end
+
     # Desvio 7 (Ruling 14): o item tem de ser `planned` do plano aberto da
     # unidade da consulta (e do mesmo SIGTAP, na baixa).
     def plan(consultation, dental, add)
@@ -151,6 +173,6 @@ module DentalCare
     end
 
     def regulation_drafts?(consultation) = RegulationRequest.exists?(consultation_id: consultation.id, status: "draft")
-    private_class_method :baseline, :fao, :record, :auxiliary, :limits, :taken, :plan, :plan_changes?, :regulation_drafts?
+    private_class_method :baseline, :fao, :record, :auxiliary, :limits, :taken, :prosthesis, :plan, :plan_changes?, :regulation_drafts?
   end
 end

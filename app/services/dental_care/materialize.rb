@@ -18,6 +18,7 @@ module DentalCare
     def call(consultation:, patient:, by:, now: Time.current)
       dental = consultation.draft_items["dental"] || {}
       procedures = Array(dental["procedures"]).map { |item| procedure!(consultation, patient, item) }
+      install_prostheses!(procedures, consultation, by)
       event = event_writer(consultation, patient, by, now)
       Array(dental["findings"]).each { |finding| finding!(finding, event) }
       chart = Chart.call(patient)
@@ -43,6 +44,17 @@ module DentalCare
                               location_kind: location["kind"], tooth: location["tooth"], face: location["face"],
                               sextant: location["sextant"], arch: location["arch"], quantity: item.fetch("quantity"),
                               dental_treatment_plan_item_id: item["plan_item_id"], dental_prosthesis_order_id: item["prosthesis_order_id"])
+    end
+
+    # Desvio 12: o procedimento com pedido de prótese o passa de `received` a
+    # `installed` (a Requirements já recusou o resto; quem chama travou os pedidos).
+    def install_prostheses!(procedures, consultation, by)
+      procedures.filter_map(&:dental_prosthesis_order_id).each do |id|
+        order = DentalProsthesisOrder.find(id)
+        order.update!(stage: "installed", installed_in_consultation_id: consultation.id)
+        order.stages.create!(stage: "installed", by_user: by)
+        DomainEvents.publish("prosthesis_order.stage_changed", order_id: order.id, stage: "installed", user_id: by.id)
+      end
     end
 
     def event_writer(consultation, patient, by, now, addendum: nil)
@@ -109,6 +121,6 @@ module DentalCare
       end
       treatment.sessions.create!(consultation: consultation, canals: entry["canals"])
     end
-    private_class_method :procedure!, :event_writer, :finding!, :effects!, :screening!, :periodontal_chart!, :endodontics!
+    private_class_method :procedure!, :install_prostheses!, :event_writer, :finding!, :effects!, :screening!, :periodontal_chart!, :endodontics!
   end
 end

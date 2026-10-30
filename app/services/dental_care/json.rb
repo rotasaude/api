@@ -149,6 +149,19 @@ module DentalCare
         end }
     end
 
+    # <prosthesis_order> (Desvio 12; O27): sem created_at e sem o motivo das etapas.
+    def prosthesis_order(order, names:)
+      provider = order.care_provider
+      { id: order.id, patient: patient_ref(order.patient), health_unit: { id: order.health_unit.id, name: order.health_unit.name },
+        sigtap: order.procedure_code, name: names[order.procedure_code],
+        laboratory: { care_provider_id: order.care_provider_id, name: provider ? provider.name : order.laboratory_name },
+        stage: order.stage,
+        stages: order.stages.sort_by { |s| [ s.created_at, s.id ] }.map do |s|
+          { stage: s.stage, at: s.created_at.iso8601, by: { name: s.by_user.professional&.professional_name } }
+        end,
+        installed_in_consultation_id: order.installed_in_consultation_id }
+    end
+
     def procedure_names(codes) = names(codes)
 
     private_class_method :draft, :stored, :procedure, :finding, :location, :item_location, :screening, :perio, :endo, :names

@@ -251,6 +251,11 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "dental_consultation.finalized", to: []
   DomainEvents.bind "dental_plan.completed", to: []
   DomainEvents.bind "dental_plan.cancelled", to: []
+  # Módulo 28 (ADR 0046; Desvio 12): pedido de prótese criado (order_id,
+  # user_id) e etapa mudada (order_id, stage, user_id); só ids e o código da
+  # etapa — nunca laboratório, motivo nem paciente. Sem consumidor.
+  DomainEvents.bind "prosthesis_order.created", to: []
+  DomainEvents.bind "prosthesis_order.stage_changed", to: []
   # Módulo 27a (ADR 0045): locais, equipe, parâmetros e mínimos da farmácia
   # alterados (`subject`: location, staff, settings ou minimums); só trilha, só
   # ids (stock_location_id, staff_user_id, user_id), sem consumidor.
