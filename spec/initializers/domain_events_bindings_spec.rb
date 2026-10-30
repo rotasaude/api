@@ -309,7 +309,7 @@ end
 # Módulo 28 (ADR 0046): administração da saúde bucal, consulta odontológica
 # finalizada e plano concluído/cancelado; só trilha, só ids, sem consumidor.
 RSpec.describe "dental bindings (ADR 0046)" do
-  %w[ceo_profile.changed dental.auxiliary_procedures_changed dental_consultation.finalized dental_plan.completed
+  %w[ceo_profile.changed dental.auxiliary_procedures_changed dental.team_association_changed dental_consultation.finalized dental_plan.completed
      dental_plan.cancelled prosthesis_order.created prosthesis_order.stage_changed].each do |name|
     it "declares #{name} with no consumer" do
       expect(DomainEvents.registry.keys).to include(name)

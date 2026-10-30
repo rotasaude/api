@@ -35,12 +35,20 @@ module CareLines
 
     # Equipe do pedido (team_id) dentro do escopo do profissional; fora dele,
     # 403 out_of_scope. Compartilhado pelos controllers de sugestões e inscrições.
+    # A eSB (71) não é equipe de linha de cuidado: 404, como a desconhecida
+    # na prévia (módulo 28, Review Focus 1).
     def scoped_team
       team = uuid?(params[:team_id]) && HealthTeam.find_by(id: params[:team_id])
-      return team if Access.panel?(Current.user, team)
-
-      forbid("out_of_scope")
+      if team && !care_line_team?(team)
+        not_found
+      elsif Access.panel?(Current.user, team)
+        return team
+      else
+        forbid("out_of_scope")
+      end
       nil
     end
+
+    def care_line_team?(team) = HealthTeam::PRIMARY_CARE_KINDS.include?(team.kind)
   end
 end

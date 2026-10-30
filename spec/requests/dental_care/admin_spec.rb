@@ -195,4 +195,70 @@ RSpec.describe "Saúde bucal — administração", type: :request do
       expect([ response.status, json_body.dig("unit", "ceo_profile") ]).to eq([ 200, { "ceo_type" => "I", "specialties" => %w[stomatology] } ])
     end
   end
+
+  # Desvio 13, D7; contrato §16 O11: a associação da eSB à eSF/eAP da unidade
+  # quando o CNES não decide (zero ou várias). Leitura e escrita do admin;
+  # escrita com step-up.
+  describe "equipes de saúde bucal" do
+    let!(:esf1) { HealthTeam.create!(health_unit: ubs, ine: "0000000070", kind: "70", name: "ESF Centro 1") }
+    let!(:esf2) { HealthTeam.create!(health_unit: ubs, ine: "0000000076", kind: "76", name: "EAP Centro 2") }
+    let!(:esb) { HealthTeam.create!(health_unit: ubs, ine: "0001234571", kind: "71", name: "ESB Centro") }
+    let(:path) { "/dental/admin/oral_health_teams/#{esb.id}" }
+
+    def team_ref(team) = { "id" => team.id, "ine" => team.ine, "name" => team.name }
+
+    before do
+      HealthTeam.create!(health_unit: ubs, ine: "0000000071", kind: "70", name: "ESF Inativa", active: false)
+      HealthTeam.create!(health_unit: ceo, ine: "0000000072", kind: "70", name: "ESF Outra Unidade")
+      HealthTeam.create!(health_unit: ubs, ine: "0001234579", kind: "71", name: "ESB Inativa", active: false)
+    end
+
+    it "GET lista as eSB ativas com a associada e as candidatas (70/76 ativas da unidade)" do
+      sign_in_as(admin)
+      get "/dental/admin/oral_health_teams"
+      expect([ response.status, json_body ]).to eq(
+        [ 200, { "teams" => [ { "id" => esb.id, "ine" => "0001234571", "name" => "ESB Centro",
+                                "health_unit" => { "id" => ubs.id, "name" => "UBS Centro" }, "associated_team" => nil,
+                                "candidates" => [ team_ref(esf2), team_ref(esf1) ] } ] } ]
+      )
+    end
+
+    it "PUT associa (step-up), publica dental.team_association_changed só com ids e devolve a equipe" do
+      stepped_up!(admin)
+      json_put path, associated_team_id: esf2.id
+      expect(response).to have_http_status(:ok)
+      expect(json_body).to include("id" => esb.id, "associated_team" => team_ref(esf2))
+      expect(esb.reload.associated_team_id).to eq(esf2.id)
+      expect(events("dental.team_association_changed")).to eq([ { "team_id" => esb.id, "user_id" => admin.id } ])
+      get "/dental/admin/oral_health_teams"
+      expect(json_body["teams"].sole["associated_team"]).to eq(team_ref(esf2))
+    end
+
+    it "candidata de outra unidade, inativa, eSB, nula ou desconhecida → 422 em associated_team_id, nada gravado" do
+      stepped_up!(admin)
+      others = HealthTeam.where(ine: %w[0000000071 0000000072 0001234579]).pluck(:id)
+      [ *others, esb.id, nil, SecureRandom.uuid, "x" ].each do |candidate|
+        json_put path, associated_team_id: candidate
+        expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "associated_team_id") ])
+      end
+      expect(esb.reload.associated_team_id).to be_nil
+      expect(events("dental.team_association_changed")).to be_empty
+    end
+
+    it "equipe que não é eSB ativa → 404; outro papel → 403; sem step-up → 401" do
+      stepped_up!(admin)
+      json_put "/dental/admin/oral_health_teams/#{esf1.id}", associated_team_id: esf2.id
+      expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
+      sign_in_as(staff_with("analise-#{SecureRandom.hex(3)}@cidade.gov.br", "analyst"))
+      get "/dental/admin/oral_health_teams"
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+      sign_in_as(dentist!(ubs))
+      json_put path, associated_team_id: esf1.id
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+      sign_in_as(step_up_enrolled!(admin))
+      json_put path, associated_team_id: esf1.id
+      expect([ response.status, json_body ]).to eq([ 401, { "error" => "mfa_required" } ])
+      expect(esb.reload.associated_team_id).to be_nil
+    end
+  end
 end

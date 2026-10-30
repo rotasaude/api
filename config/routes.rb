@@ -516,6 +516,9 @@ Rails.application.routes.draw do
     put "admin/ceo_profiles/:health_unit_id",   to: "admin/ceo_profiles#update"
     get "admin/auxiliary_procedures",           to: "admin/auxiliary_procedures#show"
     put "admin/auxiliary_procedures",           to: "admin/auxiliary_procedures#update"
+    # Associação da eSB à eSF/eAP (Desvio 13, D7; O11).
+    get "admin/oral_health_teams",              to: "admin/oral_health_teams#index"
+    put "admin/oral_health_teams/:id",          to: "admin/oral_health_teams#update"
     # Busca de procedimento da consulta (contrato §16 O5; termo no corpo).
     post "procedures/search",                   to: "procedures#search"
     # Leitura nominal do paciente (O1, O13): só o id na URL; filtro de dente na tela.

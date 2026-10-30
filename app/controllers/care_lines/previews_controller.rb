@@ -8,7 +8,7 @@ module CareLines
       return render_error(:invalid_indicator) unless Preview::INDICATORS.include?(params[:indicator])
 
       team = uuid?(params[:team_id]) && HealthTeam.find_by(id: params[:team_id])
-      return not_found unless team
+      return not_found unless team && care_line_team?(team)
 
       result = Preview.call(team: team, indicator: params[:indicator], today: Time.zone.today)
       return render_error(:catalog_not_loaded, :service_unavailable) unless result

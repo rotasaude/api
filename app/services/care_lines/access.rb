@@ -31,10 +31,11 @@ module CareLines
 
     def confirmer?(user, team) = team.present? && confirm_unit_ids(user).include?(team.health_unit_id)
 
-    # Equipes que aparecem nos filtros: as das unidades do profissional; a
-    # gestão (admin, analyst) vê todas as ativas.
+    # Equipes que aparecem nos filtros: as eSF/eAP das unidades do
+    # profissional; a gestão (admin, analyst) vê todas as ativas. A eSB (71)
+    # nunca é equipe de linha de cuidado (módulo 28).
     def visible_teams(user)
-      scope = HealthTeam.where(active: true).includes(:health_unit).order(:name, :ine)
+      scope = HealthTeam.where(active: true, kind: HealthTeam::PRIMARY_CARE_KINDS).includes(:health_unit).order(:name, :ine)
       preview?(user) ? scope : scope.where(health_unit_id: professional_unit_ids(user))
     end
   end

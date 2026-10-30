@@ -245,6 +245,9 @@ Rails.application.config.to_prepare do
   # só ids (health_unit_id, user_id, count), sem consumidor.
   DomainEvents.bind "ceo_profile.changed", to: []
   DomainEvents.bind "dental.auxiliary_procedures_changed", to: []
+  # Módulo 28 (Desvio 13, D7): eSB associada à eSF/eAP pelo admin; só ids
+  # (team_id, user_id), sem consumidor.
+  DomainEvents.bind "dental.team_association_changed", to: []
   # Módulo 28 (ADR 0046): consulta odontológica finalizada (consultation_id,
   # attendance_id) e plano de tratamento concluído ou cancelado (plan_id,
   # consultation_id); só ids, sem consumidor.

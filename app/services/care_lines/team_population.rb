@@ -16,15 +16,19 @@
 module CareLines
   module TeamPopulation
     LOOKBACK = 24.months
-    # Consultas finalizadas no corte (bind: o corte) cujo profissional tem
-    # equipe ativa na unidade do vínculo: a mesma cadeia dá a equipe da
-    # consulta e decide quem segue o território.
+    # Só eSF/eAP (módulo 28, Review Focus 1): a eSB (71) e a consulta
+    # odontológica nunca dão nem tiram equipe de linha de cuidado.
+    PRIMARY_CARE_KINDS_SQL = HealthTeam::PRIMARY_CARE_KINDS.map { |kind| "'#{kind}'" }.join(", ").freeze
+    # Consultas `general` finalizadas no corte (bind: o corte) cujo
+    # profissional tem equipe eSF/eAP ativa na unidade do vínculo: a mesma
+    # cadeia dá a equipe da consulta e decide quem segue o território.
     TEAMED_CONSULTATIONS = <<~SQL.freeze
       FROM consultations c
       JOIN professional_links pl ON pl.id = c.professional_link_id
       JOIN health_team_members m ON m.professional_id = pl.professional_id AND m.ended_on IS NULL
       JOIN health_teams ht ON ht.id = m.health_team_id AND ht.active AND ht.health_unit_id = pl.health_unit_id
-     WHERE c.status = 'finalized' AND c.finalized_at >= ?
+                          AND ht.kind IN (#{PRIMARY_CARE_KINDS_SQL})
+     WHERE c.status = 'finalized' AND c.kind = 'general' AND c.finalized_at >= ?
     SQL
 
     module_function
@@ -124,20 +128,22 @@ module CareLines
             FROM consultations tc
             JOIN professional_links tpl ON tpl.id = tc.professional_link_id
             JOIN health_team_members tm ON tm.professional_id = tpl.professional_id AND tm.ended_on IS NULL AND tm.health_team_id = ?
-           WHERE tc.status = 'finalized' AND tpl.health_unit_id = ? AND tc.finalized_at >= ?)
+           WHERE tc.status = 'finalized' AND tc.kind = 'general' AND tpl.health_unit_id = ? AND tc.finalized_at >= ?)
       SQL
     end
     private_class_method :involving
 
     def citizen_teams(citizens) = territory_teams(citizens.to_h { |citizen| [ citizen.id, citizen.neighborhood_id ] })
 
-    # { id => bairro } → { id => a única equipe ativa das unidades de
-    # referência do bairro }; zero ou mais de uma (ou bairro nulo) → fora.
+    # { id => bairro } → { id => a única equipe eSF/eAP ativa das unidades de
+    # referência do bairro }; zero ou mais de uma (ou bairro nulo) → fora. A
+    # eSB da unidade não conta (não divide o bairro com a eSF).
     def territory_teams(neighborhood_by_id)
       return {} if neighborhood_by_id.empty?
 
       units = Territory::ReferenceUnits.ids_by_neighborhood(neighborhood_by_id.values)
-      teams = HealthTeam.where(active: true, health_unit_id: units.values.flatten.uniq).pluck(:id, :health_unit_id)
+      teams = HealthTeam.where(active: true, kind: HealthTeam::PRIMARY_CARE_KINDS, health_unit_id: units.values.flatten.uniq)
+                        .pluck(:id, :health_unit_id)
       neighborhood_by_id.each_with_object({}) do |(id, neighborhood_id), out|
         unit_ids = units.fetch(neighborhood_id, [])
         candidates = teams.select { |_, unit_id| unit_ids.include?(unit_id) }.map(&:first)
