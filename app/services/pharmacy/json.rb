@@ -97,15 +97,19 @@ module Pharmacy
     # <prescription_view> (contrato §2, H3, H12): a receita para a farmácia. NOMINAL
     # (o chamador grava a trilha). `summary` = Dispensed.summary; `today` é o dia
     # da cidade. `valid_until` e `expired` valem POR ITEM; no topo, `valid_until`
-    # é o maior dos itens e `expired` só quando TODOS venceram (Desvio 8). O
+    # é o maior dos itens e `expired` só quando TODOS venceram (Desvio 8); sem
+    # item, `valid_until` é a emissão e `expired` segue o relógio. O
     # paciente sai só com `has_cpf` e `cns_masked`; nunca CPF, CNS nem a
     # identificação do paciente do 19d. `item` é o <item> do catálogo (null no
     # texto livre), com a unidade de dispensação da regra.
     def prescription_view(prescription, patient:, summary:, settings:, today:, catalog: {})
       items = prescription.items.map { |item| prescription_item(item, summary.fetch(item.id), settings: settings, today: today, entry: catalog[item.catalog_item_id]) }
       short_code = prescription.kind == "digital" ? ClinicalDocuments::Codes.display(prescription.record.short_code) : nil
+      # Receita sem itens (não nasce pelas rotas, mas não derruba): vale até o dia da emissão.
+      valid_until = prescription.items.map(&:valid_until).max || prescription.issued_on
+      expired = items.empty? ? Validity.expired?(valid_until, today: today) : items.all? { |row| row[:expired] }
       { kind: prescription.kind, id: prescription.id, short_code: short_code, issued_on: prescription.issued_on.iso8601,
-        valid_until: prescription.items.map(&:valid_until).max.iso8601, expired: items.all? { |row| row[:expired] },
+        valid_until: valid_until.iso8601, expired: expired,
         cancelled: prescription.cancelled, prescriber: prescription.prescriber,
         patient: { id: patient.id, display_name: patient.display_name, **Patients::IdentifierJson.call(patient) }, items: items }
     end

@@ -248,6 +248,10 @@ Rails.application.config.to_prepare do
   # Entrada de estoque gravada (nota, doação ou inventário de abertura); só
   # trilha, só ids (stock_entry_id, user_id), sem consumidor.
   DomainEvents.bind "stock_receipt.recorded", to: []
+  # Receita externa digitada na farmácia; só trilha, só ids
+  # (external_prescription_id, user_id) — nunca prescritor, número da
+  # notificação, item nem paciente —, sem consumidor.
+  DomainEvents.bind "external_prescription.recorded", to: []
   # Transferência do central para a unidade: enviada e recebida; só trilha, só
   # ids (stock_transfer_id, user_id; o recebimento leva também `with_difference`,
   # booleano), sem consumidor.

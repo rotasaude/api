@@ -322,6 +322,13 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry["stock_receipt.recorded"]).to be_empty
   end
 
+  # Receita externa digitada na farmácia; só ids (external_prescription_id,
+  # user_id), sem consumidor.
+  it "declares external_prescription.recorded with no consumer" do
+    expect(DomainEvents.registry.keys).to include("external_prescription.recorded")
+    expect(DomainEvents.registry["external_prescription.recorded"]).to be_empty
+  end
+
   # Transferência do central para a unidade (enviada e recebida); só ids
   # (stock_transfer_id, user_id; o recebimento leva também with_difference),
   # sem consumidor.

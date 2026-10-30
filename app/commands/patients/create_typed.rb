@@ -40,6 +40,12 @@ module Patients
       Result.fail(:cns_taken)
     end
 
+    # Só a forma, sem banco e sem gravar: a primeira recusa (com o path new_patient.*
+    # ou o código de CPF/CNS/justificativa) ou ok. Quem junta todas as recusas de
+    # uma escrita (a receita externa da farmácia) confere aqui antes de abrir a
+    # transação; `call` repete a mesma conferência.
+    def check(attrs) = parse(attrs.to_h.stringify_keys)
+
     def parse(attrs)
       STRINGS.each do |key|
         return invalid(key) unless attrs[key].nil? || attrs[key].is_a?(String)

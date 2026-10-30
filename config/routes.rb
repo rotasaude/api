@@ -547,6 +547,8 @@ Rails.application.routes.draw do
     post   "prescriptions/lookup",      to: "prescriptions#lookup"
     post   "person_lookup",             to: "person_lookups#create"
     post   "patients/duplicates",       to: "duplicates#create"
+    # Receita externa digitada na farmácia, com trilha por pessoa (Task 10).
+    post   "external_prescriptions",    to: "external_prescriptions#create"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.

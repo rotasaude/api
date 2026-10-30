@@ -401,6 +401,19 @@ RSpec.describe "Farmácia — receita, busca de pessoa e duplicados", type: :req
       expect(json_body).to eq(person_shape(existing))
     end
 
+    it "o log da requisição (Parameters) e a trilha não levam CPF, CNS nem o nome de quem foi achado" do
+      by_cpf = registry_patient!
+      by_cns = registry_no_cpf_patient!(cns: valid_cns(6))
+      formatted = by_cpf.cpf.sub(/(\d{3})(\d{3})(\d{3})(\d{2})/, '\\1.\\2.\\3-\\4')
+      logs = [ capture_log { person_lookup(cpf: formatted) }, capture_log { person_lookup(cns: by_cns.cns) } ]
+      expect(logs.map { |log| log.lines.grep(/Parameters/).size }).to eq([ 1, 1 ])
+      logs.each { |log| expect(log.lines.grep(/Parameters/).join).to include("FILTERED") }
+      secrets = [ by_cpf.cpf, formatted, by_cpf.display_name, by_cpf.mother_name, by_cns.cns, by_cns.display_name ]
+      payloads = DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).to_json
+      (logs + [ payloads ]).each { |text| secrets.each { |secret| expect(text).not_to include(secret) } }
+      expect(logs.first.lines.grep(/Started POST/).join).to include("/pharmacy/person_lookup")
+    end
+
     it "par validado sem paciente: cria o paciente aqui (patient.created) e devolve o id" do
       citizen = verified_citizen!(14)
       expect(Patient.where(cpf: citizen.cpf)).to be_empty
@@ -504,6 +517,19 @@ RSpec.describe "Farmácia — receita, busca de pessoa e duplicados", type: :req
 
       duplicates(full_name: "José Souza Lima", birth_date: "1960-02-01", mother_name: "rita souza lima")
       expect(json_body["candidates"].pluck("patient_id")).to match_array([ twin.id, no_cpf.id ])
+    end
+
+    it "o log da requisição (Parameters) e a trilha não levam nome, nascimento nem mãe, de quem busca nem dos candidatos" do
+      log = capture_log { duplicates(full_name: "José Souza Lima", birth_date: "1960-02-01", mother_name: "Rita Souza Lima") }
+      expect(json_body["candidates"].pluck("patient_id")).to eq([ twin.id ])
+      parameters = log.lines.grep(/Parameters/)
+      expect(parameters.size).to eq(1)
+      expect(parameters.join).to include("FILTERED")
+      payloads = DomainEvent.where(name: "clinical_record.viewed").pluck(:payload).to_json
+      [ "José", "Jose", "Souza", "Lima", "1960", "Rita", twin.cpf ].each do |secret|
+        expect(parameters.join).not_to include(secret)
+        expect(payloads).not_to include(secret)
+      end
     end
 
     it "sem candidato → lista vazia e nenhuma trilha; no máximo 10 candidatos" do
