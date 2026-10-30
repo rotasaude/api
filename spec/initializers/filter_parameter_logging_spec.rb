@@ -29,4 +29,14 @@ RSpec.describe "filter_parameters da farmácia" do
                            "document" => { "kind" => "donation", "number" => "[FILTERED]", "supplier" => "[FILTERED]" },
                            "items" => "[FILTERED]", "supplier_id" => "9")
   end
+
+  # As colunas do prescritor da receita externa: o log do SQL filtra os binds
+  # pela lista global (o filter_attributes do modelo só vale para o inspect).
+  it "prescriber_name, council, council_state e council_number viram [FILTERED]; chave parecida passa" do
+    filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
+    filtered = filter.filter("prescriber_name" => "Dra. X", "council" => "CRM", "council_state" => "PR", "council_number" => "54321",
+                             "councils" => "x", "council_id" => "9")
+    expect(filtered).to eq("prescriber_name" => "[FILTERED]", "council" => "[FILTERED]", "council_state" => "[FILTERED]",
+                           "council_number" => "[FILTERED]", "councils" => "x", "council_id" => "9")
+  end
 end

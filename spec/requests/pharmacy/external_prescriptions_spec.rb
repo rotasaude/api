@@ -229,6 +229,16 @@ RSpec.describe "Farmácia — receita externa", type: :request do
       expect(written.first(4)).to eq([ 0, 0, Patient.count, 0 ])
     end
 
+    # Herdado da revisão da Task 10: o paciente existe na validação e some antes
+    # da gravação (patient_for) → a mesma recusa da validação, com problems.
+    it "paciente sumido entre a validação e a gravação → 422 invalid_request patient_id com problems; nada gravado" do
+      allow(Patient).to receive(:find_by).and_call_original
+      allow(Patient).to receive(:find_by).with(id: person.id).and_return(nil)
+      record
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "patient_id") ])
+      expect(written.first(2)).to eq([ 0, 0 ])
+    end
+
     it "new_patient que não é objeto → 422 path new_patient" do
       record(patient_id: nil, new_patient: "Carlos")
       expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "new_patient") ])
@@ -556,6 +566,23 @@ RSpec.describe "Farmácia — receita externa", type: :request do
   end
 
   describe "ExternalPrescription" do
+    # Herdado da revisão da Task 10: o log INTEIRO (Parameters e o SQL com os
+    # binds do INSERT da receita e do paciente), não só a linha de parâmetros.
+    it "o log inteiro de uma receita externa com new_patient não leva nome, nascimento, mãe nem os dados do prescritor" do
+      sign_in_as(pharmacist)
+      typed = new_patient(full_name: "Carlos Eduardo Pereira", birth_date: "1985-03-12", mother_name: "Rosangela Quintanilha Pereira")
+      log = capture_log do
+        record(patient_id: nil, new_patient: typed, prescriber: prescriber(name: "Dra. Beltrana Souza", council: "CRO", council_state: "SC",
+                                                                           council_number: "97531"))
+      end
+      expect(response).to have_http_status(:created)
+      expect(log).to include("INSERT INTO \"external_prescriptions\"", "INSERT INTO \"patients\"")
+      [ "Carlos Eduardo", "1985-03-12", "1985", "Quintanilha", "Beltrana", "97531", "CRO", "\"SC\"" ].each do |secret|
+        expect(log).not_to include(secret), "o log leva #{secret.inspect}"
+      end
+      expect(ExternalPrescription.filter_attributes.map(&:to_s)).to include("prescriber_name", "council", "council_state", "council_number")
+    end
+
     it "inspect, to_s, pretty_print e as_json só levam o id" do
       sign_in_as(pharmacist)
       record(items: [ line(diazepam) ], notification_number: notif)

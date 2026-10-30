@@ -87,8 +87,13 @@ Rails.application.config.filter_parameters += [
   # e recebidas, e o fornecedor da entrada (numa doação de pessoa física é o
   # nome dela; `document.supplier`) (`reason`, `short_code`, `items` — que já
   # leva `lot_number` e `manufacturer` —, `new_patient`, `cpf`, `cns` e
-  # `dosage_instructions` já estavam acima).
-  /\A(prescriber|retention|notification_number|counted_quantity|quantity_received|supplier)\z/
+  # `dosage_instructions` já estavam acima). As colunas do prescritor da receita
+  # externa (`prescriber_name`, `council`, `council_state`, `council_number`)
+  # entram aqui porque o log do SQL filtra os binds pela lista GLOBAL
+  # (ActiveRecord::Base.inspection_filter), não pelo `filter_attributes` do
+  # modelo, que só vale para o inspect.
+  /\A(prescriber|retention|notification_number|counted_quantity|quantity_received|supplier)\z/,
+  /\A(prescriber_name|council|council_state|council_number)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

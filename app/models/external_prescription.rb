@@ -3,6 +3,10 @@
 # do paciente nem da receita em inspect, to_s, pretty_print ou as_json.
 class ExternalPrescription < ApplicationRecord
   encrypts :notification_number
+  # O prescritor (nome e conselho) nunca no inspect do ActiveRecord. O log do
+  # SQL (binds) usa a lista GLOBAL: as mesmas colunas estão em
+  # config/initializers/filter_parameter_logging.rb.
+  self.filter_attributes += %i[prescriber_name council council_state council_number]
 
   belongs_to :patient
   belongs_to :stock_location

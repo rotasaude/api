@@ -251,7 +251,8 @@ module Pharmacy
 
     # -> Patient | Result (a recusa)
     def patient_for(person, by)
-      return Patient.find_by(id: person[:patient_id]) || Result.fail(:invalid_request, details: { path: "patient_id" }) if person[:patient_id]
+      # Sumido entre a validação e a gravação: a mesma recusa (com problems) da validação.
+      return Patient.find_by(id: person[:patient_id]) || failure([ problem("patient_id", :invalid_request) ]) if person[:patient_id]
 
       create_typed(person.fetch(:new_patient), person.fetch(:reviewed), by)
     end
