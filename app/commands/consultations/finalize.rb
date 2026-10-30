@@ -15,6 +15,12 @@
 # transação); o que deixou de valer fica em draft e volta em
 # `regulation_not_sent` (a chave só existe com o interruptor utilizável). O
 # "encaminhado" sem unidade conta os rascunhos presentes, enviados ou não.
+# Módulo 28 (ADR 0046; contrato §4, §16 O7, O8, O22): na consulta odontológica
+# os requisitos são os do DentalCare::Requirements (todas as recusas em
+# `problems`, a primeira em `reason`/`path`); a gravação do odontograma, do
+# plano e das especialidades é do DentalCare::Materialize, antes do
+# finalized. Travas: atendimento → consulta → paciente → planos abertos do
+# paciente (por id) → pedidos de prótese citados (por id).
 module Consultations
   class Finalize
     OUTCOME_KEYS = %w[outcome referral_unit_id referral_note].freeze
@@ -33,7 +39,7 @@ module Consultations
         next result = Result.fail(:not_draft) unless consultation.draft?
 
         patient = Patient.lock.find(consultation.patient_id)
-        ready = requirements(consultation, patient)
+        ready = consultation.dental? ? dental_requirements(consultation, patient, regulating) : requirements(consultation, patient)
         next result = ready if ready.failure?
 
         failure = materialize!(consultation, patient, by, tracking: tracking)
@@ -41,6 +47,7 @@ module Consultations
           result = failure
           raise ActiveRecord::Rollback
         end
+        DentalCare::Materialize.call(consultation: consultation, patient: patient, by: by) if consultation.dental?
         consultation.update!(status: "finalized", finalized_at: Time.current, draft_items: {})
         promoted = CareRegulation::Promote.call(consultation: consultation, by: by) if regulating
         regulation = promoted && (promoted.payload[:count] + promoted.payload[:not_sent].size)
@@ -53,6 +60,9 @@ module Consultations
         end
         Signatures::OpenRequest.call(consultation, usable: signing)
         DomainEvents.publish("consultation.finalized", consultation_id: consultation.id, attendance_id: attendance.id)
+        if consultation.dental?
+          DomainEvents.publish("dental_consultation.finalized", consultation_id: consultation.id, attendance_id: attendance.id)
+        end
         # ADR 0031 (spec §6): a ficha nasce na finalização (o job relê tudo).
         Ledi::ConsultationFichaJob.enqueue_for(consultation)
         payload = { consultation: consultation, attendance: closed.payload[:attendance],
@@ -92,6 +102,16 @@ module Consultations
         return Result.fail(:ciap2_required_for_cbo)
       end
       Result.ok
+    end
+
+    def self.dental_requirements(consultation, patient, regulating)
+      DentalCare::Plans.lock!(patient)
+      ids = Array(consultation.draft_items.dig("dental", "procedures")).filter_map { |p| p["prosthesis_order_id"] }.uniq.sort
+      DentalProsthesisOrder.where(id: ids).order(:id).lock.to_a if ids.any?
+      problems = DentalCare::Requirements.call(consultation, patient, regulating: regulating)
+      return Result.ok if problems.empty?
+
+      Result.fail(problems.first[:error].to_sym, details: { path: problems.first[:path], problems: problems })
     end
 
     # Devolve nil, ou o Result de falha (com o índice do problema).
@@ -134,6 +154,6 @@ module Consultations
       params = params.to_unsafe_h if params.respond_to?(:to_unsafe_h)
       params.is_a?(Hash) ? params.deep_stringify_keys.slice(*OUTCOME_KEYS) : {}
     end
-    private_class_method :requirements, :materialize!, :normalize
+    private_class_method :requirements, :dental_requirements, :materialize!, :normalize
   end
 end

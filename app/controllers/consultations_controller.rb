@@ -17,7 +17,8 @@ class ConsultationsController < ApplicationController
     not_in_care: :conflict, not_caller: :conflict, already_exists: :conflict, citizen_not_verified: :conflict,
     not_draft: :conflict, not_finalized: :conflict, already_closed: :conflict, consultation_in_progress: :conflict, conflict: :conflict
   }.freeze
-  DRAFT_KEYS = (Consultation::TEXT_FIELDS + %w[vitals care_type evaluated_problems conducts exam_requests]).freeze
+  # Módulo 28: `dental` (<dental_fields>) só na consulta odontológica (SaveDraft).
+  DRAFT_KEYS = (Consultation::TEXT_FIELDS + %w[vitals care_type evaluated_problems conducts exam_requests dental]).freeze
 
   before_action :require_clinical_record!
   before_action :require_professional, except: :options

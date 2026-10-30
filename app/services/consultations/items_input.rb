@@ -11,7 +11,7 @@ module Consultations
 
     module_function
 
-    def call(params, patient:, cbo:, on: Time.zone.today)
+    def call(params, patient:, cbo:, kind: "general", on: Time.zone.today)
       params = normalize(params)
       attrs = {}
       items = {}
@@ -40,9 +40,9 @@ module Consultations
         attrs["care_type"] = value
       end
 
-      { "evaluated_problems" => -> { problems(params["evaluated_problems"], patient: patient, cbo: cbo, on: on) },
+      { "evaluated_problems" => -> { problems(params["evaluated_problems"], patient: patient, cbo: cbo, kind: kind, on: on) },
         "conducts" => -> { conducts(params["conducts"]) },
-        "exam_requests" => -> { exams(params["exam_requests"], cbo: cbo, on: on) } }.each do |key, check|
+        "exam_requests" => -> { exams(params["exam_requests"], cbo: cbo, kind: kind, on: on) } }.each do |key, check|
         next unless params.key?(key)
 
         result = check.call
@@ -65,12 +65,12 @@ module Consultations
       Result.ok(Consultation::VITAL_COLUMNS.to_h { |column| [ column, parsed.payload[:values][column] ] })
     end
 
-    def problems(list, patient:, cbo:, on:)
+    def problems(list, patient:, cbo:, on:, kind: "general")
       return fail_index(:invalid_problem, nil) unless list.is_a?(Array) && list.size <= MAX_PROBLEMS
 
       seen = []
       items = list.each_with_index.map do |raw, index|
-        item = problem(raw, patient: patient, cbo: cbo, on: on, index: index)
+        item = problem(raw, patient: patient, cbo: cbo, kind: kind, on: on, index: index)
         return item if item.is_a?(Result)
 
         # `add` de código já na lista do paciente (qualquer status) é o mesmo
@@ -99,7 +99,7 @@ module Consultations
     # `kept`: pares [sigtap_code, cid10] já vigentes (adendo) — o não médico
     # mantém a justificativa CID-10 que já existe, só não põe nova.
     # Prioridade do exame é fixa na criação (sem mudança por adendo); para mudar, retire o exame e acrescente de novo.
-    def exams(list, cbo:, on:, kept: [])
+    def exams(list, cbo:, on:, kept: [], kind: "general")
       return fail_index(:invalid_exam, nil) unless list.is_a?(Array) && list.size <= Ledi::ConsultationMapping.max_exams
 
       seen = []
@@ -113,7 +113,7 @@ module Consultations
         if raw["cid10_justification"].present?
           cid = ClinicalTerms.find("cid10", raw["cid10_justification"])
           return fail_index(:invalid_exam, index) unless cid
-          unless Ledi::ConsultationMapping.cid10_allowed?(cbo) || kept.include?([ exam.code, cid.code ])
+          unless cid10_allowed?(cbo, kind) || kept.include?([ exam.code, cid.code ])
             return fail_index(:cid10_not_allowed_for_cbo, index)
           end
 
@@ -128,7 +128,7 @@ module Consultations
       Result.ok(items: items)
     end
 
-    def problem(raw, patient:, cbo:, on:, index:)
+    def problem(raw, patient:, cbo:, kind:, on:, index:)
       return fail_index(:invalid_problem, index) unless raw.is_a?(Hash) || raw.respond_to?(:to_unsafe_h)
 
       raw = normalize(raw)
@@ -144,7 +144,7 @@ module Consultations
         return fail_index(:invalid_problem, index) unless code
 
         if terminology == "cid10"
-          return fail_index(:cid10_not_allowed_for_cbo, index) unless Ledi::ConsultationMapping.cid10_allowed?(cbo)
+          return fail_index(:cid10_not_allowed_for_cbo, index) unless cid10_allowed?(cbo, kind)
 
           sex = ClinicalTerms.cid10_sex(code.code, code.release_id)
           return fail_index(:cid10_sex_incompatible, index) if sex && Terminology::Sigtap::SEX[patient.sex.to_s] != sex
@@ -188,7 +188,15 @@ module Consultations
       params.is_a?(Hash) ? params.deep_stringify_keys : {}
     end
 
+    # Desvio 9 (módulo 28): na consulta odontológica o dentista (2232*) registra
+    # CID-10 (a FAO leva cid10); TSB/ASB não. Na geral, a regra do 19a.
+    def cid10_allowed?(cbo, kind)
+      return Cbos.role(cbo) == :dentist if kind.to_s == "dental"
+
+      Ledi::ConsultationMapping.cid10_allowed?(cbo)
+    end
+
     def fail_index(reason, index) = Result.fail(reason, details: { index: index }.compact)
-    private_class_method :vitals, :problem, :onset, :item, :normalize, :fail_index
+    private_class_method :vitals, :problem, :onset, :item, :normalize, :cid10_allowed?, :fail_index
   end
 end

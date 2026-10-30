@@ -21,6 +21,8 @@ module Ledi
 
     def generate(consultation, city: Current.city)
       return :skipped unless consultation.finalized?
+      # Módulo 28 (ADR 0046): a consulta odontológica não vira FAI (a FAO é outra ficha).
+      return :skipped if consultation.dental?
       return :unusable unless exportable?(city)
       return :exists if LediOutboxEntry.exists?(source_type: SOURCE_TYPE, source_id: consultation.id)
 

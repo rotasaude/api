@@ -23,6 +23,9 @@ module Consultations
       # ADR 0039 (contrato §3): procedimentos da consulta, só com procedure_billing ligado.
       json[:procedures] = Billing::Json.attached(PerformedProcedure.where(consultation_id: c.id)) if Billing::Gate.enabled?(Current.city)
       json[:signature] = blocks[[ "Consultation", c.id ]] if c.finalized?
+      # Módulo 28 (contrato §2, §16 O25, O26): <dental_fields> + suggest_completed;
+      # o care_type do topo espelha o dental.care_type (a mesma coluna).
+      json[:dental] = DentalCare::Json.consultation(c) if c.dental?
       json
     end
 
