@@ -167,6 +167,17 @@ module DentalHelpers
     result.payload.fetch(:consultation)
   end
 
+  # Consulta odontológica em rascunho gravada direto, para specs de esquema e de
+  # re-cifra (sem o caminho do Start): atendimento in_care chamado por `by`,
+  # paciente resolvido.
+  def dental_draft_row!(unit:, by:, citizen:, baseline: false, kind: "dental")
+    attendance = consulting_attendance!(unit, citizen: citizen, doctor: by)
+    patient = Patients::Resolve.call(citizen).payload.fetch(:patient)
+    Consultation.create!(attendance: attendance, patient: patient, author_user: by, professional_link: by.professional.links.active.first,
+                         cbo_code: by.professional.links.active.first.cbo_code, status: "draft", kind: kind, baseline: baseline,
+                         started_at: Time.current)
+  end
+
   # Corpo de rascunho com um <dental_fields> válido. "A ou P" continua exigido
   # na consulta odontológica (Ruling 8): vai a avaliação.
   def dental_body(**over)

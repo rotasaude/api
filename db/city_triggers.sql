@@ -2525,15 +2525,28 @@ END
 $do$;
 
 -- Módulo 28 (ADR 0046): saúde bucal. Procedimentos, eventos do odontograma,
--- registro periodontal e periograma são itens da consulta (no rascunho, ou com
--- adendo desta consulta: só os eventos têm addendum_id) e nunca mudam; sítios
--- do periograma, sessões de endodontia e etapas da prótese só crescem (a
+-- registro periodontal, periograma (e seus sítios) e sessões de endodontia são
+-- itens da consulta (no rascunho, ou com adendo desta consulta: só os eventos
+-- têm addendum_id) e nunca mudam; as etapas da prótese só crescem (a
 -- re-cifra regrava só o motivo da etapa). O plano fecha uma vez, de `open`; o
 -- item muda uma vez, de `planned`; a endodontia muda só em andamento; o pedido
 -- de prótese anda impression → sent → received → installed, ou é cancelado
 -- antes de instalado; instalado e cancelado nunca mudam. Sob rota.reencrypting,
 -- plano e item regravam só cancel_reason. O perfil do CEO nunca some.
 -- TRUNCATE recusado nas 13 tabelas.
+-- Sítio do periograma: só enquanto a consulta do periograma é rascunho (a
+-- finalização grava periograma e sítios antes de virar o status), como os
+-- itens da consulta.
+CREATE OR REPLACE FUNCTION rota_periodontal_site_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM periodontal_charts pc JOIN consultations c ON c.id = pc.consultation_id
+                 WHERE pc.id = NEW.periodontal_chart_id AND c.status = 'draft') THEN
+    RAISE EXCEPTION 'periodontal_sites: sites of a finalized consultation never change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION rota_dental_plan_guard() RETURNS trigger AS $fn$
 DECLARE
   moving text[] := ARRAY['status', 'closed_in_consultation_id', 'closed_by_user_id', 'closed_at', 'cancel_reason', 'updated_at'];
@@ -2621,7 +2634,8 @@ DECLARE
   item text;
 BEGIN
   IF to_regclass('public.dental_chart_events') IS NOT NULL THEN
-    FOREACH item IN ARRAY ARRAY['dental_procedures', 'dental_chart_events', 'periodontal_screenings', 'periodontal_charts'] LOOP
+    FOREACH item IN ARRAY ARRAY['dental_procedures', 'dental_chart_events', 'periodontal_screenings', 'periodontal_charts',
+                                'endodontic_sessions'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_items_guard', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE INSERT ON %I FOR EACH ROW EXECUTE FUNCTION rota_consultation_item_guard()',
                      item || '_items_guard', item);
@@ -2632,6 +2646,9 @@ BEGIN
       EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
                      item || '_append_only', item);
     END LOOP;
+    EXECUTE 'DROP TRIGGER IF EXISTS periodontal_sites_items_guard ON periodontal_sites';
+    EXECUTE 'CREATE TRIGGER periodontal_sites_items_guard BEFORE INSERT ON periodontal_sites
+      FOR EACH ROW EXECUTE FUNCTION rota_periodontal_site_guard()';
     EXECUTE 'DROP TRIGGER IF EXISTS dental_prosthesis_stages_reencryption_only ON dental_prosthesis_stages';
     EXECUTE 'CREATE TRIGGER dental_prosthesis_stages_reencryption_only BEFORE UPDATE OR DELETE ON dental_prosthesis_stages
       FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')';

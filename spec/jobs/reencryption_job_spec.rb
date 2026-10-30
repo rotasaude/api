@@ -112,6 +112,35 @@ RSpec.describe ReencryptionJob do
       .to eq([ "Joana", "450", "MSH|^~\\&|", { "a" => 1 }, "Dra. Ana" ])
   end
 
+  # Módulo 28 (ADR 0046): plano, item e etapa da prótese cancelados só mudam
+  # uma vez (triggers), mas aceitam a regravação do motivo sob a marca da
+  # re-cifra.
+  it "re-cifra os motivos do plano, do item e da etapa da prótese sem esbarrar nos triggers" do
+    dental_city!
+    unit = create_unit("UBS Sorriso #{SecureRandom.hex(2)}")
+    dentist = dentist!(unit)
+    consultation = dental_draft_row!(unit: unit, by: dentist, citizen: verified_citizen!(1, full_name: "Ana Paula Ribeiro"))
+    plan = DentalTreatmentPlan.create!(patient: consultation.patient, health_unit: unit, status: "open", opened_in_consultation: consultation)
+    item = DentalTreatmentPlanItem.create!(dental_treatment_plan: plan, procedure_code: "0307010031", location_kind: "tooth", tooth: 11,
+                                           status: "planned", added_in_consultation: consultation)
+    item.update!(status: "cancelled", cancelled_in_consultation: consultation, cancel_reason: "Dente extraído antes da restauração")
+    plan.update!(status: "cancelled", closed_at: Time.current, closed_by_user: dentist, cancel_reason: "Paciente mudou de cidade")
+    order = DentalProsthesisOrder.create!(patient: consultation.patient, health_unit: unit, consultation: consultation, procedure_code: "0701070129",
+                                          stage: "impression", laboratory_name: "Laboratório Sorriso", created_by_user: dentist)
+    stage = DentalProsthesisStage.create!(dental_prosthesis_order: order, stage: "cancelled", by_user: dentist, reason: "Paciente desistiu da prótese")
+    raw = ->(table, column, id) { ApplicationRecord.connection.select_value("SELECT #{column} FROM #{table} WHERE id = #{ApplicationRecord.connection.quote(id)}") }
+    cells = [ [ "dental_treatment_plans", "cancel_reason", plan.id ], [ "dental_treatment_plan_items", "cancel_reason", item.id ],
+              [ "dental_prosthesis_stages", "reason", stage.id ] ]
+    before = cells.map { |cell| raw.call(*cell) }
+
+    stats = call_body(only: %i[dental_treatment_plan dental_treatment_plan_item dental_prosthesis_stage])
+
+    expect(stats).to eq("DentalTreatmentPlan" => 1, "DentalTreatmentPlanItem" => 1, "DentalProsthesisStage" => 1)
+    cells.zip(before).each { |cell, old| expect(raw.call(*cell)).not_to eq(old), "#{cell[0]}.#{cell[1]} não foi re-cifrado" }
+    expect([ plan.reload.cancel_reason, item.reload.cancel_reason, stage.reload.reason ])
+      .to eq([ "Paciente mudou de cidade", "Dente extraído antes da restauração", "Paciente desistiu da prótese" ])
+  end
+
   # Módulo 24a (ADR 0042): versões só acréscimo e cadastro saído congelado
   # (triggers) aceitam a regravação do texto cifrado sob a marca da re-cifra;
   # o paciente sem CPF re-cifra a justificativa e o CNS.

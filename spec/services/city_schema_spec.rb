@@ -133,7 +133,7 @@ RSpec.describe CitySchema do
   # perfil do CEO e o truncate das 13 tabelas.
   it "loads the 28 oral health triggers into a database restored from the dump" do
     names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
-    items = %w[dental_procedures dental_chart_events periodontal_screenings periodontal_charts]
+    items = %w[dental_procedures dental_chart_events periodontal_screenings periodontal_charts endodontic_sessions periodontal_sites]
     tables = %w[ceo_profiles dental_auxiliary_procedures dental_procedures dental_chart_events dental_treatment_plans
                 dental_treatment_plan_items periodontal_screenings periodontal_charts periodontal_sites endodontic_treatments
                 endodontic_sessions dental_prosthesis_orders dental_prosthesis_stages]
@@ -141,7 +141,7 @@ RSpec.describe CitySchema do
     expect(names).to include("dental_treatment_plans_guard", "dental_treatment_plan_items_guard", "endodontic_treatments_guard",
                              "dental_prosthesis_orders_guard", "dental_prosthesis_stages_reencryption_only", "ceo_profiles_no_delete",
                              *items.map { |t| "#{t}_items_guard" },
-                             *(items + %w[periodontal_sites endodontic_sessions]).map { |t| "#{t}_append_only" },
+                             *items.map { |t| "#{t}_append_only" },
                              *tables.map { |t| "#{t}_append_only_truncate" })
   end
 

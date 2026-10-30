@@ -10,21 +10,12 @@ RSpec.describe "Esquema da saúde bucal (ADR 0046)" do
   let(:dentist) { dentist!(unit) }
   # let!: criada fora de qualquer savepoint de recusa (o ROLLBACK TO
   # SAVEPOINT a apagaria e o objeto memorizado ficaria órfão).
-  let!(:consultation) { dental_row!(unit: unit, by: dentist, citizen: verified_citizen!(1, full_name: "Ana Paula Ribeiro")) }
+  let!(:consultation) { dental_draft_row!(unit: unit, by: dentist, citizen: verified_citizen!(1, full_name: "Ana Paula Ribeiro")) }
 
   # Escrita crua que o banco recusa: savepoint próprio, senão a recusa aborta a
   # transação do exemplo (como no esquema da farmácia).
   def refused(error = ActiveRecord::StatementInvalid, pattern = nil, &block)
     expect { ApplicationRecord.transaction(requires_new: true, &block) }.to raise_error(error, pattern)
-  end
-
-  # Consulta odontológica em rascunho gravada direto (o Start com `kind` é da
-  # Task 4): atendimento in_care chamado pela dentista, paciente resolvido.
-  def dental_row!(unit:, by:, citizen:, baseline: false, kind: "dental")
-    attendance = consulting_attendance!(unit, citizen: citizen, doctor: by)
-    patient = Patients::Resolve.call(citizen).payload.fetch(:patient)
-    Consultation.create!(attendance: attendance, patient: patient, author_user: by, professional_link: by.professional.links.active.first,
-                         cbo_code: "223208", status: "draft", kind: kind, baseline: baseline, started_at: Time.current)
   end
 
   # Linha recarregada: as tentativas recusadas deixam itens não salvos no
@@ -58,13 +49,13 @@ RSpec.describe "Esquema da saúde bucal (ADR 0046)" do
   end
 
   it "registro inicial só na odontológica, finalizado sem tipo de atendimento" do
-    baseline = dental_row!(unit: unit, by: dentist, citizen: verified_citizen!(4, full_name: "Carla Dias"), baseline: true)
+    baseline = dental_draft_row!(unit: unit, by: dentist, citizen: verified_citizen!(4, full_name: "Carla Dias"), baseline: true)
     baseline.update!(status: "finalized", finalized_at: Time.current, care_type: nil)
     expect(baseline.reload).to be_finalized
     refused(ActiveRecord::StatementInvalid, /ck_consultations_finalized_care_type/) do
       consultation.update_columns(status: "finalized", finalized_at: Time.current, care_type: nil)
     end
-    general = dental_row!(unit: unit, by: dentist, citizen: verified_citizen!(3, full_name: "Lia Campos"), kind: "general")
+    general = dental_draft_row!(unit: unit, by: dentist, citizen: verified_citizen!(3, full_name: "Lia Campos"), kind: "general")
     refused(ActiveRecord::StatementInvalid, /ck_consultations_baseline/) do
       Consultation.create!(general.attributes.slice("patient_id", "author_user_id", "professional_link_id", "cbo_code", "started_at")
                                   .merge("attendance_id" => walk_in_attendance!(unit, citizen: general.attendance.citizen).id,
@@ -159,15 +150,26 @@ RSpec.describe "Esquema da saúde bucal (ADR 0046)" do
     refused(ActiveRecord::StatementInvalid, /ck_periodontal_sites_recession/) do
       PeriodontalSite.create!(periodontal_chart: chart, site: "V", probing_depth_mm: 4, recession_mm: -11, bleeding: false)
     end
+
+    finalize!(consultation)
+    refused(ActiveRecord::StatementInvalid, /periodontal_sites: sites of a finalized consultation never change/) do
+      PeriodontalSite.create!(periodontal_chart_id: chart.id, site: "DV", probing_depth_mm: 3, recession_mm: 0, bleeding: false)
+    end
   end
 
   it "endodontia: uma em andamento por dente; concluída nunca muda" do
     attrs = { patient: consultation.patient, health_unit: unit, tooth: 36, canals: 3, status: "in_progress", opened_in_consultation: consultation }
     treatment = EndodonticTreatment.create!(attrs)
     refused(ActiveRecord::RecordNotUnique, /idx_endodontic_treatments_one_in_progress/) { EndodonticTreatment.create!(attrs) }
+    expect(EndodonticSession.create!(endodontic_treatment: treatment, consultation_id: consultation.id, canals: 3)).to be_persisted
     treatment.update!(canals: 4)
     treatment.update!(status: "completed", completed_in_consultation: consultation)
     refused(ActiveRecord::StatementInvalid, /never changes/) { treatment.update_columns(canals: 2) }
+
+    finalize!(consultation)
+    refused(ActiveRecord::StatementInvalid, /endodontic_sessions: items of a finalized consultation only come with an addendum/) do
+      EndodonticSession.create!(endodontic_treatment_id: treatment.id, consultation_id: consultation.id, canals: 3)
+    end
   end
 
   it "equipes e unidades: eSB 71 com equipe associada; unidade CEO; perfil do CEO nunca some" do
@@ -183,6 +185,19 @@ RSpec.describe "Esquema da saúde bucal (ADR 0046)" do
     refused(ActiveRecord::StatementInvalid, /ck_ceo_profiles_specialties/) { profile.update_columns(specialties: %w[orthodontics]) }
     refused(ActiveRecord::StatementInvalid, /ck_ceo_profiles_specialties/) { profile.update_columns(specialties: []) }
     refused(ActiveRecord::StatementInvalid, /DELETE refused/) { profile.delete }
+  end
+
+  it "descarte do rascunho odontológico zera os campos da FAO e respeita o CHECK" do
+    consultation.update!(care_type: 2, dental_consultation_type: 1, oral_health_surveillance: [ 99 ], supplies: [ 1 ],
+                         dental_outcomes: [ 16 ], pregnant: false, special_needs: true)
+    admin = staff_with("admin-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin")
+
+    result = ConsultationDrafts::Discard.call(consultation_id: consultation.id, reason: "Dentista desligada da unidade, rascunho sem dono", by: admin)
+
+    expect(result).to be_ok
+    expect(Consultation.find(consultation.id)).to have_attributes(status: "discarded", kind: "dental", dental_consultation_type: nil,
+                                                                  oral_health_surveillance: [], supplies: [], dental_outcomes: [],
+                                                                  pregnant: nil, special_needs: false)
   end
 
   it "lista do TSB/ASB nasce com a semente; inspect sem dado clínico" do
