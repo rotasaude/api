@@ -8,12 +8,15 @@ module Timeline
     MAX_LIMIT = 100
     DOCUMENT_KINDS = %w[clinical_document controlled_notification].freeze
     DECLARED_KINDS = %w[triage appointment].freeze
+    # 27a (H7): só o profissional vê; nunca entra na visão do cidadão.
+    PROFESSIONAL_ONLY_KINDS = %w[dispensation].freeze
     SOURCES = {
       "triage" => Sources::TriageSource, "attendance" => Sources::AttendanceSource,
       "screening" => Sources::ScreeningSource, "appointment" => Sources::AppointmentSource,
       "consultation" => Sources::ConsultationSource, "clinical_document" => Sources::ClinicalDocumentSource,
       "controlled_notification" => Sources::ControlledNotificationSource, "campaign" => Sources::CampaignSource,
-      "exam" => Sources::ExamSource, "procedure" => Sources::ProcedureSource
+      "exam" => Sources::ExamSource, "procedure" => Sources::ProcedureSource,
+      "dispensation" => Sources::DispensationSource
     }.freeze
 
     Page = Data.define(:entries, :next_before)
@@ -39,7 +42,8 @@ module Timeline
     def citizen_kinds(verified:, documents:)
       return DECLARED_KINDS.dup unless verified
 
-      documents ? Timeline::KINDS.dup : Timeline::KINDS - DOCUMENT_KINDS
+      kinds = Timeline::KINDS - PROFESSIONAL_ONLY_KINDS
+      documents ? kinds : kinds - DOCUMENT_KINDS
     end
   end
 end

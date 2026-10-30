@@ -60,6 +60,6 @@ RSpec.describe Timeline::Sources::ProcedureSource do
     recorded_procedure!(unit: lab, professional: doctor, patient: patient, sigtap_code: "0202010473", cid10: nil)
     page = Timeline::Query.call(person: person, kinds: %w[procedure])
     expect(page.entries.sole.unit).to eq(id: lab.id, name: lab.name)
-    expect(Timeline::KINDS.last).to eq("procedure")
+    expect(Timeline::KINDS).to include("procedure")
   end
 end

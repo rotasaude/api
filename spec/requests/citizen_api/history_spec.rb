@@ -120,4 +120,26 @@ RSpec.describe "Histórico do cidadão", type: :request do
     get "/citizen/history", params: { citizen_id: child.id, kinds: %w[consultation triage] }
     expect(body["entries"].map { |e| e["kind"] }.uniq).to eq(%w[triage])
   end
+
+  # 27a (H7): a dispensação é só do profissional; o pedido do cidadão por
+  # kinds[]=dispensation é aceito (kind válido) e recortado para nada.
+  it "dispensação nunca entra no histórico do cidadão, nem pedida por kinds[]" do
+    import_test_catalog!
+    admin = pharmacy_admin!
+    document = pharmacy_prescription!(consultation: consultation)
+    lot = StockLot.create!(catalog_item_id: losartana.id, catmat_code: losartana.catmat_code, lot_number: "LOTE-C", expires_on: Time.zone.today + 90,
+                           dispensing_unit: "comprimido", created_by_user: admin)
+    dispensation = Dispensation.create!(stock_location: unit_location!, patient: consultation.patient, clinical_document: document,
+                                        dispensed_by_user: admin, dispensed_by_role: "pharmacist", dispensed_at: Time.current)
+    DispensationItem.create!(dispensation: dispensation, prescription_item: document.prescription_items.first, stock_lot: lot,
+                             catalog_item_id: losartana.id, quantity: 30)
+    sign_in_citizen(mother.phone)
+    get "/citizen/history", params: { citizen_id: mother.id, kinds: %w[dispensation] }
+    expect([ response.status, body["entries"] ]).to eq([ 200, [] ])
+    get "/citizen/history", params: { citizen_id: mother.id }
+    expect(response).to have_http_status(:ok)
+    expect(body["entries"].map { |e| e["kind"] }).to include("consultation")
+    expect(body["entries"].map { |e| e["kind"] }).not_to include("dispensation")
+    expect(response.body).not_to include("dispensation", dispensation.id, losartana.label)
+  end
 end

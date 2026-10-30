@@ -18,6 +18,8 @@ module Timeline
       CATEGORIES = { "special_control" => "Receita de controle especial", "antimicrobial" => "Receita de antimicrobiano" }.freeze
       MODES = { "digital" => "Assinado digitalmente", "paper" => "Papel" }.freeze
       DOCUMENT_STATUS = { "issued" => "Emitido", "cancelled" => "Cancelado" }.freeze
+      # 27a: só o profissional vê a dispensação (não há texto do cidadão).
+      DISPENSATION_TITLE = "Dispensação de medicamentos".freeze
 
       module_function
 

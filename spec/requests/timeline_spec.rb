@@ -89,6 +89,34 @@ RSpec.describe "Linha do tempo do profissional", type: :request do
         end
     end
 
+    # 27a (H7): dispensação só para o profissional, com o filtro kinds[]=dispensation
+    # e visível com o interruptor `pharmacy` desligado (registro clínico retido).
+    it "dispensação: filtro kinds[]=dispensation, status dispensed, detail_ref nulo, sem lote; visível com a farmácia desligada" do
+      import_test_catalog!
+      consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
+      attendance = consulting_attendance!(unit, citizen: citizen.reload, doctor: doctor)
+      admin = pharmacy_admin!
+      location = unit_location!
+      pharmacy_unit = location.health_unit
+      document = pharmacy_prescription!(consultation: consultation, items: [ { catalog: catalog_item(268_856) } ])
+      lot = StockLot.create!(catalog_item_id: catalog_item(268_856).id, catmat_code: 268_856, lot_number: "LOTE-SECRETO-9", expires_on: Time.zone.today + 90,
+                             dispensing_unit: "comprimido", created_by_user: admin)
+      dispensation = Dispensation.create!(stock_location: location, patient: consultation.patient, clinical_document: document, dispensed_by_user: admin,
+                                          dispensed_by_role: "pharmacist", dispensed_at: Time.current)
+      DispensationItem.create!(dispensation: dispensation, prescription_item: document.prescription_items.first, stock_lot: lot,
+                               catalog_item_id: lot.catalog_item_id, quantity: 30)
+      Platform::Features.set!(city: Current.city, key: "pharmacy", enabled: false, maintainer: ledi_maintainer!)
+      sign_in_as(doctor)
+      get "/attendance/timeline", params: { attendance_id: attendance.id, kinds: %w[dispensation] }
+      expect(response).to have_http_status(:ok)
+      expect(body["entries"].sole).to include("id" => "dispensation:#{dispensation.id}", "kind" => "dispensation", "status" => "dispensed",
+                                              "detail_ref" => nil, "title" => "Dispensação de medicamentos",
+                                              "summary" => catalog_item(268_856).label, "unit" => { "id" => pharmacy_unit.id, "name" => pharmacy_unit.name })
+      expect(response.body).not_to include("LOTE-SECRETO")
+      get "/attendance/timeline", params: { attendance_id: attendance.id }
+      expect(body["entries"].map { |e| e["kind"] }).to include("dispensation", "consultation")
+    end
+
     it "kinds repetidos não duplicam entradas; abertura de par excluído: 404 sem trilha" do
       attendance = consulting_attendance!(unit, citizen: citizen, doctor: doctor)
       sign_in_as(doctor)

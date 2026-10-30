@@ -68,7 +68,31 @@ RSpec.describe Timeline::Query do
   it "kinds do cidadão: declarado só triage e appointment; documentos só com o interruptor" do
     expect(described_class.citizen_kinds(verified: false, documents: true)).to eq(%w[triage appointment])
     expect(described_class.citizen_kinds(verified: true, documents: false)).not_to include("clinical_document", "controlled_notification")
-    expect(described_class.citizen_kinds(verified: true, documents: true)).to eq(Timeline::KINDS)
+    # 27a: dispensação só para o profissional (nunca na visão do cidadão).
+    expect(described_class.citizen_kinds(verified: true, documents: true)).to eq(Timeline::KINDS - %w[dispensation])
+    expect(described_class.citizen_kinds(verified: true, documents: false)).not_to include("dispensation")
+    expect(described_class::PROFESSIONAL_ONLY_KINDS).to eq(%w[dispensation])
+    expect(Timeline::KINDS.last).to eq("dispensation")
+  end
+
+  it "kinds: dispensation recorta só a dispensação (o filtro kinds[]=dispensation do controlador)" do
+    import_test_catalog!
+    admin = pharmacy_admin!
+    patient = billing_patient!
+    external = ExternalPrescription.create!(patient: patient, stock_location: unit_location!, prescriber_name: "Dra. Beltrana Souza", council: "CRM",
+                                            council_state: "PR", council_number: "54321", issued_on: Time.zone.today, recorded_by_user: admin)
+    row = ExternalPrescriptionItem.create!(external_prescription: external, position: 1, catalog_item_id: losartana.id, catmat_code: losartana.catmat_code,
+                                           quantity: 30, quantity_unit: "comprimido", dosage_instructions: "1 comprimido ao dia", continuous: false)
+    lot = StockLot.create!(catalog_item_id: losartana.id, catmat_code: losartana.catmat_code, lot_number: "LOTE-Q", expires_on: Time.zone.today + 90,
+                           dispensing_unit: "comprimido", created_by_user: admin)
+    dispensation = Dispensation.create!(stock_location: external.stock_location, patient: patient, external_prescription: external,
+                                        dispensed_by_user: admin, dispensed_by_role: "pharmacist", dispensed_at: Time.current)
+    DispensationItem.create!(dispensation: dispensation, external_prescription_item: row, stock_lot: lot, catalog_item_id: losartana.id, quantity: 30)
+    person = Timeline::Person.for_patient(patient)
+    expect(described_class.call(person: person, kinds: %w[dispensation]).entries.map { |e| [ e.kind, e.source_id ] }).to eq([ [ "dispensation", dispensation.id ] ])
+    expect(described_class.call(person: person).entries.map(&:kind)).to include("dispensation")
+    expect(described_class.call(person: person, kinds: %w[consultation]).entries.map(&:kind)).not_to include("dispensation")
+    expect(Timeline::Cursor.decode(Timeline::Cursor.encode(described_class.call(person: person, kinds: %w[dispensation]).entries.sole)).kind).to eq("dispensation")
   end
 
   it "formas JSON do profissional e do cidadão" do

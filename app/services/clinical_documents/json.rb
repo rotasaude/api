@@ -103,13 +103,17 @@ module ClinicalDocuments
       data
     end
 
-    # <medication> (contrato §2); `catalog` = { id => MedicationCatalogItem }.
-    def medication(medication, catalog:)
+    # <medication> (contrato §2); `catalog` = { id => MedicationCatalogItem };
+    # `last_dispensed` = { catalog_item_id => Date } (27a, H7): `last_dispensed_on`
+    # é a data da última retirada na farmácia (líquida de devolução total); texto
+    # livre e item nunca dispensado → null.
+    def medication(medication, catalog:, last_dispensed: {})
       item = medication.catalog_item_id && catalog[medication.catalog_item_id]
       { id: medication.id, catalog_item: item && catalog_ref(item).merge(catalog_marks(item)),
         free_text: medication.free_text, label: medication.label,
         dosage_summary: medication.dosage_summary, continuous: medication.continuous, status: medication.status,
-        origin: medication.origin, started_on: medication.started_on&.iso8601, updated_at: medication.updated_at.iso8601 }
+        origin: medication.origin, started_on: medication.started_on&.iso8601, updated_at: medication.updated_at.iso8601,
+        last_dispensed_on: medication.catalog_item_id && last_dispensed[medication.catalog_item_id]&.iso8601 }
     end
   end
 end

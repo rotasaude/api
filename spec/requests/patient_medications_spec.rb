@@ -33,6 +33,74 @@ RSpec.describe "Medicamentos em uso", type: :request do
     expect(json_body["items"].map { |item| item["id"] }).to eq([ medication["id"] ])
   end
 
+  # 27a (H7): `last_dispensed_on` por item da lista; só leitura (nada novo em
+  # patient_medication_events); a última dispensação LÍQUIDA de devolução total;
+  # data no fuso da cidade; texto livre e item nunca dispensado → null.
+  describe "last_dispensed_on (27a)" do
+    let(:draft) { started_consultation!(unit: unit, doctor: doctor, citizen: citizen) }
+    let(:farmacia) { unit_location!(create_unit("UBS Farmácia")) }
+    let(:farmaceutico) { pharmacy_admin! }
+    let(:zone) { Current.city.time_zone }
+    let(:today) { Time.use_zone(zone) { Time.zone.today } }
+
+    def inform!(catalog: nil, free_text: nil)
+      json_post "/attendance/consultations/#{draft.id}/medications", { action: "add_external", catalog_item_id: catalog&.id, free_text: free_text }.compact
+      expect(response).to have_http_status(:ok)
+      json_body["id"]
+    end
+
+    # Dispensação gravada direto (a lista só lê): 23:30 no fuso da cidade, `days` dias atrás.
+    def dispensed!(catalog, days_ago:, quantity: 30)
+      at = Time.use_zone(zone) { (today - days_ago).in_time_zone.change(hour: 23, min: 30) }
+      document = pharmacy_prescription!(consultation: draft, items: [ { catalog: catalog } ])
+      lot = StockLot.find_or_create_by!(catalog_item_id: catalog.id, lot_number: "LOTE-LM") do |row|
+        row.assign_attributes(catmat_code: catalog.catmat_code, expires_on: Time.zone.today + 90, dispensing_unit: "comprimido", created_by_user: farmaceutico)
+      end
+      dispensation = Dispensation.create!(stock_location: farmacia, patient: draft.patient, clinical_document: document, dispensed_by_user: farmaceutico,
+                                          dispensed_by_role: "pharmacist", dispensed_at: at)
+      DispensationItem.create!(dispensation: dispensation, prescription_item: document.prescription_items.first, stock_lot: lot,
+                               catalog_item_id: catalog.id, quantity: quantity)
+    end
+
+    def last_dispensed = json_body["items"].to_h { |row| [ row["label"], row["last_dispensed_on"] ] }
+    def listed = (get("/attendance/patients/#{draft.patient_id}/medications") && last_dispensed)
+
+    before { sign_in_as(doctor) }
+
+    it "losartana em uso dispensada há 3 dias → essa data (fuso da cidade); sem dispensação e texto livre → null; nada novo nos eventos" do
+      inform!(catalog: catalog_item(268_856))
+      inform!(catalog: catalog_item(267_772))
+      inform!(free_text: "Chá de boldo")
+      dispensed!(catalog_item(268_856), days_ago: 3)
+      events = PatientMedicationEvent.count
+      expect(listed).to eq("LOSARTANA POTÁSSICA 50 MG" => (today - 3).iso8601, "PROPRANOLOL CLORIDRATO 40 MG" => nil, "Chá de boldo" => nil)
+      expect(json_body["items"].first.keys).to include("last_dispensed_on")
+      expect(PatientMedicationEvent.count).to eq(events)
+    end
+
+    it "vale a mais recente; com o interruptor da farmácia desligado a lista continua mostrando" do
+      inform!(catalog: catalog_item(268_856))
+      dispensed!(catalog_item(268_856), days_ago: 40)
+      dispensed!(catalog_item(268_856), days_ago: 10)
+      Platform::Features.set!(city: Current.city, key: "pharmacy", enabled: false, maintainer: ledi_maintainer!)
+      expect(listed).to eq("LOSARTANA POTÁSSICA 50 MG" => (today - 10).iso8601)
+    end
+
+    it "coerente com a devolução: a retirada devolvida por inteiro não conta; a devolução parcial mantém" do
+      inform!(catalog: catalog_item(268_856))
+      older = dispensed!(catalog_item(268_856), days_ago: 40)
+      newer = dispensed!(catalog_item(268_856), days_ago: 10)
+      expect(listed).to eq("LOSARTANA POTÁSSICA 50 MG" => (today - 10).iso8601)
+      give_back = ->(row, quantity) { Pharmacy::RecordReturn.call(location: farmacia, dispensation_item: row, quantity: quantity, reason: "Receita trocada pelo médico", by: farmaceutico) }
+      expect(give_back.call(newer, "5")).to be_ok
+      expect(listed).to eq("LOSARTANA POTÁSSICA 50 MG" => (today - 10).iso8601)
+      expect(give_back.call(newer, "25")).to be_ok
+      expect(listed).to eq("LOSARTANA POTÁSSICA 50 MG" => (today - 40).iso8601)
+      expect(give_back.call(older, "30")).to be_ok
+      expect(listed).to eq("LOSARTANA POTÁSSICA 50 MG" => nil)
+    end
+  end
+
   it "consulta finalizada não muda a lista por esta rota (409 not_draft); outro profissional 403" do
     consultation = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen)
     sign_in_as(doctor)

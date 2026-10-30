@@ -37,6 +37,18 @@ module Pharmacy
       end
     end
 
+    # Última retirada por item do CATÁLOGO do paciente, em todos os locais (27a,
+    # H7; lista de medicamentos em uso): { catalog_item_id => Date } no fuso da
+    # cidade. Líquida como o resto: uma linha devolvida POR INTEIRO não conta
+    # (a dispensação inteira só some se todas as suas linhas voltaram).
+    def last_on(patient_id)
+      rows = DispensationItem.joins(:dispensation).where(dispensations: { patient_id: patient_id })
+                             .pluck(:id, :catalog_item_id, :quantity, "dispensations.dispensed_at")
+      returned = returned_totals(rows.map(&:first))
+      rows.filter_map { |id, catalog_item_id, quantity, at| [ catalog_item_id, at ] if (quantity - returned.fetch(id, BigDecimal("0"))).positive? }
+          .group_by(&:first).transform_values { |lines| lines.map(&:last).max.in_time_zone.to_date }
+    end
+
     # Devolvido por item dispensado: { dispensation_item_id => BigDecimal }.
     def returned_totals(dispensation_item_ids)
       return {} if dispensation_item_ids.empty?

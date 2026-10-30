@@ -28,7 +28,10 @@ class PatientMedicationsController < ApplicationController
     ClinicalRecord::Trail.viewed!(patient: patient, user: Current.user, grant: grant)
     medications = PatientMedication.where(patient_id: patient.id).order(:status, updated_at: :desc, id: :desc).to_a
     catalog = MedicationCatalogItem.where(id: medications.filter_map(&:catalog_item_id)).index_by(&:id)
-    render json: { items: medications.map { |medication| ClinicalDocuments::Json.medication(medication, catalog: catalog) } }
+    # 27a (H7): só leitura da farmácia; `patient_medications` não muda. Vale com o
+    # interruptor `pharmacy` desligado (registro clínico retido).
+    last_dispensed = Pharmacy::Dispensed.last_on(patient.id)
+    render json: { items: medications.map { |medication| ClinicalDocuments::Json.medication(medication, catalog: catalog, last_dispensed: last_dispensed) } }
   end
 
   # O corpo do contrato usa a chave `action`, que no `params` é o nome da ação
@@ -50,7 +53,8 @@ class PatientMedicationsController < ApplicationController
 
     medication = result.payload[:medication]
     catalog = MedicationCatalogItem.where(id: medication.catalog_item_id).index_by(&:id)
-    render json: ClinicalDocuments::Json.medication(medication.reload, catalog: catalog)
+    render json: ClinicalDocuments::Json.medication(medication.reload, catalog: catalog,
+                                                    last_dispensed: Pharmacy::Dispensed.last_on(medication.patient_id))
   end
 
   def renewal

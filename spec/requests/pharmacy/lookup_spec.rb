@@ -210,6 +210,18 @@ RSpec.describe "Farmácia — receita, busca de pessoa e duplicados", type: :req
       expect(retention(mixed)).to eq([ false, true ])
     end
 
+    # Herdado da revisão da Task 12: o catálogo NÃO marca o item como controlado, mas a
+    # receita é de controle especial (19c): a <prescription_view> sai controlada e com retenção.
+    it "item de receita special_control cujo catálogo não é controlado sai com controlled e retention_required" do
+      expect(losartana.controlled).to be(false)
+      special = pharmacy_prescription!(consultation: consultation, items: [ { catalog: losartana } ], content: { "category" => "special_control" })
+      by_code(special)
+      expect(json_body["prescriptions"].sole["items"].sole).to include("controlled" => true, "retention_required" => true)
+      common = pharmacy_prescription!(consultation: pharmacy_consultation!, items: [ { catalog: losartana } ])
+      by_code(common)
+      expect(json_body["prescriptions"].sole["items"].sole).to include("controlled" => false, "retention_required" => false)
+    end
+
     it "lê o catálogo atual: tirar a marca do antimicrobiano tira a exigência; a controlada da externa vale pelo retrato" do
       document = pharmacy_prescription!(consultation: consultation, items: [ { catalog: amoxicilina } ])
       amoxicilina.update!(antimicrobial: true)

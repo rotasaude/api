@@ -2,5 +2,5 @@
 # este arquivo ao primeiro uso de Timeline::*, então KINDS existe sem depender
 # de Timeline::Entry já ter sido carregado.
 module Timeline
-  KINDS = %w[triage attendance screening appointment consultation clinical_document controlled_notification campaign exam procedure].freeze
+  KINDS = %w[triage attendance screening appointment consultation clinical_document controlled_notification campaign exam procedure dispensation].freeze
 end
