@@ -126,6 +126,16 @@ RSpec.describe Consultations::Finalize do
       expect(consultation.dental_procedures.sole.dental_treatment_plan_item_id).to eq(item.id)
     end
 
+    it "o auxiliar nunca abre plano nem o conclui: primeira programática sem plano; desfecho 15 → auxiliary_cannot_plan" do
+      first = done!(draft!(start(by: auxiliary), dental: { "procedures" => [] }))
+      expect(first.dental_consultation_type).to eq(1)
+      expect(DentalTreatmentPlan.count).to eq(0)
+      done!(draft!(start, dental: { "plan_changes" => { "add" => [ restoration(21) ] } }))
+      consultation = draft!(start(by: auxiliary), dental: { "procedures" => [], "dental_consultation_type" => 2, "dental_outcomes" => [ 15 ] })
+      expect(problems(finalize(consultation))).to eq([ [ "auxiliary_cannot_plan", "dental.dental_outcomes[0]" ] ])
+      expect(plan_of(unit).reload.status).to eq("open")
+    end
+
     it "periograma e endodontia do auxiliar recusados" do
       consultation = draft!(start(by: auxiliary), dental: { "procedures" => [],
                                                              "periodontal_chart" => { "teeth" => [ { "tooth" => 16, "sites" => [] } ] },
@@ -174,6 +184,9 @@ RSpec.describe Consultations::Finalize do
                                              cancel_reason: "Dente com indicação de exodontia")
       expect(plan.reload).to have_attributes(status: "cancelled", cancel_reason: "Paciente mudou de município",
                                              closed_in_consultation_id: consultation.id)
+      # O31: o item que ficou previsto cai com o plano, com o motivo dele.
+      expect(plan.items.order(:tooth).last).to have_attributes(status: "cancelled", cancel_reason: "Paciente mudou de município",
+                                                               cancelled_in_consultation_id: consultation.id)
       expect(DomainEvent.where(name: "dental_plan.cancelled").sole.payload).to eq("plan_id" => plan.id, "consultation_id" => consultation.id)
     end
   end
@@ -204,6 +217,56 @@ RSpec.describe Consultations::Finalize do
     expect(ceo_plan.reload.status).to eq("completed")
     expect(ubs_plan.reload.status).to eq("open")
     expect(ubs_item.reload.status).to eq("planned")
+  end
+
+  it "id de procedimento já gravado: o rascunho recusa; o que escapou ao rascunho é recusado na finalização, nunca 500" do
+    taken = done!(draft!(start)).dental_procedures.sole.id
+    consultation = start
+    refused = Consultations::SaveDraft.call(consultation: consultation, by: dentist,
+                                            params: { "dental" => { "procedures" => [ restoration(11, id: taken) ] } })
+    expect([ refused.reason, refused.details ]).to eq([ :invalid_request, { path: "dental.procedures[0].id" } ])
+    draft!(consultation)
+    items = consultation.reload.draft_items
+    items["dental"]["procedures"][0]["id"] = taken
+    consultation.update_columns(draft_items: items)
+    expect(problems(finalize(consultation))).to eq([ [ "invalid_request", "dental.procedures[0].id" ] ])
+  end
+
+  it "O30: cancel_plan com desfecho 15 → cancel_plan_conflicts_with_completed; nada muda" do
+    done!(draft!(start, dental: { "plan_changes" => { "add" => [ restoration(21) ] } }))
+    consultation = draft!(start, dental: { "dental_consultation_type" => 2, "dental_outcomes" => [ 15 ],
+                                           "plan_changes" => { "cancel_plan" => { "reason" => "Paciente mudou de município" } } })
+    expect(problems(finalize(consultation))).to eq([ [ "cancel_plan_conflicts_with_completed", "dental.plan_changes.cancel_plan" ] ])
+    expect(plan_of(unit).reload.status).to eq("open")
+  end
+
+  it "O32: mais de 20 SIGTAP distintos → too_many_procedure_codes" do
+    codes = DentalHelpers::SIGTAP.keys.select { |code| DentalCare::ProcedureSearch.searchable?(code) }.first(21)
+    places = { "tooth" => { "tooth" => 11 }, "sextant" => { "sextant" => "S1" }, "arch" => { "arch" => "upper" }, "mouth" => {} }
+    procedures = codes.map do |code|
+      kind = DentalCare::ProcedureLimits.locations(code).first
+      { "sigtap" => code, "location" => { "kind" => kind }.merge(places.fetch(kind)) }
+    end
+    consultation = draft!(start, dental: { "procedures" => procedures })
+    expect(problems(finalize(consultation))).to eq([ [ "too_many_procedure_codes", "dental.procedures" ] ])
+    draft!(consultation, dental: { "procedures" => procedures.first(20) })
+    expect(finalize(consultation)).to be_ok
+  end
+
+  it "cancel_plan sem plano aberto na unidade → plan_item_not_open no cancel_plan" do
+    consultation = draft!(start, dental: { "dental_consultation_type" => 2,
+                                           "plan_changes" => { "cancel_plan" => { "reason" => "Paciente mudou de município" } } })
+    expect(problems(finalize(consultation))).to eq([ [ "plan_item_not_open", "dental.plan_changes.cancel_plan" ] ])
+  end
+
+  it "achado de arcada: no rascunho sai { arch }; finalizado, um achado por dente permanente da arcada" do
+    consultation = draft!(start, dental: { "findings" => [ { "arch" => "upper", "situation" => "complete_denture" } ] })
+    expect(Consultations::Json.consultation(consultation)[:dental][:findings])
+      .to eq([ { tooth: nil, face: nil, part: nil, arch: "upper", situation: "complete_denture" } ])
+    done!(consultation)
+    findings = Consultations::Json.consultation(consultation)[:dental][:findings]
+    expect(findings.map { |f| f[:tooth] }).to match_array([ *11..18, *21..28 ].map(&:to_s))
+    expect(findings.map { |f| f.values_at(:part, :arch, :situation) }.uniq).to eq([ [ "crown", nil, "complete_denture" ] ])
   end
 
   describe "registro inicial (Desvio 2)" do

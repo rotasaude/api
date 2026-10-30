@@ -104,6 +104,8 @@ RSpec.describe DentalCare::DraftInput do
     expect(Consultations::SaveDraft.call(consultation: consultation, params: { "dental" => again }, by: dentist)).to be_ok
     expect(consultation.reload.draft_items["dental"]["procedures"].sole["id"]).to eq(id)
     expect(refusal("procedures" => [ body["procedures"][0].merge("id" => "abc") ])).to eq([ :invalid_request, "dental.procedures[0].id" ])
+    duplicated = body["procedures"][0].merge("id" => id)
+    expect(refusal("procedures" => [ duplicated, duplicated ])).to eq([ :invalid_request, "dental.procedures[1].id" ])
   end
 
   it "SaveDraft: o bloco dental na consulta geral → invalid_request path dental; care_type do topo ignorado na dental" do

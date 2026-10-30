@@ -1,7 +1,10 @@
 # O bloco `dental` da consulta odontológica (ADR 0046; contrato §2, §5, §6,
 # §16 O14, O25, O26): <dental_fields> mais `suggest_completed`. Rascunho: das
 # colunas e de draft_items["dental"]; finalizada: das tabelas (os eventos e
-# itens dos adendos ficam de fora). Códigos da FAO e dente em string; nome
+# itens dos adendos ficam de fora). Forma diferente entre os dois: o achado
+# de arcada (`{ arch, situation: "complete_denture" }`) sai assim no rascunho,
+# mas na finalizada vira um achado por dente (é o que os eventos guardam: um
+# evento de coroa por dente da arcada). Códigos da FAO e dente em string; nome
 # SIGTAP da release ativa na leitura. Dado clínico: só o corpo JSON.
 module DentalCare
   module Json

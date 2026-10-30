@@ -25,6 +25,7 @@ module DentalCare
       record(consultation, patient, add)
       auxiliary(consultation, dental, add) if Consultations::Cbos.role(consultation.cbo_code) == :auxiliary
       limits(dental, add)
+      taken(dental, add)
       plan(consultation, dental, add)
       problems
     end
@@ -90,17 +91,30 @@ module DentalCare
       add.("dental.plan_changes", "auxiliary_cannot_plan") if plan_changes?(dental)
       consultation.dental_outcomes.each_with_index do |code, index|
         add.("dental.dental_outcomes[#{index}]", "auxiliary_cannot_refer") if Catalog::REFERRAL_OUTCOMES.include?(code)
+        # O 15 conclui o plano: o TSB/ASB não planeja.
+        add.("dental.dental_outcomes[#{index}]", "auxiliary_cannot_plan") if code == Catalog::COMPLETED
       end
       add.("regulation_requests", "auxiliary_cannot_refer") if regulation_drafts?(consultation)
     end
 
-    # Desvio 6: soma das quantidades por SIGTAP ≤ o máximo da lista do LEDI.
+    # Desvio 6: soma das quantidades por SIGTAP ≤ o máximo da lista do LEDI;
+    # O32: no máximo MAX_PROCEDURE_CODES SIGTAP distintos (a FAO não leva mais).
     def limits(dental, add)
-      Array(dental["procedures"]).group_by { |p| p["sigtap"] }.each do |sigtap, rows|
+      groups = Array(dental["procedures"]).group_by { |p| p["sigtap"] }
+      add.("dental.procedures", "too_many_procedure_codes") if groups.size > Catalog::MAX_PROCEDURE_CODES
+      groups.each do |sigtap, rows|
         if rows.sum { |p| p["quantity"] } > ProcedureLimits.max(sigtap)
           add.("dental.procedures", "quantity_exceeds_location_limit", sigtap: sigtap)
         end
       end
+    end
+
+    # O id do procedimento vem do rascunho: um que já foi gravado (de outra
+    # consulta, depois do autosave) é recusado, nunca um 500 da chave primária.
+    def taken(dental, add)
+      ids = Array(dental["procedures"]).map { |p| p["id"] }
+      used = DentalProcedure.where(id: ids).pluck(:id)
+      ids.each_with_index { |id, index| add.("dental.procedures[#{index}].id", "invalid_request") if used.include?(id) }
     end
 
     # Desvio 7 (Ruling 14): o item tem de ser `planned` do plano aberto da
@@ -123,6 +137,10 @@ module DentalCare
         used << id
       end
       add.("dental.plan_changes.cancel_plan", "plan_item_not_open") if changes["cancel_plan"] && plan.nil?
+      # O30: cancelar e concluir o plano na mesma consulta não combinam.
+      if changes["cancel_plan"] && consultation.dental_outcomes.include?(Catalog::COMPLETED)
+        add.("dental.plan_changes.cancel_plan", "cancel_plan_conflicts_with_completed")
+      end
       if changes["add"].any? && plan.nil? && !Plans.opens_plan?(consultation)
         add.("dental.plan_changes.add", "plan_requires_first_consultation")
       end
@@ -134,6 +152,6 @@ module DentalCare
     end
 
     def regulation_drafts?(consultation) = RegulationRequest.exists?(consultation_id: consultation.id, status: "draft")
-    private_class_method :baseline, :fao, :record, :auxiliary, :limits, :plan, :plan_changes?, :regulation_drafts?
+    private_class_method :baseline, :fao, :record, :auxiliary, :limits, :taken, :plan, :plan_changes?, :regulation_drafts?
   end
 end

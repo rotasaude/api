@@ -4,8 +4,9 @@
 # unidade da consulta, abre quando é a primeira consulta programática (UBS e
 # demais) ou quando a unidade é CEO (primeira consulta no CEO). Depois, na
 # ordem: acrescenta os itens, dá baixa nos itens dos procedimentos (`done`),
-# cancela itens, cancela o plano inteiro (`cancel_plan`) ou, com o desfecho
-# 15, conclui. O plano de outra unidade nunca muda por aqui (Review Focus 3).
+# cancela itens, cancela o plano inteiro (`cancel_plan`, levando os itens
+# ainda previstos; O31) ou, com o desfecho 15, conclui (os dois juntos são
+# recusados na Requirements; O30). O plano de outra unidade nunca muda por aqui (Review Focus 3).
 # Eventos só com ids.
 module DentalCare
   module Plans
@@ -20,9 +21,11 @@ module DentalCare
       DentalTreatmentPlan.open_plans.find_by(patient_id: consultation.patient_id, health_unit_id: unit_id(consultation))
     end
 
-    # Abre um plano na finalização quando a unidade não tem plano aberto.
+    # Abre um plano na finalização quando a unidade não tem plano aberto. O
+    # TSB/ASB nunca abre plano (spec: sem encaminhamento, documento nem plano).
     def opens_plan?(consultation)
       return false if !consultation.dental? || consultation.baseline
+      return false if Consultations::Cbos.role(consultation.cbo_code) == :auxiliary
 
       consultation.dental_consultation_type == Catalog::FIRST || consultation.attendance.health_unit.kind == "ceo"
     end
@@ -56,7 +59,12 @@ module DentalCare
         plan.items.find(item["item_id"]).update!(status: "cancelled", cancel_reason: item["reason"], cancelled_in_consultation: consultation)
       end
       if changes["cancel_plan"]
-        close!(plan, consultation, by, now, "cancelled", cancel_reason: changes["cancel_plan"]["reason"])
+        # O31: os itens ainda previstos caem com o plano, com o motivo dele.
+        reason = changes["cancel_plan"]["reason"]
+        plan.items.where(status: "planned").order(:id).each do |item|
+          item.update!(status: "cancelled", cancel_reason: reason, cancelled_in_consultation: consultation)
+        end
+        close!(plan, consultation, by, now, "cancelled", cancel_reason: reason)
       elsif consultation.dental_outcomes.include?(Catalog::COMPLETED)
         close!(plan, consultation, by, now, "completed")
       end

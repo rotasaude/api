@@ -66,14 +66,20 @@ module DentalCare
 
     def procedures(list, context)
       path = "dental.procedures"
+      seen = []
       array!(list, path, max: Catalog::MAX_ITEMS).each_with_index.map do |raw, index|
         at = "#{path}[#{index}]"
         hash!(raw, at)
         id = raw["id"].nil? ? SecureRandom.uuid : raw["id"]
         refuse!(:invalid_request, "#{at}.id") unless id.is_a?(String) && id.match?(UUID)
 
+        # Repetido no corpo ou já gravado (procedimento de consulta finalizada).
+        id = id.downcase
+        refuse!(:invalid_request, "#{at}.id") if seen.include?(id) || DentalProcedure.exists?(id: id)
+        seen << id
+
         sigtap, location = procedure_at(raw, at, context)
-        { "id" => id.downcase, "sigtap" => sigtap, "location" => location, "quantity" => quantity(raw, location, at),
+        { "id" => id, "sigtap" => sigtap, "location" => location, "quantity" => quantity(raw, location, at),
           "plan_item_id" => uuid_or_nil(raw["plan_item_id"], "#{at}.plan_item_id"),
           "prosthesis_order_id" => prosthesis_order(raw["prosthesis_order_id"], "#{at}.prosthesis_order_id", context) }
       end
