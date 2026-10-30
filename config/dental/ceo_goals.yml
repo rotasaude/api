@@ -1,0 +1,129 @@
+# Módulo 28 (ADR 0046; spec decisão 12; contrato §10 e §16 O15/O24): metas
+# mensais de produção do CEO por tipo (I, II, III) e especialidade, com as
+# regras de composição e de suspensão. Fonte: Portaria GM/MS 1.464/2011
+# (Anexo XL da Portaria de Consolidação 6/2017) e NT 32/2026.
+#
+# GATE DE GO-LIVE (contrato §16 O15): os códigos com `source: successor` são os
+# sucessores de restauração da SIGTAP 06/2026 (0307010074..0307010139), que
+# substituem 0307010023/0307010031/0307010040. Entraram por inferência (D11) e
+# só valem depois da confirmação da coordenação de saúde bucal; sem ela, tire
+# as linhas `successor` dos grupos e da composição.
+#
+# Chaves: as dos grupos e das regras de composição saem no JSON (O24).
+version: 1
+source: "Portaria GM/MS 1.464/2011 (Anexo XL da PC 6/2017); NT 32/2026"
+goals:
+  basic:        { I: 80, II: 110, III: 190, source: "Portaria 1.464/2011 (Anexo XL da PC 6/2017): procedimentos básicos" }
+  periodontics: { I: 60, II: 90, III: 150, source: "Portaria 1.464/2011 (Anexo XL da PC 6/2017): periodontia especializada" }
+  endodontics:  { I: 35, II: 60, III: 95, source: "Portaria 1.464/2011 (Anexo XL da PC 6/2017): endodontia" }
+  oral_surgery: { I: 80, II: 90, III: 170, source: "Portaria 1.464/2011 (Anexo XL da PC 6/2017): cirurgia oral" }
+# Procedimento básico só conta de paciente com necessidades especiais.
+basic_requires_special_needs: true
+groups:
+  basic:
+    - { code: "0101020058", source: "Portaria 1.464/2011" }
+    - { code: "0101020066", source: "Portaria 1.464/2011" }
+    - { code: "0101020074", source: "Portaria 1.464/2011" }
+    - { code: "0101020082", source: "Portaria 1.464/2011" }
+    - { code: "0101020090", source: "Portaria 1.464/2011" }
+    - { code: "0307010015", source: "Portaria 1.464/2011" }
+    - { code: "0307010023", source: "Portaria 1.464/2011" }
+    - { code: "0307010031", source: "Portaria 1.464/2011" }
+    - { code: "0307010040", source: "Portaria 1.464/2011" }
+    - { code: "0307020070", source: "Portaria 1.464/2011" }
+    - { code: "0307030016", source: "Portaria 1.464/2011" }
+    - { code: "0307030024", source: "Portaria 1.464/2011" }
+    - { code: "0414020120", source: "Portaria 1.464/2011" }
+    - { code: "0414020138", source: "Portaria 1.464/2011" }
+    # Gate de go-live (O15): sucessores de restauração.
+    - { code: "0307010074", source: successor }
+    - { code: "0307010082", source: successor }
+    - { code: "0307010090", source: successor }
+    - { code: "0307010104", source: successor }
+    - { code: "0307010112", source: successor }
+    - { code: "0307010120", source: successor }
+    - { code: "0307010139", source: successor }
+  periodontics:
+    - { code: "0307030032", source: "Portaria 1.464/2011" }
+    - { code: "0414020081", source: "Portaria 1.464/2011" }
+    - { code: "0414020154", source: "Portaria 1.464/2011" }
+    - { code: "0414020162", source: "Portaria 1.464/2011" }
+    - { code: "0414020375", source: "Portaria 1.464/2011" }
+  endodontics:
+    - { code: "0307020037", source: "Portaria 1.464/2011" }
+    - { code: "0307020045", source: "Portaria 1.464/2011" }
+    - { code: "0307020053", source: "Portaria 1.464/2011" }
+    - { code: "0307020061", source: "Portaria 1.464/2011" }
+    - { code: "0307020088", source: "Portaria 1.464/2011" }
+    - { code: "0307020096", source: "Portaria 1.464/2011" }
+    - { code: "0307020100", source: "Portaria 1.464/2011" }
+    - { code: "0307020118", source: "Portaria 1.464/2011" }
+  oral_surgery:
+    - { code: "0201010232", source: "Portaria 1.464/2011" }
+    - { code: "0201010348", source: "Portaria 1.464/2011" }
+    - { code: "0201010526", source: "Portaria 1.464/2011" }
+    - { code: "0307010058", source: "Portaria 1.464/2011" }
+    - { code: "0401010082", source: "Portaria 1.464/2011" }
+    - { code: "0404010512", source: "Portaria 1.464/2011" }
+    - { code: "0404020038", source: "Portaria 1.464/2011" }
+    - { code: "0404020054", source: "Portaria 1.464/2011" }
+    - { code: "0404020089", source: "Portaria 1.464/2011" }
+    - { code: "0404020097", source: "Portaria 1.464/2011" }
+    - { code: "0404020100", source: "Portaria 1.464/2011" }
+    - { code: "0404020313", source: "Portaria 1.464/2011" }
+    - { code: "0404020445", source: "Portaria 1.464/2011" }
+    - { code: "0404020488", source: "Portaria 1.464/2011" }
+    - { code: "0404020577", source: "Portaria 1.464/2011" }
+    - { code: "0404020615", source: "Portaria 1.464/2011" }
+    - { code: "0404020623", source: "Portaria 1.464/2011" }
+    - { code: "0404020631", source: "Portaria 1.464/2011" }
+    - { code: "0404020674", source: "Portaria 1.464/2011" }
+    - { code: "0414010256", source: "Portaria 1.464/2011" }
+    - { code: "0414010345", source: "Portaria 1.464/2011" }
+    - { code: "0414010361", source: "Portaria 1.464/2011" }
+    - { code: "0414010388", source: "Portaria 1.464/2011" }
+    - { code: "0414020022", source: "Portaria 1.464/2011" }
+    - { code: "0414020030", source: "Portaria 1.464/2011" }
+    - { code: "0414020049", source: "Portaria 1.464/2011" }
+    - { code: "0414020057", source: "Portaria 1.464/2011" }
+    - { code: "0414020065", source: "Portaria 1.464/2011" }
+    - { code: "0414020073", source: "Portaria 1.464/2011" }
+    - { code: "0414020090", source: "Portaria 1.464/2011" }
+    - { code: "0414020146", source: "Portaria 1.464/2011" }
+    - { code: "0414020170", source: "Portaria 1.464/2011" }
+    - { code: "0414020200", source: "Portaria 1.464/2011" }
+    - { code: "0414020219", source: "Portaria 1.464/2011" }
+    - { code: "0414020243", source: "Portaria 1.464/2011" }
+    - { code: "0414020278", source: "Portaria 1.464/2011" }
+    - { code: "0414020294", source: "Portaria 1.464/2011" }
+    - { code: "0414020359", source: "Portaria 1.464/2011" }
+    - { code: "0414020367", source: "Portaria 1.464/2011" }
+    - { code: "0414020383", source: "Portaria 1.464/2011" }
+    - { code: "0414020405", source: "Portaria 1.464/2011" }
+# Composição: a parcela dos `codes` no total do grupo, em percentual.
+composition:
+  basic:
+    rule: restorations_min_50
+    min_percent: 50
+    source: "Portaria 1.464/2011: no mínimo 50% de restaurações nos procedimentos básicos"
+    codes:
+      - { code: "0307010023", source: "Portaria 1.464/2011" }
+      - { code: "0307010031", source: "Portaria 1.464/2011" }
+      - { code: "0307010040", source: "Portaria 1.464/2011" }
+      # Gate de go-live (O15): sucessores de restauração.
+      - { code: "0307010074", source: successor }
+      - { code: "0307010082", source: successor }
+      - { code: "0307010090", source: successor }
+      - { code: "0307010104", source: successor }
+      - { code: "0307010112", source: successor }
+      - { code: "0307010120", source: successor }
+      - { code: "0307010139", source: successor }
+  endodontics:
+    rule: three_roots_min_20
+    min_percent: 20
+    source: "Portaria 1.464/2011: no mínimo 20% em dentes permanentes com três ou mais raízes"
+    codes:
+      - { code: "0307020053", source: "Portaria 1.464/2011" }
+      - { code: "0307020096", source: "Portaria 1.464/2011" }
+# Alerta: meta não atingida em 2 meses seguidos ou em 3 alternados em 12.
+suspension: { consecutive: 2, alternate: 3, window_months: 12, source: "Portaria 1.464/2011 (Anexo XL da PC 6/2017): suspensão do incentivo" }

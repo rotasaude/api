@@ -531,6 +531,8 @@ Rails.application.routes.draw do
     get  "prosthesis_orders",                   to: "prosthesis_orders#index"
     post "prosthesis_orders",                   to: "prosthesis_orders#create"
     post "prosthesis_orders/:id/stages",        to: "prosthesis_orders#stage"
+    # Painel do CEO (F-28.8; contrato §10, O15/O24): só contagens, sem trilha.
+    get  "ceo_goals",                           to: "ceo_goals#show"
   end
 
   # Módulo 27a (ADR 0045; contrato §3, §13): farmácia e almoxarifado, sessão do
