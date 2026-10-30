@@ -43,7 +43,7 @@ module ClinicalDocuments
       # catálogo indisponível não vira 503 para quem nem poderia emitir.
       if kind == "controlled_notification_record" && consultation&.author_user_id == by.id &&
          !Issuers.allowed?(kind, consultation.cbo_code)
-        return Result.fail(:cbo_not_allowed)
+        return Result.fail(auxiliary?(consultation) ? :auxiliary_cannot_issue : :cbo_not_allowed)
       end
 
       platform = CATALOG_KINDS.include?(kind) ? prescription_platform(content) : nil
@@ -106,6 +106,10 @@ module ClinicalDocuments
 
         attendance = consultation.attendance
         cbo = consultation.cbo_code
+        # Módulo 28: TSB/ASB não emitem e o registro inicial não leva documento
+        # (Desvio 2/8) — antes da matriz de papéis, que só diria cbo_not_allowed.
+        return Result.fail(:auxiliary_cannot_issue) if auxiliary?(consultation)
+        return Result.fail(:baseline_only_findings) if consultation.baseline
         return Result.fail(:cbo_not_allowed) unless Issuers.allowed?(kind, cbo)
 
         patient = Patient.lock.find(consultation.patient_id)
@@ -241,7 +245,9 @@ module ClinicalDocuments
       result.failure? ? result : nil
     end
 
+    def auxiliary?(consultation) = consultation.dental? && Consultations::Cbos.role(consultation.cbo_code) == :auxiliary
+
     def invalid(field) = Result.fail(:invalid_content, details: { field: field })
-    private_class_method :prescription_platform, :issue, :publish!, :build, :replaced, :create!, :medications!, :record_medication!, :invalid
+    private_class_method :auxiliary?, :prescription_platform, :issue, :publish!, :build, :replaced, :create!, :medications!, :record_medication!, :invalid
   end
 end

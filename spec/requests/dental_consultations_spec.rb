@@ -208,4 +208,136 @@ RSpec.describe "Consulta odontológica", type: :request do
       expect(reassign(general, colleague).reason).to eq(:invalid_professional)
     end
   end
+
+  describe "documentos, encaminhamento e linha do tempo (F-28.7; api#75)" do
+    let(:path) { "/attendance/consultations/#{consultation.id}/documents" }
+    let(:sick_note) { { kind: "sick_note", content: { type: "leave", days: 2 } } }
+
+    def regulation_on!
+      maintainer = ledi_maintainer!
+      Platform::Features.set!(city: Current.city || Platform::City.first, key: "care_regulation", enabled: true, maintainer: maintainer)
+      RegulationRiskDeadline.ensure_defaults!
+      CityCatalog.reset_cache!
+    end
+
+    def save!(consultation, **over)
+      saved = Consultations::SaveDraft.call(consultation: consultation, params: dental_body(**over), by: consultation.author_user)
+      raise "rascunho recusado: #{saved.reason}" if saved.failure?
+    end
+
+    def draft_request!(consultation, code)
+      saved = CareRegulation::SaveDraft.call(
+        consultation: consultation, by: consultation.author_user,
+        attrs: { "type" => "specialty", "target_code" => code, "ciap2" => "D82", "justification" => "Necessita avaliação especializada",
+                 "suggested_color" => "yellow" }
+      )
+      raise "pedido recusado: #{saved.reason} #{saved.details}" if saved.failure?
+
+      saved.payload.fetch(:request)
+    end
+
+    def finalize(consultation)
+      json_post "/attendance/consultations/#{consultation.id}/finalize", outcome: { outcome: "discharged" }
+    end
+
+    context "documentos" do
+      let(:consultation) { dental_consultation!(unit: unit, by: dentist, citizen: citizen) }
+
+      before do
+        documents_city!
+        sign_in_as(dentist)
+      end
+
+      it "o dentista emite atestado e receita comum (201)" do
+        json_post path, sick_note
+        expect(response).to have_http_status(:created)
+        import_test_catalog!
+        json_post path, kind: "prescription",
+                        content: { items: [ { catalog_item: { id: catalog_item(268_856).id }, quantity: 30, quantity_unit: "comprimido",
+                                              route: "oral", dosage_instructions: "1 comprimido a cada 8 horas" } ] }
+        expect(response).to have_http_status(:created)
+      end
+
+      it "a ASB recebe 403 auxiliary_cannot_issue" do
+        auxiliary = auxiliary!(unit)
+        mine = dental_consultation!(unit: unit, by: auxiliary, citizen: verified_citizen!(5))
+        sign_in_as(auxiliary)
+        json_post "/attendance/consultations/#{mine.id}/documents", sick_note
+        expect([ response.status, body ]).to eq([ 403, { "error" => "auxiliary_cannot_issue" } ])
+        expect(ClinicalDocument.count).to eq(0)
+      end
+
+      it "registro inicial: 422 baseline_only_findings" do
+        first = dental_consultation!(unit: unit, by: dentist, citizen: verified_citizen!(6), baseline: true)
+        json_post "/attendance/consultations/#{first.id}/documents", sick_note
+        expect([ response.status, body ]).to eq([ 422, { "error" => "baseline_only_findings" } ])
+        expect(ClinicalDocument.count).to eq(0)
+      end
+    end
+
+    context "pedido de regulação" do
+      let(:consultation) { dental_consultation!(unit: unit, by: dentist, citizen: citizen) }
+
+      it "registro inicial recusa pedido (422 baseline_only_findings); ASB recebe o cbo_not_allowed de sempre" do
+        regulation_on!
+        first = dental_consultation!(unit: unit, by: dentist, citizen: verified_citizen!(6), baseline: true)
+        sign_in_as(dentist)
+        json_post "/attendance/consultations/#{first.id}/regulation_requests",
+                  type: "specialty", target_code: "223212", ciap2: "D82", justification: "Necessita avaliação", suggested_color: "yellow"
+        expect([ response.status, body ]).to eq([ 422, { "error" => "baseline_only_findings" } ])
+        auxiliary = auxiliary!(unit)
+        mine = dental_consultation!(unit: unit, by: auxiliary, citizen: verified_citizen!(8))
+        sign_in_as(auxiliary)
+        json_post "/attendance/consultations/#{mine.id}/regulation_requests",
+                  type: "specialty", target_code: "223212", ciap2: "D82", justification: "Necessita avaliação", suggested_color: "yellow"
+        expect([ response.status, body["error"] ]).to eq([ 403, "cbo_not_allowed" ])
+      end
+    end
+
+    context "desfechos 1–9 exigem o pedido (D5)" do
+      let(:consultation) { dental_consultation!(unit: unit, by: dentist, citizen: citizen) }
+
+      before { sign_in_as(dentist) }
+
+      it "com care_regulation ligado, o desfecho 3 sem pedido → problems com dental_referral_request_required" do
+        regulation_on!
+        save!(consultation, dental: { dental_outcomes: [ 3 ] })
+        finalize(consultation)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(body["problems"]).to include(a_hash_including("error" => "dental_referral_request_required", "path" => "dental.dental_outcomes[0]"))
+        expect(consultation.reload.status).to eq("draft")
+      end
+
+      it "pedido em rascunho da especialidade certa (223212) → finaliza e o pedido vira pending" do
+        regulation_on!
+        save!(consultation, dental: { dental_outcomes: [ 3 ] })
+        request = draft_request!(consultation, "223212")
+        finalize(consultation)
+        expect(response).to have_http_status(:ok)
+        expect(request.reload.status).to eq("pending")
+      end
+
+      it "pedido de outra especialidade não vale" do
+        regulation_on!
+        save!(consultation, dental: { dental_outcomes: [ 3 ] })
+        draft_request!(consultation, "223268")
+        finalize(consultation)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(body["problems"].map { |p| p["error"] }).to include("dental_referral_request_required")
+      end
+
+      it "desfecho 10 sem pedido → finaliza" do
+        regulation_on!
+        save!(consultation, dental: { dental_outcomes: [ 10 ] })
+        finalize(consultation)
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "care_regulation desligado: o desfecho 3 sem pedido finaliza" do
+        save!(consultation, dental: { dental_outcomes: [ 3 ] })
+        finalize(consultation)
+        expect(response).to have_http_status(:ok)
+      end
+    end
+  end
 end

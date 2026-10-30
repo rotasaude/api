@@ -8,7 +8,7 @@
 # registro inicial: achados e nada mais. O desfecho do atendimento fica com o
 # Attendances::Close. Quem chama já travou consulta, paciente e planos.
 # `regulating` (care_regulation utilizável, lido fora da transação): o pedido
-# exigido pelos desfechos 1–9 entra com o DentalCare::Referrals (Task 10).
+# exigido pelos desfechos 1–9 vem do DentalCare::Referrals (Task 10).
 module DentalCare
   module Requirements
     TYPED = [ Catalog::FIRST, Catalog::RETURN ].freeze
@@ -27,6 +27,7 @@ module DentalCare
       limits(dental, add)
       taken(dental, add)
       plan(consultation, dental, add)
+      problems.concat(Referrals.missing(consultation)) if regulating
       problems
     end
 

@@ -29,6 +29,11 @@ RSpec.describe "Fornecedores clínicos da linha do tempo" do
     expect(entry.to_h.to_s).not_to include("Refere sede", "Metformina")
   end
 
+  it "consultation geral: detail_ref sem kind" do
+    consultation
+    expect(entries(Timeline::Sources::ConsultationSource).sole.detail_ref).to eq(type: "consultation", id: consultation.id)
+  end
+
   it "consultation: rascunho não entra; pessoa sem paciente não tem consulta" do
     started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
     expect(entries(Timeline::Sources::ConsultationSource)).to be_empty

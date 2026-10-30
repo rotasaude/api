@@ -12,7 +12,7 @@ class ClinicalDocumentsController < ApplicationController
   include MfaStepUp
 
   ERROR_STATUS = {
-    not_author: :forbidden, cbo_not_allowed: :forbidden, missing_role: :forbidden, out_of_context: :forbidden,
+    not_author: :forbidden, cbo_not_allowed: :forbidden, auxiliary_cannot_issue: :forbidden, missing_role: :forbidden, out_of_context: :forbidden,
     feature_disabled: :forbidden, not_found: :not_found, already_cancelled: :conflict, awaiting_signature: :conflict,
     attendance_not_found_or_closed_long_ago: :conflict, catalog_unavailable: :service_unavailable,
     attendance_outside_unit: :unprocessable_entity

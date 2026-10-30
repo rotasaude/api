@@ -15,7 +15,7 @@ module CareRegulation
 
     # -> Result.ok(request:) | fail(:missing_role | :not_found | :not_author |
     # :invalid_transition | :invalid_request | :invalid_target | :cbo_not_allowed |
-    # :invalid_cid10 | :invalid_ciap2 | :diagnosis_required | :cid10_not_allowed_for_cbo)
+    # :baseline_only_findings | :invalid_cid10 | :invalid_ciap2 | :diagnosis_required | :cid10_not_allowed_for_cbo)
     def call(consultation:, attrs:, by:, request: nil)
       return Result.fail(:missing_role) unless by&.has_role?("health_professional")
 
@@ -23,6 +23,8 @@ module CareRegulation
         consultation.lock!
         next Result.fail(:not_found) if consultation.discarded?
         next Result.fail(:not_author) unless consultation.author_user_id == by.id
+        # Módulo 28 (Desvio 2): o registro inicial não leva pedido de regulação.
+        next Result.fail(:baseline_only_findings) if consultation.baseline
 
         draft = nil
         if request
