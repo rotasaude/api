@@ -5,8 +5,9 @@
 # `location_id` (opcional): sem ele, todos os locais que o usuário lê (o
 # almoxarife do central, todos os ativos; os demais, os seus); com ele, local
 # existente, senão 422; sem papel nele → 403. Filtros: `catalog_item_id`
-# (uuid), `q` (nome; 2 a 60 caracteres, resolvido em ids pela busca do catálogo
-# ANTES da consulta), `expiring` e `below_minimum` (`true`/`false`; `false` =
+# (uuid), `q` (nome; 2 a 60 caracteres, resolvido em ids ANTES da consulta,
+# entre os itens com posição nos locais lidos: sem limite e sem o filtro de
+# item "prescritível"), `expiring` e `below_minimum` (`true`/`false`; `false` =
 # ausente), `before` (cursor) e `limit`. Todo 422 traz `problems`.
 module Pharmacy
   class PositionsController < BaseController
@@ -29,7 +30,7 @@ module Pharmacy
       cursor = params.key?(:before) ? Cursor.decode(params[:before]) : nil
       return render_refusal("before", "invalid_cursor") if params.key?(:before) && !(cursor && cursor.size == 2 && cursor.all? { |part| uuid?(part) })
 
-      item_ids = item_ids_for(item_id)
+      item_ids = item_ids_for(item_id, location_ids)
       return if performed?
       return render json: { positions: [], next_before: nil } if item_ids&.empty?
 
@@ -48,9 +49,11 @@ module Pharmacy
     end
 
     # nil: sem filtro de item; Array: ids permitidos (vazio: nada a listar).
-    # Com `q` inválido ou catálogo fora, responde 422/503 (quem chama confere
+    # O `q` é resolvido por Positions.item_ids_matching, entre os itens que têm
+    # posição nos locais lidos (sem limite e sem o filtro "prescritível" da
+    # busca do catálogo). `q` inválido responde 422 (quem chama confere
     # `performed?`).
-    def item_ids_for(item_id)
+    def item_ids_for(item_id, location_ids)
       ids = uuid?(item_id) ? [ item_id ] : nil
       return ids unless params.key?(:q) && params[:q].to_s.strip.present?
 
@@ -59,10 +62,7 @@ module Pharmacy
         return render_refusal("q")
       end
 
-      found = Medications::Search.call(q: q.strip).map { |hit| hit.fetch(:id) }
-      ids ? found & ids : found
-    rescue Medications::Search::Unavailable
-      render_error(:catalog_unavailable, :service_unavailable)
+      Positions.item_ids_matching(q: q.strip, location_ids: location_ids, item_ids: ids)
     end
   end
 end

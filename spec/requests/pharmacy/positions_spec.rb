@@ -3,8 +3,10 @@ require "rails_helper"
 # Módulo 27a, Task 8 (ADR 0045; contrato §4, §9 e H10/H12): posição, extrato do
 # lote e alertas. Leitura SEM trilha e sem dado pessoal: o almoxarife do central
 # lê todos os locais; os demais, os seus (local sem papel → 403); lote ou local
-# inexistente nunca vira 500; todo 422 traz `problems`.
+# inexistente nunca vira 500; todo 422 traz `problems`. O "hoje" é o da cidade.
 RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city) { pharmacy_city! }
   let!(:central) { central_location! }
   let(:unit) { create_unit("UBS Jardim das Flores") }
@@ -183,7 +185,7 @@ RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
       expect(keys_of(positions(q: "  "))).to match_array([ [ central.id, paracetamol.id ], [ central.id, losartana.id ] ])
     end
 
-    it "q com 1 caractere, acima de 60 ou que não é texto → 422 com path q; catálogo fora → 503 catalog_unavailable" do
+    it "q com 1 caractere, acima de 60 ou que não é texto → 422 com path q" do
       sign_in_as(central_keeper)
       [ "p", "x" * 61 ].each do |value|
         get "/pharmacy/positions", params: { q: value }
@@ -191,10 +193,30 @@ RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
       end
       get "/pharmacy/positions", params: { q: [ "paracetamol" ] }
       expect(response).to have_http_status(:unprocessable_entity)
+    end
 
-      allow(Medications::Search).to receive(:call).and_raise(Medications::Search::Unavailable)
-      get "/pharmacy/positions", params: { q: "paracetamol" }
-      expect([ response.status, json_body ]).to eq([ 503, { "error" => "catalog_unavailable" } ])
+    it "q acha TODAS as 31 apresentações do mesmo princípio ativo com saldo (sem o limite de 30 da busca do catálogo); sem posição não aparece" do
+      release = MedicationCatalogRelease.current
+      items = (1..32).map do |n|
+        MedicationCatalogItem.create!(catmat_code: 9_800_000 + n, active_ingredient: "ZETAMICINA", strength: "#{n} mg", dosage_form: "COMPRIMIDO",
+                                      unit: "mg", source_description: "ZETAMICINA #{n} mg", search_text: "ZETAMICINA #{n} MG COMPRIMIDO",
+                                      parse_status: "ok", first_release_id: release.id, last_release_id: release.id)
+      end
+      items.first(31).each_with_index { |item, index| stocked_lot!(central, item: item, quantity: "5", lot_number: "ZETA-#{index}") }
+
+      body = positions(q: "zetamicina", limit: 100)
+      expect(body["positions"].map { |row| row.dig("item", "catalog_item_id") }).to match_array(items.first(31).map(&:id))
+      expect(Medications::Search.call(q: "zetamicina").size).to eq(30)
+      expect(keys_of(positions(q: "zetamicina 31 mg"))).to eq([ [ central.id, items[30].id ] ])
+    end
+
+    it "q acha item escondido do catálogo que ainda tem saldo (a busca de receita não o mostra)" do
+      hidden = catalog_item(271_089)
+      stocked_lot!(central, item: hidden, quantity: "8", lot_number: "HID-1")
+      hidden.update!(hidden: true)
+      expect(Medications::Search.call(q: "amoxicilina").map { |hit| hit.fetch(:id) }).not_to include(hidden.id)
+
+      expect(keys_of(positions(q: "amoxicilina"))).to eq([ [ central.id, hidden.id ] ])
     end
 
     it "paginação com limit=1 e cursor opaco: cada página traz um item, sem repetir, na ordem (local, item)" do
@@ -278,7 +300,7 @@ RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
                         "by" => { "name" => pharmacist.professional.professional_name },
                         "document" => { "type" => "dispensation", "id" => dispensation.id, "number" => nil })
       raw = response.body
-      [ patient.full_name, patient.mother_name, patient.cpf, patient.id, "Beltrana", "ExternalPrescription", "12345" ].each do |secret|
+      [ patient.full_name, patient.mother_name, patient.cpf, patient.id, "Dra. Beltrana", "Beltrana", "ExternalPrescription", "comprimido ao dia" ].each do |secret|
         expect(raw).not_to include(secret.to_s)
       end
       expect(body["movements"].flat_map { |movement| movement.keys }.uniq).to match_array(%w[id kind quantity reason at by document])
@@ -352,6 +374,30 @@ RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
       expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_limit", "limit") ])
     end
 
+    it "paginação com limit=1 atravessa o par transfer_in/loss gravado no mesmo instante: o cursor de 3 partes desempata por id, sem repetir nem pular" do
+      central_lot = stocked_lot!(central, item: paracetamol, quantity: "60", lot_number: "TIE-1")
+      transfer = send_to_unit!([ central_lot, "20" ])
+      travel_to(Time.zone.now.change(usec: 0)) do
+        Pharmacy::ReceiveTransfer.call(transfer: transfer, items: [ { "lot_id" => central_lot.id, "quantity_received" => "18",
+                                                                       "reason" => "Duas caixas chegaram molhadas" } ], by: pharmacist, now: Time.current)
+      end
+      pair = StockMovement.where(stock_location_id: farmacia.id, stock_lot_id: central_lot.id).to_a
+      expect(pair.map(&:kind)).to match_array(%w[transfer_in loss])
+      expect(pair.map(&:created_at).uniq.size).to eq(1)
+      expect(pair.map(&:recorded_at).uniq.size).to eq(1)
+
+      seen = []
+      token = nil
+      3.times do
+        body = statement(central_lot.id, { location_id: farmacia.id, limit: 1, before: token }.compact)
+        seen.concat(body["movements"].map { |row| row["id"] })
+        token = body["next_before"]
+        break unless token
+      end
+      expect(token).to be_nil
+      expect(seen).to eq(pair.map(&:id).sort.reverse)
+    end
+
     it "location_id obrigatório (422) e do usuário (403); o almoxarife do central lê o extrato de qualquer local" do
       sign_in_as(pharmacist)
       get "/pharmacy/lots/#{lot.id}/movements"
@@ -388,6 +434,41 @@ RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
       disable_pharmacy!
       get "/pharmacy/lots/#{lot.id}/movements", params: { location_id: farmacia.id }
       expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "pharmacy" } ])
+    end
+  end
+
+  describe "o \"hoje\" é o da cidade (America/Sao_Paulo, fora do UTC)" do
+    let(:stock_keeper) { pharmacy_staff!(farmacia, "stock_keeper") }
+
+    # 29/10 22:00 em São Paulo já é 30/10 01:00 em UTC.
+    it "na virada do dia em UTC o lote que vence 'hoje' (29/10) não está vencido: posição e alertas contam vencendo, não vencido" do
+      travel_to(Time.utc(2026, 10, 30, 1, 0, 0)) do
+        expect(Time.zone.today).to eq(Date.new(2026, 10, 29))
+        expect(Time.now.utc.to_date).to eq(Date.new(2026, 10, 30))
+        stocked_lot!(farmacia, item: paracetamol, quantity: "10", lot_number: "HOJE", expires_on: Date.new(2026, 10, 29))
+        stocked_lot!(farmacia, item: losartana, quantity: "10", lot_number: "ONTEM", expires_on: Date.new(2026, 10, 28))
+
+        body = positions({ location_id: farmacia.id }, as: pharmacist)
+        flags = body["positions"].flat_map { |row| row["lots"] }.to_h { |row| [ row.dig("lot", "lot_number"), row.values_at("expiring_soon", "expired") ] }
+        expect(flags).to eq("HOJE" => [ true, false ], "ONTEM" => [ false, true ])
+
+        sign_in_as(pharmacist)
+        get "/pharmacy/alerts", params: { location_id: farmacia.id }
+        expect(json_body).to include("expiring" => 1, "expired" => 1)
+      end
+    end
+
+    it "na outra ponta (28/10 23:00 em São Paulo, já 29/10 em UTC) o lote de 28/10 ainda não venceu" do
+      travel_to(Time.utc(2026, 10, 29, 2, 0, 0)) do
+        expect(Time.zone.today).to eq(Date.new(2026, 10, 28))
+        stocked_lot!(farmacia, item: paracetamol, quantity: "10", lot_number: "HOJE", expires_on: Date.new(2026, 10, 28))
+
+        row = positions({ location_id: farmacia.id }, as: pharmacist)["positions"].sole["lots"].sole
+        expect(row.values_at("expiring_soon", "expired")).to eq([ true, false ])
+        sign_in_as(pharmacist)
+        get "/pharmacy/alerts", params: { location_id: farmacia.id }
+        expect(json_body).to include("expiring" => 1, "expired" => 0)
+      end
     end
   end
 

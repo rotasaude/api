@@ -44,6 +44,26 @@ module Pharmacy
         next_before: rows.size > limit ? Cursor.encode([ page.last["location_id"], page.last["catalog_item_id"] ]) : nil }
     end
 
+    # Ids dos itens do catálogo cujo texto de busca casa TODOS os termos de `q`
+    # (os mesmos tokens da busca do catálogo: sem acento, maiúsculos, até 6),
+    # entre os que têm posição nos locais (movimento, trânsito ou mínimo > 0).
+    # Sem limite de resultados e sem o filtro `prescribable`: item escondido ou
+    # inativo que ainda tem saldo aparece. O cruzamento com os locais evita
+    # trazer o catálogo inteiro. `item_ids` (opcional) restringe os candidatos.
+    # -> Array<String> (vazio se `q` não tem termo útil)
+    def item_ids_matching(q:, location_ids:, item_ids: nil)
+      tokens = Medications::Substances.key(q).split.first(6)
+      return [] if tokens.join.size < Medications::Search::MIN_QUERY
+
+      candidates = query("SELECT DISTINCT catalog_item_id FROM keys", location_ids: location_ids, item_ids: item_ids, cutoff: Time.zone.today)
+                   .map { |row| row["catalog_item_id"] }
+      return [] if candidates.empty?
+
+      tokens.reduce(MedicationCatalogItem.where(id: candidates)) do |relation, token|
+        relation.where("search_text LIKE ?", "%#{MedicationCatalogItem.sanitize_sql_like(token)}%")
+      end.pluck(:id)
+    end
+
     # Executa `tail` sobre as CTEs `lots`, `keys`, `positions` e `flagged`
     # (as mesmas para a posição e para os alertas: uma conta só). `lots` =
     # (location_id, catalog_item_id, lot_id, balance, in_transit) por lote.
