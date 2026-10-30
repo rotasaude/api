@@ -277,6 +277,7 @@ RSpec.describe Consultations::Finalize do
       expect(consultation).to have_attributes(status: "finalized", care_type: nil, baseline: true)
       expect(consultation.dental_chart_events.pluck(:tooth, :situation)).to match_array([ [ 16, "caries" ], [ 36, "extracted" ] ])
       expect(DentalTreatmentPlan.count).to eq(0)
+      expect(Ledi::ConsultationFicha.generate(consultation)).to eq(:skipped)
       expect(DomainEvent.where(name: "dental_consultation.finalized").sole.payload)
         .to eq("consultation_id" => consultation.id, "attendance_id" => consultation.attendance_id)
     end
@@ -290,7 +291,7 @@ RSpec.describe Consultations::Finalize do
     end
   end
 
-  it "periograma, registro periodontal e endodontia gravados; a endodontia concluída fecha o tratamento do dente; FAO :skipped" do
+  it "periograma, registro periodontal e endodontia gravados; a endodontia concluída fecha o tratamento do dente; só o registro inicial pula a FAO" do
     perio = { "teeth" => [ { "tooth" => 16, "mobility" => 1, "furcation" => 2,
                              "sites" => [ { "site" => "MV", "probing_depth_mm" => 5, "recession_mm" => -1, "bleeding" => true },
                                           { "site" => "V", "probing_depth_mm" => 3, "recession_mm" => 0, "bleeding" => false } ] } ] }
@@ -308,7 +309,8 @@ RSpec.describe Consultations::Finalize do
                                            "endodontics" => [ { "tooth" => 21, "canals" => 1, "status" => "completed" } ] }))
     expect(treatment.reload).to have_attributes(status: "completed", completed_in_consultation_id: second.id)
     expect(treatment.sessions.pluck(:consultation_id)).to match_array([ first.id, second.id ])
-    expect(Ledi::ConsultationFicha.generate(second)).to eq(:skipped)
+    # Task 9 (Ruling 17): a consulta odontológica gera a FAO; aqui a exportação está desligada.
+    expect(Ledi::ConsultationFicha.generate(second)).to eq(:unusable)
 
     json = Consultations::Json.consultation(second)[:dental]
     expect(json).to include(care_type: "2", dental_consultation_type: "2", dental_outcomes: [ "16" ], oral_health_surveillance: [ "99" ])

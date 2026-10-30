@@ -18,7 +18,11 @@ module Ledi
       "cadastro_individual" => { code: 2, klass: "Br::Gov::Saude::Esusab::Ras::Cadastroindividual::CadastroIndividualThrift",
                                  uuid_field: :uuid },
       "cadastro_domiciliar" => { code: 3, klass: "Br::Gov::Saude::Esusab::Ras::Cadastrodomiciliar::CadastroDomiciliarThrift",
-                                 uuid_field: :uuid }
+                                 uuid_field: :uuid },
+      # Módulo 28 (ADR 0046; F-28.2): a FAO. Código 5 em
+      # vendor/ledi/8.7.0/docs/dicionario.html (TipoDadoSerializado).
+      "atendimento_odontologico" => { code: 5, klass: "Br::Gov::Saude::Esusab::Ras::Atendodonto::FichaAtendimentoOdontologicoMasterThrift",
+                                      uuid_field: :uuidFicha }
     }.freeze
 
     module_function

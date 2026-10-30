@@ -4,7 +4,7 @@ class LediGenerationFailure < ApplicationRecord
   REASONS = %w[unit_without_cnes professional_without_team professional_without_cns citizen_without_birth_date
                citizen_without_sex unknown_ciap2 regeneration_refused still_sending
                patient_without_identifier responsible_without_identifier cbo_not_in_ledi_table
-               city_profile_incomplete].freeze
+               city_profile_incomplete too_many_procedure_codes quantity_exceeds_location_limit].freeze
 
   scope :unresolved, -> { where(resolved_at: nil) }
 

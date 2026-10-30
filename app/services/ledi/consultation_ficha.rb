@@ -9,6 +9,12 @@
 # com o mesmo uuid; recusada → linha nova com replaces_outbox_id; em envio →
 # InFlight (o job tenta de novo); aceita → uma correction_pending por aceita,
 # nunca enviada (api#41; trigger ledi_outbox_correction_guard).
+# Módulo 28 (ADR 0046; F-28.2): a consulta `dental` vira a FAO
+# (Ledi::Fichas::DentalCare), o registro inicial (`baseline`) não vira ficha.
+# INE: a eSB do profissional na unidade, senão a equipe de sempre; no CEO o
+# especialista não está em equipe e a ficha sai com INE nulo (Review Focus 2).
+# Motivos extras (cinto; a finalização já recusa): too_many_procedure_codes e
+# quantity_exceeds_location_limit — a ficha nunca trunca procedimento.
 module Ledi
   module ConsultationFicha
     SOURCE_TYPE = "Consultation".freeze
@@ -21,8 +27,8 @@ module Ledi
 
     def generate(consultation, city: Current.city)
       return :skipped unless consultation.finalized?
-      # Módulo 28 (ADR 0046): a consulta odontológica não vira FAI (a FAO é outra ficha).
-      return :skipped if consultation.dental?
+      # Módulo 28 (ADR 0046; Desvio 2): o registro inicial não gera FAO.
+      return :skipped if consultation.dental? && consultation.baseline?
       return :unusable unless exportable?(city)
       return :exists if LediOutboxEntry.exists?(source_type: SOURCE_TYPE, source_id: consultation.id)
 
@@ -75,13 +81,15 @@ module Ledi
       unit = attendance.health_unit
       professional = consultation.professional_link.professional
       patient = consultation.patient
-      ine = Ledi::ScreeningFicha.team_ine(professional, unit)
+      dental = consultation.dental?
+      ine = dental ? dental_team_ine(professional, unit) : Ledi::ScreeningFicha.team_ine(professional, unit)
       birth = birth_date(patient)
       effective = Consultations::Effective.call(consultation)
+      procedures = dental ? consultation.dental_procedures.pluck(:procedure_code, :quantity) : []
 
       reasons = []
       reasons << "unit_without_cnes" if unit.cnes.blank?
-      reasons << "professional_without_team" if ine.nil?
+      reasons << "professional_without_team" if ine.nil? && !(dental && unit.kind == "ceo")
       reasons << "professional_without_cns" unless Professionals::Cns.valid?(professional.cns)
       reasons << "citizen_without_birth_date" if birth.nil?
       reasons << "citizen_without_sex" unless Citizen::SEXES.include?(patient.sex)
@@ -91,6 +99,7 @@ module Ledi
         row.terminology == "ciap2" && !Ciap2Code.exists?(release_id: row.terminology_release_id, code: row.code)
       end
       reasons << "unknown_ciap2" if unknown
+      reasons.concat(procedure_reasons(procedures)) if dental
       return [ nil, reasons ] if reasons.any?
 
       started = consultation.started_at
@@ -101,12 +110,44 @@ module Ledi
         started_at: started,
         ended_at: [ consultation.finalized_at, started ].max, ibge_code: CityProfile.current&.ibge_code
       )
-      care = Ledi::Fichas::IndividualCare::Care.new(
-        care_type: consultation.care_type, problems: effective[:problems].map { |row| problem(row, started) },
-        conducts: effective[:conducts], exams: effective[:exam_requests].map(&:sigtap_code),
-        measurements: measurements(consultation, attendance)
-      )
+      problems = effective[:problems].map { |row| problem(row, started) }
+      exams = effective[:exam_requests].map(&:sigtap_code)
+      measured = measurements(consultation, attendance)
+      return [ dental_ficha(consultation, identity, procedures, problems, exams, measured), [] ] if dental
+
+      care = Ledi::Fichas::IndividualCare::Care.new(care_type: consultation.care_type, problems: problems,
+                                                    conducts: effective[:conducts], exams: exams, measurements: measured)
       [ Ledi::Fichas::IndividualCare.new(identity: identity, care: care, source_id: consultation.id), [] ]
+    end
+
+    def dental_ficha(consultation, identity, procedures, problems, exams, measured)
+      care = Ledi::Fichas::DentalCare::Care.new(
+        care_type: consultation.care_type, consultation_type: consultation.dental_consultation_type,
+        surveillance: consultation.oral_health_surveillance, supplies: consultation.supplies,
+        outcomes: consultation.dental_outcomes, pregnant: consultation.pregnant, special_needs: consultation.special_needs,
+        procedures: procedures, problems: problems, exams: exams, measurements: measured
+      )
+      Ledi::Fichas::DentalCare.new(identity: identity, care: care, source_id: consultation.id)
+    end
+
+    # Review Focus 2: o dentista da eSB e da eSF na mesma UBS leva o INE da eSB;
+    # sem eSB, a equipe de sempre. A eSB chega do CNES na Task 13
+    # (Cnes::Apply com o tipo 71): é por aqui que ela passa a valer.
+    def dental_team_ine(professional, unit)
+      HealthTeamMember.active.joins(:health_team)
+                      .where(professional_id: professional.id,
+                             health_teams: { health_unit_id: unit.id, active: true, kind: DentalCare::Catalog::ORAL_HEALTH_TEAM_KIND })
+                      .order(:started_on, :id).pick("health_teams.ine") || Ledi::ScreeningFicha.team_ine(professional, unit)
+    end
+
+    # Cinto da finalização (O32, Desvio 6): mais de 20 SIGTAP distintos ou
+    # soma por SIGTAP acima do máximo do local → "não gerada", nunca truncada.
+    def procedure_reasons(procedures)
+      sums = procedures.each_with_object(Hash.new(0)) { |(code, quantity), acc| acc[code] += quantity }
+      reasons = []
+      reasons << "too_many_procedure_codes" if sums.size > DentalCare::Catalog::MAX_PROCEDURE_CODES
+      reasons << "quantity_exceeds_location_limit" if sums.any? { |code, total| total > DentalCare::ProcedureLimits.max(code) }
+      reasons
     end
 
     def record_failure!(consultation, reasons)
@@ -229,6 +270,7 @@ module Ledi
     rescue Date::Error
       nil
     end
-    private_class_method :attempt, :latest_entry, :correction!, :problem, :measurements, :birth_date
+    private_class_method :attempt, :latest_entry, :correction!, :problem, :measurements, :birth_date, :dental_ficha,
+                         :dental_team_ine, :procedure_reasons
   end
 end

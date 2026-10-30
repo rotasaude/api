@@ -52,7 +52,14 @@ RSpec.describe "Contrato LEDI 8.7.0" do
     [ "ras/cadastro_domiciliar.thrift", "CondicaoMoradiaThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastrodomiciliar::CondicaoMoradiaThrift",
     [ "ras/cadastro_domiciliar.thrift", "FamiliaRowThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastrodomiciliar::FamiliaRowThrift",
     [ "ras/cadastro_domiciliar.thrift", "InstituicaoPermanenciaThrift" ] => "Br::Gov::Saude::Esusab::Ras::Cadastrodomiciliar::InstituicaoPermanenciaThrift",
-    [ "ras/common.thrift", "EnderecoLocalPermanenciaThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::EnderecoLocalPermanenciaThrift"
+    [ "ras/common.thrift", "EnderecoLocalPermanenciaThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::EnderecoLocalPermanenciaThrift",
+    [ "ras/ficha_atendimento_odonto.thrift", "FichaAtendimentoOdontologicoMasterThrift" ] =>
+      "Br::Gov::Saude::Esusab::Ras::Atendodonto::FichaAtendimentoOdontologicoMasterThrift",
+    [ "ras/ficha_atendimento_odonto.thrift", "FichaAtendimentoOdontologicoChildThrift" ] =>
+      "Br::Gov::Saude::Esusab::Ras::Atendodonto::FichaAtendimentoOdontologicoChildThrift",
+    [ "ras/ficha_atendimento_odonto.thrift", "ProcedimentoQuantidadeThrift" ] =>
+      "Br::Gov::Saude::Esusab::Ras::Atendodonto::ProcedimentoQuantidadeThrift",
+    [ "ras/common.thrift", "ExameThrift" ] => "Br::Gov::Saude::Esusab::Ras::Common::ExameThrift"
   }.each do |(file, struct), class_name|
     it "#{class_name.demodulize} tem os mesmos ids e nomes de campo do IDL" do
       expected = idl_fields(file, struct)
