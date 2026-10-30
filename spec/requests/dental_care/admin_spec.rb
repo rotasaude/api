@@ -161,5 +161,38 @@ RSpec.describe "Saúde bucal — administração", type: :request do
       expect(response).to have_http_status(:created)
       expect(HealthUnit.find_by!(name: "CEO Boqueirão").kind).to eq("ceo")
     end
+
+    it "a lista das unidades traz ceo_profile só na unidade ceo (nulo sem perfil); UBS sem a chave" do
+      with_profile = ceo_unit!(type: "II", specialties: %w[endodontics prosthesis])
+      bare = ceo
+      ubs
+      sign_in_as(admin)
+      %w[/attendance/units /attendance/units/all].each do |path|
+        get path
+        units = json_body.fetch("units").index_by { |u| u.fetch("id") }
+        expect(units.fetch(with_profile.id)["ceo_profile"]).to eq("ceo_type" => "II", "specialties" => %w[endodontics prosthesis])
+        expect(units.fetch(bare.id)).to have_key("ceo_profile")
+        expect(units.fetch(bare.id)["ceo_profile"]).to be_nil
+        expect(units.fetch(ubs.id)).not_to have_key("ceo_profile")
+      end
+    end
+
+    it "trocar o tipo de ceo com perfil para outro → 409 unit_has_ceo_profile, e o perfil e o tipo ficam" do
+      unit = ceo_unit!(type: "I", specialties: %w[stomatology])
+      stepped_up!(admin)
+      json_post "/attendance/units/#{unit.id}", name: unit.name, kind: "ubs"
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "unit_has_ceo_profile" } ])
+      expect(unit.reload.kind).to eq("ceo")
+      expect(CeoProfile.where(health_unit: unit).count).to eq(1)
+    end
+
+    it "trocar o tipo de ceo sem perfil → 200; manter ceo com perfil e renomear → 200" do
+      stepped_up!(admin)
+      json_post "/attendance/units/#{ceo.id}", name: ceo.name, kind: "ubs"
+      expect([ response.status, json_body.dig("unit", "kind") ]).to eq([ 200, "ubs" ])
+      unit = ceo_unit!(type: "I", specialties: %w[stomatology])
+      json_post "/attendance/units/#{unit.id}", name: "CEO Renomeado", kind: "ceo"
+      expect([ response.status, json_body.dig("unit", "ceo_profile") ]).to eq([ 200, { "ceo_type" => "I", "specialties" => %w[stomatology] } ])
+    end
   end
 end

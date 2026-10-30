@@ -13,7 +13,7 @@ class HealthUnitsController < ApplicationController
   before_action :set_unit, only: %i[update deactivate activate drain]
 
   def index
-    render json: { units: HealthUnit.active_units.map { |u| unit_json(u) } }
+    render json: { units: HealthUnit.active_units.includes(:ceo_profile).map { |u| unit_json(u) } }
   end
 
   # Para o admin: cada unidade com quantos pedidos vivos e horários marcados
@@ -21,7 +21,7 @@ class HealthUnitsController < ApplicationController
   def all
     requests = AppointmentRequest.live_requests.group(:target_unit_id).count
     appointments = Appointment.live.group(:health_unit_id).count
-    render json: { units: HealthUnit.order(:name).map do |u|
+    render json: { units: HealthUnit.includes(:ceo_profile).order(:name).map do |u|
       unit_json(u, include_active: true).merge(live_requests_count: requests[u.id] || 0,
                                                live_appointments_count: appointments[u.id] || 0)
     end }
@@ -56,6 +56,10 @@ class HealthUnitsController < ApplicationController
     return render json: { error: "not_found" }, status: :not_found unless @unit
 
     @unit.assign_attributes(name: params[:name], kind: params[:kind])
+    # ADR 0046 (D10): o perfil do CEO nunca some; a unidade que o tem segue `ceo`.
+    if @unit.kind_changed? && @unit.kind_was == "ceo" && @unit.ceo_profile
+      return render json: { error: "unit_has_ceo_profile" }, status: :conflict
+    end
     error = assign_address(@unit) || assign_cnes(@unit) || assign_screening_scope(@unit) ||
             assign_collects_samples(@unit) || assign_notifying(@unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
@@ -206,11 +210,16 @@ class HealthUnitsController < ApplicationController
     end
   end
 
+  def ceo_profile_json(profile)
+    profile && { ceo_type: profile.ceo_type, specialties: profile.specialties }
+  end
+
   def unit_json(unit, include_active: false)
     json = { id: unit.id, name: unit.name, kind: unit.kind, cnes: unit.cnes, screening_scope: unit.screening_scope,
              collects_samples: unit.collects_samples, notifying: unit.notifying }
            .merge(unit.slice(*ADDRESS_FIELDS).symbolize_keys)
     json[:active] = unit.active if include_active
+    json[:ceo_profile] = ceo_profile_json(unit.ceo_profile) if unit.kind == "ceo"
     json
   end
 end
