@@ -105,4 +105,29 @@ RSpec.describe "Unidades de saúde — pendência da farmácia (H14)", type: :re
     expect(unit_lock).to be_present
     expect(statements[unit_lock..].grep(/FROM "stock_lots"/).grep(/FOR (UPDATE|SHARE)/)).to be_empty
   end
+
+  # Revisão final: o interruptor (Platform::Features, outra conexão, credenciais
+  # e perfil) é lido ANTES do FOR UPDATE da unidade. Um StatementInvalid
+  # resgatado lá dentro abortaria a transação da unidade e o deactivate viraria
+  # 500 em qualquer cidade.
+  it "o interruptor pharmacy é lido antes da trava da unidade, nunca com ela presa" do
+    sent_transfer!(from: central_location!, to: location)
+    statements = []
+    gate_at = []
+    allow(Pharmacy::Gate).to receive(:usable?).and_wrap_original do |original, *args|
+      gate_at << statements.size
+      original.call(*args)
+    end
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") { |*, payload| statements << payload[:sql] }
+    begin
+      deactivate!
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber)
+    end
+    expect([ response.status, body ]).to eq([ 409, { "error" => "pharmacy_pending" } ])
+    unit_lock = statements.index { |sql| sql.include?('FROM "health_units"') && sql.include?("FOR UPDATE") }
+    expect(unit_lock).to be_present
+    expect(gate_at).to be_present
+    expect(gate_at).to all(be <= unit_lock)
+  end
 end
