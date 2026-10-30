@@ -101,6 +101,18 @@ RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
       expect(arriving["lots"]).to eq([ { "lot" => lot_json(lot_a), "balance" => "0.00", "in_transit" => "40.00", "expiring_soon" => true, "expired" => false } ])
     end
 
+    it "lote zerado que já teve movimento vem em lots[] com balance 0.00 e as marcas normais; expiring=true não o traz" do
+      old = stocked_lot!(central, item: amoxicilina, quantity: "4", lot_number: "ZERO-OLD", expires_on: today - 3)
+      adjust!(central, old, by: central_keeper, kind: "expiry", quantity: "4", reason: "Lote vencido descartado")
+
+      row = positions(location_id: central.id, catalog_item_id: amoxicilina.id)["positions"].sole
+      expect(row).to include("balance" => "0.00", "expiring_soon" => false)
+      expect(row["lots"].sole).to include("balance" => "0.00", "in_transit" => "0.00", "expiring_soon" => false, "expired" => true)
+      expect(row["lots"].sole["lot"]).to include("id" => old.id, "lot_number" => "ZERO-OLD")
+      expect(positions(location_id: central.id, expiring: "true")["positions"].map { |position| position.dig("item", "catalog_item_id") })
+        .not_to include(amoxicilina.id)
+    end
+
     it "lote vencido: expired true e expiring_soon false no lote, e a posição entra em expiring_soon" do
       stocked_lot!(central, item: amoxicilina, quantity: "12", lot_number: "OLD", expires_on: today - 3)
       body = positions(location_id: central.id, catalog_item_id: amoxicilina.id)
@@ -503,6 +515,16 @@ RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
       expect(body).to eq("expiring" => 2, "expired" => 1, "below_minimum" => 2, "in_transit" => 2, "pending_adjustments" => 1)
       expect(body.values).to all(be_an(Integer))
       expect(body.keys).to eq(%w[expiring expired below_minimum in_transit pending_adjustments])
+    end
+
+    it "lote zerado (vencido ou vencendo) que continua listado na posição não entra em expiring nem em expired" do
+      old = stocked_lot!(farmacia, item: losartana, quantity: "3", lot_number: "Z-OLD", expires_on: today - 4)
+      soon = stocked_lot!(farmacia, item: amoxicilina, quantity: "3", lot_number: "Z-SOON", expires_on: today + 10)
+      adjust!(farmacia, old, by: stock_keeper, kind: "expiry", quantity: "3", reason: "Lote vencido descartado")
+      adjust!(farmacia, soon, by: stock_keeper, kind: "loss", quantity: "3", reason: "Frascos quebrados no armário")
+
+      expect(positions({ location_id: farmacia.id }, as: pharmacist)["positions"].flat_map { |position| position["lots"].map { |lot| lot["balance"] } }).to eq(%w[0.00 0.00])
+      expect(alerts).to include("expiring" => 0, "expired" => 0)
     end
 
     it "as contagens são do local pedido: o central não herda o que é da UBS" do

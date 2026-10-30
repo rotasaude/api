@@ -11,9 +11,11 @@
 # filtros `expiring` e `below_minimum` rodam em SQL ANTES do limite, então a
 # página nunca vem curta por causa deles.
 #
-# `lots[]` traz só lote com saldo > 0 ou em trânsito > 0, em ordem FEFO
-# (validade, número, id), cada um com `balance`, `in_transit` e as marcas do
-# lote: `expired` (validade < hoje) e `expiring_soon` (não vencido e validade
+# `lots[]` traz todo lote que JÁ TEVE movimento no local ou está em trânsito
+# para ele, em ordem FEFO (validade, número, id): o lote com saldo 0 e sem
+# trânsito fica, para a tela de inventário poder contar "caixa que o sistema dava
+# como zerada". Lote sem movimento nem trânsito no local nunca aparece. Cada
+# um com `balance`, `in_transit` e as marcas do lote: `expired` (validade < hoje) e `expiring_soon` (não vencido e validade
 # <= hoje + expiry_alert_days). Na POSIÇÃO, `expiring_soon` = algum lote com
 # saldo > 0 e validade <= hoje + expiry_alert_days (inclui os já vencidos: é o
 # que a tela "vencendo e vencidos" lista). `below_minimum` = mínimo > 0 e saldo
@@ -113,13 +115,14 @@ module Pharmacy
       StockMovement.connection.select_all(StockMovement.sanitize_sql_array([ sql, values ])).to_a
     end
 
-    # Lotes das posições da página: só com saldo > 0 ou em trânsito > 0.
+    # Lotes das posições da página: todo lote com movimento no local ou em
+    # trânsito para ele (a CTE `lots` só nasce disso), inclusive com saldo 0.
     def lot_rows(keys)
       return [] if keys.empty?
 
       connection = StockMovement.connection
       pairs = keys.map { |location, item| "(CAST(#{connection.quote(location)} AS uuid), CAST(#{connection.quote(item)} AS uuid))" }.join(", ")
-      query("SELECT * FROM lots WHERE (balance > 0 OR in_transit > 0) AND (location_id, catalog_item_id) IN (#{pairs})",
+      query("SELECT * FROM lots WHERE (location_id, catalog_item_id) IN (#{pairs})",
             location_ids: keys.map(&:first).uniq, item_ids: keys.map(&:last).uniq, cutoff: Time.zone.today)
     end
 

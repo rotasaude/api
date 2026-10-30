@@ -62,13 +62,33 @@ RSpec.describe Pharmacy::Positions do
     expect(lot_flags(unit_position)).to eq("T-1" => [ "40.00", "0.00", false, false ])
   end
 
-  it "lote com saldo 0 só aparece se tiver em trânsito: esgotado no central some de lots[], a posição continua com saldo 0.00" do
+  it "lote esgotado no central que já teve movimento continua em lots[] com saldo 0.00; na UBS vem em trânsito" do
     lot = stocked_lot!(central, item: paracetamol, quantity: "60", lot_number: "Z-1")
     send_to_unit!([ lot, "60" ])
 
     result = call
-    expect(of(result, central, paracetamol)).to include(balance: "0.00", lots: [])
+    expect(of(result, central, paracetamol)).to include(balance: "0.00")
+    expect(lot_flags(of(result, central, paracetamol))).to eq("Z-1" => [ "0.00", "0.00", false, false ])
     expect(lot_flags(of(result, farmacia, paracetamol))).to eq("Z-1" => [ "0.00", "60.00", false, false ])
+  end
+
+  it "lote zerado por baixa, com as marcas normais, fica em lots[] ao lado do lote com saldo" do
+    gone = stocked_lot!(central, item: paracetamol, quantity: "10", lot_number: "GONE", expires_on: today + 20)
+    stocked_lot!(central, item: paracetamol, quantity: "30", lot_number: "LIVE", expires_on: today + 300)
+    Pharmacy::RequestAdjustment.call(location: central, lot: gone, kind: "loss", counted_quantity: nil, quantity: "10",
+                                     reason: "Frascos quebrados no armário", by: keeper, settings: settings)
+
+    position = of(call(location_ids: [ central.id ]), central, paracetamol)
+    expect(position[:balance]).to eq("30.00")
+    expect(lot_flags(position)).to eq("GONE" => [ "0.00", "0.00", true, false ], "LIVE" => [ "30.00", "0.00", false, false ])
+  end
+
+  it "lote que nunca teve movimento nem trânsito no local não aparece, mesmo existindo em outro local" do
+    stocked_lot!(central, item: paracetamol, quantity: "60", lot_number: "ONLY-CENTRAL")
+    stocked_lot!(farmacia, item: paracetamol, quantity: "5", lot_number: "ONLY-UBS")
+
+    expect(lot_flags(of(call, farmacia, paracetamol))).to eq("ONLY-UBS" => [ "5.00", "0.00", false, false ])
+    expect(lot_flags(of(call, central, paracetamol))).to eq("ONLY-CENTRAL" => [ "60.00", "0.00", false, false ])
   end
 
   it "marcas por lote: vencido (validade < hoje), vencendo (hoje até hoje + 90) e em dia; a posição marca expiring_soon com lote vencendo ou vencido" do
@@ -98,12 +118,14 @@ RSpec.describe Pharmacy::Positions do
     expect(of(call(settings: Pharmacy::Settings.current), central, paracetamol)[:expiring_soon]).to be(false)
   end
 
-  it "lote vencido sem saldo não marca a posição como vencendo" do
+  it "lote vencido sem saldo continua em lots[] (expired true, saldo 0.00) mas não marca a posição como vencendo" do
     lot = stocked_lot!(central, item: paracetamol, quantity: "10", lot_number: "OLD", expires_on: today - 2)
     Pharmacy::RequestAdjustment.call(location: central, lot: lot, kind: "expiry", counted_quantity: nil, quantity: "10",
                                      reason: "Lote vencido descartado", by: keeper, settings: settings)
 
-    expect(of(call, central, paracetamol)).to include(balance: "0.00", lots: [], expiring_soon: false)
+    position = of(call, central, paracetamol)
+    expect(position).to include(balance: "0.00", expiring_soon: false)
+    expect(lot_flags(position)).to eq("OLD" => [ "0.00", "0.00", false, true ])
   end
 
   it "mínimo 50 com saldo 40 → below_minimum; saldo 50 não; mínimo 0 vira minimum null" do
@@ -178,6 +200,27 @@ RSpec.describe Pharmacy::Positions do
       page = call(limit: 1, expiring: true)
       expect(keys(page)).to eq([ [ central.id, amoxicilina.id ] ])
       expect(page[:next_before]).to be_nil
+    end
+
+    it "expiring=true não traz a posição cuja única pendência é um lote zerado vencido; com saldo vencendo ela entra" do
+      old = stocked_lot!(central, item: amoxicilina, quantity: "5", lot_number: "P-OLD", expires_on: today - 3)
+      Pharmacy::RequestAdjustment.call(location: central, lot: old, kind: "expiry", counted_quantity: nil, quantity: "5",
+                                       reason: "Lote vencido descartado", by: keeper, settings: settings)
+      expect(keys(call(expiring: true))).to eq([])
+      expect(keys(call)).to include([ central.id, amoxicilina.id ])
+
+      stocked_lot!(central, item: amoxicilina, quantity: "2", lot_number: "P-SOON", expires_on: today + 10)
+      expect(keys(call(expiring: true))).to eq([ [ central.id, amoxicilina.id ] ])
+    end
+
+    it "below_minimum segue o saldo total: lote zerado ao lado de lote com saldo acima do mínimo não alerta" do
+      zeroed = stocked_lot!(central, item: amoxicilina, quantity: "5", lot_number: "P-ZERO")
+      Pharmacy::RequestAdjustment.call(location: central, lot: zeroed, kind: "loss", counted_quantity: nil, quantity: "5",
+                                       reason: "Frascos quebrados no armário", by: keeper, settings: settings)
+      minimum!(central, amoxicilina, 8)
+      expect(keys(call(below_minimum: true))).to eq([ [ central.id, amoxicilina.id ] ])
+      stocked_lot!(central, item: amoxicilina, quantity: "10", lot_number: "P-FULL")
+      expect(keys(call(below_minimum: true))).to eq([])
     end
 
     it "catalog_item_ids e location_ids restringem; lista vazia de itens não traz nada" do
