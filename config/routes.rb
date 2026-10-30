@@ -549,6 +549,11 @@ Rails.application.routes.draw do
     post   "patients/duplicates",       to: "duplicates#create"
     # Receita externa digitada na farmácia, com trilha por pessoa (Task 10).
     post   "external_prescriptions",    to: "external_prescriptions#create"
+    # Dispensação pela receita, histórico de retiradas do paciente (nominal, com
+    # trilha) e devolução ao lote (Task 11).
+    post   "dispensations",             to: "dispensations#create"
+    get    "dispensations",             to: "dispensations#index"
+    post   "returns",                   to: "returns#create"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.

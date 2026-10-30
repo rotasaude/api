@@ -1,7 +1,11 @@
 # O que já saiu de cada item da receita (ADR 0045, Desvio 9; contrato H3): o
 # total dispensado, o dia da última retirada (no fuso da cidade) e se alguém
-# marcou o item como completo. Conta por ITEM da receita. Devolução não entra
-# na conta: o total é o que foi dispensado.
+# marcou o item como completo. Conta por ITEM da receita.
+#
+# Devolução (Desvio 12) abate: o total é LÍQUIDO (dispensado − devolvido),
+# porque devolver libera nova retirada. Uma linha devolvida por inteiro é como
+# se não tivesse saído: não conta para a última retirada (o intervalo do uso
+# contínuo) nem para o `completed`. Devolução parcial mantém a linha.
 module Pharmacy
   module Dispensed
     module_function
@@ -10,21 +14,35 @@ module Pharmacy
     # (todo item da receita aparece, com zero se nada saiu).
     def summary(prescription) = summaries([ prescription ]).fetch(prescription.id)
 
-    # Numa consulta por tipo de receita: { prescription_id => summary }.
+    # Numa consulta por tipo de receita (mais uma para as devoluções):
+    # { prescription_id => summary }.
     def summaries(prescriptions)
       prescriptions.group_by(&:kind).each_with_object({}) do |(kind, group), result|
         column = kind == "digital" ? :prescription_item_id : :external_prescription_item_id
         ids = group.flat_map { |prescription| prescription.items.map(&:id) }
         rows = DispensationItem.joins(:dispensation).where(column => ids)
-                               .pluck(column, :quantity, :completes_item, "dispensations.dispensed_at").group_by(&:first)
+                               .pluck(:id, column, :quantity, :completes_item, "dispensations.dispensed_at")
+        returned = returned_totals(rows.map(&:first))
+        lines = rows.filter_map do |id, item_id, quantity, completes, at|
+          net = quantity - returned.fetch(id, BigDecimal("0"))
+          { item_id: item_id, net: net, completes: completes, at: at } if net.positive?
+        end.group_by { |line| line[:item_id] }
         group.each do |prescription|
           result[prescription.id] = prescription.items.to_h do |item|
-            lines = rows.fetch(item.id, [])
-            [ item.id, { total: lines.sum(BigDecimal("0")) { |line| line[1] }, last_on: lines.map { |line| line[3] }.max&.in_time_zone&.to_date,
-                         completed: lines.any? { |line| line[2] } } ]
+            found = lines.fetch(item.id, [])
+            [ item.id, { total: found.sum(BigDecimal("0")) { |line| line[:net] }, last_on: found.map { |line| line[:at] }.max&.in_time_zone&.to_date,
+                         completed: found.any? { |line| line[:completes] } } ]
           end
         end
       end
+    end
+
+    # Devolvido por item dispensado: { dispensation_item_id => BigDecimal }.
+    def returned_totals(dispensation_item_ids)
+      return {} if dispensation_item_ids.empty?
+
+      StockMovement.where(kind: "return", dispensation_item_id: dispensation_item_ids).group(:dispensation_item_id).sum(:quantity)
+                   .transform_values(&:to_d)
     end
   end
 end

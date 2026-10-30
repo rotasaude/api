@@ -1,5 +1,7 @@
 # Formas JSON da farmácia (ADR 0045; contrato §2 e H1): `<item>`, `<lot>` e
-# `<location>`. Só estoque e catálogo: nenhum dado de paciente passa por aqui.
+# `<location>`. Só estoque e catálogo: nenhum dado de paciente passa por aqui,
+# exceto nas formas NOMINAIS (<prescription_view> e <dispensation>), cujo
+# chamador grava a trilha.
 #
 # `item.unit` é a unidade da CONCENTRAÇÃO ("mg", a do catálogo); a unidade de
 # dispensação ("comprimido") vai em `item.dispensing_unit`: a gravada no lote
@@ -124,6 +126,41 @@ module Pharmacy
         retention_required: item.retention_required, valid_until: item.valid_until.iso8601,
         expired: Validity.expired?(item.valid_until, today: today), dispensed_total: Quantity.dump(summary[:total]),
         last_dispensed_on: summary[:last_on]&.iso8601, next_allowed_on: next_allowed&.iso8601, completed: summary[:completed] }
+    end
+
+    # Relações que `dispensation` lê (para o includes de quem chama).
+    DISPENSATION_PRELOAD = [ { stock_location: :health_unit }, { dispensed_by_user: :professional }, { items: :stock_lot } ].freeze
+
+    # <dispensation> (contrato §2, H2, H12): NOMINAL (quem lista grava a trilha).
+    # `{ id, location, prescription: { kind, id }, patient: { id, display_name,
+    # has_cpf, cns_masked }, by: { name, role }, at, items, retention }`; cada
+    # item `{ id, prescription_item_id, catalog_item_id, item: <item>|null,
+    # lot_id, lot: { id, lot_number, expires_on }, quantity, returned_total,
+    # mapped_from_free_text }`, com a unidade de dispensação do LOTE.
+    # `prescription_item_id` é o id do item da receita (do 19c ou da externa), o
+    # mesmo da <prescription_view>. `retention` só quando `retained`
+    # (`{ notification_number|null }`), senão null. `returned` = devolvido por
+    # item (Dispensed.returned_totals; lido aqui quando não vem).
+    def dispensation(dispensation, catalog:, patient:, returned: nil)
+      rows = dispensation.items.sort_by { |row| [ row.created_at, row.id ] }
+      returned ||= Dispensed.returned_totals(rows.map(&:id))
+      { id: dispensation.id, location: location(dispensation.stock_location),
+        prescription: { kind: dispensation.clinical_document_id ? "digital" : "external",
+                        id: dispensation.clinical_document_id || dispensation.external_prescription_id },
+        patient: { id: patient.id, display_name: patient.display_name, **Patients::IdentifierJson.call(patient) },
+        by: { name: dispensation.dispensed_by_user.professional&.professional_name, role: dispensation.dispensed_by_role },
+        at: dispensation.dispensed_at.iso8601,
+        items: rows.map { |row| dispensation_item(row, catalog: catalog, returned: returned.fetch(row.id, BigDecimal("0"))) },
+        retention: dispensation.retained ? { notification_number: dispensation.notification_number } : nil }
+    end
+
+    def dispensation_item(row, catalog:, returned:)
+      lot = row.stock_lot
+      entry = catalog[row.catalog_item_id]
+      { id: row.id, prescription_item_id: row.prescription_item_id || row.external_prescription_item_id, catalog_item_id: row.catalog_item_id,
+        item: entry && item(entry, dispensing_unit: lot.dispensing_unit), lot_id: lot.id,
+        lot: { id: lot.id, lot_number: lot.lot_number, expires_on: lot.expires_on.iso8601 },
+        quantity: Quantity.dump(row.quantity), returned_total: Quantity.dump(returned), mapped_from_free_text: row.mapped_from_free_text }
     end
 
     # Paciente achado pela busca de pessoa (contrato §2, L8 do 24a): só

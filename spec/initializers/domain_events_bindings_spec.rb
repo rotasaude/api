@@ -345,4 +345,11 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include(*names)
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
+
+  # Dispensação e devolução; só ids (dispensation_id, user_id), sem consumidor.
+  it "declares dispensation.recorded and dispensation.returned with no consumer" do
+    names = %w[dispensation.recorded dispensation.returned]
+    expect(DomainEvents.registry.keys).to include(*names)
+    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  end
 end

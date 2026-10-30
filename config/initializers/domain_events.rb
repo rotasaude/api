@@ -263,6 +263,11 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "stock_adjustment.recorded", to: []
   DomainEvents.bind "stock_adjustment.approved", to: []
   DomainEvents.bind "stock_adjustment.rejected", to: []
+  # Dispensação pela receita e devolução de parte de um item dispensado; só
+  # trilha, só ids (dispensation_id, user_id) — nunca paciente, medicamento,
+  # lote, quantidade, número da notificação nem motivo —, sem consumidor.
+  DomainEvents.bind "dispensation.recorded", to: []
+  DomainEvents.bind "dispensation.returned", to: []
   # Andamento do pedido de regulação (CareRegulation::Transition; contrato §11,
   # §13 G6) e prestadores/ofertas (R12): só ids (regulation_request_id e
   # user_id; care_provider_id/care_offer_id e user_id) — nunca alvo, cor,

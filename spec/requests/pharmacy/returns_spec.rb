@@ -1,0 +1,132 @@
+require "rails_helper"
+
+# Módulo 27a, Task 11 (ADR 0045; Desvio 12; contrato H9/H12; ruling do
+# controlador): POST /pharmacy/returns `{ location_id, dispensation_item_id,
+# quantity, reason }` → 201 com o <dispensation> inteiro atualizado (itens com
+# `returned_total`). Sem step-up. Farmacêutico ou auxiliar do local da
+# dispensação; item de outro local → 404. Volta ao mesmo lote como `return`,
+# com o motivo só no corpo (extrato); evento dispensation.returned só com ids.
+RSpec.describe "Farmácia — devolução", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
+  let!(:city) { pharmacy_city! }
+  let!(:central) { central_location! }
+  let(:unit) { create_unit("UBS Jardim das Flores") }
+  let!(:farmacia) { unit_location!(unit) }
+  let(:pharmacist) { pharmacy_staff!(farmacia, "pharmacist") }
+  let(:assistant) { pharmacy_staff!(farmacia, "pharmacy_assistant") }
+  let(:json_headers) { { "Content-Type" => "application/json" } }
+  let(:consultation) { pharmacy_consultation! }
+  let(:patient) { consultation.patient }
+  let(:document) { pharmacy_prescription!(consultation: consultation, items: [ { catalog: losartana, continuous: true } ]) }
+  let!(:lot) { stocked_lot!(farmacia, item: losartana, quantity: "100", lot_number: "LOS-DEV-1") }
+  let(:reason) { "Paciente trocou de medicamento e devolveu a caixa lacrada" }
+  let!(:dispensed) do
+    prescription = Pharmacy::Prescription.find(kind: "digital", id: document.id, settings: Pharmacy::Settings.current)
+    result = Pharmacy::Dispense.call(location: farmacia, prescription: prescription, retention: nil, by: pharmacist, role: "pharmacist",
+                                     items: [ { "prescription_item_id" => document.prescription_items.first.id, "lot_id" => lot.id, "quantity" => "30" } ],
+                                     catalog: Pharmacy::Json.catalog_for([ losartana.id ]), settings: Pharmacy::Settings.current)
+    raise result.inspect if result.failure?
+
+    result.payload.fetch(:dispensation).items.sole
+  end
+
+  def post_json(path, body, query: "") = post("#{path}#{query}", params: body.to_json, headers: json_headers)
+  def give_back(quantity = "5", location: farmacia, item_id: dispensed.id, why: reason, query: "")
+    post_json("/pharmacy/returns", { location_id: location.id, dispensation_item_id: item_id, quantity: quantity, reason: why }, query: query)
+  end
+  def refusal(error, path) = { "error" => error, "path" => path, "problems" => [ { "path" => path, "error" => error } ] }
+
+  it "devolver 5 de 30: 201 com o <dispensation> atualizado, saldo +5 e o extrato com o return e o motivo" do
+    sign_in_as(assistant)
+    give_back("5")
+    expect(response).to have_http_status(:created)
+    expect(json_body["id"]).to eq(dispensed.dispensation_id)
+    expect(json_body["items"].sole).to include("id" => dispensed.id, "quantity" => "30.00", "returned_total" => "5.00", "lot_id" => lot.id)
+    expect(json_body["by"]).to eq("name" => pharmacist.professional.professional_name, "role" => "pharmacist")
+    expect(json_body.keys).to eq(%w[id location prescription patient by at items retention])
+    expect(balance_of(farmacia, lot)).to eq(75)
+    movement = StockMovement.find_by!(kind: "return")
+    expect(movement).to have_attributes(quantity: BigDecimal("5"), stock_lot_id: lot.id, stock_location_id: farmacia.id, dispensation_item_id: dispensed.id,
+                                        recorded_by_user_id: assistant.id, reason: reason)
+    expect(DomainEvent.where(name: "dispensation.returned").sole.payload).to eq("dispensation_id" => dispensed.dispensation_id, "user_id" => assistant.id)
+
+    get "/pharmacy/lots/#{lot.id}/movements?location_id=#{farmacia.id}"
+    expect(response).to have_http_status(:ok)
+    expect(json_body["balance"]).to eq("75.00")
+    expect(json_body["movements"].first).to include("kind" => "return", "quantity" => "5.00", "reason" => reason,
+                                                    "document" => { "type" => "dispensation", "id" => dispensed.dispensation_id, "number" => nil })
+  end
+
+  it "o total dispensado da receita fica líquido; devolver tudo libera nova retirada do contínuo" do
+    sign_in_as(pharmacist)
+    give_back("30")
+    expect(response).to have_http_status(:created)
+    post_json("/pharmacy/prescriptions/lookup", { location_id: farmacia.id, short_code: document.short_code })
+    expect(json_body["prescriptions"].sole["items"].sole).to include("dispensed_total" => "0.00", "last_dispensed_on" => nil, "next_allowed_on" => nil)
+  end
+
+  it "devolver mais que o restante → return_exceeds; até o restante passa; nada além" do
+    sign_in_as(pharmacist)
+    give_back("20")
+    give_back("10.01")
+    expect([ response.status, json_body ]).to eq([ 422, refusal("return_exceeds", "quantity") ])
+    give_back("10")
+    expect(response).to have_http_status(:created)
+    expect(json_body["items"].sole["returned_total"]).to eq("30.00")
+    give_back("0.01")
+    expect([ response.status, json_body ]).to eq([ 422, refusal("return_exceeds", "quantity") ])
+    expect(balance_of(farmacia, lot)).to eq(100)
+  end
+
+  it "motivo curto → invalid_reason; com quantidade inválida, as duas juntas; motivo longo demais também" do
+    sign_in_as(pharmacist)
+    give_back("5", why: "curto")
+    expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_reason", "reason") ])
+    give_back("1,5", why: nil)
+    expect(json_body).to eq("error" => "invalid_quantity", "path" => "quantity",
+                            "problems" => [ { "path" => "quantity", "error" => "invalid_quantity" }, { "path" => "reason", "error" => "invalid_reason" } ])
+    give_back("5", why: "a" * 501)
+    expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_reason", "reason") ])
+    expect(StockMovement.where(kind: "return").count).to eq(0)
+  end
+
+  it "lote vencido → lot_expired" do
+    sign_in_as(pharmacist)
+    travel_to(lot.expires_on.in_time_zone + 1.day) do
+      sign_in_as(pharmacist)
+      give_back("5")
+      expect([ response.status, json_body ]).to eq([ 422, refusal("lot_expired", "dispensation_item_id") ])
+    end
+  end
+
+  it "auxiliar de outra UBS → 404 (pelo próprio local) e 403 (pelo local alheio); item inexistente → 404; id malformado → 422" do
+    other = unit_location!
+    stranger = pharmacy_staff!(other, "pharmacy_assistant")
+    sign_in_as(stranger)
+    give_back("5", location: other)
+    expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
+    give_back("5", location: farmacia)
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    sign_in_as(assistant)
+    give_back("5", item_id: SecureRandom.uuid)
+    expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
+    give_back("5", item_id: "123")
+    expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "dispensation_item_id") ])
+    expect(StockMovement.where(kind: "return").count).to eq(0)
+  end
+
+  it "almoxarife do local → 403; chave na query → 422; o motivo não vai ao log nem ao evento" do
+    keeper = pharmacy_staff!(farmacia, "stock_keeper")
+    sign_in_as(keeper)
+    give_back("5")
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    sign_in_as(assistant)
+    give_back("5", query: "?reason=x")
+    expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "reason") ])
+    log = capture_log { give_back("5") }
+    expect(response).to have_http_status(:created)
+    expect(log).not_to include("trocou de medicamento")
+    expect(DomainEvent.where(name: "dispensation.returned").pluck(:payload).to_json).not_to include("trocou")
+  end
+end
