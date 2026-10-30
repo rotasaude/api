@@ -5,7 +5,7 @@ module CareLines
     INDICATORS = { "child_c2" => "C2", "pregnancy_c3" => "C3", "diabetes_c4" => "C4", "hypertension_c5" => "C5",
                    "elderly_c6" => "C6", "women_c7" => "C7" }.freeze
     SOURCE_FORMAT = /\A(consultation|blood_pressure|weight_height|acs_visit|oral_health|exam:02\d{8}|procedure:\d{10}|vaccine:[a-z0-9_]{1,30})\z/
-    UNTRACKED_SOURCE = /\A(acs_visit|oral_health|vaccine:.+)\z/
+    UNTRACKED_SOURCE = /\A(acs_visit|vaccine:.+)\z/
     STATUSES = %w[ok due_soon overdue untracked].freeze
     SCHEDULES = %w[proportional end_of_window].freeze
     ANCHORS = %w[enrollment birth lmp rolling].freeze

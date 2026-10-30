@@ -137,11 +137,12 @@ module CareLines
     # só nela.
     def dates(practice, source, events, from, to)
       list = events.fetch(source, [])
-      if source == "consultation"
+      if source == "consultation" || source == "oral_health"
         cbos = practice["cbo_filter"]
-        codes = practice["code_filter"]
         list = list.select { |e| cbos.nil? || cbos.any? { |prefix| e.cbo.to_s.start_with?(prefix) } }
-        list = list.select { |e| e.codes.any? { |terminology, code| Array(codes[terminology]).any? { |prefix| code.start_with?(prefix) } } } if codes
+      end
+      if source == "consultation" && (codes = practice["code_filter"])
+        list = list.select { |e| e.codes.any? { |terminology, code| Array(codes[terminology]).any? { |prefix| code.start_with?(prefix) } } }
       end
       list.map(&:on).select { |d| d >= from && d <= to }.uniq.sort
     end

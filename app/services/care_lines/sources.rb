@@ -22,6 +22,7 @@ module CareLines
       if sources.include?("consultation") || vitals
         consultations!(result, ids, from, sources)
       end
+      oral_health!(result, ids, from) if sources.include?("oral_health")
       screenings!(result, ids, from, sources) if vitals
       exams!(result, ids, since, sources.grep(/\Aexam:/).map { |s| s.delete_prefix("exam:") })
       procedure_codes = sources.grep(/\Aprocedure:/).map { |s| s.delete_prefix("procedure:") }
@@ -33,18 +34,27 @@ module CareLines
 
     def consultations!(result, ids, from, sources)
       rows = Consultation.finalized_consultations.where(patient_id: ids).where(finalized_at: from..)
-                         .pluck(:id, :patient_id, :finalized_at, :cbo_code, :systolic, :weight_kg, :height_cm)
+                         .pluck(:id, :patient_id, :finalized_at, :cbo_code, :systolic, :weight_kg, :height_cm, :kind)
       codes = if sources.include?("consultation") && rows.any?
                 ConsultationProblem.where(consultation_id: rows.map(&:first)).pluck(:consultation_id, :terminology, :code)
                                    .group_by(&:first).transform_values { |list| list.map { |_, terminology, code| [ terminology, code ] }.uniq }
               else
                 {}
               end
-      rows.each do |id, patient_id, at, cbo, systolic, weight, height|
+      rows.each do |id, patient_id, at, cbo, systolic, weight, height, kind|
         on = at.in_time_zone.to_date
-        result[patient_id]["consultation"] << Event.new(on: on, cbo: cbo, codes: codes.fetch(id, [])) if sources.include?("consultation")
+        result[patient_id]["consultation"] << Event.new(on: on, cbo: cbo, codes: codes.fetch(id, [])) if kind == "general" && sources.include?("consultation")
         result[patient_id]["blood_pressure"] << Event.new(on: on) if systolic && sources.include?("blood_pressure")
         result[patient_id]["weight_height"] << Event.new(on: on) if weight && height && sources.include?("weight_height")
+      end
+    end
+
+    # Marco de saúde bucal (c3_k, módulo 28): só a consulta odontológica finalizada
+    # de gestante; o registro inicial (baseline) nunca conta. Data e CBO como na consulta.
+    def oral_health!(result, ids, from)
+      Consultation.finalized_consultations.where(kind: "dental", baseline: false, pregnant: true, patient_id: ids)
+                  .where(finalized_at: from..).pluck(:patient_id, :finalized_at, :cbo_code).each do |patient_id, at, cbo|
+        result[patient_id]["oral_health"] << Event.new(on: at.in_time_zone.to_date, cbo: cbo)
       end
     end
 
@@ -125,6 +135,6 @@ module CareLines
         (targets & sources).each { |source| result[patient_id][source] << Event.new(on: on) }
       end
     end
-    private_class_method :consultations!, :screenings!, :exams!, :procedures!
+    private_class_method :consultations!, :oral_health!, :screenings!, :exams!, :procedures!
   end
 end

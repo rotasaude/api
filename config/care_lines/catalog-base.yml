@@ -100,7 +100,10 @@
     - { key: c3_j, label: "Visita do ACS no puerpério", source: acs_visit, anchor: lmp, window_start_days: 294, window_days: 336,
         min_count: 1, schedule: end_of_window, points: 9 }
     - { key: c3_k, label: "Atividade de saúde bucal na gestação", source: oral_health, anchor: lmp, window_days: 294, min_count: 1,
-        schedule: end_of_window, points: 9 }
+        schedule: end_of_window, cbo_filter: ["2232", "3224"], points: 9 }
+    # c3_k: só a consulta odontológica finalizada de gestante alimenta oral_health;
+    # a versão já publicada no maintenance sem o cbo_filter dá o mesmo resultado
+    # (o runbook manda publicar a versão nova).
 - key: diabetes_c4
   indicator: C4
   name: "Pessoa com diabetes"

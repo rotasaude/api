@@ -49,7 +49,7 @@ RSpec.describe "Catálogo-base das linhas (notas metodológicas C2–C7 de 19/06
     expect(practice("women_c7", "c7_a")["all_of"].first.last).to eq("source" => "exam:0202100251", "window_days" => 1826)
     expect(practice("women_c7", "c7_c")["applies_to"]).to eq("age_min_years" => 14, "age_max_years" => 69)
     untracked = entries.values.flat_map { |e| e["practices"] }.select { |p| CareLines::Catalog.untracked?(p["source"]) }.map { |p| p["key"] }
-    expect(untracked).to eq(%w[c2_d c2_e c3_e c3_f c3_j c3_k c4_d c5_d c6_c c6_d c7_b])
+    expect(untracked).to eq(%w[c2_d c2_e c3_e c3_f c3_j c4_d c5_d c6_c c6_d c7_b])
   end
 
   # Errata C-api-01 / decisão P6: consulta com código de puerpério (cbo e

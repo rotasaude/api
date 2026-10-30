@@ -50,7 +50,8 @@ RSpec.describe CareLines::Evaluate do
     expect(result["c3_g"]).to have_attributes(status: "due_soon", count: 2, expected: 4, due_on: Date.new(2026, 11, 18), met: false)
     expect(result["c3_h"]).to have_attributes(status: "ok", count: 0, due_on: Date.new(2027, 6, 3), met: false)
     expect(result["c3_i"]).to have_attributes(status: "ok", due_on: Date.new(2027, 7, 15))
-    expect(result.values_at("c3_e", "c3_f", "c3_j", "c3_k").map(&:tracked)).to eq([ false, false, false, false ])
+    expect(result.values_at("c3_e", "c3_f", "c3_j").map(&:tracked)).to eq([ false, false, false ])
+    expect(result["c3_k"]).to have_attributes(tracked: true, met: false)
   end
 
   it "C7: só as práticas da faixa; HPV molecular vale 60 meses; saúde sexual exige o código" do

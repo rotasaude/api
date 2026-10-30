@@ -90,9 +90,10 @@ module CareLines
       raise Invalid, "#{path}.schedule" if schedule == "proportional" && all_of && all_of.size > 1
 
       consultation = source == "consultation"
+      cbo_source = consultation || source == "oral_health"
       cbo = raw["cbo_filter"]
       unless cbo.nil?
-        raise Invalid, "#{path}.cbo_filter" unless consultation && cbo.is_a?(Array) && cbo.size.between?(1, 30) &&
+        raise Invalid, "#{path}.cbo_filter" unless cbo_source && cbo.is_a?(Array) && cbo.size.between?(1, 30) &&
                                                    cbo.all? { |c| c.is_a?(String) && c.match?(/\A\d{4,6}\z/) }
       end
       code_filter = raw["code_filter"].nil? ? nil : codes(raw["code_filter"], "#{path}.code_filter")
