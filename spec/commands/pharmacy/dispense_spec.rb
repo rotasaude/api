@@ -229,6 +229,43 @@ RSpec.describe Pharmacy::Dispense do
     end
   end
 
+  # Ruling do controlador (Task 12): quem manda é o conteúdo da receita. O
+  # catálogo de hoje pode ter deixado de marcar o item como controlado, mas a
+  # receita foi emitida como de controle especial (RCE com número SNCR): só o
+  # farmacêutico dispensa e o número do documento fica na retenção.
+  describe "receita de controle especial cujo item o catálogo deixou de marcar como controlado" do
+    let(:signer) { signer! }
+    let(:document) do
+      sncr_stock!(signer, kind: "rce", count: 1)
+      issue!([ rx_line(fluoxetina) ], by: signer, extra: { "patient_identification" => patient_identification })
+    end
+    let!(:lot) { stocked_lot!(farmacia, item: fluoxetina, quantity: "100") }
+
+    before do
+      document
+      MedicationCatalogItem.find_by!(catmat_code: 9_900_001).update!(controlled: false, controlled_list: nil)
+    end
+
+    it "o item continua controlado para a farmácia (a receita é de controle especial)" do
+      expect(document.content_data["category"]).to eq("special_control")
+      expect(find(document).items.sole).to have_attributes(controlled: true, retention_required: true)
+    end
+
+    it "auxiliar → 403 controlled_requires_pharmacist, sozinho; nada gravado" do
+      result = dispense(document, [ line(item_of(document), lot, "1") ], by: assistant, role: "pharmacy_assistant", retention: {})
+      expect([ result.reason, result.details ]).to eq([ :controlled_requires_pharmacist, {} ])
+      expect(written).to eq([ 0, 0, 0 ])
+    end
+
+    it "farmacêutica grava o número SNCR do documento na retenção" do
+      number = document.content_data.dig("sncr", "number")
+      expect(number).to be_present
+      result = dispense(document, [ line(item_of(document), lot, "1") ], retention: {})
+      expect(result).to be_ok
+      expect(result.payload.fetch(:dispensation)).to have_attributes(retained: true, notification_number: number, dispensed_by_role: "pharmacist")
+    end
+  end
+
   describe "antimicrobiano não controlado (H6/H12)" do
     it "o auxiliar dispensa com retention; sem ela, retention_required; o número do documento NÃO é gravado (null)" do
       amoxicilina.update!(antimicrobial: true)

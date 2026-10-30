@@ -170,8 +170,9 @@ module Pharmacy
       [ catalog[item.catalog_item_id], false, problems ]
     end
 
-    # Controlado: o catálogo (digital), o retrato da lista (externa) ou o item
-    # escolhido para o texto livre.
+    # Controlado: o catálogo ou o conteúdo de controle especial do 19c (digital;
+    # ambos já em `item.controlled`, Prescription.digital), o retrato da lista
+    # (externa) ou o item escolhido para o texto livre.
     def controlled?(line) = line.item.present? && (line.item.controlled || line.entry&.controlled == true)
 
     # H6/H12, recalculado para o texto livre pelo catálogo escolhido.

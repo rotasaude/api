@@ -6,6 +6,10 @@
 # Nada pessoal em inspect, to_s, pretty_print nem as_json: só `kind` e `id`
 # (o envelope e cada item carregam posologia, medicamento e o prescritor).
 #
+# `controlled` do item: o catálogo da plataforma o marca `controlled` OU o
+# conteúdo do 19c é `category == "special_control"` (vale para todos os itens
+# da receita, mesmo que o catálogo atual tenha deixado de marcá-los).
+#
 # `retention_required` do item (H6/H12): o catálogo da plataforma o marca
 # `antimicrobial` OU `controlled`, OU o conteúdo do 19c é `category ==
 # "special_control"` (vale para todos os itens da receita). Receita externa:
@@ -41,7 +45,10 @@ module Pharmacy
       special_control = content["category"] == "special_control"
       items = document.prescription_items.map do |row|
         entry = row.medication_catalog_item_id && catalog[row.medication_catalog_item_id]
-        controlled = entry&.controlled == true
+        # Receita de controle especial do 19c: todo item vale como controlado,
+        # mesmo que o catálogo de hoje já não o marque (a receita foi emitida
+        # assim; só o farmacêutico dispensa e o número SNCR fica na retenção).
+        controlled = entry&.controlled == true || special_control
         antimicrobial = entry&.antimicrobial == true
         valid_until = Validity.item_until(issued_on: issued_on, explicit: explicit, continuous: row.continuous, controlled: controlled,
                                           external: false, settings: settings)
