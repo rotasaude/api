@@ -27,6 +27,10 @@ module DentalCare
       row ? KINDS.fetch(row[:local]) : [ "mouth", *SigtapSituations.locations(code) ]
     end
 
+    # Soma das quantidades por SIGTAP: { código => total }, na ordem de chegada.
+    # Recebe pares [SIGTAP, quantidade] (a finalização, a FAO e o cinto dela).
+    def sums(pairs) = pairs.each_with_object(Hash.new(0)) { |(code, quantity), acc| acc[code] += quantity }
+
     def location_ok?(code, location_kind) = locations(code).include?(location_kind.to_s)
   end
 end

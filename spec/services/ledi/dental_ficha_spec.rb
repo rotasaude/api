@@ -125,6 +125,7 @@ RSpec.describe "Ledi::ConsultationFicha — FAO" do
     consultation = finalized_dental!(unit: unit, by: dentist, citizen: verified_citizen!(1))
     fichas.generate(consultation)
     entry = LediOutboxEntry.sole
+    uuid = entry.uuid
     allow(Ledi::ConsultationFichaJob).to receive(:enqueue_for).and_call_original
 
     findings = addendum!(consultation, "dental" => { "findings" => [ { "tooth" => 16, "situation" => "caries" } ] })
@@ -136,7 +137,7 @@ RSpec.describe "Ledi::ConsultationFicha — FAO" do
     expect(resolved.payload[:ficha_changed]).to be(true)
     expect(Ledi::ConsultationFichaJob).to have_received(:enqueue_for).with(consultation, reason: "addendum")
     expect(fichas.refresh!(consultation.reload)).to eq(:rewritten)
-    expect(entry.reload.uuid).to eq(entry.uuid)
+    expect([ entry.reload.uuid, LediOutboxEntry.count ]).to eq([ uuid, 1 ])
     expect(child_of(entry).problemasCondicoes.sole.situacao).to eq(2)
   end
 

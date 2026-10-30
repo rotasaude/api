@@ -31,14 +31,7 @@ module Ledi
 
       def to_thrift(uuid:)
         Ledi::Version.load!
-        common = Br::Gov::Saude::Esusab::Ras::Common
         ai = Br::Gov::Saude::Esusab::Ras::Atendindividual
-        header = common::VariasLotacoesHeaderThrift.new(
-          lotacaoFormPrincipal: common::LotacaoHeaderThrift.new(profissionalCNS: identity.professional_cns,
-                                                                cboCodigo_2002: identity.cbo, cnes: identity.cnes,
-                                                                ine: identity.ine),
-          dataAtendimento: ms(identity.started_at), codigoIbgeMunicipio: identity.ibge_code
-        )
         child = ai::FichaAtendimentoIndividualChildThrift.new(
           dataNascimento: ms(identity.birth_date.in_time_zone), localDeAtendimento: CM.local_de_atendimento,
           sexo: SM.sex_code(identity.sex), turno: SM.turno(identity.started_at), tipoAtendimento: care.care_type,
@@ -47,11 +40,10 @@ module Ledi
           stCidadaoNaoPossuiCpf: identity.citizen_cpf.nil?,
           justificativaCidadaoNaoPossuiCpf: (identity.citizen_no_cpf_reason if identity.citizen_cpf.nil?),
           ficouEmObservacao: false, medicoes: care.measurements && Medicoes.build(care.measurements),
-          problemasCondicoes: sent_problems.map { |p| problem(common, p) },
-          exame: care.exams.empty? ? nil : care.exams.map { |code| common::ExameThrift.new(codigoExame: code, solicitadoAvaliado: [ CM.exam_requested ]) }
+          problemasCondicoes: sent_problems.map { |p| Common.problem(p, identity.birth_date) }, exame: Common.exams(care.exams)
         )
         ai::FichaAtendimentoIndividualMasterThrift.new(uuidFicha: uuid, tpCdsOrigem: ORIGIN_THIRD_PARTY,
-                                                       headerTransport: header, atendimentosIndividuais: [ child ])
+                                                       headerTransport: Common.header(identity), atendimentosIndividuais: [ child ])
       end
 
       private
@@ -62,19 +54,7 @@ module Ledi
         care.problems.select { |p| p.cid10.nil? }
       end
 
-      def problem(common, p)
-        common::ProblemaCondicaoThrift.new(
-          uuidProblema: p.uuid, uuidEvolucaoProblema: p.evolution_uuid, coSequencialEvolucao: p.sequence, ciap: p.ciap,
-          cid10: p.cid10, situacao: p.situation, dataInicioProblema: p.onset_on && ms(onset(p.onset_on).in_time_zone),
-          dataFimProblema: p.resolved_on && ms(p.resolved_on.in_time_zone), isAvaliado: true
-        )
-      end
-
-      # Regra LEDI: dataInicioProblema >= nascimento (início com precisão de mês
-      # ou ano grava o dia 1, que pode cair antes do nascimento).
-      def onset(date) = [ date, identity.birth_date ].max
-
-      def ms(time) = (time.to_f * 1000).to_i
+      def ms(time) = Common.ms(time)
     end
   end
 end

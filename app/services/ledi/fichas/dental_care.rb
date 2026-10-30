@@ -16,7 +16,6 @@ module Ledi
       ORIGIN_THIRD_PARTY = 3
       CM = Ledi::ConsultationMapping
       SM = Ledi::ScreeningMapping
-      Problem = IndividualCare::Problem
 
       # procedures: pares [SIGTAP, quantidade], um por procedimento da consulta.
       Care = Data.define(:care_type, :consultation_type, :surveillance, :supplies, :outcomes, :pregnant, :special_needs,
@@ -35,20 +34,11 @@ module Ledi
       def source = { type: "Consultation", id: source_id }
 
       # [[SIGTAP, soma das quantidades]], na ordem do código.
-      def procedures
-        care.procedures.each_with_object(Hash.new(0)) { |(code, quantity), acc| acc[code] += quantity }.sort
-      end
+      def procedures = ::DentalCare::ProcedureLimits.sums(care.procedures).sort
 
       def to_thrift(uuid:)
         Ledi::Version.load!
-        common = Br::Gov::Saude::Esusab::Ras::Common
         fao = Br::Gov::Saude::Esusab::Ras::Atendodonto
-        header = common::VariasLotacoesHeaderThrift.new(
-          lotacaoFormPrincipal: common::LotacaoHeaderThrift.new(profissionalCNS: identity.professional_cns,
-                                                                cboCodigo_2002: identity.cbo, cnes: identity.cnes,
-                                                                ine: identity.ine),
-          dataAtendimento: ms(identity.started_at), codigoIbgeMunicipio: identity.ibge_code
-        )
         no_cpf = identity.citizen_cpf.nil?
         child = fao::FichaAtendimentoOdontologicoChildThrift.new(
           dtNascimento: ms(identity.birth_date.in_time_zone), cpfCidadao: identity.citizen_cpf, cnsCidadao: identity.citizen_cns,
@@ -59,14 +49,13 @@ module Ledi
           tiposVigilanciaSaudeBucal: care.surveillance, tiposFornecimOdonto: care.supplies.presence,
           tiposEncamOdonto: care.outcomes,
           procedimentosRealizados: procedures.presence&.map { |code, quantity| fao::ProcedimentoQuantidadeThrift.new(coMsProcedimento: code, quantidade: quantity) },
-          problemasCondicoes: sent_problems.map { |p| problem(common, p) },
-          exame: care.exams.empty? ? nil : care.exams.map { |code| common::ExameThrift.new(codigoExame: code, solicitadoAvaliado: [ CM.exam_requested ]) },
+          problemasCondicoes: sent_problems.map { |p| Common.problem(p, identity.birth_date) }, exame: Common.exams(care.exams),
           medicoes: care.measurements && Medicoes.build(care.measurements),
           sexo: SM.sex_code(identity.sex), turno: SM.turno(identity.started_at),
           dataHoraInicialAtendimento: ms(identity.started_at), dataHoraFinalAtendimento: ms(identity.ended_at)
         )
         fao::FichaAtendimentoOdontologicoMasterThrift.new(uuidFicha: uuid, tpCdsOrigem: ORIGIN_THIRD_PARTY,
-                                                          headerTransport: header, atendimentosOdontologicos: [ child ])
+                                                          headerTransport: Common.header(identity), atendimentosOdontologicos: [ child ])
       end
 
       private
@@ -75,20 +64,12 @@ module Ledi
 
       # Desvio 9: o dentista (2232*) leva o CID-10; o TSB/ASB só o CIAP-2.
       def sent_problems
-        return care.problems if Consultations::Cbos.role(identity.cbo) == :dentist
+        return care.problems if ::Consultations::Cbos.role(identity.cbo) == :dentist
 
         care.problems.select { |p| p.cid10.nil? }
       end
 
-      def problem(common, p)
-        common::ProblemaCondicaoThrift.new(
-          uuidProblema: p.uuid, uuidEvolucaoProblema: p.evolution_uuid, coSequencialEvolucao: p.sequence, ciap: p.ciap,
-          cid10: p.cid10, situacao: p.situation, dataInicioProblema: p.onset_on && ms([ p.onset_on, identity.birth_date ].max.in_time_zone),
-          dataFimProblema: p.resolved_on && ms(p.resolved_on.in_time_zone), isAvaliado: true
-        )
-      end
-
-      def ms(time) = (time.to_f * 1000).to_i
+      def ms(time) = Common.ms(time)
     end
   end
 end

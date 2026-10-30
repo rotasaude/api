@@ -136,17 +136,17 @@ module Ledi
     def dental_team_ine(professional, unit)
       HealthTeamMember.active.joins(:health_team)
                       .where(professional_id: professional.id,
-                             health_teams: { health_unit_id: unit.id, active: true, kind: DentalCare::Catalog::ORAL_HEALTH_TEAM_KIND })
+                             health_teams: { health_unit_id: unit.id, active: true, kind: ::DentalCare::Catalog::ORAL_HEALTH_TEAM_KIND })
                       .order(:started_on, :id).pick("health_teams.ine") || Ledi::ScreeningFicha.team_ine(professional, unit)
     end
 
     # Cinto da finalização (O32, Desvio 6): mais de 20 SIGTAP distintos ou
     # soma por SIGTAP acima do máximo do local → "não gerada", nunca truncada.
     def procedure_reasons(procedures)
-      sums = procedures.each_with_object(Hash.new(0)) { |(code, quantity), acc| acc[code] += quantity }
+      sums = ::DentalCare::ProcedureLimits.sums(procedures)
       reasons = []
-      reasons << "too_many_procedure_codes" if sums.size > DentalCare::Catalog::MAX_PROCEDURE_CODES
-      reasons << "quantity_exceeds_location_limit" if sums.any? { |code, total| total > DentalCare::ProcedureLimits.max(code) }
+      reasons << "too_many_procedure_codes" if sums.size > ::DentalCare::Catalog::MAX_PROCEDURE_CODES
+      reasons << "quantity_exceeds_location_limit" if sums.any? { |code, total| total > ::DentalCare::ProcedureLimits.max(code) }
       reasons
     end
 

@@ -100,12 +100,10 @@ module DentalCare
     # Desvio 6: soma das quantidades por SIGTAP ≤ o máximo da lista do LEDI;
     # O32: no máximo MAX_PROCEDURE_CODES SIGTAP distintos (a FAO não leva mais).
     def limits(dental, add)
-      groups = Array(dental["procedures"]).group_by { |p| p["sigtap"] }
-      add.("dental.procedures", "too_many_procedure_codes") if groups.size > Catalog::MAX_PROCEDURE_CODES
-      groups.each do |sigtap, rows|
-        if rows.sum { |p| p["quantity"] } > ProcedureLimits.max(sigtap)
-          add.("dental.procedures", "quantity_exceeds_location_limit", sigtap: sigtap)
-        end
+      sums = ProcedureLimits.sums(Array(dental["procedures"]).map { |p| p.values_at("sigtap", "quantity") })
+      add.("dental.procedures", "too_many_procedure_codes") if sums.size > Catalog::MAX_PROCEDURE_CODES
+      sums.each do |sigtap, total|
+        add.("dental.procedures", "quantity_exceeds_location_limit", sigtap: sigtap) if total > ProcedureLimits.max(sigtap)
       end
     end
 
