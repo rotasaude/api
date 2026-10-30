@@ -45,6 +45,10 @@ module DentalCare
     CEO_TYPES = %w[I II III].freeze
     CEO_SPECIALTIES = %w[endodontics periodontics oral_surgery stomatology special_needs prosthesis].freeze
     ORAL_HEALTH_TEAM_KIND = "71".freeze
+    # Semente da lista do TSB/ASB (Valores fixados 4; a migração 20261030900001
+    # insere a mesma lista): cariostático, selante, flúor tópico, evidenciação
+    # de placa, selamento provisório e raspagem supragengival por sextante.
+    AUXILIARY_DEFAULT_PROCEDURES = %w[0101020058 0101020066 0101020074 0101020082 0101020090 0307030059].freeze
 
     REASON = 10..500
 

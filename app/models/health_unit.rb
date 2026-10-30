@@ -2,7 +2,8 @@
 # mantido pelo municipal_admin. Desativar some das listas; atendimentos
 # antigos continuam apontando para ela.
 class HealthUnit < ApplicationRecord
-  KINDS = %w[ubs upa hospital other].freeze
+  # ADR 0046: `ceo` (Centro de Especialidades Odontológicas), com perfil próprio.
+  KINDS = %w[ubs upa hospital other ceo].freeze
   # ADR 0030: quem passa pela escuta inicial (demanda espontânea, ou todos).
   SCREENING_SCOPES = %w[walk_in all].freeze
 
@@ -10,6 +11,7 @@ class HealthUnit < ApplicationRecord
   class Inactive < StandardError; end
 
   has_many :attendances, dependent: :restrict_with_error
+  has_one :ceo_profile, inverse_of: :health_unit, dependent: :restrict_with_error
 
   # ADR 0045: `dispenses` marca a unidade com farmácia (local de estoque
   # `unit`, Pharmacy::SaveLocation). Padrão falso.

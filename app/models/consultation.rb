@@ -10,9 +10,18 @@ class Consultation < ApplicationRecord
   TEXT_FIELDS = %w[subjective objective assessment plan].freeze
   MAX_TEXT = 20_000
   VITAL_COLUMNS = ScreeningRevision::VITAL_COLUMNS
+  # Módulo 28 (ADR 0046): campos escalares da FAO, só na consulta `dental`
+  # (ck_consultations_dental_fields); o resto do <dental_fields> fica em
+  # draft_items["dental"]. `kind` e `baseline` são identidade (trigger).
+  DENTAL_COLUMNS = %w[dental_consultation_type oral_health_surveillance supplies dental_outcomes pregnant special_needs].freeze
   # O que o descarte zera (ck_consultations_discarded_empty); os itens do
   # rascunho (draft_items) também, pelo ck_consultations_draft_items.
-  CLINICAL_COLUMNS = (TEXT_FIELDS + VITAL_COLUMNS).freeze
+  CLINICAL_COLUMNS = (TEXT_FIELDS + VITAL_COLUMNS + DENTAL_COLUMNS).freeze
+  # O valor vazio de cada coluna clínica: nulo, salvo as listas da FAO
+  # (`{}`) e special_needs (falso), NOT NULL no banco.
+  EMPTY_CLINICAL = CLINICAL_COLUMNS.index_with(nil)
+                                   .merge("oral_health_surveillance" => [], "supplies" => [], "dental_outcomes" => [],
+                                          "special_needs" => false).freeze
   LIST_LIMIT = 500
 
   encrypts :subjective, :objective, :assessment, :plan
@@ -26,12 +35,15 @@ class Consultation < ApplicationRecord
   has_many :exam_requests, class_name: "ConsultationExamRequest", dependent: :restrict_with_error
   has_many :addenda, class_name: "ConsultationAddendum", dependent: :restrict_with_error
   has_many :draft_actions, class_name: "ConsultationDraftAction", dependent: :restrict_with_error
+  has_many :dental_procedures, dependent: :restrict_with_error
+  has_many :dental_chart_events, dependent: :restrict_with_error
 
   scope :finalized_consultations, -> { where(status: "finalized") }
 
   def draft? = status == "draft"
   def finalized? = status == "finalized"
   def discarded? = status == "discarded"
+  def dental? = kind == "dental"
 
   # Marca rota.draft_admin (card api#51; db/city_triggers.sql): só dentro do
   # bloco o trigger aceita trocar a autora do rascunho, descartá-lo e trocar

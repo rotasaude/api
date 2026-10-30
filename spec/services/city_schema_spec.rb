@@ -126,6 +126,25 @@ RSpec.describe CitySchema do
                              *tables.map { |t| "#{t}_append_only_truncate" })
   end
 
+  # Módulo 28 (ADR 0046): o dump não representa trigger; um banco de cidade
+  # novo (dump + city_triggers.sql) tem de nascer com as guardas dos itens
+  # odontológicos da consulta, os só-acréscimo, a re-cifra da etapa da
+  # prótese, as guardas de plano, item, endodontia e prótese, o no-delete do
+  # perfil do CEO e o truncate das 13 tabelas.
+  it "loads the 28 oral health triggers into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+    items = %w[dental_procedures dental_chart_events periodontal_screenings periodontal_charts]
+    tables = %w[ceo_profiles dental_auxiliary_procedures dental_procedures dental_chart_events dental_treatment_plans
+                dental_treatment_plan_items periodontal_screenings periodontal_charts periodontal_sites endodontic_treatments
+                endodontic_sessions dental_prosthesis_orders dental_prosthesis_stages]
+
+    expect(names).to include("dental_treatment_plans_guard", "dental_treatment_plan_items_guard", "endodontic_treatments_guard",
+                             "dental_prosthesis_orders_guard", "dental_prosthesis_stages_reencryption_only", "ceo_profiles_no_delete",
+                             *items.map { |t| "#{t}_items_guard" },
+                             *(items + %w[periodontal_sites endodontic_sessions]).map { |t| "#{t}_append_only" },
+                             *tables.map { |t| "#{t}_append_only_truncate" })
+  end
+
   # Módulo 23 (revisão final, I1): o db/city_triggers.sql do HEAD recria a
   # guarda dos pedidos do módulo 17 lendo origin_care_line_enrollment_id, que
   # só nasce na 900003. Se a 900002 executasse o arquivo e a 900003 falhasse

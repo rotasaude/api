@@ -1,6 +1,7 @@
 # spec/models/add_record_mode_foundation_migration_spec.rb
 require "rails_helper"
 require Rails.root.join("db/city_migrate/20261005200001_add_record_mode_foundation.rb").to_s
+require Rails.root.join("db/city_migrate/20261030900001_add_oral_health.rb").to_s
 
 # ADR 0028: down desfaz o que up cria; up seguinte restaura idêntico. Savepoint.
 RSpec.describe "Migração de cidade 20261005200001 (AddRecordModeFoundation): down e up" do
@@ -25,6 +26,19 @@ RSpec.describe "Migração de cidade 20261005200001 (AddRecordModeFoundation): d
     SQL
   end
 
+  # 20261030900001 (módulo 28) reescreve ck_health_teams_kind com a eSB (71)
+  # e acrescenta health_teams.associated_team_id (FK para a própria tabela,
+  # fora de later_foreign_keys). É irreversível: o up desta recria a tabela
+  # sem eles, e eles voltam à mão, iguais aos da migração.
+  def restore_oral_health_teams
+    kinds = AddOralHealth::TEAM_KINDS.map { |kind| "'#{kind}'::text" }.join(", ")
+    conn.remove_check_constraint :health_teams, name: "ck_health_teams_kind"
+    conn.add_check_constraint :health_teams, "kind::text = ANY (ARRAY[#{kinds}]::text[])", name: "ck_health_teams_kind"
+    conn.add_reference :health_teams, :associated_team, type: :uuid, foreign_key: { to_table: :health_teams }, index: true
+    conn.add_check_constraint :health_teams, "associated_team_id IS NULL OR kind::text = '#{AddOralHealth::ORAL_HEALTH_TEAM_KIND}'::text",
+                              name: "ck_health_teams_associated_team"
+  end
+
   def migrate(direction, later)
     ActiveRecord::Migration.suppress_messages do
       if direction == :down
@@ -32,6 +46,7 @@ RSpec.describe "Migração de cidade 20261005200001 (AddRecordModeFoundation): d
         AddRecordModeFoundation.new.exec_migration(conn, :down)
       else
         AddRecordModeFoundation.new.exec_migration(conn, :up)
+        restore_oral_health_teams
         later.each do |table, name, definition|
           conn.execute("ALTER TABLE #{conn.quote_table_name(table)} ADD CONSTRAINT #{conn.quote_column_name(name)} #{definition}")
         end

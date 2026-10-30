@@ -65,7 +65,7 @@ RSpec.describe ConsultationDrafts::Discard do
     expect(fresh).to have_attributes(status: "discarded", draft_items: {}, author_user_id: doctor.id,
                                      attendance_id: attendance_id)
     expect(fresh.discarded_at).to be_present
-    Consultation::CLINICAL_COLUMNS.each { |column| expect(fresh[column]).to be_nil, column }
+    Consultation::CLINICAL_COLUMNS.each { |column| expect(fresh[column]).to eq(Consultation::EMPTY_CLINICAL[column]), column }
     raw = ApplicationRecord.connection.select_one("SELECT subjective, plan FROM consultations WHERE id = #{ApplicationRecord.connection.quote(fresh.id)}")
     expect(raw.values).to eq([ nil, nil ])
 

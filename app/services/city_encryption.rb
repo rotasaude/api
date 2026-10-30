@@ -155,7 +155,10 @@ module CityEncryption
     [ StockMovement, :reason ], [ StockTransferItem, :difference_reason ],
     [ StockAdjustment, :reason ], [ StockAdjustment, :decision_reason ],
     [ ExternalPrescription, :notification_number ], [ ExternalPrescriptionItem, :dosage_instructions ],
-    [ Dispensation, :notification_number ]
+    [ Dispensation, :notification_number ],
+    # ADR 0046: motivos de cancelamento do plano, do item e da prótese.
+    [ DentalTreatmentPlan, :cancel_reason ], [ DentalTreatmentPlanItem, :cancel_reason ],
+    [ DentalProsthesisStage, :reason ]
   ].freeze
 
   module_function

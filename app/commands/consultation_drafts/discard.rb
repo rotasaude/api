@@ -1,8 +1,8 @@
 # app/commands/consultation_drafts/discard.rb
 # Descartar o rascunho de consulta órfão (card rotasaude/api#51; módulo 19a,
 # ADR 0031): marca, não apaga — `discarded`, conteúdo clínico zerado (S/O/A/P,
-# sinais vitais, draft_items); a linha fica como casca e os documentos já
-# emitidos não mudam. Só sob Consultation.with_draft_admin (trigger). Sem
+# sinais vitais, campos da FAO do módulo 28, draft_items); a linha fica como
+# casca e os documentos já emitidos não mudam. Só sob Consultation.with_draft_admin (trigger). Sem
 # ficha, problema ou conduta. O atendimento segue in_care: o desfecho sai pela
 # rota normal (Attendances::Close). Ordem de travas: atendimento → consulta
 # (como Consultations::Finalize). O papel (municipal_admin) e o step-up são do
@@ -30,8 +30,8 @@ module ConsultationDrafts
 
         author_id = consultation.author_user_id
         Consultation.with_draft_admin do
-          consultation.update!(Consultation::CLINICAL_COLUMNS.index_with(nil)
-                                 .merge(status: "discarded", discarded_at: Time.current, draft_items: {}))
+          consultation.update!(Consultation::EMPTY_CLINICAL.merge("status" => "discarded", "discarded_at" => Time.current,
+                                                                  "draft_items" => {}))
           ConsultationDraftAction.create!(consultation: consultation, attendance_id: consultation.attendance_id,
                                           action: "discarded", previous_author_user_id: author_id,
                                           by_user_id: by.id, reason: note)

@@ -1178,6 +1178,9 @@ $do$;
 -- (Consultation.with_draft_admin), o rascunho pode trocar de autora
 -- (designação) ou virar `discarded` (descarte; os CHECKs exigem o conteúdo
 -- clínico zerado). A descartada nunca muda, como a finalizada.
+-- Módulo 28 (ADR 0046): `kind` e `baseline` são identidade (nunca mudam, nem
+-- no rascunho); lidos via jsonb porque este arquivo roda também nas migrações
+-- anteriores à 20261030900001, antes de as colunas existirem.
 CREATE OR REPLACE FUNCTION rota_consultation_guard() RETURNS trigger AS $fn$
 DECLARE
   texts text[] := ARRAY['subjective', 'objective', 'assessment', 'plan'];
@@ -1190,6 +1193,8 @@ BEGIN
   END IF;
   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.attendance_id IS DISTINCT FROM OLD.attendance_id
      OR NEW.patient_id IS DISTINCT FROM OLD.patient_id OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR (to_jsonb(NEW) -> 'kind') IS DISTINCT FROM (to_jsonb(OLD) -> 'kind')
+     OR (to_jsonb(NEW) -> 'baseline') IS DISTINCT FROM (to_jsonb(OLD) -> 'baseline')
      OR (NEW.author_user_id IS DISTINCT FROM OLD.author_user_id
          AND NOT (draft_admin AND OLD.status = 'draft' AND NEW.status = 'draft')) THEN
     RAISE EXCEPTION 'consultations: identity columns never change';
@@ -1212,14 +1217,18 @@ $fn$ LANGUAGE plpgsql;
 
 -- Itens da consulta (ADR 0031; spec §4): só acréscimo. Sem adendo, só com a
 -- consulta ainda em rascunho (a finalização grava os itens antes de virar o
--- status); depois, só com um adendo DESTA consulta.
+-- status); depois, só com um adendo DESTA consulta. Módulo 28: os itens
+-- odontológicos sem coluna addendum_id (procedimentos, registro periodontal,
+-- periograma) leem nulo pelo jsonb: só no rascunho.
 CREATE OR REPLACE FUNCTION rota_consultation_item_guard() RETURNS trigger AS $fn$
+DECLARE
+  addendum uuid := (to_jsonb(NEW) ->> 'addendum_id')::uuid;
 BEGIN
-  IF NEW.addendum_id IS NULL THEN
+  IF addendum IS NULL THEN
     IF NOT EXISTS (SELECT 1 FROM consultations c WHERE c.id = NEW.consultation_id AND c.status = 'draft') THEN
       RAISE EXCEPTION '%: items of a finalized consultation only come with an addendum', TG_TABLE_NAME;
     END IF;
-  ELSIF NOT EXISTS (SELECT 1 FROM consultation_addenda a WHERE a.id = NEW.addendum_id AND a.consultation_id = NEW.consultation_id) THEN
+  ELSIF NOT EXISTS (SELECT 1 FROM consultation_addenda a WHERE a.id = addendum AND a.consultation_id = NEW.consultation_id) THEN
     RAISE EXCEPTION '%: addendum of another consultation', TG_TABLE_NAME;
   END IF;
   RETURN NEW;
@@ -2507,6 +2516,144 @@ BEGIN
                                 'stock_entries', 'stock_openings', 'stock_transfers', 'stock_transfer_items', 'stock_adjustments',
                                 'external_prescriptions', 'external_prescription_items', 'dispensations', 'dispensation_items',
                                 'stock_movements'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;
+
+-- Módulo 28 (ADR 0046): saúde bucal. Procedimentos, eventos do odontograma,
+-- registro periodontal e periograma são itens da consulta (no rascunho, ou com
+-- adendo desta consulta: só os eventos têm addendum_id) e nunca mudam; sítios
+-- do periograma, sessões de endodontia e etapas da prótese só crescem (a
+-- re-cifra regrava só o motivo da etapa). O plano fecha uma vez, de `open`; o
+-- item muda uma vez, de `planned`; a endodontia muda só em andamento; o pedido
+-- de prótese anda impression → sent → received → installed, ou é cancelado
+-- antes de instalado; instalado e cancelado nunca mudam. Sob rota.reencrypting,
+-- plano e item regravam só cancel_reason. O perfil do CEO nunca some.
+-- TRUNCATE recusado nas 13 tabelas.
+CREATE OR REPLACE FUNCTION rota_dental_plan_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['status', 'closed_in_consultation_id', 'closed_by_user_id', 'closed_at', 'cancel_reason', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'dental_treatment_plans: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'cancel_reason') = (to_jsonb(OLD) - 'cancel_reason') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'dental_treatment_plans: only status, closed_*, cancel_reason and updated_at change';
+  END IF;
+  IF OLD.status <> 'open' OR NEW.status = 'open' THEN
+    RAISE EXCEPTION 'dental_treatment_plans: a plan is closed once, from open';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_dental_plan_item_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['status', 'done_in_consultation_id', 'cancelled_in_consultation_id', 'cancelled_in_addendum_id',
+                         'cancel_reason', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'dental_treatment_plan_items: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'cancel_reason') = (to_jsonb(OLD) - 'cancel_reason') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'dental_treatment_plan_items: only status, done_in_consultation_id, cancelled_in_*, cancel_reason and updated_at change';
+  END IF;
+  IF OLD.status <> 'planned' OR NEW.status = 'planned' THEN
+    RAISE EXCEPTION 'dental_treatment_plan_items: an item is changed once, from planned';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_endodontic_treatment_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['canals', 'status', 'completed_in_consultation_id', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'endodontic_treatments: DELETE refused';
+  END IF;
+  IF OLD.status <> 'in_progress' THEN
+    RAISE EXCEPTION 'endodontic_treatments: a completed treatment never changes';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'endodontic_treatments: only canals, status, completed_in_consultation_id and updated_at change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_dental_prosthesis_order_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['stage', 'installed_in_consultation_id', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'dental_prosthesis_orders: DELETE refused';
+  END IF;
+  IF OLD.stage IN ('installed', 'cancelled') THEN
+    RAISE EXCEPTION 'dental_prosthesis_orders: an installed or cancelled order never changes';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'dental_prosthesis_orders: only stage, installed_in_consultation_id and updated_at change';
+  END IF;
+  IF NOT ((OLD.stage = 'impression' AND NEW.stage IN ('sent', 'cancelled'))
+          OR (OLD.stage = 'sent' AND NEW.stage IN ('received', 'cancelled'))
+          OR (OLD.stage = 'received' AND NEW.stage IN ('installed', 'cancelled'))) THEN
+    RAISE EXCEPTION 'dental_prosthesis_orders: invalid stage transition';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.dental_chart_events') IS NOT NULL THEN
+    FOREACH item IN ARRAY ARRAY['dental_procedures', 'dental_chart_events', 'periodontal_screenings', 'periodontal_charts'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_items_guard', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE INSERT ON %I FOR EACH ROW EXECUTE FUNCTION rota_consultation_item_guard()',
+                     item || '_items_guard', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['dental_procedures', 'dental_chart_events', 'periodontal_screenings', 'periodontal_charts',
+                                'periodontal_sites', 'endodontic_sessions'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only', item);
+    END LOOP;
+    EXECUTE 'DROP TRIGGER IF EXISTS dental_prosthesis_stages_reencryption_only ON dental_prosthesis_stages';
+    EXECUTE 'CREATE TRIGGER dental_prosthesis_stages_reencryption_only BEFORE UPDATE OR DELETE ON dental_prosthesis_stages
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS dental_treatment_plans_guard ON dental_treatment_plans';
+    EXECUTE 'CREATE TRIGGER dental_treatment_plans_guard BEFORE UPDATE OR DELETE ON dental_treatment_plans
+      FOR EACH ROW EXECUTE FUNCTION rota_dental_plan_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS dental_treatment_plan_items_guard ON dental_treatment_plan_items';
+    EXECUTE 'CREATE TRIGGER dental_treatment_plan_items_guard BEFORE UPDATE OR DELETE ON dental_treatment_plan_items
+      FOR EACH ROW EXECUTE FUNCTION rota_dental_plan_item_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS endodontic_treatments_guard ON endodontic_treatments';
+    EXECUTE 'CREATE TRIGGER endodontic_treatments_guard BEFORE UPDATE OR DELETE ON endodontic_treatments
+      FOR EACH ROW EXECUTE FUNCTION rota_endodontic_treatment_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS dental_prosthesis_orders_guard ON dental_prosthesis_orders';
+    EXECUTE 'CREATE TRIGGER dental_prosthesis_orders_guard BEFORE UPDATE OR DELETE ON dental_prosthesis_orders
+      FOR EACH ROW EXECUTE FUNCTION rota_dental_prosthesis_order_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS ceo_profiles_no_delete ON ceo_profiles';
+    EXECUTE 'CREATE TRIGGER ceo_profiles_no_delete BEFORE DELETE ON ceo_profiles
+      FOR EACH ROW EXECUTE FUNCTION rota_no_delete()';
+    FOREACH item IN ARRAY ARRAY['ceo_profiles', 'dental_auxiliary_procedures', 'dental_procedures', 'dental_chart_events',
+                                'dental_treatment_plans', 'dental_treatment_plan_items', 'periodontal_screenings', 'periodontal_charts',
+                                'periodontal_sites', 'endodontic_treatments', 'endodontic_sessions', 'dental_prosthesis_orders',
+                                'dental_prosthesis_stages'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
                      item || '_append_only_truncate', item);

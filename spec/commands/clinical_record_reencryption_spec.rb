@@ -77,7 +77,7 @@ RSpec.describe "Re-cifra do prontuário" do
     consultation = Consultation.create!(attendance: attendance, patient: patient, author_user: doctor, professional_link: link,
                                         cbo_code: link.cbo_code, status: "draft", started_at: Time.current, subjective: "texto S")
     Consultation.with_draft_admin do
-      consultation.update_columns(Consultation::CLINICAL_COLUMNS.index_with(nil).merge(status: "discarded", discarded_at: Time.current))
+      consultation.update_columns(Consultation::EMPTY_CLINICAL.merge(status: "discarded", discarded_at: Time.current))
     end
     admin = staff_with("admin-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin")
     action = ConsultationDraftAction.create!(consultation: consultation, attendance: attendance, action: "discarded",

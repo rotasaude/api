@@ -151,7 +151,7 @@ RSpec.describe "Marca rota.draft_admin: não vaza e não alcança o finalizado" 
       finalized
       expect { as_draft_admin { finalized.update_columns(status: "draft", finalized_at: nil) } }
         .to raise_error(ActiveRecord::StatementInvalid, /finalized consultation never changes/)
-      expect { as_draft_admin { finalized.update_columns(Consultation::CLINICAL_COLUMNS.index_with(nil).merge(status: "discarded", discarded_at: Time.current, draft_items: {})) } }
+      expect { as_draft_admin { finalized.update_columns(Consultation::EMPTY_CLINICAL.merge(status: "discarded", discarded_at: Time.current, draft_items: {})) } }
         .to raise_error(ActiveRecord::StatementInvalid, /finalized consultation never changes/)
       expect(finalized.reload).to have_attributes(status: "finalized", discarded_at: nil)
       expect(finalized.subjective).to be_present

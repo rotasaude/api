@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -468,6 +468,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
     t.check_constraint "kind::text = ANY (ARRAY['own'::text, 'contracted'::text, 'consortium'::text, 'ppi'::text])", name: "ck_care_providers_kind"
   end
 
+  create_table "ceo_profiles", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "ceo_type", null: false
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.string "specialties", default: [], null: false, array: true
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["health_unit_id"], name: "index_ceo_profiles_on_health_unit_id", unique: true
+    t.check_constraint "ceo_type::text = ANY (ARRAY['I'::text, 'II'::text, 'III'::text]::text[])", name: "ck_ceo_profiles_ceo_type"
+    t.check_constraint "cardinality(specialties) >= 1 AND specialties <@ ARRAY['endodontics'::character varying, 'periodontics'::character varying, 'oral_surgery'::character varying, 'stomatology'::character varying, 'special_needs'::character varying, 'prosthesis'::character varying]", name: "ck_ceo_profiles_specialties"
+  end
+
   create_table "city_medication_list", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "added_by_user_id", null: false
     t.uuid "catalog_item_id", null: false
@@ -795,10 +807,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
     t.text "assessment"
     t.uuid "attendance_id", null: false
     t.uuid "author_user_id", null: false
+    t.boolean "baseline", default: false, null: false
     t.integer "capillary_glucose"
     t.integer "care_type"
     t.string "cbo_code", null: false
     t.datetime "created_at", null: false
+    t.integer "dental_consultation_type", limit: 2
+    t.integer "dental_outcomes", limit: 2, default: [], null: false, array: true
     t.integer "diastolic"
     t.datetime "discarded_at"
     t.jsonb "draft_items", default: {}, null: false
@@ -806,41 +821,54 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
     t.string "glucose_moment"
     t.integer "heart_rate"
     t.integer "height_cm"
+    t.string "kind", default: "general", null: false
     t.text "objective"
+    t.integer "oral_health_surveillance", limit: 2, default: [], null: false, array: true
     t.integer "pain_score"
     t.uuid "patient_id", null: false
     t.text "plan"
+    t.boolean "pregnant"
     t.uuid "professional_link_id", null: false
     t.integer "respiratory_rate"
+    t.boolean "special_needs", default: false, null: false
     t.integer "spo2"
     t.datetime "started_at", null: false
     t.string "status", default: "draft", null: false
     t.text "subjective"
+    t.integer "supplies", limit: 2, default: [], null: false, array: true
     t.integer "systolic"
     t.decimal "temperature_c", precision: 3, scale: 1
     t.datetime "updated_at", null: false
     t.decimal "weight_kg", precision: 5, scale: 2
     t.index ["attendance_id"], name: "index_consultations_on_attendance_id", unique: true
     t.index ["author_user_id"], name: "index_consultations_on_author_user_id"
+    t.index ["kind", "status", "finalized_at"], name: "idx_consultations_kind_status_finalized"
     t.index ["patient_id", "finalized_at"], name: "idx_consultations_patient_finalized", where: "((status)::text = 'finalized'::text)"
     t.index ["patient_id"], name: "index_consultations_on_patient_id"
     t.index ["professional_link_id"], name: "index_consultations_on_professional_link_id"
+    t.check_constraint "NOT baseline OR kind::text = 'dental'::text", name: "ck_consultations_baseline"
     t.check_constraint "(systolic IS NULL AND diastolic IS NULL) OR (systolic IS NOT NULL AND diastolic IS NOT NULL AND diastolic < systolic)", name: "ck_consultations_bp"
-    t.check_constraint "care_type IS NULL OR care_type = ANY (ARRAY[1, 2, 5, 6])", name: "ck_consultations_care_type"
+    t.check_constraint "care_type IS NULL OR (kind::text = 'general'::text AND care_type = ANY (ARRAY[1, 2, 5, 6])) OR (kind::text = 'dental'::text AND care_type = ANY (ARRAY[2, 4, 5, 6]))", name: "ck_consultations_care_type"
     t.check_constraint "cbo_code::text ~ '^[0-9A-Z]{6}$'::text", name: "ck_consultations_cbo_code"
+    t.check_constraint "dental_consultation_type IS NULL OR dental_consultation_type = ANY (ARRAY[1, 2, 4])", name: "ck_consultations_dental_consultation_type"
+    t.check_constraint "kind::text = 'dental'::text OR (dental_consultation_type IS NULL AND oral_health_surveillance = '{}'::smallint[] AND supplies = '{}'::smallint[] AND dental_outcomes = '{}'::smallint[] AND pregnant IS NULL AND NOT special_needs)", name: "ck_consultations_dental_fields"
+    t.check_constraint "dental_outcomes <@ ARRAY[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18]::smallint[]", name: "ck_consultations_dental_outcomes"
     t.check_constraint "diastolic IS NULL OR diastolic BETWEEN 20 AND 200", name: "ck_consultations_diastolic"
     t.check_constraint "(status::text = 'discarded'::text) = (discarded_at IS NOT NULL)", name: "ck_consultations_discard"
-    t.check_constraint "status::text <> 'discarded'::text OR (subjective IS NULL AND objective IS NULL AND assessment IS NULL AND plan IS NULL AND systolic IS NULL AND diastolic IS NULL AND heart_rate IS NULL AND respiratory_rate IS NULL AND temperature_c IS NULL AND spo2 IS NULL AND capillary_glucose IS NULL AND glucose_moment IS NULL AND weight_kg IS NULL AND height_cm IS NULL AND pain_score IS NULL)", name: "ck_consultations_discarded_empty"
+    t.check_constraint "status::text <> 'discarded'::text OR (subjective IS NULL AND objective IS NULL AND assessment IS NULL AND plan IS NULL AND systolic IS NULL AND diastolic IS NULL AND heart_rate IS NULL AND respiratory_rate IS NULL AND temperature_c IS NULL AND spo2 IS NULL AND capillary_glucose IS NULL AND glucose_moment IS NULL AND weight_kg IS NULL AND height_cm IS NULL AND pain_score IS NULL AND dental_consultation_type IS NULL AND oral_health_surveillance = '{}'::smallint[] AND supplies = '{}'::smallint[] AND dental_outcomes = '{}'::smallint[] AND pregnant IS NULL AND NOT special_needs)", name: "ck_consultations_discarded_empty"
     t.check_constraint "jsonb_typeof(draft_items) = 'object'::text AND (status::text = 'draft'::text OR draft_items = '{}'::jsonb)", name: "ck_consultations_draft_items"
     t.check_constraint "(status::text = 'finalized'::text) = (finalized_at IS NOT NULL)", name: "ck_consultations_finalization"
-    t.check_constraint "status::text <> 'finalized'::text OR care_type IS NOT NULL", name: "ck_consultations_finalized_care_type"
+    t.check_constraint "status::text <> 'finalized'::text OR care_type IS NOT NULL OR baseline", name: "ck_consultations_finalized_care_type"
     t.check_constraint "(capillary_glucose IS NULL AND glucose_moment IS NULL) OR (capillary_glucose BETWEEN 10 AND 800 AND glucose_moment::text = ANY (ARRAY['fasting'::text, 'postprandial'::text, 'random'::text]))", name: "ck_consultations_glucose"
     t.check_constraint "heart_rate IS NULL OR heart_rate BETWEEN 20 AND 250", name: "ck_consultations_heart_rate"
     t.check_constraint "height_cm IS NULL OR height_cm BETWEEN 30 AND 250", name: "ck_consultations_height"
+    t.check_constraint "kind::text = ANY (ARRAY['general'::text, 'dental'::text])", name: "ck_consultations_kind"
+    t.check_constraint "oral_health_surveillance <@ ARRAY[1, 2, 3, 4, 5, 6, 99]::smallint[] AND cardinality(oral_health_surveillance) <= 7", name: "ck_consultations_oral_health_surveillance"
     t.check_constraint "pain_score IS NULL OR pain_score BETWEEN 0 AND 10", name: "ck_consultations_pain_score"
     t.check_constraint "respiratory_rate IS NULL OR respiratory_rate BETWEEN 4 AND 80", name: "ck_consultations_respiratory_rate"
     t.check_constraint "spo2 IS NULL OR spo2 BETWEEN 50 AND 100", name: "ck_consultations_spo2"
     t.check_constraint "status::text = ANY (ARRAY['draft'::text, 'finalized'::text, 'discarded'::text])", name: "ck_consultations_status"
+    t.check_constraint "supplies <@ ARRAY[1, 2, 3]::smallint[]", name: "ck_consultations_supplies"
     t.check_constraint "systolic IS NULL OR systolic BETWEEN 50 AND 300", name: "ck_consultations_systolic"
     t.check_constraint "temperature_c IS NULL OR temperature_c BETWEEN 30 AND 45", name: "ck_consultations_temperature"
     t.check_constraint "weight_kg IS NULL OR weight_kg BETWEEN 0.5 AND 400", name: "ck_consultations_weight"
@@ -870,6 +898,136 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
     t.integer "value", default: 0, null: false
     t.index ["dimension", "period", "key"], name: "idx_dashboard_metrics_dim_period_key", unique: true
     t.index ["dimension", "period"], name: "index_dashboard_metrics_on_dimension_and_period"
+  end
+
+  create_table "dental_auxiliary_procedures", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id"
+    t.string "procedure_code", limit: 10, null: false
+    t.index ["procedure_code"], name: "index_dental_auxiliary_procedures_on_procedure_code", unique: true
+    t.check_constraint "procedure_code::text ~ '^[0-9]{10}$'::text", name: "ck_dental_auxiliary_procedures_procedure_code"
+  end
+
+  create_table "dental_chart_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "addendum_id"
+    t.uuid "author_user_id", null: false
+    t.string "cbo_code", limit: 6, null: false
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "dental_procedure_id"
+    t.string "face", limit: 1
+    t.string "part", limit: 5, default: "crown", null: false
+    t.uuid "patient_id", null: false
+    t.string "procedure_code", limit: 10
+    t.datetime "recorded_at", null: false
+    t.string "situation", limit: 40
+    t.integer "tooth", limit: 2, null: false
+    t.index ["consultation_id"], name: "idx_dental_chart_events_consultation"
+    t.index ["patient_id", "tooth", "recorded_at", "id"], name: "idx_dental_chart_events_patient_tooth"
+    t.check_constraint "cbo_code::text ~ '^[0-9A-Z]{6}$'::text", name: "ck_dental_chart_events_cbo_code"
+    t.check_constraint "face IS NULL OR (face::text = ANY (ARRAY['M'::text, 'D'::text, 'O'::text, 'V'::text, 'L'::text]::text[]) AND part::text = 'crown'::text)", name: "ck_dental_chart_events_face"
+    t.check_constraint "num_nonnulls(situation, procedure_code) >= 1", name: "ck_dental_chart_events_finding"
+    t.check_constraint "part::text = ANY (ARRAY['crown'::text, 'root'::text]::text[])", name: "ck_dental_chart_events_part"
+    t.check_constraint "procedure_code IS NULL OR procedure_code::text ~ '^[0-9]{10}$'::text", name: "ck_dental_chart_events_procedure_code"
+    t.check_constraint "tooth = ANY (ARRAY[11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 61, 62, 63, 64, 65, 71, 72, 73, 74, 75, 81, 82, 83, 84, 85])", name: "ck_dental_chart_events_tooth"
+  end
+
+  create_table "dental_procedures", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "arch", limit: 5
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "dental_prosthesis_order_id"
+    t.uuid "dental_treatment_plan_item_id"
+    t.string "face", limit: 1
+    t.string "location_kind", null: false
+    t.uuid "patient_id", null: false
+    t.string "procedure_code", limit: 10, null: false
+    t.integer "quantity", limit: 2, null: false
+    t.string "sextant", limit: 2
+    t.integer "tooth", limit: 2
+    t.index ["consultation_id"], name: "idx_dental_procedures_consultation"
+    t.index ["patient_id", "created_at"], name: "idx_dental_procedures_patient"
+    t.check_constraint "(face IS NULL OR face::text = ANY (ARRAY['M'::text, 'D'::text, 'O'::text, 'V'::text, 'L'::text]::text[])) AND (sextant IS NULL OR sextant::text = ANY (ARRAY['S1'::text, 'S2'::text, 'S3'::text, 'S4'::text, 'S5'::text, 'S6'::text]::text[])) AND (arch IS NULL OR arch::text = ANY (ARRAY['upper'::text, 'lower'::text]::text[])) AND ((location_kind::text = 'tooth'::text AND tooth IS NOT NULL AND face IS NULL AND sextant IS NULL AND arch IS NULL) OR (location_kind::text = 'face'::text AND tooth IS NOT NULL AND face IS NOT NULL AND sextant IS NULL AND arch IS NULL) OR (location_kind::text = 'sextant'::text AND tooth IS NULL AND face IS NULL AND sextant IS NOT NULL AND arch IS NULL) OR (location_kind::text = 'arch'::text AND tooth IS NULL AND face IS NULL AND sextant IS NULL AND arch IS NOT NULL) OR (location_kind::text = 'mouth'::text AND tooth IS NULL AND face IS NULL AND sextant IS NULL AND arch IS NULL))", name: "ck_dental_procedures_location"
+    t.check_constraint "location_kind::text = ANY (ARRAY['tooth'::text, 'face'::text, 'sextant'::text, 'arch'::text, 'mouth'::text]::text[])", name: "ck_dental_procedures_location_kind"
+    t.check_constraint "procedure_code::text ~ '^[0-9]{10}$'::text", name: "ck_dental_procedures_procedure_code"
+    t.check_constraint "quantity >= 1 AND quantity <= 32", name: "ck_dental_procedures_quantity"
+    t.check_constraint "tooth IS NULL OR tooth = ANY (ARRAY[11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 61, 62, 63, 64, 65, 71, 72, 73, 74, 75, 81, 82, 83, 84, 85])", name: "ck_dental_procedures_tooth"
+  end
+
+  create_table "dental_prosthesis_orders", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "care_provider_id"
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.uuid "health_unit_id", null: false
+    t.uuid "installed_in_consultation_id"
+    t.string "laboratory_name", limit: 120
+    t.uuid "patient_id", null: false
+    t.string "procedure_code", limit: 10, null: false
+    t.string "stage", null: false
+    t.datetime "updated_at", null: false
+    t.index ["health_unit_id", "stage", "created_at"], name: "idx_dental_prosthesis_orders_unit_stage"
+    t.index ["patient_id", "created_at"], name: "idx_dental_prosthesis_orders_patient"
+    t.check_constraint "(stage::text = 'installed'::text) = (installed_in_consultation_id IS NOT NULL)", name: "ck_dental_prosthesis_orders_installed"
+    t.check_constraint "num_nonnulls(care_provider_id, laboratory_name) = 1", name: "ck_dental_prosthesis_orders_laboratory"
+    t.check_constraint "laboratory_name IS NULL OR char_length(btrim(laboratory_name::text)) BETWEEN 3 AND 120", name: "ck_dental_prosthesis_orders_laboratory_name"
+    t.check_constraint "procedure_code::text = ANY (ARRAY['0701070099'::text, '0701070102'::text, '0701070129'::text, '0701070137'::text, '0701070145'::text]::text[])", name: "ck_dental_prosthesis_orders_procedure_code"
+    t.check_constraint "stage::text = ANY (ARRAY['impression'::text, 'sent'::text, 'received'::text, 'installed'::text, 'cancelled'::text]::text[])", name: "ck_dental_prosthesis_orders_stage"
+  end
+
+  create_table "dental_prosthesis_stages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "by_user_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "dental_prosthesis_order_id", null: false
+    t.text "reason"
+    t.string "stage", null: false
+    t.index ["dental_prosthesis_order_id", "created_at"], name: "idx_dental_prosthesis_stages_order"
+    t.check_constraint "stage::text <> 'cancelled'::text OR reason IS NOT NULL", name: "ck_dental_prosthesis_stages_reason"
+    t.check_constraint "stage::text = ANY (ARRAY['impression'::text, 'sent'::text, 'received'::text, 'installed'::text, 'cancelled'::text]::text[])", name: "ck_dental_prosthesis_stages_stage"
+  end
+
+  create_table "dental_treatment_plan_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "added_in_consultation_id", null: false
+    t.string "arch", limit: 5
+    t.text "cancel_reason"
+    t.uuid "cancelled_in_addendum_id"
+    t.uuid "cancelled_in_consultation_id"
+    t.datetime "created_at", null: false
+    t.uuid "dental_treatment_plan_id", null: false
+    t.uuid "done_in_consultation_id"
+    t.string "face", limit: 1
+    t.string "location_kind", null: false
+    t.string "procedure_code", limit: 10, null: false
+    t.string "sextant", limit: 2
+    t.string "status", null: false
+    t.integer "tooth", limit: 2
+    t.datetime "updated_at", null: false
+    t.index ["dental_treatment_plan_id"], name: "idx_dental_plan_items_plan"
+    t.check_constraint "(status::text = 'cancelled'::text) = (cancel_reason IS NOT NULL)", name: "ck_dental_treatment_plan_items_cancel_reason"
+    t.check_constraint "(status::text = 'done'::text) = (done_in_consultation_id IS NOT NULL)", name: "ck_dental_treatment_plan_items_done"
+    t.check_constraint "(face IS NULL OR face::text = ANY (ARRAY['M'::text, 'D'::text, 'O'::text, 'V'::text, 'L'::text]::text[])) AND (sextant IS NULL OR sextant::text = ANY (ARRAY['S1'::text, 'S2'::text, 'S3'::text, 'S4'::text, 'S5'::text, 'S6'::text]::text[])) AND (arch IS NULL OR arch::text = ANY (ARRAY['upper'::text, 'lower'::text]::text[])) AND ((location_kind::text = 'tooth'::text AND tooth IS NOT NULL AND face IS NULL AND sextant IS NULL AND arch IS NULL) OR (location_kind::text = 'face'::text AND tooth IS NOT NULL AND face IS NOT NULL AND sextant IS NULL AND arch IS NULL) OR (location_kind::text = 'sextant'::text AND tooth IS NULL AND face IS NULL AND sextant IS NOT NULL AND arch IS NULL) OR (location_kind::text = 'arch'::text AND tooth IS NULL AND face IS NULL AND sextant IS NULL AND arch IS NOT NULL) OR (location_kind::text = 'mouth'::text AND tooth IS NULL AND face IS NULL AND sextant IS NULL AND arch IS NULL))", name: "ck_dental_treatment_plan_items_location"
+    t.check_constraint "location_kind::text = ANY (ARRAY['tooth'::text, 'face'::text, 'sextant'::text, 'arch'::text, 'mouth'::text]::text[])", name: "ck_dental_treatment_plan_items_location_kind"
+    t.check_constraint "procedure_code::text ~ '^[0-9]{10}$'::text", name: "ck_dental_treatment_plan_items_procedure_code"
+    t.check_constraint "status::text = ANY (ARRAY['planned'::text, 'done'::text, 'cancelled'::text]::text[])", name: "ck_dental_treatment_plan_items_status"
+    t.check_constraint "tooth IS NULL OR tooth = ANY (ARRAY[11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 61, 62, 63, 64, 65, 71, 72, 73, 74, 75, 81, 82, 83, 84, 85])", name: "ck_dental_treatment_plan_items_tooth"
+  end
+
+  create_table "dental_treatment_plans", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "cancel_reason"
+    t.datetime "closed_at"
+    t.uuid "closed_by_user_id"
+    t.uuid "closed_in_consultation_id"
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.uuid "opened_in_consultation_id", null: false
+    t.uuid "patient_id", null: false
+    t.string "status", null: false
+    t.datetime "updated_at", null: false
+    t.index ["patient_id", "health_unit_id"], name: "idx_dental_plans_one_open", unique: true, where: "((status)::text = 'open'::text)"
+    t.index ["patient_id"], name: "idx_dental_plans_patient"
+    t.check_constraint "(status::text = 'cancelled'::text) = (cancel_reason IS NOT NULL)", name: "ck_dental_treatment_plans_cancel_reason"
+    t.check_constraint "(status::text = 'open'::text) = (closed_at IS NULL)", name: "ck_dental_treatment_plans_closed"
+    t.check_constraint "status::text = ANY (ARRAY['open'::text, 'completed'::text, 'cancelled'::text]::text[])", name: "ck_dental_treatment_plans_status"
   end
 
   create_table "disease_notification_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -988,6 +1146,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
     t.index ["name"], name: "index_domain_events_on_name"
     t.index ["occurred_at"], name: "idx_domain_events_pending", where: "(published_at IS NULL)"
     t.index ["occurred_at"], name: "index_domain_events_on_occurred_at"
+  end
+
+  create_table "endodontic_sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "canals", limit: 2, null: false
+    t.uuid "consultation_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "endodontic_treatment_id", null: false
+    t.index ["endodontic_treatment_id", "created_at"], name: "idx_endodontic_sessions_treatment"
+    t.check_constraint "canals >= 1 AND canals <= 5", name: "ck_endodontic_sessions_canals"
+  end
+
+  create_table "endodontic_treatments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "canals", limit: 2, null: false
+    t.uuid "completed_in_consultation_id"
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.uuid "opened_in_consultation_id", null: false
+    t.uuid "patient_id", null: false
+    t.string "status", null: false
+    t.integer "tooth", limit: 2, null: false
+    t.datetime "updated_at", null: false
+    t.index ["patient_id", "tooth"], name: "idx_endodontic_treatments_one_in_progress", unique: true, where: "((status)::text = 'in_progress'::text)"
+    t.index ["patient_id"], name: "idx_endodontic_treatments_patient"
+    t.check_constraint "canals >= 1 AND canals <= 5", name: "ck_endodontic_treatments_canals"
+    t.check_constraint "(status::text = 'completed'::text) = (completed_in_consultation_id IS NOT NULL)", name: "ck_endodontic_treatments_completed"
+    t.check_constraint "status::text = ANY (ARRAY['in_progress'::text, 'completed'::text]::text[])", name: "ck_endodontic_treatments_status"
+    t.check_constraint "tooth = ANY (ARRAY[11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 61, 62, 63, 64, 65, 71, 72, 73, 74, 75, 81, 82, 83, 84, 85])", name: "ck_endodontic_treatments_tooth"
   end
 
   create_table "exam_catalog_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1237,16 +1422,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
 
   create_table "health_teams", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
+    t.uuid "associated_team_id"
     t.datetime "created_at", null: false
     t.uuid "health_unit_id", null: false
     t.string "ine", limit: 10, null: false
     t.string "kind", null: false
     t.string "name", limit: 120
     t.datetime "updated_at", null: false
+    t.index ["associated_team_id"], name: "index_health_teams_on_associated_team_id"
     t.index ["health_unit_id"], name: "index_health_teams_on_health_unit_id"
     t.index ["ine"], name: "index_health_teams_on_ine", unique: true
+    t.check_constraint "associated_team_id IS NULL OR kind::text = '71'::text", name: "ck_health_teams_associated_team"
     t.check_constraint "ine::text ~ '^[0-9]{10}$'::text", name: "ck_health_teams_ine"
-    t.check_constraint "kind::text = ANY (ARRAY['70', '76']::text[])", name: "ck_health_teams_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['70'::text, '71'::text, '76'::text])", name: "ck_health_teams_kind"
   end
 
   create_table "health_unit_drains", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1284,7 +1472,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
     t.index ["neighborhood_id"], name: "index_health_units_on_neighborhood_id"
     t.check_constraint "address_zip IS NULL OR address_zip::text ~ '^[0-9]{8}$'::text", name: "ck_health_units_address_zip"
     t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_health_units_cnes"
-    t.check_constraint "kind::text = ANY (ARRAY['ubs', 'upa', 'hospital', 'other']::text[])", name: "ck_health_units_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['ubs'::text, 'upa'::text, 'hospital'::text, 'other'::text, 'ceo'::text])", name: "ck_health_units_kind"
     t.check_constraint "screening_scope::text = ANY (ARRAY['walk_in'::text, 'all'::text])", name: "ck_health_units_screening_scope"
   end
 
@@ -2313,6 +2501,41 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
     t.check_constraint "source::text = ANY (ARRAY['attendance'::text, 'consultation'::text, 'lab_report'::text, 'manual'::text]) AND (instrument::text = ANY (ARRAY['bpa_i'::text, 'bpa_c'::text, 'not_bpa'::text])) AND (character::text = ANY (ARRAY['elective'::text, 'urgent'::text])) AND (status::text = ANY (ARRAY['recorded'::text, 'cancelled'::text]))", name: "ck_performed_procedures_domains"
   end
 
+  create_table "periodontal_charts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "consultation_id", null: false
+    t.integer "furcation", limit: 2
+    t.integer "mobility", limit: 2
+    t.uuid "patient_id", null: false
+    t.integer "tooth", limit: 2, null: false
+    t.index ["consultation_id", "tooth"], name: "idx_periodontal_charts_tooth", unique: true
+    t.check_constraint "furcation IS NULL OR (furcation >= 0 AND furcation <= 3)", name: "ck_periodontal_charts_furcation"
+    t.check_constraint "mobility IS NULL OR (mobility >= 0 AND mobility <= 3)", name: "ck_periodontal_charts_mobility"
+    t.check_constraint "tooth = ANY (ARRAY[11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 61, 62, 63, 64, 65, 71, 72, 73, 74, 75, 81, 82, 83, 84, 85])", name: "ck_periodontal_charts_tooth"
+  end
+
+  create_table "periodontal_screenings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "code", limit: 2
+    t.uuid "consultation_id", null: false
+    t.uuid "patient_id", null: false
+    t.string "sextant", limit: 2, null: false
+    t.boolean "star", default: false, null: false
+    t.index ["consultation_id", "sextant"], name: "idx_periodontal_screenings_sextant", unique: true
+    t.check_constraint "code IS NULL OR (code >= 0 AND code <= 4)", name: "ck_periodontal_screenings_code"
+    t.check_constraint "sextant::text = ANY (ARRAY['S1'::text, 'S2'::text, 'S3'::text, 'S4'::text, 'S5'::text, 'S6'::text]::text[])", name: "ck_periodontal_screenings_sextant"
+  end
+
+  create_table "periodontal_sites", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "bleeding", default: false, null: false
+    t.uuid "periodontal_chart_id", null: false
+    t.integer "probing_depth_mm", limit: 2, null: false
+    t.integer "recession_mm", limit: 2, null: false
+    t.string "site", limit: 2, null: false
+    t.index ["periodontal_chart_id", "site"], name: "idx_periodontal_sites_site", unique: true
+    t.check_constraint "probing_depth_mm >= 0 AND probing_depth_mm <= 20", name: "ck_periodontal_sites_probing"
+    t.check_constraint "recession_mm >= -10 AND recession_mm <= 20", name: "ck_periodontal_sites_recession"
+    t.check_constraint "site::text = ANY (ARRAY['MV'::text, 'V'::text, 'DV'::text, 'ML'::text, 'L'::text, 'DL'::text]::text[])", name: "ck_periodontal_sites_site"
+  end
+
   create_table "pharmacy_settings", id: :smallint, default: nil, force: :cascade do |t|
     t.integer "adjustment_approval_percent", null: false
     t.integer "common_validity_days", null: false
@@ -3260,6 +3483,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
   add_foreign_key "care_outreach_contacts", "users", column: "recorded_by_user_id"
   add_foreign_key "care_providers", "health_units"
   add_foreign_key "care_providers", "users", column: "updated_by_user_id"
+  add_foreign_key "ceo_profiles", "health_units"
+  add_foreign_key "ceo_profiles", "users", column: "updated_by_user_id"
   add_foreign_key "citizen_contact_preferences", "citizens"
   add_foreign_key "citizen_declared_conditions", "citizens"
   add_foreign_key "citizen_erasure_requests", "citizens", column: "presented_citizen_id"
@@ -3308,6 +3533,34 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
   add_foreign_key "consultations", "professional_links"
   add_foreign_key "consultations", "users", column: "author_user_id"
   add_foreign_key "conversations", "citizens"
+  add_foreign_key "dental_auxiliary_procedures", "users", column: "created_by_user_id"
+  add_foreign_key "dental_chart_events", "consultation_addenda", column: "addendum_id"
+  add_foreign_key "dental_chart_events", "consultations"
+  add_foreign_key "dental_chart_events", "dental_procedures"
+  add_foreign_key "dental_chart_events", "patients"
+  add_foreign_key "dental_chart_events", "users", column: "author_user_id"
+  add_foreign_key "dental_procedures", "consultations"
+  add_foreign_key "dental_procedures", "dental_prosthesis_orders"
+  add_foreign_key "dental_procedures", "dental_treatment_plan_items"
+  add_foreign_key "dental_procedures", "patients"
+  add_foreign_key "dental_prosthesis_orders", "care_providers"
+  add_foreign_key "dental_prosthesis_orders", "consultations"
+  add_foreign_key "dental_prosthesis_orders", "consultations", column: "installed_in_consultation_id"
+  add_foreign_key "dental_prosthesis_orders", "health_units"
+  add_foreign_key "dental_prosthesis_orders", "patients"
+  add_foreign_key "dental_prosthesis_orders", "users", column: "created_by_user_id"
+  add_foreign_key "dental_prosthesis_stages", "dental_prosthesis_orders"
+  add_foreign_key "dental_prosthesis_stages", "users", column: "by_user_id"
+  add_foreign_key "dental_treatment_plan_items", "consultation_addenda", column: "cancelled_in_addendum_id"
+  add_foreign_key "dental_treatment_plan_items", "consultations", column: "added_in_consultation_id"
+  add_foreign_key "dental_treatment_plan_items", "consultations", column: "cancelled_in_consultation_id"
+  add_foreign_key "dental_treatment_plan_items", "consultations", column: "done_in_consultation_id"
+  add_foreign_key "dental_treatment_plan_items", "dental_treatment_plans"
+  add_foreign_key "dental_treatment_plans", "consultations", column: "closed_in_consultation_id"
+  add_foreign_key "dental_treatment_plans", "consultations", column: "opened_in_consultation_id"
+  add_foreign_key "dental_treatment_plans", "health_units"
+  add_foreign_key "dental_treatment_plans", "patients"
+  add_foreign_key "dental_treatment_plans", "users", column: "closed_by_user_id"
   add_foreign_key "disease_notification_events", "disease_notifications", column: "notification_id"
   add_foreign_key "disease_notification_events", "users", column: "by_user_id"
   add_foreign_key "disease_notifications", "consultation_addenda", column: "addendum_id"
@@ -3327,6 +3580,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
   add_foreign_key "dispensations", "users", column: "dispensed_by_user_id"
   add_foreign_key "document_verification_lookups", "clinical_documents"
   add_foreign_key "document_verification_lookups", "lab_reports"
+  add_foreign_key "endodontic_sessions", "consultations"
+  add_foreign_key "endodontic_sessions", "endodontic_treatments"
+  add_foreign_key "endodontic_treatments", "consultations", column: "completed_in_consultation_id"
+  add_foreign_key "endodontic_treatments", "consultations", column: "opened_in_consultation_id"
+  add_foreign_key "endodontic_treatments", "health_units"
+  add_foreign_key "endodontic_treatments", "patients"
   add_foreign_key "exam_files", "exam_providers"
   add_foreign_key "exam_files", "users", column: "uploaded_by_user_id"
   add_foreign_key "exam_order_events", "exam_orders"
@@ -3359,6 +3618,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
   add_foreign_key "families", "patients", column: "responsible_patient_id"
   add_foreign_key "health_team_members", "health_teams"
   add_foreign_key "health_team_members", "professionals"
+  add_foreign_key "health_teams", "health_teams", column: "associated_team_id"
   add_foreign_key "health_teams", "health_units"
   add_foreign_key "health_unit_drains", "health_units"
   add_foreign_key "health_unit_drains", "health_units", column: "target_unit_id"
@@ -3518,6 +3778,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
   add_foreign_key "performed_procedures", "users", column: "cancelled_by_user_id"
   add_foreign_key "performed_procedures", "users", column: "professional_user_id"
   add_foreign_key "performed_procedures", "users", column: "recorded_by_user_id"
+  add_foreign_key "periodontal_charts", "consultations"
+  add_foreign_key "periodontal_charts", "patients"
+  add_foreign_key "periodontal_screenings", "consultations"
+  add_foreign_key "periodontal_screenings", "patients"
+  add_foreign_key "periodontal_sites", "periodontal_charts"
   add_foreign_key "pharmacy_settings", "users", column: "updated_by_user_id"
   add_foreign_key "prescription_items", "clinical_documents"
   add_foreign_key "prescription_items", "nursing_protocol_version_items"

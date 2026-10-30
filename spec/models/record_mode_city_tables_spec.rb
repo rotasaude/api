@@ -43,11 +43,11 @@ RSpec.describe "Tabelas da cidade do módulo 16" do
     expect { sql("UPDATE health_units SET cnes = '12'") }.to raise_error(ActiveRecord::StatementInvalid)
   end
 
-  it "equipe: INE único de 10 dígitos e tipo 70 ou 76; um membro ativo por profissional e equipe" do
+  it "equipe: INE único de 10 dígitos e tipo 70, 71 (eSB, ADR 0046) ou 76; um membro ativo por profissional e equipe" do
     team = HealthTeam.create!(ine: "0001234567", kind: "70", name: "ESF 1", health_unit: unit)
     expect(HealthTeam.new(ine: "0001234567", kind: "76", health_unit: unit)).not_to be_valid
     expect(HealthTeam.new(ine: "1", kind: "70", health_unit: unit)).not_to be_valid
-    expect { sql("UPDATE health_teams SET kind = '71'") }.to raise_error(ActiveRecord::StatementInvalid)
+    expect { sql("UPDATE health_teams SET kind = '72'") }.to raise_error(ActiveRecord::StatementInvalid)
 
     doctor = staff_with("medica@cidade.gov.br", "health_professional")
     link_professional!(doctor, unit)

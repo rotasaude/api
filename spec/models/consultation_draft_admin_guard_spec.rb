@@ -31,7 +31,7 @@ RSpec.describe "Guardas do rascunho órfão (rota.draft_admin)" do
                            draft_items: { "conducts" => [ 1 ] } }.merge(over))
   end
 
-  def discard_attributes = Consultation::CLINICAL_COLUMNS.index_with(nil).merge(status: "discarded", discarded_at: Time.current, draft_items: {})
+  def discard_attributes = Consultation::EMPTY_CLINICAL.merge(status: "discarded", discarded_at: Time.current, draft_items: {})
 
   describe "consultations" do
     it "DELETE do rascunho continua recusado, com ou sem a marca" do

@@ -87,9 +87,11 @@ RSpec.describe Cnes::Proposal do
     expect(creates.first[:cnes][:cbo]).to eq("225125")
   end
 
-  it "unidade so com equipe fora de 70/76 nao e criada" do
+  # Módulo 28 (ADR 0046): a eSB (71) entrou em HealthTeam::KINDS; a eMulti
+  # (72) continua fora.
+  it "unidade so com equipe fora de 70/71/76 nao e criada" do
     cnes_snapshot!(establishments: [ { cnes: "0000008", name: "CLINICA X", unit_type: "02" } ],
-                   teams: [ { ine: "0000999999", kind: "71", cnes: "0000008", name: "EMULTI", active: true } ])
+                   teams: [ { ine: "0000999999", kind: "72", cnes: "0000008", name: "EMULTI", active: true } ])
     expect(find("unit", "create")).to be_nil
   end
 
