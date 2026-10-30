@@ -13,7 +13,8 @@ RSpec.describe "Transferência do central para a unidade" do
   let(:keeper) { pharmacy_staff!(central, "stock_keeper") }
   let(:receiver) { pharmacy_staff!(farmacia, "pharmacy_assistant") }
   let(:paracetamol) { catalog_item(267_778) }
-  let(:now) { Time.zone.local(2026, 10, 29, 10, 0) }
+  let(:today) { Time.zone.today }
+  let(:now) { Time.zone.local(today.year, today.month, today.day, 10, 0) }
   let(:later) { now + 2.hours }
   let!(:lot) { stocked_lot!(central, item: paracetamol, quantity: "120", lot_number: "TR-A") }
 

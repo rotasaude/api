@@ -15,8 +15,10 @@
 # para ele, em ordem FEFO (validade, número, id): o lote com saldo 0 e sem
 # trânsito fica, para a tela de inventário poder contar "caixa que o sistema dava
 # como zerada". Lote sem movimento nem trânsito no local nunca aparece. Cada
-# um com `balance`, `in_transit` e as marcas do lote: `expired` (validade < hoje) e `expiring_soon` (não vencido e validade
-# <= hoje + expiry_alert_days). Na POSIÇÃO, `expiring_soon` = algum lote com
+# um com `balance`, `in_transit` e as marcas do lote: `expired` (validade <
+# hoje) e `expiring_soon` (não vencido e validade <= hoje + expiry_alert_days).
+# O `item.dispensing_unit` da posição é o do primeiro lote COM estoque (saldo ou
+# trânsito > 0, em FEFO), senão o do primeiro lote, senão o padrão do item. Na POSIÇÃO, `expiring_soon` = algum lote com
 # saldo > 0 e validade <= hoje + expiry_alert_days (inclui os já vencidos: é o
 # que a tela "vencendo e vencidos" lista). `below_minimum` = mínimo > 0 e saldo
 # total < mínimo (o mínimo 0 desliga o alerta e vem como `minimum: null`).
@@ -143,12 +145,22 @@ module Pharmacy
         item = catalog.fetch(row["catalog_item_id"])
         minimum = row["minimum"]&.to_d
         { location: Json.location(locations.fetch(row["location_id"])),
-          item: Json.item(item, dispensing_unit: lots.first&.dig(:lot, :item, :dispensing_unit) || DispensingUnit.for(item)),
+          item: Json.item(item, dispensing_unit: dispensing_unit_of(lots) || DispensingUnit.for(item)),
           lots: lots, balance: Quantity.dump(row["balance"].to_d), minimum: minimum && Quantity.dump(minimum),
           below_minimum: flag(row["below_minimum"]), expiring_soon: flag(row["expiring_soon"]) }
       end
     end
     private_class_method :present
+
+    # Unidade do primeiro lote com estoque (saldo ou trânsito > 0) na ordem FEFO;
+    # sem nenhum, a do primeiro lote; sem lotes, nil. A unidade é gravada por
+    # lote e pode divergir entre lotes do mesmo item: o lote zerado e vencido não
+    # manda na unidade que a tela mostra.
+    def dispensing_unit_of(lots)
+      lot = lots.find { |row| row[:balance].to_d > 0 || row[:in_transit].to_d > 0 } || lots.first
+      lot&.dig(:lot, :item, :dispensing_unit)
+    end
+    private_class_method :dispensing_unit_of
 
     # lots[] da posição em ordem FEFO (validade, número, id).
     def lots_of(rows, stock_lots:, catalog:, today:, cutoff:)

@@ -10,7 +10,7 @@ RSpec.describe Pharmacy::RecordEntry do
   let(:keeper) { pharmacy_staff!(central, "stock_keeper") }
   let(:paracetamol) { catalog_item(267_778) }
   let(:today) { Time.zone.today }
-  let(:now) { Time.zone.local(2026, 10, 29, 10, 0) }
+  let(:now) { Time.zone.local(today.year, today.month, today.day, 10, 0) }
   let(:document) { { "number" => "NF-1234", "supplier" => "Distribuidora Sul" } }
 
   def line(item = paracetamol, **over)
@@ -145,9 +145,9 @@ RSpec.describe Pharmacy::RecordEntry do
     end
 
     it "o dia da validade ainda vale: expires_on == hoje passa, ontem não (fronteira no fuso da cidade)" do
-      late = Time.zone.local(2026, 10, 29, 23, 50)
-      expect(entry!([ line(expires_on: "2026-10-29") ], at: late)).to be_ok
-      expect(entry!([ line(lot_number: "LOTE-ONT", expires_on: "2026-10-28") ], at: late).reason).to eq(:expired_lot)
+      late = Time.zone.local(today.year, today.month, today.day, 23, 50)
+      expect(entry!([ line(expires_on: today.iso8601) ], at: late)).to be_ok
+      expect(entry!([ line(lot_number: "LOTE-ONT", expires_on: (today - 1).iso8601) ], at: late).reason).to eq(:expired_lot)
     end
 
     it "data fora do ISO (ou impossível) é invalid_request em items[0].expires_on" do

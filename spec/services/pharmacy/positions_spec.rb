@@ -31,6 +31,13 @@ RSpec.describe Pharmacy::Positions do
     result.payload.fetch(:transfer)
   end
 
+  # Lote gravado com a unidade de dispensação pedida (a coluna é só-anexo: não dá UPDATE);
+  # o `stocked_lot!` seguinte reaproveita o lote pelo número.
+  def lot_with_unit!(item, lot_number, unit, expires_on)
+    StockLot.create!(catalog_item_id: item.id, catmat_code: item.catmat_code, lot_number: lot_number, expires_on: expires_on,
+                     dispensing_unit: unit, created_by_user: pharmacy_admin!)
+  end
+
   def minimum!(location, item, value) = StockMinimum.create!(stock_location: location, catalog_item_id: item.id, minimum: value, updated_by_user: keeper)
 
   it "dois lotes no central e um em trânsito para a UBS: saldo somado no central; na UBS, em trânsito e saldo 0.00" do
@@ -213,14 +220,50 @@ RSpec.describe Pharmacy::Positions do
       expect(keys(call(expiring: true))).to eq([ [ central.id, amoxicilina.id ] ])
     end
 
-    it "below_minimum segue o saldo total: lote zerado ao lado de lote com saldo acima do mínimo não alerta" do
+    def zeroed_amoxicilina!
       zeroed = stocked_lot!(central, item: amoxicilina, quantity: "5", lot_number: "P-ZERO")
       Pharmacy::RequestAdjustment.call(location: central, lot: zeroed, kind: "loss", counted_quantity: nil, quantity: "5",
                                        reason: "Frascos quebrados no armário", by: keeper, settings: settings)
+    end
+
+    it "below_minimum: o item só com lote zerado, com mínimo 8, está abaixo do mínimo e aparece no filtro" do
+      zeroed_amoxicilina!
       minimum!(central, amoxicilina, 8)
       expect(keys(call(below_minimum: true))).to eq([ [ central.id, amoxicilina.id ] ])
+    end
+
+    it "below_minimum segue o saldo total: lote zerado ao lado de lote com saldo acima do mínimo não alerta, mas continua em lots[]" do
+      zeroed_amoxicilina!
       stocked_lot!(central, item: amoxicilina, quantity: "10", lot_number: "P-FULL")
+      minimum!(central, amoxicilina, 8)
       expect(keys(call(below_minimum: true))).to eq([])
+      expect(lot_flags(of(call, central, amoxicilina)).keys).to match_array(%w[P-ZERO P-FULL])
+    end
+
+    it "dispensing_unit da posição vem do primeiro lote com estoque, não do lote zerado e vencido que lidera o FEFO" do
+      lot_with_unit!(amoxicilina, "U-OLD", "frasco", today - 5)
+      lot_with_unit!(amoxicilina, "U-LIVE", "capsula", today + 200)
+      zeroed = stocked_lot!(central, item: amoxicilina, quantity: "5", lot_number: "U-OLD", expires_on: today - 5)
+      stocked_lot!(central, item: amoxicilina, quantity: "7", lot_number: "U-LIVE", expires_on: today + 200)
+      Pharmacy::RequestAdjustment.call(location: central, lot: zeroed, kind: "expiry", counted_quantity: nil, quantity: "5",
+                                       reason: "Lote vencido descartado", by: keeper, settings: settings)
+
+      position = of(call(location_ids: [ central.id ]), central, amoxicilina)
+      expect(position[:lots].map { |row| row.dig(:lot, :lot_number) }).to eq(%w[U-OLD U-LIVE])
+      expect(position[:lots].map { |row| row.dig(:lot, :item, :dispensing_unit) }).to eq(%w[frasco capsula])
+      expect(position[:item][:dispensing_unit]).to eq("capsula")
+    end
+
+    it "dispensing_unit: sem lote com estoque cai para o primeiro lote; sem lotes, para o padrão do item" do
+      lot_with_unit!(amoxicilina, "U-ONLY", "frasco", today + 180)
+      zeroed = stocked_lot!(central, item: amoxicilina, quantity: "5", lot_number: "U-ONLY")
+      Pharmacy::RequestAdjustment.call(location: central, lot: zeroed, kind: "loss", counted_quantity: nil, quantity: "5",
+                                       reason: "Frascos quebrados no armário", by: keeper, settings: settings)
+      minimum!(farmacia, losartana, 3)
+
+      expect(of(call, central, amoxicilina)[:item][:dispensing_unit]).to eq("frasco")
+      expect(of(call, farmacia, losartana)).to include(lots: [])
+      expect(of(call, farmacia, losartana)[:item][:dispensing_unit]).to eq(Pharmacy::DispensingUnit.for(losartana))
     end
 
     it "catalog_item_ids e location_ids restringem; lista vazia de itens não traz nada" do
