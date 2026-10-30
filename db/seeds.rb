@@ -21,6 +21,7 @@
 #     Linhas de cuidado (módulo 23): care_lines ligado em Curitiba, linhas adotadas e a própria de saúde mental, a técnica de enfermagem (tecnica@<slug>.demo, também na recepção) e as pessoas das provas na UBS Jardim das Flores — ver lib/care_lines_crew.rb.
 #     Cadastro territorial (módulo 24a): territory_registry ligado em Curitiba, a ACS (acs@<slug>.demo), as microáreas 01 e 02 da equipe da UBS Jardim das Flores, quatro domicílios e os cadastros da prova (válido, a vencer, vencido, sem identificador, recusa, óbito, mudança) — ver lib/territory_registry_crew.rb.
 #     Regulação municipal (módulo 26a): care_regulation ligado em Curitiba, a reguladora (regulacao.municipal@<slug>.demo), o Centro Municipal de Especialidades Vila Hauer e três prestadores, as ofertas do mês e os dez pedidos da prova — ver lib/regulation_crew.rb.
+#     Farmácia e almoxarifado (módulo 27a): pharmacy ligado em Curitiba, o almoxarifado central e a farmácia da UBS Jardim das Flores, a farmacêutica (farmacia@<slug>.demo), a auxiliar, dois almoxarifes, o estoque com lotes, as transferências e as receitas da prova — ver lib/pharmacy_crew.rb.
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -58,6 +59,7 @@ else
   require Rails.root.join("lib/territory_registry_crew").to_s
   require Rails.root.join("lib/surveillance_crew").to_s
   require Rails.root.join("lib/regulation_crew").to_s
+  require Rails.root.join("lib/pharmacy_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -133,6 +135,11 @@ else
   # ── Medicamentos (módulo 19c, ADR 0033) ───────────────────────────────────────
   # Recorte real do CATMAT (sem rede) e listas Anvisa do repositório.
   puts "[seeds] medicamentos . #{ClinicalDocumentsCrew.seed_platform!.inspect}"
+
+  # Farmácia (módulo 27a, ADR 0045): a forma farmacêutica (comprimido, cápsula)
+  # dos itens do cenário, que o recorte do CATMAT de dev não traz. Depois dos
+  # medicamentos; só completa o que está em branco.
+  puts "[seeds] farmácia (catálogo) . forma farmacêutica completada em #{PharmacyCrew.seed_platform![:forms]} itens"
 
   # Mesmo protocolo que o provisionamento semeia em rascunho (Plano 4); aqui ativo.
   protocol_defn = CityTemplates.protocol.fetch(:definition)
@@ -373,6 +380,14 @@ else
         # Sebastião do 23. Só e-mail, papel e otpauth: nunca dado de paciente.
         regulation = RegulationCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
         RegulationCrew.summary_lines(regulation, password: password).each { |line| puts line }
+
+        # ── Farmácia e almoxarifado (módulo 27a, ADR 0045) ────────────────────
+        # Depois do RegulationCrew: as receitas saem nas consultas dos pedidos de
+        # regulação (José, Sebastião e as pessoas novas) e usam a médica, a UBS e
+        # o catálogo de medicamentos (controlled_prescriptions já ligado pelo
+        # ControlledPrescriptionsCrew). Só e-mail, papel e otpauth: nunca dado de paciente.
+        pharmacy = PharmacyCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        PharmacyCrew.summary_lines(pharmacy, password: password).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
