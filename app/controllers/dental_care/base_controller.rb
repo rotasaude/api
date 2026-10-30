@@ -58,6 +58,19 @@ module DentalCare
       false
     end
 
+    # Leitura nominal de `patients/:id/...`: paciente (404), acesso do prontuário
+    # (403 com o motivo) e, se o bloco devolver true, uma trilha dental. O bloco
+    # valida os filtros e responde; devolve false quando já respondeu a recusa.
+    def read_patient
+      patient = uuid?(params[:id]) ? Patient.find_by(id: params[:id]) : nil
+      return not_found unless patient
+
+      grant = ClinicalRecord::Access.call(user: Current.user, patient: patient)
+      return forbid(grant.reason.to_s) unless grant.allowed?
+
+      DentalCare::Trail.viewed!(patient: patient, user: Current.user, grant: grant) if yield(patient)
+    end
+
     def render_error(reason, status = :unprocessable_entity) = render(json: { error: reason.to_s }, status: status)
     def forbid(reason = "missing_role") = render(json: { error: reason }, status: :forbidden)
     def not_found = render(json: { error: "not_found" }, status: :not_found)

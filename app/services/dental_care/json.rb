@@ -96,6 +96,52 @@ module DentalCare
 
       SigtapProcedure.where(release_id: release.id, code: codes.uniq).pluck(:code, :name).to_h
     end
+    # --- Leitura nominal do paciente (Task 7; contrato §2, §16 O13, O14, O25, O27) ---
+    # Dado clínico: só o corpo JSON; quem chama grava a trilha.
+
+    def unit_ref(unit) = { id: unit.id, name: unit.name, kind: unit.kind }
+
+    def patient_ref(patient)
+      { id: patient.id, display_name: patient.display_name, **Patients::IdentifierJson.call(patient) }
+    end
+
+    def odontogram(patient, chart, plans)
+      { patient: patient_ref(patient), dentition: chart[:dentition],
+        teeth: chart[:teeth].map do |t|
+          { tooth: t[:tooth].to_s, situation: t[:situation], root: t[:root], faces: t[:faces],
+            last_event_at: t[:last_event_at]&.iso8601, notes_count: t[:notes_count] }
+        end,
+        open_plans: plans.map { |plan| { id: plan.id, health_unit: unit_ref(plan.health_unit) } } }
+    end
+
+    # `names`: { sigtap => nome } (procedure_names) dos eventos mostrados.
+    def chart_event(event, names:)
+      { id: event.id, tooth: event.tooth.to_s, part: event.part, face: event.face, situation: event.situation,
+        procedure: event.procedure_code && { sigtap: event.procedure_code, name: names[event.procedure_code] },
+        consultation_id: event.consultation_id, addendum_id: event.addendum_id,
+        by: { name: event.author_user.professional&.professional_name, cbo: event.cbo_code }, at: event.recorded_at.iso8601(6) }
+    end
+
+    def plan(plan, names:)
+      { id: plan.id, health_unit: unit_ref(plan.health_unit), status: plan.status,
+        opened_in_consultation_id: plan.opened_in_consultation_id, closed_in_consultation_id: plan.closed_in_consultation_id,
+        items: plan.items.sort_by { |i| [ i.created_at, i.id ] }.map do |i|
+          { id: i.id, sigtap: i.procedure_code, name: names[i.procedure_code], location: location(item_location(i)), status: i.status,
+            done_in_consultation_id: i.done_in_consultation_id, cancel_reason: i.cancel_reason }
+        end }
+    end
+
+    def endodontic_treatment(treatment)
+      { id: treatment.id, tooth: treatment.tooth.to_s, canals: treatment.canals, status: treatment.status,
+        health_unit: unit_ref(treatment.health_unit),
+        sessions: treatment.sessions.sort_by { |s| [ s.created_at, s.id ] }.map do |s|
+          { consultation_id: s.consultation_id, canals: s.canals, at: s.created_at.iso8601,
+            by: { name: s.consultation.author_user.professional&.professional_name } }
+        end }
+    end
+
+    def procedure_names(codes) = names(codes)
+
     private_class_method :draft, :stored, :procedure, :finding, :location, :item_location, :screening, :perio, :endo, :names
   end
 end
