@@ -1,0 +1,204 @@
+# Módulo 28 (ADR 0046; Desvio 4; contrato §16 O3): situações do odontograma do
+# PEC. part: crown (21), root (6) ou arch (1); abbr: a sigla da figura (nula
+# onde a figura usa só o desenho); deciduous: vale em dente decíduo; face: vale
+# numa face (M, D, O, V, L); teeth: só nesses dentes (ausente = todos).
+# DentalCare::Situations lê daqui; as opções da consulta também.
+version: 1
+situations:
+  - code: none
+    label: "Nenhuma"
+    abbr: null
+    part: crown
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: removable_partial_denture
+    label: "Prótese parcial removível"
+    abbr: null
+    part: crown
+    deciduous: false
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: crown_unit_prosthesis
+    label: "Prótese coronária / unitária"
+    abbr: null
+    part: crown
+    deciduous: false
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: temporary_prosthesis
+    label: "Prótese temporária"
+    abbr: null
+    part: crown
+    deciduous: false
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: missing
+    label: "Ausente"
+    abbr: "A"
+    part: crown
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: calculus
+    label: "Cálculo dental"
+    abbr: "Cd"
+    part: crown
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: caries
+    label: "Cariado"
+    abbr: "C"
+    part: crown
+    deciduous: true
+    face: true
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: crown
+    label: "Coroa"
+    abbr: "Co"
+    part: crown
+    deciduous: false
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: extraction_indicated
+    label: "Extração indicada"
+    abbr: "Ei"
+    part: crown
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: extracted
+    label: "Extraído"
+    abbr: "E"
+    part: crown
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: fracture
+    label: "Fraturado"
+    abbr: "Fr"
+    part: crown
+    deciduous: true
+    face: true
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: sound
+    label: "Hígido"
+    abbr: "H"
+    part: crown
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: sound_sealed
+    label: "Hígido selado"
+    abbr: "Hs"
+    part: crown
+    deciduous: true
+    face: true
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: unerupted
+    label: "Incluso"
+    abbr: "I"
+    part: crown
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: active_white_spot
+    label: "Mancha branca ativa"
+    abbr: "M"
+    part: crown
+    deciduous: true
+    face: true
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: abutment
+    label: "Pilar"
+    abbr: "P"
+    part: crown
+    deciduous: false
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: restored
+    label: "Restaurado"
+    abbr: "R"
+    part: crown
+    deciduous: true
+    face: true
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: restored_with_caries
+    label: "Restaurado com cárie"
+    abbr: "Rc"
+    part: crown
+    deciduous: true
+    face: true
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: residual_root
+    label: "Resto radicular"
+    abbr: "RR"
+    part: crown
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: gingival_recession
+    label: "Retração gengival"
+    abbr: "Rg"
+    part: crown
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: sealant_indicated
+    label: "Selante indicado"
+    abbr: "Si"
+    part: crown
+    deciduous: true
+    face: true
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: none
+    label: "Nenhuma"
+    abbr: null
+    part: root
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: root_caries
+    label: "Cárie radicular"
+    abbr: null
+    part: root
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: endodontics
+    label: "Endodontia"
+    abbr: null
+    part: root
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: implant
+    label: "Implante"
+    abbr: null
+    part: root
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: post
+    label: "Núcleo / pino"
+    abbr: null
+    part: root
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: furcation_lesion
+    label: "Lesão de furca"
+    abbr: null
+    part: root
+    deciduous: false
+    face: false
+    teeth: [14, 15, 16, 17, 18, 24, 25, 26, 27, 28, 34, 35, 36, 37, 38, 44, 45, 46, 47, 48]
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, figura do odontograma (imagens 534 e 546)"
+  - code: complete_denture
+    label: "Prótese total"
+    abbr: null
+    part: arch
+    deciduous: true
+    face: false
+    source: "Manual e-SUS APS (PEC), cap. 6, §6.5.1.4.2, caixas prótese total superior/inferior (imagem 534)"

@@ -1,0 +1,180 @@
+# Módulo 28 (ADR 0046; Desvio 5; contrato §16 O21): efeito de cada SIGTAP no
+# odontograma. locations: o local do efeito (o mesmo da lista de local e
+# quantidade da FAO, config/ledi/dental_procedure_limits.yml: Dente → tooth e
+# face, Arcada → arch). effects: part (crown, root ou arch — arch vira um
+# evento de coroa por dente da arcada), situation, on_face (na face quando o
+# local é face, senão na coroa) e only_on (só nos dentes cuja coroa está numa
+# dessas situações; exige o odontograma). Procedimento fora da tabela gera
+# evento só com o procedure_code. Nomes: SIGTAP 06/2026 (dicionário FAO); a
+# release SIGTAP do dev é uma semente sem procedimento odontológico (conferido
+# em 2026-10-30, só leitura).
+version: 1
+procedures:
+  "0307010031":
+    name: "RESTAURAÇÃO DE DENTE PERMANENTE ANTERIOR COM RESINA COMPOSTA"
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: restored
+        on_face: true
+    source: "plano do módulo 28 (api), Desvio 5: restauração"
+  "0307010074":
+    name: "TRATAMENTO RESTAURADOR ATRAUMÁTICO (TRA/ART)"
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: restored
+        on_face: true
+    source: "plano do módulo 28 (api), Desvio 5: restauração"
+  "0307010082":
+    name: "RESTAURAÇÃO DE DENTE DECÍDUO POSTERIOR COM RESINA COMPOSTA"
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: restored
+        on_face: true
+    source: "plano do módulo 28 (api), Desvio 5: restauração"
+  "0307010090":
+    name: "RESTAURAÇÃO DE DENTE DECÍDUO POSTERIOR COM AMÁLGAMA"
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: restored
+        on_face: true
+    source: "plano do módulo 28 (api), Desvio 5: restauração"
+  "0307010104":
+    name: "RESTAURAÇÃO DE DENTE DECÍDUO POSTERIOR COM IONÔMERO DE VIDRO"
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: restored
+        on_face: true
+    source: "plano do módulo 28 (api), Desvio 5: restauração"
+  "0307010112":
+    name: "RESTAURAÇÃO DE DENTE DECÍDUO ANTERIOR COM RESINA COMPOSTA."
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: restored
+        on_face: true
+    source: "plano do módulo 28 (api), Desvio 5: restauração"
+  "0307010120":
+    name: "RESTAURAÇÃO DE DENTE PERMANENTE POSTERIOR COM RESINA COMPOSTA"
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: restored
+        on_face: true
+    source: "plano do módulo 28 (api), Desvio 5: restauração"
+  "0307010139":
+    name: "RESTAURAÇÃO DE DENTE PERMANENTE POSTERIOR COM AMÁLGAMA"
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: restored
+        on_face: true
+    source: "plano do módulo 28 (api), Desvio 5: restauração"
+  "0101020066":
+    name: "APLICAÇÃO DE SELANTE (POR DENTE)"
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: sound_sealed
+        on_face: true
+    source: "plano do módulo 28 (api), Desvio 5: selante"
+  "0414020120":
+    name: "EXODONTIA DE DENTE DECÍDUO"
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: extracted
+    source: "plano do módulo 28 (api), Desvio 5: exodontia"
+  "0414020138":
+    name: "EXODONTIA DE DENTE PERMANENTE"
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: extracted
+    source: "plano do módulo 28 (api), Desvio 5: exodontia"
+  "0307020037":
+    name: "TRATAMENTO ENDODÔNTICO DE DENTE DECÍDUO"
+    locations: [tooth, face]
+    effects:
+      - part: root
+        situation: endodontics
+    source: "plano do módulo 28 (api), Desvio 5: endodontia"
+  "0307020045":
+    name: "TRATAMENTO ENDODÔNTICO DE DENTE PERMANENTE BIRRADICULAR"
+    locations: [tooth, face]
+    effects:
+      - part: root
+        situation: endodontics
+    source: "plano do módulo 28 (api), Desvio 5: endodontia"
+  "0307020053":
+    name: "TRATAMENTO ENDODÔNTICO DE DENTE PERMANENTE COM TRÊS OU MAIS RAÍZES"
+    locations: [tooth, face]
+    effects:
+      - part: root
+        situation: endodontics
+    source: "plano do módulo 28 (api), Desvio 5: endodontia"
+  "0307020061":
+    name: "TRATAMENTO ENDODÔNTICO DE DENTE PERMANENTE UNIRRADICULAR"
+    locations: [tooth, face]
+    effects:
+      - part: root
+        situation: endodontics
+    source: "plano do módulo 28 (api), Desvio 5: endodontia"
+  "0701070145":
+    name: "PROTESES CORONARIAS / INTRA-RADICULARES FIXAS / ADESIVAS (POR ELEMENTO)"
+    locations: [tooth, face]
+    effects:
+      - part: crown
+        situation: crown_unit_prosthesis
+    source: "plano do módulo 28 (api), Desvio 5: prótese coronária"
+  "0701070153":
+    name: "PRÓTESE DENTÁRIA SOBRE IMPLANTE"
+    locations: [tooth, face]
+    effects:
+      - part: root
+        situation: implant
+      - part: crown
+        situation: crown_unit_prosthesis
+    source: "plano do módulo 28 (api), Desvio 5: prótese sobre implante"
+  "0701070129":
+    name: "PROTESE TOTAL MANDIBULAR"
+    locations: [arch]
+    effects:
+      - part: arch
+        situation: complete_denture
+    source: "plano do módulo 28 (api), Desvio 5: prótese total"
+  "0701070137":
+    name: "PROTESE TOTAL MAXILAR"
+    locations: [arch]
+    effects:
+      - part: arch
+        situation: complete_denture
+    source: "plano do módulo 28 (api), Desvio 5: prótese total"
+  "0701070099":
+    name: "PROTESE PARCIAL MANDIBULAR REMOVIVEL"
+    locations: [arch]
+    effects:
+      - part: crown
+        situation: removable_partial_denture
+        only_on: [missing, extracted]
+    source: "plano do módulo 28 (api), Desvio 5: prótese parcial removível"
+  "0701070102":
+    name: "PROTESE PARCIAL MAXILAR REMOVIVEL"
+    locations: [arch]
+    effects:
+      - part: crown
+        situation: removable_partial_denture
+        only_on: [missing, extracted]
+    source: "plano do módulo 28 (api), Desvio 5: prótese parcial removível"
+  "0701070110":
+    name: "PROTESE TEMPORARIA"
+    locations: [arch]
+    effects:
+      - part: crown
+        situation: temporary_prosthesis
+        only_on: [missing, extracted]
+    source: "plano do módulo 28 (api), Desvio 5: prótese temporária"

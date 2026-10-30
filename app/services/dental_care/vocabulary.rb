@@ -23,27 +23,6 @@ module DentalCare
       15 => "Tratamento concluído", 16 => "Retorno para consulta agendada", 17 => "Alta do episódio", 18 => "Agendamento para eMulti"
     }.freeze
 
-    # Provisório até a Task 5: os códigos do Desvio 4 (figura do odontograma
-    # do Manual e-SUS APS, PEC cap. 6, §6.5.1.4.2) com rótulo. A Task 5 troca
-    # por config/dental/situations.yml (code, label, abbr, part, deciduous,
-    # face) mantendo esta forma.
-    INTERIM_SITUATIONS = {
-      crown: {
-        "none" => "Nenhuma", "removable_partial_denture" => "Prótese parcial removível",
-        "crown_unit_prosthesis" => "Prótese coronária / unitária", "temporary_prosthesis" => "Prótese temporária",
-        "missing" => "Ausente", "calculus" => "Cálculo dental", "caries" => "Cariado", "crown" => "Coroa",
-        "extraction_indicated" => "Extração indicada", "extracted" => "Extraído", "fracture" => "Fraturado",
-        "sound" => "Hígido", "sound_sealed" => "Hígido selado", "unerupted" => "Incluso",
-        "active_white_spot" => "Mancha branca ativa", "abutment" => "Pilar", "restored" => "Restaurado",
-        "restored_with_caries" => "Restaurado com cárie", "residual_root" => "Resto radicular",
-        "gingival_recession" => "Retração gengival", "sealant_indicated" => "Selante indicado"
-      },
-      root: { "none" => "Nenhuma", "root_caries" => "Cárie radicular", "endodontics" => "Endodontia", "implant" => "Implante",
-              "post" => "Núcleo / pino", "furcation_lesion" => "Lesão de furca" },
-      arch: { "complete_denture" => "Prótese total" }
-    }.freeze
-    FACE_SITUATIONS = %w[caries restored restored_with_caries fracture active_white_spot sealant_indicated sound_sealed].freeze
-
     module_function
 
     def options
@@ -52,10 +31,10 @@ module DentalCare
         outcomes: coded(OUTCOMES, Catalog::OUTCOMES), situations: situations }
     end
 
+    # Situações do odontograma (config/dental/situations.yml, Desvio 4): coroa,
+    # raiz, arcada e as de coroa que valem na face.
     def situations
-      listed = INTERIM_SITUATIONS.transform_values { |labels| labels.map { |code, label| { code: code, label: label } } }
-      crown = INTERIM_SITUATIONS[:crown]
-      listed.merge(face: FACE_SITUATIONS.map { |code| { code: code, label: crown.fetch(code) } })
+      %i[crown root arch face].index_with { |part| Situations.list(part).map { |s| { code: s[:code], label: s[:label] } } }
     end
 
     def coded(labels, codes) = codes.map { |code| { code: code.to_s, label: labels.fetch(code) } }

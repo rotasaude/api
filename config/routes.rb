@@ -516,6 +516,8 @@ Rails.application.routes.draw do
     put "admin/ceo_profiles/:health_unit_id",   to: "admin/ceo_profiles#update"
     get "admin/auxiliary_procedures",           to: "admin/auxiliary_procedures#show"
     put "admin/auxiliary_procedures",           to: "admin/auxiliary_procedures#update"
+    # Busca de procedimento da consulta (contrato §16 O5; termo no corpo).
+    post "procedures/search",                   to: "procedures#search"
   end
 
   # Módulo 27a (ADR 0045; contrato §3, §13): farmácia e almoxarifado, sessão do

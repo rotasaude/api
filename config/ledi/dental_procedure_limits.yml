@@ -1,0 +1,404 @@
+# Módulo 28 (ADR 0046; Desvio 6): "Lista de procedimentos por local e quantidade
+# máxima permitida" do dicionário FAO do LEDI APS 8.7.0 (SIGTAP 06/2026),
+# vendorizado em vendor/ledi/8.7.0/docs/dicionario-fao.html. Código sem
+# pontuação; local tooth (Dente: dente ou face), sextant ou arch; max por
+# consulta. Fora da lista: só mouth e 1 (O5), salvo a tabela SIGTAP → situação
+# (config/dental/sigtap_situations.yml, O21). Conferido linha a linha por
+# spec/services/ledi/dental_procedure_limits_dictionary_spec.rb.
+version: 1
+procedures:
+  "0204010160":
+    name: "RADIOGRAFIA OCLUSAL"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (02.04.01.016-0)"
+  "0307040011":
+    name: "COLOCACAO DE PLACA DE MORDIDA"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.04.001-1)"
+  "0307040127":
+    name: "MANUTENÇÃO/CONSERTO DE APARELHO ORTODÔNTICO/ORTOPÉDICO"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.04.012-7)"
+  "0307040178":
+    name: "MOLDAGEM DENTO-GENGIVAL COM FINALIDADE ORTODÔNTICA"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.04.017-8)"
+  "0414010361":
+    name: "EXERESE DE CISTO ODONTOGÊNICO E NÃO-ODONTOGÊNICO"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.01.036-1)"
+  "0414010388":
+    name: "TRATAMENTO CIRÚRGICO DE FÍSTULA INTRA / EXTRAORAL"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.01.038-8)"
+  "0414020049":
+    name: "CORREÇÃO DE BRIDAS MUSCULARES"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.004-9)"
+  "0414020057":
+    name: "CORREÇÃO DE IRREGULARIDADES DE REBORDO ALVEOLAR"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.005-7)"
+  "0414020294":
+    name: "REMOÇÃO DE TORUS E EXOSTOSES"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.029-4)"
+  "0404020445":
+    name: "CONTENÇÃO DE DENTES POR SPLINTAGEM"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.04.02.044-5)"
+  "0404020615":
+    name: "REDUÇÃO DE LUXAÇÃO TÊMPORO-MANDIBULAR"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.04.02.061-5)"
+  "0404020623":
+    name: "RETIRADA DE MATERIAL DE SÍNTESE ÓSSEA / DENTÁRIA"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.04.02.062-3)"
+  "0701070064":
+    name: "MANTENEDOR DE ESPAÇO"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.006-4)"
+  "0701070072":
+    name: "PLACA OCLUSAL"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.007-2)"
+  "0701070080":
+    name: "PLANO INCLINADO"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.008-0)"
+  "0701070099":
+    name: "PROTESE PARCIAL MANDIBULAR REMOVIVEL"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.009-9)"
+  "0701070102":
+    name: "PROTESE PARCIAL MAXILAR REMOVIVEL"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.010-2)"
+  "0701070110":
+    name: "PROTESE TEMPORARIA"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.011-0)"
+  "0701070129":
+    name: "PROTESE TOTAL MANDIBULAR"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.012-9)"
+  "0701070137":
+    name: "PROTESE TOTAL MAXILAR"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.013-7)"
+  "0701070013":
+    name: "APARELHO FIXO BILATERAL PARA FECHAMENTO DE DIASTEMA"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.001-3)"
+  "0701070170":
+    name: "APARELHO ORTODÔNTICO FIXO"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.017-0)"
+  "0701070021":
+    name: "APARELHO ORTOPÉDICO E ORTODÔNTICO REMOVÍVEL"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.002-1)"
+  "0701070161":
+    name: "APARELHO ORTOPÉDICO FIXO"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.016-1)"
+  "0701070030":
+    name: "APARELHO P/ BLOQUEIO MAXILO-MANDIBULAR"
+    local: arch
+    max: 2
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.003-0)"
+  "0101020058":
+    name: "APLICAÇÃO DE CARIOSTÁTICO (POR DENTE)"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (01.01.02.005-8)"
+  "0101020066":
+    name: "APLICAÇÃO DE SELANTE (POR DENTE)"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (01.01.02.006-6)"
+  "0101020090":
+    name: "SELAMENTO PROVISÓRIO DE CAVIDADE DENTÁRIA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (01.01.02.009-0)"
+  "0204010217":
+    name: "RADIOGRAFIA INTERPROXIMAL (BITE WING)"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (02.04.01.021-7)"
+  "0204010225":
+    name: "RADIOGRAFIA PERIAPICAL"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (02.04.01.022-5)"
+  "0307010015":
+    name: "CAPEAMENTO PULPAR"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.01.001-5)"
+  "0307010031":
+    name: "RESTAURAÇÃO DE DENTE PERMANENTE ANTERIOR COM RESINA COMPOSTA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.01.003-1)"
+  "0307010066":
+    name: "TRATAMENTO INICIAL DO DENTE TRAUMATIZADO"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.01.006-6)"
+  "0307010074":
+    name: "TRATAMENTO RESTAURADOR ATRAUMÁTICO (TRA/ART)"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.01.007-4)"
+  "0307010082":
+    name: "RESTAURAÇÃO DE DENTE DECÍDUO POSTERIOR COM RESINA COMPOSTA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.01.008-2)"
+  "0307010090":
+    name: "RESTAURAÇÃO DE DENTE DECÍDUO POSTERIOR COM AMÁLGAMA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.01.009-0)"
+  "0307010104":
+    name: "RESTAURAÇÃO DE DENTE DECÍDUO POSTERIOR COM IONÔMERO DE VIDRO"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.01.010-4)"
+  "0307010112":
+    name: "RESTAURAÇÃO DE DENTE DECÍDUO ANTERIOR COM RESINA COMPOSTA."
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.01.011-2)"
+  "0307010120":
+    name: "RESTAURAÇÃO DE DENTE PERMANENTE POSTERIOR COM RESINA COMPOSTA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.01.012-0)"
+  "0307010139":
+    name: "RESTAURAÇÃO DE DENTE PERMANENTE POSTERIOR COM AMÁLGAMA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.01.013-9)"
+  "0307020010":
+    name: "ACESSO A POLPA DENTARIA E MEDICACAO (POR DENTE)"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.02.001-0)"
+  "0307020029":
+    name: "CURATIVO DE DEMORA C/ OU S/ PREPARO BIOMECANICO"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.02.002-9)"
+  "0307020037":
+    name: "TRATAMENTO ENDODÔNTICO DE DENTE DECÍDUO"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.02.003-7)"
+  "0307020045":
+    name: "TRATAMENTO ENDODÔNTICO DE DENTE PERMANENTE BIRRADICULAR"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.02.004-5)"
+  "0307020053":
+    name: "TRATAMENTO ENDODÔNTICO DE DENTE PERMANENTE COM TRÊS OU MAIS RAÍZES"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.02.005-3)"
+  "0307020061":
+    name: "TRATAMENTO ENDODÔNTICO DE DENTE PERMANENTE UNIRRADICULAR"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.02.006-1)"
+  "0307020070":
+    name: "PULPOTOMIA DENTÁRIA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.02.007-0)"
+  "0307020088":
+    name: "RETRATAMENTO ENDODÔNTICO EM DENTE PERMANENTE BI-RADICULAR"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.02.008-8)"
+  "0307020096":
+    name: "RETRATAMENTO ENDODÔNTICO EM DENTE PERMANENTE COM 3 OU MAIS RAÍZES"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.02.009-6)"
+  "0307020100":
+    name: "RETRATAMENTO ENDODÔNTICO EM DENTE PERMANENTE UNI-RADICULAR"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.02.010-0)"
+  "0307020118":
+    name: "SELAMENTO DE PERFURAÇÃO RADICULAR"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.02.011-8)"
+  "0307040070":
+    name: "MOLDAGEM DENTO-GENGIVAL P/ CONSTRUCAO DE PROTESE DENTARIA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.04.007-0)"
+  "0307040089":
+    name: "REEMBASAMENTO E CONSERTO DE PROTESE DENTARIA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.04.008-9)"
+  "0307040135":
+    name: "CIMENTAÇÃO DE PRÓTESE DENTÁRIA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.04.013-5)"
+  "0307040143":
+    name: "ADAPTAÇÃO DE PRÓTESE DENTÁRIA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.04.014-3)"
+  "0307040151":
+    name: "AJUSTE OCLUSAL"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.04.015-1)"
+  "0307040160":
+    name: "INSTALAÇÃO DE PRÓTESE DENTÁRIA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.04.016-0)"
+  "0414020022":
+    name: "APICECTOMIA COM OU SEM OBTURAÇÃO RETRÓGRADA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.002-2)"
+  "0414020073":
+    name: "CURETAGEM PERIAPICAL"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.007-3)"
+  "0414020120":
+    name: "EXODONTIA DE DENTE DECÍDUO"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.012-0)"
+  "0414020138":
+    name: "EXODONTIA DE DENTE PERMANENTE"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.013-8)"
+  "0414020219":
+    name: "ODONTOSECÇÃO / RADILECTOMIA / TUNELIZAÇÃO"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.021-9)"
+  "0414020243":
+    name: "REIMPLANTE E TRANSPLANTE DENTAL (POR ELEMENTO)"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.024-3)"
+  "0414020278":
+    name: "REMOÇÃO DE DENTE RETIDO (INCLUSO / IMPACTADO)"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.027-8)"
+  "0414020367":
+    name: "TRATAMENTO CIRÚRGICO PARA TRACIONAMENTO DENTAL"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.036-7)"
+  "0414020383":
+    name: "TRATAMENTO DE ALVEOLITE"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.038-3)"
+  "0414020405":
+    name: "ULOTOMIA/ULECTOMIA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.040-5)"
+  "0701070056":
+    name: "COROA PROVISORIA"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.005-6)"
+  "0701070145":
+    name: "PROTESES CORONARIAS / INTRA-RADICULARES FIXAS / ADESIVAS (POR ELEMENTO)"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.014-5)"
+  "0701070048":
+    name: "COROA DE ACO E POLICARBOXILATO"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.004-8)"
+  "0701070153":
+    name: "PRÓTESE DENTÁRIA SOBRE IMPLANTE"
+    local: tooth
+    max: 32
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (07.01.07.015-3)"
+  "0307030024":
+    name: "RASPAGEM ALISAMENTO SUBGENGIVAIS (POR SEXTANTE)"
+    local: sextant
+    max: 6
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.03.002-4)"
+  "0307030032":
+    name: "RASPAGEM CORONO-RADICULAR (POR SEXTANTE)"
+    local: sextant
+    max: 6
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.03.003-2)"
+  "0307030059":
+    name: "RASPAGEM ALISAMENTO E POLIMENTO SUPRAGENGIVAIS (POR SEXTANTE)"
+    local: sextant
+    max: 6
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (03.07.03.005-9)"
+  "0414020030":
+    name: "APROFUNDAMENTO DE VESTÍBULO ORAL (POR SEXTANTE)"
+    local: sextant
+    max: 6
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.003-0)"
+  "0414020154":
+    name: "GENGIVECTOMIA (POR SEXTANTE)"
+    local: sextant
+    max: 6
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.015-4)"
+  "0414020146":
+    name: "EXODONTIA MÚLTIPLA COM ALVEOLOPLASTIA POR SEXTANTE"
+    local: sextant
+    max: 6
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.014-6)"
+  "0414020162":
+    name: "GENGIVOPLASTIA (POR SEXTANTE)"
+    local: sextant
+    max: 6
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.016-2)"
+  "0414020375":
+    name: "TRATAMENTO CIRÚRGICO PERIODONTAL (POR SEXTANTE)"
+    local: sextant
+    max: 6
+    source: "dicionario-fao.html#lista-de-procedimentos-por-local-e-quantidade-m-xima-permitida (04.14.02.037-5)"
