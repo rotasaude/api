@@ -1,0 +1,165 @@
+require "rails_helper"
+
+# Módulo 28 (ADR 0046; contrato §16 O14): perfil do CEO, lista do TSB/ASB e a
+# unidade `ceo`. Escrita só do municipal_admin, com step-up.
+RSpec.describe "Saúde bucal — administração", type: :request do
+  let!(:city) { dental_city! }
+  let(:admin) { dental_admin! }
+  let(:ceo) { create_unit("CEO Centro", kind: "ceo") }
+  let(:ubs) { create_unit("UBS Centro") }
+
+  def events(name) = DomainEvent.where(name: name).order(:occurred_at, :id).map(&:payload)
+  def refusal(error, path) = { "error" => error, "path" => path, "problems" => [ { "path" => path, "error" => error } ] }
+  def profile_path(unit) = "/dental/admin/ceo_profiles/#{unit.id}"
+
+  describe "interruptor" do
+    it "desligado → 403 feature_disabled (dental_care), em leitura e escrita" do
+      Platform::Features.set!(city: city, key: "dental_care", enabled: false, maintainer: ledi_maintainer!)
+      stepped_up!(admin)
+      get "/dental/admin/ceo_profiles"
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "dental_care" } ])
+      json_put "/dental/admin/auxiliary_procedures", procedures: []
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "dental_care" } ])
+    end
+  end
+
+  describe "perfil do CEO" do
+    let(:body) { { ceo_type: "II", specialties: %w[endodontics prosthesis] } }
+
+    it "PUT grava e publica ceo_profile.changed só com ids; GET devolve o perfil" do
+      stepped_up!(admin)
+      json_put profile_path(ceo), body
+      expect([ response.status, json_body ]).to eq([ 200, { "health_unit" => { "id" => ceo.id, "name" => "CEO Centro", "kind" => "ceo" },
+                                                           "ceo_type" => "II", "specialties" => %w[endodontics prosthesis] } ])
+      expect(CeoProfile.find_by!(health_unit: ceo).updated_by_user).to eq(admin)
+      expect(events("ceo_profile.changed")).to eq([ { "health_unit_id" => ceo.id, "user_id" => admin.id } ])
+      get profile_path(ceo)
+      expect(json_body).to include("ceo_type" => "II", "specialties" => %w[endodontics prosthesis])
+    end
+
+    it "PUT de novo substitui o perfil (um por unidade)" do
+      stepped_up!(admin)
+      json_put profile_path(ceo), body
+      json_put profile_path(ceo), ceo_type: "III", specialties: %w[periodontics]
+      expect(CeoProfile.where(health_unit: ceo).count).to eq(1)
+      expect(json_body).to include("ceo_type" => "III", "specialties" => %w[periodontics])
+    end
+
+    it "GET sem perfil → ceo_type null e specialties vazio" do
+      sign_in_as(admin)
+      get profile_path(ceo)
+      expect(json_body).to eq("health_unit" => { "id" => ceo.id, "name" => "CEO Centro", "kind" => "ceo" }, "ceo_type" => nil, "specialties" => [])
+    end
+
+    it "outro papel → 403 missing_role; sem step-up → 401 mfa_required" do
+      sign_in_as(dentist!(ubs))
+      json_put profile_path(ceo), body
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+      sign_in_as(step_up_enrolled!(admin))
+      json_put profile_path(ceo), body
+      expect([ response.status, json_body ]).to eq([ 401, { "error" => "mfa_required" } ])
+      expect(CeoProfile.count).to eq(0)
+    end
+
+    it "unidade ubs → 422 unit_not_ceo; id desconhecido → 404" do
+      stepped_up!(admin)
+      json_put profile_path(ubs), body
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "unit_not_ceo" } ])
+      json_put "/dental/admin/ceo_profiles/#{SecureRandom.uuid}", body
+      expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
+    end
+
+    it "ceo_type IV → 422 invalid_request em ceo_type" do
+      stepped_up!(admin)
+      json_put profile_path(ceo), body.merge(ceo_type: "IV")
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "ceo_type") ])
+    end
+
+    it "specialties vazio ou com chave fora → 422 com o path" do
+      stepped_up!(admin)
+      json_put profile_path(ceo), body.merge(specialties: [])
+      expect([ response.status, json_body.fetch("path") ]).to eq([ 422, "specialties" ])
+      json_put profile_path(ceo), body.merge(specialties: %w[endodontics surgery])
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "specialties[1]") ])
+      expect(CeoProfile.count).to eq(0)
+      expect(events("ceo_profile.changed")).to be_empty
+    end
+
+    it "form-encoded com cookie → 415" do
+      stepped_up!(admin)
+      put profile_path(ceo), params: body
+      expect(response).to have_http_status(:unsupported_media_type)
+    end
+  end
+
+  describe "lista dos perfis" do
+    it "traz toda unidade ceo (com ou sem perfil), para admin e analista; outro papel → 403" do
+      with_profile = ceo_unit!(type: "I", specialties: %w[stomatology])
+      bare = ceo
+      ubs
+      sign_in_as(staff_with("analista-#{SecureRandom.hex(3)}@cidade.gov.br", "analyst"))
+      get "/dental/admin/ceo_profiles"
+      profiles = json_body.fetch("profiles")
+      expect(profiles.map { |p| p.dig("health_unit", "id") }).to contain_exactly(with_profile.id, bare.id)
+      expect(profiles.find { |p| p.dig("health_unit", "id") == with_profile.id }).to include("ceo_type" => "I", "specialties" => %w[stomatology])
+      expect(profiles.find { |p| p.dig("health_unit", "id") == bare.id }).to include("ceo_type" => nil, "specialties" => [])
+      sign_in_as(dentist!(ubs))
+      get "/dental/admin/ceo_profiles"
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "limit fora de 1..100 → 422 invalid_limit" do
+      sign_in_as(admin)
+      get "/dental/admin/ceo_profiles", params: { limit: 101 }
+      expect([ response.status, json_body.fetch("error") ]).to eq([ 422, "invalid_limit" ])
+    end
+  end
+
+  describe "lista do TSB/ASB" do
+    it "GET traz a semente com o nome da release ativa; código fora da release → name null" do
+      DentalAuxiliaryProcedure.create!(procedure_code: "9999999999", created_by_user: admin)
+      sign_in_as(admin)
+      get "/dental/admin/auxiliary_procedures"
+      procedures = json_body.fetch("procedures")
+      expect(procedures).to include({ "sigtap" => "0101020066", "name" => "APLICAÇÃO DE SELANTE (POR DENTE)" },
+                                    { "sigtap" => "9999999999", "name" => nil })
+      expect(procedures.size).to eq(DentalCare::Catalog::AUXILIARY_DEFAULT_PROCEDURES.size + 1)
+    end
+
+    it "PUT substitui a lista inteira, aceita o repetido uma vez e publica só ids e contagem" do
+      stepped_up!(admin)
+      json_put "/dental/admin/auxiliary_procedures", procedures: [ { sigtap: "0101020066" }, { sigtap: "0101020066" }, { sigtap: "0307010031" } ]
+      expect(json_body).to eq("procedures" => [ { "sigtap" => "0101020066", "name" => "APLICAÇÃO DE SELANTE (POR DENTE)" },
+                                                { "sigtap" => "0307010031", "name" => "RESTAURAÇÃO DE DENTE PERMANENTE ANTERIOR COM RESINA COMPOSTA" } ])
+      expect(DentalAuxiliaryProcedure.pluck(:procedure_code)).to contain_exactly("0101020066", "0307010031")
+      expect(events("dental.auxiliary_procedures_changed")).to eq([ { "user_id" => admin.id, "count" => 2 } ])
+    end
+
+    it "código com ponto → 422 em procedures[0].sigtap; mais de 100 → 422 em procedures; nada muda" do
+      stepped_up!(admin)
+      json_put "/dental/admin/auxiliary_procedures", procedures: [ { sigtap: "01.01.02.006-6" } ]
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "procedures[0].sigtap") ])
+      json_put "/dental/admin/auxiliary_procedures", procedures: (1..101).map { |n| { sigtap: format("%010d", n) } }
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "procedures") ])
+      expect(DentalAuxiliaryProcedure.count).to eq(DentalCare::Catalog::AUXILIARY_DEFAULT_PROCEDURES.size)
+    end
+
+    it "outro papel → 403 missing_role; sem step-up → 401 mfa_required" do
+      sign_in_as(dentist!(ubs))
+      get "/dental/admin/auxiliary_procedures"
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+      sign_in_as(step_up_enrolled!(admin))
+      json_put "/dental/admin/auxiliary_procedures", procedures: []
+      expect([ response.status, json_body ]).to eq([ 401, { "error" => "mfa_required" } ])
+    end
+  end
+
+  describe "unidade CEO" do
+    it "POST /attendance/units com kind ceo cria a unidade" do
+      stepped_up!(admin)
+      json_post "/attendance/units", name: "CEO Boqueirão", kind: "ceo"
+      expect(response).to have_http_status(:created)
+      expect(HealthUnit.find_by!(name: "CEO Boqueirão").kind).to eq("ceo")
+    end
+  end
+end

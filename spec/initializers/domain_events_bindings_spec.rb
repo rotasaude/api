@@ -306,6 +306,17 @@ RSpec.describe "care regulation bindings (ADR 0044)" do
   end
 end
 
+# Módulo 28 (ADR 0046): administração da saúde bucal; só trilha, só ids,
+# sem consumidor.
+RSpec.describe "dental bindings (ADR 0046)" do
+  %w[ceo_profile.changed dental.auxiliary_procedures_changed].each do |name|
+    it "declares #{name} with no consumer" do
+      expect(DomainEvents.registry.keys).to include(name)
+      expect(DomainEvents.registry[name]).to be_empty
+    end
+  end
+end
+
 # Módulo 27a (ADR 0045): configuração da farmácia (locais, equipe, parâmetros e
 # mínimos); só trilha, só ids (subject, stock_location_id, staff_user_id,
 # user_id), sem consumidor.

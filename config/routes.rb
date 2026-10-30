@@ -508,6 +508,16 @@ Rails.application.routes.draw do
     patch  "admin/offers/:id",     to: "admin/offers#update"
   end
 
+  # Módulo 28 (ADR 0046; contrato §16 O1): saúde bucal, sessão do dashboard.
+  # Prefixo único (uma entrada no proxy de dev do dashboard).
+  scope "/dental", module: :dental_care, as: :dental do
+    get "admin/ceo_profiles",                   to: "admin/ceo_profiles#index"
+    get "admin/ceo_profiles/:health_unit_id",   to: "admin/ceo_profiles#show"
+    put "admin/ceo_profiles/:health_unit_id",   to: "admin/ceo_profiles#update"
+    get "admin/auxiliary_procedures",           to: "admin/auxiliary_procedures#show"
+    put "admin/auxiliary_procedures",           to: "admin/auxiliary_procedures#update"
+  end
+
   # Módulo 27a (ADR 0045; contrato §3, §13): farmácia e almoxarifado, sessão do
   # dashboard. Prefixo único (uma entrada no proxy de dev do dashboard).
   scope "/pharmacy", module: :pharmacy, as: :pharmacy do

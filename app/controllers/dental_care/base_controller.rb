@@ -16,6 +16,9 @@ module DentalCare
     FAILURE_STATUS = { missing_role: :forbidden, not_author: :forbidden, out_of_context: :forbidden,
                        not_found: :not_found, invalid_transition: :conflict, already_installed: :conflict }.freeze
 
+    DEFAULT_LIMIT = 50
+    MAX_LIMIT = 100
+
     before_action :require_clinical_record!, :require_dental_care!
 
     private
@@ -25,6 +28,34 @@ module DentalCare
       payload = { error: result.reason.to_s }
       %i[path problems].each { |key| payload[key] = result.details[key] if result.details[key] }
       render json: payload, status: FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
+    end
+
+    # 422 uniforme: `error`/`path` no topo e `problems` com ao menos esse problema.
+    def render_refusal(path, error = "invalid_request")
+      render json: { error: error.to_s, path: path, problems: [ { path: path, error: error.to_s } ] }, status: :unprocessable_entity
+    end
+
+    # Tamanho da página das listas: padrão 50, máximo 100; inválido → 422.
+    # Devolve nil depois de responder.
+    def page_limit
+      raw = params[:limit]
+      return DEFAULT_LIMIT if raw.blank?
+
+      value = Integer(raw.to_s, 10, exception: false)
+      return value if value && value.between?(1, MAX_LIMIT)
+
+      render_refusal("limit", "invalid_limit")
+      nil
+    end
+
+    # Cursor [iso8601(6), id] das listas por (created_at DESC, id DESC).
+    def valid_cursor?(cursor)
+      return false unless cursor.is_a?(Array) && cursor.size == 2 && uuid?(cursor.last)
+
+      Time.iso8601(cursor.first)
+      true
+    rescue ArgumentError, TypeError
+      false
     end
 
     def render_error(reason, status = :unprocessable_entity) = render(json: { error: reason.to_s }, status: status)
