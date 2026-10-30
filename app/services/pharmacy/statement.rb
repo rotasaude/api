@@ -8,7 +8,9 @@
 #
 # Cada movimento: `{ id, kind, quantity (com sinal), reason|null, at, by: { name },
 # document: { type: "entry"|"transfer"|"dispensation"|"adjustment", id, number|null } }`.
-# O motivo (texto livre, cifrado) vai só no corpo. A dispensação aparece SÓ com
+# O motivo (texto livre, cifrado) vai só no corpo; o da devolução (`return`) só
+# com `reasons: true` (farmacêutico ou auxiliar do local, como o `<transfer>`):
+# para os demais leitores sai `null`. A dispensação aparece SÓ com
 # o id da dispensação: nunca paciente, receita ou medicamento do paciente.
 # `by.name` é o do perfil profissional (o almoxarife não tem perfil: `null`).
 #
@@ -21,7 +23,7 @@ module Pharmacy
     module_function
 
     # -> { lot: <lot>, balance, movements: [ … ], next_before }
-    def call(location:, lot:, limit:, before: nil)
+    def call(location:, lot:, limit:, before: nil, reasons: false)
       scope = StockMovement.where(stock_location_id: location.id, stock_lot_id: lot.id)
       if before
         scope = scope.where("(stock_movements.recorded_at, stock_movements.created_at, stock_movements.id) < (?, ?, ?)",
@@ -31,7 +33,7 @@ module Pharmacy
       page = rows.first(limit)
       { lot: Json.lot(lot, catalog: Json.catalog_for([ lot.catalog_item_id ])),
         balance: Quantity.dump(Ledger.balance(location_id: location.id, lot_id: lot.id)),
-        movements: page.map { |movement| present(movement) },
+        movements: page.map { |movement| present(movement, reasons) },
         next_before: rows.size > limit ? cursor_for(page.last) : nil }
     end
 
@@ -40,8 +42,9 @@ module Pharmacy
     end
     private_class_method :cursor_for
 
-    def present(movement)
-      { id: movement.id, kind: movement.kind, quantity: Quantity.dump(movement.quantity), reason: movement.reason,
+    def present(movement, reasons)
+      reason = movement.kind == "return" && !reasons ? nil : movement.reason
+      { id: movement.id, kind: movement.kind, quantity: Quantity.dump(movement.quantity), reason: reason,
         at: movement.recorded_at.iso8601, by: { name: movement.recorded_by_user.professional&.professional_name },
         document: document(movement) }
     end

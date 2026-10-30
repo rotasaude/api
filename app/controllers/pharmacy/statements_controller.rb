@@ -1,6 +1,7 @@
 # GET /pharmacy/lots/:id/movements (contrato §4 e H12): o extrato de um lote
 # num local, mais novos primeiro, com cursor opaco. Sem trilha. O motivo (texto
-# livre) vai só no corpo; a dispensação aparece só com o id.
+# livre) vai só no corpo; o da devolução só para o farmacêutico ou o auxiliar
+# do local (os demais leem `reason: null`); a dispensação aparece só com o id.
 #
 # `location_id` obrigatório e legível pelo usuário (qualquer papel nele; o
 # almoxarife do central lê todos): inexistente → 422, sem papel → 403. Lote da
@@ -21,7 +22,8 @@ module Pharmacy
       cursor = params.key?(:before) ? Cursor.decode(params[:before]) : nil
       return render_refusal("before", "invalid_cursor") if params.key?(:before) && !statement_cursor?(cursor)
 
-      render json: Statement.call(location: location, lot: lot, before: cursor, limit: limit)
+      reasons = Access.allowed?(user: Current.user, location: location, roles: Catalog::DISPENSER_ROLES)
+      render json: Statement.call(location: location, lot: lot, before: cursor, limit: limit, reasons: reasons)
     end
 
     private

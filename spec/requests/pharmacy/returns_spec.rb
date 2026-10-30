@@ -175,4 +175,22 @@ RSpec.describe "Farmácia — devolução", type: :request do
       expect(response).to have_http_status(:created)
     end
   end
+
+  # Ruling da revisão final: o motivo da devolução no extrato só para quem
+  # dispensa no local (farmacêutico ou auxiliar); os demais leem `reason: null`.
+  it "extrato: o almoxarife do local vê o return com reason null; o farmacêutico do local vê o motivo" do
+    sign_in_as(assistant)
+    give_back("5")
+    expect(response).to have_http_status(:created)
+
+    sign_in_as(pharmacy_staff!(farmacia, "stock_keeper"))
+    get "/pharmacy/lots/#{lot.id}/movements?location_id=#{farmacia.id}"
+    expect(response).to have_http_status(:ok)
+    expect(json_body["movements"].first).to include("kind" => "return", "quantity" => "5.00", "reason" => nil)
+
+    sign_in_as(pharmacist)
+    get "/pharmacy/lots/#{lot.id}/movements?location_id=#{farmacia.id}"
+    expect(response).to have_http_status(:ok)
+    expect(json_body["movements"].first).to include("kind" => "return", "reason" => reason)
+  end
 end
