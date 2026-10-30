@@ -145,7 +145,13 @@ module Platform
       # tempo e a última retirada seguem mostrando o que já existe.
       Entry.new(key: "pharmacy",
                 description: "Farmácia e almoxarifado: estoque por local com lotes e validade, transferências, inventário e dispensação pela receita",
-                requires: [])
+                requires: []),
+      # ADR 0046: saúde bucal (módulo 28). Só com o prontuário utilizável: a
+      # consulta odontológica é a consulta do 19a. Desligado: nada novo abre; o
+      # que foi finalizado continua legível e exportado.
+      Entry.new(key: "dental_care",
+                description: "Saúde bucal: consulta odontológica com odontograma, plano de tratamento, especialidades do CEO, prótese, ficha LEDI de atendimento odontológico e painéis do CEO e da equipe de saúde bucal",
+                requires: %w[feature:clinical_record])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze

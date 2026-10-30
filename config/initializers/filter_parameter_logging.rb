@@ -93,7 +93,11 @@ Rails.application.config.filter_parameters += [
   # (ActiveRecord::Base.inspection_filter), não pelo `filter_attributes` do
   # modelo, que só vale para o inspect.
   /\A(prescriber|retention|notification_number|counted_quantity|quantity_received|supplier)\z/,
-  /\A(prescriber_name|council|council_state|council_number)\z/
+  /\A(prescriber_name|council|council_state|council_number)\z/,
+  # ADR 0046: saúde bucal — dente, face, situação, procedimentos, plano,
+  # periograma, endodontia, gestante e laboratório são dado clínico do
+  # paciente (`reason`, `cpf` e `cns` já estavam acima).
+  /\A(dental|findings|situation|tooth|face|sextant|arch|plan_changes|periodontal_chart|periodontal_screening|endodontics|pregnant|special_needs|laboratory)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
