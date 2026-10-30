@@ -18,10 +18,10 @@ module Consultations
     end
 
     # Para a abertura e o adendo de terceiro: um vínculo permitido em qualquer unidade.
-    def any_allowed_link(user:, kind: "general")
+    def any_allowed_link(user:, kind: "general", role: nil)
       return [ :missing_role, nil ] unless user&.has_role?("health_professional")
 
-      pick(active_links(user).to_a, kind, nil)
+      pick(active_links(user).to_a, kind, role)
     end
 
     def any_link(user:) = any_allowed_link(user: user).first

@@ -10,6 +10,12 @@ module ClinicalRecord
 
     def call(user:, cpf:, reason_code:, reason_note: nil)
       status, _link = Consultations::Authorization.any_allowed_link(user: user)
+      # Módulo 28 (contrato §16 O28): o dentista também abre, só com
+      # dental_care utilizável; TSB/ASB ficam só no contexto.
+      if status != :ok && DentalCare::Gate.usable?(Current.city) &&
+         Consultations::Authorization.any_allowed_link(user: user, kind: "dental", role: :dentist).first == :ok
+        status = :ok
+      end
       return Result.fail(status) unless status == :ok
 
       code = reason_code.is_a?(String) ? reason_code : nil

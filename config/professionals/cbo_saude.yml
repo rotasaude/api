@@ -24,9 +24,15 @@
 - { code: "322230", title: "Auxiliar de enfermagem", council: COREN }
 - { code: "223208", title: "Cirurgião-dentista - clínico geral", council: CRO }
 - { code: "223293", title: "Cirurgião-dentista da estratégia de saúde da família", council: CRO }
+- { code: "223212", title: "Cirurgião-dentista - endodontista", council: CRO }
+- { code: "223220", title: "Cirurgião-dentista - estomatologista", council: CRO }
+- { code: "223236", title: "Cirurgião-dentista - odontopediatra", council: CRO }
+- { code: "223248", title: "Cirurgião-dentista - periodontista", council: CRO }
+- { code: "223256", title: "Cirurgião-dentista - protesista", council: CRO }
+- { code: "223268", title: "Cirurgião-dentista - traumatologista bucomaxilofacial", council: CRO }
+- { code: "223288", title: "Cirurgião-dentista - odontologia para pacientes com necessidades especiais", council: CRO }
 - { code: "322405", title: "Técnico em saúde bucal", council: CRO }
 - { code: "322415", title: "Auxiliar em saúde bucal", council: CRO }
-- { code: "223212", title: "Cirurgião-dentista - endodontista", council: CRO }
 - { code: "322425", title: "Técnico em saúde bucal da estratégia de saúde da família", council: CRO }
 - { code: "322430", title: "Auxiliar em saúde bucal da estratégia de saúde da família", council: CRO }
 - { code: "223405", title: "Farmacêutico", council: CRF }

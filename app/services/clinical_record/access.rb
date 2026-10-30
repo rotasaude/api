@@ -1,7 +1,7 @@
 # app/services/clinical_record/access.rb
 # Quem lê o prontuário (ADR 0031; spec §5): em contexto — atendimento in_care
 # chamado pelo usuário, ou waiting na unidade de um vínculo ativo dele com CBO
-# permitido para algum tipo de consulta (geral ou odontológica, módulo 28), de
+# permitido (geral; também o odontológico com dental_care utilizável, módulo 28), de
 # um par VALIDADO do paciente (Patients::Pairs) —, com abertura justificada
 # válida, ou ninguém. A recepção (sem health_professional) nunca lê. Toda
 # leitura permitida deixa trilha (ClinicalRecord::Trail).
@@ -20,7 +20,8 @@ module ClinicalRecord
       return deny(:missing_role) unless user&.has_role?("health_professional")
 
       candidates = attendance ? [ attendance ] : open_attendances_of(patient)
-      return Grant.new(kind: :in_context, opening: nil, reason: nil) if candidates.any? { |a| in_context?(user, a, patient) }
+      kind = waiting_kind
+      return Grant.new(kind: :in_context, opening: nil, reason: nil) if candidates.any? { |a| in_context?(user, a, patient, kind) }
 
       opening = patient && ClinicalRecordOpening.valid_for(user_id: user.id, patient_id: patient.id, now: now)
                                                 .order(created_at: :desc).first
@@ -43,7 +44,8 @@ module ClinicalRecord
       return deny(:missing_role) unless user&.has_role?("health_professional")
 
       candidates = attendance ? [ attendance ] : Attendance.open_attendances.where(citizen_id: person.citizen_ids).includes(:citizen).to_a
-      in_context = candidates.any? { |a| person.citizen_ids.include?(a.citizen_id) && in_context?(user, a, nil) }
+      kind = waiting_kind
+      in_context = candidates.any? { |a| person.citizen_ids.include?(a.citizen_id) && in_context?(user, a, nil, kind) }
       return Grant.new(kind: :in_context, opening: nil, reason: nil) if in_context
 
       opening = ClinicalRecordOpening.valid_for_person(user_id: user.id, person: person, now: now).order(created_at: :desc).first
@@ -56,7 +58,11 @@ module ClinicalRecord
       Attendance.open_attendances.where(citizen_id: Patients::Pairs.of(patient).select(:id)).includes(:citizen).to_a
     end
 
-    def in_context?(user, attendance, patient)
+    # Módulo 28: com dental_care utilizável (lido fora da transação), o
+    # vínculo odontológico também põe em contexto quem espera na unidade.
+    def waiting_kind = DentalCare::Gate.usable?(Current.city) ? :any : "general"
+
+    def in_context?(user, attendance, patient, kind)
       citizen = attendance.citizen
       return false unless citizen.verification_level_verified?
       return false if patient && !pair_of?(citizen, patient)
@@ -65,7 +71,7 @@ module ClinicalRecord
       when "in_care" then attendance.called_by_user_id == user.id
       when "waiting"
         ApplicationRecord.transaction do
-          Consultations::Authorization.link_for(user: user, health_unit_id: attendance.health_unit_id, kind: :any).first == :ok
+          Consultations::Authorization.link_for(user: user, health_unit_id: attendance.health_unit_id, kind: kind).first == :ok
         end
       else false
       end
@@ -78,6 +84,6 @@ module ClinicalRecord
     end
 
     def deny(reason) = Grant.new(kind: :denied, opening: nil, reason: reason)
-    private_class_method :open_attendances_of, :in_context?, :pair_of?, :deny
+    private_class_method :open_attendances_of, :waiting_kind, :in_context?, :pair_of?, :deny
   end
 end

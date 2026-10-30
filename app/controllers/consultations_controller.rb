@@ -56,7 +56,7 @@ class ConsultationsController < ApplicationController
     return not_found unless attendance
 
     # Sem `kind` (ou nulo) → general, o contrato de antes do módulo 28.
-    result = Consultations::Start.call(attendance: attendance, by: Current.user, kind: body["kind"] || "general",
+    result = Consultations::Start.call(attendance: attendance, by: Current.user, kind: body["kind"].nil? ? "general" : body["kind"],
                                        baseline: body["baseline"].nil? ? false : body["baseline"])
     return failure(result) if result.failure?
 

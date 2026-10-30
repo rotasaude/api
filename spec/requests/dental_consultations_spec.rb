@@ -38,6 +38,12 @@ RSpec.describe "Consulta odontológica", type: :request do
       expect([ response.status, body ]).to eq([ 422, { "error" => "invalid_request", "path" => "kind" } ])
       json_post "/attendance/attendances/#{attendance.id}/consultation", kind: { "a" => 1 }
       expect([ response.status, body ]).to eq([ 422, { "error" => "invalid_request", "path" => "kind" } ])
+      json_post "/attendance/attendances/#{attendance.id}/consultation", kind: false
+      expect([ response.status, body ]).to eq([ 422, { "error" => "invalid_request", "path" => "kind" } ])
+      sign_in_as(doctor)
+      json_post "/attendance/attendances/#{consulting_attendance!(unit, citizen: verified_citizen!(4), doctor: doctor).id}/consultation",
+                kind: nil
+      expect([ response.status, body["kind"] ]).to eq([ 201, "general" ])
     end
 
     it "recusas: 403 cbo_not_allowed, 422 baseline_requires_dentist, 403 feature_disabled dental_care" do
@@ -126,6 +132,39 @@ RSpec.describe "Consulta odontológica", type: :request do
     sign_in_as(dentist!(create_unit("UBS Outra")))
     get "/attendance/attendances/#{waiting.id}/record"
     expect([ response.status, body["error"] ]).to eq([ 403, "out_of_context" ])
+    # LGPD: com dental_care desligado o vínculo odontológico não põe em contexto.
+    dental_city!(enabled: false)
+    sign_in_as(dentist)
+    get "/attendance/attendances/#{waiting.id}/record"
+    expect([ response.status, body["error"] ]).to eq([ 403, "out_of_context" ])
+  end
+
+  describe "abertura justificada (contrato §16 O28)" do
+    let!(:finalized) { finalized_consultation!(unit: unit, doctor: doctor!(unit), citizen: citizen) }
+
+    def open_as(user)
+      stepped_up!(user)
+      json_post "/clinical_record/openings", cpf: citizen.cpf, reason_code: "case_review"
+    end
+
+    it "dentista abre com dental_care ligado e lê o prontuário com trilha justificada" do
+      open_as(dentist)
+      expect(response).to have_http_status(:created)
+      expect(DomainEvent.where(name: "clinical_record.opened").sole.payload).to include("user_id" => dentist.id)
+      get "/clinical_record/patients/#{finalized.patient_id}"
+      expect(response).to have_http_status(:ok)
+      expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
+        .to include("user_id" => dentist.id, "access" => "justified")
+    end
+
+    it "TSB/ASB não abre; dentista com dental_care desligado não abre" do
+      open_as(auxiliary!(unit))
+      expect([ response.status, body["error"] ]).to eq([ 403, "cbo_not_allowed" ])
+      dental_city!(enabled: false)
+      open_as(dentist)
+      expect([ response.status, body["error"] ]).to eq([ 403, "cbo_not_allowed" ])
+      expect(ClinicalRecordOpening.count).to eq(0)
+    end
   end
 
   describe "rascunho órfão odontológico" do

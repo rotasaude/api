@@ -6,8 +6,6 @@
 # de nível técnico). O resto (técnico de enfermagem, protético) não registra.
 module Consultations
   module Cbos
-    EXCLUDED_PREFIXES = [ DentalCare::Catalog::DENTIST_PREFIX ].freeze
-
     module_function
 
     def kinds_for(cbo)
