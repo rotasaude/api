@@ -9,8 +9,8 @@
 #
 # 201 com o <dispensation> inteiro atualizado (itens com `returned_total`), sem
 # envelope. 422 com `problems`: invalid_quantity, invalid_reason, lot_expired,
-# return_exceeds. Sem trilha nova (a dispensação mostrada é a do próprio local,
-# que o usuário acabou de abrir pelo histórico, que já deixou a trilha).
+# return_exceeds. A devolução gravada deixa a trilha clinical_record.viewed do
+# paciente (Pharmacy::Trail): a resposta traz o nome dele no <dispensation>.
 module Pharmacy
   class ReturnsController < BaseController
     def create
@@ -32,6 +32,7 @@ module Pharmacy
 
       saved = Dispensation.includes(*Json::DISPENSATION_PRELOAD).find(item.dispensation_id)
       catalog = Json.catalog_for(saved.items.map(&:catalog_item_id))
+      Trail.person_viewed!(user: Current.user, patient_id: saved.patient_id)
       render json: Json.dispensation(saved, catalog: catalog, patient: Patient.find(saved.patient_id)), status: :created
     end
 

@@ -193,4 +193,18 @@ RSpec.describe "Farmácia — devolução", type: :request do
     expect(response).to have_http_status(:ok)
     expect(json_body["movements"].first).to include("kind" => "return", "reason" => reason)
   end
+
+  # Ruling da revisão final: a resposta traz o <dispensation> com o nome do
+  # paciente, então cada devolução gravada deixa a trilha da pessoa.
+  it "uma trilha clinical_record.viewed do paciente por devolução; recusa não grava trilha" do
+    sign_in_as(assistant)
+    give_back("5")
+    give_back("5")
+    give_back("99")
+    expect(response).to have_http_status(:unprocessable_entity)
+    trails = DomainEvent.where(name: "clinical_record.viewed").pluck(:payload)
+    expect(trails.size).to eq(2)
+    expect(trails).to all(include("patient_id" => patient.id, "user_id" => assistant.id, "access" => "pharmacy",
+                                  "person_ref" => "patient:#{patient.id}"))
+  end
 end
