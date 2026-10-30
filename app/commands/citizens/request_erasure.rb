@@ -3,8 +3,9 @@
 # retido por base legal; o mesmo vale para CPF com documento clínico emitido
 # e para CPF com exame (ADR 0036, A49) ou inscrição em linha de cuidado
 # (ADR 0040), para CPF com cadastro territorial (ADR 0042) e para CPF com
-# notificação de vigilância (ADR 0043) e para CPF com pedido de regulação
-# (ADR 0044). `retained?` é a regra única: o pedido
+# notificação de vigilância (ADR 0043), para CPF com pedido de regulação
+# (ADR 0044) e para CPF com dispensação ou receita externa da farmácia
+# (ADR 0045). `retained?` é a regra única: o pedido
 # e a reconferência do Citizens::Erase usam a mesma.
 module Citizens
   module RequestErasure
@@ -67,12 +68,19 @@ module Citizens
     # qualquer situação, descartada inclusive (obrigação legal).
     # ADR 0044: o pedido de regulação também é registro retido, em qualquer
     # situação (rascunho inclusive).
+    # ADR 0045: dispensação e receita externa são registro clínico retido, como
+    # o prontuário. Os movimentos de estoque não dependem do paciente e nunca
+    # entram aqui.
     def examined_patients?(ids)
       ExamOrder.where(patient_id: ids).exists? || ExamResult.where(patient_id: ids).exists? ||
         LabRequisition.where(patient_id: ids).exists? || PerformedProcedure.where(patient_id: ids).exists? ||
         CareLineEnrollment.where(patient_id: ids).exists? || territory_registered?(ids) || notified?(ids) ||
-        regulated?(ids)
+        regulated?(ids) || dispensed?(ids)
     end
+
+    # ADR 0045: dispensação (qualquer receita) e receita externa digitada na
+    # farmácia, inclusive a que ainda não foi dispensada.
+    def dispensed?(ids) = Dispensation.where(patient_id: ids).exists? || ExternalPrescription.where(patient_id: ids).exists?
 
     # ADR 0043: obrigação legal — notificação em qualquer situação, descartada inclusive.
     def notified?(ids) = DiseaseNotification.where(patient_id: ids).exists?
