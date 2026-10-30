@@ -29,6 +29,14 @@ module DentalCare
       nil
     end
 
+    # Adendo (Task 8): os achados viram eventos com o `addendum_id`, depois dos
+    # da consulta (recorded_at = agora, seq): o achado corrigido vence. Quem
+    # chama travou consulta e paciente.
+    def addendum!(consultation:, patient:, addendum:, by:, findings:, now: Time.current)
+      event = event_writer(consultation, patient, by, now, addendum: addendum)
+      Array(findings).each { |finding| finding!(finding, event) }
+    end
+
     def procedure!(consultation, patient, item)
       location = item.fetch("location")
       DentalProcedure.create!(id: item.fetch("id"), consultation: consultation, patient: patient, procedure_code: item.fetch("sigtap"),
@@ -37,9 +45,9 @@ module DentalCare
                               dental_treatment_plan_item_id: item["plan_item_id"], dental_prosthesis_order_id: item["prosthesis_order_id"])
     end
 
-    def event_writer(consultation, patient, by, now)
+    def event_writer(consultation, patient, by, now, addendum: nil)
       lambda do |tooth:, part:, face:, situation:, procedure: nil|
-        DentalChartEvent.create!(patient: patient, consultation: consultation, author_user: by, cbo_code: consultation.cbo_code,
+        DentalChartEvent.create!(patient: patient, consultation: consultation, author_user: by, addendum: addendum, cbo_code: consultation.cbo_code,
                                  tooth: tooth, part: part, face: face, situation: situation, recorded_at: now,
                                  procedure_code: procedure&.procedure_code, dental_procedure: procedure)
       end

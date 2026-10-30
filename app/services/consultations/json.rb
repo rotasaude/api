@@ -42,7 +42,8 @@ module Consultations
       exams = ->(list) { list.map { |e| e.values_at("sigtap_code", "sigtap_competence", "cid10_justification") } }
       { "evaluated_problems" => -> { problem_list(stored["evaluated_problems"]) },
         "conducts" => -> { stored["conducts"].map(&:to_s) },
-        "exam_requests" => -> { exam_list(exams.(stored["exam_requests"])) } }
+        "exam_requests" => -> { exam_list(exams.(stored["exam_requests"])) },
+        "dental" => -> { DentalCare::Json.addendum_changes(stored["dental"]) } }
         .select { |key, _| stored.key?(key) }.transform_values(&:call)
     end
 

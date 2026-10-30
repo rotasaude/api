@@ -34,6 +34,15 @@ module DentalCare
         endodontics: Array(dental["endodontics"]).map { |e| endo(e["tooth"], e["canals"], e["status"]) } }
     end
 
+    # `changes.dental` do adendo (Task 8): só as partes que o adendo mudou.
+    def addendum_changes(stored)
+      out = {}
+      out[:findings] = stored["findings"].map { |f| finding(f["tooth"], f["face"], f["part"], f["arch"], f["situation"]) } if stored["findings"]
+      cancel = stored.dig("plan_changes", "cancel")
+      out[:plan_changes] = { cancel: cancel.map { |i| { item_id: i["item_id"], reason: i["reason"] } } } if cancel
+      out
+    end
+
     def stored(c)
       rows = DentalProcedure.where(consultation_id: c.id).order(:created_at, :id).to_a
       added = DentalTreatmentPlanItem.where(added_in_consultation_id: c.id).order(:created_at, :id).to_a

@@ -70,6 +70,23 @@ module DentalCare
       end
     end
 
+    # Adendo (Task 8; Review Focus 4): os itens `planned` do plano aberto da
+    # unidade da consulta. Devolve o índice do primeiro `cancel` que não vale
+    # (item de outro plano, já fechado, cancelado ou repetido), ou nil.
+    # Quem chama travou os planos do paciente (`lock!`).
+    def first_unopen_cancel(consultation, cancel)
+      plan = open_plan(consultation)
+      planned = plan ? plan.items.where(status: "planned").pluck(:id) : []
+      cancel.index { |item| !planned.include?(item["item_id"]) }
+    end
+
+    def cancel_in_addendum!(consultation:, addendum:, cancel:)
+      plan = open_plan(consultation)
+      cancel.each do |item|
+        plan.items.find(item["item_id"]).update!(status: "cancelled", cancel_reason: item["reason"], cancelled_in_addendum: addendum)
+      end
+    end
+
     # Contrato §16 O26: plano aberto da unidade com pelo menos 1 item e nenhum
     # `planned` depois do rascunho (acréscimos contam; baixas e cancelamentos
     # do rascunho descontam). Finalizada: o estado gravado.

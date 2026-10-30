@@ -13,9 +13,18 @@
 # utilizável (lido aqui fora), os rascunhos de regulação da consulta valem no
 # adendo (CareRegulation::Promote, addendum_id); rascunho inválido nunca trava
 # o adendo — fica em draft e volta em `regulation_not_sent`.
+# Módulo 28 (ADR 0046; contrato §16 O2; Task 8): `changes.dental` só em
+# consulta `dental` (senão invalid_changes) e só com `findings` (eventos do
+# odontograma com o addendum_id) e `plan_changes.cancel` (item `planned` do
+# plano aberto da unidade; o TSB/ASB não cancela); tudo o mais → invalid_changes
+# `changes.dental.<chave>`. Cancelar item que não está aberto →
+# plan_item_not_open (`changes.dental.plan_changes.cancel[i].item_id`) antes de
+# gravar qualquer coisa. Achado e cancelamento não mudam a FAO: não enfileiram
+# ConsultationFichaJob (`ficha_changed` false no payload; Task 9 regera a
+# partir dele). Ordem de travas: consulta → paciente → planos.
 module Consultations
   class AddAddendum
-    CHANGE_KEYS = %w[evaluated_problems conducts exam_requests].freeze
+    CHANGE_KEYS = %w[evaluated_problems conducts exam_requests dental].freeze
 
     def self.call(consultation:, by:, reason:, text:, changes: nil)
       return Result.fail(:missing_role) unless by&.has_role?("health_professional")
@@ -30,6 +39,16 @@ module Consultations
 
       changes = normalize(changes)
       return Result.fail(:invalid_changes) unless changes
+
+      if changes.key?("dental")
+        return Result.fail(:invalid_changes, details: { path: "changes.dental" }) unless consultation.dental?
+
+        dental = DentalCare::DraftInput.addendum(changes["dental"], consultation: consultation)
+        return dental if dental.failure?
+        return Result.fail(:feature_disabled, details: { feature: DentalCare::Gate::KEY }) unless DentalCare::Gate.usable?(Current.city)
+
+        changes["dental"] = dental.payload[:stored]
+      end
 
       # Fora da transação: nenhuma leitura de interruptor dentro do savepoint (OpenRequest).
       signing = Signatures::Gate.usable?(Current.city)
@@ -57,8 +76,10 @@ module Consultations
         Signatures::OpenRequest.call(addendum, usable: signing)
         DomainEvents.publish("consultation.addendum_added", consultation_id: consultation.id, addendum_id: addendum.id)
         # ADR 0031 (spec §6): mudança estruturada regera (ou vira correção pendente).
-        Ledi::ConsultationFichaJob.enqueue_for(consultation, reason: "addendum") if plan.payload[:stored].any?
-        payload = { addendum: addendum, structured: plan.payload[:stored].any? }
+        # O `dental` (achado, cancelamento) não muda a FAO: fora desta condição.
+        ficha_changed = plan.payload[:stored].except("dental").any?
+        Ledi::ConsultationFichaJob.enqueue_for(consultation, reason: "addendum") if ficha_changed
+        payload = { addendum: addendum, structured: plan.payload[:stored].any?, ficha_changed: ficha_changed }
         payload[:regulation_not_sent] = promoted.payload[:not_sent] if promoted
         result = Result.ok(payload)
       end
@@ -115,7 +136,29 @@ module Consultations
         stored["exam_requests"] = final if (plan[:exams_added] + plan[:exams_removed]).any?
       end
 
+      if changes["dental"]&.any?
+        refused = dental(consultation, patient, changes["dental"])
+        return refused if refused
+
+        plan[:dental] = changes["dental"]
+        stored["dental"] = changes["dental"]
+      end
+
       Result.ok(plan.merge(stored: stored))
+    end
+
+    # Cancelar item do plano: o TSB/ASB não planeja (Desvio 8); o item tem de
+    # estar `planned` no plano aberto da unidade (planos travados aqui).
+    def self.dental(consultation, patient, dental)
+      cancel = dental.dig("plan_changes", "cancel")
+      return nil if cancel.blank?
+      if Consultations::Cbos.role(consultation.cbo_code) == :auxiliary
+        return Result.fail(:auxiliary_cannot_plan, details: { path: "changes.dental.plan_changes" })
+      end
+
+      DentalCare::Plans.lock!(patient)
+      index = DentalCare::Plans.first_unopen_cancel(consultation, cancel)
+      index && Result.fail(:plan_item_not_open, details: { path: "changes.dental.plan_changes.cancel[#{index}].item_id" })
     end
 
     # Devolve nil, ou o Result de falha (problema mudou desde a validação).
@@ -150,8 +193,14 @@ module Consultations
                                         priority: exam["priority"] || "routine")
       end
       Exams::FromConsultation.open!(consultation: consultation, requests: created) if plan[:tracking]
+      if plan[:dental]
+        DentalCare::Materialize.addendum!(consultation: consultation, patient: patient, addendum: addendum, by: by,
+                                          findings: plan[:dental]["findings"])
+        cancel = plan[:dental].dig("plan_changes", "cancel")
+        DentalCare::Plans.cancel_in_addendum!(consultation: consultation, addendum: addendum, cancel: cancel) if cancel
+      end
       nil
     end
-    private_class_method :normalize, :prepare, :apply!
+    private_class_method :normalize, :prepare, :dental, :apply!
   end
 end

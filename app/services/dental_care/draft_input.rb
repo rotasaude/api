@@ -42,6 +42,35 @@ module DentalCare
       Result.fail(e.reason, details: e.details)
     end
 
+    ADDENDUM_KEYS = %w[findings plan_changes].freeze
+
+    # `changes.dental` do adendo (contrato §16 O2; Task 8): só `findings` e
+    # `plan_changes.cancel`, com a mesma validação do rascunho. Chave de
+    # fora → invalid_changes com `changes.dental.<chave>`; as demais recusas
+    # saem com o mesmo caminho, sob `changes.`. Devolve só o que tem conteúdo
+    # (`findings`, `plan_changes: { cancel }`), nos formatos do rascunho.
+    def addendum(raw, consultation:, on: Time.zone.today)
+      raw = normalize(raw)
+      refuse!(:invalid_changes, "changes.dental") unless raw.is_a?(Hash)
+      (raw.keys - ADDENDUM_KEYS).each { |key| refuse!(:invalid_changes, "changes.dental.#{key}") }
+      if raw.key?("plan_changes")
+        plan = raw["plan_changes"]
+        refuse!(:invalid_changes, "changes.dental.plan_changes") unless plan.is_a?(Hash)
+        (plan.deep_stringify_keys.keys - %w[cancel]).each { |key| refuse!(:invalid_changes, "changes.dental.plan_changes.#{key}") }
+      end
+
+      parsed = call(raw, consultation: consultation, on: on)
+      return Result.fail(parsed.reason, details: parsed.details.merge(path: parsed.details[:path].sub(/\Adental/, "changes.dental"))) if parsed.failure?
+
+      items = parsed.payload[:items]
+      stored = {}
+      stored["findings"] = items["findings"] if items["findings"].present?
+      stored["plan_changes"] = { "cancel" => items["plan_changes"]["cancel"] } if items.dig("plan_changes", "cancel").present?
+      Result.ok(stored: stored)
+    rescue Refused => e
+      Result.fail(e.reason, details: e.details)
+    end
+
     def columns(raw)
       attrs = {}
       if raw.key?("care_type")
