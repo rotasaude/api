@@ -64,6 +64,20 @@ RSpec.describe "Esquema da farmácia (ADR 0045)" do
     expect { StockLot.create!(lot.attributes.except("id", "created_at")) }.to raise_error(ActiveRecord::RecordNotUnique, /idx_stock_lots_number/)
   end
 
+  it "uma contagem pending por (local, lote): a segunda é recusada pelo índice parcial; decidida a primeira, outra entra; perda não conta" do
+    attrs = { stock_location: central, stock_lot: lot, kind: "adjustment", status: "pending", quantity: -5, counted_quantity: 5,
+              balance_at_request: 10, reason: "Contagem do inventário de outubro", requested_by_user: keeper }
+    first = StockAdjustment.create!(attrs)
+    expect { StockAdjustment.create!(attrs) }.to raise_error(ActiveRecord::RecordNotUnique, /idx_stock_adjustments_one_pending/)
+    # Outro lote do mesmo local e a perda (applied) no mesmo lote não entram no índice.
+    other_lot = StockLot.create!(lot.attributes.except("id", "created_at").merge("lot_number" => "OUTRO-LOTE"))
+    expect(StockAdjustment.create!(attrs.merge(stock_lot: other_lot))).to be_persisted
+    expect(StockAdjustment.create!(attrs.merge(kind: "loss", status: "applied", counted_quantity: nil))).to be_persisted
+    other = staff_with("almox3-#{SecureRandom.hex(2)}@cidade.gov.br", "stock_keeper")
+    first.update!(status: "rejected", decided_by_user: other, decided_at: Time.current, decision_reason: "Recontar a prateleira B")
+    expect(StockAdjustment.create!(attrs)).to be_persisted
+  end
+
   it "ajuste decide uma vez e nunca pelo autor; dispensação e receita externa imutáveis" do
     adjustment = StockAdjustment.create!(stock_location: central, stock_lot: lot, kind: "adjustment", status: "pending", quantity: -5,
                                          counted_quantity: 5, balance_at_request: 10, reason: "Contagem do inventário de outubro",

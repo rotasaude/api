@@ -12,7 +12,7 @@ module Pharmacy
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     # O resto das recusas é 422.
     FAILURE_STATUS = { already_received: :conflict, opening_exists: :conflict, location_has_stock: :conflict,
-                       location_inactive: :conflict, not_pending: :conflict, central_exists: :conflict,
+                       location_inactive: :conflict, not_pending: :conflict, adjustment_pending: :conflict, central_exists: :conflict,
                        unit_taken: :conflict, already_linked: :conflict,
                        same_user: :forbidden, missing_role: :forbidden,
                        controlled_requires_pharmacist: :forbidden, free_text_requires_pharmacist: :forbidden,

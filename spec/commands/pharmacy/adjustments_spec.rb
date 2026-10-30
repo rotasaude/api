@@ -26,8 +26,8 @@ RSpec.describe "Ajustes, perdas e vencimentos do estoque" do
 
   def counted!(value, **opts) = request!(counted: value, **opts)
 
-  def pending!(counted = "85")
-    result = counted!(counted)
+  def pending!(counted = "85", **opts)
+    result = counted!(counted, **opts)
     raise result.inspect unless result.ok? && result.payload.fetch(:adjustment).status == "pending"
 
     result.payload.fetch(:adjustment)
@@ -73,9 +73,10 @@ RSpec.describe "Ajustes, perdas e vencimentos do estoque" do
     end
 
     it "exatamente no limite de 10% (contado \"90\"): applied; um centavo além (\"89.99\"): pending" do
-      expect(counted!("89.99").payload.fetch(:adjustment).status).to eq("pending")
       expect(counted!("90").payload.fetch(:adjustment).status).to eq("applied")
       expect(balance).to eq(90)
+      other_lot = stocked_lot!(central, item: paracetamol, quantity: "100", lot_number: "AJ-B")
+      expect(counted!("89.99", lot_record: other_lot).payload.fetch(:adjustment).status).to eq("pending")
     end
 
     it "saldo 0 e contado \"3\": pending (saldo zero conta como acima do limite)" do
@@ -118,8 +119,6 @@ RSpec.describe "Ajustes, perdas e vencimentos do estoque" do
     end
 
     it "counted_quantity é SALDO: aceita até numeric(14,2); o delta passa de 99999.99 → invalid_quantity" do
-      expect(counted!("100099.99").payload.fetch(:adjustment)).to have_attributes(status: "pending", quantity: BigDecimal("99999.99"))
-
       %w[100100 200000.00 99999999999.99].each do |value|
         result = counted!(value)
         expect([ result.reason, result.details[:path], problems_of(result) ]).to eq([ :invalid_quantity, "counted_quantity",
@@ -127,7 +126,8 @@ RSpec.describe "Ajustes, perdas e vencimentos do estoque" do
       end
       # 13 inteiros não cabem em numeric(14,2).
       expect(counted!("1000000000000").reason).to eq(:invalid_quantity)
-      expect(StockAdjustment.where(counted_quantity: 100_099.99).count).to eq(1)
+      expect(StockAdjustment.count).to eq(0)
+      expect(counted!("100099.99").payload.fetch(:adjustment)).to have_attributes(status: "pending", quantity: BigDecimal("99999.99"))
     end
 
     it "saldo de lote acima de 99999.99 (várias notas) também se ajusta: o teto é do delta, não do saldo" do
@@ -144,6 +144,55 @@ RSpec.describe "Ajustes, perdas e vencimentos do estoque" do
         expect([ result.reason, result.details[:path] ]).to eq([ :invalid_quantity, "counted_quantity" ]), "esperava recusar #{value.inspect}"
       end
       expect(StockAdjustment.count).to eq(0)
+    end
+  end
+
+  describe "RequestAdjustment — uma contagem por decidir por (local, lote)" do
+    it "havendo contagem pending no mesmo lote, outra contagem (pending ou applied) → 409 adjustment_pending, sozinho, nada gravado" do
+      first = pending!("85")
+      [ "70", "99" ].each do |value|
+        result = counted!(value, by: other)
+        expect([ result.reason, result.details ]).to eq([ :adjustment_pending, { path: "lot_id" } ])
+      end
+      expect([ StockAdjustment.count, balance, StockAdjustment.sole.id ]).to eq([ 1, 100, first.id ])
+      expect(events("stock_adjustment.recorded").size).to eq(1)
+    end
+
+    it "perda e vencimento seguem liberados com a contagem pendente (eventos físicos)" do
+      pending!("85")
+      expect(request!(kind: "loss", quantity: "5", by: other)).to be_ok
+      expired = stocked_lot!(central, item: paracetamol, quantity: "10", lot_number: "AJ-OLD9", expires_on: today - 1)
+      pending!("5", lot_record: expired)
+      expect(request!(kind: "expiry", quantity: "10", lot_record: expired, by: other)).to be_ok
+    end
+
+    it "é por (local, lote): outro lote e outro local não são afetados" do
+      pending!("85")
+      other_lot = stocked_lot!(central, item: paracetamol, quantity: "100", lot_number: "AJ-C")
+      expect(counted!("85", lot_record: other_lot, by: other).payload.fetch(:adjustment).status).to eq("pending")
+      farmacia = unit_location!
+      stocked_lot!(farmacia, item: paracetamol, quantity: "100", lot_number: "AJ-A")
+      expect(counted!("85", location: farmacia, by: other).payload.fetch(:adjustment).status).to eq("pending")
+    end
+
+    it "depois de aprovada ou rejeitada, nova contagem é aceita" do
+      decided = pending!("85")
+      expect(decide!(decided)).to be_ok
+      expect(counted!("60", by: other).payload.fetch(:adjustment).status).to eq("pending")
+      rejected = StockAdjustment.find_by!(status: "pending")
+      expect(decide!(rejected, "reject", why: "Contagem refeita, o saldo estava certo", by: pharmacist)).to be_ok
+      expect(counted!("50", by: other).payload.fetch(:adjustment).status).to eq("pending")
+    end
+
+    it "contagem applied não bloqueia a próxima" do
+      expect(counted!("95")).to be_ok
+      expect(counted!("90")).to be_ok
+    end
+
+    it "campo inválido continua 422 com problems mesmo havendo pendência (a pendência é apurada sob trava, depois)" do
+      pending!("85")
+      result = counted!("70", why: "curto")
+      expect([ result.reason, problems_of(result) ]).to eq([ :invalid_reason, [ { path: "reason", error: "invalid_reason" } ] ])
     end
   end
 

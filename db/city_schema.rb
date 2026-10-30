@@ -2966,6 +2966,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_900001) do
     t.uuid "stock_location_id", null: false
     t.uuid "stock_lot_id", null: false
     t.index ["stock_location_id", "status"], name: "idx_stock_adjustments_location_status"
+    t.index ["stock_location_id", "stock_lot_id"], name: "idx_stock_adjustments_one_pending", unique: true, where: "((status)::text = 'pending'::text)"
     t.check_constraint "(kind::text = 'adjustment'::text) = (counted_quantity IS NOT NULL) AND (counted_quantity IS NULL OR counted_quantity >= 0::numeric)", name: "ck_stock_adjustments_counted"
     t.check_constraint "(status::text = ANY (ARRAY['approved'::text, 'rejected'::text])) = (decided_at IS NOT NULL)", name: "ck_stock_adjustments_decided"
     t.check_constraint "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name: "ck_stock_adjustments_decided_by"

@@ -176,6 +176,10 @@ class AddPharmacyStock < ActiveRecord::Migration[8.1]
       t.datetime :created_at, null: false
     end
     add_index :stock_adjustments, %i[stock_location_id status], name: "idx_stock_adjustments_location_status"
+    # Uma contagem por decidir por (local, lote): duas pendentes aplicariam o
+    # delta duas vezes (cinto; a trava do lote já serializa os pedidos).
+    add_index :stock_adjustments, %i[stock_location_id stock_lot_id], unique: true, where: "status::text = 'pending'::text",
+                                                                       name: "idx_stock_adjustments_one_pending"
     add_check_constraint :stock_adjustments, "kind::text = ANY (ARRAY[#{quoted(ADJUSTMENT_KINDS)}]::text[])", name: "ck_stock_adjustments_kind"
     add_check_constraint :stock_adjustments, "status::text = ANY (ARRAY[#{quoted(ADJUSTMENT_STATUSES)}]::text[])",
                          name: "ck_stock_adjustments_status"

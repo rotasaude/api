@@ -14,7 +14,9 @@ require "rails_helper"
 #   3. pedido `pending` × desativação do local, nas duas ordens: a trava FOR SHARE
 #      do local (e da unidade) no pedido e o `pending_work?` da desativação
 #      (Task 4/6b) não se perdem;
-#   4. pedido `pending` × desativação da UNIDADE de saúde (HealthUnitsController#
+#   4. duas contagens do mesmo lote ao mesmo tempo: só uma vira `pending`; a outra
+#      espera o lote e termina em adjustment_pending (nada de delta aplicado duas vezes);
+#   5. pedido `pending` × desativação da UNIDADE de saúde (HealthUnitsController#
 #      deactivate trava a unidade FOR UPDATE e lê PendingWork.any?, H14): a
 #      desativação espera o pedido e enxerga o ajuste.
 # O catálogo da plataforma não é gravado: o comando recebe itens de mentira.
@@ -190,5 +192,16 @@ RSpec.describe "Ajuste de estoque sob disputa" do
                          })
     expect(first.payload.fetch(:adjustment).status).to eq("pending")
     expect(second).to be(true)
+  end
+
+  it "duas contagens do mesmo lote (85): uma vira pending, a outra espera o lote e termina em adjustment_pending; um ajuste só" do
+    first, second = race(-> { request!(by: decider(1)) }, -> { request!(by: decider(2)) })
+    expect(first.payload.fetch(:adjustment).status).to eq("pending")
+    expect([ second.reason, second.details ]).to eq([ :adjustment_pending, { path: "lot_id" } ])
+    in_city do
+      expect(StockAdjustment.where(status: "pending", stock_lot_id: @rows[:lot]).count).to eq(1)
+      expect(StockAdjustment.count).to eq(1)
+      expect(balance).to eq(100)
+    end
   end
 end

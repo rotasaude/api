@@ -18,6 +18,11 @@
 # `stock_adjustments.quantity` guarda o EFEITO no estoque, com sinal: o delta da
 # contagem, ou a saída (negativa) de perda/vencimento (CHECK do banco).
 #
+# Uma contagem por decidir por (local, lote): havendo `pending` no mesmo par, outra
+# contagem (applied ou pending) → 409 `adjustment_pending` (path `lot_id`), apurado
+# sob trava e sozinho; o índice parcial único `idx_stock_adjustments_one_pending` é o
+# cinto. Perda e vencimento seguem liberados (são eventos físicos).
+#
 # Todo 422 traz `problems` (H8/H12): `error`/`path` do primeiro e `[ { path, error } ]`
 # com TODAS as recusas, inclusive as de saldo, na ordem dos campos: lot_id (id
 # e estado de validade do lote), kind, counted_quantity, quantity (campo e
@@ -39,6 +44,8 @@ module Pharmacy
   module RequestAdjustment
     KINDS = Catalog::ADJUSTMENT_KINDS
     OUTFLOW_KINDS = %w[loss expiry].freeze
+    # Índice parcial único da migração 20261029900001.
+    PENDING_INDEX = "idx_stock_adjustments_one_pending".freeze
 
     # Pedido já validado: `amount` é o saldo contado (adjustment) ou a saída (loss/expiry).
     Request = Struct.new(:kind, :amount, :reason, keyword_init: true) do
@@ -79,6 +86,8 @@ module Pharmacy
     def write(location:, lot:, request:, by:, settings:, now:)
       locked_lot = Ledger.lock_lots!([ lot.id ]).fetch(lot.id)
       Ledger.lock_location!(location.id)
+      return pending_conflict if request.kind == "adjustment" && pending_for?(location, lot)
+
       balance = Ledger.balance(location_id: location.id, lot_id: lot.id)
 
       problems = balance_problems_for(balance, request)
@@ -96,6 +105,11 @@ module Pharmacy
       Result.ok(adjustment: adjustment, movement: movement)
     rescue Ledger::Inactive
       Result.fail(:location_inactive, details: { path: "location_id" })
+    rescue ActiveRecord::RecordNotUnique => e
+      # O cinto: o índice parcial único (a trava do lote já serializa os pedidos).
+      raise unless e.message.include?(PENDING_INDEX)
+
+      pending_conflict
     rescue Ledger::Insufficient
       # O trigger do banco, o cinto: só com o livro fora da trava.
       failure([ problem(request.kind == "adjustment" ? "counted_quantity" : "quantity", :insufficient_balance) ])
@@ -108,6 +122,14 @@ module Pharmacy
       Ledger.record!(location: location, lot: lot, kind: kind, quantity: kind == "adjustment" ? effect : -effect, by: by,
                      document: adjustment, reason: adjustment.reason, at: now)
     end
+
+    # Contagem por decidir no mesmo (local, lote): outra contagem sobre ela
+    # aplicaria o delta duas vezes. Perda e vencimento não entram (eventos físicos).
+    def pending_for?(location, lot)
+      StockAdjustment.exists?(stock_location_id: location.id, stock_lot_id: lot.id, status: "pending")
+    end
+
+    def pending_conflict = Result.fail(:adjustment_pending, details: { path: "lot_id" })
 
     # ---- validação (sem trava) ---------------------------------------------
 
@@ -184,7 +206,7 @@ module Pharmacy
       Result.fail(first[:error], details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :persist, :write, :apply, :validate, :expiry_problems, :balance_problems, :balance_problems_for, :effect_of, :pending?,
+    private_class_method :persist, :write, :apply, :pending_for?, :pending_conflict, :validate, :expiry_problems, :balance_problems, :balance_problems_for, :effect_of, :pending?,
                          :order, :problem, :failure
   end
 end

@@ -199,6 +199,29 @@ RSpec.describe "Farmácia — ajustes, perdas e vencimentos", type: :request do
       expect(written).to eq([ 0, 1 ])
     end
 
+    it "segunda contagem do mesmo lote com uma pendente → 409 adjustment_pending (path lot_id); perda passa; depois de decidida, nova contagem passa" do
+      stepped_up!(keeper)
+      json_post "/pharmacy/adjustments", body(counted: "85")
+      expect(json_body).to include("status" => "pending")
+      pending_id = json_body["id"]
+
+      stepped_up!(second_keeper)
+      json_post "/pharmacy/adjustments", body(counted: "70")
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "adjustment_pending", "path" => "lot_id" } ])
+      json_post "/pharmacy/adjustments", body(counted: "99")
+      expect(response).to have_http_status(:conflict)
+      expect(StockAdjustment.count).to eq(1)
+
+      json_post "/pharmacy/adjustments", body(kind: "loss", counted: nil, quantity: "5")
+      expect(response).to have_http_status(:created)
+
+      json_post "/pharmacy/adjustments/#{pending_id}/approve", {}
+      expect(response).to have_http_status(:ok)
+      json_post "/pharmacy/adjustments", body(counted: "60")
+      expect(response).to have_http_status(:created)
+      expect(json_body["status"]).to eq("pending")
+    end
+
     it "evento stock_adjustment.recorded só com ids e o booleano pending" do
       stepped_up!(keeper)
       json_post "/pharmacy/adjustments", body(counted: "85")
