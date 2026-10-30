@@ -542,6 +542,11 @@ Rails.application.routes.draw do
     get    "positions",                 to: "positions#index"
     get    "lots/:id/movements",        to: "statements#index"
     get    "alerts",                    to: "alerts#show"
+    # Receita para a farmácia: busca por código ou paciente, busca de pessoa e
+    # duplicados, nominais e com trilha (Task 9).
+    post   "prescriptions/lookup",      to: "prescriptions#lookup"
+    post   "person_lookup",             to: "person_lookups#create"
+    post   "patients/duplicates",       to: "duplicates#create"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.

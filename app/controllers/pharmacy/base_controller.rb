@@ -55,6 +55,32 @@ module Pharmacy
       false
     end
 
+    # `store:` de `rate_limit` é avaliado no carregamento da classe; o delegador
+    # resolve Rails.cache a cada requisição (o padrão do Surveillance).
+    module RateLimitStore
+      def self.increment(...) = Rails.cache.increment(...)
+    end
+
+    # Quem dispensa: `pharmacist` ou `pharmacy_assistant` (papel válido, com
+    # vínculo) de um local `unit` ATIVO. Receita, busca de pessoa e duplicados.
+    def dispenser_at?(location)
+      location.kind == "unit" && location.active && Access.allowed?(user: Current.user, location: location, roles: Catalog::DISPENSER_ROLES)
+    end
+
+    # O mesmo, em algum local `unit` ativo (rotas sem `location_id`).
+    def dispenser_anywhere?
+      by_location = Access.roles_by_location(Current.user).select { |_id, roles| roles.intersect?(Set.new(Catalog::DISPENSER_ROLES)) }
+      by_location.any? && StockLocation.active_locations.where(kind: "unit", id: by_location.keys).exists?
+    end
+
+    # Local do corpo (existente, ativo ou não); senão 422 `location_id` e nil.
+    def body_location_or_refuse
+      id = body_param("location_id")
+      location = uuid?(id) ? StockLocation.find_by(id: id) : nil
+      render_refusal("location_id") unless location
+      location
+    end
+
     def admin? = Current.user.has_role?("municipal_admin")
 
     # Local de estoque ativo pelo uuid de `key` (corpo ou query); senão nil.

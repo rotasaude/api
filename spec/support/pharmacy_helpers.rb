@@ -75,6 +75,45 @@ module PharmacyHelpers
     lot
   end
 
+  # Consulta iniciada de um paciente novo (o par validado vira paciente): a base
+  # de uma receita do 19c crua. `n` dá o par; um por chamada.
+  def pharmacy_consultation!(n = registry_seq!)
+    unit = create_unit("UBS Consulta #{SecureRandom.hex(2)}")
+    started_consultation!(unit: unit, doctor: doctor!(unit), citizen: verified_citizen!(n % 30 + 1, full_name: "Maria Aparecida #{n}"))
+  end
+
+  # Receita do 19c CRUA (sem o comando Issue): documento e itens na mesma
+  # transação (o trigger exige). `items`: lista de { catalog:, free_text:,
+  # continuous:, quantity: }; `content` mescla o conteúdo (valid_until, category,
+  # sncr). `kind` outro que `prescription` (atestado, registro de notificação) não
+  # leva item. Papel (`issue_mode: "paper"`) e cancelamento pelos próprios campos.
+  def pharmacy_prescription!(consultation: pharmacy_consultation!, items: [ { catalog: losartana } ], kind: "prescription", issue_mode: "digital",
+                             issued_at: Time.current, content: {}, cancelled: false)
+    release = MedicationCatalogRelease.current
+    document = ApplicationRecord.transaction do
+      doc = ClinicalDocument.create!(kind: kind, patient_id: consultation.patient_id, citizen_id: consultation.attendance.citizen_id,
+                                     consultation: consultation, attendance: consultation.attendance, author_user_id: consultation.author_user.id,
+                                     cbo_code: consultation.cbo_code, issue_mode: issue_mode, verification_token: ClinicalDocuments::Codes.token,
+                                     short_code: ClinicalDocuments::Codes.short_code, issued_at: issued_at,
+                                     content: ({ "items" => [], "category" => "common", "sncr" => nil }.merge(content)).to_json)
+      items.each_with_index do |row, index|
+        next unless kind == "prescription"
+
+        catalog = row[:catalog]
+        PrescriptionItem.create!(clinical_document: doc, position: index + 1, free_text: row[:free_text], continuous: row.fetch(:continuous, false),
+                                 medication_catalog_item_id: catalog&.id, catmat_code: catalog&.catmat_code, catalog_release_id: (release.id if catalog),
+                                 printed_description: catalog ? catalog.label : row[:free_text], quantity: row.fetch(:quantity, 30),
+                                 quantity_unit: "comprimido", route: "oral", dosage_instructions: "1 comprimido a cada 12 horas")
+      end
+      doc
+    end
+    if cancelled
+      document.update!(status: "cancelled", cancelled_at: Time.current, cancel_reason: "Prescrição trocada pela médica",
+                       cancelled_by_user_id: document.author_user_id)
+    end
+    document
+  end
+
   def balance_of(location, lot) = StockMovement.where(stock_location_id: location.id, stock_lot_id: lot.id).sum(:quantity)
 end
 

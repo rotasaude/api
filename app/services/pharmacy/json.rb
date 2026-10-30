@@ -94,6 +94,43 @@ module Pharmacy
     # { user_id, name } (o nome é o do perfil profissional; sem perfil, null).
     def person(user) = { user_id: user.id, name: user.professional&.professional_name }
 
+    # <prescription_view> (contrato §2, H3, H12): a receita para a farmácia. NOMINAL
+    # (o chamador grava a trilha). `summary` = Dispensed.summary; `today` é o dia
+    # da cidade. `valid_until` e `expired` valem POR ITEM; no topo, `valid_until`
+    # é o maior dos itens e `expired` só quando TODOS venceram (Desvio 8). O
+    # paciente sai só com `has_cpf` e `cns_masked`; nunca CPF, CNS nem a
+    # identificação do paciente do 19d. `item` é o <item> do catálogo (null no
+    # texto livre), com a unidade de dispensação da regra.
+    def prescription_view(prescription, patient:, summary:, settings:, today:, catalog: {})
+      items = prescription.items.map { |item| prescription_item(item, summary.fetch(item.id), settings: settings, today: today, entry: catalog[item.catalog_item_id]) }
+      short_code = prescription.kind == "digital" ? ClinicalDocuments::Codes.display(prescription.record.short_code) : nil
+      { kind: prescription.kind, id: prescription.id, short_code: short_code, issued_on: prescription.issued_on.iso8601,
+        valid_until: prescription.items.map(&:valid_until).max.iso8601, expired: items.all? { |row| row[:expired] },
+        cancelled: prescription.cancelled, prescriber: prescription.prescriber,
+        patient: { id: patient.id, display_name: patient.display_name, **Patients::IdentifierJson.call(patient) }, items: items }
+    end
+
+    # Item da receita com o que já saiu. `next_allowed_on` só no item contínuo
+    # com retirada anterior (a última + o intervalo da cidade).
+    def prescription_item(item, summary, settings:, today:, entry: nil)
+      next_allowed = item.continuous && summary[:last_on] ? summary[:last_on] + settings.continuous_interval_days : nil
+      { id: item.id, catalog_item_id: item.catalog_item_id, item: entry && catalog_item(entry), free_text: item.free_text,
+        printed_description: item.printed_description, quantity: Quantity.dump(item.quantity), quantity_unit: item.quantity_unit,
+        dosage_instructions: item.dosage_instructions, continuous: item.continuous, controlled: item.controlled,
+        retention_required: item.retention_required, valid_until: item.valid_until.iso8601,
+        expired: Validity.expired?(item.valid_until, today: today), dispensed_total: Quantity.dump(summary[:total]),
+        last_dispensed_on: summary[:last_on]&.iso8601, next_allowed_on: next_allowed&.iso8601, completed: summary[:completed] }
+    end
+
+    # Paciente achado pela busca de pessoa (contrato §2, L8 do 24a): só
+    # `has_cpf` e `cns_masked`, nunca o CPF nem o CNS inteiros.
+    def patient_lookup(patient) = { patient_id: patient.id, display_name: patient.display_name, **Patients::IdentifierJson.call(patient) }
+
+    # Candidato a duplicado: a forma do módulo 25 (sem CNS nem mãe).
+    def duplicate(patient)
+      { patient_id: patient.id, display_name: patient.display_name, birth_date: patient.birth_date, has_cpf: patient.cpf.present? }
+    end
+
     # Os cinco parâmetros da cidade, como o contrato §3.
     def settings(setting) = Catalog::SETTING_RANGES.keys.index_with { |key| setting.public_send(key) }
 
