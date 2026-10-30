@@ -10,8 +10,10 @@ require_relative "controlled_prescriptions_crew"
 # fictício mas imita o real: em Curitiba, `pharmacy` LIGADO pelo mantenedor de
 # dev e os parâmetros padrão (o dump não leva a linha); o almoxarifado central e
 # a farmácia da UBS Jardim das Flores; a equipe (a farmacêutica com CBO 223405
-# real e perfil CRF, a auxiliar e dois almoxarifes, todos com TOTP fixo; o
-# usuário não tem campo de nome, o nome é o da persona); e o cenário abaixo,
+# real, perfil CRF e vínculo com a UBS; a auxiliar e os dois almoxarifes com
+# perfil profissional sem conselho e SEM vínculo, pois nenhum CBO deles consta da
+# tabela de saúde; todos com TOTP fixo; o usuário não tem campo de nome, o nome
+# vem do perfil profissional); e o cenário abaixo,
 # TUDO pelos comandos do app (SaveLocation, LinkStaff, RecordEntry, SendTransfer,
 # ReceiveTransfer, RequestAdjustment, SaveMinimums, ClinicalDocuments::Issue e
 # Cancel, RecordExternalPrescription, Dispense), com as datas passadas vindas de
@@ -79,16 +81,15 @@ class PharmacyCrew
   }.freeze
 
   STAFF = {
-    pharmacist: { email_prefix: "farmacia", name: "Ana Paula Wisniewski", role: "pharmacist", where: %i[unit],
+    pharmacist: { email_prefix: "farmacia", name: "Ana Paula Wisniewski", role: "pharmacist", where: %i[unit], cbo: "223405", council: "CRF",
                   secret_env: "DEV_PHARMACIST_OTP_SECRET", default_secret: "FARMACEUTICASEMENTEDEVCWBAPHARMA" },
-    assistant: { email_prefix: "farmacia.auxiliar", name: "Marcos Vinícius Andrade", role: "pharmacy_assistant", where: %i[unit],
+    assistant: { email_prefix: "farmacia.auxiliar", name: "Marcos Vinícius Andrade", role: "pharmacy_assistant", where: %i[unit], cbo: nil, council: nil,
                  secret_env: "DEV_PHARMACY_ASSISTANT_OTP_SECRET", default_secret: "AUXILIARFARMACIASEMENTEDEVCWBAPH" },
-    keeper: { email_prefix: "almoxarifado", name: "Luiz Fernando Kuster", role: "stock_keeper", where: %i[central unit],
+    keeper: { email_prefix: "almoxarifado", name: "Luiz Fernando Kuster", role: "stock_keeper", where: %i[central unit], cbo: nil, council: nil,
               secret_env: "DEV_STOCK_KEEPER_OTP_SECRET", default_secret: "ALMOXARIFESEMENTEDEVCWBAPHARMACY" },
-    keeper2: { email_prefix: "almoxarifado.2", name: "Cristiane Bortolini", role: "stock_keeper", where: %i[central],
+    keeper2: { email_prefix: "almoxarifado.2", name: "Cristiane Bortolini", role: "stock_keeper", where: %i[central], cbo: nil, council: nil,
                secret_env: "DEV_STOCK_KEEPER_2_OTP_SECRET", default_secret: "ALMOXARIFEDOISSEMENTEDEVCWBAPHAR" }
   }.freeze
-  PHARMACIST_CBO = "223405".freeze
 
   # Inventário de abertura do central (há 40 dias). days: validade a partir de hoje.
   OPENING = [
@@ -241,26 +242,38 @@ class PharmacyCrew
         roles.each { |role| Membership.find_or_create_by!(user: user, role: role) { |membership| membership.granted_at = Time.current } }
         SignatureCrew.ensure_totp(user, secret_env: spec[:secret_env], default_secret: spec[:default_secret])
         user = user.reload
-        pharmacist_profile!(slug, user, spec, admin, unit) if key == :pharmacist
+        profile!(slug, user, spec, admin, unit)
         spec[:where].each { |place| link!(places.fetch(place), user, spec[:role], admin) }
         [ key, user ]
       end
     end
 
-    # Perfil com conselho CRF (CBO 223405 é farmacêutico) e vínculo com a UBS.
-    def pharmacist_profile!(slug, user, spec, admin, unit)
+    # Perfil profissional (é dele que vem o nome que a API mostra) e, só quando a
+    # função tem CBO aceito pela tabela de saúde, o vínculo com a UBS (a
+    # farmacêutica, 223405). Só ela é health_professional e passa pelo
+    # Professionals::Create; a auxiliar e os almoxarifes não têm esse papel (ele
+    # daria autoridade clínica), então o perfil deles é gravado direto, sem
+    # conselho (conselho, UF e registro: todos ou nenhum) e sem vínculo.
+    def profile!(slug, user, spec, admin, unit)
       unless user.professional
         seed = "#{slug}:pharmacy:#{spec[:email_prefix]}"
-        attrs = { professional_name: spec[:name], council: "CRF", council_state: CityProfile.current&.uf.presence || "PR",
-                  cns: Professionals::Cns.generate(seed), registration_number: (Zlib.crc32(seed) % 90_000 + 10_000).to_s }
-        check!(Professionals::Create.call(user_id: user.id, attrs: attrs, by: admin), "perfil da farmacêutica")
+        attrs = { professional_name: spec[:name], cns: Professionals::Cns.generate(seed) }
+        if spec[:council]
+          attrs.merge!(council: spec[:council], council_state: CityProfile.current&.uf.presence || "PR",
+                       registration_number: (Zlib.crc32(seed) % 90_000 + 10_000).to_s)
+        end
+        if user.has_role?("health_professional")
+          check!(Professionals::Create.call(user_id: user.id, attrs: attrs, by: admin), "perfil de #{spec[:name]}")
+        else
+          Professional.create!(attrs.merge(user: user))
+        end
         user.reload
       end
       user.professional.update!(cpf: DigitalSignatureCrew.free_cpf_for(slug, user.professional)) if user.professional.cpf.blank?
-      return if user.professional.links.active.exists?(health_unit_id: unit.id, cbo_code: PHARMACIST_CBO)
+      return if spec[:cbo].nil? || user.professional.links.active.exists?(health_unit_id: unit.id, cbo_code: spec[:cbo])
 
-      check!(Professionals::OpenLink.call(professional: user.professional, health_unit_id: unit.id, cbo_code: PHARMACIST_CBO, by: admin),
-             "vínculo da farmacêutica")
+      check!(Professionals::OpenLink.call(professional: user.professional, health_unit_id: unit.id, cbo_code: spec[:cbo], by: admin),
+             "vínculo de #{spec[:name]}")
     end
 
     def link!(location, user, role, admin)

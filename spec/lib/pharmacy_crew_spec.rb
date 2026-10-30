@@ -131,6 +131,16 @@ RSpec.describe PharmacyCrew, type: :request do
         expect(CitizenIdentity::Cpf.normalize(pharmacist.professional.cpf)).to be_present
         expect(pharmacist.professional.links.active.pluck(:health_unit_id, :cbo_code)).to eq([ [ unit.id, "223405" ] ])
 
+        %w[farmacia.auxiliar almoxarifado almoxarifado.2].zip([ "Marcos Vinícius Andrade", "Luiz Fernando Kuster", "Cristiane Bortolini" ]).each do |prefix, name|
+          profile = user(prefix).professional
+          expect(profile).to have_attributes(professional_name: name, council: nil)
+          expect(Professionals::Cns.valid?(profile.cns)).to be(true)
+          expect(CitizenIdentity::Cpf.normalize(profile.cpf)).to be_present
+          expect(profile.links).to be_empty
+          expect(Pharmacy::Json.person(user(prefix))).to eq(user_id: user(prefix).id, name: name)
+          expect(user(prefix).has_role?("health_professional")).to be(false)
+        end
+
         roles = ->(email, location) { Pharmacy::Access.roles_at(user: user(email), location: location).to_a }
         expect(roles.call("farmacia", pharmacy)).to eq([ "pharmacist" ])
         expect(roles.call("farmacia", central)).to eq([])
