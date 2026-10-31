@@ -40,3 +40,21 @@ RSpec.describe "filter_parameters da farmácia" do
                            "council_number" => "[FILTERED]", "councils" => "x", "council_id" => "9")
   end
 end
+
+# ADR 0046: o corpo de POST /dental/prosthesis_orders (sigtap + patient_id) e os
+# demais parâmetros clínicos da saúde bucal nunca caem no "Parameters:" do log.
+RSpec.describe "filter_parameters da saúde bucal" do
+  it "sigtap, procedure_code, procedures, outcomes, dental_outcomes e oral_health_surveillance viram [FILTERED]; chave parecida passa" do
+    filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
+    filtered = filter.filter("consultation_id" => "c1", "patient_id" => "p1", "sigtap" => "0701070129",
+                             "procedure_code" => "0307010015", "procedures" => [ { "sigtap" => "x" } ],
+                             "outcomes" => [ 1 ], "dental_outcomes" => [ 15 ], "oral_health_surveillance" => [ 3 ],
+                             "laboratory_name" => "Lab X", "supplies" => [ 1 ], "dental_consultation_type" => 2,
+                             "procedure_id" => "9", "outcome_id" => "8")
+    expect(filtered).to eq("consultation_id" => "c1", "patient_id" => "p1", "sigtap" => "[FILTERED]",
+                           "procedure_code" => "[FILTERED]", "procedures" => "[FILTERED]", "outcomes" => "[FILTERED]",
+                           "dental_outcomes" => "[FILTERED]", "oral_health_surveillance" => "[FILTERED]",
+                           "laboratory_name" => "[FILTERED]", "supplies" => "[FILTERED]",
+                           "dental_consultation_type" => "[FILTERED]", "procedure_id" => "9", "outcome_id" => "8")
+  end
+end

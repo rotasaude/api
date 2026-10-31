@@ -187,6 +187,11 @@ RSpec.describe Consultations::Finalize do
       # O31: o item que ficou previsto cai com o plano, com o motivo dele.
       expect(plan.items.order(:tooth).last).to have_attributes(status: "cancelled", cancel_reason: "Paciente mudou de município",
                                                                cancelled_in_consultation_id: consultation.id)
+      # A leitura da consulta finalizada lista só o cancelamento explícito; o item
+      # que caiu com o plano aparece no próprio plano.
+      expect(Consultations::Json.consultation(consultation.reload)[:dental][:plan_changes]).to include(
+        cancel: [ { item_id: item.id, reason: "Dente com indicação de exodontia" } ],
+        cancel_plan: { reason: "Paciente mudou de município" })
       expect(DomainEvent.where(name: "dental_plan.cancelled").sole.payload).to eq("plan_id" => plan.id, "consultation_id" => consultation.id)
     end
   end

@@ -97,7 +97,7 @@ Rails.application.config.filter_parameters += [
   # ADR 0046: saúde bucal — dente, face, situação, procedimentos, plano,
   # periograma, endodontia, gestante e laboratório são dado clínico do
   # paciente (`reason`, `cpf` e `cns` já estavam acima).
-  /\A(dental|findings|situation|tooth|face|sextant|arch|plan_changes|periodontal_chart|periodontal_screening|endodontics|pregnant|special_needs|laboratory)\z/
+  /\A(dental|findings|situation|tooth|face|sextant|arch|plan_changes|periodontal_chart|periodontal_screening|endodontics|pregnant|special_needs|laboratory|sigtap|procedure_code|procedures|outcomes|dental_outcomes|oral_health_surveillance|laboratory_name|supplies|dental_consultation_type)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

@@ -47,8 +47,11 @@ module DentalCare
       rows = DentalProcedure.where(consultation_id: c.id).order(:created_at, :id).to_a
       added = DentalTreatmentPlanItem.where(added_in_consultation_id: c.id).order(:created_at, :id).to_a
       names = names(rows.map(&:procedure_code) + added.map(&:procedure_code))
-      cancelled = DentalTreatmentPlanItem.where(cancelled_in_consultation_id: c.id).order(:created_at, :id)
       plan = DentalTreatmentPlan.find_by(closed_in_consultation_id: c.id, status: "cancelled")
+      cancelled = DentalTreatmentPlanItem.where(cancelled_in_consultation_id: c.id).order(:created_at, :id).to_a
+      # O31: os itens que o `cancel_plan` derrubou levam o motivo do plano e ficam
+      # visíveis no próprio plano; aqui só os cancelamentos explícitos.
+      cancelled = cancelled.reject { |i| plan && i.dental_treatment_plan_id == plan.id && i.cancel_reason == plan.cancel_reason } if plan
       findings = DentalChartEvent.where(consultation_id: c.id, addendum_id: nil, dental_procedure_id: nil).order(:recorded_at, :seq)
       screening = PeriodontalScreening.where(consultation_id: c.id).order(:sextant).map { |s| s.slice("sextant", "code", "star") }
       charts = PeriodontalChart.where(consultation_id: c.id).includes(:sites).order(:tooth).map do |chart|
