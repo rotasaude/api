@@ -5,8 +5,9 @@
 # (ADR 0040), para CPF com cadastro territorial (ADR 0042) e para CPF com
 # notificação de vigilância (ADR 0043), para CPF com pedido de regulação
 # (ADR 0044) e para CPF com dispensação ou receita externa da farmácia
-# (ADR 0045). `retained?` é a regra única: o pedido
-# e a reconferência do Citizens::Erase usam a mesma.
+# (ADR 0045), para CPF com odontograma ou pedido de prótese (ADR 0046).
+# `retained?` é a regra única: o pedido e a reconferência do Citizens::Erase
+# usam a mesma.
 module Citizens
   module RequestErasure
     module_function
@@ -75,8 +76,14 @@ module Citizens
       ExamOrder.where(patient_id: ids).exists? || ExamResult.where(patient_id: ids).exists? ||
         LabRequisition.where(patient_id: ids).exists? || PerformedProcedure.where(patient_id: ids).exists? ||
         CareLineEnrollment.where(patient_id: ids).exists? || territory_registered?(ids) || notified?(ids) ||
-        regulated?(ids) || dispensed?(ids)
+        regulated?(ids) || dispensed?(ids) || dental_recorded?(ids)
     end
+
+    # ADR 0046: odontograma e prótese são registro clínico retido, como o
+    # prontuário. Achado, procedimento, plano, periograma e endodontia nascem de
+    # uma consulta e deixam evento no odontograma (ou ficam no plano e na
+    # consulta, que retêm por outro caminho); o pedido de prótese retém sozinho.
+    def dental_recorded?(ids) = DentalChartEvent.where(patient_id: ids).exists? || DentalProsthesisOrder.where(patient_id: ids).exists?
 
     # ADR 0045: dispensação (qualquer receita) e receita externa digitada na
     # farmácia, inclusive a que ainda não foi dispensada.

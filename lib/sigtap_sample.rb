@@ -62,7 +62,19 @@ module SigtapSample
     # (instrumentos conferidos em vendor/regulation/2026-10-28).
     [ "0301010072", "CONSULTA MEDICA EM ATENCAO ESPECIALIZADA", "2", "I", 0, 9999 ],
     [ "0209010037", "ESOFAGOGASTRODUODENOSCOPIA", "2", "I", 0, 9999 ],
-    [ "0401010074", "EXERESE DE TUMOR DE PELE E ANEXOS / CISTO SEBACEO / LIPOMA", "2", "I", 0, 9999 ]
+    [ "0401010074", "EXERESE DE TUMOR DE PELE E ANEXOS / CISTO SEBACEO / LIPOMA", "2", "I", 0, 9999 ],
+    # Módulo 28 (ADR 0046): procedimentos odontológicos da semente de dev (OralHealthCrew).
+    [ "0101020066", "APLICACAO DE SELANTE (POR DENTE)", "1", "I", 0, 9999 ],
+    [ "0307010031", "RESTAURACAO DE DENTE PERMANENTE ANTERIOR COM RESINA COMPOSTA", "1", "I", 0, 9999 ],
+    [ "0307010120", "RESTAURACAO DE DENTE PERMANENTE POSTERIOR COM RESINA COMPOSTA", "1", "I", 0, 9999 ],
+    [ "0307020045", "TRATAMENTO ENDODONTICO DE DENTE PERMANENTE BIRRADICULAR", "2", "I", 0, 9999 ],
+    [ "0307020053", "TRATAMENTO ENDODONTICO DE DENTE PERMANENTE COM TRES OU MAIS RAIZES", "2", "I", 0, 9999 ],
+    [ "0307020061", "TRATAMENTO ENDODONTICO DE DENTE PERMANENTE UNIRRADICULAR", "2", "I", 0, 9999 ],
+    [ "0307030032", "RASPAGEM CORONO-RADICULAR (POR SEXTANTE)", "2", "I", 0, 9999 ],
+    [ "0414020154", "GENGIVECTOMIA (POR SEXTANTE)", "2", "I", 0, 9999 ],
+    [ "0414020162", "GENGIVOPLASTIA (POR SEXTANTE)", "2", "I", 0, 9999 ],
+    [ "0414020375", "TRATAMENTO CIRURGICO PERIODONTAL (POR SEXTANTE)", "2", "I", 0, 9999 ],
+    [ "0701070137", "PROTESE TOTAL MAXILAR", "2", "I", 0, 9999 ]
   ].freeze
 
   # Desvio 14: VL_SA de dev, em centavos (aproximação da tabela vigente).
@@ -87,6 +99,10 @@ module SigtapSample
     "0214010015" => %w[223505 322205]
   }.merge(AMOUNTS.keys.to_h { |code| [ code, LAB_CBOS ] }).freeze
 
+  # Módulo 28: os procedimentos odontológicos do recorte (OralHealthCrew); BPA (01/02).
+  ORAL_HEALTH_CODES = %w[0101020066 0307010031 0307010120 0307020045 0307020053 0307020061 0307030032 0414020154
+                         0414020162 0414020375 0701070137].freeze
+
   CIDS = { "0201020033" => [ %w[Z014 S] ], "0301060029" => [ %w[I10 S], %w[E119 S], %w[J069 S] ] }.freeze
 
   INSTRUMENTS = {
@@ -97,7 +113,8 @@ module SigtapSample
     "0203020030" => %w[02],
     # Módulo 26a: BPA (01/02) e, na EGD, AIH especial e APAC (G11: a APAC principal não exclui).
     "0301010072" => %w[01 02 07], "0209010037" => %w[02 04 06 07], "0401010074" => %w[01 02]
-  }.merge(AMOUNTS.keys.to_h { |code| [ code, %w[01] ] }).freeze
+  }.merge(AMOUNTS.keys.to_h { |code| [ code, %w[01] ] })
+   .merge(ORAL_HEALTH_CODES.to_h { |code| [ code, %w[01 02] ] }).freeze
 
   REGISTRIES = { "01" => "BPA (CONSOLIDADO)", "02" => "BPA (INDIVIDUALIZADO)", "04" => "AIH (PROC. ESPECIAL)",
                  "06" => "APAC (PROC. PRINCIPAL)", "07" => "APAC (PROC. SECUNDARIO)" }.freeze

@@ -22,6 +22,7 @@
 #     Cadastro territorial (módulo 24a): territory_registry ligado em Curitiba, a ACS (acs@<slug>.demo), as microáreas 01 e 02 da equipe da UBS Jardim das Flores, quatro domicílios e os cadastros da prova (válido, a vencer, vencido, sem identificador, recusa, óbito, mudança) — ver lib/territory_registry_crew.rb.
 #     Regulação municipal (módulo 26a): care_regulation ligado em Curitiba, a reguladora (regulacao.municipal@<slug>.demo), o Centro Municipal de Especialidades Vila Hauer e três prestadores, as ofertas do mês e os dez pedidos da prova — ver lib/regulation_crew.rb.
 #     Farmácia e almoxarifado (módulo 27a): pharmacy ligado em Curitiba, o almoxarifado central e a farmácia da UBS Jardim das Flores, a farmacêutica (farmacia@<slug>.demo), a auxiliar, dois almoxarifes, o estoque com lotes, as transferências e as receitas da prova — ver lib/pharmacy_crew.rb.
+#     Saúde bucal (módulo 28): dental_care ligado em Curitiba, o CEO tipo II, a eSB associada à eSF, a dentista (dentista@<slug>.demo), a auxiliar (asb@), a endodontista (endodontista@), consultas, planos, produção do CEO e prótese da prova — ver lib/oral_health_crew.rb.
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -60,6 +61,7 @@ else
   require Rails.root.join("lib/surveillance_crew").to_s
   require Rails.root.join("lib/regulation_crew").to_s
   require Rails.root.join("lib/pharmacy_crew").to_s
+  require Rails.root.join("lib/oral_health_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -140,6 +142,11 @@ else
   # dos itens do cenário, que o recorte do CATMAT de dev não traz. Depois dos
   # medicamentos; só completa o que está em branco.
   puts "[seeds] farmácia (catálogo) . forma farmacêutica completada em #{PharmacyCrew.seed_platform![:forms]} itens"
+
+  # Saúde bucal (módulo 28, ADR 0046): a SIGTAP odontológica no recorte de dev (mês e
+  # anterior) e o D82 na CIAP-2 de dev. Uma release real ativa nunca é tocada.
+  oral_terms = OralHealthCrew.seed_platform!
+  puts "[seeds] saúde bucal (terminologias) . SIGTAP #{oral_terms[:sigtap]}; CIAP-2 #{oral_terms[:ciap2]}"
 
   # Mesmo protocolo que o provisionamento semeia em rascunho (Plano 4); aqui ativo.
   protocol_defn = CityTemplates.protocol.fetch(:definition)
@@ -388,6 +395,13 @@ else
         # ControlledPrescriptionsCrew). Só e-mail, papel e otpauth: nunca dado de paciente.
         pharmacy = PharmacyCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
         PharmacyCrew.summary_lines(pharmacy, password: password).each { |line| puts line }
+
+        # ── Saúde bucal (módulo 28, ADR 0046) ─────────────────────────────────
+        # Depois do PharmacyCrew: usa a UBS, a eSF, as pessoas do 23 e da regulação (26a)
+        # e a regulação ligada (o encaminhamento à endodontia vira pedido). Só e-mail,
+        # papel e otpauth: nunca dado de paciente.
+        oral_health = OralHealthCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        OralHealthCrew.summary_lines(oral_health, password: password).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
