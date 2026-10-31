@@ -1,0 +1,20 @@
+# Módulo 28 (ADR 0046; spec decisão 13 e "Equipes de saúde bucal"; contrato
+# §16 O15): regras dos indicadores B1 e B2 da equipe de saúde bucal (eSB, 71).
+# Fonte: notas metodológicas B1 e B2 do componente de qualidade da APS
+# (maio/2026). B3–B6 ficam fora até a leitura das notas (gate de go-live).
+#
+# B1: pares distintos (pessoa, cirurgião-dentista) com primeira consulta
+# odontológica programática na janela; o especialista do CEO (2232 fora da
+# lista) e o TSB/ASB não contam. Denominador: a população da eSF/eAP associada.
+# B2: das pessoas do B1, as com tratamento concluído (desfecho 15) na eSB, na
+# janela, a partir da primeira consulta.
+version: 1
+source: "Notas metodológicas B1 e B2 (maio/2026)"
+b1:
+  cbos: [ "223208", "223293", "223272" ]
+  consultation_type: 1
+  window_months: 12
+  source: "Nota metodológica B1 (maio/2026): CD clínico geral, CD da estratégia de saúde da família e CD de saúde coletiva; tipo de consulta 1"
+b2:
+  outcome: 15
+  source: "Nota metodológica B2 (maio/2026): tratamento concluído (desfecho 15) entre as pessoas do B1"

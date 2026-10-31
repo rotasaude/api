@@ -533,6 +533,9 @@ Rails.application.routes.draw do
     post "prosthesis_orders/:id/stages",        to: "prosthesis_orders#stage"
     # Painel do CEO (F-28.8; contrato §10, O15/O24): só contagens, sem trilha.
     get  "ceo_goals",                           to: "ceo_goals#show"
+    # Indicadores B1/B2 da eSB e o seletor das eSB (F-28.8; O11, O15, O23).
+    get  "indicators",                          to: "indicators#show"
+    get  "teams",                               to: "teams#index"
   end
 
   # Módulo 27a (ADR 0045; contrato §3, §13): farmácia e almoxarifado, sessão do
