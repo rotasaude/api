@@ -7,14 +7,19 @@
 # odontológica programática na janela; o especialista do CEO (2232 fora da
 # lista) e o TSB/ASB não contam. Denominador: a população da eSF/eAP associada.
 # B2: das pessoas do B1, as com tratamento concluído (desfecho 15) na eSB, na
-# janela, a partir da primeira consulta.
+# janela, a partir da primeira consulta (inclusive nela).
+# Com denominador, os numeradores e o denominador do B2 só contam pacientes da
+# população da eSF/eAP associada. Sem associada (ou associada inativa): o
+# denominador do B1 é null e os numeradores são a contagem crua da eSB.
 version: 1
 source: "Notas metodológicas B1 e B2 (maio/2026)"
 b1:
+  # 223272 (CD de saúde coletiva) não está em config/professionals/cbo_saude.yml:
+  # nenhum vínculo nasce com ele até ser incluído lá.
   cbos: [ "223208", "223293", "223272" ]
   consultation_type: 1
   window_months: 12
   source: "Nota metodológica B1 (maio/2026): CD clínico geral, CD da estratégia de saúde da família e CD de saúde coletiva; tipo de consulta 1"
 b2:
   outcome: 15
-  source: "Nota metodológica B2 (maio/2026): tratamento concluído (desfecho 15) entre as pessoas do B1"
+  source: "Nota metodológica B2 (maio/2026): tratamento concluído (desfecho 15) entre as pessoas do B1, a partir da primeira consulta, inclusive nela (sessão única: tipo 1 com desfecho 15)"

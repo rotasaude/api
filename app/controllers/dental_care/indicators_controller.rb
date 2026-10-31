@@ -10,6 +10,7 @@ module DentalCare
     def show
       return render_refusal("team_id") unless uuid?(params[:team_id])
 
+      # eSB inativa continua consultável (histórico); /dental/teams lista só as ativas.
       team = HealthTeam.includes(:associated_team).find_by(id: params[:team_id])
       return not_found unless team
       return render_refusal("team_id") unless team.kind == Catalog::ORAL_HEALTH_TEAM_KIND

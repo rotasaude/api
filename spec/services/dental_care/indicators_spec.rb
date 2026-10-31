@@ -9,7 +9,9 @@ RSpec.describe DentalCare::Indicators do
   let(:unit) { create_unit("UBS Bucal #{SecureRandom.hex(2)}") }
   let(:dentist) { dentist!(unit) }
   let(:esf) { team!(kind: "70", name: "eSF Jardim") }
-  let(:esb) { team!(kind: DentalCare::Catalog::ORAL_HEALTH_TEAM_KIND, name: "eSB Jardim", associated_team: esf) }
+  # Sem associada nas regras de numerador (contagem crua); a população entra
+  # em "denominador e população".
+  let(:esb) { team!(kind: DentalCare::Catalog::ORAL_HEALTH_TEAM_KIND, name: "eSB Jardim") }
   let(:citizens) { Hash.new { |hash, key| hash[key] = verified_citizen!(hash.size + 1) } }
   let(:october) { Time.zone.local(2026, 10, 10, 10) }
 
@@ -105,6 +107,11 @@ RSpec.describe DentalCare::Indicators do
       expect(b2).to eq(numerator: 1, denominator: 2)
     end
 
+    it "desfecho 15 na própria primeira consulta (tipo 1 + 15) conta" do
+      consultation!(by: dentist, citizen: citizens[1], outcomes: [ 15 ])
+      expect(b2).to eq(numerator: 1, denominator: 1)
+    end
+
     it "desfecho 15 antes da primeira consulta não conta" do
       consultation!(by: dentist, citizen: citizens[1], type: 2, outcomes: [ 15 ], at: october - 2.months)
       consultation!(by: dentist, citizen: citizens[1])
@@ -112,18 +119,26 @@ RSpec.describe DentalCare::Indicators do
     end
   end
 
-  describe "denominador do B1" do
-    it "população da eSF/eAP associada (CareLines::TeamPopulation.members)" do
-      doctor = member!(doctor!(unit), team: esf)
-      finalized_consultation!(unit: unit, doctor: doctor, citizen: citizens[1], exam_requests: [])
-      population = CareLines::TeamPopulation.members(team: esf)
-      expect(population.values.sum(&:size)).to be_positive
-      expect(indicators.fetch(:b1).fetch(:denominator)).to eq(population.values.sum(&:size))
+  describe "denominador e população" do
+    # Paciente na população da eSF: consulta geral finalizada de membro dela.
+    def in_population!(citizen)
+      @esf_doctor ||= member!(doctor!(unit), team: esf)
+      finalized_consultation!(unit: unit, doctor: @esf_doctor, citizen: citizen, exam_requests: [])
     end
 
-    it "eSB sem associada, ou associada a eSF inativa → denominator nil" do
+    it "denominador = população da eSF/eAP associada; paciente fora dela não conta no B1 nem no B2" do
+      esb.update!(associated_team: esf)
+      in_population!(citizens[1])
+      consultation!(by: dentist, citizen: citizens[1], outcomes: [ 15 ])
+      consultation!(by: dentist, citizen: citizens[2], outcomes: [ 15 ]) # fora da população
+      population = CareLines::TeamPopulation.members(team: esf)
+      expect(population.values.sum(&:size)).to be_positive
+      expect(indicators).to eq(b1: { numerator: 1, denominator: population.values.sum(&:size) },
+                               b2: { numerator: 1, denominator: 1 })
+    end
+
+    it "eSB sem associada, ou associada a eSF inativa → denominator nil e numerador cru" do
       consultation!(by: dentist, citizen: citizens[1])
-      esb.update!(associated_team: nil)
       expect(indicators.fetch(:b1)).to eq(numerator: 1, denominator: nil)
       esb.update!(associated_team: esf)
       esf.update!(active: false)

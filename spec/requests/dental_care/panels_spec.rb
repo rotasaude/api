@@ -80,10 +80,15 @@ RSpec.describe "Saúde bucal — painéis", type: :request do
 
     def indicators(team_id: esb.id, period: self.period) = get("/dental/indicators", params: { team_id: team_id, period: period }.compact)
 
+    # O paciente está na população da eSF associada (consulta geral de membro dela).
     before do
+      citizen = verified_citizen!(1, social_name: "Mariana")
+      doctor = doctor!(unit)
+      HealthTeamMember.create!(professional: doctor.professional, health_team: esf, cbo_code: "225125", started_on: Time.zone.today - 30)
+      finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen, exam_requests: [])
       user = dentist!(unit)
       HealthTeamMember.create!(professional: user.professional, health_team: esb, cbo_code: "223208", started_on: Time.zone.today - 30)
-      consultation = dental_draft_row!(unit: unit, by: user, citizen: verified_citizen!(1, social_name: "Mariana"))
+      consultation = dental_draft_row!(unit: unit, by: user, citizen: citizen)
       consultation.update_columns(status: "finalized", finalized_at: Time.current, care_type: 2, dental_consultation_type: 1,
                                   dental_outcomes: [ 15 ])
     end
@@ -91,7 +96,7 @@ RSpec.describe "Saúde bucal — painéis", type: :request do
     it "analista → 200 { b1, b2 } com numerador e denominador; sem trilha nem dado do paciente" do
       sign_in_as(analyst)
       expect { indicators }.not_to change(DomainEvent, :count)
-      expect([ response.status, json_body ]).to eq([ 200, { "b1" => { "numerator" => 1, "denominator" => 0 },
+      expect([ response.status, json_body ]).to eq([ 200, { "b1" => { "numerator" => 1, "denominator" => 1 },
                                                              "b2" => { "numerator" => 1, "denominator" => 1 } } ])
       expect(response.body).not_to match(/patient|Mariana|Maria|cpf|cns/i)
     end
