@@ -110,12 +110,12 @@ RSpec.describe DentalCare::CeoGoals do
   end
 
   describe "faltas dos 12 meses fechados e risco de suspensão" do
-    it "só perio não atingida em agosto e setembro → { consecutive: 2, total: 2 } e risco em outubro sem meta" do
+    it "só perio não atingida em agosto e setembro → consecutive 2 e risco em outubro sem meta; o total conta o mês" do
       profile_since!(ceo, Date.new(2026, 8, 1))
       [ 8, 9 ].each { |month| meet_all!(Date.new(2026, month, 1), except: "periodontics") }
       result = goals
-      expect(result.fetch(:misses_last_12)).to eq("basic" => { consecutive: 0, total: 0 }, "periodontics" => { consecutive: 2, total: 2 },
-                                                  "endodontics" => { consecutive: 0, total: 0 }, "oral_surgery" => { consecutive: 0, total: 0 })
+      expect(result.fetch(:misses_last_12)).to eq("basic" => { consecutive: 0, total: 1 }, "periodontics" => { consecutive: 2, total: 3 },
+                                                  "endodontics" => { consecutive: 0, total: 1 }, "oral_surgery" => { consecutive: 0, total: 1 })
       expect(result.fetch(:suspension_risk)).to be(true)
       meet_all!(october, except: "endodontics")
       expect(goals.fetch(:suspension_risk)).to be(false) # perio atingida no mês; endo sem falta anterior
@@ -126,15 +126,15 @@ RSpec.describe DentalCare::CeoGoals do
         finalized_with!({ "0307030032" => quantity }, at: in_month(Date.new(2026, month, 1))) if quantity.positive?
       end
       profile_since!(ceo, Date.new(2026, 6, 1))
-      expect(goals.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 0, total: 2) # junho e agosto
+      expect(goals.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 0, total: 3) # junho, agosto e outubro
     end
 
     it "Review Focus 5: perfil criado em julho → janeiro a junho não contam como falta" do
       profile_since!(ceo, Date.new(2026, 7, 1))
       (7..9).each { |month| finalized_with!({ "0307030032" => 90 }, at: in_month(Date.new(2026, month, 1))) }
       result = goals
-      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 0, total: 0)
-      expect(result.fetch(:misses_last_12).fetch("endodontics")).to eq(consecutive: 3, total: 3)
+      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 0, total: 1) # só outubro
+      expect(result.fetch(:misses_last_12).fetch("endodontics")).to eq(consecutive: 3, total: 4)
       expect(result.fetch(:history).map { |row| row.fetch(:month) }).to eq(%w[2026-07 2026-08 2026-09])
     end
 
@@ -143,15 +143,15 @@ RSpec.describe DentalCare::CeoGoals do
       meet_all!(Date.new(2026, 9, 1), except: "periodontics")
       result = goals
       expect(result.fetch(:history).map { |row| row.fetch(:month) }).to eq(%w[2026-09])
-      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 1, total: 1)
-      expect(result.fetch(:misses_last_12).fetch("basic")).to eq(consecutive: 0, total: 0)
+      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 1, total: 2) # setembro e outubro; agosto parcial fora
+      expect(result.fetch(:misses_last_12).fetch("basic")).to eq(consecutive: 0, total: 1)
     end
 
     it "O35: perfil criado no dia 1 → esse mês é avaliado" do
       profile_since!(ceo, Date.new(2026, 9, 1))
       result = goals
       expect(result.fetch(:history).map { |row| row.fetch(:month) }).to eq(%w[2026-09])
-      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 1, total: 1)
+      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 1, total: 2)
     end
 
     it "O35: o mês pedido parcial (perfil criado no meio dele) nunca é falta → sem risco" do
@@ -171,15 +171,27 @@ RSpec.describe DentalCare::CeoGoals do
       perio_misses!([ october << 12, october << 6 ])
       meet_all!(october, except: "periodontics")
       result = goals
-      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 0, total: 2)
+      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 0, total: 2) # abril e outubro
       expect(result.fetch(:suspension_risk)).to be(false)
+    end
+
+    it "total na janela do O36: a falta no 12º mês fechado não conta (o mês atingido)" do
+      profile_since!(ceo, Date.new(2025, 1, 1))
+      perio_misses!([ october << 12 ])
+      meet_all!(october)
+      result = goals
+      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 0, total: 0)
+      expect(result.fetch(:history).first).to include(month: "2025-10")
+      expect(result.fetch(:history).first.fetch(:specialties).find { |row| row[:key] == "periodontics" }).to include(met: false)
     end
 
     it "O36: 3 faltas alternadas dentro de 12 meses (11 fechados + o mês) → risco" do
       profile_since!(ceo, Date.new(2025, 1, 1))
       perio_misses!([ october << 11, october << 6 ])
       meet_all!(october, except: "periodontics")
-      expect(goals.fetch(:suspension_risk)).to be(true)
+      result = goals
+      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 0, total: 3)
+      expect(result.fetch(:suspension_risk)).to be(true)
     end
 
     it "sem falta anterior e o mês não atingido → sem risco; mês atingido nunca tem risco" do

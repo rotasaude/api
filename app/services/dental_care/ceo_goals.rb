@@ -7,7 +7,8 @@
 # (O35): do mês seguinte ao da criação do perfil, ou do próprio mês quando o
 # perfil nasceu no dia 1 — mês parcial nunca é falta (o CEO cadastrado no meio
 # do ano não tem falta antes disso). Suspensão (O36): 2 faltas seguidas, ou 3
-# alternadas nos 11 meses fechados antes de `month` mais o próprio `month`.
+# alternadas nos 11 meses fechados antes de `month` mais o próprio `month` —
+# a mesma janela do `misses_last_12.total`; `consecutive` termina no mês anterior.
 # Só contagens: nada do paciente.
 module DentalCare
   module CeoGoals
@@ -36,12 +37,14 @@ module DentalCare
       totals = sums(unit, closed.first, month.next_month)
       current = specialties(profile.ceo_type, totals[key_of(month)])
       counted = closed.select { |m| m >= since }.map { |m| [ m, specialties(profile.ceo_type, totals[key_of(m)]) ] }
-      misses = KEYS.index_with { |key| misses_of(mets(counted, key)) }
+      # A janela das alternadas (O36): os 11 fechados avaliados + o próprio mês, se avaliado.
       alternate_from = month << (config.dig("suspension", "window_months") - 1)
-      recent = counted.select { |m, _| m >= alternate_from }
-      risk = month >= since && current.any? do |row|
-        !row[:met] && at_risk?(misses.fetch(row[:key])[:consecutive], mets(recent, row[:key]).count(false))
+      window = counted.select { |m, _| m >= alternate_from }
+      window += [ [ month, current ] ] if month >= since
+      misses = KEYS.index_with do |key|
+        { consecutive: mets(counted, key).reverse.take_while { |met| !met }.size, total: mets(window, key).count(false) }
       end
+      risk = month >= since && current.any? { |row| !row[:met] && at_risk?(misses.fetch(row[:key])) }
       { ceo_type: profile.ceo_type,
         specialties: current,
         misses_last_12: misses,
@@ -57,16 +60,11 @@ module DentalCare
 
     def mets(counted, key) = counted.map { |_, rows| rows.find { |row| row[:key] == key }.fetch(:met) }
 
-    # A falta do mês suspende: o mês anterior já faltou (vira a 2ª seguida) ou
-    # já são 2 nos 11 meses fechados anteriores (vira a 3ª alternada em 12).
-    def at_risk?(consecutive, recent_misses)
+    # Com a falta do mês: o mês anterior já faltou (2ª seguida) ou o total da
+    # janela, que já conta o mês, chega a 3 (3ª alternada em 12).
+    def at_risk?(miss)
       rule = config.fetch("suspension")
-      consecutive >= rule.fetch("consecutive") - 1 || recent_misses >= rule.fetch("alternate") - 1
-    end
-
-    # Faltas na ordem do mais antigo: total e a sequência que termina no mês anterior.
-    def misses_of(mets)
-      { consecutive: mets.reverse.take_while { |met| !met }.size, total: mets.count(false) }
+      miss[:consecutive] >= rule.fetch("consecutive") - 1 || miss[:total] >= rule.fetch("alternate")
     end
 
     def specialties(ceo_type, sums)
