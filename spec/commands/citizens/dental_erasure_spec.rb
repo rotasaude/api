@@ -69,6 +69,42 @@ RSpec.describe "Exclusão LGPD com registro odontológico (ADR 0046)" do
     expect(DentalProcedure.where(consultation_id: consultation.id)).to exist
   end
 
+  # Registros que não deixam evento no odontograma: a regra antiga (só evento e
+  # prótese) não os retinha.
+  describe "registro sem evento do odontograma" do
+    def no_events! = expect(DentalChartEvent.where(patient_id: patient.id)).not_to exist
+
+    it "só o plano de tratamento" do
+      finalized_dental!(unit: unit, by: dentist, citizen: citizen,
+                        dental: { "procedures" => [], "plan_changes" => { "add" => [ { "sigtap" => "0307010031", "location" => { "kind" => "tooth", "tooth" => 21 } } ] } })
+      expect(DentalTreatmentPlan.where(patient_id: patient.id)).to exist
+      no_events!
+      expect(request_for(citizen).payload[:request].status).to eq("retained")
+    end
+
+    it "só o registro periodontal" do
+      finalized_dental!(unit: unit, by: dentist, citizen: citizen,
+                        dental: { "procedures" => [], "periodontal_screening" => { "sextants" => [ { "sextant" => "S1", "code" => 3, "star" => false } ] } })
+      expect(PeriodontalScreening.where(patient_id: patient.id)).to exist
+      no_events!
+      expect(request_for(citizen).payload[:request].status).to eq("retained")
+    end
+
+    it "só procedimento de sextante" do
+      finalized_dental!(unit: unit, by: dentist, citizen: citizen,
+                        dental: { "procedures" => [ { "sigtap" => "0307030032", "location" => { "kind" => "sextant", "sextant" => "S1" } } ] })
+      expect(DentalProcedure.where(patient_id: patient.id)).to exist
+      no_events!
+      expect(request_for(citizen).payload[:request].status).to eq("retained")
+    end
+
+    it "consulta odontológica em rascunho" do
+      dental_consultation!(unit: unit, by: dentist, citizen: citizen)
+      no_events!
+      expect(request_for(citizen).payload[:request].status).to eq("retained")
+    end
+  end
+
   it "sem registro odontológico, o pedido nasce pendente" do
     patient
     expect(request_for(citizen).payload[:request].status).to eq("pending")

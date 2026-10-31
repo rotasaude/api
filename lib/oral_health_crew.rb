@@ -28,9 +28,10 @@ require_relative "clinical_record_crew"
 #   encaminhamento à endodontia (desfecho 3, pedido de          Cristiane    UBS e CEO
 #     regulação) e primeira consulta no CEO com endodontia
 #     em andamento e plano do CEO
-#   40 procedimentos de periodontia e 20 de endodontia (10      Leonardo     CEO
-#     de 3 raízes) no mês corrente: periodontia abaixo da
-#     meta e endodontia com composição ok
+#   24 + 16 procedimentos de periodontia (40), no mês           Leonardo,    CEO
+#     corrente: periodontia abaixo da meta                       Paulo
+#   20 procedimentos de endodontia (10 de 3 raízes) em duas      Roberto      CEO
+#     consultas: composição ok, abaixo da meta
 #   registro inicial de boca sem dentes superiores e prótese    Neusa        UBS
 #     total maxilar `received` (laboratório terceiro, por nome)
 #
@@ -62,7 +63,8 @@ class OralHealthCrew
   # Quem faz cada papel do cenário: [crew de origem, chave].
   PEOPLE = {
     baseline: [ :care_lines, :rafael ], aux_plan: [ :care_lines, :antonio ], plan: [ :care_lines, :maria ],
-    pregnant: [ :care_lines, :ana ], referral: [ :regulation, :cristiane ], production: [ :regulation, :leonardo ],
+    pregnant: [ :care_lines, :ana ], referral: [ :regulation, :cristiane ], production: [ :regulation, :leonardo ], production_perio: [ :regulation, :paulo ],
+    production_endo: [ :regulation, :roberto ],
     prosthesis: [ :regulation, :neusa ]
   }.freeze
 
@@ -208,7 +210,7 @@ class OralHealthCrew
       seed = "#{slug}:oral-health:#{spec[:email_prefix]}"
       attrs = { professional_name: spec[:name], council: "CRO", council_state: CityProfile.current&.uf.presence || "PR",
                 cns: Professionals::Cns.generate(seed), registration_number: (Zlib.crc32(seed) % 90_000 + 10_000).to_s,
-                cpf: ScreeningCrew.send(:cpf_for, seed) }
+                cpf: ScreeningCrew.cpf_for(seed) }
       check!(Professionals::Create.call(user_id: user.id, attrs: attrs, by: admin), "perfil de #{spec[:name]}")
       user.reload
     end
@@ -235,7 +237,7 @@ class OralHealthCrew
       patients.each { |role, patient| skipped << "#{role}: pessoa da semente anterior ausente" unless patient }
       world = { slug: slug, ubs: ubs, ceo: ceo, dentist: staff.fetch(:dentist), endodontist: staff.fetch(:endodontist) }
       steps = { baseline: :baseline!, aux_plan: :auxiliary_plan!, plan: :plan_to_complete!, pregnant: :pregnant!,
-                referral: :referral!, production: :production!, prosthesis: :prosthesis! }
+                referral: :referral!, production: :production!, production_perio: :production_perio!, production_endo: :production_endo!, prosthesis: :prosthesis! }
       steps.each { |role, step| send(step, world, patients[role]) if patients[role] }
       skipped
     end
@@ -270,7 +272,7 @@ class OralHealthCrew
     # e (finalize: true) finalização. O bloco recebe a consulta antes da finalização.
     # -> a consulta (finalizada ou em rascunho).
     def consult!(world, patient, unit:, by:, key:, params:, baseline: false, finalize: true)
-      attendance = ClinicalRecordCrew.send(:checked_in!, world[:slug], unit, citizen_of(patient), "bucal-#{key}")
+      attendance = ClinicalRecordCrew.checked_in!(world[:slug], unit, citizen_of(patient), "bucal-#{key}")
       check!(Attendances::Call.call(attendance: attendance, health_unit_id: unit.id, by: by), "chamada #{key}")
       started = check!(Consultations::Start.call(attendance: attendance.reload, by: by, kind: "dental", baseline: baseline), "consulta #{key}")
       consultation = started.payload.fetch(:consultation)
@@ -358,19 +360,32 @@ class OralHealthCrew
 
     def attended_at?(patient, unit) = dental(patient).joins(:attendance).exists?(attendances: { health_unit_id: unit.id })
 
-    # 40 de periodontia (24 + 16, sextante a sextante) e 20 de endodontia (10 de três raízes)
-    # no mês corrente, em duas consultas do CEO de um mesmo paciente fictício.
+    # Produção do mês no CEO (40 de periodontia, 20 de endodontia com 10 de três raízes),
+    # repartida entre três pacientes: periodontia em Leonardo (24) e Paulo (16), endodontia
+    # em Roberto (20, em duas consultas).
     def production!(world, patient)
       return if attended_at?(patient, world[:ceo])
 
-      key = "producao-#{patient.id[0, 8]}"
-      perio = ->(sextants) { PERIO_CODES.flat_map { |code| sextants.map { |sextant| sextant_procedure(code, sextant) } } }
-      endo = THREE_ROOTS.map { |t| tooth_procedure("0307020053", t) } + TWO_ROOTS.map { |t| tooth_procedure("0307020045", t) } +
-             ONE_ROOT.map { |t| tooth_procedure("0307020061", t) }
-      consult!(world, patient, unit: world[:ceo], by: world[:endodontist], key: "#{key}-1",
-                               params: body(patient, dental: { "procedures" => perio.(SEXTANTS) }))
-      consult!(world, patient, unit: world[:ceo], by: world[:endodontist], key: "#{key}-2",
-                               params: body(patient, dental: { "dental_consultation_type" => 2, "procedures" => perio.(SEXTANTS.first(4)) + endo }))
+      produce!(world, patient, "perio-1", PERIO_CODES.flat_map { |code| SEXTANTS.map { |sextant| sextant_procedure(code, sextant) } })
+    end
+
+    def production_perio!(world, patient)
+      return if attended_at?(patient, world[:ceo])
+
+      produce!(world, patient, "perio-2", PERIO_CODES.flat_map { |code| SEXTANTS.first(4).map { |sextant| sextant_procedure(code, sextant) } })
+    end
+
+    def production_endo!(world, patient)
+      return if attended_at?(patient, world[:ceo])
+
+      teeth = THREE_ROOTS.map { |t| tooth_procedure("0307020053", t) } + TWO_ROOTS.map { |t| tooth_procedure("0307020045", t) } +
+              ONE_ROOT.map { |t| tooth_procedure("0307020061", t) }
+      teeth.each_slice(10).with_index { |slice, i| produce!(world, patient, "endo-#{i + 1}", slice, type: i.zero? ? 1 : 2) }
+    end
+
+    def produce!(world, patient, name, procedures, type: 1)
+      consult!(world, patient, unit: world[:ceo], by: world[:endodontist], key: "producao-#{name}-#{patient.id[0, 8]}",
+                               params: body(patient, dental: { "dental_consultation_type" => type, "procedures" => procedures }))
     end
 
     def sextant_procedure(code, sextant) = { "sigtap" => code, "location" => { "kind" => "sextant", "sextant" => sextant } }

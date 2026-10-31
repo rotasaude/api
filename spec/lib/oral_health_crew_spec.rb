@@ -134,11 +134,15 @@ RSpec.describe OralHealthCrew, type: :request do
         expect(EndodonticTreatment.find_by!(patient_id: cristiane.id)).to have_attributes(health_unit_id: ceo.id, tooth: 36, canals: 3, status: "in_progress")
         expect(DentalTreatmentPlan.find_by!(patient_id: cristiane.id, health_unit_id: ceo.id)).to have_attributes(status: "open")
 
-        # Metas do CEO no mês: periodontia abaixo, endodontia com composição ok.
+        # Produção do mês repartida em três pacientes do CEO; metas: periodontia abaixo, endodontia com composição ok.
+        ceo_consults = ->(key) { Consultation.joins(:attendance).where(patient_id: patient_of(:regulation, key).id, kind: "dental", attendances: { health_unit_id: ceo.id }) }
+        expect(DentalProcedure.where(consultation_id: ceo_consults.(:leonardo).select(:id)).sum(:quantity)).to eq(24)
+        expect(DentalProcedure.where(consultation_id: ceo_consults.(:paulo).select(:id)).sum(:quantity)).to eq(16)
+        expect(ceo_consults.(:roberto).count).to eq(2)
+        expect(DentalProcedure.where(consultation_id: ceo_consults.(:roberto).select(:id)).sum(:quantity)).to eq(20)
         goals = DentalCare::CeoGoals.call(unit: ceo, month: Time.zone.today.beginning_of_month).fetch(:specialties).index_by { |row| row[:key] }
         expect(goals["periodontics"]).to include(goal: 90, done: 40, met: false)
-        expect(goals["endodontics"]).to include(goal: 60, met: false)
-        expect(goals["endodontics"][:done]).to eq(20)
+        expect(goals["endodontics"]).to include(goal: 60, done: 20, met: false)
         expect(goals["endodontics"][:composition]).to include(ok: true, value: "50.00")
 
         # Prótese total maxilar recebida (laboratório terceiro, por nome).
@@ -147,8 +151,8 @@ RSpec.describe OralHealthCrew, type: :request do
           stage: "received", procedure_code: "0701070137", laboratory_name: "Laboratório de Prótese Dental Sorriso Ltda", care_provider_id: nil
         )
         expect(result[:prosthesis]).to eq("received" => 1)
-        # Toda primeira consulta programática abre plano (e toda do CEO): os três com itens e os vazios.
-        expect(result[:plans]).to eq("open" => 6)
+        # Toda primeira consulta programática abre plano (e toda do CEO): os com itens e os vazios.
+        expect(result[:plans]).to eq("open" => 8)
       end
 
       seed

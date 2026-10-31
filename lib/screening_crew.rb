@@ -128,5 +128,7 @@ class ScreeningCrew
       first = CitizenIdentity::Cpf.check_digit(nums)
       "#{base}#{first}#{CitizenIdentity::Cpf.check_digit(nums + [ first ])}"
     end
+    # Público: as outras sementes derivam o CPF fictício pela mesma conta.
+    public :cpf_for
   end
 end

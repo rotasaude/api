@@ -129,6 +129,8 @@ class ClinicalRecordCrew
 
       result.payload[:attendance]
     end
+    # Público: as outras sementes fazem o check-in pelo mesmo caminho real.
+    public :checked_in!
 
     def consult!(slug, unit, citizen)
       doctor = User.find_by!(email_address: "profissional@#{slug}.demo")
