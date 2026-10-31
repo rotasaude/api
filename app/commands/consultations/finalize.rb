@@ -27,6 +27,9 @@ module Consultations
 
     def self.call(consultation:, outcome_params:, by:)
       outcome = normalize(outcome_params)
+      # O37: lido fora da transação.
+      return Result.fail(:feature_disabled, details: { feature: DentalCare::Gate::KEY }) if consultation.dental? && !DentalCare::Gate.usable?(Current.city)
+
       # Fora da transação: nenhuma leitura de interruptor dentro do savepoint (OpenRequest).
       signing = Signatures::Gate.usable?(Current.city)
       tracking = Exams::Gate.usable?(Current.city)

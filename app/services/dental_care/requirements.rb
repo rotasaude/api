@@ -27,7 +27,7 @@ module DentalCare
       limits(dental, add)
       taken(dental, add)
       prosthesis(dental, patient, add)
-      plan(consultation, dental, add)
+      plan(consultation, dental, add, auxiliary: Consultations::Cbos.role(consultation.cbo_code) == :auxiliary)
       problems.concat(Referrals.missing(consultation)) if regulating
       problems
     end
@@ -140,7 +140,7 @@ module DentalCare
 
     # Desvio 7 (Ruling 14): o item tem de ser `planned` do plano aberto da
     # unidade da consulta (e do mesmo SIGTAP, na baixa).
-    def plan(consultation, dental, add)
+    def plan(consultation, dental, add, auxiliary: false)
       plan = Plans.open_plan(consultation)
       planned = plan ? plan.items.where(status: "planned").pluck(:id, :procedure_code).to_h : {}
       changes = Plans.changes(consultation)
@@ -164,6 +164,14 @@ module DentalCare
       end
       if changes["add"].any? && plan.nil? && !Plans.opens_plan?(consultation)
         add.("dental.plan_changes.add", "plan_requires_first_consultation")
+      end
+      # O38: o 15 só com o plano sem item `planned` depois do rascunho (mesma regra
+      # do suggest_completed: acréscimos contam; baixas e cancelamentos descontam).
+      pending = (planned.keys - used).size + changes["add"].size
+      if pending.positive? && !changes["cancel_plan"] && !auxiliary # o auxiliar já recebe auxiliary_cannot_plan
+        consultation.dental_outcomes.each_with_index do |code, index|
+          add.("dental.dental_outcomes[#{index}]", "plan_items_pending") if code == Catalog::COMPLETED
+        end
       end
     end
 

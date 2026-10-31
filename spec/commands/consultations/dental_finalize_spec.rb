@@ -167,6 +167,16 @@ RSpec.describe Consultations::Finalize do
       expect(Consultations::Json.consultation(second.reload)[:dental]).to include(suggest_completed: false)
     end
 
+    it "O38: 15 com item ainda planned → plan_items_pending; cancelar o item no mesmo rascunho → aceito" do
+      done!(draft!(start, dental: { "plan_changes" => { "add" => [ restoration(21), restoration(22) ] } }))
+      items = plan_of(unit).items.order(:tooth).to_a
+      second = draft!(start, dental: { "dental_consultation_type" => 2, "dental_outcomes" => [ 15 ],
+                                       "procedures" => [ restoration(21, plan_item_id: items.first.id) ] })
+      expect(problems(finalize(second))).to eq([ [ "plan_items_pending", "dental.dental_outcomes[0]" ] ])
+      draft!(second, dental: { "plan_changes" => { "cancel" => [ { "item_id" => items.last.id, "reason" => "Dente extraído antes" } ] } })
+      expect(finalize(second).failure?).to be(false)
+    end
+
     it "sem plano aberto: acrescentar item em consulta de retorno → plan_requires_first_consultation" do
       consultation = draft!(start, dental: { "dental_consultation_type" => 2, "plan_changes" => { "add" => [ restoration(21) ] } })
       expect(problems(finalize(consultation))).to eq([ [ "plan_requires_first_consultation", "dental.plan_changes.add" ] ])

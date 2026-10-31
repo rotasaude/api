@@ -8,6 +8,9 @@ module Consultations
   class SaveDraft
     def self.call(consultation:, params:, by:)
       params = normalize(params)
+      # O37: lido fora da transação (nenhuma leitura de interruptor no savepoint).
+      return Result.fail(:feature_disabled, details: { feature: DentalCare::Gate::KEY }) if consultation.dental? && !DentalCare::Gate.usable?(Current.city)
+
       ApplicationRecord.transaction do
         consultation.lock!
         next Result.fail(:not_author) unless consultation.author_user_id == by.id

@@ -340,4 +340,35 @@ RSpec.describe "Consulta odontológica", type: :request do
       end
     end
   end
+
+  # O37: com dental_care fora, o rascunho odontológico não se edita nem se finaliza;
+  # a consulta geral segue; descartar o rascunho (api#51) continua valendo.
+  describe "interruptor desligado (O37)" do
+    def json_patch(path, params) = patch(path, params: params.to_json, headers: { "CONTENT_TYPE" => "application/json" })
+
+    it "PATCH e finalize da odontológica → 403 feature_disabled; a geral segue; o descarte funciona" do
+      consultation = dental_consultation!(unit: unit, by: dentist, citizen: citizen)
+      doctor = doctor!(unit)
+      general = Consultation.find(begin
+        sign_in_as(doctor)
+        json_post "/attendance/attendances/#{consulting_attendance!(unit, citizen: verified_citizen!(2), doctor: doctor).id}/consultation"
+        body["id"]
+      end)
+      dental_city!(enabled: false)
+      sign_in_as(dentist)
+      forbidden = [ 403, { "error" => "feature_disabled", "feature" => "dental_care" } ]
+      json_patch "/attendance/consultations/#{consultation.id}", dental: { "dental_outcomes" => [ 1 ] }
+      expect([ response.status, body ]).to eq(forbidden)
+      json_post "/attendance/consultations/#{consultation.id}/finalize", outcome: { outcome: "discharged" }
+      expect([ response.status, body ]).to eq(forbidden)
+      expect(consultation.reload).to be_draft
+
+      sign_in_as(doctor)
+      json_patch "/attendance/consultations/#{general.id}", plan: "x"
+      expect(response).to have_http_status(:ok)
+
+      ConsultationDrafts::Discard.call(consultation_id: consultation.id, reason: "Rascunho órfão da unidade", by: admin)
+      expect(consultation.reload.status).to eq("discarded")
+    end
+  end
 end
