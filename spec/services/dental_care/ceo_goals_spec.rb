@@ -10,7 +10,7 @@ RSpec.describe DentalCare::CeoGoals do
   let(:citizens) { Hash.new { |hash, key| hash[key] = verified_citizen!(hash.size + 1) } }
 
   # Perfil criado no mês dado (os meses anteriores não contam como falta).
-  def profile_since!(unit, month) = unit.ceo_profile.update_columns(created_at: Time.zone.local(month.year, month.month, 1, 9))
+  def profile_since!(unit, month, day: 1) = unit.ceo_profile.update_columns(created_at: Time.zone.local(month.year, month.month, day, 9))
 
   # Consulta odontológica finalizada no instante `at`, com os procedimentos
   # `{ sigtap => quantidade }` (linhas de até 32), gravada direto: rascunho,
@@ -26,6 +26,15 @@ RSpec.describe DentalCare::CeoGoals do
     end
     consultation.update_columns(status: "finalized", finalized_at: at, care_type: baseline ? nil : 2, special_needs: special_needs)
     consultation
+  end
+
+  # Produz no mês a meta (CEO II, com composição) de todas as especialidades menos `except`.
+  def meet_all!(month, except: nil)
+    at = in_month(month)
+    finalized_with!({ "0307030032" => 90 }, at: at) unless except == "periodontics"
+    finalized_with!({ "0414020278" => 90 }, at: at) unless except == "oral_surgery"
+    finalized_with!({ "0307020053" => 12, "0307020061" => 48 }, at: at) unless except == "endodontics"
+    finalized_with!({ "0307010031" => 60, "0101020074" => 50 }, at: at, special_needs: true) unless except == "basic"
   end
 
   def in_month(month, day: 15) = Time.zone.local(month.year, month.month, day, 10)
@@ -101,11 +110,15 @@ RSpec.describe DentalCare::CeoGoals do
   end
 
   describe "faltas dos 12 meses fechados e risco de suspensão" do
-    it "perio não atingida em agosto e setembro → { consecutive: 2, total: 2 } e risco em outubro sem meta" do
+    it "só perio não atingida em agosto e setembro → { consecutive: 2, total: 2 } e risco em outubro sem meta" do
       profile_since!(ceo, Date.new(2026, 8, 1))
+      [ 8, 9 ].each { |month| meet_all!(Date.new(2026, month, 1), except: "periodontics") }
       result = goals
-      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 2, total: 2)
+      expect(result.fetch(:misses_last_12)).to eq("basic" => { consecutive: 0, total: 0 }, "periodontics" => { consecutive: 2, total: 2 },
+                                                  "endodontics" => { consecutive: 0, total: 0 }, "oral_surgery" => { consecutive: 0, total: 0 })
       expect(result.fetch(:suspension_risk)).to be(true)
+      meet_all!(october, except: "endodontics")
+      expect(goals.fetch(:suspension_risk)).to be(false) # perio atingida no mês; endo sem falta anterior
     end
 
     it "faltas alternadas contam no total; o mês atingido zera a sequência" do
@@ -125,13 +138,55 @@ RSpec.describe DentalCare::CeoGoals do
       expect(result.fetch(:history).map { |row| row.fetch(:month) }).to eq(%w[2026-07 2026-08 2026-09])
     end
 
+    it "O35: perfil criado no dia 28 → esse mês (parcial) não é avaliado nem é falta; avalia do mês seguinte" do
+      profile_since!(ceo, Date.new(2026, 8, 1), day: 28)
+      meet_all!(Date.new(2026, 9, 1), except: "periodontics")
+      result = goals
+      expect(result.fetch(:history).map { |row| row.fetch(:month) }).to eq(%w[2026-09])
+      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 1, total: 1)
+      expect(result.fetch(:misses_last_12).fetch("basic")).to eq(consecutive: 0, total: 0)
+    end
+
+    it "O35: perfil criado no dia 1 → esse mês é avaliado" do
+      profile_since!(ceo, Date.new(2026, 9, 1))
+      result = goals
+      expect(result.fetch(:history).map { |row| row.fetch(:month) }).to eq(%w[2026-09])
+      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 1, total: 1)
+    end
+
+    it "O35: o mês pedido parcial (perfil criado no meio dele) nunca é falta → sem risco" do
+      profile_since!(ceo, Date.new(2026, 10, 1), day: 20)
+      result = goals
+      expect([ result.fetch(:history), result.fetch(:suspension_risk) ]).to eq([ [], false ])
+    end
+
+    # Faltas só de perio nos meses dados (as outras três atingidas).
+    def perio_misses!(months)
+      months.each { |month| meet_all!(month, except: "periodontics") }
+      (1..12).map { |back| october << back }.reject { |m| months.include?(m) }.each { |m| meet_all!(m) }
+    end
+
+    it "O36: 3 faltas alternadas espalhadas em 13 meses (a 1ª no 12º mês fechado) → sem risco" do
+      profile_since!(ceo, Date.new(2025, 1, 1))
+      perio_misses!([ october << 12, october << 6 ])
+      meet_all!(october, except: "periodontics")
+      result = goals
+      expect(result.fetch(:misses_last_12).fetch("periodontics")).to eq(consecutive: 0, total: 2)
+      expect(result.fetch(:suspension_risk)).to be(false)
+    end
+
+    it "O36: 3 faltas alternadas dentro de 12 meses (11 fechados + o mês) → risco" do
+      profile_since!(ceo, Date.new(2025, 1, 1))
+      perio_misses!([ october << 11, october << 6 ])
+      meet_all!(october, except: "periodontics")
+      expect(goals.fetch(:suspension_risk)).to be(true)
+    end
+
     it "sem falta anterior e o mês não atingido → sem risco; mês atingido nunca tem risco" do
       profile_since!(ceo, Date.new(2026, 10, 1))
       expect(goals.fetch(:suspension_risk)).to be(false)
       profile_since!(ceo, Date.new(2026, 8, 1))
-      finalized_with!({ "0307030032" => 90, "0414020278" => 90 }, at: in_month(october))
-      finalized_with!({ "0307020053" => 12, "0307020061" => 48 }, at: in_month(october))
-      finalized_with!({ "0307010031" => 60, "0101020074" => 50 }, at: in_month(october), special_needs: true)
+      meet_all!(october)
       expect(goals.fetch(:suspension_risk)).to be(false)
     end
 

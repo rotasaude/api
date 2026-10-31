@@ -3,9 +3,12 @@
 # `dental` finalizadas, não `baseline`, da unidade, no mês (fuso da cidade),
 # contra a meta do tipo do CEO em config/dental/ceo_goals.yml. Básico só de
 # consulta `special_needs`. `met` = quantidade e composição. Faltas e
-# `history` sobre os 12 meses fechados antes de `month`, só a partir do mês de
-# criação do perfil (o CEO cadastrado no meio do ano não tem falta antes
-# disso). Só contagens: nada do paciente.
+# `history` sobre os 12 meses fechados antes de `month`, só dos meses avaliados
+# (O35): do mês seguinte ao da criação do perfil, ou do próprio mês quando o
+# perfil nasceu no dia 1 — mês parcial nunca é falta (o CEO cadastrado no meio
+# do ano não tem falta antes disso). Suspensão (O36): 2 faltas seguidas, ou 3
+# alternadas nos 11 meses fechados antes de `month` mais o próprio `month`.
+# Só contagens: nada do paciente.
 module DentalCare
   module CeoGoals
     PATH = Rails.root.join("config/dental/ceo_goals.yml")
@@ -13,31 +16,52 @@ module DentalCare
 
     module_function
 
-    def config = (@config ||= YAML.load_file(PATH).freeze)
+    def config = (@config ||= deep_freeze(YAML.load_file(PATH)))
+
+    def deep_freeze(value)
+      case value
+      when Hash then value.each_value { |item| deep_freeze(item) }
+      when Array then value.each { |item| deep_freeze(item) }
+      end
+      value.freeze
+    end
 
     def codes(rows) = rows.map { |row| row.fetch("code") }
 
     # `month`: o primeiro dia do mês. `unit` com `ceo_profile`.
     def call(unit:, month:)
       profile = unit.ceo_profile
-      since = profile.created_at.in_time_zone.to_date.beginning_of_month
+      since = first_evaluated(profile)
       closed = (1..12).map { |back| month << back }.reverse
       totals = sums(unit, closed.first, month.next_month)
       current = specialties(profile.ceo_type, totals[key_of(month)])
       counted = closed.select { |m| m >= since }.map { |m| [ m, specialties(profile.ceo_type, totals[key_of(m)]) ] }
-      misses = KEYS.index_with { |key| misses_of(counted.map { |_, rows| rows.find { |row| row[:key] == key }.fetch(:met) }) }
+      misses = KEYS.index_with { |key| misses_of(mets(counted, key)) }
+      alternate_from = month << (config.dig("suspension", "window_months") - 1)
+      recent = counted.select { |m, _| m >= alternate_from }
+      risk = month >= since && current.any? do |row|
+        !row[:met] && at_risk?(misses.fetch(row[:key])[:consecutive], mets(recent, row[:key]).count(false))
+      end
       { ceo_type: profile.ceo_type,
         specialties: current,
         misses_last_12: misses,
-        suspension_risk: current.any? { |row| !row[:met] && at_risk?(misses.fetch(row[:key])) },
+        suspension_risk: risk,
         history: counted.map { |m, rows| { month: key_of(m), specialties: rows.map { |row| row.slice(:key, :done, :met) } } } }
     end
 
-    # Mais uma falta suspende: o mês anterior já faltou (vira a 2ª seguida) ou
-    # já são 2 no ano (vira a 3ª alternada).
-    def at_risk?(miss)
+    # O35: primeiro mês avaliado (mês inteiro sob o perfil).
+    def first_evaluated(profile)
+      created = profile.created_at.in_time_zone.to_date
+      created.day == 1 ? created : created.next_month.beginning_of_month
+    end
+
+    def mets(counted, key) = counted.map { |_, rows| rows.find { |row| row[:key] == key }.fetch(:met) }
+
+    # A falta do mês suspende: o mês anterior já faltou (vira a 2ª seguida) ou
+    # já são 2 nos 11 meses fechados anteriores (vira a 3ª alternada em 12).
+    def at_risk?(consecutive, recent_misses)
       rule = config.fetch("suspension")
-      miss[:consecutive] >= rule.fetch("consecutive") - 1 || miss[:total] >= rule.fetch("alternate") - 1
+      consecutive >= rule.fetch("consecutive") - 1 || recent_misses >= rule.fetch("alternate") - 1
     end
 
     # Faltas na ordem do mais antigo: total e a sequência que termina no mês anterior.
