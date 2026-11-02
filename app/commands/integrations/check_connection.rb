@@ -19,7 +19,7 @@ module Integrations
 
       status, message = case kind
       when "ledi" then check_ledi(city, credential)
-      when "rnds" then check_rnds(credential)
+      when "rnds" then check_rnds(city, credential)
       else check_cadsus(city)
       end
       credential.update!(last_check_at: Time.current, last_check_status: status, last_check_message: message)
@@ -46,12 +46,20 @@ module Integrations
       [ "error", "Endereço do PEC inválido" ]
     end
 
-    # Local: o PFX ainda abre e não venceu. O teste contra a RNDS é da Task 10.
-    def check_rnds(credential)
-      expired = Integrations::SetCredential.certificate_problem(credential.pfx_bytes, credential.pfx_password)
-      return [ "ok", "Certificado válido" ] if expired.nil?
+    # O PFX abre e não venceu (local); depois pede o token de verdade ao EHR-AUTH
+    # (o simulado, com rnds_mock). Mensagens nossas: nunca a da exceção.
+    def check_rnds(city, credential)
+      problem = Integrations::SetCredential.certificate_problem(credential.pfx_bytes, credential.pfx_password)
+      return [ "error", problem == :certificate_expired ? "Certificado vencido" : "Certificado inválido" ] if problem
 
-      [ "error", expired == :certificate_expired ? "Certificado vencido" : "Certificado inválido" ]
+      Rnds::Client.for(city).token!(fresh: true)
+      [ "ok", "Token da RNDS emitido" ]
+    rescue Rnds::Errors::NotConfigured
+      [ "error", "RNDS não configurada pela plataforma" ]
+    rescue Rnds::Errors::Unauthorized
+      [ "unauthorized", "A RNDS recusou o certificado" ]
+    rescue Rnds::Errors::Unavailable
+      [ "unreachable", "RNDS inalcançável" ]
     end
 
     def check_cadsus(city)

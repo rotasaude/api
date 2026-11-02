@@ -1,6 +1,7 @@
 # spec/requests/integrations_spec.rb
 require "rails_helper"
 require "webmock/rspec"
+require_relative "../../lib/fake_rnds/app"
 
 # ADR 0028 (spec 2026-10-05 §3.3; contratos §5.1): o municipal_admin cadastra,
 # troca (step-up) e testa credenciais. Nenhuma resposta, evento ou log traz o
@@ -97,6 +98,42 @@ RSpec.describe "Integrações da cidade", type: :request do
     expect([ response.status, json ]).to eq([ 422, { "error" => "certificate_expired" } ])
   ensure
     Rails.logger.stop_broadcasting_to(sink) if sink
+  end
+
+  describe "check RNDS" do
+    let(:fake_rnds) { FakeRnds::App.new(timeout_delay: 0) }
+    let(:fake_rnds_base) { "http://fake-rnds.test:8094" }
+
+    before do
+      vaccination_city!(rnds: true)
+      Rnds::Client.reset_cache!
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("FAKE_RNDS_URL").and_return(fake_rnds_base)
+      stub_request(:any, /\A#{Regexp.escape(fake_rnds_base)}/).to_rack(fake_rnds)
+      sign_in_admin!
+    end
+
+    it "simulada: token emitido → ok" do
+      post "/integrations/credentials/rnds/check", as: :json
+      expect(json).to include("last_check_status" => "ok", "last_check_message" => "Token da RNDS emitido")
+      expect(fake_rnds.log.map(&:first)).to eq(%w[GET])
+    end
+
+    it "recusa do certificado → unauthorized; queda → unreachable; sem URL da plataforma → error; sem segredo na resposta" do
+      fake_rnds.failures.push(401)
+      post "/integrations/credentials/rnds/check", as: :json
+      expect(json).to include("last_check_status" => "unauthorized", "last_check_message" => "A RNDS recusou o certificado")
+      fake_rnds.failures.push(503)
+      post "/integrations/credentials/rnds/check", as: :json
+      expect(json).to include("last_check_status" => "unreachable", "last_check_message" => "RNDS inalcançável")
+      fake_rnds.failures.push(:refused)
+      post "/integrations/credentials/rnds/check", as: :json
+      expect(json).to include("last_check_status" => "unreachable")
+      allow(ENV).to receive(:[]).with("FAKE_RNDS_URL").and_return(nil)
+      post "/integrations/credentials/rnds/check", as: :json
+      expect(json).to include("last_check_status" => "error", "last_check_message" => "RNDS não configurada pela plataforma")
+      expect(response.body).not_to include("fake-rnds", "rnds-teste")
+    end
   end
 
   it "check sem credencial: 409 credential_missing" do
