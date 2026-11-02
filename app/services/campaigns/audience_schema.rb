@@ -12,6 +12,8 @@ module Campaigns
     MAX_NEIGHBORHOODS = 50
     MAX_TIERS = 20
     MAX_TEXT = 200
+    MAX_IMMUNOBIOLOGICALS = 20
+    MAX_AGE_MONTHS = 1200
 
     GEO = { "city" => [], "unit" => %w[health_unit_id], "neighborhoods" => %w[neighborhood_ids] }.freeze
 
@@ -22,8 +24,14 @@ module Campaigns
       "attendance_outcome" => { required: %w[outcomes from to], optional: %w[health_unit_id] },
       "triaged_not_attended" => { required: %w[from to], optional: [] },
       "appointment_no_show" => { required: %w[from to], optional: [] },
-      "appointment_request_open" => { required: [], optional: %w[kinds target_unit_id] }
+      "appointment_request_open" => { required: [], optional: %w[kinds target_unit_id] },
+      "vaccine_overdue" => { required: %w[immunobiological_codes], optional: %w[age_min_months age_max_months] },
+      "vaccination_record_unchecked" => { required: [], optional: %w[age_min_months age_max_months] }
     }.freeze
+
+    # Critérios que só existem com o interruptor `vaccination` ligado (ADR 0047).
+    VACCINATION_KINDS = %w[vaccine_overdue vaccination_record_unchecked].freeze
+    AGE_KEYS = %w[age_min_months age_max_months].freeze
 
     module_function
 
@@ -95,6 +103,7 @@ module Campaigns
         found.concat(field_errors(key, criterion[key], "#{path}/#{key}")) if criterion.key?(key)
       end
       found.concat(period_errors(criterion, path)) if found.empty? && criterion.key?("from")
+      found.concat(age_range_errors(criterion, path)) if found.empty?
       found
     end
 
@@ -109,9 +118,31 @@ module Campaigns
           AppointmentRequest::KINDS.include?(v) ? nil : "invalid_value"
         end
       when "health_unit_id", "target_unit_id" then uuid?(value) ? [] : [ error(path, "invalid_uuid") ]
+      when "immunobiological_codes" then immunobiological_errors(value, path)
+      when *AGE_KEYS then age?(value) ? [] : [ error(path, "invalid_value") ]
       when "from", "to" then date(value) ? [] : [ error(path, "invalid_date") ]
       else []
       end
+    end
+
+    # Códigos do catálogo LEDI; o zero à esquerda não conta (hepatite B "9"/"09").
+    def immunobiological_errors(value, path)
+      codes = value.is_a?(Array) ? value.map { |v| v.is_a?(String) ? Vaccination::Immunobiologicals.normalize(v) : v } : value
+      list_errors(codes, path, max: MAX_IMMUNOBIOLOGICALS) do |code|
+        code.is_a?(String) && Vaccination::Immunobiologicals.find(code) ? nil : "invalid_value"
+      end
+    end
+
+    def age?(value)
+      value.is_a?(Integer) && value.between?(0, MAX_AGE_MONTHS)
+    end
+
+    def age_range_errors(criterion, path)
+      min = criterion["age_min_months"]
+      max = criterion["age_max_months"]
+      return [] unless min && max && min > max
+
+      [ error("#{path}/age_min_months", "inverted_range") ]
     end
 
     def list_errors(value, path, max:)

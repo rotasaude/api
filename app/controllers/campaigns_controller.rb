@@ -25,13 +25,17 @@ class CampaignsController < ApplicationController
 
   def options
     completed = Triage.where(status: "completed")
-    render json: {
+    payload = {
       protocols: completed.distinct.order(:protocol_name).pluck(:protocol_name),
       tiers: completed.where.not(tier: nil).distinct.order(:tier).pluck(:tier),
       outcomes: Attendance::OUTCOMES,
       neighborhoods: Neighborhood.active_neighborhoods.order(:name).map { |n| { id: n.id, name: n.name } },
       units: HealthUnit.where(active: true).order(:name).map { |u| { id: u.id, name: u.name } }
     }
+    if Vaccination::Gate.usable?(Current.city)
+      payload[:immunobiologicals] = Vaccination::Immunobiologicals.all.map { |p| { code: p.code, name: p.name } }
+    end
+    render json: payload
   end
 
   def preview

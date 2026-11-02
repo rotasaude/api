@@ -11,6 +11,9 @@ module Campaigns
       found = AudienceSchema.errors(input)
       return found if found.any?
 
+      found = vaccination_errors(AudienceSchema.normalize(input))
+      return found if found.any?
+
       geo = AudienceSchema.normalize(input)["geo"]
       case geo["scope"]
       when "neighborhoods"
@@ -24,6 +27,15 @@ module Campaigns
         [ AudienceSchema.error("/geo/health_unit_id", "inactive_or_unknown") ]
       else
         []
+      end
+    end
+
+    # Os critérios de vacinação só existem com o interruptor `vaccination` ligado.
+    def vaccination_errors(audience)
+      return [] if Vaccination::Gate.usable?(Current.city)
+
+      audience.dig("clinical", "all").each_with_index.filter_map do |criterion, i|
+        AudienceSchema.error("/clinical/all/#{i}/kind", "feature_disabled") if AudienceSchema::VACCINATION_KINDS.include?(criterion["kind"])
       end
     end
   end

@@ -18,8 +18,8 @@ RSpec.describe "Campanhas — rascunho e prévia", type: :request do
       expect(response).to have_http_status(:created)
       id = body.dig("campaign", "id")
       expect(body["campaign"].keys).to match_array(%w[id title status send_at dispatched_at recipients_count body audience
-                                                      failure_reason sms_enabled phones_count created_at stats])
-      expect(body["campaign"]).to include("status" => "draft", "send_at" => nil, "stats" => nil, "audience" => city_audience)
+                                                      failure_reason sms_enabled phones_count created_at stats vaccinated_count])
+      expect(body["campaign"]).to include("status" => "draft", "send_at" => nil, "stats" => nil, "vaccinated_count" => nil, "audience" => city_audience)
 
       patch "/campaigns/#{id}", params: { title: "Gripe: vacinação" }, as: :json
       expect(response).to have_http_status(:ok)
@@ -113,6 +113,23 @@ RSpec.describe "Campanhas — rascunho e prévia", type: :request do
         "neighborhoods" => [ { "id" => centro.id, "name" => "Centro" } ],
         "units" => [ { "id" => ubs.id, "name" => "UBS Centro" } ]
       )
+    end
+  end
+
+  describe "GET /campaigns/options com vaccination (V13)" do
+    before { sign_in_as(staff_with("gestor@cidade.gov.br", "campaign_manager")) }
+
+    it "ligado: immunobiologicals { code, name } do catálogo; desligado: a chave não existe" do
+      city = vaccination_city!
+      get "/campaigns/options"
+      list = response.parsed_body["immunobiologicals"]
+      expect(list).to include({ "code" => "42", "name" => Vaccination::Immunobiologicals.find("42").name })
+      expect(list.map(&:keys).uniq).to eq([ %w[code name] ])
+      expect(list.size).to eq(Vaccination::Immunobiologicals.all.size)
+
+      Platform::Features.set!(city: city, key: "vaccination", enabled: false, maintainer: ledi_maintainer!)
+      get "/campaigns/options"
+      expect(response.parsed_body).not_to have_key("immunobiologicals")
     end
   end
 
