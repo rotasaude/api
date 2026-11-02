@@ -41,6 +41,20 @@ RSpec.describe CareRegulation::Diagnosis do
     end
   end
 
+  describe "dentista com dental_care utilizável (módulo 28, O40: Desvio 9)" do
+    before { Platform::Features.set!(city: Current.city, key: "dental_care", enabled: true, maintainer: ledi_maintainer!) }
+
+    it "cid10 sozinho → ok; ciap2 sozinho também basta; nada → diagnosis_required (path cid10)" do
+      expect(check("223208", cid10: "i10").payload).to eq(cid10: "I10", ciap2: nil)
+      expect(check("223212", ciap2: "K86").payload).to eq(cid10: nil, ciap2: "K86")
+      expect(refusal(check("223208"))).to eq([ :diagnosis_required, { path: "cid10" } ])
+    end
+
+    it "a enfermeira segue sem cid10" do
+      expect(refusal(check("223505", cid10: "I10"))).to eq([ :cid10_not_allowed_for_cbo, { path: "cid10" } ])
+    end
+  end
+
   describe "enfermeira 223505" do
     it "ciap2 sozinho → ok, normalizado, cid10 nil" do
       result = check("223505", ciap2: "k86")

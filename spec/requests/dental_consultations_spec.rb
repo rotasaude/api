@@ -336,6 +336,19 @@ RSpec.describe "Consulta odontológica", type: :request do
                   type: "specialty", target_code: "223212", ciap2: "D82", justification: "Necessita avaliação", suggested_color: "yellow"
         expect([ response.status, body["error"] ]).to eq([ 403, "cbo_not_allowed" ])
       end
+
+      it "O40: o dentista manda CID-10 com dental_care ligado (201); desligado → 422 cid10_not_allowed_for_cbo" do
+        regulation_on!
+        cid10_release!
+        sign_in_as(dentist)
+        request = { type: "specialty", target_code: "223212", cid10: "I10", justification: "Necessita avaliação", suggested_color: "yellow" }
+        json_post "/attendance/consultations/#{consultation.id}/regulation_requests", request
+        expect([ response.status, body.slice("cid10", "ciap2", "error", "path") ]).to eq([ 201, { "cid10" => "I10", "ciap2" => nil } ])
+        Platform::Features.set!(city: Current.city, key: "dental_care", enabled: false, maintainer: ledi_maintainer!)
+        CityCatalog.reset_cache!
+        json_post "/attendance/consultations/#{consultation.id}/regulation_requests", request
+        expect([ response.status, body ]).to eq([ 422, { "error" => "cid10_not_allowed_for_cbo", "path" => "cid10" } ])
+      end
     end
 
     context "desfechos 1–9 exigem o pedido (D5)" do
