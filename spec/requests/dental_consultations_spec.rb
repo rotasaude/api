@@ -63,6 +63,50 @@ RSpec.describe "Consulta odontológica", type: :request do
     end
   end
 
+  # Desvio 9 / O19: o dentista registra CID-10 na consulta `dental`; TSB/ASB não.
+  describe "CID-10 na consulta odontológica" do
+    before { cid10_release! }
+
+    let(:cid10) { { "terminology" => "cid10", "code" => "E119", "action" => "add", "onset_on" => "2026-09-01", "onset_precision" => "month" } }
+
+    def json_patch(path, params) = patch(path, params: params.to_json, headers: { "CONTENT_TYPE" => "application/json" })
+
+    it "options: dentista true (só dental), TSB/ASB false, médico true, interruptor desligado: dentista false" do
+      sign_in_as(dentist)
+      get "/attendance/consultation_options"
+      expect(body["cid10_allowed_for_cbo"]).to be(true)
+      sign_in_as(auxiliary!(unit))
+      get "/attendance/consultation_options"
+      expect(body["cid10_allowed_for_cbo"]).to be(false)
+      sign_in_as(doctor!(unit))
+      get "/attendance/consultation_options"
+      expect(body["cid10_allowed_for_cbo"]).to be(true)
+      dental_city!(enabled: false)
+      sign_in_as(dentist)
+      get "/attendance/consultation_options"
+      expect(body["cid10_allowed_for_cbo"]).to be(false)
+    end
+
+    it "rascunho do dentista aceita CID-10 e a finalização o mantém" do
+      consultation = dental_consultation!(unit: unit, by: dentist, citizen: citizen)
+      sign_in_as(dentist)
+      json_patch "/attendance/consultations/#{consultation.id}", dental_body(evaluated_problems: [ cid10 ])
+      expect(response).to have_http_status(:ok)
+      expect(body["evaluated_problems"].sole).to include("terminology" => "cid10", "code" => "E119")
+      json_post "/attendance/consultations/#{consultation.id}/finalize", outcome: { outcome: "discharged" }
+      expect(response).to have_http_status(:ok)
+      expect(PatientProblem.where(code: "E119").pluck(:terminology)).to eq([ "cid10" ])
+    end
+
+    it "TSB/ASB na consulta dental não adiciona CID-10 (422 cid10_not_allowed_for_cbo)" do
+      asb = auxiliary!(unit)
+      consultation = dental_consultation!(unit: unit, by: asb, citizen: citizen)
+      sign_in_as(asb)
+      json_patch "/attendance/consultations/#{consultation.id}", dental_body(evaluated_problems: [ cid10 ])
+      expect([ response.status, body["error"] ]).to eq([ 422, "cid10_not_allowed_for_cbo" ])
+    end
+  end
+
   describe "GET /attendance/consultation_options" do
     def codes(list) = list.map { |item| item["code"] }
 

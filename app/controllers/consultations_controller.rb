@@ -32,14 +32,19 @@ class ConsultationsController < ApplicationController
   # vínculos ativos e pelo interruptor dental_care; o vocabulário `dental`
   # vai sempre (a consulta retida segue legível com o interruptor desligado).
   def options
+    # Desvio 9 (módulo 28): o vínculo de dentista (2232*) também permite CID-10,
+    # mas só na consulta `dental` (ItemsInput) e com o interruptor dental_care
+    # ligado (o mesmo `dental_role` de kinds_and_role); TSB/ASB não.
+    roles = kinds_and_role
     cid10 = CitizenVerificationPolicy.new(Current.user, nil).care? &&
-            Consultations::Authorization.allowed_links(user: Current.user)
-                                        .any? { |link| Ledi::ConsultationMapping.cid10_allowed?(link.cbo_code) }
+            (roles[:dental_role] == "dentist" ||
+             Consultations::Authorization.allowed_links(user: Current.user)
+                                         .any? { |link| Ledi::ConsultationMapping.cid10_allowed?(link.cbo_code) })
     # Contrato §4: o código vai como string.
     as_strings = ->(rows) { rows.map { |row| row.merge(code: row[:code].to_s) } }
     render json: { care_types: as_strings.(Ledi::ConsultationMapping.care_types),
                    conducts: as_strings.(Ledi::ConsultationMapping.conducts), cid10_allowed_for_cbo: cid10,
-                   **kinds_and_role, dental: DentalCare::Vocabulary.options }
+                   **roles, dental: DentalCare::Vocabulary.options }
   end
 
   # Minhas consultas: as finalizadas da autora, sem conteúdo clínico e sem
