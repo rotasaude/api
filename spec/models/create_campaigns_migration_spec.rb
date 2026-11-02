@@ -67,6 +67,31 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
     conn.add_check_constraint :memberships, "role::text = ANY (ARRAY[#{quoted}]::text[])", name: "ck_memberships_role"
   end
 
+  # 20261102900001 (módulo 29) cria immunizations.campaign_id com FK para
+  # campaigns, que o down de CreateCampaigns derruba. A migração do módulo 29
+  # é irreversível: a FK sai antes do down e volta depois do up, com o mesmo
+  # nome e a mesma definição (o fingerprint tirado antes confere). Lida do
+  # catálogo: uma FK nova de migração futura entra sozinha.
+  def later_foreign_keys
+    rows(<<~SQL)
+      SELECT rel.relname, con.conname, pg_get_constraintdef(con.oid) FROM pg_constraint con
+      JOIN pg_class rel ON rel.oid = con.conrelid JOIN pg_class ref ON ref.oid = con.confrelid
+      WHERE con.contype = 'f' AND ref.relname IN ('campaigns', 'campaign_recipients', 'citizen_contact_preferences')
+        AND rel.relname NOT IN ('campaigns', 'campaign_recipients', 'citizen_contact_preferences')
+      ORDER BY 1, 2
+    SQL
+  end
+
+  def drop_foreign_keys(list)
+    list.each { |table, name, _| conn.execute("ALTER TABLE #{conn.quote_table_name(table)} DROP CONSTRAINT #{conn.quote_column_name(name)}") }
+  end
+
+  def add_foreign_keys(list)
+    list.each do |table, name, definition|
+      conn.execute("ALTER TABLE #{conn.quote_table_name(table)} ADD CONSTRAINT #{conn.quote_column_name(name)} #{definition}")
+    end
+  end
+
   def rows(sql) = conn.select_rows(sql)
 
   def fingerprint
@@ -125,6 +150,9 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
       expect(before[:functions].map(&:first)).to include(*new_functions)
       expect(roles_check(before)).to include("'campaign_manager'")
 
+      later = later_foreign_keys
+      expect(later.map { |table, _, _| table }).to include("immunizations")
+      drop_foreign_keys(later)
       migrate_reminders(:down)
       migrate_analytics(:down)
       migrate(:down)
@@ -162,6 +190,7 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
       migrate_reminders(:up)
       restore_timeline_index
       restore_exam_roles
+      add_foreign_keys(later)
 
       expect(fingerprint).to eq(before)
       # O trigger restaurado segue recusando apagar campanha que não é rascunho.
@@ -176,11 +205,14 @@ RSpec.describe "Migração de cidade 20260929100001 (CreateCampaigns): down e up
     in_rolled_back_savepoint do
       staff_with("gestor-#{SecureRandom.hex(3)}@cidade.gov.br", "campaign_manager")
       before = fingerprint
+      later = later_foreign_keys
+      drop_foreign_keys(later)
 
       expect do
         ApplicationRecord.transaction(requires_new: true) { migrate(:down) }
       end.to raise_error(ActiveRecord::StatementInvalid, /ck_memberships_role/)
 
+      add_foreign_keys(later)
       models.each(&:reset_column_information)
       expect(fingerprint).to eq(before)
       expect(Membership.where(role: "campaign_manager").count).to eq(1)
