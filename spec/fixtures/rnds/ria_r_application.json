@@ -1,0 +1,159 @@
+{
+  "resourceType": "Bundle",
+  "identifier": {
+    "system": "http://www.saude.gov.br/fhir/r4/NamingSystem/bundle-origem",
+    "value": "BUNDLE-ID"
+  },
+  "type": "document",
+  "timestamp": "2026-11-03T09:20:00-03:00",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:COMPOSITION",
+      "resource": {
+        "resourceType": "Composition",
+        "meta": {
+          "profile": [
+            "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRRegistroImunobiologicoAdministrado-2.0"
+          ]
+        },
+        "status": "final",
+        "type": {
+          "coding": [
+            {
+              "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRTipoDocumento",
+              "code": "REG-IMUNO"
+            }
+          ]
+        },
+        "subject": {
+          "identifier": {
+            "system": "http://www.saude.gov.br/fhir/r4/NamingSystem/cpf",
+            "value": "CPF"
+          }
+        },
+        "date": "2026-11-03T09:20:00-03:00",
+        "author": [
+          {
+            "identifier": {
+              "system": "http://www.saude.gov.br/fhir/r4/NamingSystem/cns",
+              "value": "PRACTITIONER-CNS"
+            }
+          }
+        ],
+        "title": "Registro de Imunobiológico Administrado",
+        "custodian": {
+          "identifier": {
+            "system": "http://www.saude.gov.br/fhir/r4/NamingSystem/cnes",
+            "value": "1234567"
+          }
+        },
+        "section": [
+          {
+            "title": "Imunobiológico administrado",
+            "entry": [
+              {
+                "reference": "urn:uuid:IMMUNIZATION"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:IMMUNIZATION",
+      "resource": {
+        "resourceType": "Immunization",
+        "meta": {
+          "profile": [
+            "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRImunobiologicoAdministrado-2.0"
+          ]
+        },
+        "status": "completed",
+        "vaccineCode": {
+          "coding": [
+            {
+              "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRImunobiologico",
+              "code": "42"
+            }
+          ]
+        },
+        "subject": {
+          "identifier": {
+            "system": "http://www.saude.gov.br/fhir/r4/NamingSystem/cpf",
+            "value": "CPF"
+          }
+        },
+        "occurrenceDateTime": "2026-11-03T09:15:00-03:00",
+        "recorded": "RECORDED-AT",
+        "primarySource": true,
+        "performer": [
+          {
+            "actor": {
+              "identifier": {
+                "system": "http://www.saude.gov.br/fhir/r4/NamingSystem/cnes",
+                "value": "1234567"
+              }
+            }
+          },
+          {
+            "actor": {
+              "identifier": {
+                "system": "http://www.saude.gov.br/fhir/r4/NamingSystem/cns",
+                "value": "PRACTITIONER-CNS"
+              }
+            }
+          }
+        ],
+        "protocolApplied": [
+          {
+            "doseNumberString": "1"
+          }
+        ],
+        "extension": [
+          {
+            "url": "http://www.saude.gov.br/fhir/r4/StructureDefinition/BREstrategiaVacinacao",
+            "valueCoding": {
+              "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BREstrategiaVacinacao",
+              "code": "1"
+            }
+          },
+          {
+            "url": "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRGrupoAtendimento",
+            "valueCoding": {
+              "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRGrupoAtendimento",
+              "code": "000210"
+            }
+          },
+          {
+            "url": "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRCondicaoMaternal",
+            "valueCoding": {
+              "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRCondicaoMaternal",
+              "code": "1"
+            }
+          },
+          {
+            "url": "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRTranscricaoCaderneta",
+            "valueBoolean": false
+          }
+        ],
+        "lotNumber": "LOT",
+        "route": {
+          "coding": [
+            {
+              "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRViaAdministracao",
+              "code": "10890"
+            }
+          ]
+        },
+        "site": {
+          "coding": [
+            {
+              "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRLocalAplicacao",
+              "code": "3"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

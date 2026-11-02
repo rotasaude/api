@@ -1,0 +1,44 @@
+# Perfil RIA-R 2.0 da RNDS (módulo 29, ADR 0047, Desvio 14).
+#
+# NÃO CONFIRMADO: o guia oficial (rnds-guia.saude.gov.br) é uma SPA sem os
+# StructureDefinitions e o pacote do Portal de Serviços DATASUS exige acesso
+# autenticado (tentado em 2026-11-02; o espelho kyriosdata devolve 404 e o IG da
+# SES-GO é outro perfil, estadual). Os canônicos, CodeSystems e URLs de extensão
+# abaixo são o ESQUELETO documentado (pesquisa §1, contrato §6), não o perfil.
+# `confirmed: false` + `review: true` = pendência do gate de homologação (D5):
+# baixar os StructureDefinitions, fixar os ids aqui e trocar para `confirmed: true`.
+version: 1
+confirmed: false
+review: true
+source: "esqueleto da pesquisa 2026-11-02 §1 (Portaria Conjunta SAES/SVSA/SEIDIGI 25/2023); perfil oficial não lido"
+
+composition_profile: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRRegistroImunobiologicoAdministrado-2.0"
+immunization_profile: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRImunobiologicoAdministrado-2.0"
+
+code_systems:
+  immunobiological: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRImunobiologico"
+  dose: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRDose"
+  strategy: "http://www.saude.gov.br/fhir/r4/CodeSystem/BREstrategiaVacinacao"
+  route: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRViaAdministracao"
+  site: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRLocalAplicacao"
+  care_group: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRGrupoAtendimento"
+  maternal_condition: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRCondicaoMaternal"
+  manufacturer: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRFabricante"
+  document_type: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRTipoDocumento"
+
+extensions:
+  strategy: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BREstrategiaVacinacao"
+  care_group: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRGrupoAtendimento"
+  maternal_condition: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRCondicaoMaternal"
+  transcription: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRTranscricaoCaderneta"
+  origin_country: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRPaisOrigem"
+
+identifiers:
+  cpf: "http://www.saude.gov.br/fhir/r4/NamingSystem/cpf"
+  cns: "http://www.saude.gov.br/fhir/r4/NamingSystem/cns"
+  cnes: "http://www.saude.gov.br/fhir/r4/NamingSystem/cnes"
+  practitioner_cns: "http://www.saude.gov.br/fhir/r4/NamingSystem/cns"
+  bundle: "http://www.saude.gov.br/fhir/r4/NamingSystem/bundle-origem"
+
+# Código do tipo de documento da Composition (esqueleto).
+document_type_code: "REG-IMUNO"
