@@ -10,13 +10,13 @@
 #     outras estratégias aceitam qualquer dose da terminologia);
 #  3. `applied_at_in_future` (> agora + 1 min);
 #  4. lote: `invalid_value` (ausente ou malformado), `lot_not_in_room`,
-#     `invalid_value` (lote de outro imunobiológico),
+#     `lot_product_mismatch` (lote de outro imunobiológico, V22),
 #     `lot_expired` (validade < dia da aplicação na cidade), `lot_blocked`
 #     (excursão aberta — vale também com o frasco já aberto, Review Focus 4),
 #     `insufficient_balance` (unidose sem saldo);
 #  5. frasco: `vial_required` (multidose sem frasco), `invalid_value`
 #     (frasco de outra sala, ou frasco em unidose), `vial_lot_mismatch`,
-#     `vial_expired` (vencido ou fechado), `vial_empty`;
+#     `vial_expired` (vencido), `vial_closed_out` (descartado, V22), `vial_empty`;
 #  6. `sex_not_allowed`, `maternal_condition_required` (sexo female sem ela);
 #  7. avisos `interval_too_short` / `age_out_of_range` com `overridable: true`
 #     (V5), só sem `override_reason` válido.
@@ -165,7 +165,7 @@ module Vaccination
         @location = Pharmacy::Ledger.lock_location!(@room.stock_location_id)
         return add("lot_id", "invalid_value") unless id&.match?(UUID)
         return add("lot_id", "lot_not_in_room") unless in_room?(locked)
-        return add("lot_id", "invalid_value") if @product && Immunobiologicals.normalize(locked.immunobiological_code) != @product.code
+        return add("lot_id", "lot_product_mismatch") if @product && Immunobiologicals.normalize(locked.immunobiological_code) != @product.code
 
         @lot = locked
         add("lot_id", "lot_expired") if locked.expires_on < applied_on
@@ -195,7 +195,9 @@ module Vaccination
         vial = text("vial_id")&.match?(UUID) ? VialOpening.lock("FOR UPDATE").find_by(id: id, vaccine_room_id: @room.id) : nil
         return add("vial_id", "invalid_value") unless vial
         return add("vial_id", "vial_lot_mismatch") if @lot.nil? || vial.stock_lot_id != @lot.id
-        return add("vial_id", "vial_expired") unless vial.status(@now) == "open"
+        status = vial.status(@now)
+        return add("vial_id", "vial_closed_out") if status == "closed_out"
+        return add("vial_id", "vial_expired") unless status == "open"
         return add("vial_id", "vial_empty") if vial.doses_used >= vial.doses_per_vial
 
         @vial = vial

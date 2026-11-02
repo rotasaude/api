@@ -77,11 +77,11 @@ RSpec.describe Vaccination::RecordImmunization do
     expect(errors(result).uniq).to eq(%w[invalid_value])
   end
 
-  it "lote vencido no dia da aplicação; lote de outra vacina; sem saldo" do
+  it "lote vencido no dia da aplicação; lote de outra vacina (lot_product_mismatch, V22); sem saldo" do
     expired = vaccine_lot!(room, code: "42", expires_on: Date.current - 1)
     expect(errors(call(lot_id: expired.id))).to eq(%w[lot_expired])
     vip_lot = vaccine_lot!(room, code: "24")
-    expect(call(lot_id: vip_lot.id).details[:problems]).to eq([ { path: "lot_id", error: "invalid_value" } ])
+    expect(call(lot_id: vip_lot.id).details[:problems]).to eq([ { path: "lot_id", error: "lot_product_mismatch" } ])
     expect(call(lot_id: nil).details[:problems]).to eq([ { path: "lot_id", error: "invalid_value" } ])
     expect(call(lot_id: SecureRandom.uuid).details[:problems]).to eq([ { path: "lot_id", error: "lot_not_in_room" } ])
     empty = vaccine_lot!(room, code: "42", doses: 1)
@@ -114,13 +114,17 @@ RSpec.describe Vaccination::RecordImmunization do
       expect(vial.reload.doses_used).to eq(1)
     end
 
-    it "frasco vazio → vial_empty; vencido → vial_expired; frasco de outra sala ou unidose com frasco → invalid_value" do
+    it "frasco vazio → vial_empty; vencido → vial_expired; descartado → vial_closed_out (V22); frasco de outra sala ou unidose com frasco → invalid_value" do
       apply_from_vial!(vial, count: 10)
       expect(errors(vip_call(vial_id: vial.id))).to eq(%w[vial_empty])
       fresh = open_vial!(room, lot: vip)
       travel_to(fresh.expires_at + 1.minute) do
         expect(errors(call(immunobiological_code: "22", lot_id: vip.id, vial_id: fresh.id, applied_at: Time.current.iso8601))).to eq(%w[vial_expired])
       end
+      spare = vaccine_lot!(room, code: "22", doses: 10)
+      discarded = open_vial!(room, lot: spare)
+      Vaccination::CloseOutVial.call(vial: discarded, reason: "Frasco caiu no chão da sala", by: room_member!(room, role: "room_lead", cbo: "223505"))
+      expect(errors(vip_call(lot_id: spare.id, vial_id: discarded.id))).to eq(%w[vial_closed_out])
       foreign = open_vial!(other_room = vaccine_room!, lot: vaccine_lot!(other_room, code: "22"))
       expect(vip_call(vial_id: foreign.id).details[:problems]).to eq([ { path: "vial_id", error: "invalid_value" } ])
       expect(call(vial_id: fresh.id).details[:problems]).to eq([ { path: "vial_id", error: "invalid_value" } ])
