@@ -120,6 +120,22 @@ module VaccinationHelpers
     StockLotBlock.create!(cold_chain_excursion: excursion, stock_location: location, stock_lot: lot)
   end
 
+  # Dose registrada pelo comando (o caminho real: estoque, situação, fila,
+  # trilha e evento). Padrão: penta D1 com um lote unidose novo da sala; com
+  # `vial`, o lote é o do frasco. `by` padrão = um vacinador da sala; `attrs`
+  # troca qualquer campo do corpo (chaves do contrato §5).
+  def record!(room, patient, lot: nil, vial: nil, by: nil, **attrs)
+    lot ||= vial ? vial.stock_lot : vaccine_lot!(room)
+    body = { "immunobiological_code" => lot.immunobiological_code, "dose_code" => "1", "strategy" => "1", "care_group" => "121",
+             "route" => "3", "site" => "18", "maternal_condition" => ("1" if patient.sex == "female"),
+             "applied_at" => Time.current.iso8601, "lot_id" => lot.id, "vial_id" => vial&.id }.compact
+    result = Vaccination::RecordImmunization.call(room: room, patient: patient, attrs: body.merge(attrs.transform_keys(&:to_s)),
+                                                  by: by || room_member!(room))
+    raise "record! failed: #{result.reason} #{result.details}" if result.failure?
+
+    result.payload[:immunization]
+  end
+
   # Dose de penta (D1) aplicada na sala, gravada direto no banco (sem comando,
   # sem movimento de estoque nem fila). `over` troca qualquer coluna.
   def create_immunization!(room, **over)

@@ -28,8 +28,10 @@ module Vaccination
     # <immunization> do contrato §2 (nominal: quem chama grava a trilha).
     # `entry`: a entrada `application` da fila RNDS (ou nil); `rnds.status` é
     # `not_sent` sem entrada, ou com a entrada `pending` e o envio desligado.
-    # O `can_cancel` (§15 V6) entra com a Task 8, que conhece quem lê.
-    def immunization(record, entry:, rnds_usable:)
+    # `can_cancel` (§15 V6) é de quem lê (`viewer`): o autor ou o `room_lead`
+    # da sala da dose, e só com a dose ativa (sem `viewer`, falso). O
+    # `override_reason` nunca sai na forma. `lead`: memo de room_lead por sala (listas).
+    def immunization(record, entry:, rnds_usable:, viewer: nil, lead: nil)
       product = Immunobiologicals.find(record.immunobiological_code)
       { id: record.id,
         immunobiological: { code: record.immunobiological_code, name: product&.name },
@@ -42,15 +44,28 @@ module Vaccination
         by: { name: record.vaccinator_user.professional&.professional_name, cbo: record.vaccinator_cbo },
         campaign_id: record.campaign_id, status: record.cancelled? ? "cancelled" : "active", cancel_reason: record.cancel_reason,
         replaces_id: record.replaces_id, replaced_by_id: record.replacement&.id,
+        can_cancel: can_cancel?(record, viewer, lead),
         rnds: rnds(entry, rnds_usable) }
     end
 
+    def can_cancel?(record, viewer, lead)
+      return false if viewer.nil? || record.cancelled?
+      return true if record.vaccinator_user_id == viewer.id
+      return false unless record.vaccine_room
+
+      lead ? lead.call(record.vaccine_room) : Access.room_roles(user: viewer, room: record.vaccine_room).include?("room_lead")
+    end
+
     # Várias doses com a entrada `application` de cada uma, sem N+1 nas associações.
-    def immunizations(records, rnds_usable:)
+    def immunizations(records, rnds_usable:, viewer: nil)
       records = records.to_a
+      leads = {}
+      lead = lambda do |room|
+        leads.key?(room.id) ? leads[room.id] : (leads[room.id] = Access.room_roles(user: viewer, room: room).include?("room_lead"))
+      end
       ActiveRecord::Associations::Preloader.new(records: records, associations: [ :replacement, :stock_lot, { vaccine_room: :health_unit }, { vaccinator_user: :professional } ]).call
       entries = RndsOutboxEntry.where(immunization_id: records.map(&:id), kind: "application").index_by(&:immunization_id)
-      records.map { |record| immunization(record, entry: entries[record.id], rnds_usable: rnds_usable) }
+      records.map { |record| immunization(record, entry: entries[record.id], rnds_usable: rnds_usable, viewer: viewer, lead: lead) }
     end
 
     # Lote do estoque (com o fabricante do catálogo pela chave) ou o da

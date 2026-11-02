@@ -610,6 +610,9 @@ Rails.application.routes.draw do
     post   "rooms/:room_id/vials",         to: "vials#create"
     get    "rooms/:room_id/vials",         to: "vials#index"
     post   "vials/:id/close_out",          to: "vials#close_out"
+    # Dose aplicada (§5; §15 V5, V6) e a leitura nominal da dose (§15 V10; com trilha).
+    post   "rooms/:room_id/immunizations", to: "immunizations#create"
+    get    "immunizations/:id",            to: "immunizations#show"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.
