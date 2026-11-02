@@ -42,8 +42,12 @@ module Rnds
 
     def self.reset_cache! = CACHE_MUTEX.synchronize { CACHE.clear }
 
-    def self.for(city, env: Rails.env)
-      settings = Config.for_city(city, env: env) # interruptores: fora da transação da cidade
+    # `settings`: o alvo. O padrão (Config.for_city, pelo `enabled?` do
+    # simulado) é o do teste da credencial; o envio (Rnds::Delivery) passa o
+    # alvo decidido pelo `Mock.on?` (usable?), para um `rnds_mock` ligado onde
+    # não vale (produção) nunca mandar dose ao simulado.
+    def self.for(city, env: Rails.env, settings: Config.for_city(city, env: env))
+      # interruptores: fora da transação da cidade
       raise Errors::NotConfigured, "RNDS não configurada" unless settings
 
       identity = CityConnection.with(city) do

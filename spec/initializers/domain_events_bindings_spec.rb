@@ -366,6 +366,14 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry["vaccination.immunization_cancelled"]).to be_empty
   end
 
+  # Fila RNDS (módulo 29, Task 13): só outbox_id e immunization_id, sem consumidor.
+  it "declares the rnds immunization events with no consumer" do
+    %w[rnds.immunization_accepted rnds.immunization_rejected].each do |name|
+      expect(DomainEvents.registry.keys).to include(name)
+      expect(DomainEvents.registry[name]).to be_empty
+    end
+  end
+
   it "declares external_prescription.recorded with no consumer" do
     expect(DomainEvents.registry.keys).to include("external_prescription.recorded")
     expect(DomainEvents.registry["external_prescription.recorded"]).to be_empty

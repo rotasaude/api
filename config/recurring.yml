@@ -94,6 +94,11 @@ default: &default
     queue: default
     schedule: "every minute"
 
+  rnds_deliver:
+    class: Rnds::DeliverJob
+    queue: default
+    schedule: "every minute"
+
   ledi_publish_production:
     class: Ledi::PublishProductionJob
     queue: housekeeping

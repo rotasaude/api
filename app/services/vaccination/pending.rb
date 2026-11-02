@@ -21,8 +21,14 @@ module Vaccination
     module_function
 
     # -> ActiveRecord::Relation<RndsOutboxEntry> (as entradas que pedem atenção, sem o corte de idade)
-    def effective(room)
-      RndsOutboxEntry.joins(:immunization).where(immunizations: { vaccine_room_id: room.id }).where(<<~SQL.squish)
+    def effective(room) = effective_in(RndsOutboxEntry.all).where(immunizations: { vaccine_room_id: room.id })
+
+    # A regra acima sobre qualquer escopo da fila (a sala, ou a cidade inteira
+    # no Rnds::Alert). A `application` retirada (V23) fica de fora mesmo com
+    # `cancellation` (a corrida em que a dose é cancelada com a entrada em voo
+    # e a validação a bloqueia antes de sair): a `cancellation` órfã também.
+    def effective_in(scope)
+      scope.joins(:immunization).where(<<~SQL.squish).where.not(id: RndsOutboxEntry.withdrawn.select(:id))
         (rnds_outbox.kind = 'application' AND (immunizations.cancelled_at IS NULL OR (rnds_outbox.status NOT IN ('accepted', 'rejected', 'failed')
           AND EXISTS (SELECT 1 FROM rnds_outbox c WHERE c.immunization_id = immunizations.id AND c.kind = 'cancellation'))))
         OR (rnds_outbox.kind = 'cancellation' AND EXISTS (SELECT 1 FROM rnds_outbox a WHERE a.immunization_id = immunizations.id
@@ -37,13 +43,10 @@ module Vaccination
       listed.order("immunizations.applied_at DESC, rnds_outbox.id DESC")
     end
 
-    # -> { blocked:, rejected:, failed:, late: }
+    # -> { blocked:, rejected:, failed:, late: } (a contagem é do Rnds::Alert, a mesma do painel)
     def counts(room, rnds_enabled:, now: Time.current)
-      base = effective(room)
-      by_status = base.where(status: LISTED).group(:status).count
-      late = base.where.not(status: "accepted").where(rnds_outbox: { deadline_at: ...now })
-      late = late.where.not(status: "pending") unless rnds_enabled
-      { blocked: by_status["blocked"] || 0, rejected: by_status["rejected"] || 0, failed: by_status["failed"] || 0, late: late.count }
+      scope = RndsOutboxEntry.joins(:immunization).where(immunizations: { vaccine_room_id: room.id })
+      Rnds::Alert.counts(scope, now: now, rnds_enabled: rnds_enabled).slice(:blocked, :rejected, :failed, :late)
     end
   end
 end

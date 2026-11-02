@@ -26,7 +26,97 @@ class RndsOutboxEntry < ApplicationRecord
   }
   scope :not_withdrawn, -> { where.not(id: withdrawn.select(:id)) }
 
+  # O que o job pode reivindicar (Task 13): `pending`/`blocked` vencidas, nunca
+  # a `application` retirada (V23) e, para a `cancellation`, só com a
+  # `application` da mesma dose `accepted` (o cancelamento espera o aceite do
+  # original). A `cancellation` cujo original virou `rejected`/`failed` (estava
+  # em voo quando a dose foi cancelada) fica `pending` para sempre FORA daqui e
+  # fora das pendências (Vaccination::Pending.effective): é a "cancelação
+  # órfã", encerrada sem envio — nada a desfazer na RNDS.
+  scope :claimable, lambda { |now = Time.current|
+    not_withdrawn.where(status: %w[pending blocked]).where(next_attempt_at: ..now).where(<<~SQL.squish)
+      rnds_outbox.kind = 'application' OR EXISTS (SELECT 1 FROM rnds_outbox original
+        WHERE original.immunization_id = rnds_outbox.immunization_id AND original.kind = 'application' AND original.status = 'accepted')
+    SQL
+  }
+
   def attempted? = ATTEMPTED_STATUSES.include?(status) || (status == "pending" && first_attempt_at.present?)
+
+  # Reivindica um lote vencido: transação curta, SKIP LOCKED (duas execuções
+  # nunca pegam a mesma linha; o cancelamento da dose trava a `application`
+  # FOR UPDATE e o claim passa por cima), e a linha sai `sending` — o HTTP
+  # acontece FORA desta transação. `first_attempt_at` NÃO é gravado aqui: só
+  # quando o Bundle sai (`sending!`), porque validação, bloqueio e credencial
+  # recusada não chegam à RNDS (V23: "nunca tentada" = sem first_attempt_at).
+  def self.claim!(limit:, now: Time.current)
+    ids = transaction do
+      picked = claimable(now).order(:next_attempt_at, :id).limit(limit).lock("FOR UPDATE SKIP LOCKED").pluck(:id)
+      where(id: picked).update_all(status: "sending", block_reason: nil, updated_at: now) if picked.any?
+      picked
+    end
+    where(id: ids).order(:next_attempt_at, :id).to_a
+  end
+
+  # Devolve a pending sem contar tentativa (pausa, credencial recusada, ensure).
+  def self.release!(ids, now: Time.current)
+    where(id: ids, status: "sending").update_all(status: "pending", updated_at: now)
+  end
+
+  # `sending` esquecido (processo morto no meio do lote) volta à fila.
+  def self.release_stale!(before:, now: Time.current)
+    where(status: "sending").where(updated_at: ...before).update_all(status: "pending", updated_at: now)
+  end
+
+  # O Bundle vai sair agora: guarda o payload cifrado e marca a tentativa ANTES
+  # do HTTP (timeout ou processo morto depois daqui = resultado desconhecido =
+  # tentada). Devolve o `first_attempt_at` anterior, para `unsent!` desfazer.
+  def sending!(bundle, now: Time.current)
+    previous = first_attempt_at
+    update!(payload: JSON.generate(bundle), first_attempt_at: first_attempt_at || now, sent_at: now)
+    previous
+  end
+
+  # A RNDS recusou a credencial antes de aceitar o Bundle: não foi tentada.
+  def unsent!(previous_first_attempt_at)
+    update!(first_attempt_at: previous_first_attempt_at)
+  end
+
+  def accept!(rnds_id, now: Time.current)
+    transaction do
+      update!(status: "accepted", accepted_at: now, rnds_id: rnds_id, payload: nil, error: nil, block_reason: nil,
+              attempts: attempts + 1, last_attempted_at: now)
+      DomainEvents.publish("rnds.immunization_accepted", outbox_id: id, immunization_id: immunization_id)
+    end
+  end
+
+  # `error`: o diagnóstico da RNDS já limpo pelo cliente (Rnds::Errors.sanitize).
+  def reject!(error, now: Time.current)
+    transaction do
+      update!(status: "rejected", error: Rnds::Errors.sanitize(error).presence || "rejected", attempts: attempts + 1,
+              last_attempted_at: now)
+      DomainEvents.publish("rnds.immunization_rejected", outbox_id: id, immunization_id: immunization_id)
+    end
+  end
+
+  # NT 115 (Rnds::Validation): nunca saiu; sem payload, revalida em 1 h.
+  def block!(reason, now: Time.current)
+    update!(status: "blocked", block_reason: reason, payload: nil, error: nil, next_attempt_at: now + Rnds::Backoff::BLOCKED_RECHECK)
+  end
+
+  # Falha transitória: nova tentativa depois de `wait`; `failed` só quando a
+  # PRIMEIRA tentativa de envio já passou de `give_up_after` (V7). Entrada que
+  # nunca saiu (CADSUS ou banco fora do ar antes do envio) não desiste.
+  def retry_later!(error:, wait:, give_up_after:, now: Time.current)
+    gave_up = first_attempt_at.present? && first_attempt_at <= now - give_up_after
+    update!(status: gave_up ? "failed" : "pending", attempts: attempts + 1, error: error, last_attempted_at: now,
+            next_attempt_at: now + wait)
+  end
+
+  # Encerrada sem envio, com o motivo (ex.: cancelamento cujo original foi
+  # aceito sem rnds_id — não há como montar o Bundle substituto).
+  def fail!(error, now: Time.current)
+    update!(status: "failed", error: error, payload: nil, last_attempted_at: now)
+  end
 
   def inspect = "#<RndsOutboxEntry id=#{id}>"
   def to_s = inspect

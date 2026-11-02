@@ -283,6 +283,9 @@ Rails.application.config.to_prepare do
   # vaccine_room_id, user_id, replacement_id|nil), sem consumidor. O motivo
   # nunca sai no evento.
   DomainEvents.bind "vaccination.immunization_cancelled", to: []
+  # Fila RNDS (módulo 29, Task 13): só outbox_id e immunization_id, sem consumidor.
+  DomainEvents.bind "rnds.immunization_accepted", to: []
+  DomainEvents.bind "rnds.immunization_rejected", to: []
   # Entrada de estoque gravada (nota, doação ou inventário de abertura); só
   # trilha, só ids (stock_entry_id, user_id), sem consumidor.
   DomainEvents.bind "stock_receipt.recorded", to: []
