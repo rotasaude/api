@@ -17,6 +17,9 @@ module Rnds
     BUNDLE_PATH = "/api/fhir/r4/Bundle".freeze
     CNS_FORMAT = /\A\d{15}\z/
     ID_FORMAT = /\A[\w.-]{1,100}\z/
+    # Alertas TLS de certificado de cliente recusado (heurística pela mensagem do
+    # SSLError, que só classifica e nunca sai); gate de go-live: conferir contra a RNDS real.
+    CERTIFICATE_ALERT = /bad certificate|unsupported certificate|certificate (unknown|revoked|expired|required)|unknown ca|alert unknown_ca/i
     NETWORK_ERRORS = [ SocketError, IOError, EOFError, SystemCallError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
                        Net::ProtocolError, OpenSSL::SSL::SSLError ].freeze
 
@@ -65,8 +68,8 @@ module Rnds
     # Token do EHR-AUTH. `fresh: true` ignora o guardado (o teste da credencial).
     def token!(fresh: false)
       unless fresh
-        cached = CACHE_MUTEX.synchronize { CACHE[@key] }
-        return cached[:token] if cached && cached[:until] > monotonic
+        cached = cached_token
+        return cached if cached
       end
 
       response = perform(URI("#{@settings.auth_url}#{TOKEN_PATH}"), Net::HTTP::Get.new(URI("#{@settings.auth_url}#{TOKEN_PATH}"), "Accept" => "application/json"))
@@ -85,12 +88,15 @@ module Rnds
     def post_bundle(bundle, practitioner_cns:)
       raise ArgumentError, "CNS do profissional inválido" unless practitioner_cns.to_s.match?(CNS_FORMAT)
 
-      token = token!
-      uri = URI("#{@settings.ehr_url}#{BUNDLE_PATH}")
-      request = Net::HTTP::Post.new(uri, "Content-Type" => "application/fhir+json", "Accept" => "application/fhir+json",
-                                         "X-Authorization-Server" => "Bearer #{token}", "Authorization" => practitioner_cns.to_s)
-      request.body = JSON.generate(bundle)
-      interpret(perform(uri, request))
+      token = cached_token
+      from_cache = !token.nil?
+      response = deliver(bundle, practitioner_cns, token || token!)
+      if response.status == :unauthorized && from_cache
+        # Token guardado pode ter sido revogado antes dos 25 min: uma repetição com token novo
+        # antes de culpar o certificado.
+        response = deliver(bundle, practitioner_cns, token!)
+      end
+      response
     rescue Errors::Unauthorized
       forget_token
       Response.new(status: :unauthorized, rnds_id: nil, error: nil)
@@ -103,6 +109,19 @@ module Rnds
     def pretty_print(pp) = pp.text(inspect)
 
     private
+
+    def deliver(bundle, practitioner_cns, token)
+      uri = URI("#{@settings.ehr_url}#{BUNDLE_PATH}")
+      request = Net::HTTP::Post.new(uri, "Content-Type" => "application/fhir+json", "Accept" => "application/fhir+json",
+                                         "X-Authorization-Server" => "Bearer #{token}", "Authorization" => practitioner_cns.to_s)
+      request.body = JSON.generate(bundle)
+      interpret(perform(uri, request))
+    end
+
+    def cached_token
+      cached = CACHE_MUTEX.synchronize { CACHE[@key] }
+      cached[:token] if cached && cached[:until] > monotonic
+    end
 
     def interpret(response)
       code = response.code.to_i
@@ -124,6 +143,11 @@ module Rnds
                   max_retries: 0 }
       options.merge!(mtls) if options[:use_ssl] && !simulated?
       Net::HTTP.start(uri.host, uri.port, **options) { |http| http.request(request) }
+    rescue OpenSSL::SSL::SSLError => e
+      # A mensagem só classifica; nunca vai para o erro.
+      raise Errors::Unauthorized, "certificado da RNDS recusado" if CERTIFICATE_ALERT.match?(e.message)
+
+      raise Errors::Unavailable, "RNDS inalcançável (#{e.class.name})"
     rescue *NETWORK_ERRORS => e
       raise Errors::Unavailable, "RNDS inalcançável (#{e.class.name})"
     end

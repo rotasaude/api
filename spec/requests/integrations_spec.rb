@@ -119,6 +119,15 @@ RSpec.describe "Integrações da cidade", type: :request do
       expect(fake_rnds.log.map(&:first)).to eq(%w[GET])
     end
 
+    it "alerta TLS de certificado recusado no handshake → unauthorized; outro erro SSL → unreachable" do
+      allow(Net::HTTP).to receive(:start).and_raise(OpenSSL::SSL::SSLError.new("sslv3 alert bad certificate"))
+      post "/integrations/credentials/rnds/check", as: :json
+      expect(json).to include("last_check_status" => "unauthorized", "last_check_message" => "A RNDS recusou o certificado")
+      allow(Net::HTTP).to receive(:start).and_raise(OpenSSL::SSL::SSLError.new("wrong version number"))
+      post "/integrations/credentials/rnds/check", as: :json
+      expect(json).to include("last_check_status" => "unreachable", "last_check_message" => "RNDS inalcançável")
+    end
+
     it "recusa do certificado → unauthorized; queda → unreachable; sem URL da plataforma → error; sem segredo na resposta" do
       fake_rnds.failures.push(401)
       post "/integrations/credentials/rnds/check", as: :json

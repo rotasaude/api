@@ -47,12 +47,27 @@ RSpec.describe Rnds::Client do
     expect(client.post_bundle(bundle, practitioner_cns: cns)).to have_attributes(status: :transient, error: nil)
   end
 
-  it "403 no envio vira unauthorized e descarta o token guardado" do
+  it "401 com token do cache: descarta, repete uma vez com token novo e aceita" do
     expect(client.post_bundle(bundle, practitioner_cns: cns).status).to eq(:accepted)
-    fake.failures.push(403)
-    expect(client.post_bundle(bundle, practitioner_cns: cns).status).to eq(:unauthorized)
-    expect(client.post_bundle(bundle, practitioner_cns: cns).status).to eq(:accepted)
+    fake.failures.push(401)
+    expect(client.post_bundle(bundle, practitioner_cns: cns)).to have_attributes(status: :accepted)
     expect(fake.issued_tokens.size).to eq(2)
+    expect(fake.accepted.size).to eq(2)
+  end
+
+  it "403 de novo com o token novo vira unauthorized (uma só repetição) e o token é descartado" do
+    expect(client.post_bundle(bundle, practitioner_cns: cns).status).to eq(:accepted)
+    fake.failures.push(403, nil, 403) # POST, token novo, POST
+    expect(client.post_bundle(bundle, practitioner_cns: cns).status).to eq(:unauthorized)
+    expect(fake.log.count { |entry| entry[1].end_with?("/Bundle") }).to eq(3)
+    expect(client.post_bundle(bundle, practitioner_cns: cns).status).to eq(:accepted)
+    expect(fake.issued_tokens.size).to eq(3)
+  end
+
+  it "401 com token recém-emitido não repete" do
+    fake.failures.push(nil, 401)
+    expect(client.post_bundle(bundle, practitioner_cns: cns).status).to eq(:unauthorized)
+    expect(fake.log.count { |entry| entry[1].end_with?("/Bundle") }).to eq(1)
   end
 
   it "guarda o token por 25 minutos e o renova depois" do
@@ -130,6 +145,29 @@ RSpec.describe Rnds::Client do
       expect(Rnds::Config.for_city(city, env: "production")).to be_nil
       allow(Rnds::Config).to receive(:credentials).and_return("auth_url" => REAL_AUTH)
       expect(Rnds::Config.for_city(city)).to be_nil
+    end
+  end
+
+  describe "alertas TLS" do
+    def raise_ssl(message) = allow(Net::HTTP).to receive(:start).and_raise(OpenSSL::SSL::SSLError.new(message))
+
+    it "alerta de certificado de cliente vira Unauthorized (token!) e unauthorized (post_bundle)" do
+      [ "SSL_connect returned=1 errno=0 state=error: tlsv1 alert unknown ca", "SSL_read: sslv3 alert bad certificate",
+        "tlsv13 alert certificate required", "sslv3 alert certificate revoked", "sslv3 alert certificate expired",
+        "sslv3 alert certificate unknown" ].each do |message|
+        raise_ssl(message)
+        expect { client.token!(fresh: true) }.to raise_error(Rnds::Errors::Unauthorized) { |e| expect(e.message).not_to include("alert") }
+        expect(client.post_bundle(bundle, practitioner_cns: cns).status).to eq(:unauthorized)
+      end
+    end
+
+    it "outros erros SSL (certificado do servidor, handshake) seguem Unavailable e transient" do
+      [ "SSL_connect returned=1 errno=0 state=error: certificate verify failed (unable to get local issuer certificate)",
+        "SSL_connect returned=1 errno=0 state=error: wrong version number" ].each do |message|
+        raise_ssl(message)
+        expect { client.token!(fresh: true) }.to raise_error(Rnds::Errors::Unavailable)
+        expect(client.post_bundle(bundle, practitioner_cns: cns).status).to eq(:transient)
+      end
     end
   end
 
