@@ -136,9 +136,12 @@ RSpec.describe "Sala de vacina — dose aplicada", type: :request do
       show
       expect(response).to have_http_status(:not_found) # patient_timeline desligado
       Platform::Features.set!(city: city, key: "patient_timeline", enabled: true, maintainer: ledi_maintainer!)
+      before = trails.size
       show
       expect(response).to have_http_status(:ok)
       expect(json_body["can_cancel"]).to be(false)
+      expect(trails.drop(before)).to eq([ { "patient_id" => child.id, "user_id" => doctor.id, "access" => "vaccination",
+                                            "reason_code" => "case_review", "person_ref" => "patient:#{child.id}" } ])
     end
   end
 end

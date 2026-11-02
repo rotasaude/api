@@ -8,7 +8,8 @@
 # Ler (V10): a equipe da sala da dose, ou quem lê a linha do tempo do
 # paciente (patient_timeline ligado e a regra do 19a/20 sobre a pessoa:
 # contexto ou abertura justificada); fora disso → 404. Ambas nominais: uma
-# trilha clinical_record.viewed (access "vaccination"). Dado do paciente só no
+# trilha clinical_record.viewed (access "vaccination"), com o reason_code da
+# abertura justificada (nulo na leitura pela equipe). Dado do paciente só no
 # corpo (query → 422).
 module Vaccination
   class ImmunizationsController < BaseController
@@ -31,21 +32,26 @@ module Vaccination
       return unless query_only!
 
       dose = uuid?(params[:id]) ? Immunization.includes(:patient, vaccine_room: :health_unit).find_by(id: params[:id]) : nil
-      return not_found unless dose && readable?(dose)
+      grant = dose && access_grant(dose)
+      return not_found unless grant
 
-      Trail.person_viewed!(user: Current.user, patient_id: dose.patient_id)
+      Trail.person_viewed!(user: Current.user, patient_id: dose.patient_id, reason_code: grant.opening&.reason_code)
       render json: Json.immunization(dose, entry: dose.rnds_outbox_entries.find_by(kind: "application"),
                                            rnds_usable: Rnds::Gate.usable?(Current.city), viewer: Current.user)
     end
 
     private
 
-    def readable?(dose)
-      return true if dose.vaccine_room && Access.room_roles(user: Current.user, room: dose.vaccine_room).any?
-      return false unless Timeline::Gate.enabled?(Current.city)
+    TEAM_GRANT = ClinicalRecord::Access::Grant.new(kind: :vaccine_room, opening: nil, reason: nil)
 
-      person = Timeline::Person.for_patient(dose.patient)
-      ClinicalRecord::Access.for_person(user: Current.user, person: person).allowed?
+    # Grant da leitura (equipe da sala: sem abertura; linha do tempo: o grant
+    # do 19a/20, com a abertura justificada quando houver) ou nil (→ 404).
+    def access_grant(dose)
+      return TEAM_GRANT if dose.vaccine_room && Access.room_roles(user: Current.user, room: dose.vaccine_room).any?
+      return nil unless Timeline::Gate.enabled?(Current.city)
+
+      grant = ClinicalRecord::Access.for_person(user: Current.user, person: Timeline::Person.for_patient(dose.patient))
+      grant.allowed? ? grant : nil
     end
 
     def render_dose_failure(result)
