@@ -2,12 +2,16 @@
 # Desvio 9): só datas, CBO e códigos — nunca valor clínico. No máximo uma
 # consulta SQL por fonte, qualquer que seja o número de pacientes: pares,
 # consultas, problemas das consultas, escutas, exames (pedido + resultado
-# num UNION ALL) e procedimentos. Datas no fuso da cidade (Time.zone).
+# num UNION ALL), procedimentos e vacinas (conferências, doses e nascimento
+# para o C2). Datas no fuso da cidade (Time.zone).
 module CareLines
   module Sources
     BP_PROCEDURE = "0301100039".freeze
     WH_PROCEDURE = "0101040024".freeze
     VITALS = %w[blood_pressure weight_height].freeze
+    # Marcador de caderneta conferida (módulo 29): fora do SOURCE_FORMAT, para
+    # nenhuma regra de linha casar com ele.
+    VACCINE_CHECKED = "vaccination_record_checked".freeze
 
     module_function
 
@@ -29,6 +33,7 @@ module CareLines
       procedure_codes << BP_PROCEDURE if sources.include?("blood_pressure")
       procedure_codes << WH_PROCEDURE if sources.include?("weight_height")
       procedures!(result, ids, since, procedure_codes.uniq, sources)
+      vaccines!(result, ids, from, sources.select { |s| Catalog.vaccine?(s) })
       result.transform_values { |by_source| by_source.to_h { |source, list| [ source, list.sort_by(&:on) ] } }
     end
 
@@ -135,6 +140,44 @@ module CareLines
         (targets & sources).each { |source| result[patient_id][source] << Event.new(on: on) }
       end
     end
-    private_class_method :consultations!, :oral_health!, :screenings!, :exams!, :procedures!
+    # Vacinas (módulo 29; contrato §10). Só é chamada com fonte de vacina pedida,
+    # e o Evaluate só a pede com `vaccination` utilizável. Conferência: o
+    # marcador. `vaccine:<código>`: a data de cada dose ATIVA (transcrição
+    # inclusive; cancelada nunca) desde `from`. `vaccine:c2_schedule`: uma data,
+    # o dia em que o esquema do C2 fechou (Vaccination::C2) — as doses do C2
+    # entram sem o corte de `from` (o intervalo depende das anteriores).
+    def vaccines!(result, ids, from, sources)
+      return if sources.empty?
+
+      VaccinationRecordCheck.where(patient_id: ids).group(:patient_id).minimum(:checked_at).each do |patient_id, at|
+        result[patient_id][VACCINE_CHECKED] << Event.new(on: at.in_time_zone.to_date)
+      end
+      codes = (sources - [ Catalog::C2_SOURCE ]).map { |s| Vaccination::Immunobiologicals.normalize(s.delete_prefix("vaccine:")) }.uniq
+      c2_codes = sources.include?(Catalog::C2_SOURCE) ? Vaccination::C2.codes : []
+      return if codes.empty? && c2_codes.empty?
+
+      scope = Immunization.active.where(patient_id: ids)
+      c2_doses = Hash.new { |h, k| h[k] = [] }
+      scope.where(immunobiological_code: codes, applied_at: from..).or(scope.where(immunobiological_code: c2_codes))
+           .pluck(:patient_id, :immunobiological_code, :applied_at).each do |patient_id, raw, at|
+        code = Vaccination::Immunobiologicals.normalize(raw)
+        on = at.in_time_zone.to_date
+        result[patient_id]["vaccine:#{code}"] << Event.new(on: on) if codes.include?(code) && at >= from
+        c2_doses[patient_id] << { code: code, on: on } if c2_codes.include?(code)
+      end
+      return if c2_doses.empty?
+
+      Patient.where(id: c2_doses.keys).pluck(:id, :birth_date).each do |patient_id, birth|
+        met = Vaccination::C2.met_on(doses: c2_doses[patient_id], birth_date: parse_date(birth))
+        result[patient_id][Catalog::C2_SOURCE] << Event.new(on: met) if met
+      end
+    end
+
+    def parse_date(value)
+      value.present? ? Date.iso8601(value) : nil
+    rescue Date::Error
+      nil
+    end
+    private_class_method :consultations!, :oral_health!, :screenings!, :exams!, :procedures!, :vaccines!, :parse_date
   end
 end

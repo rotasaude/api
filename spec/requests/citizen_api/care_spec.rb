@@ -34,6 +34,33 @@ RSpec.describe "Cidadão — meu acompanhamento", type: :request do
     expect(views.last.payload).to include("access" => "citizen", "patient_id" => patient.id)
   end
 
+  # Módulo 29, §15 W5/V11: o marco de vacina sem conferência chega como
+  # "unchecked" (o wpda mostra "leve a caderneta"), nunca como pendência;
+  # com vaccination desligado o item não rastreado segue fora.
+  it "vacina com caderneta não conferida chega como unchecked; conferida, como situação medida" do
+    vaccination_city!
+    patient = care_patient!(age: 72, sex: "female", problems: [ %w[ciap2 K86] ], unit: unit, doctor: doctor)
+    citizen = Citizen.find_by!(patient_id: patient.id)
+    care_enrollment!(patient: patient, line: adopted_line!("elderly_c6"), team: team, by: doctor, enrolled_at: 400.days.ago)
+    sign_in_citizen(citizen.phone)
+    flu = ->(body) { body["lines"].first["items"].find { |i| i["label"] == "Vacina contra influenza nos últimos 12 meses" } }
+
+    get "/citizen/care", params: { citizen_id: citizen.id }
+    expect(flu.call(json_body)).to eq("label" => "Vacina contra influenza nos últimos 12 meses", "status" => "unchecked", "due_on" => nil)
+    expect(json_body["lines"].first["items"].map { |i| i["status"] }.count("unchecked")).to eq(1)
+
+    room = vaccine_room!
+    VaccinationRecordCheck.create!(patient: patient, mode: "confirmed_complete", checked_by_user: room_member!(room), vaccine_room: room,
+                                   checked_at: Time.current)
+    get "/citizen/care", params: { citizen_id: citizen.id }
+    expect(flu.call(json_body)).to include("status" => "overdue")
+
+    Platform::Features.set!(city: Current.city, key: "vaccination", enabled: false, maintainer: ledi_maintainer!)
+    get "/citizen/care", params: { citizen_id: citizen.id }
+    expect(flu.call(json_body)).to be_nil
+    expect(response.body).not_to include("unchecked")
+  end
+
   it "par validado sem paciente: sem linhas; par declarado: 403; outro celular: 404; desligado: 403" do
     citizen = care_citizen!(age: 30, sex: "female")
     sign_in_citizen(citizen.phone)

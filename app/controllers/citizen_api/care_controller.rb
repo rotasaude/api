@@ -15,7 +15,9 @@ module CitizenApi
 
       person = Timeline::Person.for_citizen(citizen)
       Timeline::Trail.viewed!(person: person, access: "citizen") if person.patient_id
-      render json: CareLines::CitizenView.call(citizen: citizen, person: person, today: Time.zone.today)
+      # Módulo 29 (§15 W5): interruptor lido fora de transação; desligado, a vacina segue fora.
+      render json: CareLines::CitizenView.call(citizen: citizen, person: person, today: Time.zone.today,
+                                               vaccination: Vaccination::Gate.usable?(Current.city))
     end
   end
 end

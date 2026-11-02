@@ -73,7 +73,7 @@ module CareLines
       raise Invalid, "#{path}.#{unknown}" if unknown
 
       source = raw["source"].to_s
-      raise Invalid, "#{path}.source" unless source.match?(Catalog::SOURCE_FORMAT)
+      raise Invalid, "#{path}.source" unless source.match?(Catalog::SOURCE_FORMAT) && known_vaccine?(source)
 
       anchor = enum(raw["anchor"], Catalog::ANCHORS, "#{path}.anchor") || raise(Invalid, "#{path}.anchor")
       window = int(raw["window_days"], 1..7300, "#{path}.window_days") || raise(Invalid, "#{path}.window_days")
@@ -124,13 +124,25 @@ module CareLines
 
           alt = alt.stringify_keys
           source = alt["source"].to_s
+          # Alternativa nunca é fonte não rastreada nem vacina (com `vaccination:
+          # false`, a vacina é untracked): a caderneta não conferida é da prática inteira.
           raise Invalid, path unless (alt.keys - %w[source window_days]).empty? && source.match?(Catalog::SOURCE_FORMAT) &&
-                                     !Catalog.untracked?(source)
+                                     !Catalog.untracked?(source, vaccination: false)
           raise Invalid, path if alt.key?("window_days") && anchor != "rolling"
 
           { "source" => source, "window_days" => int(alt["window_days"], 1..7300, path) }.compact
         end
       end
+    end
+
+    # Módulo 29: `vaccine:<código>` só com o código do catálogo de imunobiológicos,
+    # escrito como lá (sem zero à esquerda: é a chave que o Sources emite), ou o C2.
+    def known_vaccine?(source)
+      return true unless Catalog.vaccine?(source)
+      return true if source == Catalog::C2_SOURCE
+
+      code = source.delete_prefix("vaccine:")
+      Vaccination::Immunobiologicals.normalize(code) == code && Vaccination::Immunobiologicals.find(code).present?
     end
 
     def applies_to(raw, path)
@@ -192,6 +204,6 @@ module CareLines
       min, max = rules.values_at(min_key, max_key)
       raise Invalid, (path.include?(".") ? path : "#{path}.#{max_key}") if min && max && max < min
     end
-    private_class_method :practice, :groups, :applies_to, :codes, :list, :enum, :int, :text, :order!
+    private_class_method :practice, :groups, :known_vaccine?, :applies_to, :codes, :list, :enum, :int, :text, :order!
   end
 end

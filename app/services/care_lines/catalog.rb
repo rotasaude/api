@@ -5,8 +5,14 @@ module CareLines
     INDICATORS = { "child_c2" => "C2", "pregnancy_c3" => "C3", "diabetes_c4" => "C4", "hypertension_c5" => "C5",
                    "elderly_c6" => "C6", "women_c7" => "C7" }.freeze
     SOURCE_FORMAT = /\A(consultation|blood_pressure|weight_height|acs_visit|oral_health|exam:02\d{8}|procedure:\d{10}|vaccine:[a-z0-9_]{1,30})\z/
-    UNTRACKED_SOURCE = /\A(acs_visit|vaccine:.+)\z/
-    STATUSES = %w[ok due_soon overdue untracked].freeze
+    # Fora do sistema em qualquer cidade (o 28 mede oral_health; o 29, vacina).
+    UNTRACKED_SOURCE = /\A(acs_visit)\z/
+    # Vacina (módulo 29): medida só com `vaccination` utilizável; sem ele, não rastreada.
+    VACCINE_SOURCE = /\Avaccine:.+\z/
+    C2_SOURCE = "vaccine:c2_schedule".freeze
+    # unchecked: marco de vacina com a caderneta não conferida ("não conferido";
+    # contrato §10) — nunca pendência, fora do pior da linha e do denominador da prévia.
+    STATUSES = %w[ok due_soon overdue untracked unchecked].freeze
     SCHEDULES = %w[proportional end_of_window].freeze
     ANCHORS = %w[enrollment birth lmp rolling].freeze
     SUGGESTION_REASONS = %w[problem age_sex declared resolved_problem].freeze
@@ -23,6 +29,8 @@ module CareLines
 
     module_function
 
-    def untracked?(source) = source.to_s.match?(UNTRACKED_SOURCE)
+    def untracked?(source, vaccination: false) = source.to_s.match?(UNTRACKED_SOURCE) || (!vaccination && vaccine?(source))
+
+    def vaccine?(source) = source.to_s.match?(VACCINE_SOURCE)
   end
 end

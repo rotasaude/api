@@ -27,6 +27,9 @@ module CareLines
     def forbid(reason = "missing_role") = render(json: { error: reason }, status: :forbidden)
     def not_found = render(json: { error: "not_found" }, status: :not_found)
     def uuid?(value) = value.is_a?(String) && value.match?(UUID)
+    # Módulo 29: as práticas de vacina só são medidas com `vaccination`
+    # utilizável. Lido aqui, na requisição, fora de transação da cidade.
+    def vaccination_usable? = Vaccination::Gate.usable?(Current.city)
     def body = params.to_unsafe_h.except("controller", "action", "id")
     # Dado de saúde e texto livre (DUM, nota, motivo) só do corpo JSON, nunca
     # da query string (URL vai para log de proxy e histórico): na query vale

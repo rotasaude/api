@@ -2,15 +2,17 @@
 # linhas em que a pessoa está inscrita; o que está para fazer em linguagem
 # simples (citizen_label), sem código, sem sugestão, sem motivo; item não
 # rastreado nunca aparece. Triagens periódicas vencidas (módulo 15) junto.
+# Marco de vacina com a caderneta não conferida (módulo 29, §15 W5): chega como
+# `status: "unchecked"` (o wpda pede para levar a caderneta), nunca como pendência.
 module CareLines
   module CitizenView
     module_function
 
-    def call(citizen:, person:, today:)
+    def call(citizen:, person:, today:, vaccination: false)
       enrollments = person.patient_id ? CareLineEnrollment.active_enrollments.where(patient_id: person.patient_id).order(:enrolled_at).to_a : []
-      rows = Evaluation.enrollments(enrollments, today: today)
+      rows = Evaluation.enrollments(enrollments, today: today, vaccination: vaccination)
       lines = enrollments.map do |enrollment|
-        items = rows.fetch(enrollment.id).practices.select(&:tracked).map do |status|
+        items = rows.fetch(enrollment.id).practices.select { |s| s.tracked || s.status == "unchecked" }.map do |status|
           { label: status.citizen_label || status.label, status: status.status, due_on: status.due_on&.iso8601 }
         end
         { name: enrollment.care_line.name, items: items }

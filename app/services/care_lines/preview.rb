@@ -7,6 +7,8 @@
 # enquanto a janela está aberta (ainda dá tempo).
 # Agregado, sem nome e sem trilha (não há leitura nominal): a resposta traz
 # só contagens, a nota e a equipe. O oficial é do SIAPS.
+# Vacina (módulo 29): rastreada só com `vaccination`; quem está `unchecked`
+# (caderneta não conferida) sai do denominador da prática — não é pendência.
 module CareLines
   module Preview
     INDICATORS = %w[C2 C3 C4 C5 C6 C7].freeze
@@ -16,7 +18,7 @@ module CareLines
     module_function
 
     # nil quando o catálogo-base do indicador não está carregado.
-    def call(team:, indicator:, today:)
+    def call(team:, indicator:, today:, vaccination: false)
       key = Catalog::INDICATORS.key(indicator)
       template = key && CareLineTemplate.current(key)
       return nil unless template
@@ -28,9 +30,9 @@ module CareLines
         { key: person.key, practices: practices, person: person,
           anchors: { "enrollment" => enrollment&.enrolled_at&.in_time_zone&.to_date, "birth" => person.birth_date, "lmp" => enrollment&.anchor_on } }
       end
-      rows = Evaluation.items(items, today: today).values
+      rows = Evaluation.items(items, today: today, vaccination: vaccination).values
 
-      per_practice = per_practice(practices, rows)
+      per_practice = per_practice(practices, rows, vaccination)
       # Sem nenhuma prática rastreada com denominador: "sem dados" (nil), nunca 0.
       counted = per_practice.select { |p| p[:tracked] && p[:denominator].positive? }
       score = counted.empty? ? nil : counted.sum { |p| p[:weight_value] * p[:achieved] / p[:denominator] }
@@ -39,17 +41,17 @@ module CareLines
       { indicator: indicator, team: { id: team.id, ine: team.ine, name: team.name }, template_version: template.version,
         denominator: rows.size, score: grade&.first, max_score: 100, concept: grade&.last,
         practices: per_practice.map { |p| p.except(:weight_value) },
-        excluded: practices.select { |p| Catalog.untracked?(p["source"]) }.map { |p| p["source"].split(":").first }.uniq,
+        excluded: practices.select { |p| Catalog.untracked?(p["source"], vaccination: vaccination) }.map { |p| p["source"].split(":").first }.uniq,
         excluded_practices: per_practice.filter_map { |p| exclusion(p) }, estimate: true }
     end
 
     # Pesos das práticas rastreadas COM denominador redistribuídos para somar
     # 100 (Rational: sem erro de ponto flutuante na borda dos conceitos).
-    def per_practice(practices, rows)
+    def per_practice(practices, rows, vaccination)
       rows_by_practice = practices.map do |practice|
         statuses = rows.filter_map { |row| row.practices.find { |s| s.key == practice["key"] } }
-        tracked = !Catalog.untracked?(practice["source"])
-        [ practice, tracked, tracked ? statuses.reject { |s| open_window?(practice, s) } : statuses ]
+        tracked = !Catalog.untracked?(practice["source"], vaccination: vaccination)
+        [ practice, tracked, tracked ? statuses.reject { |s| s.status == "unchecked" || open_window?(practice, s) } : statuses ]
       end
       base = rows_by_practice.sum { |practice, tracked, list| tracked && list.any? ? practice["points"].to_i : 0 }
       rows_by_practice.map do |practice, tracked, list|

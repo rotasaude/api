@@ -1,17 +1,21 @@
 # Avaliação de cada boa prática (ADR 0040; spec §5; plano, Desvios 2–3).
 # PURA: recebe as regras, a pessoa, as âncoras e os eventos já carregados;
 # devolve PracticeStatus. Fonte fora do sistema → untracked (nunca atraso).
+# Vacina (módulo 29): untracked sem `vaccination`; com ele e sem o marcador de
+# caderneta conferida (Sources::VACCINE_CHECKED) → unchecked (tracked: false:
+# nunca atraso, fora do pior da linha).
 module CareLines
   module Evaluate
     RANK = { "ok" => 0, "due_soon" => 1, "overdue" => 2 }.freeze
 
     module_function
 
-    def call(practices:, person:, anchors:, events:, today:)
+    def call(practices:, person:, anchors:, events:, today:, vaccination: false)
+      checked = events.fetch(Sources::VACCINE_CHECKED, []).any?
       practices.filter_map do |practice|
         next unless applies?(practice["applies_to"], person, today)
 
-        evaluate(practice, anchors, events, today)
+        evaluate(practice, anchors, events, today, vaccination: vaccination, checked: checked)
       end
     end
 
@@ -34,14 +38,14 @@ module CareLines
       rule["sex"].nil? || person.sex == rule["sex"]
     end
 
-    def sources_of(practice)
-      return [] if Catalog.untracked?(practice["source"])
+    def sources_of(practice, vaccination: false)
+      return [] if Catalog.untracked?(practice["source"], vaccination: vaccination)
 
       groups(practice).flatten.map { |alt| alt["source"] }.uniq
     end
 
-    def since(practices, anchors, today)
-      starts = practices.reject { |p| Catalog.untracked?(p["source"]) }.filter_map do |p|
+    def since(practices, anchors, today, vaccination: false)
+      starts = practices.reject { |p| Catalog.untracked?(p["source"], vaccination: vaccination) }.filter_map do |p|
         if p["anchor"] == "rolling"
           today - (groups(p).flatten.map { |alt| alt["window_days"] || p["window_days"] }.max - 1)
         elsif (anchor = anchors[p["anchor"]])
@@ -51,11 +55,14 @@ module CareLines
       starts.min || today
     end
 
-    def evaluate(practice, anchors, events, today)
+    def evaluate(practice, anchors, events, today, vaccination:, checked:)
       base = { key: practice["key"], label: practice["label"], citizen_label: practice["citizen_label"], source: practice["source"],
                points: practice["points"] }
-      if Catalog.untracked?(practice["source"])
+      if Catalog.untracked?(practice["source"], vaccination: vaccination)
         return PracticeStatus.new(**base, tracked: false, status: "untracked", done_at: nil, due_on: nil, count: nil, expected: nil, met: false)
+      end
+      if Catalog.vaccine?(practice["source"]) && !checked
+        return PracticeStatus.new(**base, tracked: false, status: "unchecked", done_at: nil, due_on: nil, count: nil, expected: nil, met: false)
       end
       return rolling(practice, events, today, base) if practice["anchor"] == "rolling"
 

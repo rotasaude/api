@@ -4,6 +4,14 @@
 # dias (6 meses = 183, 12 = 365, 24 = 730, 36 = 1095, 60 = 1826). Carga:
 # bin/rails care_lines:templates:load. Mudança depois da carga: só pelo
 # maintenance (nova versão).
+# Vacinas (módulo 29, Task 17): medidas só com `vaccination` utilizável
+# (CareLines::Sources; caderneta não conferida → unchecked). Códigos conferidos
+# em 2026-11-02 contra config/vaccination/immunobiologicals.yml (catálogo do
+# Desvio 1, dicionário do LEDI APS 8.7.0): 57 = "Vacina dTpa adulto" (c3_f),
+# 33 = "Vacina influenza trivalente" (c6_d), 67 = "Vacina HPV quadrivalente"
+# (c7_b) — iguais aos das notas C3, C6 e C7. Os três seguem `review: true` lá
+# (igualdade LEDI = RNDS é gate de homologação). vaccine:c2_schedule segue a
+# nota do C2 (config/vaccination/c2_schedule.yml; Vaccination::C2).
 - key: child_c2
   indicator: C2
   name: "Criança até 2 anos (desenvolvimento infantil)"
