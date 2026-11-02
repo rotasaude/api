@@ -35,14 +35,17 @@ RSpec.describe "FHIR — DiagnosticReport de entrada", type: :request do
 
   it "aceita: resultado com LOINC no campo, LOINC desconhecido sem chave, crítico por LL, idempotente" do
     provider
-    log = capture_log { send_report(report) }
+    # Valor com três casas: o log só tem tempos de uma casa ("Completed 201 in 13.4ms").
+    body = report.tap { |r| r["contained"].find { |o| o["id"] == "hb" }["valueQuantity"]["value"] = 123.456 }
+    log = capture_log { send_report(body) }
     expect(response).to have_http_status(:created)
     result = ExamResult.find(json_body["result_id"])
     expect(result).to have_attributes(source: "fhir", critical: true, fhir_identifier: "LS-2026-000123", registered_by_provider_id: provider.id)
-    expect(result.values_list.map { |v| v.values_at("key", "loinc", "value") }).to eq([ [ "hb", "718-7", "13.4" ], [ nil, "777-3", "41" ] ])
+    expect(result.values_list.map { |v| v.values_at("key", "loinc", "value") }).to eq([ [ "hb", "718-7", "123.456" ], [ nil, "777-3", "41" ] ])
     expect(order.reload.status).to eq("resulted")
     expect(order.events.where(kind: "escalated").pluck(:escalation_reason)).to eq(%w[critical])
-    expect(log).not_to include(patient.cpf, "13.4", ExamHelpers::FAKE_TOKEN, "JVBERi0")
+    expect(log).not_to include(patient.cpf, ExamHelpers::FAKE_TOKEN, "JVBERi0")
+    expect(log).not_to match(/(?<![\d.])123\.456(?![\d.])/) # token isolado: tempos como "13.4ms" não casam
     send_report(report(presentedForm: [ { contentType: "application/pdf", data: Base64.strict_encode64(ExamHelpers::PDF_BYTES + "outro") } ]))
     expect([ response.status, json_body["result_id"] ]).to eq([ 200, result.id ])
     expect(result.reload.pdf_file.bytes).to eq(Base64.strict_decode64(report["presentedForm"][0]["data"]))
