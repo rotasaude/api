@@ -4,19 +4,16 @@ module Vaccination
   module Immunobiologicals
     Manufacturer = Data.define(:code, :key, :name, :validity_after_opening_hours, :review)
     Product = Data.define(:code, :name, :multidose, :doses_per_vial, :default_route, :default_site, :manufacturers, :review, :routine) do
-      # Por código RNDS do fabricante (quando houver) ou pela chave do YAML.
-      def manufacturer(code_or_key)
-        value = code_or_key.to_s
-        return nil if value.empty?
-
-        manufacturers.find { |m| m.key == value || (m.code && m.code == value) }
-      end
+      # Pela `key` estável do fabricante (V19); o `code` pode ser nulo e não identifica.
+      def manufacturer(key) = manufacturers.find { |m| m.key == key.to_s }
     end
 
     module_function
 
     def all = (@all ||= build.freeze)
-    def find(code) = by_code[code.to_s]
+    # Código canônico do LEDI, sem zero à esquerda: find("09") == find("9").
+    def normalize(code) = code.to_s.strip.sub(/\A0+(?=\d)/, "")
+    def find(code) = by_code[normalize(code)]
     def by_code = (@by_code ||= all.index_by(&:code).freeze)
 
     def build

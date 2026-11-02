@@ -9,7 +9,7 @@ module Vaccination
       # [Series, Dose] da primeira série que aceita o imunobiológico e tem a dose; nil se não houver.
       def entry(immunobiological_code, dose_code)
         series.each do |s|
-          next unless s.accepts.include?(immunobiological_code.to_s)
+          next unless s.accepts.include?(Immunobiologicals.normalize(immunobiological_code))
 
           dose = s.doses.find { |d| d.dose_code == dose_code.to_s }
           return [ s, dose ] if dose

@@ -23,7 +23,7 @@ module Vaccination
       { code: product.code, name: product.name, multidose: product.multidose, doses_per_vial: product.doses_per_vial,
         default_route: product.default_route, default_site: product.default_site,
         manufacturers: product.manufacturers.map do |m|
-          { code: m.code, name: m.name, validity_after_opening_hours: m.validity_after_opening_hours }
+          { key: m.key, code: m.code, name: m.name, validity_after_opening_hours: m.validity_after_opening_hours }
         end }
     end
   end

@@ -12,10 +12,13 @@ RSpec.describe "Sala de vacina — catálogo", type: :request do
     expect(json_body["calendar_version"]).to eq("2026.1")
     expect(json_body["terminologies"].keys).to eq(%w[dose strategy route site care_group maternal_condition])
     expect(json_body["terminologies"]["maternal_condition"]).to eq([ { "code" => "1", "name" => "Nenhuma" }, { "code" => "2", "name" => "Gestante" }, { "code" => "3", "name" => "Puérpera" } ])
+    groups = json_body["terminologies"]["care_group"].map { |g| g["code"] }
+    expect(groups).to include("121").and(satisfy { |codes| codes.size == 86 })
+    expect(groups).not_to include("10") # OUTROS, inativo
     penta = json_body["immunobiologicals"].find { |p| p["code"] == "42" }
     expect(penta).to eq("code" => "42", "name" => "Vacina penta (DTP/HB/Hib)", "multidose" => false, "doses_per_vial" => 1,
                         "default_route" => "3", "default_site" => "18",
-                        "manufacturers" => [ { "code" => nil, "name" => "Serum Institute of India", "validity_after_opening_hours" => 0 } ])
+                        "manufacturers" => [ { "key" => "serum", "code" => nil, "name" => "Serum Institute of India", "validity_after_opening_hours" => 0 } ])
   end
 
   it "o almoxarife da rede de frio lê" do

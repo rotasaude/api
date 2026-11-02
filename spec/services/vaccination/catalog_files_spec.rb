@@ -2,7 +2,7 @@ require "rails_helper"
 
 # Módulo 29 (ADR 0047; §15 V9/V14): os YAML de config/vaccination e as classes que os leem.
 RSpec.describe "YAML do módulo 29" do
-  let(:c2_codes) { %w[09 17 22 24 26 29 39 42 43 46 47 56 58 59 106 107] }
+  let(:c2_codes) { %w[9 17 22 24 26 29 39 42 43 46 47 56 58 59 106 107] }
 
   it "todo produto tem fabricante; multidose só com prazo após aberto positivo; códigos únicos" do
     products = Vaccination::Immunobiologicals.all
@@ -40,6 +40,39 @@ RSpec.describe "YAML do módulo 29" do
     expect(c2_codes.map { |code| Vaccination::Immunobiologicals.find(code) }).to all(be_present)
     c2 = YAML.load_file(Rails.root.join("config/vaccination/c2_schedule.yml"))
     expect(c2["codes"].keys).to match_array(c2_codes)
+  end
+
+  it "Product#manufacturer resolve pela key; código nulo não identifica" do
+    bcg = Vaccination::Immunobiologicals.find("15")
+    expect(bcg.manufacturer("fiocruz").name).to eq("Fiocruz")
+    expect(bcg.manufacturer(:serum).key).to eq("serum")
+    expect([ bcg.manufacturer("nope"), bcg.manufacturer(nil), bcg.manufacturer("") ]).to all(be_nil)
+    expect(Vaccination::Immunobiologicals.all.flat_map { |p| p.manufacturers.map(&:key) }).to all(be_present)
+    expect(Vaccination::Immunobiologicals.all).to all(satisfy { |p| p.manufacturers.map(&:key).uniq.size == p.manufacturers.size })
+  end
+
+  it "código canônico é o do LEDI: find normaliza zero à esquerda; nenhum outro código do catálogo/C2 tem zero" do
+    expect(Vaccination::Immunobiologicals.find("09")).to equal(Vaccination::Immunobiologicals.find("9"))
+    expect(Vaccination::Immunobiologicals.find("9").name).to eq("Vacina hepatite B")
+    expect(Vaccination::Immunobiologicals.find("0")).to be_nil
+    expect(Vaccination::Calendar.current.entry("09", "8").first.key).to eq("hepb_birth")
+    codes = Vaccination::Immunobiologicals.all.map(&:code) + YAML.load_file(Rails.root.join("config/vaccination/c2_schedule.yml"))["codes"].keys
+    expect(codes).to all(match(/\A[1-9]\d*\z/))
+  end
+
+  it "grupos inativos: fora da lista, aceitos por valid?/name, recusáveis por active?" do
+    inactive = Vaccination::YamlFiles.load("rnds_terminologies")["care_group"]["items"].select { |i| i["active"] == false }
+    expect(inactive.size).to eq(22)
+    expect(Vaccination::Terminologies.list("care_group").size).to eq(108 - 22)
+    inactive.each do |item|
+      expect(Vaccination::Terminologies.list("care_group").map { |i| i[:code] }).not_to include(item["code"])
+      expect(Vaccination::Terminologies.valid?("care_group", item["code"])).to be(true)
+      expect(Vaccination::Terminologies.name("care_group", item["code"])).to eq(item["name"])
+      expect(Vaccination::Terminologies.active?("care_group", item["code"])).to be(false)
+    end
+    expect(Vaccination::Terminologies.active?("care_group", "121")).to be(true)
+    expect(Vaccination::Terminologies.active?("care_group", "99999")).to be(false)
+    expect(Vaccination::Terminologies.active?("dose", "1")).to be(true)
   end
 
   it "terminologias: forma { code, name }, validação, nome, estratégia pelo código RNDS" do

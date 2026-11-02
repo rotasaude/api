@@ -1,6 +1,7 @@
 # Imunobiológicos da sala de vacina (módulo 29, ADR 0047). Código = LEDI APS 8.7.0 (dicionário).
 # `review: true` em tudo, exceto code/name dos 16 do C2 (nota metodológica C2, SAPS 19/06/2026). Fabricantes:
 # code null (BRFabricante não foi achado); prazo após aberto = valor de partida a conferir (bula/PNI).
+# Código canônico = LEDI sem zero à esquerda ("9" = hepatite B; a nota do C2 escreve "09").
 # `routine: false` = aceito em transcrição, fora do estoque padrão.
 version: 1
 source: "LEDI APS 8.7.0, dicionario.html (2026-11-02); nota metodológica C2 (SAPS, 19/06/2026)"
@@ -16,7 +17,7 @@ products:
       - { key: serum, name: "Serum Institute of India", code: null, validity_after_opening_hours: 6, review: true }
       - { key: fiocruz, name: "Fiocruz", code: null, validity_after_opening_hours: 8, review: true }
     review: true
-  - code: "09"
+  - code: "9"
     name: "Vacina hepatite B"
     routine: true
     multidose: true

@@ -6,7 +6,9 @@ module Vaccination
 
     module_function
 
-    def list(kind) = items(kind).map { |item| { code: item["code"], name: item["name"] } }
+    # Só os ativos: o que se oferece para dose nova. `valid?`/`name` aceitam também os inativos (leitura e transcrição antiga).
+    def list(kind) = items(kind).select { |item| item["active"] != false }.map { |item| { code: item["code"], name: item["name"] } }
+    def active?(kind, code) = valid?(kind, code) && index(kind).dig(code.to_s, "active") != false
     def valid?(kind, code) = KINDS.include?(kind.to_s) && index(kind).key?(code.to_s)
     def name(kind, code) = index(kind).dig(code.to_s, "name")
     def rnds_code(kind, code) = index(kind).dig(code.to_s, "rnds_code") || (code.to_s if valid?(kind, code))

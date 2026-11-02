@@ -16,7 +16,7 @@ series:
           source: "Calendário Nacional 2026, ao nascer (conferir página do PDF)" }
   - key: hepb_birth
     public: "child"
-    accepts: ["09"]
+    accepts: ["9"]
     sex: null
     repeat_every_days: null
     rules: {}
