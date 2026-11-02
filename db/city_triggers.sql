@@ -2691,7 +2691,8 @@ $do$;
 -- vez; sob rota.reencrypting regrava só as cifradas (lote, fabricante e local
 -- da transcrição, justificativa e motivo do cancelamento). O frasco só fecha,
 -- uma vez (descarte ou vencimento); sob rota.reencrypting regrava só o motivo.
--- A excursão só é decidida, uma vez. Leitura de temperatura e conferência da
+-- A excursão só é decidida, uma vez; o bloqueio de lote congela ao ser
+-- liberado (guarda própria). Leitura de temperatura e conferência da
 -- caderneta: só acréscimo. O vínculo da sala só é revogado, uma vez. Sala,
 -- equipamento, fila RNDS, bloqueio de lote e parâmetros nunca somem. A
 -- situação materializada (vaccination_statuses) é cópia recalculável: DELETE
@@ -2755,6 +2756,33 @@ BEGIN
 END;
 $fn$ LANGUAGE plpgsql;
 
+-- Bloqueio de lote pela excursão (Task 14, fix round 1): registro da conduta.
+-- Local, lote e excursão nunca mudam. Enquanto aberto, só mudam as colunas da
+-- conduta (released_at, decision, decided_by_user_id, decision_reason) e o
+-- ajuste ligado (stock_adjustment_id): o descarte recusado é refeito (V24).
+-- Liberado (released_at preenchido), a linha congela: a liberação é gravada
+-- uma vez. Sob rota.reencrypting regrava só o motivo cifrado.
+CREATE OR REPLACE FUNCTION rota_stock_lot_block_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['released_at', 'decision', 'decided_by_user_id', 'decision_reason', 'stock_adjustment_id'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'stock_lot_blocks: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'decision_reason') = (to_jsonb(OLD) - 'decision_reason') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'stock_lot_blocks: only the decision columns and stock_adjustment_id change';
+  END IF;
+  IF OLD.released_at IS NOT NULL THEN
+    RAISE EXCEPTION 'stock_lot_blocks: a released block never changes';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION rota_vaccine_room_staff_guard() RETURNS trigger AS $fn$
 DECLARE
   moving text[] := ARRAY['revoked_at', 'revoked_by_user_id'];
@@ -2786,6 +2814,10 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS cold_chain_excursions_guard ON cold_chain_excursions';
     EXECUTE 'CREATE TRIGGER cold_chain_excursions_guard BEFORE UPDATE OR DELETE ON cold_chain_excursions
       FOR EACH ROW EXECUTE FUNCTION rota_cold_chain_excursion_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_lot_blocks_no_delete ON stock_lot_blocks';
+    EXECUTE 'DROP TRIGGER IF EXISTS stock_lot_blocks_guard ON stock_lot_blocks';
+    EXECUTE 'CREATE TRIGGER stock_lot_blocks_guard BEFORE UPDATE OR DELETE ON stock_lot_blocks
+      FOR EACH ROW EXECUTE FUNCTION rota_stock_lot_block_guard()';
     EXECUTE 'DROP TRIGGER IF EXISTS vaccine_room_staff_guard ON vaccine_room_staff';
     EXECUTE 'CREATE TRIGGER vaccine_room_staff_guard BEFORE UPDATE OR DELETE ON vaccine_room_staff
       FOR EACH ROW EXECUTE FUNCTION rota_vaccine_room_staff_guard()';
@@ -2794,7 +2826,7 @@ BEGIN
       EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
                      item || '_append_only', item);
     END LOOP;
-    FOREACH item IN ARRAY ARRAY['vaccine_rooms', 'cold_chain_equipments', 'rnds_outbox', 'stock_lot_blocks', 'vaccination_settings'] LOOP
+    FOREACH item IN ARRAY ARRAY['vaccine_rooms', 'cold_chain_equipments', 'rnds_outbox', 'vaccination_settings'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
                      item || '_no_delete', item);

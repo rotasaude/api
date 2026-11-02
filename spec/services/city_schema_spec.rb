@@ -147,7 +147,7 @@ RSpec.describe CitySchema do
 
   # Módulo 29 (ADR 0047): o dump não representa trigger; um banco de cidade
   # novo (dump + city_triggers.sql) tem de nascer com as guardas da dose, do
-  # frasco, da excursão e do vínculo da sala, os só-acréscimo da leitura e da
+  # frasco, da excursão, do bloqueio de lote e do vínculo da sala, os só-acréscimo da leitura e da
   # conferência, os no-delete e o truncate das 12 tabelas.
   it "loads the 29 vaccination room triggers into a database restored from the dump" do
     names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
@@ -155,8 +155,9 @@ RSpec.describe CitySchema do
                 cold_chain_equipments cold_chain_readings cold_chain_excursions vaccination_record_checks vaccination_statuses]
 
     expect(names).to include("immunizations_guard", "vial_openings_guard", "cold_chain_excursions_guard", "vaccine_room_staff_guard",
+                             "stock_lot_blocks_guard",
                              *%w[cold_chain_readings vaccination_record_checks].map { |t| "#{t}_append_only" },
-                             *%w[vaccine_rooms cold_chain_equipments rnds_outbox stock_lot_blocks vaccination_settings].map { |t| "#{t}_no_delete" },
+                             *%w[vaccine_rooms cold_chain_equipments rnds_outbox vaccination_settings].map { |t| "#{t}_no_delete" },
                              *tables.map { |t| "#{t}_append_only_truncate" })
   end
 

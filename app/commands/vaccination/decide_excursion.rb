@@ -70,6 +70,8 @@ module Vaccination
       adjustments = []
       lines.each_with_index do |line, index|
         block = open.fetch(line.lot_id)
+        # Conduta refeita depois de um descarte recusado (V24): autor e motivo
+        # novos; o descarte recusado fica na trilha do StockAdjustment.
         if line.decision == "use"
           block.update!(released_at: now, decision: "use", decision_reason: line.reason, decided_by_user: by, stock_adjustment_id: nil)
           next

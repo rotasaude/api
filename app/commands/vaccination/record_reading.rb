@@ -10,7 +10,9 @@
 # local — os lotes com saldo > 0 e os dos frascos ainda abertos na sala (a
 # dose do frasco aberto também para). Lote vencido não entra (já não dá dose
 # nem abre frasco). Lote já bloqueado por outra excursão ganha outro bloqueio:
-# cada excursão tem a sua conduta. O insert do bloqueio pede FOR KEY SHARE no
+# cada excursão tem a sua conduta. Sem lote a bloquear, a excursão nasce e
+# fecha na hora (decided_at = hora da leitura, autor = quem leu; evento
+# `…_decided` com `outcome: "no_lots"`). O insert do bloqueio pede FOR KEY SHARE no
 # lote e espera a dose em curso (que trava o lote FOR UPDATE).
 #
 # Evento `vaccination.cold_chain_excursion` só com ids.
@@ -58,6 +60,10 @@ module Vaccination
       lot_ids.each { |lot_id| StockLotBlock.create!(cold_chain_excursion: excursion, stock_location: location, stock_lot_id: lot_id) }
       DomainEvents.publish("vaccination.cold_chain_excursion", cold_chain_excursion_id: excursion.id, stock_location_id: location.id,
                                                                user_id: by.id)
+      # Fix round 1 (I1): sem lote a bloquear, nada espera conduta — a excursão
+      # fecha na própria leitura (conduta automática "sem lotes"), fica no
+      # histórico e sai de open_excursions.
+      ExcursionRelease.close_if_settled!(excursion.id, by_id: by.id, now: reading.read_at, outcome: "no_lots") if lot_ids.empty?
       Result.ok(reading: reading, excursion: excursion, blocked_lots: lot_ids.size)
     end
 

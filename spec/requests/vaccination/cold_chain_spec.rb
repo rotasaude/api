@@ -190,6 +190,65 @@ RSpec.describe "Sala de vacina — cadeia de frio", type: :request do
     end
   end
 
+  # Fix round 1 (conferência da revisão): as leituras do 27a com a perda da
+  # excursão `pending` — sem movimento, saldo intacto, ajuste legível.
+  describe "leituras do 27a com o descarte pendente" do
+    it "lista, ajuste, posição, extrato e o serviço de alertas tratam a perda pendente sem contá-la como saída" do
+      approval_percent!(10)
+      vip = vaccine_lot!(room, code: "22", doses: 20)
+      sign_in_as(vaccinator)
+      read!
+      excursion_id = json_body.fetch("excursion_id")
+      stepped_up!(lead)
+      decide!(excursion_id, [ line(vip, "discard") ])
+      adjustment = StockAdjustment.sole
+      expect(adjustment.status).to eq("pending")
+
+      get "/pharmacy/adjustments", params: { location_id: room.stock_location_id, status: "pending" }
+      expect(response).to have_http_status(:ok)
+      expect(json_body["adjustments"].sole).to include("id" => adjustment.id, "kind" => "loss", "status" => "pending", "quantity" => "-20.00",
+                                                       "counted_quantity" => nil, "balance_at_request" => "20.00",
+                                                       "loss_code" => "temperature_excursion", "decided_by" => nil)
+      get "/pharmacy/adjustments/#{adjustment.id}"
+      expect(json_body).to include("id" => adjustment.id, "status" => "pending", "reason" => discard_reason)
+
+      get "/pharmacy/positions", params: { location_id: room.stock_location_id }
+      expect(response).to have_http_status(:ok)
+      lot_line = json_body["positions"].sole["lots"].sole
+      expect(lot_line).to include("balance" => "20.00", "blocked" => true)
+
+      get "/pharmacy/lots/#{vip.id}/movements", params: { location_id: room.stock_location_id }
+      expect(response).to have_http_status(:ok)
+      expect(json_body["balance"]).to eq("20.00")
+      expect(json_body["movements"].map { |m| m["kind"] }).to eq([ "receipt" ])
+      # Os alertas do 27a são só de medicamento (Desvio 4): a perda pendente
+      # entra na contagem `pending_adjustments` do serviço, que segue legível.
+      expect(Pharmacy::Alerts.call(location: room.stock_location, today: Time.zone.today, settings: Pharmacy::Settings.current))
+        .to include(pending_adjustments: 1)
+    end
+  end
+
+  # Fix round 1 (conferência da revisão): transferência de lote bloqueado.
+  describe "transferência" do
+    it "lote bloqueado na rede de frio → 422 lot_blocked, sem movimento; liberado (use), transfere" do
+      central = cold_chain_central!
+      keeper = pharmacy_staff!(central, "stock_keeper")
+      lot = vaccine_lot!(central, code: "42", doses: 50)
+      chamber = cold_chain_equipment!(central, name: "Câmara da rede")
+      stepped_up!(keeper)
+      read!(chamber)
+      excursion_id = json_body.fetch("excursion_id")
+      json_post "/pharmacy/transfers", from_location_id: central.id, to_location_id: room.stock_location_id, items: [ { lot_id: lot.id, quantity: "10" } ]
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body["problems"]).to include("path" => "items[0].lot_id", "error" => "lot_blocked")
+      expect([ StockTransfer.count, balance_of(central, lot) ]).to eq([ 0, 50 ])
+
+      decide!(excursion_id, [ line(lot, "use") ])
+      json_post "/pharmacy/transfers", from_location_id: central.id, to_location_id: room.stock_location_id, items: [ { lot_id: lot.id, quantity: "10" } ]
+      expect(response).to have_http_status(:created)
+    end
+  end
+
   describe "POST /vaccination/cold_chain/excursions/:id/decide — recusas" do
     let(:vip) { vaccine_lot!(room, code: "22", doses: 20) }
     let(:penta) { vaccine_lot!(room, code: "42", doses: 5) }
@@ -268,6 +327,28 @@ RSpec.describe "Sala de vacina — cadeia de frio", type: :request do
       read!(read_at: (Time.current + 1.hour).iso8601, current_c: "5", min_c: "4", max_c: "6")
       expect(json_body["problems"]).to eq([ { "path" => "read_at", "error" => "read_at_in_future" } ])
       expect(ColdChainReading.count).to eq(1)
+    end
+
+    # Fix round 1 (I1): nada a bloquear → a excursão fecha na própria leitura.
+    it "fora da faixa sem lote com saldo (ou só lote vencido): a excursão nasce fechada, conduta automática sem lotes" do
+      vaccine_lot!(room, code: "42", expires_on: Time.zone.today - 1)
+      sign_in_as(vaccinator)
+      read_at = Time.current.change(usec: 0) - 10.minutes
+      read!(read_at: read_at.iso8601)
+      expect(response).to have_http_status(:created)
+      expect(json_body).to include("blocked_lots" => 0)
+      excursion = ColdChainExcursion.find(json_body.fetch("excursion_id"))
+      expect(excursion).to have_attributes(decided_by_user_id: vaccinator.id, decided_at: read_at)
+      expect(StockLotBlock.count).to eq(0)
+      expect(events("vaccination.cold_chain_excursion_decided")).to eq([ { "cold_chain_excursion_id" => excursion.id,
+                                                                            "stock_location_id" => room.stock_location_id,
+                                                                            "user_id" => vaccinator.id, "outcome" => "no_lots" } ])
+      get "/vaccination/cold_chain/status", params: { location_id: room.stock_location_id }
+      expect(json_body["open_excursions"]).to eq([])
+      expect(json_body["equipments"].sole["last_reading"]).to include("out_of_range" => true)
+      stepped_up!(lead)
+      decide!(excursion.id, [ { lot_id: SecureRandom.uuid, decision: "use", reason: use_reason } ])
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "excursion_closed" } ])
     end
 
     it "mínima abaixo da faixa também abre excursão; fora da equipe → 403" do

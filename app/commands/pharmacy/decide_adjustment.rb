@@ -15,7 +15,9 @@
 # Ordem de travas (a do módulo, Pharmacy::Ledger): lote → local → ajuste.
 #   1. lock_lots!([lote]) — FOR UPDATE antes do movimento (o FK pede FOR KEY SHARE);
 #   2. lock_location! — FOR SHARE no local e na unidade;
-#   3. o ajuste relido com FOR UPDATE: duas decisões concorrentes se esperam aqui.
+#   3. o ajuste relido com FOR UPDATE: duas decisões concorrentes se esperam aqui;
+#   4. (módulo 29, aprovação do descarte da excursão) os frascos abertos do
+#      lote e, por último, a excursão (Vaccination::ExcursionRelease).
 #
 # Eventos `stock_adjustment.approved` / `.rejected` só com ids (stock_adjustment_id,
 # user_id). O motivo (texto livre) nunca sai em log, evento nem erro.

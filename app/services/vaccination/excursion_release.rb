@@ -8,10 +8,13 @@
 # - `adjustment_applied!`: chamado pelo Pharmacy::DecideAdjustment ao aprovar;
 #   solta os bloqueios ligados ao ajuste. Sem bloqueio ligado, nada faz.
 # - `close_if_settled!`: a excursão fecha (decided_at, decided_by) quando não
-#   resta bloqueio aberto dela; o autor é quem decidiu a conduta.
+#   resta bloqueio aberto dela; o autor é quem decidiu a conduta (ou quem leu,
+#   na excursão sem lotes).
 #
-# Corre dentro da transação de quem chama, depois das travas de lote e local
-# (ordem do módulo: lote → local → ajuste → excursão → frasco).
+# Corre dentro da transação de quem chama, depois das travas de lote e local.
+# Na aprovação (adjustment_applied!) a ordem real é lote → local → ajuste →
+# frascos → excursão; no DecideExcursion, lotes → local → excursão → ajuste →
+# frascos. Os dois começam pelo lote e por isso se serializam nele.
 module Vaccination
   module ExcursionRelease
     module_function
@@ -37,15 +40,17 @@ module Vaccination
       end
     end
 
-    # -> true quando fechou agora
-    def close_if_settled!(excursion_id, by_id:, now:)
+    # `outcome`: "decided" (todos os lotes com conduta aplicada) ou "no_lots"
+    # (fechada na leitura: nada a bloquear). -> true quando fechou agora
+    def close_if_settled!(excursion_id, by_id:, now:, outcome: "decided")
       excursion = ColdChainExcursion.lock("FOR UPDATE").find(excursion_id)
       return false if excursion.decided_at
       return false if StockLotBlock.open_blocks.exists?(cold_chain_excursion_id: excursion.id)
 
       excursion.update!(decided_at: now, decided_by_user_id: by_id)
       DomainEvents.publish("vaccination.cold_chain_excursion_decided", cold_chain_excursion_id: excursion.id,
-                                                                       stock_location_id: excursion.stock_location_id, user_id: by_id)
+                                                                       stock_location_id: excursion.stock_location_id, user_id: by_id,
+                                                                       outcome: outcome)
       true
     end
   end

@@ -86,6 +86,26 @@ RSpec.describe "Esquema do módulo 29", type: :model do
     refused(/DELETE refused/) { room.delete }
   end
 
+  # Task 14, fix round 1 (I2): o bloqueio é registro da conduta.
+  it "bloqueio de lote: identidade imutável, conduta refeita enquanto aberto, liberado congela, re-cifra só do motivo" do
+    lot = vaccine_lot!(room, code: "22", doses: 20)
+    block = lot_block!(room.stock_location, lot)
+    user = room.updated_by_user
+    refused(/only the decision columns/) { block.update_column(:stock_lot_id, vaccine_lot!(room).id) }
+    refused(/only the decision columns/) { block.update_column(:stock_location_id, vaccine_room!.stock_location_id) }
+    refused(/only the decision columns/) { block.update_column(:cold_chain_excursion_id, lot_block!(room.stock_location, lot).cold_chain_excursion_id) }
+    block.update!(decided_by_user: user, decision_reason: "Exposição longa acima de 8 graus")
+    block.update!(decided_by_user: user, decision_reason: "Termômetro conferido, sem perda")
+    block.update!(released_at: Time.current, decision: "use")
+    refused(/a released block never changes/) { block.update_columns(released_at: nil, decision: nil) }
+    refused(/a released block never changes/) { block.update_column(:decision, "discard") }
+    refused(/a released block never changes/) { block.update_column(:decided_by_user_id, room_member!(room).id) }
+    expect { CityEncryption.allowing_reencryption { block.encrypt } }.not_to raise_error
+    expect(block.reload.decision_reason).to eq("Termômetro conferido, sem perda")
+    refused(/stock_lot_blocks/) { CityEncryption.allowing_reencryption { block.update_columns(decision_reason: "x", decision: "discard") } }
+    refused(/DELETE refused/) { block.delete }
+  end
+
   it "a re-cifra regrava só as colunas cifradas da dose e do frasco" do
     dose = create_immunization!(room, override_reason: "Viagem da família para fora do país")
     dose.update!(cancelled_at: Time.current, cancelled_by_user: dose.vaccinator_user, cancel_reason: "Paciente errado na busca")
