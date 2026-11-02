@@ -7,10 +7,16 @@
 # qualquer coisa), local ativo (409 cedo, como os mínimos; o comando confere de
 # novo sob trava) e então o comando, que junta todas as recusas em `problems`
 # (inclusive `document`, `document.kind` e `items`). Todo 422 traz `problems`. O catálogo da plataforma é lido AQUI, fora da transação.
+#
+# Módulo 29 (Desvio 5): o local de vacina (rede de frio, sala) entra com o
+# interruptor `vaccination` (o do domínio do local, conferido logo depois do
+# local e antes do papel); na sala, o papel é o da equipe (Pharmacy::Access).
 module Pharmacy
   class EntriesController < BaseController
     RECEIPT_KINDS = %w[invoice donation].freeze
 
+    skip_before_action :require_pharmacy!
+    before_action :require_stock_feature!
     before_action :load_location
 
     def receipt
@@ -35,7 +41,9 @@ module Pharmacy
     def load_location
       id = body_param("location_id")
       @location = uuid?(id) ? StockLocation.find_by(id: id) : nil
-      render_refusal("location_id") unless @location
+      return render_refusal("location_id") unless @location
+
+      stock_feature_for!(@location)
     end
 
     def allowed?(roles) = Access.allowed?(user: Current.user, location: @location, roles: roles)

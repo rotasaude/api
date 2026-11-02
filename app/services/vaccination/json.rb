@@ -59,7 +59,7 @@ module Vaccination
       lot = record.stock_lot
       return { id: nil, number: record.lot_number_text, manufacturer: { code: nil, name: record.manufacturer_text }, expires_on: nil } unless lot
 
-      maker = product&.manufacturer(lot.manufacturer_code)
+      maker = product&.manufacturer(lot.manufacturer_key)
       { id: lot.id, number: lot.lot_number, manufacturer: { code: maker&.code, name: maker&.name || lot.manufacturer }, expires_on: lot.expires_on }
     end
 

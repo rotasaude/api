@@ -14,16 +14,24 @@
 # Ajuste da URL (`adjustments/:id`) de outro escopo (sem papel nenhum no local
 # dele), inexistente ou não-uuid → 404; com papel no local mas sem poder decidir
 # (auxiliar) → 403 sozinho. O catálogo da plataforma é lido AQUI, fora da transação.
+#
+# Módulo 29 (Desvio 5; §15 V4): o interruptor é o do domínio do local (conferido
+# logo depois do local); na sala, ajuste, perda e vencimento são só do
+# responsável (`room_lead`, traduzido para `stock_keeper`); a perda e o
+# vencimento de vacina levam `loss_code`.
 module Pharmacy
   class AdjustmentsController < BaseController
     ROLES = %w[stock_keeper pharmacist].freeze
     PRELOAD = [ { stock_location: :health_unit }, :stock_lot, { requested_by_user: :professional }, { decided_by_user: :professional } ].freeze
 
+    skip_before_action :require_pharmacy!
+    before_action :require_stock_feature!
     before_action :load_adjustment, only: %i[show approve reject]
 
     def create
       location = body_location
       return unless location
+      return unless stock_feature_for!(location)
       return forbid unless allowed?(location)
       return unless step_up?
       return render_failure(Result.fail(:location_inactive, details: { path: "location_id" })) unless location.active
@@ -31,8 +39,8 @@ module Pharmacy
       lot_id = body_param("lot_id")
       lot = uuid?(lot_id) ? StockLot.find_by(id: lot_id) : nil
       result = RequestAdjustment.call(location: location, lot: lot, kind: body_param("kind"), counted_quantity: body_param("counted_quantity"),
-                                      quantity: body_param("quantity"), reason: body_param("reason"), by: Current.user,
-                                      settings: Settings.current)
+                                      quantity: body_param("quantity"), reason: body_param("reason"), loss_code: body_param("loss_code"),
+                                      by: Current.user, settings: Settings.current)
       return render_failure(result) if result.failure?
 
       render json: present_one(result.payload.fetch(:adjustment)), status: :created
@@ -55,6 +63,7 @@ module Pharmacy
       raw = params[:location_id]
       location = uuid?(raw) ? StockLocation.find_by(id: raw) : nil
       return render_refusal("location_id") unless location
+      return unless stock_feature_for!(location)
       return forbid unless allowed?(location)
 
       status = params[:status]
@@ -90,7 +99,9 @@ module Pharmacy
     def load_adjustment
       @adjustment = uuid?(params[:id]) ? StockAdjustment.includes(*PRELOAD).find_by(id: params[:id]) : nil
       return not_found unless @adjustment
-      not_found if Access.roles_at(user: Current.user, location: @adjustment.stock_location).empty?
+      return not_found if Access.roles_at(user: Current.user, location: @adjustment.stock_location).empty?
+
+      stock_feature_for!(@adjustment.stock_location)
     end
 
     # Local do corpo (existente); senão 422 `location_id` e nil.

@@ -3377,11 +3377,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.string "item_kind", default: "medication", null: false
     t.string "lot_number", limit: 40, null: false
     t.string "manufacturer", limit: 120
-    t.string "manufacturer_code", limit: 20
+    t.string "manufacturer_key", limit: 40
     t.index ["catalog_item_id", "lot_number"], name: "idx_stock_lots_number", unique: true
     t.index ["expires_on"], name: "idx_stock_lots_expires_on"
     t.index ["immunobiological_code", "lot_number"], name: "idx_stock_lots_immunobiological_number", unique: true, where: "(immunobiological_code IS NOT NULL)"
-    t.check_constraint "item_kind::text = ANY (ARRAY['medication'::text, 'immunobiological'::text]) AND (item_kind::text = 'immunobiological'::text) = (immunobiological_code IS NOT NULL) AND (item_kind::text = 'immunobiological'::text) = (catalog_item_id IS NULL) AND (catalog_item_id IS NULL) = (catmat_code IS NULL) AND (item_kind::text = 'immunobiological'::text OR manufacturer_code IS NULL) AND (item_kind::text <> 'immunobiological'::text OR dispensing_unit::text = 'dose'::text)", name: "ck_stock_lots_item"
+    t.check_constraint "item_kind::text = ANY (ARRAY['medication'::text, 'immunobiological'::text]) AND (item_kind::text = 'immunobiological'::text) = (immunobiological_code IS NOT NULL) AND (item_kind::text = 'immunobiological'::text) = (catalog_item_id IS NULL) AND (catalog_item_id IS NULL) = (catmat_code IS NULL) AND (item_kind::text = 'immunobiological'::text OR manufacturer_key IS NULL) AND (item_kind::text <> 'immunobiological'::text OR dispensing_unit::text = 'dose'::text)", name: "ck_stock_lots_item"
   end
 
   create_table "stock_minimums", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

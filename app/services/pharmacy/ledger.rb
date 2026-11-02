@@ -35,8 +35,10 @@ module Pharmacy
     # Local (ou a unidade dele) inexistente ou desativado.
     class Inactive < StandardError; end
 
+    # Módulo 29 (Desvio 7): o frasco aberto e a dose (unidose e a devolução dela).
     DOCUMENTS = { StockEntry => :stock_entry, StockTransfer => :stock_transfer,
-                  DispensationItem => :dispensation_item, StockAdjustment => :stock_adjustment }.freeze
+                  DispensationItem => :dispensation_item, StockAdjustment => :stock_adjustment,
+                  VialOpening => :vial_opening, Immunization => :immunization }.freeze
 
     module_function
 
@@ -73,7 +75,8 @@ module Pharmacy
     # Grava UM movimento. `quantity` positiva (BigDecimal ou Integer) para todo
     # tipo, exceto `adjustment`, que leva o sinal; o sinal gravado é o do tipo.
     # `document` é StockEntry | StockTransfer | DispensationItem |
-    # StockAdjustment. Saldo que ficaria negativo → Insufficient, pela conta
+    # StockAdjustment | VialOpening | Immunization. A chave de item do
+    # movimento (catálogo OU imunobiológico) é cópia da do lote. Saldo que ficaria negativo → Insufficient, pela conta
     # daqui ou pelo trigger. Erro de programação (tipo, quantidade, documento)
     # → ArgumentError.
     def record!(location:, lot:, kind:, quantity:, by:, document:, reason: nil, package: nil, at: Time.current)
@@ -86,7 +89,8 @@ module Pharmacy
       # Savepoint: a recusa do trigger aborta a transação do Postgres; sem ele a
       # do chamador ficaria inutilizável (a dispensação junta todas as recusas).
       StockMovement.transaction(requires_new: true) do
-        StockMovement.create!(stock_location: location, stock_lot: lot, catalog_item_id: lot.catalog_item_id, kind: kind, quantity: signed,
+        StockMovement.create!(stock_location: location, stock_lot: lot, catalog_item_id: lot.catalog_item_id,
+                              immunobiological_code: lot.immunobiological_code, kind: kind, quantity: signed,
                               reference => document, reason: reason, recorded_by_user: by, recorded_at: at,
                               package_units: units&.fetch(:units_per_package), packages: units&.fetch(:packages))
       end

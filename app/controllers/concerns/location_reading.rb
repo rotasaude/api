@@ -1,5 +1,6 @@
 # Leitura de estoque por local (posição, extrato e alertas): qualquer papel da
-# farmácia no local, ou o almoxarife do central, que lê todos. Sem trilha: o
+# farmácia no local, ou o almoxarife do central, que lê todos os de
+# medicamento (o da rede de frio lê todos os de vacina). Sem trilha: o
 # estoque não tem dado pessoal. Local da query inexistente → 422; sem papel →
 # 403 (sozinho).
 module LocationReading
@@ -12,8 +13,16 @@ module LocationReading
     @central_keeper
   end
 
+  # Módulo 29: o local de vacina é lido pelo almoxarife da rede de frio (não
+  # pelo do central de medicamentos) ou por quem tem papel nele.
+  def cold_chain_keeper?
+    @cold_chain_keeper = Pharmacy::Access.cold_chain_keeper?(Current.user) if @cold_chain_keeper.nil?
+    @cold_chain_keeper
+  end
+
   def readable?(location)
-    central_keeper? || Pharmacy::Access.roles_at(user: Current.user, location: location).any?
+    keeper = Stock::Domain.immunobiological?(location) ? cold_chain_keeper? : central_keeper?
+    keeper || Pharmacy::Access.roles_at(user: Current.user, location: location).any?
   end
 
   # `location_id` da query, existente e legível; senão responde (422 ou 403) e

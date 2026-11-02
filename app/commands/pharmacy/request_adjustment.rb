@@ -40,6 +40,14 @@
 #
 # Evento `stock_adjustment.recorded` só com ids e o booleano (stock_adjustment_id,
 # user_id, pending). O motivo (texto livre) nunca sai em log, evento nem erro.
+#
+# Módulo 29 (ADR 0047; §15 V4): o lote precisa ser do domínio do local (senão
+# `item_not_allowed_here`, path `lot_id`) e não pode ter bloqueio aberto
+# (excursão de temperatura) no local (`lot_blocked`, path `lot_id`; conferido de
+# novo sob a trava). Perda e vencimento de lote de imunobiológico exigem
+# `loss_code` da lista do SIES (config/vaccination/physical_loss_reasons.yml):
+# ausente → `required`, fora da lista → `invalid_request` (path `loss_code`). Fora
+# disso o `loss_code` é ignorado (nunca gravado).
 module Pharmacy
   module RequestAdjustment
     KINDS = Catalog::ADJUSTMENT_KINDS
@@ -48,7 +56,7 @@ module Pharmacy
     PENDING_INDEX = "idx_stock_adjustments_one_pending".freeze
 
     # Pedido já validado: `amount` é o saldo contado (adjustment) ou a saída (loss/expiry).
-    Request = Struct.new(:kind, :amount, :reason, keyword_init: true) do
+    Request = Struct.new(:kind, :amount, :reason, :loss_code, keyword_init: true) do
       def inspect = "#<#{self.class.name} kind=#{kind}>"
       def to_s = inspect
       def pretty_print(pp) = pp.text(inspect)
@@ -62,10 +70,13 @@ module Pharmacy
     # -> Result.ok(adjustment:, movement:) (movement nil quando pending) |
     # fail(:location_inactive, details: { path: "location_id" }) |
     # fail(<primeiro erro>, details: { path:, problems: [ { path:, error: } ] })
-    def call(location:, lot:, kind:, counted_quantity:, quantity:, reason:, by:, settings:, now: Time.current)
+    def call(location:, lot:, kind:, counted_quantity:, quantity:, reason:, by:, settings:, loss_code: nil, now: Time.current)
       return Result.fail(:location_inactive, details: { path: "location_id" }) unless location.active
 
       request, problems = validate(lot, kind, counted_quantity, quantity, reason, now.in_time_zone.to_date)
+      problems.concat(stock_problems(location, lot))
+      request.loss_code, code_problems = loss_code_of(lot, kind, loss_code)
+      problems.concat(code_problems)
       if problems.any?
         problems += balance_problems(location, lot, request) if request.amount
         return failure(order(problems))
@@ -86,6 +97,7 @@ module Pharmacy
     def write(location:, lot:, request:, by:, settings:, now:)
       locked_lot = Ledger.lock_lots!([ lot.id ]).fetch(lot.id)
       Ledger.lock_location!(location.id)
+      return failure([ problem("lot_id", :lot_blocked) ]) if blocked?(location, lot)
       return pending_conflict if request.kind == "adjustment" && pending_for?(location, lot)
 
       balance = Ledger.balance(location_id: location.id, lot_id: lot.id)
@@ -98,7 +110,7 @@ module Pharmacy
       adjustment = StockAdjustment.create!(
         stock_location: location, stock_lot: locked_lot, kind: request.kind, status: pending ? "pending" : "applied",
         quantity: effect, counted_quantity: (request.amount if request.kind == "adjustment"), balance_at_request: balance,
-        reason: request.reason, requested_by_user: by, created_at: now
+        reason: request.reason, loss_code: request.loss_code, requested_by_user: by, created_at: now
       )
       movement = pending ? nil : apply(location, locked_lot, adjustment, effect, by, now)
       DomainEvents.publish("stock_adjustment.recorded", stock_adjustment_id: adjustment.id, user_id: by.id, pending: pending)
@@ -155,6 +167,26 @@ module Pharmacy
       [ Request.new(kind: valid_kind ? kind : nil, amount: valid_kind ? amount : nil, reason: clean), problems ]
     end
 
+    # Domínio do lote × local e bloqueio aberto no local. -> [ problem ]
+    def stock_problems(location, lot)
+      return [] unless lot
+      return [ problem("lot_id", :item_not_allowed_here) ] unless Stock::Domain.allows?(location, lot)
+      return [ problem("lot_id", :lot_blocked) ] if blocked?(location, lot)
+
+      []
+    end
+
+    def blocked?(location, lot) = StockLotBlock.open_blocks.exists?(stock_location_id: location.id, stock_lot_id: lot.id)
+
+    # -> [ loss_code gravável | nil, [ problem ] ]
+    def loss_code_of(lot, kind, loss_code)
+      return [ nil, [] ] unless lot&.immunobiological? && OUTFLOW_KINDS.include?(kind)
+      return [ nil, [ problem("loss_code", :required) ] ] if loss_code.nil?
+      return [ nil, [ problem("loss_code", :invalid_request) ] ] unless loss_code.is_a?(String) && Vaccination::Catalog.physical_loss_codes.include?(loss_code)
+
+      [ loss_code, [] ]
+    end
+
     # O dia da validade ainda vale; o lote imutável não precisa de trava.
     def expiry_problems(lot, kind, today)
       return [] unless lot
@@ -192,7 +224,7 @@ module Pharmacy
       balance.zero? || delta.abs * 100 > balance * settings.adjustment_approval_percent
     end
 
-    ORDER = %w[lot_id kind counted_quantity quantity reason].freeze
+    ORDER = %w[lot_id kind counted_quantity quantity loss_code reason].freeze
 
     # Na ordem do roteiro (lot_id, kind, quantidade, validade, saldo, motivo), sem repetir path + erro.
     def order(problems) = problems.uniq.each_with_index.sort_by { |found, position| [ ORDER.index(found[:path]) || ORDER.size, position ] }.map(&:first)
@@ -206,7 +238,7 @@ module Pharmacy
       Result.fail(first[:error], details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :persist, :write, :apply, :pending_for?, :pending_conflict, :validate, :expiry_problems, :balance_problems, :balance_problems_for, :effect_of, :pending?,
-                         :order, :problem, :failure
+    private_class_method :persist, :write, :apply, :pending_for?, :pending_conflict, :validate, :stock_problems, :blocked?, :loss_code_of,
+                         :expiry_problems, :balance_problems, :balance_problems_for, :effect_of, :pending?, :order, :problem, :failure
   end
 end

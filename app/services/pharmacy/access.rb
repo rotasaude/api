@@ -4,12 +4,22 @@
 # vínculo revogado derruba mesmo com a Membership ativa (Review Focus 4).
 # O vínculo diz ONDE; a Membership diz SE. Papéis fora da farmácia que o
 # usuário tenha (health_professional, por exemplo) não entram aqui.
+#
+# Módulo 29 (ADR 0047, Desvios 5 e 6): na sala de vacina o papel vem da equipe
+# da sala (Vaccination::Access.room_roles), traduzido para as listas de papéis
+# do 27a: `room_lead` → `stock_keeper` (entrada, inventário, ajuste, perda,
+# recebimento) e `vaccinator` → `pharmacy_assistant` (só recebe transferência).
+# Na rede de frio, o `stock_keeper` de stock_location_staff, como no central.
 module Pharmacy
   module Access
+    ROOM_ROLE_MAP = { "room_lead" => "stock_keeper", "vaccinator" => "pharmacy_assistant" }.freeze
+
     module_function
 
     # -> Set["pharmacist", ...] (vazio sem papel)
     def roles_at(user:, location:)
+      return room_roles_at(user, location) if location.vaccine_room?
+
       linked = StockLocationStaff.active.where(user_id: user.id, stock_location_id: location.id).pluck(:role)
       return Set.new if linked.empty?
 
@@ -29,10 +39,29 @@ module Pharmacy
       linked && granted(user, %w[stock_keeper]).any?
     end
 
-    # Locais ativos onde o usuário tem algum papel; o almoxarife do central
-    # vê todos os ativos. Ordem estável: nome, id.
+    # Almoxarife da rede de frio ATIVA: lê a posição de todos os locais de vacina.
+    def cold_chain_keeper?(user)
+      central_ids = StockLocation.active_locations.where(kind: "cold_chain_central").select(:id)
+      linked = StockLocationStaff.active.where(user_id: user.id, role: "stock_keeper", stock_location_id: central_ids).exists?
+      linked && granted(user, %w[stock_keeper]).any?
+    end
+
+    # Locais ATIVOS de vacina que o usuário lê: todos, para o almoxarife da rede
+    # de frio; senão a rede de frio (se é almoxarife dela) e as salas onde tem
+    # papel. Ordem estável: nome, id.
+    def vaccine_locations_for(user)
+      scope = StockLocation.active_locations.where(kind: Stock::Domain::IMMUNOBIOLOGICAL_LOCATION_KINDS).includes(:health_unit).order(:name, :id)
+      return scope.to_a if cold_chain_keeper?(user)
+
+      room_location_ids = Vaccination::Access.rooms_for(user).map(&:stock_location_id)
+      scope.where(id: room_location_ids).to_a
+    end
+
+    # Locais ativos de MEDICAMENTO (central e unidades) onde o usuário tem
+    # algum papel; o almoxarife do central vê todos os ativos. Ordem estável:
+    # nome, id. Os locais de vacina ficam em vaccine_locations_for.
     def locations_for(user)
-      scope = StockLocation.active_locations.includes(:health_unit).order(:name, :id)
+      scope = StockLocation.active_locations.where(kind: Catalog::LOCATION_KINDS).includes(:health_unit).order(:name, :id)
       return scope.to_a if central_keeper?(user)
 
       by_location = StockLocationStaff.active.where(user_id: user.id).pluck(:stock_location_id, :role)
@@ -54,6 +83,15 @@ module Pharmacy
       by_location.select { |_id, role| roles.include?(role) }
                  .group_by(&:first).transform_values { |pairs| Set.new(pairs.map(&:last)) }
     end
+
+    # Papéis da equipe da sala do local (sala inativa: nenhum), traduzidos.
+    def room_roles_at(user, location)
+      room = VaccineRoom.find_by(stock_location_id: location.id)
+      return Set.new unless room&.active
+
+      Set.new(Vaccination::Access.room_roles(user: user, room: room).map { |role| ROOM_ROLE_MAP.fetch(role) })
+    end
+    private_class_method :room_roles_at
 
     # Dos papéis pedidos, os que o usuário tem como Membership ativa (a mesma
     # conta de User#has_role?, numa consulta só).

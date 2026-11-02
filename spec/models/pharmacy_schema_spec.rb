@@ -1,5 +1,6 @@
 require "rails_helper"
 require Rails.root.join("db/city_migrate/20261029900001_add_pharmacy_stock.rb").to_s
+require Rails.root.join("db/city_migrate/20261102900001_add_vaccination_room.rb").to_s
 
 # Módulo 27a (ADR 0045): o banco da farmácia. O saldo é a soma dos movimentos
 # (só acréscimo, nunca negativo); os CHECKs e os triggers (db/city_triggers.sql)
@@ -230,15 +231,19 @@ RSpec.describe "Esquema da farmácia (ADR 0045)" do
   end
 
   # A migração espelha Pharmacy::Catalog (não lê código da aplicação): as
-  # listas do banco e as do código nascem iguais.
+  # listas do banco e as do código nascem iguais. Os tipos de movimento do
+  # módulo 29 (Desvio 7) vêm da migração dele, que refaz os CHECKs.
   it "a migração espelha as listas de Pharmacy::Catalog" do
     catalog = Pharmacy::Catalog
+    vaccine = %w[vial_opening immunization immunization_reversal]
+    expect([ AddVaccinationRoom::MOVEMENT_KINDS, AddVaccinationRoom::POSITIVE_KINDS, AddVaccinationRoom::NEGATIVE_KINDS ])
+      .to eq([ catalog::MOVEMENT_KINDS, catalog::POSITIVE_KINDS, catalog::NEGATIVE_KINDS ])
     expect([ AddPharmacyStock::LOCATION_KINDS, AddPharmacyStock::STAFF_ROLES, AddPharmacyStock::DISPENSER_ROLES, AddPharmacyStock::MOVEMENT_KINDS,
              AddPharmacyStock::POSITIVE_KINDS, AddPharmacyStock::NEGATIVE_KINDS, AddPharmacyStock::ENTRY_KINDS, AddPharmacyStock::TRANSFER_STATUSES,
              AddPharmacyStock::ADJUSTMENT_KINDS, AddPharmacyStock::ADJUSTMENT_STATUSES, AddPharmacyStock::COUNCILS, AddPharmacyStock::DEFAULT_SETTINGS,
              AddPharmacyStock::SETTING_RANGES, AddPharmacyStock::PACKAGES ])
-      .to eq([ catalog::LOCATION_KINDS, catalog::ROLES, catalog::DISPENSER_ROLES, catalog::MOVEMENT_KINDS, catalog::POSITIVE_KINDS,
-               catalog::NEGATIVE_KINDS, catalog::ENTRY_KINDS, catalog::TRANSFER_STATUSES, catalog::ADJUSTMENT_KINDS, catalog::ADJUSTMENT_STATUSES,
+      .to eq([ catalog::LOCATION_KINDS, catalog::ROLES, catalog::DISPENSER_ROLES, catalog::MOVEMENT_KINDS - vaccine, catalog::POSITIVE_KINDS - vaccine,
+               catalog::NEGATIVE_KINDS - vaccine, catalog::ENTRY_KINDS, catalog::TRANSFER_STATUSES, catalog::ADJUSTMENT_KINDS, catalog::ADJUSTMENT_STATUSES,
                catalog::COUNCILS, catalog::DEFAULT_SETTINGS, catalog::SETTING_RANGES, catalog::PACKAGE_RANGE ])
     expect(Pharmacy::Quantity.parse(AddPharmacyStock::MAX_QUANTITY)).to eq(BigDecimal("99999.99"))
   end

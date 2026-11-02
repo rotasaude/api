@@ -298,13 +298,13 @@ class AddVaccinationRoom < ActiveRecord::Migration[8.1]
   end
 
   # Desvio 3: a chave de item (catálogo CATMAT OU código do imunobiológico)
-  # nos lotes, mínimos e aberturas; o fabricante (código RNDS, pode ser nulo,
-  # §15 V4) só no lote de imunobiológico, sempre em doses; o motivo SIES da
+  # nos lotes, mínimos e aberturas; o fabricante (a `key` estável do catálogo,
+  # §15 V19: o lote nunca grava o código RNDS) só no lote de imunobiológico, sempre em doses; o motivo SIES da
   # perda (§15 V4) só em perda e vencimento.
   def change_stock_items
     add_column :stock_lots, :item_kind, :string, null: false, default: "medication"
     add_column :stock_lots, :immunobiological_code, :string, limit: 10
-    add_column :stock_lots, :manufacturer_code, :string, limit: 20
+    add_column :stock_lots, :manufacturer_key, :string, limit: 40
     change_column_null :stock_lots, :catalog_item_id, true
     change_column_null :stock_lots, :catmat_code, true
     add_check_constraint :stock_lots,
@@ -312,7 +312,7 @@ class AddVaccinationRoom < ActiveRecord::Migration[8.1]
                          "(item_kind::text = 'immunobiological'::text) = (immunobiological_code IS NOT NULL) AND " \
                          "(item_kind::text = 'immunobiological'::text) = (catalog_item_id IS NULL) AND " \
                          "(catalog_item_id IS NULL) = (catmat_code IS NULL) AND " \
-                         "(item_kind::text = 'immunobiological'::text OR manufacturer_code IS NULL) AND " \
+                         "(item_kind::text = 'immunobiological'::text OR manufacturer_key IS NULL) AND " \
                          "(item_kind::text <> 'immunobiological'::text OR dispensing_unit::text = 'dose'::text)",
                          name: "ck_stock_lots_item"
     add_index :stock_lots, %i[immunobiological_code lot_number], unique: true, where: "immunobiological_code IS NOT NULL",

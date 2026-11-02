@@ -3,7 +3,8 @@
 # (Desvio 1). Só acréscimo (trigger). O saldo é por local: a soma dos
 # movimentos (local, lote). Módulo 29 (ADR 0047, Desvio 3): o lote de
 # imunobiológico (item_kind) não tem CATMAT, tem o código do imunobiológico e
-# o fabricante (código RNDS, pode ser nulo), sempre em doses (CHECK).
+# o fabricante pela `key` estável do catálogo (§15 V19: nunca o código RNDS;
+# pode ser nulo), sempre em doses (CHECK).
 class StockLot < ApplicationRecord
   belongs_to :created_by_user, class_name: "User"
   has_many :movements, class_name: "StockMovement", inverse_of: :stock_lot

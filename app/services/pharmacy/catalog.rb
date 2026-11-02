@@ -6,9 +6,12 @@ module Pharmacy
     ROLES = %w[pharmacist pharmacy_assistant stock_keeper].freeze
     DISPENSER_ROLES = %w[pharmacist pharmacy_assistant].freeze
 
-    MOVEMENT_KINDS = %w[opening receipt donation transfer_out transfer_in dispensing loss expiry adjustment return].freeze
-    POSITIVE_KINDS = %w[opening receipt donation transfer_in return].freeze
-    NEGATIVE_KINDS = %w[transfer_out dispensing loss expiry].freeze
+    # Módulo 29 (ADR 0047, Desvio 7): abertura de frasco (−doses), dose de
+    # unidose (−1) e a devolução da dose de unidose cancelada (+1).
+    MOVEMENT_KINDS = %w[opening receipt donation transfer_out transfer_in dispensing loss expiry adjustment return
+                        vial_opening immunization immunization_reversal].freeze
+    POSITIVE_KINDS = %w[opening receipt donation transfer_in return immunization_reversal].freeze
+    NEGATIVE_KINDS = %w[transfer_out dispensing loss expiry vial_opening immunization].freeze
 
     ENTRY_KINDS = %w[invoice donation opening].freeze
     ENTRY_MOVEMENT = { "invoice" => "receipt", "donation" => "donation", "opening" => "opening" }.freeze

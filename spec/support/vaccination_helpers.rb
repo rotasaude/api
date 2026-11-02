@@ -75,21 +75,33 @@ module VaccinationHelpers
 
   # Lote de imunobiológico com `doses` de saldo no local da sala: lote, nota e
   # movimento de recebimento gravados direto (o caminho real, pelas rotas do
-  # 27a, nasce na Task 6).
-  def vaccine_lot!(room, code: "42", doses: 10, lot_number: "L#{SecureRandom.hex(3).upcase}", expires_on: Time.zone.today + 180,
-                   manufacturer_code: nil)
+  # 27a, nasce na Task 6). `place`: a sala ou um local de estoque.
+  def vaccine_lot!(place, code: "42", doses: 10, lot_number: "L#{SecureRandom.hex(3).upcase}", expires_on: Time.zone.today + 180,
+                   manufacturer_key: nil)
     admin = pharmacy_admin!
+    location = place.is_a?(VaccineRoom) ? place.stock_location : place
     lot = StockLot.create!(item_kind: "immunobiological", immunobiological_code: code, lot_number: lot_number, expires_on: expires_on.to_date,
-                           manufacturer_code: manufacturer_code, dispensing_unit: "dose", created_by_user: admin)
-    entry = StockEntry.create!(stock_location: room.stock_location, kind: "invoice", document_number: "GUIA-#{SecureRandom.hex(3)}",
+                           manufacturer_key: manufacturer_key, dispensing_unit: "dose", created_by_user: admin)
+    entry = StockEntry.create!(stock_location: location, kind: "invoice", document_number: "GUIA-#{SecureRandom.hex(3)}",
                                supplier: "Rede de frio municipal", recorded_by_user: admin)
-    StockMovement.create!(stock_location: room.stock_location, stock_lot: lot, immunobiological_code: code, kind: "receipt", quantity: doses,
+    StockMovement.create!(stock_location: location, stock_lot: lot, immunobiological_code: code, kind: "receipt", quantity: doses,
                           stock_entry: entry, recorded_by_user: admin, recorded_at: Time.current)
     lot
   end
 
-  def cold_chain_equipment!(room, name: "Geladeira #{SecureRandom.hex(2)}", min_c: 2, max_c: 8)
-    ColdChainEquipment.create!(stock_location: room.stock_location, name: name, kind: "refrigerator", min_c: min_c, max_c: max_c)
+  # `place`: a sala (VaccineRoom) ou um local de estoque (a rede de frio).
+  def cold_chain_equipment!(place, name: "Geladeira #{SecureRandom.hex(2)}", min_c: 2, max_c: 8)
+    location = place.is_a?(VaccineRoom) ? place.stock_location : place
+    ColdChainEquipment.create!(stock_location: location, name: name, kind: "refrigerator", min_c: min_c, max_c: max_c)
+  end
+
+  # Bloqueio aberto do lote no local (leitura fora da faixa e excursão aberta),
+  # gravado direto no banco (o caminho real nasce na Task 14).
+  def lot_block!(location, lot)
+    reading = ColdChainReading.create!(cold_chain_equipment: cold_chain_equipment!(location), current_c: 9.5, min_c: 2, max_c: 9.5,
+                                       read_at: Time.current, recorded_by_user: pharmacy_admin!)
+    excursion = ColdChainExcursion.create!(cold_chain_reading: reading, stock_location: location)
+    StockLotBlock.create!(cold_chain_excursion: excursion, stock_location: location, stock_lot: lot)
   end
 
   # Dose de penta (D1) aplicada na sala, gravada direto no banco (sem comando,

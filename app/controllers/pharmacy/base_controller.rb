@@ -6,6 +6,7 @@ module Pharmacy
     include Authentication
     include MfaStepUp
     include ::PharmacyGate
+    include ::StockGate
 
     wrap_parameters false
 
@@ -23,6 +24,8 @@ module Pharmacy
     MAX_LIMIT = Catalog::MAX_LIMIT
     KEY_PATH_MAX = 64
 
+    # As rotas do razão que também carregam vacina (entradas, transferências,
+    # ajustes, posição e extrato) trocam por `require_stock_feature!` (StockGate).
     before_action :require_pharmacy!
 
     private

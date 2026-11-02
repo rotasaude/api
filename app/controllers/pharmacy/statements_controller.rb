@@ -7,14 +7,21 @@
 # almoxarife do central lê todos): inexistente → 422, sem papel → 403. Lote da
 # URL inexistente ou sem nenhuma presença no local (movimento ou transferência
 # em trânsito para ele) → 404.
+#
+# Módulo 29 (Desvio 5): o local de vacina entra com o interruptor `vaccination`;
+# o lote de vacina tem também os movimentos do frasco e da dose (só o id).
 module Pharmacy
   class StatementsController < BaseController
     include LocationReading
+
+    skip_before_action :require_pharmacy!
+    before_action :require_stock_feature!
 
     def index
       return unless query_only!(:location_id, :before, :limit)
 
       location = required_location or return
+      return unless stock_feature_for!(location)
       lot = uuid?(params[:id]) ? StockLot.find_by(id: params[:id]) : nil
       return not_found unless lot && present_at?(location, lot)
 

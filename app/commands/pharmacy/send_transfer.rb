@@ -29,9 +29,17 @@
 #   3. StockTransfer `sent` → itens → `transfer_out` por lote.
 #
 # Evento `stock_transfer.sent` só com ids (stock_transfer_id, user_id).
+#
+# Módulo 29 (ADR 0047, Desvio 5): a rede de frio (`cold_chain_central`) envia
+# só para sala de vacina (`vaccine_room`), como o central só para a unidade. O
+# lote precisa ser do domínio da origem (senão `item_not_allowed_here`, path
+# `items[i]`) e não pode estar bloqueado por excursão de temperatura na origem
+# (`lot_blocked`, path `items[i].lot_id`; conferido de novo sob a trava).
 module Pharmacy
   module SendTransfer
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
+    # Origem → o único tipo de destino que ela atende.
+    DESTINATIONS = { "central" => "unit", "cold_chain_central" => "vaccine_room" }.freeze
 
     # Linha já validada.
     Row = Struct.new(:index, :lot, :quantity, keyword_init: true)
@@ -54,19 +62,20 @@ module Pharmacy
     # -> Result.ok(transfer:, items:, movements:) | fail(:location_inactive, details: { path: }) |
     # fail(<primeiro erro>, details: { path:, problems: [ { path:, error: } ] })
     def call(from:, to:, items:, by:, now: Time.current)
-      return failure([ problem("from", :invalid_request) ]) unless from.central?
+      return failure([ problem("from", :invalid_request) ]) unless DESTINATIONS.key?(from.kind)
 
       problems = []
-      problems << problem("to_location_id", :invalid_request) unless to&.unit?
+      destination = destination?(from, to)
+      problems << problem("to_location_id", :invalid_request) unless destination
       return Result.fail(:location_inactive, details: { path: "from" }) unless from.active
-      return Result.fail(:location_inactive, details: { path: "to_location_id" }) if to&.unit? && !to.active
+      return Result.fail(:location_inactive, details: { path: "to_location_id" }) if destination && !to.active
 
       unless items.is_a?(Array) && items.size.between?(1, Catalog::MAX_TRANSFER_ITEMS)
         problems << problem("items", :invalid_request)
         return failure(problems)
       end
 
-      rows, row_problems = validate_rows(items, now.in_time_zone.to_date)
+      rows, row_problems = validate_rows(items, now.in_time_zone.to_date, from)
       problems += merge_by_line(row_problems, problems.any? || row_problems.any? ? balance_problems(from, rows) : [])
       return failure(problems) if problems.any?
 
@@ -86,6 +95,9 @@ module Pharmacy
       lots = Ledger.lock_lots!(rows.map { |row| row.lot.id })
       lock_location(from, "from")
       lock_location(to, "to_location_id")
+
+      blocked = blocked_problems(from, rows)
+      return failure(blocked) if blocked.any?
 
       short = short_problems(from, rows)
       return failure(short) if short.any?
@@ -108,32 +120,39 @@ module Pharmacy
     # ---- validação (sem trava) ---------------------------------------------
 
     # -> [ [ Row ], [ problem ] ]. As linhas só valem sem problema algum.
-    def validate_rows(items, today)
+    def validate_rows(items, today, from)
       candidates = items.filter_map { |raw| raw["lot_id"] if raw.is_a?(Hash) && raw["lot_id"].is_a?(String) && raw["lot_id"].match?(UUID) }
       lots = StockLot.where(id: candidates.uniq).index_by(&:id)
+      blocked = blocked_lot_ids(from, lots.keys)
       seen = Set.new
       rows = []
       problems = []
       items.each_with_index do |raw, index|
         next problems << problem("items[#{index}]", :invalid_request) unless raw.is_a?(Hash)
 
-        row, found = validate_row(raw, index, lots, seen, today)
+        row, found = validate_row(raw, index, lots, seen, today, from: from, blocked: blocked)
         problems.concat(found)
         rows << row if row
       end
       [ rows, problems ]
     end
 
-    def validate_row(raw, index, lots, seen, today)
+    def validate_row(raw, index, lots, seen, today, from:, blocked:)
       prefix = "items[#{index}]"
       problems = []
       lot = raw["lot_id"].is_a?(String) ? lots[raw["lot_id"]] : nil
       if lot.nil? || !seen.add?(lot.id)
         problems << problem("#{prefix}.lot_id", :invalid_items)
         lot = nil
+      elsif !Stock::Domain.allows?(from, lot)
+        problems << problem(prefix, :item_not_allowed_here)
+        lot = nil
       elsif lot.expires_on < today
         # O dia da validade ainda vale; o lote imutável não precisa de trava.
         problems << problem("#{prefix}.lot_id", :lot_expired)
+        lot = nil
+      elsif blocked.include?(lot.id)
+        problems << problem("#{prefix}.lot_id", :lot_blocked)
         lot = nil
       end
       quantity = Quantity.parse(raw["quantity"])
@@ -157,7 +176,22 @@ module Pharmacy
       (row_problems + extra).uniq.each_with_index.sort_by { |found, position| [ found[:path][/\Aitems\[(\d+)\]/, 1].to_i, position ] }.map(&:first)
     end
 
+    def destination?(from, to) = !to.nil? && to.kind == DESTINATIONS.fetch(from.kind)
+
+    # Lotes com bloqueio aberto (excursão de temperatura) na origem. -> Set
+    def blocked_lot_ids(from, lot_ids)
+      return Set.new if lot_ids.empty?
+
+      StockLotBlock.open_blocks.where(stock_location_id: from.id, stock_lot_id: lot_ids).pluck(:stock_lot_id).to_set
+    end
+
     # ---- sob trava ---------------------------------------------------------
+
+    # Bloqueio relido com os lotes travados. -> [ problem ]
+    def blocked_problems(from, rows)
+      blocked = blocked_lot_ids(from, rows.map { |row| row.lot.id })
+      rows.select { |row| blocked.include?(row.lot.id) }.map { |row| problem("items[#{row.index}].lot_id", :lot_blocked) }
+    end
 
     def lock_location(location, path)
       Ledger.lock_location!(location.id)
@@ -180,7 +214,7 @@ module Pharmacy
       Result.fail(first[:error], details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :persist, :write, :validate_rows, :validate_row, :balance_problems, :merge_by_line, :lock_location, :short_problems,
-                         :problem, :failure
+    private_class_method :persist, :write, :validate_rows, :validate_row, :balance_problems, :merge_by_line, :destination?, :blocked_lot_ids,
+                         :lock_location, :blocked_problems, :short_problems, :problem, :failure
   end
 end

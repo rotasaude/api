@@ -11,26 +11,37 @@
 # `problems` com pelo menos um problema. Recurso da URL
 # (`transfers/:id`) de outro escopo → 404. O catálogo da plataforma é lido
 # AQUI, fora da transação.
+#
+# Módulo 29 (Desvio 5; §15 V4): `from_location_id` opcional no envio (ausente =
+# o central de medicamentos; a rede de frio envia só para sala de vacina). O
+# interruptor é o do domínio do local (origem no envio; destino na leitura e
+# no recebimento); na sala, o papel é o da equipe (Pharmacy::Access): a
+# técnica (`vaccinator`) e o responsável (`room_lead`) recebem.
 module Pharmacy
   class TransfersController < BaseController
     SENDER_ROLES = %w[stock_keeper].freeze
     RECEIVER_ROLES = %w[stock_keeper pharmacist pharmacy_assistant].freeze
     PRELOAD = [ { from_location: :health_unit }, { to_location: :health_unit }, { items: :stock_lot } ].freeze
 
+    skip_before_action :require_pharmacy!
+    before_action :require_stock_feature!
     before_action :load_transfer, only: %i[show receive]
 
     def create
-      central = StockLocation.find_by(kind: "central")
-      return forbid unless central && Access.allowed?(user: Current.user, location: central, roles: SENDER_ROLES)
+      from = sender_location or return
+      return unless stock_feature_for!(from)
+      return forbid unless Access.allowed?(user: Current.user, location: from, roles: SENDER_ROLES)
 
       # Destino que o corpo não nomeia, não é uuid ou não existe segue como nil:
       # o comando recusa (`to_location_id`) junto das linhas.
       id = body_param("to_location_id")
       to = uuid?(id) ? StockLocation.find_by(id: id) : nil
-      return render_failure(Result.fail(:location_inactive, details: { path: "from" })) unless central.active
-      return render_failure(Result.fail(:location_inactive, details: { path: "to_location_id" })) if to&.unit? && !to.active
+      return render_failure(Result.fail(:location_inactive, details: { path: "from" })) unless from.active
+      if to && to.kind == SendTransfer::DESTINATIONS.fetch(from.kind) && !to.active
+        return render_failure(Result.fail(:location_inactive, details: { path: "to_location_id" }))
+      end
 
-      result = SendTransfer.call(from: central, to: to, items: body_param("items"), by: Current.user)
+      result = SendTransfer.call(from: from, to: to, items: body_param("items"), by: Current.user)
       return render_failure(result) if result.failure?
 
       render json: present_one(result.payload.fetch(:transfer)), status: :created
@@ -56,6 +67,7 @@ module Pharmacy
 
       location = listed_location
       return render_refusal("location_id") unless location
+      return unless stock_feature_for!(location)
       return forbid if Access.roles_at(user: Current.user, location: location).empty?
 
       status = params[:status]
@@ -76,12 +88,34 @@ module Pharmacy
 
     private
 
+    # Origem do envio: `from_location_id` do corpo (uuid de local existente de
+    # um tipo que envia; senão 422 `from_location_id`) ou, ausente, o central
+    # de medicamentos (sem central: 403, como antes). nil = já respondeu.
+    def sender_location
+      id = body_param("from_location_id")
+      if id.nil?
+        central = StockLocation.find_by(kind: "central")
+        return central if central
+
+        forbid
+        return nil
+      end
+      location = uuid?(id) ? StockLocation.find_by(id: id) : nil
+      return location if location && SendTransfer::DESTINATIONS.key?(location.kind)
+
+      render_refusal("from_location_id")
+      nil
+    end
+
     # Transferência da URL, só se o usuário tem algum papel na origem ou no
-    # destino; senão 404 (não diz que existe).
+    # destino; senão 404 (não diz que existe). O interruptor é o do domínio do
+    # destino (os dois locais são do mesmo domínio).
     def load_transfer
       @transfer = uuid?(params[:id]) ? StockTransfer.includes(*PRELOAD).find_by(id: params[:id]) : nil
       return not_found unless @transfer
       return not_found if [ @transfer.from_location, @transfer.to_location ].all? { |loc| Access.roles_at(user: Current.user, location: loc).empty? }
+
+      stock_feature_for!(@transfer.to_location)
     end
 
     def receiver? = Access.allowed?(user: Current.user, location: @transfer.to_location, roles: RECEIVER_ROLES)

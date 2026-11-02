@@ -40,12 +40,32 @@ module Pharmacy
     # <item> pela regra do YAML (fora de lote).
     def catalog_item(catalog_item) = item(catalog_item, dispensing_unit: DispensingUnit.for(catalog_item))
 
+    # <item> de imunobiológico (§15 V4/V18; D5 do dashboard): sem CATMAT, com o
+    # código e o nome do catálogo da sala, sempre em doses. As chaves do <item>
+    # de medicamento ficam (nulas ou fixas) e entram `immunobiological_code` e
+    # `item_kind`; o <item> de medicamento não muda.
+    def immunobiological_item(code)
+      { catalog_item_id: nil, catmat_code: nil, immunobiological_code: code, item_kind: Stock::Domain::IMMUNOBIOLOGICAL,
+        name: Vaccination::Immunobiologicals.find(code)&.name, unit: "dose", dispensing_unit: "dose", controlled: false, controlled_list: nil }
+    end
+
     # <lot>: `catalog` é { catalog_item_id => MedicationCatalogItem } (veja
     # `catalog_for`). A unidade de dispensação é a do LOTE, gravada na primeira
-    # entrada; `item.unit` continua sendo a da concentração.
+    # entrada; `item.unit` continua sendo a da concentração. Lote de
+    # imunobiológico (§15 V19): o <item> acima, o nome do fabricante pelo
+    # catálogo (a `key` gravada no lote; sem achar, o nome gravado) e a
+    # `manufacturer_key`; nunca o código RNDS do fabricante.
     def lot(lot, catalog:)
+      return immunobiological_lot(lot) if lot.immunobiological?
+
       { id: lot.id, item: item(catalog.fetch(lot.catalog_item_id), dispensing_unit: lot.dispensing_unit),
         lot_number: lot.lot_number, expires_on: lot.expires_on.iso8601, manufacturer: lot.manufacturer }
+    end
+
+    def immunobiological_lot(lot)
+      maker = Vaccination::Immunobiologicals.find(lot.immunobiological_code)&.manufacturer(lot.manufacturer_key)
+      { id: lot.id, item: immunobiological_item(lot.immunobiological_code), lot_number: lot.lot_number, expires_on: lot.expires_on.iso8601,
+        manufacturer: maker&.name || lot.manufacturer, manufacturer_key: lot.manufacturer_key }
     end
 
     # Entrada gravada (nota, doação ou abertura): `{ id, kind, location, items, at }`,
@@ -82,8 +102,15 @@ module Pharmacy
     # sem envelope. `quantity` é o EFEITO no estoque, com sinal (o delta da
     # contagem; perda e vencimento saem negativos, como o movimento). O motivo é
     # texto livre: só no corpo. `adjustment` carrega o local (com a unidade), o
-    # lote e os dois usuários (com o perfil, para o nome).
+    # lote e os dois usuários (com o perfil, para o nome). Lote de
+    # imunobiológico (§15 V4): mais `loss_code` (motivo SIES, nulo fora de
+    # perda e vencimento); o <adjustment> de medicamento não muda.
     def adjustment(adjustment, catalog:)
+      body = adjustment_body(adjustment, catalog)
+      adjustment.stock_lot.immunobiological? ? body.merge(loss_code: adjustment.loss_code) : body
+    end
+
+    def adjustment_body(adjustment, catalog)
       decider = adjustment.decided_by_user
       { id: adjustment.id, location: location(adjustment.stock_location), lot: lot(adjustment.stock_lot, catalog: catalog),
         kind: adjustment.kind, status: adjustment.status, quantity: Quantity.dump(adjustment.quantity),

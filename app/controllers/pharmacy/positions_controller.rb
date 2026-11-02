@@ -9,16 +9,31 @@
 # entre os itens com posição nos locais lidos: sem limite e sem o filtro de
 # item "prescritível"), `expiring` e `below_minimum` (`true`/`false`; `false` =
 # ausente), `before` (cursor) e `limit`. Todo 422 traz `problems`.
+#
+# Módulo 29 (Desvio 5; §15 V4/V18): local de vacina → Vaccination::StockPositions
+# (mesma forma, <item> de imunobiológico, `blocked` por lote, sem mínimos), com
+# o interruptor `vaccination`. Sem `location_id`, os locais lidos são os de
+# medicamento (com `pharmacy` utilizável) e os de vacina (com `vaccination`):
+# os dois domínios na mesma lista → 422 `location_id` (escolha o local). Na
+# vacina, `catalog_item_id` não casa nada, `below_minimum=true` não casa nada
+# (sem mínimos) e `q` casa o nome do catálogo da sala; o cursor é
+# `[location_id, código]`.
 module Pharmacy
   class PositionsController < BaseController
     include LocationReading
 
     FLAGS = { "true" => true, "false" => false }.freeze
+    IMMUNOBIOLOGICAL_CODE = /\A\d{1,10}\z/
+
+    skip_before_action :require_pharmacy!
+    before_action :require_stock_feature!
 
     def index
       return unless query_only!(:location_id, :q, :catalog_item_id, :expiring, :below_minimum, :before, :limit)
 
-      location_ids = readable_location_ids or return
+      locations = positions_locations or return
+      location_ids = locations.map(&:id)
+      immunobiological = Stock::Domain.immunobiological?(locations.first)
       expiring = flag(:expiring)
       below_minimum = flag(:below_minimum)
       return render_refusal(expiring.nil? ? "expiring" : "below_minimum") if expiring.nil? || below_minimum.nil?
@@ -28,7 +43,8 @@ module Pharmacy
 
       limit = page_limit or return
       cursor = params.key?(:before) ? Cursor.decode(params[:before]) : nil
-      return render_refusal("before", "invalid_cursor") if params.key?(:before) && !(cursor && cursor.size == 2 && cursor.all? { |part| uuid?(part) })
+      return render_refusal("before", "invalid_cursor") if params.key?(:before) && !valid_position_cursor?(cursor, immunobiological)
+      return vaccine_positions(location_ids, expiring: expiring, below_minimum: below_minimum, cursor: cursor, limit: limit) if immunobiological
 
       item_ids = item_ids_for(item_id, location_ids)
       return if performed?
@@ -39,6 +55,46 @@ module Pharmacy
     end
 
     private
+
+    # Locais lidos (todos do mesmo domínio): o `location_id` (legível e com o
+    # interruptor do domínio) ou os do usuário. nil = já respondeu.
+    def positions_locations
+      if params.key?(:location_id)
+        location = required_location or return nil
+        return stock_feature_for!(location) ? [ location ] : nil
+      end
+
+      locations = []
+      locations += Access.locations_for(Current.user) if stock_domain_usable?(Stock::Domain::MEDICATION)
+      locations += Access.vaccine_locations_for(Current.user) if stock_domain_usable?(Stock::Domain::IMMUNOBIOLOGICAL)
+      return forbid && nil if locations.empty?
+      return render_refusal("location_id") && nil if locations.map { |location| Stock::Domain.for(location) }.uniq.size > 1
+
+      locations
+    end
+
+    # [location_id, catalog_item_id] (dois uuids) ou, na vacina, [location_id, código].
+    def valid_position_cursor?(cursor, immunobiological)
+      return false unless cursor && cursor.size == 2 && uuid?(cursor.first)
+
+      immunobiological ? cursor.last.is_a?(String) && cursor.last.match?(IMMUNOBIOLOGICAL_CODE) : uuid?(cursor.last)
+    end
+
+    def vaccine_positions(location_ids, expiring:, below_minimum:, cursor:, limit:)
+      codes = nil
+      codes = [] if params.key?(:catalog_item_id) || below_minimum
+      if params.key?(:q) && params[:q].to_s.strip.present?
+        q = params[:q]
+        return render_refusal("q") unless q.is_a?(String) && q.strip.length.between?(Medications::Search::MIN_QUERY, Catalog::SEARCH_QUERY_MAX)
+
+        matched = Vaccination::StockPositions.codes_matching(q.strip)
+        codes = codes ? codes & matched : matched
+      end
+      return render json: { positions: [], next_before: nil } if codes&.empty?
+
+      render json: Vaccination::StockPositions.call(location_ids: location_ids, codes: codes, expiring: expiring, before: cursor, limit: limit,
+                                                    today: Time.zone.today, settings: Settings.current)
+    end
 
     # true | false | nil (valor inválido). Ausente e "false" valem false.
     def flag(key)
