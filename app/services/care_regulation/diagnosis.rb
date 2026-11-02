@@ -5,7 +5,8 @@
 # - médico: `cid10` obrigatório (`ciap2` opcional);
 # - enfermeiro e dentista: pelo menos um entre `cid10` (só se o CBO puder
 #   registrar CID-10, Ledi::ConsultationMapping.cid10_allowed?, ou se for
-#   dentista com o dental_care utilizável — O40) e `ciap2`;
+#   dentista com o dental_care utilizável — O40) e `ciap2`; `dental_care` vem
+#   do chamador, lido fora da transação (como o `regulating` do Finalize);
 # - `kept_cid10`: o CID-10 que já estava no pedido (complemento) conta e não é
 #   recusado, mesmo que o CBO não possa registrá-lo.
 # Códigos validados pelas releases ativas de ClinicalTerms (as mesmas dos
@@ -15,7 +16,7 @@ module CareRegulation
     module_function
 
     # -> Result.ok(cid10: String|nil, ciap2: String|nil) | fail(reason, details: { path: })
-    def check(cbo:, cid10:, ciap2:, kept_cid10: nil)
+    def check(cbo:, cid10:, ciap2:, kept_cid10: nil, dental_care: false)
       { "cid10" => cid10, "ciap2" => ciap2 }.each do |key, value|
         return refuse(:invalid_request, key) unless value.nil? || value.is_a?(String)
       end
@@ -31,7 +32,9 @@ module CareRegulation
       cid10 = cid10_code&.code
       kept = kept_cid10.is_a?(String) && kept_cid10.present? ? ClinicalTerms.normalize(kept_cid10) : nil
       cid10 ||= kept
-      allowed = Ledi::ConsultationMapping.cid10_allowed?(cbo) || dentist_with_dental_care?(cbo)
+      # Módulo 28 (contrato §16 O40; Desvio 9): o dentista (2232*) também pode
+      # mandar CID-10, enquanto o dental_care estiver utilizável na cidade.
+      allowed = Ledi::ConsultationMapping.cid10_allowed?(cbo) || (dental_care && Consultations::Cbos.role(cbo) == :dentist)
 
       if kind == :physician
         return refuse(:diagnosis_required, "cid10") unless cid10
@@ -44,11 +47,7 @@ module CareRegulation
       Result.ok(cid10: cid10, ciap2: ciap2_code&.code)
     end
 
-    # Módulo 28 (contrato §16 O40; Desvio 9): o dentista (2232*) também pode
-    # mandar CID-10, enquanto o dental_care estiver utilizável na cidade.
-    def dentist_with_dental_care?(cbo) = Consultations::Cbos.role(cbo) == :dentist && DentalCare::Gate.usable?(Current.city)
-
     def refuse(reason, path) = Result.fail(reason, details: { path: path })
-    private_class_method :refuse, :dentist_with_dental_care?
+    private_class_method :refuse
   end
 end

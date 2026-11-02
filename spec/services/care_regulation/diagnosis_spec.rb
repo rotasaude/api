@@ -42,16 +42,19 @@ RSpec.describe CareRegulation::Diagnosis do
   end
 
   describe "dentista com dental_care utilizável (módulo 28, O40: Desvio 9)" do
-    before { Platform::Features.set!(city: Current.city, key: "dental_care", enabled: true, maintainer: ledi_maintainer!) }
-
     it "cid10 sozinho → ok; ciap2 sozinho também basta; nada → diagnosis_required (path cid10)" do
-      expect(check("223208", cid10: "i10").payload).to eq(cid10: "I10", ciap2: nil)
-      expect(check("223212", ciap2: "K86").payload).to eq(cid10: nil, ciap2: "K86")
-      expect(refusal(check("223208"))).to eq([ :diagnosis_required, { path: "cid10" } ])
+      expect(check("223208", cid10: "i10", dental_care: true).payload).to eq(cid10: "I10", ciap2: nil)
+      expect(check("223212", ciap2: "K86", dental_care: true).payload).to eq(cid10: nil, ciap2: "K86")
+      expect(refusal(check("223208", dental_care: true))).to eq([ :diagnosis_required, { path: "cid10" } ])
     end
 
-    it "a enfermeira segue sem cid10" do
-      expect(refusal(check("223505", cid10: "I10"))).to eq([ :cid10_not_allowed_for_cbo, { path: "cid10" } ])
+    it "desligado nada muda: cid10 → cid10_not_allowed_for_cbo; o mantido no complemento conta e não é recusado" do
+      expect(refusal(check("223208", cid10: "I10", ciap2: "K86"))).to eq([ :cid10_not_allowed_for_cbo, { path: "cid10" } ])
+      expect(check("223208", kept_cid10: "I10").payload).to eq(cid10: "I10", ciap2: nil)
+    end
+
+    it "a enfermeira segue sem cid10 mesmo com o interruptor ligado" do
+      expect(refusal(check("223505", cid10: "I10", dental_care: true))).to eq([ :cid10_not_allowed_for_cbo, { path: "cid10" } ])
     end
   end
 

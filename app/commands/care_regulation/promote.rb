@@ -17,12 +17,13 @@ module CareRegulation
     module_function
 
     # -> Result.ok(count:, not_sent: [ { index:, id:, error:, path: } ])
-    def call(consultation:, by:, addendum: nil, now: Time.current)
+    # `dental_care` (O40): o interruptor lido pelo chamador fora da transação.
+    def call(consultation:, by:, addendum: nil, now: Time.current, dental_care: false)
       drafts = RegulationRequest.where(consultation_id: consultation.id, status: "draft").order(:created_at, :id).lock.to_a
       count = 0
       not_sent = []
       drafts.each_with_index do |draft, index|
-        target = revalidate(draft, consultation, now)
+        target = revalidate(draft, consultation, now, dental_care)
         if target.is_a?(Result)
           not_sent << { index: index, id: draft.id, error: target.reason.to_s, path: target.details[:path] }.compact
           next
@@ -35,7 +36,7 @@ module CareRegulation
     end
 
     # -> Target | Result (recusa, com path).
-    def revalidate(draft, consultation, now)
+    def revalidate(draft, consultation, now, dental_care)
       resolved = Targets.resolve(type: draft.target_type, code: draft.target_code, on: now.in_time_zone.to_date)
       return resolved if resolved.failure?
 
@@ -45,7 +46,7 @@ module CareRegulation
         return Result.fail(:cbo_not_allowed, details: { path: "target_code" })
       end
 
-      diagnosis = Diagnosis.check(cbo: cbo, cid10: draft.cid10, ciap2: draft.ciap2)
+      diagnosis = Diagnosis.check(cbo: cbo, cid10: draft.cid10, ciap2: draft.ciap2, dental_care: dental_care)
       diagnosis.failure? ? diagnosis : target
     end
 

@@ -19,6 +19,8 @@ module CareRegulation
     def call(consultation:, attrs:, by:, request: nil)
       return Result.fail(:missing_role) unless by&.has_role?("health_professional")
 
+      # O40: o interruptor é lido fora da transação.
+      dental_care = DentalCare::Gate.usable?(Current.city)
       ApplicationRecord.transaction do
         consultation.lock!
         next Result.fail(:not_found) if consultation.discarded?
@@ -33,7 +35,7 @@ module CareRegulation
           next Result.fail(:invalid_transition) unless draft.status == "draft"
         end
 
-        checked = check(consultation, attrs)
+        checked = check(consultation, attrs, dental_care)
         next checked if checked.is_a?(Result)
 
         if draft.nil? && draft_count(consultation) >= Catalog::MAX_PER_CONSULTATION
@@ -45,7 +47,7 @@ module CareRegulation
     end
 
     # -> Hash com os valores a gravar | Result (recusa).
-    def check(consultation, attrs)
+    def check(consultation, attrs, dental_care)
       shape = shape(attrs)
       return shape if shape.is_a?(Result)
 
@@ -56,7 +58,7 @@ module CareRegulation
       cbo = consultation.cbo_code
       return Result.fail(:cbo_not_allowed) unless Requesters.check(cbo: cbo, target: target) == :ok
 
-      diagnosis = Diagnosis.check(cbo: cbo, cid10: shape["cid10"], ciap2: shape["ciap2"])
+      diagnosis = Diagnosis.check(cbo: cbo, cid10: shape["cid10"], ciap2: shape["ciap2"], dental_care: dental_care)
       return diagnosis if diagnosis.failure?
 
       justification = shape["justification"]

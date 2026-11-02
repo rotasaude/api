@@ -34,6 +34,7 @@ module Consultations
       signing = Signatures::Gate.usable?(Current.city)
       tracking = Exams::Gate.usable?(Current.city)
       regulating = CareRegulation::Gate.usable?(Current.city)
+      dental_care = DentalCare::Gate.usable?(Current.city)
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
         attendance = Attendance.lock.find(consultation.attendance_id)
@@ -52,7 +53,7 @@ module Consultations
         end
         DentalCare::Materialize.call(consultation: consultation, patient: patient, by: by) if consultation.dental?
         consultation.update!(status: "finalized", finalized_at: Time.current, draft_items: {})
-        promoted = CareRegulation::Promote.call(consultation: consultation, by: by) if regulating
+        promoted = CareRegulation::Promote.call(consultation: consultation, by: by, dental_care: dental_care) if regulating
         regulation = promoted && (promoted.payload[:count] + promoted.payload[:not_sent].size)
         closed = Attendances::Close.call(attendance: attendance, outcome: outcome["outcome"],
                                          referral_unit_id: outcome["referral_unit_id"],

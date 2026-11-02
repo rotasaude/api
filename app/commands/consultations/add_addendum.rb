@@ -54,6 +54,7 @@ module Consultations
       signing = Signatures::Gate.usable?(Current.city)
       tracking = Exams::Gate.usable?(Current.city)
       regulating = CareRegulation::Gate.usable?(Current.city)
+      dental_care = DentalCare::Gate.usable?(Current.city)
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
         consultation.lock!
@@ -72,7 +73,7 @@ module Consultations
           result = failure
           raise ActiveRecord::Rollback
         end
-        promoted = CareRegulation::Promote.call(consultation: consultation, by: by, addendum: addendum) if regulating
+        promoted = CareRegulation::Promote.call(consultation: consultation, by: by, addendum: addendum, dental_care: dental_care) if regulating
         Signatures::OpenRequest.call(addendum, usable: signing)
         DomainEvents.publish("consultation.addendum_added", consultation_id: consultation.id, addendum_id: addendum.id)
         # ADR 0031 (spec §6): mudança estruturada regera (ou vira correção pendente).

@@ -42,12 +42,14 @@ module CareRegulation
       cbo = links.map(&:cbo_code).find { |code| Requesters.check(cbo: code, target: target) == :ok }
       return Result.fail(:cbo_not_allowed) unless cbo
 
+      # O40: o interruptor é lido fora da transação.
+      dental_care = DentalCare::Gate.usable?(Current.city)
       ApplicationRecord.transaction(requires_new: true) do
         request.lock!(Decide::LOCK)
         next Result.fail(:stale_version) if version != request.version
         next Result.fail(:invalid_transition) unless request.status == "returned"
 
-        changes = values(request, attrs, cbo)
+        changes = values(request, attrs, cbo, dental_care)
         next changes if changes.is_a?(Result)
 
         resulting = request.color || changes.fetch(:suggested_color)
@@ -76,11 +78,11 @@ module CareRegulation
     # -> Hash a gravar | Result (recusa). Ausente mantém; null limpa. Quando o
     # cid10 vem ausente, o atual entra como kept (nem revalidado nem recusado);
     # com null não há o que manter.
-    def values(request, attrs, cbo)
+    def values(request, attrs, cbo, dental_care)
       cid10 = attrs.fetch("cid10", nil)
       kept = attrs.key?("cid10") && attrs["cid10"].nil? ? nil : request.cid10
       ciap2 = attrs.key?("ciap2") ? attrs["ciap2"] : request.ciap2
-      diagnosis = Diagnosis.check(cbo: cbo, cid10: cid10, ciap2: ciap2, kept_cid10: kept)
+      diagnosis = Diagnosis.check(cbo: cbo, cid10: cid10, ciap2: ciap2, kept_cid10: kept, dental_care: dental_care)
       return diagnosis if diagnosis.failure?
 
       text = attrs.fetch("justification").strip
