@@ -2,8 +2,9 @@
 # do C2, item g e Quadro 05), pela interpretação de config/vaccination/c2_schedule.yml:
 # penta, VIP, SCR e pneumocócica com todas as doses, contadas POR COMPONENTE
 # (a hexa vale para a penta e para a VIP; a SCRV para a SCR), com intervalo
-# mínimo entre doses do mesmo componente e idade mínima do grupo (SCR a partir
-# de 365 dias de vida). Ruby puro: recebe as doses ATIVAS (transcrição inclusive).
+# mínimo entre doses do mesmo componente (em dias) e idade mínima do grupo em
+# idade de calendário (SCR a partir dos 12 meses: Calendar::Age, a mesma
+# fronteira da caderneta; nunca dias corridos). Ruby puro: recebe as doses ATIVAS (transcrição inclusive).
 module Vaccination
   module C2
     module_function
@@ -18,7 +19,7 @@ module Vaccination
       end
       gap = schedule.fetch("min_interval_days")
       closed = schedule.fetch("groups").flat_map do |group|
-        from = birth_date + group["min_age_days"].to_i
+        from = Calendar::Age.parse(group["min_age"])&.from(birth_date) || birth_date
         group.fetch("components").map { |component| nth_valid(by_component[component], from: from, gap: gap, need: group.fetch("doses")) }
       end
       closed.all? ? closed.max : nil

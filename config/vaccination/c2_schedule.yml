@@ -3,11 +3,12 @@
 version: 1
 source: "Nota metodológica C2 (SAPS, 19/06/2026), item g e Quadro 05"
 review: true
+# Idades por aritmética de calendário (Vaccination::Calendar::Age, como o calendário); intervalos em dias.
 min_interval_days: 30
 groups:
   - { key: penta, doses: 3, components: [diphtheria, tetanus, pertussis, hepb, hib] }
   - { key: vip, doses: 3, components: [polio] }
-  - { key: mmr, doses: 2, components: [measles, mumps, rubella], min_age_days: 365 }
+  - { key: mmr, doses: 2, components: [measles, mumps, rubella], min_age: { months: 12 } }
   - { key: pneumo, doses: 2, components: [pneumo] }
 codes:
   "9": [hepb]
