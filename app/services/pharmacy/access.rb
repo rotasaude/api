@@ -46,20 +46,9 @@ module Pharmacy
       linked && granted(user, %w[stock_keeper]).any?
     end
 
-    # Locais ATIVOS de vacina que o usuário lê: todos, para o almoxarife da rede
-    # de frio; senão a rede de frio (se é almoxarife dela) e as salas onde tem
-    # papel. Ordem estável: nome, id.
-    def vaccine_locations_for(user)
-      scope = StockLocation.active_locations.where(kind: Stock::Domain::IMMUNOBIOLOGICAL_LOCATION_KINDS).includes(:health_unit).order(:name, :id)
-      return scope.to_a if cold_chain_keeper?(user)
-
-      room_location_ids = Vaccination::Access.rooms_for(user).map(&:stock_location_id)
-      scope.where(id: room_location_ids).to_a
-    end
-
     # Locais ativos de MEDICAMENTO (central e unidades) onde o usuário tem
     # algum papel; o almoxarife do central vê todos os ativos. Ordem estável:
-    # nome, id. Os locais de vacina ficam em vaccine_locations_for.
+    # nome, id. Os locais de vacina saem por /vaccination/my_locations.
     def locations_for(user)
       scope = StockLocation.active_locations.where(kind: Catalog::LOCATION_KINDS).includes(:health_unit).order(:name, :id)
       return scope.to_a if central_keeper?(user)

@@ -11,6 +11,10 @@
 # Módulo 29 (Desvio 5): o local de vacina (rede de frio, sala) entra com o
 # interruptor `vaccination` (o do domínio do local, conferido logo depois do
 # local e antes do papel); na sala, o papel é o da equipe (Pharmacy::Access).
+# A sala NÃO recebe nota nem doação (§7, Desvio 6: só chega por transferência
+# da rede de frio): `receipts` num `vaccine_room` → 403 missing_role, antes do
+# papel. O inventário inicial da sala é só do `room_lead` (traduzido para
+# `stock_keeper`; a técnica, `pharmacy_assistant`, não passa).
 module Pharmacy
   class EntriesController < BaseController
     RECEIPT_KINDS = %w[invoice donation].freeze
@@ -20,6 +24,7 @@ module Pharmacy
     before_action :load_location
 
     def receipt
+      return forbid if @location.vaccine_room?
       return forbid unless allowed?(%w[stock_keeper])
       return render_error(:location_inactive, :conflict) unless @location.active
 

@@ -23,7 +23,7 @@ module Pharmacy
       location = required_location or return
       return unless stock_feature_for!(location)
       lot = uuid?(params[:id]) ? StockLot.find_by(id: params[:id]) : nil
-      return not_found unless lot && present_at?(location, lot)
+      return not_found unless lot && Stock::Domain.allows?(location, lot) && present_at?(location, lot)
 
       limit = page_limit or return
       cursor = params.key?(:before) ? Cursor.decode(params[:before]) : nil

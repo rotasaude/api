@@ -12,9 +12,9 @@
 #
 # Módulo 29 (Desvio 5; §15 V4/V18): local de vacina → Vaccination::StockPositions
 # (mesma forma, <item> de imunobiológico, `blocked` por lote, sem mínimos), com
-# o interruptor `vaccination`. Sem `location_id`, os locais lidos são os de
-# medicamento (com `pharmacy` utilizável) e os de vacina (com `vaccination`):
-# os dois domínios na mesma lista → 422 `location_id` (escolha o local). Na
+# o interruptor `vaccination`. Sem `location_id`, os locais lidos são só os de
+# medicamento, como antes do 29 (com `pharmacy` desligado → 403
+# feature_disabled pharmacy): o local de vacina pede `location_id`. Na
 # vacina, `catalog_item_id` não casa nada, `below_minimum=true` não casa nada
 # (sem mínimos) e `q` casa o nome do catálogo da sala; o cursor é
 # `[location_id, código]`.
@@ -64,11 +64,11 @@ module Pharmacy
         return stock_feature_for!(location) ? [ location ] : nil
       end
 
-      locations = []
-      locations += Access.locations_for(Current.user) if stock_domain_usable?(Stock::Domain::MEDICATION)
-      locations += Access.vaccine_locations_for(Current.user) if stock_domain_usable?(Stock::Domain::IMMUNOBIOLOGICAL)
+      require_pharmacy!
+      return nil if performed?
+
+      locations = Access.locations_for(Current.user)
       return forbid && nil if locations.empty?
-      return render_refusal("location_id") && nil if locations.map { |location| Stock::Domain.for(location) }.uniq.size > 1
 
       locations
     end

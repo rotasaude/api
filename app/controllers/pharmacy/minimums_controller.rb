@@ -3,6 +3,8 @@
 # grava os de qualquer local). Mínimo não é dado sensível: o PUT não pede
 # step-up. Corpo e resposta: `{ minimums: [ { catalog_item_id, minimum, item } ] }`
 # (`item` só na saída; o que vier na entrada é ignorado).
+# Módulo 29 (Desvio 4): só de medicamento; local de vacina (rede de frio, sala)
+# → 404, como inexistente (os mínimos de vacina ainda não existem).
 module Pharmacy
   class MinimumsController < BaseController
     before_action :load_location
@@ -23,7 +25,7 @@ module Pharmacy
 
     def load_location
       @location = uuid?(params[:id]) && StockLocation.find_by(id: params[:id])
-      not_found unless @location
+      not_found unless @location && !Stock::Domain.immunobiological?(@location)
     end
 
     def require_keeper

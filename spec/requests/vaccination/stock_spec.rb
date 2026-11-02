@@ -200,19 +200,24 @@ RSpec.describe "Estoque de imunobiológicos pelas rotas do 27a", type: :request 
       expect(DomainEvent.where(name: "clinical_record.viewed")).to be_empty
     end
 
-    it "sem location_id: os locais de vacina da pessoa; com locais dos dois domínios → 422 location_id" do
+    it "sem location_id: só os locais de medicamento, como no 27a; vacina pede location_id (almoxarife dos dois, o perfil da semente)" do
       vaccine_lot!(central, doses: 10)
       sign_in_as(keeper)
       get "/pharmacy/positions"
-      expect(response).to have_http_status(:ok)
-      expect(json_body["positions"].map { |p| p["location"]["id"] }).to eq([ central.id ])
+      expect(json_body).to eq("error" => "feature_disabled", "feature" => "pharmacy")
 
       pharmacy_city!
-      Membership.create!(user: keeper, role: "stock_keeper", granted_at: Time.current) unless keeper.has_role?("stock_keeper")
-      StockLocationStaff.create!(stock_location: central_location!, user: keeper, role: "stock_keeper", granted_by_user: pharmacy_admin!, granted_at: Time.current)
+      med_central = central_location!
+      med = stocked_lot!(med_central, item: losartana)
+      StockLocationStaff.create!(stock_location: med_central, user: keeper, role: "stock_keeper", granted_by_user: pharmacy_admin!, granted_at: Time.current)
       get "/pharmacy/positions"
-      expect(response).to have_http_status(:unprocessable_entity)
-      expect(json_body["path"]).to eq("location_id")
+      expect(response).to have_http_status(:ok)
+      expect(json_body["positions"].map { |p| p["location"]["id"] }.uniq).to eq([ med_central.id ])
+      expect(json_body["positions"].sole["lots"].sole["lot"]["id"]).to eq(med.id)
+
+      get "/pharmacy/positions", params: { location_id: central.id }
+      expect(response).to have_http_status(:ok)
+      expect(json_body["positions"].sole["item"]["immunobiological_code"]).to eq("42")
     end
 
     it "o almoxarife da rede de frio lê a posição da sala; a técnica de outra sala não" do
@@ -233,6 +238,54 @@ RSpec.describe "Estoque de imunobiológicos pelas rotas do 27a", type: :request 
       expect(json_body["lot"]["item"]).to eq(penta_item)
       expect(json_body["balance"]).to eq("7.00")
       expect(json_body["movements"].sole).to include("kind" => "receipt", "quantity" => "7.00")
+    end
+  end
+
+  describe "ações só de farmácia ficam fora dos locais de vacina" do
+    it "a sala não recebe nota nem doação, nem do responsável (só transferência); o inventário inicial segue dele" do
+      stepped_up!(room_lead!)
+      receipt([ line ], location: room.stock_location)
+      expect(response).to have_http_status(:forbidden)
+      expect(json_body).to eq("error" => "missing_role")
+      json_post "/pharmacy/receipts", location_id: room.stock_location_id, document: { kind: "donation", number: "D1", supplier: "Regional" },
+                                      items: [ line ]
+      expect(response).to have_http_status(:forbidden)
+      expect(StockLot.count).to eq(0)
+
+      sign_in_as(keeper)
+      receipt
+      expect(response).to have_http_status(:created)
+    end
+
+    it "mínimos e alertas: local de vacina → 404, inclusive para o responsável da sala e o almoxarife do central" do
+      pharmacy_city!
+      central_keeper = pharmacy_staff!(central_location!, "stock_keeper")
+      [ room_lead!, central_keeper, keeper ].each do |user|
+        sign_in_as(user)
+        [ room.stock_location, central ].each do |location|
+          get "/pharmacy/locations/#{location.id}/minimums"
+          expect(response).to have_http_status(:not_found)
+          json_put "/pharmacy/locations/#{location.id}/minimums", minimums: [ { catalog_item_id: losartana.id, minimum: "10" } ]
+          expect(response).to have_http_status(:not_found)
+        end
+      end
+      expect(StockMinimum.count).to eq(0)
+
+      sign_in_as(room_lead!)
+      get "/pharmacy/alerts", params: { location_id: room.stock_location_id }
+      expect(response).to have_http_status(:not_found)
+      sign_in_as(keeper)
+      get "/pharmacy/alerts", params: { location_id: central.id }
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "extrato: lote de vacina pedido num local de medicamento → 404" do
+      pharmacy_city!
+      med_central = central_location!
+      lot = vaccine_lot!(central, doses: 5)
+      sign_in_as(pharmacy_staff!(med_central, "stock_keeper"))
+      get "/pharmacy/lots/#{lot.id}/movements", params: { location_id: med_central.id }
+      expect(response).to have_http_status(:not_found)
     end
   end
 
