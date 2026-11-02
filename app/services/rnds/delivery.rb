@@ -21,9 +21,17 @@ module Rnds
   class Delivery
     PAUSE_MESSAGE = "A RNDS recusou a credencial durante o envio; o envio está pausado.".freeze
     ORIGINAL_WITHOUT_RNDS_ID = "original_without_rnds_id".freeze
+    # Orçamento do lote, bem abaixo da janela de `release_stale!` (10 min): o
+    # último envio começa antes de 4 min e, no pior caso (token + POST com
+    # timeout, ~1 min), termina muito antes de outra execução poder
+    # reivindicar as linhas. Esgotado, o resto volta a `pending` sem tentativa.
+    BUDGET = 4.minutes
+    MONOTONIC = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
 
-    def initialize(city)
+    def initialize(city, budget: BUDGET, clock: MONOTONIC)
       @city = city
+      @budget = budget.to_f
+      @clock = clock
       settings = Rnds::Mock.on?(city) ? Rnds::Config.simulated : Rnds::Config.real(city)
       @client = Rnds::Client.for(city, settings: settings)
       @credential = IntegrationCredential.find_by!(kind: "rnds")
@@ -32,10 +40,16 @@ module Rnds
 
     # -> :done | :paused
     def run(entries)
+      token = entries.first&.last_attempted_at # o token do claim, antes de qualquer transição mudar a coluna
+      started = @clock.call
       entries.each_with_index do |entry, index|
-        next unless deliver(entry) == :paused
+        if @clock.call - started > @budget
+          RndsOutboxEntry.release!(entries[index..].map(&:id), token: token)
+          return :done
+        end
+        next unless deliver(entry, token) == :paused
 
-        RndsOutboxEntry.release!(entries[index..].map(&:id))
+        RndsOutboxEntry.release!(entries[index..].map(&:id), token: token)
         return :paused
       end
       :done
@@ -43,7 +57,7 @@ module Rnds
 
     private
 
-    def deliver(entry)
+    def deliver(entry, token)
       immunization = entry.immunization
       original_rnds_id = nil
       if entry.kind == "cancellation"
@@ -55,7 +69,9 @@ module Rnds
       return retry_later(entry, "identity_check_unavailable") if verdict == :retry_later
       return entry.block!(verdict.last) if verdict.is_a?(Array)
 
-      send_bundle(entry, immunization, original_rnds_id)
+      send_bundle(entry, immunization, original_rnds_id, token)
+    rescue RndsOutboxEntry::LostClaim
+      :lost # outra execução é dona da linha: não envia, não mexe
     rescue *Maintenance::CityConnectionErrors::CLASSES
       retry_later(entry, "city_unreachable")
     rescue StandardError => e
@@ -63,10 +79,10 @@ module Rnds
       retry_later(entry, "internal_error")
     end
 
-    def send_bundle(entry, immunization, original_rnds_id)
+    def send_bundle(entry, immunization, original_rnds_id, token)
       bundle = Rnds::Bundle.build(immunization: immunization, kind: entry.kind, cnes: @credential.requester_cnes, now: Time.current,
                                   original_rnds_id: original_rnds_id)
-      previous = entry.sending!(bundle)
+      previous = entry.sending!(bundle, token: token)
       response = @client.post_bundle(bundle, practitioner_cns: immunization.vaccinator_user.professional&.cns)
       case response.status
       when :accepted then entry.accept!(response.rnds_id)

@@ -42,24 +42,35 @@ class RndsOutboxEntry < ApplicationRecord
 
   def attempted? = ATTEMPTED_STATUSES.include?(status) || (status == "pending" && first_attempt_at.present?)
 
+  # A execução que reivindicou perdeu a linha (`release_stale!` + claim de
+  # outra execução): ela não envia nem devolve a linha.
+  class LostClaim < StandardError; end
+
   # Reivindica um lote vencido: transação curta, SKIP LOCKED (duas execuções
   # nunca pegam a mesma linha; o cancelamento da dose trava a `application`
   # FOR UPDATE e o claim passa por cima), e a linha sai `sending` — o HTTP
   # acontece FORA desta transação. `first_attempt_at` NÃO é gravado aqui: só
   # quando o Bundle sai (`sending!`), porque validação, bloqueio e credencial
   # recusada não chegam à RNDS (V23: "nunca tentada" = sem first_attempt_at).
+  #
+  # Posse: o claim grava `last_attempted_at` = o instante do claim, o TOKEN do
+  # lote (o mesmo em todas as linhas dele). `sending!` e `release!` só agem
+  # sobre a linha ainda `sending` com esse token: uma execução lenta cujas
+  # linhas foram devolvidas por `release_stale!` e reivindicadas por outra
+  # nunca as envia de novo nem as tira da outra.
   def self.claim!(limit:, now: Time.current)
     ids = transaction do
       picked = claimable(now).order(:next_attempt_at, :id).limit(limit).lock("FOR UPDATE SKIP LOCKED").pluck(:id)
-      where(id: picked).update_all(status: "sending", block_reason: nil, updated_at: now) if picked.any?
+      where(id: picked).update_all(status: "sending", block_reason: nil, last_attempted_at: now, updated_at: now) if picked.any?
       picked
     end
     where(id: ids).order(:next_attempt_at, :id).to_a
   end
 
-  # Devolve a pending sem contar tentativa (pausa, credencial recusada, ensure).
-  def self.release!(ids, now: Time.current)
-    where(id: ids, status: "sending").update_all(status: "pending", updated_at: now)
+  # Devolve a pending sem contar tentativa (pausa, credencial recusada, ensure,
+  # orçamento do lote esgotado) — só as linhas ainda deste lote (`token`).
+  def self.release!(ids, token:, now: Time.current)
+    where(id: ids, status: "sending", last_attempted_at: token).update_all(status: "pending", updated_at: now)
   end
 
   # `sending` esquecido (processo morto no meio do lote) volta à fila.
@@ -67,13 +78,20 @@ class RndsOutboxEntry < ApplicationRecord
     where(status: "sending").where(updated_at: ...before).update_all(status: "pending", updated_at: now)
   end
 
-  # O Bundle vai sair agora: guarda o payload cifrado e marca a tentativa ANTES
-  # do HTTP (timeout ou processo morto depois daqui = resultado desconhecido =
-  # tentada). Devolve o `first_attempt_at` anterior, para `unsent!` desfazer.
-  def sending!(bundle, now: Time.current)
-    previous = first_attempt_at
-    update!(payload: JSON.generate(bundle), first_attempt_at: first_attempt_at || now, sent_at: now)
-    previous
+  # O Bundle vai sair agora: reafirma a posse (linha travada, ainda `sending`
+  # com o token deste lote; senão LostClaim e nada sai), guarda o payload
+  # cifrado e marca a tentativa ANTES do HTTP (timeout ou processo morto
+  # depois daqui = resultado desconhecido = tentada). Devolve o
+  # `first_attempt_at` anterior, para `unsent!` desfazer.
+  def sending!(bundle, token:, now: Time.current)
+    transaction do
+      owned = self.class.where(id: id, status: "sending", last_attempted_at: token).lock("FOR UPDATE").pick(:id)
+      raise LostClaim unless owned
+
+      previous = first_attempt_at
+      update!(payload: JSON.generate(bundle), first_attempt_at: first_attempt_at || now, sent_at: now)
+      previous
+    end
   end
 
   # A RNDS recusou a credencial antes de aceitar o Bundle: não foi tentada.

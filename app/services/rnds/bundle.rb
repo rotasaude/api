@@ -17,6 +17,11 @@ module Rnds
 
     module_function
 
+    # `cnes`: o CNES solicitante da credencial (`requester_cnes`) = custodiante.
+    # O executante (`performer[0]`) é o CNES da unidade da dose (o mesmo que a
+    # NT 115 confere no Rnds::Validation); na transcrição a dose foi aplicada
+    # fora, a unidade que transcreveu não é a executante e o esqueleto exige o
+    # campo (1..1): cai no solicitante (gate de homologação).
     # -> Hash (chaves String)
     def build(immunization:, kind:, cnes:, now:, original_rnds_id: nil)
       raise ArgumentError, "unknown rnds bundle kind" unless KINDS.include?(kind)
@@ -25,7 +30,7 @@ module Rnds
       profile = Profile.current
       urls = { bundle: urn(immunization, kind, "bundle"), composition: urn(immunization, kind, "composition"),
                immunization: urn(immunization, kind, "immunization") }
-      resource = immunization_resource(immunization, kind, cnes, profile)
+      resource = immunization_resource(immunization, kind, performer_cnes(immunization, cnes), profile)
       composition = composition_resource(immunization, kind, cnes, now, original_rnds_id, urls[:immunization], profile)
       { "resourceType" => "Bundle",
         "identifier" => { "system" => profile.identifiers[:bundle], "value" => urls[:bundle].delete_prefix("urn:uuid:") },
@@ -122,12 +127,18 @@ module Rnds
       { "system" => profile.identifiers[:practitioner_cns], "value" => imm.vaccinator_user.professional&.cns }
     end
 
+    def performer_cnes(imm, requester_cnes)
+      return requester_cnes if imm.transcription
+
+      imm.health_unit&.cnes.presence || requester_cnes
+    end
+
     def facility_identifier(cnes, profile) = { "system" => profile.identifiers[:cnes], "value" => cnes }
 
     # UUID estável por dose e tipo: o mesmo Bundle remontado tem os mesmos ids.
     def urn(imm, kind, part) = "urn:uuid:#{Digest::UUID.uuid_v5(NAMESPACE, "#{imm.id}/#{kind}/#{part}")}"
 
     private_class_method :composition_resource, :immunization_resource, :extensions, :maternal_condition, :coding_extension, :coding, :add_coding,
-                         :lot_number, :manufacturer_code, :patient_identifier, :practitioner_identifier, :facility_identifier, :urn
+                         :lot_number, :manufacturer_code, :performer_cnes, :patient_identifier, :practitioner_identifier, :facility_identifier, :urn
   end
 end

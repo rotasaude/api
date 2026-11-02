@@ -26,6 +26,7 @@ module Rnds
       entries = RndsOutboxEntry.claim!(limit: BATCH_SIZE)
       return if entries.empty?
 
+      token = entries.first.last_attempted_at # posse do lote (RndsOutboxEntry.claim!)
       begin
         Rnds::Delivery.new(city).run(entries)
       rescue Rnds::Errors::NotConfigured => e
@@ -33,7 +34,7 @@ module Rnds
         Rails.logger.warn("[Rnds::DeliverJob] city=#{city.slug} #{e.class.name}")
       ensure
         # O que escapou do caminho por entrada não fica preso em sending.
-        RndsOutboxEntry.release!(entries.map(&:id))
+        RndsOutboxEntry.release!(entries.map(&:id), token: token)
       end
     end
   end

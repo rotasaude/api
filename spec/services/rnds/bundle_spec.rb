@@ -2,7 +2,7 @@ require "rails_helper"
 
 RSpec.describe Rnds::Bundle do
   let!(:city) { vaccination_city! }
-  let(:room) { vaccine_room! }
+  let(:room) { vaccine_room!(create_unit("UBS Vacina", cnes: "7654321")) }
   let(:dose) do
     create_immunization!(room, immunobiological_code: "42", dose_code: "1", strategy: "1", care_group: "121", route: "3", site: "18",
                                maternal_condition: "1", applied_at: Time.zone.parse("2026-11-03 09:15"))
@@ -35,6 +35,16 @@ RSpec.describe Rnds::Bundle do
     expect(immunization).not_to have_key("lotNumber")
     flag = immunization["extension"].find { |e| e["url"] == Rnds::Profile.current.extensions[:transcription] }
     expect(flag["valueBoolean"]).to be(true)
+    expect(Rnds::Skeleton.problems(bundle)).to eq([])
+  end
+
+  it "executante = CNES da unidade da dose; custodiante = CNES solicitante; transcrição cai no solicitante" do
+    composition, immunization = build["entry"].map { |e| e["resource"] }
+    expect(composition.dig("custodian", "identifier", "value")).to eq("1234567")
+    expect(immunization.dig("performer", 0, "actor", "identifier", "value")).to eq("7654321")
+    transcribed = create_immunization!(room, **transcribed_attrs, lot_number_text: nil)
+    bundle = build(transcribed)
+    expect(bundle["entry"].last["resource"].dig("performer", 0, "actor", "identifier", "value")).to eq("1234567")
     expect(Rnds::Skeleton.problems(bundle)).to eq([])
   end
 

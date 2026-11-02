@@ -240,6 +240,42 @@ RSpec.describe Rnds::DeliverJob do
     expect(entry(dose).status).to eq("accepted")
   end
 
+  it "entrada roubada (release_stale! + claim de outra execução) não é enviada nem devolvida pela execução antiga" do
+    first = record!(room, child, by: vaccinator)
+    second = record!(room, vaccine_patient!(birth_date: Date.current - 61), by: vaccinator)
+    stale = RndsOutboxEntry.claim!(limit: 20)
+    RndsOutboxEntry.where(id: stale.map(&:id)).update_all(updated_at: 11.minutes.ago)
+    fresh = travel(1.second) do
+      RndsOutboxEntry.release_stale!(before: 10.minutes.ago)
+      RndsOutboxEntry.claim!(limit: 20)
+    end
+    expect(fresh.map(&:id)).to match_array(stale.map(&:id))
+
+    expect(Rnds::Delivery.new(city).run(stale)).to eq(:done) # a execução antiga, atrasada
+    expect(posts).to eq(0)
+    RndsOutboxEntry.release!(stale.map(&:id), token: stale.first.last_attempted_at) # o ensure dela
+    expect([ entry(first), entry(second) ].map(&:status)).to eq(%w[sending sending])
+
+    Rnds::Delivery.new(city).run(fresh)
+    expect([ entry(first), entry(second) ].map(&:status)).to eq(%w[accepted accepted])
+    expect(posts).to eq(2) # uma vez por dose
+  end
+
+  it "orçamento do lote esgotado: o resto volta a pending sem tentativa e sai na rodada seguinte" do
+    first = record!(room, child, by: vaccinator)
+    second = record!(room, vaccine_patient!(birth_date: Date.current - 61), by: vaccinator)
+    ticks = [ 0.0, 0.0, Rnds::Delivery::BUDGET.to_f + 1 ]
+    clock = -> { ticks.size > 1 ? ticks.shift : ticks.first }
+    entries = RndsOutboxEntry.claim!(limit: 20)
+    expect(Rnds::Delivery.new(city, clock: clock).run(entries)).to eq(:done)
+    statuses = [ entry(first), entry(second) ].map { |e| [ e.status, e.attempts, e.first_attempt_at.nil? ] }
+    expect(statuses).to contain_exactly([ "accepted", 1, false ], [ "pending", 0, true ])
+    expect(posts).to eq(1)
+    run!
+    expect([ entry(first), entry(second) ].map(&:status)).to eq(%w[accepted accepted])
+    expect(Rnds::Delivery::BUDGET).to be < described_class::STALE_SENDING / 2
+  end
+
   it "é recorrente a cada minuto e um lote por cidade de cada vez" do
     recurring = YAML.load_file(Rails.root.join("config/recurring.yml"), aliases: true)
     expect(recurring.values.filter_map { |tasks| tasks.is_a?(Hash) && tasks["rnds_deliver"] }.first)
