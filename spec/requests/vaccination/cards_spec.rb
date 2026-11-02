@@ -222,4 +222,35 @@ RSpec.describe "Sala de vacina — caderneta, conferência e busca de pessoa", t
       [ person.cpf, person.cns, person.full_name ].each { |secret| expect(log).not_to include(secret) }
     end
   end
+
+  # §15 V21: duplicados na rota da sala, no padrão do /pharmacy/patients/duplicates.
+  describe "POST /vaccination/rooms/:room_id/patients/duplicates" do
+    def duplicates(body = {}, query: "", **fields) = post_json("/vaccination/rooms/#{room.id}/patients/duplicates", body.merge(fields), query: query)
+
+    let!(:twin) do
+      Patient.create!(cpf: valid_cpf(registry_seq!), full_name: "José Souza Lima", birth_date: "2026-10-01", sex: "male", mother_name: "Rita Souza Lima")
+    end
+
+    it "membro da sala recebe os candidatos na forma do 25, com trilha por candidato; sem territory_registry" do
+      expect(Platform::Features.enabled?(city, "territory_registry")).to be(false)
+      duplicates(full_name: "Jose Souza-Lima", birth_date: "2026-10-01")
+      expect(response).to have_http_status(:ok)
+      expect(json_body).to eq("candidates" => [ { "patient_id" => twin.id, "display_name" => "José Souza Lima", "birth_date" => "2026-10-01", "has_cpf" => true } ])
+      expect(trail.pluck("patient_id")).to eq([ twin.id ])
+      expect(response.body).not_to include(twin.cpf, "Rita")
+      duplicates(full_name: "José Souza Lima", birth_date: "2026-10-01", mother_name: "Ana Outra")
+      expect(json_body["candidates"]).to eq([])
+    end
+
+    it "recusas de forma e query → 422; fora da equipe → 403; nenhuma trilha" do
+      duplicates(full_name: "José Souza Lima", birth_date: "01/10/2026")
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "birth_date") ])
+      duplicates({ birth_date: "2026-10-01" }, query: "?full_name=Jose")
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "full_name") ])
+      sign_in_as(room_member!(vaccine_room!))
+      duplicates(full_name: "José Souza Lima", birth_date: "2026-10-01")
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+      expect(trail).to be_empty
+    end
+  end
 end

@@ -603,6 +603,7 @@ Rails.application.routes.draw do
     get    "catalog",                     to: "catalog#show"
     # Sala: busca de pessoa, caderneta e conferência (§5; §15 V3; nominais, com trilha).
     post   "rooms/:room_id/person_lookup", to: "person_lookups#create"
+    post   "rooms/:room_id/patients/duplicates", to: "duplicates#create"
     post   "rooms/:room_id/card",          to: "cards#create"
     post   "rooms/:room_id/checks",        to: "checks#create"
   end
