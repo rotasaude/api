@@ -1,0 +1,13 @@
+# Motivos de perda física (módulo 29, ADR 0047), do SIES (NT 77/2025-CGGI/DPNI). Lista a conferir.
+version: 1
+source: "NT 77/2025-CGGI/DPNI (motivos do SIES)"
+review: true
+reasons:
+  - { code: broken, name: "Frasco quebrado" }
+  - { code: expired, name: "Validade vencida" }
+  - { code: equipment_failure, name: "Falha de equipamento" }
+  - { code: power_outage, name: "Falta de energia" }
+  - { code: transport_failure, name: "Falha no transporte" }
+  - { code: temperature_excursion, name: "Excursão de temperatura" }
+  - { code: wrong_procedure, name: "Procedimento incorreto" }
+  - { code: other, name: "Outro motivo" }

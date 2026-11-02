@@ -1,0 +1,28 @@
+# Interpretação por componente da nota metodológica C2 (módulo 29, ADR 0047). Os 16 códigos estão
+# confirmados na nota; a interpretação segue `review: true` até a revisão da enfermagem/SAPS.
+version: 1
+source: "Nota metodológica C2 (SAPS, 19/06/2026), item g e Quadro 05"
+review: true
+min_interval_days: 30
+groups:
+  - { key: penta, doses: 3, components: [diphtheria, tetanus, pertussis, hepb, hib] }
+  - { key: vip, doses: 3, components: [polio] }
+  - { key: mmr, doses: 2, components: [measles, mumps, rubella], min_age_days: 365 }
+  - { key: pneumo, doses: 2, components: [pneumo] }
+codes:
+  "09": [hepb]
+  "17": [hib]
+  "22": [polio]
+  "24": [measles, mumps, rubella]
+  "26": [pneumo]
+  "29": [diphtheria, tetanus, pertussis, polio, hib]
+  "39": [diphtheria, tetanus, pertussis, hib]
+  "42": [diphtheria, tetanus, pertussis, hepb, hib]
+  "43": [diphtheria, tetanus, pertussis, hepb, polio, hib]
+  "46": [diphtheria, tetanus, pertussis]
+  "47": [diphtheria, tetanus, pertussis]
+  "56": [measles, mumps, rubella]
+  "58": [diphtheria, tetanus, pertussis, polio]
+  "59": [pneumo]
+  "106": [pneumo]
+  "107": [pneumo]

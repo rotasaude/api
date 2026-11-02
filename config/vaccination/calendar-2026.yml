@@ -1,0 +1,184 @@
+# Calendário Nacional de Vacinação 2026 (módulo 29, ADR 0047; Desvio 2). Curado sem o PDF lido linha a linha:
+# TODA dose nasce `review: true`; a revisão de enfermagem é gate de go-live. Idades em dias; intervalos a partir
+# da dose anterior da série. Mudança de calendário = arquivo novo com versão; a cidade usa o vigente.
+version: "2026.1"
+due_window_days: 30
+source: "Calendário Nacional de Vacinação 2026 (PDFs por ciclo de vida, gov.br/saude, calendario-tecnico)"
+series:
+  - key: bcg
+    public: "child"
+    accepts: ["15"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "9", recommended_age_days: 0, min_age_days: 0, max_age_days: 1825, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, ao nascer (conferir página do PDF)" }
+  - key: hepb_birth
+    public: "child"
+    accepts: ["09"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "8", recommended_age_days: 0, min_age_days: 0, max_age_days: 30, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, ao nascer (conferir página do PDF)" }
+  - key: penta
+    public: "child"
+    accepts: ["42", "43"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "1", recommended_age_days: 60, min_age_days: 42, max_age_days: 2555, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+      - { dose_code: "2", recommended_age_days: 120, min_age_days: null, max_age_days: 2555, min_interval_days: 30, recommended_interval_days: 60, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+      - { dose_code: "3", recommended_age_days: 180, min_age_days: null, max_age_days: 2555, min_interval_days: 30, recommended_interval_days: 60, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+  - key: vip
+    public: "child"
+    accepts: ["22", "43", "29", "58"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "1", recommended_age_days: 60, min_age_days: 42, max_age_days: 1825, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+      - { dose_code: "2", recommended_age_days: 120, min_age_days: null, max_age_days: null, min_interval_days: 30, recommended_interval_days: 60, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+      - { dose_code: "3", recommended_age_days: 180, min_age_days: null, max_age_days: null, min_interval_days: 30, recommended_interval_days: 60, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+      - { dose_code: "6", recommended_age_days: 450, min_age_days: null, max_age_days: null, min_interval_days: 180, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+  - key: pcv10
+    public: "child"
+    accepts: ["26", "59", "106", "107"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "1", recommended_age_days: 60, min_age_days: 42, max_age_days: 1825, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+      - { dose_code: "2", recommended_age_days: 120, min_age_days: null, max_age_days: null, min_interval_days: 30, recommended_interval_days: 60, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+      - { dose_code: "6", recommended_age_days: 365, min_age_days: null, max_age_days: null, min_interval_days: 60, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+  - key: rota
+    public: "child"
+    accepts: ["45"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "1", recommended_age_days: 60, min_age_days: 45, max_age_days: 105, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+      - { dose_code: "2", recommended_age_days: 120, min_age_days: null, max_age_days: 239, min_interval_days: 30, recommended_interval_days: 60, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+  - key: menc
+    public: "child"
+    accepts: ["41"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "1", recommended_age_days: 90, min_age_days: 42, max_age_days: 1825, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+      - { dose_code: "2", recommended_age_days: 150, min_age_days: null, max_age_days: null, min_interval_days: 30, recommended_interval_days: 60, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+  - key: menacwy_child
+    public: "child"
+    accepts: ["74"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "6", recommended_age_days: 365, min_age_days: null, max_age_days: null, min_interval_days: 60, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+  - key: yellow_fever
+    public: "child"
+    accepts: ["14"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "1", recommended_age_days: 270, min_age_days: 270, max_age_days: 1825, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+      - { dose_code: "6", recommended_age_days: 1460, min_age_days: null, max_age_days: null, min_interval_days: 30, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+  - key: mmr
+    public: "child"
+    accepts: ["24", "56"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "1", recommended_age_days: 365, min_age_days: 365, max_age_days: null, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (SCRV conta como 2ª dose) (conferir página do PDF)" }
+      - { dose_code: "2", recommended_age_days: 450, min_age_days: null, max_age_days: null, min_interval_days: 30, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (SCRV conta como 2ª dose) (conferir página do PDF)" }
+  - key: hepa
+    public: "child"
+    accepts: ["55"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "9", recommended_age_days: 450, min_age_days: 450, max_age_days: 1825, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+  - key: dtp_booster
+    public: "child"
+    accepts: ["46", "47"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "6", recommended_age_days: 450, min_age_days: null, max_age_days: null, min_interval_days: 180, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (reforços após a 3ª dose da penta) (conferir página do PDF)" }
+      - { dose_code: "7", recommended_age_days: 1460, min_age_days: null, max_age_days: null, min_interval_days: 180, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (reforços após a 3ª dose da penta) (conferir página do PDF)" }
+  - key: varicella
+    public: "child"
+    accepts: ["34", "56"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "2", recommended_age_days: 1460, min_age_days: null, max_age_days: null, min_interval_days: 30, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, primeira infância (conferir página do PDF)" }
+  - key: hpv
+    public: "adolescent"
+    accepts: ["67"]
+    sex: null
+    repeat_every_days: null
+    rules: {}
+    doses:
+      - { dose_code: "9", recommended_age_days: 3287, min_age_days: 3287, max_age_days: 5478, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, adolescente (conferir página do PDF)" }
+  - key: dtpa_pregnancy
+    public: "pregnant"
+    accepts: ["57"]
+    sex: null
+    repeat_every_days: null
+    rules: {"pregnant_from_week": 20}
+    doses:
+      - { dose_code: "8", recommended_age_days: null, min_age_days: null, max_age_days: null, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, gestante (a cada gestação, a partir da 20ª semana) (conferir página do PDF)" }
+  - key: dt_adult
+    public: "adult"
+    accepts: ["25"]
+    sex: null
+    repeat_every_days: 3650
+    rules: {"repeat_from_age_days": 2555}
+    doses:
+      - { dose_code: "6", recommended_age_days: 2555, min_age_days: 2555, max_age_days: null, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, adulto (reforço a cada 10 anos) (conferir página do PDF)" }
+  - key: influenza
+    public: ["child", "elderly", "pregnant"]
+    accepts: ["33"]
+    sex: null
+    repeat_every_days: 365
+    rules: {"age_bands_days": {"child": [180, 2190], "elderly": [21900, null]}}
+    doses:
+      - { dose_code: "8", recommended_age_days: 180, min_age_days: 180, max_age_days: null, min_interval_days: null, recommended_interval_days: null, review: true,
+          source: "Calendário Nacional 2026, campanha anual: criança 180..2190 dias, idoso a partir de 21900 dias, gestante (conferir página do PDF)" }

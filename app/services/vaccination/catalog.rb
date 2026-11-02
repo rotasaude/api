@@ -1,6 +1,5 @@
-# Módulo 29 (ADR 0047): constantes da sala de vacina (Valor fixado 3). Task 2:
-# nasce com as constantes e `under_review? = false`; a Task 4 troca a
-# implementação para olhar os YAML com `review: true`.
+# Módulo 29 (ADR 0047): constantes da sala de vacina (Valor fixado 3) e a
+# pergunta "o catálogo ainda está em revisão?" (olha os YAML com `review: true`).
 module Vaccination
   module Catalog
     LOCATION_KINDS = %w[cold_chain_central vaccine_room].freeze
@@ -27,7 +26,9 @@ module Vaccination
 
     module_function
 
-    # Task 4 troca por: qualquer YAML do módulo com `review: true`.
-    def under_review? = false
+    # Qualquer um dos cinco YAML do módulo com `review: true` (Desvio 18).
+    def under_review?
+      YamlFiles::NAMES.any? { |name| YamlFiles.review?(YamlFiles.load(name)) }
+    end
   end
 end

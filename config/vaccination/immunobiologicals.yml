@@ -1,0 +1,278 @@
+# Imunobiológicos da sala de vacina (módulo 29, ADR 0047). Código = LEDI APS 8.7.0 (dicionário).
+# `review: true` em tudo, exceto code/name dos 16 do C2 (nota metodológica C2, SAPS 19/06/2026). Fabricantes:
+# code null (BRFabricante não foi achado); prazo após aberto = valor de partida a conferir (bula/PNI).
+# `routine: false` = aceito em transcrição, fora do estoque padrão.
+version: 1
+source: "LEDI APS 8.7.0, dicionario.html (2026-11-02); nota metodológica C2 (SAPS, 19/06/2026)"
+products:
+  - code: "15"
+    name: "Vacina BCG"
+    routine: true
+    multidose: true
+    doses_per_vial: 10
+    default_route: "2"
+    default_site: "14"
+    manufacturers:
+      - { key: serum, name: "Serum Institute of India", code: null, validity_after_opening_hours: 6, review: true }
+      - { key: fiocruz, name: "Fiocruz", code: null, validity_after_opening_hours: 8, review: true }
+    review: true
+  - code: "09"
+    name: "Vacina hepatite B"
+    routine: true
+    multidose: true
+    doses_per_vial: 10
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: butantan, name: "Instituto Butantan", code: null, validity_after_opening_hours: 240, review: true }
+    review: true
+  - code: "42"
+    name: "Vacina penta (DTP/HB/Hib)"
+    routine: true
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: serum, name: "Serum Institute of India", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "22"
+    name: "Vacina poliomielite inativada (VIP)"
+    routine: true
+    multidose: true
+    doses_per_vial: 10
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: sanofi, name: "Sanofi Pasteur", code: null, validity_after_opening_hours: 672, review: true }
+    review: true
+  - code: "26"
+    name: "Vacina pneumo 10"
+    routine: true
+    multidose: true
+    doses_per_vial: 4
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: gsk, name: "GSK", code: null, validity_after_opening_hours: 672, review: true }
+    review: true
+  - code: "45"
+    name: "Vacina rotav\u00edrus"
+    routine: true
+    multidose: false
+    doses_per_vial: 1
+    default_route: "5"
+    default_site: "1"
+    manufacturers:
+      - { key: gsk, name: "GSK", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "41"
+    name: "Vacina meningo C"
+    routine: true
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: pfizer, name: "Pfizer", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "74"
+    name: "Vacina meningo ACWY"
+    routine: true
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: pfizer, name: "Pfizer", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "14"
+    name: "Vacina febre amarela"
+    routine: true
+    multidose: true
+    doses_per_vial: 5
+    default_route: "6"
+    default_site: "14"
+    manufacturers:
+      - { key: biomanguinhos, name: "Bio-Manguinhos/Fiocruz", code: null, validity_after_opening_hours: 6, review: true }
+    review: true
+  - code: "24"
+    name: "Vacina tr\u00edplice viral"
+    routine: true
+    multidose: true
+    doses_per_vial: 10
+    default_route: "6"
+    default_site: "14"
+    manufacturers:
+      - { key: biomanguinhos, name: "Bio-Manguinhos/Fiocruz", code: null, validity_after_opening_hours: 6, review: true }
+    review: true
+  - code: "56"
+    name: "Vacina tetraviral (SCRV)"
+    routine: true
+    multidose: false
+    doses_per_vial: 1
+    default_route: "6"
+    default_site: "14"
+    manufacturers:
+      - { key: gsk, name: "GSK", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "55"
+    name: "Vacina hepatite A infantil"
+    routine: true
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: msd, name: "MSD", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "46"
+    name: "Vacina DTP"
+    routine: true
+    multidose: true
+    doses_per_vial: 10
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: butantan, name: "Instituto Butantan", code: null, validity_after_opening_hours: 672, review: true }
+    review: true
+  - code: "34"
+    name: "Vacina varicela"
+    routine: true
+    multidose: false
+    doses_per_vial: 1
+    default_route: "6"
+    default_site: "14"
+    manufacturers:
+      - { key: gsk, name: "GSK", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "33"
+    name: "Vacina influenza trivalente"
+    routine: true
+    multidose: true
+    doses_per_vial: 10
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: butantan, name: "Instituto Butantan", code: null, validity_after_opening_hours: 168, review: true }
+    review: true
+  - code: "67"
+    name: "Vacina HPV quadrivalente"
+    routine: true
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "2"
+    manufacturers:
+      - { key: msd, name: "MSD", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "57"
+    name: "Vacina dTpa adulto"
+    routine: true
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "2"
+    manufacturers:
+      - { key: sanofi, name: "Sanofi Pasteur", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "25"
+    name: "Vacina difteria e t\u00e9tano adulto"
+    routine: true
+    multidose: true
+    doses_per_vial: 10
+    default_route: "3"
+    default_site: "2"
+    manufacturers:
+      - { key: butantan, name: "Instituto Butantan", code: null, validity_after_opening_hours: 672, review: true }
+    review: true
+  - code: "17"
+    name: "Vacina Hib"
+    routine: false
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: other, name: "Outro fabricante", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "29"
+    name: "Vacina penta acelular (DTPa/VIP/Hib)"
+    routine: false
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: other, name: "Outro fabricante", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "39"
+    name: "Vacina DTP/Hib"
+    routine: false
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: other, name: "Outro fabricante", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "43"
+    name: "vacina hexa acelular (DTPa/HB/VIP/Hib)"
+    routine: false
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: other, name: "Outro fabricante", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "47"
+    name: "Vacina DTPa infantil"
+    routine: false
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: other, name: "Outro fabricante", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "58"
+    name: "vacina tetra acelular DTPa/VIP"
+    routine: false
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: other, name: "Outro fabricante", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "59"
+    name: "Vacina pneumo 13"
+    routine: false
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: other, name: "Outro fabricante", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "106"
+    name: "vacina pneumo 15"
+    routine: false
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: other, name: "Outro fabricante", code: null, validity_after_opening_hours: 0, review: true }
+    review: true
+  - code: "107"
+    name: "Vacina Pneumo 20"
+    routine: false
+    multidose: false
+    doses_per_vial: 1
+    default_route: "3"
+    default_site: "18"
+    manufacturers:
+      - { key: other, name: "Outro fabricante", code: null, validity_after_opening_hours: 0, review: true }
+    review: true

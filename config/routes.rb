@@ -599,6 +599,8 @@ Rails.application.routes.draw do
     patch  "admin/settings",              to: "admin/settings#update"
     # Locais da pessoa (salas com o papel; rede de frio).
     get    "my_locations",                to: "locations#index"
+    # Catálogo, terminologias e calendário (§4; sem trilha).
+    get    "catalog",                     to: "catalog#show"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.

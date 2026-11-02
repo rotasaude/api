@@ -1,0 +1,204 @@
+# Terminologias da sala de vacina (módulo 29, ADR 0047). Código = código do LEDI/e-SUS APS 8.7.0;
+# `rnds_code` = código RNDS quando difere (BRViaAdministracao, BRLocalAplicacao, BRGrupoAtendimento).
+# A igualdade LEDI = RNDS é gate de homologação (contrato §15 V9). Estratégia: código RNDS.
+version: 1
+source: "LEDI APS 8.7.0, dicionario.html (2026-11-02)"
+
+dose:
+  # dose de rotina; o resto do dicionário (tratamento, fracionada, dobrada...) fica fora
+  review: true
+  items:
+    - { code: "1", name: "1ª Dose" }
+    - { code: "2", name: "2ª Dose" }
+    - { code: "3", name: "3ª Dose" }
+    - { code: "4", name: "4ª Dose" }
+    - { code: "5", name: "5ª Dose" }
+    - { code: "6", name: "1º Reforço" }
+    - { code: "7", name: "2º Reforço" }
+    - { code: "8", name: "Dose" }
+    - { code: "9", name: "Única" }
+    - { code: "10", name: "Revacinação" }
+    - { code: "36", name: "Dose Inicial" }
+    - { code: "37", name: "Dose Adicional" }
+    - { code: "38", name: "Reforço" }
+    - { code: "39", name: "3º Reforço" }
+    - { code: "40", name: "4º Reforço" }
+    - { code: "41", name: "5º Reforço" }
+    - { code: "42", name: "6º Reforço" }
+    - { code: "57", name: "Dose Zero" }
+    - { code: "58", name: "Reforço Zero" }
+
+strategy:
+  # código RNDS (a coluna do e-SUS difere em 11..15)
+  review: false
+  items:
+    - { code: "1", name: "Rotina" }
+    - { code: "2", name: "Especial" }
+    - { code: "3", name: "Bloqueio" }
+    - { code: "4", name: "Intensificação" }
+    - { code: "5", name: "Campanha indiscriminada" }
+    - { code: "6", name: "Campanha seletiva" }
+    - { code: "7", name: "Soroterapia" }
+    - { code: "8", name: "Serviço privado" }
+    - { code: "9", name: "Monitoramento das Estratégias de Vacinação" }
+    - { code: "10", name: "Pesquisa" }
+    - { code: "11", name: "Pré-exposição" }
+    - { code: "12", name: "Pós-exposição" }
+    - { code: "13", name: "Reexposição" }
+    - { code: "14", name: "Vacinação escolar" }
+
+route:
+  review: true
+  items:
+    - { code: "1", name: "INTRAVENOSA", rnds_code: "10898" }
+    - { code: "2", name: "INTRADÉRMICA", rnds_code: "10885" }
+    - { code: "3", name: "INTRAMUSCULAR", rnds_code: "10890" }
+    - { code: "5", name: "ORAL", rnds_code: "10907" }
+    - { code: "6", name: "SUBCUTÂNEA", rnds_code: "10916" }
+    - { code: "7", name: "INTRALESIONAL", rnds_code: "10888" }
+
+site:
+  review: true
+  items:
+    - { code: "1", name: "BOCA", rnds_code: "9" }
+    - { code: "2", name: "DELTÓIDE DIREITO", rnds_code: "1" }
+    - { code: "3", name: "DELTÓIDE ESQUERDO", rnds_code: "2" }
+    - { code: "4", name: "DORSO GLÚTEO DIREITO", rnds_code: "10" }
+    - { code: "5", name: "DORSO GLÚTEO ESQUERDO", rnds_code: "11" }
+    - { code: "6", name: "FACE ANTEROLATERAL EXTERNA DA COXA DIREITA", rnds_code: "17" }
+    - { code: "7", name: "FACE ANTEROLATERAL EXTERNA DA COXA ESQUERDA", rnds_code: "18" }
+    - { code: "8", name: "FACE ANTEROLATERAL EXTERNA DO BRAÇO DIREITO", rnds_code: "19" }
+    - { code: "9", name: "FACE ANTEROLATERAL EXTERNA DO BRAÇO ESQUERDO", rnds_code: "20" }
+    - { code: "10", name: "FACE ANTEROLATERAL EXTERNA DO ANTEBRAÇO DIREITO", rnds_code: "21" }
+    - { code: "11", name: "FACE ANTEROLATERAL EXTERNA DO ANTEBRAÇO ESQUERDO", rnds_code: "22" }
+    - { code: "12", name: "FACE EXTERNA INFERIOR DO BRAÇO DIREITO", rnds_code: "12" }
+    - { code: "13", name: "FACE EXTERNA INFERIOR DO BRAÇO ESQUERDO", rnds_code: "13" }
+    - { code: "14", name: "FACE EXTERNA SUPERIOR DO BRAÇO DIREITO", rnds_code: "14" }
+    - { code: "15", name: "FACE EXTERNA SUPERIOR DO BRAÇO ESQUERDO", rnds_code: "15" }
+    - { code: "16", name: "OUTRO", rnds_code: "99" }
+    - { code: "17", name: "REDE VENOSA", rnds_code: "16" }
+    - { code: "18", name: "VASTO LATERAL DA COXA DIREITA", rnds_code: "3" }
+    - { code: "19", name: "VASTO LATERAL DA COXA ESQUERDA", rnds_code: "4" }
+    - { code: "20", name: "VENTRO GLÚTEO DIREITO", rnds_code: "5" }
+    - { code: "21", name: "VENTRO GLÚTEO ESQUERDO", rnds_code: "6" }
+    - { code: "22", name: "FERIMENTO LOCAL", rnds_code: "8" }
+
+care_group:
+  # 108 linhas no dicionário 8.7.0; `active: false` = Inativo no dicionário
+  review: true
+  items:
+    - { code: "5", name: "QUILOMBOLA", rnds_code: "000601" }
+    - { code: "6", name: "POPULAÇÃO PRIVADA DE LIBERDADE", rnds_code: "001501" }
+    - { code: "10", name: "OUTROS", rnds_code: "999999", active: false }
+    - { code: "13", name: "FUNCIONÁRIO DO SISTEMA DE PRIVAÇÃO DE LIBERDADE", rnds_code: "001401" }
+    - { code: "31", name: "CAMINHONEIRO", rnds_code: "001002" }
+    - { code: "32", name: "COLETIVO RODOVIÁRIO PASSAGEIROS URBANO E DE LONGO CURSO", rnds_code: "001003" }
+    - { code: "33", name: "TRABALHADORES PORTUÁRIOS", rnds_code: "001301" }
+    - { code: "34", name: "HEMOGLOBINOPATIA GRAVE", rnds_code: "000101" }
+    - { code: "35", name: "NEOPLASIAS", rnds_code: "000117", active: false }
+    - { code: "36", name: "DIABETES MELLITUS", rnds_code: "000103" }
+    - { code: "37", name: "PNEUMOPATIAS CRÔNICAS GRAVES", rnds_code: "000104" }
+    - { code: "38", name: "DOENÇA RENAL CRÔNICA", rnds_code: "000105" }
+    - { code: "39", name: "DOENÇAS CARDIOVASCULARES E CEREBROVASCULARES", rnds_code: "000116", active: false }
+    - { code: "40", name: "HIPERTENSÃO DE DIFÍCIL CONTROLE OU COM COMPLICAÇÕES/LESÃO DE ÓRGÃO ALVO", rnds_code: "000107" }
+    - { code: "41", name: "INDIVÍDUOS TRANSPLANTADOS DE ÓRGÃO SÓLIDO", rnds_code: "000117", active: false }
+    - { code: "42", name: "OBESIDADE GRAVE (IMC≥40)", rnds_code: "000109" }
+    - { code: "43", name: "PESSOAS DE 18 A 64 ANOS", rnds_code: "000210", active: false }
+    - { code: "44", name: "PESSOAS DE 65 A 69 ANOS", rnds_code: "000210", active: false }
+    - { code: "45", name: "PESSOAS DE 70 A 74 ANOS", rnds_code: "000210", active: false }
+    - { code: "46", name: "PESSOAS DE 75 A 79 ANOS", rnds_code: "000210", active: false }
+    - { code: "47", name: "PESSOAS DE 80 ANOS OU MAIS", rnds_code: "000210", active: false }
+    - { code: "48", name: "PESSOAS DE 60 ANOS OU MAIS, INSTITUCIONALIZADAS", rnds_code: "000210", active: false }
+    - { code: "49", name: "MARINHA DO BRASIL - MB", rnds_code: "000401" }
+    - { code: "50", name: "EXÉRCITO BRASILEIRO - EB", rnds_code: "000402" }
+    - { code: "51", name: "FORÇA AÉREA BRASILEIRA - FAB", rnds_code: "000403" }
+    - { code: "52", name: "BOMBEIRO CIVIL", rnds_code: "000501" }
+    - { code: "53", name: "BOMBEIRO MILITAR", rnds_code: "000502" }
+    - { code: "54", name: "GUARDA MUNICIPAL", rnds_code: "000503" }
+    - { code: "55", name: "POLICIAL RODOVIÁRIO FEDERAL", rnds_code: "000504" }
+    - { code: "56", name: "POLICIAL CIVIL", rnds_code: "000505" }
+    - { code: "57", name: "POLICIAL FEDERAL", rnds_code: "000506" }
+    - { code: "58", name: "POLICIAL MILITAR", rnds_code: "000507" }
+    - { code: "59", name: "RIBEIRINHA", rnds_code: "000602" }
+    - { code: "60", name: "POVOS INDÍGENAS EM TERRAS INDÍGENAS", rnds_code: "000703", active: false }
+    - { code: "61", name: "ENSINO BÁSICO", rnds_code: "000801" }
+    - { code: "62", name: "ENSINO SUPERIOR", rnds_code: "000802" }
+    - { code: "63", name: "AUXILIAR DE VETERINÁRIO", rnds_code: "000901" }
+    - { code: "64", name: "BIÓLOGO", rnds_code: "000902" }
+    - { code: "65", name: "BIOMÉDICO", rnds_code: "000903" }
+    - { code: "66", name: "COZINHEIRO E AUXILIARES", rnds_code: "000904" }
+    - { code: "67", name: "CUIDADOR DE IDOSOS", rnds_code: "000905" }
+    - { code: "68", name: "DOULA/PARTEIRA", rnds_code: "000906" }
+    - { code: "69", name: "ENFERMEIRO(A)", rnds_code: "000907" }
+    - { code: "70", name: "FARMACÊUTICO", rnds_code: "000908" }
+    - { code: "71", name: "FISIOTERAPEUTAS", rnds_code: "000909" }
+    - { code: "72", name: "FONOAUDIÓLOGO", rnds_code: "000910" }
+    - { code: "73", name: "FUNCIONÁRIO DO SISTEMA FUNERÁRIO QUE TENHAM CONTATO COM CADÁVERES POTENCIALMENTE CONTAMINADOS", rnds_code: "000911" }
+    - { code: "74", name: "MÉDICO", rnds_code: "000912" }
+    - { code: "75", name: "MÉDICO VETERINÁRIO", rnds_code: "000913" }
+    - { code: "76", name: "MOTORISTA DE AMBULÂNCIA", rnds_code: "000914" }
+    - { code: "77", name: "NUTRICIONISTA", rnds_code: "000915" }
+    - { code: "78", name: "ODONTOLOGISTA", rnds_code: "000916" }
+    - { code: "79", name: "PROFISSIONAIS E AUXILIARES DE LIMPEZA", rnds_code: "000917" }
+    - { code: "80", name: "PROFISSIONAIS DE EDUCAÇÃO FÍSICA", rnds_code: "000918" }
+    - { code: "81", name: "PSICÓLOGO", rnds_code: "000919" }
+    - { code: "82", name: "RECEPCIONISTA", rnds_code: "000920" }
+    - { code: "83", name: "SEGURANÇA", rnds_code: "000921" }
+    - { code: "84", name: "ASSISTENTE SOCIAL", rnds_code: "000922" }
+    - { code: "85", name: "TÉCNICO DE ENFERMAGEM", rnds_code: "000923" }
+    - { code: "86", name: "TÉCNICO DE VETERINÁRIO", rnds_code: "000924" }
+    - { code: "87", name: "TERAPEUTA OCUPACIONAL", rnds_code: "000925" }
+    - { code: "88", name: "AÉREO", rnds_code: "001001" }
+    - { code: "89", name: "FERROVIÁRIO", rnds_code: "001004" }
+    - { code: "90", name: "METROVIÁRIO", rnds_code: "001005" }
+    - { code: "91", name: "AQUAVIÁRIO", rnds_code: "001006" }
+    - { code: "92", name: "PESSOAS COM DEFICIÊNCIA INSTITUCIONALIZADAS", rnds_code: "001101" }
+    - { code: "93", name: "PESSOAS COM DEFICIÊNCIA PERMANENTE", rnds_code: "001102" }
+    - { code: "94", name: "PESSOAS EM SITUAÇÃO DE RUA", rnds_code: "001201" }
+    - { code: "95", name: "TRABALHADORES INDUSTRIAIS", rnds_code: "001601" }
+    - { code: "96", name: "SÍNDROME DE DOWN", rnds_code: "000110" }
+    - { code: "97", name: "AUXILIAR DE ENFERMAGEM", rnds_code: "000927" }
+    - { code: "98", name: "TÉCNICO DE ODONTOLOGIA", rnds_code: "000928" }
+    - { code: "99", name: "ACADÊMICOS/ESTUDANTES EM ESTÁGIO EM ESTABELECIMENTOS DE SAÚDE", rnds_code: "000929" }
+    - { code: "100", name: "OUTROS IMUNOCOMPROMETIDOS", rnds_code: "000117", active: false }
+    - { code: "101", name: "INDIVÍDUOS TRANSPLANTADOS DE MEDULA ÓSSEA", rnds_code: "000117", active: false }
+    - { code: "102", name: "CIRROSE HEPÁTICA", rnds_code: "000114", active: false }
+    - { code: "103", name: "DOENÇA NEUROLÓGICA CRÔNICA", rnds_code: "000115" }
+    - { code: "104", name: "DOENÇA CARDIOVASCULAR", rnds_code: "000116" }
+    - { code: "105", name: "PESSOAS DE 12 A 17 ANOS", rnds_code: "000210", active: false }
+    - { code: "106", name: "OUTROS PROFISSIONAIS DE SAÚDE", rnds_code: "000926", active: false }
+    - { code: "107", name: "AGENTE DE COMBATE A ENDEMIAS - ACE", rnds_code: "000930" }
+    - { code: "108", name: "AGENTE COMUNITÁRIO DE SAÚDE - ACS", rnds_code: "000931" }
+    - { code: "109", name: "AUXILIAR EM SAÚDE BUCAL - ASB", rnds_code: "000932" }
+    - { code: "110", name: "TÉCNICO EM SAÚDE BUCAL - TSB", rnds_code: "000933" }
+    - { code: "111", name: "TRABALHADORES DE LIMPEZA URBANA E MANEJO DE RESÍDUOS SÓLIDOS", rnds_code: "001701" }
+    - { code: "112", name: "GESTANTE", rnds_code: "001801" }
+    - { code: "113", name: "PUÉRPERA", rnds_code: "001901" }
+    - { code: "114", name: "PESSOAS DE 5 A 11 ANOS", rnds_code: "000210", active: false }
+    - { code: "115", name: "CRIANÇAS QUILOMBOLAS", rnds_code: "000601", active: false }
+    - { code: "116", name: "CRIANÇAS RIBEIRINHAS", rnds_code: "000602", active: false }
+    - { code: "117", name: "CRIANÇAS INDÍGENAS", rnds_code: "000704", active: false }
+    - { code: "118", name: "PESSOAS DE 3 A 4 ANOS", rnds_code: "000210", active: false }
+    - { code: "119", name: "PESSOAS DE 6 MESES A 2 ANOS", rnds_code: "000210", active: false }
+    - { code: "120", name: "IMUNOCOMPROMETIDOS", rnds_code: "000117" }
+    - { code: "121", name: "FAIXA ETÁRIA", rnds_code: "000210" }
+    - { code: "122", name: "POVOS INDÍGENAS VIVENDO EM TERRAS INDÍGENAS", rnds_code: "000703" }
+    - { code: "123", name: "POVOS INDÍGENAS VIVENDO FORA DAS TERRAS INDÍGENAS", rnds_code: "000704" }
+    - { code: "124", name: "ADOLESCENTES CUMPRINDO MEDIDAS SOCIOEDUCATIVAS", rnds_code: "001502" }
+    - { code: "125", name: "PESSOAS INSTITUCIONALIZADAS", rnds_code: "000302" }
+    - { code: "126", name: "TRISSOMIAS", rnds_code: "000118" }
+    - { code: "127", name: "OUTROS TRABALHADORES DA SAÚDE", rnds_code: "000926" }
+    - { code: "128", name: "PREMATURIDADE", rnds_code: "000120" }
+    - { code: "129", name: "ANOMALIAS DE VIAS AÉREAS", rnds_code: "000121" }
+    - { code: "130", name: "OBESIDADE (SCORE-Z ACIMA DE +2)", rnds_code: "000122" }
+    - { code: "131", name: "ERROS INATOS DA IMUNIDADE (EII)", rnds_code: "000123" }
+    - { code: "132", name: "DOENÇA HEPÁTICA CRÔNICA", rnds_code: "000119" }
+    - { code: "133", name: "POPULAÇÃO RURAL", rnds_code: "002001" }
+    - { code: "134", name: "TRABALHADORES DOS CORREIOS", rnds_code: "002101" }
+
+maternal_condition:
+  review: true
+  items:
+    - { code: "1", name: "Nenhuma" }
+    - { code: "2", name: "Gestante" }
+    - { code: "3", name: "Puérpera" }
