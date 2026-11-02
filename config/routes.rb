@@ -617,6 +617,9 @@ Rails.application.routes.draw do
     post   "rooms/:room_id/transcriptions", to: "transcriptions#create"
     post   "immunizations/:id/cancel",     to: "immunizations#cancel"
     get    "rooms/:room_id/pending",       to: "pending#index"
+    # Resumo mensal de imunobiológicos (§7; §15 V14 = D8): contagens, sem trilha.
+    get    "rooms/:room_id/monthly_summary",      to: "summaries#room"
+    get    "cold_chain_central/monthly_summary",  to: "summaries#cold_chain"
     # Cadeia de frio (§8; §15 V14 = D9 do dashboard).
     get    "cold_chain/equipments",              to: "cold_chain#index"
     post   "cold_chain/equipments",              to: "cold_chain#create"
