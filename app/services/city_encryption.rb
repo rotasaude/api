@@ -158,7 +158,14 @@ module CityEncryption
     [ Dispensation, :notification_number ],
     # ADR 0046: motivos de cancelamento do plano, do item e da prótese.
     [ DentalTreatmentPlan, :cancel_reason ], [ DentalTreatmentPlanItem, :cancel_reason ],
-    [ DentalProsthesisStage, :reason ]
+    [ DentalProsthesisStage, :reason ],
+    # ADR 0047: lote, fabricante e local da transcrição, justificativa do aviso
+    # e motivo do cancelamento da dose; o Bundle da fila RNDS; o motivo do
+    # descarte do frasco.
+    [ Immunization, :lot_number_text ], [ Immunization, :manufacturer_text ], [ Immunization, :place_text ],
+    [ Immunization, :override_reason ], [ Immunization, :cancel_reason ],
+    [ RndsOutboxEntry, :payload ],
+    [ VialOpening, :close_reason ]
   ].freeze
 
   module_function

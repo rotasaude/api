@@ -12,6 +12,8 @@ class DiseaseNotification < ApplicationRecord
   belongs_to :consultation, optional: true
   belongs_to :addendum, class_name: "ConsultationAddendum", optional: true
   belongs_to :neighborhood, optional: true
+  # Módulo 29 (ADR 0047, Desvio 17): a dose de origem da notificação de ESAVI.
+  belongs_to :immunization, optional: true
   has_many :events, -> { order(:created_at, :id) }, class_name: "DiseaseNotificationEvent", foreign_key: :notification_id,
                                                     inverse_of: :notification, dependent: :restrict_with_error
 

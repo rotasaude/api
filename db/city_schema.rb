@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -696,6 +696,43 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.check_constraint "reason_code::text = ANY (ARRAY['case_review'::text, 'active_search'::text, 'continuity_of_care'::text, 'other'::text])", name: "ck_clinical_record_openings_reason"
   end
 
+  create_table "cold_chain_equipments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.decimal "max_c", precision: 4, scale: 1, null: false
+    t.decimal "min_c", precision: 4, scale: 1, null: false
+    t.string "name", limit: 120, null: false
+    t.uuid "stock_location_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["stock_location_id"], name: "idx_cold_chain_equipments_location"
+    t.check_constraint "kind::text = ANY (ARRAY['refrigerator'::text, 'chamber'::text, 'freezer'::text])", name: "ck_cold_chain_equipments_kind"
+    t.check_constraint "min_c < max_c", name: "ck_cold_chain_equipments_range"
+  end
+
+  create_table "cold_chain_excursions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "cold_chain_reading_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "decided_at"
+    t.uuid "decided_by_user_id"
+    t.uuid "stock_location_id", null: false
+    t.index ["cold_chain_reading_id"], name: "idx_cold_chain_excursions_reading", unique: true
+    t.index ["stock_location_id"], name: "idx_cold_chain_excursions_open", where: "(decided_at IS NULL)"
+    t.check_constraint "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name: "ck_cold_chain_excursions_decided"
+  end
+
+  create_table "cold_chain_readings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "cold_chain_equipment_id", null: false
+    t.datetime "created_at", null: false
+    t.decimal "current_c", precision: 4, scale: 1, null: false
+    t.decimal "max_c", precision: 4, scale: 1, null: false
+    t.decimal "min_c", precision: 4, scale: 1, null: false
+    t.datetime "read_at", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.index ["cold_chain_equipment_id", "read_at"], name: "idx_cold_chain_readings_equipment"
+    t.check_constraint "min_c <= max_c", name: "ck_cold_chain_readings_range"
+  end
+
   create_table "consent_terms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.text "body", null: false
     t.datetime "created_at", null: false
@@ -1057,6 +1094,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.datetime "entered_at"
     t.text "form", null: false
     t.uuid "health_unit_id", null: false
+    t.uuid "immunization_id"
     t.uuid "neighborhood_id"
     t.uuid "notifier_user_id"
     t.string "official_number", limit: 30
@@ -1072,6 +1110,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.integer "version", default: 1, null: false
     t.index ["consultation_id"], name: "index_disease_notifications_on_consultation_id"
     t.index ["health_unit_id", "suspected_on"], name: "idx_disease_notifications_unit_suspected"
+    t.index ["immunization_id"], name: "idx_disease_notifications_immunization"
     t.index ["patient_id", "disease_code"], name: "idx_disease_notifications_one_open", unique: true, where: "((status)::text = ANY (ARRAY['possible'::text, 'notified'::text, 'investigating'::text]))"
     t.index ["patient_id"], name: "index_disease_notifications_on_patient_id"
     t.index ["status", "due_at"], name: "idx_disease_notifications_status_due"
@@ -1521,6 +1560,47 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.index ["user_id"], name: "index_identities_on_user_id"
   end
 
+  create_table "immunizations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.timestamptz "applied_at", null: false
+    t.string "calendar_version", limit: 20, null: false
+    t.uuid "campaign_id"
+    t.text "cancel_reason"
+    t.datetime "cancelled_at"
+    t.uuid "cancelled_by_user_id"
+    t.string "care_group", limit: 10
+    t.datetime "created_at", null: false
+    t.string "dose_code", limit: 10, null: false
+    t.uuid "health_unit_id", null: false
+    t.string "immunobiological_code", limit: 10, null: false
+    t.text "lot_number_text"
+    t.text "manufacturer_text"
+    t.string "maternal_condition", limit: 10
+    t.text "override_reason"
+    t.uuid "patient_id", null: false
+    t.text "place_text"
+    t.uuid "replaces_id"
+    t.string "route", limit: 10
+    t.string "site", limit: 10
+    t.uuid "stock_lot_id"
+    t.string "strategy", limit: 10, null: false
+    t.boolean "transcription", default: false, null: false
+    t.string "vaccinator_cbo", limit: 6, null: false
+    t.uuid "vaccinator_user_id", null: false
+    t.uuid "vaccine_room_id"
+    t.uuid "vial_opening_id"
+    t.index ["campaign_id"], name: "idx_immunizations_campaign"
+    t.index ["immunobiological_code", "applied_at"], name: "idx_immunizations_immunobiological"
+    t.index ["patient_id", "applied_at"], name: "idx_immunizations_patient"
+    t.index ["replaces_id"], name: "idx_immunizations_replaces", unique: true
+    t.index ["stock_lot_id"], name: "idx_immunizations_lot"
+    t.index ["vaccine_room_id", "applied_at"], name: "idx_immunizations_room"
+    t.index ["vial_opening_id"], name: "idx_immunizations_vial"
+    t.check_constraint "(cancelled_at IS NULL) = (cancelled_by_user_id IS NULL) AND (cancelled_at IS NULL) = (cancel_reason IS NULL)", name: "ck_immunizations_cancel"
+    t.check_constraint "replaces_id IS NULL OR replaces_id <> id", name: "ck_immunizations_replaces"
+    t.check_constraint "transcription = (stock_lot_id IS NULL) AND (transcription OR (vaccine_room_id IS NOT NULL AND care_group IS NOT NULL AND route IS NOT NULL AND site IS NOT NULL)) AND (vial_opening_id IS NULL OR stock_lot_id IS NOT NULL) AND (transcription OR (lot_number_text IS NULL AND manufacturer_text IS NULL AND place_text IS NULL))", name: "ck_immunizations_transcription"
+    t.check_constraint "vaccinator_cbo::text ~ '^[0-9]{6}$'::text", name: "ck_immunizations_cbo"
+  end
+
   create_table "inbound_messages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "from", null: false
@@ -1601,7 +1681,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.datetime "updated_at", null: false
     t.index ["kind"], name: "index_integration_credentials_on_kind", unique: true
     t.index ["set_by_user_id"], name: "index_integration_credentials_on_set_by_user_id"
-    t.check_constraint "kind::text = ANY (ARRAY['ledi', 'cadsus']::text[])", name: "ck_integration_credentials_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['ledi'::text, 'cadsus'::text, 'rnds'::text]::text[])", name: "ck_integration_credentials_kind"
     t.check_constraint "last_check_status IS NULL OR last_check_status::text = ANY (ARRAY['ok', 'unauthorized', 'unreachable', 'error']::text[])", name: "ck_integration_credentials_status"
   end
 
@@ -2805,6 +2885,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.index ["triage_id"], name: "index_report_snapshots_on_triage_id"
   end
 
+  create_table "rnds_outbox", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "accepted_at"
+    t.integer "attempts", default: 0, null: false
+    t.string "block_reason"
+    t.datetime "created_at", null: false
+    t.datetime "deadline_at", null: false
+    t.string "error", limit: 200
+    t.datetime "first_attempt_at"
+    t.datetime "identity_checked_at"
+    t.uuid "immunization_id", null: false
+    t.string "kind", null: false
+    t.datetime "last_attempted_at"
+    t.datetime "next_attempt_at", null: false
+    t.text "payload"
+    t.string "rnds_id", limit: 100
+    t.datetime "sent_at"
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.index ["deadline_at"], name: "idx_rnds_outbox_deadline"
+    t.index ["immunization_id", "kind"], name: "idx_rnds_outbox_immunization", unique: true
+    t.index ["status", "next_attempt_at"], name: "idx_rnds_outbox_due"
+    t.check_constraint "(status::text = 'accepted'::text) = (accepted_at IS NOT NULL)", name: "ck_rnds_outbox_accepted_at"
+    t.check_constraint "(status::text = 'blocked'::text) = (block_reason IS NOT NULL) AND (block_reason IS NULL OR block_reason::text = ANY (ARRAY['professional_cns_not_in_cnes'::text, 'patient_identity_unverified'::text, 'patient_without_cns_or_cpf'::text]))", name: "ck_rnds_outbox_block"
+    t.check_constraint "attempts >= 0", name: "ck_rnds_outbox_attempts"
+    t.check_constraint "kind::text = ANY (ARRAY['application'::text, 'cancellation'::text])", name: "ck_rnds_outbox_kind"
+    t.check_constraint "status::text <> 'accepted'::text OR payload IS NULL", name: "ck_rnds_outbox_payload_accepted"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::text, 'sending'::text, 'accepted'::text, 'rejected'::text, 'failed'::text, 'blocked'::text])", name: "ck_rnds_outbox_status"
+  end
+
   create_table "schedule_templates", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.boolean "active", default: true, null: false
     t.jsonb "blocks", default: [], null: false
@@ -3183,6 +3292,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.uuid "decided_by_user_id"
     t.text "decision_reason"
     t.string "kind", null: false
+    t.string "loss_code", limit: 10
     t.decimal "quantity", precision: 12, scale: 2, null: false
     t.text "reason", null: false
     t.uuid "requested_by_user_id", null: false
@@ -3199,6 +3309,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.check_constraint "kind::text = 'adjustment'::text OR status::text = 'applied'::text", name: "ck_stock_adjustments_approval"
     t.check_constraint "kind::text = 'adjustment'::text OR quantity < 0::numeric", name: "ck_stock_adjustments_sign"
     t.check_constraint "kind::text = ANY (ARRAY['adjustment'::text, 'loss'::text, 'expiry'::text])", name: "ck_stock_adjustments_kind"
+    t.check_constraint "loss_code IS NULL OR kind::text = ANY (ARRAY['loss'::text, 'expiry'::text])", name: "ck_stock_adjustments_loss_code"
     t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99", name: "ck_stock_adjustments_quantity"
     t.check_constraint "status::text = ANY (ARRAY['applied'::text, 'pending'::text, 'approved'::text, 'rejected'::text])", name: "ck_stock_adjustments_status"
   end
@@ -3237,40 +3348,62 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.datetime "updated_at", null: false
     t.uuid "updated_by_user_id", null: false
     t.index "lower((name)::text)", name: "idx_stock_locations_name_ci", unique: true
-    t.index ["health_unit_id"], name: "idx_stock_locations_unit", unique: true, where: "(health_unit_id IS NOT NULL)"
+    t.index ["health_unit_id", "kind"], name: "idx_stock_locations_unit", unique: true, where: "(health_unit_id IS NOT NULL)"
     t.index ["kind"], name: "idx_stock_locations_one_central", unique: true, where: "((kind)::text = 'central'::text)"
-    t.check_constraint "(kind::text = 'unit'::text) = (health_unit_id IS NOT NULL)", name: "ck_stock_locations_unit"
-    t.check_constraint "kind::text = ANY (ARRAY['central'::text, 'unit'::text])", name: "ck_stock_locations_kind"
+    t.index ["kind"], name: "idx_stock_locations_one_cold_chain_central", unique: true, where: "((kind)::text = 'cold_chain_central'::text)"
+    t.check_constraint "(kind::text = ANY (ARRAY['unit'::text, 'vaccine_room'::text])) = (health_unit_id IS NOT NULL)", name: "ck_stock_locations_unit"
+    t.check_constraint "kind::text = ANY (ARRAY['central'::text, 'unit'::text, 'cold_chain_central'::text, 'vaccine_room'::text])", name: "ck_stock_locations_kind"
+  end
+
+  create_table "stock_lot_blocks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "cold_chain_excursion_id", null: false
+    t.string "decision"
+    t.datetime "released_at"
+    t.uuid "stock_location_id", null: false
+    t.uuid "stock_lot_id", null: false
+    t.index ["cold_chain_excursion_id", "stock_lot_id"], name: "idx_stock_lot_blocks_excursion_lot", unique: true
+    t.index ["stock_location_id", "stock_lot_id"], name: "idx_stock_lot_blocks_open", where: "(released_at IS NULL)"
+    t.check_constraint "(released_at IS NULL) = (decision IS NULL) AND (decision IS NULL OR decision::text = ANY (ARRAY['use'::text, 'discard'::text]))", name: "ck_stock_lot_blocks_decision"
   end
 
   create_table "stock_lots", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "catalog_item_id", null: false
-    t.integer "catmat_code", null: false
+    t.uuid "catalog_item_id"
+    t.integer "catmat_code"
     t.datetime "created_at", null: false
     t.uuid "created_by_user_id", null: false
     t.string "dispensing_unit", limit: 20, null: false
     t.date "expires_on", null: false
+    t.string "immunobiological_code", limit: 10
+    t.string "item_kind", default: "medication", null: false
     t.string "lot_number", limit: 40, null: false
     t.string "manufacturer", limit: 120
+    t.string "manufacturer_code", limit: 20
     t.index ["catalog_item_id", "lot_number"], name: "idx_stock_lots_number", unique: true
     t.index ["expires_on"], name: "idx_stock_lots_expires_on"
+    t.index ["immunobiological_code", "lot_number"], name: "idx_stock_lots_immunobiological_number", unique: true, where: "(immunobiological_code IS NOT NULL)"
+    t.check_constraint "item_kind::text = ANY (ARRAY['medication'::text, 'immunobiological'::text]) AND (item_kind::text = 'immunobiological'::text) = (immunobiological_code IS NOT NULL) AND (item_kind::text = 'immunobiological'::text) = (catalog_item_id IS NULL) AND (catalog_item_id IS NULL) = (catmat_code IS NULL) AND (item_kind::text = 'immunobiological'::text OR manufacturer_code IS NULL) AND (item_kind::text <> 'immunobiological'::text OR dispensing_unit::text = 'dose'::text)", name: "ck_stock_lots_item"
   end
 
   create_table "stock_minimums", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "catalog_item_id", null: false
+    t.uuid "catalog_item_id"
     t.datetime "created_at", null: false
+    t.string "immunobiological_code", limit: 10
     t.decimal "minimum", precision: 12, scale: 2, null: false
     t.uuid "stock_location_id", null: false
     t.datetime "updated_at", null: false
     t.uuid "updated_by_user_id", null: false
     t.index ["stock_location_id", "catalog_item_id"], name: "idx_stock_minimums_item", unique: true
+    t.index ["stock_location_id", "immunobiological_code"], name: "idx_stock_minimums_immunobiological", unique: true, where: "(immunobiological_code IS NOT NULL)"
     t.check_constraint "minimum >= 0::numeric AND minimum <= 99999.99", name: "ck_stock_minimums_minimum"
+    t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code) = 1", name: "ck_stock_minimums_item"
   end
 
   create_table "stock_movements", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "catalog_item_id", null: false
+    t.uuid "catalog_item_id"
     t.datetime "created_at", null: false
     t.uuid "dispensation_item_id"
+    t.string "immunobiological_code", limit: 10
+    t.uuid "immunization_id"
     t.string "kind", null: false
     t.integer "package_units"
     t.integer "packages"
@@ -3283,22 +3416,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.uuid "stock_location_id", null: false
     t.uuid "stock_lot_id", null: false
     t.uuid "stock_transfer_id"
+    t.uuid "vial_opening_id"
     t.index ["dispensation_item_id"], name: "idx_stock_movements_dispensation_item"
+    t.index ["immunization_id"], name: "idx_stock_movements_immunization"
     t.index ["stock_location_id", "stock_lot_id"], name: "idx_stock_movements_balance"
     t.index ["stock_lot_id", "recorded_at", "id"], name: "idx_stock_movements_lot_time"
+    t.index ["vial_opening_id"], name: "idx_stock_movements_vial_opening"
+    t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code) = 1", name: "ck_stock_movements_item"
     t.check_constraint "(package_units IS NULL) = (packages IS NULL) AND (package_units IS NULL OR package_units >= 1 AND package_units <= 10000 AND packages >= 1 AND packages <= 10000)", name: "ck_stock_movements_package"
     t.check_constraint "kind::text <> ALL (ARRAY['loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text]) OR reason IS NOT NULL", name: "ck_stock_movements_reason"
-    t.check_constraint "kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_out'::text, 'transfer_in'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text])", name: "ck_stock_movements_kind"
-    t.check_constraint "num_nonnulls(stock_entry_id, stock_transfer_id, dispensation_item_id, stock_adjustment_id) = 1 AND (stock_entry_id IS NOT NULL) = (kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text])) AND (dispensation_item_id IS NOT NULL) = (kind::text = ANY (ARRAY['dispensing'::text, 'return'::text])) AND (stock_transfer_id IS NULL OR kind::text = ANY (ARRAY['transfer_out'::text, 'transfer_in'::text, 'loss'::text])) AND (stock_adjustment_id IS NULL OR kind::text = ANY (ARRAY['adjustment'::text, 'expiry'::text, 'loss'::text])) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'transfer_in'::text]) OR stock_transfer_id IS NOT NULL) AND (kind::text <> ALL (ARRAY['adjustment'::text, 'expiry'::text]) OR stock_adjustment_id IS NOT NULL)", name: "ck_stock_movements_document"
-    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99 AND (kind::text <> ALL (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_in'::text, 'return'::text]) OR quantity > 0::numeric) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text]) OR quantity < 0::numeric)", name: "ck_stock_movements_sign"
+    t.check_constraint "kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_out'::text, 'transfer_in'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text, 'vial_opening'::text, 'immunization'::text, 'immunization_reversal'::text])", name: "ck_stock_movements_kind"
+    t.check_constraint "num_nonnulls(stock_entry_id, stock_transfer_id, dispensation_item_id, stock_adjustment_id, vial_opening_id, immunization_id) = 1 AND (stock_entry_id IS NOT NULL) = (kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text])) AND (dispensation_item_id IS NOT NULL) = (kind::text = ANY (ARRAY['dispensing'::text, 'return'::text])) AND (stock_transfer_id IS NULL OR kind::text = ANY (ARRAY['transfer_out'::text, 'transfer_in'::text, 'loss'::text])) AND (stock_adjustment_id IS NULL OR kind::text = ANY (ARRAY['adjustment'::text, 'expiry'::text, 'loss'::text])) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'transfer_in'::text]) OR stock_transfer_id IS NOT NULL) AND (kind::text <> ALL (ARRAY['adjustment'::text, 'expiry'::text]) OR stock_adjustment_id IS NOT NULL) AND (vial_opening_id IS NOT NULL) = (kind::text = 'vial_opening'::text) AND (immunization_id IS NOT NULL) = (kind::text = ANY (ARRAY['immunization'::text, 'immunization_reversal'::text]))", name: "ck_stock_movements_document"
+    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99 AND (kind::text <> ALL (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_in'::text, 'return'::text, 'immunization_reversal'::text]) OR quantity > 0::numeric) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'vial_opening'::text, 'immunization'::text]) OR quantity < 0::numeric)", name: "ck_stock_movements_sign"
   end
 
   create_table "stock_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "catalog_item_id", null: false
+    t.uuid "catalog_item_id"
     t.datetime "created_at", null: false
+    t.string "immunobiological_code", limit: 10
     t.uuid "stock_entry_id", null: false
     t.uuid "stock_location_id", null: false
     t.index ["stock_location_id", "catalog_item_id"], name: "idx_stock_openings_once", unique: true
+    t.index ["stock_location_id", "immunobiological_code"], name: "idx_stock_openings_immunobiological_once", unique: true, where: "(immunobiological_code IS NOT NULL)"
+    t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code) = 1", name: "ck_stock_openings_item"
   end
 
   create_table "stock_transfer_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -3413,6 +3553,85 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
     t.index "lower((email_address)::text)", name: "index_users_on_lower_email", unique: true
   end
 
+  create_table "vaccination_record_checks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "checked_at", null: false
+    t.uuid "checked_by_user_id"
+    t.string "mode", null: false
+    t.uuid "patient_id", null: false
+    t.uuid "vaccine_room_id"
+    t.index ["patient_id", "checked_at"], name: "idx_vaccination_record_checks_patient"
+    t.check_constraint "(mode::text = 'born_after_go_live'::text) = (checked_by_user_id IS NULL)", name: "ck_vaccination_record_checks_author"
+    t.check_constraint "mode::text = ANY (ARRAY['transcribed'::text, 'confirmed_complete'::text, 'born_after_go_live'::text])", name: "ck_vaccination_record_checks_mode"
+  end
+
+  create_table "vaccination_settings", id: :smallint, default: nil, force: :cascade do |t|
+    t.date "go_live_on"
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id"
+    t.check_constraint "id = 1", name: "ck_vaccination_settings_singleton"
+  end
+
+  create_table "vaccination_statuses", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "age_months", null: false
+    t.boolean "checked", default: false, null: false
+    t.date "computed_on", null: false
+    t.integer "doses_applied", default: 0, null: false
+    t.date "due_on"
+    t.string "immunobiological_code", limit: 10, null: false
+    t.string "next_dose_code", limit: 10
+    t.uuid "patient_id", null: false
+    t.string "series", limit: 40, null: false
+    t.string "status", null: false
+    t.index ["patient_id", "series"], name: "idx_vaccination_statuses_series", unique: true
+    t.index ["status", "immunobiological_code"], name: "idx_vaccination_statuses_status"
+    t.check_constraint "doses_applied >= 0 AND age_months >= 0", name: "ck_vaccination_statuses_counts"
+    t.check_constraint "status::text = ANY (ARRAY['due'::text, 'overdue'::text, 'upcoming'::text, 'complete'::text, 'unchecked'::text])", name: "ck_vaccination_statuses_status"
+  end
+
+  create_table "vaccine_room_staff", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "granted_at", null: false
+    t.uuid "granted_by_user_id", null: false
+    t.datetime "revoked_at"
+    t.uuid "revoked_by_user_id"
+    t.string "role", null: false
+    t.uuid "user_id", null: false
+    t.uuid "vaccine_room_id", null: false
+    t.index ["user_id"], name: "idx_vaccine_room_staff_user"
+    t.index ["vaccine_room_id", "user_id", "role"], name: "idx_vaccine_room_staff_active", unique: true, where: "(revoked_at IS NULL)"
+    t.check_constraint "(revoked_at IS NULL) = (revoked_by_user_id IS NULL)", name: "ck_vaccine_room_staff_revoked"
+    t.check_constraint "role::text = ANY (ARRAY['vaccinator'::text, 'room_lead'::text])", name: "ck_vaccine_room_staff_role"
+  end
+
+  create_table "vaccine_rooms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.string "name", limit: 120, null: false
+    t.uuid "stock_location_id", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["health_unit_id"], name: "idx_vaccine_rooms_unit", unique: true
+    t.index ["stock_location_id"], name: "idx_vaccine_rooms_location", unique: true
+  end
+
+  create_table "vial_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "close_reason"
+    t.datetime "closed_at"
+    t.uuid "closed_by_user_id"
+    t.integer "doses_per_vial", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "opened_at", null: false
+    t.uuid "opened_by_user_id", null: false
+    t.uuid "stock_lot_id", null: false
+    t.integer "technical_loss_doses"
+    t.uuid "vaccine_room_id", null: false
+    t.index ["stock_lot_id"], name: "idx_vial_openings_lot"
+    t.index ["vaccine_room_id", "closed_at"], name: "idx_vial_openings_room"
+    t.check_constraint "(closed_at IS NULL) = (technical_loss_doses IS NULL) AND (closed_by_user_id IS NULL) = (close_reason IS NULL) AND (closed_at IS NOT NULL OR closed_by_user_id IS NULL) AND (technical_loss_doses IS NULL OR technical_loss_doses >= 0 AND technical_loss_doses <= doses_per_vial)", name: "ck_vial_openings_closed"
+    t.check_constraint "doses_per_vial >= 1 AND doses_per_vial <= 10000", name: "ck_vial_openings_doses"
+    t.check_constraint "expires_at > opened_at", name: "ck_vial_openings_expires"
+  end
+
   create_table "weekly_negative_reports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.uuid "health_unit_id", null: false
@@ -3513,6 +3732,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
   add_foreign_key "clinical_record_openings", "citizens"
   add_foreign_key "clinical_record_openings", "patients"
   add_foreign_key "clinical_record_openings", "users"
+  add_foreign_key "cold_chain_equipments", "stock_locations"
+  add_foreign_key "cold_chain_excursions", "cold_chain_readings"
+  add_foreign_key "cold_chain_excursions", "stock_locations"
+  add_foreign_key "cold_chain_excursions", "users", column: "decided_by_user_id"
+  add_foreign_key "cold_chain_readings", "cold_chain_equipments"
+  add_foreign_key "cold_chain_readings", "users", column: "recorded_by_user_id"
   add_foreign_key "consents", "conversations"
   add_foreign_key "consultation_addenda", "clinical_record_openings", column: "opening_id"
   add_foreign_key "consultation_addenda", "consultations"
@@ -3567,6 +3792,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
   add_foreign_key "disease_notifications", "consultation_addenda", column: "addendum_id"
   add_foreign_key "disease_notifications", "consultations"
   add_foreign_key "disease_notifications", "health_units"
+  add_foreign_key "disease_notifications", "immunizations"
   add_foreign_key "disease_notifications", "neighborhoods"
   add_foreign_key "disease_notifications", "patients"
   add_foreign_key "disease_notifications", "users", column: "notifier_user_id"
@@ -3634,6 +3860,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
   add_foreign_key "households", "micro_areas"
   add_foreign_key "households", "users", column: "registered_by_user_id"
   add_foreign_key "identities", "users"
+  add_foreign_key "immunizations", "campaigns"
+  add_foreign_key "immunizations", "health_units"
+  add_foreign_key "immunizations", "immunizations", column: "replaces_id"
+  add_foreign_key "immunizations", "patients"
+  add_foreign_key "immunizations", "stock_lots"
+  add_foreign_key "immunizations", "users", column: "cancelled_by_user_id"
+  add_foreign_key "immunizations", "users", column: "vaccinator_user_id"
+  add_foreign_key "immunizations", "vaccine_rooms"
+  add_foreign_key "immunizations", "vial_openings"
   add_foreign_key "individual_registration_versions", "families"
   add_foreign_key "individual_registration_versions", "health_teams", column: "team_id"
   add_foreign_key "individual_registration_versions", "households"
@@ -3816,6 +4051,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
   add_foreign_key "regulation_risk_deadlines", "users", column: "updated_by_user_id"
   add_foreign_key "report_snapshots", "protocol_definitions"
   add_foreign_key "report_snapshots", "triages"
+  add_foreign_key "rnds_outbox", "immunizations"
   add_foreign_key "screening_revisions", "protocol_definitions", column: "rule_protocol_definition_id"
   add_foreign_key "screening_revisions", "screenings"
   add_foreign_key "screening_revisions", "users", column: "by_user_id"
@@ -3854,16 +4090,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
   add_foreign_key "stock_location_staff", "users", column: "revoked_by_user_id"
   add_foreign_key "stock_locations", "health_units"
   add_foreign_key "stock_locations", "users", column: "updated_by_user_id"
+  add_foreign_key "stock_lot_blocks", "cold_chain_excursions"
+  add_foreign_key "stock_lot_blocks", "stock_locations"
+  add_foreign_key "stock_lot_blocks", "stock_lots"
   add_foreign_key "stock_lots", "users", column: "created_by_user_id"
   add_foreign_key "stock_minimums", "stock_locations"
   add_foreign_key "stock_minimums", "users", column: "updated_by_user_id"
   add_foreign_key "stock_movements", "dispensation_items"
+  add_foreign_key "stock_movements", "immunizations"
   add_foreign_key "stock_movements", "stock_adjustments"
   add_foreign_key "stock_movements", "stock_entries"
   add_foreign_key "stock_movements", "stock_locations"
   add_foreign_key "stock_movements", "stock_lots"
   add_foreign_key "stock_movements", "stock_transfers"
   add_foreign_key "stock_movements", "users", column: "recorded_by_user_id"
+  add_foreign_key "stock_movements", "vial_openings"
   add_foreign_key "stock_openings", "stock_entries"
   add_foreign_key "stock_openings", "stock_locations"
   add_foreign_key "stock_transfer_items", "stock_lots"
@@ -3879,6 +4120,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_900001) do
   add_foreign_key "triages", "conversations"
   add_foreign_key "triages", "neighborhoods"
   add_foreign_key "triages", "protocol_definitions"
+  add_foreign_key "vaccination_record_checks", "patients"
+  add_foreign_key "vaccination_record_checks", "users", column: "checked_by_user_id"
+  add_foreign_key "vaccination_record_checks", "vaccine_rooms"
+  add_foreign_key "vaccination_settings", "users", column: "updated_by_user_id"
+  add_foreign_key "vaccination_statuses", "patients"
+  add_foreign_key "vaccine_room_staff", "users"
+  add_foreign_key "vaccine_room_staff", "users", column: "granted_by_user_id"
+  add_foreign_key "vaccine_room_staff", "users", column: "revoked_by_user_id"
+  add_foreign_key "vaccine_room_staff", "vaccine_rooms"
+  add_foreign_key "vaccine_rooms", "health_units"
+  add_foreign_key "vaccine_rooms", "stock_locations"
+  add_foreign_key "vaccine_rooms", "users", column: "updated_by_user_id"
+  add_foreign_key "vial_openings", "stock_lots"
+  add_foreign_key "vial_openings", "users", column: "closed_by_user_id"
+  add_foreign_key "vial_openings", "users", column: "opened_by_user_id"
+  add_foreign_key "vial_openings", "vaccine_rooms"
   add_foreign_key "weekly_negative_reports", "health_units"
   add_foreign_key "weekly_negative_reports", "users", column: "recorded_by_user_id"
 end

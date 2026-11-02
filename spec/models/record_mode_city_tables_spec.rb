@@ -25,7 +25,7 @@ RSpec.describe "Tabelas da cidade do módulo 16" do
       expect { sql("INSERT INTO integration_credentials (id, kind, secret, set_by_user_id, set_at, created_at, updated_at) " \
                    "VALUES (gen_random_uuid(), 'ledi', 'x', '#{admin.id}', now(), now(), now())") }
         .to raise_error(ActiveRecord::RecordNotUnique)
-      expect { sql("UPDATE integration_credentials SET kind = 'rnds'") }.to raise_error(ActiveRecord::StatementInvalid)
+      expect { sql("UPDATE integration_credentials SET kind = 'sncr'") }.to raise_error(ActiveRecord::StatementInvalid)
       expect { sql("UPDATE integration_credentials SET last_check_status = 'talvez'") }.to raise_error(ActiveRecord::StatementInvalid)
     end
 

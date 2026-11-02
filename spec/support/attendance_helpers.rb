@@ -1,6 +1,7 @@
 module AttendanceHelpers
-  def create_unit(name = "UBS Centro", kind: "ubs", active: true)
-    HealthUnit.create!(name: name, kind: kind, active: active)
+  # `cnes:` opcional (módulo 29: a sala de vacina na unidade com CNES).
+  def create_unit(name = "UBS Centro", kind: "ubs", active: true, cnes: nil)
+    HealthUnit.create!(name: name, kind: kind, active: active, cnes: cnes)
   end
 
   # Triagem web concluída do cidadão. Usa o protocolo padrão; a data de

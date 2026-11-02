@@ -2373,6 +2373,13 @@ BEGIN
   IF NEW.catalog_item_id IS DISTINCT FROM (SELECT catalog_item_id FROM stock_lots WHERE id = NEW.stock_lot_id) THEN
     RAISE EXCEPTION 'stock_movements: catalog_item_id differs from the lot';
   END IF;
+  -- Módulo 29: o código do imunobiológico também é cópia do lote. Lido por
+  -- to_jsonb: a coluna só nasce na 20261102900001, e este arquivo roda também
+  -- nas migrações anteriores (como o I1 do módulo 23).
+  IF (to_jsonb(NEW) ->> 'immunobiological_code') IS DISTINCT FROM
+     (SELECT to_jsonb(l) ->> 'immunobiological_code' FROM stock_lots l WHERE l.id = NEW.stock_lot_id) THEN
+    RAISE EXCEPTION 'stock_movements: immunobiological_code differs from the lot';
+  END IF;
   IF (SELECT COALESCE(SUM(quantity), 0) FROM stock_movements
       WHERE stock_location_id = NEW.stock_location_id AND stock_lot_id = NEW.stock_lot_id) < 0 THEN
     RAISE EXCEPTION 'stock_movements: negative balance refused';
@@ -2671,6 +2678,130 @@ BEGIN
                                 'dental_treatment_plans', 'dental_treatment_plan_items', 'periodontal_screenings', 'periodontal_charts',
                                 'periodontal_sites', 'endodontic_treatments', 'endodontic_sessions', 'dental_prosthesis_orders',
                                 'dental_prosthesis_stages'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;
+
+-- Módulo 29 (ADR 0047): sala de vacina. A dose (immunizations) nunca muda:
+-- só o cancelamento (cancelled_at, cancelled_by_user_id, cancel_reason), uma
+-- vez; sob rota.reencrypting regrava só as cifradas (lote, fabricante e local
+-- da transcrição, justificativa e motivo do cancelamento). O frasco só fecha,
+-- uma vez (descarte ou vencimento); sob rota.reencrypting regrava só o motivo.
+-- A excursão só é decidida, uma vez. Leitura de temperatura e conferência da
+-- caderneta: só acréscimo. O vínculo da sala só é revogado, uma vez. Sala,
+-- equipamento, fila RNDS, bloqueio de lote e parâmetros nunca somem. A
+-- situação materializada (vaccination_statuses) é cópia recalculável: DELETE
+-- e INSERT por paciente, sem guarda de linha. TRUNCATE recusado nas 12 tabelas.
+CREATE OR REPLACE FUNCTION rota_immunization_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['cancelled_at', 'cancelled_by_user_id', 'cancel_reason'];
+  encrypted text[] := ARRAY['lot_number_text', 'manufacturer_text', 'place_text', 'override_reason', 'cancel_reason'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'immunizations: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'immunizations: only cancelled_at, cancelled_by_user_id and cancel_reason change';
+  END IF;
+  IF OLD.cancelled_at IS NOT NULL OR NEW.cancelled_at IS NULL THEN
+    RAISE EXCEPTION 'immunizations: a dose is cancelled once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_vial_opening_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['closed_at', 'closed_by_user_id', 'close_reason', 'technical_loss_doses'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'vial_openings: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'close_reason') = (to_jsonb(OLD) - 'close_reason') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'vial_openings: only closed_at, closed_by_user_id, close_reason and technical_loss_doses change';
+  END IF;
+  IF OLD.closed_at IS NOT NULL OR NEW.closed_at IS NULL THEN
+    RAISE EXCEPTION 'vial_openings: a vial is closed once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_cold_chain_excursion_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['decided_at', 'decided_by_user_id'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'cold_chain_excursions: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'cold_chain_excursions: only decided_at and decided_by_user_id change';
+  END IF;
+  IF OLD.decided_at IS NOT NULL OR NEW.decided_at IS NULL THEN
+    RAISE EXCEPTION 'cold_chain_excursions: an excursion is decided once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_vaccine_room_staff_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['revoked_at', 'revoked_by_user_id'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'vaccine_room_staff: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'vaccine_room_staff: only revoked_at and revoked_by_user_id change';
+  END IF;
+  IF OLD.revoked_at IS NOT NULL OR NEW.revoked_at IS NULL THEN
+    RAISE EXCEPTION 'vaccine_room_staff: a link is revoked once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.immunizations') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS immunizations_guard ON immunizations';
+    EXECUTE 'CREATE TRIGGER immunizations_guard BEFORE UPDATE OR DELETE ON immunizations
+      FOR EACH ROW EXECUTE FUNCTION rota_immunization_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS vial_openings_guard ON vial_openings';
+    EXECUTE 'CREATE TRIGGER vial_openings_guard BEFORE UPDATE OR DELETE ON vial_openings
+      FOR EACH ROW EXECUTE FUNCTION rota_vial_opening_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS cold_chain_excursions_guard ON cold_chain_excursions';
+    EXECUTE 'CREATE TRIGGER cold_chain_excursions_guard BEFORE UPDATE OR DELETE ON cold_chain_excursions
+      FOR EACH ROW EXECUTE FUNCTION rota_cold_chain_excursion_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS vaccine_room_staff_guard ON vaccine_room_staff';
+    EXECUTE 'CREATE TRIGGER vaccine_room_staff_guard BEFORE UPDATE OR DELETE ON vaccine_room_staff
+      FOR EACH ROW EXECUTE FUNCTION rota_vaccine_room_staff_guard()';
+    FOREACH item IN ARRAY ARRAY['cold_chain_readings', 'vaccination_record_checks'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['vaccine_rooms', 'cold_chain_equipments', 'rnds_outbox', 'stock_lot_blocks', 'vaccination_settings'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
+                     item || '_no_delete', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['vaccination_settings', 'vaccine_rooms', 'vaccine_room_staff', 'immunizations', 'rnds_outbox',
+                                'vial_openings', 'stock_lot_blocks', 'cold_chain_equipments', 'cold_chain_readings',
+                                'cold_chain_excursions', 'vaccination_record_checks', 'vaccination_statuses'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
                      item || '_append_only_truncate', item);

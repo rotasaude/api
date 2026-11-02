@@ -97,7 +97,14 @@ Rails.application.config.filter_parameters += [
   # ADR 0046: saúde bucal — dente, face, situação, procedimentos, plano,
   # periograma, endodontia, gestante e laboratório são dado clínico do
   # paciente (`reason`, `cpf` e `cns` já estavam acima).
-  /\A(dental|findings|situation|tooth|face|sextant|arch|plan_changes|periodontal_chart|periodontal_screening|endodontics|pregnant|special_needs|laboratory|sigtap|procedure_code|procedures|outcomes|dental_outcomes|oral_health_surveillance|laboratory_name|supplies|dental_consultation_type)\z/
+  /\A(dental|findings|situation|tooth|face|sextant|arch|plan_changes|periodontal_chart|periodontal_screening|endodontics|pregnant|special_needs|laboratory|sigtap|procedure_code|procedures|outcomes|dental_outcomes|oral_health_surveillance|laboratory_name|supplies|dental_consultation_type)\z/,
+  # ADR 0047: sala de vacina — vacina, dose, lote, frasco, fabricante,
+  # estratégia, grupo, via, local e condição maternal da dose, a data de
+  # aplicação, o local e os itens da transcrição, a substituta, a
+  # justificativa do aviso, o certificado A1 e a senha da credencial RNDS, o
+  # CNES solicitante e as temperaturas (`reason`, `cpf`, `cns`, `items` e
+  # `place` já estavam acima).
+  /\A(immunobiological_code|immunobiological_codes|dose_code|lot_id|lot_number|vial_id|manufacturer_code|manufacturer_name|strategy|care_group|route|site|maternal_condition|applied_at|applied_on|place|items|replacement|override_reason|pfx_base64|pfx_password|requester_cnes|current_c|min_c|max_c)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
