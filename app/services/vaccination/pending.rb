@@ -3,13 +3,16 @@
 #
 # Uma entrada por dose da sala, a que ainda pede atenção:
 #  - dose ativa: a `application`;
-#  - dose cancelada: a `application` enquanto não foi aceita (o cancelamento
-#    espera por ela) e, depois do aceite, a `cancellation`; com a
-#    `application` `rejected`/`failed` não há nada a desfazer na RNDS e a dose
-#    sai das pendências (V7).
+#  - dose cancelada com `cancellation`: a `application` enquanto não foi
+#    aceita (o cancelamento espera por ela) e, depois do aceite, a
+#    `cancellation`; sem `cancellation` (original `rejected`/`failed`, ou
+#    nunca tentado — `RndsOutboxEntry.withdrawn`) não há nada a fazer na RNDS
+#    e a dose sai das pendências e do atraso (V7).
 # Entra na lista: `blocked`, `rejected`, `failed`, ou `pending` há mais de
-# PENDING_AFTER (20 h). Com o envio desligado, `pending` é `not_sent`: fora da
-# lista e do atraso (nada sairá até ligar). `late` (V8, o alerta de 24 h,
+# PENDING_AFTER (20 h). Com o interruptor `rnds_immunization` desligado,
+# `pending` é `not_sent`: fora da lista e do atraso (nada sairá até ligar).
+# Ligado mas inutilizável (credencial ausente ou recusada) continua contando:
+# o prazo está estourando. `late` (V8, o alerta de 24 h,
 # calculado na leitura como o Ledi::Alert) = não aceita e `deadline_at` vencido.
 module Vaccination
   module Pending
@@ -28,18 +31,18 @@ module Vaccination
     end
 
     # Entradas da lista, das doses mais recentes para as mais antigas (applied_at, id da entrada).
-    def scope(room, rnds_usable:, now: Time.current)
+    def scope(room, rnds_enabled:, now: Time.current)
       listed = effective(room).where(status: LISTED)
-      listed = listed.or(effective(room).where(status: "pending").where(rnds_outbox: { created_at: ...(now - Catalog::PENDING_AFTER) })) if rnds_usable
+      listed = listed.or(effective(room).where(status: "pending").where(rnds_outbox: { created_at: ...(now - Catalog::PENDING_AFTER) })) if rnds_enabled
       listed.order("immunizations.applied_at DESC, rnds_outbox.id DESC")
     end
 
     # -> { blocked:, rejected:, failed:, late: }
-    def counts(room, rnds_usable:, now: Time.current)
+    def counts(room, rnds_enabled:, now: Time.current)
       base = effective(room)
       by_status = base.where(status: LISTED).group(:status).count
       late = base.where.not(status: "accepted").where(rnds_outbox: { deadline_at: ...now })
-      late = late.where.not(status: "pending") unless rnds_usable
+      late = late.where.not(status: "pending") unless rnds_enabled
       { blocked: by_status["blocked"] || 0, rejected: by_status["rejected"] || 0, failed: by_status["failed"] || 0, late: late.count }
     end
   end

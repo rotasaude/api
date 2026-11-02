@@ -29,7 +29,8 @@ RSpec.describe Vaccination::CancelImmunization do
     expect(result).to be_ok
     expect(balance_of(room.stock_location, lot)).to eq(4)
     expect(result.payload[:replacement].replaces_id).to eq(dose.id)
-    expect(kinds(dose)).to match_array(%w[application cancellation])
+    # Original nunca tentado: não vai à RNDS e não nasce cancelamento (Fix round 1, I3).
+    expect(kinds(dose)).to eq(%w[application])
     expect(StockMovement.where(kind: "immunization_reversal").sole).to have_attributes(quantity: 1, immunization_id: dose.id, stock_lot_id: lot.id,
                                                                                         stock_location_id: room.stock_location_id)
   end
@@ -115,12 +116,48 @@ RSpec.describe Vaccination::CancelImmunization do
   end
 
   describe "fila RNDS (V7, Desvio 12)" do
-    it "original pending (ou envio desligado, not_sent) → a entrada cancellation nasce pending com prazo de criação + 24 h" do
+    it "I3: original pending sem tentativa (inclusive envio desligado) → nenhum cancelamento; a application fica withdrawn" do
+      dose = record!(room, child, lot: lot, by: vaccinator)
+      application = RndsOutboxEntry.find_by(immunization_id: dose.id)
+      expect(application.attempted?).to be(false)
+      expect(RndsOutboxEntry.withdrawn).to be_empty
+      expect(cancel(dose)).to be_ok
+      expect(kinds(dose)).to eq(%w[application])
+      expect(RndsOutboxEntry.withdrawn.pluck(:id)).to eq([ application.id ])
+      expect(RndsOutboxEntry.not_withdrawn.where(immunization_id: dose.id)).to be_empty
+      expect(Vaccination::Pending.counts(room, rnds_enabled: true)).to include(late: 0)
+    end
+
+    it "I3: original blocked → nenhum cancelamento; withdrawn" do
+      dose = record!(room, child, lot: lot, by: vaccinator)
+      RndsOutboxEntry.find_by(immunization_id: dose.id).update!(status: "blocked", block_reason: "patient_without_cns_or_cpf",
+                                                                 first_attempt_at: 1.hour.ago)
+      cancel(dose)
+      expect(kinds(dose)).to eq(%w[application])
+      expect(RndsOutboxEntry.withdrawn.where(immunization_id: dose.id).count).to eq(1)
+    end
+
+    it "I3: dose ativa nunca é withdrawn" do
+      dose = record!(room, child, lot: lot, by: vaccinator)
+      RndsOutboxEntry.find_by(immunization_id: dose.id).update!(status: "blocked", block_reason: "patient_without_cns_or_cpf")
+      expect(RndsOutboxEntry.withdrawn).to be_empty
+      expect(RndsOutboxEntry.not_withdrawn.where(immunization_id: dose.id).count).to eq(1)
+    end
+
+    it "I3: original pending depois de uma tentativa (timeout) → cancellation pending com prazo de criação + 24 h" do
       dose = record!(room, child, lot: lot, by: vaccinator, applied_at: 3.hours.ago.iso8601)
+      RndsOutboxEntry.find_by(immunization_id: dose.id).update!(first_attempt_at: 1.hour.ago, attempts: 1)
       now = Time.current.change(usec: 0)
       described_class.call(immunization: dose, reason: reason, replacement: nil, by: lead, now: now)
       expect(RndsOutboxEntry.find_by(immunization_id: dose.id, kind: "cancellation"))
         .to have_attributes(status: "pending", payload: nil, deadline_at: now + 24.hours, next_attempt_at: now)
+    end
+
+    it "original sending → cancellation" do
+      dose = record!(room, child, lot: lot, by: vaccinator)
+      RndsOutboxEntry.find_by(immunization_id: dose.id).update!(status: "sending")
+      cancel(dose)
+      expect(kinds(dose)).to match_array(%w[application cancellation])
     end
 
     it "original accepted → cancellation" do
@@ -142,12 +179,12 @@ RSpec.describe Vaccination::CancelImmunization do
     it "Review Focus 3: original recusado (422) e cancelado: nenhum cancelamento nasce, a substituta entra na fila e a pendência some" do
       dose = record!(room, child, lot: lot, by: vaccinator)
       RndsOutboxEntry.find_by(immunization_id: dose.id).update!(status: "rejected", error: "422 Unprocessable Entity")
-      expect(Vaccination::Pending.scope(room, rnds_usable: true).map(&:immunization_id)).to eq([ dose.id ])
+      expect(Vaccination::Pending.scope(room, rnds_enabled: true).map(&:immunization_id)).to eq([ dose.id ])
       result = cancel(dose, replacement: replacement_attrs(dose, dose_code: "2", override_reason: "Correção da dose registrada antes"))
       replacement = result.payload[:replacement]
       expect(kinds(dose)).to eq(%w[application])
       expect(RndsOutboxEntry.where(immunization_id: replacement.id).pluck(:kind, :status)).to eq([ %w[application pending] ])
-      expect(Vaccination::Pending.scope(room, rnds_usable: true).map(&:immunization_id)).not_to include(dose.id)
+      expect(Vaccination::Pending.scope(room, rnds_enabled: true).map(&:immunization_id)).not_to include(dose.id)
     end
   end
 
@@ -165,6 +202,21 @@ RSpec.describe Vaccination::CancelImmunization do
       expect(result.payload[:replacement]).to have_attributes(transcription: true, replaces_id: transcribed.id, place_text: "Maternidade",
                                                               stock_lot_id: nil)
       expect(StockMovement.where(kind: "immunization_reversal")).to be_empty
+    end
+
+    it "I1: substituição de transcrição grava uma trilha pela pessoa" do
+      transcribed
+      seen = DomainEvent.pluck(:id)
+      cancel(transcribed, replacement: { "immunobiological_code" => "15", "dose_code" => "9", "applied_on" => (Date.current - 54).iso8601 })
+      expect(DomainEvent.where.not(id: seen).where(name: "clinical_record.viewed").map(&:payload))
+        .to contain_exactly(include("patient_id" => child.id, "user_id" => lead.id, "access" => "vaccination"))
+    end
+
+    it "I1: substituição comum grava uma trilha (a do RecordImmunization), não duas" do
+      dose = record!(room, child, lot: lot, by: vaccinator)
+      seen = DomainEvent.pluck(:id)
+      cancel(dose, replacement: replacement_attrs(dose, dose_code: "2", override_reason: "Correção da dose registrada antes"))
+      expect(DomainEvent.where.not(id: seen).where(name: "clinical_record.viewed").count).to eq(1)
     end
 
     it "item de substituição inválido → replacement.applied_on" do

@@ -41,6 +41,18 @@ RSpec.describe Vaccination::RecordTranscription do
     expect(DomainEvent.all.map(&:payload).to_json).not_to include("BCG123")
   end
 
+  it "I4: dose de hoje transcrita antes do meio-dia nunca fica no futuro (Desvio 9); depois do meio-dia, 12:00" do
+    morning = Time.zone.today.in_time_zone.change(hour: 9)
+    travel_to(morning) do
+      dose = call([ item("applied_on" => Date.current.iso8601) ], now: Time.current).payload[:immunizations].sole
+      expect(dose.applied_at).to eq(morning)
+    end
+    travel_to(morning.change(hour: 15)) do
+      dose = call([ item("applied_on" => Date.current.iso8601) ], now: Time.current).payload[:immunizations].sole
+      expect(dose.applied_at).to eq(morning.change(hour: 12))
+    end
+  end
+
   it "várias doses de uma vez; o card devolvido tem as doses" do
     result = call([ item, item("immunobiological_code" => "42", "dose_code" => "1", "applied_on" => (Date.current - 1).iso8601) ])
     expect(result.payload[:immunizations].size).to eq(2)

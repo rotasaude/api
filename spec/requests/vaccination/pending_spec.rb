@@ -73,6 +73,25 @@ RSpec.describe "Sala de vacina — pendências do envio", type: :request do
     expect(json_body["counts"]).to eq("blocked" => 0, "rejected" => 1, "failed" => 0, "late" => 1)
   end
 
+  it "I2: interruptor ligado com credencial recusada (inutilizável) continua contando prazo e atraso" do
+    IntegrationCredential.find_by!(kind: "rnds").update_columns(last_check_status: "unauthorized")
+    expect(Rnds::Gate.usable?(city)).to be(false)
+    late = dose_with_entry(hours: 30)
+    get base
+    expect(ids).to eq([ late.id ])
+    expect(json_body.dig("items", 0, "rnds", "status")).to eq("pending")
+    expect(json_body["counts"]).to include("late" => 1)
+  end
+
+  it "I3: dose cancelada que nunca foi tentada sai da lista e do atraso" do
+    dose = dose_with_entry(hours: 30)
+    Vaccination::CancelImmunization.call(immunization: dose, reason: "Paciente errado na busca", replacement: nil,
+                                         by: room_member!(room, role: "room_lead", cbo: "223505"))
+    get base
+    expect(ids).to be_empty
+    expect(json_body["counts"]).to eq("blocked" => 0, "rejected" => 0, "failed" => 0, "late" => 0)
+  end
+
   it "pagina com limit e next_before" do
     doses = (1..3).map { |n| dose_with_entry(hours: n, status: "blocked", block_reason: "patient_without_cns_or_cpf") }
     get base, params: { limit: 2 }

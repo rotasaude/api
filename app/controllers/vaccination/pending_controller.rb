@@ -19,23 +19,24 @@ module Vaccination
 
       now = Time.current
       usable = Rnds::Gate.usable?(Current.city)
-      scope = Pending.scope(room, rnds_usable: usable, now: now)
+      enabled = Rnds::Gate.enabled?(Current.city)
+      scope = Pending.scope(room, rnds_enabled: enabled, now: now)
       if cursor
         scope = scope.where("(immunizations.applied_at, rnds_outbox.id) < (?, ?)", Time.iso8601(cursor.first), cursor.last)
       end
       rows = scope.preload(:immunization).limit(limit + 1).to_a
       page = rows.first(limit)
-      render json: { items: page.map { |entry| item(entry, usable) }, counts: Pending.counts(room, rnds_usable: usable, now: now),
+      render json: { items: page.map { |entry| item(entry, enabled) }, counts: Pending.counts(room, rnds_enabled: enabled, now: now),
                      next_before: rows.size > limit ? Pharmacy::Cursor.encode([ page.last.immunization.applied_at.utc.iso8601(6), page.last.id ]) : nil }
     end
 
     private
 
-    def item(entry, usable)
+    def item(entry, enabled)
       dose = entry.immunization
       { immunization_id: dose.id, patient_id: dose.patient_id,
         immunobiological: { code: dose.immunobiological_code, name: Immunobiologicals.find(dose.immunobiological_code)&.name },
-        applied_at: dose.applied_at, rnds: Json.rnds(entry, usable) }
+        applied_at: dose.applied_at, rnds: Json.rnds(entry, enabled) }
     end
 
     def page_limit

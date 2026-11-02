@@ -11,16 +11,19 @@
 #     sala (o frasco multidose nunca recebe reversão: a dose volta ao frasco
 #     porque a contagem só soma doses ativas);
 #  3. fila RNDS: a entrada `cancellation` só nasce se a `application` do
-#     original existe e não está `rejected`/`failed` (nada a desfazer na RNDS).
-#     Com o envio desligado a `application` fica `pending` (lida `not_sent`) e
-#     será enviada quando ligar: o cancelamento entra igual e só é reivindicado
-#     depois do aceite (Task 13);
+#     original já foi tentada (`RndsOutboxEntry#attempted?`: `sending`,
+#     `accepted`, ou `pending` depois de uma tentativa) e não está
+#     `rejected`/`failed` (nada a desfazer na RNDS). `application` `pending`
+#     sem tentativa (inclusive com o envio desligado), `blocked` ou ausente:
+#     a dose nunca chegou à RNDS e não vai mais (`RndsOutboxEntry.withdrawn`,
+#     excluída do claim da Task 13); nenhuma `cancellation`;
 #  4. a substituta, com `replaces_id`: pelo Vaccination::RecordImmunization
 #     (forma do POST da dose), ou, se o original é uma transcrição, como um item
 #     de transcrição. Recusa da substituta desfaz tudo (V6) e volta com os
 #     problemas no path `replacement.<campo>`;
 #  5. a situação materializada, `vaccination.immunization_cancelled` (só ids) e
-#     uma trilha pela pessoa (a substituta já grava a dela).
+#     uma trilha pela pessoa mostrada (a substituta pelo RecordImmunization já
+#     grava a dela; a de transcrição, não — a trilha é gravada aqui).
 module Vaccination
   module CancelImmunization
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
@@ -91,16 +94,17 @@ module Vaccination
       Statuses.refresh!(dose.patient, today: now.in_time_zone.to_date)
       DomainEvents.publish("vaccination.immunization_cancelled", immunization_id: dose.id, vaccine_room_id: dose.vaccine_room_id,
                                                                  user_id: by.id, replacement_id: substitute&.id)
-      Trail.person_viewed!(user: by, patient_id: dose.patient_id) unless substitute
+      Trail.person_viewed!(user: by, patient_id: dose.patient_id) unless substitute && !dose.transcription
       Result.ok(cancelled: dose, replacement: substitute)
     rescue Pharmacy::Ledger::Inactive
       Result.fail(:location_inactive)
     end
 
-    # A `application` travada contra o job de envio (Task 13) enquanto decide.
+    # A `application` travada contra o job de envio (Task 13) enquanto decide:
+    # o claim (SKIP LOCKED) não a pega no meio.
     def enqueue_cancellation!(dose, now)
       application = RndsOutboxEntry.lock("FOR UPDATE").find_by(immunization_id: dose.id, kind: "application")
-      return if application.nil? || NOTHING_TO_UNDO.include?(application.status)
+      return if application.nil? || !application.attempted? || NOTHING_TO_UNDO.include?(application.status)
 
       Rnds::Enqueue.call(dose, kind: "cancellation", now: now)
     end
@@ -121,7 +125,7 @@ module Vaccination
       link = Access.vaccinator_link(user: by, room: dose.vaccine_room)
       return Result.fail(:missing_role) unless link
 
-      row = RecordTranscription::Item.new(attrs, "", dose.patient, now.in_time_zone.to_date)
+      row = RecordTranscription::Item.new(attrs, "", dose.patient, now)
       problems = row.problems.map { |problem| problem.merge(path: problem[:path].delete_prefix(".")) }
       return Result.fail(:invalid, details: { path: problems.first[:path], problems: problems }) if problems.any?
 

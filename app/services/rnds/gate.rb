@@ -10,5 +10,14 @@ module Rnds
 
       Platform::Features.usable?(city, KEY)
     end
+
+    # Só o interruptor (sem credencial nem catálogo): o que a sala lê como
+    # "envio desligado". Ligado e inutilizável (credencial ausente ou recusada)
+    # continua contando prazo e atraso.
+    def enabled?(city)
+      return false if city.nil? || city.id.nil?
+
+      Platform::Features.enabled?(city, KEY)
+    end
   end
 end

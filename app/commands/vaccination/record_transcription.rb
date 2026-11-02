@@ -9,7 +9,8 @@
 # `items[i].<campo>`.
 #
 # Gravação: a dose `transcription: true`, `applied_at` = `applied_on` 12:00 no
-# fuso da cidade, estratégia `1`, sem lote do estoque nem movimento; a fila
+# fuso da cidade (ou agora, se a dose é de hoje e ainda não é meio-dia: nunca
+# futura, Desvio 9), estratégia `1`, sem lote do estoque nem movimento; a fila
 # RNDS (prazo = criação + 24 h); com `close_check: true`, a conferência
 # `transcribed` (imutável); a situação materializada; uma trilha pela pessoa
 # mostrada; `vaccination.immunization_recorded` por dose, só ids. Lote,
@@ -35,7 +36,7 @@ module Vaccination
       problems << { path: "close_check", error: "invalid_request" } unless [ true, false ].include?(close_check)
       return failure(problems) if problems.any?
 
-      rows = items.each_with_index.map { |raw, index| Item.new(raw, "items[#{index}]", patient, today) }
+      rows = items.each_with_index.map { |raw, index| Item.new(raw, "items[#{index}]", patient, now) }
       problems = rows.flat_map(&:problems)
       return failure(problems) if problems.any?
 
@@ -71,11 +72,12 @@ module Vaccination
     class Item
       attr_reader :product, :dose_code, :applied_at, :lot_number, :manufacturer_name, :place
 
-      def initialize(raw, prefix, patient, today)
+      def initialize(raw, prefix, patient, now)
         @raw = raw
         @prefix = prefix
         @patient = patient
-        @today = today
+        @now = now.in_time_zone
+        @today = @now.to_date
       end
 
       def problems
@@ -108,7 +110,7 @@ module Vaccination
         birth = Statuses.birth_date(@patient)
         return add("applied_on", "applied_before_birth") if birth && on < birth
 
-        @applied_at = on.in_time_zone.change(hour: NOON)
+        @applied_at = [ on.in_time_zone.change(hour: NOON), @now ].min
       rescue Date::Error
         add("applied_on", "invalid_value")
       end
