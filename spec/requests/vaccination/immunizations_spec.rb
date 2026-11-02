@@ -144,4 +144,70 @@ RSpec.describe "Sala de vacina — dose aplicada", type: :request do
                                             "reason_code" => "case_review", "person_ref" => "patient:#{child.id}" } ])
     end
   end
+
+  describe "POST /vaccination/immunizations/:id/cancel (Task 9; §15 V6)" do
+    let(:dose) { record!(room, child, lot: lot, by: vaccinator) }
+    let(:reason) { "Dose registrada como D1 por engano" }
+
+    def cancel_dose(id: dose.id, **body) = post("/vaccination/immunizations/#{id}/cancel", params: body.to_json, headers: json_headers)
+    def replacement(**over) = dose_body(dose_code: "2", override_reason: "Correção da dose registrada antes").except(:patient_id).merge(over)
+
+    it "step-up: sem MFA recente → 401 mfa_required, nada muda" do
+      sign_in_as(lead)
+      cancel_dose(reason: reason)
+      expect(response).to have_http_status(:unauthorized)
+      expect(json_body).to eq("error" => "mfa_required")
+      expect(dose.reload.cancelled_at).to be_nil
+    end
+
+    it "200 { cancelled, replacement } com a forma <immunization>; trilha uma vez" do
+      stepped_up!(lead)
+      dose
+      before = trails.size
+      cancel_dose(reason: reason, replacement: replacement)
+      expect(response).to have_http_status(:ok)
+      replaced = Immunization.find_by!(replaces_id: dose.id)
+      expect(json_body["cancelled"]).to include("id" => dose.id, "status" => "cancelled", "cancel_reason" => reason, "replaced_by_id" => replaced.id,
+                                                "can_cancel" => false)
+      expect(json_body["replacement"]).to include("id" => replaced.id, "replaces_id" => dose.id, "status" => "active", "can_cancel" => true)
+      expect(json_body["replacement"]).not_to have_key("override_reason")
+      expect(trails.size - before).to eq(1)
+    end
+
+    it "sem substituição → replacement null; já cancelada → 409 already_cancelled" do
+      stepped_up!(vaccinator)
+      cancel_dose(reason: reason)
+      expect(json_body["replacement"]).to be_nil
+      cancel_dose(reason: reason)
+      expect(response).to have_http_status(:conflict)
+      expect(json_body).to eq("error" => "already_cancelled")
+    end
+
+    it "422: motivo inválido; substituição recusada com path replacement.<campo>, nada cancelado" do
+      stepped_up!(lead)
+      cancel_dose(reason: "curto")
+      expect(json_body).to eq("error" => "invalid_reason", "path" => "reason", "problems" => [ { "path" => "reason", "error" => "invalid_reason" } ])
+      cancel_dose(reason: reason, replacement: replacement(route: "99"))
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body).to eq("error" => "invalid_value", "path" => "replacement.route",
+                              "problems" => [ { "path" => "replacement.route", "error" => "invalid_value" } ])
+      expect(dose.reload.cancelled_at).to be_nil
+    end
+
+    it "outro vacinador da sala → 403 cancel_not_allowed; fora da sala → 404; id malformado → 404; motivo na query → 422" do
+      stepped_up!(room_member!(room))
+      cancel_dose(reason: reason)
+      expect(response).to have_http_status(:forbidden)
+      expect(json_body).to eq("error" => "cancel_not_allowed")
+      stepped_up!(room_member!(vaccine_room!))
+      cancel_dose(reason: reason)
+      expect(response).to have_http_status(:not_found)
+      cancel_dose(id: "x", reason: reason)
+      expect(response).to have_http_status(:not_found)
+      stepped_up!(lead)
+      post("/vaccination/immunizations/#{dose.id}/cancel?reason=Paciente+errado+na+busca", params: "{}", headers: json_headers)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(dose.reload.cancelled_at).to be_nil
+    end
+  end
 end

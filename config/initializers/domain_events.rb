@@ -276,9 +276,13 @@ Rails.application.config.to_prepare do
   # `cause`: closed_out | expired), sem consumidor.
   DomainEvents.bind "vaccination.vial_opened", to: []
   DomainEvents.bind "vaccination.vial_closed", to: []
-  # Dose registrada na sala; só trilha, só ids (immunization_id,
+  # Dose registrada na sala ou transcrita; só trilha, só ids (immunization_id,
   # vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.immunization_recorded", to: []
+  # Dose cancelada (com ou sem substituta); só trilha, só ids (immunization_id,
+  # vaccine_room_id, user_id, replacement_id|nil), sem consumidor. O motivo
+  # nunca sai no evento.
+  DomainEvents.bind "vaccination.immunization_cancelled", to: []
   # Entrada de estoque gravada (nota, doação ou inventário de abertura); só
   # trilha, só ids (stock_entry_id, user_id), sem consumidor.
   DomainEvents.bind "stock_receipt.recorded", to: []

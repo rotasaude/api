@@ -613,6 +613,10 @@ Rails.application.routes.draw do
     # Dose aplicada (§5; §15 V5, V6) e a leitura nominal da dose (§15 V10; com trilha).
     post   "rooms/:room_id/immunizations", to: "immunizations#create"
     get    "immunizations/:id",            to: "immunizations#show"
+    # Transcrição, cancelamento com substituição (§5; §15 V6, V7) e pendências do envio (§15 V8).
+    post   "rooms/:room_id/transcriptions", to: "transcriptions#create"
+    post   "immunizations/:id/cancel",     to: "immunizations#cancel"
+    get    "rooms/:room_id/pending",       to: "pending#index"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.

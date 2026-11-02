@@ -361,6 +361,11 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry["vaccination.immunization_recorded"]).to be_empty
   end
 
+  it "declares vaccination.immunization_cancelled with no consumer" do
+    expect(DomainEvents.registry.keys).to include("vaccination.immunization_cancelled")
+    expect(DomainEvents.registry["vaccination.immunization_cancelled"]).to be_empty
+  end
+
   it "declares external_prescription.recorded with no consumer" do
     expect(DomainEvents.registry.keys).to include("external_prescription.recorded")
     expect(DomainEvents.registry["external_prescription.recorded"]).to be_empty
