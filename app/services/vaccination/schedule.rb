@@ -14,16 +14,16 @@
 #  - idade > max_age_days sem a dose → not_applicable;
 #  - today < due_on → upcoming; até due_on + due_window_days → due; depois →
 #    overdue, ou unchecked sem conferência (nunca overdue sem conferência);
-#  - série que se repete (repeat_every_days): a última dose + o período;
+#  - série que se repete (repeat_every_days): a última dose de qualquer código
+#    de `accepts` + o período;
 #    nenhuma → devida a partir da idade mínima da faixa da pessoa;
 #  - dtpa_pregnancy (regra pregnant_from_week): só com `pregnant_since` e a
 #    partir de pregnant_since + semanas; só conta a dose desta gestação.
 #
-# Público (quem entra na série): faixas por idade em PUBLIC_AGE_DAYS; as
-# faixas da própria série (`rules.age_bands_days`, `rules.repeat_from_age_days`)
-# valem sobre elas; "pregnant" exige `pregnant_since`; `sex` da série, se houver.
-# As faixas são curadoria deste motor (a revisão de enfermagem do calendário,
-# gate de go-live, as confere junto).
+# Quem entra na série vem só do YAML do calendário (revisão de enfermagem,
+# gate de go-live): a `age_window` da série (dias, com `review`/`source`); as
+# faixas `rules.age_bands_days` (influenza) quando houver; "pregnant" exige
+# `pregnant_since`; `sex` da série, se houver.
 module Vaccination
   module Schedule
     # Vacina e dose da pessoa: nada em inspect, to_s, pretty_print nem as_json.
@@ -34,12 +34,6 @@ module Vaccination
       def as_json(*) = {}
     end
 
-    PUBLIC_AGE_DAYS = {
-      "child" => (0...3650),          # até 9 anos
-      "adolescent" => (3287...7300),  # 9 a 19 anos
-      "adult" => (7300..),            # 20 anos ou mais
-      "elderly" => (21_900..)         # 60 anos ou mais
-    }.freeze
     PREGNANT = "pregnant".freeze
 
     module_function
@@ -72,15 +66,10 @@ module Vaccination
       bands = series.rules["age_bands_days"]
       starts = []
       starts << pregnant_since if publics.include?(PREGNANT) && pregnant_since
-      if (from = series.rules["repeat_from_age_days"])
-        starts << birth + from if age >= from
-      elsif bands
+      if bands
         bands.each_value { |(min, max)| starts << birth + min if age >= min && (max.nil? || age <= max) }
-      else
-        (publics - [ PREGNANT ]).each do |key|
-          band = PUBLIC_AGE_DAYS.fetch(key)
-          starts << birth + band.begin if band.cover?(age)
-        end
+      elsif (window = series.age_window)&.cover?(age)
+        starts << birth + window.min_days
       end
       starts.compact.min
     end
@@ -147,7 +136,9 @@ module Vaccination
       dose = series.doses.first
       last = applied.last
       due_on = last ? last[:on] + series.repeat_every_days : [ start, ctx[:birth] + (dose.min_age_days || 0) ].max
-      Item.new(series: series.key, immunobiological_code: last ? Immunobiologicals.normalize(last[:code]) : series.accepts.first,
+      # O código é o da dose a aplicar (o primeiro de `accepts`); a última dose
+      # pode ser de outro produto da série (ex.: DTP aos 4 anos para o dT).
+      Item.new(series: series.key, immunobiological_code: series.accepts.first,
                dose_code: dose.dose_code, status: situation(due_on, ctx), due_on: due_on, applied_id: last&.dig(:id))
     end
 

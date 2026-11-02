@@ -73,6 +73,35 @@ RSpec.describe Vaccination::Schedule do
     expect(adult).not_to include("penta", "hpv", "influenza")
   end
 
+  # Fix round 1 (I1): a janela de idade vem do YAML (age_window da série).
+  it "a série some depois da age_window do calendário" do
+    window = calendar.series.find { |s| s.key == "penta" }.age_window
+    at = ->(days) { run(today: born + days).map(&:series) }
+    expect(at.(window.max_days)).to include("penta")
+    expect(at.(window.max_days + 1)).not_to include("penta")
+  end
+
+  # Fix round 1 (I2): qualquer dose com componente diftérico/tetânico conta como a última do dT.
+  it "criança de 8 anos com DTP aos 4 anos não fica overdue para dT: o reforço vem 10 anos depois" do
+    eight = born + 2920
+    doses = [ { id: "p1", code: "42", dose_code: "1", on: born + 60 }, { id: "p2", code: "42", dose_code: "2", on: born + 120 },
+              { id: "p3", code: "42", dose_code: "3", on: born + 180 }, { id: "r1", code: "46", dose_code: "6", on: born + 450 },
+              { id: "r2", code: "46", dose_code: "7", on: born + 1460 } ]
+    dt = item(run(today: eight, doses: doses), "dt_adult", "6")
+    expect(dt).to have_attributes(status: "upcoming", due_on: born + 1460 + 3650, applied_id: "r2", immunobiological_code: "25")
+    hexa = item(run(today: born + 2600, doses: [ { id: "h", code: "43", dose_code: "1", on: born + 2500 } ]), "dt_adult", "6")
+    expect(hexa).to have_attributes(status: "upcoming", applied_id: "h")
+  end
+
+  it "adulto sem dose nenhuma, caderneta conferida: dT em atraso" do
+    adult = Date.new(1990, 1, 1)
+    items = described_class.call(birth_date: adult, sex: "female", pregnant_since: nil, doses: [], checked: true, today: Date.new(2026, 11, 2), calendar: calendar)
+    expect(item(items, "dt_adult", "6")).to have_attributes(status: "overdue", immunobiological_code: "25")
+    dtpa = [ { id: "g", code: "57", dose_code: "8", on: Date.new(2022, 3, 1) } ]
+    after_pregnancy = described_class.call(birth_date: adult, sex: "female", pregnant_since: nil, doses: dtpa, checked: true, today: Date.new(2026, 11, 2), calendar: calendar)
+    expect(item(after_pregnancy, "dt_adult", "6")).to have_attributes(status: "upcoming", due_on: Date.new(2022, 3, 1) + 3650)
+  end
+
   it "série que se repete: devida a partir da idade mínima; depois, a última dose + o período" do
     adult = Date.new(1990, 1, 1)
     call = ->(doses) { described_class.call(birth_date: adult, sex: "male", pregnant_since: nil, doses: doses, checked: true, today: Date.new(2026, 11, 2), calendar: calendar) }

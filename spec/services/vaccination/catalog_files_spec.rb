@@ -93,6 +93,20 @@ RSpec.describe "YAML do módulo 29" do
     expect(Vaccination::Catalog.under_review?).to be(true)
   end
 
+  # Fix round 1 da Task 5 (I1): as janelas de idade da série estão no YAML, em revisão.
+  it "toda série tem age_window com review e source, salvo as decididas pelas rules (faixas ou gestação)" do
+    Vaccination::Calendar.current.series.each do |series|
+      by_rules = series.rules["age_bands_days"] || Array(series.public) == [ "pregnant" ]
+      if by_rules
+        expect([ series.key, series.age_window ]).to eq([ series.key, nil ])
+      else
+        expect(series.age_window).to have_attributes(review: true, source: be_present)
+      end
+    end
+    window = Vaccination::Calendar.current.series.find { |s| s.key == "penta" }.age_window
+    expect([ window.min_days, window.max_days ]).to eq([ 0, 3649 ])
+  end
+
   it "under_review? vira false sem nenhum review true" do
     allow(Vaccination::YamlFiles).to receive(:load).and_return({ "review" => false, "items" => [ { "review" => false } ] })
     expect(Vaccination::Catalog.under_review?).to be(false)
