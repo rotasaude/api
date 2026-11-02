@@ -263,6 +263,11 @@ Rails.application.config.to_prepare do
   # alterados (`subject`: location, staff, settings ou minimums); só trilha, só
   # ids (stock_location_id, staff_user_id, user_id), sem consumidor.
   DomainEvents.bind "pharmacy.settings_changed", to: []
+  # Módulo 29 (ADR 0047): sala de vacina e equipe da sala; só trilha, só ids
+  # (vaccine_room_id, staff_user_id, user_id), sem consumidor.
+  DomainEvents.bind "vaccine_room.saved", to: []
+  DomainEvents.bind "vaccine_room_staff.linked", to: []
+  DomainEvents.bind "vaccine_room_staff.revoked", to: []
   # Entrada de estoque gravada (nota, doação ou inventário de abertura); só
   # trilha, só ids (stock_entry_id, user_id), sem consumidor.
   DomainEvents.bind "stock_receipt.recorded", to: []

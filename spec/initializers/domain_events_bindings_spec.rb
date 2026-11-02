@@ -322,6 +322,13 @@ end
 # mínimos); só trilha, só ids (subject, stock_location_id, staff_user_id,
 # user_id), sem consumidor.
 RSpec.describe "pharmacy bindings (ADR 0045)" do
+  it "declares the vaccine room events with no consumer" do
+    %w[vaccine_room.saved vaccine_room_staff.linked vaccine_room_staff.revoked].each do |name|
+      expect(DomainEvents.registry.keys).to include(name)
+      expect(DomainEvents.registry[name]).to be_empty
+    end
+  end
+
   it "declares pharmacy.settings_changed with no consumer" do
     expect(DomainEvents.registry.keys).to include("pharmacy.settings_changed")
     expect(DomainEvents.registry["pharmacy.settings_changed"]).to be_empty

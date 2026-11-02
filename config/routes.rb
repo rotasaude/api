@@ -586,6 +586,21 @@ Rails.application.routes.draw do
     post   "returns",                   to: "returns#create"
   end
 
+  # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.
+  scope "/vaccination", module: :vaccination, as: :vaccination do
+    # Administração (municipal_admin; escrita com step-up): salas, equipe, rede de frio e go-live.
+    get    "admin/rooms",                 to: "admin/rooms#index"
+    post   "admin/rooms",                 to: "admin/rooms#create"
+    patch  "admin/rooms/:id",             to: "admin/rooms#update"
+    post   "admin/rooms/:id/staff",       to: "admin/room_staff#create"
+    delete "admin/rooms/:id/staff",       to: "admin/room_staff#destroy"
+    post   "admin/cold_chain_central",    to: "admin/cold_chain_central#create"
+    get    "admin/settings",              to: "admin/settings#show"
+    patch  "admin/settings",              to: "admin/settings#update"
+    # Locais da pessoa (salas com o papel; rede de frio).
+    get    "my_locations",                to: "locations#index"
+  end
+
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.
   scope "/care_lines", module: "care_lines", as: "care_lines" do
     get   "admin/templates", to: "admin#templates"
