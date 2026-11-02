@@ -25,6 +25,7 @@ module DentalCare
       record(consultation, patient, add)
       auxiliary(consultation, dental, add) if Consultations::Cbos.role(consultation.cbo_code) == :auxiliary
       limits(dental, add)
+      periodogram(dental, add)
       taken(dental, add)
       prosthesis(dental, patient, add)
       plan(consultation, dental, add, auxiliary: Consultations::Cbos.role(consultation.cbo_code) == :auxiliary)
@@ -106,6 +107,19 @@ module DentalCare
       add.("dental.procedures", "too_many_procedure_codes") if sums.size > Catalog::MAX_PROCEDURE_CODES
       sums.each do |sigtap, total|
         add.("dental.procedures", "quantity_exceeds_location_limit", sigtap: sigtap) if total > ProcedureLimits.max(sigtap)
+      end
+    end
+
+    # O39: o rascunho aceita sítios sem medida; a finalização exige, em cada dente
+    # do periograma, os 6 sítios com sondagem e recessão.
+    def periodogram(dental, add)
+      Array(dental.dig("periodontal_chart", "teeth")).each_with_index do |tooth, index|
+        sites = Array(tooth["sites"])
+        complete = Catalog::PERIO_SITES.all? do |name|
+          site = sites.find { |s| s["site"] == name }
+          site && !site["probing_depth_mm"].nil? && !site["recession_mm"].nil?
+        end
+        add.("dental.periodontal_chart.teeth[#{index}]", "periodontal_chart_incomplete") unless complete
       end
     end
 

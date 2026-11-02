@@ -224,8 +224,8 @@ module DentalCare
         hash!(item, at)
         refuse!(:invalid_request, "#{at}.site") unless Catalog::PERIO_SITES.include?(item["site"])
 
-        { "site" => item["site"], "probing_depth_mm" => int!(item["probing_depth_mm"], Catalog::PROBING_MM, "#{at}.probing_depth_mm"),
-          "recession_mm" => int!(item["recession_mm"], Catalog::RECESSION_MM, "#{at}.recession_mm"),
+        { "site" => item["site"], "probing_depth_mm" => optional_int(item["probing_depth_mm"], Catalog::PROBING_MM, "#{at}.probing_depth_mm"),
+          "recession_mm" => optional_int(item["recession_mm"], Catalog::RECESSION_MM, "#{at}.recession_mm"),
           "bleeding" => bool(item.fetch("bleeding", false), "#{at}.bleeding") }
       end
       refuse!(:invalid_request, path) unless sites.map { |s| s["site"] }.uniq.size == sites.size

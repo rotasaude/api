@@ -84,6 +84,9 @@ RSpec.describe DentalCare::DraftInput do
     screening = { "sextants" => [ { "sextant" => "S1", "code" => nil, "star" => false }, { "sextant" => "S2", "code" => 3, "star" => true } ] }
     ok = call("periodontal_screening" => screening, "periodontal_chart" => chart.deep_merge("teeth" => [ chart["teeth"][0].merge("sites" => [ chart["teeth"][0]["sites"][0].merge("probing_depth_mm" => 4) ]) ]))
     expect(ok).to be_ok
+    partial = call("periodontal_chart" => chart.deep_merge("teeth" => [ chart["teeth"][0].merge("sites" => [ { "site" => "MV", "probing_depth_mm" => nil, "recession_mm" => nil } ]) ]))
+    expect(partial).to be_ok
+    expect(partial.payload[:items]["periodontal_chart"]["teeth"][0]["sites"][0]).to include("probing_depth_mm" => nil, "recession_mm" => nil)
     expect(ok.payload[:items]["periodontal_screening"]["sextants"].first).to eq("sextant" => "S1", "code" => nil, "star" => false)
   end
 

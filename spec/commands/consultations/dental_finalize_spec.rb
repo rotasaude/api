@@ -306,16 +306,27 @@ RSpec.describe Consultations::Finalize do
     end
   end
 
+  it "O39: periograma incompleto (sítio ausente ou sem medida) → periodontal_chart_incomplete no dente" do
+    full = %w[MV V DV ML L DL].map { |site| { "site" => site, "probing_depth_mm" => 2, "recession_mm" => 0, "bleeding" => false } }
+    gap = full.each_with_index.map { |site, i| i == 3 ? site.merge("recession_mm" => nil) : site }
+    perio = { "teeth" => [ { "tooth" => 16, "sites" => full }, { "tooth" => 17, "sites" => gap }, { "tooth" => 18, "sites" => full.first(5) } ] }
+    consultation = draft!(start, dental: { "periodontal_chart" => perio })
+    expect(problems(finalize(consultation))).to include([ "periodontal_chart_incomplete", "dental.periodontal_chart.teeth[1]" ],
+                                                        [ "periodontal_chart_incomplete", "dental.periodontal_chart.teeth[2]" ])
+    expect(problems(finalize(consultation))).not_to include([ "periodontal_chart_incomplete", "dental.periodontal_chart.teeth[0]" ])
+  end
+
   it "periograma, registro periodontal e endodontia gravados; a endodontia concluída fecha o tratamento do dente; só o registro inicial pula a FAO" do
     perio = { "teeth" => [ { "tooth" => 16, "mobility" => 1, "furcation" => 2,
                              "sites" => [ { "site" => "MV", "probing_depth_mm" => 5, "recession_mm" => -1, "bleeding" => true },
-                                          { "site" => "V", "probing_depth_mm" => 3, "recession_mm" => 0, "bleeding" => false } ] } ] }
+                                          { "site" => "V", "probing_depth_mm" => 3, "recession_mm" => 0, "bleeding" => false },
+                                          *%w[DV ML L DL].map { |site| { "site" => site, "probing_depth_mm" => 2, "recession_mm" => 0, "bleeding" => false } } ] } ] }
     screening = { "sextants" => [ { "sextant" => "S1", "code" => 3, "star" => true }, { "sextant" => "S2", "code" => nil, "star" => false } ] }
     first = done!(draft!(start, dental: { "periodontal_chart" => perio, "periodontal_screening" => screening,
                                           "endodontics" => [ { "tooth" => 21, "canals" => 1, "status" => "in_progress" } ] }))
     chart = PeriodontalChart.find_by!(consultation_id: first.id)
     expect(chart).to have_attributes(tooth: 16, mobility: 1, furcation: 2)
-    expect(chart.sites.pluck(:site, :probing_depth_mm, :recession_mm, :bleeding)).to match_array([ [ "MV", 5, -1, true ], [ "V", 3, 0, false ] ])
+    expect(chart.sites.pluck(:site, :probing_depth_mm, :recession_mm, :bleeding)).to match_array([ [ "MV", 5, -1, true ], [ "V", 3, 0, false ], *%w[DV ML L DL].map { |site| [ site, 2, 0, false ] } ])
     expect(PeriodontalScreening.where(consultation_id: first.id).pluck(:sextant, :code, :star)).to match_array([ [ "S1", 3, true ], [ "S2", nil, false ] ])
     treatment = EndodonticTreatment.sole
     expect(treatment).to have_attributes(tooth: 21, status: "in_progress", health_unit_id: unit.id, opened_in_consultation_id: first.id)
