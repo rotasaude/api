@@ -45,6 +45,13 @@ module VaccinationHelpers
     end
   end
 
+  # Credencial `cadsus` e interruptor `cadsus_lookup` ligados na cidade.
+  def enable_cadsus!(city)
+    IntegrationCredential.create!(kind: "cadsus", secret: { "username" => "rota", "password" => "x" },
+                                  set_by_user: pharmacy_admin!, set_at: Time.current)
+    Platform::Features.set!(city: city, key: "cadsus_lookup", enabled: true, maintainer: ledi_maintainer!)
+  end
+
   def cold_chain_central!
     StockLocation.find_by(kind: "cold_chain_central") ||
       StockLocation.create!(kind: "cold_chain_central", name: "Rede de frio municipal", updated_by_user: pharmacy_admin!)
