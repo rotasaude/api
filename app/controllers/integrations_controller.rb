@@ -9,6 +9,8 @@ class IntegrationsController < ApplicationController
   wrap_parameters false
 
   ERROR_STATUS = { unknown_kind: :unprocessable_entity, invalid_credential: :unprocessable_entity,
+                   invalid_certificate: :unprocessable_entity, certificate_expired: :unprocessable_entity,
+                   invalid_requester_cnes: :unprocessable_entity,
                    credential_missing: :conflict }.freeze
 
   before_action :require_admin
@@ -30,9 +32,8 @@ class IntegrationsController < ApplicationController
     return render_error(:unknown_kind) unless IntegrationCredential::KINDS.include?(params[:kind])
     return require_step_up! unless reauthenticated_recently?
 
-    body = request.request_parameters
-    result = Integrations::SetCredential.call(kind: params[:kind], username: body["username"],
-                                              password: body["password"], by: Current.user)
+    secret = request.request_parameters.slice(*IntegrationCredential::SECRET_KEYS.fetch(params[:kind]))
+    result = Integrations::SetCredential.call(kind: params[:kind], secret: secret, by: Current.user, city: Current.city)
     return render_error(result.reason) if result.failure?
 
     render json: credential_json(params[:kind], result.payload[:credential])

@@ -74,9 +74,9 @@ RSpec.describe Platform::Features do
   end
 
   it "chave fora do catálogo levanta" do
-    expect { described_class.set!(city: city, key: "rnds", enabled: true, maintainer: maintainer) }
+    expect { described_class.set!(city: city, key: "no_such_feature", enabled: true, maintainer: maintainer) }
       .to raise_error(described_class::UnknownFeature)
-    expect { described_class.enabled?(city, "rnds") }.to raise_error(described_class::UnknownFeature)
+    expect { described_class.enabled?(city, "no_such_feature") }.to raise_error(described_class::UnknownFeature)
   end
 
   it "cidade inalcançável: liga, e o resumo degrada sem levantar" do

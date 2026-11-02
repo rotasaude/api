@@ -151,7 +151,23 @@ module Platform
       # que foi finalizado continua legível e exportado.
       Entry.new(key: "dental_care",
                 description: "Saúde bucal: consulta odontológica com odontograma, plano de tratamento, especialidades do CEO, prótese, ficha LEDI de atendimento odontológico e painéis do CEO e da equipe de saúde bucal",
-                requires: %w[feature:clinical_record])
+                requires: %w[feature:clinical_record]),
+      # ADR 0047: sala de vacina (módulo 29). Só no modo record (a dose é
+      # registro do prontuário próprio). Desligado: nada novo abre; o que foi
+      # aplicado continua legível.
+      Entry.new(key: "vaccination",
+                description: "Sala de vacina: caderneta conferida, registro da dose, estoque de imunobiológicos, cadeia de frio e ESAVI",
+                requires: %w[record_mode:record]),
+      # ADR 0047: envio das doses à RNDS (RIA-R 2.0). Em produção só com o
+      # catálogo revisado (Desvio 18); em dev/test/staging o requisito não existe.
+      Entry.new(key: "rnds_immunization",
+                description: "Envio das doses aplicadas à RNDS (RIA-R 2.0)",
+                requires: %w[feature:vaccination credential:rnds vaccination_catalog_reviewed]),
+      # ADR 0047: RNDS simulada, só fora de produção.
+      Entry.new(key: "rnds_mock",
+                description: "RNDS simulada (desenvolvimento) — envio sem validade",
+                requires: %w[feature:rnds_immunization],
+                environments: SIMULATION_ENVS)
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
@@ -271,6 +287,8 @@ module Platform
       when "pec_url" then "pec_url_missing" if platform[:pec_url].blank?
       when "ibge_code" then "ibge_code_missing" if state[:ibge_code].blank?
       when "uf" then "uf_missing" if state[:uf].blank?
+      when "vaccination_catalog_reviewed"
+        "vaccination_catalog_under_review" if !SIMULATION_ENVS.include?(env.to_s) && Vaccination::Catalog.under_review?
       when /\Acredential:(\w+)\z/
         kind = Regexp.last_match(1)
         if !state[:credentials].key?(kind) then "credential_missing:#{kind}"

@@ -72,7 +72,8 @@ RSpec.describe ReencryptionJob do
                                          RegulationRequest RegulationRequestEvent RegulationAuthorization
                                          StockMovement StockTransferItem StockAdjustment ExternalPrescription
                                          ExternalPrescriptionItem Dispensation
-                                         DentalTreatmentPlan DentalTreatmentPlanItem DentalProsthesisStage])
+                                         DentalTreatmentPlan DentalTreatmentPlanItem DentalProsthesisStage
+                                         Immunization RndsOutboxEntry VialOpening])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end

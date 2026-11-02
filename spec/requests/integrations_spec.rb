@@ -33,6 +33,8 @@ RSpec.describe "Integrações da cidade", type: :request do
       { "kind" => "ledi", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
         "last_check_status" => nil, "last_check_message" => nil },
       { "kind" => "cadsus", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
+        "last_check_status" => nil, "last_check_message" => nil },
+      { "kind" => "rnds", "set" => false, "set_at" => nil, "set_by" => nil, "last_check_at" => nil,
         "last_check_status" => nil, "last_check_message" => nil }
     ])
     expect(json["features"].first).to eq("key" => "ledi_export", "enabled" => false, "usable" => false,
@@ -64,11 +66,37 @@ RSpec.describe "Integrações da cidade", type: :request do
     sign_in_admin!
     put_credential("ledi", username: "rota", password: " ")
     expect([ response.status, json ]).to eq([ 422, { "error" => "invalid_credential" } ])
-    put_credential("rnds", username: "rota", password: "x")
+    put_credential("sncr", username: "rota", password: "x")
     expect([ response.status, json ]).to eq([ 422, { "error" => "unknown_kind" } ])
     sign_in_as(staff_with("recepcao@cidade.gov.br", "citizen_verifier")).update!(mfa_verified_at: Time.current)
     get "/integrations"
     expect([ response.status, json ]).to eq([ 403, { "error" => "missing_role" } ])
+  end
+
+  it "PUT rnds: 200 sem PFX nem senha na resposta nem no log; recusas em 422" do
+    sign_in_admin!
+    pfx = self_signed_pfx(password: "pfx-senha-secreta", not_after: 1.year.from_now)
+    encoded = Base64.strict_encode64(pfx)
+    body = { pfx_base64: encoded, pfx_password: "pfx-senha-secreta", requester_cnes: "1234567" }
+    sink = ActiveSupport::Logger.new(logs = StringIO.new)
+    Rails.logger.broadcast_to(sink)
+    put_credential("rnds", body)
+    expect(response).to have_http_status(:ok)
+    expect(json).to include("kind" => "rnds", "set" => true)
+    expect(response.body).not_to include(encoded[0, 40])
+    expect(response.body).not_to include("pfx-senha-secreta")
+    expect(logs.string).not_to include("pfx-senha-secreta")
+    expect(logs.string).not_to include(encoded[0, 40])
+
+    put_credential("rnds", body.merge(requester_cnes: "12"))
+    expect([ response.status, json ]).to eq([ 422, { "error" => "invalid_requester_cnes" } ])
+    put_credential("rnds", body.merge(pfx_password: "outra"))
+    expect([ response.status, json ]).to eq([ 422, { "error" => "invalid_certificate" } ])
+    old = Base64.strict_encode64(self_signed_pfx(password: "s", not_after: 1.day.ago))
+    put_credential("rnds", body.merge(pfx_base64: old, pfx_password: "s"))
+    expect([ response.status, json ]).to eq([ 422, { "error" => "certificate_expired" } ])
+  ensure
+    Rails.logger.stop_broadcasting_to(sink) if sink
   end
 
   it "check sem credencial: 409 credential_missing" do

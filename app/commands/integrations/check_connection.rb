@@ -17,7 +17,11 @@ module Integrations
       credential = IntegrationCredential.find_by(kind: kind)
       return Result.fail(:credential_missing) unless credential
 
-      status, message = kind == "ledi" ? check_ledi(city, credential) : check_cadsus(city)
+      status, message = case kind
+      when "ledi" then check_ledi(city, credential)
+      when "rnds" then check_rnds(credential)
+      else check_cadsus(city)
+      end
       credential.update!(last_check_at: Time.current, last_check_status: status, last_check_message: message)
       Result.ok(credential: credential)
     end
@@ -40,6 +44,14 @@ module Integrations
       [ "unreachable", "PEC inalcançável" ]
     rescue URI::InvalidURIError
       [ "error", "Endereço do PEC inválido" ]
+    end
+
+    # Local: o PFX ainda abre e não venceu. O teste contra a RNDS é da Task 10.
+    def check_rnds(credential)
+      expired = Integrations::SetCredential.certificate_problem(credential.pfx_bytes, credential.pfx_password)
+      return [ "ok", "Certificado válido" ] if expired.nil?
+
+      [ "error", expired == :certificate_expired ? "Certificado vencido" : "Certificado inválido" ]
     end
 
     def check_cadsus(city)

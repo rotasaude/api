@@ -4,14 +4,19 @@
 # direto no banco e a credencial RNDS com um PFX autoassinado. Tudo avaliado
 # só na chamada.
 module VaccinationHelpers
-  # Task 1: o catálogo de interruptores ainda não tem `vaccination` (nasce na
-  # Task 2, que passa a ligar `vaccination` e, com `rnds: true`,
-  # `rnds_immunization` + `rnds_mock` + `rnds_credential!`). Até lá, a cidade
-  # com prontuário próprio (record_mode: record) e os parâmetros da sala.
+  # Cidade com prontuário próprio (record_mode: record), `vaccination` ligado
+  # e os parâmetros da sala; com `rnds: true`, também `rnds_immunization`,
+  # `rnds_mock` e a credencial `rnds`.
   def vaccination_city!(enabled: true, rnds: false)
     city = clinical_city!
     # O dump (db/city_schema.rb) não leva linha: a linha que a migração insere.
     VaccinationSetting.ensure_defaults!
+    maintainer = ledi_maintainer!
+    Platform::Features.set!(city: city, key: "vaccination", enabled: true, maintainer: maintainer) if enabled
+    if rnds
+      rnds_credential!
+      %w[rnds_immunization rnds_mock].each { |key| Platform::Features.set!(city: city, key: key, enabled: true, maintainer: maintainer) }
+    end
     city
   end
 
@@ -30,15 +35,13 @@ module VaccinationHelpers
     OpenSSL::PKCS12.create(password, common_name, key, cert).to_der
   end
 
-  # Credencial `rnds` da cidade, direto no banco. A validação do segredo por
-  # tipo (e `rnds` em IntegrationCredential::KINDS) nasce na Task 2; o CHECK
-  # da cidade já aceita `rnds` (migração 20261102900001).
+  # Credencial `rnds` da cidade, direto no banco (validada pelo modelo).
   def rnds_credential!(cnes: "1234567", password: "rnds-teste")
     secret = { "pfx_base64" => Base64.strict_encode64(self_signed_pfx(password: password, not_after: 1.year.from_now)),
                "pfx_password" => password, "requester_cnes" => cnes }
     IntegrationCredential.find_or_initialize_by(kind: "rnds").tap do |credential|
       credential.assign_attributes(secret: secret, set_by_user: pharmacy_admin!, set_at: Time.current)
-      credential.save!(validate: false)
+      credential.save!
     end
   end
 

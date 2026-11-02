@@ -102,9 +102,10 @@ Rails.application.config.filter_parameters += [
   # estratégia, grupo, via, local e condição maternal da dose, a data de
   # aplicação, o local e os itens da transcrição, a substituta, a
   # justificativa do aviso, o certificado A1 e a senha da credencial RNDS, o
-  # CNES solicitante e as temperaturas (`reason`, `cpf`, `cns`, `items` e
+  # CNES solicitante, as temperaturas e a situação da caderneta (série, próxima
+  # dose e data prevista) (`reason`, `cpf`, `cns`, `items` e
   # `place` já estavam acima).
-  /\A(immunobiological_code|immunobiological_codes|dose_code|lot_id|lot_number|vial_id|manufacturer_code|manufacturer_name|strategy|care_group|route|site|maternal_condition|applied_at|applied_on|place|items|replacement|override_reason|pfx_base64|pfx_password|requester_cnes|current_c|min_c|max_c)\z/
+  /\A(immunobiological_code|immunobiological_codes|dose_code|lot_id|lot_number|vial_id|manufacturer_code|manufacturer_name|strategy|care_group|route|site|maternal_condition|applied_at|applied_on|place|items|replacement|override_reason|pfx_base64|pfx_password|requester_cnes|current_c|min_c|max_c|series|next_dose_code|due_on)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
