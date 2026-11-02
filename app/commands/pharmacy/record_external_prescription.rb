@@ -257,32 +257,12 @@ module Pharmacy
       create_typed(person.fetch(:new_patient), person.fetch(:reviewed), by)
     end
 
-    # A mesma trava do 24a e do 25 (a chave é um hash: nunca nome nem nascimento
-    # no SQL), depois o duplicado, depois a criação.
+    # O caminho do 24a e do 25 (trava da match_key, duplicado, criação), na
+    # transação da receita: Patients::CreateReviewed.
     def create_typed(new_patient, reviewed, by)
-      typed = new_patient.to_h.stringify_keys
-      key = typed.values_at("full_name", "birth_date").all?(String) && Patients::MatchKey.for(typed["full_name"], typed["birth_date"])
-      ApplicationRecord.connection.execute("SELECT pg_advisory_xact_lock(#{match_lock_key(key)})") if key
-      return Result.fail(:duplicate_suspected) if !reviewed && duplicate?(typed)
-
-      created = Patients::CreateTyped.call(attrs: typed, by: by)
-      return created.payload.fetch(:patient) if created.ok?
-
-      path = { cpf_taken: "new_patient.cpf", cns_taken: "new_patient.cns" }[created.reason]
-      Result.fail(created.reason, details: path ? { path: path } : created.details)
+      created = Patients::CreateReviewed.call(new_patient: new_patient, reviewed: reviewed, by: by)
+      created.ok? ? created.payload.fetch(:patient) : created
     end
-
-    # Possível duplicado pela regra da busca (Patients::Duplicates); com CPF
-    # digitado, só candidatos sem CPF (outro CPF é outra pessoa; o mesmo é cpf_taken).
-    def duplicate?(typed)
-      strings = %w[full_name birth_date mother_name cpf].map { |key| typed[key] }
-      return false unless strings.all? { |value| value.nil? || value.is_a?(String) }
-
-      Patients::Duplicates.call(full_name: strings[0], birth_date: strings[1], mother_name: strings[2], limit: 1,
-                                only_without_cpf: strings[3].present?).any?
-    end
-
-    def match_lock_key(key) = Digest::SHA256.hexdigest("patients:match_key:#{key}")[0, 15].to_i(16)
 
     # ---- resultado ---------------------------------------------------------
 
@@ -294,7 +274,7 @@ module Pharmacy
     end
 
     private_class_method :parse_person, :typed_problems, :parse_prescriber, :parse_issued_on, :parse_date, :parse_items, :parse_item,
-                         :expiry_problems, :parse_notification, :persist, :write, :patient_for, :create_typed, :duplicate?, :match_lock_key,
+                         :expiry_problems, :parse_notification, :persist, :write, :patient_for, :create_typed,
                          :problem, :failure
   end
 end

@@ -142,6 +142,14 @@ default: &default
     queue: housekeeping
     schedule: "every monday at 7:30am America/Sao_Paulo"
 
+  # Módulo 29 (ADR 0047, Desvio 11): recálculo diário da situação vacinal
+  # materializada (as idades andam sem dose nova), por cidade com a sala de
+  # vacina utilizável.
+  vaccination_refresh_statuses:
+    class: Vaccination::RefreshStatusesJob
+    queue: housekeeping
+    schedule: "every day at 3am America/Sao_Paulo"
+
   discard_old_failed_jobs:
     command: "SolidQueueRetention.discard_failed"
     queue: housekeeping

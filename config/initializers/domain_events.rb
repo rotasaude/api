@@ -268,6 +268,9 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "vaccine_room.saved", to: []
   DomainEvents.bind "vaccine_room_staff.linked", to: []
   DomainEvents.bind "vaccine_room_staff.revoked", to: []
+  # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
+  # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
+  DomainEvents.bind "vaccination.record_checked", to: []
   # Entrada de estoque gravada (nota, doação ou inventário de abertura); só
   # trilha, só ids (stock_entry_id, user_id), sem consumidor.
   DomainEvents.bind "stock_receipt.recorded", to: []

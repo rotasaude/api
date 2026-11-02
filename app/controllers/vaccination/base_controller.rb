@@ -43,6 +43,29 @@ module Vaccination
     def body_param(key) = request.request_parameters[key]
     def body = request.request_parameters.except("controller", "action", "id")
 
+    # Sala da rota (`:room_id`) onde quem pede tem papel: inexistente ou id
+    # malformado → 404; inativa ou sem papel → 403 missing_role. nil = já respondeu.
+    def member_room
+      id = params[:room_id]
+      room = uuid?(id) ? VaccineRoom.includes(:health_unit).find_by(id: id) : nil
+      return not_found && nil unless room
+      return forbid && nil unless room.active && Access.room_roles(user: Current.user, room: room).any?
+
+      room
+    end
+
+    # Paciente pelo `patient_id` do corpo: ausente → 422; inexistente ou
+    # malformado → 404. nil = já respondeu.
+    def body_patient
+      id = body_param("patient_id")
+      return render_refusal("patient_id") && nil if id.nil?
+
+      patient = uuid?(id) ? Patient.find_by(id: id) : nil
+      return not_found && nil unless patient
+
+      patient
+    end
+
     # Rotas cujo dado sensível só vem no corpo: query com chave fora de
     # `allowed` → 422 invalid_request com o path (só o NOME da chave, truncado).
     def query_only!(*allowed)

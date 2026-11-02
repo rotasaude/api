@@ -343,6 +343,12 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
 
   # Receita externa digitada na farmácia; só ids (external_prescription_id,
   # user_id), sem consumidor.
+  # Conferência da caderneta (módulo 29); só ids, sem consumidor.
+  it "declares vaccination.record_checked with no consumer" do
+    expect(DomainEvents.registry.keys).to include("vaccination.record_checked")
+    expect(DomainEvents.registry["vaccination.record_checked"]).to be_empty
+  end
+
   it "declares external_prescription.recorded with no consumer" do
     expect(DomainEvents.registry.keys).to include("external_prescription.recorded")
     expect(DomainEvents.registry["external_prescription.recorded"]).to be_empty

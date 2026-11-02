@@ -601,6 +601,10 @@ Rails.application.routes.draw do
     get    "my_locations",                to: "locations#index"
     # Catálogo, terminologias e calendário (§4; sem trilha).
     get    "catalog",                     to: "catalog#show"
+    # Sala: busca de pessoa, caderneta e conferência (§5; §15 V3; nominais, com trilha).
+    post   "rooms/:room_id/person_lookup", to: "person_lookups#create"
+    post   "rooms/:room_id/card",          to: "cards#create"
+    post   "rooms/:room_id/checks",        to: "checks#create"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.
