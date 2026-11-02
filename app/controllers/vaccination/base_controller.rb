@@ -13,7 +13,7 @@ module Vaccination
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     # O resto das recusas é 422.
     FAILURE_STATUS = { unit_taken: :conflict, already_linked: :conflict, already_exists: :conflict, location_has_stock: :conflict,
-                       location_inactive: :conflict, same_user: :forbidden, missing_role: :forbidden, not_found: :not_found }.freeze
+                       location_inactive: :conflict, already_closed: :conflict, same_user: :forbidden, missing_role: :forbidden, not_found: :not_found }.freeze
     KEY_PATH_MAX = 64
 
     before_action :require_vaccination!

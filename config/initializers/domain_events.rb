@@ -271,6 +271,11 @@ Rails.application.config.to_prepare do
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []
+  # Frasco multidose aberto / fechado (descarte ou vencimento); só trilha, só
+  # ids (vial_opening_id, vaccine_room_id, user_id; no fechamento também
+  # `cause`: closed_out | expired), sem consumidor.
+  DomainEvents.bind "vaccination.vial_opened", to: []
+  DomainEvents.bind "vaccination.vial_closed", to: []
   # Entrada de estoque gravada (nota, doação ou inventário de abertura); só
   # trilha, só ids (stock_entry_id, user_id), sem consumidor.
   DomainEvents.bind "stock_receipt.recorded", to: []

@@ -89,6 +89,22 @@ module VaccinationHelpers
     lot
   end
 
+  # Abre o frasco pelo comando (o caminho real): `by` padrão = um vacinador da sala.
+  def open_vial!(room, lot:, by: nil)
+    result = Vaccination::OpenVial.call(room: room, lot: lot, by: by || room_member!(room), now: Time.current)
+    raise "open_vial! failed: #{result.reason}" if result.failure?
+
+    result.payload[:vial]
+  end
+
+  # `count` doses do frasco, gravadas direto no banco (sem comando, sem fila).
+  def apply_from_vial!(vial, count:)
+    lot = vial.stock_lot
+    Array.new(count) do
+      create_immunization!(vial.vaccine_room, vial_opening: vial, stock_lot: lot, immunobiological_code: lot.immunobiological_code)
+    end
+  end
+
   # `place`: a sala (VaccineRoom) ou um local de estoque (a rede de frio).
   def cold_chain_equipment!(place, name: "Geladeira #{SecureRandom.hex(2)}", min_c: 2, max_c: 8)
     location = place.is_a?(VaccineRoom) ? place.stock_location : place

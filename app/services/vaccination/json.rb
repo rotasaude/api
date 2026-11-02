@@ -68,6 +68,22 @@ module Vaccination
       { status: status, sent_at: entry&.sent_at, accepted_at: entry&.accepted_at, block_reason: entry&.block_reason, error: entry&.error }
     end
 
+    # <vial> do contrato §2: { id, lot: { id, number, immunobiological_code }, opened_at, expires_at,
+    # doses_per_vial, doses_used, doses_left, status }. `used`: doses já contadas (listas).
+    def vial(vial, now:, used: nil)
+      used ||= vial.doses_used
+      { id: vial.id, lot: { id: vial.stock_lot_id, number: vial.stock_lot.lot_number, immunobiological_code: vial.stock_lot.immunobiological_code },
+        opened_at: vial.opened_at.in_time_zone.iso8601, expires_at: vial.expires_at.in_time_zone.iso8601, doses_per_vial: vial.doses_per_vial,
+        doses_used: used, doses_left: [ vial.doses_per_vial - used, 0 ].max, status: vial.status(now) }
+    end
+
+    # Vários frascos com as doses usadas contadas de uma vez (sem N+1).
+    def vials(vials, now:)
+      vials = vials.to_a
+      used = Immunization.active.where(vial_opening_id: vials.map(&:id)).group(:vial_opening_id).count
+      vials.map { |record| vial(record, now: now, used: used[record.id] || 0) }
+    end
+
     # { id (stock_location_id), name, kind, health_unit|null, active, roles, room_id|null }
     def my_location(location, roles:, room_id: nil)
       Pharmacy::Json.location(location).merge(roles: roles.to_a.sort, room_id: room_id)

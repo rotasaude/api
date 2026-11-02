@@ -14,6 +14,19 @@ class VialOpening < ApplicationRecord
 
   scope :open_vials, -> { where(closed_at: nil) }
 
+  # Doses de imunizações ativas (não canceladas) tiradas deste frasco.
+  def doses_used = immunizations.active.count
+  def doses_left = [ doses_per_vial - doses_used, 0 ].max
+
+  # "closed_out": descartado por alguém; "expired": vencido (o job fecha sem
+  # autor, mas até ele passar o vencimento já vale); senão "open".
+  def status(now = Time.current)
+    return "closed_out" if closed_by_user_id
+    return "expired" if closed_at || expires_at <= now
+
+    "open"
+  end
+
   def inspect = "#<VialOpening id=#{id}>"
   def to_s = inspect
   def pretty_print(pp) = pp.text(inspect)

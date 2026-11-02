@@ -606,6 +606,10 @@ Rails.application.routes.draw do
     post   "rooms/:room_id/patients/duplicates", to: "duplicates#create"
     post   "rooms/:room_id/card",          to: "cards#create"
     post   "rooms/:room_id/checks",        to: "checks#create"
+    # Frascos multidose (§3; §15 V14).
+    post   "rooms/:room_id/vials",         to: "vials#create"
+    get    "rooms/:room_id/vials",         to: "vials#index"
+    post   "vials/:id/close_out",          to: "vials#close_out"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.
