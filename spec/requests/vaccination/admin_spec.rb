@@ -152,6 +152,20 @@ RSpec.describe "Sala de vacina — administração", type: :request do
       expect(response).to have_http_status(:created)
     end
 
+    it "sala inativa → 409 location_inactive ao vincular" do
+      user = screener!(unit, cbo: "322205")
+      room.update!(active: false)
+      stepped_up!(admin)
+      json_post "/vaccination/admin/rooms/#{room.id}/staff", user_id: user.id, role: "vaccinator"
+      expect([ response.status, json_body["error"] ]).to eq([ 409, "location_inactive" ])
+    end
+
+    it "não-admin em escrita da equipe → 403 (antes do step-up)" do
+      sign_in_as(staff_with("operador-#{SecureRandom.hex(3)}@cidade.gov.br", "health_professional"))
+      json_post "/vaccination/admin/rooms/#{room.id}/staff", user_id: SecureRandom.uuid, role: "vaccinator"
+      expect(response).to have_http_status(:forbidden)
+    end
+
     it "sem vínculo profissional na unidade → 422 professional_link_missing; sem Membership → role_not_granted" do
       outra = create_unit("UBS Outra")
       sem_vinculo = screener!(outra, cbo: "322205")
@@ -231,6 +245,15 @@ RSpec.describe "Sala de vacina — administração", type: :request do
       stepped_up!(admin)
       json_post "/pharmacy/admin/locations/#{central.id}/staff", user_id: keeper.id, role: "stock_keeper"
       expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "vaccination" } ])
+    end
+
+    it "id de local malformado no /pharmacy/admin/.../staff → 404 (não 500)" do
+      Platform::Features.set!(city: city, key: "pharmacy", enabled: true, maintainer: ledi_maintainer!)
+      stepped_up!(admin)
+      json_post "/pharmacy/admin/locations/xx/staff", user_id: SecureRandom.uuid, role: "stock_keeper"
+      expect(response).to have_http_status(:not_found)
+      json_delete "/pharmacy/admin/locations/xx/staff", user_id: SecureRandom.uuid, role: "stock_keeper"
+      expect(response).to have_http_status(:not_found)
     end
 
     it "a equipe da sala NÃO passa pelo /pharmacy/admin: 404" do

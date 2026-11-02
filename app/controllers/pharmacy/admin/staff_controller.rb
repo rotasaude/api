@@ -33,7 +33,7 @@ module Pharmacy
       # O interruptor é o do tipo do local: pharmacy para central/unit (e para
       # id desconhecido), vaccination para a rede de frio; a sala → 404.
       def load_location
-        location = uuid?(params[:id]) && StockLocation.find_by(id: params[:id])
+        location = StockLocation.find_by(id: params[:id]) if uuid?(params[:id])
         return not_found if location&.vaccine_room?
 
         location&.cold_chain_central? ? require_vaccination! : require_pharmacy!
