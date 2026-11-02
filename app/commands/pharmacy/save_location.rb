@@ -49,7 +49,8 @@ module Pharmacy
         unit = kind == "unit" ? lock_unit(unit_id) : nil
         next refuse("health_unit_id") if kind == "unit" && unit.nil?
         next Result.fail(:central_exists) if kind == "central" && StockLocation.exists?(kind: "central")
-        next Result.fail(:unit_taken) if unit && StockLocation.exists?(health_unit_id: unit.id)
+        # Módulo 29: a unidade pode ter também a sala de vacina (vaccine_room).
+        next Result.fail(:unit_taken) if unit && StockLocation.exists?(health_unit_id: unit.id, kind: "unit")
         next refuse("name") if name_taken?(name)
 
         location = StockLocation.create!(kind: kind, name: name, health_unit_id: unit&.id, active: active, updated_by_user: by)

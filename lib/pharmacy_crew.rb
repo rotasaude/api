@@ -224,7 +224,7 @@ class PharmacyCrew
     # --- locais e equipe ------------------------------------------------------
 
     def location!(admin, kind:, name:, unit: nil)
-      existing = kind == "central" ? StockLocation.find_by(kind: "central") : StockLocation.find_by(health_unit_id: unit.id)
+      existing = kind == "central" ? StockLocation.find_by(kind: "central") : StockLocation.find_by(health_unit_id: unit.id, kind: "unit")
       return existing if existing
 
       saved = Pharmacy::SaveLocation.call(attrs: { "kind" => kind, "name" => name, "health_unit_id" => unit&.id }.compact, by: admin)

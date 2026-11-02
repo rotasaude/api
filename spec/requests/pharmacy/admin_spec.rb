@@ -287,6 +287,36 @@ RSpec.describe "Farmácia — administração", type: :request do
     end
   end
 
+  # Módulo 29 (ADR 0047): a unidade pode ter farmácia e sala de vacina; os
+  # locais da vacina (vaccine_room, cold_chain_central) não são da farmácia.
+  describe "locais da sala de vacina" do
+    it "cria a farmácia numa unidade que já tem sala de vacina (201)" do
+      room = vaccine_room!(unit)
+      stepped_up!(admin)
+      json_post "/pharmacy/admin/locations", kind: "unit", health_unit_id: unit.id, name: "Farmácia da UBS Jardim das Flores", active: true
+      expect(response).to have_http_status(:created)
+      expect(StockLocation.where(health_unit_id: unit.id).pluck(:kind)).to contain_exactly("unit", "vaccine_room")
+      expect(room.stock_location.reload.kind).to eq("vaccine_room")
+    end
+
+    it "lista sem a sala e a rede de frio; PATCH num deles → 404, sem mudar nada" do
+      room = vaccine_room!(unit)
+      central = cold_chain_central!
+      farmacia = unit_location!(create_unit("UBS Farmácia Vizinha"))
+      stepped_up!(admin)
+      get "/pharmacy/admin/locations"
+      expect(response).to have_http_status(:ok)
+      expect(json_body["locations"].map { |l| l["id"] }).to eq([ farmacia.id ])
+
+      [ room.stock_location, central ].each do |location|
+        json_patch "/pharmacy/admin/locations/#{location.id}", name: "Renomeado pela farmácia", active: false
+        expect(response).to have_http_status(:not_found)
+        expect(location.reload).to have_attributes(active: true)
+        expect(location.name).not_to eq("Renomeado pela farmácia")
+      end
+    end
+  end
+
   describe "equipe" do
     let!(:location) { unit_location!(unit) }
 

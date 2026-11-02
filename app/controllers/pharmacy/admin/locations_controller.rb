@@ -1,6 +1,8 @@
 # GET/POST/PATCH /pharmacy/admin/locations[/:id] (contrato §3): locais de
 # estoque. Só municipal_admin; escrita com step-up. Nunca se apaga: desativa-se
 # (`active: false`), e só sem saldo. Escritas devolvem o objeto, sem envelope.
+# Só os locais da farmácia (central e unit): a rede de frio e a sala de vacina
+# (módulo 29) se administram por /vaccination/admin — fora da lista, e 404 por id.
 module Pharmacy
   module Admin
     class LocationsController < BaseController
@@ -8,7 +10,7 @@ module Pharmacy
       before_action :require_step_up!, only: %i[create update]
 
       def index
-        render json: { locations: Json.admin_locations(StockLocation.includes(:health_unit).order(:name, :id)) }
+        render json: { locations: Json.admin_locations(pharmacy_locations.includes(:health_unit).order(:name, :id)) }
       end
 
       def create
@@ -19,7 +21,7 @@ module Pharmacy
       end
 
       def update
-        location = uuid?(params[:id]) && StockLocation.find_by(id: params[:id])
+        location = uuid?(params[:id]) && pharmacy_locations.find_by(id: params[:id])
         return not_found unless location
 
         result = SaveLocation.call(attrs: body, by: Current.user, location: location)
@@ -27,6 +29,10 @@ module Pharmacy
 
         render json: Json.admin_locations([ result.payload.fetch(:location) ]).first
       end
+
+      private
+
+      def pharmacy_locations = StockLocation.where(kind: Catalog::LOCATION_KINDS)
     end
   end
 end
