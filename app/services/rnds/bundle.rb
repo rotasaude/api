@@ -13,7 +13,7 @@ module Rnds
   module Bundle
     KINDS = %w[application cancellation].freeze
     NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8".freeze
-    DEFAULT_MATERNAL_CONDITION = "1" # "Nenhuma": paciente sem condição maternal registrada
+    DEFAULT_MATERNAL_CONDITION = "1" # "Nenhuma": só na aplicação, quando a condição não foi registrada
 
     module_function
 
@@ -61,7 +61,6 @@ module Rnds
                    "primarySource" => !imm.transcription,
                    "performer" => [ { "actor" => { "identifier" => facility_identifier(cnes, profile) } },
                                     { "actor" => { "identifier" => practitioner_identifier(imm, profile) } } ],
-                   "protocolApplied" => [ { "doseNumberString" => imm.dose_code.to_s } ],
                    "extension" => extensions(imm, profile) }
       lot = lot_number(imm)
       resource["lotNumber"] = lot if lot.present?
@@ -74,15 +73,23 @@ module Rnds
 
     def extensions(imm, profile)
       list = [ coding_extension(profile.extensions[:strategy], profile.code_systems[:strategy], Vaccination::Terminologies.rnds_code("strategy", imm.strategy)),
-               coding_extension(profile.extensions[:maternal_condition], profile.code_systems[:maternal_condition],
-                                Vaccination::Terminologies.rnds_code("maternal_condition", imm.maternal_condition || DEFAULT_MATERNAL_CONDITION)),
+               # O código da dose é um enum (9 = Única, 6 = 1º reforço): vai como coding no CodeSystem, nunca como ordinal.
+               coding_extension(profile.extensions[:dose], profile.code_systems[:dose], Vaccination::Terminologies.rnds_code("dose", imm.dose_code)),
                { "url" => profile.extensions[:transcription], "valueBoolean" => imm.transcription } ]
+      condition = maternal_condition(imm)
+      if condition
+        list.insert(2, coding_extension(profile.extensions[:maternal_condition], profile.code_systems[:maternal_condition],
+                                        Vaccination::Terminologies.rnds_code("maternal_condition", condition)))
+      end
       if imm.care_group.present?
         list.insert(1, coding_extension(profile.extensions[:care_group], profile.code_systems[:care_group],
                                         Vaccination::Terminologies.rnds_code("care_group", imm.care_group)))
       end
       list
     end
+
+    # Aplicação: nulo vira "Nenhuma" (campo 1..1). Transcrição: nulo não se afirma (ninguém registrou).
+    def maternal_condition(imm) = imm.maternal_condition.presence || (DEFAULT_MATERNAL_CONDITION unless imm.transcription)
 
     def coding_extension(url, system, code) = { "url" => url, "valueCoding" => coding(system, code) }
     def coding(system, code) = { "system" => system, "code" => code.to_s }
@@ -120,7 +127,7 @@ module Rnds
     # UUID estável por dose e tipo: o mesmo Bundle remontado tem os mesmos ids.
     def urn(imm, kind, part) = "urn:uuid:#{Digest::UUID.uuid_v5(NAMESPACE, "#{imm.id}/#{kind}/#{part}")}"
 
-    private_class_method :composition_resource, :immunization_resource, :extensions, :coding_extension, :coding, :add_coding,
+    private_class_method :composition_resource, :immunization_resource, :extensions, :maternal_condition, :coding_extension, :coding, :add_coding,
                          :lot_number, :manufacturer_code, :patient_identifier, :practitioner_identifier, :facility_identifier, :urn
   end
 end

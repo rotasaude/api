@@ -5,6 +5,7 @@
 # autenticado (tentado em 2026-11-02; o espelho kyriosdata devolve 404 e o IG da
 # SES-GO é outro perfil, estadual). Os canônicos, CodeSystems e URLs de extensão
 # abaixo são o ESQUELETO documentado (pesquisa §1, contrato §6), não o perfil.
+# Cada URL/código leva `hypothesis: true` (inventado por mim, a conferir) ou `false` (nome citado na pesquisa/brief).
 # `confirmed: false` + `review: true` = pendência do gate de homologação (D5):
 # baixar os StructureDefinitions, fixar os ids aqui e trocar para `confirmed: true`.
 version: 1
@@ -16,29 +17,30 @@ composition_profile: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRRegi
 immunization_profile: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRImunobiologicoAdministrado-2.0"
 
 code_systems:
-  immunobiological: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRImunobiologico"
-  dose: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRDose"
-  strategy: "http://www.saude.gov.br/fhir/r4/CodeSystem/BREstrategiaVacinacao"
-  route: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRViaAdministracao"
-  site: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRLocalAplicacao"
-  care_group: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRGrupoAtendimento"
-  maternal_condition: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRCondicaoMaternal"
-  manufacturer: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRFabricante"
-  document_type: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRTipoDocumento"
+  immunobiological: { url: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRImunobiologico", hypothesis: false }
+  dose: { url: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRDose", hypothesis: false }
+  strategy: { url: "http://www.saude.gov.br/fhir/r4/CodeSystem/BREstrategiaVacinacao", hypothesis: false }
+  route: { url: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRViaAdministracao", hypothesis: false }
+  site: { url: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRLocalAplicacao", hypothesis: false }
+  care_group: { url: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRGrupoAtendimento", hypothesis: false }
+  maternal_condition: { url: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRCondicaoMaternal", hypothesis: false }
+  manufacturer: { url: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRFabricante", hypothesis: false }
+  document_type: { url: "http://www.saude.gov.br/fhir/r4/CodeSystem/BRTipoDocumento", hypothesis: true }
 
 extensions:
-  strategy: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BREstrategiaVacinacao"
-  care_group: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRGrupoAtendimento"
-  maternal_condition: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRCondicaoMaternal"
-  transcription: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRTranscricaoCaderneta"
-  origin_country: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRPaisOrigem"
+  strategy: { url: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BREstrategiaVacinacao", hypothesis: true }
+  care_group: { url: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRGrupoAtendimento", hypothesis: true }
+  maternal_condition: { url: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRCondicaoMaternal", hypothesis: true }
+  dose: { url: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRDose", hypothesis: true }
+  transcription: { url: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRTranscricaoCaderneta", hypothesis: true }
+  origin_country: { url: "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRPaisOrigem", hypothesis: true }
 
 identifiers:
-  cpf: "http://www.saude.gov.br/fhir/r4/NamingSystem/cpf"
-  cns: "http://www.saude.gov.br/fhir/r4/NamingSystem/cns"
-  cnes: "http://www.saude.gov.br/fhir/r4/NamingSystem/cnes"
-  practitioner_cns: "http://www.saude.gov.br/fhir/r4/NamingSystem/cns"
-  bundle: "http://www.saude.gov.br/fhir/r4/NamingSystem/bundle-origem"
+  cpf: { url: "http://www.saude.gov.br/fhir/r4/NamingSystem/cpf", hypothesis: true }
+  cns: { url: "http://www.saude.gov.br/fhir/r4/NamingSystem/cns", hypothesis: true }
+  cnes: { url: "http://www.saude.gov.br/fhir/r4/NamingSystem/cnes", hypothesis: true }
+  practitioner_cns: { url: "http://www.saude.gov.br/fhir/r4/NamingSystem/cns", hypothesis: true }
+  bundle: { url: "http://www.saude.gov.br/fhir/r4/NamingSystem/bundle-origem", hypothesis: true }
 
 # Código do tipo de documento da Composition (esqueleto).
-document_type_code: "REG-IMUNO"
+document_type_code: { value: "REG-IMUNO", hypothesis: true }

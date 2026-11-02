@@ -104,11 +104,6 @@
             }
           }
         ],
-        "protocolApplied": [
-          {
-            "doseNumberString": "1"
-          }
-        ],
         "extension": [
           {
             "url": "http://www.saude.gov.br/fhir/r4/StructureDefinition/BREstrategiaVacinacao",
@@ -122,6 +117,13 @@
             "valueCoding": {
               "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRGrupoAtendimento",
               "code": "000210"
+            }
+          },
+          {
+            "url": "http://www.saude.gov.br/fhir/r4/StructureDefinition/BRDose",
+            "valueCoding": {
+              "system": "http://www.saude.gov.br/fhir/r4/CodeSystem/BRDose",
+              "code": "1"
             }
           },
           {

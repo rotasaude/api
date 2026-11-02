@@ -7,7 +7,7 @@ RSpec.describe Rnds::Bundle do
     create_immunization!(room, immunobiological_code: "42", dose_code: "1", strategy: "1", care_group: "121", route: "3", site: "18",
                                maternal_condition: "1", applied_at: Time.zone.parse("2026-11-03 09:15"))
   end
-  TRANSCRIBED = { transcription: true, vaccine_room: nil, stock_lot: nil, care_group: nil, route: nil, site: nil }.freeze
+  let(:transcribed_attrs) { { transcription: true, vaccine_room: nil, stock_lot: nil, care_group: nil, route: nil, site: nil } }
   let(:now) { Time.zone.parse("2026-11-03 09:20") }
 
   def build(immunization = dose, **over)
@@ -28,7 +28,7 @@ RSpec.describe Rnds::Bundle do
   end
 
   it "transcrição: primarySource false, flag de transcrição, lote opcional" do
-    transcribed = create_immunization!(room, **TRANSCRIBED, lot_number_text: nil)
+    transcribed = create_immunization!(room, **transcribed_attrs, lot_number_text: nil)
     bundle = described_class.build(immunization: transcribed, kind: "application", cnes: "1234567", now: Time.current)
     immunization = bundle["entry"].last["resource"]
     expect(immunization).to include("primarySource" => false)
@@ -39,7 +39,7 @@ RSpec.describe Rnds::Bundle do
   end
 
   it "transcrição com lote e fabricante em texto manda o lote" do
-    transcribed = create_immunization!(room, **TRANSCRIBED, lot_number_text: "ABC123", manufacturer_text: "Serum")
+    transcribed = create_immunization!(room, **transcribed_attrs, lot_number_text: "ABC123", manufacturer_text: "Serum")
     immunization = build(transcribed)["entry"].last["resource"]
     expect(immunization["lotNumber"]).to eq("ABC123")
   end
@@ -67,6 +67,62 @@ RSpec.describe Rnds::Bundle do
     expect(immunization.dig("site", "coding", 0)).to eq("system" => profile.code_systems[:site], "code" => "3")
     group = immunization["extension"].find { |e| e["url"] == profile.extensions[:care_group] }
     expect(group.dig("valueCoding", "code")).to eq("000210")
+  end
+
+  describe "dose (enum do LEDI, nunca ordinal)" do
+    def dose_coding(immunization)
+      url = Rnds::Profile.current.extensions[:dose]
+      build(immunization)["entry"].last["resource"]["extension"].find { |e| e["url"] == url }["valueCoding"]
+    end
+
+    it "dose única (9) e 1º reforço (6) vão como coding no CodeSystem de dose" do
+      system = Rnds::Profile.current.code_systems[:dose]
+      expect(dose_coding(create_immunization!(room, dose_code: "9"))).to eq("system" => system, "code" => "9")
+      expect(dose_coding(create_immunization!(room, dose_code: "6"))).to eq("system" => system, "code" => "6")
+      expect(build["entry"].last["resource"]).not_to have_key("protocolApplied")
+    end
+
+    it "o Skeleton acusa a dose ausente" do
+      bundle = build
+      bundle["entry"].last["resource"]["extension"].reject! { |e| e["url"] == Rnds::Profile.current.extensions[:dose] }
+      expect(Rnds::Skeleton.problems(bundle)).to eq([ "Immunization.extension.dose" ])
+    end
+  end
+
+  describe "condição materna" do
+    def maternal(bundle)
+      url = Rnds::Profile.current.extensions[:maternal_condition]
+      bundle["entry"].last["resource"]["extension"].find { |e| e["url"] == url }&.dig("valueCoding", "code")
+    end
+
+    it "aplicação com condição nula manda 1 (Nenhuma)" do
+      expect(maternal(build(create_immunization!(room, maternal_condition: nil)))).to eq("1")
+    end
+
+    it "aplicação com condição registrada manda a registrada" do
+      expect(maternal(build(create_immunization!(room, maternal_condition: "2")))).to eq("2")
+    end
+
+    it "transcrição com condição nula não manda a condição" do
+      bundle = build(create_immunization!(room, **transcribed_attrs, maternal_condition: nil))
+      expect(maternal(bundle)).to be_nil
+      expect(Rnds::Skeleton.problems(bundle)).to eq([])
+    end
+  end
+
+  describe "perfil não confirmado" do
+    it "marca as hipóteses por chave" do
+      expect(Rnds::Profile.current.hypotheses).to include("extensions.transcription", "identifiers.cpf", "document_type_code")
+      expect(Rnds::Profile.current.hypotheses).not_to include("code_systems.route")
+    end
+
+    it "com o perfil em revisão, o catálogo está em revisão (mesmo com os YAML limpos)" do
+      allow(Vaccination::YamlFiles).to receive(:review?).and_return(false)
+      expect(Rnds::Profile.current.review).to be(true)
+      expect(Vaccination::Catalog.under_review?).to be(true)
+      allow(Rnds::Profile).to receive(:current).and_return(Rnds::Profile.current.with(review: false))
+      expect(Vaccination::Catalog.under_review?).to be(false)
+    end
   end
 
   describe "fabricante (V19)" do

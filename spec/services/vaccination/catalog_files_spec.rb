@@ -109,7 +109,8 @@ RSpec.describe "YAML do módulo 29" do
     expect(influenza.age_bands.values).to all(have_attributes(review: true, source: be_present))
   end
 
-  it "under_review? vira false sem nenhum review true" do
+  it "under_review? vira false sem nenhum review true (YAML do módulo e perfil RIA-R)" do
+    allow(Rnds::Profile).to receive(:current).and_return(Rnds::Profile.current.with(review: false))
     allow(Vaccination::YamlFiles).to receive(:load).and_return({ "review" => false, "items" => [ { "review" => false } ] })
     expect(Vaccination::Catalog.under_review?).to be(false)
   end

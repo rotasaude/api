@@ -3,7 +3,7 @@
 # ausentes (nunca valores: o Bundle é dado sensível). Opcionais: lote e
 # fabricante (o código do fabricante pode ser nulo no catálogo, V19, gate de
 # homologação), país de origem, hanseníase e pesquisa clínica. Na transcrição a
-# caderneta não traz via, local nem grupo: esses três só valem na aplicação.
+# caderneta não traz via, local, grupo nem condição materna: esses só valem na aplicação.
 module Rnds
   module Skeleton
     COMPOSITION = %w[status type date subject.identifier.value author custodian.identifier.value section].freeze
@@ -12,7 +12,7 @@ module Rnds
       performer.0.actor.identifier.value performer.1.actor.identifier.value
     ].freeze
     APPLICATION_ONLY = %w[route.coding.0.code site.coding.0.code].freeze
-    EXTENSIONS = %i[strategy maternal_condition transcription].freeze
+    EXTENSIONS = %i[strategy dose transcription].freeze
 
     module_function
 
@@ -46,7 +46,7 @@ module Rnds
 
     def extension_problems(immunization, transcription)
       urls = Array(immunization["extension"]).filter_map { |e| e["url"] if e.is_a?(Hash) }
-      keys = transcription ? EXTENSIONS : EXTENSIONS + [ :care_group ]
+      keys = transcription ? EXTENSIONS : EXTENSIONS + %i[care_group maternal_condition]
       keys.reject { |key| urls.include?(Profile.current.extensions.fetch(key)) }.map { |key| "Immunization.extension.#{key}" }
     end
 
