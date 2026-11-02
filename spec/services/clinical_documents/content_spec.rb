@@ -87,7 +87,10 @@ RSpec.describe "Conteúdo dos documentos" do
           started_consultation!(unit: unit, doctor: doctor, citizen: verified_citizen!(2))
         end
         travel_to(Time.zone.parse(closed)) do
-          Consultations::SaveDraft.call(consultation: consultation, params: draft_body, by: doctor)
+          # Sem pedido de exame: a release SIGTAP do before é a da competência
+          # de hoje, não a da data viajada, e o exame seria recusado.
+          saved = Consultations::SaveDraft.call(consultation: consultation, params: draft_body(exam_requests: []), by: doctor)
+          raise "rascunho recusado: #{saved.reason} #{saved.details}" if saved.failure?
           result = Consultations::Finalize.call(consultation: consultation.reload, outcome_params: { "outcome" => "discharged" }, by: doctor)
           raise "finalização recusada: #{result.reason}" if result.failure?
         end
