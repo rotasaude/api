@@ -76,6 +76,16 @@ RSpec.describe "Saúde bucal — busca de procedimento", type: :request do
     expect([ response.status, body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "dental_care" } ])
   end
 
+  it "municipal_admin busca (lista de TSB/ASB) sem vínculo odontológico; sem trilha; outro papel não odontológico → 403" do
+    sign_in_as(dental_admin!)
+    expect { search("selante") }.not_to change(DomainEvent, :count)
+    expect(response).to have_http_status(:ok)
+    expect(found("0101020066")).to include("auxiliary_allowed" => true)
+    sign_in_as(doctor!(unit))
+    search("selante")
+    expect([ response.status, body ]).to eq([ 403, { "error" => "missing_role" } ])
+  end
+
   it "o termo na query não vale; sem trilha nem evento" do
     sign_in_as(dentist)
     expect { post "/dental/procedures/search?q=selante", headers: { "CONTENT_TYPE" => "application/json" }, params: "{}" }
