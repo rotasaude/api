@@ -12,7 +12,7 @@ RSpec.describe Vaccination::Schedule do
   def item(items, series, dose) = items.find { |i| i.series == series && i.dose_code == dose }
 
   it "penta 1 devida aos 2 meses; em atraso depois da janela; não conferida vira unchecked" do
-    expect(item(run(today: born + 60), "penta", "1")).to have_attributes(status: "due", due_on: born + 60)
+    expect(item(run(today: born >> 2), "penta", "1")).to have_attributes(status: "due", due_on: born >> 2)
     expect(item(run(today: born + 95), "penta", "1").status).to eq("overdue")
     expect(item(run(today: born + 95, checked: false), "penta", "1").status).to eq("unchecked")
   end
@@ -52,7 +52,7 @@ RSpec.describe Vaccination::Schedule do
   end
 
   it "dose anterior pendente: a seguinte fica upcoming sem data" do
-    expect(item(run(today: born + 60), "penta", "2")).to have_attributes(status: "upcoming", due_on: nil)
+    expect(item(run(today: born >> 2), "penta", "2")).to have_attributes(status: "upcoming", due_on: nil)
   end
 
   it "dose sem código casado conta para a menor dose pendente; repetição do mesmo código não avança a série" do
@@ -75,10 +75,10 @@ RSpec.describe Vaccination::Schedule do
 
   # Fix round 1 (I1): a janela de idade vem do YAML (age_window da série).
   it "a série some depois da age_window do calendário" do
-    window = calendar.series.find { |s| s.key == "penta" }.age_window
-    at = ->(days) { run(today: born + days).map(&:series) }
-    expect(at.(window.max_days)).to include("penta")
-    expect(at.(window.max_days + 1)).not_to include("penta")
+    expect(calendar.series.find { |s| s.key == "penta" }.age_window.max).to eq(Vaccination::Calendar::Age.new(years: 9, months: 0, days: 0))
+    tenth = born.advance(years: 10)
+    expect(run(today: tenth - 1).map(&:series)).to include("penta") # 9 anos, 11 meses e 29 dias
+    expect(run(today: tenth).map(&:series)).not_to include("penta")
   end
 
   # Fix round 1 (I2): qualquer dose com componente diftérico/tetânico conta como a última do dT.
@@ -102,10 +102,52 @@ RSpec.describe Vaccination::Schedule do
     expect(item(after_pregnancy, "dt_adult", "6")).to have_attributes(status: "upcoming", due_on: Date.new(2022, 3, 1) + 3650)
   end
 
+  # Fix round 2: idades por aritmética de calendário (aniversário), nunca dias corridos.
+  describe "fronteiras de idade" do
+    def dose(series, code) = calendar.series.find { |s| s.key == series }.doses.find { |d| d.dose_code == code }
+
+    it "12 meses: véspera ainda não, no aniversário sim (SCR 1 e o upcoming → due)" do
+      birthday = born >> 12
+      expect(dose("mmr", "1").age_status(birth: born, on: birthday - 1)).to eq(:too_young)
+      expect(dose("mmr", "1").age_status(birth: born, on: birthday)).to eq(:ok)
+      expect(item(run(today: birthday - 1), "mmr", "1")).to have_attributes(status: "upcoming", due_on: birthday)
+      expect(item(run(today: birthday), "mmr", "1")).to have_attributes(status: "due", due_on: birthday)
+    end
+
+    it "HPV aos 9 anos: a série e a dose valem no aniversário, não na véspera; até 14 anos completos" do
+      ninth = born.advance(years: 9)
+      expect(run(today: ninth - 1).map(&:series)).not_to include("hpv")
+      expect(item(run(today: ninth), "hpv", "9")).to have_attributes(status: "due", due_on: ninth)
+      hpv = dose("hpv", "9")
+      expect([ hpv.age_status(birth: born, on: ninth - 1), hpv.age_status(birth: born, on: ninth) ]).to eq(%i[too_young ok])
+      fifteenth = born.advance(years: 15)
+      expect([ hpv.age_status(birth: born, on: fifteenth - 1), hpv.age_status(birth: born, on: fifteenth) ]).to eq(%i[ok too_old])
+    end
+
+    it "rotavírus 1 até 3 meses e 15 dias, inclusive" do
+      last = born.advance(months: 3, days: 15)
+      expect(item(run(today: last), "rota", "1").status).not_to eq("not_applicable")
+      expect(item(run(today: last + 1), "rota", "1").status).to eq("not_applicable")
+    end
+
+    it "nascido em 29/02: o aniversário no ano não bissexto é 28/02" do
+      leap = Date.new(2024, 2, 29)
+      mmr = dose("mmr", "1")
+      expect([ mmr.age_status(birth: leap, on: Date.new(2025, 2, 27)), mmr.age_status(birth: leap, on: Date.new(2025, 2, 28)) ]).to eq(%i[too_young ok])
+      items = described_class.call(birth_date: leap, sex: "male", pregnant_since: nil, doses: [], checked: true, today: Date.new(2025, 2, 28), calendar: calendar)
+      expect(item(items, "mmr", "1")).to have_attributes(status: "due", due_on: Date.new(2025, 2, 28))
+      expect(Vaccination::Calendar.completed_months(leap, Date.new(2025, 2, 27))).to eq(11)
+      expect(Vaccination::Calendar.completed_months(leap, Date.new(2025, 2, 28))).to eq(12)
+      seven = Date.new(2031, 2, 28)
+      dt = ->(on) { described_class.call(birth_date: leap, sex: "male", pregnant_since: nil, doses: [], checked: true, today: on, calendar: calendar).map(&:series) }
+      expect([ dt.(seven - 1).include?("dt_adult"), dt.(seven).include?("dt_adult") ]).to eq([ false, true ])
+    end
+  end
+
   it "série que se repete: devida a partir da idade mínima; depois, a última dose + o período" do
     adult = Date.new(1990, 1, 1)
     call = ->(doses) { described_class.call(birth_date: adult, sex: "male", pregnant_since: nil, doses: doses, checked: true, today: Date.new(2026, 11, 2), calendar: calendar) }
-    expect(item(call.([]), "dt_adult", "6")).to have_attributes(status: "overdue", due_on: adult + 2555)
+    expect(item(call.([]), "dt_adult", "6")).to have_attributes(status: "overdue", due_on: adult.advance(years: 7))
     last = { id: "dt", code: "25", dose_code: "6", on: Date.new(2020, 5, 1) }
     expect(item(call.([ last ]), "dt_adult", "6")).to have_attributes(status: "upcoming", due_on: Date.new(2020, 5, 1) + 3650, applied_id: "dt")
   end
@@ -114,8 +156,8 @@ RSpec.describe Vaccination::Schedule do
   it "criança de 1 ano, caderneta não conferida, nenhuma dose: nenhum overdue; os itens passados viram unchecked" do
     items = run(today: born + 365, checked: false)
     expect(items.map(&:status)).not_to include("overdue")
-    expect(item(items, "penta", "1")).to have_attributes(status: "unchecked", due_on: born + 60)
-    expect(item(items, "penta", "3")).to have_attributes(status: "unchecked", due_on: born + 180)
+    expect(item(items, "penta", "1")).to have_attributes(status: "unchecked", due_on: born >> 2)
+    expect(item(items, "penta", "3")).to have_attributes(status: "unchecked", due_on: born >> 6)
     expect(item(items, "bcg", "9").status).to eq("unchecked")
     expect(item(items, "vip", "6")).to have_attributes(status: "upcoming", due_on: nil)
     expect(item(items, "rota", "1").status).to eq("not_applicable")

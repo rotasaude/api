@@ -6,12 +6,13 @@
 #  - dose aplicada da série (qualquer código de `accepts`) casa com a dose de
 #    mesmo `dose_code`; dose cujo código não está na série conta para a menor
 #    dose pendente (pela data); repetição de um código já casado não avança;
-#  - due_on = max(nascimento + recommended_age_days, anterior.on +
+#  - idades por aritmética de calendário (Calendar::Age; nunca dias corridos);
+#  - due_on = max(nascimento + recommended_age, anterior.on +
 #    recommended_interval_days (ou min_interval_days)); dose anterior pendente
 #    → upcoming sem data. SEM CONFERÊNCIA, a dose de anterior pendente cuja
 #    idade recomendada já passou da janela vira `unchecked` (Review Focus 2:
 #    a caderneta pode ter a anterior; nenhum item passado fica "a vir");
-#  - idade > max_age_days sem a dose → not_applicable;
+#  - passou da max_age (completa, inclusiva) sem a dose → not_applicable;
 #  - today < due_on → upcoming; até due_on + due_window_days → due; depois →
 #    overdue, ou unchecked sem conferência (nunca overdue sem conferência);
 #  - série que se repete (repeat_every_days): a última dose de qualquer código
@@ -21,8 +22,8 @@
 #    partir de pregnant_since + semanas; só conta a dose desta gestação.
 #
 # Quem entra na série vem só do YAML do calendário (revisão de enfermagem,
-# gate de go-live): a `age_window` da série (dias, com `review`/`source`); as
-# faixas `rules.age_bands_days` (influenza) quando houver; "pregnant" exige
+# gate de go-live): a `age_window` da série (com `review`/`source`); as
+# `age_bands` (influenza) quando houver; "pregnant" exige
 # `pregnant_since`; `sex` da série, se houver.
 module Vaccination
   module Schedule
@@ -40,10 +41,9 @@ module Vaccination
 
     # doses: [ { id:, code:, dose_code:, on: Date } ] (só ativas).
     def call(birth_date:, sex:, pregnant_since:, doses:, checked:, today:, calendar:)
-      age = (today - birth_date).to_i
-      ctx = { birth: birth_date, age: age, today: today, checked: checked, window: calendar.due_window_days, pregnant_since: pregnant_since }
+      ctx = { birth: birth_date, today: today, checked: checked, window: calendar.due_window_days, pregnant_since: pregnant_since }
       calendar.series.flat_map do |series|
-        start = entry_start(series, age: age, sex: sex, pregnant_since: pregnant_since, birth: birth_date)
+        start = entry_start(series, sex: sex, pregnant_since: pregnant_since, birth: birth_date, today: today)
         next [] unless start
 
         applied = doses.select { |dose| series.accepts.include?(Immunobiologicals.normalize(dose[:code])) }
@@ -59,18 +59,14 @@ module Vaccination
     end
 
     # Data a partir da qual a série vale para a pessoa (nil = não entra).
-    def entry_start(series, age:, sex:, pregnant_since:, birth:)
+    def entry_start(series, sex:, pregnant_since:, birth:, today:)
       return nil if series.sex && series.sex != sex
 
       publics = Array(series.public)
-      bands = series.rules["age_bands_days"]
       starts = []
       starts << pregnant_since if publics.include?(PREGNANT) && pregnant_since
-      if bands
-        bands.each_value { |(min, max)| starts << birth + min if age >= min && (max.nil? || age <= max) }
-      elsif (window = series.age_window)&.cover?(age)
-        starts << birth + window.min_days
-      end
+      windows = series.age_bands.any? ? series.age_bands.values : [ series.age_window ].compact
+      windows.each { |window| starts << window.starts_on(birth) if window.cover?(birth: birth, on: today) }
       starts.compact.min
     end
 
@@ -86,12 +82,12 @@ module Vaccination
         end
 
         status, due_on =
-          if dose.max_age_days && ctx[:age] > dose.max_age_days
+          if dose.max_age&.exceeded?(ctx[:birth], ctx[:today])
             [ "not_applicable", nil ]
           elsif index.positive? && previous&.first != :complete
             after_pending(dose, ctx)
           else
-            due_on = [ (ctx[:birth] + (dose.recommended_age_days || dose.min_age_days || 0)),
+            due_on = [ (dose.recommended_on(ctx[:birth]) || ctx[:birth]),
                        (previous && previous.last + (dose.recommended_interval_days || dose.min_interval_days || 0)) ].compact.max
             [ situation(due_on, ctx), due_on ]
           end
@@ -126,16 +122,16 @@ module Vaccination
     # Dose de anterior pendente: upcoming sem data; sem conferência, a de
     # idade recomendada já passada da janela vira unchecked (com a data).
     def after_pending(dose, ctx)
-      return [ "upcoming", nil ] if ctx[:checked] || dose.recommended_age_days.nil?
+      return [ "upcoming", nil ] if ctx[:checked] || dose.recommended_age.nil?
 
-      due_on = ctx[:birth] + dose.recommended_age_days
+      due_on = dose.recommended_age.from(ctx[:birth])
       ctx[:today] >= due_on + ctx[:window] ? [ "unchecked", due_on ] : [ "upcoming", nil ]
     end
 
     def repeat_item(series, applied, start, ctx)
       dose = series.doses.first
       last = applied.last
-      due_on = last ? last[:on] + series.repeat_every_days : [ start, ctx[:birth] + (dose.min_age_days || 0) ].max
+      due_on = last ? last[:on] + series.repeat_every_days : [ start, dose.min_age&.from(ctx[:birth]) || ctx[:birth] ].max
       # O código é o da dose a aplicar (o primeiro de `accepts`); a última dose
       # pode ser de outro produto da série (ex.: DTP aos 4 anos para o dT).
       Item.new(series: series.key, immunobiological_code: series.accepts.first,

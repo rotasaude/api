@@ -27,7 +27,7 @@ module Vaccination
         doses = doses_of(patient.id)
         items = Schedule.call(birth_date: birth, sex: patient.sex, pregnant_since: pregnant_since(patient), doses: doses,
                               checked: checked, today: today, calendar: Calendar.current)
-        rows = rows_for(patient.id, items, age_months: age_months(birth, today), checked: checked, today: today)
+        rows = rows_for(patient.id, items, age_months: Calendar.completed_months(birth, today), checked: checked, today: today)
         VaccinationStatus.insert_all!(rows) if rows.any?
       end
       nil
@@ -56,12 +56,6 @@ module Vaccination
       nil
     end
 
-    # Meses completos em `today` (31/jan → 28/fev = 0).
-    def age_months(birth, today)
-      months = ((today.year - birth.year) * 12) + (today.month - birth.month)
-      months -= 1 if today.day < birth.day
-      [ months, 0 ].max
-    end
 
     def record_born_after_go_live!(patient_id, birth)
       go_live = VaccinationSetting.current.go_live_on
@@ -92,6 +86,6 @@ module Vaccination
       ApplicationRecord.connection.execute("SELECT pg_advisory_xact_lock(#{key})")
     end
 
-    private_class_method :age_months, :record_born_after_go_live!, :rows_for, :lock!
+    private_class_method :record_born_after_go_live!, :rows_for, :lock!
   end
 end

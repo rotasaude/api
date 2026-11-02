@@ -11,13 +11,13 @@ RSpec.describe Vaccination::Statuses do
 
   it "nascido em ou depois do go-live: grava a conferência born_after_go_live uma vez e as linhas saem checked" do
     go_live!(today - 365)
-    baby = vaccine_patient!(birth_date: today - 90)
+    baby = vaccine_patient!(birth_date: today - 100)
     expect { 2.times { described_class.refresh!(baby, today: today) } }.to change(VaccinationRecordCheck, :count).by(1)
     check = VaccinationRecordCheck.find_by!(patient_id: baby.id)
     expect(check).to have_attributes(mode: "born_after_go_live", checked_by_user_id: nil, vaccine_room_id: nil)
     expect(described_class.checked?(baby.id)).to be(true)
     expect(rows(baby).values.map(&:checked)).to all(be(true))
-    expect(rows(baby)["penta"]).to have_attributes(status: "overdue", next_dose_code: "1", due_on: today - 30, doses_applied: 0,
+    expect(rows(baby)["penta"]).to have_attributes(status: "overdue", next_dose_code: "1", due_on: (today - 100) >> 2, doses_applied: 0,
                                                     immunobiological_code: "42", computed_on: today)
   end
 
@@ -71,6 +71,8 @@ RSpec.describe Vaccination::Statuses do
     expect(rows(patient).values.map(&:age_months).uniq).to eq([ 12 ])
     jan31 = vaccine_patient!(birth_date: Date.new(2026, 1, 31))
     described_class.refresh!(jan31, today: Date.new(2026, 2, 28))
+    expect(rows(jan31).values.map(&:age_months).uniq).to eq([ 1 ]) # 31/01 + 1 mês = 28/02 (calendário)
+    described_class.refresh!(jan31, today: Date.new(2026, 2, 27))
     expect(rows(jan31).values.map(&:age_months).uniq).to eq([ 0 ])
   end
 

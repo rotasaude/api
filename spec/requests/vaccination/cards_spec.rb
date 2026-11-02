@@ -38,7 +38,7 @@ RSpec.describe "Sala de vacina — caderneta, conferência e busca de pessoa", t
       expect(statuses).to include("unchecked")
       expect(item("42", "1")).to eq("immunobiological" => { "code" => "42", "name" => "Vacina penta (DTP/HB/Hib)" },
                                     "dose" => { "code" => "1", "name" => Vaccination::Terminologies.name("dose", "1") },
-                                    "status" => "unchecked", "due_on" => (today - 305).iso8601, "applied" => nil)
+                                    "status" => "unchecked", "due_on" => ((today - 365) >> 2).iso8601, "applied" => nil)
       expect(json_body["immunizations"]).to eq([])
       expect(trail).to eq([ { "patient_id" => child.id, "user_id" => vaccinator.id, "access" => "vaccination", "reason_code" => nil,
                               "person_ref" => "patient:#{child.id}" } ])

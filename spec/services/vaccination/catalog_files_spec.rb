@@ -29,7 +29,7 @@ RSpec.describe "YAML do módulo 29" do
 
   it "Version#entry devolve [série, dose] ou nil" do
     series, dose = Vaccination::Calendar.current.entry("42", "2")
-    expect([ series.key, dose.recommended_age_days, dose.min_interval_days ]).to eq([ "penta", 120, 30 ])
+    expect([ series.key, dose.recommended_age, dose.min_interval_days ]).to eq([ "penta", Vaccination::Calendar::Age.new(years: 0, months: 4, days: 0), 30 ])
     expect(Vaccination::Calendar.current.entry("42", "9")).to be_nil
     expect(Vaccination::Calendar.current.entry("999", "1")).to be_nil
     expect([ Vaccination::Calendar.current.version, Vaccination::Calendar.current.due_window_days ]).to eq([ "2026.1", 30 ])
@@ -96,7 +96,7 @@ RSpec.describe "YAML do módulo 29" do
   # Fix round 1 da Task 5 (I1): as janelas de idade da série estão no YAML, em revisão.
   it "toda série tem age_window com review e source, salvo as decididas pelas rules (faixas ou gestação)" do
     Vaccination::Calendar.current.series.each do |series|
-      by_rules = series.rules["age_bands_days"] || Array(series.public) == [ "pregnant" ]
+      by_rules = series.age_bands.any? || Array(series.public) == [ "pregnant" ]
       if by_rules
         expect([ series.key, series.age_window ]).to eq([ series.key, nil ])
       else
@@ -104,7 +104,9 @@ RSpec.describe "YAML do módulo 29" do
       end
     end
     window = Vaccination::Calendar.current.series.find { |s| s.key == "penta" }.age_window
-    expect([ window.min_days, window.max_days ]).to eq([ 0, 3649 ])
+    expect([ window.min, window.max ]).to eq([ Vaccination::Calendar::Age.new(years: 0, months: 0, days: 0), Vaccination::Calendar::Age.new(years: 9, months: 0, days: 0) ])
+    influenza = Vaccination::Calendar.current.series.find { |s| s.key == "influenza" }
+    expect(influenza.age_bands.values).to all(have_attributes(review: true, source: be_present))
   end
 
   it "under_review? vira false sem nenhum review true" do
