@@ -167,6 +167,19 @@ RSpec.describe Consultations::Finalize do
       expect(Consultations::Json.consultation(second.reload)[:dental]).to include(suggest_completed: false)
     end
 
+    it "duas consultas abertas baixam o mesmo item: a segunda a finalizar → plan_item_not_open, nada gravado" do
+      done!(draft!(start, dental: { "plan_changes" => { "add" => [ restoration(21) ] } }))
+      item = plan_of(unit).items.sole
+      body = { "dental_consultation_type" => 2, "procedures" => [ restoration(21, plan_item_id: item.id) ] }
+      first = draft!(start, dental: body)
+      second = draft!(start, dental: body)
+      done!(first)
+      expect(problems(finalize(second))).to eq([ [ "plan_item_not_open", "dental.procedures[0].plan_item_id" ] ])
+      expect(second.reload.status).to eq("draft")
+      expect(second.dental_procedures).to be_empty
+      expect(item.reload).to have_attributes(status: "done")
+    end
+
     it "O38: 15 com item ainda planned → plan_items_pending; cancelar o item no mesmo rascunho → aceito" do
       done!(draft!(start, dental: { "plan_changes" => { "add" => [ restoration(21), restoration(22) ] } }))
       items = plan_of(unit).items.order(:tooth).to_a
