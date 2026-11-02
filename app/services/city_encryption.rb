@@ -161,11 +161,11 @@ module CityEncryption
     [ DentalProsthesisStage, :reason ],
     # ADR 0047: lote, fabricante e local da transcrição, justificativa do aviso
     # e motivo do cancelamento da dose; o Bundle da fila RNDS; o motivo do
-    # descarte do frasco.
+    # descarte do frasco; o motivo da conduta da excursão de temperatura.
     [ Immunization, :lot_number_text ], [ Immunization, :manufacturer_text ], [ Immunization, :place_text ],
     [ Immunization, :override_reason ], [ Immunization, :cancel_reason ],
     [ RndsOutboxEntry, :payload ],
-    [ VialOpening, :close_reason ]
+    [ VialOpening, :close_reason ], [ StockLotBlock, :decision_reason ]
   ].freeze
 
   module_function

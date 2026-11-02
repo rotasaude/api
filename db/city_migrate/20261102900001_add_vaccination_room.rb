@@ -232,6 +232,12 @@ class AddVaccinationRoom < ActiveRecord::Migration[8.1]
       t.references :cold_chain_excursion, type: :uuid, null: false, foreign_key: true, index: false
       t.datetime :released_at
       t.string :decision
+      # Task 14: quem decidiu a conduta do lote e o motivo (cifrado); no
+      # descarte, o ajuste de perda (pendente acima do limite do 27a: o
+      # bloqueio só cai quando ele for aplicado ou aprovado).
+      t.references :decided_by_user, type: :uuid, foreign_key: { to_table: :users }, index: false
+      t.text :decision_reason
+      t.references :stock_adjustment, type: :uuid, foreign_key: true, index: false
     end
     add_index :stock_lot_blocks, %i[cold_chain_excursion_id stock_lot_id], unique: true, name: "idx_stock_lot_blocks_excursion_lot"
     add_index :stock_lot_blocks, %i[stock_location_id stock_lot_id], where: "released_at IS NULL", name: "idx_stock_lot_blocks_open"
@@ -239,6 +245,12 @@ class AddVaccinationRoom < ActiveRecord::Migration[8.1]
                          "(released_at IS NULL) = (decision IS NULL) AND " \
                          "(decision IS NULL OR decision::text = ANY (ARRAY[#{quoted(EXCURSION_DECISIONS)}]::text[]))",
                          name: "ck_stock_lot_blocks_decision"
+    add_check_constraint :stock_lot_blocks,
+                         "(decided_by_user_id IS NULL) = (decision_reason IS NULL) AND " \
+                         "(decision IS NULL OR decided_by_user_id IS NOT NULL) AND " \
+                         "(stock_adjustment_id IS NULL OR decided_by_user_id IS NOT NULL)",
+                         name: "ck_stock_lot_blocks_decided_by"
+    add_index :stock_lot_blocks, :stock_adjustment_id, where: "stock_adjustment_id IS NOT NULL", name: "idx_stock_lot_blocks_adjustment"
 
     create_table :vaccination_record_checks, id: :uuid do |t|
       t.references :patient, type: :uuid, null: false, foreign_key: true, index: false
@@ -328,9 +340,15 @@ class AddVaccinationRoom < ActiveRecord::Migration[8.1]
     add_index :stock_openings, %i[stock_location_id immunobiological_code], unique: true, where: "immunobiological_code IS NOT NULL",
                                                                             name: "idx_stock_openings_immunobiological_once"
 
-    add_column :stock_adjustments, :loss_code, :string, limit: 10
+    # 40: o maior código do SIES (temperature_excursion) tem 21 caracteres.
+    add_column :stock_adjustments, :loss_code, :string, limit: 40
     add_check_constraint :stock_adjustments, "loss_code IS NULL OR kind::text = ANY (ARRAY['loss'::text, 'expiry'::text])",
                          name: "ck_stock_adjustments_loss_code"
+    # Task 14: o descarte da excursão de temperatura é perda com o limite de
+    # aprovação do 27a (pode nascer pending); qualquer outra perda segue applied.
+    replace_check :stock_adjustments, "ck_stock_adjustments_approval",
+                  "kind::text = 'adjustment'::text OR status::text = 'applied'::text OR " \
+                  "(kind::text = 'loss'::text AND loss_code::text = 'temperature_excursion'::text)"
   end
 
   # Desvio 7: abertura de frasco (−doses), dose de unidose (−1) e a devolução

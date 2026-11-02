@@ -85,7 +85,7 @@ RSpec.describe "Sala de vacina — frascos multidose", type: :request do
       post_json(base, lot_id: lot.id)
       expect([ response.status, json_body ]).to eq([ 422, refusal("lot_blocked", "lot_id") ])
       expect(balance(lot)).to eq(10)
-      block.update_columns(released_at: Time.current, decision: "use")
+      block.update!(released_at: Time.current, decision: "use", decided_by_user: lead, decision_reason: "Termômetro conferido, sem perda")
       post_json(base, lot_id: lot.id)
       expect(response).to have_http_status(:created)
     end

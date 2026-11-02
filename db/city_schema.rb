@@ -3292,7 +3292,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.uuid "decided_by_user_id"
     t.text "decision_reason"
     t.string "kind", null: false
-    t.string "loss_code", limit: 10
+    t.string "loss_code", limit: 40
     t.decimal "quantity", precision: 12, scale: 2, null: false
     t.text "reason", null: false
     t.uuid "requested_by_user_id", null: false
@@ -3306,7 +3306,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.check_constraint "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name: "ck_stock_adjustments_decided_by"
     t.check_constraint "balance_at_request >= 0::numeric", name: "ck_stock_adjustments_balance"
     t.check_constraint "decided_by_user_id IS NULL OR decided_by_user_id <> requested_by_user_id", name: "ck_stock_adjustments_decider"
-    t.check_constraint "kind::text = 'adjustment'::text OR status::text = 'applied'::text", name: "ck_stock_adjustments_approval"
+    t.check_constraint "kind::text = 'adjustment'::text OR status::text = 'applied'::text OR (kind::text = 'loss'::text AND loss_code::text = 'temperature_excursion'::text)", name: "ck_stock_adjustments_approval"
     t.check_constraint "kind::text = 'adjustment'::text OR quantity < 0::numeric", name: "ck_stock_adjustments_sign"
     t.check_constraint "kind::text = ANY (ARRAY['adjustment'::text, 'loss'::text, 'expiry'::text])", name: "ck_stock_adjustments_kind"
     t.check_constraint "loss_code IS NULL OR kind::text = ANY (ARRAY['loss'::text, 'expiry'::text])", name: "ck_stock_adjustments_loss_code"
@@ -3357,12 +3357,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
 
   create_table "stock_lot_blocks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "cold_chain_excursion_id", null: false
+    t.uuid "decided_by_user_id"
     t.string "decision"
+    t.text "decision_reason"
     t.datetime "released_at"
+    t.uuid "stock_adjustment_id"
     t.uuid "stock_location_id", null: false
     t.uuid "stock_lot_id", null: false
     t.index ["cold_chain_excursion_id", "stock_lot_id"], name: "idx_stock_lot_blocks_excursion_lot", unique: true
+    t.index ["stock_adjustment_id"], name: "idx_stock_lot_blocks_adjustment", where: "(stock_adjustment_id IS NOT NULL)"
     t.index ["stock_location_id", "stock_lot_id"], name: "idx_stock_lot_blocks_open", where: "(released_at IS NULL)"
+    t.check_constraint "(decided_by_user_id IS NULL) = (decision_reason IS NULL) AND (decision IS NULL OR decided_by_user_id IS NOT NULL) AND (stock_adjustment_id IS NULL OR decided_by_user_id IS NOT NULL)", name: "ck_stock_lot_blocks_decided_by"
     t.check_constraint "(released_at IS NULL) = (decision IS NULL) AND (decision IS NULL OR decision::text = ANY (ARRAY['use'::text, 'discard'::text]))", name: "ck_stock_lot_blocks_decision"
   end
 
@@ -4091,8 +4096,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
   add_foreign_key "stock_locations", "health_units"
   add_foreign_key "stock_locations", "users", column: "updated_by_user_id"
   add_foreign_key "stock_lot_blocks", "cold_chain_excursions"
+  add_foreign_key "stock_lot_blocks", "stock_adjustments"
   add_foreign_key "stock_lot_blocks", "stock_locations"
   add_foreign_key "stock_lot_blocks", "stock_lots"
+  add_foreign_key "stock_lot_blocks", "users", column: "decided_by_user_id"
   add_foreign_key "stock_lots", "users", column: "created_by_user_id"
   add_foreign_key "stock_minimums", "stock_locations"
   add_foreign_key "stock_minimums", "users", column: "updated_by_user_id"

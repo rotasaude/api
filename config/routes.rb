@@ -617,6 +617,13 @@ Rails.application.routes.draw do
     post   "rooms/:room_id/transcriptions", to: "transcriptions#create"
     post   "immunizations/:id/cancel",     to: "immunizations#cancel"
     get    "rooms/:room_id/pending",       to: "pending#index"
+    # Cadeia de frio (§8; §15 V14 = D9 do dashboard).
+    get    "cold_chain/equipments",              to: "cold_chain#index"
+    post   "cold_chain/equipments",              to: "cold_chain#create"
+    patch  "cold_chain/equipments/:id",          to: "cold_chain#update"
+    post   "cold_chain/equipments/:id/readings", to: "cold_chain#readings"
+    post   "cold_chain/excursions/:id/decide",   to: "cold_chain#decide"
+    get    "cold_chain/status",                  to: "cold_chain#status"
   end
 
   # Módulo 23 (ADR 0040; contrato §3–§6): linhas de cuidado, sessão do dashboard.

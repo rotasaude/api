@@ -276,6 +276,11 @@ Rails.application.config.to_prepare do
   # `cause`: closed_out | expired), sem consumidor.
   DomainEvents.bind "vaccination.vial_opened", to: []
   DomainEvents.bind "vaccination.vial_closed", to: []
+  # Cadeia de frio (módulo 29, Task 14): excursão aberta por leitura fora da
+  # faixa e excursão fechada (todos os lotes com conduta aplicada); só ids
+  # (cold_chain_excursion_id, stock_location_id, user_id), sem consumidor.
+  DomainEvents.bind "vaccination.cold_chain_excursion", to: []
+  DomainEvents.bind "vaccination.cold_chain_excursion_decided", to: []
   # Dose registrada na sala ou transcrita; só trilha, só ids (immunization_id,
   # vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.immunization_recorded", to: []

@@ -356,6 +356,13 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     end
   end
 
+  it "declares the cold chain excursion events with no consumer" do
+    %w[vaccination.cold_chain_excursion vaccination.cold_chain_excursion_decided].each do |name|
+      expect(DomainEvents.registry.keys).to include(name)
+      expect(DomainEvents.registry[name]).to be_empty
+    end
+  end
+
   it "declares vaccination.immunization_recorded with no consumer" do
     expect(DomainEvents.registry.keys).to include("vaccination.immunization_recorded")
     expect(DomainEvents.registry["vaccination.immunization_recorded"]).to be_empty

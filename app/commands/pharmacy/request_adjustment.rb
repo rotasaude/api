@@ -48,6 +48,15 @@
 # `loss_code` da lista do SIES (config/vaccination/physical_loss_reasons.yml):
 # ausente → `required`, fora da lista → `invalid_request` (path `loss_code`). Fora
 # disso o `loss_code` é ignorado (nunca gravado).
+#
+# Task 14 (descarte da excursão de temperatura): `excursion:` (só com `kind:
+# "loss"`) libera o `lot_blocked` SÓ dos bloqueios daquela excursão (outro
+# bloqueio aberto do lote no local continua recusando) e põe a perda sob o
+# limite de aprovação do 27a, com a mesma regra da contagem (|saída| * 100 >
+# saldo * percentual, ou saldo zero → `pending`, sem movimento até o
+# DecideAdjustment aprovar). Sem `excursion:`, perda e vencimento seguem
+# aplicados na hora. O bloqueio é solto por quem chama (Vaccination::DecideExcursion)
+# ou na aprovação (Vaccination::ExcursionRelease).
 module Pharmacy
   module RequestAdjustment
     KINDS = Catalog::ADJUSTMENT_KINDS
@@ -70,11 +79,12 @@ module Pharmacy
     # -> Result.ok(adjustment:, movement:) (movement nil quando pending) |
     # fail(:location_inactive, details: { path: "location_id" }) |
     # fail(<primeiro erro>, details: { path:, problems: [ { path:, error: } ] })
-    def call(location:, lot:, kind:, counted_quantity:, quantity:, reason:, by:, settings:, loss_code: nil, now: Time.current)
+    def call(location:, lot:, kind:, counted_quantity:, quantity:, reason:, by:, settings:, loss_code: nil, excursion: nil, now: Time.current)
+      raise ArgumentError, "excursion context is only for loss" if excursion && kind != "loss"
       return Result.fail(:location_inactive, details: { path: "location_id" }) unless location.active
 
       request, problems = validate(lot, kind, counted_quantity, quantity, reason, now.in_time_zone.to_date)
-      problems.concat(stock_problems(location, lot))
+      problems.concat(stock_problems(location, lot, excursion))
       request.loss_code, code_problems = loss_code_of(lot, kind, loss_code)
       problems.concat(code_problems)
       if problems.any?
@@ -82,22 +92,22 @@ module Pharmacy
         return failure(order(problems))
       end
 
-      persist(location: location, lot: lot, request: request, by: by, settings: settings, now: now)
+      persist(location: location, lot: lot, request: request, by: by, settings: settings, excursion: excursion, now: now)
     end
 
-    def persist(location:, lot:, request:, by:, settings:, now:)
+    def persist(location:, lot:, request:, by:, settings:, excursion:, now:)
       result = nil
       StockAdjustment.transaction(requires_new: true) do
-        result = write(location: location, lot: lot, request: request, by: by, settings: settings, now: now)
+        result = write(location: location, lot: lot, request: request, by: by, settings: settings, excursion: excursion, now: now)
         raise ActiveRecord::Rollback if result.failure?
       end
       result
     end
 
-    def write(location:, lot:, request:, by:, settings:, now:)
+    def write(location:, lot:, request:, by:, settings:, excursion:, now:)
       locked_lot = Ledger.lock_lots!([ lot.id ]).fetch(lot.id)
       Ledger.lock_location!(location.id)
-      return failure([ problem("lot_id", :lot_blocked) ]) if blocked?(location, lot)
+      return failure([ problem("lot_id", :lot_blocked) ]) if blocked?(location, lot, excursion)
       return pending_conflict if request.kind == "adjustment" && pending_for?(location, lot)
 
       balance = Ledger.balance(location_id: location.id, lot_id: lot.id)
@@ -106,7 +116,7 @@ module Pharmacy
       return failure(problems) if problems.any?
 
       effect = effect_of(request, balance)
-      pending = request.kind == "adjustment" && pending?(balance, effect, settings)
+      pending = (request.kind == "adjustment" || excursion.present?) && pending?(balance, effect, settings)
       adjustment = StockAdjustment.create!(
         stock_location: location, stock_lot: locked_lot, kind: request.kind, status: pending ? "pending" : "applied",
         quantity: effect, counted_quantity: (request.amount if request.kind == "adjustment"), balance_at_request: balance,
@@ -168,15 +178,20 @@ module Pharmacy
     end
 
     # Domínio do lote × local e bloqueio aberto no local. -> [ problem ]
-    def stock_problems(location, lot)
+    def stock_problems(location, lot, excursion)
       return [] unless lot
       return [ problem("lot_id", :item_not_allowed_here) ] unless Stock::Domain.allows?(location, lot)
-      return [ problem("lot_id", :lot_blocked) ] if blocked?(location, lot)
+      return [ problem("lot_id", :lot_blocked) ] if blocked?(location, lot, excursion)
 
       []
     end
 
-    def blocked?(location, lot) = StockLotBlock.open_blocks.exists?(stock_location_id: location.id, stock_lot_id: lot.id)
+    # Bloqueio aberto do lote no local; o da excursão do contexto não conta.
+    def blocked?(location, lot, excursion = nil)
+      scope = StockLotBlock.open_blocks.where(stock_location_id: location.id, stock_lot_id: lot.id)
+      scope = scope.where.not(cold_chain_excursion_id: excursion.id) if excursion
+      scope.exists?
+    end
 
     # -> [ loss_code gravável | nil, [ problem ] ]
     def loss_code_of(lot, kind, loss_code)

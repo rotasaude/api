@@ -19,6 +19,13 @@
 #
 # Eventos `stock_adjustment.approved` / `.rejected` só com ids (stock_adjustment_id,
 # user_id). O motivo (texto livre) nunca sai em log, evento nem erro.
+#
+# Task 14 (módulo 29): a perda pendente do descarte da excursão de temperatura
+# (RequestAdjustment com `excursion:`) aprovada vira o movimento `loss` (a
+# saída guardada) e solta, na mesma transação, o bloqueio do lote ligado a
+# ela (Vaccination::ExcursionRelease: fecha os frascos abertos do lote e,
+# sem bloqueio aberto restante, fecha a excursão). Recusada, o lote segue
+# bloqueado e a conduta pode ser refeita.
 module Pharmacy
   module DecideAdjustment
     DECIDER_ROLES = %w[stock_keeper pharmacist].freeze
@@ -51,15 +58,23 @@ module Pharmacy
       locked = StockAdjustment.lock("FOR UPDATE").find(adjustment.id)
       return Result.fail(:not_pending) unless locked.status == "pending"
 
-      movement = decision == "approve" ? Ledger.record!(location: location, lot: lot, kind: "adjustment", quantity: locked.quantity, by: by,
-                                                        document: locked, reason: locked.reason, at: now) : nil
+      movement = decision == "approve" ? apply(location, lot, locked, by, now) : nil
       locked.update!(status: decision == "approve" ? "approved" : "rejected", decided_by_user: by, decided_at: now, decision_reason: reason)
+      Vaccination::ExcursionRelease.adjustment_applied!(adjustment: locked, now: now) if decision == "approve"
       DomainEvents.publish("stock_adjustment.#{decision == 'approve' ? 'approved' : 'rejected'}", stock_adjustment_id: locked.id, user_id: by.id)
       Result.ok(adjustment: locked, movement: movement)
     rescue Ledger::Inactive
       Result.fail(:location_inactive)
     rescue Ledger::Insufficient
       failure([ problem("id", :insufficient_balance) ])
+    end
+
+    # A contagem aplica o delta com sinal; a perda (só a da excursão chega
+    # pendente) sai com a quantidade positiva, como no RequestAdjustment.
+    def apply(location, lot, adjustment, by, now)
+      loss = adjustment.kind == "loss"
+      Ledger.record!(location: location, lot: lot, kind: adjustment.kind, quantity: loss ? -adjustment.quantity : adjustment.quantity, by: by,
+                     document: adjustment, reason: adjustment.reason, at: now)
     end
 
     # -> [ motivo aparado | nil, [ problem ] ]
@@ -79,6 +94,6 @@ module Pharmacy
       Result.fail(first[:error], details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :write, :validate_reason, :problem, :failure
+    private_class_method :write, :apply, :validate_reason, :problem, :failure
   end
 end
