@@ -16,16 +16,19 @@ module Timeline
       "consultation" => Sources::ConsultationSource, "clinical_document" => Sources::ClinicalDocumentSource,
       "controlled_notification" => Sources::ControlledNotificationSource, "campaign" => Sources::CampaignSource,
       "exam" => Sources::ExamSource, "procedure" => Sources::ProcedureSource,
-      "dispensation" => Sources::DispensationSource
+      "dispensation" => Sources::DispensationSource, "vaccination" => Sources::VaccinationSource
     }.freeze
 
     Page = Data.define(:entries, :next_before)
 
     module_function
 
-    def call(person:, kinds: Timeline::KINDS, before: nil, limit: DEFAULT_LIMIT, from: nil, to: nil)
+    # `citizen: true` (visão do cidadão): a vacina só traz doses ativas (29; W4).
+    def call(person:, kinds: Timeline::KINDS, before: nil, limit: DEFAULT_LIMIT, from: nil, to: nil, citizen: false)
       rows = kinds.flat_map do |kind|
-        SOURCES.fetch(kind).entries(person: person, before: before, limit: limit + 1, from: from, to: to)
+        args = { person: person, before: before, limit: limit + 1, from: from, to: to }
+        args[:active_only] = true if citizen && kind == "vaccination"
+        SOURCES.fetch(kind).entries(**args)
       end
       rows.sort_by!(&:sort_key)
       page = rows.first(limit)

@@ -851,6 +851,9 @@ Rails.application.routes.draw do
 
     # Meus encaminhamentos (ADR 0044; contrato §9, G3): citizen_id, par validado.
     get "regulation_requests", to: "regulation_requests#index"
+
+    # Caderneta de vacinação (ADR 0047; contrato §9, W1): citizen_id, par validado.
+    get "vaccinations", to: "vaccinations#index"
   end
 
   # Autoria/preview de protocolos (ADR-0009)

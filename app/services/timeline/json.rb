@@ -13,8 +13,9 @@ module Timeline
 
     def citizen(entry)
       view = entry.citizen
+      unit = view.key?(:unit) ? view[:unit] : entry.unit # vacina: a visão do cidadão decide (nula na transcrição)
       { id: "#{entry.kind}:#{entry.source_id}", kind: entry.kind, occurred_at: entry.occurred_at.iso8601,
-        unit: entry.unit && { name: entry.unit[:name] }, professional_name: view[:professional_name],
+        unit: unit && { name: unit[:name] }, professional_name: view[:professional_name],
         title: view[:title], summary: view[:summary], status: view[:status], document: entry.document }
         .tap { |body| body[:status_label] = view[:status_label] if view[:status_label] } # A24: só quando presente
     end

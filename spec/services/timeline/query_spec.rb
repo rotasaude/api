@@ -72,7 +72,7 @@ RSpec.describe Timeline::Query do
     expect(described_class.citizen_kinds(verified: true, documents: true)).to eq(Timeline::KINDS - %w[dispensation])
     expect(described_class.citizen_kinds(verified: true, documents: false)).not_to include("dispensation")
     expect(described_class::PROFESSIONAL_ONLY_KINDS).to eq(%w[dispensation])
-    expect(Timeline::KINDS.last).to eq("dispensation")
+    expect(Timeline::KINDS.last(2)).to eq(%w[dispensation vaccination])
   end
 
   it "kinds: dispensation recorta só a dispensação (o filtro kinds[]=dispensation do controlador)" do
