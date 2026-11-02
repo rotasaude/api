@@ -34,6 +34,17 @@ RSpec.describe "Página do PEC", type: :request do
       .to include("access" => "pec_external", "user_id" => nurse.id, "person_ref" => "citizen:#{citizen.id}")
   end
 
+  it "vacina: a dose ativa aparece e a cancelada não (módulo 29)" do
+    room = vaccine_room!(unit)
+    patient = Patients::Resolve.call(citizen).payload.fetch(:patient)
+    create_immunization!(room, patient: patient, applied_at: Time.zone.parse("2026-10-20 09:00:00"))
+    create_immunization!(room, patient: patient, applied_at: Time.zone.parse("2026-10-21 09:00:00"), cancelled_at: Time.current,
+                               cancelled_by_user: room_member!(room), cancel_reason: "Registrada na pessoa errada")
+    open_page
+    expect(response.body.scan(Vaccination::Immunobiologicals.find("42").name).size).to eq(1)
+    expect(response.body).not_to include("pessoa errada")
+  end
+
   it "reenviada, vencida, inválida e sem vínculo: página genérica com o código, 403, sem dizer o parâmetro" do
     path = signed_pec_path(professional: "52998224725", citizen: citizen.cpf, cnes: "1234567")
     get path

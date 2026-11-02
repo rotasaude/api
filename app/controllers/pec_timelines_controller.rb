@@ -30,7 +30,8 @@ class PecTimelinesController < ApplicationController
     return failure(result.reason.to_s) if result.failure?
 
     grant = result.payload[:grant]
-    page = Timeline::Query.call(person: grant.person, limit: self.class::PAGE_LIMIT)
+    page = Timeline::Query.call(person: grant.person, limit: self.class::PAGE_LIMIT,
+                                active_vaccinations_only: true)
     Timeline::Trail.viewed!(person: grant.person, access: "pec_external", user: grant.user)
     token = PecExternal::ViewSession.issue(city: Current.city, grant: grant)
     exams = Exams::Gate.pec_usable?(Current.city)
@@ -42,7 +43,8 @@ class PecTimelinesController < ApplicationController
     grant = PecExternal::ViewSession.resume(request.headers[PecExternal::ViewSession::HEADER], city: Current.city)
     return failure("pec_session_expired", status: :unauthorized) unless grant
 
-    page = Timeline::Query.call(person: grant.person, before: Timeline::Cursor.decode(params[:before]), limit: self.class::PAGE_LIMIT)
+    page = Timeline::Query.call(person: grant.person, before: Timeline::Cursor.decode(params[:before]), limit: self.class::PAGE_LIMIT,
+                                active_vaccinations_only: true)
     Timeline::Trail.viewed!(person: grant.person, access: "pec_external", user: grant.user)
     response.headers["X-Next-Before"] = page.next_before.to_s
     html(PecExternal::Page.items(page.entries))

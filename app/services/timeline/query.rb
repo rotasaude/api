@@ -23,11 +23,11 @@ module Timeline
 
     module_function
 
-    # `citizen: true` (visão do cidadão): a vacina só traz doses ativas (29; W4).
-    def call(person:, kinds: Timeline::KINDS, before: nil, limit: DEFAULT_LIMIT, from: nil, to: nil, citizen: false)
+    # `active_vaccinations_only: true` (cidadão e PEC externo): a vacina só traz doses ativas, sem canceladas (29; W4).
+    def call(person:, kinds: Timeline::KINDS, before: nil, limit: DEFAULT_LIMIT, from: nil, to: nil, active_vaccinations_only: false)
       rows = kinds.flat_map do |kind|
         args = { person: person, before: before, limit: limit + 1, from: from, to: to }
-        args[:active_only] = true if citizen && kind == "vaccination"
+        args[:active_only] = true if active_vaccinations_only && kind == "vaccination"
         SOURCES.fetch(kind).entries(**args)
       end
       rows.sort_by!(&:sort_key)

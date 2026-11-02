@@ -28,7 +28,7 @@ module CitizenApi
 
       kinds = Timeline::Query.citizen_kinds(verified: person.verified, documents: ClinicalDocuments::Gate.usable?(Current.city)) & requested
       page = Timeline::Query.call(person: person, kinds: kinds, before: Timeline::Cursor.decode(params[:before]),
-                                  limit: Timeline::Query.limit(params[:limit]), citizen: true)
+                                  limit: Timeline::Query.limit(params[:limit]), active_vaccinations_only: true)
       Timeline::Trail.viewed!(person: person, access: "citizen")
       render json: { verified: person.verified, partial: Timeline::Gate.partial?(Current.city),
                      entries: page.entries.map { |entry| Timeline::Json.citizen(entry) }, next_before: page.next_before }

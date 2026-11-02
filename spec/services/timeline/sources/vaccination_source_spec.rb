@@ -73,10 +73,10 @@ RSpec.describe Timeline::Sources::VaccinationSource do
     expect(Timeline::Query.citizen_kinds(verified: false, documents: true)).not_to include("vaccination")
   end
 
-  it "Query com citizen: true corta a cancelada; sem, mantém" do
+  it "Query com active_vaccinations_only: true corta a cancelada; sem, mantém" do
     create_immunization!(room, patient: patient, applied_at: Time.zone.parse("2026-10-20 09:00:00"), cancelled_at: Time.current,
                                cancelled_by_user: room_member!(room), cancel_reason: "Pessoa errada")
     expect(Timeline::Query.call(person: person, kinds: %w[vaccination]).entries.size).to eq(1)
-    expect(Timeline::Query.call(person: person, kinds: %w[vaccination], citizen: true).entries).to eq([])
+    expect(Timeline::Query.call(person: person, kinds: %w[vaccination], active_vaccinations_only: true).entries).to eq([])
   end
 end
