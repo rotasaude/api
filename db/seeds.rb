@@ -23,6 +23,7 @@
 #     Regulação municipal (módulo 26a): care_regulation ligado em Curitiba, a reguladora (regulacao.municipal@<slug>.demo), o Centro Municipal de Especialidades Vila Hauer e três prestadores, as ofertas do mês e os dez pedidos da prova — ver lib/regulation_crew.rb.
 #     Farmácia e almoxarifado (módulo 27a): pharmacy ligado em Curitiba, o almoxarifado central e a farmácia da UBS Jardim das Flores, a farmacêutica (farmacia@<slug>.demo), a auxiliar, dois almoxarifes, o estoque com lotes, as transferências e as receitas da prova — ver lib/pharmacy_crew.rb.
 #     Saúde bucal (módulo 28): dental_care ligado em Curitiba, o CEO tipo II, a eSB associada à eSF, a dentista (dentista@<slug>.demo), a auxiliar (asb@), a endodontista (endodontista@), consultas, planos, produção do CEO e prótese da prova — ver lib/oral_health_crew.rb.
+#     Sala de vacina (módulo 29): vaccination, rnds_immunization e rnds_mock ligados em Curitiba, a sala da UBS Jardim das Flores, a vacinadora (vacinadora@<slug>.demo) e a responsável (vacina.responsavel@), a rede de frio com 4 lotes, a geladeira, a credencial rnds de teste e uma dose de exemplo na fila da RNDS simulada — ver lib/vaccination_crew.rb.
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -62,6 +63,7 @@ else
   require Rails.root.join("lib/regulation_crew").to_s
   require Rails.root.join("lib/pharmacy_crew").to_s
   require Rails.root.join("lib/oral_health_crew").to_s
+  require Rails.root.join("lib/vaccination_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -402,6 +404,13 @@ else
         # papel e otpauth: nunca dado de paciente.
         oral_health = OralHealthCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
         OralHealthCrew.summary_lines(oral_health, password: password).each { |line| puts line }
+
+        # ── Sala de vacina (módulo 29, ADR 0047) ──────────────────────────────
+        # Depois do PharmacyCrew (o almoxarife do 27a cuida da rede de frio) e do
+        # RecordModeCrew (o retrato do CNES recebe o CNS da vacinadora). Só e-mail,
+        # papel e otpauth: nunca dado de paciente.
+        vaccination = VaccinationCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        VaccinationCrew.summary_lines(vaccination, password: password).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
