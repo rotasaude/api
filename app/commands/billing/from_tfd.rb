@@ -10,9 +10,12 @@
 #
 # Falhas (Task 13 I1/I2), sempre só com ids:
 # - sem a unidade configurada → BillingUnitMissing: o consumidor falha, o
-#   evento fica pendente e a nova tentativa grava depois de configurada;
-# - quantidade fora de PerformedProcedure::QUANTITY → a ajuda é pulada (log
-#   com o id) e as outras seguem (o AddLeg já recusa a volta além de 999 noites);
+#   evento fica pendente e a nova tentativa (limitada, Billing::TfdProductionJob)
+#   grava depois de configurada;
+# - quantidade fora de PerformedProcedure::QUANTITY → a ajuda é pulada e as
+#   outras seguem (o AddLeg já recusa a volta além de 999 noites); a pulada
+#   volta só no retorno (`skipped`, ids) — sem log no código do faturamento
+#   (invariante do módulo 22, FW15) — e fica visível como ajuda sem linha BPA;
 # - erro do banco no INSERT → InsertFailed sem a causa (o DETAIL do Postgres
 #   traz a linha, com CID e paciente).
 module Billing
@@ -22,10 +25,11 @@ module Billing
 
     module_function
 
-    # allowances: relação/lista de TfdAllowance -> Integer (linhas criadas)
+    # allowances: relação/lista de TfdAllowance -> { created: Integer, skipped: [ids das ajudas puladas] }
     def call(allowances)
       list = allowances.to_a
-      return 0 if list.empty?
+      skipped = []
+      return { created: 0, skipped: skipped } if list.empty?
 
       unit = HealthUnit.find_by(id: Transport::Settings.current.tfd_billing_health_unit_id)
       raise BillingUnitMissing, "tfd_billing_health_unit_missing tfd_allowance_ids=#{list.map(&:id).join(',')}" unless unit
@@ -34,17 +38,18 @@ module Billing
       done = PerformedProcedure.where(tfd_allowance_id: list.map(&:id)).pluck(:tfd_allowance_id).to_set
       cases = TfdCase.where(id: list.map(&:tfd_case_id).uniq).includes(:patient, :requester_user).index_by(&:id)
       legs = TfdLeg.where(id: list.map(&:tfd_leg_id).uniq).index_by(&:id)
-      list.sort_by { |allowance| [ allowance.created_at, allowance.id ] }.count do |allowance|
+      created = list.sort_by { |allowance| [ allowance.created_at, allowance.id ] }.count do |allowance|
         next false if done.include?(allowance.id)
 
         unless PerformedProcedure::QUANTITY.cover?(allowance.quantity)
-          Rails.logger.warn("[Billing::FromTfd] quantity_out_of_range tfd_allowance_id=#{allowance.id}")
+          skipped << allowance.id
           next false
         end
 
         insert!(allowance, cases.fetch(allowance.tfd_case_id), legs.fetch(allowance.tfd_leg_id), establishment)
         true
       end
+      { created: created, skipped: skipped }
     end
 
     def insert!(allowance, tfd_case, leg, establishment)

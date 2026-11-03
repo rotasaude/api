@@ -78,7 +78,7 @@ RSpec.describe Billing::FromTfd do
       Billing::TfdProductionJob.new.perform(**job_args(back, name: "tfd.allowances_calculated"))
       Billing::TfdProductionJob.new.perform(**job_args(back))
     end.not_to change(PerformedProcedure, :count)
-    expect(described_class.call(TfdAllowance.where(tfd_case: tfd))).to eq(0)
+    expect(described_class.call(TfdAllowance.where(tfd_case: tfd))).to eq(created: 0, skipped: [])
     expect(PerformedProcedure.where(source: "tfd").count).to eq(3)
   end
 
@@ -145,7 +145,7 @@ RSpec.describe Billing::FromTfd do
     expect(DomainEvent.find(args[:event_id]).published_at).to be_present
   end
 
-  it "I1: ajuda com quantidade acima de 999 é pulada (log só com o id) e as outras do trecho seguem, sem exceção" do
+  it "I1/FW15: ajuda com quantidade acima de 999 é pulada (só no retorno, sem log) e as outras do trecho seguem, sem exceção" do
     tfd = tfd_case!(status: "authorized")
     ticket_leg!(tfd, "outbound", Date.current - 3)
     back = ticket_leg!(tfd, "return", Date.current)
@@ -155,10 +155,37 @@ RSpec.describe Billing::FromTfd do
                                 competence: Date.current.strftime("%Y%m"))
     allow(Rails.logger).to receive(:warn).and_call_original
 
-    expect(described_class.call(TfdAllowance.where(tfd_leg: back))).to eq(2)
+    expect(described_class.call(TfdAllowance.where(tfd_leg: back))).to eq(created: 2, skipped: [ huge.id ])
     expect(PerformedProcedure.where(tfd_leg_id: back.id).pluck(:sigtap_code)).to contain_exactly("0803010125", "0803010010")
     expect(PerformedProcedure.where(tfd_allowance_id: huge.id)).not_to exist
-    expect(Rails.logger).to have_received(:warn).with("[Billing::FromTfd] quantity_out_of_range tfd_allowance_id=#{huge.id}")
+    expect(Rails.logger).not_to have_received(:warn)
+  end
+
+  it "FW9: sem a unidade, a nova tentativa é limitada — reenfileira o mesmo evento até a 12ª execução e então desiste (falha visível)" do
+    tfd = tfd_case!(status: "authorized")
+    TransportSetting.current.update_columns(tfd_billing_health_unit_id: nil)
+    out = ticket_leg!(tfd, "outbound", Date.current)
+    args = event_args("tfd.leg_done", out)
+    expect(Billing::TfdProductionJob::RETRY_ATTEMPTS).to eq(12)
+
+    calls = 0
+    allow(Billing::FromTfd).to receive(:call).and_wrap_original do |original, *rest|
+      calls += 1
+      original.call(*rest)
+    end
+    Billing::TfdProductionJob.perform_later(**args)
+    raised = nil
+    20.times do
+      perform_enqueued_jobs(only: Billing::TfdProductionJob)
+    rescue Billing::FromTfd::BillingUnitMissing => e
+      raised = e
+      break
+    end
+    expect(raised).to be_a(Billing::FromTfd::BillingUnitMissing)
+    expect(calls).to eq(12) # 1 + 11 novas tentativas, e para
+    expect(enqueued_jobs.count { |job| job["job_class"] == "Billing::TfdProductionJob" }).to eq(0)
+    expect(ProcessedEvent.where(event_id: args[:event_id])).not_to exist
+    expect(DomainEvent.find(args[:event_id]).published_at).to be_nil
   end
 
   it "erro do banco no INSERT vira InsertFailed só com o id da ajuda, sem a causa do Postgres (que traz a linha com CID)" do
