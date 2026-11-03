@@ -271,6 +271,11 @@ Rails.application.config.to_prepare do
   # Módulo 30 (ADR 0048): frota, motoristas e destinos do transporte sanitário;
   # só trilha, só ids (vehicle_id|driver_id|destination_id, user_id), sem consumidor.
   %w[transport.vehicle_saved transport.driver_saved transport.destination_saved].each { |name| DomainEvents.bind name, to: [] }
+  # Viagem confirmada, cancelada (só a que estava confirmada: a planned não tem
+  # aviso, T15) e alterada (confirmada: saída mudou 30 min ou mais, `change:
+  # "departure"`; rótulo de embarque mudou, `change: "boarding"` + `stop_id`).
+  # Só ids e o código da mudança; o consumidor (avisos) chega na Task 14.
+  %w[transport.trip_confirmed transport.trip_cancelled transport.trip_changed].each { |name| DomainEvents.bind name, to: [] }
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

@@ -602,6 +602,12 @@ Rails.application.routes.draw do
     post  "destinations",        to: "destinations#create"
     get   "destinations/:id",    to: "destinations#show"
     patch "destinations/:id",    to: "destinations#update"
+    # Viagens da central (§4; T4, T19).
+    get   "trips",               to: "trips#index"
+    post  "trips",               to: "trips#create"
+    patch "trips/:id",           to: "trips#update"
+    post  "trips/:id/confirm",   to: "trips#confirm"
+    post  "trips/:id/cancel",    to: "trips#cancel"
     get   "admin/settings", to: "admin/settings#show"
     patch "admin/settings", to: "admin/settings#update"
   end

@@ -25,6 +25,34 @@ module Transport
         "metropolitan" => d.metropolitan, "active" => d.active }
     end
 
+    # <trip> (contrato §2): horas ISO no fuso da cidade; veículo resumido,
+    # motorista só id e nome (nunca a CNH). `viewer` (:dispatcher | :driver)
+    # escolhe a forma do passageiro; os passageiros entram com o
+    # Transport::Json.passenger (Task 5) e o `log` com o fechamento (Task 8).
+    def trip(trip, viewer: :dispatcher)
+      vehicle = trip.transport_vehicle
+      driver = trip.transport_driver
+      { "id" => trip.id, "date" => trip.date.iso8601, "departure_at" => trip.departure_at.in_time_zone.iso8601,
+        "return_at" => trip.return_at.in_time_zone.iso8601,
+        "vehicle" => vehicle && { "id" => vehicle.id, "plate" => vehicle.plate, "model" => vehicle.model, "kind" => vehicle.kind,
+                                  "seats" => vehicle.seats, "wheelchair_spots" => vehicle.wheelchair_spots },
+        "driver" => driver && { "id" => driver.id, "name" => user_name(driver.user) },
+        "status" => trip.status,
+        "stops" => trip.transport_trip_stops.sort_by(&:position).map { |stop| stop(stop) },
+        "passengers" => passengers(trip, viewer),
+        "occupancy" => Occupancy.of(trip, vehicle: vehicle).transform_keys(&:to_s),
+        "series_id" => trip.transport_series_id, "log" => nil }
+    end
+
+    def stop(stop)
+      { "id" => stop.id, "position" => stop.position, "kind" => stop.kind, "destination_id" => stop.transport_destination_id,
+        "label" => stop.label }
+    end
+
+    # Passageiros ativos na forma <passenger>: o Transport::Json.passenger
+    # nasce na Task 5, que troca este corpo; até lá a lista sai vazia.
+    def passengers(_trip, _viewer) = []
+
     # Como a fila do módulo 13: nome profissional; sem perfil, o e-mail.
     def user_name(user) = Screenings::Json.staff_name(user)
 

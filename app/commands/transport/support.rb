@@ -17,6 +17,13 @@ module Transport
       Result.fail(error, details: { path: path, problems: [ { path: path, error: error.to_s } ] })
     end
 
+    # Várias recusas de nome próprio de uma vez ([ { path:, error: } ]): a
+    # primeira vai para o topo.
+    def failure(problems)
+      first = problems.first
+      Result.fail(first[:error].to_sym, details: { path: first[:path], problems: problems })
+    end
+
     def text(value, range)
       return nil unless value.is_a?(String)
 
