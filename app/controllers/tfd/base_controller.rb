@@ -12,7 +12,7 @@ module Tfd
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     # O resto das recusas é 422.
     FAILURE_STATUS = { already_exists: :conflict, already_closed: :conflict, same_user: :forbidden, missing_role: :forbidden,
-                       cbo_not_allowed: :forbidden, not_found: :not_found }.freeze
+                       cbo_not_allowed: :forbidden, not_found: :not_found, receipt_taken: :conflict }.freeze
     KEY_PATH_MAX = 64
 
     before_action :require_tfd!

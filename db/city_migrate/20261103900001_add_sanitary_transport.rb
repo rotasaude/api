@@ -480,7 +480,8 @@ class AddSanitaryTransport < ActiveRecord::Migration[8.1]
       t.references :by_user, type: :uuid, null: false, foreign_key: { to_table: :users }, index: false
       t.datetime :created_at, null: false
     end
-    add_index :tfd_payments, :tfd_case_id, name: "idx_tfd_payments_case"
+    # Um recibo por processo (FR I3): o POST repetido não duplica o pagamento imutável.
+    add_index :tfd_payments, %i[tfd_case_id receipt_number], unique: true, name: "idx_tfd_payments_receipt"
     add_check_constraint :tfd_payments,
                          "amount_cents >= 1 AND amount_cents <= #{MAX_AMOUNT_CENTS} AND " \
                          "payment_method::text = ANY (ARRAY[#{quoted(PAYMENT_METHODS)}]::text[]) AND char_length(btrim(receipt_number::text)) >= 1",

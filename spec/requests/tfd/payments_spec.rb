@@ -51,6 +51,22 @@ RSpec.describe "TFD — pagamento e prestação de contas", type: :request do
       expect(payloads("tfd.payment_recorded").to_s).not_to include("REC-SECRETO", "24750")
     end
 
+    it "FR I3: o mesmo recibo no mesmo processo → 409 receipt_taken sem segundo pagamento nem evento; em outro processo vale" do
+      tfd = tfd_case!(status: "scheduled", patient: patient)
+      pay(tfd)
+      expect(response).to have_http_status(:ok)
+      pay(tfd, payment.merge(amount_cents: 100))
+      expect(response).to have_http_status(:conflict)
+      expect(json_body).to include("error" => "receipt_taken", "path" => "receipt_number")
+      expect(TfdPayment.where(tfd_case_id: tfd.id).count).to eq(1)
+      expect(payloads("tfd.payment_recorded").size).to eq(1)
+      expect(response.body).not_to include("REC-SECRETO")
+
+      other = tfd_case!(status: "scheduled")
+      pay(other)
+      expect(response).to have_http_status(:ok)
+    end
+
     it "method fora da lista, valor, recibo e data inválidos: todas as recusas juntas" do
       tfd = tfd_case!(status: "scheduled", patient: patient)
       pay(tfd, paid_on: (Date.current + 1).iso8601, amount_cents: 0, method: "boleto", receipt_number: "")
