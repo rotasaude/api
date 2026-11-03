@@ -2,8 +2,9 @@
 # `confirmed` → `cancelled`, com motivo de 10 a 500 caracteres (cifrado). A
 # cancelada sai das exclusion constraints: o veículo e o motorista ficam
 # livres no horário. Viagem `done`/`cancelled` → `trip_not_open`; `in_progress`
-# → `invalid_transition`. Evento `transport.trip_cancelled` (só o id) só
-# quando a viagem estava confirmada: a `planned` não tem aviso (T15).
+# → `invalid_transition`. Evento `transport.trip_cancelled` (só o id) em todo
+# cancelamento (§11); o aviso ao cidadão (T15) é decisão do consumidor, que
+# só avisa a viagem que tinha `confirmed_at` (fica gravado no cancelamento).
 module Transport
   module CancelTrip
     CANCELLABLE = %w[planned confirmed].freeze
@@ -20,9 +21,8 @@ module Transport
         text = Support.text(reason, Catalog::REASON)
         next Support.refuse("reason") unless text
 
-        was_confirmed = trip.status == "confirmed"
         trip.update!(status: "cancelled", cancelled_at: Time.current, cancelled_by_user: by, cancel_reason: text)
-        DomainEvents.publish("transport.trip_cancelled", trip_id: trip.id) if was_confirmed
+        DomainEvents.publish("transport.trip_cancelled", trip_id: trip.id)
         Result.ok(trip: trip)
       end
     end

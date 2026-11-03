@@ -87,14 +87,17 @@ RSpec.describe "Transporte — viagens", type: :request do
     expect(TransportTrip.count).to eq(0)
   end
 
-  it "a data é o dia LOCAL da saída (05:30 local; T22) e a forma <trip> segue o contrato" do
-    json_post "/transport/trips", body("05:30", "18:00")
+  it "a data é o dia LOCAL da saída (22:30 local já é o dia seguinte em UTC; T22) e a forma <trip> segue o contrato" do
+    json_post "/transport/trips", body("22:30", "23:30", date: (day + 1).iso8601)
+    expect(json_body["problems"]).to include({ "path" => "date", "error" => "invalid_request" })
+    json_post "/transport/trips", body("22:30", "23:30")
     expect(response).to have_http_status(:created)
     trip = TransportTrip.find(json_body["id"])
+    expect(trip.departure_at.utc.to_date).to eq(day + 1)
     expect(trip.date).to eq(day)
-    expect(trip.departure_at.in_time_zone.strftime("%H:%M")).to eq("05:30")
+    expect(trip.departure_at.in_time_zone.strftime("%H:%M")).to eq("22:30")
     expect(json_body.keys).to match_array(%w[id date departure_at return_at vehicle driver status stops passengers occupancy series_id log])
-    expect(json_body).to include("date" => day.iso8601, "departure_at" => at("05:30"), "series_id" => nil, "log" => nil, "passengers" => [])
+    expect(json_body).to include("date" => day.iso8601, "departure_at" => at("22:30"), "series_id" => nil, "log" => nil, "passengers" => [])
     expect(json_body["vehicle"]).to eq("id" => van.id, "plate" => van.plate, "model" => van.model, "kind" => "van", "seats" => 15, "wheelchair_spots" => 1)
     expect(json_body["driver"]).to eq("id" => driver.id, "name" => Transport::Json.user_name(driver.user))
     expect(json_body["occupancy"]).to eq("seats_used" => 0, "seats" => 15, "wheelchair_used" => 0, "wheelchair_spots" => 1)
@@ -193,12 +196,14 @@ RSpec.describe "Transporte — viagens", type: :request do
     expect(response).to have_http_status(:created)
   end
 
-  it "cancelar uma planned não avisa (T15): nenhum trip_cancelled" do
+  it "cancelar uma planned também publica trip_cancelled (só o id); sem confirmed_at, o consumidor não avisa (T15)" do
     json_post "/transport/trips", body("07:00", "12:00")
     id = json_body["id"]
     expect { json_post "/transport/trips/#{id}/cancel", reason: "Agenda do hospital remarcada" }
-      .not_to(change { DomainEvent.where(name: "transport.trip_cancelled").count })
+      .to change { DomainEvent.where(name: "transport.trip_cancelled").count }.by(1)
     expect([ response.status, json_body["status"] ]).to eq([ 200, "cancelled" ])
+    expect(DomainEvent.where(name: "transport.trip_cancelled").last.payload).to eq("trip_id" => id)
+    expect(TransportTrip.find(id).confirmed_at).to be_nil
   end
 
   it "done/cancelled → trip_not_open em PATCH, confirm e cancel; in_progress → invalid_transition" do
@@ -217,6 +222,8 @@ RSpec.describe "Transporte — viagens", type: :request do
     json_patch "/transport/trips/#{running.id}", departure_at: at("06:00")
     expect(json_body["error"]).to eq("invalid_transition")
     json_post "/transport/trips/#{running.id}/cancel", reason: "Motivo qualquer do teste"
+    expect(json_body["error"]).to eq("invalid_transition")
+    json_post "/transport/trips/#{running.id}/confirm"
     expect(json_body["error"]).to eq("invalid_transition")
     expect(running.reload.status).to eq("in_progress")
   end
