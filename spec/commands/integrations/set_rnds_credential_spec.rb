@@ -29,6 +29,18 @@ RSpec.describe Integrations::SetCredential do
     expect(PlatformEvent.where(name: "rnds.credential_set")).to be_empty
   end
 
+  it "senha com byte NUL (ArgumentError do OpenSSL) é invalid_certificate, sem a mensagem do erro" do
+    result = described_class.call(kind: "rnds", secret: secret(pfx, password: "seg\0redo"), by: admin, city: city)
+    expect(result.reason).to eq(:invalid_certificate)
+    expect([ result.message, result.details ].to_s).not_to include("null byte")
+    expect(IntegrationCredential.where(kind: "rnds")).to be_empty
+  end
+
+  it "TypeError do OpenSSL também vira invalid_certificate" do
+    allow(OpenSSL::PKCS12).to receive(:new).and_raise(TypeError, "no implicit conversion")
+    expect(reason_for(secret(pfx))).to eq(:invalid_certificate)
+  end
+
   it "recusa CNES fora de sete dígitos" do
     [ "123456", "12345678", "12345 7", "abcdefg", "1234567\n" ].each do |cnes|
       expect(reason_for(secret(pfx, cnes: cnes))).to eq(:invalid_requester_cnes), cnes.inspect

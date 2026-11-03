@@ -59,7 +59,9 @@ module Integrations
       certificate_problem(der, secret["pfx_password"])
     end
 
-    # nil quando o PFX abre com a senha e o certificado não venceu.
+    # nil quando o PFX abre com a senha e o certificado não venceu. Senha com
+    # byte NUL (ArgumentError) ou tipo que o OpenSSL recusa (TypeError) também
+    # é invalid_certificate; a mensagem da exceção nunca sai.
     def certificate_problem(der, password)
       return :invalid_certificate if der.nil? || password.nil?
 
@@ -67,7 +69,7 @@ module Integrations
       return :invalid_certificate if certificate.nil?
 
       :certificate_expired if certificate.not_after <= Time.current
-    rescue OpenSSL::PKCS12::PKCS12Error, OpenSSL::OpenSSLError
+    rescue OpenSSL::PKCS12::PKCS12Error, OpenSSL::OpenSSLError, ArgumentError, TypeError
       :invalid_certificate
     end
 
