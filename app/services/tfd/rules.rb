@@ -12,7 +12,7 @@
 # passa `billing_enabled:`. Só lê; nunca loga o laudo.
 module Tfd
   module Rules
-    SIGTAP = /\A\d{10}\z/
+    SIGTAP = Billing::Record::CODE
 
     module_function
 
@@ -28,7 +28,7 @@ module Tfd
       list << problem("destination_id", "distance_below_minimum") if destination.distance_km < settings.tfd_min_distance_km
       list << problem("destination_id", "metropolitan_destination") if destination.metropolitan
       code = report["sigtap_code"]
-      list << problem("report.sigtap_code", "invalid_sigtap_code") unless active_sigtap?(code)
+      list << problem("report.sigtap_code", "invalid_sigtap_code") unless sigtap_procedure(code)
       list << problem("report.sigtap_code", "primary_care_procedure") if PrimaryCare.covers?(code)
       list << problem("report.cid10", "cid_required") if report["cid10"].blank?
       list << problem("report.justification", "justification_required") unless justification?(report["justification"])
@@ -44,15 +44,17 @@ module Tfd
       list
     end
 
-    def active_sigtap?(code)
-      return false unless code.is_a?(String) && code.match?(SIGTAP)
+    # O procedimento na SIGTAP ativa da competência de hoje | nil (fora dela,
+    # ou código fora do formato). Também dá o `sigtap_name` do <tfd-case>.
+    def sigtap_procedure(code)
+      return nil unless code.is_a?(String) && code.match?(SIGTAP)
 
       release = Terminology::Sigtap.release_for(Time.zone.today.strftime("%Y%m"))
-      release.present? && SigtapProcedure.exists?(release_id: release.id, code: code)
+      release && SigtapProcedure.find_by(release_id: release.id, code: code)
     end
 
     def justification?(text) = text.is_a?(String) && Catalog::JUSTIFICATION.cover?(text.strip.length)
     def problem(path, error) = { path: path, error: error }
-    private_class_method :authorize_problems, :active_sigtap?, :justification?, :problem
+    private_class_method :authorize_problems, :justification?, :problem
   end
 end

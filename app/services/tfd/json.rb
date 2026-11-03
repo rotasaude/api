@@ -88,12 +88,7 @@ module Tfd
     end
 
     # Nome do procedimento na SIGTAP ativa da competência de hoje; nil se falta.
-    def sigtap_name(code)
-      return nil unless code.is_a?(String)
-
-      release = Terminology::Sigtap.release_for(Time.zone.today.strftime("%Y%m"))
-      release && SigtapProcedure.where(release_id: release.id, code: code).pick(:name)
-    end
+    def sigtap_name(code) = Rules.sigtap_procedure(code)&.name
 
     def user_name(user) = Screenings::Json.staff_name(user)
   end

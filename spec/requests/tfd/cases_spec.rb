@@ -59,7 +59,7 @@ RSpec.describe "TFD — laudo", type: :request do
     create_case(destination_id: near.id, report: report.merge(sigtap_code: "0301010064", cid10: nil, justification: "curta"))
     expect(response).to have_http_status(:created)
     json_post "/tfd/cases/#{json_body['id']}/submit"
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(json_body["problems"].map { |p| p["error"] }).to contain_exactly(
       "distance_below_minimum", "metropolitan_destination", "primary_care_procedure", "cid_required", "justification_required"
     )
@@ -80,7 +80,7 @@ RSpec.describe "TFD — laudo", type: :request do
     expect(TfdCase.count).to eq(0)
   end
 
-  it "PATCH substitui o laudo por inteiro; só o autor; só draft/returned" do
+  it "PATCH substitui o laudo por inteiro; outro autor → 404 (PATCH e envio); só draft/returned; o paciente não muda" do
     create_case
     id = json_body["id"]
     json_patch "/tfd/cases/#{id}", patient_id: consultation.patient_id, consultation_id: consultation.id, destination_id: far.id,
@@ -91,9 +91,16 @@ RSpec.describe "TFD — laudo", type: :request do
     expect(TfdCase.find(id).version).to eq(2)
     sign_in_as(doctor!(create_unit("UBS Outra")))
     json_patch "/tfd/cases/#{id}", patient_id: consultation.patient_id, consultation_id: consultation.id, destination_id: far.id, report: report
-    expect(response).to have_http_status(:forbidden)
-    expect(json_body["error"]).to eq("not_author")
+    expect(response).to have_http_status(:not_found)
+    expect(json_body["error"]).to eq("not_found")
+    json_post "/tfd/cases/#{id}/submit"
+    expect(response).to have_http_status(:not_found)
+    expect(TfdCase.find(id).status).to eq("draft")
     sign_in_as(doctor)
+    other = started_consultation!(unit: unit, doctor: doctor, citizen: regulation_patient!(exam_seq!).last)
+    json_patch "/tfd/cases/#{id}", patient_id: other.patient_id, consultation_id: other.id, destination_id: far.id, report: report
+    expect(json_body).to include("error" => "invalid_request", "path" => "patient_id")
+    expect(TfdCase.find(id).patient_id).to eq(consultation.patient_id)
     json_post "/tfd/cases/#{id}/submit"
     json_patch "/tfd/cases/#{id}", patient_id: consultation.patient_id, consultation_id: consultation.id, destination_id: far.id, report: report
     expect(json_body["error"]).to eq("invalid_transition")
@@ -123,16 +130,35 @@ RSpec.describe "TFD — laudo", type: :request do
     expect(response).to have_http_status(:not_found)
   end
 
-  it "a comissão não lê nem lista rascunho; o registro nunca sai em log" do
+  it "a comissão não lê nem lista rascunho" do
     draft = tfd_case!(status: "draft")
     sign_in_as(committee!)
-    log = capture_log do
-      json_post "/tfd/cases/#{draft.id}/read"
-      expect(response).to have_http_status(:not_found)
-      get "/tfd/cases"
-    end
+    json_post "/tfd/cases/#{draft.id}/read"
+    expect(response).to have_http_status(:not_found)
+    get "/tfd/cases"
     expect(json_body["items"]).to eq([])
-    expect(log).not_to include("N185", "nefrologia")
+  end
+
+  it "laudo e paciente nunca saem no log: criação, PATCH, envio e leitura com sucesso" do
+    patient = consultation.patient
+    expect([ patient.display_name, patient.cpf ]).to all(be_present)
+    committee = committee!
+    log = capture_log do
+      create_case
+      expect(response).to have_http_status(:created)
+      id = json_body["id"]
+      json_patch "/tfd/cases/#{id}", patient_id: patient.id, consultation_id: consultation.id, destination_id: far.id, report: report
+      expect(response).to have_http_status(:ok)
+      json_post "/tfd/cases/#{id}/submit"
+      expect(json_body["status"]).to eq("submitted")
+      sign_in_as(committee)
+      json_post "/tfd/cases/#{id}/read"
+      expect(json_body["report"]).to include("cid10" => "N185", "justification" => a_string_including("nefrologia"))
+      expect(json_body["patient"]["display_name"]).to eq(patient.display_name)
+    end
+    expect(log).to include("/tfd/cases")
+    expect(log).not_to include("N185", "N18.5", "nefrologia", "Hemodiálise", "Paciente idoso", "0301010072",
+                               patient.display_name, patient.cpf)
   end
 
   it "fila da comissão do mais antigo para o mais novo, em páginas com next_before" do
@@ -206,6 +232,19 @@ RSpec.describe "TFD — laudo", type: :request do
     expect(response).to have_http_status(:not_found)
   end
 
+  it "pré-preenchimento: problema resolvido na consulta não vira o CID" do
+    citizen = regulation_patient!(exam_seq!).last
+    first = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen,
+                                    evaluated_problems: [ { "terminology" => "cid10", "code" => "N185", "action" => "add" } ])
+    problem = PatientProblem.find_by!(patient_id: first.patient_id, terminology: "cid10", code: "N185")
+    resolving = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen,
+                                        evaluated_problems: [ { "terminology" => "cid10", "code" => "N185", "action" => "resolve",
+                                                                "problem_id" => problem.id } ])
+    expect(ConsultationProblem.where(consultation_id: resolving.id).pluck(:action, :code)).to eq([ %w[resolve N185] ])
+    get "/tfd/prefill", params: { consultation_id: resolving.id }
+    expect(json_body).to eq("patient_id" => resolving.patient_id, "cid10" => nil, "sigtap_code" => nil)
+  end
+
   it "tfd desligado → 403 feature_disabled tfd" do
     Platform::Features.set!(city: city, key: "tfd", enabled: false, maintainer: ledi_maintainer!)
     get "/tfd/my_cases"
@@ -220,6 +259,56 @@ RSpec.describe "TFD — laudo", type: :request do
       get path
       expect(json_body).to eq("error" => "feature_disabled", "feature" => "tfd")
     end
+  end
+end
+
+# §14 T8: o laudo também nasce de um pedido de regulação promovido do mesmo
+# paciente, sem consulta; e o pré-preenchimento traz o procedimento pedido.
+# A cidade da regulação (a SIGTAP ativa dela, com os procedimentos
+# reguláveis) com os interruptores do transporte e do TFD.
+RSpec.describe "TFD — origem no pedido de regulação", type: :request do
+  let!(:city) do
+    city = regulation_city!
+    %w[sanitary_transport tfd].each { |key| Platform::Features.set!(city: city, key: key, enabled: true, maintainer: ledi_maintainer!) }
+    TransportSetting.ensure_defaults!
+    CityCatalog.reset_cache!
+    city
+  end
+  let(:unit) { create_unit("UBS Regulação TFD") }
+  let(:doctor) { doctor!(unit) }
+  let(:far) { destination!(name: "Londrina", ibge: "4113700", km: 380) }
+
+  def create_from(request, patient_id: request.patient_id)
+    json_post "/tfd/cases", patient_id: patient_id, regulation_request_id: request.id, destination_id: far.id,
+                            report: TransportHelpers::TFD_REPORT.merge("cid10" => "I10")
+  end
+
+  before { sign_in_as(doctor) }
+
+  it "só com regulation_request_id (promovido, do mesmo paciente) → 201 com o CBO do vínculo 225*" do
+    request = regulation_request!(status: "pending", unit: unit, doctor: doctor)
+    create_from(request)
+    expect(response).to have_http_status(:created)
+    expect(json_body).to include("regulation_request_id" => request.id, "consultation_id" => nil,
+                                 "requested_by" => include("cbo" => "225125"))
+    expect(TfdCase.find(json_body["id"]).requester_cbo).to eq("225125")
+  end
+
+  it "pedido em rascunho ou de outro paciente → invalid_request regulation_request_id" do
+    draft = regulation_request!(status: "draft", unit: unit, doctor: doctor)
+    create_from(draft)
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(json_body).to include("error" => "invalid_request", "path" => "regulation_request_id")
+    request = regulation_request!(status: "pending", unit: unit, doctor: doctor)
+    create_from(request, patient_id: regulation_patient!(exam_seq!).first.id)
+    expect(json_body).to include("error" => "invalid_request", "path" => "regulation_request_id")
+    expect(TfdCase.count).to eq(0)
+  end
+
+  it "pré-preenche o procedimento pedido na consulta" do
+    request = regulation_request!(status: "pending", unit: unit, doctor: doctor, type: "procedure", target_code: "0209010037")
+    get "/tfd/prefill", params: { consultation_id: request.consultation_id }
+    expect(json_body).to eq("patient_id" => request.patient_id, "cid10" => nil, "sigtap_code" => "0209010037")
   end
 end
 

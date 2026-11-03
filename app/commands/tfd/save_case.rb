@@ -14,14 +14,15 @@ module Tfd
   module SaveCase
     KEYS = %w[patient_id consultation_id regulation_request_id report destination_id provider_id].freeze
     REPORT_KEYS = %w[sigtap_code cid10 justification companion_indicated companion_reason transport_mode].freeze
-    SIGTAP = /\A\d{10}\z/
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     EDITABLE = %w[draft returned].freeze
     KEY_PATH_MAX = 64
 
     module_function
 
-    # -> Result.ok(tfd_case:) | fail(:missing_role | :cbo_not_allowed | :not_author | :invalid_transition |
+    # Processo de outro autor → not_found (registro de outro escopo por id → 404,
+    # como o read). No PATCH o paciente não muda (invalid_request patient_id).
+    # -> Result.ok(tfd_case:) | fail(:missing_role | :cbo_not_allowed | :not_found | :invalid_transition |
     #    :invalid_request | :invalid_cid10, path:, problems:)
     def call(attrs:, by:, tfd_case: nil)
       return Result.fail(:missing_role) unless by&.has_role?("health_professional")
@@ -32,11 +33,11 @@ module Tfd
       TfdCase.transaction(requires_new: true) do
         if tfd_case
           tfd_case.lock!
-          next Result.fail(:not_author) unless tfd_case.requester_user_id == by.id
+          next Result.fail(:not_found) unless tfd_case.requester_user_id == by.id
           next Result.fail(:invalid_transition) unless EDITABLE.include?(tfd_case.status)
         end
 
-        checked = check(attrs, by)
+        checked = check(attrs, by, tfd_case)
         next checked if checked.is_a?(Result)
 
         cbo = checked[:consultation]&.cbo_code || physician_cbo
@@ -47,13 +48,13 @@ module Tfd
     end
 
     # -> Hash com os registros e o laudo normalizado | Result (recusa).
-    def check(attrs, by)
+    def check(attrs, by, tfd_case)
       return Transport::Support.refuse([ "body" ]) unless attrs.respond_to?(:to_h) && !attrs.is_a?(Array)
 
       hash = attrs.to_h.stringify_keys
       problems = (hash.keys - KEYS).map { |key| invalid(key.to_s[0, KEY_PATH_MAX]) }
       patient = record(Patient.all, hash["patient_id"])
-      problems << invalid("patient_id") unless patient
+      problems << invalid("patient_id") unless patient && (tfd_case.nil? || patient.id == tfd_case.patient_id)
       consultation, regulation = origins(hash, by, patient, problems)
       destination = record(TransportDestination.where(active: true), hash["destination_id"])
       problems << invalid("destination_id") unless destination
@@ -101,7 +102,7 @@ module Tfd
       hash = raw.to_h.stringify_keys
       problems.concat((hash.keys - REPORT_KEYS).map { |key| invalid("report.#{key.to_s[0, KEY_PATH_MAX]}") })
       code = hash["sigtap_code"]
-      problems << invalid("report.sigtap_code") unless code.nil? || (code.is_a?(String) && code.match?(SIGTAP))
+      problems << invalid("report.sigtap_code") unless code.nil? || (code.is_a?(String) && code.match?(Rules::SIGTAP))
       cid = Rules.cid10(hash["cid10"])
       problems << { path: "report.cid10", error: "invalid_cid10" } if cid == :invalid
       justification = optional_text(hash["justification"], 1..Catalog::JUSTIFICATION.max)

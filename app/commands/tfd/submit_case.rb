@@ -9,12 +9,13 @@ module Tfd
 
     module_function
 
-    # -> Result.ok(tfd_case:) | fail(:not_author | :invalid_transition | <regra>, path:, problems:)
+    # Processo de outro autor → not_found (como o read).
+    # -> Result.ok(tfd_case:) | fail(:not_found | :invalid_transition | <regra>, path:, problems:)
     def call(tfd_case:, by:)
       settings = Transport::Settings.current
       TfdCase.transaction(requires_new: true) do
         tfd_case.lock!
-        next Result.fail(:not_author) unless by && tfd_case.requester_user_id == by.id
+        next Result.fail(:not_found) unless by && tfd_case.requester_user_id == by.id
         next Result.fail(:invalid_transition) unless EDITABLE.include?(tfd_case.status)
 
         problems = Rules.problems(tfd_case, settings: settings, stage: :submit)

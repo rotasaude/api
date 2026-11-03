@@ -54,7 +54,7 @@ module ClinicalTerms
     code = value.delete(".").strip.upcase
     return :invalid unless code.match?(CID10_CODE)
 
-    current = TerminologyRelease.active.where(kind: "cid10").order(activated_at: :desc).first
+    current = release("cid10")
     current.nil? || Cid10Code.exists?(release_id: current.id, code: code) ? code : :invalid
   end
 
