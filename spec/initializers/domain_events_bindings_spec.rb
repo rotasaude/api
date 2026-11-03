@@ -368,6 +368,12 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry["vaccination.immunization_recorded"]).to be_empty
   end
 
+  # Troca do go-live da sala de vacina (revisão final I3); só ids, sem consumidor.
+  it "declares vaccination.settings_changed with no consumer" do
+    expect(DomainEvents.registry.keys).to include("vaccination.settings_changed")
+    expect(DomainEvents.registry["vaccination.settings_changed"]).to be_empty
+  end
+
   it "declares vaccination.immunization_cancelled with no consumer" do
     expect(DomainEvents.registry.keys).to include("vaccination.immunization_cancelled")
     expect(DomainEvents.registry["vaccination.immunization_cancelled"]).to be_empty

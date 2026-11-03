@@ -282,6 +282,9 @@ Rails.application.config.to_prepare do
   # no fechamento, `outcome` (decided | no_lots), sem consumidor.
   DomainEvents.bind "vaccination.cold_chain_excursion", to: []
   DomainEvents.bind "vaccination.cold_chain_excursion_decided", to: []
+  # Troca do go-live da sala de vacina (revisão final I3); só trilha, só ids
+  # (vaccination_setting_id, user_id) — nunca a data —, sem consumidor.
+  DomainEvents.bind "vaccination.settings_changed", to: []
   # Dose registrada na sala ou transcrita; só trilha, só ids (immunization_id,
   # vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.immunization_recorded", to: []

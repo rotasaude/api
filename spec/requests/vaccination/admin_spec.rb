@@ -274,10 +274,11 @@ RSpec.describe "Sala de vacina — administração", type: :request do
       expect(json_body).to eq("go_live_on" => nil)
 
       stepped_up!(admin)
-      json_patch "/vaccination/admin/settings", go_live_on: "2026-11-02"
-      expect(json_body).to eq("go_live_on" => "2026-11-02")
+      on = Time.use_zone(city.time_zone) { Time.zone.today }.iso8601
+      json_patch "/vaccination/admin/settings", go_live_on: on
+      expect(json_body).to eq("go_live_on" => on)
       get "/vaccination/admin/settings"
-      expect(json_body).to eq("go_live_on" => "2026-11-02")
+      expect(json_body).to eq("go_live_on" => on)
       expect(VaccinationSetting.current.updated_by_user_id).to eq(admin.id)
 
       [ "02/11/2026", "2026-13-40", 20_261_102, "" ].each do |value|
@@ -286,6 +287,10 @@ RSpec.describe "Sala de vacina — administração", type: :request do
       end
       json_patch "/vaccination/admin/settings", other: 1
       expect([ response.status, json_body["path"] ]).to eq([ 422, "other" ])
+      json_patch "/vaccination/admin/settings", go_live_on: "1990-01-01"
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "out_of_range", "path" => "go_live_on",
+                                                            "problems" => [ { "path" => "go_live_on", "error" => "out_of_range" } ] } ])
+      expect(json_body.to_s).not_to include("1990")
       json_patch "/vaccination/admin/settings", go_live_on: nil
       expect(json_body).to eq("go_live_on" => nil)
     end
