@@ -20,6 +20,15 @@ RSpec.describe Surveillance::CreateNotification do
     expect(event.payload).to eq("notification_id" => n.id, "immediate" => false)
   end
 
+  it "grava a dose de origem (ESAVI, módulo 29) quando vem; sem ela, nula" do
+    expect(create.payload[:notification].immunization_id).to be_nil
+    other = surveillance_patient!(4)
+    dose = create_immunization!(vaccine_room!, patient: other)
+    esavi = Surveillance::Diseases.find("esavi", today: Time.zone.today)
+    n = create(patient: other, disease: esavi, immunization: dose).payload[:notification]
+    expect(n.immunization_id).to eq(dose.id)
+  end
+
   it "aberta bloqueia; fechada há menos que a janela bloqueia; depois da janela e dismissed liberam" do
     first = create.payload[:notification]
     expect(create.reason).to eq(:already_notified)

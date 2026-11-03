@@ -616,6 +616,8 @@ Rails.application.routes.draw do
     # Transcrição, cancelamento com substituição (§5; §15 V6, V7) e pendências do envio (§15 V8).
     post   "rooms/:room_id/transcriptions", to: "transcriptions#create"
     post   "immunizations/:id/cancel",     to: "immunizations#cancel"
+    # ESAVI a partir da dose (Desvio 17; §15 V12): abre (ou devolve) a notificação do módulo 25.
+    post   "immunizations/:id/esavi",      to: "immunizations#esavi"
     get    "rooms/:room_id/pending",       to: "pending#index"
     # Resumo mensal de imunobiológicos (§7; §15 V14 = D8): contagens, sem trilha.
     get    "rooms/:room_id/monthly_summary",      to: "summaries#room"

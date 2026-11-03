@@ -14,6 +14,7 @@
 # FKs do INSERT tomam FOR KEY SHARE no paciente: quem segura o paciente e
 # espera o consultivo, contra quem segura o consultivo e espera o KEY SHARE,
 # seria deadlock.
+# immunization: a dose de origem de um ESAVI (módulo 29, Desvio 17), opcional.
 # Entradas conferidas ANTES de gravar: o texto de erro do Postgres (CHECK,
 # índice único) carrega valores da linha. Paciente, doença, data de sintomas e
 # ficha nunca em log, evento, erro ou Result.
@@ -30,7 +31,7 @@ module Surveillance
     # fail(:already_notified, details: { notification_id: }) |
     # fail(:invalid_symptoms_on) | fail(:invalid_residence).
     def call(patient:, disease:, origin:, unit:, suspected_at:, by: nil, symptoms_on: nil, consultation: nil, addendum: nil,
-             status: nil, resident_elsewhere: false, residence_ibge: nil)
+             status: nil, resident_elsewhere: false, residence_ibge: nil, immunization: nil)
       raise ArgumentError, "unknown origin" unless Catalog::ORIGINS.include?(origin)
 
       safety_net = origin == "safety_net"
@@ -58,7 +59,7 @@ module Surveillance
                               deadline: disease.deadline, origin: origin, status: status, suspected_on: suspected_on,
                               symptoms_on: symptoms_on, due_at: suspected_at + Catalog::DEADLINES.fetch(disease.deadline),
                               health_unit: unit, unit_cnes: unit.cnes, notifier_user: notifier, consultation: consultation,
-                              addendum: addendum, form: FormPrefill.for(patient, resident_elsewhere: resident_elsewhere),
+                              addendum: addendum, immunization: immunization, form: FormPrefill.for(patient, resident_elsewhere: resident_elsewhere),
                               resident_elsewhere: resident_elsewhere,
                               residence_ibge: residence_ibge, neighborhood_id: PatientNeighborhood.for(patient))
         next already_notified(open_id(patient.id, disease.code)) if notification.nil?

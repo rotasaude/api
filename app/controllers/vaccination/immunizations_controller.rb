@@ -19,9 +19,19 @@
 # already_cancelled; motivo 10..500 → senão 422 invalid_reason; a substituta
 # recusada não cancela nada e volta em `problems` com path `replacement.*`.
 # A trilha da pessoa é gravada pelo comando.
+# ESAVI (Task 19; Desvio 17; §15 V12): POST /vaccination/immunizations/:id/esavi
+#   → 201 { notification_id } | 200 { notification_id, existing: true } (já há uma
+#   esavi aberta para o paciente; idempotente). `surveillance` desligado → 403
+#   feature_disabled (feature "surveillance"; lido antes da transação). Só a
+#   equipe da sala da dose; outro escopo (inclusive transcrição sem sala) → 404;
+#   dose cancelada → 409 immunization_cancelled. Trilha da pessoa (access
+#   "surveillance", como a criação manual do 25) só na criação.
 module Vaccination
   class ImmunizationsController < BaseController
+    include ::SurveillanceGate
+
     before_action :require_step_up!, only: :cancel
+    before_action :require_surveillance!, only: :esavi
 
     def create
       room = member_room or return
@@ -63,6 +73,22 @@ module Vaccination
 
       cancelled, substitute = Immunization.includes(:replacement).find(result.payload[:cancelled].id), result.payload[:replacement]
       render json: { cancelled: dose_json(cancelled, rnds_usable), replacement: substitute && dose_json(substitute, rnds_usable) }
+    end
+
+    def esavi
+      return unless query_only!
+
+      dose = uuid?(params[:id]) ? Immunization.includes(vaccine_room: :health_unit).find_by(id: params[:id]) : nil
+      return not_found unless dose&.vaccine_room && Access.room_roles(user: Current.user, room: dose.vaccine_room).any?
+
+      result = NotifyEsavi.call(immunization: dose, by: Current.user, now: Time.current)
+      return render_error(result.reason, result.reason == :immunization_cancelled ? :conflict : :unprocessable_entity) if result.failure?
+
+      notification_id = result.payload.fetch(:notification_id)
+      return render json: { notification_id: notification_id, existing: true } unless result.payload.fetch(:created)
+
+      Surveillance::Trail.person_viewed!(user: Current.user, patient_id: dose.patient_id)
+      render json: { notification_id: notification_id }, status: :created
     end
 
     private
