@@ -273,16 +273,15 @@ Rails.application.config.to_prepare do
   %w[transport.vehicle_saved transport.driver_saved transport.destination_saved].each { |name| DomainEvents.bind name, to: [] }
   # Viagem confirmada, cancelada (toda; o consumidor só avisa a que tinha
   # confirmed_at, T15) e alterada (confirmada: saída mudou 30 min ou mais, `change:
-  # "departure"`; rótulo de embarque mudou, `change: "boarding"` + `stop_id`).
-  # Só ids e o código da mudança; o consumidor (avisos) chega na Task 14.
-  %w[transport.trip_confirmed transport.trip_cancelled transport.trip_changed].each { |name| DomainEvents.bind name, to: [] }
+  # "departure"`; rótulo de embarque mudou, `change: "boarding"` + `stop_id`), e
+  # passageiro que entrou ou saiu (em qualquer situação). Só ids e o código da
+  # mudança. Consumidor: os avisos ao cidadão (Transport::NoticeJob, Task 14),
+  # que filtra pela situação da viagem (confirmed/in_progress).
+  %w[transport.trip_confirmed transport.trip_cancelled transport.trip_changed transport.passenger_added
+     transport.passenger_removed].each { |name| DomainEvents.bind name, to: [ Transport::NoticeJob ] }
   # Troca dos parâmetros do transporte e do TFD (T27); só trilha: id da cidade
   # e os NOMES das chaves mudadas (`changed`), nunca os valores; sem consumidor.
   DomainEvents.bind "transport.settings_changed", to: []
-  # Passageiro entrou ou saiu de uma viagem (Task 5), em qualquer situação; só
-  # ids (trip_id, passenger_id). O consumidor (aviso added/removed, só viagem
-  # confirmed/in_progress) chega na Task 14.
-  %w[transport.passenger_added transport.passenger_removed].each { |name| DomainEvents.bind name, to: [] }
   # Tela do motorista e correção da central (Task 8): saída (trip_id),
   # fechamento (trip_id; o consumidor do TFD entra pelo Tfd::FleetLegs, na
   # mesma transação) e correção da presença (trip_id, passenger_ids). Só ids,

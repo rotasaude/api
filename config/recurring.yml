@@ -170,6 +170,13 @@ default: &default
     queue: housekeeping
     schedule: "every day at 2am America/Sao_Paulo"
 
+  # Módulo 30 (ADR 0048; §14 T15): lembrete da véspera da viagem confirmada,
+  # das 17h às 20h no fuso da cidade, como o lembrete do 17.
+  transport_remind:
+    class: Transport::RemindJob
+    queue: housekeeping
+    schedule: "every 15 minutes"
+
   discard_old_failed_jobs:
     command: "SolidQueueRetention.discard_failed"
     queue: housekeeping

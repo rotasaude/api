@@ -1,9 +1,10 @@
 # Caixa de avisos (ADR 0024; F-12.4; ADR 0029 §6). A sessão é do TELEFONE: a
 # caixa mostra os avisos de todos os cidadãos dele (D12), com cpf_masked quando
-# há mais de um. Duas fontes: campanhas (campaign_recipients) e lembretes de
-# horário (appointment_notices); mais novo primeiro entre as duas. unread_count
-# ignora quem silenciou; os avisos continuam na lista. O id é opaco: a leitura
-# procura nas duas fontes.
+# há mais de um. Três fontes: campanhas (campaign_recipients), lembretes de
+# horário (appointment_notices) e avisos de viagem (transport_trip_notices,
+# módulo 30, §14 T15: sem destino nem prestador); mais novo primeiro entre
+# elas. unread_count ignora quem silenciou; os avisos continuam na lista. O id
+# é opaco: a leitura procura nas três fontes.
 module CitizenApi
   class NoticesController < BaseController
     def index
@@ -13,11 +14,13 @@ module CitizenApi
       counted = ids - CitizenContactPreference.where(citizen_id: ids, notices_muted: true).pluck(:citizen_id)
       campaigns = visible(ids).preload(:campaign).map { |row| [ row.campaign.dispatched_at, notice_json(row, masked[row.citizen_id]) ] }
       reminders = reminders(ids).map { |row| [ row.created_at, reminder_json(row, masked[row.citizen_id]) ] }
+      trips = trip_notices(ids).map { |row| [ row.created_at, trip_json(row, masked[row.citizen_id]) ] }
       render json: {
         # Mais novo primeiro; empate pelo id (decrescente), como era só com campanhas.
-        notices: (campaigns + reminders).sort_by { |at, json| [ at, json[:id] ] }.reverse.map(&:last),
+        notices: (campaigns + reminders + trips).sort_by { |at, json| [ at, json[:id] ] }.reverse.map(&:last),
         unread_count: visible(counted).where(notice_read_at: nil).count +
-                      AppointmentNotice.where(citizen_id: counted, read_at: nil).count
+                      AppointmentNotice.where(citizen_id: counted, read_at: nil).count +
+                      TransportTripNotice.where(citizen_id: counted, read_at: nil).count
       }
     end
 
@@ -29,6 +32,8 @@ module CitizenApi
         CampaignRecipient.where(id: row.id, notice_read_at: nil).update_all(notice_read_at: Time.current)
       elsif (notice = AppointmentNotice.where(citizen_id: own).find_by(id: params[:id]))
         AppointmentNotice.where(id: notice.id, read_at: nil).update_all(read_at: Time.current)
+      elsif (trip_notice = TransportTripNotice.where(citizen_id: own).find_by(id: params[:id]))
+        TransportTripNotice.where(id: trip_notice.id, read_at: nil).update_all(read_at: Time.current)
       else
         return render_error("not_found", :not_found)
       end
@@ -63,6 +68,22 @@ module CitizenApi
         unit_name: appointment.health_unit.name, unit_address: Scheduling::UnitAddress.call(appointment.health_unit),
         scheduled_at: appointment.scheduled_at.iso8601,
         professional_name: legacy ? nil : appointment.professional&.professional_name,
+        read: row.read_at.present?, cpf_masked: cpf_masked
+      }
+    end
+
+    def trip_notices(citizen_ids)
+      TransportTripNotice.where(citizen_id: citizen_ids).includes(transport_trip_passenger: :transport_trip_stop)
+    end
+
+    # §14 T15: a saída gravada no aviso (a do momento do evento) e o rótulo
+    # ATUAL da parada do passageiro; nunca destino, prestador, veículo nem
+    # motorista.
+    def trip_json(row, cpf_masked)
+      departure = row.departure_at.in_time_zone
+      {
+        kind: "trip", id: row.id, event: row.kind, date: departure.to_date.iso8601, departure_at: departure.iso8601,
+        boarding: { label: row.transport_trip_passenger.transport_trip_stop.label },
         read: row.read_at.present?, cpf_masked: cpf_masked
       }
     end

@@ -423,24 +423,18 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
 
-  # Viagens (Task 4): só ids e o código da mudança; o consumidor dos avisos é da Task 14.
   # Parâmetros do transporte (T27): id da cidade e nomes das chaves; sem consumidor.
   it "declares transport.settings_changed with no consumer" do
     expect(DomainEvents.registry.keys).to include("transport.settings_changed")
     expect(DomainEvents.registry["transport.settings_changed"]).to be_empty
   end
 
-  it "declares transport.trip_confirmed, .trip_cancelled and .trip_changed with no consumer yet" do
-    names = %w[transport.trip_confirmed transport.trip_cancelled transport.trip_changed]
-    expect(DomainEvents.registry.keys).to include(*names)
-    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
-  end
-
-  # Passageiros (Task 5): só ids; o consumidor dos avisos é da Task 14.
-  it "declares transport.passenger_added and .passenger_removed with no consumer yet" do
-    names = %w[transport.passenger_added transport.passenger_removed]
-    expect(DomainEvents.registry.keys).to include(*names)
-    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  # Viagens (Task 4) e passageiros (Task 5): só ids; o consumidor dos avisos
+  # ao cidadão (Task 14) filtra pela situação da viagem.
+  it "binds transport.trip_confirmed, .trip_cancelled, .trip_changed, .passenger_added and .passenger_removed to Transport::NoticeJob" do
+    names = %w[transport.trip_confirmed transport.trip_cancelled transport.trip_changed transport.passenger_added
+               transport.passenger_removed]
+    names.each { |name| expect(DomainEvents.registry[name].map(&:job)).to eq([ "Transport::NoticeJob" ]) }
   end
 
   # Motorista e correção (Task 8): só ids, sem consumidor.
