@@ -24,6 +24,22 @@ module Transport
       out
     end
 
+    # O que falta para mais um passageiro (assento se `takes_seat`, cadeira se
+    # `wheelchair`, mais um lugar para o acompanhante) caber, com o que já
+    # está ativo: [] | ["seats_full"] | ["wheelchair_full"] | os dois. Sem
+    # veículo, sem limite.
+    def shortfall(trip, takes_seat:, wheelchair:, companion:, vehicle: trip.transport_vehicle)
+      return [] unless vehicle
+
+      used = usage(trip)
+      out = []
+      out << "seats_full" if used[:seats] + (takes_seat ? 1 : 0) + (companion ? 1 : 0) > vehicle.seats
+      out << "wheelchair_full" if wheelchair && used[:wheelchair] + 1 > vehicle.wheelchair_spots
+      out
+    end
+
+    def fits?(trip, takes_seat:, wheelchair:, companion:) = shortfall(trip, takes_seat:, wheelchair:, companion:).empty?
+
     # Acompanhante = companion_attendance preenchida (o CHECK a amarra ao nome;
     # sobrevive à anonimização).
     def usage(trip)

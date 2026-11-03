@@ -87,15 +87,9 @@ module Transport
 
     # Desvio 3: o que já está ativo + este passageiro (assento) + o acompanhante.
     def capacity_problems(trip, form)
-      vehicle = trip.transport_vehicle
-      return [] unless vehicle
-
-      used = Occupancy.usage(trip)
-      seats = used[:seats] + (form[:takes_seat] ? 1 : 0) + (form[:companion] ? 1 : 0)
-      problems = []
-      problems << { path: "takes_seat", error: "seats_full" } if seats > vehicle.seats
-      problems << { path: "wheelchair", error: "wheelchair_full" } if form[:wheelchair] && used[:wheelchair] + 1 > vehicle.wheelchair_spots
-      problems
+      paths = { "seats_full" => "takes_seat", "wheelchair_full" => "wheelchair" }
+      Occupancy.shortfall(trip, takes_seat: form[:takes_seat], wheelchair: form[:wheelchair], companion: form[:companion].present?)
+               .map { |error| { path: paths.fetch(error), error: error } }
     end
 
     # Desvio 4. -> registro de origem | nil (exceção) | Result de recusa
@@ -131,17 +125,9 @@ module Transport
       when "regulation" then REGULATION_STATUSES.include?(record.status)
       when "appointment" then Appointment::LIVE.include?(record.status)
       when "tfd" then TFD_STATUSES.include?(record.status)
-      when "series" then series_active?(record)
+      when "series" then record.active_on?(Time.zone.today)
       else true
       end
-    end
-
-    # Série ativa (a leitura <series> da Task 7): nem suspensa (suspended_from
-    # <= hoje) nem encerrada (ends_on < hoje).
-    def series_active?(series, today: Time.zone.today)
-      return false if series.suspended_from && series.suspended_from <= today
-
-      series.ends_on.nil? || series.ends_on >= today
     end
 
     def default_appointment(source)

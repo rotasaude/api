@@ -162,6 +162,14 @@ default: &default
     queue: housekeeping
     schedule: "every 15 minutes"
 
+  # Módulo 30 (ADR 0048; contrato §4): materializa as séries recorrentes do
+  # transporte sanitário nos próximos 21 dias, por cidade com o transporte
+  # utilizável.
+  transport_materialize_series:
+    class: Transport::MaterializeSeriesJob
+    queue: housekeeping
+    schedule: "every day at 2am America/Sao_Paulo"
+
   discard_old_failed_jobs:
     command: "SolidQueueRetention.discard_failed"
     queue: housekeeping

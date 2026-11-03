@@ -80,6 +80,21 @@ module Transport
       base.merge(ids).merge("phone_masked" => phone && CitizenIdentity::Phone.mask(phone))
     end
 
+    # <series> (§14 T6; preflight §3): os campos da escrita + `status`
+    # (TransportSeries#status_on: suspended | ended | active) e
+    # `suspended_from`. O paciente só id e nome; o documento do acompanhante
+    # só os 4 últimos; o motivo do acompanhante e o da suspensão nunca saem.
+    def series(s, today: Time.zone.today)
+      destination = s.transport_destination
+      { "id" => s.id, "patient" => { "id" => s.patient_id, "display_name" => s.patient.display_name },
+        "destination" => { "id" => destination.id, "name" => destination.name }, "provider_name" => s.provider_name,
+        "weekdays" => s.weekdays, "appointment_time" => s.clock(:appointment_time), "departure_time" => s.clock(:departure_time),
+        "return_time" => s.clock(:return_time), "boarding_label" => s.boarding_label, "starts_on" => s.starts_on.iso8601,
+        "ends_on" => s.ends_on&.iso8601, "wheelchair" => s.wheelchair,
+        "companion" => s.companion_name && { "name" => s.companion_name, "document_last4" => s.companion_document&.last(4) },
+        "status" => s.status_on(today), "suspended_from" => s.suspended_from&.iso8601 }
+    end
+
     # Como a fila do módulo 13: nome profissional; sem perfil, o e-mail.
     def user_name(user) = Screenings::Json.staff_name(user)
 

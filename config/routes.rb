@@ -617,6 +617,13 @@ Rails.application.routes.draw do
     post   "scheduled_care",                      to: "scheduled_care#create"
     post   "person_lookup",                       to: "person_lookups#create"
     post   "patients/duplicates",                 to: "duplicates#create"
+    # Séries recorrentes e pendências do job (§4; T6).
+    get   "series",              to: "series#index"
+    post  "series",              to: "series#create"
+    get   "series/:id",          to: "series#show"
+    patch "series/:id",          to: "series#update"
+    post  "series/:id/suspend",  to: "series#suspend"
+    get   "pending",             to: "pending#index"
     get   "admin/settings", to: "admin/settings#show"
     patch "admin/settings", to: "admin/settings#update"
   end
