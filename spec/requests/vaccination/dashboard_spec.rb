@@ -146,9 +146,9 @@ RSpec.describe "Sala de vacina — painel", type: :request do
 
       def children(*months) = months.map { |m| vaccine_patient!(birth_date: Time.zone.today.advance(months: -m)) }
 
-      def stub_members(*patients)
+      def stub_members(*patients, citizens: [])
         allow(CareLines::TeamPopulation).to receive(:members).and_call_original
-        allow(CareLines::TeamPopulation).to receive(:members).with(team: team).and_return(patient_ids: patients.map(&:id), citizen_ids: [])
+        allow(CareLines::TeamPopulation).to receive(:members).with(team: team).and_return(patient_ids: patients.map(&:id), citizen_ids: citizens.map(&:id))
       end
 
       # Esquema do C2 fechado: 3 hexas, 2 SCR (a partir dos 12 meses) e 2 pneumo.
@@ -171,6 +171,21 @@ RSpec.describe "Sala de vacina — painel", type: :request do
         get path
         entry = json_body["c2_coverage_by_team"].find { |t| t.dig("team", "id") == team.id }
         expect(entry).to eq("team" => { "id" => team.id, "name" => "ESF Centro" }, "eligible" => 5, "complete" => nil)
+      end
+
+      it "cidadão sem paciente da população conta em eligible (12 a 23 meses) e nunca em complete" do
+        patients = children(13, 14, 15, 16)
+        inside = care_citizen!(age: 1, sex: "female")
+        inside.update!(birth_date: Time.zone.today.advance(months: -18).iso8601)
+        outside = care_citizen!(age: 1, sex: "female")
+        outside.update!(birth_date: Time.zone.today.advance(months: -30).iso8601)
+        stub_members(*patients, citizens: [ inside, outside ])
+        allow(Vaccination::C2).to receive(:met_on).and_return(Time.zone.today)
+        sign_in_as(analyst)
+        get path
+        entry = json_body["c2_coverage_by_team"].find { |t| t.dig("team", "id") == team.id }
+        expect(entry).to include("eligible" => 5, "complete" => nil)
+        expect(Vaccination::C2).to have_received(:met_on).exactly(4).times
       end
 
       it "completa visível com 5 ou mais; filtro por unidade; equipe de outra unidade fora" do
