@@ -2,7 +2,8 @@
 # /transport/trips/:id/passengers → 201 <passenger>; DELETE
 # /transport/trips/:id/passengers/:pid { reason } → 200 <trip> (lotação
 # atualizada). Só a central; viagem ou passageiro (desta viagem) desconhecido
-# → 404. Dado do paciente só no corpo.
+# → 404. Dado do paciente só no corpo. Origem `tfd` com o `tfd` desligado →
+# 403 feature_disabled (a mesma resposta de /tfd/*, T21; C7).
 module Transport
   class PassengersController < BaseController
     before_action { forbid unless Access.dispatcher?(Current.user) }
@@ -10,6 +11,7 @@ module Transport
 
     def create
       return unless query_only!
+      return tfd_disabled if body_param("origin") == "tfd" && !Tfd::Gate.usable?(Current.city)
 
       result = AddPassenger.call(trip: @trip, attrs: body, by: Current.user)
       return render_failure(result) if result.failure?
@@ -30,6 +32,8 @@ module Transport
     end
 
     private
+
+    def tfd_disabled = render(json: { error: "feature_disabled", feature: Tfd::Gate::KEY }, status: :forbidden)
 
     def load_trip
       @trip = uuid?(params[:id]) ? TransportTrip.find_by(id: params[:id]) : nil

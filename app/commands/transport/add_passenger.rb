@@ -5,7 +5,9 @@
 #      de embarque → `stop_not_boarding`;
 #   3. origem (Desvio 4): sem origem e sem motivo → `origin_required`;
 #      referência de outro paciente → `origin_mismatch`; referência
-#      inexistente ou fora da situação → `invalid_request` em `origin_id`;
+#      inexistente ou fora da situação → `invalid_request` em `origin_id`; do
+#      TFD, o destino do passageiro é o do processo, senão `invalid_request`
+#      em `destination_id` (C8);
 #   4. acompanhante (Transport::CompanionRule) → `companion_not_allowed`;
 #   5. trava a viagem (FOR UPDATE); fora de planned/confirmed → `trip_not_open`;
 #   6. o paciente já ativo nesta viagem → `patient_already_on_trip` (consulta +
@@ -42,6 +44,7 @@ module Transport
 
       source = origin_source(form, patient)
       return source if source.is_a?(Result)
+      return Support.refuse("destination_id") if source.is_a?(TfdCase) && source.transport_destination_id != destination.id
 
       companion = form[:companion]
       if companion

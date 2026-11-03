@@ -1,6 +1,7 @@
 # POST /transport/scheduled_care { date, destination_id?, health_unit_id? }
 # (contrato §4; §14 T5) → { items } (Transport::ScheduledCare). Só a central;
-# tudo no corpo (query → 422). Sem trilha: o item não traz dado clínico.
+# tudo no corpo (query → 422). Sem trilha: o item não traz dado clínico. Com
+# o `tfd` desligado, os itens do TFD ficam de fora (C7).
 module Transport
   class ScheduledCareController < BaseController
     before_action { forbid unless Access.dispatcher?(Current.user) }
@@ -19,7 +20,7 @@ module Transport
 
         ids[key.to_sym] = value
       end
-      render json: { items: ScheduledCare.call(date: date, **ids) }
+      render json: { items: ScheduledCare.call(date: date, tfd: Tfd::Gate.usable?(Current.city), **ids) }
     end
   end
 end

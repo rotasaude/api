@@ -10,7 +10,8 @@
 #    destination_id nulo, provider_name = nome da unidade e address = endereço
 #    dela (T32; nunca profissional nem tipo de atendimento);
 #  - TFD authorized/scheduled/travelling com `appointment_at` na data (origin
-#    "tfd"): destino do processo, prestador pelo nome quando houver.
+#    "tfd"): destino do processo, prestador pelo nome quando houver — só com
+#    o `tfd` utilizável (`tfd:`, lido pelo controller fora da transação; C7).
 # Fica de fora quem já está ativo (não retirado) numa viagem não cancelada
 # com a mesma origem (chave estável origin + origin_id). `destination_id`
 # filtra os itens que têm destino; os do 17 (sem destino) seguem só o
@@ -21,9 +22,9 @@ module Transport
     module_function
 
     # -> [ { "patient", "origin", "origin_id", "appointment_at", "destination" => { destination_id, provider_name, address } } ]
-    def call(date:, destination_id: nil, health_unit_id: nil)
+    def call(date:, destination_id: nil, health_unit_id: nil, tfd: true)
       range = date.in_time_zone.all_day
-      items = regulation(range) + tfd(range)
+      items = regulation(range) + (tfd ? tfd(range) : [])
       items += appointments(range, health_unit_id) if health_unit_id
       items = items.select { |item| item[:destination_id] == destination_id } if destination_id
       taken = taken_keys(items)

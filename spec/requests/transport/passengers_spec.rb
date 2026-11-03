@@ -47,7 +47,8 @@ RSpec.describe "Transporte — passageiros", type: :request do
     expect(json_body["error"]).to eq("companion_not_allowed")
     patient = transport_patient!(birth_date: "1986-01-01")
     tfd = tfd_case!(status: "authorized", patient: patient, report: { "companion_indicated" => false })
-    add(patient, origin: "tfd", origin_id: tfd.id, exception_reason: nil, companion: { name: "Irmão", reason: "Paciente com baixa visão" })
+    add(patient, origin: "tfd", origin_id: tfd.id, exception_reason: nil, destination_id: tfd.transport_destination_id,
+                 companion: { name: "Irmão", reason: "Paciente com baixa visão" })
     expect(json_body["error"]).to eq("companion_not_allowed")
     add(transport_patient!(birth_date: "1986-01-01"), companion: { name: "Irmão", reason: "Paciente com baixa visão" })
     expect(response).to have_http_status(:created)
@@ -56,7 +57,7 @@ RSpec.describe "Transporte — passageiros", type: :request do
   it "nunca dado clínico nem CPF na forma do passageiro" do
     patient = transport_patient!
     tfd = tfd_case!(status: "authorized", patient: patient, report: { "justification" => "Sem nefrologia no município para hemodiálise" })
-    add(patient, origin: "tfd", origin_id: tfd.id, exception_reason: nil)
+    add(patient, origin: "tfd", origin_id: tfd.id, exception_reason: nil, destination_id: tfd.transport_destination_id)
     expect(response).to have_http_status(:created)
     expect(response.body).not_to include("N185", "nefrologia", "0301010072", patient.cpf)
     expect(json_body["patient"].keys).to contain_exactly("id", "display_name", "has_cpf", "cns_masked", "phone_masked")
@@ -91,14 +92,35 @@ RSpec.describe "Transporte — passageiros", type: :request do
     patient = transport_patient!
     tfd = tfd_case!(status: "authorized", patient: patient)
     tfd.update!(appointment_at: Time.zone.parse("#{trip.date} 13:00"))
-    add(patient, origin: "tfd", origin_id: tfd.id, exception_reason: nil)
+    add(patient, origin: "tfd", origin_id: tfd.id, exception_reason: nil, destination_id: tfd.transport_destination_id)
     expect(json_body).to include("origin" => "tfd", "appointment_at" => Time.zone.parse("#{trip.date} 13:00").iso8601)
     expect(TransportTripPassenger.find(json_body["id"]).tfd_case_id).to eq(tfd.id)
 
     draft_patient = transport_patient!
     draft = tfd_case!(status: "draft", patient: draft_patient)
-    add(draft_patient, origin: "tfd", origin_id: draft.id, exception_reason: nil)
+    add(draft_patient, origin: "tfd", origin_id: draft.id, exception_reason: nil, destination_id: draft.transport_destination_id)
     expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "origin_id" ])
+  end
+
+  it "C8: passageiro do TFD com destino diferente do processo → invalid_request em destination_id" do
+    patient = transport_patient!
+    tfd = tfd_case!(status: "authorized", patient: patient)
+    expect(trip_destination.id).not_to eq(tfd.transport_destination_id)
+    add(patient, origin: "tfd", origin_id: tfd.id, exception_reason: nil)
+    expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "destination_id" ])
+    expect(TransportTripPassenger.where(tfd_case_id: tfd.id)).to be_empty
+  end
+
+  it "C7: tfd desligado → origem tfd recusada 403 feature_disabled; a exceção segue" do
+    patient = transport_patient!
+    tfd = tfd_case!(status: "authorized", patient: patient)
+    Platform::Features.set!(city: city, key: "tfd", enabled: false, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    add(patient, origin: "tfd", origin_id: tfd.id, exception_reason: nil, destination_id: tfd.transport_destination_id)
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "feature_disabled", "feature" => "tfd" } ])
+    expect(TransportTripPassenger.where(tfd_case_id: tfd.id)).to be_empty
+    add(patient)
+    expect(response).to have_http_status(:created)
   end
 
   it "origem série: só a série ativa do paciente; suspensa ou encerrada → invalid_request em origin_id" do
@@ -226,6 +248,18 @@ RSpec.describe "Transporte — passageiros", type: :request do
       sign_in_as(driver_user!)
       json_post "/transport/scheduled_care", date: day.iso8601
       expect(response).to have_http_status(:forbidden)
+    end
+
+    it "C7: com o tfd desligado, os itens do TFD ficam de fora; os outros seguem" do
+      day = Date.current + 2
+      tfd_case!(status: "authorized").update!(appointment_at: Time.zone.parse("#{day} 10:00"))
+      unit = create_unit("UBS do Interruptor")
+      appointment = transport_appointment!(transport_patient!, unit: unit, at: Time.zone.parse("#{day} 08:00"))
+      Platform::Features.set!(city: city, key: "tfd", enabled: false, maintainer: ledi_maintainer!)
+      CityCatalog.reset_cache!
+      json_post "/transport/scheduled_care", date: day.iso8601, health_unit_id: unit.id
+      expect(response).to have_http_status(:ok)
+      expect(json_body["items"].map { |item| [ item["origin"], item["origin_id"] ] }).to eq([ [ "appointment", appointment.id ] ])
     end
   end
 end
