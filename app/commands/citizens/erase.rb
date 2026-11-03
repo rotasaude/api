@@ -10,7 +10,7 @@
 # ADR 0040: e a condição declarada e as sugestões de linha de cuidado.
 # ADR 0048: e os avisos de viagem do par; séries suspensas, o paciente fora
 # das viagens abertas e os passageiros anonimizados (Transport::Anonymize).
-# Reasons: :not_pending, :own_request.
+# Reasons: :not_pending, :own_request, :patient_on_trip.
 module Citizens
   module Erase
     TOMBSTONE_PREFIX = "erased:".freeze
@@ -81,6 +81,10 @@ module Citizens
           locked_patients = Patient.where(id: patient_ids).order(:id).lock.to_a
           retained = RequestErasure.examined_patients?(patient_ids)
         end
+        # ADR 0048 (Ruling I1): paciente ativo numa viagem em andamento (viagem
+        # travada no lock! acima) — nada muda, o pedido segue pendente; o admin
+        # tenta de novo depois do fechamento (viagem dura até 72 h).
+        next result = Result.fail(:patient_on_trip) if !retained && Transport::Anonymize.on_trip?(patient_ids)
         # O banco não exige decided_by_user: quem decide é gravado aqui, sempre.
         if retained
           request.update!(status: "retained", decided_by_user: by, decided_at: Time.current)

@@ -82,6 +82,19 @@ RSpec.describe "Exclusão LGPD com transporte sanitário e TFD (ADR 0048)" do
     end
   end
 
+  it "paciente retido pelo TFD: o passageiro de outra origem e a série ficam intactos" do
+    request = request_for(citizen).payload[:request]
+    tfd_case!(status: "draft", patient: patient)
+    trip = trip!(status: "planned", date: Date.current + 4, destination: dest)
+    rider = passenger!(trip, patient: patient, provider_name: "Hospital do Rim", **companion)
+    series = series!
+
+    expect(Citizens::Erase.call(request: request, by: care_admin!).payload[:request].status).to eq("retained")
+    expect(rider.reload).to have_attributes(removed_at: nil, anonymized_at: nil, provider_name: "Hospital do Rim",
+                                            companion_name: "Maria Acompanhante")
+    expect(series.reload).to have_attributes(suspended_from: nil, companion_name: "Maria Acompanhante")
+  end
+
   describe "sem TFD: confirmação" do
     let(:admin) { care_admin! }
 
@@ -126,8 +139,6 @@ RSpec.describe "Exclusão LGPD com transporte sanitário e TFD (ADR 0048)" do
       from_series = passenger!(future, patient: patient, origin: "series", transport_series: series, exception_reason: nil, **companion)
       planned = trip!(status: "planned", date: Date.current + 9, destination: dest)
       exception = passenger!(planned, patient: patient, exception_note: "Retorno de consulta na clínica")
-      running = staffed_trip!(status: "in_progress", date: Date.current)
-      on_board = passenger!(running, patient: patient, attendance: "boarded")
       neighbour = passenger!(future)
 
       result = Citizens::Erase.call(request: request_for(citizen).payload[:request], by: admin)
@@ -140,7 +151,7 @@ RSpec.describe "Exclusão LGPD com transporte sanitário e TFD (ADR 0048)" do
         expect(series.read_attribute_before_type_cast(column)).to be_nil, column
       end
 
-      [ from_series, exception, on_board ].each do |row|
+      [ from_series, exception ].each do |row|
         row.reload
         # Retirado ANTES de anonimizar (o trigger congela a linha anonimizada):
         # removed_at gravado e o motivo da retirada já anulado.
@@ -149,14 +160,74 @@ RSpec.describe "Exclusão LGPD com transporte sanitário e TFD (ADR 0048)" do
         expect(row.anonymized_at).to be_present
         encrypted.each { |column| expect(row.read_attribute_before_type_cast(column)).to be_nil, column }
       end
-      expect(on_board.attendance).to eq("boarded")
       expect(neighbour.reload).to have_attributes(removed_at: nil, anonymized_at: nil)
 
       payloads = DomainEvent.where(name: "transport.passenger_removed").map(&:payload)
       expect(payloads).to include({ "trip_id" => future.id, "passenger_id" => from_series.id },
-                                  { "trip_id" => planned.id, "passenger_id" => exception.id },
-                                  { "trip_id" => running.id, "passenger_id" => on_board.id })
+                                  { "trip_id" => planned.id, "passenger_id" => exception.id })
       payloads.each { |payload| expect(payload.keys).to contain_exactly("trip_id", "passenger_id") }
+    end
+
+    it "paciente a bordo de viagem em andamento: recusa patient_on_trip sem mudar nada; depois do fechamento, segue e a linha fica ativa" do
+      driver = driver_user!
+      trip = trip!(status: "confirmed", date: Date.current, vehicle: vehicle!(seats: 4), driver: driver.transport_driver, destination: dest)
+      rider = passenger!(trip, patient: patient, provider_name: "Hospital do Rim", **companion)
+      series = series!
+      expect(Transport::StartTrip.call(trip: trip, by: driver).failure?).to be(false)
+      request = request_for(citizen).payload[:request]
+
+      refused = Citizens::Erase.call(request: request, by: admin)
+      expect(refused.reason).to eq(:patient_on_trip)
+      expect(request.reload.status).to eq("pending")
+      expect(citizen.reload.erased_at).to be_nil
+      expect(rider.reload).to have_attributes(removed_at: nil, anonymized_at: nil, provider_name: "Hospital do Rim")
+      expect(series.reload.suspended_from).to be_nil
+
+      items = [ { "passenger_id" => rider.id, "attendance" => "boarded", "companion_attendance" => "boarded" } ]
+      expect(Transport::RecordAttendance.call(trip: trip.reload, items: items, by: driver).failure?).to be(false)
+      closed = Transport::CloseTrip.call(trip: trip.reload, attrs: { "odometer_start" => 1000, "odometer_end" => 1100 }, by: driver)
+      expect(closed.failure?).to be(false)
+      month = Date.current.strftime("%Y-%m")
+      panel = Transport::Dashboard.call(month: month, tfd_enabled: false)
+
+      expect(Citizens::Erase.call(request: request.reload, by: admin).payload[:request].status).to eq("confirmed")
+      rider.reload
+      expect(rider).to have_attributes(removed_at: nil, attendance: "boarded", companion_attendance: "boarded")
+      expect(rider.anonymized_at).to be_present
+      encrypted.each { |column| expect(rider.read_attribute_before_type_cast(column)).to be_nil, column }
+      expect(Transport::Dashboard.call(month: month, tfd_enabled: false)).to eq(panel)
+    end
+
+    it "linha de viagem cancelada: anonimizada, não retirada" do
+      trip = trip!(status: "planned", date: Date.current + 4, destination: dest)
+      rider = passenger!(trip, patient: patient, provider_name: "Hospital do Rim")
+      trip.update_columns(status: "cancelled", cancelled_at: Time.current)
+
+      Citizens::Erase.call(request: request_for(citizen).payload[:request], by: admin)
+      rider.reload
+      expect(rider.removed_at).to be_nil
+      expect(rider.anonymized_at).to be_present
+      expect(rider.read_attribute_before_type_cast("provider_name")).to be_nil
+    end
+
+    it "motivo da correção de presença regravado uma vez com o texto fixo; sem o flag o trigger recusa" do
+      done = staffed_trip!(status: "done", date: Date.current)
+      rider = passenger!(done, patient: patient, attendance: "boarded")
+      correction = TransportAttendanceCorrection.create!(transport_trip_passenger: rider, field: "attendance", from_value: "no_show",
+                                                         to_value: "boarded", reason: "Estava internado no Hospital de Clínicas",
+                                                         by_user: admin, created_at: Time.current)
+      expect { ApplicationRecord.transaction(requires_new: true) { correction.update_columns(reason: Transport::Anonymize::REASON) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /append-only: UPDATE refused/)
+      before = TransportAttendanceCorrection.find(correction.id).read_attribute_before_type_cast("reason")
+
+      Citizens::Erase.call(request: request_for(citizen).payload[:request], by: admin)
+      row = TransportAttendanceCorrection.find(correction.id)
+      expect(row.reason).to eq(Transport::Anonymize::REASON)
+      expect(row.read_attribute_before_type_cast("reason")).not_to eq(before)
+      expect(row.read_attribute_before_type_cast("reason")).not_to include("internado")
+      # Uma vez: com o passageiro já anonimizado, nem sob o flag.
+      expect { TransportAttendanceCorrection.with_erasure { row.update_columns(reason: "Outro texto qualquer") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /append-only: UPDATE refused/)
     end
 
     it "série já suspensa antes guarda a data e troca o motivo livre pelo fixo; série encerrada não é suspensa" do

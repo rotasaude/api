@@ -2852,7 +2852,7 @@ $do$;
 -- cifradas só vão a NULL; anonimizado, congela. Sob rota.reencrypting
 -- regrava só as cifradas. Parada com passageiro não sai. O aviso ao cidadão só
 -- é lido, uma vez (a exclusão do par o apaga). Diário de bordo, correção de
--- presença, andamento, ajuda de custo, pagamento e prestação de contas do TFD:
+-- presença (o motivo regravado uma vez na exclusão LGPD), andamento, ajuda de custo, pagamento e prestação de contas do TFD:
 -- só acréscimo (as cifradas pela re-cifra). Frota, destino, viagem, série,
 -- processo, trecho e parâmetros nunca somem. TRUNCATE recusado nas 18 tabelas.
 CREATE OR REPLACE FUNCTION rota_transport_trip_passenger_guard() RETURNS trigger AS $fn$
@@ -2910,6 +2910,30 @@ BEGIN
 END;
 $fn$ LANGUAGE plpgsql;
 
+-- Correção de presença: só acréscimo; a re-cifra regrava só o motivo; e, na
+-- exclusão LGPD (Transport::Anonymize, sob rota.transport_erasure =
+-- 'on' pelo TransportAttendanceCorrection.with_erasure), o motivo é
+-- regravado UMA vez com o texto fixo — só enquanto o passageiro ainda não
+-- foi anonimizado (a anonimização vem logo depois, na mesma transação).
+CREATE OR REPLACE FUNCTION rota_transport_attendance_correction_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'transport_attendance_corrections is append-only: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - 'reason') = (to_jsonb(OLD) - 'reason') THEN
+    IF current_setting('rota.reencrypting', true) = 'on' THEN
+      RETURN NEW;
+    END IF;
+    IF current_setting('rota.transport_erasure', true) = 'on'
+       AND EXISTS (SELECT 1 FROM transport_trip_passengers
+                   WHERE id = NEW.transport_trip_passenger_id AND anonymized_at IS NULL) THEN
+      RETURN NEW;
+    END IF;
+  END IF;
+  RAISE EXCEPTION 'transport_attendance_corrections is append-only: UPDATE refused';
+END;
+$fn$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION rota_transport_trip_stop_guard() RETURNS trigger AS $fn$
 BEGIN
   IF EXISTS (SELECT 1 FROM transport_trip_passengers WHERE transport_trip_stop_id = OLD.id) THEN
@@ -2945,11 +2969,12 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS transport_trip_notices_guard ON transport_trip_notices';
     EXECUTE 'CREATE TRIGGER transport_trip_notices_guard BEFORE UPDATE ON transport_trip_notices
       FOR EACH ROW EXECUTE FUNCTION rota_transport_trip_notice_guard()';
-    FOREACH item IN ARRAY ARRAY['transport_attendance_corrections', 'tfd_case_events'] LOOP
-      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_reencryption_only', item);
-      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')',
-                     item || '_reencryption_only', item);
-    END LOOP;
+    EXECUTE 'DROP TRIGGER IF EXISTS transport_attendance_corrections_reencryption_only ON transport_attendance_corrections';
+    EXECUTE 'CREATE TRIGGER transport_attendance_corrections_reencryption_only BEFORE UPDATE OR DELETE ON transport_attendance_corrections
+      FOR EACH ROW EXECUTE FUNCTION rota_transport_attendance_correction_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS tfd_case_events_reencryption_only ON tfd_case_events';
+    EXECUTE 'CREATE TRIGGER tfd_case_events_reencryption_only BEFORE UPDATE OR DELETE ON tfd_case_events
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')';
     EXECUTE 'DROP TRIGGER IF EXISTS tfd_accountability_reencryption_only ON tfd_accountability';
     EXECUTE 'CREATE TRIGGER tfd_accountability_reencryption_only BEFORE UPDATE OR DELETE ON tfd_accountability
       FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''filename'')';

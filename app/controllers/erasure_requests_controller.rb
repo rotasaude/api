@@ -12,7 +12,9 @@ class ErasureRequestsController < ApplicationController
   ERROR_STATUS = {
     invalid_cpf: :unprocessable_entity, document_check_required: :unprocessable_entity,
     reason_too_short: :unprocessable_entity, citizen_not_found: :not_found,
-    already_pending: :conflict, not_pending: :conflict, own_request: :forbidden
+    already_pending: :conflict, not_pending: :conflict, own_request: :forbidden,
+    # ADR 0048: paciente a bordo de viagem em andamento; tentar depois do fechamento.
+    patient_on_trip: :conflict
   }.freeze
 
   before_action :require_verifier, only: :create
