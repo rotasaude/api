@@ -6,7 +6,7 @@
 #   primary_care_procedure  Tfd::PrimaryCare;
 #   cid_required;
 #   justification_required  fora de 20..2000 caracteres.
-# Só na autorização: appointment_required e billing_unit_missing (com
+# Só na autorização: appointment_required (ausente ou já no passado) e billing_unit_missing (com
 # procedure_billing ligado e sem `tfd_billing_health_unit_id`). O interruptor
 # do faturamento é lido FORA da transação da cidade: quem chama dentro dela
 # passa `billing_enabled:`. Só lê; nunca loga o laudo.
@@ -38,7 +38,8 @@ module Tfd
 
     def authorize_problems(tfd_case, settings, billing_enabled)
       list = []
-      list << problem("appointment_at", "appointment_required") if tfd_case.appointment_at.nil?
+      # Marcado no passado (devolvido e reenviado com a data velha) vale como sem atendimento.
+      list << problem("appointment_at", "appointment_required") if tfd_case.appointment_at.nil? || tfd_case.appointment_at.past?
       billing = billing_enabled.nil? ? Billing::Gate.enabled?(Current.city) : billing_enabled
       list << problem("tfd_billing_health_unit_id", "billing_unit_missing") if billing && settings.tfd_billing_health_unit_id.nil?
       list

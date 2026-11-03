@@ -9,7 +9,7 @@ module Tfd
       return unless query_only!
 
       destinations = TransportDestination.where(active: true).order(:name, :id)
-      providers = CareProvider.active_providers.where.not(kind: "own").order(:name, :id)
+      providers = Providers.eligible.order(:name, :id)
       render json: { destinations: destinations.map { |d| Transport::Json.destination(d) },
                      providers: providers.map { |p| { id: p.id, name: p.name, ibge_code: p.ibge_code } },
                      min_distance_km: Transport::Settings.current.tfd_min_distance_km }

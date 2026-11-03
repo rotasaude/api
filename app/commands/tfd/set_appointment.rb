@@ -1,7 +1,7 @@
 # Atendimento marcado no destino (contrato §6; plano, Desvio 12): a comissão
 # informa `appointment_at` (ISO 8601 com fuso, de agora − 1 dia a agora + 365
-# dias) e, opcionalmente, o prestador (ativo, fora da rede própria) — sem
-# `provider_id`, o prestador do laudo fica. Só em `submitted`, `authorized` ou
+# dias) e, opcionalmente, o prestador (Tfd::Providers) — sem `provider_id`,
+# o prestador do laudo fica (Ruling Task 10: o prestador é do laudo). Só em `submitted`, `authorized` ou
 # `scheduled`; grava o evento `appointment_set` sem mudar a situação
 # (Tfd::Transition) e publica tfd.case_updated (só ids). A data e o
 # prestador nunca vão para evento nem log.
@@ -10,7 +10,6 @@ module Tfd
     OPEN = %w[submitted authorized scheduled].freeze
     PAST = 1.day
     FUTURE = 365.days
-    UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
 
     module_function
 
@@ -38,13 +37,8 @@ module Tfd
       end
     end
 
-    # nil (mantém o do laudo) | CareProvider ativo não `own` | :invalid
-    def provider(id)
-      return nil if id.nil?
-      return :invalid unless id.is_a?(String) && id.match?(UUID)
-
-      CareProvider.active_providers.where.not(kind: "own").find_by(id: id) || :invalid
-    end
+    # nil (mantém o do laudo) | CareProvider elegível (Tfd::Providers) | :invalid
+    def provider(id) = id.nil? ? nil : (Providers.find(id) || :invalid)
 
     def parse(value)
       return nil unless value.is_a?(String) && value.match?(CareRegulation::ScheduleExternal::ZONED)

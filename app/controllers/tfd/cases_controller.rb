@@ -149,8 +149,10 @@ module Tfd
       render_refusal(unknown.to_s[0, KEY_PATH_MAX]) if unknown
     end
 
+    # Rascunho é invisível à comissão: nas escritas dela, 404 (como no read).
     def load_case
       @tfd_case = uuid?(params[:id]) ? TfdCase.find_by(id: params[:id]) : nil
+      @tfd_case = nil if @tfd_case&.status == "draft" && COMMITTEE_WRITES.include?(action_name.to_sym)
       not_found unless @tfd_case
     end
   end

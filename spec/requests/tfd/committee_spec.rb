@@ -184,12 +184,19 @@ RSpec.describe "TFD — comissão", type: :request do
     expect(json_body["inpatient"]).to eq([ { "from" => "2026-11-10", "to" => "2026-11-12" }, { "from" => "2026-11-20", "to" => nil } ])
   end
 
-  it "cancelar: rascunho → 422 invalid_transition; agendado → cancelled com evento; tfd.case_cancelled só com ids" do
+  it "rascunho é invisível à comissão: as quatro escritas dão 404 e nada muda" do
     draft = tfd_case!(status: "draft")
-    cancel(draft)
-    expect(response).to have_http_status(:unprocessable_entity)
-    expect(json_body).to include("error" => "invalid_transition")
-    expect(draft.reload.status).to eq("draft")
+    [ -> { decide(draft, "deny") }, -> { set_appointment(draft) }, -> { inpatient(draft, from: "2026-11-10") },
+      -> { cancel(draft) } ].each do |write|
+      write.call
+      expect(response).to have_http_status(:not_found)
+      expect(json_body).to eq("error" => "not_found")
+    end
+    expect(draft.reload).to have_attributes(status: "draft", appointment_at: nil, inpatient_stays: [])
+    expect(draft.tfd_case_events.pluck(:kind)).to eq(%w[created])
+  end
+
+  it "cancelar: agendado → cancelled com evento; tfd.case_cancelled só com ids; motivo curto e terminal recusados" do
     tfd = tfd_case!(status: "scheduled")
     cancel(tfd, "curto")
     expect(json_body).to include("error" => "invalid_request", "path" => "reason")
@@ -200,6 +207,69 @@ RSpec.describe "TFD — comissão", type: :request do
     expect(payloads("tfd.case_cancelled")).to contain_exactly({ "tfd_case_id" => tfd.id, "user_id" => committee.id })
     cancel(tfd)
     expect(json_body).to include("error" => "invalid_transition")
+  end
+
+  it "cancela de submitted, returned, authorized e travelling" do
+    %w[submitted returned authorized travelling].each do |status|
+      tfd = tfd_case!(status: status)
+      cancel(tfd)
+      expect(response).to have_http_status(:ok), "#{status}: #{response.body}"
+      expect(tfd.reload.status).to eq("cancelled")
+      expect(tfd.tfd_case_events.last.kind).to eq("cancelled")
+    end
+  end
+
+  it "autorizar com o atendimento já no passado (devolvido e reenviado com a data velha) → appointment_required" do
+    TransportSetting.current.update!(tfd_billing_health_unit: health_management_unit!)
+    tfd = tfd_case!(status: "submitted")
+    set_appointment(tfd)
+    tfd.update_columns(appointment_at: 2.hours.ago)
+    decide(tfd, "authorize")
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to include("error" => "appointment_required", "path" => "appointment_at")
+    expect(tfd.reload.status).to eq("submitted")
+  end
+
+  it "autorizar repete distância mínima e destino metropolitano" do
+    near = destination!(name: "Araucária", ibge: "4101804", km: 27, metropolitan: true)
+    tfd = tfd_case!(status: "submitted", destination: near)
+    decide(tfd, "authorize")
+    expect(errors).to include("distance_below_minimum", "metropolitan_destination")
+  end
+
+  it "atendimento sem provider_id mantém o prestador; horário em Z guarda o instante" do
+    provider = external_provider!(name: "Hospital do Rim")
+    tfd = tfd_case!(status: "authorized")
+    set_appointment(tfd, provider_id: provider.id)
+    instant = (Time.now.utc + 10.days).change(hour: 13, min: 30, sec: 0)
+    set_appointment(tfd, appointment_at: instant.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    expect(response).to have_http_status(:ok)
+    expect(json_body["provider"]).to eq("id" => provider.id, "name" => "Hospital do Rim")
+    expect(tfd.reload.care_provider_id).to eq(provider.id)
+    expect(tfd.appointment_at).to eq(instant)
+    expect(Time.iso8601(json_body["appointment_at"])).to eq(instant)
+  end
+
+  it "atendimento: provider_id inexistente, inativo ou não UUID → invalid_request provider_id" do
+    tfd = tfd_case!(status: "submitted")
+    inactive = external_provider!(name: "Hospital Fechado")
+    inactive.update!(active: false)
+    [ SecureRandom.uuid, inactive.id, "123", 42 ].each do |id|
+      set_appointment(tfd, provider_id: id)
+      expect(json_body).to include("error" => "invalid_request", "path" => "provider_id")
+    end
+    expect(tfd.reload).to have_attributes(appointment_at: nil, care_provider_id: nil)
+  end
+
+  it "médico autor, com step-up, não marca atendimento nem registra internação → 403" do
+    tfd = tfd_case!(status: "scheduled")
+    stepped_up!(tfd.requester_user)
+    set_appointment(tfd)
+    expect(response).to have_http_status(:forbidden)
+    inpatient(tfd, from: "2026-11-10")
+    expect(response).to have_http_status(:forbidden)
+    expect(json_body).to eq("error" => "missing_role")
+    expect(tfd.reload).to have_attributes(appointment_at: nil, inpatient_stays: [])
   end
 
   it "processo inexistente → 404" do

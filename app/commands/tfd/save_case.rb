@@ -60,7 +60,7 @@ module Tfd
       problems << invalid("destination_id") unless destination
       provider = nil
       unless hash["provider_id"].nil?
-        provider = record(CareProvider.active_providers.where.not(kind: "own"), hash["provider_id"])
+        provider = Providers.find(hash["provider_id"])
         problems << invalid("provider_id") unless provider
       end
       report = report(hash["report"], problems)
