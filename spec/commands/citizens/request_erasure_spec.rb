@@ -30,4 +30,14 @@ RSpec.describe Citizens::RequestErasure do
     request!
     expect(request!.reason).to eq(:already_pending)
   end
+
+  # ADR 0048 (módulo 30, Desvio 17): o processo de TFD entra na regra única de
+  # retenção; o caminho completo está em erase_transport_spec.rb.
+  it "examined_patients? consulta o processo de TFD (tfd_cased?)" do
+    ids = [ SecureRandom.uuid ]
+    expect(described_class.tfd_cased?(ids)).to be(false)
+    expect(described_class.examined_patients?(ids)).to be(false)
+    allow(described_class).to receive(:tfd_cased?).with(ids).and_return(true)
+    expect(described_class.examined_patients?(ids)).to be(true)
+  end
 end

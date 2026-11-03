@@ -5,8 +5,8 @@
 # (ADR 0040), para CPF com cadastro territorial (ADR 0042) e para CPF com
 # notificação de vigilância (ADR 0043), para CPF com pedido de regulação
 # (ADR 0044) e para CPF com dispensação ou receita externa da farmácia
-# (ADR 0045), para CPF com registro odontológico (ADR 0046) e para CPF com
-# dose de vacina (ADR 0047).
+# (ADR 0045), para CPF com registro odontológico (ADR 0046), para CPF com
+# dose de vacina (ADR 0047) e para CPF com processo de TFD (ADR 0048).
 # `retained?` é a regra única: o pedido e a reconferência do Citizens::Erase
 # usam a mesma.
 module Citizens
@@ -78,8 +78,15 @@ module Citizens
         LabRequisition.where(patient_id: ids).exists? || PerformedProcedure.where(patient_id: ids).exists? ||
         CareLineEnrollment.where(patient_id: ids).exists? || territory_registered?(ids) || notified?(ids) ||
         regulated?(ids) || dispensed?(ids) || dental_recorded?(ids) ||
-        vaccinated?(ids)
+        vaccinated?(ids) || tfd_cased?(ids)
     end
+
+    # ADR 0048 (módulo 30, Desvio 17; contrato §12; T39): o processo de TFD é
+    # registro retido em qualquer situação (rascunho inclusive), com o que pende
+    # dele — trechos, passageiros de origem tfd, ajudas, pagamentos e o
+    # comprovante da prestação de contas com o nome do arquivo (Portaria 55,
+    # arts. 15–16). Só viajar (sem TFD) não retém: o Transport::Anonymize anonimiza.
+    def tfd_cased?(ids) = TfdCase.where(patient_id: ids).exists?
 
     # ADR 0047 (módulo 29, Desvio 19): a dose de vacina é registro clínico retido,
     # em qualquer situação: transcrita da caderneta e cancelada inclusive. A

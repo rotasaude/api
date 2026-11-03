@@ -8,6 +8,8 @@
 # ADR 0031: também o nome completo, o social e o da mãe.
 # ADR 0039 (D-U1): e raça/cor, etnia e endereço do paciente do CPF.
 # ADR 0040: e a condição declarada e as sugestões de linha de cuidado.
+# ADR 0048: e os avisos de viagem do par; séries suspensas, o paciente fora
+# das viagens abertas e os passageiros anonimizados (Transport::Anonymize).
 # Reasons: :not_pending, :own_request.
 module Citizens
   module Erase
@@ -40,7 +42,7 @@ module Citizens
         next result = Result.fail(:own_request) if request.requested_by_user_id == by.id
 
         # Ordem global de travas: unidade FOR SHARE → cidadão → sugestões de
-        # linha de cuidado → paciente → horários → pedido.
+        # linha de cuidado → séries e viagens abertas → paciente → horários → pedido.
         # A exclusão escreve pedidos do par (nota do remarque, CloseRevoked) e
         # trava o cidadão em FOR UPDATE (segura a FK de um atendimento novo
         # enquanto reconfere a retenção). Sem a unidade na frente, cruzava com o
@@ -71,6 +73,11 @@ module Citizens
         locked_patients = []
         retained = RequestErasure.clinical_on_pairs?(pair_scope)
         unless retained
+          # ADR 0048: séries e viagens abertas do paciente ANTES do paciente
+          # (a ordem do MaterializeSeriesJob e do AddPassenger: série/viagem →
+          # FK do paciente). O Transport::Notify trava cidadão → viagem: o
+          # cidadão já está travado acima, sem inversão.
+          Transport::Anonymize.lock!(patient_ids)
           locked_patients = Patient.where(id: patient_ids).order(:id).lock.to_a
           retained = RequestErasure.examined_patients?(patient_ids)
         end
@@ -91,6 +98,9 @@ module Citizens
         locked_patients.each { |patient| patient.update!(Patient::DEMOGRAPHICS.index_with(nil)) }
         # ADR 0040: sugestões do paciente não retido (sem inscrição, por definição).
         CareLineSuggestion.where(patient_id: locked_patients.map(&:id)).delete_all
+        # ADR 0048 (Desvio 17; T23): séries suspensas, o paciente fora das
+        # viagens abertas e os passageiros anonimizados (presença e contagens ficam).
+        Transport::Anonymize.patients!(locked_patients.map(&:id), by: by)
         # O trigger aceita a troca do cpf só nesta mesma UPDATE, mas não a
         # exige: o pedido confirmado deixa de guardar o CPF por causa daqui.
         request.update!(status: "confirmed", decided_by_user: by, decided_at: Time.current, cpf: tombstone)
@@ -143,6 +153,8 @@ module Citizens
       CareLineSuggestion.where(citizen_id: citizen.id).delete_all
       # ADR 0029: os avisos de lembrete do par (o trigger deixa o DELETE passar).
       AppointmentNotice.where(citizen_id: citizen.id).delete_all
+      # ADR 0048: os avisos de viagem do par (o trigger deixa o DELETE passar).
+      TransportTripNotice.where(citizen_id: citizen.id).delete_all
       # ADR 0030 (api#43): conteúdo e códigos da fila LEDI das fontes do par.
       Ledi::CitizenSources.scrub!([ citizen.id ])
 
