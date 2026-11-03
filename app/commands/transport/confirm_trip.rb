@@ -1,6 +1,6 @@
 # POST /transport/trips/:id/confirm (contrato §4; Desvio 7; T19): `planned` →
 # `confirmed`. Exige veículo e motorista (`vehicle_required`,
-# `driver_required`), veículo ativo (`vehicle_inactive`), motorista ativo, CNH
+# `driver_required`), veículo ativo (`vehicle_inactive`), motorista ativo (`driver_inactive`), CNH
 # não vencida na data da viagem (`driver_license_expired`), CNH D/E para
 # veículo de mais de 8 lugares (`driver_license_category`) e lotação que caiba
 # (`seats_full`/`wheelchair_full`) — todas as recusas de uma vez. As mesmas
@@ -37,7 +37,7 @@ module Transport
       out << { path: "driver_id", error: "driver_required" } unless driver
       out << { path: "vehicle_id", error: "vehicle_inactive" } if vehicle && !vehicle.active
       if driver
-        out << { path: "driver_id", error: "invalid_request" } unless driver.active
+        out << { path: "driver_id", error: "driver_inactive" } unless driver.active
         out << { path: "driver_id", error: "driver_license_expired" } if driver.license_expires_on < trip.date
         if vehicle && vehicle.seats > Catalog::LARGE_VEHICLE_SEATS && Catalog::LARGE_VEHICLE_CATEGORIES.exclude?(driver.license_category)
           out << { path: "driver_id", error: "driver_license_category" }

@@ -181,6 +181,72 @@ RSpec.describe "Transporte — viagens", type: :request do
     expect(TransportTrip.find(id).transport_driver_id).to eq(driver.id)
   end
 
+  it "T29: motorista inativo → 422 driver_inactive (criar, PATCH e confirmar)" do
+    gone = driver_user!(category: "D").transport_driver
+    gone.update!(active: false)
+    json_post "/transport/trips", body("07:00", "18:00", driver_id: gone.id)
+    expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "driver_inactive", "driver_id" ])
+    expect(json_body["problems"]).to eq([ { "path" => "driver_id", "error" => "driver_inactive" } ])
+    json_post "/transport/trips", body("07:00", "18:00")
+    id = json_body["id"]
+    json_patch "/transport/trips/#{id}", driver_id: gone.id
+    expect(json_body["problems"]).to eq([ { "path" => "driver_id", "error" => "driver_inactive" } ])
+    driver.update!(active: false)
+    json_post "/transport/trips/#{id}/confirm"
+    expect(json_body["problems"]).to eq([ { "path" => "driver_id", "error" => "driver_inactive" } ])
+  end
+
+  it "T29: confirmada com motorista inativo — PATCH que o troca por um válido passa" do
+    json_post "/transport/trips", body("07:00", "18:00")
+    id = json_body["id"]
+    json_post "/transport/trips/#{id}/confirm"
+    driver.update!(active: false)
+    json_patch "/transport/trips/#{id}", departure_at: at("08:00")
+    expect(json_body["problems"]).to eq([ { "path" => "driver_id", "error" => "driver_inactive" } ])
+    json_patch "/transport/trips/#{id}", driver_id: driver_user!(category: "D").transport_driver.id
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "T29: confirmada com CNH vencida ou categoria errada — PATCH que troca o motorista por um válido passa" do
+    expired = driver_user!(category: "D", expires_on: day + 30).transport_driver
+    json_post "/transport/trips", body("07:00", "18:00", driver_id: expired.id)
+    id = json_body["id"]
+    json_post "/transport/trips/#{id}/confirm"
+    expired.update!(license_expires_on: day - 1, license_category: "B")
+    json_patch "/transport/trips/#{id}", departure_at: at("08:00")
+    expect(json_body["problems"].map { |p| p["error"] }).to contain_exactly("driver_license_expired", "driver_license_category")
+    json_patch "/transport/trips/#{id}", driver_id: driver_user!(category: "D").transport_driver.id
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "T29: confirmada com veículo inativo — PATCH que o troca por um ativo passa" do
+    json_post "/transport/trips", body("07:00", "18:00")
+    id = json_body["id"]
+    json_post "/transport/trips/#{id}/confirm"
+    van.update!(active: false)
+    json_patch "/transport/trips/#{id}", departure_at: at("08:00")
+    expect(json_body["problems"]).to eq([ { "path" => "vehicle_id", "error" => "vehicle_inactive" } ])
+    json_patch "/transport/trips/#{id}", vehicle_id: vehicle!(seats: 15).id
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "T29: cancelar nunca roda as regras do confirm — motorista ou veículo inativo cancela" do
+    json_post "/transport/trips", body("07:00", "12:00")
+    a = json_body["id"]
+    json_post "/transport/trips/#{a}/confirm"
+    driver.update!(active: false)
+    json_post "/transport/trips/#{a}/cancel", reason: "Motorista desligado da frota"
+    expect([ response.status, json_body["status"] ]).to eq([ 200, "cancelled" ])
+    other_van = vehicle!(seats: 15)
+    other_driver = driver_user!(category: "D").transport_driver
+    json_post "/transport/trips", body("07:00", "12:00", vehicle_id: other_van.id, driver_id: other_driver.id)
+    b = json_body["id"]
+    json_post "/transport/trips/#{b}/confirm"
+    other_van.update!(active: false)
+    json_post "/transport/trips/#{b}/cancel", reason: "Veículo baixado da frota"
+    expect([ response.status, json_body["status"] ]).to eq([ 200, "cancelled" ])
+  end
+
   it "cancelar exige motivo, avisa por evento e libera o veículo" do
     json_post "/transport/trips", body("07:00", "12:00")
     id = json_body["id"]

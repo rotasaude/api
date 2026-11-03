@@ -82,7 +82,7 @@ module Transport
       values[:return_at] = back if back
       read_reference(attrs, "vehicle_id", TransportVehicle, problems) { |v| values[:transport_vehicle] = v }
       read_reference(attrs, "driver_id", TransportDriver, problems) do |driver|
-        next problems << problem("driver_id") if driver && !driver.active && driver.id != trip&.transport_driver_id
+        next problems << problem("driver_id", "driver_inactive") if driver && !driver.active && driver.id != trip&.transport_driver_id
 
         values[:transport_driver] = driver
       end
