@@ -27,7 +27,6 @@ module Transport
     ODOMETER = (0..9_999_999)
     REASON = (10..500)
     TEXT_MAX = 120
-    MODEL_MAX = 80
     MODEL = (2..80)
     NAME = (2..120)
     DISTANCE_KM = (0..9_999)

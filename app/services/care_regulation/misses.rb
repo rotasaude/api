@@ -35,7 +35,8 @@ module CareRegulation
     # -> RegulationRequest (já na situação nova).
     def apply!(request:, by:, count: 1)
       misses = record!(request: request, by: by, count: count)
-      changes = { misses: misses, scheduled_at: nil, schedule_place: nil, schedule_notes: nil, appointment_request_id: nil }
+      changes = { misses: misses, scheduled_at: nil, schedule_place: nil, schedule_notes: nil, appointment_request_id: nil,
+                 care_provider_id: nil }
       transitioned =
         if misses >= Catalog::MAX_MISSES
           Transition.call(request: request, to: "closed", by: by, changes: changes)

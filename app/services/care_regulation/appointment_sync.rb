@@ -175,11 +175,12 @@ module CareRegulation
       # (R4) e, se o pedido dele reabrir, a rede de segurança o encerra.
       if request.misses + plan.uncounted >= Catalog::MAX_MISSES
         return transition!(request, "closed", plan, scheduled_at: nil, schedule_place: nil, schedule_notes: nil,
-                                                    appointment_request_id: nil)
+                                                    appointment_request_id: nil, care_provider_id: nil)
       end
 
       transition!(request, "scheduled", plan, scheduled_at: appointment.scheduled_at, schedule_place: place,
-                                              schedule_notes: nil, appointment_request_id: plan.current.id)
+                                              schedule_notes: nil, appointment_request_id: plan.current.id,
+                                              care_provider_id: nil)
     end
 
     # Horário expirado (sem confirmação), remarque pedido pelo cidadão ou
@@ -188,7 +189,7 @@ module CareRegulation
       return point!(request, current) if request.status == "authorized" && request.scheduled_at.nil?
 
       transition!(request, "authorized", nil, scheduled_at: nil, schedule_place: nil, schedule_notes: nil,
-                                              appointment_request_id: current.id)
+                                              appointment_request_id: current.id, care_provider_id: nil)
     end
 
     # A falta e, na MESMA transação, o pedido de agendamento reaberto pelo

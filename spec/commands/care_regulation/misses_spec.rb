@@ -79,6 +79,19 @@ RSpec.describe CareRegulation::Misses do
     expect(RegulationRequest.where(status: "missed")).to be_empty
   end
 
+  it "a falta limpa o prestador do agendamento externo (care_provider_id volta a nulo)" do
+    provider = external_provider!
+    request = regulation_request!(status: "external")
+    ApplicationRecord.transaction do
+      request.lock!(CareRegulation::Decide::LOCK)
+      expect(CareRegulation::Transition.call(request: request, to: "scheduled", by: regulator,
+                                             changes: { scheduled_at: 3.days.from_now, schedule_place: "Hospital", care_provider_id: provider.id })).to be_ok
+    end
+    expect(request.reload.care_provider_id).to eq(provider.id)
+    apply!(request)
+    expect(request.reload.care_provider_id).to be_nil
+  end
+
   it "externo regulado pelo estado: a primeira falta volta a external, sem publicar regulation_request.external" do
     request = regulation_request!(status: "external")
     # Agendamento externo lançado pelo regulador (Task 11): external → scheduled

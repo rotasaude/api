@@ -25,6 +25,14 @@ RSpec.describe CareRegulation::AppointmentSync do
   def used = CareRegulation::Quota.used([ setup.fetch(:offer).id ]).values.sum
   def regulation_events(name) = DomainEvent.where(name: "regulation_request.#{name}").map(&:payload)
 
+  it "o agendamento da rede própria zera um prestador externo que sobrou no pedido" do
+    request.update_columns(care_provider_id: external_provider!.id)
+    schedule_regulated!(appointment_request, at: 3.days.from_now.change(hour: 9))
+    expect(sync!).to eq("scheduled")
+    expect(request.reload.care_provider_id).to be_nil
+    expect(CareRegulation::Json.request(request).fetch(:schedule)[:care_provider]).to be_nil
+  end
+
   it "horário marcado → scheduled com data e local; atendimento → completed; redespacho não regride" do
     appointment = schedule_regulated!(appointment_request, at: 3.days.from_now.change(hour: 9))
     expect(sync!).to eq("scheduled")
