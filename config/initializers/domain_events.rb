@@ -276,6 +276,9 @@ Rails.application.config.to_prepare do
   # "departure"`; rótulo de embarque mudou, `change: "boarding"` + `stop_id`).
   # Só ids e o código da mudança; o consumidor (avisos) chega na Task 14.
   %w[transport.trip_confirmed transport.trip_cancelled transport.trip_changed].each { |name| DomainEvents.bind name, to: [] }
+  # Troca dos parâmetros do transporte e do TFD (T27); só trilha: id da cidade
+  # e os NOMES das chaves mudadas (`changed`), nunca os valores; sem consumidor.
+  DomainEvents.bind "transport.settings_changed", to: []
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

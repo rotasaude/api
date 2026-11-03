@@ -424,6 +424,12 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
   end
 
   # Viagens (Task 4): só ids e o código da mudança; o consumidor dos avisos é da Task 14.
+  # Parâmetros do transporte (T27): id da cidade e nomes das chaves; sem consumidor.
+  it "declares transport.settings_changed with no consumer" do
+    expect(DomainEvents.registry.keys).to include("transport.settings_changed")
+    expect(DomainEvents.registry["transport.settings_changed"]).to be_empty
+  end
+
   it "declares transport.trip_confirmed, .trip_cancelled and .trip_changed with no consumer yet" do
     names = %w[transport.trip_confirmed transport.trip_cancelled transport.trip_changed]
     expect(DomainEvents.registry.keys).to include(*names)

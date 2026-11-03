@@ -66,6 +66,25 @@ RSpec.describe "Transporte — configuração", type: :request do
     expect(json_body).to eq("error" => "feature_disabled", "feature" => "sanitary_transport")
   end
 
+  # Coordenador T27: como o vaccination.settings_changed, só o id da cidade e
+  # os NOMES das chaves que mudaram — nunca os valores.
+  it "a troca publica transport.settings_changed com o id da cidade e os nomes das chaves; sem troca ou recusada, nada" do
+    stepped_up!(admin)
+    unit = health_management_unit!
+    events = -> { DomainEvent.where(name: "transport.settings_changed").order(:created_at, :id) }
+    expect do
+      json_patch "/transport/admin/settings", tfd_min_distance_km: 61, companion_rule: { "max_age_child" => 14, "min_age_elderly" => 60 },
+                                              tfd_billing_health_unit_id: unit.id, allowance_complements: { "0803010044" => 5000 }
+    end.to change { events.call.count }.by(1)
+    payload = events.call.last.payload
+    expect(payload).to eq("city_id" => city.id, "changed" => %w[allowance_complements companion_rule tfd_billing_health_unit_id tfd_min_distance_km])
+    expect { json_patch "/transport/admin/settings", tfd_min_distance_km: 61, allowance_complements: { "0803010044" => 5000 } }
+      .not_to(change { events.call.count })
+    expect { json_patch "/transport/admin/settings", tfd_min_distance_km: 0 }.not_to(change { events.call.count })
+    json_patch "/transport/admin/settings", companion_rule: { "max_age_child" => 14, "min_age_elderly" => 65 }
+    expect(events.call.last.payload).to eq("city_id" => city.id, "changed" => %w[companion_rule])
+  end
+
   it "quem não é municipal_admin → 403 missing_role" do
     sign_in_as(dispatcher!)
     get "/transport/admin/settings"

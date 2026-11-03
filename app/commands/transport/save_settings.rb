@@ -1,7 +1,8 @@
 # PATCH /transport/admin/settings (contrato §3, T12): parcial; todas as recusas
 # de campo de uma vez em `problems`. Chave desconhecida → invalid_request com o
 # nome; unidade de faturamento que não é health_management com CNES →
-# billing_unit_invalid. Sem evento (não há nome declarado para ele).
+# billing_unit_invalid. Uma troca publica `transport.settings_changed` só com o
+# id da cidade e os NOMES das chaves que mudaram, nunca os valores (T27).
 module Transport
   module SaveSettings
     KEY_PATH_MAX = 64
@@ -10,6 +11,10 @@ module Transport
     CHILD_AGE = (0..17)
     ELDERLY_AGE = (50..100)
     COMPLEMENT = (0..1_000_000)
+    # Coluna → chave do corpo (a regra do acompanhante ocupa duas colunas).
+    COLUMN_KEYS = { "tfd_min_distance_km" => "tfd_min_distance_km", "companion_max_age_child" => "companion_rule",
+                    "companion_min_age_elderly" => "companion_rule", "tfd_billing_health_unit_id" => "tfd_billing_health_unit_id",
+                    "allowance_complements" => "allowance_complements" }.freeze
 
     module_function
 
@@ -31,9 +36,11 @@ module Transport
         setting = Settings.current
         setting.lock!
         setting.assign_attributes(changes)
-        if setting.changed?
+        changed = changed_keys(setting)
+        if changed.any?
           setting.updated_by_user = by
           setting.save!
+          DomainEvents.publish("transport.settings_changed", city_id: Current.city.id, changed: changed)
         end
         Result.ok(settings: Settings.json(setting))
       end
@@ -100,6 +107,11 @@ module Transport
       changes["allowance_complements"] = map unless bad
     end
 
+    # Nomes das chaves do corpo (§3) cujos valores mudaram, em ordem alfabética.
+    def changed_keys(setting)
+      setting.changed.filter_map { |column| COLUMN_KEYS[column] }.uniq.sort
+    end
+
     def problem(path, error = "invalid_request") = { path: path, error: error }
 
     def failure(problems)
@@ -108,6 +120,6 @@ module Transport
     end
 
     def refuse(path) = Result.fail(:invalid_request, details: { path: path, problems: [ problem(path) ] })
-    private_class_method :validate_distance, :validate_rule, :validate_unit, :validate_complements, :problem, :failure, :refuse
+    private_class_method :validate_distance, :validate_rule, :validate_unit, :validate_complements, :changed_keys, :problem, :failure, :refuse
   end
 end
