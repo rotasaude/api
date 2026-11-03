@@ -1,0 +1,11 @@
+# Ajudas de custo do TFD (SIGTAP 08.03.01), por tipo e pessoa (ADR 0048).
+# A conferência dos códigos no SIGTAP oficial é gate de go-live.
+version: 1
+source: "SIGTAP 08.03.01 — Tratamento Fora de Domicílio"
+review: true
+codes:
+  meal_overnight: { patient: "0803010010", companion: "0803010044" }
+  meal_day: { patient: "0803010028", companion: "0803010052" }
+  ground_km: { patient: "0803010125", companion: "0803010109" }
+  air_miles: { patient: "0803010087", companion: "0803010079" }
+  river_miles: { patient: "0803010117", companion: "0803010095" }

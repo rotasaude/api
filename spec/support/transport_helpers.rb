@@ -30,9 +30,7 @@ module TransportHelpers
 
   # Prontuário (clinical_city!) com `sanitary_transport` e, com tfd: true,
   # `tfd`. Com billing: true, a cidade do faturamento (billing_city!), com a
-  # SIGTAP do TFD criada ANTES (a SIGTAP ativa é imutável). Os interruptores só
-  # ligam quando estão no catálogo (Platform::Features::CATALOG, Task 2): antes
-  # disso a cidade nasce sem eles. Os parâmetros (a linha que a migração insere
+  # SIGTAP do TFD criada ANTES (a SIGTAP ativa é imutável). Os parâmetros (a linha que a migração insere
   # e o dump não leva) entram aqui.
   def transport_city!(tfd: false, billing: false)
     tfd_sigtap! if billing || tfd
@@ -40,7 +38,7 @@ module TransportHelpers
     maintainer = ledi_maintainer!
     keys = [ "sanitary_transport", ("tfd" if tfd) ].compact
     keys.each do |key|
-      Platform::Features.set!(city: city, key: key, enabled: true, maintainer: maintainer) if Platform::Features.find(key)
+      Platform::Features.set!(city: city, key: key, enabled: true, maintainer: maintainer)
     end
     TransportSetting.ensure_defaults!
     CityCatalog.reset_cache!

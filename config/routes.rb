@@ -586,6 +586,13 @@ Rails.application.routes.draw do
     post   "returns",                   to: "returns#create"
   end
 
+  # Módulo 30 (ADR 0048; contrato §3): transporte sanitário e TFD, sessão do
+  # dashboard. Prefixo único por área.
+  scope "/transport", module: :transport, as: :transport do
+    get   "admin/settings", to: "admin/settings#show"
+    patch "admin/settings", to: "admin/settings#update"
+  end
+
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.
   scope "/vaccination", module: :vaccination, as: :vaccination do
     # Administração (municipal_admin; escrita com step-up): salas, equipe, rede de frio e go-live.

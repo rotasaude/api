@@ -167,7 +167,17 @@ module Platform
       Entry.new(key: "rnds_mock",
                 description: "RNDS simulada (desenvolvimento) — envio sem validade",
                 requires: %w[feature:rnds_immunization],
-                environments: SIMULATION_ENVS)
+                environments: SIMULATION_ENVS),
+      # ADR 0048: transporte sanitário (módulo 30). Sem pré-requisito. Desligado:
+      # /transport/* responde feature_disabled; o que já existe segue gravado.
+      Entry.new(key: "sanitary_transport",
+                description: "Transporte sanitário: frota, motoristas, destinos, viagens com lista de passageiros, séries recorrentes e tela do motorista",
+                requires: []),
+      # ADR 0048: TFD. Sem cascata: desligar o transporte não desliga o tfd; ele
+      # passa a faltar pré-requisito (sanitary_transport_disabled) e responde 403.
+      Entry.new(key: "tfd",
+                description: "Tratamento Fora de Domicílio: laudo, comissão, trechos, ajuda de custo, pagamento registrado, prestação de contas e BPA",
+                requires: %w[feature:sanitary_transport feature:clinical_record])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
