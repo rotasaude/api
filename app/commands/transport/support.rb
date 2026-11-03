@@ -24,6 +24,16 @@ module Transport
       Result.fail(first[:error].to_sym, details: { path: first[:path], problems: problems })
     end
 
+    # Chaves fora da lista (C10, como no TFD): os NOMES, truncados, com o
+    # prefixo do objeto aninhado ("companion.x", "stops.0.x").
+    KEY_PATH_MAX = 64
+
+    def unknown_keys(hash, keys, prefix = nil)
+      return [] unless hash.is_a?(Hash)
+
+      (hash.keys.map(&:to_s) - keys).map { |key| [ prefix, key[0, KEY_PATH_MAX] ].compact.join(".") }
+    end
+
     def text(value, range)
       return nil unless value.is_a?(String)
 

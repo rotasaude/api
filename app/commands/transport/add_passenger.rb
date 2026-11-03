@@ -1,5 +1,7 @@
 # POST /transport/trips/:id/passengers (contrato §4; §14 T5, T17, T18, T19;
 # plano, Desvios 3–6). Ordem:
+#   0. chave fora da lista (no topo ou no acompanhante) → `invalid_request`
+#      no nome dela (C10);
 #   1. forma (todas as recusas de campo de uma vez, `invalid_request`);
 #   2. paciente, parada (da viagem) e destino → `not_found`; parada que não é
 #      de embarque → `stop_not_boarding`;
@@ -26,13 +28,21 @@ module Transport
     REGULATION_STATUSES = %w[scheduled].freeze
     TFD_STATUSES = %w[authorized scheduled travelling].freeze
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
+    # C10: chave fora destas → invalid_request no nome dela.
+    KEYS = %w[patient_id origin origin_id exception_reason exception_note stop_id destination_id provider_name address appointment_at
+              takes_seat wheelchair companion].freeze
+    COMPANION_KEYS = %w[name document reason].freeze
 
     module_function
 
     # -> Result.ok(passenger:) | fail(<recusa>, details: { path:, problems: }) | fail(:not_found | :trip_not_open)
     # `attrs`: o corpo JSON (chaves string ou símbolo; a série da Task 7 também chama).
     def call(trip:, attrs:, by:)
-      form = shape(attrs.to_h.deep_stringify_keys)
+      attrs = attrs.to_h.deep_stringify_keys
+      unknown = Support.unknown_keys(attrs, KEYS) + Support.unknown_keys(attrs["companion"], COMPANION_KEYS, "companion")
+      return Support.refuse(unknown) if unknown.any?
+
+      form = shape(attrs)
       return Support.refuse(form[:problems]) if form[:problems].any?
       return Support.refuse_with(:origin_required, "origin") unless form[:origin]
 

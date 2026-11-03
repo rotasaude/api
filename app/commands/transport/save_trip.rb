@@ -26,6 +26,7 @@
 module Transport
   module SaveTrip
     KEYS = %w[date departure_at return_at vehicle_id driver_id stops].freeze
+    STOP_KEYS = %w[id position kind destination_id label].freeze
     ZONED = CareRegulation::ScheduleExternal::ZONED
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     STOPS_MAX = 20
@@ -37,7 +38,13 @@ module Transport
 
     # -> Result.ok(trip:) | fail(<primeira recusa>, details: { path:, problems: }) | fail(:trip_not_open)
     def call(attrs:, by:, trip: nil)
-      attrs = attrs.to_h.stringify_keys.slice(*KEYS)
+      attrs = attrs.to_h.stringify_keys
+      unknown = Support.unknown_keys(attrs, KEYS)
+      if attrs["stops"].is_a?(Array)
+        attrs["stops"].each_with_index { |stop, index| unknown.concat(Support.unknown_keys(stop, STOP_KEYS, "stops.#{index}")) }
+      end
+      return Support.refuse(unknown) if unknown.any?
+
       TransportTrip.transaction(requires_new: true) do
         trip&.lock!
         next Result.fail(:trip_not_open) if trip && Catalog::OPEN_STATUSES.exclude?(trip.status)

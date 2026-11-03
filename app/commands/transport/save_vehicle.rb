@@ -12,7 +12,10 @@ module Transport
     # -> Result.ok(vehicle:) | fail(:invalid_request, details: { path:, problems: }) |
     # fail(:plate_taken) | fail(:renavam_taken)
     def call(attrs:, by:, record: nil)
-      attrs = attrs.to_h.stringify_keys.slice(*KEYS)
+      attrs = attrs.to_h.stringify_keys
+      unknown = Support.unknown_keys(attrs, KEYS)
+      return Support.refuse(unknown) if unknown.any?
+
       values = record ? current(record).merge(attrs) : { "active" => true, "wheelchair_spots" => 0 }.merge(attrs)
       clean, bad = validate(values)
       return Support.refuse(bad) if bad.any?

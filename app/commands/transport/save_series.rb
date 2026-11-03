@@ -15,6 +15,7 @@ module Transport
   module SaveSeries
     KEYS = %w[patient_id destination_id provider_name weekdays appointment_time departure_time return_time boarding_label
               starts_on ends_on wheelchair companion].freeze
+    COMPANION_KEYS = %w[name document reason].freeze
     REQUIRED = %w[patient_id destination_id weekdays appointment_time departure_time return_time boarding_label starts_on].freeze
     TIMES = %w[appointment_time departure_time return_time].freeze
     CLOCK = /\A([01]\d|2[0-3]):[0-5]\d\z/
@@ -25,7 +26,10 @@ module Transport
 
     # -> Result.ok(series:) | fail(<primeira recusa>, details: { path:, problems: })
     def call(attrs:, by:, series: nil)
-      attrs = attrs.to_h.deep_stringify_keys.slice(*KEYS)
+      attrs = attrs.to_h.deep_stringify_keys
+      unknown = Support.unknown_keys(attrs, KEYS) + Support.unknown_keys(attrs["companion"], COMPANION_KEYS, "companion")
+      return Support.refuse(unknown) if unknown.any?
+
       problems = []
       values = read(attrs, series, problems)
 

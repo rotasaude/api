@@ -11,7 +11,10 @@ module Transport
 
     # -> Result.ok(destination:) | fail(:invalid_request, details: { path:, problems: }) | fail(:ibge_taken)
     def call(attrs:, by:, record: nil)
-      attrs = attrs.to_h.stringify_keys.slice(*KEYS)
+      attrs = attrs.to_h.stringify_keys
+      unknown = Support.unknown_keys(attrs, KEYS)
+      return Support.refuse(unknown) if unknown.any?
+
       clean, bad = validate(attrs, record)
       return Support.refuse(bad) if bad.any?
 
