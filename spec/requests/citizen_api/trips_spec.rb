@@ -73,6 +73,41 @@ RSpec.describe "Cidadão — minhas viagens", type: :request do
     expect(json_body["items"].map { |i| i["id"] }).to eq(rows.last(50).map(&:id))
   end
 
+  it "FW12: mais de 50 passadas e algumas futuras → todas as futuras primeiro, completa com as passadas mais recentes, crescente" do
+    past = (1..60).map { |n| passenger!(trip!(date: Date.current - n, destination: ponta_grossa), patient: patient) }
+    future = (1..3).map { |n| passenger!(trip!(date: Date.current + n, destination: ponta_grossa), patient: patient) }
+    today = passenger!(trip!(date: Date.current, departure: "23:00", back: "23:30", destination: ponta_grossa), patient: patient)
+
+    read!
+
+    ids = json_body["items"].map { |i| i["id"] }
+    expect(ids.size).to eq(50)
+    expect(ids.last(4)).to eq([ today.id ] + future.map(&:id))
+    expect(ids.first(46)).to eq(past.first(46).reverse.map(&:id)) # as 46 mais recentes (ontem para trás), crescente
+    expect(json_body["items"].map { |i| i["departure_at"] }).to eq(json_body["items"].map { |i| i["departure_at"] }.sort)
+  end
+
+  it "FW12: mais de 50 futuras → as 50 mais próximas, sem nenhuma passada" do
+    passenger!(trip!(date: Date.current - 1, destination: ponta_grossa), patient: patient)
+    future = (1..52).map { |n| passenger!(trip!(date: Date.current + n, destination: ponta_grossa), patient: patient) }
+
+    read!
+
+    expect(json_body["items"].map { |i| i["id"] }).to eq(future.first(50).map(&:id))
+  end
+
+  it "FW10: total de ajuda 0 → paid false mesmo sem pagamento a alcançar" do
+    tfd = tfd_case!(status: "travelling", patient: patient, destination: londrina)
+    leg = TfdLeg.create!(tfd_case: tfd, direction: "outbound", mode: "bus_ticket", date: Date.current, distance_km: 380,
+                         ticket_amount_cents: 100, ticket_carrier: "Viação", done_at: Time.current, created_by_user: committee!)
+    TfdAllowance.create!(tfd_case: tfd, tfd_leg: leg, person: "patient", kind: "ground_km", sigtap_code: "0803010125", quantity: 8,
+                         table_cents: 0, complement_cents: 0, total_cents: 0, competence: Date.current.strftime("%Y%m"))
+
+    read!
+
+    expect(json_body["tfd"].sole).to include("allowance_total_cents" => 0, "paid" => false)
+  end
+
   it "TFD aparece com allowance_total_cents e paid: false (pagamento parcial); rascunho nunca; returned aparece; laudo nunca" do
     tfd = tfd_case!(status: "authorized", patient: patient, destination: londrina)
     tfd_leg_done!(tfd, "outbound", Date.current - 1)
