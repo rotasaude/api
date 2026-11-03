@@ -95,6 +95,31 @@ RSpec.describe "Cidadão — caderneta de vacinação", type: :request do
     expect(response.body).not_to match(/atrasad/i)
   end
 
+  # V29: sem linhas materializadas, a leitura do cidadão calcula como a sala e
+  # grava as linhas; a trilha segue só a do cidadão.
+  it "nascido depois do go_live_on e sem linhas: aparece conferido, com as próximas doses e as linhas gravadas" do
+    VaccinationSetting.current.update!(go_live_on: now.to_date - 365)
+    patient.update_columns(birth_date: (now.to_date - 61).iso8601, sex: "female")
+    expect(VaccinationStatus.where(patient_id: patient.id)).to be_empty
+    events = []
+    allow(DomainEvents).to receive(:publish).and_wrap_original { |m, *args, **kw| events << args.first; m.call(*args, **kw) }
+
+    read!
+
+    expect(json_body["checked"]).to be(true)
+    expect(json_body["upcoming"]).not_to be_empty
+    expect(VaccinationStatus.where(patient_id: patient.id)).to exist
+    expect(events.count("clinical_record.viewed")).to eq(1)
+  end
+
+  it "nascido antes do go_live_on e sem linhas: segue não conferido" do
+    VaccinationSetting.current.update!(go_live_on: now.to_date - 30)
+    patient.update_columns(birth_date: (now.to_date - 61).iso8601, sex: "female")
+    read!
+    expect(json_body["checked"]).to be(false)
+    expect(json_body["upcoming"]).to eq([])
+  end
+
   it "upcoming não repete a dose que já foi aplicada" do
     patient.update_columns(birth_date: (now.to_date - 61).iso8601, sex: "female")
     VaccinationRecordCheck.create!(patient: patient, mode: "confirmed_complete", checked_by_user: room_member!(room), vaccine_room: room, checked_at: Time.current)

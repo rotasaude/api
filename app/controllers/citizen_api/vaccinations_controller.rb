@@ -13,11 +13,22 @@ module CitizenApi
       return render_error("not_verified", :forbidden) unless citizen.verification_level_verified?
 
       person = Timeline::Person.for_citizen(citizen)
+      refresh_unchecked!(person.patient_id)
       Timeline::Trail.viewed!(person: person, access: "citizen") if person.patient_id
       render json: Vaccination::CitizenView.call(patient_id: person.patient_id)
     end
 
     private
+
+    # V29: como a sala, calcula e grava a situação de quem ainda não tem
+    # conferência (quem nasceu depois do go_live_on sai conferido daqui).
+    def refresh_unchecked!(patient_id)
+      patient = patient_id && Patient.find_by(id: patient_id)
+      return unless patient
+      return if Vaccination::Statuses.checked?(patient.id)
+
+      Vaccination::Statuses.refresh!(patient)
+    end
 
     def require_vaccination!
       return if Vaccination::Gate.usable?(Current.city)
