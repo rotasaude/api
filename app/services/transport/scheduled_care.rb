@@ -7,7 +7,8 @@
 #    NUNCA é lido (pode trazer especialidade: "Clínica de Olhos");
 #  - horário do 17 vivo (scheduled/confirmed) na data, só com `health_unit_id`
 #    e só dessa unidade (origin "appointment"), do par validado do paciente;
-#    destino nulo (a unidade é da rede própria; a central escolhe);
+#    destination_id nulo, provider_name = nome da unidade e address = endereço
+#    dela (T32; nunca profissional nem tipo de atendimento);
 #  - TFD authorized/scheduled/travelling com `appointment_at` na data (origin
 #    "tfd"): destino do processo, prestador pelo nome quando houver.
 # Fica de fora quem já está ativo (não retirado) numa viagem não cancelada
@@ -48,10 +49,11 @@ module Transport
     end
 
     def appointments(range, health_unit_id)
-      rows = Appointment.where(status: Appointment::LIVE, health_unit_id: health_unit_id, scheduled_at: range).includes(:citizen)
+      rows = Appointment.where(status: Appointment::LIVE, health_unit_id: health_unit_id, scheduled_at: range).includes(:citizen, :health_unit)
       rows.filter_map do |appointment|
         patient = patient_of(appointment.citizen)
-        patient && item("appointment", appointment.id, patient, appointment.scheduled_at, nil, nil)
+        unit = appointment.health_unit
+        patient && item("appointment", appointment.id, patient, appointment.scheduled_at, nil, unit.name, unit_address(unit))
       end
     end
 
@@ -81,14 +83,18 @@ module Transport
       end.to_set
     end
 
-    def item(origin, id, patient, at, destination_id, provider_name)
-      { origin: origin, origin_id: id, patient: patient, at: at, destination_id: destination_id, provider_name: provider_name }
+    # "Rua X, 100, sala 2" (só as partes preenchidas); sem nenhuma, nulo.
+    def unit_address(unit) = [ unit.address_street, unit.address_number, unit.address_complement ].compact_blank.join(", ").presence
+
+    def item(origin, id, patient, at, destination_id, provider_name, address = nil)
+      { origin: origin, origin_id: id, patient: patient, at: at, destination_id: destination_id, provider_name: provider_name,
+        address: address }
     end
 
     def render(item)
       { "patient" => Json.patient(item[:patient]), "origin" => item[:origin], "origin_id" => item[:origin_id],
         "appointment_at" => item[:at].in_time_zone.iso8601,
-        "destination" => { "destination_id" => item[:destination_id], "provider_name" => item[:provider_name], "address" => nil } }
+        "destination" => { "destination_id" => item[:destination_id], "provider_name" => item[:provider_name], "address" => item[:address] } }
     end
   end
 end

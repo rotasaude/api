@@ -61,8 +61,9 @@ RSpec.describe Transport::ScheduledCare do
     expect(items.to_s).not_to include("Clínica de Olhos")
   end
 
-  it "horário do 17 só entra com health_unit_id (da unidade pedida, vivo, na data)" do
+  it "horário do 17 só entra com health_unit_id (da unidade pedida, vivo, na data); prestador e endereço = os da unidade (T32)" do
     unit = create_unit("UBS Transporte")
+    unit.update!(address_street: "Rua das Palmeiras", address_number: "120", address_complement: "Bloco B")
     other_unit = create_unit("UBS Outra")
     patient = transport_patient!
     appointment = transport_appointment!(patient, unit: unit, at: at("08:00"))
@@ -73,7 +74,10 @@ RSpec.describe Transport::ScheduledCare do
     items = described_class.call(date: day, health_unit_id: unit.id).select { |item| item["origin"] == "appointment" }
     expect(items).to eq([ { "patient" => Transport::Json.patient(patient), "origin" => "appointment", "origin_id" => appointment.id,
                             "appointment_at" => at("08:00").iso8601,
-                            "destination" => { "destination_id" => nil, "provider_name" => nil, "address" => nil } } ])
+                            "destination" => { "destination_id" => nil, "provider_name" => "UBS Transporte",
+                                               "address" => "Rua das Palmeiras, 120, Bloco B" } } ])
+    expect(described_class.call(date: day, health_unit_id: unit.id, destination_id: araucaria.id).map { |item| item["origin"] })
+      .not_to include("appointment")
   end
 
   it "TFD autorizado com atendimento na data entra com o destino do processo; rascunho e outro dia não" do

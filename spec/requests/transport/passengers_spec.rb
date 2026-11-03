@@ -13,6 +13,7 @@ RSpec.describe "Transporte — passageiros", type: :request do
                                                           stop_id: stop.id, destination_id: trip_destination.id,
                                                           takes_seat: true, wheelchair: false }.merge(over)
   end
+  # Sem `.last`: id é UUID (memória "Flakies de UUID e relógio"); confere o payload por inclusão.
   def events(name) = DomainEvent.where(name: name)
 
   before { sign_in_as(dispatcher!) }
@@ -100,6 +101,24 @@ RSpec.describe "Transporte — passageiros", type: :request do
     expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "origin_id" ])
   end
 
+  it "origem série: só a série ativa do paciente; suspensa ou encerrada → invalid_request em origin_id" do
+    patient = transport_patient!
+    series = lambda do |**over|
+      TransportSeries.create!({ patient: patient, transport_destination: trip_destination, weekdays: [ 1, 3, 5 ], appointment_time: "07:00",
+                                departure_time: "05:30", return_time: "12:00", boarding_label: "Praça Central",
+                                starts_on: Date.current - 10, created_by_user: dispatcher! }.merge(over))
+    end
+    suspended = series.call(suspended_from: Date.current, suspend_reason: "Paciente internado no hospital")
+    ended = series.call(ends_on: Date.current - 1)
+    [ suspended, ended ].each do |s|
+      add(patient, origin: "series", origin_id: s.id, exception_reason: nil)
+      expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "origin_id" ])
+    end
+    add(patient, origin: "series", origin_id: series.call(suspended_from: Date.current + 30, suspend_reason: "Férias do paciente previstas").id,
+                 exception_reason: nil)
+    expect([ response.status, json_body["origin"] ]).to eq([ 201, "series" ])
+  end
+
   it "parada de destino → stop_not_boarding; paciente, parada ou destino desconhecidos → 404; mesmo paciente duas vezes → patient_already_on_trip" do
     patient = transport_patient!
     add(patient, stop_id: trip.transport_trip_stops.find_by!(kind: "destination").id)
@@ -152,17 +171,23 @@ RSpec.describe "Transporte — passageiros", type: :request do
     expect(passenger.reload.removed_at).to be_nil
   end
 
-  it "viagem confirmada publica passenger_added/removed só com ids; planejada não publica" do
-    add(transport_patient!)
-    expect(events("transport.passenger_added").count).to eq(0)
+  it "toda entrada e retirada publica passenger_added/removed só com ids, planejada ou confirmada (o consumidor filtra)" do
+    planned_patient = transport_patient!
+    expect { add(planned_patient) }.to change { events("transport.passenger_added").count }.by(1)
+    planned_id = json_body["id"]
+    expect(events("transport.passenger_added").map(&:payload)).to include("trip_id" => trip.id, "passenger_id" => planned_id)
+    expect { json_delete_with_body "/transport/trips/#{trip.id}/passengers/#{planned_id}", reason: "Paciente avisou que não vai" }
+      .to change { events("transport.passenger_removed").count }.by(1)
+    expect(events("transport.passenger_removed").map(&:payload)).to include("trip_id" => trip.id, "passenger_id" => planned_id)
+
     trip.update_columns(status: "confirmed", confirmed_at: Time.current)
     patient = transport_patient!
     expect { add(patient, takes_seat: false) }.to change { events("transport.passenger_added").count }.by(1)
     pid = json_body["id"]
-    expect(events("transport.passenger_added").last.payload).to eq("trip_id" => trip.id, "passenger_id" => pid)
+    expect(events("transport.passenger_added").map(&:payload)).to include("trip_id" => trip.id, "passenger_id" => pid)
     expect { json_delete_with_body "/transport/trips/#{trip.id}/passengers/#{pid}", reason: "Paciente avisou que não vai" }
       .to change { events("transport.passenger_removed").count }.by(1)
-    expect(events("transport.passenger_removed").last.payload).to eq("trip_id" => trip.id, "passenger_id" => pid)
+    expect(events("transport.passenger_removed").map(&:payload)).to include("trip_id" => trip.id, "passenger_id" => pid)
   end
 
   it "passageiro de outra viagem → 404; só a central; transporte desligado → 403" do

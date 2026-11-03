@@ -15,7 +15,7 @@ module Transport
     DEPARTURE_CHANGE = 30.minutes
     SERIES_HORIZON_DAYS = 21
     PENDING_REASONS = %w[no_seat no_wheelchair_spot].freeze
-    EXPENSE_KINDS = %w[toll parking meal lodging other].freeze
+    EXPENSE_KINDS = %w[toll parking meal other].freeze
     PLATE = /\A[A-Z]{3}\d[A-Z\d]\d{2}\z/
     RENAVAM = /\A\d{11}\z/
     LICENSE_NUMBER = /\A\d{11}\z/

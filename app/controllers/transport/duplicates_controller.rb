@@ -3,11 +3,12 @@
 # como o Vaccination::DuplicatesController do 29 (V21) e o do 27a: busca da
 # cidade (Patients::Duplicates, a regra do 24a), candidato = a forma do 25
 # (`{ patient_id, display_name, birth_date, has_cpf }`) em `{ candidates }`.
-# Tudo só no corpo (query → 422). No máximo 10; trilha por candidato
+# Tudo só no corpo (query ou chave desconhecida → 422). No máximo 10; trilha por candidato
 # mostrado; 30 por minuto por usuário. Só a central.
 module Transport
   class DuplicatesController < BaseController
     LIMIT = 10
+    ALLOWED = %w[full_name birth_date mother_name].freeze
 
     before_action { forbid unless Access.dispatcher?(Current.user) }
 
@@ -17,6 +18,9 @@ module Transport
 
     def create
       return unless query_only!
+
+      unknown = (body.keys - ALLOWED).first
+      return render_refusal(unknown.to_s[0, KEY_PATH_MAX]) if unknown
 
       full_name = body_param("full_name")
       birth_date = body_param("birth_date")

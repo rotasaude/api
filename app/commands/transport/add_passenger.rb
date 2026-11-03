@@ -11,8 +11,9 @@
 #   6. o paciente já ativo nesta viagem → `patient_already_on_trip` (consulta +
 #      índice único parcial);
 #   7. lotação (Desvio 3) → `seats_full`/`wheelchair_full`, juntas;
-#   8. INSERT. Em viagem `confirmed`, evento transport.passenger_added (só ids;
-#      o aviso ao cidadão é da Task 14).
+#   8. INSERT e evento transport.passenger_added (só ids) em TODA entrada,
+#      como o trip_cancelled: o consumidor dos avisos (Task 14) filtra pela
+#      situação da viagem (confirmed/in_progress).
 # `appointment_at` padrão: o da origem; `provider_name` padrão: o NOME do
 # prestador do pedido do 26a ou do TFD — o texto livre `schedule_place` nunca
 # (Desvio 6). Nada do paciente, do acompanhante nem do destino em Result.details.
@@ -62,7 +63,7 @@ module Transport
         next Support.failure(full) if full.any?
 
         passenger = TransportTripPassenger.create!(row(trip, form, patient, stop, destination, source, by))
-        DomainEvents.publish("transport.passenger_added", trip_id: trip.id, passenger_id: passenger.id) if trip.status == "confirmed"
+        DomainEvents.publish("transport.passenger_added", trip_id: trip.id, passenger_id: passenger.id)
         Result.ok(passenger: passenger)
       end
     rescue ActiveRecord::RecordNotUnique
@@ -130,8 +131,17 @@ module Transport
       when "regulation" then REGULATION_STATUSES.include?(record.status)
       when "appointment" then Appointment::LIVE.include?(record.status)
       when "tfd" then TFD_STATUSES.include?(record.status)
+      when "series" then series_active?(record)
       else true
       end
+    end
+
+    # Série ativa (a leitura <series> da Task 7): nem suspensa (suspended_from
+    # <= hoje) nem encerrada (ends_on < hoje).
+    def series_active?(series, today: Time.zone.today)
+      return false if series.suspended_from && series.suspended_from <= today
+
+      series.ends_on.nil? || series.ends_on >= today
     end
 
     def default_appointment(source)

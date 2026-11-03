@@ -47,6 +47,18 @@ RSpec.describe "Transporte — busca de pessoa e duplicados", type: :request do
       expect(trail).to be_empty
     end
 
+    it "T30: par validado sem paciente vira paciente pela regra comum do 27a/29 e volta; a segunda busca não cria outro" do
+      citizen = verified_citizen!(exam_seq!)
+      expect(Patient.where(cpf: citizen.cpf)).to be_empty
+      expect { lookup(cpf: citizen.cpf) }.to change(Patient, :count).by(1)
+      created = Patient.find_by!(cpf: citizen.cpf)
+      expect(json_body).to eq("patient_id" => created.id, "display_name" => created.display_name, "has_cpf" => true,
+                              "cns_masked" => created.cns_masked)
+      expect(citizen.reload.patient_id).to eq(created.id)
+      expect(trail.map { |p| p["patient_id"] }).to eq([ created.id ])
+      expect { lookup(cpf: citizen.cpf) }.not_to change(Patient, :count)
+    end
+
     it "CPF na query → 422 invalid_request, nada lido da URL" do
       patient = transport_patient!
       lookup({}, query: "?cpf=#{patient.cpf}")
@@ -91,6 +103,8 @@ RSpec.describe "Transporte — busca de pessoa e duplicados", type: :request do
 
       duplicates({ full_name: "José Souza Lima", birth_date: "1960-02-01" }, query: "?full_name=x")
       expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "full_name") ])
+      duplicates(full_name: "José Souza Lima", birth_date: "1960-02-01", cpf: twin.cpf)
+      expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "cpf") ])
       duplicates(full_name: "José Souza Lima", birth_date: "01/02/1960")
       expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "birth_date") ])
       expect(trail.size).to eq(1)

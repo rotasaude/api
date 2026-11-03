@@ -5,8 +5,8 @@
 #     congelada pelo trigger; nunca 500);
 #   - viagem fora de planned/confirmed → `trip_not_open`;
 #   - já retirado → `not_found`.
-# Em viagem `confirmed`, evento transport.passenger_removed (só ids; o aviso
-# `removed` é da Task 14).
+# Evento transport.passenger_removed (só ids) em TODA retirada, como o
+# trip_cancelled: o consumidor dos avisos (Task 14) filtra pela situação.
 module Transport
   module RemovePassenger
     module_function
@@ -28,7 +28,7 @@ module Transport
         next Result.fail(:not_found) if passenger.removed_at
 
         passenger.update!(removed_at: Time.current, removed_by_user: by, remove_reason: text)
-        DomainEvents.publish("transport.passenger_removed", trip_id: trip.id, passenger_id: passenger.id) if trip.status == "confirmed"
+        DomainEvents.publish("transport.passenger_removed", trip_id: trip.id, passenger_id: passenger.id)
         Result.ok(passenger: passenger)
       end
     end
