@@ -54,6 +54,42 @@ RSpec.describe "Transições da campanha", type: :request do
     expect(campaign.reload.status).to eq("draft")
   end
 
+  describe "critério de vacinação com o interruptor vaccination desligado (V13)" do
+    let(:penta) { { "kind" => "vaccine_overdue", "immunobiological_codes" => [ "42" ] } }
+    let(:vaccine_campaign) do
+      city = vaccination_city!
+      draft_campaign!(by: manager, audience: city_audience(penta)).tap do
+        Platform::Features.set!(city: city, key: "vaccination", enabled: false, maintainer: ledi_maintainer!)
+      end
+    end
+
+    it "enviar e agendar: 403 feature_disabled (feature vaccination), segue draft, e o interruptor é lido FORA da transação" do
+      sign_in!
+      campaign = vaccine_campaign
+      depths = []
+      allow(Vaccination::Gate).to receive(:usable?).and_wrap_original do |m, *args|
+        depths << ApplicationRecord.connection.open_transactions
+        m.call(*args)
+      end
+      baseline = ApplicationRecord.connection.open_transactions # transação do exemplo
+      json_post "/campaigns/#{campaign.id}/send"
+      expect(status_and_error).to eq([ 403, "feature_disabled" ])
+      expect(body["feature"]).to eq("vaccination")
+      json_post "/campaigns/#{campaign.id}/schedule", send_at: 1.day.from_now.iso8601
+      expect(status_and_error).to eq([ 403, "feature_disabled" ])
+      expect(campaign.reload.status).to eq("draft")
+      expect(Vaccination::Gate).to have_received(:usable?).twice
+      expect(depths).to eq([ baseline, baseline ])
+    end
+
+    it "sem critério de vacinação o interruptor nem é consultado" do
+      sign_in!
+      expect(Vaccination::Gate).not_to receive(:usable?)
+      json_post "/campaigns/#{campaign.id}/send"
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
   it "menos de 5 telefones no envio ou no agendamento: 422 below_minimum e segue draft" do
     sign_in!
     centro = Neighborhood.create!(name: "Centro", source: "seed")

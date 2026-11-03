@@ -3,6 +3,7 @@
 module Campaigns
   class Schedule
     def self.call(campaign:, send_at:, by:)
+      vaccination = SendGate.vaccination_for(campaign) # O40: fora da transação
       ApplicationRecord.transaction do
         campaign.lock!
         next Result.fail(:invalid_transition) unless campaign.status == "draft"
@@ -12,7 +13,7 @@ module Campaigns
           next Result.fail(:invalid_send_at)
         end
 
-        gate = SendGate.failure_for(campaign)
+        gate = SendGate.failure_for(campaign, vaccination: vaccination)
         next gate if gate
 
         campaign.update!(status: "scheduled", send_at: at, dispatched_by_user: by)

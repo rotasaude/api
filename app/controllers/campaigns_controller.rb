@@ -12,7 +12,8 @@ class CampaignsController < ApplicationController
   ERROR_STATUS = {
     invalid_campaign: :unprocessable_entity, invalid_audience: :unprocessable_entity,
     below_minimum: :unprocessable_entity, not_editable: :unprocessable_entity,
-    invalid_transition: :unprocessable_entity, invalid_send_at: :unprocessable_entity
+    invalid_transition: :unprocessable_entity, invalid_send_at: :unprocessable_entity,
+    feature_disabled: :forbidden
   }.freeze
 
   before_action :require_campaign_manager
@@ -41,7 +42,10 @@ class CampaignsController < ApplicationController
   def preview
     audience = body_params["audience"]
     errors = Campaigns::AudienceValidation.errors(audience)
-    return render(json: { error: "invalid_audience", details: errors }, status: :unprocessable_entity) if errors.any?
+    if errors.any?
+      failure = Campaigns::AudienceValidation.failure(errors)
+      return render(json: { error: failure.reason.to_s }.merge(failure.details), status: ERROR_STATUS.fetch(failure.reason))
+    end
 
     render json: Campaigns::Audience.new(audience).preview
   end

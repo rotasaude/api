@@ -9,7 +9,7 @@ module Campaigns
       return Result.fail(:invalid_campaign, details: { details: content }) if content.any?
 
       audience = AudienceValidation.errors(attrs["audience"])
-      return Result.fail(:invalid_audience, details: { details: audience }) if audience.any?
+      return AudienceValidation.failure(audience) if audience.any?
 
       campaign = ApplicationRecord.transaction do
         Campaign.create!(title: attrs["title"], body: attrs["body"], created_by_user: by,

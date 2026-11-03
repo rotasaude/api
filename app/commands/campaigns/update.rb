@@ -6,6 +6,8 @@ module Campaigns
 
     def self.call(campaign:, attrs:)
       attrs = attrs.to_h.stringify_keys.slice(*FIELDS)
+      # O40: o interruptor é lido fora da transação da cidade.
+      vaccination = attrs.key?("audience") ? AudienceValidation.vaccination_usable?(attrs["audience"]) : false
       ApplicationRecord.transaction do
         campaign.lock!
         next Result.fail(:not_editable) unless campaign.status == "draft"
@@ -14,8 +16,8 @@ module Campaigns
         next Result.fail(:invalid_campaign, details: { details: content }) if content.any?
 
         if attrs.key?("audience")
-          audience = AudienceValidation.errors(attrs["audience"])
-          next Result.fail(:invalid_audience, details: { details: audience }) if audience.any?
+          audience = AudienceValidation.errors(attrs["audience"], vaccination: vaccination)
+          next AudienceValidation.failure(audience) if audience.any?
 
           attrs["audience"] = AudienceSchema.normalize(attrs["audience"])
         end

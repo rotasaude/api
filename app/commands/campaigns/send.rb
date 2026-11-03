@@ -4,11 +4,12 @@
 module Campaigns
   class Send
     def self.call(campaign:, by:)
+      vaccination = SendGate.vaccination_for(campaign) # O40: fora da transação
       ApplicationRecord.transaction do
         campaign.lock!
         next Result.fail(:invalid_transition) unless campaign.status == "draft"
 
-        gate = SendGate.failure_for(campaign)
+        gate = SendGate.failure_for(campaign, vaccination: vaccination)
         next gate if gate
 
         campaign.update!(status: "sending", dispatched_by_user: by)

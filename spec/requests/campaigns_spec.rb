@@ -133,6 +133,50 @@ RSpec.describe "Campanhas — rascunho e prévia", type: :request do
     end
   end
 
+  describe "critério de vacinação com vaccination desligado (V13)" do
+    let(:penta) { { "kind" => "vaccine_overdue", "immunobiological_codes" => [ "42" ] } }
+
+    before { sign_in_as(manager) }
+
+    it "criar, editar e prévia: 403 feature_disabled; sem critério de vacina o interruptor não é consultado" do
+      expect(Vaccination::Gate).not_to receive(:usable?)
+      json_post "/campaigns", valid
+      expect(response).to have_http_status(:created)
+      id = body.dig("campaign", "id")
+      patch "/campaigns/#{id}", params: { audience: city_audience }, as: :json
+      expect(response).to have_http_status(:ok)
+      json_post "/campaigns/preview", audience: city_audience
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "com critério: 403 {error, feature}" do
+      json_post "/campaigns", valid.merge(audience: city_audience(penta))
+      expect(status_and_error).to eq([ 403, "feature_disabled" ])
+      expect(body["feature"]).to eq("vaccination")
+      expect(Campaign.count).to eq(0)
+
+      draft = draft_campaign!(by: manager)
+      patch "/campaigns/#{draft.id}", params: { audience: city_audience(penta) }, as: :json
+      expect(status_and_error).to eq([ 403, "feature_disabled" ])
+      expect(draft.reload.audience).to eq(city_audience)
+
+      json_post "/campaigns/preview", audience: city_audience(penta)
+      expect(status_and_error).to eq([ 403, "feature_disabled" ])
+    end
+
+    it "ligado: cria e a campanha enviada devolve vaccinated_count em GET /campaigns/:id" do
+      vaccination_city!
+      json_post "/campaigns", valid.merge(audience: city_audience(penta))
+      expect(response).to have_http_status(:created)
+      expect(body["campaign"]["vaccinated_count"]).to be_nil
+      campaign = Campaign.find(body.dig("campaign", "id"))
+      campaign.update_columns(status: "sending", dispatched_by_user_id: manager.id)
+      campaign.update_columns(status: "sent", sms_enabled: false, recipients_count: 0, phones_count: 0, dispatched_at: Time.current)
+      get "/campaigns/#{campaign.id}"
+      expect(body["campaign"]["vaccinated_count"]).to eq(0)
+    end
+  end
+
   describe "só o campaign_manager" do
     (Membership::ROLES - %w[campaign_manager]).each do |role|
       it "#{role}: 403 missing_role em todas, nada muda" do
