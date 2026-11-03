@@ -73,7 +73,7 @@ RSpec.describe "Transporte — painel", type: :request do
       expect(json_body.fetch("trips")).to eq("lt5")
     end
 
-    it "TFD: processos do mês por situação atual (1..4 lt5), pagamentos do mês somados sem supressão" do
+    it "TFD: processos do mês por situação atual (1..4 lt5) sem rascunho (FW13), pagamentos do mês somados sem supressão" do
       authorized = tfd_case!(status: "authorized")
       tfd_case!(status: "authorized")
       tfd_case!(status: "draft")
@@ -85,18 +85,26 @@ RSpec.describe "Transporte — painel", type: :request do
 
       get "/transport/dashboard", params: { month: month }
 
-      expect(json_body.fetch("tfd_by_status")).to eq("authorized" => "lt5", "draft" => "lt5")
+      expect(json_body.fetch("tfd_by_status")).to eq("authorized" => "lt5")
       expect(json_body.fetch("tfd_paid_cents")).to eq(42_500)
     end
 
-    it "sem o TFD ligado, tfd_by_status é {}" do
-      tfd_case!(status: "authorized")
+    it "sem o TFD ligado, tfd_by_status é {} e tfd_paid_cents 0 (FW13), mesmo com pagamento no mês" do
+      tfd = tfd_case!(status: "authorized")
+      TfdPayment.create!(tfd_case: tfd, by_user: committee!, paid_on: Time.zone.today, amount_cents: 30_000, payment_method: "pix",
+                         receipt_number: "R1")
       Platform::Features.set!(city: city, key: "tfd", enabled: false, maintainer: ledi_maintainer!)
 
       get "/transport/dashboard", params: { month: month }
 
       expect(response).to have_http_status(:ok)
       expect(json_body.fetch("tfd_by_status")).to eq({})
+      expect(json_body.fetch("tfd_paid_cents")).to eq(0)
+    end
+
+    it "FW13: a viagem done sempre tem veículo — o numerador e o denominador da ocupação são das mesmas viagens" do
+      trip = done_trip(riders: 3)
+      expect { trip.update_columns(transport_vehicle_id: nil) }.to raise_error(ActiveRecord::StatementInvalid, /ck_transport_trips_staffed/)
     end
 
     it "sem month usa o mês corrente; month inválido ou query estranha → 422 com path" do

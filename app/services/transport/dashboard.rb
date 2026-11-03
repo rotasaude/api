@@ -14,7 +14,11 @@
 #  - km = Σ (odômetro final − inicial) do diário; fuel_cents = Σ dos
 #    abastecimentos do diário; as somas nunca são suprimidas;
 #  - tfd_by_status: situação ATUAL dos processos criados no mês (só as com
-#    processo); `{}` sem o TFD utilizável (`tfd_enabled`, lido fora da transação);
+#    processo), sem rascunho (a comissão não vê rascunho; FW13); `{}` sem o TFD
+#    utilizável (`tfd_enabled`, lido fora da transação); tfd_paid_cents = 0
+#    sem o TFD utilizável (FW13);
+#  - a viagem `done` sempre tem veículo (ck_transport_trips_staffed): o
+#    numerador e o denominador da ocupação são das mesmas viagens;
 #  - supressão (::Admin::SmallCount.small?) DEPOIS de agregar: contagem de 1 a 4
 #    (viagens, faltas, exceções, processos por situação) vira "lt5"; 0 fica 0.
 module Transport
@@ -38,7 +42,7 @@ module Transport
         km: km(trip_ids),
         fuel_cents: fuel_cents(trip_ids),
         tfd_by_status: tfd_enabled ? tfd_by_status(from, to) : {},
-        tfd_paid_cents: TfdPayment.where(paid_on: first..last).sum(:amount_cents).to_i,
+        tfd_paid_cents: tfd_enabled ? TfdPayment.where(paid_on: first..last).sum(:amount_cents).to_i : 0,
         exceptions: suppress(riders[:exceptions]) }
     end
 
@@ -74,7 +78,7 @@ module Transport
     private_class_method :fuel_cents
 
     def tfd_by_status(from, to)
-      TfdCase.where(created_at: from...to).group(:status).count.sort.to_h { |status, count| [ status, suppress(count) ] }
+      TfdCase.where(created_at: from...to).where.not(status: "draft").group(:status).count.sort.to_h { |status, count| [ status, suppress(count) ] }
     end
     private_class_method :tfd_by_status
   end
