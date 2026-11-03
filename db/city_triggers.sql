@@ -2841,3 +2841,138 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 30 (ADR 0048): transporte sanitário e TFD. O passageiro nunca some
+-- nem troca de viagem, paciente, origem ou referência; a retirada é gravada
+-- uma vez; a presença (attendance/companion_attendance) só muda com a viagem
+-- in_progress ou sob rota.transport_correction (Transport::CorrectAttendance,
+-- pelo TransportTripPassenger.with_attendance_correction) — antes da saída, só
+-- o acompanhante entra (NULL → pending) ou sai (pending → NULL); a
+-- anonimização (LGPD) é gravada uma vez e, na mesma escrita, as colunas
+-- cifradas só vão a NULL; anonimizado, congela. Sob rota.reencrypting
+-- regrava só as cifradas. Parada com passageiro não sai. O aviso ao cidadão só
+-- é lido, uma vez (a exclusão do par o apaga). Diário de bordo, correção de
+-- presença, andamento, ajuda de custo, pagamento e prestação de contas do TFD:
+-- só acréscimo (as cifradas pela re-cifra). Frota, destino, viagem, série,
+-- processo, trecho e parâmetros nunca somem. TRUNCATE recusado nas 18 tabelas.
+CREATE OR REPLACE FUNCTION rota_transport_trip_passenger_guard() RETURNS trigger AS $fn$
+DECLARE
+  encrypted text[] := ARRAY['provider_name', 'address', 'companion_name', 'companion_document', 'companion_reason',
+                            'exception_note', 'remove_reason'];
+  item text;
+  trip_status text;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'transport_trip_passengers: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.anonymized_at IS NOT NULL THEN
+    RAISE EXCEPTION 'transport_trip_passengers: an anonymized passenger never changes';
+  END IF;
+  IF ROW(NEW.transport_trip_id, NEW.patient_id, NEW.origin, NEW.regulation_request_id, NEW.appointment_id, NEW.tfd_case_id,
+         NEW.transport_series_id)
+     IS DISTINCT FROM ROW(OLD.transport_trip_id, OLD.patient_id, OLD.origin, OLD.regulation_request_id, OLD.appointment_id,
+                          OLD.tfd_case_id, OLD.transport_series_id) THEN
+    RAISE EXCEPTION 'transport_trip_passengers: trip, patient, origin and references never change';
+  END IF;
+  IF NEW.anonymized_at IS NOT NULL THEN
+    FOREACH item IN ARRAY encrypted LOOP
+      IF to_jsonb(NEW) -> item <> 'null'::jsonb AND (to_jsonb(NEW) -> item) IS DISTINCT FROM (to_jsonb(OLD) -> item) THEN
+        RAISE EXCEPTION 'transport_trip_passengers: on anonymization the encrypted columns only go to NULL';
+      END IF;
+    END LOOP;
+    IF (to_jsonb(NEW) - encrypted - 'anonymized_at' - 'updated_at') IS DISTINCT FROM (to_jsonb(OLD) - encrypted - 'anonymized_at' - 'updated_at') THEN
+      RAISE EXCEPTION 'transport_trip_passengers: anonymization only clears the encrypted columns';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF OLD.removed_at IS NOT NULL AND NEW.removed_at IS DISTINCT FROM OLD.removed_at THEN
+    RAISE EXCEPTION 'transport_trip_passengers: a passenger is removed once';
+  END IF;
+  IF NEW.attendance IS DISTINCT FROM OLD.attendance OR NEW.companion_attendance IS DISTINCT FROM OLD.companion_attendance THEN
+    IF current_setting('rota.transport_correction', true) = 'on' THEN
+      RETURN NEW;
+    END IF;
+    SELECT status INTO trip_status FROM transport_trips WHERE id = NEW.transport_trip_id;
+    IF trip_status = 'in_progress' THEN
+      RETURN NEW;
+    END IF;
+    IF trip_status IN ('planned', 'confirmed') AND NEW.attendance = OLD.attendance
+       AND ((OLD.companion_attendance IS NULL AND NEW.companion_attendance = 'pending')
+            OR (OLD.companion_attendance = 'pending' AND NEW.companion_attendance IS NULL)) THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'transport_trip_passengers: attendance is frozen';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_transport_trip_stop_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF EXISTS (SELECT 1 FROM transport_trip_passengers WHERE transport_trip_stop_id = OLD.id) THEN
+    RAISE EXCEPTION 'transport_trip_stops: stop in use, DELETE refused';
+  END IF;
+  RETURN OLD;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_transport_trip_notice_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF (to_jsonb(NEW) - 'read_at') IS DISTINCT FROM (to_jsonb(OLD) - 'read_at') THEN
+    RAISE EXCEPTION 'transport_trip_notices: only read_at changes';
+  END IF;
+  IF OLD.read_at IS NOT NULL OR NEW.read_at IS NULL THEN
+    RAISE EXCEPTION 'transport_trip_notices: a notice is read once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.transport_trips') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS transport_trip_passengers_guard ON transport_trip_passengers';
+    EXECUTE 'CREATE TRIGGER transport_trip_passengers_guard BEFORE UPDATE OR DELETE ON transport_trip_passengers
+      FOR EACH ROW EXECUTE FUNCTION rota_transport_trip_passenger_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS transport_trip_stops_guard ON transport_trip_stops';
+    EXECUTE 'CREATE TRIGGER transport_trip_stops_guard BEFORE DELETE ON transport_trip_stops
+      FOR EACH ROW EXECUTE FUNCTION rota_transport_trip_stop_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS transport_trip_notices_guard ON transport_trip_notices';
+    EXECUTE 'CREATE TRIGGER transport_trip_notices_guard BEFORE UPDATE ON transport_trip_notices
+      FOR EACH ROW EXECUTE FUNCTION rota_transport_trip_notice_guard()';
+    FOREACH item IN ARRAY ARRAY['transport_attendance_corrections', 'tfd_case_events'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_reencryption_only', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')',
+                     item || '_reencryption_only', item);
+    END LOOP;
+    EXECUTE 'DROP TRIGGER IF EXISTS tfd_accountability_reencryption_only ON tfd_accountability';
+    EXECUTE 'CREATE TRIGGER tfd_accountability_reencryption_only BEFORE UPDATE OR DELETE ON tfd_accountability
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''filename'')';
+    FOREACH item IN ARRAY ARRAY['transport_trip_logs', 'tfd_allowances', 'tfd_payments'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['transport_settings', 'transport_vehicles', 'transport_drivers', 'transport_destinations',
+                                'transport_series', 'transport_trips', 'tfd_cases', 'tfd_legs'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
+                     item || '_no_delete', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['transport_settings', 'transport_vehicles', 'transport_drivers', 'transport_destinations',
+                                'transport_series', 'transport_trips', 'transport_trip_stops', 'transport_trip_passengers',
+                                'transport_trip_logs', 'transport_attendance_corrections', 'transport_pending_items',
+                                'transport_trip_notices', 'tfd_cases', 'tfd_case_events', 'tfd_legs', 'tfd_allowances',
+                                'tfd_payments', 'tfd_accountability'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

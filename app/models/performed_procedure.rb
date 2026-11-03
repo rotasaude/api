@@ -4,7 +4,9 @@
 # um estabelecimento: unidade de saúde ou laboratório municipal. O motivo do
 # cancelamento é cifrado com a chave da cidade e nunca aparece no inspect.
 class PerformedProcedure < ApplicationRecord
-  SOURCES = %w[attendance consultation lab_report manual].freeze
+  # ADR 0048: `tfd` — uma linha por ajuda de custo (tfd_allowance_id único),
+  # com o trecho de rastro (tfd_leg_id).
+  SOURCES = %w[attendance consultation lab_report manual tfd].freeze
   INSTRUMENTS = %w[bpa_i bpa_c not_bpa].freeze
   CHARACTERS = %w[elective urgent].freeze
   STATUSES = %w[recorded cancelled].freeze
@@ -20,6 +22,8 @@ class PerformedProcedure < ApplicationRecord
   belongs_to :attendance, optional: true
   belongs_to :consultation, optional: true
   belongs_to :lab_report_item, optional: true
+  belongs_to :tfd_allowance, optional: true
+  belongs_to :tfd_leg, optional: true
   belongs_to :billing_period, optional: true
   belongs_to :billing_export, optional: true
 

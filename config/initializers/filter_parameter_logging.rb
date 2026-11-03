@@ -105,7 +105,14 @@ Rails.application.config.filter_parameters += [
   # CNES solicitante, as temperaturas e a situação da caderneta (série, próxima
   # dose e data prevista) (`reason`, `cpf`, `cns`, `items` e
   # `place` já estavam acima).
-  /\A(immunobiological_code|immunobiological_codes|dose_code|lot_id|lot_number|vial_id|manufacturer_code|manufacturer_key|manufacturer_name|strategy|care_group|route|site|maternal_condition|applied_at|applied_on|place|items|replacement|override_reason|pfx_base64|pfx_password|requester_cnes|current_c|min_c|max_c|series|next_dose_code|due_on)\z/
+  /\A(immunobiological_code|immunobiological_codes|dose_code|lot_id|lot_number|vial_id|manufacturer_code|manufacturer_key|manufacturer_name|strategy|care_group|route|site|maternal_condition|applied_at|applied_on|place|items|replacement|override_reason|pfx_base64|pfx_password|requester_cnes|current_c|min_c|max_c|series|next_dose_code|due_on)\z/,
+  # ADR 0048: transporte sanitário e TFD — CNH do motorista, acompanhante e
+  # documento dele, prestador, endereço e hora do atendimento do passageiro,
+  # nota da exceção, laudo (CID, SIGTAP, justificativa), recibo, empresa da
+  # passagem, diário de bordo (odômetro, combustível, despesas, posto) e o
+  # comprovante da prestação de contas (`cpf`, `cns`, `reason`, `note`,
+  # `address` e `data` já estavam acima).
+  /\A(license_number|companion|document|provider_name|address|exception_note|appointment_at|report|cid10|sigtap_code|justification|companion_reason|receipt_number|carrier|odometer_start|odometer_end|fuel|expenses|station|filename|data)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

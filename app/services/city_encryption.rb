@@ -165,7 +165,19 @@ module CityEncryption
     [ Immunization, :lot_number_text ], [ Immunization, :manufacturer_text ], [ Immunization, :place_text ],
     [ Immunization, :override_reason ], [ Immunization, :cancel_reason ],
     [ RndsOutboxEntry, :payload ],
-    [ VialOpening, :close_reason ], [ StockLotBlock, :decision_reason ]
+    [ VialOpening, :close_reason ], [ StockLotBlock, :decision_reason ],
+    # ADR 0048: CNH do motorista; prestador, endereço e acompanhante da série e
+    # do passageiro; motivos (suspensão, cancelamento, exceção, retirada,
+    # correção, andamento do TFD); o laudo do TFD e o nome do comprovante.
+    [ TransportDriver, :license_number ],
+    [ TransportSeries, :provider_name ], [ TransportSeries, :address ], [ TransportSeries, :companion_name ],
+    [ TransportSeries, :companion_document ], [ TransportSeries, :companion_reason ], [ TransportSeries, :suspend_reason ],
+    [ TransportTrip, :cancel_reason ],
+    [ TransportTripPassenger, :provider_name ], [ TransportTripPassenger, :address ], [ TransportTripPassenger, :companion_name ],
+    [ TransportTripPassenger, :companion_document ], [ TransportTripPassenger, :companion_reason ],
+    [ TransportTripPassenger, :exception_note ], [ TransportTripPassenger, :remove_reason ],
+    [ TransportAttendanceCorrection, :reason ],
+    [ TfdCase, :report ], [ TfdCaseEvent, :reason ], [ TfdAccountability, :filename ]
   ].freeze
 
   module_function

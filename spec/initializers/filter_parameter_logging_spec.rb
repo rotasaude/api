@@ -26,7 +26,8 @@ RSpec.describe "filter_parameters da farmácia" do
     expect(filtered).to eq("prescriber" => "[FILTERED]", "retention" => "[FILTERED]", "notification_number" => "[FILTERED]",
                            "counted_quantity" => "[FILTERED]", "quantity_received" => "[FILTERED]",
                            "quantity" => "5", "location_id" => "abc", "prescribers" => "x",
-                           "document" => { "kind" => "donation", "number" => "[FILTERED]", "supplier" => "[FILTERED]" },
+                           # ADR 0048: `document` (documento do acompanhante) filtra o objeto inteiro.
+                           "document" => "[FILTERED]",
                            "items" => "[FILTERED]", "supplier_id" => "9")
   end
 

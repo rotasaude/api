@@ -15,6 +15,8 @@ class RegulationRequest < ApplicationRecord
   belongs_to :requester_unit, class_name: "HealthUnit"
   belongs_to :addendum, class_name: "ConsultationAddendum", optional: true
   belongs_to :appointment_request, optional: true
+  # ADR 0048: o prestador do agendamento externo (só o NOME vai ao transporte).
+  belongs_to :care_provider, optional: true
   has_many :events, -> { order(:created_at, :id) }, class_name: "RegulationRequestEvent", inverse_of: :regulation_request,
                                                     dependent: :restrict_with_error
   has_many :authorizations, -> { order(:created_at, :id) }, class_name: "RegulationAuthorization", inverse_of: :regulation_request,

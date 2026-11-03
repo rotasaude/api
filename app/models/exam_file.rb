@@ -2,6 +2,10 @@
 # (como Signature#signed_pdf). Nunca mudam; consumed_at quando ligado a um
 # pedido ou resultado; o órfão de 24 h é apagado pelo job diário.
 class ExamFile < ApplicationRecord
+  # ck_exam_files_purpose: o upload que não é de exame — relatório anual do
+  # EQA (ADR 0038) e prestação de contas do TFD (ADR 0048).
+  PURPOSES = %w[eqa_annual_report tfd_accountability].freeze
+
   encrypts :data
 
   belongs_to :uploaded_by_user, class_name: "User", optional: true

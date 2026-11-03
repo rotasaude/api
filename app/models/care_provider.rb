@@ -1,7 +1,8 @@
 # Prestador da regulação (ADR 0044): a unidade da rede (own, com a unidade e o
 # CNES dela, lido da unidade na hora do uso) ou um prestador externo (contratado, consórcio, PPI; CNES
 # obrigatório). Nunca é apagado (trigger): desativa-se. Tipo, CNES e unidade
-# são CHECKs do banco; a validação com mensagem é dos comandos.
+# são CHECKs do banco; a validação com mensagem é dos comandos. ADR 0048: o
+# município do prestador (ibge_code, 7 dígitos; nulo = a própria cidade).
 class CareProvider < ApplicationRecord
   belongs_to :health_unit, optional: true
   belongs_to :updated_by_user, class_name: "User"

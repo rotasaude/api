@@ -3,7 +3,9 @@
 # antigos continuam apontando para ela.
 class HealthUnit < ApplicationRecord
   # ADR 0046: `ceo` (Centro de Especialidades Odontológicas), com perfil próprio.
-  KINDS = %w[ubs upa hospital other ceo].freeze
+  # ADR 0048: `health_management` (secretaria ou central de regulação), a
+  # unidade de faturamento do TFD — sem atendimento, nunca APS.
+  KINDS = %w[ubs upa hospital other ceo health_management].freeze
   # ADR 0030: quem passa pela escuta inicial (demanda espontânea, ou todos).
   SCREENING_SCOPES = %w[walk_in all].freeze
 

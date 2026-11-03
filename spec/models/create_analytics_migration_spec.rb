@@ -4,6 +4,7 @@ require Rails.root.join("db/city_migrate/20261013900001_add_exam_tracking.rb").t
 require Rails.root.join("db/city_migrate/20261021900001_add_procedure_billing.rb").to_s
 require Rails.root.join("db/city_migrate/20261027900002_add_disease_surveillance.rb").to_s
 require Rails.root.join("db/city_migrate/20261029900001_add_pharmacy_stock.rb").to_s
+require Rails.root.join("db/city_migrate/20261103900001_add_sanitary_transport.rb").to_s
 # F-14.1: o down() da migração de cidade 20260930200001 desfaz o que o up()
 # cria (duas tabelas e o papel analyst no CHECK de memberships), e o up()
 # seguinte restaura o schema idêntico. O down recusa quando já existe
@@ -23,15 +24,16 @@ RSpec.describe "Migração de cidade 20260930200001 (CreateAnalytics): down e up
     models.each(&:reset_column_information)
   end
 
-  # 20261029900001 (módulo 27a) reescreve ck_memberships_role com os papéis
+  # 20261103900001 (módulo 30) reescreve ck_memberships_role com os papéis
   # exam_regulator/exam_provider (21a), lab_staff/lab_releaser (21b),
-  # billing_clerk (22), surveillance (25), care_regulator (26a) e
-  # pharmacist/pharmacy_assistant/stock_keeper (27a); o up de
+  # billing_clerk (22), surveillance (25), care_regulator (26a),
+  # pharmacist/pharmacy_assistant/stock_keeper (27a) e
+  # transport_dispatcher/tfd_committee/driver (30); o up de
   # CreateAnalytics volta a lista fixa sem eles. As migrações do 21a, do 21b,
-  # do 22, do 25, do 26a e do 27a são irreversíveis: a lista volta à mão,
+  # do 22, do 25, do 26a, do 27a e do 30 são irreversíveis: a lista volta à mão,
   # igual à da última.
   def restore_exam_roles
-    quoted = AddPharmacyStock::ROLES.map { |role| "'#{role}'" }.join(", ")
+    quoted = AddSanitaryTransport::ROLES.map { |role| "'#{role}'" }.join(", ")
     conn.remove_check_constraint :memberships, name: "ck_memberships_role"
     conn.add_check_constraint :memberships, "role::text = ANY (ARRAY[#{quoted}]::text[])", name: "ck_memberships_role"
   end

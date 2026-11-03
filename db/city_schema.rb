@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -456,6 +456,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.string "cnes", limit: 7
     t.datetime "created_at", null: false
     t.uuid "health_unit_id"
+    t.string "ibge_code", limit: 7
     t.string "kind", null: false
     t.string "name", limit: 120, null: false
     t.datetime "updated_at", null: false
@@ -464,6 +465,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.index ["health_unit_id"], name: "idx_care_providers_unit", unique: true, where: "(health_unit_id IS NOT NULL)"
     t.check_constraint "(kind::text = 'own'::text) = (health_unit_id IS NOT NULL)", name: "ck_care_providers_unit"
     t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_care_providers_cnes"
+    t.check_constraint "ibge_code IS NULL OR ibge_code::text ~ '^[0-9]{7}$'::text", name: "ck_care_providers_ibge_code"
     t.check_constraint "kind::text = 'own'::text OR cnes IS NOT NULL", name: "ck_care_providers_cnes_required"
     t.check_constraint "kind::text = ANY (ARRAY['own'::text, 'contracted'::text, 'consortium'::text, 'ppi'::text])", name: "ck_care_providers_kind"
   end
@@ -1249,7 +1251,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.index ["uploaded_by_user_id"], name: "index_exam_files_on_uploaded_by_user_id"
     t.check_constraint "byte_size > 0 AND byte_size <= 10485760", name: "ck_exam_files_size"
     t.check_constraint "content_type::text = ANY (ARRAY['application/pdf'::text, 'image/jpeg'::text, 'image/png'::text])", name: "ck_exam_files_content_type"
-    t.check_constraint "purpose IS NULL OR purpose::text = 'eqa_annual_report'::text", name: "ck_exam_files_purpose"
+    t.check_constraint "purpose IS NULL OR purpose::text = ANY (ARRAY['eqa_annual_report'::text, 'tfd_accountability'::text])", name: "ck_exam_files_purpose"
   end
 
   create_table "exam_order_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1512,7 +1514,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.index ["neighborhood_id"], name: "index_health_units_on_neighborhood_id"
     t.check_constraint "address_zip IS NULL OR address_zip::text ~ '^[0-9]{8}$'::text", name: "ck_health_units_address_zip"
     t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_health_units_cnes"
-    t.check_constraint "kind::text = ANY (ARRAY['ubs'::text, 'upa'::text, 'hospital'::text, 'other'::text, 'ceo'::text])", name: "ck_health_units_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['ubs'::text, 'upa'::text, 'hospital'::text, 'other'::text, 'ceo'::text, 'health_management'::text])", name: "ck_health_units_kind"
     t.check_constraint "screening_scope::text = ANY (ARRAY['walk_in'::text, 'all'::text])", name: "ck_health_units_screening_scope"
   end
 
@@ -2285,7 +2287,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'stock_keeper'::text, 'surveillance'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'driver'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'stock_keeper'::text, 'surveillance'::text, 'tfd_committee'::text, 'transport_dispatcher'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "micro_areas", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2564,6 +2566,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.boolean "sigtap_fallback", default: false, null: false
     t.string "source", null: false
     t.string "status", default: "recorded", null: false
+    t.uuid "tfd_allowance_id"
+    t.uuid "tfd_leg_id"
     t.datetime "updated_at", null: false
     t.index ["attendance_id"], name: "index_performed_procedures_on_attendance_id"
     t.index ["billing_export_id"], name: "index_performed_procedures_on_billing_export_id"
@@ -2572,14 +2576,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.index ["lab_report_item_id"], name: "idx_performed_procedures_lab_item", unique: true, where: "(lab_report_item_id IS NOT NULL)"
     t.index ["patient_id", "created_at"], name: "idx_performed_procedures_patient"
     t.index ["professional_user_id"], name: "index_performed_procedures_on_professional_user_id"
+    t.index ["tfd_allowance_id"], name: "idx_performed_procedures_tfd_allowance", unique: true, where: "(tfd_allowance_id IS NOT NULL)"
+    t.index ["tfd_leg_id"], name: "idx_performed_procedures_tfd_leg", where: "(tfd_leg_id IS NOT NULL)"
     t.check_constraint "(billing_period_id IS NULL) = (billing_competence IS NULL) AND (billing_competence IS NULL OR billing_competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text) AND (sigtap_competence IS NULL OR sigtap_competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text) AND (billing_export_id IS NULL OR billing_period_id IS NOT NULL)", name: "ck_performed_procedures_competences"
-    t.check_constraint "(source::text <> 'attendance'::text OR attendance_id IS NOT NULL) AND (source::text <> 'consultation'::text OR consultation_id IS NOT NULL) AND (source::text <> 'lab_report'::text OR lab_report_item_id IS NOT NULL AND exam_provider_id IS NOT NULL)", name: "ck_performed_procedures_source_ref"
+    t.check_constraint "(source::text <> 'attendance'::text OR attendance_id IS NOT NULL) AND (source::text <> 'consultation'::text OR consultation_id IS NOT NULL) AND (source::text <> 'lab_report'::text OR lab_report_item_id IS NOT NULL AND exam_provider_id IS NOT NULL) AND (source::text <> 'tfd'::text OR tfd_allowance_id IS NOT NULL)", name: "ck_performed_procedures_source_ref"
     t.check_constraint "(status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL AND cancel_reason IS NOT NULL AND cancelled_by_user_id IS NOT NULL)", name: "ck_performed_procedures_cancelled"
     t.check_constraint "NOT billable OR cardinality(blocking_reasons) = 0 AND instrument::text <> 'not_bpa'::text", name: "ck_performed_procedures_billable"
     t.check_constraint "num_nonnulls(health_unit_id, exam_provider_id) = 1", name: "ck_performed_procedures_establishment"
     t.check_constraint "quantity >= 1 AND quantity <= 999", name: "ck_performed_procedures_quantity"
     t.check_constraint "sigtap_code::text ~ '^[0-9]{10}$'::text AND (cid10 IS NULL OR cid10::text ~ '^[A-Z][0-9]{2}[0-9X]?$'::text) AND (cbo_code IS NULL OR cbo_code::text ~ '^[0-9]{6}$'::text)", name: "ck_performed_procedures_codes"
-    t.check_constraint "source::text = ANY (ARRAY['attendance'::text, 'consultation'::text, 'lab_report'::text, 'manual'::text]) AND (instrument::text = ANY (ARRAY['bpa_i'::text, 'bpa_c'::text, 'not_bpa'::text])) AND (character::text = ANY (ARRAY['elective'::text, 'urgent'::text])) AND (status::text = ANY (ARRAY['recorded'::text, 'cancelled'::text]))", name: "ck_performed_procedures_domains"
+    t.check_constraint "source::text = ANY (ARRAY['attendance'::text, 'consultation'::text, 'lab_report'::text, 'manual'::text, 'tfd'::text]) AND (instrument::text = ANY (ARRAY['bpa_i'::text, 'bpa_c'::text, 'not_bpa'::text])) AND (character::text = ANY (ARRAY['elective'::text, 'urgent'::text])) AND (status::text = ANY (ARRAY['recorded'::text, 'cancelled'::text]))", name: "ck_performed_procedures_domains"
   end
 
   create_table "periodontal_charts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2816,6 +2822,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
   create_table "regulation_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "addendum_id"
     t.uuid "appointment_request_id"
+    t.uuid "care_provider_id"
     t.text "ciap2"
     t.text "cid10"
     t.string "color"
@@ -2844,6 +2851,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.datetime "updated_at", null: false
     t.integer "version", default: 1, null: false
     t.index ["appointment_request_id"], name: "idx_regulation_requests_appointment_request", unique: true, where: "(appointment_request_id IS NOT NULL)"
+    t.index ["care_provider_id"], name: "idx_regulation_requests_care_provider", where: "(care_provider_id IS NOT NULL)"
     t.index ["consultation_id"], name: "index_regulation_requests_on_consultation_id"
     t.index ["patient_id"], name: "index_regulation_requests_on_patient_id"
     t.index ["requester_unit_id", "status"], name: "idx_regulation_requests_unit_status"
@@ -3474,6 +3482,316 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
     t.check_constraint "status::text = ANY (ARRAY['sent'::text, 'received'::text, 'received_with_difference'::text])", name: "ck_stock_transfers_status"
   end
 
+  create_table "tfd_accountability", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "closed_at", null: false
+    t.uuid "closed_by_user_id", null: false
+    t.uuid "exam_file_id", null: false
+    t.text "filename", null: false
+    t.uuid "tfd_case_id", null: false
+    t.index ["exam_file_id"], name: "idx_tfd_accountability_file", unique: true
+    t.index ["tfd_case_id"], name: "idx_tfd_accountability_case", unique: true
+  end
+
+  create_table "tfd_allowances", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "competence", limit: 6, null: false
+    t.integer "complement_cents", null: false
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.string "person", null: false
+    t.integer "quantity", null: false
+    t.string "sigtap_code", limit: 10, null: false
+    t.integer "table_cents", null: false
+    t.uuid "tfd_case_id", null: false
+    t.uuid "tfd_leg_id", null: false
+    t.integer "total_cents", null: false
+    t.index ["tfd_case_id"], name: "idx_tfd_allowances_case"
+    t.index ["tfd_leg_id", "person", "kind"], name: "idx_tfd_allowances_once", unique: true
+    t.check_constraint "person::text = ANY (ARRAY['patient'::text, 'companion'::text]::text[]) AND kind::text = ANY (ARRAY['meal_overnight'::text, 'meal_day'::text, 'ground_km'::text, 'air_miles'::text, 'river_miles'::text]::text[]) AND sigtap_code::text ~ '^[0-9]{10}$'::text AND competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text", name: "ck_tfd_allowances_domains"
+    t.check_constraint "quantity >= 1 AND table_cents >= 0 AND complement_cents >= 0 AND total_cents = ((table_cents + complement_cents) * quantity)", name: "ck_tfd_allowances_amounts"
+  end
+
+  create_table "tfd_case_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "by_user_id"
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.text "reason"
+    t.uuid "tfd_case_id", null: false
+    t.index ["tfd_case_id", "created_at"], name: "idx_tfd_case_events_case"
+    t.check_constraint "kind::text = ANY (ARRAY['submitted'::text, 'returned'::text, 'authorized'::text, 'denied'::text, 'scheduled'::text, 'travelling'::text, 'completed'::text, 'cancelled'::text, 'created'::text, 'appointment_set'::text, 'inpatient_recorded'::text]::text[])", name: "ck_tfd_case_events_kind"
+  end
+
+  create_table "tfd_cases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "appointment_at"
+    t.uuid "care_provider_id"
+    t.uuid "consultation_id"
+    t.datetime "created_at", null: false
+    t.datetime "decided_at"
+    t.jsonb "inpatient_stays", default: [], null: false
+    t.uuid "patient_id", null: false
+    t.uuid "regulation_request_id"
+    t.text "report", null: false
+    t.string "requester_cbo", limit: 6, null: false
+    t.uuid "requester_user_id", null: false
+    t.string "status", default: "draft", null: false
+    t.datetime "submitted_at"
+    t.uuid "transport_destination_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.index ["patient_id"], name: "idx_tfd_cases_patient"
+    t.index ["requester_user_id", "updated_at"], name: "idx_tfd_cases_requester"
+    t.index ["status", "submitted_at"], name: "idx_tfd_cases_queue"
+    t.check_constraint "(status::text = 'draft'::text) = (submitted_at IS NULL)", name: "ck_tfd_cases_submitted"
+    t.check_constraint "num_nonnulls(consultation_id, regulation_request_id) >= 1", name: "ck_tfd_cases_origin"
+    t.check_constraint "requester_cbo::text ~ '^[0-9]{6}$'::text AND version >= 1 AND jsonb_typeof(inpatient_stays) = 'array'::text", name: "ck_tfd_cases_domains"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::text, 'submitted'::text, 'returned'::text, 'authorized'::text, 'denied'::text, 'scheduled'::text, 'travelling'::text, 'completed'::text, 'cancelled'::text]::text[])", name: "ck_tfd_cases_status"
+  end
+
+  create_table "tfd_legs", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "companion", default: false, null: false
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.date "date", null: false
+    t.string "direction", null: false
+    t.integer "distance_km", null: false
+    t.datetime "done_at"
+    t.string "mode", null: false
+    t.uuid "outbound_leg_id"
+    t.uuid "tfd_case_id", null: false
+    t.integer "ticket_amount_cents"
+    t.string "ticket_carrier", limit: 120
+    t.uuid "transport_trip_passenger_id"
+    t.datetime "updated_at", null: false
+    t.index ["outbound_leg_id"], name: "idx_tfd_legs_outbound", unique: true, where: "(outbound_leg_id IS NOT NULL)"
+    t.index ["tfd_case_id", "date"], name: "idx_tfd_legs_case"
+    t.index ["transport_trip_passenger_id"], name: "idx_tfd_legs_trip_passenger", unique: true, where: "(transport_trip_passenger_id IS NOT NULL)"
+    t.check_constraint "(mode::text = 'fleet'::text) = (transport_trip_passenger_id IS NOT NULL) AND (mode::text = 'fleet'::text) = (ticket_amount_cents IS NULL) AND (direction::text = 'return'::text) = (outbound_leg_id IS NOT NULL) AND (mode::text <> 'fleet'::text OR NOT companion) AND (outbound_leg_id IS NULL OR outbound_leg_id <> id)", name: "ck_tfd_legs_mode"
+    t.check_constraint "direction::text = ANY (ARRAY['outbound'::text, 'return'::text]::text[]) AND mode::text = ANY (ARRAY['fleet'::text, 'bus_ticket'::text, 'air'::text, 'river'::text]::text[]) AND distance_km >= 0 AND (ticket_amount_cents IS NULL OR (ticket_amount_cents >= 1 AND ticket_amount_cents <= 10000000))", name: "ck_tfd_legs_domains"
+  end
+
+  create_table "tfd_payments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "amount_cents", null: false
+    t.uuid "by_user_id", null: false
+    t.datetime "created_at", null: false
+    t.string "method", null: false
+    t.date "paid_on", null: false
+    t.string "receipt_number", limit: 40, null: false
+    t.uuid "tfd_case_id", null: false
+    t.index ["tfd_case_id"], name: "idx_tfd_payments_case"
+    t.check_constraint "amount_cents >= 1 AND amount_cents <= 10000000 AND method::text = ANY (ARRAY['cash'::text, 'transfer'::text, 'pix'::text, 'check'::text]::text[]) AND char_length(btrim(receipt_number::text)) >= 1", name: "ck_tfd_payments_domains"
+  end
+
+  create_table "transport_attendance_corrections", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "by_user_id", null: false
+    t.datetime "created_at", null: false
+    t.string "field", null: false
+    t.string "from_value", null: false
+    t.text "reason", null: false
+    t.string "to_value", null: false
+    t.uuid "transport_trip_passenger_id", null: false
+    t.index ["transport_trip_passenger_id"], name: "idx_transport_attendance_corrections_passenger"
+    t.check_constraint "field::text = ANY (ARRAY['attendance'::text, 'companion_attendance'::text]::text[]) AND from_value::text = ANY (ARRAY['pending'::text, 'boarded'::text, 'no_show'::text]::text[]) AND to_value::text = ANY (ARRAY['pending'::text, 'boarded'::text, 'no_show'::text]::text[]) AND from_value::text <> to_value::text", name: "ck_transport_attendance_corrections_values"
+  end
+
+  create_table "transport_destinations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.integer "distance_km", null: false
+    t.string "ibge_code", limit: 7, null: false
+    t.boolean "metropolitan", default: false, null: false
+    t.string "name", limit: 120, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["ibge_code"], name: "idx_transport_destinations_ibge", unique: true
+    t.check_constraint "ibge_code::text ~ '^[0-9]{7}$'::text AND distance_km >= 0", name: "ck_transport_destinations_domains"
+  end
+
+  create_table "transport_drivers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.string "license_category", null: false
+    t.date "license_expires_on", null: false
+    t.text "license_number", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.uuid "user_id", null: false
+    t.index ["user_id"], name: "idx_transport_drivers_user", unique: true
+    t.check_constraint "license_category::text = ANY (ARRAY['B'::text, 'C'::text, 'D'::text, 'E'::text]::text[])", name: "ck_transport_drivers_category"
+  end
+
+  create_table "transport_pending_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "date", null: false
+    t.string "reason", null: false
+    t.datetime "resolved_at"
+    t.uuid "transport_series_id", null: false
+    t.index ["transport_series_id", "date"], name: "idx_transport_pending_items_series_date", unique: true
+    t.check_constraint "reason::text = ANY (ARRAY['no_seat'::text, 'no_wheelchair_spot'::text]::text[])", name: "ck_transport_pending_items_reason"
+  end
+
+  create_table "transport_series", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "address"
+    t.time "appointment_time", null: false
+    t.string "boarding_label", limit: 120, null: false
+    t.text "companion_document"
+    t.text "companion_name"
+    t.text "companion_reason"
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.time "departure_time", null: false
+    t.date "ends_on"
+    t.uuid "patient_id", null: false
+    t.text "provider_name"
+    t.time "return_time", null: false
+    t.date "starts_on", null: false
+    t.text "suspend_reason"
+    t.date "suspended_from"
+    t.uuid "transport_destination_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "weekdays", limit: 2, null: false, array: true
+    t.boolean "wheelchair", default: false, null: false
+    t.index ["patient_id"], name: "idx_transport_series_patient"
+    t.index ["transport_destination_id"], name: "idx_transport_series_destination"
+    t.check_constraint "(suspended_from IS NULL) = (suspend_reason IS NULL)", name: "ck_transport_series_suspend"
+    t.check_constraint "cardinality(weekdays) >= 1 AND weekdays <@ ARRAY[1, 2, 3, 4, 5, 6, 7]::smallint[]", name: "ck_transport_series_weekdays"
+    t.check_constraint "ends_on IS NULL OR ends_on >= starts_on", name: "ck_transport_series_dates"
+    t.check_constraint "return_time > departure_time", name: "ck_transport_series_times"
+  end
+
+  create_table "transport_settings", id: :smallint, default: nil, force: :cascade do |t|
+    t.jsonb "allowance_complements", default: {}, null: false
+    t.integer "companion_max_age_child", default: 15, null: false
+    t.integer "companion_min_age_elderly", default: 60, null: false
+    t.uuid "tfd_billing_health_unit_id"
+    t.integer "tfd_min_distance_km", default: 50, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id"
+    t.check_constraint "id = 1", name: "ck_transport_settings_singleton"
+    t.check_constraint "jsonb_typeof(allowance_complements) = 'object'::text", name: "ck_transport_settings_complements"
+    t.check_constraint "tfd_min_distance_km >= 1 AND tfd_min_distance_km <= 1000 AND companion_max_age_child >= 0 AND companion_max_age_child <= 17 AND companion_min_age_elderly >= 50 AND companion_min_age_elderly <= 100", name: "ck_transport_settings_ranges"
+  end
+
+  create_table "transport_trip_logs", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "closed_at", null: false
+    t.uuid "closed_by_user_id", null: false
+    t.jsonb "expenses", default: [], null: false
+    t.jsonb "fuel", default: [], null: false
+    t.integer "odometer_end", null: false
+    t.integer "odometer_start", null: false
+    t.uuid "transport_trip_id", null: false
+    t.index ["transport_trip_id"], name: "idx_transport_trip_logs_trip", unique: true
+    t.check_constraint "jsonb_typeof(fuel) = 'array'::text AND jsonb_typeof(expenses) = 'array'::text", name: "ck_transport_trip_logs_lists"
+    t.check_constraint "odometer_start >= 0 AND odometer_end <= 9999999 AND odometer_end >= odometer_start", name: "ck_transport_trip_logs_odometer"
+  end
+
+  create_table "transport_trip_notices", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "citizen_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "departure_at", null: false
+    t.string "event_key", limit: 80, null: false
+    t.string "kind", null: false
+    t.datetime "read_at"
+    t.boolean "sms", default: false, null: false
+    t.uuid "transport_trip_passenger_id", null: false
+    t.index ["citizen_id", "created_at"], name: "idx_transport_trip_notices_citizen"
+    t.index ["transport_trip_passenger_id", "citizen_id", "kind", "event_key"], name: "idx_transport_trip_notices_once", unique: true
+    t.check_constraint "kind::text = ANY (ARRAY['added'::text, 'departure_changed'::text, 'boarding_changed'::text, 'cancelled'::text, 'removed'::text, 'reminder'::text]::text[])", name: "ck_transport_trip_notices_kind"
+  end
+
+  create_table "transport_trip_passengers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "added_by_user_id"
+    t.text "address"
+    t.datetime "anonymized_at"
+    t.datetime "appointment_at"
+    t.uuid "appointment_id"
+    t.string "attendance", default: "pending", null: false
+    t.string "companion_attendance"
+    t.text "companion_document"
+    t.text "companion_name"
+    t.text "companion_reason"
+    t.datetime "created_at", null: false
+    t.text "exception_note"
+    t.string "exception_reason"
+    t.string "origin", null: false
+    t.uuid "patient_id", null: false
+    t.text "provider_name"
+    t.uuid "regulation_request_id"
+    t.text "remove_reason"
+    t.datetime "removed_at"
+    t.uuid "removed_by_user_id"
+    t.boolean "takes_seat", default: true, null: false
+    t.uuid "tfd_case_id"
+    t.uuid "transport_destination_id", null: false
+    t.uuid "transport_series_id"
+    t.uuid "transport_trip_id", null: false
+    t.uuid "transport_trip_stop_id", null: false
+    t.datetime "updated_at", null: false
+    t.boolean "wheelchair", default: false, null: false
+    t.index ["patient_id"], name: "idx_transport_trip_passengers_patient"
+    t.index ["tfd_case_id"], name: "idx_transport_trip_passengers_tfd_case", where: "(tfd_case_id IS NOT NULL)"
+    t.index ["transport_trip_id", "patient_id"], name: "idx_transport_trip_passengers_active", unique: true, where: "(removed_at IS NULL)"
+    t.index ["transport_trip_id"], name: "idx_transport_trip_passengers_trip"
+    t.index ["transport_trip_stop_id"], name: "idx_transport_trip_passengers_stop"
+    t.check_constraint "anonymized_at IS NOT NULL OR (companion_name IS NULL) = (companion_attendance IS NULL)", name: "ck_transport_trip_passengers_companion"
+    t.check_constraint "num_nonnulls(regulation_request_id, appointment_id, tfd_case_id, transport_series_id) = ((origin::text <> 'exception'::text))::integer AND (regulation_request_id IS NOT NULL) = (origin::text = 'regulation'::text) AND (appointment_id IS NOT NULL) = (origin::text = 'appointment'::text) AND (tfd_case_id IS NOT NULL) = (origin::text = 'tfd'::text) AND (transport_series_id IS NOT NULL) = (origin::text = 'series'::text) AND (origin::text = 'exception'::text) = (exception_reason IS NOT NULL)", name: "ck_transport_trip_passengers_origin"
+    t.check_constraint "origin::text = ANY (ARRAY['regulation'::text, 'appointment'::text, 'tfd'::text, 'series'::text, 'exception'::text]::text[]) AND (exception_reason IS NULL OR exception_reason::text = ANY (ARRAY['follow_up_return'::text, 'legacy_patient'::text, 'scheduling_pending'::text, 'other'::text]::text[])) AND attendance::text = ANY (ARRAY['pending'::text, 'boarded'::text, 'no_show'::text]::text[]) AND (companion_attendance IS NULL OR companion_attendance::text = ANY (ARRAY['pending'::text, 'boarded'::text, 'no_show'::text]::text[]))", name: "ck_transport_trip_passengers_domains"
+  end
+
+  create_table "transport_trip_stops", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "kind", null: false
+    t.string "label", limit: 120, null: false
+    t.integer "position", limit: 2, null: false
+    t.uuid "transport_destination_id"
+    t.uuid "transport_trip_id", null: false
+    t.index ["transport_trip_id", "position"], name: "idx_transport_trip_stops_position", unique: true
+    t.check_constraint "kind::text = ANY (ARRAY['boarding'::text, 'destination'::text]::text[]) AND position >= 1 AND (kind::text = 'destination'::text) = (transport_destination_id IS NOT NULL)", name: "ck_transport_trip_stops_kind"
+  end
+
+  create_table "transport_trips", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "cancel_reason"
+    t.datetime "cancelled_at"
+    t.uuid "cancelled_by_user_id"
+    t.datetime "confirmed_at"
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.date "date", null: false
+    t.datetime "departure_at", null: false
+    t.datetime "return_at", null: false
+    t.datetime "started_at"
+    t.string "status", default: "planned", null: false
+    t.uuid "transport_driver_id"
+    t.uuid "transport_series_id"
+    t.uuid "transport_vehicle_id"
+    t.datetime "updated_at", null: false
+    t.index ["date", "status"], name: "idx_transport_trips_date_status"
+    t.index ["transport_driver_id"], name: "idx_transport_trips_driver", where: "(transport_driver_id IS NOT NULL)"
+    t.index ["transport_series_id"], name: "idx_transport_trips_series", where: "(transport_series_id IS NOT NULL)"
+    t.check_constraint "(status::text <> ALL (ARRAY['confirmed'::text, 'in_progress'::text, 'done'::text])) OR (transport_vehicle_id IS NOT NULL AND transport_driver_id IS NOT NULL)", name: "ck_transport_trips_staffed"
+    t.check_constraint "(status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL)", name: "ck_transport_trips_cancel"
+    t.check_constraint "return_at > departure_at AND return_at <= (departure_at + '72 hours'::interval)", name: "ck_transport_trips_range"
+    t.check_constraint "status::text = ANY (ARRAY['planned'::text, 'confirmed'::text, 'in_progress'::text, 'done'::text, 'cancelled'::text]::text[])", name: "ck_transport_trips_status"
+    t.exclusion_constraint "transport_vehicle_id WITH =, tsrange(departure_at, return_at) WITH &&", where: "status::text <> 'cancelled'::text AND transport_vehicle_id IS NOT NULL", using: :gist, name: "excl_transport_trips_vehicle"
+    t.exclusion_constraint "transport_driver_id WITH =, tsrange(departure_at, return_at) WITH &&", where: "status::text <> 'cancelled'::text AND transport_driver_id IS NOT NULL", using: :gist, name: "excl_transport_trips_driver"
+  end
+
+  create_table "transport_vehicles", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "cnes", limit: 7
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.string "model", limit: 80, null: false
+    t.string "plate", limit: 7, null: false
+    t.string "renavam", limit: 11, null: false
+    t.string "renem_code", limit: 20
+    t.integer "seats", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.integer "wheelchair_spots", default: 0, null: false
+    t.index ["plate"], name: "idx_transport_vehicles_plate", unique: true
+    t.index ["renavam"], name: "idx_transport_vehicles_renavam", unique: true
+    t.check_constraint "kind::text = ANY (ARRAY['van'::text, 'minibus'::text, 'bus'::text, 'car'::text, 'ambulance_a'::text]::text[]) AND plate::text ~ '^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$'::text AND renavam::text ~ '^[0-9]{11}$'::text AND (cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text)", name: "ck_transport_vehicles_domains"
+    t.check_constraint "seats >= 1 AND seats <= 60 AND wheelchair_spots >= 0 AND wheelchair_spots <= 10", name: "ck_transport_vehicles_ranges"
+  end
+
   create_table "triage_offer_daily_counts", force: :cascade do |t|
     t.date "day", null: false
     t.integer "offered", null: false
@@ -4019,6 +4337,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
   add_foreign_key "performed_procedures", "users", column: "cancelled_by_user_id"
   add_foreign_key "performed_procedures", "users", column: "professional_user_id"
   add_foreign_key "performed_procedures", "users", column: "recorded_by_user_id"
+  add_foreign_key "performed_procedures", "tfd_allowances"
+  add_foreign_key "performed_procedures", "tfd_legs"
   add_foreign_key "periodontal_charts", "consultations"
   add_foreign_key "periodontal_charts", "patients"
   add_foreign_key "periodontal_screenings", "consultations"
@@ -4053,6 +4373,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
   add_foreign_key "regulation_requests", "health_units", column: "requester_unit_id"
   add_foreign_key "regulation_requests", "patients"
   add_foreign_key "regulation_requests", "users", column: "requester_user_id"
+  add_foreign_key "regulation_requests", "care_providers"
+  add_foreign_key "tfd_cases", "regulation_requests"
+  add_foreign_key "transport_trip_passengers", "regulation_requests"
   add_foreign_key "regulation_risk_deadlines", "users", column: "updated_by_user_id"
   add_foreign_key "report_snapshots", "protocol_definitions"
   add_foreign_key "report_snapshots", "triages"
@@ -4120,6 +4443,56 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_900001) do
   add_foreign_key "stock_transfers", "stock_locations", column: "to_location_id"
   add_foreign_key "stock_transfers", "users", column: "received_by_user_id"
   add_foreign_key "stock_transfers", "users", column: "sent_by_user_id"
+  add_foreign_key "tfd_accountability", "exam_files"
+  add_foreign_key "tfd_accountability", "tfd_cases"
+  add_foreign_key "tfd_accountability", "users", column: "closed_by_user_id"
+  add_foreign_key "tfd_allowances", "tfd_cases"
+  add_foreign_key "tfd_allowances", "tfd_legs"
+  add_foreign_key "tfd_case_events", "tfd_cases"
+  add_foreign_key "tfd_case_events", "users", column: "by_user_id"
+  add_foreign_key "tfd_cases", "care_providers"
+  add_foreign_key "tfd_cases", "consultations"
+  add_foreign_key "tfd_cases", "patients"
+  add_foreign_key "tfd_cases", "transport_destinations"
+  add_foreign_key "tfd_cases", "users", column: "requester_user_id"
+  add_foreign_key "tfd_legs", "tfd_cases"
+  add_foreign_key "tfd_legs", "tfd_legs", column: "outbound_leg_id"
+  add_foreign_key "tfd_legs", "transport_trip_passengers"
+  add_foreign_key "tfd_legs", "users", column: "created_by_user_id"
+  add_foreign_key "tfd_payments", "tfd_cases"
+  add_foreign_key "tfd_payments", "users", column: "by_user_id"
+  add_foreign_key "transport_attendance_corrections", "transport_trip_passengers"
+  add_foreign_key "transport_attendance_corrections", "users", column: "by_user_id"
+  add_foreign_key "transport_destinations", "users", column: "updated_by_user_id"
+  add_foreign_key "transport_drivers", "users", column: "updated_by_user_id"
+  add_foreign_key "transport_drivers", "users"
+  add_foreign_key "transport_pending_items", "transport_series"
+  add_foreign_key "transport_series", "patients"
+  add_foreign_key "transport_series", "transport_destinations"
+  add_foreign_key "transport_series", "users", column: "created_by_user_id"
+  add_foreign_key "transport_settings", "health_units", column: "tfd_billing_health_unit_id"
+  add_foreign_key "transport_settings", "users", column: "updated_by_user_id"
+  add_foreign_key "transport_trip_logs", "transport_trips"
+  add_foreign_key "transport_trip_logs", "users", column: "closed_by_user_id"
+  add_foreign_key "transport_trip_notices", "citizens"
+  add_foreign_key "transport_trip_notices", "transport_trip_passengers"
+  add_foreign_key "transport_trip_passengers", "appointments"
+  add_foreign_key "transport_trip_passengers", "patients"
+  add_foreign_key "transport_trip_passengers", "tfd_cases"
+  add_foreign_key "transport_trip_passengers", "transport_destinations"
+  add_foreign_key "transport_trip_passengers", "transport_series"
+  add_foreign_key "transport_trip_passengers", "transport_trip_stops"
+  add_foreign_key "transport_trip_passengers", "transport_trips"
+  add_foreign_key "transport_trip_passengers", "users", column: "added_by_user_id"
+  add_foreign_key "transport_trip_passengers", "users", column: "removed_by_user_id"
+  add_foreign_key "transport_trip_stops", "transport_destinations"
+  add_foreign_key "transport_trip_stops", "transport_trips"
+  add_foreign_key "transport_trips", "transport_drivers"
+  add_foreign_key "transport_trips", "transport_series"
+  add_foreign_key "transport_trips", "transport_vehicles"
+  add_foreign_key "transport_trips", "users", column: "cancelled_by_user_id"
+  add_foreign_key "transport_trips", "users", column: "created_by_user_id"
+  add_foreign_key "transport_vehicles", "users", column: "updated_by_user_id"
   add_foreign_key "triage_offers", "users", column: "updated_by_user_id"
   add_foreign_key "triage_suggestions", "citizens"
   add_foreign_key "triage_suggestions", "triages", column: "source_triage_id"

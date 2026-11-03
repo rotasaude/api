@@ -168,11 +168,12 @@ RSpec.describe "Invariantes do prontuário (ADR 0031)", type: :request do
   end
 
   # Mutação: tirar :cid10_justification de filter_parameters (diagnóstico em
-  # claro no "Parameters:" do log do autosave e do adendo).
+  # claro no "Parameters:" do log do autosave e do adendo). Desde o ADR 0048
+  # o código SIGTAP também é filtrado (procedimento do laudo do TFD).
   it "a justificativa CID-10 do exame nunca cai no log de parâmetros" do
     filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
     expect(filter.filter("exam_requests" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "E119" } ]))
-      .to eq("exam_requests" => [ { "sigtap_code" => "0202010503", "cid10_justification" => "[FILTERED]" } ])
+      .to eq("exam_requests" => [ { "sigtap_code" => "[FILTERED]", "cid10_justification" => "[FILTERED]" } ])
   end
 
   # Mutação: trocar require_professional por require_attendance_staff em

@@ -2,6 +2,7 @@ require "rails_helper"
 require Rails.root.join("db/city_migrate/20261027900002_add_disease_surveillance.rb").to_s
 require Rails.root.join("db/city_migrate/20261028900001_add_care_regulation.rb").to_s
 require Rails.root.join("db/city_migrate/20261029900001_add_pharmacy_stock.rb").to_s
+require Rails.root.join("db/city_migrate/20261103900001_add_sanitary_transport.rb").to_s
 
 RSpec.describe Membership do
   it "conhece o papel citizen_verifier e o trata como privilegiado" do
@@ -70,11 +71,25 @@ RSpec.describe Membership do
     end
   end
 
+  # ADR 0048: a central vê nome, telefone e embarque do paciente e a comissão
+  # lê CID e justificativa do laudo — privilegiados; o motorista só vê as
+  # próprias viagens do dia, sem dado clínico — não.
+  it "transport_dispatcher e tfd_committee são privilegiados, driver não, e o banco aceita os três" do
+    expect(described_class::ROLES).to include("transport_dispatcher", "tfd_committee", "driver")
+    expect(described_class::PRIVILEGED_ROLES).to include("transport_dispatcher", "tfd_committee")
+    expect(described_class::PRIVILEGED_ROLES).not_to include("driver")
+    user = User.create!(email_address: "transporte@cidade.gov.br", password: "senha-segura-123")
+    %w[transport_dispatcher tfd_committee driver].each do |role|
+      expect { described_class.create!(user: user, role: role, granted_at: Time.current) }.not_to raise_error
+    end
+  end
+
   # ROLES espelha ck_memberships_role: a lista da última migração que o
-  # reescreve (27a) é a do 26a mais os três papéis da farmácia, em ordem.
-  it "ROLES é a lista da migração do 27a" do
+  # reescreve (30) é a do 27a mais os três papéis do transporte, em ordem.
+  it "ROLES é a lista da migração do 30" do
     expect(AddCareRegulation::ROLES).to eq((AddDiseaseSurveillance::ROLES + %w[care_regulator]).sort)
     expect(AddPharmacyStock::ROLES).to eq((AddCareRegulation::ROLES + %w[pharmacist pharmacy_assistant stock_keeper]).sort)
-    expect(described_class::ROLES).to eq(AddPharmacyStock::ROLES)
+    expect(AddSanitaryTransport::ROLES).to eq((AddPharmacyStock::ROLES + %w[transport_dispatcher tfd_committee driver]).sort)
+    expect(described_class::ROLES).to eq(AddSanitaryTransport::ROLES)
   end
 end
