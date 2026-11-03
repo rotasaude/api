@@ -635,7 +635,8 @@ Rails.application.routes.draw do
   end
 
   # Módulo 30 (ADR 0048; contrato §6; §14 T7, T8, T9): TFD, sessão do
-  # dashboard. Laudo do médico, fila da comissão e leitura nominal com trilha.
+  # dashboard. Laudo do médico, fila da comissão, leitura nominal com trilha e
+  # as escritas da comissão (decisão, atendimento, internação, cancelamento).
   scope "/tfd", module: :tfd, as: :tfd do
     get   "options",           to: "options#show"
     get   "prefill",           to: "prefill#show"
@@ -645,6 +646,10 @@ Rails.application.routes.draw do
     patch "cases/:id",         to: "cases#update"
     post  "cases/:id/submit",  to: "cases#submit"
     post  "cases/:id/read",    to: "cases#read"
+    post  "cases/:id/decide",       to: "cases#decide"
+    post  "cases/:id/appointment",  to: "cases#appointment"
+    post  "cases/:id/inpatient",    to: "cases#inpatient"
+    post  "cases/:id/cancel",       to: "cases#cancel"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.

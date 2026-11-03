@@ -5,6 +5,12 @@
 #   GET   /tfd/cases?status=&before=   fila da comissão, sem dado clínico
 #   GET   /tfd/my_cases          os pedidos do médico autor, sem dado clínico
 #   POST  /tfd/cases/:id/read    <tfd-case> nominal com trilha (comissão ou autor)
+# Comissão (Task 10; contrato §6; §14 T8, T10, T12, T25), papel antes do
+# step-up (outro papel → 403 missing_role; sem step-up → 401 mfa_required):
+#   POST  /tfd/cases/:id/decide       { decision, reason }
+#   POST  /tfd/cases/:id/appointment  { appointment_at, provider_id? }
+#   POST  /tfd/cases/:id/inpatient    { from, to? }
+#   POST  /tfd/cases/:id/cancel       { reason }
 # Toda escrita devolve o <tfd-case> inteiro, sem trilha nova (a trilha é só do
 # read). Dado do paciente e laudo só no corpo JSON.
 #
@@ -19,7 +25,14 @@ module Tfd
     QUEUE_STATUSES = (Catalog::STATUSES - %w[draft]).freeze
     PRELOAD = %i[patient transport_destination].freeze
 
-    before_action :load_case, only: %i[update submit read]
+    COMMITTEE_WRITES = %i[decide appointment inpatient cancel].freeze
+    COMMITTEE_KEYS = { decide: %w[decision reason], appointment: %w[appointment_at provider_id],
+                       inpatient: %w[from to], cancel: %w[reason] }.freeze
+
+    before_action :require_committee!, only: COMMITTEE_WRITES
+    before_action :require_step_up!, only: COMMITTEE_WRITES
+    before_action :load_case, only: %i[update submit read] + COMMITTEE_WRITES
+    before_action :known_keys!, only: COMMITTEE_WRITES
 
     def index
       return forbid unless Access.committee?(Current.user)
@@ -96,7 +109,45 @@ module Tfd
       render json: Json.case(@tfd_case)
     end
 
+    def decide
+      committee_write { DecideCase.call(tfd_case: @tfd_case, decision: body_param("decision"), reason: body_param("reason"), by: Current.user) }
+    end
+
+    def appointment
+      committee_write do
+        SetAppointment.call(tfd_case: @tfd_case, appointment_at: body_param("appointment_at"), provider_id: body_param("provider_id"),
+                            by: Current.user)
+      end
+    end
+
+    def inpatient
+      committee_write { RecordInpatient.call(tfd_case: @tfd_case, from: body_param("from"), to: body_param("to"), by: Current.user) }
+    end
+
+    def cancel
+      committee_write { CancelCase.call(tfd_case: @tfd_case, reason: body_param("reason"), by: Current.user) }
+    end
+
     private
+
+    def committee_write
+      result = yield
+      return render_failure(result) if result.failure?
+
+      render json: Json.case(result.payload.fetch(:tfd_case).reload)
+    end
+
+    def require_committee!
+      forbid unless Access.committee?(Current.user)
+    end
+
+    # Corpo só com as chaves da rota (nenhuma na query): a primeira de fora → 422 invalid_request.
+    def known_keys!
+      return unless query_only!
+
+      unknown = (body.keys - COMMITTEE_KEYS.fetch(action_name.to_sym)).first
+      render_refusal(unknown.to_s[0, KEY_PATH_MAX]) if unknown
+    end
 
     def load_case
       @tfd_case = uuid?(params[:id]) ? TfdCase.find_by(id: params[:id]) : nil

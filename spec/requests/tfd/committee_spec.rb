@@ -1,0 +1,224 @@
+require "rails_helper"
+
+# Módulo 30, Task 10 (ADR 0048; contrato §6; §14 T8, T10, T12, T18, T25;
+# plano, Desvios 11–12): a comissão decide (autorizar, devolver, recusar),
+# marca o atendimento, registra a internação e cancela — tudo com step-up,
+# cada escrita devolvendo o <tfd-case> inteiro.
+RSpec.describe "TFD — comissão", type: :request do
+  let!(:city) { transport_city!(tfd: true, billing: true) }
+  let(:committee) { committee! }
+  let(:reason) { "Laudo completo e destino de referência pactuado" }
+  let(:appointment_at) { (Time.zone.now + 7.days).change(hour: 9).iso8601 }
+
+  def decide(tfd, decision, text = reason) = json_post("/tfd/cases/#{tfd.id}/decide", { decision: decision, reason: text })
+  def set_appointment(tfd, **body) = json_post("/tfd/cases/#{tfd.id}/appointment", { appointment_at: appointment_at }.merge(body))
+  def inpatient(tfd, **body) = json_post("/tfd/cases/#{tfd.id}/inpatient", body)
+  def cancel(tfd, text = reason) = json_post("/tfd/cases/#{tfd.id}/cancel", { reason: text })
+  def errors = json_body["problems"].map { |p| p["error"] }
+  def payloads(name) = DomainEvent.where(name: name).map(&:payload)
+
+  before { stepped_up!(committee) }
+
+  it "autorizar sem atendimento marcado nem unidade de faturamento → appointment_required e billing_unit_missing juntos" do
+    tfd = tfd_case!(status: "submitted")
+    decide(tfd, "authorize")
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(errors).to contain_exactly("appointment_required", "billing_unit_missing")
+    expect(tfd.reload.status).to eq("submitted")
+    expect(payloads("tfd.case_decided")).to be_empty
+  end
+
+  it "autorizar repete as regras do envio, todas de uma vez" do
+    tfd = tfd_case!(status: "submitted", report: { "cid10" => nil, "justification" => "curta" })
+    decide(tfd, "authorize")
+    expect(errors).to contain_exactly("appointment_required", "billing_unit_missing", "cid_required", "justification_required")
+  end
+
+  it "marca o atendimento e autoriza: evento authorized com o motivo cifrado; tfd.case_decided só com ids e a decisão" do
+    TransportSetting.current.update!(tfd_billing_health_unit: health_management_unit!)
+    provider = external_provider!(name: "Hospital do Rim")
+    tfd = tfd_case!(status: "submitted")
+    set_appointment(tfd, provider_id: provider.id)
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to include("status" => "submitted", "provider" => { "id" => provider.id, "name" => "Hospital do Rim" })
+    expect(Time.iso8601(json_body["appointment_at"])).to eq(Time.iso8601(appointment_at))
+    expect(json_body["events"].last).to include("kind" => "appointment_set", "reason" => nil)
+    expect(payloads("tfd.case_updated")).to contain_exactly({ "tfd_case_id" => tfd.id, "user_id" => committee.id })
+
+    decide(tfd, "authorize")
+    expect(response).to have_http_status(:ok)
+    expect(json_body.keys).to include("id", "patient", "report", "legs", "events", "trip_passengers")
+    expect(json_body["status"]).to eq("authorized")
+    expect(json_body["events"].last).to include("kind" => "authorized", "reason" => reason)
+    event = tfd.tfd_case_events.reload.find_by!(kind: "authorized")
+    expect(event.by_user_id).to eq(committee.id)
+    expect(event.reason_before_type_cast).not_to include("pactuado")
+    expect(payloads("tfd.case_decided")).to contain_exactly({ "tfd_case_id" => tfd.id, "user_id" => committee.id, "decision" => "authorize" })
+    expect(DomainEvent.where(name: %w[tfd.case_decided tfd.case_updated]).map(&:payload).to_s).not_to include("pactuado", "N185", "Rim")
+  end
+
+  it "devolver → returned; o autor edita e reenvia → submitted" do
+    tfd = tfd_case!(status: "submitted")
+    decide(tfd, "return", "Falta descrever a indisponibilidade no município")
+    expect(response).to have_http_status(:ok)
+    expect(json_body["status"]).to eq("returned")
+    expect(payloads("tfd.case_decided")).to contain_exactly(include("decision" => "return"))
+
+    sign_in_as(tfd.requester_user)
+    json_patch "/tfd/cases/#{tfd.id}", { patient_id: tfd.patient_id, consultation_id: tfd.consultation_id,
+                                         destination_id: tfd.transport_destination_id,
+                                         report: TransportHelpers::TFD_REPORT.merge("justification" => "Sem nefrologia e sem hemodiálise no município") }
+    expect(response).to have_http_status(:ok)
+    json_post "/tfd/cases/#{tfd.id}/submit"
+    expect(response).to have_http_status(:ok)
+    expect(json_body["status"]).to eq("submitted")
+    expect(json_body["events"].map { |e| e["kind"] }).to eq(%w[created submitted returned submitted])
+  end
+
+  it "recusar → denied, e depois nada mais é aceito (invalid_transition)" do
+    tfd = tfd_case!(status: "submitted")
+    decide(tfd, "deny", "Procedimento disponível na rede do município")
+    expect(json_body["status"]).to eq("denied")
+    decide(tfd, "authorize")
+    expect(json_body).to include("error" => "invalid_transition")
+    set_appointment(tfd)
+    expect(json_body).to include("error" => "invalid_transition")
+    cancel(tfd)
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to include("error" => "invalid_transition")
+    expect(tfd.reload).to have_attributes(status: "denied", appointment_at: nil)
+    expect(tfd.tfd_case_events.pluck(:kind)).to eq(%w[created submitted denied])
+  end
+
+  it "decisão e motivo inválidos vêm juntos; motivo fora de 10..500 recusado" do
+    tfd = tfd_case!(status: "submitted")
+    decide(tfd, "approve", "curto")
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body["problems"]).to contain_exactly({ "path" => "decision", "error" => "invalid_request" },
+                                                     { "path" => "reason", "error" => "invalid_request" })
+    decide(tfd, "deny", "x" * 501)
+    expect(json_body).to include("error" => "invalid_request", "path" => "reason")
+    json_post "/tfd/cases/#{tfd.id}/decide", { decision: "deny", reason: reason, extra: 1 }
+    expect(json_body).to include("error" => "invalid_request", "path" => "extra")
+    expect(tfd.reload.status).to eq("submitted")
+  end
+
+  it "sem step-up → 401 mfa_required em toda escrita da comissão" do
+    tfd = tfd_case!(status: "scheduled")
+    sign_in_as(committee)
+    decide(tfd, "deny")
+    expect(response).to have_http_status(:unauthorized)
+    expect(json_body).to eq("error" => "mfa_required")
+    [ -> { set_appointment(tfd) }, -> { inpatient(tfd, from: Date.current.iso8601) }, -> { cancel(tfd) } ].each do |write|
+      write.call
+      expect(response).to have_http_status(:unauthorized)
+    end
+    expect(tfd.reload.status).to eq("scheduled")
+  end
+
+  it "médico autor, mesmo com step-up, não decide nem cancela → 403 missing_role" do
+    tfd = tfd_case!(status: "submitted")
+    stepped_up!(tfd.requester_user)
+    decide(tfd, "authorize")
+    expect(response).to have_http_status(:forbidden)
+    expect(json_body).to eq("error" => "missing_role")
+    cancel(tfd)
+    expect(response).to have_http_status(:forbidden)
+    expect(tfd.reload.status).to eq("submitted")
+  end
+
+  it "atendimento: data fora de agora − 1 dia..+365 dias, sem fuso ou prestador próprio → invalid_request; só submitted/authorized/scheduled" do
+    tfd = tfd_case!(status: "submitted")
+    set_appointment(tfd, appointment_at: (Time.zone.now - 2.days).iso8601, provider_id: own_provider!(create_unit("UBS Própria")).id)
+    expect(json_body["problems"].map { |p| p["path"] }).to contain_exactly("appointment_at", "provider_id")
+    set_appointment(tfd, appointment_at: (Time.zone.now + 366.days).iso8601)
+    expect(json_body).to include("error" => "invalid_request", "path" => "appointment_at")
+    set_appointment(tfd, appointment_at: "2026-12-01T09:00")
+    expect(json_body).to include("path" => "appointment_at")
+    expect(tfd.reload.appointment_at).to be_nil
+    returned = tfd_case!(status: "returned")
+    set_appointment(returned)
+    expect(json_body).to include("error" => "invalid_transition")
+    scheduled = tfd_case!(status: "scheduled")
+    set_appointment(scheduled)
+    expect(response).to have_http_status(:ok)
+    expect(json_body["status"]).to eq("scheduled")
+  end
+
+  it "internação aberta e fechada aparece em inpatient; outra aberta com outro from → inpatient_open; cruzamento → inpatient_overlap" do
+    tfd = tfd_case!(status: "scheduled")
+    inpatient(tfd, from: "2026-11-10")
+    expect(response).to have_http_status(:ok)
+    expect(json_body["inpatient"]).to eq([ { "from" => "2026-11-10", "to" => nil } ])
+    expect(json_body["status"]).to eq("scheduled")
+    inpatient(tfd, from: "2026-11-12")
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to include("error" => "inpatient_open", "path" => "from")
+    inpatient(tfd, from: "2026-11-10", to: "2026-11-14")
+    expect(json_body["inpatient"]).to eq([ { "from" => "2026-11-10", "to" => "2026-11-14" } ])
+    inpatient(tfd, from: "2026-11-13", to: "2026-11-16")
+    expect(json_body).to include("error" => "inpatient_overlap")
+    inpatient(tfd, from: "2026-11-20", to: "2026-11-18")
+    expect(json_body).to include("error" => "invalid_request", "path" => "to")
+    inpatient(tfd, from: "2026-11-14", to: "2026-11-15")
+    expect(json_body["inpatient"]).to eq([ { "from" => "2026-11-10", "to" => "2026-11-14" }, { "from" => "2026-11-14", "to" => "2026-11-15" } ])
+    expect(tfd.reload.inpatient_stays).to eq([ { "from" => "2026-11-10", "to" => "2026-11-14" }, { "from" => "2026-11-14", "to" => "2026-11-15" } ])
+    expect(tfd.tfd_case_events.where(kind: "inpatient_recorded").count).to eq(3)
+    expect(payloads("tfd.case_updated").size).to eq(3)
+  end
+
+  it "internação: só scheduled/travelling; aberta antes de uma fechada que termina depois → inpatient_overlap" do
+    authorized = tfd_case!(status: "authorized")
+    inpatient(authorized, from: "2026-11-10")
+    expect(json_body).to include("error" => "invalid_transition")
+    tfd = tfd_case!(status: "travelling")
+    inpatient(tfd, from: "2026-11-10", to: "2026-11-12")
+    inpatient(tfd, from: "2026-11-11")
+    expect(json_body).to include("error" => "inpatient_overlap")
+    inpatient(tfd, from: "2026-11-31")
+    expect(json_body).to include("error" => "invalid_request", "path" => "from")
+    expect(tfd.reload.inpatient_stays).to eq([ { "from" => "2026-11-10", "to" => "2026-11-12" } ])
+    inpatient(tfd, from: "2026-11-20")
+    expect { inpatient(tfd, from: "2026-11-20") }.not_to(change { tfd.tfd_case_events.reload.count })
+    expect(response).to have_http_status(:ok)
+    expect(json_body["inpatient"]).to eq([ { "from" => "2026-11-10", "to" => "2026-11-12" }, { "from" => "2026-11-20", "to" => nil } ])
+  end
+
+  it "cancelar: rascunho → 422 invalid_transition; agendado → cancelled com evento; tfd.case_cancelled só com ids" do
+    draft = tfd_case!(status: "draft")
+    cancel(draft)
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to include("error" => "invalid_transition")
+    expect(draft.reload.status).to eq("draft")
+    tfd = tfd_case!(status: "scheduled")
+    cancel(tfd, "curto")
+    expect(json_body).to include("error" => "invalid_request", "path" => "reason")
+    cancel(tfd, "Paciente transferido para outro município")
+    expect(response).to have_http_status(:ok)
+    expect(json_body["status"]).to eq("cancelled")
+    expect(json_body["events"].last).to include("kind" => "cancelled", "reason" => "Paciente transferido para outro município")
+    expect(payloads("tfd.case_cancelled")).to contain_exactly({ "tfd_case_id" => tfd.id, "user_id" => committee.id })
+    cancel(tfd)
+    expect(json_body).to include("error" => "invalid_transition")
+  end
+
+  it "processo inexistente → 404" do
+    decide(Struct.new(:id).new(SecureRandom.uuid), "deny")
+    expect(response).to have_http_status(:not_found)
+  end
+end
+
+RSpec.describe "TFD — comissão sem faturamento", type: :request do
+  let!(:city) { transport_city!(tfd: true) }
+
+  it "com procedure_billing desligado autoriza sem unidade de faturamento (T12)" do
+    committee = committee!
+    stepped_up!(committee)
+    expect(Billing::Gate.enabled?(city)).to be(false)
+    tfd = tfd_case!(status: "submitted")
+    json_post "/tfd/cases/#{tfd.id}/appointment", { appointment_at: (Time.zone.now + 3.days).iso8601 }
+    json_post "/tfd/cases/#{tfd.id}/decide", { decision: "authorize", reason: "Laudo completo e destino pactuado" }
+    expect(response).to have_http_status(:ok)
+    expect(json_body["status"]).to eq("authorized")
+  end
+end

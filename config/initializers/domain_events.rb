@@ -291,6 +291,10 @@ Rails.application.config.to_prepare do
   # Laudo de TFD criado e enviado à comissão (Task 9); só ids (tfd_case_id,
   # user_id), nunca o laudo; sem consumidor.
   %w[tfd.case_created tfd.case_submitted].each { |name| DomainEvents.bind name, to: [] }
+  # Comissão de TFD (Task 10): decisão (tfd_case_id, user_id, decision —
+  # authorize|return|deny), cancelamento e atendimento/internação
+  # (tfd.case_updated) só com ids, nunca o motivo nem datas; sem consumidor.
+  %w[tfd.case_decided tfd.case_cancelled tfd.case_updated].each { |name| DomainEvents.bind name, to: [] }
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []
