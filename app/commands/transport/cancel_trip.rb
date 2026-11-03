@@ -1,8 +1,8 @@
 # POST /transport/trips/:id/cancel (contrato §4; T15; T19): `planned` ou
 # `confirmed` → `cancelled`, com motivo de 10 a 500 caracteres (cifrado). A
 # cancelada sai das exclusion constraints: o veículo e o motorista ficam
-# livres no horário. Viagem `done`/`cancelled` → `trip_not_open`; `in_progress`
-# → `invalid_transition`. Evento `transport.trip_cancelled` (só o id) em todo
+# livres no horário. Viagem `in_progress`, `done` ou `cancelled` →
+# `invalid_transition` (C3: o cancelamento é uma transição). Evento `transport.trip_cancelled` (só o id) em todo
 # cancelamento (§11); o aviso ao cidadão (T15) é decisão do consumidor, que
 # só avisa a viagem que tinha `confirmed_at` (fica gravado no cancelamento).
 # Os trechos de frota do TFD abertos dos passageiros ficam anulados
@@ -13,11 +13,10 @@ module Transport
 
     module_function
 
-    # -> Result.ok(trip:) | fail(:invalid_request, details: { path: "reason", problems: }) | fail(:trip_not_open | :invalid_transition)
+    # -> Result.ok(trip:) | fail(:invalid_request, details: { path: "reason", problems: }) | fail(:invalid_transition)
     def call(trip:, reason:, by:)
       TransportTrip.transaction(requires_new: true) do
         trip.lock!
-        next Result.fail(:trip_not_open) if ConfirmTrip::CLOSED.include?(trip.status)
         next Result.fail(:invalid_transition) unless CANCELLABLE.include?(trip.status)
 
         text = Support.text(reason, Catalog::REASON)

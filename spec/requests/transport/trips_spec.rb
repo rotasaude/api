@@ -272,7 +272,7 @@ RSpec.describe "Transporte — viagens", type: :request do
     expect(TransportTrip.find(id).confirmed_at).to be_nil
   end
 
-  it "done/cancelled → trip_not_open em PATCH, confirm e cancel; in_progress → invalid_transition" do
+  it "C3: PATCH fora de planned/confirmed → trip_not_open; cancel fora delas → invalid_transition; confirm done/cancelled → trip_not_open" do
     done = trip!(date: day, vehicle: van, driver: driver, status: "done")
     cancelled = TransportTrip.create!(departure_at: Time.zone.parse("#{day + 5} 07:00"), return_at: Time.zone.parse("#{day + 5} 09:00"),
                                       status: "cancelled", cancelled_at: Time.current, created_by_user: dispatcher!)
@@ -283,10 +283,10 @@ RSpec.describe "Transporte — viagens", type: :request do
       json_post "/transport/trips/#{t.id}/confirm"
       expect(json_body["error"]).to eq("trip_not_open")
       json_post "/transport/trips/#{t.id}/cancel", reason: "Motivo qualquer do teste"
-      expect([ response.status, json_body["error"] ]).to eq([ 422, "trip_not_open" ])
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_transition" ])
     end
     json_patch "/transport/trips/#{running.id}", departure_at: at("06:00")
-    expect(json_body["error"]).to eq("invalid_transition")
+    expect([ response.status, json_body["error"] ]).to eq([ 422, "trip_not_open" ])
     json_post "/transport/trips/#{running.id}/cancel", reason: "Motivo qualquer do teste"
     expect(json_body["error"]).to eq("invalid_transition")
     json_post "/transport/trips/#{running.id}/confirm"

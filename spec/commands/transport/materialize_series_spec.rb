@@ -238,6 +238,22 @@ RSpec.describe Transport::MaterializeSeries do
     expect(TransportPendingItem.find_by!(transport_series_id: pending_series.id).resolved_at).to be_present
   end
 
+  it "C1: suspender de novo com data POSTERIOR → invalid_request em from_on (nunca reativa); anterior antecipa" do
+    described_class.call(series: series, today: monday)
+    first = Transport::SuspendSeries.call(series: series, from_on: monday + 7, reason: "Paciente internado no hospital", by: dispatcher!)
+    expect(first).to be_ok
+    later = Transport::SuspendSeries.call(series: series, from_on: monday + 14, reason: "Remarcado para depois da alta", by: dispatcher!)
+    expect([ later.reason, later.details[:path] ]).to eq([ :invalid_request, "from_on" ])
+    expect(series.reload.suspended_from).to eq(monday + 7)
+    expect(series.status_on(monday + 10)).not_to eq("active")
+    expect(series.runs_on?(monday + 9)).to be(false)
+
+    earlier = Transport::SuspendSeries.call(series: series, from_on: monday + 2, reason: "Transplante realizado, fim da diálise", by: dispatcher!)
+    expect(earlier).to be_ok
+    expect(series.reload).to have_attributes(suspended_from: monday + 2, suspend_reason: "Transplante realizado, fim da diálise")
+    expect(series_passengers.pluck("transport_trips.date")).to eq([ monday ])
+  end
+
   it "suspender: motivo curto ou data no passado → invalid_request, nada muda" do
     described_class.call(series: series, today: monday)
     short = Transport::SuspendSeries.call(series: series, from_on: monday, reason: "curto", by: dispatcher!)

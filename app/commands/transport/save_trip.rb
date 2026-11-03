@@ -13,8 +13,8 @@
 # ficam, as ausentes saem — parada que já teve passageiro (mesmo retirado) não
 # sai (`stop_in_use`). Sobreposição pela pergunta do Transport::Overlap e,
 # numa corrida, pela exclusion constraint (`vehicle_overlap`/`driver_overlap`,
-# 422). Só `planned`/`confirmed` mudam (`trip_not_open` em done/cancelled,
-# `invalid_transition` em in_progress). Na confirmada, toda mudança da saída e
+# 422). Só `planned`/`confirmed` mudam (`trip_not_open` em in_progress, done e
+# cancelled — o mesmo código das escritas de passageiro; C3). Na confirmada, toda mudança da saída e
 # do rótulo de embarque publica `transport.trip_changed` (só ids e o código da
 # mudança); o limiar de 30 min é do consumidor (Transport::Notify, que compara
 # com o último valor avisado — Task 14, Ruling I-2). O DIA local da saída não
@@ -35,13 +35,12 @@ module Transport
 
     module_function
 
-    # -> Result.ok(trip:) | fail(<primeira recusa>, details: { path:, problems: }) | fail(:trip_not_open | :invalid_transition)
+    # -> Result.ok(trip:) | fail(<primeira recusa>, details: { path:, problems: }) | fail(:trip_not_open)
     def call(attrs:, by:, trip: nil)
       attrs = attrs.to_h.stringify_keys.slice(*KEYS)
       TransportTrip.transaction(requires_new: true) do
         trip&.lock!
-        next Result.fail(:trip_not_open) if trip && ConfirmTrip::CLOSED.include?(trip.status)
-        next Result.fail(:invalid_transition) if trip && trip.status != "planned" && trip.status != "confirmed"
+        next Result.fail(:trip_not_open) if trip && Catalog::OPEN_STATUSES.exclude?(trip.status)
 
         problems = []
         values = read_fields(attrs, trip, problems)

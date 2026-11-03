@@ -19,5 +19,9 @@ class TransportTrip < ApplicationRecord
 
   before_validation { self.date = departure_at.in_time_zone.to_date if departure_at }
 
+  # O motivo do cancelamento (cifrado) nunca sai em inspect, to_s, pretty_print nem as_json (C5).
   def inspect = "#<TransportTrip id=#{id} status=#{status}>"
+  def to_s = inspect
+  def pretty_print(pp) = pp.text(inspect)
+  def as_json(*) = { "id" => id }
 end

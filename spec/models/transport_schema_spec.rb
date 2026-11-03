@@ -161,4 +161,12 @@ RSpec.describe "Esquema do módulo 30", type: :model do
     expect(tfd.as_json).to eq("id" => tfd.id)
     expect([ tfd.inspect, tfd.to_s ].join).not_to include("N185")
   end
+
+  it "C5: viagem cancelada não leva o motivo em inspect, to_s, pretty_print nem as_json" do
+    trip = trip!
+    trip.update!(status: "cancelled", cancelled_at: Time.current, cancelled_by_user: dispatcher!, cancel_reason: "Paciente Joana internada")
+    expect(trip.as_json).to eq("id" => trip.id)
+    expect(trip.to_s).to eq("#<TransportTrip id=#{trip.id} status=cancelled>")
+    expect([ trip.inspect, trip.to_s, trip.as_json.to_s, trip.to_json, PP.pp(trip, +"") ].join).not_to include("Joana")
+  end
 end
