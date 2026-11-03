@@ -15,11 +15,15 @@
 # query string não é decodificada e segue como veio. Caminho que não casa
 # volta intacto.
 #
+# O mesmo vale para a URL curta dos arquivos (/exams/files/<token> e
+# /tfd/files/<token>, o comprovante do TFD; FW6): o token abre o arquivo.
+#
 # Os access logs do proxy reverso ficam fora do Rails: gate de go-live.
 require "rails/rack/logger"
 
 module RequestLogPathMask
   TOKEN_PATH = %r{\A/([vr])/(?!lookup(?:[/?]|\z))[^/?]+}i
+  FILE_TOKEN_PATH = %r{\A/(exams|tfd)/files/[^/?]+}i
 
   FALLBACK = "/[FILTERED]".freeze
 
@@ -30,9 +34,13 @@ module RequestLogPathMask
     path = path.to_s
     info, query = path.b.split("?", 2)
     normalized = normalize(info)
-    return path unless normalized.match?(TOKEN_PATH)
-
-    masked = normalized.sub(TOKEN_PATH, '/\1/[FILTERED]')
+    if normalized.match?(TOKEN_PATH)
+      masked = normalized.sub(TOKEN_PATH, '/\1/[FILTERED]')
+    elsif normalized.match?(FILE_TOKEN_PATH)
+      masked = normalized.sub(FILE_TOKEN_PATH, '/\1/files/[FILTERED]')
+    else
+      return path
+    end
     masked = "#{masked}?#{query}" if query
     masked.force_encoding(Encoding::UTF_8).scrub("?")
   rescue StandardError

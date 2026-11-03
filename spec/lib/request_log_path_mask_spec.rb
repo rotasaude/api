@@ -31,7 +31,12 @@ RSpec.describe RequestLogPathMask do
     "/v/%61bc123token" => "/v/[FILTERED]",
     "/v/abc%31%32%33token/signed.pdf" => "/v/[FILTERED]/signed.pdf",
     "/v%2Fabc123token" => "/v/[FILTERED]",
-    "/r//abc123token?k=1" => "/r/[FILTERED]?k=1"
+    "/r//abc123token?k=1" => "/r/[FILTERED]?k=1",
+    # FW6: a URL curta dos arquivos do 21a e do comprovante do TFD.
+    "/tfd/files/abc123token" => "/tfd/files/[FILTERED]",
+    "//tfd//files//abc123token" => "/tfd/files/[FILTERED]",
+    "/exams/files/abc123token" => "/exams/files/[FILTERED]",
+    "/%65xams/files/%61bc123token?x=1" => "/exams/files/[FILTERED]?x=1"
   }.each do |raw, expected|
     it "mascara #{raw}" do
       expect(described_class.mask(raw)).to eq(expected)
@@ -49,7 +54,7 @@ RSpec.describe RequestLogPathMask do
   end
 
   it "não toca em outros caminhos" do
-    %w[/ /up /vx/abc /attendance//x].each { |raw| expect(described_class.mask(raw)).to eq(raw) }
+    %w[/ /up /vx/abc /attendance//x /tfd/cases /exams/uploads /tfd/files].each { |raw| expect(described_class.mask(raw)).to eq(raw) }
   end
 
   describe "bytes inválidos ou codificação mista" do

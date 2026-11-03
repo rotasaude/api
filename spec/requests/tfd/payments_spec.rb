@@ -235,6 +235,17 @@ RSpec.describe "TFD — pagamento e prestação de contas", type: :request do
       expect(response.headers["Cache-Control"]).to include("no-store")
     end
 
+    it "FW5: cada download do comprovante deixa clinical_record.viewed (access tfd, só ids); o link e o 404 não deixam" do
+      viewed = -> { DomainEvent.where(name: "clinical_record.viewed") }
+      url = link
+      expect(viewed.call.count).to eq(0)
+      expect { get url }.to change { viewed.call.count }.by(1)
+      expect(viewed.call.sole.payload).to eq("patient_id" => tfd.patient_id, "user_id" => committee.id, "access" => "tfd",
+                                             "reason_code" => nil, "person_ref" => "patient:#{tfd.patient_id}")
+      expect { get url }.to change { viewed.call.count }.by(1)
+      expect { get "/tfd/files/abc" }.not_to(change { viewed.call.count })
+    end
+
     it "link de outro usuário → 404; token falso → 404" do
       url = link
       stepped_up!(other)
