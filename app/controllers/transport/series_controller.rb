@@ -16,6 +16,8 @@ module Transport
     end
 
     def show
+      return unless query_only!
+
       render json: Json.series(@series)
     end
 

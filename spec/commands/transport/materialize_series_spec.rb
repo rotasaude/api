@@ -39,7 +39,7 @@ RSpec.describe Transport::MaterializeSeries do
     expect(trips.map(&:status).uniq).to eq([ "planned" ])
     expect(trips.map(&:transport_vehicle_id).uniq).to eq([ nil ])
     expect(trips.map(&:created_by_user_id).uniq).to eq([ series.created_by_user_id ])
-    expect(result).to eq(added: 9, created_trips: 9, pending: 0)
+    expect(result).to eq(added: 9, created_trips: 9, pending: 0, failed: 0)
 
     stops = trips.first.transport_trip_stops.map { |s| [ s.position, s.kind, s.label, s.transport_destination_id ] }
     expect(stops).to eq([ [ 1, "boarding", "Posto do Distrito", nil ], [ 2, "destination", dest.name, dest.id ] ])
@@ -57,12 +57,12 @@ RSpec.describe Transport::MaterializeSeries do
                  driver: driver_user!.transport_driver, status: "confirmed", destination: dest)
     passenger!(full)
     first = described_class.call(series: series, today: monday)
-    expect(first).to eq(added: 8, created_trips: 8, pending: 1)
+    expect(first).to eq(added: 8, created_trips: 8, pending: 1, failed: 0)
     counts = -> { [ TransportTripPassenger.count, TransportTrip.count, TransportTripStop.count, TransportPendingItem.count ] }
     before = counts.call
     second = described_class.call(series: series, today: monday)
     expect(counts.call).to eq(before)
-    expect(second).to eq(added: 0, created_trips: 0, pending: 0)
+    expect(second).to eq(added: 0, created_trips: 0, pending: 0, failed: 0)
     expect(TransportPendingItem.where(transport_series_id: series.id).pluck(:date)).to eq([ monday ])
   end
 
@@ -197,5 +197,92 @@ RSpec.describe Transport::MaterializeSeries do
     expect([ past.reason, past.details[:path] ]).to eq([ :invalid_request, "from_on" ])
     expect(series.reload.suspended_from).to be_nil
     expect(series_passengers.count).to eq(9)
+  end
+
+  describe "fix round 1: dia perdido, motivo, parada órfã e savepoint por dia" do
+    let(:full) do
+      trip!(date: monday, vehicle: vehicle!(seats: 1, wheelchair_spots: 0), driver: driver_user!.transport_driver, status: "confirmed",
+            destination: dest).tap { |t| passenger!(t) }
+    end
+    let(:one_day) { save_series!(base_attrs.merge("weekdays" => [ 1 ], "ends_on" => monday.iso8601)) }
+
+    def pending_of(s) = TransportPendingItem.find_by!(transport_series_id: s.id, date: monday)
+
+    it "sem lugar → pendência; posto à mão → resolve; retirado → a próxima execução põe o paciente de novo" do
+      full
+      described_class.call(series: one_day, today: monday)
+      expect(pending_of(one_day).resolved_at).to be_nil
+      by_hand = trip!(date: monday, departure: "09:00", destination: dest)
+      placed = passenger!(by_hand, patient: patient, origin: "series", exception_reason: nil, transport_series: one_day)
+      described_class.call(series: one_day, today: monday)
+      expect(pending_of(one_day).resolved_at).to be_present
+      Transport::RemovePassenger.call(passenger: placed, reason: "Retirado pela central por engano", by: dispatcher!)
+      result = described_class.call(series: one_day, today: monday)
+      expect(result).to include(added: 1, pending: 0)
+      expect(series_passengers(one_day).pluck(:transport_trip_id)).to eq([ by_hand.id ])
+    end
+
+    it "viagem posta à mão cancelada → a próxima execução reabre a mesma pendência (nunca some o dia)" do
+      full
+      described_class.call(series: one_day, today: monday)
+      by_hand = trip!(date: monday, departure: "09:00", destination: dest)
+      passenger!(by_hand, patient: patient, origin: "series", exception_reason: nil, transport_series: one_day)
+      described_class.call(series: one_day, today: monday)
+      pending = pending_of(one_day)
+      expect(pending.resolved_at).to be_present
+      by_hand.update_columns(status: "cancelled", cancelled_at: Time.current)
+      result = described_class.call(series: one_day, today: monday)
+      expect(result).to include(pending: 1, added: 0)
+      expect(pending.reload).to have_attributes(resolved_at: nil, reason: "no_seat")
+      expect(TransportPendingItem.where(transport_series_id: one_day.id).count).to eq(1)
+      get_items = TransportPendingItem.where(resolved_at: nil, date: monday).pluck(:transport_series_id)
+      expect(get_items).to eq([ one_day.id ])
+    end
+
+    it "cadeirante com acompanhante sem lugar (cadeira livre) → no_seat, pelo que falta de fato" do
+      trip = trip!(date: monday, vehicle: vehicle!(seats: 1, wheelchair_spots: 1), driver: driver_user!.transport_driver, status: "confirmed",
+                   destination: dest)
+      passenger!(trip)
+      wheel = save_series!(base_attrs.merge("weekdays" => [ 1 ], "ends_on" => monday.iso8601, "wheelchair" => true,
+                                            "companion" => { "name" => "Maria Acompanhante", "reason" => "Paciente com limitação de mobilidade" }))
+      described_class.call(series: wheel, today: monday)
+      expect(pending_of(wheel).reason).to eq("no_seat")
+    end
+
+    it "recusa do AddPassenger: a parada nova do dia não fica órfã, o dia conta em failed e os outros dias seguem" do
+      trip = trip!(date: monday, departure: "05:30", destination: dest)
+      allow(Transport::AddPassenger).to receive(:call).and_wrap_original do |original, **kwargs|
+        kwargs[:trip].id == trip.id ? Result.fail(:companion_not_allowed) : original.call(**kwargs)
+      end
+      logged = []
+      allow(Rails.logger).to receive(:error) { |message| logged << message }
+      result = described_class.call(series: series, today: monday)
+      expect(trip.transport_trip_stops.reload.map(&:label)).to eq([ "Praça Central", dest.name ])
+      expect(result).to eq(added: 8, created_trips: 8, pending: 0, failed: 1)
+      expect(logged).to eq([ "[Transport::MaterializeSeries] series=#{series.id} date=#{monday.iso8601} failed: Transport::MaterializeSeries::Refused" ])
+    end
+
+    it "paciente já na viagem por outra origem: não entra de novo e não ganha parada nova" do
+      trip = trip!(date: monday, departure: "05:30", destination: dest)
+      passenger!(trip, patient: patient)
+      described_class.call(series: one_day, today: monday)
+      expect(trip.transport_trip_stops.reload.count).to eq(2)
+      expect(trip.transport_trip_passengers.count).to eq(1)
+    end
+
+    it "falha no meio de um dia desfaz as escritas desse dia (viagem e paradas criadas), e só dele" do
+      wednesday = monday + 2
+      allow(Transport::AddPassenger).to receive(:call).and_wrap_original do |original, **kwargs|
+        raise ActiveRecord::StatementInvalid, "boom" if kwargs[:trip].date == wednesday
+
+        original.call(**kwargs)
+      end
+      stops_before = TransportTripStop.count
+      result = described_class.call(series: series, today: monday)
+      expect(result).to include(failed: 1, created_trips: 8, added: 8)
+      expect(TransportTrip.where(date: wednesday).count).to eq(0)
+      expect(TransportTrip.where(transport_series_id: series.id).count).to eq(8)
+      expect(TransportTripStop.count - stops_before).to eq(16)
+    end
   end
 end

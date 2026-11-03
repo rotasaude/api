@@ -37,7 +37,7 @@ RSpec.describe "Transporte — séries e pendências", type: :request do
   it "recusas de campo todas de uma vez: weekdays fora de 1..7, volta antes da saída, fim antes do início, embarque e volta obrigatórios" do
     json_post "/transport/series", body(weekdays: [ 0, 8 ], departure_time: "13:00", return_time: "13:00",
                                         ends_on: (monday - 1).iso8601)
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response.status).to eq(422)
     expect(json_body["problems"]).to contain_exactly(
       { "path" => "weekdays", "error" => "invalid_request" }, { "path" => "return_time", "error" => "return_before_departure" },
       { "path" => "ends_on", "error" => "invalid_request" }
@@ -144,6 +144,23 @@ RSpec.describe "Transporte — séries e pendências", type: :request do
       ended.update!(ends_on: Date.current - 1)
       described_class.perform_now
       expect(TransportTrip.count).to eq(0)
+    end
+
+    it "trava e relê a série: suspensa por outra transação logo antes do processamento → nada" do
+      series = new_series!
+      allow_any_instance_of(TransportSeries).to receive(:lock!).and_wrap_original do |original, *args|
+        TransportSeries.where(id: series.id).update_all(suspended_from: Date.current, suspend_reason: "Suspensa por outra sessão da central")
+        original.call(*args)
+      end
+      described_class.perform_now
+      expect(TransportTrip.count).to eq(0)
+      expect(TransportTripPassenger.count).to eq(0)
+    end
+
+    it "show com query string → 422 (dado só no corpo)" do
+      series = new_series!
+      get "/transport/series/#{series.id}?patient_id=x"
+      expect([ response.status, json_body["path"] ]).to eq([ 422, "patient_id" ])
     end
 
     it "uma série que falha não impede as outras; o log leva só o id e a classe do erro" do
