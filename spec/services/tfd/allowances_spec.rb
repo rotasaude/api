@@ -53,12 +53,13 @@ RSpec.describe Tfd::Allowances do
   end
 
   it "Review Focus 3: internado a estadia inteira — paciente sem diária, acompanhante com as noites; os dois com o deslocamento" do
-    out = leg("outbound", Date.current + 10, companion: true)
+    base = Date.current - 20 # a internação vai até hoje (D2)
+    out = leg("outbound", base + 10, companion: true)
     outbound_rows = complete(out).payload[:allowances]
     expect(outbound_rows.map { |r| [ r.person, r.kind ] }).to contain_exactly(%w[patient ground_km], %w[companion ground_km])
-    stay = Tfd::RecordInpatient.call(tfd_case: tfd.reload, from: (Date.current + 10).iso8601, to: (Date.current + 15).iso8601, by: committee!)
+    stay = Tfd::RecordInpatient.call(tfd_case: tfd.reload, from: (base + 10).iso8601, to: (base + 15).iso8601, by: committee!)
     expect(stay).to be_ok
-    back = leg("return", Date.current + 15, companion: true)
+    back = leg("return", base + 15, companion: true)
     rows = complete(back).payload[:allowances]
     meals = rows.select { |r| r.kind.start_with?("meal") }
     expect(meals.map { |r| [ r.person, r.kind, r.quantity ] }).to eq([ [ "companion", "meal_overnight", 5 ] ])
@@ -67,13 +68,14 @@ RSpec.describe Tfd::Allowances do
   end
 
   it "internação parcial e aberta: desconta só a interseção com [ida, volta); aberta conta até a volta; de um dia só não conta" do
-    out = leg("outbound", Date.current + 10)
+    base = Date.current - 20
+    out = leg("outbound", base + 10)
     complete(out)
     # [10, 10) = 0 noites; [12, …) aberta até a volta (14) = 2 noites.
-    expect(Tfd::RecordInpatient.call(tfd_case: tfd.reload, from: (Date.current + 10).iso8601, to: (Date.current + 10).iso8601,
+    expect(Tfd::RecordInpatient.call(tfd_case: tfd.reload, from: (base + 10).iso8601, to: (base + 10).iso8601,
                                      by: committee!)).to be_ok
-    expect(Tfd::RecordInpatient.call(tfd_case: tfd.reload, from: (Date.current + 12).iso8601, by: committee!)).to be_ok
-    back = leg("return", Date.current + 14)
+    expect(Tfd::RecordInpatient.call(tfd_case: tfd.reload, from: (base + 12).iso8601, by: committee!)).to be_ok
+    back = leg("return", base + 14)
     meal = complete(back).payload[:allowances].find { |r| r.kind == "meal_overnight" }
     expect([ meal.person, meal.quantity ]).to eq([ "patient", 2 ]) # 4 noites − 2 internadas
   end

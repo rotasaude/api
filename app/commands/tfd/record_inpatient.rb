@@ -6,7 +6,11 @@
 #   `from` ≠ o da aberta  inpatient_open;
 #   cruza outra           inpatient_overlap (intervalo meio-aberto [from, to),
 #                         aberta até o infinito; entrada no dia da alta vale);
-#   `to` < `from`         invalid_request (path "to").
+#   `to` < `from`         invalid_request (path "to");
+#   limites (D2)          `from` entre (a data da ida viva mais antiga — ou,
+#                         sem ida, o dia local do envio) − 1 dia e hoje; `to`
+#                         até hoje — fora disso invalid_request no campo (um
+#                         erro de digitação cortaria a diária e o BPA de vez).
 # Grava o evento `inpatient_recorded` sem mudar a situação e publica
 # tfd.case_updated (só ids); as datas nunca vão para evento nem log.
 module Tfd
@@ -31,6 +35,9 @@ module Tfd
         tfd_case.lock!
         next Result.fail(:invalid_transition) unless OPEN.include?(tfd_case.status)
 
+        out_of_bounds = bounds_problems(tfd_case, starts, ends)
+        next Transport::Support.refuse(out_of_bounds) if out_of_bounds.any?
+
         stays = Array(tfd_case.inpatient_stays).map { |stay| stay.slice("from", "to") }
         open = stays.find { |stay| stay["to"].nil? }
         next Transport::Support.refuse_with(:inpatient_open, "from") if open && open["from"] != starts.iso8601
@@ -49,6 +56,16 @@ module Tfd
       end
     end
 
+    def bounds_problems(tfd_case, starts, ends)
+      today = Time.zone.today
+      outbound = TfdLeg.live.where(tfd_case_id: tfd_case.id, direction: "outbound").minimum(:date)
+      floor = (outbound || tfd_case.submitted_at.in_time_zone.to_date) - 1
+      paths = []
+      paths << "from" unless starts.between?(floor, today)
+      paths << "to" if ends && ends > today
+      paths
+    end
+
     # [a, b) × [c, d) com nil = infinito; uma estada de um dia só ([d, d)) ocupa o dia d.
     def overlap?(stay, starts, ends)
       other_from = Date.iso8601(stay["from"])
@@ -57,6 +74,6 @@ module Tfd
     end
 
     def limit(from, to) = to.nil? ? Date::Infinity.new : [ to, from + 1 ].max
-    private_class_method :overlap?, :limit
+    private_class_method :bounds_problems, :overlap?, :limit
   end
 end

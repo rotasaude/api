@@ -145,43 +145,69 @@ RSpec.describe "TFD — comissão", type: :request do
     expect(json_body["status"]).to eq("scheduled")
   end
 
+  # Internação de 20 dias atrás em diante (D2: até hoje e não antes do envio − 1 dia).
+  def d(offset) = (Date.current - 20 + offset).iso8601
+  def submitted_long_ago!(tfd) = tfd.tap { |row| row.update_columns(submitted_at: 30.days.ago) }
+
   it "internação aberta e fechada aparece em inpatient; outra aberta com outro from → inpatient_open; cruzamento → inpatient_overlap" do
-    tfd = tfd_case!(status: "scheduled")
-    inpatient(tfd, from: "2026-11-10")
+    tfd = submitted_long_ago!(tfd_case!(status: "scheduled"))
+    inpatient(tfd, from: d(0))
     expect(response).to have_http_status(:ok)
-    expect(json_body["inpatient"]).to eq([ { "from" => "2026-11-10", "to" => nil } ])
+    expect(json_body["inpatient"]).to eq([ { "from" => d(0), "to" => nil } ])
     expect(json_body["status"]).to eq("scheduled")
-    inpatient(tfd, from: "2026-11-12")
+    inpatient(tfd, from: d(2))
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to include("error" => "inpatient_open", "path" => "from")
-    inpatient(tfd, from: "2026-11-10", to: "2026-11-14")
-    expect(json_body["inpatient"]).to eq([ { "from" => "2026-11-10", "to" => "2026-11-14" } ])
-    inpatient(tfd, from: "2026-11-13", to: "2026-11-16")
+    inpatient(tfd, from: d(0), to: d(4))
+    expect(json_body["inpatient"]).to eq([ { "from" => d(0), "to" => d(4) } ])
+    inpatient(tfd, from: d(3), to: d(6))
     expect(json_body).to include("error" => "inpatient_overlap")
-    inpatient(tfd, from: "2026-11-20", to: "2026-11-18")
+    inpatient(tfd, from: d(10), to: d(8))
     expect(json_body).to include("error" => "invalid_request", "path" => "to")
-    inpatient(tfd, from: "2026-11-14", to: "2026-11-15")
-    expect(json_body["inpatient"]).to eq([ { "from" => "2026-11-10", "to" => "2026-11-14" }, { "from" => "2026-11-14", "to" => "2026-11-15" } ])
-    expect(tfd.reload.inpatient_stays).to eq([ { "from" => "2026-11-10", "to" => "2026-11-14" }, { "from" => "2026-11-14", "to" => "2026-11-15" } ])
+    inpatient(tfd, from: d(4), to: d(5))
+    expect(json_body["inpatient"]).to eq([ { "from" => d(0), "to" => d(4) }, { "from" => d(4), "to" => d(5) } ])
+    expect(tfd.reload.inpatient_stays).to eq([ { "from" => d(0), "to" => d(4) }, { "from" => d(4), "to" => d(5) } ])
     expect(tfd.tfd_case_events.where(kind: "inpatient_recorded").count).to eq(3)
     expect(payloads("tfd.case_updated").size).to eq(3)
   end
 
   it "internação: só scheduled/travelling; aberta antes de uma fechada que termina depois → inpatient_overlap" do
     authorized = tfd_case!(status: "authorized")
-    inpatient(authorized, from: "2026-11-10")
+    inpatient(authorized, from: d(0))
     expect(json_body).to include("error" => "invalid_transition")
-    tfd = tfd_case!(status: "travelling")
-    inpatient(tfd, from: "2026-11-10", to: "2026-11-12")
-    inpatient(tfd, from: "2026-11-11")
+    tfd = submitted_long_ago!(tfd_case!(status: "travelling"))
+    inpatient(tfd, from: d(0), to: d(2))
+    inpatient(tfd, from: d(1))
     expect(json_body).to include("error" => "inpatient_overlap")
     inpatient(tfd, from: "2026-11-31")
     expect(json_body).to include("error" => "invalid_request", "path" => "from")
-    expect(tfd.reload.inpatient_stays).to eq([ { "from" => "2026-11-10", "to" => "2026-11-12" } ])
-    inpatient(tfd, from: "2026-11-20")
-    expect { inpatient(tfd, from: "2026-11-20") }.not_to(change { tfd.tfd_case_events.reload.count })
+    expect(tfd.reload.inpatient_stays).to eq([ { "from" => d(0), "to" => d(2) } ])
+    inpatient(tfd, from: d(10))
+    expect { inpatient(tfd, from: d(10)) }.not_to(change { tfd.tfd_case_events.reload.count })
     expect(response).to have_http_status(:ok)
-    expect(json_body["inpatient"]).to eq([ { "from" => "2026-11-10", "to" => "2026-11-12" }, { "from" => "2026-11-20", "to" => nil } ])
+    expect(json_body["inpatient"]).to eq([ { "from" => d(0), "to" => d(2) }, { "from" => d(10), "to" => nil } ])
+  end
+
+  it "D2: internação entre (ida mais antiga ou envio) − 1 dia e hoje; alta até hoje; fora → invalid_request no campo" do
+    tfd = submitted_long_ago!(tfd_case!(status: "scheduled"))
+    floor = Date.current - 31 # envio há 30 dias − 1
+    inpatient(tfd, from: (floor - 1).iso8601)
+    expect(json_body).to include("error" => "invalid_request", "path" => "from")
+    inpatient(tfd, from: (Date.current + 1).iso8601)
+    expect(json_body).to include("error" => "invalid_request", "path" => "from")
+    inpatient(tfd, from: (Date.current - 2).iso8601, to: (Date.current + 1).iso8601)
+    expect(json_body).to include("error" => "invalid_request", "path" => "to")
+    expect(tfd.reload.inpatient_stays).to be_blank
+
+    # Com ida registrada, o piso é a data dela − 1.
+    Tfd::AddLeg.call(tfd_case: tfd, by: committee, attrs: { "direction" => "outbound", "mode" => "bus_ticket",
+                                                           "date" => (Date.current - 5).iso8601,
+                                                           "ticket" => { "amount_cents" => 100, "carrier" => "Viação" } })
+    inpatient(tfd, from: (Date.current - 7).iso8601)
+    expect(json_body).to include("error" => "invalid_request", "path" => "from")
+    inpatient(tfd, from: (Date.current - 6).iso8601, to: Date.current.iso8601)
+    expect(response).to have_http_status(:ok)
+    expect(json_body["inpatient"]).to eq([ { "from" => (Date.current - 6).iso8601, "to" => Date.current.iso8601 } ])
   end
 
   it "rascunho é invisível à comissão: as quatro escritas dão 404 e nada muda" do
