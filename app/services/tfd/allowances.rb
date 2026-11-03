@@ -37,10 +37,10 @@ module Tfd
     def units(leg)
       km = BigDecimal(leg.distance_km.to_i)
       raw = case leg.mode
-            when "air" then km / BigDecimal(Catalog::KM_PER_MILE.to_s) / Catalog::AIR_MILES_UNIT
-            when "river" then km / BigDecimal(Catalog::KM_PER_NM.to_s) / Catalog::RIVER_NM_UNIT
-            else km / Catalog::KM_UNIT
-            end
+      when "air" then km / BigDecimal(Catalog::KM_PER_MILE.to_s) / Catalog::AIR_MILES_UNIT
+      when "river" then km / BigDecimal(Catalog::KM_PER_NM.to_s) / Catalog::RIVER_NM_UNIT
+      else km / Catalog::KM_UNIT
+      end
       [ raw.ceil.to_i, 1 ].max
     end
 

@@ -102,11 +102,8 @@ module TransportHelpers
   # (0..99) dá uma placa fixa "TST<n%10>S<nn>", distinta para cada semente.
   def vehicle!(seats: 15, wheelchair_spots: 1, kind: "van", plate_seed: nil)
     letters = Array.new(3) { ("A".."Z").to_a.sample }.join
-    plate = if plate_seed
-              format("TST%<unit>dS%<seed>02d", unit: plate_seed % 10, seed: plate_seed % 100)
-            else
-              "#{letters}#{rand(10)}#{('A'..'Z').to_a.sample}#{format('%02d', rand(100))}"
-            end
+    plate = format("TST%<unit>dS%<seed>02d", unit: plate_seed % 10, seed: plate_seed % 100) if plate_seed
+    plate ||= "#{letters}#{rand(10)}#{('A'..'Z').to_a.sample}#{format('%02d', rand(100))}"
     TransportVehicle.create!(plate: plate, renavam: format("%011d", SecureRandom.random_number(10**11)), model: "Sprinter 415",
                              kind: kind, seats: seats, wheelchair_spots: wheelchair_spots, updated_by_user: transport_admin!)
   end
