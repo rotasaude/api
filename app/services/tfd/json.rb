@@ -61,10 +61,10 @@ module Tfd
         "table_cents" => row.table_cents, "complement_cents" => row.complement_cents, "total_cents" => row.total_cents }
     end
 
-    # <tfd-payment> (a coluna `method` vira `payment_method` na Task 12; o JSON continua "method").
+    # <tfd-payment> (a coluna é `payment_method`, T24; o JSON continua "method").
     def payment(row)
       { "id" => row.id, "paid_on" => row.paid_on.iso8601, "amount_cents" => row.amount_cents,
-        "method" => row.has_attribute?(:payment_method) ? row[:payment_method] : row[:method],
+        "method" => row.payment_method,
         "receipt_number" => row.receipt_number, "by_name" => user_name(row.by_user) }
     end
 

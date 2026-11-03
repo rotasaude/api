@@ -299,6 +299,10 @@ Rails.application.config.to_prepare do
   # user_id), trecho feito (tfd_leg_id) e alimentação calculada na volta
   # (tfd_case_id, tfd_leg_id). Só ids; o consumidor do BPA entra na Task 13.
   %w[tfd.leg_added tfd.leg_done tfd.allowances_calculated].each { |name| DomainEvents.bind name, to: [] }
+  # Pagamento registrado (tfd_case_id, tfd_payment_id, user_id) e prestação de
+  # contas fechada (tfd_case_id, user_id) do TFD (Task 12): só ids, nunca o
+  # recibo, o valor nem o nome do arquivo; sem consumidor.
+  %w[tfd.payment_recorded tfd.accountability_closed].each { |name| DomainEvents.bind name, to: [] }
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

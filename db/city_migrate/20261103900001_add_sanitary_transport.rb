@@ -460,7 +460,7 @@ class AddSanitaryTransport < ActiveRecord::Migration[8.1]
       t.references :tfd_case, type: :uuid, null: false, foreign_key: true, index: false
       t.date :paid_on, null: false
       t.integer :amount_cents, null: false
-      t.string :method, null: false
+      t.string :payment_method, null: false
       t.string :receipt_number, limit: 40, null: false
       t.references :by_user, type: :uuid, null: false, foreign_key: { to_table: :users }, index: false
       t.datetime :created_at, null: false
@@ -468,7 +468,7 @@ class AddSanitaryTransport < ActiveRecord::Migration[8.1]
     add_index :tfd_payments, :tfd_case_id, name: "idx_tfd_payments_case"
     add_check_constraint :tfd_payments,
                          "amount_cents >= 1 AND amount_cents <= #{MAX_AMOUNT_CENTS} AND " \
-                         "method::text = ANY (ARRAY[#{quoted(PAYMENT_METHODS)}]::text[]) AND char_length(btrim(receipt_number::text)) >= 1",
+                         "payment_method::text = ANY (ARRAY[#{quoted(PAYMENT_METHODS)}]::text[]) AND char_length(btrim(receipt_number::text)) >= 1",
                          name: "ck_tfd_payments_domains"
 
     create_table :tfd_accountability, id: :uuid do |t|

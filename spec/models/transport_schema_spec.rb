@@ -86,7 +86,7 @@ RSpec.describe "Esquema do módulo 30", type: :model do
     tfd = tfd_case!
     event = TfdCaseEvent.create!(tfd_case: tfd, kind: "created", by_user: tfd.requester_user)
     refused { event.update_column(:kind, "submitted") }
-    payment = TfdPayment.create!(tfd_case: tfd, paid_on: Date.current, amount_cents: 2475, method: "pix", receipt_number: "R-1",
+    payment = TfdPayment.create!(tfd_case: tfd, paid_on: Date.current, amount_cents: 2475, payment_method: "pix", receipt_number: "R-1",
                                  by_user: tfd.requester_user)
     refused { payment.delete }
     refused { tfd.delete }

@@ -3572,12 +3572,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
     t.integer "amount_cents", null: false
     t.uuid "by_user_id", null: false
     t.datetime "created_at", null: false
-    t.string "method", null: false
     t.date "paid_on", null: false
+    t.string "payment_method", null: false
     t.string "receipt_number", limit: 40, null: false
     t.uuid "tfd_case_id", null: false
     t.index ["tfd_case_id"], name: "idx_tfd_payments_case"
-    t.check_constraint "amount_cents >= 1 AND amount_cents <= 10000000 AND method::text = ANY (ARRAY['cash'::text, 'transfer'::text, 'pix'::text, 'check'::text]::text[]) AND char_length(btrim(receipt_number::text)) >= 1", name: "ck_tfd_payments_domains"
+    t.check_constraint "amount_cents >= 1 AND amount_cents <= 10000000 AND payment_method::text = ANY (ARRAY['cash'::text, 'transfer'::text, 'pix'::text, 'check'::text]::text[]) AND char_length(btrim(receipt_number::text)) >= 1", name: "ck_tfd_payments_domains"
   end
 
   create_table "transport_attendance_corrections", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

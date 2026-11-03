@@ -11,6 +11,9 @@
 #   POST  /tfd/cases/:id/appointment  { appointment_at, provider_id? }
 #   POST  /tfd/cases/:id/inpatient    { from, to? }
 #   POST  /tfd/cases/:id/cancel       { reason }
+#   POST  /tfd/cases/:id/payments     { paid_on, amount_cents, method, receipt_number }
+#   POST  /tfd/cases/:id/accountability  { content_type, data (base64), filename? } → completed
+# Sem step-up (só leitura, comissão): POST /tfd/cases/:id/accountability/url → { url } (GET /tfd/files/:token).
 # Toda escrita devolve o <tfd-case> inteiro, sem trilha nova (a trilha é só do
 # read). Dado do paciente e laudo só no corpo JSON.
 #
@@ -25,14 +28,15 @@ module Tfd
     QUEUE_STATUSES = (Catalog::STATUSES - %w[draft]).freeze
     PRELOAD = %i[patient transport_destination].freeze
 
-    COMMITTEE_WRITES = %i[decide appointment inpatient cancel].freeze
+    COMMITTEE_WRITES = %i[decide appointment inpatient cancel payments accountability].freeze
+    COMMITTEE_ACTIONS = (COMMITTEE_WRITES + %i[accountability_url]).freeze
     COMMITTEE_KEYS = { decide: %w[decision reason], appointment: %w[appointment_at provider_id],
-                       inpatient: %w[from to], cancel: %w[reason] }.freeze
+                       inpatient: %w[from to], cancel: %w[reason], accountability_url: [] }.freeze
 
-    before_action :require_committee!, only: COMMITTEE_WRITES
+    before_action :require_committee!, only: COMMITTEE_ACTIONS
     before_action :require_step_up!, only: COMMITTEE_WRITES
-    before_action :load_case, only: %i[update submit read] + COMMITTEE_WRITES
-    before_action :known_keys!, only: COMMITTEE_WRITES
+    before_action :load_case, only: %i[update submit read] + COMMITTEE_ACTIONS
+    before_action :known_keys!, only: COMMITTEE_WRITES - %i[payments accountability] + %i[accountability_url]
 
     def index
       return forbid unless Access.committee?(Current.user)
@@ -128,6 +132,32 @@ module Tfd
       committee_write { CancelCase.call(tfd_case: @tfd_case, reason: body_param("reason"), by: Current.user) }
     end
 
+    # Os campos do corpo são conferidos pelo comando (todas as recusas juntas).
+    def payments
+      return unless query_only!
+
+      result = RecordPayment.call(tfd_case: @tfd_case, attrs: body, by: Current.user)
+      return render_failure(result) if result.failure?
+
+      render json: Json.case(result.payload.fetch(:tfd_case).reload)
+    end
+
+    def accountability
+      return unless query_only!
+
+      result = CloseAccountability.call(tfd_case: @tfd_case, attrs: body, by: Current.user)
+      return render_failure(result) if result.failure?
+
+      render json: Json.case(result.payload.fetch(:tfd_case).reload)
+    end
+
+    def accountability_url
+      row = @tfd_case.tfd_accountability
+      return not_found unless row
+
+      render json: { url: Files.url_for(row.exam_file, user: Current.user) }
+    end
+
     private
 
     def committee_write
@@ -152,7 +182,7 @@ module Tfd
     # Rascunho é invisível à comissão: nas escritas dela, 404 (como no read).
     def load_case
       @tfd_case = uuid?(params[:id]) ? TfdCase.find_by(id: params[:id]) : nil
-      @tfd_case = nil if @tfd_case&.status == "draft" && COMMITTEE_WRITES.include?(action_name.to_sym)
+      @tfd_case = nil if @tfd_case&.status == "draft" && COMMITTEE_ACTIONS.include?(action_name.to_sym)
       not_found unless @tfd_case
     end
   end
