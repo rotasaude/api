@@ -21,6 +21,17 @@ RSpec.describe Vaccination::RefreshStatusesJob do
     expect(VaccinationStatus.distinct.pluck(:computed_on)).to eq([ Time.use_zone(city.time_zone) { Time.zone.today } ])
   end
 
+  it "lê o go-live uma vez por execução para N pacientes, com o mesmo resultado (born_after_go_live)" do
+    VaccinationSetting.current.update!(go_live_on: Time.zone.today - 200)
+    after = 3.times.map { vaccine_patient!(birth_date: Time.zone.today - 100) }
+    before = vaccine_patient!(birth_date: Time.zone.today - 400)
+    allow(VaccinationSetting).to receive(:current).and_call_original
+    run!
+    expect(VaccinationSetting).to have_received(:current).once
+    expect(VaccinationRecordCheck.where(mode: "born_after_go_live").pluck(:patient_id)).to match_array(after.map(&:id))
+    expect(VaccinationStatus.where(patient_id: before.id)).to exist
+  end
+
   it "com a sala de vacina desligada, nada" do
     vaccine_patient!(birth_date: Time.zone.today - 70)
     Platform::Features.set!(city: city, key: "vaccination", enabled: false, maintainer: ledi_maintainer!)

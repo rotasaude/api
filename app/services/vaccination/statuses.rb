@@ -7,6 +7,9 @@
 # (sem autor nem sala) quando o paciente nasceu em ou depois de
 # vaccination_settings.go_live_on — uma vez por paciente.
 #
+# `go_live`: a data já lida por quem recalcula muitos pacientes (o job diário
+# lê uma vez por execução); sem ela (`:load`), lida de VaccinationSetting.
+#
 # Recálculos do mesmo paciente são serializados por uma trava consultiva de
 # transação (a chave é um hash do id; nada do paciente no SQL).
 module Vaccination
@@ -15,11 +18,11 @@ module Vaccination
 
     module_function
 
-    def refresh!(patient, today: Time.zone.today)
+    def refresh!(patient, today: Time.zone.today, go_live: :load)
       birth = birth_date(patient)
       VaccinationStatus.transaction(requires_new: true) do
         lock!(patient.id)
-        record_born_after_go_live!(patient.id, birth)
+        record_born_after_go_live!(patient.id, birth, go_live == :load ? VaccinationSetting.current.go_live_on : go_live)
         VaccinationStatus.where(patient_id: patient.id).delete_all
         next unless birth
 
@@ -57,8 +60,7 @@ module Vaccination
     end
 
 
-    def record_born_after_go_live!(patient_id, birth)
-      go_live = VaccinationSetting.current.go_live_on
+    def record_born_after_go_live!(patient_id, birth, go_live)
       return unless birth && go_live && birth >= go_live
       return if VaccinationRecordCheck.where(patient_id: patient_id, mode: "born_after_go_live").exists?
 

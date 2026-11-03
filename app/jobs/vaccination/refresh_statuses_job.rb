@@ -4,7 +4,8 @@
 # nascimento é cifrado: o filtro é em Ruby, e o paciente sem nascimento só tem
 # as linhas antigas apagadas (refresh! sem nascimento). Uma falha num paciente
 # não para o lote: vai ao log só com o id e a classe do erro, e o job falha no
-# fim com a contagem (o EachCityJob junta as cidades).
+# fim com a contagem (o EachCityJob junta as cidades). O go-live é lido uma
+# vez por execução (não por paciente).
 module Vaccination
   class RefreshStatusesJob < ApplicationJob
     prepend EachCityJob
@@ -16,10 +17,11 @@ module Vaccination
       return unless Gate.usable?(Current.city)
 
       today = Time.zone.today
+      go_live = VaccinationSetting.current.go_live_on
       failed = 0
       Patient.in_batches(of: BATCH) do |batch|
         batch.select(:id, :birth_date, :sex).each do |patient|
-          Statuses.refresh!(patient, today: today)
+          Statuses.refresh!(patient, today: today, go_live: go_live)
         rescue => e
           failed += 1
           Rails.logger.error("[#{self.class.name}] patient=#{patient.id} failed: #{e.class}")
