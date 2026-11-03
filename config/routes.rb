@@ -611,6 +611,7 @@ Rails.application.routes.draw do
     post  "trips/:id/attendance_correction", to: "trips#attendance_correction"
     get   "trips/:id/manifest.pdf", to: "manifests#show", format: false
     get   "no_shows",            to: "no_shows#index"
+    get   "dashboard",           to: "dashboard#show"
     # Passageiros e atendimentos marcados (§4; T5, T19); busca de pessoa e
     # duplicados (T2), dado só no corpo.
     post   "trips/:id/passengers",                to: "passengers#create"
