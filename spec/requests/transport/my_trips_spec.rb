@@ -106,10 +106,10 @@ RSpec.describe "Transporte — motorista", type: :request do
     expect(other.reload.status).to eq("confirmed")
   end
 
-  it "saída só da confirmada (invalid_transition) e publica transport.trip_started só com o id" do
+  it "saída só da confirmada (planned → 404, FW1; em andamento → invalid_transition) e publica transport.trip_started só com o id" do
     planned = trip!(date: Date.current, departure: "19:00", back: "21:00", vehicle: vehicle!(plate_seed: 7), driver: davi.transport_driver)
     start!(planned)
-    expect(json_body["error"]).to eq("invalid_transition")
+    expect(response).to have_http_status(:not_found)
     expect { start! }.to change { DomainEvent.where(name: "transport.trip_started").count }.by(1)
     expect(DomainEvent.where(name: "transport.trip_started").map(&:payload)).to include({ "trip_id" => trip.id })
     expect(trip.reload.started_at).to be_present

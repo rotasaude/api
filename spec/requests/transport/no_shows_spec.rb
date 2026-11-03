@@ -78,12 +78,11 @@ RSpec.describe "Transporte — faltas e lista de passageiros", type: :request do
     end
   end
 
-  it "sem sessão não lê nem a lista nem as faltas" do
+  it "FW4: sem sessão → 401 nas faltas e na lista (antes de qualquer usuário existir na cidade, também)" do
     get "/transport/no_shows", params: { from: Time.zone.today.iso8601, to: Time.zone.today.iso8601 }
-    first = response.status
+    expect([ response.status, json_body ]).to eq([ 401, { "error" => "unauthenticated" } ])
     get "/transport/trips/#{trip!.id}/manifest.pdf"
-    expect([ first, response.status ]).to all(satisfy { |code| [ 401, 403 ].include?(code) })
-    expect(response.body).not_to start_with("%PDF")
+    expect([ response.status, json_body ]).to eq([ 401, { "error" => "unauthenticated" } ])
   end
 
   describe "GET /transport/trips/:id/manifest.pdf" do

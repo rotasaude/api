@@ -1,6 +1,8 @@
 # Tela do motorista (contrato §5; §14 T19): só o usuário `driver` com cadastro
 # ativo (Transport::Access.driver_for; senão 403 missing_role) e só as viagens
-# em que ele é o motorista — viagem de outro motorista ou desconhecida → 404.
+# em que ele é o motorista e que estão `confirmed`, `in_progress` ou `done`
+# (FW1: a planned ainda não é dele de verdade, a cancelada não corre) — viagem
+# de outro motorista, fora dessas situações ou desconhecida → 404.
 #   GET  /transport/my_trips?date=        → { items: [<trip>] } (padrão hoje, no fuso da cidade)
 #   POST /transport/my_trips/:id/start    → <trip> (Transport::StartTrip)
 #   POST /transport/my_trips/:id/attendance { items } → <trip> (Transport::RecordAttendance)
@@ -11,13 +13,15 @@ module Transport
     before_action :load_driver
     before_action :load_trip, except: :index
 
+    VISIBLE = %w[confirmed in_progress done].freeze
+
     def index
       return unless query_only!(:date)
 
       date = params.key?(:date) ? Support.date(params[:date]) : Time.zone.today
       return render_refusal("date") unless date
 
-      trips = TransportTrip.where(transport_driver_id: @driver.id, date: date)
+      trips = TransportTrip.where(transport_driver_id: @driver.id, date: date, status: VISIBLE)
                            .includes(:transport_trip_stops, :transport_vehicle, :transport_trip_log, transport_driver: :user)
                            .order(:departure_at, :id)
       render json: { items: trips.map { |trip| Json.trip(trip, viewer: :driver) } }
@@ -49,7 +53,7 @@ module Transport
     end
 
     def load_trip
-      @trip = uuid?(params[:id]) ? TransportTrip.find_by(id: params[:id], transport_driver_id: @driver.id) : nil
+      @trip = uuid?(params[:id]) ? TransportTrip.find_by(id: params[:id], transport_driver_id: @driver.id, status: VISIBLE) : nil
       not_found unless @trip
     end
 
