@@ -188,3 +188,33 @@ RSpec.describe "Erasure requests", type: :request do
     end
   end
 end
+
+# Módulo 30, FW17 (ADR 0048; Ruling da Task 17): a confirmação da exclusão
+# com o paciente a bordo de viagem em andamento responde 409 patient_on_trip
+# pela rota, sem mudar nada.
+RSpec.describe "Erasure requests — paciente em viagem", type: :request do
+  before do
+    allow(Citizens::RequestErasure).to receive_messages(attended?: false, documented?: false)
+  end
+
+  let!(:city) { transport_city! }
+  let(:patient) { transport_patient! }
+  let(:citizen) { Patients::Pairs.of(patient).sole }
+
+  it "viagem in_progress: 409 patient_on_trip; pedido pendente, cidadão e passageiro intactos" do
+    driver = driver_user!
+    trip = trip!(status: "confirmed", date: Date.current, vehicle: vehicle!(seats: 4), driver: driver.transport_driver)
+    rider = passenger!(trip, patient: patient)
+    expect(Transport::StartTrip.call(trip: trip, by: driver)).to be_ok
+    request = Citizens::RequestErasure.call(cpf: citizen.cpf, document_checked: true, by: verifier!).payload.fetch(:request)
+    admin = step_up_enrolled!(staff_with("admin-lgpd-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin"))
+    sign_in_as(admin).update!(mfa_verified_at: Time.current)
+
+    json_post "/attendance/erasure_requests/#{request.id}/confirm"
+
+    expect([ response.status, JSON.parse(response.body)["error"] ]).to eq([ 409, "patient_on_trip" ])
+    expect(request.reload.status).to eq("pending")
+    expect(citizen.reload.erased_at).to be_nil
+    expect(rider.reload).to have_attributes(removed_at: nil, anonymized_at: nil)
+  end
+end
