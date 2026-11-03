@@ -16,7 +16,8 @@ module Timeline
       "consultation" => Sources::ConsultationSource, "clinical_document" => Sources::ClinicalDocumentSource,
       "controlled_notification" => Sources::ControlledNotificationSource, "campaign" => Sources::CampaignSource,
       "exam" => Sources::ExamSource, "procedure" => Sources::ProcedureSource,
-      "dispensation" => Sources::DispensationSource, "vaccination" => Sources::VaccinationSource
+      "dispensation" => Sources::DispensationSource, "vaccination" => Sources::VaccinationSource,
+      "transport" => Sources::TransportSource
     }.freeze
 
     Page = Data.define(:entries, :next_before)

@@ -931,6 +931,9 @@ Rails.application.routes.draw do
 
     # Caderneta de vacinação (ADR 0047; contrato §9, W1): citizen_id, par validado.
     get "vaccinations", to: "vaccinations#index"
+
+    # Minhas viagens (ADR 0048; contrato §8, §14 T14): citizen_id, par validado.
+    get "trips", to: "trips#index"
   end
 
   # Autoria/preview de protocolos (ADR-0009)
