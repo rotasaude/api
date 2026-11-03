@@ -296,9 +296,11 @@ Rails.application.config.to_prepare do
   # (tfd.case_updated) só com ids, nunca o motivo nem datas; sem consumidor.
   %w[tfd.case_decided tfd.case_cancelled tfd.case_updated].each { |name| DomainEvents.bind name, to: [] }
   # Trechos do TFD (Task 11): trecho registrado (tfd_case_id, tfd_leg_id,
-  # user_id), trecho feito (tfd_leg_id) e alimentação calculada na volta
-  # (tfd_case_id, tfd_leg_id). Só ids; o consumidor do BPA entra na Task 13.
-  %w[tfd.leg_added tfd.leg_done tfd.allowances_calculated].each { |name| DomainEvents.bind name, to: [] }
+  # user_id), sem consumidor; trecho feito (tfd_leg_id) e alimentação
+  # calculada na volta (tfd_case_id, tfd_leg_id), os dois para o consumidor
+  # do BPA (Task 13; §14 T11: as ajudas do trecho viram linhas BPA-I). Só ids.
+  DomainEvents.bind "tfd.leg_added", to: []
+  %w[tfd.leg_done tfd.allowances_calculated].each { |name| DomainEvents.bind name, to: [ Billing::TfdProductionJob ] }
   # Pagamento registrado (tfd_case_id, tfd_payment_id, user_id) e prestação de
   # contas fechada (tfd_case_id, user_id) do TFD (Task 12): só ids, nunca o
   # recibo, o valor nem o nome do arquivo; sem consumidor.

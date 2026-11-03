@@ -186,6 +186,44 @@ module TransportHelpers
     tfd.reload
   end
 
+  # Trecho de PASSAGEM (bus_ticket, sem acompanhante) registrado e feito pelo
+  # caminho real (Tfd::AddLeg + Tfd::CompleteLeg, pela comissão, às 18:00 do
+  # dia `on`), com os consumidores do BPA rodados. Devolve o trecho.
+  def tfd_leg_done!(tfd, direction, on, by: committee!)
+    added = Tfd::AddLeg.call(tfd_case: tfd.reload, by: by,
+                             attrs: { "direction" => direction, "mode" => "bus_ticket", "date" => on.iso8601,
+                                      "ticket" => { "amount_cents" => 15_000, "carrier" => "Viação Teste" } })
+    raise "tfd_leg_done!: trecho recusado: #{added.reason} #{added.details}" if added.failure?
+
+    leg = added.payload.fetch(:leg)
+    done = Tfd::CompleteLeg.call(leg: leg, by: by, at: Time.zone.parse("#{on.iso8601} 18:00"))
+    raise "tfd_leg_done!: trecho não feito: #{done.reason}" if done.failure?
+
+    perform_enqueued_jobs(only: Billing::TfdProductionJob)
+    leg.reload
+  end
+
+  # Viagem confirmada de hoje pelo caminho da tela do motorista (Task 8):
+  # saída, presença `{ passageiro => { attendance:, companion_attendance: } }`
+  # e fechamento (que completa os trechos de frota), com os consumidores do
+  # BPA rodados.
+  def close_trip!(trip, presence)
+    by = trip.transport_driver.user
+    started = Transport::StartTrip.call(trip: trip, by: by)
+    raise "close_trip!: saída recusada: #{started.reason}" if started.failure?
+
+    items = presence.map { |rider, marks| { "passenger_id" => rider.id, **marks.transform_keys(&:to_s).transform_values(&:to_s) } }
+    marked = Transport::RecordAttendance.call(trip: trip.reload, items: items, by: by)
+    raise "close_trip!: presença recusada: #{marked.reason} #{marked.details}" if marked.failure?
+
+    closed = Transport::CloseTrip.call(trip: trip.reload, attrs: { "odometer_start" => 1000, "odometer_end" => 1760, "fuel" => [],
+                                                                   "expenses" => [] }, by: by)
+    raise "close_trip!: fechamento recusado: #{closed.reason} #{closed.details}" if closed.failure?
+
+    perform_enqueued_jobs(only: Billing::TfdProductionJob)
+    trip.reload
+  end
+
   # A secretaria (unidade de gestão, unidade de faturamento do TFD).
   def health_management_unit!(cnes: billing_cnes)
     HealthUnit.create!(name: "Secretaria Municipal de Saúde #{SecureRandom.hex(2)}", kind: "health_management", cnes: cnes)

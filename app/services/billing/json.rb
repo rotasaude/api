@@ -35,6 +35,7 @@ module Billing
       when "attendance" then { type: "attendance", id: p.attendance_id }
       when "consultation" then { type: "consultation", id: p.consultation_id }
       when "lab_report" then { type: "lab_report_item", id: p.lab_report_item_id }
+      when "tfd" then { type: "tfd_allowance", id: p.tfd_allowance_id }
       end
     end
 

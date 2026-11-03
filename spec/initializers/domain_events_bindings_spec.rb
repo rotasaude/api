@@ -464,11 +464,14 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
 
-  # Trechos do TFD (Task 11): só ids, sem consumidor até a Task 13 (BPA).
-  it "declares tfd.leg_added, .leg_done and .allowances_calculated with no consumer yet" do
-    names = %w[tfd.leg_added tfd.leg_done tfd.allowances_calculated]
-    expect(DomainEvents.registry.keys).to include(*names)
-    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  # Trechos do TFD (Task 11): só ids; o trecho feito e a alimentação
+  # calculada vão ao consumidor do BPA (Task 13).
+  it "declares tfd.leg_added with no consumer, and binds tfd.leg_done and .allowances_calculated to Billing::TfdProductionJob" do
+    expect(DomainEvents.registry.keys).to include("tfd.leg_added", "tfd.leg_done", "tfd.allowances_calculated")
+    expect(DomainEvents.registry["tfd.leg_added"]).to be_empty
+    %w[tfd.leg_done tfd.allowances_calculated].each do |name|
+      expect(DomainEvents.registry[name].map(&:job)).to eq([ "Billing::TfdProductionJob" ])
+    end
   end
 
   # Pagamento e prestação de contas do TFD (Task 12): só ids, sem consumidor.
