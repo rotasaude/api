@@ -17,7 +17,7 @@ module Vaccination
       return render_transcription_failure(result) if result.failure?
 
       doses = result.payload.fetch(:immunizations)
-      render json: { immunizations: Json.immunizations(doses, rnds_usable: Rnds::Gate.usable?(Current.city), viewer: Current.user),
+      render json: { immunizations: Json.immunizations(doses, rnds_enabled: Rnds::Gate.enabled?(Current.city), viewer: Current.user),
                      card: result.payload.fetch(:card) },
              status: :created
     end

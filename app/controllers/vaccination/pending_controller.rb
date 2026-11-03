@@ -18,7 +18,6 @@ module Vaccination
       return render_refusal("before", "invalid_cursor") if params.key?(:before) && !valid_cursor?(cursor)
 
       now = Time.current
-      usable = Rnds::Gate.usable?(Current.city)
       enabled = Rnds::Gate.enabled?(Current.city)
       scope = Pending.scope(room, rnds_enabled: enabled, now: now)
       if cursor

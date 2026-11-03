@@ -39,14 +39,12 @@ module Vaccination
       return unless query_only!
 
       patient = body_patient or return
-      rnds_usable = Rnds::Gate.usable?(Current.city)
+      rnds_enabled = Rnds::Gate.enabled?(Current.city)
       result = RecordImmunization.call(room: room, patient: patient, attrs: body.except("patient_id"), by: Current.user)
       return render_dose_failure(result) if result.failure?
 
       dose = result.payload[:immunization]
-      render json: Json.immunization(dose, entry: dose.rnds_outbox_entries.find_by(kind: "application"), rnds_usable: rnds_usable,
-                                           viewer: Current.user),
-             status: :created
+      render json: Json.immunization(dose, rnds_enabled: rnds_enabled, viewer: Current.user), status: :created
     end
 
     def show
@@ -57,8 +55,7 @@ module Vaccination
       return not_found unless grant
 
       Trail.person_viewed!(user: Current.user, patient_id: dose.patient_id, reason_code: grant.opening&.reason_code)
-      render json: Json.immunization(dose, entry: dose.rnds_outbox_entries.find_by(kind: "application"),
-                                           rnds_usable: Rnds::Gate.usable?(Current.city), viewer: Current.user)
+      render json: Json.immunization(dose, rnds_enabled: Rnds::Gate.enabled?(Current.city), viewer: Current.user)
     end
 
     def cancel
@@ -68,12 +65,12 @@ module Vaccination
       return not_found unless dose && (dose.vaccinator_user_id == Current.user.id ||
                                        (dose.vaccine_room && Access.room_roles(user: Current.user, room: dose.vaccine_room).any?))
 
-      rnds_usable = Rnds::Gate.usable?(Current.city)
+      rnds_enabled = Rnds::Gate.enabled?(Current.city)
       result = CancelImmunization.call(immunization: dose, reason: body_param("reason"), replacement: body_param("replacement"), by: Current.user)
       return render_cancel_failure(result) if result.failure?
 
       cancelled, substitute = Immunization.includes(:replacement).find(result.payload[:cancelled].id), result.payload[:replacement]
-      render json: { cancelled: dose_json(cancelled, rnds_usable), replacement: substitute && dose_json(substitute, rnds_usable) }
+      render json: { cancelled: dose_json(cancelled, rnds_enabled), replacement: substitute && dose_json(substitute, rnds_enabled) }
     end
 
     def esavi
@@ -95,8 +92,8 @@ module Vaccination
 
     private
 
-    def dose_json(dose, rnds_usable)
-      Json.immunization(dose, entry: dose.rnds_outbox_entries.find_by(kind: "application"), rnds_usable: rnds_usable, viewer: Current.user)
+    def dose_json(dose, rnds_enabled)
+      Json.immunization(dose, rnds_enabled: rnds_enabled, viewer: Current.user)
     end
 
     def render_cancel_failure(result)

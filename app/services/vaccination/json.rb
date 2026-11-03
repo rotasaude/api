@@ -26,12 +26,15 @@ module Vaccination
     def settings(setting) = { "go_live_on" => setting.go_live_on&.iso8601 }
 
     # <immunization> do contrato §2 (nominal: quem chama grava a trilha).
-    # `entry`: a entrada `application` da fila RNDS (ou nil); `rnds.status` é
-    # `not_sent` sem entrada, ou com a entrada `pending` e o envio desligado.
+    # `entries`: as entradas da fila RNDS da dose por kind ({ "application" =>,
+    # "cancellation" => }); sem elas, lidas da dose. `rnds_enabled`: só o
+    # interruptor (`Rnds::Gate.enabled?`), como nas pendências (V23). A forma
+    # `rnds` vem de `dose_rnds`.
     # `can_cancel` (§15 V6) é de quem lê (`viewer`): o autor ou o `room_lead`
     # da sala da dose, e só com a dose ativa (sem `viewer`, falso). O
     # `override_reason` nunca sai na forma. `lead`: memo de room_lead por sala (listas).
-    def immunization(record, entry:, rnds_usable:, viewer: nil, lead: nil)
+    def immunization(record, rnds_enabled:, entries: nil, viewer: nil, lead: nil)
+      entries ||= record.rnds_outbox_entries.index_by(&:kind)
       product = Immunobiologicals.find(record.immunobiological_code)
       { id: record.id,
         immunobiological: { code: record.immunobiological_code, name: product&.name },
@@ -45,7 +48,7 @@ module Vaccination
         campaign_id: record.campaign_id, status: record.cancelled? ? "cancelled" : "active", cancel_reason: record.cancel_reason,
         replaces_id: record.replaces_id, replaced_by_id: record.replacement&.id,
         can_cancel: can_cancel?(record, viewer, lead),
-        rnds: rnds(entry, rnds_usable) }
+        rnds: dose_rnds(record, entries, rnds_enabled) }
     end
 
     def can_cancel?(record, viewer, lead)
@@ -56,16 +59,18 @@ module Vaccination
       lead ? lead.call(record.vaccine_room) : Access.room_roles(user: viewer, room: record.vaccine_room).include?("room_lead")
     end
 
-    # Várias doses com a entrada `application` de cada uma, sem N+1 nas associações.
-    def immunizations(records, rnds_usable:, viewer: nil)
+    # Várias doses com as entradas da fila de cada uma, sem N+1 nas associações.
+    def immunizations(records, rnds_enabled:, viewer: nil)
       records = records.to_a
       leads = {}
       lead = lambda do |room|
         leads.key?(room.id) ? leads[room.id] : (leads[room.id] = Access.room_roles(user: viewer, room: room).include?("room_lead"))
       end
       ActiveRecord::Associations::Preloader.new(records: records, associations: [ :replacement, :stock_lot, { vaccine_room: :health_unit }, { vaccinator_user: :professional } ]).call
-      entries = RndsOutboxEntry.where(immunization_id: records.map(&:id), kind: "application").index_by(&:immunization_id)
-      records.map { |record| immunization(record, entry: entries[record.id], rnds_usable: rnds_usable, viewer: viewer, lead: lead) }
+      entries = RndsOutboxEntry.where(immunization_id: records.map(&:id)).group_by(&:immunization_id)
+      records.map do |record|
+        immunization(record, entries: (entries[record.id] || []).index_by(&:kind), rnds_enabled: rnds_enabled, viewer: viewer, lead: lead)
+      end
     end
 
     # Lote do estoque (com o fabricante do catálogo pela chave) ou o da
@@ -78,9 +83,31 @@ module Vaccination
       { id: lot.id, number: lot.lot_number, manufacturer: { code: maker&.code, name: maker&.name || lot.manufacturer }, expires_on: lot.expires_on }
     end
 
-    def rnds(entry, usable)
-      status = entry.nil? || (entry.status == "pending" && !usable) ? "not_sent" : entry.status
+    # <rnds> de UMA entrada da fila: `not_sent` sem entrada, ou com a entrada
+    # `pending` e o interruptor desligado (`enabled` = `Rnds::Gate.enabled?`;
+    # ligado e inutilizável continua `pending`, como nas pendências).
+    def rnds(entry, enabled)
+      status = entry.nil? || (entry.status == "pending" && !enabled) ? "not_sent" : entry.status
       { status: status, sent_at: entry&.sent_at, accepted_at: entry&.accepted_at, block_reason: entry&.block_reason, error: entry&.error }
+    end
+
+    # <rnds> da dose (ruling da revisão final, a mesma regra de
+    # Vaccination::Pending.effective_in):
+    #  - dose ativa: a entrada `application`;
+    #  - dose cancelada com `cancellation`: a `cancellation` — salvo a órfã
+    #    (original `rejected`/`failed`), que nunca sai;
+    #  - dose cancelada sem `cancellation` (original recusado, falho ou nunca
+    #    tentado, V23) ou com a órfã: `not_sent`, com `sent_at`/`accepted_at`
+    #    da original preservados. Nada mais vai à RNDS: nunca `pending` para sempre.
+    def dose_rnds(record, entries, enabled)
+      application = entries["application"]
+      return rnds(application, enabled) unless record.cancelled?
+
+      cancellation = entries["cancellation"]
+      orphan = cancellation && %w[rejected failed].include?(application&.status)
+      return rnds(cancellation, enabled) if cancellation && !orphan
+
+      { status: "not_sent", sent_at: application&.sent_at, accepted_at: application&.accepted_at, block_reason: nil, error: nil }
     end
 
     # <vial> do contrato §2: { id, lot: { id, number, immunobiological_code }, opened_at, expires_at,

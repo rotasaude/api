@@ -11,7 +11,7 @@ module Vaccination
   module Card
     module_function
 
-    def call(patient:, today:, rnds_usable: false, viewer: nil)
+    def call(patient:, today:, rnds_enabled: false, viewer: nil)
       calendar = Calendar.current
       birth = Statuses.birth_date(patient)
       check = VaccinationRecordCheck.where(patient_id: patient.id).order(checked_at: :desc, id: :desc).first
@@ -24,7 +24,7 @@ module Vaccination
         checked: check && { mode: check.mode, at: check.checked_at, by_name: check.checked_by_user&.professional&.professional_name },
         calendar_version: calendar.version,
         items: items.map { |item| item_json(item, by_id[item.applied_id]) },
-        immunizations: Json.immunizations(records, rnds_usable: rnds_usable, viewer: viewer) }
+        immunizations: Json.immunizations(records, rnds_enabled: rnds_enabled, viewer: viewer) }
     end
 
     def schedule(patient, birth, records, checked, today, calendar)

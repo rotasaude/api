@@ -30,7 +30,7 @@ module Vaccination
       today = Time.zone.today
       Statuses.refresh!(patient, today: today) unless Statuses.checked?(patient.id)
       Trail.person_viewed!(user: Current.user, patient_id: patient.id)
-      render json: Card.call(patient: patient, today: today, rnds_usable: Rnds::Gate.usable?(Current.city), viewer: Current.user)
+      render json: Card.call(patient: patient, today: today, rnds_enabled: Rnds::Gate.enabled?(Current.city), viewer: Current.user)
     end
 
     private

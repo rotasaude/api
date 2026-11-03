@@ -15,7 +15,7 @@ module Vaccination
       result = RecordCheck.call(room: room, patient: patient, mode: body_param("mode"), by: Current.user, today: today)
       return render_failure(result) if result.failure?
 
-      render json: Card.call(patient: patient, today: today, rnds_usable: Rnds::Gate.usable?(Current.city), viewer: Current.user)
+      render json: Card.call(patient: patient, today: today, rnds_enabled: Rnds::Gate.enabled?(Current.city), viewer: Current.user)
     end
   end
 end

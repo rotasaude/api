@@ -29,7 +29,7 @@ module Vaccination
       link = Access.vaccinator_link(user: by, room: room)
       return Result.fail(:missing_role) unless link
 
-      rnds_usable = Rnds::Gate.usable?(Current.city)
+      rnds_enabled = Rnds::Gate.enabled?(Current.city)
       today = now.in_time_zone.to_date
       problems = []
       problems << { path: "items", error: "invalid_request" } unless items.is_a?(Array) && items.size.between?(1, Catalog::MAX_TRANSCRIPTION_ITEMS)
@@ -47,7 +47,7 @@ module Vaccination
         end
         Statuses.refresh!(patient, today: today)
         Trail.person_viewed!(user: by, patient_id: patient.id)
-        Result.ok(immunizations: doses, card: Card.call(patient: patient, today: today, rnds_usable: rnds_usable, viewer: by))
+        Result.ok(immunizations: doses, card: Card.call(patient: patient, today: today, rnds_enabled: rnds_enabled, viewer: by))
       end
     end
 
