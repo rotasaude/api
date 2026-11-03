@@ -589,6 +589,19 @@ Rails.application.routes.draw do
   # Módulo 30 (ADR 0048; contrato §3): transporte sanitário e TFD, sessão do
   # dashboard. Prefixo único por área.
   scope "/transport", module: :transport, as: :transport do
+    get   "vehicles",            to: "vehicles#index"
+    post  "vehicles",            to: "vehicles#create"
+    get   "vehicles/:id",        to: "vehicles#show"
+    patch "vehicles/:id",        to: "vehicles#update"
+    get   "drivers",             to: "drivers#index"
+    post  "drivers",             to: "drivers#create"
+    get   "drivers/:id",         to: "drivers#show"
+    patch "drivers/:id",         to: "drivers#update"
+    get   "driver_candidates",   to: "drivers#candidates"
+    get   "destinations",        to: "destinations#index"
+    post  "destinations",        to: "destinations#create"
+    get   "destinations/:id",    to: "destinations#show"
+    patch "destinations/:id",    to: "destinations#update"
     get   "admin/settings", to: "admin/settings#show"
     patch "admin/settings", to: "admin/settings#update"
   end

@@ -12,7 +12,8 @@ module Transport
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     # O resto das recusas é 422.
     FAILURE_STATUS = { already_exists: :conflict, already_closed: :conflict, same_user: :forbidden, missing_role: :forbidden,
-                       not_found: :not_found }.freeze
+                       not_found: :not_found, plate_taken: :conflict, renavam_taken: :conflict, ibge_taken: :conflict,
+                       user_already_driver: :conflict }.freeze
     KEY_PATH_MAX = 64
 
     before_action :require_transport!

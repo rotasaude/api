@@ -63,7 +63,9 @@ module CareRegulation
     def schedule(r)
       return nil unless r.scheduled_at
 
-      { at: r.scheduled_at.iso8601, place: r.schedule_place, notes: r.schedule_notes }
+      provider = r.care_provider
+      { at: r.scheduled_at.iso8601, place: r.schedule_place, notes: r.schedule_notes,
+        care_provider: provider && { id: provider.id, name: provider.name } }
     end
 
     # `completed` realizado; `missed` quando a segunda falta fechou o pedido
@@ -84,7 +86,7 @@ module CareRegulation
     def provider(record)
       unit = record.health_unit
       { id: record.id, name: record.name, cnes: record.cnes, kind: record.kind,
-        health_unit: unit && { id: unit.id, name: unit.name }, active: record.active }
+        health_unit: unit && { id: unit.id, name: unit.name }, ibge_code: record.ibge_code, active: record.active }
     end
 
     # <offer> (contrato §2): used vem da Quota (contagem das autorizações não

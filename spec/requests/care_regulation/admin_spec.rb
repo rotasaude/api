@@ -210,9 +210,35 @@ RSpec.describe "Regulação — prestadores e ofertas", type: :request do
       json_post "/regulation/admin/providers", name: "UBS Vila Hauer", kind: "own", health_unit_id: unit.id
       expect(response).to have_http_status(:created)
       expect(json_body).to eq("id" => CareProvider.last.id, "name" => "UBS Vila Hauer", "cnes" => "2384299", "kind" => "own",
-                              "health_unit" => { "id" => unit.id, "name" => "UBS Vila Hauer" }, "active" => true)
+                              "health_unit" => { "id" => unit.id, "name" => "UBS Vila Hauer" }, "ibge_code" => nil, "active" => true)
       expect(CareProvider.last.updated_by_user).to eq(admin)
       expect(provider_events).to eq([ { "care_provider_id" => CareProvider.last.id, "user_id" => admin.id } ])
+    end
+
+    # Módulo 30 (ADR 0048; T18): município do prestador.
+    it "ibge_code: externo grava e edita (7 dígitos ou nulo); malformado → 422 path ibge_code; o próprio fica sempre nulo" do
+      stepped_up!(admin)
+      json_post "/regulation/admin/providers", name: "Hospital Regional", kind: "contracted", cnes: "7654321", ibge_code: "4119905"
+      expect(json_body).to include("ibge_code" => "4119905")
+      id = json_body["id"]
+      json_patch "/regulation/admin/providers/#{id}", ibge_code: "4113700"
+      expect(json_body).to include("ibge_code" => "4113700")
+      json_patch "/regulation/admin/providers/#{id}", name: "Hospital Regional Norte"
+      expect(json_body).to include("ibge_code" => "4113700")
+      [ "123", 4_119_905, "41199AB" ].each do |bad|
+        json_patch "/regulation/admin/providers/#{id}", ibge_code: bad
+        expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "ibge_code" } ])
+      end
+      expect(CareProvider.find(id).ibge_code).to eq("4113700")
+      json_patch "/regulation/admin/providers/#{id}", ibge_code: nil
+      expect(json_body).to include("ibge_code" => nil)
+      json_post "/regulation/admin/providers", name: "UBS Vila Hauer", kind: "own", health_unit_id: unit.id, ibge_code: "4119905"
+      expect(json_body).to include("ibge_code" => nil)
+      own = CareProvider.find(json_body["id"])
+      json_patch "/regulation/admin/providers/#{own.id}", ibge_code: "4113700"
+      expect([ response.status, json_body["ibge_code"], own.reload.ibge_code ]).to eq([ 200, nil, nil ])
+      get "/regulation/admin/providers"
+      expect(json_body["providers"].map { |p| p["ibge_code"] }).to all(be_nil.or(match(/\A\d{7}\z/)))
     end
 
     it "o CNES do próprio é lido da unidade na hora: trocar o da unidade reflete no prestador sem salvá-lo de novo" do

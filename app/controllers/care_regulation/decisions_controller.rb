@@ -16,7 +16,7 @@ module CareRegulation
     DECISION_KEYS = %w[reason version].freeze
     COMPLEMENT_KEYS = (Complement::KEYS + %w[version]).freeze
     EXTERNAL_KEYS = %w[system number version].freeze
-    SCHEDULE_KEYS = %w[at place notes version].freeze
+    SCHEDULE_KEYS = %w[at place notes care_provider_id version].freeze
     OUTCOME_KEYS = %w[result version].freeze
 
     # O complemento é da unidade solicitante: o Complement confere o vínculo
@@ -50,7 +50,8 @@ module CareRegulation
       return if unknown_key!(SCHEDULE_KEYS)
 
       respond ScheduleExternal.call(request: @regulation_request, at: body_param("at"), place: body_param("place"),
-                                    notes: body_param("notes"), version: body_param("version"), by: Current.user)
+                                    notes: body_param("notes"), version: body_param("version"), by: Current.user,
+                                    care_provider_id: body_param("care_provider_id"))
     end
 
     def outcome

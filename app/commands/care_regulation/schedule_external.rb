@@ -10,6 +10,10 @@
 # - `at`: ISO 8601 com fuso explícito, de now - 30 dias a now + 365 dias;
 # - `place` 1–200 (PLACE_MAX), `notes` até 500 (NOTES_MAX), sem espaços nas
 #   pontas; a observação é cifrada;
+# - `care_provider_id` (ADR 0048, T18): prestador externo ATIVO onde o paciente
+#   será atendido (opcional; ausente/nulo grava nulo — agendar é substituir
+#   data, local, observação e prestador); `own`, inativo, inexistente ou
+#   malformado → invalid_request, path "care_provider_id";
 # - Transition para `scheduled` (andamento e evento regulation_request.scheduled,
 #   só ids); state_regulated é mantido (R11).
 #
@@ -24,7 +28,7 @@ module CareRegulation
 
     # -> Result.ok(request:) | fail(:invalid_request, details: { path: }) |
     # fail(:stale_version | :invalid_transition)
-    def call(request:, at:, place:, notes:, version:, by:, now: Time.current)
+    def call(request:, at:, place:, notes:, version:, by:, care_provider_id: nil, now: Time.current)
       time = parse(at)
       return invalid("at") unless time && time.between?(now - PAST, now + FUTURE)
 
@@ -34,6 +38,7 @@ module CareRegulation
       notes = notes.strip.presence if notes.is_a?(String)
       return invalid("notes") unless notes.nil? || (notes.is_a?(String) && notes.length <= Catalog::NOTES_MAX)
       return invalid("version") unless version.is_a?(Integer)
+      return invalid("care_provider_id") unless valid_provider?(care_provider_id)
 
       ApplicationRecord.transaction(requires_new: true) do
         request.lock!(Decide::LOCK)
@@ -41,7 +46,8 @@ module CareRegulation
         next Result.fail(:invalid_transition) unless valid_from?(request)
 
         transitioned = Transition.call(request: request, to: "scheduled", by: by, version: version,
-                                       changes: { scheduled_at: time, schedule_place: place, schedule_notes: notes })
+                                       changes: { scheduled_at: time, schedule_place: place, schedule_notes: notes,
+                                                  care_provider_id: care_provider_id })
         # A versão já foi conferida sob a trava: só falha por erro de programação.
         raise ArgumentError, "agendamento recusado: #{transitioned.reason}" unless transitioned.ok?
 
@@ -66,6 +72,14 @@ module CareRegulation
       end
     end
 
+    # Nulo vale; senão, prestador ativo e de fora da rede própria.
+    def valid_provider?(id)
+      return true if id.nil?
+      return false unless id.is_a?(String) && id.match?(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/)
+
+      CareProvider.active_providers.where.not(kind: "own").exists?(id: id)
+    end
+
     def parse(value)
       return nil unless value.is_a?(String) && value.match?(ZONED)
 
@@ -75,6 +89,6 @@ module CareRegulation
     end
 
     def invalid(path) = Result.fail(:invalid_request, details: { path: path })
-    private_class_method :valid_from?, :parse, :invalid
+    private_class_method :valid_from?, :valid_provider?, :parse, :invalid
   end
 end

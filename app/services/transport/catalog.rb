@@ -28,6 +28,10 @@ module Transport
     REASON = (10..500)
     TEXT_MAX = 120
     MODEL_MAX = 80
+    MODEL = (2..80)
+    NAME = (2..120)
+    DISTANCE_KM = (0..9_999)
+    RENEM_MAX = 20
     ADDRESS_MAX = 200
     DEFAULT_COMPANION_RULE = { "max_age_child" => 15, "min_age_elderly" => 60 }.freeze
   end

@@ -74,7 +74,7 @@ RSpec.describe CareRegulation::Json do
       row = sent!(draft!, status: "scheduled", scheduled_at: Time.zone.local(2026, 11, 3, 14), schedule_place: "Clínica X",
                            schedule_notes: "Trazer exames")
       json = described_class.request(RegulationRequest.find(row.id))
-      expect(json[:schedule]).to eq(at: Time.zone.local(2026, 11, 3, 14).iso8601, place: "Clínica X", notes: "Trazer exames")
+      expect(json[:schedule]).to eq(at: Time.zone.local(2026, 11, 3, 14).iso8601, place: "Clínica X", notes: "Trazer exames", care_provider: nil)
       expect(json[:outcome]).to be_nil
 
       expect(described_class.request(sent!(draft!, status: "completed"))[:outcome]).to eq("completed")

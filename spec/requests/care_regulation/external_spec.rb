@@ -169,13 +169,24 @@ RSpec.describe "Regulação — prestador externo e estado", type: :request do
   end
 
   describe "POST /regulation/requests/:id/schedule" do
+    it "care_provider_id (ADR 0048): prestador externo vai na resposta; prestador próprio → 422 path care_provider_id" do
+      provider = external_provider!(name: "Hospital de Olhos")
+      request = external_request!
+      schedule!(request, care_provider_id: provider.id)
+      expect(json_body["schedule"]["care_provider"]).to eq("id" => provider.id, "name" => "Hospital de Olhos")
+      own = own_provider!(create_unit("UBS Própria Agenda"))
+      schedule!(request, care_provider_id: own.id)
+      expect([ response.status, json_body["path"] ]).to eq([ 422, "care_provider_id" ])
+      expect(request.reload.care_provider_id).to eq(provider.id)
+    end
+
     it "agenda um external: scheduled, state_regulated mantido, schedule com data, local e observação" do
       request = external_request!
       schedule!(request, notes: "Levar exames anteriores")
       expect(response).to have_http_status(:ok)
       expect(json_body).to include("status" => "scheduled", "state_regulated" => true, "version" => request.version + 1,
                                    "external" => { "system" => "sisreg", "number" => "123456789" })
-      expect(json_body["schedule"]).to eq("at" => Time.iso8601(at).iso8601, "place" => place, "notes" => "Levar exames anteriores")
+      expect(json_body["schedule"]).to eq("at" => Time.iso8601(at).iso8601, "place" => place, "notes" => "Levar exames anteriores", "care_provider" => nil)
       expect(json_body["events"].map { |e| e["status"] }).to eq(%w[pending external scheduled])
       expect(published("scheduled").sole.payload).to eq("regulation_request_id" => request.id, "user_id" => regulator.id)
       expect(viewed.last.payload).to include("access" => "regulation", "patient_id" => request.patient_id)

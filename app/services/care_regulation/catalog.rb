@@ -28,6 +28,7 @@ module CareRegulation
     MAX_PER_CONSULTATION = 10
     EXTERNAL_NUMBER = %r{\A[0-9A-Za-z./-]{1,30}\z}
     CNES = /\A[0-9]{7}\z/
+    IBGE = /\A[0-9]{7}\z/
     SPECIALTY_CODE = /\A[0-9]{6}\z/
     PROCEDURE_CODE = /\A[0-9]{10}\z/
     MONTH = /\A[0-9]{4}-(0[1-9]|1[0-2])\z/

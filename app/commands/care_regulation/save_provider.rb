@@ -3,7 +3,9 @@
 # da unidade na hora, nunca copiado para o prestador) e não muda
 # de tipo nem de unidade; externo (contracted, consortium, ppi) exige CNES.
 # CNES e unidade são únicos entre prestadores. Nome de 3 a 120 caracteres,
-# recusado, nunca cortado. Evento `care_provider.changed` só com ids, e só
+# recusado, nunca cortado. `ibge_code` (ADR 0048): município do prestador, 7
+# dígitos ou nulo (nulo = a própria cidade); no `own` é sempre nulo (a
+# unidade é da cidade). Evento `care_provider.changed` só com ids, e só
 # quando algo mudou.
 module CareRegulation
   module SaveProvider
@@ -28,6 +30,7 @@ module CareRegulation
 
       active = attrs.fetch("active", true)
       return refuse("active") unless [ true, false ].include?(active)
+      return refuse("ibge_code") unless valid_ibge?(attrs["ibge_code"])
 
       CareProvider.transaction(requires_new: true) do
         unit_id, cnes = kind == "own" ? own_unit_and_cnes(attrs) : external_cnes(attrs)
@@ -38,7 +41,8 @@ module CareRegulation
 
         # `own` não grava o CNES: ele é lido da unidade (CareProvider#cnes).
         stored_cnes = kind == "own" ? nil : cnes
-        provider = CareProvider.create!(name: name, kind: kind, health_unit_id: unit_id, cnes: stored_cnes, active: active, updated_by_user: by)
+        provider = CareProvider.create!(name: name, kind: kind, health_unit_id: unit_id, cnes: stored_cnes, active: active,
+                                         ibge_code: kind == "own" ? nil : attrs["ibge_code"], updated_by_user: by)
         publish(provider, by)
         Result.ok(provider: provider)
       end
@@ -60,6 +64,11 @@ module CareRegulation
           next refuse("active") unless [ true, false ].include?(attrs["active"])
 
           provider.active = attrs["active"]
+        end
+        if attrs.key?("ibge_code")
+          next refuse("ibge_code") unless valid_ibge?(attrs["ibge_code"])
+
+          provider.ibge_code = provider.kind == "own" ? nil : attrs["ibge_code"]
         end
         if attrs.key?("cnes")
           next refuse("cnes") unless provider.kind == "own" ? attrs["cnes"] == provider.cnes : valid_cnes?(attrs["cnes"])
@@ -108,6 +117,7 @@ module CareRegulation
       Catalog::PROVIDER_NAME.cover?(name.length) ? name : nil
     end
 
+    def valid_ibge?(value) = value.nil? || (value.is_a?(String) && value.match?(Catalog::IBGE))
     def valid_cnes?(value) = value.is_a?(String) && value.match?(Catalog::CNES)
 
     def taken_reason(unit_id:, cnes:, except: nil)
@@ -136,6 +146,6 @@ module CareRegulation
     def publish(provider, by) = DomainEvents.publish("care_provider.changed", care_provider_id: provider.id, user_id: by.id)
     def refuse(path) = Result.fail(:invalid_request, details: { path: path })
 
-    private_class_method :create, :update, :own_unit_and_cnes, :external_cnes, :valid_name, :valid_cnes?, :taken_reason, :cnes_in_use?, :unit_violation?, :publish, :refuse
+    private_class_method :create, :update, :own_unit_and_cnes, :external_cnes, :valid_name, :valid_cnes?, :valid_ibge?, :taken_reason, :cnes_in_use?, :unit_violation?, :publish, :refuse
   end
 end
