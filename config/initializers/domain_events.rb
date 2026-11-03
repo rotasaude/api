@@ -272,8 +272,10 @@ Rails.application.config.to_prepare do
   # só trilha, só ids (vehicle_id|driver_id|destination_id, user_id), sem consumidor.
   %w[transport.vehicle_saved transport.driver_saved transport.destination_saved].each { |name| DomainEvents.bind name, to: [] }
   # Viagem confirmada, cancelada (toda; o consumidor só avisa a que tinha
-  # confirmed_at, T15) e alterada (confirmada: saída mudou 30 min ou mais, `change:
-  # "departure"`; rótulo de embarque mudou, `change: "boarding"` + `stop_id`), e
+  # confirmed_at, T15) e alterada (confirmada: QUALQUER mudança da saída,
+  # `change: "departure"` — o limiar de 30 min é do consumidor, que compara com
+  # o último valor avisado (Ruling I-2); rótulo de embarque mudou, `change:
+  # "boarding"` + `stop_id`), e
   # passageiro que entrou ou saiu (em qualquer situação). Só ids e o código da
   # mudança. Consumidor: os avisos ao cidadão (Transport::NoticeJob, Task 14),
   # que filtra pela situação da viagem (confirmed/in_progress).

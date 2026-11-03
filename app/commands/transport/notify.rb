@@ -10,13 +10,16 @@
 # mais da do ÚLTIMO aviso daquele (passageiro, cidadão), e `boarding_changed`
 # quando o rótulo atual difere do último avisado — idas e voltas (A→B→A→B) e
 # mudanças graduais saem certas, e uma volta ao valor já avisado não avisa.
-# Sem aviso anterior para o par, não há de onde "mudar": nada. A chave dessas
-# duas é o id do evento de domínio (Transport::NoticeJob).
+# Sem aviso anterior para o par (par validado depois da confirmação), a
+# mudança é avisada (FW14): é a primeira notícia que ele tem da viagem. A
+# chave dessas duas é o id do evento de domínio (Transport::NoticeJob).
 #
 # Ordem de trava do Appointments::Remind: os cidadãos em FOR KEY SHARE antes
 # da viagem (a exclusão segura o cidadão em FOR UPDATE antes do resto); depois
 # o passageiro (FOR UPDATE), que serializa os avisos dele (a comparação com o
-# último aviso não corre).
+# último aviso não corre). O `created_at` do aviso é lido DEPOIS dessa trava
+# (FW14b): quem esperou a trava grava um instante posterior ao do aviso que a
+# segurava, e "o último aviso" (ordem de created_at) é o último de fato.
 #
 # SMS (regras do 17 + T15) só quando o aviso nasce: chave de SMS da cidade,
 # provedor, janela 8h–20h no fuso da cidade, opt-in, sem `notices_muted` nem
@@ -33,7 +36,7 @@ module Transport
     module_function
 
     # -> Integer (avisos criados)
-    def call(passenger:, kind:, event_key: "once", now: Time.current)
+    def call(passenger:, kind:, event_key: "once", now: nil)
       kind = kind.to_s
       raise ArgumentError, "kind" unless Catalog::NOTICE_KINDS.include?(kind)
 
@@ -41,6 +44,7 @@ module Transport
         citizens = Patients::Pairs.of(passenger.patient).order(:id).lock("FOR KEY SHARE").to_a
         trip = TransportTrip.lock("FOR SHARE").find(passenger.transport_trip_id)
         rider = TransportTripPassenger.lock.find(passenger.id)
+        now ||= Time.current
         next 0 unless due?(trip, rider, kind)
 
         label = rider.transport_trip_stop.label
@@ -66,7 +70,7 @@ module Transport
 
       last = TransportTripNotice.where(transport_trip_passenger_id: rider.id, citizen_id: citizen.id)
                                 .order(created_at: :desc, id: :desc).first
-      return false unless last
+      return true unless last
 
       if kind == "departure_changed"
         (trip.departure_at - last.departure_at).abs >= Catalog::DEPARTURE_CHANGE

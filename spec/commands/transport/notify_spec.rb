@@ -223,6 +223,28 @@ RSpec.describe Transport::Notify do
       expect(departures).to eq(%w[07:40])
     end
 
+    it "FW14: par validado depois da confirmação (sem aviso anterior) recebe o departure_changed da mudança de 30 min" do
+      citizen # o primeiro par, antes do segundo existir
+      late = second_pair!
+      move!("07:30")
+      run_notices
+      late_notices = TransportTripNotice.where(transport_trip_passenger_id: rider.id, citizen_id: late.id)
+      expect(late_notices.pluck(:kind)).to eq([ "departure_changed" ])
+      expect(late_notices.sole.departure_at).to eq(Time.zone.parse("2026-11-05 07:30"))
+      expect(notices(citizen_id: citizen.id, kind: "departure_changed").count).to eq(1)
+    end
+
+    it "FW14b: o created_at do aviso é lido depois da trava do passageiro" do
+      allow(TransportTripPassenger).to receive(:lock).and_wrap_original do |original, *args|
+        travel 5.minutes # quem esperou a trava chega depois
+        original.call(*args)
+      end
+      move!("07:30")
+      asked_at = Time.current
+      Transport::Notify.call(passenger: rider, kind: "departure_changed", event_key: "fw14b")
+      expect(notices(event_key: "fw14b").sole.created_at).to be >= asked_at + 5.minutes
+    end
+
     it "A→B→A processado depois: nenhum 'mudou' mostrando a saída que não mudou" do
       move!("08:00")
       move!("07:00")
@@ -289,6 +311,11 @@ RSpec.describe Transport::Notify do
     run.call(rider.id)  # e mesmo um reenvio do 1º
     phones = SmsGateway::Test.deliveries.map { |d| d[:phone] }
     expect(phones.tally).to eq(citizen.phone => 1, second_citizen.phone => 1)
+  end
+
+  it "D7: cidade desconhecida → PassengerNoticeJob levanta CityMissing (nunca some calado)" do
+    expect { Transport::PassengerNoticeJob.perform_now(city_slug: "cidade-que-nao-existe", passenger_id: rider.id, kind: "added") }
+      .to raise_error(CityScopedJob::CityMissing)
   end
 
   it "transporte desligado: o evento não gera aviso" do
