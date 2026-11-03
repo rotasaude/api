@@ -17,7 +17,12 @@
 # `invalid_transition` em in_progress). Na confirmada, toda mudança da saída e
 # do rótulo de embarque publica `transport.trip_changed` (só ids e o código da
 # mudança); o limiar de 30 min é do consumidor (Transport::Notify, que compara
-# com o último valor avisado — Task 14, Ruling I-2).
+# com o último valor avisado — Task 14, Ruling I-2). O DIA local da saída não
+# muda enquanto a viagem tem trecho de frota do TFD vivo ou passageiro de
+# série ativo, nem o dia local da chegada com trecho de VOLTA de frota vivo
+# (`trip_day_locked`, em `date`/`return_at`; FR I2): o trecho leva a data da
+# viagem (BPA, competência, noites) e a série procura o paciente pelo dia. A
+# hora no mesmo dia muda.
 module Transport
   module SaveTrip
     KEYS = %w[date departure_at return_at vehicle_id driver_id stops].freeze
@@ -221,10 +226,27 @@ module Transport
       elsif record.persisted? && record.transport_vehicle_id_changed?
         out.concat(Occupancy.problems(record, record.transport_vehicle))
       end
+      out.concat(day_lock_problems(record)) if record.persisted?
       out << problem("stops", "stop_in_use") if stops && record.persisted? && stops_in_use?(removed_stop_ids(record, stops))
       out.concat(Overlap.problems(record))
       out.uniq
     end
+
+    # FR I2: dia da saída ou da chegada preso aos trechos de frota e à série.
+    def day_lock_problems(record)
+      riders = TransportTripPassenger.active.where(transport_trip_id: record.id)
+      legs = TfdLeg.live.where(mode: "fleet", transport_trip_passenger_id: riders.select(:id))
+      out = []
+      if record.date_changed? && (riders.exists?(origin: "series") || legs.exists?)
+        out << problem("date", "trip_day_locked")
+      end
+      if record.return_at_changed? && local_day(record.return_at) != local_day(record.return_at_was) && legs.exists?(direction: "return")
+        out << problem("return_at", "trip_day_locked")
+      end
+      out
+    end
+
+    def local_day(time) = time&.in_time_zone&.to_date
 
     def removed_stop_ids(record, stops)
       record.transport_trip_stops.map(&:id) - stops.filter_map { |item| item[:stop]&.id }
@@ -266,7 +288,7 @@ module Transport
     def problem(path, error = "invalid_request") = { path: path, error: error }
 
     private_class_method :read_fields, :time_field, :parse_time, :check_date, :read_reference, :read_stops, :read_stop, :read_label,
-                         :read_positions, :check_composition, :rules, :removed_stop_ids, :replace_stops!, :boarding_labels,
+                         :read_positions, :check_composition, :rules, :day_lock_problems, :local_day, :removed_stop_ids, :replace_stops!, :boarding_labels,
                          :publish_changes, :problem
   end
 end
