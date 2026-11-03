@@ -2955,11 +2955,35 @@ BEGIN
 END;
 $fn$ LANGUAGE plpgsql;
 
+-- Trecho do TFD: `done_at` uma vez; anular (voided_at + void_reason) só o
+-- trecho aberto, uma vez, sem mexer em mais nada; o anulado nunca muda.
+CREATE OR REPLACE FUNCTION rota_tfd_leg_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF OLD.voided_at IS NOT NULL THEN
+    RAISE EXCEPTION 'tfd_legs: a voided leg never changes';
+  END IF;
+  IF OLD.done_at IS NOT NULL AND NEW.done_at IS DISTINCT FROM OLD.done_at THEN
+    RAISE EXCEPTION 'tfd_legs: a leg is done once';
+  END IF;
+  IF NEW.voided_at IS NOT NULL OR NEW.void_reason IS NOT NULL THEN
+    IF OLD.done_at IS NOT NULL THEN
+      RAISE EXCEPTION 'tfd_legs: a done leg is never voided';
+    END IF;
+    IF (to_jsonb(NEW) - 'voided_at' - 'void_reason' - 'updated_at') IS DISTINCT FROM (to_jsonb(OLD) - 'voided_at' - 'void_reason' - 'updated_at') THEN
+      RAISE EXCEPTION 'tfd_legs: voiding only sets voided_at and void_reason';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
 DO $do$
 DECLARE
   item text;
 BEGIN
   IF to_regclass('public.transport_trips') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS tfd_legs_guard ON tfd_legs';
+    EXECUTE 'CREATE TRIGGER tfd_legs_guard BEFORE UPDATE ON tfd_legs FOR EACH ROW EXECUTE FUNCTION rota_tfd_leg_guard()';
     EXECUTE 'DROP TRIGGER IF EXISTS transport_trip_passengers_guard ON transport_trip_passengers';
     EXECUTE 'CREATE TRIGGER transport_trip_passengers_guard BEFORE UPDATE OR DELETE ON transport_trip_passengers
       FOR EACH ROW EXECUTE FUNCTION rota_transport_trip_passenger_guard()';

@@ -47,12 +47,13 @@ module Tfd
         "transport_mode" => report["transport_mode"] }
     end
 
-    # <tfd-leg> (§2 + T10).
+    # <tfd-leg> (§2 + T10); `voided` = trecho de frota anulado (FR I1).
     def leg(leg)
       { "id" => leg.id, "direction" => leg.direction, "mode" => leg.mode, "date" => leg.date.iso8601, "distance_km" => leg.distance_km,
         "trip_passenger_id" => leg.transport_trip_passenger_id,
         "ticket" => leg.ticket_amount_cents && { "amount_cents" => leg.ticket_amount_cents, "carrier" => leg.ticket_carrier },
-        "companion" => leg.companion, "outbound_leg_id" => leg.outbound_leg_id, "done" => leg.done_at.present? }
+        "companion" => leg.companion, "outbound_leg_id" => leg.outbound_leg_id, "done" => leg.done_at.present?,
+        "voided" => leg.voided_at.present? }
     end
 
     # <tfd-allowance>

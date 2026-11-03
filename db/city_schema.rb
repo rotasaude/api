@@ -3561,10 +3561,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
     t.string "ticket_carrier", limit: 120
     t.uuid "transport_trip_passenger_id"
     t.datetime "updated_at", null: false
+    t.string "void_reason"
+    t.datetime "voided_at"
     t.index ["outbound_leg_id"], name: "idx_tfd_legs_outbound", unique: true, where: "(outbound_leg_id IS NOT NULL)"
     t.index ["tfd_case_id", "date"], name: "idx_tfd_legs_case"
-    t.index ["transport_trip_passenger_id", "direction"], name: "idx_tfd_legs_trip_passenger", unique: true, where: "(transport_trip_passenger_id IS NOT NULL)"
+    t.index ["transport_trip_passenger_id", "direction"], name: "idx_tfd_legs_trip_passenger", unique: true, where: "((transport_trip_passenger_id IS NOT NULL) AND (voided_at IS NULL))"
     t.check_constraint "(mode::text = 'fleet'::text) = (transport_trip_passenger_id IS NOT NULL) AND (mode::text = 'fleet'::text) = (ticket_amount_cents IS NULL) AND (direction::text = 'return'::text) = (outbound_leg_id IS NOT NULL) AND (mode::text <> 'fleet'::text OR NOT companion) AND (outbound_leg_id IS NULL OR outbound_leg_id <> id)", name: "ck_tfd_legs_mode"
+    t.check_constraint "(voided_at IS NULL) = (void_reason IS NULL) AND (void_reason IS NULL OR void_reason::text = ANY (ARRAY['passenger_removed'::text, 'trip_cancelled'::text, 'no_show'::text]::text[])) AND (voided_at IS NULL OR (done_at IS NULL AND mode::text = 'fleet'::text))", name: "ck_tfd_legs_void"
     t.check_constraint "direction::text = ANY (ARRAY['outbound'::text, 'return'::text]::text[]) AND mode::text = ANY (ARRAY['fleet'::text, 'bus_ticket'::text, 'air'::text, 'river'::text]::text[]) AND distance_km >= 0 AND (ticket_amount_cents IS NULL OR (ticket_amount_cents >= 1 AND ticket_amount_cents <= 10000000))", name: "ck_tfd_legs_domains"
   end
 

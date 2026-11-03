@@ -5,7 +5,7 @@
 #           cifrado; o api gera um se faltar;
 #   recusas invalid_request (chave de fora, filename), invalid_file,
 #           invalid_transition (só `travelling`), legs_pending (algum trecho
-#           sem `done_at`).
+#           sem `done_at` e não anulado — FR I1).
 # O arquivo só é gravado depois de todas as conferências, na mesma transação
 # da prestação, da transição e do evento tfd.accountability_closed (só ids).
 module Tfd
@@ -30,7 +30,7 @@ module Tfd
       TfdCase.transaction(requires_new: true) do
         tfd_case.lock!
         next Result.fail(:invalid_transition) unless tfd_case.status == "travelling"
-        next Result.fail(:legs_pending) if tfd_case.tfd_legs.where(done_at: nil).exists?
+        next Result.fail(:legs_pending) if tfd_case.tfd_legs.where(done_at: nil, voided_at: nil).exists?
 
         stored = Files.store(bytes: bytes, content_type: attrs["content_type"], user: by)
         next stored if stored.failure?

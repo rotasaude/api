@@ -5,7 +5,8 @@
 #     congelada pelo trigger; nunca 500);
 #   - viagem fora de planned/confirmed → `trip_not_open`;
 #   - já retirado → `not_found`.
-# Evento transport.passenger_removed (só ids) em TODA retirada, como o
+# Os trechos de frota do TFD abertos dessa linha ficam anulados
+# (`passenger_removed`, FR I1). Evento transport.passenger_removed (só ids) em TODA retirada, como o
 # trip_cancelled: o consumidor dos avisos (Task 14) filtra pela situação.
 module Transport
   module RemovePassenger
@@ -28,6 +29,7 @@ module Transport
         next Result.fail(:not_found) if passenger.removed_at
 
         passenger.update!(removed_at: Time.current, removed_by_user: by, remove_reason: text)
+        Tfd::FleetLegs.void!([ passenger.id ], "passenger_removed")
         DomainEvents.publish("transport.passenger_removed", trip_id: trip.id, passenger_id: passenger.id)
         Result.ok(passenger: passenger)
       end

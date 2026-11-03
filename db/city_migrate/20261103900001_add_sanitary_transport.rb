@@ -50,6 +50,8 @@ class AddSanitaryTransport < ActiveRecord::Migration[8.1]
   ALLOWANCE_KINDS = %w[meal_overnight meal_day ground_km air_miles river_miles].freeze
   PERSONS = %w[patient companion].freeze
   PAYMENT_METHODS = %w[cash transfer pix check].freeze
+  # Trecho de frota anulado (a pessoa saiu da viagem, a viagem caiu ou faltou).
+  VOID_REASONS = %w[passenger_removed trip_cancelled no_show].freeze
   MAX_AMOUNT_CENTS = 10_000_000
   COMPETENCE = "'^[0-9]{4}(0[1-9]|1[0-2])$'::text".freeze
 
@@ -416,12 +418,16 @@ class AddSanitaryTransport < ActiveRecord::Migration[8.1]
       t.string :ticket_carrier, limit: 120
       t.boolean :companion, null: false, default: false
       t.datetime :done_at
+      t.datetime :voided_at
+      t.string :void_reason
       t.references :created_by_user, type: :uuid, null: false, foreign_key: { to_table: :users }, index: false
       t.timestamps
     end
     add_index :tfd_legs, %i[tfd_case_id date], name: "idx_tfd_legs_case"
-    # Um passageiro da viagem leva a ida e/ou a volta de frota (a viagem é ida e volta; T38).
-    add_index :tfd_legs, %i[transport_trip_passenger_id direction], unique: true, where: "transport_trip_passenger_id IS NOT NULL",
+    # Um passageiro da viagem leva a ida e/ou a volta de frota (a viagem é ida e volta; T38); o anulado
+    # não conta (a correção no_show → boarded deixa a comissão registrar o trecho de novo).
+    add_index :tfd_legs, %i[transport_trip_passenger_id direction], unique: true,
+                                                                    where: "transport_trip_passenger_id IS NOT NULL AND voided_at IS NULL",
                                                                     name: "idx_tfd_legs_trip_passenger"
     add_index :tfd_legs, :outbound_leg_id, unique: true, where: "outbound_leg_id IS NOT NULL", name: "idx_tfd_legs_outbound"
     add_check_constraint :tfd_legs,
@@ -435,6 +441,11 @@ class AddSanitaryTransport < ActiveRecord::Migration[8.1]
                          "(direction::text = 'return'::text) = (outbound_leg_id IS NOT NULL) AND " \
                          "(mode::text <> 'fleet'::text OR NOT companion) AND (outbound_leg_id IS NULL OR outbound_leg_id <> id)",
                          name: "ck_tfd_legs_mode"
+    add_check_constraint :tfd_legs,
+                         "(voided_at IS NULL) = (void_reason IS NULL) AND " \
+                         "(void_reason IS NULL OR void_reason::text = ANY (ARRAY[#{quoted(VOID_REASONS)}]::text[])) AND " \
+                         "(voided_at IS NULL OR (done_at IS NULL AND mode::text = 'fleet'::text))",
+                         name: "ck_tfd_legs_void"
 
     create_table :tfd_allowances, id: :uuid do |t|
       t.references :tfd_case, type: :uuid, null: false, foreign_key: true, index: false

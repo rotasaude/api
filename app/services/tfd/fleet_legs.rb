@@ -6,7 +6,13 @@
 #     a alimentação);
 #   - complete_passenger!(passenger, by:): na correção no_show → boarded
 #     (Transport::CorrectAttendance) e no trecho registrado depois do
-#     fechamento (Tfd::AddLeg), os trechos abertos daquele passageiro.
+#     fechamento (Tfd::AddLeg), os trechos abertos daquele passageiro;
+#   - void!(passenger_ids, reason): anula (FR I1) os trechos de frota ABERTOS
+#     dessas linhas — a pessoa saiu da viagem (RemovePassenger), a viagem caiu
+#     (CancelTrip) ou o paciente faltou (CloseTrip, no_show). O anulado fica
+#     fora da prestação de contas (legs_pending), do pareamento da volta e da
+#     ajuda de custo; o trigger só deixa anular o trecho aberto, uma vez. Quem
+#     chama já tem a viagem travada (a mesma ordem: viagem → trecho).
 # Só viagem `done`. Ordem das travas (Ruling da Task 8): a VIAGEM primeiro
 # (FOR UPDATE aqui, mesmo que o chamador já a tenha — na mesma transação é
 # a mesma trava), depois o processo e o trecho (Tfd::CompleteLeg.complete!).
@@ -30,7 +36,7 @@ module Tfd
         by ||= locked.transport_trip_log&.closed_by_user
         settings = Transport::Settings.current
         legs = TfdLeg.joins(:transport_trip_passenger).includes(:transport_trip_passenger)
-                     .where(mode: "fleet", done_at: nil,
+                     .where(mode: "fleet", done_at: nil, voided_at: nil,
                             transport_trip_passengers: { transport_trip_id: locked.id, attendance: "boarded", removed_at: nil })
                      .order(:tfd_case_id, :date, :created_at, :id).to_a
         legs.filter_map { |leg| complete(leg, by, settings) }
@@ -46,9 +52,18 @@ module Tfd
 
         by ||= locked.transport_trip_log&.closed_by_user
         settings = Transport::Settings.current
-        TfdLeg.where(transport_trip_passenger_id: rider.id, mode: "fleet", done_at: nil).order(:date, :created_at, :id)
+        TfdLeg.where(transport_trip_passenger_id: rider.id, mode: "fleet", done_at: nil, voided_at: nil).order(:date, :created_at, :id)
               .to_a.filter_map { |leg| complete(leg, by, settings) }
       end
+    end
+
+    # -> quantidade de trechos anulados
+    def void!(passenger_ids, reason)
+      raise ArgumentError, "tfd: unknown void reason" unless Catalog::VOID_REASONS.include?(reason)
+
+      now = Time.current
+      TfdLeg.where(transport_trip_passenger_id: passenger_ids, mode: "fleet", done_at: nil, voided_at: nil)
+            .update_all(voided_at: now, void_reason: reason, updated_at: now)
     end
 
     def complete(leg, by, settings)

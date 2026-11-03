@@ -10,6 +10,9 @@ module Tfd
     ALLOWANCE_KINDS = %w[meal_overnight meal_day ground_km air_miles river_miles].freeze
     PERSONS = %w[patient companion].freeze
     PAYMENT_METHODS = %w[cash transfer pix check].freeze
+    # Trecho de frota anulado (FR I1): a pessoa saiu da viagem, a viagem foi
+    # cancelada ou o paciente faltou.
+    VOID_REASONS = %w[passenger_removed trip_cancelled no_show].freeze
     PHYSICIAN_PREFIX = "225".freeze
     DEFAULT_MIN_DISTANCE_KM = 50
     KM_UNIT = 50

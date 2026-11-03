@@ -5,6 +5,8 @@
 # → `invalid_transition`. Evento `transport.trip_cancelled` (só o id) em todo
 # cancelamento (§11); o aviso ao cidadão (T15) é decisão do consumidor, que
 # só avisa a viagem que tinha `confirmed_at` (fica gravado no cancelamento).
+# Os trechos de frota do TFD abertos dos passageiros ficam anulados
+# (`trip_cancelled`, FR I1).
 module Transport
   module CancelTrip
     CANCELLABLE = %w[planned confirmed].freeze
@@ -22,6 +24,7 @@ module Transport
         next Support.refuse("reason") unless text
 
         trip.update!(status: "cancelled", cancelled_at: Time.current, cancelled_by_user: by, cancel_reason: text)
+        Tfd::FleetLegs.void!(trip.transport_trip_passengers.select(:id), "trip_cancelled")
         DomainEvents.publish("transport.trip_cancelled", trip_id: trip.id)
         Result.ok(trip: trip)
       end

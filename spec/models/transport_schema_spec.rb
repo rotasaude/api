@@ -93,6 +93,31 @@ RSpec.describe "Esquema do módulo 30", type: :model do
     expect(tfd.reload.report).to include("cid10" => "N185", "sigtap_code" => "0301010072", "companion_indicated" => true)
   end
 
+  it "FR I1: trecho de frota aberto anula uma vez, só voided_at/void_reason; feito nunca anula; anulado congela; done uma vez" do
+    tfd = tfd_case!(status: "authorized")
+    rider = passenger!(trip!, patient: tfd.patient, origin: "tfd", tfd_case: tfd, exception_reason: nil)
+    leg = TfdLeg.create!(tfd_case: tfd, direction: "outbound", mode: "fleet", date: rider.transport_trip.date, distance_km: 380,
+                         transport_trip_passenger: rider, created_by_user: tfd.requester_user)
+    refused(/ck_tfd_legs_void/) { leg.update_columns(voided_at: Time.current) }
+    refused(/ck_tfd_legs_void/) { leg.update_columns(voided_at: Time.current, void_reason: "lost") }
+    refused(/only sets voided_at/) { leg.update_columns(voided_at: Time.current, void_reason: "no_show", distance_km: 1) }
+    leg.update_columns(voided_at: Time.current, void_reason: "no_show")
+    refused(/voided leg never changes/) { leg.update_columns(void_reason: "trip_cancelled") }
+    refused(/voided leg never changes/) { leg.update_columns(done_at: Time.current) }
+    refused(/no_delete|DELETE/i) { leg.delete }
+
+    # A linha ganha outro trecho vivo no mesmo sentido (o anulado não conta no índice único).
+    again = TfdLeg.create!(tfd_case: tfd, direction: "outbound", mode: "fleet", date: rider.transport_trip.date, distance_km: 380,
+                           transport_trip_passenger: rider, created_by_user: tfd.requester_user)
+    refused(/idx_tfd_legs_trip_passenger/) do
+      TfdLeg.create!(tfd_case: tfd, direction: "outbound", mode: "fleet", date: rider.transport_trip.date, distance_km: 380,
+                     transport_trip_passenger: rider, created_by_user: tfd.requester_user)
+    end
+    again.update_columns(done_at: Time.current)
+    refused(/done once/) { again.update_columns(done_at: Time.current + 1.hour) }
+    refused(/ck_tfd_legs_void|never voided/) { again.update_columns(voided_at: Time.current, void_reason: "no_show") }
+  end
+
   it "parada com passageiro não sai; aviso só é lido uma vez e pode ser apagado; TRUNCATE recusado" do
     trip = trip!
     rider = passenger!(trip)

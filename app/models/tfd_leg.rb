@@ -10,7 +10,10 @@ class TfdLeg < ApplicationRecord
   has_one :return_leg, class_name: "TfdLeg", foreign_key: :outbound_leg_id, inverse_of: :outbound_leg, dependent: :restrict_with_error
   has_many :tfd_allowances, inverse_of: :tfd_leg, dependent: :restrict_with_error
 
+  scope :live, -> { where(voided_at: nil) }
+
   def done? = done_at.present?
+  def voided? = voided_at.present?
 
   def inspect = "#<TfdLeg id=#{id} direction=#{direction} mode=#{mode}>"
   def to_s = inspect

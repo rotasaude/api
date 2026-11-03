@@ -10,7 +10,8 @@
 # - todo passageiro ativo com presença (e a do acompanhante) marcada, senão
 #   `attendance_pending`.
 # Grava transport_trip_logs (imutável), `done`, chama Tfd::FleetLegs.complete!
-# na mesma transação e publica transport.trip_done (só o id). Viagem
+# na mesma transação, anula os trechos de frota abertos do paciente que
+# faltou (`no_show`, FR I1) e publica transport.trip_done (só o id). Viagem
 # done/cancelled → `trip_not_open`; planned/confirmed → `invalid_transition`.
 module Transport
   module CloseTrip
@@ -48,6 +49,7 @@ module Transport
                                  fuel: fuel, expenses: expenses, closed_at: Time.current, closed_by_user: by)
         trip.update!(status: "done")
         Tfd::FleetLegs.complete!(trip)
+        Tfd::FleetLegs.void!(trip.transport_trip_passengers.active.where(attendance: "no_show").select(:id), "no_show")
         DomainEvents.publish("transport.trip_done", trip_id: trip.id)
         Result.ok(trip: trip)
       end

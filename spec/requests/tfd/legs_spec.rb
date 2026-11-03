@@ -131,7 +131,7 @@ RSpec.describe "TFD — trechos e ajuda de custo", type: :request do
     expect(corrected.reason).to eq(:tfd_leg_done)
   end
 
-  it "o paciente que faltou não tem o trecho feito; a correção no_show → boarded o completa com o deslocamento" do
+  it "o paciente que faltou tem o trecho anulado (FR I1); depois da correção no_show → boarded a comissão o registra de novo, já feito" do
     davi = driver_user!
     trip, rider = tfd_trip!(davi)
     add_leg(direction: "outbound", mode: "fleet", date: Date.current.iso8601, trip_passenger_id: rider.id)
@@ -142,15 +142,22 @@ RSpec.describe "TFD — trechos e ajuda de custo", type: :request do
               items: [ { passenger_id: rider.id, attendance: "no_show", companion_attendance: "no_show" } ])
     json_post("/transport/my_trips/#{trip.id}/close", odometer_start: 1000, odometer_end: 1760, fuel: [], expenses: [])
     expect(leg.reload.done_at).to be_nil
+    expect(leg.void_reason).to eq("no_show")
     expect(TfdAllowance.count).to eq(0)
 
     central = dispatcher!
     corrected = Transport::CorrectAttendance.call(trip: trip.reload, items: [ { "passenger_id" => rider.id, "attendance" => "boarded" } ],
                                                   reason: "Paciente embarcou e o motorista errou", by: central)
     expect(corrected).to be_ok
-    expect(leg.reload.done_at).to be_present
-    expect(TfdAllowance.where(tfd_leg: leg).pluck(:person, :kind)).to eq([ %w[patient ground_km] ])
-    expect(tfd.reload.tfd_case_events.find_by!(kind: "travelling").by_user_id).to eq(central.id)
+    expect(leg.reload.done_at).to be_nil
+
+    sign_in_as(committee)
+    add_leg(direction: "outbound", mode: "fleet", date: Date.current.iso8601, trip_passenger_id: rider.id)
+    expect(response).to have_http_status(:ok)
+    again = json_body["legs"].find { |l| !l["voided"] }
+    expect(again["done"]).to be(true)
+    expect(TfdAllowance.where(tfd_leg_id: again["id"]).pluck(:person, :kind)).to eq([ %w[patient ground_km] ])
+    expect(tfd.reload.tfd_case_events.find_by!(kind: "travelling").by_user_id).to eq(committee.id)
   end
 
   it "trecho de frota registrado depois do fechamento, com o paciente boarded, nasce feito" do

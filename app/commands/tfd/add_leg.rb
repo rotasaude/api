@@ -2,8 +2,9 @@
 # pela comissão: `{ direction, mode, date, trip_passenger_id?, ticket?, companion? }`.
 #   - frota: `trip_passenger_id` de um passageiro ATIVO do mesmo paciente,
 #     `origin: "tfd"` e `tfd_case_id` deste processo, numa viagem não
-#     cancelada, ainda sem trecho NESTE sentido (a linha leva a ida e/ou a
-#     volta, T38); `date` = a da viagem (ida: trip.date; volta: dia local de
+#     cancelada, ainda sem trecho vivo NESTE sentido (a linha leva a ida e/ou a
+#     volta, T38; o anulado não conta, FR I1); viagem já `done` só com o
+#     paciente `boarded` (senão o trecho nunca fecharia); `date` = a da viagem (ida: trip.date; volta: dia local de
 #     return_at), senão `invalid_request` em `date`; sem `ticket` e sem
 #     acompanhante (a presença do acompanhante vem da viagem) — senão
 #     `invalid_request` no campo;
@@ -11,7 +12,9 @@
 #     (1..10_000_000), carrier (1..CARRIER_MAX = 120, T18) }`, sem `trip_passenger_id`;
 #     `companion: true` só com o acompanhante indicado no laudo
 #     (`companion_not_allowed`, como no passageiro do TFD, Desvio 5);
-#   - a volta pareia com a ida mais antiga sem volta e com data ≤ a dela
+#   - a volta de frota pareia primeiro com a ida da MESMA linha de
+#     passageiro (FW8); senão — e a volta de passagem — com a ida mais
+#     antiga sem volta, não anulada e com data ≤ a dela
 #     (`outbound_leg_id`); sem ida aberta → `no_outbound_leg`; mais de
 #     Catalog::MAX_NIGHTS (999) noites depois da ida → `invalid_request` em
 #     `date` (a quantidade da alimentação no BPA vai até 999; Task 13 I1).
@@ -56,7 +59,7 @@ module Tfd
 
         outbound = nil
         if fields[:direction] == "return"
-          outbound = open_outbound(tfd_case, fields[:date])
+          outbound = open_outbound(tfd_case, fields[:date], rider)
           next Transport::Support.refuse_with(:no_outbound_leg, "direction") unless outbound
           next Transport::Support.refuse([ "date" ]) if (fields[:date] - outbound.date).to_i > Catalog::MAX_NIGHTS
         end
@@ -127,18 +130,20 @@ module Tfd
     # Um trecho por (passageiro, sentido): a mesma linha leva a ida e a volta da viagem (T38).
     def rider_ok?(rider, trip, tfd_case, direction)
       rider.present? && !rider.removed? && rider.anonymized_at.nil? && trip.status != "cancelled" &&
+        (trip.status != "done" || rider.attendance == "boarded") &&
         rider.origin == "tfd" && rider.tfd_case_id == tfd_case.id && rider.patient_id == tfd_case.patient_id &&
-        !TfdLeg.exists?(transport_trip_passenger_id: rider.id, direction: direction)
+        !TfdLeg.live.exists?(transport_trip_passenger_id: rider.id, direction: direction)
     end
 
     # Data do trecho de frota vem da viagem (T38): ida → trip.date; volta → dia local da chegada.
     def fleet_date(trip, direction) = direction == "return" ? trip.return_at.in_time_zone.to_date : trip.date
 
-    # Ida mais antiga sem volta, com data ≤ a da volta.
-    def open_outbound(tfd_case, date)
+    # Ida sem volta, não anulada, com data ≤ a da volta: a da mesma linha de
+    # passageiro primeiro (FW8: a volta de frota da viagem de ida e volta); senão a mais antiga.
+    def open_outbound(tfd_case, date, rider = nil)
       paired = TfdLeg.where(tfd_case_id: tfd_case.id).where.not(outbound_leg_id: nil).select(:outbound_leg_id)
-      TfdLeg.where(tfd_case_id: tfd_case.id, direction: "outbound").where(date: ..date).where.not(id: paired)
-            .order(:date, :created_at, :id).first
+      open = TfdLeg.live.where(tfd_case_id: tfd_case.id, direction: "outbound").where(date: ..date).where.not(id: paired)
+      (rider && open.find_by(transport_trip_passenger_id: rider.id)) || open.order(:date, :created_at, :id).first
     end
     private_class_method :parse, :ticket, :lock_rider, :rider_ok?, :fleet_date, :open_outbound
   end
