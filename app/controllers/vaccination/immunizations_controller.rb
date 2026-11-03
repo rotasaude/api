@@ -23,7 +23,8 @@
 #   → 201 { notification_id } | 200 { notification_id, existing: true } (já há uma
 #   esavi aberta para o paciente; idempotente). `surveillance` desligado → 403
 #   feature_disabled (feature "surveillance"; lido antes da transação). Só a
-#   equipe da sala da dose; outro escopo (inclusive transcrição sem sala) → 404;
+#   equipe da sala da dose ou papel `surveillance` (qualquer dose da cidade, como
+#   quem notifica no 25); outro escopo (inclusive transcrição sem sala) → 404;
 #   dose cancelada → 409 immunization_cancelled. Trilha da pessoa (access
 #   "surveillance", como a criação manual do 25) só na criação.
 module Vaccination
@@ -79,7 +80,8 @@ module Vaccination
       return unless query_only!
 
       dose = uuid?(params[:id]) ? Immunization.includes(vaccine_room: :health_unit).find_by(id: params[:id]) : nil
-      return not_found unless dose&.vaccine_room && Access.room_roles(user: Current.user, room: dose.vaccine_room).any?
+      return not_found unless dose && (Current.user.has_role?("surveillance") ||
+                                       (dose.vaccine_room && Access.room_roles(user: Current.user, room: dose.vaccine_room).any?))
 
       result = NotifyEsavi.call(immunization: dose, by: Current.user, now: Time.current)
       return render_error(result.reason, result.reason == :immunization_cancelled ? :conflict : :unprocessable_entity) if result.failure?

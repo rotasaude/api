@@ -68,6 +68,20 @@ RSpec.describe "Sala de vacina — ESAVI", type: :request do
     expect(DiseaseNotification.count).to eq(0)
   end
 
+  it "papel surveillance, fora da sala → 201 (também em dose sem sala); sem equipe nem papel → 404" do
+    sign_in_as(surveillance_officer!)
+    post_esavi
+    expect(response).to have_http_status(:created)
+    expect(DiseaseNotification.find(json_body["notification_id"]).notifier_user_id).not_to eq(vaccinator.id)
+    orphan = create_immunization!(room, vaccinator_user: vaccinator, vaccine_room: nil, transcription: true, stock_lot: nil,
+                                        care_group: nil, route: nil, site: nil)
+    post_esavi(orphan.id)
+    expect(response).to have_http_status(:created)
+    sign_in_as(staff_with("outro-#{SecureRandom.hex(3)}@cidade.gov.br", "health_professional"))
+    post_esavi
+    expect(response).to have_http_status(:not_found)
+  end
+
   it "transcrição sem sala → 404; transcrição da sala usa a unidade da sala" do
     orphan = create_immunization!(room, vaccinator_user: vaccinator, vaccine_room: nil, transcription: true, stock_lot: nil,
                                         care_group: nil, route: nil, site: nil)
