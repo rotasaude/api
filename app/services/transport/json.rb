@@ -27,8 +27,8 @@ module Transport
 
     # <trip> (contrato §2): horas ISO no fuso da cidade; veículo resumido,
     # motorista só id e nome (nunca a CNH). `viewer` (:dispatcher | :driver)
-    # escolhe a forma do passageiro; os passageiros entram com o
-    # Transport::Json.passenger (Task 5) e o `log` com o fechamento (Task 8).
+    # escolhe a forma do passageiro (Transport::Json.passenger); o `log` entra
+    # com o fechamento (Task 8).
     def trip(trip, viewer: :dispatcher)
       vehicle = trip.transport_vehicle
       driver = trip.transport_driver
@@ -49,9 +49,36 @@ module Transport
         "label" => stop.label }
     end
 
-    # Passageiros ativos na forma <passenger>: o Transport::Json.passenger
-    # nasce na Task 5, que troca este corpo; até lá a lista sai vazia.
-    def passengers(_trip, _viewer) = []
+    # Passageiros ativos (não retirados) na forma <passenger>, por ordem de entrada.
+    def passengers(trip, viewer)
+      trip.transport_trip_passengers.active.includes(:patient, :transport_destination).order(:created_at, :id)
+          .map { |passenger| passenger(passenger, viewer: viewer) }
+    end
+
+    # <passenger> (contrato §2 + T18: o destino leva o nome do município).
+    # SEM dado clínico: nunca procedimento, especialidade, CID, laudo nem o
+    # texto do pedido; o CPF nunca sai (só `has_cpf`), o CNS só mascarado e o
+    # documento do acompanhante só os 4 últimos. O motorista (viewer: :driver)
+    # não recebe `has_cpf` nem `cns_masked`.
+    def passenger(p, viewer: :dispatcher)
+      destination = p.transport_destination
+      { "id" => p.id, "patient" => patient(p.patient, viewer: viewer), "stop_id" => p.transport_trip_stop_id,
+        "destination" => { "destination_id" => destination.id, "name" => destination.name, "provider_name" => p.provider_name,
+                           "address" => p.address },
+        "appointment_at" => p.appointment_at&.in_time_zone&.iso8601, "takes_seat" => p.takes_seat, "wheelchair" => p.wheelchair,
+        "companion" => p.companion_name && { "name" => p.companion_name, "document_last4" => p.companion_document&.last(4) },
+        "origin" => p.origin, "exception_reason" => p.exception_reason, "attendance" => p.attendance,
+        "companion_attendance" => p.companion_attendance }
+    end
+
+    # O paciente no <passenger> e no item dos atendimentos marcados: telefone
+    # mascarado do primeiro par validado (Patients::Pairs).
+    def patient(patient, viewer: :dispatcher)
+      phone = Patients::Pairs.of(patient).order(:created_at, :id).first&.phone
+      base = { "id" => patient.id, "display_name" => patient.display_name }
+      ids = viewer == :driver ? {} : Patients::IdentifierJson.call(patient).transform_keys(&:to_s)
+      base.merge(ids).merge("phone_masked" => phone && CitizenIdentity::Phone.mask(phone))
+    end
 
     # Como a fila do módulo 13: nome profissional; sem perfil, o e-mail.
     def user_name(user) = Screenings::Json.staff_name(user)

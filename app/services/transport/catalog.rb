@@ -33,5 +33,12 @@ module Transport
     RENEM_MAX = 20
     ADDRESS_MAX = 200
     DEFAULT_COMPANION_RULE = { "max_age_child" => 15, "min_age_elderly" => 60 }.freeze
+    # §14 T18: acompanhante (nome 3–120, documento até 20).
+    COMPANION_NAME = (3..120)
+    COMPANION_DOCUMENT_MAX = 20
+    # Viagens que aceitam escrita de passageiro (T19: o resto → trip_not_open).
+    OPEN_STATUSES = %w[planned confirmed].freeze
+    # Trilha da busca de pessoa e dos duplicados da central (T2).
+    TRAIL_ACCESS = "transport".freeze
   end
 end

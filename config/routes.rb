@@ -608,6 +608,13 @@ Rails.application.routes.draw do
     patch "trips/:id",           to: "trips#update"
     post  "trips/:id/confirm",   to: "trips#confirm"
     post  "trips/:id/cancel",    to: "trips#cancel"
+    # Passageiros e atendimentos marcados (§4; T5, T19); busca de pessoa e
+    # duplicados (T2), dado só no corpo.
+    post   "trips/:id/passengers",                to: "passengers#create"
+    delete "trips/:id/passengers/:passenger_id",  to: "passengers#destroy"
+    post   "scheduled_care",                      to: "scheduled_care#create"
+    post   "person_lookup",                       to: "person_lookups#create"
+    post   "patients/duplicates",                 to: "duplicates#create"
     get   "admin/settings", to: "admin/settings#show"
     patch "admin/settings", to: "admin/settings#update"
   end

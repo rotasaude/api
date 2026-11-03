@@ -167,6 +167,24 @@ module TransportHelpers
   def health_management_unit!(cnes: billing_cnes)
     HealthUnit.create!(name: "Secretaria Municipal de Saúde #{SecureRandom.hex(2)}", kind: "health_management", cnes: cnes)
   end
+
+  # DELETE com corpo JSON (o motivo da retirada vai no corpo, nunca na URL).
+  # Nome próprio: os json_delete de regulation_helpers e clinical_document_helpers
+  # têm aridades diferentes e o último incluído vence.
+  def json_delete_with_body(path, params = {})
+    delete(path, params: params.to_json, headers: { "CONTENT_TYPE" => "application/json" })
+  end
+
+  # Horário do módulo 17 do par validado do paciente na unidade, gravado
+  # direto (horário livre, legacy; o caminho real é Appointments::Schedule).
+  def transport_appointment!(patient, unit:, at:, status: "confirmed")
+    citizen = Patients::Pairs.of(patient).first or raise "transport_appointment!: paciente sem par validado"
+    request = triage_request!(citizen, unit: unit)
+    Appointment.create!(request: request, citizen_id: citizen.id, health_unit_id: unit.id, scheduled_at: at,
+                        scheduled_by_user: dispatcher!, status: status, booking_kind: "legacy",
+                        confirmed_at: (Time.current if status == "confirmed"),
+                        confirmation_deadline_at: (at - 1.day if status == "scheduled"))
+  end
 end
 
 RSpec.configure { |c| c.include TransportHelpers }
