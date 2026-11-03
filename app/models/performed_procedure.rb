@@ -10,6 +10,8 @@ class PerformedProcedure < ApplicationRecord
   INSTRUMENTS = %w[bpa_i bpa_c not_bpa].freeze
   CHARACTERS = %w[elective urgent].freeze
   STATUSES = %w[recorded cancelled].freeze
+  # Quantidade aceita (ck_performed_procedures_quantity; BPA: 3 dígitos).
+  QUANTITY = (1..999)
 
   encrypts :cancel_reason
 

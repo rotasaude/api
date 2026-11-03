@@ -19,11 +19,25 @@ RSpec.describe Billing::FromTfd do
     { event_id: SecureRandom.uuid, event_name: name, city_slug: Current.city.slug, payload: { "tfd_leg_id" => leg.id } }
   end
 
-  it "os dois eventos do trecho estão ligados ao consumidor do BPA" do
-    %w[tfd.leg_done tfd.allowances_calculated].each do |name|
-      expect(DomainEvents.registry[name].map(&:job)).to eq([ "Billing::TfdProductionJob" ])
-    end
+  # O evento gravado (DomainEvent) do trecho, para rodar o consumidor com o MESMO event_id.
+  def event_args(name, leg)
+    event = DomainEvent.where(name: name).find { |e| e.payload["tfd_leg_id"] == leg.id } or raise "sem #{name} do trecho"
+    { event_id: event.id, event_name: name, city_slug: Current.city.slug, payload: event.payload }
   end
+
+  # Trecho de passagem registrado e feito SEM rodar o consumidor (fila limpa).
+  def ticket_leg!(tfd, direction, on)
+    leg = Tfd::AddLeg.call(tfd_case: tfd.reload, by: committee, attrs: { "direction" => direction, "mode" => "bus_ticket", "date" => on.iso8601,
+                                                                       "ticket" => { "amount_cents" => 15_000, "carrier" => "Viação" } })
+                     .payload.fetch(:leg)
+    done = Tfd::CompleteLeg.call(leg: leg, by: committee, at: Time.zone.parse("#{on.iso8601} 18:00"))
+    raise "trecho não feito: #{done.reason}" if done.failure?
+
+    clear_enqueued_jobs
+    leg.reload
+  end
+
+  let(:committee) { committee! }
 
   it "uma linha BPA-I por ajuda, com o médico do laudo, a unidade de gestão e a data do trecho; sem establishment_is_aps" do
     tfd = tfd_case!(status: "authorized")
@@ -35,7 +49,7 @@ RSpec.describe Billing::FromTfd do
       .to eq([ [ "0803010125", 8, Date.current - 1, unit.id, tfd.requester_user_id, tfd.requester_cbo ] ])
     expect(rows.first).to have_attributes(instrument: "bpa_i", tfd_leg_id: out.id, tfd_allowance_id: allowance.id, patient_id: tfd.patient_id,
                                           cid10: "N185", character: "elective", recorded_by_user_id: nil, exam_provider_id: nil)
-    expect(rows.first.blocking_reasons).not_to include("establishment_is_aps", "missing_professional_cbo")
+    expect(rows.first).to have_attributes(billable: true, blocking_reasons: [])
     expect(Billing::Json.procedure(rows.first)).to include(source: "tfd", source_ref: { type: "tfd_allowance", id: allowance.id })
     expect(rows.first.billing_period).to have_attributes(health_unit_id: unit.id, competence: (Date.current - 1).strftime("%Y%m"))
   end
@@ -99,22 +113,64 @@ RSpec.describe Billing::FromTfd do
     expect(rows.pluck(:tfd_allowance_id)).to match_array(allowances.ids)
   end
 
-  it "billing desligado no momento do trecho: nada, nem quando é religado (sem retroativo)" do
+  it "billing desligado no momento do trecho: nada; religado, o MESMO evento de novo também não cria (sem retroativo)" do
     Platform::Features.set!(city: city, key: "procedure_billing", enabled: false, maintainer: ledi_maintainer!)
     out = tfd_leg_done!(tfd_case!(status: "authorized"), "outbound", Date.current)
     expect(TfdAllowance.where(tfd_leg: out)).to exist
     expect(PerformedProcedure.where(source: "tfd")).to be_empty
+    args = event_args("tfd.leg_done", out)
+    expect(ProcessedEvent.where(event_id: args[:event_id], consumer: "Billing::TfdProductionJob")).to exist # o consumidor rodou
 
     Platform::Features.set!(city: city, key: "procedure_billing", enabled: true, maintainer: ledi_maintainer!)
-    perform_enqueued_jobs(only: Billing::TfdProductionJob)
+    expect { Billing::TfdProductionJob.new.perform(**args) }.not_to change(PerformedProcedure, :count)
     expect(PerformedProcedure.where(source: "tfd")).to be_empty
   end
 
-  it "sem a unidade de faturamento na configuração: nenhuma linha (e nenhuma exceção)" do
+  it "I2: sem a unidade de faturamento, o consumidor falha (só ids) e o evento fica pendente; configurada, o mesmo evento grava" do
     tfd = tfd_case!(status: "authorized")
     TransportSetting.current.update_columns(tfd_billing_health_unit_id: nil)
-    out = tfd_leg_done!(tfd, "outbound", Date.current)
-    expect(TfdAllowance.where(tfd_leg: out)).to exist
+    out = ticket_leg!(tfd, "outbound", Date.current)
+    allowance = TfdAllowance.find_by!(tfd_leg: out)
+    args = event_args("tfd.leg_done", out)
+
+    expect { Billing::TfdProductionJob.new.perform(**args) }
+      .to raise_error(Billing::FromTfd::BillingUnitMissing, "tfd_billing_health_unit_missing tfd_allowance_ids=#{allowance.id}")
     expect(PerformedProcedure.where(source: "tfd")).to be_empty
+    expect(DomainEvent.find(args[:event_id]).published_at).to be_nil
+    expect(ProcessedEvent.where(event_id: args[:event_id])).not_to exist
+
+    TransportSetting.current.update_columns(tfd_billing_health_unit_id: unit.id)
+    Billing::TfdProductionJob.new.perform(**args)
+    expect(PerformedProcedure.where(source: "tfd").pluck(:tfd_allowance_id, :health_unit_id)).to eq([ [ allowance.id, unit.id ] ])
+    expect(DomainEvent.find(args[:event_id]).published_at).to be_present
+  end
+
+  it "I1: ajuda com quantidade acima de 999 é pulada (log só com o id) e as outras do trecho seguem, sem exceção" do
+    tfd = tfd_case!(status: "authorized")
+    ticket_leg!(tfd, "outbound", Date.current - 3)
+    back = ticket_leg!(tfd, "return", Date.current)
+    # Linha patológica gravada direto (o AddLeg já recusa a volta além de 999 noites).
+    huge = TfdAllowance.create!(tfd_case: tfd, tfd_leg: back, person: "companion", kind: "meal_overnight", sigtap_code: "0803010044",
+                                quantity: 1000, table_cents: 2475, complement_cents: 0, total_cents: 2_475_000,
+                                competence: Date.current.strftime("%Y%m"))
+    allow(Rails.logger).to receive(:warn).and_call_original
+
+    expect(described_class.call(TfdAllowance.where(tfd_leg: back))).to eq(2)
+    expect(PerformedProcedure.where(tfd_leg_id: back.id).pluck(:sigtap_code)).to contain_exactly("0803010125", "0803010010")
+    expect(PerformedProcedure.where(tfd_allowance_id: huge.id)).not_to exist
+    expect(Rails.logger).to have_received(:warn).with("[Billing::FromTfd] quantity_out_of_range tfd_allowance_id=#{huge.id}")
+  end
+
+  it "erro do banco no INSERT vira InsertFailed só com o id da ajuda, sem a causa do Postgres (que traz a linha com CID)" do
+    tfd = tfd_case!(status: "authorized")
+    out = ticket_leg!(tfd, "outbound", Date.current)
+    allowance = TfdAllowance.find_by!(tfd_leg: out)
+    allow(Billing::Record).to receive(:insert!)
+      .and_raise(ActiveRecord::StatementInvalid, "PG::CheckViolation: DETAIL: Failing row contains (N185, #{tfd.patient_id})")
+
+    expect { described_class.call([ allowance ]) }.to raise_error(Billing::FromTfd::InsertFailed) do |error|
+      expect(error.message).to eq("tfd_allowance_id=#{allowance.id} ActiveRecord::StatementInvalid")
+      expect(error.cause).to be_nil
+    end
   end
 end

@@ -21,6 +21,9 @@ module Tfd
     REASON = (10..500)
     RECEIPT_MAX = 40
     CARRIER_MAX = 120 # T18 (empresa: até 120)
+    # Maior intervalo ida → volta, em noites (Task 13 I1): a alimentação vira
+    # uma linha BPA com quantidade = noites, e o BPA aceita até 999.
+    MAX_NIGHTS = PerformedProcedure::QUANTITY.max
     MAX_AMOUNT_CENTS = 10_000_000
     TRAIL_ACCESS = "tfd".freeze
     FILE_PURPOSE = "tfd_accountability".freeze

@@ -12,7 +12,9 @@
 #     `companion: true` só com o acompanhante indicado no laudo
 #     (`companion_not_allowed`, como no passageiro do TFD, Desvio 5);
 #   - a volta pareia com a ida mais antiga sem volta e com data ≤ a dela
-#     (`outbound_leg_id`); sem ida aberta → `no_outbound_leg`.
+#     (`outbound_leg_id`); sem ida aberta → `no_outbound_leg`; mais de
+#     Catalog::MAX_NIGHTS (999) noites depois da ida → `invalid_request` em
+#     `date` (a quantidade da alimentação no BPA vai até 999; Task 13 I1).
 # Recusas de forma todas de uma vez. Processo em authorized/scheduled/
 # travelling (senão `invalid_transition`); o primeiro trecho move authorized →
 # scheduled. `distance_km` copiado do destino. Trecho de frota registrado com
@@ -56,6 +58,7 @@ module Tfd
         if fields[:direction] == "return"
           outbound = open_outbound(tfd_case, fields[:date])
           next Transport::Support.refuse_with(:no_outbound_leg, "direction") unless outbound
+          next Transport::Support.refuse([ "date" ]) if (fields[:date] - outbound.date).to_i > Catalog::MAX_NIGHTS
         end
 
         leg = TfdLeg.create!(tfd_case: tfd_case, direction: fields[:direction], mode: fields[:mode], date: fields[:date],

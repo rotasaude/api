@@ -48,6 +48,20 @@ RSpec.describe "TFD — trechos e ajuda de custo", type: :request do
     expect(json_body["error"]).to eq("tfd_leg_done")
   end
 
+  it "Task 13 I1: volta mais de 999 noites depois da ida → invalid_request em date (a alimentação no BPA vai até 999); 999 aceita" do
+    outbound_on = Date.current - 1000
+    add_leg(direction: "outbound", mode: "bus_ticket", date: outbound_on.iso8601, ticket: ticket)
+    expect(response).to have_http_status(:ok)
+    add_leg(direction: "return", mode: "bus_ticket", date: (outbound_on + 1000).iso8601, ticket: ticket)
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to include("error" => "invalid_request", "path" => "date")
+    expect(TfdLeg.where(direction: "return")).to be_empty
+
+    add_leg(direction: "return", mode: "bus_ticket", date: (outbound_on + 999).iso8601, ticket: ticket)
+    expect(response).to have_http_status(:ok)
+    expect(TfdLeg.find_by!(direction: "return").outbound_leg.date).to eq(outbound_on)
+  end
+
   it "recusas de forma todas de uma vez; volta sem ida → no_outbound_leg; acompanhante sem indicação → companion_not_allowed" do
     add_leg(direction: "sideways", mode: "boat", date: "2026-02-30", extra: 1)
     expect(response).to have_http_status(:unprocessable_entity)

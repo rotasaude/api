@@ -36,6 +36,21 @@ RSpec.describe "Transporte — configuração", type: :request do
     expect(json_body["tfd_billing_health_unit_id"]).to be_nil
   end
 
+  it "Task 13 I2: com procedure_billing ligado, desvincular a unidade do TFD → billing_unit_invalid e nada muda; desligado, desvincula" do
+    stepped_up!(admin)
+    unit = health_management_unit!
+    json_patch "/transport/admin/settings", tfd_billing_health_unit_id: unit.id
+    Platform::Features.set!(city: city, key: "procedure_billing", enabled: true, maintainer: ledi_maintainer!)
+    json_patch "/transport/admin/settings", tfd_billing_health_unit_id: nil, tfd_min_distance_km: 70
+    expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "billing_unit_invalid", "tfd_billing_health_unit_id" ])
+    expect(TransportSetting.current).to have_attributes(tfd_billing_health_unit_id: unit.id, tfd_min_distance_km: 50)
+
+    Platform::Features.set!(city: city, key: "procedure_billing", enabled: false, maintainer: ledi_maintainer!)
+    json_patch "/transport/admin/settings", tfd_billing_health_unit_id: nil
+    expect(response).to have_http_status(:ok)
+    expect(TransportSetting.current.tfd_billing_health_unit_id).to be_nil
+  end
+
   it "recusas de campo vêm todas de uma vez; nada é gravado" do
     stepped_up!(admin)
     json_patch "/transport/admin/settings", tfd_min_distance_km: 0, companion_rule: { "max_age_child" => 30, "min_age_elderly" => 60 }

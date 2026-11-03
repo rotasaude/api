@@ -1,7 +1,8 @@
 # PATCH /transport/admin/settings (contrato §3, T12): parcial; todas as recusas
 # de campo de uma vez em `problems`. Chave desconhecida → invalid_request com o
 # nome; unidade de faturamento que não é health_management com CNES →
-# billing_unit_invalid. Uma troca publica `transport.settings_changed` só com o
+# billing_unit_invalid; desvincular (null) com procedure_billing ligado também
+# → billing_unit_invalid (lido fora da transação). Uma troca publica `transport.settings_changed` só com o
 # id da cidade e os NOMES das chaves que mudaram, nunca os valores (T27).
 module Transport
   module SaveSettings
@@ -76,6 +77,9 @@ module Transport
 
       id = attrs["tfd_billing_health_unit_id"]
       if id.nil?
+        # Faturamento ligado: a produção do TFD precisa da unidade (Task 13 I2).
+        return problems << problem("tfd_billing_health_unit_id", "billing_unit_invalid") if Billing::Gate.enabled?(Current.city)
+
         changes["tfd_billing_health_unit_id"] = nil
         return
       end

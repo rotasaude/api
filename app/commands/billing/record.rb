@@ -19,7 +19,7 @@ module Billing
       return Result.fail(:invalid_sigtap_code) unless code.is_a?(String) && code.match?(CODE)
 
       quantity = params["quantity"]
-      return Result.fail(:invalid_quantity) unless quantity.is_a?(Integer) && quantity.between?(1, 999)
+      return Result.fail(:invalid_quantity) unless quantity.is_a?(Integer) && PerformedProcedure::QUANTITY.cover?(quantity)
 
       on = date(params["performed_on"])
       return Result.fail(:invalid_date) unless on && on <= today && on >= (today << WINDOW_MONTHS).beginning_of_month
