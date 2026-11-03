@@ -6,8 +6,11 @@
 #     aviso `removed` é do consumidor, só na confirmada — T15); passageiro
 #     anonimizado fica (congelado, T23);
 #   - resolve as pendências abertas da série.
-# Suspender de novo troca a data e o motivo. O job para de criar a partir da
-# data (TransportSeries#runs_on?). Nada do paciente em Result.details.
+# Suspender de novo só ANTECIPA (ou repete) a data, trocando o motivo: uma
+# data posterior à suspensão gravada reativaria dias já suspensos — a
+# suspensão é irreversível (T33; nova série para retomar) → `invalid_request`
+# em `from_on` (C1). O job para de criar a partir da data
+# (TransportSeries#runs_on?). Nada do paciente em Result.details.
 module Transport
   module SuspendSeries
     module_function
@@ -23,6 +26,8 @@ module Transport
 
       TransportSeries.transaction(requires_new: true) do
         series.lock!
+        next Support.refuse("from_on") if series.suspended_from && date > series.suspended_from
+
         series.update!(suspended_from: date, suspend_reason: text)
         # A recusa do RemovePassenger aqui só significa que o passageiro já
         # não está ativo numa viagem aberta (retirado ou viagem que mudou de
