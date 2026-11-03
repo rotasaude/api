@@ -463,4 +463,11 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include(*names)
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
+
+  # Trechos do TFD (Task 11): só ids, sem consumidor até a Task 13 (BPA).
+  it "declares tfd.leg_added, .leg_done and .allowances_calculated with no consumer yet" do
+    names = %w[tfd.leg_added tfd.leg_done tfd.allowances_calculated]
+    expect(DomainEvents.registry.keys).to include(*names)
+    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  end
 end

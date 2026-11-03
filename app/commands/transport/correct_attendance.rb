@@ -14,7 +14,8 @@
 # Só o UPDATE e o INSERT da correção correm sob
 # TransportTripPassenger.with_attendance_correction (a trava volta ao sair).
 # Depois, `no_show` → `boarded` do paciente com trecho de frota aberto chama
-# Tfd::FleetLegs.complete_passenger!. Evento transport.attendance_corrected
+# Tfd::FleetLegs.complete_passenger! (a viagem já travada aqui: a mesma trava
+# que o fechamento segura ao completar os trechos — Ruling da Task 8). Evento transport.attendance_corrected
 # (trip_id e os ids dos passageiros mudados), só quando algo mudou.
 module Transport
   module CorrectAttendance
@@ -55,7 +56,7 @@ module Transport
         changes.each do |item, fields|
           next unless fields[:attendance] == %w[no_show boarded]
 
-          Tfd::FleetLegs.complete_passenger!(passengers.fetch(item.passenger_id))
+          Tfd::FleetLegs.complete_passenger!(passengers.fetch(item.passenger_id), by: by)
         end
         DomainEvents.publish("transport.attendance_corrected", trip_id: trip.id, passenger_ids: changes.keys.map(&:passenger_id))
         Result.ok(trip: trip)

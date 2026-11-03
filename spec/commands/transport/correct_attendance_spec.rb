@@ -65,7 +65,7 @@ RSpec.describe Transport::CorrectAttendance do
     rider = tfd_rider!(leg_done: false)
     rider.reload
     TransportTripPassenger.with_attendance_correction { rider.update!(attendance: "no_show") }
-    expect(Tfd::FleetLegs).to receive(:complete_passenger!).with(rider).and_call_original
+    expect(Tfd::FleetLegs).to receive(:complete_passenger!).with(rider, by: central).and_call_original
     expect(correct([ { "passenger_id" => rider.id, "attendance" => "boarded" } ])).to be_ok
     expect(rider.reload.attendance).to eq("boarded")
   end

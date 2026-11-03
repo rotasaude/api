@@ -650,6 +650,9 @@ Rails.application.routes.draw do
     post  "cases/:id/appointment",  to: "cases#appointment"
     post  "cases/:id/inpatient",    to: "cases#inpatient"
     post  "cases/:id/cancel",       to: "cases#cancel"
+    post  "cases/:id/legs",         to: "legs#create"
+    get   "cases/:id/allowances",   to: "legs#allowances"
+    post  "legs/:id/done",          to: "legs#done"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.
