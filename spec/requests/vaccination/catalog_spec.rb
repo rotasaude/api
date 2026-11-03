@@ -21,13 +21,25 @@ RSpec.describe "Sala de vacina — catálogo", type: :request do
                         "manufacturers" => [ { "key" => "serum", "code" => nil, "name" => "Serum Institute of India", "validity_after_opening_hours" => 0 } ])
   end
 
-  it "o almoxarife da rede de frio lê" do
+  it "V28: physical_loss_reasons { code, name } do SIES, os mesmos códigos que o ajuste valida" do
+    sign_in_as(room_member!(room))
+    get "/vaccination/catalog"
+    reasons = json_body["physical_loss_reasons"]
+    expect(reasons.first).to eq("code" => "broken", "name" => "Frasco quebrado")
+    expect(reasons.map(&:keys).uniq).to eq([ %w[code name] ])
+    expect(reasons.map { |r| r["code"] }).to eq(Vaccination::Catalog.physical_loss_codes)
+    expect(reasons.map { |r| r["code"] }).to include("expired", "temperature_excursion")
+  end
+
+  it "o almoxarife da rede de frio, sem sala, lê (com os motivos de perda)" do
     central = cold_chain_central!
     keeper = staff_with("frio@cidade.gov.br", "stock_keeper")
     StockLocationStaff.create!(stock_location: central, user: keeper, role: "stock_keeper", granted_by_user: pharmacy_admin!, granted_at: Time.current)
     sign_in_as(keeper)
+    expect(Vaccination::Access.rooms_for(keeper)).to be_empty
     get "/vaccination/catalog"
     expect(response).to have_http_status(:ok)
+    expect(json_body["physical_loss_reasons"]).not_to be_empty
   end
 
   it "usuário sem sala nem rede de frio → 403 missing_role; sem sessão → 401; interruptor desligado → 403 feature_disabled" do

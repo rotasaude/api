@@ -1,6 +1,7 @@
-# GET /vaccination/catalog (contrato §4): catálogo, terminologias e versão do
-# calendário. Quem tem alguma sala ativa ou papel na rede de frio. Sem trilha:
-# não traz dado de pessoa.
+# GET /vaccination/catalog (contrato §4): catálogo, terminologias, versão do
+# calendário e os motivos de perda física do SIES (V28, a lista que o ajuste
+# valida). Quem tem alguma sala ativa ou papel na rede de frio (o almoxarife
+# lança perda e vencimento lá). Sem trilha: não traz dado de pessoa.
 module Vaccination
   class CatalogController < BaseController
     def show
@@ -9,7 +10,8 @@ module Vaccination
 
       render json: { calendar_version: Calendar.current.version,
                      immunobiologicals: Immunobiologicals.all.map { |product| product_json(product) },
-                     terminologies: Terminologies::KINDS.index_with { |kind| Terminologies.list(kind) } }
+                     terminologies: Terminologies::KINDS.index_with { |kind| Terminologies.list(kind) },
+                     physical_loss_reasons: Catalog.physical_loss_reasons }
     end
 
     private

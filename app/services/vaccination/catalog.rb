@@ -26,8 +26,13 @@ module Vaccination
 
     module_function
 
-    # Códigos dos motivos de perda física do SIES (§15 V4), na ordem do YAML.
-    def physical_loss_codes = YamlFiles.load("physical_loss_reasons").fetch("reasons").map { |reason| reason.fetch("code") }
+    # Motivos de perda física do SIES (§15 V4, V28), na ordem do YAML: [ { code:, name: } ].
+    def physical_loss_reasons
+      YamlFiles.load("physical_loss_reasons").fetch("reasons").map { |reason| { code: reason.fetch("code"), name: reason.fetch("name") } }
+    end
+
+    # Só os códigos (o que o ajuste valida no `loss_code`).
+    def physical_loss_codes = physical_loss_reasons.map { |reason| reason[:code] }
 
     # Qualquer um dos cinco YAML do módulo com `review: true`, ou o perfil RIA-R
     # 2.0 ainda não confirmado (`config/rnds/ria_r_2_0.yml`) (Desvio 18).
