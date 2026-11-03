@@ -4,8 +4,11 @@
 # Host e X-Forwarded-Proto precisam ser repassados (gate de go-live). Toda
 # resposta: CSP com frame-ancestors do PEC da cidade ('none' sem
 # configuração), sem X-Frame-Options, no-store e no-referrer (a URL tem CPF).
+# O transporte sanitário (módulo 30) fica fora da página do PEC (FW11): é
+# logística da secretaria, não registro clínico; o dashboard e o wpda o mostram.
 class PecTimelinesController < ApplicationController
   PAGE_LIMIT = 50
+  KINDS = (Timeline::KINDS - %w[transport]).freeze
   # Defesa em profundidade: só uma origem simples entra na CSP.
   ORIGIN_FORMAT = %r{\Ahttps?://[a-z0-9.-]+(:\d+)?\z}
 
@@ -30,7 +33,7 @@ class PecTimelinesController < ApplicationController
     return failure(result.reason.to_s) if result.failure?
 
     grant = result.payload[:grant]
-    page = Timeline::Query.call(person: grant.person, limit: self.class::PAGE_LIMIT,
+    page = Timeline::Query.call(person: grant.person, kinds: KINDS, limit: self.class::PAGE_LIMIT,
                                 active_vaccinations_only: true)
     Timeline::Trail.viewed!(person: grant.person, access: "pec_external", user: grant.user)
     token = PecExternal::ViewSession.issue(city: Current.city, grant: grant)
@@ -43,8 +46,8 @@ class PecTimelinesController < ApplicationController
     grant = PecExternal::ViewSession.resume(request.headers[PecExternal::ViewSession::HEADER], city: Current.city)
     return failure("pec_session_expired", status: :unauthorized) unless grant
 
-    page = Timeline::Query.call(person: grant.person, before: Timeline::Cursor.decode(params[:before]), limit: self.class::PAGE_LIMIT,
-                                active_vaccinations_only: true)
+    page = Timeline::Query.call(person: grant.person, kinds: KINDS, before: Timeline::Cursor.decode(params[:before]),
+                                limit: self.class::PAGE_LIMIT, active_vaccinations_only: true)
     Timeline::Trail.viewed!(person: grant.person, access: "pec_external", user: grant.user)
     response.headers["X-Next-Before"] = page.next_before.to_s
     html(PecExternal::Page.items(page.entries))

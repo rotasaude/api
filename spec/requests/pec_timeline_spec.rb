@@ -99,6 +99,22 @@ RSpec.describe "Página do PEC", type: :request do
     expect([ response.status, response.body ]).to match([ 401, a_string_including("pec_session_expired") ])
   end
 
+  it "FW11: a página e o carregar mais nunca pedem a fonte transport (módulo 30); as outras fontes seguem" do
+    kinds = []
+    allow(Timeline::Query).to receive(:call).and_wrap_original do |original, **args|
+      kinds << args[:kinds]
+      original.call(**args)
+    end
+    stub_const("PecTimelinesController::PAGE_LIMIT", 1)
+    open_page
+    headers = { "X-Pec-View-Session" => CGI.unescapeHTML(response.body[/data-session="([^"]+)"/, 1]) }
+    get "/pec/timeline/more", params: { before: response.body[/data-before="([^"]+)"/, 1] }, headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(kinds.size).to eq(2)
+    expect(kinds).to all(eq(Timeline::KINDS - %w[transport]))
+    expect(Timeline::KINDS).to include("transport") # o dashboard e o wpda continuam com ela
+  end
+
   it "carregar mais: cursor inválido 422; última página com X-Next-Before vazio; fragmento com no-store e frame-ancestors" do
     open_page
     headers = { "X-Pec-View-Session" => CGI.unescapeHTML(response.body[/data-session="([^"]+)"/, 1]) }
