@@ -12,7 +12,7 @@ module Tfd
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     # O resto das recusas é 422.
     FAILURE_STATUS = { already_exists: :conflict, already_closed: :conflict, same_user: :forbidden, missing_role: :forbidden,
-                       not_found: :not_found }.freeze
+                       cbo_not_allowed: :forbidden, not_author: :forbidden, not_found: :not_found }.freeze
     KEY_PATH_MAX = 64
 
     before_action :require_tfd!
@@ -35,6 +35,16 @@ module Tfd
     def not_found = render(json: { error: "not_found" }, status: :not_found)
     def uuid?(value) = value.is_a?(String) && value.match?(UUID)
     def admin? = Current.user.has_role?("municipal_admin")
+
+    # Médico autor (Tfd::Access.physician_cbo): sem health_professional → 403
+    # missing_role; profissional sem vínculo 225* → 403 cbo_not_allowed.
+    # Renderiza e devolve false quando recusa.
+    def require_physician!
+      return true if Access.physician_cbo(Current.user)
+
+      forbid(Current.user.has_role?("health_professional") ? "cbo_not_allowed" : "missing_role")
+      false
+    end
 
     # Dado do paciente e texto livre só do corpo JSON: na query vale como ausente.
     def body_param(key) = request.request_parameters[key]

@@ -1,0 +1,11 @@
+# Procedimentos da atenção básica (ADR 0048; plano, Valores fixados 5): o TFD
+# não cobre o que a rede básica do município deve oferecer. O envio e a
+# autorização recusam o laudo com `primary_care_procedure` quando o código
+# SIGTAP começa por um dos prefixos (grupo 01, promoção e prevenção) ou está
+# na lista (consultas da atenção primária). A conferência no SIGTAP oficial é
+# gate de go-live.
+version: 1
+source: "SIGTAP — grupo 01 e consultas da atenção primária (03.01.01)"
+review: true
+prefixes: ["01"]
+codes: ["0301010030", "0301010064"]

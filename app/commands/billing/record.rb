@@ -8,7 +8,6 @@
 module Billing
   module Record
     CODE = /\A\d{10}\z/
-    CID = /\A[A-Z]\d{2}[0-9X]?\z/
     DATE = /\A\d{4}-\d{2}-\d{2}\z/
     WINDOW_MONTHS = 3
 
@@ -63,18 +62,9 @@ module Billing
       nil
     end
 
-    # nil (sem CID), o código sem ponto em maiúsculas, ou :invalid (fora do
-    # formato, ou fora da CID-10 ativa quando há uma).
-    def cid10(value)
-      return nil if value.nil? || value == ""
-      return :invalid unless value.is_a?(String)
+    # nil (sem CID), o código sem ponto em maiúsculas, ou :invalid (ClinicalTerms.cid10_code).
+    def cid10(value) = ClinicalTerms.cid10_code(value)
 
-      code = value.delete(".").strip.upcase
-      return :invalid unless code.match?(CID)
-
-      release = TerminologyRelease.active.where(kind: "cid10").order(activated_at: :desc).first
-      release.nil? || Cid10Code.exists?(release_id: release.id, code: code) ? code : :invalid
-    end
     private_class_method :date, :cid10
   end
 end

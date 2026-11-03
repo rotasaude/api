@@ -2,7 +2,7 @@
 # 08.03.01 (ajudas de custo), central, comissão, motorista com CNH, veículo,
 # destino, viagem e passageiro gravados direto no banco (os caminhos reais são
 # os comandos das Tasks 3–5), paciente com par validado e telefone, processo de
-# TFD (gravação direta até o Tfd::SaveCase da Task 9) e a unidade de gestão.
+# TFD (pelo Tfd::SaveCase + Tfd::Transition) e a unidade de gestão.
 # Tudo avaliado só na chamada.
 module TransportHelpers
   # Os 10 códigos do 08.03.01 (config/tfd/sigtap_codes.yml, Task 2) com o
@@ -154,18 +154,36 @@ module TransportHelpers
     patient
   end
 
-  # Processo de TFD gravado direto (o caminho real é o Tfd::SaveCase da Task
-  # 9): consulta iniciada do mesmo paciente pelo médico autor (CBO 225125) e o
-  # laudo válido mesclado com `report:`; fora de `draft`, `submitted_at`.
+  # Situações do TFD pelo caminho da máquina (Tfd::Transition) a partir do rascunho.
+  TFD_PATHS = { "draft" => [], "submitted" => %w[submitted], "returned" => %w[submitted returned],
+                "authorized" => %w[submitted authorized], "denied" => %w[submitted denied],
+                "scheduled" => %w[submitted authorized scheduled], "travelling" => %w[submitted authorized scheduled travelling],
+                "completed" => %w[submitted authorized scheduled travelling completed],
+                "cancelled" => %w[submitted cancelled] }.freeze
+
+  # Processo de TFD pelo caminho real: consulta iniciada do mesmo paciente
+  # pelo médico autor (CBO 225125), Tfd::SaveCase com o laudo válido mesclado
+  # com `report:` e Tfd::Transition até `status:` (o envio pelo autor, o resto
+  # pela comissão; sem as regras do envio nem trechos). `submitted_at` vem da
+  # transição.
   def tfd_case!(status: "draft", patient: transport_patient!, destination: destination!(name: "Londrina", ibge: "4113700", km: 380),
                 report: {})
     unit = create_unit("UBS TFD #{SecureRandom.hex(2)}")
     doctor = doctor!(unit)
     citizen = Patients::Pairs.of(patient).first or raise "tfd_case!: paciente sem par validado"
     consultation = started_consultation!(unit: unit, doctor: doctor, citizen: citizen)
-    TfdCase.create!(patient: patient, consultation: consultation, requester_user: doctor, requester_cbo: TFD_CBO,
-                    report: TFD_REPORT.merge(report.transform_keys(&:to_s)), transport_destination: destination, status: status,
-                    submitted_at: (Time.current unless status == "draft"))
+    saved = Tfd::SaveCase.call(attrs: { "patient_id" => patient.id, "consultation_id" => consultation.id,
+                                        "destination_id" => destination.id,
+                                        "report" => TFD_REPORT.merge(report.transform_keys(&:to_s)) }, by: doctor)
+    raise "tfd_case!: laudo recusado: #{saved.reason} #{saved.details}" if saved.failure?
+
+    tfd = saved.payload.fetch(:tfd_case)
+    committee = committee! unless status.to_s == "draft"
+    TFD_PATHS.fetch(status.to_s).each do |to|
+      moved = Tfd::Transition.call(tfd_case: tfd, to: to, by: to == "submitted" ? doctor : committee)
+      raise "tfd_case!: #{tfd.status} → #{to}: #{moved.reason}" if moved.failure?
+    end
+    tfd.reload
   end
 
   # A secretaria (unidade de gestão, unidade de faturamento do TFD).

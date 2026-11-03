@@ -288,6 +288,9 @@ Rails.application.config.to_prepare do
   # mesma transação) e correção da presença (trip_id, passenger_ids). Só ids,
   # sem consumidor.
   %w[transport.trip_started transport.trip_done transport.attendance_corrected].each { |name| DomainEvents.bind name, to: [] }
+  # Laudo de TFD criado e enviado à comissão (Task 9); só ids (tfd_case_id,
+  # user_id), nunca o laudo; sem consumidor.
+  %w[tfd.case_created tfd.case_submitted].each { |name| DomainEvents.bind name, to: [] }
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

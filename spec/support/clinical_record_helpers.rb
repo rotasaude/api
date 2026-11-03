@@ -7,6 +7,8 @@ module ClinicalRecordHelpers
     "E119" => [ "Diabetes mellitus não-insulino-dependente - sem complicações", nil ],
     "I10" => [ "Hipertensão essencial (primária)", nil ],
     "N390" => [ "Infecção do trato urinário de localização não especificada", nil ],
+    # Módulo 30 (ADR 0048): o CID do laudo de TFD de teste (TransportHelpers::TFD_REPORT).
+    "N185" => [ "Doença renal crônica, estádio 5", nil ],
     "C61" => [ "Neoplasia maligna da próstata", "M" ],
     # Módulo 25 (ADR 0043): códigos da lista de notificação compulsória.
     "A90" => [ "Dengue [dengue clássico]", nil ],

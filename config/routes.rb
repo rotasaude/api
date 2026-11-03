@@ -634,6 +634,19 @@ Rails.application.routes.draw do
     patch "admin/settings", to: "admin/settings#update"
   end
 
+  # Módulo 30 (ADR 0048; contrato §6; §14 T7, T8, T9): TFD, sessão do
+  # dashboard. Laudo do médico, fila da comissão e leitura nominal com trilha.
+  scope "/tfd", module: :tfd, as: :tfd do
+    get   "options",           to: "options#show"
+    get   "prefill",           to: "prefill#show"
+    get   "my_cases",          to: "cases#mine"
+    get   "cases",             to: "cases#index"
+    post  "cases",             to: "cases#create"
+    patch "cases/:id",         to: "cases#update"
+    post  "cases/:id/submit",  to: "cases#submit"
+    post  "cases/:id/read",    to: "cases#read"
+  end
+
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.
   scope "/vaccination", module: :vaccination, as: :vaccination do
     # Administração (municipal_admin; escrita com step-up): salas, equipe, rede de frio e go-live.

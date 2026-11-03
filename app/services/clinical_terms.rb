@@ -6,6 +6,7 @@
 module ClinicalTerms
   Code = Data.define(:terminology, :code, :label, :release_id)
   MODELS = { "ciap2" => "Ciap2Code", "cid10" => "Cid10Code" }.freeze
+  CID10_CODE = /\A[A-Z]\d{2}[0-9X]?\z/
 
   module_function
 
@@ -41,6 +42,20 @@ module ClinicalTerms
     index(terminology, current).select { |code, _label, label_folded| code.downcase.start_with?(plain) || label_folded.include?(folded) }
                                .first(limit)
                                .map { |code, label, _| Code.new(terminology: terminology.to_s, code: code, label: label, release_id: current.id) }
+  end
+
+  # O CID-10 digitado (faturamento do 22, laudo do TFD do 30): nil (sem CID),
+  # o código sem ponto em maiúsculas, ou :invalid (fora do formato, ou fora da
+  # CID-10 ativa quando há uma).
+  def cid10_code(value)
+    return nil if value.nil? || value == ""
+    return :invalid unless value.is_a?(String)
+
+    code = value.delete(".").strip.upcase
+    return :invalid unless code.match?(CID10_CODE)
+
+    current = TerminologyRelease.active.where(kind: "cid10").order(activated_at: :desc).first
+    current.nil? || Cid10Code.exists?(release_id: current.id, code: code) ? code : :invalid
   end
 
   def normalize(code) = code.to_s.strip.upcase.delete(".")
