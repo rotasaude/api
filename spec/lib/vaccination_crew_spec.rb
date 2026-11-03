@@ -94,6 +94,22 @@ RSpec.describe VaccinationCrew do
     expect(Platform::Features.usable?(city, "rnds_immunization")).to be(true)
   end
 
+  it "grava a credencial pelo comando: evento e auditoria da plataforma" do
+    seed
+    expect(DomainEvent.where(name: "integration_credential.changed").last.payload).to eq("kind" => "rnds", "user_id" => user("admin").id)
+    expect(PlatformEvent.where(name: "rnds.credential_set").last.payload).to eq("city_id" => city.id)
+  end
+
+  it "retoma o recebimento de uma transferência enviada e não recebida" do
+    allow(Pharmacy::ReceiveTransfer).to receive(:call).and_return(Result.fail(:location_inactive))
+    expect { seed }.to raise_error(/recebimento na sala/)
+    expect(StockTransfer.sole.status).to eq("sent")
+    allow(Pharmacy::ReceiveTransfer).to receive(:call).and_call_original
+    seed
+    expect(StockTransfer.sole.status).to eq("received")
+    expect(balance(room.stock_location, "22")).to eq(100)
+  end
+
   it "grava a dose de exemplo de uma criança de dois meses com a caderneta conferida e na fila da RNDS" do
     seed
     dose = Immunization.sole

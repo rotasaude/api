@@ -228,11 +228,13 @@ class VaccinationCrew
         end
         check!(Pharmacy::RecordEntry.call(location: central, kind: "opening", document: nil, items: items, by: keeper, catalog: {}), "abertura da rede de frio")
       end
-      return if StockTransfer.exists?(from_location_id: central.id, to_location_id: room.stock_location_id)
-
-      items = LOTS.map { |spec| { "lot_id" => lot(spec).id, "quantity" => spec[:to_room] } }
-      sent = check!(Pharmacy::SendTransfer.call(from: central, to: room.stock_location, items: items, by: keeper), "envio à sala")
-      transfer = sent.payload.fetch(:transfer)
+      transfer = StockTransfer.find_by(from_location_id: central.id, to_location_id: room.stock_location_id)
+      unless transfer
+        items = LOTS.map { |spec| { "lot_id" => lot(spec).id, "quantity" => spec[:to_room] } }
+        sent = check!(Pharmacy::SendTransfer.call(from: central, to: room.stock_location, items: items, by: keeper), "envio à sala")
+        transfer = sent.payload.fetch(:transfer)
+      end
+      return unless transfer.status == "sent" # enviada e ainda não recebida: retoma o recebimento
       received = transfer.items.map { |item| { "lot_id" => item.stock_lot_id, "quantity_received" => item.quantity_sent.to_s("F") } }
       check!(Pharmacy::ReceiveTransfer.call(transfer: transfer, items: received, by: lead), "recebimento na sala")
     end
@@ -254,7 +256,7 @@ class VaccinationCrew
       return if IntegrationCredential.exists?(kind: "rnds")
 
       secret = { "pfx_base64" => Base64.strict_encode64(test_pfx), "pfx_password" => CERTIFICATE_PASSWORD, "requester_cnes" => unit.cnes }
-      IntegrationCredential.create!(kind: "rnds", secret: secret, set_by_user: admin, set_at: Time.current)
+      check!(Integrations::SetCredential.call(kind: "rnds", secret: secret, by: admin, city: City.find(Current.city.id)), "credencial rnds")
     end
 
     def test_pfx
