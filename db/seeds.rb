@@ -24,6 +24,7 @@
 #     Farmácia e almoxarifado (módulo 27a): pharmacy ligado em Curitiba, o almoxarifado central e a farmácia da UBS Jardim das Flores, a farmacêutica (farmacia@<slug>.demo), a auxiliar, dois almoxarifes, o estoque com lotes, as transferências e as receitas da prova — ver lib/pharmacy_crew.rb.
 #     Saúde bucal (módulo 28): dental_care ligado em Curitiba, o CEO tipo II, a eSB associada à eSF, a dentista (dentista@<slug>.demo), a auxiliar (asb@), a endodontista (endodontista@), consultas, planos, produção do CEO e prótese da prova — ver lib/oral_health_crew.rb.
 #     Sala de vacina (módulo 29): vaccination, rnds_immunization e rnds_mock ligados em Curitiba, a sala da UBS Jardim das Flores, a vacinadora (vacinadora@<slug>.demo) e a responsável (vacina.responsavel@), a rede de frio com 4 lotes, a geladeira, a credencial rnds de teste e uma dose de exemplo na fila da RNDS simulada — ver lib/vaccination_crew.rb.
+#     Transporte sanitário e TFD (módulo 30): sanitary_transport e tfd ligados em Curitiba, a central (transporte@curitiba.dev), a comissão de TFD (tfd@), os motoristas (motorista@, condutor@), a van e o carro, 4 destinos, a unidade de gestão como unidade de faturamento, uma série de hemodiálise já materializada e um TFD autorizado para Londrina — ver lib/transport_crew.rb.
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -64,6 +65,7 @@ else
   require Rails.root.join("lib/pharmacy_crew").to_s
   require Rails.root.join("lib/oral_health_crew").to_s
   require Rails.root.join("lib/vaccination_crew").to_s
+  require Rails.root.join("lib/transport_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -411,6 +413,12 @@ else
         # papel e otpauth: nunca dado de paciente.
         vaccination = VaccinationCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
         VaccinationCrew.summary_lines(vaccination, password: password).each { |line| puts line }
+
+        # Depois do CareLinesCrew (o Antônio e o José, com a consulta da médica) e do
+        # RegulationCrew (a SIGTAP de dev da competência). Só e-mail, papel e otpauth:
+        # nunca dado de paciente.
+        transport = TransportCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        TransportCrew.summary_lines(transport, password: password).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
