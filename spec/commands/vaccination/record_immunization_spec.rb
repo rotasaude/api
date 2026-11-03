@@ -89,11 +89,40 @@ RSpec.describe Vaccination::RecordImmunization do
     expect(call(lot_id: empty.id).details[:problems]).to eq([ { path: "lot_id", error: "insufficient_balance" } ])
   end
 
-  it "mulher sem condição maternal → maternal_condition_required; homem sem ela grava" do
-    expect(errors(call(maternal_condition: nil))).to eq(%w[maternal_condition_required])
-    boy = vaccine_patient!(birth_date: Date.current - 61, sex: "male")
-    plain = attrs.except("maternal_condition")
-    expect(described_class.call(room: room, patient: boy, attrs: plain, by: vaccinator)).to be_ok
+  # V27: só mulher de 10 a 49 anos completos na data da aplicação (dia da
+  # cidade, aritmética de calendário). Fora disso pode vir nula e grava nula.
+  describe "maternal_condition_required (V27)" do
+    let(:on) { Time.current.in_time_zone.to_date }
+
+    def required?(birth, sex: "female")
+      person = vaccine_patient!(birth_date: birth, sex: sex)
+      result = described_class.call(room: room, patient: person, attrs: attrs.except("maternal_condition"), by: vaccinator)
+      result.failure? && errors(result).include?("maternal_condition_required")
+    end
+
+    it "véspera dos 10 anos não exige; aniversário dos 10 exige" do
+      expect(required?(on.advance(years: -10) + 1)).to be(false)
+      expect(required?(on.advance(years: -10))).to be(true)
+    end
+
+    it "véspera dos 50 exige; aniversário dos 50 não exige" do
+      expect(required?(on.advance(years: -50) + 1)).to be(true)
+      expect(required?(on.advance(years: -50))).to be(false)
+    end
+
+    it "menino não exige; menina de 2 meses grava com a condição nula" do
+      expect(required?(on.advance(years: -25), sex: "male")).to be(false)
+      result = described_class.call(room: room, patient: child, attrs: attrs.except("maternal_condition"), by: vaccinator)
+      expect(result).to be_ok
+      expect(result.payload[:immunization].maternal_condition).to be_nil
+    end
+
+    it "a faixa é a da data da aplicação, não a de hoje" do
+      woman = vaccine_patient!(birth_date: on.advance(years: -10) - 1, sex: "female")
+      result = described_class.call(room: room, patient: woman, by: vaccinator,
+                                    attrs: attrs(applied_at: 3.days.ago.iso8601).except("maternal_condition"))
+      expect(errors(result)).not_to include("maternal_condition_required")
+    end
   end
 
   describe "multidose" do

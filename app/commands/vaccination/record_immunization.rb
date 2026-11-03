@@ -17,7 +17,8 @@
 #  5. frasco: `vial_required` (multidose sem frasco), `invalid_value`
 #     (frasco de outra sala, ou frasco em unidose), `vial_lot_mismatch`,
 #     `vial_expired` (vencido), `vial_closed_out` (descartado, V22), `vial_empty`;
-#  6. `sex_not_allowed`, `maternal_condition_required` (sexo female sem ela);
+#  6. `sex_not_allowed`, `maternal_condition_required` (V27: mulher de 10 a
+#     49 anos completos na data da aplicação, sem ela; fora disso pode vir nula);
 #  7. avisos `interval_too_short` / `age_out_of_range` com `overridable: true`
 #     (V5), só sem `override_reason` válido.
 #
@@ -36,6 +37,9 @@ module Vaccination
     FUTURE_TOLERANCE = 1.minute
     ZONED = /(Z|[+-]\d{2}:?\d{2})\z/
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
+    # V27: idade fértil para a condição maternal — 10 anos completos até a véspera dos 50.
+    CHILDBEARING_FROM = Calendar::Age.new(years: 10, months: 0, days: 0)
+    CHILDBEARING_UNTIL = Calendar::Age.new(years: 50, months: 0, days: 0)
 
     module_function
 
@@ -206,7 +210,19 @@ module Vaccination
       def person_checks
         series = @entry&.first
         add("immunobiological_code", "sex_not_allowed") if series&.sex && series.sex != @patient.sex
-        add("maternal_condition", "maternal_condition_required") if @patient.sex == "female" && @attrs["maternal_condition"].nil?
+        add("maternal_condition", "maternal_condition_required") if @attrs["maternal_condition"].nil? && childbearing_age?
+      end
+
+      # V27: sexo feminino com 10 a 49 anos completos em `applied_on` (dia da
+      # cidade), por aritmética de calendário (Calendar::Age). Sem nascimento
+      # conhecido, continua exigindo (como antes).
+      def childbearing_age?
+        return false unless @patient.sex == "female"
+
+        birth = Statuses.birth_date(@patient)
+        return true unless birth
+
+        CHILDBEARING_FROM.reached?(birth, applied_on) && !CHILDBEARING_UNTIL.reached?(birth, applied_on)
       end
 
       # Avisos que aceitam motivo (V5): intervalo desde a dose anterior da série
