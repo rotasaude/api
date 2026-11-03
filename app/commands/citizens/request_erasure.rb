@@ -5,7 +5,8 @@
 # (ADR 0040), para CPF com cadastro territorial (ADR 0042) e para CPF com
 # notificação de vigilância (ADR 0043), para CPF com pedido de regulação
 # (ADR 0044) e para CPF com dispensação ou receita externa da farmácia
-# (ADR 0045), para CPF com registro odontológico (ADR 0046).
+# (ADR 0045), para CPF com registro odontológico (ADR 0046) e para CPF com
+# dose de vacina (ADR 0047).
 # `retained?` é a regra única: o pedido e a reconferência do Citizens::Erase
 # usam a mesma.
 module Citizens
@@ -76,8 +77,14 @@ module Citizens
       ExamOrder.where(patient_id: ids).exists? || ExamResult.where(patient_id: ids).exists? ||
         LabRequisition.where(patient_id: ids).exists? || PerformedProcedure.where(patient_id: ids).exists? ||
         CareLineEnrollment.where(patient_id: ids).exists? || territory_registered?(ids) || notified?(ids) ||
-        regulated?(ids) || dispensed?(ids) || dental_recorded?(ids)
+        regulated?(ids) || dispensed?(ids) || dental_recorded?(ids) ||
+        vaccinated?(ids)
     end
+
+    # ADR 0047 (módulo 29, Desvio 19): a dose de vacina é registro clínico retido,
+    # em qualquer situação: transcrita da caderneta e cancelada inclusive. A
+    # conferência de caderneta e a situação materializada não retêm.
+    def vaccinated?(ids) = Immunization.where(patient_id: ids).exists?
 
     # ADR 0046: o registro odontológico é registro clínico retido, como o
     # prontuário: odontograma (evento), pedido de prótese, plano de tratamento,

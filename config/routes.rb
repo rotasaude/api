@@ -619,6 +619,8 @@ Rails.application.routes.draw do
     # ESAVI a partir da dose (Desvio 17; §15 V12): abre (ou devolve) a notificação do módulo 25.
     post   "immunizations/:id/esavi",      to: "immunizations#esavi"
     get    "rooms/:room_id/pending",       to: "pending#index"
+    # Painel da vacinação (§15 V14 = D13): contagens, sem trilha.
+    get    "dashboard",                    to: "dashboard#show"
     # Resumo mensal de imunobiológicos (§7; §15 V14 = D8): contagens, sem trilha.
     get    "rooms/:room_id/monthly_summary",      to: "summaries#room"
     get    "cold_chain_central/monthly_summary",  to: "summaries#cold_chain"
