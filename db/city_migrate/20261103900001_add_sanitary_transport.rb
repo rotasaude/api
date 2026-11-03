@@ -36,7 +36,7 @@ class AddSanitaryTransport < ActiveRecord::Migration[8.1]
   ATTENDANCE = %w[pending boarded no_show].freeze
   ATTENDANCE_FIELDS = %w[attendance companion_attendance].freeze
   NOTICE_KINDS = %w[added departure_changed boarding_changed cancelled removed reminder].freeze
-  PENDING_REASONS = %w[no_seat no_wheelchair_spot].freeze
+  PENDING_REASONS = %w[no_seat no_wheelchair_spot refused].freeze
   # §14 T18: sem `lodging`.
   EXPENSE_KINDS = %w[toll parking meal other].freeze
   SEATS = (1..60)

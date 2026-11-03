@@ -98,6 +98,14 @@ RSpec.describe "Transporte — séries e pendências", type: :request do
     expect(json_body).to eq("items" => [ { "series_id" => series.id, "date" => monday.iso8601, "reason" => "no_seat" } ])
   end
 
+  it "FR I4: a pendência refused (recusa do AddPassenger fora da lotação) aparece em /transport/pending" do
+    json_post "/transport/series", body
+    series = TransportSeries.find(json_body["id"])
+    TransportPendingItem.create!(transport_series: series, date: monday, reason: "refused")
+    get "/transport/pending"
+    expect(json_body).to eq("items" => [ { "series_id" => series.id, "date" => monday.iso8601, "reason" => "refused" } ])
+  end
+
   it "motorista e comissão → 403 missing_role; transporte desligado → 403 feature_disabled" do
     [ driver_user!, committee! ].each do |user|
       sign_in_as(user)

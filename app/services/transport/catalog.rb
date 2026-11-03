@@ -14,7 +14,8 @@ module Transport
     NOTICE_KINDS = %w[added departure_changed boarding_changed cancelled removed reminder].freeze
     DEPARTURE_CHANGE = 30.minutes
     SERIES_HORIZON_DAYS = 21
-    PENDING_REASONS = %w[no_seat no_wheelchair_spot].freeze
+    # `refused`: o AddPassenger recusou por outro motivo que a lotação (FR I4).
+    PENDING_REASONS = %w[no_seat no_wheelchair_spot refused].freeze
     EXPENSE_KINDS = %w[toll parking meal other].freeze
     PLATE = /\A[A-Z]{3}\d[A-Z\d]\d{2}\z/
     RENAVAM = /\A\d{11}\z/

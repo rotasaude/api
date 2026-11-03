@@ -1,12 +1,14 @@
 # Materializa uma série recorrente nos 21 dias a partir de `today` (contrato
 # §4; ADR 0048; plano, Task 7; Review Focus 2). Para cada dia `d` em que a
 # série vale (TransportSeries#runs_on?):
-#   1. o paciente já está, pela série, ATIVO numa viagem NÃO cancelada do
-#      dia → nada (e a pendência aberta desse dia, se houver, fica resolvida:
-#      a central o pôs à mão); retirado ou viagem cancelada → o dia volta;
+#   1. o paciente já está ATIVO numa viagem NÃO cancelada do dia, por
+#      QUALQUER origem (FW3: a série nunca lhe dá outra viagem) → nada (e a
+#      pendência aberta desse dia, se houver, fica resolvida: a central o pôs
+#      à mão); retirado ou viagem cancelada → o dia volta;
 #   2. já há pendência ABERTA da série no dia → nada;
 #   3. viagens `planned`/`confirmed` do dia com parada de destino no município
-#      da série, travadas (FOR UPDATE), da saída mais próxima à da série: entra
+#      da série, travadas (FOR UPDATE) na ordem do id — a mesma da exclusão e
+#      da suspensão (C2) — e tentadas da saída mais próxima à da série: entra
 #      na primeira em que cabe (Transport::Occupancy.fits?);
 #   4. nenhuma viagem → cria a `planned` sem escala (sem veículo e motorista,
 #      autor = quem criou a série; paradas [embarque, destino]); sem escala não
@@ -14,7 +16,13 @@
 #   5. há viagens e nenhuma cabe → pendência `no_seat` ou `no_wheelchair_spot`
 #      pelo que falta na viagem mais próxima (Occupancy.shortfall; nunca
 #      excesso); a linha resolvida antes para o mesmo dia é reaberta (índice
-#      único por série e data).
+#      único por série e data);
+#   6. o Transport::AddPassenger recusa por outro motivo (regra do
+#      acompanhante que venceu no meio da série, destino inativado…) → a
+#      viagem e a parada criadas para ele são desfeitas e o dia vira pendência
+#      `refused` (FR I4), visível em /transport/pending — nunca uma falha
+#      noturna calada; a lotação recusada numa corrida vira no_seat/
+#      no_wheelchair_spot.
 # O passageiro entra pelo Transport::AddPassenger (origem "series", by: nil),
 # na parada de embarque de mesmo rótulo (sem distinção de caixa) ou numa nova,
 # antes do primeiro destino. Horas: "HH:MM" da série no fuso da cidade
@@ -28,8 +36,7 @@ module Transport
   module MaterializeSeries
     POSITION_SHIFT = 1000
 
-    # Recusa inesperada do AddPassenger (a mensagem é só o código).
-    class Refused < StandardError; end
+    CAPACITY = { seats_full: "no_seat", wheelchair_full: "no_wheelchair_spot" }.freeze
 
     module_function
 
@@ -60,20 +67,44 @@ module Transport
       candidates = candidates(series, d, departure)
       need = { takes_seat: !series.wheelchair, wheelchair: series.wheelchair, companion: series.companion_name.present? }
       trip = candidates.find { |t| Occupancy.fits?(t, **need) }
-      if trip.nil? && candidates.empty?
-        trip = create_planned_trip!(series, d, departure)
-        counts[:created_trips] += 1
-      elsif trip.nil?
+      if trip.nil? && candidates.any?
         open_pending!(series, d, pending_reason(candidates.first, need))
         counts[:pending] += 1
         return
       end
-      counts[:added] += 1 if add_passenger!(trip, series, d)
+
+      created, added, refused = place!(series, d, departure, trip)
+      if refused
+        open_pending!(series, d, refused)
+        counts[:pending] += 1
+      else
+        counts[:created_trips] += created
+        counts[:added] += 1 if added
+      end
     end
 
+    # Cria a viagem (se faltar) e põe o passageiro num savepoint próprio: a
+    # recusa desfaz a viagem e a parada novas. -> [criadas, entrou?, motivo da pendência | nil]
+    def place!(series, d, departure, trip)
+      outcome = [ 0, false, nil ]
+      TransportTrip.transaction(requires_new: true) do
+        created = trip ? 0 : 1
+        trip ||= create_planned_trip!(series, d, departure)
+        result = add_passenger!(trip, series, d)
+        if result.nil? || result.ok?
+          outcome = [ created, !result.nil?, nil ]
+        else
+          outcome = [ 0, false, CAPACITY.fetch(result.reason, "refused") ]
+          raise ActiveRecord::Rollback
+        end
+      end
+      outcome
+    end
+
+    # FW3: ativo numa viagem não cancelada do dia, por qualquer origem.
     def already_on_trip?(series, d)
       TransportTripPassenger.active.joins(:transport_trip)
-                            .where(transport_series_id: series.id, transport_trips: { date: d })
+                            .where(patient_id: series.patient_id, transport_trips: { date: d })
                             .where.not(transport_trips: { status: "cancelled" }).exists?
     end
 
@@ -93,9 +124,9 @@ module Transport
     def candidates(series, d, departure)
       with_destination = TransportTripStop.where(kind: "destination", transport_destination_id: series.transport_destination_id)
                                           .select(:transport_trip_id)
-      distance = TransportTrip.sanitize_sql_array([ "abs(extract(epoch from departure_at - ?::timestamp))", departure.utc ])
       TransportTrip.where(date: d, status: Catalog::OPEN_STATUSES).where(id: with_destination)
-                   .order(Arel.sql(distance), :id).lock.to_a
+                   .order(:id).lock.to_a
+                   .sort_by { |trip| [ (trip.departure_at - departure).abs, trip.id ] }
     end
 
     def create_planned_trip!(series, d, departure)
@@ -108,11 +139,10 @@ module Transport
       trip
     end
 
-    # -> true se entrou; false se o paciente já estava na viagem por outra
-    # origem (sem tocar nas paradas). Outra recusa levanta Refused e o
-    # savepoint do dia desfaz a parada nova.
+    # -> nil se o paciente já estava na viagem (sem tocar nas paradas) | o
+    # Result do AddPassenger (a recusa é tratada em place!).
     def add_passenger!(trip, series, d)
-      return false if TransportTripPassenger.active.exists?(transport_trip_id: trip.id, patient_id: series.patient_id)
+      return nil if TransportTripPassenger.active.exists?(transport_trip_id: trip.id, patient_id: series.patient_id)
 
       stop = boarding_stop!(trip, series.boarding_label)
       attrs = { "patient_id" => series.patient_id, "origin" => "series", "origin_id" => series.id, "stop_id" => stop.id,
@@ -125,10 +155,7 @@ module Transport
                                "reason" => series.companion_reason }.compact
       end
       result = AddPassenger.call(trip: trip, attrs: attrs, by: nil)
-      return true if result.ok?
-      return false if result.reason == :patient_already_on_trip
-
-      raise Refused, result.reason.to_s
+      result.reason == :patient_already_on_trip ? nil : result
     end
 
     # Parada de embarque de mesmo rótulo (sem distinção de caixa) ou uma nova
@@ -151,7 +178,7 @@ module Transport
 
     def local(d, clock) = Time.zone.parse("#{d.iso8601} #{clock}")
 
-    private_class_method :materialize_day, :already_on_trip?, :pending_reason, :open_pending!, :candidates, :create_planned_trip!, :add_passenger!, :boarding_stop!,
-                         :local
+    private_class_method :materialize_day, :place!, :already_on_trip?, :pending_reason, :open_pending!, :candidates, :create_planned_trip!,
+                         :add_passenger!, :boarding_stop!, :local
   end
 end

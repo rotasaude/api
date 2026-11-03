@@ -3628,7 +3628,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
     t.datetime "resolved_at"
     t.uuid "transport_series_id", null: false
     t.index ["transport_series_id", "date"], name: "idx_transport_pending_items_series_date", unique: true
-    t.check_constraint "reason::text = ANY (ARRAY['no_seat'::text, 'no_wheelchair_spot'::text]::text[])", name: "ck_transport_pending_items_reason"
+    t.check_constraint "reason::text = ANY (ARRAY['no_seat'::text, 'no_wheelchair_spot'::text, 'refused'::text]::text[])", name: "ck_transport_pending_items_reason"
   end
 
   create_table "transport_series", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

@@ -80,6 +80,55 @@ RSpec.describe Transport::MaterializeSeries do
     expect(TransportTrip.where(date: monday + 2).count).to eq(1)
   end
 
+  it "FR I4: a regra do acompanhante vence no meio da série (15 → 16 anos) → pendência refused visível, sem viagem nem falha noturna" do
+    teen = transport_patient!(birth_date: ((monday + 7) - 16.years).iso8601)
+    kid = save_series!(base_attrs.merge("patient_id" => teen.id, "weekdays" => [ 1 ], "companion" => { "name" => "Mãe do Paciente" }))
+    result = described_class.call(series: kid, today: monday)
+    expect(result).to eq(added: 1, created_trips: 1, pending: 2, failed: 0)
+    expect(TransportTrip.where(transport_series_id: kid.id).pluck(:date)).to eq([ monday ])
+    expect(TransportTripStop.joins(:transport_trip).where(transport_trips: { date: [ monday + 7, monday + 14 ] })).to be_empty
+    items = TransportPendingItem.where(transport_series_id: kid.id).order(:date)
+    expect(items.map { |i| [ i.date, i.reason, i.resolved_at ] }).to eq([ [ monday + 7, "refused", nil ], [ monday + 14, "refused", nil ] ])
+
+    expect { Transport::MaterializeSeriesJob.perform_now }.not_to raise_error # a recusa não derruba o job da noite
+    expect(described_class.call(series: kid, today: monday)).to eq(added: 0, created_trips: 0, pending: 0, failed: 0)
+  end
+
+  it "FR I4: recusa numa viagem existente desfaz só a parada nova e vira pendência refused" do
+    teen = transport_patient!(birth_date: ((monday + 1) - 16.years).iso8601)
+    kid = save_series!(base_attrs.merge("patient_id" => teen.id, "weekdays" => [ 3 ], "starts_on" => monday.iso8601,
+                                        "companion" => { "name" => "Mãe do Paciente" }))
+    existing = trip!(date: monday + 2, departure: "05:30", destination: dest)
+    described_class.call(series: kid, today: monday)
+    expect(existing.transport_trip_stops.reload.count).to eq(2) # "Posto do Distrito" não ficou
+    expect(TransportPendingItem.find_by!(transport_series_id: kid.id, date: monday + 2).reason).to eq("refused")
+  end
+
+  it "FW3: paciente já ativo numa viagem do dia por outra origem (outro destino) → a série não lhe dá outra viagem" do
+    elsewhere = trip!(date: monday, departure: "06:00", destination: destination!(name: "Londrina", ibge: "4113700", km: 380))
+    passenger!(elsewhere, patient: patient)
+    result = described_class.call(series: series, today: monday)
+    expect(TransportTrip.where(transport_series_id: series.id).pluck(:date)).not_to include(monday)
+    expect(TransportTripPassenger.active.where(patient_id: patient.id).joins(:transport_trip).where(transport_trips: { date: monday }).count)
+      .to eq(1)
+    expect(result[:added]).to eq(8)
+  end
+
+  it "C2: as viagens candidatas são travadas na ordem do id (a da exclusão e da suspensão), e a mais próxima segue escolhida" do
+    far = trip!(date: monday, departure: "09:00", back: "15:00", destination: dest)
+    near = trip!(date: monday, departure: "05:00", back: "11:00", destination: dest)
+    locks = []
+    callback = ->(*, payload) { locks << payload[:sql] if payload[:sql].include?("FOR UPDATE") && payload[:sql].include?("transport_trips") }
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      described_class.call(series: save_series!(base_attrs.merge("weekdays" => [ 1 ])), today: monday)
+    end
+    candidate_lock = locks.find { |sql| sql.include?("transport_trip_stops") }
+    expect(candidate_lock).to match(/ORDER BY "transport_trips"."id" ASC/)
+    expect(candidate_lock).not_to include("abs(")
+    expect(TransportTripPassenger.where(transport_trip_id: near.id).count).to eq(1)
+    expect(TransportTripPassenger.where(transport_trip_id: far.id).count).to eq(0)
+  end
+
   it "cadeirante sem vaga de cadeira → no_wheelchair_spot; entre as viagens do dia, a de saída mais próxima é a escolhida" do
     wheel = save_series!(base_attrs.merge("wheelchair" => true, "weekdays" => [ 1 ]))
     no_spot = trip!(date: monday, departure: "05:30", back: "12:00", vehicle: vehicle!(seats: 10, wheelchair_spots: 0),
@@ -249,7 +298,7 @@ RSpec.describe Transport::MaterializeSeries do
       expect(pending_of(wheel).reason).to eq("no_seat")
     end
 
-    it "recusa do AddPassenger: a parada nova do dia não fica órfã, o dia conta em failed e os outros dias seguem" do
+    it "recusa do AddPassenger: a parada nova do dia não fica órfã, o dia vira pendência refused (FR I4) e os outros dias seguem" do
       trip = trip!(date: monday, departure: "05:30", destination: dest)
       allow(Transport::AddPassenger).to receive(:call).and_wrap_original do |original, **kwargs|
         kwargs[:trip].id == trip.id ? Result.fail(:companion_not_allowed) : original.call(**kwargs)
@@ -258,8 +307,22 @@ RSpec.describe Transport::MaterializeSeries do
       allow(Rails.logger).to receive(:error) { |message| logged << message }
       result = described_class.call(series: series, today: monday)
       expect(trip.transport_trip_stops.reload.map(&:label)).to eq([ "Praça Central", dest.name ])
+      expect(result).to eq(added: 8, created_trips: 8, pending: 1, failed: 0)
+      expect(pending_of(series)).to have_attributes(date: monday, reason: "refused")
+      expect(logged).to be_empty
+    end
+
+    it "erro inesperado no dia: desfaz o dia, conta em failed com só o id, a data e a classe, e os outros dias seguem" do
+      trip = trip!(date: monday, departure: "05:30", destination: dest)
+      allow(Transport::AddPassenger).to receive(:call).and_wrap_original do |original, **kwargs|
+        kwargs[:trip].id == trip.id ? raise(ArgumentError, "boom") : original.call(**kwargs)
+      end
+      logged = []
+      allow(Rails.logger).to receive(:error) { |message| logged << message }
+      result = described_class.call(series: series, today: monday)
+      expect(trip.transport_trip_stops.reload.map(&:label)).to eq([ "Praça Central", dest.name ])
       expect(result).to eq(added: 8, created_trips: 8, pending: 0, failed: 1)
-      expect(logged).to eq([ "[Transport::MaterializeSeries] series=#{series.id} date=#{monday.iso8601} failed: Transport::MaterializeSeries::Refused" ])
+      expect(logged).to eq([ "[Transport::MaterializeSeries] series=#{series.id} date=#{monday.iso8601} failed: ArgumentError" ])
     end
 
     it "paciente já na viagem por outra origem: não entra de novo e não ganha parada nova" do
