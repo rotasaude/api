@@ -608,6 +608,8 @@ Rails.application.routes.draw do
     patch "trips/:id",           to: "trips#update"
     post  "trips/:id/confirm",   to: "trips#confirm"
     post  "trips/:id/cancel",    to: "trips#cancel"
+    get   "trips/:id/manifest.pdf", to: "manifests#show", format: false
+    get   "no_shows",            to: "no_shows#index"
     # Passageiros e atendimentos marcados (§4; T5, T19); busca de pessoa e
     # duplicados (T2), dado só no corpo.
     post   "trips/:id/passengers",                to: "passengers#create"
