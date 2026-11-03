@@ -127,8 +127,11 @@ RSpec.describe "TFD — comissão", type: :request do
     expect(tfd.reload.status).to eq("submitted")
   end
 
-  it "atendimento: data fora de agora − 1 dia..+365 dias, sem fuso ou prestador próprio → invalid_request; só submitted/authorized/scheduled" do
+  it "atendimento: data fora de (agora, +365 dias], sem fuso ou prestador próprio → invalid_request; só submitted/authorized/scheduled" do
     tfd = tfd_case!(status: "submitted")
+    set_appointment(tfd, appointment_at: (Time.zone.now - 1.hour).iso8601) # D6: só futuro, como a autorização
+    expect(json_body).to include("error" => "invalid_request", "path" => "appointment_at")
+    expect(tfd.reload.appointment_at).to be_nil
     set_appointment(tfd, appointment_at: (Time.zone.now - 2.days).iso8601, provider_id: own_provider!(create_unit("UBS Própria")).id)
     expect(json_body["problems"].map { |p| p["path"] }).to contain_exactly("appointment_at", "provider_id")
     set_appointment(tfd, appointment_at: (Time.zone.now + 366.days).iso8601)

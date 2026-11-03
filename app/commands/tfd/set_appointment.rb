@@ -1,6 +1,6 @@
 # Atendimento marcado no destino (contrato §6; plano, Desvio 12): a comissão
-# informa `appointment_at` (ISO 8601 com fuso, de agora − 1 dia a agora + 365
-# dias) e, opcionalmente, o prestador (Tfd::Providers) — sem `provider_id`,
+# informa `appointment_at` (ISO 8601 com fuso, depois de agora e até agora +
+# 365 dias — a mesma regra da autorização, que recusa data passada; D6) e, opcionalmente, o prestador (Tfd::Providers) — sem `provider_id`,
 # o prestador do laudo fica (Ruling Task 10: o prestador é do laudo). Só em `submitted`, `authorized` ou
 # `scheduled`; grava o evento `appointment_set` sem mudar a situação
 # (Tfd::Transition) e publica tfd.case_updated (só ids). A data e o
@@ -8,7 +8,6 @@
 module Tfd
   module SetAppointment
     OPEN = %w[submitted authorized scheduled].freeze
-    PAST = 1.day
     FUTURE = 365.days
 
     module_function
@@ -20,7 +19,7 @@ module Tfd
       time = parse(appointment_at)
       provider = provider(provider_id)
       paths = []
-      paths << "appointment_at" unless time&.between?(now - PAST, now + FUTURE)
+      paths << "appointment_at" unless time && time > now && time <= now + FUTURE
       paths << "provider_id" if provider == :invalid
       return Transport::Support.refuse(paths) if paths.any?
 
