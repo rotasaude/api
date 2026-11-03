@@ -33,7 +33,7 @@ module Integrations
     end
 
     def validate_login(secret)
-      return :invalid_credential unless secret && %w[username password].all? { |k| filled?(secret[k]) }
+      :invalid_credential unless secret && %w[username password].all? { |k| filled?(secret[k]) }
     end
 
     def login_secret(secret) = { "username" => secret["username"].strip, "password" => secret["password"] }

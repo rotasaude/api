@@ -31,10 +31,11 @@ module Vaccination
       # a idade + 1 da menor unidade escrita ({ years: 4 } → 5 anos; { months: 3,
       # days: 15 } → 3 meses e 16 dias).
       def exceeded?(birth, on)
-        bumped = if days.positive? || (years.zero? && months.zero?) then with(days: days + 1)
-                 elsif months.positive? then with(months: months + 1)
-                 else with(years: years + 1)
-                 end
+        bumped =
+          if days.positive? || (years.zero? && months.zero?) then with(days: days + 1)
+          elsif months.positive? then with(months: months + 1)
+          else with(years: years + 1)
+          end
         on >= bumped.from(birth)
       end
     end
