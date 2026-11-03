@@ -20,7 +20,7 @@ module Tfd
     JUSTIFICATION = (20..2000)
     REASON = (10..500)
     RECEIPT_MAX = 40
-    CARRIER_MAX = 80
+    CARRIER_MAX = 120 # T18 (empresa: até 120)
     MAX_AMOUNT_CENTS = 10_000_000
     TRAIL_ACCESS = "tfd".freeze
     FILE_PURPOSE = "tfd_accountability".freeze

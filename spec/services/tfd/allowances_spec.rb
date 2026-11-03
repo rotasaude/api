@@ -9,9 +9,10 @@ require "rails_helper"
 RSpec.describe Tfd::Allowances do
   let!(:city) { transport_city!(tfd: true, billing: true) }
   let(:tfd) { tfd_case!(status: "authorized", destination: destination!(name: "Londrina", ibge: "4113700", km: 380)) }
+  let(:committee) { committee! }
 
   def leg(direction, on, mode: "bus_ticket", companion: false)
-    result = Tfd::AddLeg.call(tfd_case: tfd.reload, by: committee!,
+    result = Tfd::AddLeg.call(tfd_case: tfd.reload, by: committee,
                               attrs: { "direction" => direction, "mode" => mode, "date" => on.iso8601,
                                        "ticket" => { "amount_cents" => 15_000, "carrier" => "Viação Garcia" }, "companion" => companion })
     raise "leg: #{result.reason} #{result.details}" if result.failure?
@@ -19,7 +20,8 @@ RSpec.describe Tfd::Allowances do
     result.payload[:leg]
   end
 
-  def complete(row) = Tfd::CompleteLeg.call(leg: row, by: committee!)
+  # Feito no próprio dia do trecho (passagem com data futura é recusada: leg_in_future).
+  def complete(row) = Tfd::CompleteLeg.call(leg: row, by: committee, at: row.date.in_time_zone + 18.hours)
 
   it "380 km por terra = 8 unidades de 50 km, por pessoa e por trecho, com o valor da tabela e o complemento" do
     Transport::SaveSettings.call(attrs: { "allowance_complements" => { "0803010125" => 105 } }, by: transport_admin!)
@@ -138,7 +140,7 @@ RSpec.describe Tfd::Allowances do
     out = leg("outbound", Date.current)
     expect(tfd.reload.status).to eq("scheduled")
     expect(DomainEvent.where(name: "tfd.leg_added").map(&:payload)).to contain_exactly(
-      { "tfd_case_id" => tfd.id, "tfd_leg_id" => out.id, "user_id" => an_instance_of(String) }
+      { "tfd_case_id" => tfd.id, "tfd_leg_id" => out.id, "user_id" => committee.id }
     )
     complete(out)
     expect(tfd.reload.status).to eq("travelling")
@@ -150,5 +152,40 @@ RSpec.describe Tfd::Allowances do
     complete(back)
     expect(DomainEvent.where(name: "tfd.allowances_calculated").map(&:payload))
       .to eq([ { "tfd_case_id" => tfd.id, "tfd_leg_id" => back.id } ])
+  end
+
+  it "volta feita antes da ida (T38): sem refeição até a ida ficar feita; então a alimentação nasce uma vez, na volta" do
+    out = leg("outbound", Date.current, companion: true)
+    back = leg("return", Date.current + 2, companion: true)
+    first = complete(back).payload[:allowances]
+    expect(first.map { |r| [ r.person, r.kind ] }).to contain_exactly(%w[patient ground_km], %w[companion ground_km])
+    expect(DomainEvent.where(name: "tfd.allowances_calculated")).to be_empty
+
+    rows = complete(out).payload[:allowances]
+    meals = TfdAllowance.where(kind: %w[meal_overnight meal_day]).order(:person)
+    expect(meals.map { |r| [ r.tfd_leg_id, r.person, r.kind, r.quantity ] })
+      .to eq([ [ back.id, "companion", "meal_overnight", 2 ], [ back.id, "patient", "meal_overnight", 2 ] ])
+    expect(rows.map(&:id)).to include(*meals.ids)
+    expect(DomainEvent.where(name: "tfd.allowances_calculated").map(&:payload)).to eq([ { "tfd_case_id" => tfd.id, "tfd_leg_id" => back.id } ])
+    expect { described_class.meals!(back.reload) }.not_to change(TfdAllowance, :count)
+  end
+
+  it "acompanhante só na volta (T38): deslocamento da volta para ele, alimentação só do paciente" do
+    out = leg("outbound", Date.current)
+    complete(out)
+    back = leg("return", Date.current + 3, companion: true)
+    rows = complete(back).payload[:allowances]
+    expect(rows.select { |r| r.kind == "ground_km" }.map(&:person)).to contain_exactly("patient", "companion")
+    expect(rows.select { |r| r.kind.start_with?("meal") }.map { |r| [ r.person, r.kind, r.quantity ] })
+      .to eq([ [ "patient", "meal_overnight", 3 ] ])
+  end
+
+  it "passagem com data futura não se marca feita hoje → leg_in_future (path date), nada gravado" do
+    future = leg("outbound", Date.current + 1)
+    result = Tfd::CompleteLeg.call(leg: future, by: committee)
+    expect(result.reason).to eq(:leg_in_future)
+    expect(result.details[:path]).to eq("date")
+    expect(future.reload.done_at).to be_nil
+    expect(TfdAllowance.count).to eq(0)
   end
 end

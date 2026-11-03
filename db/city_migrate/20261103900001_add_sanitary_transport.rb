@@ -417,8 +417,9 @@ class AddSanitaryTransport < ActiveRecord::Migration[8.1]
       t.timestamps
     end
     add_index :tfd_legs, %i[tfd_case_id date], name: "idx_tfd_legs_case"
-    add_index :tfd_legs, :transport_trip_passenger_id, unique: true, where: "transport_trip_passenger_id IS NOT NULL",
-                                                       name: "idx_tfd_legs_trip_passenger"
+    # Um passageiro da viagem leva a ida e/ou a volta de frota (a viagem é ida e volta; T38).
+    add_index :tfd_legs, %i[transport_trip_passenger_id direction], unique: true, where: "transport_trip_passenger_id IS NOT NULL",
+                                                                    name: "idx_tfd_legs_trip_passenger"
     add_index :tfd_legs, :outbound_leg_id, unique: true, where: "outbound_leg_id IS NOT NULL", name: "idx_tfd_legs_outbound"
     add_check_constraint :tfd_legs,
                          "direction::text = ANY (ARRAY[#{quoted(DIRECTIONS)}]::text[]) AND mode::text = ANY (ARRAY[#{quoted(MODES)}]::text[]) AND " \

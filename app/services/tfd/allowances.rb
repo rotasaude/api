@@ -3,14 +3,16 @@
 #   - no trecho `done` (ida ou volta), uma linha de deslocamento por pessoa que
 #     viajou: `ground_km` (frota, ônibus) = ceil(km / 50); `air_miles` =
 #     ceil(km / 1,609344 / 200); `river_miles` = ceil(km / 1,852 / 27); mínimo 1;
-#   - na volta `done`, a alimentação de cada pessoa do par: noites =
+#   - quando o SEGUNDO trecho do par fica `done` (ida e volta feitas, em
+#     qualquer ordem; T38), a alimentação de cada pessoa do par: noites =
 #     volta.date − ida.date; 0 → `meal_day` × 1; senão `meal_overnight` ×
 #     noites, e o PACIENTE desconta as noites internado (interseção de cada
 #     estada [from, to) — aberta até a volta — com [ida, volta); estada de um
 #     dia só = 0); o acompanhante não desconta (gate: manual da UF); quantidade
 #     0 → sem linha.
 #   - "acompanhante viajou" = `companion_attendance == "boarded"` (frota) ou
-#     `leg.companion` (passagem); na alimentação, em qualquer trecho do par.
+#     `leg.companion` (passagem); na alimentação, só se foi na IDA do par
+#     (acompanhou o paciente ao destino; T38 — quem só voltou não recebe).
 # Valor: `amount_sa_cents` da SIGTAP da competência da data do trecho
 # (Billing::SigtapCache; sem release ou sem o código → 0) + o complemento da
 # cidade (`allowance_complements[code]`, 0 se ausente); total = (tabela +
@@ -50,13 +52,14 @@ module Tfd
       insert!(leg, rows, [ kind ])
     end
 
-    # -> [TfdAllowance] de alimentação do par (só na volta; as já gravadas inclusive).
+    # -> [TfdAllowance] de alimentação do par, gravadas na volta (as já gravadas
+    # inclusive); [] enquanto a ida ou a volta não estiver feita.
     def meals!(return_leg, settings: Transport::Settings.current, cache: Billing::SigtapCache.new)
       outbound = return_leg.outbound_leg
-      return [] unless return_leg.direction == "return" && outbound
+      return [] unless return_leg.direction == "return" && outbound&.done? && return_leg.done?
 
       nights = (return_leg.date - outbound.date).to_i
-      persons = travellers(outbound) | travellers(return_leg)
+      persons = travellers(outbound)
       rows = persons.filter_map do |person|
         if nights.zero?
           row(return_leg, person, "meal_day", 1, settings, cache)

@@ -2,10 +2,13 @@
 # pela comissão: `{ direction, mode, date, trip_passenger_id?, ticket?, companion? }`.
 #   - frota: `trip_passenger_id` de um passageiro ATIVO do mesmo paciente,
 #     `origin: "tfd"` e `tfd_case_id` deste processo, numa viagem não
-#     cancelada, ainda sem trecho; sem `ticket` e sem acompanhante (a presença
-#     do acompanhante vem da viagem) — senão `invalid_request` no campo;
+#     cancelada, ainda sem trecho NESTE sentido (a linha leva a ida e/ou a
+#     volta, T38); `date` = a da viagem (ida: trip.date; volta: dia local de
+#     return_at), senão `invalid_request` em `date`; sem `ticket` e sem
+#     acompanhante (a presença do acompanhante vem da viagem) — senão
+#     `invalid_request` no campo;
 #   - passagem (`bus_ticket`, `air`, `river`): `ticket: { amount_cents
-#     (1..10_000_000), carrier (1..120, T18) }`, sem `trip_passenger_id`;
+#     (1..10_000_000), carrier (1..CARRIER_MAX = 120, T18) }`, sem `trip_passenger_id`;
 #     `companion: true` só com o acompanhante indicado no laudo
 #     (`companion_not_allowed`, como no passageiro do TFD, Desvio 5);
 #   - a volta pareia com a ida mais antiga sem volta e com data ≤ a dela
@@ -21,7 +24,7 @@ module Tfd
     OPEN = %w[authorized scheduled travelling].freeze
     KEYS = %w[direction mode date trip_passenger_id ticket companion].freeze
     TICKET_KEYS = %w[amount_cents carrier].freeze
-    CARRIER = (1..Transport::Catalog::TEXT_MAX)
+    CARRIER = (1..Catalog::CARRIER_MAX)
     AMOUNT = (1..Catalog::MAX_AMOUNT_CENTS)
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     KEY_PATH_MAX = 64
@@ -41,8 +44,9 @@ module Tfd
         rider, trip = lock_rider(fields[:trip_passenger_id]) if fields[:mode] == "fleet"
         tfd_case.lock!
         next Result.fail(:invalid_transition) unless OPEN.include?(tfd_case.status)
-        if fields[:mode] == "fleet" && !rider_ok?(rider, trip, tfd_case)
-          next Transport::Support.refuse([ "trip_passenger_id" ])
+        if fields[:mode] == "fleet"
+          next Transport::Support.refuse([ "trip_passenger_id" ]) unless rider_ok?(rider, trip, tfd_case, fields[:direction])
+          next Transport::Support.refuse([ "date" ]) unless fields[:date] == fleet_date(trip, fields[:direction])
         end
         if fields[:companion] && tfd_case.report.to_h["companion_indicated"] != true
           next Transport::Support.refuse_with(:companion_not_allowed, "companion")
@@ -63,7 +67,7 @@ module Tfd
           raise "tfd: authorized → scheduled refused" if moved.failure? # inalcançável: conferida sob a trava
         end
         DomainEvents.publish("tfd.leg_added", tfd_case_id: tfd_case.id, tfd_leg_id: leg.id, user_id: by.id)
-        FleetLegs.complete_passenger!(rider, by: by) if rider && trip.status == "done"
+        FleetLegs.complete_passenger!(rider, by: by) if rider && trip.status == "done" # completa os trechos abertos da linha
         Result.ok(leg: leg.reload)
       end
     end
@@ -117,11 +121,15 @@ module Tfd
       [ rider.reload, trip ]
     end
 
-    def rider_ok?(rider, trip, tfd_case)
+    # Um trecho por (passageiro, sentido): a mesma linha leva a ida e a volta da viagem (T38).
+    def rider_ok?(rider, trip, tfd_case, direction)
       rider.present? && !rider.removed? && rider.anonymized_at.nil? && trip.status != "cancelled" &&
         rider.origin == "tfd" && rider.tfd_case_id == tfd_case.id && rider.patient_id == tfd_case.patient_id &&
-        !TfdLeg.exists?(transport_trip_passenger_id: rider.id)
+        !TfdLeg.exists?(transport_trip_passenger_id: rider.id, direction: direction)
     end
+
+    # Data do trecho de frota vem da viagem (T38): ida → trip.date; volta → dia local da chegada.
+    def fleet_date(trip, direction) = direction == "return" ? trip.return_at.in_time_zone.to_date : trip.date
 
     # Ida mais antiga sem volta, com data ≤ a da volta.
     def open_outbound(tfd_case, date)
@@ -129,6 +137,6 @@ module Tfd
       TfdLeg.where(tfd_case_id: tfd_case.id, direction: "outbound").where(date: ..date).where.not(id: paired)
             .order(:date, :created_at, :id).first
     end
-    private_class_method :parse, :ticket, :lock_rider, :rider_ok?, :open_outbound
+    private_class_method :parse, :ticket, :lock_rider, :rider_ok?, :fleet_date, :open_outbound
   end
 end
