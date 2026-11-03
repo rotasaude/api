@@ -608,6 +608,7 @@ Rails.application.routes.draw do
     patch "trips/:id",           to: "trips#update"
     post  "trips/:id/confirm",   to: "trips#confirm"
     post  "trips/:id/cancel",    to: "trips#cancel"
+    post  "trips/:id/attendance_correction", to: "trips#attendance_correction"
     get   "trips/:id/manifest.pdf", to: "manifests#show", format: false
     get   "no_shows",            to: "no_shows#index"
     # Passageiros e atendimentos marcados (§4; T5, T19); busca de pessoa e
@@ -624,6 +625,11 @@ Rails.application.routes.draw do
     patch "series/:id",          to: "series#update"
     post  "series/:id/suspend",  to: "series#suspend"
     get   "pending",             to: "pending#index"
+    # Tela do motorista (§5; T19): só as próprias viagens.
+    get   "my_trips",                 to: "my_trips#index"
+    post  "my_trips/:id/start",       to: "my_trips#start"
+    post  "my_trips/:id/attendance",  to: "my_trips#attendance"
+    post  "my_trips/:id/close",       to: "my_trips#close"
     get   "admin/settings", to: "admin/settings#show"
     patch "admin/settings", to: "admin/settings#update"
   end

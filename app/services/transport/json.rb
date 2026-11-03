@@ -27,8 +27,8 @@ module Transport
 
     # <trip> (contrato §2): horas ISO no fuso da cidade; veículo resumido,
     # motorista só id e nome (nunca a CNH). `viewer` (:dispatcher | :driver)
-    # escolhe a forma do passageiro (Transport::Json.passenger); o `log` entra
-    # com o fechamento (Task 8).
+    # escolhe a forma do passageiro (Transport::Json.passenger); `log` é o
+    # diário de bordo do fechamento (<trip-log>) ou nulo.
     def trip(trip, viewer: :dispatcher)
       vehicle = trip.transport_vehicle
       driver = trip.transport_driver
@@ -41,7 +41,14 @@ module Transport
         "stops" => trip.transport_trip_stops.sort_by(&:position).map { |stop| stop(stop) },
         "passengers" => passengers(trip, viewer),
         "occupancy" => Occupancy.of(trip, vehicle: vehicle).transform_keys(&:to_s),
-        "series_id" => trip.transport_series_id, "log" => nil }
+        "series_id" => trip.transport_series_id, "log" => trip.transport_trip_log && log(trip.transport_trip_log) }
+    end
+
+    # <trip-log> (contrato §2): odômetro, abastecimentos e despesas como
+    # gravados no fechamento; quem fechou, só o nome.
+    def log(log)
+      { "odometer_start" => log.odometer_start, "odometer_end" => log.odometer_end, "fuel" => log.fuel, "expenses" => log.expenses,
+        "closed_at" => log.closed_at.in_time_zone.iso8601, "closed_by_name" => user_name(log.closed_by_user) }
     end
 
     def stop(stop)

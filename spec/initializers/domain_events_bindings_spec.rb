@@ -442,4 +442,11 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include(*names)
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
+
+  # Motorista e correção (Task 8): só ids, sem consumidor.
+  it "declares transport.trip_started, .trip_done and .attendance_corrected with no consumer" do
+    names = %w[transport.trip_started transport.trip_done transport.attendance_corrected]
+    expect(DomainEvents.registry.keys).to include(*names)
+    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  end
 end

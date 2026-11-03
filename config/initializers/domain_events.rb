@@ -283,6 +283,11 @@ Rails.application.config.to_prepare do
   # ids (trip_id, passenger_id). O consumidor (aviso added/removed, só viagem
   # confirmed/in_progress) chega na Task 14.
   %w[transport.passenger_added transport.passenger_removed].each { |name| DomainEvents.bind name, to: [] }
+  # Tela do motorista e correção da central (Task 8): saída (trip_id),
+  # fechamento (trip_id; o consumidor do TFD entra pelo Tfd::FleetLegs, na
+  # mesma transação) e correção da presença (trip_id, passenger_ids). Só ids,
+  # sem consumidor.
+  %w[transport.trip_started transport.trip_done transport.attendance_corrected].each { |name| DomainEvents.bind name, to: [] }
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []
