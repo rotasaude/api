@@ -73,7 +73,7 @@ RSpec.describe ReencryptionJob do
                                          StockMovement StockTransferItem StockAdjustment ExternalPrescription
                                          ExternalPrescriptionItem Dispensation
                                          DentalTreatmentPlan DentalTreatmentPlanItem DentalProsthesisStage
-                                         Immunization RndsOutboxEntry VialOpening])
+                                         Immunization RndsOutboxEntry VialOpening StockLotBlock])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end
