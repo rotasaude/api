@@ -67,9 +67,12 @@ class TransportCrew
     araucaria: { "ibge_code" => "4101804", "name" => "Araucária", "distance_km" => 27, "metropolitan" => true }
   }.freeze
 
-  # Hemodiálise seg/qua/sex (dias ISO 1, 3, 5) em Ponta Grossa.
+  # Tratamento seg/qua/sex (dias ISO 1, 3, 5) em Ponta Grossa. O prestador é
+  # texto livre que chega à lista, à tela do motorista e ao cidadão: nome
+  # neutro, sem especialidade (C9; o mesmo cuidado do schedule_place).
+  PROVIDER_NAME = "Prestador de Ponta Grossa".freeze
   SERIES = { "weekdays" => [ 1, 3, 5 ], "appointment_time" => "08:30", "departure_time" => "05:30", "return_time" => "16:30",
-             "boarding_label" => BOARDING, "provider_name" => "Clínica de Nefrologia" }.freeze
+             "boarding_label" => BOARDING, "provider_name" => PROVIDER_NAME }.freeze
 
   # Laudo do TFD: o código é uma consulta especializada da SIGTAP de dev e o CID-10 vem
   # do recorte de dev que o RegulationCrew publica (M17, gonartrose).

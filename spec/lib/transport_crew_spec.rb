@@ -96,6 +96,10 @@ RSpec.describe TransportCrew do
       expect(days).to all(satisfy { |day| horizon.cover?(day) && [ 1, 3, 5 ].include?(day.cwday) })
       expect(days.sort).to eq(horizon.select { |day| [ 1, 3, 5 ].include?(day.cwday) })
       expect(TransportTripPassenger.where(transport_series_id: series.id).count).to eq(days.size)
+      # C9: prestador neutro, sem especialidade (chega à lista, ao motorista e ao cidadão).
+      expect(series.provider_name).to eq("Prestador de Ponta Grossa")
+      expect(TransportTripPassenger.where(transport_series_id: series.id).pluck(:provider_name).uniq).to eq([ "Prestador de Ponta Grossa" ])
+      expect(series.provider_name).not_to match(/nefro|clínica|diálise/i)
     end
   end
 
