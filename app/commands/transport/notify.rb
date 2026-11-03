@@ -5,8 +5,18 @@
 # (passageiro ativo; `removed`: o retirado); `cancelled` só da viagem que tinha
 # `confirmed_at` (a planned cancelada não avisa). Passageiro anonimizado: nada.
 #
+# Mudanças (Ruling I-2): o aviso guarda a saída e o rótulo da parada do
+# momento; `departure_changed` só sai quando a saída atual difere 30 min ou
+# mais da do ÚLTIMO aviso daquele (passageiro, cidadão), e `boarding_changed`
+# quando o rótulo atual difere do último avisado — idas e voltas (A→B→A→B) e
+# mudanças graduais saem certas, e uma volta ao valor já avisado não avisa.
+# Sem aviso anterior para o par, não há de onde "mudar": nada. A chave dessas
+# duas é o id do evento de domínio (Transport::NoticeJob).
+#
 # Ordem de trava do Appointments::Remind: os cidadãos em FOR KEY SHARE antes
-# da viagem (a exclusão segura o cidadão em FOR UPDATE antes do resto).
+# da viagem (a exclusão segura o cidadão em FOR UPDATE antes do resto); depois
+# o passageiro (FOR UPDATE), que serializa os avisos dele (a comparação com o
+# último aviso não corre).
 #
 # SMS (regras do 17 + T15) só quando o aviso nasce: chave de SMS da cidade,
 # provedor, janela 8h–20h no fuso da cidade, opt-in, sem `notices_muted` nem
@@ -17,6 +27,7 @@
 module Transport
   module Notify
     OPEN = %w[confirmed in_progress].freeze
+    CHANGES = %w[departure_changed boarding_changed].freeze
     UNIQUE = :idx_transport_trip_notices_once
 
     module_function
@@ -29,10 +40,13 @@ module Transport
       ApplicationRecord.transaction(requires_new: true) do
         citizens = Patients::Pairs.of(passenger.patient).order(:id).lock("FOR KEY SHARE").to_a
         trip = TransportTrip.lock("FOR SHARE").find(passenger.transport_trip_id)
-        rider = TransportTripPassenger.find(passenger.id)
+        rider = TransportTripPassenger.lock.find(passenger.id)
         next 0 unless due?(trip, rider, kind)
 
-        citizens.count { |citizen| notify(citizen, rider, trip, kind, event_key, now) }
+        label = rider.transport_trip_stop.label
+        citizens.count do |citizen|
+          changed?(citizen, rider, trip, label, kind) && notify(citizen, rider, trip, label, kind, event_key, now)
+        end
       end
     end
 
@@ -46,10 +60,25 @@ module Transport
       end
     end
 
+    # Só para departure_changed/boarding_changed: compara com o último aviso do par.
+    def changed?(citizen, rider, trip, label, kind)
+      return true unless CHANGES.include?(kind)
+
+      last = TransportTripNotice.where(transport_trip_passenger_id: rider.id, citizen_id: citizen.id)
+                                .order(created_at: :desc, id: :desc).first
+      return false unless last
+
+      if kind == "departure_changed"
+        (trip.departure_at - last.departure_at).abs >= Catalog::DEPARTURE_CHANGE
+      else
+        last.boarding_label != label
+      end
+    end
+
     # -> true quando o aviso nasceu
-    def notify(citizen, rider, trip, kind, event_key, now)
+    def notify(citizen, rider, trip, label, kind, event_key, now)
       row = { transport_trip_passenger_id: rider.id, citizen_id: citizen.id, kind: kind, event_key: event_key,
-              departure_at: trip.departure_at, created_at: now }
+              departure_at: trip.departure_at, boarding_label: label, created_at: now }
       if sms_allowed?(citizen, now)
         sent = false
         ApplicationRecord.transaction(requires_new: true) do
@@ -86,6 +115,6 @@ module Transport
       false
     end
 
-    private_class_method :due?, :notify, :insert?, :sms_allowed?, :deliver
+    private_class_method :due?, :changed?, :notify, :insert?, :sms_allowed?, :deliver
   end
 end

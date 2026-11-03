@@ -349,6 +349,9 @@ class AddSanitaryTransport < ActiveRecord::Migration[8.1]
       t.string :kind, null: false
       t.string :event_key, limit: 80, null: false
       t.datetime :departure_at, null: false
+      # Rótulo da parada do passageiro no momento do aviso (o último valor
+      # avisado; o boarding_changed compara com ele). Não é dado pessoal.
+      t.string :boarding_label, limit: 120, null: false
       t.boolean :sms, null: false, default: false
       t.datetime :read_at
       t.datetime :created_at, null: false

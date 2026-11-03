@@ -99,7 +99,7 @@ RSpec.describe "Esquema do módulo 30", type: :model do
     refused(/stop in use/) { rider.transport_trip_stop.delete }
     citizen = Patients::Pairs.of(rider.patient).first
     notice = TransportTripNotice.create!(transport_trip_passenger: rider, citizen: citizen, kind: "added", event_key: "once",
-                                         departure_at: trip.departure_at, sms: false)
+                                         departure_at: trip.departure_at, boarding_label: "Praça Central", sms: false)
     notice.update!(read_at: Time.current)
     refused(/read once/) { notice.update_columns(read_at: Time.current + 1.minute) }
     expect { notice.delete }.not_to raise_error

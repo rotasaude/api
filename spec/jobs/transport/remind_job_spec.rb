@@ -2,7 +2,8 @@ require "rails_helper"
 
 # Módulo 30, Task 14 (Desvio 8; §14 T15): lembrete da véspera da viagem
 # confirmada, das 17h às 20h no fuso da cidade, como o lembrete do 17; um só
-# por passageiro e par (índice único), rodando a cada 15 minutos.
+# por passageiro, par e dia da viagem (chave = data ISO; índice único),
+# rodando a cada 15 minutos.
 RSpec.describe Transport::RemindJob do
   include ActiveSupport::Testing::TimeHelpers
 
@@ -24,8 +25,23 @@ RSpec.describe Transport::RemindJob do
     _trip, rider = confirmed_trip!
     run_at(18)
     run_at(18, 15)
-    expect(reminders.pluck(:transport_trip_passenger_id, :event_key)).to eq([ [ rider.id, "once" ] ])
+    expect(reminders.pluck(:transport_trip_passenger_id, :event_key)).to eq([ [ rider.id, trip_date.iso8601 ] ])
     expect(reminders.sole.citizen_id).to eq(Patients::Pairs.of(rider.patient).sole.id)
+  end
+
+  it "viagem levada a outro dia depois do lembrete: lembrete novo na véspera do novo dia" do
+    trip, rider = confirmed_trip!
+    run_at(18)
+    travel_to(eve.in_time_zone.change(hour: 19)) do
+      later = trip_date + 1
+      result = Transport::SaveTrip.call(trip: trip.reload, by: dispatcher!,
+                                        attrs: { "date" => later.iso8601, "departure_at" => Time.zone.parse("#{later} 07:00").iso8601,
+                                                 "return_at" => Time.zone.parse("#{later} 18:00").iso8601 })
+      raise "SaveTrip falhou: #{result.reason} #{result.details}" unless result.ok?
+    end
+    travel_to((eve + 1).in_time_zone.change(hour: 18)) { described_class.perform_now }
+    expect(reminders.where(transport_trip_passenger_id: rider.id).order(:created_at).pluck(:event_key))
+      .to eq([ trip_date.iso8601, (trip_date + 1).iso8601 ])
   end
 
   it "16h da véspera: nada; às 20h (fora da janela): nada" do

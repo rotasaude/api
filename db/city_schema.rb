@@ -3684,6 +3684,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
   end
 
   create_table "transport_trip_notices", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "boarding_label", limit: 120, null: false
     t.uuid "citizen_id", null: false
     t.datetime "created_at", null: false
     t.datetime "departure_at", null: false

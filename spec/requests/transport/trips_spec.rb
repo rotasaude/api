@@ -294,12 +294,14 @@ RSpec.describe "Transporte — viagens", type: :request do
     expect(running.reload.status).to eq("in_progress")
   end
 
-  it "mudança da saída em 30 min ou mais na confirmada publica trip_changed; 29 min não" do
+  # Task 14, Ruling I-2: toda mudança da saída publica; o limiar de 30 min é
+  # do consumidor dos avisos (compara com o último valor avisado).
+  it "toda mudança da saída na confirmada publica trip_changed; a mesma saída reenviada não" do
     json_post "/transport/trips", body("07:00", "18:00")
     id = json_body["id"]
     json_post "/transport/trips/#{id}/confirm"
-    expect { json_patch "/transport/trips/#{id}", departure_at: at("07:29") }.not_to(change { trip_changed.count })
-    expect { json_patch "/transport/trips/#{id}", departure_at: at("08:00") }.to change { trip_changed.count }.by(1)
+    expect { json_patch "/transport/trips/#{id}", departure_at: at("07:00") }.not_to(change { trip_changed.count })
+    expect { json_patch "/transport/trips/#{id}", departure_at: at("07:10") }.to change { trip_changed.count }.by(1)
     expect(trip_changed.last.payload).to eq("trip_id" => id, "change" => "departure")
   end
 

@@ -2,8 +2,10 @@
 # cidade por cidade, com `sanitary_transport` utilizável (lido fora de
 # transação da cidade). Roda a cada 15 minutos e só age das 17h às 20h no fuso
 # da cidade (CityConnection.with usa o fuso dela), como o lembrete do 17. Um
-# `reminder` por passageiro ativo e par (Transport::Notify; o índice único
-# faz a próxima rodada não repetir).
+# `reminder` por passageiro ativo, par e DIA da viagem (chave = data ISO: a
+# viagem levada a outro dia ganha lembrete novo; o índice único faz a próxima
+# rodada não repetir). Uma transação por passageiro (Transport::Notify), como
+# o Appointments::RemindJob.
 module Transport
   class RemindJob < ApplicationJob
     prepend EachCityJob
@@ -17,9 +19,10 @@ module Transport
       now = Time.current
       return unless now.hour >= FROM_HOUR && Campaigns::SmsBatchJob::WINDOW_HOURS.cover?(now.hour)
 
+      tomorrow = now.to_date + 1
       TransportTripPassenger.active.where(anonymized_at: nil).joins(:transport_trip)
-                            .where(transport_trips: { status: "confirmed", date: now.to_date + 1 }).find_each do |passenger|
-        Notify.call(passenger: passenger, kind: "reminder", now: now)
+                            .where(transport_trips: { status: "confirmed", date: tomorrow }).find_each do |passenger|
+        Notify.call(passenger: passenger, kind: "reminder", event_key: tomorrow.iso8601, now: now)
       end
     end
   end

@@ -14,9 +14,10 @@
 # sai (`stop_in_use`). Sobreposição pela pergunta do Transport::Overlap e,
 # numa corrida, pela exclusion constraint (`vehicle_overlap`/`driver_overlap`,
 # 422). Só `planned`/`confirmed` mudam (`trip_not_open` em done/cancelled,
-# `invalid_transition` em in_progress). Na confirmada, saída que muda 30 min
-# ou mais e rótulo de embarque mudado publicam `transport.trip_changed` (só
-# ids e o código da mudança).
+# `invalid_transition` em in_progress). Na confirmada, toda mudança da saída e
+# do rótulo de embarque publica `transport.trip_changed` (só ids e o código da
+# mudança); o limiar de 30 min é do consumidor (Transport::Notify, que compara
+# com o último valor avisado — Task 14, Ruling I-2).
 module Transport
   module SaveTrip
     KEYS = %w[date departure_at return_at vehicle_id driver_id stops].freeze
@@ -251,7 +252,7 @@ module Transport
     end
 
     def publish_changes(record, before)
-      if before[:departure_at] && (record.departure_at - before[:departure_at]).abs >= Catalog::DEPARTURE_CHANGE
+      if before[:departure_at] && record.departure_at != before[:departure_at]
         DomainEvents.publish("transport.trip_changed", trip_id: record.id, change: "departure")
       end
       after = boarding_labels(record.tap { |r| r.transport_trip_stops.reset })

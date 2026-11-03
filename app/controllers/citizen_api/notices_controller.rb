@@ -73,17 +73,16 @@ module CitizenApi
     end
 
     def trip_notices(citizen_ids)
-      TransportTripNotice.where(citizen_id: citizen_ids).includes(transport_trip_passenger: :transport_trip_stop)
+      TransportTripNotice.where(citizen_id: citizen_ids)
     end
 
-    # §14 T15: a saída gravada no aviso (a do momento do evento) e o rótulo
-    # ATUAL da parada do passageiro; nunca destino, prestador, veículo nem
-    # motorista.
+    # §14 T15: a saída e o rótulo da parada gravados no aviso (os do momento
+    # do aviso; preflight D-8); nunca destino, prestador, veículo nem motorista.
     def trip_json(row, cpf_masked)
       departure = row.departure_at.in_time_zone
       {
         kind: "trip", id: row.id, event: row.kind, date: departure.to_date.iso8601, departure_at: departure.iso8601,
-        boarding: { label: row.transport_trip_passenger.transport_trip_stop.label },
+        boarding: { label: row.boarding_label },
         read: row.read_at.present?, cpf_masked: cpf_masked
       }
     end
