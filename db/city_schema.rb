@@ -3563,7 +3563,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
     t.datetime "updated_at", null: false
     t.string "void_reason"
     t.datetime "voided_at"
-    t.index ["outbound_leg_id"], name: "idx_tfd_legs_outbound", unique: true, where: "(outbound_leg_id IS NOT NULL)"
+    t.index ["outbound_leg_id"], name: "idx_tfd_legs_outbound", unique: true, where: "((outbound_leg_id IS NOT NULL) AND (voided_at IS NULL))"
     t.index ["tfd_case_id", "date"], name: "idx_tfd_legs_case"
     t.index ["transport_trip_passenger_id", "direction"], name: "idx_tfd_legs_trip_passenger", unique: true, where: "((transport_trip_passenger_id IS NOT NULL) AND (voided_at IS NULL))"
     t.check_constraint "(mode::text = 'fleet'::text) = (transport_trip_passenger_id IS NOT NULL) AND (mode::text = 'fleet'::text) = (ticket_amount_cents IS NULL) AND (direction::text = 'return'::text) = (outbound_leg_id IS NOT NULL) AND (mode::text <> 'fleet'::text OR NOT companion) AND (outbound_leg_id IS NULL OR outbound_leg_id <> id)", name: "ck_tfd_legs_mode"

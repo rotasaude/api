@@ -131,6 +131,60 @@ RSpec.describe "TFD — trecho de frota anulado" do
     expect(ticket_back.outbound_leg_id).to eq(older.id)
   end
 
+  def meals = TfdAllowance.where(tfd_case_id: tfd.id, kind: %w[meal_day meal_overnight])
+
+  it "N1: ida segunda; volta de frota sexta cancelada → anulada; a volta nova pareia com a ida de segunda e ganha km e alimentação" do
+    monday = Date.current - 6
+    out = add_leg!(direction: "outbound", mode: "bus_ticket", date: monday.iso8601, ticket: ticket)
+    expect(Tfd::CompleteLeg.call(leg: out, by: committee)).to be_ok
+    friday_trip = confirmed_trip!(date: Date.current - 2)
+    friday_rider = tfd_rider!(friday_trip)
+    dead = add_leg!(direction: "return", mode: "fleet", date: friday_trip.return_at.in_time_zone.to_date.iso8601,
+                    trip_passenger_id: friday_rider.id)
+    expect(dead.outbound_leg_id).to eq(out.id)
+    expect(Transport::CancelTrip.call(trip: friday_trip, reason: "Veículo quebrado na véspera", by: dispatcher!)).to be_ok
+    expect(dead.reload.void_reason).to eq("trip_cancelled")
+
+    back = add_leg!(direction: "return", mode: "bus_ticket", date: (Date.current - 1).iso8601, ticket: ticket)
+    expect(back.outbound_leg_id).to eq(out.id)
+    expect(Tfd::CompleteLeg.call(leg: back, by: committee)).to be_ok
+    expect(TfdAllowance.where(tfd_leg_id: back.id).pluck(:person, :kind, :quantity))
+      .to contain_exactly([ "patient", "ground_km", 8 ], [ "patient", "meal_overnight", 5 ])
+  end
+
+  it "N1: volta de frota com o paciente no_show → anulada; a volta nova pareia com a ida" do
+    out = add_leg!(direction: "outbound", mode: "bus_ticket", date: (Date.current - 3).iso8601, ticket: ticket)
+    expect(Tfd::CompleteLeg.call(leg: out, by: committee)).to be_ok
+    trip = confirmed_trip!
+    rider = tfd_rider!(trip)
+    dead = add_leg!(direction: "return", mode: "fleet", date: trip.return_at.in_time_zone.to_date.iso8601, trip_passenger_id: rider.id)
+    close_trip!(trip, rider => { attendance: "no_show" })
+    expect(dead.reload.void_reason).to eq("no_show")
+
+    back = add_leg!(direction: "return", mode: "bus_ticket", date: Date.current.iso8601, ticket: ticket)
+    expect(back.outbound_leg_id).to eq(out.id)
+    expect(Tfd::CompleteLeg.call(leg: back, by: committee)).to be_ok
+    expect(meals.pluck(:tfd_leg_id, :kind, :quantity)).to eq([ [ back.id, "meal_overnight", 3 ] ])
+  end
+
+  it "N1: ida anulada depois de a volta parear → a ida nova recebe a volta e o par ganha a alimentação uma vez" do
+    trip = confirmed_trip!(date: Date.current - 3)
+    _, dead_out = fleet_outbound!(trip)
+    back = add_leg!(direction: "return", mode: "bus_ticket", date: Date.current.iso8601, ticket: ticket)
+    expect(back.outbound_leg_id).to eq(dead_out.id)
+    expect(Transport::CancelTrip.call(trip: trip, reason: "Viagem de ida remarcada", by: dispatcher!)).to be_ok
+    expect(dead_out.reload.void_reason).to eq("trip_cancelled")
+    expect(Tfd::CompleteLeg.call(leg: back, by: committee)).to be_ok
+    expect(meals).to be_empty
+
+    new_out = add_leg!(direction: "outbound", mode: "bus_ticket", date: (Date.current - 3).iso8601, ticket: ticket)
+    expect(back.reload.outbound_leg_id).to eq(new_out.id)
+    expect(Tfd::CompleteLeg.call(leg: new_out, by: committee, at: Time.current)).to be_ok
+    expect(meals.pluck(:tfd_leg_id, :kind, :quantity)).to eq([ [ back.id, "meal_overnight", 3 ] ])
+    expect(Tfd::CompleteLeg.call(leg: new_out.reload, by: committee).reason).to eq(:tfd_leg_done)
+    expect(meals.count).to eq(1)
+  end
+
   def add_leg_for!(other, trip)
     rider = passenger!(trip, patient: other.patient, origin: "tfd", tfd_case: other, exception_reason: nil)
     result = Tfd::AddLeg.call(tfd_case: other, by: committee,

@@ -429,7 +429,9 @@ class AddSanitaryTransport < ActiveRecord::Migration[8.1]
     add_index :tfd_legs, %i[transport_trip_passenger_id direction], unique: true,
                                                                     where: "transport_trip_passenger_id IS NOT NULL AND voided_at IS NULL",
                                                                     name: "idx_tfd_legs_trip_passenger"
-    add_index :tfd_legs, :outbound_leg_id, unique: true, where: "outbound_leg_id IS NOT NULL", name: "idx_tfd_legs_outbound"
+    # Uma volta viva por ida (a anulada não segura a ida).
+    add_index :tfd_legs, :outbound_leg_id, unique: true, where: "outbound_leg_id IS NOT NULL AND voided_at IS NULL",
+                                           name: "idx_tfd_legs_outbound"
     add_check_constraint :tfd_legs,
                          "direction::text = ANY (ARRAY[#{quoted(DIRECTIONS)}]::text[]) AND mode::text = ANY (ARRAY[#{quoted(MODES)}]::text[]) AND " \
                          "distance_km >= 0 AND (ticket_amount_cents IS NULL OR " \

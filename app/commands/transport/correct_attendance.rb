@@ -13,9 +13,11 @@
 #     para qualquer campo que mude, paciente ou acompanhante).
 # Só o UPDATE e o INSERT da correção correm sob
 # TransportTripPassenger.with_attendance_correction (a trava volta ao sair).
-# Depois, `no_show` → `boarded` do paciente com trecho de frota aberto chama
-# Tfd::FleetLegs.complete_passenger! (a viagem já travada aqui: a mesma trava
-# que o fechamento segura ao completar os trechos — Ruling da Task 8). Evento transport.attendance_corrected
+# Depois, `no_show` → `boarded` chama Tfd::FleetLegs.complete_passenger! (a
+# viagem já travada aqui: a mesma trava que o fechamento segura — Ruling da
+# Task 8), que só completa trecho vivo: o trecho que o fechamento anulou por
+# no_show (FR I1) fica anulado, e a comissão registra o trecho de frota de
+# novo na mesma linha (nasce feito, com o paciente boarded). Evento transport.attendance_corrected
 # (trip_id e os ids dos passageiros mudados), só quando algo mudou.
 module Transport
   module CorrectAttendance

@@ -46,7 +46,7 @@ module Tfd
         leg.tfd_case = tfd_case
         cache = Billing::SigtapCache.new
         travel = Allowances.for_leg!(leg, settings: settings, cache: cache)
-        return_leg = leg.direction == "return" ? leg : TfdLeg.find_by(outbound_leg_id: leg.id)
+        return_leg = leg.direction == "return" ? leg : TfdLeg.live.find_by(outbound_leg_id: leg.id)
         meals = return_leg ? Allowances.meals!(return_leg, settings: settings, cache: cache) : []
         if leg.direction == "outbound" && tfd_case.status == "scheduled"
           moved = Transition.call(tfd_case: tfd_case, to: "travelling", by: by)

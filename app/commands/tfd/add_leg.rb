@@ -12,6 +12,8 @@
 #     (1..10_000_000), carrier (1..CARRIER_MAX = 120, T18) }`, sem `trip_passenger_id`;
 #     `companion: true` só com o acompanhante indicado no laudo
 #     (`companion_not_allowed`, como no passageiro do TFD, Desvio 5);
+#   - a volta anulada não conta como pareada (a ida volta a ficar aberta), e
+#     a ida nova herda a volta viva cuja ida foi anulada (repoint_orphan_return!);
 #   - a volta de frota pareia primeiro com a ida da MESMA linha de
 #     passageiro (FW8); senão — e a volta de passagem — com a ida mais
 #     antiga sem volta, não anulada e com data ≤ a dela
@@ -68,6 +70,7 @@ module Tfd
                              distance_km: tfd_case.transport_destination.distance_km, transport_trip_passenger: rider,
                              ticket_amount_cents: fields[:amount_cents], ticket_carrier: fields[:carrier],
                              companion: fields[:companion] || false, outbound_leg: outbound, created_by_user: by)
+        repoint_orphan_return!(tfd_case, leg) if leg.direction == "outbound"
         if tfd_case.status == "authorized"
           moved = Transition.call(tfd_case: tfd_case, to: "scheduled", by: by)
           raise "tfd: authorized → scheduled refused" if moved.failure? # inalcançável: conferida sob a trava
@@ -138,13 +141,23 @@ module Tfd
     # Data do trecho de frota vem da viagem (T38): ida → trip.date; volta → dia local da chegada.
     def fleet_date(trip, direction) = direction == "return" ? trip.return_at.in_time_zone.to_date : trip.date
 
+    # A volta viva mais antiga cuja ida foi anulada passa à ida nova (data da
+    # volta ≥ a da ida, até MAX_NIGHTS): o par volta a ter alimentação. Antes
+    # do complete_passenger!, para a ida que nasce feita já achar a volta.
+    def repoint_orphan_return!(tfd_case, outbound)
+      voided = TfdLeg.where(tfd_case_id: tfd_case.id, direction: "outbound").where.not(voided_at: nil).select(:id)
+      orphan = TfdLeg.live.where(tfd_case_id: tfd_case.id, direction: "return", outbound_leg_id: voided)
+                     .where(date: outbound.date..(outbound.date + Catalog::MAX_NIGHTS)).order(:date, :created_at, :id).lock.first
+      orphan&.update!(outbound_leg: outbound)
+    end
+
     # Ida sem volta, não anulada, com data ≤ a da volta: a da mesma linha de
     # passageiro primeiro (FW8: a volta de frota da viagem de ida e volta); senão a mais antiga.
     def open_outbound(tfd_case, date, rider = nil)
-      paired = TfdLeg.where(tfd_case_id: tfd_case.id).where.not(outbound_leg_id: nil).select(:outbound_leg_id)
+      paired = TfdLeg.live.where(tfd_case_id: tfd_case.id).where.not(outbound_leg_id: nil).select(:outbound_leg_id)
       open = TfdLeg.live.where(tfd_case_id: tfd_case.id, direction: "outbound").where(date: ..date).where.not(id: paired)
       (rider && open.find_by(transport_trip_passenger_id: rider.id)) || open.order(:date, :created_at, :id).first
     end
-    private_class_method :parse, :ticket, :lock_rider, :rider_ok?, :fleet_date, :open_outbound
+    private_class_method :parse, :ticket, :lock_rider, :rider_ok?, :fleet_date, :repoint_orphan_return!, :open_outbound
   end
 end
