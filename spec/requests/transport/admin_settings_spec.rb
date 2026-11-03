@@ -23,6 +23,20 @@ RSpec.describe "Transporte — configuração", type: :request do
     expect(TransportSetting.current.updated_by_user_id).to eq(admin.id)
   end
 
+  it "D3: PATCH de allowance_complements SUBSTITUI o mapa inteiro — o código que não vem volta a 0; {} zera todos" do
+    stepped_up!(admin)
+    json_patch "/transport/admin/settings", allowance_complements: { "0803010044" => 5000, "0803010125" => 105 }
+    expect(json_body["allowance_complements"]).to eq("0803010044" => 5000, "0803010125" => 105)
+    json_patch "/transport/admin/settings", allowance_complements: { "0803010125" => 200 }
+    expect(response).to have_http_status(:ok)
+    expect(json_body["allowance_complements"]).to eq("0803010125" => 200)
+    expect(TransportSetting.current.allowance_complements).to eq("0803010125" => 200)
+    json_patch "/transport/admin/settings", tfd_min_distance_km: 70 # sem a chave: o mapa fica
+    expect(json_body["allowance_complements"]).to eq("0803010125" => 200)
+    json_patch "/transport/admin/settings", allowance_complements: {}
+    expect(json_body["allowance_complements"]).to eq({})
+  end
+
   it "unidade de gestão sem CNES, id inexistente e desvinculo" do
     stepped_up!(admin)
     no_cnes = HealthUnit.create!(name: "Central sem CNES", kind: "health_management")

@@ -67,6 +67,20 @@ RSpec.describe "Transporte — frota", type: :request do
     expect(response).to have_http_status(:not_found)
   end
 
+  it "D5: o número da CNH nunca vai ao log nem a payload de evento (criar e alterar)" do
+    user = staff_with("davi@cidade.gov.br", "driver")
+    log = capture_log do
+      json_post "/transport/drivers", driver_body(user, license_number: "98765432109")
+      expect(response).to have_http_status(:created)
+      json_patch "/transport/drivers/#{json_body['id']}", license_number: "11223344556"
+      expect(response).to have_http_status(:ok)
+    end
+    expect(log).not_to include("98765432109", "11223344556")
+    payloads = DomainEvent.where("name LIKE 'transport.%'").map { |event| event.payload.to_json }.join
+    expect(payloads).to include(user.transport_driver.id)
+    expect(payloads).not_to include("98765432109", "11223344556")
+  end
+
   it "motorista: só usuário com papel driver; CNH nunca sai inteira; status pela validade" do
     user = staff_with("davi@cidade.gov.br", "driver")
     other = staff_with("ana@cidade.gov.br", "viewer")
