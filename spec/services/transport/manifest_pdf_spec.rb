@@ -30,9 +30,22 @@ RSpec.describe Transport::ManifestPdf, type: :request do
                             "Mãe da Criança", "cadeira de rodas", "07:00", trip.transport_vehicle.plate, "Sprinter 415")
     expect(text).not_to include("Zacarias Removido")
     forbidden = [ patient.cpf, patient.cpf.to_s.sub(/\A(\d{3})(\d{3})(\d{3})(\d{2})\z/, '\1.\2.\3-\4'), patient.cns, "I10",
-                  "Hipertensão resistente", "Consulta em Cardiologia", "98765432100" ].compact_blank
+                  "Hipertensão resistente", request.reload.target_name, "Cardiologia", "98765432100" ].compact_blank
+    expect(request.target_name).to be_present
     expect(forbidden).not_to be_empty
     forbidden.each { |value| expect(text).not_to include(value) }
+  end
+
+  it "lista quem estiver em parada de destino e mostra a data do retorno de outro dia" do
+    overnight = trip!(back: "06:00", vehicle: vehicle!, driver: driver_user!.transport_driver)
+    stray = transport_patient!
+    stray.update!(full_name: "Berenice Parada Solta", social_name: nil)
+    destination_stop = overnight.transport_trip_stops.find_by!(kind: "destination")
+    passenger!(overnight, patient: stray).update!(transport_trip_stop: destination_stop)
+
+    text = text_of(described_class.call(overnight))
+
+    expect(text).to include("Berenice Parada Solta", "Retorno: #{(overnight.date + 1).strftime('%d/%m/%Y')} 06:00")
   end
 
   it "devolve um PDF" do

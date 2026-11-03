@@ -16,7 +16,10 @@ module Transport
     def call(trip)
       pdf = Consultations::Print.document(FOOTER, title: TITLE)
       header(pdf, trip)
-      stops(trip).each { |stop| stop_block(pdf, stop, passengers_by_stop(trip)[stop.id] || []) }
+      grouped = passengers_by_stop(trip)
+      stops(trip, grouped).each { |stop| stop_block(pdf, stop.label, grouped.delete(stop.id) || []) }
+      # Quem sobrar (parada inexistente): a lista impressa nunca omite ninguém.
+      stop_block(pdf, "sem parada definida", grouped.values.flatten) if grouped.any?
       pdf.render
     end
 
@@ -26,14 +29,14 @@ module Transport
       pdf.text s(CityProfile.current&.name.to_s), style: :bold, size: 12
       pdf.text s(TITLE.upcase), style: :bold, size: 13
       pdf.text s("Data: #{trip.date.strftime('%d/%m/%Y')}")
-      pdf.text s("Saída: #{hour(trip.departure_at)}    Retorno: #{hour(trip.return_at)}")
+      pdf.text s("Saída: #{hour(trip.departure_at)}    Retorno: #{return_label(trip)}")
       pdf.text s("Veículo: #{vehicle ? "#{vehicle.plate} — #{vehicle.model}" : 'a definir'}")
       pdf.text s("Motorista: #{driver ? Json.user_name(driver.user) : 'a definir'}")
     end
 
-    def stop_block(pdf, stop, passengers)
+    def stop_block(pdf, label, passengers)
       pdf.move_down 10
-      pdf.text s("Embarque: #{stop.label}"), style: :bold, size: 11
+      pdf.text s("Embarque: #{label}"), style: :bold, size: 11
       return pdf.text(s("Nenhum passageiro nesta parada."), size: 9) if passengers.empty?
 
       passengers.each { |passenger| line(pdf, passenger) }
@@ -49,7 +52,16 @@ module Transport
       pdf.text s("Assinatura no embarque: ______________________________________"), size: 9
     end
 
-    def stops(trip) = trip.transport_trip_stops.select { |stop| stop.kind == "boarding" }.sort_by(&:position)
+    # Paradas de embarque, mais qualquer outra parada que tenha passageiro.
+    def stops(trip, grouped)
+      trip.transport_trip_stops.select { |stop| stop.kind == "boarding" || grouped.key?(stop.id) }.sort_by(&:position)
+    end
+
+    # Hora; com a data quando o retorno cai em outro dia local.
+    def return_label(trip)
+      time = trip.return_at.in_time_zone
+      time.to_date == trip.date ? hour(time) : time.strftime("%d/%m/%Y %H:%M")
+    end
 
     def passengers_by_stop(trip)
       trip.transport_trip_passengers.active.includes(:patient, :transport_destination).order(:created_at, :id).group_by(&:transport_trip_stop_id)

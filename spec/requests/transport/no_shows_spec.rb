@@ -41,6 +41,18 @@ RSpec.describe "Transporte — faltas e lista de passageiros", type: :request do
       expect(response.body).not_to include("Ponta Grossa", "destination")
     end
 
+    it "limite: 366 dias passa, 367 é recusado; falta de passageiro retirado não conta" do
+      today = Time.zone.today
+      removed_trip = trip_with(patient, "no_show", date: today - 1)
+      removed_trip.transport_trip_passengers.first.update!(removed_at: Time.current, removed_by_user: dispatcher!, remove_reason: "Desistiu")
+      get "/transport/no_shows", params: { from: (today - 365).iso8601, to: today.iso8601 }
+      expect(response).to have_http_status(:ok)
+      expect(json_body["items"]).to eq([])
+      get "/transport/no_shows", params: { from: (today - 366).iso8601, to: today.iso8601 }
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body["path"]).to eq("to")
+    end
+
     it "respeita o período; fora dele ou com intervalo maior que 366 dias → invalid_request" do
       trip_with(patient, "no_show", date: Date.current - 5)
       get "/transport/no_shows", params: { from: (Date.current - 2).iso8601, to: Date.current.iso8601 }
@@ -55,13 +67,23 @@ RSpec.describe "Transporte — faltas e lista de passageiros", type: :request do
     end
   end
 
-  it "comissão → 403" do
-    sign_in_as(committee!)
-    get "/transport/no_shows", params: { from: Date.current.iso8601, to: Date.current.iso8601 }
-    expect(response).to have_http_status(:forbidden)
+  it "comissão, admin e motorista → 403" do
     trip = trip!
-    get "/transport/trips/#{trip.id}/manifest.pdf"
-    expect(response).to have_http_status(:forbidden)
+    [ committee!, transport_admin!, driver_user! ].each do |user|
+      sign_in_as(user)
+      get "/transport/no_shows", params: { from: Time.zone.today.iso8601, to: Time.zone.today.iso8601 }
+      expect(response).to have_http_status(:forbidden)
+      get "/transport/trips/#{trip.id}/manifest.pdf"
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  it "sem sessão não lê nem a lista nem as faltas" do
+    get "/transport/no_shows", params: { from: Time.zone.today.iso8601, to: Time.zone.today.iso8601 }
+    first = response.status
+    get "/transport/trips/#{trip!.id}/manifest.pdf"
+    expect([ first, response.status ]).to all(satisfy { |code| [ 401, 403 ].include?(code) })
+    expect(response.body).not_to start_with("%PDF")
   end
 
   describe "GET /transport/trips/:id/manifest.pdf" do
