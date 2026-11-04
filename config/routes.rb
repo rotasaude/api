@@ -728,6 +728,8 @@ Rails.application.routes.draw do
     get   "matrix_supports/:id", to: "matrix_supports#show"
     post  "matrix_supports/:id/cases", to: "matrix_supports#add_case"
     get   "patients/:id/link",   to: "links#show"
+    # Painel do CAPS: só contagens, com "lt5" para 1 a 4 (§11, P11).
+    get   "dashboard",           to: "dashboard#show"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.
