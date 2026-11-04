@@ -711,6 +711,11 @@ Rails.application.routes.draw do
     get   "months/:month",       to: "months#show"
     post  "months/:month/close", to: "months#close"
     post  "months/:month/reopen", to: "months#reopen"
+    # Remessa RAAS atrás do layout (gate) e a ficha espelho em PDF (§6, P4, P15).
+    get   "raas_exports",        to: "raas_exports#index"
+    post  "raas_exports",        to: "raas_exports#create"
+    get   "raas_exports/:id/file", to: "raas_exports#file"
+    get   "months/:month/sheets.pdf", to: "sheets#show", format: false
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.

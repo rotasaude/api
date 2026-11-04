@@ -14,6 +14,9 @@ module Psychosocial
     def staff?(user) = roles?(user, STAFF_ROLES)
     def lead?(user) = roles?(user, %w[psychosocial_lead])
     def all_units?(user) = roles?(user, ALL_UNITS_ROLES)
+    # Faturista: gera e baixa a remessa RAAS e lê as fichas espelho de qualquer
+    # CAPS ativo, sem lotação (contrato §6, P15).
+    def billing_clerk?(user) = roles?(user, %w[billing_clerk])
 
     # -> ProfessionalLink | nil
     def link(user, health_unit_id)

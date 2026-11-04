@@ -329,6 +329,10 @@ Rails.application.config.to_prepare do
   # Fechamento e reabertura do mês da RAAS (Task 9): só health_unit_id e month
   # ("YYYY-MM"), nunca a foto, o motivo da reabertura nem nome; sem consumidor.
   %w[psychosocial.month_closed psychosocial.month_reopened].each { |name| DomainEvents.bind name, to: [] }
+  # Remessa RAAS gerada e baixada (Task 10): só o raas_export_id, nunca o
+  # arquivo, a competência do paciente nem nome; sem consumidor (o download
+  # grava também clinical_record.viewed por paciente).
+  %w[psychosocial.raas_exported psychosocial.raas_downloaded].each { |name| DomainEvents.bind name, to: [] }
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

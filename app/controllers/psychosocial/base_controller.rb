@@ -84,6 +84,38 @@ module Psychosocial
       false
     end
 
+    # Remessa RAAS e fichas espelho (contrato §6, P15): a coordenação lotada no
+    # CAPS ou o faturista (qualquer CAPS ativo, sem lotação). Sem nenhum dos
+    # dois papéis → 403 lead_required (equipe) ou missing_role; sem uuid ou fora
+    # dos CAPS ativos → 422 invalid_request `health_unit_id`; coordenação sem
+    # vínculo no CAPS → 403 not_on_caps_team. Renderiza e devolve nil quando recusa.
+    def raas_unit!(health_unit_id)
+      return unless raas_role!
+
+      unit = uuid?(health_unit_id) ? HealthUnit.find_by(id: health_unit_id, kind: "caps", active: true) : nil
+      unless unit
+        render_refusal("health_unit_id")
+        return nil
+      end
+      return unit if raas_reader?(unit.id)
+
+      forbid("not_on_caps_team")
+      nil
+    end
+
+    # Papel da remessa e das fichas: renderiza a recusa e devolve false sem ele.
+    def raas_role!
+      return true if Access.billing_clerk?(Current.user) || Access.lead?(Current.user)
+
+      forbid(Access.staff?(Current.user) ? "lead_required" : "missing_role")
+      false
+    end
+
+    # Faturista em qualquer CAPS; coordenação só onde está lotada.
+    def raas_reader?(health_unit_id)
+      Access.billing_clerk?(Current.user) || (Access.lead?(Current.user) && Access.link(Current.user, health_unit_id).present?)
+    end
+
     # Matrícula da URL (`@enrollment`) para as rotas /enrollments/:id/...: sem o
     # papel do CAPS → 403 missing_role; id malformado, inexistente ou de CAPS em
     # que quem pede não está lotado → 404. Detalhe e escrita: nada na query.
