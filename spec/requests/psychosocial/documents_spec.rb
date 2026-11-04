@@ -1,5 +1,7 @@
 require "rails_helper"
 
+RSpec::Matchers.define_negated_matcher :not_include, :include
+
 # Módulo 31 (contrato §4, §9, §15 P8, P28, P29; plano, Desvio 12): a receita,
 # o registro da Notificação e o atestado do 19 emitidos pela ação do CAPS —
 # sem atendimento e sem cidadão, fora da lista de medicamentos, assinados pelo
@@ -18,7 +20,8 @@ RSpec.describe "CAPS — documentos da ação", type: :request do
     import_test_catalog!
   end
 
-  let(:caps) { caps! }
+  # Nome e modalidade que nunca saem na verificação pública nem no atestado (P48).
+  let(:caps) { caps!(name: "CAPS AD III Centro Vida", modality: "caps_ad_iii") }
   let(:psychiatrist) do
     caps_staff!(caps, cbo: "225133").tap do |user|
       user.professional.update!(cpf: SignatureHelpers::DOCTOR_CPF)
@@ -31,6 +34,17 @@ RSpec.describe "CAPS — documentos da ação", type: :request do
   let(:fluoxetina) { controlled_item!(code: 9_900_001, ingredient: "FLUOXETINA", list: "C1") }
   let(:viewed) { DomainEvent.where(name: "clinical_record.viewed") }
   let(:leave) { { "type" => "leave", "days" => 3 } }
+  let(:hidden) { [ "Centro Vida", "AD III", "caps_ad_iii" ] }
+
+  def pdf_text(bytes) = PDF::Reader.new(StringIO.new(bytes.split(FakeSigner::MARKER).first)).pages.map(&:text).join("\n")
+
+  def verification_bodies(document)
+    allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+    get "/v/#{document.verification_token}", headers: { "Accept" => "application/json" }
+    json = [ response.status, response.body ]
+    get "/v/#{document.verification_token}"
+    [ json, [ response.status, response.body ] ]
+  end
 
   def rce
     { "items" => [ { "catalog_item" => { "id" => fluoxetina.id }, "quantity" => 30, "quantity_unit" => "cápsula", "route" => "oral",
@@ -94,7 +108,8 @@ RSpec.describe "CAPS — documentos da ação", type: :request do
       allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
       get "/v/#{document.verification_token}", headers: { "Accept" => "application/json" }
       expect(response).to have_http_status(:ok)
-      expect(json_body).to include("kind" => "prescription", "unit" => caps.name, "status" => "valid", "mode" => "digital")
+      expect(json_body).to include("kind" => "prescription", "status" => "valid", "mode" => "digital",
+                                   "unit" => "Centro de Atenção Psicossocial — #{city_profile!.name} — CNES #{caps.cnes}")
       expect(PatientMedication.where(patient_id: patient.id)).to be_empty
     end
 
@@ -230,6 +245,160 @@ RSpec.describe "CAPS — documentos da ação", type: :request do
       sign_in_as(caps_staff!(caps, cbo: "225133"))
       get "/attendance/documents/#{ubs_document.payload[:document].id}"
       expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    end
+  end
+
+  describe "assinatura pelas rotas do 19b, só com o papel do CAPS (P28, ruling b)" do
+    before do
+      stub_psc!
+      stub_signer!
+    end
+
+    def callback!(url)
+      state = URI.decode_www_form(URI(url).query).to_h.fetch("state")
+      json_post "/signature/oauth/callback", state: state, code: authorize_and_approve!(url)
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "vincula o certificado, lista, volta ao papel e assina pelo lote; o impresso sai assinado" do
+      expect(psychiatrist.has_role?("health_professional")).to be(false)
+      stepped_up!(psychiatrist)
+      json_post "/signature/certificates/link", provider: "vidaas", return_to: "/caps"
+      callback!(json_body.fetch("authorize_url"))
+      expect(SignerCertificate.active.where(user_id: psychiatrist.id)).to exist
+
+      first, second = Array.new(2) { sick_note! }
+      expect([ first, second ].map(&:issue_mode)).to eq(%w[digital digital])
+      stale = signature_request!(author: psychiatrist) # pedido de consulta do mesmo usuário (ex.: papel antigo)
+      get "/signature/requests"
+      expect(json_body["items"].map { |item| item["document_id"] }).to eq([ first.id, second.id ])
+      expect(json_body["items"].first).to include("document_type" => "clinical_document", "consultation_id" => nil,
+                                                  "patient_display_name" => patient.display_name)
+
+      json_post "/signature/requests/#{second.signature_request.id}/return_to_paper", reason: "Paciente pediu o papel hoje"
+      expect([ response.status, json_body["status"] ]).to eq([ 200, "returned_to_paper" ])
+      expect(second.reload.issue_mode).to eq("paper")
+      json_post "/signature/requests/#{stale.id}/return_to_paper", reason: "Paciente pediu o papel hoje"
+      expect([ response.status, json_body["error"] ]).to eq([ 404, "not_found" ])
+
+      json_post "/signature/batches", request_ids: [ first.signature_request.id, stale.id ], return_to: "/caps"
+      expect(json_body["count"]).to eq(1)
+      callback!(json_body.fetch("authorize_url"))
+      signature = first.signature_request.reload.signature
+      expect(first.signature_request.status).to eq("signed")
+      expect(stale.reload.status).to eq("pending")
+      get "/attendance/documents/#{first.id}/print"
+      expect([ response.status, response.body.b ]).to eq([ 200, signature.signed_pdf_bytes.b ])
+    end
+
+    it "outra pessoa da equipe do CAPS e o médico da UBS não veem nem mexem no pedido do CAPS" do
+      linked_certificate!(psychiatrist, leaf: fake_psc.leaf(SignatureHelpers::DOCTOR_CPF))
+      request = sick_note!.signature_request
+      colleague = caps_staff!(caps, cbo: "225133").tap { |user| user.professional.update!(cpf: SignatureHelpers::OTHER_CPF) }
+      linked_certificate!(colleague, leaf: fake_psc.leaf(SignatureHelpers::OTHER_CPF))
+      doctor = ubs_doctor!(HealthUnit.create!(name: "UBS Vila", kind: "ubs"))
+      [ colleague, doctor ].each do |user|
+        sign_in_as(user)
+        get "/signature/requests"
+        expect([ response.status, json_body["items"] ]).to eq([ 200, [] ])
+        json_post "/signature/requests/#{request.id}/return_to_paper", reason: "Paciente pediu o papel hoje"
+        expect([ response.status, json_body["error"] ]).to eq([ 403, "not_author" ])
+      end
+      sign_in_as(colleague)
+      json_post "/signature/batches", request_ids: [ request.id ], return_to: "/"
+      expect([ response.status, json_body["error"] ]).to eq([ 409, "nothing_pending" ])
+      expect(request.reload.status).to eq("pending")
+    end
+
+    it "Mode.blocks acha o pedido do documento do CAPS sem carregar pedidos de laudo (consultation_id nulo)" do
+      linked_certificate!(psychiatrist, leaf: fake_psc.leaf(SignatureHelpers::DOCTOR_CPF))
+      document = sick_note!
+      SignatureRequest.create!(document_type: "LabReport", document_id: SecureRandom.uuid, consultation_id: nil,
+                               author_user_id: psychiatrist.id)
+      loaded = []
+      subscriber = ActiveSupport::Notifications.subscribe("instantiation.active_record") do |*, payload|
+        loaded << payload[:record_count] if payload[:class_name] == "SignatureRequest"
+      end
+      blocks = Signatures::Mode.blocks([ document ])
+      ActiveSupport::Notifications.unsubscribe(subscriber)
+      expect(blocks.fetch([ "ClinicalDocument", document.id ])).to include(mode: "pending", request_id: document.signature_request.id)
+      expect(loaded).to eq([ 1 ])
+    end
+  end
+
+  describe "cancelamento pela coordenação do CAPS (P47)" do
+    it "a coordenação lotada cancela o documento de outra profissional, com trilha e o número SNCR anulado" do
+      linked_certificate!(psychiatrist, leaf: fake_psc.leaf(SignatureHelpers::DOCTOR_CPF))
+      sncr_stock!(psychiatrist, kind: "rce", count: 1)
+      sign_in_as(psychiatrist)
+      post_document("prescription", rce)
+      document = ClinicalDocument.find(json_body["id"])
+      expect(SncrNumber.find_by!(document_id: document.id).status).to eq("used")
+      lead = caps_staff!(caps, cbo: "223505", lead: true)
+      stepped_up!(lead)
+      json_post "/attendance/documents/#{document.id}/cancel", reason: "curto"
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_reason" ])
+      expect { json_post "/attendance/documents/#{document.id}/cancel", reason: "Receita emitida na ação errada" }
+        .to change(viewed, :count).by(1)
+      expect([ response.status, json_body["status"] ]).to eq([ 200, "cancelled" ])
+      expect(document.reload).to have_attributes(status: "cancelled", cancelled_by_user_id: lead.id)
+      expect(SncrNumber.find_by!(document_id: document.id).status).to eq("voided")
+      expect(viewed.last.payload).to include("user_id" => lead.id, "access" => "psychosocial", "resource" => "documents")
+    end
+
+    it "coordenação de outro CAPS → 404; equipe que não é a autora → 403 not_author" do
+      document = sick_note!
+      stepped_up!(caps_staff!(caps!, cbo: "223505", lead: true))
+      json_post "/attendance/documents/#{document.id}/cancel", reason: "Tentativa de cancelar de fora"
+      expect(response).to have_http_status(:not_found)
+      stepped_up!(caps_staff!(caps, cbo: "251510"))
+      json_post "/attendance/documents/#{document.id}/cancel", reason: "Tentativa de cancelar sem ser a autora"
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "not_author" } ])
+      expect(document.reload).to be_issued
+    end
+  end
+
+  describe "unidade genérica (P48)" do
+    it "verificação pública dos três tipos sem nome nem modalidade do CAPS" do
+      sign_in_as(psychiatrist)
+      post_document("prescription", rce)
+      prescription = ClinicalDocument.find(json_body["id"])
+      post_document("controlled_notification_record", notification)
+      record = ClinicalDocument.find(json_body["id"])
+      note = sick_note!
+      [ note, prescription ].each do |document|
+        (json_status, json), (html_status, html) = verification_bodies(document)
+        expect([ json_status, html_status ]).to eq([ 200, 200 ])
+        expect(JSON.parse(json)["unit"]).to eq("Centro de Atenção Psicossocial — #{city_profile!.name} — CNES #{caps.cnes}")
+        [ json, html ].each { |body| expect(body).to include("Atenção Psicossocial").and(not_include(*hidden)) }
+      end
+      (json_status, json), (html_status, html) = verification_bodies(record) # a Notificação não tem conferência pública
+      expect([ json_status, html_status ]).to eq([ 404, 404 ])
+      [ json, html ].each { |body| expect(body).not_to include(*hidden) }
+      allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+      json_post "/v/lookup", short_code: note.short_code, birth_year: patient.birth_date.to_s[0, 4]
+      expect(json_body["unit"]).to start_with("Centro de Atenção Psicossocial")
+    end
+
+    it "atestado impresso e assinado sem o nome; receita impressa com a identificação completa" do
+      stub_psc!
+      stub_signer!
+      paper = sick_note!
+      get "/attendance/documents/#{paper.id}/print"
+      expect(pdf_text(response.body)).to include("Centro de Atenção Psicossocial", "CNES #{caps.cnes}").and(not_include(*hidden))
+
+      linked_certificate!(psychiatrist, leaf: fake_psc.leaf(SignatureHelpers::DOCTOR_CPF))
+      digital = sick_note!
+      signature = sign_document!(digital, author: psychiatrist)
+      expect(JSON.parse(signature.canonical_json)["unit"]).to eq("cnes" => caps.cnes, "name" => "Centro de Atenção Psicossocial")
+      expect(signature.canonical_json).not_to include(*hidden)
+      expect(pdf_text(signature.signed_pdf_bytes)).to include("Centro de Atenção Psicossocial").and(not_include(*hidden))
+
+      sign_in_as(psychiatrist)
+      post_document("prescription", rce) # sem número SNCR no estoque: papel
+      expect(json_body["paper_reason"]).to eq("no_sncr_number")
+      get "/attendance/documents/#{json_body['id']}/print"
+      expect(pdf_text(response.body)).to include("CAPS AD III Centro Vida")
     end
   end
 

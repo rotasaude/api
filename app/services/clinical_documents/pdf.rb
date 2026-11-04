@@ -71,9 +71,14 @@ module ClinicalDocuments
     def header(pdf, document, content, label)
       unit = document.health_unit
       pdf.text s(CityProfile.current&.name.to_s), style: :bold, size: 12
-      pdf.text s("#{unit.name}#{unit.cnes ? " — CNES #{unit.cnes}" : ''}")
-      address = [ unit.address_street, unit.address_number, unit.address_complement ].compact_blank.join(", ")
-      pdf.text s("#{address}#{unit.address_zip ? " — CEP #{unit.address_zip}" : ''}") if address.present?
+      if document.generic_unit?
+        # Módulo 31 (P48): o atestado do CAPS não leva nome, modalidade nem endereço do CAPS.
+        pdf.text s("#{ClinicalDocument::CAPS_UNIT_LABEL}#{unit.cnes ? " — CNES #{unit.cnes}" : ''}")
+      else
+        pdf.text s("#{unit.name}#{unit.cnes ? " — CNES #{unit.cnes}" : ''}")
+        address = [ unit.address_street, unit.address_number, unit.address_complement ].compact_blank.join(", ")
+        pdf.text s("#{address}#{unit.address_zip ? " — CEP #{unit.address_zip}" : ''}") if address.present?
+      end
       pdf.move_down 8
       pdf.text s(title(document, content)), style: :bold, size: 13
       pdf.text s("Nº #{content.dig('sncr', 'number')}"), style: :bold, size: 16 if sncr_shown?(document, content)

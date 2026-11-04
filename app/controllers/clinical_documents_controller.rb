@@ -10,6 +10,7 @@ class ClinicalDocumentsController < ApplicationController
   include ClinicalRecordGate
   include ClinicalDocumentsGate
   include MfaStepUp
+  include ClinicalDocumentResponses
 
   ERROR_STATUS = {
     not_author: :forbidden, cbo_not_allowed: :forbidden, auxiliary_cannot_issue: :forbidden, missing_role: :forbidden, out_of_context: :forbidden,
@@ -160,6 +161,8 @@ class ClinicalDocumentsController < ApplicationController
                                             health_unit_id: unit_param)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
+    # A resposta traz o documento: no do CAPS, a trilha do CAPS (a coordenação cancela o de outra, P47).
+    Psychosocial::Trail.viewed!(patient: document.patient, user: Current.user, resource: "documents") if document.psychosocial?
     render json: ClinicalDocuments::Json.document(result.payload[:document].reload)
   end
 
@@ -211,12 +214,6 @@ class ClinicalDocumentsController < ApplicationController
       ClinicalRecord::Trail.viewed!(patient: document.patient, user: Current.user, grant: grant)
     end
     document
-  end
-
-  def respond_created(result)
-    return render_failure(result, ERROR_STATUS) if result.failure?
-
-    render json: ClinicalDocuments::Json.document(result.payload[:document]), status: :created
   end
 
   # A unidade do seletor da tela (api#59): na query ou no corpo; só UUID.

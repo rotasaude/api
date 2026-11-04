@@ -19,11 +19,19 @@ class SignatureRequest < ApplicationRecord
 
   # Os pedidos que o usuário alcança no 19b: os dele. Quem não é profissional
   # (care?) e entra só como liberador do laboratório (ADR 0037) alcança só
-  # laudo — nunca consulta, adendo ou documento clínico.
+  # laudo; só com o papel do CAPS (módulo 31, P28), só o documento clínico da
+  # ação do CAPS; com os dois, a união — nunca consulta ou adendo.
   def self.signable_by(user)
     mine = where(author_user_id: user.id)
-    lab_only = !CitizenVerificationPolicy.new(user, nil).care? && user.has_role?("lab_releaser")
-    lab_only ? mine.where(document_type: "LabReport") : mine
+    return mine if CitizenVerificationPolicy.new(user, nil).care?
+
+    scopes = []
+    scopes << mine.where(document_type: "LabReport") if user.has_role?("lab_releaser")
+    if Psychosocial::Access.staff?(user)
+      scopes << mine.where(document_type: "ClinicalDocument",
+                           document_id: ClinicalDocument.where.not(psychosocial_action_id: nil).select(:id))
+    end
+    scopes.empty? ? mine : scopes.reduce(:or)
   end
 
   def pending? = status == "pending"

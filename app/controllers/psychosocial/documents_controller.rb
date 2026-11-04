@@ -15,10 +15,9 @@
 module Psychosocial
   class DocumentsController < BaseController
     include ::ClinicalDocumentsGate
+    # O 201 e a recusa no formato do 19 (prescriber_required cai no 422 padrão).
+    include ::ClinicalDocumentResponses
 
-    # O formato de recusa do 19 (`{ error, field? | feature? }`).
-    DOCUMENT_STATUS = ::ClinicalDocumentsController::ERROR_STATUS.merge(already_cancelled: :conflict,
-                                                                       prescriber_required: :unprocessable_entity).freeze
     BODY_KEYS = %w[kind content replaces_document_id].freeze
 
     before_action :require_clinical_documents!, only: :create
@@ -41,12 +40,7 @@ module Psychosocial
       result = ::ClinicalDocuments::Issue.call(kind: body["kind"], content: body["content"], by: Current.user,
                                                psychosocial_action: @caps_action,
                                                replaces_document_id: body["replaces_document_id"])
-      if result.failure?
-        payload = { error: result.reason.to_s }.merge(result.details)
-        return render(json: payload, status: DOCUMENT_STATUS.fetch(result.reason, :unprocessable_entity))
-      end
-
-      render json: ::ClinicalDocuments::Json.document(result.payload[:document]), status: :created
+      respond_created(result)
     end
 
     private

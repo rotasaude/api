@@ -1,5 +1,6 @@
 # app/commands/clinical_documents/cancel.rb
-# Cancelamento (ADR 0033; spec §6; contrato §3): só a autora, com motivo de
+# Cancelamento (ADR 0033; spec §6; contrato §3): só a autora (no documento do
+# CAPS, também a coordenação lotada no CAPS da ação — módulo 31, P47), com motivo de
 # 10 a 500 caracteres (cifrado; nunca em log ou evento). O documento fica
 # `cancelled` (o trigger só aceita esta transição). Depois do commit, o pedido
 # de assinatura pendente sai da fila se ninguém o estiver assinando (SKIP
@@ -19,7 +20,7 @@ module ClinicalDocuments
       result = ApplicationRecord.transaction do
         document = ClinicalDocument.lock.find_by(id: document_id)
         next Result.fail(:not_found) unless document
-        unless document.author_user_id == by.id
+        unless document.author_user_id == by.id || caps_lead?(document, by)
           next Result.fail(:not_author) unless document.kind == "attendance_declaration" && by.has_role?("citizen_verifier")
           next Result.fail(:attendance_outside_unit) unless health_unit_id.present? && document.health_unit&.id == health_unit_id
         end
@@ -36,6 +37,12 @@ module ClinicalDocuments
       result
     end
 
+    # Módulo 31 (P47): a coordenação lotada no CAPS da ação também cancela o
+    # documento do CAPS de outra profissional.
+    def caps_lead?(document, by)
+      document.psychosocial? && Psychosocial::Access.lead?(by) && Psychosocial::Access.can_read?(by, document.psychosocial_action)
+    end
+
     # Transação própria, depois do commit do cancelamento: o job/lote que
     # segura o pedido (FOR UPDATE SKIP LOCKED) não trava o cancelamento, e ao
     # soltá-lo já vê o documento cancelado. O cancelamento já está gravado:
@@ -50,6 +57,6 @@ module ClinicalDocuments
     rescue ActiveRecord::ActiveRecordError => e
       Rails.logger.warn("[ClinicalDocuments::Cancel] retire deferred: #{e.class} document_id=#{document.id}")
     end
-    private_class_method :retire
+    private_class_method :retire, :caps_lead?
   end
 end

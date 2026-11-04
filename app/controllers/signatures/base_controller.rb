@@ -1,7 +1,8 @@
 # app/controllers/signatures/base_controller.rb
 # Rotas da assinatura digital (ADR 0032; contrato). Interruptor utilizável e
-# papel health_professional (a recepção recebe 403 missing_role); as rotas do
-# admin e as de leitura de assinatura gravada trocam os before_actions.
+# papel health_professional, lab_releaser ou o do CAPS (a recepção recebe 403
+# missing_role); as rotas do admin e as de leitura de assinatura gravada
+# trocam os before_actions.
 module Signatures
   class BaseController < ApplicationController
     include Authentication
@@ -35,11 +36,12 @@ module Signatures
       render_failure(result, ERROR_STATUS.merge(overrides))
     end
 
-    # ADR 0037 (dashboard D19): o liberador do laboratório assina laudo. Só
-    # laudo: as listas, o lote e a volta ao papel passam por
-    # SignatureRequest.signable_by (sem care?, só LabReport).
+    # ADR 0037 (dashboard D19): o liberador do laboratório assina laudo; módulo
+    # 31 (P28): a equipe do CAPS assina o documento da ação do CAPS. As listas,
+    # o lote e a volta ao papel passam por SignatureRequest.signable_by (sem
+    # care?, só LabReport e/ou o documento do CAPS).
     def require_professional
-      return if Current.user.has_role?("lab_releaser")
+      return if Current.user.has_role?("lab_releaser") || Psychosocial::Access.staff?(Current.user)
 
       super
     end

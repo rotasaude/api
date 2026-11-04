@@ -9,6 +9,8 @@ class ClinicalDocument < ApplicationRecord
   MODES = %w[digital paper].freeze
   STATUSES = %w[issued cancelled].freeze
   CANCEL_REASON = (10..500)
+  # Módulo 31 (P48): a unidade do CAPS sem nome nem modalidade.
+  CAPS_UNIT_LABEL = "Centro de Atenção Psicossocial".freeze
 
   encrypts :content
   encrypts :cancel_reason
@@ -29,6 +31,16 @@ class ClinicalDocument < ApplicationRecord
   # cabeçalho do impresso, verificação pública e canônico da assinatura.
   def health_unit = attendance ? attendance.health_unit : psychosocial_action&.health_unit
   def psychosocial? = psychosocial_action_id.present?
+  # P48: o atestado do CAPS (impresso e canônico assinado) sai com a unidade
+  # genérica; a receita e a Notificação, com a identificação completa (farmácia).
+  def generic_unit? = psychosocial? && kind == "sick_note"
+
+  # P48: a unidade na verificação pública do documento do CAPS — "Centro de
+  # Atenção Psicossocial", o município e o CNES.
+  def generic_unit_line
+    city = CityProfile.current&.name.presence || Current.city&.name
+    [ CAPS_UNIT_LABEL, city, (health_unit&.cnes.presence && "CNES #{health_unit.cnes}") ].compact_blank.join(" — ")
+  end
   def content_data = JSON.parse(content)
   def issued? = status == "issued"
   def cancelled? = status == "cancelled"

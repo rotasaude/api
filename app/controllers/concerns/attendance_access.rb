@@ -33,7 +33,12 @@ module AttendanceAccess
   end
 
   def render_failure(result, status_map)
-    payload = { error: result.reason.to_s }.merge(result.details.transform_values { |v| v.respond_to?(:iso8601) ? v.iso8601 : v })
-    render json: payload, status: status_map.fetch(result.reason, :unprocessable_entity)
+    render json: AttendanceAccess.failure_payload(result), status: status_map.fetch(result.reason, :unprocessable_entity)
+  end
+
+  # `{ error, ...details }` (datas em ISO 8601) — também o formato de recusa do
+  # 19 nas rotas do CAPS (ClinicalDocumentResponses).
+  def self.failure_payload(result)
+    { error: result.reason.to_s }.merge(result.details.transform_values { |v| v.respond_to?(:iso8601) ? v.iso8601 : v })
   end
 end
