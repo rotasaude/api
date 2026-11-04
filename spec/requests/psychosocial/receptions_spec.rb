@@ -157,6 +157,21 @@ RSpec.describe "CAPS — acolhimento", type: :request do
     expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "enrollment.started_on" ])
   end
 
+  it "início da matrícula antes do piso (13 meses) ou do nascimento → invalid_request enrollment.started_on, nada gravado" do
+    patient && staff
+    unchanged = -> { [ PsychosocialReception.count, PsychosocialEnrollment.count, PsychosocialMonthlyRecord.count, DomainEvent.count ] }
+    expect do
+      json_post "/psychosocial/receptions", body(outcome: "enrolled", enrollment: enrollment_block(started_on: "2025-10-31"))
+    end.not_to(change(&unchanged))
+    expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "enrollment.started_on" ])
+
+    patient.update!(birth_date: "2026-10-05")
+    expect do
+      json_post "/psychosocial/receptions", body(outcome: "enrolled", enrollment: enrollment_block(started_on: "2026-09-12"))
+    end.not_to(change(&unchanged))
+    expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "enrollment.started_on" ])
+  end
+
   it "corrida na matrícula aberta (índice único) desfaz a recepção: 409 enrollment_open, nada gravado" do
     enrollment!(caps, patient: patient, reference: staff)
     referral = referral!

@@ -85,6 +85,28 @@ RSpec.describe "CAPS — matrícula", type: :request do
       end
     end
 
+    it "piso do início: 12 meses antes do mês corrente abre 13 RAAS num único INSERT; 13 meses → 422; antes do nascimento → 422" do
+      travel_to(Time.zone.local(2026, 11, 18, 15, 0)) do
+        unchanged = -> { [ PsychosocialEnrollment.count, PsychosocialMonthlyRecord.count ] }
+        expect { json_post "/psychosocial/enrollments", body(started_on: "2025-10-31") }.not_to(change(&unchanged))
+        expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "started_on" ])
+
+        inserts = []
+        counter = ->(*, payload) { inserts << payload[:sql] if payload[:sql].match?(/INSERT INTO "psychosocial_monthly_records"/) }
+        id = ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { enroll!(started_on: "2025-11-01") }
+        months = PsychosocialMonthlyRecord.where(psychosocial_enrollment_id: id).order(:month).pluck(:month)
+        expect(months.size).to eq(13)
+        expect([ months.first, months.last ]).to eq([ Date.new(2025, 11, 1), Date.new(2026, 11, 1) ])
+        expect(inserts.size).to eq(1)
+
+        baby = caps_patient!
+        baby.update!(birth_date: "2026-10-05")
+        expect { json_post "/psychosocial/enrollments", body(patient_id: baby.id, started_on: "2026-09-12") }.not_to(change(&unchanged))
+        expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "started_on" ])
+        expect(enroll!(patient_id: baby.id, started_on: "2026-10-05")).to be_present
+      end
+    end
+
     it "retroativa com um mês intermediário fechado → 422 month_closed started_on, nada gravado" do
       travel_to(Time.zone.local(2026, 11, 18, 15, 0)) do
         PsychosocialMonthClosure.create!(health_unit: caps, month: Date.new(2026, 10, 1), closed_at: Time.current, closed_by_user: staff)
@@ -198,6 +220,18 @@ RSpec.describe "CAPS — matrícula", type: :request do
           .not_to(change { PsychosocialMonthlyRecord.count })
         expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "started_on" ])
         expect(PsychosocialEnrollment.find(other).started_on).to eq(Date.new(2026, 11, 3))
+      end
+    end
+
+    it "início movido para antes do piso (13 meses) ou do nascimento → 422 invalid_request started_on" do
+      travel_to(Time.zone.local(2026, 11, 18, 15, 0)) do
+        id = enroll!(started_on: "2026-11-03")
+        json_patch "/psychosocial/enrollments/#{id}", started_on: "2025-10-31"
+        expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "started_on" ])
+        patient.update!(birth_date: "2026-10-05")
+        json_patch "/psychosocial/enrollments/#{id}", started_on: "2026-09-12"
+        expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "started_on" ])
+        expect(PsychosocialMonthlyRecord.where(psychosocial_enrollment_id: id).count).to eq(1)
       end
     end
 

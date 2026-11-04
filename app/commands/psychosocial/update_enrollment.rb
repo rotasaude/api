@@ -49,7 +49,7 @@ module Psychosocial
       (KEYS - %w[esf_cnes next_visit_at]).each do |key|
         next unless attrs.key?(key)
 
-        value, error = CreateEnrollment.field(key, attrs[key], unit: enrollment.health_unit)
+        value, error = CreateEnrollment.field(key, attrs[key], unit: enrollment.health_unit, patient: enrollment.patient)
         next problems << problem(key, error) if error
 
         if LOCKED.include?(key) && value != enrollment.public_send(key)

@@ -47,7 +47,7 @@ module Psychosocial
       outcome = attrs["outcome"]
       problems << problem("outcome") unless Catalog::RECEPTION_OUTCOMES.include?(outcome)
       referral = referral(attrs, unit, patient, problems)
-      values = enrollment_values(attrs, outcome, unit, problems)
+      values = enrollment_values(attrs, outcome, unit, patient, problems)
       return failure(problems) if problems.any?
 
       result = nil
@@ -127,7 +127,7 @@ module Psychosocial
     end
 
     # Os valores da matrícula, só com `enrolled` (nil sem matrícula).
-    def enrollment_values(attrs, outcome, unit, problems)
+    def enrollment_values(attrs, outcome, unit, patient, problems)
       block = attrs["enrollment"]
       unless outcome == ENROLLED
         problems << problem("enrollment") unless block.nil?
@@ -138,7 +138,7 @@ module Psychosocial
         return nil
       end
 
-      values, block_problems = CreateEnrollment.check(block.stringify_keys, unit: unit)
+      values, block_problems = CreateEnrollment.check(block.stringify_keys, unit: unit, patient: patient)
       problems.concat(block_problems.map { |p| p.merge(path: "enrollment.#{p[:path]}") })
       values
     end

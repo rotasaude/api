@@ -1,6 +1,8 @@
 # Matrícula no CAPS (ADR 0049; contrato §4, P13). O CAPS vem da lotação de
 # quem pede (o controller já conferiu `health_unit_id`). Campos:
-#   patient_id; started_on (não futuro); origin (origins do raas.yml);
+#   patient_id; started_on (não futuro, não antes do dia 1º do mês
+#   Catalog::MAX_RETROACTIVE_MONTHS antes do corrente nem do nascimento do
+#   paciente); origin (origins do raas.yml);
 #   cid_main (CID-10 da release ativa, gravado sem ponto); cid_secondary
 #   (até 4); substances (não vazio, códigos do raas.yml, "99" sozinho);
 #   esf_covered e, se coberta, esf_cnes de 7 dígitos (falta →
@@ -34,21 +36,22 @@ module Psychosocial
     def call(attrs:, unit:, by:, reception: nil)
       attrs = attrs.to_h.stringify_keys
       patient = Input.uuid?(attrs["patient_id"]) ? Patient.find_by(id: attrs["patient_id"]) : nil
-      values, problems = check(attrs.except("health_unit_id", "patient_id"), unit: unit)
+      values, problems = check(attrs.except("health_unit_id", "patient_id"), unit: unit, patient: patient)
       problems.unshift(problem("patient_id")) unless patient
       return failure(problems) if problems.any?
 
       insert(values, patient: patient, unit: unit, by: by, reception: reception)
     end
 
-    # Valida os campos da matrícula (sem CAPS nem paciente). -> [values, problems]
-    def check(attrs, unit:)
+    # Valida os campos da matrícula (sem CAPS nem paciente; o paciente, quando
+    # conhecido, dá o piso do início pelo nascimento). -> [values, problems]
+    def check(attrs, unit:, patient: nil)
       problems = (attrs.keys - BLOCK_KEYS).map { |key| problem(key[0, KEY_PATH_MAX]) }
       values = {}
       (BLOCK_KEYS - %w[esf_cnes]).each do |key|
         next if !attrs.key?(key) && !REQUIRED.include?(key)
 
-        value, error = field(key, attrs[key], unit: unit)
+        value, error = field(key, attrs[key], unit: unit, patient: patient)
         if error
           problems << problem(key, error)
         else
@@ -64,11 +67,11 @@ module Psychosocial
     end
 
     # Um campo da matrícula (também a edição). -> [valor, nil] | [nil, código do erro]
-    def field(key, raw, unit:)
+    def field(key, raw, unit:, patient: nil)
       case key
       when "started_on"
         date = Input.date(raw)
-        date && date <= Time.zone.today ? [ date, nil ] : invalid
+        date && start_allowed?(date, patient) ? [ date, nil ] : invalid
       when "origin" then Raas.valid?(:origins, raw) ? [ raw, nil ] : invalid
       when "cid_main"
         code = ClinicalTerms.cid10_code(raw)
@@ -116,6 +119,24 @@ module Psychosocial
       Result.fail(:enrollment_open)
     end
 
+    # Início entre o piso da retroatividade (dia 1º do mês, MAX_RETROACTIVE_MONTHS
+    # antes do corrente; limita os meses que a matrícula abre de uma vez) e hoje,
+    # nunca antes do nascimento do paciente (quando houver).
+    def start_allowed?(date, patient)
+      today = Time.zone.today
+      return false if date > today || date < (today.beginning_of_month << Catalog::MAX_RETROACTIVE_MONTHS)
+
+      born = birth_date(patient)
+      born.nil? || date >= born
+    end
+
+    def birth_date(patient)
+      raw = patient&.birth_date
+      raw.present? ? Date.iso8601(raw) : nil
+    rescue Date::Error
+      nil
+    end
+
     def secondary(raw)
       raw = [] if raw.nil?
       return invalid unless raw.is_a?(Array) && raw.size <= Catalog::MAX_SECONDARY_CIDS
@@ -139,6 +160,6 @@ module Psychosocial
       Result.fail(first[:error].to_sym, details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :secondary, :substances, :invalid, :problem, :failure
+    private_class_method :start_allowed?, :birth_date, :secondary, :substances, :invalid, :problem, :failure
   end
 end

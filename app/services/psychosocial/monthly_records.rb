@@ -34,12 +34,18 @@ module Psychosocial
       scope.first!
     end
 
-    # Continuidade de uma matrícula que começa num mês passado (fix round 1 da
-    # Task 9): a RAAS de TODO mês do início até o mês corrente. Quem chama já
-    # conferiu, sob a trava do CAPS, que nenhum desses meses está fechado
-    # (any_closed?). -> [PsychosocialMonthlyRecord]
+    # Continuidade de uma matrícula que começa num mês passado (fix rounds 1 e
+    # 2 da Task 9): a RAAS de TODO mês do início até o mês corrente, num único
+    # INSERT ... ON CONFLICT DO NOTHING. Quem chama já conferiu, sob a trava do
+    # CAPS, que nenhum desses meses está fechado (any_closed?) e que o início
+    # respeita o piso (Catalog::MAX_RETROACTIVE_MONTHS). -> [PsychosocialMonthlyRecord] por mês
     def ensure_through!(enrollment, today: Time.zone.today)
-      months(enrollment.started_on, today).map { |month| ensure!(enrollment, month, strict: true) }
+      list = months(enrollment.started_on, today)
+      return [] if list.empty?
+
+      rows = list.map { |month| { psychosocial_enrollment_id: enrollment.id, health_unit_id: enrollment.health_unit_id, month: month, status: "open" } }
+      PsychosocialMonthlyRecord.insert_all(rows, unique_by: %i[psychosocial_enrollment_id month])
+      PsychosocialMonthlyRecord.where(psychosocial_enrollment_id: enrollment.id, month: list.first..list.last).order(:month).to_a
     end
 
     # Algum mês com fechamento ativo no CAPS entre `from` e `to` (qualquer dia

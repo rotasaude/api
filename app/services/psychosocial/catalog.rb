@@ -40,6 +40,9 @@ module Psychosocial
     MAX_EXPECTED_STAY_DAYS = 30
     AUTHORIZATION = /\A\d{13}\z/
     REVIEW_DAYS = (30..365)
+    # Matrícula retroativa: o início no máximo até o dia 1º do mês, 12 meses
+    # antes do mês corrente (cada mês do início ao corrente ganha a RAAS).
+    MAX_RETROACTIVE_MONTHS = 12
     DEFAULT_REVIEW_DAYS = 90
     # Limites do acolhimento noturno por modalidade (PsychosocialSetting#night_limits):
     # CAPS III por sequência e alternadas; AD III/IV pelo total na janela.
