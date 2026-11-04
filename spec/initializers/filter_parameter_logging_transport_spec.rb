@@ -6,10 +6,9 @@ RSpec.describe "filtro de log do módulo 30" do
   it "filtra as chaves do transporte e do TFD; a chave parecida passa" do
     filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
     keys = %w[license_number companion document provider_name address exception_note appointment_at report cid10 sigtap_code
-              justification companion_reason receipt_number carrier odometer_start odometer_end fuel expenses station filename data
-              from to]
+              justification companion_reason receipt_number carrier odometer_start odometer_end fuel expenses station filename data]
     expect(filter.filter(keys.index_with { "valor-sensivel" }).values.uniq).to eq([ "[FILTERED]" ])
-    expect(filter.filter("destination_id" => "d1", "vehicle_id" => "v1", "trip_id" => "t1", "stop_id" => "s1", "from_on" => "x"))
-      .to eq("destination_id" => "d1", "vehicle_id" => "v1", "trip_id" => "t1", "stop_id" => "s1", "from_on" => "x")
+    expect(filter.filter("destination_id" => "d1", "vehicle_id" => "v1", "trip_id" => "t1", "stop_id" => "s1", "from_on" => "x", "from" => "2026-01-01", "to" => "closed"))
+      .to eq("destination_id" => "d1", "vehicle_id" => "v1", "trip_id" => "t1", "stop_id" => "s1", "from_on" => "x", "from" => "2026-01-01", "to" => "closed")
   end
 end

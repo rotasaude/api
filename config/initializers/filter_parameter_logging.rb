@@ -112,11 +112,7 @@ Rails.application.config.filter_parameters += [
   # passagem, diário de bordo (odômetro, combustível, despesas, posto) e o
   # comprovante da prestação de contas (`cpf`, `cns`, `reason`, `note`,
   # `address` e `data` já estavam acima).
-  /\A(license_number|companion|document|provider_name|address|exception_note|appointment_at|report|cid10|sigtap_code|justification|companion_reason|receipt_number|carrier|odometer_start|odometer_end|fuel|expenses|station|filename|data)\z/,
-  # As datas da internação do TFD (POST /tfd/cases/:id/inpatient { from, to }):
-  # com o id do processo na URL, ligariam o paciente à internação (C6). Também
-  # cobrem o período de /transport/no_shows, sem prejuízo.
-  /\A(from|to)\z/
+  /\A(license_number|companion|document|provider_name|address|exception_note|appointment_at|report|cid10|sigtap_code|justification|companion_reason|receipt_number|carrier|odometer_start|odometer_end|fuel|expenses|station|filename|data)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
