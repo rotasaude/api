@@ -53,6 +53,45 @@ RSpec.describe Terminology::SigtapReader do
     expect(TerminologyRelease.where(kind: "sigtap", version: "202611", status: "active")).to be_empty
   end
 
+  # Reescreve QT_MAXIMA_EXECUCAO e QT_DIAS_PERMANENCIA (4 colunas cada, logo após sexo) da linha do código.
+  def rewrite_limits(dir, code, max_quantity, stay_days)
+    path = File.join(dir, "tb_procedimento.txt")
+    columns = SigtapSample::LAYOUTS.fetch("tb_procedimento")
+    offset = columns.take_while { |name, *| name != "QT_MAXIMA_EXECUCAO" }.sum { |_, size, _| size }
+    lines = File.binread(path).split("\r\n").map do |line|
+      next line unless line.start_with?(code)
+
+      line.dup.tap { |l| l[offset, 8] = max_quantity.ljust(4) + stay_days.ljust(4) }
+    end
+    File.binwrite(path, lines.join("\r\n") + "\r\n")
+  end
+
+  it "QT_MAXIMA_EXECUCAO 0, QT_DIAS_PERMANENCIA 9999 e valor em branco viram nulo" do
+    result = Dir.mktmpdir do |dir|
+      SigtapSample.write_to(dir, competence: "202611")
+      rewrite_limits(dir, "0301080020", "0000", "9999") # a noite: 1 e 14 na amostra
+      rewrite_limits(dir, "0301080208", "", "")         # o individual: 31 na amostra
+      rewrite_limits(dir, "0301080216", "0007", "0003") # valores reais continuam valendo
+      import(dir)
+    end
+    expect(result).to be_ok
+    rows = SigtapProcedure.where(release_id: result.payload[:release].id).index_by(&:code)
+    expect([ rows["0301080020"].max_quantity, rows["0301080020"].max_stay_days ]).to eq([ nil, nil ])
+    expect([ rows["0301080208"].max_quantity, rows["0301080208"].max_stay_days ]).to eq([ nil, nil ])
+    expect([ rows["0301080216"].max_quantity, rows["0301080216"].max_stay_days ]).to eq([ 7, 3 ])
+  end
+
+  it "atributo de procedimento que não está na release recusa a release inteira" do
+    result = Dir.mktmpdir do |dir|
+      SigtapSample.write_to(dir, competence: "202611")
+      File.open(File.join(dir, "rl_procedimento_detalhe.txt"), "ab") { |f| f.write("9999999999036202611\r\n") }
+      import(dir)
+    end
+    expect(result.reason).to eq(:invalid_file)
+    expect(TerminologyRelease.where(kind: "sigtap", version: "202611", status: "active")).to be_empty
+    expect(SigtapProcedureAttribute.joins(:release).where(terminology_releases: { version: "202611" })).to be_empty
+  end
+
   it "linha de atributo de release ativa é imutável" do
     release = Dir.mktmpdir { |dir| import(SigtapSample.write_to(dir, competence: "202611")) }.payload[:release]
     row = SigtapProcedureAttribute.find_by!(release_id: release.id)
