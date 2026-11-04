@@ -39,7 +39,7 @@ module Timeline
         name = Labels.professional_name(document.author_user)
         title = title(document)
         Entry.new(kind: KIND, source_id: document.id, occurred_at: document.issued_at,
-                  unit: { id: unit.id, name: unit.name },
+                  unit: Labels.unit(unit),
                   professional: { name: Screenings::Json.staff_name(document.author_user), cbo_code: document.cbo_code },
                   title: title, summary: "#{Labels::MODES[document.issue_mode]} · #{Labels::DOCUMENT_STATUS[document.status]}",
                   status: document.status, detail_ref: { type: "clinical_document", id: document.id },

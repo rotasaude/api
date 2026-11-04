@@ -33,6 +33,14 @@ class PerformedProcedure < ApplicationRecord
   belongs_to :billing_export, optional: true
 
   scope :recorded, -> { where(status: "recorded") }
+  # Módulo 31 (P45, P51): fora a linha do CAPS — a da fonte `psychosocial` e a
+  # lançada numa unidade `caps` — nas leituras gerais (linha do tempo da UBS,
+  # boas práticas do 23). A linha do laboratório tem health_unit_id nulo.
+  scope :outside_caps, lambda {
+    where.not(source: "psychosocial")
+      .where("performed_procedures.health_unit_id IS NULL OR performed_procedures.health_unit_id NOT IN " \
+             "(SELECT health_units.id FROM health_units WHERE health_units.kind = 'caps')")
+  }
 
   def inspect = "#<PerformedProcedure id=#{id} source=#{source} status=#{status} billable=#{billable}>"
 end

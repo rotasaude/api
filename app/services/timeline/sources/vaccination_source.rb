@@ -31,11 +31,11 @@ module Timeline
         name = ::Vaccination::Immunobiologicals.find(record.immunobiological_code)&.name
         title = "#{label(name)} — #{::Vaccination::Terminologies.name('dose', record.dose_code)}"
         place = record.health_unit
-        Entry.new(kind: KIND, source_id: record.id, occurred_at: record.applied_at, unit: { id: place.id, name: place.name },
+        Entry.new(kind: KIND, source_id: record.id, occurred_at: record.applied_at, unit: Labels.unit(place),
                   professional: { name: Labels.professional_name(record.vaccinator_user), cbo_code: record.vaccinator_cbo },
                   title: title, summary: nil, status: record.cancelled? ? "cancelled" : "active",
                   detail_ref: { type: "immunization", id: record.id },
-                  citizen: { title: title, summary: nil, status: nil, professional_name: nil, unit: record.transcription ? nil : { id: place.id, name: place.name } },
+                  citizen: { title: title, summary: nil, status: nil, professional_name: nil, unit: record.transcription ? nil : Labels.unit(place) },
                   document: nil)
       end
       private_class_method :entry

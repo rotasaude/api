@@ -22,6 +22,9 @@ module CareLines
     def call(enrollment:, by:)
       ApplicationRecord.transaction do
         unit = HealthUnit.lock("FOR SHARE").find(enrollment.team.health_unit_id)
+        # Módulo 31 (P51): equipe de CAPS não abre pedido da agenda.
+        next Result.fail(:caps_unit_not_allowed) if unit.caps?
+
         pairs = Citizen.not_erased.verification_level_verified.where(patient_id: enrollment.patient_id)
                        .order(:id).lock("FOR NO KEY UPDATE").to_a
         enrollment.lock!

@@ -68,15 +68,20 @@ RSpec.describe "CAPS — sigilo fora das tabelas do módulo" do
       dispensation
     end
 
-    it "fica fora da linha do tempo geral e da última retirada da UBS" do
+    it "fica fora da linha do tempo geral e da última retirada da UBS; a da receita da UBS aparece" do
       action = record_action!(caps, staff, performed_at: Time.zone.local(2026, 11, 10, 10), participants: [ { enrollment_id: enrollment.id } ])
       prescription = caps_document!(action, kind: "prescription", items: [ losartana ], issued_at: Time.zone.local(2026, 11, 10, 11))
       dispensation = dispensed!(prescription, losartana)
+      # Controle positivo: receita do 19 da UBS (sem psychosocial_action_id), do mesmo paciente.
+      ubs = create_unit("UBS Centro")
+      consultation = started_consultation!(unit: ubs, doctor: doctor!(ubs), citizen: Citizen.find_by!(patient_id: patient.id))
+      ubs_prescription = pharmacy_prescription!(consultation: consultation, items: [ { catalog: amoxicilina } ])
+      ubs_dispensation = dispensed!(ubs_prescription, amoxicilina)
 
       entries = Timeline::Sources::DispensationSource.entries(person: person, before: nil, limit: 10, from: nil, to: nil)
+      expect(entries.map(&:source_id)).to eq([ ubs_dispensation.id ])
       expect(entries.map(&:source_id)).not_to include(dispensation.id)
-      expect(entries).to eq([])
-      expect(Pharmacy::Dispensed.last_on(patient.id)).to eq({})
+      expect(Pharmacy::Dispensed.last_on(patient.id)).to eq(amoxicilina.id => Date.new(2026, 11, 18))
       expect(Dispensation.where(clinical_document_id: prescription.id).count).to eq(1)
     end
   end

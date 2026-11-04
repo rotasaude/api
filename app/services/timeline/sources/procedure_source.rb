@@ -4,8 +4,9 @@
 # profissional com CBO; nunca crítica nem faturamento. Cidadão: nome, unidade
 # e situação "Realizado". Vazio sem procedure_billing ou sem paciente. A
 # trilha é do controlador (uma por leitura). A linha do CAPS (`source:
-# "psychosocial"`, BPA-I do acolhimento) nunca entra (módulo 31, P45): o
-# prontuário do CAPS só na linha do tempo restrita da equipe lotada.
+# "psychosocial"`, BPA-I do acolhimento, ou qualquer linha lançada numa
+# unidade `caps`) nunca entra (módulo 31, P45, P51): o prontuário do CAPS só
+# na linha do tempo restrita da equipe lotada.
 module Timeline
   module Sources
     module ProcedureSource
@@ -17,7 +18,7 @@ module Timeline
       def entries(person:, before:, limit:, from:, to:)
         return [] unless person.patient_id && Billing::Gate.enabled?(Current.city)
 
-        scope = ::PerformedProcedure.recorded.where(patient_id: person.patient_id).where.not(source: "psychosocial")
+        scope = ::PerformedProcedure.recorded.where(patient_id: person.patient_id).merge(::PerformedProcedure.outside_caps)
                                     .includes(:health_unit, :exam_provider, professional_user: :professional)
         rows = Window.apply(scope, kind: KIND, column: "performed_procedures.created_at", id_column: "performed_procedures.id",
                                    before: before, from: from, to: to).limit(limit).to_a
@@ -29,7 +30,7 @@ module Timeline
         title = labels[[ procedure.sigtap_code, procedure.sigtap_competence ]] ||=
           Billing::Labels.procedure(procedure.sigtap_code, procedure.sigtap_competence)
         place = Billing::Establishment.of(procedure)
-        Entry.new(kind: KIND, source_id: procedure.id, occurred_at: procedure.created_at, unit: { id: place.id, name: place.name },
+        Entry.new(kind: KIND, source_id: procedure.id, occurred_at: procedure.created_at, unit: Labels.unit(place),
                   professional: { name: Labels.professional_name(procedure.professional_user), cbo_code: procedure.cbo_code },
                   title: title, summary: "Realizado em #{procedure.performed_on.strftime('%d/%m/%Y')}", status: "recorded",
                   detail_ref: { type: "performed_procedure", id: procedure.id },

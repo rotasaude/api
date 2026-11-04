@@ -47,7 +47,7 @@ module Timeline
 
       def unit(location)
         place = location.health_unit
-        place ? { id: place.id, name: place.name } : { id: location.id, name: location.name }
+        place ? Labels.unit(place) : { id: location.id, name: location.name }
       end
       private_class_method :unit
     end

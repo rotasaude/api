@@ -7,9 +7,14 @@
 # horários → pedidos) e do check-in: com a unidade por último, marcação e
 # esvaziamento cruzados davam deadlock (500). Horário antes de pedido é a ordem
 # de CancelByCitizen, Lapse e Drain. Unidade desativada levanta
-# HealthUnit::Inactive (quem chama devolve invalid_unit).
+# HealthUnit::Inactive (quem chama devolve invalid_unit). Unidade `caps`
+# levanta CapsUnitNotAllowed (módulo 31, P32: quem chama devolve
+# caps_unit_not_allowed) — conferida sob a trava, o ponto comum de Book,
+# FitIn e Schedule.
 module Appointments
   module Placement
+    CapsUnitNotAllowed = Class.new(StandardError)
+
     module_function
 
     def parse(value)
@@ -19,7 +24,9 @@ module Appointments
     end
 
     def lock!(request)
-      HealthUnit.lock_active!(request.target_unit_id)
+      unit = HealthUnit.lock_active!(request.target_unit_id)
+      raise CapsUnitNotAllowed if unit.caps?
+
       lock_from_citizen!(request)
     end
 

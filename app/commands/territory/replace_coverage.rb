@@ -1,8 +1,8 @@
 # Substitui o conjunto de unidades que cobrem o bairro (ADR 0023; spec §4.2).
 # Trava o bairro (FOR UPDATE): duas edições simultâneas não calculam
 # adicionados/removidos sobre o mesmo estado velho. Toda unidade do conjunto
-# novo precisa existir e estar ativa. Reasons: :inactive_neighborhood,
-# :inactive_unit.
+# novo precisa existir e estar ativa, e nenhuma pode ser CAPS (módulo 31).
+# Reasons: :inactive_neighborhood, :inactive_unit, :caps_unit_not_allowed.
 module Territory
   class ReplaceCoverage
     def self.call(neighborhood:, health_unit_ids:, by:)
@@ -19,6 +19,9 @@ module Territory
     def self.replace(neighborhood, ids, by)
       return Result.fail(:inactive_neighborhood) unless neighborhood.active?
       return Result.fail(:inactive_unit) unless HealthUnit.where(id: ids, active: true).count == ids.size
+      # Módulo 31 (P51): o CAPS não é unidade de referência do bairro — a
+      # triagem web abriria nele o pedido da agenda, com o nome no wpda.
+      return Result.fail(:caps_unit_not_allowed, details: { path: "health_unit_ids" }) if HealthUnit.where(id: ids, kind: "caps").exists?
 
       current = neighborhood.coverages.pluck(:health_unit_id)
       added = (ids - current).sort

@@ -34,7 +34,7 @@ module Vaccination
         { immunobiological_name: Immunobiologicals.find(record.immunobiological_code)&.name,
           dose_name: Terminologies.name("dose", record.dose_code),
           applied_on: record.applied_at.in_time_zone.to_date.iso8601,
-          place_name: record.transcription ? nil : record.health_unit.name,
+          place_name: record.transcription ? nil : Timeline::Sources::Labels.unit_name(record.health_unit), # CAPS genérico (P51)
           transcription: record.transcription,
           rnds: accepted.include?(record.id) ? "sent" : "sending" }
       end

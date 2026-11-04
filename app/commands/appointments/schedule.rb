@@ -18,9 +18,6 @@
 module Appointments
   class Schedule
     def self.call(request:, scheduled_at:, health_unit_id:, by:, allow_overlap: false, now: Time.current)
-      # Módulo 31 (P32): pedido com destino CAPS nunca vira horário.
-      return Result.fail(:caps_unit_not_allowed) if request.target_unit&.caps?
-
       at = parse(scheduled_at)
       return Result.fail(:invalid_time) if at.nil? || at <= now || at > now + Appointment::MAX_AHEAD
       return Result.fail(:wrong_unit) unless request.target_unit_id == health_unit_id.to_s
@@ -49,6 +46,8 @@ module Appointments
       end
     rescue HealthUnit::Inactive
       Result.fail(:invalid_unit)
+    rescue Placement::CapsUnitNotAllowed
+      Result.fail(:caps_unit_not_allowed)
     end
 
     # pg_advisory_xact_lock devolve void: execute, nunca select_value.

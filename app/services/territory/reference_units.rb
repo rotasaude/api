@@ -2,7 +2,9 @@
 # que cobrem o bairro, por nome. Calculada na hora, nunca gravada; informa e
 # sugere, nunca restringe. Fonte única do cidadão (GET /citizen/triages/:id)
 # e do atendimento (reference_unit_ids na fila da unidade). Não vai para o
-# relatório público (/r/:token): decisão de 2026-09-28.
+# relatório público (/r/:token): decisão de 2026-09-28. O CAPS nunca é
+# referência (módulo 31, P51): a cobertura o recusa, e a leitura ignora o que
+# já estava gravado.
 module Territory
   module ReferenceUnits
     module_function
@@ -10,7 +12,7 @@ module Territory
     def for(neighborhood_id)
       return [] if neighborhood_id.blank?
 
-      HealthUnit.where(active: true)
+      HealthUnit.where(active: true).where.not(kind: "caps")
                 .where(id: NeighborhoodCoverage.where(neighborhood_id: neighborhood_id).select(:health_unit_id))
                 .order(:name).to_a
     end
@@ -22,6 +24,7 @@ module Territory
 
       NeighborhoodCoverage.joins(:health_unit)
                           .where(neighborhood_id: ids, health_units: { active: true })
+                          .where.not(health_units: { kind: "caps" })
                           .order("health_units.name")
                           .pluck(:neighborhood_id, :health_unit_id)
                           .group_by(&:first)

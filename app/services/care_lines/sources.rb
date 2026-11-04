@@ -129,12 +129,12 @@ module CareLines
 
     # Só emite as fontes pedidas: 0301100039/0101040024 valem como PA e peso+altura
     # (se pedidas) e como procedure:<código> (se pedido). A linha do CAPS
-    # (`source: "psychosocial"`) nunca conta (módulo 31, P45): a boa prática da
-    # UBS não revela o acompanhamento no CAPS.
+    # (`source: "psychosocial"`, ou lançada numa unidade `caps`) nunca conta
+    # (módulo 31, P45, P51): a boa prática da UBS não revela o acompanhamento.
     def procedures!(result, ids, since, codes, sources)
       return if codes.empty?
 
-      PerformedProcedure.where(patient_id: ids, status: "recorded", sigtap_code: codes).where.not(source: "psychosocial")
+      PerformedProcedure.where(patient_id: ids, status: "recorded", sigtap_code: codes).merge(PerformedProcedure.outside_caps)
                         .where(performed_on: since..)
                         .pluck(:patient_id, :sigtap_code, :performed_on).each do |patient_id, code, on|
         targets = [ "procedure:#{code}" ]

@@ -22,7 +22,7 @@ module Timeline
         unit = appointment.health_unit
         name = appointment.professional&.professional_name
         Entry.new(kind: KIND, source_id: appointment.id, occurred_at: appointment.scheduled_at,
-                  unit: { id: unit.id, name: unit.name }, professional: name && { name: name, cbo_code: nil },
+                  unit: Labels.unit(unit), professional: name && { name: name, cbo_code: nil },
                   title: title, summary: nil, status: appointment.status,
                   detail_ref: { type: "appointment_request", id: appointment.request_id },
                   citizen: { title: title, summary: nil, status: appointment.status, professional_name: name },

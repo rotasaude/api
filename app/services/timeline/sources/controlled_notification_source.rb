@@ -22,7 +22,7 @@ module Timeline
         unit = document.attendance.health_unit
         item = content.dig("item", "printed_description")
         Entry.new(kind: KIND, source_id: document.id, occurred_at: document.issued_at,
-                  unit: { id: unit.id, name: unit.name },
+                  unit: Labels.unit(unit),
                   professional: { name: Screenings::Json.staff_name(document.author_user), cbo_code: document.cbo_code },
                   title: "Notificação de receita #{content['notification_type']} (papel)",
                   summary: [ item, "talão #{content['paper_number']}" ].compact.join(" · "),

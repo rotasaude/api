@@ -94,6 +94,8 @@ module CareRegulation
       id = attrs["health_unit_id"]
       unit = id.is_a?(String) ? HealthUnit.lock_active!(id) : nil
       return [ refuse("health_unit_id"), nil ] unless unit
+      # Módulo 31 (P51): o CAPS não é prestador da regulação (o pedido iria à agenda, com o nome no wpda).
+      return [ Result.fail(:caps_unit_not_allowed, details: { path: "health_unit_id" }), nil ] if unit.caps?
       # O front tipa `cnes` como texto: unidade sem CNES não vira prestador.
       return [ refuse("health_unit_id"), nil ] if unit.cnes.nil?
       return [ refuse("cnes"), nil ] if attrs.key?("cnes") && attrs["cnes"] != unit.cnes

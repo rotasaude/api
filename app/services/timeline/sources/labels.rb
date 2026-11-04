@@ -21,9 +21,19 @@ module Timeline
       # 27a: só o profissional vê a dispensação (não há texto do cidadão).
       DISPENSATION_TITLE = "Dispensação de medicamentos".freeze
 
+      # Módulo 31 (P48, P51): a unidade `caps` nunca sai pelo nome nem pela
+      # modalidade nas fontes gerais (profissional da UBS, cidadão e PEC).
+      CAPS_UNIT_NAME = ClinicalDocument::CAPS_UNIT_LABEL
+
       module_function
 
       def professional_name(user) = user&.professional&.professional_name
+
+      # Ponto comum da unidade das entradas gerais: HealthUnit ou
+      # Billing::Establishment (ambos com `kind`). Só a fonte do CAPS
+      # (PsychosocialSource, equipe lotada) mostra o nome real.
+      def unit(unit) = { id: unit.id, name: unit_name(unit) }
+      def unit_name(unit) = unit.kind == "caps" ? CAPS_UNIT_NAME : unit.name
     end
   end
 end

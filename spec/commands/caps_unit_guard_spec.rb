@@ -44,9 +44,14 @@ RSpec.describe "P32 — unidade CAPS fora do check-in e da marcação" do
     let(:request_to_caps) { triage_request!(citizen, unit: caps) }
     let(:future) { (Time.current + 2.days).change(hour: 9).iso8601 }
 
+    # A guarda mora em Appointments::Placement.lock!, sob a trava da unidade:
+    # os três comandos chegam lá com o resto das conferências prévias satisfeitas.
     it "Book, FitIn e Schedule recusam pedido com destino CAPS; nenhum horário" do
-      book = Appointments::Book.call(request: request_to_caps, professional: nil, starts_at: future, type: nil, by: staff)
-      fit_in = Appointments::FitIn.call(request: request_to_caps, professional: nil, shift: nil, starts_at: future, type: nil,
+      professional = Struct.new(:id).new(SecureRandom.uuid)
+      shift = Struct.new(:professional_id).new(professional.id)
+      type = Struct.new(:active, :duration_minutes, :key).new(true, 20, "consulta_medica")
+      book = Appointments::Book.call(request: request_to_caps, professional: professional, starts_at: future, type: type, by: staff)
+      fit_in = Appointments::FitIn.call(request: request_to_caps, professional: professional, shift: shift, starts_at: future, type: type,
                                         reason: "Encaixe por necessidade clínica", by: staff)
       schedule = Appointments::Schedule.call(request: request_to_caps, scheduled_at: future, health_unit_id: caps.id, by: staff)
       expect([ book, fit_in, schedule ].map { |result| reason_of(result) }).to all(eq([ true, :caps_unit_not_allowed ]))
@@ -90,6 +95,47 @@ RSpec.describe "P32 — unidade CAPS fora do check-in e da marcação" do
       expect(reason_of(result)).to eq([ true, :caps_unit_not_allowed ])
       expect(AppointmentRequest.where(target_unit_id: caps.id)).to be_empty
       expect(HealthUnitDrain.count).to eq(0)
+    end
+  end
+
+  # Fix round 1 (P51, G1): os cadastros que levam a pedido automático — a
+  # cobertura do bairro (unidade de referência da triagem web) e o prestador
+  # próprio da regulação — também recusam o CAPS; a leitura da cobertura
+  # ignora o CAPS gravado antes (dado antigo).
+  describe "cadastros e caminhos automáticos (P51)" do
+    let(:neighborhood) { Neighborhood.create!(name: "Centro", source: "seed") }
+
+    it "cobertura do bairro: recusa o CAPS (path health_unit_ids) sem mudar o que havia" do
+      Territory::ReplaceCoverage.call(neighborhood: neighborhood, health_unit_ids: [ ubs.id ], by: nil)
+      result = Territory::ReplaceCoverage.call(neighborhood: neighborhood, health_unit_ids: [ ubs.id, caps.id ], by: nil)
+      expect(reason_of(result)).to eq([ true, :caps_unit_not_allowed ])
+      expect(result.details).to eq(path: "health_unit_ids")
+      expect(neighborhood.coverages.pluck(:health_unit_id)).to eq([ ubs.id ])
+    end
+
+    it "unidade de referência ignora o CAPS gravado direto na cobertura (dado antigo)" do
+      [ ubs, caps ].each { |unit| NeighborhoodCoverage.create!(neighborhood: neighborhood, health_unit: unit) }
+      expect(Territory::ReferenceUnits.for(neighborhood.id)).to eq([ ubs ])
+      expect(Territory::ReferenceUnits.ids_by_neighborhood([ neighborhood.id ])).to eq(neighborhood.id => [ ubs.id ])
+    end
+
+    it "prestador próprio da regulação: recusa o CAPS (path health_unit_id)" do
+      caps.update!(cnes: "7654321")
+      admin = staff_with("admin-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin")
+      result = CareRegulation::SaveProvider.call(attrs: { "name" => "Prestador CAPS", "kind" => "own", "health_unit_id" => caps.id }, by: admin)
+      expect(reason_of(result)).to eq([ true, :caps_unit_not_allowed ])
+      expect(result.details).to eq(path: "health_unit_id")
+      expect(CareProvider.count).to eq(0)
+    end
+
+    it "linha de cuidado: equipe do CAPS não abre pedido de agendamento" do
+      care_city!
+      doctor = care_doctor!(caps)
+      team = care_team!(caps, doctor)
+      enrollment = care_enrollment!(patient: care_patient!(age: 70, sex: "female"), line: adopted_line!("elderly_c6"), team: team, by: doctor)
+      result = CareLines::OpenAppointmentRequest.call(enrollment: enrollment, by: doctor)
+      expect(reason_of(result)).to eq([ true, :caps_unit_not_allowed ])
+      expect(AppointmentRequest.count).to eq(0)
     end
   end
 end

@@ -6,7 +6,9 @@ RSpec.describe "Invariantes das linhas de cuidado (ADR 0040)" do
 
   # Qualquer forma de gravar inscrição: create/new/insert/upsert no modelo,
   # pela associação (enrollments.create/new/build/...) ou SQL cru.
-  def enrollment_write = /CareLineEnrollment\s*\.\s*(create|new|insert|upsert)|enrollments\s*\.\s*(create|new|build|insert|upsert)|INSERT\s+INTO\s+"?care_line_enrollments/i
+  # `psychosocial_enrollments.created_at` (módulo 31) não é escrita: a tabela
+  # do CAPS fica de fora, e `created` não é `create`.
+  def enrollment_write = /CareLineEnrollment\s*\.\s*(create|new|insert|upsert)|(?<!psychosocial_)enrollments\s*\.\s*(create(?!d)|new|build|insert|upsert)|INSERT\s+INTO\s+"?care_line_enrollments/i
 
   it "nenhuma inscrição sem confirmação: só CareLines::Enroll cria inscrição" do
     writers = (files("app/**/*.rb") + files("lib/**/*.rb")).select { |f| File.read(Rails.root.join(f)).match?(enrollment_write) }
@@ -14,6 +16,7 @@ RSpec.describe "Invariantes das linhas de cuidado (ADR 0040)" do
     %w[CareLineEnrollment.new(attrs).save patient.care_line_enrollments.build(x) CareLineEnrollment.insert_all(rows)
        CareLineEnrollment.upsert(row) enrollments.create!(x)].each { |code| expect(code).to match(enrollment_write) }
     expect('execute("INSERT INTO care_line_enrollments (id) VALUES (1)")').to match(enrollment_write)
+    %w[psychosocial_enrollments.created_at enrollments.created_at].each { |code| expect(code).not_to match(enrollment_write) }
   end
 
   # Cada linha do catálogo-base, com uma pessoa a quem a prática não

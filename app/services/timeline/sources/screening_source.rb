@@ -27,7 +27,7 @@ module Timeline
         label = labels.fetch(key) { labels[key] = Screenings::Ciap2.label(revision.ciap2_code, revision.ciap2_release_id) }
         ciap = "#{revision.ciap2_code} #{label}".strip
         Entry.new(kind: KIND, source_id: screening.id, occurred_at: screening.completed_at,
-                  unit: { id: unit.id, name: unit.name }, professional: { name: name, cbo_code: screening.cbo_code },
+                  unit: Labels.unit(unit), professional: { name: name, cbo_code: screening.cbo_code },
                   title: "Escuta inicial — #{Labels::COLORS.fetch(revision.final_color, revision.final_color)}",
                   summary: "#{Labels::DESTINATIONS.fetch(screening.destination, screening.destination)} · CIAP-2 #{ciap}",
                   status: screening.status, detail_ref: { type: "screening", id: screening.id },

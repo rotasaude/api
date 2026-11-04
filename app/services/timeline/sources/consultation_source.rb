@@ -41,7 +41,7 @@ module Timeline
         title = consultation.dental? ? (consultation.baseline ? "Exame odontológico inicial" : "Consulta odontológica") : "Consulta"
         citizen_title = consultation.dental? ? "Consulta odontológica" : "Consulta"
         Entry.new(kind: KIND, source_id: consultation.id, occurred_at: consultation.finalized_at,
-                  unit: { id: unit.id, name: unit.name },
+                  unit: Labels.unit(unit),
                   professional: { name: Screenings::Json.staff_name(consultation.author_user), cbo_code: consultation.cbo_code },
                   title: title, summary: summary, status: consultation.status,
                   detail_ref: detail_ref,

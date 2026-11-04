@@ -35,7 +35,7 @@ module Ledi
       since = Time.current.beginning_of_month.prev_month
       failed = LediGenerationFailure.where(source_type: source).select(:source_id)
       late_closed = Attendance.where(status: "closed").where(screenings: { completed_at: since.. }).where.not(screenings: { id: failed })
-      Screening.completed_screenings.joins(:attendance)
+      Screening.completed_screenings.joins(:attendance).includes(attendance: :health_unit) # caps? sem consulta extra (módulo 31)
                .where.not(id: LediOutboxEntry.where(source_type: source).select(:source_id))
                .merge(Attendance.open_attendances.or(late_closed))
                .find_each { |screening| Ledi::ScreeningFicha.generate(screening, city: Current.city) }
@@ -44,7 +44,7 @@ module Ledi
     def sweep_consultations
       source = Ledi::ConsultationFicha::SOURCE_TYPE
       since = Time.current.beginning_of_month.prev_month
-      Consultation.finalized_consultations.where(finalized_at: since..)
+      Consultation.finalized_consultations.where(finalized_at: since..).includes(attendance: :health_unit) # caps? sem consulta extra
                   .where.not(id: LediOutboxEntry.where(source_type: source).select(:source_id))
                   .where.not(id: LediGenerationFailure.where(source_type: source).select(:source_id))
                   .find_each { |consultation| Ledi::ConsultationFicha.generate(consultation, city: Current.city) }

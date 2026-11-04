@@ -38,7 +38,7 @@ module Timeline
       def order_entry(order)
         title = Exams::Labels.exam(order.sigtap_code, order.sigtap_competence)
         name = Labels.professional_name(order.requester_user)
-        Entry.new(kind: KIND, source_id: order.id, occurred_at: order.created_at, unit: { id: order.unit_id, name: order.unit.name },
+        Entry.new(kind: KIND, source_id: order.id, occurred_at: order.created_at, unit: Labels.unit(order.unit),
                   professional: { name: order.requester_display_name, cbo_code: nil }, title: title, summary: professional_summary(order),
                   status: order.status, detail_ref: { type: "exam_order", id: order.id },
                   citizen: citizen(order, title, name), document: document(order, order.id))

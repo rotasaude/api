@@ -239,10 +239,13 @@ class HealthUnitsController < ApplicationController
     end
   end
 
+  # Também a cobertura de bairro e o prestador próprio da regulação (P51): eles
+  # levam pedidos da agenda automaticamente à unidade.
   def attendance_history?(unit)
     Attendance.where(health_unit_id: unit.id).or(Attendance.where(referral_unit_id: unit.id)).exists? ||
       Appointment.where(health_unit_id: unit.id).exists? ||
-      AppointmentRequest.where(target_unit_id: unit.id).or(AppointmentRequest.where(origin_unit_id: unit.id)).exists?
+      AppointmentRequest.where(target_unit_id: unit.id).or(AppointmentRequest.where(origin_unit_id: unit.id)).exists? ||
+      NeighborhoodCoverage.where(health_unit_id: unit.id).exists? || CareProvider.where(health_unit_id: unit.id).exists?
   end
 
   # Contrato P27: telefone da unidade, 10 ou 11 dígitos (a máscara sai na
