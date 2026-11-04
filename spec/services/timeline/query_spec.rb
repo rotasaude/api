@@ -75,6 +75,24 @@ RSpec.describe Timeline::Query do
     expect(Timeline::KINDS.last(3)).to eq(%w[dispensation vaccination transport])
   end
 
+  # Módulo 31 (contrato §10, P18): os kinds do CAPS ficam FORA de Timeline::KINDS
+  # — o cidadão, o PEC externo e os filtros que validam contra KINDS nunca os
+  # veem. O marcador entra só na lista do profissional; a fonte do CAPS, só na
+  # rota da equipe lotada. O cursor aceita os dois (paginação dessas rotas).
+  it "módulo 31: psychosocial e psychosocial_link fora de KINDS, do cidadão e do PEC; o marcador só na lista do profissional" do
+    expect(Timeline::KINDS).not_to include("psychosocial", "psychosocial_link")
+    expect(described_class::CAPS_ONLY_KINDS).to eq(%w[psychosocial])
+    expect(described_class::LINK_KINDS).to eq(%w[psychosocial_link])
+    expect(described_class::PROFESSIONAL_KINDS).to eq(Timeline::KINDS + %w[psychosocial_link])
+    expect(described_class::PROFESSIONAL_KINDS).not_to include("psychosocial")
+    [ true, false ].product([ true, false ]).each do |verified, documents|
+      expect(described_class.citizen_kinds(verified: verified, documents: documents).grep(/\Apsychosocial/)).to eq([])
+    end
+    expect(PecTimelinesController::KINDS.grep(/\Apsychosocial/)).to eq([])
+    expect(described_class::SOURCES.keys).to include("psychosocial", "psychosocial_link")
+    expect(described_class::SOURCES.keys.grep(/\Apsychosocial/)).to match_array(described_class::CAPS_ONLY_KINDS + described_class::LINK_KINDS)
+  end
+
   it "kinds: dispensation recorta só a dispensação (o filtro kinds[]=dispensation do controlador)" do
     import_test_catalog!
     admin = pharmacy_admin!

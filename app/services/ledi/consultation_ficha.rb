@@ -25,8 +25,13 @@ module Ledi
 
     def exportable?(city) = Ledi::ScreeningFicha.exportable?(city)
 
+    # Módulo 31 (contrato §10): consulta de atendimento numa unidade `caps`
+    # nunca vira ficha (enqueue_for, varredor e "gerar de novo" passam aqui).
+    def caps?(consultation) = consultation.attendance&.health_unit&.caps? || false
+
     def generate(consultation, city: Current.city)
       return :skipped unless consultation.finalized?
+      return :skipped if caps?(consultation)
       # Módulo 28 (ADR 0046; Desvio 2): o registro inicial não gera FAO.
       return :skipped if consultation.dental? && consultation.baseline?
       return :unusable unless exportable?(city)

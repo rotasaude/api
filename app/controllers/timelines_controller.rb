@@ -38,12 +38,15 @@ class TimelinesController < ApplicationController
   private
 
   # kinds[] ausente = todos; qualquer valor fora da lista (ou kinds escalar) = nil.
+  # A lista do profissional é a geral mais o marcador do vínculo com o CAPS
+  # (módulo 31, P18); a fonte do CAPS (`psychosocial`) nunca entra aqui.
   def requested_kinds
     raw = params[:kinds]
-    return Timeline::KINDS if raw.blank?
-    return nil unless raw.is_a?(Array) && raw.all? { |kind| Timeline::KINDS.include?(kind) }
+    kinds = Timeline::Query::PROFESSIONAL_KINDS
+    return kinds if raw.blank?
+    return nil unless raw.is_a?(Array) && raw.all? { |kind| kinds.include?(kind) }
 
-    Timeline::KINDS & raw
+    kinds & raw
   end
 
   # [pessoa, grant]; senão a resposta de erro já saiu.

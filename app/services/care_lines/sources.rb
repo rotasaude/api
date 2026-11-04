@@ -128,11 +128,14 @@ module CareLines
     end
 
     # Só emite as fontes pedidas: 0301100039/0101040024 valem como PA e peso+altura
-    # (se pedidas) e como procedure:<código> (se pedido).
+    # (se pedidas) e como procedure:<código> (se pedido). A linha do CAPS
+    # (`source: "psychosocial"`) nunca conta (módulo 31, P45): a boa prática da
+    # UBS não revela o acompanhamento no CAPS.
     def procedures!(result, ids, since, codes, sources)
       return if codes.empty?
 
-      PerformedProcedure.where(patient_id: ids, status: "recorded", sigtap_code: codes).where(performed_on: since..)
+      PerformedProcedure.where(patient_id: ids, status: "recorded", sigtap_code: codes).where.not(source: "psychosocial")
+                        .where(performed_on: since..)
                         .pluck(:patient_id, :sigtap_code, :performed_on).each do |patient_id, code, on|
         targets = [ "procedure:#{code}" ]
         targets << "blood_pressure" if code == BP_PROCEDURE

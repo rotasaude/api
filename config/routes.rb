@@ -691,6 +691,8 @@ Rails.application.routes.draw do
     get   "enrollments/:id/care_plans", to: "care_plans#index"
     post  "enrollments/:id/care_plans", to: "care_plans#create"
     get   "care_plans/due",      to: "care_plans#due"
+    # Linha do tempo restrita do CAPS (§10, P18): só a equipe lotada.
+    get   "enrollments/:id/timeline", to: "timelines#show"
     # Grade de grupos e o "Hoje no CAPS" (§4).
     get   "groups",              to: "groups#index"
     post  "groups",              to: "groups#create"

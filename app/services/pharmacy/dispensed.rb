@@ -40,13 +40,22 @@ module Pharmacy
     # Última retirada por item do CATÁLOGO do paciente, em todos os locais (27a,
     # H7; lista de medicamentos em uso): { catalog_item_id => Date } no fuso da
     # cidade. Líquida como o resto: uma linha devolvida POR INTEIRO não conta
-    # (a dispensação inteira só some se todas as suas linhas voltaram).
+    # (a dispensação inteira só some se todas as suas linhas voltaram). A
+    # retirada pela receita do CAPS não conta (módulo 31): a UBS não vê o
+    # psicotrópico do CAPS na lista de medicamentos.
     def last_on(patient_id)
-      rows = DispensationItem.joins(:dispensation).where(dispensations: { patient_id: patient_id })
+      rows = DispensationItem.joins(:dispensation).where(dispensations: { patient_id: patient_id }).merge(outside_caps)
                              .pluck(:id, :catalog_item_id, :quantity, "dispensations.dispensed_at")
       returned = returned_totals(rows.map(&:first))
       rows.filter_map { |id, catalog_item_id, quantity, at| [ catalog_item_id, at ] if (quantity - returned.fetch(id, BigDecimal("0"))).positive? }
           .group_by(&:first).transform_values { |lines| lines.map(&:last).max.in_time_zone.to_date }
+    end
+
+    # Dispensações que não vêm da receita do CAPS (módulo 31): a receita
+    # externa, ou a do 19 sem `psychosocial_action_id`. Escopo de Dispensation.
+    def outside_caps
+      Dispensation.where(clinical_document_id: nil)
+                  .or(Dispensation.where.not(clinical_document_id: ClinicalDocument.where.not(psychosocial_action_id: nil).select(:id)))
     end
 
     # Devolvido por item dispensado: { dispensation_item_id => BigDecimal }.

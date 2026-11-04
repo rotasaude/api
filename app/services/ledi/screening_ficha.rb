@@ -18,8 +18,14 @@ module Ledi
       Platform::Features.usable?(city, :ledi_export) && Platform::Features.settings(city)[:record_mode] != "off"
     end
 
+    # Módulo 31 (ADR 0049; contrato §10): nada do CAPS vai ao LEDI. A guarda
+    # fica aqui também (além do enqueue_for) porque o varredor das 23h e o
+    # "gerar de novo" chamam generate direto.
+    def caps?(screening) = screening.attendance&.health_unit&.caps? || false
+
     def generate(screening, city: Current.city)
       return :skipped unless screening.completed?
+      return :skipped if caps?(screening)
       return :unusable unless exportable?(city)
       return :exists if LediOutboxEntry.exists?(source_type: SOURCE_TYPE, source_id: screening.id)
 

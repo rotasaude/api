@@ -78,6 +78,8 @@ module Screenings
       note = raw["referral_note"].to_s.strip.presence
       return Result.fail(:referral_required) if unit_id.nil? && note.nil?
       return Result.fail(:invalid_unit) if unit_id && !(unit_id.to_s.match?(UUID) && HealthUnit.active_units.exists?(id: unit_id))
+      # Módulo 31 (P32): o encaminhamento ao CAPS é o do módulo 31, nunca um pedido da agenda.
+      return Result.fail(:caps_unit_not_allowed) if unit_id && HealthUnit.exists?(id: unit_id, kind: "caps")
 
       Result.ok(referral_unit_id: unit_id, referral_note: note)
     end

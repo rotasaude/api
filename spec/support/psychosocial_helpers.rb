@@ -129,6 +129,28 @@ module PsychosocialHelpers
     record
   end
 
+  # Documento do 19 da ação do CAPS gravado direto (o caminho real é
+  # ClinicalDocuments::Issue com `psychosocial_action:`): sem atendimento e sem
+  # cidadão, do paciente do único participante, com o autor e o CBO da ação,
+  # em papel. Receita leva os itens do catálogo (`items`) na mesma transação
+  # (o trigger exige); outro tipo não leva item.
+  def caps_document!(action, kind: "sick_note", items: [], issued_at: Time.current)
+    patient_id = action.psychosocial_action_participants.sole.patient_id
+    release = MedicationCatalogRelease.current if items.any?
+    ApplicationRecord.transaction(requires_new: true) do
+      document = ClinicalDocument.create!(kind: kind, patient_id: patient_id, psychosocial_action: action,
+                                          author_user_id: action.professional_user_id, cbo_code: action.cbo_code, issue_mode: "paper",
+                                          verification_token: ClinicalDocuments::Codes.token, short_code: ClinicalDocuments::Codes.short_code,
+                                          issued_at: issued_at, content: { "items" => [], "category" => "common", "sncr" => nil }.to_json)
+      items.each_with_index do |catalog, index|
+        PrescriptionItem.create!(clinical_document: document, position: index + 1, continuous: false, medication_catalog_item_id: catalog.id,
+                                 catmat_code: catalog.catmat_code, catalog_release_id: release.id, printed_description: catalog.label,
+                                 quantity: 30, quantity_unit: "comprimido", route: "oral", dosage_instructions: "1 comprimido à noite")
+      end
+      document
+    end
+  end
+
   def bed!(unit, label: "L1")
     PsychosocialBed.create!(health_unit: unit, label: label, updated_by_user: psychosocial_admin!)
   end

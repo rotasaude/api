@@ -8,6 +8,9 @@
 # clínico retido e continua na linha do tempo com a farmácia desligada. Vazia
 # sem paciente. Devolução não apaga a entrada: a retirada aconteceu. A trilha
 # é do controlador (uma por leitura); nada daqui vai a log nem a evento.
+# Módulo 31 (ruling da dispensação): a dispensação da receita do CAPS
+# (`clinical_documents.psychosocial_action_id`) nunca entra — o psicotrópico
+# do CAPS não aparece na linha do tempo geral (a farmácia segue vendo a receita).
 module Timeline
   module Sources
     module DispensationSource
@@ -19,7 +22,7 @@ module Timeline
       def entries(person:, before:, limit:, from:, to:)
         return [] unless person.patient_id
 
-        scope = ::Dispensation.where(patient_id: person.patient_id)
+        scope = ::Dispensation.where(patient_id: person.patient_id).merge(::Pharmacy::Dispensed.outside_caps)
                               .includes(:items, stock_location: :health_unit, dispensed_by_user: :professional)
         rows = Window.apply(scope, kind: KIND, column: "dispensations.dispensed_at", id_column: "dispensations.id",
                                    before: before, from: from, to: to).limit(limit).to_a

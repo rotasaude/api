@@ -30,6 +30,8 @@ module HealthUnits
       reason = reason.to_s.strip
       target = HealthUnit.find_by(id: target_unit_id.to_s) if target_unit_id.to_s.match?(UUID)
       return Result.fail(:invalid_target) if target.nil? || !target.active? || target.id == unit.id
+      # Módulo 31 (P32): o CAPS não recebe pedidos nem horários da agenda.
+      return Result.fail(:caps_unit_not_allowed) if target.caps?
       return Result.fail(:reason_too_short) if reason.length < MIN_REASON
 
       ApplicationRecord.transaction do

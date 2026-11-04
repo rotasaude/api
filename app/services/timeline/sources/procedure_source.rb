@@ -3,7 +3,9 @@
 # cancelado fora. Profissional: nome SIGTAP, unidade (ou o laboratório) e
 # profissional com CBO; nunca crítica nem faturamento. Cidadão: nome, unidade
 # e situação "Realizado". Vazio sem procedure_billing ou sem paciente. A
-# trilha é do controlador (uma por leitura).
+# trilha é do controlador (uma por leitura). A linha do CAPS (`source:
+# "psychosocial"`, BPA-I do acolhimento) nunca entra (módulo 31, P45): o
+# prontuário do CAPS só na linha do tempo restrita da equipe lotada.
 module Timeline
   module Sources
     module ProcedureSource
@@ -15,7 +17,7 @@ module Timeline
       def entries(person:, before:, limit:, from:, to:)
         return [] unless person.patient_id && Billing::Gate.enabled?(Current.city)
 
-        scope = ::PerformedProcedure.recorded.where(patient_id: person.patient_id)
+        scope = ::PerformedProcedure.recorded.where(patient_id: person.patient_id).where.not(source: "psychosocial")
                                     .includes(:health_unit, :exam_provider, professional_user: :professional)
         rows = Window.apply(scope, kind: KIND, column: "performed_procedures.created_at", id_column: "performed_procedures.id",
                                    before: before, from: from, to: to).limit(limit).to_a

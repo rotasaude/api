@@ -14,6 +14,8 @@ module Attendances
     def self.call(cpf:, code:, health_unit_id:, document_checked:, by:)
       unit = HealthUnit.active_units.find_by(id: health_unit_id)
       return Result.fail(:invalid_unit) unless unit
+      # Módulo 31 (P32): o CAPS não recebe check-in (o nome iria ao wpda).
+      return Result.fail(:caps_unit_not_allowed) if unit.caps?
 
       result = nil
       triage = appointment = nil

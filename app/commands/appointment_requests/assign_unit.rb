@@ -13,6 +13,9 @@ module AppointmentRequests
 
       ApplicationRecord.transaction do
         unit = HealthUnit.lock_active!(unit_id.to_s)
+        # Módulo 31 (P32): o CAPS não é destino de pedido da agenda.
+        next Result.fail(:caps_unit_not_allowed) if unit.caps?
+
         request.lock!
         next Result.fail(:already_assigned) unless request.target_unit_id.nil?
         next Result.fail(:request_not_open) unless request.status == "open"

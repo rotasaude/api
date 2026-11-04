@@ -22,6 +22,8 @@ module Attendances
         if referral_unit_id.present?
           unit = HealthUnit.active_units.find_by(id: referral_unit_id)
           return Result.fail(:invalid_unit) unless unit
+          # Módulo 31 (P32): o encaminhamento ao CAPS é o do módulo 31, nunca um pedido da agenda.
+          return Result.fail(:caps_unit_not_allowed) if unit.caps?
         end
         if unit.nil? && regulation
           return Result.fail(:regulation_request_required) if regulation.zero?

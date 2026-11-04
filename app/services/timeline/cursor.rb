@@ -1,7 +1,9 @@
 require "base64"
 
 # Cursor composto e opaco da linha do tempo (contrato §3): o instante com
-# microssegundos, o kind e o id da origem da última entrada da página.
+# microssegundos, o kind e o id da origem da última entrada da página. Aceita
+# também os kinds do CAPS (Query::CURSOR_KINDS, módulo 31): o kind do cursor só
+# ordena; quem decide o que cada visão lê são os kinds pedidos.
 module Timeline
   Cursor = Data.define(:at, :kind, :id) do
     const_set(:Invalid, Class.new(StandardError))
@@ -17,7 +19,7 @@ module Timeline
       raise self::Invalid unless raw.is_a?(String)
 
       at, kind, id = Base64.urlsafe_decode64(raw).split("|", 3)
-      raise self::Invalid unless at.to_s.match?(self::INSTANT) && Timeline::KINDS.include?(kind) && id.to_s.match?(self::UUID)
+      raise self::Invalid unless at.to_s.match?(self::INSTANT) && Timeline::Query::CURSOR_KINDS.include?(kind) && id.to_s.match?(self::UUID)
 
       new(at: Time.iso8601(at), kind: kind, id: id.downcase)
     rescue ArgumentError

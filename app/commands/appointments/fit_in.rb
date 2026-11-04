@@ -9,6 +9,9 @@ module Appointments
     module_function
 
     def call(request:, professional:, shift:, starts_at:, type:, reason:, by:, now: Time.current)
+      # Módulo 31 (P32): pedido com destino CAPS nunca vira horário.
+      return Result.fail(:caps_unit_not_allowed) if request.target_unit&.caps?
+
       reason = reason.to_s.strip
       return Result.fail(:invalid_reason) if reason.length < Appointment::MIN_FIT_IN_REASON
 

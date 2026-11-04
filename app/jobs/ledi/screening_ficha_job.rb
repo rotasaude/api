@@ -6,7 +6,11 @@ module Ledi
     include CityScopedJob
     queue_as :default
 
+    # Módulo 31 (contrato §10): escuta de atendimento numa unidade `caps`
+    # não é enfileirada (devolve nil).
     def self.enqueue_for(screening)
+      return nil if Ledi::ScreeningFicha.caps?(screening)
+
       perform_later(city_slug: Current.city.slug, screening_id: screening.id)
     end
 

@@ -12,7 +12,11 @@ module Ledi
       job.still_sending!
     end
 
+    # Módulo 31 (contrato §10): nada do CAPS vai ao LEDI — consulta de
+    # atendimento numa unidade `caps` não é enfileirada (devolve nil).
     def self.enqueue_for(consultation, reason: "finalized")
+      return nil if Ledi::ConsultationFicha.caps?(consultation)
+
       perform_later(city_slug: Current.city.slug, consultation_id: consultation.id, reason: reason)
     end
 

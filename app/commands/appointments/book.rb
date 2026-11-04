@@ -7,6 +7,9 @@ module Appointments
     module_function
 
     def call(request:, professional:, starts_at:, type:, by:, now: Time.current)
+      # Módulo 31 (P32): pedido com destino CAPS nunca vira horário.
+      return Result.fail(:caps_unit_not_allowed) if request.target_unit&.caps?
+
       at = Placement.parse(starts_at)
       return Result.fail(:invalid_time) if at.nil? || at <= now || at > now + Appointment::MAX_AHEAD
       return Result.fail(:slot_unavailable) if professional.nil?
