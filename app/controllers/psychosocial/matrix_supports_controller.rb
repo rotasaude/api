@@ -9,7 +9,9 @@
 #   GET  /psychosocial/matrix_supports/:id
 #        <detalhe> com o tema e os casos; trilha `resource: "matrix_support"` por paciente dos casos
 #   POST /psychosocial/matrix_supports/:id/cases { patient_id, shared_text }
-#        → 201 o caso, sem trilha (quem grava digitou)
+#        → 201 o caso, sem trilha (quem grava digitou); ação do matriciamento
+#        cancelada → 409 already_cancelled (P44 D2)
+# Lista e detalhe trazem `action_cancelled_at` (nulo enquanto a ação vale; P44 D2).
 # Só a equipe lotada no CAPS do matriciamento; de outro CAPS (ou de CAPS onde
 # quem pede não está lotado) → 404. Texto e paciente só no corpo; ids na URL.
 module Psychosocial
@@ -29,7 +31,7 @@ module Psychosocial
         at, id = CareRegulation::Cursor.decode_page(request.query_parameters["before"])
         scope = scope.where("(psychosocial_matrix_supports.created_at, psychosocial_matrix_supports.id) < (?, ?)", at, id)
       end
-      rows = scope.includes(:health_team).order(created_at: :desc, id: :desc).limit(PAGE + 1).to_a
+      rows = scope.includes(:health_team, :psychosocial_action).order(created_at: :desc, id: :desc).limit(PAGE + 1).to_a
       page = rows.first(PAGE)
       counts = PsychosocialMatrixCase.where(psychosocial_matrix_support_id: page.map(&:id)).group(:psychosocial_matrix_support_id).count
       people = participants(page, unit.id)
@@ -73,7 +75,7 @@ module Psychosocial
       return forbid unless Access.staff?(Current.user)
       return unless query_only!
 
-      @support = uuid?(params[:id]) ? PsychosocialMatrixSupport.includes(:health_team).find_by(id: params[:id].downcase) : nil
+      @support = uuid?(params[:id]) ? PsychosocialMatrixSupport.includes(:health_team, :psychosocial_action).find_by(id: params[:id].downcase) : nil
       not_found unless @support && Access.can_read?(Current.user, @support)
     end
 
@@ -89,7 +91,8 @@ module Psychosocial
       { "id" => support.id, "health_unit_id" => support.health_unit_id, "health_team" => team_json(support.health_team),
         "held_on" => Json.date(support.held_on), "participants" => support.participant_user_ids.filter_map { |id| people[id] },
         "sigtap" => Json.sigtap(support.sigtap_code, "bpa_c", support.held_on, cache: cache),
-        "action_id" => support.psychosocial_action_id, "cases_count" => cases_count, "created_at" => Json.time(support.created_at) }
+        "action_id" => support.psychosocial_action_id, "action_cancelled_at" => Json.time(support.psychosocial_action.cancelled_at),
+        "cases_count" => cases_count, "created_at" => Json.time(support.created_at) }
     end
 
     def detail(support, cases)

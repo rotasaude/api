@@ -3,8 +3,11 @@
 # CAPS (Psychosocial::Link). Campos (só o corpo JSON): `patient_id` (paciente
 # existente) e `shared_text` (10..2000, cifrado; acima → too_long, abaixo →
 # invalid_request). O autor é quem pede, lotado no CAPS do matriciamento (o
-# controller confere). Recusas de campo todas de uma vez. Sem evento: o
-# texto nunca sai do registro; a leitura pela UBS grava a trilha.
+# controller confere). Matriciamento cuja ação foi cancelada não recebe caso
+# (409 already_cancelled, P44 D2): conferido antes dos campos e de novo com a
+# ação travada FOR SHARE (o cancelamento faz UPDATE na linha e espera). Recusas
+# de campo todas de uma vez. Sem evento: o texto nunca sai do registro; a
+# leitura pela UBS grava a trilha.
 module Psychosocial
   module AddMatrixCase
     KEYS = %w[patient_id shared_text].freeze
@@ -12,8 +15,11 @@ module Psychosocial
 
     module_function
 
-    # -> Result.ok(matrix_case:) | fail(:invalid_request | :too_long, details: { path:, problems: })
+    # -> Result.ok(matrix_case:) | fail(:already_cancelled) |
+    #    fail(:invalid_request | :too_long, details: { path:, problems: })
     def call(support:, attrs:, by:)
+      return Result.fail(:already_cancelled) if support.psychosocial_action.cancelled?
+
       attrs = attrs.to_h.stringify_keys
       problems = (attrs.keys - KEYS).map { |key| problem(key[0, KEY_PATH_MAX]) }
 
@@ -27,9 +33,14 @@ module Psychosocial
         return Result.fail(first[:error].to_sym, details: { path: first[:path], problems: problems })
       end
 
-      matrix_case = PsychosocialMatrixCase.create!(psychosocial_matrix_support: support, patient: patient, shared_text: text.strip,
-                                                   created_by_user: by)
-      Result.ok(matrix_case: matrix_case)
+      ApplicationRecord.transaction(requires_new: true) do
+        action = PsychosocialAction.lock("FOR SHARE").find(support.psychosocial_action_id)
+        next Result.fail(:already_cancelled) if action.cancelled?
+
+        matrix_case = PsychosocialMatrixCase.create!(psychosocial_matrix_support: support, patient: patient, shared_text: text.strip,
+                                                     created_by_user: by)
+        Result.ok(matrix_case: matrix_case)
+      end
     end
 
     def problem(path) = { error: "invalid_request", path: path }

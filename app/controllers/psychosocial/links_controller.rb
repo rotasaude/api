@@ -4,8 +4,10 @@
 # (ClinicalRecord::Access): sem health_professional → 403 missing_role; fora
 # de contexto e sem abertura justificada → 403 out_of_context. Não exige
 # lotação no CAPS (quem lê é a UBS). Trilha `clinical_record.viewed`
-# (`resource: "link_shared_cases"`) só quando há caso compartilhado; o resto
-# não é texto clínico. Id na URL; nada na query.
+# (`resource: "link_shared_cases"`) só quando há caso compartilhado, com ou
+# sem matrícula aberta (P44 D1); o resto não é texto clínico. O contexto é
+# conferido antes de olhar a matrícula: fora dele, a resposta é a mesma
+# para quem tem ou não vínculo com o CAPS. Id na URL; nada na query.
 module Psychosocial
   class LinksController < BaseController
     def show

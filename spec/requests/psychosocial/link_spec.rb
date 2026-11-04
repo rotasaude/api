@@ -33,9 +33,9 @@ RSpec.describe "UBS — vínculo com o CAPS", type: :request do
     expect { link_of(enrollment.patient) }.to change { viewed.count }.by(1)
     expect(json_body["shared_cases"]).to eq([ { "held_on" => "2026-11-18", "caps_name" => caps.name,
                                                 "shared_text" => "Discutido manejo da insônia com a equipe" } ])
-    expect(viewed.last.payload).to include("patient_id" => enrollment.patient_id, "user_id" => doctor.id, "access" => "psychosocial",
+    expect(viewed.sole.payload).to include("patient_id" => enrollment.patient_id, "user_id" => doctor.id, "access" => "psychosocial",
                                            "resource" => "link_shared_cases")
-    expect(viewed.last.payload.to_json).not_to include("insônia")
+    expect(viewed.sole.payload.to_json).not_to include("insônia")
     expect(response.body).not_to include("F200")
     expect(json_body.keys).to contain_exactly("enrolled", "caps", "since", "reference", "shared_cases")
   end
@@ -63,6 +63,91 @@ RSpec.describe "UBS — vínculo com o CAPS", type: :request do
     closed.update_columns(closed_on: Date.new(2026, 11, 10), destination: "01", closed_by_user_id: closed.reference_user_id)
     link_of(lone)
     expect(json_body).to eq("enrolled" => false)
+  end
+
+  # Cancela a ação do matriciamento do caso pela rota da ação (quem gravou o caso é lotado no CAPS).
+  def cancel_support_of!(matrix_case)
+    sign_in_as(matrix_case.created_by_user)
+    json_post "/psychosocial/actions/#{matrix_case.psychosocial_matrix_support.psychosocial_action_id}/cancel",
+              reason: "Registrado em duplicidade no sistema"
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "P44 D1: sem matrícula, a UBS da equipe vê o caso (com trilha) e outra UBS não" do
+    patient = caps_patient!
+    matrix_case!(caps, team, patient, "Caso discutido antes da matrícula")
+    in_context!(doctor, ubs, patient)
+    sign_in_as(doctor)
+    expect { link_of(patient) }.to change { viewed.count }.by(1)
+    expect(json_body).to eq("enrolled" => false,
+                            "shared_cases" => [ { "held_on" => "2026-11-18", "caps_name" => caps.name,
+                                                  "shared_text" => "Caso discutido antes da matrícula" } ])
+    expect(viewed.sole.payload).to include("patient_id" => patient.id, "user_id" => doctor.id, "resource" => "link_shared_cases")
+
+    other = HealthUnit.create!(name: "UBS Centro", kind: "ubs")
+    other_doctor = ubs_doctor!(other)
+    in_context!(other_doctor, other, patient)
+    sign_in_as(other_doctor)
+    expect { link_of(patient) }.not_to(change { viewed.count })
+    expect(json_body).to eq("enrolled" => false)
+  end
+
+  it "P44 D1: com alta (destino 03), os casos continuam visíveis" do
+    matrix_case!(caps, team, enrollment.patient, "Alta com retorno à atenção básica")
+    enrollment.update_columns(closed_on: Date.new(2026, 11, 17), destination: "03", closed_by_user_id: enrollment.reference_user_id)
+    in_context!(doctor, ubs, enrollment.patient)
+    sign_in_as(doctor)
+    link_of(enrollment.patient)
+    expect(json_body).to eq("enrolled" => false,
+                            "shared_cases" => [ { "held_on" => "2026-11-18", "caps_name" => caps.name,
+                                                  "shared_text" => "Alta com retorno à atenção básica" } ])
+  end
+
+  it "P44 D2: caso de matriciamento com a ação cancelada sai do vínculo (e sem caso, sem trilha)" do
+    matrix_case = matrix_case!(caps, team, enrollment.patient, "Caso que será cancelado")
+    cancel_support_of!(matrix_case)
+    in_context!(doctor, ubs, enrollment.patient)
+    sign_in_as(doctor)
+    expect { link_of(enrollment.patient) }.not_to(change { viewed.count })
+    expect(json_body).to include("enrolled" => true, "shared_cases" => [])
+  end
+
+  it "paciente sem matrícula, fora de contexto → 403 out_of_context (o estado do vínculo não vaza)" do
+    patient = caps_patient!
+    sign_in_as(doctor)
+    link_of(patient)
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "out_of_context" } ])
+    matrix_case!(caps, team, patient, "Caso de quem não está em contexto")
+    expect { link_of(patient) }.not_to(change { viewed.count })
+    expect([ response.status, json_body ]).to eq([ 403, { "error" => "out_of_context" } ])
+  end
+
+  it "abertura justificada válida lê o vínculo; vencida → 403 out_of_context" do
+    matrix_case!(caps, team, enrollment.patient, "Lido por abertura justificada")
+    # A abertura é só de acréscimo: a vencida nasce vencida.
+    ClinicalRecordOpening.create!(user_id: doctor.id, patient_id: enrollment.patient_id, reason_code: "case_review",
+                                  created_at: 3.hours.ago, expires_at: 1.hour.ago)
+    sign_in_as(doctor)
+    link_of(enrollment.patient)
+    expect([ response.status, json_body["error"] ]).to eq([ 403, "out_of_context" ])
+
+    ClinicalRecordOpening.create!(user_id: doctor.id, patient_id: enrollment.patient_id, reason_code: "case_review",
+                                  expires_at: 1.hour.from_now)
+    expect { link_of(enrollment.patient) }.to change { viewed.count }.by(1)
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to include("enrolled" => true)
+    expect(json_body["shared_cases"].sole).to include("shared_text" => "Lido por abertura justificada")
+  end
+
+  it "vínculo do leitor encerrado na unidade da equipe → o caso não aparece" do
+    matrix_case!(caps, team, enrollment.patient, "Visto só por vínculo ativo")
+    in_context!(doctor, ubs, enrollment.patient)
+    doctor.professional.links.active.find_by!(health_unit: ubs)
+          .update_columns(ended_at: Time.current, ended_by_user_id: enrollment.reference_user_id)
+    sign_in_as(doctor)
+    expect { link_of(enrollment.patient) }.not_to(change { viewed.count })
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to include("enrolled" => true, "shared_cases" => [])
   end
 
   it "duas matrículas abertas: o vínculo é a mais antiga" do

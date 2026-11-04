@@ -1,33 +1,41 @@
 # O vínculo do paciente com o CAPS visto pela UBS (ADR 0049; contrato §7,
-# P10, P27): a matrícula aberta mais antiga (started_on, created_at, id) e os
-# casos compartilhados no matriciamento com as equipes das unidades em que
-# quem lê tem professional_links ativo. Nunca CID, substância, PTS, evolução
-# nem ação: só o CAPS (nome e telefone, nulo quando não cadastrado), o início,
-# o nome do técnico de referência e o texto compartilhado. Quem chama confere o
-# contexto de leitura (ClinicalRecord::Access) e grava a trilha.
+# P10, P27, P44): a matrícula aberta mais antiga (started_on, created_at, id)
+# e os casos compartilhados no matriciamento com as equipes das unidades em
+# que quem lê tem professional_links ativo — fora os de matriciamento cuja
+# ação foi cancelada (P44 D2). Sem matrícula aberta (nunca matriculado, ou de
+# alta), os casos da equipe continuam visíveis: `{ enrolled: false,
+# shared_cases }`, e `{ enrolled: false }` quando não há caso (P44 D1). Nunca
+# CID, substância, PTS, evolução nem ação: só o CAPS (nome e telefone, nulo
+# quando não cadastrado), o início, o nome do técnico de referência e o texto
+# compartilhado. Quem chama confere o contexto de leitura
+# (ClinicalRecord::Access) e grava a trilha quando há caso.
 module Psychosocial
   module Link
     module_function
 
-    # -> { enrolled: false } | { enrolled: true, caps:, since:, reference:, shared_cases: [ { held_on, caps_name, shared_text } ] }
+    # -> { enrolled: false, shared_cases:? } |
+    #    { enrolled: true, caps:, since:, reference:, shared_cases: [ { held_on, caps_name, shared_text } ] }
     def for(patient:, viewer:)
+      cases = shared_cases(patient, viewer)
       enrollment = PsychosocialEnrollment.open_enrollments.where(patient_id: patient.id)
                                          .includes(:health_unit, reference_user: :professional)
                                          .order(:started_on, :created_at, :id).first
-      return { "enrolled" => false } unless enrollment
+      return cases.empty? ? { "enrolled" => false } : { "enrolled" => false, "shared_cases" => cases } unless enrollment
 
       caps = enrollment.health_unit
       { "enrolled" => true, "caps" => { "id" => caps.id, "name" => caps.name, "phone" => caps.phone },
         "since" => Json.date(enrollment.started_on),
         "reference" => { "name" => Screenings::Json.staff_name(enrollment.reference_user) },
-        "shared_cases" => shared_cases(patient, viewer) }
+        "shared_cases" => cases }
     end
 
-    # Casos do paciente cujas equipes ficam nas unidades de vínculo ativo de quem lê.
+    # Casos do paciente cujas equipes ficam nas unidades de vínculo ativo de
+    # quem lê, de matriciamento com a ação não cancelada.
     def shared_cases(patient, viewer)
       unit_ids = ProfessionalLink.active.joins(:professional).where(professionals: { user_id: viewer.id }).select(:health_unit_id)
-      PsychosocialMatrixCase.joins(psychosocial_matrix_support: :health_team)
-                            .where(patient_id: patient.id, health_teams: { health_unit_id: unit_ids })
+      PsychosocialMatrixCase.joins(psychosocial_matrix_support: %i[health_team psychosocial_action])
+                            .where(patient_id: patient.id, health_teams: { health_unit_id: unit_ids },
+                                   psychosocial_actions: { cancelled_at: nil })
                             .includes(psychosocial_matrix_support: :health_unit)
                             .order("psychosocial_matrix_supports.held_on DESC, psychosocial_matrix_cases.created_at DESC, psychosocial_matrix_cases.id DESC")
                             .map do |matrix_case|

@@ -40,7 +40,7 @@ RSpec.describe "CAPS — matriciamento", type: :request do
         .to change(PsychosocialMatrixSupport, :count).by(1).and change(PsychosocialAction, :count).by(1)
       expect(response).to have_http_status(:created)
 
-      support = PsychosocialMatrixSupport.last
+      support = PsychosocialMatrixSupport.sole
       action = support.psychosocial_action
       expect(action).to have_attributes(instrument: "bpa_c", origin: "matrix_support", sigtap_code: "0301080305", quantity: 1,
                                         health_unit_id: caps.id, professional_user_id: staff.id, cbo_code: "251510",
@@ -49,7 +49,7 @@ RSpec.describe "CAPS — matriciamento", type: :request do
       expect(action.psychosocial_action_participants).to be_empty
       expect(support).to have_attributes(health_team_id: team.id, held_on: Date.new(2026, 11, 18), topic: topic,
                                          participant_user_ids: [ staff.id, colleague.id ], recorded_by_user_id: staff.id)
-      expect(recorded.last.payload).to eq("matrix_support_id" => support.id)
+      expect(recorded.sole.payload).to eq("matrix_support_id" => support.id)
       expect(json_body).to include("id" => support.id, "topic" => topic, "cases" => [], "cases_count" => 0, "action_id" => action.id,
                                    "held_on" => "2026-11-18")
       expect(json_body["sigtap"]).to include("code" => "0301080305", "instrument" => "bpa_c")
@@ -136,7 +136,7 @@ RSpec.describe "CAPS — matriciamento", type: :request do
       sign_in_as(colleague)
       json_post "/psychosocial/matrix_supports/#{support.id}/cases", patient_id: patient.id, shared_text: shared
       expect(response).to have_http_status(:created)
-      matrix_case = PsychosocialMatrixCase.last
+      matrix_case = PsychosocialMatrixCase.sole
       expect(matrix_case).to have_attributes(psychosocial_matrix_support_id: support.id, patient_id: patient.id, shared_text: shared,
                                              created_by_user_id: colleague.id)
       expect(json_body).to include("id" => matrix_case.id, "shared_text" => shared, "patient" => include("patient_id" => patient.id))
@@ -170,8 +170,29 @@ RSpec.describe "CAPS — matriciamento", type: :request do
       # Relógio parado: os dois casos têm o mesmo created_at (a ordem é created_at, id).
       expect(json_body["cases"].map { |c| c["shared_text"] }).to contain_exactly(shared, "#{shared}, segunda parte")
       expect(json_body["cases"].first["patient"]).to include("patient_id" => patient.id, "name" => patient.display_name)
-      expect(viewed.last.payload).to include("patient_id" => patient.id, "user_id" => staff.id, "access" => "psychosocial",
+      expect(viewed.sole.payload).to include("patient_id" => patient.id, "user_id" => staff.id, "access" => "psychosocial",
                                              "resource" => "matrix_support")
+    end
+
+    it "P44 D2: ação cancelada → action_cancelled_at na lista e no detalhe; novo caso → 409 already_cancelled" do
+      support = record!
+      json_post "/psychosocial/matrix_supports/#{support.id}/cases", patient_id: patient.id, shared_text: shared
+      get "/psychosocial/matrix_supports", params: { health_unit_id: caps.id }
+      expect(json_body["items"].sole).to include("action_cancelled_at" => nil)
+      get "/psychosocial/matrix_supports/#{support.id}"
+      expect(json_body).to include("action_cancelled_at" => nil)
+
+      json_post "/psychosocial/actions/#{support.psychosocial_action_id}/cancel", reason: "Registrado em duplicidade no sistema"
+      expect(response).to have_http_status(:ok)
+      cancelled_at = Psychosocial::Json.time(support.psychosocial_action.reload.cancelled_at)
+      get "/psychosocial/matrix_supports", params: { health_unit_id: caps.id }
+      expect(json_body["items"].sole).to include("action_cancelled_at" => cancelled_at)
+      get "/psychosocial/matrix_supports/#{support.id}"
+      expect(json_body).to include("action_cancelled_at" => cancelled_at)
+
+      expect { json_post "/psychosocial/matrix_supports/#{support.id}/cases", patient_id: patient.id, shared_text: "#{shared} de novo" }
+        .not_to change(PsychosocialMatrixCase, :count)
+      expect([ response.status, json_body["error"] ]).to eq([ 409, "already_cancelled" ])
     end
 
     it "outro CAPS: detalhe e caso → 404; lista → 403 not_on_caps_team" do
