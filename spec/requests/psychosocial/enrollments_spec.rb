@@ -235,6 +235,19 @@ RSpec.describe "CAPS — matrícula", type: :request do
       end
     end
 
+    it "matrícula mais antiga que o piso: reenviar o mesmo início passa (edita o CID); mudar para outra data abaixo do piso → 422" do
+      travel_to(Time.zone.local(2026, 11, 18, 15, 0)) do
+        old = enrollment!(caps, patient: patient, reference: staff, started_on: Date.new(2025, 9, 10)) # 14 meses atrás, gravação direta
+        json_patch "/psychosocial/enrollments/#{old.id}", started_on: "2025-09-10", cid_main: "F31.2"
+        expect(response).to have_http_status(:ok)
+        expect(old.reload).to have_attributes(cid_main: "F312", started_on: Date.new(2025, 9, 10))
+
+        json_patch "/psychosocial/enrollments/#{old.id}", started_on: "2025-09-20"
+        expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "started_on" ])
+        expect(old.reload.started_on).to eq(Date.new(2025, 9, 10))
+      end
+    end
+
     it "edita CIDs, substâncias, ESF, técnico e próxima visita" do
       id = enroll!
       other = caps_staff!(caps, cbo: "223505")

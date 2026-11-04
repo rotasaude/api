@@ -48,6 +48,10 @@ module Psychosocial
       exported = nil
       (KEYS - %w[esf_cnes next_visit_at]).each do |key|
         next unless attrs.key?(key)
+        # O início reenviado igual ao atual não muda nada: aceito sem efeito,
+        # sem o piso (start_allowed?), que só vale para um início novo — a
+        # matrícula mais antiga que o piso continua editável (fix round 3).
+        next if key == "started_on" && Input.date(attrs[key]) == enrollment.started_on
 
         value, error = CreateEnrollment.field(key, attrs[key], unit: enrollment.health_unit, patient: enrollment.patient)
         next problems << problem(key, error) if error
