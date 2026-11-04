@@ -16,6 +16,10 @@ module Billing
     end
 
     def procedure(release, code) = memo(:procedure, release, code) { SigtapProcedure.find_by(release_id: release.id, code: code) }
+    # Módulo 31: quantidade máxima e permanência do procedimento (nulo = sem limite, ou release anterior ao módulo).
+    def max_quantity(release, code) = procedure(release, code)&.max_quantity
+    def max_stay_days(release, code) = procedure(release, code)&.max_stay_days
+    def attributes(release, code) = memo(:attributes, release, code) { scope(SigtapProcedureAttribute, release, code).pluck(:attribute_code).to_set }
     def instruments(release, code) = memo(:instruments, release, code) { scope(SigtapProcedureInstrument, release, code).pluck(:instrument_code) }
     def cbos(release, code) = memo(:cbos, release, code) { scope(SigtapProcedureCbo, release, code).pluck(:cbo_code).to_set }
     def cids(release, code) = memo(:cids, release, code) { scope(SigtapProcedureCid, release, code).pluck(:cid_code).to_set }

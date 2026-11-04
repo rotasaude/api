@@ -45,6 +45,11 @@ class OfficialArchive
     Digest::SHA256.hexdigest(files.map { |f| "#{Pathname(f).relative_path_from(@path)}:#{Digest::SHA256.file(f).hexdigest}" }.join("\n"))
   end
 
+  # O arquivo existe? (layout opcional no pacote: o chamador decide se o lê.)
+  def include?(pattern)
+    entry_names.any? { |n| File.basename(n).match?(pattern) }
+  end
+
   def each_line(pattern, encoding: "ISO-8859-1")
     open_entry(pattern) do |io|
       while (raw = io.gets("\n", MAX_LINE_BYTES + 1))

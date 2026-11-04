@@ -166,7 +166,8 @@ DECLARE
   t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['cid10_codes', 'ciap2_codes', 'sigtap_procedures', 'sigtap_procedure_cbos',
-                           'sigtap_procedure_cids', 'sigtap_procedure_instruments'] LOOP
+                           'sigtap_procedure_cids', 'sigtap_procedure_instruments',
+                           'sigtap_procedure_attributes'] LOOP
     CONTINUE WHEN to_regclass('public.' || t) IS NULL;
     EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', t || '_guard', t);
     EXECUTE format('CREATE TRIGGER %I BEFORE INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW ' ||

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_27_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_04_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -448,6 +448,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900001) do
     t.check_constraint "provider::text = ANY (ARRAY['vidaas'::text, 'birdid'::text, 'safeid'::text, 'neoid'::text, 'remoteid'::text, 'simulated'::text])", name: "ck_signature_provider_checks_provider"
   end
 
+  create_table "sigtap_procedure_attributes", force: :cascade do |t|
+    t.string "attribute_code", limit: 3, null: false
+    t.string "procedure_code", limit: 10, null: false
+    t.uuid "release_id", null: false
+    t.index ["release_id", "procedure_code", "attribute_code"], name: "idx_sigtap_procedure_attributes_unique", unique: true
+  end
+
   create_table "sigtap_procedure_cbos", force: :cascade do |t|
     t.string "cbo_code", limit: 6, null: false
     t.string "procedure_code", limit: 10, null: false
@@ -477,10 +484,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900001) do
     t.integer "amount_sa_cents"
     t.string "code", limit: 10, null: false
     t.string "complexity", limit: 1
+    t.integer "max_quantity"
+    t.integer "max_stay_days"
     t.text "name", null: false
     t.uuid "release_id", null: false
     t.string "sex", limit: 1
     t.index ["release_id", "code"], name: "index_sigtap_procedures_on_release_id_and_code", unique: true
+    t.check_constraint "((max_quantity IS NULL) OR (max_quantity > 0)) AND ((max_stay_days IS NULL) OR (max_stay_days > 0))", name: "ck_sigtap_procedures_limits"
   end
 
   create_table "sncr_checks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -670,6 +680,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_900001) do
   add_foreign_key "medication_catalog_items", "medication_catalog_releases", column: "last_release_id"
   add_foreign_key "notifiable_diseases", "notifiable_disease_versions", column: "list_version_id"
   add_foreign_key "operator_sessions", "operators"
+  add_foreign_key "sigtap_procedure_attributes", "terminology_releases", column: "release_id"
   add_foreign_key "sigtap_procedure_cbos", "terminology_releases", column: "release_id"
   add_foreign_key "sigtap_procedure_cids", "terminology_releases", column: "release_id"
   add_foreign_key "sigtap_procedure_instruments", "terminology_releases", column: "release_id"

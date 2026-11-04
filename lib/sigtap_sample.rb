@@ -24,7 +24,12 @@ module SigtapSample
     "rl_procedimento_registro" => [ [ "CO_PROCEDIMENTO", 10, "VARCHAR2" ], [ "CO_REGISTRO", 2, "VARCHAR2" ],
                                     [ "DT_COMPETENCIA", 6, "VARCHAR2" ] ],
     "tb_registro" => [ [ "CO_REGISTRO", 2, "VARCHAR2" ], [ "NO_REGISTRO", 50, "VARCHAR2" ],
-                       [ "DT_COMPETENCIA", 6, "VARCHAR2" ] ]
+                       [ "DT_COMPETENCIA", 6, "VARCHAR2" ] ],
+    # Módulo 31: atributos complementares (CO_DETALHE, 3 dígitos) e o seu catálogo.
+    "rl_procedimento_detalhe" => [ [ "CO_PROCEDIMENTO", 10, "VARCHAR2" ], [ "CO_DETALHE", 3, "VARCHAR2" ],
+                                   [ "DT_COMPETENCIA", 6, "VARCHAR2" ] ],
+    "tb_detalhe" => [ [ "CO_DETALHE", 3, "VARCHAR2" ], [ "NO_DETALHE", 100, "VARCHAR2" ],
+                      [ "DT_COMPETENCIA", 6, "VARCHAR2" ] ]
   }.freeze
 
   # código, nome, complexidade, sexo, idade mínima, idade máxima (meses)
@@ -74,8 +79,39 @@ module SigtapSample
     [ "0414020154", "GENGIVECTOMIA (POR SEXTANTE)", "2", "I", 0, 9999 ],
     [ "0414020162", "GENGIVOPLASTIA (POR SEXTANTE)", "2", "I", 0, 9999 ],
     [ "0414020375", "TRATAMENTO CIRURGICO PERIODONTAL (POR SEXTANTE)", "2", "I", 0, 9999 ],
-    [ "0701070137", "PROTESE TOTAL MAXILAR", "2", "I", 0, 9999 ]
+    [ "0701070137", "PROTESE TOTAL MAXILAR", "2", "I", 0, 9999 ],
+    # Módulo 31 (ADR 0049): procedimentos do CAPS da semente de dev (PSYCHOSOCIAL_CODES).
+    [ "0301080208", "ATENDIMENTO INDIVIDUAL DE PACIENTE EM CENTRO DE ATENCAO PSICOSSOCIAL", "2", "I", 0, 9999 ],
+    [ "0301080216", "ATENDIMENTO EM GRUPO DE PACIENTES EM CENTRO DE ATENCAO PSICOSSOCIAL", "2", "I", 0, 9999 ],
+    [ "0301080224", "ATENDIMENTO FAMILIAR EM CENTRO DE ATENCAO PSICOSSOCIAL", "2", "I", 0, 9999 ],
+    [ "0301080240", "ATENDIMENTO DOMICILIAR PARA PACIENTES DE CENTRO DE ATENCAO PSICOSSOCIAL E/OU FAMILIARES", "2", "I", 0, 9999 ],
+    [ "0301080283", "PRATICAS EXPRESSIVAS E COMUNICATIVAS EM CENTRO DE ATENCAO PSICOSSOCIAL", "2", "I", 0, 9999 ],
+    [ "0301080291", "ATENCAO AS SITUACOES DE CRISE EM CENTRO DE ATENCAO PSICOSSOCIAL", "2", "I", 0, 9999 ],
+    [ "0301080348", "ACOES DE REABILITACAO PSICOSSOCIAL", "2", "I", 0, 9999 ],
+    [ "0301080194", "ACOLHIMENTO DIURNO DE PACIENTE EM CENTRO DE ATENCAO PSICOSSOCIAL", "2", "I", 0, 9999 ],
+    [ "0301080020", "ACOLHIMENTO NOTURNO DE PACIENTES COM TRANSTORNOS MENTAIS EM CENTRO DE ATENCAO PSICOSSOCIAL", "2", "I", 0, 9999 ],
+    [ "0301080232", "ACOLHIMENTO INICIAL POR CENTRO DE ATENCAO PSICOSSOCIAL", "2", "I", 0, 9999 ],
+    [ "0301080259", "ACOES DE ARTICULACAO DE REDES INTRA E INTERSETORIAIS", "2", "I", 0, 9999 ],
+    [ "0301080267", "FORTALECIMENTO DO PROTAGONISMO DE USUARIOS DE CENTRO DE ATENCAO PSICOSSOCIAL E SEUS FAMILIARES", "2", "I", 0, 9999 ],
+    [ "0301080305", "MATRICIAMENTO DE EQUIPES DA ATENCAO BASICA", "2", "I", 0, 9999 ],
+    [ "0301080313", "ACOES DE REDUCAO DE DANOS", "2", "I", 0, 9999 ],
+    [ "0301080321", "ACOMPANHAMENTO DE SERVICO RESIDENCIAL TERAPEUTICO POR CENTRO DE ATENCAO PSICOSSOCIAL", "2", "I", 0, 9999 ],
+    [ "0301080399", "MATRICIAMENTO DE EQUIPES DOS PONTOS DE ATENCAO DA URGENCIA E EMERGENCIA E DOS SERVICOS HOSPITALARES DE REFERENCIA", "2", "I", 0, 9999 ]
   ].freeze
+
+  # Módulo 31 (ADR 0049): os procedimentos do CAPS do recorte (PsychosocialCrew); a conferência com o
+  # SIGTAP oficial (códigos, máximos, atributos) é gate de go-live.
+  PSYCHOSOCIAL_CODES = %w[0301080208 0301080216 0301080224 0301080240 0301080283 0301080291 0301080348 0301080194
+                          0301080020 0301080232 0301080259 0301080267 0301080305 0301080313 0301080321 0301080399].freeze
+
+  # QT_MAXIMA_EXECUCAO e QT_DIAS_PERMANENCIA: ausente = 9999 e 0 no arquivo (o leitor lê ambos como sem limite).
+  MAX_QUANTITIES = { "0301080208" => 31, "0301080216" => 31, "0301080224" => 31, "0301080240" => 31,
+                     "0301080020" => 1, "0301080232" => 1 }.freeze
+  STAY_DAYS = { "0301080020" => 14 }.freeze
+
+  # Atributos complementares (CO_DETALHE; tb_detalhe): 036 = exige número de autorização (só para o teste).
+  ATTRIBUTES = { "0301080291" => %w[036] }.freeze
+  ATTRIBUTE_NAMES = { "036" => "EXIGE NUMERO DE AUTORIZACAO" }.freeze
 
   # Desvio 14: VL_SA de dev, em centavos (aproximação da tabela vigente).
   AMOUNTS = { "0202020380" => 411, "0202010473" => 185, "0202010503" => 786, "0202010295" => 185, "0202010279" => 351,
@@ -84,6 +120,8 @@ module SigtapSample
               "0202040127" => 165 }.freeze
 
   LAB_CBOS = %w[221205 223415].freeze
+  # Módulo 31: psiquiatra, psicólogo, enfermeiro, terapeuta ocupacional, assistente social e técnico de enfermagem.
+  PSYCHOSOCIAL_CBOS = %w[225133 225125 251510 223505 251605 223905 322205].freeze
 
   CBOS = {
     "0301010064" => %w[225125 225142 225130 225170],
@@ -97,13 +135,23 @@ module SigtapSample
     "0301100012" => %w[223505 322205 225125],
     "0301060118" => %w[223505 225125],
     "0214010015" => %w[223505 322205]
-  }.merge(AMOUNTS.keys.to_h { |code| [ code, LAB_CBOS ] }).freeze
+  }.merge(AMOUNTS.keys.to_h { |code| [ code, LAB_CBOS ] })
+   .merge(PSYCHOSOCIAL_CODES.to_h { |code| [ code, PSYCHOSOCIAL_CBOS ] }).freeze
 
   # Módulo 28: os procedimentos odontológicos do recorte (OralHealthCrew); BPA (01/02).
   ORAL_HEALTH_CODES = %w[0101020066 0307010031 0307010120 0307020045 0307020053 0307020061 0307030032 0414020154
                          0414020162 0414020375 0701070137].freeze
 
   CIDS = { "0201020033" => [ %w[Z014 S] ], "0301060029" => [ %w[I10 S], %w[E119 S], %w[J069 S] ] }.freeze
+
+  # Módulo 31: RAAS (09) nas ações do CAPS; BPA-C (01) nas de território; o acolhimento inicial também em BPA-I (02).
+  PSYCHOSOCIAL_INSTRUMENTS = PSYCHOSOCIAL_CODES.to_h do |code|
+    [ code, case code
+            when "0301080232" then %w[02 09]
+            when "0301080259", "0301080267", "0301080305", "0301080313", "0301080321", "0301080399" then %w[01]
+            else %w[09]
+            end ]
+  end.freeze
 
   INSTRUMENTS = {
     "0301010064" => %w[02], "0301010030" => %w[02], "0201020033" => %w[01 02], "0301100039" => %w[01],
@@ -114,10 +162,12 @@ module SigtapSample
     # Módulo 26a: BPA (01/02) e, na EGD, AIH especial e APAC (G11: a APAC principal não exclui).
     "0301010072" => %w[01 02 07], "0209010037" => %w[02 04 06 07], "0401010074" => %w[01 02]
   }.merge(AMOUNTS.keys.to_h { |code| [ code, %w[01] ] })
-   .merge(ORAL_HEALTH_CODES.to_h { |code| [ code, %w[01 02] ] }).freeze
+   .merge(ORAL_HEALTH_CODES.to_h { |code| [ code, %w[01 02] ] })
+   .merge(PSYCHOSOCIAL_INSTRUMENTS).freeze
 
   REGISTRIES = { "01" => "BPA (CONSOLIDADO)", "02" => "BPA (INDIVIDUALIZADO)", "04" => "AIH (PROC. ESPECIAL)",
-                 "06" => "APAC (PROC. PRINCIPAL)", "07" => "APAC (PROC. SECUNDARIO)" }.freeze
+                 "06" => "APAC (PROC. PRINCIPAL)", "07" => "APAC (PROC. SECUNDARIO)",
+                 "09" => "RAAS (PSICOSSOCIAL)" }.freeze
 
   # Módulo 26a: os procedimentos reguláveis do recorte (RegulationCrew).
   REGULATION_CODES = %w[0301010072 0209010037 0401010074].freeze
@@ -151,11 +201,15 @@ module SigtapSample
   def rows_for(file, competence)
     case file
     when "tb_procedimento"
-      PROCEDURES.map { |code, name, cx, sex, min, max| [ code, name, cx, sex, 9999, 0, 0, min, max, 0, AMOUNTS.fetch(code, 0), 0, competence ] }
+      PROCEDURES.map do |code, name, cx, sex, min, max|
+        [ code, name, cx, sex, MAX_QUANTITIES.fetch(code, 9999), STAY_DAYS.fetch(code, 0), 0, min, max, 0, AMOUNTS.fetch(code, 0), 0, competence ]
+      end
     when "rl_procedimento_ocupacao" then CBOS.flat_map { |code, cbos| cbos.map { |cbo| [ code, cbo, competence ] } }
     when "rl_procedimento_cid" then CIDS.flat_map { |code, cids| cids.map { |cid, principal| [ code, cid, principal, competence ] } }
     when "rl_procedimento_registro" then INSTRUMENTS.flat_map { |code, regs| regs.map { |reg| [ code, reg, competence ] } }
     when "tb_registro" then REGISTRIES.map { |code, name| [ code, name, competence ] }
+    when "rl_procedimento_detalhe" then ATTRIBUTES.flat_map { |code, list| list.map { |attribute| [ code, attribute, competence ] } }
+    when "tb_detalhe" then ATTRIBUTE_NAMES.map { |attribute, name| [ attribute, name, competence ] }
     end
   end
 end
