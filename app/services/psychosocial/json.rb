@@ -105,5 +105,32 @@ module Psychosocial
         "responsible" => pro(group.responsible_user, cbos[group.responsible_user_id]), "capacity" => group.capacity,
         "sigtap_code" => group.sigtap_code, "active" => group.active }
     end
+
+    # Ação na lista (contrato §4): sem notas, sem participantes nominais.
+    # count: participantes da ação; cache: a SIGTAP memorizada da chamada.
+    def action_item(action, count:, cache: Billing::SigtapCache.new)
+      { "id" => action.id, "sigtap" => sigtap(action.sigtap_code, action.instrument, action.month, cache: cache),
+        "instrument" => action.instrument, "performed_at" => time(action.performed_at), "place" => action.place,
+        "quantity" => action.quantity, "professional" => pro(action.professional_user, action.cbo_code),
+        "group_id" => action.psychosocial_group_id, "participants_count" => count, "cancelled" => action.cancelled? }
+    end
+
+    # Detalhe (com as notas e os participantes; quem lê grava a trilha):
+    # `{ enrollment_id, patient: <patient-ref> }` ou `{ family_name }`.
+    def action(action, cache: Billing::SigtapCache.new)
+      participants = action.psychosocial_action_participants.to_a
+      action_item(action, count: participants.size, cache: cache).merge(
+        "health_unit_id" => action.health_unit_id, "month" => action.month.strftime("%Y-%m"), "origin" => action.origin,
+        "notes" => action.notes, "authorization_number" => action.authorization_number,
+        "participants" => participants.map { |p| action_participant(p) },
+        "cancelled_at" => time(action.cancelled_at), "cancel_reason" => action.cancel_reason, "created_at" => time(action.created_at)
+      )
+    end
+
+    def action_participant(participant)
+      return { "family_name" => participant.family_name } if participant.patient_id.nil?
+
+      { "enrollment_id" => participant.psychosocial_enrollment_id, "patient" => patient_ref(participant.patient) }
+    end
   end
 end

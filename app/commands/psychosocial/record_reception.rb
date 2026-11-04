@@ -11,7 +11,14 @@
 # matrícula na mesma transação: falha na matrícula desfaz a recepção. Outro
 # desfecho com o bloco → invalid_request `enrollment`. Recusas de campo todas
 # de uma vez. Publica `psychosocial.reception_recorded` só com o id.
-# A ação do acolhimento entra na Task 7, que estende este comando.
+# O acolhimento é também uma ação (Task 7): Psychosocial::RecordAction na mesma
+# transação, `origin: "reception"`, em `at`, no CAPS, quantidade 1, sem notas
+# (as da recepção ficam nela), com o participante = a matrícula criada ou o
+# paciente; o instrumento sai do Desvio 3 (código só 09 sem matrícula →
+# enrollment_required). A crítica da ação recusa tudo com 422
+# action_rejected, nos campos da recepção: `performed_at` → `at`, os demais →
+# `sigtap_code` (o acolhimento não tem quantidade, autorização nem lista de
+# participantes).
 module Psychosocial
   module RecordReception
     KEYS = %w[health_unit_id patient_id referral_id at sigtap_code notes outcome enrollment].freeze
@@ -22,9 +29,11 @@ module Psychosocial
 
     module_function
 
+    # link: o vínculo de quem acolhe no CAPS (o CBO da ação).
     # -> Result.ok(reception:, enrollment:) | fail(:referral_not_pending | :enrollment_open) |
+    #    fail(:action_rejected, details: { problems: }) |
     #    fail(:invalid_request | :too_long | :instrument_mismatch | ..., details: { path:, problems: })
-    def call(attrs:, unit:, by:, now: Time.current)
+    def call(attrs:, unit:, by:, link: Access.link(by, unit.id), now: Time.current)
       attrs = attrs.to_h.stringify_keys
       problems = (attrs.keys - KEYS).map { |key| problem(key[0, KEY_PATH_MAX]) }
 
@@ -43,13 +52,13 @@ module Psychosocial
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
         result = record(attrs, unit: unit, patient: patient, at: at, notes: notes&.strip, referral: referral, values: values, by: by,
-                               now: now)
+                               link: link, now: now)
         raise ActiveRecord::Rollback if result.failure?
       end
       result
     end
 
-    def record(attrs, unit:, patient:, at:, notes:, referral:, values:, by:, now:)
+    def record(attrs, unit:, patient:, at:, notes:, referral:, values:, by:, link:, now:)
       if referral
         referral.lock!
         return Result.fail(:referral_not_pending) unless referral.status == "pending"
@@ -66,6 +75,12 @@ module Psychosocial
 
         enrollment = enrolled.payload.fetch(:enrollment)
       end
+      participant = enrollment ? { "enrollment_id" => enrollment.id } : { "patient_id" => patient.id }
+      action = RecordAction.call(attrs: { "sigtap_code" => attrs["sigtap_code"], "performed_at" => at.iso8601, "place" => "caps",
+                                          "quantity" => 1, "participants" => [ participant ] },
+                                 unit: unit, by: by, link: link, origin: "reception", now: now)
+      return action_refusal(action) if action.failure?
+
       DomainEvents.publish("psychosocial.reception_recorded", reception_id: reception.id)
       Result.ok(reception: reception, enrollment: enrollment)
     end
@@ -76,6 +91,14 @@ module Psychosocial
 
       problems = result.details[:problems].map { |p| p.merge(path: "enrollment.#{p[:path]}") }
       Result.fail(result.reason, details: result.details.merge(path: problems.first[:path], problems: problems))
+    end
+
+    # A crítica da ação nos campos da recepção (sem participant_index).
+    def action_refusal(result)
+      return result unless result.reason == :action_rejected
+
+      problems = result.details[:problems].map { |p| { error: p[:error], path: p[:path] == "performed_at" ? "at" : "sigtap_code" } }
+      Result.fail(:action_rejected, details: { problems: problems.uniq })
     end
 
     # nil (aceito) | o problema. Sem `at` válido, só a forma do código.
@@ -124,6 +147,6 @@ module Psychosocial
       Result.fail(first[:error].to_sym, details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :record, :prefixed, :code_problem, :referral, :enrollment_values, :problem, :failure
+    private_class_method :record, :prefixed, :action_refusal, :code_problem, :referral, :enrollment_values, :problem, :failure
   end
 end

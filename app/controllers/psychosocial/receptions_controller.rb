@@ -10,7 +10,7 @@ module Psychosocial
       unit = staff_unit!(body_param("health_unit_id"))
       return unless unit
 
-      result = RecordReception.call(attrs: body, unit: unit, by: Current.user)
+      result = RecordReception.call(attrs: body, unit: unit, by: Current.user, link: @link)
       return render_failure(result) if result.failure?
 
       render json: { reception_id: result.payload.fetch(:reception).id, enrollment_id: result.payload[:enrollment]&.id },

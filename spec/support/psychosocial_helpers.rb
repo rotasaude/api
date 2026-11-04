@@ -82,6 +82,20 @@ module PsychosocialHelpers
     end
   end
 
+  # Ação gravada pela via real (Psychosocial::RecordAction, com o vínculo de
+  # quem grava no CAPS): hoje às 10:00 locais (ou agora, se ainda não deu
+  # 10:00), no CAPS, quantidade 1. Recusa → erro com os códigos (nunca dado
+  # do paciente). Devolve a PsychosocialAction.
+  def record_action!(unit, by, **attrs)
+    performed_at = [ Time.zone.today.in_time_zone.change(hour: 10), Time.current ].min
+    attrs = { sigtap_code: "0301080208", performed_at: performed_at.iso8601, place: "caps", quantity: 1, participants: [] }.merge(attrs)
+    result = Psychosocial::RecordAction.call(attrs: attrs.deep_stringify_keys, unit: unit, by: by,
+                                             link: Psychosocial::Access.link(by, unit.id))
+    raise "record_action! recusada: #{result.reason} #{Array(result.details[:problems]).map { |p| p[:error] }.join(',')}" if result.failure?
+
+    result.payload.fetch(:action)
+  end
+
   def bed!(unit, label: "L1")
     PsychosocialBed.create!(health_unit: unit, label: label, updated_by_user: psychosocial_admin!)
   end

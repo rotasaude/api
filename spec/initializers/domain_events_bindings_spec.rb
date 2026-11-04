@@ -490,6 +490,14 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
 
+  # Módulo 31 (contrato §13; Task 7): ação gravada e cancelada (action_id); só
+  # ids, sem consumidor (o BPA entra na Task 12).
+  it "declares psychosocial.action_recorded and .action_cancelled with no consumer" do
+    names = %w[psychosocial.action_recorded psychosocial.action_cancelled]
+    expect(DomainEvents.registry.keys).to include(*names)
+    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  end
+
   # Pagamento e prestação de contas do TFD (Task 12): só ids, sem consumidor.
   it "declares tfd.payment_recorded and tfd.accountability_closed with no consumer" do
     names = %w[tfd.payment_recorded tfd.accountability_closed]

@@ -41,6 +41,44 @@ RSpec.describe "CAPS — acolhimento", type: :request do
     expect(PsychosocialEnrollment.count).to eq(0)
   end
 
+  # Task 7: o acolhimento é registrado como ação (origin "reception"), com o
+  # instrumento do Desvio 3 e a crítica da ação, na mesma transação.
+  it "sem matrícula, com 0301080232 (02 e 09): grava a ação BPA-I do acolhimento com o paciente" do
+    json_post "/psychosocial/receptions", body
+    expect(response).to have_http_status(:created)
+    action = PsychosocialAction.sole
+    expect(action).to have_attributes(origin: "reception", instrument: "bpa_i", sigtap_code: "0301080232", quantity: 1, place: "caps",
+                                      professional_user_id: staff.id, cbo_code: "251510", notes: nil)
+    expect(action.psychosocial_action_participants.map { |p| [ p.position, p.patient_id, p.psychosocial_enrollment_id ] })
+      .to eq([ [ 1, patient.id, nil ] ])
+    expect(DomainEvent.where(name: "psychosocial.action_recorded").last.payload).to eq("action_id" => action.id)
+  end
+
+  it "com a matrícula: a ação do acolhimento é RAAS com o participante matriculado" do
+    json_post "/psychosocial/receptions", body(outcome: "enrolled", enrollment: enrollment_block)
+    expect(response).to have_http_status(:created)
+    participant = PsychosocialAction.sole.psychosocial_action_participants.sole
+    expect(PsychosocialAction.sole.instrument).to eq("raas_psi")
+    expect(participant.psychosocial_enrollment_id).to eq(json_body["enrollment_id"])
+  end
+
+  it "código só 09 sem matrícula → 422 action_rejected enrollment_required; nada gravado" do
+    referral = referral!
+    expect do
+      json_post "/psychosocial/receptions", body(sigtap_code: "0301080208", referral_id: referral.id)
+    end.not_to change { [ PsychosocialReception.count, PsychosocialAction.count, DomainEvent.count ] }
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "action_rejected",
+                                                          "problems" => [ { "error" => "enrollment_required", "path" => "sigtap_code" } ] } ])
+    expect(referral.reload.status).to eq("pending")
+  end
+
+  it "CBO de quem acolhe fora da lista do código → action_rejected cbo_incompatible" do
+    sign_in_as(caps_staff!(caps, cbo: "515105"))
+    json_post "/psychosocial/receptions", body
+    expect(json_body).to eq("error" => "action_rejected", "problems" => [ { "error" => "cbo_incompatible", "path" => "sigtap_code" } ])
+    expect(PsychosocialReception.count).to eq(0)
+  end
+
   it "`enrolled` sem o bloco `enrollment` → invalid_request enrollment; com outro desfecho o bloco é recusado" do
     json_post "/psychosocial/receptions", body(outcome: "enrolled")
     expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "enrollment" ])

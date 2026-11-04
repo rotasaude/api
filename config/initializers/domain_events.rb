@@ -318,6 +318,9 @@ Rails.application.config.to_prepare do
   # necessidades, objetivos nem nome; sem consumidor (o aviso é a tabela
   # psychosocial_care_plan_alerts e a rota care_plans/due).
   %w[psychosocial.care_plan_saved psychosocial.care_plan_review_due].each { |name| DomainEvents.bind name, to: [] }
+  # Ação gravada e cancelada do CAPS (Task 7): só o action_id, nunca notas,
+  # participantes, CID ou nome; sem consumidor (o BPA entra na Task 12).
+  %w[psychosocial.action_recorded psychosocial.action_cancelled].each { |name| DomainEvents.bind name, to: [] }
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

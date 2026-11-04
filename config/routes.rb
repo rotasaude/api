@@ -696,6 +696,11 @@ Rails.application.routes.draw do
     post  "groups",              to: "groups#create"
     patch "groups/:id",          to: "groups#update"
     get   "today",               to: "today#show"
+    # Ações com a crítica SIGTAP na hora e o cancelamento (§4, P23).
+    get   "actions",             to: "actions#index"
+    post  "actions",             to: "actions#create"
+    get   "actions/:id",         to: "actions#show"
+    post  "actions/:id/cancel",  to: "actions#cancel"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.
