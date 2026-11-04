@@ -691,6 +691,11 @@ Rails.application.routes.draw do
     get   "enrollments/:id/care_plans", to: "care_plans#index"
     post  "enrollments/:id/care_plans", to: "care_plans#create"
     get   "care_plans/due",      to: "care_plans#due"
+    # Grade de grupos e o "Hoje no CAPS" (§4).
+    get   "groups",              to: "groups#index"
+    post  "groups",              to: "groups#create"
+    patch "groups/:id",          to: "groups#update"
+    get   "today",               to: "today#show"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.

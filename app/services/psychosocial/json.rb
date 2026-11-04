@@ -37,6 +37,8 @@ module Psychosocial
     end
 
     def time(value) = value&.in_time_zone&.iso8601
+    # Hora do dia da grade ("HH:MM"), sem fuso.
+    def hour(value) = value&.strftime("%H:%M")
     def date(value) = value&.iso8601
 
     # Resposta da escrita da UBS (POST /psychosocial/referrals): sem o paciente
@@ -94,6 +96,14 @@ module Psychosocial
     # Revisão vencida (care_plans/due): sem texto clínico; review_on nulo = sem PTS.
     def care_plan_due(enrollment, review_on)
       { "enrollment_id" => enrollment.id, "patient" => patient_ref(enrollment.patient), "review_on" => date(review_on) }
+    end
+
+    # Grupo da grade (contrato §4): sem texto clínico. cbos: { user_id => CBO no CAPS }.
+    def group(group, cbos:)
+      { "id" => group.id, "health_unit_id" => group.health_unit_id, "name" => group.name, "kind" => group.kind,
+        "weekday" => group.weekday, "starts_at" => hour(group.starts_at), "ends_at" => hour(group.ends_at),
+        "responsible" => pro(group.responsible_user, cbos[group.responsible_user_id]), "capacity" => group.capacity,
+        "sigtap_code" => group.sigtap_code, "active" => group.active }
     end
   end
 end
