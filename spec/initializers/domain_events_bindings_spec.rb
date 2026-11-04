@@ -468,6 +468,12 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     end
   end
 
+  # Módulo 31 (contrato §13): troca dos parâmetros do CAPS, sem payload e sem consumidor.
+  it "declares psychosocial.settings_changed with no consumer" do
+    expect(DomainEvents.registry.keys).to include("psychosocial.settings_changed")
+    expect(DomainEvents.registry["psychosocial.settings_changed"]).to be_empty
+  end
+
   # Pagamento e prestação de contas do TFD (Task 12): só ids, sem consumidor.
   it "declares tfd.payment_recorded and tfd.accountability_closed with no consumer" do
     names = %w[tfd.payment_recorded tfd.accountability_closed]

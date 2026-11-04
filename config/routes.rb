@@ -661,6 +661,20 @@ Rails.application.routes.draw do
     post  "legs/:id/done",          to: "legs#done"
   end
 
+  # Módulo 31 (ADR 0049; contrato §3, §4, P4, P33): atenção psicossocial
+  # (CAPS), sessão do dashboard. Dado do paciente só no corpo; ids na URL.
+  scope "/psychosocial", module: :psychosocial, as: :psychosocial do
+    # Leitura: CAPS de lotação (ou todos) e as opções das telas do CAPS.
+    get   "units",               to: "units#index"
+    get   "options",             to: "options#show"
+    # Administração: parâmetros (leitura também da coordenação) e leitos.
+    get   "settings",            to: "settings#show"
+    patch "settings",            to: "settings#update"
+    get   "beds",                to: "beds#index"
+    post  "beds",                to: "beds#create"
+    patch "beds/:id",            to: "beds#update"
+  end
+
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.
   scope "/vaccination", module: :vaccination, as: :vaccination do
     # Administração (municipal_admin; escrita com step-up): salas, equipe, rede de frio e go-live.

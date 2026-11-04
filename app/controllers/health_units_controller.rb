@@ -1,6 +1,8 @@
 # Cadastro de unidades de saúde (spec 2026-09-24-citizen-attendance-check-in
 # §4, §6): leitura para citizen_verifier, health_professional e
-# municipal_admin; escrita só para municipal_admin.
+# municipal_admin; escrita só para municipal_admin. ADR 0049 (contrato P9,
+# P26, P27): o CAPS com modalidade e classificação, e o telefone da unidade,
+# pelas mesmas rotas e sem step-up novo.
 class HealthUnitsController < ApplicationController
   include Authentication
   include AttendanceAccess
@@ -42,7 +44,7 @@ class HealthUnitsController < ApplicationController
   def create
     unit = HealthUnit.new(name: params[:name], kind: params[:kind])
     error = assign_address(unit) || assign_cnes(unit) || assign_screening_scope(unit) ||
-            assign_collects_samples(unit) || assign_notifying(unit)
+            assign_collects_samples(unit) || assign_notifying(unit) || assign_caps(unit) || assign_phone(unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
     return render_invalid(unit) unless unit.save
 
@@ -61,7 +63,7 @@ class HealthUnitsController < ApplicationController
       return render json: { error: "unit_has_ceo_profile" }, status: :conflict
     end
     error = assign_address(@unit) || assign_cnes(@unit) || assign_screening_scope(@unit) ||
-            assign_collects_samples(@unit) || assign_notifying(@unit)
+            assign_collects_samples(@unit) || assign_notifying(@unit) || assign_caps(@unit) || assign_phone(@unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
     return render_invalid(@unit) unless @unit.save
 
@@ -190,6 +192,44 @@ class HealthUnitsController < ApplicationController
     nil
   end
 
+  # ADR 0049 (contrato §3, P9): o CAPS sempre com a modalidade; a modalidade
+  # e a classificação do serviço (3 dígitos do CNES) só no CAPS. Sem a chave,
+  # o CAPS mantém o que tem; sair do CAPS limpa as duas; entrar no CAPS exige
+  # a modalidade. Roda depois do kind atribuído. Classificação null ou ""
+  # limpa (como o CNES).
+  def assign_caps(unit)
+    unless unit.caps?
+      return "caps_modality_mismatch" if params["caps_modality"].present?
+      return "invalid_service_classification" if params["service_classification"].present?
+
+      unit.caps_modality = nil
+      unit.service_classification = nil
+      return nil
+    end
+
+    unit.caps_modality = params["caps_modality"] if params.key?("caps_modality")
+    return "caps_modality_mismatch" unless HealthUnit::CAPS_MODALITIES.include?(unit.caps_modality)
+    return nil unless params.key?("service_classification")
+
+    value = params["service_classification"].presence
+    return "invalid_service_classification" unless value.nil? || (value.is_a?(String) && value.match?(HealthUnit::SERVICE_CLASSIFICATION))
+
+    unit.service_classification = value
+    nil
+  end
+
+  # Contrato P27: telefone da unidade, 10 ou 11 dígitos (a máscara sai na
+  # normalização do modelo), ou nulo. Só muda quando a chave vem.
+  def assign_phone(unit)
+    return nil unless params.key?("phone")
+
+    value = params["phone"]
+    return "invalid_phone" unless value.nil? || value.is_a?(String)
+
+    unit.phone = value
+    unit.phone.nil? || unit.phone.match?(HealthUnit::PHONE) ? nil : "invalid_phone"
+  end
+
   def address_error(field)
     { "address_zip" => "invalid_zip", "neighborhood_id" => "invalid_neighborhood" }.fetch(field, "invalid_unit")
   end
@@ -216,7 +256,8 @@ class HealthUnitsController < ApplicationController
 
   def unit_json(unit, include_active: false)
     json = { id: unit.id, name: unit.name, kind: unit.kind, cnes: unit.cnes, screening_scope: unit.screening_scope,
-             collects_samples: unit.collects_samples, notifying: unit.notifying }
+             collects_samples: unit.collects_samples, notifying: unit.notifying, caps_modality: unit.caps_modality,
+             service_classification: unit.service_classification, phone: unit.phone }
            .merge(unit.slice(*ADDRESS_FIELDS).symbolize_keys)
     json[:active] = unit.active if include_active
     json[:ceo_profile] = ceo_profile_json(unit.ceo_profile) if unit.kind == "ceo"

@@ -10,15 +10,12 @@ require Rails.root.join("lib/sigtap_sample").to_s
 module PsychosocialHelpers
   # Prontuário (clinical_city!) ou, com billing: true, a cidade do faturamento
   # (billing_city!), sempre com a SIGTAP do CAPS criada ANTES (a SIGTAP ativa é
-  # imutável). Liga `psychosocial_care` quando o catálogo já o conhece (o
-  # interruptor entra na Task 3) e garante os parâmetros (a linha que a
+  # imutável). Liga `psychosocial_care` e garante os parâmetros (a linha que a
   # migração insere e o dump não leva).
   def psychosocial_city!(billing: false)
     psychosocial_sigtap!
     city = billing ? billing_city! : clinical_city!
-    if Platform::Features.find("psychosocial_care")
-      Platform::Features.set!(city: city, key: "psychosocial_care", enabled: true, maintainer: ledi_maintainer!)
-    end
+    Platform::Features.set!(city: city, key: "psychosocial_care", enabled: true, maintainer: ledi_maintainer!)
     PsychosocialSetting.ensure_defaults!
     CityCatalog.reset_cache!
     city

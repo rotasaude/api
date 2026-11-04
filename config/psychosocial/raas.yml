@@ -1,0 +1,56 @@
+# Módulo 31 (ADR 0049; plano, Valor fixado 5; contrato §1, P31): listas fechadas
+# da RAAS Atenção Psicossocial. `review: true` — a conferência com o aplicativo
+# RAAS vigente (códigos, rótulos e o código do acolhimento noturno) é gate de
+# go-live. Raça/cor e etnia vêm do cadastro do cidadão (Patient), não daqui.
+# Lido por Psychosocial::Raas (uma vez por processo, congelado; chave
+# desconhecida ou faltante recusa a carga).
+version: 1
+source: "Manual Operacional RAAS v1.5 / Portaria SAS 854/2012"
+review: true
+
+# Layout da remessa (Psychosocial::RaasFile::LAYOUTS). Nulo até o gate: a
+# remessa responde 422 raas_layout_unavailable; a ficha espelho sai sempre.
+layout_version: null
+
+# Código SIGTAP do acolhimento noturno: uma ação RAAS por noite fechada.
+night_sigtap_code: "0301080020"
+
+# Atendimento familiar: o único que aceita familiar sem cadastro (family_name).
+family_care_codes: ["0301080224"]
+
+# Procedimentos coletivos (P31): abrem a tela de presença no dashboard.
+collective_codes: ["0301080216", "0301080283", "0301080348"]
+
+origins:
+  "01": "Demanda espontânea"
+  "02": "Atenção básica"
+  "03": "Serviço de urgência e emergência"
+  "04": "Outro CAPS"
+  "05": "Hospital geral"
+  "06": "Hospital psiquiátrico"
+  "07": "Comunidade terapêutica"
+  "08": "Unidade de acolhimento"
+  "09": "Serviço residencial terapêutico"
+  "10": "Rede intersetorial"
+  "11": "Outros"
+
+# "00" = permanência (o encerramento exige outro destino).
+destinations:
+  "00": "Permanência"
+  "01": "Alta"
+  "02": "Transferência para outro CAPS"
+  "03": "Encaminhamento para a atenção básica"
+  "04": "Abandono"
+  "05": "Óbito"
+  "06": "Internação"
+  "07": "Outros"
+
+# "99" (nenhuma) só sozinho.
+substances:
+  "01": "Álcool"
+  "02": "Crack"
+  "03": "Cocaína"
+  "04": "Maconha"
+  "05": "Solventes"
+  "06": "Outras"
+  "99": "Nenhuma"

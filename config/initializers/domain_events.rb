@@ -306,6 +306,9 @@ Rails.application.config.to_prepare do
   # contas fechada (tfd_case_id, user_id) do TFD (Task 12): só ids, nunca o
   # recibo, o valor nem o nome do arquivo; sem consumidor.
   %w[tfd.payment_recorded tfd.accountability_closed].each { |name| DomainEvents.bind name, to: [] }
+  # Módulo 31 (ADR 0049; contrato §13): troca dos parâmetros do CAPS (limites
+  # do acolhimento noturno, revisão do PTS); sem payload, sem consumidor.
+  DomainEvents.bind "psychosocial.settings_changed", to: []
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

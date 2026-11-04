@@ -104,4 +104,15 @@ RSpec.describe Platform::Features do
     City.where(id: city.id).update_all(record_mode: "record")
     expect(described_class.settings(stale)).to eq(record_mode: "record", pec_url: nil)
   end
+
+  # Módulo 31 (ADR 0049; Valor fixado 1; contrato P19): o CAPS fecha o catálogo,
+  # requer o prontuário utilizável e é a única chave escondida do cidadão.
+  it "psychosocial_care fecha o catálogo, requer o prontuário e fica fora da sessão do cidadão" do
+    entry = described_class::CATALOG.last
+    expect(entry.key).to eq("psychosocial_care")
+    expect(entry.requires).to eq(%w[feature:clinical_record])
+    expect(entry.description).to start_with("Atenção psicossocial (CAPS)")
+    expect(described_class::CITIZEN_HIDDEN).to eq(%w[psychosocial_care])
+    expect(described_class::CITIZEN_HIDDEN).to be_frozen
+  end
 end

@@ -177,10 +177,21 @@ module Platform
       # passa a faltar pré-requisito (sanitary_transport_disabled) e responde 403.
       Entry.new(key: "tfd",
                 description: "Tratamento Fora de Domicílio: laudo, comissão, trechos, ajuda de custo, pagamento registrado, prestação de contas e BPA",
-                requires: %w[feature:sanitary_transport feature:clinical_record])
+                requires: %w[feature:sanitary_transport feature:clinical_record]),
+      # ADR 0049: atenção psicossocial (módulo 31). Só com o prontuário
+      # utilizável. Sem cascata (contrato P22): desligar o prontuário deixa o
+      # CAPS ligado, faltando pré-requisito (clinical_record_disabled), e
+      # /psychosocial/* responde feature_disabled.
+      Entry.new(key: "psychosocial_care",
+                description: "Atenção psicossocial (CAPS): matrícula, PTS, ações, grupos, acolhimento noturno, RAAS do mês, matriciamento e BPA-C",
+                requires: %w[feature:clinical_record])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
+    # Contrato P19: chaves que nunca vão ao cidadão (GET /citizen/session),
+    # mesmo ligadas e utilizáveis. Lista de exclusão: todo módulo futuro com
+    # interruptor sensível acrescenta a sua chave aqui.
+    CITIZEN_HIDDEN = %w[psychosocial_care].freeze
     class UnknownFeature < StandardError; end
 
     UNREACHABLE = [ "city_unreachable" ].freeze

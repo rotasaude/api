@@ -42,4 +42,16 @@ RSpec.describe "Sessão do cidadão com os interruptores", type: :request do
     get "/citizen/session"
     expect(JSON.parse(response.body)["features"]).not_to include("care_lines")
   end
+
+  # Módulo 31 (contrato P19): o CAPS nunca aparece ao cidadão, nem ligado e utilizável.
+  it "GET /citizen/session nunca traz psychosocial_care (CITIZEN_HIDDEN)" do
+    city = psychosocial_city!
+    expect(Platform::Features.usable?(city, "psychosocial_care")).to be(true)
+    sign_in_citizen
+    get "/citizen/session"
+    expect(response).to have_http_status(:ok)
+    features = JSON.parse(response.body)["features"]
+    expect(features).to include("clinical_record")
+    expect(features).not_to include("psychosocial_care")
+  end
 end
