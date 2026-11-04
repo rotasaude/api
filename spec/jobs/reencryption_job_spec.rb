@@ -75,7 +75,11 @@ RSpec.describe ReencryptionJob do
                                          DentalTreatmentPlan DentalTreatmentPlanItem DentalProsthesisStage
                                          Immunization RndsOutboxEntry VialOpening StockLotBlock
                                          TransportDriver TransportSeries TransportTrip TransportTripPassenger
-                                         TransportAttendanceCorrection TfdCase TfdCaseEvent TfdAccountability])
+                                         TransportAttendanceCorrection TfdCase TfdCaseEvent TfdAccountability
+                                         PsychosocialReferral PsychosocialReception PsychosocialEnrollment PsychosocialCarePlan
+                                         PsychosocialAction PsychosocialActionParticipant PsychosocialMonthlyRecord
+                                         PsychosocialMonthClosure PsychosocialRaasExport PsychosocialMatrixSupport
+                                         PsychosocialMatrixCase PsychosocialNightStay])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end
