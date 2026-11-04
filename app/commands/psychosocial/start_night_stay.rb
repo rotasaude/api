@@ -91,8 +91,8 @@ module Psychosocial
       bed_id = attrs["bed_id"]
       bed = Input.uuid?(bed_id) ? PsychosocialBed.find_by(id: bed_id.downcase, active: true) : nil
       problems << problem("bed_id") unless bed
-      enrollment_id = attrs["enrollment_id"]
-      problems << problem("enrollment_id") unless Input.uuid?(enrollment_id)
+      enrollment_id = Input.uuid?(attrs["enrollment_id"]) ? attrs["enrollment_id"].downcase : nil
+      problems << problem("enrollment_id") unless enrollment_id
       started_at = Input.time(attrs["started_at"])
       problems << problem("started_at") unless started_at && started_at <= now + FUTURE_TOLERANCE
       expected_end_at = Input.time(attrs["expected_end_at"])
@@ -103,7 +103,7 @@ module Psychosocial
       end
       reassessment = Reassessment.parse(attrs, problems)
 
-      values = { bed: bed, enrollment_id: enrollment_id&.downcase, started_at: started_at, expected_end_at: expected_end_at,
+      values = { bed: bed, enrollment_id: enrollment_id, started_at: started_at, expected_end_at: expected_end_at,
                  reassessment: reassessment }
       [ values, problems.compact ]
     end

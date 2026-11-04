@@ -128,6 +128,16 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
       expect(PsychosocialNightStay.count).to eq(0)
     end
 
+    it "ids que não são texto (número, lista, objeto) → 422 invalid_request, nunca 500" do
+      [ 123, [ enrollment.id ], { id: enrollment.id } ].each do |value|
+        json_post "/psychosocial/night_stays", entry(enrollment_id: value)
+        expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "enrollment_id" ])
+        json_post "/psychosocial/night_stays", entry(bed_id: value)
+        expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "invalid_request", "bed_id" ])
+      end
+      expect(PsychosocialNightStay.count).to eq(0)
+    end
+
     it "entrada em mês fechado → 422 month_closed em started_at" do
       stay_enrollment = enrollment!(caps, reference: tech, started_on: Date.new(2026, 10, 1))
       close_month!(Date.new(2026, 10, 1))
@@ -209,6 +219,59 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
       end.not_to(change { counts })
       expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "ended_at" ])
       expect(stay.reload).to be_open
+    end
+
+    it "só a última noite recusada pela crítica: as ações das noites anteriores são desfeitas e a permanência segue aberta",
+       now: Time.zone.local(2026, 12, 2, 10, 0) do
+      # A SIGTAP de 202612 sem o código noturno: 29 e 30/11 passam, 01/12 é recusada.
+      allow_any_instance_of(Billing::SigtapCache).to receive(:procedure).and_wrap_original do |original, release, code|
+        release.version == "202612" && code == "0301080020" ? nil : original.call(release, code)
+      end
+      stay = stay!(at(29, 19), at(2, 8, month: 12), open: true)
+      expect do
+        json_post "/psychosocial/night_stays/#{stay.id}/close", ended_at: at(2, 8, month: 12).iso8601, reason: reason
+      end.not_to(change { [ *counts, PsychosocialMonthlyRecord.count, DomainEvent.where(name: "psychosocial.action_recorded").count ] })
+      expect([ response.status, json_body ])
+        .to eq([ 422, { "error" => "action_rejected", "problems" => [ { "error" => "instrument_mismatch", "path" => "sigtap_code" } ] } ])
+      expect(PsychosocialAction.where(psychosocial_night_stay_id: stay.id)).to be_empty
+      expect(stay.reload).to be_open
+    end
+
+    it "entrada às 23:30 de 30/11 local (02:30 UTC de 01/12) e saída em 01/12: a ação da noite fica em novembro",
+       now: Time.zone.local(2026, 12, 1, 10, 0) do
+      json_post "/psychosocial/night_stays", entry(started_at: Time.zone.local(2026, 11, 30, 23, 30).iso8601,
+                                                   expected_end_at: at(1, 8, month: 12).iso8601)
+      expect(response).to have_http_status(:created)
+      json_post "/psychosocial/night_stays/#{json_body["id"]}/close", ended_at: at(1, 8, month: 12).iso8601, reason: reason
+      expect(response).to have_http_status(:ok)
+      action = PsychosocialAction.where(psychosocial_night_stay_id: json_body["id"]).sole
+      expect([ action.performed_at, action.month ]).to eq([ Time.zone.local(2026, 11, 30, 23, 30), Date.new(2026, 11, 1) ])
+      expect(action.performed_at.utc.to_date).to eq(Date.new(2026, 12, 1))
+    end
+
+    describe "noite repetida" do
+      let(:night) { ->(stay) { PsychosocialAction.where(psychosocial_night_stay_id: stay.id).map { |a| a.performed_at.to_date } } }
+      let!(:first) { stay!(at(14, 19), at(14, 22), open: true) } # noite 14, saída na mesma noite
+
+      before do
+        json_post "/psychosocial/night_stays/#{first.id}/close", ended_at: at(14, 22).iso8601, reason: reason
+        expect(night.call(first)).to eq([ Date.new(2026, 11, 14) ])
+      end
+
+      it "a data que já tem ação noturna não cancelada do paciente no CAPS não gera outra" do
+        second = stay!(at(14, 23), at(16, 8), bed: l2, open: true) # noites 14 e 15
+        json_post "/psychosocial/night_stays/#{second.id}/close", ended_at: at(16, 8).iso8601, reason: reason
+        expect(response).to have_http_status(:ok)
+        expect(night.call(second)).to eq([ Date.new(2026, 11, 15) ])
+      end
+
+      it "a ação cancelada da noite não conta: a noite volta a gerar ação" do
+        Psychosocial::CancelAction.call(action: PsychosocialAction.find_by!(psychosocial_night_stay_id: first.id),
+                                        reason: "Registro em duplicidade da noite", by: tech)
+        second = stay!(at(14, 23), at(15, 8), bed: l2, open: true) # noite 14
+        json_post "/psychosocial/night_stays/#{second.id}/close", ended_at: at(15, 8).iso8601, reason: reason
+        expect(night.call(second)).to eq([ Date.new(2026, 11, 14) ])
+      end
     end
 
     it "crítica recusa a noite (CBO de quem fecha fora da lista) → 422 action_rejected e nada fecha" do

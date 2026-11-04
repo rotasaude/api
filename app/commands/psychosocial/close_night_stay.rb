@@ -11,9 +11,10 @@
 # Numa transação: trava a linha do CAPS (FOR SHARE, como RecordAction) e a
 # permanência, e só então lê o fechamento dos meses: noite em mês fechado →
 # 422 month_closed (em `ended_at`) e nada fecha. Fecha a permanência e grava,
-# pela via de RecordAction, uma ação RAAS por noite (`origin: "night_stay"`,
+# pela via de RecordAction, uma ação RAAS por noite: `origin: "night_stay"`,
 # `night_sigtap_code` do raas.yml, quantidade 1, às 20:00 locais da noite
-# dentro da permanência, profissional = quem fecha). Qualquer
+# dentro da permanência, profissional = quem fecha. A data em que o paciente já
+# tem ação noturna não cancelada neste CAPS não gera outra. Qualquer
 # recusa da crítica desfaz tudo e volta como 422 action_rejected. Publica
 # `psychosocial.night_stay_closed` só com o id.
 module Psychosocial
@@ -63,7 +64,8 @@ module Psychosocial
 
       stay.update!(ended_at: ended, end_reason: reason, closed_by_user: by,
                    **(override ? { reassessment_reason: reassessment, reassessed_by_user: by } : {}))
-      nights.each do |night|
+      recorded = recorded_nights(stay, nights)
+      nights.reject { |night| recorded.include?(night) }.each do |night|
         result = RecordAction.call(attrs: night_action(stay, night, ended), unit: unit, by: by, link: link,
                                    origin: "night_stay", night_stay: stay, now: now)
         return result if result.failure?
@@ -72,6 +74,18 @@ module Psychosocial
       DomainEvents.publish("psychosocial.night_stay_closed", night_stay_id: stay.id)
       DomainEvents.publish("psychosocial.night_limit_overridden", night_stay_id: stay.id) if override
       Result.ok(stay: stay)
+    end
+
+    # Datas locais em que o paciente já tem ação noturna não cancelada neste
+    # CAPS (de outra permanência que saiu e voltou na mesma noite, ou manual):
+    # a noite não gera uma segunda ação. -> Set<Date>
+    def recorded_nights(stay, nights)
+      from = nights.first.in_time_zone.beginning_of_day
+      to = (nights.last + 1).in_time_zone.beginning_of_day
+      PsychosocialAction.joins(:psychosocial_action_participants)
+                        .where(health_unit_id: stay.health_unit_id, sigtap_code: Raas.config.fetch("night_sigtap_code"), cancelled_at: nil,
+                               performed_at: from...to, psychosocial_action_participants: { patient_id: stay.patient_id })
+                        .pluck(:performed_at).to_set { |at| at.in_time_zone.to_date }
     end
 
     # A ação da noite, no CAPS: 20:00 locais da data, dentro da permanência
@@ -87,6 +101,6 @@ module Psychosocial
       Result.fail(first[:error].to_sym, details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :close, :night_action, :refuse
+    private_class_method :close, :recorded_nights, :night_action, :refuse
   end
 end
