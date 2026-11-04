@@ -687,6 +687,10 @@ Rails.application.routes.draw do
     get   "enrollments/:id",     to: "enrollments#show"
     patch "enrollments/:id",     to: "enrollments#update"
     post  "enrollments/:id/close", to: "enrollments#close"
+    # PTS com versões e as revisões vencidas (§4, P4, P16).
+    get   "enrollments/:id/care_plans", to: "care_plans#index"
+    post  "enrollments/:id/care_plans", to: "care_plans#create"
+    get   "care_plans/due",      to: "care_plans#due"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.

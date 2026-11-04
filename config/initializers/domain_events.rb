@@ -314,6 +314,10 @@ Rails.application.config.to_prepare do
   # nunca CID, substância, motivo ou nome; sem consumidor.
   %w[psychosocial.referral_created psychosocial.reception_recorded psychosocial.enrolled
      psychosocial.enrollment_closed].each { |name| DomainEvents.bind name, to: [] }
+  # PTS gravado e revisão vencida do PTS (Task 5): só o care_plan_id, nunca
+  # necessidades, objetivos nem nome; sem consumidor (o aviso é a tabela
+  # psychosocial_care_plan_alerts e a rota care_plans/due).
+  %w[psychosocial.care_plan_saved psychosocial.care_plan_review_due].each { |name| DomainEvents.bind name, to: [] }
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

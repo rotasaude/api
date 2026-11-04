@@ -81,5 +81,19 @@ module Psychosocial
         "created_at" => time(enrollment.created_at)
       )
     end
+
+    # Versão do PTS (contrato §4): texto clínico, só no detalhe da matrícula
+    # (quem lê grava a trilha). cbos: { user_id => CBO no CAPS }.
+    def care_plan(plan, cbos:)
+      { "id" => plan.id, "version" => plan.version, "needs" => plan.needs,
+        "goals" => (plan.goals || []).map { |goal| goal.slice("text", "responsible_user_id", "due_on") },
+        "intensity" => plan.intensity, "review_on" => date(plan.review_on),
+        "created_by" => pro(plan.created_by_user, cbos[plan.created_by_user_id]), "created_at" => time(plan.created_at) }
+    end
+
+    # Revisão vencida (care_plans/due): sem texto clínico; review_on nulo = sem PTS.
+    def care_plan_due(enrollment, review_on)
+      { "enrollment_id" => enrollment.id, "patient" => patient_ref(enrollment.patient), "review_on" => date(review_on) }
+    end
   end
 end
