@@ -16,5 +16,12 @@ module Psychosocial
       DomainEvents.publish("clinical_record.viewed", patient_id: patient_id, user_id: user.id, access: Catalog::TRAIL_ACCESS,
                                                      reason_code: nil, resource: resource.to_s)
     end
+
+    # Busca de pessoa e duplicados (contrato P30, na forma do 30/29): uma por
+    # pessoa mostrada, sem dado clínico.
+    def person_viewed!(user:, patient_id:)
+      DomainEvents.publish("clinical_record.viewed", patient_id: patient_id, user_id: user.id, access: Catalog::TRAIL_ACCESS,
+                                                     reason_code: nil, person_ref: "patient:#{patient_id}")
+    end
   end
 end

@@ -309,6 +309,11 @@ Rails.application.config.to_prepare do
   # Módulo 31 (ADR 0049; contrato §13): troca dos parâmetros do CAPS (limites
   # do acolhimento noturno, revisão do PTS); sem payload, sem consumidor.
   DomainEvents.bind "psychosocial.settings_changed", to: []
+  # Encaminhamento da UBS (referral_id), acolhimento (reception_id), matrícula
+  # (enrollment_id) e encerramento (enrollment_id) do CAPS (Task 4): só ids,
+  # nunca CID, substância, motivo ou nome; sem consumidor.
+  %w[psychosocial.referral_created psychosocial.reception_recorded psychosocial.enrolled
+     psychosocial.enrollment_closed].each { |name| DomainEvents.bind name, to: [] }
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

@@ -673,6 +673,20 @@ Rails.application.routes.draw do
     get   "beds",                to: "beds#index"
     post  "beds",                to: "beds#create"
     patch "beds/:id",            to: "beds#update"
+    # Busca de paciente (P30) e pré-preenchimento da ESF (P4), sem trilha clínica.
+    post  "person_lookup",       to: "person_lookups#create"
+    post  "patients/duplicates", to: "duplicates#create"
+    get   "prefill",             to: "prefill#show"
+    # Encaminhamento da UBS, acolhimento e matrícula (§4, P5, P7, P13).
+    post  "referrals",           to: "referrals#create"
+    get   "referrals",           to: "referrals#index"
+    get   "referrals/:id",       to: "referrals#show"
+    post  "receptions",          to: "receptions#create"
+    get   "enrollments",         to: "enrollments#index"
+    post  "enrollments",         to: "enrollments#create"
+    get   "enrollments/:id",     to: "enrollments#show"
+    patch "enrollments/:id",     to: "enrollments#update"
+    post  "enrollments/:id/close", to: "enrollments#close"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.

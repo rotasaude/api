@@ -474,6 +474,14 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry["psychosocial.settings_changed"]).to be_empty
   end
 
+  # Módulo 31 (contrato §13; Task 4): encaminhamento, acolhimento e matrícula;
+  # só ids, sem consumidor.
+  it "declares psychosocial.referral_created, .reception_recorded, .enrolled and .enrollment_closed with no consumer" do
+    names = %w[psychosocial.referral_created psychosocial.reception_recorded psychosocial.enrolled psychosocial.enrollment_closed]
+    expect(DomainEvents.registry.keys).to include(*names)
+    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  end
+
   # Pagamento e prestação de contas do TFD (Task 12): só ids, sem consumidor.
   it "declares tfd.payment_recorded and tfd.accountability_closed with no consumer" do
     names = %w[tfd.payment_recorded tfd.accountability_closed]

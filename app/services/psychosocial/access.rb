@@ -32,6 +32,29 @@ module Psychosocial
     # Registro com health_unit_id: só quem está lotado naquele CAPS.
     def can_read?(user, record) = link(user, record&.health_unit_id).present?
 
+    # Quem encaminha ao CAPS (contrato §4): health_professional com vínculo
+    # ativo numa unidade ativa que NÃO é CAPS; o mais antigo (started_at, id)
+    # dá a unidade de origem. -> ProfessionalLink | nil
+    def referrer_link(user)
+      return nil unless roles?(user, %w[health_professional])
+
+      ProfessionalLink.active.joins(:professional, :health_unit)
+                      .where(professionals: { user_id: user.id }, health_units: { active: true })
+                      .where.not(health_units: { kind: "caps" }).order(:started_at, :id).first
+    end
+
+    # Busca de pessoa e duplicados do CAPS (contrato P30): lotado em algum CAPS
+    # ativo ou encaminhador da UBS.
+    def person_searcher?(user) = staffed_unit_ids(user).any? || referrer_link(user).present?
+
+    # { user_id => CBO do vínculo ativo mais antigo no CAPS } — o <pro> das
+    # leituras (técnico de referência), sem exigir o papel do CAPS.
+    def cbos(user_ids, health_unit_id)
+      ProfessionalLink.active.joins(:professional).where(professionals: { user_id: user_ids.uniq }, health_unit_id: health_unit_id)
+                      .order(:started_at, :id).pluck("professionals.user_id", :cbo_code)
+                      .each_with_object({}) { |(user_id, cbo), out| out[user_id] ||= cbo }
+    end
+
     def roles?(user, roles) = user.present? && user.memberships.active.where(role: roles).exists?
 
     def caps_links(user)
