@@ -229,6 +229,12 @@ module ClinicalDocuments
       # Sem perfil profissional (recepção) não há nome: linha neutra e a
       # matrícula abaixo, nunca o e-mail de login (o papel vai ao cidadão).
       pdf.text s(author.professional&.professional_name || RECEPTION_ISSUER), style: :bold
+      # Módulo 31 (P49): o atestado do CAPS leva só profissão e registro (sem CBO nem título).
+      if document.generic_unit?
+        line = Issuers.generic_line(author.professional, document.cbo_code)
+        pdf.text s(line) if line
+        return
+      end
       pdf.text s(council) if council
       if (contact = content["prescriber_contact"])
         pdf.text s("Endereço: #{Address.line(contact['address'])}")

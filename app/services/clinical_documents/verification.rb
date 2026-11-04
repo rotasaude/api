@@ -46,7 +46,9 @@ module ClinicalDocuments
       json = { kind: document.kind, issued_at: document.issued_at.iso8601,
                # Só o nome do perfil profissional: sem perfil (a recepção), null —
                # nunca o e-mail da conta.
-               professional: { name: professional&.professional_name.presence, council: Json.council(professional) },
+               # Módulo 31 (P49): no atestado do CAPS, profissão e registro no lugar do conselho.
+               professional: { name: professional&.professional_name.presence,
+                               council: document.generic_unit? ? Issuers.generic_line(professional, document.cbo_code) : Json.council(professional) },
                # Módulo 31 (P48): o documento do CAPS, sem nome nem modalidade.
                unit: document.psychosocial? ? document.generic_unit_line : document.health_unit.name,
                patient: { initials: Patients::Initials.call(person(document).display_name), birth_year: birth_year_of(document) },

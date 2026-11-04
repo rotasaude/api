@@ -35,6 +35,9 @@ RSpec.describe "CAPS — documentos da ação", type: :request do
   let(:viewed) { DomainEvent.where(name: "clinical_record.viewed") }
   let(:leave) { { "type" => "leave", "days" => 3 } }
   let(:hidden) { [ "Centro Vida", "AD III", "caps_ad_iii" ] }
+  # P49: no atestado do CAPS, só profissão e registro — nunca CBO, especialidade ou título.
+  let(:specialty) { [ "225133", "psiquiatra", "Psiquiatra", "CBO" ] }
+  def professional_line = "Médico — CRM #{psychiatrist.professional.registration_number}/#{psychiatrist.professional.council_state}"
 
   def pdf_text(bytes) = PDF::Reader.new(StringIO.new(bytes.split(FakeSigner::MARKER).first)).pages.map(&:text).join("\n")
 
@@ -372,12 +375,16 @@ RSpec.describe "CAPS — documentos da ação", type: :request do
         expect(JSON.parse(json)["unit"]).to eq("Centro de Atenção Psicossocial — #{city_profile!.name} — CNES #{caps.cnes}")
         [ json, html ].each { |body| expect(body).to include("Atenção Psicossocial").and(not_include(*hidden)) }
       end
+      (_, json), (_, html) = verification_bodies(note)
+      expect(JSON.parse(json)["professional"]).to eq("name" => psychiatrist.professional.professional_name, "council" => professional_line)
+      [ json, html ].each { |body| expect(body).to include(professional_line).and(not_include(*specialty)) }
       (json_status, json), (html_status, html) = verification_bodies(record) # a Notificação não tem conferência pública
       expect([ json_status, html_status ]).to eq([ 404, 404 ])
       [ json, html ].each { |body| expect(body).not_to include(*hidden) }
       allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
       json_post "/v/lookup", short_code: note.short_code, birth_year: patient.birth_date.to_s[0, 4]
       expect(json_body["unit"]).to start_with("Centro de Atenção Psicossocial")
+      expect(json_body.dig("professional", "council")).to eq(professional_line)
     end
 
     it "atestado impresso e assinado sem o nome; receita impressa com a identificação completa" do
@@ -385,20 +392,23 @@ RSpec.describe "CAPS — documentos da ação", type: :request do
       stub_signer!
       paper = sick_note!
       get "/attendance/documents/#{paper.id}/print"
-      expect(pdf_text(response.body)).to include("Centro de Atenção Psicossocial", "CNES #{caps.cnes}").and(not_include(*hidden))
+      expect(pdf_text(response.body)).to include("Centro de Atenção Psicossocial", "CNES #{caps.cnes}", professional_line)
+        .and(not_include(*hidden, *specialty))
 
       linked_certificate!(psychiatrist, leaf: fake_psc.leaf(SignatureHelpers::DOCTOR_CPF))
       digital = sick_note!
       signature = sign_document!(digital, author: psychiatrist)
       expect(JSON.parse(signature.canonical_json)["unit"]).to eq("cnes" => caps.cnes, "name" => "Centro de Atenção Psicossocial")
       expect(signature.canonical_json).not_to include(*hidden)
-      expect(pdf_text(signature.signed_pdf_bytes)).to include("Centro de Atenção Psicossocial").and(not_include(*hidden))
+      expect(pdf_text(signature.signed_pdf_bytes)).to include("Centro de Atenção Psicossocial", professional_line)
+        .and(not_include(*hidden, *specialty))
 
       sign_in_as(psychiatrist)
       post_document("prescription", rce) # sem número SNCR no estoque: papel
       expect(json_body["paper_reason"]).to eq("no_sncr_number")
       get "/attendance/documents/#{json_body['id']}/print"
-      expect(pdf_text(response.body)).to include("CAPS AD III Centro Vida")
+      expect(pdf_text(response.body)).to include("CAPS AD III Centro Vida", "CBO 225133 Médico psiquiatra",
+                                                 "CRM-PR #{psychiatrist.professional.registration_number}")
     end
   end
 

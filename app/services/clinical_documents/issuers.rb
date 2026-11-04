@@ -14,6 +14,9 @@ module ClinicalDocuments
 
     module_function
 
+    # Módulo 31 (P49): a profissão pelo papel do CBO, sem especialidade nem título.
+    PROFESSIONS = { physician: "Médico", dentist: "Cirurgião-dentista", nurse: "Enfermeiro" }.freeze
+
     def role(cbo)
       code = cbo.to_s
       PREFIXES.find { |_role, prefixes| prefixes.any? { |prefix| code.start_with?(prefix) } }&.first || :other
@@ -24,6 +27,14 @@ module ClinicalDocuments
     def allowed?(kind, cbo)
       allowed = MATRIX.fetch(kind.to_s, [])
       allowed == :any || allowed.include?(role(cbo))
+    end
+
+    # P49: "Médico — CRM 12345/PR" — profissão e registro, nunca CBO,
+    # especialidade ou título (o atestado do CAPS). Sem profissão conhecida,
+    # só o registro; sem conselho, só a profissão.
+    def generic_line(professional, cbo)
+      registration = professional&.council && "#{professional.council} #{professional.registration_number}/#{professional.council_state}"
+      [ PROFESSIONS[role(cbo)], registration ].compact.join(" — ").presence
     end
 
     def declaration_staff(user, attendance)
