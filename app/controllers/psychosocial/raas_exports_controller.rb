@@ -1,18 +1,22 @@
-# Remessa RAAS do mês (ADR 0049; contrato §6, P4, P15; plano, Desvios 8 e 9).
-# Coordenação lotada no CAPS ou faturista (qualquer CAPS ativo):
+# Remessa RAAS do mês (ADR 0049; contrato §6, P4, P15, P43; plano, Desvios 8
+# e 9). Coordenação lotada no CAPS ou faturista (sem lotação):
 #   GET  /psychosocial/raas_exports?health_unit_id&month
-#        as remessas do CAPS (também desativado: o arquivo segue acessível) (do mês, com `month`): { items: [ { id, month,
-#        competence, layout_version, records_count, sha256, created_at,
-#        created_by: <pro> } ] } — sem nome nem dado clínico, sem trilha (P4: o
-#        faturista acha a remessa sem ler a RAAS nominal)
-#   POST /psychosocial/raas_exports { health_unit_id, month }, com step-up
-#        → 201 a remessa; 422 raas_layout_unavailable (layout oficial é gate);
-#        409 month_open | already_exported
+#        as remessas do CAPS, ativo ou desativado (a desativação não torna o
+#        arquivo inacessível), do mês com `month`: { items: [ { id,
+#        health_unit_id, month, competence, layout_version, records_count,
+#        sha256, created_at, created_by: <pro> } ] } — sem nome nem dado
+#        clínico, sem trilha (P4: o faturista acha a remessa sem ler a RAAS
+#        nominal)
+#   POST /psychosocial/raas_exports { health_unit_id, month }, com step-up,
+#        só para CAPS ativo → 201 a remessa; 422 raas_layout_unavailable
+#        (layout oficial é gate) | nothing_to_export (nenhum registro com ação
+#        RAAS no mês; nada gravado); 409 month_open | already_exported
 #   GET  /psychosocial/raas_exports/:id/file
-#        o arquivo (também de CAPS desativado, ruling) (application/octet-stream, RAAS-<cnes>-<competência>.txt);
-#        evento psychosocial.raas_downloaded (raas_export_id) e
-#        clinical_record.viewed por paciente (resource raas_file); conteúdo que
-#        não bate com o sha256 gravado não sai (409 integrity_mismatch).
+#        o arquivo, também de CAPS desativado (application/octet-stream,
+#        RAAS-<cnes>-<competência>.txt); evento psychosocial.raas_downloaded
+#        (raas_export_id) e clinical_record.viewed por paciente (resource
+#        raas_file); conteúdo que não bate com o sha256 gravado não sai (409
+#        integrity_mismatch).
 # Ids na URL; o conteúdo do arquivo nunca passa pelo log.
 module Psychosocial
   class RaasExportsController < BaseController

@@ -283,6 +283,24 @@ RSpec.describe "CAPS — remessa RAAS e ficha espelho", type: :request do
       expect(log).not_to include(e.patient.full_name)
     end
 
+    it "P43: faturista em mês aberto → 409 month_open, sem trilha; a PRÉVIA ao vivo é só da coordenação lotada" do
+      e = named_enrollment!(started_on: month)
+      complete_month!(e, month, by: lead)
+
+      sign_in_as(billing_clerk!)
+      sheets
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "month_open" } ])
+      sheets(enrollment_id: e.id)
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "month_open" } ])
+      expect(viewed.count).to eq(0)
+
+      sign_in_as(lead)
+      sheets
+      expect(response).to have_http_status(:ok)
+      expect(text_of(response.body)).to include("PRÉVIA", e.patient.full_name)
+      expect(viewed.count).to eq(1)
+    end
+
     it "mês fechado: a foto, sem PRÉVIA; ?enrollment_id= dá uma ficha só; o faturista lê sem lotação" do
       e, quiet, bpa_only = closed_month!
       old_name = e.patient.full_name
