@@ -598,6 +598,7 @@ Rails.application.routes.draw do
     get   "drivers/:id",         to: "drivers#show"
     patch "drivers/:id",         to: "drivers#update"
     get   "driver_candidates",   to: "drivers#candidates"
+    get   "health_units",        to: "health_units#index"
     get   "destinations",        to: "destinations#index"
     post  "destinations",        to: "destinations#create"
     get   "destinations/:id",    to: "destinations#show"
