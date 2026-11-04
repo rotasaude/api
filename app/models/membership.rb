@@ -6,7 +6,8 @@
 class Membership < ApplicationRecord
   ROLES = %w[analyst billing_clerk campaign_manager care_regulator citizen_verifier driver exam_provider exam_regulator
              health_professional lab_releaser lab_staff municipal_admin pharmacist pharmacy_assistant protocol_author
-             protocol_publisher protocol_reviewer stock_keeper surveillance tfd_committee transport_dispatcher viewer].freeze
+             protocol_publisher protocol_reviewer psychosocial_lead psychosocial_staff stock_keeper surveillance tfd_committee
+             transport_dispatcher viewer].freeze
 
   # Papéis que o mantenedor da API de manutenção nunca concede nem convida
   # (spec de assinaturas §7): quem aprova protocolo e quem concede aprovação.
@@ -36,9 +37,13 @@ class Membership < ApplicationRecord
   # e monta a viagem; tfd_committee: lê CID e justificativa do laudo do TFD e
   # registra pagamento — step-up; o mantenedor não concede. driver NÃO entra:
   # só as próprias viagens do dia, sem dado clínico.
+  # psychosocial_staff e psychosocial_lead (ADR 0049): leem CID, substâncias,
+  # evolução e PTS do CAPS em que estão lotados; a coordenação fecha e reabre
+  # o mês e cancela ação de mês fechado — step-up; o mantenedor não concede.
   PRIVILEGED_ROLES = %w[municipal_admin protocol_reviewer citizen_verifier health_professional
                         campaign_manager exam_regulator exam_provider lab_staff lab_releaser billing_clerk surveillance
-                        care_regulator pharmacist pharmacy_assistant transport_dispatcher tfd_committee].freeze
+                        care_regulator pharmacist pharmacy_assistant transport_dispatcher tfd_committee
+                        psychosocial_staff psychosocial_lead].freeze
 
   belongs_to :user
   belongs_to :granted_by, class_name: "User", optional: true

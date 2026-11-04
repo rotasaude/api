@@ -177,7 +177,19 @@ module CityEncryption
     [ TransportTripPassenger, :companion_document ], [ TransportTripPassenger, :companion_reason ],
     [ TransportTripPassenger, :exception_note ], [ TransportTripPassenger, :remove_reason ],
     [ TransportAttendanceCorrection, :reason ],
-    [ TfdCase, :report ], [ TfdCaseEvent, :reason ], [ TfdAccountability, :filename ]
+    [ TfdCase, :report ], [ TfdCaseEvent, :reason ], [ TfdAccountability, :filename ],
+    # ADR 0049: CAPS — motivo do encaminhamento, registro do acolhimento, CID,
+    # CIDs secundários e substâncias da matrícula, necessidades e objetivos do
+    # PTS, evolução e motivo do cancelamento da ação, nome do familiar, a foto
+    # da RAAS do mês, o motivo da reabertura, o arquivo da remessa, o tema e os
+    # casos do matriciamento e os motivos da permanência no leito.
+    [ PsychosocialReferral, :reason ], [ PsychosocialReception, :notes ],
+    [ PsychosocialEnrollment, :cid_main ], [ PsychosocialEnrollment, :cid_secondary ], [ PsychosocialEnrollment, :substances ],
+    [ PsychosocialCarePlan, :needs ], [ PsychosocialCarePlan, :goals ],
+    [ PsychosocialAction, :notes ], [ PsychosocialAction, :cancel_reason ], [ PsychosocialActionParticipant, :family_name ],
+    [ PsychosocialMonthlyRecord, :snapshot ], [ PsychosocialMonthClosure, :reopen_reason ], [ PsychosocialRaasExport, :file_data ],
+    [ PsychosocialMatrixSupport, :topic ], [ PsychosocialMatrixCase, :shared_text ],
+    [ PsychosocialNightStay, :end_reason ], [ PsychosocialNightStay, :reassessment_reason ]
   ].freeze
 
   module_function

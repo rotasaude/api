@@ -112,7 +112,13 @@ Rails.application.config.filter_parameters += [
   # passagem, diário de bordo (odômetro, combustível, despesas, posto) e o
   # comprovante da prestação de contas (`cpf`, `cns`, `reason`, `note`,
   # `address` e `data` já estavam acima).
-  /\A(license_number|companion|document|provider_name|address|exception_note|appointment_at|report|cid10|sigtap_code|justification|companion_reason|receipt_number|carrier|odometer_start|odometer_end|fuel|expenses|station|filename|data)\z/
+  /\A(license_number|companion|document|provider_name|address|exception_note|appointment_at|report|cid10|sigtap_code|justification|companion_reason|receipt_number|carrier|odometer_start|odometer_end|fuel|expenses|station|filename|data)\z/,
+  # ADR 0049: CAPS — CID principal e secundários, substâncias, necessidades e
+  # objetivos do PTS, nome do familiar, tema do matriciamento, participantes
+  # da ação, a reavaliação acima do limite noturno e os casos compartilhados
+  # com a UBS (`reason`, `notes` e `shared_text` já caem em `:reason`, `:note`
+  # e `:text`).
+  /\A(cid_main|cid_secondary|substances|needs|goals|family_name|topic|participants|reassessment|shared_cases)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

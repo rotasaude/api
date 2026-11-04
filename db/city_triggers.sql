@@ -3025,3 +3025,163 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 31 (ADR 0049): atenção psicossocial (CAPS). A ação nunca muda: só o
+-- cancelamento (cancelled_at, cancelled_by_user_id, cancel_reason), uma vez;
+-- e nunca nasce num mês com fechamento ativo do CAPS (o mês é o local, gravado
+-- pelo Ruby). Participante, versão do PTS, aviso de revisão, matriciamento,
+-- caso compartilhado e remessa: só acréscimo (as cifradas pela re-cifra). A
+-- RAAS do mês nunca troca de matrícula, mês ou CAPS e, exportada, congela
+-- (salvo a re-cifra da foto). A permanência aberta só recebe o fechamento (e a
+-- reavaliação, uma vez); fechada, congela (salvo a re-cifra dos motivos). O
+-- fechamento do mês só é reaberto, uma vez. Encaminhamento, acolhimento,
+-- matrícula, leito, grupo e parâmetros nunca somem. TRUNCATE recusado nas 16
+-- tabelas. Sob rota.reencrypting, só as cifradas são regravadas.
+CREATE OR REPLACE FUNCTION rota_psychosocial_action_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['cancelled_at', 'cancelled_by_user_id', 'cancel_reason'];
+  encrypted text[] := ARRAY['notes', 'cancel_reason'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'psychosocial_actions: DELETE refused';
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF EXISTS (SELECT 1 FROM psychosocial_month_closures c
+               WHERE c.health_unit_id = NEW.health_unit_id AND c.month = NEW.month AND c.reopened_at IS NULL) THEN
+      RAISE EXCEPTION 'psychosocial_actions: month closed';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'psychosocial_actions: only the cancellation changes';
+  END IF;
+  IF OLD.cancelled_at IS NOT NULL OR NEW.cancelled_at IS NULL THEN
+    RAISE EXCEPTION 'psychosocial_actions: an action is cancelled once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_psychosocial_monthly_record_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'psychosocial_monthly_records: DELETE refused';
+  END IF;
+  IF OLD.status = 'exported' THEN
+    IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - 'snapshot') = (to_jsonb(OLD) - 'snapshot') THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'psychosocial_monthly_records: an exported record never changes';
+  END IF;
+  IF NEW.psychosocial_enrollment_id IS DISTINCT FROM OLD.psychosocial_enrollment_id
+     OR NEW.month IS DISTINCT FROM OLD.month
+     OR NEW.health_unit_id IS DISTINCT FROM OLD.health_unit_id THEN
+    RAISE EXCEPTION 'psychosocial_monthly_records: enrollment, month and unit never change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_psychosocial_night_stay_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['ended_at', 'end_reason', 'closed_by_user_id', 'reassessment_reason', 'reassessed_by_user_id', 'updated_at'];
+  encrypted text[] := ARRAY['end_reason', 'reassessment_reason'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'psychosocial_night_stays: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.ended_at IS NOT NULL THEN
+    RAISE EXCEPTION 'psychosocial_night_stays: a closed stay never changes';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) OR NEW.ended_at IS NULL THEN
+    RAISE EXCEPTION 'psychosocial_night_stays: an open stay only receives the closing';
+  END IF;
+  IF OLD.reassessment_reason IS NOT NULL
+     AND (NEW.reassessment_reason IS DISTINCT FROM OLD.reassessment_reason
+          OR NEW.reassessed_by_user_id IS DISTINCT FROM OLD.reassessed_by_user_id) THEN
+    RAISE EXCEPTION 'psychosocial_night_stays: a stay is reassessed once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_psychosocial_month_closure_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['reopened_at', 'reopened_by_user_id', 'reopen_reason'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'psychosocial_month_closures: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'reopen_reason') = (to_jsonb(OLD) - 'reopen_reason') THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'psychosocial_month_closures: only the reopening changes';
+  END IF;
+  IF OLD.reopened_at IS NOT NULL OR NEW.reopened_at IS NULL THEN
+    RAISE EXCEPTION 'psychosocial_month_closures: a month is reopened once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.psychosocial_actions') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_actions_guard ON psychosocial_actions';
+    EXECUTE 'CREATE TRIGGER psychosocial_actions_guard BEFORE INSERT OR UPDATE OR DELETE ON psychosocial_actions
+      FOR EACH ROW EXECUTE FUNCTION rota_psychosocial_action_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_monthly_records_guard ON psychosocial_monthly_records';
+    EXECUTE 'CREATE TRIGGER psychosocial_monthly_records_guard BEFORE UPDATE OR DELETE ON psychosocial_monthly_records
+      FOR EACH ROW EXECUTE FUNCTION rota_psychosocial_monthly_record_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_night_stays_guard ON psychosocial_night_stays';
+    EXECUTE 'CREATE TRIGGER psychosocial_night_stays_guard BEFORE UPDATE OR DELETE ON psychosocial_night_stays
+      FOR EACH ROW EXECUTE FUNCTION rota_psychosocial_night_stay_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_month_closures_guard ON psychosocial_month_closures';
+    EXECUTE 'CREATE TRIGGER psychosocial_month_closures_guard BEFORE UPDATE OR DELETE ON psychosocial_month_closures
+      FOR EACH ROW EXECUTE FUNCTION rota_psychosocial_month_closure_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_care_plan_alerts_append_only ON psychosocial_care_plan_alerts';
+    EXECUTE 'CREATE TRIGGER psychosocial_care_plan_alerts_append_only BEFORE UPDATE OR DELETE ON psychosocial_care_plan_alerts
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_action_participants_reencryption_only ON psychosocial_action_participants';
+    EXECUTE 'CREATE TRIGGER psychosocial_action_participants_reencryption_only BEFORE UPDATE OR DELETE ON psychosocial_action_participants
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''family_name'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_care_plans_reencryption_only ON psychosocial_care_plans';
+    EXECUTE 'CREATE TRIGGER psychosocial_care_plans_reencryption_only BEFORE UPDATE OR DELETE ON psychosocial_care_plans
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''needs'', ''goals'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_matrix_supports_reencryption_only ON psychosocial_matrix_supports';
+    EXECUTE 'CREATE TRIGGER psychosocial_matrix_supports_reencryption_only BEFORE UPDATE OR DELETE ON psychosocial_matrix_supports
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''topic'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_matrix_cases_reencryption_only ON psychosocial_matrix_cases';
+    EXECUTE 'CREATE TRIGGER psychosocial_matrix_cases_reencryption_only BEFORE UPDATE OR DELETE ON psychosocial_matrix_cases
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''shared_text'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_raas_exports_reencryption_only ON psychosocial_raas_exports';
+    EXECUTE 'CREATE TRIGGER psychosocial_raas_exports_reencryption_only BEFORE UPDATE OR DELETE ON psychosocial_raas_exports
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''file_data'')';
+    FOREACH item IN ARRAY ARRAY['psychosocial_referrals', 'psychosocial_receptions', 'psychosocial_enrollments', 'psychosocial_beds',
+                                'psychosocial_groups', 'psychosocial_settings'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
+                     item || '_no_delete', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['psychosocial_settings', 'psychosocial_beds', 'psychosocial_groups', 'psychosocial_referrals',
+                                'psychosocial_receptions', 'psychosocial_enrollments', 'psychosocial_care_plans',
+                                'psychosocial_care_plan_alerts', 'psychosocial_night_stays', 'psychosocial_actions',
+                                'psychosocial_action_participants', 'psychosocial_month_closures', 'psychosocial_raas_exports',
+                                'psychosocial_monthly_records', 'psychosocial_matrix_supports', 'psychosocial_matrix_cases'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

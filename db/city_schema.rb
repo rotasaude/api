@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_04_900002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -1499,6 +1499,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
     t.string "address_number", limit: 20
     t.string "address_street", limit: 160
     t.string "address_zip", limit: 8
+    t.string "caps_modality"
     t.string "cnes", limit: 7
     t.boolean "collects_samples", default: false, null: false
     t.datetime "created_at", null: false
@@ -1507,14 +1508,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
     t.string "name", null: false
     t.uuid "neighborhood_id"
     t.boolean "notifying", default: false, null: false
+    t.string "phone", limit: 11
     t.string "screening_scope", default: "walk_in", null: false
+    t.string "service_classification", limit: 3
     t.datetime "updated_at", null: false
     t.index ["cnes"], name: "idx_health_units_cnes", unique: true, where: "(cnes IS NOT NULL)"
     t.index "lower((name)::text)", name: "idx_health_units_name_ci", unique: true
     t.index ["neighborhood_id"], name: "index_health_units_on_neighborhood_id"
+    t.check_constraint "(kind::text = 'caps'::text) = (caps_modality IS NOT NULL) AND (caps_modality IS NULL OR caps_modality::text = ANY (ARRAY['caps_i'::text, 'caps_ii'::text, 'caps_iii'::text, 'caps_i_child'::text, 'caps_ad'::text, 'caps_ad_iii'::text, 'caps_ad_iv'::text])) AND (service_classification IS NULL OR (kind::text = 'caps'::text AND service_classification::text ~ '^[0-9]{3}$'::text))", name: "ck_health_units_caps"
     t.check_constraint "address_zip IS NULL OR address_zip::text ~ '^[0-9]{8}$'::text", name: "ck_health_units_address_zip"
     t.check_constraint "cnes IS NULL OR cnes::text ~ '^[0-9]{7}$'::text", name: "ck_health_units_cnes"
-    t.check_constraint "kind::text = ANY (ARRAY['ubs'::text, 'upa'::text, 'hospital'::text, 'other'::text, 'ceo'::text, 'health_management'::text])", name: "ck_health_units_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['ubs'::text, 'upa'::text, 'hospital'::text, 'other'::text, 'ceo'::text, 'health_management'::text, 'caps'::text])", name: "ck_health_units_kind"
+    t.check_constraint "phone IS NULL OR phone::text ~ '^[0-9]{10,11}$'::text", name: "ck_health_units_phone"
     t.check_constraint "screening_scope::text = ANY (ARRAY['walk_in'::text, 'all'::text])", name: "ck_health_units_screening_scope"
   end
 
@@ -2287,7 +2292,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'driver'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'stock_keeper'::text, 'surveillance'::text, 'tfd_committee'::text, 'transport_dispatcher'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'driver'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'psychosocial_lead'::text, 'psychosocial_staff'::text, 'stock_keeper'::text, 'surveillance'::text, 'tfd_committee'::text, 'transport_dispatcher'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "micro_areas", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2792,6 +2797,264 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
     t.index ["protocol_definition_id"], name: "index_protocol_signatures_on_protocol_definition_id"
     t.index ["signer_user_id"], name: "index_protocol_signatures_on_signer_user_id"
     t.check_constraint "purpose::text = ANY (ARRAY['publication'::text, 'activation'::text])", name: "ck_protocol_signatures_purpose"
+  end
+
+  create_table "psychosocial_action_participants", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "family_name"
+    t.uuid "patient_id"
+    t.integer "position", limit: 2, null: false
+    t.uuid "psychosocial_action_id", null: false
+    t.uuid "psychosocial_enrollment_id"
+    t.index ["patient_id"], name: "idx_psychosocial_action_participants_patient"
+    t.index ["psychosocial_action_id", "position"], name: "idx_psychosocial_action_participants_position", unique: true
+    t.index ["psychosocial_enrollment_id"], name: "idx_psychosocial_action_participants_enrollment"
+    t.check_constraint "num_nonnulls(patient_id, family_name) = 1 AND (psychosocial_enrollment_id IS NULL OR patient_id IS NOT NULL) AND position >= 1", name: "ck_psychosocial_action_participants_who"
+  end
+
+  create_table "psychosocial_actions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "authorization_number", limit: 13
+    t.text "cancel_reason"
+    t.datetime "cancelled_at"
+    t.uuid "cancelled_by_user_id"
+    t.string "cbo_code", limit: 6, null: false
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.string "instrument", null: false
+    t.date "month", null: false
+    t.text "notes"
+    t.string "origin", default: "manual", null: false
+    t.datetime "performed_at", null: false
+    t.string "place", null: false
+    t.uuid "professional_user_id", null: false
+    t.uuid "psychosocial_group_id"
+    t.uuid "psychosocial_night_stay_id"
+    t.integer "quantity", default: 1, null: false
+    t.string "sigtap_code", limit: 10, null: false
+    t.index ["health_unit_id", "month"], name: "idx_psychosocial_actions_unit_month"
+    t.index ["health_unit_id", "performed_at"], name: "idx_psychosocial_actions_unit_performed"
+    t.index ["psychosocial_night_stay_id"], name: "idx_psychosocial_actions_night_stay", where: "(psychosocial_night_stay_id IS NOT NULL)"
+    t.check_constraint "(cancelled_at IS NULL) = (cancel_reason IS NULL) AND (cancelled_at IS NULL) = (cancelled_by_user_id IS NULL)", name: "ck_psychosocial_actions_cancel"
+    t.check_constraint "EXTRACT(day FROM month) = 1::numeric", name: "ck_psychosocial_actions_month"
+    t.check_constraint "instrument::text = ANY (ARRAY['raas_psi'::text, 'bpa_c'::text, 'bpa_i'::text]) AND place::text = ANY (ARRAY['caps'::text, 'territory'::text]) AND origin::text = ANY (ARRAY['manual'::text, 'reception'::text, 'night_stay'::text, 'matrix_support'::text]) AND sigtap_code::text ~ '^[0-9]{10}$'::text AND cbo_code::text ~ '^[0-9]{6}$'::text AND (authorization_number IS NULL OR authorization_number::text ~ '^[0-9]{13}$'::text) AND quantity >= 1 AND quantity <= 999", name: "ck_psychosocial_actions_domains"
+  end
+
+  create_table "psychosocial_beds", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.string "label", limit: 20, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["health_unit_id", "label"], name: "idx_psychosocial_beds_label", unique: true
+  end
+
+  create_table "psychosocial_care_plan_alerts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "psychosocial_care_plan_id", null: false
+    t.index ["psychosocial_care_plan_id"], name: "idx_psychosocial_care_plan_alerts_plan", unique: true
+  end
+
+  create_table "psychosocial_care_plans", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.text "goals", null: false
+    t.string "intensity", null: false
+    t.text "needs", null: false
+    t.uuid "psychosocial_enrollment_id", null: false
+    t.date "review_on", null: false
+    t.integer "version", null: false
+    t.index ["psychosocial_enrollment_id", "version"], name: "idx_psychosocial_care_plans_version", unique: true
+    t.check_constraint "version >= 1 AND intensity::text = ANY (ARRAY['intensive'::text, 'semi_intensive'::text, 'non_intensive'::text])", name: "ck_psychosocial_care_plans_domains"
+  end
+
+  create_table "psychosocial_enrollments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "cid_main", null: false
+    t.text "cid_secondary"
+    t.uuid "closed_by_user_id"
+    t.date "closed_on"
+    t.datetime "created_at", null: false
+    t.string "destination", limit: 2
+    t.string "esf_cnes", limit: 7
+    t.boolean "esf_covered", default: false, null: false
+    t.uuid "health_unit_id", null: false
+    t.datetime "next_visit_at"
+    t.string "origin", limit: 2, null: false
+    t.uuid "patient_id", null: false
+    t.uuid "psychosocial_reception_id"
+    t.uuid "reference_user_id", null: false
+    t.date "started_on", null: false
+    t.text "substances"
+    t.datetime "updated_at", null: false
+    t.index ["health_unit_id", "next_visit_at"], name: "idx_psychosocial_enrollments_next_visit"
+    t.index ["patient_id", "health_unit_id"], name: "idx_psychosocial_enrollments_open", unique: true, where: "(closed_on IS NULL)"
+    t.index ["patient_id"], name: "idx_psychosocial_enrollments_patient"
+    t.check_constraint "(closed_on IS NULL) = (destination IS NULL) AND (closed_on IS NULL) = (closed_by_user_id IS NULL) AND (destination IS NULL OR destination::text <> '00'::text)", name: "ck_psychosocial_enrollments_closing"
+    t.check_constraint "esf_covered = (esf_cnes IS NOT NULL)", name: "ck_psychosocial_enrollments_esf"
+    t.check_constraint "origin::text ~ '^[0-9]{2}$'::text AND (destination IS NULL OR destination::text ~ '^[0-9]{2}$'::text) AND (esf_cnes IS NULL OR esf_cnes::text ~ '^[0-9]{7}$'::text)", name: "ck_psychosocial_enrollments_domains"
+  end
+
+  create_table "psychosocial_groups", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.integer "capacity", null: false
+    t.datetime "created_at", null: false
+    t.time "ends_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.string "kind", null: false
+    t.string "name", limit: 120, null: false
+    t.uuid "responsible_user_id", null: false
+    t.string "sigtap_code", limit: 10, null: false
+    t.time "starts_at", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.integer "weekday", limit: 2, null: false
+    t.index ["health_unit_id", "weekday"], name: "idx_psychosocial_groups_unit_weekday"
+    t.check_constraint "ends_at > starts_at", name: "ck_psychosocial_groups_times"
+    t.check_constraint "kind::text = ANY (ARRAY['group'::text, 'workshop'::text, 'assembly'::text]) AND sigtap_code::text ~ '^[0-9]{10}$'::text AND weekday >= 1 AND weekday <= 7 AND capacity >= 1 AND capacity <= 100", name: "ck_psychosocial_groups_domains"
+  end
+
+  create_table "psychosocial_matrix_cases", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.uuid "patient_id", null: false
+    t.uuid "psychosocial_matrix_support_id", null: false
+    t.text "shared_text", null: false
+    t.index ["patient_id"], name: "idx_psychosocial_matrix_cases_patient"
+    t.index ["psychosocial_matrix_support_id"], name: "idx_psychosocial_matrix_cases_support"
+  end
+
+  create_table "psychosocial_matrix_supports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "health_team_id", null: false
+    t.uuid "health_unit_id", null: false
+    t.date "held_on", null: false
+    t.uuid "participant_user_ids", null: false, array: true
+    t.uuid "psychosocial_action_id", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.string "sigtap_code", limit: 10, null: false
+    t.text "topic", null: false
+    t.index ["health_team_id"], name: "idx_psychosocial_matrix_supports_team"
+    t.index ["health_unit_id", "held_on"], name: "idx_psychosocial_matrix_supports_unit_held"
+    t.index ["psychosocial_action_id"], name: "idx_psychosocial_matrix_supports_action", unique: true
+    t.check_constraint "cardinality(participant_user_ids) >= 1 AND sigtap_code::text ~ '^[0-9]{10}$'::text", name: "ck_psychosocial_matrix_supports_domains"
+  end
+
+  create_table "psychosocial_month_closures", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "closed_at", null: false
+    t.uuid "closed_by_user_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.date "month", null: false
+    t.text "reopen_reason"
+    t.datetime "reopened_at"
+    t.uuid "reopened_by_user_id"
+    t.index ["health_unit_id", "month"], name: "idx_psychosocial_month_closures_active", unique: true, where: "(reopened_at IS NULL)"
+    t.check_constraint "(reopened_at IS NULL) = (reopened_by_user_id IS NULL) AND (reopened_at IS NULL) = (reopen_reason IS NULL)", name: "ck_psychosocial_month_closures_reopen"
+    t.check_constraint "EXTRACT(day FROM month) = 1::numeric", name: "ck_psychosocial_month_closures_month"
+  end
+
+  create_table "psychosocial_monthly_records", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "closed_at"
+    t.date "concluded_on"
+    t.datetime "created_at", null: false
+    t.string "destination", limit: 2
+    t.uuid "health_unit_id", null: false
+    t.boolean "homeless"
+    t.date "month", null: false
+    t.uuid "psychosocial_enrollment_id", null: false
+    t.uuid "psychosocial_raas_export_id"
+    t.text "snapshot"
+    t.string "status", default: "open", null: false
+    t.datetime "updated_at", null: false
+    t.index ["health_unit_id", "month"], name: "idx_psychosocial_monthly_records_unit_month"
+    t.index ["psychosocial_enrollment_id", "month"], name: "idx_psychosocial_monthly_records_month", unique: true
+    t.check_constraint "(status::text = 'open'::text) = (snapshot IS NULL)", name: "ck_psychosocial_monthly_records_snapshot"
+    t.check_constraint "EXTRACT(day FROM month) = 1::numeric", name: "ck_psychosocial_monthly_records_month"
+    t.check_constraint "status::text = ANY (ARRAY['open'::text, 'closed'::text, 'exported'::text]) AND (destination IS NULL OR destination::text ~ '^[0-9]{2}$'::text)", name: "ck_psychosocial_monthly_records_domains"
+  end
+
+  create_table "psychosocial_night_stays", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "closed_by_user_id"
+    t.datetime "created_at", null: false
+    t.text "end_reason"
+    t.datetime "ended_at"
+    t.datetime "expected_end_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.uuid "patient_id", null: false
+    t.uuid "psychosocial_bed_id", null: false
+    t.uuid "psychosocial_enrollment_id", null: false
+    t.text "reassessment_reason"
+    t.uuid "reassessed_by_user_id"
+    t.datetime "started_at", null: false
+    t.uuid "started_by_user_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["health_unit_id", "started_at"], name: "idx_psychosocial_night_stays_unit_started"
+    t.index ["patient_id", "started_at"], name: "idx_psychosocial_night_stays_patient_started"
+    t.index ["patient_id"], name: "idx_psychosocial_night_stays_open_patient", unique: true, where: "(ended_at IS NULL)"
+    t.check_constraint "(ended_at IS NULL) = (end_reason IS NULL) AND (ended_at IS NULL) = (closed_by_user_id IS NULL)", name: "ck_psychosocial_night_stays_closing"
+    t.check_constraint "(reassessment_reason IS NULL) = (reassessed_by_user_id IS NULL)", name: "ck_psychosocial_night_stays_reassessment"
+    t.check_constraint "expected_end_at > started_at AND (ended_at IS NULL OR ended_at > started_at)", name: "ck_psychosocial_night_stays_times"
+    t.exclusion_constraint "psychosocial_bed_id WITH =, tsrange(started_at, COALESCE(ended_at, 'infinity'::timestamp without time zone)) WITH &&", using: :gist, name: "excl_psychosocial_night_stays_bed"
+  end
+
+  create_table "psychosocial_raas_exports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "billing_period_id", null: false
+    t.string "competence", limit: 6, null: false
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.text "file_data", null: false
+    t.uuid "health_unit_id", null: false
+    t.string "layout_version", limit: 20, null: false
+    t.date "month", null: false
+    t.integer "records_count", null: false
+    t.string "sha256", limit: 64, null: false
+    t.index ["health_unit_id", "month"], name: "idx_psychosocial_raas_exports_month", unique: true
+    t.check_constraint "EXTRACT(day FROM month) = 1::numeric", name: "ck_psychosocial_raas_exports_month"
+    t.check_constraint "competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text AND sha256::text ~ '^[0-9a-f]{64}$'::text AND records_count >= 0", name: "ck_psychosocial_raas_exports_domains"
+  end
+
+  create_table "psychosocial_receptions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "anonymized_at"
+    t.datetime "at", null: false
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.text "notes"
+    t.string "outcome", null: false
+    t.uuid "patient_id", null: false
+    t.uuid "psychosocial_referral_id"
+    t.uuid "recorded_by_user_id", null: false
+    t.string "sigtap_code", limit: 10, null: false
+    t.index ["health_unit_id", "at"], name: "idx_psychosocial_receptions_unit_at"
+    t.index ["patient_id"], name: "idx_psychosocial_receptions_patient"
+    t.index ["psychosocial_referral_id"], name: "idx_psychosocial_receptions_referral", unique: true, where: "(psychosocial_referral_id IS NOT NULL)"
+    t.check_constraint "outcome::text = ANY (ARRAY['enrolled'::text, 'referred_elsewhere'::text, 'no_follow_up'::text]) AND sigtap_code::text ~ '^[0-9]{10}$'::text", name: "ck_psychosocial_receptions_domains"
+  end
+
+  create_table "psychosocial_referrals", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "anonymized_at"
+    t.datetime "created_at", null: false
+    t.uuid "from_health_unit_id", null: false
+    t.uuid "health_unit_id", null: false
+    t.uuid "patient_id", null: false
+    t.string "priority", null: false
+    t.text "reason"
+    t.datetime "received_at"
+    t.uuid "referred_by_user_id", null: false
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.index ["health_unit_id", "status", "created_at"], name: "idx_psychosocial_referrals_queue"
+    t.index ["patient_id"], name: "idx_psychosocial_referrals_patient"
+    t.check_constraint "priority::text = ANY (ARRAY['routine'::text, 'priority'::text]) AND status::text = ANY (ARRAY['pending'::text, 'received'::text])", name: "ck_psychosocial_referrals_domains"
+  end
+
+  create_table "psychosocial_settings", id: :smallint, default: nil, force: :cascade do |t|
+    t.integer "care_plan_review_days", default: 90, null: false
+    t.jsonb "night_limits", default: {"caps_iii" => {"consecutive" => 7, "alternate" => 10, "window_days" => 30}, "caps_ad_iii" => {"total" => 14, "window_days" => 30}, "caps_ad_iv" => {"total" => 14, "window_days" => 30}}, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id"
+    t.check_constraint "care_plan_review_days >= 30 AND care_plan_review_days <= 365", name: "ck_psychosocial_settings_review_days"
+    t.check_constraint "id = 1", name: "ck_psychosocial_settings_singleton"
+    t.check_constraint "jsonb_typeof(night_limits) = 'object'::text", name: "ck_psychosocial_settings_night_limits"
   end
 
   create_table "regulation_authorizations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4366,6 +4629,59 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_900001) do
   add_foreign_key "protocol_contributions", "protocol_definitions"
   add_foreign_key "protocol_signatures", "protocol_definitions"
   add_foreign_key "protocol_signatures", "users", column: "signer_user_id"
+  add_foreign_key "psychosocial_action_participants", "patients"
+  add_foreign_key "psychosocial_action_participants", "psychosocial_actions"
+  add_foreign_key "psychosocial_action_participants", "psychosocial_enrollments"
+  add_foreign_key "psychosocial_actions", "health_units"
+  add_foreign_key "psychosocial_actions", "psychosocial_groups"
+  add_foreign_key "psychosocial_actions", "psychosocial_night_stays"
+  add_foreign_key "psychosocial_actions", "users", column: "cancelled_by_user_id"
+  add_foreign_key "psychosocial_actions", "users", column: "professional_user_id"
+  add_foreign_key "psychosocial_beds", "health_units"
+  add_foreign_key "psychosocial_beds", "users", column: "updated_by_user_id"
+  add_foreign_key "psychosocial_care_plan_alerts", "psychosocial_care_plans"
+  add_foreign_key "psychosocial_care_plans", "psychosocial_enrollments"
+  add_foreign_key "psychosocial_care_plans", "users", column: "created_by_user_id"
+  add_foreign_key "psychosocial_enrollments", "health_units"
+  add_foreign_key "psychosocial_enrollments", "patients"
+  add_foreign_key "psychosocial_enrollments", "psychosocial_receptions"
+  add_foreign_key "psychosocial_enrollments", "users", column: "closed_by_user_id"
+  add_foreign_key "psychosocial_enrollments", "users", column: "reference_user_id"
+  add_foreign_key "psychosocial_groups", "health_units"
+  add_foreign_key "psychosocial_groups", "users", column: "responsible_user_id"
+  add_foreign_key "psychosocial_groups", "users", column: "updated_by_user_id"
+  add_foreign_key "psychosocial_matrix_cases", "patients"
+  add_foreign_key "psychosocial_matrix_cases", "psychosocial_matrix_supports"
+  add_foreign_key "psychosocial_matrix_cases", "users", column: "created_by_user_id"
+  add_foreign_key "psychosocial_matrix_supports", "health_teams"
+  add_foreign_key "psychosocial_matrix_supports", "health_units"
+  add_foreign_key "psychosocial_matrix_supports", "psychosocial_actions"
+  add_foreign_key "psychosocial_matrix_supports", "users", column: "recorded_by_user_id"
+  add_foreign_key "psychosocial_month_closures", "health_units"
+  add_foreign_key "psychosocial_month_closures", "users", column: "closed_by_user_id"
+  add_foreign_key "psychosocial_month_closures", "users", column: "reopened_by_user_id"
+  add_foreign_key "psychosocial_monthly_records", "health_units"
+  add_foreign_key "psychosocial_monthly_records", "psychosocial_enrollments"
+  add_foreign_key "psychosocial_monthly_records", "psychosocial_raas_exports"
+  add_foreign_key "psychosocial_night_stays", "health_units"
+  add_foreign_key "psychosocial_night_stays", "patients"
+  add_foreign_key "psychosocial_night_stays", "psychosocial_beds"
+  add_foreign_key "psychosocial_night_stays", "psychosocial_enrollments"
+  add_foreign_key "psychosocial_night_stays", "users", column: "closed_by_user_id"
+  add_foreign_key "psychosocial_night_stays", "users", column: "reassessed_by_user_id"
+  add_foreign_key "psychosocial_night_stays", "users", column: "started_by_user_id"
+  add_foreign_key "psychosocial_raas_exports", "billing_periods"
+  add_foreign_key "psychosocial_raas_exports", "health_units"
+  add_foreign_key "psychosocial_raas_exports", "users", column: "created_by_user_id"
+  add_foreign_key "psychosocial_receptions", "health_units"
+  add_foreign_key "psychosocial_receptions", "patients"
+  add_foreign_key "psychosocial_receptions", "psychosocial_referrals"
+  add_foreign_key "psychosocial_receptions", "users", column: "recorded_by_user_id"
+  add_foreign_key "psychosocial_referrals", "health_units"
+  add_foreign_key "psychosocial_referrals", "health_units", column: "from_health_unit_id"
+  add_foreign_key "psychosocial_referrals", "patients"
+  add_foreign_key "psychosocial_referrals", "users", column: "referred_by_user_id"
+  add_foreign_key "psychosocial_settings", "users", column: "updated_by_user_id"
   add_foreign_key "regulation_authorizations", "care_offers"
   add_foreign_key "regulation_authorizations", "regulation_requests"
   add_foreign_key "regulation_authorizations", "users", column: "authorized_by_user_id"

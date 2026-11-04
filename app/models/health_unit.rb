@@ -5,7 +5,15 @@ class HealthUnit < ApplicationRecord
   # ADR 0046: `ceo` (Centro de Especialidades Odontológicas), com perfil próprio.
   # ADR 0048: `health_management` (secretaria ou central de regulação), a
   # unidade de faturamento do TFD — sem atendimento, nunca APS.
-  KINDS = %w[ubs upa hospital other ceo health_management].freeze
+  # ADR 0049: `caps` (Centro de Atenção Psicossocial), sempre com a modalidade;
+  # a classificação do serviço (3 dígitos do CNES) só no CAPS. Só as
+  # modalidades III e AD III/IV têm acolhimento noturno (leitos).
+  KINDS = %w[ubs upa hospital other ceo health_management caps].freeze
+  CAPS_MODALITIES = %w[caps_i caps_ii caps_iii caps_i_child caps_ad caps_ad_iii caps_ad_iv].freeze
+  NIGHT_MODALITIES = %w[caps_iii caps_ad_iii caps_ad_iv].freeze
+  SERVICE_CLASSIFICATION = /\A\d{3}\z/
+  # Contrato P27: telefone da unidade, só dígitos (DDD + número), opcional.
+  PHONE = /\A\d{10,11}\z/
   # ADR 0030: quem passa pela escuta inicial (demanda espontânea, ou todos).
   SCREENING_SCOPES = %w[walk_in all].freeze
 
@@ -37,6 +45,7 @@ class HealthUnit < ApplicationRecord
   # CNES da unidade (ADR 0028): confirmado pela cidade a partir do retrato do
   # CNES, ou editado pelo admin. Só dígitos; único.
   normalizes :cnes, with: ->(v) { v.to_s.gsub(/\D/, "").presence }, apply_to_nil: true
+  normalizes :phone, with: ->(v) { v.to_s.gsub(/\D/, "").presence }, apply_to_nil: true
   validates :cnes, format: { with: /\A\d{7}\z/ }, uniqueness: true, allow_nil: true
 
   validates :name, presence: true, uniqueness: { case_sensitive: false }
@@ -46,6 +55,12 @@ class HealthUnit < ApplicationRecord
   validates :address_number, length: { maximum: 20 }
   validates :address_complement, length: { maximum: 80 }
   validates :address_zip, format: { with: /\A\d{8}\z/ }, allow_nil: true
+  validates :phone, format: { with: PHONE }, allow_nil: true
+  # Espelho de ck_health_units_caps.
+  validates :caps_modality, inclusion: { in: CAPS_MODALITIES }, if: :caps?
+  validates :caps_modality, absence: true, unless: :caps?
+  validates :service_classification, format: { with: SERVICE_CLASSIFICATION }, allow_nil: true, if: :caps?
+  validates :service_classification, absence: true, unless: :caps?
 
   scope :active_units, -> { where(active: true).order(:name) }
 
@@ -57,6 +72,9 @@ class HealthUnit < ApplicationRecord
   def self.lock_active!(id)
     where(active: true).lock("FOR SHARE").find_by(id: id) || raise(Inactive)
   end
+
+  def caps? = kind == "caps"
+  def night_capable? = caps? && NIGHT_MODALITIES.include?(caps_modality)
 
   private
 
