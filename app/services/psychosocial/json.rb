@@ -127,6 +127,27 @@ module Psychosocial
       )
     end
 
+    # Permanência no mapa de leitos (contrato §5): o ocupante só como
+    # <patient-ref>, nada clínico, sem trilha.
+    def board_stay(stay)
+      { "id" => stay.id, "patient" => patient_ref(stay.patient), "started_at" => time(stay.started_at),
+        "expected_end_at" => time(stay.expected_end_at) }
+    end
+
+    # Detalhe da permanência (quem lê grava a trilha `night_stay`), com as
+    # noites (Desvio 1), os motivos da saída e da reavaliação.
+    # cbos: { user_id => CBO no CAPS }.
+    def night_stay(stay, cbos:)
+      by = ->(user) { user && pro(user, cbos[user.id]) }
+      reassessment = stay.reassessment_reason && { "reason" => stay.reassessment_reason, "by" => by.call(stay.reassessed_by_user) }
+      board_stay(stay).merge(
+        "health_unit_id" => stay.health_unit_id, "bed" => bed(stay.psychosocial_bed), "enrollment_id" => stay.psychosocial_enrollment_id,
+        "ended_at" => time(stay.ended_at), "end_reason" => stay.end_reason, "nights" => NightLimit.nights(stay).map { |night| date(night) },
+        "reassessment" => reassessment, "started_by" => by.call(stay.started_by_user), "closed_by" => by.call(stay.closed_by_user),
+        "created_at" => time(stay.created_at)
+      )
+    end
+
     def action_participant(participant)
       return { "family_name" => participant.family_name } if participant.patient_id.nil?
 

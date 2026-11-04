@@ -321,6 +321,11 @@ Rails.application.config.to_prepare do
   # Ação gravada e cancelada do CAPS (Task 7): só o action_id, nunca notas,
   # participantes, CID ou nome; sem consumidor (o BPA entra na Task 12).
   %w[psychosocial.action_recorded psychosocial.action_cancelled].each { |name| DomainEvents.bind name, to: [] }
+  # Acolhimento noturno (Task 8): entrada, saída e limite passado com
+  # reavaliação — só o night_stay_id, nunca o motivo, o leito ou o nome; sem
+  # consumidor (as ações da noite publicam action_recorded).
+  %w[psychosocial.night_stay_started psychosocial.night_stay_closed
+     psychosocial.night_limit_overridden].each { |name| DomainEvents.bind name, to: [] }
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

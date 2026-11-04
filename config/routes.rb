@@ -701,6 +701,11 @@ Rails.application.routes.draw do
     post  "actions",             to: "actions#create"
     get   "actions/:id",         to: "actions#show"
     post  "actions/:id/cancel",  to: "actions#cancel"
+    # Acolhimento noturno: mapa dos leitos, entrada, detalhe e saída (§5).
+    get   "beds/board",          to: "beds#board"
+    post  "night_stays",         to: "night_stays#create"
+    get   "night_stays/:id",     to: "night_stays#show"
+    post  "night_stays/:id/close", to: "night_stays#close"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.

@@ -498,6 +498,14 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
 
+  # Módulo 31 (contrato §13; Task 8): acolhimento noturno (night_stay_id); só
+  # ids, sem consumidor.
+  it "declares psychosocial.night_stay_started, .night_stay_closed and .night_limit_overridden with no consumer" do
+    names = %w[psychosocial.night_stay_started psychosocial.night_stay_closed psychosocial.night_limit_overridden]
+    expect(DomainEvents.registry.keys).to include(*names)
+    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  end
+
   # Pagamento e prestação de contas do TFD (Task 12): só ids, sem consumidor.
   it "declares tfd.payment_recorded and tfd.accountability_closed with no consumer" do
     names = %w[tfd.payment_recorded tfd.accountability_closed]

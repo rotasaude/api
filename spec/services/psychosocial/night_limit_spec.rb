@@ -1,0 +1,110 @@
+require "rails_helper"
+
+# Módulo 31 (Desvio 1; contrato §5, P13): noites = datas locais de cada
+# entrada (meio-aberto, mínimo 1); limite por modalidade numa janela de
+# `window_days`, contando as noites do paciente em qualquer CAPS. Relógio fixo.
+RSpec.describe Psychosocial::NightLimit do
+  include ActiveSupport::Testing::TimeHelpers
+
+  around { |example| travel_to(Time.zone.local(2026, 11, 25, 15, 0)) { example.run } }
+
+  let!(:city) { psychosocial_city! }
+  let(:settings) { Psychosocial::Settings.current }
+  let(:caps) { caps!(modality: "caps_ad_iii") }
+  let(:patient) { caps_patient! }
+
+  def at(day, hour, month: 11) = Time.zone.local(2026, month, day, hour)
+  def nov(*days) = days.map { |d| Date.new(2026, 11, d) }
+
+  # Permanência gravada direto (o caminho real é StartNightStay/CloseNightStay).
+  def stay!(from, to, open: false, unit: caps, label: "L#{SecureRandom.hex(2)}")
+    staff = caps_staff!(unit)
+    enrollment = PsychosocialEnrollment.find_by(patient: patient, health_unit: unit) ||
+                 enrollment!(unit, patient: patient, reference: staff, started_on: Date.new(2026, 10, 1))
+    attrs = { psychosocial_bed: bed!(unit, label: label), health_unit: unit, psychosocial_enrollment: enrollment, patient: patient,
+              started_at: from, expected_end_at: to, started_by_user: staff }
+    attrs.merge!(ended_at: to, end_reason: "Alta do acolhimento noturno", closed_by_user: staff) unless open
+    PsychosocialNightStay.create!(attrs)
+  end
+
+  describe ".nights" do
+    it "a data local de cada entrada, meio-aberto, no mínimo uma" do
+      expect(described_class.nights(at(4, 19)..at(5, 8))).to eq(nov(4))
+      expect(described_class.nights(at(4, 19)..at(7, 8))).to eq(nov(4, 5, 6))
+      expect(described_class.nights(at(4, 19)..at(4, 23))).to eq(nov(4))
+      # 23:30 de 30/11 local é 02:30 UTC de 01/12: a noite é a de 30/11.
+      expect(described_class.nights(Time.zone.local(2026, 11, 30, 23, 30)..at(2, 8, month: 12)))
+        .to eq([ Date.new(2026, 11, 30), Date.new(2026, 12, 1) ])
+    end
+
+    it "da permanência: fim = ended_at, ou expected_end_at enquanto aberta" do
+      expect(described_class.nights(stay!(at(1, 19), at(3, 8)))).to eq(nov(1, 2))
+      expect(described_class.nights(stay!(at(10, 19), at(12, 8), open: true))).to eq(nov(10, 11))
+    end
+  end
+
+  describe ".check" do
+    it "AD III: 14 noites em 30; a 15ª passa do limite" do
+      allow(described_class).to receive(:existing_nights).and_return((1..14).map { |d| Date.new(2026, 11, d) })
+      expect(described_class.check(patient_id: patient.id, modality: "caps_ad_iii", new_nights: nov(20), settings: settings))
+        .to eq(used: 15, limit: 14, window_days: 30, rule: "total")
+    end
+
+    it "AD III: 14 na janela passa; fora da janela não conta" do
+      allow(described_class).to receive(:existing_nights).and_return((1..13).map { |d| Date.new(2026, 11, d) })
+      expect(described_class.check(patient_id: patient.id, modality: "caps_ad_iii", new_nights: nov(20), settings: settings)).to be_nil
+    end
+
+    it "CAPS III: 7 corridas ou 10 intercaladas" do
+      run = (1..7).map { |d| Date.new(2026, 11, d) }
+      expect(described_class.check(patient_id: patient.id, modality: "caps_iii", new_nights: run, settings: settings)).to be_nil
+      expect(described_class.check(patient_id: patient.id, modality: "caps_iii", new_nights: run + nov(8), settings: settings))
+        .to eq(used: 8, limit: 7, window_days: 30, rule: "consecutive")
+
+      alternate = nov(1, 3, 5, 7, 9, 11, 13, 15, 17, 19)
+      expect(described_class.check(patient_id: patient.id, modality: "caps_iii", new_nights: alternate, settings: settings)).to be_nil
+      expect(described_class.check(patient_id: patient.id, modality: "caps_iii", new_nights: alternate + nov(21), settings: settings))
+        .to eq(used: 11, limit: 10, window_days: 30, rule: "alternate")
+    end
+
+    it "lê as permanências do paciente em qualquer CAPS (abertas até expected_end_at), sem a própria" do
+      other_caps = caps!(modality: "caps_iii")
+      stay!(at(2, 19), at(8, 8))                                   # 2..7 (6) no AD III
+      stay!(at(10, 19), at(16, 8), unit: other_caps)               # 10..15 (6) no CAPS III
+      own = stay!(at(20, 19), at(22, 8), open: true)               # 20, 21 (2), aberta
+      expect(described_class.existing_nights(patient.id, Date.new(2026, 10, 27)..Date.new(2026, 11, 25), nil))
+        .to eq(nov(2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 20, 21))
+      expect(described_class.existing_nights(patient.id, Date.new(2026, 11, 5)..Date.new(2026, 11, 25), own.id))
+        .to eq(nov(5, 6, 7, 10, 11, 12, 13, 14, 15))
+
+      # 14 noites + 1 nova; a própria permanência (20, 21) não conta duas vezes.
+      expect(described_class.check(patient_id: patient.id, modality: "caps_ad_iii", new_nights: nov(23), settings: settings))
+        .to eq(used: 15, limit: 14, window_days: 30, rule: "total")
+      expect(described_class.check(patient_id: patient.id, modality: "caps_ad_iii", new_nights: nov(20, 21), settings: settings,
+                                   except_stay_id: own.id)).to be_nil
+    end
+
+    it "a janela que contém uma noite nova pode terminar depois dela (entrada retroativa)" do
+      allow(described_class).to receive(:existing_nights).and_return((11..24).map { |d| Date.new(2026, 11, d) })
+      expect(described_class.check(patient_id: patient.id, modality: "caps_ad_iii", new_nights: nov(2), settings: settings))
+        .to eq(used: 15, limit: 14, window_days: 30, rule: "total")
+    end
+
+    it "modalidade sem limite configurado nunca passa" do
+      expect(described_class.check(patient_id: patient.id, modality: "caps_ii", new_nights: (1..30).map { |d| Date.new(2026, 11, d) },
+                                   settings: settings)).to be_nil
+    end
+  end
+
+  describe ".used" do
+    it "as noites na janela que termina na data e o limite (total no AD, alternadas no CAPS III)" do
+      stay!(at(1, 19), at(4, 8))
+      stay!(at(20, 19), at(28, 8), open: true)
+      expect(described_class.used(patient_id: patient.id, modality: "caps_ad_iii", date: Date.new(2026, 11, 22), settings: settings))
+        .to eq(used: 6, limit: 14)
+      expect(described_class.used(patient_id: patient.id, modality: "caps_iii", date: Date.new(2026, 11, 22), settings: settings))
+        .to eq(used: 6, limit: 10)
+      expect(described_class.used(patient_id: patient.id, modality: "caps_ii", date: Date.new(2026, 11, 22), settings: settings)).to be_nil
+    end
+  end
+end
