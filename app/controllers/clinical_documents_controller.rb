@@ -116,7 +116,9 @@ class ClinicalDocumentsController < ApplicationController
     return forbid(grant.reason.to_s) unless grant.allowed?
 
     ClinicalRecord::Trail.viewed!(patient: consultation.patient, user: Current.user, grant: grant)
-    address = ClinicalDocument.where(patient_id: consultation.patient_id, kind: "prescription", status: "issued")
+    # O documento do CAPS (módulo 31, P8) fica fora: a UBS não o vê.
+    address = ClinicalDocument.where(patient_id: consultation.patient_id, kind: "prescription", status: "issued",
+                                     psychosocial_action_id: nil)
                               .order(issued_at: :desc, id: :desc).limit(IDENTIFICATION_LOOKBACK)
                               .lazy.map { |document| document.content_data.dig("patient_identification", "address") }.find(&:present?)
     cpf = CitizenIdentity::Cpf.normalize(consultation.patient.cpf.to_s)
@@ -150,6 +152,10 @@ class ClinicalDocumentsController < ApplicationController
   # Contrato §3 (Desvio 13): só a autora, com step-up; segue com o interruptor
   # desligado (protege o paciente).
   def cancel
+    # Módulo 31 (P29): fora da lotação do CAPS, o documento do CAPS não existe.
+    document = find(ClinicalDocument, params[:id])
+    return not_found if document&.psychosocial? && !Psychosocial::Access.can_read?(Current.user, document.psychosocial_action)
+
     result = ClinicalDocuments::Cancel.call(document_id: params[:id], by: Current.user, reason: body["reason"],
                                             health_unit_id: unit_param)
     return render_failure(result, ERROR_STATUS) if result.failure?
@@ -163,11 +169,17 @@ class ClinicalDocumentsController < ApplicationController
   # impresso e no cancelamento (o comando restringe à declaração; api#59); o
   # resto é do profissional.
   RECEPTION_ACTIONS = %w[declaration attendance_declarations declarations show print cancel].freeze
+  # Módulo 31 (P29): a equipe do CAPS (sem health_professional) lê, imprime e
+  # cancela pelo 19 só o documento da ação do CAPS; o grant da lotação decide.
+  PSYCHOSOCIAL_ACTIONS = %w[show print cancel].freeze
   def require_staff
     policy = CitizenVerificationPolicy.new(Current.user, nil)
     allowed = RECEPTION_ACTIONS.include?(action_name) ? policy.care? || policy.verify? : policy.care?
+    allowed ||= PSYCHOSOCIAL_ACTIONS.include?(action_name) && psychosocial_document? && Psychosocial::Access.staff?(Current.user)
     forbid("missing_role") unless allowed
   end
+
+  def psychosocial_document? = find(ClinicalDocument, params[:id])&.psychosocial? || false
 
   # Bloco do 19b de todos os documentos em duas consultas (Signatures::Mode.blocks);
   # sem pedido (papel puro) → signature null, como em Json.document.
@@ -190,9 +202,14 @@ class ClinicalDocumentsController < ApplicationController
     return not_found.then { nil } unless document
 
     grant = ClinicalDocuments::Read.document_grant(user: Current.user, document: document, health_unit_id: unit_param)
-    return forbid(grant.reason.to_s).then { nil } unless grant.allowed?
+    return (grant.reason == :not_found ? not_found : forbid(grant.reason.to_s)).then { nil } unless grant.allowed?
 
-    ClinicalRecord::Trail.viewed!(patient: document.patient, user: Current.user, grant: grant)
+    # Módulo 31: a leitura do documento do CAPS é trilha do CAPS (access psychosocial, resource documents).
+    if grant.kind == :psychosocial
+      Psychosocial::Trail.viewed!(patient: document.patient, user: Current.user, resource: "documents")
+    else
+      ClinicalRecord::Trail.viewed!(patient: document.patient, user: Current.user, grant: grant)
+    end
     document
   end
 

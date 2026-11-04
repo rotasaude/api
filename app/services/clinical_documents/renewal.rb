@@ -12,7 +12,8 @@ module ClinicalDocuments
                                      .order(:created_at, :id).to_a
       catalog = MedicationCatalogItem.where(id: medications.filter_map(&:catalog_item_id)).index_by(&:id)
       last = PrescriptionItem.joins(:clinical_document)
-                             .where(clinical_documents: { patient_id: consultation.patient_id, status: "issued" },
+                             .where(clinical_documents: { patient_id: consultation.patient_id, status: "issued",
+                                                          psychosocial_action_id: nil }, # módulo 31: a UBS não vê o CAPS
                                     medication_catalog_item_id: catalog.keys)
                              .order(created_at: :desc, id: :desc).to_a.uniq(&:medication_catalog_item_id)
                              .index_by(&:medication_catalog_item_id)

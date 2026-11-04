@@ -14,14 +14,21 @@ class ClinicalDocument < ApplicationRecord
   encrypts :cancel_reason
 
   belongs_to :patient, optional: true
-  belongs_to :citizen
+  # Módulo 31 (contrato §9, P8): o documento do CAPS nasce da ação, sem
+  # atendimento e sem cidadão (CHECKs ck_clinical_documents_parent/_citizen).
+  belongs_to :citizen, optional: true
   belongs_to :consultation, optional: true
-  belongs_to :attendance
+  belongs_to :attendance, optional: true
+  belongs_to :psychosocial_action, optional: true
   belongs_to :author_user, class_name: "User"
   belongs_to :cancelled_by_user, class_name: "User", optional: true
   belongs_to :replaces_document, class_name: "ClinicalDocument", optional: true
   has_many :prescription_items, -> { order(:position) }, dependent: :restrict_with_exception, inverse_of: :clinical_document
 
+  # A unidade do documento: a do atendimento, ou o CAPS da ação (módulo 31) —
+  # cabeçalho do impresso, verificação pública e canônico da assinatura.
+  def health_unit = attendance ? attendance.health_unit : psychosocial_action&.health_unit
+  def psychosocial? = psychosocial_action_id.present?
   def content_data = JSON.parse(content)
   def issued? = status == "issued"
   def cancelled? = status == "cancelled"

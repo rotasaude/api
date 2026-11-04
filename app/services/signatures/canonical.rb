@@ -78,12 +78,13 @@ module Signatures
 
     # ADR 0033 (contrato §12): documento clínico da consulta, na forma do
     # esquema clinical-document-v1 (tag clinical-v1.1.0). O da recepção (sem
-    # consulta) nunca é assinado.
+    # consulta) nunca é assinado. Módulo 31 (P28): o da ação do CAPS assina
+    # como o da consulta, com o CAPS da ação no cabeçalho.
     def clinical_document(document)
       raise Invalid, "not_signable" if document.notification_record?
-      raise Invalid, "not_signable" unless document.consultation_id && document.patient
+      raise Invalid, "not_signable" unless (document.consultation_id || document.psychosocial_action_id) && document.patient
 
-      head = header_for(unit: document.attendance.health_unit, author: document.author_user, cbo_code: document.cbo_code,
+      head = header_for(unit: document.health_unit, author: document.author_user, cbo_code: document.cbo_code,
                         patient: document.patient)
       body = { "id" => document.id, "kind" => document.kind, "issued_at" => time(document.issued_at),
                "replaces_document_id" => document.replaces_document_id }

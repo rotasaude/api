@@ -13,11 +13,21 @@
 # convertido (só a volta ao papel do 19b, que não grava paper_reason); o
 # motivo do papel é gravado no documento e volta na resposta (Desvio 10).
 # Nenhum número SNCR, CPF ou endereço em evento, log ou erro.
+#
+# Módulo 31 (ADR 0049; contrato §4, §9, P8, P28; plano, Desvio 12): da ação
+# do CAPS (`psychosocial_action:`), só receita, registro da Notificação e
+# atestado, pelo profissional da ação (senão not_author), numa ação não
+# cancelada (409 already_cancelled), individual — exatamente um participante,
+# matriculado — e com o CBO médico gravado na ação (senão
+# prescriber_required). Sem atendimento e sem cidadão (`citizen_id` nulo), com
+# o modo, o SNCR e a assinatura como na consulta; nunca entra na lista de
+# medicamentos do paciente (a UBS a veria).
 module ClinicalDocuments
   module Issue
     DECLARATION_DAYS = 30
     SNCR_KINDS = { "special_control" => "rce", "antimicrobial" => "ret" }.freeze
     CATALOG_KINDS = %w[prescription controlled_notification_record].freeze
+    PSYCHOSOCIAL_KINDS = %w[prescription controlled_notification_record sick_note].freeze
 
     # Decisões lidas fora da transação. `contact` (endereço e telefone do
     # prescritor) fica fora do inspect.
@@ -29,12 +39,20 @@ module ClinicalDocuments
 
     module_function
 
-    def call(kind:, content:, by:, consultation: nil, attendance: nil, replaces_document_id: nil, now: Time.current)
+    def call(kind:, content:, by:, consultation: nil, attendance: nil, psychosocial_action: nil, replaces_document_id: nil,
+             now: Time.current)
       kind = kind.to_s
       return invalid("kind") unless ClinicalDocument::KINDS.include?(kind)
       return invalid("kind") if attendance && kind != "attendance_declaration"
+      return invalid("kind") if psychosocial_action && !PSYCHOSOCIAL_KINDS.include?(kind)
 
-      controlled = consultation ? ControlledPrescriptions::Gate.usable?(Current.city) : false
+      # Autoria e prescritor antes dos interruptores e do catálogo (relidos sob
+      # a trava da ação, na transação).
+      refusal = psychosocial_action && psychosocial_refusal(psychosocial_action, by)
+      return refusal if refusal
+
+      clinical = consultation || psychosocial_action
+      controlled = clinical ? ControlledPrescriptions::Gate.usable?(Current.city) : false
       if kind == "controlled_notification_record" && !controlled
         return Result.fail(:feature_disabled, details: { feature: ControlledPrescriptions::Gate::KEY })
       end
@@ -49,12 +67,12 @@ module ClinicalDocuments
       platform = CATALOG_KINDS.include?(kind) ? prescription_platform(content) : nil
       return platform if platform.is_a?(Result)
 
-      ctx = Context.new(signing: consultation ? Signatures::Gate.usable?(Current.city) : false, controlled: controlled,
+      ctx = Context.new(signing: clinical ? Signatures::Gate.usable?(Current.city) : false, controlled: controlled,
                         simulated: controlled && Sncr::Mock.on?(Current.city), platform: platform,
-                        contact: (by.professional&.prescriber_contact if consultation && kind == "prescription"))
+                        contact: (by.professional&.prescriber_contact if clinical && kind == "prescription"))
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
-        result = issue(kind, content, by, consultation, attendance, replaces_document_id, ctx, now)
+        result = issue(kind, content, by, consultation, attendance, psychosocial_action, replaces_document_id, ctx, now)
         raise ActiveRecord::Rollback if result.failure?
       end
       result
@@ -93,8 +111,17 @@ module ClinicalDocuments
       { catalog: MedicationCatalogItem.where(id: ids.uniq).index_by(&:id), matcher: Medications::Substances.matcher }
     end
 
-    def issue(kind, input, by, consultation, attendance, replaces_id, ctx, now)
-      if consultation
+    def issue(kind, input, by, consultation, attendance, action, replaces_id, ctx, now)
+      if action
+        # O cancelamento da ação (Psychosocial::CancelAction trava FOR UPDATE)
+        # vence ou espera: relido aqui sob FOR SHARE.
+        action = PsychosocialAction.lock("FOR SHARE").find(action.id)
+        refusal = psychosocial_refusal(action, by)
+        return refusal if refusal
+
+        cbo = action.cbo_code
+        patient = Patient.find(action.psychosocial_action_participants.sole.patient_id)
+      elsif consultation
         # Card api#51: autoria e status relidos sob a trava da consulta (lock!
         # relê) — a designação ou o descarte entre a leitura e aqui vence. Ordem
         # de travas: consulta → paciente (atendimento → consulta → paciente no
@@ -120,7 +147,7 @@ module ClinicalDocuments
 
         patient = attendance.citizen.patient_id && Patient.lock.find(attendance.citizen.patient_id)
       end
-      replaces = replaced(replaces_id, kind, attendance, by)
+      replaces = replaced(replaces_id, kind, attendance, action, by)
       return replaces if replaces.is_a?(Result)
 
       built = build(kind, input, consultation, attendance, patient, cbo, ctx, now)
@@ -129,7 +156,7 @@ module ClinicalDocuments
       content, rows, category, paper_only = built.payload.values_at(:content, :items, :category, :paper_only)
       record_item = built.payload[:catalog_item]
       mode, reason =
-        if consultation
+        if consultation || action
           decide(kind: kind, category: category, role: Issuers.role(cbo), ctx: ctx, paper_only: paper_only == true,
                  certificate: SignerCertificate.active.exists?(user_id: by.id))
         else
@@ -145,24 +172,27 @@ module ClinicalDocuments
       return Result.fail(:prescriber_address_missing) if category == "antimicrobial" && mode == :digital && ctx.contact.nil?
 
       content = content.merge("sncr" => { "kind" => number.kind, "number" => number.number, "simulated" => number.simulated }) if number
-      document = create!(kind: kind, patient_id: patient&.id, citizen_id: attendance.citizen_id, consultation: consultation,
-                         attendance: attendance, author_user_id: by.id, cbo_code: cbo, issue_mode: mode.to_s,
-                         paper_reason: reason&.to_s, replaces_document_id: replaces&.id, issued_at: now,
+      document = create!(kind: kind, patient_id: patient&.id, citizen_id: attendance&.citizen_id, consultation: consultation,
+                         attendance: attendance, psychosocial_action_id: action&.id, author_user_id: by.id, cbo_code: cbo,
+                         issue_mode: mode.to_s, paper_reason: reason&.to_s, replaces_document_id: replaces&.id, issued_at: now,
                          content: content.to_json)
       return document if document.is_a?(Result)
 
       rows.each { |row| PrescriptionItem.create!(row.merge(clinical_document: document)) }
       Sncr::Stock.use!(number, document: document, now: now) if number
-      failure = medications!(document, patient, rows, ctx.platform, by, now)
-      return failure if failure
+      # Módulo 31 (P8): o documento do CAPS nunca entra na lista de medicamentos.
+      unless action
+        failure = medications!(document, patient, rows, ctx.platform, by, now)
+        return failure if failure
 
-      # O registro da Notificação entra na lista de medicamentos (não contínuo).
-      failure = record_medication!(document, patient, record_item, content, by, now) if record_item
-      return failure if failure
+        # O registro da Notificação entra na lista de medicamentos (não contínuo).
+        failure = record_medication!(document, patient, record_item, content, by, now) if record_item
+        return failure if failure
+      end
 
       # Papel nunca prepara assinatura (nem pedido, nem SignJob, nem canônico).
       Signatures::OpenRequest.call(document, now: now, usable: true) if mode == :digital
-      publish!(document, kind, category, consultation, attendance)
+      publish!(document, kind, category, consultation, attendance, action)
       if kind == "controlled_notification_record"
         DomainEvents.publish("controlled_notification.recorded", document_id: document.id,
                                                                   notification_type: content["notification_type"])
@@ -170,8 +200,11 @@ module ClinicalDocuments
       Result.ok(document: document, paper_reason: reason&.to_s)
     end
 
-    def publish!(document, kind, category, consultation, attendance)
-      link = consultation ? { consultation_id: consultation.id } : { attendance_id: attendance.id }
+    def publish!(document, kind, category, consultation, attendance, action)
+      link = if consultation then { consultation_id: consultation.id }
+             elsif action then { psychosocial_action_id: action.id }
+             else { attendance_id: attendance.id }
+             end
       payload = { document_id: document.id, kind: kind, **link, issue_mode: document.issue_mode }
       payload[:category] = category if kind == "prescription"
       DomainEvents.publish("clinical_document.issued", **payload)
@@ -196,13 +229,29 @@ module ClinicalDocuments
     end
 
     # "Cancelar e emitir outro" (spec §6): o substituído é um cancelado do
-    # mesmo tipo, da mesma autora e do mesmo cidadão.
-    def replaced(id, kind, attendance, by)
+    # mesmo tipo, da mesma autora e do mesmo cidadão — ou, no CAPS, da mesma
+    # ação (o documento do CAPS não tem cidadão).
+    def replaced(id, kind, attendance, action, by)
       return nil if id.nil?
 
       old = Uuid.valid?(id.to_s) ? ClinicalDocument.find_by(id: id) : nil
-      valid = old&.cancelled? && old.kind == kind && old.author_user_id == by.id && old.citizen_id == attendance.citizen_id
+      same = action ? old&.psychosocial_action_id == action.id : old&.citizen_id == attendance.citizen_id
+      valid = old&.cancelled? && old.kind == kind && old.author_user_id == by.id && same
       valid ? old : invalid("replaces_document_id")
+    end
+
+    # Ação do CAPS (contrato §4): só o profissional da ação; ação cancelada
+    # não emite; individual (um participante, matriculado) e CBO médico do
+    # vínculo gravado na ação. -> Result (recusa) | nil
+    def psychosocial_refusal(action, by)
+      return Result.fail(:not_author) unless action.professional_user_id == by.id
+      return Result.fail(:already_cancelled) if action.cancelled?
+
+      participants = action.psychosocial_action_participants.to_a
+      individual = participants.size == 1 && participants.first.psychosocial_enrollment_id.present?
+      return Result.fail(:prescriber_required) unless individual && Issuers.role(action.cbo_code) == :physician
+
+      nil
     end
 
     # Código curto/token repetido (improvável): tenta de novo com outros. O
@@ -248,6 +297,7 @@ module ClinicalDocuments
     def auxiliary?(consultation) = consultation.dental? && Consultations::Cbos.role(consultation.cbo_code) == :auxiliary
 
     def invalid(field) = Result.fail(:invalid_content, details: { field: field })
-    private_class_method :auxiliary?, :prescription_platform, :issue, :publish!, :build, :replaced, :create!, :medications!, :record_medication!, :invalid
+    private_class_method :auxiliary?, :prescription_platform, :issue, :publish!, :build, :replaced, :psychosocial_refusal, :create!,
+                         :medications!, :record_medication!, :invalid
   end
 end

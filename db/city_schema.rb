@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_04_900003) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_04_900004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -624,13 +624,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900003) do
   end
 
   create_table "clinical_documents", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "attendance_id", null: false
+    t.uuid "attendance_id"
     t.uuid "author_user_id", null: false
     t.text "cancel_reason"
     t.datetime "cancelled_at"
     t.uuid "cancelled_by_user_id"
     t.string "cbo_code"
-    t.uuid "citizen_id", null: false
+    t.uuid "citizen_id"
     t.uuid "consultation_id"
     t.text "content", null: false
     t.datetime "created_at", null: false
@@ -639,6 +639,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900003) do
     t.string "kind", null: false
     t.string "paper_reason"
     t.uuid "patient_id"
+    t.uuid "psychosocial_action_id"
     t.uuid "replaces_document_id"
     t.string "short_code", limit: 10, null: false
     t.string "status", default: "issued", null: false
@@ -651,19 +652,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900003) do
     t.index ["citizen_id"], name: "index_clinical_documents_on_citizen_id"
     t.index ["consultation_id"], name: "index_clinical_documents_on_consultation_id"
     t.index ["patient_id"], name: "index_clinical_documents_on_patient_id"
+    t.index ["psychosocial_action_id"], name: "index_clinical_documents_on_psychosocial_action_id"
     t.index ["replaces_document_id"], name: "index_clinical_documents_on_replaces_document_id", unique: true, where: "(replaces_document_id IS NOT NULL)"
     t.index ["short_code"], name: "index_clinical_documents_on_short_code", unique: true
     t.index ["verification_token"], name: "index_clinical_documents_on_verification_token", unique: true
     t.check_constraint "(status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL) AND (status::text = 'cancelled'::text) = (cancel_reason IS NOT NULL) AND (status::text = 'cancelled'::text) = (cancelled_by_user_id IS NOT NULL)", name: "ck_clinical_documents_cancellation"
     t.check_constraint "cbo_code IS NULL OR cbo_code::text ~ '^[0-9]{6}$'::text", name: "ck_clinical_documents_cbo"
-    t.check_constraint "consultation_id IS NULL OR cbo_code IS NOT NULL", name: "ck_clinical_documents_cbo_required"
-    t.check_constraint "consultation_id IS NOT NULL OR issue_mode::text = 'paper'::text", name: "ck_clinical_documents_paper_outside_consultation"
-    t.check_constraint "consultation_id IS NOT NULL OR kind::text = 'attendance_declaration'::text", name: "ck_clinical_documents_consultation"
+    t.check_constraint "(consultation_id IS NULL AND psychosocial_action_id IS NULL) OR cbo_code IS NOT NULL", name: "ck_clinical_documents_cbo_required"
+    t.check_constraint "(psychosocial_action_id IS NULL) = (citizen_id IS NOT NULL)", name: "ck_clinical_documents_citizen"
+    t.check_constraint "consultation_id IS NOT NULL OR psychosocial_action_id IS NOT NULL OR issue_mode::text = 'paper'::text", name: "ck_clinical_documents_paper_outside_consultation"
+    t.check_constraint "consultation_id IS NOT NULL OR psychosocial_action_id IS NOT NULL OR kind::text = 'attendance_declaration'::text", name: "ck_clinical_documents_consultation"
     t.check_constraint "issue_mode::text = ANY (ARRAY['digital'::text, 'paper'::text])", name: "ck_clinical_documents_issue_mode"
     t.check_constraint "kind::text = ANY (ARRAY['sick_note'::text, 'attendance_declaration'::text, 'prescription'::text, 'exam_requisition'::text, 'controlled_notification_record'::text])", name: "ck_clinical_documents_kind"
     t.check_constraint "kind::text <> 'controlled_notification_record'::text OR issue_mode::text = 'paper'::text", name: "ck_clinical_documents_notification_paper"
     t.check_constraint "paper_reason IS NULL OR paper_reason::text = ANY (ARRAY['no_certificate'::text, 'signature_unavailable'::text, 'no_sncr_number'::text, 'nurse_antimicrobial'::text, 'feature_disabled'::text, 'free_text_items'::text])", name: "ck_clinical_documents_paper_reason"
     t.check_constraint "paper_reason IS NULL OR issue_mode::text = 'paper'::text", name: "ck_clinical_documents_paper_reason_mode"
+    t.check_constraint "num_nonnulls(attendance_id, psychosocial_action_id) = 1 AND (psychosocial_action_id IS NULL OR consultation_id IS NULL)", name: "ck_clinical_documents_parent"
     t.check_constraint "patient_id IS NOT NULL OR kind::text = 'attendance_declaration'::text", name: "ck_clinical_documents_patient"
     t.check_constraint "short_code::text ~ '^[2-9ABCDEFGHJKMNPQRSTUVWXYZ]{10}$'::text", name: "ck_clinical_documents_short_code"
     t.check_constraint "status::text = ANY (ARRAY['issued'::text, 'cancelled'::text])", name: "ck_clinical_documents_status"
@@ -3316,7 +3320,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900003) do
     t.index ["author_user_id", "status", "created_at"], name: "idx_signature_requests_queue"
     t.index ["consultation_id"], name: "index_signature_requests_on_consultation_id"
     t.index ["document_type", "document_id"], name: "idx_signature_requests_document", unique: true
-    t.check_constraint "(document_type::text = 'LabReport'::text) = (consultation_id IS NULL)", name: "ck_signature_requests_consultation"
+    t.check_constraint "document_type::text = 'LabReport'::text AND consultation_id IS NULL OR (document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text])) AND consultation_id IS NOT NULL OR document_type::text = 'ClinicalDocument'::text", name: "ck_signature_requests_consultation"
     t.check_constraint "attempts >= 0", name: "ck_signature_requests_attempts"
     t.check_constraint "document_type::text = ANY (ARRAY['Consultation'::text, 'ConsultationAddendum'::text, 'ClinicalDocument'::text, 'LabReport'::text])", name: "ck_signature_requests_document_type"
     t.check_constraint "reason_code IS NULL OR reason_code::text = ANY (ARRAY['no_session'::text, 'session_expired'::text, 'provider_unavailable'::text, 'provider_rejected'::text, 'signer_unavailable'::text, 'verification_failed'::text, 'certificate_expired'::text, 'certificate_revoked'::text, 'certificate_cpf_mismatch'::text, 'feature_disabled'::text, 'user_request'::text, 'document_cancelled'::text])", name: "ck_signature_requests_reason"
@@ -4317,6 +4321,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900003) do
   add_foreign_key "clinical_documents", "clinical_documents", column: "replaces_document_id"
   add_foreign_key "clinical_documents", "consultations"
   add_foreign_key "clinical_documents", "patients"
+  add_foreign_key "clinical_documents", "psychosocial_actions"
   add_foreign_key "clinical_documents", "users", column: "author_user_id"
   add_foreign_key "clinical_documents", "users", column: "cancelled_by_user_id"
   add_foreign_key "clinical_record_administrative_reads", "consultations"

@@ -11,10 +11,17 @@ module Signatures
     def blocks(documents)
       return {} if documents.empty?
 
-      # Pelo consultation_id (indexado): a consulta e os adendos dela.
-      consultation_ids = documents.map { |document| DocumentTypes.consultation_id(document) }.uniq
-      requests = SignatureRequest.where(consultation_id: consultation_ids).includes(:author_user)
-                                 .index_by { |r| [ r.document_type, r.document_id ] }
+      # Pelo consultation_id (indexado): a consulta e os adendos dela. O
+      # documento do CAPS (módulo 31, P28) não tem consulta: pelo próprio
+      # documento (índice único), nunca por `consultation_id IS NULL`.
+      consultation_ids = documents.filter_map { |document| DocumentTypes.consultation_id(document) }.uniq
+      loose = documents.reject { |document| DocumentTypes.consultation_id(document) }
+      scope = SignatureRequest.where(consultation_id: consultation_ids)
+      if loose.any?
+        scope = scope.or(SignatureRequest.where(document_type: loose.map { |document| DocumentTypes.db(document) }.uniq,
+                                                document_id: loose.map(&:id)))
+      end
+      requests = scope.includes(:author_user).index_by { |r| [ r.document_type, r.document_id ] }
       signatures = Signature.where(signature_request_id: requests.values.map(&:id))
                             .select(:id, :signature_request_id, :signed_at, :last_verification, :provider)
                             .index_by(&:signature_request_id)

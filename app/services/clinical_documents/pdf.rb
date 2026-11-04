@@ -69,7 +69,7 @@ module ClinicalDocuments
     def date(iso) = Date.iso8601(iso).strftime("%d/%m/%Y")
 
     def header(pdf, document, content, label)
-      unit = document.attendance.health_unit
+      unit = document.health_unit
       pdf.text s(CityProfile.current&.name.to_s), style: :bold, size: 12
       pdf.text s("#{unit.name}#{unit.cnes ? " — CNES #{unit.cnes}" : ''}")
       address = [ unit.address_street, unit.address_number, unit.address_complement ].compact_blank.join(", ")

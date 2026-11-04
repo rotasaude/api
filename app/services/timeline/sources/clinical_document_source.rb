@@ -11,7 +11,9 @@ module Timeline
       module_function
 
       def entries(person:, before:, limit:, from:, to:)
-        scope = ::ClinicalDocument.where(citizen_id: person.citizen_ids).where.not(kind: NOTIFICATION)
+        # Módulo 31 (contrato §9, §10): o documento do CAPS nunca entra (ele
+        # não tem cidadão; o filtro explícito é a rede).
+        scope = ::ClinicalDocument.where(citizen_id: person.citizen_ids, psychosocial_action_id: nil).where.not(kind: NOTIFICATION)
                                   .includes(attendance: :health_unit, author_user: :professional)
         Window.apply(scope, kind: KIND, column: "clinical_documents.issued_at", id_column: "clinical_documents.id",
                             before: before, from: from, to: to)

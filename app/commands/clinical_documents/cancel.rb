@@ -21,7 +21,7 @@ module ClinicalDocuments
         next Result.fail(:not_found) unless document
         unless document.author_user_id == by.id
           next Result.fail(:not_author) unless document.kind == "attendance_declaration" && by.has_role?("citizen_verifier")
-          next Result.fail(:attendance_outside_unit) unless health_unit_id.present? && document.attendance.health_unit_id == health_unit_id
+          next Result.fail(:attendance_outside_unit) unless health_unit_id.present? && document.health_unit&.id == health_unit_id
         end
         next Result.fail(:already_cancelled) if document.cancelled?
 

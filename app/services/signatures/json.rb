@@ -36,7 +36,8 @@ module Signatures
       addendum_ids = rows.select { |row| row.document_type == "ConsultationAddendum" }.map(&:document_id)
       addenda = ConsultationAddendum.where(id: addendum_ids).pluck(:id, :created_at).to_h
       document_ids = rows.select { |row| row.document_type == "ClinicalDocument" }.map(&:document_id)
-      documents = ClinicalDocument.where(id: document_ids).pluck(:id, :issued_at).to_h
+      # O documento do CAPS (módulo 31) não tem consulta: o paciente vem do documento.
+      documents = ClinicalDocument.where(id: document_ids).select(:id, :issued_at, :patient_id).includes(:patient).index_by(&:id)
       # ADR 0037: laudo sem consulta — o paciente vem da requisição; a data, da liberação.
       lab_ids = rows.select { |row| row.document_type == "LabReport" }.map(&:document_id)
       labs = LabReport.where(id: lab_ids).includes(lab_requisition: :patient).index_by(&:id)
@@ -46,11 +47,12 @@ module Signatures
                        when "Consultation" then consultation&.finalized_at
                        when "ConsultationAddendum" then addenda[row.document_id]
                        when "LabReport" then labs[row.document_id]&.created_at
-                       else documents[row.document_id] # ClinicalDocument: a emissão
+                       else documents[row.document_id]&.issued_at # ClinicalDocument: a emissão
                        end
         { id: row.id, document_type: DocumentTypes.api(row.document_type), document_id: row.document_id,
           consultation_id: row.consultation_id,
-          patient_display_name: consultation&.patient&.display_name || labs[row.document_id]&.lab_requisition&.patient&.display_name,
+          patient_display_name: consultation&.patient&.display_name || labs[row.document_id]&.lab_requisition&.patient&.display_name ||
+                                documents[row.document_id]&.patient&.display_name,
           finalized_at: finalized_at&.iso8601, status: row.status, reason_code: row.reason_code, attempts: row.attempts }
           .tap { |item| item.delete(:reason_code) if item[:reason_code].nil? }
       end

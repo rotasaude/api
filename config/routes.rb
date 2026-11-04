@@ -701,6 +701,9 @@ Rails.application.routes.draw do
     post  "actions",             to: "actions#create"
     get   "actions/:id",         to: "actions#show"
     post  "actions/:id/cancel",  to: "actions#cancel"
+    # Receita, Notificação e atestado do 19 a partir da ação (§4, §9, P4, P8).
+    get   "actions/:id/documents", to: "documents#index"
+    post  "actions/:id/documents", to: "documents#create"
     # Acolhimento noturno: mapa dos leitos, entrada, detalhe e saída (§5).
     get   "beds/board",          to: "beds#board"
     post  "night_stays",         to: "night_stays#create"

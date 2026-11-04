@@ -20,6 +20,11 @@ module ClinicalDocuments
     end
 
     def document_grant(user:, document:, health_unit_id: nil)
+      # Módulo 31 (contrato P8, P29): o documento do CAPS só por quem está
+      # lotado no CAPS da ação — a autora inclusive; os demais, 404 (nem a
+      # existência do documento sai do CAPS).
+      return psychosocial_grant(user, document) if document.psychosocial?
+
       staff = user.has_role?("health_professional") || user.has_role?("citizen_verifier")
       return Grant.new(kind: :author, opening: nil, reason: nil) if staff && document.author_user_id == user.id
       # api#59: a recepção da unidade do atendimento (a escolhida no seletor) lê a
@@ -32,12 +37,18 @@ module ClinicalDocuments
       ClinicalRecord::Access.call(user: user, patient: document.patient, attendance: document.attendance)
     end
 
+    def psychosocial_grant(user, document)
+      return deny(:not_found) unless Psychosocial::Access.can_read?(user, document.psychosocial_action)
+
+      Grant.new(kind: :psychosocial, opening: nil, reason: nil)
+    end
+
     def unit_reception?(user, document, health_unit_id)
       document.kind == "attendance_declaration" && user.has_role?("citizen_verifier") &&
         health_unit_id.present? && document.attendance.health_unit_id == health_unit_id
     end
 
     def deny(reason) = Grant.new(kind: :denied, opening: nil, reason: reason)
-    private_class_method :deny
+    private_class_method :deny, :psychosocial_grant
   end
 end

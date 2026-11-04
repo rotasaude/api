@@ -47,7 +47,7 @@ module ClinicalDocuments
                # Só o nome do perfil profissional: sem perfil (a recepção), null —
                # nunca o e-mail da conta.
                professional: { name: professional&.professional_name.presence, council: Json.council(professional) },
-               unit: document.attendance.health_unit.name,
+               unit: document.health_unit.name,
                patient: { initials: Patients::Initials.call(person(document).display_name), birth_year: birth_year_of(document) },
                status: status, mode: document.issue_mode, simulated: signature&.simulated? || false }
       add_prescription_fields(json, document) if document.prescription?
