@@ -76,6 +76,30 @@ RSpec.describe "CAPS — acolhimento", type: :request do
     expect(DomainEvent.where(name: "psychosocial.reception_recorded")).to be_empty
   end
 
+  it "início da matrícula em mês fechado → 422 month_closed enrollment.started_on, nada gravado" do
+    start = Date.current.beginning_of_month.prev_month
+    PsychosocialMonthClosure.create!(health_unit: caps, month: start, closed_at: Time.current, closed_by_user: staff)
+    referral = referral!
+    expect do
+      json_post "/psychosocial/receptions", body(outcome: "enrolled", referral_id: referral.id,
+                                                 enrollment: enrollment_block(started_on: (start + 2).iso8601))
+    end.not_to change { [ PsychosocialReception.count, PsychosocialEnrollment.count, PsychosocialMonthlyRecord.count, DomainEvent.count ] }
+    expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "enrollment.started_on" ])
+    expect(json_body["problems"]).to eq([ { "error" => "month_closed", "path" => "enrollment.started_on" } ])
+    expect(referral.reload.status).to eq("pending")
+  end
+
+  it "corrida na matrícula aberta (índice único) desfaz a recepção: 409 enrollment_open, nada gravado" do
+    enrollment!(caps, patient: patient, reference: staff)
+    referral = referral!
+    allow(PsychosocialEnrollment).to receive(:open_enrollments).and_return(PsychosocialEnrollment.none)
+    expect do
+      json_post "/psychosocial/receptions", body(outcome: "enrolled", referral_id: referral.id, enrollment: enrollment_block)
+    end.not_to change { [ PsychosocialReception.count, PsychosocialEnrollment.count, PsychosocialMonthlyRecord.count, DomainEvent.count ] }
+    expect([ response.status, json_body["error"] ]).to eq([ 409, "enrollment_open" ])
+    expect(referral.reload.status).to eq("pending")
+  end
+
   it "os problemas do bloco vêm com o prefixo enrollment., junto com os da recepção" do
     json_post "/psychosocial/receptions", body(outcome: "enrolled", at: 1.hour.from_now.iso8601,
                                                enrollment: enrollment_block(origin: "77", esf_covered: true, patient_id: patient.id))

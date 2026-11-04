@@ -62,12 +62,20 @@ module Psychosocial
       enrollment = nil
       if values
         enrolled = CreateEnrollment.insert(values, patient: patient, unit: unit, by: by, reception: reception)
-        return enrolled if enrolled.failure?
+        return prefixed(enrolled) if enrolled.failure?
 
         enrollment = enrolled.payload.fetch(:enrollment)
       end
       DomainEvents.publish("psychosocial.reception_recorded", reception_id: reception.id)
       Result.ok(reception: reception, enrollment: enrollment)
+    end
+
+    # A recusa da matrícula com os paths do bloco (`enrollment.started_on`).
+    def prefixed(result)
+      return result unless result.details.key?(:problems)
+
+      problems = result.details[:problems].map { |p| p.merge(path: "enrollment.#{p[:path]}") }
+      Result.fail(result.reason, details: result.details.merge(path: problems.first[:path], problems: problems))
     end
 
     # nil (aceito) | o problema. Sem `at` válido, só a forma do código.
@@ -116,6 +124,6 @@ module Psychosocial
       Result.fail(first[:error].to_sym, details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :record, :code_problem, :referral, :enrollment_values, :problem, :failure
+    private_class_method :record, :prefixed, :code_problem, :referral, :enrollment_values, :problem, :failure
   end
 end

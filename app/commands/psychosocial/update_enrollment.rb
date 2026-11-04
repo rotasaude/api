@@ -2,7 +2,8 @@
 # regras de campo da criação (CreateEnrollment.field/esf_problem) mais
 # `next_visit_at` (ISO 8601 ou nulo). `origin` e `started_on` só mudam antes da
 # primeira RAAS exportada da matrícula (senão 422 origin_locked, com o path da
-# chave). Sem cobertura de ESF, o CNES da USF é apagado; com cobertura, o CNES
+# chave); `started_on` também não sai de nem vai para mês fechado no CAPS (422
+# month_closed, ruling). Corpo vazio → 422 invalid_request. Sem cobertura de ESF, o CNES da USF é apagado; com cobertura, o CNES
 # gravado vale até vir outro. Encerrada → 409 already_closed. Mudou o início:
 # garante a RAAS do mês do novo início. Recusas todas de uma vez. Sem evento
 # (o contrato §13 não tem um para a edição).
@@ -15,9 +16,10 @@ module Psychosocial
     module_function
 
     # -> Result.ok(enrollment:) | fail(:already_closed) |
-    #    fail(:invalid_request | :origin_locked | :esf_cnes_required, details: { path:, problems: })
+    #    fail(:invalid_request | :origin_locked | :month_closed | :esf_cnes_required, details: { path:, problems: })
     def call(enrollment:, attrs:, by:)
       attrs = attrs.to_h.stringify_keys
+      return Result.fail(:invalid_request) if attrs.empty?
       return Result.fail(:already_closed) unless enrollment.open?
 
       ApplicationRecord.transaction(requires_new: true) do
@@ -32,7 +34,7 @@ module Psychosocial
         if enrollment.changed?
           start_moved = enrollment.started_on_changed?
           enrollment.save!
-          MonthlyRecords.ensure!(enrollment, enrollment.started_on) if start_moved
+          MonthlyRecords.ensure!(enrollment, enrollment.started_on, strict: true) if start_moved
         end
         Result.ok(enrollment: enrollment)
       end
@@ -52,12 +54,20 @@ module Psychosocial
         if LOCKED.include?(key) && value != enrollment.public_send(key)
           exported = enrollment.psychosocial_monthly_records.exists?(status: "exported") if exported.nil?
           next problems << problem(key, "origin_locked") if exported
+          next problems << problem(key, "month_closed") if key == "started_on" && start_month_closed?(enrollment, value)
         end
         changes[key] = value
       end
       check_next_visit(attrs, changes, problems)
       check_esf(enrollment, attrs, changes, problems)
       [ changes, problems ]
+    end
+
+    # O início muda de mês de registro inicial: o mês novo e o mês atual do
+    # início precisam estar abertos (ruling; o chamador segura a trava do CAPS).
+    def start_month_closed?(enrollment, started_on)
+      MonthlyRecords.closed?(enrollment.health_unit_id, started_on) ||
+        MonthlyRecords.closed?(enrollment.health_unit_id, enrollment.started_on)
     end
 
     def check_next_visit(attrs, changes, problems)
@@ -92,6 +102,6 @@ module Psychosocial
       Result.fail(first[:error].to_sym, details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :check, :check_next_visit, :check_esf, :problem, :failure
+    private_class_method :check, :start_month_closed?, :check_next_visit, :check_esf, :problem, :failure
   end
 end

@@ -1,5 +1,6 @@
 # Leitura dos campos do corpo JSON do CAPS (ADR 0049): id, data e data/hora
-# ISO 8601. Valor fora da forma → nil (quem chama recusa com o path).
+# ISO 8601 (hora sem offset = fuso da cidade). Valor fora da forma → nil
+# (quem chama recusa com o path).
 module Psychosocial
   module Input
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
@@ -20,12 +21,13 @@ module Psychosocial
       nil
     end
 
-    # -> ActiveSupport::TimeWithZone (no fuso da cidade) | nil
+    # -> ActiveSupport::TimeWithZone (no fuso da cidade) | nil. Sem offset, é
+    # a hora local da cidade (Time.zone), nunca UTC; com offset ou Z, o instante.
     def time(value)
       return nil unless value.is_a?(String) && value.match?(TIME)
 
-      DateTime.iso8601(value).to_time.in_time_zone
-    rescue Date::Error
+      Time.zone.iso8601(value)
+    rescue ArgumentError
       nil
     end
   end

@@ -66,6 +66,23 @@ RSpec.describe "CAPS — matrícula", type: :request do
       expect(json_body["problems"]).to eq([ { "error" => "invalid_request", "path" => "esf_cnes" } ])
     end
 
+    it "início em mês fechado → 422 month_closed started_on, nada gravado (ruling)" do
+      start = Date.current.beginning_of_month.prev_month
+      PsychosocialMonthClosure.create!(health_unit: caps, month: start, closed_at: Time.current, closed_by_user: staff)
+      request_body = body(started_on: (start + 3).iso8601) # o paciente nasce antes da contagem
+      expect { json_post "/psychosocial/enrollments", request_body }
+        .not_to change { [ PsychosocialEnrollment.count, PsychosocialMonthlyRecord.count, DomainEvent.count ] }
+      expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "started_on" ])
+    end
+
+    it "corrida na matrícula aberta (índice único) → 409 enrollment_open, nada gravado" do
+      enroll!
+      allow(PsychosocialEnrollment).to receive(:open_enrollments).and_return(PsychosocialEnrollment.none)
+      expect { json_post "/psychosocial/enrollments", body }
+        .not_to change { [ PsychosocialEnrollment.count, PsychosocialMonthlyRecord.count, DomainEvent.count ] }
+      expect([ response.status, json_body["error"] ]).to eq([ 409, "enrollment_open" ])
+    end
+
     it "fora do CAPS de lotação → 403 not_on_caps_team" do
       json_post "/psychosocial/enrollments", body(health_unit_id: caps!(modality: "caps_ad").id)
       expect([ response.status, json_body["error"] ]).to eq([ 403, "not_on_caps_team" ])
@@ -121,6 +138,31 @@ RSpec.describe "CAPS — matrícula", type: :request do
   end
 
   describe "PATCH /psychosocial/enrollments/:id" do
+    it "a resposta traz o detalhe clínico e grava a trilha; corpo vazio → 422" do
+      id = enroll!
+      expect { json_patch "/psychosocial/enrollments/#{id}", cid_main: "F31.2" }.to change { viewed.count }.by(1)
+      expect(viewed.last.payload).to include("patient_id" => patient.id, "access" => "psychosocial", "resource" => "enrollment")
+
+      expect { json_patch "/psychosocial/enrollments/#{id}", {} }.not_to(change { viewed.count })
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "invalid_request" ])
+    end
+
+    it "início movido para mês fechado, ou com o mês de início atual fechado → 422 month_closed (ruling)" do
+      month = Date.current.beginning_of_month
+      id = enroll!(started_on: month.iso8601)
+      previous = month.prev_month
+      PsychosocialMonthClosure.create!(health_unit: caps, month: previous, closed_at: Time.current, closed_by_user: staff)
+      json_patch "/psychosocial/enrollments/#{id}", started_on: (previous + 5).iso8601
+      expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "started_on" ])
+
+      older = previous.prev_month
+      other = enroll!(patient_id: caps_patient!.id, started_on: (older + 10).iso8601)
+      PsychosocialMonthClosure.create!(health_unit: caps, month: older, closed_at: Time.current, closed_by_user: staff)
+      json_patch "/psychosocial/enrollments/#{other}", started_on: month.iso8601
+      expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "started_on" ])
+      expect(PsychosocialEnrollment.find(other).started_on).to eq(older + 10)
+    end
+
     it "edita CIDs, substâncias, ESF, técnico e próxima visita" do
       id = enroll!
       other = caps_staff!(caps, cbo: "223505")
@@ -161,6 +203,15 @@ RSpec.describe "CAPS — matrícula", type: :request do
   end
 
   describe "POST /psychosocial/enrollments/:id/close" do
+    it "a resposta traz o detalhe clínico e grava a trilha; a recusa não grava" do
+      id = enroll!
+      expect { json_post "/psychosocial/enrollments/#{id}/close", destination: "00", closed_on: Date.current.iso8601 }
+        .not_to(change { viewed.count })
+      expect { json_post "/psychosocial/enrollments/#{id}/close", destination: "01", closed_on: Date.current.iso8601 }
+        .to change { viewed.count }.by(1)
+      expect(viewed.last.payload).to include("patient_id" => patient.id, "access" => "psychosocial", "resource" => "enrollment")
+    end
+
     it "encerrar: 00 recusado, data futura recusada; o destino vai à RAAS do mês do encerramento" do
       id = enroll!
       json_post "/psychosocial/enrollments/#{id}/close", destination: "00", closed_on: Date.current.iso8601

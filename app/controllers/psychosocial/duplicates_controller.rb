@@ -30,7 +30,7 @@ module Psychosocial
       return render_refusal("mother_name") unless mother_name.nil? || mother_name.is_a?(String)
 
       candidates = Patients::Duplicates.call(full_name: full_name, birth_date: birth_date, mother_name: mother_name, limit: LIMIT).first(LIMIT)
-      candidates.each { |patient| Trail.person_viewed!(user: Current.user, patient_id: patient.id) }
+      candidates.each { |patient| Trail.person_viewed!(user: Current.user, patient_id: patient.id, resource: "patient_duplicates") }
       render json: { candidates: candidates.map { |patient| Pharmacy::Json.duplicate(patient) } }
     end
   end

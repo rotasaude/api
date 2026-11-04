@@ -27,7 +27,7 @@ module Psychosocial
         next Result.fail(:already_closed) unless enrollment.open?
 
         # Mês fechado (ensure! não cria) ou registro já fora de `open`.
-        record = MonthlyRecords.closed?(enrollment.health_unit_id, date) ? nil : MonthlyRecords.ensure!(enrollment, date)
+        record = MonthlyRecords.closed?(enrollment.health_unit_id, date) ? nil : MonthlyRecords.ensure!(enrollment, date, strict: true)
         next failure([ problem("closed_on", "month_closed") ]) unless record&.status == "open"
 
         enrollment.update!(closed_on: date, destination: destination, closed_by_user: by)

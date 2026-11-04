@@ -33,7 +33,7 @@ module Psychosocial
       return render_lookup_failure(found) if found.failure?
 
       patient = found.payload.fetch(:patient)
-      Trail.person_viewed!(user: Current.user, patient_id: patient.id)
+      Trail.person_viewed!(user: Current.user, patient_id: patient.id, resource: "person_lookup")
       render json: { patient_id: patient.id, display_name: patient.display_name, **Patients::IdentifierJson.call(patient) }
     end
 

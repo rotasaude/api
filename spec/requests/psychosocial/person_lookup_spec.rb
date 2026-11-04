@@ -20,7 +20,8 @@ RSpec.describe "CAPS — busca de paciente", type: :request do
       expect(json_body).to include("patient_id" => patient.id, "display_name" => patient.display_name, "has_cpf" => true,
                                    "cns_masked" => patient.cns_masked)
       expect(response.body).not_to include(patient.cpf, patient.cns)
-      expect(viewed.last.payload).to include("patient_id" => patient.id, "user_id" => staff.id, "access" => "psychosocial")
+      expect(viewed.last.payload).to include("patient_id" => patient.id, "user_id" => staff.id, "access" => "psychosocial",
+                                             "resource" => "person_lookup")
 
       json_post "/psychosocial/person_lookup", cns: patient.cns
       expect(json_body["patient_id"]).to eq(patient.id)
@@ -57,6 +58,7 @@ RSpec.describe "CAPS — busca de paciente", type: :request do
       expect do
         json_post "/psychosocial/patients/duplicates", full_name: patient.full_name, birth_date: patient.birth_date.to_s
       end.to change { viewed.count }.by(1)
+      expect(viewed.last.payload).to include("patient_id" => patient.id, "access" => "psychosocial", "resource" => "patient_duplicates")
       expect(json_body["candidates"].map { |c| c["patient_id"] }).to eq([ patient.id ])
       expect(json_body["candidates"].first.keys).to contain_exactly("patient_id", "display_name", "birth_date", "has_cpf")
     end

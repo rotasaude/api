@@ -2,10 +2,10 @@
 #   GET   /psychosocial/enrollments?health_unit_id&status&before
 #         lista do CAPS lotado, sem CID, substância, origem nem ESF, sem trilha;
 #         sem `q` (P5: o dashboard filtra localmente; `q` → 422)
-#   POST  /psychosocial/enrollments            → 201 <detalhe>, sem trilha
+#   POST  /psychosocial/enrollments            → 201 <detalhe>, sem trilha (quem cria digitou)
 #   GET   /psychosocial/enrollments/:id        <detalhe> com trilha (`resource: "enrollment"`)
-#   PATCH /psychosocial/enrollments/:id        → <detalhe>, sem trilha
-#   POST  /psychosocial/enrollments/:id/close  { destination, closed_on } → <detalhe>
+#   PATCH /psychosocial/enrollments/:id        → <detalhe> com trilha (ruling); corpo vazio → 422
+#   POST  /psychosocial/enrollments/:id/close  { destination, closed_on } → <detalhe> com trilha
 # Matrícula de outro CAPS (ou de CAPS onde quem pede não está lotado) → 404.
 # Lista do mais nova para a mais antiga (created_at, id), em páginas de PAGE,
 # com `next_before`. Dado do paciente só no corpo; ids na URL.
@@ -44,10 +44,7 @@ module Psychosocial
       render_refusal("before", "invalid_cursor")
     end
 
-    def show
-      Trail.viewed!(patient: @enrollment.patient_id, user: Current.user, resource: "enrollment")
-      render json: detail(@enrollment)
-    end
+    def show = render_viewed(@enrollment)
 
     def create
       return unless query_only!
@@ -65,7 +62,7 @@ module Psychosocial
       result = UpdateEnrollment.call(enrollment: @enrollment, attrs: body, by: Current.user)
       return render_failure(result) if result.failure?
 
-      render json: detail(result.payload.fetch(:enrollment))
+      render_viewed(result.payload.fetch(:enrollment))
     end
 
     def close
@@ -76,10 +73,16 @@ module Psychosocial
                                     by: Current.user)
       return render_failure(result) if result.failure?
 
-      render json: detail(result.payload.fetch(:enrollment))
+      render_viewed(result.payload.fetch(:enrollment))
     end
 
     private
+
+    # O detalhe clínico com a trilha (GET, e as respostas do PATCH e do close: ruling).
+    def render_viewed(enrollment)
+      Trail.viewed!(patient: enrollment.patient_id, user: Current.user, resource: "enrollment")
+      render json: detail(enrollment)
+    end
 
     # Sem o papel do CAPS → 403 missing_role; id malformado, inexistente ou de
     # CAPS em que quem pede não está lotado → 404. Detalhe e escrita: nada na query.

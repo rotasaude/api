@@ -8,11 +8,21 @@ module Psychosocial
   module MonthlyRecords
     module_function
 
+    # Mês fechado sem registro onde o chamador já recusou o mês fechado
+    # (matrícula, edição do início, encerramento): nunca deveria acontecer.
+    class MissingRecord < StandardError; end
+
     # month: qualquer dia do mês. -> PsychosocialMonthlyRecord | nil
-    def ensure!(enrollment, month)
+    # strict: true → nil vira MissingRecord (o chamador já conferiu o mês sob a trava).
+    def ensure!(enrollment, month, strict: false)
       month = month.to_date.beginning_of_month
       scope = PsychosocialMonthlyRecord.where(psychosocial_enrollment_id: enrollment.id, month: month)
-      return scope.first if closed?(enrollment.health_unit_id, month)
+      if closed?(enrollment.health_unit_id, month)
+        record = scope.first
+        raise MissingRecord, "RAAS do mês #{month} ausente com o mês fechado" if strict && record.nil?
+
+        return record
+      end
 
       PsychosocialMonthlyRecord.insert_all(
         [ { psychosocial_enrollment_id: enrollment.id, health_unit_id: enrollment.health_unit_id, month: month, status: "open" } ],
