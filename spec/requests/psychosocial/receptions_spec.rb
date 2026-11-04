@@ -5,7 +5,13 @@ require "rails_helper"
 # `{ reception_id, enrollment_id | null }`; encaminhamento já usado → 409
 # referral_not_pending. Sem matrícula, o código é o 0301080232 (02 e 09): a
 # Task 7 recusa código só 09 sem participante matriculado (preflight, 4 ↔ 7).
+# Relógio fixo no arquivo inteiro: `started_on: Date.current` e `at: 1.hour.ago`
+# caem em dias diferentes entre 00:00 e 01:00 locais.
 RSpec.describe "CAPS — acolhimento", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
+  around { |example| travel_to(Time.zone.local(2026, 11, 18, 15, 0)) { example.run } }
+
   let!(:city) { psychosocial_city! }
   let(:caps) { caps! }
   let(:staff) { caps_staff!(caps) }
@@ -72,20 +78,14 @@ RSpec.describe "CAPS — acolhimento", type: :request do
     expect(referral.reload.status).to eq("pending")
   end
 
-  context "com o relógio fixo" do
-    include ActiveSupport::Testing::TimeHelpers
-
-    around { |example| travel_to(Time.zone.local(2026, 11, 18, 15, 0)) { example.run } }
-
-    it "`at` antes do início da matrícula criada → 422 action_rejected enrollment_required em at; nada gravado" do
-      patient
-      expect do
-        json_post "/psychosocial/receptions", body(outcome: "enrolled", at: Time.zone.local(2026, 11, 17, 10).iso8601,
-                                                   enrollment: enrollment_block(started_on: "2026-11-18"))
-      end.not_to change { [ PsychosocialReception.count, PsychosocialEnrollment.count, PsychosocialAction.count, DomainEvent.count ] }
-      expect([ response.status, json_body ]).to eq([ 422, { "error" => "action_rejected",
-                                                            "problems" => [ { "error" => "enrollment_required", "path" => "at" } ] } ])
-    end
+  it "`at` antes do início da matrícula criada → 422 action_rejected enrollment_required em at; nada gravado" do
+    patient
+    expect do
+      json_post "/psychosocial/receptions", body(outcome: "enrolled", at: Time.zone.local(2026, 11, 17, 10).iso8601,
+                                                 enrollment: enrollment_block(started_on: "2026-11-18"))
+    end.not_to change { [ PsychosocialReception.count, PsychosocialEnrollment.count, PsychosocialAction.count, DomainEvent.count ] }
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "action_rejected",
+                                                          "problems" => [ { "error" => "enrollment_required", "path" => "at" } ] } ])
   end
 
   it "CBO de quem acolhe fora da lista do código → action_rejected cbo_incompatible" do
