@@ -31,7 +31,7 @@ RSpec.describe "CAPS — painel", type: :request do
 
     it "3 matrículas ativas → \"lt5\" (string); 5 → 5; nenhuma → 0" do
       dashboard
-      expect(active_in).to eq("health_unit_id" => caps.id, "name" => "CAPS II Boa Vista", "modality" => "caps_ii", "count" => 0)
+      expect(active_in).to eq("health_unit_id" => caps.id, "name" => "CAPS II Boa Vista", "caps_modality" => "caps_ii", "count" => 0)
 
       enrolled!(3)
       dashboard
@@ -72,6 +72,26 @@ RSpec.describe "CAPS — painel", type: :request do
       expect(json_body["new_in_month"]).to eq("lt5") # as 3 de 5/10
       expect(json_body["closed_by_destination"]).to include("05" => "lt5", "01" => 0, "03" => 0)
       expect(active_in["count"]).to eq("lt5") # em 31/10 só as duas que fecham em novembro estavam abertas
+    end
+
+    it "encerrada no último dia do mês já não é ativa no fim dele e conta como encerrada nesse mês, não no seguinte" do
+      enrolled!(5, started_on: Date.new(2026, 10, 5))
+      close!(enrolled!(1, started_on: Date.new(2026, 10, 5)).first, on: Date.new(2026, 10, 31), destination: "04")
+      dashboard(month: "2026-10")
+      expect(active_in["count"]).to eq(5)
+      expect(json_body["closed_by_destination"]).to include("04" => "lt5")
+      dashboard(month: "2026-11")
+      expect(active_in["count"]).to eq(5)
+      expect(json_body["closed_by_destination"]).to include("04" => 0)
+      expect(json_body["new_in_month"]).to eq(0)
+    end
+
+    it "encerrada hoje, no mês corrente, já não é ativa (aberta agora) e conta como encerrada" do
+      enrolled!(5, started_on: Date.new(2026, 10, 5))
+      close!(enrolled!(1, started_on: Date.new(2026, 10, 5)).first, on: Date.new(2026, 11, 18), destination: "06")
+      dashboard
+      expect(active_in["count"]).to eq(5)
+      expect(json_body["closed_by_destination"]).to include("06" => "lt5")
     end
 
     it "ações do mês por instrumento: as canceladas e as de outro mês ficam fora" do
@@ -148,6 +168,14 @@ RSpec.describe "CAPS — painel", type: :request do
       dashboard(health_unit_id: night.id, month: "2026-10")
       expect(json_body["bed_occupancy"]["nights"]).to eq("lt5") # só a de 30 e 31/10: 2 noites
       expect(json_body["bed_occupancy"]["bed_days"]).to eq(62)
+    end
+
+    it "a noite de hoje conta igual dentro do previsto e além dele (permanência aberta que passou do previsto)" do
+      b, c = Array.new(2) { enrollment!(night, reference: tech, started_on: Date.new(2026, 11, 1)) }
+      stay!(l1, b, Time.zone.local(2026, 11, 3, 10), Time.zone.local(2026, 11, 9, 10))                # 6 noites (3..8)
+      stay!(l2, c, Time.zone.local(2026, 11, 15, 10), Time.zone.local(2026, 11, 16, 10), open: true)  # previsto 15/11; hoje é 18: 15..18 = 4
+      dashboard(health_unit_id: night.id)
+      expect(json_body["bed_occupancy"]).to eq("nights" => 10, "bed_days" => 36)
     end
 
     it "CAPS sem acolhimento noturno não tem ocupação" do
@@ -267,7 +295,7 @@ RSpec.describe "CAPS — painel", type: :request do
         dashboard
         expect(json_body.keys).to eq(%w[month enrollments_active new_in_month closed_by_destination care_plans_overdue
                                         actions_by_instrument bed_occupancy raas_month])
-        expect(json_body["enrollments_active"].first.keys).to eq(%w[health_unit_id name modality count])
+        expect(json_body["enrollments_active"].first.keys).to eq(%w[health_unit_id name caps_modality count])
       end
     end
   end

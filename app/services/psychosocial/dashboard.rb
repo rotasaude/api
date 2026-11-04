@@ -3,7 +3,7 @@
 # Só contagens: nenhum nome, CPF, CNS, CID, texto nem id de paciente. Sem trilha.
 #
 #   { month:,
-#     enrollments_active: [ { health_unit_id:, name:, modality:, count: } ],
+#     enrollments_active: [ { health_unit_id:, name:, caps_modality:, count: } ],
 #     new_in_month:, closed_by_destination: { "01" => n, … },
 #     care_plans_overdue:, actions_by_instrument: { raas_psi:, bpa_c:, bpa_i: },
 #     bed_occupancy: { nights:, bed_days: }, raas_month: { open:, closed:, exported:, no_actions: } }
@@ -20,8 +20,8 @@
 #    qualquer mês pedido;
 #  - ações = as não canceladas do mês, por instrumento (o mês gravado na ação);
 #  - ocupação (só CAPS com leito): noites = noites ocupadas no mês até o fim do
-#    mês ou hoje (a regra de noite do NightLimit; permanência aberta além do
-#    previsto ocupa até agora); leitos-dia = leitos ativos AGORA × dias do
+#    mês ou hoje (a regra de noite do NightLimit; permanência aberta, dentro
+#    ou além do previsto, conta a noite de hoje); leitos-dia = leitos ativos AGORA × dias do
 #    mesmo intervalo;
 #  - RAAS do mês = registros do mês na janela da matrícula (P37), por estado,
 #    e `no_actions` = o aviso do P14 (sem ação RAAS não cancelada do mês; não
@@ -47,9 +47,9 @@ module Psychosocial
         enrollments_active: enrollments_active(units, through),
         new_in_month: suppress(PsychosocialEnrollment.where(health_unit_id: ids, started_on: month..last).count),
         closed_by_destination: closed_by_destination(ids, month..last),
-        care_plans_overdue: suppress(units.sum { |unit| CarePlanReview.due(unit: unit, today: today).size }),
+        care_plans_overdue: suppress(CarePlanReview.overdue_count(units: units, today: today)),
         actions_by_instrument: actions_by_instrument(ids, month),
-        bed_occupancy: bed_occupancy(units.select(&:night_capable?), month, through, now),
+        bed_occupancy: bed_occupancy(units.select(&:night_capable?), month, through),
         raas_month: raas_month(ids, month) }
     end
 
@@ -59,7 +59,7 @@ module Psychosocial
       counts = PsychosocialEnrollment.where(health_unit_id: units.map(&:id)).where(started_on: ..through)
                                      .where("closed_on IS NULL OR closed_on > ?", through).group(:health_unit_id).count
       units.sort_by { |unit| [ unit.name, unit.id ] }.map do |unit|
-        { health_unit_id: unit.id, name: unit.name, modality: unit.caps_modality, count: suppress(counts.fetch(unit.id, 0)) }
+        { health_unit_id: unit.id, name: unit.name, caps_modality: unit.caps_modality, count: suppress(counts.fetch(unit.id, 0)) }
       end
     end
 
@@ -74,14 +74,18 @@ module Psychosocial
       INSTRUMENTS.to_h { |instrument| [ instrument, suppress(counts.fetch(instrument, 0)) ] }
     end
 
-    def bed_occupancy(units, month, through, now)
+    def bed_occupancy(units, month, through)
       ids = units.map(&:id)
       window = month..through
       from = month.in_time_zone
       to = (month.end_of_month + 1).in_time_zone
+      # "Esta noite" é uma regra só: a permanência aberta ocupa ao menos até o
+      # dia seguinte ao último dia contado (`through + 1`, meio-aberto), dentro
+      # ou além do previsto; o recorte `window` limita o resto.
+      tonight = (through + 1).in_time_zone
       stays = PsychosocialNightStay.where(health_unit_id: ids).where(started_at: ...to).where("ended_at IS NULL OR ended_at > ?", from)
       nights = stays.sum do |stay|
-        NightLimit.nights(stay.started_at..(stay.ended_at || [ stay.expected_end_at, now ].max)).count { |night| window.cover?(night) }
+        NightLimit.nights(stay.started_at..(stay.ended_at || [ stay.expected_end_at, tonight ].max)).count { |night| window.cover?(night) }
       end
       beds = PsychosocialBed.where(health_unit_id: ids, active: true).count
       { nights: suppress(nights), bed_days: suppress(beds * [ (through - month).to_i + 1, 0 ].max) }

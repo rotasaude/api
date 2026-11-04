@@ -30,6 +30,23 @@ module Psychosocial
       end.sort_by { |enrollment, _, due_on| [ due_on, enrollment.id ] }.map { |enrollment, review_on, _| [ enrollment, review_on ] }
     end
 
+    # Quantas matrículas abertas dos CAPS `units` estão com a revisão vencida:
+    # a MESMA regra de `due` (versão mais nova com `review_on` antes de hoje; sem
+    # PTS, início antes de hoje − care_plan_review_days), numa contagem SQL só —
+    # não carrega matrícula nem paciente (o painel, Task 15).
+    def overdue_count(units:, today:)
+      cutoff = today - Settings.current.care_plan_review_days
+      PsychosocialEnrollment.open_enrollments.where(health_unit_id: units.map(&:id))
+                            .joins(<<~SQL.squish)
+                              LEFT JOIN LATERAL (SELECT p.review_on FROM psychosocial_care_plans p
+                                                  WHERE p.psychosocial_enrollment_id = psychosocial_enrollments.id
+                                                  ORDER BY p.version DESC LIMIT 1) latest ON TRUE
+                            SQL
+                            .where("(latest.review_on IS NOT NULL AND latest.review_on < :today) OR " \
+                                   "(latest.review_on IS NULL AND psychosocial_enrollments.started_on < :cutoff)", today: today, cutoff: cutoff)
+                            .count
+    end
+
     # Ids das versões vencidas (a mais nova de cada matrícula aberta da
     # cidade) que ainda não têm aviso.
     def unalerted_overdue_plan_ids(today:)
