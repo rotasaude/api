@@ -14,8 +14,10 @@
 # Linha já cancelada pelo faturamento: a ação cancela mesmo assim. Travas na
 # ordem do ledger: CAPS (FOR SHARE) → competência da linha (FOR SHARE) → ação →
 # linha. A linha é procurada depois da trava do CAPS: o
-# Billing::FromPsychosocial trava o CAPS FOR UPDATE antes de gravá-la, então
-# ela já existe ou só nasce depois (e aí vê a ação cancelada).
+# Billing::FromPsychosocial trava o CAPS FOR NO KEY UPDATE antes de gravá-la,
+# então ela já existe ou só nasce depois (e aí vê a ação cancelada). Ela é
+# relida depois da trava da competência: um Billing::Close em curso pode tê-la
+# posto no arquivo enquanto esperávamos (→ already_exported, nunca 500).
 module Psychosocial
   module CancelAction
     class LineCancelRefused < StandardError; end
@@ -36,25 +38,30 @@ module Psychosocial
         HealthUnit.lock("FOR SHARE").find(action.health_unit_id)
         line = PerformedProcedure.find_by(psychosocial_action_id: action.id)
         period = line&.billing_period_id && BillingPeriod.lock("FOR SHARE").find(line.billing_period_id)
+        line&.reload # um Billing::Close em curso pode tê-la posto no arquivo enquanto esperávamos a competência
         action.lock!
         next Result.fail(:already_cancelled) if action.cancelled?
         next Result.fail(:already_exported) if PsychosocialRaasExport.exists?(health_unit_id: action.health_unit_id, month: action.month)
         next Result.fail(:already_exported) if line&.status == "recorded" && period&.closed? && line.billing_export_id
         next Result.fail(:lead_required) if MonthlyRecords.closed?(action.health_unit_id, action.month) && !Access.lead?(by)
 
-        cancel_line!(line, by: by, now: now) if line&.status == "recorded"
+        refusal = line&.status == "recorded" && cancel_line!(line, by: by, now: now)
+        next refusal if refusal
+
         action.update!(cancelled_at: now, cancelled_by_user: by, cancel_reason: reason.strip)
         DomainEvents.publish("psychosocial.action_cancelled", action_id: action.id)
         Result.ok(action: action)
       end
     end
 
-    # Sob as travas acima a competência não fecha nem a linha entra no
-    # arquivo; só o faturista pode tê-la cancelado no meio (invalid_transition:
-    # nada a fazer). Outra recusa não é esperada e desfaz tudo.
+    # -> nil (cancelada, ou já cancelada pelo faturista no meio:
+    # invalid_transition, nada a fazer) | Result.fail(:already_exported) (409;
+    # rede caso a linha tenha entrado no arquivo apesar da releitura). Outra
+    # recusa não é esperada e desfaz tudo.
     def cancel_line!(line, by:, now:)
       result = Billing::Cancel.call(procedure: line, reason: BILLING_CANCEL_REASON, by: by, now: now)
-      return if result.ok? || result.reason == :invalid_transition
+      return nil if result.ok? || result.reason == :invalid_transition
+      return Result.fail(:already_exported) if result.reason == :already_exported
 
       raise LineCancelRefused, "performed_procedure_id=#{line.id} #{result.reason}"
     end

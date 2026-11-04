@@ -20,6 +20,9 @@ module Billing
                           .map do |(cbo, code, years, month), list|
         BpaFile::CLine.new(cnes: establishment.cnes, competence: month, cbo: cbo, procedure: code, age: years, quantity: list.sum(&:quantity))
       end
+      # BPA-I lê o paciente sem guarda: só chega aqui faturável, e BPA-I sem
+      # paciente (linha do CAPS cujo código virou BPA-I) nunca é faturável —
+      # o Billing::Critic a marca com missing_patient_id.
       individual = procedures.select { |p| p.instrument == "bpa_i" }
       contacts = PatientContact.for(individual.map(&:patient_id).uniq)
       i_lines = individual.map do |p|

@@ -11,7 +11,8 @@
 # paciente.
 #
 # Travas (ruling do ledger: CAPS → competência → registros): a linha do CAPS
-# FOR UPDATE antes de tudo — serializa com o Psychosocial::CancelAction, que a
+# FOR NO KEY UPDATE antes de tudo (não bloqueia o FOR KEY SHARE dos INSERTs
+# com FK para o CAPS) — serializa com o Psychosocial::CancelAction, que a
 # trava FOR SHARE e só então procura a linha (a ação cancelada nunca ganha
 # linha; a linha nunca nasce depois da busca do cancelamento) — e então a
 # competência (FOR SHARE, Billing::Periods dentro do Record.insert!).
@@ -31,7 +32,7 @@ module Billing
       return nil unless BILLED.include?(action.instrument)
 
       ApplicationRecord.transaction(requires_new: true) do
-        unit = HealthUnit.lock("FOR UPDATE").find(action.health_unit_id)
+        unit = HealthUnit.lock("FOR NO KEY UPDATE").find(action.health_unit_id)
         current = PsychosocialAction.find(action.id)
         next nil if current.cancelled? || PerformedProcedure.exists?(psychosocial_action_id: current.id)
 

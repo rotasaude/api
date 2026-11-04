@@ -1,4 +1,5 @@
 require "rails_helper"
+require Rails.root.join("db/city_migrate/20261104900003_add_psychosocial_billing_source.rb").to_s
 
 # Produção do CAPS no BPA (ADR 0049; contrato §8, §15 P2 e P3; plano, Desvio
 # 11): só as ações bpa_c e bpa_i viram linha de performed_procedures (source
@@ -39,14 +40,22 @@ RSpec.describe Billing::FromPsychosocial do
     expect(PerformedProcedure.where(psychosocial_action_id: [ raas.id, cancelled.id ])).to be_empty
   end
 
-  it "BPA-I de participante matriculado leva o CID principal da matrícula" do
-    enrollment = enrollment!(caps, cid: "F200")
-    action = PsychosocialAction.create!(health_unit: caps, sigtap_code: "0301080232", instrument: "bpa_i", performed_at: Time.current,
-                                        month: Date.current.beginning_of_month, place: "caps", quantity: 1, professional_user: staff,
-                                        cbo_code: "251510")
-    PsychosocialActionParticipant.create!(psychosocial_action: action, position: 1, psychosocial_enrollment: enrollment,
-                                          patient_id: enrollment.patient_id)
-    expect(described_class.call(action)).to have_attributes(instrument: "bpa_i", patient_id: enrollment.patient_id, cid10: "F200")
+  # P3: participante matriculado só dá BPA-I com um código que tem `02` e não
+  # tem `09`. A amostra não tem esse código; a release de M-2 do spec o cria.
+  it "BPA-I de participante matriculado (código 02 sem 09) leva o CID principal da matrícula" do
+    month = Date.current.beginning_of_month << 2
+    release = TerminologyRelease.create!(kind: "sigtap", version: month.strftime("%Y%m"), source_sha256: "d" * 64, imported_by: "rspec",
+                                         imported_at: Time.current, status: "importing")
+    SigtapProcedure.create!(release: release, code: "0301080232", name: "ACOLHIMENTO INICIAL POR CAPS")
+    SigtapProcedureInstrument.create!(release: release, procedure_code: "0301080232", instrument_code: "02", instrument_name: "BPA (INDIVIDUALIZADO)")
+    SigtapProcedureCbo.create!(release: release, procedure_code: "0301080232", cbo_code: "251510")
+    release.update!(status: "active", activated_at: Time.current)
+    enrollment = enrollment!(caps, cid: "F200", started_on: month)
+    action = record_action!(caps, staff, sigtap_code: "0301080232", performed_at: month.in_time_zone.change(hour: 10) + 9.days,
+                                         participants: [ { enrollment_id: enrollment.id } ])
+    expect(action.instrument).to eq("bpa_i")
+    expect(described_class.call(action)).to have_attributes(instrument: "bpa_i", patient_id: enrollment.patient_id, cid10: "F200",
+                                                            performed_on: month + 9)
   end
 
   it "matriciamento (Task 11): a ação BPA-C do matriciamento vira uma linha sem paciente; o caso compartilhado não entra" do
@@ -72,6 +81,10 @@ RSpec.describe Billing::FromPsychosocial do
 
   describe "banco (900003)" do
     let(:patient) { caps_patient! }
+
+    it "a migração espelha as fontes do modelo" do
+      expect(AddPsychosocialBillingSource::SOURCES).to eq(PerformedProcedure::SOURCES)
+    end
 
     it "recusa linha sem paciente de outra fonte, fonte psychosocial sem ação e ação em outra fonte; uma linha por ação" do
       action = record_action!(caps, staff, sigtap_code: "0301080313")
@@ -137,6 +150,54 @@ RSpec.describe Billing::FromPsychosocial do
       expect(Billing::Reopen.call(period: line.billing_period.reload, reason: "Correção do faturamento do CAPS", by: clerk)).to be_ok
       expect(Psychosocial::CancelAction.call(action: action, reason: "Matriciamento lançado em duplicidade", by: staff)).to be_ok
       expect(line.reload.status).to eq("cancelled")
+    end
+
+    # [tabela, modo] de cada SELECT ... FOR ... da chamada, na ordem.
+    def locks_of
+      locks = []
+      ActiveSupport::Notifications.subscribed(lambda { |*, payload|
+        sql = payload[:sql].to_s
+        mode = sql[/FOR (NO KEY UPDATE|KEY SHARE|SHARE|UPDATE)/, 1]
+        locks << [ sql[/FROM "(\w+)"/, 1], mode ] if mode
+      }, "sql.active_record") { yield }
+      locks.uniq
+    end
+
+    it "a gravação trava o CAPS com FOR NO KEY UPDATE (serializa com o FOR SHARE do cancelamento) e depois a competência" do
+      action = record_action!(caps, staff, sigtap_code: "0301080305")
+      expect(locks_of { described_class.call(action) })
+        .to eq([ [ "health_units", "NO KEY UPDATE" ], [ "billing_periods", "SHARE" ] ])
+    end
+
+    it "linha exportada entre a leitura e a trava da competência (fechamento em curso) → already_exported, nunca 500" do
+      billing_settings!
+      action = record_action!(caps, staff, sigtap_code: "0301080305")
+      line = described_class.call(action)
+      stale = PerformedProcedure.find(line.id)
+      expect(Billing::Close.call(period: line.billing_period, by: clerk)).to be_ok
+      allow(PerformedProcedure).to receive(:find_by).and_call_original
+      allow(PerformedProcedure).to receive(:find_by).with(psychosocial_action_id: action.id).and_return(stale)
+      expect(Billing::Cancel).not_to receive(:call) # a releitura recusa antes; o Billing::Cancel é só a rede
+
+      result = Psychosocial::CancelAction.call(action: action, reason: "Matriciamento lançado em duplicidade", by: staff)
+
+      expect(result.reason).to eq(:already_exported)
+      expect(action.reload).not_to be_cancelled
+      expect(line.reload.status).to eq("recorded")
+      expect(DomainEvent.where(name: %w[psychosocial.action_cancelled performed_procedure.cancelled])).to be_empty
+    end
+
+    it "already_exported do Billing::Cancel vira 409 already_exported, nunca LineCancelRefused" do
+      action = record_action!(caps, staff, sigtap_code: "0301080305")
+      line = described_class.call(action)
+      allow(Billing::Cancel).to receive(:call).and_return(Result.fail(:already_exported))
+
+      result = Psychosocial::CancelAction.call(action: action, reason: "Matriciamento lançado em duplicidade", by: staff)
+
+      expect(result.reason).to eq(:already_exported)
+      expect(Psychosocial::BaseController::FAILURE_STATUS.fetch(:already_exported)).to eq(:conflict)
+      expect(action.reload).not_to be_cancelled
+      expect(line.reload.status).to eq("recorded")
     end
 
     it "trava na ordem do ledger: CAPS → competência → ação → linha" do
