@@ -12,6 +12,9 @@ module Psychosocial
     # (matrícula, edição do início, encerramento): nunca deveria acontecer.
     class MissingRecord < StandardError; end
 
+    # Destino da RAAS de quem continua no mês seguinte (raas.yml, "Permanência").
+    PERMANENCE = "00".freeze
+
     # month: qualquer dia do mês. -> PsychosocialMonthlyRecord | nil
     # strict: true → nil vira MissingRecord (o chamador já conferiu o mês sob a trava).
     def ensure!(enrollment, month, strict: false)
@@ -34,6 +37,32 @@ module Psychosocial
     # Fechamento ativo do CAPS no mês (qualquer dia do mês).
     def closed?(health_unit_id, month)
       PsychosocialMonthClosure.active.exists?(health_unit_id: health_unit_id, month: month.to_date.beginning_of_month)
+    end
+
+    # A foto do registro no fechamento (plano, Desvio 7), a gravar no
+    # `snapshot` (JSON cifrado; nunca em log, evento ou erro): identificação
+    # do paciente (nome, nome social, CNS, nascimento, sexo, mãe), raça/cor,
+    # etnia, telefone, endereço, a origem só no registro inicial (mês do
+    # início), início, CIDs, substâncias, ESF, destino ("00" = permanência),
+    # conclusão e situação de rua. O telefone é o do par validado
+    # (Billing::PatientContact), passado por quem chama.
+    def snapshot(record, phone:)
+      enrollment = record.psychosocial_enrollment
+      patient = enrollment.patient
+      initial = record.month == enrollment.started_on.beginning_of_month
+      {
+        "patient" => {
+          "id" => patient.id, "name" => patient.full_name, "social_name" => patient.social_name, "cns" => patient.cns,
+          "birth_date" => patient.birth_date, "sex" => patient.sex, "mother_name" => patient.mother_name,
+          "race_color" => patient.race_color, "ethnicity" => patient.ethnicity, "phone" => phone,
+          "address" => { "zip" => patient.address_zip, "street" => patient.address_street, "number" => patient.address_number,
+                         "complement" => patient.address_complement, "district" => patient.address_district }
+        },
+        "initial" => initial, "origin" => (enrollment.origin if initial), "started_on" => enrollment.started_on.iso8601,
+        "cid_main" => enrollment.cid_main, "cid_secondary" => enrollment.cid_secondary || [], "substances" => enrollment.substances || [],
+        "esf_covered" => enrollment.esf_covered, "esf_cnes" => enrollment.esf_cnes,
+        "destination" => record.destination || PERMANENCE, "concluded_on" => record.concluded_on&.iso8601, "homeless" => record.homeless
+      }
     end
   end
 end

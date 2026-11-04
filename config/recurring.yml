@@ -184,6 +184,13 @@ default: &default
     queue: housekeeping
     schedule: "every day at 7am America/Sao_Paulo"
 
+  # Módulo 31 (ADR 0049; contrato §6): continuidade da RAAS — o registro do mês
+  # corrente para toda matrícula aberta (a 1ª execução do mês é a do dia 1º).
+  psychosocial_open_month:
+    class: Psychosocial::OpenMonthJob
+    queue: housekeeping
+    schedule: "every day at 1am America/Sao_Paulo"
+
   discard_old_failed_jobs:
     command: "SolidQueueRetention.discard_failed"
     queue: housekeeping

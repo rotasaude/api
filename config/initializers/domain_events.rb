@@ -326,6 +326,9 @@ Rails.application.config.to_prepare do
   # consumidor (as ações da noite publicam action_recorded).
   %w[psychosocial.night_stay_started psychosocial.night_stay_closed
      psychosocial.night_limit_overridden].each { |name| DomainEvents.bind name, to: [] }
+  # Fechamento e reabertura do mês da RAAS (Task 9): só health_unit_id e month
+  # ("YYYY-MM"), nunca a foto, o motivo da reabertura nem nome; sem consumidor.
+  %w[psychosocial.month_closed psychosocial.month_reopened].each { |name| DomainEvents.bind name, to: [] }
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

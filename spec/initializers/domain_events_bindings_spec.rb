@@ -506,6 +506,14 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
 
+  # Módulo 31 (contrato §13; Task 9): fechamento e reabertura do mês da RAAS
+  # (health_unit_id, month); sem consumidor.
+  it "declares psychosocial.month_closed and .month_reopened with no consumer" do
+    names = %w[psychosocial.month_closed psychosocial.month_reopened]
+    expect(DomainEvents.registry.keys).to include(*names)
+    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  end
+
   # Pagamento e prestação de contas do TFD (Task 12): só ids, sem consumidor.
   it "declares tfd.payment_recorded and tfd.accountability_closed with no consumer" do
     names = %w[tfd.payment_recorded tfd.accountability_closed]

@@ -148,6 +148,31 @@ module Psychosocial
       )
     end
 
+    # RAAS do mês do CAPS (GET /psychosocial/months/:month; contrato §6, P24):
+    # situação (open | closed | exported), o fechamento ativo, os contadores e
+    # os registros da janela (MonthProblems). Sem CID nem texto clínico;
+    # problems e warnings são só códigos. cbos: { user_id => CBO no CAPS }.
+    def month(unit:, month:, status:, closure:, report:, cbos:)
+      { "month" => month.strftime("%Y-%m"), "health_unit_id" => unit.id, "status" => status,
+        "closure" => closure && { "closed_at" => time(closure.closed_at),
+                                  "closed_by" => pro(closure.closed_by_user, cbos[closure.closed_by_user_id]) },
+        "counts" => report[:counts].transform_keys(&:to_s),
+        "records" => report[:records].map { |entry| month_record(entry) } }
+    end
+
+    def month_record(entry)
+      record = entry[:record]
+      { "id" => record.id, "enrollment_id" => record.psychosocial_enrollment_id, "patient" => patient_ref(entry[:patient]),
+        "status" => record.status, "homeless" => record.homeless, "actions_count" => entry[:actions_count],
+        "problems" => entry[:problems], "warnings" => entry[:warnings] }
+    end
+
+    # Registro na resposta do PATCH da situação de rua: só ids e o estado.
+    def monthly_record(record)
+      { "id" => record.id, "enrollment_id" => record.psychosocial_enrollment_id, "health_unit_id" => record.health_unit_id,
+        "month" => record.month.strftime("%Y-%m"), "status" => record.status, "homeless" => record.homeless }
+    end
+
     def action_participant(participant)
       return { "family_name" => participant.family_name } if participant.patient_id.nil?
 

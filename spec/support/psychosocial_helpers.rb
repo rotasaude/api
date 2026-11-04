@@ -100,6 +100,35 @@ module PsychosocialHelpers
     result.payload.fetch(:action)
   end
 
+  # Vínculo do profissional no retrato do CNES mais recente do IBGE da cidade
+  # (cria o perfil com o IBGE e um retrato da competência do dia, se faltar),
+  # no CNES do CAPS e com o CBO da lotação — o que o fechamento do mês confere.
+  # Acrescenta ao retrato existente (cnes_snapshot! o substituiria).
+  def caps_cnes_bond!(user, unit)
+    profile = city_profile!
+    profile.update!(ibge_code: "4106902") if profile.ibge_code.blank?
+    snapshot = CnesSnapshot.where(ibge_code: profile.ibge_code).order(competence: :desc).first ||
+               cnes_snapshot!(ibge_code: profile.ibge_code, competence: Time.zone.today.strftime("%Y%m"))
+    CnesProfessionalBond.create!(snapshot: snapshot, cnes: unit.cnes, ine: nil, cbo_code: Psychosocial::Access.link(user, unit.id).cbo_code,
+                                 cpf: nil, cns: user.professional.cns)
+  end
+
+  # RAAS do mês sem pendência: situação de rua informada (false) e uma ação
+  # 0301080208 (pela via real) de um profissional lotado (`by`, ou um novo) com
+  # vínculo no retrato do CNES, no último dia do mês às 10:00 locais (ou agora,
+  # se ainda não chegou). O paciente precisa de CNS e telefone (caps_patient!).
+  # Devolve a RAAS do mês.
+  def complete_month!(enrollment, month, by: nil)
+    unit = enrollment.health_unit
+    by ||= caps_staff!(unit)
+    caps_cnes_bond!(by, unit)
+    record = Psychosocial::MonthlyRecords.ensure!(enrollment, month)
+    record.update!(homeless: false)
+    performed_at = [ month.to_date.end_of_month.in_time_zone.change(hour: 10), Time.current ].min
+    record_action!(unit, by, performed_at: performed_at, participants: [ { enrollment_id: enrollment.id } ])
+    record
+  end
+
   def bed!(unit, label: "L1")
     PsychosocialBed.create!(health_unit: unit, label: label, updated_by_user: psychosocial_admin!)
   end

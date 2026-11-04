@@ -706,6 +706,11 @@ Rails.application.routes.draw do
     post  "night_stays",         to: "night_stays#create"
     get   "night_stays/:id",     to: "night_stays#show"
     post  "night_stays/:id/close", to: "night_stays#close"
+    # RAAS do mês: situação de rua, pendências, fechamento e reabertura (§6, P6, P14, P24).
+    patch "monthly_records/:id", to: "monthly_records#update"
+    get   "months/:month",       to: "months#show"
+    post  "months/:month/close", to: "months#close"
+    post  "months/:month/reopen", to: "months#reopen"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.
