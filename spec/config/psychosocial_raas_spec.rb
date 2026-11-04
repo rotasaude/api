@@ -18,6 +18,7 @@ RSpec.describe Psychosocial::Raas do
     expect(config["night_sigtap_code"]).to eq("0301080020")
     expect(config["family_care_codes"]).to eq(%w[0301080224])
     expect(config["collective_codes"]).to eq(%w[0301080216 0301080283 0301080348])
+    expect(config["procedure_prefixes"]).to eq(%w[030108])
     ([ config["night_sigtap_code"] ] + config["family_care_codes"] + config["collective_codes"]).each do |code|
       expect(code).to match(/\A\d{10}\z/)
     end
@@ -41,6 +42,8 @@ RSpec.describe Psychosocial::Raas do
       expect { described_class.load(path) }.to raise_error(ArgumentError, /unknown_key/)
       File.write(path, File.read(described_class::PATH).sub(/^collective_codes:.*$/, ""))
       expect { described_class.load(path) }.to raise_error(ArgumentError, /collective_codes/)
+      File.write(path, File.read(described_class::PATH).sub(/^procedure_prefixes:.*$/, "procedure_prefixes: [\"0301\", 3]"))
+      expect { described_class.load(path) }.to raise_error(ArgumentError, /procedure_prefixes/)
     end
   end
 end

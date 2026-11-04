@@ -22,6 +22,10 @@ module Psychosocial
       not_found: :not_found
     }.freeze
     KEY_PATH_MAX = 64
+    # Chaves de `details` que sobem ao topo da recusa (lista de permissão):
+    # o limite do acolhimento noturno (P13: used, limit, window_days; `rule`
+    # é o extra do plano, P6). Qualquer outra chave fica fora da resposta.
+    TOP_LEVEL_DETAILS = %i[used limit window_days rule].freeze
 
     before_action :require_psychosocial!
 
@@ -29,11 +33,10 @@ module Psychosocial
 
     # `{ error, path?, problems? }` e, na crítica da ação (P23), o topo
     # `action_rejected` com `problems: [ { error, path, participant_index? } ]`;
-    # outras chaves de topo do resultado (night_limit_reached: used, limit,
-    # window_days) vão junto.
+    # das demais chaves do resultado, só as de TOP_LEVEL_DETAILS.
     def render_failure(result)
-      payload = { error: result.reason.to_s }.merge(result.details.except(:path, :problems))
-      %i[path problems].each { |key| payload[key] = result.details[key] if result.details.key?(key) }
+      payload = { error: result.reason.to_s }
+      (TOP_LEVEL_DETAILS + %i[path problems]).each { |key| payload[key] = result.details[key] if result.details.key?(key) }
       render json: payload, status: FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
     end
 

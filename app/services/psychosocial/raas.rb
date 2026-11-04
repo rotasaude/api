@@ -5,8 +5,8 @@
 module Psychosocial
   module Raas
     PATH = Rails.root.join("config/psychosocial/raas.yml").to_s.freeze
-    KEYS = %w[version source review layout_version night_sigtap_code family_care_codes collective_codes origins
-              destinations substances].freeze
+    KEYS = %w[version source review layout_version night_sigtap_code family_care_codes collective_codes procedure_prefixes
+              origins destinations substances].freeze
     LISTS = %w[origins destinations substances].freeze
 
     module_function
@@ -27,6 +27,10 @@ module Psychosocial
         raise ArgumentError, "raas.yml: #{list} precisa ser um mapa de códigos em texto" unless
           data[list].is_a?(Hash) && data[list].keys.all?(String)
       end
+      prefixes = data["procedure_prefixes"]
+      raise ArgumentError, "raas.yml: procedure_prefixes precisa ser uma lista de prefixos SIGTAP (2 a 10 dígitos)" unless
+        prefixes.is_a?(Array) && prefixes.any? && prefixes.all? { |p| p.is_a?(String) && p.match?(/\A\d{2,10}\z/) }
+
       deep_freeze(data)
     end
 

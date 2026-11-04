@@ -8,6 +8,7 @@ module Psychosocial
   module SaveBed
     KEYS = %w[health_unit_id label active].freeze
     KEY_PATH_MAX = 64
+    LABEL_INDEX = "idx_psychosocial_beds_label".freeze
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
 
     module_function
@@ -38,7 +39,9 @@ module Psychosocial
         record.save!
         Result.ok(bed: record)
       end
-    rescue ActiveRecord::RecordNotUnique
+    rescue ActiveRecord::RecordNotUnique => e
+      raise unless e.message.include?(LABEL_INDEX)
+
       refuse([ "label" ], :bed_label_taken)
     end
 

@@ -59,6 +59,60 @@ RSpec.describe "CAPS — administração", type: :request do
       expect(HealthUnit.find(id).kind).to eq("ubs")
     end
 
+    # Fix round 1 (Important 1): troca de kind ou de modalidade que deixaria
+    # registro do CAPS órfão, leito ativo sem acolhimento noturno ou o nome do
+    # CAPS no histórico do cidadão → 409, no padrão do unit_has_ceo_profile.
+    it "CAPS com registro do CAPS não sai do CAPS (409 unit_has_caps_records), nem só com leito inativo" do
+      night = caps!(modality: "caps_iii", name: "CAPS III Sul")
+      bed!(night, label: "L1").update!(active: false)
+      json_post "/attendance/units/#{night.id}", name: "UBS Sul", kind: "ubs"
+      expect(response).to have_http_status(:conflict)
+      expect(json_body["error"]).to eq("unit_has_caps_records")
+
+      caps = caps!(modality: "caps_ii", name: "CAPS II Leste")
+      enrollment!(caps)
+      json_post "/attendance/units/#{caps.id}", name: "CAPS II Leste", kind: "upa"
+      expect(response).to have_http_status(:conflict)
+      expect(json_body["error"]).to eq("unit_has_caps_records")
+      expect([ night.reload.kind, caps.reload.kind, caps.caps_modality ]).to eq(%w[caps caps caps_ii])
+    end
+
+    it "CAPS com leito ativo não perde o acolhimento noturno (409 caps_has_beds); leito inativo não prende" do
+      night = caps!(modality: "caps_ad_iii", name: "CAPS AD III Oeste")
+      bed = bed!(night, label: "L1")
+      json_post "/attendance/units/#{night.id}", name: "CAPS AD III Oeste", kind: "caps", caps_modality: "caps_ad"
+      expect(response).to have_http_status(:conflict)
+      expect(json_body["error"]).to eq("caps_has_beds")
+      json_post "/attendance/units/#{night.id}", name: "CAPS AD III Oeste", kind: "caps", caps_modality: "caps_ad_iv"
+      expect(response).to have_http_status(:ok)
+
+      bed.update!(active: false)
+      json_post "/attendance/units/#{night.id}", name: "CAPS AD III Oeste", kind: "caps", caps_modality: "caps_ad"
+      expect(response).to have_http_status(:ok)
+      expect(json_body["unit"]["caps_modality"]).to eq("caps_ad")
+    end
+
+    it "unidade com histórico de atendimento não vira CAPS (409 unit_has_attendances)" do
+      ubs = HealthUnit.create!(name: "UBS Histórico", kind: "ubs")
+      walk_in_attendance!(ubs, citizen: screening_citizen!(1))
+      json_post "/attendance/units/#{ubs.id}", name: "UBS Histórico", kind: "caps", caps_modality: "caps_ii"
+      expect(response).to have_http_status(:conflict)
+      expect(json_body["error"]).to eq("unit_has_attendances")
+      expect(ubs.reload.kind).to eq("ubs")
+    end
+
+    it "sem registro nem histórico, a unidade entra e sai do CAPS e troca de modalidade livremente" do
+      json_post "/attendance/units", name: "Unidade Livre", kind: "ubs"
+      id = json_body.dig("unit", "id")
+      json_post "/attendance/units/#{id}", name: "Unidade Livre", kind: "caps", caps_modality: "caps_iii"
+      expect(response).to have_http_status(:ok)
+      json_post "/attendance/units/#{id}", name: "Unidade Livre", kind: "caps", caps_modality: "caps_ii"
+      expect(response).to have_http_status(:ok)
+      json_post "/attendance/units/#{id}", name: "Unidade Livre", kind: "hospital"
+      expect(response).to have_http_status(:ok)
+      expect(json_body["unit"]).to include("kind" => "hospital", "caps_modality" => nil)
+    end
+
     it "a lista das unidades mostra os campos do CAPS" do
       caps = caps!(modality: "caps_i")
       get "/attendance/units"

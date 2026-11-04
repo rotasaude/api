@@ -126,3 +126,25 @@ RSpec.describe Psychosocial::Catalog do
     expect(described_class::WARNING_CODES).to eq(%w[no_actions])
   end
 end
+
+# Fix round 1: o que prende o CAPS ao kind `caps` são as tabelas psychosocial_*
+# com health_unit_id, descobertas pelo esquema (as tasks seguintes não mexem).
+RSpec.describe Psychosocial::UnitRecords do
+  let!(:city) { psychosocial_city! }
+
+  it "confere todas as tabelas do CAPS com health_unit_id" do
+    expect(described_class.tables).to match_array(%w[psychosocial_actions psychosocial_beds psychosocial_enrollments
+                                                     psychosocial_groups psychosocial_matrix_supports
+                                                     psychosocial_month_closures psychosocial_monthly_records
+                                                     psychosocial_night_stays psychosocial_raas_exports
+                                                     psychosocial_receptions psychosocial_referrals])
+  end
+
+  it "any? só para o CAPS que tem registro" do
+    caps = caps!
+    other = caps!
+    expect(described_class.any?(caps.id)).to be(false)
+    enrollment!(caps)
+    expect([ described_class.any?(caps.id), described_class.any?(other.id) ]).to eq([ true, false ])
+  end
+end

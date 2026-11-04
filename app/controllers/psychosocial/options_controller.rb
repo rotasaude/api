@@ -1,6 +1,6 @@
 # GET /psychosocial/options?health_unit_id (contrato P4, P31): o que as telas
 # do CAPS escolhem — as listas do raas.yml e do catálogo; os procedimentos do
-# CAPS (PROCEDURE_PREFIX) da SIGTAP da competência corrente com instrumento
+# CAPS (`procedure_prefixes` do raas.yml) da SIGTAP da competência corrente com instrumento
 # RAAS-PSI, BPA-I ou BPA-C, já filtrados pelo CBO do vínculo de quem pede
 # (relação de CBO vazia não restringe), com as marcas `family_care` e
 # `collective`; a equipe lotada no CAPS (<pro>, CBO do vínculo mais antigo) e
@@ -33,9 +33,10 @@ module Psychosocial
       release = Terminology::Sigtap.release_for(competence)
       return [] unless release
 
-      prefix = "#{Catalog::PROCEDURE_PREFIX}%"
+      prefixes = config["procedure_prefixes"].map { |prefix| "#{prefix}%" }
       instruments = SigtapProcedureInstrument.where(release_id: release.id, instrument_code: Catalog::INSTRUMENT_CODES.keys)
-                                             .where("procedure_code LIKE ?", prefix).pluck(:procedure_code, :instrument_code)
+                                             .where("procedure_code LIKE ANY (ARRAY[?])", prefixes)
+                                             .pluck(:procedure_code, :instrument_code)
                                              .group_by(&:first).transform_values { |rows| rows.map(&:last).sort }
       cbos = SigtapProcedureCbo.where(release_id: release.id, procedure_code: instruments.keys).pluck(:procedure_code, :cbo_code)
                                .group_by(&:first).transform_values { |rows| rows.map(&:last) }

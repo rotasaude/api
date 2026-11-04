@@ -14,11 +14,6 @@ module Psychosocial
     INTENSITIES = %w[intensive semi_intensive non_intensive].freeze
     MONTHLY_STATUSES = %w[open closed exported].freeze
     ACTION_ORIGINS = %w[manual reception night_stay matrix_support].freeze
-    # Prefixo SIGTAP das ações do CAPS oferecidas no GET /psychosocial/options
-    # (grupo 03, subgrupo 01, forma 08: atendimento/acompanhamento
-    # psicossocial). Só o recorte da tela: a crítica da ação (Task 7) lê a
-    # SIGTAP inteira da competência.
-    PROCEDURE_PREFIX = "030108".freeze
     WEEKDAYS = (1..7) # ISO, 1 = segunda
     QUANTITY = (1..999)
 

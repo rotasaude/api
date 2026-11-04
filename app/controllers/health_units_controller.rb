@@ -65,6 +65,9 @@ class HealthUnitsController < ApplicationController
     error = assign_address(@unit) || assign_cnes(@unit) || assign_screening_scope(@unit) ||
             assign_collects_samples(@unit) || assign_notifying(@unit) || assign_caps(@unit) || assign_phone(@unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
+
+    conflict = caps_change_conflict(@unit)
+    return render json: { error: conflict }, status: :conflict if conflict
     return render_invalid(@unit) unless @unit.save
 
     render json: { unit: unit_json(@unit, include_active: true) }
@@ -216,6 +219,30 @@ class HealthUnitsController < ApplicationController
 
     unit.service_classification = value
     nil
+  end
+
+  # ADR 0049 (fix round 1 da Task 3), no padrão do unit_has_ceo_profile:
+  # - CAPS com qualquer registro do CAPS não sai do kind `caps` (o registro
+  #   ficaria numa unidade que não é CAPS);
+  # - CAPS com leito ativo não passa a uma modalidade sem acolhimento noturno;
+  # - unidade com histórico de atendimento (atendimento, e a consulta que nasce
+  #   dele; horário marcado; pedido de agendamento) não vira CAPS: o nome dela
+  #   já está no histórico do cidadão e passaria a ser o de um CAPS.
+  def caps_change_conflict(unit)
+    was_caps = unit.kind_was == "caps"
+    if was_caps && !unit.caps?
+      "unit_has_caps_records" if Psychosocial::UnitRecords.any?(unit.id)
+    elsif was_caps && HealthUnit::NIGHT_MODALITIES.include?(unit.caps_modality_was) && !unit.night_capable?
+      "caps_has_beds" if PsychosocialBed.where(health_unit_id: unit.id, active: true).exists?
+    elsif !was_caps && unit.caps?
+      "unit_has_attendances" if attendance_history?(unit)
+    end
+  end
+
+  def attendance_history?(unit)
+    Attendance.where(health_unit_id: unit.id).or(Attendance.where(referral_unit_id: unit.id)).exists? ||
+      Appointment.where(health_unit_id: unit.id).exists? ||
+      AppointmentRequest.where(target_unit_id: unit.id).or(AppointmentRequest.where(origin_unit_id: unit.id)).exists?
   end
 
   # Contrato P27: telefone da unidade, 10 ou 11 dígitos (a máscara sai na

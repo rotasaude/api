@@ -21,6 +21,11 @@ family_care_codes: ["0301080224"]
 # Procedimentos coletivos (P31): abrem a tela de presença no dashboard.
 collective_codes: ["0301080216", "0301080283", "0301080348"]
 
+# Prefixos SIGTAP dos procedimentos oferecidos nas telas do CAPS
+# (GET /psychosocial/options): 03.01.08, atendimento/acompanhamento
+# psicossocial. Só o recorte da tela; a crítica da ação lê a SIGTAP inteira.
+procedure_prefixes: ["030108"]
+
 origins:
   "01": "Demanda espontânea"
   "02": "Atenção básica"

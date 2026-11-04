@@ -79,15 +79,25 @@ RSpec.describe "CAPS — unidades e opções", type: :request do
 
     it "CBO fora da lista do código some; código sem lista de CBO não restringe" do
       outsider = caps_staff!(caps, cbo: "225125")
-      release = Terminology::Sigtap.release_for(Time.zone.today.strftime("%Y%m"))
-      # A SIGTAP ativa é imutável (trigger): o recorte de dev já traz o CBO 225125
-      # em todos os códigos do CAPS; um CBO de fora da lista prova o filtro.
-      expect(SigtapProcedureCbo.where(release_id: release.id, procedure_code: "0301080208", cbo_code: "225125")).to exist
       ProfessionalLink.active.where(health_unit_id: caps.id).find_each { |l| l.update!(ended_at: Time.current, ended_by_user: outsider) }
       link_professional!(outsider, caps, cbo: "515105")
       sign_in_as(outsider)
       get "/psychosocial/options", params: { health_unit_id: caps.id }
       expect(json_body["procedures"]).to eq([])
+
+      # A SIGTAP ativa é imutável: uma release própria (competência antiga, que
+      # não muda a da cidade) sem a relação de CBO do 0301080208 prova o ramo.
+      release = Dir.mktmpdir do |dir|
+        SigtapSample.write_to(dir, competence: "202001")
+        file = File.join(dir, "rl_procedimento_ocupacao.txt")
+        lines = File.binread(file).split("\r\n").reject { |line| line.start_with?("0301080208") }
+        File.binwrite(file, lines.join("\r\n") + "\r\n")
+        Terminology::Import.call(kind: "sigtap", version: "202001", path: dir, by: "rspec").payload.fetch(:release)
+      end
+      expect(SigtapProcedureCbo.where(release_id: release.id, procedure_code: "0301080208")).not_to exist
+      allow(Terminology::Sigtap).to receive(:release_for).and_return(release)
+      get "/psychosocial/options", params: { health_unit_id: caps.id }
+      expect(json_body["procedures"].map { |p| p["code"] }).to eq(%w[0301080208])
     end
 
     it "lotação: sem health_unit_id → 422; outro CAPS → 403 not_on_caps_team; sem papel → 403 missing_role; query extra → 422" do
@@ -110,6 +120,13 @@ RSpec.describe "CAPS — unidades e opções", type: :request do
       expect(response).to have_http_status(:forbidden)
       expect(json_body["error"]).to eq("missing_role")
     end
+
+    it "coordenação sem vínculo no CAPS → 403 not_on_caps_team (a coordenação é lotada)" do
+      sign_in_as(caps_staff!(night, cbo: "223505", lead: true))
+      get "/psychosocial/options", params: { health_unit_id: caps.id }
+      expect(response).to have_http_status(:forbidden)
+      expect(json_body["error"]).to eq("not_on_caps_team")
+    end
   end
 end
 
@@ -122,5 +139,18 @@ RSpec.describe Psychosocial::BaseController do
     %i[not_on_caps_team missing_role lead_required not_author out_of_context].each { |code| expect(map[code]).to eq(:forbidden) }
     expect(map[:not_found]).to eq(:not_found)
     expect(map.fetch(:caps_without_beds, :unprocessable_entity)).to eq(:unprocessable_entity)
+  end
+
+  it "render_failure leva ao topo só as chaves permitidas de details" do
+    controller = described_class.new
+    rendered = nil
+    allow(controller).to receive(:render) { |**opts| rendered = opts }
+    result = Result.fail(:night_limit_reached, details: { used: 15, limit: 14, window_days: 30, rule: "total", path: "started_at",
+                                                          problems: [ { error: "night_limit_reached", path: "started_at" } ],
+                                                          patient_name: "Renato Alves Pereira" })
+    controller.send(:render_failure, result)
+    expect(rendered[:status]).to eq(:unprocessable_entity)
+    expect(rendered[:json]).to eq(error: "night_limit_reached", used: 15, limit: 14, window_days: 30, rule: "total", path: "started_at",
+                                  problems: [ { error: "night_limit_reached", path: "started_at" } ])
   end
 end
