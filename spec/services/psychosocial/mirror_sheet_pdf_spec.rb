@@ -77,6 +77,24 @@ RSpec.describe Psychosocial::MirrorSheetPdf, type: :request do
     expect(text_of(described_class.call(records: entries, preview: false, unit: caps, month: month))).not_to include("PRÉVIA")
   end
 
+  it "fix round 1: registro que transborda a página — a continuação repete nome, CNS mascarado e o bloco" do
+    e = named_enrollment!(started_on: month)
+    complete_month!(e, month, by: lead)
+    entry = entries.sole
+    many = Psychosocial::RaasRecords::Entry.new(record: entry.record, data: entry.data, actions: entry.actions * 60)
+    other = named_enrollment!(started_on: month)
+    complete_month!(other, month, by: lead)
+    second = entries.find { |item| item.record.psychosocial_enrollment_id == other.id }
+
+    pages = pages_of(described_class.call(records: [ many, second ], preview: true, unit: caps, month: month))
+    expect(pages.size).to be > 2
+    continued = pages[1..-2]
+    expect(continued).to all(include("Ações (continuação)", e.patient.full_name, e.patient.cns_masked, "PRÉVIA"))
+    continued.each { |page| expect(page).not_to include(e.patient.cns) }
+    expect(pages.last).to include(other.patient.full_name, "Identificação")
+    expect(pages.last).not_to include("continuação")
+  end
+
   it "sem registro com ação RAAS: uma página que diz isso" do
     named_enrollment!(started_on: month)
     expect(entries).to eq([])

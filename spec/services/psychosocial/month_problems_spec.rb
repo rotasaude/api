@@ -62,6 +62,22 @@ RSpec.describe Psychosocial::MonthProblems do
     expect(entry[:record]).to eq(record)
   end
 
+  # Fix round 1 da Task 10: o aviso olha só a ação RAAS (raas_psi), a única que
+  # entra na remessa e nas fichas; a ação BPA-C conta em actions_count e na crítica.
+  it "registro só com ação BPA-C → aviso no_actions, e o fechamento passa mesmo assim" do
+    by = caps_staff!(caps, cbo: "223505", lead: true)
+    caps_cnes_bond!(by, caps)
+    record = Psychosocial::MonthlyRecords.ensure!(enrollment, month)
+    record.update!(homeless: false)
+    record_action!(caps, by, sigtap_code: "0301080305", participants: [ { enrollment_id: enrollment.id } ])
+    expect(PsychosocialAction.sole.instrument).to eq("bpa_c")
+
+    expect(entry).to include(problems: [], warnings: %w[no_actions], actions_count: 1)
+    expect(report[:counts]).to include(with_warnings: 1, actions: 1)
+    expect(Psychosocial::CloseMonth.call(unit: caps, month: month, by: by)).to be_ok
+    expect(record.reload.status).to eq("closed")
+  end
+
   it "ação que a SIGTAP de hoje recusa (CBO fora da lista) → action_out_of_rule" do
     complete_month!(enrollment, month)
     by = PsychosocialAction.sole.professional_user

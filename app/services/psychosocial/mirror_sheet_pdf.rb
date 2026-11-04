@@ -1,6 +1,7 @@
 # Ficha espelho da RAAS do mês (ADR 0049; contrato §6, P14; plano, Desvio 10).
 # A4 da folha de Consultations::Print.document (fonte embutida, texto por
-# `safe`). Uma página por registro, com os blocos na ordem das telas do
+# `safe`). Uma página por registro (a que transborda continua em páginas que
+# repetem o nome e o CNS mascarado), com os blocos na ordem das telas do
 # aplicativo RAAS — Identificação, Dados do atendimento, Ações — e só os campos
 # que o aplicativo pede: nunca a evolução (notes), o PTS, o motivo do
 # encaminhamento nem o texto do matriciamento. Com o mês aberto (`preview`), a
@@ -17,6 +18,10 @@ module Psychosocial
     RACE_COLORS = { "01" => "Branca", "02" => "Preta", "03" => "Parda", "04" => "Amarela", "05" => "Indígena" }.freeze
     SEXES = { "male" => "Masculino", "female" => "Feminino" }.freeze
     PLACES = { "caps" => "CAPS", "territory" => "Território" }.freeze
+    # Espaço mínimo (pontos) para um bloco de ação (data e detalhe, que pode
+    # quebrar em duas linhas); abaixo disso, a ação vai para a página seguinte,
+    # que abre com o cabeçalho de continuação (nenhuma página sem identificação).
+    ACTION_MIN_SPACE = 48
 
     module_function
 
@@ -41,7 +46,7 @@ module Psychosocial
       heading(pdf, unit, month)
       identification(pdf, data)
       attendance(pdf, data, unit, month)
-      actions(pdf, entry.actions, month, cache)
+      actions(pdf, entry, month, cache)
     end
 
     def heading(pdf, unit, month)
@@ -82,10 +87,11 @@ module Psychosocial
       line(pdf, "Data de conclusão", date(data["concluded_on"])) if data["concluded_on"]
     end
 
-    def actions(pdf, actions, month, cache)
+    def actions(pdf, entry, month, cache)
       block(pdf, "Ações")
       release = cache.release(month.strftime("%Y%m"))
-      actions.each do |action|
+      entry.actions.each do |action|
+        continuation(pdf, entry.data) if pdf.cursor < ACTION_MIN_SPACE
         name = release && cache.procedure(release, action["sigtap_code"])&.name
         pdf.move_down 4
         pdf.text s("#{date(action['performed_on'])} — #{action['sigtap_code']}#{" #{name}" if name}"), style: :bold
@@ -93,6 +99,15 @@ module Psychosocial
                    "Quantidade: #{action['quantity']}    Local: #{PLACES.fetch(action['place'], action['place'])}" \
                    "#{"    Autorização: #{action['authorization_number']}" if action['authorization_number']}")
       end
+    end
+
+    # Página de continuação de um registro: o bloco, o nome e o CNS mascarado.
+    def continuation(pdf, data)
+      patient = data.fetch("patient")
+      cns = Professionals::Cns.mask(patient["cns"]) || "não informado"
+      pdf.start_new_page
+      pdf.move_down 14
+      pdf.text s("Ações (continuação) — #{patient['name']} — CNS #{cns}"), style: :bold, size: 11
     end
 
     # "PRÉVIA" no topo de cada página (inclusive as criadas depois), fora do fluxo do texto.

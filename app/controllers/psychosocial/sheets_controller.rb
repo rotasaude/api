@@ -14,10 +14,9 @@ module Psychosocial
       unit = raas_unit!(request.query_parameters["health_unit_id"])
       return unless unit
 
-      match = params[:month].to_s.match(MonthsController::MONTH)
-      return render_refusal("month") unless match
+      month = month_from(params[:month])
+      return render_refusal("month") unless month
 
-      month = Date.new(match[1].to_i, match[2].to_i, 1)
       enrollment_id = request.query_parameters["enrollment_id"]
       if enrollment_id
         return not_found unless uuid?(enrollment_id) && PsychosocialEnrollment.exists?(id: enrollment_id, health_unit_id: unit.id)

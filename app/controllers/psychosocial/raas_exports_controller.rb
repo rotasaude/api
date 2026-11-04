@@ -1,7 +1,7 @@
 # Remessa RAAS do mês (ADR 0049; contrato §6, P4, P15; plano, Desvios 8 e 9).
 # Coordenação lotada no CAPS ou faturista (qualquer CAPS ativo):
 #   GET  /psychosocial/raas_exports?health_unit_id&month
-#        as remessas do CAPS (do mês, com `month`): { items: [ { id, month,
+#        as remessas do CAPS (também desativado: o arquivo segue acessível) (do mês, com `month`): { items: [ { id, month,
 #        competence, layout_version, records_count, sha256, created_at,
 #        created_by: <pro> } ] } — sem nome nem dado clínico, sem trilha (P4: o
 #        faturista acha a remessa sem ler a RAAS nominal)
@@ -9,7 +9,7 @@
 #        → 201 a remessa; 422 raas_layout_unavailable (layout oficial é gate);
 #        409 month_open | already_exported
 #   GET  /psychosocial/raas_exports/:id/file
-#        o arquivo (application/octet-stream, RAAS-<cnes>-<competência>.txt);
+#        o arquivo (também de CAPS desativado, ruling) (application/octet-stream, RAAS-<cnes>-<competência>.txt);
 #        evento psychosocial.raas_downloaded (raas_export_id) e
 #        clinical_record.viewed por paciente (resource raas_file); conteúdo que
 #        não bate com o sha256 gravado não sai (409 integrity_mismatch).
@@ -24,19 +24,19 @@ module Psychosocial
     def index
       return unless query_only!("health_unit_id", "month")
 
-      unit = raas_unit!(request.query_parameters["health_unit_id"])
+      unit = raas_unit!(request.query_parameters["health_unit_id"], active_only: false)
       return unless unit
 
       scope = PsychosocialRaasExport.where(health_unit_id: unit.id)
       if request.query_parameters.key?("month")
-        month = month_of(request.query_parameters["month"])
+        month = month_from(request.query_parameters["month"])
         return render_refusal("month") unless month
 
         scope = scope.where(month: month)
       end
       exports = scope.includes(created_by_user: :professional).order(month: :desc, created_at: :desc).to_a
       cbos = Access.cbos(exports.map(&:created_by_user_id), unit.id)
-      render json: { items: exports.map { |export| export_json(export, cbos) } }
+      render json: { items: exports.map { |export| Json.raas_export(export, cbos) } }
     end
 
     def create
@@ -48,21 +48,21 @@ module Psychosocial
       unit = raas_unit!(body_param("health_unit_id"))
       return unless unit
 
-      month = month_of(body_param("month"))
+      month = month_from(body_param("month"))
       return render_refusal("month") unless month
 
       result = ExportRaas.call(unit: unit, month: month, by: Current.user)
       return render_failure(result) if result.failure?
 
       export = result.payload.fetch(:export)
-      render json: export_json(export, Access.cbos([ export.created_by_user_id ], unit.id)), status: :created
+      render json: Json.raas_export(export, Access.cbos([ export.created_by_user_id ], unit.id)), status: :created
     end
 
     def file
       return unless query_only!
 
       export = uuid?(params[:id]) ? PsychosocialRaasExport.includes(:health_unit).find_by(id: params[:id]) : nil
-      return not_found unless export && export.health_unit.active && raas_reader?(export.health_unit_id)
+      return not_found unless export && raas_reader?(export.health_unit_id)
 
       bytes = Base64.strict_decode64(export.file_data)
       # Decifrado ≠ sha256 gravado → nada sai (nem conteúdo, nem trilha de download).
@@ -77,22 +77,9 @@ module Psychosocial
 
     private
 
-    # "YYYY-MM" -> Date (dia 1º) | nil
-    def month_of(value)
-      match = value.is_a?(String) ? value.match(MonthsController::MONTH) : nil
-      match && Date.new(match[1].to_i, match[2].to_i, 1)
-    end
-
     def patient_ids(export)
       PsychosocialMonthlyRecord.where(psychosocial_raas_export_id: export.id).joins(:psychosocial_enrollment)
                                .distinct.pluck("psychosocial_enrollments.patient_id")
-    end
-
-    def export_json(export, cbos)
-      { "id" => export.id, "health_unit_id" => export.health_unit_id, "month" => export.month.strftime("%Y-%m"),
-        "competence" => export.competence, "layout_version" => export.layout_version, "records_count" => export.records_count,
-        "sha256" => export.sha256, "created_at" => Json.time(export.created_at),
-        "created_by" => Json.pro(export.created_by_user, cbos[export.created_by_user_id]) }
     end
   end
 end

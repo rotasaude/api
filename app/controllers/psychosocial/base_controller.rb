@@ -11,6 +11,7 @@ module Psychosocial
     wrap_parameters false
 
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
+    MONTH = /\A(\d{4})-(0[1-9]|1[0-2])\z/
     # Contrato P13 (ruling do controlador): conflitos no padrão do 30 (409);
     # papel e lotação 403; o resto das recusas é 422.
     FAILURE_STATUS = {
@@ -19,6 +20,7 @@ module Psychosocial
       record_not_open: :conflict, referral_not_pending: :conflict, night_stay_open: :conflict,
       not_on_caps_team: :forbidden, missing_role: :forbidden, lead_required: :forbidden, not_author: :forbidden,
       out_of_context: :forbidden,
+      nothing_to_export: :unprocessable_entity,
       not_found: :not_found
     }.freeze
     KEY_PATH_MAX = 64
@@ -85,14 +87,18 @@ module Psychosocial
     end
 
     # Remessa RAAS e fichas espelho (contrato §6, P15): a coordenação lotada no
-    # CAPS ou o faturista (qualquer CAPS ativo, sem lotação). Sem nenhum dos
-    # dois papéis → 403 lead_required (equipe) ou missing_role; sem uuid ou fora
-    # dos CAPS ativos → 422 invalid_request `health_unit_id`; coordenação sem
-    # vínculo no CAPS → 403 not_on_caps_team. Renderiza e devolve nil quando recusa.
-    def raas_unit!(health_unit_id)
+    # CAPS ou o faturista (qualquer CAPS, sem lotação). Sem nenhum dos dois
+    # papéis → 403 lead_required (equipe) ou missing_role; sem uuid ou fora dos
+    # CAPS (ativos, salvo active_only: false — a remessa de CAPS desativado
+    # continua listável e baixável, ruling) → 422 invalid_request
+    # `health_unit_id`; coordenação sem vínculo no CAPS → 403 not_on_caps_team.
+    # Renderiza e devolve nil quando recusa.
+    def raas_unit!(health_unit_id, active_only: true)
       return unless raas_role!
 
-      unit = uuid?(health_unit_id) ? HealthUnit.find_by(id: health_unit_id, kind: "caps", active: true) : nil
+      scope = HealthUnit.where(kind: "caps")
+      scope = scope.where(active: true) if active_only
+      unit = uuid?(health_unit_id) ? scope.find_by(id: health_unit_id) : nil
       unless unit
         render_refusal("health_unit_id")
         return nil
@@ -109,6 +115,12 @@ module Psychosocial
 
       forbid(Access.staff?(Current.user) ? "lead_required" : "missing_role")
       false
+    end
+
+    # "YYYY-MM" (texto) -> Date (dia 1º) | nil — o mês das rotas da RAAS.
+    def month_from(value)
+      match = value.is_a?(String) ? value.match(MONTH) : nil
+      match && Date.new(match[1].to_i, match[2].to_i, 1)
     end
 
     # Faturista em qualquer CAPS; coordenação só onde está lotada.

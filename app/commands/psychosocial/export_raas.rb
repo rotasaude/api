@@ -7,7 +7,9 @@
 # linha do CAPS (FOR UPDATE, ruling: serializa com CancelAction, que confere a
 # exportação sob FOR SHARE, e com Close/ReopenMonth) e só então lê: sem
 # fechamento ativo → 409 month_open; já exportado → 409 already_exported (o
-# índice único (health_unit_id, month), casado pelo nome, cobre a corrida).
+# índice único (health_unit_id, month), casado pelo nome, cobre a corrida);
+# nenhum registro com ação RAAS → 422 nothing_to_export (nada gravado: o mês
+# continua reabrível).
 # A competência de apresentação é a do 22 (Billing::Periods.assign!, Desvio 8).
 # Entram os registros `closed` da janela com ação RAAS no mês (RaasRecords;
 # P14: os sem ação ficam `closed`, nunca `exported`). O arquivo é gravado em
@@ -20,7 +22,8 @@ module Psychosocial
 
     module_function
 
-    # month: dia 1º. -> Result.ok(export:) | fail(:raas_layout_unavailable | :month_open | :already_exported)
+    # month: dia 1º. -> Result.ok(export:) |
+    #   fail(:raas_layout_unavailable | :month_open | :already_exported | :nothing_to_export)
     def call(unit:, month:, by:, now: Time.current)
       version = Raas.config["layout_version"]
       return Result.fail(:raas_layout_unavailable) unless RaasFile.available?(version)
@@ -30,8 +33,12 @@ module Psychosocial
         next Result.fail(:month_open) unless MonthlyRecords.closed?(unit.id, month)
         next Result.fail(:already_exported) if MonthlyRecords.exported?(unit.id, month)
 
-        period, = Billing::Periods.assign!(Billing::Establishment.for_unit(unit), month.strftime("%Y%m"))
+        # Antes da competência: a recusa não pode deixar BillingPeriod criado (o
+        # `next` dentro da transação faz commit).
         entries = RaasRecords.for(unit: unit, month: month, status: "closed", lock: true)
+        next Result.fail(:nothing_to_export) if entries.empty?
+
+        period, = Billing::Periods.assign!(Billing::Establishment.for_unit(unit), month.strftime("%Y%m"))
         header = { cnes: unit.cnes, competence: period.competence, month: month.strftime("%Y-%m"), unit_name: unit.name }
         bytes = RaasFile.build(version: version, header: header, records: entries.map { |entry| RaasRecords.file_record(entry) }).b
 

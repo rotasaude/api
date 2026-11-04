@@ -121,13 +121,34 @@ RSpec.describe "CAPS — remessa RAAS e ficha espelho", type: :request do
       expect([ response.status, json_body ]).to eq([ 409, { "error" => "already_exported" } ])
     end
 
+    it "fix round 1: mês fechado sem registro com ação RAAS → 422 nothing_to_export, nada gravado; o mês ainda reabre" do
+      with_layout!
+      caps_cnes_bond!(lead, caps)
+      quiet = named_enrollment!(started_on: month)
+      record_of(quiet).update!(homeless: true)
+      bpa_only = named_enrollment!(started_on: month)
+      record_of(bpa_only).update!(homeless: false)
+      record_action!(caps, lead, sigtap_code: "0301080305", participants: [ { enrollment_id: bpa_only.id } ])
+      expect(Psychosocial::CloseMonth.call(unit: caps, month: month, by: lead)).to be_ok
+
+      expect { export! }.not_to(change { [ PsychosocialRaasExport.count, BillingPeriod.count, exported_events.count ] })
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "nothing_to_export" ])
+      expect([ record_of(quiet).status, record_of(bpa_only).status ]).to eq(%w[closed closed])
+      expect(Psychosocial::ReopenMonth.call(unit: caps, month: month, reason: "Faltou lançar as ações do mês", by: lead)).to be_ok
+      expect(record_of(quiet).status).to eq("open")
+    end
+
     it "corrida: o índice único (CAPS, mês), casado pelo nome, vira 409 already_exported" do
       with_layout!
-      closed_month!
-      export!
+      e, = closed_month!
+      # a remessa concorrente já gravou a linha, mas a leitura deste lado ainda não a viu
+      period = BillingPeriod.create!(health_unit: caps, competence: "202611")
+      PsychosocialRaasExport.create!(health_unit: caps, month: month, competence: "202611", billing_period: period, layout_version: "test-1",
+                                     file_data: "x", sha256: "0" * 64, records_count: 1, created_by_user: lead)
       allow(Psychosocial::MonthlyRecords).to receive(:exported?).and_return(false)
       expect { export! }.not_to(change { [ PsychosocialRaasExport.count, exported_events.count ] })
       expect([ response.status, json_body ]).to eq([ 409, { "error" => "already_exported" } ])
+      expect(record_of(e).status).to eq("closed")
     end
 
     it "gerar exige coordenação lotada (ou faturista) e step-up; corpo fora da forma → 422" do
@@ -196,6 +217,28 @@ RSpec.describe "CAPS — remessa RAAS e ficha espelho", type: :request do
                                               "reason_code" => nil, "resource" => "raas_file" } ])
       expect(viewed.map { |v| v.payload["patient_id"] }).not_to include(quiet.patient_id)
       expect(log).not_to include(e.patient.cns)
+    end
+
+    it "fix round 1 (ruling): CAPS desativado depois da remessa — faturista e coordenação ainda listam e baixam" do
+      with_layout!
+      closed_month!
+      export!
+      export = PsychosocialRaasExport.sole
+      caps.update!(active: false)
+
+      [ billing_clerk!, lead ].each do |user|
+        sign_in_as(user)
+        get "/psychosocial/raas_exports", params: { health_unit_id: caps.id }
+        expect(json_body["items"].map { |item| item["id"] }).to eq([ export.id ])
+        get "/psychosocial/raas_exports/#{export.id}/file"
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to eq(Base64.strict_decode64(export.file_data))
+      end
+      expect(downloaded_events.count).to eq(2)
+
+      stepped_up!(lead)
+      export!("2026-10")
+      expect([ response.status, json_body["path"] ]).to eq([ 422, "health_unit_id" ]) # gerar continua só para CAPS ativo
     end
 
     it "baixar: coordenação de outro CAPS → 404; sem papel → 403; conteúdo adulterado → 409 sem trilha" do

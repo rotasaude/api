@@ -173,6 +173,16 @@ module Psychosocial
         "month" => record.month.strftime("%Y-%m"), "status" => record.status, "homeless" => record.homeless }
     end
 
+    # Remessa RAAS (GET/POST /psychosocial/raas_exports; contrato §6, P4): só
+    # metadados — nunca nome, CID nem o arquivo. cbos: { user_id => CBO no CAPS }
+    # (o faturista, sem lotação, sai com cbo_code nulo).
+    def raas_export(export, cbos)
+      { "id" => export.id, "health_unit_id" => export.health_unit_id, "month" => export.month.strftime("%Y-%m"),
+        "competence" => export.competence, "layout_version" => export.layout_version, "records_count" => export.records_count,
+        "sha256" => export.sha256, "created_at" => time(export.created_at),
+        "created_by" => pro(export.created_by_user, cbos[export.created_by_user_id]) }
+    end
+
     def action_participant(participant)
       return { "family_name" => participant.family_name } if participant.patient_id.nil?
 

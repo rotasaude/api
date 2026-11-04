@@ -15,8 +15,10 @@
 #     CBO gravado, quantidade e autorização na SIGTAP da competência; nada de
 #     matrícula, mês ou data);
 #   night_stay_open — permanência aberta da matrícula com noite no mês (P14).
-# Avisos (Catalog::WARNING_CODES; não bloqueiam): no_actions — nenhuma ação não
-# cancelada do CAPS no mês com a matrícula como participante.
+# Avisos (Catalog::WARNING_CODES; não bloqueiam): no_actions — nenhuma ação
+# RAAS (raas_psi) não cancelada do CAPS no mês com a matrícula como
+# participante (a ação BPA vai pelo 22: o registro só com ela fica fora da
+# remessa e das fichas). actions_count e a crítica contam toda ação.
 #
 # -> { counts: { records:, open:, closed:, exported:, with_problems:, with_warnings:, actions: },
 #      records: [ { record:, patient:, actions_count:, problems: [String], warnings: [String] } ] }
@@ -28,7 +30,7 @@ module Psychosocial
       month = month.to_date.beginning_of_month
       records = in_window(health_unit.id, month).includes(psychosocial_enrollment: :patient).order(:created_at, :id).to_a
       enrollment_ids = records.map(&:psychosocial_enrollment_id)
-      links = action_links(health_unit.id, month, enrollment_ids)
+      links, raas_enrollment_ids = action_links(health_unit.id, month, enrollment_ids)
       action_codes = action_codes(links.values.flatten.uniq, health_unit)
       contacts = Billing::PatientContact.for(records.map { |r| r.psychosocial_enrollment.patient_id })
       staying = staying_enrollment_ids(health_unit.id, enrollment_ids, month, today)
@@ -43,7 +45,7 @@ module Psychosocial
         codes << "cid_missing" if enrollment.cid_main.blank?
         action_ids.each { |id| codes.merge(action_codes.fetch(id)) }
         codes << "night_stay_open" if staying.include?(enrollment.id)
-        codes << "no_actions" if action_ids.empty?
+        codes << "no_actions" unless raas_enrollment_ids.include?(enrollment.id)
         { record: record, patient: enrollment.patient, actions_count: action_ids.size,
           problems: Catalog::PROBLEM_CODES.select { |code| codes.include?(code) },
           warnings: Catalog::WARNING_CODES.select { |code| codes.include?(code) } }
@@ -58,15 +60,19 @@ module Psychosocial
                                .where("psychosocial_enrollments.closed_on IS NULL OR psychosocial_monthly_records.month <= psychosocial_enrollments.closed_on")
     end
 
-    # { enrollment_id => [action_id] } das ações não canceladas do CAPS no mês.
+    # [ { enrollment_id => [action_id] } das ações não canceladas do CAPS no mês,
+    #   Set das matrículas com alguma delas RAAS (`raas_psi`) ] — o aviso
+    # no_actions olha só a RAAS (fix round 1 da Task 10): registro só com
+    # BPA-C/BPA-I fica fora da remessa e das fichas, então também avisa.
     def action_links(health_unit_id, month, enrollment_ids)
-      return {} if enrollment_ids.empty?
+      return [ {}, Set.new ] if enrollment_ids.empty?
 
-      PsychosocialActionParticipant.joins(:psychosocial_action)
-                                   .where(psychosocial_enrollment_id: enrollment_ids,
-                                          psychosocial_actions: { health_unit_id: health_unit_id, month: month, cancelled_at: nil })
-                                   .pluck(:psychosocial_enrollment_id, :psychosocial_action_id)
-                                   .each_with_object(Hash.new { |h, k| h[k] = [] }) { |(enrollment_id, action_id), out| out[enrollment_id] << action_id }
+      rows = PsychosocialActionParticipant.joins(:psychosocial_action)
+                                          .where(psychosocial_enrollment_id: enrollment_ids,
+                                                 psychosocial_actions: { health_unit_id: health_unit_id, month: month, cancelled_at: nil })
+                                          .pluck(:psychosocial_enrollment_id, :psychosocial_action_id, "psychosocial_actions.instrument")
+      links = rows.each_with_object(Hash.new { |h, k| h[k] = [] }) { |(enrollment_id, action_id, _), out| out[enrollment_id] << action_id }
+      [ links, rows.select { |(_, _, instrument)| instrument == "raas_psi" }.to_set(&:first) ]
     end
 
     # { action_id => [código] } — profissional (CNS, CNES) e a releitura da SIGTAP.
