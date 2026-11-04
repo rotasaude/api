@@ -84,28 +84,16 @@ module Psychosocial
       render json: detail(enrollment)
     end
 
-    # Sem o papel do CAPS → 403 missing_role; id malformado, inexistente ou de
-    # CAPS em que quem pede não está lotado → 404. Detalhe e escrita: nada na query.
-    def load_enrollment
-      return forbid unless Access.staff?(Current.user)
-      return unless query_only!
-
-      @enrollment = uuid?(params[:id]) ? PsychosocialEnrollment.find_by(id: params[:id]) : nil
-      not_found unless @enrollment && Access.can_read?(Current.user, @enrollment)
-    end
-
     def detail(enrollment)
       Json.enrollment(enrollment, cbos: Access.cbos([ enrollment.reference_user_id ], enrollment.health_unit_id),
                                   review_on: review_dates([ enrollment.id ])[enrollment.id])
     end
 
-    # { enrollment_id => review_on do PTS vigente (a maior versão) }.
+    # { enrollment_id => review_on do PTS vigente (a versão mais nova) }.
     def review_dates(ids)
       return {} if ids.empty?
 
-      PsychosocialCarePlan.where(psychosocial_enrollment_id: ids).order(:psychosocial_enrollment_id, version: :desc)
-                          .pluck(:psychosocial_enrollment_id, :review_on)
-                          .each_with_object({}) { |(id, review_on), out| out[id] ||= review_on }
+      CarePlanReview.latest(PsychosocialEnrollment.where(id: ids)).transform_values { |plan| plan[:review_on] }
     end
   end
 end

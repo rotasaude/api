@@ -84,6 +84,18 @@ module Psychosocial
       false
     end
 
+    # Matrícula da URL (`@enrollment`) para as rotas /enrollments/:id/...: sem o
+    # papel do CAPS → 403 missing_role; id malformado, inexistente ou de CAPS em
+    # que quem pede não está lotado → 404. Detalhe e escrita: nada na query.
+    # Renderiza (e encerra a cadeia) quando recusa.
+    def load_enrollment
+      return forbid unless Access.staff?(Current.user)
+      return unless query_only!
+
+      @enrollment = uuid?(params[:id]) ? PsychosocialEnrollment.find_by(id: params[:id]) : nil
+      not_found unless @enrollment && Access.can_read?(Current.user, @enrollment)
+    end
+
     # Dado do paciente e texto livre só do corpo JSON: na query vale como ausente.
     def body_param(key) = request.request_parameters[key]
     def body = request.request_parameters.except("controller", "action", "id")
