@@ -5,7 +5,11 @@
 # com aviso). Relação vazia na SIGTAP (procedimento sem CBO/CID listado) não
 # restringe. BPA-I e BPA-C listados: BPA-I. CID e identificação do paciente
 # só contam no BPA-I (o BPA-C não tem essas colunas); o nascimento conta nos
-# dois (idade). Usada na gravação e de novo no fechamento.
+# dois (idade). Usada na gravação e de novo no fechamento. Módulo 31 (ADR
+# 0049; contrato §8, P2): a BPA-C da ação de equipe do CAPS não tem paciente
+# (o banco só aceita linha sem paciente com a ação) e nada se cobra do
+# paciente; se o código virou BPA-I, falta a identificação (missing_patient_id)
+# e a linha fica fora do arquivo.
 module Billing
   module Critic
     REASONS = %w[establishment_is_aps missing_establishment_cnes not_in_sigtap not_bpa_instrument missing_professional_cbo
@@ -68,7 +72,7 @@ module Billing
         reasons << "age_out_of_range"
       end
       reasons << "sex_not_allowed" if %w[F M].include?(procedure.sex) && SEX[patient&.sex] && SEX[patient.sex] != procedure.sex
-      return reasons if instrument == "not_bpa"
+      return reasons if instrument == "not_bpa" || (patient.nil? && instrument == "bpa_c")
 
       reasons << "missing_required_patient_field" if patient.nil? || patient.birth_date.blank?
       return reasons unless instrument == "bpa_i"

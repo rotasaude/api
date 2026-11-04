@@ -490,12 +490,13 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
 
-  # Módulo 31 (contrato §13; Task 7): ação gravada e cancelada (action_id); só
-  # ids, sem consumidor (o BPA entra na Task 12).
-  it "declares psychosocial.action_recorded and .action_cancelled with no consumer" do
-    names = %w[psychosocial.action_recorded psychosocial.action_cancelled]
-    expect(DomainEvents.registry.keys).to include(*names)
-    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  # Módulo 31 (contrato §13 e §8; Tasks 7 e 12): ação gravada e cancelada
+  # (action_id); só ids. A gravada vai ao BPA (Billing::PsychosocialProductionJob);
+  # a cancelada não tem consumidor (CancelAction cancela a linha na transação).
+  it "binds psychosocial.action_recorded to Billing::PsychosocialProductionJob and declares .action_cancelled with no consumer" do
+    expect(DomainEvents.registry.keys).to include("psychosocial.action_recorded", "psychosocial.action_cancelled")
+    expect(DomainEvents.registry["psychosocial.action_recorded"].map(&:job)).to eq([ "Billing::PsychosocialProductionJob" ])
+    expect(DomainEvents.registry["psychosocial.action_cancelled"]).to be_empty
   end
 
   # Módulo 31 (contrato §13; Task 8): acolhimento noturno (night_stay_id); só

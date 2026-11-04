@@ -319,8 +319,11 @@ Rails.application.config.to_prepare do
   # psychosocial_care_plan_alerts e a rota care_plans/due).
   %w[psychosocial.care_plan_saved psychosocial.care_plan_review_due].each { |name| DomainEvents.bind name, to: [] }
   # Ação gravada e cancelada do CAPS (Task 7): só o action_id, nunca notas,
-  # participantes, CID ou nome; sem consumidor (o BPA entra na Task 12).
-  %w[psychosocial.action_recorded psychosocial.action_cancelled].each { |name| DomainEvents.bind name, to: [] }
+  # participantes, CID ou nome. A gravada vai ao consumidor do BPA (Task 12:
+  # BPA-C/BPA-I pelo módulo 22); a cancelada, sem consumidor (o
+  # Psychosocial::CancelAction cancela a linha do BPA na mesma transação).
+  DomainEvents.bind "psychosocial.action_recorded", to: [ Billing::PsychosocialProductionJob ]
+  DomainEvents.bind "psychosocial.action_cancelled", to: []
   # Acolhimento noturno (Task 8): entrada, saída e limite passado com
   # reavaliação — só o night_stay_id, nunca o motivo, o leito ou o nome; sem
   # consumidor (as ações da noite publicam action_recorded).

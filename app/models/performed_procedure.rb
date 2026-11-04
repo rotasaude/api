@@ -5,8 +5,10 @@
 # cancelamento é cifrado com a chave da cidade e nunca aparece no inspect.
 class PerformedProcedure < ApplicationRecord
   # ADR 0048: `tfd` — uma linha por ajuda de custo (tfd_allowance_id único),
-  # com o trecho de rastro (tfd_leg_id).
-  SOURCES = %w[attendance consultation lab_report manual tfd].freeze
+  # com o trecho de rastro (tfd_leg_id). ADR 0049: `psychosocial` — uma linha
+  # por ação do CAPS BPA-C ou BPA-I (psychosocial_action_id único); a BPA-C da
+  # ação de equipe não tem paciente (ck_performed_procedures_patient).
+  SOURCES = %w[attendance consultation lab_report manual tfd psychosocial].freeze
   INSTRUMENTS = %w[bpa_i bpa_c not_bpa].freeze
   CHARACTERS = %w[elective urgent].freeze
   STATUSES = %w[recorded cancelled].freeze
@@ -15,7 +17,7 @@ class PerformedProcedure < ApplicationRecord
 
   encrypts :cancel_reason
 
-  belongs_to :patient
+  belongs_to :patient, optional: true
   belongs_to :health_unit, optional: true
   belongs_to :exam_provider, optional: true
   belongs_to :professional_user, class_name: "User"
@@ -26,6 +28,7 @@ class PerformedProcedure < ApplicationRecord
   belongs_to :lab_report_item, optional: true
   belongs_to :tfd_allowance, optional: true
   belongs_to :tfd_leg, optional: true
+  belongs_to :psychosocial_action, optional: true
   belongs_to :billing_period, optional: true
   belongs_to :billing_export, optional: true
 

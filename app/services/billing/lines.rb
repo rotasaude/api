@@ -4,9 +4,13 @@
 # raça/cor, etnia e endereço do cadastro do paciente (D-U1; o fechamento só
 # chega aqui com eles completos); IBGE de residência = os 6 primeiros
 # dígitos do IBGE da cidade (spec §6); telefone (e bairro, se o paciente não
-# tem) do par do wpda. Número vazio vira SN (§13 E4).
+# tem) do par do wpda. Número vazio vira SN (§13 E4). BPA-C sem paciente
+# (ação de equipe do CAPS, ADR 0049): idade PATIENTLESS_AGE (gate do layout
+# do BPA-C).
 module Billing
   module Lines
+    PATIENTLESS_AGE = 0
+
     module_function
 
     def build(period:, establishment:, procedures:, settings:)
@@ -37,7 +41,11 @@ module Billing
       BpaFile.build(header: header, c_lines: c_lines, i_lines: i_lines)
     end
 
-    def age(procedure) = Citizen.age_between(Date.iso8601(procedure.patient.birth_date), procedure.performed_on)
+    def age(procedure)
+      return PATIENTLESS_AGE if procedure.patient.nil?
+
+      Citizen.age_between(Date.iso8601(procedure.patient.birth_date), procedure.performed_on)
+    end
     private_class_method :age
   end
 end

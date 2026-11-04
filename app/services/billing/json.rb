@@ -10,7 +10,7 @@ module Billing
     end
 
     def procedure(p, labels: {})
-      { id: p.id, patient: { id: p.patient_id, display_name: p.patient.display_name, **Patients::IdentifierJson.call(p.patient) },
+      { id: p.id, patient: patient(p),
         establishment: Establishment.of(p).json,
         professional: { user_id: p.professional_user_id, name: Screenings::Json.staff_name(p.professional_user), cbo_code: p.cbo_code },
         performed_on: p.performed_on.iso8601, sigtap_code: p.sigtap_code, label: label(p, labels), sigtap_competence: p.sigtap_competence,
@@ -30,12 +30,16 @@ module Billing
       scope.order(:created_at, :id).map { |p| summary(p, labels: labels) }
     end
 
+    # BPA-C da ação de equipe do CAPS (ADR 0049): sem paciente, null.
+    def patient(p) = p.patient && { id: p.patient_id, display_name: p.patient.display_name, **Patients::IdentifierJson.call(p.patient) }
+
     def source_ref(p)
       case p.source
       when "attendance" then { type: "attendance", id: p.attendance_id }
       when "consultation" then { type: "consultation", id: p.consultation_id }
       when "lab_report" then { type: "lab_report_item", id: p.lab_report_item_id }
       when "tfd" then { type: "tfd_allowance", id: p.tfd_allowance_id }
+      when "psychosocial" then { type: "psychosocial_action", id: p.psychosocial_action_id }
       end
     end
 
@@ -59,6 +63,6 @@ module Billing
         destination_body: setting&.destination_body, management: setting&.management, updated_at: setting&.updated_at&.iso8601 }
     end
 
-    private_class_method :source_ref, :label
+    private_class_method :patient, :source_ref, :label
   end
 end
