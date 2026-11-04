@@ -1,5 +1,6 @@
-# GET /psychosocial/patients/:id/link (ADR 0049; contrato §7, P10, P27): o
-# vínculo do paciente com o CAPS visto pela UBS (Psychosocial::Link). Lê quem
+# GET /psychosocial/patients/:id/link (ADR 0049; contrato §7, P10, P27, P46):
+# o vínculo do paciente com o CAPS visto pela UBS (Psychosocial::Link),
+# genérico — sem nome, id nem modalidade da unidade (P46). Lê quem
 # já pode abrir o paciente pela leitura contextual do ADR 0031
 # (ClinicalRecord::Access): sem health_professional → 403 missing_role; fora
 # de contexto e sem abertura justificada → 403 out_of_context. Não exige

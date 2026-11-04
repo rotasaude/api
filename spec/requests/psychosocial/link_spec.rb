@@ -26,12 +26,12 @@ RSpec.describe "UBS — vínculo com o CAPS", type: :request do
     expect { link_of(enrollment.patient) }.not_to(change { viewed.count })
     expect(response).to have_http_status(:ok)
     expect(json_body).to include("enrolled" => true, "since" => "2026-11-03", "shared_cases" => [])
-    expect(json_body["caps"]).to eq("id" => caps.id, "name" => caps.name, "phone" => "4133334444")
+    expect(json_body["caps"]).to eq("phone" => "4133334444")
     expect(json_body["reference"]).to eq("name" => Screenings::Json.staff_name(enrollment.reference_user))
 
     matrix_case!(caps, team, enrollment.patient, "Discutido manejo da insônia com a equipe")
     expect { link_of(enrollment.patient) }.to change { viewed.count }.by(1)
-    expect(json_body["shared_cases"]).to eq([ { "held_on" => "2026-11-18", "caps_name" => caps.name,
+    expect(json_body["shared_cases"]).to eq([ { "held_on" => "2026-11-18",
                                                 "shared_text" => "Discutido manejo da insônia com a equipe" } ])
     expect(viewed.sole.payload).to include("patient_id" => enrollment.patient_id, "user_id" => doctor.id, "access" => "psychosocial",
                                            "resource" => "link_shared_cases")
@@ -80,7 +80,7 @@ RSpec.describe "UBS — vínculo com o CAPS", type: :request do
     sign_in_as(doctor)
     expect { link_of(patient) }.to change { viewed.count }.by(1)
     expect(json_body).to eq("enrolled" => false,
-                            "shared_cases" => [ { "held_on" => "2026-11-18", "caps_name" => caps.name,
+                            "shared_cases" => [ { "held_on" => "2026-11-18",
                                                   "shared_text" => "Caso discutido antes da matrícula" } ])
     expect(viewed.sole.payload).to include("patient_id" => patient.id, "user_id" => doctor.id, "resource" => "link_shared_cases")
 
@@ -99,7 +99,7 @@ RSpec.describe "UBS — vínculo com o CAPS", type: :request do
     sign_in_as(doctor)
     link_of(enrollment.patient)
     expect(json_body).to eq("enrolled" => false,
-                            "shared_cases" => [ { "held_on" => "2026-11-18", "caps_name" => caps.name,
+                            "shared_cases" => [ { "held_on" => "2026-11-18",
                                                   "shared_text" => "Alta com retorno à atenção básica" } ])
   end
 
@@ -151,13 +151,50 @@ RSpec.describe "UBS — vínculo com o CAPS", type: :request do
   end
 
   it "duas matrículas abertas: o vínculo é a mais antiga" do
+    caps.update!(phone: "4133334444")
     other_caps = caps!(name: "CAPS AD Centro")
-    older = enrollment!(other_caps, patient: enrollment.patient, started_on: Date.new(2026, 11, 1))
+    other_caps.update!(phone: "4133335555")
+    enrollment!(other_caps, patient: enrollment.patient, started_on: Date.new(2026, 11, 1))
     in_context!(doctor, ubs, enrollment.patient)
     sign_in_as(doctor)
     link_of(enrollment.patient)
-    expect(json_body["caps"]["id"]).to eq(older.health_unit_id)
+    expect(json_body["caps"]).to eq("phone" => "4133335555")
     expect(json_body["since"]).to eq("2026-11-01")
+  end
+
+  # P46: o nome de um CAPS AD revela uso de substância — a UBS vê o vínculo
+  # genérico (telefone, início, referência e os casos), nunca nome, id nem
+  # modalidade da unidade.
+  it "P46: nenhuma resposta do vínculo traz o nome, o id ou a modalidade do CAPS" do
+    ad = caps!(modality: "caps_ad_iii", name: "CAPS AD III Centro Vida")
+    ad.update!(phone: "4133336666")
+    leaks = [ ad.name, ad.id, ad.caps_modality, "Centro Vida" ]
+    sign_in_as(doctor)
+    check = lambda do |patient|
+      link_of(patient)
+      expect(response).to have_http_status(:ok)
+      leaks.each { |leak| expect(response.body).not_to include(leak) }
+      json_body
+    end
+
+    enrolled = enrollment!(ad, started_on: Date.new(2026, 11, 3))
+    matrix_case!(ad, team, enrolled.patient, "Caso do usuário matriculado")
+    in_context!(doctor, ubs, enrolled.patient)
+    expect(check.call(enrolled.patient)).to eq(
+      "enrolled" => true, "caps" => { "phone" => "4133336666" }, "since" => "2026-11-03",
+      "reference" => { "name" => Screenings::Json.staff_name(enrolled.reference_user) },
+      "shared_cases" => [ { "held_on" => "2026-11-18", "shared_text" => "Caso do usuário matriculado" } ]
+    )
+
+    lone = caps_patient!
+    matrix_case!(ad, team, lone, "Caso de quem nunca foi matriculado")
+    in_context!(doctor, ubs, lone)
+    expect(check.call(lone)).to eq("enrolled" => false,
+                                   "shared_cases" => [ { "held_on" => "2026-11-18", "shared_text" => "Caso de quem nunca foi matriculado" } ])
+
+    enrolled.update_columns(closed_on: Date.new(2026, 11, 17), destination: "03", closed_by_user_id: enrolled.reference_user_id)
+    expect(check.call(enrolled.patient)).to eq("enrolled" => false,
+                                               "shared_cases" => [ { "held_on" => "2026-11-18", "shared_text" => "Caso do usuário matriculado" } ])
   end
 
   it "sem health_professional (equipe do CAPS) → 403 missing_role; paciente inexistente → 404; query → 422" do
