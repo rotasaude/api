@@ -4,7 +4,9 @@
 # closed_on_in_future) e não antes do início. Já encerrada → 409
 # already_closed. Grava destino e conclusão na RAAS do mês de `closed_on`
 # (criada se faltar); com o mês fechado no CAPS → 422 month_closed (a
-# coordenação reabre antes). Trava a linha do CAPS (FOR SHARE) e a matrícula.
+# coordenação reabre antes). Com permanência noturna aberta → 409
+# night_stay_open (ruling: as noites viram ação só com a matrícula aberta; a
+# saída do leito vem antes). Trava a linha do CAPS (FOR SHARE) e a matrícula.
 # Publica `psychosocial.enrollment_closed` só com o id.
 module Psychosocial
   module CloseEnrollment
@@ -12,7 +14,7 @@ module Psychosocial
 
     module_function
 
-    # -> Result.ok(enrollment:) | fail(:already_closed) |
+    # -> Result.ok(enrollment:) | fail(:already_closed | :night_stay_open) |
     #    fail(:invalid_request | :destination_is_permanence | :closed_on_in_future | :month_closed, details: { path:, problems: })
     def call(enrollment:, destination:, closed_on:, by:, today: Time.zone.today)
       return Result.fail(:already_closed) unless enrollment.open?
@@ -25,6 +27,7 @@ module Psychosocial
         HealthUnit.lock("FOR SHARE").find(enrollment.health_unit_id)
         enrollment.lock!
         next Result.fail(:already_closed) unless enrollment.open?
+        next Result.fail(:night_stay_open) if PsychosocialNightStay.open_stays.exists?(psychosocial_enrollment_id: enrollment.id)
 
         # Mês fechado (ensure! não cria) ou registro já fora de `open`.
         record = MonthlyRecords.closed?(enrollment.health_unit_id, date) ? nil : MonthlyRecords.ensure!(enrollment, date, strict: true)

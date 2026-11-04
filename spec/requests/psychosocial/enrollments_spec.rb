@@ -242,6 +242,26 @@ RSpec.describe "CAPS — matrícula", type: :request do
       expect([ record.destination, record.concluded_on ]).to eq([ "04", Date.current.beginning_of_month ])
     end
 
+    it "com permanência noturna aberta → 409 night_stay_open, nada encerrado; depois da saída, o encerramento passa (ruling)" do
+      night_caps = caps!(modality: "caps_ad_iii")
+      tech = caps_staff!(night_caps, cbo: "322205")
+      enrollment = enrollment!(night_caps, reference: tech, started_on: Date.current.prev_month.beginning_of_month)
+      stay = PsychosocialNightStay.create!(psychosocial_bed: bed!(night_caps), health_unit: night_caps, psychosocial_enrollment: enrollment,
+                                           patient_id: enrollment.patient_id, started_at: Date.yesterday.in_time_zone.change(hour: 19),
+                                           expected_end_at: Date.tomorrow.in_time_zone.change(hour: 8), started_by_user: tech)
+      sign_in_as(tech)
+      expect do
+        json_post "/psychosocial/enrollments/#{enrollment.id}/close", destination: "01", closed_on: Date.current.iso8601
+      end.not_to(change { [ enrollment.reload.closed_on, DomainEvent.where(name: "psychosocial.enrollment_closed").count ] })
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "night_stay_open" } ])
+
+      json_post "/psychosocial/night_stays/#{stay.id}/close", ended_at: Time.current.iso8601, reason: "Alta do acolhimento noturno"
+      expect(response).to have_http_status(:ok)
+      json_post "/psychosocial/enrollments/#{enrollment.id}/close", destination: "01", closed_on: Date.current.iso8601
+      expect(response).to have_http_status(:ok)
+      expect(enrollment.reload.closed_on).to eq(Date.current)
+    end
+
     it "encerramento antes do início é recusado" do
       id = enroll!
       json_post "/psychosocial/enrollments/#{id}/close", destination: "01", closed_on: Date.yesterday.iso8601

@@ -16,7 +16,7 @@ module Psychosocial
     FAILURE_STATUS = {
       enrollment_open: :conflict, bed_taken: :conflict, already_staying: :conflict, already_exported: :conflict,
       bed_label_taken: :conflict, already_closed: :conflict, already_cancelled: :conflict, month_open: :conflict,
-      record_not_open: :conflict, referral_not_pending: :conflict,
+      record_not_open: :conflict, referral_not_pending: :conflict, night_stay_open: :conflict,
       not_on_caps_team: :forbidden, missing_role: :forbidden, lead_required: :forbidden, not_author: :forbidden,
       out_of_context: :forbidden,
       not_found: :not_found
