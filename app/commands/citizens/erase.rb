@@ -10,6 +10,8 @@
 # ADR 0040: e a condição declarada e as sugestões de linha de cuidado.
 # ADR 0048: e os avisos de viagem do par; séries suspensas, o paciente fora
 # das viagens abertas e os passageiros anonimizados (Transport::Anonymize).
+# ADR 0049: e o encaminhamento e o acolhimento do CAPS sem registro de saúde
+# anonimizados (Psychosocial::Anonymize).
 # Reasons: :not_pending, :own_request, :patient_on_trip.
 module Citizens
   module Erase
@@ -78,6 +80,9 @@ module Citizens
           # FK do paciente). O Transport::Notify trava cidadão → viagem: o
           # cidadão já está travado acima, sem inversão.
           Transport::Anonymize.lock!(patient_ids)
+          # ADR 0049: os encaminhamentos ao CAPS ANTES do paciente (a ordem do
+          # Psychosocial::RecordReception: encaminhamento → FK do paciente).
+          Psychosocial::Anonymize.lock!(patient_ids)
           locked_patients = Patient.where(id: patient_ids).order(:id).lock.to_a
           retained = RequestErasure.examined_patients?(patient_ids)
         end
@@ -105,6 +110,9 @@ module Citizens
         # ADR 0048 (Desvio 17; T23): séries suspensas, o paciente fora das
         # viagens abertas e os passageiros anonimizados (presença e contagens ficam).
         Transport::Anonymize.patients!(locked_patients.map(&:id), by: by)
+        # ADR 0049 (P17): encaminhamento e acolhimento do CAPS (sem matrícula,
+        # ação, permanência nem matriciamento, por definição) anonimizados.
+        Psychosocial::Anonymize.patients!(locked_patients.map(&:id))
         # O trigger aceita a troca do cpf só nesta mesma UPDATE, mas não a
         # exige: o pedido confirmado deixa de guardar o CPF por causa daqui.
         request.update!(status: "confirmed", decided_by_user: by, decided_at: Time.current, cpf: tombstone)

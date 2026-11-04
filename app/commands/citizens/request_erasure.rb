@@ -6,7 +6,8 @@
 # notificação de vigilância (ADR 0043), para CPF com pedido de regulação
 # (ADR 0044) e para CPF com dispensação ou receita externa da farmácia
 # (ADR 0045), para CPF com registro odontológico (ADR 0046), para CPF com
-# dose de vacina (ADR 0047) e para CPF com processo de TFD (ADR 0048).
+# dose de vacina (ADR 0047), para CPF com processo de TFD (ADR 0048) e para
+# CPF com registro do CAPS (ADR 0049).
 # `retained?` é a regra única: o pedido e a reconferência do Citizens::Erase
 # usam a mesma.
 module Citizens
@@ -78,7 +79,20 @@ module Citizens
         LabRequisition.where(patient_id: ids).exists? || PerformedProcedure.where(patient_id: ids).exists? ||
         CareLineEnrollment.where(patient_id: ids).exists? || territory_registered?(ids) || notified?(ids) ||
         regulated?(ids) || dispensed?(ids) || dental_recorded?(ids) ||
-        vaccinated?(ids) || tfd_cased?(ids)
+        vaccinated?(ids) || tfd_cased?(ids) || psychosocial_recorded?(ids)
+    end
+
+    # ADR 0049 (módulo 31; contrato §14, §15 P17): o registro do CAPS é registro
+    # de saúde retido — matrícula em qualquer situação (com o PTS e a RAAS do
+    # mês, que pendem dela), participação em ação (cancelada inclusive; o
+    # familiar sem cadastro fica com a ação do titular), permanência e caso de
+    # matriciamento. A linha BPA-I do CAPS já retém pelo PerformedProcedure
+    # (P45), e o documento do CAPS (citizen_id nulo, fora do documented?) vem
+    # sempre de uma ação. Encaminhamento sem acolhimento e acolhimento sem ação
+    # não retêm: o Psychosocial::Anonymize os anonimiza.
+    def psychosocial_recorded?(ids)
+      [ PsychosocialEnrollment, PsychosocialActionParticipant, PsychosocialNightStay, PsychosocialMatrixCase ]
+        .any? { |model| model.where(patient_id: ids).exists? }
     end
 
     # ADR 0048 (módulo 30, Desvio 17; contrato §12; T39): o processo de TFD é

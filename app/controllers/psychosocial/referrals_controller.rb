@@ -3,6 +3,7 @@
 #                                      vínculo fora do CAPS, em contexto) → 201
 #   GET  /psychosocial/referrals?health_unit_id&status&before
 #                                      fila do CAPS lotado, sem o motivo, sem trilha
+#                                      (sem os anonimizados pela exclusão LGPD)
 #   GET  /psychosocial/referrals/:id   detalhe com o motivo e a trilha
 #                                      (`resource: "referral"`); outro CAPS → 404
 # Lista do mais novo para o mais antigo (created_at, id), em páginas de PAGE,
@@ -30,7 +31,7 @@ module Psychosocial
       status = query["status"]
       return render_refusal("status") if status && !Catalog::REFERRAL_STATUSES.include?(status)
 
-      scope = PsychosocialReferral.where(health_unit_id: unit.id)
+      scope = PsychosocialReferral.where(health_unit_id: unit.id, anonymized_at: nil)
       scope = scope.where(status: status) if status
       if query.key?("before")
         at, id = CareRegulation::Cursor.decode_page(query["before"])

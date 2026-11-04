@@ -1,8 +1,9 @@
 # Acolhimento no CAPS (ADR 0049; contrato §4, P7, P12), com ou sem
 # encaminhamento. O CAPS vem da lotação de quem pede. Campos: `patient_id`;
 # `referral_id` opcional (encaminhamento deste CAPS e deste paciente; travado
-# FOR UPDATE e conferido `pending`, senão 409 referral_not_pending; usado, vira
-# `received`); `at` (data e hora, não futura); `sigtap_code` com instrumento
+# FOR UPDATE e conferido `pending` e não anonimizado, senão 409
+# referral_not_pending; usado, vira `received`); `at` (data e hora, não
+# futura); `sigtap_code` com instrumento
 # RAAS-PSI (09) ou BPA-I (02) na SIGTAP da competência de `at` (senão
 # instrument_mismatch); `notes` opcional (até 4000, cifrado; acima →
 # too_long); `outcome` (enrolled | referred_elsewhere | no_follow_up).
@@ -62,7 +63,8 @@ module Psychosocial
     def record(attrs, unit:, patient:, at:, notes:, referral:, values:, by:, link:, now:)
       if referral
         referral.lock!
-        return Result.fail(:referral_not_pending) unless referral.status == "pending"
+        # Anonimizado pela exclusão LGPD (Task 16): não é mais recebido.
+        return Result.fail(:referral_not_pending) unless referral.status == "pending" && referral.anonymized_at.nil?
       end
 
       reception = PsychosocialReception.create!(health_unit: unit, patient: patient, psychosocial_referral: referral, at: at,

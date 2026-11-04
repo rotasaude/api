@@ -126,5 +126,15 @@ RSpec.describe "CAPS — encaminhamento", type: :request do
       get "/psychosocial/referrals", params: { health_unit_id: caps.id, patient_id: patient.id }
       expect(json_body["path"]).to eq("patient_id")
     end
+
+    # Task 16 (P17): o encaminhamento anonimizado pela exclusão LGPD não é mais
+    # recebido (409 referral_not_pending) e sai da fila.
+    it "encaminhamento anonimizado sai da fila" do
+      Psychosocial::Anonymize.patients!([ patient.id ])
+      sign_in_as(staff)
+      get "/psychosocial/referrals", params: { health_unit_id: caps.id }
+      expect(response).to have_http_status(:ok)
+      expect(json_body["items"]).to eq([])
+    end
   end
 end

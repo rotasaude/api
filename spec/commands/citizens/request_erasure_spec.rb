@@ -40,4 +40,14 @@ RSpec.describe Citizens::RequestErasure do
     allow(described_class).to receive(:tfd_cased?).with(ids).and_return(true)
     expect(described_class.examined_patients?(ids)).to be(true)
   end
+
+  # ADR 0049 (módulo 31; contrato §14, P17): o registro do CAPS entra na regra
+  # única de retenção; o caminho completo está em erase_psychosocial_spec.rb.
+  it "examined_patients? consulta o registro do CAPS (psychosocial_recorded?)" do
+    ids = [ SecureRandom.uuid ]
+    expect(described_class.psychosocial_recorded?(ids)).to be(false)
+    expect(described_class.examined_patients?(ids)).to be(false)
+    allow(described_class).to receive(:psychosocial_recorded?).with(ids).and_return(true)
+    expect(described_class.examined_patients?(ids)).to be(true)
+  end
 end
