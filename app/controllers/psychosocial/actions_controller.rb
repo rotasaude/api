@@ -82,7 +82,7 @@ module Psychosocial
       return forbid unless Access.staff?(Current.user)
       return unless query_only!
 
-      @caps_action = uuid?(params[:id]) ? PsychosocialAction.find_by(id: params[:id]) : nil
+      @caps_action = uuid?(params[:id]) ? PsychosocialAction.includes(psychosocial_action_participants: :patient).find_by(id: params[:id]) : nil
       not_found unless @caps_action && Access.can_read?(Current.user, @caps_action)
     end
   end

@@ -84,11 +84,15 @@ module PsychosocialHelpers
 
   # Ação gravada pela via real (Psychosocial::RecordAction, com o vínculo de
   # quem grava no CAPS): hoje às 10:00 locais (ou agora, se ainda não deu
-  # 10:00), no CAPS, quantidade 1. Recusa → erro com os códigos (nunca dado
+  # 10:00), no CAPS, quantidade 1; `performed_at` pode ser Time (vira ISO
+  # 8601). O código padrão (0301080208) é só 09: passe um participante
+  # matriculado (`participants: [ { enrollment_id: } ]`), senão a crítica
+  # recusa com enrollment_required. Recusa → erro com os códigos (nunca dado
   # do paciente). Devolve a PsychosocialAction.
   def record_action!(unit, by, **attrs)
     performed_at = [ Time.zone.today.in_time_zone.change(hour: 10), Time.current ].min
-    attrs = { sigtap_code: "0301080208", performed_at: performed_at.iso8601, place: "caps", quantity: 1, participants: [] }.merge(attrs)
+    attrs = { sigtap_code: "0301080208", performed_at: performed_at, place: "caps", quantity: 1, participants: [] }.merge(attrs)
+    attrs[:performed_at] = attrs[:performed_at].iso8601 if attrs[:performed_at].respond_to?(:iso8601)
     result = Psychosocial::RecordAction.call(attrs: attrs.deep_stringify_keys, unit: unit, by: by,
                                              link: Psychosocial::Access.link(by, unit.id))
     raise "record_action! recusada: #{result.reason} #{Array(result.details[:problems]).map { |p| p[:error] }.join(',')}" if result.failure?

@@ -8,8 +8,10 @@
 # `authorization_number` opcional (13 dígitos); `group_id` opcional (grupo
 # deste CAPS); `participants` (até 100), cada um exatamente um de
 # `{ enrollment_id }`, `{ patient_id }` ou `{ family_name }` (3..120), sem o
-# mesmo paciente duas vezes. Recusas de campo (invalid_request / too_long, com
-# o path) todas de uma vez, antes da crítica.
+# mesmo paciente duas vezes. Os uuids (enrollment_id, patient_id, group_id)
+# são normalizados em minúsculas antes da busca e da deduplicação. Recusas de
+# campo (invalid_request / too_long, com o path) todas de uma vez, antes da
+# crítica.
 #
 # Numa transação: trava a linha do CAPS (FOR SHARE, ruling: o fechamento do mês
 # trava FOR UPDATE) e as matrículas (FOR SHARE), relê "aberta e deste CAPS" e
@@ -99,7 +101,7 @@ module Psychosocial
     def group(id, unit, problems)
       return nil if id.nil?
 
-      group = Input.uuid?(id) ? PsychosocialGroup.find_by(id: id, health_unit_id: unit.id) : nil
+      group = Input.uuid?(id) ? PsychosocialGroup.find_by(id: id.downcase, health_unit_id: unit.id) : nil
       problems << problem("group_id") unless group
       group
     end
@@ -127,9 +129,9 @@ module Psychosocial
       value = item.values.first
       case key
       when "enrollment_id"
-        return { enrollment_id: value } if Input.uuid?(value)
+        return { enrollment_id: value.downcase } if Input.uuid?(value)
       when "patient_id"
-        return { patient_id: value } if Input.uuid?(value) && Patient.exists?(id: value)
+        return { patient_id: value.downcase } if Input.uuid?(value) && Patient.exists?(id: value.downcase)
       when "family_name"
         refusal = Catalog.text_problem(value, Catalog::FAMILY_NAME, "#{path}.family_name")
         return { family_name: value.strip } unless refusal

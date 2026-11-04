@@ -16,9 +16,10 @@
 # (as da recepção ficam nela), com o participante = a matrícula criada ou o
 # paciente; o instrumento sai do Desvio 3 (código só 09 sem matrícula →
 # enrollment_required). A crítica da ação recusa tudo com 422
-# action_rejected, nos campos da recepção: `performed_at` → `at`, os demais →
-# `sigtap_code` (o acolhimento não tem quantidade, autorização nem lista de
-# participantes).
+# action_rejected, nos campos da recepção: `performed_at` → `at`; a matrícula
+# criada que não vale na data do acolhimento (`at` antes do `started_on`,
+# enrollment_required do participante) → `at`; os demais → `sigtap_code` (o
+# acolhimento não tem quantidade, autorização nem lista de participantes).
 module Psychosocial
   module RecordReception
     KEYS = %w[health_unit_id patient_id referral_id at sigtap_code notes outcome enrollment].freeze
@@ -97,7 +98,9 @@ module Psychosocial
     def action_refusal(result)
       return result unless result.reason == :action_rejected
 
-      problems = result.details[:problems].map { |p| { error: p[:error], path: p[:path] == "performed_at" ? "at" : "sigtap_code" } }
+      problems = result.details[:problems].map do |p|
+        { error: p[:error], path: p[:path] == "performed_at" || p.key?(:participant_index) ? "at" : "sigtap_code" }
+      end
       Result.fail(:action_rejected, details: { problems: problems.uniq })
     end
 

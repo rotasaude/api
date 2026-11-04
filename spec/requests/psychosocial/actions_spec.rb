@@ -4,15 +4,20 @@ require "rails_helper"
 # Focus 1 e 2): ações do CAPS — individuais, coletivas e no território — com a
 # crítica SIGTAP na hora (422 action_rejected com problems[] { error, path,
 # participant_index? }), imutáveis, canceladas com motivo; a lista sem notas
-# nem trilha, o detalhe com notas e a trilha por paciente.
+# nem trilha, o detalhe com notas e a trilha por paciente. Relógio fixo (meio
+# de novembro, ou o `now:` do exemplo): nada depende da virada do mês.
 RSpec.describe "CAPS — ações", type: :request do
   include ActiveSupport::Testing::TimeHelpers
+
+  around { |example| travel_to(example.metadata[:now] || Time.zone.local(2026, 11, 18, 15, 0)) { example.run } }
 
   let!(:city) { psychosocial_city! }
   let(:caps) { caps! }
   let(:staff) { caps_staff!(caps, cbo: "251510") }
-  let(:a) { enrollment!(caps, reference: staff) }
-  let(:b) { enrollment!(caps, reference: staff) }
+  # Matrículas do mês anterior (com a RAAS só de outubro): uma RAAS indevida
+  # do mês da ação aparece na contagem.
+  let(:a) { enrollment!(caps, reference: staff, started_on: Date.current.prev_month.beginning_of_month) }
+  let(:b) { enrollment!(caps, reference: staff, started_on: Date.current.prev_month.beginning_of_month) }
   let(:recorded) { DomainEvent.where(name: "psychosocial.action_recorded") }
   let(:viewed) { DomainEvent.where(name: "clinical_record.viewed") }
 
@@ -99,25 +104,54 @@ RSpec.describe "CAPS — ações", type: :request do
       expect([ family.position, family.family_name, family.patient_id ]).to eq([ 2, "Mãe do usuário", nil ])
     end
 
-    it "Review Focus 2: 23:30 locais de 30/11 são de novembro (fechado → recusado; reaberto → RAAS de novembro, SIGTAP 202611)" do
-      psychosocial_sigtap!(%w[202611])
-      travel_to Time.zone.local(2026, 12, 1, 10, 0) do
-        enrolled = enrollment!(caps, reference: staff, started_on: Date.new(2026, 11, 1))
-        late = Time.zone.local(2026, 11, 30, 23, 30)
-        expect(late.utc.to_date).to eq(Date.new(2026, 12, 1))
-        closure = PsychosocialMonthClosure.create!(health_unit: caps, month: Date.new(2026, 11, 1), closed_by_user: staff, closed_at: Time.current)
-        json_post "/psychosocial/actions", action(performed_at: late.iso8601, participants: [ { enrollment_id: enrolled.id } ])
-        expect(json_body).to eq("error" => "action_rejected", "problems" => [ { "error" => "month_closed", "path" => "performed_at" } ])
+    it "Review Focus 2: 23:30 locais de 30/11 são de novembro (fechado → recusado; reaberto → RAAS de novembro, SIGTAP 202611)",
+       now: Time.zone.local(2026, 12, 1, 10, 0) do
+      enrolled = enrollment!(caps, reference: staff, started_on: Date.new(2026, 11, 1))
+      late = Time.zone.local(2026, 11, 30, 23, 30)
+      expect(late.utc.to_date).to eq(Date.new(2026, 12, 1))
+      closure = PsychosocialMonthClosure.create!(health_unit: caps, month: Date.new(2026, 11, 1), closed_by_user: staff, closed_at: Time.current)
+      json_post "/psychosocial/actions", action(performed_at: late.iso8601, participants: [ { enrollment_id: enrolled.id } ])
+      expect(json_body).to eq("error" => "action_rejected", "problems" => [ { "error" => "month_closed", "path" => "performed_at" } ])
 
-        closure.update!(reopened_at: Time.current, reopened_by_user: staff, reopen_reason: "Correção de ação lançada")
-        allow(Terminology::Sigtap).to receive(:release_for).and_call_original
-        json_post "/psychosocial/actions", action(performed_at: late.iso8601, participants: [ { enrollment_id: enrolled.id } ])
-        expect(response).to have_http_status(:created)
-        expect(PsychosocialAction.find(json_body["id"]).month).to eq(Date.new(2026, 11, 1))
-        expect(PsychosocialMonthlyRecord.where(psychosocial_enrollment_id: enrolled.id).pluck(:month)).to eq([ Date.new(2026, 11, 1) ])
-        expect(Terminology::Sigtap).to have_received(:release_for).with("202611").at_least(:once)
-        expect(Terminology::Sigtap).not_to have_received(:release_for).with("202612")
-      end
+      closure.update!(reopened_at: Time.current, reopened_by_user: staff, reopen_reason: "Correção de ação lançada")
+      allow(Terminology::Sigtap).to receive(:release_for).and_call_original
+      json_post "/psychosocial/actions", action(performed_at: late.iso8601, participants: [ { enrollment_id: enrolled.id } ])
+      expect(response).to have_http_status(:created)
+      expect(PsychosocialAction.find(json_body["id"]).month).to eq(Date.new(2026, 11, 1))
+      expect(PsychosocialMonthlyRecord.where(psychosocial_enrollment_id: enrolled.id).pluck(:month)).to eq([ Date.new(2026, 11, 1) ])
+      expect(Terminology::Sigtap).to have_received(:release_for).with("202611").at_least(:once)
+      expect(Terminology::Sigtap).not_to have_received(:release_for).with("202612")
+    end
+
+    it "ação antes do início da matrícula → enrollment_required no participante, nenhuma RAAS nova" do
+      a && b
+      november = enrollment!(caps, reference: staff, started_on: Date.new(2026, 11, 1))
+      expect do
+        json_post "/psychosocial/actions", action(performed_at: Time.zone.local(2026, 10, 20, 10).iso8601,
+                                                  participants: [ { enrollment_id: november.id } ])
+      end.not_to(change { counts })
+      expect(json_body).to eq("error" => "action_rejected",
+                              "problems" => [ { "error" => "enrollment_required", "path" => "participants[0]", "participant_index" => 0 } ])
+
+      mid = enrollment!(caps, reference: staff, started_on: Date.new(2026, 11, 10))
+      json_post "/psychosocial/actions", action(performed_at: Time.zone.local(2026, 11, 5, 10).iso8601, participants: [ { enrollment_id: mid.id } ])
+      expect(json_body["problems"]).to eq([ { "error" => "enrollment_required", "path" => "participants[0]", "participant_index" => 0 } ])
+      json_post "/psychosocial/actions", action(performed_at: Time.zone.local(2026, 11, 10, 8).iso8601, participants: [ { enrollment_id: mid.id } ])
+      expect(response).to have_http_status(:created)
+    end
+
+    it "ids em maiúsculas valem como os mesmos uuids (busca e deduplicação)" do
+      group = PsychosocialGroup.create!(health_unit: caps, name: "Grupo", kind: "group", weekday: 3, starts_at: "10:00", ends_at: "11:00",
+                                        responsible_user: staff, capacity: 10, sigtap_code: "0301080216", updated_by_user: staff)
+      json_post "/psychosocial/actions", action(participants: [ { enrollment_id: a.id.upcase }, { enrollment_id: a.id } ])
+      expect(json_body["problems"]).to eq([ { "error" => "invalid_request", "path" => "participants[1]" } ])
+      json_post "/psychosocial/actions", action(sigtap_code: "0301080232", group_id: group.id.upcase,
+                                                participants: [ { patient_id: caps_patient!.id.upcase } ])
+      expect(response).to have_http_status(:created)
+      json_post "/psychosocial/actions", action(group_id: group.id.upcase, participants: [ { enrollment_id: a.id.upcase } ])
+      expect(response).to have_http_status(:created)
+      saved = PsychosocialAction.find(json_body["id"])
+      expect([ saved.psychosocial_group_id, saved.psychosocial_action_participants.sole.psychosocial_enrollment_id ]).to eq([ group.id, a.id ])
     end
 
     it "corrida com o fechamento: o trigger recusa e a resposta é month_closed, nunca 500" do

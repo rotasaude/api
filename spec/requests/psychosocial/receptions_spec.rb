@@ -72,6 +72,22 @@ RSpec.describe "CAPS — acolhimento", type: :request do
     expect(referral.reload.status).to eq("pending")
   end
 
+  context "com o relógio fixo" do
+    include ActiveSupport::Testing::TimeHelpers
+
+    around { |example| travel_to(Time.zone.local(2026, 11, 18, 15, 0)) { example.run } }
+
+    it "`at` antes do início da matrícula criada → 422 action_rejected enrollment_required em at; nada gravado" do
+      patient
+      expect do
+        json_post "/psychosocial/receptions", body(outcome: "enrolled", at: Time.zone.local(2026, 11, 17, 10).iso8601,
+                                                   enrollment: enrollment_block(started_on: "2026-11-18"))
+      end.not_to change { [ PsychosocialReception.count, PsychosocialEnrollment.count, PsychosocialAction.count, DomainEvent.count ] }
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "action_rejected",
+                                                            "problems" => [ { "error" => "enrollment_required", "path" => "at" } ] } ])
+    end
+  end
+
   it "CBO de quem acolhe fora da lista do código → action_rejected cbo_incompatible" do
     sign_in_as(caps_staff!(caps, cbo: "515105"))
     json_post "/psychosocial/receptions", body

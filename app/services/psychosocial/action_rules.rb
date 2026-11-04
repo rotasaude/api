@@ -11,7 +11,8 @@
 #   performed_in_future (performed_at);
 #   month_closed (performed_at) — fechamento ativo do CAPS no mês;
 #   enrollment_required (participants[i]) — participante com matrícula fechada,
-#     de outro CAPS ou inexistente; (participants) — ação só RAAS-PSI sem
+#     de outro CAPS, inexistente ou iniciada depois da data (local) da ação
+#     (ruling: started_on <= data da ação); (participants) — ação só RAAS-PSI sem
 #     nenhum participante matriculado;
 #   authorization_required (authorization_number) — atributo 036 sem número;
 #   family_only_for_family_care (participants[i].family_name) — familiar sem
@@ -33,10 +34,12 @@ module Psychosocial
       performed_at = input.fetch(:performed_at)
       participants = Array(input[:participants])
       month = month_of(performed_at)
+      day = performed_at.in_time_zone.to_date
       release = cache.release(competence(month))
       procedure = release && cache.procedure(release, code)
-      refused = participants.each_index.select { |i| participants[i][:enrollment_id] && !enrolled?(participants[i], unit) }
-      instrument = procedure ? Instrument.for(cache.instruments(release, code), enrolled: participants.any? { |p| enrolled?(p, unit) }) : :instrument_mismatch
+      refused = participants.each_index.select { |i| participants[i][:enrollment_id] && !enrolled?(participants[i], unit, day) }
+      enrolled = participants.any? { |p| enrolled?(p, unit, day) }
+      instrument = procedure ? Instrument.for(cache.instruments(release, code), enrolled: enrolled) : :instrument_mismatch
 
       out = []
       out << problem("instrument_mismatch", "sigtap_code") if instrument == :instrument_mismatch
@@ -55,6 +58,8 @@ module Psychosocial
     # Ação gravada (pendência action_out_of_rule do fechamento): instrumento,
     # CBO gravado na ação, quantidade e autorização na SIGTAP da competência do
     # mês da ação. Nada de matrícula, mês ou data. -> [ { error:, path: } ]
+    # Lê `action.psychosocial_action_participants`: quem relê uma coleção
+    # (fechamento do mês, Task 9) faz o preload dos participantes antes.
     def recheck(action, cache: Billing::SigtapCache.new)
       code = action.sigtap_code
       release = cache.release(competence(action.month))
@@ -96,10 +101,10 @@ module Psychosocial
                   .map { |i| problem("family_only_for_family_care", "participants[#{i}].family_name", i) }
     end
 
-    # Matrícula aberta deste CAPS.
-    def enrolled?(participant, unit)
+    # Matrícula aberta deste CAPS, iniciada até a data local da ação.
+    def enrolled?(participant, unit, day)
       enrollment = participant[:enrollment]
-      enrollment.present? && enrollment.health_unit_id == unit.id && enrollment.open?
+      enrollment.present? && enrollment.health_unit_id == unit.id && enrollment.open? && enrollment.started_on <= day
     end
 
     def patient?(participant) = participant[:patient_id].present? || participant[:enrollment_id].present?
