@@ -5,6 +5,8 @@ require "rails_helper"
 # detalhe com trilha, edição (origem e início travados depois da primeira RAAS
 # exportada) e encerramento (destino na RAAS do mês do encerramento).
 RSpec.describe "CAPS — matrícula", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city) { psychosocial_city! }
   let(:caps) { caps! }
   let(:staff) { caps_staff!(caps) }
@@ -73,6 +75,24 @@ RSpec.describe "CAPS — matrícula", type: :request do
       expect { json_post "/psychosocial/enrollments", request_body }
         .not_to change { [ PsychosocialEnrollment.count, PsychosocialMonthlyRecord.count, DomainEvent.count ] }
       expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "started_on" ])
+    end
+
+    it "retroativa de 2 meses: a RAAS de cada mês, do início ao corrente (continuidade)" do
+      travel_to(Time.zone.local(2026, 11, 18, 15, 0)) do
+        id = enroll!(started_on: "2026-09-12")
+        expect(PsychosocialMonthlyRecord.where(psychosocial_enrollment_id: id).order(:month).pluck(:month, :status))
+          .to eq([ [ Date.new(2026, 9, 1), "open" ], [ Date.new(2026, 10, 1), "open" ], [ Date.new(2026, 11, 1), "open" ] ])
+      end
+    end
+
+    it "retroativa com um mês intermediário fechado → 422 month_closed started_on, nada gravado" do
+      travel_to(Time.zone.local(2026, 11, 18, 15, 0)) do
+        PsychosocialMonthClosure.create!(health_unit: caps, month: Date.new(2026, 10, 1), closed_at: Time.current, closed_by_user: staff)
+        request_body = body(started_on: "2026-09-12")
+        expect { json_post "/psychosocial/enrollments", request_body }
+          .not_to change { [ PsychosocialEnrollment.count, PsychosocialMonthlyRecord.count, DomainEvent.count ] }
+        expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "started_on" ])
+      end
     end
 
     it "corrida na matrícula aberta (índice único) → 409 enrollment_open, nada gravado" do
@@ -151,16 +171,34 @@ RSpec.describe "CAPS — matrícula", type: :request do
       month = Date.current.beginning_of_month
       id = enroll!(started_on: month.iso8601)
       previous = month.prev_month
+      older = previous.prev_month
+      # matriculada antes dos fechamentos (a matrícula retroativa exige todos os meses abertos)
+      other = enroll!(patient_id: caps_patient!.id, started_on: (older + 10).iso8601)
       PsychosocialMonthClosure.create!(health_unit: caps, month: previous, closed_at: Time.current, closed_by_user: staff)
       json_patch "/psychosocial/enrollments/#{id}", started_on: (previous + 5).iso8601
       expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "started_on" ])
 
-      older = previous.prev_month
-      other = enroll!(patient_id: caps_patient!.id, started_on: (older + 10).iso8601)
       PsychosocialMonthClosure.create!(health_unit: caps, month: older, closed_at: Time.current, closed_by_user: staff)
       json_patch "/psychosocial/enrollments/#{other}", started_on: month.iso8601
       expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "started_on" ])
       expect(PsychosocialEnrollment.find(other).started_on).to eq(older + 10)
+    end
+
+    it "início movido 2 meses para trás: a RAAS de cada mês; com um mês intermediário fechado, recusa sem gravar" do
+      travel_to(Time.zone.local(2026, 11, 18, 15, 0)) do
+        id = enroll!(started_on: "2026-11-03")
+        json_patch "/psychosocial/enrollments/#{id}", started_on: "2026-09-12"
+        expect(response).to have_http_status(:ok)
+        expect(PsychosocialMonthlyRecord.where(psychosocial_enrollment_id: id).order(:month).pluck(:month))
+          .to eq([ Date.new(2026, 9, 1), Date.new(2026, 10, 1), Date.new(2026, 11, 1) ])
+
+        other = enroll!(patient_id: caps_patient!.id, started_on: "2026-11-03")
+        PsychosocialMonthClosure.create!(health_unit: caps, month: Date.new(2026, 10, 1), closed_at: Time.current, closed_by_user: staff)
+        expect { json_patch "/psychosocial/enrollments/#{other}", started_on: "2026-09-12" }
+          .not_to(change { PsychosocialMonthlyRecord.count })
+        expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "started_on" ])
+        expect(PsychosocialEnrollment.find(other).started_on).to eq(Date.new(2026, 11, 3))
+      end
     end
 
     it "edita CIDs, substâncias, ESF, técnico e próxima visita" do

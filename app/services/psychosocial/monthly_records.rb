@@ -34,9 +34,44 @@ module Psychosocial
       scope.first!
     end
 
+    # Continuidade de uma matrícula que começa num mês passado (fix round 1 da
+    # Task 9): a RAAS de TODO mês do início até o mês corrente. Quem chama já
+    # conferiu, sob a trava do CAPS, que nenhum desses meses está fechado
+    # (any_closed?). -> [PsychosocialMonthlyRecord]
+    def ensure_through!(enrollment, today: Time.zone.today)
+      months(enrollment.started_on, today).map { |month| ensure!(enrollment, month, strict: true) }
+    end
+
+    # Algum mês com fechamento ativo no CAPS entre `from` e `to` (qualquer dia
+    # de cada um, inclusive).
+    def any_closed?(health_unit_id, from, to = Time.zone.today)
+      PsychosocialMonthClosure.active.where(health_unit_id: health_unit_id,
+                                            month: from.to_date.beginning_of_month..to.to_date.beginning_of_month).exists?
+    end
+
+    # Dias 1º de cada mês de `from` a `to`, inclusive. -> [Date]
+    def months(from, to)
+      month = from.to_date.beginning_of_month
+      last = to.to_date.beginning_of_month
+      list = []
+      while month <= last
+        list << month
+        month = month.next_month
+      end
+      list
+    end
+
     # Fechamento ativo do CAPS no mês (qualquer dia do mês).
     def closed?(health_unit_id, month)
       PsychosocialMonthClosure.active.exists?(health_unit_id: health_unit_id, month: month.to_date.beginning_of_month)
+    end
+
+    # Mês com remessa RAAS gerada (ou registro já exportado) no CAPS: não reabre
+    # (ReopenMonth), a situação do GET é `exported` e a Task 10 não gera outra.
+    def exported?(health_unit_id, month)
+      month = month.to_date.beginning_of_month
+      PsychosocialRaasExport.exists?(health_unit_id: health_unit_id, month: month) ||
+        PsychosocialMonthlyRecord.exists?(health_unit_id: health_unit_id, month: month, status: "exported")
     end
 
     # A foto do registro no fechamento (plano, Desvio 7), a gravar no

@@ -20,7 +20,7 @@ module Psychosocial
 
       ApplicationRecord.transaction(requires_new: true) do
         HealthUnit.lock("FOR UPDATE").find(unit.id)
-        next Result.fail(:already_exported) if exported?(unit.id, month)
+        next Result.fail(:already_exported) if MonthlyRecords.exported?(unit.id, month)
 
         closure = PsychosocialMonthClosure.active.lock.find_by(health_unit_id: unit.id, month: month)
         next Result.fail(:month_open) unless closure
@@ -33,12 +33,5 @@ module Psychosocial
         Result.ok(closure: closure)
       end
     end
-
-    def exported?(health_unit_id, month)
-      PsychosocialRaasExport.exists?(health_unit_id: health_unit_id, month: month) ||
-        PsychosocialMonthlyRecord.exists?(health_unit_id: health_unit_id, month: month, status: "exported")
-    end
-
-    private_class_method :exported?
   end
 end

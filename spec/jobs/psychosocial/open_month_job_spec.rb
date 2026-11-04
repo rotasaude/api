@@ -46,11 +46,12 @@ RSpec.describe Psychosocial::OpenMonthJob do
     expect { described_class.perform_now }.not_to(change { december_records.count })
   end
 
-  it "o log só leva a contagem" do
+  it "o log do job só leva cidade, mês e a contagem" do
     open_enrollment
     log = capture_log { described_class.perform_now }
-    expect(log).to include("opened=1")
-    expect(log).not_to include(open_enrollment.patient.display_name)
+    line = log.lines.grep(/\[Psychosocial::OpenMonthJob\]/).sole
+    expect(line.strip).to eq("[Psychosocial::OpenMonthJob] city=#{city.slug} month=2026-12 opened=1")
+    expect(line).not_to match(/\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/) # nenhum uuid (paciente, matrícula, CAPS)
   end
 
   it "está agendado todo dia à 1h no fuso de São Paulo, na fila housekeeping" do

@@ -143,6 +143,20 @@ RSpec.describe "CAPS — acolhimento", type: :request do
     expect(referral.reload.status).to eq("pending")
   end
 
+  it "matrícula retroativa no acolhimento: a RAAS de cada mês; mês intermediário fechado → month_closed enrollment.started_on" do
+    json_post "/psychosocial/receptions", body(outcome: "enrolled", enrollment: enrollment_block(started_on: "2026-09-12"))
+    expect(response).to have_http_status(:created)
+    expect(PsychosocialMonthlyRecord.where(psychosocial_enrollment_id: json_body["enrollment_id"]).order(:month).pluck(:month))
+      .to eq([ Date.new(2026, 9, 1), Date.new(2026, 10, 1), Date.new(2026, 11, 1) ])
+
+    PsychosocialMonthClosure.create!(health_unit: caps, month: Date.new(2026, 10, 1), closed_at: Time.current, closed_by_user: staff)
+    other = caps_patient!
+    expect do
+      json_post "/psychosocial/receptions", body(patient_id: other.id, outcome: "enrolled", enrollment: enrollment_block(started_on: "2026-09-12"))
+    end.not_to change { [ PsychosocialReception.count, PsychosocialEnrollment.count, PsychosocialMonthlyRecord.count, DomainEvent.count ] }
+    expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "month_closed", "enrollment.started_on" ])
+  end
+
   it "corrida na matrícula aberta (índice único) desfaz a recepção: 409 enrollment_open, nada gravado" do
     enrollment!(caps, patient: patient, reference: staff)
     referral = referral!

@@ -43,8 +43,10 @@ module Psychosocial
         codes << "cid_missing" if enrollment.cid_main.blank?
         action_ids.each { |id| codes.merge(action_codes.fetch(id)) }
         codes << "night_stay_open" if staying.include?(enrollment.id)
+        codes << "no_actions" if action_ids.empty?
         { record: record, patient: enrollment.patient, actions_count: action_ids.size,
-          problems: Catalog::PROBLEM_CODES.select { |code| codes.include?(code) }, warnings: action_ids.empty? ? %w[no_actions] : [] }
+          problems: Catalog::PROBLEM_CODES.select { |code| codes.include?(code) },
+          warnings: Catalog::WARNING_CODES.select { |code| codes.include?(code) } }
       end
       { counts: counts(entries, links), records: entries }
     end

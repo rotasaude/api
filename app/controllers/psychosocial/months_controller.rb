@@ -86,7 +86,7 @@ module Psychosocial
 
     def month_json(unit, month)
       closure = PsychosocialMonthClosure.active.includes(closed_by_user: :professional).find_by(health_unit_id: unit.id, month: month)
-      status = if PsychosocialRaasExport.exists?(health_unit_id: unit.id, month: month) then "exported"
+      status = if MonthlyRecords.exported?(unit.id, month) then "exported"
                elsif closure then "closed"
                else "open"
                end

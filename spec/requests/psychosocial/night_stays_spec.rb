@@ -57,6 +57,15 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
       expect(viewed.count).to eq(0)
     end
 
+    it "garante a RAAS do mês da entrada: a pendência night_stay_open sempre tem registro onde ficar" do
+      october = enrollment!(caps, reference: tech, started_on: Date.new(2026, 10, 1)) # só a RAAS de outubro
+      expect { json_post "/psychosocial/night_stays", entry(enrollment_id: october.id) }
+        .to change { PsychosocialMonthlyRecord.where(psychosocial_enrollment_id: october.id, month: Date.new(2026, 11, 1)).count }.by(1)
+      expect(response).to have_http_status(:created)
+      expect(Psychosocial::MonthProblems.for(health_unit: caps, month: Date.new(2026, 11, 1))[:records]
+               .find { |e| e[:record].psychosocial_enrollment_id == october.id }[:problems]).to include("night_stay_open")
+    end
+
     it "leito ocupado → 409 bed_taken; paciente já no L1 entrando no L2 → 409 already_staying; nada gravado" do
       json_post "/psychosocial/night_stays", entry
       other = enrollment!(caps, reference: tech, started_on: Date.new(2026, 11, 1))

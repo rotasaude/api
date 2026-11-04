@@ -5,7 +5,8 @@
 # chave); `started_on` também não sai de nem vai para mês fechado no CAPS (422
 # month_closed, ruling). Corpo vazio → 422 invalid_request. Sem cobertura de ESF, o CNES da USF é apagado; com cobertura, o CNES
 # gravado vale até vir outro. Encerrada → 409 already_closed. Mudou o início:
-# garante a RAAS do mês do novo início. Recusas todas de uma vez. Sem evento
+# garante a RAAS de cada mês do novo início até o corrente (e recusa com
+# month_closed se algum deles estiver fechado). Recusas todas de uma vez. Sem evento
 # (o contrato §13 não tem um para a edição).
 module Psychosocial
   module UpdateEnrollment
@@ -34,7 +35,7 @@ module Psychosocial
         if enrollment.changed?
           start_moved = enrollment.started_on_changed?
           enrollment.save!
-          MonthlyRecords.ensure!(enrollment, enrollment.started_on, strict: true) if start_moved
+          MonthlyRecords.ensure_through!(enrollment) if start_moved
         end
         Result.ok(enrollment: enrollment)
       end
@@ -63,10 +64,11 @@ module Psychosocial
       [ changes, problems ]
     end
 
-    # O início muda de mês de registro inicial: o mês novo e o mês atual do
-    # início precisam estar abertos (ruling; o chamador segura a trava do CAPS).
+    # O início muda de mês de registro inicial: todo mês do novo início até o
+    # corrente (a continuidade, fix round 1 da Task 9) e o mês atual do início
+    # precisam estar abertos (ruling; o chamador segura a trava do CAPS).
     def start_month_closed?(enrollment, started_on)
-      MonthlyRecords.closed?(enrollment.health_unit_id, started_on) ||
+      MonthlyRecords.any_closed?(enrollment.health_unit_id, started_on) ||
         MonthlyRecords.closed?(enrollment.health_unit_id, enrollment.started_on)
     end
 

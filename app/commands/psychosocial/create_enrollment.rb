@@ -7,10 +7,12 @@
 #   esf_cnes_required; sem cobertura, esf_cnes não vem); reference_user_id
 #   (lotado no mesmo CAPS).
 # Recusas de campo todas de uma vez. Já aberta do paciente no CAPS → 409
-# enrollment_open (também pelo índice parcial). Início em mês fechado no CAPS
-# → 422 month_closed `started_on` (ruling: sem matrícula sem RAAS; conferido
-# sob a trava do CAPS). Cria a RAAS do mês do início
-# (MonthlyRecords.ensure!) e publica `psychosocial.enrolled` só com o id.
+# enrollment_open (também pelo índice parcial). Algum mês fechado no CAPS do
+# início até o mês corrente → 422 month_closed `started_on` (ruling: sem
+# matrícula sem RAAS; conferido sob a trava do CAPS). Cria a RAAS de cada mês
+# do início ao corrente (MonthlyRecords.ensure_through!: a matrícula retroativa
+# não fica sem os meses intermediários) e publica `psychosocial.enrolled` só
+# com o id.
 # O acolhimento (RecordReception) valida o bloco `enrollment` por `check` e
 # grava por `insert`, na transação dele.
 module Psychosocial
@@ -96,7 +98,7 @@ module Psychosocial
       ApplicationRecord.transaction(requires_new: true) do
         HealthUnit.lock("FOR SHARE").find(unit.id)
         next Result.fail(:enrollment_open) if PsychosocialEnrollment.open_enrollments.exists?(patient_id: patient.id, health_unit_id: unit.id)
-        next failure([ problem("started_on", "month_closed") ]) if MonthlyRecords.closed?(unit.id, values.fetch("started_on"))
+        next failure([ problem("started_on", "month_closed") ]) if MonthlyRecords.any_closed?(unit.id, values.fetch("started_on"))
 
         enrollment = PsychosocialEnrollment.create!(
           health_unit: unit, patient: patient, psychosocial_reception: reception, started_on: values.fetch("started_on"),
@@ -104,7 +106,7 @@ module Psychosocial
           substances: values.fetch("substances"), esf_covered: values.fetch("esf_covered"), esf_cnes: values["esf_cnes"],
           reference_user_id: values.fetch("reference_user_id")
         )
-        MonthlyRecords.ensure!(enrollment, enrollment.started_on, strict: true)
+        MonthlyRecords.ensure_through!(enrollment)
         DomainEvents.publish("psychosocial.enrolled", enrollment_id: enrollment.id)
         Result.ok(enrollment: enrollment)
       end

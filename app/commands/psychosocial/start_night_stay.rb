@@ -60,6 +60,10 @@ module Psychosocial
       taken = conflict(bed.id, enrollment.patient_id, started_at)
       return Result.fail(taken) if taken
 
+      # A RAAS do mês da primeira noite: a pendência night_stay_open do
+      # fechamento sempre tem registro onde ficar (fix round 1 da Task 9).
+      MonthlyRecords.ensure!(enrollment, started_at.in_time_zone.to_date, strict: true)
+
       over = NightLimit.check(patient_id: enrollment.patient_id, modality: unit.caps_modality,
                               new_nights: NightLimit.nights(started_at..values[:expected_end_at]), settings: Settings.current)
       return Result.fail(:night_limit_reached, details: over) if over && !(values[:reassessment] && Access.lead?(by))
