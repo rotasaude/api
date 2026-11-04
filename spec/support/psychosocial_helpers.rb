@@ -137,6 +137,30 @@ module PsychosocialHelpers
   def ubs_doctor!(ubs)
     screener!(ubs, cbo: "225125", email: "medico-ubs-#{SecureRandom.hex(3)}@cidade.gov.br")
   end
+
+  # Contexto de leitura do ADR 0031: atendimento in_care na unidade, chamado
+  # pelo médico, do par validado do paciente (caps_patient!).
+  def in_context!(doctor, unit, patient)
+    consulting_attendance!(unit, citizen: Citizen.find_by!(patient_id: patient.id), doctor: doctor)
+  end
+
+  # Matriciamento de hoje (0301080305, BPA-C) do CAPS com a equipe e um caso
+  # compartilhado do paciente, pelos comandos (Psychosocial::RecordMatrixSupport
+  # e AddMatrixCase), por um profissional lotado no CAPS. Devolve o caso.
+  def matrix_case!(caps, team, patient, text, by: caps_staff!(caps))
+    support = Psychosocial::RecordMatrixSupport.call(
+      attrs: { "health_team_id" => team.id, "held_on" => Time.zone.today.iso8601, "topic" => "Matriciamento de rotina",
+               "participants_user_ids" => [ by.id ], "sigtap_code" => "0301080305" },
+      unit: caps, by: by, link: Psychosocial::Access.link(by, caps.id)
+    )
+    raise "matrix_case! recusado: #{support.reason} #{Array(support.details[:problems]).map { |p| p[:error] }.join(',')}" if support.failure?
+
+    result = Psychosocial::AddMatrixCase.call(support: support.payload.fetch(:matrix_support),
+                                              attrs: { "patient_id" => patient.id, "shared_text" => text }, by: by)
+    raise "matrix_case! recusado: #{result.reason}" if result.failure?
+
+    result.payload.fetch(:matrix_case)
+  end
 end
 
 RSpec.configure { |c| c.include PsychosocialHelpers }

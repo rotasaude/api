@@ -716,6 +716,13 @@ Rails.application.routes.draw do
     post  "raas_exports",        to: "raas_exports#create"
     get   "raas_exports/:id/file", to: "raas_exports#file"
     get   "months/:month/sheets.pdf", to: "sheets#show", format: false
+    # Matriciamento com a atenção básica, caso compartilhado (§7, P4) e o
+    # vínculo com o CAPS visto pela UBS (P10).
+    get   "matrix_supports",     to: "matrix_supports#index"
+    post  "matrix_supports",     to: "matrix_supports#create"
+    get   "matrix_supports/:id", to: "matrix_supports#show"
+    post  "matrix_supports/:id/cases", to: "matrix_supports#add_case"
+    get   "patients/:id/link",   to: "links#show"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.

@@ -333,6 +333,9 @@ Rails.application.config.to_prepare do
   # arquivo, a competência do paciente nem nome; sem consumidor (o download
   # grava também clinical_record.viewed por paciente).
   %w[psychosocial.raas_exported psychosocial.raas_downloaded].each { |name| DomainEvents.bind name, to: [] }
+  # Matriciamento gravado (Task 11): só o matrix_support_id, nunca o tema, os
+  # casos nem nome; sem consumidor (a ação BPA-C publica action_recorded).
+  DomainEvents.bind "psychosocial.matrix_support_recorded", to: []
   # Conferência da caderneta na sala (confirmed_complete); só trilha, só ids
   # (vaccination_record_check_id, vaccine_room_id, user_id), sem consumidor.
   DomainEvents.bind "vaccination.record_checked", to: []

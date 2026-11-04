@@ -522,6 +522,12 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
 
+  # Módulo 31 (contrato §13; Task 11): matriciamento gravado (matrix_support_id); sem consumidor.
+  it "declares psychosocial.matrix_support_recorded with no consumer" do
+    expect(DomainEvents.registry.keys).to include("psychosocial.matrix_support_recorded")
+    expect(DomainEvents.registry["psychosocial.matrix_support_recorded"]).to be_empty
+  end
+
   # Pagamento e prestação de contas do TFD (Task 12): só ids, sem consumidor.
   it "declares tfd.payment_recorded and tfd.accountability_closed with no consumer" do
     names = %w[tfd.payment_recorded tfd.accountability_closed]
