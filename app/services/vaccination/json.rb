@@ -42,8 +42,7 @@ module Vaccination
         strategy: record.strategy, care_group: record.care_group, route: record.route, site: record.site,
         maternal_condition: record.maternal_condition, applied_at: record.applied_at,
         lot: lot(record, product), transcription: record.transcription,
-        room: record.vaccine_room && { id: record.vaccine_room.id, name: record.vaccine_room.name,
-                                       health_unit: { id: record.vaccine_room.health_unit.id, name: record.vaccine_room.health_unit.name } },
+        room: record.vaccine_room && room_of(record.vaccine_room),
         by: { name: record.vaccinator_user.professional&.professional_name, cbo: record.vaccinator_cbo },
         campaign_id: record.campaign_id, status: record.cancelled? ? "cancelled" : "active", cancel_reason: record.cancel_reason,
         replaces_id: record.replaces_id, replaced_by_id: record.replacement&.id,
@@ -60,6 +59,15 @@ module Vaccination
     end
 
     # Várias doses com as entradas da fila de cada uma, sem N+1 nas associações.
+    # A sala da dose. Sala de unidade `caps` (módulo 31, P46/P51): o nome da
+    # unidade e o nome livre da sala saem como o rótulo genérico, para todo
+    # leitor (detalhe, caderneta da sala, conferências).
+    def room_of(room)
+      unit = room.health_unit
+      name = unit.caps? ? Timeline::Sources::Labels::CAPS_UNIT_NAME : room.name
+      { id: room.id, name: name, health_unit: { id: unit.id, name: Timeline::Sources::Labels.unit_name(unit) } }
+    end
+
     def immunizations(records, rnds_enabled:, viewer: nil)
       records = records.to_a
       leads = {}

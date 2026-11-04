@@ -22,7 +22,7 @@ module Exams
         consultation_id: order.consultation_exam_request&.consultation_id,
         consultation_exam_request_id: order.consultation_exam_request_id, # A45
         requester: { user_id: order.requester_user_id, name: order.requester_display_name, cns: clinical ? order.requester_cns : nil },
-        unit: { id: order.unit_id, name: order.unit.name },
+        unit: { id: order.unit_id, name: Timeline::Sources::Labels.unit_name(order.unit) }, # CAPS genérico (módulo 31, P46/P51)
         provider: order.exam_provider && { id: order.exam_provider_id, name: order.exam_provider.name },
         scheduled_at: order.scheduled_at&.iso8601, scheduled_place: order.scheduled_place,
         external_reference: order.external_reference, gal_requisition: order.gal_requisition, # v1.1 (B24): chave sempre presente
