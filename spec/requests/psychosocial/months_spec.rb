@@ -36,7 +36,10 @@ RSpec.describe "CAPS — RAAS do mês", type: :request do
       expect { show }.not_to(change { [ PsychosocialMonthlyRecord.where(status: "open").count, DomainEvent.count ] })
       expect(response).to have_http_status(:ok)
       expect(json_body).to include("month" => "2026-11", "health_unit_id" => caps.id, "status" => "open", "closure" => nil)
-      item, idle = json_body["records"]
+      # Pela matrícula, não pela posição: com o relógio parado os dois registros
+      # têm o mesmo created_at, e a ordem (created_at, id) cai no UUID aleatório.
+      item, idle = json_body["records"].index_by { |r| r["enrollment_id"] }.values_at(e.id, quiet.id)
+      expect(json_body["records"].size).to eq(2)
       expect(item).to include("id" => record_of(e).id, "enrollment_id" => e.id, "status" => "open", "homeless" => nil,
                               "patient" => Psychosocial::Json.patient_ref(e.patient), "actions_count" => 1)
       expect(item["problems"]).to eq(%w[patient_cns_missing homeless_missing])
