@@ -20,6 +20,14 @@
 # RAAS (raas_psi) não cancelada do CAPS no mês com a matrícula como
 # participante (a ação BPA vai pelo 22: o registro só com ela fica fora da
 # remessa e das fichas). actions_count e a crítica contam toda ação.
+# Pendências rebaixadas a aviso (P57, I3), na ordem de PROBLEM_CODES antes do
+# no_actions:
+#   - registro sem ação RAAS (no_actions): todas, porque ele fica fora da
+#     remessa e das fichas — menos night_stay_open, porque a saída do leito
+#     ainda vai gravar as noites (ações RAAS) neste mês;
+#   - phone_missing de registro em situação de rua (homeless = true) quando o
+#     CAPS tem telefone: o do CAPS é o telefone de contato
+#     (MonthlyRecords.contact_phone).
 #
 # -> { counts: { records:, open:, closed:, exported:, with_problems:, with_warnings:, actions: },
 #      records: [ { record:, patient:, actions_count:, problems: [String], warnings: [String] } ] }
@@ -41,17 +49,29 @@ module Psychosocial
         action_ids = links.fetch(enrollment.id, [])
         codes = Set.new
         codes << "patient_cns_missing" if enrollment.patient.cns.blank?
-        codes << "phone_missing" if contacts[enrollment.patient_id]&.phone.blank?
+        patient_phone = contacts[enrollment.patient_id]&.phone
+        codes << "phone_missing" if patient_phone.blank?
         codes << "homeless_missing" if record.homeless.nil?
         codes << "cid_missing" if enrollment.cid_main.blank?
         action_ids.each { |id| codes.merge(action_codes.fetch(id)) }
         codes << "night_stay_open" if staying.include?(enrollment.id)
         codes << "no_actions" unless raas_enrollment_ids.include?(enrollment.id)
+        problems = Catalog::PROBLEM_CODES.select { |code| codes.include?(code) }
+        soft = softened(problems, codes, record, patient_phone, health_unit)
         { record: record, patient: enrollment.patient, actions_count: action_ids.size,
-          problems: Catalog::PROBLEM_CODES.select { |code| codes.include?(code) },
-          warnings: Catalog::WARNING_CODES.select { |code| codes.include?(code) } }
+          problems: problems - soft, warnings: soft + Catalog::WARNING_CODES.select { |code| codes.include?(code) } }
       end
       { counts: counts(entries, links), records: entries }
+    end
+
+    # Pendências que viram aviso (P57): todas as do registro sem ação RAAS
+    # (menos night_stay_open); senão, phone_missing quando o telefone do CAPS
+    # supre o de quem está em situação de rua.
+    def softened(problems, codes, record, patient_phone, unit)
+      return problems - %w[night_stay_open] if codes.include?("no_actions")
+      return %w[phone_missing] if problems.include?("phone_missing") && MonthlyRecords.contact_phone(record, patient_phone, unit).present?
+
+      []
     end
 
     # Registros do CAPS no mês dentro da janela da matrícula: do mês do início
@@ -117,6 +137,6 @@ module Psychosocial
         actions: links.values.flatten.uniq.size }
     end
 
-    private_class_method :action_links, :action_codes, :staying_enrollment_ids, :counts
+    private_class_method :softened, :action_links, :action_codes, :staying_enrollment_ids, :counts
   end
 end

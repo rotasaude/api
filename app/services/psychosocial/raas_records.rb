@@ -7,7 +7,8 @@
 # (P14: registro sem ação fica fora da remessa e das fichas; ações BPA-C/BPA-I
 # vão pelo 22, nunca pela RAAS). Os dados: a foto (`snapshot`) do registro
 # fechado ou exportado; do registro aberto, os dados ao vivo na mesma forma
-# (MonthlyRecords.snapshot, com o telefone do par validado). Nada daqui vai a
+# (MonthlyRecords.snapshot, com o telefone de contato: o do par validado ou,
+# em situação de rua, o do CAPS — P57). Nada daqui vai a
 # log, evento ou erro.
 module Psychosocial
   module RaasRecords
@@ -34,7 +35,7 @@ module Psychosocial
       contacts = live_contacts(records)
 
       records.map do |record|
-        Entry.new(record: record, data: data(record, contacts), actions: actions.fetch(record.psychosocial_enrollment_id))
+        Entry.new(record: record, data: data(record, contacts, unit), actions: actions.fetch(record.psychosocial_enrollment_id))
       end
     end
 
@@ -42,10 +43,10 @@ module Psychosocial
     def file_record(entry) = entry.data.merge("record_id" => entry.record.id, "actions" => entry.actions)
 
     # A foto do registro fechado; do aberto, os dados ao vivo na mesma forma (JSON).
-    def data(record, contacts)
+    def data(record, contacts, unit)
       return record.snapshot unless record.status == "open"
 
-      phone = contacts[record.psychosocial_enrollment.patient_id]&.phone
+      phone = MonthlyRecords.contact_phone(record, contacts[record.psychosocial_enrollment.patient_id]&.phone, unit)
       JSON.parse(MonthlyRecords.snapshot(record, phone: phone).to_json)
     end
 

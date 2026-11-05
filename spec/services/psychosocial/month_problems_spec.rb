@@ -88,11 +88,69 @@ RSpec.describe Psychosocial::MonthProblems do
     expect(entry[:problems]).to eq(%w[professional_not_in_cnes action_out_of_rule])
   end
 
+  # Registro com ação RAAS no mês (o que vai à remessa): as pendências bloqueiam.
+  def with_raas_action!(enrollment)
+    by = caps_staff!(caps)
+    caps_cnes_bond!(by, caps)
+    record_action!(caps, by, participants: [ { enrollment_id: enrollment.id } ])
+    by
+  end
+
+  def lead = (@lead ||= caps_staff!(caps, cbo: "223505", lead: true))
+  def drop_phone!(patient) = Citizen.find_by!(patient_id: patient.id).update!(phone: "123") # sem 10–11 dígitos: não serve
+
   it "paciente sem CNS nem telefone, situação de rua não informada" do
     patient = caps_patient!(cns: false)
-    Citizen.find_by!(patient_id: patient.id).update!(phone: "123") # sem 10–11 dígitos: telefone que não serve
-    enrollment!(caps, patient: patient, started_on: month)
+    drop_phone!(patient)
+    with_raas_action!(enrollment!(caps, patient: patient, started_on: month))
     expect(entry[:problems]).to eq(%w[patient_cns_missing phone_missing homeless_missing])
+  end
+
+  describe "P57 (I3): telefone de quem está em situação de rua e registro sem ação RAAS" do
+    it "situação de rua sem telefone, CAPS com telefone: aviso phone_missing; o mês fecha e a foto e a entrada da remessa levam o telefone do CAPS" do
+      caps.update!(phone: "4133334444")
+      record = complete_month!(enrollment, month)
+      record.update!(homeless: true)
+      drop_phone!(enrollment.patient)
+
+      expect(entry).to include(problems: [], warnings: %w[phone_missing])
+      live = Psychosocial::RaasRecords.for(unit: caps, month: month).sole
+      expect(Psychosocial::RaasRecords.file_record(live)["patient"]["phone"]).to eq("4133334444")
+
+      expect(Psychosocial::CloseMonth.call(unit: caps, month: month, by: lead)).to be_ok
+      expect(record.reload.snapshot["patient"]["phone"]).to eq("4133334444")
+      closed = Psychosocial::RaasRecords.for(unit: caps, month: month, status: "closed").sole
+      expect(Psychosocial::RaasRecords.file_record(closed)["patient"]["phone"]).to eq("4133334444")
+    end
+
+    it "situação de rua sem telefone e CAPS sem telefone: phone_missing segue pendência e o mês não fecha" do
+      record = complete_month!(enrollment, month)
+      record.update!(homeless: true)
+      drop_phone!(enrollment.patient)
+
+      expect(entry).to include(problems: %w[phone_missing], warnings: [])
+      result = Psychosocial::CloseMonth.call(unit: caps, month: month, by: lead)
+      expect([ result.reason, result.details[:problems] ])
+        .to eq([ :month_has_problems, [ { error: "phone_missing", path: "records.#{record.id}" } ] ])
+      expect(record.reload.status).to eq("open")
+    end
+
+    it "fora da situação de rua, o telefone do CAPS não supre: phone_missing segue pendência" do
+      caps.update!(phone: "4133334444")
+      complete_month!(enrollment, month)
+      drop_phone!(enrollment.patient)
+      expect(entry).to include(problems: %w[phone_missing], warnings: [])
+      expect(Psychosocial::RaasRecords.file_record(Psychosocial::RaasRecords.for(unit: caps, month: month).sole)["patient"]["phone"]).to be_nil
+    end
+
+    it "registro sem ação RAAS com CNS ausente: as pendências viram avisos e o mês fecha" do
+      record = enrollment!(caps, patient: caps_patient!(cns: false), started_on: month).psychosocial_monthly_records.sole
+      expect(entry).to include(problems: [], warnings: %w[patient_cns_missing homeless_missing no_actions])
+      expect(report[:counts]).to include(with_problems: 0, with_warnings: 1)
+
+      expect(Psychosocial::CloseMonth.call(unit: caps, month: month, by: lead)).to be_ok
+      expect(record.reload.status).to eq("closed")
+    end
   end
 
   it "só lê: nada gravado, nenhum evento" do

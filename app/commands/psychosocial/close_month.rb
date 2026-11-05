@@ -4,8 +4,8 @@
 # Numa transação: trava a linha do CAPS (FOR UPDATE, ruling: serializa com
 # RecordAction, CancelAction, StartNightStay, CloseNightStay e a matrícula, que
 # a seguram FOR SHARE) e só então lê o fechamento e as pendências. Fechamento
-# ativo → 409 already_closed. Alguma pendência (MonthProblems; o aviso
-# no_actions não bloqueia) → 422 month_has_problems com
+# ativo → 409 already_closed. Alguma pendência (MonthProblems; os avisos —
+# no_actions e as pendências rebaixadas pelo P57 — não bloqueiam) → 422 month_has_problems com
 # `problems: [ { error, path: "records.<id>" } ]`, um por (registro, pendência),
 # nada gravado. Senão trava os registros da janela (P37: os de meses depois do
 # encerramento da matrícula ficam de fora e abertos), grava em cada um a foto
@@ -40,7 +40,7 @@ module Psychosocial
                              .includes(psychosocial_enrollment: :patient).to_a
       contacts = Billing::PatientContact.for(records.map { |r| r.psychosocial_enrollment.patient_id })
       records.each do |record|
-        phone = contacts[record.psychosocial_enrollment.patient_id]&.phone
+        phone = MonthlyRecords.contact_phone(record, contacts[record.psychosocial_enrollment.patient_id]&.phone, unit)
         record.update!(status: "closed", closed_at: now, snapshot: MonthlyRecords.snapshot(record, phone: phone))
       end
     end

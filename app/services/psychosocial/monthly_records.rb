@@ -80,13 +80,22 @@ module Psychosocial
         PsychosocialMonthlyRecord.exists?(health_unit_id: health_unit_id, month: month, status: "exported")
     end
 
+    # Telefone de contato do registro (P57, I3): o do par validado; sem ele,
+    # para quem está em situação de rua no mês (homeless = true), o do CAPS
+    # (health_units.phone, P27), contato legítimo da pessoa. Senão nil.
+    def contact_phone(record, patient_phone, unit)
+      return patient_phone if patient_phone.present?
+
+      unit.phone.presence if record.homeless == true
+    end
+
     # A foto do registro no fechamento (plano, Desvio 7), a gravar no
     # `snapshot` (JSON cifrado; nunca em log, evento ou erro): identificação
     # do paciente (nome, nome social, CNS, nascimento, sexo, mãe), raça/cor,
     # etnia, telefone, endereço, a origem só no registro inicial (mês do
     # início), início, CIDs, substâncias, ESF, destino ("00" = permanência),
-    # conclusão e situação de rua. O telefone é o do par validado
-    # (Billing::PatientContact), passado por quem chama.
+    # conclusão e situação de rua. O telefone é o de contato (contact_phone:
+    # o do par validado ou, em situação de rua, o do CAPS), passado por quem chama.
     def snapshot(record, phone:)
       enrollment = record.psychosocial_enrollment
       patient = enrollment.patient

@@ -28,18 +28,23 @@ RSpec.describe "CAPS — RAAS do mês", type: :request do
   before { stepped_up!(lead) }
 
   describe "GET /psychosocial/months/:month" do
-    it "pendências lidas, nunca gravadas: problems por registro e no_actions como aviso" do
+    it "pendências lidas, nunca gravadas: problems por registro com ação RAAS; sem ação, tudo é aviso (P57)" do
       e = enrollment!(caps, patient: caps_patient!(cns: false), started_on: month)
+      caps_cnes_bond!(lead, caps)
+      record_action!(caps, lead, participants: [ { enrollment_id: e.id } ])
+      quiet = enrollment!(caps, patient: caps_patient!(cns: false), started_on: month)
       expect { show }.not_to(change { [ PsychosocialMonthlyRecord.where(status: "open").count, DomainEvent.count ] })
       expect(response).to have_http_status(:ok)
       expect(json_body).to include("month" => "2026-11", "health_unit_id" => caps.id, "status" => "open", "closure" => nil)
-      item = json_body["records"].sole
+      item, idle = json_body["records"]
       expect(item).to include("id" => record_of(e).id, "enrollment_id" => e.id, "status" => "open", "homeless" => nil,
-                              "patient" => Psychosocial::Json.patient_ref(e.patient), "actions_count" => 0)
+                              "patient" => Psychosocial::Json.patient_ref(e.patient), "actions_count" => 1)
       expect(item["problems"]).to eq(%w[patient_cns_missing homeless_missing])
-      expect(item["warnings"]).to eq(%w[no_actions])
-      expect(json_body["counts"]).to eq("records" => 1, "open" => 1, "closed" => 0, "exported" => 0, "with_problems" => 1,
-                                        "with_warnings" => 1, "actions" => 0)
+      expect(item["warnings"]).to eq([])
+      expect(idle).to include("id" => record_of(quiet).id, "actions_count" => 0, "problems" => [],
+                              "warnings" => %w[patient_cns_missing homeless_missing no_actions])
+      expect(json_body["counts"]).to eq("records" => 2, "open" => 2, "closed" => 0, "exported" => 0, "with_problems" => 1,
+                                        "with_warnings" => 1, "actions" => 1)
       expect(response.body).not_to include("F200")
       expect(DomainEvent.where(name: "clinical_record.viewed").count).to eq(0)
     end
@@ -88,6 +93,8 @@ RSpec.describe "CAPS — RAAS do mês", type: :request do
   describe "POST /psychosocial/months/:month/close e /reopen" do
     it "com pendência recusa: 422 month_has_problems, um item por (registro, pendência), nada gravado" do
       e = enrollment!(caps, patient: caps_patient!(cns: false), started_on: month)
+      caps_cnes_bond!(lead, caps)
+      record_action!(caps, lead, participants: [ { enrollment_id: e.id } ]) # com ação RAAS: vai à remessa, então bloqueia (P57)
       expect { close! }.not_to(change { [ PsychosocialMonthClosure.count, closed_events.count ] })
       expect(response).to have_http_status(:unprocessable_entity)
       expect(json_body["error"]).to eq("month_has_problems")
@@ -211,10 +218,10 @@ RSpec.describe "CAPS — RAAS do mês", type: :request do
       reopen!
       expect(after.reload.status).to eq("open")
 
-      # o mês do encerramento continua na crítica: outubro sem ação e sem situação de rua
+      # o mês do encerramento continua na crítica: outubro sem ação e sem situação de rua (avisos, P57)
       show("2026-10")
-      expect(json_body["records"].sole).to include("id" => record_of(e, Date.new(2026, 10, 1)).id, "problems" => %w[homeless_missing],
-                                                   "warnings" => %w[no_actions])
+      expect(json_body["records"].sole).to include("id" => record_of(e, Date.new(2026, 10, 1)).id, "problems" => [],
+                                                   "warnings" => %w[homeless_missing no_actions])
       expect { after.delete }.to raise_error(ActiveRecord::StatementInvalid, /DELETE refused/)
     end
 
