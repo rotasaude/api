@@ -79,13 +79,12 @@ module Psychosocial
       window = month..through
       from = month.in_time_zone
       to = (month.end_of_month + 1).in_time_zone
-      # "Esta noite" é uma regra só: a permanência aberta ocupa ao menos até o
-      # dia seguinte ao último dia contado (`through + 1`, meio-aberto), dentro
-      # ou além do previsto; o recorte `window` limita o resto.
-      tonight = (through + 1).in_time_zone
+      # "Esta noite" é a regra do NightLimit.effective_end (P62), com `through`
+      # no lugar de hoje: a aberta ocupa ao menos até o dia seguinte ao último
+      # dia contado, dentro ou além do previsto; o recorte `window` limita o resto.
       stays = PsychosocialNightStay.where(health_unit_id: ids).where(started_at: ...to).where("ended_at IS NULL OR ended_at > ?", from)
       nights = stays.sum do |stay|
-        NightLimit.nights(stay.started_at..(stay.ended_at || [ stay.expected_end_at, tonight ].max)).count { |night| window.cover?(night) }
+        NightLimit.nights(stay, today: through).count { |night| window.cover?(night) }
       end
       beds = PsychosocialBed.where(health_unit_id: ids, active: true).count
       { nights: suppress(nights), bed_days: suppress(beds * [ (through - month).to_i + 1, 0 ].max) }

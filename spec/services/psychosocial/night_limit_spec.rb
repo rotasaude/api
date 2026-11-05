@@ -1,7 +1,8 @@
 require "rails_helper"
 
-# Módulo 31 (Desvio 1; contrato §5, P13, P61): noites = cada data local D com
-# início ≤ D < fim (meio-aberto; entrada e saída no mesmo dia = 0 noite); limite por modalidade numa janela de
+# Módulo 31 (Desvio 1; contrato §5, P13, P61, P62): noites = cada data local D
+# com início ≤ D < fim (meio-aberto; entrada e saída no mesmo dia = 0 noite); a
+# aberta vai até max(expected_end_at, a noite de hoje); limite por modalidade numa janela de
 # `window_days`, contando as noites do paciente em qualquer CAPS. Relógio fixo.
 RSpec.describe Psychosocial::NightLimit do
   include ActiveSupport::Testing::TimeHelpers
@@ -43,14 +44,26 @@ RSpec.describe Psychosocial::NightLimit do
       expect(described_class.nights(at(4, 0)..Time.zone.local(2026, 11, 4, 23, 59))).to eq([])
     end
 
-    it "da permanência: fim = ended_at, ou expected_end_at enquanto aberta" do
+    it "da encerrada: fim = ended_at (as noites reais)" do
       expect(described_class.nights(stay!(at(1, 19), at(3, 8)))).to eq(nov(1, 2))
-      expect(described_class.nights(stay!(at(10, 19), at(12, 8), open: true))).to eq(nov(10, 11))
       expect(described_class.nights(stay!(Time.zone.local(2026, 11, 16, 9, 19), Time.zone.local(2026, 11, 16, 9, 20)))).to eq([])
     end
 
-    it "P61: a aberta conta até expected_end_at, pela mesma regra (nada a mais por estar aberta)" do
-      expect(described_class.nights(stay!(at(14, 9), at(14, 18), open: true))).to eq([])
+    # P62: a aberta vai até max(expected_end_at, a noite de hoje) — hoje é 25/11.
+    it "P62: aberta dentro do previsto conta até expected_end_at" do
+      expect(described_class.nights(stay!(at(24, 19), at(27, 8), open: true))).to eq(nov(24, 25, 26))
+    end
+
+    it "P62: aberta além do previsto conta até hoje, com a noite de hoje" do
+      stay = stay!(at(10, 19), at(12, 8), open: true)
+      expect(described_class.nights(stay)).to eq(nov(*(10..25)))
+      expect(described_class.effective_end(stay)).to eq(Date.new(2026, 11, 26).in_time_zone)
+      # A data de corte é parâmetro (o painel corta no fim do mês ou hoje).
+      expect(described_class.nights(stay, today: Date.new(2026, 11, 20))).to eq(nov(*(10..20)))
+    end
+
+    it "P62: aberta que entrou hoje, com saída prevista hoje, já conta a noite de hoje" do
+      expect(described_class.nights(stay!(at(25, 9), at(25, 18), open: true))).to eq(nov(25))
     end
   end
 
@@ -82,16 +95,16 @@ RSpec.describe Psychosocial::NightLimit do
       other_caps = caps!(modality: "caps_iii")
       stay!(at(2, 19), at(8, 8))                                   # 2..7 (6) no AD III
       stay!(at(10, 19), at(16, 8), unit: other_caps)               # 10..15 (6) no CAPS III
-      own = stay!(at(20, 19), at(22, 8), open: true)               # 20, 21 (2), aberta
+      own = stay!(at(24, 19), at(26, 8), open: true)               # 24, 25 (2), aberta
       expect(described_class.existing_nights(patient.id, Date.new(2026, 10, 27)..Date.new(2026, 11, 25), nil))
-        .to eq(nov(2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 20, 21))
+        .to eq(nov(2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 24, 25))
       expect(described_class.existing_nights(patient.id, Date.new(2026, 11, 5)..Date.new(2026, 11, 25), own.id))
         .to eq(nov(5, 6, 7, 10, 11, 12, 13, 14, 15))
 
-      # 14 noites + 1 nova; a própria permanência (20, 21) não conta duas vezes.
+      # 14 noites + 1 nova; a própria permanência (24, 25) não conta duas vezes.
       expect(described_class.check(patient_id: patient.id, modality: "caps_ad_iii", new_nights: nov(23), settings: settings))
         .to eq(used: 15, limit: 14, window_days: 30, rule: "total")
-      expect(described_class.check(patient_id: patient.id, modality: "caps_ad_iii", new_nights: nov(20, 21), settings: settings,
+      expect(described_class.check(patient_id: patient.id, modality: "caps_ad_iii", new_nights: nov(24, 25), settings: settings,
                                    except_stay_id: own.id)).to be_nil
     end
 
@@ -127,11 +140,18 @@ RSpec.describe Psychosocial::NightLimit do
       expect(described_class.used(patient_id: patient.id, modality: "caps_ii", date: Date.new(2026, 11, 22), settings: settings)).to be_nil
     end
 
-    it "P61: a permanência sem noite (mesmo dia) não conta; a aberta conta até expected_end_at" do
+    it "P61: a permanência sem noite (mesmo dia) não conta" do
       stay!(Time.zone.local(2026, 11, 21, 9, 19), Time.zone.local(2026, 11, 21, 9, 20))
-      stay!(at(22, 21), at(24, 8), open: true) # 22, 23
+      stay!(at(22, 21), at(27, 8), open: true) # 22..26; a janela termina em 25
       expect(described_class.used(patient_id: patient.id, modality: "caps_ad_iii", date: Date.new(2026, 11, 25), settings: settings))
-        .to eq(used: 2, limit: 14)
+        .to eq(used: 4, limit: 14)
+    end
+
+    it "P62: a aberta vencida há muito conta até hoje, mesmo com o previsto antes da janela" do
+      # Previsto em 03/10, antes da janela (27/10..25/11); aberta até hoje: a janela inteira.
+      stay!(at(1, 19, month: 10), at(3, 8, month: 10), open: true)
+      expect(described_class.used(patient_id: patient.id, modality: "caps_ad_iii", date: Date.new(2026, 11, 25), settings: settings))
+        .to eq(used: 30, limit: 14)
     end
   end
 end

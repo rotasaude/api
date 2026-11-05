@@ -226,6 +226,15 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
       expect(PsychosocialAction.where(psychosocial_night_stay_id: stay.id).pluck(:performed_at)).to eq([ at(16, 21) ])
     end
 
+    it "P62: a saída de uma aberta além do previsto grava as noites reais (até ended_at)" do
+      stay = stay!(at(10, 19), at(15, 8), open: true) # previsto: 10..14
+      json_post "/psychosocial/night_stays/#{stay.id}/close", ended_at: at(18, 8).iso8601, reason: reason
+      expect(response).to have_http_status(:ok)
+      expect(json_body["nights"]).to eq((10..17).map { |d| Date.new(2026, 11, d).iso8601 })
+      expect(PsychosocialAction.where(psychosocial_night_stay_id: stay.id).order(:performed_at).pluck(:performed_at))
+        .to eq((10..17).map { |d| at(d, 20) })
+    end
+
     it "Review Focus 3: a permanência atravessa a virada do mês; cada ação cai no mês da sua noite", now: Time.zone.local(2026, 12, 2, 10, 0) do
       stay = stay!(at(29, 19), at(2, 8, month: 12), open: true)
       json_post "/psychosocial/night_stays/#{stay.id}/close", ended_at: at(2, 8, month: 12).iso8601, reason: reason
@@ -393,6 +402,17 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
       expect(json_body["items"].map { |item| item["stay"]&.dig("id") }).to eq([ nil, PsychosocialNightStay.where(started_at: at(1, 19)).sole.id ])
       get "/psychosocial/beds/board", params: { health_unit_id: caps.id, date: "2026-11-04" }
       expect(json_body["items"].map { |item| item["stay"] }).to eq([ nil, nil ])
+    end
+
+    # P62: a aberta além do previsto conta até hoje (18/11), com a noite de hoje, no mapa e no detalhe.
+    it "P62: aberta com o previsto há 3 dias — o mapa de hoje e o detalhe contam até a noite de hoje" do
+      overdue = stay!(at(10, 19), at(15, 8), bed: l1, open: true) # previsto: 10..14; aberta: 10..18
+      get "/psychosocial/beds/board", params: { health_unit_id: caps.id }
+      expect(json_body.dig("items", 0)).to include("nights_used" => 9, "limit" => 14)
+      expect(json_body.dig("items", 0, "stay")).to include("id" => overdue.id, "expected_end_at" => at(15, 8).iso8601, "ended_at" => nil)
+
+      get "/psychosocial/night_stays/#{overdue.id}"
+      expect(json_body["nights"]).to eq((10..18).map { |d| Date.new(2026, 11, d).iso8601 })
     end
 
     # P61: ocupante = a permanência aberta ou a que cobre a noite da data (início ≤ data < fim, em datas locais).

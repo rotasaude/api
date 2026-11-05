@@ -136,7 +136,8 @@ module Psychosocial
     end
 
     # Detalhe da permanência (quem lê grava a trilha `night_stay`), com as
-    # noites (Desvio 1), os motivos da saída e da reavaliação.
+    # noites (Desvio 1; P62: a aberta além do previsto até a noite de hoje), os
+    # motivos da saída e da reavaliação.
     # cbos: { user_id => CBO no CAPS }.
     def night_stay(stay, cbos:)
       by = ->(user) { user && pro(user, cbos[user.id]) }

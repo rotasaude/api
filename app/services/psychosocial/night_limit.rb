@@ -2,9 +2,11 @@
 # §5, P13, P36).
 #
 # Noite (P61) = cada data local D com `início.to_date ≤ D < fim.to_date`
-# (meio-aberto), com `fim = ended_at || expected_end_at`: a aberta conta até a
-# saída prevista; entrada e saída no mesmo dia valem 0 noite. As noites do
-# paciente contam em qualquer CAPS da cidade.
+# (meio-aberto); entrada e saída no mesmo dia valem 0 noite. O fim é o
+# `effective_end` (P62): a encerrada termina em `ended_at` (as noites reais);
+# a aberta, em max(expected_end_at, a noite de hoje) — além do previsto, conta
+# até hoje, como o painel (P52). As noites do paciente contam em qualquer CAPS
+# da cidade.
 #
 # Limite por modalidade (PsychosocialSetting#night_limits), numa janela de
 # `window_days` dias:
@@ -18,15 +20,23 @@ module Psychosocial
   module NightLimit
     module_function
 
-    # stay_or_range: PsychosocialNightStay ou Range de instantes (início..fim).
+    # stay_or_range: PsychosocialNightStay ou Range de instantes (início..fim);
+    # `today` só vale para a permanência aberta (effective_end).
     # -> [Date] em ordem (vazio quando entra e sai no mesmo dia).
-    def nights(stay_or_range)
+    def nights(stay_or_range, today: Time.zone.today)
       first, last = if stay_or_range.is_a?(Range)
         [ stay_or_range.begin, stay_or_range.end ]
       else
-        [ stay_or_range.started_at, stay_or_range.ended_at || stay_or_range.expected_end_at ]
+        [ stay_or_range.started_at, effective_end(stay_or_range, today: today) ]
       end
       (first.in_time_zone.to_date...last.in_time_zone.to_date).to_a
+    end
+
+    # Fim efetivo da permanência (P62): `ended_at`; aberta, o maior entre
+    # `expected_end_at` e o início do dia seguinte a `today` (a noite de hoje
+    # conta). -> Time
+    def effective_end(stay, today: Time.zone.today)
+      stay.ended_at || [ stay.expected_end_at, (today + 1).in_time_zone ].max
     end
 
     # -> nil | { used:, limit:, window_days:, rule: "total" | "consecutive" | "alternate" }
@@ -58,14 +68,15 @@ module Psychosocial
       { used: existing_nights(patient_id, window, nil).size, limit: limits["total"] || limits["alternate"] }
     end
 
-    # Noites das permanências do paciente (abertas contam até expected_end_at)
-    # dentro de `window` (Range de Date), sem a permanência `except_stay_id`.
+    # Noites das permanências do paciente (abertas até o effective_end: a
+    # vencida há muito ainda conta) dentro de `window` (Range de Date), sem a
+    # permanência `except_stay_id`.
     # -> [Date] sem repetição, em ordem.
     def existing_nights(patient_id, window, except_stay_id)
       from = window.first.in_time_zone.beginning_of_day
       to = (window.last + 1).in_time_zone.beginning_of_day
       scope = PsychosocialNightStay.where(patient_id: patient_id).where(started_at: ...to)
-                                   .where("COALESCE(ended_at, expected_end_at) > ?", from)
+                                   .where("ended_at IS NULL OR ended_at > ?", from)
       scope = scope.where.not(id: except_stay_id) if except_stay_id
       scope.to_a.flat_map { |stay| nights(stay) }.select { |night| window.cover?(night) }.uniq.sort
     end
