@@ -66,6 +66,7 @@ else
   require Rails.root.join("lib/oral_health_crew").to_s
   require Rails.root.join("lib/vaccination_crew").to_s
   require Rails.root.join("lib/transport_crew").to_s
+  require Rails.root.join("lib/psychosocial_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -151,6 +152,11 @@ else
   # anterior) e o D82 na CIAP-2 de dev. Uma release real ativa nunca é tocada.
   oral_terms = OralHealthCrew.seed_platform!
   puts "[seeds] saúde bucal (terminologias) . SIGTAP #{oral_terms[:sigtap]}; CIAP-2 #{oral_terms[:ciap2]}"
+
+  # Atenção psicossocial (módulo 31, ADR 0049): a SIGTAP do CAPS no recorte de dev (mês e
+  # anterior) e os CID-10 dos pacientes. Uma release real ativa nunca é tocada.
+  psychosocial_terms = PsychosocialCrew.seed_platform!
+  puts "[seeds] CAPS (terminologias) . SIGTAP #{psychosocial_terms[:sigtap]}; CID-10 #{psychosocial_terms[:cid10]}"
 
   # Mesmo protocolo que o provisionamento semeia em rascunho (Plano 4); aqui ativo.
   protocol_defn = CityTemplates.protocol.fetch(:definition)
@@ -419,6 +425,14 @@ else
         # nunca dado de paciente.
         transport = TransportCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
         TransportCrew.summary_lines(transport, password: password).each { |line| puts line }
+
+        # ── Atenção psicossocial (módulo 31, ADR 0049) ────────────────────────
+        # Depois do CareLinesCrew (a UBS e a equipe da ESF do matriciamento), do
+        # RecordModeCrew (o retrato do CNES recebe o CNS da equipe do CAPS) e do
+        # ClinicalRecordCrew (o prontuário ligado). Só e-mail, papel e otpauth:
+        # nunca dado de paciente.
+        psychosocial = PsychosocialCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        PsychosocialCrew.summary_lines(psychosocial, password: password).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
