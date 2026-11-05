@@ -165,12 +165,16 @@ RSpec.describe "Sigilo do CAPS (F-31.8)", type: :request do
       get signed_pec_path(professional: doctor_cpf, citizen: citizen.cpf, cnes: scenario[:ubs].cnes)
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Atendimento — UBS Boa Vista") # controle: a página tem as entradas
-      # Conferido no texto da página, não no HTML: os links e o nonce trazem
-      # base64 aleatório, onde "CAPS" ou "Crack" aparecem por acaso (flaky).
+      # Os links e o nonce trazem base64 aleatório, onde "CAPS" ou "Crack"
+      # aparecem por acaso (flaky): os segredos curtos e só alfanuméricos são
+      # conferidos no texto da página; os que não cabem em base64 (espaço,
+      # acento, `_`, ponto), no HTML bruto, que também cobre atributos e scripts.
       page_text = Nokogiri::HTML(response.body).text
-      expect(response.body).not_to include("Acompanhamento no CAPS")
-      expect(page_text).not_to include("CAPS")
-      secrets.each { |secret| expect(page_text).not_to include(secret), "/pec/timeline contém #{secret.inspect}" }
+      short, raw = ([ "CAPS", "Acompanhamento no CAPS" ] + secrets).uniq.partition { |secret| secret.match?(/\A[A-Za-z0-9]+\z/) }
+      raw.each { |secret| expect(response.body).not_to include(secret), "/pec/timeline (HTML) contém #{secret.inspect}" }
+      short.each { |secret| expect(page_text).not_to include(secret), "/pec/timeline (texto) contém #{secret.inspect}" }
+      expect(short).to include("CAPS")
+      expect(raw).to include("Acompanhamento no CAPS")
     end
   end
 
