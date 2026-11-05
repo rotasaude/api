@@ -3,8 +3,9 @@
 # exige `?health_unit_id=` e vem por rótulo; leito de outro id → 404.
 # GET /psychosocial/beds/board?health_unit_id&date (contrato §5): o mapa da
 # equipe lotada no CAPS — os leitos ativos, o ocupante da noite de `date`
-# (padrão: hoje) só como <patient-ref>, as noites usadas na janela que termina
-# em `date` e o limite. Nada clínico e sem trilha (a trilha é do detalhe).
+# (padrão: hoje) só como <patient-ref>, com `ended_at` (null enquanto aberta;
+# P61), as noites usadas na janela que termina em `date` e o limite. Nada
+# clínico e sem trilha (a trilha é do detalhe).
 module Psychosocial
   class BedsController < BaseController
     before_action(except: :board) { forbid unless admin? }
@@ -60,8 +61,9 @@ module Psychosocial
     private
 
     # { bed_id => a permanência na noite de `date` } — a aberta que começou até
-    # essa noite, ou a fechada que tem essa noite; havendo duas no dia, a que
-    # entrou por último.
+    # essa noite, ou a fechada que tem essa noite pela regra do NightLimit (P61:
+    # a que entrou e saiu no mesmo dia não tem noite e deixa o leito livre);
+    # havendo duas no dia, a que entrou por último.
     def occupants(beds, date)
       from = date.in_time_zone.beginning_of_day
       PsychosocialNightStay.includes(:patient).where(psychosocial_bed_id: beds.map(&:id)).where(started_at: ...(from + 1.day))

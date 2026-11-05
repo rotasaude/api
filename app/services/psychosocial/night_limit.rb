@@ -1,9 +1,10 @@
 # Noites e limite do acolhimento noturno (ADR 0049; plano, Desvio 1; contrato
 # §5, P13, P36).
 #
-# Noite = a data local de cada entrada: `início.to_date ... fim.to_date`
-# (meio-aberto, no mínimo uma), com `fim = ended_at || expected_end_at`. As
-# noites do paciente contam em qualquer CAPS da cidade.
+# Noite (P61) = cada data local D com `início.to_date ≤ D < fim.to_date`
+# (meio-aberto), com `fim = ended_at || expected_end_at`: a aberta conta até a
+# saída prevista; entrada e saída no mesmo dia valem 0 noite. As noites do
+# paciente contam em qualquer CAPS da cidade.
 #
 # Limite por modalidade (PsychosocialSetting#night_limits), numa janela de
 # `window_days` dias:
@@ -18,16 +19,14 @@ module Psychosocial
     module_function
 
     # stay_or_range: PsychosocialNightStay ou Range de instantes (início..fim).
-    # -> [Date] em ordem.
+    # -> [Date] em ordem (vazio quando entra e sai no mesmo dia).
     def nights(stay_or_range)
       first, last = if stay_or_range.is_a?(Range)
         [ stay_or_range.begin, stay_or_range.end ]
       else
         [ stay_or_range.started_at, stay_or_range.ended_at || stay_or_range.expected_end_at ]
       end
-      from = first.in_time_zone.to_date
-      to = [ last.in_time_zone.to_date, from + 1 ].max
-      (from...to).to_a
+      (first.in_time_zone.to_date...last.in_time_zone.to_date).to_a
     end
 
     # -> nil | { used:, limit:, window_days:, rule: "total" | "consecutive" | "alternate" }

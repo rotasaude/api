@@ -11,7 +11,8 @@
 # Numa transação: trava a linha do CAPS (FOR SHARE, como RecordAction) e a
 # permanência, e só então lê o fechamento dos meses: noite em mês fechado →
 # 422 month_closed (em `ended_at`) e nada fecha. Fecha a permanência e grava,
-# pela via de RecordAction, uma ação RAAS por noite: `origin: "night_stay"`,
+# pela via de RecordAction, uma ação RAAS por noite (P61: entrada e saída no
+# mesmo dia não têm noite e não geram ação): `origin: "night_stay"`,
 # `night_sigtap_code` do raas.yml, quantidade 1, às 20:00 locais da noite
 # dentro da permanência, profissional = quem fecha. A data em que o paciente já
 # tem ação noturna não cancelada neste CAPS não gera outra. Qualquer
@@ -77,9 +78,11 @@ module Psychosocial
     end
 
     # Datas locais em que o paciente já tem ação noturna não cancelada neste
-    # CAPS (de outra permanência que saiu e voltou na mesma noite, ou manual):
+    # CAPS (manual; P61: duas permanências do paciente não dividem uma noite):
     # a noite não gera uma segunda ação. -> Set<Date>
     def recorded_nights(stay, nights)
+      return Set.new if nights.empty?
+
       from = nights.first.in_time_zone.beginning_of_day
       to = (nights.last + 1).in_time_zone.beginning_of_day
       PsychosocialAction.joins(:psychosocial_action_participants)

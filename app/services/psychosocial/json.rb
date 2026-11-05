@@ -128,10 +128,11 @@ module Psychosocial
     end
 
     # Permanência no mapa de leitos (contrato §5): o ocupante só como
-    # <patient-ref>, nada clínico, sem trilha.
+    # <patient-ref>, nada clínico, sem trilha; `ended_at` (P61) é null enquanto
+    # aberta — a encerrada que cobre a noite da data aparece com a saída.
     def board_stay(stay)
       { "id" => stay.id, "patient" => patient_ref(stay.patient), "started_at" => time(stay.started_at),
-        "expected_end_at" => time(stay.expected_end_at) }
+        "expected_end_at" => time(stay.expected_end_at), "ended_at" => time(stay.ended_at) }
     end
 
     # Detalhe da permanência (quem lê grava a trilha `night_stay`), com as

@@ -206,6 +206,26 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
       expect([ response.status, json_body ]).to eq([ 409, { "error" => "already_closed" } ])
     end
 
+    it "P61: entrada e saída no mesmo dia (09:19 → 09:20) = 0 noite: fecha sem nenhuma ação noturna" do
+      stay = stay!(Time.zone.local(2026, 11, 18, 9, 19), at(19, 8), open: true)
+      json_post "/psychosocial/night_stays/#{stay.id}/close", ended_at: Time.zone.local(2026, 11, 18, 9, 20).iso8601, reason: reason
+      expect(response).to have_http_status(:ok)
+      expect(stay.reload.ended_at).to eq(Time.zone.local(2026, 11, 18, 9, 20))
+      expect(json_body).to include("nights" => [], "ended_at" => Time.zone.local(2026, 11, 18, 9, 20).iso8601)
+      expect(PsychosocialAction.where(psychosocial_night_stay_id: stay.id)).not_to exist
+      expect(PsychosocialAction.count).to eq(0)
+      expect(DomainEvent.where(name: "psychosocial.night_stay_closed").sole.payload).to eq("night_stay_id" => stay.id)
+    end
+
+    it "P61: 21:00 de D até 08:00 de D+1 = 1 noite e 1 ação, na data D" do
+      stay = stay!(at(16, 21), at(17, 8), open: true)
+      json_post "/psychosocial/night_stays/#{stay.id}/close", ended_at: at(17, 8).iso8601, reason: reason
+      expect(response).to have_http_status(:ok)
+      expect(json_body["nights"]).to eq(%w[2026-11-16])
+      # 20:00 de D é antes da entrada: a ação fica na entrada, dentro da permanência e na data da noite.
+      expect(PsychosocialAction.where(psychosocial_night_stay_id: stay.id).pluck(:performed_at)).to eq([ at(16, 21) ])
+    end
+
     it "Review Focus 3: a permanência atravessa a virada do mês; cada ação cai no mês da sua noite", now: Time.zone.local(2026, 12, 2, 10, 0) do
       stay = stay!(at(29, 19), at(2, 8, month: 12), open: true)
       json_post "/psychosocial/night_stays/#{stay.id}/close", ended_at: at(2, 8, month: 12).iso8601, reason: reason
@@ -258,13 +278,15 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
       expect(action.performed_at.utc.to_date).to eq(Date.new(2026, 12, 1))
     end
 
+    # P61: duas permanências do paciente não dividem uma noite (já estar no
+    # leito → already_staying); a noite repetida vem da ação noturna manual.
     describe "noite repetida" do
       let(:night) { ->(stay) { PsychosocialAction.where(psychosocial_night_stay_id: stay.id).map { |a| a.performed_at.to_date } } }
-      let!(:first) { stay!(at(14, 19), at(14, 22), open: true) } # noite 14, saída na mesma noite
-
-      before do
-        json_post "/psychosocial/night_stays/#{first.id}/close", ended_at: at(14, 22).iso8601, reason: reason
-        expect(night.call(first)).to eq([ Date.new(2026, 11, 14) ])
+      let!(:first) do
+        json_post "/psychosocial/actions", health_unit_id: caps.id, sigtap_code: "0301080020", performed_at: at(14, 21).iso8601,
+                                           place: "caps", quantity: 1, participants: [ { enrollment_id: enrollment.id } ]
+        expect(response).to have_http_status(:created)
+        PsychosocialAction.find(json_body["id"])
       end
 
       it "a data que já tem ação noturna não cancelada do paciente no CAPS não gera outra" do
@@ -275,8 +297,7 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
       end
 
       it "a ação cancelada da noite não conta: a noite volta a gerar ação" do
-        Psychosocial::CancelAction.call(action: PsychosocialAction.find_by!(psychosocial_night_stay_id: first.id),
-                                        reason: "Registro em duplicidade da noite", by: tech)
+        Psychosocial::CancelAction.call(action: first, reason: "Registro em duplicidade da noite", by: tech)
         second = stay!(at(14, 23), at(15, 8), bed: l2, open: true) # noite 14
         json_post "/psychosocial/night_stays/#{second.id}/close", ended_at: at(15, 8).iso8601, reason: reason
         expect(night.call(second)).to eq([ Date.new(2026, 11, 14) ])
@@ -361,7 +382,7 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
           { "bed" => Psychosocial::Json.bed(l1), "stay" => nil, "nights_used" => nil, "limit" => nil },
           { "bed" => Psychosocial::Json.bed(l2),
             "stay" => { "id" => occupied.id, "patient" => Psychosocial::Json.patient_ref(enrollment.patient),
-                        "started_at" => at(16, 19).iso8601, "expected_end_at" => at(20, 8).iso8601 },
+                        "started_at" => at(16, 19).iso8601, "expected_end_at" => at(20, 8).iso8601, "ended_at" => nil },
             "nights_used" => 6, "limit" => 14 }
         ]
       )
@@ -372,6 +393,32 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
       expect(json_body["items"].map { |item| item["stay"]&.dig("id") }).to eq([ nil, PsychosocialNightStay.where(started_at: at(1, 19)).sole.id ])
       get "/psychosocial/beds/board", params: { health_unit_id: caps.id, date: "2026-11-04" }
       expect(json_body["items"].map { |item| item["stay"] }).to eq([ nil, nil ])
+    end
+
+    # P61: ocupante = a permanência aberta ou a que cobre a noite da data (início ≤ data < fim, em datas locais).
+    it "P61: entrada e saída no mesmo dia → o leito fica livre na data" do
+      stay!(Time.zone.local(2026, 11, 18, 9, 19), Time.zone.local(2026, 11, 18, 9, 20), bed: l1)
+      get "/psychosocial/beds/board", params: { health_unit_id: caps.id, date: "2026-11-18" }
+      expect(response).to have_http_status(:ok)
+      expect(json_body["items"].sole).to eq("bed" => Psychosocial::Json.bed(l1), "stay" => nil, "nights_used" => nil, "limit" => nil)
+    end
+
+    it "P61: permanência encerrada que cobre a noite da data aparece com ended_at; no dia da saída, não" do
+      closed = stay!(at(17, 21), at(18, 8), bed: l1)
+      get "/psychosocial/beds/board", params: { health_unit_id: caps.id, date: "2026-11-17" }
+      expect(json_body.dig("items", 0, "stay")).to eq("id" => closed.id, "patient" => Psychosocial::Json.patient_ref(enrollment.patient),
+                                                      "started_at" => at(17, 21).iso8601, "expected_end_at" => at(18, 8).iso8601,
+                                                      "ended_at" => at(18, 8).iso8601)
+      expect(json_body.dig("items", 0, "nights_used")).to eq(1)
+      get "/psychosocial/beds/board", params: { health_unit_id: caps.id, date: "2026-11-18" }
+      expect(json_body.dig("items", 0, "stay")).to be_nil
+    end
+
+    it "P61: permanência aberta → ended_at null; a saída no mesmo dia de outra não a esconde" do
+      stay!(Time.zone.local(2026, 11, 18, 9, 0), Time.zone.local(2026, 11, 18, 10, 0), bed: l1)
+      open = stay!(at(18, 14), at(19, 8), bed: l1, open: true)
+      get "/psychosocial/beds/board", params: { health_unit_id: caps.id, date: "2026-11-18" }
+      expect(json_body.dig("items", 0, "stay")).to include("id" => open.id, "ended_at" => nil)
     end
 
     it "sem `date`, hoje; CAPS II → caps_without_beds; data inválida, outro CAPS e o administrador recusados" do
