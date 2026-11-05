@@ -12,6 +12,7 @@ class CampaignsController < ApplicationController
   ERROR_STATUS = {
     invalid_campaign: :unprocessable_entity, invalid_audience: :unprocessable_entity,
     below_minimum: :unprocessable_entity, not_editable: :unprocessable_entity,
+    caps_unit_not_allowed: :unprocessable_entity,
     invalid_transition: :unprocessable_entity, invalid_send_at: :unprocessable_entity,
     feature_disabled: :forbidden
   }.freeze
@@ -31,7 +32,7 @@ class CampaignsController < ApplicationController
       tiers: completed.where.not(tier: nil).distinct.order(:tier).pluck(:tier),
       outcomes: Attendance::OUTCOMES,
       neighborhoods: Neighborhood.active_neighborhoods.order(:name).map { |n| { id: n.id, name: n.name } },
-      units: HealthUnit.where(active: true).order(:name).map { |u| { id: u.id, name: u.name } }
+      units: HealthUnit.where(active: true).where.not(kind: "caps").order(:name).map { |u| { id: u.id, name: u.name } }
     }
     if Vaccination::Gate.usable?(Current.city)
       payload[:immunobiologicals] = Vaccination::Immunobiologicals.all.map { |p| { code: p.code, name: p.name } }
