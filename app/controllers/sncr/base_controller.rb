@@ -1,6 +1,6 @@
 # Rotas do SNCR (ADR 0034; contrato §4, §6): interruptor controlled_prescriptions
-# utilizável e papel de profissional (a recepção recebe 403 missing_role); o
-# admin troca o before_action.
+# utilizável e papel de profissional ou o do CAPS (a recepção recebe 403
+# missing_role); o admin troca o before_action.
 module Sncr
   class BaseController < ApplicationController
     include Authentication
@@ -22,6 +22,17 @@ module Sncr
     private
 
     def failure(result) = render_failure(result, ERROR_STATUS)
+
+    # Módulo 31 (P56, R10; padrão do P47 em Signatures::BaseController): a
+    # equipe do CAPS pede e consulta o PRÓPRIO estoque (por usuário; o
+    # conselho CRM/CRO continua conferido em StartRequest e no saldo). O número
+    # só sai em ClinicalDocuments::Issue, para documento de que ela é autora —
+    # pela ação do CAPS, a única emissão aberta ao papel.
+    def require_professional
+      return if Psychosocial::Access.staff?(Current.user)
+
+      super
+    end
     def body = params.to_unsafe_h.except("controller", "action", "id")
   end
 end

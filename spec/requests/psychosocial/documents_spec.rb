@@ -329,6 +329,64 @@ RSpec.describe "CAPS — documentos da ação", type: :request do
     end
   end
 
+  # P56 (R10): /sncr/* aceita a equipe do CAPS (padrão do P47); o estoque é de
+  # quem pediu e só sai na emissão de um documento de que ela é autora. O
+  # documento digital com número SNCR do CAPS é a receita de controle especial
+  # (RCE): o registro da Notificação é sempre em papel.
+  describe "números SNCR da equipe do CAPS (P56, R10)" do
+    before { stub_sncr_mock! }
+
+    def stock_of(kind = "rce") = (get("/sncr/stock") && json_body[kind])
+
+    it "a autora do CAPS pede o bloco pelo /sncr, vê o saldo e o número sai na receita controlada digital pela ação" do
+      stub_psc!
+      stub_signer!
+      linked_certificate!(psychiatrist, leaf: fake_psc.leaf(SignatureHelpers::DOCTOR_CPF))
+      action
+      sign_in_as(psychiatrist)
+      json_post "/sncr/requests", kind: "rce", return_to: "/dashboard/minha-conta/sncr"
+      expect(response).to have_http_status(:ok)
+      url = URI.decode_www_form(URI(json_body["authorize_url"]).query).to_h.fetch("client_url")
+      json_post "/sncr/oauth/callback", state: json_body["state"], session_id: fake_sncr.approve!(url)
+      expect([ response.status, json_body["received"] ]).to eq([ 200, 1000 ])
+      expect(stock_of).to include("free" => 1000, "used" => 0)
+
+      post_document("prescription", rce)
+      expect([ response.status, json_body["issue_mode"] ]).to eq([ 201, "digital" ])
+      document = ClinicalDocument.find(json_body["id"])
+      number = SncrNumber.find_by!(document_id: document.id)
+      expect(number).to have_attributes(user_id: psychiatrist.id, status: "used")
+      expect(document.content_data.dig("sncr", "number")).to eq(number.number)
+      expect(stock_of).to include("free" => 999, "used" => 1)
+    end
+
+    it "outro membro do CAPS não obtém número pela ação da autora; a UBS não vê o estoque do CAPS" do
+      sncr_stock!(psychiatrist, kind: "rce", count: 2)
+      colleague = caps_staff!(caps, cbo: "225133")
+      sncr_stock!(colleague, kind: "rce", count: 1)
+      action
+
+      sign_in_as(colleague)
+      expect(stock_of).to include("free" => 1, "used" => 0)
+      expect { post_document("prescription", rce) }.not_to change(ClinicalDocument, :count)
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "not_author" } ])
+      expect(SncrNumber.where(status: "used")).not_to exist
+
+      ubs = create_unit("UBS Boa Vista")
+      sign_in_as(doctor!(ubs))
+      expect(stock_of).to include("free" => 0, "used" => 0)
+      post_document("prescription", rce)
+      expect(response).to have_http_status(:forbidden)
+      expect(SncrNumber.where(user_id: psychiatrist.id, status: "free").count).to eq(2)
+    end
+
+    it "papel fora do CAPS e sem health_professional continua sem /sncr" do
+      sign_in_as(staff_with("viewer-#{SecureRandom.hex(3)}@cidade.gov.br", "viewer"))
+      get "/sncr/stock"
+      expect([ response.status, json_body ]).to eq([ 403, { "error" => "missing_role" } ])
+    end
+  end
+
   describe "cancelamento pela coordenação do CAPS (P47)" do
     it "a coordenação lotada cancela o documento de outra profissional, com trilha e o número SNCR anulado" do
       linked_certificate!(psychiatrist, leaf: fake_psc.leaf(SignatureHelpers::DOCTOR_CPF))
