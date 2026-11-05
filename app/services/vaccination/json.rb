@@ -58,7 +58,6 @@ module Vaccination
       lead ? lead.call(record.vaccine_room) : Access.room_roles(user: viewer, room: record.vaccine_room).include?("room_lead")
     end
 
-    # Várias doses com as entradas da fila de cada uma, sem N+1 nas associações.
     # A sala da dose. Sala de unidade `caps` (módulo 31, P46/P51): o nome da
     # unidade e o nome livre da sala saem como o rótulo genérico, para todo
     # leitor (detalhe, caderneta da sala, conferências).
@@ -68,6 +67,7 @@ module Vaccination
       { id: room.id, name: name, health_unit: { id: unit.id, name: Timeline::Sources::Labels.unit_name(unit) } }
     end
 
+    # Várias doses com as entradas da fila de cada uma, sem N+1 nas associações.
     def immunizations(records, rnds_enabled:, viewer: nil)
       records = records.to_a
       leads = {}

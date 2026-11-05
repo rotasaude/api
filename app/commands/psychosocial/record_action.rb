@@ -50,7 +50,9 @@ module Psychosocial
     def record(values, unit:, by:, link:, origin:, night_stay:, now:)
       HealthUnit.lock("FOR SHARE").find(unit.id)
       ids = values[:participants].filter_map { |p| p[:enrollment_id] }
-      enrollments = ids.empty? ? {} : PsychosocialEnrollment.where(id: ids).lock("FOR SHARE").index_by(&:id)
+      # Ordem por id (revisão final, M4): duas ações de grupo com os mesmos
+      # participantes travam e criam a RAAS do mês na mesma ordem.
+      enrollments = ids.empty? ? {} : PsychosocialEnrollment.where(id: ids).order(:id).lock("FOR SHARE").index_by(&:id)
       participants = values[:participants].map { |p| p.merge(enrollment: enrollments[p[:enrollment_id]]) }
 
       verdict = ActionRules.problems(values.slice(:sigtap_code, :performed_at, :quantity, :authorization_number).merge(participants: participants),
@@ -70,7 +72,7 @@ module Psychosocial
                                               patient_id: enrollment&.patient_id || participant[:patient_id],
                                               family_name: participant[:family_name])
       end
-      enrollments.each_value { |enrollment| MonthlyRecords.ensure!(enrollment, month) }
+      enrollments.each_value { |enrollment| MonthlyRecords.ensure!(enrollment, month) } # na ordem do id
       DomainEvents.publish("psychosocial.action_recorded", action_id: action.id)
       Result.ok(action: action)
     end
