@@ -1,7 +1,7 @@
 # Situação de rua do mês (ADR 0049; contrato §6, P6): `PATCH
 # /psychosocial/monthly_records/:id { homeless: Boolean }`. Só a chave
 # `homeless`, sempre booleana (senão 422 invalid_request com o path). Trava a
-# linha do CAPS (FOR SHARE: o fechamento do mês trava FOR UPDATE) e o registro;
+# linha do CAPS (FOR SHARE: o fechamento do mês trava FOR NO KEY UPDATE) e o registro;
 # fora de `open` → 409 record_not_open.
 module Psychosocial
   module UpdateMonthlyRecord

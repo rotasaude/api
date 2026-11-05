@@ -14,7 +14,7 @@
 # crítica.
 #
 # Numa transação: trava a linha do CAPS (FOR SHARE, ruling: o fechamento do mês
-# trava FOR UPDATE) e as matrículas (FOR SHARE), relê "aberta e deste CAPS" e
+# trava FOR NO KEY UPDATE) e as matrículas (FOR SHARE), relê "aberta e deste CAPS" e
 # roda a crítica (Psychosocial::ActionRules). Com problemas → 422
 # action_rejected, nada gravado. Senão grava a ação (o profissional é quem
 # pede, com o CBO do vínculo no CAPS), os participantes na ordem do corpo

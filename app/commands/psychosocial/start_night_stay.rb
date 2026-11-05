@@ -8,7 +8,7 @@
 # do limite, `reassessment: { reason }` (10..500).
 #
 # Numa transação: trava a linha do CAPS (FOR SHARE, como RecordAction; o
-# fechamento do mês trava FOR UPDATE) e a matrícula, e só então lê o
+# fechamento do mês trava FOR NO KEY UPDATE) e a matrícula, e só então lê o
 # fechamento do mês da primeira noite (month_closed em `started_at`). Leito
 # ocupado → 409 bed_taken; paciente em outra permanência que ainda não acabou
 # → 409 already_staying (o Ruby confere antes; a exclusion do leito e o índice

@@ -4,7 +4,7 @@
 #
 # Sem layout registrado para `layout_version` (raas.yml; null até o gate) →
 # 422 raas_layout_unavailable, nada lido nem gravado. Numa transação: trava a
-# linha do CAPS (FOR UPDATE, ruling: serializa com CancelAction, que confere a
+# linha do CAPS (FOR NO KEY UPDATE, ruling e M3: serializa com CancelAction, que confere a
 # exportação sob FOR SHARE, e com Close/ReopenMonth) e só então lê: sem
 # fechamento ativo → 409 month_open; já exportado → 409 already_exported (o
 # índice único (health_unit_id, month), casado pelo nome, cobre a corrida);
@@ -29,7 +29,7 @@ module Psychosocial
       return Result.fail(:raas_layout_unavailable) unless RaasFile.available?(version)
 
       ApplicationRecord.transaction(requires_new: true) do
-        unit = HealthUnit.lock("FOR UPDATE").find(unit.id)
+        unit = HealthUnit.lock("FOR NO KEY UPDATE").find(unit.id)
         next Result.fail(:month_open) unless MonthlyRecords.closed?(unit.id, month)
         next Result.fail(:already_exported) if MonthlyRecords.exported?(unit.id, month)
 

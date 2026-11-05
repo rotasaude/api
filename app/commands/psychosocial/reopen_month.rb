@@ -2,7 +2,7 @@
 # Desvio 7). Quem chama confere a coordenação e o step-up.
 #
 # `reason` de 10 a 500 (abaixo → invalid_request, acima → too_long, path
-# `reason`). Numa transação: trava a linha do CAPS (FOR UPDATE, como o
+# `reason`). Numa transação: trava a linha do CAPS (FOR NO KEY UPDATE, como o
 # fechamento) e só então lê: mês com remessa RAAS → 409 already_exported; sem
 # fechamento ativo → 409 month_open. Nada se apaga: o fechamento ganha quando,
 # quem e o motivo (cifrado), e os registros fechados voltam a `open` sem foto.
@@ -19,7 +19,7 @@ module Psychosocial
       return Result.fail(refusal[:error].to_sym, details: { path: refusal[:path], problems: [ refusal ] }) if refusal
 
       ApplicationRecord.transaction(requires_new: true) do
-        HealthUnit.lock("FOR UPDATE").find(unit.id)
+        HealthUnit.lock("FOR NO KEY UPDATE").find(unit.id)
         next Result.fail(:already_exported) if MonthlyRecords.exported?(unit.id, month)
 
         closure = PsychosocialMonthClosure.active.lock.find_by(health_unit_id: unit.id, month: month)

@@ -1,7 +1,7 @@
 # Cancelamento da ação do CAPS (ADR 0049; plano, Desvio 5; contrato §4, P12,
 # P13, P25): a única mudança da ação imutável, uma vez, com motivo (10..2000,
 # cifrado). Trava a linha do CAPS (FOR SHARE, ruling: o fechamento do mês trava
-# FOR UPDATE) e a ação, e só então lê o fechamento do mês: já cancelada → 409
+# FOR NO KEY UPDATE) e a ação, e só então lê o fechamento do mês: já cancelada → 409
 # already_cancelled; mês com remessa RAAS gerada → 409 already_exported; mês
 # fechado e não exportado → só `psychosocial_lead` (403 lead_required).
 # Publica `psychosocial.action_cancelled` só com o id.

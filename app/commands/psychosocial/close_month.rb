@@ -1,9 +1,10 @@
 # Fechamento do mês de um CAPS (ADR 0049; contrato §6, P14, P24, P37; plano,
 # Desvio 7; Review Focus 3). Quem chama confere a coordenação e o step-up.
 #
-# Numa transação: trava a linha do CAPS (FOR UPDATE, ruling: serializa com
-# RecordAction, CancelAction, StartNightStay, CloseNightStay e a matrícula, que
-# a seguram FOR SHARE) e só então lê o fechamento e as pendências. Fechamento
+# Numa transação: trava a linha do CAPS (FOR NO KEY UPDATE, ruling e revisão
+# final M3: serializa com RecordAction, CancelAction, StartNightStay,
+# CloseNightStay e a matrícula, que a seguram FOR SHARE, sem bloquear o FOR KEY
+# SHARE das FKs de outros módulos) e só então lê o fechamento e as pendências. Fechamento
 # ativo → 409 already_closed. Alguma pendência (MonthProblems; os avisos —
 # no_actions e as pendências rebaixadas pelo P57 — não bloqueiam) → 422 month_has_problems com
 # `problems: [ { error, path: "records.<id>" } ]`, um por (registro, pendência),
@@ -19,7 +20,7 @@ module Psychosocial
     # month: dia 1º. -> Result.ok(closure:) | fail(:already_closed) | fail(:month_has_problems, details: { problems: })
     def call(unit:, month:, by:, now: Time.current)
       ApplicationRecord.transaction(requires_new: true) do
-        HealthUnit.lock("FOR UPDATE").find(unit.id)
+        HealthUnit.lock("FOR NO KEY UPDATE").find(unit.id)
         next Result.fail(:already_closed) if MonthlyRecords.closed?(unit.id, month)
 
         report = MonthProblems.for(health_unit: unit, month: month, today: now.in_time_zone.to_date)
