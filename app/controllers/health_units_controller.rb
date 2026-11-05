@@ -224,7 +224,10 @@ class HealthUnitsController < ApplicationController
   # ADR 0049 (fix round 1 da Task 3), no padrão do unit_has_ceo_profile:
   # - CAPS com qualquer registro do CAPS não sai do kind `caps` (o registro
   #   ficaria numa unidade que não é CAPS);
-  # - CAPS com leito ativo não passa a uma modalidade sem acolhimento noturno;
+  # - CAPS com leito ativo, ou com permanência noturna aberta (mesmo com o
+  #   leito já desativado: a saída grava as noites e a crítica recusa a noite
+  #   em CAPS sem leito — fix round 1 do P61), não passa a uma modalidade sem
+  #   acolhimento noturno;
   # - unidade com histórico de atendimento (atendimento, e a consulta que nasce
   #   dele; horário marcado; pedido de agendamento) não vira CAPS: o nome dela
   #   já está no histórico do cidadão e passaria a ser o de um CAPS.
@@ -233,7 +236,8 @@ class HealthUnitsController < ApplicationController
     if was_caps && !unit.caps?
       "unit_has_caps_records" if Psychosocial::UnitRecords.any?(unit.id)
     elsif was_caps && HealthUnit::NIGHT_MODALITIES.include?(unit.caps_modality_was) && !unit.night_capable?
-      "caps_has_beds" if PsychosocialBed.where(health_unit_id: unit.id, active: true).exists?
+      "caps_has_beds" if PsychosocialBed.where(health_unit_id: unit.id, active: true).exists? ||
+                         PsychosocialNightStay.open_stays.where(health_unit_id: unit.id).exists?
     elsif !was_caps && unit.caps?
       "unit_has_attendances" if attendance_history?(unit)
     end

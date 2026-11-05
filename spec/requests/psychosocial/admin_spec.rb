@@ -92,6 +92,30 @@ RSpec.describe "CAPS — administração", type: :request do
       expect(json_body["unit"]["caps_modality"]).to eq("caps_ad")
     end
 
+    # Fix round 1 do P61: com o leito já desativado, a permanência aberta
+    # ficaria impossível de fechar (a noite vira caps_without_beds na crítica).
+    it "permanência aberta prende a modalidade noturna mesmo com o leito desativado (409 caps_has_beds); sem ela, passa" do
+      night = caps!(modality: "caps_ad_iii", name: "CAPS AD III Leste")
+      bed = bed!(night, label: "L1")
+      staff = caps_staff!(night, cbo: "322205")
+      enrollment = enrollment!(night, reference: staff)
+      stay = PsychosocialNightStay.create!(psychosocial_bed: bed, health_unit: night, psychosocial_enrollment: enrollment,
+                                           patient_id: enrollment.patient_id, started_at: 2.hours.ago, expected_end_at: 1.day.from_now,
+                                           started_by_user: staff)
+      bed.update!(active: false)
+
+      json_post "/attendance/units/#{night.id}", name: "CAPS AD III Leste", kind: "caps", caps_modality: "caps_ii"
+      expect([ response.status, json_body ]).to eq([ 409, { "error" => "caps_has_beds" } ])
+      expect(night.reload.caps_modality).to eq("caps_ad_iii")
+      json_post "/attendance/units/#{night.id}", name: "CAPS AD III Leste", kind: "caps", caps_modality: "caps_iii"
+      expect(response).to have_http_status(:ok)
+
+      stay.update!(ended_at: 1.hour.ago, end_reason: "Alta do acolhimento noturno", closed_by_user: staff)
+      json_post "/attendance/units/#{night.id}", name: "CAPS AD III Leste", kind: "caps", caps_modality: "caps_ii"
+      expect(response).to have_http_status(:ok)
+      expect(json_body["unit"]["caps_modality"]).to eq("caps_ii")
+    end
+
     it "unidade com histórico de atendimento não vira CAPS (409 unit_has_attendances)" do
       ubs = HealthUnit.create!(name: "UBS Histórico", kind: "ubs")
       walk_in_attendance!(ubs, citizen: screening_citizen!(1))
