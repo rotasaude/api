@@ -105,6 +105,43 @@ RSpec.describe PsychosocialCrew do
     end
   end
 
+  it "os quatro segredos TOTP têm 32 caracteres em base32 estrito e geram um código válido" do
+    seed
+
+    aggregate_failures do
+      %w[caps capsmed capspsi capstec].each do |prefix|
+        secret = user(prefix).otp_secret
+        expect(secret).to match(/\A[A-Z2-7]{32}\z/)
+        totp = ROTP::TOTP.new(secret)
+        code = totp.now
+        expect(code).to match(/\A\d{6}\z/)
+        expect(totp.verify(code)).to be_truthy
+      end
+      expect(described_class::STAFF.values.map { |spec| spec[:default_secret] }.uniq.size).to eq(4)
+    end
+  end
+
+  it "nenhum telefone da semente coincide com o de outra crew" do
+    mine = described_class::PHONE_PREFIX
+    sources = Dir[Rails.root.join("lib/*_crew.rb")].reject { |path| path.end_with?("psychosocial_crew.rb") }
+    others = sources.flat_map do |path|
+      text = File.read(path)
+      text.scan(/PHONE_PREFIX\s*=\s*"(\d{5})"/).flatten + text.scan(/%s(\d{5})%04d/).flatten
+    end.uniq
+    fixed = File.read(Rails.root.join("db/seeds.rb")).scan(/\+55#\{ddd\}(\d{5})\d{4}/).flatten
+
+    aggregate_failures do
+      expect(others).to include("91111", "96666", "97777", "98888") # a varredura enxerga os formatos das outras
+      expect(others + fixed).not_to include(mine)
+      seed
+      phones = Citizen.pluck(:phone)
+      mine_phones = Patient.where.not(id: nil).filter_map { |p| Citizen.find_by(patient_id: p.id)&.phone }
+      expect(mine_phones.size).to eq(4)
+      expect(mine_phones).to all(match(/\A\+55\d{2}#{mine}\d{4}\z/))
+      expect(phones.uniq.size).to eq(phones.size)
+    end
+  end
+
   it "o retrato do CNES da cidade tem o vínculo (CNES, CBO e CNS) de cada profissional em cada CAPS" do
     seed
     snapshot = CnesSnapshot.where(ibge_code: "4106902").order(competence: :desc).first
@@ -271,6 +308,46 @@ RSpec.describe PsychosocialCrew do
       expect(result).to include(switch: "fora", units: [], users: [])
       expect(HealthUnit.where(kind: "caps")).to be_empty
     end
+  end
+
+  it "SIGTAP sem os procedimentos do CAPS: avisa, desliga a crew e não levanta (não interrompe o db:seed)" do
+    stub_const("SigtapSample::PSYCHOSOCIAL_CODES", SigtapSample::PSYCHOSOCIAL_CODES + [ "0399999999" ])
+    competences = [ today << 1, today ].map { |day| day.strftime("%Y%m") }
+    result = nil
+
+    expect { result = seed }.to output(/importe a competência #{competences.join(' e ')}/).to_stderr
+    aggregate_failures do
+      expect(result).to include(units: [], users: [])
+      expect(result[:switch]).to match(/\Adesligado \(SIGTAP sem os procedimentos do CAPS — importe a competência #{competences.join(' e ')}\)\z/)
+      expect(HealthUnit.where(kind: "caps")).to be_empty
+      expect(Psychosocial::Gate.enabled?(city)).to be(false)
+    end
+  end
+
+  it "exige as duas competências: só a anterior faltando também desliga, apontando-a" do
+    previous = (today << 1).strftime("%Y%m")
+    allow(TerminologyRelease).to receive(:active).and_wrap_original do |original|
+      relation = original.call
+      allow(relation).to receive(:find_by).and_wrap_original do |find, **conditions|
+        conditions[:version] == previous ? nil : find.call(**conditions)
+      end
+      relation
+    end
+    result = nil
+
+    expect { result = seed }.to output(/importe a competência #{previous}\b(?! e)/).to_stderr
+    expect(result[:switch]).to include("importe a competência #{previous})")
+    expect(HealthUnit.where(kind: "caps")).to be_empty
+  end
+
+  it "CID-10 sem qualquer das quatro chaves da crew: avisa e desliga, sem levantar" do
+    allow(ClinicalTerms).to receive(:find).and_call_original
+    allow(ClinicalTerms).to receive(:find).with("cid10", "F142").and_return(nil)
+    result = nil
+
+    expect { result = seed }.to output(/CID-10 sem F142/).to_stderr
+    expect(result[:switch]).to start_with("desligado (CID-10 sem F142")
+    expect(HealthUnit.where(kind: "caps")).to be_empty
   end
 
   it "recusa rodar em ambiente implantado" do

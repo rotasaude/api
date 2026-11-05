@@ -5,9 +5,6 @@
 # health_professional — ele abriria a UBS ao CAPS pela leitura contextual.
 module Professionals
   class Create
-    # Papéis elegíveis a perfil profissional (usado também pela fila de pendências).
-    ELIGIBLE_ROLES = %w[health_professional lab_releaser psychosocial_staff psychosocial_lead].freeze
-
     UNIQUE_REASONS = {
       "index_professionals_on_user_id" => :already_exists,
       "idx_professionals_cns" => :cns_taken,
@@ -19,7 +16,7 @@ module Professionals
       user = User.find_by(id: user_id)
       return Result.fail(:not_found) unless user
       # ADR 0037: o liberador do laboratório também tem perfil (conselho CRF/CRBM/CRM).
-      return Result.fail(:user_missing_role) unless user.active? && ELIGIBLE_ROLES.any? { |role| user.has_role?(role) }
+      return Result.fail(:user_missing_role) unless user.active? && Professional::PROFILE_ROLES.any? { |role| user.has_role?(role) }
       return Result.fail(:already_exists) if Professional.exists?(user_id: user.id)
 
       professional = Professional.new(attrs.to_h.stringify_keys.slice(*Professional::FIELDS).merge("user" => user))

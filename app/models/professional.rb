@@ -5,6 +5,12 @@
 class Professional < ApplicationRecord
   COUNCILS = %w[CRM COREN CRO CRF CRP CREFITO CRN CRFa CRESS CRBM CREF CRMV].freeze
   UFS = %w[AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO].freeze
+  # Papéis elegíveis a perfil profissional (Professionals::Create e a fila de pendências): o clínico,
+  # o liberador do laboratório (ADR 0037) e a equipe do CAPS (ADR 0049, P29), que NÃO recebe
+  # health_professional — ele abriria a UBS ao CAPS pela leitura contextual.
+  PROFILE_ROLES = %w[health_professional lab_releaser psychosocial_staff psychosocial_lead].freeze
+  # Dos elegíveis, os que também precisam de vínculo de unidade (o liberador só do perfil).
+  LINK_ROLES = %w[health_professional psychosocial_staff psychosocial_lead].freeze
   FIELDS = %w[professional_name council council_state registration_number cns cpf phone contact_email].freeze
   # O profissional edita só nome e contato (emenda ao ADR 0021, 2026-09-27):
   # conselho, registro e CNS a prefeitura confere.

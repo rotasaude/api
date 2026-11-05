@@ -31,7 +31,7 @@ require_relative "care_lines_crew"
 #                              recente do Renato e da Luciana, e "Assembleia de usuários" (sexta 10:00)
 #
 # Pessoas: pares validados novos (CPF e CNS fictícios válidos, telefone
-# +55 <ddd> 97777-NNNN), pela mesma recepção das outras sementes. Dependências:
+# +55 <ddd> 99777-NNNN), pela mesma recepção das outras sementes. Dependências:
 # o db:seed roda este crew depois do CareLinesCrew (a UBS e a equipe da ESF
 # para o matriciamento) e do RecordModeCrew (o retrato do CNES). Idempotente:
 # unidade, leito, grupo, matrícula, PTS, ações, permanência e matriciamento são
@@ -44,7 +44,7 @@ class PsychosocialCrew
   UNIT = CareLinesCrew::UNIT # a UBS da ESF do matriciamento
   DEV_MAINTAINER = "dev@local".freeze
   EMAIL_DOMAIN = "dev".freeze # caps@curitiba.dev
-  PHONE_PREFIX = "97777".freeze # único entre os lib/*_crew.rb
+  PHONE_PREFIX = "99777".freeze # único entre os lib/*_crew.rb (91111..98888 já são das outras; o spec confere)
   CID10_VERSION = "dev-caps".freeze
   FEATURES = %w[clinical_record psychosocial_care].freeze
   PLAN_OVERDUE_DAYS = 10
@@ -61,16 +61,16 @@ class PsychosocialCrew
   STAFF = {
     lead: { email_prefix: "caps", roles: %w[psychosocial_lead psychosocial_staff], name: "Beatriz Helena Cordeiro", council: "COREN",
             links: { ii: "223505", ad: "223505" },
-            secret_env: "DEV_CAPS_LEAD_OTP_SECRET", default_secret: "CAPSCOORDENACAOSEMENTEDEVCWBPSI" },
+            secret_env: "DEV_CAPS_LEAD_OTP_SECRET", default_secret: "CAPSCOORDENACAOSEMENTEDEVCWBPSI2" },
     doctor: { email_prefix: "capsmed", roles: %w[psychosocial_staff], name: "Henrique Augusto Vasconcelos", council: "CRM",
               links: { ii: "225133", ad: "225133" },
-              secret_env: "DEV_CAPS_DOCTOR_OTP_SECRET", default_secret: "CAPSMEDICOPSIQUIATRASEMENTEDEVCWB" },
+              secret_env: "DEV_CAPS_DOCTOR_OTP_SECRET", default_secret: "CAPSMEDICOSEMENTEDEVPSIQUIATRACW" },
     psychologist: { email_prefix: "capspsi", roles: %w[psychosocial_staff], name: "Camila Rodrigues Farias", council: "CRP",
                     links: { ii: "251510" },
-                    secret_env: "DEV_CAPS_PSYCHOLOGIST_OTP_SECRET", default_secret: "CAPSPSICOLOGASEMENTEDEVCURITIBA" },
+                    secret_env: "DEV_CAPS_PSYCHOLOGIST_OTP_SECRET", default_secret: "CAPSPSICOLOGASEMENTEDEVCURITIBAB" },
     technician: { email_prefix: "capstec", roles: %w[psychosocial_staff], name: "Everton Luiz Batista", council: "COREN",
                   links: { ad: "322205" },
-                  secret_env: "DEV_CAPS_TECHNICIAN_OTP_SECRET", default_secret: "CAPSTECNICOENFERMAGEMSEMENTEDEV" }
+                  secret_env: "DEV_CAPS_TECHNICIAN_OTP_SECRET", default_secret: "CAPSTECNICOSEMENTEDEVENFERMAGEMC" }
   }.freeze
 
   CID10 = {
@@ -151,7 +151,11 @@ class PsychosocialCrew
       city = City.find(Current.city.id)
       admin = User.find_by!(email_address: "admin@#{slug}.demo")
       ubs = HealthUnit.find_by(name: UNIT) || raise("semente do CAPS: #{UNIT} ausente — rode o db:seed inteiro (CareLinesCrew) antes")
-      check_terminology!
+      gap = terminology_gap
+      if gap
+        warn "[seeds] CAPS: #{gap} — semente do CAPS não rodou"
+        return off("desligado (#{gap})")
+      end
 
       units = UNITS.transform_values { |spec| unit!(slug, spec) }
       PsychosocialSetting.ensure_defaults!
@@ -189,7 +193,7 @@ class PsychosocialCrew
     end
 
     # CPF fictício com dígito válido, estável pela semente (a mesma conta das outras).
-    def cpf_for(slug, key) = ScreeningCrew.send(:cpf_for, "#{slug}:psychosocial:#{key}")
+    def cpf_for(slug, key) = ScreeningCrew.cpf_for("#{slug}:psychosocial:#{key}")
 
     def phone_for(ddd, key) = format("+55%s#{PHONE_PREFIX}%04d", ddd, PATIENTS.fetch(key).fetch(:phone))
 
@@ -224,17 +228,21 @@ class PsychosocialCrew
       status
     end
 
-    # A SIGTAP do mês tem os procedimentos do CAPS e o CID-10 tem o F200: sem
-    # isso a crítica da ação recusaria (ou a matrícula), e a mensagem diz o remédio.
-    def check_terminology!
-      release = TerminologyRelease.active.find_by(kind: "sigtap", version: Time.zone.today.strftime("%Y%m"))
+    # A SIGTAP das duas competências (anterior e corrente: as ações antigas caem no mês
+    # anterior) tem os procedimentos do CAPS, e o CID-10 tem as chaves que a crew usa. Sem
+    # isso a crítica da ação (ou a matrícula) recusaria. NÃO levanta: a semente do CAPS não
+    # pode interromper o db:seed das outras cidades. -> nil | motivo para o `off`.
+    def terminology_gap
       codes = SigtapSample::PSYCHOSOCIAL_CODES
-      unless release && SigtapProcedure.where(release_id: release.id, code: codes).count == codes.size
-        raise "semente do CAPS: SIGTAP do mês sem os procedimentos do CAPS — rode o db:seed inteiro (PsychosocialCrew.seed_platform!) antes"
+      today = Time.zone.today
+      missing = [ today << 1, today ].map { |day| day.strftime("%Y%m") }.reject do |competence|
+        release = TerminologyRelease.active.find_by(kind: "sigtap", version: competence)
+        release && SigtapProcedure.where(release_id: release.id, code: codes).count == codes.size
       end
-      return if ClinicalTerms.find("cid10", "F200")
+      return "SIGTAP sem os procedimentos do CAPS — importe a competência #{missing.join(' e ')}" if missing.any?
 
-      raise "semente do CAPS: CID-10 sem o F200 — rode o db:seed inteiro (PsychosocialCrew.seed_platform!) antes"
+      absent = CID10.keys.reject { |code| ClinicalTerms.find("cid10", code) }
+      "CID-10 sem #{absent.join(', ')} — importe a CID-10 com os códigos do CAPS (PsychosocialCrew.seed_platform!)" if absent.any?
     end
 
     # --- unidades, leitos e grupos --------------------------------------------
@@ -281,7 +289,7 @@ class PsychosocialCrew
       seed = "#{slug}:psychosocial:#{spec[:email_prefix]}"
       attrs = { professional_name: spec[:name], council: spec[:council], council_state: CityProfile.current&.uf.presence || "PR",
                 cns: Professionals::Cns.generate(seed), registration_number: (Zlib.crc32(seed) % 90_000 + 10_000).to_s,
-                cpf: ScreeningCrew.send(:cpf_for, seed) }
+                cpf: ScreeningCrew.cpf_for(seed) }
       check!(Professionals::Create.call(user_id: user.id, attrs: attrs, by: admin), "perfil de #{spec[:email_prefix]}")
       user.reload
     end

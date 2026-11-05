@@ -59,6 +59,25 @@ RSpec.describe "Perfil profissional da equipe do CAPS", type: :request do
     expect(Professional.count).to eq(0)
   end
 
+  it "o perfil e o vínculo numa UBS não dão permissão clínica a quem só tem psychosocial_staff" do
+    ubs = create_unit("UBS Teste")
+    user = staff_with("psi@cidade.gov.br", "psychosocial_staff")
+    Current.set(city: TEST_CITY_A) do
+      Professionals::Create.call(user_id: user.id, attrs: attrs, by: admin)
+      expect(Professionals::OpenLink.call(professional: user.reload.professional, health_unit_id: ubs.id, cbo_code: "251510", by: admin)).to be_ok
+    end
+    grant = ClinicalRecord::Access.call(user: user, patient: nil)
+
+    aggregate_failures do
+      expect(user.professional.links.active.pluck(:health_unit_id)).to eq([ ubs.id ])
+      expect(Professionals::ClinicalAuthorization.check(user: user, health_unit_id: ubs.id)).to eq(:missing_role)
+      expect(grant).not_to be_allowed
+      expect(grant.reason).to eq(:missing_role)
+      expect(Consultations::Authorization.link_for(user: user, health_unit_id: ubs.id)).to eq([ :missing_role, nil ])
+      expect(Consultations::Authorization.any_allowed_link(user: user)).to eq([ :missing_role, nil ])
+    end
+  end
+
   it "papel do CAPS revogado: user_missing_role" do
     user = staff_with("psi@cidade.gov.br", "psychosocial_staff")
     user.memberships.sole.revoke!
