@@ -133,6 +133,10 @@ RSpec.describe PsychosocialCrew do
     aggregate_failures do
       expect(others).to include("91111", "96666", "97777", "98888") # a varredura enxerga os formatos das outras
       expect(others + fixed).not_to include(mine)
+      # O outro sentido: as guardas das outras crews varrem este arquivo, então
+      # nenhum prefixo delas pode aparecer aqui, nem em comentário nem num telefone.
+      own = File.read(Rails.root.join("lib/psychosocial_crew.rb"))
+      expect(others.select { |prefix| own.include?(prefix) }).to eq([])
       seed
       phones = Citizen.pluck(:phone)
       mine_phones = Patient.where.not(id: nil).filter_map { |p| Citizen.find_by(patient_id: p.id)&.phone }

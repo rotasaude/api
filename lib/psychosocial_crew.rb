@@ -44,7 +44,10 @@ class PsychosocialCrew
   UNIT = CareLinesCrew::UNIT # a UBS da ESF do matriciamento
   DEV_MAINTAINER = "dev@local".freeze
   EMAIL_DOMAIN = "dev".freeze # caps@curitiba.dev
-  PHONE_PREFIX = "99777".freeze # único entre os lib/*_crew.rb (91111..98888 já são das outras; o spec confere)
+  # Único entre os lib/*_crew.rb, e nenhum prefixo das outras aparece aqui (nem
+  # em comentário nem num telefone de unidade): as guardas delas varrem este
+  # arquivo. O spec confere os dois sentidos.
+  PHONE_PREFIX = "99777".freeze
   CID10_VERSION = "dev-caps".freeze
   FEATURES = %w[clinical_record psychosocial_care].freeze
   PLAN_OVERDUE_DAYS = 10
@@ -53,7 +56,7 @@ class PsychosocialCrew
   # key: o CAPS; phone: telefone da unidade (P27: 10 ou 11 dígitos, só dígitos).
   UNITS = {
     ii: { name: "CAPS II Boa Vista", modality: "caps_ii", phone: "4133334410" },
-    ad: { name: "CAPS AD III Centro Vida", modality: "caps_ad_iii", phone: "41933334420" }
+    ad: { name: "CAPS AD III Centro Vida", modality: "caps_ad_iii", phone: "4133334420" }
   }.freeze
   BEDS = %w[L1 L2 L3 L4].freeze
 
