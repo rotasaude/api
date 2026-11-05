@@ -53,7 +53,7 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
                                    "started_at" => at(18, 19).iso8601, "expected_end_at" => at(19, 8).iso8601,
                                    "nights" => [ "2026-11-18" ], "reassessment" => nil, "ended_at" => nil,
                                    "started_by" => Psychosocial::Json.pro(tech, "322205"))
-      expect(DomainEvent.where(name: "psychosocial.night_stay_started").last.payload).to eq("night_stay_id" => stay.id)
+      expect(DomainEvent.where(name: "psychosocial.night_stay_started").sole.payload).to eq("night_stay_id" => stay.id)
       expect(viewed.count).to eq(0)
     end
 
@@ -199,7 +199,7 @@ RSpec.describe "CAPS — acolhimento noturno", type: :request do
       expect(actions.map { |a| a.psychosocial_action_participants.sole.psychosocial_enrollment_id }.uniq).to eq([ enrollment.id ])
       expect(json_body).to include("ended_at" => at(18, 8).iso8601, "end_reason" => reason, "nights" => %w[2026-11-15 2026-11-16 2026-11-17],
                                    "closed_by" => Psychosocial::Json.pro(tech, "322205"))
-      expect(DomainEvent.where(name: "psychosocial.night_stay_closed").last.payload).to eq("night_stay_id" => stay.id)
+      expect(DomainEvent.where(name: "psychosocial.night_stay_closed").sole.payload).to eq("night_stay_id" => stay.id)
       expect(viewed.last.payload).to include("patient_id" => enrollment.patient_id, "access" => "psychosocial", "resource" => "night_stay")
 
       json_post "/psychosocial/night_stays/#{stay.id}/close", ended_at: at(18, 9).iso8601, reason: reason

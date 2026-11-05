@@ -43,7 +43,7 @@ RSpec.describe "CAPS — acolhimento", type: :request do
     expect(json_body).to eq("reception_id" => reception.id, "enrollment_id" => nil)
     expect(reception).to have_attributes(patient_id: patient.id, health_unit_id: caps.id, outcome: "referred_elsewhere",
                                          notes: notes, sigtap_code: "0301080232", recorded_by_user_id: staff.id)
-    expect(DomainEvent.where(name: "psychosocial.reception_recorded").last.payload).to eq("reception_id" => reception.id)
+    expect(DomainEvent.where(name: "psychosocial.reception_recorded").sole.payload).to eq("reception_id" => reception.id)
     expect(PsychosocialEnrollment.count).to eq(0)
   end
 
@@ -57,7 +57,7 @@ RSpec.describe "CAPS — acolhimento", type: :request do
                                       professional_user_id: staff.id, cbo_code: "251510", notes: nil)
     expect(action.psychosocial_action_participants.map { |p| [ p.position, p.patient_id, p.psychosocial_enrollment_id ] })
       .to eq([ [ 1, patient.id, nil ] ])
-    expect(DomainEvent.where(name: "psychosocial.action_recorded").last.payload).to eq("action_id" => action.id)
+    expect(DomainEvent.where(name: "psychosocial.action_recorded").sole.payload).to eq("action_id" => action.id)
   end
 
   it "com a matrícula: a ação do acolhimento é RAAS com o participante matriculado" do
@@ -113,7 +113,7 @@ RSpec.describe "CAPS — acolhimento", type: :request do
     expect(enrollment.psychosocial_reception_id).to eq(json_body["reception_id"])
     expect(PsychosocialReception.find(json_body["reception_id"]).psychosocial_referral_id).to eq(referral.id)
     expect(referral.reload).to have_attributes(status: "received", received_at: be_present)
-    expect(DomainEvent.where(name: "psychosocial.enrolled").last.payload).to eq("enrollment_id" => enrollment.id)
+    expect(DomainEvent.where(name: "psychosocial.enrolled").sole.payload).to eq("enrollment_id" => enrollment.id)
 
     json_post "/psychosocial/receptions", body(referral_id: referral.id)
     expect([ response.status, json_body["error"] ]).to eq([ 409, "referral_not_pending" ])

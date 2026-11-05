@@ -37,7 +37,7 @@ RSpec.describe "CAPS — matrícula", type: :request do
       enrollment = PsychosocialEnrollment.find(json_body["id"])
       expect(PsychosocialMonthlyRecord.find_by!(psychosocial_enrollment_id: enrollment.id))
         .to have_attributes(month: Date.current.beginning_of_month, status: "open", health_unit_id: caps.id)
-      expect(DomainEvent.where(name: "psychosocial.enrolled").last.payload).to eq("enrollment_id" => enrollment.id)
+      expect(DomainEvent.where(name: "psychosocial.enrolled").sole.payload).to eq("enrollment_id" => enrollment.id)
 
       json_post "/psychosocial/enrollments", body
       expect([ response.status, json_body["error"] ]).to eq([ 409, "enrollment_open" ])
@@ -331,7 +331,7 @@ RSpec.describe "CAPS — matrícula", type: :request do
       expect(json_body).to include("status" => "closed", "destination" => "01", "closed_on" => Date.current.iso8601)
       record = PsychosocialMonthlyRecord.find_by!(psychosocial_enrollment_id: id, month: Date.current.beginning_of_month)
       expect([ record.destination, record.concluded_on ]).to eq([ "01", Date.current ])
-      expect(DomainEvent.where(name: "psychosocial.enrollment_closed").last.payload).to eq("enrollment_id" => id)
+      expect(DomainEvent.where(name: "psychosocial.enrollment_closed").sole.payload).to eq("enrollment_id" => id)
 
       json_post "/psychosocial/enrollments/#{id}/close", destination: "01", closed_on: Date.current.iso8601
       expect([ response.status, json_body["error"] ]).to eq([ 409, "already_closed" ])

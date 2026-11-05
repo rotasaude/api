@@ -205,7 +205,7 @@ RSpec.describe "CAPS — administração", type: :request do
 
       expect { json_patch "/psychosocial/settings", care_plan_review_days: 60 }
         .to change { DomainEvent.where(name: "psychosocial.settings_changed").count }.by(1)
-      expect(DomainEvent.where(name: "psychosocial.settings_changed").last.payload).to eq({})
+      expect(DomainEvent.where(name: "psychosocial.settings_changed").sole.payload).to eq({})
       expect(json_body["care_plan_review_days"]).to eq(60)
 
       expect { json_patch "/psychosocial/settings", care_plan_review_days: 60 }

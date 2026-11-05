@@ -31,7 +31,7 @@ RSpec.describe "CAPS — encaminhamento", type: :request do
       expect(Time.iso8601(json_body["created_at"])).to be_within(1.second).of(referral.created_at)
       expect(referral).to have_attributes(patient_id: patient.id, from_health_unit_id: ubs.id, referred_by_user_id: doctor.id,
                                           reason: reason, status: "pending")
-      expect(DomainEvent.where(name: "psychosocial.referral_created").last.payload).to eq("referral_id" => referral.id)
+      expect(DomainEvent.where(name: "psychosocial.referral_created").sole.payload).to eq("referral_id" => referral.id)
     end
 
     it "sem contexto → 403 out_of_context, nada gravado" do

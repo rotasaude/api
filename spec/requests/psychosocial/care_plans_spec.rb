@@ -34,7 +34,7 @@ RSpec.describe "CAPS — PTS", type: :request do
                                    "review_on" => (Date.current + 60).iso8601)
       expect(json_body["goals"]).to eq([ { "text" => goal[:text], "responsible_user_id" => staff.id, "due_on" => nil } ])
       expect(json_body["created_by"]).to eq(Psychosocial::Json.pro(staff, "251510"))
-      expect(DomainEvent.where(name: "psychosocial.care_plan_saved").last.payload).to eq("care_plan_id" => first.id)
+      expect(DomainEvent.where(name: "psychosocial.care_plan_saved").sole.payload).to eq("care_plan_id" => first.id)
 
       json_post "/psychosocial/enrollments/#{enrollment.id}/care_plans",
                 body(needs: "Novas necessidades", intensity: "semi_intensive", goals: [ goal(due_on: (Date.current + 30).iso8601) ])

@@ -273,7 +273,7 @@ RSpec.describe "CAPS — ações", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json_body).to include("id" => id, "cancelled" => true)
       expect(recorded_action.reload).to have_attributes(cancelled?: true, cancel_reason: "Lançada no grupo errado", cancelled_by_user_id: staff.id)
-      expect(DomainEvent.where(name: "psychosocial.action_cancelled").last.payload).to eq("action_id" => id)
+      expect(DomainEvent.where(name: "psychosocial.action_cancelled").sole.payload).to eq("action_id" => id)
 
       json_post "/psychosocial/actions/#{id}/cancel", reason: "Lançada no grupo errado"
       expect([ response.status, json_body["error"] ]).to eq([ 409, "already_cancelled" ])
