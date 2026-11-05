@@ -5,7 +5,8 @@
 #                                      fila do CAPS lotado, sem o motivo, sem trilha
 #                                      (sem os anonimizados pela exclusão LGPD)
 #   GET  /psychosocial/referrals/:id   detalhe com o motivo e a trilha
-#                                      (`resource: "referral"`); outro CAPS → 404
+#                                      (`resource: "referral"`); outro CAPS ou
+#                                      anonimizado pela exclusão LGPD → 404, sem trilha
 # Lista do mais novo para o mais antigo (created_at, id), em páginas de PAGE,
 # com `next_before` (cursor opaco; nulo na última). Paciente e motivo só no corpo.
 module Psychosocial
@@ -50,7 +51,7 @@ module Psychosocial
       return unless query_only!
 
       referral = uuid?(params[:id]) ? PsychosocialReferral.find_by(id: params[:id]) : nil
-      return not_found unless referral && Access.can_read?(Current.user, referral)
+      return not_found unless referral && referral.anonymized_at.nil? && Access.can_read?(Current.user, referral)
 
       Trail.viewed!(patient: referral.patient_id, user: Current.user, resource: "referral")
       render json: Json.referral(referral)

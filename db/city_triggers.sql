@@ -3037,33 +3037,70 @@ $do$;
 -- fechamento do mês só é reaberto, uma vez. Encaminhamento, acolhimento,
 -- matrícula, leito, grupo e parâmetros nunca somem. TRUNCATE recusado nas 16
 -- tabelas. Sob rota.reencrypting, só as cifradas são regravadas.
--- Encaminhamento e acolhimento (LGPD, ADR 0026; contrato §14, P17): a
--- exclusão do cadastro os anonimiza uma vez — na mesma UPDATE, anonymized_at
--- gravado e as cifradas (TG_ARGV: reason, notes) a NULL, nada mais além de
--- updated_at; anonimizado, congela (salvo a re-cifra). Fora da anonimização,
--- as escritas de antes seguem (o encaminhamento passa a received).
-CREATE OR REPLACE FUNCTION rota_psychosocial_anonymize_once() RETURNS trigger AS $fn$
+-- Encaminhamento e acolhimento (LGPD, ADR 0026; contrato §14, P17), no padrão
+-- do passageiro do transporte: referências nunca mudam; a exclusão do cadastro
+-- os anonimiza uma vez — na mesma UPDATE, anonymized_at gravado e a cifrada
+-- (reason, notes) a NULL, nada mais além de updated_at; fora disso a cifrada
+-- nunca muda; anonimizado, congela. Do encaminhamento só muda, além disso, o
+-- recebimento (pending → received, com received_at); o acolhimento não muda.
+-- Sob rota.reencrypting, só a cifrada é regravada.
+CREATE OR REPLACE FUNCTION rota_psychosocial_referral_guard() RETURNS trigger AS $fn$
 DECLARE
-  item text;
+  encrypted text[] := ARRAY['reason'];
 BEGIN
-  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - TG_ARGV) = (to_jsonb(OLD) - TG_ARGV) THEN
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
     RETURN NEW;
   END IF;
   IF OLD.anonymized_at IS NOT NULL THEN
-    RAISE EXCEPTION '%: an anonymized row never changes', TG_TABLE_NAME;
+    RAISE EXCEPTION 'psychosocial_referrals: an anonymized row never changes';
   END IF;
   IF NEW.anonymized_at IS NOT NULL THEN
-    FOREACH item IN ARRAY TG_ARGV LOOP
-      IF to_jsonb(NEW) -> item <> 'null'::jsonb THEN
-        RAISE EXCEPTION '%: anonymization clears the encrypted columns', TG_TABLE_NAME;
-      END IF;
-    END LOOP;
-    IF (to_jsonb(NEW) - TG_ARGV - 'anonymized_at' - 'updated_at')
-       IS DISTINCT FROM (to_jsonb(OLD) - TG_ARGV - 'anonymized_at' - 'updated_at') THEN
-      RAISE EXCEPTION '%: anonymization only clears the encrypted columns', TG_TABLE_NAME;
+    IF NEW.reason IS NOT NULL THEN
+      RAISE EXCEPTION 'psychosocial_referrals: anonymization clears the encrypted columns';
     END IF;
+    IF (to_jsonb(NEW) - encrypted - 'anonymized_at' - 'updated_at')
+       IS DISTINCT FROM (to_jsonb(OLD) - encrypted - 'anonymized_at' - 'updated_at') THEN
+      RAISE EXCEPTION 'psychosocial_referrals: anonymization only clears the encrypted columns';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.reason IS DISTINCT FROM OLD.reason THEN
+    RAISE EXCEPTION 'psychosocial_referrals: the encrypted columns only go to NULL with the anonymization';
+  END IF;
+  IF (to_jsonb(NEW) - 'status' - 'received_at' - 'updated_at') IS DISTINCT FROM (to_jsonb(OLD) - 'status' - 'received_at' - 'updated_at') THEN
+    RAISE EXCEPTION 'psychosocial_referrals: only the reception changes';
+  END IF;
+  IF ROW(NEW.status, NEW.received_at) IS DISTINCT FROM ROW(OLD.status, OLD.received_at)
+     AND NOT (OLD.status = 'pending' AND NEW.status = 'received' AND NEW.received_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'psychosocial_referrals: only pending → received with received_at';
   END IF;
   RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_psychosocial_reception_guard() RETURNS trigger AS $fn$
+DECLARE
+  encrypted text[] := ARRAY['notes'];
+BEGIN
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - encrypted) = (to_jsonb(OLD) - encrypted) THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.anonymized_at IS NOT NULL THEN
+    RAISE EXCEPTION 'psychosocial_receptions: an anonymized row never changes';
+  END IF;
+  IF NEW.anonymized_at IS NOT NULL THEN
+    IF NEW.notes IS NOT NULL THEN
+      RAISE EXCEPTION 'psychosocial_receptions: anonymization clears the encrypted columns';
+    END IF;
+    IF (to_jsonb(NEW) - encrypted - 'anonymized_at') IS DISTINCT FROM (to_jsonb(OLD) - encrypted - 'anonymized_at') THEN
+      RAISE EXCEPTION 'psychosocial_receptions: anonymization only clears the encrypted columns';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.notes IS DISTINCT FROM OLD.notes THEN
+    RAISE EXCEPTION 'psychosocial_receptions: the encrypted columns only go to NULL with the anonymization';
+  END IF;
+  RAISE EXCEPTION 'psychosocial_receptions: only the anonymization changes';
 END;
 $fn$ LANGUAGE plpgsql;
 
@@ -3197,12 +3234,12 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_raas_exports_reencryption_only ON psychosocial_raas_exports';
     EXECUTE 'CREATE TRIGGER psychosocial_raas_exports_reencryption_only BEFORE UPDATE OR DELETE ON psychosocial_raas_exports
       FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''file_data'')';
-    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_referrals_anonymize_once ON psychosocial_referrals';
-    EXECUTE 'CREATE TRIGGER psychosocial_referrals_anonymize_once BEFORE UPDATE ON psychosocial_referrals
-      FOR EACH ROW EXECUTE FUNCTION rota_psychosocial_anonymize_once(''reason'')';
-    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_receptions_anonymize_once ON psychosocial_receptions';
-    EXECUTE 'CREATE TRIGGER psychosocial_receptions_anonymize_once BEFORE UPDATE ON psychosocial_receptions
-      FOR EACH ROW EXECUTE FUNCTION rota_psychosocial_anonymize_once(''notes'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_referrals_guard ON psychosocial_referrals';
+    EXECUTE 'CREATE TRIGGER psychosocial_referrals_guard BEFORE UPDATE ON psychosocial_referrals
+      FOR EACH ROW EXECUTE FUNCTION rota_psychosocial_referral_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS psychosocial_receptions_guard ON psychosocial_receptions';
+    EXECUTE 'CREATE TRIGGER psychosocial_receptions_guard BEFORE UPDATE ON psychosocial_receptions
+      FOR EACH ROW EXECUTE FUNCTION rota_psychosocial_reception_guard()';
     FOREACH item IN ARRAY ARRAY['psychosocial_referrals', 'psychosocial_receptions', 'psychosocial_enrollments', 'psychosocial_beds',
                                 'psychosocial_groups', 'psychosocial_settings'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);

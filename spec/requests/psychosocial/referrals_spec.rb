@@ -136,5 +136,13 @@ RSpec.describe "CAPS — encaminhamento", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json_body["items"]).to eq([])
     end
+
+    it "detalhe de encaminhamento anonimizado → 404, sem trilha" do
+      Psychosocial::Anonymize.patients!([ patient.id ])
+      sign_in_as(staff)
+      expect { get "/psychosocial/referrals/#{@referral_id}" }.not_to(change { viewed.count })
+      expect(response).to have_http_status(:not_found)
+      expect(response.body).not_to include(patient.id)
+    end
   end
 end

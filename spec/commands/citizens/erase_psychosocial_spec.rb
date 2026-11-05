@@ -89,8 +89,10 @@ RSpec.describe "Exclusão LGPD com registro do CAPS (ADR 0049)" do
       expect(recorded?).to be(true)
     end
 
-    # A permanência sempre tem matrícula (que já retém): a linha com a
-    # matrícula de outro paciente isola a regra da permanência.
+    # A permanência sempre tem matrícula do mesmo paciente (que já retém). A
+    # combinação abaixo (permanência do paciente com a matrícula de OUTRO) é
+    # artificial e não acontece pela via real (Psychosocial::StartNightStay):
+    # serve só para isolar a regra da permanência no psychosocial_recorded?.
     it "permanência retém" do
       unit = caps!(modality: "caps_ad_iii")
       other = enrollment!(unit)
@@ -149,6 +151,32 @@ RSpec.describe "Exclusão LGPD com registro do CAPS (ADR 0049)" do
       end
     end
 
+    # A reconferência do Citizens::Erase (regra única, sob trava): registro do
+    # CAPS chegado depois do pedido retém, e nada é anonimizado.
+    it "matrícula chegada depois do pedido: a confirmação retém e o encaminhamento fica intacto" do
+      referral = referral!
+      request = request_for(citizen).payload[:request]
+      expect(request.status).to eq("pending")
+      enrollment!(caps, patient: patient)
+
+      result = Citizens::Erase.call(request: request, by: care_admin!)
+      expect(result.payload[:request].status).to eq("retained")
+      expect(referral.reload).to have_attributes(anonymized_at: nil, reason: reason, status: "pending")
+      expect(citizen.reload.erased_at).to be_nil
+    end
+
+    it "ação chegada depois do pedido: a confirmação retém e o encaminhamento fica intacto" do
+      referral = referral!
+      request = request_for(citizen).payload[:request]
+      expect(request.status).to eq("pending")
+      record_action!(caps, staff, sigtap_code: "0301080232", participants: [ { patient_id: patient.id } ])
+
+      result = Citizens::Erase.call(request: request, by: care_admin!)
+      expect(result.payload[:request].status).to eq("retained")
+      expect(referral.reload).to have_attributes(anonymized_at: nil, reason: reason, status: "pending")
+      expect(citizen.reload.erased_at).to be_nil
+    end
+
     it "acolhimento sem ação (defensivo: a via real sempre grava a ação) é anonimizado junto" do
       reception = PsychosocialReception.create!(health_unit: caps, patient: patient, at: 1.hour.ago, sigtap_code: "0301080232",
                                                 notes: "Não quis seguir", outcome: "no_follow_up", recorded_by_user: staff)
@@ -183,9 +211,12 @@ RSpec.describe "Exclusão LGPD com registro do CAPS (ADR 0049)" do
     end
   end
 
-  # O trigger "anonimiza uma vez" (db/city_triggers.sql, bloco do 31).
+  # A guarda do banco (db/city_triggers.sql, bloco do 31), no padrão do
+  # passageiro do transporte: referências nunca mudam; a cifrada só vai a NULL
+  # junto com anonymized_at, uma vez; anonimizado, congela. Seguem a re-cifra,
+  # o pending → received (com received_at) e a anonimização única.
   describe "guarda do banco" do
-    it "encaminhamento: uma anonimização (cifrada a NULL, nada mais); anonimizado, congela; a re-cifra e o received seguem" do
+    it "encaminhamento: re-cifra e received seguem; uma anonimização (cifrada a NULL, nada mais); anonimizado, congela" do
       received = referral!
       received.update!(status: "received", received_at: Time.current)
       expect { CityEncryption.allowing_reencryption { received.encrypt } }.not_to raise_error
@@ -203,7 +234,31 @@ RSpec.describe "Exclusão LGPD com registro do CAPS (ADR 0049)" do
       refused { referral.delete }
     end
 
-    it "acolhimento: uma anonimização (notes a NULL, nada mais); anonimizado, congela" do
+    it "encaminhamento: referências, prioridade e criação nunca mudam" do
+      referral = referral!
+      other_unit = create_unit("UBS #{SecureRandom.hex(3)}")
+      { patient_id: caps_patient!.id, health_unit_id: caps!.id, from_health_unit_id: other_unit.id,
+        referred_by_user_id: ubs_doctor!(other_unit).id, priority: "priority", created_at: 1.day.ago }.each do |column, value|
+        refused(/psychosocial_referrals: only the reception changes/) { referral.update_columns(column => value) }
+      end
+    end
+
+    it "encaminhamento: a cifrada só vai a NULL com a anonimização; nunca muda fora da re-cifra" do
+      referral = referral!
+      refused(/encrypted columns only go to NULL with the anonymization/) { referral.update_columns(reason: nil) }
+      refused(/encrypted columns only go to NULL with the anonymization/) { referral.update_columns(reason: "Outro motivo qualquer") }
+    end
+
+    it "encaminhamento: só pending → received, com received_at" do
+      referral = referral!
+      refused(/only pending → received with received_at/) { referral.update_columns(status: "received") }
+      refused(/only pending → received with received_at/) { referral.update_columns(received_at: Time.current) }
+      referral.update_columns(status: "received", received_at: Time.current, updated_at: Time.current)
+      refused(/only pending → received with received_at/) { referral.update_columns(status: "pending", received_at: nil) }
+      refused(/only pending → received with received_at/) { referral.update_columns(received_at: 1.hour.from_now) }
+    end
+
+    it "acolhimento: re-cifra segue; uma anonimização (notes a NULL, nada mais); anonimizado, congela" do
       reception = reception!
       expect { CityEncryption.allowing_reencryption { reception.encrypt } }.not_to raise_error
       refused(/anonymization clears the encrypted columns/) { reception.update_columns(anonymized_at: Time.current) }
@@ -213,6 +268,17 @@ RSpec.describe "Exclusão LGPD com registro do CAPS (ADR 0049)" do
       reception.update_columns(anonymized_at: Time.current, notes: nil)
       refused(/anonymized row never changes/) { reception.update_columns(anonymized_at: 1.minute.from_now) }
       refused { reception.delete }
+    end
+
+    it "acolhimento: nada muda fora da anonimização e da re-cifra" do
+      reception = reception!
+      { patient_id: caps_patient!.id, health_unit_id: caps!.id, outcome: "referred_elsewhere", at: 2.hours.ago,
+        sigtap_code: "0301080208", recorded_by_user_id: caps_staff!(caps).id, psychosocial_referral_id: referral!.id,
+        created_at: 1.day.ago }.each do |column, value|
+        refused(/psychosocial_receptions: only the anonymization changes/) { reception.update_columns(column => value) }
+      end
+      refused(/encrypted columns only go to NULL with the anonymization/) { reception.update_columns(notes: nil) }
+      refused(/encrypted columns only go to NULL with the anonymization/) { reception.update_columns(notes: "Outra nota") }
     end
   end
 end
