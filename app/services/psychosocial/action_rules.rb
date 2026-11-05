@@ -17,7 +17,9 @@
 #   authorization_required (authorization_number) — atributo 036 sem número;
 #   family_only_for_family_care (participants[i].family_name) — familiar sem
 #     cadastro fora de `family_care_codes`;
-#   bpa_i_single_patient (participants) — BPA-I sem exatamente um paciente.
+#   bpa_i_single_patient (participants) — BPA-I sem exatamente um paciente;
+#   caps_without_beds (sigtap_code) — o acolhimento noturno (`night_sigtap_code`)
+#     num CAPS fora de NIGHT_MODALITIES (P61; options não o oferece).
 # `recheck` relê uma ação gravada para a pendência `action_out_of_rule` do
 # fechamento (ruling): só instrumento, CBO gravado, quantidade e autorização.
 module Psychosocial
@@ -51,6 +53,7 @@ module Psychosocial
       out << problem("authorization_required", "authorization_number") if procedure && authorization_missing?(release, code, input, cache)
       family_problems(code, participants).each { |problem| out << problem }
       out << problem("bpa_i_single_patient", "participants") if instrument == "bpa_i" && participants.count { |p| patient?(p) } != 1
+      out << problem("caps_without_beds", "sigtap_code") if code == Raas.config.fetch("night_sigtap_code") && !unit.night_capable?
 
       { instrument: instrument.is_a?(String) ? instrument : nil, problems: out }
     end

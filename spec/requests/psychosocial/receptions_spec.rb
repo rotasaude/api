@@ -88,6 +88,15 @@ RSpec.describe "CAPS — acolhimento", type: :request do
                                                           "problems" => [ { "error" => "enrollment_required", "path" => "at" } ] } ])
   end
 
+  it "P61: acolhimento noturno num CAPS sem leito → 422 action_rejected caps_without_beds em sigtap_code; nada gravado" do
+    patient
+    expect do
+      json_post "/psychosocial/receptions", body(sigtap_code: "0301080020", outcome: "enrolled", enrollment: enrollment_block)
+    end.not_to change { [ PsychosocialReception.count, PsychosocialEnrollment.count, PsychosocialAction.count, DomainEvent.count ] }
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "action_rejected",
+                                                          "problems" => [ { "error" => "caps_without_beds", "path" => "sigtap_code" } ] } ])
+  end
+
   it "CBO de quem acolhe fora da lista do código → action_rejected cbo_incompatible" do
     sign_in_as(caps_staff!(caps, cbo: "515105"))
     json_post "/psychosocial/receptions", body

@@ -97,6 +97,14 @@ RSpec.describe "CAPS — ações", type: :request do
       expect(PsychosocialAction.find(json_body["id"]).authorization_number).to eq("1234567890123")
     end
 
+    it "P61: acolhimento noturno num CAPS sem leito → 422 action_rejected caps_without_beds em sigtap_code; nada gravado" do
+      a && b
+      expect { json_post "/psychosocial/actions", action(sigtap_code: "0301080020", participants: [ { enrollment_id: a.id } ]) }
+        .not_to(change { counts })
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "action_rejected",
+                                                            "problems" => [ { "error" => "caps_without_beds", "path" => "sigtap_code" } ] } ])
+    end
+
     it "atendimento familiar aceita familiar sem cadastro" do
       json_post "/psychosocial/actions", action(sigtap_code: "0301080224", participants: [ { enrollment_id: a.id }, { family_name: "Mãe do usuário" } ])
       expect(response).to have_http_status(:created)

@@ -2,7 +2,8 @@
 # do CAPS escolhem — as listas do raas.yml e do catálogo; os procedimentos do
 # CAPS (`procedure_prefixes` do raas.yml) da SIGTAP da competência corrente com instrumento
 # RAAS-PSI, BPA-I ou BPA-C, já filtrados pelo CBO do vínculo de quem pede
-# (relação de CBO vazia não restringe), com as marcas `family_care` e
+# (relação de CBO vazia não restringe) — sem o `night_sigtap_code` (acolhimento
+# noturno) no CAPS fora de NIGHT_MODALITIES (P61) —, com as marcas `family_care` e
 # `collective`, a quantidade máxima (`max_quantity`, nulo = sem limite) e se
 # exige autorização (`requires_authorization`, atributo 036) — P56, lidos da mesma
 # release que o Billing::SigtapCache usa, como na crítica da ação (ActionRules); a equipe lotada no CAPS (<pro>, CBO do vínculo mais antigo) e
@@ -25,7 +26,7 @@ module Psychosocial
         reception_outcomes: Catalog::RECEPTION_OUTCOMES, referral_priorities: Catalog::REFERRAL_PRIORITIES,
         night_sigtap_code: config["night_sigtap_code"], competence: competence,
         care_plan_review_days: Settings.current.care_plan_review_days,
-        procedures: procedures(competence, @link.cbo_code, config), team: team(unit), health_teams: health_teams
+        procedures: procedures(competence, @link.cbo_code, config, unit), team: team(unit), health_teams: health_teams
       }
     end
 
@@ -33,7 +34,7 @@ module Psychosocial
 
     def pairs(map) = map.map { |code, label| { code: code, label: label } }
 
-    def procedures(competence, cbo, config)
+    def procedures(competence, cbo, config, unit)
       release = Billing::SigtapCache.new.release(competence)
       return [] unless release
 
@@ -45,6 +46,7 @@ module Psychosocial
       cbos = SigtapProcedureCbo.where(release_id: release.id, procedure_code: instruments.keys).pluck(:procedure_code, :cbo_code)
                                .group_by(&:first).transform_values { |rows| rows.map(&:last) }
       allowed = instruments.keys.select { |code| cbos[code].nil? || cbos[code].include?(cbo) }
+      allowed -= [ config["night_sigtap_code"] ] unless unit.night_capable?
       # Em lote (uma consulta por tabela, não duas por procedimento): mesma leitura do Billing::SigtapCache.
       authorized = SigtapProcedureAttribute.where(release_id: release.id, procedure_code: allowed,
                                                   attribute_code: ActionRules::AUTHORIZATION_ATTRIBUTE)

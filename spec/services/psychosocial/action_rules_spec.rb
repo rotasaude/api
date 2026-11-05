@@ -40,6 +40,18 @@ RSpec.describe Psychosocial::ActionRules do
     expect(result).to eq(instrument: "raas_psi", problems: [])
   end
 
+  it "P61: acolhimento noturno em CAPS sem leito → caps_without_beds em sigtap_code; em CAPS com leito, passa" do
+    result = described_class.problems(input(sigtap_code: "0301080020"), unit: caps, link: link, now: Time.current)
+    expect(result[:problems]).to eq([ { error: "caps_without_beds", path: "sigtap_code" } ])
+
+    night = caps!(modality: "caps_ad_iii")
+    night_staff = caps_staff!(night, cbo: "251510")
+    night_enrollment = enrollment!(night, reference: night_staff, started_on: Date.new(2026, 10, 1))
+    ok = described_class.problems(input(sigtap_code: "0301080020", participants: [ participant(night_enrollment) ]),
+                                  unit: night, link: Psychosocial::Access.link(night_staff, night.id), now: Time.current)
+    expect(ok).to eq(instrument: "raas_psi", problems: [])
+  end
+
   it "código fora da SIGTAP da competência → instrument_mismatch em sigtap_code" do
     result = described_class.problems(input(sigtap_code: "0399999999"), unit: caps, link: link, now: Time.current)
     expect(result[:problems]).to eq([ { error: "instrument_mismatch", path: "sigtap_code" } ])

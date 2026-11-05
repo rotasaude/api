@@ -61,7 +61,8 @@ RSpec.describe "CAPS — unidades e opções", type: :request do
                                    "referral_priorities" => %w[routine priority], "night_sigtap_code" => "0301080020")
 
       codes = json_body["procedures"].map { |p| p["code"] }
-      expect(codes).to match_array(SigtapSample::PSYCHOSOCIAL_CODES)
+      # P61: CAPS II (fora de NIGHT_MODALITIES) não recebe o acolhimento noturno.
+      expect(codes).to match_array(SigtapSample::PSYCHOSOCIAL_CODES - %w[0301080020])
       expect(codes).not_to include("0301010064")
       family = json_body["procedures"].find { |p| p["code"] == "0301080224" }
       expect(family).to include("family_care" => true, "collective" => false, "instrument_codes" => %w[09])
@@ -73,7 +74,7 @@ RSpec.describe "CAPS — unidades e opções", type: :request do
       # P56 (R2): limite e autorização da SIGTAP da competência corrente (nulo = sem limite).
       by_code = json_body["procedures"].index_by { |p| p["code"] }
       expect(by_code["0301080208"]).to include("max_quantity" => 31, "requires_authorization" => false)
-      expect(by_code["0301080020"]).to include("max_quantity" => 1, "requires_authorization" => false)
+      expect(by_code["0301080232"]).to include("max_quantity" => 1, "requires_authorization" => false)
       expect(by_code["0301080291"]).to include("max_quantity" => nil, "requires_authorization" => true)
       expect(json_body["procedures"]).to all(include("max_quantity", "requires_authorization"))
 
@@ -81,6 +82,18 @@ RSpec.describe "CAPS — unidades e opções", type: :request do
       expect(json_body["health_teams"]).to eq([ { "id" => team.id, "name" => "eSF Vila Verde 1", "ine" => "0000123456",
                                                  "health_unit" => { "id" => ubs.id, "name" => "UBS Vila Verde" } } ])
       expect(response.body).not_to include("cpf", "cns")
+    end
+
+    it "P61: o acolhimento noturno (night_sigtap_code) só nos procedimentos de CAPS com leito" do
+      sign_in_as(caps_staff!(caps, cbo: "251510"))
+      get "/psychosocial/options", params: { health_unit_id: caps.id }
+      expect(json_body["procedures"].map { |p| p["code"] }).not_to include("0301080020")
+
+      sign_in_as(caps_staff!(night, cbo: "251510"))
+      get "/psychosocial/options", params: { health_unit_id: night.id }
+      expect(json_body["procedures"].map { |p| p["code"] }).to match_array(SigtapSample::PSYCHOSOCIAL_CODES)
+      expect(json_body["procedures"].find { |p| p["code"] == "0301080020" })
+        .to include("max_quantity" => 1, "requires_authorization" => false, "instrument_codes" => %w[09])
     end
 
     it "traz o prazo de revisão do PTS da cidade (care_plan_review_days), sem exigir o papel de coordenação" do
