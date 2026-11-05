@@ -223,6 +223,28 @@ RSpec.describe "CAPS — matrícula", type: :request do
       end
     end
 
+    it "P57 (I1): início movido para depois da ação não cancelada mais antiga → 422 started_after_actions; até o dia dela passa" do
+      travel_to(Time.zone.local(2026, 11, 18, 15, 0)) do
+        id = enroll!(started_on: "2026-11-03")
+        first = record_action!(caps, staff, performed_at: Time.zone.local(2026, 11, 10, 9), participants: [ { enrollment_id: id } ])
+        record_action!(caps, staff, performed_at: Time.zone.local(2026, 11, 12, 9), participants: [ { enrollment_id: id } ])
+
+        expect { json_patch "/psychosocial/enrollments/#{id}", started_on: "2026-11-11" }
+          .not_to(change { PsychosocialEnrollment.find(id).started_on })
+        expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "started_after_actions", "started_on" ])
+        expect(json_body["problems"]).to eq([ { "error" => "started_after_actions", "path" => "started_on" } ])
+
+        json_patch "/psychosocial/enrollments/#{id}", started_on: "2026-11-10"
+        expect(response).to have_http_status(:ok)
+
+        first.update!(cancelled_at: Time.current, cancelled_by_user: staff, cancel_reason: "Lançada por engano")
+        json_patch "/psychosocial/enrollments/#{id}", started_on: "2026-11-12"
+        expect(response).to have_http_status(:ok)
+        json_patch "/psychosocial/enrollments/#{id}", started_on: "2026-11-13"
+        expect([ response.status, json_body["error"] ]).to eq([ 422, "started_after_actions" ])
+      end
+    end
+
     it "início movido para antes do piso (13 meses) ou do nascimento → 422 invalid_request started_on" do
       travel_to(Time.zone.local(2026, 11, 18, 15, 0)) do
         id = enroll!(started_on: "2026-11-03")

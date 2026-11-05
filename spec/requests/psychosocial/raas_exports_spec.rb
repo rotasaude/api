@@ -326,6 +326,30 @@ RSpec.describe "CAPS — remessa RAAS e ficha espelho", type: :request do
       expect(viewed.count).to eq(2)
     end
 
+    # P57 (I1): RAAS e ação de mês anterior ao início (gravadas direto: o PATCH
+    # que adianta o início agora é recusado) ficam fora da crítica, do
+    # fechamento, das fichas e da remessa.
+    it "RAAS órfã anterior ao início da matrícula: fora da crítica, do fechamento, das fichas e da remessa" do
+      with_layout!
+      october = Date.new(2026, 10, 1)
+      e = named_enrollment!(started_on: Date.new(2026, 11, 3))
+      orphan = PsychosocialMonthlyRecord.create!(psychosocial_enrollment: e, health_unit: caps, month: october)
+      action = PsychosocialAction.create!(health_unit: caps, sigtap_code: "0301080208", instrument: "raas_psi",
+                                          performed_at: Time.zone.local(2026, 10, 20, 10), month: october, place: "caps", quantity: 1,
+                                          professional_user: lead, cbo_code: "223505", origin: "manual")
+      PsychosocialActionParticipant.create!(psychosocial_action: action, position: 1, psychosocial_enrollment: e, patient_id: e.patient_id)
+
+      expect(Psychosocial::MonthProblems.for(health_unit: caps, month: october)[:records]).to eq([])
+      expect(Psychosocial::RaasRecords.for(unit: caps, month: october)).to eq([])
+      sheets("2026-10")
+      expect(text_of(response.body)).not_to include(e.patient.full_name)
+
+      expect(Psychosocial::CloseMonth.call(unit: caps, month: october, by: lead)).to be_ok
+      expect(orphan.reload).to have_attributes(status: "open", snapshot: nil)
+      expect { export!("2026-10") }.not_to change(PsychosocialRaasExport, :count)
+      expect([ response.status, json_body["error"] ]).to eq([ 422, "nothing_to_export" ])
+    end
+
     it "matrícula de outro CAPS ou malformada → 404; sem papel → 403; chave a mais → 422" do
       other = caps!
       foreign = enrollment!(other, reference: caps_staff!(other), started_on: month)

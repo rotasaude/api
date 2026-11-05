@@ -3,7 +3,8 @@
 #
 # Registros considerados: os do CAPS no mês, menos os de meses DEPOIS do
 # `closed_on` da matrícula (P37: ficam fora da crítica, das pendências e do
-# fechamento). Por registro, na ordem de Catalog::PROBLEM_CODES:
+# fechamento) e os de meses ANTES do mês de `started_on` (P57, I1: RAAS que
+# sobrou de um início adiantado). Por registro, na ordem de Catalog::PROBLEM_CODES:
 #   patient_cns_missing — paciente sem CNS;
 #   phone_missing — sem telefone de 10–11 dígitos no par validado (Billing::PatientContact);
 #   homeless_missing — situação de rua do mês não informada;
@@ -53,10 +54,12 @@ module Psychosocial
       { counts: counts(entries, links), records: entries }
     end
 
-    # Registros do CAPS no mês dentro da janela da matrícula (P37).
+    # Registros do CAPS no mês dentro da janela da matrícula: do mês do início
+    # (P57) ao encerramento (P37).
     def in_window(health_unit_id, month)
       PsychosocialMonthlyRecord.joins(:psychosocial_enrollment)
                                .where(health_unit_id: health_unit_id, month: month.to_date.beginning_of_month)
+                               .where("psychosocial_monthly_records.month >= date_trunc('month', psychosocial_enrollments.started_on)::date")
                                .where("psychosocial_enrollments.closed_on IS NULL OR psychosocial_monthly_records.month <= psychosocial_enrollments.closed_on")
     end
 

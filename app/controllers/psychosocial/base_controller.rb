@@ -20,7 +20,7 @@ module Psychosocial
       record_not_open: :conflict, referral_not_pending: :conflict, night_stay_open: :conflict,
       not_on_caps_team: :forbidden, missing_role: :forbidden, lead_required: :forbidden, not_author: :forbidden,
       out_of_context: :forbidden,
-      nothing_to_export: :unprocessable_entity,
+      nothing_to_export: :unprocessable_entity, started_after_actions: :unprocessable_entity,
       not_found: :not_found
     }.freeze
     KEY_PATH_MAX = 64

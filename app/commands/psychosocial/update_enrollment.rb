@@ -3,7 +3,9 @@
 # `next_visit_at` (ISO 8601 ou nulo). `origin` e `started_on` só mudam antes da
 # primeira RAAS exportada da matrícula (senão 422 origin_locked, com o path da
 # chave); `started_on` também não sai de nem vai para mês fechado no CAPS (422
-# month_closed, ruling). Corpo vazio → 422 invalid_request. Sem cobertura de ESF, o CNES da USF é apagado; com cobertura, o CNES
+# month_closed, ruling), nem vai para depois da data local da ação não
+# cancelada mais antiga da matrícula (422 started_after_actions, P57: a ação
+# ficaria antes da admissão). Corpo vazio → 422 invalid_request. Sem cobertura de ESF, o CNES da USF é apagado; com cobertura, o CNES
 # gravado vale até vir outro. Encerrada → 409 already_closed. Mudou o início:
 # garante a RAAS de cada mês do novo início até o corrente (e recusa com
 # month_closed se algum deles estiver fechado). Recusas todas de uma vez. Sem evento
@@ -17,7 +19,8 @@ module Psychosocial
     module_function
 
     # -> Result.ok(enrollment:) | fail(:already_closed) |
-    #    fail(:invalid_request | :origin_locked | :month_closed | :esf_cnes_required, details: { path:, problems: })
+    #    fail(:invalid_request | :origin_locked | :month_closed | :started_after_actions | :esf_cnes_required,
+    #         details: { path:, problems: })
     def call(enrollment:, attrs:, by:)
       attrs = attrs.to_h.stringify_keys
       return Result.fail(:invalid_request) if attrs.empty?
@@ -60,6 +63,7 @@ module Psychosocial
           exported = enrollment.psychosocial_monthly_records.exists?(status: "exported") if exported.nil?
           next problems << problem(key, "origin_locked") if exported
           next problems << problem(key, "month_closed") if key == "started_on" && start_month_closed?(enrollment, value)
+          next problems << problem(key, "started_after_actions") if key == "started_on" && after_first_action?(enrollment, value)
         end
         changes[key] = value
       end
@@ -74,6 +78,16 @@ module Psychosocial
     def start_month_closed?(enrollment, started_on)
       MonthlyRecords.any_closed?(enrollment.health_unit_id, started_on) ||
         MonthlyRecords.closed?(enrollment.health_unit_id, enrollment.started_on)
+    end
+
+    # O novo início passa da data local da ação não cancelada mais antiga da
+    # matrícula (o chamador segura a trava do CAPS, que RecordAction também
+    # segura FOR SHARE).
+    def after_first_action?(enrollment, started_on)
+      first = PsychosocialAction.joins(:psychosocial_action_participants)
+                                .where(cancelled_at: nil, psychosocial_action_participants: { psychosocial_enrollment_id: enrollment.id })
+                                .minimum(:performed_at)
+      first.present? && started_on > first.in_time_zone.to_date
     end
 
     def check_next_visit(attrs, changes, problems)
@@ -108,6 +122,6 @@ module Psychosocial
       Result.fail(first[:error].to_sym, details: { path: first[:path], problems: problems })
     end
 
-    private_class_method :check, :start_month_closed?, :check_next_visit, :check_esf, :problem, :failure
+    private_class_method :check, :start_month_closed?, :after_first_action?, :check_next_visit, :check_esf, :problem, :failure
   end
 end
