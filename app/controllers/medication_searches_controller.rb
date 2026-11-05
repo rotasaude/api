@@ -1,7 +1,7 @@
 # app/controllers/medication_searches_controller.rb
 # Busca de medicamentos para a receita, o "medicamento em uso de fora", a
-# REMUME e os protocolos (ADR 0033; contrato §5). Profissional ou
-# municipal_admin. Interruptores: clinical_record para todos; clinical_documents
+# REMUME e os protocolos (ADR 0033; contrato §5). Profissional, equipe do CAPS
+# ou municipal_admin. Interruptores: clinical_record para todos; clinical_documents
 # só para quem não é municipal_admin (api#60: a cidade monta a REMUME e os
 # protocolos antes de liberar a emissão aos profissionais).
 class MedicationSearchesController < ApplicationController
@@ -32,9 +32,13 @@ class MedicationSearchesController < ApplicationController
   end
 
   # Profissional (receita, medicamento de fora) ou municipal_admin (REMUME e
-  # protocolos): o catálogo não tem dado de paciente.
+  # protocolos): o catálogo não tem dado de paciente. Módulo 31 (P8, P47; mesmo
+  # padrão da busca de CID-10): a equipe do CAPS (sem health_professional)
+  # também busca, para montar a receita e a notificação pela ação.
   def require_searcher
     policy = CitizenVerificationPolicy.new(Current.user, nil)
-    forbid("missing_role") unless policy.care? || policy.manage?
+    return if policy.care? || policy.manage? || Psychosocial::Access.staff?(Current.user)
+
+    forbid("missing_role")
   end
 end
