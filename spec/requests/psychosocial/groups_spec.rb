@@ -118,6 +118,30 @@ RSpec.describe "CAPS — grade de grupos", type: :request do
       expect(response).to have_http_status(:unprocessable_entity)
     end
 
+    # Revisão final (minor da T6): reativar confere de novo o código SIGTAP e o
+    # responsável gravados, como se fossem novos.
+    it "reativar (active false → true) confere a SIGTAP e o responsável; trocados no mesmo PATCH, valem os novos" do
+      group = group!(active: false)
+      group.update_columns(sigtap_code: "0301010064")
+      json_patch "/psychosocial/groups/#{group.id}", { active: true }
+      expect([ response.status, json_body["error"], json_body["path"] ]).to eq([ 422, "instrument_mismatch", "sigtap_code" ])
+      expect(group.reload.active).to be(false)
+
+      json_patch "/psychosocial/groups/#{group.id}", { active: true, sigtap_code: "0301080216" }
+      expect(response).to have_http_status(:ok)
+      expect(group.reload).to have_attributes(active: true, sigtap_code: "0301080216")
+
+      group.update_columns(active: false)
+      ProfessionalLink.active.where(health_unit_id: caps.id).find_each { |l| l.update!(ended_at: Time.current, ended_by_user: staff) }
+      other = caps_staff!(caps)
+      sign_in_as(other)
+      json_patch "/psychosocial/groups/#{group.id}", { active: true }
+      expect([ response.status, json_body["path"] ]).to eq([ 422, "responsible_user_id" ])
+      json_patch "/psychosocial/groups/#{group.id}", { active: true, responsible_user_id: other.id }
+      expect(response).to have_http_status(:ok)
+      expect(group.reload).to have_attributes(active: true, responsible_user_id: other.id)
+    end
+
     it "troca de CAPS não vale; nome acima de 120 → too_long" do
       group = group!
       json_patch "/psychosocial/groups/#{group.id}", { health_unit_id: caps!(modality: "caps_ad").id }

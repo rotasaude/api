@@ -7,7 +7,8 @@
 #   hoje, senão instrument_mismatch), active.
 # Na criação todos são obrigatórios (active padrão true); na edição só os
 # enviados mudam. O código SIGTAP e o responsável só são conferidos quando
-# novos ou trocados (editar o nome não falha porque a SIGTAP mudou). Texto acima
+# novos ou trocados (editar o nome não falha porque a SIGTAP mudou) ou quando o
+# grupo é reativado (active false → true: os gravados valem como novos). Texto acima
 # do limite → too_long; o resto → invalid_request, sempre com o path e todos
 # de uma vez. Sem evento (cadastro sem paciente); o grupo nunca é apagado.
 module Psychosocial
@@ -73,8 +74,9 @@ module Psychosocial
       if given.("active")
         [ true, false ].include?(attrs["active"]) ? values[:active] = attrs["active"] : problems << problem("active")
       end
-      responsible(attrs, unit, group, values, problems) if given.("responsible_user_id") && unit
-      code(attrs, group, today, values, problems) if given.("sigtap_code")
+      reactivating = group && !group.active && values[:active] == true
+      responsible(attrs, unit, group, values, problems, force: reactivating) if (given.("responsible_user_id") || reactivating) && unit
+      code(attrs, group, today, values, problems, force: reactivating) if given.("sigtap_code") || reactivating
       [ values, problems ]
     end
 
@@ -115,9 +117,10 @@ module Psychosocial
       problems << problem("ends_at") if starts && ends && ends <= starts
     end
 
-    def responsible(attrs, unit, group, values, problems)
-      id = attrs["responsible_user_id"]
-      return if group && id == group.responsible_user_id
+    # force: reativação — o responsável gravado (ou o enviado) é conferido mesmo sem troca.
+    def responsible(attrs, unit, group, values, problems, force: false)
+      id = attrs.fetch("responsible_user_id") { group&.responsible_user_id }
+      return if group && id == group.responsible_user_id && !force
 
       user = Input.uuid?(id) ? User.find_by(id: id) : nil
       if user && Access.link(user, unit.id)
@@ -127,10 +130,11 @@ module Psychosocial
       end
     end
 
-    # Código novo ou trocado: forma e instrumento na SIGTAP da competência de hoje.
-    def code(attrs, group, today, values, problems)
-      code = attrs["sigtap_code"]
-      return if group && code == group.sigtap_code
+    # Código novo ou trocado (ou o gravado, na reativação — force): forma e
+    # instrumento na SIGTAP da competência de hoje.
+    def code(attrs, group, today, values, problems, force: false)
+      code = attrs.fetch("sigtap_code") { group&.sigtap_code }
+      return if group && code == group.sigtap_code && !force
       return problems << problem("sigtap_code") unless code.is_a?(String) && code.match?(SIGTAP_CODE)
 
       cache = Billing::SigtapCache.new
