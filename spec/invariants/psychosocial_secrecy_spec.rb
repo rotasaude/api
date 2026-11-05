@@ -8,11 +8,13 @@ require "rails_helper"
 # e depois as provas de ausência: rotas do cidadão (P21), resumo de saúde
 # (P20), sessão (P19), linha do tempo geral da UBS (só o marcador, P18/P46),
 # vínculo visto pela UBS (P46), página do PEC (nada), LEDI, avisos e SMS,
-# eventos (só ids, §13), log e URLs. Relógio fixo no meio de novembro.
+# eventos (só ids, §13), log e URLs. Relógio fixo no meio de novembro (ou o
+# `now:` do exemplo). A varredura de fonte dos eventos fica no segundo grupo,
+# sem o cenário.
 RSpec.describe "Sigilo do CAPS (F-31.8)", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
-  around { |example| travel_to(Time.zone.local(2026, 11, 18, 15, 0)) { example.run } }
+  around { |example| travel_to(example.metadata[:now] || Time.zone.local(2026, 11, 18, 15, 0)) { example.run } }
 
   let!(:scenario) { full_caps_scenario! }
   let(:texts) { PsychosocialHelpers::CAPS_SCENARIO_TEXTS.values }
@@ -44,14 +46,15 @@ RSpec.describe "Sigilo do CAPS (F-31.8)", type: :request do
 
   describe "cidadão (P19–P21)" do
     before do
-      # Viagens (extra ao P21): o interruptor do transporte ligado, para a rota responder.
+      # Viagens e acompanhamento (extras ao P21): os interruptores ligados, para as rotas responderem.
       Platform::Features.set!(city: scenario[:city], key: "sanitary_transport", enabled: true, maintainer: ledi_maintainer!)
+      Platform::Features.set!(city: scenario[:city], key: "care_lines", enabled: true, maintainer: ledi_maintainer!)
       CityCatalog.reset_cache!
       sign_in_citizen(citizen.phone)
     end
 
-    it "nada do CAPS no histórico (com e sem kinds[]), resumo, avisos, agendamentos, viagens e sessão" do
-      %w[/citizen/history /citizen/health_summary /citizen/appointments /citizen/trips].each do |path|
+    it "nada do CAPS no histórico (com e sem kinds[]), resumo, avisos, agendamentos, viagens, acompanhamento e sessão" do
+      %w[/citizen/history /citizen/health_summary /citizen/appointments /citizen/trips /citizen/care].each do |path|
         get path, params: { citizen_id: citizen.id }
         expect(response).to have_http_status(:ok), "#{path} → #{response.status} #{response.body}"
         expect_hidden(path)
@@ -75,16 +78,37 @@ RSpec.describe "Sigilo do CAPS (F-31.8)", type: :request do
       expect(body["notices"]).to eq([])
       expect_hidden("/citizen/notices")
 
+      # Controle: o interruptor do CAPS está ligado e utilizável; a sessão lista os
+      # utilizáveis (com o prontuário), menos o CAPS (CITIZEN_HIDDEN).
+      expect(Platform::Features.usable?(scenario[:city], "psychosocial_care")).to be(true)
       get "/citizen/session"
       expect(response).to have_http_status(:ok)
+      expect(body["features"]).to include("clinical_record", "patient_timeline")
+      expect(body["features"]).not_to include("psychosocial_care")
       expect(body.to_json).not_to include("psychosocial")
       expect_hidden("/citizen/session")
     end
 
-    it "o resumo de saúde não ganha problema nem medicamento do CAPS (P20)" do
+    it "o resumo de saúde não ganha problema nem medicamento do CAPS (P20); o problema da UBS aparece" do
+      expect(PatientProblem.where(patient_id: patient.id)).to be_empty
+      expect(PatientMedication.where(patient_id: patient.id)).to be_empty
+
+      # Controle: consulta da UBS finalizada com o problema T90 (o caminho real do 19a).
+      ciap2_release!
+      doctor = scenario[:ubs_doctor]
+      consultation = Consultations::Start.call(attendance: scenario[:attendance], by: doctor).payload.fetch(:consultation)
+      saved = Consultations::SaveDraft.call(consultation: consultation, params: draft_body, by: doctor)
+      raise "rascunho recusado: #{saved.reason} #{saved.details}" if saved.failure?
+
+      finalized = Consultations::Finalize.call(consultation: consultation.reload, outcome_params: { "outcome" => "discharged" }, by: doctor)
+      raise "finalização recusada: #{finalized.reason} #{finalized.details}" if finalized.failure?
+
       get "/citizen/health_summary", params: { citizen_id: citizen.id }
       expect(response).to have_http_status(:ok)
+      expect(body["problems"].map { |problem| problem["code"] }).to eq([ "T90" ])
       expect(response.body).not_to include("F20", "FLUOXETINA", "fluoxetina")
+      expect_hidden("/citizen/health_summary")
+      expect(PatientProblem.where(patient_id: patient.id).pluck(:code)).to eq([ "T90" ])
       expect(PatientMedication.where(patient_id: patient.id)).to be_empty
     end
 
@@ -153,6 +177,35 @@ RSpec.describe "Sigilo do CAPS (F-31.8)", type: :request do
       expect(scenario[:jobs].uniq).to all(eq("Billing::PsychosocialProductionJob"))
       expect(scenario[:jobs]).not_to be_empty
     end
+
+    # O CAPS não tem consulta nem escuta: o check-in em unidade `caps` é recusado
+    # (P32, 422 caps_unit_not_allowed), e ação e documento do CAPS não são origem
+    # de ficha (Ledi::FichaSources). O controle positivo é só o da UBS: com a
+    # exportação LEDI pronta, o varredor das 23h (o caminho real que alcança a
+    # cidade inteira) gera a ficha da escuta da UBS e nada do cenário do CAPS. A
+    # guarda da consulta/escuta numa unidade CAPS é provada em
+    # spec/jobs/ledi/caps_unit_spec.rb (Task 14).
+    it "com a exportação pronta, o varredor gera a ficha da escuta da UBS (controle) e nada do CAPS",
+       now: Time.zone.local(2026, 11, 18, 23, 10) do
+      ledi_ready!(scenario[:city], pec_url: "https://pec.a.test", record_mode: "record", ibge_code: "4106902")
+      allow(Ledi::DeliverJob).to receive(:perform_later)
+      ciap2_release!
+      nurse = screener!(scenario[:ubs])
+      exportable_unit!(scenario[:ubs], nurse)
+      attendance = walk_in_attendance!(scenario[:ubs], citizen: screening_citizen!(77))
+      screening = Screenings::Start.call(attendance: attendance, by: nurse).payload[:screening]
+      completed = Screenings::Complete.call(screening: screening, revision_params: revision_params, destination: "same_day",
+                                            destination_params: {}, by: nurse)
+      expect(completed).to be_ok
+
+      Ledi::ScreeningFichaSweepJob.perform_now
+
+      expect(LediOutboxEntry.pluck(:source_type, :source_id)).to eq([ [ Ledi::ScreeningFicha::SOURCE_TYPE, screening.id ] ])
+      expect(LediGenerationFailure.count).to eq(0)
+      caps_ids = [ scenario[:enrollment].id, scenario[:document].id, *scenario[:refs].values ] +
+                 PsychosocialAction.where(health_unit_id: scenario[:caps].id).pluck(:id)
+      expect(LediOutboxEntry.where(source_id: caps_ids)).to be_empty
+    end
   end
 
   describe "eventos (§13): só ids" do
@@ -173,71 +226,6 @@ RSpec.describe "Sigilo do CAPS (F-31.8)", type: :request do
       payloads = events.pluck(:name, :payload).to_json
       (secrets + identifiers).each { |secret| expect(payloads).not_to include(secret), "evento contém #{secret.inspect}" }
     end
-
-    # Varredura de fonte: DomainEvents.publish( é multilinha (a chamada inteira é
-    # lida por balanceamento de parênteses). Todo psychosocial.* declarado no
-    # initializer e na spec de bindings, com payload literal só de ids e `month`.
-    describe "no código" do
-      def balanced_calls(opening, files)
-        files.flat_map do |file|
-          src = File.read(file)
-          src.enum_for(:scan, opening).map do
-            i = start = Regexp.last_match.end(0)
-            depth = 1
-            while depth.positive? && i < src.length
-              depth += 1 if src[i] == "("
-              depth -= 1 if src[i] == ")"
-              i += 1
-            end
-            [ file, src[start...(i - 1)] ]
-          end
-        end
-      end
-
-      def top_level_args(body)
-        args = [ +"" ]
-        depth = 0
-        body.each_char do |c|
-          depth += 1 if "([{".include?(c)
-          depth -= 1 if ")]}".include?(c)
-          c == "," && depth.zero? ? args << +"" : args.last << c
-        end
-        args.map(&:strip).reject(&:empty?)
-      end
-
-      def code_lines(path) = File.readlines(path).reject { |l| l.strip.start_with?("#") }.join
-
-      let(:calls) do
-        balanced_calls(/DomainEvents\.publish\(/, Dir[Rails.root.join("{app,lib}/**/*.rb").to_s])
-          .select { |_file, body| body =~ /\A\s*"psychosocial\./ }
-          .map { |file, body| args = top_level_args(body); [ file, args.first[/"([^"]+)"/, 1], args.drop(1) ] }
-      end
-
-      it "encontra os 17 eventos do módulo (a varredura não está vazia)" do
-        expect(calls.map { |_f, name, _a| name }.uniq.size).to eq(17)
-      end
-
-      it "todo nome publicado está declarado no initializer e na spec de bindings" do
-        declared = code_lines(Rails.root.join("config/initializers/domain_events.rb"))
-        bindings = code_lines(Rails.root.join("spec/initializers/domain_events_bindings_spec.rb"))
-        calls.map { |_f, name, _a| name }.uniq.each do |name|
-          pattern = /(?<![\w.])#{Regexp.escape(name)}(?![\w.])/
-          expect(declared).to match(pattern), "evento #{name} sem bind no initializer"
-          expect(bindings).to match(pattern), "evento #{name} fora da spec de bindings"
-          expect(DomainEvents.registry.keys).to include(name)
-        end
-      end
-
-      it "o payload é literal (chave: valor), só com ids e o mês" do
-        calls.each do |file, name, args|
-          args.each do |arg|
-            key = arg[/\A([a-z_]+):\s/, 1]
-            expect(key).not_to be_nil, "#{name} (#{file}) tem payload não literal: #{arg}"
-            expect(key.end_with?("_id") || key == "month").to be(true), "#{name} (#{file}) publica #{key}"
-          end
-        end
-      end
-    end
   end
 
   describe "log e URLs (§14)" do
@@ -253,6 +241,42 @@ RSpec.describe "Sigilo do CAPS (F-31.8)", type: :request do
       expect(scenario[:paths].size).to be >= 12
       (secrets + identifiers + [ "F20" ]).each do |secret|
         expect(scenario[:paths].join("\n")).not_to include(secret)
+      end
+    end
+  end
+end
+
+# Varredura de fonte: DomainEvents.publish( é multilinha (a chamada inteira é
+# lida por balanceamento de parênteses). Todo psychosocial.* declarado no
+# initializer e na spec de bindings, com payload literal só de ids e `month`.
+RSpec.describe "Sigilo do CAPS (F-31.8) — eventos no código" do
+  let(:calls) do
+    balanced_calls(/DomainEvents\.publish\(/, Dir[Rails.root.join("{app,lib}/**/*.rb").to_s])
+      .select { |_file, body| body =~ /\A\s*"psychosocial\./ }
+      .map { |file, body| args = top_level_args(body); [ file, args.first[/"([^"]+)"/, 1], args.drop(1) ] }
+  end
+
+  it "encontra os 17 eventos do módulo (a varredura não está vazia)" do
+    expect(calls.map { |_f, name, _a| name }.uniq.size).to eq(17)
+  end
+
+  it "todo nome publicado está declarado no initializer e na spec de bindings" do
+    declared = code_lines(Rails.root.join("config/initializers/domain_events.rb"))
+    bindings = code_lines(Rails.root.join("spec/initializers/domain_events_bindings_spec.rb"))
+    calls.map { |_f, name, _a| name }.uniq.each do |name|
+      pattern = /(?<![\w.])#{Regexp.escape(name)}(?![\w.])/
+      expect(declared).to match(pattern), "evento #{name} sem bind no initializer"
+      expect(bindings).to match(pattern), "evento #{name} fora da spec de bindings"
+      expect(DomainEvents.registry.keys).to include(name)
+    end
+  end
+
+  it "o payload é literal (chave: valor), só com ids e o mês" do
+    calls.each do |file, name, args|
+      args.each do |arg|
+        key = arg[/\A([a-z_]+):\s/, 1]
+        expect(key).not_to be_nil, "#{name} (#{file}) tem payload não literal: #{arg}"
+        expect(key.end_with?("_id") || key == "month").to be(true), "#{name} (#{file}) publica #{key}"
       end
     end
   end

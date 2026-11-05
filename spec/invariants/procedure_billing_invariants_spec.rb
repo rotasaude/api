@@ -31,41 +31,6 @@ RSpec.describe "Invariantes do faturamento (ADR 0039)", type: :request do
     raise ActiveRecord::Rollback
   end
 
-  # Corpo inteiro (multilinha) das chamadas `opening`...`)`, por balanceamento de parênteses.
-  def balanced_calls(opening, files)
-    files.flat_map do |file|
-      src = File.read(file)
-      src.enum_for(:scan, opening).map do
-        i = start = Regexp.last_match.end(0)
-        depth = 1
-        while depth.positive? && i < src.length
-          depth += 1 if src[i] == "("
-          depth -= 1 if src[i] == ")"
-          i += 1
-        end
-        [ file, src[start...(i - 1)] ]
-      end
-    end
-  end
-
-  # Divide nas vírgulas de nível zero.
-  def top_level_args(body)
-    args = [ +"" ]
-    depth = 0
-    body.each_char do |c|
-      depth += 1 if "([{".include?(c)
-      depth -= 1 if ")]}".include?(c)
-      if c == "," && depth.zero?
-        args << +""
-      else
-        args.last << c
-      end
-    end
-    args.map(&:strip).reject(&:empty?)
-  end
-
-  def code_lines(path) = File.readlines(path).reject { |l| l.strip.start_with?("#") }.join
-
   def publish_calls = balanced_calls(/DomainEvents\.publish\(/, publish_files)
 
   it "UBS nunca gera BPA: grava (201) com establishment_is_aps, sem competência; o arquivo da UPA não leva a UBS" do
@@ -187,11 +152,6 @@ RSpec.describe "Invariantes do faturamento (ADR 0039)", type: :request do
       publish_calls.each do |file, call|
         expect(call).not_to match(/\b(cpf|cns|full_name|birth_date|file|bytes|reason|cancel_reason|reopened_reason|phone)\b/), "#{file}: #{call}"
       end
-    end
-
-    it "a varredura recusa payload não literal (variável ou splat)" do
-      expect(top_level_args(%("x.y", **payload)).drop(1).map { |a| a[/\A([a-z_]+):\s/, 1] }).to eq([ nil ])
-      expect(top_level_args(%("x.y", payload)).drop(1).map { |a| a[/\A([a-z_]+):\s/, 1] }).to eq([ nil ])
     end
   end
 

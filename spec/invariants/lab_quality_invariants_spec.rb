@@ -22,41 +22,6 @@ RSpec.describe "Invariantes da qualidade e dos insumos (ADR 0038)", type: :reque
     expect { rolled_back(&block) }.to raise_error(ActiveRecord::StatementInvalid, pattern)
   end
 
-  # Corpo inteiro (multilinha) das chamadas `opening`...`)`, por balanceamento de parênteses.
-  def balanced_calls(opening, files)
-    files.flat_map do |file|
-      src = File.read(file)
-      src.enum_for(:scan, opening).map do
-        i = start = Regexp.last_match.end(0)
-        depth = 1
-        while depth.positive? && i < src.length
-          depth += 1 if src[i] == "("
-          depth -= 1 if src[i] == ")"
-          i += 1
-        end
-        [ file, src[start...(i - 1)] ]
-      end
-    end
-  end
-
-  # Divide nos vírgulas de nível zero.
-  def top_level_args(body)
-    args = [ +"" ]
-    depth = 0
-    body.each_char do |c|
-      depth += 1 if "([{".include?(c)
-      depth -= 1 if ")]}".include?(c)
-      if c == "," && depth.zero?
-        args << +""
-      else
-        args.last << c
-      end
-    end
-    args.map(&:strip).reject(&:empty?)
-  end
-
-  def code_lines(path) = File.readlines(path).reject { |l| l.strip.start_with?("#") }.join
-
   def release!(req, item) = Lab::Release.call(requisition: req, item_ids: [ item.id ], signature: "advanced", totp: totp_for(lead), by: lead)
 
   # Bloqueio ativo com um item digitado, uma exceção, uma revisão pendente,
@@ -302,11 +267,6 @@ RSpec.describe "Invariantes da qualidade e dos insumos (ADR 0038)", type: :reque
           expect(key.end_with?("_id") || ALLOWED_NON_ID_KEYS.include?(key)).to be(true), "#{name} (#{file}) publica #{key}"
         end
       end
-    end
-
-    it "a varredura recusa payload não literal (variável ou splat)" do
-      expect(top_level_args(%("x.y", **payload)).drop(1).map { |a| a[/\A([a-z_]+):\s/, 1] }).to eq([ nil ])
-      expect(top_level_args(%("x.y", payload)).drop(1).map { |a| a[/\A([a-z_]+):\s/, 1] }).to eq([ nil ])
     end
   end
 
