@@ -8,8 +8,8 @@ require_relative "care_lines_crew"
 # mantenedor de dev (com o prontuário); os CAPS "CAPS II Boa Vista" (`caps_ii`,
 # classificação 001) e "CAPS AD III Centro Vida" (`caps_ad_iii`, classificação
 # 001, leitos L1 a L4), ambos com CNES e telefone de dev; a equipe lotada pelos
-# comandos do 10 (vínculo com o CBO real, conselho coerente, CNS com dígito
-# válido; o perfil é gravado direto, ver profile!) e com vínculo no retrato do CNES da cidade, todos com TOTP fixo:
+# comandos do 10 (perfil e vínculo com o CBO real, conselho coerente, CNS com
+# dígito válido; sem o papel health_professional) e com vínculo no retrato do CNES da cidade, todos com TOTP fixo:
 #
 #   e-mail                     papel                               CBO     lotação
 #   caps@curitiba.dev          psychosocial_lead (e _staff)        223505  CAPS II e AD III
@@ -282,11 +282,7 @@ class PsychosocialCrew
       attrs = { professional_name: spec[:name], council: spec[:council], council_state: CityProfile.current&.uf.presence || "PR",
                 cns: Professionals::Cns.generate(seed), registration_number: (Zlib.crc32(seed) % 90_000 + 10_000).to_s,
                 cpf: ScreeningCrew.send(:cpf_for, seed) }
-      # Gravação direta do perfil (a validação do modelo vale: conselho, CNS, CPF). O comando
-      # Professionals::Create só aceita quem tem health_professional ou lab_releaser, e a equipe
-      # do CAPS NÃO recebe health_professional (ruling 7b: abriria a UBS ao psiquiatra do CAPS pela
-      # leitura contextual). Os vínculos, esses sim, saem pelo Professionals::OpenLink.
-      Professional.create!(user: user, **attrs)
+      check!(Professionals::Create.call(user_id: user.id, attrs: attrs, by: admin), "perfil de #{spec[:email_prefix]}")
       user.reload
     end
 

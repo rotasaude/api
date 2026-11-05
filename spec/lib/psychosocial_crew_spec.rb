@@ -91,6 +91,8 @@ RSpec.describe PsychosocialCrew do
         account = user(prefix)
         expect(account.memberships.active.pluck(:role)).to match_array(roles)
         expect(account.mfa_enrolled?).to be(true)
+        expect(account.has_role?("health_professional")).to be(false)
+        expect(DomainEvent.where(name: "professional.created").count).to be >= 4
         expect(account.professional.council).to eq(council)
         expect(Professionals::Cns.valid?(account.professional.cns)).to be(true)
         expect(account.professional.links.active.to_h { |link| [ link.health_unit, link.cbo_code ] }).to eq(links)

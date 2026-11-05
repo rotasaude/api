@@ -28,11 +28,12 @@ class ProfessionalsController < ApplicationController
   end
 
   def pending
-    users = User.joins(:memberships).merge(Membership.active.where(role: %w[health_professional lab_releaser]))
+    users = User.joins(:memberships).merge(Membership.active.where(role: Professionals::Create::ELIGIBLE_ROLES))
                 .where(deactivated_at: nil).distinct.order(:email_address).to_a
     status = Professionals::Status.for_users(users.map(&:id))
-    # B33: quem só tem lab_releaser precisa apenas do perfil (sem vínculo de unidade).
-    clinical = Membership.active.where(role: "health_professional", user_id: users.map(&:id)).pluck(:user_id).to_set
+    # B33: quem só tem lab_releaser precisa apenas do perfil (sem vínculo de unidade);
+    # a equipe do CAPS (P29) precisa do perfil e do vínculo, como o clínico.
+    clinical = Membership.active.where(role: %w[health_professional psychosocial_staff psychosocial_lead], user_id: users.map(&:id)).pluck(:user_id).to_set
     rows = users.map { |u| { user_id: u.id, email_address: u.email_address, status: pending_status(status[u.id], clinical.include?(u.id)) } }
                 .reject { |row| row[:status] == "ok" }
     render json: { users: rows }
