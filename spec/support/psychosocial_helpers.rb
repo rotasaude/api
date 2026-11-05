@@ -183,6 +183,143 @@ module PsychosocialHelpers
 
     result.payload.fetch(:matrix_case)
   end
+
+  # Textos do cenário completo (Task 18): nenhum pode sair do CAPS.
+  CAPS_SCENARIO_TEXTS = {
+    referral: "Ideação persistente sem resposta ao manejo na UBS",
+    reception: "Acolhimento com ideação recorrente e uso de crack",
+    note: "Relata ideação suicida sem plano estruturado",
+    group: "Oficina terapêutica com boa participação do grupo",
+    needs: "Isolamento social e ideação recorrente desde a internação",
+    goal: "Retomar a oficina de artesanato duas vezes por semana",
+    night: "Retorno ao convívio familiar combinado com a equipe",
+    topic: "Matriciamento de casos graves da área",
+    shared: "Discutido manejo da crise com a equipe da UBS"
+  }.freeze
+
+  # Cenário completo do CAPS (Task 18; contrato §10, P21), pelas rotas reais e
+  # com o relógio do exemplo: encaminhamento da UBS em contexto, acolhimento
+  # com matrícula (CID F20.0 e substância 02), BPA-I do acolhimento inicial,
+  # PTS, ação com evolução, ação coletiva, receita controlada da ação (papel),
+  # permanência noturna (entrada e saída), matriciamento com caso e o consumidor
+  # do BPA. Tudo com o log capturado e as URLs anotadas. Só em request spec
+  # (usa get/json_post). Devolve os registros, o log, as URLs, os jobs
+  # enfileirados no cenário e as contagens de aviso/SMS/LEDI antes dele.
+  def full_caps_scenario!
+    caps_cid10_release!
+    city = psychosocial_city!(billing: true)
+    controlled_city!(mock: true, signature: false)
+    Platform::Features.set!(city: city, key: "patient_timeline", enabled: true, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    city_profile!
+    import_test_catalog!
+
+    caps = caps!(name: "CAPS AD III Centro Vida", modality: "caps_ad_iii").tap { |unit| unit.update!(phone: "4133334444") }
+    psychiatrist = prescriber_contact!(caps_staff!(caps, cbo: "225133"))
+    ubs = create_unit("UBS Boa Vista", cnes: "7654321")
+    doctor = ubs_doctor!(ubs)
+    team = HealthTeam.create!(health_unit: ubs, ine: "0000123456", kind: "70", name: "eSF Boa Vista")
+    patient, citizen = exam_patient!(exam_seq!, full_name: "Renato Alves Pereira")
+    patient.update!(BillingHelpers::DEMOGRAPHICS.merge(cns: Professionals::Cns.generate(SecureRandom.uuid)))
+    other = enrollment!(caps, patient: caps_patient!, reference: psychiatrist, started_on: Date.current.beginning_of_month)
+    bed = bed!(caps, label: "L1")
+    fluoxetina = controlled_item!(code: 9_900_001, ingredient: "FLUOXETINA", list: "C1")
+    attendance = in_context!(doctor, ubs, patient)
+    texts = CAPS_SCENARIO_TEXTS
+    side_counts = caps_side_counts
+    jobs_before = ActiveJob::Base.queue_adapter.enqueued_jobs.size
+    paths = []
+    started_at = Time.current
+    record = lambda do |verb, path, body = nil|
+      verb == :get ? get(path) : json_post(path, body)
+      paths << request.fullpath
+      raise "#{verb} #{path} → #{response.status} #{response.body}" unless response.successful?
+
+      response.body.empty? ? {} : JSON.parse(response.body)
+    end
+
+    refs = {}
+    log = capture_log do
+      sign_in_as(doctor)
+      refs[:referral] = record.(:post, "/psychosocial/referrals",
+                                { patient_id: patient.id, health_unit_id: caps.id, reason: texts[:referral], priority: "priority" })["id"]
+
+      sign_in_as(psychiatrist)
+      reception = record.(:post, "/psychosocial/receptions",
+                          { health_unit_id: caps.id, patient_id: patient.id, referral_id: refs[:referral], at: 2.hours.ago.iso8601,
+                            sigtap_code: "0301080232", notes: texts[:reception], outcome: "enrolled",
+                            enrollment: { started_on: (Date.current - 2).iso8601, origin: "02", cid_main: "F20.0", cid_secondary: [],
+                                          substances: [ "02" ], esf_covered: false, reference_user_id: psychiatrist.id } })
+      enrollment = PsychosocialEnrollment.find(reception.fetch("enrollment_id"))
+      record.(:get, "/psychosocial/enrollments/#{enrollment.id}")
+
+      # Acolhimento inicial sem a matrícula no participante: BPA-I (Desvio 3).
+      refs[:bpa_i] = record.(:post, "/psychosocial/actions",
+                             { health_unit_id: caps.id, sigtap_code: "0301080232", performed_at: 90.minutes.ago.iso8601, place: "caps",
+                               quantity: 1, participants: [ { patient_id: patient.id } ] })["id"]
+      record.(:post, "/psychosocial/enrollments/#{enrollment.id}/care_plans",
+              { needs: texts[:needs], goals: [ { text: texts[:goal], responsible_user_id: psychiatrist.id } ], intensity: "intensive",
+                review_on: (Date.current + 60).iso8601 })
+      refs[:note] = record.(:post, "/psychosocial/actions",
+                            { health_unit_id: caps.id, sigtap_code: "0301080208", performed_at: 1.hour.ago.iso8601, place: "caps",
+                              quantity: 1, notes: texts[:note], participants: [ { enrollment_id: enrollment.id } ] })["id"]
+      refs[:group] = record.(:post, "/psychosocial/actions",
+                             { health_unit_id: caps.id, sigtap_code: "0301080216", performed_at: 50.minutes.ago.iso8601, place: "caps",
+                               quantity: 1, notes: texts[:group],
+                               participants: [ { enrollment_id: enrollment.id }, { enrollment_id: other.id } ] })["id"]
+      document = record.(:post, "/psychosocial/actions/#{refs[:note]}/documents",
+                         { kind: "prescription",
+                           content: { "items" => [ { "catalog_item" => { "id" => fluoxetina.id }, "quantity" => 30, "quantity_unit" => "cápsula",
+                                                     "route" => "oral", "dosage_instructions" => "1 cápsula pela manhã",
+                                                     "duration_days" => 30, "continuous" => true } ],
+                                      "patient_identification" => patient_identification } })
+      refs[:document] = document.fetch("id")
+      record.(:get, "/psychosocial/actions/#{refs[:note]}")
+
+      stay = record.(:post, "/psychosocial/night_stays",
+                     { bed_id: bed.id, enrollment_id: enrollment.id, started_at: Time.current.yesterday.change(hour: 19).iso8601,
+                       expected_end_at: Time.current.change(hour: 8).iso8601 })
+      record.(:post, "/psychosocial/night_stays/#{stay['id']}/close", { ended_at: Time.current.change(hour: 8).iso8601, reason: texts[:night] })
+
+      support = record.(:post, "/psychosocial/matrix_supports",
+                        { health_unit_id: caps.id, health_team_id: team.id, held_on: Date.current.iso8601, topic: texts[:topic],
+                          participants_user_ids: [ psychiatrist.id ], sigtap_code: "0301080305" })
+      record.(:post, "/psychosocial/matrix_supports/#{support['id']}/cases", { patient_id: patient.id, shared_text: texts[:shared] })
+
+      # O consumidor do BPA (psychosocial.action_recorded → Billing::PsychosocialProductionJob).
+      DomainEvent.where(name: "psychosocial.action_recorded").find_each do |event|
+        Billing::PsychosocialProductionJob.new.perform(event_id: event.id, event_name: event.name, city_slug: city.slug, payload: event.payload)
+      end
+    end
+    raise "BPA-I do acolhimento não gerado" unless PerformedProcedure.exists?(psychosocial_action_id: refs[:bpa_i], patient_id: patient.id)
+
+    { city: city, caps: caps, ubs: ubs, team: team, psychiatrist: psychiatrist, ubs_doctor: doctor, attendance: attendance,
+      patient: patient.reload, citizen: citizen, enrollment: PsychosocialEnrollment.find_by!(patient_id: patient.id, health_unit_id: caps.id),
+      document: ClinicalDocument.find(refs[:document]), refs: refs, started_at: started_at, log: log, paths: paths,
+      side_counts: side_counts, jobs: ActiveJob::Base.queue_adapter.enqueued_jobs.drop(jobs_before).map { |job| job["job_class"] } }
+  end
+
+  # A CID-10 de teste (ClinicalRecordHelpers::CID10) com o F20.0 da matrícula:
+  # com release ativa, a matrícula só aceita código dela. Chame antes de
+  # billing_city! (cid10_release! reaproveita a ativa; a release ativa não muda).
+  def caps_cid10_release!
+    TerminologyRelease.active.find_by(kind: "cid10") || begin
+      release = TerminologyRelease.create!(kind: "cid10", version: "2008", source_sha256: "d" * 64,
+                                           imported_by: "rspec", imported_at: Time.current, status: "importing")
+      ClinicalRecordHelpers::CID10.merge("F200" => [ "Esquizofrenia paranóide", nil ]).each do |code, (description, sex)|
+        Cid10Code.create!(release: release, code: code, description: description, sex_restriction: sex)
+      end
+      release.update!(status: "active", activated_at: Time.current)
+      release
+    end
+  end
+
+  # Avisos, SMS e LEDI: as tabelas que um aviso, uma mensagem ou uma ficha
+  # gravariam (o cenário do CAPS não pode mexer em nenhuma).
+  def caps_side_counts
+    [ AppointmentNotice, OutboundMessage, TransportTripNotice, LabCriticalNotice, LediOutboxEntry, LediGenerationFailure ]
+      .to_h { |model| [ model.name, model.count ] }
+  end
 end
 
 RSpec.configure { |c| c.include PsychosocialHelpers }
