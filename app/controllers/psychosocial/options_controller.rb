@@ -4,10 +4,11 @@
 # RAAS-PSI, BPA-I ou BPA-C, já filtrados pelo CBO do vínculo de quem pede
 # (relação de CBO vazia não restringe), com as marcas `family_care` e
 # `collective`, a quantidade máxima (`max_quantity`, nulo = sem limite) e se
-# exige autorização (`requires_authorization`, atributo 036) — P56, lidos pelo
-# Billing::SigtapCache como na crítica da ação (ActionRules); a equipe lotada no CAPS (<pro>, CBO do vínculo mais antigo) e
-# as equipes da APS ativas (o matriciamento). Só a equipe lotada; sem dado de
-# paciente, sem trilha.
+# exige autorização (`requires_authorization`, atributo 036) — P56, lidos da mesma
+# release que o Billing::SigtapCache usa, como na crítica da ação (ActionRules); a equipe lotada no CAPS (<pro>, CBO do vínculo mais antigo) e
+# as equipes da APS ativas (o matriciamento) e o prazo de revisão do PTS da
+# cidade (`care_plan_review_days`, de Psychosocial::Settings: a equipe não lê
+# /psychosocial/settings, P33). Só a equipe lotada; sem dado de paciente, sem trilha.
 module Psychosocial
   class OptionsController < BaseController
     def show
@@ -23,6 +24,7 @@ module Psychosocial
         intensities: Catalog::INTENSITIES, places: Catalog::PLACES, group_kinds: Catalog::GROUP_KINDS,
         reception_outcomes: Catalog::RECEPTION_OUTCOMES, referral_priorities: Catalog::REFERRAL_PRIORITIES,
         night_sigtap_code: config["night_sigtap_code"], competence: competence,
+        care_plan_review_days: Settings.current.care_plan_review_days,
         procedures: procedures(competence, @link.cbo_code, config), team: team(unit), health_teams: health_teams
       }
     end
@@ -32,8 +34,7 @@ module Psychosocial
     def pairs(map) = map.map { |code, label| { code: code, label: label } }
 
     def procedures(competence, cbo, config)
-      sigtap = Billing::SigtapCache.new
-      release = sigtap.release(competence)
+      release = Billing::SigtapCache.new.release(competence)
       return [] unless release
 
       prefixes = config["procedure_prefixes"].map { |prefix| "#{prefix}%" }
@@ -44,10 +45,14 @@ module Psychosocial
       cbos = SigtapProcedureCbo.where(release_id: release.id, procedure_code: instruments.keys).pluck(:procedure_code, :cbo_code)
                                .group_by(&:first).transform_values { |rows| rows.map(&:last) }
       allowed = instruments.keys.select { |code| cbos[code].nil? || cbos[code].include?(cbo) }
-      SigtapProcedure.where(release_id: release.id, code: allowed).order(:code).pluck(:code, :name).map do |code, name|
+      # Em lote (uma consulta por tabela, não duas por procedimento): mesma leitura do Billing::SigtapCache.
+      authorized = SigtapProcedureAttribute.where(release_id: release.id, procedure_code: allowed,
+                                                  attribute_code: ActionRules::AUTHORIZATION_ATTRIBUTE)
+                                           .distinct.pluck(:procedure_code).to_set
+      SigtapProcedure.where(release_id: release.id, code: allowed).order(:code).pluck(:code, :name, :max_quantity).map do |code, name, max_quantity|
         { code: code, name: name, instrument_codes: instruments[code], family_care: config["family_care_codes"].include?(code),
-          collective: config["collective_codes"].include?(code), max_quantity: sigtap.max_quantity(release, code),
-          requires_authorization: sigtap.attributes(release, code).include?(ActionRules::AUTHORIZATION_ATTRIBUTE) }
+          collective: config["collective_codes"].include?(code), max_quantity: max_quantity,
+          requires_authorization: authorized.include?(code) }
       end
     end
 

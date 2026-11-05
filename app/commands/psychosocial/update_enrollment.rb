@@ -81,8 +81,9 @@ module Psychosocial
     end
 
     # O novo início passa da data local da ação não cancelada mais antiga da
-    # matrícula (o chamador segura a trava do CAPS, que RecordAction também
-    # segura FOR SHARE).
+    # matrícula (a serialização com RecordAction vem do enrollment.lock! do
+    # chamador, que conflita com o FOR SHARE da matrícula em RecordAction; não
+    # da trava do CAPS).
     def after_first_action?(enrollment, started_on)
       first = PsychosocialAction.joins(:psychosocial_action_participants)
                                 .where(cancelled_at: nil, psychosocial_action_participants: { psychosocial_enrollment_id: enrollment.id })

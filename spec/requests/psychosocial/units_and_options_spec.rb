@@ -83,6 +83,16 @@ RSpec.describe "CAPS — unidades e opções", type: :request do
       expect(response.body).not_to include("cpf", "cns")
     end
 
+    it "traz o prazo de revisão do PTS da cidade (care_plan_review_days), sem exigir o papel de coordenação" do
+      sign_in_as(caps_staff!(caps, cbo: "251510"))
+      get "/psychosocial/options", params: { health_unit_id: caps.id }
+      expect(json_body["care_plan_review_days"]).to eq(PsychosocialSetting.current.care_plan_review_days)
+
+      PsychosocialSetting.current.update!(care_plan_review_days: 120)
+      get "/psychosocial/options", params: { health_unit_id: caps.id }
+      expect(json_body["care_plan_review_days"]).to eq(120)
+    end
+
     it "CBO fora da lista do código some; código sem lista de CBO não restringe" do
       outsider = caps_staff!(caps, cbo: "225125")
       ProfessionalLink.active.where(health_unit_id: caps.id).find_each { |l| l.update!(ended_at: Time.current, ended_by_user: outsider) }
