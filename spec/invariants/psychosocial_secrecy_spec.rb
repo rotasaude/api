@@ -165,8 +165,12 @@ RSpec.describe "Sigilo do CAPS (F-31.8)", type: :request do
       get signed_pec_path(professional: doctor_cpf, citizen: citizen.cpf, cnes: scenario[:ubs].cnes)
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Atendimento — UBS Boa Vista") # controle: a página tem as entradas
-      expect(response.body).not_to include("Acompanhamento no CAPS", "CAPS")
-      expect_hidden("/pec/timeline")
+      # Conferido no texto da página, não no HTML: os links e o nonce trazem
+      # base64 aleatório, onde "CAPS" ou "Crack" aparecem por acaso (flaky).
+      page_text = Nokogiri::HTML(response.body).text
+      expect(response.body).not_to include("Acompanhamento no CAPS")
+      expect(page_text).not_to include("CAPS")
+      secrets.each { |secret| expect(page_text).not_to include(secret), "/pec/timeline contém #{secret.inspect}" }
     end
   end
 
