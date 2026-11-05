@@ -3,7 +3,9 @@
 # CAPS (`procedure_prefixes` do raas.yml) da SIGTAP da competência corrente com instrumento
 # RAAS-PSI, BPA-I ou BPA-C, já filtrados pelo CBO do vínculo de quem pede
 # (relação de CBO vazia não restringe), com as marcas `family_care` e
-# `collective`; a equipe lotada no CAPS (<pro>, CBO do vínculo mais antigo) e
+# `collective`, a quantidade máxima (`max_quantity`, nulo = sem limite) e se
+# exige autorização (`requires_authorization`, atributo 036) — P56, lidos pelo
+# Billing::SigtapCache como na crítica da ação (ActionRules); a equipe lotada no CAPS (<pro>, CBO do vínculo mais antigo) e
 # as equipes da APS ativas (o matriciamento). Só a equipe lotada; sem dado de
 # paciente, sem trilha.
 module Psychosocial
@@ -30,7 +32,8 @@ module Psychosocial
     def pairs(map) = map.map { |code, label| { code: code, label: label } }
 
     def procedures(competence, cbo, config)
-      release = Terminology::Sigtap.release_for(competence)
+      sigtap = Billing::SigtapCache.new
+      release = sigtap.release(competence)
       return [] unless release
 
       prefixes = config["procedure_prefixes"].map { |prefix| "#{prefix}%" }
@@ -43,7 +46,8 @@ module Psychosocial
       allowed = instruments.keys.select { |code| cbos[code].nil? || cbos[code].include?(cbo) }
       SigtapProcedure.where(release_id: release.id, code: allowed).order(:code).pluck(:code, :name).map do |code, name|
         { code: code, name: name, instrument_codes: instruments[code], family_care: config["family_care_codes"].include?(code),
-          collective: config["collective_codes"].include?(code) }
+          collective: config["collective_codes"].include?(code), max_quantity: sigtap.max_quantity(release, code),
+          requires_authorization: sigtap.attributes(release, code).include?(ActionRules::AUTHORIZATION_ATTRIBUTE) }
       end
     end
 

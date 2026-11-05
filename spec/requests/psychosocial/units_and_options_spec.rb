@@ -70,6 +70,12 @@ RSpec.describe "CAPS — unidades e opções", type: :request do
       reception = json_body["procedures"].find { |p| p["code"] == "0301080232" }
       expect(reception["instrument_codes"]).to eq(%w[02 09])
       expect(reception["name"]).to eq("ACOLHIMENTO INICIAL POR CENTRO DE ATENCAO PSICOSSOCIAL")
+      # P56 (R2): limite e autorização da SIGTAP da competência corrente (nulo = sem limite).
+      by_code = json_body["procedures"].index_by { |p| p["code"] }
+      expect(by_code["0301080208"]).to include("max_quantity" => 31, "requires_authorization" => false)
+      expect(by_code["0301080020"]).to include("max_quantity" => 1, "requires_authorization" => false)
+      expect(by_code["0301080291"]).to include("max_quantity" => nil, "requires_authorization" => true)
+      expect(json_body["procedures"]).to all(include("max_quantity", "requires_authorization"))
 
       expect(json_body["team"]).to contain_exactly(Psychosocial::Json.pro(psychologist, "251510"), Psychosocial::Json.pro(lead, "223505"))
       expect(json_body["health_teams"]).to eq([ { "id" => team.id, "name" => "eSF Vila Verde 1", "ine" => "0000123456",
