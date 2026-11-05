@@ -25,4 +25,16 @@ class Ciap2CodesController < ApplicationController
 
     render json: { items: Screenings::Ciap2.search(query).map { |c| { code: c.code, label: c.label } } }
   end
+
+  private
+
+  # Módulo 31 (padrão do P47/P56 em Signatures::BaseController e
+  # Sncr::BaseController): a equipe do CAPS (sem health_professional) busca só
+  # a CID-10 para registrar a matrícula; é dado de referência público, sem dado
+  # de paciente. A CIAP-2 segue exclusiva do profissional de saúde.
+  def require_professional
+    return if params[:terminology] == "cid10" && Psychosocial::Access.staff?(Current.user)
+
+    super
+  end
 end
