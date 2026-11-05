@@ -118,7 +118,8 @@ module Lab
       groups = orders.group_by { |o| v = exams.fetch(o.sigtap_code).current_version; [ v.material, v.container ] }
       raise ArgumentError, "amostras demais" if groups.size > LabSample::MAX_PER_REQUISITION
 
-      place_text = place == "lab" ? "#{provider.name} — coleta no laboratório" : "#{unit.name} — coleta na unidade"
+      # O texto vai ao pedido e chega ao cidadão (Exams::CitizenList): CAPS genérico (P53/P57).
+      place_text = place == "lab" ? "#{provider.name} — coleta no laboratório" : "#{Timeline::Sources::Labels.unit_name(unit)} — coleta na unidade"
       groups.each_with_index do |((material, container), group), index|
         sample = LabSample.create!(lab_requisition: requisition, barcode: LabSample.barcode_for(requisition.number, index + 1),
                                    material: material, container: container)

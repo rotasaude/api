@@ -58,7 +58,7 @@ module Lab
 
       fresh = LabSample.create!(lab_requisition: req, barcode: LabSample.barcode_for(req.number, next_index(req)), material: sample.material,
                                 container: sample.container, recollection_of: sample)
-      place = req.collection_place == "lab" ? "#{req.exam_provider.name} — recoleta no laboratório" : "#{req.origin_unit.name} — recoleta na unidade"
+      place = req.collection_place == "lab" ? "#{req.exam_provider.name} — recoleta no laboratório" : "#{Timeline::Sources::Labels.unit_name(req.origin_unit)} — recoleta na unidade" # CAPS genérico (P57)
       pending.each do |item|
         item.update!(lab_sample: fresh)
         order = item.exam_order

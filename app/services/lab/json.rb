@@ -10,7 +10,8 @@ module Lab
       patient = req.patient
       body = { id: req.id, number: req.number,
                patient: { id: patient.id, display_name: patient.display_name, birth_date: patient.birth_date, biological_sex: req.biological_sex },
-               origin_unit: { id: req.origin_unit_id, name: req.origin_unit.name }, collection_place: req.collection_place,
+               origin_unit: { id: req.origin_unit_id, name: Timeline::Sources::Labels.unit_name(req.origin_unit) }, # CAPS genérico (P53/P57)
+               collection_place: req.collection_place,
                urgent: req.urgent, status: req.status, expected_delivery_on: req.expected_delivery_on&.iso8601,
                reports: req.reports.map { |r| report_summary(r, viewer: viewer, provider_ids: provider_ids) },
                delivered_to: req.delivered_to, delivered_at: req.delivered_at&.iso8601 }

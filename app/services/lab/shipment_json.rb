@@ -3,7 +3,7 @@ module Lab
     module_function
 
     def shipment(s)
-      { id: s.id, origin_unit: { id: s.origin_unit_id, name: s.origin_unit.name },
+      { id: s.id, origin_unit: { id: s.origin_unit_id, name: Timeline::Sources::Labels.unit_name(s.origin_unit) }, # CAPS genérico (P57)
         provider: { id: s.exam_provider_id, name: s.exam_provider.name }, status: s.status,
         temperature_celsius: s.temperature_celsius&.to_f, sent_at: s.sent_at&.iso8601,
         sent_by: Screenings::Json.staff_name(s.sent_by_user), received_at: s.received_at&.iso8601,

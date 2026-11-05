@@ -69,4 +69,50 @@ RSpec.describe "CAPS — detalhes apontados pela linha do tempo geral", type: :r
       expect(json_body["unit"]).to eq("id" => ubs.id, "name" => "UBS Boa Vista")
     end
   end
+
+  # P57 (I2): o P53 vale também no laboratório — requisição, remessa e o local
+  # da coleta gravado no pedido, que chega ao cidadão por /citizen/exams.
+  describe "requisição do laboratório com origem CAPS" do
+    let!(:city) { lab_city! }
+    let(:provider) { lab_provider! }
+    let(:exam) { lab_exam!(provider: provider) }
+
+    before { caps.update!(collects_samples: true) }
+
+    it "requisição, lista, remessa e /citizen/exams: rótulo genérico; a coleta da UBS mantém o nome" do
+      patient, citizen = exam_patient!(exam_seq!)
+      nurse = doctor!(caps)
+      req = open_requisition!(provider: provider, exams: [ exam ], unit: caps, place: "ubs", by: nurse, patient: patient)
+      expect(ExamOrder.where(patient_id: patient.id).pluck(:scheduled_place)).to eq([ "#{label} — coleta na unidade" ])
+
+      Lab::CollectSample.call(sample: req.samples.first, by: nurse)
+      sign_in_as(nurse)
+      json_post "/lab/shipments", origin_unit_id: caps.id, provider_id: provider.id, barcodes: [ req.samples.first.barcode ],
+                                  temperature_celsius: 4
+      expect(response).to have_http_status(:created)
+      expect(json_body["origin_unit"]).to eq("id" => caps.id, "name" => label)
+      expect_hidden
+
+      sign_in_as(lab_staff!)
+      get "/lab/requisitions/#{req.id}"
+      expect(response).to have_http_status(:ok)
+      expect(json_body["origin_unit"]).to eq("id" => caps.id, "name" => label)
+      expect_hidden
+      get "/lab/requisitions", params: { number: req.number }
+      expect(response).to have_http_status(:ok)
+      expect_hidden
+
+      sign_in_citizen(citizen.phone)
+      get "/citizen/exams", params: { citizen_id: citizen.id }
+      expect(response).to have_http_status(:ok)
+      expect(json_body["exams"].sole["scheduled_place"]).to eq("#{label} — coleta na unidade")
+      expect_hidden
+
+      ubs.update!(collects_samples: true)
+      ubs_req = open_requisition!(provider: provider, exams: [ exam ], unit: ubs, place: "ubs", patient: patient)
+      sign_in_as(lab_staff!)
+      get "/lab/requisitions/#{ubs_req.id}"
+      expect(json_body["origin_unit"]).to eq("id" => ubs.id, "name" => "UBS Boa Vista")
+    end
+  end
 end
