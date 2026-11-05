@@ -38,10 +38,34 @@ RSpec.describe "CAPS — hoje no CAPS", type: :request do
     expect(json_body["groups"].map { |g| g["id"] }).to eq([ manha.id, tarde.id ])
     expect(json_body["groups"].last).to eq("id" => tarde.id, "name" => "Tarde", "kind" => "workshop", "starts_at" => "14:00",
                                            "ends_at" => "16:00", "responsible" => Psychosocial::Json.pro(staff, "251510"),
-                                           "capacity" => 8)
+                                           "capacity" => 8, "sigtap_code" => "0301080216", "action_id" => nil)
 
     today(thursday)
     expect(json_body["groups"]).to eq([])
+  end
+
+  # P56 (R3): a ação não cancelada do grupo na data local pedida (23:30 locais
+  # ainda é o dia, mesmo já sendo o seguinte em UTC); cancelada não conta.
+  it "action_id: a ação não cancelada do grupo no dia local; cancelada, de outro dia ou de outro grupo não contam" do
+    group = group!(name: "Oficina")
+    other = group!(name: "Outro")
+    action = lambda do |at, of|
+      PsychosocialAction.create!(health_unit: caps, sigtap_code: "0301080216", instrument: "raas_psi", performed_at: at,
+                                 month: at.to_date.beginning_of_month, place: "caps", quantity: 1, professional_user: staff,
+                                 cbo_code: "251510", origin: "manual", psychosocial_group: of)
+    end
+    action.call(Time.zone.local(2026, 11, 4, 10), group)
+          .update!(cancelled_at: Time.current, cancelled_by_user: staff, cancel_reason: "Lançada por engano")
+    late = action.call(Time.zone.local(2026, 11, 4, 23, 30), group)
+    action.call(Time.zone.local(2026, 10, 28, 10), group)
+    action.call(Time.zone.local(2026, 11, 3, 10), other)
+
+    today(wednesday)
+    by_id = json_body["groups"].index_by { |g| g["id"] }
+    expect(by_id[group.id]).to include("sigtap_code" => "0301080216", "action_id" => late.id)
+    expect(by_id[other.id]["action_id"]).to be_nil
+    today(wednesday - 7)
+    expect(json_body["groups"].find { |g| g["id"] == group.id }["action_id"]).to be_present
   end
 
   it "a visita das 23:30 locais entra no dia local, não no dia UTC seguinte; ordenada pela hora" do
