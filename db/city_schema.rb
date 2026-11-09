@@ -4221,6 +4221,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900005) do
     t.uuid "counter_referral_health_unit_id"
     t.datetime "created_at", null: false
     t.text "destination"
+    t.text "error_reason"
     t.string "kind", null: false
     t.datetime "recorded_at", null: false
     t.uuid "recorded_by_user_id", null: false
@@ -4231,8 +4232,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900005) do
     t.index ["counter_referral_health_unit_id", "recorded_at"], name: "idx_urgency_outcomes_counter_referral", where: "(counter_referral_health_unit_id IS NOT NULL)"
     t.index ["urgency_encounter_id"], name: "idx_urgency_outcomes_encounter", unique: true
     t.check_constraint "(kind::text = 'discharged_to_primary_care'::text) = (return_days IS NOT NULL) AND (return_days IS NULL) = (return_reason IS NULL)", name: "ck_urgency_outcomes_return"
+    t.check_constraint "(kind::text = 'registered_in_error'::text) = (error_reason IS NOT NULL)", name: "ck_urgency_outcomes_error_reason"
     t.check_constraint "(kind::text = 'transferred'::text) = (destination IS NOT NULL)", name: "ck_urgency_outcomes_destination"
-    t.check_constraint "(kind::text = ANY (ARRAY['discharged'::text, 'discharged_to_primary_care'::text, 'transferred'::text, 'left_without_care'::text, 'left_against_advice'::text, 'death'::text])) AND (return_days IS NULL OR return_days >= 1 AND return_days <= 90)", name: "ck_urgency_outcomes_domains"
+    t.check_constraint "(kind::text = ANY (ARRAY['discharged'::text, 'discharged_to_primary_care'::text, 'transferred'::text, 'left_without_care'::text, 'left_against_advice'::text, 'death'::text, 'registered_in_error'::text])) AND (return_days IS NULL OR return_days >= 1 AND return_days <= 90)", name: "ck_urgency_outcomes_domains"
     t.check_constraint "counter_referral_health_unit_id IS NULL OR kind::text = 'discharged_to_primary_care'::text", name: "ck_urgency_outcomes_counter_referral"
     t.check_constraint "vacancy_request IS NULL OR kind::text = 'transferred'::text", name: "ck_urgency_outcomes_vacancy_request"
   end

@@ -1,9 +1,10 @@
 # Desfecho da urgência (ADR 0050; contrato §7; plano, Desvio 13): um por
 # encontro, imutável (trigger). Destino da transferência, pedido de vaga e
-# motivo do retorno à UBS cifrados com a chave da cidade. Dado do paciente
-# nunca sai em inspect, to_s, pretty_print nem as_json — só o id.
+# motivos (retorno à UBS, registro por engano, §14 Q25) cifrados com a chave
+# da cidade. Dado do paciente nunca sai em inspect, to_s, pretty_print nem
+# as_json — só o id.
 class UrgencyOutcome < ApplicationRecord
-  encrypts :destination, :vacancy_request, :return_reason
+  encrypts :destination, :vacancy_request, :return_reason, :error_reason
 
   belongs_to :urgency_encounter
   belongs_to :counter_referral_health_team, class_name: "HealthTeam", optional: true

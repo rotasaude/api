@@ -429,6 +429,11 @@ Rails.application.config.to_prepare do
   # CPF, CNS nem a descrição. A Task 13 liga o BPA da urgência
   # (Billing::UrgencyProductionJob); até lá, sem consumidor.
   DomainEvents.bind "urgency.patient_identified", to: []
+  # Desfecho (Urgency::RecordOutcome; contrato §12): só o encounter_id —
+  # nunca o tipo do desfecho, o destino, o pedido de vaga nem os motivos. A
+  # Task 13 liga o BPA da urgência (que pula o registered_in_error); até lá,
+  # sem consumidor.
+  DomainEvents.bind "urgency.encounter_closed", to: []
   # "Chamar de novo" (Attendances::Recall; contrato §12): só attendance_id e
   # call_id — nunca a senha, o local nem a pessoa; sem consumidor (a TV lê
   # attendance_calls).

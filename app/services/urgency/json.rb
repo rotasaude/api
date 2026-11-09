@@ -61,11 +61,12 @@ module Urgency
     def outcome(item, clinical:)
       guidance = item.return_days && { days: item.return_days, reason: item.return_reason }
       json = { kind: item.kind, destination: item.destination, vacancy_request: item.vacancy_request, return_guidance: guidance,
-               recorded_at: item.recorded_at.iso8601, by: { name: Screenings::Json.staff_name(item.recorded_by_user) } }
+               reason: item.error_reason, recorded_at: item.recorded_at.iso8601,
+               by: { name: Screenings::Json.staff_name(item.recorded_by_user) } }
       return json if clinical
 
       json[:return_guidance] = guidance&.except(:reason)
-      json.except(:destination, :vacancy_request)
+      json.except(:destination, :vacancy_request, :reason)
     end
     private_class_method :classification, :outcome
   end

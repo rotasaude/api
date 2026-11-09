@@ -558,6 +558,12 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry["urgency.patient_identified"]).to be_empty
   end
 
+  # Módulo 32a (Task 11): desfecho do encontro (encounter_id); a Task 13 liga o BPA.
+  it "declares urgency.encounter_closed with no consumer yet" do
+    expect(DomainEvents.registry.keys).to include("urgency.encounter_closed")
+    expect(DomainEvents.registry["urgency.encounter_closed"]).to be_empty
+  end
+
   # Módulo 32a (Task 8): "chamar de novo" (attendance_id, call_id); só ids,
   # sem consumidor.
   it "declares attendance.recalled with no consumer" do

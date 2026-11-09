@@ -17,12 +17,17 @@ module Urgency
     # 2235 (o médico, o técnico 3222) → cbo_not_allowed.
     # -> Result.ok(link:) | Result.fail(:missing_role | :missing_link | :cbo_not_allowed)
     def classifier(user, health_unit_id)
-      return Result.fail(:missing_role) unless user.present? && user.has_role?("health_professional")
-
       found = classifier_link(user, health_unit_id)
-      return Result.ok(link: found) if found
+      found ? Result.ok(link: found) : Result.fail(refusal(user, health_unit_id))
+    end
 
-      Result.fail(link(user, health_unit_id, [ "" ]) ? :cbo_not_allowed : :missing_link)
+    # A recusa de quem não tem o vínculo pedido na unidade: sem
+    # health_professional → missing_role; sem vínculo ativo nela →
+    # missing_link; com vínculo de outro CBO → cbo_not_allowed.
+    def refusal(user, health_unit_id)
+      return :missing_role unless user.present? && user.has_role?("health_professional")
+
+      link(user, health_unit_id, [ "" ]) ? :cbo_not_allowed : :missing_link
     end
 
     # Quem lê o clínico do encontro: o classificador ou o médico da UPA.

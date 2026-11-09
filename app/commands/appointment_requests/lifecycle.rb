@@ -4,7 +4,12 @@ module AppointmentRequests
   module Lifecycle
     module_function
 
+    # Módulo 32a (ADR 0050; plano, Desvio 2): o walk_in da UPA não tem o par
+    # do wpda (citizen_id nulo) e o pedido do 17 é do par — não abre pedido; a
+    # volta à UBS é a lista de retornos da urgência (Urgency::CounterReferrals).
     def open_for!(attendance, outcome:, unit:)
+      return nil if attendance.walk_in?
+
       target = outcome == "return" ? attendance.health_unit : unit
       return nil if target.nil? || !%w[return referred].include?(outcome)
 

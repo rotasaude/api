@@ -13,7 +13,7 @@ class AttendancesController < ApplicationController
     # Módulo 32a (Desvios 11 e 12; contrato §14 Q7, Q15).
     cbo_not_allowed: :forbidden, feature_disabled: :forbidden, not_classified: :unprocessable_entity,
     call_location_required: :unprocessable_entity, invalid_call_location: :unprocessable_entity,
-    not_called: :unprocessable_entity
+    not_called: :unprocessable_entity, urgency_outcome_required: :unprocessable_entity
   }.freeze
 
   before_action :require_attendance_staff, only: %i[queue close]
@@ -84,9 +84,12 @@ class AttendancesController < ApplicationController
     # interruptor utilizável (lido aqui, fora do savepoint), "encaminhado" sem
     # unidade é 422 regulation_request_required.
     regulation = CareRegulation::Gate.usable?(Current.city) ? 0 : nil
+    # Módulo 32a (§14 Q10): com urgency_care utilizável, o atendimento da UPA
+    # fecha só pelo desfecho da urgência (422 urgency_outcome_required).
     result = Attendances::Close.call(attendance: attendance, outcome: params[:outcome],
                                      referral_unit_id: params[:referral_unit_id],
-                                     referral_note: params[:referral_note], by: Current.user, regulation: regulation)
+                                     referral_note: params[:referral_note], by: Current.user, regulation: regulation,
+                                     urgency: Urgency::Gate.usable?(Current.city))
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: { attendance: attendance_json(result.payload[:attendance]),

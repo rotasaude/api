@@ -6,16 +6,17 @@
 # o estouro não mudar com a troca do protocolo) e o desfecho (um, imutável).
 # A dor fica fora dos sinais (`pain_scale`, 0..10, Q3). Um só protocolo de
 # urgência ativo por cidade, pelo `kind` e não pelo nome (Q16).
-# Queixa, sinais, critério, justificativa, destino, pedido de vaga e motivo
-# do retorno: cifrados com a chave da cidade. Os limites de texto ficam nos
-# comandos (o cifrado não tem o tamanho do claro). Triggers em
-# db/city_triggers.sql (o dump não representa trigger). Irreversível.
+# Queixa, sinais, critério, justificativa, destino, pedido de vaga, motivo
+# do retorno e motivo do registro por engano (§14 Q25): cifrados com a chave
+# da cidade. Os limites de texto ficam nos comandos (o cifrado não tem o
+# tamanho do claro). Triggers em db/city_triggers.sql (o dump não representa
+# trigger). Irreversível.
 class AddUrgencyCare < ActiveRecord::Migration[8.1]
   # Espelho de Urgency::Catalog no dia desta migração (a migração não lê
   # código da aplicação: a lista do banco fica fixa no que foi migrado).
   COLORS = %w[red orange yellow green blue].freeze
   STATES = %w[waiting_classification classified in_care closed].freeze
-  OUTCOMES = %w[discharged discharged_to_primary_care transferred left_without_care left_against_advice death].freeze
+  OUTCOMES = %w[discharged discharged_to_primary_care transferred left_without_care left_against_advice death registered_in_error].freeze
   MAX_WAIT = (0..1440)
   PAIN = (0..10)
   RETURN_DAYS = (1..90)
@@ -110,6 +111,8 @@ class AddUrgencyCare < ActiveRecord::Migration[8.1]
       t.text :vacancy_request
       t.integer :return_days, limit: 2
       t.text :return_reason
+      # Motivo do registro por engano (§14 Q25): cifrado, só nele.
+      t.text :error_reason
       t.references :counter_referral_health_team, type: :uuid, foreign_key: { to_table: :health_teams }, index: false
       t.references :counter_referral_health_unit, type: :uuid, foreign_key: { to_table: :health_units }, index: false
       t.references :recorded_by_user, type: :uuid, null: false, foreign_key: { to_table: :users }, index: false
@@ -130,6 +133,8 @@ class AddUrgencyCare < ActiveRecord::Migration[8.1]
                          "(kind::text = 'discharged_to_primary_care'::text) = (return_days IS NOT NULL) AND " \
                          "(return_days IS NULL) = (return_reason IS NULL)",
                          name: "ck_urgency_outcomes_return"
+    add_check_constraint :urgency_outcomes, "(kind::text = 'registered_in_error'::text) = (error_reason IS NOT NULL)",
+                         name: "ck_urgency_outcomes_error_reason"
     add_check_constraint :urgency_outcomes, "vacancy_request IS NULL OR kind::text = 'transferred'::text",
                          name: "ck_urgency_outcomes_vacancy_request"
     add_check_constraint :urgency_outcomes, "counter_referral_health_unit_id IS NULL OR kind::text = 'discharged_to_primary_care'::text",

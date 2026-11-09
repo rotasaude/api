@@ -172,7 +172,14 @@ BEGIN
           OR (OLD.status = 'waiting' AND NEW.status = 'closed'
               AND NEW.outcome IN ('left', 'scheduled_from_screening', 'oriented', 'referred'))
           OR (OLD.status = 'in_care' AND NEW.status = 'closed'
-              AND NEW.outcome NOT IN ('left', 'scheduled_from_screening', 'oriented'))) THEN
+              AND NEW.outcome NOT IN ('left', 'scheduled_from_screening', 'oriented'))
+          -- Módulo 32a (Desvio 13; §14 Q10, Q25): quem já está com o médico
+          -- sai como left só com o desfecho de evasão (ou registro por
+          -- engano) do encontro, gravado antes na mesma transação.
+          OR (OLD.status = 'in_care' AND NEW.status = 'closed' AND NEW.outcome = 'left'
+              AND EXISTS (SELECT 1 FROM urgency_encounters e JOIN urgency_outcomes o ON o.urgency_encounter_id = e.id
+                          WHERE e.attendance_id = NEW.id
+                            AND o.kind IN ('left_without_care', 'left_against_advice', 'registered_in_error')))) THEN
     RAISE EXCEPTION 'attendances: invalid transition % -> %', OLD.status, NEW.status;
   END IF;
   RETURN NEW;
@@ -3457,7 +3464,7 @@ BEGIN
       FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''complaint'', ''vital_signs'', ''criterion'', ''justification'')';
     EXECUTE 'DROP TRIGGER IF EXISTS urgency_outcomes_reencryption_only ON urgency_outcomes';
     EXECUTE 'CREATE TRIGGER urgency_outcomes_reencryption_only BEFORE UPDATE OR DELETE ON urgency_outcomes
-      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''destination'', ''vacancy_request'', ''return_reason'')';
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''destination'', ''vacancy_request'', ''return_reason'', ''error_reason'')';
     FOREACH item IN ARRAY ARRAY['urgency_encounters', 'urgency_classifications', 'urgency_outcomes'] LOOP
       EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
       EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',

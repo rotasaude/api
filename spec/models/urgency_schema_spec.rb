@@ -188,6 +188,11 @@ RSpec.describe "Esquema da urgência e da sala de espera", type: :model do
       expect { attempt { outcome!(encounter, counter_referral_health_unit: create_unit("UBS Retorno")) } }
         .to raise_error(ActiveRecord::StatementInvalid, /ck_urgency_outcomes_counter_referral/)
       expect { attempt { outcome!(encounter, kind: "escaped") } }.to raise_error(ActiveRecord::StatementInvalid, /ck_urgency_outcomes_domains/)
+      # §14 Q25: o motivo só e sempre no registro por engano, cifrado.
+      expect { attempt { outcome!(encounter, kind: "registered_in_error") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /ck_urgency_outcomes_error_reason/)
+      expect { attempt { outcome!(encounter, error_reason: "Chegada duplicada") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /ck_urgency_outcomes_error_reason/)
       ubs = create_unit("UBS Retorno 2")
       outcome = outcome!(encounter, kind: "discharged_to_primary_care", return_days: 5, return_reason: "Curativo da ferida",
                                     counter_referral_health_unit: ubs)

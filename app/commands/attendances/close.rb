@@ -8,9 +8,24 @@
 # regulation_request_required) e a nota fica opcional, com a marca
 # referral_regulated (é ela que satisfaz ck_attendances_referral sem unidade
 # nem nota); referred COM unidade segue sendo o referral do 17.
+# Módulo 32a (ADR 0050; plano, Desvio 13; contrato §7 e §14 Q10, Q25):
+# `urgency` é o urgency_care utilizável, lido pelo chamador fora da transação.
+# Ligado, o atendimento com encontro da urgência só fecha com o
+# `urgency_outcome` do MESMO encontro (senão urgency_outcome_required): é o
+# Urgency::RecordOutcome que fecha, e `outcome`, `referral_note` e
+# `referral_regulated` vêm do Urgency::Catalog::OUTCOME_MAP (o motivo do
+# retorno fica só cifrado no desfecho), com `left` valendo também de in_care.
+# Desligado, o 13 fecha o walk_in como qualquer atendimento.
 module Attendances
   class Close
-    def self.call(attendance:, outcome:, referral_unit_id:, referral_note:, by:, regulation: nil)
+    def self.call(attendance:, outcome:, referral_unit_id:, referral_note:, by:, regulation: nil, urgency_outcome: nil, urgency: false)
+      if urgency_outcome || (urgency && attendance.walk_in? && attendance.urgency_encounter)
+        return Result.fail(:urgency_outcome_required) unless urgency_outcome&.urgency_encounter&.attendance_id == attendance.id
+
+        outcome, note, regulated = urgency_terms(urgency_outcome)
+        return close(attendance, outcome: outcome, unit: nil, note: note, regulated: regulated, by: by, urgency: true)
+      end
+
       outcome = outcome.to_s
       return Result.fail(:invalid_outcome) unless Attendance::CLOSE_OUTCOMES.include?(outcome)
       raise ArgumentError, "regulation: inteiro >= 0 ou nil" unless regulation.nil? || (regulation.is_a?(Integer) && regulation >= 0)
@@ -34,6 +49,10 @@ module Attendances
         end
       end
 
+      close(attendance, outcome: outcome, unit: unit, note: note, regulated: regulated, by: by)
+    end
+
+    def self.close(attendance, outcome:, unit:, note:, regulated:, by:, urgency: false)
       ApplicationRecord.transaction do
         attendance.lock!
         HealthUnit.lock_active!(unit.id) if unit
@@ -46,7 +65,7 @@ module Attendances
         # finalização (Consultations::Finalize vira a consulta antes de chamar aqui).
         next Result.fail(:consultation_in_progress) if Consultation.exists?(attendance_id: attendance.id, status: "draft")
         next Result.fail(:already_closed) unless attendance.open?
-        next Result.fail(:invalid_transition) unless allowed?(attendance.status, outcome)
+        next Result.fail(:invalid_transition) unless allowed?(attendance.status, outcome, urgency: urgency)
 
         # ADR 0030 (Desvio 7): quem sai (ou é encerrado) com escuta em curso
         # não deixa a escuta pendurada.
@@ -65,8 +84,20 @@ module Attendances
       Result.fail(:invalid_unit)
     end
 
-    def self.allowed?(status, outcome)
+    # A evasão do encontro da urgência (left_*, registered_in_error) vale
+    # também de in_care (o rota_attendance_guard confere o desfecho).
+    def self.allowed?(status, outcome, urgency: false)
+      return %w[waiting in_care].include?(status) if outcome == "left" && urgency
+
       outcome == "left" ? status == "waiting" : status == "in_care"
     end
+
+    # -> [outcome do 13, referral_note, referral_regulated]
+    def self.urgency_terms(urgency_outcome)
+      kind = urgency_outcome.kind
+      note = kind == "discharged_to_primary_care" ? "Retorno à UBS em até #{urgency_outcome.return_days} dias" : nil
+      [ Urgency::Catalog::OUTCOME_MAP.fetch(kind), note, kind == "transferred" ]
+    end
+    private_class_method :close, :urgency_terms
   end
 end

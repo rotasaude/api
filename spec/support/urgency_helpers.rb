@@ -139,6 +139,18 @@ module UrgencyHelpers
     consultation.reload
   end
 
+  # Paciente com equipe de ESF pela regra do 23 (CareLines::TeamPopulation:
+  # consulta `general` finalizada por membro ativo da equipe, na unidade dela).
+  # -> [paciente, UBS, equipe]
+  def patient_with_team!
+    ubs = create_unit("UBS Retorno #{SecureRandom.hex(2)}")
+    family_doctor = doctor!(ubs)
+    team = care_team!(ubs, family_doctor)
+    patient, citizen = exam_patient!(exam_seq!)
+    finalized_consultation!(unit: ubs, doctor: family_doctor, citizen: citizen)
+    [ patient.reload, ubs, team ]
+  end
+
   def call_location!(unit, name: "Consultório 1")
     CallLocation.create!(health_unit: unit, name: name, updated_by_user: urgency_admin!)
   end
