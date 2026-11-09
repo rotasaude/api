@@ -12,8 +12,9 @@
 # nulo sem ela.
 #
 # Página do PEC externo (`pec: true`; contrato §14 Q27): a forma do
-# profissional, sem o registro por engano e sem paciente provisório. O mesmo
-# recorte de NON_CARE_OUTCOMES e do provisório vale para o cidadão.
+# profissional, sem o motivo da orientação de retorno, sem o registro por
+# engano e sem paciente provisório. O mesmo recorte de NON_CARE_OUTCOMES e do
+# provisório vale para o cidadão.
 #
 # Cidadão (`citizen: true`): só encontros FECHADOS de paciente identificado,
 # com desfecho da tabela W3 (Labels::CITIZEN_URGENCY_OUTCOMES) — o óbito e o
@@ -42,7 +43,7 @@ module Timeline
         rows = Window.apply(scope, kind: KIND, column: "attendances.checked_in_at", id_column: "urgency_encounters.id",
                                    before: before, from: from, to: to).limit(limit).to_a
         labels = {} # memo da chamada: um rótulo por (release, código)
-        rows.map { |encounter| entry(encounter, labels) }
+        rows.map { |encounter| entry(encounter, labels, pec: pec) }
       end
 
       def citizen_scope(scope)
@@ -63,14 +64,14 @@ module Timeline
         encounter.closed? && outcome && Labels::CITIZEN_URGENCY_OUTCOMES.key?(outcome.kind) && !encounter.attendance.patient.unidentified
       end
 
-      def entry(encounter, labels)
+      def entry(encounter, labels, pec: false)
         unit = encounter.attendance.health_unit
         outcome = encounter.outcome
         consultation = encounter.consultation&.then { |c| c.status == "finalized" ? c : nil }
         title = "Atendimento de urgência — #{Labels.unit_name(unit)}"
         guidance = outcome&.return_days
         summary = [ Labels::URGENCY_COLORS[encounter.color], cid(consultation, labels), outcome && Labels::URGENCY_OUTCOMES[outcome.kind],
-                    guidance && "#{::Urgency::ReturnGuidance.note(guidance)}: #{outcome.return_reason}" ].compact.join(" · ")
+                    guidance && return_note(guidance, outcome, pec: pec) ].compact.join(" · ")
         citizen = nil
         if citizen_eligible?(encounter)
           citizen = { title: title, summary: Labels::CITIZEN_URGENCY_OUTCOMES[outcome.kind], status: nil, professional_name: nil }
@@ -80,6 +81,13 @@ module Timeline
                   professional: consultation && { name: Screenings::Json.staff_name(consultation.author_user), cbo_code: consultation.cbo_code },
                   title: title, summary: summary.presence, status: encounter.state,
                   detail_ref: consultation && { type: "consultation", id: consultation.id }, citizen: citizen, document: nil)
+      end
+
+      # A orientação de retorno com o motivo; na página do PEC externo, sem o
+      # motivo (texto clínico livre: Q27 leva só data, unidade, cor, CID e desfecho).
+      def return_note(days, outcome, pec:)
+        note = ::Urgency::ReturnGuidance.note(days)
+        pec ? note : "#{note}: #{outcome.return_reason}"
       end
 
       # O 1º CID-10 avaliado na consulta (sem os de adendo), "CÓDIGO nome" pela release gravada.
@@ -93,7 +101,7 @@ module Timeline
         label = labels.fetch(key) { labels[key] = ClinicalTerms.label("cid10", item.code, item.terminology_release_id) }
         "#{item.code} #{label}".strip
       end
-      private_class_method :citizen_scope, :pec_scope, :citizen_eligible?, :entry, :cid
+      private_class_method :citizen_scope, :pec_scope, :citizen_eligible?, :entry, :return_note, :cid
     end
   end
 end
