@@ -18,6 +18,16 @@ class UrgencyEncounter < ApplicationRecord
   def closed? = state == "closed"
   def color = current_classification&.color
 
+  # Estouro (Desvio 9; §14 Q18): minutos inteiros desde a 1ª classificação
+  # acima do tempo máximo GRAVADO na classificação vigente (trocar o protocolo
+  # não muda quem já foi classificado; reclassificar para cima estoura na
+  # hora). Só de quem espera o médico (`classified`).
+  def overdue?(at: Time.current)
+    return false unless state == "classified" && first_classified_at && current_classification
+
+    ((at - first_classified_at) / 60).floor > current_classification.max_wait_minutes
+  end
+
   def inspect = "#<UrgencyEncounter id=#{id} state=#{state}>"
   def to_s = inspect
   def pretty_print(pp) = pp.text(inspect)

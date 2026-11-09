@@ -89,11 +89,17 @@ module UrgencyHelpers
     result.payload.fetch(:encounter)
   end
 
-  # Classificação pela via real (Urgency::Classify). Sem justificativa dada, vai
-  # a padrão (exigida quando não há sugestão ou a cor difere dela).
-  def classified!(encounter, color:, by:, vital_signs: {}, pain_scale: 0, justification: nil)
+  # Sem `justification:` vai a padrão; `justification: nil` manda nulo (a cor
+  # sugerida aceita sem justificativa).
+  DEFAULT_JUSTIFICATION = Object.new.freeze
+
+  # Classificação pela via real (Urgency::Classify), sempre com a dor
+  # (`pain_scale`, obrigatória, Q22). Sem justificativa dada, vai a padrão
+  # (exigida quando não há sugestão ou a cor difere dela).
+  def classified!(encounter, color:, by:, vital_signs: {}, pain_scale: 0, justification: DEFAULT_JUSTIFICATION)
+    justification = JUSTIFICATION if justification.equal?(DEFAULT_JUSTIFICATION)
     attrs = { "complaint" => COMPLAINT, "vital_signs" => vital_signs.deep_stringify_keys, "pain_scale" => pain_scale,
-              "color" => color, "justification" => justification || JUSTIFICATION }
+              "color" => color, "justification" => justification }
     result = Urgency::Classify.call(encounter: encounter, attrs: attrs, by: by)
     raise "classified! recusado: #{result.reason} #{result.details}" if result.failure?
 

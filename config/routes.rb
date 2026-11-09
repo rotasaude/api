@@ -738,6 +738,9 @@ Rails.application.routes.draw do
     # Recepção: busca de pessoa e chegada com senha ou paciente provisório (§4, Q4).
     post  "person_lookup",       to: "person_lookups#create"
     post  "arrivals",            to: "arrivals#create"
+    # Enfermagem (2235): classificação e reclassificação; prévia da cor sem gravar (§5, Q1).
+    post  "encounters/:id/classifications", to: "classifications#create", as: :encounter_classifications
+    post  "suggest",             to: "suggestions#create"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.

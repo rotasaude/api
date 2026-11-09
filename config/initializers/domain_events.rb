@@ -418,4 +418,9 @@ Rails.application.config.to_prepare do
   # o encounter_id — nunca nome, CPF, CNS nem a descrição do não
   # identificado; sem consumidor (o check-in do 13 publica attendance.checked_in).
   DomainEvents.bind "urgency.arrived", to: []
+  # Classificação de risco (1ª) e reclassificação (Urgency::Classify): só
+  # encounter_id e classification_id — nunca a cor, a queixa, os sinais, a dor
+  # nem a justificativa; sem consumidor.
+  DomainEvents.bind "urgency.classified", to: []
+  DomainEvents.bind "urgency.reclassified", to: []
 end

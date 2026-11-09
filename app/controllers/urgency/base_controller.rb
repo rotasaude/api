@@ -19,7 +19,8 @@ module Urgency
       not_found: :not_found, patient_not_found: :not_found,
       encounter_open: :conflict, encounter_closed: :conflict, already_identified: :conflict, merge_blocked: :conflict,
       cpf_taken: :conflict, cns_taken: :conflict, citizen_not_verified: :conflict, consultation_in_progress: :conflict,
-      not_unidentified: :unprocessable_entity
+      not_unidentified: :unprocessable_entity, pain_scale_required: :unprocessable_entity,
+      justification_required: :unprocessable_entity
     }.freeze
     KEY_PATH_MAX = 64
 
@@ -42,6 +43,25 @@ module Urgency
     # 422 no formato uniforme: `error`/`path` no topo e `problems` com esse problema.
     def render_refusal(path, error = "invalid_request")
       render json: { error: error.to_s, path: path, problems: [ { path: path, error: error.to_s } ] }, status: :unprocessable_entity
+    end
+
+    # Detalhe do encontro (§14 Q6, Q19) em `{ encounter, **extra }`: com
+    # `clinical: false` (sem acesso clínico) sem o clínico. Todo detalhe com
+    # campo clínico ou com a descrição do provisório grava a trilha
+    # (resource encounter).
+    def render_encounter(encounter, clinical:, status: :ok, **extra)
+      json = Json.encounter(encounter, clinical: clinical)
+      patient = encounter.patient
+      Trail.viewed!(user: Current.user, patient_id: patient.id, resource: "encounter") if clinical || json[:patient].key?(:description)
+      render json: { encounter: json, **extra }, status: status
+    end
+
+    # O encontro do id da URL (malformado ou inexistente → 404). Renderiza e
+    # devolve nil quando não acha.
+    def find_encounter(id)
+      encounter = uuid?(id) ? UrgencyEncounter.includes(:attendance).find_by(id: id) : nil
+      not_found unless encounter
+      encounter
     end
 
     def forbid(reason = "missing_role") = render(json: { error: reason }, status: :forbidden)

@@ -12,6 +12,19 @@ module Urgency
     def classifier_link(user, health_unit_id) = link(user, health_unit_id, Catalog::CLASSIFIER_CBO_PREFIXES)
     def physician_link(user, health_unit_id) = link(user, health_unit_id, [ Catalog::PHYSICIAN_CBO_PREFIX ])
 
+    # Quem classifica na UPA (§14 Q2): sem health_professional → missing_role;
+    # sem vínculo ativo na unidade → missing_link; com vínculo, mas fora do
+    # 2235 (o médico, o técnico 3222) → cbo_not_allowed.
+    # -> Result.ok(link:) | Result.fail(:missing_role | :missing_link | :cbo_not_allowed)
+    def classifier(user, health_unit_id)
+      return Result.fail(:missing_role) unless user.present? && user.has_role?("health_professional")
+
+      found = classifier_link(user, health_unit_id)
+      return Result.ok(link: found) if found
+
+      Result.fail(link(user, health_unit_id, [ "" ]) ? :cbo_not_allowed : :missing_link)
+    end
+
     # Quem lê o clínico do encontro: o classificador ou o médico da UPA.
     def clinical_link(user, health_unit_id)
       link(user, health_unit_id, Catalog::CLASSIFIER_CBO_PREFIXES + [ Catalog::PHYSICIAN_CBO_PREFIX ])

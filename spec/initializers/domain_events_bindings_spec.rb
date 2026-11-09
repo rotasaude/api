@@ -542,4 +542,12 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include("urgency.arrived")
     expect(DomainEvents.registry["urgency.arrived"]).to be_empty
   end
+
+  # Módulo 32a (Task 7): classificação e reclassificação (encounter_id,
+  # classification_id); só ids, sem consumidor.
+  it "declares urgency.classified and urgency.reclassified with no consumer" do
+    names = %w[urgency.classified urgency.reclassified]
+    expect(DomainEvents.registry.keys).to include(*names)
+    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  end
 end
