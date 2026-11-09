@@ -113,6 +113,11 @@ RSpec.describe Protocols::Validation::Urgency do
       expect(errors.map { |e| e.split(":").first }).to contain_exactly("levels_out_of_order", "rule_id", "classification_rules[0].when")
     end
 
+    it "o nome acolhimento é reservado ao acolhimento também para a urgência" do
+      expect(Protocols::Gate.call(definition(name: "acolhimento")).errors)
+        .to eq([ "name 'acolhimento' is reserved for the screening protocol" ])
+    end
+
     it "nome de outro kind → name_kind_conflict, nos dois sentidos (Q16)" do
       ProtocolDefinition.create!(name: "dengue", version: 1, status: "draft", definition: protocol_definition_hash(name: "dengue"))
       expect(Protocols::Gate.call(definition(name: "dengue")).errors)

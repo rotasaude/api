@@ -54,8 +54,9 @@ class Admin::ProtocolsQuery
   end
 
   # Colunas schema/linter/gates (F-05.10): o portão de publicação (F-03.9) rodado
-  # sobre a definição desta versão, ao vivo (ADR 0022). Funções puras sobre o
-  # JSON, sem banco. Como no Protocols::Gate, schema reprovado pula o linter.
+  # sobre a definição desta versão, ao vivo (ADR 0022). Funções sobre o JSON,
+  # mais uma consulta por versão: o nome de outro kind (Protocols::NameKindConflict,
+  # módulo 32a). Como no Protocols::Gate, schema reprovado pula o linter.
   def self.gate_columns(d)
     definition = d.definition || {}
     if Protocols::Validation::Schema.call(definition).any?

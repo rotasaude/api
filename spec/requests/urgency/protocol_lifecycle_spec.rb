@@ -109,6 +109,40 @@ RSpec.describe "Protocolo de classificação de urgência", type: :request do
     expect(json).to eq("valid" => false, "errors" => [ "preview is not available for urgency protocols" ])
   end
 
+  describe "o rascunho não reaproveita o nome de outro kind (Q16)" do
+    def expect_conflict!(name)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json).to eq("error" => "invalid_definition",
+                         "message" => "name_kind_conflict: name '#{name}' is used by a protocol of another kind")
+    end
+
+    it "urgência sobre o nome de uma triagem em revisão: 422 e a triagem fica como estava (assinatura inclusa)" do
+      triage = ProtocolDefinition.create!(name: "dengue", version: 1, status: "in_review",
+                                          definition: protocol_definition_hash(name: "dengue"))
+      sign!(triage, purpose: "publication", by: ana)
+      before = triage.reload.attributes
+
+      sign_in_as(author)
+      post "/authoring/protocols/draft", params: { definition: urgency_definition(name: "dengue") }, as: :json
+      expect_conflict!("dengue")
+      expect(triage.reload.attributes).to eq(before)
+      expect(Protocols::Signatures.valid_signer_ids(triage, purpose: "publication")).to eq([ ana.id ])
+      expect(ProtocolContribution.where(protocol_definition: triage)).to be_empty
+    end
+
+    it "triagem sobre o nome de uma urgência: 422 e a urgência fica como estava" do
+      urgency = ProtocolDefinition.create!(name: "classificacao-urgencia", version: 1, status: "draft",
+                                           definition: urgency_definition)
+      before = urgency.reload.attributes
+
+      sign_in_as(author)
+      post "/authoring/protocols/draft", params: { definition: protocol_definition_hash(name: "classificacao-urgencia") }, as: :json
+      expect_conflict!("classificacao-urgencia")
+      expect(urgency.reload.attributes).to eq(before)
+      expect(ProtocolDefinition.where(name: "classificacao-urgencia").count).to eq(1)
+    end
+  end
+
   describe "a UPA fora da escuta inicial" do
     before { Current.city = TEST_CITY_A; acolhimento! }
     after { Current.reset }

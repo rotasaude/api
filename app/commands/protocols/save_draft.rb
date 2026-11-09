@@ -15,6 +15,12 @@ module Protocols
       record = ProtocolDefinition.find_or_initialize_by(name: definition["name"], version: definition["version"])
       return Result.fail(:forbidden) unless ProtocolPolicy.new(by, record).author?
 
+      # §14 Q16: o nome de um protocolo de outro kind nunca é reaproveitado —
+      # o rascunho sobrescreveria aquela linha (e as assinaturas dela), e o gate
+      # da outra recusaria para sempre com name_kind_conflict.
+      conflict = NameKindConflict.errors(definition)
+      return Result.fail(:invalid_definition, message: conflict.join("; ")) if conflict.any?
+
       # Fast fail on the un-locked read (avoids opening a transaction for the
       # common case). ProtocolPolicy#author? asks only the actor's role, never
       # the record, so it needs no re-check under the lock below.

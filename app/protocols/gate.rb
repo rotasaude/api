@@ -22,7 +22,9 @@ module Protocols
 
       # ADR 0050: a classificação de risco da UPA só tem níveis e regras de cor.
       if Validation::Urgency.urgency?(definition)
-        return Validator::Result.new(errors: Validation::Urgency.call(definition) + NameKindConflict.errors(definition))
+        return Validator::Result.new(errors: Validation::Urgency.call(definition) +
+                                             Validation::Screening.reserved_name_errors(definition) +
+                                             NameKindConflict.errors(definition))
       end
 
       errors = []
