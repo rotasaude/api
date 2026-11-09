@@ -128,7 +128,7 @@ class UrgencyCrew
 
     def seed_current_city(slug:, ddd: nil, password: ENV.fetch(SignatureCrew::PASSWORD_ENV, "dev-password"))
       guard_environment!
-      return off("fora") unless slug == "curitiba"
+      return draft_only(slug) unless slug == "curitiba"
 
       maintainer = Maintainer.find_by(email_address: DEV_MAINTAINER)
       unless maintainer
@@ -168,6 +168,7 @@ class UrgencyCrew
     # TV (nunca dado de paciente).
     def summary_lines(result, password:)
       head = "[seeds] urgência #{result[:switch]}"
+      head += "; #{result[:protocol]}" if result[:protocol] && !result[:unit]
       head += "; #{result[:unit]}; protocolo #{result[:protocol]}; #{result[:locations]} locais; #{result[:encounters]} encontros" if result[:unit]
       lines = [ head ]
       lines << "[seeds]               TV: código #{result[:tv_code]}, vale #{result[:tv_ttl_minutes]} min" if result[:tv_code]
@@ -181,6 +182,25 @@ class UrgencyCrew
 
     def guard_environment!
       raise "semente da urgência: ambiente implantado; a semente é só de dev" if Rota.deployed?
+    end
+
+    # Fora de Curitiba só o rascunho do protocolo (como o ScreeningCrew): sem
+    # interruptores, equipe, locais, TV nem pacientes. Idempotente.
+    def draft_only(slug)
+      existing = ProtocolDefinition.where(name: PROTOCOL).order(:version).last
+      unless existing
+        author = User.find_by!(email_address: "autor@#{slug}.demo")
+        saved = Protocols::SaveDraft.call(definition: definition(1), by: author)
+        raise "semente da urgência: rascunho recusado (#{saved.reason})" if saved.failure?
+
+        existing = saved.payload[:protocol_definition]
+      end
+      off("fora").merge(protocol: "#{existing.name} v#{existing.version} (#{existing.status})")
+    end
+
+    def definition(version)
+      { "name" => PROTOCOL, "version" => version, "kind" => "urgency_classification",
+        "levels" => LEVELS.deep_dup, "classification_rules" => RULES.deep_dup }
     end
 
     def off(switch) = { switch: switch, unit: nil, protocol: nil, locations: 0, encounters: 0, tv_code: nil, users: [] }
@@ -243,9 +263,7 @@ class UrgencyCrew
 
       pending = ProtocolDefinition.where(name: PROTOCOL).where.not(status: %w[active retired]).order(:version).last
       version = pending&.version || ((ProtocolDefinition.where(name: PROTOCOL).maximum(:version) || 0) + 1)
-      definition = { "name" => PROTOCOL, "version" => version, "kind" => "urgency_classification",
-                     "levels" => LEVELS.deep_dup, "classification_rules" => RULES.deep_dup }
-      TriageCatalogCrew.run_cycle!(slug, PROTOCOL, version, definition)
+      TriageCatalogCrew.run_cycle!(slug, PROTOCOL, version, definition(version))
     end
 
     def location!(unit, name, admin)
@@ -262,8 +280,11 @@ class UrgencyCrew
 
     # --- pessoas e encontros -------------------------------------------------------
 
-    def encounter_of(unit, patient)
-      UrgencyEncounter.joins(:attendance).find_by(attendances: { health_unit_id: unit.id, patient_id: patient.id })
+    # Determinístico: o mais antigo; `prefer_closed` põe o já fechado na frente.
+    def encounter_of(unit, patient, prefer_closed: false)
+      found = UrgencyEncounter.joins(:attendance).where(attendances: { health_unit_id: unit.id, patient_id: patient.id })
+                              .order("urgency_encounters.created_at ASC, urgency_encounters.id ASC").to_a
+      (prefer_closed && found.find(&:closed?)) || found.first
     end
 
     def birth_of(person) = (Date.current.years_ago(person.fetch(:age)) - 40).iso8601
@@ -316,10 +337,10 @@ class UrgencyCrew
     # 7 dias. Cada passo roda ontem (travel_to), só os que faltam.
     def yesterday!(context, patient)
       unit, staff = context.values_at(:unit, :staff)
-      return if encounter_of(unit, patient)&.closed?
+      return if encounter_of(unit, patient, prefer_closed: true)&.closed?
 
       start = context.fetch(:clock) - 1.day
-      encounter = encounter_of(unit, patient) || at(start, context) { arrive!(context, start, patient_id: patient.id) }
+      encounter = encounter_of(unit, patient, prefer_closed: true) || at(start, context) { arrive!(context, start, patient_id: patient.id) }
       classify_yesterday!(context, encounter, start)
       attendance = encounter.attendance.reload
       desk = context.fetch(:locations).fetch(DESK)

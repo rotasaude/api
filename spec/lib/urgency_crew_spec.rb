@@ -13,6 +13,8 @@ require Rails.root.join("lib/urgency_crew").to_s
 # prova no navegador precisa achar sem preparo manual. Idempotente; a saída
 # nunca leva CPF, CNS, nome nem descrição de paciente.
 RSpec.describe UrgencyCrew, type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let!(:city) { clinical_city! }
   let(:unit) { HealthUnit.find_by!(name: UrgencyCrew::UNIT) }
 
@@ -203,10 +205,29 @@ RSpec.describe UrgencyCrew, type: :request do
     end
   end
 
-  it "fora de Curitiba não semeia nada" do
+  it "fora de Curitiba só o rascunho do protocolo: sem interruptor, equipe, local, TV nem paciente; idempotente" do
+    staff_with("autor@maringa.demo", "protocol_author")
     result = described_class.seed_current_city(slug: "maringa", ddd: "44", password: "dev-password")
+    again = described_class.seed_current_city(slug: "maringa", ddd: "44", password: "dev-password")
+    draft = ProtocolDefinition.find_by!(name: "classificacao-urgencia")
 
-    expect(result[:switch]).to eq("fora")
-    expect(UrgencyEncounter.count).to eq(0)
+    aggregate_failures do
+      expect(result[:switch]).to eq("fora")
+      expect(again[:protocol]).to eq(result[:protocol])
+      expect([ draft.version, draft.status ]).to eq([ 1, "draft" ])
+      expect(ProtocolDefinition.urgency_protocols.where(status: "active")).to be_empty
+      expect(ProtocolDefinition.where(name: "classificacao-urgencia").count).to eq(1)
+      expect([ UrgencyEncounter.count, CallLocation.count, WaitingRoomDisplay.count, CityFeature.where(key: %w[urgency_care waiting_room_display]).count ])
+        .to eq([ 0, 0, 0, 0 ])
+      expect(User.where("email_address LIKE '%@maringa.dev'")).to be_empty
+    end
+  end
+
+  it "uma semente dois dias depois não duplica nada nem levanta" do
+    seed
+    before_counts = counts
+    travel_to(2.days.from_now) { expect { seed }.not_to raise_error }
+
+    expect(counts).to eq(before_counts)
   end
 end
