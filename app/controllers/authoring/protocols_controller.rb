@@ -14,9 +14,14 @@ module Authoring
     end
 
     def preview
-      # ADR 0030: a escuta não tem passos para simular resposta.
+      # ADR 0030: a escuta não tem passos para simular resposta; ADR 0050: nem
+      # a classificação de risco da UPA (o simulador fica fora do 32a).
       if Protocols::Validation::Screening.screening?(definition_param)
         return render(json: { valid: false, errors: [ "preview is not available for screening protocols" ] },
+                      status: :unprocessable_entity)
+      end
+      if Protocols::Validation::Urgency.urgency?(definition_param)
+        return render(json: { valid: false, errors: [ "preview is not available for urgency protocols" ] },
                       status: :unprocessable_entity)
       end
 

@@ -18,6 +18,7 @@ module Protocols
 
     def call
       return screening_result if definition.is_a?(Hash) && definition["kind"] == "screening"
+      return urgency_result if Validation::Urgency.urgency?(definition)
 
       errors = []
       errors.concat(schema_errors)
@@ -36,6 +37,17 @@ module Protocols
       errors << "missing :name" unless definition["name"].is_a?(String)
       errors << "missing :version" unless definition["version"].is_a?(Integer)
       errors << "missing :risk_rules" unless definition["risk_rules"].is_a?(Array)
+      Result.new(errors: errors)
+    end
+
+    # ADR 0050: a classificação de risco da UPA também não tem passos; o save
+    # só exige a forma mínima.
+    def urgency_result
+      errors = []
+      errors << "missing :name" unless definition["name"].is_a?(String)
+      errors << "missing :version" unless definition["version"].is_a?(Integer)
+      errors << "missing :levels" unless definition["levels"].is_a?(Array)
+      errors << "missing :classification_rules" unless definition["classification_rules"].is_a?(Array)
       Result.new(errors: errors)
     end
 

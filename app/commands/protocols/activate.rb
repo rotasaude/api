@@ -11,7 +11,8 @@
 # - R1 / INV-protocol-1: só uma versão `published` pode virar `active`.
 # - INV-protocol-2: uma `active` por name (o banco é da cidade) — a versão `active`
 #   anterior do mesmo protocolo é demovida de volta a `published` no mesmo átomo,
-#   e a unique parcial WHERE status='active' garante a unicidade.
+#   e a unique parcial WHERE status='active' garante a unicidade. A urgência
+#   (kind urgency_classification) é uma `active` por cidade, pelo kind.
 #
 # O ato grava ProtocolActivation(kind: "signed") na mesma transação — a
 # assinatura de ativação é consumida a partir daí (Protocols::Signatures só
@@ -83,10 +84,16 @@ module Protocols
 
         # demove a active anterior do mesmo protocolo ANTES de ativar a nova,
         # para a unique parcial WHERE status='active' nunca ver duas active.
-        ProtocolDefinition
-          .where(name: protocol.name, status: "active")
-          .where.not(id: protocol.id)
-          .update_all(status: "published")
+        # A urgência (ADR 0050, §14 Q16) é uma por cidade pelo kind, não pelo
+        # nome: rebaixa a de urgência ativa, qualquer que seja o nome (o índice
+        # idx_protocol_definitions_one_active_urgency não é adiável). O gate
+        # (NameKindConflict) garante que nenhuma triagem tem o mesmo nome.
+        peers = if Validation::Urgency.urgency?(protocol.definition)
+                  ProtocolDefinition.urgency_protocols
+                else
+                  ProtocolDefinition.where(name: protocol.name)
+                end
+        peers.where(status: "active").where.not(id: protocol.id).update_all(status: "published")
 
         protocol.update!(status: "active", activated_at: Time.current)
 

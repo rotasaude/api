@@ -3,6 +3,9 @@
 # reuses Protocols::Validator (refs/cycles/recommendation). Returns a
 # Protocols::Validator::Result. If the shape (schema) is invalid, semantic
 # checks are skipped — they assume a valid shape.
+#
+# Módulo 32a (§14 Q16): todo kind soma o Protocols::NameKindConflict, a única
+# conferência com banco (o nome não pode ser de um protocolo de outro kind).
 module Protocols
   module Gate
     def self.call(definition)
@@ -13,7 +16,14 @@ module Protocols
 
       # ADR 0030: a variante de escuta só tem regras de cor; os linters de
       # triagem (passos, pontuação, oferta) não se aplicam.
-      return Validator::Result.new(errors: Validation::Screening.call(definition)) if Validation::Screening.screening?(definition)
+      if Validation::Screening.screening?(definition)
+        return Validator::Result.new(errors: Validation::Screening.call(definition) + NameKindConflict.errors(definition))
+      end
+
+      # ADR 0050: a classificação de risco da UPA só tem níveis e regras de cor.
+      if Validation::Urgency.urgency?(definition)
+        return Validator::Result.new(errors: Validation::Urgency.call(definition) + NameKindConflict.errors(definition))
+      end
 
       errors = []
       errors.concat(Validator.call(definition).errors)   # refs, cycles, recommendation↔tier
@@ -25,6 +35,7 @@ module Protocols
       errors.concat(Validation::Offer.call(definition)) # ADR 0027: offer.eligibility, suggestions
       errors.concat(Validation::Scheduling.call(definition)) # ADR 0029: scheduling[].when
       errors.concat(Validation::Screening.reserved_name_errors(definition))
+      errors.concat(NameKindConflict.errors(definition))
       Validator::Result.new(errors: errors)
     end
   end

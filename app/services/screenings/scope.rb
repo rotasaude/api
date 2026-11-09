@@ -4,15 +4,19 @@
 # REQUIRED_SQL é a MESMA regra em SQL (fila do acolhimento e ordem da fila do
 # profissional); pede o JOIN de UNITS_JOIN. Uma só definição: required? e o
 # SQL são conferidos juntos em spec/services/screenings/queue_spec.rb.
+# Módulo 32a (ADR 0050): a UPA nunca exige escuta — a porta dela é a
+# classificação de risco —, em qualquer escopo.
 module Screenings
   module Scope
     UNITS_JOIN = "INNER JOIN health_units scope_units ON scope_units.id = attendances.health_unit_id".freeze
-    REQUIRED_SQL = "(scope_units.screening_scope = 'all' OR attendances.appointment_id IS NULL)".freeze
+    REQUIRED_SQL = "(scope_units.kind <> 'upa' AND " \
+                   "(scope_units.screening_scope = 'all' OR attendances.appointment_id IS NULL))".freeze
 
     module_function
 
     def required?(attendance)
-      attendance.health_unit.screening_scope == "all" || attendance.appointment_id.nil?
+      unit = attendance.health_unit
+      !unit.upa? && (unit.screening_scope == "all" || attendance.appointment_id.nil?)
     end
 
     # Restringe uma relação de Attendance a quem exige escuta pelo escopo.

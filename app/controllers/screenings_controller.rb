@@ -15,7 +15,8 @@ class ScreeningsController < ApplicationController
     invalid_color: :unprocessable_entity, color_change_reason_required: :unprocessable_entity,
     invalid_destination: :unprocessable_entity, orientation_required: :unprocessable_entity,
     invalid_schedule: :unprocessable_entity, referral_required: :unprocessable_entity,
-    invalid_unit: :unprocessable_entity, note_too_long: :unprocessable_entity
+    invalid_unit: :unprocessable_entity, note_too_long: :unprocessable_entity,
+    screening_not_in_upa: :unprocessable_entity
   }.freeze
   REVISION_KEYS = %w[ciap2_code complaint_note vitals final_color color_change_reason].freeze
   DESTINATION_KEYS = %w[orientation_note schedule referral].freeze

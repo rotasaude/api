@@ -58,6 +58,19 @@ RSpec.describe Screenings::Queue do
     end
   end
 
+  # Módulo 32a (ADR 0050): a UPA nunca exige escuta, e as duas definições concordam.
+  it "UPA: requiring e Scope.required? dizem não em qualquer escopo" do
+    upa = create_unit("UPA Centro", kind: "upa")
+    attendance = walk_in_attendance!(upa, citizen: screening_citizen!(1), checked_in_at: t0)
+    %w[walk_in all].each do |scope|
+      upa.update!(screening_scope: scope)
+      attendance = Attendance.find(attendance.id)
+      expect([ described_class.requiring(upa).exists?(attendance.id), Screenings::Scope.required?(attendance) ])
+        .to eq([ false, false ]), scope
+    end
+    expect(described_class.items(upa)).to be_empty
+  end
+
   # Marcador "aguardando acolhimento" (contrato §9): o mesmo grupo 3 da fila
   # do profissional — exige escuta e não tem escuta concluída.
   describe ".awaiting?" do

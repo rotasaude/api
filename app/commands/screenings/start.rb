@@ -9,6 +9,8 @@ module Screenings
         attendance.lock!
         status, link = Authorization.check(user: by, health_unit_id: attendance.health_unit_id)
         next Result.fail(status) unless status == :ok
+        # ADR 0050: na UPA a porta é a classificação de risco, não a escuta.
+        next Result.fail(:screening_not_in_upa) if attendance.health_unit.upa?
         next Result.fail(:not_waiting) unless attendance.status == "waiting"
         next Result.fail(:screening_not_required) unless Scope.required?(attendance)
 
