@@ -50,4 +50,15 @@ RSpec.describe Citizens::RequestErasure do
     allow(described_class).to receive(:psychosocial_recorded?).with(ids).and_return(true)
     expect(described_class.examined_patients?(ids)).to be(true)
   end
+
+  # ADR 0050 (módulo 32a; contrato §13): o encontro da urgência com
+  # classificação ou consulta entra na regra única de retenção; o caminho
+  # completo está em urgency_erasure_spec.rb.
+  it "examined_patients? consulta o encontro da urgência (urgency_recorded?)" do
+    ids = [ SecureRandom.uuid ]
+    expect(described_class.urgency_recorded?(ids)).to be(false)
+    expect(described_class.examined_patients?(ids)).to be(false)
+    allow(described_class).to receive(:urgency_recorded?).with(ids).and_return(true)
+    expect(described_class.examined_patients?(ids)).to be(true)
+  end
 end

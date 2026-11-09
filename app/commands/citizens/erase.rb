@@ -12,10 +12,16 @@
 # das viagens abertas e os passageiros anonimizados (Transport::Anonymize).
 # ADR 0049: e o encaminhamento e o acolhimento do CAPS sem registro de saúde
 # anonimizados (Psychosocial::Anonymize).
-# Reasons: :not_pending, :own_request, :patient_on_trip.
+# ADR 0050: e o nome, o nascimento, o sexo e o CNS do paciente não retido (a
+# evasão da UPA antes da classificação deixa o `walk_in` só com ids); o CPF
+# do paciente fica (coluna de identidade, rota_patient_guard).
+# Reasons: :not_pending, :own_request, :patient_on_trip, :patient_in_urgency.
 module Citizens
   module Erase
     TOMBSTONE_PREFIX = "erased:".freeze
+    # ADR 0050: a identificação do paciente não retido, apagada com o par. O
+    # CPF não entra: o rota_patient_guard nunca deixa trocá-lo.
+    PATIENT_IDENTITY = %w[full_name social_name mother_name birth_date sex cns].freeze
     MAX_ATTEMPTS = 3
 
     # Um pedido do par mudou de unidade entre a trava das unidades e a dos pares.
@@ -90,6 +96,10 @@ module Citizens
         # travada no lock! acima) — nada muda, o pedido segue pendente; o admin
         # tenta de novo depois do fechamento (viagem dura até 72 h).
         next result = Result.fail(:patient_on_trip) if !retained && Transport::Anonymize.on_trip?(patient_ids)
+        # ADR 0050: atendimento `walk_in` aberto na UPA (o paciente travado
+        # acima segura uma chegada nova) — nada muda, o pedido segue pendente;
+        # o admin tenta de novo depois do desfecho.
+        next result = Result.fail(:patient_in_urgency) if !retained && RequestErasure.urgency_open?(patient_ids)
         # O banco não exige decided_by_user: quem decide é gravado aqui, sempre.
         if retained
           request.update!(status: "retained", decided_by_user: by, decided_at: Time.current)
@@ -104,7 +114,8 @@ module Citizens
         live = Appointment.live.where(citizen_id: pairs.map(&:id)).order(:id).lock.to_a
         pairs.each { |citizen| erase_pair(citizen, live.select { |a| a.citizen_id == citizen.id }) }
         # D-U1 (ADR 0039): o paciente não retido perde raça/cor, etnia e endereço junto com o par.
-        locked_patients.each { |patient| patient.update!(Patient::DEMOGRAPHICS.index_with(nil)) }
+        # ADR 0050: e nome, nascimento, sexo e CNS (a chave de duplicados vai junto, pelo Patient).
+        locked_patients.each { |patient| patient.update!((Patient::DEMOGRAPHICS + PATIENT_IDENTITY).index_with(nil)) }
         # ADR 0040: sugestões do paciente não retido (sem inscrição, por definição).
         CareLineSuggestion.where(patient_id: locked_patients.map(&:id)).delete_all
         # ADR 0048 (Desvio 17; T23): séries suspensas, o paciente fora das

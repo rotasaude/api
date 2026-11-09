@@ -14,7 +14,9 @@ class ErasureRequestsController < ApplicationController
     reason_too_short: :unprocessable_entity, citizen_not_found: :not_found,
     already_pending: :conflict, not_pending: :conflict, own_request: :forbidden,
     # ADR 0048: paciente a bordo de viagem em andamento; tentar depois do fechamento.
-    patient_on_trip: :conflict
+    patient_on_trip: :conflict,
+    # ADR 0050: atendimento aberto na UPA; tentar depois do desfecho.
+    patient_in_urgency: :conflict
   }.freeze
 
   before_action :require_verifier, only: :create

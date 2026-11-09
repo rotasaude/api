@@ -7,7 +7,8 @@
 # (ADR 0044) e para CPF com dispensação ou receita externa da farmácia
 # (ADR 0045), para CPF com registro odontológico (ADR 0046), para CPF com
 # dose de vacina (ADR 0047), para CPF com processo de TFD (ADR 0048) e para
-# CPF com registro do CAPS (ADR 0049).
+# CPF com registro do CAPS (ADR 0049) e para CPF com encontro da urgência
+# classificado ou com consulta (ADR 0050).
 # `retained?` é a regra única: o pedido e a reconferência do Citizens::Erase
 # usam a mesma.
 module Citizens
@@ -79,8 +80,31 @@ module Citizens
         LabRequisition.where(patient_id: ids).exists? || PerformedProcedure.where(patient_id: ids).exists? ||
         CareLineEnrollment.where(patient_id: ids).exists? || territory_registered?(ids) || notified?(ids) ||
         regulated?(ids) || dispensed?(ids) || dental_recorded?(ids) ||
-        vaccinated?(ids) || tfd_cased?(ids) || psychosocial_recorded?(ids)
+        vaccinated?(ids) || tfd_cased?(ids) || psychosocial_recorded?(ids) || urgency_recorded?(ids)
     end
+
+    # ADR 0050 (módulo 32a; contrato §13 e §14 Q25): o encontro com
+    # classificação ou consulta é registro de saúde retido; a evasão antes da
+    # classificação segue a triagem sem atendimento. O `walk_in` não tem par
+    # (citizen_id nulo, fora do attended?): é achado pelo paciente, que a
+    # fusão (R4) já pôs no paciente real. Classificado = `first_classified_at`
+    # (o CHECK ck_urgency_encounters_classification o amarra à classificação
+    # vigente); a consulta de urgência pela ligação do encontro ou pelo `kind`.
+    # O registro por engano (`registered_in_error`) segue a mesma regra: com
+    # classificação retém, sem ela não. A evasão antes da classificação não
+    # retém, e o Citizens::Erase apaga o nome, o nascimento, o sexo e o CNS do
+    # paciente — o atendimento e o encontro ficam, só com ids.
+    def urgency_recorded?(ids)
+      UrgencyEncounter.joins(:attendance).where(attendances: { patient_id: ids })
+                      .where("urgency_encounters.first_classified_at IS NOT NULL OR urgency_encounters.consultation_id IS NOT NULL")
+                      .exists? || Consultation.where(patient_id: ids, kind: "urgency").exists?
+    end
+
+    # ADR 0050: quem está com o atendimento `walk_in` aberto na UPA (ainda sem
+    # classificação, senão já retém) — o Citizens::Erase recusa
+    # (`patient_in_urgency`) e o pedido segue pendente, como na viagem em
+    # andamento do TFD.
+    def urgency_open?(ids) = Attendance.where(patient_id: ids, origin_kind: "walk_in").where.not(status: "closed").exists?
 
     # ADR 0049 (módulo 31; contrato §14, §15 P17): o registro do CAPS é registro
     # de saúde retido — matrícula em qualquer situação (com o PTS e a RAAS do
