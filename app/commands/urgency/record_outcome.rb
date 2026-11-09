@@ -1,5 +1,5 @@
 # Desfecho do encontro da urgência (ADR 0050; contrato §7 e §14 Q10, Q15,
-# Q25; plano, Desvio 13): grava o desfecho (um por encontro, imutável), fecha
+# Q25, Q30; plano, Desvio 13): grava o desfecho (um por encontro, imutável), fecha
 # o encontro e o atendimento do 13 pelo Attendances::Close com o `outcome`
 # equivalente (Urgency::Catalog::OUTCOME_MAP).
 #
@@ -21,7 +21,10 @@
 # fechado → encounter_closed; IDENTIFIED_OUTCOMES de provisório →
 # patient_unidentified; os de balcão valem em qualquer estado, mas consulta em
 # rascunho → consultation_in_progress (a do Close); left_against_advice com
-# rascunho também; os demais exigem a consulta de urgência finalizada →
+# rascunho também; `registered_in_error` com a consulta de urgência
+# finalizada → 422 consultation_finalized (path kind; §14 Q30, para todos,
+# o médico inclusive: o caso fecha com outro desfecho do médico, e o BPA
+# nasce); os demais exigem a consulta de urgência finalizada →
 # consultation_not_finalized.
 #
 # `team`: a equipe da contrarreferência (CareLines::TeamPopulation), lida
@@ -164,8 +167,12 @@ module Urgency
       return Result.fail(:invalid_request, details: { path: "patient" }) if patient.merged?
       return Result.fail(:patient_unidentified) if Catalog::IDENTIFIED_OUTCOMES.include?(kind) && patient.unidentified
 
+      # O encontro tem uma consulta só, a de urgência (Consultations::Start).
       statuses = Consultation.where(attendance_id: attendance.id).pluck(:status)
       return Result.fail(:consultation_in_progress) if LEFT_KINDS.include?(kind) && statuses.include?("draft")
+      if kind == Catalog::REGISTERED_IN_ERROR && statuses.include?("finalized")
+        return Result.fail(:consultation_finalized, details: { path: "kind" })
+      end
       return nil if Catalog::DESK_OUTCOMES.include?(kind)
 
       statuses.include?("finalized") ? nil : Result.fail(:consultation_not_finalized)

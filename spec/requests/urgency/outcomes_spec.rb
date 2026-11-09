@@ -194,6 +194,28 @@ RSpec.describe "Desfecho do atendimento de urgência", type: :request do
       expect(json_body.dig("encounter", "outcome")).to include("reason" => "Aberto em duplicidade com outra senha")
       expect(unknown.attendance.reload).to have_attributes(status: "closed", outcome: "left")
     end
+
+    # Contrato §14 Q30: com a consulta de urgência finalizada, o cuidado
+    # aconteceu — ninguém registra o engano (nem o médico); o caso fecha com
+    # outro desfecho, do médico, e o BPA nasce.
+    it "com a consulta finalizada é 422 consultation_finalized para a recepção, a enfermagem e o médico" do
+      called!(encounter, by: doctor)
+      finalized_urgency!(encounter, doctor: doctor)
+      [ upa_reception!, nurse, doctor ].each do |user|
+        sign_in_as(user)
+        outcome!(kind: "registered_in_error", reason: "Aberto em duplicidade com outra senha")
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json_body).to include("error" => "consultation_finalized", "path" => "kind")
+        expect(json_body["problems"]).to eq([ { "path" => "kind", "error" => "consultation_finalized" } ])
+      end
+      expect(encounter.reload).to have_attributes(state: "in_care", outcome: nil)
+      expect(encounter.attendance.reload.status).to eq("in_care")
+      expect(closed_event_for(encounter)).to be_nil
+      sign_in_as(doctor)
+      outcome!(kind: "discharged")
+      expect(response).to have_http_status(:created)
+      expect(encounter.attendance.reload).to have_attributes(status: "closed", outcome: "discharged")
+    end
   end
 
   describe "recusas de forma e de estado" do

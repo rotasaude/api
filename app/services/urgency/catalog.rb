@@ -16,8 +16,9 @@ module Urgency
     NON_CARE_OUTCOMES = [ REGISTERED_IN_ERROR ].freeze
     IDENTIFIED_OUTCOMES = %w[discharged discharged_to_primary_care transferred].freeze
     # Q10/Q25: os que a recepção e a enfermagem também registram, em qualquer
-    # estado antes do fechamento e sem consulta finalizada; os demais, só o
-    # médico (225*) e com a consulta de urgência finalizada.
+    # estado antes do fechamento; os demais, só o médico (225*) e com a
+    # consulta de urgência finalizada. Q30: `registered_in_error` só sem a
+    # consulta finalizada (para todos); `left_without_care` vale com ela (§7).
     DESK_OUTCOMES = [ "left_without_care", REGISTERED_IN_ERROR ].freeze
     # Desvio 13 (+ Q25): o `outcome` do 13 de cada desfecho.
     OUTCOME_MAP = {

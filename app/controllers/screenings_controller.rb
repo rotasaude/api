@@ -63,10 +63,13 @@ class ScreeningsController < ApplicationController
 
   # Cor sugerida sem gravar (contratos §3 e §9): o simulador da tela de escuta.
   # Pelo atendimento (não pelo cidadão): só quem tem vínculo ativo na unidade
-  # dele lê o perfil do par.
+  # dele lê o perfil do par. Módulo 32a (contrato §1 e §14 Q30): a UPA não faz
+  # a escuta — qualquer atendimento dela (o `walk_in` da urgência não tem
+  # cidadão) → 422 screening_not_in_upa, antes do vínculo, como no Start.
   def suggest
     attendance = Attendance.find_by(id: params[:attendance_id])
     return not_found unless attendance
+    return render json: { error: "screening_not_in_upa" }, status: :unprocessable_entity if attendance.health_unit.upa?
 
     status = ApplicationRecord.transaction do
       Professionals::ClinicalAuthorization.check(user: Current.user, health_unit_id: attendance.health_unit_id)
