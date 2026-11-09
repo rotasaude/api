@@ -135,6 +135,21 @@ RSpec.describe "Faturamento — procedimentos", type: :request do
     expect(json_body).to eq("error" => "citizen_not_verified")
   end
 
+  # Módulo 32a (Task 13): o walk_in da UPA não tem par do wpda; a pessoa é o
+  # paciente do atendimento (antes, nil.patient_id → 500).
+  it "pelo atendimento walk_in da UPA: paciente do atendimento, sem par; patient_id que não bate 422" do
+    Platform::Features.set!(city: Current.city, key: Urgency::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    encounter = arrived!(unit, patient: urgency_patient!(7))
+    expect(encounter.attendance).to have_attributes(origin_kind: "walk_in", citizen_id: nil)
+    post_procedure(doctor, patient_id: nil, attendance_id: encounter.attendance_id)
+    expect(response).to have_http_status(:created)
+    expect(json_body).to include("patient" => include("id" => encounter.patient.id), "source" => "attendance",
+                                 "source_ref" => { "type" => "attendance", "id" => encounter.attendance_id })
+    post_procedure(doctor, patient_id: patient.id, attendance_id: encounter.attendance_id)
+    expect(json_body).to eq("error" => "invalid_patient")
+  end
+
   it "pela consulta: source consultation, CBO da consulta; outro profissional 403" do
     consultation = started_consultation!(unit: unit, doctor: doctor, citizen: pair.last)
     post_procedure(doctor, patient_id: nil, consultation_id: consultation.id, establishment: nil)

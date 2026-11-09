@@ -5,7 +5,8 @@
 # competência de 3 meses antes (BPA 04.13). Ordem das recusas: código,
 # quantidade, data, CID, caráter. `insert!` é o caminho sem validação de
 # entrada (laboratório, Billing::FromLab; TFD, Billing::FromTfd; CAPS,
-# Billing::FromPsychosocial — a BPA-C da ação de equipe vem com patient: nil).
+# Billing::FromPsychosocial — a BPA-C da ação de equipe vem com patient: nil;
+# urgência, Billing::FromUrgency).
 module Billing
   module Record
     CODE = /\A\d{10}\z/
@@ -40,7 +41,7 @@ module Billing
 
     def insert!(patient:, establishment:, professional:, cbo_code:, source:, performed_on:, sigtap_code:, quantity:, cid10:, character:,
                 recorded_by:, attendance: nil, consultation: nil, lab_report_item: nil, tfd_allowance: nil, tfd_leg: nil,
-                psychosocial_action: nil)
+                psychosocial_action: nil, urgency_encounter: nil)
       outcome = Critic.call(Critic::Facts.new(establishment: establishment, sigtap_code: sigtap_code, performed_on: performed_on,
                                               cbo_code: cbo_code, professional_cns: Staff.cns(professional), cid10: cid10, patient: patient))
       ApplicationRecord.transaction(requires_new: true) do
@@ -49,9 +50,10 @@ module Billing
           **establishment.key, patient: patient, professional_user: professional, cbo_code: cbo_code, performed_on: performed_on,
           sigtap_code: sigtap_code, quantity: quantity, cid10: cid10, character: character, source: source, attendance: attendance,
           consultation: consultation, lab_report_item: lab_report_item, tfd_allowance: tfd_allowance, tfd_leg: tfd_leg,
-          psychosocial_action: psychosocial_action, recorded_by_user: recorded_by, instrument: outcome.instrument,
-          billable: outcome.billable, blocking_reasons: outcome.reasons, sigtap_competence: outcome.sigtap_competence,
-          sigtap_fallback: outcome.fallback, billing_period: period, billing_competence: period&.competence, late: late
+          psychosocial_action: psychosocial_action, urgency_encounter: urgency_encounter, recorded_by_user: recorded_by,
+          instrument: outcome.instrument, billable: outcome.billable, blocking_reasons: outcome.reasons,
+          sigtap_competence: outcome.sigtap_competence, sigtap_fallback: outcome.fallback, billing_period: period,
+          billing_competence: period&.competence, late: late
         )
         DomainEvents.publish("performed_procedure.recorded", performed_procedure_id: procedure.id, source: source,
                                                               billable: outcome.billable)

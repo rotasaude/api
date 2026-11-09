@@ -40,6 +40,7 @@ module Billing
       when "lab_report" then { type: "lab_report_item", id: p.lab_report_item_id }
       when "tfd" then { type: "tfd_allowance", id: p.tfd_allowance_id }
       when "psychosocial" then { type: "psychosocial_action", id: p.psychosocial_action_id }
+      when "urgency" then { type: "urgency_encounter", id: p.urgency_encounter_id }
       end
     end
 

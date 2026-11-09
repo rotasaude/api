@@ -426,14 +426,14 @@ Rails.application.config.to_prepare do
   # Identificação do provisório (Urgency::Identify; contrato §12, §14 Q17):
   # só encounter_id, patient_id (o paciente que ficou com o encontro) e, na
   # fusão, merged_from_id e as contagens moved/kept_duplicates — nunca nome,
-  # CPF, CNS nem a descrição. A Task 13 liga o BPA da urgência
-  # (Billing::UrgencyProductionJob); até lá, sem consumidor.
-  DomainEvents.bind "urgency.patient_identified", to: []
+  # CPF, CNS nem a descrição. O consumidor grava o BPA da urgência no
+  # paciente real (Billing::UrgencyProductionJob; contrato §14 Q12).
+  DomainEvents.bind "urgency.patient_identified", to: [ Billing::UrgencyProductionJob ]
   # Desfecho (Urgency::RecordOutcome; contrato §12): só o encounter_id —
-  # nunca o tipo do desfecho, o destino, o pedido de vaga nem os motivos. A
-  # Task 13 liga o BPA da urgência (que pula o registered_in_error); até lá,
-  # sem consumidor.
-  DomainEvents.bind "urgency.encounter_closed", to: []
+  # nunca o tipo do desfecho, o destino, o pedido de vaga nem os motivos. O
+  # consumidor grava o BPA da urgência (Billing::UrgencyProductionJob; pula o
+  # registered_in_error e o provisório não identificado).
+  DomainEvents.bind "urgency.encounter_closed", to: [ Billing::UrgencyProductionJob ]
   # "Chamar de novo" (Attendances::Recall; contrato §12): só attendance_id e
   # call_id — nunca a senha, o local nem a pessoa; sem consumidor (a TV lê
   # attendance_calls).

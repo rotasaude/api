@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_05_900005) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_05_900006) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -2623,6 +2623,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900005) do
     t.uuid "tfd_allowance_id"
     t.uuid "tfd_leg_id"
     t.datetime "updated_at", null: false
+    t.uuid "urgency_encounter_id"
     t.index ["attendance_id"], name: "index_performed_procedures_on_attendance_id"
     t.index ["billing_export_id"], name: "index_performed_procedures_on_billing_export_id"
     t.index ["billing_period_id", "status"], name: "idx_performed_procedures_period"
@@ -2633,15 +2634,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900005) do
     t.index ["psychosocial_action_id"], name: "idx_performed_procedures_psychosocial_action", unique: true, where: "(psychosocial_action_id IS NOT NULL)"
     t.index ["tfd_allowance_id"], name: "idx_performed_procedures_tfd_allowance", unique: true, where: "(tfd_allowance_id IS NOT NULL)"
     t.index ["tfd_leg_id"], name: "idx_performed_procedures_tfd_leg", where: "(tfd_leg_id IS NOT NULL)"
+    t.index ["urgency_encounter_id", "sigtap_code"], name: "idx_performed_procedures_urgency", unique: true, where: "(urgency_encounter_id IS NOT NULL)"
     t.check_constraint "(billing_period_id IS NULL) = (billing_competence IS NULL) AND (billing_competence IS NULL OR billing_competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text) AND (sigtap_competence IS NULL OR sigtap_competence::text ~ '^[0-9]{4}(0[1-9]|1[0-2])$'::text) AND (billing_export_id IS NULL OR billing_period_id IS NOT NULL)", name: "ck_performed_procedures_competences"
-    t.check_constraint "(source::text <> 'attendance'::text OR attendance_id IS NOT NULL) AND (source::text <> 'consultation'::text OR consultation_id IS NOT NULL) AND (source::text <> 'lab_report'::text OR lab_report_item_id IS NOT NULL AND exam_provider_id IS NOT NULL) AND (source::text <> 'tfd'::text OR tfd_allowance_id IS NOT NULL) AND (source::text = 'psychosocial'::text) = (psychosocial_action_id IS NOT NULL)", name: "ck_performed_procedures_source_ref"
+    t.check_constraint "(source::text <> 'attendance'::text OR attendance_id IS NOT NULL) AND (source::text <> 'consultation'::text OR consultation_id IS NOT NULL) AND (source::text <> 'lab_report'::text OR lab_report_item_id IS NOT NULL AND exam_provider_id IS NOT NULL) AND (source::text <> 'tfd'::text OR tfd_allowance_id IS NOT NULL) AND (source::text = 'psychosocial'::text) = (psychosocial_action_id IS NOT NULL) AND (source::text = 'urgency'::text) = (urgency_encounter_id IS NOT NULL)", name: "ck_performed_procedures_source_ref"
     t.check_constraint "patient_id IS NOT NULL OR psychosocial_action_id IS NOT NULL", name: "ck_performed_procedures_patient"
     t.check_constraint "(status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL AND cancel_reason IS NOT NULL AND cancelled_by_user_id IS NOT NULL)", name: "ck_performed_procedures_cancelled"
     t.check_constraint "NOT billable OR cardinality(blocking_reasons) = 0 AND instrument::text <> 'not_bpa'::text", name: "ck_performed_procedures_billable"
     t.check_constraint "num_nonnulls(health_unit_id, exam_provider_id) = 1", name: "ck_performed_procedures_establishment"
     t.check_constraint "quantity >= 1 AND quantity <= 999", name: "ck_performed_procedures_quantity"
     t.check_constraint "sigtap_code::text ~ '^[0-9]{10}$'::text AND (cid10 IS NULL OR cid10::text ~ '^[A-Z][0-9]{2}[0-9X]?$'::text) AND (cbo_code IS NULL OR cbo_code::text ~ '^[0-9]{6}$'::text)", name: "ck_performed_procedures_codes"
-    t.check_constraint "source::text = ANY (ARRAY['attendance'::text, 'consultation'::text, 'lab_report'::text, 'manual'::text, 'tfd'::text, 'psychosocial'::text]) AND (instrument::text = ANY (ARRAY['bpa_i'::text, 'bpa_c'::text, 'not_bpa'::text])) AND (character::text = ANY (ARRAY['elective'::text, 'urgent'::text])) AND (status::text = ANY (ARRAY['recorded'::text, 'cancelled'::text]))", name: "ck_performed_procedures_domains"
+    t.check_constraint "source::text = ANY (ARRAY['attendance'::text, 'consultation'::text, 'lab_report'::text, 'manual'::text, 'tfd'::text, 'psychosocial'::text, 'urgency'::text]) AND (instrument::text = ANY (ARRAY['bpa_i'::text, 'bpa_c'::text, 'not_bpa'::text])) AND (character::text = ANY (ARRAY['elective'::text, 'urgent'::text])) AND (status::text = ANY (ARRAY['recorded'::text, 'cancelled'::text]))", name: "ck_performed_procedures_domains"
   end
 
   create_table "periodontal_charts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4750,6 +4752,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900005) do
   add_foreign_key "performed_procedures", "users", column: "recorded_by_user_id"
   add_foreign_key "performed_procedures", "tfd_allowances"
   add_foreign_key "performed_procedures", "tfd_legs"
+  add_foreign_key "performed_procedures", "urgency_encounters"
   add_foreign_key "periodontal_charts", "consultations"
   add_foreign_key "periodontal_charts", "patients"
   add_foreign_key "periodontal_screenings", "consultations"

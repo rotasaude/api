@@ -106,21 +106,32 @@ module Billing
     end
 
     # B1: o paciente vem do par do atendimento (Patients::Resolve, se o par
-    # validado ainda não tem paciente).
+    # validado ainda não tem paciente). Módulo 32a: o walk_in da UPA não tem
+    # par — a pessoa é o paciente do atendimento (Attendance#person).
     def attendance_context
-      attendance = uuid?(params[:attendance_id]) ? Attendance.includes(:citizen, :health_unit).find_by(id: params[:attendance_id]) : nil
+      attendance = uuid?(params[:attendance_id]) ? Attendance.includes(:citizen, :patient, :health_unit).find_by(id: params[:attendance_id]) : nil
       return not_found unless attendance
       return forbid("missing_link") unless Current.user.has_role?("health_professional") && Staff.linked?(Current.user, attendance.health_unit_id)
 
-      resolved = attendance.citizen.patient_id ? nil : Patients::Resolve.call(attendance.citizen)
-      return render_failure(resolved) if resolved&.failure?
-
-      patient = resolved ? resolved.payload[:patient] : Patient.find(attendance.citizen.patient_id)
+      patient = attendance_patient(attendance)
+      return unless patient
       return render_error(:invalid_patient) unless patient_matches?(patient.id)
       return invalid_establishment unless same_unit?(attendance.health_unit)
 
       { patient: patient, establishment: Establishment.for_unit(attendance.health_unit), professional: Current.user, source: "attendance",
         attendance: attendance }
+    end
+
+    # O paciente do atendimento, ou nil com a recusa já respondida.
+    def attendance_patient(attendance)
+      return attendance.patient if attendance.walk_in?
+      return Patient.find(attendance.citizen.patient_id) if attendance.citizen.patient_id
+
+      resolved = Patients::Resolve.call(attendance.citizen)
+      return resolved.payload[:patient] if resolved.ok?
+
+      render_failure(resolved)
+      nil
     end
 
     def standalone_context(clerk)

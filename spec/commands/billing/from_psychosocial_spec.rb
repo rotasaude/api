@@ -83,7 +83,7 @@ RSpec.describe Billing::FromPsychosocial do
     let(:patient) { caps_patient! }
 
     it "a migração espelha as fontes do modelo" do
-      expect(AddPsychosocialBillingSource::SOURCES).to eq(PerformedProcedure::SOURCES)
+      expect(AddPsychosocialBillingSource::SOURCES).to eq(PerformedProcedure::SOURCES - %w[urgency])
     end
 
     it "recusa linha sem paciente de outra fonte, fonte psychosocial sem ação e ação em outra fonte; uma linha por ação" do

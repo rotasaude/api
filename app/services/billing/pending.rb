@@ -3,7 +3,9 @@
 # faturável e de estabelecimento não-APS; `fix` pelo primeiro motivo
 # corrigível. A trilha (tem paciente) é do controlador. A BPA-C sem paciente
 # (ação de equipe do CAPS, ADR 0049) sai com `patient: null`. `outcomes` é o mesmo
-# recálculo que o resumo da competência aberta usa (§13 E17).
+# recálculo que o resumo da competência aberta usa (§13 E17). No fim, a
+# pendência SEM linha da urgência (ADR 0050, §14 Q12: o encontro do provisório
+# não identificado, `procedure_id: null`, `fix: "patient"`; Urgency::BillingPending).
 module Billing
   module Pending
     FIX = { "missing_professional_cns" => "professional", "missing_professional_cbo" => "professional", "missing_patient_id" => "patient",
@@ -19,7 +21,7 @@ module Billing
       rows = outcomes(period)
       from_household = IndividualRegistration.active_registrations.where.not(household_id: nil)
                                              .where(patient_id: rows.filter_map { |procedure, _| procedure.patient_id }).distinct.pluck(:patient_id).to_set
-      rows.filter_map do |procedure, outcome|
+      items = rows.filter_map do |procedure, outcome|
         next unless listed?(outcome)
 
         label = labels[[ procedure.sigtap_code, outcome.sigtap_competence ]] ||= Labels.procedure(procedure.sigtap_code, outcome.sigtap_competence)
@@ -30,6 +32,7 @@ module Billing
                                           address_from_household: from_household.include?(procedure.patient_id) },
           professional: { user_id: procedure.professional_user_id, name: Screenings::Json.staff_name(procedure.professional_user) } }
       end
+      items + Urgency::BillingPending.call(period)
     end
 
     # [procedimento, crítica recalculada] dos procedimentos gravados da competência, sem gravar.

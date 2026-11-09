@@ -551,17 +551,13 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
 
-  # Módulo 32a (Task 9): identificação do provisório (encounter_id,
-  # patient_id, merged_from_id? e contagens); a Task 13 liga o BPA.
-  it "declares urgency.patient_identified with no consumer yet" do
-    expect(DomainEvents.registry.keys).to include("urgency.patient_identified")
-    expect(DomainEvents.registry["urgency.patient_identified"]).to be_empty
-  end
-
-  # Módulo 32a (Task 11): desfecho do encontro (encounter_id); a Task 13 liga o BPA.
-  it "declares urgency.encounter_closed with no consumer yet" do
-    expect(DomainEvents.registry.keys).to include("urgency.encounter_closed")
-    expect(DomainEvents.registry["urgency.encounter_closed"]).to be_empty
+  # Módulo 32a (Tasks 9, 11 e 13): identificação do provisório (encounter_id,
+  # patient_id, merged_from_id? e contagens) e desfecho do encontro
+  # (encounter_id); os dois vão ao BPA da urgência (Billing::UrgencyProductionJob).
+  it "binds urgency.patient_identified and urgency.encounter_closed to Billing::UrgencyProductionJob" do
+    names = %w[urgency.patient_identified urgency.encounter_closed]
+    expect(DomainEvents.registry.keys).to include(*names)
+    names.each { |name| expect(DomainEvents.registry[name].map(&:job)).to eq([ "Billing::UrgencyProductionJob" ]) }
   end
 
   # Módulo 32a (Task 8): "chamar de novo" (attendance_id, call_id); só ids,
