@@ -423,4 +423,8 @@ Rails.application.config.to_prepare do
   # nem a justificativa; sem consumidor.
   DomainEvents.bind "urgency.classified", to: []
   DomainEvents.bind "urgency.reclassified", to: []
+  # "Chamar de novo" (Attendances::Recall; contrato §12): só attendance_id e
+  # call_id — nunca a senha, o local nem a pessoa; sem consumidor (a TV lê
+  # attendance_calls).
+  DomainEvents.bind "attendance.recalled", to: []
 end

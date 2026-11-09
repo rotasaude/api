@@ -143,6 +143,14 @@ module UrgencyHelpers
     CallLocation.create!(health_unit: unit, name: name, updated_by_user: urgency_admin!)
   end
 
+  # TV ativa e pareada gravada direto no banco (sem os comandos da Task 12),
+  # para quem só precisa que a unidade "tenha TV": o local da chamada passa a
+  # ser obrigatório (Desvio 12). Devolve o display.
+  def paired_display_row!(unit)
+    WaitingRoomDisplay.create!(health_unit: unit, name: "TV #{SecureRandom.hex(2)}", created_by_user: urgency_admin!,
+                               token_digest: WaitingRoomDisplay.digest(SecureRandom.hex(32)), paired_at: Time.current)
+  end
+
   # TV pareada pelos comandos da Task 12: cadastro, código e pareamento.
   # Devolve [display, token].
   def paired_display!(unit, show_wait_times: true)

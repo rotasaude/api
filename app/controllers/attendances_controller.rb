@@ -9,11 +9,15 @@ class AttendancesController < ApplicationController
     invalid_unit: :unprocessable_entity, already_closed: :conflict, already_called: :conflict,
     wrong_unit: :unprocessable_entity, invalid_transition: :unprocessable_entity, queue_empty: :not_found,
     missing_role: :forbidden, missing_link: :forbidden, consultation_in_progress: :conflict,
-    regulation_request_required: :unprocessable_entity
+    regulation_request_required: :unprocessable_entity,
+    # Módulo 32a (Desvios 11 e 12; contrato §14 Q7, Q15).
+    cbo_not_allowed: :forbidden, feature_disabled: :forbidden, not_classified: :unprocessable_entity,
+    call_location_required: :unprocessable_entity, invalid_call_location: :unprocessable_entity,
+    not_called: :unprocessable_entity
   }.freeze
 
   before_action :require_attendance_staff, only: %i[queue close]
-  before_action :require_professional, only: %i[call call_next]
+  before_action :require_professional, only: %i[call call_next recall]
 
   def queue
     unit = HealthUnit.find_by(id: params[:id])
@@ -35,17 +39,40 @@ class AttendancesController < ApplicationController
     attendance = Attendance.find_by(id: params[:id])
     return render json: { error: "not_found" }, status: :not_found unless attendance
 
-    result = Attendances::Call.call(attendance: attendance, health_unit_id: params[:health_unit_id], by: Current.user)
+    result = Attendances::Call.call(attendance: attendance, health_unit_id: params[:health_unit_id], by: Current.user,
+                                    call_location_id: request.request_parameters["call_location_id"],
+                                    waiting_room: WaitingRoom::Gate.usable?(Current.city))
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: { attendance: called_json(result.payload[:attendance]) }
   end
 
+  # Módulo 32a (Desvio 11): numa UPA com urgency_care utilizável, a fila por
+  # cor. Os interruptores são lidos aqui, fora da transação da cidade.
   def call_next
-    result = Attendances::CallNext.call(health_unit_id: params[:id], by: Current.user)
+    result = Attendances::CallNext.call(health_unit_id: params[:id], by: Current.user,
+                                        call_location_id: request.request_parameters["call_location_id"],
+                                        waiting_room: WaitingRoom::Gate.usable?(Current.city),
+                                        urgency: Urgency::Gate.usable?(Current.city))
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     render json: { attendance: called_json(result.payload[:attendance]) }
+  end
+
+  # "Chamar de novo" (módulo 32a; contrato §6 e §14 Q7): POST
+  # /attendance/attendances/:id/recall { call_location_id } → 201
+  # `{ call_id, call: { id, kind, ticket, location, called_at } }`. Sem o
+  # waiting_room_display utilizável → 403 feature_disabled.
+  def recall
+    attendance = Attendance.find_by(id: params[:id])
+    return render json: { error: "not_found" }, status: :not_found unless attendance
+
+    result = Attendances::Recall.call(attendance: attendance, call_location_id: request.request_parameters["call_location_id"],
+                                      by: Current.user, waiting_room: WaitingRoom::Gate.usable?(Current.city))
+    return render_failure(result, ERROR_STATUS) if result.failure?
+
+    call = result.payload[:call]
+    render json: { call_id: call.id, call: Attendances::CallRecord.json(call) }, status: :created
   end
 
   def close

@@ -550,4 +550,11 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include(*names)
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
+
+  # Módulo 32a (Task 8): "chamar de novo" (attendance_id, call_id); só ids,
+  # sem consumidor.
+  it "declares attendance.recalled with no consumer" do
+    expect(DomainEvents.registry.keys).to include("attendance.recalled")
+    expect(DomainEvents.registry["attendance.recalled"]).to be_empty
+  end
 end

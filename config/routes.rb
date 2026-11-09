@@ -125,6 +125,8 @@ Rails.application.routes.draw do
     get  "units/:id/queue",           to: "attendances#queue"
     post "units/:id/call_next",       to: "attendances#call_next"
     post "attendances/:id/call",      to: "attendances#call"
+    # Módulo 32a (contrato §6 e §14 Q7): "chamar de novo", na UPA e na UBS.
+    post "attendances/:id/recall",    to: "attendances#recall"
     post "check_ins/lookup",        to: "check_ins#lookup"
     post "check_ins",               to: "check_ins#create"
     post "check_ins/search",        to: "check_ins#search"
@@ -741,6 +743,10 @@ Rails.application.routes.draw do
     # Enfermagem (2235): classificação e reclassificação; prévia da cor sem gravar (§5, Q1).
     post  "encounters/:id/classifications", to: "classifications#create", as: :encounter_classifications
     post  "suggest",             to: "suggestions#create"
+    # Fila por cor (§6, Q6; sem trilha) e a chamada para a classificação (§6, Q7).
+    get   "queue",               to: "queue#show"
+    post  "encounters/:id/call_for_classification", to: "encounters#call_for_classification",
+                                                    as: :encounter_call_for_classification
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.
