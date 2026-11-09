@@ -99,24 +99,27 @@ RSpec.describe "Fusão do paciente provisório no banco", type: :model do
                            cbo_code: link.cbo_code, status: "draft", started_at: Time.current)
     end
 
-    def expect_only_the_patient_moves(row)
+    # refusal: a mensagem do próprio guarda da tabela (sem a marca, ou com
+    # outra coluna junto, a recusa é a de sempre).
+    def expect_only_the_patient_moves(row, refusal)
       target = real
       provisional.update!(merged_into: target)
       earlier = row.created_at - 1.second
       touched = row.has_attribute?(:updated_at) ? { updated_at: Time.current } : {}
-      expect { attempt { row.update_columns(patient_id: target.id) } }.to raise_error(ActiveRecord::StatementInvalid)
-      expect { merging { row.update_columns(patient_id: target.id, created_at: earlier) } }.to raise_error(ActiveRecord::StatementInvalid)
+      expect { attempt { row.update_columns(patient_id: target.id) } }.to raise_error(ActiveRecord::StatementInvalid, refusal)
+      expect { merging { row.update_columns(patient_id: target.id, created_at: earlier) } }
+        .to raise_error(ActiveRecord::StatementInvalid, refusal)
       merging { row.update_columns(patient_id: target.id, **touched) }
       expect(row.class.find(row.id).patient_id).to eq(target.id)
     end
 
     it "consultations" do
-      expect_only_the_patient_moves(consultation)
+      expect_only_the_patient_moves(consultation, /consultations: identity columns never change/)
     end
 
     it "consultations finalizadas também" do
       consultation.update!(status: "finalized", finalized_at: Time.current, care_type: 5)
-      expect_only_the_patient_moves(consultation)
+      expect_only_the_patient_moves(consultation, /consultations: identity columns never change/)
     end
 
     it "clinical_documents" do
@@ -126,11 +129,12 @@ RSpec.describe "Fusão do paciente provisório no banco", type: :model do
                                           short_code: ClinicalDocuments::Codes.short_code, issued_at: Time.current,
                                           content: { "type" => "leave", "days" => 1, "start_on" => Time.zone.today.iso8601,
                                                      "cid_authorized" => false }.to_json)
-      expect_only_the_patient_moves(document)
+      expect_only_the_patient_moves(document, /an issued document never changes/)
     end
 
     it "exam_orders" do
-      expect_only_the_patient_moves(exam_order!(patient: provisional, unit: upa, requester: doctor, status: :awaiting_authorization))
+      expect_only_the_patient_moves(exam_order!(patient: provisional, unit: upa, requester: doctor, status: :awaiting_authorization),
+                                    /exam_orders: identity never changes/)
     end
 
     it "exam_results" do
@@ -138,18 +142,18 @@ RSpec.describe "Fusão do paciente provisório no banco", type: :model do
       result = ExamResult.create!(exam_order: order, patient: provisional, sigtap_code: order.sigtap_code, origin: "order",
                                   source: "unit", pdf_file: pdf_file!(user: doctor), values: [ { "key" => "hba1c", "value" => "9.1" } ].to_json,
                                   released_on: Time.zone.today, laboratory_name: "Lab", critical: false, registered_by_user: doctor)
-      expect_only_the_patient_moves(result)
+      expect_only_the_patient_moves(result, /exam_results is append-only: UPDATE refused/)
     end
 
     it "performed_procedures" do
-      expect_only_the_patient_moves(raw_procedure!(unit: upa, patient: provisional, professional: doctor))
+      expect_only_the_patient_moves(raw_procedure!(unit: upa, patient: provisional, professional: doctor), /clinical content is immutable/)
     end
 
     it "disease_notifications" do
       notification = DiseaseNotification.create!(patient: provisional, disease_code: "dengue", disease_list_version: 1, deadline: "weekly",
                                                  origin: "manual", status: "notified", suspected_on: Date.current, due_at: 7.days.from_now,
                                                  health_unit: upa, form: {})
-      expect_only_the_patient_moves(notification)
+      expect_only_the_patient_moves(notification, /disease_notifications: patient, disease/)
     end
 
     it "regulation_requests" do
@@ -158,7 +162,7 @@ RSpec.describe "Fusão do paciente provisório no banco", type: :model do
                                           target_name: "Médico cardiologista", cid10: "I10",
                                           justification: "Hipertensão resistente a três fármacos", suggested_color: "yellow",
                                           status: "pending", requested_at: Time.current, due_on: Date.current + 30)
-      expect_only_the_patient_moves(request)
+      expect_only_the_patient_moves(request, /regulation_requests: patient, consultation/)
     end
 
     it "dispensations" do
@@ -169,7 +173,7 @@ RSpec.describe "Fusão do paciente provisório no banco", type: :model do
                                               notification_number: "PR-123456", recorded_by_user: keeper)
       dispensation = Dispensation.create!(stock_location: location, patient: provisional, external_prescription: external,
                                           dispensed_by_user: keeper, dispensed_by_role: "pharmacist", dispensed_at: Time.current)
-      expect_only_the_patient_moves(dispensation)
+      expect_only_the_patient_moves(dispensation, /dispensations is append-only: UPDATE refused/)
     end
 
     it "patient_problems" do
@@ -178,7 +182,7 @@ RSpec.describe "Fusão do paciente provisório no banco", type: :model do
       PatientProblemEvent.create!(patient_problem_id: id, kind: "added", consultation_id: consultation.id, user: doctor, status_after: "active")
       problem = PatientProblem.create!(id: id, patient: provisional, terminology: "ciap2", code: "T90", status: "active",
                                        terminology_release_id: TerminologyRelease.active.find_by!(kind: "ciap2").id)
-      expect_only_the_patient_moves(problem)
+      expect_only_the_patient_moves(problem, /patient_problems: identity columns never change/)
     end
 
     it "patient_medications" do
@@ -187,7 +191,21 @@ RSpec.describe "Fusão do paciente provisório no banco", type: :model do
                                      status_after: "active")
       medication = PatientMedication.create!(id: id, patient: provisional, free_text: "Dipirona 500 mg", label: "Dipirona 500 mg",
                                              origin: "prescription", status: "active")
-      expect_only_the_patient_moves(medication)
+      expect_only_the_patient_moves(medication, /patient_medications: identity columns never change/)
+    end
+
+    # Desvio 5/6: as trilhas (KEPT) ficam com o provisório. O rota_reencryption_only
+    # só abre a fusão para exam_results e dispensations; a abertura do
+    # prontuário recusa a troca mesmo sob a marca e com o alvo certo.
+    it "clinical_record_openings (KEPT) recusa a troca mesmo sob a marca" do
+      target = real
+      now = Time.current
+      opening = ClinicalRecordOpening.create!(patient: provisional, user: doctor, reason_code: "case_review", created_at: now,
+                                              expires_at: now + 30.minutes)
+      provisional.update!(merged_into: target)
+      expect { merging { opening.update_columns(patient_id: target.id) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /clinical_record_openings is append-only: UPDATE refused/)
+      expect(ClinicalRecordOpening.find(opening.id).patient_id).to eq(provisional.id)
     end
   end
 end
