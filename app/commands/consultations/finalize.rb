@@ -21,11 +21,20 @@
 # plano e das especialidades é do DentalCare::Materialize, antes do
 # finalized. Travas: atendimento → consulta → paciente → planos abertos do
 # paciente (por id) → pedidos de prótese citados (por id).
+# Módulo 32a (ADR 0050; contrato §7, §14 Q10; plano, Desvio 14): a consulta
+# `urgency` finaliza com `{}` — corpo com `outcome` → invalid_request
+# `outcome` —, sem tipo de atendimento, sem exigir o nome do provisório, e NÃO
+# fecha o atendimento (quem fecha é o desfecho, Urgency::RecordOutcome); nada
+# vai ao LEDI (Ledi::ConsultationFichaJob.enqueue_for a exclui).
 module Consultations
   class Finalize
     OUTCOME_KEYS = %w[outcome referral_unit_id referral_note].freeze
 
     def self.call(consultation:, outcome_params:, by:)
+      if consultation.urgency? && outcome_params.present?
+        return Result.fail(:invalid_request, details: { path: "outcome" })
+      end
+
       outcome = normalize(outcome_params)
       # O37: lido fora da transação.
       return Result.fail(:feature_disabled, details: { feature: DentalCare::Gate::KEY }) if consultation.dental? && !DentalCare::Gate.usable?(Current.city)
@@ -55,9 +64,7 @@ module Consultations
         consultation.update!(status: "finalized", finalized_at: Time.current, draft_items: {})
         promoted = CareRegulation::Promote.call(consultation: consultation, by: by, dental_care: dental_care) if regulating
         regulation = promoted && (promoted.payload[:count] + promoted.payload[:not_sent].size)
-        closed = Attendances::Close.call(attendance: attendance, outcome: outcome["outcome"],
-                                         referral_unit_id: outcome["referral_unit_id"],
-                                         referral_note: outcome["referral_note"], by: by, regulation: regulation)
+        closed = close(consultation, attendance, outcome, by, regulation)
         if closed.failure?
           result = closed
           raise ActiveRecord::Rollback
@@ -78,13 +85,24 @@ module Consultations
       result
     end
 
+    # A urgência não fecha o atendimento: devolve o atendimento ainda in_care.
+    def self.close(consultation, attendance, outcome, by, regulation)
+      return Result.ok(attendance: attendance) if consultation.urgency?
+
+      Attendances::Close.call(attendance: attendance, outcome: outcome["outcome"], referral_unit_id: outcome["referral_unit_id"],
+                              referral_note: outcome["referral_note"], by: by, regulation: regulation)
+    end
+
     def self.requirements(consultation, patient)
       items = consultation.draft_items
       return Result.fail(:no_problem_evaluated) if Array(items["evaluated_problems"]).empty?
       return Result.fail(:no_conduct) if Array(items["conducts"]).empty?
       return Result.fail(:assessment_or_plan_required) if consultation.assessment.blank? && consultation.plan.blank?
-      return Result.fail(:patient_name_missing) if patient.full_name.blank?
-      return Result.fail(:invalid_care_type) unless Ledi::ConsultationMapping.care_type?(consultation.care_type)
+      # Urgência: o provisório (sem nome) é atendido normalmente; sem tipo de atendimento.
+      return Result.fail(:patient_name_missing) if patient.full_name.blank? && !(consultation.urgency? && patient.unidentified)
+      unless consultation.urgency? || Ledi::ConsultationMapping.care_type?(consultation.care_type)
+        return Result.fail(:invalid_care_type)
+      end
 
       physician = Ledi::ConsultationMapping.cid10_allowed?(consultation.cbo_code)
       # Como no ItemsInput: não médico avalia/resolve CID-10 já na lista; só
@@ -138,7 +156,7 @@ module Consultations
         ConsultationExamRequest.create!(consultation: consultation, sigtap_code: exam["sigtap_code"],
                                         sigtap_competence: exam["sigtap_competence"],
                                         cid10_justification: exam["cid10_justification"], status: "requested",
-                                        priority: exam["priority"] || "routine")
+                                        priority: exam["priority"] || (consultation.urgency? ? "urgent" : "routine"))
       end
       if tracking
         Exams::FromConsultation.open!(consultation: consultation, requests: consultation.exam_requests.where(status: "requested").order(:created_at, :id).to_a)
@@ -158,6 +176,6 @@ module Consultations
       params = params.to_unsafe_h if params.respond_to?(:to_unsafe_h)
       params.is_a?(Hash) ? params.deep_stringify_keys.slice(*OUTCOME_KEYS) : {}
     end
-    private_class_method :requirements, :dental_requirements, :materialize!, :normalize
+    private_class_method :close, :requirements, :dental_requirements, :materialize!, :normalize
   end
 end

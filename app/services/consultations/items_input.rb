@@ -119,7 +119,8 @@ module Consultations
 
           justification = cid.code
         end
-        priority = raw.key?("priority") ? raw["priority"] : "routine"
+        # Módulo 32a (Desvio 14): na urgência o exame sem prioridade nasce urgent.
+        priority = raw.key?("priority") ? raw["priority"] : (kind.to_s == "urgency" ? "urgent" : "routine")
         return fail_index(:invalid_exam, index) unless ConsultationExamRequest::PRIORITIES.include?(priority)
 
         { "sigtap_code" => exam.code, "sigtap_competence" => exam.competence, "cid10_justification" => justification,

@@ -306,5 +306,19 @@ RSpec.describe Ledi::ConsultationFicha do
     expect(described_class.retry!(failure, by: ledi_admin!).resolved_at).to be_present
     expect(ficha_of(LediOutboxEntry.sole).atendimentosIndividuais.sole.condutas).to eq([ 1, 9 ])
   end
-end
 
+  # Módulo 32a (ADR 0050; contrato §7): a consulta `urgency` da UPA fica fora do LEDI.
+  it "consulta de urgência nunca vira ficha nem é enfileirada" do
+    Platform::Features.set!(city: city, key: Urgency::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    upa = upa!
+    physician = upa_doctor!(upa)
+    exportable_unit!(upa, physician)
+    encounter = arrived!(upa).tap { |e| classified!(e, color: "green", by: upa_nurse!(upa), pain_scale: 4) }
+    consultation = finalized_urgency!(encounter, doctor: physician)
+    expect(described_class.excluded?(consultation)).to be(true)
+    expect(described_class.generate(consultation)).to eq(:skipped)
+    expect(Ledi::ConsultationFichaJob.enqueue_for(consultation)).to be_nil
+    expect(LediOutboxEntry.count).to eq(0)
+  end
+end

@@ -5,6 +5,9 @@
 # um par VALIDADO do paciente (Patients::Pairs) —, com abertura justificada
 # válida, ou ninguém. A recepção (sem health_professional) nunca lê. Toda
 # leitura permitida deixa trilha (ClinicalRecord::Trail).
+# Módulo 32a (ADR 0050; plano, Task 10): no atendimento `walk_in` da UPA a
+# pessoa é o paciente (sem par do wpda): o contexto compara o `patient_id` do
+# atendimento com o paciente, e os atendimentos abertos dele entram nas listas.
 # A autora da consulta FINALIZADA lê a própria consulta a qualquer momento
 # (for_consultation → :author; decisão do usuário 2026-10-09). A leitura
 # administrativa do municipal_admin (:administrative) não passa por aqui.
@@ -43,9 +46,9 @@ module ClinicalRecord
     def for_person(user:, person:, attendance: nil, now: Time.current)
       return deny(:missing_role) unless user&.has_role?("health_professional")
 
-      candidates = attendance ? [ attendance ] : Attendance.open_attendances.where(citizen_id: person.citizen_ids).includes(:citizen).to_a
+      candidates = attendance ? [ attendance ] : open_attendances_of_person(person)
       kind = waiting_kind
-      in_context = candidates.any? { |a| person.citizen_ids.include?(a.citizen_id) && in_context?(user, a, nil, kind) }
+      in_context = candidates.any? { |a| person_of?(a, person) && in_context?(user, a, nil, kind) }
       return Grant.new(kind: :in_context, opening: nil, reason: nil) if in_context
 
       opening = ClinicalRecordOpening.valid_for_person(user_id: user.id, person: person, now: now).order(created_at: :desc).first
@@ -55,7 +58,23 @@ module ClinicalRecord
     def open_attendances_of(patient)
       return [] unless patient
 
-      Attendance.open_attendances.where(citizen_id: Patients::Pairs.of(patient).select(:id)).includes(:citizen).to_a
+      Attendance.open_attendances.where(citizen_id: Patients::Pairs.of(patient).select(:id))
+                .or(open_walk_ins(patient.id)).includes(:citizen).to_a
+    end
+
+    def open_attendances_of_person(person)
+      scope = Attendance.open_attendances.where(citizen_id: person.citizen_ids)
+      scope = scope.or(open_walk_ins(person.patient_id)) if person.patient_id
+      scope.includes(:citizen).to_a
+    end
+
+    def open_walk_ins(patient_id) = Attendance.open_attendances.where(origin_kind: "walk_in", patient_id: patient_id)
+
+    # A pessoa do atendimento: o par no 13, o paciente no walk_in.
+    def person_of?(attendance, person)
+      return person.citizen_ids.include?(attendance.citizen_id) unless attendance.walk_in?
+
+      attendance.patient_id.present? && attendance.patient_id == person.patient_id
     end
 
     # Módulo 28: com dental_care utilizável (lido fora da transação), o
@@ -63,9 +82,13 @@ module ClinicalRecord
     def waiting_kind = DentalCare::Gate.usable?(Current.city) ? :any : "general"
 
     def in_context?(user, attendance, patient, kind)
-      citizen = attendance.citizen
-      return false unless citizen.verification_level_verified?
-      return false if patient && !pair_of?(citizen, patient)
+      if attendance.walk_in?
+        return false if patient && attendance.patient_id != patient.id
+      else
+        citizen = attendance.citizen
+        return false unless citizen.verification_level_verified?
+        return false if patient && !pair_of?(citizen, patient)
+      end
 
       case attendance.status
       when "in_care" then attendance.called_by_user_id == user.id
@@ -84,6 +107,7 @@ module ClinicalRecord
     end
 
     def deny(reason) = Grant.new(kind: :denied, opening: nil, reason: reason)
-    private_class_method :open_attendances_of, :waiting_kind, :in_context?, :pair_of?, :deny
+    private_class_method :open_attendances_of, :open_attendances_of_person, :open_walk_ins, :person_of?, :waiting_kind,
+                         :in_context?, :pair_of?, :deny
   end
 end

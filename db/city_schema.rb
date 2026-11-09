@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_05_900004) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_05_900005) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -692,7 +692,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900004) do
     t.check_constraint "(status::text = 'cancelled'::text) = (cancelled_at IS NOT NULL) AND (status::text = 'cancelled'::text) = (cancel_reason IS NOT NULL) AND (status::text = 'cancelled'::text) = (cancelled_by_user_id IS NOT NULL)", name: "ck_clinical_documents_cancellation"
     t.check_constraint "cbo_code IS NULL OR cbo_code::text ~ '^[0-9]{6}$'::text", name: "ck_clinical_documents_cbo"
     t.check_constraint "(consultation_id IS NULL AND psychosocial_action_id IS NULL) OR cbo_code IS NOT NULL", name: "ck_clinical_documents_cbo_required"
-    t.check_constraint "(psychosocial_action_id IS NULL) = (citizen_id IS NOT NULL)", name: "ck_clinical_documents_citizen"
+    t.check_constraint "(psychosocial_action_id IS NULL OR citizen_id IS NULL) AND (psychosocial_action_id IS NOT NULL OR citizen_id IS NOT NULL OR patient_id IS NOT NULL)", name: "ck_clinical_documents_citizen"
     t.check_constraint "consultation_id IS NOT NULL OR psychosocial_action_id IS NOT NULL OR issue_mode::text = 'paper'::text", name: "ck_clinical_documents_paper_outside_consultation"
     t.check_constraint "consultation_id IS NOT NULL OR psychosocial_action_id IS NOT NULL OR kind::text = 'attendance_declaration'::text", name: "ck_clinical_documents_consultation"
     t.check_constraint "issue_mode::text = ANY (ARRAY['digital'::text, 'paper'::text])", name: "ck_clinical_documents_issue_mode"
@@ -934,11 +934,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900004) do
     t.check_constraint "status::text <> 'discarded'::text OR (subjective IS NULL AND objective IS NULL AND assessment IS NULL AND plan IS NULL AND systolic IS NULL AND diastolic IS NULL AND heart_rate IS NULL AND respiratory_rate IS NULL AND temperature_c IS NULL AND spo2 IS NULL AND capillary_glucose IS NULL AND glucose_moment IS NULL AND weight_kg IS NULL AND height_cm IS NULL AND pain_score IS NULL AND dental_consultation_type IS NULL AND oral_health_surveillance = '{}'::smallint[] AND supplies = '{}'::smallint[] AND dental_outcomes = '{}'::smallint[] AND pregnant IS NULL AND NOT special_needs)", name: "ck_consultations_discarded_empty"
     t.check_constraint "jsonb_typeof(draft_items) = 'object'::text AND (status::text = 'draft'::text OR draft_items = '{}'::jsonb)", name: "ck_consultations_draft_items"
     t.check_constraint "(status::text = 'finalized'::text) = (finalized_at IS NOT NULL)", name: "ck_consultations_finalization"
-    t.check_constraint "status::text <> 'finalized'::text OR care_type IS NOT NULL OR baseline", name: "ck_consultations_finalized_care_type"
+    t.check_constraint "status::text <> 'finalized'::text OR care_type IS NOT NULL OR baseline OR kind::text = 'urgency'::text", name: "ck_consultations_finalized_care_type"
     t.check_constraint "(capillary_glucose IS NULL AND glucose_moment IS NULL) OR (capillary_glucose BETWEEN 10 AND 800 AND glucose_moment::text = ANY (ARRAY['fasting'::text, 'postprandial'::text, 'random'::text]))", name: "ck_consultations_glucose"
     t.check_constraint "heart_rate IS NULL OR heart_rate BETWEEN 20 AND 250", name: "ck_consultations_heart_rate"
     t.check_constraint "height_cm IS NULL OR height_cm BETWEEN 30 AND 250", name: "ck_consultations_height"
-    t.check_constraint "kind::text = ANY (ARRAY['general'::text, 'dental'::text])", name: "ck_consultations_kind"
+    t.check_constraint "kind::text = ANY (ARRAY['general'::text, 'dental'::text, 'urgency'::text])", name: "ck_consultations_kind"
     t.check_constraint "oral_health_surveillance <@ ARRAY[1, 2, 3, 4, 5, 6, 99]::smallint[] AND cardinality(oral_health_surveillance) <= 7", name: "ck_consultations_oral_health_surveillance"
     t.check_constraint "pain_score IS NULL OR pain_score BETWEEN 0 AND 10", name: "ck_consultations_pain_score"
     t.check_constraint "respiratory_rate IS NULL OR respiratory_rate BETWEEN 4 AND 80", name: "ck_consultations_respiratory_rate"

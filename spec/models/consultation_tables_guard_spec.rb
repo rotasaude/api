@@ -129,6 +129,21 @@ RSpec.describe "Guardas das tabelas da consulta" do
       expect { attempt { consultation.reload.update!(status: "finalized", finalized_at: Time.current, draft_items: {}) } }
         .to raise_error(ActiveRecord::StatementInvalid, /ck_consultations_finalized_care_type/)
     end
+
+    # Módulo 32a (ADR 0050; plano, Desvio 14): a consulta da urgência nunca grava
+    # tipo de atendimento (fora do LEDI) e finaliza sem ele; nada da FAO.
+    it "CHECKs da urgência: kind aceito; finaliza sem tipo; com tipo, nunca; sem campos da FAO" do
+      attendance
+      patient
+      expect { attempt { consultation!(kind: "urgency", care_type: 5) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /ck_consultations_care_type/)
+      expect { attempt { consultation!(kind: "urgency", special_needs: true) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /ck_consultations_dental_fields/)
+      expect { attempt { consultation!(kind: "emergency") } }.to raise_error(ActiveRecord::StatementInvalid, /ck_consultations_kind/)
+      consultation = consultation!(kind: "urgency")
+      expect { consultation.update!(status: "finalized", finalized_at: Time.current) }.not_to raise_error
+      expect(consultation.reload).to have_attributes(status: "finalized", care_type: nil)
+    end
   end
 
   describe "itens" do

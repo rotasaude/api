@@ -4,6 +4,7 @@
 # Módulo 28 (ADR 0046; contrato §16 O25): o bloco `dental` só na consulta
 # odontológica (DentalCare::DraftInput: colunas da FAO e draft_items["dental"],
 # chave a chave); nela o `care_type` do topo é ignorado (vale dental.care_type).
+# Módulo 32a: na consulta `urgency`, `care_type` → invalid_request `care_type`.
 module Consultations
   class SaveDraft
     def self.call(consultation:, params:, by:)
@@ -16,6 +17,8 @@ module Consultations
         next Result.fail(:not_author) unless consultation.author_user_id == by.id
         next Result.fail(:not_draft) unless consultation.draft?
         next Result.fail(:invalid_request, details: { path: "dental" }) if params.key?("dental") && !consultation.dental?
+        # Módulo 32a (Desvio 14): a urgência nunca grava tipo de atendimento.
+        next Result.fail(:invalid_request, details: { path: "care_type" }) if params.key?("care_type") && consultation.urgency?
 
         general = consultation.dental? ? params.except("care_type", "dental") : params
         input = ItemsInput.call(general, patient: consultation.patient, cbo: consultation.cbo_code, kind: consultation.kind)

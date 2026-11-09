@@ -7,6 +7,9 @@
 # outro profissional — as duas escritas só sob with_draft_admin (trigger).
 class Consultation < ApplicationRecord
   STATUSES = %w[draft finalized discarded].freeze
+  # Módulo 32a (ADR 0050; plano, Desvio 14): `urgency` é o atendimento médico
+  # da UPA — o tipo vem do encontro, sem tipo de atendimento e fora do LEDI.
+  KINDS = %w[general dental urgency].freeze
   TEXT_FIELDS = %w[subjective objective assessment plan].freeze
   MAX_TEXT = 20_000
   VITAL_COLUMNS = ScreeningRevision::VITAL_COLUMNS
@@ -44,6 +47,7 @@ class Consultation < ApplicationRecord
   def finalized? = status == "finalized"
   def discarded? = status == "discarded"
   def dental? = kind == "dental"
+  def urgency? = kind == "urgency"
 
   # Marca rota.draft_admin (card api#51; db/city_triggers.sql): só dentro do
   # bloco o trigger aceita trocar a autora do rascunho, descartá-lo e trocar

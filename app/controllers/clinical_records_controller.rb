@@ -13,10 +13,17 @@ class ClinicalRecordsController < ApplicationController
     attendance = Attendance.find_by(id: params[:id])
     return not_found unless attendance
 
-    citizen = attendance.citizen
-    return render(json: { error: "citizen_not_verified" }, status: :conflict) unless citizen.verification_level_verified?
+    # Módulo 32a: no walk_in da UPA a pessoa é o paciente do atendimento (o
+    # provisório inclusive), sem par do wpda a validar.
+    if attendance.walk_in?
+      citizen = nil
+      patient = attendance.patient
+    else
+      citizen = attendance.citizen
+      return render(json: { error: "citizen_not_verified" }, status: :conflict) unless citizen.verification_level_verified?
 
-    patient = (citizen.patient_id && Patient.find_by(id: citizen.patient_id)) || Patient.find_by(cpf: citizen.cpf)
+      patient = (citizen.patient_id && Patient.find_by(id: citizen.patient_id)) || Patient.find_by(cpf: citizen.cpf)
+    end
     grant = ClinicalRecord::Access.call(user: Current.user, patient: patient, attendance: attendance)
     return forbid(grant.reason.to_s) unless grant.allowed?
 

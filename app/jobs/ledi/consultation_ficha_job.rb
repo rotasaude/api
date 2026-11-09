@@ -13,9 +13,10 @@ module Ledi
     end
 
     # Módulo 31 (contrato §10): nada do CAPS vai ao LEDI — consulta de
-    # atendimento numa unidade `caps` não é enfileirada (devolve nil).
+    # atendimento numa unidade `caps` não é enfileirada (devolve nil). Módulo
+    # 32a: nem a consulta `urgency` da UPA.
     def self.enqueue_for(consultation, reason: "finalized")
-      return nil if Ledi::ConsultationFicha.caps?(consultation)
+      return nil if Ledi::ConsultationFicha.excluded?(consultation)
 
       perform_later(city_slug: Current.city.slug, consultation_id: consultation.id, reason: reason)
     end

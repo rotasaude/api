@@ -23,6 +23,13 @@ module Consultations
     end
 
     # Sem kind: a consulta geral (o sentido de antes do módulo 28).
-    def allowed?(cbo, kind: "general") = kinds_for(cbo).include?(kind.to_s)
+    # Módulo 32a (§14 Q10; preflight C-18): a consulta `urgency` é do médico
+    # (225*); kinds_for não a oferece — só a UPA a abre (Consultations::Start
+    # exige o encontro) e as opções a acrescentam pelo vínculo na UPA.
+    def allowed?(cbo, kind: "general")
+      return cbo.to_s.start_with?(Urgency::Catalog::PHYSICIAN_CBO_PREFIX) if kind.to_s == "urgency"
+
+      kinds_for(cbo).include?(kind.to_s)
+    end
   end
 end

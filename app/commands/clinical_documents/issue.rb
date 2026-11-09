@@ -145,7 +145,9 @@ module ClinicalDocuments
         return Result.fail(status) unless status == :ok
         return Result.fail(:attendance_not_found_or_closed_long_ago) if attendance.checked_in_at < now - DECLARATION_DAYS.days
 
-        patient = attendance.citizen.patient_id && Patient.lock.find(attendance.citizen.patient_id)
+        # Módulo 32a: a pessoa do walk_in é o paciente do atendimento.
+        patient_id = attendance.walk_in? ? attendance.patient_id : attendance.citizen.patient_id
+        patient = patient_id && Patient.lock.find(patient_id)
       end
       replaces = replaced(replaces_id, kind, attendance, action, by)
       return replaces if replaces.is_a?(Result)
@@ -230,12 +232,16 @@ module ClinicalDocuments
 
     # "Cancelar e emitir outro" (spec §6): o substituído é um cancelado do
     # mesmo tipo, da mesma autora e do mesmo cidadão — ou, no CAPS, da mesma
-    # ação (o documento do CAPS não tem cidadão).
+    # ação (o documento do CAPS não tem cidadão); no walk_in da UPA (módulo
+    # 32a, também sem cidadão), do mesmo paciente — nunca nil == nil.
     def replaced(id, kind, attendance, action, by)
       return nil if id.nil?
 
       old = Uuid.valid?(id.to_s) ? ClinicalDocument.find_by(id: id) : nil
-      same = action ? old&.psychosocial_action_id == action.id : old&.citizen_id == attendance.citizen_id
+      same = if action then old&.psychosocial_action_id == action.id
+             elsif attendance.walk_in? then old.present? && old.citizen_id.nil? && old.patient_id == attendance.patient_id
+             else old&.citizen_id == attendance.citizen_id
+             end
       valid = old&.cancelled? && old.kind == kind && old.author_user_id == by.id && same
       valid ? old : invalid("replaces_document_id")
     end

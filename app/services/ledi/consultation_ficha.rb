@@ -29,9 +29,13 @@ module Ledi
     # nunca vira ficha (enqueue_for, varredor e "gerar de novo" passam aqui).
     def caps?(consultation) = consultation.attendance&.health_unit&.caps? || false
 
+    # Módulo 32a (ADR 0050; contrato §7): a consulta `urgency` da UPA também
+    # fica fora do LEDI e da produção da APS.
+    def excluded?(consultation) = consultation.urgency? || caps?(consultation)
+
     def generate(consultation, city: Current.city)
       return :skipped unless consultation.finalized?
-      return :skipped if caps?(consultation)
+      return :skipped if excluded?(consultation)
       # Módulo 28 (ADR 0046; Desvio 2): o registro inicial não gera FAO.
       return :skipped if consultation.dental? && consultation.baseline?
       return :unusable unless exportable?(city)

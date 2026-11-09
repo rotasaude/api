@@ -61,8 +61,9 @@ class ConsultationsController < ApplicationController
     attendance = Attendance.find_by(id: params[:id])
     return not_found unless attendance
 
-    # Sem `kind` (ou nulo) → general, o contrato de antes do módulo 28.
-    result = Consultations::Start.call(attendance: attendance, by: Current.user, kind: body["kind"].nil? ? "general" : body["kind"],
+    # Sem `kind` (ou nulo) → general, o contrato de antes do módulo 28; no
+    # atendimento da UPA com encontro, urgency (módulo 32a, Desvio 14).
+    result = Consultations::Start.call(attendance: attendance, by: Current.user, kind: body["kind"],
                                        baseline: body["baseline"].nil? ? false : body["baseline"])
     return failure(result) if result.failure?
 
@@ -103,8 +104,9 @@ class ConsultationsController < ApplicationController
   # Módulo 26a (contrato §13 G12 #3): com o interruptor care_regulation
   # utilizável, `regulation_not_sent` (index, id, error, path; sem dado pessoal).
   def finalize
-    outcome = body["outcome"].is_a?(Hash) ? body["outcome"] : {}
-    result = Consultations::Finalize.call(consultation: @consultation, outcome_params: outcome, by: Current.user)
+    # Como veio: o Finalize ignora o que não é objeto, e a urgência recusa
+    # qualquer `outcome` (módulo 32a, Desvio 14).
+    result = Consultations::Finalize.call(consultation: @consultation, outcome_params: body["outcome"], by: Current.user)
     return failure(result) if result.failure?
 
     render json: with_regulation(Consultations::Json.consultation(result.payload[:consultation].reload), result)
@@ -168,13 +170,26 @@ class ConsultationsController < ApplicationController
     render json: Consultations::Json.consultation(result.payload[:consultation].reload)
   end
 
+  # Módulo 32a (§14 Q10; preflight C-18): com urgency_care utilizável (lido
+  # fora de transação), todo atendimento da UPA é da urgência (Desvio 3) — o
+  # vínculo numa unidade `upa` não oferece general/dental, e o 225* nela
+  # oferece `urgency`. Desligado, a UPA segue o 13 (general).
   def kinds_and_role
-    cbos = Consultations::Authorization.allowed_links(user: Current.user, kind: :any).map(&:cbo_code)
+    links = Consultations::Authorization.allowed_links(user: Current.user, kind: :any)
+    cbos = links.map(&:cbo_code)
     cbos = cbos.reject { |cbo| Consultations::Cbos.role(cbo) } unless DentalCare::Gate.usable?(Current.city)
     roles = cbos.map { |cbo| Consultations::Cbos.role(cbo) }
     role = %i[dentist auxiliary].find { |r| roles.include?(r) }
-    { kinds: DentalCare::Catalog::KINDS.select { |kind| cbos.any? { |cbo| Consultations::Cbos.allowed?(cbo, kind: kind) } },
-      dental_role: role&.to_s }
+    { kinds: consultation_kinds(links), dental_role: role&.to_s }
+  end
+
+  def consultation_kinds(links)
+    upa, others = Urgency::Gate.usable?(Current.city) ? links.partition { |link| link.health_unit.upa? } : [ [], links ]
+    cbos = others.map(&:cbo_code)
+    cbos = cbos.reject { |cbo| Consultations::Cbos.role(cbo) } unless DentalCare::Gate.usable?(Current.city)
+    kinds = DentalCare::Catalog::KINDS.select { |kind| cbos.any? { |cbo| Consultations::Cbos.allowed?(cbo, kind: kind) } }
+    kinds << "urgency" if upa.any? { |link| Consultations::Cbos.allowed?(link.cbo_code, kind: "urgency") }
+    kinds
   end
 
   def with_regulation(json, result)
