@@ -90,13 +90,15 @@ RSpec.describe "Classificação de risco", type: :request do
 
   it "a queixa, o critério e os sinais nunca vão para o log, o evento nem a recusa" do
     log = capture_log do
-      classify(complaint: "Queixa sigilosa de teste", vital_signs: { spo2: 87, temperature_c: "37,9" }, pain_scale: 2, color: "red")
+      classify(complaint: "Queixa sigilosa de teste", vital_signs: { spo2: 87, weight_kg: 71.37 }, pain_scale: 2, color: "red")
       classify(complaint: "Queixa sigilosa de teste", vital_signs: {}, pain_scale: 2, color: "orange")
     end
     expect(log).not_to include("Queixa sigilosa")
     expect(log).not_to include("SpO2 abaixo de 90%")
-    # Sinal como texto com vírgula: não colide com uuid nem com tempo do log.
-    expect(log).not_to include("37,9")
+    # Peso com duas casas: um vazamento do valor lido (número) sairia "71.37";
+    # os tempos do log têm uma casa só.
+    expect(log).not_to include("71.37")
+    expect(log).not_to include("71,37")
     expect(response.body).not_to include("Queixa sigilosa")
     expect(DomainEvent.where(name: %w[urgency.classified clinical_record.viewed]).map(&:payload).to_s).not_to include("Queixa sigilosa")
     expect(UrgencyClassification.connection.select_value("SELECT complaint FROM urgency_classifications LIMIT 1"))
