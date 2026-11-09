@@ -150,9 +150,9 @@ RSpec.describe "Atendimento médico na UPA", type: :request do
   end
 
   describe "opções da consulta (§14 Q10)" do
-    it "médico só da UPA recebe kinds [urgency]; o da UBS, [general]; desligado, a UPA volta ao 13" do
+    it "médico só da UPA recebe kinds [general, urgency]; o da UBS, [general]; desligado, a UPA volta ao 13" do
       get "/attendance/consultation_options"
-      expect(json_body["kinds"]).to eq([ "urgency" ])
+      expect(json_body["kinds"]).to eq(%w[general urgency])
 
       ubs = create_unit("UBS Y")
       sign_in_as(doctor!(ubs))
@@ -164,6 +164,17 @@ RSpec.describe "Atendimento médico na UPA", type: :request do
       sign_in_as(doctor)
       get "/attendance/consultation_options"
       expect(json_body["kinds"]).to eq([ "general" ])
+    end
+
+    it "na UPA, general em atendimento sem encontro (13) é 201 e urgency nele é 422 em kind" do
+      legacy = consulting_attendance!(upa, citizen: verified_citizen!(urgency_seq!), doctor: doctor)
+      json_post "/attendance/attendances/#{legacy.id}/consultation", { kind: "urgency" }
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "kind")
+
+      json_post "/attendance/attendances/#{legacy.id}/consultation", { kind: "general" }
+      expect(response).to have_http_status(:created)
+      expect(json_body["kind"]).to eq("general")
     end
 
     it "médico com vínculo na UPA e na UBS recebe general e urgency" do

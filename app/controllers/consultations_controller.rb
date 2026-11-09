@@ -170,10 +170,11 @@ class ConsultationsController < ApplicationController
     render json: Consultations::Json.consultation(result.payload[:consultation].reload)
   end
 
-  # Módulo 32a (§14 Q10; preflight C-18): com urgency_care utilizável (lido
-  # fora de transação), todo atendimento da UPA é da urgência (Desvio 3) — o
-  # vínculo numa unidade `upa` não oferece general/dental, e o 225* nela
-  # oferece `urgency`. Desligado, a UPA segue o 13 (general).
+  # Módulo 32a (§14 Q10; preflight C-18): os kinds são os da tabela de CBO
+  # (Cbos.kinds_for, intocada) MAIS `urgency` quando há vínculo 225* ativo numa
+  # unidade `upa` com urgency_care utilizável (lido fora de transação). Nunca
+  # substitui: o atendimento da UPA sem encontro (13) segue general; quem
+  # escolhe o kind pelo encontro é o dashboard, e o Start impõe kind ↔ encontro.
   def kinds_and_role
     links = Consultations::Authorization.allowed_links(user: Current.user, kind: :any)
     ActiveRecord::Associations::Preloader.new(records: links, associations: :health_unit).call
@@ -184,11 +185,15 @@ class ConsultationsController < ApplicationController
   end
 
   def consultation_kinds(links, dental_care)
-    upa, others = Urgency::Gate.usable?(Current.city) ? links.partition { |link| link.health_unit.upa? } : [ [], links ]
-    cbos = consultation_cbos(others, dental_care)
+    cbos = consultation_cbos(links, dental_care)
     kinds = DentalCare::Catalog::KINDS.select { |kind| cbos.any? { |cbo| Consultations::Cbos.allowed?(cbo, kind: kind) } }
-    kinds << "urgency" if upa.any? { |link| Consultations::Cbos.allowed?(link.cbo_code, kind: "urgency") }
+    kinds << "urgency" if urgency_link?(links)
     kinds
+  end
+
+  def urgency_link?(links)
+    Urgency::Gate.usable?(Current.city) &&
+      links.any? { |link| link.health_unit.upa? && Consultations::Cbos.allowed?(link.cbo_code, kind: "urgency") }
   end
 
   # Sem dental_care utilizável, os CBOs odontológicos não contam.
