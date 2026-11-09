@@ -115,7 +115,7 @@ module Citizens
         pairs.each { |citizen| erase_pair(citizen, live.select { |a| a.citizen_id == citizen.id }) }
         # D-U1 (ADR 0039): o paciente não retido perde raça/cor, etnia e endereço junto com o par.
         # ADR 0050: e nome, nascimento, sexo e CNS (a chave de duplicados vai junto, pelo Patient).
-        locked_patients.each { |patient| patient.update!((Patient::DEMOGRAPHICS + PATIENT_IDENTITY).index_with(nil)) }
+        locked_patients.each { |patient| patient.update!(erased_patient_attrs(patient)) }
         # ADR 0040: sugestões do paciente não retido (sem inscrição, por definição).
         CareLineSuggestion.where(patient_id: locked_patients.map(&:id)).delete_all
         # ADR 0048 (Desvio 17; T23): séries suspensas, o paciente fora das
@@ -131,6 +131,16 @@ module Citizens
         result = Result.ok(request: request)
       end
       result
+    end
+
+    # ADR 0050: o provisório identificado por paciente novo (a própria linha
+    # recebeu o CPF; unidentified false) ainda guarda a descrição da chegada —
+    # sai junto. O provisório FUNDIDO (unidentified, sem CPF) nunca chega aqui
+    # e fica como está (ck_patients_description).
+    def erased_patient_attrs(patient)
+      attrs = (Patient::DEMOGRAPHICS + PATIENT_IDENTITY).index_with(nil)
+      attrs["unidentified_description"] = nil if !patient.unidentified && patient.unidentified_description.present?
+      attrs
     end
 
     def erase_pair(citizen, live_appointments)

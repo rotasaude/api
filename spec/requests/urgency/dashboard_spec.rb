@@ -128,6 +128,21 @@ RSpec.describe "Urgência — painel do gestor", type: :request do
     end
   end
 
+  # Decisão 11 da spec: evasão é só o `left_without_care` (antes ou depois da
+  # classificação); o `left_against_advice` conta só em by_outcome.
+  it "a saída contra a orientação médica fica em by_outcome e fora da evasão" do
+    # Tabelas publicadas antes da data simulada (a consulta roda em outubro de 2026).
+    travel_to(base - 1.day)
+    ciap2_release!; cid10_release!; sigtap_release!
+    encounter = visit!(at: base, color: "yellow", call_after: 15)
+    finalized_urgency!(encounter, doctor: doctor)
+    result = Urgency::RecordOutcome.call(encounter: encounter.reload, attrs: { "kind" => "left_against_advice" }, by: doctor, team: nil)
+    expect(result).to be_ok
+    read_dashboard!
+    expect(json_body.dig("by_outcome", "left_against_advice")).to eq("lt5")
+    expect(json_body["evasion"]).to eq("before_classification" => 0, "after_classification" => 0)
+  end
+
   describe "acesso e parâmetros" do
     it "municipal_admin e analyst leem; o resto → 403 missing_role" do
       sign_in_as(staff_with("gestor-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin"))

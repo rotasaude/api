@@ -7,8 +7,9 @@
 # invalid_request `health_unit_id`. O padrão do Psychosocial::DashboardController.
 module Urgency
   class DashboardController < BaseController
+    include ::MonthParam
+
     ROLES = %w[municipal_admin analyst].freeze
-    MONTH = /\A\d{4}-\d{2}\z/
 
     def show
       return forbid unless ROLES.any? { |role| Current.user.has_role?(role) }
@@ -23,14 +24,6 @@ module Urgency
     end
 
     private
-
-    def month_from(value)
-      return nil unless value.is_a?(String) && value.match?(MONTH)
-
-      Date.strptime("#{value}-01", "%Y-%m-%d")
-    rescue Date::Error
-      nil
-    end
 
     # UPAs do painel; renderiza a recusa e devolve nil quando ela existe.
     def units_in_scope(health_unit_id)

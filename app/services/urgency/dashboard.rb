@@ -26,7 +26,9 @@
 #    called_at`, com o tempo máximo gravado nela);
 #  - por cor: a cor vigente agora (sem classificação → `unclassified`);
 #  - por desfecho: os encontros fechados, pelo `kind` do desfecho;
-#  - evasão: desfecho `left_*`, antes da classificação (sem nenhuma) ou depois;
+#  - evasão: desfecho `left_without_care` (decisão 11 da spec: a evasão, antes
+#    ou depois da classificação), antes da classificação (sem nenhuma) ou
+#    depois; o `left_against_advice` fica só em `by_outcome`;
 #  - permanência: `closed_at - checked_in_at` dos fechados;
 #  - mediana e p90 por `percentile_cont` sobre os minutos, arredondados a
 #    minutos inteiros;
@@ -36,7 +38,7 @@
 module Urgency
   module Dashboard
     LESS_THAN_FIVE = "lt5".freeze
-    EVASION_OUTCOMES = %w[left_without_care left_against_advice].freeze
+    EVASION_OUTCOMES = %w[left_without_care].freeze
     OUTCOMES = (Catalog::OUTCOMES - Catalog::NON_CARE_OUTCOMES).freeze
 
     # Uma linha por encontro do recorte, com o que as agregações leem. A

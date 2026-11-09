@@ -7,11 +7,11 @@ module Psychosocial
     include Authentication
     include MfaStepUp
     include ::PsychosocialGate
+    include ::MonthParam
 
     wrap_parameters false
 
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
-    MONTH = /\A(\d{4})-(0[1-9]|1[0-2])\z/
     # Contrato P13 (ruling do controlador): conflitos no padrão do 30 (409);
     # papel e lotação 403; o resto das recusas é 422.
     FAILURE_STATUS = {
@@ -115,12 +115,6 @@ module Psychosocial
 
       forbid(Access.staff?(Current.user) ? "lead_required" : "missing_role")
       false
-    end
-
-    # "YYYY-MM" (texto) -> Date (dia 1º) | nil — o mês das rotas da RAAS.
-    def month_from(value)
-      match = value.is_a?(String) ? value.match(MONTH) : nil
-      match && Date.new(match[1].to_i, match[2].to_i, 1)
     end
 
     # Faturista em qualquer CAPS; coordenação só onde está lotada.

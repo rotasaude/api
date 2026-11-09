@@ -84,6 +84,28 @@ RSpec.describe "Exclusão LGPD com encontro da urgência (ADR 0050)" do
     expect(provisional.reload.state).to eq("waiting_classification")
   end
 
+  # Ruling do coordenador (fix 1): o provisório identificado por paciente novo
+  # (a própria linha recebe o CPF, unidentified false) guarda a descrição da
+  # chegada; a exclusão confirmada a apaga junto com a identificação.
+  it "provisório identificado por paciente novo e saído antes da classificação: a descrição sai na exclusão" do
+    encounter = leave!(arrived!(upa, unidentified: "Senhora de uns 70 anos, cadeira de rodas"))
+    new_cpf = urgency_cpf(urgency_seq!)
+    identified = Urgency::Identify.call(encounter: encounter.reload, patient_id: nil,
+                                        new_patient: { "full_name" => "Benedita Souza Lima", "birth_date" => "1955-03-02",
+                                                       "sex" => "female", "cpf" => new_cpf },
+                                        duplicates_reviewed: true, by: upa_reception!)
+    expect(identified).to be_ok
+    row = encounter.reload.attendance.patient
+    expect(row).to have_attributes(unidentified: false, unidentified_description: be_present, cpf: new_cpf)
+    Citizen.create!(cpf: new_cpf, phone: "+55419#{format('%08d', SecureRandom.random_number(10**8))}")
+
+    request = Citizens::RequestErasure.call(cpf: new_cpf, document_checked: true, by: verifier!).payload[:request]
+    expect(request.status).to eq("pending")
+    expect(Citizens::Erase.call(request: request, by: admin).payload[:request].status).to eq("confirmed")
+    expect(row.reload).to have_attributes(unidentified: false, unidentified_description: nil, full_name: nil, birth_date: nil)
+    expect(encounter.reload.provisional_patient_id).to eq(row.id)
+  end
+
   it "com o atendimento aberto na UPA: patient_in_urgency, nada muda; depois da evasão, segue" do
     encounter = arrived!(upa, patient: patient)
     request = request!.payload[:request]

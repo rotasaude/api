@@ -218,3 +218,29 @@ RSpec.describe "Erasure requests — paciente em viagem", type: :request do
     expect(rider.reload).to have_attributes(removed_at: nil, anonymized_at: nil)
   end
 end
+
+# Módulo 32a (ADR 0050; Task 16): quem ainda espera a classificação na UPA
+# (walk_in aberto) bloqueia a confirmação com 409 patient_in_urgency; o
+# pedido segue pendente e nada muda.
+RSpec.describe "Erasure requests — paciente na UPA", type: :request do
+  let!(:city) { urgency_city! }
+
+  after { Current.reset }
+
+  it "atendimento aberto sem classificação: 409 patient_in_urgency; pedido pendente, paciente intacto" do
+    patient = urgency_patient!(urgency_seq!)
+    citizen = Citizen.create!(cpf: patient.cpf, phone: "+55419#{format('%08d', SecureRandom.random_number(10**8))}")
+    arrived!(upa!, patient: patient)
+    request = Citizens::RequestErasure.call(cpf: patient.cpf, document_checked: true, by: verifier!).payload.fetch(:request)
+    expect(request.status).to eq("pending")
+    admin = step_up_enrolled!(staff_with("admin-lgpd-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin"))
+    sign_in_as(admin).update!(mfa_verified_at: Time.current)
+
+    json_post "/attendance/erasure_requests/#{request.id}/confirm"
+
+    expect([ response.status, JSON.parse(response.body)["error"] ]).to eq([ 409, "patient_in_urgency" ])
+    expect(request.reload.status).to eq("pending")
+    expect(citizen.reload.erased_at).to be_nil
+    expect(patient.reload.full_name).to be_present
+  end
+end
