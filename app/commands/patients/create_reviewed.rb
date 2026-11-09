@@ -22,10 +22,23 @@ module Patients
       result
     end
 
-    def create(typed, reviewed, by)
+    # A conferência sozinha, dentro da transação de quem chama: a trava da
+    # match_key (até o fim dessa transação) e o duplicado, sem gravar. A
+    # identificação do provisório da urgência (Urgency::NewPatient.assign)
+    # confere aqui e grava os dados no próprio provisório.
+    # -> Result.ok | Result.fail(:duplicate_suspected)
+    def review(new_patient, reviewed)
+      typed = new_patient.to_h.stringify_keys
       key = typed.values_at("full_name", "birth_date").all?(String) && MatchKey.for(typed["full_name"], typed["birth_date"])
       ApplicationRecord.connection.execute("SELECT pg_advisory_xact_lock(#{lock_key(key)})") if key
       return Result.fail(:duplicate_suspected) if !reviewed && duplicate?(typed)
+
+      Result.ok
+    end
+
+    def create(typed, reviewed, by)
+      reviewed_result = review(typed, reviewed)
+      return reviewed_result if reviewed_result.failure?
 
       created = CreateTyped.call(attrs: typed, by: by)
       return created if created.ok?

@@ -423,6 +423,12 @@ Rails.application.config.to_prepare do
   # nem a justificativa; sem consumidor.
   DomainEvents.bind "urgency.classified", to: []
   DomainEvents.bind "urgency.reclassified", to: []
+  # Identificação do provisório (Urgency::Identify; contrato §12, §14 Q17):
+  # só encounter_id, patient_id (o paciente que ficou com o encontro) e, na
+  # fusão, merged_from_id e as contagens moved/kept_duplicates — nunca nome,
+  # CPF, CNS nem a descrição. A Task 13 liga o BPA da urgência
+  # (Billing::UrgencyProductionJob); até lá, sem consumidor.
+  DomainEvents.bind "urgency.patient_identified", to: []
   # "Chamar de novo" (Attendances::Recall; contrato §12): só attendance_id e
   # call_id — nunca a senha, o local nem a pessoa; sem consumidor (a TV lê
   # attendance_calls).

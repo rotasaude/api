@@ -176,6 +176,16 @@ RSpec.describe "Fusão do paciente provisório no banco", type: :model do
       expect_only_the_patient_moves(dispensation, /dispensations is append-only: UPDATE refused/)
     end
 
+    # Contrato §14 Q21: a receita externa muda de dono com a dispensação
+    # (a farmácia dispensa contra o paciente).
+    it "external_prescriptions" do
+      keeper = staff_with("almox-#{SecureRandom.hex(2)}@cidade.gov.br", "stock_keeper")
+      external = ExternalPrescription.create!(patient: provisional, stock_location: unit_location!, prescriber_name: "Dra. Beltrana",
+                                              council: "CRM", council_state: "PR", council_number: "12345", issued_on: Date.current,
+                                              notification_number: "PR-123456", recorded_by_user: keeper)
+      expect_only_the_patient_moves(external, /external_prescriptions is append-only: UPDATE refused/)
+    end
+
     it "patient_problems" do
       ciap2_release!
       id = SecureRandom.uuid

@@ -48,6 +48,42 @@ module Urgency
       Result.fail(:duplicate_suspected, details: { path: "new_patient", candidate_ids: candidate_ids(new_patient) })
     end
 
+    # Identificação do provisório por dados novos (Urgency::Identify; §14 Q23):
+    # a mesma forma e a mesma conferência de duplicado, mas os dados vão para
+    # o PRÓPRIO provisório (já travado por quem chama), que deixa de ser
+    # provisório. A descrição fica. CNS de outro paciente → cns_taken; o CPF
+    # entra pelo Patients::AddCpf (travas, cpf_taken, pares validados), depois
+    # de o provisório deixar de sê-lo (ck_patients_unidentified).
+    # -> Result.ok(patient:) | fail(:duplicate_suspected, details: { path:, candidate_ids: }) | a recusa com o path
+    def assign(patient:, new_patient:, reviewed:, by:)
+      shape = Patients::CreateTyped.check(new_patient)
+      return typed_failure(shape) if shape.failure?
+
+      reviewed_result = Patients::CreateReviewed.review(new_patient, reviewed)
+      unless reviewed_result.ok?
+        return Result.fail(:duplicate_suspected, details: { path: "new_patient", candidate_ids: candidate_ids(new_patient) })
+      end
+
+      values, cpf = shape.payload.values_at(:values, :cpf)
+      return refuse(:cns_taken, TYPED_PATHS[:cns_taken]) if values["cns"] && Patient.where(cns: values["cns"]).where.not(id: patient.id).exists?
+
+      result = nil
+      ApplicationRecord.transaction(requires_new: true) do
+        # Com CPF, a justificativa do provisório fica até o AddCpf trocá-la (ck_patients_cpf_or_reason).
+        patient.update!(values.merge("unidentified" => false, "no_cpf_reason" => values["no_cpf_reason"] || patient.no_cpf_reason))
+        result = cpf ? Patients::AddCpf.call(patient: patient, cpf: cpf, by: by) : Result.ok(patient: patient)
+        if result.failure?
+          result = typed_failure(result)
+          raise ActiveRecord::Rollback
+        end
+      end
+      result
+    rescue ActiveRecord::RecordNotUnique => e
+      raise unless e.message.include?(Patients::CreateTyped::CNS_INDEX)
+
+      refuse(:cns_taken, TYPED_PATHS[:cns_taken])
+    end
+
     # Os mesmos candidatos da conferência (com CPF digitado, só os sem CPF).
     def candidate_ids(typed)
       Patients::Duplicates.call(full_name: typed["full_name"], birth_date: typed["birth_date"], mother_name: typed["mother_name"],

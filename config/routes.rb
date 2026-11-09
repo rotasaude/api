@@ -747,6 +747,8 @@ Rails.application.routes.draw do
     get   "queue",               to: "queue#show"
     post  "encounters/:id/call_for_classification", to: "encounters#call_for_classification",
                                                     as: :encounter_call_for_classification
+    # Recepção: identificação do provisório, uma vez só (§4, R4; Q5, Q17, Q23).
+    post  "encounters/:id/identify", to: "encounters#identify", as: :encounter_identify
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.

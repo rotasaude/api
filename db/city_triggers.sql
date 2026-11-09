@@ -1331,19 +1331,19 @@ $fn$ LANGUAGE plpgsql;
 
 -- Só acréscimo, com a exceção da re-cifra: as colunas passadas em TG_ARGV (as
 -- cifradas) podem ser regravadas com rota.reencrypting; nada mais muda.
--- Módulo 32a (plano, Desvio 6): e a fusão do provisório
+-- Módulo 32a (plano, Desvio 6; contrato §14 Q21): e a fusão do provisório
 -- (rota_patient_merge_ok), SÓ nas tabelas que a fusão move (exam_results,
--- dispensations). As demais com paciente ficam recusadas mesmo sob a marca:
--- clinical_record_openings é trilha (KEPT), e external_prescriptions,
--- cadastros e linhas do psicossocial seguem com o provisório até alguém
--- decidir movê-las (Task 9 amplia a lista, se for o caso).
+-- dispensations e external_prescriptions — a farmácia dispensa contra o
+-- paciente). As demais com paciente ficam recusadas mesmo sob a marca:
+-- clinical_record_openings é trilha (Urgency::Merge::KEPT); cadastros e
+-- linhas do psicossocial bloqueiam a fusão (Urgency::Merge.blocking_tables).
 CREATE OR REPLACE FUNCTION rota_reencryption_only() RETURNS trigger AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION '% is append-only: DELETE refused', TG_TABLE_NAME;
   END IF;
   -- Módulo 32a (ADR 0050, R4): a fusão do provisório só troca `patient_id`, sob a marca.
-  IF TG_OP = 'UPDATE' AND TG_TABLE_NAME IN ('exam_results', 'dispensations')
+  IF TG_OP = 'UPDATE' AND TG_TABLE_NAME IN ('exam_results', 'dispensations', 'external_prescriptions')
      AND rota_patient_merge_ok(to_jsonb(OLD), to_jsonb(NEW)) THEN
     RETURN NEW;
   END IF;

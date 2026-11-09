@@ -551,6 +551,13 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
 
+  # Módulo 32a (Task 9): identificação do provisório (encounter_id,
+  # patient_id, merged_from_id? e contagens); a Task 13 liga o BPA.
+  it "declares urgency.patient_identified with no consumer yet" do
+    expect(DomainEvents.registry.keys).to include("urgency.patient_identified")
+    expect(DomainEvents.registry["urgency.patient_identified"]).to be_empty
+  end
+
   # Módulo 32a (Task 8): "chamar de novo" (attendance_id, call_id); só ids,
   # sem consumidor.
   it "declares attendance.recalled with no consumer" do
