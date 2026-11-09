@@ -32,7 +32,7 @@ module CitizenApi
                                   citizen_view: true)
       Timeline::Trail.viewed!(person: person, access: "citizen")
       render json: { verified: person.verified, partial: Timeline::Gate.partial?(Current.city),
-                     entries: page.entries.map { |entry| Timeline::Json.citizen(entry) }, next_before: page.next_before }
+                     entries: page.entries.filter_map { |entry| Timeline::Json.citizen(entry) }, next_before: page.next_before }
     rescue Timeline::Cursor::Invalid
       render_error("invalid_cursor", :unprocessable_entity)
     end

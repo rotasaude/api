@@ -99,8 +99,8 @@ module Attendances
       [ Urgency::Catalog::OUTCOME_MAP.fetch(kind), note, kind == "transferred" ]
     end
 
-    # Contrato §14 Q26: "1 dia" no singular, "N dias" de 2 em diante.
-    def self.return_note(days) = "Retorno à UBS em até #{days} #{days == 1 ? 'dia' : 'dias'}"
+    # Contrato §14 Q26: o texto (e o "1 dia" no singular) é o do Urgency::ReturnGuidance.
+    def self.return_note(days) = Urgency::ReturnGuidance.note(days)
     private_class_method :close, :urgency_terms, :return_note
   end
 end

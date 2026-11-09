@@ -4,6 +4,10 @@
 # código vale a linha mais recente (o adendo cancela com uma linha
 # `cancelled`); entram as `requested` dos últimos 12 meses. Sinais: a
 # aferição mais recente entre consultas finalizadas e escutas concluídas.
+#
+# Módulo 32a (contrato §14 Q27): o problema que só passou por consultas de
+# urgência da UPA não aparece (o histórico do cidadão também não mostra o CID
+# da urgência); avaliado também numa consulta de outro tipo, aparece.
 module Timeline
   module CitizenSummary
     EXAM_WINDOW = 12.months
@@ -16,10 +20,19 @@ module Timeline
     end
 
     def problems(patient)
-      patient.problems.where(status: "active").order(:terminology, :code).filter_map do |problem|
+      patient.problems.where(status: "active").where.not(id: urgency_only_problem_ids(patient)).order(:terminology, :code).filter_map do |problem|
         label = ClinicalTerms.label(problem.terminology, problem.code, problem.terminology_release_id)
         label && { terminology: problem.terminology, code: problem.code, label: label, since: problem.onset_on&.iso8601 }
       end
+    end
+
+    # Problemas do paciente com evento de consulta de urgência (ou de adendo dela) e nenhum de outro tipo de consulta.
+    def urgency_only_problem_ids(patient)
+      events = PatientProblemEvent.joins(:patient_problem).where(patient_problems: { patient_id: patient.id })
+                                  .joins("JOIN consultations ON consultations.id = COALESCE(patient_problem_events.consultation_id, " \
+                                         "(SELECT a.consultation_id FROM consultation_addenda a WHERE a.id = patient_problem_events.addendum_id))")
+      events.where(consultations: { kind: "urgency" }).select(:patient_problem_id)
+            .where.not(patient_problem_id: events.where.not(consultations: { kind: "urgency" }).select(:patient_problem_id))
     end
 
     def medications(patient)

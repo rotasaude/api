@@ -12,8 +12,12 @@ module Timeline
         status: entry.status, detail_ref: entry.detail_ref }
     end
 
+    # nil quando a fonte não monta a visão do cidadão (fail-closed): quem
+    # serializa usa filter_map.
     def citizen(entry)
       view = entry.citizen
+      return nil unless view
+
       unit = view.key?(:unit) ? view[:unit] : entry.unit # vacina: a visão do cidadão decide (nula na transcrição)
       { id: "#{entry.kind}:#{entry.source_id}", kind: entry.kind, occurred_at: entry.occurred_at.iso8601,
         unit: unit && { name: unit[:name] }, professional_name: view[:professional_name],

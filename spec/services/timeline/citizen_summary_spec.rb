@@ -45,4 +45,23 @@ RSpec.describe Timeline::CitizenSummary do
     expect(described_class.call(patient: patient, person: person)[:problems]).to eq([])
     expect(described_class.call(patient: patient, person: person, now: 13.months.from_now)[:exam_requests]).to eq([])
   end
+
+  # Módulo 32a (contrato §14 Q27): o CID avaliado só na consulta de urgência
+  # da UPA não entra no resumo do cidadão; o mesmo CID de uma consulta geral, sim.
+  it "problema nascido na consulta de urgência fica fora; o mesmo CID da consulta geral aparece" do
+    urgency_city!
+    upa = upa!
+    urgent_doctor = upa_doctor!(upa)
+    patient = urgency_patient!(61)
+    encounter = arrived!(upa, patient: patient).tap { |e| classified!(e, color: "yellow", by: upa_nurse!(upa), pain_scale: 3) }
+    called!(encounter, by: urgent_doctor)
+    finalized_urgency!(encounter, doctor: urgent_doctor, cid10: "I10")
+    expect(patient.problems.where(status: "active").pluck(:code)).to eq(%w[I10])
+    expect(described_class.call(patient: patient, person: Timeline::Person.for_patient(patient))[:problems]).to be_empty
+
+    general = finalized_consultation!(unit: unit, doctor: doctor, citizen: citizen,
+                                      evaluated_problems: [ { "terminology" => "cid10", "code" => "I10", "action" => "add" } ])
+    summary = described_class.call(patient: general.patient, person: Timeline::Person.for_patient(general.patient))
+    expect(summary[:problems].map { |p| p[:code] }).to eq(%w[I10])
+  end
 end

@@ -45,8 +45,8 @@ RSpec.describe Timeline::Sources::UrgencySource do
                                      unit: { id: upa.id, name: "UPA Boqueirão" }, status: "closed",
                                      title: "Atendimento de urgência — UPA Boqueirão",
                                      professional: { name: Screenings::Json.staff_name(doctor), cbo_code: consultation.cbo_code },
-                                     detail_ref: { type: "urgency_encounter", id: e.id }, document: nil)
-    expect(entry.summary).to eq("Laranja · I10 Hipertensão essencial (primária) · Alta com retorno à UBS · " \
+                                     detail_ref: { type: "consultation", id: consultation.id }, document: nil)
+    expect(entry.summary).to eq("Laranja · I10 Hipertensão essencial (primária) · Alta com retorno na UBS · " \
                                 "Retorno à UBS em até 5 dias: Ajustar anti-hipertensivo")
 
     citizen = Timeline::Json.citizen(entries(Timeline::Person.for_patient(patient), citizen: true).sole)
@@ -92,7 +92,10 @@ RSpec.describe Timeline::Sources::UrgencySource do
     professional = entries(person).index_by(&:source_id)
     expect(professional[closed["death"].id].summary).to end_with("Óbito")
     expect(professional[error.id].summary).to eq("Registrado por engano")
-    expect(professional[waiting.id]).to have_attributes(status: "classified", summary: "Verde")
+    expect(professional[waiting.id]).to have_attributes(status: "classified", summary: "Verde", detail_ref: nil, professional: nil)
+    expect(professional[left.id]).to have_attributes(summary: "Saiu sem atendimento", detail_ref: nil)
+    expect(professional[closed["left_against_advice"].id].summary).to end_with("Saiu contra orientação médica")
+    expect(professional[closed["transferred"].id].summary).to end_with("Transferência")
 
     citizen = entries(person, citizen: true)
     expect(citizen.map(&:source_id)).to match_array(closed.except("death").values.map(&:id) + [ left.id ])
@@ -127,11 +130,33 @@ RSpec.describe Timeline::Sources::UrgencySource do
 
   it "AttendanceSource nunca emite o walk_in; a consulta de urgência não sai pela ConsultationSource" do
     e = closed!("discharged")
+    # O ck_attendances_citizen já impede walk_in com cidadão (a linha não chega
+    # à fonte por citizen_id): sem como montar o caso, confere-se o filtro
+    # explícito no SQL da fonte, a defesa contra a regra do banco mudar.
     expect(Timeline::Sources::AttendanceSource.scope(Timeline::Person.for_patient(patient)).to_sql)
       .to include("walk_in")
     expect(Timeline::Sources::ConsultationSource.entries(person: Timeline::Person.for_patient(patient), before: nil, limit: 10,
                                                          from: nil, to: nil)).to be_empty
     expect(Consultation.where(attendance_id: e.attendance_id).sole.kind).to eq("urgency")
+  end
+
+  it "fail-closed: sem o recorte do cidadão no SQL, Json.citizen pula óbito, aberto, provisório e registro por engano" do
+    shown = closed!("discharged")
+    death = closed!("death")
+    error = arrived!(upa, patient: patient)
+    Urgency::RecordOutcome.call(encounter: error, attrs: { "kind" => "registered_in_error", "reason" => "Chegada lançada em duplicidade" },
+                                by: upa_reception!)
+    open = arrived!(upa, patient: patient).tap { |x| classified!(x, color: "yellow", by: nurse, pain_scale: 3) }
+    provisional = arrived!(upa, unidentified: "Homem, 30 anos")
+    Urgency::RecordOutcome.call(encounter: provisional, attrs: { "kind" => "left_without_care" }, by: upa_reception!)
+
+    real = Timeline::Query.call(person: Timeline::Person.for_patient(patient), kinds: %w[urgency]).entries
+    expect(real.map(&:source_id)).to contain_exactly(shown.id, death.id, error.id, open.id)
+    expect(real.filter_map { |entry| Timeline::Json.citizen(entry) }.map { |c| c[:id] }).to eq([ "urgency:#{shown.id}" ])
+    expect(real.reject { |entry| entry.source_id == shown.id }.map(&:citizen)).to all(be_nil)
+    unidentified = Timeline::Query.call(person: Timeline::Person.for_patient(provisional.patient), kinds: %w[urgency]).entries
+    expect(unidentified.map(&:source_id)).to eq([ provisional.id ])
+    expect(unidentified.filter_map { |entry| Timeline::Json.citizen(entry) }).to be_empty
   end
 
   it "janela e cursor pela chegada" do

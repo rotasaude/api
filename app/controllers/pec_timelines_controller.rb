@@ -6,10 +6,12 @@
 # configuração), sem X-Frame-Options, no-store e no-referrer (a URL tem CPF).
 # O transporte sanitário (módulo 30) fica fora da página do PEC (FW11): é
 # logística da secretaria, não registro clínico; o dashboard e o wpda o mostram.
-# A urgência da UPA (módulo 32a) também fica fora (contrato §10), como do LEDI.
+# A urgência da UPA (módulo 32a; contrato §14 Q27) entra na forma do
+# profissional (cor, CID e desfecho), sem o registro por engano nem o
+# provisório (`pec_view`); segue fora do LEDI.
 class PecTimelinesController < ApplicationController
   PAGE_LIMIT = 50
-  KINDS = (Timeline::KINDS - %w[transport urgency]).freeze
+  KINDS = (Timeline::KINDS - %w[transport]).freeze
   # Defesa em profundidade: só uma origem simples entra na CSP.
   ORIGIN_FORMAT = %r{\Ahttps?://[a-z0-9.-]+(:\d+)?\z}
 
@@ -35,7 +37,7 @@ class PecTimelinesController < ApplicationController
 
     grant = result.payload[:grant]
     page = Timeline::Query.call(person: grant.person, kinds: KINDS, limit: self.class::PAGE_LIMIT,
-                                active_vaccinations_only: true)
+                                active_vaccinations_only: true, pec_view: true)
     Timeline::Trail.viewed!(person: grant.person, access: "pec_external", user: grant.user)
     token = PecExternal::ViewSession.issue(city: Current.city, grant: grant)
     exams = Exams::Gate.pec_usable?(Current.city)
@@ -48,7 +50,7 @@ class PecTimelinesController < ApplicationController
     return failure("pec_session_expired", status: :unauthorized) unless grant
 
     page = Timeline::Query.call(person: grant.person, kinds: KINDS, before: Timeline::Cursor.decode(params[:before]),
-                                limit: self.class::PAGE_LIMIT, active_vaccinations_only: true)
+                                limit: self.class::PAGE_LIMIT, active_vaccinations_only: true, pec_view: true)
     Timeline::Trail.viewed!(person: grant.person, access: "pec_external", user: grant.user)
     response.headers["X-Next-Before"] = page.next_before.to_s
     html(PecExternal::Page.items(page.entries))

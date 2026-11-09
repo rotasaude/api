@@ -473,7 +473,9 @@ RSpec.describe "Invariantes do atendimento: o CPF nunca vai na URL", type: :requ
       # Sugestão de notificação da consulta (módulo 25; contrato §4): só o id da consulta; sem dado da pessoa na URL.
       "/attendance/consultations/:id/notification_suggestions",
       # Pedidos de regulação da consulta (módulo 26a; contrato §3): só o id da consulta; paciente, CID e justificativa só no corpo da resposta.
-      "/attendance/consultations/:id/regulation_requests" ]
+      "/attendance/consultations/:id/regulation_requests",
+      # Módulo 32a (contrato §8, Q7): locais de chamada da unidade; só health_unit_id, sem dado da pessoa.
+      "/attendance/call_locations" ]
   end
 
   def attendance_routes

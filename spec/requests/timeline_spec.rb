@@ -169,21 +169,35 @@ RSpec.describe "Linha do tempo do profissional", type: :request do
       patient = urgency_patient!(31)
       encounter = arrived!(upa, patient: patient).tap { |e| classified!(e, color: "yellow", by: upa_nurse!(upa), pain_scale: 3) }
       called!(encounter, by: doctor)
-      finalized_urgency!(encounter, doctor: doctor, cid10: "E119")
+      consultation = finalized_urgency!(encounter, doctor: doctor, cid10: "E119")
       sign_in_as(doctor)
       get "/attendance/timeline", params: { attendance_id: encounter.attendance_id }
       expect(response).to have_http_status(:ok)
       expect(body["person"]).to include("patient_id" => patient.id)
       expect(body["entries"].map { |e| e["kind"] }).to eq(%w[urgency])
       expect(body["entries"].first).to include("title" => "Atendimento de urgência — UPA Sitio Cercado", "status" => "in_care",
-                                               "detail_ref" => { "type" => "urgency_encounter", "id" => encounter.id })
+                                               "detail_ref" => { "type" => "consultation", "id" => consultation.id })
       expect(body["entries"].first["summary"]).to start_with("Amarelo · E119 ")
       expect(DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at, :created_at).last.payload)
         .to include("patient_id" => patient.id, "access" => "timeline", "person_ref" => "patient:#{patient.id}")
 
-      sign_in_as(doctor!(create_unit("UBS Longe")))
+      # O detail_ref abre a consulta de urgência pelas regras de leitura do 19a.
+      get "/attendance/consultations/#{consultation.id}"
+      expect(response).to have_http_status(:ok)
+      expect(body["kind"]).to eq("urgency")
+
+      other = doctor!(create_unit("UBS Longe"))
+      sign_in_as(other)
       get "/attendance/timeline", params: { attendance_id: encounter.attendance_id }
       expect(status_and_error).to eq([ 403, "out_of_context" ])
+      get "/attendance/consultations/#{consultation.id}"
+      expect(status_and_error).to eq([ 403, "out_of_context" ])
+      now = Time.current
+      ClinicalRecordOpening.create!(patient: patient, user: other, reason_code: "case_review", created_at: now, expires_at: now + 30.minutes)
+      get "/attendance/timeline", params: { patient_id: patient.id }
+      expect(body["entries"].first["detail_ref"]).to eq("type" => "consultation", "id" => consultation.id)
+      get "/attendance/consultations/#{consultation.id}"
+      expect(response).to have_http_status(:ok)
     end
   end
 end

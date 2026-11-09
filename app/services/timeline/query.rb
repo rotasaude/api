@@ -35,6 +35,10 @@ module Timeline
     # registro por engano; o procedimento sem as linhas do BPA da urgência
     # (a entrada da urgência já resume a visita).
     CITIZEN_FILTERED_KINDS = %w[urgency procedure].freeze
+    # Contrato §14 Q27: a página do PEC externo (`pec_view: true`) recebe a
+    # urgência na forma do profissional, sem o registro por engano nem o
+    # provisório. As outras fontes não mudam no PEC.
+    PEC_FILTERED_KINDS = %w[urgency].freeze
 
     Page = Data.define(:entries, :next_before)
 
@@ -42,14 +46,16 @@ module Timeline
 
     # `active_vaccinations_only: true` (cidadão e PEC externo): a vacina só traz doses ativas, sem canceladas (29; W4).
     # `citizen_view: true` (só o histórico do cidadão): o recorte de CITIZEN_FILTERED_KINDS.
+    # `pec_view: true` (só a página do PEC externo): o recorte de PEC_FILTERED_KINDS.
     # `psychosocial_unit_id`: o CAPS da matrícula, único recorte da fonte do CAPS (sem ele, a fonte não traz nada).
     def call(person:, kinds: Timeline::KINDS, before: nil, limit: DEFAULT_LIMIT, from: nil, to: nil, active_vaccinations_only: false,
-             psychosocial_unit_id: nil, citizen_view: false)
+             psychosocial_unit_id: nil, citizen_view: false, pec_view: false)
       rows = kinds.flat_map do |kind|
         args = { person: person, before: before, limit: limit + 1, from: from, to: to }
         args[:active_only] = true if active_vaccinations_only && kind == "vaccination"
         args[:health_unit_id] = psychosocial_unit_id if CAPS_ONLY_KINDS.include?(kind)
         args[:citizen] = true if citizen_view && CITIZEN_FILTERED_KINDS.include?(kind)
+        args[:pec] = true if pec_view && PEC_FILTERED_KINDS.include?(kind)
         SOURCES.fetch(kind).entries(**args)
       end
       rows.sort_by!(&:sort_key)

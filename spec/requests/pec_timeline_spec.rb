@@ -111,9 +111,10 @@ RSpec.describe "Página do PEC", type: :request do
     get "/pec/timeline/more", params: { before: response.body[/data-before="([^"]+)"/, 1] }, headers: headers
     expect(response).to have_http_status(:ok)
     expect(kinds.size).to eq(2)
-    expect(kinds).to all(eq(Timeline::KINDS - %w[transport urgency]))
-    # o dashboard e o wpda continuam com elas; a urgência (32a) fica fora do PEC e do LEDI
-    expect(Timeline::KINDS).to include("transport", "urgency")
+    expect(kinds).to all(eq(Timeline::KINDS - %w[transport]))
+    expect(Timeline::KINDS).to include("transport") # o dashboard e o wpda continuam com ela
+    # Contrato §14 Q27: a urgência (32a) entra no PEC (fora do LEDI); ver pec_timeline_urgency_spec.
+    expect(kinds.first).to include("urgency")
   end
 
   it "carregar mais: cursor inválido 422; última página com X-Next-Before vazio; fragmento com no-store e frame-ancestors" do
