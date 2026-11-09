@@ -79,7 +79,8 @@ RSpec.describe ReencryptionJob do
                                          PsychosocialReferral PsychosocialReception PsychosocialEnrollment PsychosocialCarePlan
                                          PsychosocialAction PsychosocialActionParticipant PsychosocialMonthlyRecord
                                          PsychosocialMonthClosure PsychosocialRaasExport PsychosocialMatrixSupport
-                                         PsychosocialMatrixCase PsychosocialNightStay])
+                                         PsychosocialMatrixCase PsychosocialNightStay
+                                         UrgencyClassification UrgencyOutcome])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end

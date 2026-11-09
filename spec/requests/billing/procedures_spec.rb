@@ -147,6 +147,7 @@ RSpec.describe "Faturamento — procedimentos", type: :request do
     expect(json_body).to include("patient" => include("id" => encounter.patient.id), "source" => "attendance",
                                  "source_ref" => { "type" => "attendance", "id" => encounter.attendance_id })
     post_procedure(doctor, patient_id: patient.id, attendance_id: encounter.attendance_id)
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to eq("error" => "invalid_patient")
   end
 

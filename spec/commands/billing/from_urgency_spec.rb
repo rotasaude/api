@@ -92,6 +92,7 @@ RSpec.describe Billing::FromUrgency do
     Urgency::RecordOutcome.call(encounter: e, attrs: { "kind" => "left_without_care" }, by: reception!)
     run_jobs
     expect(lines(e)).to be_empty
+    expect(described_class.call(e.reload)).to eq(created: 0, pending: nil)
     period, = Billing::Periods.assign!(Billing::Establishment.for_unit(upa), Time.zone.today.strftime("%Y%m"))
     expect(Billing::Pending.call(period).none? { |r| r[:urgency_encounter_id] == e.id }).to be(true)
   end

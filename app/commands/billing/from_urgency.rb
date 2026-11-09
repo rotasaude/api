@@ -42,12 +42,15 @@ module Billing
         current = UrgencyEncounter.includes(:outcome).find(encounter.id)
         next result(0) unless billed?(current)
 
+        owed = lines(current, attendance)
+        next result(0) if owed.empty? # evasão antes da classificação: nada devido, nem pendência
+
         patient = Patient.find(attendance.patient_id)
         next result(0, :patient) if patient.unidentified || patient.merged?
 
         done = PerformedProcedure.where(urgency_encounter_id: current.id).pluck(:sigtap_code).to_set
         establishment = Establishment.for_unit(attendance.health_unit)
-        created = lines(current, attendance).count do |line|
+        created = owed.count do |line|
           next false if done.include?(line[:sigtap_code])
 
           insert!(current, attendance, patient, establishment, line)

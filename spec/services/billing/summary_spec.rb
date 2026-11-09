@@ -55,4 +55,25 @@ RSpec.describe Billing::Summary do
     expect(export).to have_attributes(lines_bpa_i: 1, lines_bpa_c: 1)
     expect(described_class.call(period.reload)).to eq(bpa_i_lines: 1, bpa_c_lines: 1, pending: 1, not_billable: { "cid_required" => 1 })
   end
+
+  # Módulo 32a (ADR 0050, §14 Q12): a pendência sem linha da urgência (o
+  # encontro fechado do provisório não identificado) entra no resumo como em
+  # /pending, aberta e fechada.
+  it "UPA com encontro fechado de provisório não identificado: o resumo conta a pendência sem linha, aberta e fechada" do
+    Platform::Features.set!(city: Current.city, key: Urgency::Gate::KEY, enabled: true, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    encounter = arrived!(unit, unidentified: "Homem, 60 anos").tap { |e| classified!(e, color: "green", by: upa_nurse!(unit)) }
+    expect(Urgency::RecordOutcome.call(encounter: encounter, attrs: { "kind" => "left_without_care" }, by: upa_reception!)).to be_ok
+    recorded_procedure!(unit: unit, professional: doctor, patient: patient) # faturável: o fechamento tem o que exportar
+    individual = recorded_procedure!(unit: unit, professional: doctor, patient: patient, cid10: nil)
+    period = individual.billing_period
+    summary = described_class.call(period)
+    expect(summary).to include(pending: 2)
+    expect(summary[:pending]).to eq(Billing::Pending.call(period).size)
+
+    expect(Billing::Close.call(period: period, by: billing_clerk!)).to be_ok
+    closed = described_class.call(period.reload)
+    expect(closed).to include(pending: 2)
+    expect(closed[:pending]).to eq(Billing::Pending.call(period).size)
+  end
 end
