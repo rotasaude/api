@@ -129,4 +129,19 @@ RSpec.describe "Tabelas dos documentos clínicos (triggers)" do
     request.update!(status: "returned_to_paper", reason_code: "document_cancelled", resolved_at: Time.current)
     expect(SignatureRequest::REASONS).to include("document_cancelled")
   end
+
+  # Módulo 32a (900005): o documento sem cidadão do walk_in fica preso ao paciente do atendimento.
+  it "walk_in: documento sem cidadão só com o paciente do atendimento" do
+    urgency_city!
+    upa = upa!
+    physician = upa_doctor!(upa)
+    encounter = arrived!(upa, unidentified: "Homem, 50 anos, desacordado")
+    attrs = { kind: "attendance_declaration", attendance_id: encounter.attendance_id, citizen_id: nil, author_user_id: physician.id,
+              issue_mode: "paper", issued_at: Time.current, content: "{}" }
+    create = ->(patient_id) { ClinicalDocument.create!(attrs.merge(patient_id: patient_id, verification_token: ClinicalDocuments::Codes.token, short_code: ClinicalDocuments::Codes.short_code)) }
+    other = urgency_patient!(urgency_seq!)
+    expect { refused { create.(other.id) } }
+      .to raise_error(ActiveRecord::StatementInvalid, /without citizen belongs to a walk_in attendance \(its patient\)/)
+    expect(create.(encounter.patient.id)).to have_attributes(patient_id: encounter.patient.id, citizen_id: nil)
+  end
 end

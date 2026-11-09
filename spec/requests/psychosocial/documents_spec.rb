@@ -511,7 +511,7 @@ RSpec.describe "CAPS — documentos da ação", type: :request do
         .to raise_error(ActiveRecord::StatementInvalid, /ck_clinical_documents_citizen/)
       # Módulo 32a (900005): sem cidadão só no walk_in da UPA — fora dele, o trigger recusa.
       expect { insert!(attendance_id: attendance.id, citizen_id: nil) }
-        .to raise_error(ActiveRecord::StatementInvalid, /without citizen belongs to a walk_in attendance or a CAPS action/)
+        .to raise_error(ActiveRecord::StatementInvalid, /without citizen belongs to a walk_in attendance \(its patient\) or a CAPS action/)
       expect { insert!(psychosocial_action_id: action.id, cbo_code: nil) }
         .to raise_error(ActiveRecord::StatementInvalid, /ck_clinical_documents_cbo_required/)
       expect { insert!(citizen_id: attendance.citizen_id, kind: "attendance_declaration", cbo_code: nil) }

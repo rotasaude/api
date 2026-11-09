@@ -55,6 +55,16 @@ RSpec.describe "Atendimento médico na UPA", type: :request do
     expect(json_body).to include("error" => "invalid_request", "path" => "outcome")
   end
 
+  it "exame pedido por adendo na consulta urgency sem prioridade nasce urgent" do
+    consultation = finalized_urgency!(encounter, doctor: doctor)
+    json_post "/attendance/consultations/#{consultation.id}/addenda",
+              reason: "acréscimo de exame", text: "Solicito glicemia",
+              changes: { exam_requests: [ { sigtap_code: "0202010503" }, { sigtap_code: "0202010473" } ] }
+    expect(response).to have_http_status(:created)
+    added = consultation.exam_requests.where.not(addendum_id: nil).sole
+    expect(added).to have_attributes(sigtap_code: "0202010473", priority: "urgent", status: "requested")
+  end
+
   it "finalizar a urgência com o desfecho do 13 no corpo é recusado sem mudar nada" do
     consultation = urgency_consultation!(encounter, doctor: doctor)
     json_patch "/attendance/consultations/#{consultation.id}", draft_body.except("care_type")

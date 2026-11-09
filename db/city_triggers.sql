@@ -1558,13 +1558,14 @@ BEGIN
       RAISE EXCEPTION 'clinical_documents: a document is born issued';
     END IF;
     -- Módulo 32a (ADR 0050; ck_clinical_documents_citizen): sem cidadão e sem
-    -- ação do CAPS, só o documento de um atendimento walk_in (a pessoa é o
-    -- paciente). Lido via jsonb: este arquivo roda também nas migrações
+    -- ação do CAPS, só o documento de um atendimento walk_in, preso ao paciente
+    -- dele (a pessoa do walk_in é o paciente). Lido via jsonb: este arquivo roda também nas migrações
     -- anteriores às colunas psychosocial_action_id e origin_kind.
     IF NEW.citizen_id IS NULL AND (to_jsonb(NEW) ->> 'psychosocial_action_id') IS NULL
        AND NOT EXISTS (SELECT 1 FROM attendances a WHERE a.id = NEW.attendance_id
-                       AND (to_jsonb(a) ->> 'origin_kind') = 'walk_in') THEN
-      RAISE EXCEPTION 'clinical_documents: a document without citizen belongs to a walk_in attendance or a CAPS action';
+                       AND (to_jsonb(a) ->> 'origin_kind') = 'walk_in'
+                       AND (to_jsonb(a) ->> 'patient_id')::uuid = NEW.patient_id) THEN
+      RAISE EXCEPTION 'clinical_documents: a document without citizen belongs to a walk_in attendance (its patient) or a CAPS action';
     END IF;
     RETURN NEW;
   END IF;

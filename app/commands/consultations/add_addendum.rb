@@ -126,7 +126,10 @@ module Consultations
 
       if changes.key?("exam_requests")
         kept = effective[:exam_requests].map { |row| [ row.sigtap_code, row.cid10_justification ] }
-        exams = ItemsInput.exams(changes["exam_requests"], cbo: cbo, on: today, kept: kept)
+        # Módulo 32a (Desvio 14): na urgência o exame sem prioridade nasce urgent;
+        # os demais tipos seguem a regra geral (inclusive a odontológica, como antes).
+        exams = ItemsInput.exams(changes["exam_requests"], cbo: cbo, on: today, kept: kept,
+                                                           kind: consultation.urgency? ? "urgency" : "general")
         return exams if exams.failure?
 
         final = exams.payload[:items]

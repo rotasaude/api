@@ -59,4 +59,21 @@ RSpec.describe Consultations::Start do
     in_care_by_tech = consulting_attendance!(unit, citizen: verified_citizen!(5), doctor: technician)
     expect(described_class.call(attendance: in_care_by_tech, by: technician).reason).to eq(:cbo_not_allowed)
   end
+
+  # Módulo 32a (Desvio 14): o paciente da urgência é o do atendimento, nunca
+  # um provisório fundido (inalcançável pelo caminho normal depois da Task 9:
+  # o merged? é simulado).
+  it "urgência: paciente fundido → invalid_request patient, sem consulta nem vínculo no encontro" do
+    urgency_city!
+    upa = upa!
+    physician = upa_doctor!(upa)
+    encounter = arrived!(upa, unidentified: "Mulher, 60 anos, dispneia")
+    classified!(encounter, color: "yellow", by: upa_nurse!(upa), pain_scale: 3)
+    called!(encounter, by: physician)
+    allow_any_instance_of(Patient).to receive(:merged?).and_return(true)
+    result = described_class.call(attendance: encounter.attendance.reload, by: physician)
+    expect([ result.reason, result.details ]).to eq([ :invalid_request, { path: "patient" } ])
+    expect(Consultation.count).to eq(0)
+    expect(encounter.reload.consultation_id).to be_nil
+  end
 end

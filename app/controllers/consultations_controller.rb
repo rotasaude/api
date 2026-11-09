@@ -176,20 +176,25 @@ class ConsultationsController < ApplicationController
   # oferece `urgency`. Desligado, a UPA segue o 13 (general).
   def kinds_and_role
     links = Consultations::Authorization.allowed_links(user: Current.user, kind: :any)
-    cbos = links.map(&:cbo_code)
-    cbos = cbos.reject { |cbo| Consultations::Cbos.role(cbo) } unless DentalCare::Gate.usable?(Current.city)
-    roles = cbos.map { |cbo| Consultations::Cbos.role(cbo) }
+    ActiveRecord::Associations::Preloader.new(records: links, associations: :health_unit).call
+    dental_care = DentalCare::Gate.usable?(Current.city)
+    roles = consultation_cbos(links, dental_care).map { |cbo| Consultations::Cbos.role(cbo) }
     role = %i[dentist auxiliary].find { |r| roles.include?(r) }
-    { kinds: consultation_kinds(links), dental_role: role&.to_s }
+    { kinds: consultation_kinds(links, dental_care), dental_role: role&.to_s }
   end
 
-  def consultation_kinds(links)
+  def consultation_kinds(links, dental_care)
     upa, others = Urgency::Gate.usable?(Current.city) ? links.partition { |link| link.health_unit.upa? } : [ [], links ]
-    cbos = others.map(&:cbo_code)
-    cbos = cbos.reject { |cbo| Consultations::Cbos.role(cbo) } unless DentalCare::Gate.usable?(Current.city)
+    cbos = consultation_cbos(others, dental_care)
     kinds = DentalCare::Catalog::KINDS.select { |kind| cbos.any? { |cbo| Consultations::Cbos.allowed?(cbo, kind: kind) } }
     kinds << "urgency" if upa.any? { |link| Consultations::Cbos.allowed?(link.cbo_code, kind: "urgency") }
     kinds
+  end
+
+  # Sem dental_care utilizável, os CBOs odontológicos não contam.
+  def consultation_cbos(links, dental_care)
+    cbos = links.map(&:cbo_code)
+    dental_care ? cbos : cbos.reject { |cbo| Consultations::Cbos.role(cbo) }
   end
 
   def with_regulation(json, result)
