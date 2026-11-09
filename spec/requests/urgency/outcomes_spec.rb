@@ -53,6 +53,16 @@ RSpec.describe "Desfecho do atendimento de urgência", type: :request do
     expect(response.body).not_to include("pressão")
   end
 
+  # Contrato §14 Q26: "em até 1 dia" no singular; "em até N dias" de 2 em diante.
+  it "retorno à UBS em 1 dia leva a nota no singular" do
+    called!(encounter, by: doctor)
+    finalized_urgency!(encounter, doctor: doctor)
+    sign_in_as(doctor)
+    outcome!(encounter, kind: "discharged_to_primary_care", return_guidance: { days: 1, reason: "Reavaliar a febre amanhã" })
+    expect(response).to have_http_status(:created)
+    expect(encounter.attendance.reload.referral_note).to eq("Retorno à UBS em até 1 dia")
+  end
+
   it "evasão vale antes e depois da chamada; os demais exigem a consulta finalizada" do
     sign_in_as(upa_reception!)
     outcome!(kind: "left_without_care")

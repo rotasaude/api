@@ -95,9 +95,12 @@ module Attendances
     # -> [outcome do 13, referral_note, referral_regulated]
     def self.urgency_terms(urgency_outcome)
       kind = urgency_outcome.kind
-      note = kind == "discharged_to_primary_care" ? "Retorno à UBS em até #{urgency_outcome.return_days} dias" : nil
+      note = kind == "discharged_to_primary_care" ? return_note(urgency_outcome.return_days) : nil
       [ Urgency::Catalog::OUTCOME_MAP.fetch(kind), note, kind == "transferred" ]
     end
-    private_class_method :close, :urgency_terms
+
+    # Contrato §14 Q26: "1 dia" no singular, "N dias" de 2 em diante.
+    def self.return_note(days) = "Retorno à UBS em até #{days} #{days == 1 ? 'dia' : 'dias'}"
+    private_class_method :close, :urgency_terms, :return_note
   end
 end
