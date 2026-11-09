@@ -6,8 +6,11 @@
 # Módulo 32a (ADR 0050; plano, Desvio 11): numa UPA com `urgency`
 # (urgency_care utilizável, lido pelo chamador fora da transação), a fila é a
 # por cor (Urgency::Queue.lock_next_classified) e só o médico (225*) chama;
-# quem só tem não classificados recebe queue_empty. `call_location_id` e
-# `waiting_room` seguem para o Call.
+# quem só tem não classificados recebe queue_empty. Sem classificado
+# disponível, cai no lock do 13 sem walk_ins (atendimentos do check-in do 13
+# feitos antes de ligar o urgency_care). Fora disso, o lock do 13 nunca pega
+# walk_in (UnitQueue.lock_next_waiting_without_walk_ins). `call_location_id`
+# e `waiting_room` seguem para o Call.
 module Attendances
   class CallNext
     def self.call(health_unit_id:, by:, call_location_id: nil, waiting_room: false, urgency: false)
@@ -20,7 +23,8 @@ module Attendances
       return Result.fail(:cbo_not_allowed) if by_color && !Urgency::Access.physician_link(by, health_unit_id)
 
       ApplicationRecord.transaction do
-        candidate = by_color ? Urgency::Queue.lock_next_classified(health_unit_id) : UnitQueue.lock_next_waiting(health_unit_id)
+        candidate = (Urgency::Queue.lock_next_classified(health_unit_id) if by_color) ||
+                    UnitQueue.lock_next_waiting_without_walk_ins(health_unit_id)
         # Com SKIP LOCKED, queue_empty momentâneo é possível quando todas as
         # linhas aguardando estão travadas por outra transação (milissegundos);
         # o dashboard recarrega a fila.

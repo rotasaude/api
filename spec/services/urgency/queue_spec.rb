@@ -44,6 +44,25 @@ RSpec.describe Urgency::Queue do
     expect(waiting.attendance.reload.status).to eq("waiting")
   end
 
+  it "o relógio do estouro é a 1ª classificação, não a chegada; na mesma cor, vale a chegada" do
+    # Chegou há 30 min e foi classificado laranja há 8: 8 ≤ 10, não estoura
+    # (pela chegada estouraria). Os dois amarelos: o que chegou antes vem
+    # primeiro, mesmo classificado depois.
+    late = travel_to(30.minutes.ago) { arrived!(upa, patient: urgency_patient!(11)) }
+    travel_to(8.minutes.ago) { classified!(late, color: "orange", by: nurse) }
+    early_yellow = travel_to(40.minutes.ago) { arrived!(upa, patient: urgency_patient!(12)) }
+    later_yellow = travel_to(20.minutes.ago) { arrived!(upa, patient: urgency_patient!(13)) }
+    travel_to(15.minutes.ago) { classified!(later_yellow, color: "yellow", by: nurse) }
+    travel_to(5.minutes.ago) { classified!(early_yellow, color: "yellow", by: nurse) }
+    items = described_class.groups(upa)[:by_color]
+    expect(items.map { |i| i[:encounter_id] }).to eq([ late.id, early_yellow.id, later_yellow.id ])
+    expect(items.first).to include(overdue: false, waited_minutes: 30, max_wait_minutes: 10)
+    expect(items.first[:classified_at]).to eq(late.reload.first_classified_at.iso8601)
+    travel_to(3.minutes.from_now) { expect(described_class.groups(upa)[:by_color].first[:overdue]).to be(true) }
+    called = ApplicationRecord.transaction { described_class.lock_next_classified(upa.id) }
+    expect(called.id).to eq(late.attendance_id)
+  end
+
   it "o item traz a senha, a pessoa, a espera e a última chamada; em atendimento nunca estoura e a reclassificação não tira de lá" do
     green = classified_at(50, "green", 6)
     waiting = travel_to(12.minutes.ago) { arrived!(upa, patient: urgency_patient!(7)) }

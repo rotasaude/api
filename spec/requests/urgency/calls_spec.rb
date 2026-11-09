@@ -39,6 +39,22 @@ RSpec.describe "Chamadas da urgência", type: :request do
       expect(AttendanceCall.count).to eq(0)
     end
 
+    it "atendimento do check-in do 13 na UPA (antes de ligar a urgência): o \"chamar próximo\" cai nele sem classificado; só não classificados → 404" do
+      unclassified = arrived!(upa, patient: urgency_patient!(21))
+      legacy = waiting_attendance(Citizen.create!(cpf: "52998224725", phone: "+5541998765432"), unit: upa, by: upa_reception!)
+      classified = classified!(arrived!(upa, patient: urgency_patient!(22)), color: "blue", by: nurse)
+      sign_in_as(doctor)
+      call_next
+      expect(json_body.dig("attendance", "id")).to eq(classified.attendance_id)
+      call_next
+      expect(response).to have_http_status(:ok)
+      expect(json_body.dig("attendance", "id")).to eq(legacy.id)
+      call_next
+      expect(response).to have_http_status(:not_found)
+      expect(json_body["error"]).to eq("queue_empty")
+      expect(unclassified.attendance.reload.status).to eq("waiting")
+    end
+
     it "Call de não classificado → 422 not_classified; a enfermagem chamando para o atendimento → 403 cbo_not_allowed" do
       encounter = arrived!(upa, patient: urgency_patient!(4))
       sign_in_as(doctor)
@@ -102,11 +118,38 @@ RSpec.describe "Chamadas da urgência", type: :request do
       sign_in_as(upa_nurse!(upa!))
       get "/urgency/queue", params: { health_unit_id: upa.id }
       expect(response).to have_http_status(:forbidden)
+      expect(json_body["error"]).to eq("missing_link")
+      sign_in_as(upa_nurse!(upa, cbo: "322205"))
+      get "/urgency/queue", params: { health_unit_id: upa.id }
+      expect(response).to have_http_status(:forbidden)
+      expect(json_body["error"]).to eq("cbo_not_allowed")
       get "/urgency/queue", params: { health_unit_id: SecureRandom.uuid }
       expect(response).to have_http_status(:not_found)
       get "/urgency/queue", params: { health_unit_id: create_unit.id }
       expect(response).to have_http_status(:unprocessable_entity)
       expect(json_body["error"]).to eq("not_an_upa")
+    end
+  end
+
+  context "com o urgency_care desligado e walk_ins esperando" do
+    let!(:city) { urgency_city! }
+
+    it "o \"chamar próximo\" do 13 nunca trava num walk_in: chama o atendimento do 13 que chegou depois" do
+      unclassified = arrived!(upa, patient: urgency_patient!(31))
+      classified = classified!(arrived!(upa, patient: urgency_patient!(32)), color: "red", by: nurse)
+      Platform::Features.set!(city: city, key: Urgency::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+      CityCatalog.reset_cache!
+      later = waiting_attendance(Citizen.create!(cpf: "52998224725", phone: "+5541998765432"), unit: upa, by: upa_reception!)
+      # Sem prioridade, o do 13 empata com os walk_ins e vem depois deles pela chegada.
+      later.triage.update_columns(priority: nil)
+      expect(later.checked_in_at).to be > classified.attendance.checked_in_at
+      sign_in_as(doctor)
+      call_next
+      expect(response).to have_http_status(:ok)
+      expect(json_body.dig("attendance", "id")).to eq(later.id)
+      call_next
+      expect(json_body["error"]).to eq("queue_empty")
+      expect([ unclassified, classified ].map { |e| e.attendance.reload.status }).to eq(%w[waiting waiting])
     end
   end
 

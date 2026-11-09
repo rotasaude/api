@@ -66,6 +66,16 @@ module Attendances
       ordered_waiting(unit_id).lock("FOR UPDATE OF attendances SKIP LOCKED").first
     end
 
+    # O "chamar próximo" do 13 (módulo 32a): o mesmo lock sem os walk_ins da
+    # UPA, que só saem pela fila por cor (Urgency::Queue) e só classificados.
+    # Sem isso, um walk_in na cabeça (o urgency_care desligado com gente
+    # esperando) recusaria toda tentativa e o SKIP LOCKED nunca passaria dele.
+    # A tela (waiting) continua mostrando todos.
+    def lock_next_waiting_without_walk_ins(unit_id)
+      ordered_waiting(unit_id).where("attendances.origin_kind IS DISTINCT FROM 'walk_in'")
+                              .lock("FOR UPDATE OF attendances SKIP LOCKED").first
+    end
+
     def in_care(unit_id)
       Attendance.in_care.where(health_unit_id: unit_id).includes(*INCLUDES).order(:called_at, :id).to_a
     end

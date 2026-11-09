@@ -12,8 +12,10 @@ module Urgency
       return not_found unless unit
       return render(json: { error: "not_an_upa" }, status: :unprocessable_entity) unless unit.upa?
 
+      # Fora da recepção e do clínico, a recusa do Access.classifier:
+      # missing_role | missing_link | cbo_not_allowed (o técnico 3222 vinculado).
       unless Access.reception?(Current.user) || Access.clinical_link(Current.user, unit.id)
-        return forbid(Current.user.has_role?("health_professional") ? "missing_link" : "missing_role")
+        return forbid(Access.classifier(Current.user, unit.id).reason.to_s)
       end
 
       render json: Queue.groups(unit)
