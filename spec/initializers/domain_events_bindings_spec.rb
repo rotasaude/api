@@ -535,4 +535,11 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include(*names)
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
+
+  # Módulo 32a (ADR 0050; contrato §12; Task 6): chegada na UPA (encounter_id);
+  # só o id, sem consumidor.
+  it "declares urgency.arrived with no consumer" do
+    expect(DomainEvents.registry.keys).to include("urgency.arrived")
+    expect(DomainEvents.registry["urgency.arrived"]).to be_empty
+  end
 end

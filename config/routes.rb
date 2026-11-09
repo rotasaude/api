@@ -732,6 +732,14 @@ Rails.application.routes.draw do
     get   "dashboard",           to: "dashboard#show"
   end
 
+  # Módulo 32a (ADR 0050; contrato §4): urgência (UPA), sessão do dashboard.
+  # Dado do paciente só no corpo (a busca de pessoa é POST); ids na URL.
+  scope "/urgency", module: :urgency, as: :urgency do
+    # Recepção: busca de pessoa e chegada com senha ou paciente provisório (§4, Q4).
+    post  "person_lookup",       to: "person_lookups#create"
+    post  "arrivals",            to: "arrivals#create"
+  end
+
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.
   scope "/vaccination", module: :vaccination, as: :vaccination do
     # Administração (municipal_admin; escrita com step-up): salas, equipe, rede de frio e go-live.

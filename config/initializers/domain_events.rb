@@ -414,4 +414,8 @@ Rails.application.config.to_prepare do
   # Negativa semanal da unidade (Surveillance::RecordNegative): só
   # weekly_negative_report_id e user_id; sem consumidor.
   DomainEvents.bind "weekly_negative.recorded", to: []
+  # Módulo 32a (ADR 0050; contrato §12): chegada na UPA (Urgency::Arrive); só
+  # o encounter_id — nunca nome, CPF, CNS nem a descrição do não
+  # identificado; sem consumidor (o check-in do 13 publica attendance.checked_in).
+  DomainEvents.bind "urgency.arrived", to: []
 end
