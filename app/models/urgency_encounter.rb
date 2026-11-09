@@ -1,0 +1,25 @@
+# Encontro da urgência (ADR 0050; plano, Desvio 8): 1:1 com o atendimento
+# `walk_in` da UPA, nascido só por Urgency::Arrive. O estado da fila, da
+# chamada e do fechamento continua no atendimento (13); aqui fica o que é
+# clínico da urgência — as classificações (só acréscimo, a vigente aponta a
+# cor) e o desfecho. O estado só anda para frente e, fechado, congela
+# (trigger). Nunca sai em inspect, to_s, pretty_print nem as_json — só o id.
+class UrgencyEncounter < ApplicationRecord
+  belongs_to :attendance
+  belongs_to :consultation, optional: true
+  belongs_to :current_classification, class_name: "UrgencyClassification", optional: true
+  has_many :classifications, -> { order(:position) }, class_name: "UrgencyClassification", inverse_of: :urgency_encounter,
+                                                       dependent: :restrict_with_error
+  has_one :outcome, class_name: "UrgencyOutcome", inverse_of: :urgency_encounter, dependent: :restrict_with_error
+
+  validates :state, inclusion: { in: Urgency::Catalog::STATES }
+
+  def patient = attendance.patient
+  def closed? = state == "closed"
+  def color = current_classification&.color
+
+  def inspect = "#<UrgencyEncounter id=#{id} state=#{state}>"
+  def to_s = inspect
+  def pretty_print(pp) = pp.text(inspect)
+  def as_json(*) = { "id" => id }
+end

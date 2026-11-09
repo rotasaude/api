@@ -23,6 +23,9 @@ class HealthUnit < ApplicationRecord
   class Inactive < StandardError; end
 
   has_many :attendances, dependent: :restrict_with_error
+  # Módulo 32a (ADR 0050): locais de chamada e TVs da sala de espera.
+  has_many :call_locations, dependent: :restrict_with_error
+  has_many :waiting_room_displays, dependent: :restrict_with_error
   has_one :ceo_profile, inverse_of: :health_unit, dependent: :restrict_with_error
 
   # ADR 0045: `dispenses` marca a unidade com farmácia (local de estoque

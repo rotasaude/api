@@ -190,8 +190,13 @@ module CityEncryption
     [ PsychosocialMonthlyRecord, :snapshot ], [ PsychosocialMonthClosure, :reopen_reason ], [ PsychosocialRaasExport, :file_data ],
     [ PsychosocialMatrixSupport, :topic ], [ PsychosocialMatrixCase, :shared_text ],
     [ PsychosocialNightStay, :end_reason ], [ PsychosocialNightStay, :reassessment_reason ],
-    # ADR 0050 (módulo 32a): a descrição do paciente não identificado.
-    [ Patient, :unidentified_description ]
+    # ADR 0050 (módulo 32a): a descrição do paciente não identificado; a
+    # queixa, os sinais, o critério e a justificativa da classificação; o
+    # destino, o pedido de vaga e o motivo do retorno do desfecho.
+    [ Patient, :unidentified_description ],
+    [ UrgencyClassification, :complaint ], [ UrgencyClassification, :vital_signs ], [ UrgencyClassification, :criterion ],
+    [ UrgencyClassification, :justification ],
+    [ UrgencyOutcome, :destination ], [ UrgencyOutcome, :vacancy_request ], [ UrgencyOutcome, :return_reason ]
   ].freeze
 
   module_function

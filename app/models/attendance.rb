@@ -27,8 +27,8 @@ class Attendance < ApplicationRecord
           foreign_key: :origin_attendance_id, inverse_of: :origin_attendance
   has_one :screening, dependent: :restrict_with_error
   has_one :consultation, dependent: :restrict_with_error
-  # Módulo 32a: o encontro da urgência, 1:1 com o walk_in (modelo na Task 4).
-  has_one :urgency_encounter
+  # Módulo 32a: o encontro da urgência, 1:1 com o walk_in.
+  has_one :urgency_encounter, dependent: :restrict_with_error
 
   # O banco também deduz (rota_attendance_insert_guard), para as linhas cruas.
   before_validation { self.origin_kind ||= triage_id ? "triage" : (appointment_id ? "appointment" : nil) }

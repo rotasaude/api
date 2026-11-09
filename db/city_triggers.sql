@@ -3377,3 +3377,86 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 32a (ADR 0050; contrato §13; plano, Desvio 8): urgência e sala de
+-- espera. O encontro nunca some nem troca de atendimento ou de criação; a
+-- consulta é ligada uma vez; a 1ª classificação é gravada uma vez; o estado
+-- só anda para frente (waiting_classification → classified → in_care →
+-- closed; da espera ou de classificado direto a closed, a evasão); a
+-- classificação vigente é sempre do MESMO encontro; fechado, congela.
+-- Classificações e desfecho: só acréscimo (as cifradas pela re-cifra).
+-- Chamadas: só acréscimo. Local e TV nunca somem (desativados, revogados).
+-- TRUNCATE recusado nas seis tabelas.
+CREATE OR REPLACE FUNCTION rota_urgency_encounter_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'urgency_encounters: DELETE refused';
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF OLD.state = 'closed' THEN
+      RAISE EXCEPTION 'urgency_encounters: a closed encounter never changes';
+    END IF;
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.attendance_id IS DISTINCT FROM OLD.attendance_id
+       OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+      RAISE EXCEPTION 'urgency_encounters: attendance and creation never change';
+    END IF;
+    IF NEW.state IS DISTINCT FROM OLD.state
+       AND NOT ((OLD.state = 'waiting_classification' AND NEW.state IN ('classified', 'closed'))
+                OR (OLD.state = 'classified' AND NEW.state IN ('in_care', 'closed'))
+                OR (OLD.state = 'in_care' AND NEW.state = 'closed')) THEN
+      RAISE EXCEPTION 'urgency_encounters: state only moves forward';
+    END IF;
+    IF OLD.consultation_id IS NOT NULL AND NEW.consultation_id IS DISTINCT FROM OLD.consultation_id THEN
+      RAISE EXCEPTION 'urgency_encounters: consultation is linked once';
+    END IF;
+    IF OLD.first_classified_at IS NOT NULL AND NEW.first_classified_at IS DISTINCT FROM OLD.first_classified_at THEN
+      RAISE EXCEPTION 'urgency_encounters: first classification is recorded once';
+    END IF;
+  END IF;
+  IF NEW.current_classification_id IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.current_classification_id IS DISTINCT FROM OLD.current_classification_id)
+     AND NOT EXISTS (SELECT 1 FROM urgency_classifications c
+                     WHERE c.id = NEW.current_classification_id AND c.urgency_encounter_id = NEW.id) THEN
+    RAISE EXCEPTION 'urgency_encounters: classification of another encounter';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.urgency_encounters') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_encounters_guard ON urgency_encounters';
+    EXECUTE 'CREATE TRIGGER urgency_encounters_guard BEFORE INSERT OR UPDATE OR DELETE ON urgency_encounters
+      FOR EACH ROW EXECUTE FUNCTION rota_urgency_encounter_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_classifications_reencryption_only ON urgency_classifications';
+    EXECUTE 'CREATE TRIGGER urgency_classifications_reencryption_only BEFORE UPDATE OR DELETE ON urgency_classifications
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''complaint'', ''vital_signs'', ''criterion'', ''justification'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_outcomes_reencryption_only ON urgency_outcomes';
+    EXECUTE 'CREATE TRIGGER urgency_outcomes_reencryption_only BEFORE UPDATE OR DELETE ON urgency_outcomes
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''destination'', ''vacancy_request'', ''return_reason'')';
+    FOREACH item IN ARRAY ARRAY['urgency_encounters', 'urgency_classifications', 'urgency_outcomes'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+  IF to_regclass('public.waiting_room_displays') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS attendance_calls_append_only ON attendance_calls';
+    EXECUTE 'CREATE TRIGGER attendance_calls_append_only BEFORE UPDATE OR DELETE ON attendance_calls
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    FOREACH item IN ARRAY ARRAY['call_locations', 'waiting_room_displays'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
+                     item || '_no_delete', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['call_locations', 'attendance_calls', 'waiting_room_displays'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

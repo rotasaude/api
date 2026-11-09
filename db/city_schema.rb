@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_05_900002) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_05_900004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -211,6 +211,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900002) do
     t.exclusion_constraint "professional_id WITH =, tsrange(scheduled_at, ends_at) WITH &&", where: "(booking_kind::text = 'slot'::text AND status::text = ANY (ARRAY['scheduled', 'confirmed', 'checked_in']::text[]))", using: :gist, name: "excl_appointments_slot_overlap"
   end
 
+  create_table "attendance_calls", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "attendance_id", null: false
+    t.uuid "call_location_id"
+    t.datetime "called_at", null: false
+    t.uuid "called_by_user_id", null: false
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.string "ticket", limit: 8
+    t.index ["attendance_id", "called_at"], name: "idx_attendance_calls_attendance"
+    t.index ["called_at"], name: "idx_attendance_calls_board", include: ["attendance_id", "ticket", "call_location_id", "kind"]
+    t.check_constraint "(kind::text = ANY (ARRAY['classification'::text, 'care'::text])) AND (ticket IS NULL OR ticket::text ~ '^[A-Z]{1,3}-[0-9]{3,4}$'::text)", name: "ck_attendance_calls_domains"
+  end
+
   create_table "attendances", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "appointment_id"
     t.datetime "called_at"
@@ -324,6 +337,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900002) do
     t.index ["singleton"], name: "idx_billing_settings_singleton", unique: true
     t.check_constraint "origin_cnpj::text ~ '^[0-9]{14}$'::text AND (management::text = ANY (ARRAY['M'::text, 'E'::text]))", name: "ck_billing_settings_values"
     t.check_constraint "singleton", name: "ck_billing_settings_singleton"
+  end
+
+  create_table "call_locations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.string "name", limit: 40, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index "health_unit_id, lower((name)::text)", name: "idx_call_locations_name", unique: true
   end
 
   create_table "campaign_recipients", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2811,6 +2834,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900002) do
     t.string "status", default: "draft", null: false
     t.datetime "updated_at", null: false
     t.integer "version", null: false
+    t.index "((definition ->> 'kind'::text))", name: "idx_protocol_definitions_one_active_urgency", unique: true, where: "(((status)::text = 'active'::text) AND ((definition ->> 'kind'::text) = 'urgency_classification'::text))"
     t.index ["name", "version"], name: "idx_protocol_definitions_name_version_muni", unique: true
     t.index ["name"], name: "idx_protocol_definitions_one_active_per_name_muni", unique: true, where: "((status)::text = 'active'::text)"
     t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'in_review'::character varying::text, 'published'::character varying::text, 'active'::character varying::text, 'retired'::character varying::text])", name: "ck_protocol_definitions_status"
@@ -4155,6 +4179,63 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900002) do
     t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying::text, 'completed'::character varying::text, 'aborted_by_revocation'::character varying::text, 'aborted_by_timeout'::character varying::text, 'aborted_by_cancellation'::character varying::text])", name: "ck_triagens_status"
   end
 
+  create_table "urgency_classifications", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cbo_code", limit: 6, null: false
+    t.uuid "classified_by_user_id", null: false
+    t.string "color", null: false
+    t.text "complaint", null: false
+    t.datetime "created_at", null: false
+    t.text "criterion"
+    t.text "justification"
+    t.integer "max_wait_minutes", null: false
+    t.integer "pain_scale", limit: 2, null: false
+    t.integer "position", limit: 2, null: false
+    t.uuid "professional_link_id", null: false
+    t.uuid "protocol_definition_id"
+    t.string "suggested_color"
+    t.string "suggested_rule_id", limit: 40
+    t.uuid "urgency_encounter_id", null: false
+    t.text "vital_signs", null: false
+    t.index ["urgency_encounter_id", "position"], name: "idx_urgency_classifications_position", unique: true
+    t.check_constraint "(suggested_color IS NULL) = (suggested_rule_id IS NULL)", name: "ck_urgency_classifications_suggestion"
+    t.check_constraint "NOT suggested_color::text IS DISTINCT FROM color::text OR justification IS NOT NULL", name: "ck_urgency_classifications_justification"
+    t.check_constraint "\"position\" >= 1 AND (color::text = ANY (ARRAY['red'::text, 'orange'::text, 'yellow'::text, 'green'::text, 'blue'::text])) AND (suggested_color IS NULL OR (suggested_color::text = ANY (ARRAY['red'::text, 'orange'::text, 'yellow'::text, 'green'::text, 'blue'::text]))) AND pain_scale >= 0 AND pain_scale <= 10 AND max_wait_minutes >= 0 AND max_wait_minutes <= 1440 AND cbo_code::text ~ '^[0-9]{6}$'::text", name: "ck_urgency_classifications_domains"
+  end
+
+  create_table "urgency_encounters", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "attendance_id", null: false
+    t.uuid "consultation_id"
+    t.datetime "created_at", null: false
+    t.uuid "current_classification_id"
+    t.datetime "first_classified_at"
+    t.string "state", default: "waiting_classification", null: false
+    t.datetime "updated_at", null: false
+    t.index ["attendance_id"], name: "idx_urgency_encounters_attendance", unique: true
+    t.check_constraint "(current_classification_id IS NULL) = (first_classified_at IS NULL) AND (state::text <> 'waiting_classification'::text OR current_classification_id IS NULL) AND ((state::text <> ALL (ARRAY['classified'::text, 'in_care'::text])) OR current_classification_id IS NOT NULL)", name: "ck_urgency_encounters_classification"
+    t.check_constraint "state::text = ANY (ARRAY['waiting_classification'::text, 'classified'::text, 'in_care'::text, 'closed'::text])", name: "ck_urgency_encounters_state"
+  end
+
+  create_table "urgency_outcomes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "counter_referral_health_team_id"
+    t.uuid "counter_referral_health_unit_id"
+    t.datetime "created_at", null: false
+    t.text "destination"
+    t.string "kind", null: false
+    t.datetime "recorded_at", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.integer "return_days", limit: 2
+    t.text "return_reason"
+    t.uuid "urgency_encounter_id", null: false
+    t.text "vacancy_request"
+    t.index ["counter_referral_health_unit_id", "recorded_at"], name: "idx_urgency_outcomes_counter_referral", where: "(counter_referral_health_unit_id IS NOT NULL)"
+    t.index ["urgency_encounter_id"], name: "idx_urgency_outcomes_encounter", unique: true
+    t.check_constraint "(kind::text = 'discharged_to_primary_care'::text) = (return_days IS NOT NULL) AND (return_days IS NULL) = (return_reason IS NULL)", name: "ck_urgency_outcomes_return"
+    t.check_constraint "(kind::text = 'transferred'::text) = (destination IS NOT NULL)", name: "ck_urgency_outcomes_destination"
+    t.check_constraint "(kind::text = ANY (ARRAY['discharged'::text, 'discharged_to_primary_care'::text, 'transferred'::text, 'left_without_care'::text, 'left_against_advice'::text, 'death'::text])) AND (return_days IS NULL OR return_days >= 1 AND return_days <= 90)", name: "ck_urgency_outcomes_domains"
+    t.check_constraint "counter_referral_health_unit_id IS NULL OR kind::text = 'discharged_to_primary_care'::text", name: "ck_urgency_outcomes_counter_referral"
+    t.check_constraint "vacancy_request IS NULL OR kind::text = 'transferred'::text", name: "ck_urgency_outcomes_vacancy_request"
+  end
+
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "deactivated_at"
@@ -4250,6 +4331,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900002) do
     t.check_constraint "expires_at > opened_at", name: "ck_vial_openings_expires"
   end
 
+  create_table "waiting_room_displays", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.uuid "health_unit_id", null: false
+    t.datetime "last_seen_at"
+    t.string "name", limit: 60, null: false
+    t.datetime "paired_at"
+    t.string "pairing_code_digest", limit: 64
+    t.datetime "pairing_expires_at"
+    t.datetime "revoked_at"
+    t.boolean "show_wait_times", default: true, null: false
+    t.string "token_digest", limit: 64
+    t.datetime "updated_at", null: false
+    t.index ["health_unit_id"], name: "idx_waiting_room_displays_unit"
+    t.index ["pairing_code_digest"], name: "idx_waiting_room_displays_pairing_code", where: "(pairing_code_digest IS NOT NULL)"
+    t.index ["token_digest"], name: "idx_waiting_room_displays_token", unique: true, where: "(token_digest IS NOT NULL)"
+    t.check_constraint "(pairing_code_digest IS NULL) = (pairing_expires_at IS NULL)", name: "ck_waiting_room_displays_pairing"
+    t.check_constraint "(token_digest IS NULL OR token_digest::text ~ '^[0-9a-f]{64}$'::text) AND (pairing_code_digest IS NULL OR pairing_code_digest::text ~ '^[0-9a-f]{64}$'::text)", name: "ck_waiting_room_displays_digests"
+  end
+
   create_table "weekly_negative_reports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.uuid "health_unit_id", null: false
@@ -4282,6 +4384,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900002) do
   add_foreign_key "appointments", "professional_shifts", column: "shift_id"
   add_foreign_key "appointments", "professionals"
   add_foreign_key "appointments", "users", column: "scheduled_by_user_id"
+  add_foreign_key "attendance_calls", "attendances"
+  add_foreign_key "attendance_calls", "call_locations"
+  add_foreign_key "attendance_calls", "users", column: "called_by_user_id"
   add_foreign_key "attendances", "appointments"
   add_foreign_key "attendances", "citizens"
   add_foreign_key "attendances", "health_units"
@@ -4298,6 +4403,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900002) do
   add_foreign_key "billing_periods", "users", column: "closed_by_user_id"
   add_foreign_key "billing_periods", "users", column: "reopened_by_user_id"
   add_foreign_key "billing_settings", "users", column: "updated_by_user_id"
+  add_foreign_key "call_locations", "health_units"
+  add_foreign_key "call_locations", "users", column: "updated_by_user_id"
   add_foreign_key "campaign_recipients", "campaigns"
   add_foreign_key "campaign_recipients", "citizens"
   add_foreign_key "campaigns", "users", column: "cancelled_by_user_id"
@@ -4852,6 +4959,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900002) do
   add_foreign_key "triages", "conversations"
   add_foreign_key "triages", "neighborhoods"
   add_foreign_key "triages", "protocol_definitions"
+  add_foreign_key "urgency_classifications", "professional_links"
+  add_foreign_key "urgency_classifications", "protocol_definitions"
+  add_foreign_key "urgency_classifications", "urgency_encounters"
+  add_foreign_key "urgency_classifications", "users", column: "classified_by_user_id"
+  add_foreign_key "urgency_encounters", "attendances"
+  add_foreign_key "urgency_encounters", "consultations"
+  add_foreign_key "urgency_encounters", "urgency_classifications", column: "current_classification_id"
+  add_foreign_key "urgency_outcomes", "health_teams", column: "counter_referral_health_team_id"
+  add_foreign_key "urgency_outcomes", "health_units", column: "counter_referral_health_unit_id"
+  add_foreign_key "urgency_outcomes", "urgency_encounters"
+  add_foreign_key "urgency_outcomes", "users", column: "recorded_by_user_id"
   add_foreign_key "vaccination_record_checks", "patients"
   add_foreign_key "vaccination_record_checks", "users", column: "checked_by_user_id"
   add_foreign_key "vaccination_record_checks", "vaccine_rooms"
@@ -4868,6 +4986,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900002) do
   add_foreign_key "vial_openings", "users", column: "closed_by_user_id"
   add_foreign_key "vial_openings", "users", column: "opened_by_user_id"
   add_foreign_key "vial_openings", "vaccine_rooms"
+  add_foreign_key "waiting_room_displays", "health_units"
+  add_foreign_key "waiting_room_displays", "users", column: "created_by_user_id"
   add_foreign_key "weekly_negative_reports", "health_units"
   add_foreign_key "weekly_negative_reports", "users", column: "recorded_by_user_id"
 end

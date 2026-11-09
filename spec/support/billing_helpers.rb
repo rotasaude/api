@@ -65,7 +65,8 @@ module BillingHelpers
   end
 
   def billing_cnes = format("%07d", SecureRandom.random_number(9_000_000) + 1_000_000)
-  def upa!(name = "UPA #{SecureRandom.hex(2)}", cnes: billing_cnes) = HealthUnit.create!(name: name, kind: "upa", cnes: cnes)
+  # Módulo 32a: `name:` por palavra-chave (urgency_helpers usa `upa!(name: ...)`).
+  def upa!(name: "UPA #{SecureRandom.hex(3)}", cnes: billing_cnes) = HealthUnit.create!(name: name, kind: "upa", cnes: cnes)
   def billing_clerk! = staff_with("faturista-#{SecureRandom.hex(3)}@cidade.gov.br", "billing_clerk")
   # D-U1: o paciente de teste nasce com raça/cor e endereço (faturável no BPA-I); demographics: false para a pendência.
   DEMOGRAPHICS = { race_color: "03", ethnicity: nil, address_zip: "80010000", address_street: "Rua XV de Novembro",
