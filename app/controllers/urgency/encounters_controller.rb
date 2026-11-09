@@ -1,5 +1,13 @@
 # Ações sobre o encontro da urgência (ADR 0050; contrato §6 e §14 Q6, Q7, Q19).
 #
+# GET /urgency/encounters/:id (contrato §14 Q6, Q19; plano, Task 15) → 200
+# `{ encounter: <detalhe> }`: com vínculo clínico na UPA (Access.clinical_link,
+# 2235*/225*) o detalhe inteiro; a recepção (citizen_verifier) sem o clínico,
+# com a descrição do provisório; os demais → 403 (Access.refusal:
+# missing_role | missing_link | cbo_not_allowed). A trilha (resource
+# encounter) sai do render_encounter: todo detalhe com o clínico ou com a
+# descrição. Id malformado ou desconhecido → 404. Nada na query.
+#
 # POST /urgency/encounters/:id/call_for_classification { call_location_id? }
 # → 200 `{ encounter: <detalhe>, call: { id, kind, ticket, location,
 # called_at } | null }` pelo Urgency::CallForClassification (a enfermagem
@@ -26,6 +34,19 @@ module Urgency
   class EncountersController < BaseController
     CALL_KEYS = %w[call_location_id].freeze
     IDENTIFY_KEYS = %w[patient_id new_patient duplicates_reviewed].freeze
+
+    def show
+      return unless query_only!
+
+      encounter = find_encounter(params[:id])
+      return unless encounter
+
+      unit_id = encounter.attendance.health_unit_id
+      clinical = Access.clinical_link(Current.user, unit_id).present?
+      return forbid(Access.refusal(Current.user, unit_id).to_s) unless clinical || Access.reception?(Current.user)
+
+      render_encounter(encounter, clinical: clinical)
+    end
 
     def call_for_classification
       return unless query_only!

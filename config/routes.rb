@@ -758,6 +758,10 @@ Rails.application.routes.draw do
     # engano) e os retornos pedidos à UBS (§7, Q10, Q11, Q20, Q25).
     post  "encounters/:id/outcome", to: "encounters#outcome", as: :encounter_outcome
     get   "counter_referrals",   to: "counter_referrals#index"
+    # Detalhe do encontro (§14 Q6, Q19; trilha) e o painel do gestor (§11,
+    # Q15, Q25; só contagens, sem trilha).
+    get   "encounters/:id",      to: "encounters#show", as: :encounter
+    get   "dashboard",           to: "dashboard#show"
   end
 
   # Módulo 32a (ADR 0050; contrato §8 e §14 Q8): TV da sala de espera. As
