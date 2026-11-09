@@ -12,6 +12,13 @@ module Urgency
       { attendance_id: attendance.id, encounter_id: encounter.id, ticket: attendance.ticket, patient: PatientRef.call(patient) }
     end
 
+    # Candidatos do duplicado suspeito (§14 Q23), na ordem da conferência e na
+    # forma do 24a/27a: `{ patient_id, display_name, birth_date, has_cpf }`.
+    def duplicate_candidates(ids)
+      patients = Patient.where(id: ids).index_by(&:id)
+      ids.filter_map { |id| patients[id] }.map { |patient| Pharmacy::Json.duplicate(patient) }
+    end
+
     # Detalhe do encontro (§14 Q6): a mesma forma no GET, na classificação, na
     # identificação e no desfecho. `<patient-ref>` com a descrição do
     # provisório; a cor e o estouro pela classificação vigente; as

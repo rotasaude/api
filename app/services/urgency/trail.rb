@@ -4,7 +4,9 @@
 # listas não gravam trilha.
 module Urgency
   module Trail
-    RESOURCES = %w[person_lookup encounter].freeze
+    # `patient_duplicates`: os candidatos do duplicado suspeito mostrados na
+    # recepção (contrato §14 Q23), um por candidato, como no 31.
+    RESOURCES = %w[person_lookup encounter patient_duplicates].freeze
 
     module_function
 

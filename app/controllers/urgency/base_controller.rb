@@ -18,7 +18,7 @@ module Urgency
       missing_role: :forbidden, missing_link: :forbidden, cbo_not_allowed: :forbidden,
       not_found: :not_found, patient_not_found: :not_found,
       encounter_open: :conflict, encounter_closed: :conflict, already_identified: :conflict, merge_blocked: :conflict,
-      cpf_taken: :conflict, cns_taken: :conflict, citizen_not_verified: :conflict, consultation_in_progress: :conflict,
+      cpf_taken: :conflict, cns_taken: :conflict, duplicate_suspected: :conflict, citizen_not_verified: :conflict, consultation_in_progress: :conflict,
       not_unidentified: :unprocessable_entity, pain_scale_required: :unprocessable_entity,
       justification_required: :unprocessable_entity
     }.freeze
@@ -29,7 +29,9 @@ module Urgency
     private
 
     # `{ error, path? }` e, na recusa de campo (422 com path, P23), `problems`
-    # com esse problema (ou os do resultado).
+    # com esse problema (ou os do resultado). O duplicado suspeito (§14 Q23)
+    # leva `candidates` (a forma do candidato do 24a) e grava a trilha de cada
+    # candidato mostrado.
     def render_failure(result)
       status = FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
       payload = { error: result.reason.to_s }
@@ -37,7 +39,13 @@ module Urgency
       problems = result.details[:problems]
       problems ||= [ { path: payload[:path], error: payload[:error] } ] if payload[:path] && status == :unprocessable_entity
       payload[:problems] = problems if problems
+      payload[:candidates] = duplicate_candidates(result.details[:candidate_ids]) if result.details.key?(:candidate_ids)
       render json: payload, status: status
+    end
+
+    def duplicate_candidates(ids)
+      ids.each { |id| Trail.viewed!(user: Current.user, patient_id: id, resource: "patient_duplicates") }
+      Json.duplicate_candidates(ids)
     end
 
     # 422 no formato uniforme: `error`/`path` no topo e `problems` com esse problema.

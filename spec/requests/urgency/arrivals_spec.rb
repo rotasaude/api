@@ -103,4 +103,53 @@ RSpec.describe "Chegada na UPA", type: :request do
     expect(response).to have_http_status(:forbidden)
     expect(json_body).to eq("error" => "missing_role")
   end
+
+  # Contrato §14 Q23: o paciente novo passa pela conferência de duplicado do
+  # 24a (Patients::CreateReviewed); o provisório não.
+  it "paciente novo com duplicado suspeito → 409 com os candidatos e nada gravado; conferido → 201; CPF já cadastrado → 409" do
+    existing = urgency_patient!(10, cpf: false)
+    typed = { full_name: "Carlos Eduardo Pinto", birth_date: existing.birth_date, sex: "male", no_cpf_reason: "3" }
+    counts = -> { [ Patient.count, Attendance.count, UrgencyEncounter.count ] }
+    expect { json_post "/urgency/arrivals", health_unit_id: upa.id, new_patient: typed }.not_to change(&counts)
+    expect(response).to have_http_status(:conflict)
+    expect(json_body).to eq("error" => "duplicate_suspected", "path" => "new_patient",
+                            "candidates" => [ { "patient_id" => existing.id, "display_name" => "Carlos Eduardo Pinto",
+                                                "birth_date" => existing.birth_date, "has_cpf" => false } ])
+    expect(DomainEvent.where(name: "clinical_record.viewed").last.payload)
+      .to include("patient_id" => existing.id, "access" => "urgency", "resource" => "patient_duplicates")
+
+    expect { json_post "/urgency/arrivals", health_unit_id: upa.id, new_patient: typed, duplicates_reviewed: true }
+      .to change(Patient, :count).by(1).and change(UrgencyEncounter, :count).by(1)
+    expect(response).to have_http_status(:created)
+
+    with_cpf = urgency_patient!(11)
+    json_post "/urgency/arrivals", health_unit_id: upa.id,
+              new_patient: { full_name: "Joana Ribeiro Matos", birth_date: "1975-04-03", sex: "female", cpf: with_cpf.cpf }
+    expect(response).to have_http_status(:conflict)
+    expect(json_body).to eq("error" => "cpf_taken", "path" => "new_patient.cpf")
+
+    expect { json_post "/urgency/arrivals", health_unit_id: upa.id, unidentified: { description: "Homem, 40 anos, sem documentos" } }
+      .to change(UrgencyEncounter, :count).by(1)
+  end
+
+  it "unidade inativa ou desconhecida → invalid_unit; chave desconhecida no corpo, no new_patient e no unidentified → 422 com o path" do
+    inactive = create_unit("UPA Inativa", kind: "upa", active: false)
+    [ inactive.id, SecureRandom.uuid ].each do |unit_id|
+      json_post "/urgency/arrivals", health_unit_id: unit_id, patient_id: urgency_patient!(urgency_seq!).id
+      expect(json_body).to include("error" => "invalid_unit", "path" => "health_unit_id")
+    end
+
+    patient = urgency_patient!(12)
+    json_post "/urgency/arrivals", health_unit_id: upa.id, patient_id: patient.id, priority: "high"
+    expect(json_body).to include("error" => "invalid_request", "path" => "priority")
+    json_post "/urgency/arrivals", health_unit_id: upa.id,
+              new_patient: { full_name: "Joana Ribeiro Matos", birth_date: "1975-04-03", sex: "female", no_cpf_reason: "3", phone: "41" }
+    expect(json_body).to include("error" => "invalid_request", "path" => "new_patient.phone")
+    json_post "/urgency/arrivals", health_unit_id: upa.id, unidentified: { description: "Mulher, 30 anos, praça", age: 30 }
+    expect(json_body).to include("error" => "invalid_request", "path" => "unidentified.age")
+    json_post "/urgency/arrivals", health_unit_id: upa.id, duplicates_reviewed: "sim",
+              new_patient: { full_name: "Joana Ribeiro Matos", birth_date: "1975-04-03", sex: "female", no_cpf_reason: "3" }
+    expect(json_body).to include("error" => "invalid_request", "path" => "duplicates_reviewed")
+    expect(UrgencyEncounter.count).to eq(0)
+  end
 end
