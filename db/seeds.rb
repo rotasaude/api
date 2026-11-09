@@ -25,6 +25,7 @@
 #     Saúde bucal (módulo 28): dental_care ligado em Curitiba, o CEO tipo II, a eSB associada à eSF, a dentista (dentista@<slug>.demo), a auxiliar (asb@), a endodontista (endodontista@), consultas, planos, produção do CEO e prótese da prova — ver lib/oral_health_crew.rb.
 #     Sala de vacina (módulo 29): vaccination, rnds_immunization e rnds_mock ligados em Curitiba, a sala da UBS Jardim das Flores, a vacinadora (vacinadora@<slug>.demo) e a responsável (vacina.responsavel@), a rede de frio com 4 lotes, a geladeira, a credencial rnds de teste e uma dose de exemplo na fila da RNDS simulada — ver lib/vaccination_crew.rb.
 #     Transporte sanitário e TFD (módulo 30): sanitary_transport e tfd ligados em Curitiba, a central (transporte@curitiba.dev), a comissão de TFD (tfd@), os motoristas (motorista@, condutor@), a van e o carro, 4 destinos, a unidade de gestão como unidade de faturamento, uma série de hemodiálise já materializada e um TFD autorizado para Londrina — ver lib/transport_crew.rb.
+#     Urgência e UPA (módulo 32a): urgency_care e waiting_room_display ligados em Curitiba, a recepção (upa@<slug>.dev), a enfermeira que classifica (upaenf@), o médico (upamed@), o protocolo classificacao-urgencia v1 assinado e ativo (exemplo de dev, não é o Manchester), 4 locais de chamada, a TV da recepção com código de pareamento novo a cada semente, 5 pessoas na fila (um estouro) e o encontro de ontem do José com alta para a UBS — ver lib/urgency_crew.rb.
 #     DDD, telefones, e-mails e canal diferem por cidade, para o isolamento ficar
 #     visível fora da suíte.
 #
@@ -67,6 +68,7 @@ else
   require Rails.root.join("lib/vaccination_crew").to_s
   require Rails.root.join("lib/transport_crew").to_s
   require Rails.root.join("lib/psychosocial_crew").to_s
+  require Rails.root.join("lib/urgency_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -433,6 +435,14 @@ else
         # nunca dado de paciente.
         psychosocial = PsychosocialCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
         PsychosocialCrew.summary_lines(psychosocial, password: password).each { |line| puts line }
+
+        # ── Urgência e UPA (módulo 32a, ADR 0050) ─────────────────────────────
+        # Depois do ProfessionalCrew (a UPA 24h Centro), do CareLinesCrew (o José
+        # com equipe da ESF, para a contrarreferência) e do ClinicalRecordCrew (o
+        # prontuário ligado). Só e-mail, papel, otpauth e o código da TV: nunca
+        # dado de paciente.
+        urgency = UrgencyCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        UrgencyCrew.summary_lines(urgency, password: password).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
