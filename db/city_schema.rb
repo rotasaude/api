@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_05_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_05_900002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -2523,15 +2523,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900001) do
     t.text "ethnicity"
     t.text "full_name"
     t.string "match_key"
+    t.uuid "merged_into_id"
     t.text "mother_name"
     t.text "no_cpf_reason"
     t.text "race_color"
     t.text "sex"
     t.text "social_name"
+    t.boolean "unidentified", default: false, null: false
+    t.text "unidentified_description"
     t.datetime "updated_at", null: false
     t.index ["cns"], name: "idx_patients_cns", unique: true, where: "(cns IS NOT NULL)"
     t.index ["cpf"], name: "index_patients_on_cpf", unique: true
     t.index ["match_key"], name: "idx_patients_match_key"
+    t.index ["merged_into_id"], name: "index_patients_on_merged_into_id"
+    t.index ["unidentified"], name: "idx_patients_unidentified", where: "unidentified"
+    t.check_constraint "NOT unidentified OR cpf IS NULL AND cns IS NULL", name: "ck_patients_unidentified"
+    t.check_constraint "NOT unidentified OR unidentified_description IS NOT NULL", name: "ck_patients_description"
+    t.check_constraint "merged_into_id IS NULL OR unidentified AND merged_into_id <> id", name: "ck_patients_merged"
     t.check_constraint "num_nonnulls(cpf, no_cpf_reason) = 1", name: "ck_patients_cpf_or_reason"
   end
 
@@ -4615,6 +4623,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900001) do
   add_foreign_key "patient_problems", "patients"
   add_foreign_key "patient_profile_divergences", "citizens"
   add_foreign_key "patient_profile_divergences", "patients"
+  add_foreign_key "patients", "patients", column: "merged_into_id"
   add_foreign_key "performed_procedures", "attendances"
   add_foreign_key "performed_procedures", "billing_exports"
   add_foreign_key "performed_procedures", "billing_periods"

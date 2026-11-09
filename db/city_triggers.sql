@@ -98,6 +98,30 @@ BEGIN
 END
 $do$;
 
+-- Módulo 32a (ADR 0050, R4; plano, Desvio 6; contrato §14 Q5): a marca da
+-- fusão do paciente provisório. Verdadeira só com rota.patient_merge = 'on'
+-- (Urgency::Merge.with_marker: SET LOCAL num savepoint, como a
+-- rota.draft_admin) e quando a linha muda SÓ patient_id (e updated_at), do
+-- provisório para o merged_into_id gravado nele. Cada guarda que recusa
+-- trocar o paciente a chama no topo, com to_jsonb(OLD) e to_jsonb(NEW): a
+-- linha inteira, de qualquer tabela. PL/pgSQL, não SQL: o corpo em SQL é
+-- conferido contra o catálogo na criação, e um replay do zero recria esta
+-- função antes de patients (e das colunas da fusão) existir; aqui a consulta
+-- só é planejada sob a marca. coalesce: numa sessão que nunca viu a marca,
+-- current_setting(..., true) é NULL.
+CREATE OR REPLACE FUNCTION rota_patient_merge_ok(old_row jsonb, new_row jsonb) RETURNS boolean AS $fn$
+BEGIN
+  IF coalesce(current_setting('rota.patient_merge', true), '') <> 'on'
+     OR (old_row ->> 'patient_id') IS NULL OR (new_row ->> 'patient_id') IS NULL
+     OR (new_row - ARRAY['patient_id', 'updated_at']) IS DISTINCT FROM (old_row - ARRAY['patient_id', 'updated_at']) THEN
+    RETURN false;
+  END IF;
+  RETURN EXISTS (SELECT 1 FROM patients p
+                 WHERE p.id = (old_row ->> 'patient_id')::uuid AND p.unidentified
+                   AND p.merged_into_id = (new_row ->> 'patient_id')::uuid);
+END;
+$fn$ LANGUAGE plpgsql STABLE;
+
 -- attendances (spec 2026-09-24-citizen-attendance-check-in §3; ADR 0018): só
 -- acréscimo, exceto encerrar UMA vez. O check-in nunca muda. A chamada também
 -- não, com UMA exceção (rascunho órfão, card api#51): sob a marca
@@ -109,6 +133,10 @@ $do$;
 -- também são do check-in e nunca mudam.
 CREATE OR REPLACE FUNCTION rota_attendance_guard() RETURNS trigger AS $fn$
 BEGIN
+  -- Módulo 32a (ADR 0050, R4): a fusão do provisório só troca `patient_id`, sob a marca.
+  IF TG_OP = 'UPDATE' AND rota_patient_merge_ok(to_jsonb(OLD), to_jsonb(NEW)) THEN
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'attendances is append-only: DELETE refused';
   END IF;
@@ -1071,11 +1099,21 @@ $do$;
 -- nulo junto com o CPF chegando — quem garante é o CHECK
 -- ck_patients_cpf_or_reason (um dos dois, sempre), não este trigger. CNS e
 -- match_key são cifrados determinísticos como o CPF e entram na re-cifra.
+-- Módulo 32a (ADR 0050, R4; plano, Desvios 4–6): o paciente provisório da UPA
+-- (unidentified, com a descrição cifrada) nunca volta a sê-lo e só deixa de
+-- sê-lo sem fusão (identificado pelos dados digitados). A fusão
+-- (merged_into_id) acontece UMA vez, de nulo para um paciente identificado e
+-- não fundido, e nunca muda depois; o provisório fundido fica, sem nada
+-- apagado. O alvo igual ao próprio id fica para o CHECK ck_patients_merged.
 CREATE OR REPLACE FUNCTION rota_patient_guard() RETURNS trigger AS $fn$
 DECLARE
   encrypted text[] := ARRAY['cpf', 'full_name', 'social_name', 'mother_name', 'birth_date', 'sex', 'race_color', 'ethnicity',
                             'address_zip', 'address_street', 'address_number', 'address_complement', 'address_district',
-                            'cns', 'no_cpf_reason', 'match_key'];
+                            'cns', 'no_cpf_reason', 'match_key', 'unidentified_description'];
+  old_unidentified boolean;
+  new_unidentified boolean;
+  old_merged uuid;
+  new_merged uuid;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'patients is append-only: DELETE refused';
@@ -1098,6 +1136,27 @@ BEGIN
   -- intervalo (o PL/pgSQL resolve o campo ao planejar o IF).
   IF OLD.cpf IS NULL AND NEW.cpf IS NOT NULL AND (to_jsonb(NEW) ->> 'no_cpf_reason') IS NOT NULL THEN
     RAISE EXCEPTION 'patients: the CPF arrives taking the no-CPF reason away';
+  END IF;
+  -- Colunas do 32a lidas por to_jsonb, pelo mesmo motivo do no_cpf_reason
+  -- (nascem na 20261105900002); a consulta ao alvo fica num IF aninhado, que
+  -- só é planejado quando há fusão (isto é, depois de a coluna existir).
+  old_unidentified := coalesce((to_jsonb(OLD) ->> 'unidentified')::boolean, false);
+  new_unidentified := coalesce((to_jsonb(NEW) ->> 'unidentified')::boolean, false);
+  old_merged := (to_jsonb(OLD) ->> 'merged_into_id')::uuid;
+  new_merged := (to_jsonb(NEW) ->> 'merged_into_id')::uuid;
+  IF NOT old_unidentified AND new_unidentified THEN
+    RAISE EXCEPTION 'patients: a patient never becomes unidentified';
+  END IF;
+  IF old_unidentified AND NOT new_unidentified AND new_merged IS NOT NULL THEN
+    RAISE EXCEPTION 'patients: only an unmerged provisional patient is identified';
+  END IF;
+  IF old_merged IS NOT NULL AND new_merged IS DISTINCT FROM old_merged THEN
+    RAISE EXCEPTION 'patients: merged_into never changes';
+  END IF;
+  IF old_merged IS NULL AND new_merged IS NOT NULL AND new_merged <> NEW.id THEN
+    IF NOT EXISTS (SELECT 1 FROM patients t WHERE t.id = new_merged AND NOT t.unidentified AND t.merged_into_id IS NULL) THEN
+      RAISE EXCEPTION 'patients: merge target must be an identified patient';
+    END IF;
   END IF;
   RETURN NEW;
 END;
@@ -1125,6 +1184,10 @@ $fn$ LANGUAGE plpgsql;
 -- DEFERRABLE). Identidade fixa; nunca some.
 CREATE OR REPLACE FUNCTION rota_patient_problem_guard() RETURNS trigger AS $fn$
 BEGIN
+  -- Módulo 32a (ADR 0050, R4): a fusão do provisório só troca `patient_id`, sob a marca.
+  IF TG_OP = 'UPDATE' AND rota_patient_merge_ok(to_jsonb(OLD), to_jsonb(NEW)) THEN
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'patient_problems is append-only: DELETE refused';
   END IF;
@@ -1205,6 +1268,10 @@ DECLARE
   -- NULL, e um NULL dentro de NOT (...) desligaria a recusa em silêncio.
   draft_admin boolean := coalesce(current_setting('rota.draft_admin', true), '') = 'on';
 BEGIN
+  -- Módulo 32a (ADR 0050, R4): a fusão do provisório só troca `patient_id`, sob a marca.
+  IF TG_OP = 'UPDATE' AND rota_patient_merge_ok(to_jsonb(OLD), to_jsonb(NEW)) THEN
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'consultations is append-only: DELETE refused';
   END IF;
@@ -1264,10 +1331,17 @@ $fn$ LANGUAGE plpgsql;
 
 -- Só acréscimo, com a exceção da re-cifra: as colunas passadas em TG_ARGV (as
 -- cifradas) podem ser regravadas com rota.reencrypting; nada mais muda.
+-- Módulo 32a: e a fusão do provisório (rota_patient_merge_ok), que só passa
+-- em linha com patient_id; a fusão (Urgency::Merge) move exam_results e
+-- dispensations, e as demais tabelas com paciente bloqueiam a fusão no código.
 CREATE OR REPLACE FUNCTION rota_reencryption_only() RETURNS trigger AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION '% is append-only: DELETE refused', TG_TABLE_NAME;
+  END IF;
+  -- Módulo 32a (ADR 0050, R4): a fusão do provisório só troca `patient_id`, sob a marca.
+  IF TG_OP = 'UPDATE' AND rota_patient_merge_ok(to_jsonb(OLD), to_jsonb(NEW)) THEN
+    RETURN NEW;
   END IF;
   IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - TG_ARGV) = (to_jsonb(OLD) - TG_ARGV) THEN
     RETURN NEW;
@@ -1471,6 +1545,10 @@ DECLARE
   cancel_cols text[] := ARRAY['status', 'cancel_reason', 'cancelled_at', 'cancelled_by_user_id'];
   encrypted text[] := ARRAY['content', 'cancel_reason'];
 BEGIN
+  -- Módulo 32a (ADR 0050, R4): a fusão do provisório só troca `patient_id`, sob a marca.
+  IF TG_OP = 'UPDATE' AND rota_patient_merge_ok(to_jsonb(OLD), to_jsonb(NEW)) THEN
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'INSERT' THEN
     IF NEW.status <> 'issued' THEN
       RAISE EXCEPTION 'clinical_documents: a document is born issued';
@@ -1525,6 +1603,10 @@ CREATE OR REPLACE FUNCTION rota_patient_medication_guard() RETURNS trigger AS $f
 DECLARE
   encrypted text[] := ARRAY['free_text', 'label', 'dosage_summary'];
 BEGIN
+  -- Módulo 32a (ADR 0050, R4): a fusão do provisório só troca `patient_id`, sob a marca.
+  IF TG_OP = 'UPDATE' AND rota_patient_merge_ok(to_jsonb(OLD), to_jsonb(NEW)) THEN
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'patient_medications is append-only: DELETE refused';
   END IF;
@@ -1657,6 +1739,10 @@ DECLARE
                            'requester_user_id', 'requester_name', 'requester_cns', 'unit_id', 'origin',
                            'consultation_exam_request_id', 'guide_file_id', 'short_code', 'created_by_user_id', 'created_at'];
 BEGIN
+  -- Módulo 32a (ADR 0050, R4): a fusão do provisório só troca `patient_id`, sob a marca.
+  IF TG_OP = 'UPDATE' AND rota_patient_merge_ok(to_jsonb(OLD), to_jsonb(NEW)) THEN
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'INSERT' THEN
     IF NEW.status NOT IN ('awaiting_authorization', 'awaiting_schedule') THEN
       RAISE EXCEPTION 'exam_orders: an order is born awaiting authorization or schedule';
@@ -1991,6 +2077,10 @@ DECLARE
   moving text[] := ARRAY['instrument', 'billable', 'blocking_reasons', 'sigtap_competence', 'sigtap_fallback', 'cbo_code',
                          'status', 'cancel_reason', 'cancelled_at', 'cancelled_by_user_id', 'billing_export_id', 'updated_at'];
 BEGIN
+  -- Módulo 32a (ADR 0050, R4): a fusão do provisório só troca `patient_id`, sob a marca.
+  IF TG_OP = 'UPDATE' AND rota_patient_merge_ok(to_jsonb(OLD), to_jsonb(NEW)) THEN
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'performed_procedures is append-only: DELETE refused';
   END IF;
@@ -2245,6 +2335,10 @@ $do$;
 -- acréscimo; a doença local nunca é apagada (desativa-se); TRUNCATE recusado.
 CREATE OR REPLACE FUNCTION rota_disease_notification_guard() RETURNS trigger AS $fn$
 BEGIN
+  -- Módulo 32a (ADR 0050, R4): a fusão do provisório só troca `patient_id`, sob a marca.
+  IF TG_OP = 'UPDATE' AND rota_patient_merge_ok(to_jsonb(OLD), to_jsonb(NEW)) THEN
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'disease_notifications: DELETE refused';
   END IF;
@@ -2298,6 +2392,10 @@ $do$;
 -- ciap2) pode mudar fora do rascunho, pelo complemento.
 CREATE OR REPLACE FUNCTION rota_regulation_request_guard() RETURNS trigger AS $fn$
 BEGIN
+  -- Módulo 32a (ADR 0050, R4): a fusão do provisório só troca `patient_id`, sob a marca.
+  IF TG_OP = 'UPDATE' AND rota_patient_merge_ok(to_jsonb(OLD), to_jsonb(NEW)) THEN
+    RETURN NEW;
+  END IF;
   IF TG_OP = 'DELETE' THEN
     IF OLD.status = 'draft' THEN
       RETURN OLD;

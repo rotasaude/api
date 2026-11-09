@@ -20,10 +20,19 @@ class Patient < ApplicationRecord
   # chave de duplicados cifrados determinísticos (são chave de busca).
   encrypts :no_cpf_reason
   encrypts :cns, :match_key, deterministic: true, key_provider: CityDeterministicKeyProvider.new
+  # Módulo 32a (ADR 0050, R4; plano, Desvios 4–6): o provisório da UPA
+  # (`unidentified`, sem CPF nem CNS, com no_cpf_reason "unidentified" e a
+  # descrição cifrada) e a fusão: `merged_into` aponta o paciente real, uma
+  # vez, e nunca muda (CHECKs e rota_patient_guard).
+  UNIDENTIFIED_NAME = "Paciente não identificado".freeze
+  encrypts :unidentified_description
 
+  belongs_to :merged_into, class_name: "Patient", optional: true
   has_many :citizens, dependent: :restrict_with_error
   has_many :problems, class_name: "PatientProblem", dependent: :restrict_with_error
   has_many :consultations, dependent: :restrict_with_error
+
+  scope :identified, -> { where(unidentified: false) }
 
   validate { errors.add(:cpf, :blank) unless cpf.present? ^ no_cpf_reason.present? }
 
@@ -38,7 +47,13 @@ class Patient < ApplicationRecord
     self.match_key = Patients::MatchKey.for(full_name, birth_date)
   end
 
-  def display_name = social_name.presence || full_name
+  def display_name
+    return UNIDENTIFIED_NAME if unidentified && full_name.blank?
+
+    social_name.presence || full_name
+  end
+
+  def merged? = merged_into_id.present?
 
   def cpf_masked = cpf && CitizenIdentity::Cpf.mask(cpf)
 

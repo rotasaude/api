@@ -189,7 +189,9 @@ module CityEncryption
     [ PsychosocialAction, :notes ], [ PsychosocialAction, :cancel_reason ], [ PsychosocialActionParticipant, :family_name ],
     [ PsychosocialMonthlyRecord, :snapshot ], [ PsychosocialMonthClosure, :reopen_reason ], [ PsychosocialRaasExport, :file_data ],
     [ PsychosocialMatrixSupport, :topic ], [ PsychosocialMatrixCase, :shared_text ],
-    [ PsychosocialNightStay, :end_reason ], [ PsychosocialNightStay, :reassessment_reason ]
+    [ PsychosocialNightStay, :end_reason ], [ PsychosocialNightStay, :reassessment_reason ],
+    # ADR 0050 (módulo 32a): a descrição do paciente não identificado.
+    [ Patient, :unidentified_description ]
   ].freeze
 
   module_function
