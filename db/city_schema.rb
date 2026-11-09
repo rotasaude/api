@@ -4345,14 +4345,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900005) do
     t.string "pairing_code_digest", limit: 64
     t.datetime "pairing_expires_at"
     t.datetime "revoked_at"
+    t.string "revoked_token_digest", limit: 64
     t.boolean "show_wait_times", default: true, null: false
     t.string "token_digest", limit: 64
     t.datetime "updated_at", null: false
     t.index ["health_unit_id"], name: "idx_waiting_room_displays_unit"
     t.index ["pairing_code_digest"], name: "idx_waiting_room_displays_pairing_code", unique: true, where: "(pairing_code_digest IS NOT NULL)"
+    t.index ["revoked_token_digest"], name: "idx_waiting_room_displays_revoked_token", unique: true, where: "(revoked_token_digest IS NOT NULL)"
     t.index ["token_digest"], name: "idx_waiting_room_displays_token", unique: true, where: "(token_digest IS NOT NULL)"
     t.check_constraint "(pairing_code_digest IS NULL) = (pairing_expires_at IS NULL)", name: "ck_waiting_room_displays_pairing"
-    t.check_constraint "(token_digest IS NULL OR token_digest::text ~ '^[0-9a-f]{64}$'::text) AND (pairing_code_digest IS NULL OR pairing_code_digest::text ~ '^[0-9a-f]{64}$'::text)", name: "ck_waiting_room_displays_digests"
+    t.check_constraint "(token_digest IS NULL OR token_digest::text ~ '^[0-9a-f]{64}$'::text) AND (revoked_token_digest IS NULL OR revoked_token_digest::text ~ '^[0-9a-f]{64}$'::text) AND (pairing_code_digest IS NULL OR pairing_code_digest::text ~ '^[0-9a-f]{64}$'::text)", name: "ck_waiting_room_displays_digests"
   end
 
   create_table "weekly_negative_reports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

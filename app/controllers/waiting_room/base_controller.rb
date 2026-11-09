@@ -15,7 +15,6 @@ module WaitingRoom
       def self.increment(...) = Rails.cache.increment(...)
     end
 
-    UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     # O resto das recusas é 422.
     FAILURE_STATUS = { missing_role: :forbidden, not_found: :not_found, call_location_name_taken: :conflict }.freeze
 
@@ -28,14 +27,13 @@ module WaitingRoom
       render json: payload, status: FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
     end
 
-    def render_refusal(path, error = "invalid_request")
-      render json: { error: error.to_s, path: path, problems: [ { path: path, error: error.to_s } ] }, status: :unprocessable_entity
-    end
+    # Recusa de campo da query (P23), pelo mesmo construtor dos comandos.
+    def render_refusal(path) = render_failure(Fields.refuse(path))
 
     def too_many_requests = render(json: { error: "too_many_requests" }, status: :too_many_requests)
     def forbid(reason = "missing_role") = render(json: { error: reason }, status: :forbidden)
     def not_found = render(json: { error: "not_found" }, status: :not_found)
-    def uuid?(value) = value.is_a?(String) && value.match?(UUID)
+    def uuid?(value) = value.is_a?(String) && value.match?(Fields::UUID)
 
     def body = request.request_parameters.except("controller", "action", "id")
   end

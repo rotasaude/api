@@ -36,7 +36,7 @@ RSpec.describe "Painel da TV", type: :request do
     expect(response).to have_http_status(:ok)
     expect(json_body.keys).to contain_exactly("unit", "calls", "wait_times", "updated_at")
     expect(json_body["unit"]).to eq("name" => upa.name)
-    expect(json_body["calls"].first.keys).to contain_exactly("ticket", "location", "kind", "called_at")
+    expect(json_body["calls"].map { |c| c.keys.sort }.uniq).to eq([ %w[called_at kind location ticket] ])
     expect(json_body["calls"].first).to include("ticket" => "U-001", "location" => "Consultório 1", "kind" => "care")
     text = response.body
     [ patient.full_name, patient.cpf, patient.cns, e.id, e.attendance_id, patient.id, "SpO2", "spo2", UrgencyHelpers::JUSTIFICATION ]
@@ -98,6 +98,7 @@ RSpec.describe "Painel da TV", type: :request do
     end
     board
     expect(json_body["calls"].size).to eq(8)
+    expect(json_body["calls"].map { |c| c.keys.sort }.uniq).to eq([ %w[called_at kind location ticket] ])
     expect(json_body["calls"].map { |c| c["ticket"] }).to eq(encounters.drop(1).reverse.map { |x| x.attendance.ticket })
     expect(json_body["calls"].first).to include("location" => nil, "kind" => "classification")
     expect(json_body["calls"].map { |c| c["ticket"] }).not_to include(old.attendance.ticket)

@@ -143,8 +143,44 @@ RSpec.describe "Locais de chamada e TVs da sala de espera", type: :request do
       expect(DomainEvents).to have_received(:publish).with("waiting_room.display_revoked", display_id: display.id).ordered
       expect(DomainEvents).to have_received(:publish).with("waiting_room.display_paired", display_id: display.id).ordered
       board(old_token)
-      expect(response).to have_http_status(:unauthorized)
+      expect([ response.status, json_body ]).to eq([ 401, { "error" => "display_revoked" } ])
       board(new_token)
+      expect(response).to have_http_status(:ok)
+      row = WaitingRoomDisplay.find(display.id)
+      expect(row.revoked_token_digest).to eq(WaitingRoomDisplay.digest(old_token))
+      expect(row.as_json.keys).not_to include("revoked_token_digest")
+      expect(row.inspect).not_to include(row.revoked_token_digest)
+    end
+
+    it "revogar e parear de novo: o token mais antigo responde display_revoked e o novo funciona, sem novo display_revoked" do
+      display, oldest = paired_display!(upa)
+      WaitingRoom::Revoke.call(display: display, by: admin)
+      code = WaitingRoom::IssuePairingCode.call(display: display, by: admin).payload.fetch(:code)
+      anonymous!
+      expect { pair(code) }.not_to change { DomainEvent.where(name: "waiting_room.display_revoked").count }
+      newest = json_body["display_token"]
+      board(oldest)
+      expect([ response.status, json_body ]).to eq([ 401, { "error" => "display_revoked" } ])
+      board(newest)
+      expect(response).to have_http_status(:ok)
+      expect(display.reload).to have_attributes(paired?: true, revoked?: false)
+    end
+
+    # Só o último digest anterior fica (revoked_token_digest): um token mais
+    # antigo que ele já não casa com nada e responde invalid_token.
+    it "dois re-pareamentos seguidos: o penúltimo responde display_revoked, o mais antigo invalid_token" do
+      display, first = paired_display!(upa)
+      tokens = 2.times.map do
+        code = WaitingRoom::IssuePairingCode.call(display: display, by: admin).payload.fetch(:code)
+        WaitingRoom::Pair.call(code: code).payload.fetch(:display_token)
+      end
+      second, third = tokens
+      anonymous!
+      board(first)
+      expect([ response.status, json_body ]).to eq([ 401, { "error" => "invalid_token" } ])
+      board(second)
+      expect([ response.status, json_body ]).to eq([ 401, { "error" => "display_revoked" } ])
+      board(third)
       expect(response).to have_http_status(:ok)
     end
 

@@ -64,6 +64,10 @@ class AddWaitingRoom < ActiveRecord::Migration[8.1]
       t.boolean :active, null: false, default: true
       t.boolean :show_wait_times, null: false, default: true
       t.string :token_digest, limit: 64
+      # O digest do token anterior (revogado ou trocado num novo pareamento):
+      # a TV antiga ainda recebe display_revoked, e não invalid_token. Só o
+      # último anterior fica; um mais antigo responde invalid_token.
+      t.string :revoked_token_digest, limit: 64
       t.string :pairing_code_digest, limit: 64
       t.datetime :pairing_expires_at
       t.datetime :paired_at
@@ -74,6 +78,8 @@ class AddWaitingRoom < ActiveRecord::Migration[8.1]
     end
     add_index :waiting_room_displays, :health_unit_id, name: "idx_waiting_room_displays_unit"
     add_index :waiting_room_displays, :token_digest, unique: true, where: "token_digest IS NOT NULL", name: "idx_waiting_room_displays_token"
+    add_index :waiting_room_displays, :revoked_token_digest, unique: true, where: "revoked_token_digest IS NOT NULL",
+                                                             name: "idx_waiting_room_displays_revoked_token"
     # Único entre os códigos guardados: o usado é zerado no pareamento e o
     # expirado com o mesmo digest é zerado pelo WaitingRoom::IssuePairingCode
     # antes de gravar (now() não cabe no predicado), que repete o sorteio no
@@ -84,6 +90,7 @@ class AddWaitingRoom < ActiveRecord::Migration[8.1]
                          name: "ck_waiting_room_displays_pairing"
     add_check_constraint :waiting_room_displays,
                          "(token_digest IS NULL OR token_digest::text ~ #{DIGEST}) AND " \
+                         "(revoked_token_digest IS NULL OR revoked_token_digest::text ~ #{DIGEST}) AND " \
                          "(pairing_code_digest IS NULL OR pairing_code_digest::text ~ #{DIGEST})",
                          name: "ck_waiting_room_displays_digests"
   end

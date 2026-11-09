@@ -3,8 +3,9 @@
 # token longo (`SecureRandom.urlsafe_base64(48)`, 64 caracteres) que vale até
 # a revogação; só o SHA-256 dele fica no banco e o token em claro só sai nesta
 # resposta. O código é zerado (uso único), `revoked_at` também, e `paired_at`
-# é gravado. TV com token vivo: o antigo é revogado antes (display_revoked) e
-# só depois sai o display_paired. Código desconhecido, expirado, já usado ou
+# é gravado. TV com token vivo: o antigo é revogado antes (display_revoked;
+# o digest dele vai para `revoked_token_digest`, e a TV antiga recebe
+# display_revoked) e só depois sai o display_paired. Código desconhecido, expirado, já usado ou
 # de TV desativada → invalid_pairing_code, sem dizer qual.
 module WaitingRoom
   module Pair
