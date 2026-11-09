@@ -18,6 +18,8 @@ class CallLocationsController < WaitingRoom::BaseController
   before_action :require_step_up!, only: %i[create update]
 
   def index
+    return unless query_only!("health_unit_id")
+
     unit_id = params[:health_unit_id]
     return render_refusal("health_unit_id") unless uuid?(unit_id)
     return not_found unless HealthUnit.exists?(id: unit_id)

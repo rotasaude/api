@@ -19,6 +19,8 @@ module WaitingRoom
     before_action :find_display, only: %i[update pairing_code revoke]
 
     def index
+      return unless query_only!("health_unit_id")
+
       unit_id = params[:health_unit_id]
       return render_refusal("health_unit_id") unless uuid?(unit_id)
       return not_found unless HealthUnit.exists?(id: unit_id)

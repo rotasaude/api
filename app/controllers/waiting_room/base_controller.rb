@@ -17,6 +17,7 @@ module WaitingRoom
 
     # O resto das recusas é 422.
     FAILURE_STATUS = { missing_role: :forbidden, not_found: :not_found, call_location_name_taken: :conflict }.freeze
+    KEY_PATH_MAX = 64
 
     private
 
@@ -29,6 +30,17 @@ module WaitingRoom
 
     # Recusa de campo da query (P23), pelo mesmo construtor dos comandos.
     def render_refusal(path) = render_failure(Fields.refuse(path))
+
+    # Contrato §13 (nunca em URL): a leitura aceita na query só as chaves de
+    # `allowed`; outra (cpf, cns, name...) → 422 invalid_request com o NOME da
+    # chave, truncado, nunca o valor. Renderiza e devolve false quando recusa.
+    def query_only!(*allowed)
+      unknown = (request.query_parameters.keys - allowed.map(&:to_s)).first
+      return true unless unknown
+
+      render_refusal(unknown.to_s[0, KEY_PATH_MAX])
+      false
+    end
 
     def too_many_requests = render(json: { error: "too_many_requests" }, status: :too_many_requests)
     def forbid(reason = "missing_role") = render(json: { error: reason }, status: :forbidden)

@@ -3,8 +3,10 @@
 # (a do Hl7::BaseController): limite de 30/min pelo digest do token (ou pelo
 # IP, sem token) → interruptor (403 feature_disabled) → token (ausente ou
 # desconhecido 401 invalid_token; o último revogado — também o trocado num
-# novo pareamento — ou o de TV desativada 401 display_revoked). Sem trilha e sem evento: só `last_seen_at`, gravado por
-# update_column (sem updated_at) quando vazio ou com mais de 60 s.
+# novo pareamento — ou o de TV desativada 401 display_revoked) → query vazia
+# (chave na query → 422 invalid_request com o nome da chave). Sem trilha e
+# sem evento: só `last_seen_at`, gravado por update_column (sem updated_at)
+# quando vazio ou com mais de 60 s.
 module WaitingRoom
   class BoardsController < BaseController
     SEEN_EVERY = 60.seconds
@@ -18,6 +20,7 @@ module WaitingRoom
       display = WaitingRoomDisplay.by_token(display_token)
       return render(json: { error: "invalid_token" }, status: :unauthorized) unless display
       return render(json: { error: "display_revoked" }, status: :unauthorized) unless display.live_token?(display_token)
+      return unless query_only!
 
       now = Time.current
       display.update_column(:last_seen_at, now) if display.last_seen_at.nil? || display.last_seen_at <= now - SEEN_EVERY
