@@ -100,6 +100,7 @@ RSpec.describe "Urgência — painel do gestor", type: :request do
       expect(row("classification_to_physician", "yellow")).to include("count" => "lt5", "median_minutes" => "lt5")
       expect(row("classification_to_physician", "red")).to include("count" => 0, "median_minutes" => nil)
       expect(row("over_max_wait", "green")).to eq("color" => "green", "count" => 5, "over" => "lt5")
+      # O amarelo chamado aos 20 min e o amarelo que saiu aos 30 min: ninguém além dos 60.
       expect(row("over_max_wait", "yellow")).to eq("color" => "yellow", "count" => "lt5", "over" => 0)
       expect(row("over_max_wait", "red")).to eq("color" => "red", "count" => 0, "over" => 0)
     end
@@ -126,6 +127,18 @@ RSpec.describe "Urgência — painel do gestor", type: :request do
       expect(response.body).not_to include("camisa azul")
       UrgencyEncounter.pluck(:id).each { |id| expect(response.body).not_to include(id) }
     end
+  end
+
+  # Ruling Q28 item 5: o classificado que saiu sem ser chamado entra no
+  # estouro da cor (denominador) e, se esperou além do tempo máximo da
+  # classificação vigente desde a 1ª classificação, no numerador.
+  it "o classificado que saiu sem ser chamado conta no estouro pela espera até a saída" do
+    5.times { |i| left!(visit!(at: base + i.hours, color: "green", classify_after: 5), after: 130) }
+    left!(visit!(at: base + 6.hours, color: "green", classify_after: 5), after: 60)
+    visit!(at: base + 7.hours, color: "green", classify_after: 5, call_after: 30)
+    read_dashboard!
+    expect(row("over_max_wait", "green")).to eq("color" => "green", "count" => 7, "over" => 5)
+    expect(row("classification_to_physician", "green")["count"]).to eq("lt5")
   end
 
   # Decisão 11 da spec: evasão é só o `left_without_care` (antes ou depois da

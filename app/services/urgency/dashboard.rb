@@ -20,10 +20,14 @@
 #    qualquer visita (é uma visita real);
 #  - porta → classificação: `first_classified_at - checked_in_at`, pela cor da
 #    1ª classificação;
-#  - classificação → médico: `called_at - first_classified_at`, e o estouro
-#    (minutos inteiros > `max_wait_minutes`, a regra do UrgencyEncounter#overdue?),
-#    pela classificação VIGENTE NA CHAMADA (a última com `created_at <=
+#  - classificação → médico: `called_at - first_classified_at`, pela
+#    classificação VIGENTE NA CHAMADA (a última com `created_at <=
 #    called_at`, com o tempo máximo gravado nela);
+#  - estouro (minutos inteiros > `max_wait_minutes`, a regra do
+#    UrgencyEncounter#overdue?), por cor: o chamado, pela espera até a chamada
+#    e a classificação vigente nela; o classificado que saiu sem ser chamado
+#    (`left_without_care`, ruling Q28 item 5), pela espera da 1ª
+#    classificação até a saída (`closed_at`) e a classificação vigente;
 #  - por cor: a cor vigente agora (sem classificação → `unclassified`);
 #  - por desfecho: os encontros fechados, pelo `kind` do desfecho;
 #  - evasão: desfecho `left_without_care` (decisão 11 da spec: a evasão, antes
@@ -48,8 +52,14 @@ module Urgency
       SELECT first_c.color AS first_color,
              EXTRACT(EPOCH FROM (e.first_classified_at - a.checked_in_at)) / 60.0 AS door_minutes,
              at_call.color AS call_color,
-             at_call.max_wait_minutes AS call_max_wait,
              EXTRACT(EPOCH FROM (a.called_at - e.first_classified_at)) / 60.0 AS physician_minutes,
+             CASE WHEN a.called_at IS NOT NULL THEN at_call.color
+                  WHEN o.kind = 'left_without_care' THEN current_c.color END AS wait_color,
+             CASE WHEN a.called_at IS NOT NULL THEN at_call.max_wait_minutes
+                  WHEN o.kind = 'left_without_care' THEN current_c.max_wait_minutes END AS wait_max,
+             CASE WHEN a.called_at IS NOT NULL THEN EXTRACT(EPOCH FROM (a.called_at - e.first_classified_at)) / 60.0
+                  WHEN o.kind = 'left_without_care' THEN EXTRACT(EPOCH FROM (a.closed_at - e.first_classified_at)) / 60.0
+             END AS wait_minutes,
              current_c.color AS current_color,
              o.kind AS outcome_kind,
              e.first_classified_at IS NOT NULL AS classified,
@@ -116,9 +126,9 @@ module Urgency
 
     def over_max_wait(binds)
       rows = select(binds, <<~SQL.squish).index_by { |row| row["color"] }
-        SELECT call_color AS color, COUNT(*) AS count,
-               COUNT(*) FILTER (WHERE FLOOR(physician_minutes) > call_max_wait) AS over
-          FROM base WHERE call_color IS NOT NULL AND physician_minutes IS NOT NULL GROUP BY call_color
+        SELECT wait_color AS color, COUNT(*) AS count,
+               COUNT(*) FILTER (WHERE FLOOR(wait_minutes) > wait_max) AS over
+          FROM base WHERE wait_color IS NOT NULL AND wait_minutes IS NOT NULL GROUP BY wait_color
       SQL
       Catalog::COLORS.map do |item|
         row = rows[item] || {}
