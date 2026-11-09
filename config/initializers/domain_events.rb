@@ -438,4 +438,10 @@ Rails.application.config.to_prepare do
   # call_id — nunca a senha, o local nem a pessoa; sem consumidor (a TV lê
   # attendance_calls).
   DomainEvents.bind "attendance.recalled", to: []
+  # TV da sala de espera (WaitingRoom::Pair, Revoke, SaveDisplay com active:
+  # false; contrato §12, preflight C-17): só o display_id — nunca o token, o
+  # código nem os digests; o pareamento de uma TV com token vivo publica o
+  # display_revoked antes do display_paired. Sem consumidor.
+  DomainEvents.bind "waiting_room.display_paired", to: []
+  DomainEvents.bind "waiting_room.display_revoked", to: []
 end

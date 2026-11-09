@@ -43,6 +43,8 @@ module Urgency
       classified(unit_id).lock("FOR UPDATE OF attendances SKIP LOCKED").first
     end
 
+    # Classificados esperando o médico, na ordem da fila. Público: o painel da
+    # TV (WaitingRoom::Board) mede a espera por cor sobre a mesma definição.
     def classified(unit_id)
       walk_ins(unit_id, "waiting", "classified").joins(CLASSIFICATION_JOIN).order(BY_COLOR_ORDER)
     end
@@ -90,6 +92,6 @@ module Urgency
                                          consultation_id: encounter.consultation_id,
                                          consultation_status: encounter.consultation&.status)
     end
-    private_class_method :classified, :walk_ins, :last_calls, :item, :color_item, :in_care_item
+    private_class_method :walk_ins, :last_calls, :item, :color_item, :in_care_item
   end
 end

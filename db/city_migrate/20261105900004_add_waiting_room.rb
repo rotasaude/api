@@ -74,7 +74,11 @@ class AddWaitingRoom < ActiveRecord::Migration[8.1]
     end
     add_index :waiting_room_displays, :health_unit_id, name: "idx_waiting_room_displays_unit"
     add_index :waiting_room_displays, :token_digest, unique: true, where: "token_digest IS NOT NULL", name: "idx_waiting_room_displays_token"
-    add_index :waiting_room_displays, :pairing_code_digest, where: "pairing_code_digest IS NOT NULL",
+    # Único entre os códigos guardados: o usado é zerado no pareamento e o
+    # expirado com o mesmo digest é zerado pelo WaitingRoom::IssuePairingCode
+    # antes de gravar (now() não cabe no predicado), que repete o sorteio no
+    # RecordNotUnique. Assim o código de 6 dígitos nunca casa duas TVs.
+    add_index :waiting_room_displays, :pairing_code_digest, unique: true, where: "pairing_code_digest IS NOT NULL",
                                                             name: "idx_waiting_room_displays_pairing_code"
     add_check_constraint :waiting_room_displays, "(pairing_code_digest IS NULL) = (pairing_expires_at IS NULL)",
                          name: "ck_waiting_room_displays_pairing"

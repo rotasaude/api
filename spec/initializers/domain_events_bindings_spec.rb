@@ -570,4 +570,13 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include("attendance.recalled")
     expect(DomainEvents.registry["attendance.recalled"]).to be_empty
   end
+
+  # Módulo 32a (Task 12): pareamento e revogação da TV (display_id); só ids,
+  # sem consumidor.
+  it "declares waiting_room.display_paired and waiting_room.display_revoked with no consumer" do
+    %w[waiting_room.display_paired waiting_room.display_revoked].each do |name|
+      expect(DomainEvents.registry.keys).to include(name)
+      expect(DomainEvents.registry[name]).to be_empty
+    end
+  end
 end

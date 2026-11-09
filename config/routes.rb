@@ -127,6 +127,11 @@ Rails.application.routes.draw do
     post "attendances/:id/call",      to: "attendances#call"
     # Módulo 32a (contrato §6 e §14 Q7): "chamar de novo", na UPA e na UBS.
     post "attendances/:id/recall",    to: "attendances#recall"
+    # Módulo 32a (contrato §8 e §14 Q7): locais de chamada da unidade; a
+    # lista (com location_required) lê quem chama, a escrita é do admin.
+    get   "call_locations",           to: "call_locations#index"
+    post  "call_locations",           to: "call_locations#create"
+    patch "call_locations/:id",       to: "call_locations#update"
     post "check_ins/lookup",        to: "check_ins#lookup"
     post "check_ins",               to: "check_ins#create"
     post "check_ins/search",        to: "check_ins#search"
@@ -753,6 +758,19 @@ Rails.application.routes.draw do
     # engano) e os retornos pedidos à UBS (§7, Q10, Q11, Q20, Q25).
     post  "encounters/:id/outcome", to: "encounters#outcome", as: :encounter_outcome
     get   "counter_referrals",   to: "counter_referrals#index"
+  end
+
+  # Módulo 32a (ADR 0050; contrato §8 e §14 Q8): TV da sala de espera. As
+  # TVs (admin, sessão do dashboard com step-up); o pareamento e o painel sem
+  # sessão, com o token no cabeçalho X-Display-Token.
+  scope "/waiting_room", module: :waiting_room, as: :waiting_room do
+    get   "displays",                   to: "displays#index"
+    post  "displays",                   to: "displays#create"
+    patch "displays/:id",               to: "displays#update"
+    post  "displays/:id/pairing_code",  to: "displays#pairing_code", as: :display_pairing_code
+    post  "displays/:id/revoke",        to: "displays#revoke", as: :display_revoke
+    post  "pair",                       to: "pairings#create"
+    get   "board",                      to: "boards#show"
   end
 
   # Módulo 29 (ADR 0047; contrato §15): sala de vacina, sessão do dashboard.
