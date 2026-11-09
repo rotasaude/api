@@ -32,7 +32,7 @@ RSpec.describe Urgency::Config do
 
   it "filtra os parâmetros clínicos da urgência no log" do
     filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
-    %w[complaint criterion vital_signs description return_guidance].each do |k|
+    %w[complaint criterion vital_signs pain_scale destination vacancy_request return_guidance description unidentified suggested].each do |k|
       expect(filter.filter(k => "x")[k]).to eq("[FILTERED]")
     end
   end
