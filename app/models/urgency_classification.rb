@@ -5,6 +5,11 @@
 # fica fora dos sinais (`pain_scale`). Queixa, sinais (JSON), critério e
 # justificativa cifrados com a chave da cidade. Dado do paciente nunca sai em
 # inspect, to_s, pretty_print nem as_json — só o id.
+#
+# `criterion` é o critério da regra SUGERIDA e anda junto com `suggested_color`
+# e `suggested_rule_id`, mesmo quando a enfermagem escolhe outra cor (o
+# detalhe mostra `suggested: { color, criterion }`; o `criterion` do topo só
+# quando a cor final é a sugerida).
 class UrgencyClassification < ApplicationRecord
   serialize :vital_signs, coder: JSON
   encrypts :complaint, :vital_signs, :criterion, :justification

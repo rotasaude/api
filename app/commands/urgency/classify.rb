@@ -12,7 +12,9 @@
 # fora de PAIN → invalid_request, cor fora de COLORS). Depois, a sugestão do
 # protocolo ativo sobre os sinais, a dor e o perfil (idade e sexo; provisório
 # sem perfil): cor diferente da sugerida, ou sem sugestão, e justificativa fora
-# de JUSTIFICATION → justification_required.
+# de JUSTIFICATION → justification_required; justificativa dada fora de
+# JUSTIFICATION onde não é exigida → invalid_request `path: "justification"`
+# (a classificação é só acréscimo: o texto nunca é descartado em silêncio).
 #
 # Na transação (attendance.lock! → encounter.lock!): a classificação seguinte
 # (`position`), com a foto do tempo máximo da cor (`Levels.for` do protocolo
@@ -42,8 +44,12 @@ module Urgency
       protocol = ActiveProtocol.current
       suggested = Suggest.call(vitals: values[:vitals], pain_scale: values[:pain_scale], profile: profile(encounter.patient),
                                protocol: protocol)
-      if (suggested.nil? || suggested[:color] != values[:color]) && values[:justification].nil?
-        return refuse(:justification_required, "justification")
+      justification = values[:justification]
+      valid = justification.nil? || Catalog::JUSTIFICATION.cover?(justification.length)
+      if suggested.nil? || suggested[:color] != values[:color]
+        return refuse(:justification_required, "justification") unless justification && valid
+      elsif !valid
+        return Result.fail(:invalid_request, details: { path: "justification", problems: [ problem("justification") ] })
       end
 
       persist(encounter, values, suggested, protocol, access.payload.fetch(:link), by, now)
@@ -103,8 +109,6 @@ module Urgency
       problems << problem("justification") unless attrs["justification"].nil? || attrs["justification"].is_a?(String)
       return Result.fail(problems.first[:error], details: { path: problems.first[:path], problems: problems }) if problems.any?
 
-      # Justificativa curta é justificativa ausente: só vale de 10 a 500.
-      justification = nil unless justification && Catalog::JUSTIFICATION.cover?(justification.length)
       Result.ok(complaint: complaint, vitals: vitals.payload[:values], pain_scale: pain.payload[:pain_scale], color: color,
                 justification: justification)
     end

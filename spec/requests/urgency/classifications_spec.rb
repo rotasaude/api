@@ -88,12 +88,15 @@ RSpec.describe "Classificação de risco", type: :request do
     expect(UrgencyClassification.count).to eq(0)
   end
 
-  it "a queixa nunca vai para o log, o evento nem a recusa" do
+  it "a queixa, o critério e os sinais nunca vão para o log, o evento nem a recusa" do
     log = capture_log do
-      classify(complaint: "Queixa sigilosa de teste", vital_signs: { spo2: 87 }, pain_scale: 2, color: "red")
+      classify(complaint: "Queixa sigilosa de teste", vital_signs: { spo2: 87, temperature_c: "37,9" }, pain_scale: 2, color: "red")
       classify(complaint: "Queixa sigilosa de teste", vital_signs: {}, pain_scale: 2, color: "orange")
     end
     expect(log).not_to include("Queixa sigilosa")
+    expect(log).not_to include("SpO2 abaixo de 90%")
+    # Sinal como texto com vírgula: não colide com uuid nem com tempo do log.
+    expect(log).not_to include("37,9")
     expect(response.body).not_to include("Queixa sigilosa")
     expect(DomainEvent.where(name: %w[urgency.classified clinical_record.viewed]).map(&:payload).to_s).not_to include("Queixa sigilosa")
     expect(UrgencyClassification.connection.select_value("SELECT complaint FROM urgency_classifications LIMIT 1"))
@@ -111,6 +114,34 @@ RSpec.describe "Classificação de risco", type: :request do
     event = DomainEvent.where(name: "urgency.reclassified").last
     expect(event.payload.keys).to contain_exactly("encounter_id", "classification_id")
     expect(event.payload["classification_id"]).to eq(encounter.current_classification_id)
+  end
+
+  it "justificativa dada fora de 10..500 onde não é exigida é recusada com o path, nunca descartada" do
+    classify(complaint: "Falta de ar", vital_signs: { spo2: 87 }, pain_scale: 2, color: "red", justification: "curta")
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to include("error" => "invalid_request", "path" => "justification")
+    expect(json_body["problems"]).to eq([ { "path" => "justification", "error" => "invalid_request" } ])
+    classify(complaint: "Falta de ar", vital_signs: { spo2: 87 }, pain_scale: 2, color: "red", justification: "x" * 501)
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_body).to include("error" => "invalid_request", "path" => "justification")
+    classify(complaint: "Falta de ar", vital_signs: { spo2: 87 }, pain_scale: 2, color: "orange", justification: "x" * 501)
+    expect(json_body).to include("error" => "justification_required", "path" => "justification")
+    expect(UrgencyClassification.count).to eq(0)
+    classify(complaint: "Falta de ar", vital_signs: { spo2: 87 }, pain_scale: 2, color: "red", justification: "Confere com a sugestão")
+    expect(response).to have_http_status(:created)
+    expect(json_body.dig("encounter", "classifications", 0, "justification")).to eq("Confere com a sugestão")
+  end
+
+  it "atendimento fechado com o encontro ainda classificado → 409 encounter_closed" do
+    classified!(encounter, color: "green", by: nurse, pain_scale: 5, justification: nil)
+    closed = Attendances::Close.call(attendance: encounter.attendance, outcome: "left", referral_unit_id: nil, referral_note: nil,
+                                     by: upa_reception!)
+    expect(closed).to be_ok
+    expect(encounter.reload.state).to eq("classified")
+    classify(complaint: "Piora da dor", vital_signs: {}, pain_scale: 9, color: "orange")
+    expect(response).to have_http_status(:conflict)
+    expect(json_body["error"]).to eq("encounter_closed")
+    expect(encounter.reload.classifications.count).to eq(1)
   end
 
   it "encontro fechado → 409 encounter_closed; encontro inexistente → 404" do
@@ -186,7 +217,7 @@ RSpec.describe "Classificação de risco", type: :request do
       expect(json_body["suggested"]).to be_nil
     end
 
-    it "recusas: técnico 3222, encontro inexistente, sinais implausíveis e pain_score dentro dos sinais" do
+    it "recusas: técnico 3222, encontro ausente ou inexistente, sinais implausíveis e pain_score dentro dos sinais" do
       json_post "/urgency/suggest", encounter_id: encounter.id, vital_signs: { pain_score: 4 }, pain_scale: 4
       expect(json_body).to include("error" => "invalid_request", "path" => "vital_signs.pain_score")
       json_post "/urgency/suggest", encounter_id: encounter.id, vital_signs: { heart_rate: 900 }, pain_scale: 4
@@ -196,7 +227,8 @@ RSpec.describe "Classificação de risco", type: :request do
       json_post "/urgency/suggest", encounter_id: SecureRandom.uuid, vital_signs: {}, pain_scale: 0
       expect(response).to have_http_status(:not_found)
       json_post "/urgency/suggest", vital_signs: {}, pain_scale: 0
-      expect(response).to have_http_status(:not_found)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body).to include("error" => "invalid_request", "path" => "encounter_id")
       sign_in_as(upa_nurse!(upa, cbo: "322205"))
       json_post "/urgency/suggest", encounter_id: encounter.id, vital_signs: {}, pain_scale: 0
       expect(json_body["error"]).to eq("cbo_not_allowed")

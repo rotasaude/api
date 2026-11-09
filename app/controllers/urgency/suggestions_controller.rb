@@ -5,7 +5,8 @@
 # `suggested: null` (sem cor antes da dor avaliada). → 200 `{ suggested:
 # { color, criterion, rule_id } | null, levels: [ { color, max_wait_minutes } ] }`,
 # os níveis do protocolo ativo (ou o padrão) na ordem das cores. Só quem
-# classifica (2235 com vínculo na UPA do encontro).
+# classifica (2235 com vínculo na UPA do encontro). Sem `encounter_id` → 422
+# invalid_request `path: "encounter_id"`; id desconhecido → 404.
 module Urgency
   class SuggestionsController < BaseController
     ALLOWED = %w[encounter_id complaint vital_signs pain_scale].freeze
@@ -15,6 +16,8 @@ module Urgency
 
       unknown = (body.keys - ALLOWED).first
       return render_refusal(unknown.to_s[0, KEY_PATH_MAX]) if unknown
+
+      return render_refusal("encounter_id") if body_param("encounter_id").blank?
 
       encounter = find_encounter(body_param("encounter_id"))
       return unless encounter
