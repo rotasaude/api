@@ -58,7 +58,7 @@ module Urgency
         attendance = Attendance.create!(origin_kind: "walk_in", check_in_method: "urgency_reception", patient: patient,
                                         health_unit: unit, checked_in_by_user: by, checked_in_at: now,
                                         **Attendances::CheckIn.ticket_for(unit, at: now, waiting_room: waiting_room))
-        encounter = UrgencyEncounter.create!(attendance: attendance)
+        encounter = UrgencyEncounter.create!(attendance: attendance, provisional_patient: (patient if patient.unidentified))
         Attendances::CheckIn.publish(attendance)
         DomainEvents.publish("urgency.arrived", encounter_id: encounter.id)
         result = Result.ok(encounter: encounter, attendance: attendance, patient: patient)

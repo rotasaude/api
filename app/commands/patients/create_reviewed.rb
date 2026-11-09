@@ -28,6 +28,9 @@ module Patients
     # confere aqui e grava os dados no próprio provisório.
     # -> Result.ok | Result.fail(:duplicate_suspected)
     def review(new_patient, reviewed)
+      # Fora de transação a trava consultiva cairia já no fim deste SELECT.
+      raise ArgumentError, "Patients::CreateReviewed.review exige uma transação aberta" unless ApplicationRecord.connection.transaction_open?
+
       typed = new_patient.to_h.stringify_keys
       key = typed.values_at("full_name", "birth_date").all?(String) && MatchKey.for(typed["full_name"], typed["birth_date"])
       ApplicationRecord.connection.execute("SELECT pg_advisory_xact_lock(#{lock_key(key)})") if key

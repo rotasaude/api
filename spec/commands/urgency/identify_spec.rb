@@ -134,14 +134,42 @@ RSpec.describe Urgency::Identify do
                                 "moved" => result.payload[:moved].values.sum, "kept_duplicates" => 2)
   end
 
-  it "o real com walk_in aberto na mesma UPA: o atendimento do provisório bate na chave única e fica com ele (Q21)" do
+  # Fecha o encontro direto no banco (o desfecho pelo comando é da Task 11):
+  # evasão antes da classificação.
+  def closed_directly!(enc)
+    enc.attendance.update_columns(status: "closed", outcome: "left", closed_at: Time.current, closed_by_user_id: upa_reception!.id)
+    enc.update!(state: "closed")
+    enc.reload
+  end
+
+  it "o real com walk_in aberto na mesma UPA e o encontro aberto: 409 encounter_open, sem dividir o encontro e sem mover nada" do
+    ciap2_release!
+    consultation = consultation_for!(called!(classified!(encounter, color: "yellow", by: nurse), by: doctor).attendance, provisional)
+    problem!(provisional, consultation, "K86")
+    arrived!(upa, patient: real)
+    before = rows_of(provisional)
+
+    expect(identify(patient_id: real.id).reason).to eq(:encounter_open)
+    expect(rows_of(provisional)).to eq(before)
+    expect(provisional.reload.merged_into_id).to be_nil
+    expect(DomainEvent.where(name: "urgency.patient_identified")).to be_empty
+  end
+
+  it "Review Focus 5: o encontro fechado se identifica; fechado, o walk_in aberto do real na mesma UPA não impede a fusão" do
+    closed_directly!(encounter)
     arrived!(upa, patient: real)
     result = identify(patient_id: real.id)
     expect(result).to be_ok
-    expect(result.payload[:kept_duplicates]).to eq("attendances" => 1)
-    expect(encounter.attendance.reload.patient_id).to eq(provisional.id)
+    expect(result.payload[:kept_duplicates]).to eq({})
+    expect(encounter.attendance.reload.patient_id).to eq(real.id)
+    expect(encounter.reload).to have_attributes(state: "closed", provisional_patient_id: provisional.id)
     expect(provisional.reload.merged_into_id).to eq(real.id)
-    expect(identify(patient_id: urgency_patient!(7).id).reason).to eq(:already_identified)
+    expect(rows_of(provisional).values.sum).to eq(0)
+  end
+
+  it "o patient_id em maiúsculas é o mesmo paciente (o uuid não diferencia caixa)" do
+    expect(identify(patient_id: real.id.upcase)).to be_ok
+    expect(provisional.reload.merged_into_id).to eq(real.id)
   end
 
   it "uma vez só: a segunda identificação, para o mesmo ou outro paciente ou paciente novo, é 409 e não move nada" do

@@ -44,6 +44,12 @@ class AddUrgencyCare < ActiveRecord::Migration[8.1]
     create_table :urgency_encounters, id: :uuid do |t|
       t.references :attendance, type: :uuid, null: false, foreign_key: true, index: false
       t.references :consultation, type: :uuid, foreign_key: true, index: false
+      # O paciente provisório com que o encontro nasceu (R4): gravado pela
+      # chegada do não identificado e nunca muda (trigger) — a fusão leva o
+      # atendimento ao real, e é por aqui que a identificação sabe que o
+      # encontro já foi de um provisório. Não se chama patient_id: a fusão não
+      # o move.
+      t.references :provisional_patient, type: :uuid, foreign_key: { to_table: :patients }, index: false
       t.string :state, null: false, default: "waiting_classification"
       t.uuid :current_classification_id
       t.datetime :first_classified_at

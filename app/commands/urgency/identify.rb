@@ -8,22 +8,26 @@
 # - `new_patient` (a forma do 24a, com a conferência de duplicado do Q23) → o
 #   provisório recebe os dados e `unidentified = false`, sem fusão. CPF ou CNS
 #   que já existem → cpf_taken/cns_taken, nunca fusão silenciosa pelo que foi
-#   digitado. A descrição do não identificado fica (é ela que marca que o
-#   paciente foi provisório).
+#   digitado. A descrição do não identificado fica.
+#
+# O encontro sabe com que provisório nasceu (`provisional_patient_id`, gravado
+# pela chegada e imutável): sem ele, o paciente nunca foi provisório →
+# not_unidentified; com ele já fundido ou já identificado → already_identified.
 #
 # Recusas: forma → invalid_request (`patient`, `patient_id`, `new_patient.*`,
-# `duplicates_reviewed`); encontro de paciente que nunca foi provisório →
-# not_unidentified; provisório já identificado (fundido, ou identificado por
-# dados novos) ou encontro cuja fusão já levou o atendimento ao real →
-# already_identified; patient_id inexistente → patient_not_found; alvo
-# provisório ou fundido → invalid_request `patient_id`; linha do provisório
-# numa tabela bloqueante → merge_blocked. Qualquer recusa desfaz tudo.
+# `duplicates_reviewed`); patient_id inexistente → patient_not_found; alvo
+# provisório ou fundido → invalid_request `patient_id`; encontro ainda aberto
+# e o alvo com walk_in aberto na mesma unidade → encounter_open (a fusão
+# dividiria o encontro entre os dois); linha do provisório numa tabela
+# bloqueante → merge_blocked. Qualquer recusa desfaz tudo.
 #
-# Travas na ordem da chegada (Urgency::Arrive): a unidade (FOR SHARE) e
-# depois os pacientes, por id crescente (FOR UPDATE). A trava do provisório
-# serializa duas identificações simultâneas: a segunda relê o provisório já
-# fundido e recebe already_identified (Review Focus 1). O encontro fechado
-# também se identifica (o óbito do não identificado, Review Focus 5).
+# Travas: a unidade (FOR SHARE, como a chegada), o atendimento (FOR UPDATE,
+# antes dos pacientes — a ordem do Consultations::Finalize: atendimento →
+# consulta → paciente) e os pacientes por id crescente (FOR UPDATE). A trava
+# do atendimento e a do provisório serializam duas identificações
+# simultâneas: a segunda relê o provisório já fundido e recebe
+# already_identified (Review Focus 1). O encontro fechado também se
+# identifica (o óbito do não identificado, Review Focus 5).
 #
 # Evento `urgency.patient_identified` só com ids e contagens: encounter_id,
 # patient_id e, na fusão, merged_from_id, moved e kept_duplicates.
@@ -41,7 +45,7 @@ module Urgency
 
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
-        result = identify(encounter, form.payload, by)
+        result = identify(UrgencyEncounter.find(encounter.id), form.payload, by)
         raise ActiveRecord::Rollback if result.failure?
       end
       result
@@ -53,43 +57,30 @@ module Urgency
       return NewPatient.parse(new_patient, duplicates_reviewed) if new_patient
       return refuse(:invalid_request, "patient_id") unless patient_id.is_a?(String) && patient_id.match?(UUID)
 
-      Result.ok(patient_id: patient_id)
+      # O uuid do Postgres sai em minúsculas: a chave do index_by também.
+      Result.ok(patient_id: patient_id.downcase)
     end
 
     def identify(encounter, form, by)
-      attendance = Attendance.find(encounter.attendance_id)
-      HealthUnit.lock("FOR SHARE").find(attendance.health_unit_id)
-      locked = Patient.where(id: [ attendance.patient_id, form[:patient_id] ].compact).order(:id).lock.index_by(&:id)
-      # Relido depois da trava: quem esperou vê o atendimento e o provisório como a outra identificação deixou.
-      patient = locked[attendance.reload.patient_id] || Patient.lock.find(attendance.patient_id)
-      state = provisional_state(encounter, patient)
-      return state if state.failure?
+      return Result.fail(:not_unidentified) unless encounter.provisional_patient_id
+
+      HealthUnit.lock("FOR SHARE").find(encounter.attendance.health_unit_id)
+      attendance = Attendance.lock.find(encounter.attendance_id)
+      locked = Patient.where(id: [ encounter.provisional_patient_id, form[:patient_id] ].compact).order(:id).lock.index_by(&:id)
+      provisional = locked.fetch(encounter.provisional_patient_id)
+      return Result.fail(:already_identified) if provisional.merged? || !provisional.unidentified
 
       if form[:patient_id]
-        merge(encounter, patient, locked[form[:patient_id]])
+        merge(encounter, attendance, provisional, locked[form[:patient_id]])
       else
-        assign(encounter, patient, form, by)
+        assign(encounter, provisional, form, by)
       end
     end
 
-    # O paciente do atendimento ainda é o provisório por identificar?
-    def provisional_state(encounter, patient)
-      return Result.ok if patient.unidentified && !patient.merged?
-      return Result.fail(:already_identified) if patient.merged? || patient.unidentified_description.present?
-      # A fusão leva o atendimento ao real: o encontro que ela já identificou
-      # aparece com um paciente que nunca foi provisório.
-      return Result.fail(:already_identified) if identified_before?(encounter)
-
-      Result.fail(:not_unidentified)
-    end
-
-    def identified_before?(encounter)
-      DomainEvent.where(name: EVENT).where("payload->>'encounter_id' = ?", encounter.id).exists?
-    end
-
-    def merge(encounter, provisional, target)
+    def merge(encounter, attendance, provisional, target)
       return refuse(:patient_not_found, "patient_id") unless target
       return refuse(:invalid_request, "patient_id") if target.id == provisional.id || target.unidentified || target.merged?
+      return Result.fail(:encounter_open) if splits_open_encounter?(attendance, target)
 
       merged = Merge.call(provisional: provisional, into: target)
       return merged if merged.failure?
@@ -98,6 +89,15 @@ module Urgency
       DomainEvents.publish(EVENT, encounter_id: encounter.id, patient_id: target.id, merged_from_id: provisional.id,
                                   moved: moved.values.sum, kept_duplicates: kept.values.sum)
       Result.ok(patient: target, merged_from_id: provisional.id, moved: moved, kept_duplicates: kept)
+    end
+
+    # O atendimento do encontro ainda aberto bateria no walk_in aberto do alvo
+    # na mesma unidade (idx_attendances_open_walk_in): ficaria com o
+    # provisório e o resto iria ao real. Recusa em vez de dividir; fechado um
+    # dos dois, a fusão passa. A trava do alvo segura a chegada dele (Arrive).
+    def splits_open_encounter?(attendance, target)
+      attendance.status != "closed" &&
+        Attendance.open_attendances.where(origin_kind: "walk_in", patient_id: target.id, health_unit_id: attendance.health_unit_id).exists?
     end
 
     def assign(encounter, provisional, form, by)
@@ -109,6 +109,6 @@ module Urgency
     end
 
     def refuse(reason, path) = Result.fail(reason, details: { path: path })
-    private_class_method :parse_form, :identify, :provisional_state, :identified_before?, :merge, :assign, :refuse
+    private_class_method :parse_form, :identify, :merge, :splits_open_encounter?, :assign, :refuse
   end
 end

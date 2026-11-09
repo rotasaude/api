@@ -7,6 +7,9 @@
 class UrgencyEncounter < ApplicationRecord
   belongs_to :attendance
   belongs_to :consultation, optional: true
+  # R4: o provisório com que o encontro nasceu (só na chegada do não
+  # identificado); nunca muda, nem na fusão (trigger).
+  belongs_to :provisional_patient, class_name: "Patient", optional: true
   belongs_to :current_classification, class_name: "UrgencyClassification", optional: true
   has_many :classifications, -> { order(:position) }, class_name: "UrgencyClassification", inverse_of: :urgency_encounter,
                                                        dependent: :restrict_with_error

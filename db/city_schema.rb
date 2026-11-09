@@ -4208,6 +4208,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900004) do
     t.datetime "created_at", null: false
     t.uuid "current_classification_id"
     t.datetime "first_classified_at"
+    t.uuid "provisional_patient_id"
     t.string "state", default: "waiting_classification", null: false
     t.datetime "updated_at", null: false
     t.index ["attendance_id"], name: "idx_urgency_encounters_attendance", unique: true
@@ -4965,6 +4966,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900004) do
   add_foreign_key "urgency_classifications", "users", column: "classified_by_user_id"
   add_foreign_key "urgency_encounters", "attendances"
   add_foreign_key "urgency_encounters", "consultations"
+  add_foreign_key "urgency_encounters", "patients", column: "provisional_patient_id"
   add_foreign_key "urgency_encounters", "urgency_classifications", column: "current_classification_id"
   add_foreign_key "urgency_outcomes", "health_teams", column: "counter_referral_health_team_id"
   add_foreign_key "urgency_outcomes", "health_units", column: "counter_referral_health_unit_id"

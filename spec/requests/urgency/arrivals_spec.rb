@@ -16,7 +16,7 @@ RSpec.describe "Chegada na UPA", type: :request do
       .to change(UrgencyEncounter, :count).by(1).and change { DomainEvent.where(name: "urgency.arrived").count }.by(1)
     expect(response).to have_http_status(:created)
     expect(json_body).to include("ticket" => "U-001")
-    expect(UrgencyEncounter.last.state).to eq("waiting_classification")
+    expect(UrgencyEncounter.last).to have_attributes(state: "waiting_classification", provisional_patient_id: nil)
     json_post "/urgency/arrivals", health_unit_id: upa.id, patient_id: patient.id
     expect(response).to have_http_status(:conflict)
     expect(json_body["error"]).to eq("encounter_open")
@@ -29,6 +29,8 @@ RSpec.describe "Chegada na UPA", type: :request do
     expect(json_body["patient"]).to include("unidentified" => true, "name" => "Paciente não identificado")
     expect(json_body["patient"]).not_to have_key("description")
     expect(Patient.find(json_body.dig("patient", "patient_id")).no_cpf_reason).to eq("unidentified")
+    # Task 9 (R4): o encontro guarda o provisório com que nasceu.
+    expect(UrgencyEncounter.find(json_body["encounter_id"]).provisional_patient_id).to eq(json_body.dig("patient", "patient_id"))
     expect(log).not_to include("SAMU")
     expect(DomainEvent.where(name: %w[urgency.arrived attendance.checked_in]).map(&:payload).to_s).not_to include("SAMU")
   end

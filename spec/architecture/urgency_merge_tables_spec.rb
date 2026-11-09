@@ -41,6 +41,9 @@ RSpec.describe "Tabelas da fusão do paciente provisório" do
     expect(tables + kept).to all(satisfy { |table| patient_tables.include?(table) })
     expect(tables).not_to include("citizens", "patients")
     expect(blocking).to include("citizens", "immunizations", "vaccination_record_checks", "individual_registrations")
+    # O elo do encontro com o provisório com que nasceu (provisional_patient_id)
+    # não é patient_id: fica fora das três listas e a fusão nunca o move.
+    expect(patient_tables + tables + kept + blocking).not_to include("urgency_encounters")
   end
 
   it "contrato §14 Q5 e Q21: a lista de problemas, a de medicamentos e a receita externa mudam de dono; as trilhas ficam" do

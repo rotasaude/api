@@ -67,6 +67,21 @@ RSpec.describe "Esquema da urgência e da sala de espera", type: :model do
       expect { attempt { encounter.delete } }.to raise_error(ActiveRecord::StatementInvalid, /DELETE refused/)
     end
 
+    # Task 9 (R4): o provisório com que o encontro nasceu, gravado na chegada,
+    # é o paciente provisório do próprio atendimento e nunca muda (nem na fusão).
+    it "provisional_patient_id: só o provisório do atendimento, na criação, e nunca muda" do
+      other = walk_in!(upa)
+      identified = Patient.create!(cpf: "52998224725", full_name: "Carlos Eduardo Pinto", birth_date: "1980-02-01", sex: "male")
+      expect { attempt { UrgencyEncounter.create!(attendance: other, provisional_patient: attendance.patient) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /the attendance's unidentified patient/)
+      with_provisional = UrgencyEncounter.create!(attendance: other, provisional_patient: other.patient)
+      expect(with_provisional.reload.provisional_patient).to eq(other.patient)
+      expect { attempt { with_provisional.update_column(:provisional_patient_id, identified.id) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /the provisional patient never changes/)
+      expect { attempt { encounter.update_column(:provisional_patient_id, attendance.patient_id) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /the provisional patient never changes/)
+    end
+
     it "da espera, só para classificado ou fechado (evasão antes da classificação)" do
       expect { attempt { encounter.update_column(:state, "in_care") } }.to raise_error(ActiveRecord::StatementInvalid, /state only moves forward/)
       encounter.reload.update!(state: "closed")

@@ -40,6 +40,27 @@ RSpec.describe Urgency::Identify, "concorrência" do
         ids[:attendance] = encounter.attendance_id
         ids[:provisional] = encounter.attendance.patient_id
         ids[:patients] << ids[:provisional]
+        # Além do atendimento, uma consulta e um problema do provisório: a
+        # fusão não pode dividir nenhuma das tabelas entre os dois reais.
+        doctor = User.create!(email_address: "doc-#{tag}@c.gov.br", password: "senha-segura-123")
+        ids[:doctor] = doctor.id
+        Membership.create!(user: doctor, role: "health_professional", granted_at: Time.current)
+        professional = Professional.create!(user: doctor, professional_name: "Médica da UPA", council: "CRM", council_state: "PR",
+                                            registration_number: tag.to_i(16).to_s[0, 7], cns: Professionals::Cns.generate("disputa-doc:#{tag}"))
+        link = ProfessionalLink.create!(professional: professional, health_unit_id: ids[:unit], cbo_code: "225125",
+                                        started_at: Time.current, started_by_user: reception)
+        ids[:consultation] = Consultation.create!(attendance_id: ids[:attendance], patient_id: ids[:provisional], author_user: doctor,
+                                                  professional_link: link, cbo_code: link.cbo_code, status: "draft",
+                                                  started_at: Time.current).id
+        ids[:problem] = SecureRandom.uuid
+        ApplicationRecord.transaction do
+          PatientProblemEvent.create!(patient_problem_id: ids[:problem], kind: "added", consultation_id: ids[:consultation], user: doctor,
+                                      status_after: "active")
+          PatientProblem.create!(id: ids[:problem], patient_id: ids[:provisional], terminology: "ciap2", code: "T90", status: "active",
+                                 # A versão da terminologia mora na plataforma (sem FK na cidade):
+                                 # criá-la aqui commitaria uma versão ativa imutável para os outros specs.
+                                 terminology_release_id: SecureRandom.uuid)
+        end
       end
     end
   end
@@ -57,12 +78,15 @@ RSpec.describe Urgency::Identify, "concorrência" do
         patient_ids = ids.fetch(:patients, [])
         DomainEvent.where("payload->>'patient_id' IN (?) OR payload->>'encounter_id' = ? OR payload->>'attendance_id' = ?",
                           patient_ids.presence || [ "" ], ids[:encounter].to_s, ids[:attendance].to_s).delete_all
+        PatientProblemEvent.where(patient_problem_id: ids[:problem]).delete_all
+        PatientProblem.where(id: ids[:problem]).delete_all
         UrgencyEncounter.where(id: ids[:encounter]).delete_all
+        Consultation.where(id: ids[:consultation]).delete_all
         Attendance.where(id: ids[:attendance]).delete_all
         Patient.where(id: patient_ids).delete_all
       end
     end
-    purge_committed_rows(ids.slice(:admin, :unit))
+    purge_committed_rows(ids.slice(:admin, :unit, :doctor))
   end
 
   def identify(target_id)
@@ -105,6 +129,9 @@ RSpec.describe Urgency::Identify, "concorrência" do
     in_city do
       expect(Patient.find(ids[:provisional]).merged_into_id).to eq(first)
       expect(Attendance.find(ids[:attendance]).patient_id).to eq(first)
+      expect(Consultation.find(ids[:consultation]).patient_id).to eq(first)
+      expect(PatientProblem.find(ids[:problem]).patient_id).to eq(first)
+      expect(UrgencyEncounter.find(ids[:encounter]).provisional_patient_id).to eq(ids[:provisional])
       Urgency::Merge::TABLES.each do |table|
         count = ApplicationRecord.connection.select_value(
           "SELECT count(*) FROM #{table} WHERE patient_id IN (#{[ ids[:provisional], second ].map { ApplicationRecord.connection.quote(_1) }.join(', ')})"

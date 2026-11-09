@@ -3400,6 +3400,10 @@ BEGIN
        OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
       RAISE EXCEPTION 'urgency_encounters: attendance and creation never change';
     END IF;
+    -- R4: o provisório com que o encontro nasceu nunca muda (nem na fusão).
+    IF NEW.provisional_patient_id IS DISTINCT FROM OLD.provisional_patient_id THEN
+      RAISE EXCEPTION 'urgency_encounters: the provisional patient never changes';
+    END IF;
     IF NEW.state IS DISTINCT FROM OLD.state
        AND NOT ((OLD.state = 'waiting_classification' AND NEW.state IN ('classified', 'closed'))
                 OR (OLD.state = 'classified' AND NEW.state IN ('in_care', 'closed'))
@@ -3412,6 +3416,13 @@ BEGIN
     IF OLD.first_classified_at IS NOT NULL AND NEW.first_classified_at IS DISTINCT FROM OLD.first_classified_at THEN
       RAISE EXCEPTION 'urgency_encounters: first classification is recorded once';
     END IF;
+  END IF;
+  -- Nasce com o provisório do próprio atendimento, ou sem nenhum.
+  IF TG_OP = 'INSERT' AND NEW.provisional_patient_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM attendances a JOIN patients p ON p.id = a.patient_id
+                     WHERE a.id = NEW.attendance_id AND p.id = NEW.provisional_patient_id AND p.unidentified
+                       AND p.merged_into_id IS NULL) THEN
+    RAISE EXCEPTION 'urgency_encounters: the provisional patient is the attendance''s unidentified patient';
   END IF;
   IF NEW.current_classification_id IS NOT NULL
      AND (TG_OP = 'INSERT' OR NEW.current_classification_id IS DISTINCT FROM OLD.current_classification_id)
