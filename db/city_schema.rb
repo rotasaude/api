@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_04_900004) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_05_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -218,17 +218,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900004) do
     t.datetime "checked_in_at", null: false
     t.uuid "checked_in_by_user_id", null: false
     t.string "check_in_method", null: false
-    t.uuid "citizen_id", null: false
+    t.uuid "citizen_id"
     t.datetime "closed_at"
     t.uuid "closed_by_user_id"
     t.datetime "created_at", null: false
     t.text "exception_reason"
     t.uuid "health_unit_id", null: false
+    t.string "origin_kind"
     t.string "outcome"
+    t.uuid "patient_id"
     t.text "referral_note"
     t.boolean "referral_regulated", default: false, null: false
     t.uuid "referral_unit_id"
     t.string "status", default: "waiting", null: false
+    t.string "ticket", limit: 8
+    t.date "ticket_on"
     t.uuid "triage_id"
     t.index ["appointment_id"], name: "index_attendances_on_appointment_id", unique: true
     t.index ["called_by_user_id"], name: "index_attendances_on_called_by_user_id"
@@ -237,13 +241,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900004) do
     t.index ["citizen_id", "checked_in_at"], name: "idx_attendances_citizen_checked_in"
     t.index ["closed_by_user_id"], name: "index_attendances_on_closed_by_user_id"
     t.index ["health_unit_id"], name: "index_attendances_on_health_unit_id"
+    t.index ["health_unit_id", "ticket_on", "ticket"], name: "idx_attendances_ticket", unique: true, where: "(ticket IS NOT NULL)"
+    t.index ["patient_id"], name: "index_attendances_on_patient_id"
+    t.index ["patient_id", "health_unit_id"], name: "idx_attendances_open_walk_in", unique: true, where: "(((origin_kind)::text = 'walk_in'::text) AND ((status)::text <> 'closed'::text))"
     t.index ["referral_unit_id"], name: "index_attendances_on_referral_unit_id"
     t.index ["triage_id"], name: "index_attendances_on_triage_id", unique: true
-    t.check_constraint "check_in_method::text = ANY (ARRAY['code', 'cpf_exception']::text[])", name: "ck_attendances_method"
-    t.check_constraint "(check_in_method::text = 'code'::text AND exception_reason IS NULL) OR (check_in_method::text = 'cpf_exception'::text AND exception_reason IS NOT NULL AND length(btrim(exception_reason)) >= 10)", name: "ck_attendances_exception_reason"
+    t.check_constraint "check_in_method::text = ANY (ARRAY['code'::text, 'cpf_exception'::text, 'urgency_reception'::text])", name: "ck_attendances_method"
+    t.check_constraint "(check_in_method::text = 'code'::text AND exception_reason IS NULL) OR (check_in_method::text = 'cpf_exception'::text AND exception_reason IS NOT NULL AND length(btrim(exception_reason)) >= 10) OR (check_in_method::text = 'urgency_reception'::text AND exception_reason IS NULL)", name: "ck_attendances_exception_reason"
     t.check_constraint "(called_by_user_id IS NULL) = (called_at IS NULL)", name: "ck_attendances_calling"
     t.check_constraint "(status::text = 'waiting'::text AND called_at IS NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'in_care'::text AND called_at IS NOT NULL AND outcome IS NULL AND closed_by_user_id IS NULL AND closed_at IS NULL AND referral_unit_id IS NULL AND referral_note IS NULL) OR (status::text = 'closed'::text AND outcome IS NOT NULL AND closed_by_user_id IS NOT NULL AND closed_at IS NOT NULL AND (called_at IS NULL OR outcome::text <> ALL (ARRAY['scheduled_from_screening'::text, 'oriented'::text])))", name: "ck_attendances_closing"
-    t.check_constraint "(triage_id IS NULL) <> (appointment_id IS NULL)", name: "ck_attendances_origin"
+    t.check_constraint "origin_kind IS NOT NULL AND ((origin_kind::text = 'triage'::text AND triage_id IS NOT NULL AND appointment_id IS NULL) OR (origin_kind::text = 'appointment'::text AND appointment_id IS NOT NULL AND triage_id IS NULL) OR (origin_kind::text = 'walk_in'::text AND triage_id IS NULL AND appointment_id IS NULL AND patient_id IS NOT NULL AND citizen_id IS NULL))", name: "ck_attendances_origin"
+    t.check_constraint "origin_kind::text = 'walk_in'::text OR citizen_id IS NOT NULL", name: "ck_attendances_citizen"
+    t.check_constraint "(origin_kind::text = 'walk_in'::text) = (check_in_method::text = 'urgency_reception'::text)", name: "ck_attendances_walk_in_method"
+    t.check_constraint "(ticket IS NULL) = (ticket_on IS NULL) AND (ticket IS NULL OR ticket::text ~ '^[A-Z]{1,3}-[0-9]{3,4}$'::text)", name: "ck_attendances_ticket"
     t.check_constraint "outcome IS NULL OR outcome::text = ANY (ARRAY['discharged'::text, 'referred'::text, 'return'::text, 'left'::text, 'scheduled_from_screening'::text, 'oriented'::text])", name: "ck_attendances_outcome"
     t.check_constraint "((outcome IS NULL OR outcome::text = ANY (ARRAY['discharged'::text, 'left'::text, 'scheduled_from_screening'::text, 'oriented'::text])) AND referral_unit_id IS NULL AND referral_note IS NULL AND NOT referral_regulated) OR (outcome = 'referred' AND (referral_unit_id IS NOT NULL OR (referral_note IS NOT NULL AND length(btrim(referral_note)) > 0) OR referral_regulated) AND NOT (referral_regulated AND referral_unit_id IS NOT NULL)) OR (outcome = 'return' AND referral_unit_id IS NULL AND NOT referral_regulated)", name: "ck_attendances_referral"
     t.check_constraint "status::text = ANY (ARRAY['waiting', 'in_care', 'closed']::text[])", name: "ck_attendances_status"
@@ -1515,6 +1525,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900004) do
     t.string "phone", limit: 11
     t.string "screening_scope", default: "walk_in", null: false
     t.string "service_classification", limit: 3
+    t.boolean "show_wait_times", default: false, null: false
+    t.string "ticket_prefix", limit: 3, default: "A", null: false
     t.datetime "updated_at", null: false
     t.index ["cnes"], name: "idx_health_units_cnes", unique: true, where: "(cnes IS NOT NULL)"
     t.index "lower((name)::text)", name: "idx_health_units_name_ci", unique: true
@@ -1525,6 +1537,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900004) do
     t.check_constraint "kind::text = ANY (ARRAY['ubs'::text, 'upa'::text, 'hospital'::text, 'other'::text, 'ceo'::text, 'health_management'::text, 'caps'::text])", name: "ck_health_units_kind"
     t.check_constraint "phone IS NULL OR phone::text ~ '^[0-9]{10,11}$'::text", name: "ck_health_units_phone"
     t.check_constraint "screening_scope::text = ANY (ARRAY['walk_in'::text, 'all'::text])", name: "ck_health_units_screening_scope"
+    t.check_constraint "ticket_prefix::text ~ '^[A-Z]{1,3}$'::text", name: "ck_health_units_ticket_prefix"
   end
 
   create_table "household_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4265,6 +4278,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_04_900004) do
   add_foreign_key "attendances", "citizens"
   add_foreign_key "attendances", "health_units"
   add_foreign_key "attendances", "health_units", column: "referral_unit_id"
+  add_foreign_key "attendances", "patients"
   add_foreign_key "attendances", "triages"
   add_foreign_key "attendances", "users", column: "called_by_user_id"
   add_foreign_key "attendances", "users", column: "checked_in_by_user_id"

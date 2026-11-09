@@ -1,10 +1,12 @@
 # Check-in sem código (spec §2.1): motivo obrigatório; não valida o cadastro.
 # Também cobre o check-in de exceção de um horário (spec 2026-09-25 §2.10).
+# Módulo 32a: `urgency` e `waiting_room` como em Attendances::CheckIn.
 module Attendances
   class CheckInByException
     MIN_REASON = 10
 
-    def self.call(cpf:, health_unit_id:, reason:, by:, triage_id: nil, appointment_id: nil)
+    def self.call(cpf:, health_unit_id:, reason:, by:, triage_id: nil, appointment_id: nil, urgency: false,
+                  waiting_room: false)
       digits = CitizenIdentity::Cpf.normalize(cpf)
       return Result.fail(:invalid_cpf) unless digits
       return Result.fail(:reason_too_short) if reason.to_s.strip.length < MIN_REASON
@@ -13,6 +15,7 @@ module Attendances
       return Result.fail(:invalid_unit) unless unit
       # Módulo 31 (P32): o CAPS não recebe check-in (o nome iria ao wpda).
       return Result.fail(:caps_unit_not_allowed) if unit.caps?
+      return Result.fail(:urgency_reception_required) if urgency && unit.upa?
 
       citizens = Citizen.where(cpf: digits)
       appointment = triage = nil
@@ -26,10 +29,12 @@ module Attendances
 
         attendance = nil
         ApplicationRecord.transaction do
-          HealthUnit.lock_active!(unit.id)
+          locked = HealthUnit.lock_active!(unit.id)
+          now = Time.current
           attendance = Attendance.create!(triage: nil, appointment: appointment, citizen: appointment.citizen,
-                                          health_unit: unit, checked_in_by_user: by, checked_in_at: Time.current,
-                                          check_in_method: "cpf_exception", exception_reason: reason.to_s.strip)
+                                          health_unit: locked, checked_in_by_user: by, checked_in_at: now,
+                                          check_in_method: "cpf_exception", exception_reason: reason.to_s.strip,
+                                          **CheckIn.ticket_for(locked, at: now, waiting_room: waiting_room))
           CheckIn.fulfil(appointment, health_unit_id: unit.id)
           CheckIn.publish(attendance)
         end
@@ -41,16 +46,18 @@ module Attendances
 
       result = nil
       ApplicationRecord.transaction do
-        HealthUnit.lock_active!(unit.id)
+        locked = HealthUnit.lock_active!(unit.id)
         # Trava a triagem e reconfere (ADR 0026): a anonimização trava a mesma
         # linha, então um dos dois vence, nunca os dois.
         triage.lock!
         state = CheckInEligibility.check(triage)
         next result = LookupForCheckIn.failure_for(state, triage) unless state == :ok
 
-        attendance = Attendance.create!(triage: triage, citizen: triage.conversation.citizen, health_unit: unit,
-                                        checked_in_by_user: by, checked_in_at: Time.current,
-                                        check_in_method: "cpf_exception", exception_reason: reason.to_s.strip)
+        now = Time.current
+        attendance = Attendance.create!(triage: triage, citizen: triage.conversation.citizen, health_unit: locked,
+                                        checked_in_by_user: by, checked_in_at: now,
+                                        check_in_method: "cpf_exception", exception_reason: reason.to_s.strip,
+                                        **CheckIn.ticket_for(locked, at: now, waiting_room: waiting_room))
         CheckIn.publish(attendance)
         result = Result.ok(attendance: attendance)
       end

@@ -44,7 +44,8 @@ class HealthUnitsController < ApplicationController
   def create
     unit = HealthUnit.new(name: params[:name], kind: params[:kind])
     error = assign_address(unit) || assign_cnes(unit) || assign_screening_scope(unit) ||
-            assign_collects_samples(unit) || assign_notifying(unit) || assign_caps(unit) || assign_phone(unit)
+            assign_collects_samples(unit) || assign_notifying(unit) || assign_caps(unit) || assign_phone(unit) ||
+            assign_waiting_room(unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
     return render_invalid(unit) unless unit.save
 
@@ -63,7 +64,8 @@ class HealthUnitsController < ApplicationController
       return render json: { error: "unit_has_ceo_profile" }, status: :conflict
     end
     error = assign_address(@unit) || assign_cnes(@unit) || assign_screening_scope(@unit) ||
-            assign_collects_samples(@unit) || assign_notifying(@unit) || assign_caps(@unit) || assign_phone(@unit)
+            assign_collects_samples(@unit) || assign_notifying(@unit) || assign_caps(@unit) || assign_phone(@unit) ||
+            assign_waiting_room(@unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
 
     conflict = caps_change_conflict(@unit)
@@ -264,6 +266,23 @@ class HealthUnitsController < ApplicationController
     unit.phone.nil? || unit.phone.match?(HealthUnit::PHONE) ? nil : "invalid_phone"
   end
 
+  # Módulo 32a (contrato §1; Valor fixado 4): prefixo da senha (1 a 3 letras
+  # maiúsculas) e tempos de espera na TV. Só mudam quando a chave vem; ausentes
+  # na criação, o modelo decide (UPA: U/true; demais: A/false).
+  def assign_waiting_room(unit)
+    if params.key?("ticket_prefix")
+      value = params["ticket_prefix"]
+      return "invalid_ticket_prefix" unless value.is_a?(String) && value.match?(HealthUnit::TICKET_PREFIX)
+
+      unit.ticket_prefix = value
+    end
+    return nil unless params.key?("show_wait_times")
+    return "invalid_show_wait_times" unless [ true, false ].include?(params["show_wait_times"])
+
+    unit.show_wait_times = params["show_wait_times"]
+    nil
+  end
+
   def address_error(field)
     { "address_zip" => "invalid_zip", "neighborhood_id" => "invalid_neighborhood" }.fetch(field, "invalid_unit")
   end
@@ -291,7 +310,8 @@ class HealthUnitsController < ApplicationController
   def unit_json(unit, include_active: false)
     json = { id: unit.id, name: unit.name, kind: unit.kind, cnes: unit.cnes, screening_scope: unit.screening_scope,
              collects_samples: unit.collects_samples, notifying: unit.notifying, caps_modality: unit.caps_modality,
-             service_classification: unit.service_classification, phone: unit.phone }
+             service_classification: unit.service_classification, phone: unit.phone,
+             ticket_prefix: unit.ticket_prefix, show_wait_times: unit.show_wait_times }
            .merge(unit.slice(*ADDRESS_FIELDS).symbolize_keys)
     json[:active] = unit.active if include_active
     json[:ceo_profile] = ceo_profile_json(unit.ceo_profile) if unit.kind == "ceo"

@@ -16,6 +16,8 @@ class HealthUnit < ApplicationRecord
   PHONE = /\A\d{10,11}\z/
   # ADR 0030: quem passa pela escuta inicial (demanda espontânea, ou todos).
   SCREENING_SCOPES = %w[walk_in all].freeze
+  # Módulo 32a (Valor fixado 4): prefixo da senha da sala de espera.
+  TICKET_PREFIX = /\A[A-Z]{1,3}\z/
 
   # A unidade foi desativada entre a leitura e a transação.
   class Inactive < StandardError; end
@@ -34,6 +36,8 @@ class HealthUnit < ApplicationRecord
   # notificadora quando ninguém disse o contrário. Vale para toda criação
   # (controller, Cnes::Apply, seed), por isso mora aqui e não só no controller.
   before_validation :default_notifying, on: :create
+  # Módulo 32a (contrato §1): a UPA nasce com a senha U e os tempos na TV.
+  before_validation :default_waiting_room, on: :create
 
   # Endereço em texto (ADR 0023; módulo 11 entrega o que o ADR 0018 deixou em
   # aberto). Tudo opcional. O CEP vem do navegador do dashboard; o api só
@@ -51,6 +55,8 @@ class HealthUnit < ApplicationRecord
   validates :name, presence: true, uniqueness: { case_sensitive: false }
   validates :kind, inclusion: { in: KINDS }
   validates :screening_scope, inclusion: { in: SCREENING_SCOPES }
+  validates :ticket_prefix, format: { with: TICKET_PREFIX }
+  validates :show_wait_times, inclusion: { in: [ true, false ] }
   validates :address_street, length: { maximum: 160 }
   validates :address_number, length: { maximum: 20 }
   validates :address_complement, length: { maximum: 80 }
@@ -74,11 +80,19 @@ class HealthUnit < ApplicationRecord
   end
 
   def caps? = kind == "caps"
+  def upa? = kind == "upa"
   def night_capable? = caps? && NIGHT_MODALITIES.include?(caps_modality)
 
   private
 
   def default_notifying
     self.notifying = (kind == "ubs") unless attribute_came_from_user?("notifying")
+  end
+
+  def default_waiting_room
+    return unless upa?
+
+    self.ticket_prefix = "U" unless attribute_came_from_user?("ticket_prefix")
+    self.show_wait_times = true unless attribute_came_from_user?("show_wait_times")
   end
 end

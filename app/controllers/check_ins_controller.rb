@@ -10,7 +10,7 @@ class CheckInsController < ApplicationController
     triage_not_eligible: :unprocessable_entity, invalid_unit: :unprocessable_entity,
     reason_too_short: :unprocessable_entity, already_checked_in: :conflict,
     not_today: :unprocessable_entity, wrong_unit: :unprocessable_entity,
-    appointment_not_eligible: :unprocessable_entity
+    appointment_not_eligible: :unprocessable_entity, urgency_reception_required: :unprocessable_entity
   }.freeze
 
   before_action :require_verifier
@@ -43,7 +43,8 @@ class CheckInsController < ApplicationController
 
   def create
     result = Attendances::CheckIn.call(cpf: params[:cpf], code: params[:code], health_unit_id: params[:health_unit_id],
-                                       document_checked: params[:document_checked] == true, by: Current.user)
+                                       document_checked: params[:document_checked] == true, by: Current.user,
+                                       **switches)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     json = { attendance: attendance_json(result.payload[:attendance]), verified: result.payload[:verified] }
@@ -65,7 +66,7 @@ class CheckInsController < ApplicationController
     result = Attendances::CheckInByException.call(cpf: params[:cpf], triage_id: params[:triage_id],
                                                    appointment_id: params[:appointment_id],
                                                    health_unit_id: params[:health_unit_id], reason: params[:reason],
-                                                   by: Current.user)
+                                                   by: Current.user, **switches)
     return render_failure(result, ERROR_STATUS) if result.failure?
 
     attendance = result.payload[:attendance]
@@ -78,6 +79,12 @@ class CheckInsController < ApplicationController
   end
 
   private
+
+  # Módulo 32a (plano, Desvio 3): os interruptores são lidos aqui, fora da
+  # transação da cidade (Platform::Features abre outra conexão).
+  def switches
+    { urgency: Urgency::Gate.usable?(Current.city), waiting_room: WaitingRoom::Gate.usable?(Current.city) }
+  end
 
   def triage_json(t)
     { id: t.id, date: (t.completed_at || t.created_at).iso8601, protocol_name: t.protocol_name, priority: t.priority }
@@ -95,7 +102,7 @@ class CheckInsController < ApplicationController
       id: a.id, triage_id: a.triage_id, appointment_id: a.appointment_id, health_unit_id: a.health_unit_id,
       unit_name: a.health_unit.name, status: a.status, checked_in_at: a.checked_in_at&.iso8601,
       check_in_method: a.check_in_method, outcome: a.outcome, referral_unit_name: a.referral_unit&.name,
-      referral_note: a.referral_note, closed_at: a.closed_at&.iso8601
+      referral_note: a.referral_note, closed_at: a.closed_at&.iso8601, ticket: a.ticket
     }
   end
 end

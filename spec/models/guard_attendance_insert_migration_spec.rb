@@ -35,9 +35,11 @@ RSpec.describe "Migração de cidade 20260930100001 (GuardAttendanceInsert): dow
   let(:user) { staff_with("migracao@cidade.gov.br") }
   let(:citizen) { Citizen.create!(cpf: "52998224725", phone: "+5541998765432") }
 
+  # A origem vai explícita: sem o trigger (down), ninguém a deduz do par e o
+  # ck_attendances_origin (módulo 32a) recusaria a linha antes do que se prova.
   def insert_in_care
     triage = completed_web_triage_for(citizen)
-    Attendance.insert_all!([ { triage_id: triage.id, citizen_id: citizen.id, health_unit_id: unit.id,
+    Attendance.insert_all!([ { triage_id: triage.id, origin_kind: "triage", citizen_id: citizen.id, health_unit_id: unit.id,
                                checked_in_by_user_id: user.id, checked_in_at: Time.current, check_in_method: "code",
                                status: "in_care", called_by_user_id: user.id, called_at: Time.current,
                                created_at: Time.current } ])

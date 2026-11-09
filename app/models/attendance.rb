@@ -1,7 +1,10 @@
 # Atendimento numa unidade (ADR 0018, 0019): nasce no check-in a partir de
 # uma triagem OU de um horário; waiting → in_care (chamada) → closed.
+# Módulo 32a (ADR 0050; plano, Desvio 2): ou da chegada na UPA (`walk_in`),
+# sem triagem, sem horário e sem o par do wpda — a pessoa é o Patient.
 class Attendance < ApplicationRecord
-  METHODS = %w[code cpf_exception].freeze
+  METHODS = %w[code cpf_exception urgency_reception].freeze
+  ORIGIN_KINDS = %w[triage appointment walk_in].freeze
   STATUSES = %w[waiting in_care closed].freeze
   OUTCOMES = %w[discharged referred return left scheduled_from_screening oriented].freeze
   # ADR 0030: destino da escuta → desfecho que fecha o atendimento de waiting.
@@ -11,7 +14,8 @@ class Attendance < ApplicationRecord
 
   belongs_to :triage, optional: true
   belongs_to :appointment, optional: true
-  belongs_to :citizen
+  belongs_to :citizen, optional: true
+  belongs_to :patient, optional: true
   belongs_to :health_unit
   belongs_to :checked_in_by_user, class_name: "User"
   belongs_to :called_by_user, class_name: "User", optional: true
@@ -23,6 +27,14 @@ class Attendance < ApplicationRecord
           foreign_key: :origin_attendance_id, inverse_of: :origin_attendance
   has_one :screening, dependent: :restrict_with_error
   has_one :consultation, dependent: :restrict_with_error
+  # Módulo 32a: o encontro da urgência, 1:1 com o walk_in (modelo na Task 4).
+  has_one :urgency_encounter
+
+  # O banco também deduz (rota_attendance_insert_guard), para as linhas cruas.
+  before_validation { self.origin_kind ||= triage_id ? "triage" : (appointment_id ? "appointment" : nil) }
+
+  validates :origin_kind, inclusion: { in: ORIGIN_KINDS }
+  validates :citizen, presence: true, unless: :walk_in?
 
   scope :open_attendances, -> { where(status: %w[waiting in_care]) }
   scope :waiting, -> { where(status: "waiting") }
@@ -31,6 +43,11 @@ class Attendance < ApplicationRecord
   def open?
     status != "closed"
   end
+
+  def walk_in? = origin_kind == "walk_in"
+
+  # Quem é atendido: o par do wpda no 13, o paciente no walk_in.
+  def person = citizen || patient
 
   # A triagem que começou a cadeia: a própria, ou a do pedido do horário.
   def root_triage

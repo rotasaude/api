@@ -19,7 +19,7 @@
 # FOR UPDATE OF attendances SKIP LOCKED na MESMA ordem que a tela mostra.
 module Attendances
   module UnitQueue
-    INCLUDES = [ :citizen, :health_unit, { called_by_user: :professional }, :triage,
+    INCLUDES = [ :citizen, :patient, :health_unit, { called_by_user: :professional }, :triage,
                  { appointment: { request: :root_triage } }, { screening: :current_revision } ].freeze
 
     ROOT_TRIAGE_JOINS = <<~SQL.squish.freeze

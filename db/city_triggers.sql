@@ -105,6 +105,8 @@ $do$;
 -- continua in_care pode trocar quem chamou (para alguém), com o mesmo called_at.
 -- coalesce na marca: sem ela, numa sessão que nunca viu a marca, o NULL de
 -- current_setting(..., true) dentro do NOT (...) desligaria a recusa.
+-- Módulo 32a (ADR 0050): a origem, o paciente do walk_in e a senha do dia
+-- também são do check-in e nunca mudam.
 CREATE OR REPLACE FUNCTION rota_attendance_guard() RETURNS trigger AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
@@ -122,6 +124,10 @@ BEGIN
      OR NEW.checked_in_at IS DISTINCT FROM OLD.checked_in_at
      OR NEW.check_in_method IS DISTINCT FROM OLD.check_in_method
      OR NEW.exception_reason IS DISTINCT FROM OLD.exception_reason
+     OR NEW.origin_kind IS DISTINCT FROM OLD.origin_kind
+     OR NEW.patient_id IS DISTINCT FROM OLD.patient_id
+     OR NEW.ticket IS DISTINCT FROM OLD.ticket
+     OR NEW.ticket_on IS DISTINCT FROM OLD.ticket_on
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'attendances: the check-in columns never change';
   END IF;
@@ -165,8 +171,19 @@ $do$;
 -- nem desfecho no INSERT. O CHECK ck_attendances_closing sozinho aceitaria uma
 -- linha in_care ou closed coerente; a chamada e o desfecho só chegam pelas
 -- transições do rota_attendance_guard.
+-- Módulo 32a (ADR 0050; plano, Desvio 2): a origem vazia é deduzida do par
+-- (quem insere sem ela — linhas cruas do 13 — continua válido; sem par fica
+-- nula e o ck_attendances_origin recusa), e o walk_in só nasce numa UPA.
 CREATE OR REPLACE FUNCTION rota_attendance_insert_guard() RETURNS trigger AS $fn$
 BEGIN
+  IF NEW.origin_kind IS NULL THEN
+    NEW.origin_kind := CASE WHEN NEW.triage_id IS NOT NULL THEN 'triage'
+                            WHEN NEW.appointment_id IS NOT NULL THEN 'appointment' END;
+  END IF;
+  IF NEW.origin_kind = 'walk_in'
+     AND NOT EXISTS (SELECT 1 FROM health_units u WHERE u.id = NEW.health_unit_id AND u.kind = 'upa') THEN
+    RAISE EXCEPTION 'attendances: walk_in only at an upa';
+  END IF;
   IF NEW.status IS DISTINCT FROM 'waiting'
      OR NEW.called_at IS NOT NULL OR NEW.called_by_user_id IS NOT NULL
      OR NEW.outcome IS NOT NULL OR NEW.closed_at IS NOT NULL OR NEW.closed_by_user_id IS NOT NULL

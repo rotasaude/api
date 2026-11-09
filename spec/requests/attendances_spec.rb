@@ -46,6 +46,26 @@ RSpec.describe "Attendances", type: :request do
     expect(body["waiting"].first).to include("protocol_name" => urgent.protocol_name, "priority" => 1)
   end
 
+  # Módulo 32a (plano, Desvio 2; contrato §14 Q7): o walk_in da UPA aparece na
+  # fila do 13 pelo paciente (nome e CPF mascarado dele) e com a senha.
+  it "fila: o walk_in mostra o paciente e a senha; o check-in do 13 segue com ticket nulo" do
+    upa = create_unit("UPA Fila", kind: "upa")
+    patient = Patient.create!(cpf: "52998224725", full_name: "Rosa Maria Campos", birth_date: "1970-05-05", sex: "female")
+    Attendance.create!(origin_kind: "walk_in", patient: patient, health_unit: upa, checked_in_by_user: verifier,
+                       checked_in_at: Time.current, check_in_method: "urgency_reception", ticket: "U-001", ticket_on: Date.current)
+    citizen = Citizen.create!(cpf: "11144477735", phone: "+5541911112222")
+    Attendance.create!(triage: completed_web_triage_for(citizen), citizen: citizen, health_unit: upa, checked_in_by_user: verifier,
+                       checked_in_at: 1.minute.from_now, check_in_method: "code")
+
+    sign_in_as(verifier)
+    get "/attendance/units/#{upa.id}/queue"
+    expect(response).to have_http_status(:ok)
+    expect(body["waiting"].map { |a| a.slice("display_name", "cpf_masked", "ticket", "source") }).to contain_exactly(
+      { "display_name" => "Rosa Maria Campos", "cpf_masked" => patient.cpf_masked, "ticket" => "U-001", "source" => "walk_in" },
+      { "display_name" => citizen.display_name, "cpf_masked" => citizen.cpf_masked, "ticket" => nil, "source" => "triage" }
+    )
+  end
+
   it "unidade inexistente: 404" do
     sign_in_as(verifier)
     get "/attendance/units/999999/queue"

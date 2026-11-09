@@ -70,9 +70,10 @@ class AttendancesController < ApplicationController
 
   def queue_json(a, refs, screening_active)
     {
-      id: a.id, cpf_masked: a.citizen.cpf_masked, display_name: a.citizen.display_name, checked_in_at: a.checked_in_at&.iso8601,
-      protocol_name: a.root_triage&.protocol_name, priority: a.priority,
-      source: a.appointment_id ? "appointment" : "triage", appointment_time: a.appointment&.scheduled_at&.iso8601,
+      # Módulo 32a: a pessoa do walk_in é o paciente (nome e CPF mascarado dele).
+      id: a.id, cpf_masked: a.person.cpf_masked, display_name: a.person.display_name, checked_in_at: a.checked_in_at&.iso8601,
+      ticket: a.ticket, protocol_name: a.root_triage&.protocol_name, priority: a.priority,
+      source: a.origin_kind, appointment_time: a.appointment&.scheduled_at&.iso8601,
       called_at: a.called_at&.iso8601, called_by_name: Screenings::Json.staff_name(a.called_by_user),
       reference_unit_ids: refs.fetch(a.territory_neighborhood_id, []) - [ a.health_unit_id ],
       # ADR 0030 (contratos §4 e §9): só cor, destino e espera — nunca queixa

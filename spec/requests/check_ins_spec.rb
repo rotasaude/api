@@ -291,6 +291,71 @@ RSpec.describe "Check-ins", type: :request do
     expect(response).to have_http_status(:ok)
   end
 
+  # Módulo 32a (contrato §14 Q10; plano, Desvio 3): com urgency_care utilizável,
+  # todo atendimento de UPA nasce pela recepção da urgência; desligado, a UPA
+  # segue o 13 sem mudança.
+  describe "módulo 32a" do
+    let(:upa) { create_unit("UPA Centro", kind: "upa") }
+
+    before { clinical_city! }
+
+    def switch!(key, enabled: true) = Platform::Features.set!(city: Current.city, key: key, enabled: enabled, maintainer: ledi_maintainer!)
+
+    it "check-in por código ou por exceção numa UPA com urgency_care: 422 urgency_reception_required, código intacto" do
+      switch!("urgency_care")
+      triage = completed_web_triage_for(citizen)
+      code = check_in_code_for(triage)
+      sign_in_as(verifier)
+
+      json_post "/attendance/check_ins", cpf: citizen.cpf, code: code, health_unit_id: upa.id
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(body["error"]).to eq("urgency_reception_required")
+
+      json_post "/attendance/check_ins/exception", cpf: citizen.cpf, triage_id: triage.id, health_unit_id: upa.id,
+                                                   reason: "cidadão sem celular"
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(body["error"]).to eq("urgency_reception_required")
+      expect(Attendance.count).to eq(0)
+
+      # A UBS não muda; o código não foi consumido pela recusa da UPA.
+      json_post "/attendance/check_ins", cpf: citizen.cpf, code: code, health_unit_id: unit.id
+      expect(response).to have_http_status(:created)
+    end
+
+    it "com urgency_care desligado a UPA segue o 13" do
+      triage = completed_web_triage_for(citizen)
+      sign_in_as(verifier)
+
+      json_post "/attendance/check_ins", cpf: citizen.cpf, code: check_in_code_for(triage), health_unit_id: upa.id
+      expect(response).to have_http_status(:created)
+      expect(body["attendance"]).to include("health_unit_id" => upa.id, "ticket" => nil)
+    end
+
+    it "com waiting_room_display o check-in da UBS devolve a senha do dia; sem ele, ticket nulo" do
+      switch!("waiting_room_display")
+      triage = completed_web_triage_for(citizen)
+      sign_in_as(verifier)
+
+      json_post "/attendance/check_ins", cpf: citizen.cpf, code: check_in_code_for(triage), health_unit_id: unit.id
+      expect(response).to have_http_status(:created)
+      expect(body["attendance"]).to include("ticket" => "A-001")
+      expect(Attendance.find(body.dig("attendance", "id")).ticket_on).to eq(Date.current)
+
+      other = Citizen.create!(cpf: "11144477735", phone: "+5541998760001")
+      json_post "/attendance/check_ins/exception", cpf: other.cpf, triage_id: completed_web_triage_for(other).id,
+                                                   health_unit_id: unit.id, reason: "cidadão sem celular"
+      expect(response).to have_http_status(:created)
+      expect(body["attendance"]).to include("ticket" => "A-002")
+
+      switch!("waiting_room_display", enabled: false)
+      third = Citizen.create!(cpf: "93541134780", phone: "+5541998760002")
+      json_post "/attendance/check_ins/exception", cpf: third.cpf, triage_id: completed_web_triage_for(third).id,
+                                                   health_unit_id: unit.id, reason: "cidadão sem celular"
+      expect(response).to have_http_status(:created)
+      expect(body["attendance"]["ticket"]).to be_nil
+    end
+  end
+
   it "escrita sem JSON: 415" do
     sign_in_as(verifier)
     post "/attendance/check_ins", params: { cpf: citizen.cpf, code: "123456", health_unit_id: unit.id }

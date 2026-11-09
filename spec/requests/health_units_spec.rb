@@ -80,6 +80,43 @@ RSpec.describe "Health units", type: :request do
     expect(HealthUnit.find(ubs_id).notifying).to be(true)
   end
 
+  # Módulo 32a (contrato §1; plano, Valor fixado 4): prefixo da senha e tempos
+  # de espera na TV. A UPA nasce U/true, as demais A/false; só mudam com a chave.
+  it "ticket_prefix e show_wait_times: UPA nasce U/true, UBS A/false; formato conferido; update só com a chave" do
+    sign_in_as(admin)
+
+    json_post "/attendance/units", name: "UPA Senha", kind: "upa"
+    expect(response).to have_http_status(:created)
+    expect(body["unit"]).to include("ticket_prefix" => "U", "show_wait_times" => true)
+    upa_id = body.dig("unit", "id")
+
+    json_post "/attendance/units", name: "UBS Senha", kind: "ubs"
+    expect(body["unit"]).to include("ticket_prefix" => "A", "show_wait_times" => false)
+
+    json_post "/attendance/units", name: "UPA Leste", kind: "upa", ticket_prefix: "UL", show_wait_times: false
+    expect(body["unit"]).to include("ticket_prefix" => "UL", "show_wait_times" => false)
+
+    json_post "/attendance/units", name: "UPA Errada", kind: "upa", ticket_prefix: "u1"
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(body["error"]).to eq("invalid_ticket_prefix")
+    expect(HealthUnit.exists?(name: "UPA Errada")).to be(false)
+
+    json_post "/attendance/units/#{upa_id}", name: "UPA Senha", kind: "upa", ticket_prefix: "ABCD"
+    expect(body["error"]).to eq("invalid_ticket_prefix")
+    json_post "/attendance/units/#{upa_id}", name: "UPA Senha", kind: "upa", show_wait_times: "sim"
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(body["error"]).to eq("invalid_show_wait_times")
+
+    json_post "/attendance/units/#{upa_id}", name: "UPA Senha", kind: "upa", ticket_prefix: "UPA", show_wait_times: false
+    expect(response).to have_http_status(:ok)
+    expect(body["unit"]).to include("ticket_prefix" => "UPA", "show_wait_times" => false)
+
+    json_post "/attendance/units/#{upa_id}", name: "UPA Senha Centro", kind: "upa"
+    expect(body["unit"]).to include("ticket_prefix" => "UPA", "show_wait_times" => false)
+    get "/attendance/units"
+    expect(body["units"].find { |u| u["id"] == upa_id }).to include("ticket_prefix" => "UPA", "show_wait_times" => false)
+  end
+
   it "desativar com atendimento aberto: 409 unit_has_open_attendances; depois de encerrado, 200" do
     citizen = Citizen.create!(cpf: "52998224725", phone: "+5541998765432")
     unit = create_unit
