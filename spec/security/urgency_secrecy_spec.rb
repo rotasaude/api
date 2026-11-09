@@ -333,7 +333,7 @@ RSpec.describe "Sigilo da urgência (32a) — query das leituras", type: :reques
   let(:reader) { staff_with("leitura-upa-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin", "citizen_verifier") }
   let(:token) { paired_display!(upa).last }
   let(:module_reads) do
-    %w[/urgency/queue /urgency/counter_referrals /urgency/encounters/:id /urgency/dashboard
+    %w[/urgency/queue /urgency/counter_referrals /urgency/encounters/:id /urgency/dashboard /urgency/provisional_encounters
        /waiting_room/displays /waiting_room/board /attendance/call_locations]
   end
 

@@ -754,6 +754,8 @@ Rails.application.routes.draw do
                                                     as: :encounter_call_for_classification
     # Recepção: identificação do provisório, uma vez só (§4, R4; Q5, Q17, Q23).
     post  "encounters/:id/identify", to: "encounters#identify", as: :encounter_identify
+    # Recepção: os provisórios a identificar, abertos ou fechados há até 7 dias (Q29; trilha).
+    get   "provisional_encounters", to: "provisional_encounters#index"
     # Desfecho (médico; recepção e enfermagem só a evasão e o registro por
     # engano) e os retornos pedidos à UBS (§7, Q10, Q11, Q20, Q25).
     post  "encounters/:id/outcome", to: "encounters#outcome", as: :encounter_outcome
