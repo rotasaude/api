@@ -9,9 +9,9 @@ module Timeline
       module_function
 
       def entries(person:, before:, limit:, from:, to:)
-        scope = ::ClinicalDocument.where(citizen_id: person.citizen_ids, kind: ClinicalDocumentSource::NOTIFICATION,
-                                         psychosocial_action_id: nil) # módulo 31: nunca o do CAPS
-                                  .includes(attendance: :health_unit, author_user: :professional)
+        # Módulo 31: nunca o do CAPS; 32a: o do walk_in pelo paciente.
+        scope = ClinicalDocumentSource.of_person(person).where(kind: ClinicalDocumentSource::NOTIFICATION)
+                                      .includes(attendance: :health_unit, author_user: :professional)
         Window.apply(scope, kind: KIND, column: "clinical_documents.issued_at", id_column: "clinical_documents.id",
                             before: before, from: from, to: to)
               .limit(limit).map { |document| entry(document) }

@@ -28,21 +28,28 @@ module Timeline
       "exam" => Sources::ExamSource, "procedure" => Sources::ProcedureSource,
       "dispensation" => Sources::DispensationSource, "vaccination" => Sources::VaccinationSource,
       "transport" => Sources::TransportSource, "psychosocial" => Sources::PsychosocialSource,
-      "psychosocial_link" => Sources::PsychosocialLinkSource
+      "psychosocial_link" => Sources::PsychosocialLinkSource, "urgency" => Sources::UrgencySource
     }.freeze
+    # Módulo 32a (contrato §14 Q13, Q25): fontes com recorte próprio na visão
+    # do cidadão (`citizen_view: true`) — a urgência só fechada, sem óbito nem
+    # registro por engano; o procedimento sem as linhas do BPA da urgência
+    # (a entrada da urgência já resume a visita).
+    CITIZEN_FILTERED_KINDS = %w[urgency procedure].freeze
 
     Page = Data.define(:entries, :next_before)
 
     module_function
 
     # `active_vaccinations_only: true` (cidadão e PEC externo): a vacina só traz doses ativas, sem canceladas (29; W4).
+    # `citizen_view: true` (só o histórico do cidadão): o recorte de CITIZEN_FILTERED_KINDS.
     # `psychosocial_unit_id`: o CAPS da matrícula, único recorte da fonte do CAPS (sem ele, a fonte não traz nada).
     def call(person:, kinds: Timeline::KINDS, before: nil, limit: DEFAULT_LIMIT, from: nil, to: nil, active_vaccinations_only: false,
-             psychosocial_unit_id: nil)
+             psychosocial_unit_id: nil, citizen_view: false)
       rows = kinds.flat_map do |kind|
         args = { person: person, before: before, limit: limit + 1, from: from, to: to }
         args[:active_only] = true if active_vaccinations_only && kind == "vaccination"
         args[:health_unit_id] = psychosocial_unit_id if CAPS_ONLY_KINDS.include?(kind)
+        args[:citizen] = true if citizen_view && CITIZEN_FILTERED_KINDS.include?(kind)
         SOURCES.fetch(kind).entries(**args)
       end
       rows.sort_by!(&:sort_key)

@@ -13,14 +13,22 @@ module Timeline
       def entries(person:, before:, limit:, from:, to:)
         # Módulo 31 (contrato §9, §10): o documento do CAPS nunca entra (ele
         # não tem cidadão; o filtro explícito é a rede).
-        scope = ::ClinicalDocument.where(citizen_id: person.citizen_ids, psychosocial_action_id: nil).where.not(kind: NOTIFICATION)
-                                  .includes(attendance: :health_unit, author_user: :professional)
+        scope = of_person(person).where.not(kind: NOTIFICATION).includes(attendance: :health_unit, author_user: :professional)
         Window.apply(scope, kind: KIND, column: "clinical_documents.issued_at", id_column: "clinical_documents.id",
                             before: before, from: from, to: to)
               .limit(limit).to_a.then do |page|
                 signed = signed_ids(page)
                 page.map { |document| entry(document, signed_ids: signed) }
               end
+      end
+
+      # Os documentos da pessoa, nunca os do CAPS: pelos pares e, no walk_in da
+      # UPA (32a; sem cidadão), pelo paciente. Também da Notificação e do
+      # cidadão (Timeline::CitizenDocuments).
+      def of_person(person)
+        base = ::ClinicalDocument.where(psychosocial_action_id: nil)
+        own = base.where(citizen_id: person.citizen_ids)
+        person.patient_id ? own.or(base.where(citizen_id: nil, patient_id: person.patient_id)) : own
       end
 
       # Ids dos documentos digitais da página que já têm assinatura assinada —

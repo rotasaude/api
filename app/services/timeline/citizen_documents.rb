@@ -8,9 +8,8 @@ module Timeline
     def find(person:, id:)
       return nil unless id.is_a?(String) && ClinicalDocuments::Uuid.valid?(id)
 
-      # Módulo 31 (contrato §9): nunca o documento do CAPS.
-      ClinicalDocument.where(citizen_id: person.citizen_ids, psychosocial_action_id: nil)
-                      .where.not(kind: Sources::ClinicalDocumentSource::NOTIFICATION).find_by(id: id)
+      # Módulo 31 (contrato §9): nunca o documento do CAPS; 32a: o do walk_in pelo paciente.
+      Sources::ClinicalDocumentSource.of_person(person).where.not(kind: Sources::ClinicalDocumentSource::NOTIFICATION).find_by(id: id)
     end
 
     def pdf(document)

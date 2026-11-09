@@ -127,10 +127,13 @@ module UrgencyHelpers
   end
 
   # Consulta de urgência finalizada (SaveDraft e Finalize do 19a, sem tipo de
-  # atendimento e sem desfecho: quem fecha é o Urgency::RecordOutcome).
-  def finalized_urgency!(encounter, doctor:)
+  # atendimento e sem desfecho: quem fecha é o Urgency::RecordOutcome). Com
+  # `cid10:`, o problema avaliado é esse CID-10 (pede o cid10_release!).
+  def finalized_urgency!(encounter, doctor:, cid10: nil)
     consultation = Consultation.find_by(attendance_id: encounter.attendance_id) || urgency_consultation!(encounter, doctor: doctor)
-    saved = Consultations::SaveDraft.call(consultation: consultation, params: draft_body.except("care_type"), by: doctor)
+    body = draft_body.except("care_type")
+    body["evaluated_problems"] = [ { "terminology" => "cid10", "code" => cid10, "action" => "add" } ] if cid10
+    saved = Consultations::SaveDraft.call(consultation: consultation, params: body, by: doctor)
     raise "rascunho recusado: #{saved.reason} #{saved.details}" if saved.failure?
 
     result = Consultations::Finalize.call(consultation: consultation.reload, outcome_params: {}, by: doctor)

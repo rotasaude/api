@@ -6,9 +6,10 @@
 # configuração), sem X-Frame-Options, no-store e no-referrer (a URL tem CPF).
 # O transporte sanitário (módulo 30) fica fora da página do PEC (FW11): é
 # logística da secretaria, não registro clínico; o dashboard e o wpda o mostram.
+# A urgência da UPA (módulo 32a) também fica fora (contrato §10), como do LEDI.
 class PecTimelinesController < ApplicationController
   PAGE_LIMIT = 50
-  KINDS = (Timeline::KINDS - %w[transport]).freeze
+  KINDS = (Timeline::KINDS - %w[transport urgency]).freeze
   # Defesa em profundidade: só uma origem simples entra na CSP.
   ORIGIN_FORMAT = %r{\Ahttps?://[a-z0-9.-]+(:\d+)?\z}
 

@@ -72,7 +72,7 @@ RSpec.describe Timeline::Query do
     expect(described_class.citizen_kinds(verified: true, documents: true)).to eq(Timeline::KINDS - %w[dispensation])
     expect(described_class.citizen_kinds(verified: true, documents: false)).not_to include("dispensation")
     expect(described_class::PROFESSIONAL_ONLY_KINDS).to eq(%w[dispensation])
-    expect(Timeline::KINDS.last(3)).to eq(%w[dispensation vaccination transport])
+    expect(Timeline::KINDS.last(4)).to eq(%w[dispensation vaccination transport urgency])
   end
 
   # Módulo 31 (contrato §10, P18): os kinds do CAPS ficam FORA de Timeline::KINDS

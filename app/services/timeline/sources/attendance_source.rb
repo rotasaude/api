@@ -1,5 +1,6 @@
 # Atendimentos (módulo 13): chegada na unidade e desfecho. A nota de
-# encaminhamento e o motivo de exceção (texto livre) nunca entram.
+# encaminhamento e o motivo de exceção (texto livre) nunca entram. O walk_in
+# da UPA (32a) nunca: a visita sai pela UrgencySource (contrato §14 Q13).
 module Timeline
   module Sources
     module AttendanceSource
@@ -8,10 +9,15 @@ module Timeline
       module_function
 
       def entries(person:, before:, limit:, from:, to:)
-        scope = ::Attendance.where(citizen_id: person.citizen_ids).includes(:health_unit, called_by_user: :professional)
-        Window.apply(scope, kind: KIND, column: "attendances.checked_in_at", id_column: "attendances.id",
+        Window.apply(scope(person), kind: KIND, column: "attendances.checked_in_at", id_column: "attendances.id",
                             before: before, from: from, to: to)
               .limit(limit).map { |attendance| entry(attendance) }
+      end
+
+      # Explícito, além do ck_attendances_citizen (walk_in sem cidadão).
+      def scope(person)
+        ::Attendance.where(citizen_id: person.citizen_ids).where.not(origin_kind: "walk_in")
+                    .includes(:health_unit, called_by_user: :professional)
       end
 
       def entry(attendance)

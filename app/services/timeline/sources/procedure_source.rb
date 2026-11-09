@@ -6,7 +6,10 @@
 # trilha é do controlador (uma por leitura). A linha do CAPS (`source:
 # "psychosocial"`, BPA-I do acolhimento, ou qualquer linha lançada numa
 # unidade `caps`) nunca entra (módulo 31, P45, P51): o prontuário do CAPS só
-# na linha do tempo restrita da equipe lotada.
+# na linha do tempo restrita da equipe lotada. Módulo 32a: na visão do
+# cidadão (`citizen: true`), sem as linhas da urgência (`source: "urgency"`) —
+# a entrada da urgência resume a visita e o óbito nunca aparece (Q13); o
+# profissional segue vendo as linhas.
 module Timeline
   module Sources
     module ProcedureSource
@@ -15,11 +18,12 @@ module Timeline
 
       module_function
 
-      def entries(person:, before:, limit:, from:, to:)
+      def entries(person:, before:, limit:, from:, to:, citizen: false)
         return [] unless person.patient_id && Billing::Gate.enabled?(Current.city)
 
         scope = ::PerformedProcedure.recorded.where(patient_id: person.patient_id).merge(::PerformedProcedure.outside_caps)
                                     .includes(:health_unit, :exam_provider, professional_user: :professional)
+        scope = scope.where.not(source: "urgency") if citizen
         rows = Window.apply(scope, kind: KIND, column: "performed_procedures.created_at", id_column: "performed_procedures.id",
                                    before: before, from: from, to: to).limit(limit).to_a
         labels = {}

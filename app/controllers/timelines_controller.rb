@@ -80,9 +80,15 @@ class TimelinesController < ApplicationController
   def by_attendance
     attendance = uuid?(params[:attendance_id]) && Attendance.find_by(id: params[:attendance_id])
     return not_found unless attendance
-    return render(json: { error: "citizen_not_verified" }, status: :conflict) unless attendance.citizen.verification_level_verified?
 
-    person = Timeline::Person.for_citizen(attendance.citizen)
+    # Módulo 32a: o walk_in da UPA não tem par do wpda — a pessoa é o paciente.
+    if attendance.walk_in?
+      person = Timeline::Person.for_patient(attendance.patient)
+    else
+      return render(json: { error: "citizen_not_verified" }, status: :conflict) unless attendance.citizen.verification_level_verified?
+
+      person = Timeline::Person.for_citizen(attendance.citizen)
+    end
     granted(person, ClinicalRecord::Access.for_person(user: Current.user, person: person, attendance: attendance))
   end
 

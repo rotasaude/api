@@ -1,6 +1,7 @@
 # Consultas (19a): só finalizadas, do paciente da pessoa. Profissional:
 # problemas avaliados (código e nome da release gravada), quantas condutas e
 # quantos adendos. Cidadão: "Consulta com <profissional>". SOAP nunca entra.
+# A consulta de urgência (32a) não sai aqui: a UrgencySource a representa.
 module Timeline
   module Sources
     module ConsultationSource
@@ -11,7 +12,7 @@ module Timeline
       def entries(person:, before:, limit:, from:, to:)
         return [] unless person.patient_id
 
-        scope = ::Consultation.finalized_consultations.where(patient_id: person.patient_id)
+        scope = ::Consultation.finalized_consultations.where(patient_id: person.patient_id).where.not(kind: "urgency")
                               .includes(:problem_items, :conducts, :addenda, :dental_procedures, attendance: :health_unit, author_user: :professional)
         Window.apply(scope, kind: KIND, column: "consultations.finalized_at", id_column: "consultations.id",
                             before: before, from: from, to: to)
