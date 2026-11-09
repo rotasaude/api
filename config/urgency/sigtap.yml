@@ -1,0 +1,7 @@
+# Códigos SIGTAP da UPA (módulo 32a). review: true até a conferência com o
+# SIGTAP oficial (gate de go-live).
+version: 1
+review: true
+source: "Portaria SAS 819/2015 — conferir instrumento, CBOs e valores no SIGTAP oficial"
+classification_code: "0301060118"
+care_code: "0301060096"

@@ -184,7 +184,16 @@ module Platform
       # /psychosocial/* responde feature_disabled.
       Entry.new(key: "psychosocial_care",
                 description: "Atenção psicossocial (CAPS): matrícula, PTS, ações, grupos, acolhimento noturno, RAAS do mês, matriciamento e BPA-C",
-                requires: %w[feature:clinical_record])
+                requires: %w[feature:clinical_record]),
+      # ADR 0050: urgência (módulo 32a). Só com o prontuário utilizável. Sem
+      # cascata: desligar o prontuário deixa urgency_care ligado, faltando
+      # pré-requisito, e /urgency/* responde feature_disabled.
+      Entry.new(key: "urgency_care",
+                description: "Urgência (UPA): chegada com senha, paciente não identificado, classificação de risco em 5 cores pelo protocolo da cidade, fila por cor, atendimento médico, desfecho, contrarreferência e BPA",
+                requires: %w[feature:clinical_record]),
+      Entry.new(key: "waiting_room_display",
+                description: "Painel de chamada da sala de espera (UPA e UBS): senha no check-in, local da chamada e TV pareada, sem dado pessoal",
+                requires: [])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze

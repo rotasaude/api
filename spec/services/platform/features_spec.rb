@@ -107,12 +107,20 @@ RSpec.describe Platform::Features do
 
   # Módulo 31 (ADR 0049; Valor fixado 1; contrato P19): o CAPS fecha o catálogo,
   # requer o prontuário utilizável e é a única chave escondida do cidadão.
-  it "psychosocial_care fecha o catálogo, requer o prontuário e fica fora da sessão do cidadão" do
-    entry = described_class::CATALOG.last
+  it "psychosocial_care requer o prontuário e fica fora da sessão do cidadão" do
+    entry = described_class::CATALOG.find { |e| e.key == "psychosocial_care" }
     expect(entry.key).to eq("psychosocial_care")
     expect(entry.requires).to eq(%w[feature:clinical_record])
     expect(entry.description).to start_with("Atenção psicossocial (CAPS)")
     expect(described_class::CITIZEN_HIDDEN).to eq(%w[psychosocial_care])
     expect(described_class::CITIZEN_HIDDEN).to be_frozen
+  end
+
+  it "módulo 32a: urgency_care exige o prontuário; waiting_room_display é independente" do
+    keys = Platform::Features::CATALOG.map(&:key)
+    expect(keys.last(2)).to eq(%w[urgency_care waiting_room_display])
+    expect(Platform::Features::CATALOG.find { |e| e.key == "urgency_care" }.requires).to eq(%w[feature:clinical_record])
+    expect(Platform::Features::CATALOG.find { |e| e.key == "waiting_room_display" }.requires).to eq([])
+    expect(Platform::Features::CITIZEN_HIDDEN).not_to include("urgency_care", "waiting_room_display")
   end
 end

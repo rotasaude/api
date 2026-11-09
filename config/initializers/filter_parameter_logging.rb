@@ -118,7 +118,11 @@ Rails.application.config.filter_parameters += [
   # da ação, a reavaliação acima do limite noturno e os casos compartilhados
   # com a UBS (`reason`, `notes` e `shared_text` já caem em `:reason`, `:note`
   # e `:text`).
-  /\A(cid_main|cid_secondary|substances|needs|goals|family_name|topic|participants|reassessment|shared_cases)\z/
+  /\A(cid_main|cid_secondary|substances|needs|goals|family_name|topic|participants|reassessment|shared_cases)\z/,
+  # ADR 0050: urgência — queixa, critério da classificação, sinais vitais,
+  # descrição do não identificado e orientação de retorno são dado de saúde
+  # (`reason`, `note`, `justification` e `vitals` já estavam acima).
+  /\A(complaint|criterion|vital_signs|description|return_guidance)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
