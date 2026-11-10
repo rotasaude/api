@@ -3488,3 +3488,78 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 32b (ADR 0050; contrato §1 e §11; plano, Desvio 1): a observação da
+-- UPA. O leito só nasce em unidade `upa`, nunca troca de unidade nem de
+-- criação e nunca some (desativado sai do mapa). A estadia só nasce com o
+-- encontro em atendimento (`in_care`), num leito ativo da MESMA unidade da
+-- estadia e do atendimento, já aberta; fechada, nunca muda; aberta, só recebe
+-- o fechamento. O ocupante único do leito e a estadia aberta única do
+-- encontro são da exclusion e do índice parcial. Sem coluna cifrada: não há
+-- re-cifra. TRUNCATE recusado nas duas.
+CREATE OR REPLACE FUNCTION rota_urgency_bed_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NOT EXISTS (SELECT 1 FROM health_units u WHERE u.id = NEW.health_unit_id AND u.kind = 'upa') THEN
+      RAISE EXCEPTION 'urgency_beds: only at an upa';
+    END IF;
+  ELSIF NEW.health_unit_id IS DISTINCT FROM OLD.health_unit_id OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'urgency_beds: unit and creation never change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_urgency_bed_stay_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['ended_at', 'end_kind', 'ended_by_user_id', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'urgency_bed_stays: DELETE refused';
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NOT EXISTS (SELECT 1 FROM urgency_encounters e WHERE e.id = NEW.urgency_encounter_id AND e.state = 'in_care') THEN
+      RAISE EXCEPTION 'urgency_bed_stays: the encounter is not in care';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM urgency_beds b WHERE b.id = NEW.urgency_bed_id AND b.active AND b.health_unit_id = NEW.health_unit_id)
+       OR NOT EXISTS (SELECT 1 FROM urgency_encounters e JOIN attendances a ON a.id = e.attendance_id
+                      WHERE e.id = NEW.urgency_encounter_id AND a.health_unit_id = NEW.health_unit_id) THEN
+      RAISE EXCEPTION 'urgency_bed_stays: bed of another unit or inactive';
+    END IF;
+    IF NEW.ended_at IS NOT NULL THEN
+      RAISE EXCEPTION 'urgency_bed_stays: a stay is born open';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF OLD.ended_at IS NOT NULL THEN
+    RAISE EXCEPTION 'urgency_bed_stays: a closed stay never changes';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) OR NEW.ended_at IS NULL THEN
+    RAISE EXCEPTION 'urgency_bed_stays: an open stay only receives the closing';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.urgency_beds') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_beds_guard ON urgency_beds';
+    EXECUTE 'CREATE TRIGGER urgency_beds_guard BEFORE INSERT OR UPDATE ON urgency_beds
+      FOR EACH ROW EXECUTE FUNCTION rota_urgency_bed_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_beds_no_delete ON urgency_beds';
+    EXECUTE 'CREATE TRIGGER urgency_beds_no_delete BEFORE DELETE ON urgency_beds
+      FOR EACH ROW EXECUTE FUNCTION rota_no_delete()';
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_bed_stays_guard ON urgency_bed_stays';
+    EXECUTE 'CREATE TRIGGER urgency_bed_stays_guard BEFORE INSERT OR UPDATE OR DELETE ON urgency_bed_stays
+      FOR EACH ROW EXECUTE FUNCTION rota_urgency_bed_stay_guard()';
+    FOREACH item IN ARRAY ARRAY['urgency_beds', 'urgency_bed_stays'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

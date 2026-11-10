@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_05_900006) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_10_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -4181,6 +4181,37 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900006) do
     t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying::text, 'completed'::character varying::text, 'aborted_by_revocation'::character varying::text, 'aborted_by_timeout'::character varying::text, 'aborted_by_cancellation'::character varying::text])", name: "ck_triagens_status"
   end
 
+  create_table "urgency_bed_stays", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "ended_at"
+    t.uuid "ended_by_user_id"
+    t.string "end_kind"
+    t.uuid "health_unit_id", null: false
+    t.datetime "started_at", null: false
+    t.uuid "started_by_user_id", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "urgency_bed_id", null: false
+    t.uuid "urgency_encounter_id", null: false
+    t.index ["health_unit_id", "started_at"], name: "idx_urgency_bed_stays_unit_started"
+    t.index ["urgency_encounter_id", "started_at"], name: "idx_urgency_bed_stays_encounter_started"
+    t.index ["urgency_encounter_id"], name: "idx_urgency_bed_stays_open_encounter", unique: true, where: "(ended_at IS NULL)"
+    t.check_constraint "(ended_at IS NULL) = (end_kind IS NULL) AND (ended_at IS NULL) = (ended_by_user_id IS NULL)", name: "ck_urgency_bed_stays_closing"
+    t.check_constraint "end_kind IS NULL OR (end_kind::text = ANY (ARRAY['bed_change'::text, 'observation_ended'::text, 'outcome'::text]))", name: "ck_urgency_bed_stays_end_kind"
+    t.check_constraint "ended_at IS NULL OR ended_at >= started_at", name: "ck_urgency_bed_stays_times"
+    t.exclusion_constraint "urgency_bed_id WITH =, tsrange(started_at, COALESCE(ended_at, 'infinity'::timestamp without time zone)) WITH &&", using: :gist, name: "excl_urgency_bed_stays_bed"
+  end
+
+  create_table "urgency_beds", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "health_unit_id", null: false
+    t.string "label", limit: 20, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index ["health_unit_id", "label"], name: "idx_urgency_beds_label", unique: true
+    t.check_constraint "char_length(btrim(label::text)) >= 1 AND char_length(btrim(label::text)) <= 20", name: "ck_urgency_beds_label"
+  end
+
   create_table "urgency_classifications", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "cbo_code", limit: 6, null: false
     t.uuid "classified_by_user_id", null: false
@@ -4967,6 +4998,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_05_900006) do
   add_foreign_key "triages", "conversations"
   add_foreign_key "triages", "neighborhoods"
   add_foreign_key "triages", "protocol_definitions"
+  add_foreign_key "urgency_bed_stays", "health_units"
+  add_foreign_key "urgency_bed_stays", "urgency_beds"
+  add_foreign_key "urgency_bed_stays", "urgency_encounters"
+  add_foreign_key "urgency_bed_stays", "users", column: "ended_by_user_id"
+  add_foreign_key "urgency_bed_stays", "users", column: "started_by_user_id"
+  add_foreign_key "urgency_beds", "health_units"
+  add_foreign_key "urgency_beds", "users", column: "updated_by_user_id"
   add_foreign_key "urgency_classifications", "professional_links"
   add_foreign_key "urgency_classifications", "protocol_definitions"
   add_foreign_key "urgency_classifications", "urgency_encounters"
