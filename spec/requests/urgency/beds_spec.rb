@@ -139,6 +139,7 @@ RSpec.describe "Urgência — leitos da observação", type: :request do
 
     it "PATCH: chave desconhecida → 422; corpo vazio → 200 sem mudança" do
       bed = bed!
+      before = bed.slice(:label, :active, :updated_at)
       json_patch "/urgency/beds/#{bed.id}", extra: 1
       expect(response).to have_http_status(:unprocessable_entity)
       expect(json_body["problems"].map { |p| p["path"] }).to eq(%w[extra])
@@ -146,7 +147,7 @@ RSpec.describe "Urgência — leitos da observação", type: :request do
       json_patch "/urgency/beds/#{bed.id}", {}
       expect(response).to have_http_status(:ok)
       expect(json_body["bed"]).to include("label" => "OBS 01", "active" => true)
-      expect(bed.reload.updated_at).to eq(bed.updated_at)
+      expect(bed.reload.slice(:label, :active, :updated_at)).to eq(before)
     end
 
     it "a lista exige health_unit_id de uma UPA e aceita só essa query" do
