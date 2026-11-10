@@ -584,6 +584,14 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
   end
 
+  # Módulo 32b (Task 7; contrato §10): a prescrição interna emitida e suspensa
+  # (encounter_id, prescription_id); só ids, sem consumidor.
+  it "declares urgency.prescription_issued and urgency.prescription_suspended with no consumer" do
+    names = %w[urgency.prescription_issued urgency.prescription_suspended]
+    expect(DomainEvents.registry.keys).to include(*names)
+    names.each { |name| expect(DomainEvents.registry[name]).to be_empty }
+  end
+
   # Módulo 32a (Task 18, conferência final): os eventos do módulo são
   # exatamente os oito do contrato §12, e só os dois do fechamento e da
   # identificação têm consumidor (o BPA da urgência). Módulo 32b: mais os
@@ -592,7 +600,8 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     names = DomainEvents.registry.keys.grep(/\A(urgency|waiting_room)\.|\Aattendance\.recalled\z/)
     expect(names).to contain_exactly("urgency.arrived", "urgency.classified", "urgency.reclassified", "urgency.patient_identified",
                                      "urgency.encounter_closed", "attendance.recalled", "waiting_room.display_paired",
-                                     "waiting_room.display_revoked", "urgency.observation_started", "urgency.observation_ended")
+                                     "waiting_room.display_revoked", "urgency.observation_started", "urgency.observation_ended",
+                                     "urgency.prescription_issued", "urgency.prescription_suspended")
     consumed = names.reject { |name| DomainEvents.registry[name].empty? }
     expect(consumed).to contain_exactly("urgency.patient_identified", "urgency.encounter_closed")
   end

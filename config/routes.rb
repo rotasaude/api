@@ -771,6 +771,11 @@ Rails.application.routes.draw do
     get   "observation",         to: "observations#show"
     post  "encounters/:id/observation",     to: "observations#create", as: :encounter_observation
     post  "encounters/:id/observation/end", to: "observations#finish", as: :encounter_observation_end
+    # Prescrição interna do médico, em versões, e a busca de medicamento dela
+    # (§5, P1, Q4; a busca pelo corpo, sem clinical_documents).
+    post  "encounters/:id/prescriptions",   to: "prescriptions#create", as: :encounter_prescriptions
+    post  "prescriptions/:id/suspend",      to: "prescriptions#suspend", as: :prescription_suspend
+    post  "medication_search",              to: "medication_searches#create"
   end
 
   # Módulo 32a (ADR 0050; contrato §8 e §14 Q8): TV da sala de espera. As

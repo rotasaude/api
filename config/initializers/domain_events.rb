@@ -440,6 +440,12 @@ Rails.application.config.to_prepare do
   # as horas; sem consumidor.
   DomainEvents.bind "urgency.observation_started", to: []
   DomainEvents.bind "urgency.observation_ended", to: []
+  # Módulo 32b (contrato §10): a prescrição interna emitida (v1 ou nova versão)
+  # e suspensa (Urgency::IssuePrescription, SuspendPrescription) — só
+  # encounter_id e prescription_id, nunca o medicamento, a dose nem o motivo;
+  # sem consumidor.
+  DomainEvents.bind "urgency.prescription_issued", to: []
+  DomainEvents.bind "urgency.prescription_suspended", to: []
   # "Chamar de novo" (Attendances::Recall; contrato §12): só attendance_id e
   # call_id — nunca a senha, o local nem a pessoa; sem consumidor (a TV lê
   # attendance_calls).
