@@ -119,10 +119,20 @@ RSpec.describe "Chamadas da urgência", type: :request do
       get "/urgency/queue", params: { health_unit_id: upa.id }
       expect(response).to have_http_status(:forbidden)
       expect(json_body["error"]).to eq("missing_link")
-      sign_in_as(upa_nurse!(upa, cbo: "322205"))
-      get "/urgency/queue", params: { health_unit_id: upa.id }
+      # Q2 (módulo 32b): o técnico 3222 vinculado à UPA lê a fila, sem ação alguma.
+      technician = upa_nurse!(upa, cbo: "322205")
+      sign_in_as(technician)
+      expect { get "/urgency/queue", params: { health_unit_id: upa.id } }
+        .not_to(change { DomainEvent.where(name: "clinical_record.viewed").count })
+      expect(response).to have_http_status(:ok)
+      expect(json_body.keys).to contain_exactly("awaiting_classification", "by_color", "in_care")
+      json_post("/urgency/encounters/#{waiting.id}/classifications", complaint: "Tosse", vital_signs: {}, pain_scale: 0, color: "blue")
       expect(response).to have_http_status(:forbidden)
       expect(json_body["error"]).to eq("cbo_not_allowed")
+      sign_in_as(upa_nurse!(upa!, cbo: "322205"))
+      get "/urgency/queue", params: { health_unit_id: upa.id }
+      expect(response).to have_http_status(:forbidden)
+      expect(json_body["error"]).to eq("missing_link")
       get "/urgency/queue", params: { health_unit_id: SecureRandom.uuid }
       expect(response).to have_http_status(:not_found)
       get "/urgency/queue", params: { health_unit_id: create_unit.id }
