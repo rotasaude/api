@@ -4183,9 +4183,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900001) do
 
   create_table "urgency_bed_stays", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.string "end_kind"
     t.datetime "ended_at"
     t.uuid "ended_by_user_id"
-    t.string "end_kind"
     t.uuid "health_unit_id", null: false
     t.datetime "started_at", null: false
     t.uuid "started_by_user_id", null: false

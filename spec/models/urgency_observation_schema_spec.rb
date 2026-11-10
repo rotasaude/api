@@ -7,6 +7,8 @@ RSpec.describe "Esquema da observação da UPA", type: :model do
   let(:doctor) { upa_doctor!(upa) }
   let(:bed) { UrgencyBed.create!(health_unit: upa, label: "OBS 01", updated_by_user: urgency_admin!) }
 
+  def sp(&) = ApplicationRecord.transaction(requires_new: true, &)
+
   def in_care!
     e = arrived!(upa)
     classified!(e, color: "yellow", by: upa_nurse!(upa))
@@ -44,5 +46,58 @@ RSpec.describe "Esquema da observação da UPA", type: :model do
       .to raise_error(ActiveRecord::RecordNotUnique, /idx_urgency_bed_stays_open_encounter/)
     s.update!(ended_at: Time.current, end_kind: "observation_ended", ended_by_user: doctor)
     expect { s.update_column(:end_kind, "outcome") }.to raise_error(ActiveRecord::StatementInvalid, /closed stay never changes/)
+  end
+
+  describe "guardas do leito" do
+    it "unidade e criação nunca mudam; TRUNCATE recusado" do
+      bed
+      other = create_unit("UPA Outra", kind: "upa")
+      expect { sp { bed.update_column(:health_unit_id, other.id) } }.to raise_error(ActiveRecord::StatementInvalid, /never change/)
+      expect { sp { bed.update_column(:created_at, 1.day.ago) } }.to raise_error(ActiveRecord::StatementInvalid, /never change/)
+      expect { bed.update!(active: false) }.not_to raise_error
+      expect { sp { ApplicationRecord.connection.execute("TRUNCATE urgency_beds CASCADE") } }.to raise_error(ActiveRecord::StatementInvalid)
+    end
+  end
+
+  describe "guardas da estadia" do
+    it "aberta só recebe o fechamento; sem mudança é aceita; DELETE e TRUNCATE recusados" do
+      e = in_care!
+      s = stay!(e, bed)
+      other_bed = UrgencyBed.create!(health_unit: upa, label: "OBS 02", updated_by_user: urgency_admin!)
+      expect { sp { s.update_column(:started_at, 1.hour.ago) } }.to raise_error(ActiveRecord::StatementInvalid, /only receives the closing/)
+      expect { sp { s.update_column(:urgency_bed_id, other_bed.id) } }.to raise_error(ActiveRecord::StatementInvalid, /only receives the closing/)
+      expect { sp { s.update_column(:updated_at, Time.current) } }.to raise_error(ActiveRecord::StatementInvalid, /only receives the closing/)
+      expect { sp { s.delete } }.to raise_error(ActiveRecord::StatementInvalid, /DELETE refused/)
+      expect { sp { ApplicationRecord.connection.execute("TRUNCATE urgency_bed_stays CASCADE") } }.to raise_error(ActiveRecord::StatementInvalid)
+    end
+
+    it "leito inativo, de outra unidade ou atendimento de outra unidade" do
+      e = in_care!
+      inactive = UrgencyBed.create!(health_unit: upa, label: "OBS 09", active: false, updated_by_user: urgency_admin!)
+      other_upa = create_unit("UPA Outra", kind: "upa")
+      foreign = UrgencyBed.create!(health_unit: other_upa, label: "OBS 01", updated_by_user: urgency_admin!)
+      expect { sp { stay!(e, inactive) } }.to raise_error(ActiveRecord::StatementInvalid, /another unit or inactive/)
+      expect { sp { stay!(e, foreign) } }.to raise_error(ActiveRecord::StatementInvalid, /another unit or inactive/)
+      expect do
+        sp { UrgencyBedStay.create!(urgency_encounter: e, urgency_bed: foreign, health_unit: other_upa, started_at: Time.current, started_by_user: doctor) }
+      end.to raise_error(ActiveRecord::StatementInvalid, /another unit or inactive/)
+    end
+
+    it "nasce aberta" do
+      e = in_care!
+      expect do
+        sp { UrgencyBedStay.create!(urgency_encounter: e, urgency_bed: bed, health_unit: upa, started_at: 1.hour.ago, ended_at: Time.current,
+                               end_kind: "outcome", ended_by_user: doctor, started_by_user: doctor) }
+      end.to raise_error(ActiveRecord::StatementInvalid, /born open/)
+    end
+
+    it "CHECKs do fechamento, do tempo e do tipo de saída" do
+      s = stay!(in_care!, bed)
+      expect { sp { s.update_columns(ended_at: Time.current) } }.to raise_error(ActiveRecord::StatementInvalid, /ck_urgency_bed_stays_closing/)
+      expect { sp { s.update_columns(ended_at: s.started_at - 1.hour, end_kind: "outcome", ended_by_user_id: doctor.id) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /ck_urgency_bed_stays_times/)
+      expect { sp { s.update_columns(ended_at: Time.current, end_kind: "bogus", ended_by_user_id: doctor.id) } }
+        .to raise_error(ActiveRecord::StatementInvalid, /ck_urgency_bed_stays_end_kind/)
+    end
   end
 end
