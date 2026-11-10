@@ -18,10 +18,12 @@ module Urgency
       missing_role: :forbidden, missing_link: :forbidden, cbo_not_allowed: :forbidden,
       not_found: :not_found, patient_not_found: :not_found,
       encounter_open: :conflict, encounter_closed: :conflict, already_identified: :conflict, merge_blocked: :conflict,
-      bed_label_taken: :conflict, bed_occupied: :conflict,
+      bed_label_taken: :conflict, bed_occupied: :conflict, bed_taken: :conflict,
       cpf_taken: :conflict, cns_taken: :conflict, duplicate_suspected: :conflict, citizen_not_verified: :conflict, consultation_in_progress: :conflict,
       not_unidentified: :unprocessable_entity, pain_scale_required: :unprocessable_entity,
-      justification_required: :unprocessable_entity
+      justification_required: :unprocessable_entity,
+      # Módulo 32b (§4): a observação.
+      not_in_care: :unprocessable_entity, bed_unavailable: :unprocessable_entity, not_in_observation: :unprocessable_entity
     }.freeze
     KEY_PATH_MAX = 64
 

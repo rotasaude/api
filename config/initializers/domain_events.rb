@@ -434,6 +434,12 @@ Rails.application.config.to_prepare do
   # consumidor grava o BPA da urgência (Billing::UrgencyProductionJob; pula o
   # registered_in_error e o provisório não identificado).
   DomainEvents.bind "urgency.encounter_closed", to: [ Billing::UrgencyProductionJob ]
+  # Módulo 32b (ADR 0050; contrato §10): entrada e saída do leito da
+  # observação (Urgency::StartObservation, EndObservation; a troca de leito
+  # publica os dois) — só encounter_id e stay_id, nunca o leito, a pessoa nem
+  # as horas; sem consumidor.
+  DomainEvents.bind "urgency.observation_started", to: []
+  DomainEvents.bind "urgency.observation_ended", to: []
   # "Chamar de novo" (Attendances::Recall; contrato §12): só attendance_id e
   # call_id — nunca a senha, o local nem a pessoa; sem consumidor (a TV lê
   # attendance_calls).

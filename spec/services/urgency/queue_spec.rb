@@ -104,6 +104,18 @@ RSpec.describe Urgency::Queue do
     end
   end
 
+  # Módulo 32b (contrato §4 e §12 Q3): em atendimento, `observation` com o
+  # leito, as horas desde a 1ª entrada e o alerta; null de quem não está num leito.
+  it "in_care traz observation { bed_label, hours, alert } do paciente no leito e null dos demais" do
+    bed = urgency_bed!(upa, label: "OBS 07")
+    placed = travel_to(21.hours.ago) { in_care_encounter!(upa).tap { |e| observed!(e, bed: bed) } }
+    free = in_care_encounter!(upa)
+    items = described_class.groups(upa)[:in_care].index_by { |i| i[:encounter_id] }
+    expect(items[placed.id][:observation]).to eq(bed_label: "OBS 07", hours: 21, alert: "near_limit")
+    expect(items[free.id]).to have_key(:observation)
+    expect(items[free.id][:observation]).to be_nil
+  end
+
   it "nenhum item traz texto clínico" do
     e = classified_at(1, "green", 5)
     text = described_class.groups(upa).to_s

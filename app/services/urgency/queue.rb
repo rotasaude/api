@@ -6,7 +6,8 @@
 #     VIGENTE (COLORS), depois a chegada e o id — reclassificar para cima sobe
 #     na hora; `overdue` pelo relógio da 1ª classificação contra o tempo
 #     máximo gravado na vigente (UrgencyEncounter#overdue?);
-#   - in_care: com o médico, pela hora da chamada.
+#   - in_care: com o médico, pela hora da chamada, com o leito da observação
+#     (módulo 32b).
 # A ordem do by_color mora no SQL: a tela e o "chamar próximo"
 # (lock_next_classified, FOR UPDATE OF attendances SKIP LOCKED) usam a mesma
 # definição, como o Attendances::UnitQueue do 13. Nenhum texto clínico
@@ -29,10 +30,11 @@ module Urgency
       by_color = classified(unit.id).includes(*INCLUDES).to_a
       in_care = walk_ins(unit.id, "in_care", "in_care").order(:called_at, :id).includes(*INCLUDES).to_a
       calls = last_calls((awaiting + by_color + in_care).map(&:id))
+      observation = Observation.queue_fields(in_care.map { |a| a.urgency_encounter.id }, now: now)
       {
         awaiting_classification: awaiting.map { |a| item(a, calls, now).merge(max_wait_minutes: nil) },
         by_color: by_color.map { |a| color_item(a, calls, now) },
-        in_care: in_care.map { |a| in_care_item(a, calls, now) }
+        in_care: in_care.map { |a| in_care_item(a, calls, now, observation) }
       }
     end
 
@@ -83,14 +85,17 @@ module Urgency
     end
 
     # Em atendimento nunca estoura (UrgencyEncounter#overdue? só em classified).
-    def in_care_item(attendance, calls, now)
+    # Módulo 32b (§4, Q3): `observation` { bed_label, hours, alert } de quem
+    # está num leito da observação (Urgency::Observation.queue_fields), senão null.
+    def in_care_item(attendance, calls, now, observation)
       encounter = attendance.urgency_encounter
       current = encounter.current_classification
       item(attendance, calls, now).merge(color: current&.color, max_wait_minutes: current&.max_wait_minutes,
                                          called_at: attendance.called_at&.iso8601,
                                          called_by_name: Screenings::Json.staff_name(attendance.called_by_user),
                                          consultation_id: encounter.consultation_id,
-                                         consultation_status: encounter.consultation&.status)
+                                         consultation_status: encounter.consultation&.status,
+                                         observation: observation[encounter.id])
     end
     private_class_method :walk_ins, :last_calls, :item, :color_item, :in_care_item
   end

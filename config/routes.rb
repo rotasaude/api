@@ -766,6 +766,11 @@ Rails.application.routes.draw do
     # Q15, Q25; só contagens, sem trilha).
     get   "encounters/:id",      to: "encounters#show", as: :encounter
     get   "dashboard",           to: "dashboard#show"
+    # Módulo 32b (§4, Q2, Q3): o mapa da observação (polling, sem trilha), a
+    # entrada ou troca de leito e a saída sem desfecho (2235*/225*).
+    get   "observation",         to: "observations#show"
+    post  "encounters/:id/observation",     to: "observations#create", as: :encounter_observation
+    post  "encounters/:id/observation/end", to: "observations#finish", as: :encounter_observation_end
   end
 
   # Módulo 32a (ADR 0050; contrato §8 e §14 Q8): TV da sala de espera. As
