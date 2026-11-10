@@ -55,20 +55,23 @@ RSpec.describe "Esquema da observação da UPA", type: :model do
       expect { sp { bed.update_column(:health_unit_id, other.id) } }.to raise_error(ActiveRecord::StatementInvalid, /never change/)
       expect { sp { bed.update_column(:created_at, 1.day.ago) } }.to raise_error(ActiveRecord::StatementInvalid, /never change/)
       expect { bed.update!(active: false) }.not_to raise_error
-      expect { sp { ApplicationRecord.connection.execute("TRUNCATE urgency_beds CASCADE") } }.to raise_error(ActiveRecord::StatementInvalid)
+      expect { sp { ApplicationRecord.connection.execute("TRUNCATE urgency_beds CASCADE") } }.to raise_error(ActiveRecord::StatementInvalid, /urgency_beds is append-only: TRUNCATE refused/)
     end
   end
 
   describe "guardas da estadia" do
-    it "aberta só recebe o fechamento; sem mudança é aceita; DELETE e TRUNCATE recusados" do
+    it "aberta só recebe o fechamento (até o UPDATE sem mudança é recusado); DELETE e TRUNCATE recusados" do
       e = in_care!
       s = stay!(e, bed)
       other_bed = UrgencyBed.create!(health_unit: upa, label: "OBS 02", updated_by_user: urgency_admin!)
       expect { sp { s.update_column(:started_at, 1.hour.ago) } }.to raise_error(ActiveRecord::StatementInvalid, /only receives the closing/)
       expect { sp { s.update_column(:urgency_bed_id, other_bed.id) } }.to raise_error(ActiveRecord::StatementInvalid, /only receives the closing/)
       expect { sp { s.update_column(:updated_at, Time.current) } }.to raise_error(ActiveRecord::StatementInvalid, /only receives the closing/)
+      # Nenhuma coluna muda, mas a linha não fecha (NEW.ended_at IS NULL): recusado.
+      expect { sp { ApplicationRecord.connection.execute("UPDATE urgency_bed_stays SET started_at = started_at WHERE id = '#{s.id}'") } }
+        .to raise_error(ActiveRecord::StatementInvalid, /only receives the closing/)
       expect { sp { s.delete } }.to raise_error(ActiveRecord::StatementInvalid, /DELETE refused/)
-      expect { sp { ApplicationRecord.connection.execute("TRUNCATE urgency_bed_stays CASCADE") } }.to raise_error(ActiveRecord::StatementInvalid)
+      expect { sp { ApplicationRecord.connection.execute("TRUNCATE urgency_bed_stays CASCADE") } }.to raise_error(ActiveRecord::StatementInvalid, /urgency_bed_stays is append-only: TRUNCATE refused/)
     end
 
     it "leito inativo, de outra unidade ou atendimento de outra unidade" do
