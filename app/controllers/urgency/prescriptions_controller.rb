@@ -50,13 +50,5 @@ module Urgency
       prescription = UrgencyPrescription.includes(:items, prescribed_by_user: :professional).find(prescription.id)
       render json: { prescription: PrescriptionJson.call(prescription, catalog: PrescriptionJson.catalog_for(prescription)) }, status: status
     end
-
-    def only_keys!(allowed)
-      unknown = (body.keys - allowed).first
-      return true unless unknown
-
-      render_refusal(unknown.to_s[0, KEY_PATH_MAX])
-      false
-    end
   end
 end

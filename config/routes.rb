@@ -778,6 +778,8 @@ Rails.application.routes.draw do
     post  "medication_search",              to: "medication_searches#create"
     # Aprazamento calculado na leitura (§5, Q5; trilha medication_schedule).
     get   "encounters/:id/medication_schedule", to: "medication_schedules#show", as: :encounter_medication_schedule
+    # A checagem de um horário (§6, Q5, Q6): imutável; o item só do corpo.
+    post  "administrations",                to: "administrations#create"
   end
 
   # Módulo 32a (ADR 0050; contrato §8 e §14 Q8): TV da sala de espera. As

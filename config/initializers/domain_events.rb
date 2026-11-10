@@ -446,6 +446,10 @@ Rails.application.config.to_prepare do
   # sem consumidor.
   DomainEvents.bind "urgency.prescription_issued", to: []
   DomainEvents.bind "urgency.prescription_suspended", to: []
+  # Módulo 32b (contrato §10): a checagem da medicação
+  # (Urgency::RecordAdministration) — só encounter_id e administration_id,
+  # nunca o medicamento, o status nem o motivo; sem consumidor.
+  DomainEvents.bind "urgency.medication_checked", to: []
   # "Chamar de novo" (Attendances::Recall; contrato §12): só attendance_id e
   # call_id — nunca a senha, o local nem a pessoa; sem consumidor (a TV lê
   # attendance_calls).

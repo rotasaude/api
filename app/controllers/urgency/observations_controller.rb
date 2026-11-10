@@ -53,17 +53,5 @@ module Urgency
 
       render_encounter(UrgencyEncounter.find(encounter.id), clinical: true)
     end
-
-    private
-
-    # Chave do corpo fora de `allowed` → 422 invalid_request com o nome da
-    # chave (truncado). Renderiza e devolve false quando recusa.
-    def only_keys!(allowed)
-      unknown = (body.keys - allowed).first
-      return true unless unknown
-
-      render_refusal(unknown.to_s[0, KEY_PATH_MAX])
-      false
-    end
   end
 end

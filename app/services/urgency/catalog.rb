@@ -55,6 +55,8 @@ module Urgency
     ADMINISTRATION_STATUSES = %w[administered not_administered refused].freeze
     ADMINISTRATION_REASON = (10..500)
     ADMINISTERED_AT_TOLERANCE = 5.minutes
+    # §12 Q5: um horário pode ser checado até 60 min antes de vencer (mais cedo → slot_not_due).
+    SLOT_DUE_AHEAD = 60.minutes
     DETAIL_ADMINISTRATIONS_WINDOW = 48.hours
     SHORTFALL_CAUSES = %w[no_location insufficient_balance lot_unavailable].freeze
     RECONCILIATION_NOTE = (10..500)

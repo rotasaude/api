@@ -26,7 +26,11 @@ module Urgency
       not_in_care: :unprocessable_entity, bed_unavailable: :unprocessable_entity, not_in_observation: :unprocessable_entity,
       # A prescrição interna (§5): sem a consulta, item fora do catálogo prescritível, versão que não está ativa.
       consultation_required: :unprocessable_entity, catalog_item_invalid: :unprocessable_entity,
-      prescription_not_active: :unprocessable_entity
+      prescription_not_active: :unprocessable_entity,
+      # A checagem (§6, Q5, Q6): o horário já checado (em qualquer versão) é conflito; o resto, forma.
+      slot_taken: :conflict,
+      slot_invalid: :unprocessable_entity, slot_not_due: :unprocessable_entity, max_per_day_reached: :unprocessable_entity,
+      stock_deduction_disabled: :unprocessable_entity, lot_invalid: :unprocessable_entity
     }.freeze
     KEY_PATH_MAX = 64
 
@@ -94,6 +98,16 @@ module Urgency
     # Dado do paciente e texto livre só do corpo JSON: na query vale como ausente.
     def body_param(key) = request.request_parameters[key]
     def body = request.request_parameters.except("controller", "action", "id")
+
+    # Chave do corpo fora de `allowed` → 422 invalid_request com o nome da
+    # chave (truncado). Renderiza e devolve false quando recusa.
+    def only_keys!(allowed)
+      unknown = (body.keys - allowed).first
+      return true unless unknown
+
+      render_refusal(unknown.to_s[0, KEY_PATH_MAX])
+      false
+    end
 
     # Rotas cujo dado sensível só vem no corpo: query com chave fora de
     # `allowed` → 422 invalid_request com o path (só o NOME da chave, truncado).
