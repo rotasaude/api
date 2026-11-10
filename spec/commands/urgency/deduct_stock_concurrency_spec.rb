@@ -7,7 +7,9 @@ require "rails_helper"
 # fica parada antes do commit; a segunda leu o saldo 1 no FEFO e espera na
 # trava do lote (Ledger.lock_lots!); solta a primeira, a segunda relê o saldo
 # sob a trava e grava a administração sem lote, com a falta
-# insufficient_balance. As duas "201", saldo 0, nunca −1.
+# insufficient_balance. As duas "201", saldo 0, nunca −1. Pelo §12 Q12, o
+# mesmo com o MESMO lote no corpo das duas: a segunda acha o lote consumido
+# sob a trava e cai no próximo lote do FEFO, ou, sem nenhum, em lot_unavailable.
 #
 # Threads reais contra TEST_CITY_A (sem fixture transacional), como
 # record_administration_concurrency_spec.rb; o catálogo da plataforma não
@@ -100,16 +102,33 @@ RSpec.describe Urgency::DeductStock, "concorrência" do
     purge_committed_rows(ids.slice(:admin, :unit, :doctor, :doc_user))
   end
 
-  def check(item_id)
+  def check(item_id, lot_id = nil)
     in_city do
       item = UrgencyPrescriptionItem.find(item_id)
-      Urgency::RecordAdministration.call(attrs: { "prescription_item_id" => item_id, "scheduled_at" => item.first_dose_at.iso8601,
-                                                  "status" => "administered" },
-                                         by: User.find(ids[:doc_user]), stock: true)
+      attrs = { "prescription_item_id" => item_id, "scheduled_at" => item.first_dose_at.iso8601, "status" => "administered" }
+      attrs["stock_lot_id"] = lot_id if lot_id
+      Urgency::RecordAdministration.call(attrs: attrs, by: User.find(ids[:doc_user]), stock: true)
     end
   end
 
-  it "o último comprimido, duas checagens de itens diferentes ao mesmo tempo: as duas gravam, uma com o lote, a outra com insufficient_balance" do
+  # Mais um lote do medicamento no local, por nota (a abertura já existe). -> lot_id
+  def another_lot!(quantity)
+    in_city do
+      number = "SEGUINTE-#{SecureRandom.hex(3)}"
+      result = Pharmacy::RecordEntry.call(location: StockLocation.find(ids[:location]), kind: "invoice", by: User.find(ids[:admin]),
+                                          catalog: { entry.id => entry }, document: { "number" => "NF-#{number}", "supplier" => "Distribuidora" },
+                                          items: [ { "catalog_item_id" => entry.id, "lot_number" => number,
+                                                     "expires_on" => (Time.zone.today + 120).iso8601, "quantity" => quantity } ])
+      raise result.inspect if result.failure?
+
+      result.payload.fetch(:movements).sole.stock_lot_id
+    end
+  end
+
+  # A primeira checagem grava (administração + movimento), publica e fica
+  # parada antes do commit; a segunda tem de esperar na trava do lote.
+  # -> [Result, Result]
+  def race(lot_id = nil)
     holding = Queue.new
     holder = nil
     original = DomainEvents.method(:publish)
@@ -123,27 +142,53 @@ RSpec.describe Urgency::DeductStock, "concorrência" do
     end
 
     first_result = Queue.new
-    threads << (holder = Thread.new { first_result << check(ids[:items].first) })
+    threads << (holder = Thread.new { first_result << check(ids[:items].first, lot_id) })
     holding.pop(timeout: 5) or raise "a primeira checagem não chegou a gravar"
 
     second_result = Queue.new
-    threads << other = Thread.new { second_result << check(ids[:items].second) }
+    threads << other = Thread.new { second_result << check(ids[:items].second, lot_id) }
     in_city { expect(wait_for_lock_wait).to be(true) } # a segunda espera na trava do lote
 
     release << true
     expect(holder.join(5)).to be(holder)
     expect(other.join(5)).to be(other)
     results = [ first_result.pop(timeout: 1), second_result.pop(timeout: 1) ]
-    expect(results.map(&:ok?)).to eq([ true, true ])
+    expect(results.map(&:ok?)).to eq([ true, true ]) # as duas "201"
+    results
+  end
+
+  def administrations(results) = in_city { results.map { |r| UrgencyAdministration.find(r.payload.fetch(:administration).id) } }
+  def balance(lot_id) = in_city { Pharmacy::Ledger.balance(location_id: ids[:location], lot_id: lot_id) }
+
+  it "o último comprimido, duas checagens de itens diferentes ao mesmo tempo: as duas gravam, uma com o lote, a outra com insufficient_balance" do
+    results = race
     expect(results.map { |r| r.payload[:shortfall]&.cause }).to eq([ nil, "insufficient_balance" ])
 
+    first, second = administrations(results)
     in_city do
-      first, second = results.map { |r| UrgencyAdministration.find(r.payload.fetch(:administration).id) }
       expect(first.stock_lot_id).to eq(ids[:lot])
       expect(second.stock_lot_id).to be_nil
       expect(second.shortfall).to have_attributes(cause: "insufficient_balance", stock_location_id: ids[:location], quantity: 1)
       expect(StockMovement.where(stock_lot_id: ids[:lot], kind: "administration").count).to eq(1)
-      expect(Pharmacy::Ledger.balance(location_id: ids[:location], lot_id: ids[:lot])).to eq(0)
     end
+    expect(balance(ids[:lot])).to eq(0)
+  end
+
+  # §12 Q12: o MESMO lote do corpo (saldo 1) nas duas; a segunda acha o lote
+  # consumido sob a trava e cai no próximo do FEFO.
+  it "o mesmo lote do corpo nas duas ao mesmo tempo, com outro lote no local: uma baixa do lote do corpo, a outra do próximo do FEFO" do
+    next_lot = another_lot!("2")
+    results = race(ids[:lot])
+    expect(results.map { |r| r.payload[:shortfall] }).to eq([ nil, nil ])
+    expect(administrations(results).map(&:stock_lot_id)).to eq([ ids[:lot], next_lot ])
+    expect([ balance(ids[:lot]), balance(next_lot) ]).to eq([ 0, 1 ])
+  end
+
+  it "o mesmo lote do corpo nas duas ao mesmo tempo, sem outro lote: uma baixa, a outra grava sem lote com lot_unavailable" do
+    results = race(ids[:lot])
+    expect(results.map { |r| r.payload[:shortfall]&.cause }).to eq([ nil, "lot_unavailable" ])
+    expect(administrations(results).map(&:stock_lot_id)).to eq([ ids[:lot], nil ])
+    in_city { expect(StockMovement.where(stock_lot_id: ids[:lot], kind: "administration").count).to eq(1) }
+    expect(balance(ids[:lot])).to eq(0)
   end
 end

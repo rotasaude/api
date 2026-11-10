@@ -20,11 +20,17 @@
 #
 # Local: o StockLocation `unit` ATIVO da UPA (Fefo.location_for); ausente,
 # inativo ou desativado até a trava (Ledger::Inactive) → no_location, sem local.
-# Lote do corpo: inexistente, de outro item, de outra unidade de dispensação
-# (`stock_unit` do item) ou vencido → lot_invalid (antes do local); com bloqueio
-# aberto no local ou saldo 0 no local → lot_invalid; saldo > 0 e < quantidade →
-# lot_unavailable. Sem lote no corpo: o FEFO (Urgency::Fefo.lots) — o primeiro
-# com saldo ≥ quantidade sob a trava; nenhum → insufficient_balance.
+# Sem lote no corpo: o FEFO (Urgency::Fefo.lots) — o primeiro com saldo ≥
+# quantidade sob a trava; nenhum → insufficient_balance.
+# Lote do corpo (§12 Q12, que corrige o §6 item 2): inexistente, de outro item,
+# de outra unidade de dispensação (`stock_unit` do item) ou vencido →
+# lot_invalid (antes do local); de outro local → lot_invalid — no 27a o lote é
+# do catálogo, e só "está" num local pelos movimentos: sem movimento algum no
+# local `unit` da UPA, é de outro local; com bloqueio aberto no local (relido
+# sob a trava) → lot_invalid. Válido mas já consumido (saldo < quantidade sob a
+# trava, inclusive 0): a checagem NÃO é recusada — vale o próximo lote do FEFO
+# (os candidatos travados junto com o do corpo, numa só chamada em ordem de
+# id); nenhum → falta lot_unavailable.
 module Urgency
   module DeductStock
     module_function
@@ -42,33 +48,49 @@ module Urgency
       location = Fefo.location_for(unit_id)
       return shortfall("no_location", nil, quantity) unless location
 
-      candidates = Fefo.lots(catalog_item_id: item.catalog_item_id, stock_unit: item.stock_unit, location: location, today: today)
-      locked = Pharmacy::Ledger.lock_lots!(candidates.map { |entry| entry.lot.id })
-      location = Pharmacy::Ledger.lock_location!(location.id)
-      # Relido sob a trava; só vale lote que está entre os travados.
-      fresh = Fefo.lots(catalog_item_id: item.catalog_item_id, stock_unit: item.stock_unit, location: location, today: today)
-      entry = fresh.find { |row| locked.key?(row.lot.id) && row.balance >= quantity }
-      return shortfall("insufficient_balance", location, quantity) unless entry
+      locked, location = lock(item, location, today)
+      lot = first_with_balance(item, location, quantity, today, locked)
+      return shortfall("insufficient_balance", location, quantity) unless lot
 
-      Result.ok(location: location, lot: locked.fetch(entry.lot.id), quantity: quantity)
+      Result.ok(location: location, lot: lot, quantity: quantity)
     end
 
     def chosen(item, unit_id, lot_id, quantity, today)
-      lot = Pharmacy::Ledger.lock_lots!([ lot_id ])[lot_id]
+      lot = StockLot.find_by(id: lot_id)
       return invalid unless lot && lot.catalog_item_id == item.catalog_item_id && lot.dispensing_unit == item.stock_unit &&
                             lot.expires_on >= today
 
       location = Fefo.location_for(unit_id)
       return shortfall("no_location", nil, quantity) unless location
+      # Outro local: nenhum movimento do lote no local da UPA (só acréscimo, então vale lido antes da trava).
+      return invalid unless StockMovement.exists?(stock_location_id: location.id, stock_lot_id: lot.id)
 
-      location = Pharmacy::Ledger.lock_location!(location.id)
+      locked, location = lock(item, location, today, extra: lot.id)
       return invalid if StockLotBlock.open_blocks.exists?(stock_location_id: location.id, stock_lot_id: lot.id)
+      if Pharmacy::Ledger.balance(location_id: location.id, lot_id: lot.id) >= quantity
+        return Result.ok(location: location, lot: locked.fetch(lot.id), quantity: quantity)
+      end
 
-      balance = Pharmacy::Ledger.balance(location_id: location.id, lot_id: lot.id)
-      return invalid unless balance.positive?
-      return shortfall("lot_unavailable", location, quantity) if balance < quantity
+      # Q12: consumido por outra checagem — o próximo lote do FEFO, senão a falta.
+      fallback = first_with_balance(item, location, quantity, today, locked, except: lot.id)
+      return shortfall("lot_unavailable", location, quantity) unless fallback
 
-      Result.ok(location: location, lot: lot, quantity: quantity)
+      Result.ok(location: location, lot: fallback, quantity: quantity)
+    end
+
+    # Ordem de trava: LOTES (os candidatos do FEFO e o do corpo, numa só
+    # chamada, em ordem de id) → LOCAL. -> [{ id => StockLot }, StockLocation]
+    def lock(item, location, today, extra: nil)
+      candidates = Fefo.lots(catalog_item_id: item.catalog_item_id, stock_unit: item.stock_unit, location: location, today: today)
+      locked = Pharmacy::Ledger.lock_lots!(candidates.map { |entry| entry.lot.id } + [ extra ].compact)
+      [ locked, Pharmacy::Ledger.lock_location!(location.id) ]
+    end
+
+    # O FEFO relido sob a trava; só vale lote que está entre os travados. -> StockLot | nil
+    def first_with_balance(item, location, quantity, today, locked, except: nil)
+      fresh = Fefo.lots(catalog_item_id: item.catalog_item_id, stock_unit: item.stock_unit, location: location, today: today)
+      entry = fresh.find { |row| row.lot.id != except && locked.key?(row.lot.id) && row.balance >= quantity }
+      entry && locked.fetch(entry.lot.id)
     end
 
     def shortfall(cause, location, quantity) = Result.ok(shortfall_cause: cause, location: location, quantity: quantity)
@@ -77,6 +99,6 @@ module Urgency
       Result.fail(:lot_invalid, details: { path: "stock_lot_id", problems: [ { path: "stock_lot_id", error: "lot_invalid" } ] })
     end
 
-    private_class_method :fefo, :chosen, :shortfall, :invalid
+    private_class_method :fefo, :chosen, :lock, :first_with_balance, :shortfall, :invalid
   end
 end

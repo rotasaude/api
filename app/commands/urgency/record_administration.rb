@@ -32,8 +32,9 @@
 #    `if_needed` + `administered` com `max_per_day` administradas nas 24 h
 #    antes do `administered_at` → 422 max_per_day_reached (A16);
 # 6. estoque (Desvio 7, Task 10): com `stock` e `administered`, o
-#    Urgency::DeductStock escolhe local e lote sob a ordem lotes → local (ou
-#    422 lot_invalid, nada gravado); a gravação é o savepoint { administração
+#    Urgency::DeductStock escolhe local e lote sob a ordem lotes → local (lote
+#    do corpo inválido → 422 lot_invalid, nada gravado; já consumido → o
+#    próximo do FEFO ou a falta lot_unavailable, §12 Q12); a gravação é o savepoint { administração
 #    com lote e quantidade; Ledger.record!(kind: "administration") } — um
 #    movimento por administração —, e Ledger::Insufficient (a rede do trigger)
 #    volta o savepoint e grava a administração sem lote, com a falta

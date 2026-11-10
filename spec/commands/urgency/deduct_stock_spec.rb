@@ -147,13 +147,51 @@ RSpec.describe Urgency::DeductStock do
     expect(result!(item, slot: 1, stock_lot_id: blocked.id).details).to include(path: "stock_lot_id")
   end
 
-  it "no corpo: lote de outro item, inexistente ou com saldo 0 no local → 422 lot_invalid" do
+  it "no corpo: lote de outro item, inexistente ou de outro local (sem movimento no local da UPA) → 422 lot_invalid" do
     other_item = lot!(location, item: diazepam, quantity: "5")
     central_only = lot!(central_location!, item: losartana, quantity: "5")
     [ other_item.id, SecureRandom.uuid, central_only.id ].each do |id|
       expect(result!(item, stock_lot_id: id).reason).to eq(:lot_invalid)
     end
     expect(UrgencyAdministration.count).to eq(0)
+  end
+
+  # §12 Q12 (corrige o §6 item 2): o lote do corpo válido mas já consumido não recusa a checagem.
+  it "o lote do corpo já consumido (saldo 0) → o próximo lote do FEFO, sem falta" do
+    chosen = lot!(location, item: losartana, quantity: "1", expires_on: today + 5)
+    next_lot = lot!(location, item: losartana, quantity: "4", expires_on: today + 40)
+    lot!(location, item: losartana, quantity: "4", expires_on: today + 90)
+    expect(record!(item, stock_lot_id: chosen.id).stock_lot_id).to eq(chosen.id)
+    expect(balance_of(location, chosen)).to eq(0)
+
+    adm = nil
+    expect { adm = record!(item, slot: 1, stock_lot_id: chosen.id) }.to change(StockMovement, :count).by(1)
+    expect(adm.stock_lot_id).to eq(next_lot.id)
+    expect(adm.shortfall).to be_nil
+    expect(balance_of(location, next_lot)).to eq(3)
+    expect(balance_of(location, chosen)).to eq(0)
+  end
+
+  it "o lote do corpo curto (0 < saldo < quantidade) → o próximo lote do FEFO com saldo suficiente" do
+    short = lot!(location, item: losartana, quantity: "1", expires_on: today + 5)
+    lot!(location, item: losartana, quantity: "1", expires_on: today + 10)
+    enough = lot!(location, item: losartana, quantity: "3", expires_on: today + 60)
+    adm = record!(item, stock_lot_id: short.id, stock_quantity: "2")
+    expect(adm).to have_attributes(stock_lot_id: enough.id, stock_quantity: 2)
+    expect(balance_of(location, short)).to eq(1)
+    expect(balance_of(location, enough)).to eq(1)
+  end
+
+  it "o lote do corpo já consumido e nenhum outro com saldo → 201 sem lote, com a falta lot_unavailable" do
+    chosen = lot!(location, item: losartana, quantity: "1")
+    record!(item, stock_lot_id: chosen.id)
+    adm = nil
+    expect { adm = record!(item, slot: 1, stock_lot_id: chosen.id) }
+      .to change(UrgencyStockShortfall, :count).by(1).and(not_change(StockMovement, :count))
+    expect(adm).to have_attributes(stock_lot_id: nil, stock_quantity: nil)
+    expect(adm.shortfall).to have_attributes(cause: "lot_unavailable", stock_location_id: location.id, quantity: 1)
+    expect(shortfall_events.sole.payload).to eq("shortfall_id" => adm.shortfall.id)
+    expect(balance_of(location, chosen)).to eq(0)
   end
 
   it "a rede do trigger (Ledger::Insufficient no record!) → o savepoint volta e a administração fica sem lote, com lot_unavailable" do

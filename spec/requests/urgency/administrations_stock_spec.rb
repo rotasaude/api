@@ -45,6 +45,15 @@ RSpec.describe "Urgência — checagem da medicação com baixa de estoque", typ
     result.payload.fetch(:prescription)
   end
 
+  def other_encounter_item!
+    other = in_care_encounter!(upa).tap { |e| urgency_consultation!(e, doctor: doctor) }
+    result = Urgency::IssuePrescription.call(encounter: other, items: [ item.deep_stringify_keys ], by: doctor,
+                                             catalog: { losartana.id => losartana })
+    raise "recusado: #{result.reason}" if result.failure?
+
+    result.payload.fetch(:prescription).items.first
+  end
+
   def administer(row, **body)
     json_post("/urgency/administrations", { prescription_item_id: row.id, scheduled_at: row.first_dose_at.iso8601, status: "administered" }.merge(body))
   end
@@ -158,6 +167,25 @@ RSpec.describe "Urgência — checagem da medicação com baixa de estoque", typ
     expect(response).to have_http_status(:created)
     expect(json_body["shortfall"]).to eq("cause" => "lot_unavailable")
     expect(UrgencyStockShortfall.sole).to have_attributes(stock_location_id: location.id, quantity: 2)
+  end
+
+  it "o lote do corpo já consumido por outra checagem → 201 com o próximo lote do FEFO (§12 Q12); sem outro → shortfall lot_unavailable" do
+    chosen = lot!(location, item: losartana, quantity: "1", expires_on: today + 5)
+    next_lot = lot!(location, item: losartana, quantity: "1", expires_on: today + 30)
+    # Três encontros (o mesmo medicamento no mesmo horário do mesmo encontro seria slot_taken).
+    administer(issue!.items.first, stock_lot_id: chosen.id)
+    expect(json_body.dig("administration", "stock_lot", "id")).to eq(chosen.id)
+
+    administer(other_encounter_item!, stock_lot_id: chosen.id)
+    expect(response).to have_http_status(:created)
+    expect(json_body.dig("administration", "stock_lot", "id")).to eq(next_lot.id)
+    expect(json_body["shortfall"]).to be_nil
+
+    administer(other_encounter_item!, stock_lot_id: chosen.id)
+    expect(response).to have_http_status(:created)
+    expect(json_body.dig("administration", "stock_lot")).to be_nil
+    expect(json_body["shortfall"]).to eq("cause" => "lot_unavailable")
+    expect([ balance_of(location, chosen), balance_of(location, next_lot) ]).to eq([ 0, 0 ])
   end
 
   it "stock_quantity como número JSON → 422 invalid_request; stock_lot_id malformado → 422 invalid_request" do
