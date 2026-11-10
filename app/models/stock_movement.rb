@@ -16,6 +16,7 @@ class StockMovement < ApplicationRecord
   belongs_to :stock_adjustment, optional: true
   belongs_to :vial_opening, optional: true
   belongs_to :immunization, optional: true
+  belongs_to :urgency_administration, optional: true
   belongs_to :recorded_by_user, class_name: "User"
 
   def inspect = "#<StockMovement id=#{id} kind=#{kind}>"

@@ -36,9 +36,11 @@ module Pharmacy
     class Inactive < StandardError; end
 
     # Módulo 29 (Desvio 7): o frasco aberto e a dose (unidose e a devolução dela).
+    # Módulo 32b: a checagem de medicação da UPA.
     DOCUMENTS = { StockEntry => :stock_entry, StockTransfer => :stock_transfer,
                   DispensationItem => :dispensation_item, StockAdjustment => :stock_adjustment,
-                  VialOpening => :vial_opening, Immunization => :immunization }.freeze
+                  VialOpening => :vial_opening, Immunization => :immunization,
+                  UrgencyAdministration => :urgency_administration }.freeze
 
     module_function
 
@@ -75,7 +77,7 @@ module Pharmacy
     # Grava UM movimento. `quantity` positiva (BigDecimal ou Integer) para todo
     # tipo, exceto `adjustment`, que leva o sinal; o sinal gravado é o do tipo.
     # `document` é StockEntry | StockTransfer | DispensationItem |
-    # StockAdjustment | VialOpening | Immunization. A chave de item do
+    # StockAdjustment | VialOpening | Immunization | UrgencyAdministration. A chave de item do
     # movimento (catálogo OU imunobiológico) é cópia da do lote. Saldo que ficaria negativo → Insufficient, pela conta
     # daqui ou pelo trigger. Erro de programação (tipo, quantidade, documento)
     # → ArgumentError.

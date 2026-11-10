@@ -10,6 +10,9 @@ class UrgencyAdministration < ApplicationRecord
   belongs_to :recorded_by_user, class_name: "User"
   belongs_to :professional_link
 
+  has_one :stock_movement, dependent: nil
+  has_one :shortfall, class_name: "UrgencyStockShortfall", dependent: nil
+
   validates :status, inclusion: { in: Urgency::Catalog::ADMINISTRATION_STATUSES }
 
   def inspect = "#<UrgencyAdministration id=#{id}>"

@@ -3658,3 +3658,41 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 32b (ADR 0050; contrato §6 e §12 Q7; R7): a falta de estoque da
+-- checagem da UPA. A re-cifra da nota passa antes de tudo; a conciliada nunca
+-- muda; a aberta só recebe os três campos da conciliação e `updated_at`.
+-- Nunca some: DELETE e TRUNCATE recusados.
+CREATE OR REPLACE FUNCTION rota_urgency_shortfall_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['reconciled_at', 'reconciled_by_user_id', 'reconciliation_note', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'urgency_stock_shortfalls: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on'
+     AND (to_jsonb(NEW) - 'reconciliation_note') = (to_jsonb(OLD) - 'reconciliation_note') THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.reconciled_at IS NOT NULL THEN
+    RAISE EXCEPTION 'urgency_stock_shortfalls: reconciled once';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) OR NEW.reconciled_at IS NULL THEN
+    RAISE EXCEPTION 'urgency_stock_shortfalls: an open shortfall only receives the reconciliation';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+BEGIN
+  IF to_regclass('public.urgency_stock_shortfalls') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_stock_shortfalls_guard ON urgency_stock_shortfalls';
+    EXECUTE 'CREATE TRIGGER urgency_stock_shortfalls_guard BEFORE UPDATE OR DELETE ON urgency_stock_shortfalls
+      FOR EACH ROW EXECUTE FUNCTION rota_urgency_shortfall_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_stock_shortfalls_append_only_truncate ON urgency_stock_shortfalls';
+    EXECUTE 'CREATE TRIGGER urgency_stock_shortfalls_append_only_truncate BEFORE TRUNCATE ON urgency_stock_shortfalls
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;

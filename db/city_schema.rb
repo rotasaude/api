@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_10_900002) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_10_900003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -3746,18 +3746,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900002) do
     t.uuid "stock_location_id", null: false
     t.uuid "stock_lot_id", null: false
     t.uuid "stock_transfer_id"
+    t.uuid "urgency_administration_id"
     t.uuid "vial_opening_id"
     t.index ["dispensation_item_id"], name: "idx_stock_movements_dispensation_item"
     t.index ["immunization_id"], name: "idx_stock_movements_immunization"
     t.index ["stock_location_id", "stock_lot_id"], name: "idx_stock_movements_balance"
     t.index ["stock_lot_id", "recorded_at", "id"], name: "idx_stock_movements_lot_time"
+    t.index ["urgency_administration_id"], name: "idx_stock_movements_urgency_administration"
     t.index ["vial_opening_id"], name: "idx_stock_movements_vial_opening"
     t.check_constraint "num_nonnulls(catalog_item_id, immunobiological_code) = 1", name: "ck_stock_movements_item"
     t.check_constraint "(package_units IS NULL) = (packages IS NULL) AND (package_units IS NULL OR package_units >= 1 AND package_units <= 10000 AND packages >= 1 AND packages <= 10000)", name: "ck_stock_movements_package"
     t.check_constraint "kind::text <> ALL (ARRAY['loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text]) OR reason IS NOT NULL", name: "ck_stock_movements_reason"
-    t.check_constraint "kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_out'::text, 'transfer_in'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text, 'vial_opening'::text, 'immunization'::text, 'immunization_reversal'::text])", name: "ck_stock_movements_kind"
-    t.check_constraint "num_nonnulls(stock_entry_id, stock_transfer_id, dispensation_item_id, stock_adjustment_id, vial_opening_id, immunization_id) = 1 AND (stock_entry_id IS NOT NULL) = (kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text])) AND (dispensation_item_id IS NOT NULL) = (kind::text = ANY (ARRAY['dispensing'::text, 'return'::text])) AND (stock_transfer_id IS NULL OR kind::text = ANY (ARRAY['transfer_out'::text, 'transfer_in'::text, 'loss'::text])) AND (stock_adjustment_id IS NULL OR kind::text = ANY (ARRAY['adjustment'::text, 'expiry'::text, 'loss'::text])) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'transfer_in'::text]) OR stock_transfer_id IS NOT NULL) AND (kind::text <> ALL (ARRAY['adjustment'::text, 'expiry'::text]) OR stock_adjustment_id IS NOT NULL) AND (vial_opening_id IS NOT NULL) = (kind::text = 'vial_opening'::text) AND (immunization_id IS NOT NULL) = (kind::text = ANY (ARRAY['immunization'::text, 'immunization_reversal'::text]))", name: "ck_stock_movements_document"
-    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99 AND (kind::text <> ALL (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_in'::text, 'return'::text, 'immunization_reversal'::text]) OR quantity > 0::numeric) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'vial_opening'::text, 'immunization'::text]) OR quantity < 0::numeric)", name: "ck_stock_movements_sign"
+    t.check_constraint "kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_out'::text, 'transfer_in'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'adjustment'::text, 'return'::text, 'vial_opening'::text, 'immunization'::text, 'immunization_reversal'::text, 'administration'::text])", name: "ck_stock_movements_kind"
+    t.check_constraint "num_nonnulls(stock_entry_id, stock_transfer_id, dispensation_item_id, stock_adjustment_id, vial_opening_id, immunization_id, urgency_administration_id) = 1 AND (stock_entry_id IS NOT NULL) = (kind::text = ANY (ARRAY['opening'::text, 'receipt'::text, 'donation'::text])) AND (dispensation_item_id IS NOT NULL) = (kind::text = ANY (ARRAY['dispensing'::text, 'return'::text])) AND (stock_transfer_id IS NULL OR kind::text = ANY (ARRAY['transfer_out'::text, 'transfer_in'::text, 'loss'::text])) AND (stock_adjustment_id IS NULL OR kind::text = ANY (ARRAY['adjustment'::text, 'expiry'::text, 'loss'::text])) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'transfer_in'::text]) OR stock_transfer_id IS NOT NULL) AND (kind::text <> ALL (ARRAY['adjustment'::text, 'expiry'::text]) OR stock_adjustment_id IS NOT NULL) AND (vial_opening_id IS NOT NULL) = (kind::text = 'vial_opening'::text) AND (immunization_id IS NOT NULL) = (kind::text = ANY (ARRAY['immunization'::text, 'immunization_reversal'::text])) AND (urgency_administration_id IS NOT NULL) = (kind::text = 'administration'::text)", name: "ck_stock_movements_document"
+    t.check_constraint "quantity <> 0::numeric AND abs(quantity) <= 99999.99 AND (kind::text <> ALL (ARRAY['opening'::text, 'receipt'::text, 'donation'::text, 'transfer_in'::text, 'return'::text, 'immunization_reversal'::text]) OR quantity > 0::numeric) AND (kind::text <> ALL (ARRAY['transfer_out'::text, 'dispensing'::text, 'loss'::text, 'expiry'::text, 'vial_opening'::text, 'immunization'::text, 'administration'::text]) OR quantity < 0::numeric)", name: "ck_stock_movements_sign"
   end
 
   create_table "stock_openings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4348,6 +4350,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900002) do
     t.check_constraint "(status::text = 'suspended'::text) = (suspension_reason IS NOT NULL)", name: "ck_urgency_prescriptions_suspended"
     t.check_constraint "status::text = ANY (ARRAY['active'::text, 'superseded'::text, 'suspended'::text, 'ended'::text])", name: "ck_urgency_prescriptions_status"
     t.check_constraint "version >= 1 AND ((version = 1) = (supersedes_id IS NULL))", name: "ck_urgency_prescriptions_version"
+  end
+
+  create_table "urgency_stock_shortfalls", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "catalog_item_id", null: false
+    t.string "cause", null: false
+    t.datetime "created_at", null: false
+    t.decimal "quantity", precision: 12, scale: 2, null: false
+    t.datetime "reconciled_at"
+    t.uuid "reconciled_by_user_id"
+    t.text "reconciliation_note"
+    t.uuid "stock_location_id"
+    t.datetime "updated_at", null: false
+    t.uuid "urgency_administration_id", null: false
+    t.index ["stock_location_id", "reconciled_at", "created_at"], name: "idx_urgency_stock_shortfalls_location"
+    t.index ["urgency_administration_id"], name: "idx_urgency_stock_shortfalls_administration", unique: true
+    t.check_constraint "(cause::text = 'no_location'::text) = (stock_location_id IS NULL)", name: "ck_urgency_stock_shortfalls_location"
+    t.check_constraint "(reconciled_at IS NULL) = (reconciled_by_user_id IS NULL) AND (reconciled_at IS NULL) = (reconciliation_note IS NULL)", name: "ck_urgency_stock_shortfalls_reconciliation"
+    t.check_constraint "cause::text = ANY (ARRAY['no_location'::text, 'insufficient_balance'::text, 'lot_unavailable'::text])", name: "ck_urgency_stock_shortfalls_cause"
+    t.check_constraint "quantity > 0::numeric", name: "ck_urgency_stock_shortfalls_quantity"
   end
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -5009,6 +5030,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900002) do
   add_foreign_key "stock_movements", "stock_locations"
   add_foreign_key "stock_movements", "stock_lots"
   add_foreign_key "stock_movements", "stock_transfers"
+  add_foreign_key "stock_movements", "urgency_administrations"
   add_foreign_key "stock_movements", "users", column: "recorded_by_user_id"
   add_foreign_key "stock_movements", "vial_openings"
   add_foreign_key "stock_openings", "stock_entries"
@@ -5106,6 +5128,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900002) do
   add_foreign_key "urgency_prescriptions", "urgency_prescriptions", column: "supersedes_id"
   add_foreign_key "urgency_prescriptions", "users", column: "prescribed_by_user_id"
   add_foreign_key "urgency_prescriptions", "users", column: "status_changed_by_user_id"
+  add_foreign_key "urgency_stock_shortfalls", "stock_locations"
+  add_foreign_key "urgency_stock_shortfalls", "urgency_administrations"
+  add_foreign_key "urgency_stock_shortfalls", "users", column: "reconciled_by_user_id"
   add_foreign_key "vaccination_record_checks", "patients"
   add_foreign_key "vaccination_record_checks", "users", column: "checked_by_user_id"
   add_foreign_key "vaccination_record_checks", "vaccine_rooms"

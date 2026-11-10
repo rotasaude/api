@@ -200,7 +200,9 @@ module CityEncryption
     [ UrgencyOutcome, :error_reason ],
     # Módulo 32b: o motivo da suspensão da prescrição, as instruções do item e o
     # motivo da checagem não feita ou recusada.
-    [ UrgencyPrescription, :suspension_reason ], [ UrgencyPrescriptionItem, :instructions ], [ UrgencyAdministration, :reason ]
+    [ UrgencyPrescription, :suspension_reason ], [ UrgencyPrescriptionItem, :instructions ], [ UrgencyAdministration, :reason ],
+    # Módulo 32b: a nota da conciliação da falta de estoque.
+    [ UrgencyStockShortfall, :reconciliation_note ]
   ].freeze
 
   module_function

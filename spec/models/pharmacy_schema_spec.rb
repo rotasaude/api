@@ -1,6 +1,7 @@
 require "rails_helper"
 require Rails.root.join("db/city_migrate/20261029900001_add_pharmacy_stock.rb").to_s
 require Rails.root.join("db/city_migrate/20261102900001_add_vaccination_room.rb").to_s
+require Rails.root.join("db/city_migrate/20261110900003_add_urgency_stock_deduction.rb").to_s
 
 # Módulo 27a (ADR 0045): o banco da farmácia. O saldo é a soma dos movimentos
 # (só acréscimo, nunca negativo); os CHECKs e os triggers (db/city_triggers.sql)
@@ -235,8 +236,10 @@ RSpec.describe "Esquema da farmácia (ADR 0045)" do
   # módulo 29 (Desvio 7) vêm da migração dele, que refaz os CHECKs.
   it "a migração espelha as listas de Pharmacy::Catalog" do
     catalog = Pharmacy::Catalog
-    vaccine = %w[vial_opening immunization immunization_reversal]
+    vaccine = %w[vial_opening immunization immunization_reversal administration]
     expect([ AddVaccinationRoom::MOVEMENT_KINDS, AddVaccinationRoom::POSITIVE_KINDS, AddVaccinationRoom::NEGATIVE_KINDS ])
+      .to eq([ catalog::MOVEMENT_KINDS - %w[administration], catalog::POSITIVE_KINDS, catalog::NEGATIVE_KINDS - %w[administration] ])
+    expect([ AddUrgencyStockDeduction::MOVEMENT_KINDS, AddUrgencyStockDeduction::POSITIVE_KINDS, AddUrgencyStockDeduction::NEGATIVE_KINDS ])
       .to eq([ catalog::MOVEMENT_KINDS, catalog::POSITIVE_KINDS, catalog::NEGATIVE_KINDS ])
     expect([ AddPharmacyStock::LOCATION_KINDS, AddPharmacyStock::STAFF_ROLES, AddPharmacyStock::DISPENSER_ROLES, AddPharmacyStock::MOVEMENT_KINDS,
              AddPharmacyStock::POSITIVE_KINDS, AddPharmacyStock::NEGATIVE_KINDS, AddPharmacyStock::ENTRY_KINDS, AddPharmacyStock::TRANSFER_STATUSES,
