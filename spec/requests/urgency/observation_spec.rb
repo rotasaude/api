@@ -91,6 +91,41 @@ RSpec.describe "Urgência — observação", type: :request do
       leave(encounter)
       expect_refusal(:unprocessable_entity, "not_in_observation")
     end
+
+    # Task 12 (contrato 32b §4, §5 e §12 Q4, Q9): a saída sem desfecho não
+    # mexe na prescrição; o desfecho fecha a estadia com `outcome`, encerra a
+    # prescrição e tira o paciente do mapa (nem no leito, nem em waiting_bed).
+    it "a saída sem desfecho mantém a prescrição ativa; o desfecho depois fecha a nova estadia com outcome e esvazia o mapa" do
+      ciap2_release!
+      cid10_release!
+      sigtap_release!
+      import_test_catalog!
+      losartana = catalog_item(268_856)
+      encounter = in_care_encounter!(upa)
+      urgency_consultation!(encounter, doctor: doctor)
+      first = observed!(encounter, bed: bed)
+      item = { "catalog_item_id" => losartana.id, "dose" => "50", "dose_unit" => "mg", "route" => "oral",
+               "frequency" => { "kind" => "interval", "interval_hours" => 8 } }
+      prescription = Urgency::IssuePrescription.call(encounter: encounter.reload, items: [ item ], by: doctor,
+                                                     catalog: { losartana.id => losartana }).payload.fetch(:prescription)
+      sign_in_as(doctor)
+      leave(encounter)
+      expect(response).to have_http_status(:ok)
+      expect(first.reload.end_kind).to eq("observation_ended")
+      expect(prescription.reload.status).to eq("active")
+
+      second = observed!(encounter, bed: bed)
+      finalized_urgency!(encounter, doctor: doctor)
+      result = Urgency::RecordOutcome.call(encounter: encounter.reload, attrs: { "kind" => "discharged" }, by: doctor)
+      expect(result).to be_ok
+      expect(second.reload).to have_attributes(end_kind: "outcome", ended_at: result.payload[:outcome].recorded_at)
+      expect(prescription.reload.status).to eq("ended")
+      expect(events("urgency.observation_ended", encounter).map { |e| e.payload["stay_id"] }).to contain_exactly(first.id, second.id)
+
+      board
+      expect(json_body.dig("beds", 0, "stay")).to be_nil
+      expect(json_body["waiting_bed"]).to eq([])
+    end
   end
 
   describe "recusas da entrada" do

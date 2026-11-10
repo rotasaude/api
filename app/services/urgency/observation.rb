@@ -11,14 +11,33 @@
 #   ocupado) com a estadia aberta, e `waiting_bed` = os encontros `in_care`
 #   da UPA sem estadia aberta, por chamada (A1).
 # - `queue_fields`: o `observation` dos itens `in_care` da fila.
+# - `end_with_outcome!`: o fim do cuidado (contrato 32b §4, §5 e §12 Q9) — o
+#   desfecho da urgência e o fechamento pelo 13 com urgency_care desligado.
 #
 # Sem texto clínico e sem trilha (é polling). Consultas em lote, nunca uma
 # por leito ou por encontro.
 module Urgency
   module Observation
     STAY_INCLUDES = { urgency_encounter: { attendance: :patient } }.freeze
+    ENDED_EVENT = "urgency.observation_ended".freeze
 
     module_function
+
+    # Dentro da transação de quem fecha, que já travou o atendimento e o
+    # encontro: trava a estadia aberta e depois a prescrição ativa (FOR
+    # UPDATE, nessa ordem — a da checagem é atendimento → encontro →
+    # prescrição, e as duas se serializam no atendimento), fecha a estadia em
+    # `now` com `outcome` e leva a prescrição a `ended`. Publica
+    # urgency.observation_ended (só encounter_id e stay_id) quando havia
+    # estadia. Sem estadia nem prescrição, não faz nada. -> UrgencyBedStay | nil
+    def end_with_outcome!(encounter_id:, by:, now:)
+      stay = UrgencyBedStay.open_stays.lock.find_by(urgency_encounter_id: encounter_id)
+      prescription = UrgencyPrescription.active_versions.lock.find_by(urgency_encounter_id: encounter_id)
+      stay&.update!(ended_at: now, end_kind: "outcome", ended_by_user: by)
+      prescription&.update!(status: "ended", status_changed_at: now, status_changed_by_user: by)
+      DomainEvents.publish(ENDED_EVENT, encounter_id: encounter_id, stay_id: stay.id) if stay
+      stay
+    end
 
     # -> Integer (nunca negativo)
     def hours(first_started_at, now) = [ ((now - first_started_at) / 1.hour).floor, 0 ].max

@@ -16,6 +16,12 @@
 # `referral_regulated` vêm do Urgency::Catalog::OUTCOME_MAP (o motivo do
 # retorno fica só cifrado no desfecho), com `left` valendo também de in_care.
 # Desligado, o 13 fecha o walk_in como qualquer atendimento.
+# Módulo 32b (contrato §12 Q9): fora do caminho da urgência, o walk_in com
+# encontro da urgência (o 13 com urgency_care desligado) fecha, na mesma
+# transação, a estadia aberta com `outcome` e leva a prescrição ativa a
+# `ended`, no `closed_at` (Urgency::Observation.end_with_outcome!, com
+# urgency.observation_ended), sem tocar o estado do encontro. Ordem de trava:
+# atendimento → encontro (FOR NO KEY UPDATE) → estadia → prescrição.
 module Attendances
   class Close
     def self.call(attendance:, outcome:, referral_unit_id:, referral_note:, by:, regulation: nil, urgency_outcome: nil, urgency: false)
@@ -70,7 +76,9 @@ module Attendances
         # ADR 0030 (Desvio 7): quem sai (ou é encerrado) com escuta em curso
         # não deixa a escuta pendurada.
         Screenings::Abandon.release!(attendance, by: by)
-        attendance.update!(status: "closed", outcome: outcome, closed_by_user: by, closed_at: Time.current,
+        now = Time.current
+        end_urgency_care!(attendance, by, now) unless urgency
+        attendance.update!(status: "closed", outcome: outcome, closed_by_user: by, closed_at: now,
                            referral_unit: unit, referral_note: (%w[referred return].include?(outcome) ? note : nil),
                            referral_regulated: regulated)
         request = AppointmentRequests::Lifecycle.open_for!(attendance, outcome: outcome, unit: unit)
@@ -82,6 +90,14 @@ module Attendances
       end
     rescue HealthUnit::Inactive
       Result.fail(:invalid_unit)
+    end
+
+    # O desfecho da urgência já fechou a estadia e a prescrição (Urgency::RecordOutcome).
+    def self.end_urgency_care!(attendance, by, now)
+      return unless attendance.walk_in?
+
+      encounter = UrgencyEncounter.lock("FOR NO KEY UPDATE").find_by(attendance_id: attendance.id)
+      Urgency::Observation.end_with_outcome!(encounter_id: encounter.id, by: by, now: now) if encounter
     end
 
     # A evasão do encontro da urgência (left_*, registered_in_error) vale
@@ -101,6 +117,6 @@ module Attendances
 
     # Contrato §14 Q26: o texto (e o "1 dia" no singular) é o do Urgency::ReturnGuidance.
     def self.return_note(days) = Urgency::ReturnGuidance.note(days)
-    private_class_method :close, :urgency_terms, :return_note
+    private_class_method :close, :end_urgency_care!, :urgency_terms, :return_note
   end
 end

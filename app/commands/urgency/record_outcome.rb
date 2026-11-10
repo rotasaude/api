@@ -17,6 +17,13 @@
 # fora de RETURN_REASON → invalid_request `return_guidance.days`/`.reason`);
 # `registered_in_error` sem motivo em ERROR_REASON → invalid_request `reason`.
 #
+# Ordem de trava: attendance → encounter → estadia → prescrição (contrato 32b
+# §4): attendance.lock! → encounter.lock! → estadia aberta FOR UPDATE →
+# prescrição ativa FOR UPDATE (Urgency::Observation.end_with_outcome!). A
+# checagem da medicação trava atendimento → encontro → prescrição FOR SHARE
+# → itens → lotes → local: as duas se serializam no atendimento (Review
+# Focus 3, spec/commands/urgency/record_outcome_concurrency_spec.rb).
+#
 # Estado (sob attendance.lock! → encounter.lock!): encontro ou atendimento
 # fechado → encounter_closed; IDENTIFIED_OUTCOMES de provisório →
 # patient_unidentified; os de balcão valem em qualquer estado, mas consulta em
@@ -29,7 +36,11 @@
 #
 # `team`: a equipe da contrarreferência (CareLines::TeamPopulation), lida
 # FORA da transação pelo chamador — só na alta para a UBS; a unidade é a da
-# equipe. Evento urgency.encounter_closed, só com o encounter_id. Destino,
+# equipe. Módulo 32b (§4, §5 e §12 Q9; A20): passadas as recusas, antes de
+# fechar o encontro, a estadia aberta fecha com `outcome` em `recorded_at` e
+# a prescrição ativa vai a `ended`; com estadia, urgency.observation_ended
+# (encounter_id e stay_id). Uma recusa do Attendances::Close volta tudo.
+# Evento urgency.encounter_closed, só com o encounter_id. Destino,
 # pedido de vaga e motivos nunca em evento, log nem recusa.
 module Urgency
   module RecordOutcome
@@ -145,6 +156,7 @@ module Urgency
           counter_referral_health_team: counter, counter_referral_health_unit_id: counter&.health_unit_id,
           recorded_by_user: by, recorded_at: now, created_at: now
         )
+        Observation.end_with_outcome!(encounter_id: encounter.id, by: by, now: now)
         encounter.update!(state: "closed")
         closed = Attendances::Close.call(attendance: attendance, outcome: nil, referral_unit_id: nil, referral_note: nil, by: by,
                                          urgency_outcome: outcome, urgency: true)

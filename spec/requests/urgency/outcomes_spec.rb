@@ -263,6 +263,144 @@ RSpec.describe "Desfecho do atendimento de urgência", type: :request do
     expect(encounter.reload).to have_attributes(state: "in_care", outcome: nil)
   end
 
+  # Módulo 32b, Task 12 (contrato 32b §4, §5 e §12 Q9; Divergência A20): o
+  # desfecho fecha a estadia aberta (`outcome`, no `recorded_at`) e encerra a
+  # prescrição ativa, na mesma transação, e publica urgency.observation_ended
+  # só com ids. Com urgency_care desligado, o fechamento pelo 13 faz o mesmo,
+  # sem tocar o encontro. A corrida com a checagem está em
+  # spec/commands/urgency/record_outcome_concurrency_spec.rb (Review Focus 3).
+  describe "observação e prescrição (32b)" do
+    let!(:catalog) { import_test_catalog! }
+    let(:losartana) { catalog_item(268_856) }
+    let(:bed) { urgency_bed!(upa, label: "OBS 01") }
+    after { Current.reset }
+
+    def ended_events(target) = DomainEvent.where(name: "urgency.observation_ended").where("payload->>'encounter_id' = ?", target.id)
+
+    # Consulta de urgência aberta, no leito, com a prescrição ativa. -> [estadia, prescrição]
+    def observed_with_prescription!(target = encounter)
+      called!(target, by: doctor)
+      urgency_consultation!(target, doctor: doctor)
+      stay = observed!(target, bed: bed, by: doctor)
+      item = { "catalog_item_id" => losartana.id, "dose" => "50", "dose_unit" => "mg", "route" => "oral",
+               "frequency" => { "kind" => "interval", "interval_hours" => 8 } }
+      issued = Urgency::IssuePrescription.call(encounter: target.reload, items: [ item ], by: doctor, catalog: { losartana.id => losartana })
+      raise "prescrição recusada: #{issued.reason} #{issued.details}" if issued.failure?
+
+      [ stay, issued.payload.fetch(:prescription) ]
+    end
+
+    def board_stay
+      get "/urgency/observation", params: { health_unit_id: upa.id }
+      expect(response).to have_http_status(:ok)
+      json_body["beds"].find { |b| b["bed_id"] == bed.id }["stay"]
+    end
+
+    it "alta de quem está no leito fecha a estadia com outcome no recorded_at, encerra a prescrição, libera o leito e publica observation_ended" do
+      stay, prescription = observed_with_prescription!
+      finalized_urgency!(encounter, doctor: doctor)
+      sign_in_as(doctor)
+      outcome!(kind: "discharged")
+      expect(response).to have_http_status(:created)
+      recorded_at = encounter.reload.outcome.recorded_at
+      expect(stay.reload).to have_attributes(end_kind: "outcome", ended_at: recorded_at, ended_by_user_id: doctor.id)
+      expect(prescription.reload).to have_attributes(status: "ended", status_changed_at: recorded_at, status_changed_by_user_id: doctor.id)
+      expect(ended_events(encounter).sole.payload).to eq("encounter_id" => encounter.id, "stay_id" => stay.id)
+      expect(board_stay).to be_nil
+      expect(json_body["waiting_bed"]).to eq([])
+    end
+
+    it "evasão (left_without_care) durante a observação também fecha a estadia e encerra a prescrição" do
+      stay, prescription = observed_with_prescription!
+      finalized_urgency!(encounter, doctor: doctor)
+      reception = upa_reception!
+      sign_in_as(reception)
+      outcome!(kind: "left_without_care")
+      expect(response).to have_http_status(:created)
+      expect(stay.reload).to have_attributes(end_kind: "outcome", ended_by_user_id: reception.id)
+      expect(prescription.reload).to have_attributes(status: "ended", status_changed_by_user_id: reception.id)
+      expect(ended_events(encounter).sole.payload).to eq("encounter_id" => encounter.id, "stay_id" => stay.id)
+    end
+
+    it "sem estadia nem prescrição o desfecho fecha como antes e não publica observation_ended" do
+      called!(encounter, by: doctor)
+      finalized_urgency!(encounter, doctor: doctor)
+      sign_in_as(doctor)
+      outcome!(kind: "discharged")
+      expect(response).to have_http_status(:created)
+      expect(ended_events(encounter)).to be_empty
+    end
+
+    it "desfecho recusado (consultation_not_finalized) deixa a estadia aberta e a prescrição ativa" do
+      stay, prescription = observed_with_prescription!
+      sign_in_as(doctor)
+      outcome!(kind: "discharged")
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body["error"]).to eq("consultation_not_finalized")
+      expect(stay.reload).to be_open
+      expect(prescription.reload.status).to eq("active")
+      expect(ended_events(encounter)).to be_empty
+    end
+
+    it "recusa do Attendances::Close volta tudo: a estadia segue aberta, a prescrição ativa e nenhum evento fica" do
+      stay, prescription = observed_with_prescription!
+      finalized_urgency!(encounter, doctor: doctor)
+      allow(Attendances::Close).to receive(:call).and_return(Result.fail(:invalid_transition))
+      sign_in_as(doctor)
+      outcome!(kind: "discharged")
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(stay.reload).to be_open
+      expect(prescription.reload.status).to eq("active")
+      expect(encounter.reload).to have_attributes(state: "in_care", outcome: nil)
+      expect(ended_events(encounter)).to be_empty
+    end
+
+    it "com urgency_care ligado o fechamento direto do 13 segue recusado e não toca a estadia nem a prescrição" do
+      stay, prescription = observed_with_prescription!
+      finalized_urgency!(encounter, doctor: doctor)
+      sign_in_as(doctor)
+      json_post "/attendance/attendances/#{encounter.attendance_id}/close", outcome: "discharged"
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body["error"]).to eq("urgency_outcome_required")
+      expect(stay.reload).to be_open
+      expect(prescription.reload.status).to eq("active")
+      expect(ended_events(encounter)).to be_empty
+    end
+
+    # Contrato 32b §12 Q9: o 13 fecha o walk_in da UPA com o interruptor
+    # desligado; a estadia fecha com `outcome` e a prescrição vai a `ended`,
+    # na mesma transação; o encontro fica como o 32a deixa (in_care, sem desfecho).
+    it "com urgency_care desligado o fechamento pelo 13 fecha a estadia com outcome, encerra a prescrição e publica observation_ended" do
+      stay, prescription = observed_with_prescription!
+      finalized_urgency!(encounter, doctor: doctor)
+      Platform::Features.set!(city: city, key: Urgency::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+      CityCatalog.reset_cache!
+      sign_in_as(doctor)
+      json_post "/attendance/attendances/#{encounter.attendance_id}/close", outcome: "discharged"
+      expect(response).to have_http_status(:ok)
+      attendance = encounter.attendance.reload
+      expect(attendance).to have_attributes(status: "closed", outcome: "discharged")
+      expect(stay.reload).to have_attributes(end_kind: "outcome", ended_at: attendance.closed_at, ended_by_user_id: doctor.id)
+      expect(prescription.reload).to have_attributes(status: "ended", status_changed_at: attendance.closed_at,
+                                                     status_changed_by_user_id: doctor.id)
+      expect(ended_events(encounter).sole.payload).to eq("encounter_id" => encounter.id, "stay_id" => stay.id)
+      expect(encounter.reload).to have_attributes(state: "in_care", outcome: nil)
+    end
+
+    it "com urgency_care desligado e o 13 recusando (consulta em rascunho), a estadia e a prescrição ficam" do
+      stay, prescription = observed_with_prescription!
+      Platform::Features.set!(city: city, key: Urgency::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+      CityCatalog.reset_cache!
+      sign_in_as(doctor)
+      json_post "/attendance/attendances/#{encounter.attendance_id}/close", outcome: "discharged"
+      expect(response).to have_http_status(:conflict)
+      expect(json_body["error"]).to eq("consultation_in_progress")
+      expect(stay.reload).to be_open
+      expect(prescription.reload.status).to eq("active")
+      expect(ended_events(encounter)).to be_empty
+    end
+  end
+
   describe "retornos pedidos pela urgência (GET /urgency/counter_referrals)" do
     it "a recepção lê; o profissional sem vínculo na UBS não; só os últimos 60 dias, do mais recente ao mais antigo" do
       patient, ubs, team = patient_with_team!
