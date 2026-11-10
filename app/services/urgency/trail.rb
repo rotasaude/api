@@ -8,7 +8,8 @@ module Urgency
     # recepção (contrato §14 Q23), um por candidato, como no 31.
     # `provisional_encounters`: a lista dos provisórios a identificar (Q29),
     # que leva a descrição — um por paciente listado, como os candidatos.
-    RESOURCES = %w[person_lookup encounter patient_duplicates provisional_encounters].freeze
+    # `medication_schedule` (32b): o aprazamento lido por quem checa a medicação.
+    RESOURCES = %w[person_lookup encounter patient_duplicates provisional_encounters medication_schedule].freeze
 
     module_function
 

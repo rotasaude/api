@@ -335,8 +335,8 @@ RSpec.describe "Sigilo da urgência (32a) — query das leituras", type: :reques
   let(:module_reads) do
     %w[/urgency/queue /urgency/counter_referrals /urgency/encounters/:id /urgency/dashboard /urgency/provisional_encounters
        /waiting_room/displays /waiting_room/board /attendance/call_locations] +
-      # Módulo 32b: os leitos (Task 5) e o mapa da observação (Task 6).
-      %w[/urgency/beds /urgency/observation]
+      # Módulo 32b: os leitos (Task 5), o mapa da observação (Task 6) e o aprazamento (Task 8).
+      %w[/urgency/beds /urgency/observation /urgency/encounters/:id/medication_schedule]
   end
 
   it "GET /urgency/queue?cpf=… → 422 path cpf" do

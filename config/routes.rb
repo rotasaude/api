@@ -776,6 +776,8 @@ Rails.application.routes.draw do
     post  "encounters/:id/prescriptions",   to: "prescriptions#create", as: :encounter_prescriptions
     post  "prescriptions/:id/suspend",      to: "prescriptions#suspend", as: :prescription_suspend
     post  "medication_search",              to: "medication_searches#create"
+    # Aprazamento calculado na leitura (§5, Q5; trilha medication_schedule).
+    get   "encounters/:id/medication_schedule", to: "medication_schedules#show", as: :encounter_medication_schedule
   end
 
   # Módulo 32a (ADR 0050; contrato §8 e §14 Q8): TV da sala de espera. As
