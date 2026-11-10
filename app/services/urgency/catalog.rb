@@ -32,6 +32,32 @@ module Urgency
     }.freeze
     CLASSIFIER_CBO_PREFIXES = %w[2235].freeze
     PHYSICIAN_CBO_PREFIX = "225".freeze
+    # Módulo 32b: quem checa a medicação é a enfermagem (2235), o técnico (3222)
+    # ou o médico (225*).
+    NURSING_TECH_CBO_PREFIX = "3222".freeze
+    CHECKER_CBO_PREFIXES = %w[2235 3222 225].freeze
+    BED_LABEL = (1..20)
+    STAY_END_KINDS = %w[bed_change observation_ended outcome].freeze
+    OBSERVATION_NEAR_LIMIT_HOURS = 20
+    OBSERVATION_LIMIT_HOURS = 24
+    PRESCRIPTION_STATUSES = %w[active superseded suspended ended].freeze
+    PRESCRIPTION_ITEMS = (1..20)
+    FREQUENCY_KINDS = %w[once interval if_needed].freeze
+    INTERVAL_HOURS = (1..24)
+    MAX_PER_DAY = (1..24)
+    DOSE = /\A\d{1,5}(\.\d{1,3})?\z/
+    DOSE_UNITS = %w[mg mcg g mL UI mEq gota comprimido capsula ampola frasco jato aplicacao sache].freeze
+    INSTRUCTIONS_MAX = 500
+    SUSPENSION_REASON = (10..500)
+    FIRST_DOSE_WINDOW = (-1.hour..24.hours)
+    SCHEDULE_AHEAD = 24.hours
+    IF_NEEDED_WINDOW = 24.hours
+    ADMINISTRATION_STATUSES = %w[administered not_administered refused].freeze
+    ADMINISTRATION_REASON = (10..500)
+    ADMINISTERED_AT_TOLERANCE = 5.minutes
+    DETAIL_ADMINISTRATIONS_WINDOW = 48.hours
+    SHORTFALL_CAUSES = %w[no_location insufficient_balance lot_unavailable].freeze
+    RECONCILIATION_NOTE = (10..500)
     COMPLAINT = (3..500)
     JUSTIFICATION = (10..500)
     DESCRIPTION = (10..500)

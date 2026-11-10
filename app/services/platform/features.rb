@@ -193,7 +193,13 @@ module Platform
                 requires: %w[feature:clinical_record]),
       Entry.new(key: "waiting_room_display",
                 description: "Painel de chamada da sala de espera (UPA e UBS): senha no check-in, local da chamada e TV pareada, sem dado pessoal",
-                requires: [])
+                requires: []),
+      # Módulo 32b: baixa de estoque pela medicação checada na UPA. Sem cascata:
+      # desligar a farmácia ou a urgência deixa o interruptor ligado faltando
+      # pré-requisito (urgency_care_disabled, pharmacy_disabled).
+      Entry.new(key: "urgency_stock_deduction",
+                description: "Atendimentos da UPA com prescrição de medicação atualizam o estoque",
+                requires: %w[feature:urgency_care feature:pharmacy])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze

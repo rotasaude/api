@@ -3,7 +3,7 @@
 module Urgency
   module Config
     PATH = Rails.root.join("config/urgency/sigtap.yml")
-    KEYS = %w[version review source classification_code care_code].freeze
+    KEYS = %w[version review source classification_code care_code observation_code].freeze
 
     module_function
 

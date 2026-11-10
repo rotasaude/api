@@ -30,6 +30,15 @@ module Urgency
       link(user, health_unit_id, [ "" ]) ? :cbo_not_allowed : :missing_link
     end
 
+    # Módulo 32b (Q2): quem checa a medicação — enfermagem, técnico 3222 ou médico.
+    def nursing_or_physician_link(user, health_unit_id) = link(user, health_unit_id, Catalog::CHECKER_CBO_PREFIXES)
+
+    # Módulo 32b (Q3): quem lê o mapa de observação — a recepção (de qualquer
+    # UPA) ou quem checa a medicação na unidade.
+    def observation_reader?(user, health_unit_id)
+      reception?(user) || nursing_or_physician_link(user, health_unit_id).present?
+    end
+
     # Quem lê o clínico do encontro: o classificador ou o médico da UPA.
     def clinical_link(user, health_unit_id)
       link(user, health_unit_id, Catalog::CLASSIFIER_CBO_PREFIXES + [ Catalog::PHYSICIAN_CBO_PREFIX ])

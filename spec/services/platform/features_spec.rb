@@ -118,9 +118,33 @@ RSpec.describe Platform::Features do
 
   it "módulo 32a: urgency_care exige o prontuário; waiting_room_display é independente" do
     keys = Platform::Features::CATALOG.map(&:key)
-    expect(keys.last(2)).to eq(%w[urgency_care waiting_room_display])
+    expect(keys.last(3).first(2)).to eq(%w[urgency_care waiting_room_display])
     expect(Platform::Features::CATALOG.find { |e| e.key == "urgency_care" }.requires).to eq(%w[feature:clinical_record])
     expect(Platform::Features::CATALOG.find { |e| e.key == "waiting_room_display" }.requires).to eq([])
     expect(Platform::Features::CITIZEN_HIDDEN).not_to include("urgency_care", "waiting_room_display")
+  end
+
+  it "módulo 32b: urgency_stock_deduction é a última chave e exige a urgência e a farmácia" do
+    entry = Platform::Features::CATALOG.last
+    expect(entry.key).to eq("urgency_stock_deduction")
+    expect(entry.requires).to eq(%w[feature:urgency_care feature:pharmacy])
+    expect(entry.description).to eq("Atendimentos da UPA com prescrição de medicação atualizam o estoque")
+    expect(Platform::Features::CITIZEN_HIDDEN).not_to include("urgency_stock_deduction")
+  end
+
+  it "faltando a farmácia, o interruptor ligado fica inutilizável com pharmacy_disabled" do
+    city = urgency_city!
+    Platform::Features.set!(city: city, key: "urgency_stock_deduction", enabled: true, maintainer: ledi_maintainer!)
+    expect(Platform::Features.missing(city, "urgency_stock_deduction")).to eq(%w[pharmacy_disabled])
+    expect(Urgency::StockGate.usable?(city)).to be(false)
+  end
+
+  # Contrato Q11: só os pré-requisitos diretos, na ordem do `requires`; nunca o
+  # pré-requisito do pré-requisito.
+  it "missing devolve só os pré-requisitos diretos, na ordem do requires" do
+    city = urgency_city!
+    Platform::Features.set!(city: city, key: "clinical_record", enabled: false, maintainer: ledi_maintainer!)
+    expect(Platform::Features.missing(city, "urgency_stock_deduction")).to eq(%w[urgency_care_disabled pharmacy_disabled])
+    expect(Platform::Features.missing(city, "urgency_stock_deduction")).not_to include("clinical_record_disabled")
   end
 end

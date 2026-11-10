@@ -6,7 +6,7 @@ RSpec.describe Urgency::Config do
   let(:config) { described_class.sigtap }
 
   it "carrega o YAML congelado, com as chaves exatas e sob revisão" do
-    expect(YAML.safe_load_file(described_class::PATH).keys).to eq(%w[version review source classification_code care_code])
+    expect(YAML.safe_load_file(described_class::PATH).keys).to eq(%w[version review source classification_code care_code observation_code])
     expect(config).to be_frozen
     expect(config["review"]).to be(true)
   end
@@ -14,6 +14,7 @@ RSpec.describe Urgency::Config do
   it "códigos SIGTAP de 10 dígitos" do
     expect(config["classification_code"]).to match(/\A\d{10}\z/).and eq("0301060118")
     expect(config["care_code"]).to match(/\A\d{10}\z/).and eq("0301060096")
+    expect(config["observation_code"]).to match(/\A\d{10}\z/).and eq("0301060029")
   end
 
   it "chave desconhecida falha" do
@@ -33,6 +34,14 @@ RSpec.describe Urgency::Config do
   it "filtra os parâmetros clínicos da urgência no log" do
     filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
     %w[complaint criterion vital_signs pain_scale destination vacancy_request return_guidance description unidentified suggested].each do |k|
+      expect(filter.filter(k => "x")[k]).to eq("[FILTERED]")
+    end
+  end
+
+  it "módulo 32b: CBOs de quem checa a medicação e filtro de log da observação" do
+    expect(Urgency::Catalog::CHECKER_CBO_PREFIXES).to eq(%w[2235 3222 225])
+    filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
+    %w[instructions dose dose_unit frequency first_dose_at stock_lot_id stock_quantity stock_quantity_per_dose bed_id].each do |k|
       expect(filter.filter(k => "x")[k]).to eq("[FILTERED]")
     end
   end

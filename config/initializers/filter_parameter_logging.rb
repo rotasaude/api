@@ -122,7 +122,10 @@ Rails.application.config.filter_parameters += [
   # ADR 0050: urgência — queixa, critério da classificação, sinais vitais,
   # descrição do não identificado e orientação de retorno são dado de saúde
   # (`reason`, `note`, `justification` e `vitals` já estavam acima).
-  /\A(complaint|criterion|vital_signs|pain_scale|destination|vacancy_request|return_guidance|description|unidentified|suggested)\z/
+  /\A(complaint|criterion|vital_signs|pain_scale|destination|vacancy_request|return_guidance|description|unidentified|suggested)\z/,
+  # Módulo 32b: observação e prescrição na UPA (`reason`, `note`, `items`,
+  # `route` e `catalog_item_id` já estavam acima).
+  /\A(instructions|dose|dose_unit|frequency|first_dose_at|stock_lot_id|stock_quantity|stock_quantity_per_dose|bed_id)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem
