@@ -512,9 +512,9 @@ RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
       Pharmacy::ReceiveTransfer.call(transfer: received, items: [ { "lot_id" => central_lot.id, "quantity_received" => "3" } ], by: pharmacist, now: Time.current)
 
       body = alerts
-      expect(body).to eq("expiring" => 2, "expired" => 1, "below_minimum" => 2, "in_transit" => 2, "pending_adjustments" => 1)
+      expect(body).to eq("expiring" => 2, "expired" => 1, "below_minimum" => 2, "in_transit" => 2, "pending_adjustments" => 1, "urgency_shortfalls" => 0)
       expect(body.values).to all(be_an(Integer))
-      expect(body.keys).to eq(%w[expiring expired below_minimum in_transit pending_adjustments])
+      expect(body.keys).to eq(%w[expiring expired below_minimum in_transit pending_adjustments urgency_shortfalls])
     end
 
     it "lote zerado (vencido ou vencendo) que continua listado na posição não entra em expiring nem em expired" do
@@ -531,7 +531,7 @@ RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
       stocked_lot!(farmacia, item: paracetamol, quantity: "10", lot_number: "V-30", expires_on: today + 30)
       central_lot = stocked_lot!(central, item: losartana, quantity: "10", lot_number: "C-OLD", expires_on: today - 5)
       expect(alerts({ location_id: central.id }, as: central_keeper)).to eq("expiring" => 0, "expired" => 1, "below_minimum" => 0, "in_transit" => 0,
-                                                                              "pending_adjustments" => 0)
+                                                                              "pending_adjustments" => 0, "urgency_shortfalls" => 0)
       expect(alerts({ location_id: farmacia.id }, as: central_keeper)).to include("expiring" => 1, "expired" => 0)
       expect(central_lot).to be_present
     end
@@ -554,7 +554,7 @@ RSpec.describe "Farmácia — posição, extrato e alertas", type: :request do
     end
 
     it "local sem lote nenhum: tudo zero; location_id obrigatório (422), inexistente (422) e do usuário (403)" do
-      expect(alerts).to eq("expiring" => 0, "expired" => 0, "below_minimum" => 0, "in_transit" => 0, "pending_adjustments" => 0)
+      expect(alerts).to eq("expiring" => 0, "expired" => 0, "below_minimum" => 0, "in_transit" => 0, "pending_adjustments" => 0, "urgency_shortfalls" => 0)
       sign_in_as(pharmacist)
       get "/pharmacy/alerts"
       expect([ response.status, json_body ]).to eq([ 422, refusal("invalid_request", "location_id") ])

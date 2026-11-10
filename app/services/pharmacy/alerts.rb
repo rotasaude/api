@@ -7,12 +7,13 @@
 # - `below_minimum`: itens com mínimo > 0 e saldo < mínimo (a mesma conta da
 #   posição, inclusive item sem movimento);
 # - `in_transit`: transferências `sent` com destino no local, à espera do recebimento;
-# - `pending_adjustments`: ajustes `pending` do local, à espera de aprovação.
+# - `pending_adjustments`: ajustes `pending` do local, à espera de aprovação;
+# - `urgency_shortfalls` (módulo 32b, Task 11): faltas de estoque da UPA em aberto no local.
 module Pharmacy
   module Alerts
     module_function
 
-    # -> { expiring:, expired:, below_minimum:, in_transit:, pending_adjustments: } (inteiros)
+    # -> { expiring:, expired:, below_minimum:, in_transit:, pending_adjustments:, urgency_shortfalls: } (inteiros)
     def call(location:, today:, settings:)
       cutoff = today + settings.expiry_alert_days
       lots = Positions.query(<<~SQL.squish, location_ids: [ location.id ], item_ids: nil, cutoff: cutoff, binds: { today: today }).first
@@ -25,7 +26,8 @@ module Pharmacy
       SQL
       { expiring: lots["expiring"].to_i, expired: lots["expired"].to_i, below_minimum: lots["below_minimum"].to_i,
         in_transit: StockTransfer.where(status: "sent", to_location_id: location.id).count,
-        pending_adjustments: StockAdjustment.where(status: "pending", stock_location_id: location.id).count }
+        pending_adjustments: StockAdjustment.where(status: "pending", stock_location_id: location.id).count,
+        urgency_shortfalls: UrgencyStockShortfall.open_shortfalls.where(stock_location_id: location.id).count }
     end
   end
 end

@@ -570,6 +570,9 @@ Rails.application.routes.draw do
     get    "transfers/:id",             to: "transfers#show"
     post   "transfers/:id/receive",     to: "transfers#receive"
     # Inventário, perdas e vencimentos, com step-up e aprovação por outro (Task 7).
+    # Faltas de estoque da checagem da UPA e a conciliação (módulo 32b, Task 11).
+    get    "urgency_shortfalls",          to: "urgency_shortfalls#index"
+    post   "urgency_shortfalls/:id/reconcile", to: "urgency_shortfalls#reconcile"
     post   "adjustments",               to: "adjustments#create"
     get    "adjustments",               to: "adjustments#index"
     get    "adjustments/:id",           to: "adjustments#show"

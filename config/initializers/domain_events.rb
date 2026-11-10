@@ -455,6 +455,10 @@ Rails.application.config.to_prepare do
   # insufficient_balance, lot_unavailable) — só o shortfall_id, nunca o
   # medicamento, a quantidade nem o local; sem consumidor.
   DomainEvents.bind "urgency.stock_shortfall_recorded", to: []
+  # Módulo 32b (contrato §7; Task 11): a farmácia concilia a falta de estoque da
+  # UPA (Pharmacy::ReconcileUrgencyShortfall) — só o shortfall_id, nunca a nota,
+  # o medicamento nem o local; sem consumidor.
+  DomainEvents.bind "pharmacy.urgency_shortfall_reconciled", to: []
   # "Chamar de novo" (Attendances::Recall; contrato §12): só attendance_id e
   # call_id — nunca a senha, o local nem a pessoa; sem consumidor (a TV lê
   # attendance_calls).

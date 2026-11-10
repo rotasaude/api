@@ -606,6 +606,13 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry["urgency.stock_shortfall_recorded"]).to be_empty
   end
 
+  # Módulo 32b (Task 11; contrato §7): a conciliação da falta pela farmácia
+  # (shortfall_id); só o id, sem consumidor.
+  it "declares pharmacy.urgency_shortfall_reconciled with no consumer" do
+    expect(DomainEvents.registry.keys).to include("pharmacy.urgency_shortfall_reconciled")
+    expect(DomainEvents.registry["pharmacy.urgency_shortfall_reconciled"]).to be_empty
+  end
+
   # Módulo 32a (Task 18, conferência final): os eventos do módulo são
   # exatamente os oito do contrato §12, e só os dois do fechamento e da
   # identificação têm consumidor (o BPA da urgência). Módulo 32b: mais os
