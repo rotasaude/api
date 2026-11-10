@@ -36,6 +36,12 @@ module Urgency
         record.lock! if bed
         record.assign_attributes(label: label, active: values["active"])
         next Result.ok(bed: record) if bed && !record.changed?
+
+        # Leito novo ou reativado: a unidade, sob FOR SHARE, segue UPA ativa.
+        if !bed || record.active_changed?(to: true)
+          current = HealthUnit.lock("FOR SHARE").find_by(id: unit.id)
+          next refuse([ bed ? "active" : "health_unit_id" ], :not_an_upa) unless current&.active && current.kind == "upa"
+        end
         next refuse([ "active" ], :bed_occupied) if bed && record.active_changed?(to: false) && record.bed_stays.open_stays.exists?
 
         record.updated_by_user = by

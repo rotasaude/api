@@ -117,6 +117,38 @@ RSpec.describe "Urgência — leitos da observação", type: :request do
       expect(json_body["bed"]).to include("active" => false, "occupied" => false)
     end
 
+    it "reativar exige a unidade ainda UPA ativa (422 not_an_upa, path active); na UPA ativa passa" do
+      bed = bed!
+      bed.update!(active: false)
+      upa.update!(kind: "ubs")
+      json_patch "/urgency/beds/#{bed.id}", active: true
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body).to include("error" => "not_an_upa", "path" => "active")
+      expect(bed.reload.active).to be(false)
+
+      upa.update!(kind: "upa", active: false)
+      json_patch "/urgency/beds/#{bed.id}", active: true
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body).to include("error" => "not_an_upa", "path" => "active")
+
+      upa.update!(active: true)
+      json_patch "/urgency/beds/#{bed.id}", active: true
+      expect(response).to have_http_status(:ok)
+      expect(json_body["bed"]).to include("active" => true)
+    end
+
+    it "PATCH: chave desconhecida → 422; corpo vazio → 200 sem mudança" do
+      bed = bed!
+      json_patch "/urgency/beds/#{bed.id}", extra: 1
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_body["problems"].map { |p| p["path"] }).to eq(%w[extra])
+
+      json_patch "/urgency/beds/#{bed.id}", {}
+      expect(response).to have_http_status(:ok)
+      expect(json_body["bed"]).to include("label" => "OBS 01", "active" => true)
+      expect(bed.reload.updated_at).to eq(bed.updated_at)
+    end
+
     it "a lista exige health_unit_id de uma UPA e aceita só essa query" do
       get "/urgency/beds"
       expect(response).to have_http_status(:unprocessable_entity)
