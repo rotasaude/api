@@ -107,6 +107,24 @@ RSpec.describe "Urgência — checagem da medicação", type: :request do
       expect_refusal(:unprocessable_entity, "prescription_not_active")
     end
 
+    it "dois itens do mesmo medicamento na mesma versão, o mesmo horário: o segundo → 409 slot_taken" do
+      first, second = issue!(encounter, [ item, item(dose: "25") ]).items.order(:position).to_a
+      administer(first)
+      expect(response).to have_http_status(:created)
+      expect { administer(second) }.not_to change(UrgencyAdministration, :count)
+      expect_refusal(:conflict, "slot_taken")
+    end
+
+    it "a rede do índice idx_urgency_administrations_slot (a conferência do Ruby desligada) → 409 slot_taken" do
+      row = issue!.items.first
+      allow(Urgency::RecordAdministration).to receive(:slot_taken?).and_return(false)
+      administer(row)
+      expect(response).to have_http_status(:created)
+      expect { administer(row) }.not_to change(UrgencyAdministration, :count)
+      expect_refusal(:conflict, "slot_taken")
+      expect(Urgency::RecordAdministration).to have_received(:slot_taken?).twice
+    end
+
     it "once e interval exigem scheduled_at; status fora da lista → 422 com o path" do
       row = issue!(encounter, [ item(frequency: { kind: "once" }) ]).items.first
       check(row, status: "administered")

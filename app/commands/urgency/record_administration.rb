@@ -8,8 +8,10 @@
 #
 # id ausente ou malformado → 422 `prescription_item_id`; item inexistente →
 # 404. Sob as travas (atendimento FOR SHARE → encontro FOR SHARE → prescrição
-# FOR SHARE → item FOR NO KEY UPDATE, que serializa as checagens do mesmo item
-# para o `max_per_day`), na ordem do Desvio 6:
+# FOR SHARE → todos os itens do mesmo medicamento na prescrição FOR NO KEY
+# UPDATE, em ordem de id, que serializa as checagens do medicamento para a dose
+# em dobro e o `max_per_day`; as outras versões já se serializam pela trava do
+# encontro contra a emissão e a suspensão), na ordem do Desvio 6:
 # 1. encontro ou atendimento fechado → 409 encounter_closed;
 # 2. acesso: Access.nursing_or_physician_link (2235*, 3222*, 225*) na UPA do
 #    atendimento, senão Access.refusal (403);
@@ -66,7 +68,10 @@ module Urgency
       prescription = UrgencyPrescription.lock("FOR SHARE").find(item.urgency_prescription_id)
       return Result.fail(:prescription_not_active) unless prescription.active?
 
-      UrgencyPrescriptionItem.lock("FOR NO KEY UPDATE").find(item.id)
+      # A dose em dobro e o max_per_day são por medicamento, e a versão pode
+      # trazer o mesmo medicamento em mais de um item: trava todos, em ordem de id.
+      UrgencyPrescriptionItem.where(urgency_prescription_id: prescription.id, catalog_item_id: item.catalog_item_id)
+                             .order(:id).lock("FOR NO KEY UPDATE").to_a
       parsed = parse(item, prescription, attrs, stock, now)
       return parsed if parsed.failure?
 
@@ -88,6 +93,7 @@ module Urgency
 
     def parse(item, prescription, attrs, stock, now)
       status = attrs["status"]
+      # `status` inválido volta sozinho: as outras regras de forma dependem dele.
       return refuse([ problem("status") ]) unless Catalog::ADMINISTRATION_STATUSES.include?(status)
 
       administered = status == "administered"
