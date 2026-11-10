@@ -15,6 +15,8 @@ class UrgencyEncounter < ApplicationRecord
                                                        dependent: :restrict_with_error
   has_many :bed_stays, -> { order(:started_at, :id) }, class_name: "UrgencyBedStay", inverse_of: :urgency_encounter,
                                                         dependent: :restrict_with_error
+  has_many :prescriptions, -> { order(:version) }, class_name: "UrgencyPrescription", inverse_of: :urgency_encounter,
+                                                   dependent: :restrict_with_error
   has_one :outcome, class_name: "UrgencyOutcome", inverse_of: :urgency_encounter, dependent: :restrict_with_error
 
   validates :state, inclusion: { in: Urgency::Catalog::STATES }
@@ -24,6 +26,8 @@ class UrgencyEncounter < ApplicationRecord
   def color = current_classification&.color
   # A estadia aberta no leito (no máximo uma: índice parcial).
   def open_stay = bed_stays.find_by(ended_at: nil)
+  # A prescrição vigente (no máximo uma: índice parcial).
+  def active_prescription = prescriptions.find_by(status: "active")
 
   # Estouro (Desvio 9; §14 Q18): minutos inteiros desde a 1ª classificação
   # acima do tempo máximo GRAVADO na classificação vigente (trocar o protocolo

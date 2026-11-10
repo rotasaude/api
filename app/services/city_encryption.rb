@@ -197,7 +197,10 @@ module CityEncryption
     [ UrgencyClassification, :complaint ], [ UrgencyClassification, :vital_signs ], [ UrgencyClassification, :criterion ],
     [ UrgencyClassification, :justification ],
     [ UrgencyOutcome, :destination ], [ UrgencyOutcome, :vacancy_request ], [ UrgencyOutcome, :return_reason ],
-    [ UrgencyOutcome, :error_reason ]
+    [ UrgencyOutcome, :error_reason ],
+    # Módulo 32b: o motivo da suspensão da prescrição, as instruções do item e o
+    # motivo da checagem não feita ou recusada.
+    [ UrgencyPrescription, :suspension_reason ], [ UrgencyPrescriptionItem, :instructions ], [ UrgencyAdministration, :reason ]
   ].freeze
 
   module_function

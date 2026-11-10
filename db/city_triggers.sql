@@ -3563,3 +3563,98 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 32b (ADR 0050; contrato §5 e §12 Q4/Q5; plano, Desvio 2): a prescrição
+-- e a checagem da observação. A prescrição nasce `active`, com o encontro
+-- aberto e a anterior (`supersedes_id`) do MESMO encontro; depois, só o
+-- status anda (uma vez, de `active` para a frente) com o carimbo e o
+-- motivo da suspensão; a re-cifra regrava só o motivo (antes de tudo). Nunca
+-- some. O item só nasce em prescrição `active`; a administração, com o
+-- encontro aberto e o item de prescrição `active` do MESMO encontro. Item e
+-- administração: só acréscimo (re-cifra de `instructions` e de `reason`).
+-- TRUNCATE recusado nas três.
+CREATE OR REPLACE FUNCTION rota_urgency_prescription_guard() RETURNS trigger AS $fn$
+DECLARE
+  moving text[] := ARRAY['status', 'status_changed_at', 'status_changed_by_user_id', 'suspension_reason', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'urgency_prescriptions: DELETE refused';
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF current_setting('rota.reencrypting', true) = 'on'
+       AND (to_jsonb(NEW) - 'suspension_reason') = (to_jsonb(OLD) - 'suspension_reason') THEN
+      RETURN NEW;
+    END IF;
+    IF OLD.status <> 'active' OR NEW.status = 'active' THEN
+      RAISE EXCEPTION 'urgency_prescriptions: status only moves forward';
+    END IF;
+    IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+      RAISE EXCEPTION 'urgency_prescriptions: only the status change is accepted';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF EXISTS (SELECT 1 FROM urgency_encounters e WHERE e.id = NEW.urgency_encounter_id AND e.state = 'closed') THEN
+    RAISE EXCEPTION 'urgency_prescriptions: the encounter is closed';
+  END IF;
+  IF NEW.status <> 'active' THEN
+    RAISE EXCEPTION 'urgency_prescriptions: a prescription is born active';
+  END IF;
+  IF NEW.supersedes_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM urgency_prescriptions p WHERE p.id = NEW.supersedes_id AND p.urgency_encounter_id = NEW.urgency_encounter_id) THEN
+    RAISE EXCEPTION 'urgency_prescriptions: supersedes a prescription of another encounter';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_urgency_prescription_item_insert_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM urgency_prescriptions p WHERE p.id = NEW.urgency_prescription_id AND p.status = 'active') THEN
+    RAISE EXCEPTION 'urgency_prescription_items: prescription is not active';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_urgency_administration_insert_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF EXISTS (SELECT 1 FROM urgency_encounters e WHERE e.id = NEW.urgency_encounter_id AND e.state = 'closed') THEN
+    RAISE EXCEPTION 'urgency_administrations: the encounter is closed';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM urgency_prescription_items i JOIN urgency_prescriptions p ON p.id = i.urgency_prescription_id
+                 WHERE i.id = NEW.urgency_prescription_item_id AND p.status = 'active'
+                   AND p.urgency_encounter_id = NEW.urgency_encounter_id) THEN
+    RAISE EXCEPTION 'urgency_administrations: item of another encounter or of an inactive prescription';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.urgency_prescriptions') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_prescriptions_guard ON urgency_prescriptions';
+    EXECUTE 'CREATE TRIGGER urgency_prescriptions_guard BEFORE INSERT OR UPDATE OR DELETE ON urgency_prescriptions
+      FOR EACH ROW EXECUTE FUNCTION rota_urgency_prescription_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_prescription_items_insert_guard ON urgency_prescription_items';
+    EXECUTE 'CREATE TRIGGER urgency_prescription_items_insert_guard BEFORE INSERT ON urgency_prescription_items
+      FOR EACH ROW EXECUTE FUNCTION rota_urgency_prescription_item_insert_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_prescription_items_reencryption_only ON urgency_prescription_items';
+    EXECUTE 'CREATE TRIGGER urgency_prescription_items_reencryption_only BEFORE UPDATE OR DELETE ON urgency_prescription_items
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''instructions'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_administrations_insert_guard ON urgency_administrations';
+    EXECUTE 'CREATE TRIGGER urgency_administrations_insert_guard BEFORE INSERT ON urgency_administrations
+      FOR EACH ROW EXECUTE FUNCTION rota_urgency_administration_insert_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS urgency_administrations_reencryption_only ON urgency_administrations';
+    EXECUTE 'CREATE TRIGGER urgency_administrations_reencryption_only BEFORE UPDATE OR DELETE ON urgency_administrations
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''reason'')';
+    FOREACH item IN ARRAY ARRAY['urgency_prescriptions', 'urgency_prescription_items', 'urgency_administrations'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

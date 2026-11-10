@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_10_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_10_900002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -4181,6 +4181,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900001) do
     t.check_constraint "status::text = ANY (ARRAY['in_progress'::character varying::text, 'completed'::character varying::text, 'aborted_by_revocation'::character varying::text, 'aborted_by_timeout'::character varying::text, 'aborted_by_cancellation'::character varying::text])", name: "ck_triagens_status"
   end
 
+  create_table "urgency_administrations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "administered_at"
+    t.string "cbo_code", limit: 6, null: false
+    t.datetime "created_at", null: false
+    t.uuid "professional_link_id", null: false
+    t.text "reason"
+    t.datetime "recorded_at", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.datetime "scheduled_at"
+    t.string "status", null: false
+    t.uuid "stock_lot_id"
+    t.decimal "stock_quantity", precision: 12, scale: 2
+    t.uuid "urgency_encounter_id", null: false
+    t.uuid "urgency_prescription_item_id", null: false
+    t.index ["urgency_encounter_id", "recorded_at"], name: "idx_urgency_administrations_encounter"
+    t.index ["urgency_prescription_item_id", "administered_at"], name: "idx_urgency_administrations_item"
+    t.index ["urgency_prescription_item_id", "scheduled_at"], name: "idx_urgency_administrations_slot", unique: true, where: "(scheduled_at IS NOT NULL)"
+    t.check_constraint "(status::text = 'administered'::text) = (administered_at IS NOT NULL)", name: "ck_urgency_administrations_administered_at"
+    t.check_constraint "(status::text = 'administered'::text) = (reason IS NULL)", name: "ck_urgency_administrations_reason"
+    t.check_constraint "status::text = ANY (ARRAY['administered'::text, 'not_administered'::text, 'refused'::text])", name: "ck_urgency_administrations_status"
+    t.check_constraint "(stock_lot_id IS NULL) = (stock_quantity IS NULL)", name: "ck_urgency_administrations_stock_pair"
+    t.check_constraint "stock_lot_id IS NULL OR status::text = 'administered'::text", name: "ck_urgency_administrations_stock_status"
+    t.check_constraint "stock_quantity IS NULL OR stock_quantity > 0::numeric", name: "ck_urgency_administrations_stock_quantity"
+  end
+
   create_table "urgency_bed_stays", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "end_kind"
@@ -4270,6 +4295,59 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900001) do
     t.check_constraint "(kind::text = ANY (ARRAY['discharged'::text, 'discharged_to_primary_care'::text, 'transferred'::text, 'left_without_care'::text, 'left_against_advice'::text, 'death'::text, 'registered_in_error'::text])) AND (return_days IS NULL OR return_days >= 1 AND return_days <= 90)", name: "ck_urgency_outcomes_domains"
     t.check_constraint "counter_referral_health_unit_id IS NULL OR kind::text = 'discharged_to_primary_care'::text", name: "ck_urgency_outcomes_counter_referral"
     t.check_constraint "vacancy_request IS NULL OR kind::text = 'transferred'::text", name: "ck_urgency_outcomes_vacancy_request"
+  end
+
+  create_table "urgency_prescription_items", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "catalog_item_id", null: false
+    t.integer "catmat_code", null: false
+    t.string "controlled_list", limit: 3
+    t.datetime "created_at", null: false
+    t.decimal "dose", precision: 10, scale: 3, null: false
+    t.string "dose_unit", limit: 20, null: false
+    t.datetime "first_dose_at", null: false
+    t.string "frequency_kind", null: false
+    t.text "instructions"
+    t.integer "interval_hours", limit: 2
+    t.integer "max_per_day", limit: 2
+    t.integer "position", limit: 2, null: false
+    t.string "route", limit: 20, null: false
+    t.decimal "stock_quantity_per_dose", precision: 12, scale: 2, default: "1.0", null: false
+    t.string "stock_unit", limit: 20, null: false
+    t.uuid "urgency_prescription_id", null: false
+    t.index ["catalog_item_id"], name: "idx_urgency_prescription_items_catalog"
+    t.index ["urgency_prescription_id", "position"], name: "idx_urgency_prescription_items_position", unique: true
+    t.check_constraint "\"position\" >= 1 AND \"position\" <= 20", name: "ck_urgency_prescription_items_position"
+    t.check_constraint "(frequency_kind::text = 'if_needed'::text) = (max_per_day IS NOT NULL)", name: "ck_urgency_prescription_items_max_pair"
+    t.check_constraint "(frequency_kind::text = 'interval'::text) = (interval_hours IS NOT NULL)", name: "ck_urgency_prescription_items_interval_pair"
+    t.check_constraint "dose > 0::numeric", name: "ck_urgency_prescription_items_dose"
+    t.check_constraint "dose_unit::text = ANY (ARRAY['mg'::text, 'mcg'::text, 'g'::text, 'mL'::text, 'UI'::text, 'mEq'::text, 'gota'::text, 'comprimido'::text, 'capsula'::text, 'ampola'::text, 'frasco'::text, 'jato'::text, 'aplicacao'::text, 'sache'::text])", name: "ck_urgency_prescription_items_dose_unit"
+    t.check_constraint "frequency_kind::text = ANY (ARRAY['once'::text, 'interval'::text, 'if_needed'::text])", name: "ck_urgency_prescription_items_frequency_kind"
+    t.check_constraint "interval_hours IS NULL OR interval_hours >= 1 AND interval_hours <= 24", name: "ck_urgency_prescription_items_interval_range"
+    t.check_constraint "max_per_day IS NULL OR max_per_day >= 1 AND max_per_day <= 24", name: "ck_urgency_prescription_items_max_range"
+    t.check_constraint "route::text = ANY (ARRAY['oral'::text, 'sublingual'::text, 'topical'::text, 'ophthalmic'::text, 'otic'::text, 'nasal'::text, 'inhalation'::text, 'vaginal'::text, 'rectal'::text, 'intramuscular'::text, 'intravenous'::text, 'subcutaneous'::text, 'other'::text])", name: "ck_urgency_prescription_items_route"
+    t.check_constraint "stock_quantity_per_dose > 0::numeric AND stock_quantity_per_dose <= 99999.99", name: "ck_urgency_prescription_items_stock_quantity"
+  end
+
+  create_table "urgency_prescriptions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cbo_code", limit: 6, null: false
+    t.datetime "created_at", null: false
+    t.datetime "prescribed_at", null: false
+    t.uuid "prescribed_by_user_id", null: false
+    t.uuid "professional_link_id", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "status_changed_at"
+    t.uuid "status_changed_by_user_id"
+    t.uuid "supersedes_id"
+    t.text "suspension_reason"
+    t.datetime "updated_at", null: false
+    t.uuid "urgency_encounter_id", null: false
+    t.integer "version", null: false
+    t.index ["urgency_encounter_id", "version"], name: "idx_urgency_prescriptions_version", unique: true
+    t.index ["urgency_encounter_id"], name: "idx_urgency_prescriptions_active", unique: true, where: "((status)::text = 'active'::text)"
+    t.check_constraint "(status::text = 'active'::text) = (status_changed_at IS NULL) AND (status_changed_at IS NULL) = (status_changed_by_user_id IS NULL)", name: "ck_urgency_prescriptions_closing"
+    t.check_constraint "(status::text = 'suspended'::text) = (suspension_reason IS NOT NULL)", name: "ck_urgency_prescriptions_suspended"
+    t.check_constraint "status::text = ANY (ARRAY['active'::text, 'superseded'::text, 'suspended'::text, 'ended'::text])", name: "ck_urgency_prescriptions_status"
+    t.check_constraint "version >= 1 AND ((version = 1) = (supersedes_id IS NULL))", name: "ck_urgency_prescriptions_version"
   end
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4998,6 +5076,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900001) do
   add_foreign_key "triages", "conversations"
   add_foreign_key "triages", "neighborhoods"
   add_foreign_key "triages", "protocol_definitions"
+  add_foreign_key "urgency_administrations", "professional_links"
+  add_foreign_key "urgency_administrations", "stock_lots"
+  add_foreign_key "urgency_administrations", "urgency_encounters"
+  add_foreign_key "urgency_administrations", "urgency_prescription_items"
+  add_foreign_key "urgency_administrations", "users", column: "recorded_by_user_id"
   add_foreign_key "urgency_bed_stays", "health_units"
   add_foreign_key "urgency_bed_stays", "urgency_beds"
   add_foreign_key "urgency_bed_stays", "urgency_encounters"
@@ -5017,6 +5100,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900001) do
   add_foreign_key "urgency_outcomes", "health_units", column: "counter_referral_health_unit_id"
   add_foreign_key "urgency_outcomes", "urgency_encounters"
   add_foreign_key "urgency_outcomes", "users", column: "recorded_by_user_id"
+  add_foreign_key "urgency_prescription_items", "urgency_prescriptions"
+  add_foreign_key "urgency_prescriptions", "professional_links"
+  add_foreign_key "urgency_prescriptions", "urgency_encounters"
+  add_foreign_key "urgency_prescriptions", "urgency_prescriptions", column: "supersedes_id"
+  add_foreign_key "urgency_prescriptions", "users", column: "prescribed_by_user_id"
+  add_foreign_key "urgency_prescriptions", "users", column: "status_changed_by_user_id"
   add_foreign_key "vaccination_record_checks", "patients"
   add_foreign_key "vaccination_record_checks", "users", column: "checked_by_user_id"
   add_foreign_key "vaccination_record_checks", "vaccine_rooms"
