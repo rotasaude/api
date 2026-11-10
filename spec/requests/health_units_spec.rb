@@ -209,4 +209,32 @@ RSpec.describe "Health units", type: :request do
     expect(response).to have_http_status(:conflict)
     expect(JSON.parse(response.body)["error"]).to eq("unit_has_open_requests")
   end
+
+  # Módulo 32b (§12 Q1): UPA com leito ativo da observação não muda de kind nem
+  # é desativada (409 upa_has_beds); com os leitos desativados, passa.
+  it "UPA com leito ativo: troca de kind e desativação → 409 upa_has_beds; sem leito ativo, passa" do
+    upa = HealthUnit.create!(name: "UPA Leitos", kind: "upa")
+    bed = UrgencyBed.create!(health_unit: upa, label: "OBS 01", updated_by_user: admin)
+    sign_in_as(admin)
+
+    json_post "/attendance/units/#{upa.id}", name: "UPA Leitos", kind: "ubs"
+    expect([ response.status, body ]).to eq([ 409, { "error" => "upa_has_beds" } ])
+    json_post "/attendance/units/#{upa.id}/deactivate"
+    expect([ response.status, body ]).to eq([ 409, { "error" => "upa_has_beds" } ])
+    expect(upa.reload).to have_attributes(kind: "upa", active: true)
+
+    json_post "/attendance/units/#{upa.id}", name: "UPA Renomeada", kind: "upa"
+    expect(response).to have_http_status(:ok)
+
+    bed.update!(active: false)
+    json_post "/attendance/units/#{upa.id}", name: "UPA Renomeada", kind: "ubs"
+    expect(response).to have_http_status(:ok)
+    expect(body["unit"]).to include("kind" => "ubs")
+
+    other = HealthUnit.create!(name: "UPA Dois", kind: "upa")
+    UrgencyBed.create!(health_unit: other, label: "OBS 01", updated_by_user: admin).update!(active: false)
+    json_post "/attendance/units/#{other.id}/deactivate"
+    expect(response).to have_http_status(:ok)
+    expect(other.reload.active).to be(false)
+  end
 end

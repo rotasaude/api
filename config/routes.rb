@@ -742,6 +742,8 @@ Rails.application.routes.draw do
   # Módulo 32a (ADR 0050; contrato §4): urgência (UPA), sessão do dashboard.
   # Dado do paciente só no corpo (a busca de pessoa é POST); ids na URL.
   scope "/urgency", module: :urgency, as: :urgency do
+    # Leitos da observação (§3; Q1): cadastro do municipal_admin, escrita com step-up.
+    resources :beds, only: %i[index create update]
     # Recepção: busca de pessoa e chegada com senha ou paciente provisório (§4, Q4).
     post  "person_lookup",       to: "person_lookups#create"
     post  "arrivals",            to: "arrivals#create"

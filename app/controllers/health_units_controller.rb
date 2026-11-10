@@ -68,7 +68,7 @@ class HealthUnitsController < ApplicationController
             assign_waiting_room(@unit)
     return render(json: { error: error }, status: :unprocessable_entity) if error
 
-    conflict = caps_change_conflict(@unit)
+    conflict = caps_change_conflict(@unit) || upa_change_conflict(@unit)
     return render json: { error: conflict }, status: :conflict if conflict
     return render_invalid(@unit) unless @unit.save
 
@@ -111,6 +111,8 @@ class HealthUnitsController < ApplicationController
     return "unit_has_open_attendances" if Attendance.open_attendances.where(health_unit: @unit).exists?
 
     return "unit_has_open_requests" if AppointmentRequest.live_requests.where(target_unit: @unit).exists?
+
+    return "upa_has_beds" if upa_active_beds?(@unit)
 
     "pharmacy_pending" if pharmacy && pharmacy_pending?
   end
@@ -244,6 +246,15 @@ class HealthUnitsController < ApplicationController
       "unit_has_attendances" if attendance_history?(unit)
     end
   end
+
+  # Módulo 32b (§12 Q1): UPA com leito ativo da observação não muda de kind
+  # (o leito ficaria numa unidade que não é UPA) nem é desativada (409
+  # upa_has_beds); com os leitos desativados, passa.
+  def upa_change_conflict(unit)
+    "upa_has_beds" if unit.kind_was == "upa" && !unit.upa? && upa_active_beds?(unit)
+  end
+
+  def upa_active_beds?(unit) = UrgencyBed.active_beds.where(health_unit_id: unit.id).exists?
 
   # Também a cobertura de bairro e o prestador próprio da regulação (P51): eles
   # levam pedidos da agenda automaticamente à unidade.
