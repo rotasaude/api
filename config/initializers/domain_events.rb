@@ -450,6 +450,11 @@ Rails.application.config.to_prepare do
   # (Urgency::RecordAdministration) — só encounter_id e administration_id,
   # nunca o medicamento, o status nem o motivo; sem consumidor.
   DomainEvents.bind "urgency.medication_checked", to: []
+  # Módulo 32b (contrato §10; R7): a falta de estoque da checagem
+  # (Urgency::RecordAdministration com a baixa ligada: no_location,
+  # insufficient_balance, lot_unavailable) — só o shortfall_id, nunca o
+  # medicamento, a quantidade nem o local; sem consumidor.
+  DomainEvents.bind "urgency.stock_shortfall_recorded", to: []
   # "Chamar de novo" (Attendances::Recall; contrato §12): só attendance_id e
   # call_id — nunca a senha, o local nem a pessoa; sem consumidor (a TV lê
   # attendance_calls).

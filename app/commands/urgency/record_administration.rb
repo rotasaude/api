@@ -22,18 +22,29 @@
 #    `prescribed_at` da versão, A15); `scheduled_at` obrigatório em
 #    `once`/`interval` e proibido em `if_needed`; `stock_lot_id`/`stock_quantity`
 #    fora de `administered` → invalid_request, e em `administered` com `stock`
-#    falso → stock_deduction_disabled (Desvio 8);
+#    falso → stock_deduction_disabled (Desvio 8); com `stock`, `stock_lot_id`
+#    uuid e `stock_quantity` String decimal (Pharmacy::Quantity; número JSON →
+#    invalid_request; padrão `stock_quantity_per_dose` do item, Desvio 9);
 # 5. horário: fora do aprazamento (Schedule.slot?) → 422 slot_invalid; mais de
 #    60 min adiantado → 422 slot_not_due (Q5; o passado vale com o encontro
 #    aberto); o mesmo `catalog_item_id` no mesmo horário em qualquer versão →
 #    409 slot_taken (e o índice idx_urgency_administrations_slot como rede);
 #    `if_needed` + `administered` com `max_per_day` administradas nas 24 h
-#    antes do `administered_at` → 422 max_per_day_reached (A16).
+#    antes do `administered_at` → 422 max_per_day_reached (A16);
+# 6. estoque (Desvio 7, Task 10): com `stock` e `administered`, o
+#    Urgency::DeductStock escolhe local e lote sob a ordem lotes → local (ou
+#    422 lot_invalid, nada gravado); a gravação é o savepoint { administração
+#    com lote e quantidade; Ledger.record!(kind: "administration") } — um
+#    movimento por administração —, e Ledger::Insufficient (a rede do trigger)
+#    volta o savepoint e grava a administração sem lote, com a falta
+#    lot_unavailable. Falta (no_location sem local) → urgency.stock_shortfall_recorded
+#    só com o shortfall_id. A checagem nunca é recusada por falta de estoque.
 # Grava com `recorded_at: now`, o vínculo e o CBO dele; evento
 # urgency.medication_checked só com ids. O motivo nunca em evento nem log.
 module Urgency
   module RecordAdministration
     EVENT = "urgency.medication_checked".freeze
+    SHORTFALL_EVENT = "urgency.stock_shortfall_recorded".freeze
     STOCK_KEYS = %w[stock_lot_id stock_quantity].freeze
     SLOT_INDEX = "idx_urgency_administrations_slot".freeze
 
@@ -41,7 +52,9 @@ module Urgency
 
     # -> Result.ok(administration:, shortfall: nil) | fail(:not_found | :encounter_closed | :missing_role |
     #    :missing_link | :cbo_not_allowed | :prescription_not_active | :slot_taken | :max_per_day_reached) |
-    #    fail(:invalid_request | :stock_deduction_disabled | :slot_invalid | :slot_not_due, details: { path:, problems: })
+    #    fail(:invalid_request | :stock_deduction_disabled | :slot_invalid | :slot_not_due | :lot_invalid,
+    #         details: { path:, problems: })
+    # `shortfall`: UrgencyStockShortfall | nil.
     def call(attrs:, by:, stock:, now: Time.current)
       id = attrs["prescription_item_id"]
       return refuse([ problem("prescription_item_id") ]) unless Input.uuid?(id)
@@ -79,16 +92,45 @@ module Urgency
       refusal = slot_refusal(item, row, locked, now)
       return refusal if refusal
 
-      # Desvio 7 (Task 10): com `stock` e `administered`, o Urgency::DeductStock
-      # entra AQUI, antes de gravar — o savepoint { administração com lote e
-      # quantidade; Ledger.record! } — e devolve a falta, se houver.
-      administration = UrgencyAdministration.create!(
-        urgency_prescription_item: item, urgency_encounter: locked, status: row[:status], scheduled_at: row[:scheduled_at],
-        administered_at: row[:administered_at], reason: row[:reason], recorded_at: now, recorded_by_user: by,
-        professional_link: link, cbo_code: link.cbo_code
-      )
+      deduction = nil
+      if row[:stock]
+        deduction = DeductStock.call(item: item, unit_id: attendance.health_unit_id, lot_id: row[:stock_lot_id],
+                                     quantity: row[:stock_quantity], today: now.in_time_zone.to_date)
+        return deduction if deduction.failure?
+      end
+
+      attrs = { urgency_prescription_item: item, urgency_encounter: locked, status: row[:status], scheduled_at: row[:scheduled_at],
+                administered_at: row[:administered_at], reason: row[:reason], recorded_at: now, recorded_by_user: by,
+                professional_link: link, cbo_code: link.cbo_code }
+      administration, shortfall = persist(attrs, item, deduction&.payload, by, now)
       DomainEvents.publish(EVENT, encounter_id: locked.id, administration_id: administration.id)
-      Result.ok(administration: administration, shortfall: nil)
+      DomainEvents.publish(SHORTFALL_EVENT, shortfall_id: shortfall.id) if shortfall
+      Result.ok(administration: administration, shortfall: shortfall)
+    end
+
+    # `stock`: nil (sem baixa) | { location:, lot:, quantity: } | { shortfall_cause:, location:, quantity: }.
+    # -> [UrgencyAdministration, UrgencyStockShortfall | nil]
+    def persist(attrs, item, stock, by, now)
+      if stock&.key?(:lot)
+        begin
+          administration = UrgencyAdministration.transaction(requires_new: true) do
+            UrgencyAdministration.create!(**attrs, stock_lot: stock[:lot], stock_quantity: stock[:quantity]).tap do |adm|
+              Pharmacy::Ledger.record!(location: stock[:location], lot: stock[:lot], kind: "administration", quantity: stock[:quantity],
+                                       by: by, document: adm, at: now)
+            end
+          end
+          return [ administration, nil ]
+        rescue Pharmacy::Ledger::Insufficient
+          stock = { shortfall_cause: "lot_unavailable", location: stock[:location], quantity: stock[:quantity] }
+        end
+      end
+
+      administration = UrgencyAdministration.create!(**attrs)
+      return [ administration, nil ] unless stock
+
+      shortfall = UrgencyStockShortfall.create!(urgency_administration: administration, stock_location: stock[:location],
+                                                catalog_item_id: item.catalog_item_id, quantity: stock[:quantity], cause: stock[:shortfall_cause])
+      [ administration, shortfall ]
     end
 
     def parse(item, prescription, attrs, stock, now)
@@ -111,9 +153,29 @@ module Urgency
         elsif !stock then problems << problem(key, :stock_deduction_disabled)
         end
       end
+      deduct = stock && administered
+      lot_id = deduct ? stock_lot_id(attrs["stock_lot_id"]) : nil
+      problems << problem("stock_lot_id") if lot_id == :invalid
+      quantity = deduct ? stock_quantity(attrs["stock_quantity"], item) : nil
+      problems << problem("stock_quantity") if quantity == :invalid
       return refuse(problems) if problems.any?
 
-      Result.ok(status: status, reason: reason, administered_at: administered_at, scheduled_at: scheduled_at)
+      Result.ok(status: status, reason: reason, administered_at: administered_at, scheduled_at: scheduled_at,
+                stock: deduct, stock_lot_id: lot_id, stock_quantity: quantity)
+    end
+
+    # -> String (minúsculas) | nil | :invalid
+    def stock_lot_id(raw)
+      return nil if raw.nil?
+
+      Input.uuid?(raw) ? raw.downcase : :invalid
+    end
+
+    # Desvio 9: String decimal (Pharmacy::Quantity); padrão, a quantidade por dose do item. -> BigDecimal | :invalid
+    def stock_quantity(raw, item)
+      return item.stock_quantity_per_dose.to_d if raw.nil?
+
+      Pharmacy::Quantity.parse(raw) || :invalid
     end
 
     # Só e sempre fora de `administered`. -> String | nil | :invalid
@@ -167,6 +229,6 @@ module Urgency
       Result.fail(problems.first[:error].to_sym, details: { path: problems.first[:path], problems: problems })
     end
 
-    private_class_method :record, :parse, :reason, :administered_at, :scheduled_at, :slot_refusal, :slot_taken?, :problem, :refuse
+    private_class_method :record, :persist, :parse, :stock_lot_id, :stock_quantity, :reason, :administered_at, :scheduled_at, :slot_refusal, :slot_taken?, :problem, :refuse
   end
 end

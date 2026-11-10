@@ -225,7 +225,22 @@ RSpec.describe "Urgência — checagem da medicação", type: :request do
     end
 
     it "com o interruptor utilizável e administered, baixa o estoque pelo FEFO (Task 10)" do
-      skip "Task 10: Urgency::DeductStock dentro da mesma transação"
+      pharmacy_city!
+      Platform::Features.set!(city: city, key: Urgency::StockGate::KEY, enabled: true, maintainer: ledi_maintainer!)
+      CityCatalog.reset_cache!
+      location = unit_location!(upa)
+      unit = Pharmacy::DispensingUnit.for(losartana) # a do item (`stock_unit`); a amostra de teste cai em "unidade"
+      StockLot.create!(catalog_item_id: losartana.id, catmat_code: losartana.catmat_code, lot_number: "T10-FEFO", expires_on: Time.zone.today + 60,
+                       dispensing_unit: unit, created_by_user: pharmacy_admin!)
+      lot = stocked_lot!(location, item: losartana, quantity: "3", lot_number: "T10-FEFO", expires_on: Time.zone.today + 60)
+
+      row = issue!.items.first
+      expect { administer(row) }.to change(StockMovement, :count).by(1).and(not_change(UrgencyStockShortfall, :count))
+      expect(response).to have_http_status(:created)
+      expect(json_body["shortfall"]).to be_nil
+      expect(json_body["administration"]).to include("stock_quantity" => "1.00")
+      expect(json_body.dig("administration", "stock_lot", "id")).to eq(lot.id)
+      expect(balance_of(location, lot)).to eq(2)
     end
   end
 

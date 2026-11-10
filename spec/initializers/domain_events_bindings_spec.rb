@@ -599,6 +599,13 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry["urgency.medication_checked"]).to be_empty
   end
 
+  # Módulo 32b (Task 10; contrato §10; R7): a falta de estoque da checagem
+  # (shortfall_id); só o id, sem consumidor.
+  it "declares urgency.stock_shortfall_recorded with no consumer" do
+    expect(DomainEvents.registry.keys).to include("urgency.stock_shortfall_recorded")
+    expect(DomainEvents.registry["urgency.stock_shortfall_recorded"]).to be_empty
+  end
+
   # Módulo 32a (Task 18, conferência final): os eventos do módulo são
   # exatamente os oito do contrato §12, e só os dois do fechamento e da
   # identificação têm consumidor (o BPA da urgência). Módulo 32b: mais os
@@ -609,7 +616,7 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
                                      "urgency.encounter_closed", "attendance.recalled", "waiting_room.display_paired",
                                      "waiting_room.display_revoked", "urgency.observation_started", "urgency.observation_ended",
                                      "urgency.prescription_issued", "urgency.prescription_suspended",
-                                     "urgency.medication_checked")
+                                     "urgency.medication_checked", "urgency.stock_shortfall_recorded")
     consumed = names.reject { |name| DomainEvents.registry[name].empty? }
     expect(consumed).to contain_exactly("urgency.patient_identified", "urgency.encounter_closed")
   end
