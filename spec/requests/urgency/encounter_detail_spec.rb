@@ -191,6 +191,22 @@ RSpec.describe "Urgência — detalhe do encontro", type: :request do
       expect(obs["current"]["bed_label"]).to eq("OBS 02")
     end
 
+    it "sem estadia aberta, as horas param no último ended_at e não há alerta; nova entrada volta a contar até agora, desde a primeira" do
+      observed!(care, bed: bed, now: 50.hours.ago)
+      result = Urgency::EndObservation.call(encounter: care, by: observation_doctor!(upa), now: 25.hours.ago)
+      raise "end recusado: #{result.reason}" if result.failure?
+
+      sign_in_as(doctor)
+      show(care)
+      obs = json_body.dig("encounter", "observation")
+      expect(obs["current"]).to be_nil
+      expect(obs).to include("hours" => 25, "alert" => nil)
+
+      observed!(care, bed: other_bed, now: 1.hour.ago)
+      show(care)
+      expect(json_body.dig("encounter", "observation")).to include("hours" => 50, "alert" => "over_limit")
+    end
+
     it "o técnico 3222 continua recusado no detalhe" do
       sign_in_as(upa_nurse!(upa, cbo: "322205"))
       show(care)

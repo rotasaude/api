@@ -65,12 +65,15 @@ module Urgency
     end
 
     # `{ current: <stay> | nil, stays: [<stay>], hours, alert }`: horas desde a
-    # PRIMEIRA entrada (Urgency::Observation); sem estadia, 0 e sem alerta.
+    # PRIMEIRA entrada (Urgency::Observation) até agora com estadia aberta, ou
+    # até o último `ended_at` sem ela (plano, Desvio 2, como a linha do tempo e
+    # o painel); o alerta só com estadia aberta; sem estadia, 0 e sem alerta.
     def observation(encounter, now:)
       stays = encounter.bed_stays.includes(:urgency_bed, started_by_user: :professional, ended_by_user: :professional).to_a
-      count = stays.empty? ? 0 : Observation.hours(stays.first.started_at, now)
-      { current: (open = stays.find(&:open?)) && stay(open), stays: stays.map { |item| stay(item) }, hours: count,
-        alert: Observation.alert(count) }
+      open = stays.find(&:open?)
+      count = stays.empty? ? 0 : Observation.hours(stays.first.started_at, open ? now : stays.filter_map(&:ended_at).max)
+      { current: open && stay(open), stays: stays.map { |item| stay(item) }, hours: count,
+        alert: open ? Observation.alert(count) : nil }
     end
 
     def stay(item)
