@@ -180,6 +180,27 @@ RSpec.describe CitySchema do
                              *tables.map { |t| "#{t}_append_only_truncate" })
   end
 
+  # Módulo 33 (ADR 0051): o dump não representa trigger nem sequência; um banco
+  # de cidade novo (dump + city_triggers.sql) tem de nascer com as guardas da
+  # ouvidoria, as re-cifras, o só-acréscimo da satisfação, os no-delete (com o
+  # dos setores), o truncate das 14 tabelas e a sequência do protocolo.
+  it "loads the 33 ombudsman triggers and the protocol sequence into a database restored from the dump" do
+    names = schema_fingerprint(TEST_CITY_B_DATABASE)[:triggers].map { |(_table, tgname, _def)| tgname }
+    tables = %w[departments ombudsman_responders ombudsman_subjects ombudsman_settings ombudsman_manifestations ombudsman_events
+                ombudsman_forwardings ombudsman_identity_accesses ombudsman_attachments ombudsman_reopen_requests
+                ombudsman_satisfaction_responses ombudsman_notices ombudsman_annual_reports ombudsman_daily_runs]
+
+    expect(names).to include(*%w[manifestations subjects forwardings attachments reopen_requests notices annual_reports]
+                                .map { |t| "ombudsman_#{t}_guard" },
+                             "ombudsman_events_reencryption_only", "ombudsman_identity_accesses_reencryption_only",
+                             "ombudsman_satisfaction_responses_append_only",
+                             *%w[departments ombudsman_responders ombudsman_subjects ombudsman_settings ombudsman_daily_runs]
+                                .map { |t| "#{t}_no_delete" },
+                             *tables.map { |t| "#{t}_append_only_truncate" })
+    sequence = ScratchDatabases.superuser(TEST_CITY_B_DATABASE) { |c| c.exec("SELECT to_regclass('public.ombudsman_protocol_seq')").getvalue(0, 0) }
+    expect(sequence).to eq("ombudsman_protocol_seq")
+  end
+
   # Módulo 23 (revisão final, I1): o db/city_triggers.sql do HEAD recria a
   # guarda dos pedidos do módulo 17 lendo origin_care_line_enrollment_id, que
   # só nasce na 900003. Se a 900002 executasse o arquivo e a 900003 falhasse

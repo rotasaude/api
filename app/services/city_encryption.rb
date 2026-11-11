@@ -202,7 +202,19 @@ module CityEncryption
     # motivo da checagem não feita ou recusada.
     [ UrgencyPrescription, :suspension_reason ], [ UrgencyPrescriptionItem, :instructions ], [ UrgencyAdministration, :reason ],
     # Módulo 32b: a nota da conciliação da falta de estoque.
-    [ UrgencyStockShortfall, :reconciliation_note ]
+    [ UrgencyStockShortfall, :reconciliation_note ],
+    # ADR 0051 (módulo 33): nome, contato e CPF de quem se manifestou, o texto
+    # e o motivo da prorrogação da manifestação; o texto da linha do tempo; o
+    # extrato, o motivo da prorrogação e a resposta do encaminhamento; a
+    # justificativa do acesso à identidade; o nome do anexo; o motivo e a
+    # decisão do pedido de reabertura.
+    [ OmbudsmanManifestation, :manifestant_name ], [ OmbudsmanManifestation, :manifestant_contact ],
+    [ OmbudsmanManifestation, :manifestant_cpf ], [ OmbudsmanManifestation, :body ], [ OmbudsmanManifestation, :extension_reason ],
+    [ OmbudsmanEvent, :text ],
+    [ OmbudsmanForwarding, :extract ], [ OmbudsmanForwarding, :extension_reason ], [ OmbudsmanForwarding, :reply ],
+    [ OmbudsmanIdentityAccess, :justification ],
+    [ OmbudsmanAttachment, :filename ],
+    [ OmbudsmanReopenRequest, :reason ], [ OmbudsmanReopenRequest, :decision_text ]
   ].freeze
 
   module_function

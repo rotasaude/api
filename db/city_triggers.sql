@@ -3710,3 +3710,223 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 33 (ADR 0051; plano, Task 3; contrato §16 U1): o domínio da
+-- ouvidoria. Protocolo pela sequência ombudsman_protocol_seq (sem reiniciar
+-- por ano). A manifestação nunca some; a re-cifra das colunas cifradas passa
+-- antes de tudo; protocolo, texto, canal, modo, recebimento, criador e número
+-- do OuvidorSUS nunca mudam; citizen_id só vai de um valor a NULL (exclusão
+-- LGPD), e só então os manifestant_* podem passar de NULL a preenchidos (o
+-- declarado no registro fica); fora disso os manifestant_* não mudam. Linha
+-- do tempo e acessos: só acréscimo (a re-cifra do texto e da justificativa);
+-- satisfação: só acréscimo. Encaminhamento: extrato, destino e criação
+-- imutáveis, sai de pending uma vez (e então congela), prorroga uma vez com
+-- prazo e motivo juntos. Anexo: o órfão some (a cascata do ExamFile órfão), o
+-- ligado nunca; liga uma vez. Pedido de reabertura: decidido uma vez, motivo
+-- imutável. Aviso: só read_at, uma vez; apagado na exclusão LGPD. Relatório
+-- anual publicado nunca muda. Assuntos em dois níveis. Respondentes,
+-- assuntos, configuração e marcas diárias nunca somem. TRUNCATE recusado nas
+-- 13 tabelas.
+CREATE OR REPLACE FUNCTION rota_ombudsman_manifestation_guard() RETURNS trigger AS $fn$
+DECLARE
+  ciphered text[] := ARRAY['body', 'extension_reason', 'manifestant_name', 'manifestant_contact', 'manifestant_cpf'];
+  manifestant text[] := ARRAY['manifestant_name', 'manifestant_contact', 'manifestant_cpf'];
+  item text;
+  old_value text;
+  new_value text;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'ombudsman_manifestations: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - ciphered) = (to_jsonb(OLD) - ciphered) THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.protocol IS DISTINCT FROM OLD.protocol OR NEW.body IS DISTINCT FROM OLD.body
+     OR NEW.channel IS DISTINCT FROM OLD.channel OR NEW.identification_mode IS DISTINCT FROM OLD.identification_mode
+     OR NEW.received_at IS DISTINCT FROM OLD.received_at OR NEW.created_by_user_id IS DISTINCT FROM OLD.created_by_user_id
+     OR NEW.ouvidorsus_number IS DISTINCT FROM OLD.ouvidorsus_number OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'ombudsman_manifestations: the registration columns never change';
+  END IF;
+  IF NEW.citizen_id IS DISTINCT FROM OLD.citizen_id THEN
+    IF OLD.citizen_id IS NULL OR NEW.citizen_id IS NOT NULL THEN
+      RAISE EXCEPTION 'ombudsman_manifestations: citizen_id only goes to NULL';
+    END IF;
+    FOREACH item IN ARRAY manifestant LOOP
+      old_value := to_jsonb(OLD) ->> item;
+      new_value := to_jsonb(NEW) ->> item;
+      IF new_value IS DISTINCT FROM old_value AND old_value IS NOT NULL THEN
+        RAISE EXCEPTION 'ombudsman_manifestations: manifestant_* only go from NULL to a value when citizen_id goes to NULL';
+      END IF;
+    END LOOP;
+  ELSIF NEW.manifestant_name IS DISTINCT FROM OLD.manifestant_name OR NEW.manifestant_contact IS DISTINCT FROM OLD.manifestant_contact
+        OR NEW.manifestant_cpf IS DISTINCT FROM OLD.manifestant_cpf THEN
+    RAISE EXCEPTION 'ombudsman_manifestations: manifestant_* never change';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_ombudsman_subject_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF NEW.parent_id IS NOT NULL
+     AND (NEW.parent_id = NEW.id
+          OR EXISTS (SELECT 1 FROM ombudsman_subjects WHERE id = NEW.parent_id AND parent_id IS NOT NULL)
+          OR EXISTS (SELECT 1 FROM ombudsman_subjects WHERE parent_id = NEW.id)) THEN
+    RAISE EXCEPTION 'ombudsman_subjects: only two levels (a parent has no parent; a subject with children is never a child)';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_ombudsman_forwarding_guard() RETURNS trigger AS $fn$
+DECLARE
+  ciphered text[] := ARRAY['extract', 'reply', 'extension_reason'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'ombudsman_forwardings: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - ciphered) = (to_jsonb(OLD) - ciphered) THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.state <> 'pending' THEN
+    RAISE EXCEPTION 'ombudsman_forwardings: a forwarding leaves pending once and then never changes';
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.ombudsman_manifestation_id IS DISTINCT FROM OLD.ombudsman_manifestation_id
+     OR NEW.department_id IS DISTINCT FROM OLD.department_id OR NEW.health_unit_id IS DISTINCT FROM OLD.health_unit_id
+     OR NEW.extract IS DISTINCT FROM OLD.extract OR NEW.created_by_user_id IS DISTINCT FROM OLD.created_by_user_id
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'ombudsman_forwardings: extract, destination and creation never change';
+  END IF;
+  IF NEW.extended IS DISTINCT FROM OLD.extended THEN
+    IF OLD.extended OR NOT NEW.extended THEN
+      RAISE EXCEPTION 'ombudsman_forwardings: extended once';
+    END IF;
+    IF NEW.due_on IS NOT DISTINCT FROM OLD.due_on OR NEW.extension_reason IS NULL THEN
+      RAISE EXCEPTION 'ombudsman_forwardings: the extension sets due_on and extension_reason together';
+    END IF;
+  ELSIF NEW.due_on IS DISTINCT FROM OLD.due_on OR NEW.extension_reason IS DISTINCT FROM OLD.extension_reason THEN
+    RAISE EXCEPTION 'ombudsman_forwardings: due_on and extension_reason only change with the extension';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_ombudsman_attachment_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.ombudsman_manifestation_id IS NULL THEN
+      RETURN OLD;
+    END IF;
+    RAISE EXCEPTION 'ombudsman_attachments: a linked attachment is never deleted';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - 'filename') = (to_jsonb(OLD) - 'filename') THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.ombudsman_manifestation_id IS NULL AND OLD.event_id IS NULL AND NEW.ombudsman_manifestation_id IS NOT NULL
+     AND (to_jsonb(NEW) - 'ombudsman_manifestation_id' - 'event_id') = (to_jsonb(OLD) - 'ombudsman_manifestation_id' - 'event_id') THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'ombudsman_attachments: only the link (once) or the re-encryption';
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_ombudsman_reopen_request_guard() RETURNS trigger AS $fn$
+DECLARE
+  ciphered text[] := ARRAY['reason', 'decision_text'];
+  moving text[] := ARRAY['state', 'decision_text', 'decided_by_user_id', 'decided_at', 'updated_at'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'ombudsman_reopen_requests: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (to_jsonb(NEW) - ciphered) = (to_jsonb(OLD) - ciphered) THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.state <> 'pending' THEN
+    RAISE EXCEPTION 'ombudsman_reopen_requests: a request is decided once';
+  END IF;
+  IF (to_jsonb(NEW) - moving) IS DISTINCT FROM (to_jsonb(OLD) - moving) THEN
+    RAISE EXCEPTION 'ombudsman_reopen_requests: reason, manifestation and cycle never change';
+  END IF;
+  IF NEW.state NOT IN ('accepted', 'rejected') THEN
+    RAISE EXCEPTION 'ombudsman_reopen_requests: a pending request only receives the decision';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_ombudsman_notice_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF (to_jsonb(NEW) - 'read_at') IS DISTINCT FROM (to_jsonb(OLD) - 'read_at') THEN
+    RAISE EXCEPTION 'ombudsman_notices: only read_at changes';
+  END IF;
+  IF OLD.read_at IS NOT NULL OR NEW.read_at IS NULL THEN
+    RAISE EXCEPTION 'ombudsman_notices: a notice is read once';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_ombudsman_annual_report_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'ombudsman_annual_reports: DELETE refused';
+  END IF;
+  IF OLD.state = 'published' THEN
+    RAISE EXCEPTION 'ombudsman_annual_reports: a published report never changes';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.ombudsman_manifestations') IS NOT NULL THEN
+    CREATE SEQUENCE IF NOT EXISTS ombudsman_protocol_seq START 1;
+    EXECUTE 'DROP TRIGGER IF EXISTS ombudsman_manifestations_guard ON ombudsman_manifestations';
+    EXECUTE 'CREATE TRIGGER ombudsman_manifestations_guard BEFORE UPDATE OR DELETE ON ombudsman_manifestations
+      FOR EACH ROW EXECUTE FUNCTION rota_ombudsman_manifestation_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS ombudsman_subjects_guard ON ombudsman_subjects';
+    EXECUTE 'CREATE TRIGGER ombudsman_subjects_guard BEFORE INSERT OR UPDATE ON ombudsman_subjects
+      FOR EACH ROW EXECUTE FUNCTION rota_ombudsman_subject_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS ombudsman_forwardings_guard ON ombudsman_forwardings';
+    EXECUTE 'CREATE TRIGGER ombudsman_forwardings_guard BEFORE UPDATE OR DELETE ON ombudsman_forwardings
+      FOR EACH ROW EXECUTE FUNCTION rota_ombudsman_forwarding_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS ombudsman_attachments_guard ON ombudsman_attachments';
+    EXECUTE 'CREATE TRIGGER ombudsman_attachments_guard BEFORE UPDATE OR DELETE ON ombudsman_attachments
+      FOR EACH ROW EXECUTE FUNCTION rota_ombudsman_attachment_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS ombudsman_reopen_requests_guard ON ombudsman_reopen_requests';
+    EXECUTE 'CREATE TRIGGER ombudsman_reopen_requests_guard BEFORE UPDATE OR DELETE ON ombudsman_reopen_requests
+      FOR EACH ROW EXECUTE FUNCTION rota_ombudsman_reopen_request_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS ombudsman_notices_guard ON ombudsman_notices';
+    EXECUTE 'CREATE TRIGGER ombudsman_notices_guard BEFORE UPDATE ON ombudsman_notices
+      FOR EACH ROW EXECUTE FUNCTION rota_ombudsman_notice_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS ombudsman_annual_reports_guard ON ombudsman_annual_reports';
+    EXECUTE 'CREATE TRIGGER ombudsman_annual_reports_guard BEFORE UPDATE OR DELETE ON ombudsman_annual_reports
+      FOR EACH ROW EXECUTE FUNCTION rota_ombudsman_annual_report_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS ombudsman_events_reencryption_only ON ombudsman_events';
+    EXECUTE 'CREATE TRIGGER ombudsman_events_reencryption_only BEFORE UPDATE OR DELETE ON ombudsman_events
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''text'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS ombudsman_identity_accesses_reencryption_only ON ombudsman_identity_accesses';
+    EXECUTE 'CREATE TRIGGER ombudsman_identity_accesses_reencryption_only BEFORE UPDATE OR DELETE ON ombudsman_identity_accesses
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''justification'')';
+    EXECUTE 'DROP TRIGGER IF EXISTS ombudsman_satisfaction_responses_append_only ON ombudsman_satisfaction_responses';
+    EXECUTE 'CREATE TRIGGER ombudsman_satisfaction_responses_append_only BEFORE UPDATE OR DELETE ON ombudsman_satisfaction_responses
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    FOREACH item IN ARRAY ARRAY['ombudsman_responders', 'ombudsman_subjects', 'ombudsman_settings', 'ombudsman_daily_runs'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_no_delete', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_no_delete()',
+                     item || '_no_delete', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['ombudsman_responders', 'ombudsman_subjects', 'ombudsman_settings', 'ombudsman_manifestations',
+                                'ombudsman_events', 'ombudsman_forwardings', 'ombudsman_identity_accesses', 'ombudsman_attachments',
+                                'ombudsman_reopen_requests', 'ombudsman_satisfaction_responses', 'ombudsman_notices',
+                                'ombudsman_annual_reports', 'ombudsman_daily_runs'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

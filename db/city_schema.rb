@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_11_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_11_900002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -2422,6 +2422,225 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_900001) do
     t.check_constraint "length(btrim(number::text)) >= 1", name: "ck_nursing_protocols_number"
     t.check_constraint "length(btrim(title::text)) >= 3 AND length(btrim(title::text)) <= 200", name: "ck_nursing_protocols_title"
     t.check_constraint "year >= 1990 AND year <= 2100", name: "ck_nursing_protocols_year"
+  end
+
+  create_table "ombudsman_annual_reports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "actions_taken"
+    t.datetime "created_at", null: false
+    t.text "notes"
+    t.datetime "published_at"
+    t.uuid "published_by_user_id"
+    t.text "recurring_problems"
+    t.jsonb "snapshot"
+    t.string "state", null: false
+    t.datetime "updated_at", null: false
+    t.integer "year", null: false
+    t.index ["year"], name: "idx_ombudsman_annual_reports_year", unique: true
+    t.check_constraint "(state::text = 'published'::text) = (published_at IS NOT NULL AND snapshot IS NOT NULL)", name: "ck_ombudsman_annual_reports_published"
+    t.check_constraint "state::text = ANY (ARRAY['draft'::text, 'published'::text])", name: "ck_ombudsman_annual_reports_state"
+    t.check_constraint "year >= 2000 AND year <= 2999", name: "ck_ombudsman_annual_reports_year"
+  end
+
+  create_table "ombudsman_attachments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "citizen_session_id"
+    t.datetime "created_at", null: false
+    t.uuid "event_id"
+    t.uuid "exam_file_id", null: false
+    t.text "filename", null: false
+    t.uuid "ombudsman_manifestation_id"
+    t.string "uploaded_by", null: false
+    t.uuid "uploaded_by_user_id"
+    t.index ["exam_file_id"], name: "idx_ombudsman_attachments_file", unique: true
+    t.index ["ombudsman_manifestation_id"], name: "idx_ombudsman_attachments_manifestation"
+    t.index ["created_at"], name: "idx_ombudsman_attachments_orphans", where: "(ombudsman_manifestation_id IS NULL)"
+    t.check_constraint "(uploaded_by::text = 'citizen'::text) = (citizen_session_id IS NOT NULL) AND (uploaded_by::text = 'staff'::text) = (uploaded_by_user_id IS NOT NULL)", name: "ck_ombudsman_attachments_owner"
+    t.check_constraint "uploaded_by::text = ANY (ARRAY['citizen'::text, 'staff'::text])", name: "ck_ombudsman_attachments_uploaded_by"
+  end
+
+  create_table "ombudsman_daily_runs", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "kind", limit: 30, null: false
+    t.date "run_on", null: false
+    t.index ["run_on", "kind"], name: "idx_ombudsman_daily_runs_once", unique: true
+    t.check_constraint "kind::text = ANY (ARRAY['deadlines'::text, 'anonymous_cap'::text])", name: "ck_ombudsman_daily_runs_kind"
+  end
+
+  create_table "ombudsman_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "actor", null: false
+    t.uuid "actor_user_id"
+    t.datetime "created_at", null: false
+    t.jsonb "data", default: {}, null: false
+    t.string "kind", null: false
+    t.uuid "ombudsman_manifestation_id", null: false
+    t.text "text"
+    t.boolean "visible_to_citizen", default: false, null: false
+    t.index ["ombudsman_manifestation_id", "created_at", "id"], name: "idx_ombudsman_events_manifestation"
+    t.check_constraint "actor::text = ANY (ARRAY['staff'::text, 'citizen'::text, 'system'::text])", name: "ck_ombudsman_events_actor"
+    t.check_constraint "(actor::text = 'staff'::text) = (actor_user_id IS NOT NULL)", name: "ck_ombudsman_events_actor_user"
+    t.check_constraint "jsonb_typeof(data) = 'object'::text", name: "ck_ombudsman_events_data"
+    t.check_constraint "kind::text = ANY (ARRAY['received'::text, 'classified'::text, 'forwarded'::text, 'forwarding_cancelled'::text, 'forwarding_replied'::text, 'forwarding_declined'::text, 'forwarding_extended'::text, 'complement_requested'::text, 'complement_received'::text, 'extended'::text, 'interim_response'::text, 'final_response'::text, 'archived'::text, 'reopen_requested'::text, 'reopen_rejected'::text, 'reopened'::text, 'resolution_changed'::text, 'identity_consent_recorded'::text])", name: "ck_ombudsman_events_kind"
+  end
+
+  create_table "ombudsman_forwardings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.uuid "department_id"
+    t.date "due_on", null: false
+    t.boolean "extended", default: false, null: false
+    t.text "extension_reason"
+    t.text "extract", null: false
+    t.uuid "health_unit_id"
+    t.uuid "ombudsman_manifestation_id", null: false
+    t.datetime "replied_at"
+    t.uuid "replied_by_user_id"
+    t.text "reply"
+    t.string "state", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ombudsman_manifestation_id", "created_at"], name: "idx_ombudsman_forwardings_manifestation"
+    t.index ["state", "due_on"], name: "idx_ombudsman_forwardings_state"
+    t.check_constraint "num_nonnulls(department_id, health_unit_id) = 1", name: "ck_ombudsman_forwardings_destination"
+    t.check_constraint "(state::text = ANY (ARRAY['replied'::text, 'declined'::text])) = (reply IS NOT NULL)", name: "ck_ombudsman_forwardings_reply"
+    t.check_constraint "state::text = ANY (ARRAY['pending'::text, 'replied'::text, 'declined'::text, 'cancelled'::text])", name: "ck_ombudsman_forwardings_state"
+  end
+
+  create_table "ombudsman_identity_accesses", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "exam_file_id"
+    t.text "justification", null: false
+    t.uuid "ombudsman_manifestation_id", null: false
+    t.string "scope", null: false
+    t.uuid "user_id", null: false
+    t.index ["ombudsman_manifestation_id", "created_at"], name: "idx_ombudsman_identity_accesses_manifestation"
+    t.check_constraint "(scope::text = 'attachment'::text) = (exam_file_id IS NOT NULL)", name: "ck_ombudsman_identity_accesses_file"
+    t.check_constraint "scope::text = ANY (ARRAY['identity'::text, 'attachment'::text])", name: "ck_ombudsman_identity_accesses_scope"
+  end
+
+  create_table "ombudsman_manifestations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "archive_reason"
+    t.text "body", null: false
+    t.string "channel", null: false
+    t.uuid "citizen_id"
+    t.datetime "complement_requested_at"
+    t.boolean "complement_used", default: false, null: false
+    t.datetime "concluded_at"
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id"
+    t.integer "cycle", default: 1, null: false
+    t.date "cycle_started_on", null: false
+    t.uuid "duplicate_of_id"
+    t.boolean "extended", default: false, null: false
+    t.text "extension_reason"
+    t.string "external_body_name", limit: 120
+    t.string "identification_mode", null: false
+    t.string "kind", null: false
+    t.text "manifestant_contact"
+    t.text "manifestant_cpf"
+    t.text "manifestant_name"
+    t.string "ouvidorsus_number", limit: 40
+    t.string "protocol", limit: 20, null: false
+    t.datetime "received_at", null: false
+    t.uuid "referred_health_unit_id"
+    t.uuid "referred_professional_id"
+    t.string "resolution"
+    t.string "state", null: false
+    t.uuid "subject_id"
+    t.integer "suspended_days", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.boolean "urgent", default: false, null: false
+    t.index ["channel", "identification_mode", "received_at"], name: "idx_ombudsman_manifestations_anonymous_cap"
+    t.index ["citizen_id"], name: "idx_ombudsman_manifestations_citizen", where: "(citizen_id IS NOT NULL)"
+    t.index ["protocol"], name: "idx_ombudsman_manifestations_protocol", unique: true
+    t.index ["state", "received_at"], name: "idx_ombudsman_manifestations_state"
+    t.check_constraint "identification_mode::text <> 'anonymous'::text OR (kind::text = 'report'::text AND citizen_id IS NULL AND manifestant_name IS NULL AND manifestant_contact IS NULL AND manifestant_cpf IS NULL)", name: "ck_ombudsman_manifestations_anonymous"
+    t.check_constraint "archive_reason IS NULL OR archive_reason::text = ANY (ARRAY['duplicate'::text, 'no_complement'::text, 'lack_of_clarity'::text, 'lack_of_civility'::text, 'improper'::text, 'loss_of_object'::text, 'forwarded_elsewhere'::text])", name: "ck_ombudsman_manifestations_archive_reason"
+    t.check_constraint "(state::text = 'archived'::text) = (archive_reason IS NOT NULL)", name: "ck_ombudsman_manifestations_archived"
+    t.check_constraint "channel::text = ANY (ARRAY['web'::text, 'in_person'::text, 'phone'::text, 'ouvidorsus'::text])", name: "ck_ombudsman_manifestations_channel"
+    t.check_constraint "cycle >= 1 AND suspended_days >= 0", name: "ck_ombudsman_manifestations_cycle"
+    t.check_constraint "(archive_reason::text IS NOT DISTINCT FROM 'duplicate'::text) = (duplicate_of_id IS NOT NULL)", name: "ck_ombudsman_manifestations_duplicate"
+    t.check_constraint "(archive_reason::text IS NOT DISTINCT FROM 'forwarded_elsewhere'::text) = (external_body_name IS NOT NULL)", name: "ck_ombudsman_manifestations_elsewhere"
+    t.check_constraint "identification_mode::text = ANY (ARRAY['identified'::text, 'preserved'::text, 'anonymous'::text])", name: "ck_ombudsman_manifestations_identification_mode"
+    t.check_constraint "kind::text = ANY (ARRAY['complaint'::text, 'report'::text, 'praise'::text, 'suggestion'::text, 'request'::text])", name: "ck_ombudsman_manifestations_kind"
+    t.check_constraint "(channel::text = 'ouvidorsus'::text) = (ouvidorsus_number IS NOT NULL)", name: "ck_ombudsman_manifestations_ouvidorsus"
+    t.check_constraint "protocol::text ~ '^[0-9]{4}-[0-9]{6,}$'::text", name: "ck_ombudsman_manifestations_protocol"
+    t.check_constraint "resolution IS NULL OR resolution::text = ANY (ARRAY['resolved'::text, 'not_resolved'::text])", name: "ck_ombudsman_manifestations_resolution"
+    t.check_constraint "state::text = ANY (ARRAY['received'::text, 'in_analysis'::text, 'forwarded'::text, 'awaiting_complement'::text, 'answered'::text, 'archived'::text])", name: "ck_ombudsman_manifestations_state"
+    t.check_constraint "(channel::text = 'web'::text) = (created_by_user_id IS NULL)", name: "ck_ombudsman_manifestations_web_creator"
+  end
+
+  create_table "ombudsman_notices", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "citizen_id", null: false
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.uuid "ombudsman_manifestation_id", null: false
+    t.datetime "read_at"
+    t.index ["citizen_id", "read_at"], name: "idx_ombudsman_notices_citizen"
+    t.index ["ombudsman_manifestation_id"], name: "idx_ombudsman_notices_manifestation"
+    t.check_constraint "kind::text = ANY (ARRAY['interim_response'::text, 'complement_requested'::text, 'final_response'::text, 'archived'::text, 'reopen_decided'::text])", name: "ck_ombudsman_notices_kind"
+  end
+
+  create_table "ombudsman_reopen_requests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "cycle", null: false
+    t.datetime "decided_at"
+    t.uuid "decided_by_user_id"
+    t.text "decision_text"
+    t.uuid "ombudsman_manifestation_id", null: false
+    t.text "reason", null: false
+    t.string "state", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ombudsman_manifestation_id", "cycle"], name: "idx_ombudsman_reopen_requests_cycle", unique: true
+    t.index ["ombudsman_manifestation_id"], name: "idx_ombudsman_reopen_requests_pending", unique: true, where: "(state::text = 'pending'::text)"
+    t.check_constraint "(state::text = 'pending'::text) = (decided_at IS NULL AND decided_by_user_id IS NULL)", name: "ck_ombudsman_reopen_requests_decided"
+    t.check_constraint "state::text = ANY (ARRAY['pending'::text, 'accepted'::text, 'rejected'::text])", name: "ck_ombudsman_reopen_requests_state"
+  end
+
+  create_table "ombudsman_responders", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.uuid "created_by_user_id", null: false
+    t.uuid "department_id"
+    t.uuid "health_unit_id"
+    t.datetime "updated_at", null: false
+    t.uuid "user_id", null: false
+    t.index ["user_id", "department_id"], name: "idx_ombudsman_responders_department", unique: true, where: "(department_id IS NOT NULL)"
+    t.index ["user_id", "health_unit_id"], name: "idx_ombudsman_responders_health_unit", unique: true, where: "(health_unit_id IS NOT NULL)"
+    t.check_constraint "num_nonnulls(department_id, health_unit_id) = 1", name: "ck_ombudsman_responders_destination"
+  end
+
+  create_table "ombudsman_satisfaction_responses", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "clear", null: false
+    t.datetime "created_at", null: false
+    t.string "met", null: false
+    t.uuid "ombudsman_manifestation_id", null: false
+    t.integer "score", null: false
+    t.index ["ombudsman_manifestation_id"], name: "idx_ombudsman_satisfaction_responses_manifestation", unique: true
+    t.check_constraint "met::text = ANY (ARRAY['yes'::text, 'partly'::text, 'no'::text])", name: "ck_ombudsman_satisfaction_responses_met"
+    t.check_constraint "score >= 1 AND score <= 5", name: "ck_ombudsman_satisfaction_responses_score"
+  end
+
+  create_table "ombudsman_settings", id: :smallint, default: nil, force: :cascade do |t|
+    t.integer "anonymous_daily_cap", default: 50, null: false
+    t.integer "complement_days", default: 20, null: false
+    t.integer "extension_days", default: 30, null: false
+    t.integer "forwarding_days", default: 20, null: false
+    t.integer "forwarding_extension_days", default: 20, null: false
+    t.integer "response_days", default: 30, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id"
+    t.integer "urgent_days", default: 15, null: false
+    t.integer "warning_days", default: 5, null: false
+    t.check_constraint "response_days >= 1 AND response_days <= 120 AND extension_days >= 1 AND extension_days <= 120 AND urgent_days >= 1 AND urgent_days <= 120 AND complement_days >= 1 AND complement_days <= 120 AND forwarding_days >= 1 AND forwarding_days <= 120 AND forwarding_extension_days >= 1 AND forwarding_extension_days <= 120 AND warning_days >= 1 AND warning_days <= 120 AND anonymous_daily_cap >= 1 AND anonymous_daily_cap <= 1000", name: "ck_ombudsman_settings_ranges"
+    t.check_constraint "id = 1", name: "ck_ombudsman_settings_singleton"
+  end
+
+  create_table "ombudsman_subjects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.string "name", limit: 80, null: false
+    t.uuid "parent_id"
+    t.integer "position", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index "COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(name)", name: "idx_ombudsman_subjects_name", unique: true
   end
 
   create_table "otp_challenges", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4865,6 +5084,38 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_900001) do
   add_foreign_key "nursing_protocol_versions", "nursing_protocols"
   add_foreign_key "nursing_protocol_versions", "users", column: "created_by_user_id"
   add_foreign_key "nursing_protocols", "users", column: "created_by_user_id"
+  add_foreign_key "ombudsman_annual_reports", "users", column: "published_by_user_id"
+  add_foreign_key "ombudsman_attachments", "exam_files", on_delete: :cascade
+  add_foreign_key "ombudsman_attachments", "ombudsman_events", column: "event_id"
+  add_foreign_key "ombudsman_attachments", "ombudsman_manifestations"
+  add_foreign_key "ombudsman_attachments", "users", column: "uploaded_by_user_id"
+  add_foreign_key "ombudsman_events", "ombudsman_manifestations"
+  add_foreign_key "ombudsman_events", "users", column: "actor_user_id"
+  add_foreign_key "ombudsman_forwardings", "departments"
+  add_foreign_key "ombudsman_forwardings", "health_units"
+  add_foreign_key "ombudsman_forwardings", "ombudsman_manifestations"
+  add_foreign_key "ombudsman_forwardings", "users", column: "created_by_user_id"
+  add_foreign_key "ombudsman_forwardings", "users", column: "replied_by_user_id"
+  add_foreign_key "ombudsman_identity_accesses", "exam_files"
+  add_foreign_key "ombudsman_identity_accesses", "ombudsman_manifestations"
+  add_foreign_key "ombudsman_identity_accesses", "users"
+  add_foreign_key "ombudsman_manifestations", "citizens"
+  add_foreign_key "ombudsman_manifestations", "health_units", column: "referred_health_unit_id"
+  add_foreign_key "ombudsman_manifestations", "ombudsman_manifestations", column: "duplicate_of_id"
+  add_foreign_key "ombudsman_manifestations", "ombudsman_subjects", column: "subject_id"
+  add_foreign_key "ombudsman_manifestations", "professionals", column: "referred_professional_id"
+  add_foreign_key "ombudsman_manifestations", "users", column: "created_by_user_id"
+  add_foreign_key "ombudsman_notices", "citizens"
+  add_foreign_key "ombudsman_notices", "ombudsman_manifestations"
+  add_foreign_key "ombudsman_reopen_requests", "ombudsman_manifestations"
+  add_foreign_key "ombudsman_reopen_requests", "users", column: "decided_by_user_id"
+  add_foreign_key "ombudsman_responders", "departments"
+  add_foreign_key "ombudsman_responders", "health_units"
+  add_foreign_key "ombudsman_responders", "users", column: "created_by_user_id"
+  add_foreign_key "ombudsman_responders", "users"
+  add_foreign_key "ombudsman_satisfaction_responses", "ombudsman_manifestations"
+  add_foreign_key "ombudsman_settings", "users", column: "updated_by_user_id"
+  add_foreign_key "ombudsman_subjects", "ombudsman_subjects", column: "parent_id"
   add_foreign_key "patient_medication_events", "clinical_documents", deferrable: :deferred
   add_foreign_key "patient_medication_events", "consultation_addenda", column: "addendum_id", deferrable: :deferred
   add_foreign_key "patient_medication_events", "consultations", deferrable: :deferred
