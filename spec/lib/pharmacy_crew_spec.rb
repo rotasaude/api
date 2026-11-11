@@ -205,9 +205,9 @@ RSpec.describe PharmacyCrew, type: :request do
         # Alertas: lote vencendo em 60 dias (alerta de 90), mínimo de metformina acima do saldo, trânsito e ajuste.
         settings = Pharmacy::Settings.current
         expect(Pharmacy::Alerts.call(location: central, today: today, settings: settings))
-          .to eq(expiring: 1, expired: 0, below_minimum: 0, in_transit: 0, pending_adjustments: 1)
+          .to eq(expiring: 1, expired: 0, below_minimum: 0, in_transit: 0, pending_adjustments: 1, urgency_shortfalls: 0)
         expect(Pharmacy::Alerts.call(location: pharmacy, today: today, settings: settings))
-          .to eq(expiring: 0, expired: 0, below_minimum: 1, in_transit: 1, pending_adjustments: 0)
+          .to eq(expiring: 0, expired: 0, below_minimum: 1, in_transit: 1, pending_adjustments: 0, urgency_shortfalls: 0)
         expect(StockMinimum.find_by!(stock_location_id: pharmacy.id, catalog_item_id: item(:metformina).id).minimum).to eq(600)
         expect(balance(pharmacy, lot("MF2702-A"))).to eq(400)
 
