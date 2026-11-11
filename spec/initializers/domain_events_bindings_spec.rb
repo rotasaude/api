@@ -615,15 +615,17 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
 
   # Módulo 32a (Task 18, conferência final): os eventos do módulo são
   # exatamente os oito do contrato §12, e só os dois do fechamento e da
-  # identificação têm consumidor (o BPA da urgência). Módulo 32b: mais os
-  # do contrato §10, à medida que as tasks os declaram.
-  it "declares exactly the module 32a events of contract §12 and the module 32b events declared so far" do
-    names = DomainEvents.registry.keys.grep(/\A(urgency|waiting_room)\.|\Aattendance\.recalled\z/)
+  # identificação têm consumidor (o BPA da urgência). Módulo 32b (Task 17;
+  # Q10, A27): mais os sete do contrato §10 (15 nomes); nenhum deles tem consumidor.
+  it "declares exactly the 15 events of modules 32a and 32b, and only the two of 32a have a consumer" do
+    names = DomainEvents.registry.keys.grep(/\A(urgency|waiting_room)\.|\Aattendance\.recalled\z|\Apharmacy\.urgency_shortfall_reconciled\z/)
     expect(names).to contain_exactly("urgency.arrived", "urgency.classified", "urgency.reclassified", "urgency.patient_identified",
                                      "urgency.encounter_closed", "attendance.recalled", "waiting_room.display_paired",
                                      "waiting_room.display_revoked", "urgency.observation_started", "urgency.observation_ended",
                                      "urgency.prescription_issued", "urgency.prescription_suspended",
-                                     "urgency.medication_checked", "urgency.stock_shortfall_recorded")
+                                     "urgency.medication_checked", "urgency.stock_shortfall_recorded",
+                                     "pharmacy.urgency_shortfall_reconciled")
+    expect(names.size).to eq(15)
     consumed = names.reject { |name| DomainEvents.registry[name].empty? }
     expect(consumed).to contain_exactly("urgency.patient_identified", "urgency.encounter_closed")
   end

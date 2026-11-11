@@ -387,3 +387,353 @@ RSpec.describe "Sigilo da urgência (32a) — sem Platform.audit novo" do
     expect(Platform::Features::KEYS).to include("urgency_care", "waiting_room_display")
   end
 end
+
+# Módulo 32b (ADR 0050; contrato §10 e §12 Q4–Q10; plano, Task 17): o sigilo da
+# observação e da prescrição interna de ponta a ponta. Um cenário pelas rotas
+# reais com os interruptores `urgency_care` e `urgency_stock_deduction` ligados:
+# leitos, entrada e troca de leito, busca de medicamento, prescrição com
+# instruções (com um controlado), aprazamento, checagem com baixa, checagem
+# recusada com motivo, uma falta de estoque, a suspensão, a conciliação com
+# nota, a evolução por outro médico da UPA (prontuário e adendo, Q8) e o
+# desfecho; e as recusas forçadas (dose número, motivo curto, nota curta e lote
+# vencido). Depois, as provas de ausência: eventos (só ids; a lista exata dos
+# sete do 32b), log, recusas, URLs e trilha de leitura.
+module UrgencyObservationSecrecy
+  NAME = "Zenóbia Fulgêncio Albuquerque".freeze
+  TEXTS = {
+    instructions_a: "Instrução reservada XYZ após o café",
+    instructions_b: "Cuidado reservado QWE com a veia",
+    refused_reason: "Paciente recusou, queixa de enjoo reservada",
+    suspension_reason: "Suspensa por alergia reservada GHI",
+    reconciliation_note: "Reposição reservada JKL conferida",
+    addendum: "Evolução reservada MNO: estável"
+  }.freeze
+  DOSES = { losartana: "37.25", diazepam: "2.75", amoxicilina: "875.5" }.freeze
+  SEARCH_QUERY = "losart".freeze
+  # Os sete eventos do 32b (contrato §10; Q10).
+  EVENTS = %w[urgency.observation_started urgency.observation_ended urgency.prescription_issued urgency.prescription_suspended
+              urgency.medication_checked urgency.stock_shortfall_recorded pharmacy.urgency_shortfall_reconciled].freeze
+  EVENTS_32A = %w[urgency.arrived urgency.classified urgency.reclassified urgency.patient_identified urgency.encounter_closed
+                  attendance.recalled waiting_room.display_paired waiting_room.display_revoked].freeze
+  EVENT_FILTER = /\A(urgency|waiting_room)\.|\Aattendance\.recalled\z|\Apharmacy\.urgency_shortfall_reconciled\z/
+  EXTRA_GLOBS = %w[
+    app/services/pharmacy/alerts.rb app/services/pharmacy/ledger.rb app/services/pharmacy/statement.rb
+    app/services/pharmacy/catalog.rb app/models/stock_movement.rb app/controllers/pharmacy/base_controller.rb
+    app/commands/attendances/close.rb app/commands/consultations/add_addendum.rb
+  ].freeze
+  NEW_FILES = %w[
+    app/commands/pharmacy/reconcile_urgency_shortfall.rb app/controllers/pharmacy/urgency_shortfalls_controller.rb
+    app/commands/urgency/deduct_stock.rb app/commands/urgency/issue_prescription.rb app/commands/urgency/record_administration.rb
+    app/commands/urgency/start_observation.rb app/controllers/urgency/medication_searches_controller.rb
+    app/services/urgency/fefo.rb app/services/urgency/schedule.rb app/models/urgency_stock_shortfall.rb
+    app/models/urgency_administration.rb app/models/urgency_prescription_item.rb
+  ].freeze
+end
+
+RSpec.describe "Sigilo da urgência (32b)", type: :request do
+  let(:secrecy) { UrgencyObservationSecrecy }
+
+  # Cenário completo pelas rotas. A busca de medicamento vai num log próprio
+  # em nível info (o de produção): o `Medications::Search` compartilhado do 19
+  # interpola o termo no SQL, que só aparece em debug.
+  def observation_scenario!
+    texts = secrecy::TEXTS
+    doses = secrecy::DOSES
+    city = urgency_city!
+    import_test_catalog!
+    ciap2_release!; cid10_release!; sigtap_release!
+    pharmacy_city!
+    Platform::Features.set!(city: city, key: Urgency::StockGate::KEY, enabled: true, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+
+    losartana = catalog_item(268_856)
+    diazepam = catalog_item(267_197)
+    amoxicilina = catalog_item(271_089)
+    upa = upa!
+    location = unit_location!(upa)
+    pharmacist = pharmacy_staff!(location, "pharmacist")
+    doctor = observation_doctor!(upa)
+    nurse = observation_nurse!(upa)
+    next_shift = upa_doctor!(upa)
+    admin = urgency_admin!
+    patient = urgency_patient!(urgency_seq!).tap { |p| p.update!(full_name: secrecy::NAME) }
+    encounter = in_care_encounter!(upa, patient: patient)
+    urgency_consultation!(encounter, doctor: doctor)
+    stock_unit = Pharmacy::DispensingUnit.for(losartana)
+    fresh = StockLot.create!(catalog_item_id: losartana.id, catmat_code: losartana.catmat_code, lot_number: "SEC-OK", dispensing_unit: stock_unit,
+                             expires_on: Time.zone.today + 90, created_by_user: pharmacy_admin!)
+    stocked_lot!(location, item: losartana, quantity: "10", lot_number: fresh.lot_number, expires_on: fresh.expires_on)
+    old = StockLot.create!(catalog_item_id: amoxicilina.id, catmat_code: amoxicilina.catmat_code, lot_number: "SEC-OLD",
+                           dispensing_unit: Pharmacy::DispensingUnit.for(amoxicilina), expires_on: Time.zone.today - 1, created_by_user: pharmacy_admin!)
+    stocked_lot!(location, item: amoxicilina, quantity: "10", lot_number: old.lot_number, expires_on: old.expires_on)
+
+    paths = []
+    refusals = []
+    started_at = Time.current
+    send_request = lambda do |verb, path, body|
+      verb == :get ? get(path) : json_post(path, body)
+      paths << request.fullpath
+    end
+    req = lambda do |verb, path, body = {}|
+      send_request.(verb, path, body)
+      raise "#{verb} #{path} → #{response.status} #{response.body}" unless response.successful?
+
+      response.body.empty? ? {} : JSON.parse(response.body)
+    end
+    refuse = lambda do |label, path, body, status:, sent:|
+      send_request.(:post, path, body)
+      raise "#{label}: #{path} → #{response.status} #{response.body}" unless response.status == status
+
+      refusals << { label: label, status: response.status, raw: response.body, json: JSON.parse(response.body), sent: sent }
+    end
+    viewed = -> { DomainEvent.where(name: "clinical_record.viewed").count }
+    item = lambda do |catalog, key, **over|
+      { catalog_item_id: catalog.id, dose: doses.fetch(key), dose_unit: "mg", route: "oral",
+        frequency: { kind: "interval", interval_hours: 8 } }.merge(over)
+    end
+
+    ids = {}
+    reads = {}
+    search = nil
+    log = capture_log do
+      # Leitos (admin com step-up).
+      stepped_up!(admin)
+      bed_a = req.(:post, "/urgency/beds", { health_unit_id: upa.id, label: "OBS 01" })
+      bed_b = req.(:post, "/urgency/beds", { health_unit_id: upa.id, label: "OBS 02" })
+      ids[:bed_a] = (bed_a["bed"] || bed_a)["id"]
+      ids[:bed_b] = (bed_b["bed"] || bed_b)["id"]
+
+      # Médico: entrada no leito e troca (a troca encerra a estadia e abre outra).
+      sign_in_as(doctor)
+      req.(:post, "/urgency/encounters/#{encounter.id}/observation", { bed_id: ids[:bed_a] })
+      req.(:post, "/urgency/encounters/#{encounter.id}/observation", { bed_id: ids[:bed_b] })
+
+      # Prescrição: a recusa da dose número, e a v1 com instruções e um controlado.
+      refuse.(:dose_number, "/urgency/encounters/#{encounter.id}/prescriptions", { items: [ item.(losartana, :losartana, dose: 37.55) ] },
+              status: 422, sent: "37.55")
+      issued = req.(:post, "/urgency/encounters/#{encounter.id}/prescriptions",
+                    { items: [ item.(losartana, :losartana, instructions: texts[:instructions_a]),
+                               item.(diazepam, :diazepam, instructions: texts[:instructions_b]),
+                               item.(amoxicilina, :amoxicilina) ] })
+      ids[:prescription] = issued.dig("prescription", "id")
+      rows = issued.dig("prescription", "items")
+      ids[:controlled] = rows[1]["controlled"]
+      row_a, row_b, row_c = rows
+      due = ->(row) { { prescription_item_id: row["id"], scheduled_at: row["first_dose_at"] } }
+
+      # Aprazamento (trilha medication_schedule) e leitura do detalhe do encontro.
+      req.(:get, "/urgency/encounters/#{encounter.id}/medication_schedule")
+      req.(:get, "/urgency/encounters/#{encounter.id}")
+
+      # Enfermagem: o mapa (sem trilha), a checagem com baixa pelo FEFO, a falta
+      # (controlado sem saldo), a recusada com motivo e as recusas forçadas.
+      sign_in_as(nurse)
+      before = viewed.()
+      req.(:get, "/urgency/observation?health_unit_id=#{upa.id}")
+      reads[:map_views] = viewed.() - before
+      req.(:post, "/urgency/administrations", due.(row_a).merge(status: "administered"))
+      ids[:administered_lot] = json_body_of(response).dig("administration", "stock_lot", "id")
+      checked_b = req.(:post, "/urgency/administrations", due.(row_b).merge(status: "administered"))
+      ids[:shortfall] = checked_b["shortfall"]
+      refuse.(:short_reason, "/urgency/administrations", due.(row_c).merge(status: "refused", reason: "curto"), status: 422, sent: "curto")
+      refuse.(:expired_lot, "/urgency/administrations", due.(row_c).merge(status: "administered", stock_lot_id: old.id), status: 422, sent: old.lot_number)
+      req.(:post, "/urgency/administrations", due.(row_c).merge(status: "refused", reason: texts[:refused_reason]))
+
+      # Farmácia: a lista de faltas (sem trilha), a nota curta e a conciliação.
+      sign_in_as(pharmacist)
+      before = viewed.()
+      listed = req.(:get, "/pharmacy/urgency_shortfalls?location_id=#{location.id}")
+      reads[:shortfall_views] = viewed.() - before
+      ids[:shortfall_row] = listed["items"].sole["shortfall_id"]
+      refuse.(:short_note, "/pharmacy/urgency_shortfalls/#{ids[:shortfall_row]}/reconcile", { note: "curta" }, status: 422, sent: "curta")
+      req.(:post, "/pharmacy/urgency_shortfalls/#{ids[:shortfall_row]}/reconcile", { note: texts[:reconciliation_note] })
+
+      # Médico: motivo curto da suspensão, suspensão da v1 (ainda ativa, com o encontro aberto).
+      sign_in_as(doctor)
+      refuse.(:short_suspension, "/urgency/prescriptions/#{ids[:prescription]}/suspend", { reason: "curto" }, status: 422, sent: "curto")
+      req.(:post, "/urgency/prescriptions/#{ids[:prescription]}/suspend", { reason: texts[:suspension_reason] })
+      finalized_urgency!(encounter, doctor: doctor)
+
+      # Q8: outro médico da UPA lê o prontuário em contexto e escreve o adendo, encontro aberto.
+      sign_in_as(next_shift)
+      req.(:get, "/attendance/attendances/#{encounter.attendance_id}/record")
+      consultation = Consultation.find_by!(attendance_id: encounter.attendance_id)
+      req.(:post, "/attendance/consultations/#{consultation.id}/addenda", { reason: "evolução do plantão", text: texts[:addendum] })
+
+      # Desfecho.
+      sign_in_as(doctor)
+      req.(:post, "/urgency/encounters/#{encounter.id}/outcome", { kind: "discharged" })
+    end
+
+    # A busca de medicamento, em nível info (o de produção).
+    info = StringIO.new
+    sink = ActiveSupport::Logger.new(info).tap { |l| l.level = Logger::INFO }
+    Rails.logger.broadcast_to(sink)
+    begin
+      sign_in_as(doctor)
+      search = req.(:post, "/urgency/medication_search", { query: secrecy::SEARCH_QUERY })
+    ensure
+      Rails.logger.stop_broadcasting_to(sink)
+    end
+
+    { city: city, upa: upa, location: location, patient: patient.reload, encounter: encounter, ids: ids, reads: reads, search: search,
+      active_ingredients: [ losartana, diazepam, amoxicilina ].map(&:active_ingredient), doctor: doctor, nurse: nurse, next_shift: next_shift,
+      log: log, search_log: info.string, paths: paths, refusals: refusals, started_at: started_at }
+  end
+
+  def json_body_of(res) = JSON.parse(res.body)
+
+  describe "cenário" do
+    let!(:scenario) { observation_scenario! }
+    let(:ids) { scenario[:ids] }
+    let(:patient) { scenario[:patient] }
+    let(:texts) { UrgencyObservationSecrecy::TEXTS.values }
+    let(:doses) { UrgencyObservationSecrecy::DOSES.values }
+    let(:secrets) { [ patient.cpf, patient.cns, UrgencyObservationSecrecy::NAME ] + scenario[:active_ingredients] + doses + texts }
+
+    it "percorreu o cenário inteiro (controle positivo)" do
+      encounter = scenario[:encounter].reload
+      expect(encounter.state).to eq("closed")
+      expect(UrgencyBedStay.where(urgency_encounter_id: encounter.id).count).to eq(2)
+      expect(UrgencyBedStay.where(urgency_encounter_id: encounter.id).pluck(:urgency_bed_id)).to contain_exactly(ids[:bed_a], ids[:bed_b])
+      prescription = UrgencyPrescription.find(ids[:prescription])
+      expect(prescription.status).to eq("suspended")
+      expect(ids[:controlled]).to be(true)
+      expect(UrgencyAdministration.where(urgency_encounter_id: encounter.id).pluck(:status)).to contain_exactly("administered", "administered", "refused")
+      expect(ids[:administered_lot]).to be_present
+      expect(ids[:shortfall]).to eq("cause" => "insufficient_balance")
+      expect(UrgencyStockShortfall.find(ids[:shortfall_row]).reconciled_at).to be_present
+      expect(ConsultationAddendum.where(author_user_id: scenario[:next_shift].id).count).to eq(1)
+      expect(scenario[:search]["items"]).not_to be_empty
+      expect(scenario[:refusals].map { |r| r[:label] })
+        .to eq(%i[dose_number short_reason expired_lot short_note short_suspension])
+    end
+
+    # Q10: os eventos do cenário no espaço do módulo são exatamente os do 32a
+    # que a via real publica mais os sete do 32b; e todo payload só leva `_id` uuid.
+    it "os eventos do 32b são exatamente os sete do contrato, todos só com ids (uuid)" do
+      events = DomainEvent.where(occurred_at: scenario[:started_at]..)
+      module_events = events.select { |e| e.name.match?(UrgencyObservationSecrecy::EVENT_FILTER) }
+      names = module_events.map(&:name).uniq - UrgencyObservationSecrecy::EVENTS_32A
+      expect(names).to contain_exactly(*UrgencyObservationSecrecy::EVENTS)
+      expect(UrgencyObservationSecrecy::EVENTS.size).to eq(7)
+      expect(module_events.count { |e| e.name == "urgency.observation_started" }).to eq(2)
+      expect(module_events.count { |e| e.name == "urgency.observation_ended" }).to be >= 2 # a troca e o desfecho
+      module_events.each do |event|
+        expect(event.payload).not_to be_empty
+        event.payload.each do |key, value|
+          expect(key).to match(/_id\z/), "#{event.name} publica #{key}"
+          expect(value.to_s).to match(UrgencySecrecy::UUID), "#{event.name}.#{key}"
+        end
+      end
+      payloads = DomainEvent.pluck(:name, :payload).to_json
+      secrets.each { |secret| expect(payloads).not_to include(secret), "evento contém #{secret.inspect}" }
+      expect(payloads).not_to include(UrgencyObservationSecrecy::SEARCH_QUERY)
+    end
+
+    it "o log do cenário não tem nome, CPF, CNS, princípio ativo, dose, instruções, motivo nem nota" do
+      log = scenario[:log]
+      expect(log).to include("/urgency/administrations", "/urgency/encounters/#{scenario[:encounter].id}/prescriptions", "/pharmacy/urgency_shortfalls")
+      secrets.each { |secret| expect(log).not_to include(secret), "log contém #{secret.inspect}" }
+      logged = log.scan(/"(items|reason|note|text)"\s*=>\s*([^,}]+)/)
+      expect(logged.map(&:first).uniq).to include("items", "reason", "note")
+      expect(logged.map(&:last)).to all(include("[FILTERED]"))
+    end
+
+    # A busca de medicamento (Q4): o termo nunca na linha da requisição nem nos
+    # Parameters. No nível debug o `Medications::Search` do 19, compartilhado,
+    # interpola o termo no SQL (fora do escopo deste módulo); o log de produção
+    # é info, e é nele que se prova.
+    it "a busca de medicamento não deixa o termo no log de produção (info)" do
+      log = scenario[:search_log]
+      expect(log).to include("/urgency/medication_search") # controle
+      expect(log.downcase).not_to include(UrgencyObservationSecrecy::SEARCH_QUERY)
+      expect(log).to include("[FILTERED]")
+      expect(scenario[:log].downcase).not_to include(UrgencyObservationSecrecy::SEARCH_QUERY) # fora do capture: a busca não está nele
+    end
+
+    it "toda recusa forçada traz só error, path e problems, sem o valor enviado" do
+      expected = { dose_number: "dose", short_reason: "reason", expired_lot: "stock_lot_id", short_note: "note", short_suspension: "reason" }
+      scenario[:refusals].each do |refusal|
+        json = refusal[:json]
+        expect(json.keys - %w[error path problems]).to be_empty, "#{refusal[:label]}: #{json.keys}"
+        expect(json["path"].to_s).to end_with(expected.fetch(refusal[:label])), "#{refusal[:label]}: #{json}"
+        Array(json["problems"]).each { |problem| expect(problem.keys - %w[path error]).to be_empty }
+        expect(refusal[:raw]).not_to include(refusal[:sent])
+        secrets.each { |secret| expect(refusal[:raw]).not_to include(secret), "#{refusal[:label]} contém #{secret.inspect}" }
+      end
+      expect(scenario[:refusals].find { |r| r[:label] == :expired_lot }[:json]["error"]).to eq("lot_invalid")
+    end
+
+    it "as URLs pedidas levam só ids" do
+      expect(scenario[:paths].size).to be >= 20
+      joined = scenario[:paths].join("\n")
+      secrets.each { |secret| expect(joined).not_to include(secret) }
+      expect(joined.downcase).not_to include(UrgencyObservationSecrecy::SEARCH_QUERY)
+      expect(joined).to include("/urgency/medication_search", "/urgency/observation?health_unit_id=", "/medication_schedule")
+    end
+
+    it "o mapa da observação e a lista de faltas não gravam clinical_record.viewed; o prontuário do outro médico grava" do
+      expect(scenario[:reads]).to eq(map_views: 0, shortfall_views: 0)
+      views = DomainEvent.where(name: "clinical_record.viewed").select { |e| e.payload["user_id"] == scenario[:next_shift].id }
+      expect(views.size).to eq(1)
+      expect(views.sole.payload.keys).to contain_exactly("access", "user_id", "patient_id", "reason_code")
+      expect(views.sole.payload.to_json).not_to include(UrgencyObservationSecrecy::NAME, patient.cpf)
+    end
+  end
+
+  # §13 (nunca em URL): as leituras novas recusam CPF, CNS e nome na query com o
+  # NOME da chave, sem ecoar o valor.
+  describe "query das leituras" do
+    let!(:city) { urgency_city! }
+    let!(:catalog) { import_test_catalog! }
+    let(:upa) { upa! }
+    let(:reader) { staff_with("leitura-obs-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin", "citizen_verifier") }
+
+    {
+      "/urgency/observation" => %w[name cpf cns],
+      "/urgency/encounters/:id/medication_schedule" => %w[cpf name cns]
+    }.each do |route, keys|
+      it "GET #{route} recusa #{keys.join(', ')} → 422 só com o nome da chave" do
+        sign_in_as(reader)
+        keys.each do |key|
+          value = key == "name" ? "x" : "1"
+          get "#{route.sub(':id', SecureRandom.uuid)}?#{key}=#{value}"
+          expect([ response.status, JSON.parse(response.body)["error"], JSON.parse(response.body)["path"] ]).to eq([ 422, "invalid_request", key ])
+          expect(response.body).not_to include("\"#{value}\"")
+        end
+      end
+    end
+
+    it "GET /pharmacy/urgency_shortfalls recusa cpf, cns e name → 422 só com o nome da chave" do
+      pharmacy_city!
+      location = unit_location!(upa)
+      sign_in_as(pharmacy_staff!(location, "pharmacist"))
+      %w[cpf cns name].each do |key|
+        get "/pharmacy/urgency_shortfalls?location_id=#{location.id}&#{key}=1"
+        json = JSON.parse(response.body)
+        expect([ response.status, json["error"], json["path"] ]).to eq([ 422, "invalid_request", key ])
+      end
+    end
+  end
+
+  # §12 (R18 intacto): o 32b não audita na plataforma. Os arquivos novos entram
+  # nas globs (o total sobe em relação ao 32a).
+  describe "sem Platform.audit novo" do
+    it "nenhum arquivo do 32b chama Platform.audit e R18 segue sem nome da urgência" do
+      root = Rails.root
+      files_32a = UrgencySecrecy::MODULE_GLOBS.flat_map { |glob| Dir[root.join(glob).to_s] }.uniq
+      files = (files_32a + UrgencyObservationSecrecy::EXTRA_GLOBS.map { |path| root.join(path).to_s }).uniq
+      expect(files.size).to be > files_32a.size
+      expect(files.size).to be >= 100
+      UrgencyObservationSecrecy::NEW_FILES.each { |path| expect(files).to include(root.join(path).to_s), "#{path} fora das globs" }
+      offenders = files.select { |file| File.read(file).match?(/Platform\s*\.\s*audit\b/) }
+      expect(offenders).to be_empty
+
+      guard = File.read(root.join("spec/events/platform_event_payload_guard_spec.rb"))
+      r18 = guard[/R18_PLATFORM_EVENT_NAMES = %w\[(.*?)\]\.freeze/m, 1].to_s.split
+      expect(r18.grep(/urgency|waiting_room|attendance|pharmacy/)).to be_empty
+      expect(Platform::Features::KEYS).to include("urgency_care", Urgency::StockGate::KEY)
+    end
+  end
+end
