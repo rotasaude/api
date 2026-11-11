@@ -54,4 +54,16 @@ RSpec.describe "Sessão do cidadão com os interruptores", type: :request do
     expect(features).to include("clinical_record")
     expect(features).not_to include("psychosocial_care")
   end
+
+  # Módulo 33 (ADR 0051): as duas chaves da ouvidoria vão ao cidadão.
+  it "GET /citizen/session traz ombudsman e ombudsman_anonymous_web quando ligados" do
+    city = clinical_city!
+    maintainer = ledi_maintainer!
+    %w[ombudsman ombudsman_anonymous_web].each do |key|
+      Platform::Features.set!(city: city, key: key, enabled: true, maintainer: maintainer)
+    end
+    sign_in_citizen
+    get "/citizen/session"
+    expect(JSON.parse(response.body)["features"]).to include("ombudsman", "ombudsman_anonymous_web")
+  end
 end

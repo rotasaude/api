@@ -199,7 +199,16 @@ module Platform
       # pré-requisito (urgency_care_disabled, pharmacy_disabled).
       Entry.new(key: "urgency_stock_deduction",
                 description: "Atendimentos da UPA com prescrição de medicação atualizam o estoque",
-                requires: %w[feature:urgency_care feature:pharmacy])
+                requires: %w[feature:urgency_care feature:pharmacy]),
+      # ADR 0051: ouvidoria (módulo 33). Sem cascata; desligar a ouvidoria deixa a
+      # denúncia anônima ligada faltando pré-requisito (ombudsman_disabled), e o
+      # formulário público responde feature_disabled.
+      Entry.new(key: "ombudsman",
+                description: "Ouvidoria do SUS municipal",
+                requires: []),
+      Entry.new(key: "ombudsman_anonymous_web",
+                description: "Denúncia anônima sem login no canal do cidadão",
+                requires: %w[feature:ombudsman])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze

@@ -118,18 +118,34 @@ RSpec.describe Platform::Features do
 
   it "módulo 32a: urgency_care exige o prontuário; waiting_room_display é independente" do
     keys = Platform::Features::CATALOG.map(&:key)
-    expect(keys.last(3).first(2)).to eq(%w[urgency_care waiting_room_display])
+    expect(keys.last(5).first(2)).to eq(%w[urgency_care waiting_room_display])
     expect(Platform::Features::CATALOG.find { |e| e.key == "urgency_care" }.requires).to eq(%w[feature:clinical_record])
     expect(Platform::Features::CATALOG.find { |e| e.key == "waiting_room_display" }.requires).to eq([])
     expect(Platform::Features::CITIZEN_HIDDEN).not_to include("urgency_care", "waiting_room_display")
   end
 
-  it "módulo 32b: urgency_stock_deduction é a última chave e exige a urgência e a farmácia" do
-    entry = Platform::Features::CATALOG.last
+  it "módulo 32b: urgency_stock_deduction exige a urgência e a farmácia" do
+    entry = Platform::Features::CATALOG[-3]
     expect(entry.key).to eq("urgency_stock_deduction")
     expect(entry.requires).to eq(%w[feature:urgency_care feature:pharmacy])
     expect(entry.description).to eq("Atendimentos da UPA com prescrição de medicação atualizam o estoque")
     expect(Platform::Features::CITIZEN_HIDDEN).not_to include("urgency_stock_deduction")
+  end
+
+  it "módulo 33: ombudsman fecha o catálogo; a denúncia anônima exige a ouvidoria; as duas vão ao cidadão" do
+    keys = Platform::Features::CATALOG.map(&:key)
+    expect(keys.last(2)).to eq(%w[ombudsman ombudsman_anonymous_web])
+    expect(described_class.find("ombudsman").requires).to eq([])
+    expect(described_class.find("ombudsman").description).to eq("Ouvidoria do SUS municipal")
+    expect(described_class.find("ombudsman_anonymous_web").requires).to eq(%w[feature:ombudsman])
+    expect(described_class::CITIZEN_HIDDEN).not_to include("ombudsman", "ombudsman_anonymous_web")
+  end
+
+  it "denúncia anônima ligada sem a ouvidoria fica inutilizável com ombudsman_disabled" do
+    city = clinical_city!
+    Platform::Features.set!(city: city, key: "ombudsman_anonymous_web", enabled: true, maintainer: ledi_maintainer!)
+    expect(Platform::Features.missing(city, "ombudsman_anonymous_web")).to eq(%w[ombudsman_disabled])
+    expect(Ombudsman::AnonymousGate.usable?(city)).to be(false)
   end
 
   it "faltando a farmácia, o interruptor ligado fica inutilizável com pharmacy_disabled" do
