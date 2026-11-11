@@ -27,7 +27,14 @@ module Urgency
     # clínico (`clinical: false`, §14 Q19), sem queixa, sinais, dor,
     # justificativa, critério nem os campos cifrados do desfecho — a descrição
     # fica. Quem renderiza grava a trilha (Urgency::BaseController#render_encounter).
-    def encounter(encounter, clinical:, now: Time.current)
+    #
+    # Módulo 32b (§12 Q9): `observation` sai para todos (sem texto clínico);
+    # `prescription` (a versão ativa ou nil) e `administrations` (as últimas
+    # 48 h, de qualquer versão, por recorded_at DESC) só com `clinical: true` —
+    # sem acesso clínico as chaves nem existem. `catalog` é
+    # `Pharmacy::Json.catalog_for(catalog_ids(encounter))`, lido fora da
+    # transação da cidade.
+    def encounter(encounter, clinical:, catalog: {}, now: Time.current)
       attendance = encounter.attendance
       current = encounter.current_classification
       {
@@ -38,8 +45,56 @@ module Urgency
         first_classified_at: encounter.first_classified_at&.iso8601,
         classifications: encounter.classifications.includes(classified_by_user: :professional).map { |c| classification(c, clinical:) },
         consultation_id: encounter.consultation_id, consultation_status: encounter.consultation&.status,
-        outcome: encounter.outcome && outcome(encounter.outcome, clinical:)
-      }
+        outcome: encounter.outcome && outcome(encounter.outcome, clinical:),
+        observation: observation(encounter, now: now)
+      }.tap do |json|
+        next unless clinical
+
+        json[:prescription] = (found = active_prescription(encounter)) && PrescriptionJson.call(found, catalog: catalog)
+        json[:administrations] = recent_administrations(encounter, now: now).map { |adm| administration(adm, catalog: catalog) }
+      end
+    end
+
+    # Os ids de catálogo que o detalhe clínico precisa (itens da versão ativa e
+    # das administrações das últimas 48 h), para ler o catálogo de uma vez e
+    # fora da transação.
+    def catalog_ids(encounter, now: Time.current)
+      active = active_prescription(encounter)
+      ids = active ? active.items.map(&:catalog_item_id) : []
+      (ids + recent_administrations(encounter, now: now).map { |adm| adm.urgency_prescription_item.catalog_item_id }).uniq
+    end
+
+    # `{ current: <stay> | nil, stays: [<stay>], hours, alert }`: horas desde a
+    # PRIMEIRA entrada (Urgency::Observation); sem estadia, 0 e sem alerta.
+    def observation(encounter, now:)
+      stays = encounter.bed_stays.includes(:urgency_bed, started_by_user: :professional, ended_by_user: :professional).to_a
+      count = stays.empty? ? 0 : Observation.hours(stays.first.started_at, now)
+      { current: (open = stays.find(&:open?)) && stay(open), stays: stays.map { |item| stay(item) }, hours: count,
+        alert: Observation.alert(count) }
+    end
+
+    def stay(item)
+      { stay_id: item.id, bed_id: item.urgency_bed_id, bed_label: item.urgency_bed.label, started_at: item.started_at.iso8601,
+        ended_at: item.ended_at&.iso8601, end_kind: item.end_kind,
+        started_by: { name: Screenings::Json.staff_name(item.started_by_user) },
+        ended_by: item.ended_by_user && { name: Screenings::Json.staff_name(item.ended_by_user) } }
+    end
+
+    def active_prescription(encounter)
+      encounter.prescriptions.where(status: "active").includes(:items, prescribed_by_user: :professional).first
+    end
+
+    def recent_administrations(encounter, now:)
+      UrgencyAdministration.where(urgency_encounter_id: encounter.id).where(recorded_at: (now - Catalog::DETAIL_ADMINISTRATIONS_WINDOW)..)
+                           .includes(:urgency_prescription_item, :stock_lot, recorded_by_user: :professional)
+                           .order(recorded_at: :desc, id: :desc).to_a
+    end
+
+    def administration(adm, catalog:)
+      row = adm.urgency_prescription_item
+      found = catalog[row.catalog_item_id]
+      Schedule.administration(adm).merge(prescription_item_id: row.id, catalog_item: found && Pharmacy::Json.catalog_item(found),
+                                         controlled: row.controlled?)
     end
 
     def classification(item, clinical:)
@@ -68,6 +123,6 @@ module Urgency
       json[:return_guidance] = guidance&.except(:reason)
       json.except(:destination, :vacancy_request, :reason)
     end
-    private_class_method :classification, :outcome
+    private_class_method :classification, :outcome, :stay, :active_prescription, :recent_administrations, :administration
   end
 end

@@ -68,7 +68,8 @@ module Urgency
     # campo clínico ou com a descrição do provisório grava a trilha
     # (resource encounter).
     def render_encounter(encounter, clinical:, status: :ok, **extra)
-      json = Json.encounter(encounter, clinical: clinical)
+      catalog = clinical ? Pharmacy::Json.catalog_for(Json.catalog_ids(encounter)) : {}
+      json = Json.encounter(encounter, clinical: clinical, catalog: catalog)
       patient = encounter.patient
       Trail.viewed!(user: Current.user, patient_id: patient.id, resource: "encounter") if clinical || json[:patient].key?(:description)
       render json: { encounter: json, **extra }, status: status
