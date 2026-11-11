@@ -22,13 +22,20 @@
 # gravar qualquer coisa. Achado e cancelamento não mudam a FAO: não enfileiram
 # ConsultationFichaJob (`ficha_changed` false no payload; Task 9 regera a
 # partir dele). Ordem de travas: consulta → paciente → planos.
+# Módulo 32b (contrato §12 Q8): na consulta `urgency` finalizada, enquanto o
+# encontro e o atendimento estão abertos, qualquer médico (225*) com vínculo
+# ativo na UPA também escreve (o autor do adendo é ele); conferido antes e de
+# novo sob a trava (consulta → encontro FOR SHARE; o desfecho não trava a
+# consulta). Fechado, not_author como no 19a. Os rascunhos de regulação da
+# consulta só são promovidos pelo adendo da autora (nunca em nome de outro).
 module Consultations
   class AddAddendum
     CHANGE_KEYS = %w[evaluated_problems conducts exam_requests dental].freeze
 
     def self.call(consultation:, by:, reason:, text:, changes: nil)
       return Result.fail(:missing_role) unless by&.has_role?("health_professional")
-      return Result.fail(:not_author) unless consultation.author_user_id == by.id
+      author = consultation.author_user_id == by.id
+      return Result.fail(:not_author) unless author || evolver?(consultation, by)
 
       reason = reason.is_a?(String) ? reason.strip : ""
       unless reason.length.between?(ConsultationAddendum::MIN_REASON, ConsultationAddendum::MAX_REASON)
@@ -58,6 +65,7 @@ module Consultations
       result = nil
       ApplicationRecord.transaction(requires_new: true) do
         consultation.lock!
+        next result = Result.fail(:not_author) unless author || Urgency::Access.evolver?(by, consultation.attendance, lock: true)
         next result = Result.fail(:not_finalized) unless consultation.finalized?
 
         patient = Patient.lock.find(consultation.patient_id)
@@ -73,7 +81,7 @@ module Consultations
           result = failure
           raise ActiveRecord::Rollback
         end
-        promoted = CareRegulation::Promote.call(consultation: consultation, by: by, addendum: addendum, dental_care: dental_care) if regulating
+        promoted = CareRegulation::Promote.call(consultation: consultation, by: by, addendum: addendum, dental_care: dental_care) if regulating && author
         Signatures::OpenRequest.call(addendum, usable: signing)
         DomainEvents.publish("consultation.addendum_added", consultation_id: consultation.id, addendum_id: addendum.id)
         # ADR 0031 (spec §6): mudança estruturada regera (ou vira correção pendente).
@@ -165,6 +173,12 @@ module Consultations
       index && Result.fail(:plan_item_not_open, details: { path: "changes.dental.plan_changes.cancel[#{index}].item_id" })
     end
 
+    # Módulo 32b (§12 Q8): na consulta urgency finalizada, com o encontro
+    # aberto, qualquer médico (225*) da UPA também escreve (Urgency::Access.evolver?).
+    def self.evolver?(consultation, by)
+      consultation.urgency? && consultation.finalized? && Urgency::Access.evolver?(by, consultation.attendance)
+    end
+
     # Devolve nil, ou o Result de falha (problema mudou desde a validação).
     def self.apply!(consultation, patient, addendum, plan, by)
       plan[:problems].each_with_index do |item, index|
@@ -205,6 +219,6 @@ module Consultations
       end
       nil
     end
-    private_class_method :normalize, :prepare, :dental, :apply!
+    private_class_method :normalize, :prepare, :evolver?, :dental, :apply!
   end
 end

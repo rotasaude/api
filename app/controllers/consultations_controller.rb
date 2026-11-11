@@ -113,7 +113,8 @@ class ConsultationsController < ApplicationController
   end
 
   def addenda
-    # `opening_id` (do dashboard antigo) é aceito e ignorado: o adendo é só da autora.
+    # `opening_id` (do dashboard antigo) é aceito e ignorado: o adendo é só da autora
+    # (módulo 32b, Q8: ou de médico da UPA no encontro da urgência aberto; AddAddendum).
     result = Consultations::AddAddendum.call(consultation: @consultation, by: Current.user, reason: body["reason"],
                                              text: body["text"], changes: body["changes"])
     return failure(result) if result.failure?

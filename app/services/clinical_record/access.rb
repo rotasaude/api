@@ -11,6 +11,9 @@
 # A autora da consulta FINALIZADA lê a própria consulta a qualquer momento
 # (for_consultation → :author; decisão do usuário 2026-10-09). A leitura
 # administrativa do municipal_admin (:administrative) não passa por aqui.
+# Módulo 32b (§12 Q8): com o encontro da urgência aberto, o atendimento
+# in_care põe em contexto também qualquer médico (225*) da UPA
+# (Urgency::Access.evolver?); fechado, volta a regra acima.
 module ClinicalRecord
   module Access
     Grant = Data.define(:kind, :opening, :reason) do
@@ -91,7 +94,9 @@ module ClinicalRecord
       end
 
       case attendance.status
-      when "in_care" then attendance.called_by_user_id == user.id
+      # Módulo 32b (§12 Q8): no encontro da urgência aberto, qualquer médico
+      # da UPA está em contexto, não só quem chamou.
+      when "in_care" then attendance.called_by_user_id == user.id || Urgency::Access.evolver?(user, attendance)
       when "waiting"
         ApplicationRecord.transaction do
           Consultations::Authorization.link_for(user: user, health_unit_id: attendance.health_unit_id, kind: kind).first == :ok

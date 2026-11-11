@@ -58,6 +58,23 @@ module Urgency
       link(user, health_unit_id, Catalog::CLASSIFIER_CBO_PREFIXES + [ Catalog::PHYSICIAN_CBO_PREFIX ])
     end
 
+    # Módulo 32b (§12 Q8): quem evolui o encontro aberto — o médico (225*) com
+    # vínculo ativo na UPA do atendimento, enquanto nem o encontro nem o
+    # atendimento fecharam (lê o prontuário em contexto e escreve adendo na
+    # consulta urgency). Com lock: true (dentro da transação do adendo), o
+    # encontro FOR SHARE e o estado do atendimento relido depois: o desfecho
+    # (attendance → encounter) e o Close do 13 esperam ou já se veem.
+    def evolver?(user, attendance, lock: false)
+      return false unless attendance&.walk_in?
+
+      scope = UrgencyEncounter.where(attendance_id: attendance.id)
+      encounter = lock ? scope.lock("FOR SHARE").first : scope.first
+      return false if encounter.nil? || encounter.closed?
+
+      status = lock ? Attendance.where(id: attendance.id).pick(:status) : attendance.status
+      status != "closed" && physician_link(user, attendance.health_unit_id).present?
+    end
+
     def link(user, health_unit_id, prefixes)
       return nil if user.blank? || health_unit_id.blank? || !user.has_role?("health_professional")
 
