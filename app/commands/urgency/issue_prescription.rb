@@ -24,35 +24,50 @@
 # vira `superseded` ANTES de nascer a nova (índice único parcial, não
 # adiável); a nova leva version + 1 e `supersedes`. Evento
 # urgency.prescription_issued, só com ids.
+#
+# Q16 (tela desatualizada): `expected_active_id` declara o que a tela viu —
+# `nil` = prescrição nova (nenhuma versão ativa), um id = alteração daquela
+# versão ativa. Conferido com o encontro e a prescrição ativa travados, ANTES de
+# superseder: se não bater → 409 prescription_changed e nada é gravado nem
+# publicado. Sem a chave (`ABSENT`), vale a regra antiga; malformado → 422
+# invalid_request `expected_active_id`.
 module Urgency
   module IssuePrescription
     ITEM_KEYS = %w[catalog_item_id dose dose_unit route frequency first_dose_at instructions stock_quantity_per_dose].freeze
     FREQUENCY_KEYS = %w[kind interval_hours max_per_day].freeze
     KEY_PATH_MAX = 64
     EVENT = "urgency.prescription_issued".freeze
+    ABSENT = Object.new.freeze
 
     module_function
 
     # -> Result.ok(prescription:) | fail(:missing_role | :missing_link | :cbo_not_allowed | :encounter_closed |
-    #    :consultation_required) | fail(:invalid_request | :catalog_item_invalid, details: { path:, problems: })
-    def call(encounter:, items:, catalog:, by:, now: Time.current)
+    #    :consultation_required | :prescription_changed) | fail(:invalid_request | :catalog_item_invalid, details: { path:, problems: })
+    def call(encounter:, items:, catalog:, by:, now: Time.current, expected_active_id: ABSENT)
       unit_id = encounter.attendance.health_unit_id
       link = Access.physician_link(by, unit_id)
       return Result.fail(Access.refusal(by, unit_id)) unless link
 
+      unless expected_active_id.equal?(ABSENT) || expected_active_id.nil? || Input.uuid?(expected_active_id)
+        return refuse([ problem("expected_active_id") ])
+      end
+
       parsed = parse(items, catalog, now)
       return parsed if parsed.failure?
 
-      ApplicationRecord.transaction(requires_new: true) { persist(encounter, parsed.payload, link, by, now) }
+      expected = expected_active_id.is_a?(String) ? expected_active_id.downcase : expected_active_id
+      ApplicationRecord.transaction(requires_new: true) { persist(encounter, parsed.payload, link, by, now, expected) }
     end
 
-    def persist(encounter, rows, link, by, now)
+    def persist(encounter, rows, link, by, now, expected)
       attendance = Attendance.lock("FOR SHARE").find(encounter.attendance_id)
       locked = UrgencyEncounter.lock("FOR NO KEY UPDATE").find(encounter.id)
       return Result.fail(:encounter_closed) if locked.closed? || attendance.status == "closed"
       return Result.fail(:consultation_required) if locked.consultation_id.nil?
 
       current = UrgencyPrescription.lock.find_by(urgency_encounter_id: locked.id, status: "active")
+      return Result.fail(:prescription_changed) unless expected.equal?(ABSENT) || current&.id == expected
+
       current&.update!(status: "superseded", status_changed_at: now, status_changed_by_user: by)
       # A nova aponta a versão anterior, mesmo suspensa ou encerrada (v1 = sem anterior).
       previous = UrgencyPrescription.where(urgency_encounter_id: locked.id).order(:version).last

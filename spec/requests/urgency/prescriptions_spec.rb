@@ -82,6 +82,49 @@ RSpec.describe "Urgência — prescrição interna", type: :request do
       expect(events("urgency.prescription_issued").count).to eq(2)
     end
 
+    it "Q16: expected_active_id null declara prescrição nova; com versão ativa (tela velha) → 409 prescription_changed e nada muda" do
+      issue
+      v1 = UrgencyPrescription.find(json_body.dig("prescription", "id"))
+      issued = events("urgency.prescription_issued").count
+      issue(encounter, [ item(diazepam, dose: "5") ], expected_active_id: nil)
+      expect_refusal(:conflict, "prescription_changed")
+      expect(v1.reload.status).to eq("active")
+      expect(UrgencyPrescription.where(urgency_encounter_id: encounter.id).count).to eq(1)
+      expect(events("urgency.prescription_issued").count).to eq(issued)
+
+      fresh = in_care_encounter!(upa).tap { |e| urgency_consultation!(e, doctor: doctor) }
+      issue(fresh, [ item ], expected_active_id: nil)
+      expect(response).to have_http_status(:created)
+      expect(json_body.dig("prescription", "version")).to eq(1)
+
+      suspend(UrgencyPrescription.find(json_body.dig("prescription", "id")), reason: "Prescrição feita por engano")
+      expect(response).to have_http_status(:ok)
+      issue(fresh, [ item ], expected_active_id: nil)
+      expect(response).to have_http_status(:created)
+      expect(json_body.dig("prescription", "version")).to eq(2)
+    end
+
+    it "Q16: expected_active_id com o id da versão ativa altera; com outro id (ou superseded) → 409; malformado → 422" do
+      issue
+      v1 = UrgencyPrescription.find(json_body.dig("prescription", "id"))
+      issue(encounter, [ item ], expected_active_id: "nao-e-uuid")
+      expect_refusal(:unprocessable_entity, "invalid_request", "expected_active_id")
+      issue(encounter, [ item ], expected_active_id: 5)
+      expect_refusal(:unprocessable_entity, "invalid_request", "expected_active_id")
+      issue(encounter, [ item ], expected_active_id: SecureRandom.uuid)
+      expect_refusal(:conflict, "prescription_changed")
+      expect(v1.reload.status).to eq("active")
+
+      issue(encounter, [ item(diazepam, dose: "5") ], expected_active_id: v1.id)
+      expect(response).to have_http_status(:created)
+      expect(json_body["prescription"]).to include("version" => 2, "supersedes_id" => v1.id)
+
+      issue(encounter, [ item ], expected_active_id: v1.id) # a versão velha, de uma tela que não releu o detalhe
+      expect_refusal(:conflict, "prescription_changed")
+      expect(UrgencyPrescription.where(urgency_encounter_id: encounter.id).active_versions.count).to eq(1)
+      expect(UrgencyPrescription.where(urgency_encounter_id: encounter.id).count).to eq(2)
+    end
+
     it "first_dose_at: padrão = agora truncado ao minuto; aceita de agora − 1 h a agora + 24 h" do
       now = Time.zone.now.change(sec: 0)
       issue(encounter, [ item(first_dose_at: (now + 2.hours).iso8601) ])
