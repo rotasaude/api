@@ -38,7 +38,19 @@ module Ombudsman
     # (arquivo, depois anexo).
     # -> Result.ok(attachments:) | fail(:invalid_request, details: { path: "attachment_ids" })
     #  | fail(:too_many_attachments)
+    #
+    # Abre a própria transação (junta-se à do chamador): fora de uma, falhar no
+    # meio não deixa arquivo consumido com o anexo solto. `event` de outra
+    # manifestação é erro de programação (ArgumentError).
     def link!(ids:, manifestation:, owner:, event: nil)
+      if event && event.ombudsman_manifestation_id != manifestation.id
+        raise ArgumentError, "o evento do anexo pertence a outra manifestação"
+      end
+
+      ApplicationRecord.transaction { link_rows!(ids, manifestation, owner, event) }
+    end
+
+    def link_rows!(ids, manifestation, owner, event)
       return Result.ok(attachments: []) if ids.nil? || ids == []
       return invalid("attachment_ids") unless ids.is_a?(Array) && ids.all? { |id| id.is_a?(String) && id.match?(Ombudsman::BaseController::UUID) } && ids.uniq.size == ids.size
       return Result.fail(:too_many_attachments) if ids.size > Catalog::MAX_ATTACHMENTS
@@ -58,6 +70,6 @@ module Ombudsman
     end
 
     def invalid(path) = Result.fail(:invalid_request, details: { path: path, problems: [ { error: "invalid_request", path: path } ] })
-    private_class_method :owned_by?, :invalid
+    private_class_method :link_rows!, :owned_by?, :invalid
   end
 end

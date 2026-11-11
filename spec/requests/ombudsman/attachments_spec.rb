@@ -174,6 +174,23 @@ RSpec.describe "Ouvidoria — anexos", type: :request do
       expect(a.reload.event_id).to eq(event.id)
     end
 
+    it "chamada direta fora de transação é atômica: falha no meio não consome nem liga nada" do
+      a = orphan!
+      ghost = Struct.new(:id, :ombudsman_manifestation_id).new(SecureRandom.uuid, manifestation.id)
+      expect { Ombudsman::Attachments.link!(ids: [ a.id ], manifestation: manifestation, owner: session, event: ghost) }
+        .to raise_error(ActiveRecord::InvalidForeignKey)
+      expect(a.exam_file.reload.consumed_at).to be_nil
+      expect(a.reload.ombudsman_manifestation_id).to be_nil
+    end
+
+    it "event de outra manifestação é erro de programação (ArgumentError), nada gravado" do
+      a = orphan!
+      foreign = OmbudsmanEvent.create!(ombudsman_manifestation: raw_manifestation!, kind: "complement_received", actor: "citizen", data: {})
+      expect { link!([ a.id ], event: foreign) }.to raise_error(ArgumentError)
+      expect(a.exam_file.reload.consumed_at).to be_nil
+      expect(a.reload.ombudsman_manifestation_id).to be_nil
+    end
+
     it "sem ids (nil ou lista vazia) não liga nada" do
       [ nil, [] ].each { |ids| expect(link!(ids).payload[:attachments]).to eq([]) }
     end
@@ -223,8 +240,10 @@ RSpec.describe "Ouvidoria — anexos", type: :request do
     it "o técnico abre o anexo de manifestação identificada: URL curta e os bytes inline, sem trilha de identidade" do
       att = linked!(identified)
       sign_in_as(technician)
+      token = nil
       log = capture_log do
         json_post "/ombudsman/attachments/#{att.id}/link", {}
+        token = json_body["url"].split("/").last
         expect(response).to have_http_status(:ok)
         expect(json_body.keys).to contain_exactly("url", "expires_at")
         expect(json_body["url"]).to match(%r{\A/ombudsman/files/[^/]+\z})
@@ -238,6 +257,8 @@ RSpec.describe "Ouvidoria — anexos", type: :request do
       expect(response.headers["Content-Disposition"]).to eq(%(inline; filename="anexo-#{att.id[0, 8]}.png"; filename*=UTF-8''anexo-#{att.id[0, 8]}.png))
       expect(response.headers.to_h.to_s).not_to include(marker)
       expect(log).not_to include(marker)
+      expect(log).not_to include(token)
+      expect(log).to include("/ombudsman/files/[FILTERED]")
       expect(OmbudsmanIdentityAccess.count).to eq(0)
       expect(DomainEvent.where(name: "ombudsman.identity_viewed")).to be_empty
     end
