@@ -3,6 +3,7 @@ require_relative "signature_crew"
 require_relative "triage_catalog_crew"
 require_relative "care_lines_crew"
 require_relative "screening_crew"
+require_relative "pharmacy_crew"
 
 # Semente de dev do módulo 32a (ADR 0050), para a prova no navegador. Dev é
 # fictício mas imita o real: em Curitiba, `urgency_care` e `waiting_room_display`
@@ -45,11 +46,27 @@ require_relative "screening_crew"
 # achado pelo que já gravou (paciente pelo CPF, encontro pelo paciente na UPA,
 # local e TV pelo nome) e o que já foi feito nunca se repete. Só e-mail, papel,
 # otpauth e o código da TV na saída: nunca CPF, CNS, nome nem descrição de paciente.
+#
+# Módulo 32b (observação, prescrição e baixa de estoque), depois do PharmacyCrew:
+# `urgency_stock_deduction` ligado pelo mantenedor de dev; os leitos "OBS 01" a
+# "OBS 04" da UPA; a "Farmácia da UPA 24h Centro" (local `unit`, com a
+# farmacêutica do PharmacyCrew vinculada) com inventário de abertura de LOSARTANA,
+# DIAZEPAM (B1), PARACETAMOL e AMOXICILINA, e SEM salbutamol; a técnica 322205 do
+# ProfessionalCrew (tecnico@curitiba.demo) checa a medicação. Cenário, tudo pelos
+# comandos do app, sem finalizar consulta (nenhum BPA nasce daqui):
+#
+#   quem                     há      o quê
+#   Maria Aparecida Ferreira 22 h    58 anos, crise hipertensiva com ansiedade; no OBS 01 há 20 h 30
+#                                    (near_limit); prescrição v1 com um controlado; as duas doses
+#                                    únicas administradas com baixa e um paracetamol recusado
+#   Benedito Alves Rocha     25,5 h  72 anos, pneumonia aguardando vaga; no OBS 03 e depois no OBS 02
+#                                    (over_limit); prescrição v2 (a v1 substituída) com salbutamol,
+#                                    cuja checagem gera a falta insufficient_balance (sem estoque)
 class UrgencyCrew
   UNIT = "UPA 24h Centro".freeze
   DEV_MAINTAINER = "dev@local".freeze
   EMAIL_DOMAIN = "dev".freeze # upa@curitiba.dev
-  FEATURES = %w[clinical_record urgency_care waiting_room_display].freeze
+  FEATURES = %w[clinical_record urgency_care waiting_room_display urgency_stock_deduction].freeze
   PROTOCOL = "classificacao-urgencia".freeze
   TICKET_PREFIX = "U".freeze
   DISPLAY = "TV da recepção".freeze
@@ -108,6 +125,53 @@ class UrgencyCrew
   }.freeze
   UNIDENTIFIED_ARRIVED = 2
 
+  # --- módulo 32b ------------------------------------------------------------
+  BEDS = [ "OBS 01", "OBS 02", "OBS 03", "OBS 04" ].freeze
+  UPA_PHARMACY = "Farmácia da UPA 24h Centro".freeze
+  PHARMACIST_EMAIL = "farmacia@%<slug>s.demo".freeze
+  TECHNICIAN_EMAIL = "tecnico@%<slug>s.demo".freeze # 322205 do ProfessionalCrew (login com TOTP fixo)
+  # Sem SALBUTAMOL no estoque da UPA, de propósito: a checagem dele gera a falta.
+  STOCK_ITEMS = {
+    losartana: { code: 268_856, lot: "UPA-LS-01", quantity: "200" },
+    diazepam: { code: 267_197, lot: "UPA-DZ-01", quantity: "50" },
+    paracetamol: { code: 267_778, lot: "UPA-PC-01", quantity: "300" },
+    amoxicilina: { code: 271_089, lot: "UPA-AM-01", quantity: "120" },
+    salbutamol: { code: 294_887 }
+  }.freeze
+  STOCK_OPENING_DAYS_AGO = 3
+  STOCK_EXPIRES_IN_DAYS = 400
+
+  # hours: horas atrás (para o `at` de cada passo); stays/prescriptions/checks na ordem em que acontecem.
+  # `item`: dose e frequência; `first`: horas atrás da 1ª dose; `check.slot`: true = no horário da 1ª dose.
+  WARD = {
+    maria: { name: "Maria Aparecida Ferreira", mother: "Conceição Aparecida Ferreira", age: 58, sex: "female", arrived: 22 * 60,
+             classifications: [ { after: 3, color: "yellow", complaint: "Pressão alta com dor de cabeça e muita ansiedade desde a noite",
+                                  vitals: { "systolic" => 176, "diastolic" => 104, "heart_rate" => 98, "spo2" => 97 }, pain: 5 } ],
+             consultation: 21.0,
+             stays: [ { bed: "OBS 01", hours: 20.5 } ],
+             prescriptions: [ { hours: 20.0, items: [
+               { drug: :losartana, dose: "50", dose_unit: "mg", route: "oral", frequency: { "kind" => "once" } },
+               { drug: :diazepam, dose: "10", dose_unit: "mg", route: "oral", frequency: { "kind" => "once" } },
+               { drug: :paracetamol, dose: "500", dose_unit: "mg", route: "oral", frequency: { "kind" => "if_needed", "max_per_day" => 4 } }
+             ] } ],
+             checks: [ { version: 1, drug: :losartana, status: "administered", hours: 19.5, slot: true },
+                       { version: 1, drug: :diazepam, status: "administered", hours: 19.5, slot: true },
+                       { version: 1, drug: :paracetamol, status: "refused", hours: 10.0, reason: "Paciente recusou a dose: sem dor no momento." } ] },
+    benedito: { name: "Benedito Alves Rocha", mother: "Aparecida Alves Rocha", age: 72, sex: "male", arrived: (25.5 * 60).to_i,
+                classifications: [ { after: 3, color: "yellow", complaint: "Tosse com catarro, febre e falta de ar há quatro dias",
+                                     vitals: { "temperature_c" => "39.0", "respiratory_rate" => 24, "spo2" => 92, "heart_rate" => 108 }, pain: 5 } ],
+                consultation: 25.2,
+                stays: [ { bed: "OBS 03", hours: 25.0 }, { bed: "OBS 02", hours: 12.0 } ],
+                prescriptions: [
+                  { hours: 24.0, items: [ { drug: :amoxicilina, dose: "500", dose_unit: "mg", route: "oral", frequency: { "kind" => "interval", "interval_hours" => 8 } } ] },
+                  { hours: 5.0, items: [
+                    { drug: :amoxicilina, dose: "500", dose_unit: "mg", route: "oral", frequency: { "kind" => "interval", "interval_hours" => 8 } },
+                    { drug: :salbutamol, dose: "100", dose_unit: "mcg", route: "inhalation", frequency: { "kind" => "interval", "interval_hours" => 6 } }
+                  ] }
+                ],
+                checks: [ { version: 2, drug: :salbutamol, status: "administered", hours: 4.5, slot: true } ] }
+  }.freeze
+
   # O paciente do CareLinesCrew com equipe (consulta `general` da médica da UBS):
   # a alta com retorno cai na contrarreferência da UBS dele.
   RETURN_PATIENT = :jose
@@ -156,10 +220,12 @@ class UrgencyCrew
       PEOPLE.each { |key, person| person!(context, key, person) }
       unidentified!(context)
       yesterday!(context, jose)
+      observation = observation!(context.merge(city: city, admin: admin, maintainer: maintainer))
 
       { switch: Urgency::Gate.usable?(city) ? "ligado (#{Urgency::Gate::KEY} e #{WaitingRoom::Gate::KEY})" : "ligado, não utilizável",
         unit: unit.name, protocol: "#{protocol.name} v#{protocol.version}", locations: locations.size,
         encounters: UrgencyEncounter.joins(:attendance).where(attendances: { health_unit_id: unit.id }).count,
+        beds: observation.fetch(:beds), open_shortfalls: observation.fetch(:open_shortfalls),
         tv_code: code.payload.fetch(:code), tv_ttl_minutes: (WaitingRoom::IssuePairingCode::TTL / 60).to_i,
         users: staff.map { |key, user| { email: user.email_address, role: STAFF.fetch(key).fetch(:roles).first, otpauth_uri: SignatureCrew.otpauth_uri(user) } } }
     end
@@ -169,7 +235,7 @@ class UrgencyCrew
     def summary_lines(result, password:)
       head = "[seeds] urgência #{result[:switch]}"
       head += "; #{result[:protocol]}" if result[:protocol] && !result[:unit]
-      head += "; #{result[:unit]}; protocolo #{result[:protocol]}; #{result[:locations]} locais; #{result[:encounters]} encontros" if result[:unit]
+      head += "; #{result[:unit]}; protocolo #{result[:protocol]}; #{result[:locations]} locais; #{result[:encounters]} encontros; leitos: #{result[:beds]}; faltas abertas: #{result[:open_shortfalls]}" if result[:unit]
       lines = [ head ]
       lines << "[seeds]               TV: código #{result[:tv_code]}, vale #{result[:tv_ttl_minutes]} min" if result[:tv_code]
       lines + result[:users].map { |u| "[seeds]               #{u[:email]} (#{u[:role]}) / #{password} → #{u[:otpauth_uri]}" }
@@ -203,7 +269,7 @@ class UrgencyCrew
         "levels" => LEVELS.deep_dup, "classification_rules" => RULES.deep_dup }
     end
 
-    def off(switch) = { switch: switch, unit: nil, protocol: nil, locations: 0, encounters: 0, tv_code: nil, users: [] }
+    def off(switch) = { switch: switch, unit: nil, protocol: nil, locations: 0, encounters: 0, beds: 0, open_shortfalls: 0, tv_code: nil, users: [] }
 
     # Nunca com dado de paciente: só o motivo e os paths da recusa.
     def check!(result, what)
@@ -385,6 +451,132 @@ class UrgencyCrew
 
       attrs = { "kind" => "discharged_to_primary_care", "return_guidance" => { "days" => RETURN_DAYS, "reason" => RETURN_REASON } }
       at(time, context) { check!(Urgency::RecordOutcome.call(encounter: encounter, attrs: attrs, by: context.dig(:staff, :doctor), team: team), "desfecho") }
+    end
+
+    # --- módulo 32b: observação, prescrição, checagem e baixa --------------------
+
+    # -> { beds:, open_shortfalls: }
+    def observation!(context)
+      slug, unit, admin = context.values_at(:slug, :unit, :admin)
+      doctor = context.dig(:staff, :doctor)
+      technician = User.find_by(email_address: format(TECHNICIAN_EMAIL, slug: slug))
+      pharmacist = User.find_by(email_address: format(PHARMACIST_EMAIL, slug: slug))
+      unless technician&.professional&.links&.active&.exists?(health_unit_id: unit.id, cbo_code: "322205")
+        raise "semente da urgência: a técnica 322205 da UPA ausente — rode o ProfessionalCrew (db:seed inteiro) antes"
+      end
+      raise "semente da urgência: a farmacêutica ausente — rode o PharmacyCrew (db:seed inteiro) antes" unless pharmacist
+
+      beds = BEDS.to_h { |label| [ label, bed!(unit, label, admin) ] }
+      location = upa_pharmacy!(unit, admin, pharmacist)
+      items = stock_items!
+      opening!(context, location, pharmacist, items)
+
+      stock_on = Urgency::StockGate.usable?(context.fetch(:city))
+      catalog = items.values.index_by(&:id)
+      WARD.each do |key, person|
+        person!(context, key, person)
+        patient = Patient.find_by!(cpf: cpf_for(slug, key))
+        encounter = encounter_of(unit, patient)
+        consult!(context, encounter, person.fetch(:consultation))
+        ward!(context, encounter, person, beds: beds, items: items, catalog: catalog, doctor: doctor, technician: technician, stock: stock_on)
+      end
+      { beds: UrgencyBed.where(health_unit_id: unit.id, label: BEDS).count,
+        open_shortfalls: UrgencyStockShortfall.open_shortfalls.where(stock_location_id: location.id).count }
+    end
+
+    def bed!(unit, label, admin)
+      UrgencyBed.find_by(health_unit_id: unit.id, label: label) ||
+        check!(Urgency::SaveBed.call(attrs: { "health_unit_id" => unit.id, "label" => label }, by: admin), "leito #{label}").payload.fetch(:bed)
+    end
+
+    # O local `unit` da UPA, com a farmacêutica do PharmacyCrew vinculada.
+    def upa_pharmacy!(unit, admin, pharmacist)
+      location = StockLocation.find_by(health_unit_id: unit.id, kind: "unit") ||
+                 check!(Pharmacy::SaveLocation.call(attrs: { "kind" => "unit", "name" => UPA_PHARMACY, "health_unit_id" => unit.id }, by: admin),
+                        "local da farmácia da UPA").payload.fetch(:location)
+      linked = Pharmacy::LinkStaff.add(location: location, user_id: pharmacist.id, role: "pharmacist", by: admin)
+      check!(linked, "vínculo da farmacêutica à UPA") unless linked.ok? || linked.reason == :already_linked
+      location
+    end
+
+    # { chave => MedicationCatalogItem }, lido fora da transação da cidade (como os controladores).
+    def stock_items!
+      STOCK_ITEMS.to_h do |key, spec|
+        item = MedicationCatalogItem.prescribable.find_by(catmat_code: spec.fetch(:code)) ||
+               raise("semente da urgência: item #{spec.fetch(:code)} fora do catálogo — rode o db:seed inteiro (medicamentos) antes")
+        [ key, item ]
+      end
+    end
+
+    # Abertura (um item por abertura): só os itens sem abertura no local. Salbutamol fica de fora.
+    def opening!(context, location, pharmacist, items)
+      clock = context.fetch(:clock)
+      pending = STOCK_ITEMS.select { |key, spec| spec[:lot] && !StockOpening.exists?(stock_location_id: location.id, catalog_item_id: items.fetch(key).id) }
+      return if pending.empty?
+
+      rows = pending.map do |key, spec|
+        { "catalog_item_id" => items.fetch(key).id, "lot_number" => spec.fetch(:lot), "expires_on" => (Time.zone.today + STOCK_EXPIRES_IN_DAYS).iso8601,
+          "quantity" => spec.fetch(:quantity) }
+      end
+      result = at(clock - STOCK_OPENING_DAYS_AGO.days, context) do
+        Pharmacy::RecordEntry.call(location: location, kind: "opening", document: nil, items: rows, by: pharmacist, catalog: items.values.index_by(&:id))
+      end
+      check!(result, "inventário de abertura da UPA")
+    end
+
+    # Chamada pelo médico e consulta `urgency` iniciada (sem finalizar), `hours` atrás.
+    def consult!(context, encounter, hours)
+      attendance = encounter.attendance.reload
+      return if Consultation.exists?(attendance_id: attendance.id)
+
+      doctor = context.dig(:staff, :doctor)
+      desk = context.fetch(:locations).fetch(DESK)
+      at(context.fetch(:clock) - hours.hours, context) do
+        check!(Attendances::Call.call(attendance: attendance, health_unit_id: attendance.health_unit_id, by: doctor, call_location_id: desk.id,
+                                      waiting_room: context.fetch(:waiting_room)), "chamada do médico") if attendance.status == "waiting"
+        check!(Consultations::Start.call(attendance: attendance.reload, by: doctor, kind: nil, city: Current.city), "consulta de urgência")
+      end
+    end
+
+    def ward!(context, encounter, person, beds:, items:, catalog:, doctor:, technician:, stock:)
+      clock = context.fetch(:clock)
+      person.fetch(:stays).each_with_index do |stay, index|
+        next if encounter.bed_stays.reload.size > index
+
+        at(clock - stay.fetch(:hours).hours, context) do
+          check!(Urgency::StartObservation.call(encounter: encounter.reload, bed_id: beds.fetch(stay.fetch(:bed)).id, by: doctor, now: Time.current), "entrada no leito")
+        end
+      end
+      person.fetch(:prescriptions).each_with_index do |plan, index|
+        next if encounter.prescriptions.reload.size > index
+
+        at(clock - plan.fetch(:hours).hours, context) do
+          now = Time.current
+          rows = plan.fetch(:items).map { |row| prescription_row(row, items, now) }
+          check!(Urgency::IssuePrescription.call(encounter: encounter.reload, items: rows, catalog: catalog, by: doctor, now: now), "prescrição")
+        end
+      end
+      person.fetch(:checks).each { |plan| check_dose!(context, encounter, plan, items: items, technician: technician, stock: stock) }
+    end
+
+    def prescription_row(row, items, now)
+      { "catalog_item_id" => items.fetch(row.fetch(:drug)).id, "dose" => row.fetch(:dose), "dose_unit" => row.fetch(:dose_unit), "route" => row.fetch(:route),
+        "frequency" => row.fetch(:frequency), "first_dose_at" => now.iso8601 }
+    end
+
+    # Uma checagem por (item, status); a das `once`/`interval` no horário da 1ª dose.
+    def check_dose!(context, encounter, plan, items:, technician:, stock:)
+      prescription = encounter.prescriptions.reload.find { |candidate| candidate.version == plan.fetch(:version) } ||
+                     raise("semente da urgência: prescrição v#{plan.fetch(:version)} ausente")
+      item = prescription.items.find { |candidate| candidate.catalog_item_id == items.fetch(plan.fetch(:drug)).id }
+      return if UrgencyAdministration.exists?(urgency_prescription_item_id: item.id, status: plan.fetch(:status))
+
+      attrs = { "prescription_item_id" => item.id, "status" => plan.fetch(:status) }
+      attrs["scheduled_at"] = item.first_dose_at.iso8601 if plan[:slot]
+      attrs["reason"] = plan.fetch(:reason) if plan[:reason]
+      at(context.fetch(:clock) - plan.fetch(:hours).hours, context) do
+        check!(Urgency::RecordAdministration.call(attrs: attrs, by: technician, stock: stock, now: Time.current), "checagem da medicação")
+      end
     end
 
     # travel_to nunca passa de um segundo antes de agora.

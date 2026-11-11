@@ -5,6 +5,10 @@ require Rails.root.join("lib/triage_catalog_crew").to_s
 require Rails.root.join("lib/screening_crew").to_s
 require Rails.root.join("lib/clinical_record_crew").to_s
 require Rails.root.join("lib/care_lines_crew").to_s
+require Rails.root.join("lib/regulation_crew").to_s
+require Rails.root.join("lib/clinical_documents_crew").to_s
+require Rails.root.join("lib/controlled_prescriptions_crew").to_s
+require Rails.root.join("lib/pharmacy_crew").to_s
 require Rails.root.join("lib/urgency_crew").to_s
 
 # Semente de dev do módulo 32a (ADR 0050) no banco de teste (nunca no de dev),
@@ -31,9 +35,16 @@ RSpec.describe UrgencyCrew, type: :request do
     ClinicalRecordCrew.seed_platform!
     ClinicalRecordCrew.seed_current_city(slug: "curitiba", ddd: "41")
     CareLinesCrew.seed_platform!
+    RegulationCrew.seed_platform!
+    ClinicalDocumentsCrew.seed_platform!
+    PharmacyCrew.seed_platform!
     CityCatalog.reset_cache!
     Current.city = City.find(city.id)
     CareLinesCrew.seed_current_city(slug: "curitiba", ddd: "41", password: "dev-password")
+    RegulationCrew.seed_current_city(slug: "curitiba", ddd: "41", password: "dev-password")
+    ClinicalDocumentsCrew.seed_current_city(slug: "curitiba")
+    ControlledPrescriptionsCrew.seed_current_city(slug: "curitiba", password: "dev-password", admin: admin)
+    PharmacyCrew.seed_current_city(slug: "curitiba", ddd: "41", password: "dev-password")
   end
 
   after do
@@ -49,7 +60,9 @@ RSpec.describe UrgencyCrew, type: :request do
   def counts
     [ UrgencyEncounter.count, UrgencyClassification.count, UrgencyOutcome.count, Attendance.count, Patient.count, CallLocation.count,
       WaitingRoomDisplay.count, User.count, Membership.count, Professional.count, ProfessionalLink.count, CityFeature.count,
-      ProtocolDefinition.count, Consultation.count ]
+      ProtocolDefinition.count, Consultation.count, UrgencyBed.count, UrgencyBedStay.count, UrgencyPrescription.count,
+      UrgencyPrescriptionItem.count, UrgencyAdministration.count, StockLocation.count, StockLocationStaff.count, StockEntry.count,
+      StockMovement.count, UrgencyStockShortfall.count ]
   end
 
   it "liga os dois interruptores e deixa a UPA com prefixo de senha, TV com tempos e os quatro locais" do
@@ -106,7 +119,7 @@ RSpec.describe UrgencyCrew, type: :request do
     aggregate_failures do
       expect(groups[:by_color].size).to eq(4)
       expect(groups[:awaiting_classification].size).to eq(1)
-      expect(groups[:in_care]).to be_empty
+      expect(groups[:in_care].size).to eq(2) # os dois da observação (32b)
       expect(colors).to eq(%w[orange yellow green green]) # a ordem da fila: cor, depois a chegada
       expect(groups[:by_color].map { |item| item[:overdue] }).to eq([ true, false, false, false ])
       expect(orange[:waited_minutes]).to be >= 24
@@ -184,8 +197,8 @@ RSpec.describe UrgencyCrew, type: :request do
 
     aggregate_failures do
       expect(counts).to eq(before_counts)
-      expect(UrgencyEncounter.count).to eq(6)
-      expect(UrgencyClassification.count).to eq(6) # 1 + 1 + 1 + 2 + 1 (ontem)
+      expect(UrgencyEncounter.count).to eq(8)
+      expect(UrgencyClassification.count).to eq(8) # 1 + 1 + 1 + 2 + 1 (ontem) + 2 (observação)
       expect(UrgencyOutcome.count).to eq(1)
       expect(Urgency::Queue.groups(unit)[:by_color].size).to eq(4)
     end
@@ -195,13 +208,15 @@ RSpec.describe UrgencyCrew, type: :request do
     result = seed
     text = described_class.summary_lines(result, password: "dev-password").join("\n")
     patient_data = Patient.pluck(:full_name, :cpf, :cns, :unidentified_description).flatten.compact.reject(&:blank?)
-    names = described_class::PEOPLE.values.map { |person| person.fetch(:name) } + [ described_class::UNIDENTIFIED ]
+    names = (described_class::PEOPLE.values + described_class::WARD.values).map { |person| person.fetch(:name) } + [ described_class::UNIDENTIFIED ]
 
     aggregate_failures do
       expect(text).to match(/TV: código \d{6}, vale 10 min/)
       expect(text).to include("upa@curitiba.dev (citizen_verifier)", "upaenf@curitiba.dev (health_professional)", "upamed@curitiba.dev (health_professional)")
       expect(text).to include("otpauth://")
+      expect(text).to include("leitos: 4", "faltas abertas: 1")
       (names + patient_data).each { |value| expect(text).not_to include(value) }
+      expect(text.upcase).not_to include("LOSARTANA", "DIAZEPAM", "SALBUTAMOL", "AMOXICILINA", "PARACETAMOL")
     end
   end
 
@@ -230,4 +245,99 @@ RSpec.describe UrgencyCrew, type: :request do
 
     expect(counts).to eq(before_counts)
   end
+  describe "a observação (32b)" do
+    let(:board) { Urgency::Observation.board(unit) }
+    let(:pharmacist) { User.find_by!(email_address: "farmacia@curitiba.demo") }
+    let(:upa_location) { StockLocation.find_by!(health_unit_id: unit.id, kind: "unit") }
+
+    def drug(key) = MedicationCatalogItem.find_by!(catmat_code: described_class::STOCK_ITEMS.fetch(key).fetch(:code))
+
+    def ward_encounter(key)
+      UrgencyEncounter.joins(:attendance).find_by!(attendances: { patient_id: Patient.find_by!(cpf: described_class.cpf_for("curitiba", key)).id })
+    end
+
+    it "liga a baixa de estoque, cria os quatro leitos e o mapa tem 2 ocupados (near_limit e over_limit) e 2 livres" do
+      result = seed
+
+      aggregate_failures do
+        expect(Urgency::StockGate.usable?(city)).to be(true)
+        expect(result[:beds]).to eq(4)
+        expect(board[:beds].map { |bed| bed[:label] }).to eq([ "OBS 01", "OBS 02", "OBS 03", "OBS 04" ])
+        expect(board[:beds].map { |bed| bed[:stay]&.fetch(:alert) }).to eq([ "near_limit", "over_limit", nil, nil ])
+        expect(board[:waiting_bed]).to be_empty
+        expect(UrgencyBedStay.count).to eq(3) # Benedito trocou do OBS 03 para o OBS 02
+        expect(ward_encounter(:benedito).bed_stays.map { |stay| stay.urgency_bed.label }).to eq([ "OBS 03", "OBS 02" ])
+        expect(ward_encounter(:benedito).bed_stays.first.end_kind).to eq("bed_change")
+      end
+    end
+
+    it "o técnico 322205 do ProfessionalCrew tem login e vínculo ativo na UPA, e é ele quem checa" do
+      seed
+      technician = User.find_by!(email_address: "tecnico@curitiba.demo")
+
+      aggregate_failures do
+        expect(technician.mfa_enrolled?).to be(true)
+        expect(technician.professional.links.active.where(health_unit_id: unit.id).pluck(:cbo_code)).to eq([ "322205" ])
+        expect(UrgencyAdministration.all.map { |a| a.recorded_by_user.email_address }.uniq).to eq([ "tecnico@curitiba.demo" ])
+        expect(UrgencyPrescription.all.map { |p| p.prescribed_by_user.email_address }.uniq).to eq([ "upamed@curitiba.dev" ])
+      end
+    end
+
+    it "a Maria tem a prescrição v1 com o controlado, duas doses baixadas do estoque e o paracetamol recusado com motivo" do
+      seed
+      prescription = ward_encounter(:maria).prescriptions.sole
+      items = prescription.items.index_by(&:catalog_item_id)
+      diazepam = items.fetch(drug(:diazepam).id)
+      checks = UrgencyAdministration.where(urgency_encounter_id: ward_encounter(:maria).id)
+
+      aggregate_failures do
+        expect([ prescription.version, prescription.status ]).to eq([ 1, "active" ])
+        expect(items.size).to eq(3)
+        expect(diazepam.controlled_list).to be_present
+        expect(items.fetch(drug(:paracetamol).id)).to have_attributes(frequency_kind: "if_needed", max_per_day: 4)
+        expect(checks.where(status: "administered").count).to eq(2)
+        expect(checks.where(status: "administered").map { |a| [ a.stock_lot&.lot_number.present?, a.stock_movement&.kind ] }.uniq).to eq([ [ true, "administration" ] ])
+        refused = checks.find_by!(status: "refused")
+        expect(refused.reason.length).to be >= 10
+        expect(UrgencyStockShortfall.joins(:urgency_administration).where(urgency_administrations: { urgency_encounter_id: ward_encounter(:maria).id })).to be_empty
+      end
+    end
+
+    it "o Benedito tem a prescrição v2 (a v1 substituída) e a checagem do salbutamol gera a falta insufficient_balance" do
+      seed
+      v1, v2 = ward_encounter(:benedito).prescriptions.to_a
+      shortfall = UrgencyStockShortfall.sole
+
+      aggregate_failures do
+        expect([ v1.status, v2.status, v2.version, v2.supersedes_id ]).to eq([ "superseded", "active", 2, v1.id ])
+        expect(v2.items.map(&:catalog_item_id)).to match_array([ drug(:amoxicilina).id, drug(:salbutamol).id ])
+        expect(StockMovement.where(stock_location_id: upa_location.id, stock_lot_id: StockLot.where(catalog_item_id: drug(:salbutamol).id).select(:id))).to be_empty
+        expect([ shortfall.cause, shortfall.stock_location_id, shortfall.catalog_item_id ]).to eq([ "insufficient_balance", upa_location.id, drug(:salbutamol).id ])
+        expect(shortfall.urgency_administration).to have_attributes(status: "administered", stock_lot_id: nil)
+      end
+    end
+
+    it "a farmacêutica da UPA vê 1 falta aberta, e o José segue sem observação nem consulta de urgência aberta" do
+      seed
+      jose = Patient.find_by!(cpf: CareLinesCrew.cpf_for("curitiba", :jose))
+      jose_encounter = UrgencyEncounter.joins(:attendance).find_by!(attendances: { patient_id: jose.id, health_unit_id: unit.id })
+
+      aggregate_failures do
+        expect(Pharmacy::LinkStaff.add(location: upa_location, user_id: pharmacist.id, role: "pharmacist", by: User.find_by!(email_address: "admin@curitiba.demo")).reason)
+          .to eq(:already_linked)
+        expect(Pharmacy::ReconcileUrgencyShortfall.allowed?(user: pharmacist, location: upa_location)).to be(true)
+        expect(UrgencyStockShortfall.open_shortfalls.where(stock_location_id: upa_location.id).count).to eq(1)
+        expect(jose_encounter.bed_stays).to be_empty
+        expect(upa_location.name).to eq("Farmácia da UPA 24h Centro")
+      end
+    end
+
+    it "nenhuma consulta é finalizada pela semente da observação (nenhum BPA nasce dela)" do
+      seed
+
+      expect(Consultation.where(id: UrgencyEncounter.where(id: [ ward_encounter(:maria).id, ward_encounter(:benedito).id ]).pluck(:consultation_id)).pluck(:status))
+        .to all(eq("draft"))
+    end
+  end
+
 end
