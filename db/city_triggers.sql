@@ -3824,6 +3824,11 @@ BEGIN
   END IF;
   IF OLD.ombudsman_manifestation_id IS NULL AND OLD.event_id IS NULL AND NEW.ombudsman_manifestation_id IS NOT NULL
      AND (to_jsonb(NEW) - 'ombudsman_manifestation_id' - 'event_id') = (to_jsonb(OLD) - 'ombudsman_manifestation_id' - 'event_id') THEN
+    -- O arquivo ligado já está consumido: senão o delete_all do órfão de 24 h
+    -- (Exams::DailyJob) esbarraria na cascata e abortaria a cidade inteira.
+    IF NOT EXISTS (SELECT 1 FROM exam_files WHERE id = NEW.exam_file_id AND consumed_at IS NOT NULL) THEN
+      RAISE EXCEPTION 'ombudsman_attachments: the linked exam_file must be consumed';
+    END IF;
     RETURN NEW;
   END IF;
   RAISE EXCEPTION 'ombudsman_attachments: only the link (once) or the re-encryption';

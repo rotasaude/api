@@ -11,6 +11,13 @@ module Ombudsman
 
     wrap_parameters false
 
+    # Mesmo delegador de MfaController::RateLimitStore: resolve Rails.cache a
+    # cada requisição (o `store:` de rate_limit é avaliado no carregamento da
+    # classe), o que torna o teto exercitável em spec.
+    module RateLimitStore
+      def self.increment(...) = Rails.cache.increment(...)
+    end
+
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
     # Conflitos 409; papel e dono 403; inexistente 404; link vencido 410;
     # limites 429 (Q43: `too_many_requests`; o teto da cidade é

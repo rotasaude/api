@@ -629,4 +629,11 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     consumed = names.reject { |name| DomainEvents.registry[name].empty? }
     expect(consumed).to contain_exactly("urgency.patient_identified", "urgency.encounter_closed")
   end
+
+  # Módulo 33 (ADR 0051; Task 6, F-13): a abertura de um anexo protegido (e,
+  # depois, da identidade preservada) — só manifestation_id; sem consumidor.
+  it "declares ombudsman.identity_viewed with no consumer" do
+    expect(DomainEvents.registry.keys).to include("ombudsman.identity_viewed")
+    expect(DomainEvents.registry["ombudsman.identity_viewed"]).to be_empty
+  end
 end

@@ -469,4 +469,8 @@ Rails.application.config.to_prepare do
   # display_revoked antes do display_paired. Sem consumidor.
   DomainEvents.bind "waiting_room.display_paired", to: []
   DomainEvents.bind "waiting_room.display_revoked", to: []
+  # Módulo 33 (ADR 0051; contrato §13): a abertura de um anexo protegido (e, na
+  # Task 11, da identidade preservada) — só manifestation_id, nunca o
+  # arquivo, o nome nem a justificativa; sem consumidor.
+  DomainEvents.bind "ombudsman.identity_viewed", to: []
 end

@@ -762,6 +762,10 @@ Rails.application.routes.draw do
     get   "settings",             to: "settings#show"
     patch "settings",             to: "settings#update"
     get   "options",              to: "options#show"
+    # Anexos (§5; Q2, Q14): upload da equipe, link curto e o download pelo token.
+    post  "attachments",          to: "attachments#create"
+    post  "attachments/:id/link", to: "attachments#link"
+    get   "files/:token",         to: "files#show", format: false, constraints: { token: %r{[^/]+} }
   end
 
   # Módulo 32a (ADR 0050; contrato §4): urgência (UPA), sessão do dashboard.
@@ -1095,6 +1099,9 @@ Rails.application.routes.draw do
 
     # Minhas viagens (ADR 0048; contrato §8, §14 T14): citizen_id, par validado.
     get "trips", to: "trips#index"
+
+    # Ouvidoria (ADR 0051; contrato §3): anexo do cidadão — sobe, não baixa (Q14).
+    post "ombudsman/attachments", to: "ombudsman/attachments#create"
   end
 
   # Autoria/preview de protocolos (ADR-0009)

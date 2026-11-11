@@ -36,7 +36,11 @@ RSpec.describe RequestLogPathMask do
     "/tfd/files/abc123token" => "/tfd/files/[FILTERED]",
     "//tfd//files//abc123token" => "/tfd/files/[FILTERED]",
     "/exams/files/abc123token" => "/exams/files/[FILTERED]",
-    "/%65xams/files/%61bc123token?x=1" => "/exams/files/[FILTERED]?x=1"
+    "/%65xams/files/%61bc123token?x=1" => "/exams/files/[FILTERED]?x=1",
+    # Módulo 33 (Q14): a URL curta dos anexos da ouvidoria.
+    "/ombudsman/files/abc123token" => "/ombudsman/files/[FILTERED]",
+    "//ombudsman//files//abc123token" => "/ombudsman/files/[FILTERED]",
+    "/%6Fmbudsman/files/%61bc123token?x=1" => "/ombudsman/files/[FILTERED]?x=1"
   }.each do |raw, expected|
     it "mascara #{raw}" do
       expect(described_class.mask(raw)).to eq(expected)
@@ -54,7 +58,7 @@ RSpec.describe RequestLogPathMask do
   end
 
   it "não toca em outros caminhos" do
-    %w[/ /up /vx/abc /attendance//x /tfd/cases /exams/uploads /tfd/files].each { |raw| expect(described_class.mask(raw)).to eq(raw) }
+    %w[/ /up /vx/abc /attendance//x /tfd/cases /exams/uploads /tfd/files /ombudsman/files /ombudsman/attachments /ombudsman/subjects].each { |raw| expect(described_class.mask(raw)).to eq(raw) }
   end
 
   describe "bytes inválidos ou codificação mista" do

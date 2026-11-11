@@ -194,6 +194,10 @@ RSpec.describe "Esquema da ouvidoria (ADR 0051)", type: :model do
     refused(/ombudsman_attachments/) { pending_link.update_columns(filename: "outro-nome.png") }
     m = raw_manifestation!
     event = OmbudsmanEvent.create!(ombudsman_manifestation: m, kind: "complement_received", actor: "citizen", data: {})
+    # A ligação exige o arquivo consumido: senão o delete_all do Exams::DailyJob
+    # (o órfão de 24 h) abortaria a cidade inteira.
+    refused(/ombudsman_attachments: .*consumed/) { pending_link.update_columns(ombudsman_manifestation_id: m.id, event_id: event.id) }
+    pending_link.exam_file.update!(consumed_at: Time.current)
     accepted { pending_link.reload.update_columns(ombudsman_manifestation_id: m.id, event_id: event.id) }
     refused(/ombudsman_attachments/) { pending_link.update_columns(event_id: nil) }
     expect { OmbudsmanAttachment.create!(exam_file: pdf_file!, filename: "x.pdf", uploaded_by: "citizen") }
