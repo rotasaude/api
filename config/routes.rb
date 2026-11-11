@@ -742,6 +742,28 @@ Rails.application.routes.draw do
     get   "dashboard",           to: "dashboard#show"
   end
 
+  # Módulo 33 (ADR 0051; contrato §7): setores da secretaria — tabela genérica,
+  # sem o portão da ouvidoria (Q12); leitura do administrador, do técnico e do ouvidor.
+  get   "departments",     to: "departments#index"
+  post  "departments",     to: "departments#create"
+  patch "departments/:id", to: "departments#update"
+
+  # Módulo 33 (ADR 0051): ouvidoria do SUS municipal, sessão do dashboard, atrás
+  # do interruptor `ombudsman`. Texto e dado de pessoa só no corpo; ids na URL.
+  scope "/ombudsman", module: :ombudsman, as: :ombudsman do
+    # Configuração (§7): respondentes, assuntos, prazos e as listas das telas.
+    get   "responders",           to: "responders#index"
+    post  "responders",           to: "responders#create"
+    patch "responders/:id",       to: "responders#update"
+    get   "responder_candidates", to: "responder_candidates#index"
+    get   "subjects",             to: "subjects#index"
+    post  "subjects",             to: "subjects#create"
+    patch "subjects/:id",         to: "subjects#update"
+    get   "settings",             to: "settings#show"
+    patch "settings",             to: "settings#update"
+    get   "options",              to: "options#show"
+  end
+
   # Módulo 32a (ADR 0050; contrato §4): urgência (UPA), sessão do dashboard.
   # Dado do paciente só no corpo (a busca de pessoa é POST); ids na URL.
   scope "/urgency", module: :urgency, as: :urgency do

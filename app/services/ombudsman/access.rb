@@ -26,16 +26,27 @@ module Ombudsman
         health_unit_ids: rows.where.not(health_unit_id: nil).distinct.pluck(:health_unit_id) }
     end
 
-    # -> [uuid] dos usuários que respondem o destino (um dos dois ids): linha
-    # ativa, papel de respondente ativo e usuário não desativado.
+    # As linhas de respondente que contam: linha ativa, papel de respondente
+    # ativo e usuário não desativado. Única definição, de responder_ids_for e
+    # de destinations_with_responder.
+    def responder_rows
+      OmbudsmanResponder.active.joins(user: :memberships).where(users: { deactivated_at: nil })
+                        .merge(Membership.active.where(role: "ombudsman_responder"))
+    end
+
+    # -> [uuid] dos usuários que respondem o destino (um dos dois ids).
     def responder_ids_for(department_id: nil, health_unit_id: nil)
       destination = department_id ? { department_id: department_id } : { health_unit_id: health_unit_id }
       return [] if destination.values.first.blank?
 
-      OmbudsmanResponder.active.where(destination)
-                        .joins(user: :memberships).where(users: { deactivated_at: nil })
-                        .merge(Membership.active.where(role: "ombudsman_responder"))
-                        .distinct.pluck(:user_id)
+      responder_rows.where(destination).distinct.pluck(:user_id)
+    end
+
+    # -> { department_ids: [uuid], health_unit_ids: [uuid] }: os destinos que
+    # têm ao menos um respondente (em lote, para a lista de opções).
+    def destinations_with_responder
+      { department_ids: responder_rows.where.not(department_id: nil).distinct.pluck(:department_id),
+        health_unit_ids: responder_rows.where.not(health_unit_id: nil).distinct.pluck(:health_unit_id) }
     end
 
     def roles?(user, roles) = user.present? && user.memberships.active.where(role: roles).exists?
