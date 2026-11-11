@@ -190,7 +190,7 @@ RSpec.describe "Esquema do módulo 31", type: :model do
 
   it "papéis entram nas travas; nada clínico em inspect/as_json" do
     expect(Membership::PRIVILEGED_ROLES).to include("psychosocial_staff", "psychosocial_lead")
-    expect(Membership::ROLES).to eq(AddPsychosocialCare::ROLES)
+    expect(Membership::ROLES).to include(*AddPsychosocialCare::ROLES)
     expect(AddPsychosocialCare::HEALTH_UNIT_KINDS).to eq(HealthUnit::KINDS)
     expect(AddPsychosocialCare::CAPS_MODALITIES).to eq(HealthUnit::CAPS_MODALITIES)
     expect { caps_staff!(caps, lead: true) }.not_to raise_error

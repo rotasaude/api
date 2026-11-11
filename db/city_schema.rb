@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_10_900003) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_11_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -1107,6 +1107,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900003) do
     t.check_constraint "status::text = ANY (ARRAY['open'::text, 'completed'::text, 'cancelled'::text]::text[])", name: "ck_dental_treatment_plans_status"
   end
 
+  create_table "departments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.string "name", limit: 80, null: false
+    t.datetime "updated_at", null: false
+    t.uuid "updated_by_user_id", null: false
+    t.index "lower((name)::text)", name: "idx_departments_name", unique: true
+    t.index ["updated_by_user_id"], name: "index_departments_on_updated_by_user_id"
+  end
+
   create_table "disease_notification_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "by_user_id"
     t.string "classification"
@@ -1288,7 +1298,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900003) do
     t.index ["uploaded_by_user_id"], name: "index_exam_files_on_uploaded_by_user_id"
     t.check_constraint "byte_size > 0 AND byte_size <= 10485760", name: "ck_exam_files_size"
     t.check_constraint "content_type::text = ANY (ARRAY['application/pdf'::text, 'image/jpeg'::text, 'image/png'::text])", name: "ck_exam_files_content_type"
-    t.check_constraint "purpose IS NULL OR purpose::text = ANY (ARRAY['eqa_annual_report'::text, 'tfd_accountability'::text])", name: "ck_exam_files_purpose"
+    t.check_constraint "purpose IS NULL OR purpose::text = ANY (ARRAY['eqa_annual_report'::text, 'tfd_accountability'::text, 'ombudsman_attachment'::text])", name: "ck_exam_files_purpose"
   end
 
   create_table "exam_order_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -2332,7 +2342,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900003) do
     t.index ["granted_by_id"], name: "index_memberships_on_granted_by_id"
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
-    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'driver'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'psychosocial_lead'::text, 'psychosocial_staff'::text, 'stock_keeper'::text, 'surveillance'::text, 'tfd_committee'::text, 'transport_dispatcher'::text, 'viewer'::text])", name: "ck_memberships_role"
+    t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'driver'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'ombudsman'::text, 'ombudsman_responder'::text, 'ombudsman_staff'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'psychosocial_lead'::text, 'psychosocial_staff'::text, 'stock_keeper'::text, 'surveillance'::text, 'tfd_committee'::text, 'transport_dispatcher'::text, 'viewer'::text])", name: "ck_memberships_role"
   end
 
   create_table "micro_areas", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4651,6 +4661,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_900003) do
   add_foreign_key "dental_treatment_plans", "health_units"
   add_foreign_key "dental_treatment_plans", "patients"
   add_foreign_key "dental_treatment_plans", "users", column: "closed_by_user_id"
+  add_foreign_key "departments", "users", column: "updated_by_user_id"
   add_foreign_key "disease_notification_events", "disease_notifications", column: "notification_id"
   add_foreign_key "disease_notification_events", "users", column: "by_user_id"
   add_foreign_key "disease_notifications", "consultation_addenda", column: "addendum_id"

@@ -3696,3 +3696,17 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 33 (ADR 0051): os setores da secretaria nunca são apagados (desativa-se).
+DO $do$
+BEGIN
+  IF to_regclass('public.departments') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS departments_no_delete ON departments';
+    EXECUTE 'CREATE TRIGGER departments_no_delete BEFORE DELETE ON departments
+      FOR EACH ROW EXECUTE FUNCTION rota_no_delete()';
+    EXECUTE 'DROP TRIGGER IF EXISTS departments_append_only_truncate ON departments';
+    EXECUTE 'CREATE TRIGGER departments_append_only_truncate BEFORE TRUNCATE ON departments
+      FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()';
+  END IF;
+END
+$do$;

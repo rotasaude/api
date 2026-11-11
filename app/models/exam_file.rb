@@ -3,8 +3,9 @@
 # pedido ou resultado; o órfão de 24 h é apagado pelo job diário.
 class ExamFile < ApplicationRecord
   # ck_exam_files_purpose: o upload que não é de exame — relatório anual do
-  # EQA (ADR 0038) e prestação de contas do TFD (ADR 0048).
-  PURPOSES = %w[eqa_annual_report tfd_accountability].freeze
+  # EQA (ADR 0038), prestação de contas do TFD (ADR 0048) e anexo da
+  # manifestação da ouvidoria (ADR 0051).
+  PURPOSES = %w[eqa_annual_report tfd_accountability ombudsman_attachment].freeze
 
   encrypts :data
 

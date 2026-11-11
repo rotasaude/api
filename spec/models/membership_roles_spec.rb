@@ -4,6 +4,7 @@ require Rails.root.join("db/city_migrate/20261028900001_add_care_regulation.rb")
 require Rails.root.join("db/city_migrate/20261029900001_add_pharmacy_stock.rb").to_s
 require Rails.root.join("db/city_migrate/20261103900001_add_sanitary_transport.rb").to_s
 require Rails.root.join("db/city_migrate/20261104900002_add_psychosocial_care.rb").to_s
+require Rails.root.join("db/city_migrate/20261111900001_add_ombudsman_roles_and_departments.rb").to_s
 
 RSpec.describe Membership do
   it "conhece o papel citizen_verifier e o trata como privilegiado" do
@@ -95,13 +96,28 @@ RSpec.describe Membership do
     end
   end
 
+  # ADR 0051 + §16 U3: ombudsman abre a identidade preservada e arquiva;
+  # ombudsman_staff lê texto de saúde e identidade no modo identificado —
+  # privilegiados. ombudsman_responder só responde ao encaminhamento — não.
+  it "ombudsman e ombudsman_staff são privilegiados; ombudsman_responder não; o banco aceita os três" do
+    expect(described_class::ROLES).to include("ombudsman", "ombudsman_staff", "ombudsman_responder")
+    expect(described_class::PRIVILEGED_ROLES).to include("ombudsman", "ombudsman_staff")
+    expect(described_class::PRIVILEGED_ROLES).not_to include("ombudsman_responder")
+    user = User.create!(email_address: "ouvidoria@cidade.gov.br", password: "senha-segura-123")
+    %w[ombudsman ombudsman_staff ombudsman_responder].each do |role|
+      expect { described_class.create!(user: user, role: role, granted_at: Time.current) }.not_to raise_error
+    end
+  end
+
   # ROLES espelha ck_memberships_role: a lista da última migração que o
-  # reescreve (31) é a do 30 mais os dois papéis do CAPS, em ordem.
-  it "ROLES é a lista da migração do 31" do
+  # reescreve (33) é a do 31 mais os três papéis da ouvidoria, em ordem.
+  it "ROLES é a lista da migração do 33" do
     expect(AddCareRegulation::ROLES).to eq((AddDiseaseSurveillance::ROLES + %w[care_regulator]).sort)
     expect(AddPharmacyStock::ROLES).to eq((AddCareRegulation::ROLES + %w[pharmacist pharmacy_assistant stock_keeper]).sort)
     expect(AddSanitaryTransport::ROLES).to eq((AddPharmacyStock::ROLES + %w[transport_dispatcher tfd_committee driver]).sort)
     expect(AddPsychosocialCare::ROLES).to eq((AddSanitaryTransport::ROLES + %w[psychosocial_staff psychosocial_lead]).sort)
-    expect(described_class::ROLES).to eq(AddPsychosocialCare::ROLES)
+    expect(AddOmbudsmanRolesAndDepartments::ROLES)
+      .to eq((AddPsychosocialCare::ROLES + %w[ombudsman ombudsman_staff ombudsman_responder]).sort)
+    expect(described_class::ROLES).to eq(AddOmbudsmanRolesAndDepartments::ROLES)
   end
 end
