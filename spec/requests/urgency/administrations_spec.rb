@@ -212,6 +212,23 @@ RSpec.describe "Urgência — checagem da medicação", type: :request do
       check(row, status: "not_administered", reason: "Paciente dormindo, sem dor")
       expect(response).to have_http_status(:created)
     end
+
+    it "Q17: alterar a prescrição não zera o limite diário — o max_per_day conta o medicamento nas 24 h em todas as versões" do
+      if_needed = item(diazepam, dose: "5", dose_unit: "mg", frequency: { kind: "if_needed", max_per_day: 2 })
+      first = issue!(encounter, [ if_needed ]).items.first
+      2.times do
+        check(first, status: "administered")
+        expect(response).to have_http_status(:created)
+      end
+
+      second = issue!(encounter, [ if_needed.merge(dose: "10") ]).items.first # v2 substitui a v1
+      expect { check(second, status: "administered") }.not_to change(UrgencyAdministration, :count)
+      expect_refusal(:unprocessable_entity, "max_per_day_reached")
+
+      get "/urgency/encounters/#{encounter.id}/medication_schedule"
+      expect(response).to have_http_status(:ok)
+      expect(json_body["items"].sole).to include("remaining" => 0)
+    end
   end
 
   describe "estoque desligado ou não utilizável" do
