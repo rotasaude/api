@@ -245,6 +245,7 @@ RSpec.describe UrgencyCrew, type: :request do
 
     expect(counts).to eq(before_counts)
   end
+
   describe "a observação (32b)" do
     let(:board) { Urgency::Observation.board(unit) }
     let(:pharmacist) { User.find_by!(email_address: "farmacia@curitiba.demo") }
@@ -326,7 +327,8 @@ RSpec.describe UrgencyCrew, type: :request do
         expect(Pharmacy::LinkStaff.add(location: upa_location, user_id: pharmacist.id, role: "pharmacist", by: User.find_by!(email_address: "admin@curitiba.demo")).reason)
           .to eq(:already_linked)
         expect(Pharmacy::ReconcileUrgencyShortfall.allowed?(user: pharmacist, location: upa_location)).to be(true)
-        expect(UrgencyStockShortfall.open_shortfalls.where(stock_location_id: upa_location.id).count).to eq(1)
+        expect(UrgencyStockShortfall.open_shortfalls.where(stock_location_id: upa_location.id).pluck(:cause)).to eq([ "insufficient_balance" ])
+        expect(Pharmacy::Alerts.call(location: upa_location, today: Time.zone.today, settings: Pharmacy::Settings.current)).to include(urgency_shortfalls: 1)
         expect(jose_encounter.bed_stays).to be_empty
         expect(upa_location.name).to eq("Farmácia da UPA 24h Centro")
       end
@@ -339,5 +341,4 @@ RSpec.describe UrgencyCrew, type: :request do
         .to all(eq("draft"))
     end
   end
-
 end

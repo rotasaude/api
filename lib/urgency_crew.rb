@@ -220,7 +220,7 @@ class UrgencyCrew
       PEOPLE.each { |key, person| person!(context, key, person) }
       unidentified!(context)
       yesterday!(context, jose)
-      observation = observation!(context.merge(city: city, admin: admin, maintainer: maintainer))
+      observation = observation!(context.merge(city: city, admin: admin))
 
       { switch: Urgency::Gate.usable?(city) ? "ligado (#{Urgency::Gate::KEY} e #{WaitingRoom::Gate::KEY})" : "ligado, não utilizável",
         unit: unit.name, protocol: "#{protocol.name} v#{protocol.version}", locations: locations.size,
