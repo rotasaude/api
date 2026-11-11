@@ -127,4 +127,33 @@ RSpec.describe "Evolução do encontro aberto por outro médico da UPA", type: :
       end
     end
   end
+
+  describe "fim da janela" do
+    def refused_both!
+      sign_in_as(next_shift)
+      get "/attendance/attendances/#{encounter.attendance_id}/record"
+      expect(response).to have_http_status(:forbidden)
+      expect(json_body).to eq("error" => "out_of_context")
+      addendum!
+      expect(response).to have_http_status(:forbidden)
+      expect(json_body).to eq("error" => "not_author")
+      expect(views_by(next_shift)).to be_empty
+      expect(ConsultationAddendum.count).to eq(0)
+    end
+
+    it "atendimento fechado pelo 13 com urgency_care desligado (o encontro segue in_care): 403 nos dois" do
+      result = Attendances::Close.call(attendance: encounter.attendance.reload, outcome: "discharged", referral_unit_id: nil,
+                                       referral_note: nil, by: doctor, urgency: false)
+      expect(result).to be_ok
+      expect(encounter.reload.state).to eq("in_care")
+      expect(encounter.attendance.reload.status).to eq("closed")
+      refused_both!
+    end
+
+    it "vínculo do médico na UPA encerrado com o encontro aberto: 403 nos dois, nunca 404" do
+      next_shift.professional.links.active.sole.update!(ended_at: Time.current, ended_by_user: urgency_admin!)
+      expect(encounter.reload).not_to be_closed
+      refused_both!
+    end
+  end
 end
