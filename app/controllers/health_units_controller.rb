@@ -58,21 +58,10 @@ class HealthUnitsController < ApplicationController
   def update
     return render json: { error: "not_found" }, status: :not_found unless @unit
 
-    @unit.assign_attributes(name: params[:name], kind: params[:kind])
-    # ADR 0046 (D10): o perfil do CEO nunca some; a unidade que o tem segue `ceo`.
-    if @unit.kind_changed? && @unit.kind_was == "ceo" && @unit.ceo_profile
-      return render json: { error: "unit_has_ceo_profile" }, status: :conflict
-    end
-    error = assign_address(@unit) || assign_cnes(@unit) || assign_screening_scope(@unit) ||
-            assign_collects_samples(@unit) || assign_notifying(@unit) || assign_caps(@unit) || assign_phone(@unit) ||
-            assign_waiting_room(@unit)
-    return render(json: { error: error }, status: :unprocessable_entity) if error
-
-    conflict = caps_change_conflict(@unit) || upa_change_conflict(@unit)
-    return render json: { error: conflict }, status: :conflict if conflict
-    return render_invalid(@unit) unless @unit.save
-
-    render json: { unit: unit_json(@unit, include_active: true) }
+    # FOR UPDATE na unidade antes de conferir o que prende o kind (o
+    # Urgency::SaveBed toma FOR SHARE nela): nenhum leito ativo entra entre a
+    # conferência e a gravação, como na desativação.
+    @unit.with_lock { update_locked }
   rescue ActiveRecord::RecordNotUnique => e
     render json: { error: e.message.include?("idx_health_units_cnes") ? "cnes_taken" : "unit_name_taken" },
            status: :unprocessable_entity
@@ -106,6 +95,25 @@ class HealthUnitsController < ApplicationController
   end
 
   private
+
+  # O corpo do update, sob a trava da unidade.
+  def update_locked
+    @unit.assign_attributes(name: params[:name], kind: params[:kind])
+    # ADR 0046 (D10): o perfil do CEO nunca some; a unidade que o tem segue `ceo`.
+    if @unit.kind_changed? && @unit.kind_was == "ceo" && @unit.ceo_profile
+      return render json: { error: "unit_has_ceo_profile" }, status: :conflict
+    end
+    error = assign_address(@unit) || assign_cnes(@unit) || assign_screening_scope(@unit) ||
+            assign_collects_samples(@unit) || assign_notifying(@unit) || assign_caps(@unit) || assign_phone(@unit) ||
+            assign_waiting_room(@unit)
+    return render(json: { error: error }, status: :unprocessable_entity) if error
+
+    conflict = caps_change_conflict(@unit) || upa_change_conflict(@unit)
+    return render json: { error: conflict }, status: :conflict if conflict
+    return render_invalid(@unit) unless @unit.save
+
+    render json: { unit: unit_json(@unit, include_active: true) }
+  end
 
   def deactivation_conflict(pharmacy:)
     return "unit_has_open_attendances" if Attendance.open_attendances.where(health_unit: @unit).exists?

@@ -212,6 +212,26 @@ RSpec.describe "Health units", type: :request do
 
   # Módulo 32b (§12 Q1): UPA com leito ativo da observação não muda de kind nem
   # é desativada (409 upa_has_beds); com os leitos desativados, passa.
+  # O Urgency::SaveBed toma FOR SHARE na unidade: a conferência dos leitos da
+  # edição roda sob o FOR UPDATE dela, como na desativação.
+  it "a troca de kind confere os leitos ativos sob a trava da unidade" do
+    upa = HealthUnit.create!(name: "UPA Trava", kind: "upa")
+    UrgencyBed.create!(health_unit: upa, label: "OBS 01", updated_by_user: admin)
+    sign_in_as(admin)
+    statements = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") { |*, payload| statements << payload[:sql] }
+    begin
+      json_post "/attendance/units/#{upa.id}", name: "UPA Trava", kind: "ubs"
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber)
+    end
+    expect([ response.status, body ]).to eq([ 409, { "error" => "upa_has_beds" } ])
+    unit_lock = statements.index { |sql| sql.include?('FROM "health_units"') && sql.include?("FOR UPDATE") }
+    beds_check = statements.rindex { |sql| sql.include?('FROM "urgency_beds"') }
+    expect(unit_lock).to be_present
+    expect(beds_check).to be > unit_lock
+  end
+
   it "UPA com leito ativo: troca de kind e desativação → 409 upa_has_beds; sem leito ativo, passa" do
     upa = HealthUnit.create!(name: "UPA Leitos", kind: "upa")
     bed = UrgencyBed.create!(health_unit: upa, label: "OBS 01", updated_by_user: admin)
