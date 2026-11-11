@@ -156,6 +156,81 @@ RSpec.describe "Urgência — painel do gestor", type: :request do
     expect(json_body["evasion"]).to eq("before_classification" => 0, "after_classification" => 0)
   end
 
+  # Módulo 32b (contrato §9, Q10, A30): o bloco `observation`, sobre o mesmo
+  # recorte. Horas = último ended_at (ou agora) − primeiro started_at, uma casa
+  # decimal (número JSON, como os minutos do `stay`); supressão do bloco inteiro
+  # pelo número de estadias.
+  describe "observation" do
+    # Um encontro em atendimento, chegado em `base + index h`, com as estadias
+    # dadas como [início, fim] em horas depois de `base` (fim nil = aberta).
+    def observed_visit!(index, *spans, unit: upa)
+      travel_to(base + index.hours)
+      encounter = in_care_encounter!(unit)
+      spans.each do |from, to|
+        stay = UrgencyBedStay.create!(urgency_encounter: encounter, urgency_bed: urgency_bed!(unit), health_unit: unit,
+                                      started_at: base + from.hours, started_by_user: doctor)
+        stay.update!(ended_at: base + to.hours, end_kind: "observation_ended", ended_by_user: doctor) if to
+      end
+      encounter
+    end
+
+    def observation = json_body["observation"]
+
+    it "6 encontros (2 acima de 24 h): mediana, p90 e horas-leito à mão; over_24h 1 a 4 vira lt5; a troca de leito soma as duas estadias" do
+      observed_visit!(0, [ 0, 2 ])
+      observed_visit!(1, [ 1, 6 ])
+      observed_visit!(2, [ 2, 5 ], [ 6, 12 ]) # troca com intervalo: 10 h no encontro, 3 + 6 h de leito
+      observed_visit!(3, [ 3, 23 ])
+      observed_visit!(4, [ 4, 30.25 ])
+      observed_visit!(5, [ 5, 35 ])
+      read_dashboard!
+      # horas: 2, 5, 10, 20, 26,25, 30 → mediana 15, p90 = 26,25 + 0,5 × 3,75
+      expect(observation).to eq("stays" => 6, "over_24h" => "lt5", "median_hours" => 15.0, "p90_hours" => 28.1,
+                                "bed_hours" => 92.3)
+    end
+
+    it "com 5 ou mais acima de 24 h, over_24h aparece" do
+      5.times { |i| observed_visit!(i, [ i, i + 25 ]) }
+      observed_visit!(5, [ 5, 7 ])
+      read_dashboard!
+      expect(observation).to include("stays" => 6, "over_24h" => 5)
+    end
+
+    it "3 encontros → o bloco inteiro lt5" do
+      3.times { |i| observed_visit!(i, [ i, i + 30 ]) }
+      read_dashboard!
+      expect(observation).to eq("stays" => "lt5", "over_24h" => "lt5", "median_hours" => "lt5", "p90_hours" => "lt5",
+                                "bed_hours" => "lt5")
+    end
+
+    it "nenhum encontro com estadia → zeros e medidas nulas" do
+      in_care_encounter!(upa)
+      read_dashboard!
+      expect(observation).to eq("stays" => 0, "over_24h" => 0, "median_hours" => nil, "p90_hours" => nil, "bed_hours" => nil)
+    end
+
+    it "o registered_in_error, o outro mês e a outra UPA não contam" do
+      5.times { |i| observed_visit!(i, [ i, i + 3 ]) }
+      wrong = observed_visit!(6, [ 6, 9 ])
+      travel_to(base + 10.hours)
+      result = Urgency::RecordOutcome.call(encounter: wrong.reload, attrs: { "kind" => "registered_in_error", "reason" => "Duplicidade" },
+                                           by: upa_reception!, team: nil)
+      expect(result).to be_ok
+      observed_visit!(7, [ 7, 10 ], unit: upa!(name: "UPA Norte"))
+      read_dashboard!(month: "2026-10", health_unit_id: upa.id)
+      expect(observation).to include("stays" => 5, "bed_hours" => 15.0)
+    end
+
+    it "a estadia aberta conta até agora" do
+      5.times { |i| observed_visit!(i, [ i, i + 1 ]) }
+      observed_visit!(5, [ 5, nil ])
+      read_dashboard!
+      # Lido em 5/11 10:00; a estadia abriu em 5/10 13:00 → 741 h; horas 1 ×5 e 741:
+      # p90 = 1 + 0,5 × 740.
+      expect(observation).to include("stays" => 6, "over_24h" => "lt5", "p90_hours" => 371.0)
+    end
+  end
+
   describe "acesso e parâmetros" do
     it "municipal_admin e analyst leem; o resto → 403 missing_role" do
       sign_in_as(staff_with("gestor-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin"))

@@ -49,7 +49,8 @@ module Urgency
     # classificação vigente na chamada pelo LATERAL (a última criada até a
     # chamada); a 1ª pela posição 1.
     BASE_SQL = <<~SQL.squish.freeze
-      SELECT first_c.color AS first_color,
+      SELECT e.id AS encounter_id,
+             first_c.color AS first_color,
              EXTRACT(EPOCH FROM (e.first_classified_at - a.checked_in_at)) / 60.0 AS door_minutes,
              at_call.color AS call_color,
              EXTRACT(EPOCH FROM (a.called_at - e.first_classified_at)) / 60.0 AS physician_minutes,
@@ -88,7 +89,7 @@ module Urgency
       units = units.to_a.sort_by { |unit| [ unit.name, unit.id ] }
       month = month.to_date.beginning_of_month
       binds = { unit_ids: units.map(&:id).presence || [ nil ], from: month.in_time_zone,
-                to: (month.end_of_month + 1).in_time_zone, non_care: Catalog::NON_CARE_OUTCOMES }
+                to: (month.end_of_month + 1).in_time_zone, non_care: Catalog::NON_CARE_OUTCOMES, now: Time.current }
       { month: month.strftime("%Y-%m"),
         units: units.map { |unit| { id: unit.id, name: unit.name } },
         door_to_classification: times_by_color(binds, color: "first_color", minutes: "door_minutes"),
@@ -97,7 +98,8 @@ module Urgency
         by_color: by_color(binds),
         by_outcome: by_outcome(binds),
         evasion: evasion(binds),
-        stay: stay(binds) }
+        stay: stay(binds),
+        observation: observation(binds) }
     end
 
     def suppress(count) = ::Admin::SmallCount.small?(count) ? LESS_THAN_FIVE : count
@@ -168,11 +170,48 @@ module Urgency
       { count: suppress(count), median_minutes: time(count, row["median"]), p90_minutes: time(count, row["p90"]) }
     end
 
+    # Módulo 32b (contrato §9, Q10, A30): por encontro com estadia,
+    # horas = (último ended_at, ou agora, − primeiro started_at); a troca de
+    # leito não zera a conta. bed_hours soma as durações de todas as estadias.
+    # Horas com uma casa decimal (número JSON, como `stay`, que vai em minutos
+    # inteiros). Supressão pelo número de estadias, no bloco inteiro: 1 a 4 →
+    # tudo "lt5"; 0 → zeros e medidas nulas; 5 ou mais → só over_24h de 1 a 4
+    # vira "lt5".
+    def observation(binds)
+      row = select(binds, <<~SQL.squish).first
+        , per_encounter AS (
+          SELECT s.urgency_encounter_id,
+                 EXTRACT(EPOCH FROM (CASE WHEN BOOL_OR(s.ended_at IS NULL) THEN :now::timestamp ELSE MAX(s.ended_at) END
+                                     - MIN(s.started_at))) / 3600.0 AS hours,
+                 SUM(EXTRACT(EPOCH FROM (COALESCE(s.ended_at, :now) - s.started_at))) / 3600.0 AS bed_hours
+            FROM urgency_bed_stays s
+           WHERE s.urgency_encounter_id IN (SELECT encounter_id FROM base)
+           GROUP BY s.urgency_encounter_id
+        )
+        SELECT COUNT(*) AS stays,
+               COUNT(*) FILTER (WHERE hours >= 24) AS over_24h,
+               ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY hours)::numeric, 1) AS median,
+               ROUND(percentile_cont(0.9) WITHIN GROUP (ORDER BY hours)::numeric, 1) AS p90,
+               ROUND(SUM(bed_hours)::numeric, 1) AS bed_hours
+          FROM per_encounter
+      SQL
+      stays = row["stays"].to_i
+      return { stays: 0, over_24h: 0, median_hours: nil, p90_hours: nil, bed_hours: nil } if stays.zero?
+
+      if ::Admin::SmallCount.small?(stays)
+        return { stays: LESS_THAN_FIVE, over_24h: LESS_THAN_FIVE, median_hours: LESS_THAN_FIVE, p90_hours: LESS_THAN_FIVE,
+                 bed_hours: LESS_THAN_FIVE }
+      end
+
+      { stays: stays, over_24h: suppress(row["over_24h"].to_i), median_hours: row["median"].to_f,
+        p90_hours: row["p90"].to_f, bed_hours: row["bed_hours"].to_f }
+    end
+
     def select(binds, aggregate_sql, **extra)
       sql = ApplicationRecord.sanitize_sql_array([ "WITH base AS (#{BASE_SQL}) #{aggregate_sql}", binds.merge(extra) ])
       ApplicationRecord.connection.select_all(sql).to_a
     end
 
-    private_class_method :time, :times_by_color, :over_max_wait, :by_color, :by_outcome, :evasion, :stay, :select
+    private_class_method :time, :times_by_color, :over_max_wait, :by_color, :by_outcome, :evasion, :stay, :observation, :select
   end
 end
