@@ -3,7 +3,8 @@
 # - a classificação de risco (Urgency::Config.sigtap["classification_code"]),
 #   quando houve classificação: quem fez a 1ª e o CBO gravado nela, no dia
 #   LOCAL dela;
-# - o atendimento médico (care_code), quando há a consulta de urgência
+# - o atendimento médico (care_code; observation_code se houve estadia na
+#   observação, 32b §8), quando há a consulta de urgência
 #   finalizada: o autor e o CBO da consulta, no dia LOCAL da finalização, com
 #   o 1º CID-10 avaliado nela (por created_at, id) ou nulo.
 # Estabelecimento = a UPA (Billing::Establishment.for_unit); quantidade 1,
@@ -73,7 +74,9 @@ module Billing
                   performed_on: first.created_at.in_time_zone.to_date, cid10: nil, consultation: nil }
       end
       if (consultation = care_consultation(attendance))
-        list << { sigtap_code: codes["care_code"], professional: consultation.author_user, cbo_code: consultation.cbo_code,
+        # Contrato 32b §8: observação até 24 h no lugar do atendimento médico; gate SIGTAP api#136
+        care_code = UrgencyBedStay.exists?(urgency_encounter_id: encounter.id) ? codes["observation_code"] : codes["care_code"]
+        list << { sigtap_code: care_code, professional: consultation.author_user, cbo_code: consultation.cbo_code,
                   performed_on: consultation.finalized_at.in_time_zone.to_date, cid10: first_cid10(consultation),
                   consultation: consultation }
       end

@@ -135,6 +135,77 @@ RSpec.describe Billing::FromUrgency do
     expect(lines(e).order(:sigtap_code).pluck(:sigtap_code, :cid10)).to eq([ [ codes["care_code"], "I10" ], [ codes["classification_code"], nil ] ])
   end
 
+  # Contrato 32b §8 e Q10: com estadia na observação, a linha do médico é 0301060029
+  # (a amostra SIGTAP de dev só aceita I10/E119/J069 nele; Divergência A26).
+  describe "observação (32b §8)" do
+    def observed_closed!(kind: "discharged", cid10: "I10")
+      observed_encounter!(cid10: cid10).then { |e| close_observed!(e, kind) }
+    end
+
+    def observed_encounter!(cid10: "I10")
+      cid10_release!
+      e = in_care_encounter!(upa, patient: urgency_patient!(6))
+      observed!(e, bed: urgency_bed!(upa), by: observation_doctor!(upa))
+      yield e if block_given?
+      finalized_urgency!(e, doctor: observation_doctor!(upa), cid10: cid10)
+      e
+    end
+
+    def close_observed!(e, kind)
+      result = Urgency::RecordOutcome.call(encounter: e.reload, attrs: { "kind" => kind }, by: observation_doctor!(upa))
+      raise "desfecho recusado: #{result.reason}" if result.failure?
+
+      e.reload
+    end
+
+    def administer!(e)
+      doctor = observation_doctor!(upa)
+      link = ProfessionalLink.find_by!(professional: doctor.professional)
+      rx = UrgencyPrescription.create!(urgency_encounter: e, version: 1, prescribed_by_user: doctor, professional_link: link,
+                                       cbo_code: "225125", prescribed_at: Time.current)
+      item = UrgencyPrescriptionItem.create!(urgency_prescription: rx, position: 1, catalog_item_id: SecureRandom.uuid, catmat_code: 268_856,
+                                             dose: "500", dose_unit: "mg", route: "oral", frequency_kind: "interval", interval_hours: 8,
+                                             first_dose_at: Time.current, stock_quantity_per_dose: 1, stock_unit: "comprimido")
+      UrgencyAdministration.create!(urgency_prescription_item: item, urgency_encounter: e, scheduled_at: Time.current.change(usec: 0),
+                                    status: "administered", administered_at: Time.current, recorded_by_user: doctor, professional_link: link,
+                                    cbo_code: "225125", recorded_at: Time.current)
+    end
+
+    it "com estadia e consulta finalizada: classificação + observação, nenhuma linha do atendimento comum; reprocessar não duplica" do
+      e = observed_closed!
+      run_jobs
+      rows = lines(e).order(:sigtap_code)
+      expect(rows.pluck(:sigtap_code, :cid10)).to eq([ [ "0301060029", "I10" ], [ "0301060118", nil ] ])
+      expect(rows.map(&:sigtap_code)).not_to include(codes["care_code"], "0301100012")
+      expect(rows.first).to have_attributes(professional_user_id: observation_doctor!(upa).id, source: "urgency", quantity: 1)
+      expect(described_class.call(e.reload)).to eq(created: 0, pending: nil)
+      expect { described_class.call(e.reload) }.not_to change(PerformedProcedure, :count)
+    end
+
+    it "sem estadia: continua o atendimento comum (care_code)" do
+      e = arrived!(upa, patient: urgency_patient!(7)).tap { |x| classified!(x, color: "yellow", by: nurse) }
+      closed_with(e, "discharged")
+      run_jobs
+      expect(lines(e).pluck(:sigtap_code)).to match_array([ codes["care_code"], codes["classification_code"] ])
+    end
+
+    it "evasão com estadia e sem consulta finalizada: só a classificação" do
+      e = in_care_encounter!(upa, patient: urgency_patient!(8))
+      observed!(e, bed: urgency_bed!(upa), by: observation_doctor!(upa))
+      Urgency::RecordOutcome.call(encounter: e.reload, attrs: { "kind" => "left_without_care" }, by: reception!)
+      run_jobs
+      expect(lines(e).pluck(:sigtap_code)).to eq([ codes["classification_code"] ])
+    end
+
+    it "administrações gravadas nunca geram 0301100012" do
+      e = observed_encounter! { |x| administer!(x) }
+      close_observed!(e, "discharged")
+      expect(UrgencyAdministration.where(urgency_encounter_id: e.id).count).to eq(1)
+      run_jobs
+      expect(lines(e).pluck(:sigtap_code)).to match_array([ "0301060029", "0301060118" ])
+    end
+  end
+
   it "procedure_billing desligado no evento: o job não grava" do
     e = arrived!(upa, patient: urgency_patient!(3)).tap { |x| classified!(x, color: "yellow", by: nurse) }
     closed_with(e, "discharged")
