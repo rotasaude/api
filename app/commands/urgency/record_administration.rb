@@ -25,7 +25,8 @@
 #    falso → stock_deduction_disabled (Desvio 8); com `stock`, `stock_lot_id`
 #    uuid e `stock_quantity` String decimal (Pharmacy::Quantity; número JSON →
 #    invalid_request; padrão `stock_quantity_per_dose` do item, Desvio 9);
-# 5. horário: fora do aprazamento (Schedule.slot?) → 422 slot_invalid; mais de
+# 5. horário: o do corpo vira o canônico do aprazamento (Schedule.slot; frações
+#    de segundo são o mesmo horário); fora dele → 422 slot_invalid; mais de
 #    60 min adiantado → 422 slot_not_due (Q5; o passado vale com o encontro
 #    aberto); o mesmo `catalog_item_id` no mesmo horário em qualquer versão →
 #    409 slot_taken (e o índice idx_urgency_administrations_slot como rede);
@@ -90,7 +91,10 @@ module Urgency
       return parsed if parsed.failure?
 
       row = parsed.payload
-      refusal = slot_refusal(item, row, locked, now)
+      # O horário gravado e comparado é o canônico do aprazamento (Schedule.slot),
+      # nunca o do corpo: `10:00:00.5Z` é o mesmo horário de `10:00:00Z`.
+      slot = row[:scheduled_at] && Schedule.slot(item, row[:scheduled_at], now: now)
+      refusal = slot_refusal(item, row, slot, locked, now)
       return refusal if refusal
 
       deduction = nil
@@ -100,7 +104,7 @@ module Urgency
         return deduction if deduction.failure?
       end
 
-      attrs = { urgency_prescription_item: item, urgency_encounter: locked, status: row[:status], scheduled_at: row[:scheduled_at],
+      attrs = { urgency_prescription_item: item, urgency_encounter: locked, status: row[:status], scheduled_at: slot,
                 administered_at: row[:administered_at], reason: row[:reason], recorded_at: now, recorded_by_user: by,
                 professional_link: link, cbo_code: link.cbo_code }
       administration, shortfall = persist(attrs, item, deduction&.payload, by, now)
@@ -205,12 +209,12 @@ module Urgency
     end
 
     # -> Result (a recusa) | nil
-    def slot_refusal(item, row, encounter, now)
-      at = row[:scheduled_at]
-      if at
-        return refuse([ problem("scheduled_at", :slot_invalid) ]) unless Schedule.slot?(item, at, now: now)
-        return refuse([ problem("scheduled_at", :slot_not_due) ]) if at > now + Catalog::SLOT_DUE_AHEAD
-        return Result.fail(:slot_taken) if slot_taken?(item, at, encounter)
+    # `slot`: o horário canônico (Schedule.slot) do `scheduled_at` do corpo, ou nil.
+    def slot_refusal(item, row, slot, encounter, now)
+      if row[:scheduled_at]
+        return refuse([ problem("scheduled_at", :slot_invalid) ]) unless slot
+        return refuse([ problem("scheduled_at", :slot_not_due) ]) if slot > now + Catalog::SLOT_DUE_AHEAD
+        return Result.fail(:slot_taken) if slot_taken?(item, slot, encounter)
       elsif row[:status] == "administered" && Schedule.if_needed_used(item, at: row[:administered_at]) >= item.max_per_day
         return Result.fail(:max_per_day_reached)
       end

@@ -115,6 +115,25 @@ RSpec.describe "Urgência — checagem da medicação", type: :request do
       expect_refusal(:conflict, "slot_taken")
     end
 
+    it "frações de segundo caem no mesmo horário: grava o horário canônico (usec 0) e a segunda checagem → 409 slot_taken, nesta e em outra versão" do
+      v1 = issue!
+      row = v1.items.first
+      slot = row.first_dose_at
+      check(row, scheduled_at: (slot + 0.25).utc.iso8601(3), status: "administered")
+      expect(response).to have_http_status(:created)
+      expect(json_body.dig("administration", "scheduled_at")).to eq(slot.iso8601)
+      stored = UrgencyAdministration.find(json_body.dig("administration", "id"))
+      expect(stored.scheduled_at).to eq(slot)
+      expect(stored.scheduled_at.usec).to eq(0)
+
+      expect { check(row, scheduled_at: (slot + 0.5).utc.iso8601(1), status: "administered") }.not_to change(UrgencyAdministration, :count)
+      expect_refusal(:conflict, "slot_taken")
+
+      v2 = issue!(encounter, [ item(first_dose_at: slot.iso8601) ])
+      expect { check(v2.items.first, scheduled_at: (slot + 0.75).utc.iso8601(2), status: "administered") }.not_to change(UrgencyAdministration, :count)
+      expect_refusal(:conflict, "slot_taken")
+    end
+
     it "a rede do índice idx_urgency_administrations_slot (a conferência do Ruby desligada) → 409 slot_taken" do
       row = issue!.items.first
       allow(Urgency::RecordAdministration).to receive(:slot_taken?).and_return(false)

@@ -28,7 +28,11 @@ module Urgency
       end
     end
 
-    def slot?(item, at, now:) = slots(item, now: now).any? { |slot| slot.to_i == at.to_i }
+    # O horário canônico do aprazamento que cai no mesmo segundo de `at` (frações
+    # de segundo não criam outro horário). -> Time | nil
+    def slot(item, at, now:) = slots(item, now: now).find { |slot| slot.to_i == at.to_i }
+
+    def slot?(item, at, now:) = !slot(item, at, now: now).nil?
 
     # Administradas (status administered) do medicamento do item, no encontro,
     # nas 24 h até `at`. -> Integer
