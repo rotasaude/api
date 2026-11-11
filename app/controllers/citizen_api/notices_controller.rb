@@ -1,10 +1,11 @@
 # Caixa de avisos (ADR 0024; F-12.4; ADR 0029 §6). A sessão é do TELEFONE: a
 # caixa mostra os avisos de todos os cidadãos dele (D12), com cpf_masked quando
-# há mais de um. Três fontes: campanhas (campaign_recipients), lembretes de
-# horário (appointment_notices) e avisos de viagem (transport_trip_notices,
-# módulo 30, §14 T15: sem destino nem prestador); mais novo primeiro entre
-# elas. unread_count ignora quem silenciou; os avisos continuam na lista. O id
-# é opaco: a leitura procura nas três fontes.
+# há mais de um. Quatro fontes: campanhas (campaign_recipients), lembretes de
+# horário (appointment_notices), avisos de viagem (transport_trip_notices,
+# módulo 30, §14 T15: sem destino nem prestador) e avisos da ouvidoria
+# (ombudsman_notices, módulo 33: só o protocolo e o tipo); mais novo primeiro
+# entre elas. unread_count ignora quem silenciou; os avisos continuam na lista.
+# O id é opaco: a leitura procura nas quatro fontes.
 module CitizenApi
   class NoticesController < BaseController
     def index
@@ -15,12 +16,14 @@ module CitizenApi
       campaigns = visible(ids).preload(:campaign).map { |row| [ row.campaign.dispatched_at, notice_json(row, masked[row.citizen_id]) ] }
       reminders = reminders(ids).map { |row| [ row.created_at, reminder_json(row, masked[row.citizen_id]) ] }
       trips = trip_notices(ids).map { |row| [ row.created_at, trip_json(row, masked[row.citizen_id]) ] }
+      ombudsman = ombudsman_notices(ids).map { |row| [ row.created_at, ombudsman_json(row, masked[row.citizen_id]) ] }
       render json: {
         # Mais novo primeiro; empate pelo id (decrescente), como era só com campanhas.
-        notices: (campaigns + reminders + trips).sort_by { |at, json| [ at, json[:id] ] }.reverse.map(&:last),
+        notices: (campaigns + reminders + trips + ombudsman).sort_by { |at, json| [ at, json[:id] ] }.reverse.map(&:last),
         unread_count: visible(counted).where(notice_read_at: nil).count +
                       AppointmentNotice.where(citizen_id: counted, read_at: nil).count +
-                      TransportTripNotice.where(citizen_id: counted, read_at: nil).count
+                      TransportTripNotice.where(citizen_id: counted, read_at: nil).count +
+                      OmbudsmanNotice.where(citizen_id: counted, read_at: nil).count
       }
     end
 
@@ -34,6 +37,8 @@ module CitizenApi
         AppointmentNotice.where(id: notice.id, read_at: nil).update_all(read_at: Time.current)
       elsif (trip_notice = TransportTripNotice.where(citizen_id: own).find_by(id: params[:id]))
         TransportTripNotice.where(id: trip_notice.id, read_at: nil).update_all(read_at: Time.current)
+      elsif (ombudsman_notice = OmbudsmanNotice.where(citizen_id: own).find_by(id: params[:id]))
+        OmbudsmanNotice.where(id: ombudsman_notice.id, read_at: nil).update_all(read_at: Time.current)
       else
         return render_error("not_found", :not_found)
       end
@@ -84,6 +89,18 @@ module CitizenApi
         kind: "trip", id: row.id, event: row.kind, date: departure.to_date.iso8601, departure_at: departure.iso8601,
         boarding: { label: row.boarding_label },
         read: row.read_at.present?, cpf_masked: cpf_masked
+      }
+    end
+
+    def ombudsman_notices(citizen_ids)
+      OmbudsmanNotice.where(citizen_id: citizen_ids).includes(:ombudsman_manifestation)
+    end
+
+    # Módulo 33: só o tipo e o protocolo — o aviso não tem texto.
+    def ombudsman_json(row, cpf_masked)
+      {
+        kind: "ombudsman", id: row.id, event: row.kind, protocol: row.ombudsman_manifestation.protocol,
+        created_at: row.created_at.iso8601, read: row.read_at.present?, cpf_masked: cpf_masked
       }
     end
 
