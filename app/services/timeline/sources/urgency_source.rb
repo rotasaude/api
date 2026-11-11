@@ -35,7 +35,7 @@ module Timeline
         return [] unless person.patient_id
 
         scope = ::UrgencyEncounter.joins(:attendance).where(attendances: { patient_id: person.patient_id })
-                                  .preload(:outcome, :current_classification, attendance: %i[health_unit patient],
+                                  .preload(:outcome, :current_classification, :bed_stays, attendance: %i[health_unit patient],
                                                                               consultation: [ :problem_items, { author_user: :professional } ])
         scope = citizen_scope(scope) if citizen
         scope = pec_scope(scope) if pec
@@ -43,7 +43,8 @@ module Timeline
         rows = Window.apply(scope, kind: KIND, column: "attendances.checked_in_at", id_column: "urgency_encounters.id",
                                    before: before, from: from, to: to).limit(limit).to_a
         labels = {} # memo da chamada: um rótulo por (release, código)
-        rows.map { |encounter| entry(encounter, labels, pec: pec) }
+        now = Time.current
+        rows.map { |encounter| entry(encounter, labels, now, pec: pec) }
       end
 
       def citizen_scope(scope)
@@ -64,14 +65,15 @@ module Timeline
         encounter.closed? && outcome && Labels::CITIZEN_URGENCY_OUTCOMES.key?(outcome.kind) && !encounter.attendance.patient.unidentified
       end
 
-      def entry(encounter, labels, pec: false)
+      def entry(encounter, labels, now, pec: false)
         unit = encounter.attendance.health_unit
         outcome = encounter.outcome
         consultation = encounter.consultation&.then { |c| c.status == "finalized" ? c : nil }
         title = "Atendimento de urgência — #{Labels.unit_name(unit)}"
         guidance = outcome&.return_days
+        hours = observation_hours(encounter, now)
         summary = [ Labels::URGENCY_COLORS[encounter.color], cid(consultation, labels), outcome && Labels::URGENCY_OUTCOMES[outcome.kind],
-                    guidance && return_note(guidance, outcome, pec: pec) ].compact.join(" · ")
+                    hours && "observação #{hours} h", guidance && return_note(guidance, outcome, pec: pec) ].compact.join(" · ")
         citizen = nil
         if citizen_eligible?(encounter)
           citizen = { title: title, summary: Labels::CITIZEN_URGENCY_OUTCOMES[outcome.kind], status: nil, professional_name: nil }
@@ -80,7 +82,17 @@ module Timeline
         Entry.new(kind: KIND, source_id: encounter.id, occurred_at: encounter.attendance.checked_in_at, unit: Labels.unit(unit),
                   professional: consultation && { name: Screenings::Json.staff_name(consultation.author_user), cbo_code: consultation.cbo_code },
                   title: title, summary: summary.presence, status: encounter.state,
-                  detail_ref: consultation && { type: "consultation", id: consultation.id }, citizen: citizen, document: nil)
+                  detail_ref: consultation && { type: "consultation", id: consultation.id }, citizen: citizen, document: nil,
+                  observation_hours: hours)
+      end
+
+      # 32b (plano, Desvio 2): da PRIMEIRA entrada ao último ended_at, ou a `now` com estadia aberta; nulo sem estadia.
+      def observation_hours(encounter, now)
+        stays = encounter.bed_stays.to_a
+        return nil if stays.empty?
+
+        finish = stays.any? { |s| s.ended_at.nil? } ? now : stays.filter_map(&:ended_at).max
+        ::Urgency::Observation.hours(stays.map(&:started_at).min, finish)
       end
 
       # A orientação de retorno com o motivo; na página do PEC externo, sem o
@@ -101,7 +113,7 @@ module Timeline
         label = labels.fetch(key) { labels[key] = ClinicalTerms.label("cid10", item.code, item.terminology_release_id) }
         "#{item.code} #{label}".strip
       end
-      private_class_method :citizen_scope, :pec_scope, :citizen_eligible?, :entry, :return_note, :cid
+      private_class_method :citizen_scope, :pec_scope, :citizen_eligible?, :entry, :observation_hours, :return_note, :cid
     end
   end
 end

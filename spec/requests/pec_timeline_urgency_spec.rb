@@ -67,4 +67,19 @@ RSpec.describe "Página do PEC com a urgência", type: :request do
     expect(Timeline::Query.call(person: Timeline::Person.for_patient(provisional.patient), kinds: %w[urgency]).entries.map(&:source_id))
       .to eq([ provisional.id ])
   end
+
+  it "32b: a página do PEC mostra 'observação 6 h' no resumo (HTML), e o cidadão não" do
+    shown = classified_and_finalized!(arrived!(upa, patient: patient))
+    bed = urgency_bed!(upa)
+    stay = observed!(shown, bed: bed, now: Time.current - 7.hours)
+    stay.update!(ended_at: stay.started_at + 6.hours + 20.minutes, end_kind: "outcome", ended_by_user: doctor)
+    Urgency::RecordOutcome.call(encounter: shown.reload, attrs: { "kind" => "discharged" }, by: doctor)
+    Citizen.create!(cpf: patient.cpf, phone: "+5541988887041", verification_level: "verified", patient_id: patient.id)
+    timeline_city!(record_mode: "integrated", clinical_record: false, documents: true, pec: true)
+    open_page
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include("observação 6 h")
+    citizen = Timeline::Query.call(person: Timeline::Person.for_patient(patient), kinds: %w[urgency], citizen_view: true).entries
+    expect(citizen.filter_map { |e| Timeline::Json.citizen(e) }.to_s).not_to include("observação", "observation_hours")
+  end
 end

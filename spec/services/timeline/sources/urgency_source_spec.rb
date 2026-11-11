@@ -222,4 +222,74 @@ RSpec.describe Timeline::Sources::UrgencySource do
       expect(citizen_query(Timeline::Person.for_cpf(patient.cpf)).entries).to be_empty
     end
   end
+
+  describe "horas de observação (32b, Task 14)" do
+    let(:bed) { urgency_bed!(upa) }
+    let(:other_bed) { urgency_bed!(upa) }
+    let(:t0) { Time.current.change(usec: 0) - 10.hours }
+
+    def in_care!(patient: self.patient) = in_care_encounter!(upa, patient: patient)
+
+    it "conta da PRIMEIRA entrada ao último ended_at (troca de leito não zera), em horas inteiras; o resumo ganha 'observação N h'" do
+      e = in_care!
+      observed!(e, bed: bed, now: t0)
+      last = observed!(e, bed: other_bed, now: t0 + 3.hours)
+      last.update!(ended_at: t0 + 6.hours + 50.minutes, end_kind: "outcome", ended_by_user: doctor)
+      entry = entries(Timeline::Person.for_patient(patient)).sole
+      expect(entry.observation_hours).to eq(6)
+      expect(entry.summary).to include("observação 6 h")
+      expect(Timeline::Json.professional(entry)).to include(observation_hours: 6)
+    end
+
+    it "estadia aberta conta até agora" do
+      e = in_care!
+      observed!(e, bed: bed, now: t0)
+      travel_to(t0 + 5.hours + 30.minutes) do
+        entry = entries(Timeline::Person.for_patient(patient)).sole
+        expect(entry.observation_hours).to eq(5)
+        expect(entry.summary).to include("observação 5 h")
+      end
+    end
+
+    it "sem estadia: nulo, sem texto, e a chave sai nula só na urgência" do
+      in_care!
+      entry = entries(Timeline::Person.for_patient(patient)).sole
+      expect(entry.observation_hours).to be_nil
+      expect(entry.summary.to_s).not_to include("observação")
+      expect(Timeline::Json.professional(entry)).to include(observation_hours: nil)
+    end
+
+    it "outras fontes não ganham a chave e o cidadão não vê nada" do
+      other = Timeline::Entry.new(kind: "attendance", source_id: "x", occurred_at: Time.current, unit: nil, professional: nil, title: "t",
+                                  summary: nil, status: nil, detail_ref: nil, citizen: nil, document: nil)
+      expect(other.observation_hours).to be_nil
+      expect(Timeline::Json.professional(other)).not_to have_key(:observation_hours)
+    end
+
+    it "o cidadão não recebe horas nem o texto" do
+      urgency_protocol!
+      e = closed!("discharged")
+      observed_bed = urgency_bed!(upa)
+      expect(e.reload.bed_stays).to be_empty
+      citizen = Timeline::Json.citizen(entries(Timeline::Person.for_patient(patient), citizen: true).sole)
+      expect(citizen.to_s).not_to include("observation_hours", "observação")
+      expect(observed_bed).to be_present
+    end
+
+    it "as estadias vêm em preload: sem N+1" do
+      3.times do |i|
+        p = urgency_patient!(urgency_seq!)
+        observed!(in_care!(patient: p), bed: urgency_bed!(upa), now: t0 + i.minutes)
+      end
+      person = Timeline::Person.for_patient(patient)
+      stays = 0
+      counter = ->(*, payload) { stays += 1 if payload[:sql].include?("urgency_bed_stays") && payload[:sql].start_with?("SELECT") }
+      ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { entries(person) }
+      few = stays
+      stays = 0
+      ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { entries(person) }
+      expect(few).to eq(stays)
+      expect(few).to be <= 1
+    end
+  end
 end

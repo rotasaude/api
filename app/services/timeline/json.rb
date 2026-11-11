@@ -10,6 +10,7 @@ module Timeline
       { id: "#{entry.kind}:#{entry.source_id}", kind: entry.kind, occurred_at: entry.occurred_at.iso8601,
         unit: entry.unit, professional: entry.professional, title: entry.title, summary: entry.summary,
         status: entry.status, detail_ref: entry.detail_ref }
+        .tap { |body| body[:observation_hours] = entry.observation_hours if entry.kind == "urgency" } # 32b: só a urgência
     end
 
     # nil quando a fonte não monta a visão do cidadão (fail-closed): quem
