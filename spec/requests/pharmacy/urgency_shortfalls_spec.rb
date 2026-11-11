@@ -240,5 +240,19 @@ RSpec.describe "Farmácia — faltas de estoque da UPA", type: :request do
       expect(json_body).to include("urgency_shortfalls" => 1)
       expect(json_body.keys).to eq(%w[expiring expired below_minimum in_transit pending_adjustments urgency_shortfalls])
     end
+
+    it "Q14: no central soma as abertas do local e todas as no_location abertas; no local unit, as no_location não contam" do
+      shortfall!(upa)
+      nowhere = shortfall!(orphan_upa)
+      closed = shortfall!(orphan_upa)
+      expect([ nowhere.cause, closed.cause ]).to eq(%w[no_location no_location])
+      reconcile(closed, as: central_keeper)
+      sign_in_as(central_keeper)
+      get "/pharmacy/alerts", params: { location_id: central.id }
+      expect(json_body).to include("urgency_shortfalls" => 1)
+      sign_in_as(pharmacist)
+      get "/pharmacy/alerts", params: { location_id: location.id }
+      expect(json_body).to include("urgency_shortfalls" => 1)
+    end
   end
 end

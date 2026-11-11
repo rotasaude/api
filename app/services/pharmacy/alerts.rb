@@ -8,7 +8,9 @@
 #   posição, inclusive item sem movimento);
 # - `in_transit`: transferências `sent` com destino no local, à espera do recebimento;
 # - `pending_adjustments`: ajustes `pending` do local, à espera de aprovação;
-# - `urgency_shortfalls` (módulo 32b, Task 11): faltas de estoque da UPA em aberto no local.
+# - `urgency_shortfalls` (módulo 32b, Task 11): faltas de estoque da UPA em aberto no local;
+#   no local central, somadas às `no_location` em aberto de todas as UPAs (Q14: quem
+#   lê e concilia essas faltas é o central, Q7).
 module Pharmacy
   module Alerts
     module_function
@@ -27,7 +29,13 @@ module Pharmacy
       { expiring: lots["expiring"].to_i, expired: lots["expired"].to_i, below_minimum: lots["below_minimum"].to_i,
         in_transit: StockTransfer.where(status: "sent", to_location_id: location.id).count,
         pending_adjustments: StockAdjustment.where(status: "pending", stock_location_id: location.id).count,
-        urgency_shortfalls: UrgencyStockShortfall.open_shortfalls.where(stock_location_id: location.id).count }
+        urgency_shortfalls: urgency_shortfalls(location) }
+    end
+
+    def urgency_shortfalls(location)
+      scope = UrgencyStockShortfall.open_shortfalls
+      scope = location.central? ? scope.where(stock_location_id: [ location.id, nil ]) : scope.where(stock_location_id: location.id)
+      scope.count
     end
   end
 end
