@@ -79,7 +79,7 @@ RSpec.describe Urgency::StartObservation, "concorrência" do
         DomainEvent.where("payload->>'patient_id' IN (?) OR payload->>'encounter_id' IN (?) OR payload->>'attendance_id' IN (?)",
                           patient_ids.presence || [ "" ], encounter_ids.presence || [ "" ], attendance_ids.presence || [ "" ]).delete_all
         UrgencyBedStay.where(urgency_encounter_id: encounter_ids).delete_all
-        UrgencyBed.where(id: ids[:bed]).delete_all
+        UrgencyBed.where(id: ids.values_at(:bed, :bed2).compact).delete_all
         # Sob `replica` as FKs não disparam: o encontro sai antes das classificações.
         UrgencyEncounter.where(id: encounter_ids).delete_all
         UrgencyClassification.where(urgency_encounter_id: encounter_ids).delete_all
@@ -130,6 +130,51 @@ RSpec.describe Urgency::StartObservation, "concorrência" do
       expect(UrgencyBedStay.open_stays.where(urgency_bed_id: ids[:bed]).pluck(:urgency_encounter_id)).to eq([ first ])
       expect(UrgencyBedStay.where(urgency_encounter_id: second)).to be_empty
       expect(DomainEvent.where(name: "urgency.observation_started").where("payload->>'encounter_id' IN (?)", ids[:encounters]).count).to eq(1)
+    end
+  end
+
+  # Q15: duas telas sobre o MESMO paciente, as duas sem estadia aberta no mapa.
+  # A primeira entrada fica parada antes do commit; a segunda (expected_stay_id
+  # null, leito diferente) espera a trava do encontro; solta a primeira, a
+  # segunda vê a estadia nova e recebe observation_changed, sem trocar o leito.
+  it "Q15: duas entradas do mesmo paciente com a tela velha: uma vence, a outra 409 observation_changed" do
+    in_city do
+      ids[:bed2] = UrgencyBed.create!(health_unit_id: ids[:unit], label: "OBS 02", updated_by_user: User.find(ids[:admin])).id
+    end
+    holding = Queue.new
+    holder = nil
+    original = DomainEvents.method(:publish)
+    allow(DomainEvents).to receive(:publish) do |*args, **kwargs, &blk|
+      result = original.call(*args, **kwargs, &blk)
+      if Thread.current == holder && args.first == "urgency.observation_started"
+        holding << true
+        release.pop(timeout: 10) or raise "timeout esperando release"
+      end
+      result
+    end
+    encounter = ids[:encounters].first
+    run = lambda do |bed_id, by_id|
+      in_city do
+        described_class.call(encounter: UrgencyEncounter.find(encounter), bed_id: bed_id, by: User.find(by_id),
+                             expected_stay_id: nil)
+      end
+    end
+
+    first_result = Queue.new
+    threads << (holder = Thread.new { first_result << run.call(ids[:bed], ids[:doctor]) })
+    holding.pop(timeout: 5) or raise "a primeira entrada não chegou a gravar a estadia"
+
+    second_result = Queue.new
+    threads << other = Thread.new { second_result << run.call(ids[:bed2], ids[:doc_user]) }
+    in_city { expect(wait_for_lock_wait).to be(true) } # a segunda espera a trava do encontro
+
+    release << true
+    expect(holder.join(5)).to be(holder)
+    expect(other.join(5)).to be(other)
+    results = [ first_result.pop(timeout: 1), second_result.pop(timeout: 1) ]
+    expect(results.map { |r| r.ok? ? :ok : r.reason }).to eq([ :ok, :observation_changed ])
+    in_city do
+      expect(UrgencyBedStay.where(urgency_encounter_id: encounter).pluck(:urgency_bed_id, :ended_at)).to eq([ [ ids[:bed], nil ] ])
     end
   end
 end

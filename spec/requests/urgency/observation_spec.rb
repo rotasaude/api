@@ -187,6 +187,50 @@ RSpec.describe "Urgência — observação", type: :request do
       expect(events("urgency.observation_ended", encounter)).to be_empty
     end
 
+    it "Q15: expected_stay_id null declara entrada; com estadia aberta (tela velha) → 409 observation_changed e nada muda" do
+      encounter = in_care_encounter!(upa)
+      other_bed = urgency_bed!(upa, label: "OBS 02")
+      own = observed!(encounter, bed: other_bed)
+      sign_in_as(doctor)
+      expect { enter(encounter, bed_id: bed.id, expected_stay_id: nil) }
+        .not_to(change { DomainEvent.where("name LIKE 'urgency.observation_%'").count })
+      expect_refusal(:conflict, "observation_changed")
+      expect(own.reload).to be_open
+      expect(UrgencyBedStay.where(urgency_encounter_id: encounter.id).count).to eq(1)
+
+      fresh = in_care_encounter!(upa)
+      enter(fresh, bed_id: bed.id, expected_stay_id: nil)
+      expect(response).to have_http_status(:created)
+    end
+
+    it "Q15: expected_stay_id com o id da estadia aberta troca; com outro id (ou sem estadia aberta) → 409; malformado → 422" do
+      encounter = in_care_encounter!(upa)
+      other_bed = urgency_bed!(upa, label: "OBS 02")
+      third_bed = urgency_bed!(upa, label: "OBS 03")
+      first = observed!(encounter, bed: bed)
+      sign_in_as(nurse)
+      enter(encounter, bed_id: other_bed.id, expected_stay_id: "nao-e-uuid")
+      expect_refusal(:unprocessable_entity, "invalid_request", "expected_stay_id")
+      enter(encounter, bed_id: other_bed.id, expected_stay_id: SecureRandom.uuid)
+      expect_refusal(:conflict, "observation_changed")
+      expect(first.reload).to be_open
+
+      enter(encounter, bed_id: other_bed.id, expected_stay_id: first.id)
+      expect(response).to have_http_status(:created)
+      second = UrgencyBedStay.open_stays.find_by!(urgency_encounter_id: encounter.id)
+      expect(second.urgency_bed_id).to eq(other_bed.id)
+
+      enter(encounter, bed_id: third_bed.id, expected_stay_id: first.id) # a estadia velha, de uma tela que não releu o mapa
+      expect_refusal(:conflict, "observation_changed")
+      expect(second.reload).to be_open
+
+      leave(encounter)
+      expect(response).to have_http_status(:ok)
+      enter(encounter, bed_id: third_bed.id, expected_stay_id: second.id)
+      expect_refusal(:conflict, "observation_changed")
+      expect(UrgencyBedStay.open_stays.where(urgency_encounter_id: encounter.id)).to be_empty
+    end
+
     it "encontro inexistente ou malformado → 404" do
       enter(Struct.new(:id).new(SecureRandom.uuid), bed_id: bed.id)
       expect(response).to have_http_status(:not_found)

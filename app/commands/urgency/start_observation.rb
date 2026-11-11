@@ -24,34 +24,47 @@
 # sobrepõe), publicando `urgency.observation_ended` (a velha) e
 # `urgency.observation_started` (a nova). Os eventos levam só encounter_id e
 # stay_id.
+#
+# Q15 (tela desatualizada): `expected_stay_id` declara o que a tela viu —
+# `nil` = entrada (nenhuma estadia aberta), um id = troca a partir daquela
+# estadia aberta. Conferido sob a trava do encontro, antes do leito: se não
+# bater com a estadia aberta → 409 observation_changed e nada é gravado. Sem a
+# chave (`ABSENT`), vale a regra antiga; malformado → 422 invalid_request
+# `expected_stay_id`.
 module Urgency
   module StartObservation
     BED_EXCLUSION = "excl_urgency_bed_stays_bed".freeze
     OPEN_INDEX = "idx_urgency_bed_stays_open_encounter".freeze
+    ABSENT = Object.new.freeze
 
     module_function
 
     # -> Result.ok(stay:, ended:) | fail(:missing_role | :missing_link | :cbo_not_allowed | :encounter_closed |
-    #    :not_in_care | :bed_taken) | fail(:invalid_request | :bed_unavailable, details: { path: "bed_id" })
-    def call(encounter:, bed_id:, by:, now: Time.current)
+    #    :not_in_care | :bed_taken | :observation_changed) | fail(:invalid_request | :bed_unavailable, details: { path: "bed_id" })
+    #    | fail(:invalid_request, details: { path: "expected_stay_id" })
+    def call(encounter:, bed_id:, by:, now: Time.current, expected_stay_id: ABSENT)
       unit_id = encounter.attendance.health_unit_id
       return Result.fail(Access.refusal(by, unit_id)) unless Access.clinical_link(by, unit_id)
       return refuse unless Input.uuid?(bed_id)
+      return refuse(:invalid_request, "expected_stay_id") unless expected_stay_id.equal?(ABSENT) || expected_stay_id.nil? ||
+                                                                Input.uuid?(expected_stay_id)
 
-      ApplicationRecord.transaction(requires_new: true) { start(encounter, bed_id.downcase, by, now) }
+      expected = expected_stay_id.is_a?(String) ? expected_stay_id.downcase : expected_stay_id
+      ApplicationRecord.transaction(requires_new: true) { start(encounter, bed_id.downcase, by, now, expected) }
     rescue ActiveRecord::StatementInvalid => e
       raise unless e.message.include?(BED_EXCLUSION) || e.message.include?(OPEN_INDEX)
 
       Result.fail(:bed_taken)
     end
 
-    def start(encounter, bed_id, by, now)
+    def start(encounter, bed_id, by, now, expected)
       attendance = Attendance.lock("FOR SHARE").find(encounter.attendance_id)
       locked = UrgencyEncounter.lock("FOR NO KEY UPDATE").find(encounter.id)
       return Result.fail(:encounter_closed) if locked.closed? || attendance.status == "closed"
       return Result.fail(:not_in_care) unless locked.state == "in_care" && attendance.status == "in_care"
 
       current = UrgencyBedStay.open_stays.lock.find_by(urgency_encounter_id: locked.id)
+      return Result.fail(:observation_changed) unless expected.equal?(ABSENT) || current&.id == expected
       bed = UrgencyBed.lock("FOR SHARE").find_by(id: bed_id)
       return refuse(:bed_unavailable) unless bed&.active && bed.health_unit_id == attendance.health_unit_id
       return refuse if current&.urgency_bed_id == bed.id
@@ -73,8 +86,8 @@ module Urgency
       UrgencyBedStay.where(urgency_bed_id: bed_id).where("ended_at IS NULL OR ended_at > ?", now).exists?
     end
 
-    def refuse(error = :invalid_request)
-      Result.fail(error, details: { path: "bed_id", problems: [ { path: "bed_id", error: error.to_s } ] })
+    def refuse(error = :invalid_request, path = "bed_id")
+      Result.fail(error, details: { path: path, problems: [ { path: path, error: error.to_s } ] })
     end
 
     private_class_method :start, :occupied?, :refuse

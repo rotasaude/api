@@ -24,6 +24,7 @@ module Urgency
       justification_required: :unprocessable_entity,
       # Módulo 32b (§4): a observação.
       not_in_care: :unprocessable_entity, bed_unavailable: :unprocessable_entity, not_in_observation: :unprocessable_entity,
+      observation_changed: :conflict, # Q15: a tela viu outra estadia (ou nenhuma)
       # A prescrição interna (§5): sem a consulta, item fora do catálogo prescritível, versão que não está ativa.
       consultation_required: :unprocessable_entity, catalog_item_invalid: :unprocessable_entity,
       prescription_not_active: :unprocessable_entity,

@@ -8,15 +8,17 @@
 # o vínculo nunca recebe 404). Unidade desconhecida → 404; que não é UPA →
 # 422 not_an_upa. Só o id da unidade na query.
 #
-# POST /urgency/encounters/:id/observation { bed_id } → 201 `{ encounter:
-# <detalhe> }` pelo Urgency::StartObservation (entrada ou troca de leito).
+# POST /urgency/encounters/:id/observation { bed_id, expected_stay_id? } → 201
+# `{ encounter: <detalhe> }` pelo Urgency::StartObservation (entrada ou troca de
+# leito; Q15: `expected_stay_id` null/id confere o que a tela viu → 409
+# observation_changed; sem a chave, a regra antiga).
 # POST /urgency/encounters/:id/observation/end {} → 200 `{ encounter:
 # <detalhe> }` pelo Urgency::EndObservation. Os dois só do corpo (chave
 # desconhecida → 422 com o nome da chave); quem escreve tem acesso clínico,
 # então o detalhe sai com o clínico e grava a trilha do encontro.
 module Urgency
   class ObservationsController < BaseController
-    START_KEYS = %w[bed_id].freeze
+    START_KEYS = %w[bed_id expected_stay_id].freeze
 
     def show
       return unless query_only!("health_unit_id")
@@ -36,7 +38,8 @@ module Urgency
       encounter = find_encounter(params[:id])
       return unless encounter
 
-      result = StartObservation.call(encounter: encounter, bed_id: body_param("bed_id"), by: Current.user)
+      expected = request.request_parameters.key?("expected_stay_id") ? body_param("expected_stay_id") : StartObservation::ABSENT
+      result = StartObservation.call(encounter: encounter, bed_id: body_param("bed_id"), by: Current.user, expected_stay_id: expected)
       return render_failure(result) if result.failure?
 
       render_encounter(UrgencyEncounter.find(encounter.id), clinical: true, status: :created)
