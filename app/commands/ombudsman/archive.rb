@@ -11,6 +11,9 @@
 # - `no_complement` é só do job diário (Task 17): ele chama o comando direto,
 #   com `actor: "system"` e `by: nil`; a recusa para a equipe (Q36) está no
 #   controlador.
+# De `awaiting_complement` o mesmo UPDATE fecha a suspensão: `suspended_days
+# += dias corridos locais entre o pedido e `now` (RecordComplement.suspended) e
+# `complement_requested_at` volta a nulo (painel e job diário).
 # Grava `concluded_at = now`, evento `archived` (visível, `data: { reason }`),
 # ombudsman.concluded { manifestation_id, outcome: "archived" } e o aviso
 # `archived` (Ombudsman::Notify, a ÚLTIMA escrita — F-24). Sob
@@ -29,7 +32,7 @@ module Ombudsman
       return Input.refuse("reason") unless Catalog::ARCHIVE_REASONS.include?(reason)
 
       duplicate = reason == "duplicate"
-      return Input.refuse("duplicate_of_id") unless duplicate ? uuid?(duplicate_of_id) : duplicate_of_id.nil?
+      return Input.refuse("duplicate_of_id") unless duplicate ? Input.uuid?(duplicate_of_id) : duplicate_of_id.nil?
 
       elsewhere = reason == "forwarded_elsewhere"
       body_name = external_body_name.is_a?(String) ? external_body_name.strip : nil
@@ -46,7 +49,9 @@ module Ombudsman
         original_id = duplicate_of_id&.downcase
         next Input.refuse("duplicate_of_id") if duplicate && (original_id == manifestation.id || !OmbudsmanManifestation.exists?(id: original_id))
 
-        manifestation.update!(state: "archived", archive_reason: reason, duplicate_of_id: (original_id if duplicate),
+        suspended = RecordComplement.suspended(manifestation, now)
+        manifestation.update!(state: "archived", suspended_days: manifestation.suspended_days + suspended, complement_requested_at: nil,
+                              archive_reason: reason, duplicate_of_id: (original_id if duplicate),
                               external_body_name: (body_name if elsewhere), concluded_at: now, updated_at: now)
         OmbudsmanEvent.create!(ombudsman_manifestation: manifestation, kind: "archived", actor: actor, actor_user: by,
                                text: nil, data: { "reason" => reason }, visible_to_citizen: true, created_at: now)
@@ -55,9 +60,5 @@ module Ombudsman
         Result.ok(manifestation: manifestation)
       end
     end
-
-    def uuid?(value) = value.is_a?(String) && value.match?(BaseController::UUID)
-
-    private_class_method :uuid?
   end
 end

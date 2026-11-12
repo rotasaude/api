@@ -18,7 +18,7 @@ module Ombudsman
       def self.increment(...) = Rails.cache.increment(...)
     end
 
-    UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
+    UUID = Input::UUID
     # Conflitos 409; papel e dono 403; inexistente 404; link vencido 410;
     # limites 429 (Q43: `too_many_requests`; o teto da cidade é
     # `daily_cap_reached`); o resto das recusas é 422.

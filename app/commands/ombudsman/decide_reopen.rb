@@ -5,7 +5,8 @@
 # - só `pending` (decidido → 409 already_decided); a trava é a de toda ação
 #   (cidadão → manifestação, Ombudsman::Lock) e depois o pedido;
 # - `accept` faz a reabertura (Ombudsman::Reopen.apply!) na mesma transação,
-#   com o texto no evento `reopened`; `reject` grava o evento visível
+#   com o texto no evento `reopened` (interno: o cidadão não o lê, só o
+#   `reopen_rejected` leva texto a ele); `reject` grava o evento visível
 #   `reopen_rejected` com o texto, que vai à linha do tempo do cidadão;
 # - nos dois, o aviso `reopen_decided` (Ombudsman::Notify, a ÚLTIMA escrita).
 module Ombudsman

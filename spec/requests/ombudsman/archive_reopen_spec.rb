@@ -83,6 +83,19 @@ RSpec.describe "Ouvidoria — arquivar, reabrir e pedido de reabertura", type: :
       end
     end
 
+    it "de awaiting_complement fecha a suspensão no mesmo UPDATE (suspended_days += dias locais, complement_requested_at nulo); reabrir zera de novo" do
+      m = open_one!(state: "awaiting_complement", complement_requested_at: now - 3.days, suspended_days: 2, complement_used: true)
+      sign_in_as(ombudsman!)
+
+      act(m, "archive", expected_state: "awaiting_complement", reason: "lack_of_clarity")
+      expect(response).to have_http_status(:ok)
+      expect(m.reload).to have_attributes(state: "archived", suspended_days: 5, complement_requested_at: nil)
+
+      act(m, "reopen", expected_state: "archived")
+      expect(response).to have_http_status(:ok)
+      expect(m.reload).to have_attributes(state: "in_analysis", suspended_days: 0, complement_requested_at: nil, complement_used: false, cycle: 2)
+    end
+
     it "duplicidade: sem a original → 422; com id ou com protocolo → archived com duplicate_of; a própria ou inexistente → 422" do
       original = open_one!
       m = open_one!
@@ -196,6 +209,25 @@ RSpec.describe "Ouvidoria — arquivar, reabrir e pedido de reabertura", type: :
                                                 text: "Nova análise a pedido da coordenação.")
       expect(DomainEvent.where(name: "ombudsman.reopened").sole.payload).to eq("manifestation_id" => m.id)
       expect(notices(m)).to be_empty
+    end
+
+    it "o texto do reopened é interno: a linha do tempo do cidadão traz a entrada sem texto" do
+      m = concluded!
+      sign_in_as(ombudsman!)
+      act(m, "reopen", expected_state: "answered", text: "Nota interna sobre a reabertura do caso.")
+      expect(events(m).sole.text).to eq("Nota interna sobre a reabertura do caso.")
+      entry = Ombudsman::Timeline.citizen(events(m)).sole
+      expect(entry[:kind]).to eq("reopened")
+      expect(entry).not_to have_key(:text)
+    end
+
+    it "com pedido pendente, `by` precisa ser um User (ArgumentError; nada gravado)" do
+      m = concluded!
+      expect(request_reopen(m)).to be_ok
+      expect { Ombudsman::Reopen.call(manifestation_id: m.id, expected_state: "answered", text: nil, by: nil, now: now) }
+        .to raise_error(ArgumentError)
+      expect(m.reload.state).to eq("answered")
+      expect(OmbudsmanReopenRequest.sole.state).to eq("pending")
     end
 
     it "archived (duplicidade) → in_analysis: archive_reason, duplicate_of_id e external_body_name voltam a nulo juntos; texto é opcional" do

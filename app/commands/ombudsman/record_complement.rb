@@ -64,6 +64,6 @@ module Ombudsman
       [ (now.in_time_zone.to_date - requested.in_time_zone.to_date).to_i, 0 ].max
     end
 
-    private_class_method :receive, :suspended
+    private_class_method :receive
   end
 end

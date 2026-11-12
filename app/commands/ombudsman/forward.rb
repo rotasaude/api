@@ -25,7 +25,7 @@ module Ombudsman
       return Input.refuse("health_unit_id") if !department_id.nil? && !health_unit_id.nil?
 
       key, destination_id = department_id.nil? ? [ "health_unit_id", health_unit_id ] : [ "department_id", department_id ]
-      return Input.refuse(key) unless destination_id.is_a?(String) && destination_id.match?(BaseController::UUID)
+      return Input.refuse(key) unless Input.uuid?(destination_id)
 
       text = Input.text(extract, Catalog::EXTRACT)
       return Input.refuse("extract") unless text

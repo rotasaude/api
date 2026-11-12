@@ -5,7 +5,12 @@
 # nem em mensagem de erro.
 module Ombudsman
   module Input
+    # Formato de id (uuid) das chaves recebidas; fonte única dos comandos.
+    UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
+
     module_function
+
+    def uuid?(value) = value.is_a?(String) && value.match?(UUID)
 
     # -> String sem as bordas | nil (não é String, ou fora do intervalo).
     def text(value, range)

@@ -13,6 +13,8 @@
 #   aceita (decidido por quem reabriu) e o cidadão recebe o aviso
 #   `reopen_decided` (a ÚLTIMA escrita — F-24); senão ficaria pendente num
 #   ciclo já passado e travaria o pedido seguinte.
+# O texto do evento `reopened` é INTERNO: o cidadão vê que reabriu, não o
+# texto (Timeline::TEXT_KINDS não inclui `reopened`).
 # `Reopen.apply!` é o mesmo passo, sobre a manifestação já travada, usado ao
 # aceitar o pedido (Ombudsman::DecideReopen). Sob Ombudsman::Lock, com
 # `expected_state` (409 manifestation_changed).
@@ -39,8 +41,10 @@ module Ombudsman
         next refusal if refusal
         next Result.fail(:invalid_transition) unless FROM.include?(manifestation.state)
 
-        apply!(manifestation, text: value, by: by, now: now)
         pending = OmbudsmanReopenRequest.lock("FOR UPDATE").find_by(ombudsman_manifestation_id: manifestation.id, state: "pending")
+        raise ArgumentError, "by" if pending && !by.is_a?(User)
+
+        apply!(manifestation, text: value, by: by, now: now)
         if pending
           pending.update!(state: "accepted", decided_by_user: by, decided_at: now, updated_at: now)
           Notify.call(manifestation: manifestation, kind: "reopen_decided", now: now)
