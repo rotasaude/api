@@ -6,4 +6,19 @@ class OmbudsmanMailer < ApplicationMailer
     @count = count
     mail(to: to, subject: "[rota-saúde] Teto diário da denúncia anônima atingido")
   end
+
+  def daily_summary(to:, date:, red:, yellow:)
+    @date = date.strftime("%d/%m/%Y")
+    @red = red
+    @yellow = yellow
+    mail(to: to, subject: "[rota-saúde] Resumo diário de prazos da ouvidoria")
+  end
+
+  def responder_summary(to:, date:, pending:, red:, yellow:)
+    @date = date.strftime("%d/%m/%Y")
+    @pending = pending
+    @red = red
+    @yellow = yellow
+    mail(to: to, subject: "[rota-saúde] Seus encaminhamentos da ouvidoria")
+  end
 end

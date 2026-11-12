@@ -78,6 +78,18 @@ module Ombudsman
       requested && requested.in_time_zone.to_date + settings.complement_days
     end
 
+    # Expressão SQL (boolean): o complemento pedido venceu — a data local do pedido
+    # mais complement_days já passou (o último dia ainda vale; o job arquiva no
+    # dia seguinte). Só quem está em awaiting_complement; o estado é o critério,
+    # nunca a presença de complement_requested_at (voltou/arquivou → nulo).
+    def complement_expired_sql(settings, today:)
+      OmbudsmanManifestation.sanitize_sql_array([
+        "(#{TABLE}.state = 'awaiting_complement' AND #{TABLE}.complement_requested_at IS NOT NULL " \
+        "AND ((#{TABLE}.complement_requested_at AT TIME ZONE 'UTC') AT TIME ZONE ?)::date + ? < CAST(? AS date))",
+        zone_name, settings.complement_days.to_i, today.to_date
+      ])
+    end
+
     # Janela do cidadão depois da conclusão (pedido de reabertura, pesquisa de
     # satisfação): até `days` dias corridos locais de `concluded_at`, inclusive
     # (o dia 31 já está fora de uma janela de 30).

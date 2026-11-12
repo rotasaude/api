@@ -191,6 +191,13 @@ default: &default
     queue: housekeeping
     schedule: "every day at 1am America/Sao_Paulo"
 
+  # Módulo 33 (ADR 0051; contrato §12): complemento vencido arquivado (no_complement)
+  # e resumo de prazos por e-mail; idempotente no dia (ombudsman_daily_runs).
+  ombudsman_deadlines:
+    class: Ombudsman::DeadlinesJob
+    queue: housekeeping
+    schedule: "every day at 7am America/Sao_Paulo"
+
   discard_old_failed_jobs:
     command: "SolidQueueRetention.discard_failed"
     queue: housekeeping
