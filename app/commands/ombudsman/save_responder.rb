@@ -4,14 +4,21 @@
 # exatamente um destino (`department_id` | `health_unit_id`) ativo; par
 # (usuário, destino) repetido, mesmo desligado → 409 already_responder
 # (desligar é `active = false`, religar é o PATCH). Editar: só `active`.
+# Chave fora dessas → 422 com o nome da chave.
 module Ombudsman
   module SaveResponder
     module_function
 
     # responder: nil cria. -> Result.ok(responder:) | fail(:invalid_request | :missing_responder_role, details: { path:, problems: }) |
     #    fail(:already_responder)
+    CREATE_KEYS = %w[user_id department_id health_unit_id].freeze
+    UPDATE_KEYS = %w[active].freeze
+
     def call(responder:, attrs:, by:)
       attrs = attrs.to_h.stringify_keys
+      refused = Input.unknown_key(attrs, responder ? UPDATE_KEYS : CREATE_KEYS)
+      return refused if refused
+
       responder ? update(responder, attrs) : create(attrs, by)
     rescue ActiveRecord::RecordNotUnique
       Result.fail(:already_responder)

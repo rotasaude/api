@@ -15,6 +15,8 @@ class DepartmentsController < Ombudsman::BaseController
   end
 
   def create
+    return unless query_only!
+
     result = Ombudsman::SaveDepartment.call(department: nil, attrs: body, by: Current.user)
     return render_failure(result) if result.failure?
 
@@ -22,6 +24,8 @@ class DepartmentsController < Ombudsman::BaseController
   end
 
   def update
+    return unless query_only!
+
     department = uuid?(params[:id]) ? Department.find_by(id: params[:id]) : nil
     return not_found unless department
 

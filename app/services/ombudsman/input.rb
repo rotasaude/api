@@ -24,6 +24,13 @@ module Ombudsman
 
     def valid_text?(value, range) = !text(value, range).nil?
 
+    # A primeira chave de `attrs` fora de `allowed`, recusada com o NOME
+    # (truncado) no path; nil quando todas são conhecidas.
+    def unknown_key(attrs, allowed)
+      unknown = (attrs.keys.map(&:to_s) - allowed).first
+      refuse(unknown[0, KEY_PATH_MAX]) if unknown
+    end
+
     # A recusa de um campo no formato uniforme `{ error, path, problems }`
     # (só o NOME do campo, nunca o valor).
     def refuse(path, error = :invalid_request)

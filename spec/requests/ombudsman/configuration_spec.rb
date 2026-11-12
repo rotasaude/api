@@ -419,4 +419,67 @@ RSpec.describe "Ouvidoria — configuração", type: :request do
       end
     end
   end
+
+  # Recusa uniforme da chave desconhecida: 422 com o NOME da chave no path,
+  # nada gravado (como as outras rotas do módulo).
+  describe "chave desconhecida" do
+    it "POST /departments → 422 com o nome da chave; chave na query → 422" do
+      sign_in_as(admin)
+      json_post "/departments", name: "Setor Novo", parent_id: SecureRandom.uuid
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "parent_id")
+      post "/departments?name=Setor", params: { name: "Setor Novo" }.to_json, headers: { "CONTENT_TYPE" => "application/json" }
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "name")
+      expect(Department.where(name: "Setor Novo")).to be_empty
+    end
+
+    it "PATCH /departments/:id → 422 com o nome da chave; chave na query → 422" do
+      dept = department!("Setor Antigo")
+      sign_in_as(admin)
+      json_patch "/departments/#{dept.id}", name: "Setor Renomeado", updated_by_user_id: admin.id
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "updated_by_user_id")
+      patch "/departments/#{dept.id}?active=false", params: { name: "Setor Renomeado" }.to_json, headers: { "CONTENT_TYPE" => "application/json" }
+      expect(json_body).to include("error" => "invalid_request", "path" => "active")
+      expect(dept.reload.name).to eq("Setor Antigo")
+    end
+
+    it "POST /ombudsman/subjects → 422 com o nome da chave" do
+      sign_in_as(ouvidor)
+      json_post "/ombudsman/subjects", name: "Assunto Novo", position: 1
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "position")
+      expect(OmbudsmanSubject.where(name: "Assunto Novo")).to be_empty
+    end
+
+    it "PATCH /ombudsman/subjects/:id com parent_id (o pai não muda) → 422 path parent_id" do
+      sign_in_as(ouvidor)
+      get "/ombudsman/subjects"
+      parent, other = json_body["items"].first(2)
+      child = parent["children"].first
+      json_patch "/ombudsman/subjects/#{child['id']}", name: "Movido", parent_id: other["id"]
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "parent_id")
+      expect(OmbudsmanSubject.find(child["id"])).to have_attributes(name: child["name"], parent_id: parent["id"])
+    end
+
+    it "POST /ombudsman/responders → 422 com o nome da chave" do
+      sign_in_as(ouvidor)
+      json_post "/ombudsman/responders", user_id: candidate!.id, department_id: department!.id, active: false
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "active")
+      expect(OmbudsmanResponder.count).to eq(0)
+    end
+
+    it "PATCH /ombudsman/responders/:id → 422 com o nome da chave" do
+      sign_in_as(ouvidor)
+      json_post "/ombudsman/responders", user_id: candidate!.id, department_id: department!.id
+      id = json_body["id"]
+      json_patch "/ombudsman/responders/#{id}", active: false, department_id: department!.id
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "department_id")
+      expect(OmbudsmanResponder.find(id).active).to be(true)
+    end
+  end
 end

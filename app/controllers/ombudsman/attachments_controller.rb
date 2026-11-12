@@ -1,6 +1,7 @@
 # Anexos da ouvidoria para a equipe (ADR 0051; contrato §5; Q2, Q43, U4).
 #   POST /ombudsman/attachments { filename, content_type, data } → 201 { id }:
 #     técnico ou ouvidor; dono = o usuário; 20 por hora por usuário.
+#   Nas duas rotas, chave na query ou fora das do corpo → 422 com o nome dela.
 #   POST /ombudsman/attachments/:id/link { justification? } → { url, expires_at }:
 #     URL curta (5 min) do download. Manifestação identificada: técnico ou
 #     ouvidor. Preservada ou anônima: só o ouvidor (403 missing_role), com a
@@ -15,7 +16,7 @@ module Ombudsman
     before_action :require_staff!
 
     def create
-      return unless query_only!
+      return unless body_keys!(%w[filename content_type data])
 
       result = Attachments.upload(data: body_param("data"), content_type: body_param("content_type"), filename: body_param("filename"),
                                   user: Current.user)
@@ -25,7 +26,7 @@ module Ombudsman
     end
 
     def link
-      return unless query_only!
+      return unless body_keys!(%w[justification])
 
       attachment = uuid?(params[:id]) ? OmbudsmanAttachment.find_by(id: params[:id]) : nil
       manifestation = attachment&.ombudsman_manifestation

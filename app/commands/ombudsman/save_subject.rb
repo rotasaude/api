@@ -1,14 +1,22 @@
 # POST/PATCH /ombudsman/subjects (ADR 0051; contrato §7): assunto ou subassunto
 # (só dois níveis: neto → 422 too_deep, path parent_id). Nome 2..80 sem as
 # bordas (Q8), único por pai sem distinguir caixa (409 name_taken). O pai não
-# muda depois de criado. `subject: nil` cria.
+# muda depois de criado (PATCH com `parent_id` → 422 path parent_id). Chave
+# fora de name/parent_id (criar) ou name/active (editar) → 422 com o nome da
+# chave. `subject: nil` cria.
 module Ombudsman
   module SaveSubject
     module_function
 
     # -> Result.ok(subject:) | fail(:invalid_request | :too_deep, details: { path:, problems: }) | fail(:name_taken)
+    CREATE_KEYS = %w[name parent_id].freeze
+    UPDATE_KEYS = %w[name active].freeze
+
     def call(subject:, attrs:)
       attrs = attrs.to_h.stringify_keys
+      refused = Input.unknown_key(attrs, subject ? UPDATE_KEYS : CREATE_KEYS)
+      return refused if refused
+
       name = Input.text(attrs["name"], Catalog::NAME) if attrs.key?("name") || subject.nil?
       return failure("name") if (attrs.key?("name") || subject.nil?) && name.nil?
       return failure("active") if attrs.key?("active") && ![ true, false ].include?(attrs["active"])

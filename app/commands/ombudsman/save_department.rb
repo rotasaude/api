@@ -1,14 +1,20 @@
 # POST/PATCH /departments (ADR 0051; contrato §7): setor da secretaria. Nome
 # 2..80 sem as bordas (Q8); repetido sem distinguir caixa → 409 name_taken
 # (índice). Desativar um setor com encaminhamento pendente é permitido. Chave
-# fora de name/active é ignorada. `department: nil` cria (nome obrigatório).
+# fora de name/active → 422 com o nome da chave. `department: nil` cria (nome
+# obrigatório).
 module Ombudsman
   module SaveDepartment
     module_function
 
     # -> Result.ok(department:) | fail(:invalid_request, details: { path:, problems: }) | fail(:name_taken)
+    KEYS = %w[name active].freeze
+
     def call(department:, attrs:, by:)
       attrs = attrs.to_h.stringify_keys
+      refused = Input.unknown_key(attrs, KEYS)
+      return refused if refused
+
       name = Input.text(attrs["name"], Catalog::NAME) if attrs.key?("name") || department.nil?
       problems = []
       problems << "name" if (attrs.key?("name") || department.nil?) && name.nil?

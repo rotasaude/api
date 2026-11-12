@@ -137,6 +137,14 @@ RSpec.describe "Ouvidoria — anexos", type: :request do
       expect(json_body["error"]).to eq("missing_role")
     end
 
+    it "chave fora de filename/content_type/data → 422 com o nome da chave; nada sobe" do
+      sign_in_as(technician)
+      json_post "/ombudsman/attachments", filename: "#{marker}.png", content_type: "image/png", data: png_base64, manifestation_id: "x"
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "manifestation_id")
+      expect(OmbudsmanAttachment.count).to eq(0)
+    end
+
     it "o 21º upload na hora → 429 too_many_requests" do
       memory_cache!
       sign_in_as(technician)
@@ -307,6 +315,15 @@ RSpec.describe "Ouvidoria — anexos", type: :request do
         expect(response).to have_http_status(:ok)
         expect(response.body.b).to eq(ombudsman_png)
       end
+    end
+
+    it "chave fora de justification → 422 com o nome da chave, sem URL nem acesso" do
+      att = linked!(preserved)
+      sign_in_as(ouvidor)
+      json_post "/ombudsman/attachments/#{att.id}/link", justification: "Preciso conferir o documento anexado.", scope: "identity"
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "scope")
+      expect(OmbudsmanIdentityAccess.count).to eq(0)
     end
 
     it "anexo órfão, id inexistente ou malformado → 404; quem não é da ouvidoria → 403" do
