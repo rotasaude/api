@@ -87,6 +87,31 @@ RSpec.describe RequestLogPathMask do
     end
   end
 
+  # Q58: na denúncia anônima, a linha de requisição não guarda o IP.
+  describe "IP da denúncia anônima" do
+    def logged_from(path, ip)
+      info, query = path.split("?", 2)
+      env = Rack::MockRequest.env_for("/").merge("PATH_INFO" => info, "QUERY_STRING" => query.to_s, "REMOTE_ADDR" => ip,
+                                                 "REQUEST_METHOD" => "POST")
+      Rails::Rack::Logger.new(->(_env) { [ 200, {}, [] ] }).send(:started_request_message, ActionDispatch::Request.new(env))
+    end
+
+    it "troca o IP por [FILTERED], inclusive com barras extras, percent-encoding e query" do
+      [ "/citizen/ombudsman/anonymous_reports", "//citizen//ombudsman/anonymous_reports/", "/citizen/ombudsman/%61nonymous_reports",
+        "/citizen/ombudsman/anonymous_reports?x=1" ].each do |raw|
+        message = logged_from(raw, "10.9.8.7")
+        expect(message).to include(%(Started POST "#{raw}" for [FILTERED] at ))
+        expect(message).not_to include("10.9.8.7")
+      end
+    end
+
+    it "mantém o IP nas outras rotas" do
+      [ "/citizen/ombudsman/manifestations", "/citizen/ombudsman/anonymous_reports/x", "/ombudsman/anonymous_reports" ].each do |raw|
+        expect(logged_from(raw, "10.9.8.7")).to include(" for 10.9.8.7 at ")
+      end
+    end
+  end
+
   describe "RoutingError no log de exceções" do
     def composed(message)
       wrapper = instance_double(ActionDispatch::ExceptionWrapper, has_cause?: false, exception_class_name: "ActionController::RoutingError",

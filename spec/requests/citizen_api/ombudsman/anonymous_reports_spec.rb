@@ -45,6 +45,21 @@ RSpec.describe "Denúncia anônima sem login", type: :request do
       expect(cap_events).to be_empty
     end
 
+    # Q58: a linha "Started POST … for <ip>" da denúncia anônima não guarda o
+    # IP; o limite por IP segue contando (Rails.cache).
+    it "a linha de requisição do log traz o caminho e [FILTERED] no lugar do IP" do
+      log = capture_log { anon_post({ body: text }, ip: "10.9.8.7") }
+      expect(response).to have_http_status(:created)
+      started = log.lines.grep(/Started POST/).join
+      expect(started).to include('"/citizen/ombudsman/anonymous_reports"', " for [FILTERED] at ") # controle positivo
+      expect(log).not_to include("10.9.8.7")
+
+      2.times { anon_post({ body: text }, ip: "10.9.8.7") }
+      anon_post({ body: text }, ip: "10.9.8.7")
+      expect(response).to have_http_status(:too_many_requests)
+      expect(json_body).to eq("error" => "too_many_requests")
+    end
+
     it "body de 20 a 4000 code points depois do strip (Q8); unidade inexistente ou inativa → 422" do
       anon_post({ body: "  #{'a' * 19}  " }, ip: "10.1.0.1")
       expect(response).to have_http_status(:unprocessable_content)

@@ -19,12 +19,19 @@
 # /tfd/files/<token>, o comprovante do TFD; FW6; e /ombudsman/files/<token>,
 # o anexo da manifestação, módulo 33): o token abre o arquivo.
 #
+# A denúncia anônima (POST /citizen/ombudsman/anonymous_reports, módulo 33,
+# Q58) não guarda o IP de quem denuncia: na linha de requisição dela o IP vira
+# [FILTERED]. O IP segue valendo para o limite por IP (Rails.cache), que não
+# passa pelo log.
+#
 # Os access logs do proxy reverso ficam fora do Rails: gate de go-live.
 require "rails/rack/logger"
 
 module RequestLogPathMask
   TOKEN_PATH = %r{\A/([vr])/(?!lookup(?:[/?]|\z))[^/?]+}i
   FILE_TOKEN_PATH = %r{\A/(exams|tfd|ombudsman)/files/[^/?]+}i
+
+  ANONYMOUS_IP_PATH = %r{\A/citizen/ombudsman/anonymous_reports/?\z}i
 
   FALLBACK = "/[FILTERED]".freeze
 
@@ -48,6 +55,9 @@ module RequestLogPathMask
     FALLBACK
   end
 
+  # O caminho (sem a query, normalizado) cuja linha de requisição não guarda o IP.
+  def self.hide_ip?(path) = normalize(path.to_s.b.split("?", 2).first).match?(ANONYMOUS_IP_PATH)
+
   # Decodifica %XX (sem tratar "+" como espaço) e colapsa barras repetidas,
   # em binário.
   def self.normalize(info)
@@ -69,7 +79,15 @@ module RequestLogPathMask
       path = request.filtered_path
       masked = RequestLogPathMask.mask(path)
       message = super
-      masked == path ? message : message.sub(%("#{path}"), %("#{masked}"))
+      message = message.sub(%("#{path}"), %("#{masked}")) unless masked == path
+      return message unless RequestLogPathMask.hide_ip?(path)
+
+      ip = request.remote_ip.to_s
+      message = message.sub(" for #{ip} at ", " for [FILTERED] at ")
+      # Formato inesperado: nunca o IP; cai no fallback abaixo.
+      raise "IP left in the request line" if ip.present? && message.include?(ip)
+
+      message
     rescue StandardError
       %(Started #{request.request_method} "#{FALLBACK}")
     end
