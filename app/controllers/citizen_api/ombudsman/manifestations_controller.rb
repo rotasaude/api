@@ -6,8 +6,9 @@
 # §3; §16 U1, Q19, Q40, Q42, Q43, Q45, Q46). A sessão é do TELEFONE: a lista
 # traz as manifestações de todos os cidadãos dele (cpf_masked quando há mais de
 # um), mais nova primeiro; a anônima não tem cidadão e nunca aparece. O
-# `citizen_id` do POST fora da sessão → 403 not_own_citizen; o `:id` de outro
-# cidadão → 404. Sem o cidadão na sessão, o POST aceita o par declarado
+# `citizen_id` do POST fora da sessão → 403 not_own_citizen (com `cpf` junto,
+# antes disso: 422 path cpf); o `:id` de outro cidadão → 404. Sem o cidadão
+# na sessão, o POST aceita o par declarado
 # `{ cpf, full_name }` (Ombudsman::Register). O detalhe marca como lidos os
 # avisos daquela manifestação. Texto, nome e CPF só do corpo JSON: chave fora
 # da lista no corpo, ou qualquer chave na query → 422 com o path (só o nome da
@@ -58,6 +59,10 @@ module CitizenApi
         attrs = request.request_parameters
         unknown = (attrs.keys - CREATE_KEYS).first
         return render_refusal(unknown.to_s[0, KEY_PATH_MAX]) if unknown
+
+        # As duas formas de identificação ao mesmo tempo é erro de forma, antes
+        # da posse (override T8.1): 422 path cpf mesmo com citizen_id alheio.
+        return render_refusal("cpf") unless attrs["citizen_id"].nil? || attrs["cpf"].nil?
 
         citizen = nil
         unless attrs["citizen_id"].nil?

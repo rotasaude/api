@@ -153,6 +153,10 @@ RSpec.describe "Ouvidoria — manifestações pelo canal do cidadão", type: :re
                                                        kind: "complaint", identification_mode: "identified", body: text
       end
       expect(response).to have_http_status(:created)
+      # Controle positivo: a captura viu as requisições e o filtro agiu.
+      expect(log).to include("CitizenApi::Ombudsman::ManifestationsController#create")
+      expect(log).to include("CitizenApi::Ombudsman::AttachmentsController#create")
+      expect(log).to include("[FILTERED]")
       expect(log).not_to include("sigiloso")
       expect(log).not_to include("Sigilosa")
       expect(log).not_to include("111.444.777-35")
@@ -207,6 +211,14 @@ RSpec.describe "Ouvidoria — manifestações pelo canal do cidadão", type: :re
     it "as formas da identificação: as duas → path cpf; nenhuma → path citizen_id; full_name sem cpf ou fora de 2..120 → path full_name" do
       own = web_citizen!(phone: phone)
       declared(citizen_id: own.id)
+      expect(json_body).to include("error" => "invalid_request", "path" => "cpf")
+      # As duas formas ao mesmo tempo é erro de forma, antes da posse (override T8.1):
+      # o citizen_id de outro telefone com cpf também é 422 path cpf, não 403.
+      foreign = web_citizen!(phone: "+5541911112222")
+      declared(citizen_id: foreign.id)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "cpf")
+      declared(citizen_id: SecureRandom.uuid)
       expect(json_body).to include("error" => "invalid_request", "path" => "cpf")
       declared(cpf: nil, full_name: nil)
       expect(json_body).to include("error" => "invalid_request", "path" => "citizen_id")
@@ -280,6 +292,9 @@ RSpec.describe "Ouvidoria — manifestações pelo canal do cidadão", type: :re
     it "o formato do §3 com cor; a linha do tempo só com o visível e o texto pronto; nada da equipe" do
       manifestation = manifestation!(citizen: citizen, referred_health_unit: unit, received_at: 3.days.ago)
       first = raw_attachment!(manifestation: manifestation, filename: "anexo-1.png")
+      # Sob travel_to os dois nasceriam no mesmo instante e a ordem (created_at,
+      # id) cairia no uuid: um segundo entre eles fixa "Anexo 1", "Anexo 2".
+      travel 1.second
       second = raw_attachment!(manifestation: manifestation, filename: "anexo-2.png")
       event!(manifestation, "received", visible: true, actor: "citizen", at: 3.days.ago)
       event!(manifestation, "classified", visible: false, data: { "subject_id" => SecureRandom.uuid }, at: 2.days.ago)

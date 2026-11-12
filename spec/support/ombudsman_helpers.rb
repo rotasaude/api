@@ -65,7 +65,9 @@ module OmbudsmanHelpers
                                      created_by_user: created_by_user }.merge(attrs))
   end
 
-  # O caminho real (Ombudsman::Register) chega na Task 8; até lá, o cru.
+  # Gravação crua (aceita qualquer estado e coluna, para montar cenários); o
+  # caminho real do canal web é o Ombudsman::Register (Task 8), coberto por
+  # spec/commands/ombudsman/register_spec.rb.
   def manifestation!(**attrs) = raw_manifestation!(**attrs)
 
   # Anexo com o arquivo PNG do upload: órfão (sem manifestação, arquivo não
