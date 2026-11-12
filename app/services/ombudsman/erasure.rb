@@ -16,6 +16,12 @@
 #
 # Os avisos da ouvidoria do par saem (o trigger deixa o DELETE passar); a
 # pesquisa de satisfação fica (não tem o cidadão).
+#
+# purge_orphan_uploads!: os anexos que as sessões do par subiram e não ligaram
+# saem já, sem esperar o job do órfão de 24 h. Sai o ExamFile não consumido e
+# o anexo vai pela cascata (o trigger do anexo deixa apagar só o órfão). O
+# anexo ligado tem o arquivo consumido e nunca casa. Chamado ANTES de as
+# sessões do par sumirem.
 module Ombudsman
   module Erasure
     module_function
@@ -28,6 +34,11 @@ module Ombudsman
         manifestation.update_columns(**missing, citizen_id: nil, updated_at: now)
       end
       OmbudsmanNotice.where(citizen_id: citizen.id).delete_all
+    end
+
+    def purge_orphan_uploads!(sessions)
+      orphans = OmbudsmanAttachment.where(ombudsman_manifestation_id: nil, citizen_session_id: sessions.select(:id))
+      ExamFile.where(id: orphans.select(:exam_file_id), consumed_at: nil).delete_all
     end
   end
 end

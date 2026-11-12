@@ -170,6 +170,9 @@ module Citizens
         conversation.update_columns(phone: tombstone, updated_at: Time.current)
       end
 
+      # ADR 0051: os anexos órfãos que as sessões do par subiram, antes de as
+      # sessões sumirem (o anexo guarda só o id da sessão).
+      Ombudsman::Erasure.purge_orphan_uploads!(CitizenSession.where(phone: phones))
       # Não há chave estrangeira nem trigger que segure estes DELETEs
       # (campaign_recipients_append_only deixa o DELETE passar de propósito).
       CitizenSession.where(phone: phones).delete_all

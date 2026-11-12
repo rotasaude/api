@@ -112,6 +112,30 @@ RSpec.describe "Exclusão LGPD com manifestação da ouvidoria (ADR 0051)", type
     expect(json_body).to include("phone" => phone, "manifestant_cpf" => cpf)
   end
 
+  # LGPD: o anexo que o par subiu e não ligou (órfão da sessão dele) sai junto
+  # com a sessão, sem esperar o job de 24 h; o ligado é da manifestação e fica.
+  it "apaga os anexos órfãos das sessões do par e os arquivos deles; o ligado e o órfão de outro par ficam" do
+    cpf = citizen.cpf
+    upload = ->(session) { Ombudsman::Attachments.upload(data: png_base64, content_type: "image/png", filename: "anexo-1.png", citizen_session: session).payload.fetch(:attachment) }
+    session = CitizenSession.start!(phone: phone).first
+    old_session = CitizenSession.start!(phone: phone).first
+    orphans = [ upload.(session), upload.(old_session) ]
+    linked = upload.(session)
+    manifestation = raw_manifestation!(citizen: citizen)
+    ApplicationRecord.transaction { Ombudsman::Attachments.link!(ids: [ linked.id ], manifestation: manifestation, owner: session) }
+    other = upload.(CitizenSession.start!(phone: "+5541911112222").first)
+    staff_orphan = raw_attachment!(uploaded_by: "staff")
+
+    erase!(cpf)
+
+    expect(OmbudsmanAttachment.where(id: orphans.map(&:id))).to be_empty
+    expect(ExamFile.where(id: orphans.map(&:exam_file_id))).to be_empty
+    expect(linked.reload).to have_attributes(ombudsman_manifestation_id: manifestation.id)
+    expect(linked.exam_file.reload.consumed_at).to be_present
+    expect(OmbudsmanAttachment.where(id: [ other.id, staff_orphan.id ]).count).to eq(2)
+    expect(ExamFile.where(id: [ other.exam_file_id, staff_orphan.exam_file_id ]).count).to eq(2)
+  end
+
   it "Q56: com nome social, manifestant_name recebe o nome social, não o civil; o CPF segue identificando a pessoa" do
     citizen.update!(social_name: "Renata Exclusão")
     m = raw_manifestation!(citizen: citizen, state: "in_analysis")
