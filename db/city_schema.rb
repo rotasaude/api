@@ -2641,7 +2641,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_900002) do
     t.uuid "parent_id"
     t.integer "position", default: 0, null: false
     t.datetime "updated_at", null: false
-    t.index "COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(name)", name: "idx_ombudsman_subjects_name", unique: true
+    t.index "COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower((name)::text)", name: "idx_ombudsman_subjects_name", unique: true
   end
 
   create_table "otp_challenges", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
