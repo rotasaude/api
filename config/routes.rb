@@ -788,6 +788,9 @@ Rails.application.routes.draw do
     post  "manifestations/:id/interim_response",   to: "actions#interim_response"
     post  "manifestations/:id/final_response",     to: "actions#final_response"
     post  "manifestations/:id/change_resolution",  to: "actions#change_resolution"
+    post  "manifestations/:id/archive",            to: "actions#archive"
+    post  "manifestations/:id/reopen",             to: "actions#reopen"
+    post  "reopen_requests/:id/decide",            to: "reopen_requests#decide"
     post  "forwardings/:id/cancel",      to: "forwardings#cancel"
     # Ponto de resposta (§6; Q23, Q48): o inbox do respondente e as ações dele.
     get   "inbox",             to: "inbox#index"

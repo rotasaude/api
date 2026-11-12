@@ -668,4 +668,11 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include("ombudsman.concluded")
     expect(DomainEvents.registry["ombudsman.concluded"]).to be_empty
   end
+
+  # Módulo 33 (ADR 0051; Task 14): a reabertura (Ombudsman::Reopen, de ofício
+  # ou ao aceitar o pedido) — só manifestation_id; sem consumidor.
+  it "declares ombudsman.reopened with no consumer" do
+    expect(DomainEvents.registry.keys).to include("ombudsman.reopened")
+    expect(DomainEvents.registry["ombudsman.reopened"]).to be_empty
+  end
 end

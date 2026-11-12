@@ -338,8 +338,8 @@ RSpec.describe "Ouvidoria — classificar, encaminhar e o ponto de resposta", ty
       expect(response).to have_http_status(:ok)
       expect(json_body.keys).to eq(%w[items next_before])
       item = json_body.fetch("items").sole
-      expect(item.keys).to match_array(%w[id destination extract due_on color state created_at])
-      expect(item).to include("id" => mine.id, "extract" => extract, "state" => "pending", "due_on" => (today + 20).iso8601,
+      expect(item.keys).to match_array(%w[id destination extract due_on color state created_at extended])
+      expect(item).to include("id" => mine.id, "extract" => extract, "state" => "pending", "extended" => false, "due_on" => (today + 20).iso8601,
                               "color" => "green", "destination" => { "kind" => "department", "id" => department.id, "name" => "Atenção Primária" })
       [ m.protocol, m.id, OmbudsmanHelpers::BODY, m.subject.name, citizen.full_name, citizen.cpf, citizen.cpf_masked, "UBS Encaminhada" ]
         .each { |secret| expect(response.body).not_to include(secret) }
@@ -360,7 +360,7 @@ RSpec.describe "Ouvidoria — classificar, encaminhar e o ponto de resposta", ty
       get "/ombudsman/inbox?state[]=replied"
       item = json_body["items"].sole
       expect(item).to include("id" => replied.id, "state" => "replied", "reply" => reply_text, "color" => nil)
-      expect(item.keys).to match_array(%w[id destination extract due_on color state created_at reply])
+      expect(item.keys).to match_array(%w[id destination extract due_on color state created_at extended reply])
 
       [ "state=pending", "state[]=outro", "state[]=", "cpf=1" ].each do |query|
         get "/ombudsman/inbox?#{query}"
@@ -380,7 +380,7 @@ RSpec.describe "Ouvidoria — classificar, encaminhar e o ponto de resposta", ty
 
       log = capture_log { respond_to_forwarding(by_dept, "reply", expected_state: "pending", body: "  #{reply_text}  ") }
       expect(response).to have_http_status(:ok)
-      expect(json_body.keys).to match_array(%w[id destination extract due_on color state created_at reply])
+      expect(json_body.keys).to match_array(%w[id destination extract due_on color state created_at extended reply])
       expect(json_body).to include("id" => by_dept.id, "state" => "replied", "reply" => reply_text, "color" => nil)
       expect(log).not_to include(reply_text)
       expect(m.reload.state).to eq("forwarded")
@@ -431,7 +431,7 @@ RSpec.describe "Ouvidoria — classificar, encaminhar e o ponto de resposta", ty
 
       respond_to_forwarding(by_dept, "extend", expected_state: "pending", reason: "Aguardando a escala do mês seguinte.")
       expect(response).to have_http_status(:ok)
-      expect(json_body).to include("state" => "pending", "due_on" => (today + 40).iso8601)
+      expect(json_body).to include("state" => "pending", "due_on" => (today + 40).iso8601, "extended" => true)
       expect(by_dept.reload).to have_attributes(extended: true, due_on: today + 40, extension_reason: "Aguardando a escala do mês seguinte.")
       expect(OmbudsmanEvent.where(ombudsman_manifestation: m, kind: "forwarding_extended").sole)
         .to have_attributes(actor: "staff", actor_user_id: dept_responder.id, visible_to_citizen: false)

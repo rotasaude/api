@@ -489,8 +489,12 @@ Rails.application.config.to_prepare do
   DomainEvents.bind "ombudsman.forwarded", to: []
   DomainEvents.bind "ombudsman.forwarding_replied", to: []
   # Módulo 33 (contrato §1, §2; Task 13): a conclusão do ciclo — a resposta
-  # conclusiva (Ombudsman::FinalResponse, outcome "answered"; o arquivamento,
-  # "archived", entra na Task 14) — manifestation_id e outcome, nunca o
+  # conclusiva (Ombudsman::FinalResponse, outcome "answered", e o arquivamento
+  # Ombudsman::Archive, "archived") — manifestation_id e outcome, nunca o
   # texto, a resolutividade nem a pessoa; sem consumidor.
   DomainEvents.bind "ombudsman.concluded", to: []
+  # Módulo 33 (contrato §2; Task 14): a reabertura (Ombudsman::Reopen, de
+  # ofício ou ao aceitar o pedido do cidadão) — só manifestation_id; sem
+  # consumidor.
+  DomainEvents.bind "ombudsman.reopened", to: []
 end

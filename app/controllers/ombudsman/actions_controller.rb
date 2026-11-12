@@ -16,6 +16,12 @@
 #   interim_response   { expected_state, text }
 #   final_response     { expected_state, text, resolution? }
 #   change_resolution  { expected_state, resolution, text }      (ouvidor)
+#   archive            { expected_state, reason, duplicate_of_protocol? | duplicate_of_id?, external_body_name? } (ouvidor)
+#   reopen             { expected_state, text? }                 (ouvidor)
+# `archive` com `no_complement` → 422 path reason (Q36: só o job diário o usa,
+# chamando o comando direto). Na duplicidade a tela pode mandar o protocolo da
+# original (Q26, A28): aqui vira o id (protocolo desconhecido → 422 path
+# duplicate_of_protocol); os dois juntos → 422 path duplicate_of_id.
 # O método da rota `…/extend` é `extend_deadline`: uma ação `extend`
 # sobrescreveria Object#extend no controlador.
 module Ombudsman
@@ -28,9 +34,12 @@ module Ombudsman
       "extend_deadline" => %w[expected_state text],
       "interim_response" => %w[expected_state text],
       "final_response" => %w[expected_state text resolution],
-      "change_resolution" => %w[expected_state resolution text]
+      "change_resolution" => %w[expected_state resolution text],
+      "archive" => %w[expected_state reason duplicate_of_protocol duplicate_of_id external_body_name],
+      "reopen" => %w[expected_state text]
     }.freeze
-    OMBUDSMAN_ONLY = %w[extend_deadline change_resolution].freeze
+    OMBUDSMAN_ONLY = %w[extend_deadline change_resolution archive reopen].freeze
+    PROTOCOL = /\A\d{4}-\d{6,}\z/
 
     before_action :require_staff!
     before_action :require_ombudsman_role!, if: -> { OMBUDSMAN_ONLY.include?(action_name) }
@@ -80,6 +89,28 @@ module Ombudsman
     def change_resolution
       respond ChangeResolution.call(manifestation_id: params[:id], expected_state: body_param("expected_state"),
                                     resolution: body_param("resolution"), text: body_param("text"), by: Current.user)
+    end
+
+    def archive
+      reason = body_param("reason")
+      return render_refusal("reason") if reason == "no_complement"
+
+      duplicate_of_id = body_param("duplicate_of_id")
+      if body.key?("duplicate_of_protocol")
+        protocol = body_param("duplicate_of_protocol")
+        return render_refusal("duplicate_of_id") unless duplicate_of_id.nil?
+        return render_refusal("duplicate_of_protocol") unless reason == "duplicate" && protocol.is_a?(String) && protocol.match?(PROTOCOL)
+
+        duplicate_of_id = OmbudsmanManifestation.where(protocol: protocol).pick(:id)
+        return render_refusal("duplicate_of_protocol") unless duplicate_of_id
+      end
+      respond Archive.call(manifestation_id: params[:id], expected_state: body_param("expected_state"), reason: reason,
+                           duplicate_of_id: duplicate_of_id, external_body_name: body_param("external_body_name"), by: Current.user)
+    end
+
+    def reopen
+      respond Reopen.call(manifestation_id: params[:id], expected_state: body_param("expected_state"), text: body_param("text"),
+                          by: Current.user)
     end
 
     private
