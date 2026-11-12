@@ -7,6 +7,8 @@ module Ombudsman
   module Input
     # Formato de id (uuid) das chaves recebidas; fonte única dos comandos.
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
+    # Tamanho máximo do NOME de uma chave recusada no `path` (o nome, nunca o valor).
+    KEY_PATH_MAX = 64
 
     module_function
 

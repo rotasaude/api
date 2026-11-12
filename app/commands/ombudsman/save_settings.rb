@@ -21,7 +21,7 @@ module Ombudsman
       attrs = attrs.to_h.stringify_keys
       problems = attrs.filter_map do |key, value|
         range = key == CAP_KEY ? CAP : DAYS
-        path = key[0, BaseController::KEY_PATH_MAX]
+        path = key[0, Input::KEY_PATH_MAX]
         { error: "invalid_request", path: path } unless KEYS.include?(key) && value.is_a?(Integer) && range.cover?(value)
       end
       return Result.fail(:invalid_request, details: { path: problems.first[:path], problems: problems }) if problems.any?

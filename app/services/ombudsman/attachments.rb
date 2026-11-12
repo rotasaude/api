@@ -52,7 +52,7 @@ module Ombudsman
 
     def link_rows!(ids, manifestation, owner, event)
       return Result.ok(attachments: []) if ids.nil? || ids == []
-      return invalid("attachment_ids") unless ids.is_a?(Array) && ids.all? { |id| id.is_a?(String) && id.match?(Ombudsman::BaseController::UUID) } && ids.uniq.size == ids.size
+      return invalid("attachment_ids") unless ids.is_a?(Array) && ids.all? { |id| Input.uuid?(id) } && ids.uniq.size == ids.size
       return Result.fail(:too_many_attachments) if ids.size > Catalog::MAX_ATTACHMENTS
 
       file_ids = OmbudsmanAttachment.where(id: ids).pluck(:exam_file_id)

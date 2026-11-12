@@ -18,7 +18,6 @@ module Ombudsman
       def self.increment(...) = Rails.cache.increment(...)
     end
 
-    UUID = Input::UUID
     # Conflitos 409; papel e dono 403; inexistente 404; link vencido 410;
     # limites 429 (Q43: `too_many_requests`; o teto da cidade é
     # `daily_cap_reached`); o resto das recusas é 422.
@@ -31,7 +30,7 @@ module Ombudsman
       name_taken: :conflict, already_responder: :conflict,
       too_many_requests: :too_many_requests, daily_cap_reached: :too_many_requests
     }.freeze
-    KEY_PATH_MAX = 64
+    KEY_PATH_MAX = Input::KEY_PATH_MAX
 
     before_action :require_ombudsman!
 
@@ -51,7 +50,7 @@ module Ombudsman
 
     def forbid(reason = "missing_role") = render(json: { error: reason }, status: :forbidden)
     def not_found = render(json: { error: "not_found" }, status: :not_found)
-    def uuid?(value) = value.is_a?(String) && value.match?(UUID)
+    def uuid?(value) = Input.uuid?(value)
 
     # Texto e dado de pessoa só do corpo JSON: na query vale como ausente.
     def body_param(key) = request.request_parameters[key]

@@ -93,7 +93,7 @@ module Ombudsman
     def identified_person(attrs)
       if !attrs["citizen_id"].nil?
         id = attrs["citizen_id"]
-        return refuse("citizen_id") unless id.is_a?(String) && id.match?(BaseController::UUID)
+        return refuse("citizen_id") unless Input.uuid?(id)
 
         extra = %w[manifestant_name manifestant_contact manifestant_cpf].find { |key| !attrs[key].nil? }
         return extra ? refuse(extra) : Result.ok(citizen_id: id)
@@ -161,7 +161,7 @@ module Ombudsman
 
       unit_id = attrs["health_unit_id"]
       unless unit_id.nil?
-        valid = unit_id.is_a?(String) && unit_id.match?(BaseController::UUID) && HealthUnit.active_units.exists?(id: unit_id)
+        valid = Input.uuid?(unit_id) && HealthUnit.active_units.exists?(id: unit_id)
         return refuse("health_unit_id") unless valid
       end
 

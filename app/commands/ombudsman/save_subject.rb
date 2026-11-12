@@ -24,7 +24,7 @@ module Ombudsman
 
         parent = nil
         if attrs["parent_id"].present?
-          parent = attrs["parent_id"].is_a?(String) && attrs["parent_id"].match?(BaseController::UUID) ? OmbudsmanSubject.find_by(id: attrs["parent_id"]) : nil
+          parent = Input.uuid?(attrs["parent_id"]) ? OmbudsmanSubject.find_by(id: attrs["parent_id"]) : nil
           next failure("parent_id") unless parent
           next failure("parent_id", :too_deep) if parent.parent_id
         end

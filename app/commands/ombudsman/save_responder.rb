@@ -26,7 +26,7 @@ module Ombudsman
 
     def create(attrs, by)
       user_id = attrs["user_id"]
-      return failure("user_id") unless user_id.is_a?(String) && user_id.match?(BaseController::UUID)
+      return failure("user_id") unless Input.uuid?(user_id)
 
       keys = %w[department_id health_unit_id].select { |key| attrs[key].present? }
       return failure(attrs.key?("health_unit_id") ? "health_unit_id" : "department_id") unless keys.one?
@@ -45,7 +45,7 @@ module Ombudsman
     end
 
     def destination_for(key, id)
-      return nil unless id.is_a?(String) && id.match?(BaseController::UUID)
+      return nil unless Input.uuid?(id)
 
       (key == "department_id" ? Department : HealthUnit).find_by(id: id)
     end

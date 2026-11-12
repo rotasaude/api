@@ -59,7 +59,7 @@ module Ombudsman
     # Forma do corpo, na ordem do "primeiro campo" do 422; só as chaves dadas
     # (uuids em minúsculas, como o banco os devolve).
     def form(attrs)
-      return Input.refuse("subject_id") unless uuid?(attrs["subject_id"])
+      return Input.refuse("subject_id") unless Input.uuid?(attrs["subject_id"])
 
       values = { "subject_id" => attrs["subject_id"].downcase }
       if attrs.key?("kind")
@@ -69,7 +69,7 @@ module Ombudsman
       end
       OPTIONAL_IDS.each do |key|
         next unless attrs.key?(key)
-        return Input.refuse(key) unless attrs[key].nil? || uuid?(attrs[key])
+        return Input.refuse(key) unless attrs[key].nil? || Input.uuid?(attrs[key])
 
         values[key] = attrs[key]&.downcase
       end
@@ -102,8 +102,6 @@ module Ombudsman
       Professional.joins(:user).where(users: { deactivated_at: nil }).where(id: id).where(id: linked).exists?
     end
 
-    def uuid?(value) = value.is_a?(String) && value.match?(BaseController::UUID)
-
-    private_class_method :form, :targets, :active_professional?, :uuid?
+    private_class_method :form, :targets, :active_professional?
   end
 end

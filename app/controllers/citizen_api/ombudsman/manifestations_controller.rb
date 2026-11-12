@@ -159,7 +159,7 @@ module CitizenApi
                status: :unprocessable_entity
       end
 
-      def uuid?(value) = value.is_a?(String) && value.match?(::Ombudsman::BaseController::UUID)
+      def uuid?(value) = ::Ombudsman::Input.uuid?(value)
     end
   end
 end

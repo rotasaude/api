@@ -22,7 +22,7 @@ module Ombudsman
     def call(year:, attrs:, now: Time.current)
       attrs = attrs.to_h.stringify_keys
       unknown = (attrs.keys - KEYS).first
-      return Input.refuse(unknown.to_s[0, BaseController::KEY_PATH_MAX]) if unknown
+      return Input.refuse(unknown.to_s[0, Input::KEY_PATH_MAX]) if unknown
 
       values = {}
       attrs.each do |key, value|
