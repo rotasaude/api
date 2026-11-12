@@ -38,7 +38,7 @@ module OmbudsmanHelpers
 
   # Par declarado do canal web (CPF + telefone), sem consentimento (U1). CPF
   # com dígitos certos, um por chamada.
-  def web_citizen!(cpf: ombudsman_cpf!, phone: "+5541998765432") = Citizen.create!(cpf: cpf, phone: phone)
+  def web_citizen!(cpf: ombudsman_cpf!, phone: "+5541998765432", **attrs) = Citizen.create!(cpf: cpf, phone: phone, **attrs)
 
   def ombudsman_cpf!
     @ombudsman_cpf_seq = (@ombudsman_cpf_seq || 0) + 1

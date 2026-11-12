@@ -28,8 +28,8 @@ RSpec.describe "Ouvidoria — registro pela equipe", type: :request do
   end
 
   describe "POST /ombudsman/person_lookup" do
-    it "acha o cidadão pelo CPF: { citizen_id, name, cpf_masked }, sem criar paciente nem exigir par validado" do
-      citizen = web_citizen!(cpf: cpf)
+    it "acha o par verificado pelo CPF: { citizen_id, name, cpf_masked }, sem criar paciente" do
+      citizen = web_citizen!(cpf: cpf, verification_level: "verified")
       citizen.update!(full_name: "Maria da Silva")
       sign_in_as(technician)
       patients = Patient.count
@@ -39,34 +39,35 @@ RSpec.describe "Ouvidoria — registro pela equipe", type: :request do
       expect(Patient.count).to eq(patients)
     end
 
-    it "par nunca conferido → name nulo; ninguém → null" do
-      citizen = web_citizen!(cpf: cpf)
+    # Q58: só o par verificado. Sem ele, null, e a equipe registra com os
+    # dados digitados (manifestant_*).
+    it "CPF só com par declarado → null; ninguém → null" do
+      web_citizen!(cpf: cpf, phone: "+5541990000001")
+      web_citizen!(cpf: cpf, phone: "+5541990000002")
       sign_in_as(technician)
       json_post "/ombudsman/person_lookup", cpf: cpf
-      expect(json_body).to eq("citizen_id" => citizen.id, "name" => nil, "cpf_masked" => citizen.cpf_masked)
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to eq("null")
 
       json_post "/ombudsman/person_lookup", cpf: ombudsman_cpf!
       expect(response).to have_http_status(:ok)
       expect(response.body).to eq("null")
     end
 
-    it "vários pares do mesmo CPF: o verificado primeiro; entre iguais, o mais antigo" do
-      old = web_citizen!(cpf: cpf, phone: "+5541990000001")
-      Citizen.where(id: old.id).update_all(created_at: 3.days.ago)
-      newer = web_citizen!(cpf: cpf, phone: "+5541990000002")
-      Citizen.where(id: newer.id).update_all(created_at: 2.days.ago)
+    it "vários pares do mesmo CPF: só o verificado; entre verificados, o mais antigo" do
+      declared = web_citizen!(cpf: cpf, phone: "+5541990000001")
+      Citizen.where(id: declared.id).update_all(created_at: 3.days.ago)
+      verified = web_citizen!(cpf: cpf, phone: "+5541990000002", verification_level: "verified")
+      Citizen.where(id: verified.id).update_all(created_at: 2.days.ago)
+      later = web_citizen!(cpf: cpf, phone: "+5541990000003", verification_level: "verified")
+      Citizen.where(id: later.id).update_all(created_at: 1.day.ago)
       sign_in_as(technician)
       json_post "/ombudsman/person_lookup", cpf: cpf
-      expect(json_body["citizen_id"]).to eq(old.id)
-
-      newest = web_citizen!(cpf: cpf, phone: "+5541990000003")
-      Citizen.where(id: newest.id).update_all(verification_level: "verified", created_at: 1.day.ago)
-      json_post "/ombudsman/person_lookup", cpf: cpf
-      expect(json_body["citizen_id"]).to eq(newest.id)
+      expect(json_body["citizen_id"]).to eq(verified.id)
     end
 
     it "ignora o cadastro excluído (lápide)" do
-      citizen = web_citizen!(cpf: cpf)
+      citizen = web_citizen!(cpf: cpf, verification_level: "verified")
       Citizen.where(id: citizen.id).update_all(erased_at: Time.current)
       sign_in_as(technician)
       json_post "/ombudsman/person_lookup", cpf: cpf
@@ -103,14 +104,14 @@ RSpec.describe "Ouvidoria — registro pela equipe", type: :request do
     end
 
     it "o CPF não vai ao log" do
-      web_citizen!(cpf: cpf)
+      web_citizen!(cpf: cpf, verification_level: "verified")
       sign_in_as(technician)
       log = capture_log { json_post "/ombudsman/person_lookup", cpf: cpf }
       expect(log).not_to include(cpf)
     end
 
     it "depois do registro preservado, a busca devolve só o cidadão (nada da manifestação)" do
-      citizen = web_citizen!(cpf: cpf)
+      citizen = web_citizen!(cpf: cpf, verification_level: "verified")
       sign_in_as(technician)
       register(identification_mode: "preserved", citizen_id: citizen.id)
       expect(response).to have_http_status(:created)
@@ -122,7 +123,7 @@ RSpec.describe "Ouvidoria — registro pela equipe", type: :request do
 
   describe "POST /ombudsman/manifestations" do
     it "presencial identificado com o cidadão achado pelo CPF → 201 { id, protocol, due_on }; evento da equipe e o criador" do
-      citizen = web_citizen!(cpf: cpf)
+      citizen = web_citizen!(cpf: cpf, verification_level: "verified")
       sign_in_as(technician)
       json_post "/ombudsman/person_lookup", cpf: cpf
       register(citizen_id: json_body["citizen_id"])
