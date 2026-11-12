@@ -3719,14 +3719,13 @@ $do$;
 -- LGPD), e só então os manifestant_* podem passar de NULL a preenchidos (o
 -- declarado no registro fica; manifestant_phone, o telefone do cidadão
 -- excluído, §16 Q57, segue a mesma regra); fora disso os manifestant_* não
--- mudam. Linha
--- do tempo e acessos: só acréscimo (a re-cifra do texto e da justificativa);
--- satisfação: só acréscimo. Encaminhamento: extrato, destino e criação
--- imutáveis, sai de pending uma vez (e então congela), prorroga uma vez com
--- prazo e motivo juntos. Anexo: o órfão some (a cascata do ExamFile órfão), o
--- ligado nunca; liga uma vez. Pedido de reabertura: decidido uma vez, motivo
--- imutável. Aviso: só read_at, uma vez; apagado na exclusão LGPD. Relatório
--- anual publicado nunca muda. Assuntos em dois níveis. Respondentes,
+-- mudam. Linha do tempo e acessos: só acréscimo (a re-cifra do texto e da
+-- justificativa); satisfação: só acréscimo. Encaminhamento: extrato, destino e
+-- criação imutáveis, sai de pending uma vez (e então congela), prorroga uma
+-- vez com prazo e motivo juntos. Anexo: o órfão some (a cascata do ExamFile
+-- órfão), o ligado nunca; liga uma vez. Pedido de reabertura: decidido uma
+-- vez, motivo imutável. Aviso: só read_at, uma vez; apagado na exclusão LGPD.
+-- Relatório anual publicado nunca muda. Assuntos em dois níveis. Respondentes,
 -- assuntos, configuração e marcas diárias nunca somem. TRUNCATE recusado nas
 -- 13 tabelas.
 CREATE OR REPLACE FUNCTION rota_ombudsman_manifestation_guard() RETURNS trigger AS $fn$
