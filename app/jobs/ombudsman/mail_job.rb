@@ -5,7 +5,8 @@
 #                         contagem das denúncias anônimas do canal web do dia.
 #
 # Dedup no padrão do Surveillance::MailJob: ProcessedEvent (consumer
-# "ombudsman_mail", event_id "<kind>:<ref>") ANTES da entrega; a transação do
+# "ombudsman_mail", event_id "<kind>:<ref>") depois de saber que há o que
+# dizer (contagem zero não consome o dia) e ANTES da entrega; a transação do
 # with_city o desfaz se a entrega levantar, e o retry reentrega. Um e-mail por
 # destinatário (ninguém vê o endereço do outro); recusa permanente do servidor
 # pula o endereço e é contada. Não relê o interruptor: o bloqueio só acontece
@@ -30,10 +31,11 @@ module Ombudsman
       raise ArgumentError, "unknown kind" unless KINDS.include?(kind)
 
       with_city(city_slug) do
-        next if duplicate?("#{kind}:#{ref}")
-
+        # Primeiro o que dizer, depois o dedup: a rodada sem nada a dizer não
+        # consome o dia, e a seguinte com contagem ainda envia.
         mails = send("#{kind}_mails", ref)
         next if mails.nil?
+        next if duplicate?("#{kind}:#{ref}")
 
         recipients = Recipients.emails(%w[ombudsman])
         delivered, failed = deliver_each(recipients, mails)

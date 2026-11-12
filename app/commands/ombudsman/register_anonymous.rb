@@ -12,7 +12,11 @@
 #   `ombudsman.anonymous_cap_reached` com payload {} (Q21).
 #
 # A linha de configuração é garantida ANTES da trava (Q13/Q47): o banco vindo
-# do dump nasce sem ela. Nada do texto em erro, log ou evento.
+# do dump nasce sem ela. A hora efetiva (janela da contagem, `run_on` e
+# `created_at` da marca, received_at) é lida DEPOIS da trava quando `now` não
+# vem injetado: o envio que chega às 23:59:59 e pega a trava depois da
+# meia-noite é do dia novo, como o occurred_at do evento que ele publica.
+# Nada do texto em erro, log ou evento.
 module Ombudsman
   module RegisterAnonymous
     CAP_KIND = "anonymous_cap".freeze
@@ -21,10 +25,11 @@ module Ombudsman
 
     # -> Result.ok(manifestation:) | fail(:daily_cap_reached)
     #  | fail(:invalid_request, details: { path:, problems: })
-    def call(body:, health_unit_id:, now: Time.current)
-      Settings.ensure_defaults!(now: now)
+    def call(body:, health_unit_id:, now: nil)
+      Settings.ensure_defaults!(now: now || Time.current)
       ApplicationRecord.transaction do
         settings = OmbudsmanSetting.lock.find(1)
+        now ||= Time.current
         today = now.in_time_zone.to_date
         received = OmbudsmanManifestation.where(channel: "web", identification_mode: "anonymous",
                                                 received_at: now.in_time_zone.all_day).count

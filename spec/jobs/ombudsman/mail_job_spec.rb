@@ -59,6 +59,20 @@ RSpec.describe "Ombudsman::MailJob" do
     expect(ProcessedEvent.where(consumer: "ombudsman_mail", event_id: "anonymous_cap:2026-11-11").count).to eq(1)
   end
 
+  # Fix round 1: a rodada sem nada a dizer não gasta o dedup do dia.
+  it "contagem zero: não envia e não consome o dia; a rodada seguinte com contagem envia" do
+    deliveries.clear
+
+    deliver!
+    expect(deliveries).to be_empty
+    expect(ProcessedEvent.where(consumer: "ombudsman_mail")).to be_empty
+
+    anonymous!
+    deliver!
+    expect(deliveries.size).to eq(2)
+    expect(ProcessedEvent.where(consumer: "ombudsman_mail", event_id: "anonymous_cap:2026-11-11").count).to eq(1)
+  end
+
   it "conta o dia da referência, não o de hoje" do
     2.times { anonymous!(received_at: 1.day.ago) }
     anonymous!
