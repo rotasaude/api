@@ -179,7 +179,7 @@ RSpec.describe "Ouvidoria — registro pela equipe", type: :request do
 
     it "citizen_id: uuid inexistente, excluído ou com manifestant_* junto → 422" do
       citizen = web_citizen!(cpf: cpf)
-      erased = web_citizen!(cpf: ombudsman_cpf!)
+      erased = web_citizen!(cpf: ombudsman_cpf!, verification_level: "verified") # verificado: a recusa vem da lápide
       Citizen.where(id: erased.id).update_all(erased_at: Time.current)
       sign_in_as(technician)
       register(citizen_id: SecureRandom.uuid)

@@ -214,6 +214,7 @@ RSpec.describe Ombudsman::Register do
     end
 
     it "cidadão excluído entre a busca e a gravação → invalid_request citizen_id, nada gravado" do
+      citizen.update_columns(verification_level: "verified") # a recusa vem da lápide, não do par declarado (Q60)
       Citizen.where(id: citizen.id).update_all(erased_at: Time.current)
       result = described_class.call(attrs: attrs(citizen_id: citizen.id), channel: "phone", by: staff, now: now)
       expect(path_of(result)).to eq([ :invalid_request, "citizen_id" ])
