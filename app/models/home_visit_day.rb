@@ -24,4 +24,5 @@ class HomeVisitDay < ApplicationRecord
 
   def inspect = "#<HomeVisitDay id=#{id} state=#{state}>"
   alias_method :to_s, :inspect
+  def pretty_print(pp) = pp.text(inspect)
 end

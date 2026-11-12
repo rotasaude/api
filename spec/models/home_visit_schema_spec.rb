@@ -68,6 +68,25 @@ RSpec.describe "Esquema das visitas (ADR 0052)", type: :model do
     expect(visit).to be_recorded
     expect(visit.inspect).to eq("#<HomeVisit id=#{visit.id} state=recorded>")
     expect(HomeVisit.valid).to include(visit)
+    expect(visit.pretty_inspect.strip).to eq(visit.inspect)
+    expect(day.pretty_inspect.strip).to eq(day.inspect)
+    assignment = MicroAreaFieldAssignment.new(id: SecureRandom.uuid)
+    expect(assignment.pretty_inspect.strip).to eq("#<MicroAreaFieldAssignment id=#{assignment.id} state=active>")
+    expect(visit.to_s).to eq(visit.inspect)
+  end
+
+  # A real race needs committed rows and two sessions; at this layer the proof is
+  # that the day read in the guard takes the row lock (FOR SHARE), so a close
+  # (UPDATE) racing a withdrawal waits for it.
+  it "o guard da visita trava a folha com FOR SHARE ao ler o estado" do
+    body = ApplicationRecord.connection.select_value("SELECT pg_get_functiondef('rota_home_visit_guard'::regproc)")
+    expect(body).to match(/FROM home_visit_days WHERE id = .* AND state = 'open' FOR SHARE/)
+  end
+
+  it "retirada exige os três campos juntos (CHECK)" do
+    day = home_visit_day!(agent: agent, team: team)
+    visit = home_visit!(day: day)
+    refused(/ck_home_visits_withdrawn|home_visits/) { visit.update_columns(withdrawn_at: Time.current, withdrawn_by_user_id: agent.id) }
   end
 
   it "cifra reasons, measurements, note e withdrawal_reason (listas e objetos voltam como JSON)" do

@@ -119,7 +119,7 @@ class AddHomeVisits < ActiveRecord::Migration[8.1]
                          name: "ck_home_visits_subject"
     add_check_constraint :home_visits, "subject <> 'family_responsible' OR family_id IS NOT NULL", name: "ck_home_visits_family"
     add_check_constraint :home_visits, "outcome = 1 OR NOT has_reason", name: "ck_home_visits_outcome_reason"
-    add_check_constraint :home_visits, "(withdrawn_at IS NULL) = (withdrawn_by_user_id IS NULL)", name: "ck_home_visits_withdrawn"
+    add_check_constraint :home_visits, "(withdrawn_at IS NULL) = (withdrawn_by_user_id IS NULL) AND (withdrawn_at IS NULL) = (withdrawal_reason IS NULL)", name: "ck_home_visits_withdrawn"
     add_check_constraint :home_visits,
                          "property_type NOT IN (#{quoted(NON_RESIDENTIAL)}) OR (patient_id IS NULL AND family_id IS NULL)",
                          name: "ck_home_visits_non_residential"

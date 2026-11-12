@@ -12,4 +12,6 @@ class MicroAreaFieldAssignment < ApplicationRecord
   def active? = ended_at.nil?
 
   def inspect = "#<MicroAreaFieldAssignment id=#{id} state=#{active? ? 'active' : 'ended'}>"
+  alias_method :to_s, :inspect
+  def pretty_print(pp) = pp.text(inspect)
 end

@@ -1623,7 +1623,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900001) do
     t.index ["patient_id", "occurred_at"], name: "idx_home_visits_patient_done", where: "((withdrawn_at IS NULL) AND (outcome = 1))"
     t.check_constraint "(micro_area_id IS NULL) = out_of_area", name: "ck_home_visits_area"
     t.check_constraint "(subject)::text <> 'family_responsible'::text OR family_id IS NOT NULL", name: "ck_home_visits_family"
-    t.check_constraint "(withdrawn_at IS NULL) = (withdrawn_by_user_id IS NULL)", name: "ck_home_visits_withdrawn"
+    t.check_constraint "(withdrawn_at IS NULL) = (withdrawn_by_user_id IS NULL) AND (withdrawn_at IS NULL) = (withdrawal_reason IS NULL)", name: "ck_home_visits_withdrawn"
     t.check_constraint "outcome = 1 OR NOT has_reason", name: "ck_home_visits_outcome_reason"
     t.check_constraint "(origin)::text = ANY (ARRAY['dashboard'::character varying::text, 'field_app'::character varying::text]) AND ((origin)::text = 'field_app'::text) = (field_device_id IS NOT NULL)", name: "ck_home_visits_origin"
     t.check_constraint "(property_type)::text <> ALL (ARRAY['2'::character varying::text, '3'::character varying::text, '4'::character varying::text, '5'::character varying::text, '6'::character varying::text, '12'::character varying::text, '13'::character varying::text]) OR patient_id IS NULL AND family_id IS NULL", name: "ck_home_visits_non_residential"

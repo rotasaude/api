@@ -3985,7 +3985,9 @@ BEGIN
   IF new_row ->> 'withdrawn_at' IS NULL OR new_row ->> 'withdrawn_by_user_id' IS NULL OR new_row ->> 'withdrawal_reason' IS NULL THEN
     RAISE EXCEPTION 'home_visits: the withdrawal columns go from NULL to a value together';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM home_visit_days WHERE id = (old_row ->> 'home_visit_day_id')::uuid AND state = 'open') THEN
+  -- FOR SHARE: a close racing this withdrawal waits for it (and vice versa), as in
+  -- rota_professional_shift_guard.
+  IF NOT EXISTS (SELECT 1 FROM home_visit_days WHERE id = (old_row ->> 'home_visit_day_id')::uuid AND state = 'open' FOR SHARE) THEN
     RAISE EXCEPTION 'home_visits: a visit is withdrawn only while its day is open';
   END IF;
   RETURN NEW;

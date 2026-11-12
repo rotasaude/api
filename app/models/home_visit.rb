@@ -27,6 +27,7 @@ class HomeVisit < ApplicationRecord
 
   def inspect = "#<HomeVisit id=#{id} state=#{withdrawn? ? 'withdrawn' : 'recorded'}>"
   alias_method :to_s, :inspect
+  def pretty_print(pp) = pp.text(inspect)
 
   def as_json(*) = { "id" => id, "state" => (withdrawn? ? "withdrawn" : "recorded") }
 end
