@@ -299,7 +299,7 @@ RSpec.describe "Ouvidoria — anexos", type: :request do
         expect(access).to have_attributes(scope: "attachment", exam_file_id: att.exam_file_id, user_id: ouvidor.id,
                                           ombudsman_manifestation_id: manifestation.id, justification: text)
         event = DomainEvent.where(name: "ombudsman.identity_viewed").sole
-        expect(event.payload).to eq("manifestation_id" => manifestation.id)
+        expect(event.payload).to eq("manifestation_id" => manifestation.id, "access_id" => access.id)
         expect(log).not_to include(marker)
         expect(DomainEvent.pluck(:payload).to_json).not_to include(marker)
 

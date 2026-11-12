@@ -5,7 +5,7 @@
 #     URL curta (5 min) do download. Manifestação identificada: técnico ou
 #     ouvidor. Preservada ou anônima: só o ouvidor (403 missing_role), com a
 #     justificativa (10–500; senão 422 path "justification"), que grava o acesso
-#     (scope "attachment") e ombudsman.identity_viewed (só manifestation_id).
+#     (scope "attachment") e ombudsman.identity_viewed (manifestation_id e access_id).
 #     Sem step-up (U4). Anexo órfão ou inexistente → 404.
 module Ombudsman
   class AttachmentsController < BaseController
@@ -48,9 +48,9 @@ module Ombudsman
 
     def record_access!(manifestation, attachment, justification)
       ApplicationRecord.transaction do
-        OmbudsmanIdentityAccess.create!(ombudsman_manifestation: manifestation, user: Current.user, scope: "attachment",
-                                        exam_file_id: attachment.exam_file_id, justification: justification)
-        DomainEvents.publish("ombudsman.identity_viewed", manifestation_id: manifestation.id)
+        access = OmbudsmanIdentityAccess.create!(ombudsman_manifestation: manifestation, user: Current.user, scope: "attachment",
+                                                 exam_file_id: attachment.exam_file_id, justification: justification)
+        DomainEvents.publish("ombudsman.identity_viewed", manifestation_id: manifestation.id, access_id: access.id)
       end
     end
   end

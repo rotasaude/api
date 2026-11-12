@@ -224,8 +224,11 @@ RSpec.describe "Ouvidoria — caixa e detalhe da equipe", type: :request do
       attachment = raw_attachment!(manifestation: m, filename: "segredo-do-arquivo.png")
 
       sign_in_as(technician)
+      viewed = DomainEvent.where(name: "clinical_record.viewed").count
       show(m)
       expect(response).to have_http_status(:ok)
+      # §13 "Trilha": o detalhe não é prontuário — nenhum clinical_record.viewed.
+      expect(DomainEvent.where(name: "clinical_record.viewed").count).to eq(viewed)
       expect(json_body).to include("id" => m.id, "body" => OmbudsmanHelpers::BODY, "state" => "forwarded", "pending_forwardings" => 1,
                                    "subject" => { "id" => leaf.id, "name" => leaf.name, "parent" => { "id" => leaf.parent.id, "name" => leaf.parent.name } },
                                    "health_unit" => { "id" => unit.id, "name" => "UBS Norte" }, "identity_available" => false)
