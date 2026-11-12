@@ -216,12 +216,13 @@ RSpec.describe Ombudsman::Panel do
 
   describe "satisfação" do
     it "sem resposta: zeros e média nula" do
-      concluded!
+      5.times { concluded! }
       expect(panel[:satisfaction]).to eq(responses: 0, met: { yes: 0, partly: 0, no: 0 }, clear: { yes: 0, no: 0 }, avg_score: nil)
     end
 
     it "com 3 respostas a média e a contagem escondem; o total sai" do
       3.times { satisfaction!(concluded!) }
+      2.times { concluded! }
 
       result = panel[:satisfaction]
       expect(result[:avg_score]).to eq(suppressed)
@@ -260,6 +261,29 @@ RSpec.describe Ombudsman::Panel do
       expect(result).to include(responses: 6, avg_score: 5.0)
       expect(result[:met]).to eq(yes: 6, partly: 0, no: 0)
       expect(result[:clear]).to eq(yes: 6, no: 0)
+    end
+  end
+
+  describe "resolutividade e satisfação só existem em `answered`" do
+    it "com `answered` escondido, resolution_rate e todo o bloco de satisfação saem escondidos" do
+      5.times { satisfaction!(concluded!(resolution: "resolved")) }
+      received!(1)
+
+      result = panel
+      expect(result[:by_state]).to include(answered: suppressed, received: suppressed)
+      expect(result[:resolution_rate]).to eq(suppressed)
+      expect(result[:satisfaction]).to eq(responses: suppressed, met: { yes: suppressed, partly: suppressed, no: suppressed },
+                                          clear: { yes: suppressed, no: suppressed }, avg_score: suppressed)
+    end
+
+    it "com `answered` à mostra, seguem valendo as regras próprias" do
+      5.times { satisfaction!(concluded!(resolution: "resolved")) }
+      received!(6)
+
+      result = panel
+      expect(result[:by_state][:answered]).to eq(5)
+      expect(result[:resolution_rate]).to eq(100.0)
+      expect(result[:satisfaction][:responses]).to eq(5)
     end
   end
 
@@ -304,6 +328,10 @@ RSpec.describe Ombudsman::Panel do
       expect(pinned(0..8, 4)).to be_empty
       expect(pinned(0..10, 3)).to be_empty
       expect(pinned(0..12, 2)).to be_empty
+    end
+
+    it "partição de 5 células (0..8)" do
+      expect(pinned(0..8, 5)).to be_empty
     end
 
     it "a saída não depende da ordem das células" do

@@ -6,12 +6,19 @@
 # `satisfaction.responses`) saem sempre: qualquer partição à mostra os
 # entrega. Por isso cada partição (tipo, canal, estado, assunto com
 # `unclassified`, unidade, `met`, `clear`) leva a supressão COMPLEMENTAR
-# (Q53): com ao menos uma célula de 1..4 escondida, esconde-se também a menor
-# célula visível não nula até haver 2 escondidas somando 5 ou mais; zeros
-# ficam à mostra (`protect`). Taxas (`on_time_rate`, `resolution_rate`)
-# escondem também quando o complemento (den - num) está em 1..4; médias
-# (`avg_days_to_conclude`, `avg_score`) escondidas com 1..4 casos e `nil` sem
-# caso.
+# (Q53, `protect`): sem célula de 1..4, tudo à mostra; com ao menos uma, os
+# zeros também se escondem, e se esconde a menor célula visível (todas as
+# empatadas juntas, nunca pela ordem) até haver 2 escondidas somando 5 ou
+# mais e não todas 4; se nada restar, a partição inteira sai escondida.
+# Taxas (`on_time_rate`, `resolution_rate`) escondem também quando o
+# complemento (den - num) está em 1..4; médias (`avg_days_to_conclude`,
+# `avg_score`) escondidas com 1..4 casos e `nil` sem caso.
+#
+# Valores que repetem uma célula de by_state (Q54): `on_time_rate` e
+# `avg_days_to_conclude` (base = answered + archived) saem escondidos se
+# `answered` ou `archived` está escondido; `resolution_rate` e todo o bloco
+# `satisfaction` (só existem em `answered`) se `answered` está escondido,
+# mantendo a forma das chaves.
 #
 # - `on_time_rate`: das concluídas (concluded_at), as com data local de
 #   conclusão <= due_on. O prazo é SEMPRE o da configuração vigente
@@ -46,8 +53,9 @@ module Ombudsman
         by_state: by_state,
         by_subject: by_subject(subjects),
         by_health_unit: by_health_unit(scope) }
-        .merge(rates(scope, today, concluded_hidden: [ by_state[:answered], by_state[:archived] ].include?(SUPPRESSED)),
-               satisfaction: satisfaction(scope))
+        .merge(rates(scope, today, concluded_hidden: [ by_state[:answered], by_state[:archived] ].include?(SUPPRESSED),
+                          answered_hidden: by_state[:answered] == SUPPRESSED),
+               satisfaction: satisfaction(scope, hidden: by_state[:answered] == SUPPRESSED))
     end
 
     # -> [{ professional: { id, name }, by_kind: { kind => n }, total: }]: contagem
@@ -128,7 +136,7 @@ module Ombudsman
     # `concluded_hidden`: `answered` ou `archived` de by_state escondido; o
     # denominador de on_time_rate e a base de avg_days_to_conclude são essa
     # soma, então saem escondidos junto (senão fixam a célula).
-    def rates(scope, today, concluded_hidden:)
+    def rates(scope, today, concluded_hidden:, answered_hidden:)
       zone = Time.zone.tzinfo.name
       concluded_on = OmbudsmanManifestation.sanitize_sql_array([ "((ombudsman_manifestations.concluded_at AT TIME ZONE 'UTC') AT TIME ZONE ?)::date", zone ])
       due_on = Deadlines.due_on_sql(OmbudsmanSetting.current, today: today)
@@ -142,11 +150,13 @@ module Ombudsman
       )
       { on_time_rate: (concluded_hidden ? SUPPRESSED : rate(on_time, concluded)),
         avg_days_to_conclude: (concluded_hidden ? SUPPRESSED : average(concluded, days)),
-        resolution_rate: rate(resolved, with_resolution) }
+        resolution_rate: (answered_hidden ? SUPPRESSED : rate(resolved, with_resolution)) }
     end
 
     # `responses`, `met`, `clear` e `avg_score` das respostas das manifestações do universo.
-    def satisfaction(scope)
+    def satisfaction(scope, hidden:)
+      return { responses: SUPPRESSED, met: Catalog::MET.index_with { SUPPRESSED }.symbolize_keys, clear: { yes: SUPPRESSED, no: SUPPRESSED }, avg_score: SUPPRESSED } if hidden
+
       responses = OmbudsmanSatisfactionResponse.where(ombudsman_manifestation_id: scope.select(:id))
       met = Catalog::MET.index_with { |value| responses.where(met: value).count }
       clear = { yes: responses.where(clear: true).count, no: responses.where(clear: false).count }
