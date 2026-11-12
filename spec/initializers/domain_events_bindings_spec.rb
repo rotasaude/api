@@ -675,4 +675,16 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include("ombudsman.reopened")
     expect(DomainEvents.registry["ombudsman.reopened"]).to be_empty
   end
+
+  # Módulo 33 (ADR 0051; Task 20, conferência final): o registro tem
+  # exatamente os sete eventos do contrato (Ombudsman::Catalog::DOMAIN_EVENTS) e
+  # nenhum outro ombudsman.*; só o teto da denúncia anônima tem consumidor.
+  it "declares exactly the seven ombudsman events of the contract; only anonymous_cap_reached is consumed" do
+    names = DomainEvents.registry.keys.grep(/\Aombudsman\./)
+    expect(names).to match_array(Ombudsman::Catalog::DOMAIN_EVENTS)
+    expect(names.size).to eq(7)
+    consumed = names.reject { |name| DomainEvents.registry[name].empty? }
+    expect(consumed).to eq([ "ombudsman.anonymous_cap_reached" ])
+    expect(DomainEvents.registry["ombudsman.anonymous_cap_reached"].map(&:job)).to eq([ "Ombudsman::CapAlertJob" ])
+  end
 end
