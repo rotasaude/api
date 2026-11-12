@@ -2,13 +2,16 @@
 # agregados em SQL, nenhum texto nem dado de pessoa.
 #
 # Universo = manifestações com `received_at` no período (dias locais da
-# cidade, inclusive). Contagens por Analytics::Suppression.cell (1..4 →
-# `{ suppressed: true }`); o `total` (o de cima e o de cada grupo) usa
-# `group` sobre as partes de TODAS as partições do universo (tipo, canal,
-# estado, assunto): um total à mostra ao lado de uma parte escondida a
-# devolveria por subtração, de qualquer das partições. Taxas por `rate`;
-# médias (`avg_days_to_conclude`, `avg_score`) escondidas com 1..4 casos e
-# `nil` sem caso.
+# cidade, inclusive). Os totais (o de cima, o de cada grupo e
+# `satisfaction.responses`) saem sempre: qualquer partição à mostra os
+# entrega. Por isso cada partição (tipo, canal, estado, assunto com
+# `unclassified`, unidade, `met`, `clear`) leva a supressão COMPLEMENTAR
+# (Q53): com ao menos uma célula de 1..4 escondida, esconde-se também a menor
+# célula visível não nula até haver 2 escondidas somando 5 ou mais; zeros
+# ficam à mostra (`protect`). Taxas (`on_time_rate`, `resolution_rate`)
+# escondem também quando o complemento (den - num) está em 1..4; médias
+# (`avg_days_to_conclude`, `avg_score`) escondidas com 1..4 casos e `nil` sem
+# caso.
 #
 # - `on_time_rate`: das concluídas (concluded_at), as com data local de
 #   conclusão <= due_on. O prazo é SEMPRE o da configuração vigente
@@ -34,14 +37,12 @@ module Ombudsman
       states = counts(scope, :state, Catalog::STATES)
       subjects = subject_counts(scope)
       total = scope.count
-      parts = kinds.values + channels.values + states.values + subjects.values
-      total_cell = Analytics::Suppression.group(total, parts)
 
       { period: { from: from.iso8601, to: to.iso8601 },
-        total: total_cell,
-        by_kind: cells(kinds, total_cell),
-        by_channel: cells(channels, total_cell),
-        by_state: cells(states, total_cell),
+        total: total,
+        by_kind: cells(kinds, total),
+        by_channel: cells(channels, total),
+        by_state: cells(states, total),
         by_subject: by_subject(subjects),
         by_health_unit: by_health_unit(scope) }
         .merge(rates(scope, today), satisfaction: satisfaction(scope))
@@ -68,9 +69,27 @@ module Ombudsman
       values.index_with { |value| found.fetch(value, 0) }
     end
 
-    # Cada contagem como célula e o total do grupo.
-    def cells(counts, total_cell)
-      counts.transform_values { |count| Analytics::Suppression.cell(count) }.symbolize_keys.merge(total: total_cell)
+    # Cada contagem como célula (supressão complementar) e o total do grupo.
+    def cells(counts, total)
+      protect(counts).symbolize_keys.merge(total: total)
+    end
+
+    # Q53: { chave => contagem crua } → { chave => célula }. Com ao menos uma
+    # de 1..4, esconde também a menor visível não nula até haver 2 escondidas
+    # somando 5 ou mais (ou não restar o que esconder). Empate: a primeira.
+    def protect(counts)
+      hidden = counts.select { |_, count| Admin::SmallCount.small?(count) }.keys
+      unless hidden.empty?
+        candidates = counts.reject { |key, count| hidden.include?(key) || count.zero? }.sort_by { |_, count| count }.map(&:first)
+        hidden << candidates.shift while (hidden.size < 2 || hidden.sum { |key| counts[key] } < 5) && candidates.any?
+      end
+      counts.to_h { |key, count| [ key, hidden.include?(key) ? SUPPRESSED : count ] }
+    end
+
+    # Taxa em %: esconde também quando o complemento está em 1..4.
+    def rate(numerator, denominator)
+      value = Analytics::Suppression.rate(numerator, denominator)
+      value.is_a?(Numeric) && Admin::SmallCount.small?(denominator.to_i - numerator.to_i) ? SUPPRESSED : value
     end
 
     # { id do assunto de 1º nível (ou nil) => contagem crua }.
@@ -82,14 +101,15 @@ module Ombudsman
 
     def by_subject(subjects)
       names = OmbudsmanSubject.where(id: subjects.keys.compact).pluck(:id, :name).to_h
-      items = subjects.except(nil).map { |id, count| { id: id, name: names[id], count: Analytics::Suppression.cell(count) } }
-      items << { id: nil, name: nil, unclassified: true, count: Analytics::Suppression.cell(subjects.fetch(nil)) }
+      cells = protect(subjects)
+      items = cells.except(nil).map { |id, count| { id: id, name: names[id], count: count } }
+      items << { id: nil, name: nil, unclassified: true, count: cells.fetch(nil) }
     end
 
     def by_health_unit(scope)
       found = scope.where.not(referred_health_unit_id: nil).group(:referred_health_unit_id).count
       names = HealthUnit.where(id: found.keys).pluck(:id, :name).to_h
-      found.map { |id, count| { id: id, name: names[id], count: Analytics::Suppression.cell(count) } }
+      protect(found).map { |id, count| { id: id, name: names[id], count: count } }
            .sort_by { |item| [ item[:name].to_s, item[:id] ] }
     end
 
@@ -106,9 +126,9 @@ module Ombudsman
       with_resolution, resolved = scope.where.not(resolution: nil).pick(
         Arel.sql("COUNT(*)"), Arel.sql("COUNT(*) FILTER (WHERE resolution = 'resolved')")
       )
-      { on_time_rate: Analytics::Suppression.rate(on_time, concluded),
+      { on_time_rate: rate(on_time, concluded),
         avg_days_to_conclude: average(concluded, days),
-        resolution_rate: Analytics::Suppression.rate(resolved, with_resolution) }
+        resolution_rate: rate(resolved, with_resolution) }
     end
 
     # `responses`, `met`, `clear` e `avg_score` das respostas das manifestações do universo.
@@ -117,9 +137,9 @@ module Ombudsman
       met = Catalog::MET.index_with { |value| responses.where(met: value).count }
       clear = { yes: responses.where(clear: true).count, no: responses.where(clear: false).count }
       count, score = responses.pick(Arel.sql("COUNT(*)"), Arel.sql("AVG(score)"))
-      { responses: Analytics::Suppression.group(count, met.values + clear.values),
-        met: met.transform_values { |n| Analytics::Suppression.cell(n) }.symbolize_keys,
-        clear: clear.transform_values { |n| Analytics::Suppression.cell(n) },
+      { responses: count,
+        met: protect(met).symbolize_keys,
+        clear: protect(clear),
         avg_score: average(count, score) }
     end
 
@@ -131,6 +151,6 @@ module Ombudsman
       value.to_f.round(1)
     end
 
-    private_class_method :universe, :counts, :cells, :subject_counts, :by_subject, :by_health_unit, :rates, :satisfaction, :average
+    private_class_method :universe, :counts, :cells, :protect, :rate, :subject_counts, :by_subject, :by_health_unit, :rates, :satisfaction, :average
   end
 end

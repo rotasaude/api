@@ -10,7 +10,16 @@ module Ombudsman
     module_function
 
     # -> Result.ok(report:) | fail(:invalid_request, details: { path:, problems: }) | fail(:report_published)
-    def call(year:, attrs:)
+    # A linha de rascunho do ano (criada se falta), com o horário `now`.
+    def draft_for(year, now)
+      OmbudsmanAnnualReport.create_or_find_by!(year: year) do |report|
+        report.state = "draft"
+        report.created_at = now
+        report.updated_at = now
+      end
+    end
+
+    def call(year:, attrs:, now: Time.current)
       attrs = attrs.to_h.stringify_keys
       unknown = (attrs.keys - KEYS).first
       return Input.refuse(unknown.to_s[0, BaseController::KEY_PATH_MAX]) if unknown
@@ -23,11 +32,11 @@ module Ombudsman
       end
 
       OmbudsmanAnnualReport.transaction(requires_new: true) do
-        report = OmbudsmanAnnualReport.create_or_find_by!(year: year) { |new_report| new_report.state = "draft" }
+        report = draft_for(year, now)
         report.lock!
         next Result.fail(:report_published) if report.published?
 
-        report.update!(values) if values.any?
+        report.update!(values.merge("updated_at" => now)) if values.any?
         Result.ok(report: report)
       end
     end

@@ -32,7 +32,7 @@ RSpec.describe "Ouvidoria — painel", type: :request do
         get "/ombudsman/dashboard"
         expect(response).to have_http_status(:ok)
         expect(json_body["period"]).to eq("from" => "2026-01-01", "to" => "2026-11-11")
-        expect(json_body["by_kind"]).to include("complaint" => 6, "praise" => suppressed, "total" => suppressed)
+        expect(json_body["by_kind"]).to include("complaint" => suppressed, "praise" => suppressed, "total" => 8)
         expect(json_body["by_subject"].last).to eq("id" => nil, "name" => nil, "unclassified" => true, "count" => 8)
         expect(json_body.keys).to eq(%w[period total by_kind by_channel by_state by_subject by_health_unit on_time_rate
                                         avg_days_to_conclude resolution_rate satisfaction])
@@ -57,7 +57,7 @@ RSpec.describe "Ouvidoria — painel", type: :request do
       expect(json_body).to include("error" => "invalid_request", "path" => "q")
     end
 
-    it "quem não é da ouvidoria → 403; sem sessão → 401" do
+    it "quem não é da ouvidoria → 403" do
       sign_in_as(responder!(department!))
       get "/ombudsman/dashboard"
       expect(response).to have_http_status(:forbidden)

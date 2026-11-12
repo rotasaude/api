@@ -104,7 +104,7 @@ RSpec.describe "Ouvidoria — relatório de gestão anual", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json_body).to include("year" => 2025, "state" => "published", "recurring_problems" => "Fila.")
       expect(json_body["published_at"]).to be_present
-      expect(json_body["numbers"]["by_kind"]).to include("complaint" => 6, "praise" => suppressed, "total" => suppressed)
+      expect(json_body["numbers"]["by_kind"]).to include("complaint" => suppressed, "praise" => suppressed, "total" => 9)
       frozen = json_body["numbers"]
       expect(row(2025)).to have_attributes(state: "published", published_by_user_id: ouvidor.id)
       expect(row(2025).snapshot).to eq(frozen)
@@ -123,6 +123,12 @@ RSpec.describe "Ouvidoria — relatório de gestão anual", type: :request do
       expect(response).to have_http_status(:conflict)
       expect(json_body).to eq("error" => "already_published")
       expect(row(2025).notes).to be_nil
+    end
+
+    it "a linha criada na publicação leva o horário da publicação (now)" do
+      sign_in_as(ouvidor)
+      publish(2025)
+      expect(row(2025)).to have_attributes(created_at: Time.current, updated_at: Time.current, published_at: Time.current)
     end
 
     it "sem rascunho prévio publica com os textos vazios" do

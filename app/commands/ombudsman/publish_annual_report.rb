@@ -12,7 +12,7 @@ module Ombudsman
       return Result.fail(:year_not_closed) if year >= today.year
 
       OmbudsmanAnnualReport.transaction(requires_new: true) do
-        report = OmbudsmanAnnualReport.create_or_find_by!(year: year) { |new_report| new_report.state = "draft" }
+        report = SaveAnnualReport.draft_for(year, now)
         report.lock!
         next Result.fail(:already_published) if report.published?
 

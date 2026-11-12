@@ -31,18 +31,33 @@ RSpec.describe Ombudsman::Panel do
   end
 
   describe "contagens e supressão" do
-    it "7 reclamações e 2 elogios: reclamação à mostra, elogio e o total do grupo escondidos" do
+    it "7 reclamações e 2 elogios: o elogio escondido leva também a reclamação (supressão complementar); os totais saem" do
       received!(7, kind: "complaint")
       received!(2, kind: "praise")
 
       result = panel
       expect(result[:period]).to eq(from: "2026-01-01", to: "2026-12-31")
-      expect(result[:by_kind]).to include(complaint: 7, praise: suppressed, report: 0, suggestion: 0, request: 0)
-      expect(result[:by_kind][:total]).to eq(suppressed)
-      # o total de cada grupo (e o de cima) sai igual: nenhum deixa o elogio por subtração
-      expect(result[:by_channel][:total]).to eq(suppressed)
-      expect(result[:by_state][:total]).to eq(suppressed)
-      expect(result[:total]).to eq(suppressed)
+      # 9 (o total) é derivável de qualquer partição: a reclamação cairia por subtração
+      expect(result[:by_kind]).to include(complaint: suppressed, praise: suppressed, report: 0, suggestion: 0, request: 0, total: 9)
+      expect(result[:by_channel]).to include(web: 9, total: 9)
+      expect(result[:by_state]).to include(received: 9, total: 9)
+      expect(result[:total]).to eq(9)
+    end
+
+    it "esconde a menor célula visível até haver 2 escondidas somando 5 ou mais; zeros ficam à mostra" do
+      received!(2, kind: "complaint")
+      received!(3, kind: "praise")
+      received!(20, kind: "request")
+      expect(panel[:by_kind]).to include(complaint: suppressed, praise: suppressed, request: 20, report: 0, suggestion: 0, total: 25)
+
+    end
+
+    it "escondendo a menor visível, a soma escondida ainda pode ficar abaixo de 5: esconde a seguinte" do
+      received!(1, kind: "complaint")
+      received!(2, kind: "praise")
+      received!(9, kind: "report")
+      received!(20, kind: "request")
+      expect(panel[:by_kind]).to include(complaint: suppressed, praise: suppressed, report: suppressed, request: 20, suggestion: 0)
     end
 
     it "sem parte escondida, os totais saem" do
@@ -67,15 +82,18 @@ RSpec.describe Ombudsman::Panel do
       expect(result[:period]).to eq(from: "2026-03-01", to: "2026-03-31")
     end
 
-    it "por unidade referida: só as que têm manifestação, por nome, com a contagem escondida de 1 a 4" do
+    it "por unidade referida: só as que têm manifestação, por nome; a de 1 a 4 leva a menor visível junto" do
       big = HealthUnit.create!(name: "UBS Zeta", kind: "ubs")
       small = HealthUnit.create!(name: "UBS Alfa", kind: "ubs")
+      mid = HealthUnit.create!(name: "UBS Meio", kind: "ubs")
       received!(6, referred_health_unit: big)
       received!(2, referred_health_unit: small)
+      received!(7, referred_health_unit: mid)
       received!(3)
 
       expect(panel[:by_health_unit]).to eq([ { id: small.id, name: "UBS Alfa", count: suppressed },
-                                             { id: big.id, name: "UBS Zeta", count: 6 } ])
+                                             { id: mid.id, name: "UBS Meio", count: 7 },
+                                             { id: big.id, name: "UBS Zeta", count: suppressed } ])
     end
   end
 
@@ -91,7 +109,8 @@ RSpec.describe Ombudsman::Panel do
 
       items = panel[:by_subject]
       expect(items.last).to eq(id: nil, name: nil, unclassified: true, count: suppressed)
-      expect(items.first(2)).to eq([ { id: parent.id, name: parent.name, count: 11 }, { id: other.id, name: other.name, count: 7 } ])
+      # o 2 do `unclassified` leva o menor visível (7) junto
+      expect(items.first(2)).to eq([ { id: parent.id, name: parent.name, count: 11 }, { id: other.id, name: other.name, count: suppressed } ])
       expect(items.size).to eq(OmbudsmanSubject.where(parent_id: nil).count + 1)
       expect(items[0..-2].map { |item| item[:id] }).to eq(OmbudsmanSubject.where(parent_id: nil).order(:position, :name).pluck(:id))
     end
@@ -102,12 +121,12 @@ RSpec.describe Ombudsman::Panel do
   end
 
   describe "no prazo (Q17)" do
-    it "6 de 8 concluídas até o vencimento: 75.0, pelo prazo vigente" do
-      6.times { concluded!(days: 30) }
-      2.times { concluded!(days: 31) }
+    it "9 de 15 concluídas até o vencimento: 60.0, pelo prazo vigente" do
+      9.times { concluded!(days: 30) }
+      6.times { concluded!(days: 31) }
       received!(3) # abertas não entram
 
-      expect(panel[:on_time_rate]).to eq(75.0)
+      expect(panel[:on_time_rate]).to eq(60.0)
 
       OmbudsmanSetting.current.update!(response_days: 31)
       expect(panel[:on_time_rate]).to eq(100.0)
@@ -119,6 +138,24 @@ RSpec.describe Ombudsman::Panel do
       5.times { concluded!(days: 34, suspended_days: 3) }
 
       expect(panel[:on_time_rate]).to eq(66.7)
+    end
+
+    it "o complemento (as fora do prazo) de 1 a 4 também esconde a taxa" do
+      9.times { concluded!(days: 30) }
+      2.times { concluded!(days: 31) }
+      expect(panel[:on_time_rate]).to eq(suppressed)
+    end
+
+    it "arquivada a partir de awaiting_complement conta pelo prazo com os dias suspensos fechados" do
+      5.times { manifestation!(received_at: Time.utc(2026, 6, 10, 15), state: "archived", archive_reason: "no_complement", suspended_days: 3, concluded_at: Time.utc(2026, 6, 10, 15) + 33.days) }
+      5.times { manifestation!(received_at: Time.utc(2026, 6, 10, 15), state: "archived", archive_reason: "no_complement", suspended_days: 3, concluded_at: Time.utc(2026, 6, 10, 15) + 34.days) }
+      expect(panel[:on_time_rate]).to eq(50.0)
+    end
+
+    it "reaberta e concluída de novo: vale o prazo do ciclo vigente, não o do recebimento" do
+      5.times { concluded!(days: 35, cycle: 2, cycle_started_on: Date.new(2026, 6, 20)) } # 25 dias no ciclo 2
+      5.times { concluded!(days: 52, cycle: 2, cycle_started_on: Date.new(2026, 6, 20)) } # 42 dias no ciclo 2
+      expect(panel[:on_time_rate]).to eq(50.0)
     end
 
     it "sem concluída → nil; de 1 a 4 concluídas → escondida" do
@@ -144,10 +181,16 @@ RSpec.describe Ombudsman::Panel do
   describe "resolutividade" do
     it "sobre as que têm resolutividade; as de tipo sem resolutividade ficam de fora" do
       6.times { concluded!(resolution: "resolved") }
-      4.times { concluded!(resolution: "not_resolved") }
+      5.times { concluded!(resolution: "not_resolved") }
       3.times { concluded!(kind: "praise") }
 
-      expect(panel[:resolution_rate]).to eq(60.0)
+      expect(panel[:resolution_rate]).to eq(54.5)
+    end
+
+    it "o complemento de 1 a 4 esconde a taxa" do
+      6.times { concluded!(resolution: "resolved") }
+      4.times { concluded!(resolution: "not_resolved") }
+      expect(panel[:resolution_rate]).to eq(suppressed)
     end
 
     it "sem nenhuma → nil; poucas → escondida" do
@@ -163,24 +206,35 @@ RSpec.describe Ombudsman::Panel do
       expect(panel[:satisfaction]).to eq(responses: 0, met: { yes: 0, partly: 0, no: 0 }, clear: { yes: 0, no: 0 }, avg_score: nil)
     end
 
-    it "com 3 respostas a média e o total ficam escondidos" do
+    it "com 3 respostas a média e a contagem escondem; o total sai" do
       3.times { satisfaction!(concluded!) }
 
       result = panel[:satisfaction]
       expect(result[:avg_score]).to eq(suppressed)
-      expect(result[:responses]).to eq(suppressed)
-      expect(result[:met][:yes]).to eq(suppressed)
+      expect(result[:responses]).to eq(3)
+      expect(result[:met]).to eq(yes: suppressed, partly: 0, no: 0)
+      expect(result[:clear]).to eq(yes: suppressed, no: 0)
     end
 
-    it "com respostas suficientes, as contagens e a média saem; a parte de 1 a 4 e o total do grupo ficam escondidos" do
+    it "clear: a parte de 1 a 4 leva a outra junto (o total das respostas sai e as entrega por subtração)" do
+      6.times { satisfaction!(concluded!, clear: true) }
+      2.times { satisfaction!(concluded!, clear: false) }
+
+      result = panel[:satisfaction]
+      expect(result[:responses]).to eq(8)
+      expect(result[:clear]).to eq(yes: suppressed, no: suppressed)
+      expect(result[:met]).to eq(yes: 8, partly: 0, no: 0)
+    end
+
+    it "met: a parte de 1 a 4 leva a menor visível junto; o resto e a média saem" do
       6.times { satisfaction!(concluded!, met: "yes", clear: true, score: 5) }
       5.times { satisfaction!(concluded!, met: "partly", clear: true, score: 3) }
       satisfaction!(concluded!, met: "no", clear: true, score: 1)
 
       result = panel[:satisfaction]
-      expect(result[:met]).to eq(yes: 6, partly: 5, no: suppressed)
+      expect(result[:met]).to eq(yes: 6, partly: suppressed, no: suppressed)
       expect(result[:clear]).to eq(yes: 12, no: 0)
-      expect(result[:responses]).to eq(suppressed)
+      expect(result[:responses]).to eq(12)
       expect(result[:avg_score]).to eq(3.8)
     end
 
