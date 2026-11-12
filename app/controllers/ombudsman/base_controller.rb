@@ -84,6 +84,15 @@ module Ombudsman
       false
     end
 
+    # O detalhe (Ombudsman::Json.detail) da manifestação, relido com tudo o que
+    # ele mostra carregado de uma vez, para o usuário da sessão. As ações da
+    # equipe respondem com ele depois do commit (Q32).
+    def render_detail(id, status: :ok)
+      manifestation = OmbudsmanManifestation.includes(*Json::DETAIL_PRELOAD).find(id)
+      render json: Json.detail(manifestation, viewer: Current.user, settings: OmbudsmanSetting.current, today: Time.zone.today),
+             status: status
+    end
+
     # Manifestação da URL (`@manifestation`) para o detalhe e as rotas só de
     # leitura: sem uuid ou inexistente → 404; sem nada na query. Renderiza (e
     # devolve false) quando recusa. As ações que gravam travam pelo

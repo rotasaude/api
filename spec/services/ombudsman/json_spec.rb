@@ -59,9 +59,12 @@ RSpec.describe Ombudsman::Json do
         expect(json[:identity]).to eq("preserved")
         expect(json.to_json).not_to include("Nome Secreto", citizen.cpf, citizen.cpf_masked, "*****-", citizen.phone)
       end
-      expect(detail(preserved)).to include(identity_available: true, can_open_identity: true)
-      expect(detail(preserved, viewer: technician)).to include(can_open_identity: false)
-      expect(detail(anonymous)).to include(identity_available: false, can_open_identity: false)
+      expect(detail(preserved)).to include(identity_available: true)
+      expect(detail(preserved)).not_to have_key(:can_open_identity)
+      expect(detail(preserved)[:can]).to include(open_identity: true)
+      expect(detail(preserved, viewer: technician)[:can]).to include(open_identity: false)
+      expect(detail(anonymous)).to include(identity_available: false)
+      expect(detail(anonymous)[:can]).to include(open_identity: false)
     end
   end
 
@@ -97,7 +100,7 @@ RSpec.describe Ombudsman::Json do
       expect(json.to_json).not_to include("segredo-do-cidadao")
     end
 
-    it "encaminhamentos com extrato e resposta; pedido de reabertura do ciclo mais recente" do
+    it "encaminhamentos com extrato e resposta; sem pedido de reabertura pendente, nulo" do
       m = raw_manifestation!(state: "forwarded")
       department = department!
       OmbudsmanForwarding.create!(ombudsman_manifestation: m, department: department, extract: "Extrato do caso para o setor.", due_on: today + 3,

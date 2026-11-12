@@ -771,6 +771,12 @@ Rails.application.routes.draw do
     post  "person_lookup",        to: "person_lookups#create"
     post  "manifestations",       to: "manifestations#create"
     get   "manifestations/:id/receipt", to: "manifestations#receipt"
+    # Caixa e detalhe da equipe (§5; Q23: filtros repetidos e cursor `before`)
+    # e a identidade preservada (§8): justificativa e consentimento só no corpo.
+    get   "manifestations",       to: "manifestations#index"
+    get   "manifestations/:id",   to: "manifestations#show"
+    post  "manifestations/:id/identity",         to: "identities#create"
+    post  "manifestations/:id/identity_consent", to: "identities#consent"
   end
 
   # Módulo 32a (ADR 0050; contrato §4): urgência (UPA), sessão do dashboard.

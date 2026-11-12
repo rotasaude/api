@@ -9,6 +9,12 @@ module Ombudsman
     module_function
 
     PRESERVED = "preserved".freeze
+    # O que list_item e detail leem, carregado de uma vez (sem N+1).
+    LIST_PRELOAD = [ :referred_health_unit, { subject: :parent } ].freeze
+    DETAIL_PRELOAD = [
+      *LIST_PRELOAD, :citizen, :referred_professional, :duplicate_of, :attachments, :reopen_requests,
+      { events: :actor_user, forwardings: %i[department health_unit replied_by_user] }
+    ].freeze
 
     # Item da caixa. `pending_counts`: { manifestation_id => encaminhamentos pending }.
     def list_item(manifestation, settings, today, pending_counts)
@@ -22,8 +28,11 @@ module Ombudsman
     end
 
     # Detalhe da manifestação para a equipe (toda ação de equipe responde com ele, Q32).
+    # `reopen_request`: só o pedido PENDENTE (nulo sem pedido a decidir). `can`:
+    # as ações que este usuário pode fazer agora (o dashboard não adivinha).
     def detail(manifestation, viewer:, settings:, today:)
       pending = manifestation.forwardings.count(&:pending?)
+      pending_reopen = manifestation.reopen_requests.find { |request| request.state == "pending" }
       list_item(manifestation, settings, today, { manifestation.id => pending }).merge(
         body: manifestation.body, ouvidorsus_number: manifestation.ouvidorsus_number,
         referred_professional: professional(manifestation.referred_professional), cycle: manifestation.cycle,
@@ -34,12 +43,41 @@ module Ombudsman
         duplicate_of: duplicate_of(manifestation.duplicate_of), external_body_name: manifestation.external_body_name,
         concluded_at: manifestation.concluded_at&.iso8601,
         identity: identity(manifestation), identity_available: identity_available?(manifestation),
-        can_open_identity: Access.ombudsman?(viewer) && manifestation.identity_protected? && identity_available?(manifestation),
         events: manifestation.events.map { |e| event(e) },
         forwardings: manifestation.forwardings.map { |f| forwarding(f, settings, today) },
         attachments: manifestation.attachments.map { |a| attachment(a) },
-        reopen_request: reopen_request(manifestation.reopen_requests.max_by(&:cycle))
+        reopen_request: reopen_request(pending_reopen),
+        can: can(manifestation, viewer, pending: pending, pending_reopen: pending_reopen.present?)
       )
+    end
+
+    # Ações do §2 (e as da identidade, §8) permitidas ao usuário no estado. A
+    # regra que o comando de cada ação confere de novo sob a trava; aqui só o
+    # que se sabe pelos dados (papel, estado, ciclo, modo, pendências).
+    # `open_identity` / `record_identity_consent`: o ouvidor, quando há alguém
+    # a revelar (identity_available; a anônima nunca).
+    def can(manifestation, viewer, pending:, pending_reopen:)
+      staff = Access.staff?(viewer)
+      ombudsman = Access.ombudsman?(viewer)
+      state = manifestation.state
+      person = !manifestation.anonymous?
+      available = identity_available?(manifestation)
+      {
+        classify: staff && %w[received in_analysis].include?(state),
+        forward: staff && %w[in_analysis forwarded].include?(state),
+        cancel_forwarding: staff && pending.positive?,
+        request_complement: staff && state == "in_analysis" && !manifestation.complement_used && person,
+        complement: staff && state == "awaiting_complement",
+        extend: ombudsman && %w[in_analysis forwarded awaiting_complement].include?(state) && !manifestation.extended,
+        interim_response: staff && manifestation.open? && person,
+        final_response: staff && state == "in_analysis" && pending.zero?,
+        archive: ombudsman && %w[received in_analysis awaiting_complement].include?(state),
+        reopen: ombudsman && manifestation.final?,
+        change_resolution: ombudsman && state == "answered" && Catalog::RESOLUTION_KINDS.include?(manifestation.kind),
+        decide_reopen: ombudsman && pending_reopen,
+        open_identity: ombudsman && available,
+        record_identity_consent: ombudsman && available
+      }
     end
 
     # Linha do tempo da equipe (Q4): actor_name só para o técnico/ouvidor; o
@@ -122,6 +160,16 @@ module Ombudsman
       json[:decision_text] = request.decision_text if request.decision_text.present?
       json[:decided_at] = request.decided_at.iso8601 if request.decided_at
       json
+    end
+
+    # POST .../identity (§8): a identidade completa, só para o ouvidor, depois
+    # da trilha. `name` segue a regra do U1 (o nome declarado vale sobre o do
+    # cidadão); CPF e telefone do cidadão sem máscara; os três manifestant_*.
+    def full_identity(manifestation)
+      citizen = manifestation.citizen
+      { name: manifestation.manifestant_name.presence || citizen&.display_name, cpf: citizen&.cpf, phone: citizen&.phone,
+        manifestant_name: manifestation.manifestant_name, manifestant_contact: manifestation.manifestant_contact,
+        manifestant_cpf: manifestation.manifestant_cpf }
     end
 
     private_class_method :mask_cpf, :unit, :professional, :duplicate_of, :reopen_request

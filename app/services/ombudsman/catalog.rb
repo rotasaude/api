@@ -24,6 +24,8 @@ module Ombudsman
       "forwarded_elsewhere" => "O pedido é de outro órgão e foi encaminhado a ele."
     }.freeze
     FORWARDING_STATES = %w[pending replied declined cancelled].freeze
+    # Cores do prazo (Ombudsman::Deadlines.color_sql / color); estado final não tem cor.
+    COLORS = %w[green yellow red paused].freeze
     EVENT_KINDS = %w[
       received classified forwarded forwarding_cancelled forwarding_replied forwarding_declined
       forwarding_extended complement_requested complement_received extended interim_response
