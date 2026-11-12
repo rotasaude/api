@@ -114,8 +114,8 @@ RSpec.describe "Ouvidoria — identidade preservada e consentimento", type: :req
       log = capture_log { open_identity(preserved, justification: "  #{text}  ") }
       expect(response).to have_http_status(:ok)
       expect(response.headers["Cache-Control"]).to eq("no-store")
-      expect(json_body).to eq("name" => "Joana Preservada Souza", "cpf" => citizen.cpf, "phone" => citizen.phone,
-                              "manifestant_name" => nil, "manifestant_contact" => nil, "manifestant_cpf" => nil)
+      expect(json_body).to eq("name" => "Joana Preservada Souza", "full_name" => "Joana Preservada Souza", "cpf" => citizen.cpf,
+                              "phone" => citizen.phone, "manifestant_name" => nil, "manifestant_contact" => nil, "manifestant_cpf" => nil)
       access = OmbudsmanIdentityAccess.sole
       expect(access).to have_attributes(scope: "identity", exam_file_id: nil, user_id: ouvidor.id,
                                         ombudsman_manifestation_id: preserved.id, justification: text)
@@ -142,8 +142,24 @@ RSpec.describe "Ouvidoria — identidade preservada e consentimento", type: :req
                              manifestant_contact: "pedro@exemplo.com", manifestant_cpf: cpf)
       sign_in_as(ouvidor)
       open_identity(m)
-      expect(json_body).to eq("name" => "Pedro Telefone", "cpf" => nil, "phone" => nil, "manifestant_name" => "Pedro Telefone",
+      expect(json_body).to eq("name" => "Pedro Telefone", "full_name" => nil, "cpf" => nil, "phone" => nil, "manifestant_name" => "Pedro Telefone",
                               "manifestant_contact" => "pedro@exemplo.com", "manifestant_cpf" => cpf)
+    end
+
+    it "full_name é o nome civil do cidadão (Q50): com nome social, difere de name; par declarado sem nome civil, nulo" do
+      social = web_citizen!(phone: "+5541992223333").tap { |c| c.update!(full_name: "Roberto Civil Lima", social_name: "Renata Lima") }
+      by_social = raw_manifestation!(citizen: social, identification_mode: "preserved")
+      declared = web_citizen!(phone: "+5541993334444")
+      by_declared = raw_manifestation!(citizen: declared, identification_mode: "preserved", manifestant_name: "Ana Declarada")
+      sign_in_as(ouvidor)
+
+      open_identity(by_social)
+      expect(response).to have_http_status(:ok)
+      expect(json_body).to include("name" => "Renata Lima", "full_name" => "Roberto Civil Lima", "cpf" => social.cpf)
+
+      open_identity(by_declared)
+      expect(response).to have_http_status(:ok)
+      expect(json_body).to include("name" => "Ana Declarada", "full_name" => nil, "manifestant_name" => "Ana Declarada", "cpf" => declared.cpf)
     end
 
     it "anônima sem dado de pessoa → 422 no_identity, sem linha nem evento (A26)" do

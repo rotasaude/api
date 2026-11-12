@@ -1,7 +1,7 @@
 # Identidade preservada (ADR 0051; contrato §5, §8; §16 Q24, U4, Q32). Só o
 # ouvidor (o técnico e o respondente → 403 missing_role); sem step-up (U4).
 #   POST /ombudsman/manifestations/:id/identity { justification } → 200
-#     { name, cpf, phone, manifestant_name, manifestant_contact, manifestant_cpf },
+#     { name, full_name, cpf, phone, manifestant_name, manifestant_contact, manifestant_cpf },
 #     Cache-Control no-store; uma linha de acesso (scope identity) e um
 #     ombudsman.identity_viewed (só ids) por abertura. A anônima → 422 no_identity.
 #   POST /ombudsman/manifestations/:id/identity_consent { granted, text } → 201

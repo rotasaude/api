@@ -164,10 +164,13 @@ module Ombudsman
 
     # POST .../identity (§8): a identidade completa, só para o ouvidor, depois
     # da trilha. `name` segue a regra do U1 (o nome declarado vale sobre o do
-    # cidadão); CPF e telefone do cidadão sem máscara; os três manifestant_*.
+    # cidadão); `full_name` é o nome civil do cidadão (Q50; nulo no par
+    # declarado e sem cidadão); CPF e telefone do cidadão sem máscara; os
+    # três manifestant_*.
     def full_identity(manifestation)
       citizen = manifestation.citizen
-      { name: manifestation.manifestant_name.presence || citizen&.display_name, cpf: citizen&.cpf, phone: citizen&.phone,
+      { name: manifestation.manifestant_name.presence || citizen&.display_name, full_name: citizen&.full_name,
+        cpf: citizen&.cpf, phone: citizen&.phone,
         manifestant_name: manifestation.manifestant_name, manifestant_contact: manifestation.manifestant_contact,
         manifestant_cpf: manifestation.manifestant_cpf }
     end
