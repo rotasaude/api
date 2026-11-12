@@ -1,7 +1,7 @@
 require "rails_helper"
 
 # Módulo 33, Task 17 (ADR 0051; contrato §12; §16 Q11, Q36): o job diário das
-# 7h. Arquiva com `no_complement` o complemento vencido (vence em
+# 10h (Q59). Arquiva com `no_complement` o complemento vencido (vence em
 # complement_requested_at::date + complement_days; arquiva no dia seguinte),
 # e-mail só com números aos ouvidores/técnicos e a cada respondente.
 RSpec.describe Ombudsman::DeadlinesJob do
@@ -208,9 +208,11 @@ RSpec.describe Ombudsman::DeadlinesJob do
     expect(city).to be_present
   end
 
-  it "está agendado todo dia às 7h no fuso de São Paulo, na fila housekeeping" do
+  # Q59: 10h de Brasília é 8h no Acre (UTC−5): o SMS do no_complement cai na
+  # janela das 8h às 20h em todo fuso do país.
+  it "está agendado todo dia às 10h no fuso de São Paulo, na fila housekeeping" do
     task = ActiveSupport::ConfigurationFile.parse(Rails.root.join("config/recurring.yml")).fetch("default").fetch("ombudsman_deadlines")
     expect(task).to include("class" => "Ombudsman::DeadlinesJob", "queue" => "housekeeping",
-                            "schedule" => "every day at 7am America/Sao_Paulo")
+                            "schedule" => "every day at 10am America/Sao_Paulo")
   end
 end

@@ -193,10 +193,12 @@ default: &default
 
   # Módulo 33 (ADR 0051; contrato §12): complemento vencido arquivado (no_complement)
   # e resumo de prazos por e-mail; idempotente no dia (ombudsman_daily_runs).
+  # 10h de Brasília (Q59) é 8h no Acre (UTC−5): o SMS do no_complement cai na
+  # janela das 8h às 20h em todo fuso; os e-mails saem na mesma hora.
   ombudsman_deadlines:
     class: Ombudsman::DeadlinesJob
     queue: housekeeping
-    schedule: "every day at 7am America/Sao_Paulo"
+    schedule: "every day at 10am America/Sao_Paulo"
 
   discard_old_failed_jobs:
     command: "SolidQueueRetention.discard_failed"

@@ -1,6 +1,7 @@
-# Job diário da ouvidoria, às 7h de Brasília (ADR 0051; contrato §12; §16 Q11,
-# Q36): por cidade (EachCityJob), só com `ombudsman` utilizável (lido fora de
-# qualquer transação da cidade).
+# Job diário da ouvidoria, às 10h de Brasília (ADR 0051; contrato §12; §16 Q11,
+# Q36, Q59 — 8h no Acre, dentro da janela do SMS em todo fuso): por cidade
+# (EachCityJob), só com `ombudsman` utilizável (lido fora de qualquer
+# transação da cidade).
 #   1. Marca o dia em ombudsman_daily_runs (único por dia e tipo): já marcado →
 #      termina. A marca vem antes do trabalho (F-23): um tombo no meio perde só
 #      o resumo do dia, e o arquivamento se cura no dia seguinte (o vencimento
