@@ -119,6 +119,13 @@ home_visit:
     birth_and_sex_required: with_person
     without_person_allowed_reasons: [1, 29, 34, 35, 36, 37, 27, 28]
     without_person_forbidden_measurements: [weight_kg, height_cm]
+    # PENDENTE (relato da Task 1, A-19; decisão do coordenador antes do §10): cnsCidadao (#3)
+    # e cpfCidadao (#14) — "Para visita periódica ou visita domiciliar para controle vetorial
+    # preencher este campo com o CNS [CPF] do responsável familiar". Motivos lidos assim: 29
+    # (Visita periódica) e o grupo #CONTROLE_AMBIENTAL_E_VETORIAL (34–37). Os campos não são
+    # obrigatórios ("Obrigatório: Não"); com o CNS do responsável, #4/#5 passam a exigir o
+    # nascimento e o sexo dele. Só dado: nenhuma regra do api lê esta chave até a decisão.
+    responsible_document_reasons: [29, 34, 35, 36, 37]
 
 collective_activity:
   domains:
@@ -291,5 +298,11 @@ collective_activity:
     participant_identifier_types: [5, 6]
     # Tamanho máximo das listas (coluna Máximo de cada List<Long>).
     list_max: { meeting_topics: 7, target_audience: 17, health_topics: 16, health_practices: 14 }
+    # Medidas do participante (ParticipanteRowItem #4 peso e #5 altura): "Valor mínimo 0.5 e
+    # máximo 500", "Máximo de 3 casas decimais"; "Valor mínimo 20 e máximo 250", "Máximo de 1
+    # casa decimal" — as mesmas faixas da visita, conferidas no próprio dicionario-fac.html.
+    participant_measurements:
+      weight_kg: { ledi: peso, min: 0.5, max: 500, decimals: 3 }
+      height_cm: { ledi: altura, min: 20, max: 250, decimals: 1 }
     participants_count: { min: 1, max: 999 }   # numParticipantes; ≥ participantes listados
     altered_count: { min: 0, max: 999 }        # numAvaliacoesAlteradas; = participantes com avaliacaoAlterada

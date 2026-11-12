@@ -36,6 +36,14 @@ RSpec.describe "Dicionários da FVD e da FAC (LEDI 8.7.0)", type: :model do
     html[start...(html.index(/<h[23] /, start + 1) || html.size)]
   end
 
+  # Faixa ("Valor mínimo … e máximo …" / "só aceita valores entre … e …") e casas
+  # ("Máximo de N casa(s) decimal(is)"; sem a frase, inteiro) do texto do campo.
+  def expect_range(section, key, m)
+    range = section[/(?:mínimo|entre)\s+(\d+(?:\.\d+)?)\s+e\s+(?:máximo\s+)?(\d+(?:\.\d+)?)/, 0] or raise "faixa de #{key}"
+    expect(range.scan(/\d+(?:\.\d+)?/).map(&:to_f)).to eq([ m.fetch("min").to_f, m.fetch("max").to_f ]), key
+    expect(m.fetch("decimals")).to eq(section[/Máximo de (\d+) casas? decima/, 1].to_i), key
+  end
+
   def codes_in(fragment) = fragment.scan(%r{<code>\s*0*(\d+)\b}).flatten.map(&:to_i)
 
   it "o HTML vendorizado é o dicionário oficial da FVD e da FAC na versão 8.7.0" do
@@ -81,16 +89,24 @@ RSpec.describe "Dicionários da FVD e da FAC (LEDI 8.7.0)", type: :model do
     measurements.each do |key, m|
       expect(fields).to include(m.fetch("ledi"))
       section = text(field_section(fvd, m.fetch("ledi")))
-      if m.key?("min")
-        range = section[/(?:mínimo|entre)\s+(\d+(?:\.\d+)?)\s+e\s+(?:máximo\s+)?(\d+(?:\.\d+)?)/, 0] or raise "faixa de #{key}"
-        expect(range.scan(/\d+(?:\.\d+)?/).map(&:to_f)).to eq([ m.fetch("min").to_f, m.fetch("max").to_f ]), key
-        expect(m.fetch("decimals")).to eq(section[/Máximo de (\d+) casas? decima/, 1].to_i), key
-      end
+      expect_range(section, key, m) if m.key?("min")
       expect(section).to include("obrigatório o preenchimento do campo") if m.key?("requires")
     end
     expect(measurements.dig("glucose_type", "domain")).to eq("tipo_glicemia")
     expect(measurements.select { |_, m| m["requires"] }.transform_values { _1["requires"] })
       .to eq("systolic" => "diastolic", "diastolic" => "systolic", "glucose_mg_dl" => "glucose_type", "glucose_type" => "glucose_mg_dl")
+  end
+
+  it "medidas do participante da atividade: peso e altura do ParticipanteRowItemThrift, com a faixa e as casas do dicionario-fac.html" do
+    Ledi::Version.load!
+    fields = Br::Gov::Saude::Esusab::Ras::Atividadecoletiva::ParticipanteRowItemThrift::FIELDS.values.map { |f| f[:name] }
+    measurements = yaml.dig("collective_activity", "rules", "participant_measurements")
+    expect(measurements.keys).to eq(%w[weight_kg height_cm])
+    expect(measurements.transform_values { _1.fetch("ledi") }).to eq("weight_kg" => "peso", "height_cm" => "altura")
+    measurements.each do |key, m|
+      expect(fields).to include(m.fetch("ledi"))
+      expect_range(text(field_section(fac, m.fetch("ledi"))), key, m)
+    end
   end
 
   it "os domínios da visita e da atividade são os do dicionário vendorizado (fvd, fac e dicionario.html)" do
@@ -157,6 +173,13 @@ RSpec.describe "Dicionários da FVD e da FAC (LEDI 8.7.0)", type: :model do
     expect(rules.fetch("without_person_forbidden_measurements")).to eq(%w[weight_kg height_cm])
     %w[dtNascimento sexo].each do |ledi|
       expect(text(field_section(fvd, ledi))).to include("25 Egresso de internação ou 31 Orientação / Prevenção")
+    end
+    # A-19 (pendente): documento do responsável familiar na visita periódica e no controle vetorial.
+    expect(rules.fetch("responsible_document_reasons"))
+      .to eq([ 29 ] + motivo.select { |_, m| m["group"] == "CONTROLE_AMBIENTAL_E_VETORIAL" }.keys)
+    { "cnsCidadao" => "CNS", "cpfCidadao" => "CPF" }.each do |ledi, doc|
+      expect(text(field_section(fvd, ledi)))
+        .to include("Para visita periódica ou visita domiciliar para controle vetorial preencher este campo com o #{doc} do responsável familiar")
     end
   end
 
