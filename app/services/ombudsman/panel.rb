@@ -37,15 +37,17 @@ module Ombudsman
       states = counts(scope, :state, Catalog::STATES)
       subjects = subject_counts(scope)
       total = scope.count
+      by_state = cells(states, total)
 
       { period: { from: from.iso8601, to: to.iso8601 },
         total: total,
         by_kind: cells(kinds, total),
         by_channel: cells(channels, total),
-        by_state: cells(states, total),
+        by_state: by_state,
         by_subject: by_subject(subjects),
         by_health_unit: by_health_unit(scope) }
-        .merge(rates(scope, today), satisfaction: satisfaction(scope))
+        .merge(rates(scope, today, concluded_hidden: [ by_state[:answered], by_state[:archived] ].include?(SUPPRESSED)),
+               satisfaction: satisfaction(scope))
     end
 
     # -> [{ professional: { id, name }, by_kind: { kind => n }, total: }]: contagem
@@ -74,14 +76,23 @@ module Ombudsman
       protect(counts).symbolize_keys.merge(total: total)
     end
 
-    # Q53: { chave => contagem crua } → { chave => célula }. Com ao menos uma
-    # de 1..4, esconde também a menor visível não nula até haver 2 escondidas
-    # somando 5 ou mais (ou não restar o que esconder). Empate: a primeira.
+    # Q53: { chave => contagem crua } → { chave => célula }. Sem célula de 1..4,
+    # tudo à mostra. Com ao menos uma, os zeros também se escondem (senão o
+    # total fixaria as escondidas) e se esconde a menor visível — TODAS as
+    # empatadas nesse valor, nunca pela ordem das células — até haver 2
+    # escondidas somando 5 ou mais (e que não sejam todas 4); se não restar o que esconder, a partição
+    # inteira sai escondida e o total à mostra não fixa nenhuma célula.
     def protect(counts)
-      hidden = counts.select { |_, count| Admin::SmallCount.small?(count) }.keys
-      unless hidden.empty?
-        candidates = counts.reject { |key, count| hidden.include?(key) || count.zero? }.sort_by { |_, count| count }.map(&:first)
-        hidden << candidates.shift while (hidden.size < 2 || hidden.sum { |key| counts[key] } < 5) && candidates.any?
+      return counts.dup unless counts.values.any? { |count| Admin::SmallCount.small?(count) }
+
+      hidden = counts.select { |_, count| count.zero? || Admin::SmallCount.small?(count) }.keys
+      # k escondidas de 1..4 somando 4k só podem ser todas 4: o total as fixaria
+      pinned = -> { hidden.all? { |key| Admin::SmallCount.small?(counts[key]) } && hidden.sum { |key| counts[key] } == 4 * hidden.size }
+      while hidden.size < 2 || hidden.sum { |key| counts[key] } < 5 || pinned.call
+        smallest = counts.reject { |key, _| hidden.include?(key) }.values.min
+        break unless smallest
+
+        hidden |= counts.select { |_, count| count == smallest }.keys
       end
       counts.to_h { |key, count| [ key, hidden.include?(key) ? SUPPRESSED : count ] }
     end
@@ -114,7 +125,10 @@ module Ombudsman
     end
 
     # on_time_rate, avg_days_to_conclude e resolution_rate.
-    def rates(scope, today)
+    # `concluded_hidden`: `answered` ou `archived` de by_state escondido; o
+    # denominador de on_time_rate e a base de avg_days_to_conclude são essa
+    # soma, então saem escondidos junto (senão fixam a célula).
+    def rates(scope, today, concluded_hidden:)
       zone = Time.zone.tzinfo.name
       concluded_on = OmbudsmanManifestation.sanitize_sql_array([ "((ombudsman_manifestations.concluded_at AT TIME ZONE 'UTC') AT TIME ZONE ?)::date", zone ])
       due_on = Deadlines.due_on_sql(OmbudsmanSetting.current, today: today)
@@ -126,8 +140,8 @@ module Ombudsman
       with_resolution, resolved = scope.where.not(resolution: nil).pick(
         Arel.sql("COUNT(*)"), Arel.sql("COUNT(*) FILTER (WHERE resolution = 'resolved')")
       )
-      { on_time_rate: rate(on_time, concluded),
-        avg_days_to_conclude: average(concluded, days),
+      { on_time_rate: (concluded_hidden ? SUPPRESSED : rate(on_time, concluded)),
+        avg_days_to_conclude: (concluded_hidden ? SUPPRESSED : average(concluded, days)),
         resolution_rate: rate(resolved, with_resolution) }
     end
 

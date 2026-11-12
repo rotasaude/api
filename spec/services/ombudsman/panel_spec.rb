@@ -38,17 +38,18 @@ RSpec.describe Ombudsman::Panel do
       result = panel
       expect(result[:period]).to eq(from: "2026-01-01", to: "2026-12-31")
       # 9 (o total) é derivável de qualquer partição: a reclamação cairia por subtração
-      expect(result[:by_kind]).to include(complaint: suppressed, praise: suppressed, report: 0, suggestion: 0, request: 0, total: 9)
+      expect(result[:by_kind]).to eq(complaint: suppressed, praise: suppressed, report: suppressed, suggestion: suppressed,
+                                     request: suppressed, total: 9)
       expect(result[:by_channel]).to include(web: 9, total: 9)
       expect(result[:by_state]).to include(received: 9, total: 9)
       expect(result[:total]).to eq(9)
     end
 
-    it "esconde a menor célula visível até haver 2 escondidas somando 5 ou mais; zeros ficam à mostra" do
+    it "com célula escondida, os zeros se escondem também; esconde as menores visíveis até haver 2 escondidas somando 5 ou mais" do
       received!(2, kind: "complaint")
       received!(3, kind: "praise")
       received!(20, kind: "request")
-      expect(panel[:by_kind]).to include(complaint: suppressed, praise: suppressed, request: 20, report: 0, suggestion: 0, total: 25)
+      expect(panel[:by_kind]).to eq(complaint: suppressed, praise: suppressed, report: suppressed, suggestion: suppressed, request: 20, total: 25)
 
     end
 
@@ -57,7 +58,20 @@ RSpec.describe Ombudsman::Panel do
       received!(2, kind: "praise")
       received!(9, kind: "report")
       received!(20, kind: "request")
-      expect(panel[:by_kind]).to include(complaint: suppressed, praise: suppressed, report: suppressed, request: 20, suggestion: 0)
+      expect(panel[:by_kind]).to eq(complaint: suppressed, praise: suppressed, report: suppressed, suggestion: suppressed, request: 20, total: 32)
+    end
+
+    it "empate na menor visível: esconde todas as empatadas juntas, nunca pela ordem das células" do
+      received!(5, kind: "complaint")
+      received!(4, kind: "report")
+      received!(4, kind: "praise")
+      received!(30, kind: "request")
+      expect(panel[:by_kind]).to eq(complaint: 5, report: suppressed, praise: suppressed, suggestion: suppressed, request: 30, total: 43)
+    end
+
+    it "partição só de células de 1 a 4: todas escondidas, nenhuma é fixada pelo total" do
+      received!(3)
+      expect(panel[:by_channel]).to eq(web: suppressed, in_person: suppressed, phone: suppressed, ouvidorsus: suppressed, total: 3)
     end
 
     it "sem parte escondida, os totais saem" do
@@ -124,7 +138,7 @@ RSpec.describe Ombudsman::Panel do
     it "9 de 15 concluídas até o vencimento: 60.0, pelo prazo vigente" do
       9.times { concluded!(days: 30) }
       6.times { concluded!(days: 31) }
-      received!(3) # abertas não entram
+      received!(6) # abertas não entram
 
       expect(panel[:on_time_rate]).to eq(60.0)
 
@@ -212,8 +226,8 @@ RSpec.describe Ombudsman::Panel do
       result = panel[:satisfaction]
       expect(result[:avg_score]).to eq(suppressed)
       expect(result[:responses]).to eq(3)
-      expect(result[:met]).to eq(yes: suppressed, partly: 0, no: 0)
-      expect(result[:clear]).to eq(yes: suppressed, no: 0)
+      expect(result[:met]).to eq(yes: suppressed, partly: suppressed, no: suppressed)
+      expect(result[:clear]).to eq(yes: suppressed, no: suppressed)
     end
 
     it "clear: a parte de 1 a 4 leva a outra junto (o total das respostas sai e as entrega por subtração)" do
@@ -246,6 +260,57 @@ RSpec.describe Ombudsman::Panel do
       expect(result).to include(responses: 6, avg_score: 5.0)
       expect(result[:met]).to eq(yes: 6, partly: 0, no: 0)
       expect(result[:clear]).to eq(yes: 6, no: 0)
+    end
+  end
+
+  describe "taxa e média que repetem uma célula de by_state" do
+    it "on_time_rate e avg_days_to_conclude escondem quando `answered` ou `archived` está escondido" do
+      5.times { concluded!(days: 3) }
+      expect(panel).to include(on_time_rate: 100.0, avg_days_to_conclude: 3.0)
+
+      received!(2) # `received` 2 esconde a menor visível (answered 5 junto com os zeros)
+      result = panel
+      expect(result[:by_state]).to include(answered: suppressed, archived: suppressed)
+      expect(result[:on_time_rate]).to eq(suppressed)
+      expect(result[:avg_days_to_conclude]).to eq(suppressed)
+    end
+
+    it "archived escondido também esconde" do
+      5.times { concluded!(days: 3) }
+      2.times { manifestation!(received_at: Time.utc(2026, 6, 10, 15), state: "archived", archive_reason: "improper", concluded_at: Time.utc(2026, 6, 12, 15)) }
+      expect(panel[:by_state]).to include(archived: suppressed, answered: suppressed)
+      expect(panel[:on_time_rate]).to eq(suppressed)
+      expect(panel[:avg_days_to_conclude]).to eq(suppressed)
+    end
+  end
+
+  # Q53: nenhuma célula escondida tem um único valor consistente com o que
+  # fica à mostra (as outras células e o total), por partição, em toda a grade.
+  describe "supressão complementar (propriedade)" do
+    def protect(values) = described_class.send(:protect, values.each_with_index.to_h { |value, index| [ index, value ] }).values
+
+    def pinned(range, cells)
+      outputs = Hash.new { |hash, key| hash[key] = [] }
+      range.to_a.repeated_permutation(cells) { |values| outputs[[ values.sum, protect(values) ]] << values }
+      outputs.filter_map do |(total, out), preimages|
+        next if total < 1
+
+        index = out.each_index.find { |i| out[i] == suppressed && preimages.map { |values| values[i] }.uniq.size < 2 }
+        [ total, out ] if index
+      end
+    end
+
+    it "partição de 4 células (0..8), de 3 (0..10) e de 2 (0..12, o caso de `clear`)" do
+      expect(pinned(0..8, 4)).to be_empty
+      expect(pinned(0..10, 3)).to be_empty
+      expect(pinned(0..12, 2)).to be_empty
+    end
+
+    it "a saída não depende da ordem das células" do
+      [ [ 5, 4, 4, 0 ], [ 3, 7, 7, 1 ], [ 6, 5, 5, 2 ] ].each do |values|
+        shown = protect(values).map { |cell| cell == suppressed }
+        expect(protect(values.reverse).map { |cell| cell == suppressed }).to eq(shown.reverse)
+      end
     end
   end
 

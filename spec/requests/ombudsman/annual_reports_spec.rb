@@ -125,10 +125,17 @@ RSpec.describe "Ouvidoria — relatório de gestão anual", type: :request do
       expect(row(2025).notes).to be_nil
     end
 
-    it "a linha criada na publicação leva o horário da publicação (now)" do
-      sign_in_as(ouvidor)
-      publish(2025)
-      expect(row(2025)).to have_attributes(created_at: Time.current, updated_at: Time.current, published_at: Time.current)
+    it "a linha criada na publicação leva o `now` recebido (não o relógio)" do
+      at = Time.utc(2026, 1, 5, 10)
+      result = Ombudsman::PublishAnnualReport.call(year: 2025, by: ouvidor, now: at)
+      expect(result).to be_ok
+      expect(row(2025)).to have_attributes(created_at: at, updated_at: at, published_at: at)
+    end
+
+    it "o rascunho criado pelo comando leva o `now` recebido" do
+      at = Time.utc(2026, 1, 5, 10)
+      Ombudsman::SaveAnnualReport.call(year: 2025, attrs: { "notes" => "a" }, now: at)
+      expect(row(2025)).to have_attributes(created_at: at, updated_at: at, notes: "a")
     end
 
     it "sem rascunho prévio publica com os textos vazios" do

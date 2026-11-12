@@ -17,7 +17,8 @@ module Ombudsman
         next Result.fail(:already_published) if report.published?
 
         snapshot = Panel.call(from: Date.new(year, 1, 1), to: Date.new(year, 12, 31), today: today)
-        report.update!(state: "published", snapshot: snapshot, published_at: now, published_by_user: by, updated_at: now)
+        report.assign_attributes(state: "published", snapshot: snapshot, published_at: now, published_by_user: by, updated_at: now)
+        report.save!(touch: false)
         Result.ok(report: report)
       end
     end

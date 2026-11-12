@@ -36,7 +36,10 @@ module Ombudsman
         report.lock!
         next Result.fail(:report_published) if report.published?
 
-        report.update!(values.merge("updated_at" => now)) if values.any?
+        if values.any?
+          report.assign_attributes(values.merge("updated_at" => now))
+          report.save!(touch: false) # um `updated_at` igual ao antigo não é mudança: sem touch:false o relógio o sobrescreve
+        end
         Result.ok(report: report)
       end
     end
