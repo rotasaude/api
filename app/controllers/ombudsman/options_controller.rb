@@ -6,6 +6,7 @@
 module Ombudsman
   class OptionsController < BaseController
     before_action :require_staff!
+    before_action :query_only!
 
     def show
       Settings.ensure_defaults!

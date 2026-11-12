@@ -5,6 +5,7 @@ module Ombudsman
   class SubjectsController < BaseController
     before_action :require_staff!, only: :index
     before_action :require_ombudsman_role!, only: %i[create update]
+    before_action :query_only!
 
     def index
       Settings.ensure_defaults!

@@ -4,6 +4,7 @@
 module Ombudsman
   class ResponderCandidatesController < BaseController
     before_action :require_ombudsman_role!
+    before_action :query_only!
 
     def index
       users = User.where(deactivated_at: nil, id: Membership.active.where(role: "ombudsman_responder").select(:user_id))

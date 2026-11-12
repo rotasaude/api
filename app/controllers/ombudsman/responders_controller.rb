@@ -3,6 +3,7 @@
 module Ombudsman
   class RespondersController < BaseController
     before_action :require_ombudsman_role!
+    before_action :query_only!
 
     def index
       rows = OmbudsmanResponder.includes({ user: :professional }, :department, :health_unit).order(:created_at, :id)

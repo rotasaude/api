@@ -3,6 +3,7 @@
 module Ombudsman
   class SettingsController < BaseController
     before_action :require_ombudsman_role!
+    before_action :query_only!
 
     def show
       Settings.ensure_defaults!
