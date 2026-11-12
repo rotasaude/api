@@ -105,6 +105,17 @@ module Ombudsman
       json
     end
 
+    # Item do inbox do respondente (§6; Q34, Q48): só o encaminhamento — nunca
+    # o protocolo, a identidade, o texto original, o assunto nem os anexos da
+    # manifestação. `reply` quando há (a resposta ou o motivo da recusa, Q9).
+    def inbox_item(forwarding, settings, today)
+      json = { id: forwarding.id, destination: destination(forwarding), extract: forwarding.extract, due_on: forwarding.due_on.iso8601,
+               color: Deadlines.forwarding_color(forwarding, settings, today: today), state: forwarding.state,
+               created_at: forwarding.created_at.iso8601 }
+      json[:reply] = forwarding.reply if forwarding.reply.present?
+      json
+    end
+
     # Q34: { id, name, parent: { id, name } | null } — o subassunto leva o pai.
     def subject(subject)
       return nil unless subject

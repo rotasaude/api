@@ -42,5 +42,33 @@ module Ombudsman
 
       Result.fail(:manifestation_changed)
     end
+
+    # -> [manifestação, encaminhamento] (os dois travados FOR UPDATE) | nil.
+    # Q33: a ordem é a de toda ação — cidadão → manifestação (manifestation!)
+    # — e só então o encaminhamento, para o cancelamento da equipe e as ações
+    # do respondente nunca se cruzarem com as da manifestação.
+    def forwarding!(id)
+      manifestation_id = OmbudsmanForwarding.where(id: id).pick(:ombudsman_manifestation_id)
+      return nil unless manifestation_id
+
+      manifestation = manifestation!(manifestation_id)
+      forwarding = manifestation && OmbudsmanForwarding.lock("FOR UPDATE").find_by(id: id, ombudsman_manifestation_id: manifestation.id)
+      forwarding ? [ manifestation, forwarding ] : nil
+    end
+
+    # Q33: o `expected_state` do ENCAMINHAMENTO. Ausente, não-String ou fora
+    # de FORWARDING_STATES → 422 invalid_request `path: "expected_state"`;
+    # diferente do atual → 409 forwarding_changed; igual mas fora de pending
+    # (o encaminhamento já saiu de pending e congelou) → 422 invalid_transition.
+    def check_forwarding(forwarding, expected_state)
+      unless expected_state.is_a?(String) && Catalog::FORWARDING_STATES.include?(expected_state)
+        return Result.fail(:invalid_request, details: { path: "expected_state",
+                                                        problems: [ { error: "invalid_request", path: "expected_state" } ] })
+      end
+      return Result.fail(:forwarding_changed) unless forwarding.state == expected_state
+      return Result.fail(:invalid_transition) unless forwarding.pending?
+
+      nil
+    end
   end
 end

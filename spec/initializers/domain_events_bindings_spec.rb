@@ -649,4 +649,15 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
   it "binds ombudsman.anonymous_cap_reached to Ombudsman::CapAlertJob" do
     expect(DomainEvents.registry["ombudsman.anonymous_cap_reached"].map(&:job)).to eq([ "Ombudsman::CapAlertJob" ])
   end
+
+  # Módulo 33 (ADR 0051; Task 12): o encaminhamento por extrato
+  # (Ombudsman::Forward) e a resposta do respondente
+  # (Ombudsman::ReplyForwarding) — manifestation_id e forwarding_id; sem
+  # consumidor.
+  it "declares ombudsman.forwarded and ombudsman.forwarding_replied with no consumer" do
+    %w[ombudsman.forwarded ombudsman.forwarding_replied].each do |name|
+      expect(DomainEvents.registry.keys).to include(name)
+      expect(DomainEvents.registry[name]).to be_empty
+    end
+  end
 end

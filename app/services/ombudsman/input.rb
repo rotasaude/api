@@ -16,5 +16,11 @@ module Ombudsman
     end
 
     def valid_text?(value, range) = !text(value, range).nil?
+
+    # A recusa de um campo no formato uniforme `{ error, path, problems }`
+    # (só o NOME do campo, nunca o valor).
+    def refuse(path, error = :invalid_request)
+      Result.fail(error, details: { path: path, problems: [ { error: error.to_s, path: path } ] })
+    end
   end
 end

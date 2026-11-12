@@ -482,4 +482,10 @@ Rails.application.config.to_prepare do
   # teto da denúncia anônima (Ombudsman::RegisterAnonymous) — payload {}. O
   # consumidor só enfileira o e-mail com a contagem ao ombudsman.
   DomainEvents.bind "ombudsman.anonymous_cap_reached", to: [ Ombudsman::CapAlertJob ]
+  # Módulo 33 (contrato §1, §2, §6; Task 12): o encaminhamento por extrato
+  # (Ombudsman::Forward) e a resposta do respondente
+  # (Ombudsman::ReplyForwarding) — manifestation_id e forwarding_id, nunca o
+  # extrato, a resposta, o destino nem a pessoa; sem consumidor.
+  DomainEvents.bind "ombudsman.forwarded", to: []
+  DomainEvents.bind "ombudsman.forwarding_replied", to: []
 end

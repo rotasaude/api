@@ -67,6 +67,26 @@ module Ombudsman
       false
     end
 
+    # Ações que gravam: nada na query e, no corpo, só as chaves `allowed` →
+    # senão 422 com o path (só o NOME da chave). Renderiza e devolve false.
+    def body_keys!(allowed)
+      return false unless query_only!
+
+      unknown = (body.keys - allowed).first
+      return true unless unknown
+
+      render_refusal(unknown.to_s[0, KEY_PATH_MAX])
+      false
+    end
+
+    # O id da URL de uma ação: malformado → 404 antes do comando (que trava pelo id).
+    def uuid_id!
+      return true if uuid?(params[:id])
+
+      not_found
+      false
+    end
+
     # Técnico ou ouvidor (contrato §1); o respondente que não tem também o
     # papel de técnico não lê nenhuma rota do §5. Renderiza 403 e devolve false.
     def require_staff!

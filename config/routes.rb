@@ -777,6 +777,17 @@ Rails.application.routes.draw do
     get   "manifestations/:id",   to: "manifestations#show"
     post  "manifestations/:id/identity",         to: "identities#create"
     post  "manifestations/:id/identity_consent", to: "identities#consent"
+    # Ações da equipe (§2; preflight F-11): uma rota explícita por ação, cada
+    # uma com `expected_state` no corpo; o cancelamento do encaminhamento leva
+    # o `expected_state` do encaminhamento (Q33).
+    post  "manifestations/:id/classify", to: "actions#classify"
+    post  "manifestations/:id/forward",  to: "actions#forward"
+    post  "forwardings/:id/cancel",      to: "forwardings#cancel"
+    # Ponto de resposta (§6; Q23, Q48): o inbox do respondente e as ações dele.
+    get   "inbox",             to: "inbox#index"
+    post  "inbox/:id/reply",   to: "inbox#reply"
+    post  "inbox/:id/decline", to: "inbox#decline"
+    post  "inbox/:id/extend",  to: "inbox#extend_forwarding"
   end
 
   # Módulo 32a (ADR 0050; contrato §4): urgência (UPA), sessão do dashboard.
