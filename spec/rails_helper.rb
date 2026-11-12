@@ -66,6 +66,7 @@ require_relative "support/psychosocial_helpers"
 require_relative "support/urgency_helpers"
 require_relative "support/urgency_observation_helpers"
 require_relative "support/ombudsman_helpers"
+require_relative "support/home_visit_helpers"
 require_relative "support/source_scan"
 # Add additional requires below this line. Rails is not loaded until this point!
 

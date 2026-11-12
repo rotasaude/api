@@ -83,7 +83,8 @@ RSpec.describe ReencryptionJob do
                                          UrgencyClassification UrgencyOutcome UrgencyPrescription UrgencyPrescriptionItem
                                          UrgencyAdministration UrgencyStockShortfall
                                          OmbudsmanManifestation OmbudsmanEvent OmbudsmanForwarding OmbudsmanIdentityAccess
-                                         OmbudsmanAttachment OmbudsmanReopenRequest])
+                                         OmbudsmanAttachment OmbudsmanReopenRequest
+                                         HomeVisit])
     expect(stats["User"]).to be >= 1
     expect(stats["Conversation"]).to be >= 1
   end

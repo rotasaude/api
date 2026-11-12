@@ -3936,3 +3936,99 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 24b (ADR 0052; plano, Task 3; contrato §1 e §13): visita domiciliar.
+-- A folha fecha uma vez (open -> closed, com closed_at/closed_by juntos) e então
+-- congela; nunca é apagada. A visita nunca é apagada: a re-cifra das colunas
+-- cifradas passa antes de tudo; fora dela só mudam withdrawn_at,
+-- withdrawn_by_user_id e withdrawal_reason (de NULL a valor, uma vez) e só com a
+-- folha aberta (lida aqui, no trigger). A atribuição de microárea só encerra
+-- (ended_at/ended_by_user_id, de NULL a valor, uma vez). TRUNCATE recusado nas
+-- três. As funções leem as colunas por to_jsonb(NEW)/(OLD): este arquivo roda de
+-- novo em migrações antigas, em bancos ainda sem as colunas.
+CREATE OR REPLACE FUNCTION rota_home_visit_day_guard() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'home_visit_days: DELETE refused';
+  END IF;
+  IF to_jsonb(OLD) ->> 'state' = 'closed' THEN
+    RAISE EXCEPTION 'home_visit_days: a closed day never changes';
+  END IF;
+  IF to_jsonb(NEW) ->> 'state' IS DISTINCT FROM 'closed'
+     OR (to_jsonb(NEW) - ARRAY['state', 'closed_at', 'closed_by', 'closed_by_user_id'])
+        IS DISTINCT FROM (to_jsonb(OLD) - ARRAY['state', 'closed_at', 'closed_by', 'closed_by_user_id']) THEN
+    RAISE EXCEPTION 'home_visit_days: a day only goes from open to closed, with the closing columns together';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_home_visit_guard() RETURNS trigger AS $fn$
+DECLARE
+  ciphered text[] := ARRAY['reasons', 'measurements', 'note', 'withdrawal_reason'];
+  withdrawal text[] := ARRAY['withdrawn_at', 'withdrawn_by_user_id', 'withdrawal_reason'];
+  old_row jsonb := to_jsonb(OLD);
+  new_row jsonb := to_jsonb(NEW);
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'home_visits: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (new_row - ciphered) = (old_row - ciphered) THEN
+    RETURN NEW;
+  END IF;
+  IF (new_row - withdrawal) IS DISTINCT FROM (old_row - withdrawal) THEN
+    RAISE EXCEPTION 'home_visits: only the withdrawal columns change';
+  END IF;
+  IF old_row ->> 'withdrawn_at' IS NOT NULL THEN
+    RAISE EXCEPTION 'home_visits: a visit is withdrawn once';
+  END IF;
+  IF new_row ->> 'withdrawn_at' IS NULL OR new_row ->> 'withdrawn_by_user_id' IS NULL OR new_row ->> 'withdrawal_reason' IS NULL THEN
+    RAISE EXCEPTION 'home_visits: the withdrawal columns go from NULL to a value together';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM home_visit_days WHERE id = (old_row ->> 'home_visit_day_id')::uuid AND state = 'open') THEN
+    RAISE EXCEPTION 'home_visits: a visit is withdrawn only while its day is open';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rota_micro_area_field_assignment_guard() RETURNS trigger AS $fn$
+DECLARE
+  ending text[] := ARRAY['ended_at', 'ended_by_user_id'];
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'micro_area_field_assignments: DELETE refused';
+  END IF;
+  IF (to_jsonb(NEW) - ending) IS DISTINCT FROM (to_jsonb(OLD) - ending) THEN
+    RAISE EXCEPTION 'micro_area_field_assignments: only ended_at and ended_by_user_id change';
+  END IF;
+  IF to_jsonb(OLD) ->> 'ended_at' IS NOT NULL OR to_jsonb(NEW) ->> 'ended_at' IS NULL
+     OR to_jsonb(NEW) ->> 'ended_by_user_id' IS NULL THEN
+    RAISE EXCEPTION 'micro_area_field_assignments: an assignment ends once, from NULL to a value';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.home_visits') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS home_visit_days_guard ON home_visit_days';
+    EXECUTE 'CREATE TRIGGER home_visit_days_guard BEFORE UPDATE OR DELETE ON home_visit_days
+      FOR EACH ROW EXECUTE FUNCTION rota_home_visit_day_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS home_visits_guard ON home_visits';
+    EXECUTE 'CREATE TRIGGER home_visits_guard BEFORE UPDATE OR DELETE ON home_visits
+      FOR EACH ROW EXECUTE FUNCTION rota_home_visit_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS micro_area_field_assignments_guard ON micro_area_field_assignments';
+    EXECUTE 'CREATE TRIGGER micro_area_field_assignments_guard BEFORE UPDATE OR DELETE ON micro_area_field_assignments
+      FOR EACH ROW EXECUTE FUNCTION rota_micro_area_field_assignment_guard()';
+    FOREACH item IN ARRAY ARRAY['micro_area_field_assignments', 'home_visit_days', 'home_visits'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

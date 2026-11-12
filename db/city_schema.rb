@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_11_900002) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_12_900001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -1573,6 +1573,64 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_900002) do
     t.check_constraint "ticket_prefix::text ~ '^[A-Z]{1,3}$'::text", name: "ck_health_units_ticket_prefix"
   end
 
+  create_table "home_visit_days", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cbo", limit: 6, null: false
+    t.datetime "closed_at"
+    t.string "closed_by"
+    t.uuid "closed_by_user_id"
+    t.datetime "created_at", null: false
+    t.date "day", null: false
+    t.uuid "professional_id", null: false
+    t.integer "sequence", default: 1, null: false
+    t.string "state", default: "open", null: false
+    t.uuid "team_id", null: false
+    t.uuid "user_id", null: false
+    t.index ["professional_id", "team_id", "day", "sequence"], name: "idx_home_visit_days_sheet", unique: true
+    t.index ["professional_id", "team_id", "day"], name: "idx_home_visit_days_one_open", unique: true, where: "((state)::text = 'open'::text)"
+    t.index ["state", "day"], name: "idx_home_visit_days_open_by_day", where: "((state)::text = 'open'::text)"
+    t.check_constraint "((state)::text = 'closed'::text) = (closed_at IS NOT NULL) AND ((state)::text = 'closed'::text) = (closed_by IS NOT NULL) AND (closed_by_user_id IS NULL OR (closed_by)::text = 'user'::text)", name: "ck_home_visit_days_closed"
+    t.check_constraint "(state)::text = ANY (ARRAY['open'::character varying::text, 'closed'::character varying::text]) AND sequence >= 1 AND (closed_by IS NULL OR (closed_by)::text = ANY (ARRAY['user'::character varying::text, 'job'::character varying::text, 'full'::character varying::text]))", name: "ck_home_visit_days_values"
+  end
+
+  create_table "home_visits", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "client_uuid", null: false
+    t.datetime "created_at", null: false
+    t.uuid "family_id"
+    t.uuid "field_device_id"
+    t.boolean "has_reason", default: false, null: false
+    t.uuid "home_visit_day_id", null: false
+    t.uuid "household_id"
+    t.text "measurements"
+    t.uuid "micro_area_id"
+    t.text "note"
+    t.datetime "occurred_at", null: false
+    t.string "origin", null: false
+    t.integer "outcome", null: false
+    t.boolean "out_of_area", default: false, null: false
+    t.uuid "patient_id"
+    t.string "property_type", null: false
+    t.text "reasons"
+    t.uuid "recorded_by_user_id", null: false
+    t.boolean "shared", default: false, null: false
+    t.integer "shift", null: false
+    t.string "subject", null: false
+    t.text "withdrawal_reason"
+    t.datetime "withdrawn_at"
+    t.uuid "withdrawn_by_user_id"
+    t.index ["client_uuid"], name: "idx_home_visits_client_uuid", unique: true
+    t.index ["home_visit_day_id"], name: "idx_home_visits_day"
+    t.index ["micro_area_id", "occurred_at"], name: "idx_home_visits_micro_area"
+    t.index ["patient_id", "occurred_at"], name: "idx_home_visits_patient_done", where: "((withdrawn_at IS NULL) AND (outcome = 1))"
+    t.check_constraint "(micro_area_id IS NULL) = out_of_area", name: "ck_home_visits_area"
+    t.check_constraint "(subject)::text <> 'family_responsible'::text OR family_id IS NOT NULL", name: "ck_home_visits_family"
+    t.check_constraint "(withdrawn_at IS NULL) = (withdrawn_by_user_id IS NULL)", name: "ck_home_visits_withdrawn"
+    t.check_constraint "outcome = 1 OR NOT has_reason", name: "ck_home_visits_outcome_reason"
+    t.check_constraint "(origin)::text = ANY (ARRAY['dashboard'::character varying::text, 'field_app'::character varying::text]) AND ((origin)::text = 'field_app'::text) = (field_device_id IS NOT NULL)", name: "ck_home_visits_origin"
+    t.check_constraint "(property_type)::text <> ALL (ARRAY['2'::character varying::text, '3'::character varying::text, '4'::character varying::text, '5'::character varying::text, '6'::character varying::text, '12'::character varying::text, '13'::character varying::text]) OR patient_id IS NULL AND family_id IS NULL", name: "ck_home_visits_non_residential"
+    t.check_constraint "(subject)::text = ANY (ARRAY['resident'::character varying::text, 'family_responsible'::character varying::text, 'none'::character varying::text]) AND ((subject)::text = 'none'::text) = (patient_id IS NULL)", name: "ck_home_visits_subject"
+    t.check_constraint "outcome = ANY (ARRAY[1, 2, 3]) AND shift = ANY (ARRAY[1, 2, 3]) AND (property_type)::text = ANY (ARRAY['1'::character varying::text, '2'::character varying::text, '3'::character varying::text, '4'::character varying::text, '5'::character varying::text, '6'::character varying::text, '7'::character varying::text, '8'::character varying::text, '9'::character varying::text, '10'::character varying::text, '11'::character varying::text, '12'::character varying::text, '13'::character varying::text, '99'::character varying::text])", name: "ck_home_visits_values"
+  end
+
   create_table "household_versions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.text "address", null: false
     t.text "contact_phone"
@@ -2343,6 +2401,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_900002) do
     t.index ["user_id", "role"], name: "idx_memberships_unique_active", unique: true, where: "(revoked_at IS NULL)"
     t.index ["user_id"], name: "index_memberships_on_user_id"
     t.check_constraint "role::text = ANY (ARRAY['analyst'::text, 'billing_clerk'::text, 'campaign_manager'::text, 'care_regulator'::text, 'citizen_verifier'::text, 'driver'::text, 'exam_provider'::text, 'exam_regulator'::text, 'health_professional'::text, 'lab_releaser'::text, 'lab_staff'::text, 'municipal_admin'::text, 'ombudsman'::text, 'ombudsman_responder'::text, 'ombudsman_staff'::text, 'pharmacist'::text, 'pharmacy_assistant'::text, 'protocol_author'::text, 'protocol_publisher'::text, 'protocol_reviewer'::text, 'psychosocial_lead'::text, 'psychosocial_staff'::text, 'stock_keeper'::text, 'surveillance'::text, 'tfd_committee'::text, 'transport_dispatcher'::text, 'viewer'::text])", name: "ck_memberships_role"
+  end
+
+  create_table "micro_area_field_assignments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "assigned_by_user_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "ended_at"
+    t.uuid "ended_by_user_id"
+    t.uuid "micro_area_id", null: false
+    t.uuid "professional_id", null: false
+    t.index ["micro_area_id", "professional_id"], name: "idx_micro_area_field_assignments_active", unique: true, where: "(ended_at IS NULL)"
+    t.index ["professional_id"], name: "idx_micro_area_field_assignments_professional", where: "(ended_at IS NULL)"
+    t.check_constraint "(ended_at IS NULL) = (ended_by_user_id IS NULL)", name: "ck_micro_area_field_assignments_ended"
   end
 
   create_table "micro_areas", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4946,6 +5016,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_900002) do
   add_foreign_key "health_unit_drains", "health_units", column: "target_unit_id"
   add_foreign_key "health_unit_drains", "users", column: "drained_by_user_id"
   add_foreign_key "health_units", "neighborhoods"
+  add_foreign_key "home_visit_days", "health_teams", column: "team_id"
+  add_foreign_key "home_visit_days", "professionals"
+  add_foreign_key "home_visit_days", "users"
+  add_foreign_key "home_visit_days", "users", column: "closed_by_user_id"
+  add_foreign_key "home_visits", "families"
+  add_foreign_key "home_visits", "home_visit_days"
+  add_foreign_key "home_visits", "households"
+  add_foreign_key "home_visits", "micro_areas"
+  add_foreign_key "home_visits", "patients"
+  add_foreign_key "home_visits", "users", column: "recorded_by_user_id"
+  add_foreign_key "home_visits", "users", column: "withdrawn_by_user_id"
   add_foreign_key "household_versions", "health_teams", column: "team_id"
   add_foreign_key "household_versions", "households"
   add_foreign_key "household_versions", "micro_areas"
@@ -5076,6 +5157,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_900002) do
   add_foreign_key "local_notifiable_diseases", "users", column: "updated_by_user_id"
   add_foreign_key "memberships", "users"
   add_foreign_key "memberships", "users", column: "granted_by_id"
+  add_foreign_key "micro_area_field_assignments", "micro_areas"
+  add_foreign_key "micro_area_field_assignments", "professionals"
+  add_foreign_key "micro_area_field_assignments", "users", column: "assigned_by_user_id"
+  add_foreign_key "micro_area_field_assignments", "users", column: "ended_by_user_id"
   add_foreign_key "micro_areas", "health_teams", column: "team_id"
   add_foreign_key "micro_areas", "professionals", column: "acs_professional_id"
   add_foreign_key "neighborhood_coverages", "health_units"

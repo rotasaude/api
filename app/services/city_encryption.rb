@@ -215,7 +215,9 @@ module CityEncryption
     [ OmbudsmanForwarding, :extract ], [ OmbudsmanForwarding, :extension_reason ], [ OmbudsmanForwarding, :reply ],
     [ OmbudsmanIdentityAccess, :justification ],
     [ OmbudsmanAttachment, :filename ],
-    [ OmbudsmanReopenRequest, :reason ], [ OmbudsmanReopenRequest, :decision_text ]
+    [ OmbudsmanReopenRequest, :reason ], [ OmbudsmanReopenRequest, :decision_text ],
+    # ADR 0052 (módulo 24b): motivos, medidas, observação e motivo da retirada da visita.
+    [ HomeVisit, :reasons ], [ HomeVisit, :measurements ], [ HomeVisit, :note ], [ HomeVisit, :withdrawal_reason ]
   ].freeze
 
   module_function
