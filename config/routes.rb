@@ -782,6 +782,12 @@ Rails.application.routes.draw do
     # o `expected_state` do encaminhamento (Q33).
     post  "manifestations/:id/classify", to: "actions#classify"
     post  "manifestations/:id/forward",  to: "actions#forward"
+    post  "manifestations/:id/request_complement", to: "actions#request_complement"
+    post  "manifestations/:id/complement",         to: "actions#complement"
+    post  "manifestations/:id/extend",             to: "actions#extend_deadline"
+    post  "manifestations/:id/interim_response",   to: "actions#interim_response"
+    post  "manifestations/:id/final_response",     to: "actions#final_response"
+    post  "manifestations/:id/change_resolution",  to: "actions#change_resolution"
     post  "forwardings/:id/cancel",      to: "forwardings#cancel"
     # Ponto de resposta (§6; Q23, Q48): o inbox do respondente e as ações dele.
     get   "inbox",             to: "inbox#index"

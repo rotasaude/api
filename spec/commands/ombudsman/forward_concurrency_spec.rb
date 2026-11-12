@@ -7,8 +7,8 @@ require "rails_helper"
 # (Ombudsman::Lock, FOR UPDATE); a segunda espera a trava e, solta a
 # primeira, relê `forwarded` e recebe 409 manifestation_changed — nada dela é
 # gravado (nem encaminhamento, nem evento, nem ombudsman.forwarded). O par
-# `final_response` × `forward` entra na Task 13 (preflight F-19), com o
-# comando que ainda não existe.
+# `final_response` × `forward`, nas duas ordens e pela requisição inteira, está
+# em spec/requests/ombudsman/concurrency_spec.rb (Task 13, preflight F-19).
 #
 # O mesmo vale para o encaminhamento (Q33): a resposta do respondente e o
 # cancelamento da equipe sobre o MESMO encaminhamento travam manifestação →
