@@ -1150,7 +1150,8 @@ Rails.application.routes.draw do
       post "manifestations/:id/reopen_request", to: "manifestations#reopen_request"
       post "manifestations/:id/satisfaction",   to: "manifestations#satisfaction"
       get  "public_config",      to: "public_configs#show"
-      post "anonymous_reports",  to: "anonymous_reports#create"
+      # Sem sufixo de formato (Q60): `.json` não casa, e a máscara do IP no log vale só para o caminho exato.
+      post "anonymous_reports",  to: "anonymous_reports#create", format: false
     end
   end
 

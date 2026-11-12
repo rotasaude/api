@@ -60,6 +60,15 @@ RSpec.describe "Denúncia anônima sem login", type: :request do
       expect(json_body).to eq("error" => "too_many_requests")
     end
 
+    it "com sufixo de formato (.json) a rota não casa: 404 e nada gravado (Q60)" do
+      post "/citizen/ombudsman/anonymous_reports.json", params: { body: text }.to_json,
+                                                        headers: { "CONTENT_TYPE" => "application/json", "REMOTE_ADDR" => "10.9.8.7" }
+      expect(response).to have_http_status(:not_found)
+      expect(anonymous_count).to eq(0)
+      anon_post({ body: text })
+      expect(anonymous_count).to eq(1) # controle positivo
+    end
+
     it "body de 20 a 4000 code points depois do strip (Q8); unidade inexistente ou inativa → 422" do
       anon_post({ body: "  #{'a' * 19}  " }, ip: "10.1.0.1")
       expect(response).to have_http_status(:unprocessable_content)
