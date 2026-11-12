@@ -797,6 +797,13 @@ Rails.application.routes.draw do
     post  "inbox/:id/reply",   to: "inbox#reply"
     post  "inbox/:id/decline", to: "inbox#decline"
     post  "inbox/:id/extend",  to: "inbox#extend_forwarding"
+    # Painel e relatório de gestão anual (§11; Q28, Q35): o painel (técnico e
+    # ouvidor), por profissional (ouvidor) e o relatório do ano (ouvidor).
+    get   "dashboard",                    to: "dashboard#show"
+    get   "dashboard/professionals",      to: "dashboard#professionals"
+    get   "annual_reports/:year",         to: "annual_reports#show"
+    patch "annual_reports/:year",         to: "annual_reports#update"
+    post  "annual_reports/:year/publish", to: "annual_reports#publish"
   end
 
   # Módulo 32a (ADR 0050; contrato §4): urgência (UPA), sessão do dashboard.
