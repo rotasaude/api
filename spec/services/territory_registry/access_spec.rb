@@ -51,6 +51,17 @@ RSpec.describe TerritoryRegistry::Access do
     expect { described_class.registrar_cbo?("515105", ficha: :visita) }.to raise_error(KeyError)
   end
 
+  # Módulo 24b (ADR 0052; W-3): visita = Tabela 7 e atividade coletiva = Tabela 5,
+  # pela mesma config, sem código novo.
+  it "registrar_cbo? aceita :home_visit (515105, 322255) e :collective_activity (2231F9), e recusa 225125 em :home_visit" do
+    expect(described_class.registrar_cbo?("515105", ficha: :home_visit)).to be(true)
+    expect(described_class.registrar_cbo?("322255", ficha: :home_visit)).to be(true)
+    expect(described_class.registrar_cbo?("225125", ficha: :home_visit)).to be(false)
+    expect(described_class.registrar_cbo?("2231F9", ficha: :collective_activity)).to be(true)
+    expect(described_class.registrar_cbo?("225125", ficha: :collective_activity)).to be(true)
+    expect(described_class.registrar_cbo?("225151", ficha: :collective_activity)).to be(false)
+  end
+
   it "registrar?: enfermeiro em qualquer microárea da equipe; ACS só na sua; equipe de fora → out_of_scope" do
     expect(described_class.registrar?(nurse, team, micro_area: area, ficha: :individual)).to eq(:ok)
     expect(described_class.registrar?(nurse, team, micro_area: other_area, ficha: :household)).to eq(:ok)

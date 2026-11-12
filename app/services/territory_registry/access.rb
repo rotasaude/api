@@ -22,7 +22,8 @@ module TerritoryRegistry
       HealthTeamMember.active.find_by(professional: user.professional, health_team: team)
     end
 
-    # ficha: :individual | :household (outra → KeyError: erro de programação).
+    # ficha: :individual | :household | :home_visit | :collective_activity (as
+    # chaves do YAML; outra → KeyError: erro de programação).
     def registrar_cbo?(cbo, ficha:) = REGISTRATION_CBOS.fetch(ficha.to_sym).include?(cbo.to_s)
 
     # :ok | :out_of_scope | :cbo_not_allowed. micro_area nil = cadastro sem

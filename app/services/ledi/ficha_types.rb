@@ -22,7 +22,14 @@ module Ledi
       # Módulo 28 (ADR 0046; F-28.2): a FAO. Código 5 em
       # vendor/ledi/8.7.0/docs/dicionario.html (TipoDadoSerializado).
       "atendimento_odontologico" => { code: 5, klass: "Br::Gov::Saude::Esusab::Ras::Atendodonto::FichaAtendimentoOdontologicoMasterThrift",
-                                      uuid_field: :uuidFicha }
+                                      uuid_field: :uuidFicha },
+      # Módulo 24b (ADR 0052; Task 1): visita domiciliar (8) e atividade coletiva (6),
+      # códigos de TipoDadoSerializado em vendor/ledi/8.7.0/docs/dicionario.html
+      # (spec/services/ledi/visit_activity_dictionaries_spec.rb).
+      "visita_domiciliar" => { code: 8, klass: "Br::Gov::Saude::Esusab::Ras::Visitadomiciliar::FichaVisitaDomiciliarMasterThrift",
+                               uuid_field: :uuidFicha },
+      "atividade_coletiva" => { code: 6, klass: "Br::Gov::Saude::Esusab::Ras::Atividadecoletiva::FichaAtividadeColetivaThrift",
+                                uuid_field: :uuidFicha }
     }.freeze
 
     module_function

@@ -1,0 +1,295 @@
+# Dicionários e regras da ficha de Visita Domiciliar e Territorial (FVD,
+# tipoDadoSerializado 8) e da ficha de Atividade Coletiva (FAC, 6) do LEDI APS
+# 8.7.0 — módulo 24b (ADR 0052; Task 1, prova técnica). Fonte:
+# vendor/ledi/8.7.0/docs/dicionario-fvd.html e dicionario-fac.html (baixados em
+# 2026-11-12; SHA-256 abaixo e em vendor/ledi/8.7.0/SOURCE), com as tabelas de
+# código de dicionario.html, conferidos contra o IDL e o gen-rb vendorizados
+# (spec/services/ledi/visit_activity_dictionaries_spec.rb). Quando o dicionário
+# e o IDL divergem no nome ou na ordem do campo, vale o IDL (`ledi`).
+#
+# Códigos LEDI inteiros; rótulos verbatim do dicionário. O api decide
+# (HomeVisits::Rules, CollectiveActivities::Rules); daqui saem o
+# `context.domains`/`options.domains` (contrato §7) e o domains-v1.json do
+# rotasaude/contracts (escrito pela sessão do contracts, Q13).
+version: "8.7.0"
+source:
+  fvd: e4057a7a27e104ae155a931ecd98260f7b84215421e705b81c5cd3f64f969e7c
+  fac: b4dcd22fed0161528072493f02a6039cfca4a63df394ef40747157ba1c43013b
+
+home_visit:
+  domains:
+    # MotivoVisita (dicionario.html); o grupo é a coluna Observações (#GRUPO na
+    # primeira linha de cada um). 21 e 30 têm o mesmo rótulo; a tela mostra o grupo.
+    motivo_visita:
+      1: { label: "Cadastramento / Atualização", group: TIPO_VISITA }
+      29: { label: "Visita periódica", group: TIPO_VISITA }
+      2: { label: "Consulta", group: BUSCA_ATIVA }
+      3: { label: "Exame", group: BUSCA_ATIVA }
+      4: { label: "Vacina", group: BUSCA_ATIVA }
+      30: { label: "Condicionalidades do bolsa família", group: BUSCA_ATIVA }
+      5: { label: "Gestante", group: ACOMPANHAMENTO }
+      6: { label: "Puérpera", group: ACOMPANHAMENTO }
+      7: { label: "Recém-nascido", group: ACOMPANHAMENTO }
+      8: { label: "Criança", group: ACOMPANHAMENTO }
+      9: { label: "Pessoa com desnutrição", group: ACOMPANHAMENTO }
+      10: { label: "Pessoa em reabilitação ou com deficiência", group: ACOMPANHAMENTO }
+      11: { label: "Pessoa com hipertensão", group: ACOMPANHAMENTO }
+      12: { label: "Pessoa com diabetes", group: ACOMPANHAMENTO }
+      13: { label: "Pessoa com asma", group: ACOMPANHAMENTO }
+      14: { label: "Pessoa com DPOC / enfisema", group: ACOMPANHAMENTO }
+      15: { label: "Pessoa com câncer", group: ACOMPANHAMENTO }
+      16: { label: "Pessoa com outras doenças crônicas", group: ACOMPANHAMENTO }
+      17: { label: "Pessoa com hanseníase", group: ACOMPANHAMENTO }
+      18: { label: "Pessoa com tuberculose", group: ACOMPANHAMENTO }
+      32: { label: "Sintomáticos respiratórios", group: ACOMPANHAMENTO }
+      33: { label: "Tabagista", group: ACOMPANHAMENTO }
+      19: { label: "Domiciliados / Acamados", group: ACOMPANHAMENTO }
+      20: { label: "Condições de vulnerabilidade social", group: ACOMPANHAMENTO }
+      21: { label: "Condicionalidades do bolsa família", group: ACOMPANHAMENTO }
+      22: { label: "Saúde mental", group: ACOMPANHAMENTO }
+      23: { label: "Usuário de álcool", group: ACOMPANHAMENTO }
+      24: { label: "Usuário de outras drogas", group: ACOMPANHAMENTO }
+      38: { label: "Pessoa idosa", group: ACOMPANHAMENTO }
+      34: { label: "Ação educativa", group: CONTROLE_AMBIENTAL_E_VETORIAL }
+      35: { label: "Imóvel com foco", group: CONTROLE_AMBIENTAL_E_VETORIAL }
+      36: { label: "Ação mecânica", group: CONTROLE_AMBIENTAL_E_VETORIAL }
+      37: { label: "Tratamento focal", group: CONTROLE_AMBIENTAL_E_VETORIAL }
+      25: { label: "Egresso de internação", group: OUTROS }
+      27: { label: "Convite para atividades coletivas / campanha de saúde", group: OUTROS }
+      31: { label: "Orientação / Prevenção", group: OUTROS }
+      28: { label: "Outros", group: OUTROS }
+    # Rótulo do grupo: o dicionário só tem o marcador (#TIPO_VISITA…); estes são da tela.
+    motivo_visita_groups:
+      TIPO_VISITA: { group_label: "Tipo de visita" }
+      BUSCA_ATIVA: { group_label: "Busca ativa" }
+      ACOMPANHAMENTO: { group_label: "Acompanhamento" }
+      CONTROLE_AMBIENTAL_E_VETORIAL: { group_label: "Controle ambiental e vetorial" }
+      OUTROS: { group_label: "Outros" }
+    desfecho:  # Desfecho
+      1: "Visita realizada"
+      2: "Visita recusada"
+      3: "Ausente"
+    turno:  # Turno (o mesmo da FAC)
+      1: "Manhã"
+      2: "Tarde"
+      3: "Noite"
+    # tipoGlicemia (IDL 18, i64) → "Referência: TipoGlicemiaCapilar" no dicionario-fvd.html.
+    tipo_glicemia:  # tipoGlicemiaCapilar
+      0: "Jejum"
+      1: "Pós-prandial"
+      2: "Pré-prandial"
+      3: "Não especificado"
+    # Os mesmos domínios do 24a (config/ledi/registration_dictionaries.yml), em texto no
+    # dashboard e no app (Q26): tipoDeImovel e JustificativaNaoPossuiCpf.
+    tipo_de_imovel: territory
+    justificativa_nao_possui_cpf: territory
+
+  # Medidas (todas opcionais). Faixas e casas: "Valor mínimo … e máximo …" / "só aceita
+  # valores entre … e …" e "Máximo de N casa(s) decimal(is)" de cada campo do
+  # dicionario-fvd.html. Todas proibidas com desfecho 2/3 e em imóvel não residencial.
+  measurements:
+    weight_kg: { ledi: pesoAcompanhamentoNutricional, min: 0.5, max: 500, decimals: 3 }
+    height_cm: { ledi: alturaAcompanhamentoNutricional, min: 20, max: 250, decimals: 1 }
+    systolic: { ledi: pressaoSistolica, min: 0, max: 999, decimals: 0, requires: diastolic }
+    diastolic: { ledi: pressaoDiastolica, min: 0, max: 999, decimals: 0, requires: systolic }
+    temperature_c: { ledi: temperatura, min: 20, max: 45, decimals: 1 }
+    glucose_mg_dl: { ledi: glicemia, min: 0, max: 800, decimals: 0, requires: glucose_type }
+    glucose_type: { ledi: tipoGlicemia, domain: tipo_glicemia, requires: glucose_mg_dl }
+
+  rules:
+    # tipoDeImovel 02, 03, 04, 05, 06, 12, 13: sem numProntuario, CNS, CPF, nascimento,
+    # sexo e medidas; motivos só da lista abaixo (motivosVisita).
+    non_residential_property_types: ["2", "3", "4", "5", "6", "12", "13"]
+    non_residential_reasons: [1, 34, 35, 36, 37, 27, 31, 28]
+    # "As opções 5 (Gestante) e 6 (Puérpera) não podem ser informadas se o Sexo = 0
+    # (masculino)": proibidas só para o masculino (não para feminino, ignorado ou sem sexo).
+    male_forbidden_reasons: [5, 6]
+    # motivosVisita e todas as medidas: "Não deve ser preenchido caso o campo desfecho =
+    # 3 Ausente ou 2 Visita Recusada".
+    outcomes_without_reasons_and_measurements: [2, 3]
+    reasons_max: 36            # motivosVisita: List<Long>, máximo 36
+    visits_per_sheet: 99       # visitasDomiciliares: List, máximo 99
+    # cnsCidadao não é obrigatório em nenhuma condição; o marcador sem CPF só exige a
+    # justificativa (justificativaNaoPossuiCpf "É obrigatório se stCidadaoNaoPossuiCpf=true").
+    cns_required_with_no_cpf: false
+    # dtNascimento e sexo: nunca em não residencial; em residencial, obrigatórios se houver
+    # CNS, o outro dos dois, motivo de #BUSCA_ATIVA ou #ACOMPANHAMENTO, motivo 25 ou 31, ou
+    # peso/altura. Com pessoa o api manda os dois sempre; sem pessoa (subject none) nenhum
+    # desses gatilhos pode vir (as duas listas abaixo).
+    birth_and_sex_required: with_person
+    without_person_allowed_reasons: [1, 29, 34, 35, 36, 37, 27, 28]
+    without_person_forbidden_measurements: [weight_kg, height_cm]
+
+collective_activity:
+  domains:
+    tipo_atividade_coletiva:  # TipoAtividadeColetiva
+      1: "Reunião de equipe"
+      2: "Reunião com outras equipes de saúde"
+      3: "Reunião intersetorial / Conselho local de saúde / Controle social"
+      4: "Educação em saúde"
+      5: "Atendimento em grupo"
+      6: "Avaliação / Procedimento coletivo"
+      7: "Mobilização social"
+    temas_para_reuniao:  # TemasParaReuniao
+      1: "Questões administrativas / funcionamento"
+      2: "Processo de trabalho"
+      3: "Diagnóstico / Monitoramento do território"
+      4: "Planejamento / Monitoramento das ações da equipe"
+      5: "Discussão de caso ou projeto terapêutico singular"
+      6: "Educação permanente"
+      7: "Outros"
+      8: "Vigilância em saúde"
+    # TemasParaSaude sem o 18 (Semana saúde na escola): exige pseEducacao/pseSaude (PSE
+    # fora do 24b; forbidden_health_topics).
+    temas_para_saude:
+      29: "Ações de combate ao Aedes aegypti"
+      19: "Agravos e Doenças Negligenciadas"
+      1: "Alimentação saudável"
+      4: "Autocuidado de pessoas com doenças crônicas"
+      5: "Cidadania e direitos humanos"
+      7: "Prevenção ao uso de álcool, tabaco e outras drogas"
+      8: "Envelhecimento / Climatério / Andropausa / Etc"
+      10: "Plantas medicinais / Fitoterapia"
+      13: "Prevenção da violência e promoção da cultura da paz"
+      14: "Saúde ambiental"
+      15: "Saúde bucal"
+      6: "Saúde do trabalhador"
+      16: "Saúde mental"
+      17: "Saúde sexual e reprodutiva"
+      31: "Amamentação"
+      32: "Alimentação complementar saudável"
+      21: "Outros"
+    praticas_em_saude:  # PraticasEmSaude
+      20: "Antropometria"
+      2: "Aplicação tópica de flúor"
+      23: "Desenvolvimento da linguagem"
+      9: "Escovação dental supervisionada"
+      11: "Práticas corporais e Atividade física"
+      25: "Programa Nacional de Controle do Tabagismo 1"
+      26: "Programa Nacional de Controle do Tabagismo 2"
+      27: "Programa Nacional de Controle do Tabagismo 3"
+      28: "Programa Nacional de Controle do Tabagismo 4"
+      22: "Saúde auditiva"
+      3: "Saúde ocular"
+      24: "Verificação da situação vacinal"
+      12: "Outras"
+      30: "Outro procedimento coletivo"
+      33: "Fornecimento de kit bucal"
+      34: "Programa Nacional de Controle do Tabagismo Manutenção"
+    publico_alvo:  # PublicoAlvo (não há 11 nem 74)
+      1: "Comunidade em geral"
+      2: "Criança de 0 a 3 anos"
+      3: "Criança de 4 a 5 anos"
+      4: "Criança de 6 a 11 anos"
+      5: "Adolescente"
+      6: "Mulher"
+      7: "Gestante"
+      8: "Homem"
+      9: "Familiares"
+      10: "Pessoa idosa"
+      12: "Pessoas com doenças crônicas"
+      13: "Usuário de tabaco"
+      14: "Usuário de álcool"
+      15: "Usuário de outras drogas"
+      16: "Pessoas com sofrimento ou transtorno mental"
+      17: "Profissional da educação"
+      18: "Outros"
+      19: "Adolescente em atendimento socioeducativo em meio aberto"
+      20: "Adolescente em atendimento socioeducativo em meio fechado"
+    # OutroProcedimentoColetivo do dicionario-fac.html (referência do campo procedimento,
+    # SIGTAP competência 06/2026), código sem ponto nem hífen (como o coMsProcedimento da FAO).
+    outro_procedimento_coletivo:
+      "0101050178": "ATIVIDADE COLETIVA DE ANTROPOSOFIA APLICADA À SAÚDE"
+      "0101050160": "ATIVIDADE COLETIVA DE AYURVEDA"
+      "0102020078": "ATIVIDADES COM GRUPOS NA TEMÁTICA DE SAÚDE DO TRABALHADOR"
+      "0102010510": "ATIVIDADES EDUCATIVAS COM RELAÇÃO AO CONSUMO DE SÓDIO, AÇÚCAR E GORDURAS, REALIZADAS PARA O SETOR REGULADO E A POPULAÇÃO"
+      "0311020046": "ATIVIDADE EDUCATIVA EM CUIDADOS PALIATIVOS COM A COMUNIDADE"
+      "0311020038": "ATIVIDADE EDUCATIVA EM CUIDADOS PALIATIVOS COM GRUPO DE FAMILIARES DE PACIENTES"
+      "0311020020": "ATIVIDADE EDUCATIVA EM CUIDADOS PALIATIVOS COM PROFISSIONAIS DA RAS"
+      "0102020027": "ATIVIDADE EDUCATIVA EM SAÚDE DO TRABALHADOR"
+      "0101010133": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA CÓLERA"
+      "0101010214": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA DOENÇA DA RAIVA"
+      "0101010303": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA DOENÇA DE CHAGAS"
+      "0101010141": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA DOENÇA DE HAFF"
+      "0101010168": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA ESPOROTRICOSE"
+      "0101010257": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA ESQUISTOSSOMOSE"
+      "0101010176": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA FEBRE MACULOSA BRASILEIRA"
+      "0101010290": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA FILARIOSE LINFÁTICO"
+      "0101010249": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA HANSENÍASE"
+      "0101010192": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA LEISHMANIOSE VISCERAL"
+      "0101010206": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA LEPTOSPIROSE"
+      "0101010109": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA MALÁRIA"
+      "0101010281": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA ONCOCERCOSE"
+      "0101010222": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DA TOXOPLASMOSE"
+      "0101010273": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DAS GEO-HELMINTÍASES"
+      "0101010125": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DE ACIDENTE POR ANIMAIS PEÇONHENTOS"
+      "0101010150": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DE DOENÇAS DIARREICAS AGUDAS"
+      "0101010184": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DE LEISHMANIOSE TEGUMENTAR"
+      "0101010230": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DE UMA SÓ SAÚDE"
+      "0101010265": "ATIVIDADES EDUCATIVAS DA POPULAÇÃO SOBRE A TEMÁTICA DO TRACOMA"
+      "0101010010": "ATIVIDADE EDUCATIVA / ORIENTAÇÃO EM GRUPO NA ATENÇÃO PRIMÁRIA"
+      "0101010028": "ATIVIDADE EDUCATIVA / ORIENTAÇÃO EM GRUPO NA ATENÇÃO ESPECIALIZADA"
+      "0102010056": "ATIVIDADES EDUCATIVAS PARA O SETOR REGULADO"
+      "0102010501": "ATIVIDADES EDUCATIVAS SOBRE A TEMÁTICA DA DENGUE,REALIZADAS PARA A POPULAÇÃO"
+      "0101020015": "AÇÃO COLETIVA DE APLICAÇÃO TÓPICA DE FLÚOR GEL"
+      "0101020023": "AÇÃO COLETIVA DE BOCHECHO FLUORADO"
+      "0101020031": "AÇÃO COLETIVA DE ESCOVAÇÃO DENTAL SUPERVISIONADA"
+      "0101020040": "AÇÃO COLETIVA DE EXAME BUCAL COM FINALIDADE EPIDEMIOLÓGICA"
+      "0101020112": "AÇÃO COLETIVA DE PREVENÇÃO DE CÂNCER BUCAL"
+      "0101040032": "COLETA EXTERNA DE LEITE MATERNO (POR DOADORA)"
+      "0101020082": "EVIDENCIAÇÃO DE PLACA BACTERIANA"
+      "0101050151": "OFICINA COLETIVA DE SHANTALA"
+      "0101050054": "OFICINA DE MASSAGEM/ AUTO-MASSAGEM"
+      "0101040040": "PASTEURIZAÇÃO DO LEITE HUMANO (CADA 5 LITROS)"
+      "0101010036": "PRÁTICA CORPORAL / ATIVIDADE FÍSICA EM GRUPO"
+      "0301080275": "PRÁTICAS CORPORAIS EM CENTRO DE ATENÇÃO PSICOSSOCIAL"
+      "0101050011": "PRÁTICAS CORPORAIS EM MEDICINA TRADICIONAL CHINESA"
+      "0301080283": "PRÁTICAS EXPRESSIVAS E COMUNICATIVAS EM CENTRO DE ATENÇÃO PSICOSSOCIAL"
+      "0101010095": "PREVENÇÃO AO COVID-19 NAS ESCOLAS"
+      "0101050062": "SESSÃO DE ARTETERAPIA"
+      "0101050119": "SESSÃO DE BIOENERGÉTICA"
+      "0101050100": "SESSÃO DE BIODANÇA"
+      "0101050127": "SESSÃO DE CONSTELAÇÃO FAMILIAR"
+      "0101050135": "SESSÃO DE DANÇA CIRCULAR"
+      "0101050070": "SESSÃO DE MEDITAÇÃO"
+      "0101050089": "SESSÃO DE MUSICOTERAPIA"
+      "0804020051": "TELEATENDIMENTO EM GRUPO"
+      "0101050020": "TERAPIA COMUNITÁRIA"
+      "0307010074": "TRATAMENTO RESTAURADOR ATRAUMÁTICO (TRA/ART)"
+      "0101050046": "YOGA"
+
+  rules:
+    # Contrato §4/§7 (Ruling A1): tipo → campo → required | forbidden | optional, lido dos
+    # campos temasParaReuniao (#8), publicoAlvo (#9), temasParaSaude (#16), praticasEmSaude
+    # (#17) e participantes (#10) do dicionario-fac.html. health_topics nos tipos 1–3 é
+    # forbidden SALVO com o tema de reunião health_topics_meeting_exception (6, Educação
+    # permanente) na lista: aí é opcional ("Não pode ser preenchido se atividadeTipo = 1, 2
+    # ou 3 e temasParaReuniao diferente de Educação permanente"). No domains-v1.json do
+    # contracts, o mesmo dado é o valor "with_meeting_topic_6".
+    by_activity_type:
+      1: { meeting_topics: required, target_audience: forbidden, health_topics: forbidden, health_practices: forbidden, participants: optional }
+      2: { meeting_topics: required, target_audience: forbidden, health_topics: forbidden, health_practices: forbidden, participants: optional }
+      3: { meeting_topics: required, target_audience: forbidden, health_topics: forbidden, health_practices: forbidden, participants: optional }
+      4: { meeting_topics: forbidden, target_audience: required, health_topics: required, health_practices: forbidden, participants: optional }
+      5: { meeting_topics: forbidden, target_audience: required, health_topics: required, health_practices: optional, participants: required }
+      6: { meeting_topics: forbidden, target_audience: required, health_topics: optional, health_practices: required, participants: required }
+      7: { meeting_topics: forbidden, target_audience: required, health_topics: required, health_practices: forbidden, participants: optional }
+    health_topics_meeting_exception: 6
+    # "Os itens 2, 9 e 33 só podem ser utilizados se atividadeTipo = 6".
+    type6_only_practices: [2, 9, 33]
+    # procedimento: "Só pode ser preenchido se o campo praticasEmSaude possuir o valor 30";
+    # referência OutroProcedimentoColetivo (domains.outro_procedimento_coletivo).
+    procedure_practice: 30
+    # cessouHabitoFumar e abandonouGrupo: "Não deve ser preenchido se o campo praticasEmSaude
+    # for diferente de 25, 26, 27 ou 28 (referentes ao PNCT)" — a 34 (manutenção) não entra.
+    smoking_practices: [25, 26, 27, 28]
+    # 18 (Semana saúde na escola) exige pseEducacao ou pseSaude: nunca aceito (PSE fora).
+    forbidden_health_topics: [18]
+    others_target_audience: 18
+    # cpfParticipante / cnsParticipante obrigatórios nos tipos 5 e 6 (CPF; sem CPF, o CNS com
+    # stCidadaoNaoPossuiCpf = true); dataNascimento e sexo obrigatórios em todo participante.
+    participant_identifier_types: [5, 6]
+    # Tamanho máximo das listas (coluna Máximo de cada List<Long>).
+    list_max: { meeting_topics: 7, target_audience: 17, health_topics: 16, health_practices: 14 }
+    participants_count: { min: 1, max: 999 }   # numParticipantes; ≥ participantes listados
+    altered_count: { min: 0, max: 999 }        # numAvaliacoesAlteradas; = participantes com avaliacaoAlterada

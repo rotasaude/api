@@ -99,7 +99,8 @@ RSpec.describe "Dicionários das fichas de cadastro (LEDI 8.7.0)" do
 
   it "a documentação baixada bate com o sha256 de SOURCE" do
     recorded = Ledi::Version.root.join("SOURCE").read.scan(%r{^\s+docs/(\S+\.html): (\h{64})$}).to_h
-    expect(recorded.keys).to include("dicionario-fci.html", "dicionario-fcd.html", "cbo.html")
+    expect(recorded.keys).to include("dicionario-fci.html", "dicionario-fcd.html", "cbo.html",
+                                    "dicionario-fvd.html", "dicionario-fac.html")
     recorded.each do |path, sha|
       expect(Digest::SHA256.file(Ledi::Version.root.join("docs", path)).hexdigest).to eq(sha), path
     end

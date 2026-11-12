@@ -8,7 +8,8 @@ module Ledi
   module Version
     ACTIVE = "8.7.0"
     TYPES = %w[dado_transporte_types ficha_atendimento_procedimento_types ficha_atendimento_individual_types
-               cadastro_individual_types cadastro_domiciliar_types ficha_atendimento_odonto_types].freeze
+               cadastro_individual_types cadastro_domiciliar_types ficha_atendimento_odonto_types
+               ficha_visita_domiciliar_types ficha_atividade_coletiva_types].freeze
     LOCK = Mutex.new
 
     module_function
