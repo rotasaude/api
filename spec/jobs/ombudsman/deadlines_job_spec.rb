@@ -102,6 +102,7 @@ RSpec.describe Ombudsman::DeadlinesJob do
 
       expect(second.reload.state).to eq("archived")
       expect(first.reload.state).to eq("awaiting_complement")
+      expect(log).to include("manifestation=#{first.id} failed: RuntimeError") # controle positivo: o id e a classe
       expect(log).not_to include(OmbudsmanHelpers::BODY)
     end
 
@@ -165,7 +166,6 @@ RSpec.describe Ombudsman::DeadlinesJob do
       forward.call(department, today + settings.warning_days + 10)   # verde
       forward.call(other, today - 1)
       forward.call(other, today - 1)
-      OmbudsmanForwarding.where(department_id: department.id, due_on: today - 2).update_all(updated_at: Time.current)
 
       run!
 

@@ -28,16 +28,6 @@ RSpec.describe "Ouvidoria — complemento, prorrogação e respostas", type: :re
   before { travel_to(now) }
   after { travel_back }
 
-  def capture_log
-    log = StringIO.new
-    capture = ActiveSupport::Logger.new(log).tap { |l| l.level = Logger::DEBUG }
-    Rails.logger.broadcast_to(capture)
-    yield
-    log.string
-  ensure
-    Rails.logger.stop_broadcasting_to(capture)
-  end
-
   def act(m, action, params) = json_post("/ombudsman/manifestations/#{m.id}/#{action}", params)
 
   def in_analysis!(**attrs) = raw_manifestation!(citizen: citizen, state: "in_analysis", subject: subject_leaf!, **attrs)

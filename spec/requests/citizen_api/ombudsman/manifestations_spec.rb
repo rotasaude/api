@@ -27,16 +27,6 @@ RSpec.describe "Ouvidoria — manifestações pelo canal do cidadão", type: :re
     json_body.fetch("id")
   end
 
-  def capture_log
-    log = StringIO.new
-    capture = ActiveSupport::Logger.new(log).tap { |l| l.level = Logger::DEBUG }
-    Rails.logger.broadcast_to(capture)
-    yield
-    log.string
-  ensure
-    Rails.logger.stop_broadcasting_to(capture)
-  end
-
   describe "POST /citizen/ombudsman/manifestations" do
     before { sign_in_citizen("+5541998765432") }
 

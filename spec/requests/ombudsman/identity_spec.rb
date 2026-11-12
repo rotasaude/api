@@ -19,16 +19,6 @@ RSpec.describe "Ouvidoria — identidade preservada e consentimento", type: :req
   let(:preserved) { raw_manifestation!(citizen: citizen, identification_mode: "preserved", state: "in_analysis") }
   let(:anonymous) { raw_manifestation!(kind: "report", identification_mode: "anonymous") }
 
-  def capture_log
-    log = StringIO.new
-    capture = ActiveSupport::Logger.new(log).tap { |l| l.level = Logger::DEBUG }
-    Rails.logger.broadcast_to(capture)
-    yield
-    log.string
-  ensure
-    Rails.logger.stop_broadcasting_to(capture)
-  end
-
   def open_identity(m, params = { justification: justification }) = json_post("/ombudsman/manifestations/#{m.id}/identity", params)
   def consent(m, params) = json_post("/ombudsman/manifestations/#{m.id}/identity_consent", params)
 

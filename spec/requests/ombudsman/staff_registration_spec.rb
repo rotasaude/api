@@ -11,16 +11,6 @@ RSpec.describe "Ouvidoria — registro pela equipe", type: :request do
 
   def memory_cache! = allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
 
-  def capture_log
-    log = StringIO.new
-    capture = ActiveSupport::Logger.new(log).tap { |l| l.level = Logger::DEBUG }
-    Rails.logger.broadcast_to(capture)
-    yield
-    log.string
-  ensure
-    Rails.logger.stop_broadcasting_to(capture)
-  end
-
   def formatted(digits) = "#{digits[0, 3]}.#{digits[3, 3]}.#{digits[6, 3]}-#{digits[9, 2]}"
 
   def register(**over)

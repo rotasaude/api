@@ -26,16 +26,6 @@ RSpec.describe "Ouvidoria — arquivar, reabrir e pedido de reabertura", type: :
   before { travel_to(now) }
   after { travel_back }
 
-  def capture_log
-    log = StringIO.new
-    capture = ActiveSupport::Logger.new(log).tap { |l| l.level = Logger::DEBUG }
-    Rails.logger.broadcast_to(capture)
-    yield
-    log.string
-  ensure
-    Rails.logger.stop_broadcasting_to(capture)
-  end
-
   def act(m, action, params) = json_post("/ombudsman/manifestations/#{m.id}/#{action}", params)
   def decide(request, params) = json_post("/ombudsman/reopen_requests/#{request.id}/decide", params)
   def open_one!(**attrs) = raw_manifestation!(citizen: citizen, state: "in_analysis", subject: subject_leaf!, **attrs)

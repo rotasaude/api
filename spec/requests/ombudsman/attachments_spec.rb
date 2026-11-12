@@ -17,16 +17,6 @@ RSpec.describe "Ouvidoria — anexos", type: :request do
     json_post path, filename: filename, content_type: content_type, data: data
   end
 
-  def capture_log
-    log = StringIO.new
-    capture = ActiveSupport::Logger.new(log).tap { |l| l.level = Logger::DEBUG }
-    Rails.logger.broadcast_to(capture)
-    yield
-    log.string
-  ensure
-    Rails.logger.stop_broadcasting_to(capture)
-  end
-
   def memory_cache! = allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
 
   describe "POST /citizen/ombudsman/attachments" do

@@ -28,16 +28,6 @@ RSpec.describe "Ouvidoria — classificar, encaminhar e o ponto de resposta", ty
 
   around { |example| travel_to(Time.utc(2026, 11, 11, 15)) { example.run } }
 
-  def capture_log
-    log = StringIO.new
-    capture = ActiveSupport::Logger.new(log).tap { |l| l.level = Logger::DEBUG }
-    Rails.logger.broadcast_to(capture)
-    yield
-    log.string
-  ensure
-    Rails.logger.stop_broadcasting_to(capture)
-  end
-
   def act(m, action, params) = json_post("/ombudsman/manifestations/#{m.id}/#{action}", params)
   def classify(m, params) = act(m, "classify", params)
   def forward(m, params) = act(m, "forward", params)
