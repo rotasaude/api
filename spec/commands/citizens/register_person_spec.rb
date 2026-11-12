@@ -17,6 +17,25 @@ RSpec.describe Citizens::RegisterPerson do
     expect(described_class.call(phone: phone, cpf: "529.982.247-25").payload[:citizen]).to eq(first)
   end
 
+  # Módulo 33 (Task 8, Q46): Ombudsman::Register chama este comando DENTRO da
+  # própria transação. Na corrida (o outro pedido gravou o par entre o
+  # find_by e o INSERT), o INSERT recusado não pode envenenar a transação de
+  # fora: o par existente volta e a transação segue usável.
+  it "dentro de uma transação, a corrida no INSERT devolve o par existente e a transação segue" do
+    existing = Citizen.create!(cpf: "52998224725", phone: phone)
+    calls = 0
+    allow(Citizen).to receive(:find_by).and_wrap_original do |original, *args, **kwargs|
+      calls += 1
+      calls == 1 ? nil : original.call(*args, **kwargs)
+    end
+
+    ApplicationRecord.transaction do
+      result = described_class.call(phone: phone, cpf: "529.982.247-25")
+      expect(result.payload).to eq(citizen: existing, created: false)
+      expect(Citizen.where(phone: phone).count).to eq(1)
+    end
+  end
+
   it "recusa CPF inválido" do
     expect(described_class.call(phone: phone, cpf: "111.111.111-11").reason).to eq(:invalid_cpf)
   end

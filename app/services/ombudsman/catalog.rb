@@ -12,6 +12,17 @@ module Ombudsman
     RESOLUTIONS = %w[resolved not_resolved].freeze
     RESOLUTION_KINDS = %w[complaint request report].freeze
     ARCHIVE_REASONS = %w[duplicate no_complement lack_of_clarity lack_of_civility improper loss_of_object forwarded_elsewhere].freeze
+    # Q4 (preflight F-15): o texto do arquivamento chega pronto ao cidadão, nas
+    # palavras dele; um rótulo por motivo, na ordem de ARCHIVE_REASONS.
+    ARCHIVE_REASON_CITIZEN_LABELS = {
+      "duplicate" => "Já existe outra manifestação com o mesmo pedido.",
+      "no_complement" => "O complemento pedido não chegou no prazo.",
+      "lack_of_clarity" => "Faltaram informações para entender o pedido.",
+      "lack_of_civility" => "A manifestação usou linguagem ofensiva.",
+      "improper" => "O pedido não é assunto da Ouvidoria da Saúde.",
+      "loss_of_object" => "O motivo do pedido deixou de existir.",
+      "forwarded_elsewhere" => "O pedido é de outro órgão e foi encaminhado a ele."
+    }.freeze
     FORWARDING_STATES = %w[pending replied declined cancelled].freeze
     EVENT_KINDS = %w[
       received classified forwarded forwarding_cancelled forwarding_replied forwarding_declined

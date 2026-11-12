@@ -78,6 +78,13 @@ module Ombudsman
       requested && requested.in_time_zone.to_date + settings.complement_days
     end
 
+    # Janela do cidadão depois da conclusão (pedido de reabertura, pesquisa de
+    # satisfação): até `days` dias corridos locais de `concluded_at`, inclusive
+    # (o dia 31 já está fora de uma janela de 30).
+    def within_window?(concluded_at, days, today:)
+      concluded_at.present? && (today.to_date - concluded_at.in_time_zone.to_date).to_i <= days
+    end
+
     def by_due(due_on, settings, today)
       return "red" if today.to_date > due_on
       return "yellow" if (due_on - today.to_date).to_i <= settings.warning_days

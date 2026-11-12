@@ -473,4 +473,9 @@ Rails.application.config.to_prepare do
   # Task 11, da identidade preservada) — só manifestation_id, nunca o
   # arquivo, o nome nem a justificativa; sem consumidor.
   DomainEvents.bind "ombudsman.identity_viewed", to: []
+  # Módulo 33 (contrato §1; Task 8): a manifestação registrada
+  # (Ombudsman::Register: canal do cidadão e denúncia anônima) — só
+  # manifestation_id, nunca o texto, o tipo, a pessoa nem a unidade; sem
+  # consumidor.
+  DomainEvents.bind "ombudsman.manifestation_received", to: []
 end

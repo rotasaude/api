@@ -15,7 +15,10 @@ module Citizens
 
       attributes = { cpf: digits, phone: phone }
       attributes.merge!(profile.slice(:birth_date, :sex, :gender_identity), profile_source: "declared") if profile
-      citizen = Citizen.create!(attributes)
+      # Savepoint: dentro da transação de quem chama (Ombudsman::Register), o
+      # INSERT recusado pela corrida não pode abortar a transação de fora antes
+      # do find_by! do rescue.
+      citizen = Citizen.transaction(requires_new: true) { Citizen.create!(attributes) }
       DomainEvents.publish("citizen.profile_changed", citizen_id: citizen.id) if profile
       Result.ok(citizen: citizen, created: true)
     rescue ActiveRecord::RecordNotUnique

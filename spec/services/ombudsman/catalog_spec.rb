@@ -25,8 +25,24 @@ RSpec.describe Ombudsman::Catalog do
   it "o filtro de log cobre os campos da ouvidoria" do
     filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
     %w[extract reply manifestant_name manifestant_contact contact ouvidorsus_number external_body_name
-       decision_text recurring_problems actions_taken body justification].each do |key|
+       decision_text recurring_problems actions_taken body justification full_name cpf].each do |key|
       expect(filter.filter(key => "texto secreto")[key]).to eq("[FILTERED]"), "#{key} vazaria no log"
     end
+  end
+
+  # Q4 (preflight F-15; overrides T1.4): o texto do arquivamento chega pronto ao
+  # cidadão, nas palavras dele — um rótulo por motivo.
+  it "fixa o rótulo do motivo de arquivamento que o cidadão lê" do
+    expect(described_class::ARCHIVE_REASON_CITIZEN_LABELS).to eq(
+      "duplicate" => "Já existe outra manifestação com o mesmo pedido.",
+      "no_complement" => "O complemento pedido não chegou no prazo.",
+      "lack_of_clarity" => "Faltaram informações para entender o pedido.",
+      "lack_of_civility" => "A manifestação usou linguagem ofensiva.",
+      "improper" => "O pedido não é assunto da Ouvidoria da Saúde.",
+      "loss_of_object" => "O motivo do pedido deixou de existir.",
+      "forwarded_elsewhere" => "O pedido é de outro órgão e foi encaminhado a ele."
+    )
+    expect(described_class::ARCHIVE_REASON_CITIZEN_LABELS.keys).to eq(described_class::ARCHIVE_REASONS)
+    expect(described_class::ARCHIVE_REASON_CITIZEN_LABELS).to be_frozen
   end
 end

@@ -1100,8 +1100,14 @@ Rails.application.routes.draw do
     # Minhas viagens (ADR 0048; contrato §8, §14 T14): citizen_id, par validado.
     get "trips", to: "trips#index"
 
-    # Ouvidoria (ADR 0051; contrato §3): anexo do cidadão — sobe, não baixa (Q14).
-    post "ombudsman/attachments", to: "ombudsman/attachments#create"
+    # Ouvidoria (ADR 0051; contrato §3): o anexo do cidadão sobe, não baixa
+    # (Q14); "Minhas manifestações" e o registro (Task 8).
+    scope "ombudsman", module: "ombudsman", as: "ombudsman" do
+      post "attachments",        to: "attachments#create"
+      get  "manifestations",     to: "manifestations#index"
+      get  "manifestations/:id", to: "manifestations#show"
+      post "manifestations",     to: "manifestations#create"
+    end
   end
 
   # Autoria/preview de protocolos (ADR-0009)

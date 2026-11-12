@@ -636,4 +636,11 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include("ombudsman.identity_viewed")
     expect(DomainEvents.registry["ombudsman.identity_viewed"]).to be_empty
   end
+
+  # Módulo 33 (ADR 0051; Task 8): a manifestação registrada
+  # (Ombudsman::Register) — só manifestation_id; sem consumidor.
+  it "declares ombudsman.manifestation_received with no consumer" do
+    expect(DomainEvents.registry.keys).to include("ombudsman.manifestation_received")
+    expect(DomainEvents.registry["ombudsman.manifestation_received"]).to be_empty
+  end
 end
