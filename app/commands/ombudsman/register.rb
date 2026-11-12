@@ -220,9 +220,10 @@ module Ombudsman
       locked ? Result.ok(citizen: locked) : Result.fail(:not_own_citizen)
     end
 
-    # Cidadão da equipe: não excluído; o excluído ou inexistente é recusa do campo.
+    # Cidadão da equipe: não excluído e verificado (Q58/Q60 — o par só
+    # declarado não recebe o texto da equipe); o resto é recusa do campo.
     def staff_citizen!(id)
-      locked = Citizen.lock("FOR KEY SHARE").where(erased_at: nil).find_by(id: id)
+      locked = Citizen.lock("FOR KEY SHARE").where(erased_at: nil).verification_level_verified.find_by(id: id)
       locked ? Result.ok(citizen: locked) : refuse("citizen_id")
     end
 

@@ -193,6 +193,20 @@ RSpec.describe "Ouvidoria — registro pela equipe", type: :request do
       expect(OmbudsmanManifestation.count).to eq(0)
     end
 
+    it "citizen_id de par só declarado → 422 citizen_id; o verificado segue (Q60)" do
+      declared = web_citizen!(cpf: cpf, phone: "+5541990000001")
+      verified = web_citizen!(cpf: ombudsman_cpf!, phone: "+5541990000002", verification_level: "verified")
+      sign_in_as(technician)
+      register(citizen_id: declared.id)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "citizen_id")
+      expect(OmbudsmanManifestation.count).to eq(0)
+
+      register(citizen_id: verified.id)
+      expect(response).to have_http_status(:created)
+      expect(OmbudsmanManifestation.sole.citizen_id).to eq(verified.id) # controle positivo
+    end
+
     it "anônima: só denúncia e sem dado de pessoa (422 com o path do primeiro campo)" do
       sign_in_as(technician)
       register(kind: "report", identification_mode: "anonymous", manifestant_name: "Fulano")
