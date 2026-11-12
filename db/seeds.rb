@@ -69,6 +69,7 @@ else
   require Rails.root.join("lib/transport_crew").to_s
   require Rails.root.join("lib/psychosocial_crew").to_s
   require Rails.root.join("lib/urgency_crew").to_s
+  require Rails.root.join("lib/ombudsman_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -443,6 +444,12 @@ else
         # dado de paciente.
         urgency = UrgencyCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
         UrgencyCrew.summary_lines(urgency, password: password).each { |line| puts line }
+
+        # ── Ouvidoria (módulo 33, ADR 0051) ───────────────────────────────────
+        # Depois do CareLinesCrew (as pessoas do wpda) e do ProfessionalCrew (as
+        # unidades). Só e-mail, papel e otpauth: nunca protocolo, texto nem nome.
+        ombudsman = OmbudsmanCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        OmbudsmanCrew.summary_lines(ombudsman, password: password).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
