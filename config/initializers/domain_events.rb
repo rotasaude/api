@@ -478,4 +478,8 @@ Rails.application.config.to_prepare do
   # manifestation_id, nunca o texto, o tipo, a pessoa nem a unidade; sem
   # consumidor.
   DomainEvents.bind "ombudsman.manifestation_received", to: []
+  # Módulo 33 (contrato §4; §16 Q21; Task 9): o primeiro bloqueio do dia pelo
+  # teto da denúncia anônima (Ombudsman::RegisterAnonymous) — payload {}. O
+  # consumidor só enfileira o e-mail com a contagem ao ombudsman.
+  DomainEvents.bind "ombudsman.anonymous_cap_reached", to: [ Ombudsman::CapAlertJob ]
 end

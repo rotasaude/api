@@ -643,4 +643,10 @@ RSpec.describe "pharmacy bindings (ADR 0045)" do
     expect(DomainEvents.registry.keys).to include("ombudsman.manifestation_received")
     expect(DomainEvents.registry["ombudsman.manifestation_received"]).to be_empty
   end
+
+  # Módulo 33 (ADR 0051; Task 9; Q21): o primeiro bloqueio do dia pelo teto da
+  # denúncia anônima — payload {}; o consumidor só enfileira o e-mail do teto.
+  it "binds ombudsman.anonymous_cap_reached to Ombudsman::CapAlertJob" do
+    expect(DomainEvents.registry["ombudsman.anonymous_cap_reached"].map(&:job)).to eq([ "Ombudsman::CapAlertJob" ])
+  end
 end

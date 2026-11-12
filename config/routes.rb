@@ -1101,12 +1101,15 @@ Rails.application.routes.draw do
     get "trips", to: "trips#index"
 
     # Ouvidoria (ADR 0051; contrato §3): o anexo do cidadão sobe, não baixa
-    # (Q14); "Minhas manifestações" e o registro (Task 8).
+    # (Q14); "Minhas manifestações" e o registro (Task 8). Contrato §4 (Task
+    # 9): a configuração pública e a denúncia anônima, sem sessão.
     scope "ombudsman", module: "ombudsman", as: "ombudsman" do
       post "attachments",        to: "attachments#create"
       get  "manifestations",     to: "manifestations#index"
       get  "manifestations/:id", to: "manifestations#show"
       post "manifestations",     to: "manifestations#create"
+      get  "public_config",      to: "public_configs#show"
+      post "anonymous_reports",  to: "anonymous_reports#create"
     end
   end
 
