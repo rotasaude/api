@@ -50,6 +50,22 @@ RSpec.describe Ombudsman::Json do
                                    identity: { name: "João da Silva", cpf_masked: "***.982.247-**", phone_masked: nil, contact: "joao@exemplo.com" })
     end
 
+    # Q57: o telefone que a exclusão guardou sai mascarado como antes dela; o
+    # contato digitado pela equipe, sem máscara (para a equipe retornar a ligação).
+    it "identified sem cidadão com manifestant_phone (Q57): phone_masked dele e contact digitado sem máscara" do
+      m = raw_manifestation!(manifestant_name: "Renata Lima", manifestant_cpf: "52998224725", manifestant_phone: "+5541998765432",
+                             manifestant_contact: "(41) 3333-4444")
+      json = detail(m)
+      expect(json).to include(identity_available: true,
+                              identity: { name: "Renata Lima", cpf_masked: "***.982.247-**", phone_masked: "(**) *****-5432",
+                                          contact: "(41) 3333-4444" })
+      expect(json.to_json).not_to include("998765432")
+
+      only_phone = raw_manifestation!(identification_mode: "preserved", kind: "suggestion", manifestant_phone: "+5541998765432")
+      expect(detail(only_phone)).to include(identity: "preserved", identity_available: true)
+      expect(described_class.full_identity(only_phone)).to include(phone: "+5541998765432", cpf: nil, full_name: nil)
+    end
+
     it "preserved e anonymous: 'preserved', e nada de nome, CPF, telefone ou contato no JSON" do
       citizen = web_citizen!
       preserved = raw_manifestation!(citizen: citizen, identification_mode: "preserved", manifestant_name: "Nome Secreto")

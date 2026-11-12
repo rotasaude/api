@@ -236,6 +236,10 @@ RSpec.describe "Ouvidoria — registro pela equipe", type: :request do
       sign_in_as(technician)
       register(manifestant_name: "Ana Lima", urgent: true)
       expect(json_body).to include("error" => "invalid_request", "path" => "urgent")
+      # Q57: manifestant_phone só nasce da exclusão; a equipe digita o contato.
+      register(manifestant_name: "Ana Lima", manifestant_phone: "+5541998765432")
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json_body).to include("error" => "invalid_request", "path" => "manifestant_phone")
       post "/ombudsman/manifestations?body=x", params: {}.to_json, headers: { "CONTENT_TYPE" => "application/json" }
       expect(json_body).to include("error" => "invalid_request", "path" => "body")
     end

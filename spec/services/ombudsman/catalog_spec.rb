@@ -24,7 +24,7 @@ RSpec.describe Ombudsman::Catalog do
 
   it "o filtro de log cobre os campos da ouvidoria" do
     filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
-    %w[extract reply manifestant_name manifestant_contact contact ouvidorsus_number external_body_name
+    %w[extract reply manifestant_name manifestant_contact manifestant_cpf manifestant_phone contact ouvidorsus_number external_body_name
        decision_text recurring_problems actions_taken body justification full_name cpf].each do |key|
       expect(filter.filter(key => "texto secreto")[key]).to eq("[FILTERED]"), "#{key} vazaria no log"
     end

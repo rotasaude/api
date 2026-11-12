@@ -82,6 +82,23 @@ RSpec.describe "Esquema da ouvidoria (ADR 0051)", type: :model do
     refused(/manifestant/) { other.reload.update_columns(citizen_id: nil, manifestant_name: nil) }
   end
 
+  it "Q57: manifestant_phone segue os outros manifestant_* — só de NULL a valor quando citizen_id vai a nulo, e então nunca muda" do
+    m = raw_manifestation!(citizen: web_citizen!)
+    refused(/manifestant/) { m.update_columns(manifestant_phone: "+5541998765432") }
+    accepted { m.reload.update_columns(citizen_id: nil, manifestant_phone: "+5541998765432") }
+    expect(m.reload.manifestant_phone).to eq("+5541998765432")
+    refused(/manifestant/) { m.update_columns(manifestant_phone: "+5541911112222") }
+    refused(/manifestant/) { m.reload.update_columns(manifestant_phone: nil) }
+    refused(/manifestant/) { m.reload.update_columns(manifestant_phone: m.manifestant_phone) } # a cifra nova do mesmo texto
+
+    kept = raw_manifestation!(citizen: web_citizen!, manifestant_phone: "+5541998765432")
+    refused(/manifestant/) { kept.update_columns(citizen_id: nil, manifestant_phone: "+5541911112222") }
+    refused(/manifestant/) { kept.reload.update_columns(citizen_id: nil, manifestant_phone: nil) }
+
+    expect { raw_manifestation!(kind: "report", identification_mode: "anonymous", manifestant_phone: "+5541998765432") }
+      .to raise_error(ActiveRecord::StatementInvalid, /ck_ombudsman_manifestations_anonymous/)
+  end
+
   it "anônima só denúncia e sem dado de pessoa; eventos, acessos e satisfação são só acréscimo" do
     expect { raw_manifestation!(kind: "complaint", identification_mode: "anonymous") }
       .to raise_error(ActiveRecord::StatementInvalid, /ck_ombudsman_manifestations_anonymous/)
@@ -206,7 +223,8 @@ RSpec.describe "Esquema da ouvidoria (ADR 0051)", type: :model do
 
   it "re-cifra passa nas tabelas imutáveis; fora da marca, a mesma escrita é recusada" do
     expect(CityEncryption::CITY_KEYED_TARGETS).to include(
-      *%i[manifestant_name manifestant_contact manifestant_cpf body extension_reason].map { |c| [ OmbudsmanManifestation, c ] },
+      *%i[manifestant_name manifestant_contact manifestant_cpf manifestant_phone body extension_reason]
+        .map { |c| [ OmbudsmanManifestation, c ] },
       [ OmbudsmanEvent, :text ], *%i[extract extension_reason reply].map { |c| [ OmbudsmanForwarding, c ] },
       [ OmbudsmanIdentityAccess, :justification ], [ OmbudsmanAttachment, :filename ],
       [ OmbudsmanReopenRequest, :reason ], [ OmbudsmanReopenRequest, :decision_text ]
@@ -219,8 +237,10 @@ RSpec.describe "Esquema da ouvidoria (ADR 0051)", type: :model do
                                              justification: "Contato necessário para a resposta.")
     attachment = raw_attachment!(manifestation: m)
     request = OmbudsmanReopenRequest.create!(ombudsman_manifestation: m, cycle: 1, reason: "A resposta não resolveu o problema.", state: "pending")
+    erased = raw_manifestation!(manifestant_name: "Ana", manifestant_cpf: "52998224725", manifestant_phone: "+5541998765432")
 
-    [ [ m, :body ], [ event, :text ], [ f, :extract ], [ access, :justification ], [ attachment, :filename ], [ request, :reason ] ].each do |record, column|
+    [ [ m, :body ], [ erased, :manifestant_phone ], [ event, :text ], [ f, :extract ], [ access, :justification ],
+      [ attachment, :filename ], [ request, :reason ] ].each do |record, column|
       before = record.ciphertext_for(column)
       expect { CityEncryption.allowing_reencryption { record.encrypt } }.not_to raise_error
       record.reload

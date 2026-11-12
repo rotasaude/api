@@ -130,7 +130,7 @@ Rails.application.config.filter_parameters += [
   # número do OuvidorSUS, órgão externo, decisão e textos livres da ouvidoria
   # (`body`, `reason`, `text`, `justification`, `cpf`, `phone`, `filename`, `data`
   # e `q` já estavam acima).
-  /\A(extract|reply|manifestant_name|manifestant_contact|manifestant_cpf|contact|ouvidorsus_number|external_body_name|decision_text|recurring_problems|actions_taken|notes)\z/
+  /\A(extract|reply|manifestant_name|manifestant_contact|manifestant_cpf|manifestant_phone|contact|ouvidorsus_number|external_body_name|decision_text|recurring_problems|actions_taken|notes)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

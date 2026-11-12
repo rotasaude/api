@@ -139,11 +139,15 @@ module Ombudsman
     # Q24 (ruling): há alguém a revelar — cidadão ligado ou qualquer manifestant_*.
     def identity_available?(manifestation)
       manifestation.citizen_id.present? ||
-        [ manifestation.manifestant_name, manifestation.manifestant_contact, manifestation.manifestant_cpf ].any?(&:present?)
+        [ manifestation.manifestant_name, manifestation.manifestant_contact, manifestation.manifestant_cpf,
+          manifestation.manifestant_phone ].any?(&:present?)
     end
 
     # §8: só `identified` mostra a identidade (CPF e telefone mascarados);
     # preserved e anonymous → "preserved" (nenhum nome, CPF, telefone, contato).
+    # Sem cidadão (registro da equipe ou exclusão): o telefone que a exclusão
+    # guardou (manifestant_phone) só mascarado, como antes dela; o contato
+    # digitado pela equipe sem máscara, para retornar a ligação (Q57).
     def identity(manifestation)
       return PRESERVED unless manifestation.identification_mode == "identified"
 
@@ -151,7 +155,9 @@ module Ombudsman
       name = manifestation.manifestant_name.presence || citizen&.display_name
       return { name: name, cpf_masked: citizen.cpf_masked, phone_masked: CitizenIdentity::Phone.mask(citizen.phone) } if citizen
 
-      { name: name, cpf_masked: mask_cpf(manifestation.manifestant_cpf), phone_masked: nil, contact: manifestation.manifestant_contact }
+      phone = manifestation.manifestant_phone.presence
+      { name: name, cpf_masked: mask_cpf(manifestation.manifestant_cpf), phone_masked: phone && CitizenIdentity::Phone.mask(phone),
+        contact: manifestation.manifestant_contact }
     end
 
     def mask_cpf(value)
@@ -176,12 +182,13 @@ module Ombudsman
     # POST .../identity (§8): a identidade completa, só para o ouvidor, depois
     # da trilha. `name` segue a regra do U1 (o nome declarado vale sobre o do
     # cidadão); `full_name` é o nome civil do cidadão (Q50; nulo no par
-    # declarado e sem cidadão); CPF e telefone do cidadão sem máscara; os
-    # três manifestant_*.
+    # declarado e sem cidadão); CPF e telefone do cidadão sem máscara (o
+    # telefone, depois da exclusão, é o manifestant_phone — Q57); os três
+    # manifestant_*.
     def full_identity(manifestation)
       citizen = manifestation.citizen
       { name: manifestation.manifestant_name.presence || citizen&.display_name, full_name: citizen&.full_name,
-        cpf: citizen&.cpf, phone: citizen&.phone,
+        cpf: citizen&.cpf, phone: citizen ? citizen.phone : manifestation.manifestant_phone,
         manifestant_name: manifestation.manifestant_name, manifestant_contact: manifestation.manifestant_contact,
         manifestant_cpf: manifestation.manifestant_cpf }
     end

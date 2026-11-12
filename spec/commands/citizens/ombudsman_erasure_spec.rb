@@ -1,11 +1,15 @@
 require "rails_helper"
 
 # Módulo 33, Task 18 (ADR 0051; ADR 0026; contrato §13 corrigido por §16 Q5 e
-# Q46): a manifestação da ouvidoria não retém o pedido de exclusão (Q5). Na
-# confirmação, o Citizens::Erase copia nome, CPF e telefone do par para os
-# `manifestant_*` da manifestação — só os que estão nulos: o nome declarado do
-# par sem consentimento (U1/Q46) nunca é sobrescrito —, anula `citizen_id`,
-# apaga os avisos da ouvidoria do par e mantém a pesquisa de satisfação.
+# Q46, Q56, Q57): a manifestação da ouvidoria não retém o pedido de exclusão
+# (Q5). Na confirmação, o Citizens::Erase copia o nome de exibição (o social,
+# quando houver — Q56), o CPF e o telefone do par para manifestant_name,
+# manifestant_cpf e manifestant_phone (Q57; nunca para manifestant_contact, que
+# é o contato digitado pela equipe) — só os que estão nulos: o nome declarado
+# do par sem consentimento (U1/Q46) nunca é sobrescrito —, anula `citizen_id`,
+# apaga os avisos da ouvidoria do par e mantém a pesquisa de satisfação. O
+# detalhe mostra o telefone só mascarado; o número completo, só por
+# POST …/identity, com trilha.
 RSpec.describe "Exclusão LGPD com manifestação da ouvidoria (ADR 0051)", type: :request do
   let!(:city) { ombudsman_city! }
   let(:admin) { staff_with("gestor-#{SecureRandom.hex(3)}@cidade.gov.br", "municipal_admin") }
@@ -19,6 +23,17 @@ RSpec.describe "Exclusão LGPD com manifestação da ouvidoria (ADR 0051)", type
     ApplicationRecord.connection.select_rows(
       ApplicationRecord.sanitize_sql([ "SELECT manifestant_name, manifestant_contact FROM ombudsman_manifestations WHERE id = ?", m.id ])
     ).first
+  end
+
+  # A linha inteira, como está gravada.
+  def raw_row(m)
+    ApplicationRecord.connection.select_all(
+      ApplicationRecord.sanitize_sql([ "SELECT * FROM ombudsman_manifestations WHERE id = ?", m.id ])
+    ).to_a.sole
+  end
+
+  def open_identity(m)
+    json_post "/ombudsman/manifestations/#{m.id}/identity", justification: "Retorno da ligação sobre o caso registrado."
   end
 
   def request!(cpf) = Citizens::RequestErasure.call(cpf: cpf, document_checked: true, by: verifier!)
@@ -50,7 +65,7 @@ RSpec.describe "Exclusão LGPD com manifestação da ouvidoria (ADR 0051)", type
 
     [ identified, preserved, answered ].each do |m|
       expect(m.reload).to have_attributes(citizen_id: nil, manifestant_name: "Joana Exclusão Souza", manifestant_cpf: cpf,
-                                          manifestant_contact: phone)
+                                          manifestant_phone: phone, manifestant_contact: nil)
     end
     expect(OmbudsmanNotice.where(citizen_id: citizen.id)).to be_empty
     expect(OmbudsmanNotice.where(id: kept_notice.id)).to exist
@@ -66,13 +81,69 @@ RSpec.describe "Exclusão LGPD com manifestação da ouvidoria (ADR 0051)", type
     expect(response).to have_http_status(:ok)
     expect(json_body["manifestations"]).to eq([])
 
+    # Q57: o telefone sai mascarado, como antes da exclusão; o contato da
+    # equipe (nenhum, aqui) fica nulo; o número completo não sai no detalhe.
     sign_in_as(ombudsman_staff!)
     get "/ombudsman/manifestations/#{identified.id}"
     expect(response).to have_http_status(:ok)
-    expect(json_body["identity"]).to include("name" => "Joana Exclusão Souza", "cpf_masked" => CitizenIdentity::Cpf.mask(cpf))
+    expect(json_body["identity"]).to eq("name" => "Joana Exclusão Souza", "cpf_masked" => CitizenIdentity::Cpf.mask(cpf),
+                                        "phone_masked" => CitizenIdentity::Phone.mask(phone), "contact" => nil)
+    expect(response.body).not_to include(phone.delete_prefix("+55"), cpf)
     get "/ombudsman/manifestations/#{preserved.id}"
     expect(json_body).to include("identity" => "preserved", "identity_available" => true)
-    expect(response.body).not_to include(cpf, "Joana", CitizenIdentity::Cpf.mask(cpf))
+    expect(response.body).not_to include(cpf, "Joana", CitizenIdentity::Cpf.mask(cpf), CitizenIdentity::Phone.mask(phone))
+
+    # O número completo só por /identity, e cada abertura deixa trilha.
+    sign_in_as(ombudsman!)
+    expect { open_identity(identified) }.to change { OmbudsmanIdentityAccess.where(ombudsman_manifestation_id: identified.id).count }.by(1)
+    expect(response).to have_http_status(:ok)
+    expect(json_body).to eq("name" => "Joana Exclusão Souza", "full_name" => nil, "cpf" => nil, "phone" => phone,
+                            "manifestant_name" => "Joana Exclusão Souza", "manifestant_contact" => nil, "manifestant_cpf" => cpf)
+    expect { open_identity(preserved) }.to change { OmbudsmanIdentityAccess.where(ombudsman_manifestation_id: preserved.id).count }.by(1)
+    expect(json_body).to include("phone" => phone, "manifestant_cpf" => cpf)
+  end
+
+  it "Q56: com nome social, manifestant_name recebe o nome social, não o civil; o CPF segue identificando a pessoa" do
+    citizen.update!(social_name: "Renata Exclusão")
+    m = raw_manifestation!(citizen: citizen, state: "in_analysis")
+    cpf = citizen.cpf
+
+    erase!(cpf)
+
+    expect(m.reload).to have_attributes(citizen_id: nil, manifestant_name: "Renata Exclusão", manifestant_cpf: cpf, manifestant_phone: phone,
+                                        manifestant_contact: nil)
+    sign_in_as(ombudsman_staff!)
+    get "/ombudsman/manifestations/#{m.id}"
+    expect(json_body["identity"]).to include("name" => "Renata Exclusão")
+    expect(response.body).not_to include("Joana")
+  end
+
+  it "um CPF com dois pares (dois telefones): cada manifestação recebe o telefone do seu par" do
+    cpf = citizen.cpf
+    second_phone = "+5541955554444"
+    second = web_citizen!(cpf: cpf, phone: second_phone)
+    first_m = raw_manifestation!(citizen: citizen)
+    second_m = raw_manifestation!(citizen: second, identification_mode: "preserved", kind: "suggestion")
+
+    erase!(cpf)
+
+    expect(first_m.reload).to have_attributes(citizen_id: nil, manifestant_cpf: cpf, manifestant_phone: phone, manifestant_contact: nil)
+    expect(second_m.reload).to have_attributes(citizen_id: nil, manifestant_cpf: cpf, manifestant_phone: second_phone,
+                                               manifestant_name: nil, manifestant_contact: nil)
+  end
+
+  it "anônima e registro da equipe sem cidadão (com o CPF excluído no manifestant_cpf) ficam intocados" do
+    cpf = citizen.cpf
+    raw_manifestation!(citizen: citizen)
+    anonymous = raw_manifestation!(kind: "report", identification_mode: "anonymous")
+    by_staff = raw_manifestation!(channel: "phone", manifestant_name: "Joana Exclusão Souza", manifestant_cpf: cpf,
+                                  manifestant_contact: "(41) 3333-4444")
+    before = [ raw_row(anonymous), raw_row(by_staff) ]
+
+    erase!(cpf)
+
+    expect([ raw_row(anonymous), raw_row(by_staff) ]).to eq(before)
+    expect(by_staff.reload).to have_attributes(citizen_id: nil, manifestant_phone: nil, manifestant_contact: "(41) 3333-4444")
   end
 
   it "par declarado sem consentimento (U1/Q46): o nome declarado fica, CPF e telefone vêm do par, e o par sem consentimento se exclui" do
@@ -90,7 +161,8 @@ RSpec.describe "Exclusão LGPD com manifestação da ouvidoria (ADR 0051)", type
     erase!("11144477735")
 
     expect(manifestation.reload).to have_attributes(citizen_id: nil, manifestant_name: "Maria Declarada",
-                                                    manifestant_cpf: "11144477735", manifestant_contact: declared_phone)
+                                                    manifestant_cpf: "11144477735", manifestant_phone: declared_phone,
+                                                    manifestant_contact: nil)
     expect(pair.reload.erased_at).to be_present
   end
 
@@ -102,7 +174,7 @@ RSpec.describe "Exclusão LGPD com manifestação da ouvidoria (ADR 0051)", type
     erase!(cpf)
 
     expect(m.reload).to have_attributes(citizen_id: nil, manifestant_name: "Nome Declarado", manifestant_contact: "(41) 3333-4444",
-                                        manifestant_cpf: cpf)
+                                        manifestant_cpf: cpf, manifestant_phone: phone)
     expect(raw_manifestant(m)).to eq(before_cipher)
   end
 
@@ -236,7 +308,8 @@ RSpec.describe Citizens::Erase, "concorrência com a resposta intermediária da 
     in_city do
       [ ids[:manifestation], ids[:answered] ].each do |id|
         expect(OmbudsmanManifestation.find(id)).to have_attributes(citizen_id: nil, manifestant_name: "Ana Corrida Lima",
-                                                                   manifestant_cpf: ids[:cpf], manifestant_contact: ids[:phone])
+                                                                   manifestant_cpf: ids[:cpf], manifestant_phone: ids[:phone],
+                                                                   manifestant_contact: nil)
       end
       expect(OmbudsmanNotice.where(citizen_id: ids[:citizen])).to be_empty
       expect(OmbudsmanSatisfactionResponse.where(id: ids[:survey])).to exist

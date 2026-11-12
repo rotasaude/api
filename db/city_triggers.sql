@@ -3717,7 +3717,9 @@ $do$;
 -- antes de tudo; protocolo, texto, canal, modo, recebimento, criador e número
 -- do OuvidorSUS nunca mudam; citizen_id só vai de um valor a NULL (exclusão
 -- LGPD), e só então os manifestant_* podem passar de NULL a preenchidos (o
--- declarado no registro fica); fora disso os manifestant_* não mudam. Linha
+-- declarado no registro fica; manifestant_phone, o telefone do cidadão
+-- excluído, §16 Q57, segue a mesma regra); fora disso os manifestant_* não
+-- mudam. Linha
 -- do tempo e acessos: só acréscimo (a re-cifra do texto e da justificativa);
 -- satisfação: só acréscimo. Encaminhamento: extrato, destino e criação
 -- imutáveis, sai de pending uma vez (e então congela), prorroga uma vez com
@@ -3729,8 +3731,8 @@ $do$;
 -- 13 tabelas.
 CREATE OR REPLACE FUNCTION rota_ombudsman_manifestation_guard() RETURNS trigger AS $fn$
 DECLARE
-  ciphered text[] := ARRAY['body', 'extension_reason', 'manifestant_name', 'manifestant_contact', 'manifestant_cpf'];
-  manifestant text[] := ARRAY['manifestant_name', 'manifestant_contact', 'manifestant_cpf'];
+  ciphered text[] := ARRAY['body', 'extension_reason', 'manifestant_name', 'manifestant_contact', 'manifestant_cpf', 'manifestant_phone'];
+  manifestant text[] := ARRAY['manifestant_name', 'manifestant_contact', 'manifestant_cpf', 'manifestant_phone'];
   item text;
   old_value text;
   new_value text;
@@ -3759,7 +3761,7 @@ BEGIN
       END IF;
     END LOOP;
   ELSIF NEW.manifestant_name IS DISTINCT FROM OLD.manifestant_name OR NEW.manifestant_contact IS DISTINCT FROM OLD.manifestant_contact
-        OR NEW.manifestant_cpf IS DISTINCT FROM OLD.manifestant_cpf THEN
+        OR NEW.manifestant_cpf IS DISTINCT FROM OLD.manifestant_cpf OR NEW.manifestant_phone IS DISTINCT FROM OLD.manifestant_phone THEN
     RAISE EXCEPTION 'ombudsman_manifestations: manifestant_* never change';
   END IF;
   RETURN NEW;

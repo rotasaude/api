@@ -2536,6 +2536,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_900002) do
     t.text "manifestant_contact"
     t.text "manifestant_cpf"
     t.text "manifestant_name"
+    t.text "manifestant_phone"
     t.string "ouvidorsus_number", limit: 40
     t.string "protocol", limit: 20, null: false
     t.datetime "received_at", null: false
@@ -2551,7 +2552,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_900002) do
     t.index ["citizen_id"], name: "idx_ombudsman_manifestations_citizen", where: "(citizen_id IS NOT NULL)"
     t.index ["protocol"], name: "idx_ombudsman_manifestations_protocol", unique: true
     t.index ["state", "received_at"], name: "idx_ombudsman_manifestations_state"
-    t.check_constraint "identification_mode::text <> 'anonymous'::text OR (kind::text = 'report'::text AND citizen_id IS NULL AND manifestant_name IS NULL AND manifestant_contact IS NULL AND manifestant_cpf IS NULL)", name: "ck_ombudsman_manifestations_anonymous"
+    t.check_constraint "identification_mode::text <> 'anonymous'::text OR (kind::text = 'report'::text AND citizen_id IS NULL AND manifestant_name IS NULL AND manifestant_contact IS NULL AND manifestant_cpf IS NULL AND manifestant_phone IS NULL)", name: "ck_ombudsman_manifestations_anonymous"
     t.check_constraint "archive_reason IS NULL OR archive_reason::text = ANY (ARRAY['duplicate'::text, 'no_complement'::text, 'lack_of_clarity'::text, 'lack_of_civility'::text, 'improper'::text, 'loss_of_object'::text, 'forwarded_elsewhere'::text])", name: "ck_ombudsman_manifestations_archive_reason"
     t.check_constraint "(state::text = 'archived'::text) = (archive_reason IS NOT NULL)", name: "ck_ombudsman_manifestations_archived"
     t.check_constraint "channel::text = ANY (ARRAY['web'::text, 'in_person'::text, 'phone'::text, 'ouvidorsus'::text])", name: "ck_ombudsman_manifestations_channel"

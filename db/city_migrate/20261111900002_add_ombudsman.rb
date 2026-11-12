@@ -8,8 +8,9 @@
 # sessão do cidadão, uuid sem FK, ou o usuário), os pedidos de reabertura (um
 # pendente; um por ciclo), a pesquisa de satisfação, os avisos ao cidadão, o
 # relatório anual e as marcas diárias do job e do teto anônimo. Nome, CPF,
-# contato, texto, justificativas, extrato, respostas, motivos e o nome do
-# anexo: cifrados com a chave da cidade (os limites de texto ficam nos
+# contato, telefone (o do cidadão excluído, §16 Q57, separado do contato que a
+# equipe digita), texto, justificativas, extrato, respostas, motivos e o nome
+# do anexo: cifrados com a chave da cidade (os limites de texto ficam nos
 # comandos: o cifrado não tem o tamanho do claro). Sequência e triggers em
 # db/city_triggers.sql (o dump não representa trigger, sequência nem linha).
 # Irreversível.
@@ -130,6 +131,7 @@ class AddOmbudsman < ActiveRecord::Migration[8.1]
       t.text :manifestant_name
       t.text :manifestant_contact
       t.text :manifestant_cpf
+      t.text :manifestant_phone
       t.text :body, null: false
       t.references :subject, type: :uuid, foreign_key: { to_table: :ombudsman_subjects }, index: false
       t.references :referred_health_unit, type: :uuid, foreign_key: { to_table: :health_units }, index: false
@@ -165,7 +167,7 @@ class AddOmbudsman < ActiveRecord::Migration[8.1]
       "resolution" => "resolution IS NULL OR #{in_list('resolution', RESOLUTIONS)}",
       "archive_reason" => "archive_reason IS NULL OR #{in_list('archive_reason', ARCHIVE_REASONS)}",
       "anonymous" => "identification_mode::text <> 'anonymous'::text OR (kind::text = 'report'::text AND citizen_id IS NULL AND " \
-                     "manifestant_name IS NULL AND manifestant_contact IS NULL AND manifestant_cpf IS NULL)",
+                     "manifestant_name IS NULL AND manifestant_contact IS NULL AND manifestant_cpf IS NULL AND manifestant_phone IS NULL)",
       "ouvidorsus" => "(channel::text = 'ouvidorsus'::text) = (ouvidorsus_number IS NOT NULL)",
       # IS NOT DISTINCT FROM: com archive_reason nulo, `=` daria NULL e o CHECK passaria.
       "duplicate" => "(archive_reason::text IS NOT DISTINCT FROM 'duplicate'::text) = (duplicate_of_id IS NOT NULL)",
