@@ -13,7 +13,8 @@ module Ombudsman
     # -> OmbudsmanManifestation (travada FOR UPDATE) | nil (não existe).
     # Lê citizen_id sem trava, trava o cidadão FOR KEY SHARE (quando há) e então
     # a manifestação; se o citizen_id mudou no intervalo (a exclusão o anulou),
-    # recomeça uma vez — com o novo valor não há mais cidadão a travar.
+    # recomeça uma vez — com o novo valor não há mais cidadão a travar. Mudar
+    # de novo é erro de programação (levanta).
     def manifestation!(id)
       raise ArgumentError, "Ombudsman::Lock exige a transação do comando" unless OmbudsmanManifestation.connection.transaction_open?
 
@@ -27,7 +28,8 @@ module Ombudsman
         return nil unless locked
         return locked if locked.citizen_id == citizen_id
       end
-      OmbudsmanManifestation.lock("FOR UPDATE").find_by(id: id)
+      # Inalcançável: depois da exclusão o citizen_id é nulo e não volta a mudar.
+      raise "Ombudsman::Lock: citizen_id mudou duas vezes durante a trava"
     end
 
     # -> Result.fail | nil. `expected_state` ausente, não-String ou fora de
