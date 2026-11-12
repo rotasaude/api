@@ -136,7 +136,7 @@ class SessionsController < ApplicationController
       # Interruptores LIGADOS na cidade do host (ADR 0028; contratos §1,
       # session-v1.1.0). O que falta para usar, a tela pergunta à rota da
       # funcionalidade (GET /integrations).
-      features: Platform::Features.enabled_keys(Current.city)
+      features: session_features
     }
   end
 
@@ -155,7 +155,7 @@ class SessionsController < ApplicationController
       # Interruptores LIGADOS na cidade do host (ADR 0028; contratos §1,
       # session-v1.1.0). O que falta para usar, a tela pergunta à rota da
       # funcionalidade (GET /integrations).
-      features: Platform::Features.enabled_keys(Current.city)
+      features: session_features
     }
   end
 
@@ -171,5 +171,14 @@ class SessionsController < ApplicationController
         role: m.role
       }
     end
+  end
+
+  # Interruptores LIGADOS (ADR 0028), com uma exceção (módulo 24b, Q16):
+  # home_visits só sai se estiver também utilizável, porque o app de campo e a
+  # folha do dia leem a lista da sessão para decidir se aparecem.
+  def session_features
+    keys = Platform::Features.enabled_keys(Current.city)
+    keys -= [ HomeVisits::Gate::KEY ] if keys.include?(HomeVisits::Gate::KEY) && !HomeVisits::Gate.usable?(Current.city)
+    keys
   end
 end

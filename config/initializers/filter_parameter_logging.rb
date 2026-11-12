@@ -130,7 +130,13 @@ Rails.application.config.filter_parameters += [
   # número do OuvidorSUS, órgão externo, decisão e textos livres da ouvidoria
   # (`body`, `reason`, `text`, `justification`, `cpf`, `phone`, `filename`, `data`
   # e `q` já estavam acima).
-  /\A(extract|reply|manifestant_name|manifestant_contact|manifestant_cpf|manifestant_phone|contact|ouvidorsus_number|external_body_name|decision_text|recurring_problems|actions_taken|notes)\z/
+  /\A(extract|reply|manifestant_name|manifestant_contact|manifestant_cpf|manifestant_phone|contact|ouvidorsus_number|external_body_name|decision_text|recurring_problems|actions_taken|notes)\z/,
+  # ADR 0052: visita domiciliar e atividade coletiva — medidas, temas, público,
+  # práticas, avaliação alterada, tabagismo, o QR de pareamento do aparelho de
+  # campo, o texto do local, os candidatos do cadastro rápido e os motivos de
+  # retirada/erro (`note`, `reasons`, `token`, `items`, `body`, `new_patient`,
+  # `participants` e `reason` já estavam acima).
+  /\A(measurements|meeting_topics|target_audience|health_topics|health_practices|altered_evaluation|smoking|qr_payload|place_text|candidates|withdrawal_reason|mistaken_reason)\z/
 ]
 
 # O gov.br volta pra cidade com ?grant=... na URL de redirect (Plano 3B); sem

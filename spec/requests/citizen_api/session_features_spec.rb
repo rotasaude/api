@@ -66,4 +66,18 @@ RSpec.describe "Sessão do cidadão com os interruptores", type: :request do
     get "/citizen/session"
     expect(JSON.parse(response.body)["features"]).to include("ombudsman", "ombudsman_anonymous_web")
   end
+
+  # Módulo 24b (Q24): home_visits vai ao cidadão; collective_activities não.
+  it "GET /citizen/session traz home_visits e não traz collective_activities quando ligados" do
+    city = registry_city!
+    maintainer = ledi_maintainer!
+    %w[home_visits collective_activities].each do |key|
+      Platform::Features.set!(city: city, key: key, enabled: true, maintainer: maintainer)
+    end
+    sign_in_citizen
+    get "/citizen/session"
+    features = JSON.parse(response.body)["features"]
+    expect(features).to include("home_visits")
+    expect(features).not_to include("collective_activities")
+  end
 end

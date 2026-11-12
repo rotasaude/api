@@ -208,14 +208,24 @@ module Platform
                 requires: []),
       Entry.new(key: "ombudsman_anonymous_web",
                 description: "Denúncia anônima sem login no canal do cidadão",
-                requires: %w[feature:ombudsman])
+                requires: %w[feature:ombudsman]),
+      # ADR 0052: visita domiciliar e atividade coletiva (módulo 24b). Sem
+      # cascata; desligar o cadastro territorial deixa home_visits ligado
+      # faltando pré-requisito (territory_registry_disabled); o job de
+      # fechamento roda mesmo assim.
+      Entry.new(key: "home_visits",
+                description: "Folha do dia, ficha LEDI de visita, quem visitar e sincronização do app de campo",
+                requires: %w[feature:territory_registry]),
+      Entry.new(key: "collective_activities",
+                description: "Atividade coletiva com ficha LEDI, sem PSE",
+                requires: %w[feature:clinical_record])
     ].freeze
 
     KEYS = CATALOG.map(&:key).freeze
     # Contrato P19: chaves que nunca vão ao cidadão (GET /citizen/session),
     # mesmo ligadas e utilizáveis. Lista de exclusão: todo módulo futuro com
     # interruptor sensível acrescenta a sua chave aqui.
-    CITIZEN_HIDDEN = %w[psychosocial_care].freeze
+    CITIZEN_HIDDEN = %w[psychosocial_care collective_activities].freeze
     class UnknownFeature < StandardError; end
 
     UNREACHABLE = [ "city_unreachable" ].freeze

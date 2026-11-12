@@ -33,4 +33,15 @@ RSpec.describe "features na sessão", type: :request do
     get "/session"
     expect(json["features"]).to eq(%w[ledi_export])
   end
+
+  # Módulo 24b (Q16): home_visits ligado mas inutilizável (cadastro territorial
+  # desligado) sai da lista da equipe; as outras chaves ligadas continuam.
+  it "home_visits ligado sem o cadastro territorial utilizável fica fora da lista" do
+    %w[cadsus_lookup home_visits].each do |key|
+      Platform::Features.set!(city: city, key: key, enabled: true, maintainer: maintainer)
+    end
+    sign_in_as(staff_with("admin@cidade.gov.br", "municipal_admin"))
+    get "/session"
+    expect(json["features"]).to eq(%w[cadsus_lookup])
+  end
 end
