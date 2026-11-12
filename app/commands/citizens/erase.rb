@@ -15,6 +15,9 @@
 # ADR 0050: e o nome, o nascimento, o sexo e o CNS do paciente não retido (a
 # evasão da UPA antes da classificação deixa o `walk_in` só com ids); o CPF
 # do paciente fica (coluna de identidade, rota_patient_guard).
+# ADR 0051: e as manifestações da ouvidoria desligadas do par, com a
+# identidade copiada para a manifestação (registro de obrigação legal retido);
+# os avisos da ouvidoria apagados.
 # Reasons: :not_pending, :own_request, :patient_on_trip, :patient_in_urgency.
 module Citizens
   module Erase
@@ -190,6 +193,12 @@ module Citizens
       TransportTripNotice.where(citizen_id: citizen.id).delete_all
       # ADR 0030 (api#43): conteúdo e códigos da fila LEDI das fontes do par.
       Ledi::CitizenSources.scrub!([ citizen.id ])
+      # ADR 0051 (Q5, Q46): as manifestações da ouvidoria desligadas do par
+      # (travadas depois do par: cidadão → manifestação, a ordem do
+      # Ombudsman::Lock) e a identidade nos manifestant_* nulos; os avisos da
+      # ouvidoria saem e a satisfação fica. ANTES do marcador: nome, CPF e
+      # telefone ainda estão no par.
+      Ombudsman::Erasure.unlink!(citizen)
 
       # ADR 0028: o CNS do CADSUS, a marca e a consulta pendente saem junto.
       # update_columns cifra (o tipo cifrado serializa); um marcador por coluna,

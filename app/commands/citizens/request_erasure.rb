@@ -11,6 +11,10 @@
 # classificado ou com consulta (ADR 0050).
 # `retained?` é a regra única: o pedido e a reconferência do Citizens::Erase
 # usam a mesma.
+# ADR 0051 (§16 Q5; A7): a manifestação da ouvidoria NÃO retém — senão o Erase
+# nunca rodaria. O registro de obrigação legal fica pela cópia da identidade
+# para os manifestant_* e citizen_id nulo (Ombudsman::Erasure, no Erase); o
+# "motivo de retenção" do spec §5 cede a Q5 (preflight F-25).
 module Citizens
   module RequestErasure
     module_function
