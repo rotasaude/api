@@ -35,7 +35,7 @@ RSpec.describe "Ouvidoria — configuração", type: :request do
     it "valida o nome (2..80 depois do strip) e o active" do
       sign_in_as(admin)
       json_post "/departments", name: " a "
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json_body).to include("error" => "invalid_request", "path" => "name")
       json_post "/departments", {}
       expect(json_body["path"]).to eq("name")
@@ -44,7 +44,7 @@ RSpec.describe "Ouvidoria — configuração", type: :request do
 
       dept = department!
       json_patch "/departments/#{dept.id}", active: "false"
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json_body["path"]).to eq("active")
       expect(dept.reload.active).to be(true)
     end
@@ -156,7 +156,7 @@ RSpec.describe "Ouvidoria — configuração", type: :request do
       dept = department!
       other = staff_with("sem-papel@cidade.gov.br", "viewer")
       json_post "/ombudsman/responders", user_id: other.id, department_id: dept.id
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json_body).to include("error" => "missing_responder_role", "path" => "user_id")
 
       revoked = candidate!
@@ -177,7 +177,7 @@ RSpec.describe "Ouvidoria — configuração", type: :request do
       json_post "/ombudsman/responders", user_id: user.id
       expect(json_body).to include("error" => "invalid_request", "path" => "department_id")
       json_post "/ombudsman/responders", user_id: user.id, department_id: dept.id, health_unit_id: unit.id
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       json_post "/ombudsman/responders", user_id: user.id, health_unit_id: SecureRandom.uuid
       expect(json_body).to include("error" => "invalid_request", "path" => "health_unit_id")
       dept.update!(active: false)
@@ -259,7 +259,7 @@ RSpec.describe "Ouvidoria — configuração", type: :request do
       expect(json_body).not_to have_key("children")
 
       json_post "/ombudsman/subjects", name: "Neto", parent_id: child_id
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json_body).to include("error" => "too_deep", "path" => "parent_id")
 
       json_post "/ombudsman/subjects", name: "prazo", parent_id: parent_id
@@ -328,17 +328,17 @@ RSpec.describe "Ouvidoria — configuração", type: :request do
     it "fora da faixa, não inteiro ou chave desconhecida → 422 com path, sem gravar nada" do
       sign_in_as(ouvidor)
       json_patch "/ombudsman/settings", response_days: 121, urgent_days: 10
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json_body).to include("error" => "invalid_request", "path" => "response_days")
       expect(OmbudsmanSetting.find(1).urgent_days).to eq(15)
 
       [ { response_days: 0 }, { warning_days: "5" }, { warning_days: 5.5 }, { extension_days: nil }, { anonymous_daily_cap: 1001 } ].each do |body|
         json_patch "/ombudsman/settings", body
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(json_body["path"]).to eq(body.keys.first.to_s)
       end
       json_patch "/ombudsman/settings", segredo: 1
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json_body["path"]).to eq("segredo")
       json_patch "/ombudsman/settings", response_days: 200, extension_days: 0
       expect(json_body["problems"].map { |p| p["path"] }).to eq(%w[response_days extension_days])

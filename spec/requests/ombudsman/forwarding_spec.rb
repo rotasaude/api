@@ -159,6 +159,30 @@ RSpec.describe "Ouvidoria — classificar, encaminhar e o ponto de resposta", ty
       classify(OmbudsmanManifestation.new(id: SecureRandom.uuid), expected_state: "received", subject_id: subject_leaf!.id)
       expect(response).to have_http_status(:not_found)
     end
+
+    # Só o valor que MUDA é conferido: o assunto que ficou inativo depois da
+    # classificação não impede mudar só o `urgent`; `health_unit_id: null`
+    # limpa a unidade, com o antes e o depois no evento.
+    it "mantendo um assunto que ficou inativo, mudar só o urgent é aceito; health_unit_id null limpa com changes [id, nil]" do
+      leaf = subject_leaf!
+      ubs = HealthUnit.create!(name: "UBS Limpa", kind: "ubs")
+      m = raw_manifestation!(state: "in_analysis", subject: leaf, referred_health_unit: ubs)
+      leaf.update!(active: false)
+      sign_in_as(technician)
+
+      classify(m, expected_state: "in_analysis", subject_id: leaf.id, urgent: true)
+      expect(response).to have_http_status(:ok)
+      expect(json_body).to include("urgent" => true)
+      expect(json_body.dig("subject", "id")).to eq(leaf.id)
+
+      classify(m, expected_state: "in_analysis", subject_id: leaf.id, health_unit_id: nil)
+      expect(response).to have_http_status(:ok)
+      expect(json_body["health_unit"]).to be_nil
+
+      expect(OmbudsmanEvent.where(ombudsman_manifestation: m, kind: "classified").map(&:data))
+        .to contain_exactly({ "changes" => { "urgent" => [ false, true ] } }, { "changes" => { "health_unit_id" => [ ubs.id, nil ] } })
+      expect(m.reload).to have_attributes(subject_id: leaf.id, referred_health_unit_id: nil, urgent: true)
+    end
   end
 
   describe "POST /ombudsman/manifestations/:id/forward" do
@@ -396,6 +420,25 @@ RSpec.describe "Ouvidoria — classificar, encaminhar e o ponto de resposta", ty
       expect(response).to have_http_status(:ok)
       expect(m.reload.state).to eq("in_analysis")
       expect(DomainEvent.where(name: "ombudsman.forwarding_replied").count).to eq(2)
+    end
+
+    # A linha de respondente desativada (o papel continua): o destino sai do
+    # alcance — o inbox fica vazio e a ação no encaminhamento é 404.
+    it "linha de respondente desativada: o inbox fica vazio e a resposta → 404, nada gravado" do
+      m, f = forwarded!(department)
+      sign_in_as(dept_responder)
+      get "/ombudsman/inbox"
+      expect(json_body["items"].map { |i| i["id"] }).to eq([ f.id ]) # controle: antes de desativar
+
+      OmbudsmanResponder.find_by!(user: dept_responder, department: department).update!(active: false)
+      get "/ombudsman/inbox"
+      expect(response).to have_http_status(:ok)
+      expect(json_body["items"]).to eq([])
+      respond_to_forwarding(f, "reply", expected_state: "pending", body: reply_text)
+      expect(response).to have_http_status(:not_found)
+      expect(f.reload).to have_attributes(state: "pending", reply: nil)
+      expect(m.reload.state).to eq("forwarded")
+      expect(DomainEvent.where(name: "ombudsman.forwarding_replied")).to be_empty
     end
 
     it "o respondente de outra unidade → 404, nada gravado" do

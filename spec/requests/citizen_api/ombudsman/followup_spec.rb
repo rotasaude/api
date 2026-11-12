@@ -165,13 +165,18 @@ RSpec.describe "Ouvidoria — complemento, reabertura e satisfação pelo canal 
       expect(OmbudsmanSatisfactionResponse.count).to eq(0)
     end
 
+    # A corrida perdida: a conferência sob a trava não viu a resposta da outra
+    # sessão (`exists?` falso), e o INSERT bate no índice único — o
+    # RecordNotUnique vira o mesmo 409, sem segunda linha.
     it "o índice único é a última palavra: corrida perdida → 409 already_answered" do
       manifestation = answered!
-      allow_any_instance_of(OmbudsmanManifestation).to receive(:satisfaction_response).and_return(nil)
       OmbudsmanSatisfactionResponse.create!(ombudsman_manifestation: manifestation, met: "yes", clear: true, score: 5)
+      allow(OmbudsmanSatisfactionResponse).to receive(:exists?).and_return(false)
       json_post "#{base}/#{manifestation.id}/satisfaction", met: "no", clear: false, score: 1
       expect(response).to have_http_status(:conflict)
       expect(json_body).to eq("error" => "already_answered")
+      expect(OmbudsmanSatisfactionResponse).to have_received(:exists?)
+      expect(OmbudsmanSatisfactionResponse.where(ombudsman_manifestation_id: manifestation.id).count).to eq(1)
     end
 
     it "depois da exclusão LGPD (citizen_id nulo) a resposta fica e a manifestação some da sessão: 404" do

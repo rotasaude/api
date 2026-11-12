@@ -194,6 +194,32 @@ RSpec.describe "Ouvidoria — manifestações pelo canal do cidadão", type: :re
       expect(OmbudsmanManifestation.find(json_body["id"])).to have_attributes(citizen_id: pair.id, manifestant_name: "Maria D.")
     end
 
+    # U1/Q39 (carry T20): nenhum fluxo supõe termo para todo Citizen — o termo
+    # mora na conversa, não no cidadão. O par sem termo convive com as rotas da
+    # sessão, e a triagem continua exigindo o termo vigente (e o perfil) na
+    # própria entrada.
+    it "o par sem termo: /citizen/people o lista sem perfil e os avisos abrem; a conversa ainda exige o termo vigente e o perfil" do
+      declared
+      expect(response).to have_http_status(:created)
+      pair = Citizen.find_by!(cpf: "11144477735", phone: phone)
+
+      get "/citizen/people"
+      expect(response).to have_http_status(:ok)
+      expect(json_body["people"].sole).to include("id" => pair.id, "profile" => nil)
+      get "/citizen/notices"
+      expect(response).to have_http_status(:ok)
+
+      json_post "/citizen/conversations", citizen_id: pair.id, protocol_name: StartTriage::DEFAULT_PROTOCOL_NAME
+      expect(response).to have_http_status(:conflict)
+      expect(json_body).to eq("error" => "consent_outdated")
+      json_post "/citizen/conversations", citizen_id: pair.id, consent_version: Consents.current_version,
+                                          protocol_name: StartTriage::DEFAULT_PROTOCOL_NAME
+      expect(response).to have_http_status(:conflict)
+      expect(json_body).to eq("error" => "profile_required")
+      expect(Consent.count).to eq(0)
+      expect(Conversation.where(citizen_id: pair.id)).to be_empty
+    end
+
     it "CPF inválido → 422 invalid_cpf; o 11º CPF no telefone → 422 too_many_people; nada gravado" do
       declared(cpf: "111.111.111-11")
       expect(response).to have_http_status(:unprocessable_content)

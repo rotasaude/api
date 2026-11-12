@@ -89,12 +89,21 @@ RSpec.describe "Exclusão LGPD com manifestação da ouvidoria (ADR 0051)", type
     expect(json_body["identity"]).to eq("name" => "Joana Exclusão Souza", "cpf_masked" => CitizenIdentity::Cpf.mask(cpf),
                                         "phone_masked" => CitizenIdentity::Phone.mask(phone), "contact" => nil)
     expect(response.body).not_to include(phone.delete_prefix("+55"), cpf)
+    expect(json_body.dig("can", "open_identity")).to be(false) # o técnico nunca abre a identidade
     get "/ombudsman/manifestations/#{preserved.id}"
     expect(json_body).to include("identity" => "preserved", "identity_available" => true)
+    expect(json_body.dig("can", "open_identity")).to be(false)
     expect(response.body).not_to include(cpf, "Joana", CitizenIdentity::Cpf.mask(cpf), CitizenIdentity::Phone.mask(phone))
 
-    # O número completo só por /identity, e cada abertura deixa trilha.
+    # O número completo só por /identity, e cada abertura deixa trilha. Sem o
+    # cidadão, os manifestant_* copiados mantêm a identidade disponível: o
+    # ouvidor segue podendo abrir (can.open_identity).
     sign_in_as(ombudsman!)
+    [ identified, preserved ].each do |m|
+      get "/ombudsman/manifestations/#{m.id}"
+      expect(json_body.dig("can", "open_identity")).to be(true), m.identification_mode
+      expect(json_body.dig("can", "record_identity_consent")).to be(true), m.identification_mode
+    end
     expect { open_identity(identified) }.to change { OmbudsmanIdentityAccess.where(ombudsman_manifestation_id: identified.id).count }.by(1)
     expect(response).to have_http_status(:ok)
     expect(json_body).to eq("name" => "Joana Exclusão Souza", "full_name" => nil, "cpf" => nil, "phone" => phone,
