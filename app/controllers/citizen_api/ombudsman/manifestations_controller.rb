@@ -13,6 +13,13 @@
 # avisos daquela manifestação. Texto, nome e CPF só do corpo JSON: chave fora
 # da lista no corpo, ou qualquer chave na query → 422 com o path (só o nome da
 # chave). 10 registros por dia por sessão (429 too_many_requests).
+# Depois do registro, o cidadão age pela sessão (Task 15; contrato §3, §10):
+# POST :id/complement { body, attachment_ids? } (só em awaiting_complement →
+# 200, senão 409 manifestation_changed), :id/reopen_request { reason } → 201 e
+# :id/satisfaction { met, clear, score } → 201 (sem texto livre). Os três
+# respondem o detalhe novo, com os `can_*`; chave fora da lista → 422 com o
+# path; manifestação de outro cidadão ou anônima → 404; 30 envios por dia por
+# sessão (429 too_many_requests).
 module CitizenApi
   module Ombudsman
     class ManifestationsController < CitizenApi::BaseController
@@ -22,9 +29,14 @@ module CitizenApi
 
       CREATE_KEYS = %w[citizen_id cpf full_name kind identification_mode body health_unit_id attachment_ids].freeze
       KEY_PATH_MAX = 64
+      FAILURE_STATUS = { not_own_citizen: :forbidden, not_found: :not_found, manifestation_changed: :conflict,
+                         already_answered: :conflict, reopen_pending: :conflict }.freeze
 
       before_action :require_ombudsman!
       rate_limit to: 10, within: 1.day, only: :create, name: "citizen_ombudsman_manifestation",
+                 by: -> { current_citizen_session&.id || request.remote_ip }, store: RateLimitStore,
+                 with: -> { render_error("too_many_requests", :too_many_requests) }
+      rate_limit to: 30, within: 1.day, only: %i[complement reopen_request satisfaction], name: "citizen_ombudsman_followup",
                  by: -> { current_citizen_session&.id || request.remote_ip }, store: RateLimitStore,
                  with: -> { render_error("too_many_requests", :too_many_requests) }
       before_action :query_only!
@@ -79,7 +91,46 @@ module CitizenApi
         render json: { id: manifestation.id, protocol: manifestation.protocol, due_on: due_on.iso8601 }, status: :created
       end
 
+      def complement
+        follow_up(%w[body attachment_ids], :ok) do |manifestation, attrs|
+          ::Ombudsman::RecordComplement.call(
+            manifestation: manifestation, expected_state: "awaiting_complement", text: attrs["body"], field: "body",
+            attachment_ids: attrs["attachment_ids"], actor: "citizen", by: nil, owner: current_citizen_session
+          )
+        end
+      end
+
+      def reopen_request
+        follow_up(%w[reason], :created) do |manifestation, attrs|
+          ::Ombudsman::RequestReopen.call(manifestation: manifestation, reason: attrs["reason"])
+        end
+      end
+
+      def satisfaction
+        follow_up(%w[met clear score], :created) do |manifestation, attrs|
+          ::Ombudsman::RecordSatisfaction.call(manifestation: manifestation, met: attrs["met"], clear: attrs["clear"],
+                                               score: attrs["score"])
+        end
+      end
+
       private
+
+      # Os três passos do cidadão: posse (404), chaves do corpo (422 com o path),
+      # o comando e o detalhe novo. A chave "met" ausente é recusada pelo comando.
+      def follow_up(keys, status)
+        manifestation = own_manifestation
+        return render_error("not_found", :not_found) unless manifestation
+
+        attrs = request.request_parameters
+        unknown = (attrs.keys - keys).first
+        return render_refusal(unknown.to_s[0, KEY_PATH_MAX]) if unknown
+
+        result = yield(manifestation, attrs)
+        return render_failure(result) if result.failure?
+
+        render json: ::Ombudsman::CitizenJson.detail(own_manifestation, settings: OmbudsmanSetting.current, today: Time.zone.today),
+               status: status
+      end
 
       # A manifestação de um cidadão da sessão, com o que o detalhe lê; nil
       # quando o id não é uuid, não existe, é anônima ou é de outro telefone.
@@ -100,7 +151,7 @@ module CitizenApi
       def render_failure(result)
         payload = { error: result.reason.to_s }
         %i[path problems].each { |key| payload[key] = result.details[key] if result.details[key] }
-        render json: payload, status: result.reason == :not_own_citizen ? :forbidden : :unprocessable_entity
+        render json: payload, status: FAILURE_STATUS.fetch(result.reason, :unprocessable_entity)
       end
 
       def render_refusal(path)

@@ -1139,6 +1139,9 @@ Rails.application.routes.draw do
       get  "manifestations",     to: "manifestations#index"
       get  "manifestations/:id", to: "manifestations#show"
       post "manifestations",     to: "manifestations#create"
+      post "manifestations/:id/complement",     to: "manifestations#complement"
+      post "manifestations/:id/reopen_request", to: "manifestations#reopen_request"
+      post "manifestations/:id/satisfaction",   to: "manifestations#satisfaction"
       get  "public_config",      to: "public_configs#show"
       post "anonymous_reports",  to: "anonymous_reports#create"
     end
