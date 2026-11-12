@@ -174,8 +174,50 @@ RSpec.describe Ombudsman::Register do
     end
   end
 
-  it "canal da equipe ainda não é deste comando; a sessão é obrigatória fora do anonymous_web" do
+  it "o canal da equipe exige `by:` e não aceita sessão; a sessão é obrigatória fora do anonymous_web; canal desconhecido é erro" do
     expect { described_class.call(attrs: attrs, channel: "phone", citizen: citizen, citizen_session: session) }.to raise_error(ArgumentError)
+    expect { described_class.call(attrs: attrs, channel: "phone") }.to raise_error(ArgumentError)
+    expect { described_class.call(attrs: attrs, channel: "phone", by: ombudsman_staff!, citizen_session: session) }.to raise_error(ArgumentError)
+    expect { described_class.call(attrs: attrs, channel: "fax", by: ombudsman_staff!) }.to raise_error(ArgumentError)
+    expect { described_class.call(attrs: attrs, channel: "web", by: ombudsman_staff!, citizen_session: session) }.to raise_error(ArgumentError)
     expect { described_class.call(attrs: attrs, channel: "web", citizen: citizen) }.to raise_error(ArgumentError)
+  end
+
+  describe "canal da equipe (`by:`)" do
+    let(:staff) { ombudsman_staff! }
+
+    def staff_register(over = {}, **opts)
+      described_class.call(attrs: attrs(manifestant_name: "Ana Lima").merge(over.stringify_keys), channel: "in_person", by: staff, now: now, **opts)
+    end
+
+    it "grava o criador, o evento da equipe e o prazo; sem sessão nem aviso" do
+      result = staff_register
+      expect(result).to be_ok
+      manifestation = result.payload.fetch(:manifestation).reload
+      expect(manifestation).to have_attributes(channel: "in_person", created_by_user_id: staff.id, manifestant_name: "Ana Lima",
+                                               cycle_started_on: Date.new(2026, 11, 11), received_at: now)
+      expect(manifestation.events.sole).to have_attributes(kind: "received", actor: "staff", actor_user_id: staff.id, visible_to_citizen: true)
+      expect(OmbudsmanNotice.count).to eq(0)
+    end
+
+    it "liga o anexo do usuário na mesma transação: recusa depois dele desfaz tudo e o arquivo segue livre" do
+      attachment = Ombudsman::Attachments.upload(data: png_base64, content_type: "image/png", filename: "a.png", user: staff)
+                                         .payload.fetch(:attachment)
+      result = staff_register({ attachment_ids: [ attachment.id, SecureRandom.uuid ] })
+      expect(result.reason).to eq(:invalid_request)
+      expect(attachment.reload.ombudsman_manifestation_id).to be_nil
+      expect(attachment.exam_file.reload.consumed_at).to be_nil
+      nothing_written!
+
+      expect(staff_register({ attachment_ids: [ attachment.id ] })).to be_ok
+      expect(attachment.reload.exam_file.consumed_at).not_to be_nil
+    end
+
+    it "cidadão excluído entre a busca e a gravação → invalid_request citizen_id, nada gravado" do
+      Citizen.where(id: citizen.id).update_all(erased_at: Time.current)
+      result = described_class.call(attrs: attrs(citizen_id: citizen.id), channel: "phone", by: staff, now: now)
+      expect(path_of(result)).to eq([ :invalid_request, "citizen_id" ])
+      nothing_written!
+    end
   end
 end

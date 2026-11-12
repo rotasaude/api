@@ -766,6 +766,11 @@ Rails.application.routes.draw do
     post  "attachments",          to: "attachments#create"
     post  "attachments/:id/link", to: "attachments#link"
     get   "files/:token",         to: "files#show", format: false, constraints: { token: %r{[^/]+} }
+    # Registro pela equipe (§5; Q6): busca do cidadão pelo CPF (POST: o CPF só no corpo),
+    # registro presencial/telefone/OuvidorSUS e o comprovante.
+    post  "person_lookup",        to: "person_lookups#create"
+    post  "manifestations",       to: "manifestations#create"
+    get   "manifestations/:id/receipt", to: "manifestations#receipt"
   end
 
   # Módulo 32a (ADR 0050; contrato §4): urgência (UPA), sessão do dashboard.
