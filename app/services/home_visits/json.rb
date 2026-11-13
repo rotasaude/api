@@ -179,6 +179,6 @@ module HomeVisits
 
     STREET_TYPES = TerritoryRegistry::Dictionary.string_domain("tipo_logradouro")
     DOMAINS = build_domains
-    private_class_method :build_domains, :labels, :fichas, :open_blockers, :visit, :withdrawn, :addresses, :address_short
+    private_class_method :build_domains, :labels, :fichas, :open_blockers, :visit, :withdrawn, :address_short
   end
 end

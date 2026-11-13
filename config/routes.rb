@@ -1005,6 +1005,8 @@ Rails.application.routes.draw do
     get  "days",                    to: "days#index"
     get  "days/:id",                to: "days#show", constraints: member_id
     post "days/:id/close",          to: "days#close", constraints: member_id
+    get  "who_to_visit",            to: "who_to_visit#index"
+    get  "who_to_visit/count",      to: "who_to_visit#count"
     get  "count",                   to: "visits#count"
     get  "",                        to: "visits#index"
     post "",                        to: "visits#create"

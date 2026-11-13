@@ -13,7 +13,13 @@ module HomeVisits
                                                      user_id: user.id)
     end
 
-    # Uma por pessoa mostrada fora de uma visita (busca, "quem visitar"), como o 23/24a.
+    # "Quem visitar" (§8): uma por página, com a microárea e os pacientes mostrados.
+    def people_listed!(user:, micro_area_id:, patient_ids:, access: Catalog::TRAIL_ACCESS)
+      DomainEvents.publish("clinical_record.viewed", access: access, micro_area_id: micro_area_id, patient_ids: patient_ids.uniq,
+                                                     user_id: user.id)
+    end
+
+    # Uma por pessoa mostrada fora de uma visita (busca), como o 23/24a.
     def person_viewed!(user:, patient_id:, access: Catalog::TRAIL_ACCESS)
       DomainEvents.publish("clinical_record.viewed", patient_id: patient_id, user_id: user.id, access: access, reason_code: nil,
                                                      person_ref: "patient:#{patient_id}")
