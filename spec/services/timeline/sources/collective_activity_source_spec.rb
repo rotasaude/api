@@ -44,6 +44,13 @@ RSpec.describe Timeline::Sources::CollectiveActivitySource do
     expect(rows.map { |entry| Timeline::Json.professional(entry) }.to_json).not_to include("MARCADOR")
   end
 
+  it "tipo fora do dicionário: título genérico, sem derrubar a linha do tempo" do
+    participant = participant!(activity!(activity_type: 5))
+    stub_const("#{described_class}::TYPE_LABELS", { 4 => "Educação em saúde" }.freeze)
+
+    expect(entries.map { |entry| [ entry.source_id, entry.title, entry.summary ] }).to eq([ [ participant.id, "Atividade coletiva", "Participou" ] ])
+  end
+
   it "atividade por engano some" do
     kept = participant!(activity!(held_on: Date.current - 1))
     wrong = activity!(held_on: Date.current - 2)

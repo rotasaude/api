@@ -199,15 +199,17 @@ RSpec.describe "Histórico do cidadão", type: :request do
       oldest = visit!(sheet!(d3), hour: 23)
       sign_in_citizen(phone)
 
+      # Teto fixo de páginas: uma regressão do cursor falha aqui em vez de girar sem fim na fila do bin/test.
       seen = []
       before = nil
-      loop do
+      6.times do
         get "/citizen/history", params: { citizen_id: pair.id, kinds: %w[home_visit], limit: 1, before: before }.compact
         expect(response).to have_http_status(:ok)
         seen.concat(body["entries"].map { |entry| [ entry["id"], entry["occurred_at"] ] })
         before = body["next_before"]
         break unless before
       end
+      expect(before).to be_nil
 
       expect(seen).to eq([ [ "home_visit:#{newest.id}", "#{d1.iso8601}T12:00:00-03:00" ],
                            *pair_of_day.map { |visit| [ "home_visit:#{visit.id}", "#{d2.iso8601}T12:00:00-03:00" ] },
@@ -232,6 +234,7 @@ RSpec.describe "Histórico do cidadão", type: :request do
       done = visit!(sheet!(Date.current - 1), hour: 9)
       Platform::Features.set!(city: visit_city, key: HomeVisits::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
       CityCatalog.reset_cache!
+      expect(HomeVisits::Gate.usable?(visit_city.reload)).to be(false)
       sign_in_citizen(phone)
 
       expect(visits_in_history.map { |entry| entry["id"] }).to eq([ "home_visit:#{done.id}" ])

@@ -17,6 +17,8 @@ module Timeline
     module CollectiveActivitySource
       KIND = "collective_activity".freeze
       TYPE_LABELS = ::CollectiveActivities::Rules::DICTIONARY.dig("domains", "tipo_atividade_coletiva").freeze
+      # Código fora do dicionário (não deveria existir: CHECK 1–7): título genérico, nunca um 500 na linha do tempo inteira.
+      FALLBACK_TITLE = "Atividade coletiva".freeze
       PARTICIPATED = "Participou".freeze
       ALTERED = "avaliação alterada".freeze
 
@@ -37,7 +39,7 @@ module Timeline
         summary = participant.altered_evaluation == true ? "#{PARTICIPATED} · #{ALTERED}" : PARTICIPATED
         Entry.new(kind: KIND, source_id: participant.id, occurred_at: Time.zone.parse("#{activity.held_on.iso8601} 12:00"),
                   unit: Labels.unit(activity.health_unit), professional: { name: activity.professional.professional_name, cbo_code: activity.cbo },
-                  title: TYPE_LABELS.fetch(activity.activity_type), summary: summary, status: "recorded", detail_ref: nil,
+                  title: TYPE_LABELS[activity.activity_type] || FALLBACK_TITLE, summary: summary, status: "recorded", detail_ref: nil,
                   citizen: nil, document: nil)
       end
       private_class_method :entry

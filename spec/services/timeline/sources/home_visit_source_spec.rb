@@ -94,15 +94,16 @@ RSpec.describe Timeline::Sources::HomeVisitSource do
     expect(entries(citizen: true).map(&:source_id)).to eq([ late.id, *pair.map(&:id), oldest.id ])
     expect(entries(citizen: true).map(&:occurred_at)).to eq([ noon(d1), noon(d2), noon(d2), noon(d3) ])
 
+    # Teto fixo de páginas: uma regressão do cursor falha aqui em vez de girar sem fim na fila do bin/test.
     seen = []
     before = nil
-    loop do
+    6.times do
       page = Timeline::Query.call(person: person, kinds: %w[home_visit], limit: 1, before: before, citizen_view: true)
       seen.concat(page.entries.map(&:source_id))
-      break unless page.next_before
-
-      before = Timeline::Cursor.decode(page.next_before)
+      before = page.next_before && Timeline::Cursor.decode(page.next_before)
+      break unless before
     end
+    expect(before).to be_nil
     expect(seen).to eq([ late.id, *pair.map(&:id), oldest.id ])
 
     # A janela também é pelo meio-dia: 12:00–12:00 do d2 pega as duas do dia, não a das 19h fora dele.
@@ -110,21 +111,29 @@ RSpec.describe Timeline::Sources::HomeVisitSource do
     expect(window.map(&:source_id)).to match_array(pair.map(&:id))
   end
 
-  it "visita à família aparece para o responsável e não para outro morador" do
+  it "visita à família aparece para o responsável e não para outro morador da mesma família (Q23)" do
     household = registry_household!
     family = registry_family!(household, responsible: patient)
-    other = registry_patient!
+    member = registry_patient!
+    params = registry_registration_params(household, patient: member).merge("family_id" => family.id)
+    joined = TerritoryRegistry::SaveRegistration.call(params: params, by: registry_acs_of(household))
+    expect(joined).to be_ok
+    expect(joined.payload[:registration]).to have_attributes(patient_id: member.id, family_id: family.id, household_id: household.id,
+                                                             is_responsible: false)
     visit = done!(day: day!(Date.current), subject: "family_responsible", family: family, household: household, reasons: [ 29 ])
 
     expect(entries.map(&:source_id)).to eq([ visit.id ])
     expect(entries(citizen: true).map(&:source_id)).to eq([ visit.id ])
-    stranger = Timeline::Person.for_patient(other)
-    expect(described_class.entries(person: stranger, before: nil, limit: 10, from: nil, to: nil)).to eq([])
+    resident = Timeline::Person.for_patient(member)
+    expect(described_class.entries(person: resident, before: nil, limit: 10, from: nil, to: nil)).to eq([])
+    expect(described_class.entries(person: resident, before: nil, limit: 10, from: nil, to: nil, citizen: true)).to eq([])
   end
 
   it "não consulta o interruptor; sem paciente, vazio" do
     visit = done!(day: day!(Date.current))
     Platform::Features.set!(city: city, key: HomeVisits::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+    expect(HomeVisits::Gate.usable?(city.reload)).to be(false)
     expect(entries.map(&:source_id)).to eq([ visit.id ])
     expect(entries(citizen: true).map(&:source_id)).to eq([ visit.id ])
 
