@@ -64,9 +64,15 @@ module TerritoryRegistry
     # que não é ACS (Tabela 7, :field do HomeVisits::Access) LÊ pelas rotas de
     # leitura do 24a — as atribuídas a ele e ativas (micro_area_field_assignments
     # sem ended_at). Só leitura: index/show de domicílios e o index de
-    # cadastros por domicílio. A escrita (registrar?), visible_micro_area_ids,
-    # reads_registration? e as buscas não mudam: o TACS segue cbo_not_allowed.
-    def field_reader_micro_area_ids(user, team)
+    # cadastros por domicílio — nunca a guarda de uma escrita (o update de
+    # domicílio confere a origem por visible_micro_area_ids). A escrita
+    # (registrar?), visible_micro_area_ids, reads_registration? e as buscas não
+    # mudam: o TACS segue cbo_not_allowed. `home_visits:` = o interruptor
+    # utilizável, lido por quem chama fora de transação (Q48): desligado, vale
+    # o acesso do 24a e nada mais.
+    def field_reader_micro_area_ids(user, team, home_visits:)
+      return [] unless home_visits
+
       scope = HomeVisits::Access.scope(user, team)
       scope[:kind] == "assigned" ? scope[:micro_area_ids] : []
     end

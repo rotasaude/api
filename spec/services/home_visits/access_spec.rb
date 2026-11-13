@@ -98,7 +98,7 @@ RSpec.describe HomeVisits::Access, type: :model do
     expect(described_class.registers?(tacs, team, micro_area: open_area, out_of_area: false)).to eq(:out_of_scope)
     expect(described_class.reads_micro_area?(tacs, open_area)).to be(false)
     expect(described_class.scope(tacs, team)).to eq(micro_area_ids: [], kind: "assigned")
-    expect(TerritoryRegistry::Access.field_reader_micro_area_ids(tacs, team)).to eq([])
+    expect(TerritoryRegistry::Access.field_reader_micro_area_ids(tacs, team, home_visits: true)).to eq([])
   end
 
   it "vínculo encerrado (ended_on) tira tudo" do
@@ -128,10 +128,11 @@ RSpec.describe HomeVisits::Access, type: :model do
   # Q11: o CBO de campo que não é ACS lê o 24a só nas microáreas atribuídas.
   it "field_reader_micro_area_ids (24a): só as atribuídas e ativas do CBO de campo; vazio para ACS, enfermeiro e admin" do
     assignment!(open_area, tacs.professional, by: nurse)
-    expect(TerritoryRegistry::Access.field_reader_micro_area_ids(tacs, team)).to eq([ open_area.id ])
-    expect(TerritoryRegistry::Access.field_reader_micro_area_ids(acs, team)).to eq([])
-    expect(TerritoryRegistry::Access.field_reader_micro_area_ids(nurse, team)).to eq([])
-    expect(TerritoryRegistry::Access.field_reader_micro_area_ids(care_admin!, team)).to eq([])
+    expect(TerritoryRegistry::Access.field_reader_micro_area_ids(tacs, team, home_visits: true)).to eq([ open_area.id ])
+    expect(TerritoryRegistry::Access.field_reader_micro_area_ids(tacs, team, home_visits: false)).to eq([])
+    expect(TerritoryRegistry::Access.field_reader_micro_area_ids(acs, team, home_visits: true)).to eq([])
+    expect(TerritoryRegistry::Access.field_reader_micro_area_ids(nurse, team, home_visits: true)).to eq([])
+    expect(TerritoryRegistry::Access.field_reader_micro_area_ids(care_admin!, team, home_visits: true)).to eq([])
     # A escrita do 24a não muda: o TACS segue cbo_not_allowed.
     expect(TerritoryRegistry::Access.registrar?(tacs, team, ficha: :household, micro_area: open_area)).to eq(:cbo_not_allowed)
     expect(TerritoryRegistry::Access.visible_micro_area_ids(tacs, team)).to eq([])
@@ -159,7 +160,7 @@ RSpec.describe CollectiveActivities::Access, type: :model do
     reader = field_agent!(cbo: "225151", team: team)
     expect(described_class.reads?(reader, team)).to be(true)
     expect(described_class.reads?(acs, team)).to be(true)
-    expect(described_class.reads?(field_agent!(cbo: "411010", team: team), team)).to be(false)
+    expect(described_class.reads?(field_agent!(cbo: "221205", team: team), team)).to be(false)
     expect(described_class.reads?(care_admin!, team)).to be(false)
   end
 

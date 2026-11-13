@@ -48,3 +48,10 @@
 # não tem conselho, UF nem registro (Professional: todo ou nenhum).
 - { code: "515105", title: "Agente comunitário de saúde", council: null }
 - { code: "515140", title: "Agente de combate às endemias", council: null }
+# Os outros CBOs da Tabela 7 do LEDI (quem registra visita domiciliar, módulo
+# 24b, ADR 0052; vendor/ledi/8.7.0/docs/cbo.html; §16 Q48): também sem conselho.
+- { code: "322255", title: "Técnico em agente comunitário de saúde", council: null }
+- { code: "515310", title: "Agente de ação social", council: null }
+- { code: "515125", title: "Agente indígena de saúde", council: null }
+- { code: "515130", title: "Agente indígena de saneamento", council: null }
+- { code: "515120", title: "Visitador sanitário", council: null }

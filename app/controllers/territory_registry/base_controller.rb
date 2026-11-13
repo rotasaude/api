@@ -35,6 +35,13 @@ module TerritoryRegistry
     def not_found = render(json: { error: "not_found" }, status: :not_found)
     def uuid?(value) = value.is_a?(String) && value.match?(UUID)
 
+    # Módulo 24b (Q48): a leitura do 24a pela atribuição de microárea só vale com
+    # home_visits utilizável; lido uma vez por requisição, fora de transação.
+    def home_visits_usable?
+      @home_visits_usable = HomeVisits::Gate.usable?(Current.city) unless defined?(@home_visits_usable)
+      @home_visits_usable
+    end
+
     # CPF, CNS, nome, nascimento, condições de saúde, endereço etc. só do corpo
     # JSON, nunca da query string (URL vai para log de proxy e histórico): na
     # query vale como ausente. O padrão do CareLines::BaseController.

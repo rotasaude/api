@@ -49,6 +49,10 @@ module TerritoryRegistry
     def update
       household = find_household
       return not_found unless household
+      # Q11: a leitura de campo nunca abre a escrita. O SaveHousehold só confere
+      # a microárea de DESTINO; a origem é guardada aqui, com a visibilidade de
+      # quem cadastra (sem ela, um segundo vínculo moveria o domicílio de equipe).
+      return forbid("cbo_not_allowed") unless registrar_visible?(household.micro_area_id, household.micro_area.team)
 
       result = SaveHousehold.call(params: body, by: Current.user, household: household)
       return render_failure(result) if result.failure?
@@ -74,12 +78,16 @@ module TerritoryRegistry
       household if household && visible?(household.micro_area_id, household.micro_area.team)
     end
 
-    # Quem cadastra na microárea, ou o CBO de campo atribuído a ela (só leitura;
-    # Q11): index e show. A escrita passa pelo SaveHousehold (registrar?).
+    # LEITURA (index, show e o achado do update, que depois exige
+    # registrar_visible?): quem cadastra na microárea, ou o CBO de campo
+    # atribuído a ela com home_visits utilizável (Q11, Q48).
     def visible?(micro_area_id, team)
-      Access.visible_micro_area_ids(Current.user, team).include?(micro_area_id) ||
-        Access.field_reader_micro_area_ids(Current.user, team).include?(micro_area_id)
+      registrar_visible?(micro_area_id, team) ||
+        Access.field_reader_micro_area_ids(Current.user, team, home_visits: home_visits_usable?).include?(micro_area_id)
     end
+
+    # ESCRITA: só quem cadastra na microárea (a visibilidade do 24a de sempre).
+    def registrar_visible?(micro_area_id, team) = Access.visible_micro_area_ids(Current.user, team).include?(micro_area_id)
 
     # A última versão de cada domicílio e as famílias, sem N+1.
     def rendered(households, full:)

@@ -116,12 +116,13 @@ RSpec.describe TerritoryRegistry::Access do
     area
     tacs = member_with("322255")
     assignment = MicroAreaFieldAssignment.create!(micro_area: other_area, professional: tacs.professional, assigned_by_user: acs)
-    expect(described_class.field_reader_micro_area_ids(tacs, team)).to eq([ other_area.id ])
-    expect(described_class.field_reader_micro_area_ids(acs, team)).to eq([])
-    expect(described_class.field_reader_micro_area_ids(care_admin!, team)).to eq([])
+    expect(described_class.field_reader_micro_area_ids(tacs, team, home_visits: true)).to eq([ other_area.id ])
+    expect(described_class.field_reader_micro_area_ids(tacs, team, home_visits: false)).to eq([]) # Q48: sem o interruptor, só o 24a
+    expect(described_class.field_reader_micro_area_ids(acs, team, home_visits: true)).to eq([])
+    expect(described_class.field_reader_micro_area_ids(care_admin!, team, home_visits: true)).to eq([])
     expect(described_class.visible_micro_area_ids(tacs, team)).to eq([])
     expect(described_class.registrar?(tacs, team, micro_area: other_area, ficha: :individual)).to eq(:cbo_not_allowed)
     assignment.update!(ended_at: Time.current, ended_by_user: acs)
-    expect(described_class.field_reader_micro_area_ids(tacs, team)).to eq([])
+    expect(described_class.field_reader_micro_area_ids(tacs, team, home_visits: true)).to eq([])
   end
 end

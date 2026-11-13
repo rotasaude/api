@@ -50,18 +50,20 @@ RSpec.describe "Visita domiciliar — contexto e atribuição de microárea", ty
     expect(MicroAreaFieldAssignment.count).to eq(1)
   end
 
-  it "ACS responsável pela própria ou CBO fora da Tabela 7 → 422 cbo_not_allowed" do
+  it "ACS (responsável pela própria ou não), CBO fora da Tabela 7 ou profissional fora da equipe → 422 cbo_not_allowed (Q48)" do
     stepped_up!(nurse)
     assign(micro_area: area, professional: acs.professional)
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to eq("error" => "cbo_not_allowed")
     assign(micro_area: open_area, professional: acs.professional) # ruling A3: o 515105 nunca é atribuído
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to eq("error" => "cbo_not_allowed")
     assign(micro_area: open_area, professional: doctor.professional)
     expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to eq("error" => "cbo_not_allowed")
     stranger = field_agent!(cbo: "322255", team: registry_team!(care_unit!))
     assign(micro_area: open_area, professional: stranger.professional)
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(json_body).to eq("error" => "cbo_not_allowed")
     expect(MicroAreaFieldAssignment.count).to eq(0)
   end
@@ -129,8 +131,10 @@ RSpec.describe "Visita domiciliar — contexto e atribuição de microárea", ty
     stepped_up!(nurse)
     json_post "/home_visits/assignments/#{assignment.id}/end", {}
     expect(response).to have_http_status(:ok)
-    expect(json_body).to include("id" => assignment.id, "ended_at" => be_present)
     expect(assignment.reload).to have_attributes(ended_by_user_id: nurse.id)
+    expect(json_body).to include("id" => assignment.id, "ended_at" => assignment.ended_at.iso8601,
+                                 "micro_area" => { "id" => open_area.id, "code" => "03", "name" => "Microárea 03" },
+                                 "professional" => include("id" => tacs.professional.id, "cbo" => "322255"))
     expect(assignment_events.last.payload).to eq("micro_area_id" => open_area.id, "professional_id" => tacs.professional.id,
                                                  "user_id" => nurse.id, "ended" => true)
 
@@ -262,12 +266,55 @@ RSpec.describe "Visita domiciliar — contexto e atribuição de microárea", ty
     families = Family.count
     json_post "/territory/households/#{household.id}/families", responsible: { patient_id: registry_patient!.id }, members_count: 1,
                                                                 version: household.reload.version
-    expect(response).not_to be_successful
+    expect(response).to have_http_status(:not_found) # o FamiliesController segue com a visibilidade do 24a
     expect(Family.count).to eq(families)
 
     assignment.update!(ended_at: Time.current, ended_by_user: nurse)
     get "/territory/households", params: { micro_area_id: open_area.id }
     expect(response).to have_http_status(:forbidden)
+    get "/territory/registrations", params: { household_id: household.id }
+    expect(response).to have_http_status(:not_found)
+  end
+
+  # Revisão da Task 6 (Critical 1): o SaveHousehold só confere o DESTINO; a
+  # origem do update fica com a visibilidade de quem cadastra. TACS em T1
+  # (atribuído à microárea A) e ACS responsável por B em T2 não move o
+  # domicílio de A para B.
+  it "dois vínculos (TACS atribuído em T1, ACS em T2): PATCH do domicílio de A para B → 403 cbo_not_allowed e nada muda" do
+    household = registry_household!(micro_area: open_area)
+    registration = registry_registration!(household: household)
+    other_team = registry_team!(care_unit!)
+    HealthTeamMember.create!(professional: tacs.professional, health_team: other_team, cbo_code: "515105", started_on: Time.zone.today - 30)
+    target = registry_micro_area!(code: "01", team: other_team, acs: tacs)
+    assignment!(open_area, tacs.professional, by: nurse)
+    expect(TerritoryRegistry::Access.registrar?(tacs, other_team, ficha: :household, micro_area: target)).to eq(:ok)
+    version = household.reload.version
+
+    sign_in_as(tacs)
+    get "/territory/households/#{household.id}"
+    expect(response).to have_http_status(:ok) # leitura de campo vale
+    json_patch "/territory/households/#{household.id}", registry_household_params(household).merge("version" => version,
+                                                                                                    "micro_area_id" => target.id)
+    expect(response).to have_http_status(:forbidden)
+    expect(json_body).to eq("error" => "cbo_not_allowed")
+    expect(household.reload).to have_attributes(micro_area_id: open_area.id, version: version)
+    expect(registration.reload).to have_attributes(micro_area_id: open_area.id, team_id: team.id)
+  end
+
+  # Q48(2): sem home_visits utilizável, a atribuição não dá leitura do 24a.
+  it "interruptor desligado: o TACS atribuído volta ao acesso do 24a (403 na lista, 404 no detalhe e nos moradores)" do
+    household = registry_household!(micro_area: open_area)
+    registry_registration!(household: household)
+    assignment!(open_area, tacs.professional, by: nurse)
+    Platform::Features.set!(city: city, key: HomeVisits::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+    CityCatalog.reset_cache!
+
+    sign_in_as(tacs)
+    get "/territory/households", params: { micro_area_id: open_area.id }
+    expect(response).to have_http_status(:forbidden)
+    expect(json_body).to eq("error" => "out_of_scope")
+    get "/territory/households/#{household.id}"
+    expect(response).to have_http_status(:not_found)
     get "/territory/registrations", params: { household_id: household.id }
     expect(response).to have_http_status(:not_found)
   end

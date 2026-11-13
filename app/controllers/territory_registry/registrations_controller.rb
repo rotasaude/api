@@ -18,7 +18,7 @@ module TerritoryRegistry
         household = Household.includes(micro_area: :team).find_by(id: household_id)
         team = household&.micro_area&.team
         # Q11: o CBO de campo atribuído à microárea lê os moradores (só aqui).
-        field_ids = team ? Access.field_reader_micro_area_ids(Current.user, team) : []
+        field_ids = team ? Access.field_reader_micro_area_ids(Current.user, team, home_visits: home_visits_usable?) : []
         visible = team && (Access.visible_micro_area_ids(Current.user, team) + field_ids).include?(household.micro_area_id)
         return not_found unless visible
 

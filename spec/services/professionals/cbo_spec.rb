@@ -14,8 +14,15 @@ RSpec.describe Professionals::Cbo do
     expect(described_class.find("999999")).to be_nil
   end
 
-  it "só os profissionais de campo (ACS 515105 e agente de endemias 515140) não exigem conselho (módulo 24a)" do
-    expect(described_class.all.reject(&:council).map(&:code)).to contain_exactly("515105", "515140")
+  it "só os profissionais de campo (Tabela 7 do LEDI: ACS, endemias e os do 24b) não exigem conselho (módulos 24a e 24b)" do
+    expect(described_class.all.reject(&:council).map(&:code))
+      .to contain_exactly("515105", "515140", "322255", "515310", "515125", "515130", "515120")
+  end
+
+  # Módulo 24b (ADR 0052; §16 Q48): todo CBO que registra visita (Tabela 7,
+  # config/ledi/registration_cbos.yml) abre vínculo com a unidade.
+  it "a Tabela 7 do LEDI está toda no catálogo da plataforma" do
+    expect(TerritoryRegistry::Access::REGISTRATION_CBOS.fetch(:home_visit).to_a - described_class.all.map(&:code)).to be_empty
   end
 
   it "active deixa de fora os deprecated" do
