@@ -6,7 +6,8 @@
 # `#/$defs/item`, Task 20). Os erros saem só com ponteiro e palavra-chave do
 # esquema, nunca com o valor (o corpo traz pessoa, motivo e medida).
 #
-# Os SHA são os da tag field-sync-v1.0.0 do rotasaude/contracts.
+# Os SHA são os da tag field-sync-v1.1.0 do rotasaude/contracts (Q67:
+# too_many_requests em errors.item do domains; os outros quatro inalterados).
 module FieldSync
   module Schemas
     DIR = Rails.root.join("config/field_sync")
@@ -15,7 +16,7 @@ module FieldSync
       "upload-request-v1" => "a372ebf5b53a1812d18efc2e29c735807f8cd62a5071540ba9f83363657e3e6f",
       "upload-response-v1" => "820bf2a8fb1fc8bb718141c6adc4663be01eda84450471fa142811fe27ce77de",
       "changes-response-v1" => "baa2022a2661a2eb928133912e0eebc7d820d9a2fcfa6cba43a437098effc022",
-      "domains-v1" => "f13abb21a96ff7946c27e2859f26d529e33d6f0f727c59571d1091f179e5510c"
+      "domains-v1" => "8395db02ae26d7424f2a661429c209abfc8dd37594d12056aa767a915e57d4b1"
     }.freeze
 
     class Tampered < StandardError; end

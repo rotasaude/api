@@ -433,7 +433,8 @@
       "invalid_cns",
       "invalid_patient",
       "internal_error",
-      "household_changed"
+      "household_changed",
+      "too_many_requests"
     ]
   }
 }
