@@ -117,14 +117,16 @@ home_visit:
     # peso/altura. Com pessoa o api manda os dois sempre; sem pessoa (subject none) nenhum
     # desses gatilhos pode vir (as duas listas abaixo).
     birth_and_sex_required: with_person
-    without_person_allowed_reasons: [1, 29, 34, 35, 36, 37, 27, 28]
+    # Q34/Q40: sem pessoa só 1, 27 e 28; 29 e 34–37 levam o documento do responsável
+    # familiar (abaixo) e, sem família ativa no domicílio, vão sem pessoa (Q44).
+    without_person_allowed_reasons: [1, 27, 28]
     without_person_forbidden_measurements: [weight_kg, height_cm]
-    # PENDENTE (relato da Task 1, A-19; decisão do coordenador antes do §10): cnsCidadao (#3)
-    # e cpfCidadao (#14) — "Para visita periódica ou visita domiciliar para controle vetorial
-    # preencher este campo com o CNS [CPF] do responsável familiar". Motivos lidos assim: 29
-    # (Visita periódica) e o grupo #CONTROLE_AMBIENTAL_E_VETORIAL (34–37). Os campos não são
-    # obrigatórios ("Obrigatório: Não"); com o CNS do responsável, #4/#5 passam a exigir o
-    # nascimento e o sexo dele. Só dado: nenhuma regra do api lê esta chave até a decisão.
+    # Q40 (A-19, opção a): cnsCidadao (#3) e cpfCidadao (#14) — "Para visita periódica ou
+    # visita domiciliar para controle vetorial preencher este campo com o CNS [CPF] do
+    # responsável familiar": 29 (Visita periódica) e o grupo #CONTROLE_AMBIENTAL_E_VETORIAL
+    # (34–37). Em imóvel residencial com família ativa a visita é da família
+    # (subject family_responsible; o morador que não é o responsável também, Q43); sem
+    # família ativa, sem pessoa (Q44). HomeVisits::Record e HomeVisits::Rules.
     responsible_document_reasons: [29, 34, 35, 36, 37]
 
 collective_activity:

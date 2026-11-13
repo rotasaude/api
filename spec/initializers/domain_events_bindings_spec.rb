@@ -703,4 +703,11 @@ RSpec.describe "home visit bindings (ADR 0052)" do
     expect(DomainEvents.registry.keys).to include(*names)
     expect(names.flat_map { |name| DomainEvents.registry[name] }).to be_empty
   end
+
+  # Task 8: o registro da visita (HomeVisits::Record) — home_visit_id,
+  # home_visit_day_id e user_id, nunca motivo, medida, observação ou pessoa.
+  it "declares home_visit.recorded with no consumer" do
+    expect(DomainEvents.registry.keys).to include("home_visit.recorded")
+    expect(DomainEvents.registry["home_visit.recorded"]).to be_empty
+  end
 end

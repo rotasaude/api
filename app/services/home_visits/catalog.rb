@@ -12,9 +12,13 @@ module HomeVisits
     NON_RESIDENTIAL = %w[2 3 4 5 6 12 13].freeze
     RESIDENTIAL = %w[1 7 8 9 10 11 99].freeze
     NON_RESIDENTIAL_REASONS = [ 1, 27, 28, 31, 34, 35, 36, 37 ].freeze
-    # Proibidos para o masculino (male_forbidden_reasons do YAML).
-    FEMALE_ONLY_REASONS = [ 5, 6 ].freeze
-    MAX_VISITS_PER_DAY = 99
+    # Proibidos só para o sexo masculino (male_forbidden_reasons do YAML; Q35).
+    MALE_FORBIDDEN_REASONS = [ 5, 6 ].freeze
+    # Residencial sem pessoa (Q34/Q40) e os que levam o documento do responsável familiar (Q40).
+    WITHOUT_PERSON_ALLOWED_REASONS = [ 1, 27, 28 ].freeze
+    RESPONSIBLE_DOCUMENT_REASONS = [ 29, 34, 35, 36, 37 ].freeze
+    # Visitas válidas por folha (visitasDomiciliares, máximo 99): a 100ª fecha a folha cheia.
+    MAX_VISITS_PER_SHEET = 99
     NOTE_MAX = 500
     WITHDRAWAL_REASON = (10..500)
     ORIGINS = %w[dashboard field_app].freeze

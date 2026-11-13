@@ -509,4 +509,8 @@ Rails.application.config.to_prepare do
   # job ou cheia) — home_visit_day_id e closed_by; sem consumidor.
   DomainEvents.bind "home_visit.withdrawn", to: []
   DomainEvents.bind "home_visit_day.closed", to: []
+  # Módulo 24b (ADR 0052; contrato §1, §3; Task 8): o registro da visita
+  # (HomeVisits::Record) — home_visit_id, home_visit_day_id e user_id, nunca
+  # motivo, medida, observação ou pessoa; sem consumidor.
+  DomainEvents.bind "home_visit.recorded", to: []
 end

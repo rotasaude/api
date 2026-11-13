@@ -169,12 +169,16 @@ RSpec.describe "Dicionários da FVD e da FAC (LEDI 8.7.0)", type: :model do
     # BUSCA_ATIVA/ACOMPANHAMENTO, com 25 ou 31, ou com peso/altura (dtNascimento e sexo).
     motivo = yaml.dig("home_visit", "domains", "motivo_visita")
     triggers = motivo.select { |_, m| %w[BUSCA_ATIVA ACOMPANHAMENTO].include?(m["group"]) }.keys + [ 25, 31 ]
-    expect(rules.fetch("without_person_allowed_reasons")).to match_array(motivo.keys - triggers)
+    # Q34/Q40: a visita periódica e o controle vetorial (responsible_document_reasons) levam o
+    # documento do responsável familiar e saem da lista da visita sem pessoa.
+    expect(rules.fetch("without_person_allowed_reasons")).to eq([ 1, 27, 28 ])
+    expect(rules.fetch("without_person_allowed_reasons"))
+      .to match_array(motivo.keys - triggers - rules.fetch("responsible_document_reasons"))
     expect(rules.fetch("without_person_forbidden_measurements")).to eq(%w[weight_kg height_cm])
     %w[dtNascimento sexo].each do |ledi|
       expect(text(field_section(fvd, ledi))).to include("25 Egresso de internação ou 31 Orientação / Prevenção")
     end
-    # A-19 (pendente): documento do responsável familiar na visita periódica e no controle vetorial.
+    # A-19 (Q40): documento do responsável familiar na visita periódica e no controle vetorial.
     expect(rules.fetch("responsible_document_reasons"))
       .to eq([ 29 ] + motivo.select { |_, m| m["group"] == "CONTROLE_AMBIENTAL_E_VETORIAL" }.keys)
     { "cnsCidadao" => "CNS", "cpfCidadao" => "CPF" }.each do |ledi, doc|
