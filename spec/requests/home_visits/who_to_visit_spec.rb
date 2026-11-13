@@ -62,7 +62,9 @@ RSpec.describe "Visita domiciliar — quem visitar", type: :request do
 
   it "ACS de outra microárea → 403 out_of_scope; enfermeiro da equipe lê; equipe alheia → 403; microárea desconhecida → 404" do
     patient = resident!("Ana")
-    sign_in_as(field_agent!(team: team))
+    other_acs = field_agent!(team: team)
+    registry_micro_area!(code: "02", team: team, acs: other_acs)
+    sign_in_as(other_acs)
     get "/home_visits/who_to_visit", params: { micro_area_id: area.id }
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "out_of_scope" } ])
     get "/home_visits/who_to_visit/count", params: { micro_area_id: area.id }
@@ -101,6 +103,18 @@ RSpec.describe "Visita domiciliar — quem visitar", type: :request do
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
     get "/home_visits/who_to_visit", params: { micro_area_id: "01" }
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "micro_area_id" } ])
+    expect(trail).to be_empty
+  end
+
+  it "cursor válido de paciente de outra microárea → 422 invalid_cursor, sem item nem trilha (Q61)" do
+    resident!("Ana")
+    other_area = registry_micro_area!(code: "02", team: team, acs: field_agent!(team: team))
+    outsider = Patient.create!(cpf: valid_cpf(registry_seq!), full_name: "Bruna", mother_name: "Rita Lima",
+                               birth_date: (today - 30.years).iso8601, sex: "female", race_color: "03")
+    registry_registration!(patient: outsider, household: registry_household!(micro_area: other_area))
+    sign_in_as(acs)
+    get "/home_visits/who_to_visit", params: { micro_area_id: area.id, before: HomeVisits::WhoToVisit.encode_cursor(outsider.id) }
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_cursor" } ])
     expect(trail).to be_empty
   end
 

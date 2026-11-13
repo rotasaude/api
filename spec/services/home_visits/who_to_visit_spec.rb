@@ -122,6 +122,37 @@ RSpec.describe HomeVisits::WhoToVisit, type: :model do
     expect(page(home_visits: false)[:items].sole[:reasons].map { |reason| reason[:code] }).to eq(%w[registration_due never_visited])
   end
 
+  it "due_on (Q60): prática vencida sem prazo (janela móvel nunca cumprida, c5_d) → null; a vencer e cadastro sempre com data" do
+    hypertensive = resident!(person!("Ana"), registered_at: registered_due_in(40))
+    care_enrollment!(patient: hypertensive, line: adopted_line!("hypertension_c5"), team: team, by: nurse)
+    puerperal = resident!(person!("Bia", birth_date: (today - 28.years).iso8601))
+    visit!(puerperal, days_ago: 20) # dentro da janela da c3_e: ela não vence sem prazo
+    care_enrollment!(patient: puerperal, line: adopted_line!("pregnancy_c3"), team: team, by: nurse, anchor_date: today - 310)
+
+    reasons = page[:items].to_h { |item| [ item[:patient_id], item[:reasons] ] }
+    expect(reasons.fetch(hypertensive.id)).to eq([
+      { code: "care_line", care_line: "Pessoa com hipertensão", practice: "2 visitas do ACS nos últimos 12 meses", status: "overdue",
+        due_on: nil },
+      { code: "registration_due", status: "due_soon", due_on: (today + 40).iso8601 },
+      { code: "never_visited" }
+    ])
+    expect(reasons.fetch(puerperal.id)).to include(
+      { code: "care_line", care_line: "Gestante e puérpera", practice: "Visita do ACS no puerpério", status: "due_soon",
+        due_on: (today + 26).iso8601 }
+    )
+  end
+
+  it "membro de família que se mudou (moved_out) fica fora, mesmo com o cadastro ativo (Q61)" do
+    stays = resident!(person!("Ana"))
+    gone = person!("Bia")
+    family = registry_family!(household, responsible: gone)
+    resident!(gone, family_id: family.id)
+    family.update!(moved_out: true)
+
+    expect(ids(page)).to eq([ stays.id ])
+    expect(count).to eq(care_line: 0, registration_due: 0, never_visited: 1, people: 1)
+  end
+
   it "paciente sem nascimento sai com age null (Q33)" do
     patient = resident!(person!("Ana", birth_date: nil), registered_at: Time.current)
     expect(page[:items].sole).to include(patient_id: patient.id, age: nil)
@@ -170,6 +201,11 @@ RSpec.describe HomeVisits::WhoToVisit, type: :model do
 
     expect { page(before: "não-é-cursor") }.to raise_error(described_class::InvalidCursor)
     expect { page(before: described_class.encode_cursor(SecureRandom.uuid)) }.to raise_error(described_class::InvalidCursor)
+    # Paciente de outra microárea (Q61): o cursor não serve de oráculo nem posiciona a página.
+    other_area = registry_micro_area!(code: "02", team: team, acs: field_agent!(team: team))
+    outsider = resident!(person!("Bárbara"), at: registry_household!(micro_area: other_area))
+    expect { page(before: described_class.encode_cursor(outsider.id)) }.to raise_error(described_class::InvalidCursor)
+    expect { page(before: described_class.encode_cursor(registry_patient!.id)) }.to raise_error(described_class::InvalidCursor)
     expect { page(before: Base64.urlsafe_encode64("citizen:#{SecureRandom.uuid}", padding: false)) }
       .to raise_error(described_class::InvalidCursor)
   end

@@ -1,12 +1,14 @@
 require "base64"
 
-# "Quem visitar" por microárea (módulo 24b, ADR 0052; contrato §8, §16 Q33;
-# plano, Task 18). População = cadastro individual ativo (24a) com domicílio
-# na microárea, menos os óbitos (CareLines::Facts.deceased). Motivos:
+# "Quem visitar" por microárea (módulo 24b, ADR 0052; contrato §8, §16 Q33,
+# Q60, Q61; plano, Task 18). População = cadastro individual ativo (24a) com
+# domicílio na microárea, menos os membros de família que se mudou
+# (moved_out; Q61) e os óbitos (CareLines::Facts.deceased). Motivos:
 #   - care_line: inscrição ativa com prática de fonte acs_visit em overdue ou
 #     due_soon (CareLines::Evaluation com `home_visits:`), só com `care_lines`
 #     utilizável; só o nome da linha, o rótulo da prática, o status e o
-#     due_on — nunca CID, problema ou condição;
+#     due_on — nunca CID, problema ou condição. due_on null só na prática
+#     vencida sem prazo calculado ("nunca feita"; Q60);
 #   - registration_due: TerritoryRegistry::Validity em due_soon ou expired;
 #   - never_visited: nenhuma visita não retirada com outcome = 1 do paciente.
 # Só entra quem tem ao menos um motivo. Ordem display_name (sem acento nem
@@ -14,7 +16,8 @@ require "base64"
 # feitos em Ruby sobre a microárea inteira, com consultas constantes (nada por
 # paciente; listas de ids vão ao banco como subconsulta ou bind). O cursor é
 # o person_ref opaco (base64url de "patient:<id>"): a posição sai do nome do
-# paciente do cursor, mesmo que ele tenha saído da lista. Interruptores lidos
+# paciente do cursor, mesmo que ele tenha saído da lista; paciente fora da
+# população da microárea → InvalidCursor (sem oráculo; Q61). Interruptores lidos
 # pelo chamador, fora de transação. `limit: nil` = a lista toda (download do
 # app, Task 22). Sem trilha aqui: a rota grava a sua, a contagem não grava.
 module HomeVisits
@@ -44,11 +47,10 @@ module HomeVisits
       after = before.nil? ? nil : decode_cursor(before)
       list = entries(micro_area: micro_area, today: today, care_lines: care_lines, home_visits: home_visits)
       list = list.select { |entry| entry.codes.intersect?(reasons) } if reasons
-      patients = list.empty? ? {} : names(micro_area)
+      patients = list.empty? && after.nil? ? {} : names(micro_area)
       rows = list.sort_by { |entry| sort_key(patients.fetch(entry.patient_id)) }
       if after
-        position = sort_key(patients[after] || Patient.select(:id, :full_name, :social_name, :unidentified).find_by(id: after) ||
-                            raise(InvalidCursor))
+        position = sort_key(patients[after] || raise(InvalidCursor))
         rows = rows.select { |entry| (sort_key(patients.fetch(entry.patient_id)) <=> position) == 1 }
       end
       shown = limit ? rows.first(limit) : rows
@@ -100,8 +102,11 @@ module HomeVisits
       raise InvalidCursor
     end
 
+    # Sem família ou com família que não se mudou (NOT EXISTS: family_id nulo fica).
     def population(micro_area)
       IndividualRegistration.active_registrations.where(micro_area_id: micro_area.id).where.not(household_id: nil)
+                            .where("NOT EXISTS (SELECT 1 FROM families WHERE families.id = individual_registrations.family_id " \
+                                   "AND families.moved_out)")
     end
 
     # { patient_id => [motivo care_line] }: as inscrições ativas da população
@@ -114,9 +119,9 @@ module HomeVisits
         evaluated.fetch(enrollment.id).practices.each do |status|
           next unless status.source == SOURCE && CARE_LINE_STATUSES.include?(status.status)
 
-          # Prática vencida sem prazo calculado (janela móvel nunca cumprida, âncora ausente): vence hoje.
+          # Prática vencida sem prazo calculado (janela móvel nunca cumprida, âncora ausente): null (Q60).
           (by_patient[enrollment.patient_id] ||= []) << { code: "care_line", care_line: enrollment.care_line.name, practice: status.label,
-                                                          status: status.status, due_on: (status.due_on || today).iso8601 }
+                                                          status: status.status, due_on: status.due_on&.iso8601 }
         end
       end
     end
