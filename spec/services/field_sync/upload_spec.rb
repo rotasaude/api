@@ -215,6 +215,28 @@ RSpec.describe "FieldSync::Upload", type: :model do
     expect(household.reload.version).to eq(3)
   end
 
+  # B-M1 (Q47): o `current` do stale_version é o <household> do download, sem a
+  # família de responsável provisório da UPA, e a trilha não o lista.
+  it "stale_version de domicílio com família de responsável provisório → current e trilha sem ela" do
+    household = registry_household!(micro_area: area)
+    resident = registry_registration!(household: household)
+    registry_family!(household, responsible: resident.patient)
+    provisional = Patient.create!(no_cpf_reason: "unidentified", unidentified: true, unidentified_description: "mulher jovem")
+    # Nenhum comando do 24a o recusa como responsável; a linha direto.
+    Family.create!(household: household, responsible_patient: provisional, members_count: 1, moved_out: false)
+    stale = household.reload.version
+    updated = TerritoryRegistry::SaveHousehold.call(params: registry_household_params(household).merge("version" => stale, "contact_phone" => "4130000000"),
+                                                    by: acs, household: household)
+    expect(updated).to be_ok
+
+    result = upload(item("household", registry_household_params(household).merge("household_id" => household.id, "version" => stale))).sole
+    valid_response!([ result ])
+    expect(result).to include("status" => "stale_version", "current_version" => stale + 1)
+    expect(result["current"].fetch("families").map { _1.dig("responsible", "patient_id") }).to eq([ resident.patient_id ])
+    expect(result.to_json).not_to include(provisional.id)
+    expect(field_trail.map { _1.payload.fetch("patient_ids") }).to eq([ [ resident.patient_id ] ])
+  end
+
   it "cadastro com version vencida → stale_version com current; domicílio que não enxerga → not_found" do
     registration = registry_registration!(household: registry_household!(micro_area: area))
     params = registry_registration_params(registration.household, patient: registration.patient)
@@ -328,6 +350,27 @@ RSpec.describe "FieldSync::Upload", type: :model do
       expect(again.values_at(0, 2).map { _1["id"] }).to eq(results.values_at(0, 2).map { _1["id"] })
       expect(HomeVisit.find(again[1]["id"]).client_uuid).to eq(bad)
       expect(FieldSyncReceipt.count).to eq(3)
+    end
+
+    # B-M4: visível à operação, sem a mensagem (pode trazer valor do corpo).
+    it "(a) o internal_error vai ao Rails.error com a classe, os frames do app e o client_uuid, nunca a mensagem" do
+      bad = SecureRandom.uuid
+      allow(HomeVisits::Record).to receive(:call).and_raise(ArgumentError, "Benedita 12345678901 boom")
+      reports = []
+      allow(Rails.error).to receive(:report) { |error, **options| reports << [ error, options ] }
+
+      result = upload(item("home_visit", visit_body, uuid: bad)).sole
+
+      expect(result).to include("status" => "rejected", "error" => "internal_error")
+      error, options = reports.sole
+      expect(error).to be_a(FieldSync::Upload::InternalError)
+      expect([ error.message, error.cause ]).to eq([ "ArgumentError", nil ])
+      expect(error.backtrace).to be_present
+      expect(error.backtrace.size).to be <= FieldSync::Upload::InternalError::FRAMES
+      expect(error.backtrace).to all(match(%r{\A(app|lib)/[^:]+\.rb:\d+:in }))
+      expect(error.backtrace.first).to start_with("app/services/field_sync/upload.rb:")
+      expect(options).to include(handled: true, source: "field_sync.upload", context: { client_uuid: bad, error_class: "ArgumentError" })
+      expect([ error.message, error.backtrace, options ].to_json).not_to include("Benedita", "12345678901", "boom")
     end
 
     it "(b) cadastro NOVO cujo domicílio citado mudou entre a leitura e a trava → rejected household_changed (household_id)" do

@@ -50,6 +50,31 @@ module FieldSync
       end
     end
 
+    # <household> do app: a forma do 24a (famílias e moradia, full), sem a
+    # família de responsável provisório da UPA (Q47, M3: o <family> exige
+    # responsible com patient_id e display_name; a visita family_responsible a
+    # ela já é recusada pela guarda da Q41). A única montagem do download
+    # (FieldSync::Changes) e do `current` do stale_version (FieldSync::Upload).
+    # `families`: as do domicílio, com :responsible_patient; `version`: a
+    # última (lida aqui se não vier); `exited`: os ids de
+    # TerritoryRegistry::Families.responsible_exited_ids (calculados aqui se
+    # não vierem; o download calcula de uma vez para a página). Os
+    # responsáveis mostrados (a trilha) são os de `body[:families]`.
+    def household_body(household, families, version: nil, exited: nil)
+      kept = families.reject { |family| provisional?(family.responsible_patient) }
+      version ||= HouseholdVersion.find_by!(household_id: household.id, version: household.version)
+      exited ||= TerritoryRegistry::Families.responsible_exited_ids(kept)
+      TerritoryRegistry::Json.household(household, version, families: kept, exited: exited, full: true)
+    end
+
+    # Os responsáveis das famílias de um <household> (a trilha de quem o mostra).
+    def household_responsible_ids(body) = body.fetch(:families).map { |family| family.dig(:responsible, :patient_id) }
+
+    # A guarda da Q41 (HomeVisits::People): no_cpf_reason é cifrado, então o
+    # fluxo do download corta só por `unidentified` (indexado) e esta
+    # conferência fecha o resto.
+    def provisional?(patient) = patient.unidentified || patient.no_cpf_reason == "unidentified"
+
     def team_json(user, team, role)
       scope = HomeVisits::Access.scope(user, team)
       areas = MicroArea.where(id: scope[:micro_area_ids], active: true).order(:code)

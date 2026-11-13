@@ -21,7 +21,8 @@
 #    stale_version → ActiveRecord::Rollback (nada fica; o reenvio é processado
 #    de novo). Exceção inesperada (StandardError, Q63 a) desfaz só o item e volta
 #    `rejected internal_error`, sem path e fora do livro; o lote continua. O log
-#    leva só a classe e o client_uuid (nunca a mensagem, o corpo ou pessoa).
+#    leva só a classe e o client_uuid (nunca a mensagem, o corpo ou pessoa); o
+#    Rails.error, o InternalError (classe, frames do app, client_uuid).
 #    stale_version só para domicílio ou cadastro que JÁ EXISTE; cadastro NOVO
 #    cujo domicílio mudou → `rejected household_changed` (Q63 b).
 #    already_registered leva o `id` do cadastro existente só quando ele está no
@@ -70,6 +71,24 @@ module FieldSync
       end
     end
 
+    # B-M4: o que vai ao Rails.error de um internal_error — a classe, os
+    # primeiros frames do app (caminho relativo, linha e método, pelo
+    # backtrace_locations) e, no contexto, o client_uuid. Nunca a mensagem (pode
+    # trazer valor do corpo) nem a causa (nasce sem raise, então sem `cause`).
+    class InternalError < StandardError
+      FRAMES = 5
+      APP_DIRS = %w[app/ lib/].freeze
+
+      def self.from(error)
+        root = "#{Rails.root}/"
+        frames = Array(error.backtrace_locations).filter_map do |location|
+          path = (location.absolute_path || location.path).to_s.delete_prefix(root)
+          "#{path}:#{location.lineno}:in '#{location.label}'" if path.start_with?(*APP_DIRS)
+        end
+        new(error.class.name).tap { |wrapper| wrapper.set_backtrace(frames.first(FRAMES)) }
+      end
+    end
+
     module_function
 
     # -> Result.ok(items:) | Result.fail(:invalid_request, details: { path: })
@@ -114,8 +133,11 @@ module FieldSync
                                    field_device: context[:device], user: context[:user])
         end
       rescue StandardError => e
-        # Q63 a: só a classe e o client_uuid (a mensagem pode trazer valor do corpo).
+        # Q63 a: só a classe e o client_uuid (a mensagem pode trazer valor do
+        # corpo); B-M4: ao Rails.error, o InternalError sanitizado.
         Rails.logger.error("[field_sync.upload] internal_error class=#{e.class.name} client_uuid=#{uuid}")
+        Rails.error.report(InternalError.from(e), handled: true, source: "field_sync.upload",
+                                                  context: { client_uuid: uuid, error_class: e.class.name })
         outcome = rejected("internal_error")
       end
       trail!(context, shown.ids, outcome[:viewed])
@@ -300,14 +322,15 @@ module FieldSync
                       .exists?
     end
 
+    # O `current` é o <household> do download (Json.household_body: sem a
+    # família de responsável provisório da UPA, Q47), e a trilha lista só os
+    # responsáveis mostrados.
     def stale_household(household)
       household.reload
-      version = HouseholdVersion.find_by!(household_id: household.id, version: household.version)
       families = Family.where(household_id: household.id).includes(:responsible_patient).order(:created_at, :id).to_a
-      exited = TerritoryRegistry::Families.responsible_exited_ids(families)
-      current = TerritoryRegistry::Json.household(household, version, families: families, exited: exited, full: true)
+      current = Json.household_body(household, families)
       { status: "stale_version", id: household.id, current_version: household.version, current: current, receipt: false,
-        viewed: { household_ids: [ household.id ], patient_ids: families.map(&:responsible_patient_id).compact } }
+        viewed: { household_ids: [ household.id ], patient_ids: Json.household_responsible_ids(current).compact } }
     end
 
     def stale_registration(registration)

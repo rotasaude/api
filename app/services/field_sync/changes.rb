@@ -149,8 +149,8 @@ module FieldSync
       [ items, removals, viewed ]
     end
 
-    # -> [{ id => <household> }, { id => [responsible patient_id] }] (forma do
-    # 24a com famílias e moradia; a mesma montagem do HouseholdsController).
+    # -> [{ id => <household> }, { id => [responsible patient_id] }]
+    # (FieldSync::Json.household_body, a mesma do stale_version do envio).
     def households(ids)
       return [ {}, {} ] if ids.empty?
 
@@ -158,17 +158,14 @@ module FieldSync
       versions = HouseholdVersion.joins(:household).where(household_id: ids).where("household_versions.version = households.version")
                                  .index_by(&:household_id)
       rows = Family.where(household_id: ids).includes(:responsible_patient).order(:created_at, :id).to_a
-      # Q47 (M3): a família de responsável provisório da UPA fica fora (o
-      # <family> exige responsible com patient_id e display_name; a visita
-      # family_responsible a ela já é recusada pela guarda da Q41).
-      rows.reject! { |family| provisional?(family.responsible_patient) }
+      # Q47 (M3): o Json.household_body tira a família de responsável
+      # provisório da UPA; o `exited` de cada família só depende dela.
       exited = TerritoryRegistry::Families.responsible_exited_ids(rows)
       families = rows.group_by(&:household_id)
       bodies = list.to_h do |household|
-        [ household.id, TerritoryRegistry::Json.household(household, versions.fetch(household.id), families: families[household.id] || [],
-                                                                                                  exited: exited, full: true) ]
+        [ household.id, Json.household_body(household, families[household.id] || [], version: versions.fetch(household.id), exited: exited) ]
       end
-      [ bodies, families.transform_values { |group| group.map(&:responsible_patient_id) } ]
+      [ bodies, bodies.transform_values { |body| Json.household_responsible_ids(body) } ]
     end
 
     # -> { id => <registration> } (forma do 24a; a mesma montagem do RegistrationsController).
@@ -202,9 +199,7 @@ module FieldSync
         end }
     end
 
-    # A guarda da Q41 (HomeVisits::People): no_cpf_reason é cifrado, então o
-    # fluxo corta só por `unidentified` (indexado) e esta conferência fecha o resto.
-    def provisional?(patient) = patient.unidentified || patient.no_cpf_reason == "unidentified"
+    def provisional?(patient) = Json.provisional?(patient)
 
     def trail!(user, device, viewed)
       household_ids = viewed[:household_ids].uniq
