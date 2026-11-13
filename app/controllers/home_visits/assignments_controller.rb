@@ -8,6 +8,8 @@ module HomeVisits
   class AssignmentsController < BaseController
     ASSIGNEE_STATUS = { cbo_not_allowed: :unprocessable_entity }.freeze
 
+    # create e end_assignment não leem a query (ids no corpo e no caminho): recusa antes do step-up.
+    before_action(only: %i[create end_assignment]) { query_only! }
     before_action :require_step_up!, only: %i[create end_assignment]
 
     def index

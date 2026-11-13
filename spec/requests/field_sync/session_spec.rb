@@ -189,4 +189,31 @@ RSpec.describe "App de campo — autenticação e GET /field/v1/session", type: 
       expect(device.reload.last_used_at).to be_present
     end
   end
+
+  it "query (cpf ou chave desconhecida) → 422 invalid_request sem eco, sem last_used_at e sem trilha; sem token, token na query e revogado seguem 401" do
+    device # cria o aparelho (last_used_at nil)
+    [ "cpf=52998224725", "note=Texto+reservado", "token=#{token}" ].each do |query|
+      get "/field/v1/session?#{query}", headers: { "Authorization" => "Bearer #{token}" }
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+      expect(response.body).not_to include(query.split("=").last)
+    end
+    expect(device.reload.last_used_at).to be_nil
+    expect(DomainEvent.where("name LIKE 'clinical_record.%'").count).to eq(0)
+
+    get "/field/v1/session?cpf=52998224725"
+    unauthorized_with("invalid_token")
+    get "/field/v1/session?token=#{token}"
+    unauthorized_with("invalid_token")
+    device.update!(revoked_at: Time.current, revoked_reason: "user")
+    get "/field/v1/session?cpf=52998224725", headers: { "Authorization" => "Bearer #{token}" }
+    unauthorized_with("device_revoked")
+  end
+
+  it "query num aparelho cujo vínculo acabou → 422 e o aparelho NÃO é revogado (a recusa vem antes da revogação)" do
+    device
+    acs.deactivate!
+    get "/field/v1/session?cpf=52998224725", headers: { "Authorization" => "Bearer #{token}" }
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+    expect(device.reload.revoked_at).to be_nil
+  end
 end

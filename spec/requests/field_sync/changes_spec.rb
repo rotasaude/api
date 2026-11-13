@@ -89,4 +89,21 @@ RSpec.describe "App de campo — GET /field/v1/changes", type: :request do
     get "/field/v1/changes"
     refused_with(401, "invalid_token")
   end
+
+  it "query fora de cursor e limit (cpf, chave desconhecida) → 422 invalid_request sem eco e sem last_used_at; cursor e limit continuam valendo" do
+    device = FieldDevice.find_by!(token_digest: FieldDevice.digest(token))
+    [ "cpf=52998224725", "note=Texto+reservado", "limit=5&cpf=52998224725" ].each do |query|
+      get "/field/v1/changes?#{query}", headers: { "Authorization" => "Bearer #{token}" }
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+      expect(response.body).not_to include(query.split("=").last)
+    end
+    expect(device.reload.last_used_at).to be_nil
+
+    changes(limit: "1")
+    expect(response).to have_http_status(:ok)
+    expect(json_body.fetch("items").size).to be <= 1
+    expect(device.reload.last_used_at).to be_present
+    changes(cursor: json_body["next_cursor"].to_s, limit: "500")
+    expect(response).to have_http_status(:ok)
+  end
 end

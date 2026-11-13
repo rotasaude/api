@@ -178,4 +178,37 @@ RSpec.describe "Aparelhos de campo (dashboard)", type: :request do
     json_post "/field_devices/admin/#{SecureRandom.uuid}/revoke", {}
     expect([ response.status, json_body ]).to eq([ 404, { "error" => "not_found" } ])
   end
+
+  it "query (cpf ou chave desconhecida) em /field_devices e /field_devices/admin → 422 invalid_request sem eco, nada criado nem revogado" do
+    admin = municipal_admin!
+    theirs = device!(acs)
+    stepped_up!(admin)
+    events_before = DomainEvent.where(name: %w[field_device.registered field_device.revoked]).count
+    [ "cpf=52998224725", "note=Texto+reservado" ].each do |query|
+      value = query.split("=").last
+      get "/field_devices?#{query}"
+      post "/field_devices?#{query}", params: { name: "Celular novo" }.to_json, headers: { "CONTENT_TYPE" => "application/json" }
+      post "/field_devices/#{theirs.id}/revoke?#{query}", params: "{}", headers: { "CONTENT_TYPE" => "application/json" }
+      get "/field_devices/admin?#{query}"
+      post "/field_devices/admin/#{theirs.id}/revoke?#{query}", params: "{}", headers: { "CONTENT_TYPE" => "application/json" }
+      expect(response.body).not_to include(value)
+    end
+    expect(FieldDevice.count).to eq(1)
+    expect(theirs.reload.revoked_at).to be_nil
+    expect(DomainEvent.where(name: %w[field_device.registered field_device.revoked]).count).to eq(events_before)
+  end
+
+  it "cada rota de aparelho responde 422 invalid_request à query desconhecida; user_id continua valendo só no admin" do
+    admin = municipal_admin!
+    theirs = device!(acs)
+    stepped_up!(admin)
+    [ [ :get, "/field_devices?cpf=1" ], [ :post, "/field_devices?cpf=1" ], [ :post, "/field_devices/#{theirs.id}/revoke?cpf=1" ],
+      [ :get, "/field_devices/admin?cpf=1" ], [ :post, "/field_devices/admin/#{theirs.id}/revoke?cpf=1" ],
+      [ :get, "/field_devices?user_id=#{acs.id}" ] ].each do |verb, url|
+      verb == :get ? get(url) : post(url, params: "{}", headers: { "CONTENT_TYPE" => "application/json" })
+      expect([ url, response.status, json_body ]).to eq([ url, 422, { "error" => "invalid_request" } ])
+    end
+    get "/field_devices/admin", params: { user_id: acs.id }
+    expect(response).to have_http_status(:ok)
+  end
 end

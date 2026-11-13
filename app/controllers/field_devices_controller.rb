@@ -11,11 +11,14 @@ class FieldDevicesController < ApplicationController
   include Authentication
   include MfaStepUp
   include ::HomeVisitsGate
+  include ::StrictQuery
 
   wrap_parameters false
 
   FAILURE_STATUS = { cbo_not_allowed: :forbidden, device_already_revoked: :conflict }.freeze
 
+  # Nenhuma ação lê a query (nome no corpo, id no caminho): recusa antes do portão e do step-up.
+  before_action { query_only! }
   before_action :require_home_visits!, only: :create
   before_action :require_step_up!, only: :create
 

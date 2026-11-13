@@ -482,11 +482,7 @@ RSpec.describe "Sigilo da visita (24b) — query de toda rota", type: :request d
   end
 
   it "toda rota recusa cpf e note na query (422 invalid_request, sem o valor)" do
-    # Defeito achado pela Task 25 (relatado ao controlador): sem guarda de query em
-    # POST /home_visits/assignments e …/:id/end (Task 6) e em /field/v1/session,
-    # uploads e changes (Tasks 19, 20 e 22). O exemplo roda inteiro; quando a task
-    # dona corrigir, ele passa e o `pending` falha — aí sai esta linha.
-    pending "query sem guarda em assignments#create/end_assignment e em /field/v1/* (tasks 6, 19, 20 e 22)"
+    # Corrigido na rodada 1 da Task 25: assignments e /field/v1/* ganharam a guarda.
     values = { "cpf" => "52998224725", "note" => "Texto reservado na query da rota" }
     stepped_up!(acs)
     token = FieldDevices::Register.call(user: acs, name: "Celular").payload.fetch(:token)

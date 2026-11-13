@@ -7,16 +7,18 @@ module FieldDevices
   class AdminController < ApplicationController
     include Authentication
     include MfaStepUp
+    include ::StrictQuery
 
     wrap_parameters false
 
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
 
+    # index lê só user_id; revoke nenhuma (recusa antes do papel e do step-up).
+    before_action { query_only!(*(action_name == "index" ? %w[user_id] : [])) }
     before_action :require_admin!
     before_action :require_step_up!, only: :revoke
 
     def index
-      return render_refusal("invalid_request", :unprocessable_entity) unless (request.query_parameters.keys - %w[user_id]).empty?
       return render_refusal("invalid_request", :unprocessable_entity, path: "user_id") unless user_filter_valid?
 
       scope = FieldDevice.includes(:user, :professional).order(created_at: :desc, id: :desc)

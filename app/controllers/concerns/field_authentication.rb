@@ -6,7 +6,12 @@
 #      para todo /field/v1 → 429 too_many_requests;
 #   2. interruptor home_visits (HomeVisitsGate) → 403 feature_disabled;
 #   3. o aparelho pelo índice único do digest: ausente/desconhecido → 401
-#      invalid_token; revogado → 401 device_revoked. Em TODA requisição: usuário
+#      invalid_token; revogado → 401 device_revoked;
+#   3b. a query (StrictQuery; `permitted_query_keys`, vazio por padrão) → 422
+#      invalid_request, depois de saber que o token existe e ANTES de qualquer
+#      efeito (revogação, last_used_at, trilha): quem não tem token continua
+#      vendo só 401 (token na query nunca autentica), e o aparelho válido nunca
+#      sofre efeito por pedido recusado. Em TODA requisição: usuário
 #      ativo, papel health_professional e vínculo ativo da Tabela 7 em equipe
 #      ativa 70/76 (HomeVisits::Access.device_owner?); sem isso o aparelho é
 #      revogado agora (user_disabled | membership_ended) e a resposta é o mesmo
@@ -28,6 +33,7 @@ module FieldAuthentication
 
   included do
     include ::HomeVisitsGate
+    include ::StrictQuery
 
     rate_limit to: FieldSync::Catalog::RATE, within: 1.minute, name: "field_sync", scope: "field_sync", store: RateLimitStore,
                by: -> { bearer_token ? FieldDevice.digest(bearer_token) : request.remote_ip },
@@ -38,6 +44,9 @@ module FieldAuthentication
   end
 
   private
+
+  # Chaves de query que a ação lê (as demais → 422); a ação que lê query redefine.
+  def permitted_query_keys = []
 
   # Só o cabeçalho; nunca params (a query e o corpo não autenticam).
   def bearer_token
@@ -52,6 +61,7 @@ module FieldAuthentication
     device = FieldDevice.by_token(bearer_token)
     return refuse_device("invalid_token") unless device
     return refuse_device("device_revoked") if device.revoked?
+    return unless query_only!(*permitted_query_keys)
 
     user = device.user
     member = user.active? && HomeVisits::Access.device_owner?(user)

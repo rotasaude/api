@@ -318,4 +318,23 @@ RSpec.describe "Visita domiciliar — contexto e atribuição de microárea", ty
     get "/territory/registrations", params: { household_id: household.id }
     expect(response).to have_http_status(:not_found)
   end
+
+  it "query na escrita (cpf ou chave desconhecida) → 422 invalid_request, sem eco, antes do step-up e sem trilha" do
+    assignment = assignment!(open_area, tacs.professional, by: nurse)
+    events_before = assignment_events.count
+    sign_in_as(nurse) # sem step-up: a recusa de query vem antes do 401 mfa_required
+    [ { "cpf" => "52998224725" }, { "note" => "Texto reservado na query" } ].each do |query|
+      value = query.values.first
+      post "/home_visits/assignments?#{query.to_query}", params: { micro_area_id: open_area.id, professional_id: tacs.professional.id }.to_json,
+                                                          headers: { "CONTENT_TYPE" => "application/json" }
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+      expect(response.body).not_to include(value)
+      post "/home_visits/assignments/#{assignment.id}/end?#{query.to_query}", params: "{}", headers: { "CONTENT_TYPE" => "application/json" }
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+      expect(response.body).not_to include(value)
+    end
+    expect(assignment.reload.ended_at).to be_nil
+    expect(MicroAreaFieldAssignment.count).to eq(1)
+    expect(assignment_events.count).to eq(events_before)
+  end
 end

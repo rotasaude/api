@@ -84,4 +84,17 @@ RSpec.describe "App de campo — POST /field/v1/uploads", type: :request do
     expect(log).to include("/field/v1/uploads")
     [ token, cpf, "Benedita", "Rosalina", "Portão azul", "casa errada" ].each { |secret| expect(log).not_to include(secret) }
   end
+
+  it "query (cpf ou chave desconhecida) → 422 invalid_request sem eco, nada gravado, last_used_at intacto" do
+    device = FieldDevice.find_by!(token_digest: FieldDevice.digest(token))
+    raw = { items: [ item("home_visit", visit_body) ] }.to_json
+    [ "cpf=52998224725", "note=Texto+reservado" ].each do |query|
+      post "/field/v1/uploads?#{query}", params: raw, headers: { "Authorization" => "Bearer #{token}", "Content-Type" => "application/json" }
+      expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
+      expect(response.body).not_to include(query.split("=").last)
+    end
+    expect(device.reload.last_used_at).to be_nil
+    expect(HomeVisit.count).to eq(0)
+    expect(DomainEvent.where("name LIKE 'home_visit.%'").count).to eq(0)
+  end
 end

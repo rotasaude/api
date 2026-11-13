@@ -22,6 +22,8 @@ module FieldSync
 
       private
 
+      def permitted_query_keys = %w[cursor limit]
+
       # Inteiro decimal em 1–500; ausente (ou vazio) → 200; senão nil.
       def page_limit
         raw = request.query_parameters["limit"]
