@@ -63,7 +63,7 @@ module CollectiveActivities
       return replay if replay
 
       error = Rules.check(params, today: Time.zone.today).first
-      return refuse(error[:error], error[:path]) if error
+      return Result.fail(error[:error], details: error.except(:error)) if error
 
       team = HealthTeam.find_by(id: params["team_id"])
       member = TerritoryRegistry::Access.membership(by, team)
@@ -100,7 +100,7 @@ module CollectiveActivities
       # app, Task 20).
       ids = patients.map(&:id)
       repeated = ids.each_index.find { |index| ids.index(ids[index]) != index }
-      refuse!(refuse(:duplicate_participant, "participants[#{repeated}]")) if repeated
+      refuse!(duplicate(repeated, confirmable: false)) if repeated
 
       activity = insert!(input, by, team, member, origin, device, participants)
       colleagues.each do |professional, cbo|
@@ -176,7 +176,10 @@ module CollectiveActivities
     # um participante vê, dentro da transação, o paciente que outro acabou de
     # criar: candidato que some no rollback. Então é a mesma pessoa duas vezes
     # (duplicate_participant, Ruling T13-DUP), e nenhum id criado aqui vai a
-    # `candidates` nem à trilha.
+    # `candidates` nem à trilha. `confirmable` pela regra do Rules (Q53, Q54):
+    # CPF ou CNS igual ao de um criado aqui → false (o cpf_taken/cns_taken
+    # contra ele também); só semelhança → true (duplicates_reviewed libera:
+    # o CreateReviewed nem confere o duplicado).
     def new_patient!(item, index, by, shown, created)
       resolved = HomeVisits::People.resolve(by: by, new_patient: item["new_patient"], reviewed: item["duplicates_reviewed"],
                                             path_prefix: "participants[#{index}]")
@@ -185,11 +188,27 @@ module CollectiveActivities
         return resolved.payload[:patient]
       end
 
+      document = same_document?(item["new_patient"], created)
+      refuse!(duplicate(index, confirmable: false)) if %i[cpf_taken cns_taken].include?(resolved.reason) && document
       candidate_ids = Array(resolved.details[:candidate_ids])
-      refuse!(refuse(:duplicate_participant, "participants[#{index}]")) if candidate_ids.intersect?(created)
+      refuse!(duplicate(index, confirmable: !document)) if candidate_ids.intersect?(created)
 
       shown.concat(candidate_ids)
       refuse!(Result.fail(resolved.reason, details: resolved.details.except(:candidate_ids)))
+    end
+
+    # Algum paciente criado nesta escrita tem o CPF ou o CNS digitado?
+    def same_document?(typed, created)
+      return false if created.empty? || !typed.is_a?(Hash)
+
+      %w[cpf cns].any? do |key|
+        digits = typed[key].is_a?(String) ? typed[key].gsub(/\D/, "").presence : nil
+        digits && Patient.where(id: created, key => digits).exists?
+      end
+    end
+
+    def duplicate(index, confirmable:)
+      Result.fail(:duplicate_participant, details: { path: "participants[#{index}]", confirmable: confirmable })
     end
 
     def insert!(input, by, team, member, origin, device, participants)
@@ -207,6 +226,6 @@ module CollectiveActivities
     def refuse(reason, path) = Result.fail(reason, details: { path: path })
     def refuse!(result) = raise(Refused, result)
     private_class_method :write, :replayed, :lock_patients!, :place_unit!, :professionals!, :existing_patients!, :new_patient!,
-                         :insert!, :refuse, :refuse!
+                         :same_document?, :duplicate, :insert!, :refuse, :refuse!
   end
 end

@@ -91,8 +91,10 @@ RSpec.describe CollectiveActivities::Record, type: :model do
   it "participante repetido → duplicate_participant, nada gravado" do
     patient = registry_patient!
     params = body(participants: [ { "patient_id" => patient.id }, { "patient_id" => patient.id } ])
-    expect { expect(failure(record(params))).to eq([ :duplicate_participant, "participants[1]" ]) }
-      .not_to change { counts }
+    result = nil
+    expect { result = record(params) }.not_to change { counts }
+    expect(failure(result)).to eq([ :duplicate_participant, "participants[1]" ])
+    expect(result.details).to eq(path: "participants[1]", confirmable: false)
   end
 
   it "profissional sem CNS → professional_without_cns; sem vínculo ativo → not_found; quem registra na lista → recusado" do
@@ -164,32 +166,77 @@ RSpec.describe CollectiveActivities::Record, type: :model do
     expect(CollectiveActivityParticipant.count).to eq(2)
   end
 
-  it "dois new_patient iguais → duplicate_participant antes de qualquer escrita, sem trilha (Ruling T13-DUP)" do
-    params = body(participants: [ { "new_patient" => typed }, { "new_patient" => typed, "duplicates_reviewed" => true } ])
-    result = nil
-    expect { result = record(params) }.not_to change { counts }
-    expect(failure(result)).to eq([ :duplicate_participant, "participants[1]" ])
-    expect(DomainEvent.where(name: "clinical_record.viewed")).to be_empty
-  end
+  describe "a mesma pessoa duas vezes (Ruling T13-DUP, Q53, Q54)" do
+    def viewed_ids = DomainEvent.where(name: "clinical_record.viewed").map { _1.payload["patient_id"] }
 
-  it "o paciente criado pelo 1º participante nunca é candidato do 2º: duplicate_participant e a trilha sem o id desfeito" do
-    # Chaves diferentes no Rules (a mãe só no 2º), mas o Patients::Duplicates
-    # do 2º vê o recém-criado pelo 1º (sem mãe gravada) dentro da transação.
-    first_one = { "new_patient" => typed }
-    second = { "new_patient" => typed.merge("mother_name" => "Rita Alves") }
-    created = []
-    allow(Patients::CreateTyped).to receive(:call).and_wrap_original do |original, **args|
-      original.call(**args).tap { |result| created << result.payload[:patient].id if result.ok? }
+    it "dois new_patient iguais → duplicate_participant confirmable true, sem candidates nem trilha, nada gravado" do
+      params = body(participants: [ { "new_patient" => typed }, { "new_patient" => typed } ])
+      result = nil
+      expect { result = record(params) }.not_to change { counts }
+      expect(failure(result)).to eq([ :duplicate_participant, "participants[1]" ])
+      expect(result.details).to eq(path: "participants[1]", confirmable: true)
+      expect(viewed_ids).to be_empty
     end
-    params = body(participants: [ first_one, second ])
-    result = nil
-    expect { result = record(params) }.not_to change { counts }
-    expect(failure(result)).to eq([ :duplicate_participant, "participants[1]" ])
-    expect(result.details).not_to have_key(:candidates)
-    expect(created.size).to eq(1)
-    expect(Patient.where(id: created)).to be_empty
-    viewed = DomainEvent.where(name: "clinical_record.viewed").map { _1.payload["patient_id"] }
-    expect(viewed & created).to be_empty
+
+    it "duplicates_reviewed no segundo libera a semelhança: dois pacientes novos" do
+      params = body(participants: [ { "new_patient" => typed }, { "new_patient" => typed, "duplicates_reviewed" => true } ])
+      result = nil
+      expect { result = record(params) }.to change(Patient, :count).by(2)
+      expect(result).to be_ok
+      expect(result.payload[:activity].participants.count).to eq(2)
+    end
+
+    it "CPF ou CNS igual nunca é liberado, nem com duplicates_reviewed: confirmable false" do
+      cpf = typed.except("no_cpf_reason").merge("cpf" => valid_cpf(registry_seq!))
+      same_cpf = { "new_patient" => cpf.merge("full_name" => "Outra Pessoa"), "duplicates_reviewed" => true }
+      params = body(participants: [ { "new_patient" => cpf }, same_cpf ])
+      result = nil
+      expect { result = record(params) }.not_to change { counts }
+      expect(result.details).to eq(path: "participants[1]", confirmable: false)
+
+      cns = typed.merge("cns" => valid_cns(registry_seq!))
+      params = body(participants: [ { "new_patient" => cns }, { "new_patient" => cns, "duplicates_reviewed" => true } ])
+      expect(record(params).details).to eq(path: "participants[1]", confirmable: false)
+    end
+
+    # Defesa do Record, abaixo do Rules (o envio do app cita pessoas que o
+    # Rules não vê, Task 20): o Patients::Duplicates de um participante vê o
+    # paciente que outro acabou de criar dentro da transação.
+    context "com o Rules sem a checagem (só a defesa do Record)" do
+      before { allow(CollectiveActivities::Rules).to receive(:check).and_return([]) }
+
+      it "candidato criado nesta escrita, só semelhança → confirmable true; a trilha sem o id desfeito; a marca libera" do
+        created = []
+        allow(Patients::CreateTyped).to receive(:call).and_wrap_original do |original, **args|
+          original.call(**args).tap { |result| created << result.payload[:patient].id if result.ok? }
+        end
+        params = body(participants: [ { "new_patient" => typed }, { "new_patient" => typed.merge("mother_name" => "Rita Alves") } ])
+        result = nil
+        expect { result = record(params) }.not_to change { counts }
+        expect(failure(result)).to eq([ :duplicate_participant, "participants[1]" ])
+        expect(result.details).to eq(path: "participants[1]", confirmable: true)
+        expect(created.size).to eq(1)
+        expect(Patient.where(id: created)).to be_empty
+        expect(viewed_ids & created).to be_empty
+
+        released = body(participants: [ { "new_patient" => typed }, { "new_patient" => typed, "duplicates_reviewed" => true } ])
+        expect(record(released)).to be_ok
+      end
+
+      it "candidato criado nesta escrita com o mesmo CNS → confirmable false; CPF igual (cpf_taken) idem" do
+        cns = typed.merge("cns" => valid_cns(registry_seq!))
+        result = record(body(participants: [ { "new_patient" => cns }, { "new_patient" => cns } ]))
+        expect(result.details).to eq(path: "participants[1]", confirmable: false)
+        cns_taken = record(body(participants: [ { "new_patient" => cns }, { "new_patient" => cns, "duplicates_reviewed" => true } ]))
+        expect(cns_taken.details).to eq(path: "participants[1]", confirmable: false)
+
+        cpf = typed.except("no_cpf_reason").merge("cpf" => valid_cpf(registry_seq!))
+        other = { "new_patient" => cpf.merge("full_name" => "Outra Pessoa"), "duplicates_reviewed" => true }
+        cpf_taken = record(body(participants: [ { "new_patient" => cpf }, other ]))
+        expect([ cpf_taken.reason, cpf_taken.details ]).to eq([ :duplicate_participant, { path: "participants[1]", confirmable: false } ])
+        expect(CollectiveActivity.count).to eq(0)
+      end
+    end
   end
 
   it "registro rápido inválido → invalid_patient com o path do participante (Q49), nada gravado" do

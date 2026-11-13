@@ -2,8 +2,9 @@
 # §13): sessão do dashboard e `collective_activities` utilizável (403
 # feature_disabled). Dado de pessoa e texto (tema, público, prática,
 # avaliação) só do corpo JSON, nunca da URL. Recusas `{ error, path?,
-# candidates? }` com os status do HomeVisits::BaseController (plano, Desvio 11:
-# a mesma tabela para os dois registros).
+# candidates?, confirmable? }` (confirmable só no duplicate_participant, Q54)
+# com os status do HomeVisits::BaseController (plano, Desvio 11: a mesma
+# tabela para os dois registros).
 module CollectiveActivities
   class BaseController < ApplicationController
     include Authentication
@@ -22,6 +23,8 @@ module CollectiveActivities
     def render_failure(result, status: {})
       payload = { error: result.reason.to_s }
       %i[path candidates].each { |key| payload[key] = result.details[key] if result.details.key?(key) }
+      # Q54: só a mesma pessoa duas vezes diz se "É outra pessoa" pode liberar.
+      payload[:confirmable] = result.details[:confirmable] if result.reason == :duplicate_participant
       render json: payload, status: status.fetch(result.reason) { FAILURE_STATUS.fetch(result.reason, :unprocessable_entity) }
     end
 

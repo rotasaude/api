@@ -9,7 +9,8 @@
 #
 # `check` recebe o corpo plano do §7 (chaves texto; Q15: lista ausente =
 # vazia) e o `today` da cidade (Time.zone.today dentro do CityConnection.with)
-# e devolve [] ou [{ error:, path: }] com o primeiro problema: chaves e ids,
+# e devolve [] ou [{ error:, path: }] (`duplicate_participant` também com
+# `confirmable`, Q54) com o primeiro problema: chaves e ids,
 # tipo e turno, data, local, contagem, listas (domínio, tamanho, repetição),
 # a tabela do tipo, práticas e procedimento, profissionais, participantes. Sem
 # banco: a unidade ativa com CNES, os profissionais e os pacientes ficam com o
@@ -194,8 +195,13 @@ module CollectiveActivities
     # Participantes: a lista é uma (a tabela do tipo já viu se vazia pode);
     # patient_id ou new_patient, exatamente um (a forma do new_patient é do
     # HomeVisits::People). A mesma pessoa duas vezes → duplicate_participant
-    # em participants[i] (Ruling T13-DUP), antes de qualquer escrita: o mesmo
-    # patient_id, ou dois new_patient com a mesma chave (`identity`).
+    # em participants[i] (o segundo), antes de qualquer escrita (Ruling
+    # T13-DUP, Q53, Q54), com `confirmable`:
+    #  - false, nunca liberado: o mesmo patient_id, ou o mesmo CPF ou CNS
+    #    entre dois new_patient;
+    #  - true: só a semelhança de um new_patient com outro (`similar?`, a regra
+    #    do Patients::Duplicates), sem documento igual. `duplicates_reviewed:
+    #    true` NESTE participante ("é outra pessoa") libera.
     def participants(input)
       items = input["participants"]
       return nil if items.nil?
@@ -208,29 +214,45 @@ module CollectiveActivities
         error = participant(item, at, smoking_allowed)
         return error if error
 
-        key = item["patient_id"] ? [ :patient, item["patient_id"] ] : identity(item["new_patient"])
-        return err(:duplicate_participant, at) if key && seen.include?(key)
+        person = person(item)
+        return duplicate(at, confirmable: false) if seen.any? { |other| (other[:hard] & person[:hard]).any? }
+        if item["duplicates_reviewed"] != true && seen.any? { |other| similar?(other, person) }
+          return duplicate(at, confirmable: true)
+        end
 
-        seen << key if key
+        seen << person
       end
       nil
     end
 
-    # A chave de pessoa do new_patient: o CPF; sem ele, o CNS (só dígitos);
-    # sem documento, a chave do 24a (Patients::MatchKey: nome normalizado +
-    # nascimento) e a mãe normalizada. nil se a forma não dá chave (o
-    # HomeVisits::People recusa a forma depois).
-    def identity(typed)
-      return nil unless typed.is_a?(Hash)
+    # O que identifica o participante: `hard` (patient_id, CPF e CNS, só
+    # dígitos) e, do new_patient, a chave do 24a (Patients::MatchKey: nome
+    # normalizado + nascimento), a mãe normalizada e se tem CPF.
+    def person(item)
+      return { hard: [ [ :patient, item["patient_id"] ] ] } if item["patient_id"]
 
-      %w[cpf cns].each do |doc|
-        digits = typed[doc].is_a?(String) ? typed[doc].gsub(/\D/, "") : ""
-        return [ doc.to_sym, digits ] if digits.present?
-      end
+      typed = item["new_patient"]
+      return { hard: [] } unless typed.is_a?(Hash)
+
+      digits = ->(key) { typed[key].is_a?(String) ? typed[key].gsub(/\D/, "").presence : nil }
+      hard = [ ([ :cpf, digits["cpf"] ] if digits["cpf"]), ([ :cns, digits["cns"] ] if digits["cns"]) ].compact
       name, birth, mother = typed.values_at("full_name", "birth_date", "mother_name")
       key = Patients::MatchKey.for(name, birth) if name.is_a?(String) && birth.is_a?(String)
-      key && [ :match_key, key, mother.is_a?(String) ? Patients::MatchKey.normalize(mother) : nil ]
+      { hard: hard, match_key: key, mother: (Patients::MatchKey.normalize(mother) if mother.is_a?(String)),
+        cpf: !digits["cpf"].nil? }
     end
+
+    # A regra do Patients::Duplicates entre dois new_patient: a mesma chave do
+    # 24a; mãe igual ou ausente num dos dois; e não os dois com CPF (CPFs
+    # diferentes são pessoas diferentes; o igual já caiu em `hard`).
+    def similar?(one, other)
+      return false if one[:match_key].nil? || one[:match_key] != other[:match_key]
+      return false if one[:cpf] && other[:cpf]
+
+      one[:mother].nil? || other[:mother].nil? || one[:mother] == other[:mother]
+    end
+
+    def duplicate(path, confirmable:) = { error: :duplicate_participant, path: path, confirmable: confirmable }
 
     def participant(item, at, smoking_allowed)
       return err(:invalid_collective_activity, at) unless item.is_a?(Hash)
@@ -289,6 +311,6 @@ module CollectiveActivities
     def uuid?(value) = value.is_a?(String) && value.match?(UUID)
     def err(code, path) = { error: code, path: path }
     private_class_method :keys, :fields, :date, :place, :lists, :by_type, :practices, :professionals, :participants,
-                         :participant, :identity, :participant_measurements, :participant_smoking, :count, :valid_measure?, :uuid?, :err
+                         :participant, :person, :similar?, :duplicate, :participant_measurements, :participant_smoking, :count, :valid_measure?, :uuid?, :err
   end
 end

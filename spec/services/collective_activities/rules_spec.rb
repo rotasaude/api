@@ -182,41 +182,59 @@ RSpec.describe CollectiveActivities::Rules, type: :model do
     expect(first(body(target_audience: 1))).to eq(error: :invalid_collective_activity, path: "target_audience")
   end
 
-  describe "a mesma pessoa duas vezes na atividade → duplicate_participant em participants[i] (Ruling T13-DUP)" do
+  describe "a mesma pessoa duas vezes na atividade → duplicate_participant em participants[i] (Ruling T13-DUP, Q53, Q54)" do
     def typed(**over)
       { "full_name" => "Benedita Alves Rocha", "birth_date" => "1951-03-08", "sex" => "female", "no_cpf_reason" => "3" }
         .merge(over.stringify_keys)
     end
 
+    def with_cpf(cpf, **over) = typed(cpf: cpf, **over).except("no_cpf_reason")
     def twice(first, second) = body(participants: [ { "patient_id" => SecureRandom.uuid }, first, second ])
+    def hard = { error: :duplicate_participant, path: "participants[2]", confirmable: false }
+    def soft = { error: :duplicate_participant, path: "participants[2]", confirmable: true }
+    def reviewed(item) = item.merge("duplicates_reviewed" => true)
 
-    it "o mesmo patient_id → path do segundo" do
+    it "o mesmo patient_id → confirmable false, nem com duplicates_reviewed" do
       id = SecureRandom.uuid
-      expect(first(twice({ "patient_id" => id }, { "patient_id" => id })))
-        .to eq(error: :duplicate_participant, path: "participants[2]")
+      expect(first(twice({ "patient_id" => id }, { "patient_id" => id }))).to eq(hard)
+      expect(first(twice({ "patient_id" => id }, reviewed({ "patient_id" => id })))).to eq(hard)
     end
 
-    it "dois new_patient com o mesmo CPF ou o mesmo CNS (com ou sem pontuação)" do
-      cpf = { "new_patient" => typed(cpf: "123.456.789-09", no_cpf_reason: nil).compact }
-      same_cpf = { "new_patient" => typed(full_name: "Outra Pessoa", cpf: "12345678909", no_cpf_reason: nil).compact }
-      expect(first(twice(cpf, same_cpf))).to eq(error: :duplicate_participant, path: "participants[2]")
+    it "o mesmo CPF ou o mesmo CNS (com ou sem pontuação) → confirmable false, nem com duplicates_reviewed" do
+      cpf = { "new_patient" => with_cpf("123.456.789-09") }
+      same_cpf = { "new_patient" => with_cpf("12345678909", full_name: "Outra Pessoa") }
+      expect(first(twice(cpf, same_cpf))).to eq(hard)
+      expect(first(twice(cpf, reviewed(same_cpf)))).to eq(hard)
       cns = { "new_patient" => typed(cns: "700 0000 0000 0001") }
-      same_cns = { "new_patient" => typed(full_name: "Outra Pessoa", cns: "700000000000001") }
-      expect(first(twice(cns, same_cns))).to eq(error: :duplicate_participant, path: "participants[2]")
+      same_cns = { "new_patient" => typed(full_name: "Outra Pessoa", birth_date: "1990-01-01", cns: "700000000000001") }
+      expect(first(twice(cns, same_cns))).to eq(hard)
+      expect(first(twice(cns, reviewed(same_cns)))).to eq(hard)
+      # CPF de um igual ao do outro, mesmo que o outro também tenha CNS diferente.
+      both = { "new_patient" => with_cpf("12345678909", cns: "700000000000002") }
+      expect(first(twice(cpf, reviewed(both)))).to eq(hard)
     end
 
-    it "sem documento: a chave do 24a (nome normalizado + nascimento) e a mãe" do
+    it "nome + nascimento (+ mãe) sem documento igual → confirmable true; duplicates_reviewed no segundo libera" do
       plain = { "new_patient" => typed(mother_name: "Rita Rocha") }
-      same = { "new_patient" => typed(full_name: "  benedita alves-ROCHA ", mother_name: "rita rocha"), "duplicates_reviewed" => true }
-      expect(first(twice(plain, same))).to eq(error: :duplicate_participant, path: "participants[2]")
+      same = { "new_patient" => typed(full_name: "  benedita alves-ROCHA ", mother_name: "rita rocha") }
+      expect(first(twice(plain, same))).to eq(soft)
+      expect(check(twice(plain, reviewed(same)))).to eq([])
+      expect(first(twice(reviewed(plain), same))).to eq(soft) # a marca é do participante recusado
+    end
+
+    it "a regra do Patients::Duplicates: mãe ausente num dos dois é parecido; CNS diferentes não separam; CPF só de um também não" do
+      plain = { "new_patient" => typed }
+      expect(first(twice(plain, { "new_patient" => typed(mother_name: "Rita Rocha") }))).to eq(soft)
+      expect(first(twice({ "new_patient" => typed(cns: "700000000000001") }, { "new_patient" => typed(cns: "700000000000002") })))
+        .to eq(soft)
+      expect(first(twice({ "new_patient" => with_cpf("12345678909") }, plain))).to eq(soft)
+    end
+
+    it "pessoas diferentes passam: mãe diferente, outro nascimento, dois CPFs diferentes" do
+      plain = { "new_patient" => typed(mother_name: "Rita Rocha") }
       expect(check(twice(plain, { "new_patient" => typed(mother_name: "Ana Rocha") }))).to eq([])
       expect(check(twice(plain, { "new_patient" => typed(birth_date: "1951-03-09", mother_name: "Rita Rocha") }))).to eq([])
-    end
-
-    it "documentos diferentes são pessoas diferentes, mesmo com o mesmo nome" do
-      a = { "new_patient" => typed(cpf: "12345678909", no_cpf_reason: nil).compact }
-      b = { "new_patient" => typed(cpf: "98765432100", no_cpf_reason: nil).compact }
-      expect(check(twice(a, b))).to eq([])
+      expect(check(twice({ "new_patient" => with_cpf("12345678909") }, { "new_patient" => with_cpf("98765432100") }))).to eq([])
     end
   end
 
