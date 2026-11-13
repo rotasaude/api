@@ -84,8 +84,17 @@ module Citizens
         LabRequisition.where(patient_id: ids).exists? || PerformedProcedure.where(patient_id: ids).exists? ||
         CareLineEnrollment.where(patient_id: ids).exists? || territory_registered?(ids) || notified?(ids) ||
         regulated?(ids) || dispensed?(ids) || dental_recorded?(ids) ||
-        vaccinated?(ids) || tfd_cased?(ids) || psychosocial_recorded?(ids) || urgency_recorded?(ids)
+        vaccinated?(ids) || tfd_cased?(ids) || psychosocial_recorded?(ids) || urgency_recorded?(ids) ||
+        home_visited?(ids) || collectively_attended?(ids)
     end
+
+    # ADR 0052: visita e participação são registro retido (fichas enfileiradas),
+    # como o cadastro do 24a (L13). A visita retirada conta (a ficha pode já ter
+    # sido enfileirada) e a visita a imóvel sem pessoa (patient_id nulo) não
+    # retém ninguém; a atividade registrada por engano também retém.
+    def home_visited?(ids) = HomeVisit.where(patient_id: ids).exists?
+
+    def collectively_attended?(ids) = CollectiveActivityParticipant.where(patient_id: ids).exists?
 
     # ADR 0050 (módulo 32a; contrato §13 e §14 Q25): o encontro com
     # classificação ou consulta é registro de saúde retido; a evasão antes da

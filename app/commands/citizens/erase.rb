@@ -18,6 +18,8 @@
 # ADR 0051: e as manifestações da ouvidoria desligadas do par, com a
 # identidade copiada para a manifestação (registro de obrigação legal retido);
 # os avisos da ouvidoria apagados.
+# ADR 0052: visita domiciliar e participação em atividade coletiva retêm (pelo
+# examined_patients?, sob a trava do paciente); a exclusão nunca as apaga.
 # Reasons: :not_pending, :own_request, :patient_on_trip, :patient_in_urgency.
 module Citizens
   module Erase
