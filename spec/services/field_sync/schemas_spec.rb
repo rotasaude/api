@@ -3,9 +3,8 @@ require "rails_helper"
 # Módulo 24b (ADR 0052; contrato §9.4): a cópia dos esquemas do field-sync em
 # config/field_sync/ é a do rotasaude/contracts, presa por SHA-256; os exemplos
 # do manifest do contracts (cópia em spec/fixtures/field_sync/examples/) dão o
-# mesmo resultado aqui, com o json_schemer do api. A tag field-sync-v1.0.0 ainda
-# não saiu (C-HOLD): os SHA são os do commit fb52430 do contracts, e a Task 26
-# re-prende na tag.
+# mesmo resultado aqui, com o json_schemer do api. Os SHA são os da tag
+# field-sync-v1.0.0 do rotasaude/contracts.
 RSpec.describe "FieldSync::Schemas (contrato field-sync-v1)" do
   let(:examples) { Rails.root.join("spec/fixtures/field_sync/examples") }
 
@@ -20,7 +19,7 @@ RSpec.describe "FieldSync::Schemas (contrato field-sync-v1)" do
     }
   end
 
-  it "a cópia bate com o SHA-256 do commit fb52430 do contracts (a T26 re-prende na tag)" do
+  it "a cópia bate com o SHA-256 da tag field-sync-v1.0.0 do contracts" do
     expect(Dir[Rails.root.join("config/field_sync/*.json")].map { |path| File.basename(path, ".json") }).to match_array(pinned.keys)
     pinned.each do |name, sha|
       expect(Digest::SHA256.file(Rails.root.join("config/field_sync/#{name}.json")).hexdigest).to eq(sha), name
