@@ -58,7 +58,8 @@ RSpec.describe FieldSync::Changes, type: :model do
     registry_registration!(household: foreign)
     # Todos no mesmo instante: o desempate é o id.
     tie = 1.minute.ago
-    [ area, *households, *registrations ].each { |record| record.update_columns(updated_at: tie) }
+    # O t do cadastro inclui o paciente (Fix round 1): todos no mesmo instante.
+    [ area, *households, *registrations, *registrations.map(&:patient) ].each { |record| record.update_columns(updated_at: tie) }
 
     pages = all_pages(limit: 2)
 
@@ -156,10 +157,14 @@ RSpec.describe FieldSync::Changes, type: :model do
 
   it "trilha por página com exatamente os ids dela; página só de microáreas não grava" do
     household = registry_household!(micro_area: area)
+    # Responsável sem cadastro individual: o t do domicílio (que inclui o
+    # responsável e o cadastro dele) fica só no que a spec fixa.
+    holder = registry_patient!
+    family = registry_family!(household, responsible: holder)
     first = registry_registration!(household: household)
-    registry_family!(household, responsible: first.patient)
     second = registry_registration!(household: household)
     base = 10.minutes.ago
+    [ holder, family, first.patient, second.patient ].each { |record| record.update_columns(updated_at: base - 1.minute) }
     [ area, household, first.reload, second ].each_with_index { |record, index| record.update_columns(updated_at: base + index.seconds) }
 
     pages = all_pages(limit: 1)
@@ -170,7 +175,7 @@ RSpec.describe FieldSync::Changes, type: :model do
     expect(trail.size).to eq(3)
     expect(trail.map { _1.payload.slice("user_id", "field_device_id").values }.uniq).to eq([ [ acs.id, device.id ] ])
     expect(trail.map { _1.payload.fetch("household_ids") }).to eq([ [ household.id ], [], [] ])
-    expect(trail[0].payload.fetch("patient_ids")).to eq([ first.patient_id ])
+    expect(trail[0].payload.fetch("patient_ids")).to eq([ holder.id ])
     expect(trail[1].payload.fetch("patient_ids")).to eq([ first.patient_id ])
     # Última página: o cadastro dela e as pessoas do who_to_visit.
     expect(trail[2].payload.fetch("patient_ids")).to contain_exactly(second.patient_id, first.patient_id)
@@ -225,6 +230,112 @@ RSpec.describe FieldSync::Changes, type: :model do
                  Base64.urlsafe_encode64(decoded.merge("since" => "ontem").to_json, padding: false),
                  Base64.urlsafe_encode64(decoded.merge("extra" => 1).to_json, padding: false) ]
     tampered.each { |raw| expect { fetch(raw) }.to raise_error(FieldSync::Cursor::Invalid), raw }
+  end
+
+  # Fix round 1 (I1, M3): o que o <registration> e o <household> mostram do
+  # paciente volta ao fluxo quando só o paciente muda.
+  describe "mudança só do lado do paciente" do
+    let(:household) { registry_household!(micro_area: area) }
+
+    def synced_cursor = all_pages.last.fetch("next_cursor")
+    def bodies(pages, type) = pages.flat_map { _1.fetch("items") }.select { _1.fetch("type") == type }.map { _1.fetch("body") }
+
+    it "nome do paciente mudado direto (sem IdentityRefresh) → o cadastro volta depois do cursor" do
+      registration = registry_registration!(household: household)
+      cursor = synced_cursor
+      registration.patient.update!(full_name: "Joana Ribeiro Nova")
+
+      pages = all_pages(cursor)
+
+      expect(refs(pages)).to eq([ [ "registration", registration.id ] ])
+      expect(bodies(pages, "registration").sole.dig("patient", "full_name")).to eq("Joana Ribeiro Nova")
+      expect(all_pages(pages.last.fetch("next_cursor")).flat_map { _1.fetch("items") }).to eq([])
+    end
+
+    it "o paciente responsável mudou → o domicílio volta com o nome novo" do
+      registration = registry_registration!(household: household)
+      registry_family!(household, responsible: registration.patient)
+      cursor = synced_cursor
+      registration.patient.update!(social_name: "Jojo")
+
+      pages = all_pages(cursor)
+
+      expect(refs(pages)).to contain_exactly([ "household", household.id ], [ "registration", registration.id ])
+      expect(bodies(pages, "household").sole.dig("families", 0, "responsible", "display_name")).to eq("Jojo")
+    end
+
+    it "o cadastro do responsável saiu → o domicílio volta com responsible_exited" do
+      registration = registry_registration!(household: household)
+      registry_family!(household, responsible: registration.patient)
+      cursor = synced_cursor
+      exit_params = { "reason" => "moved", "on" => Time.zone.today.iso8601 }
+      expect(TerritoryRegistry::ExitRegistration.call(registration: registration.reload, params: exit_params, by: acs)).to be_ok
+
+      pages = all_pages(cursor)
+
+      expect(refs(pages)).to contain_exactly([ "household", household.id ], [ "registration", registration.id ])
+      expect(bodies(pages, "household").sole.dig("families", 0, "responsible_exited")).to be(true)
+    end
+
+    it "CPF chegou → has_cpf atualizado" do
+      patient = registry_no_cpf_patient!
+      registration = registry_registration!(patient: patient, household: household)
+      cursor = synced_cursor
+      expect(bodies(all_pages, "registration").sole.dig("patient", "has_cpf")).to be(false)
+      patient.update!(cpf: valid_cpf(registry_seq!), no_cpf_reason: nil)
+
+      pages = all_pages(cursor)
+
+      expect(refs(pages)).to eq([ [ "registration", registration.id ] ])
+      expect(bodies(pages, "registration").sole.dig("patient", "has_cpf")).to be(true)
+    end
+
+    it "provisório da UPA identificado depois → o cadastro passa a chegar" do
+      patient = Patient.create!(no_cpf_reason: "unidentified", unidentified: true, unidentified_description: "homem idoso")
+      registration = registry_registration!(patient: patient, household: household, is_responsible: false)
+      # Anterior à posição do cursor: só a mudança do paciente o traz.
+      registration.update_columns(updated_at: 1.hour.ago)
+      cursor = synced_cursor
+      patient.update!(unidentified: false, cpf: valid_cpf(registry_seq!), no_cpf_reason: nil, full_name: "Antônio Pereira",
+                      birth_date: "1950-03-02", sex: "male")
+
+      pages = all_pages(cursor)
+
+      expect(refs(pages)).to eq([ [ "registration", registration.id ] ])
+      expect(bodies(pages, "registration").sole.dig("patient", "full_name")).to eq("Antônio Pereira")
+    end
+
+    # A forma "apagada" não existe no download: o cadastro territorial é
+    # registro retido (ADR 0042; RequestErasure.territory_registered?), e o
+    # Erase reconfere pela mesma regra — nada do paciente muda.
+    it "Citizens::Erase de quem tem cadastro no escopo é retido: o paciente não muda e nada volta" do
+      patient, citizen = exam_patient!(31, age: 40, sex: "female")
+      request = Citizens::RequestErasure.call(cpf: citizen.cpf, document_checked: true, by: verifier!).payload.fetch(:request)
+      expect(request.status).to eq("pending")
+      registry_registration!(patient: patient, household: household)
+      cursor = synced_cursor
+      name = patient.reload.full_name
+
+      expect(Citizens::Erase.call(request: request, by: care_admin!).payload.fetch(:request).status).to eq("retained")
+
+      expect(patient.reload.full_name).to eq(name)
+      expect(all_pages(cursor).flat_map { _1.fetch("items") }).to eq([])
+    end
+
+    it "responsável provisório da UPA nunca chega: a família fica fora do domicílio e da trilha (Q47, M3)" do
+      resident = registry_registration!(household: household)
+      registry_family!(household, responsible: resident.patient)
+      provisional = Patient.create!(no_cpf_reason: "unidentified", unidentified: true, unidentified_description: "mulher jovem")
+      # Nenhum comando do 24a o recusa como responsável; a linha direto.
+      Family.create!(household: household, responsible_patient: provisional, members_count: 1, moved_out: false)
+
+      pages = all_pages
+
+      families = bodies(pages, "household").sole.fetch("families")
+      expect(families.map { _1.dig("responsible", "patient_id") }).to eq([ resident.patient_id ])
+      expect(field_trail.flat_map { _1.payload.fetch("patient_ids") }).not_to include(provisional.id)
+      expect(pages.to_json).not_to include(provisional.id)
+    end
   end
 
   describe FieldSync::Scope do

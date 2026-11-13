@@ -5,11 +5,12 @@
 # Escopo: FieldSync::Scope (microáreas ativas em que o dono é o ACS
 # responsável ou tem atribuição ativa). Um FLUXO ÚNICO, em ordem (t, id):
 #   - micro_area   (t = updated_at) das microáreas do escopo;
-#   - household    (t = updated_at) dos domicílios nelas (famílias e moradia
-#     mudam pelo SaveHousehold, que grava versão nova e mexe no updated_at);
-#   - registration (t = updated_at) dos cadastros nelas, menos o paciente
-#     provisório da UPA (a guarda da Q41: unidentified no fluxo, e
-#     no_cpf_reason "unidentified", que é cifrado, ao montar; Q47);
+#   - household    (t = HOUSEHOLD_T: o domicílio, as famílias, os pacientes
+#     responsáveis e os cadastros deles) dos domicílios nelas; a família de
+#     responsável provisório da UPA fica fora do corpo (Q47);
+#   - registration (t = REGISTRATION_T: o cadastro e o paciente) dos cadastros
+#     nelas, menos o paciente provisório da UPA (a guarda da Q41: unidentified
+#     no fluxo, e no_cpf_reason "unidentified", que é cifrado, ao montar; Q47);
 #   - lápide       (t = created_at) de field_sync_tombstones das microáreas do
 #     escopo (Ruling A12): conta no limit e sai em `removals` da página em que
 #     cai. A lápide de quem CONTINUA no escopo (mudou de uma microárea do
@@ -42,6 +43,21 @@ module FieldSync
     # O tempo da linha em texto (UTC, microssegundos), igual ao `since` do cursor.
     TIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%6NZ".freeze
     SQL_TIME_FORMAT = 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'.freeze
+    # O `t` de cada linha é o instante mais recente de tudo o que o corpo
+    # mostra (Fix round 1, I1); o corte, a ordem e o keyset usam esta mesma
+    # expressão, então mudar só faz a linha andar para frente (reentrega).
+    #   - cadastro: ele e o paciente (<registration>.patient, demografia e
+    #     status: nome direto, CPF/CNS que chegou, raça/cor, provisório identificado);
+    #   - domicílio: ele, as famílias, os pacientes responsáveis (display_name)
+    #     e os cadastros desses responsáveis (responsible_exited, Families).
+    REGISTRATION_T = "GREATEST(r.updated_at, p.updated_at)".freeze
+    HOUSEHOLD_T = <<~SQL.squish.freeze
+      GREATEST(h.updated_at,
+        (SELECT max(GREATEST(f.updated_at, fp.updated_at)) FROM families f JOIN patients fp ON fp.id = f.responsible_patient_id
+          WHERE f.household_id = h.id),
+        (SELECT max(fr.updated_at) FROM families f2 JOIN individual_registrations fr ON fr.patient_id = f2.responsible_patient_id
+          WHERE f2.household_id = h.id))
+    SQL
 
     module_function
 
@@ -81,9 +97,9 @@ module FieldSync
         SELECT stream.kind, stream.id, to_char(stream.t, :format) FROM (
           SELECT 'micro_area' AS kind, m.id, m.updated_at AS t FROM micro_areas m WHERE m.id IN (:ids)
           UNION ALL
-          SELECT 'household', h.id, h.updated_at FROM households h WHERE h.micro_area_id IN (:ids)
+          SELECT 'household', h.id, #{HOUSEHOLD_T} FROM households h WHERE h.micro_area_id IN (:ids)
           UNION ALL
-          SELECT 'registration', r.id, r.updated_at FROM individual_registrations r JOIN patients p ON p.id = r.patient_id
+          SELECT 'registration', r.id, #{REGISTRATION_T} FROM individual_registrations r JOIN patients p ON p.id = r.patient_id
            WHERE r.micro_area_id IN (:ids) AND NOT p.unidentified
           UNION ALL
           SELECT 'tombstone', s.id, s.created_at FROM field_sync_tombstones s
@@ -142,6 +158,10 @@ module FieldSync
       versions = HouseholdVersion.joins(:household).where(household_id: ids).where("household_versions.version = households.version")
                                  .index_by(&:household_id)
       rows = Family.where(household_id: ids).includes(:responsible_patient).order(:created_at, :id).to_a
+      # Q47 (M3): a família de responsável provisório da UPA fica fora (o
+      # <family> exige responsible com patient_id e display_name; a visita
+      # family_responsible a ela já é recusada pela guarda da Q41).
+      rows.reject! { |family| provisional?(family.responsible_patient) }
       exited = TerritoryRegistry::Families.responsible_exited_ids(rows)
       families = rows.group_by(&:household_id)
       bodies = list.to_h do |household|
