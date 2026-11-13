@@ -42,6 +42,16 @@ module FieldSync
       schemer(name, ref).validate(payload).map { |error| { pointer: error.fetch("data_pointer"), type: error.fetch("type") } }.uniq
     end
 
+    # Como `errors`, mais o lugar no esquema (`schema_pointer`) e, no
+    # `required`, as chaves que faltam (nomes do esquema, nunca valor): o envio
+    # do app monta o `path` da Q32/Q46 com eles (Task 20).
+    def failures(name, payload, ref: nil)
+      schemer(name, ref).validate(payload).map do |error|
+        { pointer: error.fetch("data_pointer"), type: error.fetch("type"), schema_pointer: error["schema_pointer"].to_s,
+          missing: Array(error.dig("details", "missing_keys")).map(&:to_s) }
+      end.uniq
+    end
+
     def valid?(name, payload, ref: nil) = schemer(name, ref).valid?(payload)
 
     def validate!(name, payload, ref: nil)

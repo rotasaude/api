@@ -1043,7 +1043,8 @@ Rails.application.routes.draw do
   # Módulo 24b (ADR 0052; contrato §9.2, §9.3): app de campo. Host da cidade,
   # sem cookie, Authorization: Bearer rsf_… (FieldAuthentication).
   scope "/field/v1", module: "field_sync/v1", as: :field_sync_v1 do
-    get "session", to: "sessions#show"
+    get  "session", to: "sessions#show"
+    post "uploads", to: "uploads#create"
   end
 
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo
