@@ -20,6 +20,10 @@ RSpec.describe "Visita domiciliar — visitas da equipe", type: :request do
 
   def trail = DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at).map(&:payload)
 
+  # Um instante antes de agora, ainda hoje (perto da meia-noite, 2 minutos
+  # atrás cairia na folha de ontem).
+  def earlier_today = [ 2.minutes.ago, Time.current.beginning_of_day ].max.change(usec: 0)
+
   def body(**over)
     { "client_uuid" => SecureRandom.uuid, "team_id" => team.id, "occurred_at" => Time.current.change(usec: 0).iso8601,
       "micro_area_id" => area.id, "property_type" => "1", "subject" => "none", "outcome" => 1, "reasons" => [ 1 ],
@@ -203,7 +207,7 @@ RSpec.describe "Visita domiciliar — visitas da equipe", type: :request do
 
   it "filtro outcome[]=2 funciona e outcome=2 sem [] → 422; a lista não traz a observação e grava uma trilha com os ids" do
     patient = registry_patient!
-    record!(note: "portão azul", occurred_at: 2.minutes.ago.change(usec: 0).iso8601)
+    record!(note: "portão azul", occurred_at: earlier_today.iso8601)
     refused = record!(outcome: 2, reasons: [], subject: "resident", patient_id: patient.id, note: "portão azul")
     sign_in_as(nurse)
     get "/home_visits?team_id=#{team.id}&outcome[]=2"

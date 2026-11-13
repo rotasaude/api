@@ -6,7 +6,8 @@
 #   GET  days?team_id=&professional_id=&from=&to=&state[]=&before=&limit=
 #                              o dono (as suas) e o enfermeiro/médico (a
 #                              equipe): { items, next_before }, sem pessoa e
-#                              sem trilha, sem consulta por folha (Json.days)
+#                              sem trilha, sem consulta por folha (Json.days);
+#                              ordem day, sequence, id DESC e cursor nela (Q52)
 #   GET  days/:id              o dono e o enfermeiro/médico da equipe: a folha
 #                              com as visitas (sem note), com trilha
 #   POST days/:id/close        o dono: { expected_state } → 200 <home_visit_day>
@@ -16,6 +17,7 @@ module HomeVisits
   class DaysController < BaseController
     LIST_KEYS = %i[team_id professional_id from to state before limit].freeze
     CLOSE_KEYS = %w[expected_state].freeze
+    DAY_CURSOR = /\A(\d{4}-\d{2}-\d{2})\|([1-9]\d{0,5})\|(\h{8}-\h{4}-\h{4}-\h{4}-\h{12})\z/
 
     def today
       return unless query_only!(:team_id)
@@ -40,14 +42,16 @@ module HomeVisits
       limit = page_limit
       return unless limit
 
-      position = cursor
+      position = day_cursor
       return if performed?
 
-      rows = CareLines::Cursor.before(scope, position, :created_at).order(created_at: :desc, id: :desc)
-                              .includes(:professional, team: :health_unit).limit(limit + 1).to_a
+      if position
+        scope = scope.where("(home_visit_days.day, home_visit_days.sequence, home_visit_days.id) < (?, ?, ?::uuid)", *position)
+      end
+      rows = scope.order(day: :desc, sequence: :desc, id: :desc).includes(:professional, team: :health_unit).limit(limit + 1).to_a
       page = rows.first(limit)
       render json: { items: Json.days(page, viewer: Current.user),
-                     next_before: rows.size > limit ? CareLines::Cursor.encode(page.last.created_at, page.last.id) : nil }
+                     next_before: rows.size > limit ? encode_day_cursor(page.last) : nil }
     end
 
     def show
@@ -109,6 +113,25 @@ module HomeVisits
       scope = scope.where(day: from..) if from
       scope = scope.where(day: ..to) if to
       states ? scope.where(state: states) : scope
+    end
+
+    # Cursor opaco da lista (Q52): a posição na ordem day DESC, sequence DESC,
+    # id DESC — "AAAA-MM-DD|sequence|id" em base64 url-safe. A complementar de
+    # um dia passado fica junto do seu dia; o id desempata (paginação estável).
+    def encode_day_cursor(day) = Base64.urlsafe_encode64("#{day.day.iso8601}|#{day.sequence}|#{day.id}", padding: false)
+
+    # [dia, sequence, id] | nil (sem before); inválido → 422 invalid_cursor.
+    def day_cursor
+      raw = params[:before]
+      return nil if raw.nil? || raw == ""
+
+      match = raw.is_a?(String) && Base64.urlsafe_decode64(raw).match(DAY_CURSOR)
+      raise ArgumentError, "cursor" unless match
+
+      [ Date.iso8601(match[1]), Integer(match[2], 10), match[3].downcase ]
+    rescue ArgumentError
+      render_refusal("invalid_cursor")
+      nil
     end
 
     # O dono, ou o enfermeiro/médico da equipe; senão nil (404).

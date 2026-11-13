@@ -19,6 +19,10 @@ RSpec.describe "Visita domiciliar — folhas do dia", type: :request do
 
   def trail = DomainEvent.where(name: "clinical_record.viewed").order(:occurred_at).map(&:payload)
 
+  # Um instante antes de agora, ainda hoje (perto da meia-noite, 2 minutos
+  # atrás cairia na folha de ontem).
+  def earlier_today = [ 2.minutes.ago, Time.current.beginning_of_day ].max.change(usec: 0)
+
   # Visita pelo HomeVisits::Record (a folha nasce nele), ao imóvel por padrão.
   def record!(by: acs, at: Time.current.change(usec: 0), **over)
     params = { "client_uuid" => SecureRandom.uuid, "team_id" => team.id, "occurred_at" => at.iso8601, "micro_area_id" => area.id,
@@ -39,7 +43,7 @@ RSpec.describe "Visita domiciliar — folhas do dia", type: :request do
     expect(response).to have_http_status(:ok)
     expect(response.body).to eq("null")
 
-    plain = record!(at: 2.minutes.ago.change(usec: 0))
+    plain = record!(at: earlier_today)
     today_sheet
     expect(json_body).to include("id" => plain.home_visit_day_id, "own" => true, "state" => "open", "sequence" => 1,
                                  "visits_count" => 1, "withdrawn_count" => 0, "ledi_export_enabled" => true,
@@ -85,7 +89,8 @@ RSpec.describe "Visita domiciliar — folhas do dia", type: :request do
     get "/home_visits/days", params: { team_id: team.id }
     expect(response).to have_http_status(:ok)
     items = json_body["items"]
-    expect(items.map { _1["id"] }).to eq([ peer_day.id, closed.id, open.id ]) # mais recente primeiro (created_at, id)
+    today_ids = [ peer_day.id, open.id ].sort.reverse # Q52: day DESC, sequence DESC, id DESC
+    expect(items.map { _1["id"] }).to eq(today_ids + [ closed.id ])
     expect(items.map { _1["own"] }).to all(be(false))
     expect(items).to all(satisfy { |item| !item.key?("visits") })
     expect(items.find { _1["id"] == closed.id }).to include("state" => "closed", "closed_by" => "user",
@@ -101,7 +106,7 @@ RSpec.describe "Visita domiciliar — folhas do dia", type: :request do
     get "/home_visits/days", params: { team_id: team.id, limit: 1 }
     expect(json_body["items"].size).to eq(1)
     get "/home_visits/days", params: { team_id: team.id, limit: 1, before: json_body["next_before"] }
-    expect(json_body["items"].map { _1["id"] }).to eq([ closed.id ])
+    expect(json_body["items"].map { _1["id"] }).to eq([ today_ids.last ])
 
     get "/home_visits/days?team_id=#{team.id}&state=closed"
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request", "path" => "state" } ])
@@ -119,6 +124,43 @@ RSpec.describe "Visita domiciliar — folhas do dia", type: :request do
     get "/home_visits/days", params: { team_id: registry_team!(care_unit!).id }
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "out_of_scope" } ])
     expect(trail).to be_empty
+  end
+
+  it "Q52: a folha complementar de um dia passado, aberta hoje, fica junto do seu dia (pela sequence), não no topo" do
+    first = home_visit_day!(agent: acs, team: team, day: today - 2, state: "closed")
+    current = home_visit_day!(agent: acs, team: team, day: today)
+    complementary = home_visit_day!(agent: acs, team: team, day: today - 2, sequence: 2) # criada por último
+    middle = home_visit_day!(agent: field_agent!(team: team), team: team, day: today - 1)
+    expect(complementary.created_at).to be > first.created_at
+    sign_in_as(nurse)
+    get "/home_visits/days", params: { team_id: team.id }
+    expect(json_body["items"].map { _1["id"] }).to eq([ current.id, middle.id, complementary.id, first.id ])
+    expect(json_body["items"].map { [ _1["day"], _1["sequence"] ] })
+      .to eq([ [ today.iso8601, 1 ], [ (today - 1).iso8601, 1 ], [ (today - 2).iso8601, 2 ], [ (today - 2).iso8601, 1 ] ])
+  end
+
+  it "Q52: paginação com empate de dia e sequence devolve cada folha uma vez só, na ordem day, sequence, id DESC" do
+    sheets = 4.times.flat_map do
+      agent = field_agent!(team: team)
+      [ home_visit_day!(agent: agent, team: team, day: today - 1, state: "closed"),
+        home_visit_day!(agent: agent, team: team, day: today - 1, sequence: 2) ]
+    end
+    sheets << home_visit_day!(agent: acs, team: team, day: today)
+    expected = sheets.sort_by { |sheet| [ sheet.day, sheet.sequence, sheet.id ] }.reverse.map(&:id)
+    sign_in_as(nurse)
+    seen = []
+    before = nil
+    10.times do
+      get "/home_visits/days", params: { team_id: team.id, limit: 2, before: before }.compact
+      expect(response).to have_http_status(:ok)
+      seen.concat(json_body["items"].map { _1["id"] })
+      before = json_body["next_before"]
+      break unless before
+    end
+    expect(seen).to eq(expected)
+    expect(seen.uniq.size).to eq(9)
+    get "/home_visits/days", params: { team_id: team.id, before: CareLines::Cursor.encode(Time.current, sheets.first.id) }
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_cursor" } ])
   end
 
   it "a lista não consulta o banco por folha (N+1 do Json.day: contagens, ficha e blockers)" do
