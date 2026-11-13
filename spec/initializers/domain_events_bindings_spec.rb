@@ -731,4 +731,20 @@ RSpec.describe "home visit bindings (ADR 0052)" do
     expect(DomainEvents.registry.keys).to include(*names)
     expect(names.flat_map { |name| DomainEvents.registry[name] }).to be_empty
   end
+
+  # Task 25 (conferência final, contrato §1 e Q30): os oito eventos do 24b, nem
+  # um a mais com os prefixos do módulo (field_sync.* não existe), nenhum com
+  # consumidor; os dois catálogos somam exatamente os oito.
+  it "declares exactly the eight 24b events of the contract, none consumed" do
+    contract = %w[home_visit.recorded home_visit.withdrawn home_visit_day.closed collective_activity.recorded
+                  collective_activity.marked_mistaken field_device.registered field_device.revoked
+                  micro_area.field_assignment_changed]
+    names = DomainEvents.registry.keys.select do |name|
+      name.match?(/\A(home_visit|home_visit_day|collective_activity|field_device|field_sync)\./) ||
+        name == "micro_area.field_assignment_changed"
+    end
+    expect(names).to match_array(contract)
+    expect(HomeVisits::Catalog::DOMAIN_EVENTS + CollectiveActivities::Catalog::DOMAIN_EVENTS).to match_array(contract)
+    expect(names.flat_map { |name| DomainEvents.registry[name] }).to be_empty
+  end
 end
