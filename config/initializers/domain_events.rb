@@ -503,4 +503,10 @@ Rails.application.config.to_prepare do
   # ended, nunca nome nem CBO; sem consumidor (o download do app recalcula o
   # escopo e responde reset, §9.3).
   DomainEvents.bind "micro_area.field_assignment_changed", to: []
+  # Módulo 24b (ADR 0052; contrato §1, §2; Task 10): a retirada da visita
+  # (HomeVisits::Withdraw) — home_visit_id, home_visit_day_id e user_id, nunca
+  # o motivo — e o fechamento da folha (HomeVisits::CloseDay, pelo dono, pelo
+  # job ou cheia) — home_visit_day_id e closed_by; sem consumidor.
+  DomainEvents.bind "home_visit.withdrawn", to: []
+  DomainEvents.bind "home_visit_day.closed", to: []
 end

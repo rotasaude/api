@@ -695,4 +695,12 @@ RSpec.describe "home visit bindings (ADR 0052)" do
     expect(DomainEvents.registry.keys).to include("micro_area.field_assignment_changed")
     expect(DomainEvents.registry["micro_area.field_assignment_changed"]).to be_empty
   end
+
+  # Task 10: a retirada (home_visit_id, home_visit_day_id, user_id) e o
+  # fechamento da folha (home_visit_day_id, closed_by) — só ids, nunca o motivo.
+  it "declares home_visit.withdrawn and home_visit_day.closed with no consumer" do
+    names = %w[home_visit.withdrawn home_visit_day.closed]
+    expect(DomainEvents.registry.keys).to include(*names)
+    expect(names.flat_map { |name| DomainEvents.registry[name] }).to be_empty
+  end
 end

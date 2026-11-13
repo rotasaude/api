@@ -23,6 +23,38 @@ module HomeVisits
       { professional_id: member.professional.id, name: member.professional.professional_name, cbo: member.cbo_code }
     end
 
+    # <home_visit_day> do §6, sem `visits` (quem lista acrescenta). Sem pessoa:
+    # nunca grava trilha. visits_count = visitas não retiradas; own = a folha é
+    # de `viewer` (Q14); blockers só com a folha aberta (HomeVisits::Blockers).
+    def day(day, viewer: nil)
+      counts = day.home_visits.group(Arel.sql("withdrawn_at IS NULL")).count
+      {
+        id: day.id, professional: { id: day.professional.id, name: day.professional.professional_name },
+        team: { id: day.team.id, ine: day.team.ine, name: day.team.name }, day: day.day.iso8601, sequence: day.sequence,
+        state: day.state, closed_at: day.closed_at&.iso8601, closed_by: day.closed_by,
+        visits_count: counts.fetch(true, 0), withdrawn_count: counts.fetch(false, 0), own: !viewer.nil? && day.user_id == viewer.id,
+        ficha: ficha(day), blockers: Blockers.for(day)
+      }
+    end
+
+    # Situação da ficha da folha (§6; Desvio 3, Q5): open (aberta) | o motivo da
+    # "não gerada" ainda não resolvida (not_generated, com os códigos) | o status
+    # do ledi_outbox mais recente da fonte (a regerada pelo "Reenviar" substitui
+    # a recusada) | empty (fechada sem visita válida) | not_exported (fechada com
+    # visita válida, sem ficha e sem falha: a exportação não estava utilizável).
+    def ficha(day)
+      return { status: "open", reasons: [] } if day.open?
+
+      source = { source_type: Ledi::HomeVisitDayFicha::SOURCE_TYPE, source_id: day.id }
+      failure = LediGenerationFailure.unresolved.find_by(source)
+      return { status: "not_generated", reasons: failure.reason_codes } if failure
+
+      status = LediOutboxEntry.where(source).order(created_at: :desc, id: :desc).pick(:status)
+      return { status: status, reasons: [] } if status
+
+      { status: day.home_visits.valid.exists? ? "not_exported" : "empty", reasons: [] }
+    end
+
     # `context.domains` (§7, Q13): a forma `home_visit`, lida do YAML da task 1
     # (o mesmo que preenche o domains-v1.json do app). Códigos LEDI inteiros;
     # tipo de imóvel em texto, como o 24a grava (Q26).
