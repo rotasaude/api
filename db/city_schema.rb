@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_12_900001) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_12_900002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -770,6 +770,60 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900001) do
     t.uuid "recorded_by_user_id", null: false
     t.index ["cold_chain_equipment_id", "read_at"], name: "idx_cold_chain_readings_equipment"
     t.check_constraint "min_c <= max_c", name: "ck_cold_chain_readings_range"
+  end
+
+  create_table "collective_activities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.integer "activity_type", null: false
+    t.integer "altered_count", default: 0, null: false
+    t.string "cbo", limit: 6, null: false
+    t.uuid "client_uuid", null: false
+    t.datetime "created_at", null: false
+    t.uuid "field_device_id"
+    t.text "health_practices"
+    t.text "health_topics"
+    t.uuid "health_unit_id", null: false
+    t.date "held_on", null: false
+    t.text "meeting_topics"
+    t.datetime "mistaken_at"
+    t.uuid "mistaken_by_user_id"
+    t.text "mistaken_reason"
+    t.string "origin", null: false
+    t.integer "participants_count", null: false
+    t.uuid "place_health_unit_id"
+    t.string "place_text", limit: 250
+    t.text "procedure_code"
+    t.uuid "professional_id", null: false
+    t.uuid "recorded_by_user_id", null: false
+    t.integer "shift", null: false
+    t.text "target_audience"
+    t.uuid "team_id", null: false
+    t.index ["client_uuid"], name: "idx_collective_activities_client_uuid", unique: true
+    t.index ["team_id", "held_on"], name: "idx_collective_activities_team_held_on"
+    t.check_constraint "(mistaken_at IS NULL) = (mistaken_by_user_id IS NULL) AND (mistaken_at IS NULL) = (mistaken_reason IS NULL)", name: "ck_collective_activities_mistaken"
+    t.check_constraint "(origin)::text = ANY (ARRAY['dashboard'::character varying::text, 'field_app'::character varying::text]) AND ((origin)::text = 'field_app'::text) = (field_device_id IS NOT NULL)", name: "ck_collective_activities_origin"
+    t.check_constraint "activity_type >= 1 AND activity_type <= 7 AND (shift = ANY (ARRAY[1, 2, 3]))", name: "ck_collective_activities_values"
+    t.check_constraint "altered_count >= 0 AND altered_count <= participants_count", name: "ck_collective_activities_altered_count"
+    t.check_constraint "num_nonnulls(place_health_unit_id, place_text) = 1", name: "ck_collective_activities_place"
+    t.check_constraint "participants_count >= 1 AND participants_count <= 999", name: "ck_collective_activities_participants_count"
+  end
+
+  create_table "collective_activity_participants", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.text "altered_evaluation"
+    t.uuid "collective_activity_id", null: false
+    t.datetime "created_at", null: false
+    t.text "measurements"
+    t.uuid "patient_id", null: false
+    t.text "smoking"
+    t.index ["collective_activity_id", "patient_id"], name: "idx_collective_activity_participants_unique", unique: true
+    t.index ["patient_id"], name: "idx_collective_activity_participants_patient"
+  end
+
+  create_table "collective_activity_professionals", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "cbo", limit: 6, null: false
+    t.uuid "collective_activity_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "professional_id", null: false
+    t.index ["collective_activity_id", "professional_id"], name: "idx_collective_activity_professionals_unique", unique: true
   end
 
   create_table "consent_terms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4902,6 +4956,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900001) do
   add_foreign_key "cold_chain_excursions", "users", column: "decided_by_user_id"
   add_foreign_key "cold_chain_readings", "cold_chain_equipments"
   add_foreign_key "cold_chain_readings", "users", column: "recorded_by_user_id"
+  add_foreign_key "collective_activities", "health_teams", column: "team_id"
+  add_foreign_key "collective_activities", "health_units"
+  add_foreign_key "collective_activities", "health_units", column: "place_health_unit_id"
+  add_foreign_key "collective_activities", "professionals"
+  add_foreign_key "collective_activities", "users", column: "mistaken_by_user_id"
+  add_foreign_key "collective_activities", "users", column: "recorded_by_user_id"
+  add_foreign_key "collective_activity_participants", "collective_activities"
+  add_foreign_key "collective_activity_participants", "patients"
+  add_foreign_key "collective_activity_professionals", "collective_activities"
+  add_foreign_key "collective_activity_professionals", "professionals"
   add_foreign_key "consents", "conversations"
   add_foreign_key "consultation_addenda", "clinical_record_openings", column: "opening_id"
   add_foreign_key "consultation_addenda", "consultations"

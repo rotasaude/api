@@ -4034,3 +4034,60 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 24b (ADR 0052; plano, Task 4; contrato §1 e §13): atividade coletiva.
+-- A atividade nunca é apagada: a re-cifra das colunas cifradas passa antes de
+-- tudo; fora dela só mudam mistaken_at, mistaken_by_user_id e mistaken_reason
+-- (de NULL a valor, juntos, uma vez). Profissionais e participantes só crescem; a
+-- re-cifra do participante regrava só as três colunas cifradas. TRUNCATE recusado
+-- nas três. As colunas são lidas por to_jsonb(NEW)/(OLD): este arquivo roda de novo
+-- em migrações antigas, em bancos ainda sem elas.
+CREATE OR REPLACE FUNCTION rota_collective_activity_guard() RETURNS trigger AS $fn$
+DECLARE
+  ciphered text[] := ARRAY['meeting_topics', 'target_audience', 'health_topics', 'health_practices',
+                           'procedure_code', 'mistaken_reason'];
+  mistaken text[] := ARRAY['mistaken_at', 'mistaken_by_user_id', 'mistaken_reason'];
+  old_row jsonb := to_jsonb(OLD);
+  new_row jsonb := to_jsonb(NEW);
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'collective_activities: DELETE refused';
+  END IF;
+  IF current_setting('rota.reencrypting', true) = 'on' AND (new_row - ciphered) = (old_row - ciphered) THEN
+    RETURN NEW;
+  END IF;
+  IF (new_row - mistaken) IS DISTINCT FROM (old_row - mistaken) THEN
+    RAISE EXCEPTION 'collective_activities: only the mistaken columns change';
+  END IF;
+  IF old_row ->> 'mistaken_at' IS NOT NULL THEN
+    RAISE EXCEPTION 'collective_activities: an activity is marked mistaken once';
+  END IF;
+  IF new_row ->> 'mistaken_at' IS NULL OR new_row ->> 'mistaken_by_user_id' IS NULL OR new_row ->> 'mistaken_reason' IS NULL THEN
+    RAISE EXCEPTION 'collective_activities: the mistaken columns go from NULL to a value together';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.collective_activities') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS collective_activities_guard ON collective_activities';
+    EXECUTE 'CREATE TRIGGER collective_activities_guard BEFORE UPDATE OR DELETE ON collective_activities
+      FOR EACH ROW EXECUTE FUNCTION rota_collective_activity_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS collective_activity_professionals_append_only ON collective_activity_professionals';
+    EXECUTE 'CREATE TRIGGER collective_activity_professionals_append_only BEFORE UPDATE OR DELETE ON collective_activity_professionals
+      FOR EACH ROW EXECUTE FUNCTION rota_append_only()';
+    EXECUTE 'DROP TRIGGER IF EXISTS collective_activity_participants_reencryption_only ON collective_activity_participants';
+    EXECUTE 'CREATE TRIGGER collective_activity_participants_reencryption_only BEFORE UPDATE OR DELETE ON collective_activity_participants
+      FOR EACH ROW EXECUTE FUNCTION rota_reencryption_only(''altered_evaluation'', ''measurements'', ''smoking'')';
+    FOREACH item IN ARRAY ARRAY['collective_activities', 'collective_activity_professionals', 'collective_activity_participants'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

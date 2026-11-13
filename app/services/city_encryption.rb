@@ -217,7 +217,14 @@ module CityEncryption
     [ OmbudsmanAttachment, :filename ],
     [ OmbudsmanReopenRequest, :reason ], [ OmbudsmanReopenRequest, :decision_text ],
     # ADR 0052 (módulo 24b): motivos, medidas, observação e motivo da retirada da visita.
-    [ HomeVisit, :reasons ], [ HomeVisit, :measurements ], [ HomeVisit, :note ], [ HomeVisit, :withdrawal_reason ]
+    [ HomeVisit, :reasons ], [ HomeVisit, :measurements ], [ HomeVisit, :note ], [ HomeVisit, :withdrawal_reason ],
+    # ADR 0052 (módulo 24b): temas, públicos, práticas, procedimento e motivo do engano da
+    # atividade coletiva; avaliação, medidas e tabagismo do participante.
+    [ CollectiveActivity, :meeting_topics ], [ CollectiveActivity, :target_audience ],
+    [ CollectiveActivity, :health_topics ], [ CollectiveActivity, :health_practices ],
+    [ CollectiveActivity, :procedure_code ], [ CollectiveActivity, :mistaken_reason ],
+    [ CollectiveActivityParticipant, :altered_evaluation ], [ CollectiveActivityParticipant, :measurements ],
+    [ CollectiveActivityParticipant, :smoking ]
   ].freeze
 
   module_function
