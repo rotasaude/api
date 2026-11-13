@@ -30,6 +30,11 @@ RSpec.describe "catálogos do módulo 24b", type: :model do
     expect(CollectiveActivities::Catalog::PARTICIPANTS_REQUIRED).to eq(crules["participant_identifier_types"])
   end
 
+  # A-M6: as faixas das medidas só no YAML (HomeVisits::Rules), sem cópia no Catalog.
+  it "o Catalog não guarda cópia das medidas" do
+    expect(HomeVisits::Catalog.const_defined?(:MEASUREMENTS, false)).to be(false)
+  end
+
   it "REGISTRATION_CBOS vem do 24a" do
     expect(HomeVisits::Catalog::HOME_VISIT_CBOS).to eq(TerritoryRegistry::Access::REGISTRATION_CBOS[:home_visit])
     expect(CollectiveActivities::Catalog::CBOS).to eq(TerritoryRegistry::Access::REGISTRATION_CBOS[:collective_activity])

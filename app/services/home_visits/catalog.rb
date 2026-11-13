@@ -25,13 +25,7 @@ module HomeVisits
     CLOSED_BY = %w[user job full].freeze
     TRAIL_ACCESS = "home_visits".freeze
     FIELD_TRAIL_ACCESS = "field_sync".freeze
-    # chave => [faixa, casas decimais] (faixas do dicionario-fvd.html; YAML `measurements`).
-    MEASUREMENTS = {
-      "weight_kg" => [ (0.5..500), 3 ], "height_cm" => [ (20..250), 1 ],
-      "systolic" => [ (0..999), 0 ], "diastolic" => [ (0..999), 0 ],
-      "temperature_c" => [ (20..45), 1 ], "glucose_mg_dl" => [ (0..800), 0 ],
-      "glucose_type" => [ nil, 0 ]
-    }.freeze
+    # As faixas e casas das medidas ficam só no YAML (HomeVisits::Rules::MEASUREMENTS).
     NOT_GENERATED = %w[
       unit_without_cnes professional_without_cns cbo_not_in_ledi_table city_profile_incomplete
       siaps_deadline_passed patient_without_identifier citizen_without_birth_date citizen_without_sex

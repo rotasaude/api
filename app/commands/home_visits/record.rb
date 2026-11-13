@@ -124,6 +124,9 @@ module HomeVisits
       unknown = (params.keys - ALLOWED).first
       return refuse(:invalid_home_visit, unknown[0, KEY_PATH_MAX]) if unknown
 
+      # Sem equipe o corpo é malformado (422 com path, não 403; A-M5).
+      return refuse(:invalid_home_visit, "team_id") if params["team_id"].nil?
+
       bad = ID_KEYS.find { |key| !params[key].nil? && !uuid?(params[key]) }
       bad && refuse(:invalid_home_visit, bad)
     end

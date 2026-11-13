@@ -88,6 +88,17 @@ RSpec.describe CollectiveActivities::Record, type: :model do
     expect(CollectiveActivity.count).to eq(0)
   end
 
+  # A-M4: como o HomeVisits::Access.member, equipe inativa não registra.
+  it "equipe inativa → out_of_scope e registers? false, nada gravado" do
+    agent = acs
+    params = body
+    expect(CollectiveActivities::Access.registers?(agent, team)).to be(true)
+    team.update_columns(active: false)
+    expect(CollectiveActivities::Access.registers?(agent, team.reload)).to be(false)
+    expect(record(params, by: agent).reason).to eq(:out_of_scope)
+    expect(CollectiveActivity.count).to eq(0)
+  end
+
   it "participante repetido → duplicate_participant, nada gravado" do
     patient = registry_patient!
     params = body(participants: [ { "patient_id" => patient.id }, { "patient_id" => patient.id } ])

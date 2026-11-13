@@ -271,6 +271,18 @@ RSpec.describe "Atividade coletiva — rotas da equipe", type: :request do
                               "patient_ids" => [ patient.id ], "user_id" => nurse.id } ])
     end
 
+    # A-M8: a unidade da atividade é a gravada (a do CNES da ficha), não a atual da equipe.
+    it "equipe que trocou de unidade: lista e detalhe mostram a unidade gravada" do
+      activity = record!
+      moved_to = care_unit!("UBS Nova")
+      team.update_columns(health_unit_id: moved_to.id)
+      sign_in_as(nurse)
+      get "/collective_activities", params: { team_id: team.id }
+      expect(json_body["items"].map { _1["unit"] }).to eq([ { "id" => unit.id, "name" => unit.name } ])
+      get "/collective_activities/#{activity.id}"
+      expect(json_body["unit"]).to eq("id" => unit.id, "name" => unit.name)
+    end
+
     it "filtros inválidos → 422 com path; cursor inválido → 422 invalid_cursor; equipe alheia → 403 out_of_scope" do
       sign_in_as(nurse)
       get "/collective_activities", params: { team_id: team.id, state: "mistaken" }

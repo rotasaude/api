@@ -8,7 +8,7 @@
 #    sobre o corpo plano (Q15) — antes de tudo, inclusive do acesso: um corpo
 #    malformado é 422 com path, nunca 403 por um campo.
 # 3. Acesso pela Tabela 5 (CollectiveActivities::Access): sem vínculo ativo na
-#    equipe → out_of_scope; CBO do vínculo fora da Tabela 5 → cbo_not_allowed.
+#    equipe, ou equipe inativa → out_of_scope; CBO do vínculo fora da Tabela 5 → cbo_not_allowed.
 # 4. Transação própria (savepoint `requires_new`: dentro do envio do app, a
 #    recusa desfaz só o item). Travas: pacientes citados por id FOR UPDATE, em
 #    ordem de id; a atividade é nova (o índice único do client_uuid serializa
@@ -66,7 +66,8 @@ module CollectiveActivities
       return Result.fail(error[:error], details: error.except(:error)) if error
 
       team = HealthTeam.find_by(id: params["team_id"])
-      member = TerritoryRegistry::Access.membership(by, team)
+      # Equipe desativada → out_of_scope, como na visita (A-M4).
+      member = team&.active && TerritoryRegistry::Access.membership(by, team)
       return Result.fail(:out_of_scope) unless member
       return Result.fail(:cbo_not_allowed) unless Access.registers?(by, team)
 

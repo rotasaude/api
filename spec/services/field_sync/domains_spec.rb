@@ -69,12 +69,9 @@ RSpec.describe "FieldSync domains-v1.json × api (Ruling A5)" do
     it "medidas: faixa, casas, par obrigatório e campo LEDI" do
       api = yaml.dig("home_visit", "measurements")
       expect(hv_rules.fetch("measurements").keys).to match_array(api.keys)
-      expect(hv_rules.fetch("measurements").keys).to match_array(HomeVisits::Catalog::MEASUREMENTS.keys)
+      expect(hv_rules.fetch("measurements").keys).to match_array(HomeVisits::Rules::MEASUREMENTS.keys)
       hv_rules.fetch("measurements").each do |key, rule|
         expect(rule.slice("min", "max", "decimals", "requires", "ledi")).to eq(api.fetch(key).slice("min", "max", "decimals", "requires", "ledi")), key
-        range, decimals = HomeVisits::Catalog::MEASUREMENTS.fetch(key)
-        expect([ range&.min, range&.max ]).to eq([ rule["min"], rule["max"] ]), key
-        expect(decimals).to eq(rule.fetch("decimals", 0)), key
       end
     end
 

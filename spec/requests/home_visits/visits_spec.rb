@@ -79,6 +79,8 @@ RSpec.describe "Visita domiciliar — visitas da equipe", type: :request do
     sign_in_as(acs)
     json_post "/home_visits", body(outcome: 2)
     expect([ response.status, json_body ]).to eq([ 422, { "error" => "reasons_forbidden", "path" => "reasons" } ])
+    json_post "/home_visits", body.except("team_id")
+    expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_home_visit", "path" => "team_id" } ])
     json_post "/home_visits", body(micro_area_id: registry_micro_area!(code: "02", team: team, acs: field_agent!(team: team)).id)
     expect([ response.status, json_body ]).to eq([ 403, { "error" => "out_of_scope" } ])
     expect(HomeVisit.count).to eq(1)

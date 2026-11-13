@@ -310,6 +310,13 @@ RSpec.describe HomeVisits::Record, type: :model do
       .to eq([ :invalid_home_visit, "family_id" ])
   end
 
+  # A-M5: corpo sem team_id é malformado (422 com path), como na atividade coletiva.
+  it "sem team_id → invalid_home_visit path team_id (não out_of_scope), nada gravado" do
+    expect(failure(record(body.except("team_id")))).to eq([ :invalid_home_visit, "team_id" ])
+    expect(failure(record(body(team_id: nil)))).to eq([ :invalid_home_visit, "team_id" ])
+    expect(HomeVisit.count + HomeVisitDay.count).to eq(0)
+  end
+
   it "corpo sem lugar coerente → invalid_home_visit com path, antes do escopo (inclusive para o TACS)" do
     tacs = field_agent!(cbo: "322255", team: team)
     assignment!(area, tacs.professional)

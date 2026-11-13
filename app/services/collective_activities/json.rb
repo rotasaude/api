@@ -17,7 +17,7 @@ module CollectiveActivities
     def activities(activities, viewer:, full: true)
       return [] if activities.empty?
 
-      associations = [ :place_health_unit, { team: :health_unit }, { recorded_by_user: :professional },
+      associations = [ :place_health_unit, :health_unit, :team, { recorded_by_user: :professional },
                        { mistaken_by_user: :professional }, { professionals: :professional } ]
       associations << { participants: :patient } if full
       ActiveRecord::Associations::Preloader.new(records: activities, associations: associations).call
@@ -35,7 +35,8 @@ module CollectiveActivities
       place = activity.place_health_unit
       {
         id: activity.id, client_uuid: activity.client_uuid, team: { id: activity.team.id, ine: activity.team.ine, name: activity.team.name },
-        unit: { id: activity.team.health_unit.id, name: activity.team.health_unit.name }, held_on: activity.held_on.iso8601,
+        # A unidade gravada (a do CNES da ficha, §1), não a atual da equipe (A-M8).
+        unit: { id: activity.health_unit.id, name: activity.health_unit.name }, held_on: activity.held_on.iso8601,
         shift: activity.shift, activity_type: activity.activity_type,
         place: place ? { health_unit: { id: place.id, name: place.name } } : { text: activity.place_text },
         participants_count: activity.participants_count, altered_count: activity.altered_count,
