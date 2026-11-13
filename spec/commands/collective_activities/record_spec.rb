@@ -115,6 +115,24 @@ RSpec.describe CollectiveActivities::Record, type: :model do
       .to eq([ :invalid_collective_activity, "professionals[0].professional_id" ])
   end
 
+  it "Q57 c: CBO do profissional = o do vínculo na equipe da atividade; sem ele, o mais antigo; um vínculo ativo por equipe" do
+    older = registry_team!
+    nurse = registry_nurse!(team: older) # 223505, o mais antigo
+    HealthTeamMember.create!(professional: nurse.professional, health_team: team, cbo_code: "225142", started_on: today - 10)
+    in_team = record(body(professionals: [ { "professional_id" => nurse.professional.id } ]))
+    expect(in_team.payload[:activity].professionals.sole.cbo).to eq("225142")
+    elsewhere = record(body(team_id: registry_team!.tap { |t| HealthTeamMember.create!(professional: acs.professional, health_team: t,
+                                                                                         cbo_code: HomeVisits::Catalog::ACS_CBO,
+                                                                                         started_on: today - 5) }.id,
+                            professionals: [ { "professional_id" => nurse.professional.id } ]))
+    expect(elsewhere.payload[:activity].professionals.sole.cbo).to eq("223505")
+    # Dois vínculos ativos na mesma equipe não existem (idx_health_team_members_one_active): a regra não tem empate.
+    expect { HealthTeamMember.create!(professional: nurse.professional, health_team: team, cbo_code: "223505", started_on: today) }
+      .to raise_error(ActiveRecord::RecordNotUnique, /idx_health_team_members_one_active/)
+    expect(CollectiveActivities::Access.professional_memberships(team, professional_ids: [ nurse.professional.id ])
+             .fetch(nurse.professional.id).cbo_code).to eq("225142")
+  end
+
   it "local unidade: ativa com CNES grava o id; sem CNES ou inativa → path place_health_unit_id" do
     unit = team.health_unit
     ok = record(body(place_text: nil, place_health_unit_id: unit.id))

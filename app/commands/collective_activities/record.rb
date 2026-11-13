@@ -141,7 +141,8 @@ module CollectiveActivities
     end
 
     # -> [[professional, cbo]]: vínculo ativo em qualquer equipe ativa da
-    # cidade (o da equipe da atividade primeiro) e CNS válido. Quem registra
+    # cidade pela regra única de Access.professional_memberships (o da equipe
+    # da atividade primeiro; Q57, a mesma das opções) e CNS válido. Quem registra
     # já é o cabeçalho e não entra na lista.
     def professionals!(items, by, team)
       items.each_with_index.map do |item, index|
@@ -149,9 +150,7 @@ module CollectiveActivities
         id = item["professional_id"]
         refuse!(refuse(:invalid_collective_activity, path)) if id == by.professional&.id
 
-        member = HealthTeamMember.active.joins(:health_team).where(professional_id: id, health_teams: { active: true })
-                                 .order(Arel.sql(HealthTeamMember.sanitize_sql_array([ "health_team_id = ? DESC", team.id ])), :created_at, :id)
-                                 .first
+        member = Access.professional_memberships(team, professional_ids: [ id ]).values.first
         refuse!(refuse(:not_found, path)) unless member
         professional = member.professional
         refuse!(refuse(:professional_without_cns, path)) unless Professionals::Cns.valid?(professional.cns)

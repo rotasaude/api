@@ -30,6 +30,20 @@ module CollectiveActivities
       cbo.present? && TerritoryRegistry::Catalog::REGISTRAR_CBO_PREFIXES.any? { |prefix| cbo.start_with?(prefix) }
     end
 
+    # Q57: o vínculo que dá o CBO de cada profissional numa atividade da
+    # equipe `team` — a regra única do Record e das opções: vínculo ativo em
+    # equipe ativa; o da própria equipe primeiro; sem ele, o mais antigo
+    # (created_at, id). Sem empate na equipe: um vínculo ativo por
+    # (profissional, equipe) (idx_health_team_members_one_active).
+    # -> { professional_id => HealthTeamMember (com :professional) }
+    def professional_memberships(team, professional_ids: nil)
+      scope = HealthTeamMember.active.joins(:health_team).where(health_teams: { active: true }).includes(:professional)
+      scope = scope.where(professional_id: professional_ids) unless professional_ids.nil?
+      scope.order(Arel.sql(HealthTeamMember.sanitize_sql_array([ "health_team_members.health_team_id = ? DESC", team.id ])),
+                  :created_at, :id)
+           .each_with_object({}) { |member, found| found[member.professional_id] ||= member }
+    end
+
     def marker?(user, activity) = user.present? && activity.recorded_by_user_id == user.id
   end
 end

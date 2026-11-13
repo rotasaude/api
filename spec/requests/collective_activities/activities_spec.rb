@@ -56,20 +56,20 @@ RSpec.describe "Atividade coletiva — rotas da equipe", type: :request do
       sign_in_as(acs)
       get "/collective_activities/options"
       expect(response).to have_http_status(:ok)
-      expect(json_body.keys).to contain_exactly("today", "min_date", "teams", "units", "professionals", "domains")
+      expect(json_body.keys).to contain_exactly("today", "min_date", "teams", "units", "domains")
       expect(json_body["today"]).to eq(today.iso8601)
       expect(json_body["min_date"]).to eq(HomeVisits::Rules.min_date(today).iso8601)
       member = HealthTeamMember.active.find_by!(professional: acs.professional, health_team: team)
-      expect(json_body["teams"]).to eq([ { "id" => team.id, "ine" => team.ine, "name" => team.name, "cbo" => member.cbo_code,
-                                           "can_register" => true } ])
+      expect(json_body["teams"].sole.except("professionals"))
+        .to eq("id" => team.id, "ine" => team.ine, "name" => team.name, "cbo" => member.cbo_code, "can_register" => true)
       units = json_body["units"].index_by { _1["id"] }
       expect(units.fetch(unit.id)).to eq("id" => unit.id, "name" => unit.name, "has_cnes" => unit.cnes.present?)
       expect(units.fetch(bare.id)).to eq("id" => bare.id, "name" => "Escola municipal", "has_cnes" => false)
       expect(json_body["units"].map { _1["name"] }).not_to include("UBS fechada")
-      people = json_body["professionals"].index_by { _1["id"] }
+      people = json_body["teams"].sole["professionals"].index_by { _1["id"] }
       expect(people.fetch(colleague.professional.id)).to eq(
         "id" => colleague.professional.id, "name" => colleague.professional.professional_name, "cbo" => "223505",
-        "has_cns" => false, "team_ids" => [ other_team.id ]
+        "has_cns" => false, "in_team" => false
       )
       expect(people).not_to have_key(acs.professional.id) # quem registra é o cabeçalho
       expect(trail).to be_empty
@@ -95,11 +95,40 @@ RSpec.describe "Atividade coletiva — rotas da equipe", type: :request do
                                                          "participants" => "required")
     end
 
-    it "sem vínculo com CBO da Tabela 5 → 403 cbo_not_allowed; nada na query" do
+    it "Q57 c: profissionais por equipe, com o CBO que o Record grava numa atividade dela (o vínculo da equipe; sem ele, o mais antigo)" do
+      second = registry_team!
+      HealthTeamMember.create!(professional: acs.professional, health_team: second, cbo_code: HomeVisits::Catalog::ACS_CBO,
+                               started_on: today - 30)
+      third = registry_team!
+      colleague = registry_nurse!(team: third) # vínculo mais antigo: 223505 na terceira
+      HealthTeamMember.create!(professional: colleague.professional, health_team: second, cbo_code: "225142", started_on: today - 10)
+      teammate = field_agent!(team: team)
+      sign_in_as(acs)
+      get "/collective_activities/options"
+      expect(response).to have_http_status(:ok)
+      by_team = json_body["teams"].to_h { |row| [ row["id"], row["professionals"].index_by { _1["id"] } ] }
+      expect(by_team.keys).to contain_exactly(team.id, second.id)
+      expect(by_team.fetch(second.id).fetch(colleague.professional.id)).to include("cbo" => "225142", "in_team" => true)
+      expect(by_team.fetch(team.id).fetch(colleague.professional.id)).to include("cbo" => "223505", "in_team" => false)
+      expect(by_team.fetch(team.id).values.first["id"]).to eq(teammate.professional.id) # membros da equipe primeiro
+      expect(by_team.values.flat_map(&:keys)).not_to include(acs.professional.id)
+
+      [ [ second, "225142" ], [ team, "223505" ] ].each do |activity_team, cbo|
+        payload = body(team_id: activity_team.id, professionals: [ { "professional_id" => colleague.professional.id } ])
+        json_post "/collective_activities", payload
+        expect(response).to have_http_status(:created)
+        expect(json_body["professionals"].sole).to include("id" => colleague.professional.id, "cbo" => cbo)
+      end
+    end
+
+    it "Q57 b: sem equipe em que leia → 200 com teams vazio (como o /home_visits/context); nada na query" do
       clerk = field_agent!(cbo: "221205", team: team)
       sign_in_as(clerk)
       get "/collective_activities/options"
-      expect([ response.status, json_body ]).to eq([ 403, { "error" => "cbo_not_allowed" } ])
+      expect(response).to have_http_status(:ok)
+      expect(json_body.keys).to contain_exactly("today", "min_date", "teams", "units", "domains")
+      expect(json_body["teams"]).to eq([])
+      expect(json_body["domains"]).to eq(JSON.parse(CollectiveActivities::Json.domains.to_json))
       sign_in_as(acs)
       get "/collective_activities/options", params: { team_id: team.id }
       expect([ response.status, json_body ]).to eq([ 422, { "error" => "invalid_request" } ])
