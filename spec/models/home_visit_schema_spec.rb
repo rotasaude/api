@@ -1,5 +1,6 @@
 require "rails_helper"
 require Rails.root.join("db/city_migrate/20261112900001_add_home_visits.rb").to_s
+require Rails.root.join("db/city_migrate/20261112900005_add_home_visit_indexes.rb").to_s
 
 # Módulo 24b (ADR 0052): o banco das visitas. Uma folha aberta por (profissional,
 # equipe, dia); folha fechada congela; a visita só muda a retirada, uma vez e só
@@ -81,6 +82,32 @@ RSpec.describe "Esquema das visitas (ADR 0052)", type: :model do
   it "o guard da visita trava a folha com FOR SHARE ao ler o estado" do
     body = ApplicationRecord.connection.select_value("SELECT pg_get_functiondef('rota_home_visit_guard'::regproc)")
     expect(body).to match(/FROM home_visit_days WHERE id = .* AND state = 'open' FOR SHARE/)
+  end
+
+  # A-I1: a ficha 8 de uma folha fechada já foi gerada sem a visita nova.
+  it "visita só entra em folha aberta (BEFORE INSERT, folha lida com FOR SHARE); na aberta segue ok" do
+    closed = home_visit_day!(agent: agent, team: team, state: "closed")
+    refused(/home_visits: a visit enters only an open day/) { home_visit!(day: closed) }
+    expect(HomeVisit.where(home_visit_day_id: closed.id)).to be_empty
+
+    open = home_visit_day!(agent: agent, team: team, sequence: 2)
+    accepted { home_visit!(day: open) }
+    expect(HomeVisit.where(home_visit_day_id: open.id).count).to eq(1)
+
+    body = ApplicationRecord.connection.select_value("SELECT pg_get_functiondef('rota_home_visit_insert_guard'::regproc)")
+    expect(body).to match(/FROM home_visit_days WHERE id = .* FOR SHARE/)
+    triggers = ApplicationRecord.connection.select_rows(<<~SQL)
+      SELECT tgname, pg_get_triggerdef(oid) FROM pg_trigger WHERE tgrelid = 'home_visits'::regclass AND NOT tgisinternal ORDER BY tgname
+    SQL
+    expect(triggers.to_h.fetch("home_visits_insert_guard")).to match(/BEFORE INSERT ON public\.home_visits FOR EACH ROW/)
+  end
+
+  # A-M1/A-M2: a lista da equipe (e o /count lido a cada minuto) e a retenção LGPD.
+  it "a migração 900005 só cria os índices da equipe e do paciente, e é irreversível" do
+    indexes = ->(table) { ApplicationRecord.connection.indexes(table).to_h { |index| [ index.name, [ index.columns, index.where, index.unique ] ] } }
+    expect(indexes.call("home_visit_days").fetch("idx_home_visit_days_team")).to eq([ %w[team_id day sequence id], nil, false ])
+    expect(indexes.call("home_visits").fetch("idx_home_visits_patient")).to eq([ %w[patient_id], nil, false ])
+    expect { AddHomeVisitIndexes.new.down }.to raise_error(ActiveRecord::IrreversibleMigration)
   end
 
   it "retirada exige os três campos juntos (CHECK)" do

@@ -3942,7 +3942,8 @@ $do$;
 -- congela; nunca é apagada. A visita nunca é apagada: a re-cifra das colunas
 -- cifradas passa antes de tudo; fora dela só mudam withdrawn_at,
 -- withdrawn_by_user_id e withdrawal_reason (de NULL a valor, uma vez) e só com a
--- folha aberta (lida aqui, no trigger). A atribuição de microárea só encerra
+-- folha aberta (lida aqui, no trigger); e só entra em folha aberta (INSERT,
+-- mesma leitura). A atribuição de microárea só encerra
 -- (ended_at/ended_by_user_id, de NULL a valor, uma vez). TRUNCATE recusado nas
 -- três. As funções leem as colunas por to_jsonb(NEW)/(OLD): este arquivo roda de
 -- novo em migrações antigas, em bancos ainda sem as colunas.
@@ -3994,6 +3995,30 @@ BEGIN
 END;
 $fn$ LANGUAGE plpgsql;
 
+-- A visita só entra em folha aberta (§5, decisão 3; revisão final A-I1): a
+-- ficha 8 da folha fechada já foi gerada sem ela. A folha é lida com FOR SHARE:
+-- o HomeVisits::Record já a tem FOR UPDATE (sem espera nova) e um fechamento
+-- concorrente espera este INSERT (e vice-versa). Na 100ª visita (closed_by
+-- "full") a cheia fecha e a próxima abre na mesma transação: o INSERT vai à
+-- nova, aberta. A re-cifra passa antes, como nos outros guards.
+CREATE OR REPLACE FUNCTION rota_home_visit_insert_guard() RETURNS trigger AS $fn$
+DECLARE
+  day_state text;
+BEGIN
+  IF current_setting('rota.reencrypting', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
+  SELECT state INTO day_state FROM home_visit_days WHERE id = (to_jsonb(NEW) ->> 'home_visit_day_id')::uuid FOR SHARE;
+  IF NOT FOUND THEN
+    RETURN NEW; -- a FK recusa
+  END IF;
+  IF day_state IS DISTINCT FROM 'open' THEN
+    RAISE EXCEPTION 'home_visits: a visit enters only an open day';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION rota_micro_area_field_assignment_guard() RETURNS trigger AS $fn$
 DECLARE
   ending text[] := ARRAY['ended_at', 'ended_by_user_id'];
@@ -4023,6 +4048,9 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS home_visits_guard ON home_visits';
     EXECUTE 'CREATE TRIGGER home_visits_guard BEFORE UPDATE OR DELETE ON home_visits
       FOR EACH ROW EXECUTE FUNCTION rota_home_visit_guard()';
+    EXECUTE 'DROP TRIGGER IF EXISTS home_visits_insert_guard ON home_visits';
+    EXECUTE 'CREATE TRIGGER home_visits_insert_guard BEFORE INSERT ON home_visits
+      FOR EACH ROW EXECUTE FUNCTION rota_home_visit_insert_guard()';
     EXECUTE 'DROP TRIGGER IF EXISTS micro_area_field_assignments_guard ON micro_area_field_assignments';
     EXECUTE 'CREATE TRIGGER micro_area_field_assignments_guard BEFORE UPDATE OR DELETE ON micro_area_field_assignments
       FOR EACH ROW EXECUTE FUNCTION rota_micro_area_field_assignment_guard()';

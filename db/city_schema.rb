@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_12_900004) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_12_900005) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -1685,6 +1685,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900004) do
     t.index ["professional_id", "team_id", "day", "sequence"], name: "idx_home_visit_days_sheet", unique: true
     t.index ["professional_id", "team_id", "day"], name: "idx_home_visit_days_one_open", unique: true, where: "((state)::text = 'open'::text)"
     t.index ["state", "day"], name: "idx_home_visit_days_open_by_day", where: "((state)::text = 'open'::text)"
+    t.index ["team_id", "day", "sequence", "id"], name: "idx_home_visit_days_team"
     t.check_constraint "((state)::text = 'closed'::text) = (closed_at IS NOT NULL) AND ((state)::text = 'closed'::text) = (closed_by IS NOT NULL) AND (closed_by_user_id IS NULL OR (closed_by)::text = 'user'::text)", name: "ck_home_visit_days_closed"
     t.check_constraint "(state)::text = ANY (ARRAY['open'::character varying::text, 'closed'::character varying::text]) AND sequence >= 1 AND (closed_by IS NULL OR (closed_by)::text = ANY (ARRAY['user'::character varying::text, 'job'::character varying::text, 'full'::character varying::text]))", name: "ck_home_visit_days_values"
   end
@@ -1718,6 +1719,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900004) do
     t.index ["home_visit_day_id"], name: "idx_home_visits_day"
     t.index ["micro_area_id", "occurred_at"], name: "idx_home_visits_micro_area"
     t.index ["patient_id", "occurred_at"], name: "idx_home_visits_patient_done", where: "((withdrawn_at IS NULL) AND (outcome = 1))"
+    t.index ["patient_id"], name: "idx_home_visits_patient"
     t.check_constraint "(micro_area_id IS NULL) = out_of_area", name: "ck_home_visits_area"
     t.check_constraint "(subject)::text <> 'family_responsible'::text OR family_id IS NOT NULL", name: "ck_home_visits_family"
     t.check_constraint "(withdrawn_at IS NULL) = (withdrawn_by_user_id IS NULL) AND (withdrawn_at IS NULL) = (withdrawal_reason IS NULL)", name: "ck_home_visits_withdrawn"
