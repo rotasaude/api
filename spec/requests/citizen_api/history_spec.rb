@@ -173,7 +173,7 @@ RSpec.describe "Histórico do cidadão", type: :request do
     it "sem kinds[] traz só a realizada, igual à forma do contrato chave por chave, ao meio-dia local (Q22)" do
       on = Date.current - 2
       sheet = sheet!(on)
-      done = visit!(sheet, hour: 16, measurements: { "weight_kg" => 70.5 })
+      done = visit!(sheet, hour: 16, measurements: { "weight_kg" => 70.5, "systolic" => 130, "diastolic" => 80 })
       visit!(sheet, hour: 10, outcome: 2)
       visit!(sheet, hour: 11, outcome: 3)
       visit!(sheet, hour: 9).update!(withdrawn_at: Time.current, withdrawn_by_user: agent, withdrawal_reason: "Registrei no morador errado")
@@ -185,7 +185,7 @@ RSpec.describe "Histórico do cidadão", type: :request do
                                 "unit" => nil, "professional_name" => nil, "title" => "Visita do agente de saúde", "summary" => nil,
                                 "status" => nil, "document" => nil } ])
       expect(entries.sole.keys).to eq(%w[id kind occurred_at unit professional_name title summary status document])
-      expect(response.body).not_to include(note, "Gestante", "Visita periódica", "Registrei no morador errado", "T16:00", "T19:00",
+      expect(response.body).not_to include(note, "mmHg", "130/80", "70,5", "Gestante", "Visita periódica", "Registrei no morador errado", "T16:00", "T19:00",
                                            agent.professional.professional_name)
     end
 

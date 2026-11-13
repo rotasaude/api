@@ -5,8 +5,8 @@
 #
 # Profissional: todos os desfechos e a retirada; título "Visita domiciliar"
 # ("Visita ao imóvel" sem pessoa, que nunca chega a uma linha do tempo de
-# paciente); resumo com o desfecho, os rótulos dos motivos e das medidas (sem
-# valores); profissional = dono da folha, com o CBO da folha; unidade = a da
+# paciente); resumo com o desfecho, os rótulos dos motivos e os VALORES das
+# medidas com unidade (Q58: "PA 130/80 mmHg · peso 72 kg"); profissional = dono da folha, com o CBO da folha; unidade = a da
 # equipe da folha; status recorded | withdrawn; detail_ref { type: "home_visit",
 # id } (o dashboard não abre nesta entrega, Q18); occurred_at = hora real.
 #
@@ -17,7 +17,8 @@
 # meio-dia no SQL (noon_sql, como o trecho do TFD do módulo 30), então o
 # cursor da página e o occurred_at da entrada são o mesmo instante.
 #
-# Nunca a observação (note) nem o motivo da retirada. NÃO consulta o
+# Nunca a observação (note) nem o motivo da retirada: a consulta nem carrega
+# essas colunas (VISIT_COLUMNS), então nada as decifra aqui. NÃO consulta o
 # interruptor `home_visits`: a visita é registro retido (como a vacina e a
 # viagem). A trilha é do controlador.
 module Timeline
@@ -31,9 +32,14 @@ module Timeline
       DOMAINS = ::HomeVisits::Json::DICTIONARIES.fetch("domains")
       OUTCOMES = DOMAINS.fetch("desfecho").freeze
       REASONS = DOMAINS.fetch("motivo_visita").transform_values { |row| row.fetch("label") }.freeze
-      # Rótulo de cada medida (as chaves de HomeVisits::Catalog::MEASUREMENTS); a pressão e a glicemia, um rótulo para o par.
-      MEASUREMENTS = { "weight_kg" => "peso", "height_cm" => "altura", "systolic" => "pressão arterial", "diastolic" => "pressão arterial",
-                       "temperature_c" => "temperatura", "glucose_mg_dl" => "glicemia", "glucose_type" => "glicemia" }.freeze
+      # Casas decimais de cada medida (o `measurements` do YAML) e o tipo de glicemia (`tipo_glicemia`).
+      DECIMALS = ::HomeVisits::Json::DICTIONARIES.fetch("measurements").filter_map { |key, row| [ key, row["decimals"] ] if row.key?("min") }
+                                                .to_h.freeze
+      GLUCOSE_TYPES = DOMAINS.fetch("tipo_glicemia").freeze
+      # Q58: rótulo e unidade, na ordem do resumo; a pressão (os dois valores) e a glicemia (com o tipo) à parte.
+      SINGLE_MEASUREMENTS = { "weight_kg" => [ "peso", "kg" ], "height_cm" => [ "altura", "cm" ], "temperature_c" => [ "temperatura", "°C" ] }.freeze
+      # Só o que a entrada usa: nunca note nem withdrawal_reason (nem a cifra delas sai do banco).
+      VISIT_COLUMNS = %w[id home_visit_day_id patient_id occurred_at outcome reasons measurements withdrawn_at].map { |c| "home_visits.#{c}" }.freeze
 
       module_function
 
@@ -44,7 +50,8 @@ module Timeline
       end
 
       def professional_entries(patient_id, before, limit, from, to)
-        scope = ::HomeVisit.where(patient_id: patient_id).includes(home_visit_day: [ :professional, { team: :health_unit } ])
+        scope = ::HomeVisit.where(patient_id: patient_id).select(*VISIT_COLUMNS)
+                           .preload(home_visit_day: [ :professional, { team: :health_unit } ])
         Window.apply(scope, kind: KIND, column: "home_visits.occurred_at", id_column: "home_visits.id", before: before, from: from, to: to)
               .limit(limit).map { |visit| professional_entry(visit) }
       end
@@ -75,13 +82,35 @@ module Timeline
       end
       private_class_method :citizen_entry
 
-      # "Visita realizada · Visita periódica, Gestante · peso, altura": desfecho, motivos e medidas (sem valores).
+      # "Visita realizada · Visita periódica, Gestante · PA 130/80 mmHg · peso 72 kg": desfecho, motivos e medidas (Q58).
       def summary(visit)
         reasons = Array(visit.reasons).filter_map { |code| REASONS[code.to_i] }
-        measures = visit.measurements.to_h.keys.filter_map { |key| MEASUREMENTS[key.to_s] }.uniq
-        [ OUTCOMES[visit.outcome], reasons.join(", ").presence, measures.join(", ").presence ].compact.join(" · ").presence
+        [ OUTCOMES[visit.outcome], reasons.join(", ").presence, *measurements(visit.measurements) ].compact.join(" · ").presence
       end
       private_class_method :summary
+
+      # Ordem fixa: PA, peso, altura, temperatura, glicemia. Valor ausente some;
+      # a PA só com os dois valores; a glicemia leva o tipo quando gravado.
+      def measurements(raw)
+        values = raw.to_h.transform_keys(&:to_s)
+        rows = []
+        rows << "PA #{number(values['systolic'], 'systolic')}/#{number(values['diastolic'], 'diastolic')} mmHg" if values["systolic"] && values["diastolic"]
+        SINGLE_MEASUREMENTS.each { |key, (label, unit)| rows << "#{label} #{number(values[key], key)} #{unit}" unless values[key].nil? }
+        if values["glucose_mg_dl"]
+          kind = values["glucose_type"] && GLUCOSE_TYPES[values["glucose_type"].to_i]
+          rows << [ "glicemia #{number(values['glucose_mg_dl'], 'glucose_mg_dl')} mg/dL", kind && "(#{kind.downcase})" ].compact.join(" ")
+        end
+        rows
+      end
+      private_class_method :measurements
+
+      # Casas do YAML, sem zeros à direita, vírgula decimal (pt-BR): 72 → "72", 64.25 → "64,25".
+      def number(value, key)
+        rounded = BigDecimal(BigDecimal(value.to_s).round(DECIMALS.fetch(key, 0)).to_s) # round(0) devolve Integer
+        text = rounded.frac.zero? ? rounded.to_i.to_s : rounded.to_s("F").sub(/0+\z/, "")
+        text.tr(".", ",")
+      end
+      private_class_method :number
 
       # Meio-dia local do dia da folha, como timestamp UTC sem fuso (o tipo das
       # colunas datetime), para a ordem, a janela e o cursor no SQL.

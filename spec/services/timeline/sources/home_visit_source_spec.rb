@@ -47,18 +47,46 @@ RSpec.describe Timeline::Sources::HomeVisitSource do
     expect(rows.map(&:source_id)).to eq([ done.id, refused.id, absent.id, withdrawn.id ])
     expect(rows.first).to have_attributes(
       kind: "home_visit", occurred_at: done.occurred_at, title: "Visita domiciliar",
-      summary: "Visita realizada · Visita periódica, Gestante · peso, altura, pressão arterial",
+      summary: "Visita realizada · Visita periódica, Gestante · PA 120/80 mmHg · peso 70,5 kg · altura 170 cm",
       professional: { name: agent.professional.professional_name, cbo_code: sheet.cbo },
       unit: { id: team.health_unit.id, name: team.health_unit.name },
       status: "recorded", detail_ref: { type: "home_visit", id: done.id }, document: nil, citizen: nil
     )
-    expect(rows.map(&:summary)).to eq([ "Visita realizada · Visita periódica, Gestante · peso, altura, pressão arterial",
+    expect(rows.map(&:summary)).to eq([ "Visita realizada · Visita periódica, Gestante · PA 120/80 mmHg · peso 70,5 kg · altura 170 cm",
                                         "Visita recusada", "Ausente", "Visita realizada · Visita periódica, Gestante" ])
     expect(rows.map(&:status)).to eq(%w[recorded recorded recorded withdrawn])
     json = rows.map { |entry| Timeline::Json.professional(entry) }.to_json
     expect(json).not_to include(note, "MARCADOR", "Registrei no morador errado")
     # Fail-closed: a forma do profissional não monta a visão do cidadão.
     expect(rows.map { |entry| Timeline::Json.citizen(entry) }).to all(be_nil)
+  end
+
+  # Q58 (contrato §16; decisão 16 da spec, "com motivos e medidas"): o resumo do
+  # profissional traz os VALORES das medidas, com unidade, na ordem fixa PA,
+  # peso, altura, temperatura, glicemia; valor ausente (ou o par incompleto) some.
+  it "Q58: resumo do profissional com os valores das medidas e as unidades" do
+    sheet = day!(Date.current - 1)
+    full = done!(day: sheet, at: sheet.day.in_time_zone.change(hour: 10), note: note,
+                 measurements: { "glucose_type" => 0, "glucose_mg_dl" => 110, "weight_kg" => 72, "diastolic" => 80, "systolic" => 130,
+                                 "temperature_c" => 37.2, "height_cm" => 168.5 })
+    partial = done!(day: sheet, at: sheet.day.in_time_zone.change(hour: 9), reasons: [ 29 ],
+                    measurements: { "systolic" => 140, "weight_kg" => 64.25, "glucose_type" => 3 })
+
+    expect(entries.map { |entry| [ entry.source_id, entry.summary ] }).to eq([
+      [ full.id, "Visita realizada · Visita periódica, Gestante · PA 130/80 mmHg · peso 72 kg · altura 168,5 cm · " \
+                 "temperatura 37,2 °C · glicemia 110 mg/dL (jejum)" ],
+      [ partial.id, "Visita realizada · Visita periódica · peso 64,25 kg" ]
+    ])
+    expect(entries.map(&:summary).join).not_to include(note)
+  end
+
+  it "Q58: a entrada do cidadão continua com summary nulo e sem medida" do
+    sheet = day!(Date.current - 1)
+    done!(day: sheet, measurements: { "systolic" => 130, "diastolic" => 80, "weight_kg" => 72, "temperature_c" => 37.2 })
+
+    citizen = Timeline::Json.citizen(entries(citizen: true).sole)
+    expect(citizen[:summary]).to be_nil
+    expect(citizen.to_json).not_to include("mmHg", "130/80", "kg", "°C", "PA ")
   end
 
   it "cidadão vê só a realizada, sem nome, unidade, resumo nem status" do
