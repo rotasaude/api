@@ -4123,3 +4123,59 @@ BEGIN
   END IF;
 END
 $do$;
+
+-- Módulo 24b (ADR 0052; plano, Task 5; contrato §1 e §13): aparelho de campo e
+-- sincronização. O aparelho nunca é apagado e só muda `last_used_at` (livre) e as
+-- colunas de revogação, de NULL a valor, juntas, uma vez; token_digest, user_id,
+-- professional_id, name e created_at são imutáveis. O livro de idempotência e as
+-- lápides são só acréscimo. A re-cifra de cidade não toca o aparelho (nenhuma
+-- coluna cifrada), então não há exceção para ela. As colunas são lidas por
+-- to_jsonb(NEW)/(OLD): este arquivo roda de novo em migrações antigas, em bancos
+-- ainda sem elas.
+CREATE OR REPLACE FUNCTION rota_field_device_guard() RETURNS trigger AS $fn$
+DECLARE
+  free text[] := ARRAY['last_used_at'];
+  revocation text[] := ARRAY['revoked_at', 'revoked_by_user_id', 'revoked_reason'];
+  old_row jsonb := to_jsonb(OLD);
+  new_row jsonb := to_jsonb(NEW);
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'field_devices: DELETE refused';
+  END IF;
+  IF (new_row - free - revocation) IS DISTINCT FROM (old_row - free - revocation) THEN
+    RAISE EXCEPTION 'field_devices: only last_used_at and the revocation columns change';
+  END IF;
+  IF (new_row - free) = (old_row - free) THEN
+    RETURN NEW;
+  END IF;
+  IF old_row ->> 'revoked_at' IS NOT NULL THEN
+    RAISE EXCEPTION 'field_devices: a device is revoked once';
+  END IF;
+  IF new_row ->> 'revoked_at' IS NULL OR new_row ->> 'revoked_reason' IS NULL THEN
+    RAISE EXCEPTION 'field_devices: the revocation columns go from NULL to a value together';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $do$
+DECLARE
+  item text;
+BEGIN
+  IF to_regclass('public.field_devices') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS field_devices_guard ON field_devices';
+    EXECUTE 'CREATE TRIGGER field_devices_guard BEFORE UPDATE OR DELETE ON field_devices
+      FOR EACH ROW EXECUTE FUNCTION rota_field_device_guard()';
+    FOREACH item IN ARRAY ARRAY['field_sync_receipts', 'field_sync_tombstones'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only', item);
+    END LOOP;
+    FOREACH item IN ARRAY ARRAY['field_devices', 'field_sync_receipts', 'field_sync_tombstones'] LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', item || '_append_only_truncate', item);
+      EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION rota_append_only()',
+                     item || '_append_only_truncate', item);
+    END LOOP;
+  END IF;
+END
+$do$;

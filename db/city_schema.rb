@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_12_900002) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_12_900003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gist"
   enable_extension "citext"
@@ -1546,6 +1546,48 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900002) do
     t.index ["household_id", "responsible_patient_id"], name: "idx_families_one_responsible", unique: true, where: "(NOT moved_out)"
     t.index ["responsible_patient_id"], name: "idx_families_responsible_patient"
     t.check_constraint "members_count IS NULL OR (members_count >= 1 AND members_count <= 999)", name: "ck_families_members_count"
+  end
+
+  create_table "field_devices", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "last_used_at"
+    t.string "name", null: false
+    t.uuid "professional_id", null: false
+    t.datetime "revoked_at"
+    t.uuid "revoked_by_user_id"
+    t.string "revoked_reason"
+    t.string "token_digest", limit: 64, null: false
+    t.uuid "user_id", null: false
+    t.index ["token_digest"], name: "index_field_devices_on_token_digest", unique: true
+    t.index ["user_id"], name: "idx_field_devices_active_by_user", where: "(revoked_at IS NULL)"
+    t.check_constraint "((revoked_at IS NULL) = (revoked_reason IS NULL))", name: "ck_field_devices_revoked"
+    t.check_constraint "(revoked_by_user_id IS NULL) OR ((revoked_reason)::text = ANY (ARRAY['admin'::character varying::text, 'user'::character varying::text]))", name: "ck_field_devices_revoked_by"
+    t.check_constraint "(revoked_reason IS NULL) OR ((revoked_reason)::text = ANY (ARRAY['user'::character varying::text, 'admin'::character varying::text, 'membership_ended'::character varying::text, 'user_disabled'::character varying::text]))", name: "ck_field_devices_revoked_reason"
+    t.check_constraint "(token_digest)::text ~ '^[0-9a-f]{64}$'::text", name: "ck_field_devices_token_digest"
+    t.check_constraint "length(btrim((name)::text)) >= 1 AND length(btrim((name)::text)) <= 60", name: "ck_field_devices_name"
+  end
+
+  create_table "field_sync_receipts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "client_uuid", null: false
+    t.datetime "created_at", null: false
+    t.uuid "field_device_id", null: false
+    t.string "item_type", null: false
+    t.uuid "result_id", null: false
+    t.string "result_type", null: false
+    t.uuid "user_id", null: false
+    t.index ["client_uuid"], name: "idx_field_sync_receipts_client_uuid", unique: true
+    t.check_constraint "(item_type)::text = ANY (ARRAY['home_visit'::character varying::text, 'home_visit_withdrawal'::character varying::text, 'collective_activity'::character varying::text, 'patient'::character varying::text, 'household'::character varying::text, 'individual_registration'::character varying::text])", name: "ck_field_sync_receipts_item_type"
+  end
+
+  create_table "field_sync_tombstones", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "entity_id", null: false
+    t.string "entity_type", null: false
+    t.uuid "micro_area_id", null: false
+    t.string "reason", null: false
+    t.index ["micro_area_id", "created_at"], name: "idx_field_sync_tombstones_micro_area"
+    t.check_constraint "(entity_type)::text = ANY (ARRAY['household'::character varying::text, 'registration'::character varying::text])", name: "ck_field_sync_tombstones_entity_type"
+    t.check_constraint "(reason)::text = ANY (ARRAY['moved'::character varying::text, 'erased'::character varying::text, 'out_of_scope'::character varying::text])", name: "ck_field_sync_tombstones_reason"
   end
 
   create_table "health_team_members", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -4956,6 +4998,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900002) do
   add_foreign_key "cold_chain_excursions", "users", column: "decided_by_user_id"
   add_foreign_key "cold_chain_readings", "cold_chain_equipments"
   add_foreign_key "cold_chain_readings", "users", column: "recorded_by_user_id"
+  add_foreign_key "collective_activities", "field_devices"
   add_foreign_key "collective_activities", "health_teams", column: "team_id"
   add_foreign_key "collective_activities", "health_units"
   add_foreign_key "collective_activities", "health_units", column: "place_health_unit_id"
@@ -5072,6 +5115,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900002) do
   add_foreign_key "external_prescriptions", "users", column: "recorded_by_user_id"
   add_foreign_key "families", "households"
   add_foreign_key "families", "patients", column: "responsible_patient_id"
+  add_foreign_key "field_devices", "professionals"
+  add_foreign_key "field_devices", "users"
+  add_foreign_key "field_devices", "users", column: "revoked_by_user_id"
+  add_foreign_key "field_sync_receipts", "field_devices"
+  add_foreign_key "field_sync_receipts", "users"
+  add_foreign_key "field_sync_tombstones", "micro_areas"
   add_foreign_key "health_team_members", "health_teams"
   add_foreign_key "health_team_members", "professionals"
   add_foreign_key "health_teams", "health_teams", column: "associated_team_id"
@@ -5085,6 +5134,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_12_900002) do
   add_foreign_key "home_visit_days", "users"
   add_foreign_key "home_visit_days", "users", column: "closed_by_user_id"
   add_foreign_key "home_visits", "families"
+  add_foreign_key "home_visits", "field_devices"
   add_foreign_key "home_visits", "home_visit_days"
   add_foreign_key "home_visits", "households"
   add_foreign_key "home_visits", "micro_areas"
