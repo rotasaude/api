@@ -70,6 +70,7 @@ else
   require Rails.root.join("lib/psychosocial_crew").to_s
   require Rails.root.join("lib/urgency_crew").to_s
   require Rails.root.join("lib/ombudsman_crew").to_s
+  require Rails.root.join("lib/home_visit_crew").to_s
   require Rails.root.join("lib/record_mode_crew").to_s
   require Rails.root.join("lib/ledi_crew").to_s
 
@@ -450,6 +451,13 @@ else
         # unidades). Só e-mail, papel e otpauth: nunca protocolo, texto nem nome.
         ombudsman = OmbudsmanCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
         OmbudsmanCrew.summary_lines(ombudsman, password: password).each { |line| puts line }
+
+        # ── Visita domiciliar e atividade coletiva (módulo 24b, ADR 0052) ─────
+        # Depois do TerritoryRegistryCrew (a microárea 02, o domicílio da R. Pedro
+        # Gusso, a enfermeira, a ACS e as pessoas do 23 e do 24a). Só e-mail,
+        # papel e otpauth: nunca dado de paciente nem token de aparelho.
+        home_visits = HomeVisitCrew.seed_current_city(slug: slug, ddd: ddd, password: password)
+        HomeVisitCrew.summary_lines(home_visits, password: password).each { |line| puts line }
 
         puts "[seeds] cidade ...... #{city.name} (#{city.slug}/#{city.uf}, #{city.status})"
         puts "  perfil ...... #{profile.name}/#{profile.uf} IBGE #{profile.ibge_code}"
