@@ -1045,6 +1045,7 @@ Rails.application.routes.draw do
   scope "/field/v1", module: "field_sync/v1", as: :field_sync_v1 do
     get  "session", to: "sessions#show"
     post "uploads", to: "uploads#create"
+    get  "changes", to: "changes#index"
   end
 
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo
