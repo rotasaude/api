@@ -16,7 +16,10 @@
 # (Q42), e numAvaliacoesAlteradas segue igual à lista (Q38). Nascimento e sexo
 # em todo participante. "Não gerada" pela lista fechada
 # CollectiveActivities::Catalog::NOT_GENERATED, nessa ordem. "Registrada por
-# engano" não desfaz a ficha já enfileirada (spec §9).
+# engano" não desfaz a ficha já enfileirada (spec §9), mas a atividade marcada
+# não é gerada de novo nem reenviada (Q55): retry! levanta ActivityChanged e
+# regenerate devolve :activity_changed (o Ledi::Resend levanta o mesmo), com a
+# atividade travada FOR SHARE contra o CollectiveActivities::MarkMistaken.
 module Ledi
   module CollectiveActivityFicha
     extend Ledi::RegistrationFicha
@@ -27,6 +30,9 @@ module Ledi
     JUSTIFICATIONS = TerritoryRegistry::Catalog::NO_CPF_REASONS.map(&:to_i).freeze
     IDENTIFIER_TYPES = CollectiveActivities::Catalog::PARTICIPANTS_REQUIRED
 
+    # A Produção responde 409 activity_changed.
+    ActivityChanged = Class.new(StandardError)
+
     class << self
       def version_class = ::CollectiveActivity
       def ficha_class = Ledi::Fichas::CollectiveActivity
@@ -36,6 +42,25 @@ module Ledi
         raise ArgumentError, "Ledi::CollectiveActivityFicha.generate precisa da cidade (CityConnection.with)" unless city
 
         super
+      end
+
+      # "Gerar de novo" (Produção): atividade marcada por engano → ActivityChanged.
+      def retry!(failure, by:)
+        ApplicationRecord.transaction do
+          raise ActivityChanged if mistaken?(failure.source_id)
+
+          super
+        end
+      end
+
+      # "Reenviar" recusada (Produção, Ledi::Resend): atividade marcada por
+      # engano → [:activity_changed, nil], nada regerado.
+      def regenerate(entry, by:, city: Current.city)
+        ApplicationRecord.transaction do
+          next [ :activity_changed, nil ] if mistaken?(entry.source_id)
+
+          super
+        end
       end
 
       # [ficha, []] ou [nil, motivos na ordem de NOT_GENERATED].
@@ -65,6 +90,8 @@ module Ledi
       end
 
       private
+
+      def mistaken?(activity_id) = ::CollectiveActivity.lock("FOR SHARE").find_by(id: activity_id)&.mistaken? || false
 
       def activity_values(activity, place)
         {

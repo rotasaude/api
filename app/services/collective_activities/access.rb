@@ -21,9 +21,11 @@ module CollectiveActivities
                       .where(professional_id: user.professional.id, cbo_code: Catalog::CBOS.to_a, health_teams: { active: true }).exists?
     end
 
-    def reads?(user, team)
-      return true if registers?(user, team)
+    def reads?(user, team) = registers?(user, team) || supervises?(user, team)
 
+    # Enfermeiro ou médico da equipe (vínculo ativo): lê a equipe toda e vê o
+    # motivo do "por engano" (Q17).
+    def supervises?(user, team)
       cbo = TerritoryRegistry::Access.membership(user, team)&.cbo_code.to_s
       cbo.present? && TerritoryRegistry::Catalog::REGISTRAR_CBO_PREFIXES.any? { |prefix| cbo.start_with?(prefix) }
     end

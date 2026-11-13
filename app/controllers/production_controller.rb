@@ -44,6 +44,8 @@ class ProductionController < ApplicationController
     render json: { error: "export_unusable" }, status: :conflict
   rescue Ledi::Resend::NotRegenerated
     render json: { error: "generation_failed" }, status: :conflict
+  rescue Ledi::CollectiveActivityFicha::ActivityChanged
+    render json: { error: "activity_changed" }, status: :conflict
   end
 
   # Fichas que não puderam ser geradas (ADR 0030; contratos §6). Sem o
@@ -67,6 +69,9 @@ class ProductionController < ApplicationController
   # Ledi::ConsultationFicha::AlreadyResolved é a mesma classe: cobre as duas origens.
   rescue Ledi::ScreeningFicha::AlreadyResolved
     render json: { error: "already_resolved" }, status: :conflict
+  # Q55 (módulo 24b): atividade coletiva marcada por engano.
+  rescue Ledi::CollectiveActivityFicha::ActivityChanged
+    render json: { error: "activity_changed" }, status: :conflict
   end
 
   private

@@ -1013,10 +1013,18 @@ Rails.application.routes.draw do
   end
 
   # Módulo 24b (ADR 0052; contrato §7): atividade coletiva, sessão do
-  # dashboard, gate `collective_activities`. Dado de pessoa e texto só no corpo.
+  # dashboard, gate `collective_activities`. Rotas de membro só com id UUID
+  # (ruling A9); dado de pessoa e texto só no corpo. "Gerar de novo" e
+  # "Reenviar" da ficha 6 ficam na Produção (Q12).
   scope "/collective_activities", module: :collective_activities, as: :collective_activities do
+    member_id = { id: /\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/ }
+    get  "options",                 to: "options#show"
     post "people/lookup",           to: "people#lookup"
     post "people/duplicates",       to: "people#duplicates"
+    get  "",                        to: "activities#index"
+    post "",                        to: "activities#create"
+    get  ":id",                     to: "activities#show", constraints: member_id
+    post ":id/mark_mistaken",       to: "activities#mark_mistaken", constraints: member_id
   end
 
   # Território (ADR 0023; spec 2026-09-28-module-11-territory §4.1). Prefixo

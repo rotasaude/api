@@ -38,6 +38,8 @@ module Ledi
       when :ok then fresh
       when :not_rejected then raise NotRejected
       when :export_unusable then raise ExportUnusable
+      # Q55: atividade coletiva marcada por engano.
+      when :activity_changed then raise Ledi::CollectiveActivityFicha::ActivityChanged
       else raise NotRegenerated
       end
     end

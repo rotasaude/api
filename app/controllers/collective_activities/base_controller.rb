@@ -10,6 +10,7 @@ module CollectiveActivities
     include Authentication
     include MfaStepUp
     include ::CollectiveActivitiesGate
+    include ::FieldListQuery
 
     wrap_parameters false
 

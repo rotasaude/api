@@ -206,6 +206,39 @@ RSpec.describe Ledi::CollectiveActivityFicha, type: :model do
     end
   end
 
+  describe "registrada por engano (Q55)" do
+    def mistaken!(activity) = activity.update!(mistaken_at: Time.current, mistaken_by_user: acs, mistaken_reason: "Registrada em dobro")
+
+    it "Gerar de novo recusa com ActivityChanged e a falha segue não resolvida" do
+      place = create_unit("Escola municipal", cnes: nil)
+      activity = activity!(place_unit: place)
+      expect(described_class.generate(activity)).to eq(:failed)
+      failure = failure_of(activity)
+      place.update!(cnes: format("%07d", SecureRandom.random_number(10**7)))
+      mistaken!(activity)
+      expect { described_class.retry!(failure, by: care_admin!) }.to raise_error(described_class::ActivityChanged)
+      expect(failure.reload.resolved?).to be(false)
+      expect(LediOutboxEntry.where(source_id: activity.id)).to be_empty
+    end
+
+    it "Reenviar recusada → :activity_changed (Ledi::Resend levanta); a ficha já enfileirada segue como estava" do
+      activity = activity!
+      entry = generated!(activity)
+      entry.update_columns(status: "rejected", last_error_codes: [ { "field" => "cnes", "code" => "invalid" } ])
+      mistaken!(activity)
+      expect(described_class.regenerate(entry, by: care_admin!)).to eq([ :activity_changed, nil ])
+      expect { Ledi::Resend.call(entry: entry, by: care_admin!) }.to raise_error(described_class::ActivityChanged)
+      expect(LediOutboxEntry.where(source_id: activity.id).pluck(:id, :status)).to eq([ [ entry.id, "rejected" ] ])
+    end
+
+    it "a ficha de uma atividade marcada depois de enfileirada não é desfeita" do
+      activity = activity!
+      entry = generated!(activity)
+      mistaken!(activity)
+      expect(entry.reload.status).to eq("pending")
+    end
+  end
+
   it "generate exige a cidade (vem do CityConnection.with)" do
     expect { described_class.generate(activity!, city: nil) }.to raise_error(ArgumentError)
   end

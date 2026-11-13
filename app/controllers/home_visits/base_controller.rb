@@ -7,11 +7,11 @@ module HomeVisits
     include Authentication
     include MfaStepUp
     include ::HomeVisitsGate
+    include ::FieldListQuery
 
     wrap_parameters false
 
     UUID = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/
-    DATE = /\A\d{4}-\d{2}-\d{2}\z/
     # O resto das recusas é 422 (inclusive o cbo_not_allowed da atribuição,
     # que o controlador dela sobrescreve).
     FAILURE_STATUS = {
@@ -22,8 +22,6 @@ module HomeVisits
       cbo_not_allowed: :forbidden, out_of_scope: :forbidden,
       not_found: :not_found, person_not_found: :not_found
     }.freeze
-    DEFAULT_LIMIT = 50
-    MAX_LIMIT = 100
 
     before_action :require_home_visits!
 
@@ -55,57 +53,6 @@ module HomeVisits
 
       render_refusal("invalid_request")
       false
-    end
-
-    # Tamanho da página: padrão 50, máximo 100; inválido → 422 invalid_limit (nil).
-    def page_limit
-      raw = params[:limit]
-      return DEFAULT_LIMIT if raw.blank?
-
-      value = Integer(raw.to_s, 10, exception: false)
-      return value if value && value.between?(1, MAX_LIMIT)
-
-      render_refusal("invalid_limit")
-      nil
-    end
-
-    # Id opcional da query: ausente → nil; não-UUID → 422 invalid_request com
-    # o path (performed?).
-    def query_uuid(key)
-      raw = request.query_parameters[key]
-      return nil if raw.nil?
-      return raw if uuid?(raw)
-
-      render_refusal("invalid_request", path: key)
-      nil
-    end
-
-    # Dia AAAA-MM-DD da query (o dia da cidade): ausente → nil; inválido → 422
-    # invalid_request com o path (performed?).
-    def query_date(key)
-      raw = request.query_parameters[key]
-      return nil if raw.nil?
-
-      date = raw.is_a?(String) && raw.match?(DATE) && Date.strptime(raw, "%Y-%m-%d")
-      return date if date
-
-      render_refusal("invalid_request", path: key)
-      nil
-    rescue Date::Error
-      render_refusal("invalid_request", path: key)
-      nil
-    end
-
-    # Filtro repetido (`key[]=…`): ausente → nil; escalar, vazio ou valor fora
-    # de `allowed` → 422 invalid_request com o path (performed?).
-    def list_filter(key, allowed)
-      return nil unless request.query_parameters.key?(key)
-
-      values = request.query_parameters[key]
-      return values.uniq if values.is_a?(Array) && values.any? && values.all? { |value| value.is_a?(String) && allowed.include?(value) }
-
-      render_refusal("invalid_request", path: key)
-      nil
     end
 
     # Cursor opaco `before` (CareLines::Cursor): ausente → nil; inválido → 422
