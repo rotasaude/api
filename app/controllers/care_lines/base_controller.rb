@@ -30,6 +30,9 @@ module CareLines
     # Módulo 29: as práticas de vacina só são medidas com `vaccination`
     # utilizável. Lido aqui, na requisição, fora de transação da cidade.
     def vaccination_usable? = Vaccination::Gate.usable?(Current.city)
+    # Módulo 24b: a visita do ACS e as medidas da visita só com `home_visits`
+    # utilizável (o mesmo padrão, fora de transação).
+    def home_visits_usable? = HomeVisits::Gate.usable?(Current.city)
     def body = params.to_unsafe_h.except("controller", "action", "id")
     # Dado de saúde e texto livre (DUM, nota, motivo) só do corpo JSON, nunca
     # da query string (URL vai para log de proxy e histórico): na query vale

@@ -4,7 +4,7 @@
 module CareLines
   module Rules
     PRACTICE_KEYS = %w[key label citizen_label source anchor window_start_days window_days min_count schedule
-                       cbo_filter code_filter applies_to all_of points].freeze
+                       cbo_filter code_filter applies_to all_of points min_gap_days].freeze
     ELIGIBILITY_KEYS = %w[problems exclude_problems age_min_days age_max_days age_min_years age_max_years sex
                           gender_identities_included gender_identities_excluded declared requires_anchor].freeze
     CODE_FORMATS = { "ciap2" => /\A[A-Z]\d{2}\z/, "cid10" => /\A[A-Z]\d{2}[0-9X]?\z/ }.freeze
@@ -106,7 +106,9 @@ module CareLines
         "source" => source, "anchor" => anchor, "window_start_days" => start, "window_days" => window,
         "min_count" => min_count, "schedule" => schedule, "cbo_filter" => cbo, "code_filter" => code_filter,
         "applies_to" => applies_to(raw["applies_to"], "#{path}.applies_to"), "all_of" => all_of,
-        "points" => int(raw["points"], 0..100, "#{path}.points")
+        "points" => int(raw["points"], 0..100, "#{path}.points"),
+        # Módulo 24b (contrato §12): intervalo mínimo, em dias, entre registros que contam.
+        "min_gap_days" => int(raw["min_gap_days"], 1..365, "#{path}.min_gap_days")
       }
     end
 

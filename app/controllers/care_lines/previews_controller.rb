@@ -10,7 +10,8 @@ module CareLines
       team = uuid?(params[:team_id]) && HealthTeam.find_by(id: params[:team_id])
       return not_found unless team && care_line_team?(team)
 
-      result = Preview.call(team: team, indicator: params[:indicator], today: Time.zone.today, vaccination: vaccination_usable?)
+      result = Preview.call(team: team, indicator: params[:indicator], today: Time.zone.today, vaccination: vaccination_usable?,
+                            home_visits: home_visits_usable?)
       return render_error(:catalog_not_loaded, :service_unavailable) unless result
 
       render json: result

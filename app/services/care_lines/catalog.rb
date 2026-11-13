@@ -5,7 +5,7 @@ module CareLines
     INDICATORS = { "child_c2" => "C2", "pregnancy_c3" => "C3", "diabetes_c4" => "C4", "hypertension_c5" => "C5",
                    "elderly_c6" => "C6", "women_c7" => "C7" }.freeze
     SOURCE_FORMAT = /\A(consultation|blood_pressure|weight_height|acs_visit|oral_health|exam:02\d{8}|procedure:\d{10}|vaccine:[a-z0-9_]{1,30})\z/
-    # Fora do sistema em qualquer cidade (o 28 mede oral_health; o 29, vacina).
+    # Visita do ACS (módulo 24b): medida só com `home_visits` utilizável; sem ele, não rastreada.
     UNTRACKED_SOURCE = /\A(acs_visit)\z/
     # Vacina (módulo 29): medida só com `vaccination` utilizável; sem ele, não rastreada.
     VACCINE_SOURCE = /\Avaccine:.+\z/
@@ -29,7 +29,9 @@ module CareLines
 
     module_function
 
-    def untracked?(source, vaccination: false) = source.to_s.match?(UNTRACKED_SOURCE) || (!vaccination && vaccine?(source))
+    def untracked?(source, vaccination: false, home_visits: false)
+      (!home_visits && source.to_s.match?(UNTRACKED_SOURCE)) || (!vaccination && vaccine?(source))
+    end
 
     def vaccine?(source) = source.to_s.match?(VACCINE_SOURCE)
   end

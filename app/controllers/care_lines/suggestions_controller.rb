@@ -43,7 +43,8 @@ module CareLines
       return render_failure(result) if result.failure?
 
       enrollment = result.payload[:enrollment] || result.payload[:ended]
-      row = Evaluation.enrollments([ enrollment ], today: Time.zone.today, vaccination: vaccination_usable?).fetch(enrollment.id)
+      row = Evaluation.enrollments([ enrollment ], today: Time.zone.today, vaccination: vaccination_usable?,
+                                                   home_visits: home_visits_usable?).fetch(enrollment.id)
       Trail.viewed!(user: Current.user, patient_id: enrollment.patient_id, citizen_id: nil, enrollment_id: enrollment.id)
       last_contact = @suggestion.closure? ? enrollment.contacts.first : nil
       render json: Json.enrollment(enrollment, row: row, last_contact: last_contact), status: @suggestion.closure? ? :ok : :created

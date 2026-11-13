@@ -52,6 +52,15 @@ RSpec.describe "Catálogo-base das linhas (notas metodológicas C2–C7 de 19/06
     expect(untracked).to eq(%w[c2_d c2_e c3_e c3_f c3_j c4_d c5_d c6_c c6_d c7_b])
   end
 
+  # Módulo 24b (contrato §12): intervalo mínimo na C5 e rótulo do cidadão nas visitas.
+  it "c5_d tem min_gap_days 30 e as seis acs_visit têm citizen_label" do
+    expect(practice("hypertension_c5", "c5_d")).to include("source" => "acs_visit", "min_gap_days" => 30)
+    visits = entries.values.flat_map { |e| e["practices"] }.select { |p| p["source"] == "acs_visit" }
+    expect(visits.map { |p| p["key"] }).to eq(%w[c2_d c3_e c3_j c4_d c5_d c6_c])
+    expect(visits.map { |p| p["citizen_label"] }.uniq).to eq([ "Visitas do agente de saúde" ])
+    expect(entries.values.flat_map { |e| e["practices"] }.select { |p| p.key?("min_gap_days") }.map { |p| p["key"] }).to eq(%w[c5_d])
+  end
+
   # Errata C-api-01 / decisão P6: consulta com código de puerpério (cbo e
   # code_filter da própria prática) OU o procedimento 0301010129.
   it "c3_i: consulta de puerpério com code_filter e cbo, ou o procedimento 0301010129" do

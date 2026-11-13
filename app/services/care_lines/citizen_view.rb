@@ -4,16 +4,19 @@
 # rastreado nunca aparece. Triagens periódicas vencidas (módulo 15) junto.
 # Marco de vacina com a caderneta não conferida (módulo 29, §15 W5): chega como
 # `status: "unchecked"` (o wpda pede para levar a caderneta), nunca como pendência.
+# Visita do ACS (módulo 24b, Q25): rastreada só com `home_visits`; o item cuja
+# fonte é `acs_visit` vem `by_team: true` (os outros, false), sem o código da fonte.
 module CareLines
   module CitizenView
     module_function
 
-    def call(citizen:, person:, today:, vaccination: false)
+    def call(citizen:, person:, today:, vaccination: false, home_visits: false)
       enrollments = person.patient_id ? CareLineEnrollment.active_enrollments.where(patient_id: person.patient_id).order(:enrolled_at).to_a : []
-      rows = Evaluation.enrollments(enrollments, today: today, vaccination: vaccination)
+      rows = Evaluation.enrollments(enrollments, today: today, vaccination: vaccination, home_visits: home_visits)
       lines = enrollments.map do |enrollment|
         items = rows.fetch(enrollment.id).practices.select { |s| s.tracked || s.status == "unchecked" }.map do |status|
-          { label: status.citizen_label || status.label, status: status.status, due_on: status.due_on&.iso8601 }
+          { label: status.citizen_label || status.label, status: status.status, due_on: status.due_on&.iso8601,
+            by_team: status.source == "acs_visit" }
         end
         { name: enrollment.care_line.name, items: items }
       end

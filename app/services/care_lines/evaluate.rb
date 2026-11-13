@@ -3,19 +3,21 @@
 # devolve PracticeStatus. Fonte fora do sistema → untracked (nunca atraso).
 # Vacina (módulo 29): untracked sem `vaccination`; com ele e sem o marcador de
 # caderneta conferida (Sources::VACCINE_CHECKED) → unchecked (tracked: false:
-# nunca atraso, fora do pior da linha).
+# nunca atraso, fora do pior da linha). Visita do ACS (módulo 24b): untracked
+# sem `home_visits`. `min_gap_days` (opcional): em ordem de data, só conta o
+# registro que dista ≥ N dias do último que contou.
 module CareLines
   module Evaluate
     RANK = { "ok" => 0, "due_soon" => 1, "overdue" => 2 }.freeze
 
     module_function
 
-    def call(practices:, person:, anchors:, events:, today:, vaccination: false)
+    def call(practices:, person:, anchors:, events:, today:, vaccination: false, home_visits: false)
       checked = events.fetch(Sources::VACCINE_CHECKED, []).any?
       practices.filter_map do |practice|
         next unless applies?(practice["applies_to"], person, today)
 
-        evaluate(practice, anchors, events, today, vaccination: vaccination, checked: checked)
+        evaluate(practice, anchors, events, today, vaccination: vaccination, home_visits: home_visits, checked: checked)
       end
     end
 
@@ -38,14 +40,14 @@ module CareLines
       rule["sex"].nil? || person.sex == rule["sex"]
     end
 
-    def sources_of(practice, vaccination: false)
-      return [] if Catalog.untracked?(practice["source"], vaccination: vaccination)
+    def sources_of(practice, vaccination: false, home_visits: false)
+      return [] if Catalog.untracked?(practice["source"], vaccination: vaccination, home_visits: home_visits)
 
       groups(practice).flatten.map { |alt| alt["source"] }.uniq
     end
 
-    def since(practices, anchors, today, vaccination: false)
-      starts = practices.reject { |p| Catalog.untracked?(p["source"], vaccination: vaccination) }.filter_map do |p|
+    def since(practices, anchors, today, vaccination: false, home_visits: false)
+      starts = practices.reject { |p| Catalog.untracked?(p["source"], vaccination: vaccination, home_visits: home_visits) }.filter_map do |p|
         if p["anchor"] == "rolling"
           today - (groups(p).flatten.map { |alt| alt["window_days"] || p["window_days"] }.max - 1)
         elsif (anchor = anchors[p["anchor"]])
@@ -55,10 +57,10 @@ module CareLines
       starts.min || today
     end
 
-    def evaluate(practice, anchors, events, today, vaccination:, checked:)
+    def evaluate(practice, anchors, events, today, vaccination:, home_visits:, checked:)
       base = { key: practice["key"], label: practice["label"], citizen_label: practice["citizen_label"], source: practice["source"],
                points: practice["points"] }
-      if Catalog.untracked?(practice["source"], vaccination: vaccination)
+      if Catalog.untracked?(practice["source"], vaccination: vaccination, home_visits: home_visits)
         return PracticeStatus.new(**base, tracked: false, status: "untracked", done_at: nil, due_on: nil, count: nil, expected: nil, met: false)
       end
       if Catalog.vaccine?(practice["source"]) && !checked
@@ -141,7 +143,8 @@ module CareLines
 
     # Datas de uma fonte na janela; consulta filtra CBO (prefixo) e código
     # (prefixo, só na lista da MESMA terminologia: CIAP N95 não casa com CID N95),
-    # só nela.
+    # só nela. Depois do filtro, `min_gap_days`: em ordem, entra a data que dista
+    # ≥ N dias da última que entrou.
     def dates(practice, source, events, from, to)
       list = events.fetch(source, [])
       if source == "consultation" || source == "oral_health"
@@ -151,7 +154,11 @@ module CareLines
       if source == "consultation" && (codes = practice["code_filter"])
         list = list.select { |e| e.codes.any? { |terminology, code| Array(codes[terminology]).any? { |prefix| code.start_with?(prefix) } } }
       end
-      list.map(&:on).select { |d| d >= from && d <= to }.uniq.sort
+      days = list.map(&:on).select { |d| d >= from && d <= to }.uniq.sort
+      gap = practice["min_gap_days"]
+      return days unless gap
+
+      days.each_with_object([]) { |day, kept| kept << day if kept.empty? || (day - kept.last).to_i >= gap }
     end
     private_class_method :evaluate, :rolling, :fixed, :proportional, :groups, :counts, :dates
   end

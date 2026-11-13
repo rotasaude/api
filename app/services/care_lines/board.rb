@@ -11,7 +11,7 @@ module CareLines
 
     module_function
 
-    def page(team:, line_id:, status:, before:, limit:, today:, vaccination: false)
+    def page(team:, line_id:, status:, before:, limit:, today:, vaccination: false, home_visits: false)
       scope = CareLineEnrollment.active_enrollments.where(team_id: team.id).includes(:team)
       scope = scope.where(care_line_id: line_id) if line_id
       scope = scope.order(enrolled_at: :desc, id: :desc)
@@ -21,7 +21,7 @@ module CareLines
         chunk = Cursor.before(scope, last ? Cursor::Position.new(at: last.enrolled_at, id: last.id) : before, :enrolled_at).limit(limit).to_a
         return { rows: rows, next_before: nil } if chunk.empty?
 
-        evaluated = Evaluation.enrollments(chunk, today: today, vaccination: vaccination)
+        evaluated = Evaluation.enrollments(chunk, today: today, vaccination: vaccination, home_visits: home_visits)
         chunk.each do |enrollment|
           last = enrollment
           row = evaluated.fetch(enrollment.id)
@@ -37,11 +37,11 @@ module CareLines
     # 60 s por aba: o valor (agregado, sem dado pessoal) fica 60 s no cache
     # compartilhado (solid_cache no banco de plataforma, por isso a cidade na chave).
     # unchecked (vacina sem caderneta conferida) não é vencido: fica fora do pior.
-    def overdue_count(team, today:, vaccination: false)
-      key = [ "care_lines/overdue_count", Current.city&.slug, team.id, today.iso8601, vaccination ]
+    def overdue_count(team, today:, vaccination: false, home_visits: false)
+      key = [ "care_lines/overdue_count", Current.city&.slug, team.id, today.iso8601, vaccination, home_visits ]
       Rails.cache.fetch(key, expires_in: COUNT_TTL) do
         CareLineEnrollment.active_enrollments.where(team_id: team.id).in_batches(of: COUNT_CHUNK).sum do |batch|
-          Evaluation.enrollments(batch.to_a, today: today, vaccination: vaccination).count { |_, row| row.worst == "overdue" }
+          Evaluation.enrollments(batch.to_a, today: today, vaccination: vaccination, home_visits: home_visits).count { |_, row| row.worst == "overdue" }
         end
       end
     end

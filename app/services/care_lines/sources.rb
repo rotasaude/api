@@ -3,7 +3,8 @@
 # consulta SQL por fonte, qualquer que seja o número de pacientes: pares,
 # consultas, problemas das consultas, escutas, exames (pedido + resultado
 # num UNION ALL), procedimentos e vacinas (conferências, doses e nascimento
-# para o C2). Datas no fuso da cidade (Time.zone).
+# para o C2) e visitas domiciliares (módulo 24b, só com `home_visits`). Datas
+# no fuso da cidade (Time.zone).
 module CareLines
   module Sources
     BP_PROCEDURE = "0301100039".freeze
@@ -15,7 +16,9 @@ module CareLines
 
     module_function
 
-    def load(patient_ids:, sources:, since:)
+    # `home_visits` (módulo 24b; plano, Desvio 7): o interruptor lido pelo
+    # chamador fora de transação. Desligado, a visita não entra em fonte nenhuma.
+    def load(patient_ids:, sources:, since:, home_visits: false)
       ids = patient_ids.uniq
       result = ids.to_h { |id| [ id, Hash.new { |h, k| h[k] = [] } ] }
       return {} if ids.empty?
@@ -34,6 +37,7 @@ module CareLines
       procedure_codes << WH_PROCEDURE if sources.include?("weight_height")
       procedures!(result, ids, since, procedure_codes.uniq, sources)
       vaccines!(result, ids, from, sources.select { |s| Catalog.vaccine?(s) })
+      home_visits!(result, ids, from, sources) if home_visits
       result.transform_values { |by_source| by_source.to_h { |source, list| [ source, list.sort_by(&:on) ] } }
     end
 
@@ -176,11 +180,44 @@ module CareLines
       end
     end
 
+    # Visitas domiciliares (módulo 24b; contrato §12; Q10/A-12): UMA consulta
+    # (visita JOIN folha), só a realizada (outcome 1), não retirada, em imóvel
+    # residencial, da pessoa da lista, desde `from`. `acs_visit`: com motivo e
+    # folha do ACS/TACS (CARE_LINE_CBOS); evento com a data local e o CBO da
+    # folha. Medidas (qualquer CBO da Tabela 7, que é quem tem folha): pressão
+    # com sistólica e diastólica; peso e altura juntos. Decifra só `measurements`
+    # e só se uma fonte de medida foi pedida — motivo e observação nunca são lidos.
+    def home_visits!(result, ids, from, sources)
+      acs = sources.include?("acs_visit")
+      vitals = sources.intersect?(VITALS)
+      return unless acs || vitals
+
+      filters = []
+      filters << ApplicationRecord.sanitize_sql([ "(home_visits.has_reason AND home_visit_days.cbo IN (?))", HomeVisits::Catalog::CARE_LINE_CBOS ]) if acs
+      filters << "home_visits.measurements IS NOT NULL" if vitals
+      columns = [ :patient_id, :occurred_at, :has_reason, "home_visit_days.cbo" ]
+      columns << :measurements if vitals
+      HomeVisit.valid.joins(:home_visit_day)
+               .where(outcome: 1, property_type: HomeVisits::Catalog::RESIDENTIAL, patient_id: ids, occurred_at: from..)
+               .where(filters.join(" OR ")).pluck(*columns).each do |patient_id, at, has_reason, cbo, measures|
+        on = at.in_time_zone.to_date
+        if acs && has_reason && HomeVisits::Catalog::CARE_LINE_CBOS.include?(cbo)
+          result[patient_id]["acs_visit"] << Event.new(on: on, cbo: cbo, codes: [])
+        end
+        next unless measures.is_a?(Hash)
+
+        if measures["systolic"] && measures["diastolic"] && sources.include?("blood_pressure")
+          result[patient_id]["blood_pressure"] << Event.new(on: on)
+        end
+        result[patient_id]["weight_height"] << Event.new(on: on) if measures["weight_kg"] && measures["height_cm"] && sources.include?("weight_height")
+      end
+    end
+
     def parse_date(value)
       value.present? ? Date.iso8601(value) : nil
     rescue Date::Error
       nil
     end
-    private_class_method :consultations!, :oral_health!, :screenings!, :exams!, :procedures!, :vaccines!, :parse_date
+    private_class_method :consultations!, :oral_health!, :screenings!, :exams!, :procedures!, :vaccines!, :home_visits!, :parse_date
   end
 end

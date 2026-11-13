@@ -15,7 +15,8 @@ module CareLines
       return render_error(:invalid_filter) if params[:care_line_id].present? && !uuid?(params[:care_line_id])
 
       page = Board.page(team: team, line_id: params[:care_line_id].presence, status: status, before: Cursor.decode(params[:before]),
-                        limit: Timeline::Query.limit(params[:limit]), today: Time.zone.today, vaccination: vaccination_usable?)
+                        limit: Timeline::Query.limit(params[:limit]), today: Time.zone.today, vaccination: vaccination_usable?,
+                        home_visits: home_visits_usable?)
       contacts = last_contacts(page[:rows].map { |enrollment, _| enrollment.id })
       payload = page[:rows].map do |enrollment, row|
         Trail.viewed!(user: Current.user, patient_id: enrollment.patient_id, citizen_id: nil, enrollment_id: enrollment.id)
@@ -28,7 +29,7 @@ module CareLines
 
     def overdue_count
       team = scoped_team or return
-      render json: { count: Board.overdue_count(team, today: Time.zone.today, vaccination: vaccination_usable?) }
+      render json: { count: Board.overdue_count(team, today: Time.zone.today, vaccination: vaccination_usable?, home_visits: home_visits_usable?) }
     end
 
     def show
@@ -137,7 +138,8 @@ module CareLines
     end
 
     def detail(enrollment)
-      row = Evaluation.enrollments([ enrollment ], today: Time.zone.today, vaccination: vaccination_usable?).fetch(enrollment.id)
+      row = Evaluation.enrollments([ enrollment ], today: Time.zone.today, vaccination: vaccination_usable?,
+                                                   home_visits: home_visits_usable?).fetch(enrollment.id)
       Trail.viewed!(user: Current.user, patient_id: enrollment.patient_id, citizen_id: nil, enrollment_id: enrollment.id)
       Json.enrollment(enrollment, row: row, last_contact: enrollment.contacts.first)
           .merge(contacts: enrollment.contacts.includes(recorded_by_user: :professional).map { |c| Json.contact(c) })

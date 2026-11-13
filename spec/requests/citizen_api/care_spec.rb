@@ -25,7 +25,8 @@ RSpec.describe "Cidadão — meu acompanhamento", type: :request do
       [ "Consulta de acompanhamento", "ok" ], [ "Medir a pressão", "ok" ], [ "Medir peso e altura", "ok" ],
       [ "Exame de hemoglobina glicada", "overdue" ], [ "Avaliação dos pés", "overdue" ]
     ])
-    expect(items.map(&:keys).uniq).to eq([ %w[label status due_on] ])
+    expect(items.map(&:keys).uniq).to eq([ %w[label status due_on by_team] ])
+    expect(items.map { |i| i["by_team"] }.uniq).to eq([ false ])
     expect(response.body).not_to match(/T90|c4_|resolved_problem|hipertens|untracked/i)
     expect(json_body["overdue_triages"]).to eq([ { "protocol_name" => "saude-adulto", "title" => "Saúde do adulto",
                                                    "last_done_at" => 200.days.ago.to_date.iso8601 } ])
@@ -46,7 +47,8 @@ RSpec.describe "Cidadão — meu acompanhamento", type: :request do
     flu = ->(body) { body["lines"].first["items"].find { |i| i["label"] == "Vacina contra influenza nos últimos 12 meses" } }
 
     get "/citizen/care", params: { citizen_id: citizen.id }
-    expect(flu.call(json_body)).to eq("label" => "Vacina contra influenza nos últimos 12 meses", "status" => "unchecked", "due_on" => nil)
+    expect(flu.call(json_body)).to eq("label" => "Vacina contra influenza nos últimos 12 meses", "status" => "unchecked", "due_on" => nil,
+                                     "by_team" => false)
     expect(json_body["lines"].first["items"].map { |i| i["status"] }.count("unchecked")).to eq(1)
 
     room = vaccine_room!
@@ -59,6 +61,32 @@ RSpec.describe "Cidadão — meu acompanhamento", type: :request do
     get "/citizen/care", params: { citizen_id: citizen.id }
     expect(flu.call(json_body)).to be_nil
     expect(response.body).not_to include("unchecked")
+  end
+
+  # Módulo 24b, Q25 (decisão do usuário): com home_visits utilizável, a visita do
+  # agente aparece rastreada com o citizen_label e `by_team: true`; os outros
+  # itens vêm `by_team: false`. Nem código de fonte nem nome de profissional.
+  it "com home_visits utilizável, o item da visita vem by_team: true e os outros false" do
+    home_visit_city!
+    patient = care_patient!(age: 58, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+    citizen = Citizen.find_by!(patient_id: patient.id)
+    care_enrollment!(patient: patient, line: adopted_line!("diabetes_c4"), team: team, by: doctor)
+    acs = field_agent!(cbo: HomeVisits::Catalog::ACS_CBO)
+    home_visit!(day: home_visit_day!(agent: acs, day: Time.zone.today - 3), subject: "resident", patient: patient, has_reason: true)
+    sign_in_citizen(citizen.phone)
+
+    get "/citizen/care", params: { citizen_id: citizen.id }
+    items = json_body["lines"].first["items"]
+    visit = items.find { |i| i["label"] == "Visitas do agente de saúde" }
+    expect(visit).to eq("label" => "Visitas do agente de saúde", "status" => "overdue", "due_on" => nil, "by_team" => true)
+    expect(items.reject { |i| i.equal?(visit) }.map { |i| i["by_team"] }.uniq).to eq([ false ])
+    expect(items.flat_map(&:keys).uniq).to eq(%w[label status due_on by_team])
+    expect(response.body).not_to match(/acs_visit|source|#{Regexp.escape(acs.professional.professional_name)}/)
+
+    Platform::Features.set!(city: Current.city, key: HomeVisits::Gate::KEY, enabled: false, maintainer: ledi_maintainer!)
+    get "/citizen/care", params: { citizen_id: citizen.id }
+    expect(json_body["lines"].first["items"].map { |i| i["label"] }).not_to include("Visitas do agente de saúde")
+    expect(response.body).not_to include("true")
   end
 
   it "par validado sem paciente: sem linhas; par declarado: 403; outro celular: 404; desligado: 403" do

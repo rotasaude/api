@@ -35,6 +35,17 @@ RSpec.describe CareLines::Preview do
     expect(result).to include(score: "71.9", concept: "good")
   end
 
+  # Módulo 24b (contrato §12): com home_visits utilizável a visita do ACS é rastreada.
+  it "acs_visit sai de excluded com home_visits" do
+    patient = care_patient!(age: 58, sex: "male", problems: [ %w[ciap2 T90] ], unit: unit, doctor: doctor)
+    care_enrollment!(patient: patient, line: adopted_line!("diabetes_c4"), team: team, by: doctor)
+    result = described_class.call(team: team, indicator: "C4", today: today, home_visits: true)
+    expect(result[:excluded]).to eq([])
+    expect(result[:practices].find { |p| p[:key] == "c4_d" }).to include(tracked: true, weight: "20.0", achieved: 0, denominator: 1)
+    expect(result[:excluded_practices]).to eq([])
+    expect(described_class.call(team: team, indicator: "C4", today: today)[:excluded]).to eq(%w[acs_visit])
+  end
+
   it "C7: denominador por prática (faixa); vacina HPV fora" do
     neighborhood = care_neighborhood!(unit)
     care_citizen!(age: 30, sex: "female", neighborhood: neighborhood)

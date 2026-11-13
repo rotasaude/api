@@ -4,6 +4,9 @@
 # dias (6 meses = 183, 12 = 365, 24 = 730, 36 = 1095, 60 = 1826). Carga:
 # bin/rails care_lines:templates:load. Mudança depois da carga: só pelo
 # maintenance (nova versão).
+# Visitas do ACS (módulo 24b, contrato §12): `acs_visit` medida só com
+# `home_visits` utilizável; `citizen_label` nas seis e `min_gap_days: 30` na
+# c5_d. Cidade existente recebe a versão nova pelo maintenance (runbook).
 # Vacinas (módulo 29, Task 17): medidas só com `vaccination` utilizável
 # (CareLines::Sources; caderneta não conferida → unchecked). Códigos conferidos
 # em 2026-11-02 contra config/vaccination/immunobiologicals.yml (catálogo do
@@ -26,8 +29,8 @@
         source: consultation, anchor: birth, window_days: 730, min_count: 9, schedule: proportional, cbo_filter: *md_nurse, points: 20 }
     - { key: c2_c, label: "9 registros de peso e altura até os 2 anos", citizen_label: "Medir peso e altura da criança",
         source: weight_height, anchor: birth, window_days: 730, min_count: 9, schedule: proportional, points: 20 }
-    - { key: c2_d, label: "2 visitas do ACS (até 30 dias e até 6 meses de vida)", source: acs_visit, anchor: birth, window_days: 180,
-        min_count: 2, schedule: end_of_window, points: 20 }
+    - { key: c2_d, label: "2 visitas do ACS (até 30 dias e até 6 meses de vida)", citizen_label: "Visitas do agente de saúde",
+        source: acs_visit, anchor: birth, window_days: 180, min_count: 2, schedule: end_of_window, points: 20 }
     - { key: c2_e, label: "Vacinas penta, VIP, SCR e pneumocócica com todas as doses", source: "vaccine:c2_schedule", anchor: birth,
         window_days: 730, min_count: 1, schedule: end_of_window, points: 20 }
 - key: pregnancy_c3
@@ -54,8 +57,8 @@
         source: blood_pressure, anchor: lmp, window_days: 294, min_count: 7, schedule: proportional, points: 9 }
     - { key: c3_d, label: "7 registros de peso e altura na gestação", citizen_label: "Medir peso e altura",
         source: weight_height, anchor: lmp, window_days: 294, min_count: 7, schedule: proportional, points: 9 }
-    - { key: c3_e, label: "3 visitas do ACS após a 1ª consulta", source: acs_visit, anchor: lmp, window_days: 294, min_count: 3,
-        schedule: end_of_window, points: 9 }
+    - { key: c3_e, label: "3 visitas do ACS após a 1ª consulta", citizen_label: "Visitas do agente de saúde", source: acs_visit,
+        anchor: lmp, window_days: 294, min_count: 3, schedule: end_of_window, points: 9 }
     - { key: c3_f, label: "Vacina dTpa a partir da 20ª semana", source: "vaccine:57", anchor: lmp, window_start_days: 140,
         window_days: 294, min_count: 1, schedule: end_of_window, points: 9 }
     - key: c3_g
@@ -105,8 +108,8 @@
       # para a alternativa consultation) OU o procedimento 0301010129.
       all_of:
         - [{ source: consultation }, { source: "procedure:0301010129" }]
-    - { key: c3_j, label: "Visita do ACS no puerpério", source: acs_visit, anchor: lmp, window_start_days: 294, window_days: 336,
-        min_count: 1, schedule: end_of_window, points: 9 }
+    - { key: c3_j, label: "Visita do ACS no puerpério", citizen_label: "Visitas do agente de saúde", source: acs_visit, anchor: lmp,
+        window_start_days: 294, window_days: 336, min_count: 1, schedule: end_of_window, points: 9 }
     - { key: c3_k, label: "Atividade de saúde bucal na gestação", source: oral_health, anchor: lmp, window_days: 294, min_count: 1,
         schedule: end_of_window, cbo_filter: ["2232", "3224"], points: 9 }
     # c3_k: só a consulta odontológica finalizada de gestante alimenta oral_health;
@@ -126,8 +129,8 @@
         source: blood_pressure, anchor: rolling, window_days: 183, min_count: 1, schedule: end_of_window, points: 15 }
     - { key: c4_c, label: "Peso e altura nos últimos 12 meses", citizen_label: "Medir peso e altura",
         source: weight_height, anchor: rolling, window_days: 365, min_count: 1, schedule: end_of_window, points: 15 }
-    - { key: c4_d, label: "2 visitas do ACS nos últimos 12 meses", source: acs_visit, anchor: rolling, window_days: 365, min_count: 2,
-        schedule: end_of_window, points: 20 }
+    - { key: c4_d, label: "2 visitas do ACS nos últimos 12 meses", citizen_label: "Visitas do agente de saúde", source: acs_visit,
+        anchor: rolling, window_days: 365, min_count: 2, schedule: end_of_window, points: 20 }
     - { key: c4_e, label: "Hemoglobina glicada solicitada ou avaliada nos últimos 12 meses", citizen_label: "Exame de hemoglobina glicada",
         source: "exam:0202010503", anchor: rolling, window_days: 365, min_count: 1, schedule: end_of_window, points: 15 }
     - { key: c4_f, label: "Avaliação dos pés nos últimos 12 meses", citizen_label: "Avaliação dos pés",
@@ -146,8 +149,8 @@
         source: blood_pressure, anchor: rolling, window_days: 183, min_count: 1, schedule: end_of_window, points: 25 }
     - { key: c5_c, label: "Peso e altura nos últimos 12 meses", citizen_label: "Medir peso e altura",
         source: weight_height, anchor: rolling, window_days: 365, min_count: 1, schedule: end_of_window, points: 25 }
-    - { key: c5_d, label: "2 visitas do ACS nos últimos 12 meses", source: acs_visit, anchor: rolling, window_days: 365, min_count: 2,
-        schedule: end_of_window, points: 25 }
+    - { key: c5_d, label: "2 visitas do ACS nos últimos 12 meses", citizen_label: "Visitas do agente de saúde", source: acs_visit,
+        anchor: rolling, window_days: 365, min_count: 2, min_gap_days: 30, schedule: end_of_window, points: 25 }
 - key: elderly_c6
   indicator: C6
   name: "Pessoa idosa"
@@ -159,8 +162,8 @@
         source: consultation, anchor: rolling, window_days: 365, min_count: 1, schedule: end_of_window, cbo_filter: *md_nurse, points: 25 }
     - { key: c6_b, label: "Peso e altura no mesmo dia nos últimos 12 meses", citizen_label: "Medir peso e altura",
         source: weight_height, anchor: rolling, window_days: 365, min_count: 1, schedule: end_of_window, points: 25 }
-    - { key: c6_c, label: "2 visitas do ACS nos últimos 12 meses", source: acs_visit, anchor: rolling, window_days: 365, min_count: 2,
-        schedule: end_of_window, points: 25 }
+    - { key: c6_c, label: "2 visitas do ACS nos últimos 12 meses", citizen_label: "Visitas do agente de saúde", source: acs_visit,
+        anchor: rolling, window_days: 365, min_count: 2, schedule: end_of_window, points: 25 }
     - { key: c6_d, label: "Vacina contra influenza nos últimos 12 meses", source: "vaccine:33", anchor: rolling, window_days: 365,
         min_count: 1, schedule: end_of_window, points: 25 }
 - key: women_c7

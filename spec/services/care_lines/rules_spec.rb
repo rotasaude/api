@@ -62,6 +62,9 @@ RSpec.describe CareLines::Rules do
     [ { "code_filter" => { "icd" => %w[E11] } } ] => "practices[0].code_filter",
     [ { "applies_to" => { "sex" => "x" } } ] => "practices[0].applies_to",
     [ { "all_of" => [ [ { "source" => "acs_visit" } ] ] } ] => "practices[0].all_of",
+    [ { "min_gap_days" => 0 } ] => "practices[0].min_gap_days",
+    [ { "min_gap_days" => 366 } ] => "practices[0].min_gap_days",
+    [ { "min_gap_days" => "30" } ] => "practices[0].min_gap_days",
     [ { "all_of" => [ [ { "source" => "exam:0202010503" } ], [ { "source" => "exam:0202010473" } ] ], "min_count" => 2 } ] => "practices[0].min_count",
     # proportional avalia um grupo só: com vários grupos o 2º seria ignorado em silêncio
     [ { "anchor" => "lmp", "schedule" => "proportional", "min_count" => 1,
@@ -71,6 +74,14 @@ RSpec.describe CareLines::Rules do
       result = described_class.practices([ consult.merge(overrides.first) ])
       expect(result.reason).to eq(:invalid_practices)
       expect(result.details[:field]).to eq(field)
+    end
+  end
+
+  # Módulo 24b (contrato §12): intervalo mínimo entre registros, opcional, 1..365.
+  it "min_gap_days: aceito em 1..365 e opcional (ausente vale nil)" do
+    expect(described_class.practices([ consult ]).payload[:practices].first).to include("min_gap_days" => nil)
+    [ 1, 30, 365 ].each do |gap|
+      expect(described_class.practices([ consult.merge("min_gap_days" => gap) ]).payload[:practices].first).to include("min_gap_days" => gap)
     end
   end
 
