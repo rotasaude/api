@@ -53,17 +53,17 @@ RSpec.describe "Visita domiciliar — contexto e atribuição de microárea", ty
   it "ACS (responsável pela própria ou não), CBO fora da Tabela 7 ou profissional fora da equipe → 422 cbo_not_allowed (Q48)" do
     stepped_up!(nurse)
     assign(micro_area: area, professional: acs.professional)
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(json_body).to eq("error" => "cbo_not_allowed")
     assign(micro_area: open_area, professional: acs.professional) # ruling A3: o 515105 nunca é atribuído
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(json_body).to eq("error" => "cbo_not_allowed")
     assign(micro_area: open_area, professional: doctor.professional)
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(json_body).to eq("error" => "cbo_not_allowed")
     stranger = field_agent!(cbo: "322255", team: registry_team!(care_unit!))
     assign(micro_area: open_area, professional: stranger.professional)
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(json_body).to eq("error" => "cbo_not_allowed")
     expect(MicroAreaFieldAssignment.count).to eq(0)
   end
@@ -72,7 +72,7 @@ RSpec.describe "Visita domiciliar — contexto e atribuição de microárea", ty
     stepped_up!(nurse)
     open_area.update!(active: false)
     assign
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(json_body).to eq("error" => "micro_area_inactive")
     json_post "/home_visits/assignments", micro_area_id: area.id
     expect(json_body).to eq("error" => "invalid_request", "path" => "professional_id")

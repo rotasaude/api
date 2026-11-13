@@ -78,11 +78,10 @@ RSpec.describe "App de campo — GET /field/v1/changes", type: :request do
     decoded = JSON.parse(Base64.urlsafe_decode64(raw))
     expect(decoded.keys).to eq(%w[v scope_digest since after_id])
     expect(decoded).to include("v" => 1)
-    patient = registration.patient
-    address = household.latest_version.address
-    sensitive = [ patient.full_name, patient.mother_name, patient.cpf, patient.cns, address["street"], address["number"],
-                  address["zip"] ].compact_blank
-    sensitive.each { |value| expect(Base64.urlsafe_decode64(raw)).not_to include(value) }
+    # Estrutura exata (sem marcador literal contra UUID/digest): só versão, digest hex, instante ISO e UUID.
+    expect(decoded.fetch("scope_digest")).to match(/\A\h{64}\z/)
+    expect(Time.iso8601(decoded.fetch("since"))).to be_a(Time)
+    expect(decoded.fetch("after_id")).to match(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/)
   end
 
   it "sem Bearer → 401 invalid_token" do
